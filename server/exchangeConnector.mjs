@@ -155,6 +155,96 @@ export async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limi
   }
 }
 
+// ---------------------------------------------------------------------------
+// 市场微观结构：资金费率 / 未平仓量(OI) / 订单簿深度不平衡。
+// 给 Agent 提供合约交易真正需要的"眼睛"。默认 OKX（本机可用），失败回退 Binance。
+// ---------------------------------------------------------------------------
+async function fetchMicrostructureRaw(exchange, symbol) {
+  const normalized = String(exchange || "OKX").toUpperCase();
+  const timer = timeoutSignal(8000);
+  try {
+    if (normalized === "OKX") {
+      const instId = toOkxSymbol(symbol, "perpetual");
+      const [funding, oi, books] = await Promise.all([
+        fetch(`${OKX_BASE}/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json()),
+        fetch(`${OKX_BASE}/api/v5/public/open-interest?instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json()),
+        fetch(`${OKX_BASE}/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=20`, { signal: timer.signal }).then((r) => r.json())
+      ]);
+      const book = books.data?.[0] || {};
+      return {
+        exchange: "OKX",
+        symbol: instId,
+        fundingRatePct: funding.data?.[0]?.fundingRate !== undefined ? Number(funding.data[0].fundingRate) * 100 : null,
+        nextFundingRatePct: funding.data?.[0]?.nextFundingRate !== undefined ? Number(funding.data[0].nextFundingRate) * 100 : null,
+        openInterest: oi.data?.[0]?.oiCcy !== undefined ? Number(oi.data[0].oiCcy) : (oi.data?.[0]?.oi !== undefined ? Number(oi.data[0].oi) : null),
+        ...bookImbalance(book.bids, book.asks)
+      };
+    }
+    const bSymbol = toBinanceSymbol(symbol);
+    const [premium, oi, depth] = await Promise.all([
+      fetch(`${BINANCE_USDM_BASE}/fapi/v1/premiumIndex?symbol=${bSymbol}`, { signal: timer.signal }).then((r) => r.json()),
+      fetch(`${BINANCE_USDM_BASE}/fapi/v1/openInterest?symbol=${bSymbol}`, { signal: timer.signal }).then((r) => r.json()),
+      fetch(`${BINANCE_USDM_BASE}/fapi/v1/depth?symbol=${bSymbol}&limit=20`, { signal: timer.signal }).then((r) => r.json())
+    ]);
+    return {
+      exchange: "BINANCE",
+      symbol: bSymbol,
+      fundingRatePct: premium?.lastFundingRate !== undefined ? Number(premium.lastFundingRate) * 100 : null,
+      nextFundingRatePct: null,
+      openInterest: oi?.openInterest !== undefined ? Number(oi.openInterest) : null,
+      ...bookImbalance(depth?.bids, depth?.asks)
+    };
+  } finally {
+    timer.cancel();
+  }
+}
+
+function bookImbalance(bids = [], asks = []) {
+  const sum = (rows) => (rows || []).reduce((total, row) => total + Number(row[1] || 0), 0);
+  const bidVol = sum(bids);
+  const askVol = sum(asks);
+  const total = bidVol + askVol;
+  const bestBid = bids?.[0] ? Number(bids[0][0]) : null;
+  const bestAsk = asks?.[0] ? Number(asks[0][0]) : null;
+  return {
+    bidVolume: Number(bidVol.toFixed(2)),
+    askVolume: Number(askVol.toFixed(2)),
+    bookImbalancePct: total > 0 ? Number(((bidVol / total) * 100).toFixed(1)) : null,
+    bestBid,
+    bestAsk,
+    spreadBps: bestBid && bestAsk ? Number((((bestAsk - bestBid) / bestAsk) * 10000).toFixed(2)) : null
+  };
+}
+
+// 同步微观结构并缓存到 market 对象，返回带解读的摘要。
+export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT") {
+  const { result, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange === "BINANCE" ? "BINANCE" : "OKX", (name) => fetchMicrostructureRaw(name, symbol));
+  if (failedOver) appendTrace(db, "exchange_micro", `${fallbackExchange(usedExchange)} 微观数据不可用，切换 ${usedExchange}`, "warning");
+  const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
+  db.markets ||= [];
+  let market = db.markets.find((item) => item.symbol === displaySymbol);
+  if (!market) {
+    market = { symbol: displaySymbol, candles: [], status: "not_synced" };
+    db.markets.push(market);
+  }
+  market.fundingRate = result.fundingRatePct;
+  market.openInterest = result.openInterest;
+  market.bookImbalancePct = result.bookImbalancePct;
+  market.microSyncedAt = nowIso();
+  appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
+  const funding = result.fundingRatePct;
+  const interpretation = [];
+  if (Number.isFinite(funding)) {
+    interpretation.push(Math.abs(funding) >= 0.05
+      ? `资金费率 ${funding.toFixed(4)}% 偏高，${funding > 0 ? "多头" : "空头"}拥挤，反向挤压风险上升`
+      : `资金费率 ${funding.toFixed(4)}% 中性`);
+  }
+  if (Number.isFinite(result.bookImbalancePct)) {
+    interpretation.push(result.bookImbalancePct >= 58 ? "订单簿买盘占优" : result.bookImbalancePct <= 42 ? "订单簿卖盘占优" : "订单簿买卖均衡");
+  }
+  return { ...result, interpretation: interpretation.join("；") || "微观结构数据不足" };
+}
+
 function fallbackExchange(exchange) {
   return String(exchange).toUpperCase() === "OKX" ? "BINANCE" : "OKX";
 }
@@ -171,6 +261,12 @@ async function withExchangeFailover(exchange, fetcher) {
       throw primaryError;
     }
   }
+}
+
+// 回测用：拉取历史 K 线（OKX 主、Binance 备），不改动 db 状态。
+export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX") {
+  const { result } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe, limit));
+  return result;
 }
 
 export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/USDT", timeframe = "1h") {

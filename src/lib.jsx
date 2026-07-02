@@ -41,11 +41,13 @@ import {
 
 export const pageCopy = {
   agent: { title: "AI 交易员驾驶舱", sub: "配置真实数据源、授权与风控边界后，Agent 才会生成可执行计划", search: "搜索市场、交易对、知识或功能" },
-  marketAccount: { title: "市场与账户", sub: "同步公开行情、私有账户、持仓与委托，区分真实数据和待配置状态", search: "搜索市场、交易对、知识或功能" },
+  marketAccount: { title: "仪表盘", sub: "聚合账户绩效、对账健康、收益质量与风险承压，不展示交易图表噪音", search: "搜索绩效、账户、对账或风险" },
   eventsTasks: { title: "事件与任务", sub: "接入真实事件源与任务规则后，追踪风险窗口和自动化运行记录", search: "搜索市场、交易对、知识或功能" },
   knowledgeSkills: { title: "知识与技能", sub: "沉淀专家知识，构建规则与技能，让 Agent 更懂市场、更会交易。", search: "搜索知识、规则、技能或文档" },
+  review: { title: "复盘", sub: "复盘交易、Agent 行为、Skill 运行和可优化线索，形成下一轮改进闭环", search: "搜索交易、复盘、Skill 或优化项" },
   riskAuth: { title: "风控与授权", sub: "集中管理授权委托、风险规则与安全策略，确保交易策略在可控范围内执行。", search: "搜索市场、交易对、知识或功能" },
-  auditSystem: { title: "审计与系统", sub: "审计 Agent 行为，监控系统健康，保障交易安全与合规", search: "搜索市场、交易对、知识或功能" }
+  auditSystem: { title: "审计", sub: "审计 Agent 行为，监控系统健康，保障交易安全与合规", search: "搜索市场、交易对、知识或功能" },
+  systemSettings: { title: "系统设置", sub: "集中维护模型、交易所、告警、运行参数与实盘灰度配置", search: "搜索配置、密钥、模型或交易所" }
 };
 
 export function formatMoney(value, digits = 2) {

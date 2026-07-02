@@ -303,7 +303,13 @@ function upsertBinanceExecution(db, payload) {
   order.updatedAt = nowIso();
   if (!existing) db.orders.unshift(order);
   if (payload.x === "TRADE") {
-    db.fills.unshift({ id: id("fill"), orderId: order.id, symbol: order.symbol, side: order.side, price: Number(payload.L), size: payload.l, fee: `${payload.n || 0} ${payload.N || ""}`.trim(), createdAt: nowIso() });
+    db.fills.unshift(enrichRealtimeFill(db, order, {
+      exchange: "BINANCE",
+      price: Number(payload.L),
+      quantity: Number(payload.l),
+      feeUsdt: parseFee(payload.n, payload.N),
+      side: order.side
+    }));
   }
 }
 
@@ -319,8 +325,62 @@ function upsertOkxOrder(db, payload) {
   order.updatedAt = nowIso();
   if (!existing) db.orders.unshift(order);
   if (payload.fillSz && Number(payload.fillSz) > 0) {
-    db.fills.unshift({ id: id("fill"), orderId: order.id, symbol: order.symbol, side: order.side, price: Number(payload.fillPx || 0), size: payload.fillSz, fee: `${payload.fee || 0} ${payload.feeCcy || ""}`.trim(), createdAt: nowIso() });
+    db.fills.unshift(enrichRealtimeFill(db, order, {
+      exchange: "OKX",
+      price: Number(payload.fillPx || 0),
+      quantity: Number(payload.fillSz),
+      feeUsdt: parseFee(payload.fee, payload.feeCcy),
+      side: order.side
+    }));
   }
+}
+
+function enrichRealtimeFill(db, order, payload = {}) {
+  const executionOrder = (db.executionOrders || []).find((item) =>
+    item.exchangeOrderId === order.exchangeOrderId ||
+    item.clientOrderId === order.clientOrderId ||
+    item.planId === order.planId
+  );
+  const plan = (db.tradePlans || []).find((item) => item.id === executionOrder?.planId || item.id === order.planId) || {};
+  const price = Number(payload.price || 0);
+  const quantity = Number(payload.quantity || 0);
+  const notional = price * quantity;
+  const expectedPrice = executionOrder?.entryPrice || order.price;
+  const slippageBps = expectedPrice ? Number((((price - Number(expectedPrice)) / Number(expectedPrice)) * 10000).toFixed(2)) : null;
+  const feeUsdt = payload.feeUsdt ?? Number((Math.abs(notional) * 0.0004).toFixed(6));
+  return {
+    id: id("fill"),
+    orderId: order.id,
+    executionOrderId: executionOrder?.id,
+    planId: executionOrder?.planId || order.planId,
+    tradePlanId: executionOrder?.planId || order.planId,
+    agentRunId: executionOrder?.agentRunId,
+    riskCheckId: executionOrder?.riskCheckId,
+    mandateId: executionOrder?.mandateId,
+    symbol: order.symbol,
+    side: payload.side,
+    direction: executionOrder?.direction,
+    strategy: executionOrder?.strategy || plan.strategy || plan.strategy_type || "manual_review",
+    kind: order.reduceOnly || /sell|buy/i.test(String(payload.side || "")) && executionOrder?.status === "protecting" ? "close" : "entry",
+    price,
+    size: quantity,
+    quantity,
+    notionalUsdt: notional,
+    expectedPrice,
+    slippageBps,
+    feeUsdt,
+    fee: feeUsdt === null ? undefined : `${feeUsdt} USDT`,
+    estimatedFee: payload.feeUsdt === undefined,
+    entryRationale: executionOrder?.entryRationale || plan.rationale || plan.analysis || "未记录入场理由",
+    createdAt: nowIso()
+  };
+}
+
+function parseFee(value, currency) {
+  const amount = Math.abs(Number(value));
+  if (!Number.isFinite(amount)) return null;
+  if (!currency || String(currency).toUpperCase() === "USDT") return amount;
+  return null;
 }
 
 function updateOkxPositions(db, positions) {

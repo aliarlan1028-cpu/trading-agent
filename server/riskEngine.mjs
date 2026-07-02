@@ -38,7 +38,43 @@ export function evaluateTradePlan(db, plan) {
     add("事件风险", true, "未发现阻断级事件");
   }
 
+  // 组合相关性/集中度：主流币高度相关，同向叠加等于放大单一风险。
+  const concentration = evaluateConcentration(db, plan, mandate);
+  add("组合相关性", concentration.passed, concentration.detail, concentration.passed ? "ok" : "warn");
+
   return summarize(checks);
+}
+
+// BTC/ETH/SOL/BNB 等主流币相关性高（常 >0.7）；同向叠加需要作为一个风险簇看待。
+const CORRELATION_GROUPS = [
+  ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "AVAX/USDT", "MATIC/USDT", "LINK/USDT"]
+];
+
+function correlationGroupOf(symbol) {
+  return CORRELATION_GROUPS.find((group) => group.includes(symbol)) || [symbol];
+}
+
+function planDirection(item) {
+  const dir = String(item.direction || item.side || "").toLowerCase();
+  if (dir.includes("short") || item.direction === "空") return "short";
+  return "long";
+}
+
+function evaluateConcentration(db, plan, mandate) {
+  const group = correlationGroupOf(plan.symbol);
+  const planDir = planDirection(plan);
+  const openPositions = (db.positions || []).filter((position) => group.includes(position.symbol) && planDirection(position) === planDir);
+  const openPlans = (db.tradePlans || []).filter((item) =>
+    item.id !== plan.id
+    && group.includes(item.symbol)
+    && planDirection(item) === planDir
+    && ["approved", "executing", "awaiting_approval"].includes(item.status));
+  const correlatedCount = openPositions.length + openPlans.length + 1; // 含本计划
+  const maxCorrelated = Number(mandate?.maxCorrelatedPositions || 3);
+  if (correlatedCount > maxCorrelated) {
+    return { passed: false, detail: `已有 ${correlatedCount - 1} 个同向相关主流币仓位，再开将达 ${correlatedCount} 个（上限 ${maxCorrelated}）：相关性集中，等于放大单一 Beta 风险` };
+  }
+  return { passed: true, detail: correlatedCount > 1 ? `同向相关仓位 ${correlatedCount}/${maxCorrelated}，在可控范围` : "无相关性集中" };
 }
 
 function summarize(checks) {

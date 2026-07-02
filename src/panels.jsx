@@ -65,7 +65,7 @@ export function ConfigPanel({ panel, data, action, ui }) {
         <header>
           <div>
             <span>配置中心</span>
-            <h2>{titles[panel] || "系统配置"}</h2>
+            <h2>{titles[panel] || "系统设置"}</h2>
           </div>
           <button className="secondaryButton" onClick={ui.closePanel}>关闭</button>
         </header>
@@ -86,6 +86,304 @@ export function ConfigPanel({ panel, data, action, ui }) {
         {panel === "executionDetail" && <ExecutionDetailPanel data={data} />}
         {panel === "positions" && <PositionsPanel data={data} />}
       </aside>
+    </div>
+  );
+}
+
+export function SystemConfigPanel({ data, action, ui }) {
+  const config = data.config || {};
+  const providers = config.llm?.providers || {};
+  const exchange = config.exchange || {};
+  const live = config.liveTrading || {};
+  const integrations = config.integrations || {};
+  const runtime = config.runtime || {};
+  const [llmForm, setLlmForm] = useState({
+    ANTHROPIC_API_KEY: "",
+    ANTHROPIC_MODEL: providers.anthropic?.model || "claude-sonnet-4-5",
+    OPENAI_API_KEY: "",
+    OPENAI_MODEL: providers.openai?.model || "gpt-5.2",
+    DEEPSEEK_API_KEY: "",
+    DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-chat",
+    GEMINI_API_KEY: "",
+    GEMINI_MODEL: providers.gemini?.model || "gemini-2.5-pro"
+  });
+  const [exchangeForm, setExchangeForm] = useState({
+    BINANCE_API_KEY: "",
+    BINANCE_API_SECRET: "",
+    OKX_API_KEY: "",
+    OKX_API_SECRET: "",
+    OKX_API_PASSPHRASE: "",
+    BINANCE_IP_WHITELIST: (data.exchangeAccounts || []).find((item) => item.exchange === "BINANCE")?.ipWhitelist || "",
+    OKX_IP_WHITELIST: (data.exchangeAccounts || []).find((item) => item.exchange === "OKX")?.ipWhitelist || "",
+    OKX_MARGIN_MODE: data.runtimeConfig?.OKX_MARGIN_MODE || "cross",
+    OKX_POSITION_MODE: data.runtimeConfig?.OKX_POSITION_MODE || "net"
+  });
+  const [liveForm, setLiveForm] = useState({
+    liveTradingEnabled: Boolean(live.liveTradingEnabled),
+    acknowledged: Boolean(live.acknowledged),
+    orderWriteEnabled: Boolean(live.orderWriteEnabled),
+    grayEnabled: Boolean(live.grayEnabled),
+    grayRequiresApproval: live.grayRequiresApproval !== false,
+    maxNotionalUsdt: live.maxNotionalUsdt || 50
+  });
+  const [integrationForm, setIntegrationForm] = useState({
+    LANGSMITH_API_KEY: "",
+    LANGSMITH_ENDPOINT: integrations.langsmith?.endpoint || "https://api.smith.langchain.com",
+    LANGSMITH_PROJECT: integrations.langsmith?.project || "trading-agent",
+    ETHERSCAN_API_KEY: "",
+    BRAVE_SEARCH_API_KEY: "",
+    TAVILY_API_KEY: "",
+    SERPAPI_API_KEY: "",
+    ALERT_WEBHOOK_URL: ""
+  });
+  const [runtimeForm, setRuntimeForm] = useState({
+    ADMIN_PASSWORD: "",
+    AUTH_REQUIRED: runtime.authRequired === false ? "false" : "true",
+    SKILL_SANDBOX_IMAGE: runtime.skillSandboxImage || "node:20-alpine",
+    REALTIME_RECONCILER_ENABLED: runtime.realtimeReconcilerEnabled ? "true" : "false",
+    BINANCE_MARKET_TYPE: runtime.binanceMarketType || "spot",
+    HTTP_PROXY: "",
+    HTTPS_PROXY: "",
+    PORT: runtime.port || "8787"
+  });
+  const providerRows = [
+    ["anthropic", "Anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
+    ["openai", "OpenAI", "OPENAI_API_KEY", "OPENAI_MODEL"],
+    ["deepseek", "DeepSeek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
+    ["gemini", "Gemini（预留）", "GEMINI_API_KEY", "GEMINI_MODEL"]
+  ];
+  const secretRows = [
+    ["BINANCE_API_KEY", "Binance API Key", exchange.binance?.hasKey],
+    ["BINANCE_API_SECRET", "Binance Secret", exchange.binance?.hasSecret],
+    ["OKX_API_KEY", "OKX API Key", exchange.okx?.hasKey],
+    ["OKX_API_SECRET", "OKX Secret", exchange.okx?.hasSecret],
+    ["OKX_API_PASSPHRASE", "OKX Passphrase", exchange.okx?.hasPassphrase]
+  ];
+  const integrationSecretRows = [
+    ["LANGSMITH_API_KEY", "LangSmith API Key", integrations.langsmith?.hasKey],
+    ["ETHERSCAN_API_KEY", "Etherscan API Key", integrations.etherscan?.hasKey],
+    ["BRAVE_SEARCH_API_KEY", "Brave Search API Key", integrations.search?.brave?.hasKey],
+    ["TAVILY_API_KEY", "Tavily API Key", integrations.search?.tavily?.hasKey],
+    ["SERPAPI_API_KEY", "SerpAPI API Key", integrations.search?.serpapi?.hasKey],
+    ["ALERT_WEBHOOK_URL", "告警 Webhook URL", integrations.alerts?.hasWebhook]
+  ];
+  const runtimeSecretRows = [
+    ["ADMIN_PASSWORD", "管理员登录密码", runtime.adminPasswordSet],
+    ["HTTP_PROXY", "HTTP Proxy", runtime.httpProxySet],
+    ["HTTPS_PROXY", "HTTPS Proxy", runtime.httpsProxySet]
+  ];
+  const [activeConfigSection, setActiveConfigSection] = useState("llm");
+  const configSections = [
+    { id: "llm", icon: BrainCircuit, title: "模型", sub: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置" },
+    { id: "exchange", icon: WalletCards, title: "交易所", sub: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置" },
+    { id: "live", icon: Zap, title: "实盘灰度", sub: live.effective ? "已开启" : "关闭" },
+    { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置" },
+    { id: "runtime", icon: Settings, title: "运行参数", sub: runtime.authRequired === false ? "免登录" : "鉴权开启" }
+  ];
+  function updateLlm(key, value) {
+    setLlmForm((current) => ({ ...current, [key]: value }));
+  }
+  function updateExchange(key, value) {
+    setExchangeForm((current) => ({ ...current, [key]: value }));
+  }
+  function updateLive(key, value) {
+    setLiveForm((current) => ({ ...current, [key]: value }));
+  }
+  function updateIntegration(key, value) {
+    setIntegrationForm((current) => ({ ...current, [key]: value }));
+  }
+  function updateRuntime(key, value) {
+    setRuntimeForm((current) => ({ ...current, [key]: value }));
+  }
+  async function saveLlm(event) {
+    event.preventDefault();
+    const body = {};
+    for (const [, , keyName, modelName] of providerRows) {
+      if (llmForm[keyName]) body[keyName] = llmForm[keyName];
+      body[modelName] = llmForm[modelName];
+    }
+    const result = await action("/api/config", body);
+    if (result.status) setLlmForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_API_KEY") ? "" : value])));
+  }
+  async function saveExchange(event) {
+    event.preventDefault();
+    const body = {
+      OKX_MARGIN_MODE: exchangeForm.OKX_MARGIN_MODE,
+      OKX_POSITION_MODE: exchangeForm.OKX_POSITION_MODE
+    };
+    for (const [keyName] of secretRows) {
+      if (exchangeForm[keyName]) body[keyName] = exchangeForm[keyName];
+    }
+    const result = await action("/api/config", body);
+    const binanceAccount = (data.exchangeAccounts || []).find((item) => item.exchange === "BINANCE");
+    const okxAccount = (data.exchangeAccounts || []).find((item) => item.exchange === "OKX");
+    if (binanceAccount && exchangeForm.BINANCE_IP_WHITELIST !== binanceAccount.ipWhitelist) {
+      await action(`/api/exchange/accounts/${binanceAccount.id}`, { ipWhitelist: exchangeForm.BINANCE_IP_WHITELIST }, "PATCH");
+    }
+    if (okxAccount && exchangeForm.OKX_IP_WHITELIST !== okxAccount.ipWhitelist) {
+      await action(`/api/exchange/accounts/${okxAccount.id}`, { ipWhitelist: exchangeForm.OKX_IP_WHITELIST }, "PATCH");
+    }
+    if (result.status) setExchangeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.includes("API") || key.includes("SECRET") || key.includes("PASSPHRASE") ? "" : value])));
+  }
+  async function saveLive(event) {
+    event.preventDefault();
+    if (liveForm.liveTradingEnabled && !liveForm.acknowledged) {
+      ui.notify("开启实盘前必须勾选风险确认");
+      return;
+    }
+    await action("/api/config/live-trading", {
+      ...liveForm,
+      maxNotionalUsdt: Number(liveForm.maxNotionalUsdt || 50)
+    });
+  }
+  async function saveIntegrations(event) {
+    event.preventDefault();
+    const body = {
+      LANGSMITH_ENDPOINT: integrationForm.LANGSMITH_ENDPOINT,
+      LANGSMITH_PROJECT: integrationForm.LANGSMITH_PROJECT
+    };
+    for (const [keyName] of integrationSecretRows) {
+      if (integrationForm[keyName]) body[keyName] = integrationForm[keyName];
+    }
+    const result = await action("/api/config", body);
+    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" ? "" : value])));
+  }
+  async function saveRuntime(event) {
+    event.preventDefault();
+    const body = {
+      AUTH_REQUIRED: runtimeForm.AUTH_REQUIRED,
+      SKILL_SANDBOX_IMAGE: runtimeForm.SKILL_SANDBOX_IMAGE,
+      REALTIME_RECONCILER_ENABLED: runtimeForm.REALTIME_RECONCILER_ENABLED,
+      BINANCE_MARKET_TYPE: runtimeForm.BINANCE_MARKET_TYPE,
+      PORT: runtimeForm.PORT
+    };
+    for (const [keyName] of runtimeSecretRows) {
+      if (runtimeForm[keyName]) body[keyName] = runtimeForm[keyName];
+    }
+    const result = await action("/api/config", body);
+    if (result.status) setRuntimeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, ["ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"].includes(key) ? "" : value])));
+  }
+  function removeSecret(keyName) {
+    return action(`/api/config/secret/${encodeURIComponent(keyName)}`, {}, "DELETE");
+  }
+  return (
+    <div className="settingsConsole">
+      <aside className="settingsNav" aria-label="系统设置分类">
+        {configSections.map((section) => {
+          const Icon = section.icon;
+          return (
+            <button type="button" className={activeConfigSection === section.id ? "active" : ""} key={section.id} onClick={() => setActiveConfigSection(section.id)}>
+              <Icon size={17} />
+              <span>{section.title}</span>
+              <small>{section.sub}</small>
+            </button>
+          );
+        })}
+      </aside>
+
+      <div className="settingsWorkspace">
+        <div className="configSummary">
+          <div><KeyRound size={18} /><span>当前模型</span><strong>{config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置"}</strong></div>
+          <div><WalletCards size={18} /><span>交易所</span><strong>{[exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置"}</strong></div>
+          <div><Shield size={18} /><span>实盘</span><strong className={live.effective ? "negative" : "warning"}>{live.effective ? "已开启" : "关闭"}</strong></div>
+        </div>
+
+        {activeConfigSection === "llm" && (
+          <form className="panelForm" onSubmit={saveLlm}>
+            <h3>AI 模型 API</h3>
+            <div className="providerGrid">
+              {providerRows.map(([idName, label, keyName, modelName]) => (
+                <div className="configFieldset" key={idName}>
+                  <div className="configFieldsetHead">
+                    <strong>{label}</strong>
+                    <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "warning"}>{providers[idName]?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+                  </div>
+                  <label>API Key<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? "留空则保留现有密钥" : "粘贴 API Key"} /></label>
+                  <label>模型<input value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} /></label>
+                  {providers[idName]?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除 {label} Key</button>}
+                </div>
+              ))}
+            </div>
+            <button className="primaryButton" type="submit"><KeyRound size={14} /> 保存模型配置</button>
+          </form>
+        )}
+
+        {activeConfigSection === "exchange" && (
+          <form className="panelForm" onSubmit={saveExchange}>
+            <h3>交易所密钥与账户安全</h3>
+            <div className="formGrid">
+              {secretRows.map(([keyName, label, configured]) => (
+                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm[keyName]} onChange={(event) => updateExchange(keyName, event.target.value)} placeholder={configured ? "留空则保留现有密钥" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+              ))}
+            </div>
+            <div className="formGrid">
+              <label>Binance IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+              <label>OKX IP 白名单<input value={exchangeForm.OKX_IP_WHITELIST} onChange={(event) => updateExchange("OKX_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+            </div>
+            <div className="formGrid">
+              <label>OKX 保证金模式<select value={exchangeForm.OKX_MARGIN_MODE} onChange={(event) => updateExchange("OKX_MARGIN_MODE", event.target.value)}><option value="cross">cross</option><option value="isolated">isolated</option></select></label>
+              <label>OKX 持仓模式<select value={exchangeForm.OKX_POSITION_MODE} onChange={(event) => updateExchange("OKX_POSITION_MODE", event.target.value)}><option value="net">net</option><option value="long_short">long_short</option></select></label>
+            </div>
+            <button className="primaryButton" type="submit"><Lock size={14} /> 保存交易所配置</button>
+          </form>
+        )}
+
+        {activeConfigSection === "live" && (
+          <form className="panelForm" onSubmit={saveLive}>
+            <h3>实盘写入与灰度发布</h3>
+            <div className="switchGrid">
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /> LIVE_TRADING_ENABLED</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /> 真实下单写入</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /> 启用小额灰度</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认</label>
+            </div>
+            <label>单笔灰度额度 USDT<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
+            <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
+          </form>
+        )}
+
+        {activeConfigSection === "integrations" && (
+          <form className="panelForm" onSubmit={saveIntegrations}>
+            <h3>外部服务与告警</h3>
+            <div className="configFieldset">
+              <div className="configFieldsetHead">
+                <strong>LangSmith Trace</strong>
+                <StatusBadge tone={integrations.langsmith?.hasKey ? "ok" : "warning"}>{integrations.langsmith?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+              </div>
+              <label>Endpoint<input value={integrationForm.LANGSMITH_ENDPOINT} onChange={(event) => updateIntegration("LANGSMITH_ENDPOINT", event.target.value)} /></label>
+              <label>Project<input value={integrationForm.LANGSMITH_PROJECT} onChange={(event) => updateIntegration("LANGSMITH_PROJECT", event.target.value)} /></label>
+            </div>
+            <div className="formGrid">
+              {integrationSecretRows.map(([keyName, label, configured]) => (
+                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+              ))}
+            </div>
+            <button className="primaryButton" type="submit"><PlugZap size={14} /> 保存外部服务配置</button>
+          </form>
+        )}
+
+        {activeConfigSection === "runtime" && (
+          <form className="panelForm" onSubmit={saveRuntime}>
+            <h3>系统运行参数</h3>
+            <div className="formGrid">
+              {runtimeSecretRows.map(([keyName, label, configured]) => (
+                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+              ))}
+            </div>
+            <div className="formGrid">
+              <label>登录鉴权<select value={runtimeForm.AUTH_REQUIRED} onChange={(event) => updateRuntime("AUTH_REQUIRED", event.target.value)}><option value="true">开启</option><option value="false">关闭</option></select></label>
+              <label>Binance 默认市场<select value={runtimeForm.BINANCE_MARKET_TYPE} onChange={(event) => updateRuntime("BINANCE_MARKET_TYPE", event.target.value)}><option value="spot">spot</option><option value="perpetual_usdt">perpetual_usdt</option><option value="usdm">usdm</option></select></label>
+              <label>实时对账<select value={runtimeForm.REALTIME_RECONCILER_ENABLED} onChange={(event) => updateRuntime("REALTIME_RECONCILER_ENABLED", event.target.value)}><option value="false">关闭</option><option value="true">开启</option></select></label>
+              <label>服务端口（重启生效）<input type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
+            </div>
+            <label>Skill 沙箱镜像<input value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
+            <button className="primaryButton" type="submit"><Settings size={14} /> 保存系统运行配置</button>
+          </form>
+        )}
+
+        {!config.secretsMasterKeySet && <div className="emptyPanel emptyPanelAction"><strong>建议设置 SECRETS_MASTER_KEY</strong><span>当前使用开发默认主密钥，适合本地试用，不适合长期保存真实凭证。</span></div>}
+      </div>
     </div>
   );
 }
@@ -174,7 +472,7 @@ export function RiskRulesPanel({ data, action }) {
 export function SecurityPanel({ data, action, ui }) {
   return (
     <div className="panelStack">
-      {(data.exchangeAccounts || []).map((account) => <div className="panelItem" key={account.id}><div><strong>{account.exchange}</strong><small>{account.label}</small></div><StatusBadge tone={exchangeState(account).tone === "off" ? "warning" : "ok"}>{exchangeState(account).label}</StatusBadge><button className="secondaryButton" onClick={() => ui.openPanel("keys")}>配置密钥</button></div>)}
+      {(data.exchangeAccounts || []).map((account) => <div className="panelItem" key={account.id}><div><strong>{account.exchange}</strong><small>{account.label}</small></div><StatusBadge tone={exchangeState(account).tone === "off" ? "warning" : "ok"}>{exchangeState(account).label}</StatusBadge><button className="secondaryButton" onClick={() => { ui.closePanel?.(); ui.setActive?.("systemSettings"); }}>去系统设置</button></div>)}
       <button className="primaryButton" onClick={() => action("/api/security/alerts", { severity: "info", title: "安全设置测试", body: "前端安全面板触发" })}>发送测试告警</button>
       <button className="secondaryButton" onClick={() => action("/api/security/drills/kill_switch", {})}>运行熔断演练</button>
     </div>

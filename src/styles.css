@@ -129,59 +129,6 @@ h3 {
   color: #e07a3f;
 }
 
-.sideStatus {
-  margin-top: auto;
-  width: 176px;
-  min-height: 106px;
-  border: 1px solid #e7e0d5;
-  border-radius: 8px;
-  display: flex;
-  gap: 12px;
-  padding: 16px;
-  background: #ffffff;
-  color: #33302a;
-  text-align: left;
-  box-shadow: 0 10px 28px rgba(60, 45, 30, 0.04);
-}
-
-.sideStatusIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #3f8f5b;
-  background: #eef6ee;
-}
-
-.sideStatus span,
-.sideStatus small {
-  display: block;
-  color: #8f8778;
-  font-size: 12px;
-}
-
-.sideStatus strong {
-  display: block;
-  margin: 5px 0 12px;
-  color: #3f8f5b;
-}
-
-.sideStatus strong.warning {
-  color: #d97706;
-}
-
-.sideStatus strong.danger {
-  color: #c9553d;
-}
-
-.sideStatus small {
-  color: #e07a3f;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .mainArea {
   min-width: 0;
   display: grid;
@@ -379,12 +326,28 @@ h3 {
   box-shadow: 0 10px 30px rgba(60, 45, 30, 0.035);
 }
 
+.dashCard > .sectionTitle,
+.dashCard > .riskLine,
+.dashCard > .qualityGrid,
+.dashCard > .actionList,
+.dashCard > .reviewNote,
+.dashCard > .segmentGrid,
+.dashCard > .clusterList,
+.dashCard > .validationList,
+.dashCard > .contributionList,
+.dashCard > .dataTable,
+.dashCard > .emptyPanel {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 .sectionTitle {
   min-height: 34px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 
@@ -397,7 +360,9 @@ h3 {
 
 .sectionTitle h2 {
   font-size: 13px;
+  line-height: 1.35;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .sectionIcon {
@@ -694,6 +659,65 @@ h3 {
   background: #f3ebe0;
 }
 
+.subTabBar {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 4px;
+}
+
+.subTabBar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #ecdfce;
+  border-radius: 10px;
+  padding: 9px 16px;
+  color: #8a715a;
+  background: #fbf6ef;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.subTabBar button.active {
+  color: #ffffff;
+  background: #e07a3f;
+  border-color: #e07a3f;
+}
+
+.subTabBar button:hover:not(.active) {
+  color: #c9642e;
+  background: #f3ebe0;
+}
+
+.ragQueryBar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ragQueryBar input {
+  flex: 1;
+  border: 1px solid #ecdfce;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  background: #fffdf9;
+  color: #3d3227;
+}
+
+.ragQueryBar input:focus {
+  outline: none;
+  border-color: #e07a3f;
+}
+
+.ragQueryBar .primaryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .actionCard {
   cursor: pointer;
 }
@@ -701,6 +725,167 @@ h3 {
 .actionCard:hover {
   border-color: #e8d5c0;
   box-shadow: 0 14px 32px rgba(20, 103, 255, 0.08);
+}
+
+.dashboardToolbar {
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  color: #6b6455;
+  font-size: 12px;
+}
+
+.dashboardGrid,
+.reviewGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, .9fr);
+  gap: 14px;
+}
+
+.dashboardGrid > .dashCard,
+.reviewGrid > .dashCard {
+  padding: 18px;
+}
+
+.dashboardGrid.compact {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, .75fr);
+}
+
+.healthGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.healthGrid > div {
+  min-width: 0;
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  background: #fdfbf8;
+}
+
+.healthGrid span,
+.reviewNote small {
+  color: #7a7264;
+  font-size: 12px;
+}
+
+.healthGrid strong {
+  overflow-wrap: anywhere;
+}
+
+.qualityGrid {
+  display: grid;
+  gap: 4px;
+}
+
+.actionList {
+  display: grid;
+  gap: 9px;
+}
+
+.actionList > div {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.actionList b {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #e07a3f;
+  background: #f8f1e9;
+  font-size: 12px;
+}
+
+.actionList span {
+  color: #4f493f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reviewFocus {
+  align-content: start;
+}
+
+.reviewNote {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewNote p {
+  margin: 0;
+  color: #4f493f;
+  line-height: 1.5;
+}
+
+.segmentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.segmentList {
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fdfbf8;
+}
+
+.segmentList h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.segmentList > div:not(.emptyPanel),
+.clusterList > div,
+.validationList > div,
+.contributionList > div {
+  border-top: 1px solid #eee6da;
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.segmentList span,
+.clusterList span,
+.clusterList small,
+.validationList span,
+.validationList small,
+.contributionList span,
+.contributionList small {
+  color: #7a7264;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.segmentList b {
+  font-size: 12px;
+}
+
+.clusterList,
+.validationList,
+.contributionList {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewGrid.nested {
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
 }
 
 .rowActions {
@@ -845,17 +1030,18 @@ h3 {
 .riskLine {
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(110px, 0.72fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(128px, 0.72fr) minmax(0, 1fr);
+  gap: 18px;
   align-items: center;
   border-bottom: 1px solid #ece7de;
-  padding: 8px 0;
+  padding: 12px 16px;
 }
 
 .riskLine b {
   text-align: right;
   color: #33302a;
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .progressBar {
@@ -1096,6 +1282,7 @@ h3 {
   gap: 12px;
   min-height: 42px;
   border-bottom: 1px solid #ece7de;
+  padding: 10px 16px;
   font-size: 12px;
 }
 
@@ -1158,7 +1345,8 @@ h3 {
 }
 
 .eventRadarCard,
-.taskCard {
+.taskCard,
+.eventsBottom > .dashCard {
   padding: 18px;
 }
 
@@ -1507,7 +1695,7 @@ h3 {
 }
 
 .riskAuthGrid > .dashCard,
-.securityGrid > .dashCard {
+.authHistoryGrid > .dashCard {
   padding: 18px;
 }
 
@@ -1581,10 +1769,87 @@ h3 {
   padding: 14px;
 }
 
-.securityGrid {
+.authHistoryGrid {
   display: grid;
-  grid-template-columns: 1fr 0.7fr 0.7fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+}
+
+.settingsPage {
+  max-width: 1180px;
+}
+
+.settingsConsole {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.28fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.settingsNav {
+  position: sticky;
+  top: 92px;
+  border: 1px solid #e7e0d5;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+.settingsNav button {
+  min-width: 0;
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  align-items: center;
+  padding: 11px 12px;
+  color: #5c554a;
+  background: transparent;
+  text-align: left;
+}
+
+.settingsNav button svg {
+  grid-row: span 2;
+  color: #e07a3f;
+}
+
+.settingsNav button span {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.settingsNav button small {
+  min-width: 0;
+  color: #8f8778;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsNav button.active {
+  color: #e07a3f;
+  background: #f8f1e9;
+}
+
+.settingsWorkspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.settingsWorkspace .panelForm {
+  padding: 20px;
+}
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .auditGrid {
@@ -1799,6 +2064,14 @@ h3 {
   gap: 14px;
 }
 
+.sectionActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .panelForm {
   border: 1px solid #ece7de;
   border-radius: 8px;
@@ -1835,6 +2108,67 @@ h3 {
 
 .panelForm .largeTextarea {
   min-height: 180px;
+}
+
+.configSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.configSummary > div {
+  min-width: 0;
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  background: #fffaf4;
+}
+
+.configSummary svg {
+  color: #e07a3f;
+}
+
+.configSummary span,
+.configFieldsetHead + label + label,
+.inputWithAction + small {
+  color: #7a7264;
+}
+
+.configSummary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.configFieldset {
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.configFieldsetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inputWithAction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.switchGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
 }
 
 .modeTabs {
@@ -1937,8 +2271,7 @@ h3 {
   }
 
   .brand strong,
-  .navItem span,
-  .sideStatus div:last-child {
+  .navItem span {
     display: none;
   }
 
@@ -1951,14 +2284,11 @@ h3 {
     padding: 0;
   }
 
-  .sideStatus {
-    width: 54px;
-    min-height: 54px;
-    padding: 12px;
-  }
-
   .agentGrid,
   .marketGrid,
+  .dashboardGrid,
+  .reviewGrid,
+  .reviewGrid.nested,
   .eventsGrid,
   .knowledgeGrid,
   .riskAuthGrid,
@@ -1966,7 +2296,7 @@ h3 {
   .marketTables,
   .eventsBottom,
   .knowledgeBottom,
-  .securityGrid,
+  .authHistoryGrid,
   .observabilityGrid {
     grid-template-columns: 1fr;
   }
@@ -1974,6 +2304,14 @@ h3 {
   .metricGrid.five,
   .metricGrid.four,
   .bottomMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .configSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .healthGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2038,9 +2376,16 @@ h3 {
     padding: 16px 14px 24px;
   }
 
+  .dashboardToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .metricGrid.five,
   .metricGrid.four,
   .bottomMetrics,
+  .healthGrid,
+  .segmentGrid,
   .agentStateMiniGrid,
   .planMatrix,
   .eventRadarInner,
@@ -2055,6 +2400,37 @@ h3 {
   .traceStep::after,
   .auditChain > div::after {
     display: none;
+  }
+
+  .switchGrid,
+  .formGrid,
+  .providerGrid,
+  .inputWithAction {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsNav {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settingsConsole {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsNav button {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .settingsNav button svg {
+    grid-row: auto;
+  }
+
+  .riskLine {
+    grid-template-columns: minmax(96px, .7fr) minmax(0, 1fr);
+    padding: 12px;
   }
 
   .dataHead {
@@ -2585,17 +2961,17 @@ h3 {
   overflow-y: auto;
   background: #fff;
   border-left: 1px solid #e7e0d5;
-  padding: 22px 18px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 .railBlock {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding-bottom: 16px;
+  gap: 8px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #ece7de;
 }
 
@@ -2613,10 +2989,33 @@ h3 {
   font-size: 15px;
 }
 
+.railHero .railValue {
+  font-size: 20px;
+}
+
 .railValue small {
   font-size: 11px;
   color: #a89f8f;
   font-weight: 500;
+}
+
+.agentTaskBlock p,
+.railDecision {
+  margin: 0;
+  color: #4f493f;
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.agentTaskBlock p {
+  -webkit-line-clamp: 3;
+}
+
+.railDecision {
+  -webkit-line-clamp: 4;
 }
 
 .railSub {
@@ -2634,6 +3033,105 @@ h3 {
 
 .railRow b {
   font-weight: 600;
+}
+
+.railMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.railMetricGrid span {
+  min-width: 0;
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  color: #8f8778;
+  font-size: 11px;
+  background: #fdfbf8;
+}
+
+.railMetricGrid b {
+  color: #2a2620;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.railOrder {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.railOrder span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.railOrder small {
+  color: #8f8778;
+}
+
+.gateBanner {
+  border: 1px solid #ece7de;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #fdfbf8;
+}
+
+.gateBanner strong {
+  font-size: 13px;
+}
+
+.gateBanner small {
+  color: #6b6455;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.gateBanner.ok {
+  border-color: #cfe3cf;
+  background: #f2f8f0;
+}
+
+.gateBanner.warning {
+  border-color: #f2dfb8;
+  background: #fff8eb;
+}
+
+.gateBanner.danger {
+  border-color: #efc8bd;
+  background: #fff4ef;
+}
+
+.railActionItem {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.railActionItem > span {
+  color: #a89f8f;
+}
+
+.railActionItem b {
+  min-width: 0;
+  color: #33302a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .railActions {

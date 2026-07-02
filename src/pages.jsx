@@ -41,16 +41,8 @@ import {
 import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart } from "./lib.jsx";
 
 export function MarketAccountPage({ data, action, ui }) {
-  const initialMarket = data.activeMarket || data.markets?.[0] || { symbol: "BTC/USDT", candles: [] };
-  const pairOptions = data.markets?.length ? data.markets.map((item) => item.symbol) : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
-  const timeframeOptions = [["1m", "1分"], ["5m", "5分"], ["15m", "15分"], ["1h", "1小时"], ["4h", "4小时"], ["1d", "1日"]];
-  const [selectedPair, setSelectedPair] = useState(initialMarket.symbol || "BTC/USDT");
-  const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
-  function syncKlines(pair, timeframe) {
-    return action(`/api/exchange/BINANCE/klines?symbol=${encodeURIComponent(pair)}&timeframe=${timeframe}`, {}, "GET");
-  }
-  const [chartMode, setChartMode] = useState("candles");
-  const market = data.markets?.find((item) => item.symbol === selectedPair) || initialMarket;
+  const [pnlWindow, setPnlWindow] = useState("本月");
+  const market = data.activeMarket || data.markets?.[0] || { candles: [] };
   const latestReconcile = data.reconciliationReports?.[0];
   const latestSnapshot = data.accountSnapshots?.[0];
   const configuredAccounts = (data.exchangeAccounts || []).filter((account) => account.readEnabled).length;
@@ -58,89 +50,78 @@ export function MarketAccountPage({ data, action, ui }) {
   const hasAccountData = latestSnapshot || data.portfolio.totalEquityUsdt !== null && data.portfolio.totalEquityUsdt !== undefined;
   const availableMargin = hasAccountData ? (data.portfolio.availableMarginUsdt ?? data.portfolio.availableMargin ?? 0) : null;
   const usedMargin = hasAccountData ? Math.max(0, Number(data.portfolio.totalEquityUsdt || 0) - Number(availableMargin || 0)) : null;
-  const positionRows = (data.positions || []).slice(0, 3).map((item) => ({
-    id: item.id,
-    symbol: <b>{item.symbol}</b>,
-    direction: <span className={item.direction === "空" ? "negative" : "positive"}>{item.direction}</span>,
-    size: item.size,
-    entry: formatMoney(item.entry),
-    mark: formatMoney(item.mark),
-    pnl: <span className={Number(item.pnl || 0) >= 0 ? "positive" : "negative"}>{Number(item.pnl || 0) >= 0 ? "+" : ""}{formatMoney(item.pnl)}</span>,
-    action: <button className="linkCell" onClick={() => ui.openPanel("positions")}>详情</button>
-  }));
-  const orderRows = (data.orders || []).slice(0, 4).map((item) => ({
-    id: item.id,
-    time: formatTime(item.createdAt, "-"),
-    symbol: item.symbol || "-",
-    side: <span className={String(item.side || "").toLowerCase() === "sell" ? "negative" : "positive"}>{item.side || "-"}</span>,
-    type: item.type || "-",
-    price: item.price ? formatMoney(item.price) : "-",
-    qty: item.size || item.quantity || "-",
-    status: orderStatus(item.status),
-    action: <button className="linkCell" onClick={() => action("/api/trade-actions/cancel_order", {
-      exchange: item.exchange || "BINANCE",
-      marketType: item.marketType || item.market_type || "perpetual_usdt",
-      symbol: item.symbol,
-      orderId: item.orderId,
-      clientOrderId: item.clientOrderId || item.client_order_id || item.id,
-      manualApproval: true
-    })}>撤单</button>
-  }));
+  const marginRate = data.portfolio.totalEquityUsdt ? (usedMargin / Math.max(1, data.portfolio.totalEquityUsdt)) * 100 : null;
+  const performance = data.performance || {};
+  const monthlyPnl = pnlWindow === "本月" ? performance.totalPnlUsdt : performance.totalPnlUsdt;
+  const openExecutions = performance.openExecutions || (data.executionOrders || []).filter((item) => !["filled", "closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length;
+  const riskChecks = data.riskChecks || [];
+  const blockedChecks = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
+  const accountHealthRows = [
+    ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "warning"],
+    ["私有账户快照", latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : "未同步", latestSnapshot ? "ok" : "warning"],
+    ["对账状态", configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置", latestReconcile?.status === "ok" ? "ok" : "warning"],
+    ["实盘写入", data.system?.liveTradingEnabled ? "开启" : "关闭", data.system?.liveTradingEnabled ? "danger" : "warning"],
+    ["在途执行", `${openExecutions} 个`, openExecutions ? "warning" : "ok"],
+    ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
+  ];
+  const qualityRows = [
+    ["胜率", performance.trades ? `${performance.winRatePct}%` : "暂无数据"],
+    ["盈亏比", performance.profitFactor ?? "暂无数据"],
+    ["已平仓交易", performance.trades ? `${performance.trades} 笔` : "暂无交易"],
+    ["最大回撤", data.portfolio.maxDrawdownPct !== null && data.portfolio.maxDrawdownPct !== undefined ? displayPct(-Math.abs(Number(data.portfolio.maxDrawdownPct))) : "未同步"],
+    ["月交易次数", data.portfolio.monthlyTrades !== null && data.portfolio.monthlyTrades !== undefined ? `${data.portfolio.monthlyTrades} / ${data.portfolio.monthlyTradeLimit || "不限"}` : "未设置"],
+    ["风险等级", data.portfolio.riskLabel || "未同步"]
+  ];
+  const actionItems = [
+    configuredAccounts ? "运行一次手动对账，确认账户快照与交易所一致。" : "先在系统设置中添加只读交易所 API。",
+    performance.trades ? "按策略、品种、时段拆分胜率和盈亏比，定位优势场景。" : "完成真实或模拟闭环后，累计可复盘交易样本。",
+    blockedChecks ? "查看被风控阻断的计划，调整授权边界或策略参数。" : "保持当前硬风控，通过小额灰度累积样本。",
+    openExecutions ? "检查在途执行单是否需要撤单、改价或转入只减仓。" : "当前没有在途执行压力。"
+  ];
 
   return (
     <div className="pageStack">
       <PageHeader active="marketAccount" />
       <div className="metricGrid five">
-        <MetricCard label="总资产（USDT）" value={displayMoney(data.portfolio.totalEquityUsdt)} sub="私有账户同步后显示" candles={market.candles} />
-        <MetricCard label="可用保证金（USDT）" value={displayMoney(availableMargin)} sub={data.portfolio.totalEquityUsdt ? `可用率 ${displayPct((availableMargin / Math.max(1, data.portfolio.totalEquityUsdt)) * 100).replace("+", "")}` : "私有账户同步后显示"} candles={market.candles} />
-        <MetricCard label="今日盈亏（USDT）" value={displayMoney(data.portfolio.todayPnl)} sub={displayPct(data.portfolio.todayPnlPct)} tone="positive" candles={market.candles} />
-        <MetricCard label="未实现盈亏（USDT）" value={displayMoney(data.portfolio.weekPnl)} sub={displayPct(data.portfolio.weekPnlPct)} tone="positive" candles={market.candles} />
-        <Card className="metricCard reconcileCard actionCard" onClick={() => configuredAccounts ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.openPanel("keys")} role="button" tabIndex={0}><div><span>对账状态</span><strong className={latestReconcile?.status === "ok" ? "positive" : "warning"}>{configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置"}</strong><small>{configuredAccounts ? `最后对账：${formatDateTime(latestReconcile?.createdAt || latestSnapshot?.createdAt, "暂无记录")}` : "先配置只读 API 后再对账"}</small></div><ChevronRight size={18} /></Card>
+        <MetricCard icon={WalletCards} label="总资产（USDT）" value={displayMoney(data.portfolio.totalEquityUsdt)} sub={latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "私有账户同步后显示"} candles={market.candles} />
+        <MetricCard icon={TrendingUp} label="今日盈亏（USDT）" value={displayMoney(data.portfolio.todayPnl)} sub={displayPct(data.portfolio.todayPnlPct)} tone={Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+        <MetricCard icon={SquareActivity} label="未实现盈亏（USDT）" value={displayMoney(data.portfolio.weekPnl)} sub={displayPct(data.portfolio.weekPnlPct)} tone={Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+        <MetricCard icon={BarChart3} label={`累计盈亏（${pnlWindow}）`} value={displayMoney(monthlyPnl)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(monthlyPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+        <Card className="metricCard reconcileCard actionCard" onClick={() => configuredAccounts ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings")} role="button" tabIndex={0}><div><span>对账状态</span><strong className={latestReconcile?.status === "ok" ? "positive" : "warning"}>{configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置"}</strong><small>{configuredAccounts ? `最后对账：${formatDateTime(latestReconcile?.createdAt || latestSnapshot?.createdAt, "暂无记录")}` : "先配置只读 API 后再对账"}</small></div><ChevronRight size={18} /></Card>
       </div>
 
-      <div className="marketGrid">
-        <Card className="chartCard">
-          <div className="chartHeader">
-            <div><h2>市场行情</h2><div className="pairTabs">{pairOptions.map((pair) => <button className={selectedPair === pair ? "active" : ""} key={pair} onClick={() => { setSelectedPair(pair); syncKlines(pair, selectedTimeframe); }}>{pair}</button>)}</div></div>
-            <div className="toolButtons"><button title="切换图表模式" aria-label="切换图表模式" onClick={() => setChartMode((current) => current === "candles" ? "line" : "candles")}><LineChart size={15} /> {chartMode === "candles" ? "K线" : "折线"}</button><button className="syncTickerButton" title="同步公开行情" onClick={() => action(`/api/exchange/BINANCE/ticker?symbol=${encodeURIComponent(selectedPair)}`, {}, "GET")}><RefreshCw size={15} /> 同步公开行情</button><button onClick={() => ui.openPanel("marketIndicators")}>指标 <ChevronDown size={14} /></button></div>
+      <div className="dashboardToolbar">
+        <div className="filterGroup">{["本月", "季度", "全年"].map((item) => <button className={pnlWindow === item ? "active" : ""} key={item} onClick={() => setPnlWindow(item)}>{item}</button>)}</div>
+        <span>可用保证金 {displayMoney(availableMargin)} · 占用 {displayMoney(usedMargin)} · 保证金率 {marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%`}</span>
+      </div>
+
+      <div className="dashboardGrid">
+        <Card>
+          <SectionTitle icon={Gauge} title="账户健康" />
+          <div className="healthGrid">
+            {accountHealthRows.map(([label, value, tone]) => <div key={label}><span>{label}</span><strong>{value}</strong><StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "高危" : "待处理"}</StatusBadge></div>)}
           </div>
-          <div className="timeTabs">{timeframeOptions.map(([timeframe, label]) => <button className={selectedTimeframe === timeframe ? "active" : ""} key={timeframe} onClick={() => { setSelectedTimeframe(timeframe); syncKlines(selectedPair, timeframe); }}>{label}</button>)}</div>
-          <div className="chartLegend">开 {displayMoney(market.candles?.at(-1)?.open)}　高 {displayMoney(market.high24h)}　低 {displayMoney(market.low24h)}　收 {displayMoney(market.price)}　涨幅 <b>{displayPct(market.changePct)}</b></div>
-          {chartMode === "candles" ? <CandleChart candles={market.candles} /> : <LinePriceChart candles={market.candles} />}
         </Card>
-        <Card className="snapshotCard">
-          <SectionTitle title={`市场快照（${selectedPair}）`} />
-          <RiskLine label="最新价格" value={market.price ? `${displayMoney(market.price)} USDT` : "未同步"} />
-          <RiskLine label="24h 涨跌幅" value={displayPct(market.changePct)} />
-          <RiskLine label="24h 最高 / 最低" value={market.high24h || market.low24h ? `${displayMoney(market.high24h)} / ${displayMoney(market.low24h)}` : "未同步"} />
-          <RiskLine label="资金费率（8h）" value={market.fundingRate || "未同步"} />
-          <RiskLine label="持仓量（OI）" value={market.openInterest ? `${market.openInterest} USDT` : "未同步"} />
-          <RiskLine label="24h 成交量" value={market.volume24h ? `${market.volume24h} USDT` : "未同步"} />
-          <RiskLine label="波动率（24h）" value="未计算" />
-          <footer><StatusBadge>{market.status === "synced" ? "已同步" : "未同步"}</StatusBadge></footer>
+        <Card>
+          <SectionTitle icon={BarChart3} title="收益质量" action={<button className="textButton" onClick={() => ui.setActive("review")}>去复盘 <ChevronRight size={14} /></button>} />
+          <div className="qualityGrid">
+            {qualityRows.map(([label, value]) => <RiskLine key={label} label={label} value={value} />)}
+          </div>
         </Card>
       </div>
 
-      <div className="marketTables">
+      <div className="dashboardGrid compact">
         <Card>
-          <SectionTitle title={`持仓（${data.positions?.length || 0}）`} />
-          <DataTable columns={[
-            { key: "symbol", label: "交易对" }, { key: "direction", label: "方向", width: ".7fr" }, { key: "size", label: "数量" }, { key: "entry", label: "开仓均价" }, { key: "mark", label: "标记价格" }, { key: "pnl", label: "未实现盈亏" }, { key: "action", label: "操作", width: ".6fr" }
-          ]} rows={positionRows} />
+          <SectionTitle icon={ListChecks} title="下一步动作" />
+          <div className="actionList">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
         </Card>
         <Card>
-          <SectionTitle title={`当前委托（${data.orders?.length || 0}）`} />
-          <DataTable columns={[
-            { key: "time", label: "时间" }, { key: "symbol", label: "交易对" }, { key: "side", label: "方向" }, { key: "type", label: "类型" }, { key: "price", label: "价格" }, { key: "qty", label: "数量" }, { key: "status", label: "状态" }, { key: "action", label: "操作" }
-          ]} rows={orderRows} />
+          <SectionTitle icon={Target} title="风险承压" />
+          <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
+          <RiskLine label="持仓数量" value={`${data.positions?.length || 0} 个`} />
+          <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
+          <RiskLine label="系统状态" value={systemStatus(data).label} />
         </Card>
-      </div>
-
-      <div className="metricGrid four">
-        <Card className="accountBox"><h2>账户余额（USDT）</h2><div className="accountNumbers"><span>总资产<b>{displayMoney(data.portfolio.totalEquityUsdt)}</b></span><span>可用保证金<b>{displayMoney(availableMargin)}</b></span><span>估算占用<b>{displayMoney(usedMargin)}</b></span><span>冻结资金<b>{displayMoney(data.portfolio.frozenUsdt)}</b></span></div></Card>
-        <Card className="donutCard"><h2>保证金率</h2><div className="donut">{data.portfolio.totalEquityUsdt ? `${formatMoney((usedMargin / Math.max(1, data.portfolio.totalEquityUsdt)) * 100, 1)}%` : "未同步"}</div><small>风险等级：{data.portfolio.riskLabel || "未同步"}</small></Card>
-        <Card className="safetyCard"><h2>强平安全</h2><strong>{data.positions?.length ? "需计算" : "暂无持仓"}</strong><ProgressBar value={0} /><div className="scale"><span>同步账户</span><span>计算风险</span><span>监控强平</span></div></Card>
-        <Card className="syncCard"><h2>交易所同步状态</h2>{(data.exchangeAccounts || []).map((account) => <RiskLine key={account.id} label={account.exchange} value={exchangeState(account).label} />)}<RiskLine label="已配置账户" value={`${configuredAccounts} / ${totalAccounts}`} /><button className="textButton" onClick={() => ui.setActive("auditSystem")}>查看同步日志 <ChevronRight size={14} /></button></Card>
       </div>
     </div>
   );
@@ -217,7 +198,7 @@ export function EventsTasksPage({ data, action, ui }) {
 
       <div className="eventsBottom">
         <Card>
-          <SectionTitle icon={GitBranch} title="事件相对任务规则" action={<button className="primaryButton" onClick={() => ui.openPanel("eventRule")}><Plus size={14} /> 新建规则</button>} />
+          <SectionTitle icon={GitBranch} title="事件规则" action={<button className="primaryButton" onClick={() => ui.openPanel("eventRule")}><Plus size={14} /> 新建规则</button>} />
           <DataTable columns={[
             { key: "rule", label: "规则名称" }, { key: "event", label: "触发事件" }, { key: "condition", label: "触发条件" }, { key: "action", label: "执行动作" }, { key: "status", label: "状态" }, { key: "op", label: "操作" }
           ]} rows={eventRuleRows} />
@@ -259,11 +240,30 @@ export function latestAnalysisRows(data) {
 }
 
 export function KnowledgeSkillsPage({ data, action, ui }) {
+  const [tab, setTab] = useState("knowledge");
   const knowledge = data.knowledge || {};
   const sourceCount = knowledge.sources?.length || 0;
   const conceptCount = knowledge.conceptCards?.length || 0;
   const ruleCount = knowledge.ruleProposals?.length || 0;
+  const chunkCount = knowledge.chunks?.length || 0;
   const enabledSkills = (data.skills || []).filter((skill) => skill.status === "已启用").length;
+  const connectedMcp = data.mcpServers?.filter((item) => item.status === "connected").length || 0;
+  return (
+    <div className="pageStack">
+      <PageHeader active="knowledgeSkills" />
+      <div className="subTabBar">
+        <button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><BookOpen size={15} /> 知识库</button>
+        <button className={tab === "skills" ? "active" : ""} onClick={() => setTab("skills")}><Sparkles size={15} /> Skill 中心</button>
+      </div>
+      {tab === "knowledge"
+        ? <KnowledgeBaseTab data={data} action={action} ui={ui} sourceCount={sourceCount} conceptCount={conceptCount} ruleCount={ruleCount} chunkCount={chunkCount} knowledge={knowledge} />
+        : <SkillCenterTab data={data} action={action} ui={ui} enabledSkills={enabledSkills} connectedMcp={connectedMcp} />}
+    </div>
+  );
+}
+
+function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCount, chunkCount, knowledge }) {
+  const [query, setQuery] = useState("");
   const importActions = (
     <div className="titleActions">
       <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={14} /> 导入知识</button>
@@ -271,31 +271,41 @@ export function KnowledgeSkillsPage({ data, action, ui }) {
     </div>
   );
   return (
-    <div className="pageStack">
-      <PageHeader active="knowledgeSkills" />
+    <>
       <div className="metricGrid four">
-        <MetricCard icon={FileText} label="知识来源" value={String(sourceCount)} sub={`${knowledge.chunks?.length || 0} 个片段`} tone="positive" />
-        <MetricCard icon={Settings} label="专家规则" value={String(ruleCount)} sub={`${conceptCount} 张概念卡`} tone="positive" />
-        <MetricCard icon={Sparkles} label="已启用技能" value={String(enabledSkills)} sub={`共 ${data.skills?.length || 0} 个技能`} tone="positive" />
-        <MetricCard icon={RefreshCw} label="同步状态" value={data.eventSources?.length ? "有订阅源" : "未配置"} sub={`${data.eventSources?.length || 0} 个事件源`} />
+        <MetricCard icon={FileText} label="知识来源" value={String(sourceCount)} sub={`${chunkCount} 个可检索片段`} tone="positive" />
+        <MetricCard icon={Layers} label="概念卡" value={String(conceptCount)} sub="已抽取概念" tone="positive" />
+        <MetricCard icon={Settings} label="专家规则" value={String(ruleCount)} sub="待审批 / 已批准" tone="positive" />
+        <MetricCard icon={BrainCircuit} label="已接入决策" value={chunkCount ? "是" : "未就绪"} sub={chunkCount ? "RAG 片段注入 LLM 上下文" : "导入并解析后生效"} tone={chunkCount ? "positive" : ""} />
       </div>
+
+      <Card>
+        <SectionTitle icon={Search} title="知识检索（RAG）" action={<small className="muted">检索结果会作为上下文注入 AI 交易员的决策</small>} />
+        <div className="ragQueryBar">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="例如：CPI 公布前后 BTC 应该如何控制仓位？" onKeyDown={(event) => { if (event.key === "Enter" && query.trim()) action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 }); }} />
+          <button className="primaryButton" disabled={!query.trim()} onClick={() => action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 })}><Search size={14} /> 检索</button>
+        </div>
+        <DataTable columns={[
+          { key: "name", label: "知识/规则/技能" }, { key: "type", label: "类型" }, { key: "quote", label: "引用片段", width: "2fr" }, { key: "confidence", label: "相关度" }, { key: "source", label: "来源" }
+        ]} rows={(latestAnalysisRows(data) || [])} />
+      </Card>
 
       <div className="knowledgeGrid">
         <Card>
           <SectionTitle title="专家知识库" action={importActions} />
           <div className="knowledgeCategoryList">
-            {(knowledge.sources || []).slice(0, 5).map((source) => <button className="knowledgeCategory" key={source.id} onClick={() => ui.openPanel("knowledgeList")}><div><Globe2 size={22} /></div><span><strong>{source.domain || source.type}</strong><small>{source.title}</small></span><b>{humanize(source.status)}</b></button>)}
+            {(knowledge.sources || []).slice(0, 6).map((source) => <button className="knowledgeCategory" key={source.id} onClick={() => ui.openPanel("knowledgeList")}><div><Globe2 size={22} /></div><span><strong>{source.domain || source.type}</strong><small>{source.title}</small></span><b>{humanize(source.status)}</b></button>)}
             {!knowledge.sources?.length && (
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无真实知识来源</strong>
-                <span>可以粘贴文本、导入网页链接、上传 PDF/DOCX/MD/TXT，或填写本地文件路径。</span>
+                <span>把金融、交易、经济类书籍与资料喂给 AI：可粘贴文本、导入网页链接、上传 PDF/DOCX/MD/TXT，或填写本地文件路径。</span>
                 <button className="primaryButton" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={14} /> 导入知识</button>
               </div>
             )}
           </div>
         </Card>
         <Card className="graphCard">
-          <SectionTitle title="概念图谱 / 规则库" action={<button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 <ChevronRight size={14} /></button>} />
+          <SectionTitle title="概念与规则" action={<button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 <ChevronRight size={14} /></button>} />
           {ruleCount || conceptCount ? <div className="conceptGraph"><b>知识图谱</b>{(knowledge.conceptCards || []).slice(0, 6).map((concept, index) => <span className={`node n${index + 1}`} key={concept.id}>{concept.name}</span>)}</div> : (
             <div className="emptyPanel emptyPanelAction">
               <strong>还没有概念或规则</strong>
@@ -308,49 +318,75 @@ export function KnowledgeSkillsPage({ data, action, ui }) {
           </div>
           <button className="textButton centered" onClick={() => ui.openPanel("ruleLibrary")}>查看全部规则 <ChevronRight size={14} /></button>
         </Card>
+      </div>
+
+      <Card>
+        <SectionTitle icon={RefreshCw} title="最近更新" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>全部更新 <ChevronRight size={14} /></button>} />
+        <div className="updateList">
+          {data.auditLogs?.filter((item) => item.action?.includes("知识") || item.action?.includes("导入") || item.action?.includes("RAG") || item.action?.includes("解析")).slice(0, 5).map((item) => <div key={item.id}><b>{formatTime(item.createdAt)}</b><span>{item.action}</span><StatusBadge>{item.severity}</StatusBadge><small>{item.actor}</small></div>)}
+          {!data.auditLogs?.some((item) => item.action?.includes("知识") || item.action?.includes("导入") || item.action?.includes("RAG") || item.action?.includes("解析")) && (
+            <div className="emptyPanel emptyPanelAction">
+              <strong>暂无真实知识更新</strong>
+              <span>完成一次知识导入后，这里会显示审计记录。</span>
+              <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}>导入第一条知识</button>
+            </div>
+          )}
+        </div>
+      </Card>
+    </>
+  );
+}
+
+function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
+  return (
+    <>
+      <div className="metricGrid four">
+        <MetricCard icon={Sparkles} label="已启用技能" value={String(enabledSkills)} sub={`共 ${data.skills?.length || 0} 个技能`} tone="positive" />
+        <MetricCard icon={PlugZap} label="MCP 已连接" value={`${connectedMcp}/${data.mcpServers?.length || 0}`} sub="外部工具服务" tone={connectedMcp ? "positive" : ""} />
+        <MetricCard icon={Activity} label="Skill 运行" value={`${data.skillRuns?.length || 0} 次`} sub="沙箱执行样本" />
+        <MetricCard icon={Shield} label="权限与隔离" value="沙箱执行" sub="依赖扫描 + 无网络运行" />
+      </div>
+
+      <div className="knowledgeGrid">
         <Card className="skillCenterCard">
-          <SectionTitle title="Skills 中心" action={<button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button>} />
+          <SectionTitle title="Skills 中心" action={<div className="titleActions"><button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 导入 Skill</button><button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button></div>} />
           <div className="skillList">
-            {(data.skills || []).slice(0, 3).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>v{skill.version}</small><StatusBadge>{skill.status || "已启用"}</StatusBadge></div>)}
+            {(data.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>v{skill.version}</small><StatusBadge>{skill.status || "已启用"}</StatusBadge></div>)}
             {!data.skills?.length && (
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无已导入 Skill</strong>
-                <span>填写 GitHub 仓库、Skill.md 链接，或直接粘贴 Skill.md 内容后再扫描安装。</span>
+                <span>从其他 Skill 库下载能帮到你的技能：填写 GitHub 仓库、Skill.md 链接，或直接粘贴 Skill.md 内容后再扫描安装。</span>
                 <button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}>导入 Skill</button>
               </div>
             )}
           </div>
           <div className="importButtons"><button onClick={() => ui.openPanel("skillImport")}>从 GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
+        </Card>
+        <Card>
+          <SectionTitle title="MCP 工具服务" action={<button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 注册 MCP</button>} />
           <div className="mcpBox">
-            <div><strong>MCP 工具</strong><span>{data.mcpServers?.filter((item) => item.status === "connected").length || 0}/{data.mcpServers?.length || 0} 已连接</span></div>
-            <div className="mcpChips">{(data.mcpServers || []).slice(0, 3).map((item) => <span key={item.id}>{item.name}<b>{item.status}</b></span>)}</div>
+            <div><strong>MCP 工具</strong><span>{connectedMcp}/{data.mcpServers?.length || 0} 已连接</span></div>
+            <div className="mcpChips">{(data.mcpServers || []).slice(0, 6).map((item) => <span key={item.id}>{item.name}<b>{item.status}</b></span>)}</div>
+            {!data.mcpServers?.length && <div className="emptyPanel">暂无已注册的 MCP Server。</div>}
             <RiskLine label="权限与隔离" value="沙箱执行" />
           </div>
         </Card>
       </div>
 
-      <div className="knowledgeBottom">
-        <Card>
-          <SectionTitle icon={FileText} title="本次决策引用知识" />
-          <DataTable columns={[
-            { key: "name", label: "知识/规则/技能" }, { key: "type", label: "类型" }, { key: "quote", label: "引用片段", width: "2fr" }, { key: "confidence", label: "置信度" }, { key: "source", label: "来源" }
-          ]} rows={(latestAnalysisRows(data) || [])} />
-        </Card>
-        <Card>
-          <SectionTitle icon={RefreshCw} title="最近更新" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>全部更新 <ChevronRight size={14} /></button>} />
-          <div className="updateList">
-            {data.auditLogs?.filter((item) => item.action?.includes("知识") || item.action?.includes("Skill") || item.action?.includes("导入")).slice(0, 5).map((item) => <div key={item.id}><b>{formatTime(item.createdAt)}</b><span>{item.action}</span><StatusBadge>{item.severity}</StatusBadge><small>{item.actor}</small></div>)}
-            {!data.auditLogs?.some((item) => item.action?.includes("知识") || item.action?.includes("Skill") || item.action?.includes("导入")) && (
-              <div className="emptyPanel emptyPanelAction">
-                <strong>暂无真实知识或技能更新</strong>
-                <span>完成一次知识或 Skill 导入后，这里会显示审计记录。</span>
-                <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}>导入第一条知识</button>
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
-    </div>
+      <Card>
+        <SectionTitle icon={RefreshCw} title="最近技能更新" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>全部更新 <ChevronRight size={14} /></button>} />
+        <div className="updateList">
+          {data.auditLogs?.filter((item) => item.action?.includes("Skill") || item.action?.includes("MCP") || item.action?.includes("沙箱")).slice(0, 5).map((item) => <div key={item.id}><b>{formatTime(item.createdAt)}</b><span>{item.action}</span><StatusBadge>{item.severity}</StatusBadge><small>{item.actor}</small></div>)}
+          {!data.auditLogs?.some((item) => item.action?.includes("Skill") || item.action?.includes("MCP") || item.action?.includes("沙箱")) && (
+            <div className="emptyPanel emptyPanelAction">
+              <strong>暂无真实技能更新</strong>
+              <span>完成一次 Skill 或 MCP 导入后，这里会显示审计记录。</span>
+              <button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}>导入第一个 Skill</button>
+            </div>
+          )}
+        </div>
+      </Card>
+    </>
   );
 }
 
@@ -376,7 +412,7 @@ export function RiskAuthPage({ data, action, ui }) {
       <PageHeader active="riskAuth" />
       <div className="riskAuthGrid">
         <Card>
-          <SectionTitle title="授权委托 Mandate" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" onClick={() => ui.openPanel("mandate")}>编辑</button></>} />
+          <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" onClick={() => ui.openPanel("mandate")}>编辑</button></>} />
           <div className="mandateRows">
             <RiskLine label="授权范围" value={humanizeList(mandate.marketTypes, "未设置")} />
             <RiskLine label="交易所" value={safeList(mandate.exchanges, "未授权")} />
@@ -409,12 +445,169 @@ export function RiskAuthPage({ data, action, ui }) {
           <small className="centerMuted">触发后将立即生效，并记录审计日志。</small>
         </Card>
       </div>
-      <div className="securityGrid">
-        <Card><SectionTitle title="API 与账户安全" />{(data.exchangeAccounts || []).map((account) => <RiskLine key={account.id} label={account.exchange} value={exchangeState(account).label} />)}<RiskLine label="告警 Webhook" value={data.alerts?.length ? "有告警记录" : "未触发"} /><button className="textButton centered" onClick={() => ui.openPanel("security")}>安全设置 <ChevronRight size={14} /></button></Card>
-        <Card><SectionTitle title="IP 白名单" action={<button className="secondaryButton" onClick={() => ui.openPanel("ip")}>管理 IP</button>} />{(data.exchangeAccounts || []).map((account) => <RiskLine key={account.id} label={account.exchange} value={account.ipWhitelist || "未记录"} />)}<button className="textButton centered" onClick={() => ui.openPanel("ip")}>添加 IP <ChevronRight size={14} /></button></Card>
-        <Card><SectionTitle title="密钥权限" action={<button className="secondaryButton" onClick={() => ui.openPanel("keys")}>管理密钥</button>} />{(data.apiKeyMetadata || []).map((key) => <RiskLine key={key.id} label={key.exchange} value={key.hasApiKey ? key.hasSecret ? "读写凭证已配置" : "仅 API Key" : "未配置"} />)}<RiskLine label="提现权限" value={(data.apiKeyMetadata || []).some((key) => key.withdrawPermission) ? "危险：发现提现权限" : "禁止"} /></Card>
+      <div className="authHistoryGrid">
         <Card><SectionTitle title="授权历史" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>查看全部 <ChevronRight size={14} /></button>} /><div className="historyList">{(data.auditLogs || []).filter((item) => item.target?.includes("mandate") || item.action?.includes("授权")).slice(0, 4).map((item) => <div key={item.id}><StatusBadge>{item.severity}</StatusBadge><span>{item.action}</span><small>{item.actor}</small></div>)}</div><button className="textButton centered" onClick={() => ui.download("/api/audit-logs/export?format=csv", "audit-logs.csv")}>导出审计日志 <ChevronRight size={14} /></button></Card>
       </div>
+    </div>
+  );
+}
+
+export function ReviewPage({ data, action, ui }) {
+  const performance = data.performance || {};
+  const reviews = data.reviews || [];
+  const tradePlans = data.tradePlans || [];
+  const executionOrders = data.executionOrders || data.orders || [];
+  const skillRuns = data.skillRuns || [];
+  const agentRuns = data.agentRuns || [];
+  const riskChecks = data.riskChecks || [];
+  const analytics = data.reviewAnalytics || {};
+  const breakdowns = analytics.breakdowns || {};
+  const cost = analytics.cost || {};
+  const attribution = analytics.attribution || {};
+  const failedRuns = agentRuns.filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length;
+  const blockedRisk = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
+  const latestReview = reviews[0] || {};
+  const optimizationItems = [
+    blockedRisk ? `近期有 ${blockedRisk} 次风控阻断，优先复盘入场、止损和授权边界。` : "近期没有明显风控阻断，继续小样本验证策略稳定性。",
+    failedRuns ? `有 ${failedRuns} 次 Agent 运行失败，需要检查模型、工具调用和网络配置。` : "Agent 运行链路暂未暴露失败集中点。",
+    performance.trades ? `胜率 ${performance.winRatePct}%、盈亏比 ${performance.profitFactor ?? "未计算"}，下一步按策略和市场状态拆分表现。` : "交易样本不足，先建立最小交易日志闭环。",
+    skillRuns.length ? "已有 Skill 运行记录，可按成功率、耗时和输出质量筛选高价值 Skill。" : "Skill 尚未形成运行样本，建议先用知识解析和风控复盘类 Skill。"
+  ];
+  const tradeRows = tradePlans.slice(0, 8).map((plan) => {
+    const order = executionOrders.find((item) => item.planId === plan.id || item.id === plan.executionOrderId) || {};
+    return {
+      id: plan.id,
+      time: formatTime(plan.createdAt),
+      symbol: plan.symbol || order.symbol || "-",
+      direction: humanize(plan.direction || order.side, "-"),
+      status: <StatusBadge tone={statusTone(order.status || plan.status)}>{humanize(order.status || plan.status, "未执行")}</StatusBadge>,
+      risk: humanize(plan.lastRiskCheck?.decision || plan.status, "未检查"),
+      review: <button className="linkCell" onClick={() => ui.openPanel("executionDetail")}>详情</button>
+    };
+  });
+  const skillRows = skillRuns.slice(0, 8).map((run) => ({
+    id: run.id,
+    time: formatTime(run.createdAt),
+    skill: run.skillName || run.name || run.skillId || "Skill",
+    status: <StatusBadge tone={statusTone(run.status)}>{humanize(run.status, "已记录")}</StatusBadge>,
+    output: run.output || run.summary || run.resultSummary || "-"
+  }));
+  const agentRows = agentRuns.slice(0, 8).map((run) => ({
+    id: run.id,
+    time: formatTime(run.createdAt),
+    goal: run.goal || run.role || "-",
+    status: <StatusBadge tone={statusTone(run.status)}>{humanize(run.status)}</StatusBadge>,
+    model: run.model || run.source || "-"
+  }));
+  return (
+    <div className="pageStack">
+      <PageHeader active="review" />
+      <div className="metricGrid five">
+        <MetricCard icon={BarChart3} label="累计盈亏" value={displayMoney(performance.totalPnlUsdt)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(performance.totalPnlUsdt || 0) >= 0 ? "positive" : "warning"} />
+        <MetricCard icon={Target} label="胜率" value={performance.trades ? `${performance.winRatePct}%` : "暂无数据"} sub="按已平仓交易统计" />
+        <MetricCard icon={Gauge} label="盈亏比" value={performance.profitFactor ?? "暂无数据"} sub="Profit Factor" />
+        <MetricCard icon={BrainCircuit} label="Agent 运行" value={`${agentRuns.length} 次`} sub={`${failedRuns} 次失败`} tone={failedRuns ? "warning" : "positive"} />
+        <MetricCard icon={Sparkles} label="Skill 复盘" value={`${skillRuns.length} 次`} sub="运行样本" />
+      </div>
+
+      <div className="reviewGrid">
+        <Card className="reviewFocus">
+          <SectionTitle icon={ListChecks} title="自我优化线索" action={<span className="sectionActions"><button className="secondaryButton" onClick={() => action("/api/review/backfill-fields", {})}><RefreshCw size={14} /> 补全字段</button><button className="secondaryButton" onClick={() => action("/api/review/strategy-improvement", {})}><BrainCircuit size={14} /> 创建改进闭环</button></span>} />
+          <div className="actionList">{optimizationItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+        </Card>
+        <Card>
+          <SectionTitle icon={ClipboardList} title="最近复盘结论" />
+          {latestReview.id ? (
+            <div className="reviewNote">
+              <strong>{latestReview.title || latestReview.id}</strong>
+              <p>{latestReview.summary || latestReview.content || "已记录复盘，但缺少摘要。"}</p>
+              <small>{formatDateTime(latestReview.createdAt)}</small>
+            </div>
+          ) : <div className="emptyPanel emptyPanelAction"><strong>暂无复盘报告</strong><span>完成交易闭环或运行复盘 Agent 后，这里会沉淀结论。</span></div>}
+        </Card>
+      </div>
+
+      <div className="reviewGrid">
+        <Card>
+          <SectionTitle icon={BarChart3} title="拆分胜率与盈亏比" />
+          <div className="segmentGrid">
+            <SegmentList title="按策略" rows={breakdowns.strategy} />
+            <SegmentList title="按币种" rows={breakdowns.symbol} />
+            <SegmentList title="按时段" rows={breakdowns.session} />
+            <SegmentList title="按行情 Regime" rows={breakdowns.regime} />
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle icon={Gauge} title="交易质量指标" />
+          <RiskLine label="平均 MAE" value={cost.avgMaeUsdt === null || cost.avgMaeUsdt === undefined ? "未记录" : `${displayMoney(cost.avgMaeUsdt)} USDT`} />
+          <RiskLine label="平均 MFE" value={cost.avgMfeUsdt === null || cost.avgMfeUsdt === undefined ? "未记录" : `${displayMoney(cost.avgMfeUsdt)} USDT`} />
+          <RiskLine label="平均滑点" value={cost.avgSlippageBps === null || cost.avgSlippageBps === undefined ? "未记录" : `${formatMoney(cost.avgSlippageBps, 2)} bps`} />
+          <RiskLine label="手续费合计" value={`${displayMoney(cost.totalFeesUsdt)} USDT`} />
+          <RiskLine label="资金费率合计" value={`${displayMoney(cost.totalFundingUsdt)} USDT`} />
+          <RiskLine label="平均持仓时长" value={cost.avgHoldingMinutes === null || cost.avgHoldingMinutes === undefined ? "未记录" : `${formatMoney(cost.avgHoldingMinutes, 0)} 分钟`} />
+        </Card>
+      </div>
+
+      <div className="reviewGrid">
+        <Card>
+          <SectionTitle icon={AlertTriangle} title="亏损聚类" />
+          <div className="clusterList">
+            {(analytics.lossClusters || []).map((cluster) => <div key={cluster.key}><strong>{cluster.key}</strong><span>{cluster.count} 笔 · {displayMoney(cluster.pnl)} USDT</span><small>{cluster.suggestion}</small></div>)}
+            {!analytics.lossClusters?.length && <div className="emptyPanel">暂无可聚类亏损样本。</div>}
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle icon={GitBranch} title="三段验证闭环" />
+          <div className="validationList">
+            {(analytics.validation || []).slice(0, 4).map((experiment) => <div key={experiment.id}><strong>{experiment.hypothesis}</strong><span>{experiment.stages?.map((stage) => `${stage.label}:${humanize(stage.status)}`).join(" / ")}</span><small>{humanize(experiment.status)}</small></div>)}
+            {!analytics.validation?.length && <div className="emptyPanel">暂无策略实验。点击「创建改进闭环」生成回测 → 模拟盘 → 小额实盘验证任务。</div>}
+          </div>
+        </Card>
+      </div>
+
+      <div className="reviewGrid">
+        <Card>
+          <SectionTitle title="交易记录复盘" />
+          <DataTable columns={[
+            { key: "time", label: "时间" }, { key: "symbol", label: "交易对" }, { key: "direction", label: "方向" }, { key: "status", label: "执行" }, { key: "risk", label: "风控" }, { key: "review", label: "操作" }
+          ]} rows={tradeRows} />
+        </Card>
+        <Card>
+          <SectionTitle title="Agent 行为复盘" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>看审计 <ChevronRight size={14} /></button>} />
+          <DataTable columns={[
+            { key: "time", label: "时间" }, { key: "goal", label: "目标", width: "1.6fr" }, { key: "status", label: "状态" }, { key: "model", label: "模型/来源" }
+          ]} rows={agentRows} />
+        </Card>
+      </div>
+
+      <Card>
+        <SectionTitle title="贡献复盘" action={<button className="textButton" onClick={() => ui.setActive("knowledgeSkills")}>管理 Skill <ChevronRight size={14} /></button>} />
+        <div className="reviewGrid nested">
+          <DataTable columns={[
+            { key: "time", label: "时间" }, { key: "skill", label: "Skill" }, { key: "status", label: "状态" }, { key: "output", label: "输出摘要", width: "1.8fr" }
+          ]} rows={skillRows} />
+          <div className="contributionList">
+            {(attribution.rules || []).slice(0, 6).map((rule) => <div key={rule.id}><strong>{rule.name}</strong><span>{rule.checks} 次检查 · {rule.blocked} 次阻断</span><small>{rule.contribution}</small></div>)}
+            {(attribution.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><strong>{skill.name}</strong><span>{skill.runs} 次运行 · 成功率 {skill.successRatePct ?? "未验证"}</span><small>{skill.contribution}</small></div>)}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SegmentList({ title, rows = [] }) {
+  return (
+    <div className="segmentList">
+      <h3>{title}</h3>
+      {rows.slice(0, 4).map((row) => (
+        <div key={row.key}>
+          <strong>{row.key}</strong>
+          <span>{row.trades} 笔 · 胜率 {row.winRatePct === null ? "暂无" : `${row.winRatePct}%`} · 盈亏比 {row.profitFactor ?? "暂无"}</span>
+          <b className={Number(row.pnl || 0) >= 0 ? "positive" : "negative"}>{displayMoney(row.pnl)} USDT</b>
+        </div>
+      ))}
+      {!rows.length && <div className="emptyPanel">暂无样本。</div>}
     </div>
   );
 }
@@ -475,7 +668,7 @@ export function AuditSystemPage({ data, ui }) {
           <footer><span>最近耗时 <b>{formatDuration(traces[0]?.latencyMs)}</b></span><span>状态 <b className={latestRisk.passed ? "positive" : "warning"}>{humanize(latestRisk.decision || latestPlan.status, "未生成")}</b></span><button className="secondaryButton" onClick={() => ui.openPanel("auditChain")}>查看完整链路 <ChevronRight size={14} /></button></footer>
         </Card>
         <Card>
-          <SectionTitle title="决策与工具调用日志" action={<div className="filterGroup">{traceTypes.map((type) => <button className={traceTypeFilter === type ? "active" : ""} key={type} onClick={() => setTraceTypeFilter(type)}>{humanize(type, type)}</button>)}<button className={traceWindow === "24h" ? "active" : ""} onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} <ChevronDown size={13} /></button></div>} />
+          <SectionTitle title="决策日志" action={<div className="filterGroup">{traceTypes.map((type) => <button className={traceTypeFilter === type ? "active" : ""} key={type} onClick={() => setTraceTypeFilter(type)}>{humanize(type, type)}</button>)}<button className={traceWindow === "24h" ? "active" : ""} onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} <ChevronDown size={13} /></button></div>} />
           <DataTable columns={[
             { key: "time", label: "时间" }, { key: "agent", label: "Agent / 步骤" }, { key: "type", label: "类型" }, { key: "detail", label: "详情", width: "1.5fr" }, { key: "status", label: "状态" }
           ]} rows={filteredTraces.slice(0, 8).map((trace) => ({ id: trace.id, time: formatTime(trace.createdAt), agent: humanize(trace.type || "步骤"), type: trace.type?.includes("tool") ? "工具调用" : "决策", detail: trace.title, status: <StatusBadge tone={statusTone(trace.status)}>{humanize(trace.status)}</StatusBadge> }))} />

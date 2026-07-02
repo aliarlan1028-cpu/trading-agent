@@ -8,6 +8,43 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 // ---------------------------------------------------------------------------
 
 const OPEN_EXECUTION_STATES = new Set(["submitted", "entry_pending", "entry_filled", "protecting"]);
+const DEFAULT_TAKER_FEE_RATE = 0.0004;
+
+function asNumber(value, fallback = null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function inferMarketRegime(db, symbol) {
+  const market = (db.markets || []).find((item) => item.symbol === symbol) || {};
+  const change = asNumber(market.changePct, 0);
+  const funding = asNumber(market.fundingRate, 0);
+  if (Math.abs(change) >= 4) return "高波动趋势";
+  if (Math.abs(change) <= 0.8) return "震荡低波动";
+  if (Math.abs(funding) >= 0.03) return "资金费率拥挤";
+  return change >= 0 ? "上行趋势" : "下行趋势";
+}
+
+function currentFundingRate(db, symbol) {
+  const market = (db.markets || []).find((item) => item.symbol === symbol) || {};
+  return asNumber(String(market.fundingRate || "").replace("%", ""), 0);
+}
+
+function feeEstimate(notional) {
+  return Number((Math.abs(Number(notional || 0)) * DEFAULT_TAKER_FEE_RATE).toFixed(6));
+}
+
+function slippageBps(actual, expected, direction = "long") {
+  const actualPrice = Number(actual);
+  const expectedPrice = Number(expected);
+  if (!Number.isFinite(actualPrice) || !Number.isFinite(expectedPrice) || expectedPrice <= 0) return null;
+  const raw = ((actualPrice - expectedPrice) / expectedPrice) * 10000;
+  return Number((direction === "short" ? -raw : raw).toFixed(2));
+}
+
+function entryRationale(plan = {}) {
+  return plan.rationale || plan.analysis || plan.reason || plan.summary || plan.entry?.rationale || "未记录入场理由";
+}
 
 export function currentEquityUsdt(db) {
   const snapshot = (db.accountSnapshots || []).find((item) => item.status === "ok");
@@ -94,6 +131,11 @@ export async function executeApprovedPlan(db, planId, options = {}) {
     exchange: plan.exchange,
     symbol: plan.symbol,
     direction: plan.direction,
+    strategy: plan.strategy || plan.strategy_type || "manual_review",
+    entryRationale: entryRationale(plan),
+    confidenceBefore: asNumber(plan.confidenceBefore ?? plan.confidence),
+    confidenceAfter: asNumber(plan.confidenceAfter ?? plan.lastRiskCheck?.confidence),
+    regime: inferMarketRegime(db, plan.symbol),
     quantity: sizing.quantity,
     entryPrice: sizing.entryMid,
     stopLoss: Number(plan.stopLoss ?? plan.stop_loss),
@@ -184,6 +226,11 @@ async function pollOne(db, executionOrder) {
   if (executionOrder.status === "entry_pending" && orderState.state === "filled") {
     executionOrder.status = "entry_filled";
     executionOrder.filledPrice = orderState.avgPrice || executionOrder.entryPrice;
+    executionOrder.entryFilledAt = nowIso();
+    executionOrder.entrySlippageBps = slippageBps(executionOrder.filledPrice, executionOrder.entryPrice, executionOrder.direction);
+    executionOrder.entryFeeUsdt = feeEstimate(Number(executionOrder.filledPrice) * Number(executionOrder.quantity));
+    executionOrder.maeUsdt = 0;
+    executionOrder.mfeUsdt = 0;
     executionOrder.events.push({ at: nowIso(), event: "entry_filled", detail: `均价 ${executionOrder.filledPrice}` });
     recordFill(db, executionOrder, "entry", executionOrder.filledPrice, executionOrder.quantity);
     upsertPosition(db, executionOrder);
@@ -248,18 +295,38 @@ async function placeTakeProfits(db, executionOrder) {
   executionOrder.events.push({ at: nowIso(), event: "take_profits_placed", detail: `状态 ${result.status}` });
 }
 
-function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = null) {
+function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = null, extra = {}) {
   db.fills ||= [];
+  const notional = Number(price) * Number(quantity);
+  const plan = (db.tradePlans || []).find((item) => item.id === executionOrder.planId) || {};
+  const feeUsdt = extra.feeUsdt ?? (kind === "entry" ? executionOrder.entryFeeUsdt : feeEstimate(notional));
   db.fills.unshift({
     id: id("fill"),
     executionOrderId: executionOrder.id,
     planId: executionOrder.planId,
+    tradePlanId: executionOrder.planId,
+    agentRunId: executionOrder.agentRunId,
+    riskCheckId: executionOrder.riskCheckId,
+    mandateId: executionOrder.mandateId,
     symbol: executionOrder.symbol,
     direction: executionOrder.direction,
+    strategy: executionOrder.strategy || plan.strategy || plan.strategy_type || "manual_review",
+    regime: executionOrder.regime || inferMarketRegime(db, executionOrder.symbol),
     kind,
     price: Number(price),
     quantity: Number(quantity),
-    notionalUsdt: Number(price) * Number(quantity),
+    notionalUsdt: notional,
+    expectedPrice: kind === "entry" ? executionOrder.entryPrice : extra.expectedPrice,
+    slippageBps: extra.slippageBps ?? (kind === "entry" ? executionOrder.entrySlippageBps : null),
+    feeUsdt,
+    estimatedFee: extra.feeUsdt === undefined,
+    fundingRate: extra.fundingRate,
+    fundingFeeUsdt: extra.fundingFeeUsdt,
+    holdingMinutes: extra.holdingMinutes,
+    maeUsdt: extra.maeUsdt,
+    mfeUsdt: extra.mfeUsdt,
+    entryRationale: executionOrder.entryRationale || entryRationale(plan),
+    exitReason: extra.exitReason,
     realizedPnl,
     createdAt: nowIso()
   });
@@ -280,7 +347,11 @@ function upsertPosition(db, executionOrder) {
     takeProfits: executionOrder.takeProfits,
     executionOrderId: executionOrder.id,
     planId: executionOrder.planId,
-    openedAt: nowIso()
+    openedAt: executionOrder.entryFilledAt || nowIso(),
+    maeUsdt: 0,
+    mfeUsdt: 0,
+    regime: executionOrder.regime,
+    entryRationale: executionOrder.entryRationale
   });
 }
 
@@ -325,9 +396,30 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       const entry = Number(executionOrder.filledPrice || executionOrder.entryPrice);
       const sign = executionOrder.direction === "short" ? -1 : 1;
       const pnl = (exitPrice - entry) * executionOrder.quantity * sign;
-      recordFill(db, executionOrder, "close", exitPrice, executionOrder.quantity, pnl);
+      const openedAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime();
+      const holdingMinutes = Number.isFinite(openedAt) ? Math.max(0, Math.round((Date.now() - openedAt) / 60000)) : null;
+      const notional = exitPrice * executionOrder.quantity;
+      const fundingRate = currentFundingRate(db, executionOrder.symbol);
+      const fundingFeeUsdt = holdingMinutes === null ? null : Number((notional * (fundingRate / 100) * (holdingMinutes / 480)).toFixed(6));
+      const closeFeeUsdt = feeEstimate(notional);
+      recordFill(db, executionOrder, "close", exitPrice, executionOrder.quantity, pnl, {
+        feeUsdt: closeFeeUsdt,
+        fundingRate,
+        fundingFeeUsdt,
+        holdingMinutes,
+        maeUsdt: executionOrder.maeUsdt ?? 0,
+        mfeUsdt: executionOrder.mfeUsdt ?? 0,
+        slippageBps: slippageBps(exitPrice, executionOrder.lastMark || exitPrice, executionOrder.direction),
+        expectedPrice: executionOrder.lastMark || exitPrice,
+        exitReason: reason
+      });
       executionOrder.status = "closed";
       executionOrder.realizedPnl = pnl;
+      executionOrder.exitReason = reason;
+      executionOrder.closedAt = nowIso();
+      executionOrder.holdingMinutes = holdingMinutes;
+      executionOrder.closeFeeUsdt = closeFeeUsdt;
+      executionOrder.fundingFeeUsdt = fundingFeeUsdt;
       executionOrder.events.push({ at: nowIso(), event: "closed", detail: `${reason}，盈亏 ${pnl.toFixed(2)} USDT` });
       db.positions = (db.positions || []).filter((item) => item.executionOrderId !== executionOrder.id);
       const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);

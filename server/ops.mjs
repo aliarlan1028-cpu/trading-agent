@@ -16,7 +16,7 @@ export function buildReadinessReport(db) {
     check("binance_keys", "Binance API", Boolean(process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET), "需要你配置 Key/Secret 并实盘小额验证。"),
     check("okx_keys", "OKX API", Boolean(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE), "需要你配置 Key/Secret/Passphrase 并实盘小额验证。"),
     check("private_ws", "私有 WebSocket", true, "Binance listenKey 与 OKX login/subscription 已实现，凭证配置后可连。"),
-    check("llm_agent", "真实 LLM Agent", Boolean(process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY), "无 Key 时走本地确定性 ReAct；配置后调用真实模型。"),
+    check("llm_agent", "真实 LLM Agent", Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY), "无 Key 时走本地确定性 ReAct；配置后调用真实模型。"),
     check("langsmith", "LangSmith Trace", Boolean(process.env.LANGSMITH_API_KEY), "配置后记录外部可观测链路。"),
     check("knowledge_pipeline", "真实知识库解析", true, "PDF/DOCX/网页/GitHub 导入、切片、RAG、图谱已实现。"),
     check("event_sources", "真实事件源", true, "RSS/HTML/公告/链上信号管线已实现。"),

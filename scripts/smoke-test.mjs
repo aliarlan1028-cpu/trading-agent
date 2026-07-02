@@ -13,8 +13,26 @@ const health = await request("/api/health");
 const me = await request("/api/users/me");
 const storage = await request("/api/storage");
 const readiness = await request("/api/system/readiness");
-const overview = await request("/api/overview");
-const risk = await request(`/api/trade-plans/${overview.tradePlans[0].id}/risk-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+let overview = await request("/api/overview");
+let smokePlan = overview.tradePlans?.[0];
+if (!smokePlan) {
+  const created = await request("/api/trade-plans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      symbol: "BTC/USDT",
+      direction: "long",
+      entry: { type: "limit", price: 10000 },
+      stopLoss: 9000,
+      takeProfit: 11000,
+      rationale: "smoke test plan",
+      confidenceBefore: 0.5
+    })
+  });
+  smokePlan = created.plan;
+  overview = await request("/api/overview");
+}
+const risk = await request(`/api/trade-plans/${smokePlan.id}/risk-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 const analysis = await request("/api/knowledge/runtime-query", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -53,8 +71,20 @@ const eventProgress = await request(`/api/events/${overview.events[0].id}/progre
 const eventReview = await request(`/api/events/${overview.events[0].id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: "smoke event review" }) });
 const drill = await request("/api/security/drills/api_desync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 const auditChain = await request("/api/security/audit-chain");
-const scan = await request(`/api/skills/${overview.skills[0].id}/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-const sandbox = await request(`/api/skills/${overview.skills[0].id}/run-sandbox`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+let smokeSkill = overview.skills?.[0];
+if (!smokeSkill) {
+  smokeSkill = await request("/api/skills/fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Smoke Skill",
+      skillMd: "# Smoke Skill\n\nversion: 0.0.1\npermissions: web.read\n\n用于端到端烟测的最小 Skill。"
+    })
+  });
+  overview = await request("/api/overview");
+}
+const scan = await request(`/api/skills/${smokeSkill.id}/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+const sandbox = await request(`/api/skills/${smokeSkill.id}/run-sandbox`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 const mcp = await request("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Smoke MCP", url: "local://smoke", permissions: ["knowledge.read"], toolCount: 1 }) });
 const gray = await request(`/api/risk/gray-policies/${overview.grayReleasePolicies[0].id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false, maxNotionalUsdt: 50, allowedSymbols: ["BTC/USDT"], requiresManualApproval: true }) });
 const backup = await request("/api/system/backup", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });

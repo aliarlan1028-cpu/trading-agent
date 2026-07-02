@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
 
 export function storeSecret(db, name, value, scope = "exchange") {
@@ -27,6 +28,11 @@ export async function sendAlert(db, payload = {}) {
       alert.error = error.message;
     }
   }
+  // 同步推送飞书（若已配置），让主人第一时间收到。
+  try {
+    const lark = await notifyLark(db, { severity: alert.severity, title: alert.title, body: alert.body || alert.title });
+    alert.larkStatus = lark.deliveryStatus;
+  } catch { /* 飞书失败不影响告警落库 */ }
   appendAudit(db, `发送告警：${alert.status}`, alert.id, "AlertManager", alert.severity);
   return alert;
 }

@@ -2,6 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import { performanceReport, refreshAccounting } from "./accounting.mjs";
+import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
 import { activeProvider, runAgentChat } from "./agentChat.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
@@ -10,7 +11,9 @@ import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateComm
 import { installAuth, requirePermission } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { runBacktest } from "./backtestEngine.mjs";
+import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
@@ -18,6 +21,7 @@ import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
+import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
@@ -31,10 +35,12 @@ dotenv.config();
 installProxyFromEnv();
 
 const app = express();
-const port = Number(process.env.PORT || 8787);
 const db = loadDb();
 app.locals.db = db;
 
+applyStoredConfigToEnv(db);
+installProxyFromEnv();
+const port = Number(process.env.PORT || 8787);
 db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
 refreshApiKeyMetadata(db);
 saveDb(db);
@@ -156,6 +162,11 @@ app.get("/api/overview", (_req, res) => {
     memoryItems: db.memoryItems,
     agentRuns: db.agentRuns,
     performance: performanceReport(db),
+    backtests: db.backtests?.slice(0, 10) || [],
+    larkConfigured: larkStatus().configured,
+    reviewAnalytics: buildReviewAnalytics(db),
+    runtimeConfig: db.runtimeConfig || {},
+    config: getConfigStatus(db),
     readiness: buildReadinessReport(db)
   });
 });
@@ -491,6 +502,38 @@ app.get("/api/exchange/:exchange/klines", async (req, res) => {
   } catch (error) {
     res.status(502).json({ error: `K 线同步失败：${error.message}` });
   }
+});
+
+app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
+  try {
+    const result = await syncMicrostructure(db, req.params.exchange, req.query.symbol || "BTC/USDT");
+    persist(res, result);
+  } catch (error) {
+    res.status(502).json({ error: `微观结构同步失败：${error.message}` });
+  }
+});
+
+app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
+app.post("/api/backtest/run", requirePermission("write:review"), async (req, res) => {
+  try {
+    const result = await runBacktest(db, req.body || {});
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: `回测失败：${error.message}` });
+  }
+});
+
+app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
+app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
+app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
+  const result = await notifyLark(db, {
+    severity: "info",
+    title: "🔔 飞书通知测试",
+    body: "如果你在飞书里看到这条消息，说明 AI 交易员的主动通知已打通。",
+    fields: [{ label: "来源", value: "AI 交易员" }, { label: "状态", value: "测试" }]
+  });
+  saveDb(db);
+  res.json({ message: `飞书通知：${result.deliveryStatus}`, notification: result });
 });
 
 app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {
@@ -877,7 +920,7 @@ app.post("/api/risk/check-trade-plan", requirePermission("write:risk"), (req, re
   persist(res, result);
 });
 
-app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), (req, res) => {
+app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), async (req, res) => {
   db.system.killSwitch = Boolean(req.body.enabled);
   db.system.autonomyEnabled = !db.system.killSwitch;
   db.system.riskStatus = db.system.killSwitch ? "熔断停机" : "正常";
@@ -906,6 +949,11 @@ app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), (req, r
   }
   appendAudit(db, db.system.killSwitch ? "启用一键熔断" : "解除一键熔断", "risk.kill_switch", db.user.name, db.system.killSwitch ? "critical" : "info");
   appendTrace(db, "risk", db.system.killSwitch ? "一键熔断开启" : "一键熔断解除", db.system.killSwitch ? "blocked" : "ok");
+  await notifyLark(db, {
+    severity: db.system.killSwitch ? "critical" : "info",
+    title: db.system.killSwitch ? "🛑 一键熔断已触发" : "🟢 熔断已解除",
+    body: db.system.killSwitch ? "所有新开仓已被阻断，在途委托已请求撤单。请检查账户与市场。" : "熔断解除，系统恢复正常风控运行。"
+  });
   persist(res, db.system);
 });
 
@@ -1032,6 +1080,46 @@ app.post("/api/security/exchange-credentials", requirePermission("admin:security
   });
 });
 
+app.get("/api/config", (_req, res) => {
+  res.json(getConfigStatus(db));
+});
+
+// 通用配置写入：LLM 密钥/模型、非敏感开关。敏感项加密入库，不回传明文。
+app.post("/api/config", requirePermission("admin:security"), (req, res) => {
+  const applied = setConfig(db, req.body || {});
+  refreshApiKeyMetadata(db);
+  saveDb(db);
+  res.json({ message: applied.length ? `已保存：${applied.join("、")}` : "无变更", applied, status: getConfigStatus(db) });
+});
+
+// 实盘开关 + 灰度额度（高危，集中一处并写审计）。
+app.post("/api/config/live-trading", requirePermission("admin:security"), (req, res) => {
+  const entries = {};
+  if (req.body.liveTradingEnabled !== undefined) entries.LIVE_TRADING_ENABLED = req.body.liveTradingEnabled ? "true" : "false";
+  if (req.body.acknowledged !== undefined) entries.I_UNDERSTAND_REAL_TRADING = req.body.acknowledged ? "true" : "false";
+  if (req.body.orderWriteEnabled !== undefined) entries.REAL_ORDER_WRITE_ENABLED = req.body.orderWriteEnabled ? "true" : "false";
+  if (req.body.maxNotionalUsdt !== undefined) entries.MAX_LIVE_NOTIONAL_USDT = String(Number(req.body.maxNotionalUsdt) || 50);
+  setConfig(db, entries);
+
+  const gray = (db.grayReleasePolicies || []).find((item) => item.id === "gray_live_small_notional");
+  if (gray) {
+    if (req.body.grayEnabled !== undefined) gray.enabled = Boolean(req.body.grayEnabled);
+    if (req.body.maxNotionalUsdt !== undefined) gray.maxNotionalUsdt = Number(req.body.maxNotionalUsdt) || gray.maxNotionalUsdt;
+    if (req.body.grayRequiresApproval !== undefined) gray.requiresManualApproval = Boolean(req.body.grayRequiresApproval);
+    gray.updatedAt = nowIso();
+  }
+  appendAudit(db, "更新实盘交易开关与灰度额度", "live_trading_config", db.user.name, "warning");
+  saveDb(db);
+  res.json({ message: "实盘配置已更新", status: getConfigStatus(db) });
+});
+
+app.delete("/api/config/secret/:key", requirePermission("admin:security"), (req, res) => {
+  const ok = clearSecret(db, req.params.key);
+  refreshApiKeyMetadata(db);
+  saveDb(db);
+  res.json({ message: ok ? `已移除 ${req.params.key}` : "未知密钥", status: getConfigStatus(db) });
+});
+
 app.post("/api/security/alerts", requirePermission("admin:security"), async (req, res) => {
   const result = await sendAlert(db, req.body);
   persist(res, result);
@@ -1051,6 +1139,21 @@ app.post("/api/reviews", requirePermission("write:review"), (req, res) => {
   db.reviews.unshift(review);
   appendAudit(db, "创建复盘", review.id, "复盘员");
   persist(res, review);
+});
+
+app.get("/api/review/analytics", (_req, res) => {
+  res.json(buildReviewAnalytics(db));
+});
+
+app.post("/api/review/backfill-fields", requirePermission("write:review"), (_req, res) => {
+  const result = backfillReviewFields(db);
+  appendAudit(db, "补全复盘字段", "review_backfill", "ReviewEngine");
+  persist(res, { message: `已补全复盘字段：${result.updated} 处`, ...result, analytics: buildReviewAnalytics(db) });
+});
+
+app.post("/api/review/strategy-improvement", requirePermission("write:review"), (req, res) => {
+  const result = createStrategyImprovementCycle(db, req.body || {});
+  persist(res, result);
 });
 
 app.get("/api/traces", (_req, res) => res.json(db.traces));

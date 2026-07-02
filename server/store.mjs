@@ -39,6 +39,7 @@ const collectionNames = [
   "realtimeConnections",
   "reconciliationReports",
   "vaultItems",
+  "runtimeConfig",
   "alerts",
   "drillRuns",
   "grayReleasePolicies",
@@ -50,6 +51,7 @@ const collectionNames = [
   "exchangeOrders",
   "positionMonitors",
   "reviewReports",
+  "strategyExperiments",
   "eventImpacts",
   "toolExecutions",
   "eventSources",
@@ -186,7 +188,7 @@ function cleanSeedDatabase(createdAt) {
     tools: [
       { id: "tool_binance", name: "Binance Connector", type: "exchange", status: hasBinance ? "configured" : "missing_credentials", permissions: ["market.read", "account.read", "trade.write_guarded"] },
       { id: "tool_okx", name: "OKX Connector", type: "exchange", status: hasOkx ? "configured" : "missing_credentials", permissions: ["market.read", "account.read", "trade.write_guarded"] },
-      { id: "tool_llm", name: "LLM Agent", type: "model", status: process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY ? "configured" : "missing_credentials", permissions: ["agent.reasoning"] },
+      { id: "tool_llm", name: "LLM Agent", type: "model", status: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY ? "configured" : "missing_credentials", permissions: ["agent.reasoning"] },
       { id: "tool_public_market", name: "Public Market Data", type: "data", status: "available_without_key", permissions: ["market.read"] }
     ],
     mcpServers: [],
@@ -229,6 +231,7 @@ function cleanSeedDatabase(createdAt) {
     ],
     reconciliationReports: [],
     vaultItems: [],
+    runtimeConfig: {},
     alerts: [],
     drillRuns: [],
     grayReleasePolicies: [
@@ -250,6 +253,7 @@ function cleanSeedDatabase(createdAt) {
     exchangeOrders: [],
     positionMonitors: [],
     reviewReports: [],
+    strategyExperiments: [],
     eventImpacts: [],
     toolExecutions: [],
     eventSources: [
@@ -528,6 +532,7 @@ export function normalizeDatabase(db) {
   ];
   db.reconciliationReports ||= [];
   db.vaultItems ||= [];
+  db.runtimeConfig ||= {};
   db.alerts ||= [];
   db.drillRuns ||= [];
   db.grayReleasePolicies ||= [
@@ -550,6 +555,7 @@ export function normalizeDatabase(db) {
   db.exchangeOrders ||= [];
   db.positionMonitors ||= [];
   db.reviewReports ||= [];
+  db.strategyExperiments ||= [];
   db.eventImpacts ||= [];
   db.toolExecutions ||= [];
   db.eventSources ||= [

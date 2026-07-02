@@ -104,12 +104,21 @@ export async function parseKnowledgeSource(db, sourceId) {
   return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
 }
 
-export function ragQuery(db, query, options = {}) {
-  const queryEmbedding = embedText(query);
-  const chunks = (db.knowledge.chunks || [])
+// 纯检索：返回与 query 最相关的知识片段，不改动 db、不写审计。
+// 供 Agent 决策上下文注入与专家分析复用。
+export function retrieveChunks(db, query, topK = 5) {
+  const text = String(query || "").trim();
+  if (!text) return [];
+  const queryEmbedding = embedText(text);
+  return (db.knowledge?.chunks || [])
     .map((chunk) => ({ ...chunk, score: cosine(queryEmbedding, chunk.embedding || embedText(chunk.text || "")) }))
+    .filter((chunk) => chunk.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, Number(options.topK || 5));
+    .slice(0, Number(topK || 5));
+}
+
+export function ragQuery(db, query, options = {}) {
+  const chunks = retrieveChunks(db, query, Number(options.topK || 5));
   const answer = chunks.length
     ? `召回 ${chunks.length} 个知识片段：${chunks.map((chunk) => chunk.citationLocator).join("、")}`
     : "未召回相关知识片段。";

@@ -1,7 +1,10 @@
 import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
+import { retrieveChunks } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { runBacktest } from "./backtestEngine.mjs";
+import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const MAX_STEPS = 8;
@@ -19,6 +22,18 @@ const TOOL_DEFS = [
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
         exchange: { type: "string", enum: ["BINANCE", "OKX"] },
         timeframe: { type: "string", enum: ["1m", "5m", "15m", "1h", "4h", "1d"] }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "get_microstructure",
+    description: "读取合约市场微观结构：资金费率、未平仓量(OI)、订单簿买卖不平衡与点差。判断趋势/拥挤度/挤压风险时必须结合它，不要只看 K 线。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        exchange: { type: "string", enum: ["OKX", "BINANCE"] }
       },
       required: ["symbol"]
     }
@@ -46,6 +61,22 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "run_backtest",
+    description: "在历史 K 线上回测一个均线交叉策略，返回胜率、盈亏比、最大回撤与期望 R。提出新策略或调参前用它验证，不要凭空断言策略有效。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        timeframe: { type: "string", enum: ["15m", "1h", "4h", "1d"] },
+        fastPeriod: { type: "number", description: "快线周期，默认 10" },
+        slowPeriod: { type: "number", description: "慢线周期，默认 30" },
+        stopLossPct: { type: "number", description: "止损百分比，默认 2" },
+        takeProfitR: { type: "number", description: "止盈 R 倍数，默认 2" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
     name: "create_mandate_draft",
     description: "把用户的自然语言授权目标固化为结构化授权委托草案（需用户在界面上确认激活后才生效）。",
     schema: {
@@ -61,6 +92,19 @@ const TOOL_DEFS = [
         validHours: { type: "number" }
       },
       required: ["goal", "allowedSymbols"]
+    }
+  },
+  {
+    name: "remember",
+    description: "把关于主人的长期偏好/风险偏好/交易风格，或本次得到的交易教训写入长期记忆，供未来所有会话使用。用户明确表达偏好、或你总结出可复用的经验时调用。",
+    schema: {
+      type: "object",
+      properties: {
+        scope: { type: "string", enum: ["user_profile", "trading_discipline", "lesson"], description: "user_profile=写入主人档案 USER.md；trading_discipline=写入交易纪律 AGENT.md；lesson=写入长期记忆条目" },
+        title: { type: "string", description: "记忆标题（lesson 用）" },
+        content: { type: "string", description: "要记住的内容，一句话，具体可执行" }
+      },
+      required: ["scope", "content"]
     }
   },
   {
@@ -84,7 +128,7 @@ const TOOL_DEFS = [
   }
 ];
 
-const SYSTEM_PROMPT = `你是一名专业的数字货币自主交易员 Agent，服务唯一主人。工作语言为中文。
+const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服务唯一主人。工作语言为中文。
 
 铁律：
 1. 任何价格、指标、行情结论都必须来自 sync_market 返回的真实数据；没有同步过就说"尚未同步"，绝不编造数字。
@@ -92,7 +136,65 @@ const SYSTEM_PROMPT = `你是一名专业的数字货币自主交易员 Agent，
 3. 用户给出交易目标/授权边界时，先调用 create_mandate_draft 固化，再继续分析。
 4. 执行永远需要人工批准，你无权直接下单；不要承诺"已下单"。
 5. 回答克制、专业、可解释：结论 + 依据 + 风险。不确定就说不确定。
-6. 永远不索取或输出 API 密钥等敏感信息。`;
+6. 永远不索取或输出 API 密钥等敏感信息。
+7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。`;
+
+// ---------------------------------------------------------------------------
+// 动态系统提示：把长期记忆（状态文件 + 三层记忆）与专业知识库（RAG 检索）
+// 注入 LLM 上下文，让 Agent 真正"记得主人、掌握专业知识"。
+// ---------------------------------------------------------------------------
+function clip(text, max) {
+  const value = String(text || "").trim();
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+export function buildSystemPrompt(db, userText = "") {
+  const sections = [BASE_RULES];
+  const state = db.agentStateFiles || {};
+
+  const user = clip(state.USER?.content, 1200);
+  if (user && !user.startsWith("尚未配置")) sections.push(`【主人档案 USER.md】\n${user}`);
+
+  const agent = clip(state.AGENT?.content, 1200);
+  if (agent && !agent.startsWith("Agent 当前处于待配置")) sections.push(`【交易纪律 AGENT.md】\n${agent}`);
+
+  const history = clip(state.HISTORY?.content, 1000);
+  if (history && !history.startsWith("暂无真实运行历史")) sections.push(`【近期运行历史 HISTORY.md（最新在前）】\n${history}`);
+
+  const memories = (db.memoryItems || []).slice(0, 8)
+    .map((item) => `- [${item.layer || "memory"}] ${item.title}：${clip(item.content, 200)}`)
+    .join("\n");
+  if (memories) sections.push(`【长期记忆】\n${memories}`);
+
+  const chunks = retrieveChunks(db, userText, 5);
+  if (chunks.length) {
+    const knowledge = chunks
+      .map((chunk, index) => `[[${index + 1}]] 来源：${chunk.citationLocator}\n${clip(chunk.text, 600)}`)
+      .join("\n\n");
+    sections.push(`【相关专业知识（从主人导入的知识库检索，可引用编号 [[n]]）】\n${knowledge}`);
+  } else if ((db.knowledge?.chunks || []).length === 0) {
+    sections.push("【专业知识库】主人尚未导入任何金融/交易知识，暂无可检索内容。");
+  }
+
+  return sections.join("\n\n");
+}
+
+// 每轮结束把结论沉淀进 HISTORY.md，形成跨会话的长期记忆。
+function recordRunHistory(db, run, finalText) {
+  db.agentStateFiles ||= {};
+  db.agentStateFiles.HISTORY ||= { id: "state_history", title: "HISTORY.md", content: "", updatedAt: nowIso() };
+  const stamp = nowIso();
+  const outcome = run.tradePlanId
+    ? `提出交易计划 ${run.tradePlanId}`
+    : run.mandateId
+      ? `生成授权草案 ${run.mandateId}`
+      : "仅分析/观察";
+  const line = `- ${stamp} · 目标：${clip(run.goal, 80)} · 结果：${outcome} · 结论：${clip(finalText, 160)}`;
+  const existing = String(db.agentStateFiles.HISTORY.content || "").replace(/^暂无真实运行历史。?$/, "").trim();
+  const lines = [line, ...(existing ? existing.split("\n") : [])].slice(0, 30);
+  db.agentStateFiles.HISTORY.content = lines.join("\n");
+  db.agentStateFiles.HISTORY.updatedAt = stamp;
+}
 
 // ---------------------------------------------------------------------------
 // 工具执行
@@ -123,6 +225,15 @@ export async function executeTool(db, run, name, args = {}) {
       lastCandles: candles.slice(-12).map((c) => ({ t: c.time, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume })),
       errors: [ticker?.error, klines?.error].filter(Boolean)
     };
+  }
+
+  if (name === "get_microstructure") {
+    const symbol = args.symbol || "BTC/USDT";
+    try {
+      return await syncMicrostructure(db, args.exchange || "OKX", symbol);
+    } catch (error) {
+      return { error: `微观结构同步失败：${error.message}` };
+    }
   }
 
   if (name === "get_account") {
@@ -167,6 +278,16 @@ export async function executeTool(db, run, name, args = {}) {
     };
   }
 
+  if (name === "run_backtest") {
+    try {
+      const result = await runBacktest(db, args);
+      run.backtestId = result.id;
+      return result;
+    } catch (error) {
+      return { error: `回测失败：${error.message}` };
+    }
+  }
+
   if (name === "create_mandate_draft") {
     const symbols = (args.allowedSymbols || []).map((s) => String(s).toUpperCase());
     const validHours = Number(args.validHours || 24);
@@ -195,6 +316,35 @@ export async function executeTool(db, run, name, args = {}) {
     run.mandateId = mandate.id;
     appendAudit(db, "Agent 对话生成授权草案", mandate.id, "AgentChat");
     return { mandateId: mandate.id, status: mandate.status, note: "草案已创建，等待用户在界面上确认激活。" };
+  }
+
+  if (name === "remember") {
+    const content = String(args.content || "").trim();
+    if (!content) return { error: "记忆内容不能为空" };
+    db.agentStateFiles ||= {};
+    const stamp = nowIso();
+    if (args.scope === "user_profile") {
+      const file = db.agentStateFiles.USER ||= { id: "state_user", title: "USER.md", content: "", updatedAt: stamp };
+      const base = String(file.content || "").replace(/^尚未配置交易目标。.*$/, "").trim();
+      file.content = `${base ? `${base}\n` : ""}- ${content}`.slice(0, 4000);
+      file.updatedAt = stamp;
+      appendAudit(db, "更新主人档案 USER.md", file.id, "AgentChat");
+      return { scope: "user_profile", note: "已写入主人档案，未来会话会记得。" };
+    }
+    if (args.scope === "trading_discipline") {
+      const file = db.agentStateFiles.AGENT ||= { id: "state_agent", title: "AGENT.md", content: "", updatedAt: stamp };
+      const base = String(file.content || "").replace(/^Agent 当前处于待配置状态；.*$/, "").trim();
+      file.content = `${base ? `${base}\n` : ""}- ${content}`.slice(0, 4000);
+      file.updatedAt = stamp;
+      appendAudit(db, "更新交易纪律 AGENT.md", file.id, "AgentChat");
+      return { scope: "trading_discipline", note: "已写入交易纪律。" };
+    }
+    db.memoryItems ||= [];
+    const item = { id: id("mem"), layer: "semantic", title: args.title || content.slice(0, 24), content, tags: ["agent_learned"], source: "agent_chat", createdAt: stamp };
+    db.memoryItems.unshift(item);
+    if (db.memoryItems.length > 200) db.memoryItems = db.memoryItems.slice(0, 200);
+    appendAudit(db, "写入长期记忆", item.id, "AgentChat");
+    return { scope: "lesson", memoryId: item.id, note: "已记住这条经验。" };
   }
 
   if (name === "propose_trade_plan") {
@@ -252,6 +402,19 @@ export async function executeTool(db, run, name, args = {}) {
     run.riskCheckId = risk.id;
     appendAudit(db, risk.passed ? "Agent 提出交易计划，待人工批准" : "Agent 交易计划被风控拒绝", plan.id, "AgentChat", risk.passed ? "info" : "warning");
     appendTrace(db, "agent_chat", `计划 ${symbol} ${args.direction}`, risk.passed ? "ok" : "blocked");
+    if (plan.status === "awaiting_approval") {
+      await notifyLark(db, {
+        severity: "warning",
+        title: "📈 新交易计划待你批准",
+        body: `AI 交易员对 **${symbol}** 提出${args.direction === "short" ? "做空" : "做多"}计划，已通过硬风控，等待你在应用内批准。`,
+        fields: [
+          { label: "入场区间", value: `${args.entryLow} - ${args.entryHigh}` },
+          { label: "止损", value: String(args.stopLoss) },
+          { label: "止盈", value: (args.takeProfits || []).join(" / ") || "-" },
+          { label: "风控", value: risk.summary || "通过" }
+        ]
+      });
+    }
     return {
       planId: plan.id,
       status: plan.status,
@@ -273,7 +436,7 @@ export function activeProvider() {
   return null;
 }
 
-async function anthropicTurn(model, messages) {
+async function anthropicTurn(model, messages, systemPrompt) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -284,7 +447,7 @@ async function anthropicTurn(model, messages) {
     body: JSON.stringify({
       model,
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt || BASE_RULES,
       messages,
       tools: TOOL_DEFS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.schema }))
     })
@@ -296,13 +459,13 @@ async function anthropicTurn(model, messages) {
   return response.json();
 }
 
-async function openaiCompatTurn(providerName, model, messages) {
+async function openaiCompatTurn(providerName, model, messages, systemPrompt) {
   const client = providerName === "deepseek"
     ? new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" })
     : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await client.chat.completions.create({
     model,
-    messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+    messages: [{ role: "system", content: systemPrompt || BASE_RULES }, ...messages],
     tools: TOOL_DEFS.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
     temperature: 0.2
   });
@@ -337,14 +500,16 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   let errorText = "";
 
   try {
+    const systemPrompt = buildSystemPrompt(db, userText);
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
-      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace);
+      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt);
     } else {
-      finalText = await openaiLoop(db, run, provider, userText, toolTrace);
+      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt);
     }
     run.status = "completed";
+    recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
     errorText = error.message;
@@ -373,11 +538,11 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   return { userMessage, agentMessage, run };
 }
 
-async function anthropicLoop(db, run, model, userText, toolTrace) {
+async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt) {
   const history = buildHistoryForLlm(db);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const response = await anthropicTurn(model, messages);
+    const response = await anthropicTurn(model, messages, systemPrompt);
     const textParts = response.content.filter((block) => block.type === "text").map((block) => block.text);
     const toolUses = response.content.filter((block) => block.type === "tool_use");
     if (response.stop_reason !== "tool_use" || !toolUses.length) {
@@ -394,11 +559,11 @@ async function anthropicLoop(db, run, model, userText, toolTrace) {
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
-async function openaiLoop(db, run, provider, userText, toolTrace) {
+async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt) {
   const history = buildHistoryForLlm(db);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const message = await openaiCompatTurn(provider.name, provider.model, messages);
+    const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt);
     if (!message.tool_calls?.length) {
       return (message.content || "").trim() || "（模型未返回内容）";
     }
@@ -435,8 +600,11 @@ async function runToolTracked(db, run, name, args, toolTrace) {
 function summarizeToolResult(name, result = {}) {
   if (result.error) return `失败：${result.error}`;
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
+  if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
+  if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "propose_trade_plan") return `${result.status}：${result.riskCheck?.summary || ""}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
+  if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
   if (name === "query_knowledge") return String(result.summary || "").slice(0, 120);
   if (name === "get_account") return `净值 ${result.portfolio?.totalEquityUsdt ?? "未同步"}，持仓 ${result.positions?.length || 0}`;
   if (name === "get_events") return `${Array.isArray(result) ? result.length : 0} 个事件`;

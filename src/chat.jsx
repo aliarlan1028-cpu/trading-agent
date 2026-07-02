@@ -140,8 +140,8 @@ function SetupChecklist({ data, llmConfigured, ui, onExample }) {
   const exchangeReady = (data.exchangeAccounts || []).some((account) => account.readEnabled);
   const mandateReady = (data.mandates || []).some((mandate) => ["active", "running"].includes(mandate.status));
   const items = [
-    { done: llmConfigured, icon: BrainCircuit, label: "配置 LLM API Key", hint: "在 .env 里填 ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY 之一并重启", action: null },
-    { done: exchangeReady, icon: KeyRound, label: "连接交易所（只读）", hint: "配置只读 API 后可同步账户与持仓；不配置也能用公开行情", action: () => ui.openPanel("keys") },
+    { done: llmConfigured, icon: BrainCircuit, label: "配置 LLM API Key", hint: "在系统设置里填写 Anthropic / OpenAI / DeepSeek / Gemini API Key", action: () => ui.setActive("systemSettings") },
+    { done: exchangeReady, icon: KeyRound, label: "连接交易所（只读）", hint: "配置只读 API 后可同步账户与持仓；不配置也能用公开行情", action: () => ui.setActive("systemSettings") },
     { done: mandateReady, icon: Shield, label: "激活授权委托", hint: "在下方说出目标，我会生成授权草案", action: null }
   ];
   const examples = [
@@ -231,7 +231,7 @@ export function ChatPage({ data, action, ui }) {
       {!llmConfigured && (
         <div className="llmBanner">
           <PlugZap size={15} />
-          未配置 LLM API Key，Agent 以本地规则模式运行（只能同步数据与风控预检）。在 .env 配置 ANTHROPIC_API_KEY 等任一 Key 后重启即可解锁完整决策能力。
+          未配置 LLM API Key，Agent 以本地规则模式运行（只能同步数据与风控预检）。打开系统设置填写任一模型 API Key 后即可解锁完整决策能力。
         </div>
       )}
       <div className="chatScroll" ref={scrollRef}>

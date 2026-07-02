@@ -31,6 +31,9 @@ export async function fetchSkillPackage(db, payload = {}) {
     name: payload.name || manifest.name || path.basename(payload.sourceUrl || skillId),
     source: payload.sourceUrl || "uploaded",
     version: manifest.version || "0.1.0",
+    format: manifest.format || "codex",
+    entryFile: manifest.entryFile || "SKILL.md",
+    clawhub: manifest.clawhub || null,
     status: "已拉取",
     scan: "未扫描",
     permissions: manifest.permissions || ["web.read"],
@@ -63,14 +66,53 @@ export async function runSkillSandbox(db, skillId, args = {}) {
 
 async function readSkillManifest(dir) {
   try {
-    const text = await fs.readFile(path.join(dir, "SKILL.md"), "utf8");
+    const entryPath = await findSkillEntry(dir);
+    const text = await fs.readFile(entryPath, "utf8");
+    const origin = await readJsonIfExists(path.join(path.dirname(entryPath), ".clawhub", "origin.json"));
+    const lock = await readJsonIfExists(path.join(path.dirname(entryPath), ".clawhub", "lock.json"));
     const name = text.match(/^#\s+(.+)$/m)?.[1];
+    const version = text.match(/version:\s*([^\s]+)/i)?.[1] || lock?.version || origin?.version;
     const permissions = [...text.matchAll(/permission[s]?:\s*([a-z0-9_., -]+)/gi)]
       .flatMap((match) => match[1].split(/[,\s]+/).filter(Boolean));
-    return { name, permissions };
+    return {
+      name: origin?.name || name,
+      version,
+      permissions: permissions.length ? permissions : origin?.permissions,
+      format: origin || lock || /clawhub/i.test(text) ? "clawhub" : "codex",
+      entryFile: path.relative(dir, entryPath),
+      clawhub: origin || lock ? { origin, lock } : null
+    };
   } catch {
     return {};
   }
+}
+
+async function readJsonIfExists(filePath) {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function findSkillEntry(dir, depth = 0) {
+  const names = ["SKILL.md", "skill.md", "skills.md"];
+  for (const name of names) {
+    const filePath = path.join(dir, name);
+    try {
+      await fs.access(filePath);
+      return filePath;
+    } catch {}
+  }
+  if (depth >= 3) throw new Error("Skill entry file not found");
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    try {
+      return await findSkillEntry(path.join(dir, entry.name), depth + 1);
+    } catch {}
+  }
+  throw new Error("Skill entry file not found");
 }
 
 function runInContainer(workdir, command, commandArgs) {

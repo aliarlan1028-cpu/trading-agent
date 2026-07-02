@@ -8,11 +8,14 @@ export function scanSkill(db, skillId) {
   if (!skill) return null;
   const permissions = skill.permissions || [];
   const highRisk = permissions.filter((permission) => HIGH_RISK_PERMISSIONS.has(permission));
-  const checksum = crypto.createHash("sha256").update(`${skill.name}:${skill.source}:${skill.version}:${permissions.join(",")}`).digest("hex");
+  const checksum = crypto.createHash("sha256").update(`${skill.name}:${skill.source}:${skill.version}:${skill.format}:${skill.entryFile}:${permissions.join(",")}`).digest("hex");
   skill.scanReport = {
     id: id("scan"),
     status: highRisk.length ? "needs_review" : "passed",
     checksum,
+    format: skill.format || "codex",
+    entryFile: skill.entryFile || "SKILL.md",
+    clawhubCompatible: skill.format === "clawhub" || Boolean(skill.clawhub),
     highRiskPermissions: highRisk,
     dependencyRisk: "not_executed_in_mvp",
     sandboxSmokeTest: highRisk.length ? "blocked_until_approval" : "passed",

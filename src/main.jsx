@@ -7,31 +7,32 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
   Layers,
   MessageSquare,
-  Search,
   Settings,
   Shield,
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, displayPct, exchangeState, formatTime, humanize, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
+import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { AuditSystemPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, RiskAuthPage } from "./pages.jsx";
-import { ConfigPanel } from "./panels.jsx";
+import { AuditSystemPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
+import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
 import "./styles.css";
 
 const navItems = [
   { id: "chat", label: "AI 交易员", icon: MessageSquare },
-  { id: "marketAccount", label: "市场与账户", icon: WalletCards },
+  { id: "marketAccount", label: "仪表盘", icon: WalletCards },
+  { id: "review", label: "复盘", icon: ClipboardList },
   { id: "eventsTasks", label: "事件与任务", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", icon: BookOpen },
   { id: "riskAuth", label: "风控与授权", icon: Shield },
-  { id: "auditSystem", label: "审计与系统", icon: Settings }
+  { id: "auditSystem", label: "审计", icon: Activity },
+  { id: "systemSettings", label: "系统设置", icon: Settings }
 ];
 
-function Sidebar({ active, setActive, data }) {
-  const currentStatus = systemStatus(data);
+function Sidebar({ active, setActive }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -49,14 +50,6 @@ function Sidebar({ active, setActive, data }) {
           );
         })}
       </nav>
-      <button className="sideStatus" title="查看系统状态" onClick={() => setActive("auditSystem")}>
-        <div className="sideStatusIcon"><Shield size={18} /></div>
-        <div>
-          <span>系统状态</span>
-          <strong className={currentStatus.tone}>{currentStatus.label}</strong>
-          <small>查看运行日志 <ChevronRight size={12} /></small>
-        </div>
-      </button>
     </aside>
   );
 }
@@ -71,8 +64,8 @@ function AppTopbar({ data, setActive, notify, action }) {
   return (
     <header className="appTopbar">
       <div className="topbarStatusGroup">
-        <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("riskAuth")} />
-        <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("riskAuth")} />
+        <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings")} />
+        <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings")} />
         <span className={`livePill ${live ? "on" : ""}`} title={live ? "真实交易写入已开启" : "真实交易写入关闭，全部动作停留在计划/模拟层"}>
           {live ? "实盘写入开启" : "实盘写入关闭"}
         </span>
@@ -94,6 +87,17 @@ function AppTopbar({ data, setActive, notify, action }) {
   );
 }
 
+function SystemSettingsPage({ data, action, ui }) {
+  return (
+    <div className="pageStack">
+      <PageHeader active="systemSettings" />
+      <div className="settingsPage">
+        <SystemConfigPanel data={data} action={action} ui={ui} />
+      </div>
+    </div>
+  );
+}
+
 function ExchangePill({ name, tone, account = {}, onClick }) {
   const state = exchangeState(account);
   return (
@@ -107,63 +111,104 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 }
 
 function RightRail({ data, action, ui }) {
-  const portfolio = data.portfolio || {};
+  const agentStatus = data.agentStatus || {};
+  const latestPlan = agentStatus.currentPlan || data.tradePlans?.[0] || {};
+  const latestAnalysis = agentStatus.latestAnalysis || data.analysisBundles?.[0] || {};
+  const latestRisk = latestPlan.lastRiskCheck || data.riskChecks?.[0] || {};
+  const riskWall = agentStatus.riskWall || {};
   const mandate = data.mandates?.find((item) => ["active", "running"].includes(item.status));
   const positions = data.positions || [];
-  const traces = (data.traces || []).slice(0, 5);
+  const orders = data.orders || data.executionOrders || [];
+  const timeline = [
+    ...(agentStatus.timeline || []).map((item) => ({
+      id: item.id || `${item.phase}:${item.summary}`,
+      phase: item.phase,
+      title: item.title || item.summary,
+      status: item.summary === "error" ? "error" : item.status || "ok",
+      createdAt: item.createdAt
+    })),
+    ...(data.traces || [])
+  ].slice(0, 4);
   const budget = data.system?.remainingDailyLossUsdt;
+  const avgExpertConfidence = latestAnalysis.expertViews?.length
+    ? latestAnalysis.expertViews.reduce((sum, view) => sum + Number(view.confidence || 0), 0) / latestAnalysis.expertViews.length
+    : null;
+  const beforeConfidence = latestPlan.confidenceBefore ?? latestPlan.confidence_before ?? null;
+  const afterConfidence = latestPlan.confidenceAfter ?? latestPlan.confidence_after ?? avgExpertConfidence;
+  const confidenceText = beforeConfidence !== null || afterConfidence !== null
+    ? `${beforeConfidence !== null ? `${Math.round(Number(beforeConfidence) * 100)}%` : "未记录"} → ${afterConfidence !== null ? `${Math.round(Number(afterConfidence) * 100)}%` : "未记录"}`
+    : "未记录";
+  const decisionSummary = latestAnalysis.summary || latestPlan.rationale || agentStatus.currentObservation || "等待真实数据与授权配置。";
+  const citationCount = (latestAnalysis.citations || []).length;
+  const ruleCount = (latestAnalysis.rulesTriggered || latestRisk.checks || []).length;
+  const memoryCount = (data.memoryItems || []).length;
+  const gateBlocked = latestRisk.decision === "blocked" || riskWall.allowOpen === false || data.system?.killSwitch;
+  const gateTone = gateBlocked ? "danger" : riskWall.allowOpen ? "ok" : "warning";
+  const gateLabel = data.system?.killSwitch ? "熔断中" : latestRisk.summary || (riskWall.allowOpen ? "允许开仓" : "等待配置");
+  const nextAction = agentStatus.nextActions?.[0] || data.system?.latestAction || "等待下一轮巡检";
+  const accountConstraint = positions.length
+    ? `${positions.length} 个持仓会影响下一步判断`
+    : orders.length
+      ? `${orders.length} 个委托需要避让`
+      : "暂无持仓/委托冲突";
   return (
     <aside className="rightRail">
-      <div className="railBlock">
-        <span className="railLabel">账户净值</span>
-        <strong className="railValue">{displayMoney(portfolio.totalEquityUsdt)} <small>USDT</small></strong>
-        <span className={`railSub ${Number(portfolio.todayPnl || 0) >= 0 ? "positive" : "negative"}`}>
-          今日 {displayPct(portfolio.todayPnlPct)} · {displayMoney(portfolio.todayPnl)}
-        </span>
+      <div className="railBlock railHero agentTaskBlock">
+        <span className="railLabel">当前任务</span>
+        <strong className="railValue">{agentStatus.currentGoal || "等待指令"}</strong>
+        <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{agentStatus.stateLabel || humanize(agentStatus.state, "待配置")}</StatusBadge>
+        <p>{agentStatus.currentObservation || agentStatus.reasonNotTrading || "Agent 正在等待配置和下一步目标。"}</p>
+        <button className="textButton" onClick={() => ui.setActive("eventsTasks")}>下一步：{nextAction} <ChevronRight size={13} /></button>
       </div>
+
       <div className="railBlock">
-        <span className="railLabel">今日亏损预算</span>
-        {budget === null || budget === undefined
-          ? <span className="railSub">未授权 — 激活授权委托后启用</span>
-          : <>
-              <ProgressBar value={Math.max(0, Math.min(100, budget > 0 ? 100 : 0))} />
-              <span className="railSub">剩余 {displayMoney(budget)} USDT</span>
-            </>}
-        <span className="railSub">授权：{mandate ? humanize(mandate.status) : "未激活"}</span>
+        <span className="railLabel">决策依据</span>
+        <p className="railDecision">{decisionSummary}</p>
+        <div className="railMetricGrid">
+          <span>交易计划<b>{latestPlan.symbol ? `${latestPlan.symbol} ${humanize(latestPlan.direction, "")}` : "未生成"}</b></span>
+          <span>置信度<b>{confidenceText}</b></span>
+          <span>规则/Skill<b>{ruleCount} 条 / {data.skillRuns?.length || 0} 次</b></span>
+          <span>记忆/引用<b>{memoryCount} 条 / {citationCount} 个</b></span>
+        </div>
+        {afterConfidence !== null && <ProgressBar value={Math.round(Number(afterConfidence) * 100)} tone="blue" />}
       </div>
+
       <div className="railBlock">
-        <span className="railLabel">持仓 {positions.length}</span>
-        {!positions.length && <span className="railSub">暂无持仓</span>}
-        {positions.slice(0, 4).map((position) => {
-          const pnl = Number(position.pnl || 0);
-          return (
-            <div className="railRow" key={position.id}>
-              <span>{position.symbol} {position.direction || ""}</span>
-              <b className={pnl >= 0 ? "positive" : "negative"}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl)}</b>
-            </div>
-          );
-        })}
+        <span className="railLabel">风控闸门</span>
+        <div className={`gateBanner ${gateTone}`}>
+          <strong>{gateLabel}</strong>
+          <small>{latestRisk.blockers?.[0]?.detail || agentStatus.reasonNotTrading || "等待下一次风控校验。"}</small>
+        </div>
+        <div className="railMetricGrid">
+          <span>开仓<b>{riskWall.allowOpen ? "允许" : "禁止"}</b></span>
+          <span>减仓<b>{riskWall.allowReduceOnly ? "允许" : "待授权"}</b></span>
+          <span>日亏损预算<b>{budget === null || budget === undefined ? "未授权" : `${displayMoney(budget)} USDT`}</b></span>
+          <span>人工确认<b>{mandate ? "按阈值" : "需要授权"}</b></span>
+        </div>
       </div>
+
       <div className="railBlock">
-        <span className="railLabel">实盘绩效</span>
-        {data.performance?.trades
-          ? <>
-              <div className="railRow"><span>已平仓交易</span><b>{data.performance.trades} 笔 · 胜率 {data.performance.winRatePct}%</b></div>
-              <div className="railRow"><span>累计盈亏</span><b className={data.performance.totalPnlUsdt >= 0 ? "positive" : "negative"}>{displayMoney(data.performance.totalPnlUsdt)} USDT</b></div>
-              {data.performance.profitFactor !== null && <div className="railRow"><span>盈亏比</span><b>{data.performance.profitFactor}</b></div>}
-            </>
-          : <span className="railSub">暂无已平仓交易{data.performance?.openExecutions ? ` · ${data.performance.openExecutions} 个在途执行单` : ""}</span>}
+        <span className="railLabel">账户约束</span>
+        <div className="railMetricGrid">
+          <span>持仓影响<b>{positions.length} 个</b></span>
+          <span>委托冲突<b>{orders.length} 个</b></span>
+          <span>账户同步<b>{data.accountSnapshots?.[0] ? formatTime(data.accountSnapshots[0].createdAt) : "未同步"}</b></span>
+          <span>约束摘要<b>{accountConstraint}</b></span>
+        </div>
+        <button className="textButton" onClick={() => ui.setActive("marketAccount")}>查看仪表盘 <ChevronRight size={13} /></button>
       </div>
+
       <div className="railBlock">
         <span className="railLabel">Agent 最近动作</span>
-        {!traces.length && <span className="railSub">暂无记录</span>}
-        {traces.map((trace) => (
-          <div className="railRow" key={trace.id}>
-            <span title={trace.title}>{formatTime(trace.createdAt)} {String(trace.title || "").slice(0, 14)}</span>
-            <StatusBadge tone={statusTone(trace.status)}>{humanize(trace.status)}</StatusBadge>
+        {!timeline.length && <span className="railSub">暂无记录</span>}
+        {timeline.map((trace) => (
+          <div className="railActionItem" key={trace.id}>
+            <span>{trace.createdAt ? formatTime(trace.createdAt) : humanize(trace.phase, trace.phase || "step")}</span>
+            <b title={trace.title}>{String(trace.title || "-").slice(0, 36)}</b>
+            <StatusBadge tone={statusTone(trace.status || trace.summary)}>{humanize(trace.status || trace.summary || "ok")}</StatusBadge>
           </div>
         ))}
-        <button className="textButton" onClick={() => ui.setActive("auditSystem")}>完整审计 <ChevronRight size={13} /></button>
+        <button className="textButton" onClick={() => ui.setActive("review")}>进入复盘 <ChevronRight size={13} /></button>
       </div>
       <div className="railBlock railActions">
         <button onClick={() => action("/api/system/autonomy", { enabled: !data.system.autonomyEnabled })}>
@@ -183,10 +228,12 @@ function App() {
   const content = useMemo(() => {
     if (!data) return null;
     if (active === "marketAccount") return <MarketAccountPage data={data} action={action} ui={ui} />;
+    if (active === "review") return <ReviewPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
+    if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, data, action]);
 
@@ -195,7 +242,7 @@ function App() {
 
   return (
     <div className={`appShell ${active === "chat" ? "withRail" : ""}`}>
-      <Sidebar active={active} setActive={setActive} data={data} />
+      <Sidebar active={active} setActive={setActive} />
       <main className="mainArea">
         <AppTopbar data={data} setActive={setActive} notify={notify} action={action} />
         <div className="content">{content}</div>
