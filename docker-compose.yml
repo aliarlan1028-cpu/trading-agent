@@ -1,0 +1,16 @@
+services:
+  trading-agent:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

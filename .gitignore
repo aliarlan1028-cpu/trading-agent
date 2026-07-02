@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/db.json
+data/trading-agent.sqlite*
+docs/rendered-unified/
+.env
+.DS_Store
+*.log
+backups/
+data/
+assets/
+.claude/
