@@ -110,6 +110,17 @@ export function MarketAccountPage({ data, action, ui }) {
         </Card>
       </div>
 
+      <Card>
+        <SectionTitle icon={Activity} title="合约微观结构" action={<button className="secondaryButton" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /> 刷新</button>} />
+        <div className="microGrid">
+          <div><span>资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
+          <div><span>未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
+          <div><span>订单簿买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
+          <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
+        </div>
+        <p className="muted">{market.microSyncedAt ? `资金费率反映多空拥挤度、订单簿买盘占比 <42% 偏空 / >58% 偏多。最后同步 ${formatDateTime(market.microSyncedAt)}` : "点击「刷新」拉取 OKX 资金费率、未平仓量与订单簿深度——合约方向判断需要它，不能只看 K 线。"}</p>
+      </Card>
+
       <div className="dashboardGrid compact">
         <Card>
           <SectionTitle icon={ListChecks} title="下一步动作" />
@@ -548,6 +559,8 @@ export function ReviewPage({ data, action, ui }) {
         </Card>
       </div>
 
+      <BacktestCard data={data} action={action} />
+
       <div className="reviewGrid">
         <Card>
           <SectionTitle icon={AlertTriangle} title="亏损聚类" />
@@ -593,6 +606,53 @@ export function ReviewPage({ data, action, ui }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+function EquitySparkline({ values = [] }) {
+  if (!values || values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(1e-9, max - min);
+  const path = values.map((value, index) => {
+    const x = (index / (values.length - 1)) * 100;
+    const y = 44 - ((value - min) / range) * 40;
+    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(" ");
+  return <svg className="equityCurve" viewBox="0 0 100 48" preserveAspectRatio="none"><path d={path} /></svg>;
+}
+
+function BacktestCard({ data, action }) {
+  const [form, setForm] = useState({ symbol: "BTC/USDT", timeframe: "1h", fastPeriod: 10, slowPeriod: 30, stopLossPct: 2, takeProfitR: 2 });
+  const latest = (data.backtests || [])[0];
+  const positive = latest && Number(latest.netReturnPct) >= 0;
+  return (
+    <Card>
+      <SectionTitle icon={LineChart} title="策略回测" action={<button className="secondaryButton" onClick={() => action("/api/backtest/run", { ...form, fastPeriod: Number(form.fastPeriod), slowPeriod: Number(form.slowPeriod), stopLossPct: Number(form.stopLossPct), takeProfitR: Number(form.takeProfitR) })}><Rocket size={14} /> 运行回测</button>} />
+      <div className="dashboardToolbar">
+        <div className="filterGroup">{["15m", "1h", "4h", "1d"].map((tf) => <button className={form.timeframe === tf ? "active" : ""} key={tf} onClick={() => setForm((current) => ({ ...current, timeframe: tf }))}>{tf}</button>)}</div>
+        <span>SMA({form.fastPeriod}/{form.slowPeriod}) 金叉开多 · 止损 {form.stopLossPct}% · 止盈 {form.takeProfitR}R</span>
+      </div>
+      {latest ? (
+        <>
+          <div className="btMetrics">
+            <div><span>交易笔数</span><strong>{latest.trades}</strong></div>
+            <div><span>胜率</span><strong>{latest.winRatePct === null ? "-" : `${latest.winRatePct}%`}</strong></div>
+            <div><span>盈亏比</span><strong>{latest.profitFactor ?? "-"}</strong></div>
+            <div><span>期望</span><strong>{latest.expectancyR ?? "-"}R</strong></div>
+            <div><span>最大回撤</span><strong className="negative">{latest.maxDrawdownPct ?? "-"}%</strong></div>
+            <div><span>净收益</span><strong className={positive ? "positive" : "negative"}>{displayPct(latest.netReturnPct)}</strong></div>
+          </div>
+          <EquitySparkline values={latest.equityCurve} />
+          <p className="muted">{latest.symbol} {latest.timeframe} · {latest.candles} 根 K 线 · {latest.strategy}{latest.note ? ` · ${latest.note}` : ""}</p>
+        </>
+      ) : (
+        <div className="emptyPanel emptyPanelAction">
+          <strong>还没有回测结果</strong>
+          <span>点击「运行回测」在历史 K 线上验证策略，得到胜率、盈亏比与最大回撤——上实盘前先用它证明策略有效。</span>
+        </div>
+      )}
+    </Card>
   );
 }
 

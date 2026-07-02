@@ -134,7 +134,9 @@ export function SystemConfigPanel({ data, action, ui }) {
     BRAVE_SEARCH_API_KEY: "",
     TAVILY_API_KEY: "",
     SERPAPI_API_KEY: "",
-    ALERT_WEBHOOK_URL: ""
+    ALERT_WEBHOOK_URL: "",
+    LARK_WEBHOOK_URL: "",
+    LARK_WEBHOOK_SECRET: ""
   });
   const [runtimeForm, setRuntimeForm] = useState({
     ADMIN_PASSWORD: "",
@@ -167,6 +169,10 @@ export function SystemConfigPanel({ data, action, ui }) {
     ["SERPAPI_API_KEY", "SerpAPI API Key", integrations.search?.serpapi?.hasKey],
     ["ALERT_WEBHOOK_URL", "告警 Webhook URL", integrations.alerts?.hasWebhook]
   ];
+  const larkSecretRows = [
+    ["LARK_WEBHOOK_URL", "飞书机器人 Webhook URL", integrations.lark?.hasWebhook],
+    ["LARK_WEBHOOK_SECRET", "飞书签名密钥（可选）", integrations.lark?.signed]
+  ];
   const runtimeSecretRows = [
     ["ADMIN_PASSWORD", "管理员登录密码", runtime.adminPasswordSet],
     ["HTTP_PROXY", "HTTP Proxy", runtime.httpProxySet],
@@ -177,7 +183,7 @@ export function SystemConfigPanel({ data, action, ui }) {
     { id: "llm", icon: BrainCircuit, title: "模型", sub: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置" },
     { id: "exchange", icon: WalletCards, title: "交易所", sub: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置" },
     { id: "live", icon: Zap, title: "实盘灰度", sub: live.effective ? "已开启" : "关闭" },
-    { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置" },
+    { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.lark?.hasWebhook ? "飞书已接入" : (integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置") },
     { id: "runtime", icon: Settings, title: "运行参数", sub: runtime.authRequired === false ? "免登录" : "鉴权开启" }
   ];
   function updateLlm(key, value) {
@@ -242,11 +248,11 @@ export function SystemConfigPanel({ data, action, ui }) {
       LANGSMITH_ENDPOINT: integrationForm.LANGSMITH_ENDPOINT,
       LANGSMITH_PROJECT: integrationForm.LANGSMITH_PROJECT
     };
-    for (const [keyName] of integrationSecretRows) {
+    for (const [keyName] of [...integrationSecretRows, ...larkSecretRows]) {
       if (integrationForm[keyName]) body[keyName] = integrationForm[keyName];
     }
     const result = await action("/api/config", body);
-    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" ? "" : value])));
+    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" || key.startsWith("LARK_") ? "" : value])));
   }
   async function saveRuntime(event) {
     event.preventDefault();
@@ -358,6 +364,19 @@ export function SystemConfigPanel({ data, action, ui }) {
               {integrationSecretRows.map(([keyName, label, configured]) => (
                 <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
               ))}
+            </div>
+            <div className="configFieldset">
+              <div className="configFieldsetHead">
+                <strong>飞书（Lark）主动通知</strong>
+                <StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "warning"}>{integrations.lark?.hasWebhook ? (integrations.lark?.signed ? "已配置 · 已签名" : "已配置") : "未配置"}</StatusBadge>
+              </div>
+              <span className="fieldHint">配置飞书自定义机器人后，新计划待批准、逼近止损、保本移动、一键熔断等关键事件会主动推送到你的飞书。</span>
+              <div className="formGrid">
+                {larkSecretRows.map(([keyName, label, configured]) => (
+                  <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : (keyName === "LARK_WEBHOOK_URL" ? "https://open.feishu.cn/open-apis/bot/v2/hook/..." : "开启签名校验时填写")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                ))}
+              </div>
+              {integrations.lark?.hasWebhook && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/lark-test", {})}><Bell size={14} /> 发送飞书测试消息</button>}
             </div>
             <button className="primaryButton" type="submit"><PlugZap size={14} /> 保存外部服务配置</button>
           </form>
