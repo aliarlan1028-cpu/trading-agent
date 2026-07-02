@@ -179,13 +179,13 @@ export function EventsTasksPage({ data, action, ui }) {
       <div className="eventsGrid">
         <Card className="eventRadarCard">
           <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
-          <div className="dateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => { setSelectedEventId(event.id); ui.notify(`已选择事件：${event.title}`); }}><span>{event.due || "待定"}</span><span>{event.category}</span></button>)}</div>
+          <div className="dateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => { setSelectedEventId(event.id); ui.notify(`已选择事件：${event.title}`); }}><span>{formatDate(event.due, "待定")}</span><span>{event.category}</span></button>)}</div>
           {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
           <div className="eventRadarInner">
             <div className="eventTimeline">
               {eventRows.map((event, index) => (
                 <div className="eventTimelineItem" key={event.id}>
-                  <b>{event.due || "待定"}<small>{event.category}</small></b>
+                  <b>{formatDateTime(event.due, "待定")}<small>{event.category}</small></b>
                   <span>{event.title}</span>
                   <StatusBadge tone={event.impact >= 80 ? "danger" : "warning"}>{event.impactLabel || "中影响"}</StatusBadge>
                 </div>
@@ -193,7 +193,7 @@ export function EventsTasksPage({ data, action, ui }) {
             </div>
             <div className="eventDetail">
               <div className="eventDetailHead"><strong>{primaryEvent.title || "暂无事件"}</strong><StatusBadge tone={primaryEvent.impact >= 80 ? "danger" : "warning"}>{primaryEvent.impactLabel || "待评估"}</StatusBadge><button className="textButton" onClick={() => ui.openPanel("eventSources")}>事件详情 <ChevronRight size={14} /></button></div>
-              <div className="countdown eventDue"><b>{primaryEvent.due || "待定"}</b></div>
+              <div className="countdown eventDue"><b>{formatDateTime(primaryEvent.due, "待定")}</b></div>
               <div className="eventMetrics">
                 <span>影响等级<b className={primaryEvent.impact >= 80 ? "negative" : "warning"}>{primaryEvent.impactLabel || "待评估"}</b></span>
                 <span>市场影响度<b>{primaryEvent.impact ? `${Number(primaryEvent.impact) / 10}/10` : "未评估"}</b><ProgressBar value={primaryEvent.impact || 0} tone="red" /></span>
