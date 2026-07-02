@@ -140,7 +140,6 @@ function RightRail({ data, action, ui }) {
     : "未记录";
   const decisionSummary = latestAnalysis.summary || latestPlan.rationale || agentStatus.currentObservation || "等待真实数据与授权配置。";
   const citationCount = (latestAnalysis.citations || []).length;
-  const ruleCount = (latestAnalysis.rulesTriggered || latestRisk.checks || []).length;
   const memoryCount = (data.memoryItems || []).length;
   const gateBlocked = latestRisk.decision === "blocked" || riskWall.allowOpen === false || data.system?.killSwitch;
   const gateTone = gateBlocked ? "danger" : riskWall.allowOpen ? "ok" : "warning";
@@ -165,10 +164,8 @@ function RightRail({ data, action, ui }) {
         <span className="railLabel">决策依据</span>
         <p className="railDecision">{decisionSummary}</p>
         <div className="railMetricGrid">
-          <span>交易计划<b>{latestPlan.symbol ? `${latestPlan.symbol} ${humanize(latestPlan.direction, "")}` : "未生成"}</b></span>
           <span>置信度<b>{confidenceText}</b></span>
-          <span>规则/Skill<b>{ruleCount} 条 / {data.skillRuns?.length || 0} 次</b></span>
-          <span>记忆/引用<b>{memoryCount} 条 / {citationCount} 个</b></span>
+          <span>知识引用<b>{memoryCount} 条记忆 / {citationCount} 处</b></span>
         </div>
         {afterConfidence !== null && <ProgressBar value={Math.round(Number(afterConfidence) * 100)} tone="blue" />}
       </div>
@@ -187,16 +184,18 @@ function RightRail({ data, action, ui }) {
         </div>
       </div>
 
-      <div className="railBlock">
-        <span className="railLabel">账户约束</span>
-        <div className="railMetricGrid">
-          <span>持仓影响<b>{positions.length} 个</b></span>
-          <span>委托冲突<b>{orders.length} 个</b></span>
-          <span>账户同步<b>{data.accountSnapshots?.[0] ? formatTime(data.accountSnapshots[0].createdAt) : "未同步"}</b></span>
-          <span>约束摘要<b>{accountConstraint}</b></span>
+      {(positions.length > 0 || orders.length > 0) && (
+        <div className="railBlock">
+          <span className="railLabel">账户约束</span>
+          <div className="railMetricGrid">
+            <span>持仓影响<b>{positions.length} 个</b></span>
+            <span>委托冲突<b>{orders.length} 个</b></span>
+            <span>账户同步<b>{data.accountSnapshots?.[0] ? formatTime(data.accountSnapshots[0].createdAt) : "未同步"}</b></span>
+            <span>约束摘要<b>{accountConstraint}</b></span>
+          </div>
+          <button className="textButton" onClick={() => ui.setActive("marketAccount")}>查看仪表盘 <ChevronRight size={13} /></button>
         </div>
-        <button className="textButton" onClick={() => ui.setActive("marketAccount")}>查看仪表盘 <ChevronRight size={13} /></button>
-      </div>
+      )}
 
       <div className="railBlock">
         <span className="railLabel">Agent 最近动作</span>
