@@ -1,5 +1,6 @@
 :root {
   font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 14px;
   color: #2a2620;
   background: #faf9f7;
   font-synthesis: none;
@@ -38,13 +39,13 @@ p {
 }
 
 h2 {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
 }
 
 h3 {
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -89,7 +90,7 @@ h3 {
 }
 
 .brand strong {
-  font-size: 16px;
+  font-size: 13px;
   letter-spacing: 0;
 }
 
@@ -110,7 +111,7 @@ h3 {
   color: #4a443b;
   background: transparent;
   text-align: left;
-  font-size: 14.5px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
@@ -157,7 +158,7 @@ h3 {
 .sideStatus small {
   display: block;
   color: #8f8778;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .sideStatus strong {
@@ -250,12 +251,12 @@ h3 {
 }
 
 .exchangePill b {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .exchangePill small {
   color: #7a7264;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -276,7 +277,7 @@ h3 {
 }
 
 .exchangeLogo {
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
 }
 
@@ -319,7 +320,7 @@ h3 {
   place-items: center;
   color: #ffffff;
   background: #c9553d;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .avatarButton {
@@ -360,14 +361,14 @@ h3 {
 }
 
 .pageHeader h1 {
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1.2;
   letter-spacing: 0;
 }
 
 .pageHeader p {
   color: #6b6455;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .dashCard {
@@ -395,7 +396,7 @@ h3 {
 }
 
 .sectionTitle h2 {
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0;
 }
 
@@ -535,20 +536,20 @@ h3 {
 .metricCard span,
 .riskLine span {
   color: #7a7264;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .metricCard strong {
   display: block;
   margin-top: 8px;
-  font-size: 20px;
+  font-size: 16px;
   letter-spacing: 0;
 }
 
 .metricCard small {
   display: block;
   margin-top: 5px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .sparkline {
@@ -572,7 +573,7 @@ h3 {
   align-items: center;
   color: #3f8f5b;
   background: #eef6ee;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -674,7 +675,7 @@ h3 {
   padding: 7px 10px;
   color: #e07a3f;
   background: #f6efe6;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .taskTabs button.active,
@@ -715,7 +716,7 @@ h3 {
   margin: 14px 0 10px;
   color: #ffffff;
   background: #e07a3f;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 750;
   box-shadow: 0 12px 26px rgba(20, 103, 255, 0.22);
 }
@@ -743,11 +744,11 @@ h3 {
 
 .agentStateMiniGrid span {
   color: #7a7264;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .agentStateMiniGrid strong {
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -808,7 +809,7 @@ h3 {
 .eventMetrics span,
 .lossBudget span {
   color: #7a7264;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .planMatrix b,
@@ -818,7 +819,7 @@ h3 {
   display: block;
   margin-top: 6px;
   color: #2a2620;
-  font-size: 15px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -828,7 +829,7 @@ h3 {
   gap: 12px;
   margin-top: 14px;
   color: #7a7264;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .planCard footer button {
@@ -937,7 +938,7 @@ h3 {
   color: #7a7264;
   background: #f6f2ec;
   font-style: normal;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .marketGrid {
@@ -983,7 +984,7 @@ h3 {
 
 .chartLegend {
   color: #7a7264;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .chartLegend b {
@@ -1039,7 +1040,7 @@ h3 {
 
 .emptyPanelAction strong {
   color: #2a2620;
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .emptyPanelAction span {
@@ -1095,7 +1096,7 @@ h3 {
   gap: 12px;
   min-height: 42px;
   border-bottom: 1px solid #ece7de;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .dataHead {
@@ -1132,14 +1133,14 @@ h3 {
   display: grid;
   place-items: center;
   margin: 8px auto;
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 800;
 }
 
 .safetyCard strong {
   display: block;
   margin: 14px 0;
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .scale {
@@ -1147,7 +1148,7 @@ h3 {
   justify-content: space-between;
   margin-top: 8px;
   color: #7a7264;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .eventsGrid {
@@ -1179,7 +1180,7 @@ h3 {
   gap: 2px;
   color: #7a7264;
   background: #ffffff;
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1249,15 +1250,15 @@ h3 {
   gap: 12px;
   margin: 16px 0 12px;
   color: #e07a3f;
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .countdown b {
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .eventDue b {
-  font-size: 16px;
+  font-size: 13px;
   text-align: center;
   white-space: nowrap;
 }
@@ -1269,7 +1270,7 @@ h3 {
 .eventDetailHead strong {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -1376,7 +1377,7 @@ h3 {
   border: 1px solid #e2dac9;
   border-radius: 8px;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .conceptGraph {
@@ -1534,7 +1535,7 @@ h3 {
 
 .riskRuleBox span {
   color: #5c554a;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .riskScoreBox {
@@ -1553,7 +1554,7 @@ h3 {
 
 .riskScoreBox strong {
   display: block;
-  font-size: 20px;
+  font-size: 16px;
 }
 
 .riskGauge {
@@ -1565,12 +1566,12 @@ h3 {
   display: grid;
   place-items: center;
   color: #2a2620;
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 800;
 }
 
 .riskGauge small {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .lossBudget {
@@ -1644,7 +1645,7 @@ h3 {
 
 .auditStep small {
   color: #7a7264;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .filterGroup {
@@ -1690,7 +1691,7 @@ h3 {
 .miniChart strong {
   display: block;
   margin-top: 18px;
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .barChart {
@@ -1784,12 +1785,12 @@ h3 {
 .panelForm label,
 .panelItem small {
   color: #7a7264;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .configPanel h2 {
   margin-top: 4px;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .panelStack,
@@ -2100,7 +2101,7 @@ h3 {
   white-space: nowrap;
   padding: 6px 12px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   background: #fff4e5;
   color: #a35b00;
@@ -2123,7 +2124,7 @@ h3 {
   border: 1px solid #eecfc3;
   background: #fff;
   color: #b23b23;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2150,7 +2151,7 @@ h3 {
   background: #fff8e8;
   border: 1px solid #f5e3b5;
   color: #8a6100;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2190,7 +2191,7 @@ h3 {
 
 .chatContent p {
   margin: 0 0 6px;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -2269,7 +2270,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .chatPlanCard header small {
@@ -2299,7 +2300,7 @@ h3 {
 }
 
 .planNumbers b {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .riskSummaryRow {
@@ -2328,7 +2329,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: 11px;
   color: #2f7d43;
 }
 
@@ -2354,7 +2355,7 @@ h3 {
   border-radius: 9px;
   border: 1px solid #dcd2bf;
   background: #fff;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .approveButton {
@@ -2407,7 +2408,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .mandateGridMini small {
@@ -2434,7 +2435,7 @@ h3 {
   border: none;
   background: none;
   color: #a89f8f;
-  font-size: 12px;
+  font-size: 11px;
   padding: 0 4px;
 }
 
@@ -2442,7 +2443,7 @@ h3 {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
+  font-size: 11px;
   color: #6b6455;
   padding: 3px 6px;
 }
@@ -2477,7 +2478,7 @@ h3 {
   border: none;
   outline: none;
   resize: none;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.6;
   max-height: 130px;
   background: none;
@@ -2514,12 +2515,12 @@ h3 {
 }
 
 .setupChecklist h2 {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .setupChecklist > p {
   color: #6b6455;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .checkItems {
@@ -2569,7 +2570,7 @@ h3 {
   border: 1px dashed #d7ccb8;
   background: none;
   color: #c9642e;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .examplePrompts button:hover {
@@ -2603,23 +2604,23 @@ h3 {
 }
 
 .railLabel {
-  font-size: 12px;
+  font-size: 11px;
   color: #a89f8f;
   font-weight: 600;
 }
 
 .railValue {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .railValue small {
-  font-size: 12px;
+  font-size: 11px;
   color: #a89f8f;
   font-weight: 500;
 }
 
 .railSub {
-  font-size: 12px;
+  font-size: 11px;
   color: #6b6455;
 }
 
@@ -2644,7 +2645,7 @@ h3 {
   border-radius: 10px;
   border: 1px solid #dcd2bf;
   background: #fff;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .railActions button.danger {
@@ -2684,7 +2685,7 @@ h3 {
   color: #b23b23;
   border-radius: 7px;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .execDot {
