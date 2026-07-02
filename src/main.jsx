@@ -22,7 +22,7 @@ import { ConfigPanel } from "./panels.jsx";
 import "./styles.css";
 
 const navItems = [
-  { id: "chat", label: "指挥台", icon: MessageSquare },
+  { id: "chat", label: "AI 交易员", icon: MessageSquare },
   { id: "marketAccount", label: "市场与账户", icon: WalletCards },
   { id: "eventsTasks", label: "事件与任务", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", icon: BookOpen },
