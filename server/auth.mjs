@@ -3,8 +3,18 @@ import crypto from "node:crypto";
 const sessions = new Map();
 
 export function authRequired() {
-  return process.env.AUTH_REQUIRED !== "false";
+  if (process.env.AUTH_REQUIRED === "false") return false;
+  if (!process.env.ADMIN_PASSWORD) {
+    if (!warnedNoPassword) {
+      console.warn("[auth] ADMIN_PASSWORD 未配置，已降级为免登录模式；生产环境请务必设置。");
+      warnedNoPassword = true;
+    }
+    return false;
+  }
+  return true;
 }
+
+let warnedNoPassword = false;
 
 export function installAuth(app, db) {
   app.post("/api/auth/login", (req, res) => {

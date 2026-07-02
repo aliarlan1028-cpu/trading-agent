@@ -1,16 +1,18 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { activeProvider, runAgentChat } from "./agentChat.mjs";
 import { addMemoryItem, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { installAuth, requirePermission } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncPrivateReadOnly, syncPublicMarket } from "./exchangeConnector.mjs";
+import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
+import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
@@ -23,6 +25,7 @@ import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, saveDb, v
 import { executeTradeAction } from "./tradeActions.mjs";
 
 dotenv.config();
+installProxyFromEnv();
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -438,6 +441,34 @@ app.patch("/api/agent/state-files/:name", requirePermission("admin:system"), (re
 
 app.get("/api/agent/status", (_req, res) => {
   res.json(getAgentStatus(db));
+});
+
+app.get("/api/agent/chat", (_req, res) => {
+  res.json({
+    messages: (db.chatMessages || []).slice(-100),
+    provider: activeProvider(),
+    llmConfigured: Boolean(activeProvider())
+  });
+});
+
+app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
+  try {
+    const result = await runAgentChat(db, { message: req.body.message }, saveDb);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/exchange/:exchange/klines", async (req, res) => {
+  try {
+    const result = await syncPublicKlines(db, req.params.exchange, req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
+    saveDb(db);
+    const market = db.markets.find((item) => item.symbol === result.symbol);
+    res.json({ ...result, candles: market?.candles || [] });
+  } catch (error) {
+    res.status(502).json({ error: `K 线同步失败：${error.message}` });
+  }
 });
 
 app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {

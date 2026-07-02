@@ -542,6 +542,7 @@ export function normalizeDatabase(db) {
     }
   ];
   db.llmRuns ||= [];
+  db.chatMessages ||= [];
   db.agentSteps ||= [];
   db.agentToolCalls ||= [];
   db.tradeIntents ||= [];

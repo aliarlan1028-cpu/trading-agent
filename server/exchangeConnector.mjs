@@ -74,6 +74,7 @@ export async function fetchPublicTicker(exchange, symbol) {
     const response = await fetch(`${BINANCE_TICKER_URL}?symbol=${encodeURIComponent(toBinanceSymbol(symbol))}`, { signal: timer.signal });
     if (!response.ok) throw new Error(`Binance ticker HTTP ${response.status}`);
     const ticker = await response.json();
+    if (!Number.isFinite(Number(ticker.lastPrice))) throw new Error(ticker?.msg || "Binance ticker unavailable");
     return {
       exchange: "BINANCE",
       symbol: toBinanceSymbol(symbol),
@@ -90,7 +91,8 @@ export async function fetchPublicTicker(exchange, symbol) {
 }
 
 export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/USDT") {
-  const ticker = await fetchPublicTicker(exchange, symbol);
+  const { result: ticker, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
+  if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -111,6 +113,89 @@ export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/U
   appendAudit(db, "同步公开行情", `${exchange}:${symbol}`, "ExchangeConnector");
   appendTrace(db, "exchange_market", `同步 ${exchange} ${symbol}`);
   return ticker;
+}
+
+const BINANCE_INTERVALS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+const OKX_BARS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
+
+export async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200) {
+  const normalizedExchange = String(exchange || "BINANCE").toUpperCase();
+  const tf = BINANCE_INTERVALS[timeframe] ? timeframe : "1h";
+  const timer = timeoutSignal(8000);
+  try {
+    if (normalizedExchange === "OKX") {
+      const url = `${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`;
+      const response = await fetch(url, { signal: timer.signal });
+      if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
+      const payload = await response.json();
+      return (payload.data || []).map((row) => ({
+        time: Number(row[0]),
+        open: Number(row[1]),
+        high: Number(row[2]),
+        low: Number(row[3]),
+        close: Number(row[4]),
+        volume: Number(row[5])
+      })).reverse();
+    }
+    const url = `${BINANCE_SPOT_BASE}/api/v3/klines?symbol=${encodeURIComponent(toBinanceSymbol(symbol))}&interval=${BINANCE_INTERVALS[tf]}&limit=${Math.min(limit, 500)}`;
+    const response = await fetch(url, { signal: timer.signal });
+    if (!response.ok) throw new Error(`Binance klines HTTP ${response.status}`);
+    const rows = await response.json();
+    if (!Array.isArray(rows)) throw new Error(rows?.msg || "Binance klines unavailable");
+    return rows.map((row) => ({
+      time: Number(row[0]),
+      open: Number(row[1]),
+      high: Number(row[2]),
+      low: Number(row[3]),
+      close: Number(row[4]),
+      volume: Number(row[5])
+    }));
+  } finally {
+    timer.cancel();
+  }
+}
+
+function fallbackExchange(exchange) {
+  return String(exchange).toUpperCase() === "OKX" ? "BINANCE" : "OKX";
+}
+
+async function withExchangeFailover(exchange, fetcher) {
+  const primary = String(exchange || "BINANCE").toUpperCase();
+  try {
+    return { exchange: primary, result: await fetcher(primary) };
+  } catch (primaryError) {
+    const secondary = fallbackExchange(primary);
+    try {
+      return { exchange: secondary, result: await fetcher(secondary), failedOver: true, primaryError: primaryError.message };
+    } catch {
+      throw primaryError;
+    }
+  }
+}
+
+export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/USDT", timeframe = "1h") {
+  const { exchange: usedExchange, result: candles, failedOver } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe));
+  exchange = usedExchange;
+  if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
+  const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
+  db.markets ||= [];
+  let market = db.markets.find((item) => item.symbol === displaySymbol);
+  if (!market) {
+    market = { symbol: displaySymbol, candles: [], status: "not_synced" };
+    db.markets.push(market);
+  }
+  market.candles = candles;
+  market.candlesTimeframe = timeframe;
+  market.candlesSyncedAt = nowIso();
+  if (candles.length) {
+    const last = candles[candles.length - 1];
+    market.price = last.close;
+    market.status = "synced";
+    market.lastSyncedExchange = String(exchange).toUpperCase();
+    market.lastSyncedAt = nowIso();
+  }
+  appendTrace(db, "exchange_market", `同步 ${exchange} ${symbol} K线 ${timeframe}`);
+  return { symbol: displaySymbol, timeframe, count: candles.length, latestClose: candles.at(-1)?.close };
 }
 
 export function reconcileAccount(db, accountId) {
