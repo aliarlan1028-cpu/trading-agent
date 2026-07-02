@@ -142,7 +142,7 @@ function SetupChecklist({ data, llmConfigured, ui, onExample }) {
   const items = [
     { done: llmConfigured, icon: BrainCircuit, label: "配置 LLM API Key", hint: "在 .env 里填 ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY 之一并重启", action: null },
     { done: exchangeReady, icon: KeyRound, label: "连接交易所（只读）", hint: "配置只读 API 后可同步账户与持仓；不配置也能用公开行情", action: () => ui.openPanel("keys") },
-    { done: mandateReady, icon: Shield, label: "激活授权委托", hint: "直接在下面对话框里说出你的目标，我会生成授权草案给你确认", action: null }
+    { done: mandateReady, icon: Shield, label: "激活授权委托", hint: "在下方说出目标，我会生成授权草案", action: null }
   ];
   const examples = [
     "看看 BTC 现在的走势，说说你的判断",
