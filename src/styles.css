@@ -2018,3 +2018,579 @@ p {
     font-weight: 650;
   }
 }
+
+/* ============ 指挥台（对话式主页面）============ */
+.appShell.withRail {
+  grid-template-columns: 292px minmax(0, 1fr) 300px;
+}
+
+.topbarStatusGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.livePill {
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff4e5;
+  color: #a35b00;
+  border: 1px solid #ffdfb0;
+}
+
+.livePill.on {
+  background: #fdeaea;
+  color: #b42323;
+  border-color: #f5c3c3;
+}
+
+.killButton {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid #f3c1c1;
+  background: #fff;
+  color: #c22525;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.killButton:hover {
+  background: #fdeaea;
+}
+
+.chatPage {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 96px);
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.llmBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff8e8;
+  border: 1px solid #f5e3b5;
+  color: #8a6100;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chatScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.chatMessage {
+  display: flex;
+  gap: 10px;
+  max-width: 92%;
+}
+
+.chatMessage.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.chatMessage.user .chatContent {
+  background: #2a5cf0;
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+  padding: 10px 16px;
+}
+
+.chatMessage.agent .chatContent {
+  background: #ffffff;
+  border: 1px solid #e6ecf5;
+  border-radius: 16px 16px 16px 4px;
+  padding: 12px 16px;
+}
+
+.chatContent p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.chatContent p:last-child {
+  margin-bottom: 0;
+}
+
+.chatBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chatMeta {
+  color: #93a1b8;
+  font-size: 11px;
+  padding-left: 4px;
+}
+
+.botAvatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e8effd;
+  color: #2a5cf0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.thinkingDots {
+  display: flex;
+  gap: 5px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid #e6ecf5;
+  border-radius: 16px;
+}
+
+.thinkingDots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b9c6dd;
+  animation: dotPulse 1.2s infinite ease-in-out;
+}
+
+.thinkingDots span:nth-child(2) { animation-delay: 0.15s; }
+.thinkingDots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0.35; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* 计划卡 */
+.chatPlanCard {
+  border: 1px solid #dbe5f5;
+  border-left: 3px solid #2a5cf0;
+  border-radius: 12px;
+  background: #fbfcff;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chatPlanCard.rejected {
+  border-left-color: #d64545;
+}
+
+.chatPlanCard header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.chatPlanCard header small {
+  color: #93a1b8;
+  margin-left: auto;
+}
+
+.planNumbers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.planNumbers span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.planNumbers small {
+  color: #93a1b8;
+  font-size: 11px;
+}
+
+.planNumbers b {
+  font-size: 13px;
+}
+
+.riskSummaryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-size: 12.5px;
+  color: #45526b;
+  text-align: left;
+}
+
+.riskCheckList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: #fff;
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.riskCheckList > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #2e7d4f;
+}
+
+.riskCheckList > div.failed {
+  color: #c22525;
+}
+
+.riskCheckList small {
+  color: #93a1b8;
+  margin-left: auto;
+  text-align: right;
+}
+
+.chatPlanCard footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chatPlanCard footer button,
+.chatMandateCard footer button {
+  padding: 7px 16px;
+  border-radius: 9px;
+  border: 1px solid #d7e0ef;
+  background: #fff;
+  font-size: 13px;
+}
+
+.approveButton {
+  background: #2a5cf0 !important;
+  border-color: #2a5cf0 !important;
+  color: #fff;
+  font-weight: 600;
+}
+
+.ghostButton {
+  border: none !important;
+  background: none !important;
+  color: #6d7c96;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.planHint {
+  color: #93a1b8;
+  font-size: 11.5px;
+}
+
+/* 授权卡 */
+.chatMandateCard {
+  border: 1px solid #dbe5f5;
+  border-left: 3px solid #14a06a;
+  border-radius: 12px;
+  background: #fbfffd;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chatMandateCard header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.mandateGridMini {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mandateGridMini span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.mandateGridMini small {
+  color: #93a1b8;
+  font-size: 11px;
+}
+
+.chatMandateCard footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chatMandateCard footer small {
+  color: #93a1b8;
+  font-size: 11.5px;
+}
+
+/* 工具调用痕迹 */
+.toolTrace button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  color: #8b99b3;
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.toolTrace > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: #5d6b85;
+  padding: 3px 6px;
+}
+
+.toolTrace > div b {
+  color: #38445c;
+  font-weight: 600;
+  flex: none;
+}
+
+.toolTrace > div small {
+  color: #a5b1c6;
+  margin-left: auto;
+  flex: none;
+}
+
+/* 输入框 */
+.chatInputBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 10px 0 18px;
+  background: #fff;
+  border: 1px solid #dbe3f0;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(23, 43, 99, 0.06);
+}
+
+.chatInputBar textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.6;
+  max-height: 130px;
+  background: none;
+}
+
+.sendButton {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  border: none;
+  background: #2a5cf0;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendButton:disabled {
+  background: #c6d2e8;
+  cursor: default;
+}
+
+/* 空状态 / 配置向导 */
+.setupChecklist {
+  margin: auto;
+  max-width: 560px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 30px 0;
+}
+
+.setupChecklist h2 {
+  font-size: 22px;
+}
+
+.setupChecklist > p {
+  color: #6d7c96;
+  font-size: 14px;
+}
+
+.checkItems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.checkItems button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e9f5;
+  background: #fff;
+  font-size: 13.5px;
+}
+
+.checkItems button:disabled {
+  cursor: default;
+}
+
+.checkItems button.done {
+  border-color: #cdebdc;
+  background: #f5fcf8;
+}
+
+.checkItems button small {
+  color: #93a1b8;
+  margin-left: auto;
+  text-align: right;
+  font-size: 11.5px;
+  max-width: 60%;
+}
+
+.examplePrompts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.examplePrompts button {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px dashed #c8d4ea;
+  background: none;
+  color: #3c5db4;
+  font-size: 13px;
+}
+
+.examplePrompts button:hover {
+  background: #eef3fe;
+}
+
+/* 右侧实时状态栏 */
+.rightRail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: #fff;
+  border-left: 1px solid #e6ecf5;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.railBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.railBlock:last-child {
+  border-bottom: none;
+}
+
+.railLabel {
+  font-size: 12px;
+  color: #8b99b3;
+  font-weight: 600;
+}
+
+.railValue {
+  font-size: 22px;
+}
+
+.railValue small {
+  font-size: 12px;
+  color: #93a1b8;
+  font-weight: 500;
+}
+
+.railSub {
+  font-size: 12px;
+  color: #6d7c96;
+}
+
+.railRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.railRow b {
+  font-weight: 600;
+}
+
+.railActions {
+  gap: 8px;
+}
+
+.railActions button {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid #d7e0ef;
+  background: #fff;
+  font-size: 13px;
+}
+
+.railActions button.danger {
+  border-color: #f3c1c1;
+  color: #c22525;
+}
+
+.positive { color: #14a06a; }
+.negative { color: #d64545; }
+
+@media (max-width: 1280px) {
+  .appShell.withRail {
+    grid-template-columns: 88px minmax(0, 1fr) 280px;
+  }
+}

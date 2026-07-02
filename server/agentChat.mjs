@@ -97,7 +97,7 @@ const SYSTEM_PROMPT = `你是一名专业的数字货币自主交易员 Agent，
 // ---------------------------------------------------------------------------
 // 工具执行
 // ---------------------------------------------------------------------------
-async function executeTool(db, run, name, args = {}) {
+export async function executeTool(db, run, name, args = {}) {
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";
     const exchange = args.exchange || "BINANCE";
