@@ -511,13 +511,25 @@ h3 {
   color: #3f8f5b;
 }
 
+.metricIcon.positive {
+  background: #eef6ee;
+}
+
 .metricIcon.warning,
 .warning {
   color: #f59e0b;
 }
 
+.metricIcon.warning {
+  background: #fdf3e0;
+}
+
 .negative {
   color: #c9553d;
+}
+
+.metricIcon.negative {
+  background: #fbeae5;
 }
 
 .metricCard span,
