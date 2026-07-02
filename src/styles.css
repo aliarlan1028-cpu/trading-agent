@@ -37,6 +37,18 @@ p {
   margin: 0;
 }
 
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .appShell {
   min-height: 100vh;
   display: grid;
@@ -467,13 +479,17 @@ p {
 
 .metricCard {
   position: relative;
-  min-height: 118px;
+  min-height: 96px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
+  gap: 13px;
   align-items: center;
-  padding: 18px;
+  padding: 16px 18px;
   overflow: hidden;
+}
+
+.metricCard.noIcon {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .metricCard > div:not(.metricIcon) {
@@ -481,9 +497,9 @@ p {
 }
 
 .metricIcon {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   color: #e07a3f;
@@ -524,11 +540,10 @@ p {
 }
 
 .sparkline {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  width: 94px;
-  height: 42px;
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 6px;
 }
 
 .sparkline path {
@@ -1087,9 +1102,13 @@ p {
 
 .accountNumbers {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-top: 20px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 18px;
+  margin-top: 18px;
+}
+
+.accountNumbers span {
+  white-space: nowrap;
 }
 
 .donut {
@@ -1618,15 +1637,18 @@ p {
 
 .filterGroup {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .filterGroup button {
   min-height: 30px;
+  padding: 0 12px;
   border: 1px solid #e2dac9;
   border-radius: 8px;
   color: #6b6455;
   background: #ffffff;
+  white-space: nowrap;
 }
 
 .filterGroup button.active {
