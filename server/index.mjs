@@ -1,8 +1,11 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { activeProvider, runAgentChat } from "./agentChat.mjs";
-import { addMemoryItem, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
+import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
+import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
+import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { installAuth, requirePermission } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -17,7 +20,7 @@ import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
+import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
@@ -39,8 +42,26 @@ saveDb(db);
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 installAuth(app, db);
+
+// 注册真实任务处理器并确保系统任务存在（执行轮询/持仓监控/核算/自主巡检/对账）
+registerTaskHandler("execution_poll", (database) => pollExecutionOrders(database));
+registerTaskHandler("position_monitor", (database) => monitorPositions(database));
+registerTaskHandler("accounting_refresh", (database) => refreshAccounting(database));
+registerTaskHandler("agent_cycle", async (database) => {
+  const run = await runAgentCycle(database, {}, saveDb);
+  recheckActivePlanRisk(database);
+  return run;
+});
+registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
+ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", handler: "agent_cycle", schedule: "Every 15m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
+
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
+refreshAccounting(db);
 
 function persist(res, payload) {
   saveDb(db);
@@ -134,6 +155,7 @@ app.get("/api/overview", (_req, res) => {
     agentStateFiles: db.agentStateFiles,
     memoryItems: db.memoryItems,
     agentRuns: db.agentRuns,
+    performance: performanceReport(db),
     readiness: buildReadinessReport(db)
   });
 });
@@ -319,8 +341,8 @@ app.post("/api/tasks/:id/resume", requirePermission("write:task"), (req, res) =>
   persist(res, task);
 });
 
-app.post("/api/tasks/:id/run", requirePermission("write:task"), (req, res) => {
-  const result = runTask(db, req.params.id, saveDb, "manual");
+app.post("/api/tasks/:id/run", requirePermission("write:task"), async (req, res) => {
+  const result = await runTask(db, req.params.id, saveDb, "manual");
   if (result.status === "missing_task") return res.status(404).json({ error: "Task not found" });
   res.json(result);
 });
@@ -504,9 +526,13 @@ app.post("/api/agent/runs/:id/stop", requirePermission("write:mandate"), (req, r
   if (!run) return res.status(404).json({ error: "AgentRun not found" });
   persist(res, run);
 });
-app.post("/api/agent-runs", requirePermission("write:mandate"), (req, res) => {
-  const run = runAgentCycle(db, req.body);
-  persist(res, run);
+app.post("/api/agent-runs", requirePermission("write:mandate"), async (req, res) => {
+  try {
+    const run = await runAgentCycle(db, req.body, saveDb);
+    persist(res, run);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post("/api/llm-agent/run", requirePermission("write:mandate"), async (req, res) => {
@@ -772,14 +798,24 @@ app.post("/api/trade-plans/:id/request-approval", requirePermission("write:trade
   persist(res, plan);
 });
 
-app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), (req, res) => {
+app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), async (req, res) => {
   const plan = db.tradePlans.find((item) => item.id === req.params.id);
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
+  if (!plan.lastRiskCheck) return res.status(400).json({ error: "计划尚未通过风控检查，先运行 risk-check" });
+  if (!plan.lastRiskCheck.passed) return res.status(400).json({ error: `风控未通过，禁止批准：${plan.lastRiskCheck.summary}` });
   plan.status = "approved";
   plan.approvedAt = nowIso();
   plan.approvedBy = db.user.name;
   appendAudit(db, "人工批准交易计划", plan.id, db.user.name, "warning");
-  persist(res, plan);
+  // 批准即进入执行引擎：实盘开启则真实下单，关闭则记录干跑结果。
+  const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
+  const messages = {
+    dry_run: "计划已批准。实盘写入关闭，执行引擎完成了数量与价格计算（干跑），未向交易所提交。",
+    submitted: "计划已批准，入场单已提交到交易所。",
+    blocked: `计划已批准，但执行被安全闸拦截：${execution.reason || ""}`,
+    already_executing: "该计划已有在途执行单。"
+  };
+  persist(res, { plan, execution, message: messages[execution.status] || `执行状态：${execution.status}` });
 });
 
 app.post("/api/trade-plans/:id/cancel", requirePermission("write:trade_plan"), (req, res) => {
@@ -799,6 +835,36 @@ app.post("/api/trade-plans/:id/execute", requirePermission("critical:trade_execu
   appendAudit(db, "拒绝直接执行交易计划接口", plan.id, "ExecutionEngine", "warning");
   appendTrace(db, "trade_execution", `${plan.symbol} direct execute rejected`, "blocked");
   persist(res, result);
+});
+
+app.get("/api/execution-orders", (_req, res) => res.json(db.executionOrders || []));
+
+app.post("/api/execution-orders/poll", requirePermission("write:trade_plan"), async (_req, res) => {
+  try {
+    const result = await pollExecutionOrders(db);
+    refreshAccounting(db);
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/execution-orders/:id/close", requirePermission("critical:trade_execution"), async (req, res) => {
+  try {
+    const result = await closeExecution(db, req.params.id, req.body.reason || "manual_ui");
+    refreshAccounting(db);
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/performance", (_req, res) => {
+  res.json(performanceReport(db));
+});
+
+app.post("/api/accounting/refresh", requirePermission("write:risk"), (_req, res) => {
+  persist(res, refreshAccounting(db));
 });
 
 app.post("/api/risk/check-trade-plan", requirePermission("write:risk"), (req, res) => {

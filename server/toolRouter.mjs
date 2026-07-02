@@ -26,7 +26,7 @@ export async function callTool(db, toolName, args = {}, saveDb) {
   else if (toolName === "knowledge.query") result = runExpertAnalysis(db, args);
   else if (toolName === "risk.check") result = evaluateTradePlan(db, args.plan || db.tradePlans?.[0] || {});
   else if (toolName === "reconciler.run") result = runReconciler(db, args);
-  else if (toolName === "task.run") result = runTask(db, args.taskId || db.tasks?.[0]?.id, saveDb, "agent_tool");
+  else if (toolName === "task.run") result = await runTask(db, args.taskId || db.tasks?.[0]?.id, saveDb, "agent_tool");
   else if (toolName === "trade.write") result = await executeTradeAction(db, args.action || "place_order", args.payload || {});
   else result = { status: "unknown_tool", toolName };
 

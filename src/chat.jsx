@@ -11,7 +11,7 @@ import {
   Wrench,
   XCircle
 } from "lucide-react";
-import { displayMoney, formatTime, humanize, StatusBadge } from "./lib.jsx";
+import { displayMoney, displayPct, formatTime, humanize, StatusBadge } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -30,7 +30,18 @@ function renderText(text = "") {
   });
 }
 
-function PlanCard({ plan, action, ui }) {
+const EXECUTION_LABELS = {
+  dry_run: "干跑完成（实盘关闭）",
+  entry_pending: "入场单挂单中",
+  entry_filled: "入场已成交",
+  protecting: "止盈止损已布置",
+  closed: "已平仓",
+  cancelled: "已取消",
+  blocked: "被安全闸拦截",
+  failed: "提交失败"
+};
+
+function PlanCard({ plan, executionOrder, action, ui }) {
   if (!plan) return null;
   const risk = plan.lastRiskCheck || {};
   const checks = risk.checks || [];
@@ -74,7 +85,21 @@ function PlanCard({ plan, action, ui }) {
         {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>拒绝</button>}
         <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>审计链 <ChevronRight size={13} /></button>
       </footer>
-      {awaiting && <small className="planHint">批准后计划进入执行队列；实盘写入开关关闭时不会真实下单。</small>}
+      {awaiting && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
+      {executionOrder && (
+        <div className="executionStrip">
+          <span className={`execDot ${["entry_filled", "protecting"].includes(executionOrder.status) ? "on" : executionOrder.status === "closed" ? "done" : ""}`} />
+          <b>{EXECUTION_LABELS[executionOrder.status] || executionOrder.status}</b>
+          <small>
+            数量 {executionOrder.quantity} · 名义 {displayMoney(executionOrder.notionalUsdt)} USDT
+            {executionOrder.filledPrice ? ` · 成交 ${displayMoney(executionOrder.filledPrice)}` : ""}
+            {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · 盈亏 ${displayMoney(executionOrder.realizedPnl)}` : ""}
+          </small>
+          {["entry_pending", "entry_filled", "protecting"].includes(executionOrder.status) && (
+            <button onClick={() => action(`/api/execution-orders/${executionOrder.id}/close`, { reason: "manual_ui" })}>撤单/平仓</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -217,7 +242,14 @@ export function ChatPage({ data, action, ui }) {
             <div className="chatBody">
               <div className="chatContent">{renderText(message.content)}</div>
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
-              {message.planId && <PlanCard plan={findPlan(message.planId)} action={action} ui={ui} />}
+              {message.planId && (
+                <PlanCard
+                  plan={findPlan(message.planId)}
+                  executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)}
+                  action={action}
+                  ui={ui}
+                />
+              )}
               <ToolTrace trace={message.toolTrace || []} />
               <small className="chatMeta">
                 {formatTime(message.createdAt)}{message.role === "agent" && message.model ? ` · ${message.model}` : ""}

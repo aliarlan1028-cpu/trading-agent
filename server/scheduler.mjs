@@ -8,9 +8,38 @@ const runtime = {
   timeoutJobs: new Map()
 };
 
+// 真实任务处理器注册表：task.handler 命中时执行真实函数，
+// 否则退回旧的关键词描述行为。由 index.mjs 在启动时注册。
+const taskHandlers = new Map();
+
+export function registerTaskHandler(name, fn) {
+  taskHandlers.set(name, fn);
+}
+
+export function ensureSystemTask(db, task, saveDb) {
+  const existing = (db.tasks || []).find((item) => item.id === task.id);
+  if (existing) {
+    existing.handler = task.handler;
+    if (runtime.started) scheduleTask(db, existing, saveDb);
+    return existing;
+  }
+  const created = { enabled: true, type: "Every", role: "系统", createdAt: nowIso(), ...task };
+  db.tasks.push(created);
+  if (runtime.started) scheduleTask(db, created, saveDb);
+  return created;
+}
+
 export function startScheduler(db, saveDb) {
   if (runtime.started) return schedulerStatus(db);
   runtime.started = true;
+  // 新进程启动时不可能有运行中的任务：释放所有遗留并发锁
+  for (const lock of db.jobLocks || []) {
+    if (lock.locked) {
+      lock.locked = false;
+      lock.releasedAt = nowIso();
+      lock.expired = true;
+    }
+  }
   recoverFailedRuns(db, saveDb);
   for (const task of db.tasks || []) {
     scheduleTask(db, task, saveDb);
@@ -86,13 +115,21 @@ export function schedulerStatus(db) {
   };
 }
 
-export function runTask(db, taskId, saveDb, trigger = "manual") {
+export async function runTask(db, taskId, saveDb, trigger = "manual") {
   const task = db.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing_task", taskId };
 
+  const LOCK_TTL_MS = 10 * 60_000;
   const lock = db.jobLocks.find((item) => item.concurrencyKey === (task.concurrencyKey || task.id) && item.locked);
   if (lock) {
-    return recordRun(db, task, "skipped_locked", "任务并发锁未释放", trigger, saveDb);
+    const age = Date.now() - new Date(lock.createdAt).getTime();
+    if (age < LOCK_TTL_MS) {
+      return recordRun(db, task, "skipped_locked", "任务并发锁未释放", trigger, saveDb);
+    }
+    // 进程崩溃遗留的陈旧锁：强制释放并继续
+    lock.locked = false;
+    lock.releasedAt = nowIso();
+    lock.expired = true;
   }
 
   const lockEntry = { id: id("lock"), concurrencyKey: task.concurrencyKey || task.id, locked: true, taskId, createdAt: nowIso() };
@@ -100,6 +137,14 @@ export function runTask(db, taskId, saveDb, trigger = "manual") {
   try {
     if (task.forceFailure) throw new Error("任务被配置为强制失败，用于测试重试机制。");
     let output = `${task.name} 已完成一次运行。`;
+    if (task.handler && taskHandlers.has(task.handler)) {
+      const result = await taskHandlers.get(task.handler)(db, task);
+      output = typeof result === "string" ? result : summarizeHandlerResult(task.handler, result);
+      const run = recordRun(db, task, "ok", output, trigger, saveDb);
+      task.failureCount = 0;
+      task.lastError = null;
+      return run;
+    }
     if (task.id.includes("market") || task.name.includes("行情")) {
       const syncedMarkets = (db.markets || []).filter((market) => market.status === "synced" || market.price);
       output = syncedMarkets.length
@@ -140,7 +185,17 @@ export function runTask(db, taskId, saveDb, trigger = "manual") {
   } finally {
     lockEntry.locked = false;
     lockEntry.releasedAt = nowIso();
+    if (saveDb) saveDb(db);
   }
+}
+
+function summarizeHandlerResult(handler, result = {}) {
+  if (handler === "execution_poll") return `执行订单轮询：检查 ${result.checked || 0} 个在途执行单。`;
+  if (handler === "position_monitor") return `持仓监控：${result.monitored || 0} 个受管持仓，动作 ${result.actions?.length || 0} 项。`;
+  if (handler === "accounting_refresh") return `核算刷新：今日盈亏 ${result.todayPnl ?? "-"} USDT，剩余亏损预算 ${result.remainingDailyLossUsdt ?? "未授权"}。`;
+  if (handler === "agent_cycle") return `自主巡检：AgentRun ${result.id || "-"}（${result.status || "完成"}）。`;
+  if (handler === "reconcile") return `对账：${result.status || "-"}，差异 ${result.differences?.length || 0} 项。`;
+  return JSON.stringify(result).slice(0, 200);
 }
 
 function recordRun(db, task, status, output, trigger, saveDb) {

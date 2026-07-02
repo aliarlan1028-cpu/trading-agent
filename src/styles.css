@@ -2594,3 +2594,40 @@ p {
     grid-template-columns: 88px minmax(0, 1fr) 280px;
   }
 }
+
+/* 执行单状态条 */
+.executionStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.executionStrip small {
+  color: #93a1b8;
+  flex: 1;
+}
+
+.executionStrip button {
+  border: 1px solid #f3c1c1;
+  background: none;
+  color: #c22525;
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.execDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2a93b;
+}
+
+.execDot.on { background: #14a06a; }
+.execDot.done { background: #93a1b8; }

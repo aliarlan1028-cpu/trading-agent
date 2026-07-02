@@ -145,6 +145,16 @@ function RightRail({ data, action, ui }) {
         })}
       </div>
       <div className="railBlock">
+        <span className="railLabel">实盘绩效</span>
+        {data.performance?.trades
+          ? <>
+              <div className="railRow"><span>已平仓交易</span><b>{data.performance.trades} 笔 · 胜率 {data.performance.winRatePct}%</b></div>
+              <div className="railRow"><span>累计盈亏</span><b className={data.performance.totalPnlUsdt >= 0 ? "positive" : "negative"}>{displayMoney(data.performance.totalPnlUsdt)} USDT</b></div>
+              {data.performance.profitFactor !== null && <div className="railRow"><span>盈亏比</span><b>{data.performance.profitFactor}</b></div>}
+            </>
+          : <span className="railSub">暂无已平仓交易{data.performance?.openExecutions ? ` · ${data.performance.openExecutions} 个在途执行单` : ""}</span>}
+      </div>
+      <div className="railBlock">
         <span className="railLabel">Agent 最近动作</span>
         {!traces.length && <span className="railSub">暂无记录</span>}
         {traces.map((trace) => (
@@ -213,4 +223,5 @@ function LoginScreen({ login, toast }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const root = (window.__traderAgentRoot ||= createRoot(document.getElementById("root")));
+root.render(<App />);

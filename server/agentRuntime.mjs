@@ -1,38 +1,88 @@
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
-import { runExpertAnalysis } from "./knowledgeEngine.mjs";
+import { activeProvider, runAgentChat } from "./agentChat.mjs";
+import { refreshAccounting } from "./accounting.mjs";
+import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
+import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
-export function runAgentCycle(db, payload = {}) {
-  const role = payload.role || "AI 交易员";
-  const goal = payload.goal || "观察市场、事件、知识库与风险状态，并给出下一步动作";
-  const symbol = payload.symbol || db.markets?.find((market) => market.price)?.symbol || "";
-  const bundle = runExpertAnalysis(db, {
-    trigger_type: "agent_cycle",
-    question: `${role}：${goal}`,
-    symbol,
-    market_context: { symbol }
-  });
-  const plan = db.tradePlans[0];
-  const risk = plan ? evaluateTradePlan(db, plan) : null;
-  const run = {
-    id: id("run"),
-    role,
-    goal,
-    status: "completed",
-    analysisBundleId: bundle.id,
-    riskDecision: risk?.decision,
-    steps: [
-      { phase: "Observe", summary: symbol ? `读取 ${symbol} 行情、持仓、事件、任务心跳与知识库。` : "等待真实行情或用户指定交易对。" },
-      { phase: "Think", summary: bundle.summary },
-      { phase: "Act", summary: risk?.passed ? "允许进入低风险执行器或继续监控。" : "风控阻断，进入观察或降风险动作。" },
-      { phase: "Stop", summary: "生成 AgentRun、Trace 和审计记录。" }
-    ],
-    createdAt: nowIso()
-  };
-  db.agentRuns.unshift(run);
-  appendAudit(db, "运行 Agent ReAct 循环", run.id, role);
-  appendTrace(db, "agent_run", `${role} ReAct`, "ok");
-  return run;
+// ---------------------------------------------------------------------------
+// 自主巡检循环：由调度器周期触发。
+// LLM 已配置且授权激活时 → 走真实 LLM 决策循环（与对话共用一套工具与风控）；
+// 否则做真实数据巡检（行情同步 + 核算 + 风控复查），不产生编造内容。
+// ---------------------------------------------------------------------------
+
+export async function runAgentCycle(db, payload = {}, saveDb) {
+  const mandate = (db.mandates || []).find((item) => ["active", "running"].includes(item.status));
+  const provider = activeProvider();
+  const awaitingPlan = (db.tradePlans || []).find((plan) => plan.status === "awaiting_approval");
+
+  // 前置巡检：同步授权交易对行情 + 刷新真实核算
+  const symbols = mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"];
+  const syncedSymbols = [];
+  for (const symbol of symbols.slice(0, 3)) {
+    try {
+      await syncPublicMarket(db, "OKX", symbol);
+      syncedSymbols.push(symbol);
+    } catch {}
+  }
+  const accounting = refreshAccounting(db);
+
+  const skipReasons = [];
+  if (!db.system.autonomyEnabled) skipReasons.push("自主推进已暂停");
+  if (db.system.killSwitch) skipReasons.push("熔断开启");
+  if (!mandate) skipReasons.push("无激活授权");
+  if (!provider) skipReasons.push("未配置 LLM");
+  if (awaitingPlan) skipReasons.push(`已有待批准计划 ${awaitingPlan.id}，避免重复生成`);
+  if (accounting.remainingDailyLossUsdt !== null && accounting.remainingDailyLossUsdt !== undefined && accounting.remainingDailyLossUsdt <= 0) {
+    skipReasons.push("日亏损预算耗尽");
+  }
+
+  if (skipReasons.length) {
+    const run = {
+      id: id("run"),
+      role: "AI 交易员",
+      goal: payload.goal || "周期巡检",
+      status: "patrol_only",
+      source: "agent_cycle",
+      steps: [
+        { phase: "observe", summary: syncedSymbols.length ? `已同步 ${syncedSymbols.join("、")} 真实行情。` : "行情同步失败或无授权交易对。" },
+        { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
+        { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。` }
+      ],
+      createdAt: nowIso()
+    };
+    db.agentRuns.unshift(run);
+    appendTrace(db, "agent_cycle", `巡检（${skipReasons[0]}）`, "ok");
+    if (saveDb) saveDb(db);
+    return run;
+  }
+
+  // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
+  const goal = payload.goal
+    || `【定时巡检】当前授权：${mandate.allowedSymbols.join("、")}，单笔风险上限 ${mandate.maxSingleTradeRiskPct}%，日亏上限 ${mandate.maxDailyLossPct}%。请检查行情、持仓与事件；只有出现明确符合授权边界的机会才提出交易计划，否则简要说明为什么继续观察。`;
+  const result = await runAgentChat(db, { message: goal }, saveDb);
+  result.run.source = "agent_cycle";
+  appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");
+  return result.run;
+}
+
+// 巡检后复查最新执行中计划的风控（授权过期、预算变化等）
+export function recheckActivePlanRisk(db) {
+  const plan = (db.tradePlans || []).find((item) => ["approved", "executing", "awaiting_approval"].includes(item.status));
+  if (!plan) return null;
+  const risk = evaluateTradePlan(db, plan);
+  if (!risk.passed && plan.status !== "risk_rejected") {
+    appendAudit(db, `执行中计划风控复查失败：${risk.summary}`, plan.id, "AgentCycle", "warning");
+    appendTrace(db, "risk_check", `${plan.symbol} 复查失败`, "blocked");
+    db.riskIncidents.unshift({
+      id: id("incident"),
+      severity: "high",
+      status: "open",
+      title: `计划 ${plan.symbol} 风控复查失败：${risk.summary}`,
+      source: plan.id,
+      createdAt: nowIso()
+    });
+  }
+  return risk;
 }
 
 export function updateStateFile(db, name, content) {

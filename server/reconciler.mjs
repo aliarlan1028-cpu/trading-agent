@@ -7,7 +7,8 @@ export function runReconciler(db, options = {}) {
     ...checkStopLossCoverage(db),
     ...checkSnapshotFreshness(db, latestSnapshotsByAccount),
     ...checkRealtimeFreshness(db),
-    ...checkOrderPlanLinks(db)
+    ...checkOrderPlanLinks(db),
+    ...checkLocalVsExchange(db, latestSnapshotsByAccount)
   ];
   const severity = highestSeverity(differences);
   const hasHighRisk = differences.some((item) => item.severity === "critical" || item.severity === "high");
@@ -91,6 +92,67 @@ function checkOrderPlanLinks(db) {
       orderId: order.id,
       message: `订单 ${order.id} 关联的交易计划不存在。`
     }));
+}
+
+// 本地状态 vs 交易所快照：孤儿挂单、幽灵持仓、数量偏差。
+function checkLocalVsExchange(db, latestByAccount) {
+  const differences = [];
+  const snapshot = [...latestByAccount.values()].find((item) => item.status === "ok");
+  if (!snapshot) return differences;
+
+  const exchangeClientOrderIds = new Set(
+    (snapshot.openOrders || []).map((order) => order.clOrdId || order.clientOrderId || order.origClientOrderId).filter(Boolean)
+  );
+  for (const executionOrder of (db.executionOrders || []).filter((item) => item.status === "entry_pending")) {
+    if (executionOrder.clientOrderId && !exchangeClientOrderIds.has(executionOrder.clientOrderId)) {
+      differences.push({
+        type: "local_order_missing_on_exchange",
+        severity: "high",
+        executionOrderId: executionOrder.id,
+        message: `执行单 ${executionOrder.clientOrderId} 在交易所挂单列表中不存在（可能已成交/取消，等待轮询确认）。`
+      });
+    }
+  }
+
+  const exchangePositions = new Map(
+    (snapshot.positions || [])
+      .filter((position) => Number(position.pos || position.positionAmt || 0) !== 0)
+      .map((position) => [String(position.instId || position.symbol || "").replace("-SWAP", "").replace("-", "/"), position])
+  );
+  for (const position of (db.positions || []).filter((item) => item.source === "execution_engine")) {
+    const remote = exchangePositions.get(position.symbol);
+    if (!remote) {
+      differences.push({
+        type: "ghost_local_position",
+        severity: "critical",
+        symbol: position.symbol,
+        message: `本地持仓 ${position.symbol} 在交易所不存在，可能已被止损/手动平仓，需要人工确认。`
+      });
+      continue;
+    }
+    const remoteSize = Math.abs(Number(remote.pos || remote.positionAmt || 0));
+    if (remoteSize && Math.abs(remoteSize - Number(position.size)) / remoteSize > 0.05) {
+      differences.push({
+        type: "position_size_mismatch",
+        severity: "high",
+        symbol: position.symbol,
+        localSize: position.size,
+        exchangeSize: remoteSize,
+        message: `${position.symbol} 本地数量 ${position.size} 与交易所 ${remoteSize} 偏差超过 5%。`
+      });
+    }
+  }
+  for (const [symbol] of exchangePositions) {
+    if (!(db.positions || []).some((item) => item.symbol === symbol)) {
+      differences.push({
+        type: "untracked_exchange_position",
+        severity: "high",
+        symbol,
+        message: `交易所存在本地未跟踪的持仓 ${symbol}（可能为手动开仓）。`
+      });
+    }
+  }
+  return differences;
 }
 
 function latestSnapshots(db) {

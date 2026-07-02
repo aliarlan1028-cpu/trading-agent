@@ -23,8 +23,12 @@ export function evaluateTradePlan(db, plan) {
 
   const riskPercent = Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? 999);
   add("单笔风险", riskPercent <= mandate.maxSingleTradeRiskPct, `计划 ${riskPercent}%，上限 ${mandate.maxSingleTradeRiskPct}%`);
-  const remainingDailyLossUsdt = db.system.remainingDailyLossUsdt ?? db.portfolio.remainingDailyLossUsdt ?? 0;
-  add("日亏损额度", remainingDailyLossUsdt > 0, `今日剩余可亏损额度 ${remainingDailyLossUsdt} USDT`);
+  const remainingDailyLossUsdt = db.system.remainingDailyLossUsdt ?? db.portfolio.remainingDailyLossUsdt ?? null;
+  if (remainingDailyLossUsdt === null || remainingDailyLossUsdt === undefined) {
+    add("日亏损额度", false, "账户未同步，无法计算真实日亏损预算；实盘执行前必须完成私有账户同步", "warn");
+  } else {
+    add("日亏损额度", remainingDailyLossUsdt > 0, `今日剩余可亏损额度 ${remainingDailyLossUsdt} USDT`);
+  }
   add("系统熔断", !db.system.killSwitch, db.system.killSwitch ? "一键熔断已开启" : "未熔断");
 
   const highImpactEvent = db.events.find((event) => event.impact >= 90 && event.relatedSymbols?.includes(plan.symbol));
