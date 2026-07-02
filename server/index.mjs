@@ -15,7 +15,7 @@ import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, 
 import { runBacktest } from "./backtestEngine.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
-import { importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery } from "./knowledgePipeline.mjs";
+import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
@@ -164,6 +164,7 @@ app.get("/api/overview", (_req, res) => {
     performance: performanceReport(db),
     backtests: db.backtests?.slice(0, 10) || [],
     larkConfigured: larkStatus().configured,
+    embeddingStatus: embeddingStatus(db),
     reviewAnalytics: buildReviewAnalytics(db),
     runtimeConfig: db.runtimeConfig || {},
     config: getConfigStatus(db),
@@ -408,9 +409,19 @@ app.post("/api/knowledge/sources/:id/parse-real", requirePermission("write:knowl
   }
 });
 
-app.post("/api/knowledge/rag-query", (req, res) => {
-  const result = ragQuery(db, req.body.query || req.body.question || "", req.body);
+app.post("/api/knowledge/rag-query", async (req, res) => {
+  const result = await ragQuery(db, req.body.query || req.body.question || "", req.body);
   persist(res, result);
+});
+
+app.get("/api/knowledge/embedding-status", (_req, res) => res.json(embeddingStatus(db)));
+app.post("/api/knowledge/reembed", requirePermission("write:knowledge"), async (_req, res) => {
+  try {
+    const result = await reembedAllChunks(db);
+    persist(res, { ...result, embeddingStatus: embeddingStatus(db) });
+  } catch (error) {
+    res.status(500).json({ error: `语义向量化失败：${error.message}` });
+  }
 });
 
 app.post("/api/knowledge/cards/concept", requirePermission("write:knowledge"), (req, res) => {

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import mammoth from "mammoth";
 import simpleGit from "simple-git";
+import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,11 +57,26 @@ export async function parseKnowledgeSource(db, sourceId) {
     sourceId: source.id,
     nodeId: `node_${source.id}`,
     text: chunk,
-    embedding: embedText(chunk),
+    lexical: embedText(chunk),
     citationLocator: `${source.title} #${index + 1}`,
     qualityScore: source.trustScore,
     createdAt: nowIso()
   }));
+  // 若配置了 embedding 服务，解析时顺带计算稠密语义向量。
+  const provider = embeddingProvider();
+  if (provider && chunks.length) {
+    try {
+      const vectors = await embedBatch(chunks.map((chunk) => chunk.text));
+      if (vectors) {
+        chunks.forEach((chunk, index) => {
+          chunk.embedding = vectors[index];
+          chunk.embeddingModel = provider.model;
+        });
+      }
+    } catch (error) {
+      appendAudit(db, `语义向量化失败，回退词频检索：${error.message}`, source.id, "KnowledgePipeline", "warning");
+    }
+  }
   if (!chunks.length) {
     source.status = "empty";
     appendAudit(db, "知识来源未解析出文本", source.id, "KnowledgePipeline", "warning");
@@ -104,31 +120,92 @@ export async function parseKnowledgeSource(db, sourceId) {
   return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
 }
 
-// 纯检索：返回与 query 最相关的知识片段，不改动 db、不写审计。
-// 供 Agent 决策上下文注入与专家分析复用。
+// 词频检索（同步，回退用）：无 embedding 服务或片段未向量化时使用。
 export function retrieveChunks(db, query, topK = 5) {
   const text = String(query || "").trim();
   if (!text) return [];
   const queryEmbedding = embedText(text);
   return (db.knowledge?.chunks || [])
-    .map((chunk) => ({ ...chunk, score: cosine(queryEmbedding, chunk.embedding || embedText(chunk.text || "")) }))
+    .map((chunk) => ({ ...chunk, score: cosine(queryEmbedding, chunk.lexical || embedText(chunk.text || "")), retrieval: "lexical" }))
     .filter((chunk) => chunk.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, Number(topK || 5));
 }
 
-export function ragQuery(db, query, options = {}) {
-  const chunks = retrieveChunks(db, query, Number(options.topK || 5));
+// 语义检索（异步，首选）：用稠密向量做余弦相似度；无 provider 或片段未向量化时自动回退词频。
+export async function retrieveChunksSemantic(db, query, topK = 5) {
+  const text = String(query || "").trim();
+  if (!text) return [];
+  const provider = embeddingProvider();
+  if (!provider) return retrieveChunks(db, text, topK);
+  const embeddedChunks = (db.knowledge?.chunks || []).filter((chunk) => Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model);
+  if (!embeddedChunks.length) return retrieveChunks(db, text, topK);
+  let queryVector;
+  try {
+    queryVector = await embedOne(text);
+  } catch {
+    return retrieveChunks(db, text, topK);
+  }
+  if (!queryVector) return retrieveChunks(db, text, topK);
+  return embeddedChunks
+    .map((chunk) => ({ ...chunk, score: denseCosine(queryVector, chunk.embedding), retrieval: "semantic" }))
+    .filter((chunk) => chunk.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Number(topK || 5));
+}
+
+// 回填/重建全部片段的语义向量（配置 embedding 服务后调用一次）。
+export async function reembedAllChunks(db) {
+  const provider = embeddingProvider();
+  if (!provider) return { status: "no_provider", message: "未配置 OpenAI/Gemini embedding，无法语义向量化。" };
+  const chunks = db.knowledge?.chunks || [];
+  const pending = chunks.filter((chunk) => !(Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model));
+  if (!pending.length) return { status: "ok", model: provider.model, embedded: 0, total: chunks.length, message: "全部片段已是最新向量。" };
+  let embedded = 0;
+  const groupSize = 96;
+  for (let i = 0; i < pending.length; i += groupSize) {
+    const group = pending.slice(i, i + groupSize);
+    const vectors = await embedBatch(group.map((chunk) => chunk.text));
+    if (!vectors) break;
+    group.forEach((chunk, index) => {
+      chunk.embedding = vectors[index];
+      chunk.embeddingModel = provider.model;
+      embedded += 1;
+    });
+  }
+  appendAudit(db, `语义向量化 ${embedded} 个知识片段（${provider.model}）`, "reembed", "KnowledgePipeline");
+  appendTrace(db, "knowledge_embed", `reembed ${embedded}/${chunks.length}`, "ok");
+  return { status: "ok", model: provider.model, embedded, total: chunks.length, message: `已向量化 ${embedded} 个片段` };
+}
+
+export function embeddingStatus(db) {
+  const provider = embeddingProvider();
+  const chunks = db.knowledge?.chunks || [];
+  const embedded = provider ? chunks.filter((chunk) => Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model).length : 0;
+  return {
+    provider: provider?.name || null,
+    model: provider?.model || null,
+    mode: provider ? "semantic" : "lexical",
+    totalChunks: chunks.length,
+    embeddedChunks: embedded,
+    coveragePct: chunks.length ? Math.round((embedded / chunks.length) * 100) : 0
+  };
+}
+
+export async function ragQuery(db, query, options = {}) {
+  const chunks = await retrieveChunksSemantic(db, query, Number(options.topK || 5));
+  const mode = chunks[0]?.retrieval || (embeddingProvider() ? "semantic" : "lexical");
   const answer = chunks.length
-    ? `召回 ${chunks.length} 个知识片段：${chunks.map((chunk) => chunk.citationLocator).join("、")}`
+    ? `${mode === "semantic" ? "语义" : "词频"}召回 ${chunks.length} 个知识片段：${chunks.map((chunk) => chunk.citationLocator).join("、")}`
     : "未召回相关知识片段。";
   const bundle = {
     id: id("ab"),
     triggerType: "rag_query",
     question: query,
     summary: answer,
-    retrievedRefs: chunks.map((chunk) => ({ chunkId: chunk.id, score: chunk.score, citationLocator: chunk.citationLocator })),
-    citations: chunks.map((chunk) => chunk.id),
+    retrievalMode: mode,
+    retrievedRefs: chunks.map((chunk) => ({ chunkId: chunk.id, score: Number((chunk.score || 0).toFixed(3)), citationLocator: chunk.citationLocator })),
+    citations: chunks.map((chunk) => chunk.citationLocator),
     createdAt: nowIso()
   };
   db.analysisBundles.unshift(bundle);

@@ -275,6 +275,7 @@ export function KnowledgeSkillsPage({ data, action, ui }) {
 
 function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCount, chunkCount, knowledge }) {
   const [query, setQuery] = useState("");
+  const embed = data.embeddingStatus || { mode: "lexical", provider: null, model: null, totalChunks: chunkCount, embeddedChunks: 0, coveragePct: 0 };
   const importActions = (
     <div className="titleActions">
       <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={14} /> 导入知识</button>
@@ -287,11 +288,16 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
         <MetricCard icon={FileText} label="知识来源" value={String(sourceCount)} sub={`${chunkCount} 个可检索片段`} tone="positive" />
         <MetricCard icon={Layers} label="概念卡" value={String(conceptCount)} sub="已抽取概念" tone="positive" />
         <MetricCard icon={Settings} label="专家规则" value={String(ruleCount)} sub="待审批 / 已批准" tone="positive" />
-        <MetricCard icon={BrainCircuit} label="已接入决策" value={chunkCount ? "是" : "未就绪"} sub={chunkCount ? "RAG 片段注入 LLM 上下文" : "导入并解析后生效"} tone={chunkCount ? "positive" : ""} />
+        <MetricCard icon={BrainCircuit} label="检索模式" value={embed.mode === "semantic" ? "语义向量" : "词频匹配"} sub={embed.mode === "semantic" ? `${embed.model} · 覆盖 ${embed.coveragePct}%` : "配置 OpenAI/Gemini Key 可升级"} tone={embed.mode === "semantic" ? "positive" : ""} />
       </div>
 
       <Card>
-        <SectionTitle icon={Search} title="知识检索（RAG）" action={<small className="muted">检索结果会作为上下文注入 AI 交易员的决策</small>} />
+        <SectionTitle icon={Search} title="知识检索（RAG）" action={
+          <div className="titleActions">
+            <StatusBadge tone={embed.mode === "semantic" ? "ok" : "warning"}>{embed.mode === "semantic" ? `语义检索 · 已向量化 ${embed.embeddedChunks}/${embed.totalChunks}` : "词频检索"}</StatusBadge>
+            {embed.provider && embed.coveragePct < 100 && embed.totalChunks > 0 && <button className="secondaryButton" onClick={() => action("/api/knowledge/reembed", {})}><Sparkles size={14} /> 重新向量化</button>}
+          </div>
+        } />
         <div className="ragQueryBar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="例如：CPI 公布前后 BTC 应该如何控制仓位？" onKeyDown={(event) => { if (event.key === "Enter" && query.trim()) action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 }); }} />
           <button className="primaryButton" disabled={!query.trim()} onClick={() => action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 })}><Search size={14} /> 检索</button>

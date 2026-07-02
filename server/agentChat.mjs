@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
-import { retrieveChunks } from "./knowledgePipeline.mjs";
+import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
@@ -148,7 +148,7 @@ function clip(text, max) {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-export function buildSystemPrompt(db, userText = "") {
+export async function buildSystemPrompt(db, userText = "") {
   const sections = [BASE_RULES];
   const state = db.agentStateFiles || {};
 
@@ -166,7 +166,7 @@ export function buildSystemPrompt(db, userText = "") {
     .join("\n");
   if (memories) sections.push(`【长期记忆】\n${memories}`);
 
-  const chunks = retrieveChunks(db, userText, 5);
+  const chunks = await retrieveChunksSemantic(db, userText, 5);
   if (chunks.length) {
     const knowledge = chunks
       .map((chunk, index) => `[[${index + 1}]] 来源：${chunk.citationLocator}\n${clip(chunk.text, 600)}`)
@@ -263,10 +263,12 @@ export async function executeTool(db, run, name, args = {}) {
   }
 
   if (name === "query_knowledge") {
+    const retrieved = await retrieveChunksSemantic(db, `${args.question || ""} ${args.symbol || ""}`, 5);
     const bundle = runExpertAnalysis(db, {
       trigger_type: "agent_chat",
       question: args.question,
       symbol: args.symbol,
+      retrieved,
       market_context: db.markets?.find((item) => item.symbol === args.symbol)
     });
     run.analysisBundleId = bundle.id;
@@ -500,7 +502,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   let errorText = "";
 
   try {
-    const systemPrompt = buildSystemPrompt(db, userText);
+    const systemPrompt = await buildSystemPrompt(db, userText);
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {

@@ -11,7 +11,8 @@ export function runExpertAnalysis(db, payload = {}) {
   const rules = (db.knowledge?.ruleProposals || []).filter((rule) => rule.status === "已批准");
 
   // 用问题 + 交易对做知识检索，作为决策依据。
-  const retrieved = retrieveChunks(db, `${question} ${symbol}`, 5);
+  // 异步语义检索的调用方可通过 payload.retrieved 预先传入；否则同步词频检索。
+  const retrieved = Array.isArray(payload.retrieved) ? payload.retrieved : retrieveChunks(db, `${question} ${symbol}`, 5);
   const knowledgeAvailable = (db.knowledge?.chunks || []).length > 0;
 
   const knowledgeView = retrieved.length
