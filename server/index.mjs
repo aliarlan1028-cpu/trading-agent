@@ -31,6 +31,7 @@ import { evaluateTradePlan } from "./riskEngine.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
+import { seedSkillTools } from "./skillTools.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
 import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, saveDb, verifyAuditChain } from "./store.mjs";
 import { executeTradeAction } from "./tradeActions.mjs";
@@ -47,6 +48,7 @@ installProxyFromEnv();
 const port = Number(process.env.PORT || 8787);
 db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
 refreshApiKeyMetadata(db);
+seedSkillTools(db);
 saveDb(db);
 
 app.use(cors());

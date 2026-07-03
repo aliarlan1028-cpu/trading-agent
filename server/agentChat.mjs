@@ -7,6 +7,7 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
+import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -231,6 +232,9 @@ function recordRunHistory(db, run, finalText) {
 // 工具执行
 // ---------------------------------------------------------------------------
 export async function executeTool(db, run, name, args = {}) {
+  // 已启用的原生技能作为工具接入决策循环
+  if (isSkillTool(name)) return runSkillTool(db, name, args);
+
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";
     const exchange = args.exchange || "BINANCE";
@@ -480,7 +484,7 @@ export function activeProvider() {
   return null;
 }
 
-async function anthropicTurn(model, messages, systemPrompt) {
+async function anthropicTurn(model, messages, systemPrompt, tools) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -493,7 +497,7 @@ async function anthropicTurn(model, messages, systemPrompt) {
       max_tokens: 2048,
       system: systemPrompt || BASE_RULES,
       messages,
-      tools: TOOL_DEFS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.schema }))
+      tools: (tools || TOOL_DEFS).map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.schema }))
     })
   });
   if (!response.ok) {
@@ -503,14 +507,14 @@ async function anthropicTurn(model, messages, systemPrompt) {
   return response.json();
 }
 
-async function openaiCompatTurn(providerName, model, messages, systemPrompt) {
+async function openaiCompatTurn(providerName, model, messages, systemPrompt, tools) {
   const client = providerName === "deepseek"
     ? new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" })
     : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await client.chat.completions.create({
     model,
     messages: [{ role: "system", content: systemPrompt || BASE_RULES }, ...messages],
-    tools: TOOL_DEFS.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
+    tools: (tools || TOOL_DEFS).map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
     temperature: 0.2
   });
   return response.choices[0].message;
@@ -545,12 +549,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
 
   try {
     const systemPrompt = await buildSystemPrompt(db, userText);
+    const tools = [...TOOL_DEFS, ...enabledSkillTools(db)];
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
-      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt);
+      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools);
     } else {
-      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt);
+      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools);
     }
     run.status = "completed";
     recordRunHistory(db, run, finalText);
@@ -582,11 +587,11 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   return { userMessage, agentMessage, run };
 }
 
-async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt) {
+async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools) {
   const history = buildHistoryForLlm(db);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const response = await anthropicTurn(model, messages, systemPrompt);
+    const response = await anthropicTurn(model, messages, systemPrompt, tools);
     const textParts = response.content.filter((block) => block.type === "text").map((block) => block.text);
     const toolUses = response.content.filter((block) => block.type === "tool_use");
     if (response.stop_reason !== "tool_use" || !toolUses.length) {
@@ -603,11 +608,11 @@ async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt) 
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
-async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt) {
+async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools) {
   const history = buildHistoryForLlm(db);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt);
+    const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt, tools);
     if (!message.tool_calls?.length) {
       return (message.content || "").trim() || "（模型未返回内容）";
     }
@@ -643,6 +648,7 @@ async function runToolTracked(db, run, name, args, toolTrace) {
 
 function summarizeToolResult(name, result = {}) {
   if (result.error) return `失败：${result.error}`;
+  if (isSkillTool(name)) return String(result.note || JSON.stringify(result)).slice(0, 160);
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;

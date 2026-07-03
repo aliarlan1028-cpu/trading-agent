@@ -389,8 +389,9 @@ function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
       <div className="knowledgeGrid">
         <Card className="skillCenterCard">
           <SectionTitle title="Skills 中心" action={<div className="titleActions"><button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 导入 Skill</button><button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button></div>} />
+          <p className="fieldHint">已启用的技能会作为可调用工具接入 AI 交易员的决策循环；内置技能（built-in）只读、需扫描并安装后生效。</p>
           <div className="skillList">
-            {(data.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>v{skill.version}</small><StatusBadge>{skill.status || "已启用"}</StatusBadge></div>)}
+            {(data.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>{skill.native ? "内置" : `v${skill.version}`}</small><StatusBadge tone={skill.status === "已启用" ? "ok" : "warning"}>{skill.status || "已启用"}</StatusBadge></div>)}
             {!data.skills?.length && (
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无已导入 Skill</strong>
