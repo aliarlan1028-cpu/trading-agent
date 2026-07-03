@@ -467,6 +467,39 @@ function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
   );
 }
 
+function RiskQuadrants({ rules = [] }) {
+  const quadrantOf = (scope) => {
+    const s = String(scope || "").toLowerCase();
+    if (/account|portfolio|loss|margin|equity/.test(s)) return "account";
+    if (/event/.test(s)) return "event";
+    if (/system|knowledge|kill|api/.test(s)) return "system";
+    return "trade";
+  };
+  const quadrants = [
+    { key: "account", title: "账户风险", icon: WalletCards, tone: "" },
+    { key: "trade", title: "交易风险", icon: TrendingUp, tone: "" },
+    { key: "event", title: "事件风险", icon: Bell, tone: "warning" },
+    { key: "system", title: "系统风险", icon: Shield, tone: "positive" }
+  ];
+  const buckets = { account: [], trade: [], event: [], system: [] };
+  for (const rule of rules) buckets[quadrantOf(rule.scope)].push(rule);
+  return (
+    <div className="riskQuadrantGrid">
+      {quadrants.map(({ key, title, icon: Icon, tone }) => (
+        <div className="riskQuadrant" key={key}>
+          <header><span className={`quadIcon ${tone}`}><Icon size={16} /></span><strong>{title}</strong><b>{buckets[key].length}</b></header>
+          {buckets[key].length ? buckets[key].map((rule) => (
+            <div className="quadRule" key={rule.id}>
+              <div><strong>{rule.name}</strong><small>{rule.level || "-"} · {humanize(rule.action, rule.action || "-")}</small></div>
+              <StatusBadge tone={rule.enabled === false ? "warning" : "ok"}>{rule.enabled === false ? "停用" : "启用"}</StatusBadge>
+            </div>
+          )) : <div className="quadEmpty">无规则</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function RiskAuthPage({ data, action, ui }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || {};
@@ -504,10 +537,7 @@ export function RiskAuthPage({ data, action, ui }) {
         </Card>
         <Card>
           <SectionTitle title="风险规则" action={<button className="secondaryButton" onClick={() => ui.openPanel("riskRules")}>管理规则</button>} />
-          <div className="riskRuleGrid">
-            {(data.riskRules || []).map((rule) => <div className="riskRuleBox" key={rule.id}><h3>{rule.name}</h3><span>{rule.description}</span><span>级别 {rule.level || "-"}</span><span>动作 {humanize(rule.action, rule.action || "-")}</span><StatusBadge>{rule.enabled ? "启用" : "停用"}</StatusBadge></div>)}
-            {!data.riskRules?.length && <div className="emptyPanel">暂无风险规则。</div>}
-          </div>
+          <RiskQuadrants rules={data.riskRules || []} />
           <p className="muted">规则触发将按预设动作执行，可在右侧「风险状态墙」中手动干预。</p>
         </Card>
         <Card className="riskStatusWall">

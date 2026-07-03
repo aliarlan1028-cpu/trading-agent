@@ -397,15 +397,16 @@ export function SectionTitle({ icon: Icon, title, action }) {
   );
 }
 
-export function MetricCard({ icon: Icon, label, value, sub, tone = "" }) {
+export function MetricCard({ icon: Icon, label, value, sub, tone = "", candles }) {
   return (
     <Card className={`metricCard ${Icon ? "" : "noIcon"}`}>
-      {Icon && <div className={`metricIcon ${tone}`}><Icon size={20} /></div>}
+      {Icon && <div className={`metricIcon ${tone}`}><Icon size={22} /></div>}
       <div>
         <span>{label}</span>
         <strong className={tone}>{value}</strong>
         {sub && <small>{sub}</small>}
       </div>
+      {candles && candles.length > 1 && <div className={`metricSpark ${tone}`}><MiniSparkline candles={candles} /></div>}
     </Card>
   );
 }
