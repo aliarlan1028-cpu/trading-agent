@@ -1,3 +1,5 @@
+// ⚠️ DEPRECATED / 遗留路径。仅被遗留的 llmAgent.mjs 使用。主 Agent 的工具在
+// agentChat.mjs 的 TOOL_DEFS + skillTools + mcpClient，不走这里。勿新增能力。
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";

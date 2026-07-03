@@ -8,6 +8,8 @@ import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
 import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
+import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
+import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -234,6 +236,8 @@ function recordRunHistory(db, run, finalText) {
 export async function executeTool(db, run, name, args = {}) {
   // 已启用的原生技能作为工具接入决策循环
   if (isSkillTool(name)) return runSkillTool(db, name, args);
+  // 已连接的 MCP server 工具
+  if (isMcpTool(name)) return runMcpTool(db, name, args);
 
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";
@@ -549,7 +553,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
 
   try {
     const systemPrompt = await buildSystemPrompt(db, userText);
-    const tools = [...TOOL_DEFS, ...enabledSkillTools(db)];
+    const tools = [...TOOL_DEFS, ...enabledSkillTools(db), ...enabledMcpTools(db)];
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
@@ -567,6 +571,16 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   }
 
   run.completedAt = nowIso();
+  // 主对话 agent 的运行上报 LangSmith（配 key 则推云端，否则本地记录）；失败不影响对话。
+  try {
+    run.langSmith = await recordLangSmithRun(db, {
+      name: `AI交易员: ${userText.slice(0, 60)}`,
+      inputs: { message: userText },
+      outputs: { final: finalText, toolCalls: toolTrace.length, status: run.status },
+      runType: "chain",
+      startTime: run.createdAt
+    });
+  } catch { /* tracing 不阻断主流程 */ }
   const agentMessage = {
     id: id("msg"),
     role: "agent",
@@ -649,6 +663,7 @@ async function runToolTracked(db, run, name, args, toolTrace) {
 function summarizeToolResult(name, result = {}) {
   if (result.error) return `失败：${result.error}`;
   if (isSkillTool(name)) return String(result.note || JSON.stringify(result)).slice(0, 160);
+  if (isMcpTool(name)) return `MCP ${result.server || ""}：${String(result.content || result.error || "").slice(0, 140)}`;
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;

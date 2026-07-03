@@ -2121,6 +2121,7 @@ h3 {
 .panelItem small {
   color: #7a7264;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .configPanel h2 {

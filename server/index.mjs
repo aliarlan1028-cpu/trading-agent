@@ -32,6 +32,7 @@ import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, scheduler
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
+import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
 import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, saveDb, verifyAuditChain } from "./store.mjs";
 import { executeTradeAction } from "./tradeActions.mjs";
@@ -177,6 +178,7 @@ app.get("/api/overview", (_req, res) => {
     paperReport: buildPaperReport(db),
     portfolioRisk: buildPortfolioRisk(db, db.mandates.find((m) => ["active", "running"].includes(m.status))),
     larkConfigured: larkStatus().configured,
+    mcpStatus: mcpStatus(db),
     embeddingStatus: embeddingStatus(db),
     reviewAnalytics: buildReviewAnalytics(db),
     runtimeConfig: db.runtimeConfig || {},
@@ -718,10 +720,24 @@ app.post("/api/skills/:id/run-sandbox", requirePermission("write:skills"), async
 app.get("/api/mcp", (_req, res) => res.json(db.mcpServers));
 
 app.post("/api/mcp", requirePermission("write:mcp"), (req, res) => {
-  const server = { id: id("mcp"), status: "connected", toolCount: 0, permissions: [], ...req.body };
+  const server = { id: id("mcp"), status: "registered", toolCount: 0, tools: [], enabled: true, permissions: [], ...req.body };
   db.mcpServers.unshift(server);
   appendAudit(db, "注册 MCP Server", server.id, db.user.name);
   persist(res, server);
+});
+
+app.post("/api/mcp/:id/connect", requirePermission("write:mcp"), async (req, res) => {
+  const result = await connectMcpServer(db, req.params.id);
+  if (result.status === "missing_server") return res.status(404).json({ error: "MCP server not found" });
+  persist(res, { ...result, message: result.status === "connected" ? `已连接，发现 ${result.server.toolCount} 个工具` : `连接失败：${result.error || result.status}` });
+});
+
+app.post("/api/mcp/:id/disable", requirePermission("write:mcp"), (req, res) => {
+  const server = db.mcpServers.find((item) => item.id === req.params.id);
+  if (!server) return res.status(404).json({ error: "MCP server not found" });
+  server.enabled = false;
+  appendAudit(db, "停用 MCP Server", server.id, db.user.name);
+  persist(res, { message: `${server.name} 已停用`, server });
 });
 
 app.patch("/api/mcp/:id/permissions", requirePermission("admin:security"), (req, res) => {

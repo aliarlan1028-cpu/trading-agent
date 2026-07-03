@@ -1,3 +1,6 @@
+// ⚠️ DEPRECATED / 遗留路径。产品的主 Agent 是 agentChat.mjs（runAgentChat）——
+// 记忆、知识、策略研究、模拟盘、Skill/MCP 工具都在那里。本文件（/api/llm-agent/run）
+// 与 toolRouter.mjs 是早期的平行实现，仅为兼容旧接口保留，不要在此新增能力。
 import OpenAI from "openai";
 import { recordLangSmithRun } from "./langSmith.mjs";
 import { callTool, listTools } from "./toolRouter.mjs";

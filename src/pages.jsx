@@ -376,6 +376,51 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
   );
 }
 
+function McpManager({ data, action }) {
+  const [form, setForm] = useState({ name: "", url: "", apiKey: "" });
+  const servers = data.mcpServers || [];
+  const status = data.mcpStatus || {};
+  const countLabel = `${status.connected || 0}/${status.total || 0} 已连接 · ${status.tools || 0} 个工具`;
+  async function register(event) {
+    event.preventDefault();
+    if (!form.name.trim() || !form.url.trim()) return;
+    const created = await action("/api/mcp", { name: form.name.trim(), url: form.url.trim(), apiKey: form.apiKey.trim() || undefined });
+    if (created?.id) {
+      await action(`/api/mcp/${created.id}/connect`, {});
+      setForm({ name: "", url: "", apiKey: "" });
+    }
+  }
+  return (
+    <Card>
+      <SectionTitle title="MCP 工具服务" action={<small className="muted">{countLabel}</small>} />
+      <form className="ragQueryBar" style={{ flexWrap: "wrap" }} onSubmit={register}>
+        <input placeholder="名称，如 Tavily 搜索" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <input placeholder="MCP Server 端点 URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+        <input placeholder="API Key（可选，Bearer）" type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+        <button className="primaryButton" type="submit"><Plus size={14} /> 注册并连接</button>
+      </form>
+      <div className="panelStack compact">
+        {servers.map((s) => {
+          const tone = s.status === "connected" ? "ok" : s.status === "error" ? "danger" : "warning";
+          const sub = `${s.url} · ${s.toolCount || 0} 工具${s.lastError ? ` · ${s.lastError}` : ""}`;
+          return (
+            <div className="panelItem" key={s.id}>
+              <div><strong>{s.name}</strong><small>{sub}</small></div>
+              <StatusBadge tone={tone}>{humanize(s.status, s.status)}</StatusBadge>
+              <span className="rowActions">
+                <button className="linkCell" onClick={() => action(`/api/mcp/${s.id}/connect`, {})}>连接</button>
+                {s.status === "connected" ? <button className="linkCell" onClick={() => action(`/api/mcp/${s.id}/disable`, {})}>停用</button> : null}
+              </span>
+            </div>
+          );
+        })}
+        {servers.length ? null : <div className="emptyPanel">暂无 MCP Server。注册后点「连接」发现工具，已连接的工具会接入 AI 交易员。</div>}
+      </div>
+      <p className="fieldHint">已连接的 MCP 工具以 mcp__ 前缀接入 AI 交易员的决策循环。例：Tavily 搜索 MCP（需 API Key）给 Agent 加"查实时新闻/研报"能力。</p>
+    </Card>
+  );
+}
+
 function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
   return (
     <>
@@ -402,15 +447,7 @@ function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
           </div>
           <div className="importButtons"><button onClick={() => ui.openPanel("skillImport")}>从 GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
         </Card>
-        <Card>
-          <SectionTitle title="MCP 工具服务" action={<button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 注册 MCP</button>} />
-          <div className="mcpBox">
-            <div><strong>MCP 工具</strong><span>{connectedMcp}/{data.mcpServers?.length || 0} 已连接</span></div>
-            <div className="mcpChips">{(data.mcpServers || []).slice(0, 6).map((item) => <span key={item.id}>{item.name}<b>{item.status}</b></span>)}</div>
-            {!data.mcpServers?.length && <div className="emptyPanel">暂无已注册的 MCP Server。</div>}
-            <RiskLine label="权限与隔离" value="沙箱执行" />
-          </div>
-        </Card>
+        <McpManager data={data} action={action} />
       </div>
 
       <Card>
