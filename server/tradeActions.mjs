@@ -1,5 +1,6 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { hasPassedPaper } from "./paperTrading.mjs";
 
 const WRITE_ACTIONS = new Set(["place_order", "cancel_order", "amend_order", "close_position", "move_stop", "take_profit"]);
 const ACTION_TO_MANDATE = {
@@ -66,6 +67,13 @@ function validateWriteGuard(db, action, payload) {
 
   const mandateGuard = validateMandateGuard(db, action, payload);
   if (!mandateGuard.allowed) return mandateGuard;
+
+  // 可选安全垫：要求策略先通过模拟盘前向验证，才允许对该交易对开新仓。
+  // 只拦截"开仓"，绝不拦截减仓/平仓/撤单等降风险动作。
+  const isNewEntry = action === "place_order" && !payload.reduceOnly && !payload.closePosition;
+  if (process.env.REQUIRE_PAPER_VALIDATION === "true" && isNewEntry && !hasPassedPaper(db, payload.symbol)) {
+    return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
+  }
 
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   if (!policy) return { allowed: false, reason: "gray_policy_not_enabled" };

@@ -6,6 +6,7 @@ import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchan
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { paperValidationSummary } from "./paperTrading.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -187,6 +188,9 @@ export async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
   }
+
+  const paper = paperValidationSummary(db);
+  if (paper) sections.push(`【模拟盘前向验证状态（未通过前向验证的策略不要建议放大实盘，只观察或小额）】\n${paper}`);
 
   const pr = buildPortfolioRisk(db, db.mandates?.find((m) => ["active", "running"].includes(m.status)));
   if (pr.portfolioVolPct !== null) {

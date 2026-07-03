@@ -589,6 +589,8 @@ export function ReviewPage({ data, action, ui }) {
 
       <StrategyResearchCard data={data} action={action} />
 
+      <PaperValidationCard data={data} action={action} />
+
       <BacktestCard data={data} action={action} />
 
       <div className="reviewGrid">
@@ -650,6 +652,38 @@ function EquitySparkline({ values = [] }) {
     return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(" ");
   return <svg className="equityCurve" viewBox="0 0 100 48" preserveAspectRatio="none"><path d={path} /></svg>;
+}
+
+function PaperValidationCard({ data, action }) {
+  const report = data.paperReport || { minForwardTrades: 8, sessions: [] };
+  const sessions = report.sessions || [];
+  const tone = { passed: "ok", failed: "danger", running: "warning" };
+  const label = { passed: "已通过", failed: "未通过", running: "验证中" };
+  return (
+    <Card>
+      <SectionTitle icon={GitBranch} title="模拟盘前向验证（回测 → 模拟盘 → 小额实盘）" action={<span className="sectionActions"><button className="secondaryButton" onClick={() => action("/api/paper/spawn-from-profiles", {})}><Plus size={14} /> 从已验证策略开盘</button><button className="secondaryButton" onClick={() => action("/api/paper/run", {})}><RefreshCw size={14} /> 前向推进</button></span>} />
+      {sessions.length ? (
+        <DataTable columns={[
+          { key: "symbol", label: "交易对" }, { key: "strategy", label: "策略", width: "1.4fr" }, { key: "progress", label: "前向交易" }, { key: "exp", label: "前向期望" }, { key: "dd", label: "最大回撤" }, { key: "status", label: "状态" }
+        ]} rows={sessions.map((s) => ({
+          id: s.id,
+          symbol: `${s.symbol} · ${s.timeframe}`,
+          strategy: `${s.label}${s.seeded ? " · 含预热" : ""}`,
+          progress: `${s.metrics?.trades ?? 0} / ${report.minForwardTrades}`,
+          exp: s.metrics?.expectancyR !== null && s.metrics?.expectancyR !== undefined ? `${s.metrics.expectancyR}R` : "-",
+          dd: s.metrics?.maxDrawdownPct !== null && s.metrics?.maxDrawdownPct !== undefined ? `${s.metrics.maxDrawdownPct}%` : "-",
+          status: <StatusBadge tone={tone[s.status] || "warning"}>{label[s.status] || s.status}</StatusBadge>
+        }))} />
+      ) : (
+        <div className="emptyPanel emptyPanelAction">
+          <strong>还没有模拟盘会话</strong>
+          <span>先在上方「自适应策略研究」跑出已验证策略，再点「从已验证策略开盘」——系统会对这些策略开纯前向模拟盘，随真实行情累积样本，通过后才建议放大实盘。</span>
+          <button className="secondaryButton" onClick={() => action("/api/paper/spawn-from-profiles", {})}>从已验证策略开盘</button>
+        </div>
+      )}
+      <p className="muted">只在会话创建后到来的 K 线上模拟成交（真前向，无法过拟合历史）；前向满 {report.minForwardTrades} 笔且期望为正、回撤可控才「通过」，是上真金白银前最后的安全垫。可选开启 REQUIRE_PAPER_VALIDATION 后，未通过的交易对将禁止开实盘新仓。</p>
+    </Card>
+  );
 }
 
 function StrategyResearchCard({ data, action }) {

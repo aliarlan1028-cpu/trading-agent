@@ -16,6 +16,7 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
@@ -63,12 +64,14 @@ registerTaskHandler("agent_cycle", async (database) => {
 });
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
+registerTaskHandler("paper_forward", (database) => runPaperForward(database));
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", handler: "agent_cycle", schedule: "Every 15m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
 
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
@@ -169,6 +172,7 @@ app.get("/api/overview", (_req, res) => {
     performance: performanceReport(db),
     backtests: db.backtests?.slice(0, 10) || [],
     strategyProfiles: db.strategyProfiles || [],
+    paperReport: buildPaperReport(db),
     portfolioRisk: buildPortfolioRisk(db, db.mandates.find((m) => ["active", "running"].includes(m.status))),
     larkConfigured: larkStatus().configured,
     embeddingStatus: embeddingStatus(db),
@@ -536,6 +540,28 @@ app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
 app.get("/api/portfolio/risk", (_req, res) => {
   const mandate = db.mandates.find((m) => ["active", "running"].includes(m.status));
   res.json(buildPortfolioRisk(db, mandate));
+});
+
+app.get("/api/paper/sessions", (_req, res) => res.json(buildPaperReport(db)));
+app.post("/api/paper/start", requirePermission("write:review"), async (req, res) => {
+  try {
+    const result = await createPaperSession(db, req.body || {});
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: `开模拟盘失败：${error.message}` });
+  }
+});
+app.post("/api/paper/spawn-from-profiles", requirePermission("write:review"), async (req, res) => {
+  const created = await ensurePaperSessionsFromProfiles(db, req.body || {});
+  persist(res, { message: `已从已验证画像开出 ${created.length} 个模拟盘会话`, created });
+});
+app.post("/api/paper/run", requirePermission("write:review"), async (_req, res) => {
+  try {
+    const result = await runPaperForward(db);
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: `前向推进失败：${error.message}` });
+  }
 });
 app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
 app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {

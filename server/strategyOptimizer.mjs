@@ -2,6 +2,7 @@ import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { simulate } from "./backtestEngine.mjs";
 import { STRATEGIES, detectRegime, regimePreferredFamilies } from "./strategies.mjs";
 import { buildReviewAnalytics } from "./reviewEngine.mjs";
+import { ensurePaperSessionsFromProfiles } from "./paperTrading.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
@@ -155,9 +156,11 @@ export async function runStrategyResearch(db, options = {}) {
   if (db.strategyProfiles.length > 40) db.strategyProfiles = db.strategyProfiles.slice(0, 40);
   writeProfileToMemory(db, updated);
   mineReviewLessons(db);
-  appendAudit(db, `策略研究完成：更新 ${updated.length} 个画像，跳过 ${skipped.length} 个`, "strategy_research", "LearningLoop");
+  // 已验证的策略自动进入模拟盘前向验证（纯前向，随时间累积）。
+  const paperSpawned = await ensurePaperSessionsFromProfiles(db, { lookbackBars: Number(options.paperLookbackBars || 0) });
+  appendAudit(db, `策略研究完成：更新 ${updated.length} 个画像，跳过 ${skipped.length} 个，开模拟盘 ${paperSpawned.length} 个`, "strategy_research", "LearningLoop");
   appendTrace(db, "strategy_research", `${updated.map((p) => `${p.symbol}:${p.strategyId || "无"}`).join(" ")}`, "ok");
-  return { status: "ok", ranAt: nowIso(), timeframe, updated, skipped };
+  return { status: "ok", ranAt: nowIso(), timeframe, updated, skipped, paperSpawned: paperSpawned.length };
 }
 
 export function activeStrategyProfiles(db, symbol) {
