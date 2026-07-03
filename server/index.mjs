@@ -1227,9 +1227,22 @@ app.post("/api/review/backfill-fields", requirePermission("write:review"), (_req
   persist(res, { message: `已补全复盘字段：${result.updated} 处`, ...result, analytics: buildReviewAnalytics(db) });
 });
 
-app.post("/api/review/strategy-improvement", requirePermission("write:review"), (req, res) => {
-  const result = createStrategyImprovementCycle(db, req.body || {});
-  persist(res, result);
+app.post("/api/review/strategy-improvement", requirePermission("write:review"), async (req, res) => {
+  // 记录改进假设/成功标准（复盘产物），并真正发起研究 → 自动开模拟盘（前向验证）。
+  const cycle = createStrategyImprovementCycle(db, req.body || {});
+  let research = null;
+  try {
+    research = await runStrategyResearch(db, req.body?.symbols ? { symbols: req.body.symbols } : {});
+  } catch (error) {
+    research = { status: "research_failed", error: error.message };
+  }
+  persist(res, {
+    ...cycle,
+    research,
+    message: research?.status === "ok"
+      ? `已发起改进闭环：研究 ${research.updated?.length || 0} 个交易对，自动开模拟盘 ${research.paperSpawned || 0} 个`
+      : `已创建改进假设；研究未完成（${research?.error || research?.status || "unknown"}）`
+  });
 });
 
 app.get("/api/traces", (_req, res) => res.json(db.traces));

@@ -45,12 +45,9 @@ export async function parseKnowledgeSource(db, sourceId) {
   else if (source.filePath) text = await extractFromFile(source.filePath);
   else text = `${source.title}\n${source.summary || ""}`;
 
-  const previousConceptIds = new Set((db.knowledge.conceptCards || []).filter((concept) => concept.sourceRefs?.includes(source.id)).map((concept) => concept.id));
   db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);
   db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== source.id);
   db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(source.id));
-  db.knowledge.expertGraphNodes = (db.knowledge.expertGraphNodes || []).filter((node) => !previousConceptIds.has(node.refId));
-  db.knowledge.expertGraphEdges = (db.knowledge.expertGraphEdges || []).filter((edge) => !edge.sourceRefs?.includes(source.id));
 
   const chunks = chunkText(text).map((chunk, index) => ({
     id: id("chunk"),
@@ -107,11 +104,6 @@ export async function parseKnowledgeSource(db, sourceId) {
       createdAt: nowIso()
     };
     db.knowledge.ruleProposals.unshift(ruleDraft);
-  }
-  for (const concept of concepts.slice(0, 8)) {
-    const graphId = `graph_${concept.id}`;
-    db.knowledge.expertGraphNodes.unshift({ id: graphId, nodeType: "concept", label: concept.name, refId: concept.id, weight: source.trustScore / 100 });
-    db.knowledge.expertGraphEdges.unshift({ id: id("edge"), fromNode: graphId, toNode: "graph_rule_cpi_window", relationType: "related_to", confidence: 0.5, sourceRefs: [source.id] });
   }
   source.status = "parsed";
   source.parsedAt = nowIso();
