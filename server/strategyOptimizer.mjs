@@ -1,6 +1,6 @@
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { simulate } from "./backtestEngine.mjs";
-import { STRATEGIES, detectRegime } from "./strategies.mjs";
+import { STRATEGIES, detectRegime, regimePreferredFamilies } from "./strategies.mjs";
 import { buildReviewAnalytics } from "./reviewEngine.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -44,22 +44,30 @@ export function optimizeSymbol(candles) {
         if (!qualified(train)) continue;
         if (!bestOnTrain || train.expectancyR > bestOnTrain.train.expectancyR) {
           const test = evaluate(candles, signals, split, candles.length, opts);
-          bestOnTrain = { strategyId: strategy.id, label: strategy.label, params: { ...entryParams, ...exit }, train, test };
+          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, params: { ...entryParams, ...exit }, train, test };
         }
       }
     }
     if (bestOnTrain) candidates.push(bestOnTrain);
   }
 
-  // 样本外排名：优先满足最小交易数且期望 R 最高；都不合格则标低置信度
+  // 样本外排名：优先满足最小交易数且期望 R 最高
   const oos = candidates.filter((c) => qualified(c.test)).sort((a, b) => b.test.expectancyR - a.test.expectancyR);
   const fallback = candidates.slice().sort((a, b) => (b.test?.expectancyR ?? -99) - (a.test?.expectancyR ?? -99));
-  const best = oos[0] || fallback[0] || null;
+
+  // regime 自适应：当前 regime 偏好的策略家族优先，只要它样本外也合格
+  const regime = detectRegime(candles.slice(split));
+  const preferred = regimePreferredFamilies(regime);
+  const regimeMatched = oos.filter((c) => preferred.includes(c.family));
+  const best = regimeMatched[0] || oos[0] || fallback[0] || null;
+
   return {
     best,
-    confidence: oos[0] ? "validated" : "low",
-    regime: detectRegime(candles.slice(split)),
-    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, params: c.params, testExpectancyR: c.test?.expectancyR ?? null, testTrades: c.test?.trades ?? 0 }))
+    confidence: (regimeMatched[0] || oos[0]) ? "validated" : "low",
+    regime,
+    regimeMatch: best ? preferred.includes(best.family) : false,
+    preferredFamilies: preferred,
+    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, params: c.params, testExpectancyR: c.test?.expectancyR ?? null, testTrades: c.test?.trades ?? 0 }))
   };
 }
 
@@ -75,6 +83,8 @@ function profileFrom(symbol, timeframe, opt) {
     train: best?.train || null,
     test: best?.test || null,
     regime: opt.regime,
+    regimeMatch: opt.regimeMatch,
+    family: best?.family || null,
     confidence: best ? opt.confidence : "none",
     chosenAt: nowIso()
   };
@@ -85,7 +95,7 @@ function writeProfileToMemory(db, profiles) {
   const file = db.agentStateFiles.AGENT ||= { id: "state_agent", title: "AGENT.md", content: "", updatedAt: nowIso() };
   const lines = profiles
     .filter((p) => p.strategyId)
-    .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 盈亏比 ${p.test?.profitFactor ?? "-"}，置信度 ${p.confidence}，当前 regime ${p.regime}。`);
+    .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 盈亏比 ${p.test?.profitFactor ?? "-"}，置信度 ${p.confidence}，当前 regime ${p.regime}${p.regimeMatch ? "（策略与 regime 匹配）" : "（注意：与当前 regime 不完全匹配，谨慎）"}。`);
   if (!lines.length) return;
   const marker = "## 已验证策略画像（自动更新）";
   const base = String(file.content || "").split(marker)[0].trim();

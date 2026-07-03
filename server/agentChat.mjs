@@ -5,6 +5,7 @@ import { evaluateTradePlan } from "./riskEngine.mjs";
 import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
+import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -185,6 +186,11 @@ export async function buildSystemPrompt(db, userText = "") {
       .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 胜率 ${p.test?.winRatePct ?? "-"}%，置信度 ${p.confidence}，regime ${p.regime}`)
       .join("\n");
     sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
+  }
+
+  const pr = buildPortfolioRisk(db, db.mandates?.find((m) => ["active", "running"].includes(m.status)));
+  if (pr.portfolioVolPct !== null) {
+    sections.push(`【组合波动预算】当前组合日度波动 ${pr.portfolioVolPct}%，预算 ${pr.budgetPct}%，已用 ${pr.utilizationPct}%。接近或超过预算时应减小新仓名义额度或避免同向相关加仓（执行引擎会自动按组合波动上限压低仓位）。`);
   }
 
   const chunks = await retrieveChunksSemantic(db, userText, 5);

@@ -1,5 +1,6 @@
 import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
@@ -95,9 +96,17 @@ export function computePositionSize(db, plan) {
     notional = maxNotional;
     sizedBy = `${sizedBy}+gray_capped`;
   }
+  // 组合级波动率目标：相关性感知地压低会突破组合波动预算的名义额度。
+  const mandate = db.mandates.find((m) => m.id === plan.mandateId) || db.mandates.find((m) => ["active", "running"].includes(m.status));
+  const volCap = portfolioCapNotional(db, plan, equity, mandate);
+  if (volCap !== null && volCap < notional) {
+    quantity = volCap / entryMid;
+    notional = volCap;
+    sizedBy = `${sizedBy}+portfolio_vol_capped`;
+  }
   quantity = roundQuantity(quantity, entryMid);
-  if (quantity <= 0) return { error: "quantity_rounds_to_zero", notional, maxNotional };
-  return { quantity, entryMid, stopDistance, notional: quantity * entryMid, riskPct, equity, maxNotional, sizedBy };
+  if (quantity <= 0) return { error: "quantity_rounds_to_zero", notional, maxNotional, sizedBy };
+  return { quantity, entryMid, stopDistance, notional: quantity * entryMid, riskPct, equity, maxNotional, volCap, sizedBy };
 }
 
 function roundQuantity(quantity, price) {

@@ -36,6 +36,27 @@ function rsiSeries(closes, period) {
   return rsi;
 }
 
+function emaSeries(closes, period) {
+  const k = 2 / (period + 1);
+  const out = new Array(closes.length).fill(null);
+  let ema;
+  for (let i = 0; i < closes.length; i += 1) {
+    ema = i === 0 ? closes[0] : closes[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+
+function rollingStd(closes, period, index) {
+  if (index + 1 < period) return null;
+  let sum = 0;
+  for (let i = index - period + 1; i <= index; i += 1) sum += closes[i];
+  const mean = sum / period;
+  let variance = 0;
+  for (let i = index - period + 1; i <= index; i += 1) variance += (closes[i] - mean) ** 2;
+  return Math.sqrt(variance / period);
+}
+
 // 笛卡尔积生成参数网格
 function grid(spec) {
   const keys = Object.keys(spec);
@@ -54,6 +75,7 @@ export const STRATEGIES = {
   trend: {
     id: "trend",
     label: "趋势跟随（均线交叉）",
+    family: "trend",
     defaultParams: { fast: 10, slow: 30 },
     paramGrid: grid({ fast: [8, 10, 20], slow: [30, 50, 100] }).filter((p) => p.fast < p.slow),
     signals(candles, params = {}) {
@@ -73,6 +95,7 @@ export const STRATEGIES = {
   meanrev: {
     id: "meanrev",
     label: "均值回归（RSI 超卖反弹）",
+    family: "meanrev",
     defaultParams: { period: 14, oversold: 30 },
     paramGrid: grid({ period: [14], oversold: [25, 30, 35] }),
     signals(candles, params = {}) {
@@ -89,6 +112,7 @@ export const STRATEGIES = {
   breakout: {
     id: "breakout",
     label: "突破（唐奇安通道）",
+    family: "trend",
     defaultParams: { lookback: 20 },
     paramGrid: grid({ lookback: [20, 40, 55] }),
     signals(candles, params = {}) {
@@ -100,8 +124,62 @@ export const STRATEGIES = {
         return Number(candle.close) > priorHigh;
       });
     }
+  },
+  macd: {
+    id: "macd",
+    label: "MACD 金叉（趋势动量）",
+    family: "trend",
+    defaultParams: { fast: 12, slow: 26, signal: 9 },
+    paramGrid: grid({ fast: [8, 12], slow: [21, 26], signal: [9] }).filter((p) => p.fast < p.slow),
+    signals(candles, params = {}) {
+      const fast = Math.max(2, Number(params.fast || 12));
+      const slow = Math.max(fast + 1, Number(params.slow || 26));
+      const signalPeriod = Math.max(2, Number(params.signal || 9));
+      const closes = candles.map((c) => Number(c.close));
+      const emaFast = emaSeries(closes, fast);
+      const emaSlow = emaSeries(closes, slow);
+      const macdLine = closes.map((_, i) => emaFast[i] - emaSlow[i]);
+      const signalLine = emaSeries(macdLine, signalPeriod);
+      return candles.map((_, i) => {
+        if (i < slow + signalPeriod) return false;
+        return macdLine[i - 1] <= signalLine[i - 1] && macdLine[i] > signalLine[i];
+      });
+    }
+  },
+  bollinger: {
+    id: "bollinger",
+    label: "布林带下轨反弹（均值回归）",
+    family: "meanrev",
+    defaultParams: { period: 20, k: 2 },
+    paramGrid: grid({ period: [20], k: [1.5, 2, 2.5] }),
+    signals(candles, params = {}) {
+      const period = Math.max(5, Number(params.period || 20));
+      const k = Number(params.k || 2);
+      const closes = candles.map((c) => Number(c.close));
+      return candles.map((_, i) => {
+        if (i < period) return false;
+        const stdPrev = rollingStd(closes, period, i - 1);
+        const stdNow = rollingStd(closes, period, i);
+        if (stdPrev === null || stdNow === null) return false;
+        let sumPrev = 0;
+        let sumNow = 0;
+        for (let j = i - period; j < i; j += 1) sumPrev += closes[j];
+        for (let j = i - period + 1; j <= i; j += 1) sumNow += closes[j];
+        const lowerPrev = sumPrev / period - k * stdPrev;
+        const lowerNow = sumNow / period - k * stdNow;
+        return closes[i - 1] < lowerPrev && closes[i] >= lowerNow;
+      });
+    }
   }
 };
+
+// 行情 regime → 偏好的策略家族。趋势市用趋势/突破，震荡市用均值回归。
+export function regimePreferredFamilies(regime) {
+  const r = String(regime || "");
+  if (r.includes("震荡")) return ["meanrev"];
+  if (r.includes("上行") || r.includes("下行") || r.includes("趋势")) return ["trend"];
+  return ["trend", "meanrev"];
+}
 
 export function getStrategy(id) {
   return STRATEGIES[id] || STRATEGIES.trend;

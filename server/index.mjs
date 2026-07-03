@@ -15,6 +15,7 @@ import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, 
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
+import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
@@ -168,6 +169,7 @@ app.get("/api/overview", (_req, res) => {
     performance: performanceReport(db),
     backtests: db.backtests?.slice(0, 10) || [],
     strategyProfiles: db.strategyProfiles || [],
+    portfolioRisk: buildPortfolioRisk(db, db.mandates.find((m) => ["active", "running"].includes(m.status))),
     larkConfigured: larkStatus().configured,
     embeddingStatus: embeddingStatus(db),
     reviewAnalytics: buildReviewAnalytics(db),
@@ -531,6 +533,10 @@ app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
 
 app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
 app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
+app.get("/api/portfolio/risk", (_req, res) => {
+  const mandate = db.mandates.find((m) => ["active", "running"].includes(m.status));
+  res.json(buildPortfolioRisk(db, mandate));
+});
 app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
 app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
   try {

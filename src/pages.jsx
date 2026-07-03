@@ -43,6 +43,7 @@ import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList
 export function MarketAccountPage({ data, action, ui }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
   const market = data.activeMarket || data.markets?.[0] || { candles: [] };
+  const pr = data.portfolioRisk || { portfolioVolPct: null, positions: [], correlations: [] };
   const latestReconcile = data.reconciliationReports?.[0];
   const latestSnapshot = data.accountSnapshots?.[0];
   const configuredAccounts = (data.exchangeAccounts || []).filter((account) => account.readEnabled).length;
@@ -119,6 +120,27 @@ export function MarketAccountPage({ data, action, ui }) {
           <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
         </div>
         <p className="muted">{market.microSyncedAt ? `资金费率反映多空拥挤度、订单簿买盘占比 <42% 偏空 / >58% 偏多。最后同步 ${formatDateTime(market.microSyncedAt)}` : "点击「刷新」拉取 OKX 资金费率、未平仓量与订单簿深度——合约方向判断需要它，不能只看 K 线。"}</p>
+      </Card>
+
+      <Card>
+        <SectionTitle icon={Gauge} title="组合波动预算" action={<small className="muted">按波动率反比 + 相关性感知定仓</small>} />
+        {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
+          <>
+            <div className="microGrid">
+              <div><span>组合日度波动</span><strong>{pr.portfolioVolPct}%</strong></div>
+              <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
+              <div><span>预算使用率</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
+              <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
+            </div>
+            <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
+            <div className="qualityGrid">
+              {pr.positions.map((p) => <RiskLine key={p.symbol} label={p.symbol} value={`日波动 ${p.dailyVolPct ?? "-"}% · 名义 ${displayMoney(p.notionalUsdt)} USDT`} />)}
+            </div>
+            {pr.correlations?.length > 0 && <p className="muted">相关性：{pr.correlations.map((c) => `${c.pair} ρ=${c.rho}`).join(" · ")}。相关性高的同向仓会被自动压小名义额度。</p>}
+          </>
+        ) : (
+          <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后这里显示组合日度波动、预算使用率与相关性。执行引擎会据此压低超预算的新仓。"}</div>
+        )}
       </Card>
 
       <div className="dashboardGrid compact">
