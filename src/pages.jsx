@@ -565,6 +565,8 @@ export function ReviewPage({ data, action, ui }) {
         </Card>
       </div>
 
+      <StrategyResearchCard data={data} action={action} />
+
       <BacktestCard data={data} action={action} />
 
       <div className="reviewGrid">
@@ -626,6 +628,36 @@ function EquitySparkline({ values = [] }) {
     return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(" ");
   return <svg className="equityCurve" viewBox="0 0 100 48" preserveAspectRatio="none"><path d={path} /></svg>;
+}
+
+function StrategyResearchCard({ data, action }) {
+  const profiles = data.strategyProfiles || [];
+  const confTone = { validated: "ok", low: "warning", none: "danger" };
+  const confLabel = { validated: "已验证", low: "低置信", none: "无合格策略" };
+  return (
+    <Card>
+      <SectionTitle icon={BrainCircuit} title="自适应策略研究（样本外验证）" action={<button className="secondaryButton" onClick={() => action("/api/strategy/research", {})}><Rocket size={14} /> 运行研究</button>} />
+      {profiles.length ? (
+        <DataTable columns={[
+          { key: "symbol", label: "交易对" }, { key: "strategy", label: "优选策略", width: "1.5fr" }, { key: "oos", label: "样本外期望" }, { key: "winrate", label: "样本外胜率" }, { key: "conf", label: "置信度" }, { key: "regime", label: "Regime" }
+        ]} rows={profiles.map((p) => ({
+          id: p.id,
+          symbol: `${p.symbol} · ${p.timeframe}`,
+          strategy: p.label,
+          oos: p.test?.expectancyR !== null && p.test?.expectancyR !== undefined ? `${p.test.expectancyR}R（${p.test.trades} 笔）` : "-",
+          winrate: p.test?.winRatePct !== null && p.test?.winRatePct !== undefined ? `${p.test.winRatePct}%` : "-",
+          conf: <StatusBadge tone={confTone[p.confidence] || "warning"}>{confLabel[p.confidence] || p.confidence}</StatusBadge>,
+          regime: p.regime || "-"
+        }))} />
+      ) : (
+        <div className="emptyPanel emptyPanelAction">
+          <strong>还没有策略画像</strong>
+          <span>点击「运行研究」：在趋势/均值回归/突破多套策略上做 train→test 样本外寻优，胜出者自动写入 Agent 记忆并参与后续决策。每 6 小时也会自动跑一次。</span>
+        </div>
+      )}
+      <p className="muted">样本外验证（用前 70% 数据寻优、后 30% 验证）避免过拟合；「低置信」表示样本外交易太少，不足以采信。</p>
+    </Card>
+  );
 }
 
 function BacktestCard({ data, action }) {

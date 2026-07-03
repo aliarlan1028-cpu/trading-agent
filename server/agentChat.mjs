@@ -4,6 +4,7 @@ import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
+import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -72,6 +73,18 @@ const TOOL_DEFS = [
         slowPeriod: { type: "number", description: "慢线周期，默认 30" },
         stopLossPct: { type: "number", description: "止损百分比，默认 2" },
         takeProfitR: { type: "number", description: "止盈 R 倍数，默认 2" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "research_strategy",
+    description: "对某交易对做自主策略研究：在多套策略（趋势/均值回归/突破）上做样本外寻优，返回样本外表现最好的策略与参数画像。想知道'这个币现在用什么策略靠谱'时用它，结果会写入长期记忆供后续决策。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        timeframe: { type: "string", enum: ["1h", "4h", "1d"] }
       },
       required: ["symbol"]
     }
@@ -165,6 +178,14 @@ export async function buildSystemPrompt(db, userText = "") {
     .map((item) => `- [${item.layer || "memory"}] ${item.title}：${clip(item.content, 200)}`)
     .join("\n");
   if (memories) sections.push(`【长期记忆】\n${memories}`);
+
+  const profiles = (db.strategyProfiles || []).filter((p) => p.strategyId).slice(0, 5);
+  if (profiles.length) {
+    const text = profiles
+      .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 胜率 ${p.test?.winRatePct ?? "-"}%，置信度 ${p.confidence}，regime ${p.regime}`)
+      .join("\n");
+    sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
+  }
 
   const chunks = await retrieveChunksSemantic(db, userText, 5);
   if (chunks.length) {
@@ -287,6 +308,17 @@ export async function executeTool(db, run, name, args = {}) {
       return result;
     } catch (error) {
       return { error: `回测失败：${error.message}` };
+    }
+  }
+
+  if (name === "research_strategy") {
+    try {
+      const result = await runStrategyResearch(db, { symbols: [args.symbol], timeframe: args.timeframe || "4h" });
+      const profile = activeStrategyProfiles(db, args.symbol)[0];
+      run.strategyProfileId = profile?.id;
+      return { profile, skipped: result.skipped };
+    } catch (error) {
+      return { error: `策略研究失败：${error.message}` };
     }
   }
 
@@ -604,6 +636,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
+  if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」，样本外期望 ${result.profile.test?.expectancyR ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（样本外均不达标）";
   if (name === "propose_trade_plan") return `${result.status}：${result.riskCheck?.summary || ""}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;

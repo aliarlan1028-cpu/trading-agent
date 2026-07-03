@@ -13,6 +13,8 @@ import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
+import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
+import { listStrategies } from "./strategies.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
@@ -59,11 +61,13 @@ registerTaskHandler("agent_cycle", async (database) => {
   return run;
 });
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
+registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", handler: "agent_cycle", schedule: "Every 15m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
 
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
@@ -163,6 +167,7 @@ app.get("/api/overview", (_req, res) => {
     agentRuns: db.agentRuns,
     performance: performanceReport(db),
     backtests: db.backtests?.slice(0, 10) || [],
+    strategyProfiles: db.strategyProfiles || [],
     larkConfigured: larkStatus().configured,
     embeddingStatus: embeddingStatus(db),
     reviewAnalytics: buildReviewAnalytics(db),
@@ -525,6 +530,16 @@ app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
 });
 
 app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
+app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
+app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
+app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
+  try {
+    const result = await runStrategyResearch(db, req.body || {});
+    persist(res, result);
+  } catch (error) {
+    res.status(500).json({ error: `策略研究失败：${error.message}` });
+  }
+});
 app.post("/api/backtest/run", requirePermission("write:review"), async (req, res) => {
   try {
     const result = await runBacktest(db, req.body || {});
