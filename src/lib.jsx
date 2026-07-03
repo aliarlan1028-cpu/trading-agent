@@ -470,6 +470,25 @@ export function LinePriceChart({ candles = [] }) {
   );
 }
 
+export function SemiGauge({ value = 0, max = 100, unit = "", color = "#3f8f5b", size = 128 }) {
+  const has = Number.isFinite(Number(value));
+  const pct = Math.max(0, Math.min(1, (Number(value) || 0) / max));
+  const cx = 60, cy = 60, r = 48;
+  const rad = (deg) => (deg * Math.PI) / 180;
+  const pt = (deg) => [(cx + r * Math.cos(rad(deg))).toFixed(2), (cy - r * Math.sin(rad(deg))).toFixed(2)];
+  const [ex, ey] = pt(180 - pct * 180);
+  return (
+    <div className="semiGauge" style={{ width: size }}>
+      <svg viewBox="0 0 120 74" preserveAspectRatio="xMidYMid meet">
+        <path className="semiTrack" d={`M 12 60 A ${r} ${r} 0 0 1 108 60`} />
+        {has && <path className="semiValue" style={{ stroke: color }} d={`M 12 60 A ${r} ${r} 0 0 1 ${ex} ${ey}`} />}
+        <text x="60" y="52" className="semiText" style={{ fill: has ? color : "#b7ab98" }}>{has ? value : "—"}</text>
+        {unit && <text x="60" y="68" className="semiUnit">{has ? unit : ""}</text>}
+      </svg>
+    </div>
+  );
+}
+
 export function StatusBadge({ children, tone = "ok" }) {
   return <span className={`statusBadge ${tone}`}>{children}</span>;
 }

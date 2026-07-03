@@ -1928,6 +1928,10 @@ h3 {
   gap: 14px;
 }
 
+.auditGrid.two {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.9fr);
+}
+
 .auditGrid > .dashCard,
 .observabilityGrid,
 .miniChart,
@@ -1939,6 +1943,105 @@ h3 {
   display: grid;
   gap: 10px;
   margin: 18px 0;
+}
+
+/* 水平步骤条（借鉴：Agent 运行轨迹 / 审计链） */
+.auditChain.stepper {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.auditChain.stepper .auditStep {
+  flex: 1 1 0;
+  min-width: 96px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+}
+
+.auditChain.stepper .auditStep::after {
+  content: "";
+  position: absolute;
+  top: 25px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: #ece7de;
+  z-index: 0;
+}
+
+.auditChain.stepper .auditStep:last-child::after { display: none; }
+
+.auditChain.stepper .auditStepIcon {
+  position: relative;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #e07a3f;
+  background: #f8f1e9;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(140, 110, 70, 0.12);
+}
+
+.auditChain.stepper .auditStep strong {
+  font-size: 12px;
+  color: #3d3227;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.auditChain.stepper .auditStep small {
+  font-size: 10px;
+  color: #9a836c;
+}
+
+.semiGauge {
+  display: block;
+  margin: 0 auto;
+}
+
+.semiGauge svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.semiTrack {
+  fill: none;
+  stroke: #efe8dc;
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+
+.semiValue {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.semiText {
+  text-anchor: middle;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.semiUnit {
+  text-anchor: middle;
+  font-size: 9px;
+  fill: #9a836c;
 }
 
 .auditStep {

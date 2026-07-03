@@ -38,7 +38,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge } from "./lib.jsx";
 
 export function MarketAccountPage({ data, action, ui }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
@@ -512,7 +512,7 @@ export function RiskAuthPage({ data, action, ui }) {
         </Card>
         <Card className="riskStatusWall">
           <SectionTitle title="风险状态墙" action={<small>实时更新 {formatDateTime(latestRisk.createdAt || data.system.updatedAt)} <RefreshCw size={13} /></small>} />
-          <div className="riskScoreBox"><Shield size={28} /><span>当前风险等级</span><strong>{data.portfolio.riskLabel || "未同步"}</strong><div className="riskGauge">{hasRiskScore ? riskScore : "—"}<small>{hasRiskScore ? "/100" : ""}</small></div></div>
+          <div className="riskScoreBox"><Shield size={28} /><span>当前风险等级<strong>{data.portfolio.riskLabel || "未同步"}</strong></span><SemiGauge value={hasRiskScore ? riskScore : NaN} max={100} unit="风险分 /100" size={132} color={riskScore >= 70 ? "#c0392b" : riskScore >= 40 ? "#e07a3f" : "#3f8f5b"} /></div>
           <div className="lossBudget"><span>剩余亏损预算（今日）<b>{data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt, 2, "0.00")} USDT`}</b></span><small>日亏损上限 {mandate.maxDailyLossPct || "-"}%</small><ProgressBar value={hasRiskScore ? Math.max(0, 100 - riskScore) : 0} /></div>
           <RiskLine label="灰度实盘额度" value={grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"} />
           <RiskLine label="最大杠杆倍数" value={mandate.max_leverage || mandate.maxLeverageBySymbol ? `${mandate.max_leverage || Math.max(1, ...Object.values(mandate.maxLeverageBySymbol || { default: 1 }))}x` : "未授权"} />
@@ -826,13 +826,13 @@ export function AuditSystemPage({ data, ui }) {
   });
   const traceTypes = ["全部", ...Array.from(new Set(traces.map((trace) => trace.type).filter(Boolean))).slice(0, 3)];
   const chainItems = [
-    ["授权任务", latestPlan.mandateId, humanize(data.agentStatus?.activeMandate?.status, "未授权")],
-    ["分析包", latestPlan.analysisBundleId, latestPlan.analysisBundleId ? "已生成" : "未生成"],
-    ["交易计划", latestPlan.id, humanize(latestPlan.status, "未生成")],
-    ["风险校验", latestPlan.riskCheckId || latestRisk.id, humanize(latestRisk.decision || latestRisk.result, "未检查")],
-    ["执行", latestOrder.id, humanize(latestOrder.status, "真实写关闭")],
-    ["结算对账", data.reconciliationReports?.[0]?.id, humanize(data.reconciliationReports?.[0]?.status, "未对账")],
-    ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成"]
+    ["授权任务", latestPlan.mandateId, humanize(data.agentStatus?.activeMandate?.status, "未授权"), KeyRound],
+    ["分析包", latestPlan.analysisBundleId, latestPlan.analysisBundleId ? "已生成" : "未生成", FileText],
+    ["交易计划", latestPlan.id, humanize(latestPlan.status, "未生成"), ClipboardList],
+    ["风险校验", latestPlan.riskCheckId || latestRisk.id, humanize(latestRisk.decision || latestRisk.result, "未检查"), Shield],
+    ["执行", latestOrder.id, humanize(latestOrder.status, "真实写关闭"), Rocket],
+    ["结算对账", data.reconciliationReports?.[0]?.id, humanize(data.reconciliationReports?.[0]?.status, "未对账"), RefreshCw],
+    ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成", Search]
   ];
   return (
     <div className="pageStack">
@@ -845,20 +845,22 @@ export function AuditSystemPage({ data, ui }) {
         <MetricCard icon={Shield} label="审计链" value={auditOk ? "正常" : "异常"} sub={`${data.auditLogs?.length || 0} 条日志`} />
       </div>
 
-      <div className="auditGrid">
-        <Card className="auditChainCard">
-          <SectionTitle title="Agent 运行审计链" />
-          <div className="auditChain">
-            {chainItems.map(([item, value, state], index) => (
-              <div className="auditStep" key={item} title={value || "未生成"}>
-                <div>{index + 1}</div>
-                <span><strong>{item}</strong><small>ID: {shortId(value)}</small></span>
-                <StatusBadge tone={statusTone(state)}>{state}</StatusBadge>
-              </div>
-            ))}
-          </div>
-          <footer><span>最近耗时 <b>{formatDuration(traces[0]?.latencyMs)}</b></span><span>状态 <b className={latestRisk.passed ? "positive" : "warning"}>{humanize(latestRisk.decision || latestPlan.status, "未生成")}</b></span><button className="secondaryButton" onClick={() => ui.openPanel("auditChain")}>查看完整链路 <ChevronRight size={14} /></button></footer>
-        </Card>
+      <Card className="auditChainCard">
+        <SectionTitle title="Agent 运行审计链" />
+        <div className="auditChain stepper">
+          {chainItems.map(([item, value, state, Icon], index) => (
+            <div className="auditStep" key={item} title={value || "未生成"}>
+              <div className="auditStepIcon">{Icon ? <Icon size={18} /> : index + 1}</div>
+              <strong>{item}</strong>
+              <small>{shortId(value)}</small>
+              <StatusBadge tone={statusTone(state)}>{state}</StatusBadge>
+            </div>
+          ))}
+        </div>
+        <footer><span>最近耗时 <b>{formatDuration(traces[0]?.latencyMs)}</b></span><span>状态 <b className={latestRisk.passed ? "positive" : "warning"}>{humanize(latestRisk.decision || latestPlan.status, "未生成")}</b></span><button className="secondaryButton" onClick={() => ui.openPanel("auditChain")}>查看完整链路 <ChevronRight size={14} /></button></footer>
+      </Card>
+
+      <div className="auditGrid two">
         <Card>
           <SectionTitle title="决策日志" action={<div className="filterGroup">{traceTypes.map((type) => <button className={traceTypeFilter === type ? "active" : ""} key={type} onClick={() => setTraceTypeFilter(type)}>{humanize(type, type)}</button>)}<button className={traceWindow === "24h" ? "active" : ""} onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} <ChevronDown size={13} /></button></div>} />
           <DataTable columns={[
