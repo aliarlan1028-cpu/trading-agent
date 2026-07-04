@@ -324,6 +324,7 @@ h3 {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 10px 30px rgba(60, 45, 30, 0.035);
+  padding: 18px;
 }
 
 .dashCard > .sectionTitle,
@@ -747,6 +748,50 @@ h3 {
   font-size: 12px;
   margin: 2px 0 8px;
   line-height: 1.5;
+}
+
+.mcpServerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 12px 0 10px;
+  padding-right: 2px;
+}
+
+.mcpServerItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 10px;
+  border: 1px solid #f0e9de;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.mcpServerMeta {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mcpServerMeta strong { font-size: 13px; color: #3d3227; }
+.mcpServerMeta small {
+  font-size: 11px;
+  color: #9a836c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcpServerItem .rowActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid #f4eee4;
+  padding-top: 7px;
 }
 
 .btMetrics {
@@ -2378,6 +2423,52 @@ h3 {
 
 .panelForm .largeTextarea {
   min-height: 180px;
+}
+
+.exchangeColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.exchangeCol {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  border: 1px solid #ece7de;
+  border-radius: 10px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.exchangeColHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #f2ece2;
+}
+
+.exchangeColHead strong {
+  font-size: 14px;
+  color: #3d3227;
+}
+
+.exchangeColHead .statusBadge {
+  margin-left: auto;
+}
+
+.exchangeColHead .exchangeLogo {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .exchangeColumns { grid-template-columns: 1fr; }
 }
 
 .configSummary {

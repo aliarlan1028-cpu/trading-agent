@@ -317,18 +317,24 @@ export function SystemConfigPanel({ data, action, ui }) {
         {activeConfigSection === "exchange" && (
           <form className="panelForm" onSubmit={saveExchange}>
             <h3>交易所密钥与账户安全</h3>
-            <div className="formGrid">
-              {secretRows.map(([keyName, label, configured]) => (
-                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm[keyName]} onChange={(event) => updateExchange(keyName, event.target.value)} placeholder={configured ? "留空则保留现有密钥" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
-              ))}
-            </div>
-            <div className="formGrid">
-              <label>Binance IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
-              <label>OKX IP 白名单<input value={exchangeForm.OKX_IP_WHITELIST} onChange={(event) => updateExchange("OKX_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
-            </div>
-            <div className="formGrid">
-              <label>OKX 保证金模式<select value={exchangeForm.OKX_MARGIN_MODE} onChange={(event) => updateExchange("OKX_MARGIN_MODE", event.target.value)}><option value="cross">cross</option><option value="isolated">isolated</option></select></label>
-              <label>OKX 持仓模式<select value={exchangeForm.OKX_POSITION_MODE} onChange={(event) => updateExchange("OKX_POSITION_MODE", event.target.value)}><option value="net">net</option><option value="long_short">long_short</option></select></label>
+            <div className="exchangeColumns">
+              <div className="exchangeCol">
+                <div className="exchangeColHead"><span className="exchangeLogo binance">◆</span><strong>Binance</strong><StatusBadge tone={exchange.binance?.hasSecret ? "ok" : "warning"}>{exchange.binance?.hasSecret ? "读写就绪" : exchange.binance?.hasKey ? "仅 Key" : "未配置"}</StatusBadge></div>
+                <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_KEY} onChange={(event) => updateExchange("BINANCE_API_KEY", event.target.value)} placeholder={exchange.binance?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_KEY")}>移除</button>}</span></label>
+                <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_SECRET} onChange={(event) => updateExchange("BINANCE_API_SECRET", event.target.value)} placeholder={exchange.binance?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_SECRET")}>移除</button>}</span></label>
+                <label>IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+              </div>
+              <div className="exchangeCol">
+                <div className="exchangeColHead"><span className="exchangeLogo okx">✣</span><strong>OKX</strong><StatusBadge tone={exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "ok" : "warning"}>{exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "读写就绪" : exchange.okx?.hasKey ? "缺 Secret/Passphrase" : "未配置"}</StatusBadge></div>
+                <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_KEY} onChange={(event) => updateExchange("OKX_API_KEY", event.target.value)} placeholder={exchange.okx?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_KEY")}>移除</button>}</span></label>
+                <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_SECRET} onChange={(event) => updateExchange("OKX_API_SECRET", event.target.value)} placeholder={exchange.okx?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_SECRET")}>移除</button>}</span></label>
+                <label>Passphrase<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_PASSPHRASE} onChange={(event) => updateExchange("OKX_API_PASSPHRASE", event.target.value)} placeholder={exchange.okx?.hasPassphrase ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasPassphrase && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_PASSPHRASE")}>移除</button>}</span></label>
+                <label>IP 白名单<input value={exchangeForm.OKX_IP_WHITELIST} onChange={(event) => updateExchange("OKX_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+                <div className="formGrid">
+                  <label>保证金模式<select value={exchangeForm.OKX_MARGIN_MODE} onChange={(event) => updateExchange("OKX_MARGIN_MODE", event.target.value)}><option value="cross">cross</option><option value="isolated">isolated</option></select></label>
+                  <label>持仓模式<select value={exchangeForm.OKX_POSITION_MODE} onChange={(event) => updateExchange("OKX_POSITION_MODE", event.target.value)}><option value="net">net</option><option value="long_short">long_short</option></select></label>
+                </div>
+              </div>
             </div>
             <button className="primaryButton" type="submit"><Lock size={14} /> 保存交易所配置</button>
           </form>
