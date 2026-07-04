@@ -116,7 +116,9 @@ export function SystemConfigPanel({ data, action, ui }) {
     BINANCE_IP_WHITELIST: (data.exchangeAccounts || []).find((item) => item.exchange === "BINANCE")?.ipWhitelist || "",
     OKX_IP_WHITELIST: (data.exchangeAccounts || []).find((item) => item.exchange === "OKX")?.ipWhitelist || "",
     OKX_MARGIN_MODE: data.runtimeConfig?.OKX_MARGIN_MODE || "cross",
-    OKX_POSITION_MODE: data.runtimeConfig?.OKX_POSITION_MODE || "net"
+    OKX_POSITION_MODE: data.runtimeConfig?.OKX_POSITION_MODE || "net",
+    BINANCE_MARGIN_MODE: data.runtimeConfig?.BINANCE_MARGIN_MODE || "cross",
+    BINANCE_POSITION_MODE: data.runtimeConfig?.BINANCE_POSITION_MODE || "one_way"
   });
   const [liveForm, setLiveForm] = useState({
     liveTradingEnabled: Boolean(live.liveTradingEnabled),
@@ -215,7 +217,9 @@ export function SystemConfigPanel({ data, action, ui }) {
     event.preventDefault();
     const body = {
       OKX_MARGIN_MODE: exchangeForm.OKX_MARGIN_MODE,
-      OKX_POSITION_MODE: exchangeForm.OKX_POSITION_MODE
+      OKX_POSITION_MODE: exchangeForm.OKX_POSITION_MODE,
+      BINANCE_MARGIN_MODE: exchangeForm.BINANCE_MARGIN_MODE,
+      BINANCE_POSITION_MODE: exchangeForm.BINANCE_POSITION_MODE
     };
     for (const [keyName] of secretRows) {
       if (exchangeForm[keyName]) body[keyName] = exchangeForm[keyName];
@@ -323,6 +327,11 @@ export function SystemConfigPanel({ data, action, ui }) {
                 <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_KEY} onChange={(event) => updateExchange("BINANCE_API_KEY", event.target.value)} placeholder={exchange.binance?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_KEY")}>移除</button>}</span></label>
                 <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_SECRET} onChange={(event) => updateExchange("BINANCE_API_SECRET", event.target.value)} placeholder={exchange.binance?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_SECRET")}>移除</button>}</span></label>
                 <label>IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+                <div className="formGrid">
+                  <label>保证金模式<select value={exchangeForm.BINANCE_MARGIN_MODE} onChange={(event) => updateExchange("BINANCE_MARGIN_MODE", event.target.value)}><option value="cross">cross 全仓</option><option value="isolated">isolated 逐仓</option></select></label>
+                  <label>持仓模式<select value={exchangeForm.BINANCE_POSITION_MODE} onChange={(event) => updateExchange("BINANCE_POSITION_MODE", event.target.value)}><option value="one_way">单向</option><option value="hedge">双向对冲</option></select></label>
+                </div>
+                <small className="fieldHint">Binance 无 Passphrase（认证仅 Key+Secret）；保证金/持仓模式仅在 Binance 合约交易时生效。</small>
               </div>
               <div className="exchangeCol">
                 <div className="exchangeColHead"><span className="exchangeLogo okx">✣</span><strong>OKX</strong><StatusBadge tone={exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "ok" : "warning"}>{exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "读写就绪" : exchange.okx?.hasKey ? "缺 Secret/Passphrase" : "未配置"}</StatusBadge></div>
