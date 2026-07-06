@@ -1,0 +1,19 @@
+{
+  "appId": "com.ely.tradingagent",
+  "appName": "Trading Agent",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#f7f0e7",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    }
+  },
+  "ios": {
+    "contentInset": "never",
+    "scheme": "TradingAgent"
+  }
+}

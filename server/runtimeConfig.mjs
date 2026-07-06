@@ -10,6 +10,7 @@ export const SECRET_KEYS = new Set([
   "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "SERPAPI_API_KEY",
   "ALERT_WEBHOOK_URL", "ETHERSCAN_API_KEY", "LANGSMITH_API_KEY",
   "LARK_WEBHOOK_URL", "LARK_WEBHOOK_SECRET",
+  "TELEGRAM_BOT_TOKEN",
   "ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"
 ]);
 
@@ -20,8 +21,11 @@ export const PLAIN_KEYS = new Set([
   "MAX_LIVE_NOTIONAL_USDT", "OKX_MARGIN_MODE", "OKX_POSITION_MODE",
   "BINANCE_MARGIN_MODE", "BINANCE_POSITION_MODE",
   "AUTH_REQUIRED", "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT", "SKILL_SANDBOX_IMAGE",
-  "REALTIME_RECONCILER_ENABLED", "BINANCE_MARKET_TYPE", "PORT",
-  "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "REQUIRE_PAPER_VALIDATION"
+  "REALTIME_RECONCILER_ENABLED", "BINANCE_MARKET_TYPE", "PORT", "HOST",
+  "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "REQUIRE_PAPER_VALIDATION",
+  "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED",
+  "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", "TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT",
+  "TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES"
 ]);
 
 function masterKey() {
@@ -72,8 +76,8 @@ export function setConfig(db, entries = {}) {
     const value = rawValue === undefined || rawValue === null ? "" : String(rawValue);
     if (SECRET_KEYS.has(key)) {
       if (value === "") continue; // 空值不覆盖已有密钥
-      process.env[key] = value;
       storeSecret(db, key, value, scopeFor(key));
+      process.env[key] = value;
       applied.push(key);
     } else if (PLAIN_KEYS.has(key)) {
       process.env[key] = value;
@@ -145,7 +149,16 @@ export function getConfigStatus(db) {
         serpapi: { hasKey: has("SERPAPI_API_KEY") }
       },
       alerts: { hasWebhook: has("ALERT_WEBHOOK_URL") },
-      lark: { hasWebhook: has("LARK_WEBHOOK_URL"), signed: has("LARK_WEBHOOK_SECRET") }
+      lark: { hasWebhook: has("LARK_WEBHOOK_URL"), signed: has("LARK_WEBHOOK_SECRET") },
+      telegram: {
+        hasBotToken: has("TELEGRAM_BOT_TOKEN"),
+        chatId: process.env.TELEGRAM_CHAT_ID || "",
+        configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+        profitPosterEnabled: process.env.TELEGRAM_PROFIT_POSTER_ENABLED === "true",
+        minPnlUsdt: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT || 0),
+        minRoiPct: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT || 0),
+        cooldownMinutes: Number(process.env.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240)
+      }
     },
     runtime: {
       adminPasswordSet: has("ADMIN_PASSWORD"),
@@ -155,6 +168,7 @@ export function getConfigStatus(db) {
       binanceMarketType: process.env.BINANCE_MARKET_TYPE || "spot",
       httpProxySet: has("HTTP_PROXY"),
       httpsProxySet: has("HTTPS_PROXY"),
+      host: process.env.HOST || "127.0.0.1",
       port: process.env.PORT || "8787"
     },
     secretsMasterKeySet: Boolean(process.env.SECRETS_MASTER_KEY)

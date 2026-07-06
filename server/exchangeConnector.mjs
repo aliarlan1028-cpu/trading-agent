@@ -28,21 +28,38 @@ function timeoutSignal(ms = 6000) {
 
 export function refreshApiKeyMetadata(db) {
   for (const item of db.apiKeyMetadata || []) {
+    const previousFingerprint = item.apiKeyFingerprint || null;
+    let apiKey = "";
     if (item.exchange === "BINANCE") {
+      apiKey = process.env.BINANCE_API_KEY || "";
       item.hasApiKey = Boolean(process.env.BINANCE_API_KEY);
       item.hasSecret = Boolean(process.env.BINANCE_API_SECRET);
     }
     if (item.exchange === "OKX") {
+      apiKey = process.env.OKX_API_KEY || "";
       item.hasApiKey = Boolean(process.env.OKX_API_KEY);
       item.hasSecret = Boolean(process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
     }
-    item.withdrawPermission = false;
+    const fingerprint = apiKey ? crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null;
+    item.apiKeyFingerprint = fingerprint;
+    if (!fingerprint || previousFingerprint !== fingerprint) {
+      item.withdrawPermission = false;
+      delete item.permissionVerifiedAt;
+      delete item.permissionVerificationStatus;
+      delete item.permissionVerificationNote;
+      delete item.manualWithdrawPermissionConfirmedAt;
+      delete item.manualWithdrawPermissionConfirmedBy;
+      delete item.ipRestrict;
+      delete item.enableReading;
+      delete item.enableFutures;
+      delete item.enableSpotAndMarginTrading;
+    }
     item.secretInLogs = false;
     item.updatedAt = nowIso();
   }
   for (const account of db.exchangeAccounts || []) {
     const metadata = db.apiKeyMetadata.find((key) => key.accountId === account.id);
-    account.readEnabled = Boolean(metadata?.hasApiKey);
+    account.readEnabled = Boolean(metadata?.hasApiKey && metadata?.hasSecret);
     account.tradeEnabled = Boolean(metadata?.hasApiKey && metadata?.hasSecret);
     account.withdrawEnabled = false;
     account.status = account.readEnabled ? "configured" : "missing_credentials";
@@ -331,10 +348,12 @@ export async function syncPrivateReadOnly(db, accountId) {
     positions: result.positions || [],
     openOrders: result.openOrders || [],
     fundingRates: result.fundingRates || [],
+    apiPermissions: result.apiPermissions,
     error: result.error,
     createdAt: nowIso()
   };
   db.accountSnapshots.unshift(snapshot);
+  if (snapshot.status === "ok") applyPrivateSnapshotToState(db, snapshot);
   account.lastReadSyncAt = snapshot.createdAt;
   account.readSyncStatus = snapshot.status;
   appendAudit(db, `私有只读同步：${snapshot.status}`, account.id, "ExchangeConnector", snapshot.status === "ok" ? "info" : "warning");
@@ -347,21 +366,204 @@ async function syncBinanceReadOnly() {
     return { status: "missing_credentials", error: "BINANCE_API_KEY or BINANCE_API_SECRET is missing" };
   }
   try {
-    const [account, openOrders, funding] = await Promise.all([
+    const [accountResult, positionResult, openOrdersResult, fundingResult, permissionResult] = await Promise.allSettled([
       binanceSignedRequest("/api/v3/account"),
-      binanceSignedRequest("/api/v3/openOrders"),
-      binancePublicRequest(`${BINANCE_USDM_BASE}/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1`)
+      binanceSignedRequest("/fapi/v3/positionRisk"),
+      binanceSignedRequest("/fapi/v1/openOrders"),
+      binancePublicRequest(`${BINANCE_USDM_BASE}/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1`),
+      binanceSignedRequest("/sapi/v1/account/apiRestrictions")
     ]);
+    const account = accountResult.status === "fulfilled" ? accountResult.value : {};
+    const positions = positionResult.status === "fulfilled" ? positionResult.value : [];
+    const openOrders = openOrdersResult.status === "fulfilled" ? openOrdersResult.value : [];
+    const funding = fundingResult.status === "fulfilled" ? fundingResult.value : [];
+    const apiPermissions = permissionResult.status === "fulfilled" ? permissionResult.value : { status: "unavailable", error: permissionResult.reason?.message };
     return {
       status: "ok",
       balances: (account.balances || []).filter((item) => Number(item.free) || Number(item.locked)).slice(0, 50),
-      positions: [],
+      positions: Array.isArray(positions) ? positions.filter((item) => Number(item.positionAmt || 0) !== 0) : [],
       openOrders: Array.isArray(openOrders) ? openOrders.map(maskOrder).slice(0, 50) : [],
-      fundingRates: Array.isArray(funding) ? funding.slice(0, 5) : []
+      fundingRates: Array.isArray(funding) ? funding.slice(0, 5) : [],
+      apiPermissions
     };
   } catch (error) {
     return { status: "request_failed", error: error.message };
   }
+}
+
+function applyPrivateSnapshotToState(db, snapshot) {
+  db.positions ||= [];
+  db.orders ||= [];
+  updateApiPermissionMetadata(db, snapshot);
+  if (snapshot.exchange === "OKX") applyOkxSnapshot(db, snapshot);
+  if (snapshot.exchange === "BINANCE") applyBinanceSnapshot(db, snapshot);
+}
+
+function updateApiPermissionMetadata(db, snapshot) {
+  const item = (db.apiKeyMetadata || []).find((key) => key.exchange === snapshot.exchange);
+  if (!item) return;
+  if (snapshot.exchange === "BINANCE" && snapshot.apiPermissions && snapshot.apiPermissions.status !== "unavailable") {
+    item.withdrawPermission = Boolean(snapshot.apiPermissions.enableWithdrawals);
+    item.permissionVerifiedAt = nowIso();
+    item.ipRestrict = Boolean(snapshot.apiPermissions.ipRestrict);
+    item.enableReading = Boolean(snapshot.apiPermissions.enableReading);
+    item.enableFutures = Boolean(snapshot.apiPermissions.enableFutures);
+    item.enableSpotAndMarginTrading = Boolean(snapshot.apiPermissions.enableSpotAndMarginTrading);
+    if (item.withdrawPermission) {
+      db.system.killSwitch = true;
+      db.system.riskStatus = "API 权限异常";
+      db.riskIncidents ||= [];
+      db.riskIncidents.unshift({
+        id: id("incident"),
+        severity: "critical",
+        status: "open",
+        title: "Binance API Key 检测到提现权限，已触发熔断",
+        source: item.id,
+        createdAt: nowIso()
+      });
+      appendAudit(db, "检测到 Binance API Key 提现权限，触发熔断", item.id, "ExchangeConnector", "critical");
+    }
+  }
+  if (snapshot.exchange === "OKX") {
+    item.permissionVerificationStatus = "manual_required";
+    item.permissionVerificationNote = "OKX 公开交易 API 未提供等价的当前 Key 权限查询接口；需在 OKX API 管理页面确认未勾选 Withdraw。";
+  }
+}
+
+function upsertExchangePosition(db, key, fields) {
+  const existing = db.positions.find((item) => item.exchangePositionKey === key);
+  const position = existing || { id: id("pos"), exchangePositionKey: key, source: "exchange_rest", createdAt: nowIso() };
+  Object.assign(position, fields, { updatedAt: nowIso() });
+  if (!existing) db.positions.unshift(position);
+  return position;
+}
+
+function pruneExchangePositions(db, exchange, seenKeys) {
+  db.positions = (db.positions || []).filter((position) => {
+    if (position.source !== "exchange_rest" || position.exchange !== exchange) return true;
+    return seenKeys.has(position.exchangePositionKey);
+  });
+}
+
+function upsertOpenOrders(db, exchange, orders = []) {
+  const seen = new Set();
+  for (const payload of orders || []) {
+    const exchangeOrderId = String(payload.orderId || payload.ordId || "");
+    const clientOrderId = String(payload.clientOrderId || payload.origClientOrderId || payload.clOrdId || "");
+    const key = `${exchange}:${exchangeOrderId || clientOrderId}`;
+    if (!exchangeOrderId && !clientOrderId) continue;
+    seen.add(key);
+    const existing = db.orders.find((order) => order.exchangeOrderKey === key || (exchangeOrderId && String(order.exchangeOrderId) === exchangeOrderId));
+    const order = existing || { id: id("ord"), exchange, exchangeOrderKey: key, source: "exchange_rest", createdAt: nowIso() };
+    Object.assign(order, normalizeOpenOrder(exchange, payload), { updatedAt: nowIso() });
+    if (!existing) db.orders.unshift(order);
+  }
+  db.orders = (db.orders || []).filter((order) => {
+    if (order.source !== "exchange_rest" || order.exchange !== exchange) return true;
+    return seen.has(order.exchangeOrderKey);
+  });
+}
+
+function normalizeOpenOrder(exchange, payload = {}) {
+  if (exchange === "OKX") {
+    return {
+      exchange,
+      exchangeOrderId: payload.ordId,
+      clientOrderId: payload.clOrdId,
+      symbol: normalizeOkxDisplaySymbol(payload.instId),
+      side: payload.side,
+      type: payload.ordType,
+      price: Number(payload.px || 0),
+      quantity: payload.sz,
+      status: payload.state || "open",
+      reduceOnly: payload.reduceOnly === "true" || payload.reduceOnly === true
+    };
+  }
+  return {
+    exchange,
+    exchangeOrderId: payload.orderId,
+    clientOrderId: payload.clientOrderId,
+    symbol: normalizeBinanceDisplaySymbol(payload.symbol),
+    side: payload.side,
+    type: payload.type,
+    price: Number(payload.price || payload.stopPrice || 0),
+    quantity: payload.origQty || payload.quantity,
+    status: payload.status || "open",
+    reduceOnly: payload.reduceOnly === true || payload.reduceOnly === "true"
+  };
+}
+
+function applyOkxSnapshot(db, snapshot) {
+  const seen = new Set();
+  for (const payload of snapshot.positions || []) {
+    const size = Number(payload.pos || 0);
+    if (!Number.isFinite(size) || size === 0) continue;
+    const symbol = normalizeOkxDisplaySymbol(payload.instId);
+    const posSide = payload.posSide || (size < 0 ? "short" : "long");
+    const key = `OKX:${symbol}:${posSide}`;
+    seen.add(key);
+    upsertExchangePosition(db, key, {
+      exchange: "OKX",
+      symbol,
+      posSide,
+      direction: posSide === "short" ? "short" : "long",
+      size: Math.abs(size),
+      entry: Number(payload.avgPx || 0),
+      mark: Number(payload.markPx || 0),
+      pnl: Number(payload.upl || 0),
+      leverage: Number(payload.lever || 0),
+      marginMode: payload.mgnMode,
+      rawSyncedAt: snapshot.createdAt
+    });
+  }
+  pruneExchangePositions(db, "OKX", seen);
+  upsertOpenOrders(db, "OKX", snapshot.openOrders);
+  const totalEq = Number(snapshot.balances?.[0]?.totalEq);
+  if (Number.isFinite(totalEq) && totalEq > 0) db.portfolio.totalEquityUsdt = totalEq;
+}
+
+function applyBinanceSnapshot(db, snapshot) {
+  const seen = new Set();
+  for (const payload of snapshot.positions || []) {
+    const amount = Number(payload.positionAmt || 0);
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const symbol = normalizeBinanceDisplaySymbol(payload.symbol);
+    const positionSide = payload.positionSide || (amount < 0 ? "SHORT" : "LONG");
+    const direction = String(positionSide).toUpperCase() === "SHORT" || amount < 0 ? "short" : "long";
+    const key = `BINANCE:${symbol}:${positionSide}`;
+    seen.add(key);
+    upsertExchangePosition(db, key, {
+      exchange: "BINANCE",
+      symbol,
+      positionSide,
+      direction,
+      size: Math.abs(amount),
+      entry: Number(payload.entryPrice || 0),
+      mark: Number(payload.markPrice || 0),
+      pnl: Number(payload.unRealizedProfit || payload.unrealizedProfit || 0),
+      leverage: Number(payload.leverage || 0),
+      marginMode: payload.marginType,
+      rawSyncedAt: snapshot.createdAt
+    });
+  }
+  pruneExchangePositions(db, "BINANCE", seen);
+  upsertOpenOrders(db, "BINANCE", snapshot.openOrders);
+  const usdt = (snapshot.balances || []).find((item) => item.asset === "USDT");
+  const total = Number(usdt?.free || 0) + Number(usdt?.locked || 0);
+  if (Number.isFinite(total) && total > 0) db.portfolio.totalEquityUsdt = total;
+}
+
+function normalizeBinanceDisplaySymbol(symbol) {
+  const text = String(symbol || "").toUpperCase();
+  if (text.endsWith("USDT")) return `${text.slice(0, -4)}/USDT`;
+  return text;
+}
+
+function normalizeOkxDisplaySymbol(instId) {
+  return String(instId || "")
+    .replace(/-SWAP$/i, "")
+    .replace("-", "/")
+    .toUpperCase();
 }
 
 async function syncOkxReadOnly() {

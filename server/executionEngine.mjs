@@ -1,6 +1,7 @@
 import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
+import { evaluateTradePlan } from "./riskEngine.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
@@ -119,6 +120,17 @@ export async function executeApprovedPlan(db, planId, options = {}) {
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
   if (!plan.lastRiskCheck?.passed) return { status: "risk_not_passed" };
+  const freshRisk = evaluateTradePlan(db, plan);
+  freshRisk.tradePlanId = plan.id;
+  freshRisk.createdAt = nowIso();
+  db.riskChecks.unshift(freshRisk);
+  plan.lastRiskCheck = freshRisk;
+  plan.riskCheckId = freshRisk.id;
+  if (!freshRisk.passed) {
+    appendAudit(db, `执行前风控复查失败：${freshRisk.summary}`, plan.id, "ExecutionEngine", "warning");
+    appendTrace(db, "risk_check", `${plan.symbol} 执行前复查失败`, "blocked");
+    return { status: "risk_recheck_failed", riskCheck: freshRisk };
+  }
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
   if (!mandate || !["active", "running"].includes(mandate.status)) return { status: "mandate_not_active" };
   const existing = (db.executionOrders || []).find((item) => item.planId === plan.id && OPEN_EXECUTION_STATES.has(item.status));

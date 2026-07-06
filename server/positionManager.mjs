@@ -1,6 +1,7 @@
 import { executeTradeAction } from "./tradeActions.mjs";
 import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { notifyLarkThrottled } from "./larkNotifier.mjs";
+import { publishProfitablePositionPosters } from "./telegramNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const TRAIL_PCT = 0.012; // 保本后按 1.2% 跟踪止损锁定利润
@@ -123,6 +124,9 @@ export async function monitorPositions(db) {
       actions.push({ symbol: position.symbol, action: "monitor_error", error: error.message });
     }
   }
+
+  const posterResult = await publishProfitablePositionPosters(db);
+  actions.push(...posterResult.actions);
 
   return { monitored: managed.length, actions };
 }

@@ -67,8 +67,16 @@ const tradeStop = await request("/api/trade-actions/move_stop", { method: "POST"
 const tradeTp = await request("/api/trade-actions/take_profit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exchange: "BINANCE", marketType: "perpetual_usdt", symbol: "BTC/USDT", targets: [{ price: 11000, stopPrice: 11000, quantity: 0.00005 }], manualApproval: true }) });
 const eventSource = await request("/api/event-sources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Smoke RSS", type: "rss", url: "https://example.com/feed.xml", enabled: false }) });
 const onchain = await request("/api/event-sources/onchain", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-const eventProgress = await request(`/api/events/${overview.events[0].id}/progress`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "smoke progress" }) });
-const eventReview = await request(`/api/events/${overview.events[0].id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: "smoke event review" }) });
+let smokeEvent = overview.events?.[0];
+if (!smokeEvent) {
+  smokeEvent = await request("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Smoke Event", category: "test", relatedSymbols: ["BTC/USDT"], impact: 20, action: "observe" })
+  });
+}
+const eventProgress = await request(`/api/events/${smokeEvent.id}/progress`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "smoke progress" }) });
+const eventReview = await request(`/api/events/${smokeEvent.id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: "smoke event review" }) });
 const drill = await request("/api/security/drills/api_desync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 const auditChain = await request("/api/security/audit-chain");
 let smokeSkill = overview.skills?.[0];

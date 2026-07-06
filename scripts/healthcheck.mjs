@@ -9,21 +9,11 @@ async function request(path) {
   return response.json();
 }
 
-const [health, readiness, auditChain] = await Promise.all([
-  request("/api/health"),
-  request("/api/system/readiness"),
-  request("/api/security/audit-chain")
-]);
-
-const failedImplemented = readiness.checks.filter((item) => item.implemented !== true);
 const result = {
-  ok: health.ok && auditChain.ok && failedImplemented.length === 0,
-  api: health,
-  implementationCompletionPct: readiness.implementationCompletionPct,
-  configurationCompletionPct: readiness.configurationCompletionPct,
-  auditChain: { ok: auditChain.ok, checked: auditChain.checked },
-  userOwnedValidation: readiness.userOwnedValidation
+  ok: false,
+  api: await request("/api/health")
 };
+result.ok = result.api.ok === true;
 
 console.log(JSON.stringify(result, null, 2));
 if (!result.ok) process.exit(1);

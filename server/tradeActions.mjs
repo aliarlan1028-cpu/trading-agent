@@ -1,4 +1,4 @@
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { hasPassedPaper } from "./paperTrading.mjs";
 
@@ -61,6 +61,12 @@ function validateWriteGuard(db, action, payload) {
   if (!db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
   if (process.env.I_UNDERSTAND_REAL_TRADING !== "true") return { allowed: false, reason: "real_trading_ack_missing" };
   if (process.env.REAL_ORDER_WRITE_ENABLED !== "true") return { allowed: false, reason: "real_order_write_disabled" };
+  const apiKeySafety = validateApiKeySafety(db, payload);
+  if (!apiKeySafety.allowed) return apiKeySafety;
+  if (process.env.REQUIRE_AUDIT_CHAIN_OK !== "false") {
+    const auditChain = verifyAuditChain(db);
+    if (!auditChain.ok) return { allowed: false, reason: "audit_chain_invalid", breaks: auditChain.breaks.length };
+  }
   const provenance = validateExecutionProvenance(payload);
   if (!provenance.allowed) return provenance;
   if (db.system.killSwitch) return { allowed: false, reason: "kill_switch_enabled" };
@@ -71,6 +77,10 @@ function validateWriteGuard(db, action, payload) {
   // 可选安全垫：要求策略先通过模拟盘前向验证，才允许对该交易对开新仓。
   // 只拦截"开仓"，绝不拦截减仓/平仓/撤单等降风险动作。
   const isNewEntry = action === "place_order" && !payload.reduceOnly && !payload.closePosition;
+  if (isNewEntry) {
+    const accountSnapshot = validateFreshAccountSnapshot(db, payload);
+    if (!accountSnapshot.allowed) return accountSnapshot;
+  }
   if (process.env.REQUIRE_PAPER_VALIDATION === "true" && isNewEntry && !hasPassedPaper(db, payload.symbol)) {
     return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
   }
@@ -84,6 +94,33 @@ function validateWriteGuard(db, action, payload) {
   if (notional > maxNotional) return { allowed: false, reason: "notional_exceeds_gray_limit", notional, maxNotional };
   if (policy.requiresManualApproval && payload.manualApproval !== true) return { allowed: false, reason: "manual_approval_required" };
   return { allowed: true, notional, maxNotional, policyId: policy.id, mandateId: mandateGuard.mandateId };
+}
+
+function validateApiKeySafety(db, payload) {
+  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
+  const metadata = (db.apiKeyMetadata || []).find((item) => item.exchange === exchange);
+  if (!metadata) return { allowed: false, reason: "api_key_metadata_missing", exchange };
+  if (metadata.withdrawPermission === true) return { allowed: false, reason: "api_key_withdraw_permission_enabled", exchange };
+  if (process.env.REQUIRE_API_PERMISSION_VERIFICATION === "false") return { allowed: true };
+  if (!metadata.permissionVerifiedAt) return { allowed: false, reason: "api_key_permission_unverified", exchange };
+  return { allowed: true };
+}
+
+function validateFreshAccountSnapshot(db, payload) {
+  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
+  const maxAgeMs = Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 10 * 60_000);
+  const snapshots = (db.accountSnapshots || []).filter((item) => {
+    if (String(item.exchange || "").toUpperCase() !== exchange) return false;
+    if (payload.accountId && item.accountId !== payload.accountId) return false;
+    return item.status === "ok";
+  });
+  const snapshot = snapshots[0];
+  if (!snapshot) return { allowed: false, reason: "account_snapshot_required", exchange };
+  const ageMs = Date.now() - new Date(snapshot.createdAt).getTime();
+  if (!Number.isFinite(ageMs) || ageMs > maxAgeMs) {
+    return { allowed: false, reason: "account_snapshot_stale", exchange, snapshotId: snapshot.id, ageMs, maxAgeMs };
+  }
+  return { allowed: true, snapshotId: snapshot.id, ageMs };
 }
 
 function validateExecutionProvenance(payload) {

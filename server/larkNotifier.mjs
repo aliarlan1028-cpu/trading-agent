@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { appendAudit, id, nowIso } from "./store.mjs";
+import { appendAudit, nowIso } from "./store.mjs";
+import { createNotification } from "./notificationStore.mjs";
 
 // ---------------------------------------------------------------------------
 // 飞书（Lark）通知：把关键交易/风控事件主动推送给主人。
@@ -31,18 +32,13 @@ function buildCard({ title, body, fields = [], severity = "info" }) {
 
 // 主入口：写入站内通知 + 尝试推送飞书。
 export async function notifyLark(db, payload = {}) {
-  const notification = {
-    id: id("notif"),
+  const notification = createNotification(db, {
     channel: "lark",
+    eventType: payload.eventType || "lark",
     severity: payload.severity || "info",
     title: payload.title || "交易员通知",
-    body: payload.body || "",
-    read: false,
-    createdAt: nowIso()
-  };
-  db.notifications ||= [];
-  db.notifications.unshift(notification);
-  if (db.notifications.length > 200) db.notifications = db.notifications.slice(0, 200);
+    body: payload.body || ""
+  });
 
   const url = process.env.LARK_WEBHOOK_URL;
   if (!url) {

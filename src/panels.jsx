@@ -7,7 +7,6 @@ import {
   BookOpen,
   BrainCircuit,
   CalendarClock,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ClipboardList,
@@ -38,7 +37,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote } from "./lib.jsx";
 
 export function ConfigPanel({ panel, data, action, ui }) {
   const titles = {
@@ -90,13 +89,14 @@ export function ConfigPanel({ panel, data, action, ui }) {
   );
 }
 
-export function SystemConfigPanel({ data, action, ui }) {
+export function SystemConfigPanel({ data, action, ui, section }) {
   const config = data.config || {};
   const providers = config.llm?.providers || {};
   const exchange = config.exchange || {};
   const live = config.liveTrading || {};
   const integrations = config.integrations || {};
   const runtime = config.runtime || {};
+  const readiness = data.readiness || {};
   const [llmForm, setLlmForm] = useState({
     ANTHROPIC_API_KEY: "",
     ANTHROPIC_MODEL: providers.anthropic?.model || "claude-sonnet-4-5",
@@ -138,7 +138,13 @@ export function SystemConfigPanel({ data, action, ui }) {
     SERPAPI_API_KEY: "",
     ALERT_WEBHOOK_URL: "",
     LARK_WEBHOOK_URL: "",
-    LARK_WEBHOOK_SECRET: ""
+    LARK_WEBHOOK_SECRET: "",
+    TELEGRAM_BOT_TOKEN: "",
+    TELEGRAM_CHAT_ID: integrations.telegram?.chatId || "",
+    TELEGRAM_PROFIT_POSTER_ENABLED: integrations.telegram?.profitPosterEnabled ? "true" : "false",
+    TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT: integrations.telegram?.minPnlUsdt ?? 0,
+    TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT: integrations.telegram?.minRoiPct ?? 0,
+    TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: integrations.telegram?.cooldownMinutes ?? 240
   });
   const [runtimeForm, setRuntimeForm] = useState({
     ADMIN_PASSWORD: "",
@@ -163,30 +169,45 @@ export function SystemConfigPanel({ data, action, ui }) {
     ["OKX_API_SECRET", "OKX Secret", exchange.okx?.hasSecret],
     ["OKX_API_PASSPHRASE", "OKX Passphrase", exchange.okx?.hasPassphrase]
   ];
-  const integrationSecretRows = [
-    ["LANGSMITH_API_KEY", "LangSmith API Key", integrations.langsmith?.hasKey],
+  const langsmithSecretRows = [["LANGSMITH_API_KEY", "LangSmith API Key", integrations.langsmith?.hasKey]];
+  const dataSourceSecretRows = [
     ["ETHERSCAN_API_KEY", "Etherscan API Key", integrations.etherscan?.hasKey],
     ["BRAVE_SEARCH_API_KEY", "Brave Search API Key", integrations.search?.brave?.hasKey],
     ["TAVILY_API_KEY", "Tavily API Key", integrations.search?.tavily?.hasKey],
-    ["SERPAPI_API_KEY", "SerpAPI API Key", integrations.search?.serpapi?.hasKey],
-    ["ALERT_WEBHOOK_URL", "告警 Webhook URL", integrations.alerts?.hasWebhook]
+    ["SERPAPI_API_KEY", "SerpAPI API Key", integrations.search?.serpapi?.hasKey]
   ];
+  const alertSecretRows = [["ALERT_WEBHOOK_URL", "告警 Webhook URL", integrations.alerts?.hasWebhook]];
+  const integrationSecretRows = [...langsmithSecretRows, ...dataSourceSecretRows, ...alertSecretRows];
   const larkSecretRows = [
     ["LARK_WEBHOOK_URL", "飞书机器人 Webhook URL", integrations.lark?.hasWebhook],
     ["LARK_WEBHOOK_SECRET", "飞书签名密钥（可选）", integrations.lark?.signed]
+  ];
+  const telegramSecretRows = [
+    ["TELEGRAM_BOT_TOKEN", "Telegram Bot Token", integrations.telegram?.hasBotToken]
   ];
   const runtimeSecretRows = [
     ["ADMIN_PASSWORD", "管理员登录密码", runtime.adminPasswordSet],
     ["HTTP_PROXY", "HTTP Proxy", runtime.httpProxySet],
     ["HTTPS_PROXY", "HTTPS Proxy", runtime.httpsProxySet]
   ];
-  const [activeConfigSection, setActiveConfigSection] = useState("llm");
+  const [activeConfigSection, setActiveConfigSection] = useState(section || "llm");
+  const [openProvider, setOpenProvider] = useState(config.llm?.activeProvider || "anthropic");
+  const [openExchange, setOpenExchange] = useState("binance");
+  const sectionHeadProps = (open, setOpen, id) => (section ? { role: "button", onClick: () => setOpen(open === id ? "" : id) } : {});
+  const [activeIntegrationModule, setActiveIntegrationModule] = useState("telegram");
   const configSections = [
     { id: "llm", icon: BrainCircuit, title: "模型", sub: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置" },
     { id: "exchange", icon: WalletCards, title: "交易所", sub: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置" },
     { id: "live", icon: Zap, title: "实盘灰度", sub: live.effective ? "已开启" : "关闭" },
-    { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.lark?.hasWebhook ? "飞书已接入" : (integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置") },
+    { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.telegram?.configured ? "TG 已接入" : integrations.lark?.hasWebhook ? "飞书已接入" : (integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置") },
     { id: "runtime", icon: Settings, title: "运行参数", sub: runtime.authRequired === false ? "免登录" : "鉴权开启" }
+  ];
+  const integrationModules = [
+    { id: "telegram", icon: Bell, title: "Telegram 海报", sub: "盈利仓位群推送", done: integrations.telegram?.configured },
+    { id: "lark", icon: PlugZap, title: "飞书通知", sub: "关键交易事件提醒", done: integrations.lark?.hasWebhook },
+    { id: "langsmith", icon: BrainCircuit, title: "LangSmith", sub: "Agent Trace 观测", done: integrations.langsmith?.hasKey },
+    { id: "data", icon: Globe2, title: "数据与搜索", sub: "链上与搜索 API", done: dataSourceSecretRows.some(([, , configured]) => configured) },
+    { id: "alerts", icon: AlertTriangle, title: "告警 Webhook", sub: "外部告警转发", done: integrations.alerts?.hasWebhook }
   ];
   function updateLlm(key, value) {
     setLlmForm((current) => ({ ...current, [key]: value }));
@@ -250,13 +271,18 @@ export function SystemConfigPanel({ data, action, ui }) {
     event.preventDefault();
     const body = {
       LANGSMITH_ENDPOINT: integrationForm.LANGSMITH_ENDPOINT,
-      LANGSMITH_PROJECT: integrationForm.LANGSMITH_PROJECT
+      LANGSMITH_PROJECT: integrationForm.LANGSMITH_PROJECT,
+      TELEGRAM_CHAT_ID: integrationForm.TELEGRAM_CHAT_ID,
+      TELEGRAM_PROFIT_POSTER_ENABLED: integrationForm.TELEGRAM_PROFIT_POSTER_ENABLED,
+      TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT: String(Number(integrationForm.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT || 0)),
+      TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT: String(Number(integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT || 0)),
+      TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: String(Number(integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240))
     };
-    for (const [keyName] of [...integrationSecretRows, ...larkSecretRows]) {
+    for (const [keyName] of [...integrationSecretRows, ...larkSecretRows, ...telegramSecretRows]) {
       if (integrationForm[keyName]) body[keyName] = integrationForm[keyName];
     }
     const result = await action("/api/config", body);
-    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" || key.startsWith("LARK_") ? "" : value])));
+    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" || key.startsWith("LARK_") || key === "TELEGRAM_BOT_TOKEN" ? "" : value])));
   }
   async function saveRuntime(event) {
     event.preventDefault();
@@ -278,41 +304,50 @@ export function SystemConfigPanel({ data, action, ui }) {
   }
   return (
     <div className="settingsConsole">
-      <aside className="settingsNav" aria-label="系统设置分类">
-        {configSections.map((section) => {
-          const Icon = section.icon;
-          return (
-            <button type="button" className={activeConfigSection === section.id ? "active" : ""} key={section.id} onClick={() => setActiveConfigSection(section.id)}>
-              <Icon size={17} />
-              <span>{section.title}</span>
-              <small>{section.sub}</small>
-            </button>
-          );
-        })}
-      </aside>
+      {!section && (
+        <nav className="settingsNav" aria-label="系统设置分类">
+          {configSections.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button type="button" className={activeConfigSection === item.id ? "active" : ""} key={item.id} onClick={() => setActiveConfigSection(item.id)}>
+                <Icon size={17} />
+                <span>{item.title}</span>
+                <small>{item.sub}</small>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       <div className="settingsWorkspace">
-        <div className="configSummary">
-          <div><KeyRound size={18} /><span>当前模型</span><strong>{config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置"}</strong></div>
-          <div><WalletCards size={18} /><span>交易所</span><strong>{[exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置"}</strong></div>
-          <div><Shield size={18} /><span>实盘</span><strong className={live.effective ? "negative" : "warning"}>{live.effective ? "已开启" : "关闭"}</strong></div>
-        </div>
 
         {activeConfigSection === "llm" && (
           <form className="panelForm" onSubmit={saveLlm}>
             <h3>AI 模型 API</h3>
             <div className="providerGrid">
-              {providerRows.map(([idName, label, keyName, modelName]) => (
-                <div className="configFieldset" key={idName}>
-                  <div className="configFieldsetHead">
-                    <strong>{label}</strong>
-                    <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "warning"}>{providers[idName]?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+              {providerRows.map(([idName, label, keyName, modelName]) => {
+                const collapsed = Boolean(section) && openProvider !== idName;
+                return (
+                  <div className={`configFieldset ${collapsed ? "collapsed" : ""}`} key={idName}>
+                    <div
+                      className="configFieldsetHead"
+                      role={section ? "button" : undefined}
+                      onClick={section ? () => setOpenProvider(openProvider === idName ? "" : idName) : undefined}
+                    >
+                      <strong>{label}</strong>
+                      <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "neutral"}>{providers[idName]?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+                      {section && <ChevronDown size={15} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />}
+                    </div>
+                    {!collapsed && (
+                      <>
+                        <label>API Key<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? "留空则保留现有密钥" : "粘贴 API Key"} /></label>
+                        <label>模型<input value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} /></label>
+                        {providers[idName]?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除 {label} Key</button>}
+                      </>
+                    )}
                   </div>
-                  <label>API Key<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? "留空则保留现有密钥" : "粘贴 API Key"} /></label>
-                  <label>模型<input value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} /></label>
-                  {providers[idName]?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除 {label} Key</button>}
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button className="primaryButton" type="submit"><KeyRound size={14} /> 保存模型配置</button>
           </form>
@@ -323,26 +358,34 @@ export function SystemConfigPanel({ data, action, ui }) {
             <h3>交易所密钥与账户安全</h3>
             <div className="exchangeColumns">
               <div className="exchangeCol">
-                <div className="exchangeColHead"><span className="exchangeLogo binance">◆</span><strong>Binance</strong><StatusBadge tone={exchange.binance?.hasSecret ? "ok" : "warning"}>{exchange.binance?.hasSecret ? "读写就绪" : exchange.binance?.hasKey ? "仅 Key" : "未配置"}</StatusBadge></div>
-                <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_KEY} onChange={(event) => updateExchange("BINANCE_API_KEY", event.target.value)} placeholder={exchange.binance?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_KEY")}>移除</button>}</span></label>
-                <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_SECRET} onChange={(event) => updateExchange("BINANCE_API_SECRET", event.target.value)} placeholder={exchange.binance?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_SECRET")}>移除</button>}</span></label>
-                <label>IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
-                <div className="formGrid">
-                  <label>保证金模式<select value={exchangeForm.BINANCE_MARGIN_MODE} onChange={(event) => updateExchange("BINANCE_MARGIN_MODE", event.target.value)}><option value="cross">cross 全仓</option><option value="isolated">isolated 逐仓</option></select></label>
-                  <label>持仓模式<select value={exchangeForm.BINANCE_POSITION_MODE} onChange={(event) => updateExchange("BINANCE_POSITION_MODE", event.target.value)}><option value="one_way">单向</option><option value="hedge">双向对冲</option></select></label>
-                </div>
-                <small className="fieldHint">Binance 无 Passphrase（认证仅 Key+Secret）；保证金/持仓模式仅在 Binance 合约交易时生效。</small>
+                <div className="exchangeColHead" {...sectionHeadProps(openExchange, setOpenExchange, "binance")}><span className="exchangeLogo binance">◆</span><strong>Binance</strong><StatusBadge tone={exchange.binance?.hasSecret ? "ok" : "neutral"}>{exchange.binance?.hasSecret ? "读写就绪" : exchange.binance?.hasKey ? "仅 Key" : "未配置"}</StatusBadge>{section && <ChevronDown size={15} style={{ transform: openExchange === "binance" ? "rotate(180deg)" : "none" }} />}</div>
+                {(!section || openExchange === "binance") && (
+                  <>
+                    <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_KEY} onChange={(event) => updateExchange("BINANCE_API_KEY", event.target.value)} placeholder={exchange.binance?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_KEY")}>移除</button>}</span></label>
+                    <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.BINANCE_API_SECRET} onChange={(event) => updateExchange("BINANCE_API_SECRET", event.target.value)} placeholder={exchange.binance?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.binance?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("BINANCE_API_SECRET")}>移除</button>}</span></label>
+                    <label>IP 白名单<input value={exchangeForm.BINANCE_IP_WHITELIST} onChange={(event) => updateExchange("BINANCE_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+                    <div className="formGrid">
+                      <label>保证金模式<select value={exchangeForm.BINANCE_MARGIN_MODE} onChange={(event) => updateExchange("BINANCE_MARGIN_MODE", event.target.value)}><option value="cross">cross 全仓</option><option value="isolated">isolated 逐仓</option></select></label>
+                      <label>持仓模式<select value={exchangeForm.BINANCE_POSITION_MODE} onChange={(event) => updateExchange("BINANCE_POSITION_MODE", event.target.value)}><option value="one_way">单向</option><option value="hedge">双向对冲</option></select></label>
+                    </div>
+                    <small className="fieldHint">Binance 无 Passphrase（认证仅 Key+Secret）；保证金/持仓模式仅在 Binance 合约交易时生效。</small>
+                  </>
+                )}
               </div>
               <div className="exchangeCol">
-                <div className="exchangeColHead"><span className="exchangeLogo okx">✣</span><strong>OKX</strong><StatusBadge tone={exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "ok" : "warning"}>{exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "读写就绪" : exchange.okx?.hasKey ? "缺 Secret/Passphrase" : "未配置"}</StatusBadge></div>
-                <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_KEY} onChange={(event) => updateExchange("OKX_API_KEY", event.target.value)} placeholder={exchange.okx?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_KEY")}>移除</button>}</span></label>
-                <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_SECRET} onChange={(event) => updateExchange("OKX_API_SECRET", event.target.value)} placeholder={exchange.okx?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_SECRET")}>移除</button>}</span></label>
-                <label>Passphrase<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_PASSPHRASE} onChange={(event) => updateExchange("OKX_API_PASSPHRASE", event.target.value)} placeholder={exchange.okx?.hasPassphrase ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasPassphrase && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_PASSPHRASE")}>移除</button>}</span></label>
-                <label>IP 白名单<input value={exchangeForm.OKX_IP_WHITELIST} onChange={(event) => updateExchange("OKX_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
-                <div className="formGrid">
-                  <label>保证金模式<select value={exchangeForm.OKX_MARGIN_MODE} onChange={(event) => updateExchange("OKX_MARGIN_MODE", event.target.value)}><option value="cross">cross</option><option value="isolated">isolated</option></select></label>
-                  <label>持仓模式<select value={exchangeForm.OKX_POSITION_MODE} onChange={(event) => updateExchange("OKX_POSITION_MODE", event.target.value)}><option value="net">net</option><option value="long_short">long_short</option></select></label>
-                </div>
+                <div className="exchangeColHead" {...sectionHeadProps(openExchange, setOpenExchange, "okx")}><span className="exchangeLogo okx">✣</span><strong>OKX</strong><StatusBadge tone={exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "ok" : "neutral"}>{exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "读写就绪" : exchange.okx?.hasKey ? "缺 Secret/Passphrase" : "未配置"}</StatusBadge>{section && <ChevronDown size={15} style={{ transform: openExchange === "okx" ? "rotate(180deg)" : "none" }} />}</div>
+                {(!section || openExchange === "okx") && (
+                  <>
+                    <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_KEY} onChange={(event) => updateExchange("OKX_API_KEY", event.target.value)} placeholder={exchange.okx?.hasKey ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_KEY")}>移除</button>}</span></label>
+                    <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_SECRET} onChange={(event) => updateExchange("OKX_API_SECRET", event.target.value)} placeholder={exchange.okx?.hasSecret ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_SECRET")}>移除</button>}</span></label>
+                    <label>Passphrase<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_PASSPHRASE} onChange={(event) => updateExchange("OKX_API_PASSPHRASE", event.target.value)} placeholder={exchange.okx?.hasPassphrase ? "留空则保留现有密钥" : "待配置"} />{exchange.okx?.hasPassphrase && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_PASSPHRASE")}>移除</button>}</span></label>
+                    <label>IP 白名单<input value={exchangeForm.OKX_IP_WHITELIST} onChange={(event) => updateExchange("OKX_IP_WHITELIST", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
+                    <div className="formGrid">
+                      <label>保证金模式<select value={exchangeForm.OKX_MARGIN_MODE} onChange={(event) => updateExchange("OKX_MARGIN_MODE", event.target.value)}><option value="cross">cross</option><option value="isolated">isolated</option></select></label>
+                      <label>持仓模式<select value={exchangeForm.OKX_POSITION_MODE} onChange={(event) => updateExchange("OKX_POSITION_MODE", event.target.value)}><option value="net">net</option><option value="long_short">long_short</option></select></label>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <button className="primaryButton" type="submit"><Lock size={14} /> 保存交易所配置</button>
@@ -365,35 +408,125 @@ export function SystemConfigPanel({ data, action, ui }) {
         )}
 
         {activeConfigSection === "integrations" && (
-          <form className="panelForm" onSubmit={saveIntegrations}>
-            <h3>外部服务与告警</h3>
-            <div className="configFieldset">
-              <div className="configFieldsetHead">
-                <strong>LangSmith Trace</strong>
-                <StatusBadge tone={integrations.langsmith?.hasKey ? "ok" : "warning"}>{integrations.langsmith?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+          <form className="panelForm integrationConsole" onSubmit={saveIntegrations}>
+            <div className="formTitleRow">
+              <div>
+                <h3>外部服务与告警</h3>
+                {!section && <span>按模块维护第三方能力，避免密钥和通知配置挤在一张长表单里。</span>}
               </div>
-              <label>Endpoint<input value={integrationForm.LANGSMITH_ENDPOINT} onChange={(event) => updateIntegration("LANGSMITH_ENDPOINT", event.target.value)} /></label>
-              <label>Project<input value={integrationForm.LANGSMITH_PROJECT} onChange={(event) => updateIntegration("LANGSMITH_PROJECT", event.target.value)} /></label>
+              <button className="primaryButton" type="submit"><PlugZap size={14} /> 保存当前配置</button>
             </div>
-            <div className="formGrid">
-              {integrationSecretRows.map(([keyName, label, configured]) => (
-                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
-              ))}
-            </div>
-            <div className="configFieldset">
-              <div className="configFieldsetHead">
-                <strong>飞书（Lark）主动通知</strong>
-                <StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "warning"}>{integrations.lark?.hasWebhook ? (integrations.lark?.signed ? "已配置 · 已签名" : "已配置") : "未配置"}</StatusBadge>
+            {!section && (
+              <div className="integrationModuleGrid">
+                {integrationModules.map((module) => {
+                  const Icon = module.icon;
+                  return (
+                    <button type="button" className={activeIntegrationModule === module.id ? "active" : ""} key={module.id} onClick={() => setActiveIntegrationModule(module.id)}>
+                      <Icon size={18} />
+                      <span>{module.title}</span>
+                      <small>{module.sub}</small>
+                      <StatusBadge tone={module.done ? "ok" : "neutral"}>{module.done ? "已接入" : "待配置"}</StatusBadge>
+                    </button>
+                  );
+                })}
               </div>
-              <span className="fieldHint">配置飞书自定义机器人后，新计划待批准、逼近止损、保本移动、一键熔断等关键事件会主动推送到你的飞书。</span>
-              <div className="formGrid">
-                {larkSecretRows.map(([keyName, label, configured]) => (
-                  <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : (keyName === "LARK_WEBHOOK_URL" ? "https://open.feishu.cn/open-apis/bot/v2/hook/..." : "开启签名校验时填写")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
-                ))}
+            )}
+
+            {(section || activeIntegrationModule === "telegram") && (
+              <div className="configFieldset modulePanel">
+                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "telegram")}>
+                  <strong>Telegram 盈利仓位海报</strong>
+                  <StatusBadge tone={integrations.telegram?.configured ? "ok" : "neutral"}>{integrations.telegram?.configured ? (integrations.telegram?.profitPosterEnabled ? "已启用" : "已配置") : "未配置"}</StatusBadge>
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "telegram" ? "rotate(180deg)" : "none" }} />}
+                </div>
+                {(!section || activeIntegrationModule === "telegram") && (<>
+                {!section && <InsightNote icon={Bell} title="群推送">配置 Bot Token 和群 Chat ID 后，持仓监控会把满足盈利阈值的仓位渲染成海报并推送到 Telegram 群。</InsightNote>}
+                <div className="formGrid">
+                  {telegramSecretRows.map(([keyName, label, configured]) => (
+                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "123456:ABC..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                  ))}
+                  <label>Telegram 群 Chat ID<input value={integrationForm.TELEGRAM_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_CHAT_ID", event.target.value)} placeholder="-1001234567890" /></label>
+                  <label>自动推送<select value={integrationForm.TELEGRAM_PROFIT_POSTER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_ENABLED", event.target.value)}><option value="false">关闭</option><option value="true">开启</option></select></label>
+                  <label>最小盈利 USDT<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", event.target.value)} /></label>
+                  <label>最小 ROI %<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT", event.target.value)} /></label>
+                  <label>冷却时间（分钟）<input type="number" min="1" value={integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES", event.target.value)} /></label>
+                </div>
+                {integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> 发送 Telegram 海报测试</button>}
+                </>)}
               </div>
-              {integrations.lark?.hasWebhook && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/lark-test", {})}><Bell size={14} /> 发送飞书测试消息</button>}
-            </div>
-            <button className="primaryButton" type="submit"><PlugZap size={14} /> 保存外部服务配置</button>
+            )}
+
+            {(section || activeIntegrationModule === "lark") && (
+              <div className="configFieldset modulePanel">
+                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "lark")}>
+                  <strong>飞书（Lark）主动通知</strong>
+                  <StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "neutral"}>{integrations.lark?.hasWebhook ? (integrations.lark?.signed ? "已配置 · 已签名" : "已配置") : "未配置"}</StatusBadge>
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "lark" ? "rotate(180deg)" : "none" }} />}
+                </div>
+                {(!section || activeIntegrationModule === "lark") && (<>
+                {!section && <InsightNote icon={PlugZap} title="关键事件">配置飞书自定义机器人后，新计划待批准、逼近止损、保本移动、一键熔断等关键事件会主动推送到你的飞书。</InsightNote>}
+                <div className="formGrid">
+                  {larkSecretRows.map(([keyName, label, configured]) => (
+                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : (keyName === "LARK_WEBHOOK_URL" ? "https://open.feishu.cn/open-apis/bot/v2/hook/..." : "开启签名校验时填写")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                  ))}
+                </div>
+                {integrations.lark?.hasWebhook && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/lark-test", {})}><Bell size={14} /> 发送飞书测试消息</button>}
+                </>)}
+              </div>
+            )}
+
+            {(section || activeIntegrationModule === "langsmith") && (
+              <div className="configFieldset modulePanel">
+                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "langsmith")}>
+                  <strong>LangSmith Trace</strong>
+                  <StatusBadge tone={integrations.langsmith?.hasKey ? "ok" : "neutral"}>{integrations.langsmith?.hasKey ? "已配置" : "未配置"}</StatusBadge>
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "langsmith" ? "rotate(180deg)" : "none" }} />}
+                </div>
+                {(!section || activeIntegrationModule === "langsmith") && (<>
+                <div className="formGrid">
+                  {langsmithSecretRows.map(([keyName, label, configured]) => (
+                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                  ))}
+                  <label>Endpoint<input value={integrationForm.LANGSMITH_ENDPOINT} onChange={(event) => updateIntegration("LANGSMITH_ENDPOINT", event.target.value)} /></label>
+                  <label>Project<input value={integrationForm.LANGSMITH_PROJECT} onChange={(event) => updateIntegration("LANGSMITH_PROJECT", event.target.value)} /></label>
+                </div>
+                </>)}
+              </div>
+            )}
+
+            {(section || activeIntegrationModule === "data") && (
+              <div className="configFieldset modulePanel">
+                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "data")}>
+                  <strong>数据与搜索 API</strong>
+                  <StatusBadge tone={dataSourceSecretRows.some(([, , configured]) => configured) ? "ok" : "neutral"}>{dataSourceSecretRows.some(([, , configured]) => configured) ? "部分已配置" : "未配置"}</StatusBadge>
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "data" ? "rotate(180deg)" : "none" }} />}
+                </div>
+                {(!section || activeIntegrationModule === "data") && (<>
+                <div className="formGrid">
+                  {dataSourceSecretRows.map(([keyName, label, configured]) => (
+                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                  ))}
+                </div>
+                </>)}
+              </div>
+            )}
+
+            {(section || activeIntegrationModule === "alerts") && (
+              <div className="configFieldset modulePanel">
+                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "alerts")}>
+                  <strong>告警 Webhook</strong>
+                  <StatusBadge tone={integrations.alerts?.hasWebhook ? "ok" : "neutral"}>{integrations.alerts?.hasWebhook ? "已配置" : "未配置"}</StatusBadge>
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "alerts" ? "rotate(180deg)" : "none" }} />}
+                </div>
+                {(!section || activeIntegrationModule === "alerts") && (
+                <div className="formGrid">
+                  {alertSecretRows.map(([keyName, label, configured]) => (
+                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "https://..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
+                  ))}
+                </div>
+                )}
+              </div>
+            )}
           </form>
         )}
 
@@ -752,6 +885,15 @@ export function SkillImportPanel({ data, action, ui }) {
 
 export function TaskManagerPanel({ data, action }) {
   const [form, setForm] = useState({ name: "", type: "Every", schedule: "Every 5m", role: "风控" });
+  const [taskFilter, setTaskFilter] = useState("全部");
+  const tasks = data.tasks || [];
+  const taskTabs = [
+    ["全部", tasks.length],
+    ["Every", tasks.filter((task) => task.type === "Every").length],
+    ["Cron", tasks.filter((task) => task.type === "Cron").length],
+    ["At", tasks.filter((task) => task.type === "At").length]
+  ];
+  const visibleTasks = taskFilter === "全部" ? tasks : tasks.filter((task) => task.type === taskFilter);
   function updateType(type) {
     const schedule = type === "Cron" ? "*/5 * * * *" : type === "At" ? new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) : "Every 5m";
     setForm((current) => ({ ...current, type, schedule }));
@@ -775,14 +917,22 @@ export function TaskManagerPanel({ data, action }) {
         <label>{form.type === "At" ? "运行时间" : "触发表达式"}<input type={form.type === "At" ? "datetime-local" : "text"} value={form.schedule} onChange={(event) => setForm((current) => ({ ...current, schedule: event.target.value }))} /></label>
         <button className="primaryButton" type="submit">创建任务</button>
       </form>
-      {(data.tasks || []).map((task) => (
-        <div className="panelItem" key={task.id}>
-          <div><strong>{task.name}</strong><small>{task.schedule || "-"} · 下次 {formatDateTime(task.nextRunAt, "未排期")}</small></div>
-          <StatusBadge tone={task.enabled === false ? "warning" : "ok"}>{task.enabled === false ? "已暂停" : humanize(task.status, "运行中")}</StatusBadge>
-          <span className="panelActions"><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button><button className="secondaryButton dangerText" onClick={() => action(`/api/tasks/${task.id}`, {}, "DELETE")}>删除</button></span>
+      <div className="taskManagerList">
+        <div className="taskManagerHead">
+          <strong>已创建任务</strong>
+          <div className="taskTabs">{taskTabs.map(([name, count]) => <button className={taskFilter === name ? "active" : ""} key={name} onClick={() => setTaskFilter(name)}>{name} {count}</button>)}</div>
         </div>
-      ))}
-      {!data.tasks?.length && <div className="emptyPanel emptyPanelAction"><strong>暂无任务</strong><span>创建任务后会进入调度器，并在运行日志中留下记录。</span></div>}
+        <div className="taskManagerScroll">
+          {visibleTasks.map((task) => (
+            <div className="panelItem" key={task.id}>
+              <div><strong>{task.name}</strong><small>{task.schedule || "-"} · 下次 {formatDateTime(task.nextRunAt, "未排期")}</small></div>
+              <StatusBadge tone={task.enabled === false ? "warning" : "ok"}>{task.enabled === false ? "已暂停" : humanize(task.status, "运行中")}</StatusBadge>
+              <span className="panelActions"><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button><button className="secondaryButton dangerText" onClick={() => action(`/api/tasks/${task.id}`, {}, "DELETE")}>删除</button></span>
+            </div>
+          ))}
+          {!visibleTasks.length && <div className="emptyPanel emptyPanelAction"><strong>{tasks.length ? "当前类型暂无任务" : "暂无任务"}</strong><span>{tasks.length ? "切换上方类型查看其他已创建任务。" : "创建任务后会进入调度器，并在运行日志中留下记录。"}</span></div>}
+        </div>
+      </div>
     </div>
   );
 }

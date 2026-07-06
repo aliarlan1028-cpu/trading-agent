@@ -18,6 +18,7 @@ import {
   GitBranch,
   Globe2,
   Hourglass,
+  Info,
   KeyRound,
   Layers,
   LineChart,
@@ -46,8 +47,9 @@ export const pageCopy = {
   knowledgeSkills: { title: "知识与技能", sub: "沉淀专家知识，构建规则与技能，让 Agent 更懂市场、更会交易。", search: "搜索知识、规则、技能或文档" },
   review: { title: "复盘", sub: "复盘交易、Agent 行为、Skill 运行和可优化线索，形成下一轮改进闭环", search: "搜索交易、复盘、Skill 或优化项" },
   riskAuth: { title: "风控与授权", sub: "集中管理授权委托、风险规则与安全策略，确保交易策略在可控范围内执行。", search: "搜索市场、交易对、知识或功能" },
-  auditSystem: { title: "审计", sub: "审计 Agent 行为，监控系统健康，保障交易安全与合规", search: "搜索市场、交易对、知识或功能" },
-  systemSettings: { title: "系统设置", sub: "集中维护模型、交易所、告警、运行参数与实盘灰度配置", search: "搜索配置、密钥、模型或交易所" }
+  auditSystem: { title: "审计与通知", sub: "审计 Agent 行为，监控系统健康，集中查看站内通知与告警", search: "搜索市场、交易对、知识或功能" },
+  systemSettings: { title: "系统设置", sub: "集中维护模型、交易所、告警、运行参数与实盘灰度配置", search: "搜索配置、密钥、模型或交易所" },
+  admin: { title: "Admin", sub: "管理用户、密码、订阅套餐、TRC20 支付和数据重置。", search: "搜索用户、套餐、支付或系统设置" }
 };
 
 export function formatMoney(value, digits = 2) {
@@ -230,10 +232,15 @@ export function shortId(value, fallback = "未生成") {
 
 export function statusTone(status) {
   const value = String(status || "").toLowerCase();
+  const raw = String(status || "");
   const dangerStates = ["blocked", "error", "failed", "rejected", "risk_rejected", "已阻断", "异常", "失败", "已拒绝", "风控拒绝"];
-  const warningStates = ["warning", "degraded", "skipped_locked", "allowed_with_warnings", "paused", "setup_required", "missing_credentials", "not_synced", "data_unavailable", "降级运行", "并发锁跳过", "允许但有警告", "已暂停", "告警", "只读观察", "人工暂停", "风控暂停", "待配置", "未配置", "未同步", "缺少数据"];
-  if (dangerStates.includes(value) || dangerStates.includes(String(status || ""))) return "danger";
-  if (warningStates.includes(value) || warningStates.includes(String(status || ""))) return "warning";
+  const warningStates = ["warning", "degraded", "skipped_locked", "allowed_with_warnings", "paused", "降级运行", "并发锁跳过", "允许但有警告", "已暂停", "告警", "人工暂停", "风控暂停"];
+  const neutralStates = ["setup_required", "missing_credentials", "not_synced", "data_unavailable", "unconfigured", "待配置", "未配置", "未同步", "缺少数据", "只读观察", "未启用", "未连接"];
+  const infoStates = ["pending", "in_progress", "submitted", "queued", "awaiting_approval", "validating", "验证中", "进行中", "待审批", "审批中", "同步中"];
+  if (dangerStates.includes(value) || dangerStates.includes(raw)) return "danger";
+  if (warningStates.includes(value) || warningStates.includes(raw)) return "warning";
+  if (neutralStates.includes(value) || neutralStates.includes(raw)) return "neutral";
+  if (infoStates.includes(value) || infoStates.includes(raw)) return "info";
   return "ok";
 }
 
@@ -260,12 +267,73 @@ export function exchangeState(account = {}) {
   return { label: "未配置", tone: "off" };
 }
 
+export function isNativeApp() {
+  return Boolean(window.Capacitor?.isNativePlatform?.());
+}
+
+export function defaultApiBase() {
+  const nativeFallback = nativeApiFallback();
+  const stored = localStorage.getItem("agent_api_base") || "";
+  if (isNativeApp()) {
+    const invalidNativeBase = !stored || /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):|:5173\b/.test(stored);
+    return normalizeApiBase(invalidNativeBase ? nativeFallback : stored);
+  }
+  const configured = stored || import.meta.env.VITE_API_BASE_URL || "";
+  if (configured) return normalizeApiBase(configured);
+  return "";
+}
+
+export function nativeApiFallback() {
+  return normalizeApiBase(import.meta.env.VITE_API_BASE_URL || "https://yegidawir.xyz");
+}
+
+export function normalizeApiBase(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+export function apiUrl(path, baseOverride) {
+  const value = String(path || "");
+  if (/^https?:\/\//i.test(value)) return value;
+  let base = normalizeApiBase(baseOverride || localStorage.getItem("agent_api_base") || import.meta.env.VITE_API_BASE_URL || "");
+  if (isNativeApp() && !base) base = nativeApiFallback();
+  if (!base) return value;
+  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function connectionErrorMessage(error) {
+  if (error?.name === "AbortError") return "连接超时，请确认后端地址可访问，推荐使用 https://yegidawir.xyz";
+  return error?.message || "连接失败";
+}
+
 export function useApi() {
   const [token, setToken] = useState(() => localStorage.getItem("agent_token") || "");
+  const [apiBase, setApiBaseState] = useState(defaultApiBase);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
   const [authRequired, setAuthRequired] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [busyCount, setBusyCount] = useState(0);
+  const [publicInfo, setPublicInfo] = useState({ registrationEnabled: false, trc20Configured: false, subscriptionPlans: [] });
+
+  function setApiBase(value) {
+    const normalized = normalizeApiBase(value);
+    if (normalized) localStorage.setItem("agent_api_base", normalized);
+    else localStorage.removeItem("agent_api_base");
+    setApiBaseState(normalized);
+    setConnectionError("");
+    return normalized;
+  }
 
   function headers(extra = {}) {
     return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -276,20 +344,64 @@ export function useApi() {
     window.setTimeout(() => setToast(""), timeout);
   }
 
-  async function refresh(showLoading = true) {
+  function expireSession(message = "登录已过期，请重新登录") {
+    localStorage.removeItem("agent_token");
+    setToken("");
+    setData(null);
+    setAuthRequired(true);
+    setConnectionError("");
+    notify(message, 4200);
+  }
+
+  async function readOverview(base) {
+    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, isNativeApp() ? 5000 : 8000);
+    if (response.status === 401) {
+      expireSession();
+      return null;
+    }
+    if (!response.ok) throw new Error(`API ${response.status}`);
+    return response.json();
+  }
+
+  async function refresh(showLoading = true, baseOverride) {
+    const activeBase = normalizeApiBase(baseOverride || apiBase);
     try {
-      if (showLoading) setLoading(true);
-      const response = await fetch("/api/overview", { headers: headers() });
-      if (response.status === 401) {
-        setAuthRequired(true);
+      if (isNativeApp() && !activeBase) {
+        setConnectionError("请先填写 Trading Agent 后端地址。");
+        setLoading(false);
         return;
       }
-      if (!response.ok) throw new Error(`API ${response.status}`);
-      const json = await response.json();
+      if (showLoading) setLoading(true);
+      let json = await readOverview(activeBase);
+      if (!json) return;
       setData(json);
       setAuthRequired(false);
+      setConnectionError("");
     } catch (error) {
-      setToast(`连接后端失败：${error.message}`);
+      const fallback = nativeApiFallback();
+      if (isNativeApp() && activeBase !== fallback) {
+        try {
+          localStorage.setItem("agent_api_base", fallback);
+          setApiBaseState(fallback);
+          const json = await readOverview(fallback);
+          if (!json) return;
+          setData(json);
+          setAuthRequired(false);
+          setConnectionError("");
+          setToast("已自动切换到默认后端");
+          window.setTimeout(() => setToast(""), 2200);
+          return;
+        } catch (fallbackError) {
+          const message = connectionErrorMessage(fallbackError);
+          setConnectionError(message);
+          setToast(`连接后端失败：${message}`);
+          window.setTimeout(() => setToast(""), 3200);
+          return;
+        }
+      }
+      const message = connectionErrorMessage(error);
+      setConnectionError(message);
+      setToast(`连接后端失败：${message}`);
       window.setTimeout(() => setToast(""), 3200);
     } finally {
       if (showLoading) setLoading(false);
@@ -297,6 +409,7 @@ export function useApi() {
   }
 
   async function action(url, body = {}, method = "POST") {
+    setBusyCount((count) => count + 1);
     try {
       setToast(method.toUpperCase() === "GET" ? "正在同步数据..." : "操作处理中...");
       const request = {
@@ -304,15 +417,18 @@ export function useApi() {
         headers: headers({ "Content-Type": "application/json" })
       };
       if (method.toUpperCase() !== "GET") request.body = JSON.stringify(body);
-      const response = await fetch(url, request);
+      const response = await fetchWithTimeout(apiUrl(url, apiBase), request, isNativeApp() ? 8000 : 12000);
       if (response.status === 401) {
-        setAuthRequired(true);
-        setToast("请先登录");
+        expireSession();
         return {};
       }
       const text = await response.text();
       const json = text ? JSON.parse(text) : {};
       if (!response.ok) throw new Error(json.error || `请求失败 ${response.status}`);
+      if (json.logoutRequired) {
+        expireSession(json.message || "请重新登录");
+        return json;
+      }
       setToast(json.message || json.summary || json.output || json.error || "操作已完成");
       await refresh(false);
       window.setTimeout(() => setToast(""), 4200);
@@ -321,15 +437,16 @@ export function useApi() {
       setToast(error.message || "操作失败");
       window.setTimeout(() => setToast(""), 4200);
       return {};
+    } finally {
+      setBusyCount((count) => count - 1);
     }
   }
 
   async function download(url, filename) {
     try {
-      const response = await fetch(url, { headers: headers() });
+      const response = await fetchWithTimeout(apiUrl(url, apiBase), { headers: headers() }, isNativeApp() ? 8000 : 12000);
       if (response.status === 401) {
-        setAuthRequired(true);
-        notify("请先登录");
+        expireSession();
         return;
       }
       if (!response.ok) throw new Error(`导出失败 ${response.status}`);
@@ -349,11 +466,11 @@ export function useApi() {
   }
 
   async function login(password) {
-    const response = await fetch("/api/auth/login", {
+    const response = await fetchWithTimeout(apiUrl("/api/auth/login", apiBase), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
+      body: JSON.stringify(typeof password === "object" ? password : { password })
+    }, isNativeApp() ? 8000 : 12000);
     const json = await response.json();
     if (!response.ok) {
       setToast(json.error || "登录失败");
@@ -367,11 +484,45 @@ export function useApi() {
     return true;
   }
 
-  useEffect(() => {
-    refresh();
-  }, [token]);
+  async function registerAccount(payload) {
+    try {
+      setToast("正在开通账号...");
+      const response = await fetchWithTimeout(apiUrl("/api/auth/register", apiBase), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {})
+      }, isNativeApp() ? 8000 : 12000);
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "注册失败");
+      localStorage.setItem("agent_token", json.token);
+      setToken(json.token);
+      setAuthRequired(false);
+      setToast(json.payment ? "账号已创建，请按支付信息完成订阅" : "账号已创建");
+      window.setTimeout(() => setToast(""), 3200);
+      return json;
+    } catch (error) {
+      setToast(error.message || "注册失败");
+      window.setTimeout(() => setToast(""), 4200);
+      return {};
+    }
+  }
 
-  return { data, loading, action, toast, authRequired, login, notify, download, refresh };
+  async function refreshPublicInfo(baseOverride) {
+    try {
+      const response = await fetchWithTimeout(apiUrl("/api/public/bootstrap", normalizeApiBase(baseOverride || apiBase)), {}, isNativeApp() ? 5000 : 8000);
+      if (!response.ok) return;
+      setPublicInfo(await response.json());
+    } catch (_error) {
+      setPublicInfo((current) => current);
+    }
+  }
+
+  useEffect(() => {
+    refreshPublicInfo();
+    refresh();
+  }, [token, apiBase]);
+
+  return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 
 export function PageHeader({ active }) {
@@ -393,6 +544,18 @@ export function SectionTitle({ icon: Icon, title, action }) {
     <div className="sectionTitle">
       <div>{Icon && <span className="sectionIcon"><Icon size={18} /></span>}<h2>{title}</h2></div>
       {action}
+    </div>
+  );
+}
+
+export function InsightNote({ title = "提示", children, icon: Icon = Info, tone = "" }) {
+  return (
+    <div className={`insightNote ${tone}`} tabIndex={0} aria-label={`${title}：${children}`}>
+      <span className="insightIcon"><Icon size={15} /></span>
+      <div className="insightBubble">
+        <strong>{title}</strong>
+        <p>{children}</p>
+      </div>
     </div>
   );
 }

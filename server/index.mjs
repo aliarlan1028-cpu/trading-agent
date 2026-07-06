@@ -1,6 +1,9 @@
 import cors from "cors";
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
 import { activeProvider, runAgentChat } from "./agentChat.mjs";
@@ -8,7 +11,7 @@ import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } 
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
-import { installAuth, requirePermission } from "./auth.mjs";
+import { hashPassword, installAuth, invalidateSessions, requirePermission } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
@@ -18,6 +21,7 @@ import { listStrategies } from "./strategies.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
+import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
@@ -34,7 +38,7 @@ import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
-import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, saveDb, verifyAuditChain } from "./store.mjs";
+import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, verifyAuditChain } from "./store.mjs";
 import { executeTradeAction } from "./tradeActions.mjs";
 
 dotenv.config();
@@ -43,10 +47,13 @@ installProxyFromEnv();
 const app = express();
 const db = loadDb();
 app.locals.db = db;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, "../dist");
 
 applyStoredConfigToEnv(db);
 installProxyFromEnv();
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || "127.0.0.1";
 db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
@@ -54,6 +61,12 @@ saveDb(db);
 
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
+app.use(express.static(publicDir));
+app.get(/^\/(?!api(?:\/|$)).*/, (_req, res, next) => {
+  res.sendFile(path.join(publicDir, "index.html"), (error) => {
+    if (error) next(error);
+  });
+});
 installAuth(app, db);
 
 // 注册真实任务处理器并确保系统任务存在（执行轮询/持仓监控/核算/自主巡检/对账）
@@ -68,6 +81,11 @@ registerTaskHandler("agent_cycle", async (database) => {
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 registerTaskHandler("paper_forward", (database) => runPaperForward(database));
+registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
+registerTaskHandler("okx_readonly_sync", (database) => {
+  const account = (database.exchangeAccounts || []).find((item) => item.exchange === "OKX");
+  return account ? syncPrivateReadOnly(database, account.id) : { status: "missing_okx_account" };
+});
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
@@ -85,6 +103,54 @@ function persist(res, payload) {
   res.json(payload);
 }
 
+function sanitizeUserRecord(user = {}) {
+  const { password, passwordHash, passwordSalt, ...safe } = user;
+  return safe;
+}
+
+function addMonthsIso(months = 0, fallbackDays = 0) {
+  const date = new Date();
+  if (months) date.setMonth(date.getMonth() + Number(months));
+  if (fallbackDays) date.setDate(date.getDate() + Number(fallbackDays));
+  return date.toISOString();
+}
+
+function publicBootstrap() {
+  return {
+    registrationEnabled: process.env.PUBLIC_REGISTRATION_ENABLED === "true",
+    trc20Configured: Boolean(process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS),
+    subscriptionPlans: (db.subscriptionPlans || []).filter((item) => item.enabled !== false).map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      interval: plan.interval,
+      months: plan.months,
+      priceUsdt: plan.priceUsdt,
+      features: plan.features || []
+    }))
+  };
+}
+
+function activateSubscriptionFromPayment(payment) {
+  const plan = (db.subscriptionPlans || []).find((item) => item.id === payment.planId);
+  const months = Number(plan?.months || 1);
+  db.subscriptions ||= [];
+  const existing = db.subscriptions.find((item) => item.tenantId === payment.tenantId);
+  const payload = {
+    tenantId: payment.tenantId,
+    userId: payment.userId,
+    planId: payment.planId,
+    status: "active",
+    source: "trc20_usdt",
+    paymentId: payment.id,
+    startedAt: nowIso(),
+    currentPeriodEnd: addMonthsIso(months)
+  };
+  if (existing) Object.assign(existing, payload, { updatedAt: nowIso() });
+  else db.subscriptions.unshift({ id: id("sub"), ...payload });
+  const tenant = (db.tenants || []).find((item) => item.id === payment.tenantId);
+  if (tenant) Object.assign(tenant, { planId: payment.planId, status: "active", updatedAt: nowIso() });
+}
+
 async function importAndMaybeParseKnowledge(payload = {}) {
   const source = await importKnowledgeReal(db, payload);
   if (payload.autoParse === false) return { message: "知识来源已导入，尚未解析", source };
@@ -94,6 +160,10 @@ async function importAndMaybeParseKnowledge(payload = {}) {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, liveTradingEnabled: db.system.liveTradingEnabled, updatedAt: db.meta.updatedAt, storage: getStorageInfo() });
+});
+
+app.get("/api/public/bootstrap", (_req, res) => {
+  res.json(publicBootstrap());
 });
 
 app.get("/api/storage", (_req, res) => {
@@ -113,6 +183,174 @@ app.post("/api/system/backup", requirePermission("admin:system"), async (_req, r
   }
 });
 
+app.post("/api/system/reset-operational-data", requirePermission("admin:system"), (req, res) => {
+  resetOperationalData(db, { actor: req.user?.name || db.user.name, keepAudit: req.body.keepAudit !== false });
+  persist(res, { message: "已清空工作数据，保留用户、密钥、配置、风控规则与订阅设置。", storage: getStorageInfo() });
+});
+
+app.get("/api/admin/users", requirePermission("admin:system"), (_req, res) => {
+  res.json({
+    tenants: db.tenants || [],
+    users: (db.users || []).map(({ passwordHash, password, ...safe }) => safe),
+    subscriptions: db.subscriptions || []
+  });
+});
+
+app.post("/api/admin/users", requirePermission("admin:system"), (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const name = String(req.body.name || email.split("@")[0] || "新用户").trim();
+  const password = String(req.body.password || "");
+  const role = String(req.body.role || "交易用户").trim();
+  const freeMonths = Number(req.body.freeMonths || 0);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: "请输入有效邮箱" });
+  if (password.length < 10) return res.status(400).json({ error: "初始密码至少 10 位" });
+  db.users ||= [];
+  if (db.users.some((item) => String(item.email || "").toLowerCase() === email)) return res.status(409).json({ error: "该邮箱已存在" });
+  const createdAt = nowIso();
+  const userId = id("user");
+  const tenantId = id("tenant");
+  const tenant = { id: tenantId, name: `${name} 的工作区`, ownerUserId: userId, planId: freeMonths > 0 ? "owner_free" : "trial", status: freeMonths > 0 ? "active" : "trial", createdAt };
+  const user = { id: userId, tenantId, name, email, role, status: "active", passwordHash: hashPassword(password), createdAt };
+  db.tenants ||= [];
+  db.subscriptions ||= [];
+  db.tenants.push(tenant);
+  db.users.push(user);
+  db.subscriptions.unshift({
+    id: id("sub"),
+    tenantId,
+    userId,
+    planId: freeMonths > 0 ? "owner_free" : "trial",
+    status: freeMonths > 0 ? "active" : "trialing",
+    source: freeMonths > 0 ? "owner_grant" : "admin_create",
+    startedAt: createdAt,
+    currentPeriodEnd: addMonthsIso(freeMonths || 0, freeMonths ? 0 : 7)
+  });
+  appendAudit(db, `Owner 创建用户：${email}`, user.id, req.user?.name || db.user.name);
+  persist(res, { user: sanitizeUserRecord(user), tenant });
+});
+
+app.patch("/api/admin/users/:id", requirePermission("admin:system"), (req, res) => {
+  const user = (db.users || []).find((item) => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  const allowed = ["name", "role", "status", "isOwner"];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) user[key] = req.body[key];
+  }
+  user.updatedAt = nowIso();
+  appendAudit(db, `更新用户：${user.email || user.id}`, user.id, req.user?.name || db.user.name);
+  persist(res, { user: sanitizeUserRecord(user) });
+});
+
+app.post("/api/admin/users/:id/grant-free", requirePermission("admin:system"), (req, res) => {
+  const user = (db.users || []).find((item) => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  const months = Math.max(1, Number(req.body.months || 1));
+  const planId = String(req.body.planId || "owner_free");
+  db.subscriptions ||= [];
+  const existing = db.subscriptions.find((item) => item.tenantId === user.tenantId);
+  const subscription = {
+    tenantId: user.tenantId,
+    userId: user.id,
+    planId,
+    status: "active",
+    source: "owner_grant",
+    grantedBy: req.user?.id || db.user.id,
+    startedAt: nowIso(),
+    currentPeriodEnd: addMonthsIso(months)
+  };
+  if (existing) Object.assign(existing, subscription, { updatedAt: nowIso() });
+  else db.subscriptions.unshift({ id: id("sub"), ...subscription });
+  const tenant = (db.tenants || []).find((item) => item.id === user.tenantId);
+  if (tenant) Object.assign(tenant, { status: "active", planId, updatedAt: nowIso() });
+  appendAudit(db, `Owner 赠送免费授权：${user.email || user.name} ${months} 个月`, user.id, req.user?.name || db.user.name);
+  persist(res, { message: `已赠送 ${months} 个月免费授权`, user: sanitizeUserRecord(user), subscription: existing || db.subscriptions[0] });
+});
+
+app.post("/api/admin/password", requirePermission("admin:security"), (req, res) => {
+  const nextPassword = String(req.body.password || "");
+  if (nextPassword.length < 12) return res.status(400).json({ error: "管理员密码至少 12 位" });
+  setConfig(db, { ADMIN_PASSWORD: nextPassword });
+  appendAudit(db, "修改管理员登录密码", "admin_password", req.user?.name || db.user.name, "warning");
+  invalidateSessions(db);
+  saveDb(db);
+  res.json({ message: "管理员密码已更新，已退出当前登录，请用新密码重新登录。", logoutRequired: true, status: getConfigStatus(db) });
+});
+
+app.get("/api/admin/subscription-plans", requirePermission("admin:system"), (_req, res) => {
+  res.json(db.subscriptionPlans || []);
+});
+
+app.post("/api/admin/subscription-plans", requirePermission("admin:system"), (req, res) => {
+  const plan = {
+    id: req.body.id || id("plan"),
+    name: req.body.name || "新套餐",
+    interval: req.body.interval || "month",
+    months: Number(req.body.months || 1),
+    priceUsdt: Number(req.body.priceUsdt || 0),
+    enabled: req.body.enabled !== false,
+    features: Array.isArray(req.body.features) ? req.body.features : [],
+    createdAt: nowIso()
+  };
+  db.subscriptionPlans ||= [];
+  db.subscriptionPlans.unshift(plan);
+  appendAudit(db, `创建订阅套餐：${plan.name}`, plan.id, req.user?.name || db.user.name);
+  persist(res, plan);
+});
+
+app.patch("/api/admin/subscription-plans/:id", requirePermission("admin:system"), (req, res) => {
+  const plan = (db.subscriptionPlans || []).find((item) => item.id === req.params.id);
+  if (!plan) return res.status(404).json({ error: "Plan not found" });
+  for (const key of ["name", "interval", "months", "priceUsdt", "enabled", "features"]) {
+    if (req.body[key] !== undefined) plan[key] = key === "months" || key === "priceUsdt" ? Number(req.body[key]) : req.body[key];
+  }
+  plan.updatedAt = nowIso();
+  appendAudit(db, `更新订阅套餐：${plan.name}`, plan.id, req.user?.name || db.user.name);
+  persist(res, plan);
+});
+
+app.post("/api/payments/trc20/request", requirePermission("write:mandate"), (req, res) => {
+  const plan = (db.subscriptionPlans || []).find((item) => item.id === req.body.planId && item.enabled !== false);
+  if (!plan) return res.status(404).json({ error: "Plan not found" });
+  const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
+  if (!address) return res.status(503).json({ error: "TRC20_USDT_RECEIVE_ADDRESS is not configured" });
+  const payment = {
+    id: id("pay"),
+    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
+    userId: req.user?.id,
+    planId: plan.id,
+    network: "TRON",
+    asset: "USDT",
+    amount: Number(plan.priceUsdt || 0),
+    address,
+    status: "pending",
+    expiresAt: addMonthsIso(0, 30),
+    createdAt: nowIso()
+  };
+  db.paymentRequests ||= [];
+  db.paymentRequests.unshift(payment);
+  appendAudit(db, `创建 TRC20 USDT 支付请求：${plan.name}`, payment.id, req.user?.name || db.user.name);
+  persist(res, payment);
+});
+
+app.post("/api/payments/trc20/webhook", (req, res) => {
+  const payload = req.body || {};
+  const txid = payload.txid || payload.transactionId || payload.hash;
+  const paymentId = payload.paymentId || payload.orderId;
+  const event = { id: id("payhook"), provider: payload.provider || "trc20", txid, paymentId, payload, createdAt: nowIso() };
+  db.paymentWebhooks ||= [];
+  db.paymentWebhooks.unshift(event);
+  const payment = paymentId ? (db.paymentRequests || []).find((item) => item.id === paymentId) : null;
+  if (payment && (payload.status === "confirmed" || payload.confirmed === true)) {
+    payment.status = "confirmed";
+    payment.txid = txid;
+    payment.confirmedAt = nowIso();
+    activateSubscriptionFromPayment(payment);
+  }
+  appendAudit(db, `收到 TRC20 支付回调：${txid || paymentId || "unknown"}`, event.id, "PaymentWebhook");
+  saveDb(db);
+  res.json({ ok: true });
+});
+
 app.post("/api/system/autonomy", requirePermission("write:mandate"), (req, res) => {
   db.system.autonomyEnabled = req.body.enabled !== false;
   if (db.system.autonomyEnabled && db.system.killSwitch) db.system.killSwitch = false;
@@ -127,8 +365,14 @@ app.post("/api/system/autonomy", requirePermission("write:mandate"), (req, res) 
 app.get("/api/overview", (_req, res) => {
   res.json({
     user: db.user,
+    users: (db.users || []).map(sanitizeUserRecord),
+    tenants: db.tenants || [],
+    subscriptionPlans: db.subscriptionPlans || [],
+    subscriptions: db.subscriptions || [],
+    paymentRequests: db.paymentRequests?.slice(0, 20) || [],
     system: db.system,
     agentStatus: getAgentStatus(db),
+    agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
     markets: db.markets,
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
@@ -155,6 +399,7 @@ app.get("/api/overview", (_req, res) => {
     riskChecks: db.riskChecks,
     riskIncidents: db.riskIncidents,
     realtimeConnections: db.realtimeConnections,
+    realtimeStarted: realtimeStatus(db).started,
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
     notifications: db.notifications,
@@ -178,6 +423,7 @@ app.get("/api/overview", (_req, res) => {
     paperReport: buildPaperReport(db),
     portfolioRisk: buildPortfolioRisk(db, db.mandates.find((m) => ["active", "running"].includes(m.status))),
     larkConfigured: larkStatus().configured,
+    telegramConfigured: telegramStatus().configured,
     mcpStatus: mcpStatus(db),
     embeddingStatus: embeddingStatus(db),
     reviewAnalytics: buildReviewAnalytics(db),
@@ -502,17 +748,58 @@ app.get("/api/agent/status", (_req, res) => {
   res.json(getAgentStatus(db));
 });
 
-app.get("/api/agent/chat", (_req, res) => {
+app.get("/api/agent/profiles", (_req, res) => {
+  res.json((db.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
+});
+
+app.patch("/api/agent/profiles/:id", requirePermission("write:knowledge"), (req, res) => {
+  const profile = (db.agentProfiles || []).find((item) => item.id === req.params.id);
+  if (!profile) return res.status(404).json({ error: "Agent profile not found" });
+  const allowed = ["name", "role", "enabled", "declaration", "personality", "mission", "boundaries", "tools", "outputSchema", "memoryPolicy"];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) profile[key] = req.body[key];
+  }
+  profile.updatedAt = nowIso();
+  appendAudit(db, `更新 Agent Profile：${profile.name}`, profile.id, req.user?.name || db.user.name);
+  persist(res, profile);
+});
+
+function chatSessionsSorted() {
+  return (db.chatSessions || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+}
+
+app.get("/api/agent/chat", (req, res) => {
+  const sessions = chatSessionsSorted();
+  const activeSessionId = req.query.sessionId || sessions[0]?.id || null;
   res.json({
-    messages: (db.chatMessages || []).slice(-100),
+    sessions,
+    activeSessionId,
+    messages: (db.chatMessages || []).filter((message) => !activeSessionId || message.sessionId === activeSessionId).slice(-100),
     provider: activeProvider(),
     llmConfigured: Boolean(activeProvider())
   });
 });
 
+app.post("/api/agent/chat/sessions", requirePermission("write:mandate"), (req, res) => {
+  const title = String(req.body.title || "新对话").trim().slice(0, 32) || "新对话";
+  const session = { id: id("chat"), title, status: "active", createdAt: nowIso(), updatedAt: nowIso() };
+  db.chatSessions ||= [];
+  db.chatSessions.unshift(session);
+  persist(res, { session, sessions: chatSessionsSorted() });
+});
+
+app.patch("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
+  const session = (db.chatSessions || []).find((item) => item.id === req.params.id);
+  if (!session) return res.status(404).json({ error: "Chat session not found" });
+  if (req.body.title !== undefined) session.title = String(req.body.title || "未命名对话").trim().slice(0, 32);
+  if (req.body.status !== undefined) session.status = String(req.body.status);
+  session.updatedAt = nowIso();
+  persist(res, { session, sessions: chatSessionsSorted() });
+});
+
 app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
   try {
-    const result = await runAgentChat(db, { message: req.body.message }, saveDb);
+    const result = await runAgentChat(db, { message: req.body.message, sessionId: req.body.sessionId }, saveDb);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -587,6 +874,7 @@ app.post("/api/backtest/run", requirePermission("write:review"), async (req, res
 
 app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
 app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
+app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
 app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
   const result = await notifyLark(db, {
     severity: "info",
@@ -596,6 +884,23 @@ app.post("/api/notifications/lark-test", requirePermission("admin:security"), as
   });
   saveDb(db);
   res.json({ message: `飞书通知：${result.deliveryStatus}`, notification: result });
+});
+app.post("/api/notifications/telegram-test", requirePermission("admin:security"), async (_req, res) => {
+  const position = db.positions?.find((item) => Number(item.pnl ?? item.upl ?? item.unrealizedPnl) > 0) || {
+    id: "telegram_test_position",
+    exchange: "OKX",
+    symbol: "BTC/USDT",
+    direction: "long",
+    size: 0.01,
+    entry: 100000,
+    mark: 103500,
+    leverage: 5,
+    pnl: 35,
+    updatedAt: nowIso()
+  };
+  const result = await sendTelegramPositionPoster(db, position, { caption: "Telegram 盈利仓位海报测试" });
+  saveDb(db);
+  res.json({ message: `Telegram 海报：${result.status}`, ...result });
 });
 
 app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {
@@ -789,6 +1094,27 @@ app.get("/api/exchange/api-key-metadata", (_req, res) => {
   persist(res, refreshApiKeyMetadata(db));
 });
 
+app.post("/api/exchange/api-key-metadata/:id/confirm-no-withdraw", requirePermission("admin:security"), (req, res) => {
+  const item = (db.apiKeyMetadata || []).find((key) => key.id === req.params.id);
+  if (!item) return res.status(404).json({ error: "API key metadata not found" });
+  const currentApiKey = item.exchange === "BINANCE"
+    ? process.env.BINANCE_API_KEY
+    : item.exchange === "OKX"
+      ? process.env.OKX_API_KEY
+      : "";
+  item.apiKeyFingerprint = currentApiKey
+    ? crypto.createHash("sha256").update(currentApiKey).digest("hex").slice(0, 16)
+    : null;
+  item.withdrawPermission = false;
+  item.permissionVerifiedAt = nowIso();
+  item.permissionVerificationStatus = "manual_confirmed";
+  item.permissionVerificationNote = req.body.note || "用户已在交易所 API 管理页面确认该 Key 未开启提现权限。";
+  item.manualWithdrawPermissionConfirmedAt = nowIso();
+  item.manualWithdrawPermissionConfirmedBy = db.user?.name || "local_admin";
+  appendAudit(db, `人工确认 ${item.exchange} API Key 无提现权限`, item.id, db.user?.name || "local_admin", "warning");
+  persist(res, { message: `${item.exchange} API Key 已标记为无提现权限`, item });
+});
+
 app.post("/api/exchange/:accountId/reconcile", requirePermission("write:exchange"), (req, res) => {
   const result = reconcileAccount(db, req.params.accountId);
   persist(res, result);
@@ -922,6 +1248,17 @@ app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), 
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
   if (!plan.lastRiskCheck) return res.status(400).json({ error: "计划尚未通过风控检查，先运行 risk-check" });
   if (!plan.lastRiskCheck.passed) return res.status(400).json({ error: `风控未通过，禁止批准：${plan.lastRiskCheck.summary}` });
+  const freshRisk = evaluateTradePlan(db, plan);
+  freshRisk.tradePlanId = plan.id;
+  freshRisk.createdAt = nowIso();
+  db.riskChecks.unshift(freshRisk);
+  plan.lastRiskCheck = freshRisk;
+  plan.riskCheckId = freshRisk.id;
+  if (!freshRisk.passed) {
+    appendAudit(db, `批准前风控复查失败：${freshRisk.summary}`, plan.id, "RiskEngine", "warning");
+    persist(res.status(400), { error: `批准前风控复查失败：${freshRisk.summary}`, riskCheck: freshRisk });
+    return;
+  }
   plan.status = "approved";
   plan.approvedAt = nowIso();
   plan.approvedBy = db.user.name;
@@ -1023,12 +1360,13 @@ app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), async (
       });
     }
   }
-  appendAudit(db, db.system.killSwitch ? "启用一键熔断" : "解除一键熔断", "risk.kill_switch", db.user.name, db.system.killSwitch ? "critical" : "info");
+  const killReason = String(req.body.reason || "").trim();
+  appendAudit(db, `${db.system.killSwitch ? "启用一键熔断" : "解除一键熔断"}${killReason ? `：${killReason}` : ""}`, "risk.kill_switch", db.user.name, db.system.killSwitch ? "critical" : "info");
   appendTrace(db, "risk", db.system.killSwitch ? "一键熔断开启" : "一键熔断解除", db.system.killSwitch ? "blocked" : "ok");
   await notifyLark(db, {
     severity: db.system.killSwitch ? "critical" : "info",
     title: db.system.killSwitch ? "🛑 一键熔断已触发" : "🟢 熔断已解除",
-    body: db.system.killSwitch ? "所有新开仓已被阻断，在途委托已请求撤单。请检查账户与市场。" : "熔断解除，系统恢复正常风控运行。"
+    body: `${db.system.killSwitch ? "所有新开仓已被阻断，在途委托已请求撤单。请检查账户与市场。" : "熔断解除，系统恢复正常风控运行。"}${killReason ? `\n原因：${killReason}` : ""}`
   });
   persist(res, db.system);
 });
@@ -1039,7 +1377,7 @@ app.get("/api/risk/status", (_req, res) => {
 
 app.get("/api/risk/rules", (_req, res) => res.json(db.riskRules));
 app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
-  const rule = { id: id("risk"), name: req.body.name || "新风控规则", scope: req.body.scope || "trade", level: req.body.level || "L2", enabled: true, action: req.body.action || "notify", description: req.body.description || "", createdAt: nowIso() };
+  const rule = { id: id("risk"), name: req.body.name || "新风控规则", scope: req.body.scope || "trade", level: req.body.level || "L2", enabled: true, action: req.body.action || "notify", description: req.body.description || "", event: req.body.event || "", condition: req.body.condition || "", createdAt: nowIso() };
   db.riskRules.unshift(rule);
   appendAudit(db, "创建风控规则", rule.id, db.user.name);
   persist(res, rule);
@@ -1048,7 +1386,7 @@ app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
 app.patch("/api/risk/rules/:id", requirePermission("write:risk"), (req, res) => {
   const rule = db.riskRules.find((item) => item.id === req.params.id);
   if (!rule) return res.status(404).json({ error: "Risk rule not found" });
-  const allowed = ["name", "scope", "level", "enabled", "action", "description"];
+  const allowed = ["name", "scope", "level", "enabled", "action", "description", "event", "condition"];
   for (const key of allowed) {
     if (req.body[key] !== undefined) rule[key] = req.body[key];
   }
@@ -1113,47 +1451,61 @@ app.get("/api/event-sources", (_req, res) => res.json(db.eventSources || []));
 
 app.get("/api/security/vault", (_req, res) => res.json(listVaultItems(db)));
 app.post("/api/security/vault", requirePermission("admin:security"), (req, res) => {
-  const result = storeSecret(db, req.body.name, req.body.value, req.body.scope);
-  persist(res, result);
+  try {
+    const result = storeSecret(db, req.body.name, req.body.value, req.body.scope);
+    persist(res, result);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
-app.post("/api/security/exchange-credentials", requirePermission("admin:security"), (req, res) => {
-  const exchange = String(req.body.exchange || "").toUpperCase();
-  if (!["BINANCE", "OKX"].includes(exchange)) return res.status(400).json({ error: "exchange must be BINANCE or OKX" });
-  const account = db.exchangeAccounts.find((item) => item.exchange === exchange);
-  if (!account) return res.status(404).json({ error: "Exchange account not found" });
+app.post("/api/security/exchange-credentials", requirePermission("admin:security"), async (req, res) => {
+  try {
+    const exchange = String(req.body.exchange || "").toUpperCase();
+    if (!["BINANCE", "OKX"].includes(exchange)) return res.status(400).json({ error: "exchange must be BINANCE or OKX" });
+    const account = db.exchangeAccounts.find((item) => item.exchange === exchange);
+    if (!account) return res.status(404).json({ error: "Exchange account not found" });
 
-  const saved = [];
-  function saveSecret(envName, value) {
-    if (!value) return;
-    process.env[envName] = String(value);
-    saved.push(storeSecret(db, envName, value, "exchange"));
+    const saved = [];
+    function saveSecret(envName, value) {
+      if (!value) return;
+      saved.push(storeSecret(db, envName, value, "exchange"));
+      process.env[envName] = String(value);
+    }
+
+    if (exchange === "BINANCE") {
+      saveSecret("BINANCE_API_KEY", req.body.apiKey);
+      saveSecret("BINANCE_API_SECRET", req.body.apiSecret);
+    } else {
+      saveSecret("OKX_API_KEY", req.body.apiKey);
+      saveSecret("OKX_API_SECRET", req.body.apiSecret);
+      saveSecret("OKX_API_PASSPHRASE", req.body.passphrase);
+    }
+
+    if (req.body.ipWhitelist !== undefined) account.ipWhitelist = req.body.ipWhitelist || "建议开启";
+    account.readEnabled = exchange === "BINANCE"
+      ? Boolean(process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET)
+      : Boolean(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
+    account.tradeEnabled = account.readEnabled;
+    account.withdrawEnabled = false;
+    account.status = account.readEnabled ? "configured" : "missing_credentials";
+    account.lastCredentialUpdateAt = nowIso();
+    refreshApiKeyMetadata(db);
+    const validation = account.readEnabled
+      ? await syncPrivateReadOnly(db, account.id)
+      : { status: "missing_credentials", error: exchange === "OKX" ? "OKX 需要 API Key、Secret 和 Passphrase 才能同步账户。" : "Binance 需要 API Key 和 Secret 才能同步账户。" };
+    appendAudit(db, `配置 ${exchange} API 凭证`, account.id, db.user.name, "warning");
+    persist(res, {
+      message: validation.status === "ok"
+        ? `${exchange} API 配置已保存，并已成功同步账户数据。`
+        : `${exchange} API 配置已保存，但账户同步未成功：${validation.error || validation.status}`,
+      account,
+      validation,
+      saved: saved.map((item) => ({ id: item.id, name: item.name, scope: item.scope }))
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
   }
-
-  if (exchange === "BINANCE") {
-    saveSecret("BINANCE_API_KEY", req.body.apiKey);
-    saveSecret("BINANCE_API_SECRET", req.body.apiSecret);
-  } else {
-    saveSecret("OKX_API_KEY", req.body.apiKey);
-    saveSecret("OKX_API_SECRET", req.body.apiSecret);
-    saveSecret("OKX_API_PASSPHRASE", req.body.passphrase);
-  }
-
-  if (req.body.ipWhitelist !== undefined) account.ipWhitelist = req.body.ipWhitelist || "建议开启";
-  account.readEnabled = exchange === "BINANCE" ? Boolean(process.env.BINANCE_API_KEY) : Boolean(process.env.OKX_API_KEY);
-  account.tradeEnabled = exchange === "BINANCE"
-    ? Boolean(process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET)
-    : Boolean(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
-  account.withdrawEnabled = false;
-  account.status = account.readEnabled ? "configured" : "missing_credentials";
-  account.lastCredentialUpdateAt = nowIso();
-  refreshApiKeyMetadata(db);
-  appendAudit(db, `配置 ${exchange} API 凭证`, account.id, db.user.name, "warning");
-  persist(res, {
-    message: `${exchange} API 配置已保存${account.tradeEnabled ? "，读写凭证完整" : "，仍缺少 Secret/Passphrase"}`,
-    account,
-    saved: saved.map((item) => ({ id: item.id, name: item.name, scope: item.scope }))
-  });
 });
 
 app.get("/api/config", (_req, res) => {
@@ -1161,11 +1513,32 @@ app.get("/api/config", (_req, res) => {
 });
 
 // 通用配置写入：LLM 密钥/模型、非敏感开关。敏感项加密入库，不回传明文。
-app.post("/api/config", requirePermission("admin:security"), (req, res) => {
-  const applied = setConfig(db, req.body || {});
-  refreshApiKeyMetadata(db);
-  saveDb(db);
-  res.json({ message: applied.length ? `已保存：${applied.join("、")}` : "无变更", applied, status: getConfigStatus(db) });
+app.post("/api/config", requirePermission("admin:security"), async (req, res) => {
+  try {
+    const applied = setConfig(db, req.body || {});
+    refreshApiKeyMetadata(db);
+    const exchangeValidations = [];
+    for (const account of db.exchangeAccounts || []) {
+      const names = account.exchange === "OKX"
+        ? ["OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE"]
+        : ["BINANCE_API_KEY", "BINANCE_API_SECRET"];
+      if (names.some((name) => applied.includes(name)) && account.readEnabled) {
+        exchangeValidations.push(await syncPrivateReadOnly(db, account.id));
+      }
+    }
+    saveDb(db);
+    const failedValidation = exchangeValidations.find((item) => item.status !== "ok");
+    res.json({
+      message: failedValidation
+        ? `已保存配置，但交易所账户同步未成功：${failedValidation.error || failedValidation.status}`
+        : applied.length ? `已保存：${applied.join("、")}` : "无变更",
+      applied,
+      exchangeValidations,
+      status: getConfigStatus(db)
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 // 实盘开关 + 灰度额度（高危，集中一处并写审计）。
@@ -1256,6 +1629,6 @@ app.get("/api/traces/export", (req, res) => {
   res.type(format === "csv" ? "text/csv" : "application/json").send(exportTraces(db, format));
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`AI Trading Agent API listening on http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+  console.log(`AI Trading Agent API listening on http://${host}:${port}`);
 });

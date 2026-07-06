@@ -35,10 +35,11 @@ import {
   Target,
   Timer,
   TrendingUp,
+  UserCog,
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote } from "./lib.jsx";
 
 export function MarketAccountPage({ data, action, ui }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
@@ -65,10 +66,9 @@ export function MarketAccountPage({ data, action, ui }) {
     ["在途执行", `${openExecutions} 个`, openExecutions ? "warning" : "ok"],
     ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
   ];
+  // 收益质量只做一行摘要 + 去复盘入口，胜率/盈亏比的完整拆解由复盘页承载，避免与复盘重复展示。
   const qualityRows = [
-    ["胜率", performance.trades ? `${performance.winRatePct}%` : "暂无数据"],
-    ["盈亏比", performance.profitFactor ?? "暂无数据"],
-    ["已平仓交易", performance.trades ? `${performance.trades} 笔` : "暂无交易"],
+    ["交易样本", performance.trades ? `${performance.trades} 笔已平仓 · 胜率 ${performance.winRatePct}% · 盈亏比 ${performance.profitFactor ?? "-"}` : "暂无已平仓交易，完成闭环后到复盘拆解"],
     ["最大回撤", data.portfolio.maxDrawdownPct !== null && data.portfolio.maxDrawdownPct !== undefined ? displayPct(-Math.abs(Number(data.portfolio.maxDrawdownPct))) : "未同步"],
     ["月交易次数", data.portfolio.monthlyTrades !== null && data.portfolio.monthlyTrades !== undefined ? `${data.portfolio.monthlyTrades} / ${data.portfolio.monthlyTradeLimit || "不限"}` : "未设置"],
     ["风险等级", data.portfolio.riskLabel || "未同步"]
@@ -83,10 +83,19 @@ export function MarketAccountPage({ data, action, ui }) {
   return (
     <div className="pageStack">
       <PageHeader active="marketAccount" />
-      <div className="metricGrid five">
-        <MetricCard icon={WalletCards} label="总资产（USDT）" value={displayMoney(data.portfolio.totalEquityUsdt)} sub={latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "私有账户同步后显示"} candles={market.candles} />
-        <MetricCard icon={TrendingUp} label="今日盈亏（USDT）" value={displayMoney(data.portfolio.todayPnl)} sub={displayPct(data.portfolio.todayPnlPct)} tone={Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
-        <MetricCard icon={SquareActivity} label="未实现盈亏（USDT）" value={displayMoney(data.portfolio.weekPnl)} sub={displayPct(data.portfolio.weekPnlPct)} tone={Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+      <div className={`metricGrid ${configuredAccounts ? "five" : "three"}`}>
+        {configuredAccounts ? (
+          <>
+            <MetricCard icon={WalletCards} label="总资产（USDT）" value={displayMoney(data.portfolio.totalEquityUsdt)} sub={latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "私有账户同步后显示"} candles={market.candles} />
+            <MetricCard icon={TrendingUp} label="今日盈亏（USDT）" value={displayMoney(data.portfolio.todayPnl)} sub={displayPct(data.portfolio.todayPnlPct)} tone={Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+            <MetricCard icon={SquareActivity} label="未实现盈亏（USDT）" value={displayMoney(data.portfolio.weekPnl)} sub={displayPct(data.portfolio.weekPnlPct)} tone={Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
+          </>
+        ) : (
+          <Card className="metricCard actionCard connectExchangeCta" onClick={() => ui.setActive("systemSettings")} role="button" tabIndex={0}>
+            <div><span>账户未接入</span><strong className="warning">总资产 · 今日 · 未实现盈亏未同步</strong><small>在系统设置添加只读交易所 API，即可同步净值与实时盈亏</small></div>
+            <ChevronRight size={18} />
+          </Card>
+        )}
         <MetricCard icon={BarChart3} label={`累计盈亏（${pnlWindow}）`} value={displayMoney(monthlyPnl)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(monthlyPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
         <Card className="metricCard reconcileCard actionCard" onClick={() => configuredAccounts ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings")} role="button" tabIndex={0}><div><span>对账状态</span><strong className={latestReconcile?.status === "ok" ? "positive" : "warning"}>{configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置"}</strong><small>{configuredAccounts ? `最后对账：${formatDateTime(latestReconcile?.createdAt || latestSnapshot?.createdAt, "暂无记录")}` : "先配置只读 API 后再对账"}</small></div><ChevronRight size={18} /></Card>
       </div>
@@ -119,7 +128,7 @@ export function MarketAccountPage({ data, action, ui }) {
           <div><span>订单簿买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
           <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
         </div>
-        <p className="muted">{market.microSyncedAt ? `资金费率反映多空拥挤度、订单簿买盘占比 <42% 偏空 / >58% 偏多。最后同步 ${formatDateTime(market.microSyncedAt)}` : "点击「刷新」拉取 OKX 资金费率、未平仓量与订单簿深度——合约方向判断需要它，不能只看 K 线。"}</p>
+        <InsightNote icon={Activity} title="结构解读">{market.microSyncedAt ? `资金费率反映多空拥挤度，订单簿买盘占比低于 42% 偏空、高于 58% 偏多。最后同步 ${formatDateTime(market.microSyncedAt)}` : "点击刷新拉取 OKX 资金费率、未平仓量与订单簿深度。合约方向判断需要它，不能只看 K 线。"}</InsightNote>
       </Card>
 
       <Card>
@@ -136,7 +145,7 @@ export function MarketAccountPage({ data, action, ui }) {
             <div className="qualityGrid">
               {pr.positions.map((p) => <RiskLine key={p.symbol} label={p.symbol} value={`日波动 ${p.dailyVolPct ?? "-"}% · 名义 ${displayMoney(p.notionalUsdt)} USDT`} />)}
             </div>
-            {pr.correlations?.length > 0 && <p className="muted">相关性：{pr.correlations.map((c) => `${c.pair} ρ=${c.rho}`).join(" · ")}。相关性高的同向仓会被自动压小名义额度。</p>}
+            {pr.correlations?.length > 0 && <InsightNote icon={GitBranch} title="相关性约束">相关性：{pr.correlations.map((c) => `${c.pair} ρ=${c.rho}`).join(" · ")}。相关性高的同向仓会被自动压小名义额度。</InsightNote>}
           </>
         ) : (
           <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后这里显示组合日度波动、预算使用率与相关性。执行引擎会据此压低超预算的新仓。"}</div>
@@ -160,7 +169,7 @@ export function MarketAccountPage({ data, action, ui }) {
   );
 }
 
-export function EventsTasksPage({ data, action, ui }) {
+export function EventsTasksPage({ data, action, ui, embedded = false }) {
   const events = data.events || [];
   const tasks = data.tasks || [];
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -172,6 +181,11 @@ export function EventsTasksPage({ data, action, ui }) {
   }, []).slice(0, 5);
   const primaryEvent = eventRows.find((event) => event.id === selectedEventId) || eventRows[0] || events[0] || {};
   const filteredTasks = taskFilter === "全部" ? tasks : tasks.filter((task) => task.type === taskFilter);
+  const eventRuleTemplates = [
+    { name: "高影响事件前停止开仓", scope: "event", level: "L1", action: "pause_opening", event: "宏观事件（影响 ≥ 80）", condition: "事件前 30 分钟", description: "重大宏观事件公布前 30 分钟暂停新开仓，事件落地后人工确认恢复" },
+    { name: "资金费率异常告警", scope: "event", level: "L2", action: "notify", event: "资金费率", condition: "|费率| > 0.1% / 8h", description: "永续合约资金费率绝对值超过 0.1% 时推送告警，提示极端多空失衡" },
+    { name: "交易所大额流入告警", scope: "event", level: "L2", action: "notify", event: "链上事件", condition: "单笔 > 5000 BTC 流入交易所", description: "监测到大额 BTC 流入交易所地址时告警，提示潜在抛压" }
+  ];
   const eventRuleRows = (data.riskRules || []).filter((rule) => rule.scope === "event").map((rule) => ({
     id: rule.id,
     rule: rule.name,
@@ -189,7 +203,7 @@ export function EventsTasksPage({ data, action, ui }) {
   ];
   return (
     <div className="pageStack">
-      <PageHeader active="eventsTasks" />
+      {!embedded && <PageHeader active="eventsTasks" />}
       <div className="eventsGrid">
         <Card className="eventRadarCard">
           <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
@@ -198,18 +212,18 @@ export function EventsTasksPage({ data, action, ui }) {
           <div className="eventRadarInner">
             <div className="eventTimeline">
               {eventRows.map((event, index) => (
-                <div className="eventTimelineItem" key={event.id}>
+                <div className="eventTimelineItem" key={event.id} title={event.rawTitle || event.title}>
                   <b>{formatDateTime(event.due, "待定")}<small>{event.category}</small></b>
-                  <span>{event.title}</span>
-                  <StatusBadge tone={event.impact >= 80 ? "danger" : "warning"}>{event.impactLabel || "中影响"}</StatusBadge>
+                  <span>{event.shortTitle || event.title}</span>
+                  <StatusBadge tone={event.impact >= 80 ? "danger" : event.impact >= 50 ? "warning" : "neutral"}>{event.impactLabel || "中影响"}</StatusBadge>
                 </div>
               ))}
             </div>
             <div className="eventDetail">
-              <div className="eventDetailHead"><strong>{primaryEvent.title || "暂无事件"}</strong><StatusBadge tone={primaryEvent.impact >= 80 ? "danger" : "warning"}>{primaryEvent.impactLabel || "待评估"}</StatusBadge><button className="textButton" onClick={() => ui.openPanel("eventSources")}>事件详情 <ChevronRight size={14} /></button></div>
+              <div className="eventDetailHead"><strong title={primaryEvent.rawTitle || primaryEvent.title}>{primaryEvent.shortTitle || primaryEvent.title || "暂无事件"}</strong><StatusBadge tone={primaryEvent.impact >= 80 ? "danger" : primaryEvent.impact >= 50 ? "warning" : "neutral"}>{primaryEvent.impactLabel || "待评估"}</StatusBadge><button className="textButton" onClick={() => ui.openPanel("eventSources")}>事件详情 <ChevronRight size={14} /></button></div>
               <div className="countdown eventDue"><b>{formatDateTime(primaryEvent.due, "待定")}</b></div>
               <div className="eventMetrics">
-                <span>影响等级<b className={primaryEvent.impact >= 80 ? "negative" : "warning"}>{primaryEvent.impactLabel || "待评估"}</b></span>
+                <span>影响等级<b className={primaryEvent.impact >= 80 ? "negative" : primaryEvent.impact >= 50 ? "warning" : ""}>{primaryEvent.impactLabel || "待评估"}</b></span>
                 <span>市场影响度<b>{primaryEvent.impact ? `${Number(primaryEvent.impact) / 10}/10` : "未评估"}</b><ProgressBar value={primaryEvent.impact || 0} tone="red" /></span>
                 <span>历史波动率<b>{data.activeMarket?.candles?.length ? "待计算" : "未同步"}</b><MiniSparkline candles={data.activeMarket?.candles} /></span>
                 <span>置信度<b>{primaryEvent.confidence ? `${primaryEvent.confidence}%` : "未评估"}</b><ProgressBar value={primaryEvent.confidence || 0} /></span>
@@ -232,17 +246,30 @@ export function EventsTasksPage({ data, action, ui }) {
       <div className="eventsBottom">
         <Card>
           <SectionTitle icon={GitBranch} title="事件规则" action={<button className="primaryButton" onClick={() => ui.openPanel("eventRule")}><Plus size={14} /> 新建规则</button>} />
-          <DataTable columns={[
-            { key: "rule", label: "规则名称" }, { key: "event", label: "触发事件" }, { key: "condition", label: "触发条件" }, { key: "action", label: "执行动作" }, { key: "status", label: "状态" }, { key: "op", label: "操作" }
-          ]} rows={eventRuleRows} />
+          {!eventRuleRows.length && (
+            <div className="emptyPanel emptyPanelGuide">
+              <strong>还没有事件规则</strong>
+              <small>规则会在事件触发时自动执行动作（告警 / 暂停开仓）。从模板一键创建：</small>
+              <div className="templateChips">
+                {eventRuleTemplates.map((template) => (
+                  <button key={template.name} onClick={() => action("/api/risk/rules", template)}>{template.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {eventRuleRows.length > 0 && (
+            <DataTable columns={[
+              { key: "rule", label: "规则名称" }, { key: "event", label: "触发事件" }, { key: "condition", label: "触发条件" }, { key: "action", label: "执行动作" }, { key: "status", label: "状态" }, { key: "op", label: "操作" }
+            ]} rows={eventRuleRows} />
+          )}
         </Card>
         <Card>
-          <SectionTitle icon={ClipboardList} title="任务运行日志" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>查看全部日志 <ChevronRight size={14} /></button>} />
-          <div className="runLogList">
-            {(data.jobRuns || []).slice(0, 5).map((run, index) => (
-              <div className="runLog" key={run.id}><b>{formatTime(run.createdAt)}</b><span>{run.taskName}</span><StatusBadge tone={statusTone(run.status)}>{humanize(run.status)}</StatusBadge><small>{run.output}</small></div>
-            ))}
-            {!data.jobRuns?.length && <div className="emptyPanel">暂无真实任务运行日志。</div>}
+          <SectionTitle icon={ClipboardList} title="任务健康摘要" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>日志中心 <ChevronRight size={14} /></button>} />
+          <div className="healthGrid">
+            <div><span>任务总数</span><strong>{tasks.length}</strong><StatusBadge>{tasks.length ? "已创建" : "暂无"}</StatusBadge></div>
+            <div><span>启用任务</span><strong>{tasks.filter((task) => task.enabled !== false).length}</strong><StatusBadge tone="ok">运行</StatusBadge></div>
+            <div><span>最近运行</span><strong>{formatDateTime(data.jobRuns?.[0]?.createdAt, "暂无")}</strong><StatusBadge tone={statusTone(data.jobRuns?.[0]?.status)}>{humanize(data.jobRuns?.[0]?.status, "未运行")}</StatusBadge></div>
+            <div><span>失败次数</span><strong>{(data.jobRuns || []).filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length}</strong><StatusBadge tone="warning">近记录</StatusBadge></div>
           </div>
         </Card>
       </div>
@@ -272,7 +299,7 @@ export function latestAnalysisRows(data) {
   return [...views, ...citations].slice(0, 6);
 }
 
-export function KnowledgeSkillsPage({ data, action, ui }) {
+export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const [tab, setTab] = useState("knowledge");
   const knowledge = data.knowledge || {};
   const sourceCount = knowledge.sources?.length || 0;
@@ -283,7 +310,7 @@ export function KnowledgeSkillsPage({ data, action, ui }) {
   const connectedMcp = data.mcpServers?.filter((item) => item.status === "connected").length || 0;
   return (
     <div className="pageStack">
-      <PageHeader active="knowledgeSkills" />
+      {!embedded && <PageHeader active="knowledgeSkills" />}
       <div className="subTabBar">
         <button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><BookOpen size={15} /> 知识库</button>
         <button className={tab === "skills" ? "active" : ""} onClick={() => setTab("skills")}><Sparkles size={15} /> Skill 中心</button>
@@ -345,7 +372,14 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
         </Card>
         <Card className="graphCard">
           <SectionTitle title="概念与规则" action={<button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 <ChevronRight size={14} /></button>} />
-          {ruleCount || conceptCount ? <div className="conceptGraph"><b>知识图谱</b>{(knowledge.conceptCards || []).slice(0, 6).map((concept, index) => <span className={`node n${index + 1}`} key={concept.id}>{concept.name}</span>)}</div> : (
+          {ruleCount || conceptCount ? (
+            <div className="conceptGraph">
+              <div className="conceptHub"><b>知识图谱</b><small>{conceptCount} 个概念 · {ruleCount} 条规则</small></div>
+              <div className="conceptNodeGrid">
+                {(knowledge.conceptCards || []).slice(0, 6).map((concept, index) => <span className={index < 2 ? "primary" : ""} key={concept.id}>{concept.name}</span>)}
+              </div>
+            </div>
+          ) : (
             <div className="emptyPanel emptyPanelAction">
               <strong>还没有概念或规则</strong>
               <span>导入资料后会自动切片并抽取概念；也可以在导入时生成待审批规则草案。</span>
@@ -416,7 +450,7 @@ function McpManager({ data, action }) {
         })}
         {servers.length ? null : <div className="emptyPanel">暂无 MCP Server。注册后点「连接」发现工具，已连接的工具会接入 AI 交易员。</div>}
       </div>
-      <p className="fieldHint">已连接的 MCP 工具以 mcp__ 前缀接入 AI 交易员的决策循环。例：Tavily 搜索 MCP（需 API Key）给 Agent 加"查实时新闻/研报"能力。</p>
+      <InsightNote icon={PlugZap} title="工具接入">已连接的 MCP 工具以 mcp__ 前缀接入 AI 交易员的决策循环。例：Tavily 搜索 MCP（需 API Key）给 Agent 加查实时新闻、研报的能力。</InsightNote>
     </Card>
   );
 }
@@ -434,7 +468,7 @@ function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
       <div className="knowledgeGrid">
         <Card className="skillCenterCard">
           <SectionTitle title="Skills 中心" action={<div className="titleActions"><button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 导入 Skill</button><button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button></div>} />
-          <p className="fieldHint">已启用的技能会作为可调用工具接入 AI 交易员的决策循环；内置技能（built-in）只读、需扫描并安装后生效。</p>
+          <InsightNote icon={Sparkles} title="技能生效方式">已启用的技能会作为可调用工具接入 AI 交易员的决策循环；内置技能只读，需要扫描并安装后生效。</InsightNote>
           <div className="skillList">
             {(data.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>{skill.native ? "内置" : `v${skill.version}`}</small><StatusBadge tone={skill.status === "已启用" ? "ok" : "warning"}>{skill.status || "已启用"}</StatusBadge></div>)}
             {!data.skills?.length && (
@@ -500,7 +534,7 @@ function RiskQuadrants({ rules = [] }) {
   );
 }
 
-export function RiskAuthPage({ data, action, ui }) {
+export function RiskAuthPage({ data, action, ui, embedded = false }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || {};
   const grayPolicy = data.grayReleasePolicies?.[0] || {};
@@ -519,7 +553,7 @@ export function RiskAuthPage({ data, action, ui }) {
         : "未记录";
   return (
     <div className="pageStack">
-      <PageHeader active="riskAuth" />
+      {!embedded && <PageHeader active="riskAuth" />}
       <div className="riskAuthGrid">
         <Card>
           <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" onClick={() => ui.openPanel("mandate")}>编辑</button></>} />
@@ -538,7 +572,7 @@ export function RiskAuthPage({ data, action, ui }) {
         <Card>
           <SectionTitle title="风险规则" action={<button className="secondaryButton" onClick={() => ui.openPanel("riskRules")}>管理规则</button>} />
           <RiskQuadrants rules={data.riskRules || []} />
-          <p className="muted">规则触发将按预设动作执行，可在右侧「风险状态墙」中手动干预。</p>
+          <InsightNote icon={Shield} title="规则执行">规则触发将按预设动作执行，可在右侧风险状态墙中手动干预。</InsightNote>
         </Card>
         <Card className="riskStatusWall">
           <SectionTitle title="风险状态墙" action={<small>实时更新 {formatDateTime(latestRisk.createdAt || data.system.updatedAt)} <RefreshCw size={13} /></small>} />
@@ -599,13 +633,6 @@ export function ReviewPage({ data, action, ui }) {
     skill: run.skillName || run.name || run.skillId || "Skill",
     status: <StatusBadge tone={statusTone(run.status)}>{humanize(run.status, "已记录")}</StatusBadge>,
     output: run.output || run.summary || run.resultSummary || "-"
-  }));
-  const agentRows = agentRuns.slice(0, 8).map((run) => ({
-    id: run.id,
-    time: formatTime(run.createdAt),
-    goal: run.goal || run.role || "-",
-    status: <StatusBadge tone={statusTone(run.status)}>{humanize(run.status)}</StatusBadge>,
-    model: run.model || run.source || "-"
   }));
   return (
     <div className="pageStack">
@@ -691,10 +718,11 @@ export function ReviewPage({ data, action, ui }) {
               ]} rows={tradeRows} />
             </Card>
             <Card>
-              <SectionTitle title="Agent 行为复盘" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>看审计 <ChevronRight size={14} /></button>} />
-              <DataTable columns={[
-                { key: "time", label: "时间" }, { key: "goal", label: "目标", width: "1.6fr" }, { key: "status", label: "状态" }, { key: "model", label: "模型/来源" }
-              ]} rows={agentRows} />
+              <SectionTitle title="执行质量" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>看日志中心 <ChevronRight size={14} /></button>} />
+              <RiskLine label="在途执行单" value={`${(data.executionOrders || []).filter((item) => !["closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length} 个`} />
+              <RiskLine label="风控阻断" value={`${blockedRisk} 次`} />
+              <RiskLine label="Agent 运行失败" value={`${failedRuns} 次`} />
+              <RiskLine label="详细日志" value="已集中到审计与通知" />
             </Card>
           </div>
           <Card>
@@ -755,7 +783,7 @@ function PaperValidationCard({ data, action }) {
           <button className="secondaryButton" onClick={() => action("/api/paper/spawn-from-profiles", {})}>从已验证策略开盘</button>
         </div>
       )}
-      <p className="muted">只在会话创建后到来的 K 线上模拟成交（真前向，无法过拟合历史）；前向满 {report.minForwardTrades} 笔且期望为正、回撤可控才「通过」，是上真金白银前最后的安全垫。可选开启 REQUIRE_PAPER_VALIDATION 后，未通过的交易对将禁止开实盘新仓。</p>
+      <InsightNote icon={Rocket} title="前向验证">只在会话创建后到来的 K 线上模拟成交，无法过拟合历史；前向满 {report.minForwardTrades} 笔且期望为正、回撤可控才通过。开启 REQUIRE_PAPER_VALIDATION 后，未通过的交易对将禁止开实盘新仓。</InsightNote>
     </Card>
   );
 }
@@ -785,7 +813,7 @@ function StrategyResearchCard({ data, action }) {
           <span>点击「运行研究」：在趋势/均值回归/突破多套策略上做 train→test 样本外寻优，胜出者自动写入 Agent 记忆并参与后续决策。每 6 小时也会自动跑一次。</span>
         </div>
       )}
-      <p className="muted">样本外验证（用前 70% 数据寻优、后 30% 验证）避免过拟合；「低置信」表示样本外交易太少，不足以采信。</p>
+      <InsightNote icon={Search} title="样本外验证">用前 70% 数据寻优、后 30% 验证，降低过拟合风险；低置信表示样本外交易太少，不足以采信。</InsightNote>
     </Card>
   );
 }
@@ -840,7 +868,7 @@ function SegmentList({ title, rows = [] }) {
   );
 }
 
-export function AuditSystemPage({ data, ui }) {
+export function AuditSystemPage({ data, ui, embedded = false }) {
   const traces = data.traces || [];
   const jobRuns = data.jobRuns || [];
   const [traceTypeFilter, setTraceTypeFilter] = useState("全部");
@@ -872,10 +900,10 @@ export function AuditSystemPage({ data, ui }) {
   ];
   return (
     <div className="pageStack">
-      <PageHeader active="auditSystem" />
+      {!embedded && <PageHeader active="auditSystem" />}
       <div className="metricGrid five">
         <MetricCard icon={Gauge} label="API 健康" value={data.system.apiHealth || "未知"} sub={`实现 ${data.readiness?.implementationCompletionPct || 0}%`} />
-        <MetricCard icon={Activity} label="WebSocket 状态" value={String(data.realtimeConnections?.filter((item) => item.status === "connected").length || 0)} sub={`${data.realtimeConnections?.length || 0} 个连接配置`} />
+        <MetricCard icon={Activity} label="WebSocket 状态" value={data.realtimeStarted ? "运行中" : "未启动"} sub={data.realtimeStarted ? `${data.realtimeConnections?.filter((item) => item.status === "connected").length || 0} / ${data.realtimeConnections?.length || 0} 已连接` : "实时管理器未开启"} tone={data.realtimeStarted ? "positive" : "warning"} />
         <MetricCard icon={Zap} label="任务引擎" value={String(data.tasks?.filter((task) => task.enabled).length || 0)} sub="启用任务" />
         <MetricCard icon={RefreshCw} label="交易所同步" value={`${data.exchangeAccounts?.filter((item) => item.readEnabled).length || 0} / ${data.exchangeAccounts?.length || 0}`} sub="已配置只读账户" />
         <MetricCard icon={Shield} label="审计链" value={auditOk ? "正常" : "异常"} sub={`${data.auditLogs?.length || 0} 条日志`} />
@@ -931,6 +959,299 @@ export function AuditSystemPage({ data, ui }) {
           </div>
         </div>
       </Card>
+    </div>
+  );
+}
+
+export function AgentProfilesPage({ data, action, ui }) {
+  const profiles = (data.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  const enabled = profiles.filter((profile) => profile.enabled !== false).length;
+  const proposal = profiles.filter((profile) => profile.canProposeTrade).length;
+  const risk = profiles.filter((profile) => profile.canApproveRisk).length;
+  const phases = profiles.map((profile) => profile.phase).filter(Boolean);
+  const comparison = [
+    ["市场输入", "行情、事件、策略研究容易混在同一段分析里", "市场观察员和事件分析员先拆分事实、噪音和风险窗口"],
+    ["交易计划", "LLM 可能直接给方向建议，计划结构不稳定", "策略研究员与交易计划员输出固定字段：方向、触发、止损、仓位、失效条件"],
+    ["风险边界", "风控更多依赖统一规则，缺少角色复核语境", "风控官独立审查计划，只能批准/拒绝，不能替自己放宽规则"],
+    ["执行过程", "批准后执行和持仓监控的责任不够清晰", "执行监督员盯订单状态，持仓管理员盯止损、保本、减仓和异常"],
+    ["复盘记忆", "复盘更像记录结果，较难反哺下一轮", "复盘/记忆管理员把错误、有效条件和禁忌沉淀为下一轮上下文"]
+  ];
+  return (
+    <div className="pageStack">
+      <PageHeader active="agentProfiles" />
+      <div className="metricGrid four">
+        <MetricCard icon={BrainCircuit} label="交易 Agent" value={`${profiles.length} 个`} sub={`${enabled} 个启用`} />
+        <MetricCard icon={ClipboardList} label="可提计划" value={`${proposal} 个`} sub="只生成结构化计划，不直接下单" />
+        <MetricCard icon={Shield} label="风控审批" value={`${risk} 个`} sub="只允许风控官批准/拒绝" />
+        <MetricCard icon={GitBranch} label="流程阶段" value={`${new Set(phases).size} 段`} sub="观察→复盘闭环" />
+      </div>
+
+      <Card className="agentManifesto">
+        <SectionTitle icon={Sparkles} title="人格宣言" action={<button className="secondaryButton" onClick={() => ui.setActive("systemSettings")}>配置模型 <ChevronRight size={14} /></button>} />
+        <blockquote>我不是来替你冒险的，我是来把风险变得可见、可控、可复盘的。</blockquote>
+        <InsightNote icon={Shield} title="交易权限边界">所有 Agent 都只能提出结构化建议或审查结果；真实写单必须经过交易计划、硬风控、授权、执行引擎和交易写入网关。</InsightNote>
+      </Card>
+
+      <Card className="agentFlowBoard">
+        <SectionTitle icon={GitBranch} title="8 Agent 编排链路" />
+        <div className="agentFlowRail">
+          {profiles.map((profile, index) => (
+            <div className="agentFlowStep" key={profile.id}>
+              <b>{String(index + 1).padStart(2, "0")}</b>
+              <span>{profile.name}</span>
+              <small>{profile.phase}</small>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="agentCompareCard">
+        <SectionTitle icon={BarChart3} title="加入 8 Agent 前后对比" />
+        <div className="agentCompareGrid">
+          {comparison.map(([topic, before, after]) => (
+            <div key={topic}>
+              <strong>{topic}</strong>
+              <p><b>以前</b>{before}</p>
+              <p><b>现在</b>{after}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="agentProfileGrid">
+        {profiles.map((profile) => (
+          <Card className={`agentProfileCard ${profile.enabled === false ? "disabled" : ""}`} key={profile.id}>
+            <div className="agentProfileHead">
+              <div>
+                <span>{profile.role}</span>
+                <h2>{profile.name}</h2>
+              </div>
+              <StatusBadge tone={profile.enabled === false ? "warning" : "ok"}>{profile.enabled === false ? "停用" : "启用"}</StatusBadge>
+            </div>
+            <p>{profile.personality}</p>
+            <RiskLine label="使命" value={profile.mission} />
+            <RiskLine label="输出" value={profile.outputSchema} />
+            <RiskLine label="记忆策略" value={profile.memoryPolicy} />
+            <div className="agentToolList">
+              {(profile.tools || []).map((tool) => <span key={tool}>{tool}</span>)}
+            </div>
+            <div className="agentBoundaryList">
+              {(profile.boundaries || []).slice(0, 4).map((item) => <small key={item}>· {item}</small>)}
+            </div>
+            <footer>
+              <button className="secondaryButton" onClick={() => action(`/api/agent/profiles/${profile.id}`, { enabled: profile.enabled === false }, "PATCH")}>{profile.enabled === false ? "启用" : "停用"}</button>
+              <button className="textButton" onClick={() => {
+                const next = window.prompt("更新人格宣言", profile.declaration || "");
+                if (next !== null) action(`/api/agent/profiles/${profile.id}`, { declaration: next }, "PATCH");
+              }}>编辑宣言</button>
+            </footer>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function AdminPage({ data, action }) {
+  const [password, setPassword] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "交易用户", freeMonths: 0 });
+  const [newPlan, setNewPlan] = useState({ name: "", months: 1, priceUsdt: 0, features: "" });
+  const [planDrafts, setPlanDrafts] = useState({});
+  const [grantMonths, setGrantMonths] = useState(12);
+  const [adminTab, setAdminTab] = useState("users");
+  const plans = data.subscriptionPlans || [];
+  const users = data.users || [];
+  const payments = data.paymentRequests || [];
+  const subscriptions = data.subscriptions || [];
+  const profiles = (data.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  const activeSubs = subscriptions.filter((item) => ["active", "trialing"].includes(item.status)).length;
+  const ownerGrants = subscriptions.filter((item) => item.source === "owner_grant").length;
+  const activeProfiles = profiles.filter((profile) => profile.enabled !== false).length;
+  useEffect(() => {
+    setPlanDrafts((current) => {
+      const next = { ...current };
+      for (const plan of plans) {
+        if (!next[plan.id]) next[plan.id] = { ...plan, features: (plan.features || []).join("\n") };
+      }
+      return next;
+    });
+  }, [plans]);
+  function subscriptionFor(user) {
+    return subscriptions.find((item) => item.tenantId === user.tenantId || item.userId === user.id);
+  }
+  function updatePlanDraft(id, patch) {
+    setPlanDrafts((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }));
+  }
+  function savePlan(plan) {
+    const draft = planDrafts[plan.id] || plan;
+    action(`/api/admin/subscription-plans/${plan.id}`, {
+      name: draft.name,
+      months: draft.months,
+      priceUsdt: draft.priceUsdt,
+      enabled: draft.enabled !== false,
+      features: String(draft.features || "").split("\n").map((item) => item.trim()).filter(Boolean)
+    }, "PATCH");
+  }
+  const adminTabs = [
+    ["users", "用户授权", UserCog],
+    ["billing", "套餐支付", WalletCards],
+    ["agents", "Agent 配置", BrainCircuit],
+    ["security", "安全维护", Shield]
+  ];
+  return (
+    <div className="pageStack">
+      <PageHeader active="admin" />
+      <Card className="adminHero">
+        <div>
+          <span>Owner Control Center</span>
+          <h2>用户、订阅、Agent 与安全维护集中在这里</h2>
+          <p>日常交易页面只展示交易工作流；这里负责谁能登录、谁被授权、套餐如何定价，以及后台 Agent 能力是否启用。</p>
+        </div>
+        <div className="adminHeroMetrics">
+          <div><strong>{users.length}</strong><span>用户</span></div>
+          <div><strong>{activeSubs}</strong><span>有效订阅</span></div>
+          <div><strong>{ownerGrants}</strong><span>免费授权</span></div>
+          <div><strong>{activeProfiles}/{profiles.length}</strong><span>Agent 启用</span></div>
+        </div>
+      </Card>
+
+      <div className="adminTabs" role="tablist" aria-label="Admin sections">
+        {adminTabs.map(([id, label, Icon]) => (
+          <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}>
+            <Icon size={16} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {adminTab === "users" && (
+        <div className="adminTwoColumn">
+          <Card className="adminCreateCard">
+            <SectionTitle icon={UserCog} title="Owner 开通账号" action={<StatusBadge tone="ok">免费授权可选</StatusBadge>} />
+            <div className="adminFormStack">
+              <label><span>姓名</span><input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} placeholder="用户姓名" /></label>
+              <label><span>邮箱</span><input value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} placeholder="user@example.com" /></label>
+              <label><span>初始密码</span><input type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} placeholder="至少 10 位" /></label>
+              <div className="adminInlineFields">
+                <label><span>角色</span><select value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}><option>交易用户</option><option>管理员</option></select></label>
+                <label><span>免费月数</span><input type="number" min="0" value={newUser.freeMonths} onChange={(event) => setNewUser({ ...newUser, freeMonths: event.target.value })} /></label>
+              </div>
+              <button className="primaryButton" onClick={() => action("/api/admin/users", newUser)}>创建账号</button>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={Lock} title="用户授权" action={<label className="inlineControl"><span>默认赠送</span><input type="number" min="1" value={grantMonths} onChange={(event) => setGrantMonths(event.target.value)} /> 月</label>} />
+            <div className="adminUserList">
+              {users.map((user) => {
+                const sub = subscriptionFor(user);
+                return (
+                  <div className="adminUserRow" key={user.id}>
+                    <div className="adminUserIdentity"><strong>{user.name || user.email || user.id}</strong><small>{user.email || "-"} · {user.tenantId}</small></div>
+                    <select value={user.role || "交易用户"} onChange={(event) => action(`/api/admin/users/${user.id}`, { role: event.target.value }, "PATCH")}><option>交易用户</option><option>管理员</option></select>
+                    <select value={user.status || "active"} onChange={(event) => action(`/api/admin/users/${user.id}`, { status: event.target.value }, "PATCH")}><option value="active">启用</option><option value="disabled">停用</option></select>
+                    <div className="adminSubState"><StatusBadge tone={sub?.status === "active" ? "ok" : "warning"}>{sub?.source === "owner_grant" ? "Owner 免费授权" : humanize(sub?.status, "未订阅")}</StatusBadge><small>{sub?.currentPeriodEnd ? `到期 ${formatDate(sub.currentPeriodEnd)}` : "未设置到期"}</small></div>
+                    <button className="secondaryButton" onClick={() => action(`/api/admin/users/${user.id}/grant-free`, { months: grantMonths })}>赠送</button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {adminTab === "billing" && (
+        <div className="adminTwoColumn billing">
+          <Card>
+            <SectionTitle icon={WalletCards} title="订阅套餐定价" />
+            <div className="planEditList pretty">
+              {plans.map((plan) => {
+                const draft = planDrafts[plan.id] || plan;
+                return (
+                  <div className="planEditRow" key={plan.id}>
+                    <div className="planEditHeader">
+                      <input value={draft.name || ""} onChange={(event) => updatePlanDraft(plan.id, { name: event.target.value })} />
+                      <StatusBadge tone={draft.enabled === false ? "warning" : "ok"}>{draft.enabled === false ? "停用" : "启用"}</StatusBadge>
+                    </div>
+                    <div className="adminInlineFields">
+                      <label><span>周期（月）</span><input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
+                      <label><span>价格（USDT）</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
+                      <label><span>状态</span><select value={draft.enabled === false ? "disabled" : "enabled"} onChange={(event) => updatePlanDraft(plan.id, { enabled: event.target.value === "enabled" })}><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
+                    </div>
+                    <textarea value={draft.features || ""} onChange={(event) => updatePlanDraft(plan.id, { features: event.target.value })} placeholder="套餐权益，每行一条" />
+                    <button className="primaryButton" onClick={() => savePlan(plan)}>保存套餐</button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+          <div className="adminStack">
+            <Card>
+              <SectionTitle icon={Plus} title="新增套餐" />
+              <div className="adminFormStack">
+                <input value={newPlan.name} onChange={(event) => setNewPlan({ ...newPlan, name: event.target.value })} placeholder="套餐名" />
+                <div className="adminInlineFields">
+                  <input type="number" min="1" value={newPlan.months} onChange={(event) => setNewPlan({ ...newPlan, months: event.target.value })} placeholder="月数" />
+                  <input type="number" min="0" value={newPlan.priceUsdt} onChange={(event) => setNewPlan({ ...newPlan, priceUsdt: event.target.value })} placeholder="USDT 价格" />
+                </div>
+                <textarea value={newPlan.features} onChange={(event) => setNewPlan({ ...newPlan, features: event.target.value })} placeholder="套餐权益，每行一条" />
+                <button className="secondaryButton" onClick={() => action("/api/admin/subscription-plans", { ...newPlan, features: String(newPlan.features || "").split("\n").filter(Boolean) })}>新增套餐</button>
+              </div>
+            </Card>
+            <Card>
+              <SectionTitle icon={Database} title="TRC20 支付请求" />
+              <div className="paymentRequestList">
+                {payments.slice(0, 8).map((payment) => (
+                  <div key={payment.id}>
+                    <span>{formatTime(payment.createdAt)}</span>
+                    <strong>{displayMoney(payment.amount, 2, "0")} USDT</strong>
+                    <small>{payment.planId}</small>
+                    <StatusBadge tone={payment.status === "confirmed" ? "ok" : "warning"}>{humanize(payment.status)}</StatusBadge>
+                  </div>
+                ))}
+                {!payments.length && <div className="emptyPanel">暂无支付请求。</div>}
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {adminTab === "agents" && (
+        <Card>
+          <SectionTitle icon={BrainCircuit} title="Agent Profile 配置" action={<InsightNote icon={Shield} title="说明">这里是后台能力开关，不作为用户侧介绍页展示；Agent 会在交易计划、风控、执行和复盘流程中发挥作用。</InsightNote>} />
+          <div className="adminAgentGrid">
+            {profiles.map((profile) => (
+              <div className={`adminAgentMini ${profile.enabled === false ? "disabled" : ""}`} key={profile.id}>
+                <div>
+                  <b>{String(profile.order || "").padStart(2, "0")}</b>
+                  <strong>{profile.name}</strong>
+                  <small>{profile.role}</small>
+                </div>
+                <p>{profile.mission}</p>
+                <button className="secondaryButton" onClick={() => action(`/api/agent/profiles/${profile.id}`, { enabled: profile.enabled === false }, "PATCH")}>{profile.enabled === false ? "启用" : "停用"}</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {adminTab === "security" && (
+        <div className="adminTwoColumn">
+          <Card>
+            <SectionTitle icon={KeyRound} title="修改管理员密码" action={<InsightNote icon={AlertTriangle} title="提示">修改后当前会话可能仍短暂有效；建议保存后退出并用新密码重新登录。</InsightNote>} />
+            <div className="adminFormStack">
+              <label><span>新密码</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 12 位" /></label>
+              <button className="primaryButton" disabled={password.length < 12} onClick={() => action("/api/admin/password", { password })}>保存密码</button>
+            </div>
+          </Card>
+          <Card>
+            <SectionTitle icon={RefreshCw} title="清空工作数据" />
+            <p className="muted">清空行情、计划、持仓、订单、复盘、记忆、任务运行和通知，保留用户、密钥、系统配置、风险规则、Agent Profile 与套餐。</p>
+            <label className="dangerConfirm"><span>输入 RESET 确认</span><input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="RESET" /></label>
+            <button className="danger" disabled={confirmText !== "RESET"} onClick={() => action("/api/system/reset-operational-data", { keepAudit: true })}>清空并开始投入</button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

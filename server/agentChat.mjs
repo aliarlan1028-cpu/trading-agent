@@ -2,7 +2,8 @@ import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { syncMicrostructure, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
@@ -11,9 +12,21 @@ import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
 import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
+import { setConfig } from "./runtimeConfig.mjs";
+import { scheduleTask } from "./scheduler.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const MAX_STEPS = 8;
+
+const SYSTEM_GUIDE = `【本系统内置说明】
+- AI交易员：对话入口，可读取行情、账户、事件、知识、授权和风控状态；能创建授权草案、交易计划、定时任务，并触发事件刷新/账户同步等系统动作。
+- 仪表盘：展示真实账户资产、今日盈亏、对账健康和收益质量；只有交易所私有只读同步成功后才显示真实资产。
+- 系统设置 / 交易所：保存 Binance 或 OKX API。Binance 至少需要 Key+Secret，OKX 需要 Key+Secret+Passphrase 才能做账户只读同步。任何提现权限都不应开启。
+- 实盘灰度：真实交易的最小额度试运行机制。它不是放开自动交易，而是在 liveTradingEnabled、确认风险、写单开关、最大名义额、人工批准和风控全部满足时，只允许小额度真实订单。
+- 风控与授权：授权委托限定交易所、交易对、杠杆、单笔风险、日亏上限和人工审批阈值；交易计划必须经过硬风控。
+- 事件与任务：事件源负责同步宏观/交易所事件；定时任务负责执行轮询、持仓监控、账户对账、策略研究、模拟盘推进等。
+- 审计与通知：集中查看日志、任务运行、通知和安全审计；普通业务页只展示关键状态，不应堆流水账。
+- Admin：Owner 管理用户、免费授权、订阅套餐、支付请求、Agent Profile 与安全维护。`;
 
 // ---------------------------------------------------------------------------
 // 工具定义：Agent 在对话循环中唯一能触达系统的方式。
@@ -126,6 +139,63 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "explain_system",
+    description: "解释本交易系统的内置概念、页面和工作流。用户问实盘灰度、授权、风控、任务、API、Admin、审计等系统问题时优先调用。",
+    schema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "要解释的系统概念或页面" }
+      },
+      required: ["topic"]
+    }
+  },
+  {
+    name: "create_task",
+    description: "按用户要求创建定时任务。可创建 Every/Cron/At 类型任务，适合巡检、刷新事件、账户同步、对账、策略研究等。",
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        type: { type: "string", enum: ["Every", "Cron", "At"] },
+        schedule: { type: "string", description: "例如 Every 15m、0 */6 * * *、2026-07-06T10:00:00.000Z" },
+        role: { type: "string" },
+        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "paper_forward", "event_refresh", "okx_readonly_sync"] }
+      },
+      required: ["name", "type", "schedule"]
+    }
+  },
+  {
+    name: "refresh_events",
+    description: "刷新真实事件源并把新事件写入系统。用户要求获取最新事件、刷新信息源、检查宏观/交易所公告时调用。",
+    schema: { type: "object", properties: {} }
+  },
+  {
+    name: "sync_exchange_account",
+    description: "同步指定交易所的私有只读账户数据，用于检查 API 是否可用、资产/持仓是否能读取。",
+    schema: {
+      type: "object",
+      properties: {
+        exchange: { type: "string", enum: ["BINANCE", "OKX"] }
+      },
+      required: ["exchange"]
+    }
+  },
+  {
+    name: "configure_exchange_credentials",
+    description: "保存交易所 API 凭证并立即做只读同步验证。只在用户明确要求配置且提供完整凭证时调用；不要在回复中回显密钥。",
+    schema: {
+      type: "object",
+      properties: {
+        exchange: { type: "string", enum: ["BINANCE", "OKX"] },
+        apiKey: { type: "string" },
+        apiSecret: { type: "string" },
+        passphrase: { type: "string" },
+        ipWhitelist: { type: "string" }
+      },
+      required: ["exchange", "apiKey", "apiSecret"]
+    }
+  },
+  {
     name: "propose_trade_plan",
     description: "基于已同步的真实行情提出交易计划。计划会立即通过硬风控引擎检查，结果一并返回；通过后仍需人工批准才可能执行。入场/止损/止盈必须来自真实行情分析，不允许编造。",
     schema: {
@@ -155,7 +225,17 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 4. 执行永远需要人工批准，你无权直接下单；不要承诺"已下单"。
 5. 回答克制、专业、可解释：结论 + 依据 + 风险。不确定就说不确定。
 6. 永远不索取或输出 API 密钥等敏感信息。
-7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。`;
+7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。
+8. 用户问本系统功能、页面或配置概念时，优先使用内置系统说明，不要回答"知识库没有资料"。
+9. 用户明确命令你执行系统内部操作时，优先调用工具完成；涉及密钥、实盘开关、清空数据、改密码等高敏操作时说明风险并避免回显敏感信息。
+
+输出格式：
+- 面向前端可视化展示，优先使用清晰 Markdown 小节：### 结论、### 依据、### 风险、### 下一步。
+- 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"、"风险：重大事件前不建议开仓"。
+- 列表每条只表达一个判断，避免大段长文本；需要行动时用 1. 2. 3. 步骤。
+- 不要输出表格、HTML、JSON 或代码块，除非用户明确要求。
+
+${SYSTEM_GUIDE}`;
 
 // ---------------------------------------------------------------------------
 // 动态系统提示：把长期记忆（状态文件 + 三层记忆）与专业知识库（RAG 检索）
@@ -399,6 +479,66 @@ export async function executeTool(db, run, name, args = {}) {
     return { scope: "lesson", memoryId: item.id, note: "已记住这条经验。" };
   }
 
+  if (name === "explain_system") {
+    const topic = String(args.topic || "系统").trim();
+    const lines = SYSTEM_GUIDE.split("\n").filter((line) => line.includes(topic) || topic.includes(line.split("：")[0]?.replace(/^- /, "")));
+    return {
+      topic,
+      guide: lines.length ? lines.join("\n") : SYSTEM_GUIDE,
+      note: "这是系统内置说明，不依赖外部知识库。"
+    };
+  }
+
+  if (name === "create_task") {
+    const task = {
+      id: id("task"),
+      name: String(args.name || "Agent 创建任务").trim(),
+      type: args.type || "Every",
+      schedule: args.schedule || "Every 1h",
+      role: args.role || "Agent",
+      handler: args.handler || "",
+      enabled: true,
+      status: "running",
+      createdAt: nowIso(),
+      source: "agent_chat"
+    };
+    db.tasks ||= [];
+    db.tasks.unshift(task);
+    scheduleTask(db, task);
+    appendAudit(db, `Agent 创建定时任务：${task.name}`, task.id, "AgentChat");
+    return { status: "ok", taskId: task.id, name: task.name, schedule: task.schedule, handler: task.handler || "custom" };
+  }
+
+  if (name === "refresh_events") {
+    const result = await refreshEventSources(db);
+    return { ...result, eventCount: db.events?.length || 0, latest: (db.events || []).slice(0, 5).map((event) => ({ title: event.title, due: event.due, category: event.category })) };
+  }
+
+  if (name === "sync_exchange_account") {
+    const exchange = String(args.exchange || "").toUpperCase();
+    const account = (db.exchangeAccounts || []).find((item) => item.exchange === exchange);
+    if (!account) return { status: "missing_account", exchange };
+    const snapshot = await syncPrivateReadOnly(db, account.id);
+    return { status: snapshot.status, exchange, error: snapshot.error, positions: snapshot.positions?.length || 0, balances: snapshot.balances?.length || 0, createdAt: snapshot.createdAt };
+  }
+
+  if (name === "configure_exchange_credentials") {
+    const exchange = String(args.exchange || "").toUpperCase();
+    if (!["BINANCE", "OKX"].includes(exchange)) return { status: "invalid_exchange" };
+    const entries = exchange === "OKX"
+      ? { OKX_API_KEY: args.apiKey, OKX_API_SECRET: args.apiSecret, OKX_API_PASSPHRASE: args.passphrase }
+      : { BINANCE_API_KEY: args.apiKey, BINANCE_API_SECRET: args.apiSecret };
+    const applied = setConfig(db, entries);
+    const account = (db.exchangeAccounts || []).find((item) => item.exchange === exchange);
+    if (account && args.ipWhitelist !== undefined) account.ipWhitelist = args.ipWhitelist || "建议开启";
+    refreshApiKeyMetadata(db);
+    const snapshot = account?.readEnabled
+      ? await syncPrivateReadOnly(db, account.id)
+      : { status: "missing_credentials", error: exchange === "OKX" ? "OKX 需要 API Key、Secret、Passphrase 三项。" : "Binance 需要 API Key、Secret 两项。" };
+    appendAudit(db, `Agent 配置 ${exchange} API 凭证`, account?.id || exchange, "AgentChat", "warning");
+    return { status: snapshot.status, exchange, applied, error: snapshot.error, note: snapshot.status === "ok" ? "凭证已保存并通过只读同步验证。" : "凭证已保存，但只读同步未通过。" };
+  }
+
   if (name === "propose_trade_plan") {
     const symbol = String(args.symbol || "").toUpperCase();
     const market = db.markets?.find((item) => item.symbol === symbol);
@@ -532,7 +672,8 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   if (!userText) throw new Error("消息不能为空");
 
   db.chatMessages ||= [];
-  const userMessage = { id: id("msg"), role: "user", content: userText, createdAt: nowIso() };
+  const session = ensureChatSession(db, payload.sessionId, userText);
+  const userMessage = { id: id("msg"), sessionId: session.id, role: "user", content: userText, createdAt: nowIso() };
   db.chatMessages.push(userMessage);
 
   const run = {
@@ -541,6 +682,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     goal: userText,
     status: "running",
     source: "chat",
+    sessionId: session.id,
     steps: [],
     createdAt: nowIso()
   };
@@ -557,9 +699,9 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
-      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools);
+      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools, session.id);
     } else {
-      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools);
+      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id);
     }
     run.status = "completed";
     recordRunHistory(db, run, finalText);
@@ -583,6 +725,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   } catch { /* tracing 不阻断主流程 */ }
   const agentMessage = {
     id: id("msg"),
+    sessionId: session.id,
     role: "agent",
     content: finalText,
     model: provider ? `${provider.name}/${provider.model}` : "local-fallback",
@@ -595,14 +738,32 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     createdAt: nowIso()
   };
   db.chatMessages.push(agentMessage);
+  session.updatedAt = agentMessage.createdAt;
+  session.lastMessage = finalText.slice(0, 120);
   if (db.chatMessages.length > 400) db.chatMessages = db.chatMessages.slice(-400);
   appendTrace(db, "agent_chat", userText.slice(0, 80), run.status === "completed" ? "ok" : "error");
   if (saveDb) saveDb(db);
   return { userMessage, agentMessage, run };
 }
 
-async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools) {
-  const history = buildHistoryForLlm(db);
+function ensureChatSession(db, sessionId, firstMessage = "") {
+  db.chatSessions ||= [];
+  let session = db.chatSessions.find((item) => item.id === sessionId);
+  if (!session) {
+    session = {
+      id: id("chat"),
+      title: firstMessage ? firstMessage.slice(0, 24) : "新对话",
+      status: "active",
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    db.chatSessions.unshift(session);
+  }
+  return session;
+}
+
+async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools, sessionId) {
+  const history = buildHistoryForLlm(db, sessionId);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const response = await anthropicTurn(model, messages, systemPrompt, tools);
@@ -622,8 +783,8 @@ async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, 
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
-async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools) {
-  const history = buildHistoryForLlm(db);
+async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, sessionId) {
+  const history = buildHistoryForLlm(db, sessionId);
   const messages = [...history, { role: "user", content: userText }];
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt, tools);
@@ -681,8 +842,8 @@ function sanitizeArgs(args = {}) {
   return JSON.parse(JSON.stringify(args).replace(/apiSecret|secret|passphrase|password/gi, "redacted"));
 }
 
-function buildHistoryForLlm(db) {
-  return (db.chatMessages || []).slice(-12, -1).map((message) => ({
+function buildHistoryForLlm(db, sessionId) {
+  return (db.chatMessages || []).filter((message) => !sessionId || message.sessionId === sessionId).slice(-12, -1).map((message) => ({
     role: message.role === "agent" ? "assistant" : "user",
     content: String(message.content || "").slice(0, 2000)
   })).filter((message) => message.content);
@@ -690,6 +851,20 @@ function buildHistoryForLlm(db) {
 
 // 无 LLM Key 时的诚实降级：仍然用真实数据，但明确说明能力受限。
 async function fallbackWithoutLlm(db, run, userText, toolTrace) {
+  if (/实盘灰度|授权|风控|定时任务|事件源|api|API|admin|审计|日志|订阅|知识库/.test(userText)) {
+    return [
+      "### 结论",
+      "状态：本轮使用本地系统说明回答",
+      "依据：这是 Trading Agent 内置功能，不需要知识库资料",
+      "",
+      "### 系统说明",
+      SYSTEM_GUIDE,
+      "",
+      "### 下一步",
+      "1. 你可以直接让我创建定时任务、刷新事件源、同步 OKX 账户或解释任一页面。",
+      "2. 涉及 API 密钥、实盘开关、清空数据和改密码时，我会按高风险操作处理，不会回显敏感信息。"
+    ].join("\n");
+  }
   const symbolMatch = userText.match(/\b(BTC|ETH|SOL|BNB|XRP|DOGE)\b/i);
   const lines = ["**当前未配置 LLM API Key（Anthropic / OpenAI / DeepSeek），我以本地规则模式运行，只能做数据同步与风控预检，无法做真正的行情分析。**", ""];
   if (symbolMatch) {

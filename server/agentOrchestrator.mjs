@@ -105,6 +105,16 @@ export function runAgentCommand(db, payload = {}) {
     appendTrace(db, "agent_orchestrator", "等待交易目标与配置", "warning");
     return { run, mandateDraft, message: "请先写明交易对和风险边界。", status: getAgentStatus(db) };
   }
+  if (!findActiveMandate(db)) {
+    const existingDraft = db.mandates.find((item) => item.id === mandateDraft.id);
+    if (!existingDraft) db.mandates.unshift(mandateDraft);
+    run.status = "awaiting_mandate_confirmation";
+    run.mandateId = mandateDraft.id;
+    run.steps.push(step("mandate_draft", "生成授权草案", `识别交易所 ${mandateDraft.exchanges.join(" / ")}，币种 ${mandateDraft.allowedSymbols.join("、")}；等待你确认激活后再生成交易计划。`, run));
+    appendAudit(db, "AgentOrchestrator 生成授权草案，等待确认", mandateDraft.id, "AgentOrchestrator");
+    appendTrace(db, "agent_orchestrator", "授权草案待确认", "paused");
+    return { run, mandateDraft, message: "授权草案已生成。请先确认/激活授权，系统才会继续生成可执行交易计划。", status: getAgentStatus(db) };
+  }
   const bundle = runExpertAnalysis(db, {
     trigger_type: "agent_orchestrator",
     question: command,

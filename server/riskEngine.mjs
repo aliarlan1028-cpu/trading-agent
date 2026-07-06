@@ -11,18 +11,27 @@ export function evaluateTradePlan(db, plan) {
     return summarize(checks);
   }
 
-  add("授权状态", ["running", "active"].includes(mandate.status), `当前状态：${mandate.status}`);
-  add("交易对范围", mandate.allowedSymbols.includes(plan.symbol), `${plan.symbol} 必须在白名单内`);
-  add("市场类型", mandate.marketTypes.includes(plan.marketType), `${plan.marketType} 必须在授权市场类型内`);
-  add("策略范围", mandate.strategies.includes(plan.strategy), `${plan.strategy} 必须在策略 allowlist 内`);
-  add("授权有效期", new Date(mandate.validUntil).getTime() > Date.now(), `有效期至 ${mandate.validUntil}`);
+  const allowedSymbols = arrayValue(mandate.allowedSymbols, mandate.symbol_whitelist);
+  const marketTypes = arrayValue(mandate.marketTypes, mandate.market_scope);
+  const strategies = arrayValue(mandate.strategies, mandate.strategy_scope);
+  const validUntil = mandate.validUntil || mandate.valid_until;
+  const marketType = plan.marketType || plan.market_type;
+  const strategy = plan.strategy || plan.strategy_type || "manual_review";
 
-  const maxLeverage = mandate.maxLeverageBySymbol[plan.symbol] ?? 1;
+  add("授权状态", ["running", "active"].includes(mandate.status), `当前状态：${mandate.status}`);
+  add("交易对范围", allowedSymbols.length > 0 && allowedSymbols.includes(plan.symbol), `${plan.symbol} 必须在白名单内`);
+  add("市场类型", marketTypes.length > 0 && marketTypes.includes(marketType), `${marketType} 必须在授权市场类型内`);
+  add("策略范围", strategies.length > 0 && strategies.includes(strategy), `${strategy} 必须在策略 allowlist 内`);
+  add("授权有效期", validUntil && new Date(validUntil).getTime() > Date.now(), `有效期至 ${validUntil || "未设置"}`);
+
+  const maxLeverageBySymbol = mandate.maxLeverageBySymbol || {};
+  const maxLeverage = Number(maxLeverageBySymbol[plan.symbol] ?? mandate.maxLeverage ?? mandate.max_leverage ?? 1);
   add("杠杆上限", Number(plan.leverage) <= maxLeverage, `计划 ${plan.leverage}x，上限 ${maxLeverage}x`);
   add("止损存在", Boolean(plan.stopLoss), "自主交易计划必须带止损");
 
-  const riskPercent = Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? 999);
-  add("单笔风险", riskPercent <= mandate.maxSingleTradeRiskPct, `计划 ${riskPercent}%，上限 ${mandate.maxSingleTradeRiskPct}%`);
+  const riskPercent = Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? plan.max_loss_pct ?? 999);
+  const maxSingleTradeRiskPct = Number(mandate.maxSingleTradeRiskPct ?? mandate.max_single_trade_risk_pct ?? 0);
+  add("单笔风险", maxSingleTradeRiskPct > 0 && riskPercent <= maxSingleTradeRiskPct, `计划 ${riskPercent}%，上限 ${maxSingleTradeRiskPct || "未设置"}%`);
   const remainingDailyLossUsdt = db.system.remainingDailyLossUsdt ?? db.portfolio.remainingDailyLossUsdt ?? null;
   if (remainingDailyLossUsdt === null || remainingDailyLossUsdt === undefined) {
     add("日亏损额度", false, "账户未同步，无法计算真实日亏损预算；实盘执行前必须完成私有账户同步", "warn");
@@ -43,6 +52,12 @@ export function evaluateTradePlan(db, plan) {
   add("组合相关性", concentration.passed, concentration.detail, concentration.passed ? "ok" : "warn");
 
   return summarize(checks);
+}
+
+function arrayValue(primary, fallback) {
+  if (Array.isArray(primary)) return primary;
+  if (Array.isArray(fallback)) return fallback;
+  return [];
 }
 
 // BTC/ETH/SOL/BNB 等主流币相关性高（常 >0.7）；同向叠加需要作为一个风险簇看待。

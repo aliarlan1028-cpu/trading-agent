@@ -3,6 +3,7 @@ import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
 
 export function storeSecret(db, name, value, scope = "exchange") {
+  assertSecretStorageConfigured();
   const encrypted = encrypt(value);
   const item = { id: id("vault"), name, scope, encrypted, createdAt: nowIso(), updatedAt: nowIso() };
   db.vaultItems = (db.vaultItems || []).filter((existing) => existing.name !== name);
@@ -54,6 +55,14 @@ export function runSafetyDrill(db, type = "kill_switch") {
   appendAudit(db, "运行安全演练", drill.id, "SecurityOps", "warning");
   appendTrace(db, "safety_drill", type, "ok");
   return drill;
+}
+
+function assertSecretStorageConfigured() {
+  if (process.env.SECRETS_MASTER_KEY) return;
+  if (process.env.ALLOW_INSECURE_SECRET_STORAGE === "true") return;
+  const error = new Error("SECRETS_MASTER_KEY is required before storing secrets");
+  error.status = 400;
+  throw error;
 }
 
 function encrypt(value) {

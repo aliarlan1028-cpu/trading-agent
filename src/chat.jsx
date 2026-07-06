@@ -1,33 +1,192 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowUp,
+  BarChart3,
   BrainCircuit,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   KeyRound,
+  ListChecks,
   PlugZap,
+  Plus,
   Shield,
+  Target,
+  TrendingUp,
   Wrench,
   XCircle
 } from "lucide-react";
-import { displayMoney, displayPct, formatTime, humanize, StatusBadge } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPct, formatTime, humanize, StatusBadge } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
   return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
-// 极简 Markdown：**加粗** 与换行，其余原样输出。
-function renderText(text = "") {
-  return String(text).split("\n").map((line, lineIndex) => {
-    const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, partIndex) =>
-      part.startsWith("**") && part.endsWith("**")
-        ? <strong key={partIndex}>{part.slice(2, -2)}</strong>
-        : <React.Fragment key={partIndex}>{part}</React.Fragment>
-    );
-    return <p key={lineIndex}>{parts}</p>;
-  });
+function renderInline(text = "") {
+  return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={index}>{part.slice(2, -2)}</strong>
+      : <React.Fragment key={index}>{part}</React.Fragment>
+  );
+}
+
+function visualTone(text = "") {
+  const value = String(text);
+  if (/风险|警告|阻断|拒绝|失败|止损|亏损|回撤|不要|禁止|未配置|异常/.test(value)) return "danger";
+  if (/等待|观察|谨慎|不确定|授权|确认|未同步|建议/.test(value)) return "warning";
+  if (/机会|通过|正常|优势|盈利|止盈|完成|可执行/.test(value)) return "ok";
+  return "neutral";
+}
+
+function sectionIcon(title = "") {
+  if (/结论|判断|摘要/.test(title)) return Target;
+  if (/依据|数据|行情|指标/.test(title)) return BarChart3;
+  if (/风险|限制|注意/.test(title)) return AlertTriangle;
+  if (/下一步|计划|动作|执行/.test(title)) return ListChecks;
+  if (/机会|方向|趋势/.test(title)) return TrendingUp;
+  return BrainCircuit;
+}
+
+function parseRichText(text = "") {
+  const blocks = [];
+  let paragraph = [];
+  let bullets = [];
+  let steps = [];
+  let metrics = [];
+
+  function flushParagraph() {
+    if (paragraph.length) {
+      blocks.push({ type: "paragraph", text: paragraph.join("\n") });
+      paragraph = [];
+    }
+  }
+  function flushBullets() {
+    if (bullets.length) {
+      blocks.push({ type: "bullets", items: bullets });
+      bullets = [];
+    }
+  }
+  function flushSteps() {
+    if (steps.length) {
+      blocks.push({ type: "steps", items: steps });
+      steps = [];
+    }
+  }
+  function flushMetrics() {
+    if (metrics.length) {
+      blocks.push({ type: "metrics", items: metrics });
+      metrics = [];
+    }
+  }
+  function flushAll() {
+    flushParagraph();
+    flushBullets();
+    flushSteps();
+    flushMetrics();
+  }
+
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushAll();
+      continue;
+    }
+    const heading = line.match(/^#{1,4}\s+(.+)$/) || line.match(/^【(.+)】$/);
+    if (heading) {
+      flushAll();
+      blocks.push({ type: "heading", text: heading[1].replace(/\*\*/g, "") });
+      continue;
+    }
+    const strongHeading = line.match(/^\*\*([^*]{2,26})\*\*[:：]?$/);
+    if (strongHeading) {
+      flushAll();
+      blocks.push({ type: "heading", text: strongHeading[1] });
+      continue;
+    }
+    const numbered = line.match(/^(\d+)[.、)]\s+(.+)$/);
+    if (numbered) {
+      flushParagraph();
+      flushBullets();
+      flushMetrics();
+      steps.push({ number: numbered[1], text: numbered[2] });
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      flushSteps();
+      flushMetrics();
+      bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
+      continue;
+    }
+    const metric = line.match(/^(结论|方向|交易对|价格|入场|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|下一步|依据)[:：]\s*(.+)$/);
+    if (metric) {
+      flushParagraph();
+      flushBullets();
+      flushSteps();
+      metrics.push({ label: metric[1], value: metric[2], tone: visualTone(line) });
+      continue;
+    }
+    flushBullets();
+    flushSteps();
+    flushMetrics();
+    paragraph.push(line);
+  }
+  flushAll();
+  return blocks.length ? blocks : [{ type: "paragraph", text }];
+}
+
+function RichMessage({ text = "", compact = false }) {
+  const blocks = parseRichText(text);
+  return (
+    <div className={compact ? "richMessage compact" : "richMessage"}>
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const Icon = sectionIcon(block.text);
+          return <div className="richHeading" key={index}><Icon size={14} /><strong>{block.text}</strong></div>;
+        }
+        if (block.type === "metrics") {
+          return (
+            <div className="richMetricGrid" key={index}>
+              {block.items.map((item, itemIndex) => (
+                <div className={`richMetric ${item.tone}`} key={`${item.label}-${itemIndex}`}>
+                  <span>{item.label}</span>
+                  <b>{renderInline(item.value)}</b>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if (block.type === "bullets") {
+          return (
+            <div className="richBulletList" key={index}>
+              {block.items.map((item, itemIndex) => (
+                <div className={`richBullet ${item.tone}`} key={itemIndex}>
+                  <i>{item.tone === "danger" ? <AlertTriangle size={12} /> : item.tone === "ok" ? <CheckCircle2 size={12} /> : <span />}</i>
+                  <span>{renderInline(item.text)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if (block.type === "steps") {
+          return (
+            <div className="richSteps" key={index}>
+              {block.items.map((item, itemIndex) => (
+                <div className="richStep" key={itemIndex}>
+                  <b>{item.number}</b>
+                  <span>{renderInline(item.text)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        return String(block.text).split("\n").map((line, lineIndex) => <p key={`${index}-${lineIndex}`}>{renderInline(line)}</p>);
+      })}
+    </div>
+  );
 }
 
 const EXECUTION_LABELS = {
@@ -136,14 +295,7 @@ function ToolTrace({ trace = [] }) {
   );
 }
 
-function SetupChecklist({ data, llmConfigured, ui, onExample }) {
-  const exchangeReady = (data.exchangeAccounts || []).some((account) => account.readEnabled);
-  const mandateReady = (data.mandates || []).some((mandate) => ["active", "running"].includes(mandate.status));
-  const items = [
-    { done: llmConfigured, icon: BrainCircuit, label: "配置 LLM API Key", hint: "在系统设置里填写 Anthropic / OpenAI / DeepSeek / Gemini API Key", action: () => ui.setActive("systemSettings") },
-    { done: exchangeReady, icon: KeyRound, label: "连接交易所（只读）", hint: "配置只读 API 后可同步账户与持仓；不配置也能用公开行情", action: () => ui.setActive("systemSettings") },
-    { done: mandateReady, icon: Shield, label: "激活授权委托", hint: "在下方说出目标，我会生成授权草案", action: null }
-  ];
+function SetupChecklist({ onExample }) {
   const examples = [
     "看看 BTC 现在的走势，说说你的判断",
     "稳健做 BTC/ETH：单笔风险 0.3%，日亏损上限 1%，最大 3 倍杠杆，重大事件前 30 分钟停止开仓",
@@ -151,20 +303,6 @@ function SetupChecklist({ data, llmConfigured, ui, onExample }) {
   ];
   return (
     <div className="setupChecklist">
-      <h2>把目标告诉你的 AI 交易员</h2>
-      <p>它会同步真实行情、检索知识库、生成交易计划，并在硬风控通过后交给你批准。</p>
-      <div className="checkItems">
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button key={item.label} className={item.done ? "done" : ""} onClick={item.action || undefined} disabled={!item.action}>
-              <Icon size={16} />
-              <span>{item.label}</span>
-              {item.done ? <CheckCircle2 size={15} className="positive" /> : <small>{item.hint}</small>}
-            </button>
-          );
-        })}
-      </div>
       <div className="examplePrompts">
         {examples.map((example) => <button key={example} onClick={() => onExample(example)}>{example}</button>)}
       </div>
@@ -174,18 +312,23 @@ function SetupChecklist({ data, llmConfigured, ui, onExample }) {
 
 export function ChatPage({ data, action, ui }) {
   const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState("");
   const [llmConfigured, setLlmConfigured] = useState(true);
   const [provider, setProvider] = useState(null);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const scrollRef = useRef(null);
 
-  async function loadMessages() {
+  async function loadMessages(sessionId = activeSessionId) {
     try {
-      const response = await fetch("/api/agent/chat", { headers: authHeaders() });
+      const path = sessionId ? `/api/agent/chat?sessionId=${encodeURIComponent(sessionId)}` : "/api/agent/chat";
+      const response = await fetch(apiUrl(path), { headers: authHeaders() });
       if (!response.ok) return;
       const json = await response.json();
       setMessages(json.messages || []);
+      setSessions(json.sessions || []);
+      setActiveSessionId(json.activeSessionId || json.sessions?.[0]?.id || "");
       setLlmConfigured(Boolean(json.llmConfigured));
       setProvider(json.provider);
     } catch {}
@@ -203,14 +346,14 @@ export function ChatPage({ data, action, ui }) {
     setPending(true);
     setMessages((current) => [...current, { id: `tmp_${Date.now()}`, role: "user", content: text, createdAt: new Date().toISOString() }]);
     try {
-      const response = await fetch("/api/agent/chat", {
+      const response = await fetch(apiUrl("/api/agent/chat"), {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, sessionId: activeSessionId })
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || `请求失败 ${response.status}`);
-      await loadMessages();
+      await loadMessages(json.agentMessage?.sessionId || activeSessionId);
       await ui.refresh(false);
     } catch (error) {
       setMessages((current) => [...current, { id: `err_${Date.now()}`, role: "agent", content: `请求失败：${error.message}`, createdAt: new Date().toISOString() }]);
@@ -225,22 +368,48 @@ export function ChatPage({ data, action, ui }) {
   function findMandate(mandateId) {
     return (data.mandates || []).find((mandate) => mandate.id === mandateId);
   }
+  async function newSession() {
+    try {
+      const response = await fetch(apiUrl("/api/agent/chat/sessions"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: "新对话" })
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "创建对话失败");
+      setSessions(json.sessions || []);
+      setActiveSessionId(json.session.id);
+      setMessages([]);
+    } catch (error) {
+      ui.notify?.(error.message || "创建对话失败");
+    }
+  }
+
+  function switchSession(sessionId) {
+    setActiveSessionId(sessionId);
+    loadMessages(sessionId);
+  }
 
   return (
     <div className="chatPage">
-      {!llmConfigured && (
-        <div className="llmBanner">
-          <PlugZap size={15} />
-          未配置 LLM API Key，Agent 以本地规则模式运行（只能同步数据与风控预检）。打开系统设置填写任一模型 API Key 后即可解锁完整决策能力。
+      <div className="chatSessionBar">
+        <button className="newChatButton" onClick={newSession}><Plus size={14} /> 新建对话</button>
+        <div className="chatSessionList">
+          {sessions.map((session) => (
+            <button key={session.id} className={session.id === activeSessionId ? "active" : ""} onClick={() => switchSession(session.id)} title={session.title}>
+              <span>{session.title || "未命名对话"}</span>
+              <small>{formatTime(session.updatedAt || session.createdAt)}</small>
+            </button>
+          ))}
         </div>
-      )}
+      </div>
       <div className="chatScroll" ref={scrollRef}>
-        {!messages.length && <SetupChecklist data={data} llmConfigured={llmConfigured} ui={ui} onExample={(example) => send(example)} />}
+        {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
         {messages.map((message) => (
           <div className={`chatMessage ${message.role}`} key={message.id}>
             {message.role === "agent" && <div className="botAvatar"><BrainCircuit size={16} /></div>}
             <div className="chatBody">
-              <div className="chatContent">{renderText(message.content)}</div>
+              <div className="chatContent"><RichMessage text={message.content} compact={message.role === "user"} /></div>
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
                 <PlanCard

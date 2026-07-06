@@ -10,12 +10,19 @@ const rootDir = path.resolve(__dirname, "..");
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || "data");
 const jsonDbPath = path.join(dataDir, "db.json");
 const sqliteDbPath = path.join(dataDir, "trading-agent.sqlite");
+const defaultOwnerEmail = process.env.OWNER_EMAIL || "aliarlan1028@gmail.com";
 const collectionNames = [
   "meta",
   "user",
+  "tenants",
   "users",
   "roles",
   "permissions",
+  "subscriptionPlans",
+  "subscriptions",
+  "paymentRequests",
+  "paymentWebhooks",
+  "authSessions",
   "system",
   "portfolio",
   "markets",
@@ -60,8 +67,11 @@ const collectionNames = [
   "riskChecks",
   "riskIncidents",
   "notifications",
+  "agentProfiles",
   "agentStateFiles",
   "memoryItems",
+  "chatSessions",
+  "chatMessages",
   "agentRuns",
   "reviews"
 ];
@@ -118,6 +128,173 @@ function emptyKnowledge() {
   };
 }
 
+function defaultAgentProfiles(createdAt) {
+  const declaration = "我不是来替你冒险的，我是来把风险变得可见、可控、可复盘的。";
+  return [
+    {
+      id: "agent_market_observer",
+      order: 10,
+      name: "市场观察员",
+      role: "Market Observer",
+      phase: "observe",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["market.read", "event.read"],
+      declaration,
+      personality: "冷静、克制、证据优先；只描述市场状态，不把噪声包装成机会。",
+      mission: "读取行情、资金费率、成交量、波动率和订单簿，形成结构化市场观察。",
+      boundaries: ["不得给出下单指令", "必须标注数据来源与同步时间", "证据不足时输出继续观察"],
+      outputSchema: "market_observation",
+      memoryPolicy: "只写入高置信、可复盘的市场状态变化。",
+      createdAt
+    },
+    {
+      id: "agent_event_analyst",
+      order: 20,
+      name: "事件分析员",
+      role: "Event Analyst",
+      phase: "event",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["event.read", "knowledge.query", "market.read"],
+      declaration,
+      personality: "警觉、保守、重视尾部风险；宁可提前降噪，也不忽略黑天鹅。",
+      mission: "分析宏观、链上、交易所公告和突发新闻对授权交易对的影响。",
+      boundaries: ["不得独立生成交易计划", "高影响事件必须触发风险提示", "必须区分事实、推断和未知"],
+      outputSchema: "event_impact_assessment",
+      memoryPolicy: "记录事件前后市场反应和误判来源。",
+      createdAt
+    },
+    {
+      id: "agent_strategy_researcher",
+      order: 30,
+      name: "策略研究员",
+      role: "Strategy Researcher",
+      phase: "research",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["knowledge.query", "market.read", "review.read"],
+      declaration,
+      personality: "好奇但不冲动；把假设当假设，把证据当证据。",
+      mission: "从知识库、历史复盘和行情结构中提出可验证的交易假设。",
+      boundaries: ["不得跳过样本和失败条件", "不得把研究结论直接变成订单", "必须写清失效条件"],
+      outputSchema: "strategy_hypothesis",
+      memoryPolicy: "把被验证或被否定的策略假设写入长期记忆。",
+      createdAt
+    },
+    {
+      id: "agent_trade_planner",
+      order: 40,
+      name: "交易计划员",
+      role: "Trade Planner",
+      phase: "planning",
+      enabled: true,
+      canProposeTrade: true,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["market.read", "risk.check", "mandate.read"],
+      declaration,
+      personality: "结构化、耐心、尊重授权边界；没有止损就不算计划。",
+      mission: "把交易假设转成结构化计划：方向、入场、止损、止盈、杠杆、仓位理由。",
+      boundaries: ["必须包含止损", "必须绑定授权委托", "必须交给风控官审查", "不得直接调用交易写接口"],
+      outputSchema: "trade_plan",
+      memoryPolicy: "记录计划参数与最终表现之间的差异。",
+      createdAt
+    },
+    {
+      id: "agent_risk_officer",
+      order: 50,
+      name: "风控官",
+      role: "Risk Officer",
+      phase: "risk_checking",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: true,
+      canExecuteTrade: false,
+      tools: ["risk.check", "account.read", "audit.read"],
+      declaration,
+      personality: "怀疑、严格、保护型；默认先问这笔交易怎么亏。",
+      mission: "检查授权边界、单笔风险、日亏损、杠杆、事件窗口、相关性和止损。",
+      boundaries: ["只能批准/拒绝/要求降风险", "不得为了收益放宽硬规则", "风控失败必须写审计"],
+      outputSchema: "risk_decision",
+      memoryPolicy: "把被拦截计划和真实损失案例沉淀为风控经验。",
+      createdAt
+    },
+    {
+      id: "agent_execution_supervisor",
+      order: 60,
+      name: "执行监督员",
+      role: "Execution Supervisor",
+      phase: "execution",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["execution.read", "order.read", "risk.check"],
+      declaration,
+      personality: "谨慎、机械、关注细节；只相信执行引擎和交易所回执。",
+      mission: "监督计划进入执行引擎后的订单状态、滑点、保护单、撤单和平仓条件。",
+      boundaries: ["不能绕过执行引擎", "不能直接下单", "订单异常必须升级给风控官"],
+      outputSchema: "execution_supervision",
+      memoryPolicy: "记录滑点、拒单、保护单失败等执行质量问题。",
+      createdAt
+    },
+    {
+      id: "agent_position_manager",
+      order: 70,
+      name: "持仓管理员",
+      role: "Position Manager",
+      phase: "position_management",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["account.read", "position.read", "risk.check"],
+      declaration,
+      personality: "防守优先、少做动作；盈利时保护利润，亏损时尊重止损。",
+      mission: "监控已有仓位，建议移动止损、减仓、止盈或关闭风险仓位。",
+      boundaries: ["加仓默认禁止", "只能建议降风险动作", "不得扩大未授权风险敞口"],
+      outputSchema: "position_management_advice",
+      memoryPolicy: "记录持仓管理动作对回撤和利润回吐的影响。",
+      createdAt
+    },
+    {
+      id: "agent_review_memory",
+      order: 80,
+      name: "复盘/记忆管理员",
+      role: "Review & Memory Manager",
+      phase: "review",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["review.write", "knowledge.write", "memory.write"],
+      declaration,
+      personality: "诚实、细致、不找借口；把亏损变成规则，把盈利变成可验证方法。",
+      mission: "交易后总结原因、执行质量、错误类型，并决定是否写入长期记忆或更新规则。",
+      boundaries: ["不得篡改历史记录", "不得只记录盈利样本", "复盘结论必须可验证"],
+      outputSchema: "review_memory_update",
+      memoryPolicy: "负责长期记忆质量，定期清理低质量或过期经验。",
+      createdAt
+    }
+  ];
+}
+
+function defaultSubscriptionPlans(createdAt) {
+  return [
+    { id: "plan_monthly", name: "月度订阅", interval: "month", months: 1, priceUsdt: 49, enabled: true, features: ["交易驾驶舱", "Agent 团队", "知识库", "基础通知"], createdAt },
+    { id: "plan_quarterly", name: "季度订阅", interval: "quarter", months: 3, priceUsdt: 129, enabled: true, features: ["月度全部功能", "季度复盘模板"], createdAt },
+    { id: "plan_half_year", name: "半年订阅", interval: "half_year", months: 6, priceUsdt: 239, enabled: true, features: ["季度全部功能", "优先功能体验"], createdAt },
+    { id: "plan_yearly", name: "年度订阅", interval: "year", months: 12, priceUsdt: 399, enabled: true, features: ["半年全部功能", "年度策略复盘"], createdAt }
+  ];
+}
+
 function cleanSeedDatabase(createdAt) {
   const hasBinance = Boolean(process.env.BINANCE_API_KEY);
   const hasBinanceSecret = Boolean(process.env.BINANCE_API_SECRET);
@@ -127,12 +304,15 @@ function cleanSeedDatabase(createdAt) {
     meta: { version: 1, createdAt, updatedAt: createdAt },
     user: {
       id: "user_local_admin",
-      name: "本地管理员",
+      tenantId: "tenant_owner",
+      name: "Owner",
+      email: defaultOwnerEmail,
       role: "管理员",
       riskMode: "medium",
       locale: "zh-CN"
     },
-    users: [{ id: "user_local_admin", name: "本地管理员", email: "admin@example.local", role: "管理员", status: "active" }],
+    tenants: [{ id: "tenant_owner", name: "Owner 工作区", ownerUserId: "user_local_admin", planId: "owner", status: "owner", createdAt }],
+    users: [{ id: "user_local_admin", tenantId: "tenant_owner", name: "Owner", email: defaultOwnerEmail, role: "管理员", status: "active", isOwner: true, createdAt }],
     roles: [
       { id: "role_admin", name: "管理员", permissions: ["*"] },
       { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge"] },
@@ -145,6 +325,11 @@ function cleanSeedDatabase(createdAt) {
       "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
       "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.export"
     ],
+    subscriptionPlans: defaultSubscriptionPlans(createdAt),
+    subscriptions: [{ id: "sub_owner", tenantId: "tenant_owner", userId: "user_local_admin", planId: "owner", status: "active", source: "owner_grant", startedAt: createdAt, currentPeriodEnd: null }],
+    paymentRequests: [],
+    paymentWebhooks: [],
+    authSessions: [],
     system: {
       autonomyEnabled: false,
       liveTradingEnabled: false,
@@ -269,6 +454,7 @@ function cleanSeedDatabase(createdAt) {
     riskChecks: [],
     riskIncidents: [],
     notifications: [],
+    agentProfiles: defaultAgentProfiles(createdAt),
     agentStateFiles: {
       USER: { id: "state_user", title: "USER.md", content: "尚未配置交易目标。请先配置交易所 API、模型 API，并创建授权委托。", updatedAt: createdAt },
       AGENT: { id: "state_agent", title: "AGENT.md", content: "Agent 当前处于待配置状态；真实交易必须经过 Mandate、RiskEngine、灰度策略与 live guard。", updatedAt: createdAt },
@@ -290,15 +476,63 @@ export function loadDb() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   ensureSqlite();
   const sqliteState = loadFromSqlite();
-  if (sqliteState) {
-    const normalized = normalizeDatabase(sqliteState);
-    saveDb(normalized);
-    return normalized;
-  }
-  const db = fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase();
-  const normalized = normalizeDatabase(db);
-  saveDb(normalized);
+  const normalized = sqliteState
+    ? normalizeDatabase(sqliteState)
+    : normalizeDatabase(fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase());
+  saveDb(normalized); // 确保所有集合（含审计条目）已落入 SQLite，再校准审计链
+  ensureAuditChainIntegrity(normalized);
   return normalized;
+}
+
+// 审计链完整性：历史数据一次性重链（修复排序缺陷造成的 prevHash 断裂），之后每次启动
+// 只把链尾 hash 同步回 db.meta.auditChainTip，供 appendAudit 续链。
+function ensureAuditChainIntegrity(db) {
+  db.meta ||= {};
+  if (!db.meta.auditChainResealedV2) {
+    const result = resealAuditChain(db);
+    appendAudit(db, `审计链重建：修复历史 prevHash 断裂，共重链 ${result.resealed} 条`, "audit_chain", "System", "warning");
+    saveDb(db);
+    return;
+  }
+  const tip = latestAuditHash();
+  if (tip && db.meta.auditChainTip !== tip) {
+    db.meta.auditChainTip = tip;
+    saveDb(db);
+  }
+}
+
+function latestAuditHash() {
+  try {
+    ensureSqlite();
+    const row = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1").get();
+    return row ? JSON.parse(row.doc).hash || null : null;
+  } catch {
+    return null;
+  }
+}
+
+// 按校验所用的规范顺序（created_at asc, rowid asc）重新计算整条链的 prevHash 与 hash，
+// 使 verifyAuditChain 必然通过。仅在检测到旧版本未重链时运行一次。
+export function resealAuditChain(db) {
+  ensureSqlite();
+  const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by created_at asc, rowid asc").all();
+  const update = sqlite.prepare("update audit_log_entries set doc = @doc, severity = @severity where rowid = @rid");
+  let previous = null;
+  const tx = sqlite.transaction(() => {
+    for (const row of rows) {
+      const entry = JSON.parse(row.doc);
+      entry.prevHash = previous;
+      entry.hash = auditHash(entry);
+      update.run({ rid: row.rid, doc: JSON.stringify(entry), severity: entry.severity || "info" });
+      previous = entry.hash;
+    }
+  });
+  tx();
+  db.meta ||= {};
+  db.meta.auditChainTip = previous;
+  db.meta.auditChainResealedV2 = nowIso();
+  db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
+  return { resealed: rows.length, tip: previous };
 }
 
 export function saveDb(db) {
@@ -307,10 +541,71 @@ export function saveDb(db) {
   saveToSqlite(db);
 }
 
+export function resetOperationalData(db, options = {}) {
+  const seed = seedDatabase();
+  const keepAudit = options.keepAudit !== false;
+  Object.assign(db.portfolio, seed.portfolio);
+  db.system.autonomyEnabled = false;
+  db.system.killSwitch = false;
+  db.system.riskStatus = "等待配置";
+  db.system.latestAction = "已清空工作数据，等待真实配置与授权";
+  db.system.remainingDailyLossUsdt = null;
+  db.markets = seed.markets;
+  db.mandates = [];
+  db.positions = [];
+  db.orders = [];
+  db.fills = [];
+  db.tradePlans = [];
+  db.events = [];
+  db.tasks = [];
+  db.jobRuns = [];
+  db.jobLocks = [];
+  db.knowledge = emptyKnowledge();
+  db.analysisBundles = [];
+  db.skills = [];
+  db.mcpServers = [];
+  db.accountSnapshots = [];
+  db.reconciliationReports = [];
+  db.alerts = [];
+  db.drillRuns = [];
+  db.llmRuns = [];
+  db.chatMessages = [];
+  db.agentSteps = [];
+  db.agentToolCalls = [];
+  db.tradeIntents = [];
+  db.executionOrders = [];
+  db.exchangeOrders = [];
+  db.positionMonitors = [];
+  db.reviewReports = [];
+  db.strategyExperiments = [];
+  db.eventImpacts = [];
+  db.toolExecutions = [];
+  db.skillRuns = [];
+  db.riskChecks = [];
+  db.riskIncidents = [];
+  db.notifications = [];
+  db.memoryItems = [];
+  db.agentRuns = [];
+  db.reviews = [];
+  db.agentStateFiles = seed.agentStateFiles;
+  if (!keepAudit) {
+    db.auditLogs = [];
+    db.traces = [];
+  }
+  appendAudit(db, "清空工作数据，保留配置/密钥/用户/风控规则", "system.reset", options.actor || "Admin", "warning");
+  return db;
+}
+
 export function appendAudit(db, action, target, actor = "System", severity = "info") {
-  const entry = { id: id("audit"), actor, action, target, severity, prevHash: db.auditLogs?.[0]?.hash || null, createdAt: nowIso() };
+  db.meta ||= {};
+  // 用显式持久化的链尾 hash 作为 prevHash，而不是依赖 db.auditLogs[0]（内存窗口在
+  // created_at 相同的批量写入/重启边界上顺序不确定，会与校验时的 created_at asc, rowid asc
+  // 排序产生分叉，导致 prevHash 断裂）。
+  const prevHash = db.meta.auditChainTip ?? db.auditLogs?.[0]?.hash ?? null;
+  const entry = { id: id("audit"), actor, action, target, severity, prevHash, createdAt: nowIso() };
   entry.hash = auditHash(entry);
   db.auditLogs.unshift(entry);
+  db.meta.auditChainTip = entry.hash;
   writeAuditEntry(entry);
   return entry;
 }
@@ -383,8 +678,8 @@ function loadFromSqlite() {
   if (!rows.length) return null;
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
-  db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc limit 1000").all().map((row) => JSON.parse(row.doc));
-  db.traces = sqlite.prepare("select doc from trace_entries order by created_at desc limit 1000").all().map((row) => JSON.parse(row.doc));
+  db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
+  db.traces = sqlite.prepare("select doc from trace_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
   return db;
 }
 
@@ -459,7 +754,7 @@ export function normalizeDatabase(db) {
   db.auditLogs ||= seed.auditLogs;
   db.reviews ||= seed.reviews;
 
-  db.users ||= [{ ...db.user, email: "admin@example.local", status: "active" }];
+  db.users ||= [{ ...db.user, email: defaultOwnerEmail, status: "active", isOwner: true }];
   db.roles ||= [
     { id: "role_admin", name: "管理员", permissions: ["*"] },
     { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge"] },
@@ -492,6 +787,57 @@ export function normalizeDatabase(db) {
     "mcp.register",
     "audit.export"
   ];
+  db.tenants ||= [{ id: "tenant_owner", name: "Owner 工作区", ownerUserId: "user_local_admin", planId: "owner", status: "owner", createdAt: db.meta.createdAt || nowIso() }];
+  db.users = (db.users || [{ ...db.user, email: defaultOwnerEmail, status: "active", isOwner: true }]).map((user) => ({
+    tenantId: user.tenantId || "tenant_owner",
+    ...user
+  }));
+  const normalizedOwnerEmail = String(defaultOwnerEmail || "aliarlan1028@gmail.com").trim().toLowerCase();
+  const ownerUser = db.users.find((user) => String(user.email || "").toLowerCase() === normalizedOwnerEmail)
+    || db.users.find((user) => user.isOwner)
+    || db.users.find((user) => user.id === "user_local_admin")
+    || db.users[0];
+  if (ownerUser) {
+    ownerUser.email = normalizedOwnerEmail;
+    ownerUser.name ||= "Owner";
+    ownerUser.tenantId = "tenant_owner";
+    ownerUser.role = "管理员";
+    ownerUser.status = "active";
+    ownerUser.isOwner = true;
+  }
+  const ownerTenant = db.tenants.find((tenant) => tenant.id === "tenant_owner") || { id: "tenant_owner", createdAt: db.meta.createdAt || nowIso() };
+  Object.assign(ownerTenant, {
+    name: ownerTenant.name || "Owner 工作区",
+    ownerUserId: ownerUser?.id || "user_local_admin",
+    planId: "owner",
+    status: "owner"
+  });
+  if (!db.tenants.includes(ownerTenant)) db.tenants.unshift(ownerTenant);
+  if (db.user) {
+    db.user.email = normalizedOwnerEmail;
+    db.user.tenantId = "tenant_owner";
+    db.user.role = "管理员";
+    db.user.isOwner = true;
+  }
+  db.subscriptionPlans ||= defaultSubscriptionPlans(nowIso());
+  db.subscriptions ||= [];
+  const ownerSubscription = db.subscriptions.find((subscription) => subscription.id === "sub_owner")
+    || db.subscriptions.find((subscription) => subscription.tenantId === "tenant_owner" || subscription.userId === ownerUser?.id);
+  const ownerSubscriptionPayload = {
+    tenantId: "tenant_owner",
+    userId: ownerUser?.id || "user_local_admin",
+    planId: "owner",
+    status: "active",
+    source: "owner_grant",
+    startedAt: ownerSubscription?.startedAt || nowIso(),
+    currentPeriodEnd: null
+  };
+  if (ownerSubscription) Object.assign(ownerSubscription, ownerSubscriptionPayload, { id: ownerSubscription.id || "sub_owner" });
+  else db.subscriptions.unshift({ id: "sub_owner", ...ownerSubscriptionPayload });
+  db.paymentRequests ||= [];
+  db.paymentWebhooks ||= [];
+  db.authSessions ||= [];
+  db.authSessions = db.authSessions.filter((session) => !session.expiresAt || new Date(session.expiresAt).getTime() > Date.now());
 
   db.exchangeAccounts ||= [
     {
@@ -547,6 +893,7 @@ export function normalizeDatabase(db) {
     }
   ];
   db.llmRuns ||= [];
+  db.chatSessions ||= [];
   db.chatMessages ||= [];
   db.agentSteps ||= [];
   db.agentToolCalls ||= [];
@@ -575,6 +922,7 @@ export function normalizeDatabase(db) {
   db.jobRuns ||= [];
   db.jobLocks ||= [];
   db.notifications ||= [];
+  db.agentProfiles ||= defaultAgentProfiles(nowIso());
 
   db.agentStateFiles ||= {
     USER: { id: "state_user", title: "USER.md", content: "尚未配置交易目标。请先配置交易所 API、模型 API，并创建授权委托。", updatedAt: nowIso() },
@@ -583,6 +931,20 @@ export function normalizeDatabase(db) {
   };
   db.memoryItems ||= [];
   db.agentRuns ||= [];
+  if (!db.chatSessions.length) {
+    const sessionId = "chat_default";
+    db.chatSessions.push({
+      id: sessionId,
+      title: "默认对话",
+      status: "active",
+      createdAt: db.chatMessages[0]?.createdAt || nowIso(),
+      updatedAt: db.chatMessages.at(-1)?.createdAt || nowIso()
+    });
+    for (const message of db.chatMessages || []) message.sessionId ||= sessionId;
+  }
+  for (const message of db.chatMessages || []) {
+    message.sessionId ||= db.chatSessions[0]?.id || "chat_default";
+  }
 
   db.knowledge.sourceVersions ||= [];
   db.knowledge.documentNodes ||= [];
@@ -597,12 +959,11 @@ export function normalizeDatabase(db) {
   db.knowledge.masteryTests ||= [];
   db.knowledge.runtimeCitations ||= [];
 
-  normalizeAuditChain(db);
   return db;
 }
 
 export function verifyAuditChain(db) {
-  const logs = [...(db.auditLogs || [])].reverse();
+  const logs = auditLogsForVerification(db);
   let previous = null;
   const breaks = [];
   for (const entry of logs) {
@@ -618,6 +979,17 @@ export function verifyAuditChain(db) {
   return { ok: breaks.length === 0, checked: logs.length, breaks };
 }
 
+function auditLogsForVerification(db) {
+  try {
+    ensureSqlite();
+    const rows = sqlite.prepare("select doc from audit_log_entries order by created_at asc, rowid asc").all();
+    if (rows.length) return rows.map((row) => JSON.parse(row.doc));
+  } catch {
+    // Fall through to the in-memory window when SQLite is unavailable.
+  }
+  return [...(db.auditLogs || [])].reverse();
+}
+
 function auditHash(entry) {
   const canonical = JSON.stringify({
     id: entry.id,
@@ -629,15 +1001,4 @@ function auditHash(entry) {
     createdAt: entry.createdAt
   });
   return crypto.createHash("sha256").update(canonical).digest("hex");
-}
-
-function normalizeAuditChain(db) {
-  const chronological = [...(db.auditLogs || [])].reverse();
-  let previous = null;
-  for (const entry of chronological) {
-    entry.prevHash = previous;
-    entry.hash = auditHash(entry);
-    previous = entry.hash;
-  }
-  db.auditLogs = chronological.reverse();
 }
