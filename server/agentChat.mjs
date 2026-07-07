@@ -3,6 +3,7 @@ import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { fetchGlobalMarket, fetchSmartMoney } from "./marketSignals.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -47,7 +48,7 @@ const TOOL_DEFS = [
   },
   {
     name: "get_microstructure",
-    description: "读取合约市场微观结构：资金费率、未平仓量(OI)、订单簿买卖不平衡与点差。判断趋势/拥挤度/挤压风险时必须结合它，不要只看 K 线。",
+    description: "读取合约市场微观结构 + 聪明钱：资金费率、未平仓量(OI)、订单簿买卖不平衡、点差，以及大户/散户多空持仓比与主动买卖比。判断趋势/拥挤度/挤压风险、以及'大资金在做多还是做空'时必须结合它，不要只看 K 线。",
     schema: {
       type: "object",
       properties: {
@@ -56,6 +57,11 @@ const TOOL_DEFS = [
       },
       required: ["symbol"]
     }
+  },
+  {
+    name: "get_global_market",
+    description: "读取全局大盘：BTC 主导率、加密总市值 24h 趋势、恐惧贪婪指数。判断个币方向前应先看大盘——大盘走弱/极度贪婪时对做多更保守；BTC 主导率上升时山寨相对弱势。自上而下决策的第一步。",
+    schema: { type: "object", properties: {} }
   },
   {
     name: "get_account",
@@ -412,9 +418,25 @@ export async function executeTool(db, run, name, args = {}) {
   if (name === "get_microstructure") {
     const symbol = args.symbol || "BTC/USDT";
     try {
-      return await syncMicrostructure(db, args.exchange || "OKX", symbol);
+      const micro = await syncMicrostructure(db, args.exchange || "OKX", symbol);
+      // 叠加聪明钱：大户/散户多空持仓比、主动买卖比（免费公开数据，容错）
+      const smart = await fetchSmartMoney(symbol).catch(() => null);
+      if (smart?.ok) {
+        return { ...micro, smartMoney: smart, interpretation: [micro.interpretation, smart.interpretation].filter(Boolean).join("；") };
+      }
+      return micro;
     } catch (error) {
       return { error: `微观结构同步失败：${error.message}` };
+    }
+  }
+
+  if (name === "get_global_market") {
+    try {
+      const global = await fetchGlobalMarket();
+      db.marketRegime = { ...(db.marketRegime || {}), global, updatedAt: nowIso() };
+      return global;
+    } catch (error) {
+      return { error: `全局大盘同步失败：${error.message}` };
     }
   }
 
@@ -922,6 +944,7 @@ function summarizeToolResult(name, result = {}) {
   if (isMcpTool(name)) return `MCP ${result.server || ""}：${String(result.content || result.error || "").slice(0, 140)}`;
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
+  if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」，样本外期望 ${result.profile.test?.expectancyR ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（样本外均不达标）";
   if (name === "propose_trade_plan") return `${result.status}：${result.riskCheck?.summary || ""}`;

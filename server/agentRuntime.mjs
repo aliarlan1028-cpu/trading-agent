@@ -1,6 +1,7 @@
 import { activeProvider, runAgentChat } from "./agentChat.mjs";
 import { refreshAccounting } from "./accounting.mjs";
 import { syncPublicMarket } from "./exchangeConnector.mjs";
+import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -26,6 +27,14 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   }
   const accounting = refreshAccounting(db);
 
+  // 先判大盘：全局大盘 + 首个交易对聪明钱（免费公开数据，容错，不阻断）
+  let regime = null;
+  try {
+    regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
+    db.marketRegime = { ...regime, updatedAt: nowIso() };
+  } catch {}
+  const regimeSummary = [regime?.global?.interpretation, regime?.smartMoney?.ok ? regime.smartMoney.interpretation : null].filter(Boolean).join("；");
+
   const skipReasons = [];
   if (!db.system.autonomyEnabled) skipReasons.push("自主推进已暂停");
   if (db.system.killSwitch) skipReasons.push("熔断开启");
@@ -45,6 +54,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       source: "agent_cycle",
       steps: [
         { phase: "observe", summary: syncedSymbols.length ? `已同步 ${syncedSymbols.join("、")} 真实行情。` : "行情同步失败或无授权交易对。" },
+        ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
         { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。` }
       ],
@@ -58,7 +68,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
 
   // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
   const goal = payload.goal
-    || `【定时巡检】当前授权：${mandate.allowedSymbols.join("、")}，单笔风险上限 ${mandate.maxSingleTradeRiskPct}%，日亏上限 ${mandate.maxDailyLossPct}%。请检查行情、持仓与事件；只有出现明确符合授权边界的机会才提出交易计划，否则简要说明为什么继续观察。`;
+    || `【定时巡检】当前授权：${mandate.allowedSymbols.join("、")}，单笔风险上限 ${mandate.maxSingleTradeRiskPct}%，日亏上限 ${mandate.maxDailyLossPct}%。${regimeSummary ? `\n【大盘与聪明钱（已预取，可直接引用，也可调用 get_global_market / get_microstructure 复核）】${regimeSummary}。` : ""}\n请先判大盘再看个币：先看全局方向与情绪、大户/散户多空结构，再检查授权交易对的行情、持仓与事件；只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划，否则简要说明为什么继续观察。`;
   const result = await runAgentChat(db, { message: goal }, saveDb);
   result.run.source = "agent_cycle";
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");

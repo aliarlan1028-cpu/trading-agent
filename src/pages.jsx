@@ -26,6 +26,7 @@ import {
   PlugZap,
   Plus,
   RefreshCw,
+  Pencil,
   Rocket,
   Search,
   Settings,
@@ -102,6 +103,11 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     openExecutions ? "检查在途执行单是否需要撤单、改价或转入只减仓。" : "当前没有在途执行压力。"
   ];
 
+  const regime = data.marketRegime || {};
+  const gm = regime.global || {};
+  const sm = regime.smartMoney || {};
+  const hasRegime = gm.ok || sm.ok;
+
   const configured = configuredAccounts > 0;
   const stripCells = [
     { label: "总资产 USDT", value: displayMoney(data.portfolio.totalEquityUsdt), sub: latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "同步后显示" },
@@ -169,6 +175,25 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             <div><span>买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
             <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
           </div>
+        </Card>
+
+        <Card className="cpCard">
+          <SectionTitle icon={Globe2} title="大盘与聪明钱" action={<button className="iconButton" title="刷新大盘与聪明钱" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={14} /></button>} />
+          {hasRegime ? (
+            <>
+              <div className="microGrid">
+                <div><span>BTC 主导率</span><strong>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</strong></div>
+                <div><span>总市值 24h</span><strong className={gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "positive" : "negative"}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</strong></div>
+                <div><span>恐惧贪婪</span><strong className={gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "negative" : gm.fearGreed.value >= 75 ? "warning" : ""}>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "未取"}</strong></div>
+                <div><span>大户多空比</span><strong className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "需 Binance"}</strong></div>
+                <div><span>散户多空比</span><strong>{sm.retailLongShortRatio ?? "未取"}</strong></div>
+                <div><span>主动买卖比</span><strong className={sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "positive" : "negative"}>{sm.takerBuySellRatio ?? "未取"}</strong></div>
+              </div>
+              {(gm.interpretation || sm.interpretation) && <p className="regimeReadout">{[gm.interpretation, sm.ok ? sm.interpretation : null].filter(Boolean).join("；")}</p>}
+            </>
+          ) : (
+            <div className="emptyPanel">点右上角刷新：拉取 BTC 主导率、总市值趋势、恐惧贪婪与大户/散户多空比，让 Agent 先判大盘再看个币。</div>
+          )}
         </Card>
 
         <Card className="cpCard">
@@ -591,7 +616,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
       {!embedded && <PageHeader active="riskAuth" />}
       <div className="riskAuthGrid">
         <Card>
-          <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" onClick={() => ui.openPanel("mandate")}>编辑</button></>} />
+          <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" title="编辑授权委托" onClick={() => ui.openPanel("mandate")}><Pencil size={15} /></button></>} />
           <div className="mandateRows">
             <RiskLine label="授权范围" value={humanizeList(mandate.marketTypes, "未设置")} />
             <RiskLine label="交易所" value={safeList(mandate.exchanges, "未授权")} />
@@ -605,7 +630,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <button className="textButton centered" onClick={() => ui.openPanel("mandate")}>查看委托详情与审批记录 <ChevronRight size={14} /></button>
         </Card>
         <Card>
-          <SectionTitle title="风险规则" action={<button className="secondaryButton" onClick={() => ui.openPanel("riskRules")}>管理规则</button>} />
+          <SectionTitle title="风险规则" action={<button className="secondaryButton" title="管理风险规则" onClick={() => ui.openPanel("riskRules")}><Settings size={15} /></button>} />
           <RiskQuadrants rules={data.riskRules || []} />
           <InsightNote icon={Shield} title="规则执行">规则触发将按预设动作执行，可在右侧风险状态墙中手动干预。</InsightNote>
         </Card>

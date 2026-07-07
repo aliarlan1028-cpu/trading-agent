@@ -15,6 +15,7 @@ import { hashPassword, installAuth, invalidateSessions, requirePermission, verif
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { fetchMarketRegime } from "./marketSignals.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
@@ -480,6 +481,7 @@ app.get("/api/overview", (_req, res) => {
     riskChecks: db.riskChecks,
     riskIncidents: db.riskIncidents,
     realtimeConnections: db.realtimeConnections,
+    marketRegime: db.marketRegime || null,
     realtimeStarted: realtimeStatus(db).started,
     pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
@@ -513,6 +515,17 @@ app.get("/api/overview", (_req, res) => {
     config: getConfigStatus(db),
     readiness: buildReadinessReport(db)
   });
+});
+
+app.get("/api/market/regime", async (_req, res) => {
+  try {
+    const symbol = db.mandates?.find((m) => ["active", "running"].includes(m.status))?.allowedSymbols?.[0] || "BTC/USDT";
+    const regime = await fetchMarketRegime(symbol);
+    db.marketRegime = { ...regime, updatedAt: nowIso() };
+    persist(res, regime);
+  } catch (error) {
+    res.status(500).json({ error: `全局大盘/聪明钱同步失败：${error.message}` });
+  }
 });
 
 app.get("/api/markets", (_req, res) => res.json(db.markets));

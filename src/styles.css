@@ -1432,6 +1432,14 @@ h3 {
   gap: 12px;
 }
 
+.regimeReadout {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
 .microGrid > div {
   background: #fbf6ef;
   border: 1px solid #f0e6d8;
