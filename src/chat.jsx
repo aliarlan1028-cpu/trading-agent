@@ -417,6 +417,23 @@ export function ChatPage({ data, action, ui }) {
         )}
       </div>
       <div className="chatScroll" ref={scrollRef}>
+        {(data.pendingActions || []).length > 0 && (
+          <div className="pendingActions">
+            {(data.pendingActions || []).map((pa) => (
+              <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
+                <div className="paInfo">
+                  <span className="paBadge">待确认操作</span>
+                  <b>{pa.title}</b>
+                  <small>{pa.detail}</small>
+                </div>
+                <div className="paActions">
+                  <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
+                  <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认执行</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
         {messages.map((message) => (
           <div className={`chatMessage ${message.role}`} key={message.id}>

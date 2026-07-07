@@ -213,6 +213,22 @@ const TOOL_DEFS = [
       },
       required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "rationale"]
     }
+  },
+  {
+    name: "request_action",
+    description: "当主人明确要求你代为执行平台内部高敏操作时调用：批准交易计划、激活/暂停/撤销授权 Mandate、开关实盘闸（实盘写入/真实下单/小额灰度）、开启或解除一键熔断、运行账户对账。除对账外，都会先生成一张“待确认操作卡”，由主人在对话里点“确认”后才真正执行——你绝不能声称已执行，只说“已生成待确认操作，请确认”。一次只请求一个操作。",
+    schema: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["approve_plan", "set_live_gate", "mandate", "kill_switch", "run_reconcile"] },
+        planId: { type: "string", description: "approve_plan 时的交易计划 id，缺省用最近待批准计划" },
+        gate: { type: "string", enum: ["live", "order_write", "gray"], description: "set_live_gate 时开哪道闸：live=实盘写入总开关+风险确认，order_write=真实下单写入，gray=小额灰度策略" },
+        enabled: { type: "boolean", description: "set_live_gate/kill_switch 的开(true)/关(false)" },
+        op: { type: "string", enum: ["activate", "pause", "revoke"], description: "mandate 操作" },
+        mandateId: { type: "string", description: "mandate 操作的目标 id，缺省用最近一个 Mandate" }
+      },
+      required: ["type"]
+    }
   }
 ];
 
@@ -313,11 +329,58 @@ function recordRunHistory(db, run, finalText) {
 // ---------------------------------------------------------------------------
 // 工具执行
 // ---------------------------------------------------------------------------
+// 高敏操作确认闸：Agent 不直接执行涉及资金/授权的动作，而是生成"待确认操作卡"，
+// 由主人在对话里点确认后，经权限校验的接口执行（见 index.mjs /api/agent/actions/:id/confirm）。
+function summarizePendingAction(db, args = {}) {
+  switch (args.type) {
+    case "approve_plan": {
+      const plan = args.planId
+        ? (db.tradePlans || []).find((p) => p.id === args.planId)
+        : (db.tradePlans || []).find((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status)) || db.tradePlans?.[0];
+      return { targetId: plan?.id, title: "批准并执行交易计划", detail: plan ? `${plan.symbol || "?"} ${plan.direction || ""} · 计划 ${plan.id}` : "未找到可批准的交易计划", danger: true };
+    }
+    case "set_live_gate": {
+      const map = { live: "实盘写入总开关 + 风险确认", order_write: "真实下单写入", gray: "小额灰度策略" };
+      return { title: `${args.enabled === false ? "关闭" : "开启"} ${map[args.gate] || args.gate}`, detail: "改变实盘下单能力，属于高敏操作", danger: args.enabled !== false };
+    }
+    case "mandate": {
+      const m = args.mandateId ? (db.mandates || []).find((x) => x.id === args.mandateId) : db.mandates?.[0];
+      const opLabel = { activate: "激活", pause: "暂停", revoke: "撤销" }[args.op] || args.op;
+      return { targetId: m?.id, title: `${opLabel}授权 Mandate`, detail: m ? `${m.name || m.id}` : "未找到 Mandate", danger: args.op === "activate" };
+    }
+    case "kill_switch":
+      return { title: args.enabled === false ? "解除一键熔断" : "开启一键熔断", detail: args.enabled === false ? "解除后恢复正常交易闸门" : "立即阻断所有新交易", danger: args.enabled === false };
+    case "run_reconcile":
+      return { title: "运行账户对账", detail: "拉取交易所快照与本地状态核对", danger: false };
+    default:
+      return { title: "未知操作", detail: String(args.type || ""), danger: true };
+  }
+}
+
+function createPendingAction(db, args = {}) {
+  const info = summarizePendingAction(db, args);
+  const record = {
+    id: id("pact"),
+    type: args.type,
+    args: { ...args, resolvedTargetId: info.targetId || null },
+    title: info.title,
+    detail: info.detail,
+    danger: Boolean(info.danger),
+    status: "awaiting_confirmation",
+    createdAt: nowIso()
+  };
+  db.pendingActions ||= [];
+  db.pendingActions.unshift(record);
+  return { status: "awaiting_confirmation", message: `已生成待确认操作：${record.title}。请在对话里点“确认”后才会真正执行。`, pendingAction: { id: record.id, title: record.title, detail: record.detail, danger: record.danger } };
+}
+
 export async function executeTool(db, run, name, args = {}) {
   // 已启用的原生技能作为工具接入决策循环
   if (isSkillTool(name)) return runSkillTool(db, name, args);
   // 已连接的 MCP server 工具
   if (isMcpTool(name)) return runMcpTool(db, name, args);
+
+  if (name === "request_action") return createPendingAction(db, args);
 
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";

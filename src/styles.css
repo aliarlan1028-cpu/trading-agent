@@ -7023,6 +7023,160 @@ button.danger:disabled,
 .cockpitHead { display: grid; gap: var(--sp-3); }
 .cockpitTabs { max-width: 340px; }
 
+/* ---- 驾驶舱总览：紧凑单屏（交易终端质感） ---- */
+.cockpitOverview { gap: var(--sp-3); }
+
+/* 顶部关键指标带：一行密排，分隔线切分 */
+.cockpitStrip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+
+.stripCell {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-3);
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+.stripCell:last-child { border-right: none; }
+
+.stripCell > span {
+  font-size: var(--fs-1);
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stripCell > strong {
+  font-size: 19px;
+  font-weight: 680;
+  color: var(--text);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stripCell > strong.positive { color: var(--pos); }
+.stripCell > strong.warning { color: var(--warn); }
+.stripCell > strong.negative { color: var(--neg); }
+.stripCell > small { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.stripCell.clickable { cursor: pointer; transition: background 0.15s ease; }
+.stripCell.clickable:hover { background: var(--surface-2); }
+
+.stripFilter { gap: 6px; }
+.filterGroup.mini { display: inline-flex; gap: 4px; }
+.filterGroup.mini button {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+}
+.filterGroup.mini button.active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-weak); }
+
+/* 分区网格：3 列紧凑，卡片等高感 */
+.cockpitGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  align-items: start;
+}
+
+.cpCard { padding: var(--sp-4); }
+.cpCard .sectionTitle { min-height: auto; margin-bottom: var(--sp-3); align-items: center; flex-wrap: nowrap; }
+.cpCard .sectionTitle > div { display: inline-flex; align-items: center; height: auto; min-height: 0; padding: 0; }
+.cpCard .sectionIcon { width: 24px; height: 24px; flex: none; }
+.cpCard .healthGrid.tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.cpCard .healthGrid.tight > div { padding: var(--sp-2) var(--sp-3); }
+.cpCard .microGrid { gap: 6px; }
+.cpCard .riskLine { min-height: 34px; padding: 6px 0; }
+
+/* 可展开分区 */
+.cpDetails { }
+.cpDetails > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.cpDetails > summary::-webkit-details-marker { display: none; }
+.cpSummaryTitle { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-4); font-weight: 640; color: var(--text); }
+.cpSummaryTitle svg { color: var(--accent); }
+.cpChevron { color: var(--text-3); transition: transform 0.15s ease; }
+.cpDetails[open] > summary .cpChevron { transform: rotate(180deg); }
+.cpDetails[open] .actionList { margin-top: var(--sp-3); }
+
+/* 紧凑图标按钮 */
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-2);
+}
+.iconButton:hover { background: var(--surface-2); color: var(--accent-ink); border-color: var(--border-strong); }
+
+@media (max-width: 1200px) {
+  .cockpitStrip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stripCell:nth-child(4n) { border-right: none; }
+  .cockpitGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .cockpitStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stripCell { border-right: none; border-bottom: 1px solid var(--border); }
+  .cockpitGrid { grid-template-columns: 1fr; }
+}
+
+/* AI 交易员待确认操作卡 */
+.pendingActions { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.pendingActionCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-lg);
+  background: var(--accent-weak);
+}
+.pendingActionCard.danger { border-color: var(--neg); background: var(--neg-weak); }
+.paInfo { display: grid; gap: 2px; min-width: 0; }
+.paBadge {
+  justify-self: start;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--accent-ink); text-transform: uppercase;
+}
+.pendingActionCard.danger .paBadge { color: var(--neg); }
+.paInfo b { font-size: var(--fs-3); color: var(--text); font-weight: 640; }
+.paInfo small { font-size: var(--fs-1); color: var(--text-3); }
+.paActions { display: inline-flex; gap: var(--sp-2); }
+.dangerButton {
+  padding: 8px 16px;
+  border: 1px solid var(--neg);
+  border-radius: var(--r-md);
+  background: var(--neg);
+  color: #fff;
+  font-weight: 600;
+}
+.dangerButton:hover { filter: brightness(0.95); }
+
 /* 实盘下单就绪清单 */
 .liveReadiness {
   border: 1px solid var(--border);

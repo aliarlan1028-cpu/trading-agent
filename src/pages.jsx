@@ -102,90 +102,94 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     openExecutions ? "检查在途执行单是否需要撤单、改价或转入只减仓。" : "当前没有在途执行压力。"
   ];
 
+  const configured = configuredAccounts > 0;
+  const stripCells = [
+    { label: "总资产 USDT", value: displayMoney(data.portfolio.totalEquityUsdt), sub: latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "同步后显示" },
+    { label: "今日盈亏", value: configured ? displayMoney(data.portfolio.todayPnl) : "未同步", sub: configured ? displayPct(data.portfolio.todayPnlPct) : "接入后同步", tone: configured ? (Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "negative") : "" },
+    { label: "未实现盈亏", value: configured ? displayMoney(data.portfolio.weekPnl) : "未同步", sub: configured ? displayPct(data.portfolio.weekPnlPct) : "接入后同步", tone: configured ? (Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "negative") : "" },
+    { label: `累计盈亏·${pnlWindow}`, value: displayMoney(monthlyPnl), sub: `${performance.trades || 0} 笔已平仓`, tone: Number(monthlyPnl || 0) >= 0 ? "positive" : "warning" },
+    { label: "可用保证金", value: displayMoney(availableMargin), sub: `占用 ${displayMoney(usedMargin)}` },
+    { label: "保证金率", value: marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%` },
+    { label: "对账", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "positive" : "warning", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
+  ];
+
   return (
-    <div className="pageStack">
+    <div className="pageStack cockpitOverview">
       {!embedded && <PageHeader active="marketAccount" />}
-      <div className={`metricGrid ${configuredAccounts ? "five" : "three"}`}>
-        {configuredAccounts ? (
-          <>
-            <MetricCard icon={WalletCards} label="总资产（USDT）" value={displayMoney(data.portfolio.totalEquityUsdt)} sub={latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "私有账户同步后显示"} candles={market.candles} />
-            <MetricCard icon={TrendingUp} label="今日盈亏（USDT）" value={displayMoney(data.portfolio.todayPnl)} sub={displayPct(data.portfolio.todayPnlPct)} tone={Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
-            <MetricCard icon={SquareActivity} label="未实现盈亏（USDT）" value={displayMoney(data.portfolio.weekPnl)} sub={displayPct(data.portfolio.weekPnlPct)} tone={Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
-          </>
-        ) : (
-          <Card className="metricCard actionCard connectExchangeCta" onClick={() => ui.setActive("systemSettings")} role="button" tabIndex={0}>
-            <div><span>账户未接入</span><strong className="warning">总资产 · 今日 · 未实现盈亏未同步</strong><small>在系统设置添加只读交易所 API，即可同步净值与实时盈亏</small></div>
-            <ChevronRight size={18} />
-          </Card>
-        )}
-        <MetricCard icon={BarChart3} label={`累计盈亏（${pnlWindow}）`} value={displayMoney(monthlyPnl)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(monthlyPnl || 0) >= 0 ? "positive" : "warning"} candles={market.candles} />
-        <Card className="metricCard reconcileCard actionCard" onClick={() => configuredAccounts ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings")} role="button" tabIndex={0}><div><span>对账状态</span><strong className={latestReconcile?.status === "ok" ? "positive" : "warning"}>{configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置"}</strong><small>{configuredAccounts ? `最后对账：${formatDateTime(latestReconcile?.createdAt || latestSnapshot?.createdAt, "暂无记录")}` : "先配置只读 API 后再对账"}</small></div><ChevronRight size={18} /></Card>
+
+      <div className="cockpitStrip">
+        {stripCells.map((cell) => {
+          const clickable = Boolean(cell.onClick);
+          return (
+            <div key={cell.label} className={`stripCell ${clickable ? "clickable" : ""}`} {...(clickable ? { role: "button", tabIndex: 0, onClick: cell.onClick } : {})}>
+              <span>{cell.label}</span>
+              <strong className={cell.tone}>{cell.value}</strong>
+              {cell.sub && <small>{cell.sub}</small>}
+            </div>
+          );
+        })}
+        <div className="stripCell stripFilter">
+          <span>盈亏区间</span>
+          <div className="filterGroup mini">{["本月", "季度", "全年"].map((item) => <button className={pnlWindow === item ? "active" : ""} key={item} onClick={() => setPnlWindow(item)}>{item}</button>)}</div>
+        </div>
       </div>
 
-      <div className="dashboardToolbar">
-        <div className="filterGroup">{["本月", "季度", "全年"].map((item) => <button className={pnlWindow === item ? "active" : ""} key={item} onClick={() => setPnlWindow(item)}>{item}</button>)}</div>
-        <span>可用保证金 {displayMoney(availableMargin)} · 占用 {displayMoney(usedMargin)} · 保证金率 {marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%`}</span>
-      </div>
-
-      <div className="dashboardGrid">
-        <Card>
+      <div className="cockpitGrid">
+        <Card className="cpCard">
           <SectionTitle icon={Gauge} title="账户健康" />
-          <div className="healthGrid">
+          <div className="healthGrid tight">
             {accountHealthRows.map(([label, value, tone]) => <div key={label}><span>{label}</span><strong>{value}</strong><StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "高危" : "待处理"}</StatusBadge></div>)}
           </div>
         </Card>
-        <Card>
+
+        <Card className="cpCard">
+          <SectionTitle icon={Target} title="风险承压" />
+          <div className="qualityGrid">
+            <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
+            <RiskLine label="持仓数量" value={`${data.positions?.length || 0} 个`} />
+            <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
+            <RiskLine label="系统状态" value={systemStatus(data).label} />
+          </div>
+        </Card>
+
+        <Card className="cpCard">
           <SectionTitle icon={BarChart3} title="收益质量" action={<button className="textButton" onClick={() => ui.setActive("review")}>去复盘 <ChevronRight size={14} /></button>} />
           <div className="qualityGrid">
             {qualityRows.map(([label, value]) => <RiskLine key={label} label={label} value={value} />)}
           </div>
         </Card>
-      </div>
 
-      <Card>
-        <SectionTitle icon={Activity} title="合约微观结构" action={<button className="secondaryButton" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /> 刷新</button>} />
-        <div className="microGrid">
-          <div><span>资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
-          <div><span>未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
-          <div><span>订单簿买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
-          <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
-        </div>
-        <InsightNote icon={Activity} title="结构解读">{market.microSyncedAt ? `资金费率反映多空拥挤度，订单簿买盘占比低于 42% 偏空、高于 58% 偏多。最后同步 ${formatDateTime(market.microSyncedAt)}` : "点击刷新拉取 OKX 资金费率、未平仓量与订单簿深度。合约方向判断需要它，不能只看 K 线。"}</InsightNote>
-      </Card>
+        <Card className="cpCard">
+          <SectionTitle icon={Activity} title="合约微观结构" action={<button className="iconButton" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /></button>} />
+          <div className="microGrid">
+            <div><span>资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
+            <div><span>未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
+            <div><span>买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
+            <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
+          </div>
+        </Card>
 
-      <Card>
-        <SectionTitle icon={Gauge} title="组合波动预算" action={<small className="muted">按波动率反比 + 相关性感知定仓</small>} />
-        {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
-          <>
-            <div className="microGrid">
-              <div><span>组合日度波动</span><strong>{pr.portfolioVolPct}%</strong></div>
-              <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
-              <div><span>预算使用率</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
-              <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
-            </div>
-            <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
-            <div className="qualityGrid">
-              {pr.positions.map((p) => <RiskLine key={p.symbol} label={p.symbol} value={`日波动 ${p.dailyVolPct ?? "-"}% · 名义 ${displayMoney(p.notionalUsdt)} USDT`} />)}
-            </div>
-            {pr.correlations?.length > 0 && <InsightNote icon={GitBranch} title="相关性约束">相关性：{pr.correlations.map((c) => `${c.pair} ρ=${c.rho}`).join(" · ")}。相关性高的同向仓会被自动压小名义额度。</InsightNote>}
-          </>
-        ) : (
-          <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后这里显示组合日度波动、预算使用率与相关性。执行引擎会据此压低超预算的新仓。"}</div>
-        )}
-      </Card>
+        <Card className="cpCard">
+          <SectionTitle icon={Gauge} title="组合波动预算" />
+          {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
+            <>
+              <div className="microGrid">
+                <div><span>组合日波动</span><strong>{pr.portfolioVolPct}%</strong></div>
+                <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
+                <div><span>预算使用</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
+                <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
+              </div>
+              <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
+            </>
+          ) : (
+            <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后显示组合波动与预算使用。"}</div>
+          )}
+        </Card>
 
-      <div className="dashboardGrid compact">
-        <Card>
-          <SectionTitle icon={ListChecks} title="下一步动作" />
+        <details className="cpCard cpDetails">
+          <summary><span className="cpSummaryTitle"><ListChecks size={15} /> 下一步动作</span><ChevronDown size={14} className="cpChevron" /></summary>
           <div className="actionList">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
-        </Card>
-        <Card>
-          <SectionTitle icon={Target} title="风险承压" />
-          <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
-          <RiskLine label="持仓数量" value={`${data.positions?.length || 0} 个`} />
-          <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
-          <RiskLine label="系统状态" value={systemStatus(data).label} />
-        </Card>
+        </details>
       </div>
     </div>
   );

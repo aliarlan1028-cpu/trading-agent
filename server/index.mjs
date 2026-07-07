@@ -401,6 +401,7 @@ app.get("/api/overview", (_req, res) => {
     riskIncidents: db.riskIncidents,
     realtimeConnections: db.realtimeConnections,
     realtimeStarted: realtimeStatus(db).started,
+    pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
     notifications: db.notifications,
@@ -1274,6 +1275,76 @@ app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), 
     already_executing: "该计划已有在途执行单。"
   };
   persist(res, { plan, execution, guard, message: messages[execution.status] || `执行状态：${execution.status}` });
+});
+
+// AI 交易员代操作：待确认操作的执行（点确认后）。真钱/授权动作仍受各自的硬闸约束（防御纵深）。
+async function executePendingAction(db, record) {
+  const a = record.args || {};
+  const actor = db.user?.name || "Owner";
+  if (record.type === "run_reconcile") {
+    return { ok: true, result: runReconciler(db, { mode: "agent_confirm" }) };
+  }
+  if (record.type === "kill_switch") {
+    db.system.killSwitch = a.enabled !== false;
+    appendAudit(db, db.system.killSwitch ? "对话确认：开启熔断" : "对话确认：解除熔断", "kill_switch", actor, "warning");
+    return { ok: true, killSwitch: db.system.killSwitch };
+  }
+  if (record.type === "set_live_gate") {
+    const entries = {};
+    if (a.gate === "live") { entries.LIVE_TRADING_ENABLED = a.enabled !== false ? "true" : "false"; entries.I_UNDERSTAND_REAL_TRADING = a.enabled !== false ? "true" : "false"; }
+    if (a.gate === "order_write") entries.REAL_ORDER_WRITE_ENABLED = a.enabled !== false ? "true" : "false";
+    if (Object.keys(entries).length) await setConfig(db, entries);
+    db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
+    if (a.gate === "gray") {
+      db.grayReleasePolicies ||= [];
+      let policy = db.grayReleasePolicies[0];
+      if (!policy) { policy = { id: id("gray"), maxNotionalUsdt: Number(process.env.MAX_LIVE_NOTIONAL_USDT || 50), allowedSymbols: [] }; db.grayReleasePolicies.unshift(policy); }
+      policy.enabled = a.enabled !== false;
+    }
+    appendAudit(db, `对话确认：设置实盘闸 ${a.gate}=${a.enabled !== false}`, "live_gate", actor, "warning");
+    return { ok: true, liveTradingEnabled: db.system.liveTradingEnabled };
+  }
+  if (record.type === "mandate") {
+    const m = (db.mandates || []).find((x) => x.id === (a.resolvedTargetId || a.mandateId)) || db.mandates?.[0];
+    if (!m) return { ok: false, error: "mandate_not_found" };
+    m.status = a.op === "activate" ? "active" : a.op === "pause" ? "paused" : a.op === "revoke" ? "revoked" : m.status;
+    m.updatedAt = nowIso();
+    appendAudit(db, `对话确认：${a.op} Mandate ${m.id}`, m.id, actor, "warning");
+    return { ok: true, mandate: { id: m.id, status: m.status } };
+  }
+  if (record.type === "approve_plan") {
+    const plan = (db.tradePlans || []).find((p) => p.id === (a.resolvedTargetId || a.planId))
+      || (db.tradePlans || []).find((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
+    if (!plan) return { ok: false, error: "plan_not_found" };
+    const fresh = evaluateTradePlan(db, plan);
+    fresh.tradePlanId = plan.id; fresh.createdAt = nowIso();
+    db.riskChecks.unshift(fresh); plan.lastRiskCheck = fresh; plan.riskCheckId = fresh.id;
+    if (!fresh.passed) return { ok: false, error: "risk_blocked", summary: fresh.summary };
+    plan.status = "approved"; plan.approvedAt = nowIso(); plan.approvedBy = actor;
+    appendAudit(db, "对话确认：批准交易计划", plan.id, actor, "warning");
+    const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
+    return { ok: true, execution, guard: describeGuardReason(execution.reason) };
+  }
+  return { ok: false, error: "unknown_action_type" };
+}
+
+app.post("/api/agent/actions/:id/confirm", requirePermission("write:mandate"), async (req, res) => {
+  const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
+  if (!record) return res.status(404).json({ error: "待确认操作不存在" });
+  if (record.status !== "awaiting_confirmation") return res.status(400).json({ error: "该操作已处理" });
+  const result = await executePendingAction(db, record);
+  record.status = result.ok ? "executed" : "failed";
+  record.result = result;
+  record.resolvedAt = nowIso();
+  persist(res, { action: record, result });
+});
+
+app.post("/api/agent/actions/:id/cancel", requirePermission("write:mandate"), (req, res) => {
+  const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
+  if (!record) return res.status(404).json({ error: "待确认操作不存在" });
+  record.status = "cancelled";
+  record.resolvedAt = nowIso();
+  persist(res, { action: record });
 });
 
 app.post("/api/trade-plans/:id/cancel", requirePermission("write:trade_plan"), (req, res) => {

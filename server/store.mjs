@@ -73,7 +73,8 @@ const collectionNames = [
   "chatSessions",
   "chatMessages",
   "agentRuns",
-  "reviews"
+  "reviews",
+  "pendingActions"
 ];
 
 let sqlite;
