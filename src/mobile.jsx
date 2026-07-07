@@ -85,77 +85,59 @@ export function RailContent({ data, action, ui }) {
     : orders.length
       ? `${orders.length} 个委托需要避让`
       : "暂无持仓/委托冲突";
+  // 把"Agent 动作 + 事件"合并成一条按时间倒序的统一动态流，取代原来重叠的三块。
+  const feed = [
+    ...timeline.slice(0, 6).map((t) => ({ id: `a_${t.id}`, kind: "Agent", text: cleanAgentText(t.title, "-"), time: t.createdAt, cls: "act" })),
+    ...(data.events || []).slice(0, 5).map((e) => ({ id: `e_${e.id}`, kind: "事件", text: String(e.shortTitle || e.title || "-"), time: (e.due && e.due !== "即时" && e.due !== "新近") ? e.due : e.createdAt, cls: e.impact >= 80 ? "danger" : e.impact >= 50 ? "warn" : "ev" }))
+  ].sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
+    .filter((item, index, arr) => arr.findIndex((x) => x.kind === item.kind && x.text === item.text) === index)
+    .slice(0, 7);
+
   return (
     <>
-      <div className="railBlock railHero agentTaskBlock">
-        <span className="railLabel">当前任务</span>
-        <strong className="railValue">{displayGoal}</strong>
-        <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
-      </div>
-
-      <div className="railBlock">
-        <span className="railLabel">决策依据</span>
-        <p className="railDecision">{decisionSummary}</p>
-        <div className="railMetricGrid">
-          <span>置信度<b>{confidenceText}</b></span>
-          <span>知识引用<b>{memoryCount} 条记忆 / {citationCount} 处</b></span>
+      {/* 1. 状态：现在是什么状态 */}
+      <div className="railBlock railStatusHead">
+        <div className="railStatusTop">
+          <span className="railLabel">AI 交易员</span>
+          <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
         </div>
-        {afterConfidence !== null && <ProgressBar value={Math.round(Number(afterConfidence) * 100)} tone="blue" />}
+        <strong className="railGoal">{displayGoal}</strong>
+        <small className="railMandate">{mandate ? `授权：${mandate.name || mandate.id}` : "未授权 · 只读观察"}</small>
       </div>
 
+      {/* 2. 能否交易：最重要的风控闸门 */}
       <div className="railBlock">
-        <span className="railLabel">风控闸门</span>
+        <span className="railLabel">能否交易</span>
         <div className={`gateBanner ${gateTone}`}>
-          <strong>{gateLabel}</strong>
-          <small>{cleanAgentText(latestRisk.blockers?.[0]?.detail || agentStatus.reasonNotTrading, "等待下一次风控校验。")}</small>
+          <strong>{data.system?.killSwitch ? "熔断中" : (riskWall.allowOpen ? "允许开仓" : "禁止开仓")}</strong>
+          <small>{cleanAgentText(latestRisk.blockers?.[0]?.detail || agentStatus.reasonNotTrading || gateLabel, "等待下一次风控校验。")}</small>
         </div>
-        <div className="railMetricGrid">
-          <span>开仓<b>{riskWall.allowOpen ? "允许" : "禁止"}</b></span>
+        <div className="railGateGrid">
           <span>减仓<b>{riskWall.allowReduceOnly ? "允许" : "待授权"}</b></span>
-          <span>日亏损预算<b>{budget === null || budget === undefined ? "未授权" : `${displayMoney(budget)} USDT`}</b></span>
-          <span>人工确认<b>{mandate ? "按阈值" : "需要授权"}</b></span>
+          <span>日亏损预算<b>{budget === null || budget === undefined ? "未授权" : displayMoney(budget)}</b></span>
+          <span>人工确认<b>{mandate ? "按阈值" : "需授权"}</b></span>
+          <span>持仓/委托<b>{positions.length} / {orders.length}</b></span>
         </div>
       </div>
 
-      {(data.events || []).length > 0 && (
-        <div className="railBlock">
-          <span className="railLabel">近期事件</span>
-          {(data.events || []).slice(0, 4).map((ev) => (
-            <div className="railEventItem" key={ev.id}>
-              <b title={ev.rawTitle || ev.title}>{String(ev.shortTitle || ev.title || "-").slice(0, 30)}</b>
-              <span>{formatDate(ev.due, "待定")} · {ev.category || "事件"}</span>
-              <StatusBadge tone={ev.impact >= 80 ? "danger" : ev.impact >= 50 ? "warning" : "neutral"}>{ev.impactLabel || "低影响"}</StatusBadge>
-            </div>
-          ))}
-          <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}>刷新事件源 <ChevronRight size={13} /></button>
-        </div>
-      )}
-
-      {(positions.length > 0 || orders.length > 0) && (
-        <div className="railBlock">
-          <span className="railLabel">账户约束</span>
-          <div className="railMetricGrid">
-            <span>持仓影响<b>{positions.length} 个</b></span>
-            <span>委托冲突<b>{orders.length} 个</b></span>
-            <span>账户同步<b>{data.accountSnapshots?.[0] ? formatTime(data.accountSnapshots[0].createdAt) : "未同步"}</b></span>
-            <span>约束摘要<b>{accountConstraint}</b></span>
-          </div>
-          <button className="textButton" onClick={() => ui.setActive("marketAccount")}>查看仪表盘 <ChevronRight size={13} /></button>
-        </div>
-      )}
-
+      {/* 3. 最近动态：Agent 动作 + 事件 合并时间线 */}
       <div className="railBlock">
-        <span className="railLabel">Agent 最近动作</span>
-        {!timeline.length && <span className="railSub">暂无记录</span>}
-        {timeline.map((trace) => (
-          <div className="railActionItem" key={trace.id}>
-            <span>{agentActionLabel(trace)}</span>
-            <b title={trace.title}>{String(trace.title || "-").slice(0, 36)}</b>
-            <AgentActionStatus status={trace.status || trace.summary} />
+        <div className="railStatusTop">
+          <span className="railLabel">最近动态</span>
+          <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}>刷新</button>
+        </div>
+        {!feed.length && <span className="railSub">暂无动态</span>}
+        {feed.map((item) => (
+          <div className="railFeedItem" key={item.id}>
+            <span className={`railFeedTag ${item.cls}`}>{item.kind}</span>
+            <b title={item.text}>{String(item.text).slice(0, 34)}</b>
+            <time>{item.time ? formatTime(item.time) : ""}</time>
           </div>
         ))}
         <button className="textButton" onClick={() => ui.setActive("review")}>进入复盘 <ChevronRight size={13} /></button>
       </div>
+
+      {/* 4. 快捷操作 */}
       <div className="railBlock railActions">
         <button onClick={() => action("/api/system/autonomy", { enabled: !data.system.autonomyEnabled })}>
           {data.system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}

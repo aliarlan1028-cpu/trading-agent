@@ -1236,33 +1236,34 @@ h3 {
 }
 
 .settingsSubNav {
-  border: 1px solid #e7e0d5;
-  border-radius: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 8px;
-  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
 }
 
 .settingsSubNav button {
+  flex: 1 1 auto;
   min-width: 0;
-  min-height: 44px;
+  min-height: 34px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  color: #6b6455;
+  gap: 6px;
+  color: var(--text-2);
   background: transparent;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .settingsSubNav button.active {
   color: #ffffff;
-  background: #e07a3f;
+  background: var(--accent);
 }
 
 .settingsSubNav button:not(.active):hover {
@@ -3686,10 +3687,19 @@ h3 {
 }
 
 .adminUserList,
-.planEditList,
+.planEditList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
 .newPlanBox {
   display: grid;
   gap: 10px;
+}
+
+@media (max-width: 1100px) {
+  .planEditList { grid-template-columns: 1fr; }
 }
 
 .adminUserRow {
@@ -3715,21 +3725,26 @@ h3 {
 
 .planEditRow {
   display: grid;
-  gap: 10px;
-  border: 1px solid #eadfce;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fffaf7;
+  gap: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  background: var(--surface-2);
 }
+
+.planEditRow textarea { min-height: 52px; }
+.planToggle { border: 0; background: transparent; padding: 0; cursor: pointer; flex: none; }
+.planEditRow .primaryButton { justify-self: start; padding: 6px 14px; }
 
 .planEditHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
 }
 
 .planEditHeader input {
-  font-weight: 900;
+  font-weight: 700;
+  font-size: var(--fs-3);
 }
 
 .planEditRow textarea {
@@ -7142,6 +7157,46 @@ button.danger:disabled,
   .stripCell { border-right: none; border-bottom: 1px solid var(--border); }
   .cockpitGrid { grid-template-columns: 1fr; }
 }
+
+/* AI 交易员右栏（三段式：状态 / 闸门 / 时间线） */
+.railStatusTop { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.railStatusHead { display: grid; gap: 4px; }
+.railGoal { font-size: var(--fs-4); font-weight: 640; color: var(--text); line-height: 1.25; }
+.railMandate { font-size: var(--fs-1); color: var(--text-3); }
+
+.railGateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.railGateGrid > span { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: var(--fs-1); color: var(--text-3); }
+.railGateGrid b { font-size: var(--fs-2); color: var(--text); font-weight: 600; }
+
+.railFeedItem {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.railFeedItem b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2); font-weight: 600; color: var(--text); }
+.railFeedItem time { font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.railFeedTag {
+  justify-self: start;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.railFeedTag.act { color: var(--accent-ink); background: var(--accent-weak); border-color: var(--accent-weak); }
+.railFeedTag.ev { color: var(--text-2); }
+.railFeedTag.warn { color: var(--warn); background: var(--warn-weak); border-color: var(--warn-weak); }
+.railFeedTag.danger { color: var(--neg); background: var(--neg-weak); border-color: var(--neg-weak); }
 
 /* AI 交易员待确认操作卡 */
 .pendingActions { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }

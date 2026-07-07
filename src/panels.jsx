@@ -154,6 +154,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     SKILL_SANDBOX_IMAGE: runtime.skillSandboxImage || "node:20-alpine",
     REALTIME_RECONCILER_ENABLED: runtime.realtimeReconcilerEnabled ? "true" : "false",
     BINANCE_MARKET_TYPE: runtime.binanceMarketType || "spot",
+    OKX_MARKET_TYPE: runtime.okxMarketType || "perpetual_swap",
     HTTP_PROXY: "",
     HTTPS_PROXY: "",
     PORT: runtime.port || "8787"
@@ -293,6 +294,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       SKILL_SANDBOX_IMAGE: runtimeForm.SKILL_SANDBOX_IMAGE,
       REALTIME_RECONCILER_ENABLED: runtimeForm.REALTIME_RECONCILER_ENABLED,
       BINANCE_MARKET_TYPE: runtimeForm.BINANCE_MARKET_TYPE,
+      OKX_MARKET_TYPE: runtimeForm.OKX_MARKET_TYPE,
       PORT: runtimeForm.PORT
     };
     for (const [keyName] of runtimeSecretRows) {
@@ -578,6 +580,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             <div className="formGrid">
               <label>登录鉴权<select value={runtimeForm.AUTH_REQUIRED} onChange={(event) => updateRuntime("AUTH_REQUIRED", event.target.value)}><option value="true">开启</option><option value="false">关闭</option></select></label>
               <label>Binance 默认市场<select value={runtimeForm.BINANCE_MARKET_TYPE} onChange={(event) => updateRuntime("BINANCE_MARKET_TYPE", event.target.value)}><option value="spot">spot</option><option value="perpetual_usdt">perpetual_usdt</option><option value="usdm">usdm</option></select></label>
+              <label>OKX 默认市场<select value={runtimeForm.OKX_MARKET_TYPE} onChange={(event) => updateRuntime("OKX_MARKET_TYPE", event.target.value)}><option value="spot">spot</option><option value="perpetual_swap">perpetual_swap</option></select></label>
               <label>实时对账<select value={runtimeForm.REALTIME_RECONCILER_ENABLED} onChange={(event) => updateRuntime("REALTIME_RECONCILER_ENABLED", event.target.value)}><option value="false">关闭</option><option value="true">开启</option></select></label>
               <label>服务端口（重启生效）<input type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
             </div>

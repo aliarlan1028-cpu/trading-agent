@@ -370,21 +370,11 @@ export function ChatPage({ data, action, ui }) {
   function findMandate(mandateId) {
     return (data.mandates || []).find((mandate) => mandate.id === mandateId);
   }
-  async function newSession() {
-    try {
-      const response = await fetch(apiUrl("/api/agent/chat/sessions"), {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ title: "新对话" })
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "创建对话失败");
-      setSessions(json.sessions || []);
-      setActiveSessionId(json.session.id);
-      setMessages([]);
-    } catch (error) {
-      ui.notify?.(error.message || "创建对话失败");
-    }
+  // 新建对话只在本地开启一个"草稿会话"，不立刻建库；发第一条消息时后端才真正创建
+  // 并用首句作为标题。这样空对话永远不会留进历史记录。
+  function newSession() {
+    setActiveSessionId("");
+    setMessages([]);
   }
 
   function switchSession(sessionId) {

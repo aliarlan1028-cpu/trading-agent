@@ -1206,16 +1206,17 @@ export function AdminPage({ data, action }) {
                 return (
                   <div className="planEditRow" key={plan.id}>
                     <div className="planEditHeader">
-                      <input value={draft.name || ""} onChange={(event) => updatePlanDraft(plan.id, { name: event.target.value })} />
-                      <StatusBadge tone={draft.enabled === false ? "warning" : "ok"}>{draft.enabled === false ? "停用" : "启用"}</StatusBadge>
+                      <input value={draft.name || ""} onChange={(event) => updatePlanDraft(plan.id, { name: event.target.value })} placeholder="套餐名称" />
+                      <button type="button" className="planToggle" title="点击启用/停用" onClick={() => updatePlanDraft(plan.id, { enabled: draft.enabled === false })}>
+                        <StatusBadge tone={draft.enabled === false ? "warning" : "ok"}>{draft.enabled === false ? "已停用" : "启用中"}</StatusBadge>
+                      </button>
                     </div>
                     <div className="adminInlineFields">
-                      <label><span>周期（月）</span><input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
-                      <label><span>价格（USDT）</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
-                      <label><span>状态</span><select value={draft.enabled === false ? "disabled" : "enabled"} onChange={(event) => updatePlanDraft(plan.id, { enabled: event.target.value === "enabled" })}><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
+                      <label><span>周期 · 月</span><input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
+                      <label><span>价格 · USDT</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
                     </div>
-                    <textarea value={draft.features || ""} onChange={(event) => updatePlanDraft(plan.id, { features: event.target.value })} placeholder="套餐权益，每行一条" />
-                    <button className="primaryButton" onClick={() => savePlan(plan)}>保存套餐</button>
+                    <textarea rows={2} value={draft.features || ""} onChange={(event) => updatePlanDraft(plan.id, { features: event.target.value })} placeholder="套餐权益，每行一条" />
+                    <button className="primaryButton" onClick={() => savePlan(plan)}>保存</button>
                   </div>
                 );
               })}
