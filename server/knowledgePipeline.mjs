@@ -6,7 +6,21 @@ import * as cheerio from "cheerio";
 import mammoth from "mammoth";
 import simpleGit from "simple-git";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
+import { llmComplete } from "./agentChat.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+
+// LLM 蒸馏：把资料提炼成"概念 + 规则 + 反方观点"，而不是取高频词。无 LLM key 时返回 null。
+async function distillWithLlm(text, source) {
+  const system = "你是专业的金融/交易知识蒸馏助手，服务于一个交易加密货币永续合约（带杠杆、硬风控、短中周期）的 Agent。只输出 JSON，不要多余文字。资料可能来自传统金融——若涉及股票、长期持有、无杠杆等，请在 meaning 里注明其资产类别与时间周期的适用边界，避免被误用到杠杆合约。";
+  const prompt = `资料标题：${source.title}\n领域：${source.domain || "未标注"}\n\n蒸馏为 JSON（概念 5-8 个、规则 2-4 条）：\n{"summary":"一句话主旨","concepts":[{"name":"概念名(<=12字)","meaning":"在交易/风控中的含义与用法及适用边界(<=70字)"}],"rules":[{"name":"规则名","condition":"触发条件","action":"pause_opening|notify|reduce|none","rationale":"依据"}],"counterViews":["需警惕的反方观点或适用边界"]}\n\n资料正文：\n${text}`;
+  const raw = await llmComplete(prompt, system);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+  } catch {
+    return null;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -81,18 +95,56 @@ export async function parseKnowledgeSource(db, sourceId) {
   }
   db.knowledge.documentNodes.unshift({ id: `node_${source.id}`, sourceId: source.id, parentId: null, nodeType: "document", title: source.title, orderIndex: 1, pageRange: "N/A" });
   db.knowledge.chunks.unshift(...chunks);
-  const concepts = extractConcepts(text).map((name) => ({
-    id: id("concept"),
-    name,
-    domain: source.domain,
-    sourceRefs: [source.id],
-    indicators: [],
-    tradingMeaning: `${name} 已从 ${source.title} 中抽取，等待专家复核。`,
-    createdAt: nowIso()
-  }));
+
+  // 优先 LLM 蒸馏出真正的概念/规则/反方观点；无 LLM 时退回高频词抽取。
+  const distilled = await distillWithLlm(text, source).catch(() => null);
+  let concepts;
+  if (distilled?.concepts?.length) {
+    concepts = distilled.concepts.slice(0, 8).map((item) => ({
+      id: id("concept"),
+      name: String(item.name || "").slice(0, 24) || "概念",
+      domain: source.domain,
+      sourceRefs: [source.id],
+      indicators: [],
+      tradingMeaning: String(item.meaning || "").slice(0, 220) || `来自 ${source.title}`,
+      distilledBy: "llm",
+      createdAt: nowIso()
+    }));
+    if (distilled.summary) source.distilledSummary = String(distilled.summary).slice(0, 300);
+    if (Array.isArray(distilled.counterViews)) source.counterViews = distilled.counterViews.slice(0, 5);
+  } else {
+    concepts = extractConcepts(text).map((name) => ({
+      id: id("concept"),
+      name,
+      domain: source.domain,
+      sourceRefs: [source.id],
+      indicators: [],
+      tradingMeaning: `${name} 已从 ${source.title} 中抽取，等待专家复核。`,
+      createdAt: nowIso()
+    }));
+  }
   db.knowledge.conceptCards.unshift(...concepts);
+
   let ruleDraft = null;
-  if (source.createRuleDraft) {
+  const distilledRules = (distilled?.rules || []).slice(0, 4);
+  if (distilledRules.length) {
+    for (const rule of distilledRules) {
+      const draft = {
+        id: id("rule"),
+        name: String(rule.name || `${source.title} 规则`).slice(0, 40),
+        level: "L2",
+        status: "待审批",
+        action: ["pause_opening", "notify", "reduce", "none"].includes(rule.action) ? rule.action : "notify",
+        condition: String(rule.condition || "").slice(0, 160),
+        description: String(rule.rationale || rule.condition || `由 ${source.title} 蒸馏，请人工复核后启用`).slice(0, 240),
+        sourceRefs: [source.id],
+        distilledBy: "llm",
+        createdAt: nowIso()
+      };
+      db.knowledge.ruleProposals.unshift(draft);
+      ruleDraft = ruleDraft || draft;
+    }
+  } else if (source.createRuleDraft) {
     ruleDraft = {
       id: id("rule"),
       name: `${source.title} 规则草案`,

@@ -691,6 +691,38 @@ export function activeProvider() {
   return null;
 }
 
+// 简单文本补全（无工具），供知识蒸馏等复用。无 LLM key 时返回 null。
+export async function llmComplete(userText, systemPrompt = "") {
+  const provider = activeProvider();
+  if (!provider) return null;
+  try {
+    if (provider.name === "anthropic") {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: provider.model, max_tokens: 2048, system: systemPrompt || "你是专业的金融知识蒸馏助手。", messages: [{ role: "user", content: String(userText).slice(0, 24000) }] })
+      });
+      if (!res.ok) throw new Error(`Anthropic ${res.status}`);
+      const json = await res.json();
+      return (json.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    }
+    const client = provider.name === "deepseek"
+      ? new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" })
+      : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const res = await client.chat.completions.create({
+      model: provider.model,
+      messages: [
+        { role: "system", content: systemPrompt || "你是专业的金融知识蒸馏助手。" },
+        { role: "user", content: String(userText).slice(0, 24000) }
+      ],
+      temperature: 0.2
+    });
+    return res.choices?.[0]?.message?.content || null;
+  } catch {
+    return null;
+  }
+}
+
 async function anthropicTurn(model, messages, systemPrompt, tools) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
