@@ -237,7 +237,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
       <div className="eventsGrid">
         {showEvents && (
         <Card className="eventRadarCard">
-          <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
+          <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" title="刷新事件源" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
           <div className="dateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => { setSelectedEventId(event.id); ui.notify(`已选择事件：${event.title}`); }}><span>{formatDate(event.due, "待定")}</span><span>{event.category}</span></button>)}</div>
           {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
           <div className="eventRadarInner">
@@ -364,10 +364,7 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
   const [query, setQuery] = useState("");
   const embed = data.embeddingStatus || { mode: "lexical", provider: null, model: null, totalChunks: chunkCount, embeddedChunks: 0, coveragePct: 0 };
   const importActions = (
-    <div className="titleActions">
-      <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={14} /> 导入知识</button>
-      <button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>全部知识 <ChevronRight size={14} /></button>
-    </div>
+    <button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>全部知识 <ChevronRight size={14} /></button>
   );
   return (
     <>
@@ -403,10 +400,10 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无真实知识来源</strong>
                 <span>把金融、交易、经济类书籍与资料喂给 AI：可粘贴文本、导入网页链接、上传 PDF/DOCX/MD/TXT，或填写本地文件路径。</span>
-                <button className="primaryButton" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={14} /> 导入知识</button>
               </div>
             )}
           </div>
+          <button className="primaryButton knowledgeImportBtn" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={17} /> 导入知识</button>
         </Card>
         <Card className="graphCard">
           <SectionTitle title="概念与规则" action={<button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 <ChevronRight size={14} /></button>} />
@@ -505,7 +502,7 @@ function SkillCenterTab({ data, action, ui, enabledSkills, connectedMcp }) {
 
       <div className="knowledgeGrid">
         <Card className="skillCenterCard">
-          <SectionTitle title="Skills 中心" action={<div className="titleActions"><button className="secondaryButton" onClick={() => ui.openPanel("skillImport")}><Plus size={14} /> 导入 Skill</button><button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button></div>} />
+          <SectionTitle title="Skills 中心" action={<button className="textButton" onClick={() => ui.openPanel("skillImport")}>全部技能 <ChevronRight size={14} /></button>} />
           <InsightNote icon={Sparkles} title="技能生效方式">已启用的技能会作为可调用工具接入 AI 交易员的决策循环；内置技能只读，需要扫描并安装后生效。</InsightNote>
           <div className="skillList">
             {(data.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><Sparkles size={18} /><strong>{skill.name}</strong><small>{skill.native ? "内置" : `v${skill.version}`}</small><StatusBadge tone={skill.status === "已启用" ? "ok" : "warning"}>{skill.status || "已启用"}</StatusBadge></div>)}
@@ -685,7 +682,7 @@ export function ReviewPage({ data, action, ui, embedded = false }) {
 
       <div className="reviewGrid">
         <Card className="reviewFocus">
-          <SectionTitle icon={ListChecks} title="自我优化线索" action={<span className="sectionActions"><button className="secondaryButton" onClick={() => action("/api/review/backfill-fields", {})}><RefreshCw size={14} /> 补全字段</button><button className="secondaryButton" onClick={() => action("/api/review/strategy-improvement", {})}><BrainCircuit size={14} /> 创建改进闭环</button></span>} />
+          <SectionTitle icon={ListChecks} title="自我优化线索" action={<span className="sectionActions"><button className="secondaryButton" title="补全字段" onClick={() => action("/api/review/backfill-fields", {})}><RefreshCw size={14} /> 补全字段</button><button className="secondaryButton" title="创建改进闭环" onClick={() => action("/api/review/strategy-improvement", {})}><BrainCircuit size={14} /> 创建改进闭环</button></span>} />
           <div className="actionList">{optimizationItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
         </Card>
         <Card>
@@ -801,7 +798,7 @@ function PaperValidationCard({ data, action }) {
   const label = { passed: "已通过", failed: "未通过", running: "验证中" };
   return (
     <Card>
-      <SectionTitle icon={GitBranch} title="模拟盘前向验证（回测 → 模拟盘 → 小额实盘）" action={<span className="sectionActions"><button className="secondaryButton" onClick={() => action("/api/paper/spawn-from-profiles", {})}><Plus size={14} /> 从已验证策略开盘</button><button className="secondaryButton" onClick={() => action("/api/paper/run", {})}><RefreshCw size={14} /> 前向推进</button></span>} />
+      <SectionTitle icon={GitBranch} title="模拟盘前向验证（回测 → 模拟盘 → 小额实盘）" action={<span className="sectionActions"><button className="secondaryButton" title="从已验证策略开盘" onClick={() => action("/api/paper/spawn-from-profiles", {})}><Plus size={14} /> 从已验证策略开盘</button><button className="secondaryButton" title="前向推进" onClick={() => action("/api/paper/run", {})}><RefreshCw size={14} /> 前向推进</button></span>} />
       {sessions.length ? (
         <DataTable columns={[
           { key: "symbol", label: "交易对" }, { key: "strategy", label: "策略", width: "1.4fr" }, { key: "progress", label: "前向交易" }, { key: "exp", label: "前向期望" }, { key: "dd", label: "最大回撤" }, { key: "status", label: "状态" }
@@ -832,7 +829,7 @@ function StrategyResearchCard({ data, action }) {
   const confLabel = { validated: "已验证", low: "低置信", none: "无合格策略" };
   return (
     <Card>
-      <SectionTitle icon={BrainCircuit} title="自适应策略研究（样本外验证）" action={<button className="secondaryButton" onClick={() => action("/api/strategy/research", {})}><Rocket size={14} /> 运行研究</button>} />
+      <SectionTitle icon={BrainCircuit} title="自适应策略研究（样本外验证）" action={<button className="secondaryButton" title="运行研究" onClick={() => action("/api/strategy/research", {})}><Rocket size={14} /> 运行研究</button>} />
       {profiles.length ? (
         <DataTable columns={[
           { key: "symbol", label: "交易对" }, { key: "strategy", label: "优选策略", width: "1.5fr" }, { key: "oos", label: "样本外期望" }, { key: "winrate", label: "样本外胜率" }, { key: "conf", label: "置信度" }, { key: "regime", label: "Regime" }
@@ -862,7 +859,7 @@ function BacktestCard({ data, action }) {
   const positive = latest && Number(latest.netReturnPct) >= 0;
   return (
     <Card>
-      <SectionTitle icon={LineChart} title="策略回测" action={<button className="secondaryButton" onClick={() => action("/api/backtest/run", { ...form, fastPeriod: Number(form.fastPeriod), slowPeriod: Number(form.slowPeriod), stopLossPct: Number(form.stopLossPct), takeProfitR: Number(form.takeProfitR) })}><Rocket size={14} /> 运行回测</button>} />
+      <SectionTitle icon={LineChart} title="策略回测" action={<button className="secondaryButton" title="运行回测" onClick={() => action("/api/backtest/run", { ...form, fastPeriod: Number(form.fastPeriod), slowPeriod: Number(form.slowPeriod), stopLossPct: Number(form.stopLossPct), takeProfitR: Number(form.takeProfitR) })}><Rocket size={14} /> 运行回测</button>} />
       <div className="dashboardToolbar">
         <div className="filterGroup">{["15m", "1h", "4h", "1d"].map((tf) => <button className={form.timeframe === tf ? "active" : ""} key={tf} onClick={() => setForm((current) => ({ ...current, timeframe: tf }))}>{tf}</button>)}</div>
         <span>SMA({form.fastPeriod}/{form.slowPeriod}) 金叉开多 · 止损 {form.stopLossPct}% · 止盈 {form.takeProfitR}R</span>

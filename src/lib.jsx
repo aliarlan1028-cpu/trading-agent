@@ -528,10 +528,16 @@ export function useApi() {
 
 export function PageHeader({ active }) {
   const copy = pageCopy[active] || pageCopy.agent;
+  const [showHelp, setShowHelp] = useState(false);
   return (
     <div className="pageHeader">
-      <h1>{copy.title}</h1>
-      <p>{copy.sub}</p>
+      <div className="pageHeaderTop">
+        <h1>{copy.title}</h1>
+        {copy.sub && (
+          <button className={`pageHelp ${showHelp ? "active" : ""}`} title="页面说明" aria-label="页面说明" aria-expanded={showHelp} onClick={() => setShowHelp((value) => !value)}>?</button>
+        )}
+      </div>
+      {showHelp && copy.sub && <p className="pageHelpText">{copy.sub}</p>}
     </div>
   );
 }
@@ -549,16 +555,9 @@ export function SectionTitle({ icon: Icon, title, action }) {
   );
 }
 
-export function InsightNote({ title = "提示", children, icon: Icon = Info, tone = "" }) {
-  return (
-    <div className={`insightNote ${tone}`} tabIndex={0} aria-label={`${title}：${children}`}>
-      <span className="insightIcon"><Icon size={15} /></span>
-      <div className="insightBubble">
-        <strong>{title}</strong>
-        <p>{children}</p>
-      </div>
-    </div>
-  );
+// 提示解读卡已按需求全站移除；保留空组件以兼容现有调用点。
+export function InsightNote() {
+  return null;
 }
 
 export function MetricCard({ icon: Icon, label, value, sub, tone = "", candles }) {

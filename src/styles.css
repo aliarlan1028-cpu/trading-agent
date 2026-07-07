@@ -379,6 +379,37 @@ h3 {
   padding: 0 8px 2px;
 }
 
+/* 标题后的"?"说明按钮：点开才显示页面说明，页头更干净 */
+.pageHeaderTop { display: flex; align-items: center; gap: var(--sp-2); }
+.pageHelp {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.pageHelp:hover { color: var(--accent-ink); background: var(--accent-weak); border-color: var(--accent); }
+.pageHelp.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.pageHeader .pageHelpText {
+  margin-top: -2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-1);
+  line-height: 1.5;
+}
+
 .pageHeader h1 {
   font-size: 18px;
   line-height: 1.2;
@@ -458,14 +489,18 @@ h3 {
   position: relative;
   width: fit-content;
   max-width: 100%;
-  border: 1px solid #eadfce;
-  border-radius: 8px;
-  display: inline-grid;
-  place-items: center;
-  padding: 3px;
-  color: #5f564b;
-  background: #fffaf4;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  cursor: help;
 }
+.insightNote:hover { border-color: var(--border-strong); }
+.insightLabel { font-size: var(--fs-1); font-weight: 600; color: var(--text-2); white-space: nowrap; }
 
 .insightIcon {
   width: 22px;
@@ -7064,6 +7099,16 @@ button.danger:disabled,
   gap: 6px;
 }
 
+/* 知识库：导入知识按钮放在卡片列表下方、大号显眼 */
+.knowledgeImportBtn {
+  width: 100%;
+  margin-top: var(--sp-3);
+  min-height: 46px;
+  font-size: var(--fs-3);
+  font-weight: 640;
+  gap: 8px;
+}
+
 /* 设置 → 任务调度：紧凑卡片 + 单行紧凑表格 */
 .settingsPage .eventsGrid,
 .settingsPage .eventsBottom { grid-template-columns: 1fr; gap: var(--sp-3); }
@@ -7071,7 +7116,7 @@ button.danger:disabled,
 .settingsPage .eventsBottom > .dashCard { padding: var(--sp-4); }
 .settingsPage .dataHead,
 .settingsPage .dataRow { min-height: 32px; padding: 6px var(--sp-3); font-size: var(--fs-1); gap: var(--sp-2); }
-.settingsPage .taskCard .healthGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.settingsPage .eventsBottom .healthGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .settingsPage .eventsBottom .healthGrid > div { padding: var(--sp-2) var(--sp-3); }
 
 /* 驾驶舱页头 + 子标签 */
@@ -7153,8 +7198,10 @@ button.danger:disabled,
 }
 
 .cpCard { padding: var(--sp-4); }
-.cpCard .sectionTitle { min-height: auto; margin-bottom: var(--sp-3); align-items: center; flex-wrap: nowrap; }
-.cpCard .sectionTitle > div { display: inline-flex; align-items: center; height: auto; min-height: 0; padding: 0; }
+.cpCard .sectionTitle { display: flex; min-height: auto; margin-bottom: var(--sp-3); align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: var(--sp-2); }
+.cpCard .sectionTitle > div:first-child { display: inline-flex; align-items: center; height: auto; min-height: 0; padding: 0; flex: 1 1 auto; min-width: 0; }
+.cpCard .sectionTitle > .iconButton,
+.cpCard .sectionTitle > .textButton { flex: none; }
 .cpCard .sectionIcon { width: 24px; height: 24px; flex: none; }
 .cpCard .healthGrid.tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .cpCard .healthGrid.tight > div { padding: var(--sp-2) var(--sp-3); }
@@ -7182,14 +7229,41 @@ button.danger:disabled,
 .iconButton {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
+  flex: none;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text-2);
 }
 .iconButton:hover { background: var(--surface-2); color: var(--accent-ink); border-color: var(--border-strong); }
+
+/* B：区块标题里的次级操作按钮统一成干净小圆图标按钮，固定在标题右侧，不掉到底部/空框角落。
+   用 font-size:0 收起文字标签（svg 图标保留自身尺寸），配合 title 悬停提示。 */
+.sectionTitle .secondaryButton,
+.sectionActions .secondaryButton {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  font-size: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  flex: none;
+}
+.sectionTitle .secondaryButton svg,
+.sectionActions .secondaryButton svg { margin: 0; }
+.sectionTitle .sectionActions,
+.sectionTitle > .sectionActions { display: inline-flex; gap: 6px; flex: none; }
+
+/* 移动端子页：标题一行不换行，操作按钮留在右侧、不塌成大空框 */
+.mSubContent .sectionTitle { flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+.mSubContent .sectionTitle > div:first-child { min-width: 0; flex: 1 1 auto; }
+.mSubContent .iconButton,
+.mSubContent .sectionTitle .secondaryButton,
+.mSubContent .sectionActions .secondaryButton { width: 34px; height: 34px; max-width: 34px; font-size: 0; }
 
 @media (max-width: 1200px) {
   .cockpitStrip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
