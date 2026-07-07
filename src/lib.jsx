@@ -527,6 +527,49 @@ export function useApi() {
     return () => clearInterval(interval);
   }, [token, apiBase]);
 
+  // 真·实时行情：SSE 逐笔推送，合并进 data.markets/activeMarket（节流 1s，避免过度重渲染）。
+  useEffect(() => {
+    let source;
+    let pending = {};
+    let timer = null;
+    try {
+      source = new EventSource(apiUrl("/api/stream", apiBase));
+    } catch {
+      return undefined;
+    }
+    const patch = (market, ups) => {
+      const u = ups[market.symbol];
+      if (!u) return market;
+      const next = { ...market };
+      if (u.price !== undefined) next.price = u.price;
+      if (u.changePct !== undefined) next.changePct = u.changePct;
+      if (u.fundingRate !== undefined) next.fundingRate = u.fundingRate;
+      if (u.openInterest !== undefined) next.openInterest = u.openInterest;
+      next.lastRealtimeAt = new Date().toISOString();
+      return next;
+    };
+    const flush = () => {
+      timer = null;
+      const ups = pending;
+      pending = {};
+      setData((prev) => {
+        if (!prev) return prev;
+        const markets = (prev.markets || []).map((m) => patch(m, ups));
+        const activeMarket = prev.activeMarket && ups[prev.activeMarket.symbol] ? patch(prev.activeMarket, ups) : prev.activeMarket;
+        return { ...prev, markets, activeMarket };
+      });
+    };
+    source.onmessage = (event) => {
+      try {
+        const u = JSON.parse(event.data);
+        if (!u || !u.symbol) return;
+        pending[u.symbol] = { ...pending[u.symbol], ...u };
+        if (!timer) timer = setTimeout(flush, 1000);
+      } catch { /* 忽略解析失败 */ }
+    };
+    return () => { if (source) source.close(); if (timer) clearTimeout(timer); };
+  }, [token, apiBase]);
+
   return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 

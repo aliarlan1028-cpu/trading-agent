@@ -17,6 +17,7 @@ import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
+import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus } from "./marketStream.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
@@ -124,6 +125,7 @@ ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上�
 
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
+startMarketStream(db); // 实时行情流（OKX 公有 WS）→ 内存更新 + SSE 推前端
 refreshAccounting(db);
 
 function persist(res, payload) {
@@ -506,6 +508,7 @@ app.get("/api/overview", (_req, res) => {
     realtimeConnections: db.realtimeConnections,
     marketRegime: db.marketRegime || null,
     realtimeStarted: realtimeStatus(db).started,
+    marketStream: marketStreamStatus(),
     pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
@@ -567,6 +570,21 @@ app.get("/api/market/token-profile", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: `币种画像失败：${error.message}`, ok: false });
   }
+});
+
+// 实时行情 SSE：把 OKX WS 逐笔更新推给前端（公有行情，无需鉴权）。
+app.get("/api/stream", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  res.write("retry: 3000\n\n");
+  const send = (update) => { try { res.write(`data: ${JSON.stringify(update)}\n\n`); } catch { /* noop */ } };
+  addStreamListener(send);
+  const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* noop */ } }, 25000);
+  req.on("close", () => { clearInterval(keepAlive); removeStreamListener(send); });
 });
 
 app.get("/api/markets", (_req, res) => res.json(db.markets));
