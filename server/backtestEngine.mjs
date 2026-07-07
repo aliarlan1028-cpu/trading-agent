@@ -77,8 +77,12 @@ export function simulate(candles, entrySignals, opts = {}) {
     if (position) {
       const hitStop = isShort ? Number(bar.high) >= position.stop : Number(bar.low) <= position.stop;
       const hitTp = isShort ? Number(bar.low) <= position.tp : Number(bar.high) >= position.tp;
-      if (hitStop && hitTp) closeTrade(position.stop, "stop_first_assumed", i);
-      else if (hitStop) closeTrade(position.stop, "stop", i);
+      if (hitStop && hitTp) {
+        // 同根 K 线两端都被触及：按"离开盘价更近的先成交"估计路径（比一律算止损更真实，且不乐观）。
+        const openPx = Number(bar.open);
+        const stopFirst = Math.abs(openPx - position.stop) <= Math.abs(openPx - position.tp);
+        closeTrade(stopFirst ? position.stop : position.tp, stopFirst ? "stop_first_est" : "tp_first_est", i);
+      } else if (hitStop) closeTrade(position.stop, "stop", i);
       else if (hitTp) closeTrade(position.tp, "take_profit", i);
     }
     if (!position && entrySignals[i] && i + 1 < candles.length) {
