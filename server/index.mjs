@@ -613,6 +613,14 @@ app.patch("/api/events/:id", requirePermission("write:event"), (req, res) => {
   persist(res, event);
 });
 
+app.delete("/api/events/:id", requirePermission("write:event"), (req, res) => {
+  const exists = (db.events || []).some((item) => item.id === req.params.id);
+  if (!exists) return res.status(404).json({ error: "Event not found" });
+  db.events = (db.events || []).filter((item) => item.id !== req.params.id);
+  appendAudit(db, "删除情报事件专题", req.params.id, req.user?.name || "Owner");
+  persist(res, { ok: true });
+});
+
 app.post("/api/events/:id/progress", requirePermission("write:event"), (req, res) => {
   const event = db.events.find((item) => item.id === req.params.id);
   if (!event) return res.status(404).json({ error: "Event not found" });
@@ -976,6 +984,14 @@ app.post("/api/backtest/run", requirePermission("write:review"), async (req, res
 });
 
 app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
+
+// 打开通知中心即把未读标为已读（清除未读徽章）
+app.post("/api/notifications/read", (_req, res) => {
+  let marked = 0;
+  for (const item of db.notifications || []) { if (!item.read) { item.read = true; marked++; } }
+  if (marked) saveDb(db);
+  res.json({ ok: true, marked });
+});
 app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
 app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
 app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {

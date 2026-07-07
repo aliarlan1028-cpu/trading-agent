@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
@@ -795,6 +795,10 @@ export function MobileApp({ api }) {
   const [panel, setPanel] = useState("");
   const [railOpen, setRailOpen] = useState(false);
   const [killConfirm, setKillConfirm] = useState(false);
+  // 打开「动态」（通知中心）即把未读标为已读
+  useEffect(() => {
+    if (tab === "feed" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
+  }, [tab]);
 
   function navigate(next) {
     if (next === "chat") { setTab("chat"); setSubPage(""); return; }

@@ -116,7 +116,7 @@ function AppTopbar({ data, setActive, notify, action }) {
         <button className="killButton" title="一键熔断：立即阻断所有新交易" onClick={() => setKillConfirm(true)}>
           <Zap size={15} /> 熔断
         </button>
-        <button className="bellButton" title="通知" onClick={() => { setActive("auditSystem"); notify(unread ? `有 ${unread} 条未读通知` : "暂无未读通知"); }}>
+        <button className="bellButton" title="通知" onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>

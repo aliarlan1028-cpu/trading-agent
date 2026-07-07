@@ -6551,17 +6551,31 @@ button.danger:disabled,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* 手机 Admin：导航做成 2×2 卡片、不横向滚动 */
 .mAdminContent .adminTabs {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow-x: visible;
+  padding-bottom: 0;
 }
 
 .mAdminContent .adminTabs button {
-  flex: 0 0 auto;
-  min-width: 132px;
+  flex: none;
+  min-width: 0;
+  min-height: 42px;
+  font-size: 12px;
+  font-weight: 700;
 }
+
+/* 手机 Admin：4 个指标卡一行、更小 */
+.mAdminContent .adminHeroMetrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.mAdminContent .adminHeroMetrics div { min-height: auto; padding: 8px 5px; gap: 2px; }
+.mAdminContent .adminHeroMetrics strong { font-size: 17px; }
+.mAdminContent .adminHeroMetrics span { font-size: 10px; }
 
 .mAdminContent .adminTwoColumn,
 .mAdminContent .adminTwoColumn.billing {
@@ -6591,6 +6605,17 @@ button.danger:disabled,
 .mChatContent .chatSessionBar {
   padding: 0 2px;
 }
+
+/* 手机聊天顶部 4 个按钮：字号小一点、绝不换行 */
+.mChatContent .chatViewSwitch button,
+.mChatContent .csSwitchBtn {
+  font-size: 12px;
+  padding: 0 10px;
+  min-height: 34px;
+  white-space: nowrap;
+}
+.mChatContent .chatViewSwitch button svg,
+.mChatContent .csSwitchBtn svg { flex: none; }
 
 .mChatContent .newChatButton {
   min-height: 38px;
@@ -7334,7 +7359,20 @@ button.danger:disabled,
 .intelCard.danger { border-left-color: var(--neg); }
 .intelCard.warning { border-left-color: var(--warn); }
 
-.intelCardHead { width: 100%; border: 0; background: transparent; display: grid; gap: 6px; text-align: left; cursor: pointer; }
+.intelCardTop { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.intelCardHead { flex: 1 1 auto; min-width: 0; border: 0; background: transparent; display: grid; gap: 6px; text-align: left; cursor: pointer; }
+.intelDelete {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+}
+.intelDelete:hover { color: var(--neg); background: var(--neg-weak); border-color: var(--neg); }
 .intelTitleRow { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .intelTitleRow b { font-size: var(--fs-3); font-weight: 640; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .intelHot { flex: none; font-size: var(--fs-1); font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
@@ -7352,7 +7390,10 @@ button.danger:disabled,
 .intelUpdate:last-child { border-bottom: 0; }
 .intelUpdate > time { font-size: var(--fs-1); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .intelUpdateBody { min-width: 0; }
-.intelUpdateBody b { display: block; font-size: var(--fs-2); font-weight: 500; color: var(--text); }
+.intelUpdateBody b,
+.intelUpdateBody a { display: block; font-size: var(--fs-2); font-weight: 500; color: var(--text); line-height: 1.4; word-break: break-word; }
+.intelUpdateBody a { text-decoration: none; }
+.intelUpdateBody a:hover { color: var(--accent-ink); text-decoration: underline; }
 .intelUpdateBody small { color: var(--text-3); font-size: var(--fs-1); }
 
 /* AI 交易员右栏（三段式：状态 / 闸门 / 时间线） */

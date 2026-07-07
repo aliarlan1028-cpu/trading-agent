@@ -529,6 +529,14 @@ function IntelCenter({ action }) {
     } catch {} finally { setBusy(false); }
   }
 
+  async function removeIntel(id, event) {
+    event.stopPropagation();
+    try {
+      await fetch(apiUrl(`/api/events/${id}`), { method: "DELETE", headers: authHeaders() });
+      setEvents((current) => current.filter((item) => item.id !== id));
+    } catch {}
+  }
+
   return (
     <div className="intelCenter">
       <div className="intelHead">
@@ -550,19 +558,22 @@ function IntelCenter({ action }) {
             const dirTone = /空/.test(ev.directionHint || "") ? "negative" : /多/.test(ev.directionHint || "") ? "positive" : "";
             return (
               <div className={`intelCard ${tone}`} key={ev.id}>
-                <button className="intelCardHead" onClick={() => setExpanded((state) => ({ ...state, [ev.id]: !state[ev.id] }))}>
-                  <div className="intelTitleRow">
-                    <span className="intelHot">🔥 {ev.hotScore}</span>
-                    <b>{ev.title}</b>
-                    <StatusBadge tone={tone}>{ev.impactLabel}</StatusBadge>
-                  </div>
-                  <div className="intelMeta">
-                    <span>{ev.updateCount || 1} 条报道</span>
-                    {ev.directionHint && <span className={`intelDir ${dirTone}`}>{ev.directionHint}</span>}
-                    {(ev.relatedSymbols || []).slice(0, 3).map((symbol) => <span key={symbol} className="intelSym">{symbol}</span>)}
-                    <ChevronDown size={14} className={open ? "intelChevron open" : "intelChevron"} />
-                  </div>
-                </button>
+                <div className="intelCardTop">
+                  <button className="intelCardHead" onClick={() => setExpanded((state) => ({ ...state, [ev.id]: !state[ev.id] }))}>
+                    <div className="intelTitleRow">
+                      <span className="intelHot">🔥 {ev.hotScore}</span>
+                      <b>{ev.title}</b>
+                      <StatusBadge tone={tone}>{ev.impactLabel}</StatusBadge>
+                    </div>
+                    <div className="intelMeta">
+                      <span>{ev.updateCount || 1} 条报道</span>
+                      {ev.directionHint && <span className={`intelDir ${dirTone}`}>{ev.directionHint}</span>}
+                      {(ev.relatedSymbols || []).slice(0, 3).map((symbol) => <span key={symbol} className="intelSym">{symbol}</span>)}
+                      <ChevronDown size={14} className={open ? "intelChevron open" : "intelChevron"} />
+                    </div>
+                  </button>
+                  <button className="intelDelete" title="删除该情报专题" onClick={(event) => removeIntel(ev.id, event)}><Trash2 size={15} /></button>
+                </div>
                 {ev.action && <p className="intelAssess">{ev.action}</p>}
                 {open && (
                   <div className="intelTimeline">
@@ -570,7 +581,9 @@ function IntelCenter({ action }) {
                       <div className="intelUpdate" key={index}>
                         <time>{formatDateTime(update.at, "—")}</time>
                         <div className="intelUpdateBody">
-                          <b>{update.title}</b>
+                          {update.link
+                            ? <a href={update.link} target="_blank" rel="noreferrer" title="打开原文">{update.title}</a>
+                            : <b>{update.title}</b>}
                           {update.source && <small>{update.source}</small>}
                         </div>
                       </div>

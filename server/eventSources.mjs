@@ -246,7 +246,7 @@ function upsertEventFromItem(db, source, item) {
   const { tags, symbols } = extractEntities(`${item.title} ${item.summary || ""}`);
   const impact = estimateImpact(item.title);
   const at = item.publishedAt || nowIso();
-  const update = { at, title: shortTitle(localized), source: source.name, link: item.link };
+  const update = { at, title: localized, source: source.name, link: item.link };
 
   const topicKey = tags.length ? topicKeyOf(tags) : "";
   const existing = topicKey ? findTopicEvent(db, tags, topicKey) : null;
