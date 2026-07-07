@@ -81,7 +81,7 @@ export function MarketAccountPage({ data, action, ui }) {
   ];
 
   return (
-    <div className="pageStack">
+    <div className="pageStack dashRefined">
       <PageHeader active="marketAccount" />
       <div className={`metricGrid ${configuredAccounts ? "five" : "three"}`}>
         {configuredAccounts ? (

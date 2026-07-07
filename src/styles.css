@@ -5,6 +5,52 @@
   background: #faf9f7;
   font-synthesis: none;
   text-rendering: geometricPrecision;
+
+  /* ==========================================================
+     Design tokens（暖色洗练）— 统一字阶/色板/间距/圆角/阴影
+     目前先在 .dashRefined（仪表盘样板）落地，确认后横展开。
+     ========================================================== */
+
+  /* 表面与描边 */
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --surface-2: #f8f1e9;      /* 暖色浅底（chip/内格）*/
+  --border: #e8e1d6;
+  --border-strong: #dcd3c4;
+
+  /* 文字（对比度已提升到 WCAG AA）*/
+  --text: #2a2620;           /* 主文字/数值 */
+  --text-2: #5c5648;         /* 次级文字 */
+  --text-3: #6b6455;         /* 弱化说明（对 --bg ≈ 5.3:1）*/
+
+  /* 语义色 + 各自的浅底 */
+  --accent: #e07a3f;         /* 品牌橙（作差点缀）*/
+  --accent-ink: #b45f2a;     /* 橙色文字（浅底上高对比）*/
+  --accent-weak: #f8f1e9;
+  --pos: #3f8f5b;  --pos-weak: #eaf3ec;
+  --warn: #c2803a; --warn-weak: #f9f0e2;
+  --neg: #c9553d;  --neg-weak: #f7ebe7;
+
+  /* 字阶（7 档，取代原先 22 种散号）*/
+  --fs-1: 12px;   /* caption/说明 */
+  --fs-2: 13px;   /* body-sm */
+  --fs-3: 14px;   /* body */
+  --fs-4: 16px;   /* 区块标题 */
+  --fs-5: 20px;   /* 页面标题 */
+  --fs-6: 28px;   /* 指标数值 */
+  --fs-7: 40px;   /* 英雄数值 */
+
+  /* 间距（4 基准）*/
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+
+  /* 圆角（3 档 + 胶囊）*/
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+
+  /* 阴影（3 档）*/
+  --sh-1: 0 1px 2px rgba(60, 45, 30, 0.05);
+  --sh-2: 0 6px 20px rgba(60, 45, 30, 0.07);
+  --sh-3: 0 14px 34px rgba(60, 45, 30, 0.09);
 }
 
 * {
@@ -6905,4 +6951,90 @@ button.danger:disabled,
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* ==============================================================
+   仪表盘视觉样板 v1（暖色洗练）— 仅作用于 .dashRefined
+   目的：用 design token 统一字阶/对比/圆角/阴影/留白，作为方向样板。
+   确认方向后，把同一套规则去掉 .dashRefined 前缀即可横展开。
+   ============================================================== */
+.dashRefined.pageStack { gap: var(--sp-5); }
+
+/* — 页头：主标题层级更清晰 — */
+.dashRefined .pageHeader { gap: var(--sp-1); }
+.dashRefined .pageHeader h1 { font-size: var(--fs-5); font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.dashRefined .pageHeader p { font-size: var(--fs-2); color: var(--text-2); }
+
+/* — 卡片：统一描边/圆角/阴影/内距 — */
+.dashRefined .dashCard {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  padding: var(--sp-5);
+}
+
+/* — 区块标题 — */
+.dashRefined .sectionTitle h2 { font-size: var(--fs-4); font-weight: 640; color: var(--text); }
+.dashRefined .sectionIcon { background: var(--accent-weak); color: var(--accent-ink); border-radius: var(--r-md); }
+
+/* — 指标卡：数值主导、标签克制、图标统一 — */
+.dashRefined .metricCard { padding: var(--sp-5); border-radius: var(--r-lg); box-shadow: var(--sh-1); border-color: var(--border); }
+.dashRefined .metricCard:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > span {
+  font-size: var(--fs-1); color: var(--text-3); font-weight: 500; letter-spacing: 0.02em;
+}
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong {
+  display: block; margin-top: var(--sp-1);
+  font-size: var(--fs-6); font-weight: 680; line-height: 1.12; color: var(--text);
+}
+/* 语义色须与上面同路径同等/更高详细度，否则会被上面的 color:var(--text) 覆盖 */
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.positive { color: var(--pos); }
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.warning { color: var(--warn); }
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.negative { color: var(--neg); }
+.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > small {
+  display: block; margin-top: var(--sp-1); font-size: var(--fs-1); color: var(--text-3);
+}
+.dashRefined .metricIcon {
+  width: 42px; height: 42px; border-radius: var(--r-md);
+  background: var(--accent-weak); color: var(--accent);
+}
+
+/* — 语义色（暖调、克制点缀）— */
+.dashRefined .metricCard strong.positive, .dashRefined .qualityGrid .positive, .dashRefined .microGrid .positive { color: var(--pos); }
+.dashRefined .metricCard strong.warning, .dashRefined .warning { color: var(--warn); }
+.dashRefined .metricCard strong.negative, .dashRefined .microGrid .negative, .dashRefined .qualityGrid .negative { color: var(--neg); }
+
+/* — 账户健康 / 微观结构 内格：更强对比与统一底 — */
+.dashRefined .healthGrid > div,
+.dashRefined .microGrid > div {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
+}
+.dashRefined .healthGrid span,
+.dashRefined .microGrid span { color: var(--text-3); font-size: var(--fs-1); }
+.dashRefined .healthGrid strong,
+.dashRefined .microGrid strong { color: var(--text); font-size: var(--fs-3); font-weight: 620; }
+
+/* — 收益质量 / 风险承压 行 — */
+.dashRefined .riskLine { border-bottom-color: var(--border); }
+.dashRefined .riskLine span { color: var(--text-2); }
+.dashRefined .riskLine b { color: var(--text); font-weight: 600; }
+
+/* — 弱化文字统一到高对比 muted — */
+.dashRefined .muted, .dashRefined .dashCard small, .dashRefined .centerMuted { color: var(--text-3); }
+
+/* — 工具条 / 分段筛选 — */
+.dashRefined .dashboardToolbar > span { color: var(--text-3); font-size: var(--fs-2); }
+
+/* — 接入 CTA：更醒目但克制 — */
+.dashRefined .connectExchangeCta {
+  background: linear-gradient(180deg, var(--accent-weak), var(--surface));
+  border-color: var(--border-strong);
+}
+.dashRefined .connectExchangeCta strong { color: var(--accent-ink); }
+
+/* — 空状态：从"半成品"变成有意图的提示 — */
+.dashRefined .emptyPanel {
+  color: var(--text-3); background: var(--surface-2);
+  border: 1px dashed var(--border-strong); border-radius: var(--r-md);
 }
