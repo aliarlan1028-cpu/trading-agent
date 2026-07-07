@@ -99,7 +99,8 @@ registerTaskHandler("okx_readonly_sync", async (database) => {
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database) => {
   const mandate = (database.mandates || []).find((m) => ["active", "running"].includes(m.status));
-  const symbols = (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT"]).slice(0, 3);
+  // 始终刷 BTC/ETH（常作默认展示的 activeMarket）+ 授权交易对，避免卡片显示的币未被刷新。
+  const symbols = [...new Set(["BTC/USDT", "ETH/USDT", ...(mandate?.allowedSymbols || [])])].slice(0, 4);
   let synced = 0;
   for (const symbol of symbols) {
     try { await syncMicrostructure(database, "OKX", symbol); synced += 1; } catch { /* 单交易对失败不阻断 */ }
