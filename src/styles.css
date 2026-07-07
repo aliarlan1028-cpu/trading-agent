@@ -7666,6 +7666,37 @@ button.danger:disabled,
 
 /* AI 交易员待确认操作卡 */
 .pendingActions { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+/* 待确认操作坞：常驻在输入框正上方，聊天再长也一眼可见 */
+.pendingActionsDock {
+  flex: none;
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  animation: paDockIn 0.2s ease;
+}
+@keyframes paDockIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* 可点击的对话建议项（问句自动变按钮，点一下直接发送） */
+.chatSuggestBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.chatSuggestBtn:hover { border-color: var(--accent); background: var(--accent-weak); color: var(--accent-ink); }
+.chatSuggestBtn > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chatSuggestBtn > svg { flex: none; opacity: 0.5; }
+.chatSuggestBtn:hover > svg { opacity: 1; }
+.chatSuggestBtn.step > b { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-weak); color: var(--accent-ink); font-size: 11px; }
 .pendingActionCard {
   display: flex;
   align-items: center;

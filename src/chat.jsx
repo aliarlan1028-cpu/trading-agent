@@ -143,8 +143,10 @@ function parseRichText(text = "") {
   return blocks.length ? blocks : [{ type: "paragraph", text }];
 }
 
-function RichMessage({ text = "", compact = false }) {
+function RichMessage({ text = "", compact = false, onSuggest = null }) {
   const blocks = parseRichText(text);
+  const isSuggestion = (t) => /[?？]\s*$/.test(String(t || "").trim());
+  const cleanSuggest = (t) => String(t || "").replace(/\*\*/g, "").trim();
   return (
     <div className={compact ? "richMessage compact" : "richMessage"}>
       {blocks.map((block, index) => {
@@ -168,10 +170,14 @@ function RichMessage({ text = "", compact = false }) {
           return (
             <div className="richBulletList" key={index}>
               {block.items.map((item, itemIndex) => (
-                <div className={`richBullet ${item.tone}`} key={itemIndex}>
-                  <i>{item.tone === "danger" ? <AlertTriangle size={12} /> : item.tone === "ok" ? <CheckCircle2 size={12} /> : <span />}</i>
-                  <span>{renderInline(item.text)}</span>
-                </div>
+                onSuggest && isSuggestion(item.text)
+                  ? <button type="button" className="chatSuggestBtn" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
+                  : (
+                    <div className={`richBullet ${item.tone}`} key={itemIndex}>
+                      <i>{item.tone === "danger" ? <AlertTriangle size={12} /> : item.tone === "ok" ? <CheckCircle2 size={12} /> : <span />}</i>
+                      <span>{renderInline(item.text)}</span>
+                    </div>
+                  )
               ))}
             </div>
           );
@@ -180,10 +186,14 @@ function RichMessage({ text = "", compact = false }) {
           return (
             <div className="richSteps" key={index}>
               {block.items.map((item, itemIndex) => (
-                <div className="richStep" key={itemIndex}>
-                  <b>{item.number}</b>
-                  <span>{renderInline(item.text)}</span>
-                </div>
+                onSuggest && isSuggestion(item.text)
+                  ? <button type="button" className="chatSuggestBtn step" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><b>{item.number}</b><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
+                  : (
+                    <div className="richStep" key={itemIndex}>
+                      <b>{item.number}</b>
+                      <span>{renderInline(item.text)}</span>
+                    </div>
+                  )
               ))}
             </div>
           );
@@ -463,29 +473,12 @@ export function ChatPage({ data, action, ui }) {
       {view === "intel" && <IntelCenter action={action} />}
       {view === "chat" && (<>
       <div className="chatScroll" ref={scrollRef}>
-        {(data.pendingActions || []).length > 0 && (
-          <div className="pendingActions">
-            {(data.pendingActions || []).map((pa) => (
-              <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
-                <div className="paInfo">
-                  <span className="paBadge">待确认操作</span>
-                  <b>{pa.title}</b>
-                  <small>{pa.detail}</small>
-                </div>
-                <div className="paActions">
-                  <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
-                  <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认执行</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
         {messages.map((message) => (
           <div className={`chatMessage ${message.role}`} key={message.id}>
             {message.role === "agent" && <div className="botAvatar"><BrainCircuit size={16} /></div>}
             <div className="chatBody">
-              <div className="chatContent"><RichMessage text={message.content} compact={message.role === "user"} /></div>
+              <div className="chatContent"><RichMessage text={message.content} compact={message.role === "user"} onSuggest={message.role === "agent" && !pending ? (t) => send(t) : null} /></div>
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
                 <PlanCard
@@ -509,6 +502,23 @@ export function ChatPage({ data, action, ui }) {
           </div>
         )}
       </div>
+      {(data.pendingActions || []).length > 0 && (
+        <div className="pendingActionsDock">
+          {(data.pendingActions || []).map((pa) => (
+            <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
+              <div className="paInfo">
+                <span className="paBadge">待确认操作</span>
+                <b>{pa.title}</b>
+                <small>{pa.detail}</small>
+              </div>
+              <div className="paActions">
+                <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
+                <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认执行</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="chatInputBar">
         <textarea
           value={input}
