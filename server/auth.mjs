@@ -71,7 +71,7 @@ export function installAuth(app, db) {
 	      req.user = db.users?.[0] || db.user;
 	      return next();
 	    }
-	    if (req.path === "/api/health" || req.path === "/api/public/bootstrap" || req.path === "/api/auth/login" || req.path === "/api/auth/register" || req.path === "/api/payments/trc20/webhook") return next();
+	    if (req.path === "/api/health" || req.path === "/api/public/bootstrap" || req.path === "/api/auth/login" || req.path === "/api/auth/register" || req.path === "/api/payments/trc20/webhook" || req.path === "/api/stream") return next();
 	    if (!process.env.ADMIN_PASSWORD) {
 	      if (!warnedNoPassword) {
 	        console.warn("[auth] ADMIN_PASSWORD 未配置，受保护 API 已锁定；设置 ADMIN_PASSWORD 或显式 AUTH_REQUIRED=false 仅用于本地开发。");
