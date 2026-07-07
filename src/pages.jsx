@@ -119,9 +119,46 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     { label: "对账", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "positive" : "warning", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
   ];
 
+  // 系统结论（顶部大卡）：由风控/熔断/持仓/阻断次数派生。
+  const sys = data.system || {};
+  const conclusion = sys.killSwitch ? { label: "已熔断", tone: "danger" }
+    : sys.autonomyEnabled === false ? { label: "人工暂停", tone: "warning" }
+      : blockedChecks > 0 ? { label: "降级运行（风险可控）", tone: "warning" }
+        : configured ? { label: "正常运行", tone: "positive" } : { label: "待接入交易所", tone: "warning" };
+  const riskLabel = /高|中|低/.test(data.portfolio?.riskLabel || "") ? data.portfolio.riskLabel : (sys.killSwitch ? "高风险" : blockedChecks > 0 ? "中风险" : "低风险");
+  const riskTone = riskLabel.includes("高") ? "danger" : riskLabel.includes("中") ? "warning" : "ok";
+  const conclusionReasons = [
+    configured ? `今日剩余亏损预算 ${sys.remainingDailyLossUsdt !== null && sys.remainingDailyLossUsdt !== undefined ? `${displayMoney(sys.remainingDailyLossUsdt)} USDT` : "未授权"}` : "尚未连接交易所，当前为占位状态",
+    (data.positions || []).length ? `${(data.positions || []).length} 个持仓，关注波动与杠杆` : "当前无持仓，账户承压较低",
+    blockedChecks ? `近期风控阻断 ${blockedChecks} 次，已自动降级` : "近期风控检查全部通过"
+  ];
+
   return (
     <div className="pageStack cockpitOverview">
       {!embedded && <PageHeader active="marketAccount" />}
+
+      <Card className="cpConclusion">
+        <div className="cpcMain">
+          <div className={`cpcIcon ${conclusion.tone}`}><Gauge size={24} /></div>
+          <div>
+            <div className="cpcLabel">系统结论</div>
+            <div className={`cpcStatus ${conclusion.tone}`}>{conclusion.label}</div>
+            <div className="cpcSub">当前风险等级：<StatusBadge tone={riskTone}>{riskLabel}</StatusBadge></div>
+            <div className="cpcTime">结论时间：{formatDateTime(latestSnapshot?.createdAt, "实时")}（每 2 分钟更新）</div>
+          </div>
+        </div>
+        <div className="cpcCol">
+          <b>原因</b>
+          <ul>{conclusionReasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+        </div>
+        <div className="cpcCol">
+          <b>建议下一步动作</b>
+          <ol>{actionItems.slice(0, 3).map((a, i) => <li key={i}><span className="cpcNum">{i + 1}</span>{a}</li>)}</ol>
+        </div>
+        <div className="cpcAction">
+          <button className="secondaryButton" onClick={() => ui.setActive("review")}>查看复盘结论 <ChevronRight size={14} /></button>
+        </div>
+      </Card>
 
       <div className="cockpitStripRow">
         <div className="cockpitStrip">

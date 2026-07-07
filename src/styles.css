@@ -7405,6 +7405,36 @@ button.danger:disabled,
 .cockpitOverview { gap: var(--sp-3); }
 
 /* 顶部关键指标带：一行密排，分隔线切分 */
+/* 驾驶舱：系统结论大卡（原型对齐） */
+.cpConclusion {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.3fr) 1fr 1fr auto;
+  gap: var(--sp-5);
+  align-items: start;
+  padding: 22px 26px;
+}
+.cpcMain { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
+.cpcIcon { flex: none; width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: var(--pos-weak); color: var(--pos); }
+.cpcIcon.warning { background: var(--warn-weak); color: var(--warn); }
+.cpcIcon.danger { background: var(--neg-weak); color: var(--neg); }
+.cpcLabel { font-size: 13px; color: var(--text-3); font-weight: 700; }
+.cpcStatus { font-size: 22px; font-weight: 900; margin: 6px 0; color: var(--accent, #c2803a); }
+.cpcStatus.positive { color: var(--pos); }
+.cpcStatus.danger { color: var(--neg); }
+.cpcSub { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.cpcTime { font-size: 12px; color: var(--text-3); margin-top: 12px; }
+.cpConclusion .cpcCol { border-left: 1px solid var(--border); padding-left: var(--sp-4); }
+.cpcCol > b { font-size: 13.5px; }
+.cpcCol ul, .cpcCol ol { list-style: none; padding: 0; margin: 10px 0 0; }
+.cpcCol li { display: flex; gap: 8px; margin: 9px 0; font-size: 13px; color: var(--text-2); line-height: 1.45; }
+.cpcCol ul li::before { content: "•"; color: var(--text-3); }
+.cpcNum { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 7px; background: var(--accent-weak); color: var(--accent-ink); font-size: 11px; font-weight: 800; }
+.cpcAction { align-self: center; }
+@media (max-width: 1100px) {
+  .cpConclusion { grid-template-columns: 1fr 1fr; }
+  .cpConclusion .cpcCol { border-left: 0; padding-left: 0; }
+}
+
 .cockpitStripRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; }
 .cockpitStrip {
   display: grid;
