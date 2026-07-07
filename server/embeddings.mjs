@@ -13,7 +13,8 @@ export function embeddingProvider() {
     return { name: "openai", model: process.env.EMBEDDING_MODEL || "text-embedding-3-small" };
   }
   if ((!override || override === "gemini") && process.env.GEMINI_API_KEY) {
-    return { name: "gemini", model: process.env.EMBEDDING_MODEL || "text-embedding-004" };
+    // text-embedding-004 已被 Google 弃用，改用当前 GA 的 gemini-embedding-001
+    return { name: "gemini", model: process.env.EMBEDDING_MODEL || "gemini-embedding-001" };
   }
   return null;
 }
