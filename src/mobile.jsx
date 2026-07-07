@@ -235,6 +235,11 @@ function MobileHome({ data, action, ui, onOpenRail }) {
   const orders = (data.orders || data.executionOrders || []).filter((order) => !["closed", "canceled", "cancelled", "filled_closed"].includes(String(order.status || "").toLowerCase()));
   const budget = data.system?.remainingDailyLossUsdt;
   const agentStatus = data.agentStatus || {};
+  const system = data.system || {};
+  const riskWall = agentStatus.riskWall || {};
+  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
+  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
+  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
   const displayGoal = cleanAgentText(agentStatus.currentGoal, "观察模式巡检");
   const displayStateLabel = isConfigNoise({ title: agentStatus.currentGoal, status: agentStatus.state })
     ? "观察中"
@@ -289,6 +294,13 @@ function MobileHome({ data, action, ui, onOpenRail }) {
         </header>
         <strong>{displayGoal}</strong>
       </section>
+
+      <div className="mAgentDock">
+        <span className={`mGateChip ${gateTone}`}><Shield size={13} /> {gateLabel}</span>
+        <button className="mDockBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}>
+          {system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}
+        </button>
+      </div>
 
     </div>
   );

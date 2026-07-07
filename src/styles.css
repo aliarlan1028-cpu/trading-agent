@@ -4243,7 +4243,7 @@ button.danger:disabled,
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-1) 0;
+  padding: var(--sp-3) var(--sp-1) 0;
 }
 
 /* 页头右侧：AI 交易员总控（能否交易 + 自主推进开关 + 解除熔断） */
@@ -5961,6 +5961,37 @@ button.danger:disabled,
   background: #f7f4ee;
 }
 
+/* ---- 自适应护栏：任何画面/真实数据都不横向滑动 ---- */
+/* 内层滚动容器一律裁掉横向溢出（竖向照常滚动） */
+.mHome,
+.mFeed,
+.mChatContent,
+.mAdminContent,
+.mDetailBody,
+.mShell > .content {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+/* 媒体/预格式/表格不撑破视口；代码与宽表在自身内部滚动 */
+.mShell img,
+.mShell canvas,
+.mShell video {
+  max-width: 100%;
+  height: auto;
+}
+.mShell pre,
+.mShell table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+/* 长串（地址/大数/URL）强制断行，避免整行撑宽 */
+.mChatContent .chatContent,
+.mFeedRow,
+.mHome strong {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .mHeader {
   flex: none;
   z-index: 30;
@@ -6207,6 +6238,49 @@ button.danger:disabled,
 .mQuickGrid.quad button { padding: 9px 8px; }
 .mQuickGrid button.alert { border-color: #efc8bd; background: var(--neg-weak); }
 .mQuickGrid button.alert strong { color: var(--neg); }
+
+/* 总览悬浮总控：能否交易 + 自主推进开关（仅总览渲染，浮于底部 Tab 栏之上） */
+.mAgentDock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(78px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom)));
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 7px 8px 7px 12px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #e7e0d5;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(60, 45, 25, 0.16);
+}
+.mGateChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.mGateChip.ok { color: var(--pos); }
+.mGateChip.warning { color: var(--warn); }
+.mGateChip.danger { color: var(--neg); }
+.mDockBtn {
+  flex: none;
+  white-space: nowrap;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* 手机端对话不再显示总控（已挤竖，改到总览悬浮） */
+.mChatContent .chatAgentControls { display: none; }
 
 .mQuickGrid span {
   font-size: 10.5px;
