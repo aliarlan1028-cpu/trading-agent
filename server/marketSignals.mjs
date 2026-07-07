@@ -12,7 +12,11 @@ import { toOkxSymbol } from "./exchangeConnector.mjs";
 const COINGECKO = "https://api.coingecko.com/api/v3";
 const FNG = "https://api.alternative.me/fng/?limit=1";
 const OKX_BASE = "https://www.okx.com";
+const BINANCE_FUT = "https://fapi.binance.com";
 const RUBIK = `${OKX_BASE}/api/v5/rubik/stat/contracts`;
+
+// 永续合约清单缓存（1 小时）——合约上下架不频繁，避免每次打开面板都拉。
+let instrumentsCache = { at: 0, list: [] };
 
 function timer(ms = 8000) {
   const controller = new AbortController();
@@ -158,6 +162,55 @@ function summarizeLiquidations(payload) {
   if (!total) return null;
   const dominantSide = longLiqCount === shortLiqCount ? "balanced" : longLiqCount > shortLiqCount ? "long" : "short";
   return { longLiqCount, shortLiqCount, total, dominantSide, latestTs };
+}
+
+// ---------------------------------------------------------------------------
+// 全部 USDT 本位永续合约清单（OKX + Binance）——供授权白名单多选器。
+// OKX 服务器可用；Binance 可能地区屏蔽，尽力合并。带 1 小时缓存。
+// 返回 [{ symbol:"BTC/USDT", exchanges:["BINANCE","OKX"] }, ...]，按 symbol 排序。
+// ---------------------------------------------------------------------------
+export async function fetchPerpetualInstruments() {
+  if (instrumentsCache.list.length && Date.now() - instrumentsCache.at < 3600_000) return instrumentsCache.list;
+  const map = new Map(); // symbol -> Set(exchange)
+  const add = (symbol, exchange) => {
+    if (!symbol) return;
+    if (!map.has(symbol)) map.set(symbol, new Set());
+    map.get(symbol).add(exchange);
+  };
+
+  const okx = timer(10000);
+  try {
+    const res = await getJson(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP`, okx.signal);
+    for (const it of res?.data || []) {
+      if (it.settleCcy === "USDT" && String(it.instId).endsWith("-USDT-SWAP") && it.state === "live") {
+        add(String(it.instId).replace("-SWAP", "").replace("-", "/"), "OKX");
+      }
+    }
+  } catch {
+    /* OKX 不可用则跳过 */
+  } finally {
+    okx.cancel();
+  }
+
+  const bn = timer(8000);
+  try {
+    const res = await getJson(`${BINANCE_FUT}/fapi/v1/exchangeInfo`, bn.signal);
+    for (const s of res?.symbols || []) {
+      if (s.contractType === "PERPETUAL" && s.quoteAsset === "USDT" && s.status === "TRADING") {
+        add(`${s.baseAsset}/USDT`, "BINANCE");
+      }
+    }
+  } catch {
+    /* Binance 屏蔽/失败则仅 OKX */
+  } finally {
+    bn.cancel();
+  }
+
+  const list = [...map.entries()]
+    .map(([symbol, exchanges]) => ({ symbol, exchanges: [...exchanges].sort() }))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  if (list.length) instrumentsCache = { at: Date.now(), list };
+  return list.length ? list : instrumentsCache.list;
 }
 
 // 组合快照：供巡检/UI 一次取全（大盘 + 指定交易对聪明钱）。

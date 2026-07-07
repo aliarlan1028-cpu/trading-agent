@@ -15,7 +15,7 @@ import { hashPassword, installAuth, invalidateSessions, requirePermission, verif
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
-import { fetchMarketRegime } from "./marketSignals.mjs";
+import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
@@ -525,6 +525,15 @@ app.get("/api/market/regime", async (_req, res) => {
     persist(res, regime);
   } catch (error) {
     res.status(500).json({ error: `全局大盘/聪明钱同步失败：${error.message}` });
+  }
+});
+
+app.get("/api/market/instruments", async (_req, res) => {
+  try {
+    const instruments = await fetchPerpetualInstruments();
+    res.json({ instruments, count: instruments.length });
+  } catch (error) {
+    res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
   }
 });
 

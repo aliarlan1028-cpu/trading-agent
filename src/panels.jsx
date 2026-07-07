@@ -40,7 +40,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote } from "./lib.jsx";
+import { pageCopy, apiUrl, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote } from "./lib.jsx";
 
 export function ConfigPanel({ panel, data, action, ui }) {
   const titles = {
@@ -596,12 +596,70 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   );
 }
 
+// 交易对白名单多选器：从 OKX/Binance 全部 USDT 永续合约里搜索多选。
+function SymbolMultiSelect({ value = [], onChange }) {
+  const [all, setAll] = useState([]);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const boxRef = useRef(null);
+  useEffect(() => {
+    let alive = true;
+    const token = localStorage.getItem("agent_token") || "";
+    fetch(apiUrl("/api/market/instruments"), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : { instruments: [] }))
+      .then((j) => { if (alive) setAll(j.instruments || []); })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    function onDocClick(event) { if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const selected = value || [];
+  const filtered = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    return all.filter((item) => !selected.includes(item.symbol) && (!q || item.symbol.includes(q))).slice(0, 60);
+  }, [all, query, selected]);
+  function add(sym) { onChange([...selected, sym]); setQuery(""); }
+  function remove(sym) { onChange(selected.filter((s) => s !== sym)); }
+  return (
+    <div className="symbolSelect" ref={boxRef}>
+      <div className="symbolChips">
+        {selected.length
+          ? selected.map((s) => <span key={s} className="symbolChip">{s}<button type="button" title="移除" onClick={() => remove(s)}>×</button></span>)
+          : <span className="symbolChipsEmpty">未选择任何交易对</span>}
+      </div>
+      <input
+        className="symbolSearch"
+        value={query}
+        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={loading ? "加载永续合约列表…" : `搜索代币，从 ${all.length} 个永续合约中多选`}
+      />
+      {open && !loading && (
+        <div className="symbolDropdown">
+          {filtered.length
+            ? filtered.map((item) => (
+              <button type="button" key={item.symbol} className="symbolOption" onClick={() => add(item.symbol)}>
+                <span>{item.symbol}</span><small>{(item.exchanges || []).join(" · ")}</small>
+              </button>
+            ))
+            : <div className="symbolNoMatch">{query ? "无匹配合约" : "开始输入以搜索"}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MandatePanel({ data, action }) {
   const mandate = data.mandates?.[0] || {};
   const [form, setForm] = useState({
     name: mandate.name || "主账户授权委托",
     exchange: mandate.exchanges?.[0] || "BINANCE",
-    allowedSymbols: safeList(mandate.allowedSymbols, "BTC/USDT, ETH/USDT"),
+    allowedSymbols: mandate.allowedSymbols?.length ? mandate.allowedSymbols.map((s) => String(s).toUpperCase()) : ["BTC/USDT", "ETH/USDT"],
     maxLeverage: mandate.max_leverage || 1,
     singleRisk: mandate.maxSingleTradeRiskPct || 0.3,
     dailyLoss: mandate.maxDailyLossPct || 1,
@@ -612,7 +670,7 @@ export function MandatePanel({ data, action }) {
   }
   async function submit(event) {
     event.preventDefault();
-    const symbols = asArray(form.allowedSymbols).map((item) => item.toUpperCase());
+    const symbols = (Array.isArray(form.allowedSymbols) ? form.allowedSymbols : asArray(form.allowedSymbols)).map((item) => String(item).toUpperCase());
     const maxLeverage = Number(form.maxLeverage || 1);
     const body = {
       name: form.name,
@@ -635,7 +693,7 @@ export function MandatePanel({ data, action }) {
     <form className="panelForm" onSubmit={submit}>
       <label>名称<input value={form.name} onChange={(event) => update("name", event.target.value)} /></label>
       <label>交易所<select value={form.exchange} onChange={(event) => update("exchange", event.target.value)}><option>BINANCE</option><option>OKX</option></select></label>
-      <label>交易对白名单<input value={form.allowedSymbols} onChange={(event) => update("allowedSymbols", event.target.value)} placeholder="BTC/USDT, ETH/USDT" /></label>
+      <label className="symbolLabel">交易对白名单<SymbolMultiSelect value={form.allowedSymbols} onChange={(next) => update("allowedSymbols", next)} /></label>
       <div className="formGrid">
         <label>最大杠杆<input type="number" min="1" value={form.maxLeverage} onChange={(event) => update("maxLeverage", event.target.value)} /></label>
         <label>单笔风险 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /></label>

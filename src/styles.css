@@ -3272,6 +3272,39 @@ h3 {
   resize: vertical;
 }
 
+/* 交易对白名单多选器 */
+.symbolSelect { position: relative; display: grid; gap: 8px; }
+.symbolChips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 4px; }
+.symbolChip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px; font-weight: 700;
+  background: var(--accent-weak, #f6ede1); color: var(--accent, #c2803a);
+  border: 1px solid #ecd9c2; border-radius: 999px;
+}
+.symbolChip button {
+  width: 16px; height: 16px; padding: 0; line-height: 1;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: rgba(0,0,0,0.06); color: inherit; font-size: 13px; cursor: pointer;
+}
+.symbolChip button:hover { background: var(--neg, #c9553d); color: #fff; }
+.symbolChipsEmpty { font-size: 12px; color: #9a9184; }
+.symbolDropdown {
+  position: absolute; z-index: 20; top: 100%; left: 0; right: 0; margin-top: 4px;
+  max-height: 240px; overflow-y: auto;
+  background: #fff; border: 1px solid #e2dac9; border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(60,45,25,0.14);
+}
+.symbolOption {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 9px 12px; border: 0; border-bottom: 1px solid #f3ede2;
+  background: transparent; text-align: left; cursor: pointer; font-weight: 650;
+}
+.symbolOption:hover { background: #faf5ec; }
+.symbolOption small { color: #9a9184; font-weight: 600; font-size: 11px; }
+.symbolNoMatch { padding: 12px; font-size: 12px; color: #9a9184; }
+
 .panelForm .largeTextarea {
   min-height: 180px;
 }
