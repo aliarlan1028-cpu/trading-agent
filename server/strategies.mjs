@@ -71,6 +71,40 @@ function grid(spec) {
   return combos;
 }
 
+function trueRange(candles, i) {
+  const h = Number(candles[i].high);
+  const l = Number(candles[i].low);
+  if (i === 0) return h - l;
+  const pc = Number(candles[i - 1].close);
+  return Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+}
+
+// ATR（Wilder 平滑），前 period 根返回 null。
+function atrSeries(candles, period) {
+  const tr = candles.map((_, i) => trueRange(candles, i));
+  const out = new Array(candles.length).fill(null);
+  let atr = null;
+  for (let i = 0; i < candles.length; i += 1) {
+    if (i < period - 1) continue;
+    if (i === period - 1) {
+      let sum = 0;
+      for (let j = 0; j < period; j += 1) sum += tr[j];
+      atr = sum / period;
+    } else {
+      atr = (atr * (period - 1) + tr[i]) / period;
+    }
+    out[i] = atr;
+  }
+  return out;
+}
+
+function volSma(volumes, period, index) {
+  if (index + 1 < period) return null;
+  let sum = 0;
+  for (let i = index - period + 1; i <= index; i += 1) sum += volumes[i];
+  return sum / period;
+}
+
 export const STRATEGIES = {
   trend: {
     id: "trend",
@@ -168,6 +202,191 @@ export const STRATEGIES = {
         const lowerPrev = sumPrev / period - k * stdPrev;
         const lowerNow = sumNow / period - k * stdNow;
         return closes[i - 1] < lowerPrev && closes[i] >= lowerNow;
+      });
+    }
+  },
+
+  // ---- 做空族 ----
+  death_cross: {
+    id: "death_cross",
+    label: "死叉做空（均线下穿）",
+    family: "trend",
+    direction: "short",
+    defaultParams: { fast: 10, slow: 30 },
+    paramGrid: grid({ fast: [8, 10, 20], slow: [30, 50, 100] }).filter((p) => p.fast < p.slow),
+    signals(candles, params = {}) {
+      const fast = Math.max(2, Number(params.fast || 10));
+      const slow = Math.max(fast + 1, Number(params.slow || 30));
+      const closes = candles.map((c) => Number(c.close));
+      return candles.map((_, i) => {
+        if (i < slow) return false;
+        const fPrev = sma(closes, fast, i - 1);
+        const sPrev = sma(closes, slow, i - 1);
+        const fNow = sma(closes, fast, i);
+        const sNow = sma(closes, slow, i);
+        return fPrev !== null && sPrev !== null && fPrev >= sPrev && fNow < sNow;
+      });
+    }
+  },
+  rsi_short: {
+    id: "rsi_short",
+    label: "RSI 超买回落（做空）",
+    family: "meanrev",
+    direction: "short",
+    defaultParams: { period: 14, overbought: 70 },
+    paramGrid: grid({ period: [14], overbought: [65, 70, 75] }),
+    signals(candles, params = {}) {
+      const period = Math.max(2, Number(params.period || 14));
+      const overbought = Number(params.overbought || 70);
+      const closes = candles.map((c) => Number(c.close));
+      const rsi = rsiSeries(closes, period);
+      return candles.map((_, i) => {
+        if (i < period + 1 || rsi[i] === null || rsi[i - 1] === null) return false;
+        return rsi[i - 1] > overbought && rsi[i] <= overbought;
+      });
+    }
+  },
+  breakdown: {
+    id: "breakdown",
+    label: "唐奇安下破（做空）",
+    family: "trend",
+    direction: "short",
+    defaultParams: { lookback: 20 },
+    paramGrid: grid({ lookback: [20, 40, 55] }),
+    signals(candles, params = {}) {
+      const lookback = Math.max(5, Number(params.lookback || 20));
+      return candles.map((candle, i) => {
+        if (i < lookback) return false;
+        let priorLow = Infinity;
+        for (let j = i - lookback; j < i; j += 1) priorLow = Math.min(priorLow, Number(candles[j].low));
+        return Number(candle.close) < priorLow;
+      });
+    }
+  },
+
+  // ---- 高级趋势 / 突破 ----
+  supertrend: {
+    id: "supertrend",
+    label: "Supertrend（ATR 趋势翻多）",
+    family: "trend",
+    direction: "long",
+    defaultParams: { period: 10, mult: 3 },
+    paramGrid: grid({ period: [10, 14], mult: [2, 3] }),
+    signals(candles, params = {}) {
+      const period = Math.max(2, Number(params.period || 10));
+      const mult = Number(params.mult || 3);
+      const atr = atrSeries(candles, period);
+      const out = new Array(candles.length).fill(false);
+      let finalUpper = null;
+      let finalLower = null;
+      let trend = 1;
+      for (let i = 1; i < candles.length; i += 1) {
+        if (atr[i] === null) continue;
+        const hl2 = (Number(candles[i].high) + Number(candles[i].low)) / 2;
+        const basicUpper = hl2 + mult * atr[i];
+        const basicLower = hl2 - mult * atr[i];
+        const prevClose = Number(candles[i - 1].close);
+        finalUpper = finalUpper === null || basicUpper < finalUpper || prevClose > finalUpper ? basicUpper : finalUpper;
+        finalLower = finalLower === null || basicLower > finalLower || prevClose < finalLower ? basicLower : finalLower;
+        const prevTrend = trend;
+        const close = Number(candles[i].close);
+        if (trend === 1 && close < finalLower) trend = -1;
+        else if (trend === -1 && close > finalUpper) trend = 1;
+        if (prevTrend === -1 && trend === 1) out[i] = true; // 翻多入场
+      }
+      return out;
+    }
+  },
+  vol_breakout: {
+    id: "vol_breakout",
+    label: "量价确认突破",
+    family: "trend",
+    direction: "long",
+    defaultParams: { lookback: 20, volMult: 1.5 },
+    paramGrid: grid({ lookback: [20, 40], volMult: [1.3, 1.5, 2] }),
+    signals(candles, params = {}) {
+      const lookback = Math.max(5, Number(params.lookback || 20));
+      const volMult = Number(params.volMult || 1.5);
+      const vols = candles.map((c) => Number(c.volume || 0));
+      return candles.map((candle, i) => {
+        if (i < lookback) return false;
+        let priorHigh = -Infinity;
+        for (let j = i - lookback; j < i; j += 1) priorHigh = Math.max(priorHigh, Number(candles[j].high));
+        const va = volSma(vols, lookback, i - 1);
+        return va !== null && va > 0 && Number(candle.close) > priorHigh && vols[i] > volMult * va;
+      });
+    }
+  },
+  squeeze: {
+    id: "squeeze",
+    label: "布林挤压突破",
+    family: "trend",
+    direction: "long",
+    defaultParams: { period: 20, k: 2, squeeze: 0.04 },
+    paramGrid: grid({ period: [20], k: [2], squeeze: [0.03, 0.04, 0.05] }),
+    signals(candles, params = {}) {
+      const period = Math.max(5, Number(params.period || 20));
+      const k = Number(params.k || 2);
+      const squeeze = Number(params.squeeze || 0.04);
+      const closes = candles.map((c) => Number(c.close));
+      const meanAt = (idx) => {
+        let sum = 0;
+        for (let j = idx - period + 1; j <= idx; j += 1) sum += closes[j];
+        return sum / period;
+      };
+      return candles.map((_, i) => {
+        if (i < period + 1) return false;
+        const std = rollingStd(closes, period, i);
+        const stdPrev = rollingStd(closes, period, i - 1);
+        if (std === null || stdPrev === null) return false;
+        const midPrev = meanAt(i - 1);
+        const midNow = meanAt(i);
+        const bandwidthPrev = midPrev ? (2 * k * stdPrev) / midPrev : Infinity;
+        const upperNow = midNow + k * std;
+        const upperPrev = midPrev + k * stdPrev;
+        return bandwidthPrev < squeeze && closes[i] > upperNow && closes[i - 1] <= upperPrev;
+      });
+    }
+  },
+
+  // ---- 背离类 ----
+  rsi_bull_div: {
+    id: "rsi_bull_div",
+    label: "RSI 底背离（做多）",
+    family: "meanrev",
+    direction: "long",
+    defaultParams: { period: 14, lookback: 20 },
+    paramGrid: grid({ period: [14], lookback: [15, 20, 30] }),
+    signals(candles, params = {}) {
+      const period = Math.max(2, Number(params.period || 14));
+      const lookback = Math.max(6, Number(params.lookback || 20));
+      const closes = candles.map((c) => Number(c.close));
+      const rsi = rsiSeries(closes, period);
+      return candles.map((_, i) => {
+        if (i < lookback + period) return false;
+        let minIdx = i - lookback;
+        for (let j = i - lookback; j <= i - 2; j += 1) if (closes[j] < closes[minIdx]) minIdx = j;
+        return closes[i] < closes[minIdx] && rsi[i] !== null && rsi[minIdx] !== null && rsi[i] > rsi[minIdx];
+      });
+    }
+  },
+  rsi_bear_div: {
+    id: "rsi_bear_div",
+    label: "RSI 顶背离（做空）",
+    family: "meanrev",
+    direction: "short",
+    defaultParams: { period: 14, lookback: 20 },
+    paramGrid: grid({ period: [14], lookback: [15, 20, 30] }),
+    signals(candles, params = {}) {
+      const period = Math.max(2, Number(params.period || 14));
+      const lookback = Math.max(6, Number(params.lookback || 20));
+      const closes = candles.map((c) => Number(c.close));
+      const rsi = rsiSeries(closes, period);
+      return candles.map((_, i) => {
+        if (i < lookback + period) return false;
+        let maxIdx = i - lookback;
+        for (let j = i - lookback; j <= i - 2; j += 1) if (closes[j] > closes[maxIdx]) maxIdx = j;
+        return closes[i] > closes[maxIdx] && rsi[i] !== null && rsi[maxIdx] !== null && rsi[i] < rsi[maxIdx];
       });
     }
   }

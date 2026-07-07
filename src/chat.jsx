@@ -244,6 +244,13 @@ function PlanCard({ plan, executionOrder, action, ui }) {
           ))}
         </div>
       )}
+      {plan.smartMoneyAlignment && plan.smartMoneyAlignment.alignment !== "neutral" && (
+        <div className={`smAlignRow ${plan.smartMoneyAlignment.alignment}`}>
+          {plan.smartMoneyAlignment.alignment === "favor" ? <TrendingUp size={14} /> : <AlertTriangle size={14} />}
+          <span>聪明钱{plan.smartMoneyAlignment.alignment === "favor" ? "支持该方向" : "与该方向相悖"}</span>
+          <small>{(plan.smartMoneyAlignment.reasons || []).join("；")}</small>
+        </div>
+      )}
       <footer>
         {awaiting && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>批准计划</button>}
         {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>拒绝</button>}

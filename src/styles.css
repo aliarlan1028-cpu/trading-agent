@@ -4785,6 +4785,21 @@ button.danger:disabled,
   text-align: left;
 }
 
+.smAlignRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  flex-wrap: wrap;
+}
+.smAlignRow small { flex-basis: 100%; font-weight: 500; color: #7d7466; }
+.smAlignRow.favor { background: #f2f8f0; color: var(--pos); border: 1px solid #cfe3cf; }
+.smAlignRow.caution { background: #fff4ef; color: var(--neg); border: 1px solid #efc8bd; }
+
 .riskCheckList {
   display: flex;
   flex-direction: column;

@@ -40,12 +40,12 @@ export function optimizeSymbol(candles) {
     for (const entryParams of strategy.paramGrid) {
       const signals = strategy.signals(candles, entryParams); // 全序列算信号，保证 warmup 正确
       for (const exit of EXIT_GRID) {
-        const opts = { ...exit, riskPerTradePct: 0.5 };
+        const opts = { ...exit, riskPerTradePct: 0.5, direction: strategy.direction };
         const train = evaluate(candles, signals, 0, split, opts);
         if (!qualified(train)) continue;
         if (!bestOnTrain || train.expectancyR > bestOnTrain.train.expectancyR) {
           const test = evaluate(candles, signals, split, candles.length, opts);
-          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, params: { ...entryParams, ...exit }, train, test };
+          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, test };
         }
       }
     }
@@ -68,7 +68,7 @@ export function optimizeSymbol(candles) {
     regime,
     regimeMatch: best ? preferred.includes(best.family) : false,
     preferredFamilies: preferred,
-    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, params: c.params, testExpectancyR: c.test?.expectancyR ?? null, testTrades: c.test?.trades ?? 0 }))
+    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, testExpectancyR: c.test?.expectancyR ?? null, testTrades: c.test?.trades ?? 0 }))
   };
 }
 

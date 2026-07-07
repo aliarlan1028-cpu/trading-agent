@@ -13,37 +13,40 @@ export function simulate(candles, entrySignals, opts = {}) {
   const stopLossPct = Math.max(0.1, Number(opts.stopLossPct || 2)) / 100;
   const takeProfitR = Math.max(0.5, Number(opts.takeProfitR || 2));
   const riskPerTradePct = Math.max(0.05, Number(opts.riskPerTradePct || 0.5));
+  const isShort = String(opts.direction || "long") === "short";
   const closes = candles.map((c) => Number(c.close));
   const trades = [];
   let position = null;
 
+  const rOf = (exit, p) => (isShort ? (p.entry - exit) / (p.stop - p.entry) : (exit - p.entry) / (p.entry - p.stop));
+  const pnlOf = (exit, p) => (isShort ? ((p.entry - exit) / p.entry) * 100 : ((exit - p.entry) / p.entry) * 100);
+
   for (let i = 1; i < candles.length; i += 1) {
     const bar = candles[i];
     if (position) {
-      const hitStop = Number(bar.low) <= position.stop;
-      const hitTp = Number(bar.high) >= position.tp;
+      // 做多：跌破止损 / 冲高止盈；做空：反之（止损在上、止盈在下）。
+      const hitStop = isShort ? Number(bar.high) >= position.stop : Number(bar.low) <= position.stop;
+      const hitTp = isShort ? Number(bar.low) <= position.tp : Number(bar.high) >= position.tp;
       let exitPrice = null;
       let reason = null;
       if (hitStop && hitTp) { exitPrice = position.stop; reason = "stop_first_assumed"; }
       else if (hitStop) { exitPrice = position.stop; reason = "stop"; }
       else if (hitTp) { exitPrice = position.tp; reason = "take_profit"; }
       if (exitPrice !== null) {
-        const rMultiple = (exitPrice - position.entry) / (position.entry - position.stop);
-        trades.push({ rMultiple: Number(rMultiple.toFixed(3)), pnlPct: Number((((exitPrice - position.entry) / position.entry) * 100).toFixed(3)), reason, bars: i - position.entryIndex });
+        trades.push({ rMultiple: Number(rOf(exitPrice, position).toFixed(3)), pnlPct: Number(pnlOf(exitPrice, position).toFixed(3)), reason, bars: i - position.entryIndex });
         position = null;
       }
     }
     if (!position && entrySignals[i] && i + 1 < candles.length) {
       const entry = Number(candles[i + 1].open);
-      const stop = entry * (1 - stopLossPct);
-      const tp = entry + takeProfitR * (entry - stop);
+      const stop = isShort ? entry * (1 + stopLossPct) : entry * (1 - stopLossPct);
+      const tp = isShort ? entry - takeProfitR * (stop - entry) : entry + takeProfitR * (entry - stop);
       position = { entry, stop, tp, entryIndex: i + 1 };
     }
   }
   if (position) {
     const exitPrice = closes[closes.length - 1];
-    const rMultiple = (exitPrice - position.entry) / (position.entry - position.stop);
-    trades.push({ rMultiple: Number(rMultiple.toFixed(3)), pnlPct: Number((((exitPrice - position.entry) / position.entry) * 100).toFixed(3)), reason: "mark_to_market", bars: closes.length - 1 - position.entryIndex });
+    trades.push({ rMultiple: Number(rOf(exitPrice, position).toFixed(3)), pnlPct: Number(pnlOf(exitPrice, position).toFixed(3)), reason: "mark_to_market", bars: closes.length - 1 - position.entryIndex });
   }
   return summarize(trades, riskPerTradePct);
 }
@@ -99,7 +102,7 @@ export async function runBacktest(db, params = {}) {
     return { status: "insufficient_data", got: candles?.length || 0, need: 40, symbol, timeframe };
   }
   const signals = strategy.signals(candles, stratParams);
-  const metrics = simulate(candles, signals, { stopLossPct: params.stopLossPct, takeProfitR: params.takeProfitR, riskPerTradePct: params.riskPerTradePct });
+  const metrics = simulate(candles, signals, { stopLossPct: params.stopLossPct, takeProfitR: params.takeProfitR, riskPerTradePct: params.riskPerTradePct, direction: strategy.direction });
   const result = {
     id: id("bt"),
     status: "ok",
@@ -107,6 +110,7 @@ export async function runBacktest(db, params = {}) {
     timeframe,
     candles: candles.length,
     strategyId: strategy.id,
+    direction: strategy.direction || "long",
     params: { ...stratParams, stopLossPct: Number(params.stopLossPct || 2), takeProfitR: Number(params.takeProfitR || 2) },
     strategy: `${strategy.label} · ${JSON.stringify(stratParams)}`,
     regime: detectRegime(candles),

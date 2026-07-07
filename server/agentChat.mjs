@@ -3,7 +3,7 @@ import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
-import { fetchGlobalMarket, fetchSmartMoney } from "./marketSignals.mjs";
+import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -103,7 +103,7 @@ const TOOL_DEFS = [
   },
   {
     name: "research_strategy",
-    description: "对某交易对做自主策略研究：在多套策略（趋势/均值回归/突破）上做样本外寻优，返回样本外表现最好的策略与参数画像。想知道'这个币现在用什么策略靠谱'时用它，结果会写入长期记忆供后续决策。",
+    description: "对某交易对做自主策略研究：在 13 套多空策略（趋势/均值回归/突破/MACD/布林/Supertrend/量价突破/挤压/RSI 背离，含做空族）上做样本外寻优，按行情 regime 加权，返回样本外表现最好的策略与参数画像。想知道'这个币现在用什么策略靠谱、该做多还是做空'时用它，结果会写入长期记忆供后续决策。",
     schema: {
       type: "object",
       properties: {
@@ -670,6 +670,13 @@ export async function executeTool(db, run, name, args = {}) {
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;
     risk.createdAt = nowIso();
+    // 聪明钱择时过滤（软性）：拉当前交易对的大户/散户/爆仓，判断与计划方向是否对齐。
+    const smartMoney = await fetchSmartMoney(symbol).catch(() => null);
+    const alignment = evaluateSmartMoneyAlignment(smartMoney, plan.direction);
+    plan.smartMoneyAlignment = alignment;
+    if (alignment.alignment === "caution") {
+      risk.warnings = [...(risk.warnings || []), `聪明钱择时：与${plan.direction === "short" ? "做空" : "做多"}方向相悖（${alignment.reasons.join("；")}）`];
+    }
     db.riskChecks.unshift(risk);
     plan.lastRiskCheck = risk;
     plan.riskCheckId = risk.id;
@@ -695,7 +702,8 @@ export async function executeTool(db, run, name, args = {}) {
     return {
       planId: plan.id,
       status: plan.status,
-      riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks },
+      riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
+      smartMoneyAlignment: alignment,
       note: risk.passed ? "计划已进入待批准队列，用户批准后才会进入执行链路。" : "计划被风控拒绝，请调整参数或修正授权边界。"
     };
   }
@@ -947,7 +955,11 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」，样本外期望 ${result.profile.test?.expectancyR ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（样本外均不达标）";
-  if (name === "propose_trade_plan") return `${result.status}：${result.riskCheck?.summary || ""}`;
+  if (name === "propose_trade_plan") {
+    const align = result.smartMoneyAlignment;
+    const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
+    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}`;
+  }
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
   if (name === "query_knowledge") return String(result.summary || "").slice(0, 120);
