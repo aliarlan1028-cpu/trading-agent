@@ -4,6 +4,7 @@ import {
   Activity,
   Bell,
   BookOpen,
+  BrainCircuit,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { AdminPage, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
+import { AdminPage, AgentProfilesPanel, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
 import { KillConfirmDialog, MobileApp } from "./mobile.jsx";
 import { isNativeApp } from "./lib.jsx";
@@ -144,13 +145,18 @@ function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSett
         <button type="button" role="tab" aria-selected={activeSettingsTab === "tasks"} className={activeSettingsTab === "tasks" ? "active" : ""} onClick={() => setActiveSettingsTab("tasks")}>
           <CalendarClock size={15} /> 任务调度
         </button>
+        <button type="button" role="tab" aria-selected={activeSettingsTab === "agents"} className={activeSettingsTab === "agents" ? "active" : ""} onClick={() => setActiveSettingsTab("agents")}>
+          <BrainCircuit size={15} /> Agent 配置
+        </button>
       </div>
       <div className="settingsPage">
         {activeSettingsTab === "risk"
           ? <RiskAuthPage data={data} action={action} ui={ui} embedded />
           : activeSettingsTab === "tasks"
             ? <EventsTasksPage data={data} action={action} ui={ui} embedded mode="tasks" />
-            : <SystemConfigPanel data={data} action={action} ui={ui} />}
+            : activeSettingsTab === "agents"
+              ? <AgentProfilesPanel data={data} action={action} />
+              : <SystemConfigPanel data={data} action={action} ui={ui} />}
       </div>
     </div>
   );

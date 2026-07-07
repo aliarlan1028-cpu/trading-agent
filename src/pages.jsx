@@ -450,7 +450,6 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
           <div className="ruleTiles">
             {(knowledge.ruleProposals || []).slice(0, 4).map((rule) => <button key={rule.id} onClick={() => ui.openPanel("ruleLibrary")}><strong>{rule.name}</strong><small>{rule.description || "基于专家知识库生成"}</small><StatusBadge tone={rule.status === "已批准" ? "ok" : "warning"}>{humanize(rule.status, "待审批")}</StatusBadge></button>)}
           </div>
-          <button className="textButton centered" onClick={() => ui.openPanel("ruleLibrary")}>查看全部规则 <ChevronRight size={14} /></button>
         </Card>
       </div>
 
@@ -1113,6 +1112,29 @@ export function AgentProfilesPage({ data, action, ui }) {
   );
 }
 
+export function AgentProfilesPanel({ data, action }) {
+  const profiles = (data.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  return (
+    <Card>
+      <SectionTitle icon={BrainCircuit} title="Agent Profile 配置" />
+      <p className="muted">后台能力开关；这些 Agent 会在交易计划、风控、执行与复盘流程中发挥作用。</p>
+      <div className="adminAgentGrid">
+        {profiles.map((profile) => (
+          <div className={`adminAgentMini ${profile.enabled === false ? "disabled" : ""}`} key={profile.id}>
+            <div>
+              <b>{String(profile.order || "").padStart(2, "0")}</b>
+              <strong>{profile.name}</strong>
+              <small>{profile.role}</small>
+            </div>
+            <p>{profile.mission}</p>
+            <button className="secondaryButton" onClick={() => action(`/api/agent/profiles/${profile.id}`, { enabled: profile.enabled === false }, "PATCH")}>{profile.enabled === false ? "启用" : "停用"}</button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function AdminPage({ data, action }) {
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
@@ -1163,7 +1185,6 @@ export function AdminPage({ data, action }) {
   const adminTabs = [
     ["users", "用户授权", UserCog],
     ["billing", "套餐支付", WalletCards],
-    ["agents", "Agent 配置", BrainCircuit],
     ["security", "安全维护", Shield]
   ];
   return (
@@ -1289,25 +1310,6 @@ export function AdminPage({ data, action }) {
             </Card>
           </div>
         </div>
-      )}
-
-      {adminTab === "agents" && (
-        <Card>
-          <SectionTitle icon={BrainCircuit} title="Agent Profile 配置" action={<InsightNote icon={Shield} title="说明">这里是后台能力开关，不作为用户侧介绍页展示；Agent 会在交易计划、风控、执行和复盘流程中发挥作用。</InsightNote>} />
-          <div className="adminAgentGrid">
-            {profiles.map((profile) => (
-              <div className={`adminAgentMini ${profile.enabled === false ? "disabled" : ""}`} key={profile.id}>
-                <div>
-                  <b>{String(profile.order || "").padStart(2, "0")}</b>
-                  <strong>{profile.name}</strong>
-                  <small>{profile.role}</small>
-                </div>
-                <p>{profile.mission}</p>
-                <button className="secondaryButton" onClick={() => action(`/api/agent/profiles/${profile.id}`, { enabled: profile.enabled === false }, "PATCH")}>{profile.enabled === false ? "启用" : "停用"}</button>
-              </div>
-            ))}
-          </div>
-        </Card>
       )}
 
       {adminTab === "security" && (
