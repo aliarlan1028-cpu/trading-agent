@@ -81,13 +81,15 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
   //  - 大户账户多空比 = 精英交易员按人数
   //  - 全体持仓人数多空比 = 散户/大众定位
   //  - 主动买卖量 = 成交侵略性
+  const instFamily = String(symbol).replace("/", "-").toUpperCase(); // BTC-USDT
   const okx = timer(9000);
   try {
-    const [topPos, topAcct, crowd, taker] = await Promise.allSettled([
+    const [topPos, topAcct, crowd, taker, liq] = await Promise.allSettled([
       getJson(`${RUBIK}/long-short-position-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
       getJson(`${RUBIK}/long-short-account-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
       getJson(`${RUBIK}/long-short-account-ratio-contract?instId=${instId}&period=5m`, okx.signal),
-      getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=5m`, okx.signal)
+      getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=5m`, okx.signal),
+      getJson(`${OKX_BASE}/api/v5/public/liquidation-orders?instType=SWAP&instFamily=${instFamily}&state=filled&limit=100`, okx.signal)
     ]);
     out.topTraderLongShortRatio = firstRatio(topPos);   // 大户持仓多空比（真·聪明钱）
     out.topTraderAccountRatio = firstRatio(topAcct);    // 大户账户多空比
@@ -99,6 +101,10 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
         const sell = Number(row[1]);
         if (sell > 0) out.takerBuySellRatio = Number((buy / sell).toFixed(3));
       }
+    }
+    if (liq.status === "fulfilled") {
+      const liquidations = summarizeLiquidations(liq.value);
+      if (liquidations) out.liquidations = liquidations;
     }
   } catch {
     /* OKX 不可用则跳过 */
@@ -126,7 +132,32 @@ function interpretSmartMoney(s) {
   if (s.takerBuySellRatio != null) {
     parts.push(`主动买卖比 ${s.takerBuySellRatio}（${s.takerBuySellRatio > 1.05 ? "主动买盘占优" : s.takerBuySellRatio < 0.95 ? "主动卖盘占优" : "买卖均衡"}）`);
   }
+  if (s.liquidations?.total) {
+    const L = s.liquidations;
+    const dir = L.dominantSide === "long" ? "多头爆仓为主（价格下砸、多头被清洗）"
+      : L.dominantSide === "short" ? "空头爆仓为主（轧空、价格上冲）"
+      : "多空爆仓均衡";
+    parts.push(`近期爆仓 多${L.longLiqCount}/空${L.shortLiqCount} 单，${dir}`);
+  }
   return parts.join("；") || "聪明钱数据不足（数据源暂不可用）";
+}
+
+// OKX 清算明细 → 多空爆仓聚合。posSide=long 被爆=多头被清洗（下砸）；short 被爆=轧空（上冲）。
+function summarizeLiquidations(payload) {
+  const details = (payload?.data || []).flatMap((group) => group.details || []);
+  if (!details.length) return null;
+  let longLiqCount = 0;
+  let shortLiqCount = 0;
+  let latestTs = 0;
+  for (const d of details) {
+    if (d.posSide === "long") longLiqCount += 1;
+    else if (d.posSide === "short") shortLiqCount += 1;
+    latestTs = Math.max(latestTs, Number(d.ts || d.time || 0));
+  }
+  const total = longLiqCount + shortLiqCount;
+  if (!total) return null;
+  const dominantSide = longLiqCount === shortLiqCount ? "balanced" : longLiqCount > shortLiqCount ? "long" : "short";
+  return { longLiqCount, shortLiqCount, total, dominantSide, latestTs };
 }
 
 // 组合快照：供巡检/UI 一次取全（大盘 + 指定交易对聪明钱）。

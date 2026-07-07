@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardList,
   Gauge,
+  Globe2,
   Inbox,
   Info,
   MessageSquare,
@@ -240,6 +241,10 @@ function MobileHome({ data, action, ui, onOpenRail }) {
   const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
   const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
   const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
+  const regime = data.marketRegime || {};
+  const gmMob = regime.global || {};
+  const smMob = regime.smartMoney || {};
+  const hasRegimeMob = gmMob.ok || smMob.ok;
   const displayGoal = cleanAgentText(agentStatus.currentGoal, "观察模式巡检");
   const displayStateLabel = isConfigNoise({ title: agentStatus.currentGoal, status: agentStatus.state })
     ? "观察中"
@@ -293,6 +298,23 @@ function MobileHome({ data, action, ui, onOpenRail }) {
           <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
         </header>
         <strong>{displayGoal}</strong>
+      </section>
+
+      <section className="mRegimeCard" role="button" tabIndex={0} onClick={() => action("/api/market/regime", {}, "GET")}>
+        <header><span><Globe2 size={14} /> 大盘与聪明钱</span><RefreshCw size={12} /></header>
+        {hasRegimeMob ? (
+          <>
+            <div className="mRegimeGrid">
+              <span>BTC 主导<b>{gmMob.btcDominancePct != null ? `${gmMob.btcDominancePct}%` : "-"}</b></span>
+              <span>情绪<b>{gmMob.fearGreed ? gmMob.fearGreed.value : "-"}</b></span>
+              <span>大户多空<b>{smMob.topTraderLongShortRatio ?? "-"}</b></span>
+              <span>散户多空<b>{smMob.retailLongShortRatio ?? "-"}</b></span>
+            </div>
+            {smMob.ok && smMob.interpretation && <p>{smMob.interpretation}</p>}
+          </>
+        ) : (
+          <p className="mRegimeEmpty">点击拉取 BTC 主导率、情绪、大户/散户多空比与爆仓</p>
+        )}
       </section>
 
       <div className="mAgentDock">

@@ -6247,6 +6247,48 @@ button.danger:disabled,
 .mQuickGrid button.alert { border-color: #efc8bd; background: var(--neg-weak); }
 .mQuickGrid button.alert strong { color: var(--neg); }
 
+/* 总览：大盘与聪明钱卡 */
+.mRegimeCard {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid #ece7de;
+  border-radius: 14px;
+  background: #ffffff;
+}
+.mRegimeCard > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.mRegimeCard > header span { display: inline-flex; align-items: center; gap: 5px; }
+.mRegimeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 10px;
+}
+.mRegimeGrid span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #7d7466;
+}
+.mRegimeGrid span b { font-size: 14px; font-weight: 800; color: var(--text-1); }
+.mRegimeCard > p {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.mRegimeEmpty { color: #9a9184 !important; }
+
 /* 总览悬浮总控：能否交易 + 自主推进开关（仅总览渲染，浮于底部 Tab 栏之上） */
 .mAgentDock {
   position: fixed;
