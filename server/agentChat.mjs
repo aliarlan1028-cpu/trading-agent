@@ -4,6 +4,7 @@ import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
+import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -54,6 +55,18 @@ const TOOL_DEFS = [
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
         exchange: { type: "string", enum: ["OKX", "BINANCE"] }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "get_token_profile",
+    description: "读取某交易对的『波动+统计性格』画像：已实现/年化波动率、ATR 百分位（当前波动高低）、Hurst 指数/方差比/自相关（该币是趋势型还是均值回归型）、平均趋势游程。判断'这个币现在该用顺势还是回归打法、波动该收多大仓'时用它。基于历史 K 线统计，可验证。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"] }
       },
       required: ["symbol"]
     }
@@ -427,6 +440,14 @@ export async function executeTool(db, run, name, args = {}) {
       return micro;
     } catch (error) {
       return { error: `微观结构同步失败：${error.message}` };
+    }
+  }
+
+  if (name === "get_token_profile") {
+    try {
+      return await fetchTokenProfile(args.symbol || "BTC/USDT", args.timeframe || "1h");
+    } catch (error) {
+      return { error: `币种画像失败：${error.message}` };
     }
   }
 
@@ -953,6 +974,7 @@ function summarizeToolResult(name, result = {}) {
   if (isMcpTool(name)) return `MCP ${result.server || ""}：${String(result.content || result.error || "").slice(0, 140)}`;
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
+  if (name === "get_token_profile") return result.ok === false ? `画像不可用：${result.reason || result.error || "-"}` : result.interpretation || `性格 ${result.character}，波动 ${result.volState}`;
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";

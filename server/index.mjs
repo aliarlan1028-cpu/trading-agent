@@ -16,6 +16,7 @@ import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
+import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
@@ -534,6 +535,15 @@ app.get("/api/market/instruments", async (_req, res) => {
     res.json({ instruments, count: instruments.length });
   } catch (error) {
     res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
+  }
+});
+
+app.get("/api/market/token-profile", async (req, res) => {
+  try {
+    const profile = await fetchTokenProfile(req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
+    res.json(profile);
+  } catch (error) {
+    res.status(500).json({ error: `币种画像失败：${error.message}`, ok: false });
   }
 });
 

@@ -858,15 +858,15 @@ function StrategyResearchCard({ data, action }) {
       <SectionTitle icon={BrainCircuit} title="自适应策略研究（样本外验证）" action={<button className="secondaryButton" title="运行研究" onClick={() => action("/api/strategy/research", {})}><Rocket size={14} /> 运行研究</button>} />
       {profiles.length ? (
         <DataTable columns={[
-          { key: "symbol", label: "交易对" }, { key: "strategy", label: "优选策略", width: "1.5fr" }, { key: "oos", label: "样本外期望" }, { key: "winrate", label: "样本外胜率" }, { key: "conf", label: "置信度" }, { key: "regime", label: "Regime" }
+          { key: "symbol", label: "交易对" }, { key: "character", label: "币种性格" }, { key: "strategy", label: "优选策略", width: "1.4fr" }, { key: "oos", label: "样本外期望" }, { key: "winrate", label: "样本外胜率" }, { key: "conf", label: "置信度" }
         ]} rows={profiles.map((p) => ({
           id: p.id,
           symbol: `${p.symbol} · ${p.timeframe}`,
+          character: p.tokenProfile ? `${p.tokenProfile.character === "trend" ? "趋势型" : p.tokenProfile.character === "meanrev" ? "回归型" : "混合"} · 波动${p.tokenProfile.volState === "high" ? "高" : p.tokenProfile.volState === "low" ? "低" : "中"}` : "-",
           strategy: `${p.label}${p.direction === "short" ? " · 做空" : p.direction === "long" ? " · 做多" : ""}`,
           oos: p.oosScore !== null && p.oosScore !== undefined ? `${p.oosScore}R（${p.oos?.trades ?? "-"} 笔·${p.oosFolds || "-"}）` : "-",
           winrate: p.oos?.winRatePct !== null && p.oos?.winRatePct !== undefined ? `${p.oos.winRatePct}%` : "-",
-          conf: <StatusBadge tone={confTone[p.confidence] || "warning"}>{confLabel[p.confidence] || p.confidence}</StatusBadge>,
-          regime: p.regime || "-"
+          conf: <StatusBadge tone={confTone[p.confidence] || "warning"}>{confLabel[p.confidence] || p.confidence}</StatusBadge>
         }))} />
       ) : (
         <div className="emptyPanel emptyPanelAction">

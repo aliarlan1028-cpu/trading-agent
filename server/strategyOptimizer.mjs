@@ -1,6 +1,7 @@
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { simulate, BAR_MINUTES } from "./backtestEngine.mjs";
 import { STRATEGIES, detectRegime, regimePreferredFamilies } from "./strategies.mjs";
+import { buildTokenProfile } from "./tokenProfile.mjs";
 import { buildReviewAnalytics } from "./reviewEngine.mjs";
 import { ensurePaperSessionsFromProfiles } from "./paperTrading.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
@@ -89,7 +90,12 @@ export function optimizeSymbol(candles, timeframe = "1h") {
     });
 
   const regime = detectRegime(candles.slice(folds[2][0]));
-  const preferred = regimePreferredFamilies(regime);
+  const profile = buildTokenProfile(candles, timeframe); // 该币的统计性格
+  // 家族偏好：该币性格（趋势/回归，更稳）优先，叠加近期 regime。
+  const preferred = [...new Set([
+    ...(profile.ok && profile.preferredFamily ? [profile.preferredFamily] : []),
+    ...regimePreferredFamilies(regime)
+  ])];
   const regimeMatched = robust.filter((c) => preferred.includes(c.family));
   const best = regimeMatched[0] || robust[0] || null;
   const bestPos = best ? positiveFolds(best) : 0;
@@ -101,6 +107,7 @@ export function optimizeSymbol(candles, timeframe = "1h") {
     regime,
     regimeMatch: best ? preferred.includes(best.family) : false,
     preferredFamilies: preferred,
+    tokenProfile: profile.ok ? profile : null,
     oosScore: best ? Number(best.oos.expectancyR.toFixed(3)) : null,
     oosFolds: best ? `${bestPos}/${bestActive} 段样本外为正` : null,
     candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, positiveFolds: positiveFolds(c) }))
@@ -122,6 +129,7 @@ function profileFrom(symbol, timeframe, opt) {
     oos: best?.oos || null,
     oosScore: opt.oosScore,
     oosFolds: opt.oosFolds,
+    tokenProfile: opt.tokenProfile || null,
     regime: opt.regime,
     regimeMatch: opt.regimeMatch,
     family: best?.family || null,
