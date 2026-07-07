@@ -521,6 +521,10 @@ export function useApi() {
   useEffect(() => {
     refreshPublicInfo();
     refresh();
+    // 定时静默轮询，让资产/持仓/风控近实时更新。
+    // 后台时浏览器/WKWebView 会自动降频或暂停 setInterval，无需手动判可见性。
+    const interval = setInterval(() => refresh(false), 15000);
+    return () => clearInterval(interval);
   }, [token, apiBase]);
 
   return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };

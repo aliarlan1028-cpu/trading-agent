@@ -87,10 +87,16 @@ registerTaskHandler("paper_forward", (database) => runPaperForward(database));
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", (database) => verifyTrc20Payments(database));
-registerTaskHandler("okx_readonly_sync", (database) => {
-  const account = (database.exchangeAccounts || []).find((item) => item.exchange === "OKX");
-  return account ? syncPrivateReadOnly(database, account.id) : { status: "missing_okx_account" };
+registerTaskHandler("okx_readonly_sync", async (database) => {
+  const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
+  if (!accounts.length) return { status: "no_read_account" };
+  let synced = 0;
+  for (const account of accounts) {
+    try { await syncPrivateReadOnly(database, account.id); synced += 1; } catch { /* 单账户失败不阻断 */ }
+  }
+  return { status: "ok", synced };
 });
+ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
