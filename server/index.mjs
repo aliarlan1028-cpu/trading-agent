@@ -96,7 +96,22 @@ registerTaskHandler("okx_readonly_sync", async (database) => {
   }
   return { status: "ok", synced };
 });
+// 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
+registerTaskHandler("market_signal_refresh", async (database) => {
+  const mandate = (database.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const symbols = (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT"]).slice(0, 3);
+  let synced = 0;
+  for (const symbol of symbols) {
+    try { await syncMicrostructure(database, "OKX", symbol); synced += 1; } catch { /* 单交易对失败不阻断 */ }
+  }
+  try {
+    const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
+    database.marketRegime = { ...regime, updatedAt: nowIso() };
+  } catch { /* 大盘拉取失败不阻断 */ }
+  return { status: "ok", synced };
+});
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
