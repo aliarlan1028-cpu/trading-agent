@@ -70,6 +70,8 @@ export function RailContent({ data, action, ui }) {
     ? `${beforeConfidence !== null ? `${Math.round(Number(beforeConfidence) * 100)}%` : "未记录"} → ${afterConfidence !== null ? `${Math.round(Number(afterConfidence) * 100)}%` : "未记录"}`
     : "未记录";
   const displayGoal = cleanAgentText(agentStatus.currentGoal, "观察模式巡检");
+  // 状态头标题基于授权目标/系统状态，绝不回显用户聊天内容（currentGoal 可能是最近一句对话）。
+  const railHeadline = mandate?.goal ? cleanAgentText(mandate.goal, "自主交易授权") : "只读观察巡检";
   const displayStateLabel = isConfigNoise({ title: agentStatus.currentGoal, status: agentStatus.state })
     ? "观察中"
     : (agentStatus.stateLabel || humanize(agentStatus.state, "待配置"));
@@ -101,8 +103,8 @@ export function RailContent({ data, action, ui }) {
           <span className="railLabel">AI 交易员</span>
           <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
         </div>
-        <strong className="railGoal">{displayGoal}</strong>
-        <small className="railMandate">{mandate ? `授权：${mandate.name || mandate.id}` : "未授权 · 只读观察"}</small>
+        <strong className="railGoal">{railHeadline}</strong>
+        <small className="railMandate">{mandate ? `授权运行 · ${mandate.name || mandate.id}` : "未授权 · 等待授权"}</small>
       </div>
 
       {/* 2. 能否交易：最重要的风控闸门 */}
@@ -230,7 +232,8 @@ function AgentActionStatus({ status }) {
 
 function buildAgentTimeline(data, limit = 4) {
   return (data.agentRuns || [])
-    .filter((run) => run.source !== "chat" || run.tradePlanId || run.mandateId || (run.steps || []).length > 0)
+    // 聊天对话不算"Agent 动作"：只有产出交易计划/授权草案的 chat run 才进时间线，纯闲聊不显示。
+    .filter((run) => run.source !== "chat" || run.tradePlanId || run.mandateId)
     .slice(0, limit)
     .map((run) => ({
       id: run.id,

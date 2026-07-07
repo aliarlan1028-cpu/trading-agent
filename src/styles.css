@@ -4278,25 +4278,48 @@ button.danger:disabled,
   box-shadow: var(--sh-3);
 }
 
-.chatHistoryPop button {
+.chatHistoryItem {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+.chatHistoryItem:hover { background: var(--surface-2); }
+.chatHistoryItem.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.chatHistoryOpen {
+  flex: 1 1 auto;
+  min-width: 0;
   display: grid;
   gap: 2px;
   justify-items: start;
   text-align: left;
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--r-md);
   background: transparent;
   color: var(--text);
 }
+.chatHistoryItem.active .chatHistoryOpen span { color: var(--accent-ink); }
 
-.chatHistoryPop button:hover { background: var(--surface-2); }
-
-.chatHistoryPop button.active {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-  color: var(--accent-ink);
+.chatHistoryDelete {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0.55;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
+.chatHistoryItem:hover .chatHistoryDelete { opacity: 1; }
+.chatHistoryDelete:hover { color: var(--neg); background: var(--neg-weak); }
 
 .chatHistoryPop span {
   max-width: 100%;

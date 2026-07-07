@@ -799,6 +799,15 @@ app.patch("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (r
   persist(res, { session, sessions: chatSessionsSorted() });
 });
 
+app.delete("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
+  const exists = (db.chatSessions || []).some((item) => item.id === req.params.id);
+  if (!exists) return res.status(404).json({ error: "Chat session not found" });
+  db.chatSessions = (db.chatSessions || []).filter((item) => item.id !== req.params.id);
+  db.chatMessages = (db.chatMessages || []).filter((message) => message.sessionId !== req.params.id);
+  appendAudit(db, "删除对话会话", req.params.id, req.user?.name || "Owner");
+  persist(res, { ok: true, sessions: chatSessionsSorted() });
+});
+
 app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
   try {
     const result = await runAgentChat(db, { message: req.body.message, sessionId: req.body.sessionId }, saveDb);

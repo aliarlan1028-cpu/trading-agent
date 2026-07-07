@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   History,
+  Trash2,
   KeyRound,
   ListChecks,
   PlugZap,
@@ -382,6 +383,19 @@ export function ChatPage({ data, action, ui }) {
     loadMessages(sessionId);
   }
 
+  async function deleteSession(sessionId, event) {
+    event.stopPropagation();
+    try {
+      const response = await fetch(apiUrl(`/api/agent/chat/sessions/${sessionId}`), { method: "DELETE", headers: authHeaders() });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "删除失败");
+      setSessions(json.sessions || []);
+      if (sessionId === activeSessionId) { setActiveSessionId(""); setMessages([]); }
+    } catch (error) {
+      ui.notify?.(error.message || "删除失败");
+    }
+  }
+
   return (
     <div className="chatPage">
       <div className="chatSessionBar">
@@ -397,10 +411,13 @@ export function ChatPage({ data, action, ui }) {
             <div className="chatHistoryBackdrop" onClick={() => setShowHistory(false)} />
             <div className="chatHistoryPop" role="listbox">
               {sessions.length ? sessions.map((session) => (
-                <button key={session.id} className={session.id === activeSessionId ? "active" : ""} onClick={() => { switchSession(session.id); setShowHistory(false); }} title={session.title}>
-                  <span>{session.title || "未命名对话"}</span>
-                  <small>{formatTime(session.updatedAt || session.createdAt)}</small>
-                </button>
+                <div className={`chatHistoryItem ${session.id === activeSessionId ? "active" : ""}`} key={session.id}>
+                  <button className="chatHistoryOpen" onClick={() => { switchSession(session.id); setShowHistory(false); }} title={session.title}>
+                    <span>{session.title || "未命名对话"}</span>
+                    <small>{formatTime(session.updatedAt || session.createdAt)}</small>
+                  </button>
+                  <button className="chatHistoryDelete" title="删除对话" onClick={(event) => deleteSession(session.id, event)}><Trash2 size={13} /></button>
+                </div>
               )) : <div className="chatHistoryEmpty">暂无历史对话</div>}
             </div>
           </>
