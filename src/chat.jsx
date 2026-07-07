@@ -316,6 +316,19 @@ function SetupChecklist({ onExample }) {
 }
 
 export function ChatPage({ data, action, ui }) {
+  const system = data.system || {};
+  const riskWall = data.agentStatus?.riskWall || {};
+  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
+  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
+  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
+  async function toggleAutonomy() {
+    await action("/api/system/autonomy", { enabled: !system.autonomyEnabled });
+  }
+  async function releaseKill() {
+    if (window.confirm("确认解除熔断？解除后 Agent 可恢复按授权推进。")) {
+      await action("/api/risk/kill-switch", { enabled: false, reason: "" });
+    }
+  }
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -406,6 +419,13 @@ export function ChatPage({ data, action, ui }) {
         <div className="chatViewSwitch">
           <button className={view === "chat" ? "active" : ""} onClick={() => setView("chat")}><MessageSquare size={15} /> 对话</button>
           <button className={view === "intel" ? "active" : ""} onClick={() => setView("intel")}><Radar size={15} /> 情报</button>
+        </div>
+        <div className="chatAgentControls">
+          <span className={`chatGateChip ${gateTone}`}><Shield size={13} /> {gateLabel}</span>
+          <button className="chatAgentBtn" onClick={toggleAutonomy}>
+            {system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}
+          </button>
+          {system.killSwitch && <button className="chatAgentBtn danger" onClick={releaseKill}>解除熔断</button>}
         </div>
         {view === "chat" && (
         <div className="chatSessionSwitch">

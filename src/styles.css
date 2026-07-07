@@ -4246,6 +4246,40 @@ button.danger:disabled,
   padding: var(--sp-1) var(--sp-1) 0;
 }
 
+/* 页头右侧：AI 交易员总控（能否交易 + 自主推进开关 + 解除熔断） */
+.chatAgentControls {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.chatGateChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+.chatGateChip.ok { color: var(--pos); background: var(--pos-weak); border-color: #cfe3cf; }
+.chatGateChip.warning { color: var(--warn); background: var(--warn-weak); border-color: #f2dfb8; }
+.chatGateChip.danger { color: var(--neg); background: var(--neg-weak); border-color: #efc8bd; }
+.chatAgentBtn {
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.chatAgentBtn:hover { border-color: var(--accent); color: var(--accent); }
+.chatAgentBtn.danger { color: var(--neg); border-color: #efc8bd; }
+.chatAgentBtn.danger:hover { background: var(--neg-weak); border-color: var(--neg); }
+
 /* 分段胶囊控件：新建对话 / 历史记录 */
 .chatSessionSwitch {
   display: inline-flex;
@@ -6155,6 +6189,11 @@ button.danger:disabled,
   gap: 8px;
 }
 
+.mQuickGrid.quad {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .mQuickGrid button {
   display: grid;
   gap: 2px;
@@ -6164,6 +6203,10 @@ button.danger:disabled,
   background: #ffffff;
   text-align: left;
 }
+
+.mQuickGrid.quad button { padding: 9px 8px; }
+.mQuickGrid button.alert { border-color: #efc8bd; background: var(--neg-weak); }
+.mQuickGrid button.alert strong { color: var(--neg); }
 
 .mQuickGrid span {
   font-size: 10.5px;

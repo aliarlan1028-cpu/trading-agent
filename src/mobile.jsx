@@ -250,9 +250,9 @@ function MobileHome({ data, action, ui, onOpenRail }) {
         </small>
       </section>
 
-      <section className={`mInbox ${inboxCount ? "" : "empty"}`}>
-        <header><Inbox size={14} /> 需要你处理{inboxCount ? ` · ${inboxCount}` : ""}</header>
-        {!inboxCount && <p className="mInboxEmpty">暂无等待你的审批或确认事项</p>}
+      {inboxCount > 0 && (
+      <section className="mInbox">
+        <header><Inbox size={14} /> 需要你处理 · {inboxCount}</header>
         {awaitingPlans.map((plan) => (
           <div className="mInboxItem" key={plan.id}>
             <strong>{plan.direction === "short" ? "做空" : "做多"} {plan.symbol || "计划"}</strong>
@@ -272,17 +272,14 @@ function MobileHome({ data, action, ui, onOpenRail }) {
             </div>
           </div>
         ))}
-        {openIncidents.length > 0 && (
-          <button className="mIncidentLine" onClick={() => ui.setActive("auditSystem")}>
-            {openIncidents.length} 个未关闭风险事件 <ChevronRight size={13} />
-          </button>
-        )}
       </section>
+      )}
 
-      <section className="mQuickGrid">
+      <section className="mQuickGrid quad">
         <button onClick={() => ui.setActive("positions")}><span>持仓</span><strong>{positions.length}</strong></button>
         <button onClick={() => ui.setActive("positions")}><span>在途委托</span><strong>{orders.length}</strong></button>
         <button onClick={() => ui.setActive("riskAuth")}><span>日亏预算</span><strong>{budget === null || budget === undefined ? "未授权" : displayMoney(budget, 0)}</strong></button>
+        <button className={openIncidents.length ? "alert" : ""} onClick={() => ui.setActive("auditSystem")}><span>风险事件</span><strong>{openIncidents.length}</strong></button>
       </section>
 
       <section className="mAgentCard" onClick={onOpenRail} role="button" tabIndex={0}>

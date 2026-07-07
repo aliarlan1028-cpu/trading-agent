@@ -21,7 +21,7 @@ import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTo
 import { ChatPage } from "./chat.jsx";
 import { AdminPage, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
-import { KillConfirmDialog, MobileApp, RightRail } from "./mobile.jsx";
+import { KillConfirmDialog, MobileApp } from "./mobile.jsx";
 import { isNativeApp } from "./lib.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
@@ -234,13 +234,12 @@ function App() {
   }
 
   return (
-    <div className={`appShell ${active === "chat" ? "withRail" : ""}`}>
+    <div className="appShell">
       <Sidebar active={active} setActive={navigate} />
       <main className="mainArea">
         <AppTopbar data={data} setActive={navigate} notify={notify} action={action} />
         <div className="content">{content}</div>
       </main>
-      {active === "chat" && <RightRail data={data} action={action} ui={ui} />}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
       {toast && <div className="toast">{toast}</div>}
