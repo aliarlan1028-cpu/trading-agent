@@ -2,52 +2,96 @@ import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { detectRegime, getStrategy } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
+export const BAR_MINUTES = { "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440 };
+
 // ---------------------------------------------------------------------------
 // 回测引擎：给定入场信号，用统一的止损/止盈-R 出场模型逐根回放，
 // 计算胜率、盈亏比、最大回撤、期望 R。入场信号来自策略库（strategies.mjs）。
 // simulate 是纯函数（不取数、不写库），供优化器在内存里跑成百上千次组合。
 // ---------------------------------------------------------------------------
 
+// True Range → ATR（Wilder），用于自适应止损。
+function atrAt(candles, period) {
+  const out = new Array(candles.length).fill(null);
+  let atr = null;
+  for (let i = 0; i < candles.length; i += 1) {
+    const h = Number(candles[i].high);
+    const l = Number(candles[i].low);
+    const tr = i === 0 ? h - l : Math.max(h - l, Math.abs(h - Number(candles[i - 1].close)), Math.abs(l - Number(candles[i - 1].close)));
+    if (i < period - 1) continue;
+    if (i === period - 1) {
+      let sum = 0;
+      for (let j = 0; j <= i; j += 1) {
+        const hh = Number(candles[j].high);
+        const ll = Number(candles[j].low);
+        sum += j === 0 ? hh - ll : Math.max(hh - ll, Math.abs(hh - Number(candles[j - 1].close)), Math.abs(ll - Number(candles[j - 1].close)));
+      }
+      atr = sum / period;
+    } else {
+      atr = (atr * (period - 1) + tr) / period;
+    }
+    out[i] = atr;
+  }
+  return out;
+}
+
 // 纯回测核心：candles + 入场信号数组 → 指标。
+// 计入真实成本（taker 手续费 + 滑点 + 资金费率）与可选 ATR 自适应止损。
 export function simulate(candles, entrySignals, opts = {}) {
   const stopLossPct = Math.max(0.1, Number(opts.stopLossPct || 2)) / 100;
   const takeProfitR = Math.max(0.5, Number(opts.takeProfitR || 2));
   const riskPerTradePct = Math.max(0.05, Number(opts.riskPerTradePct || 0.5));
   const isShort = String(opts.direction || "long") === "short";
+  // 成本模型（单边百分比）：默认 OKX taker 0.05% + 滑点 0.03%；资金费率按每 8h 默认 0.01% 折算到持仓时长。
+  const feePct = opts.feePct != null ? Number(opts.feePct) : 0.05;
+  const slippagePct = opts.slippagePct != null ? Number(opts.slippagePct) : 0.03;
+  const fundingPct8h = opts.fundingPct8h != null ? Number(opts.fundingPct8h) : 0.01;
+  const barMinutes = Number(opts.barMinutes || 60);
+  const roundTripCostPct = 2 * (feePct + slippagePct); // 进+出
+  // ATR 自适应止损
+  const useAtrStop = Boolean(opts.atrStop);
+  const atrMult = Number(opts.atrMult || 2);
+  const atr = useAtrStop ? atrAt(candles, Number(opts.atrPeriod || 14)) : null;
+
   const closes = candles.map((c) => Number(c.close));
   const trades = [];
   let position = null;
 
-  const rOf = (exit, p) => (isShort ? (p.entry - exit) / (p.stop - p.entry) : (exit - p.entry) / (p.entry - p.stop));
-  const pnlOf = (exit, p) => (isShort ? ((p.entry - exit) / p.entry) * 100 : ((exit - p.entry) / p.entry) * 100);
+  const rGross = (exit, p) => (isShort ? (p.entry - exit) / (p.stop - p.entry) : (exit - p.entry) / (p.entry - p.stop));
+  const pnlGross = (exit, p) => (isShort ? ((p.entry - exit) / p.entry) * 100 : ((exit - p.entry) / p.entry) * 100);
+
+  const closeTrade = (exitPrice, reason, i) => {
+    const barsHeld = i - position.entryIndex;
+    const fundingCostPct = fundingPct8h * ((barsHeld * barMinutes) / 480); // 480 分钟 = 8h
+    const totalCostPct = roundTripCostPct + fundingCostPct;
+    const riskPct = (Math.abs(position.entry - position.stop) / position.entry) * 100; // 实际止损距离
+    const netPnlPct = pnlGross(exitPrice, position) - totalCostPct;
+    const grossR = rGross(exitPrice, position);
+    const netR = riskPct > 0 ? grossR - totalCostPct / riskPct : grossR;
+    trades.push({ rMultiple: Number(netR.toFixed(3)), pnlPct: Number(netPnlPct.toFixed(3)), reason, bars: barsHeld });
+    position = null;
+  };
 
   for (let i = 1; i < candles.length; i += 1) {
     const bar = candles[i];
     if (position) {
-      // 做多：跌破止损 / 冲高止盈；做空：反之（止损在上、止盈在下）。
       const hitStop = isShort ? Number(bar.high) >= position.stop : Number(bar.low) <= position.stop;
       const hitTp = isShort ? Number(bar.low) <= position.tp : Number(bar.high) >= position.tp;
-      let exitPrice = null;
-      let reason = null;
-      if (hitStop && hitTp) { exitPrice = position.stop; reason = "stop_first_assumed"; }
-      else if (hitStop) { exitPrice = position.stop; reason = "stop"; }
-      else if (hitTp) { exitPrice = position.tp; reason = "take_profit"; }
-      if (exitPrice !== null) {
-        trades.push({ rMultiple: Number(rOf(exitPrice, position).toFixed(3)), pnlPct: Number(pnlOf(exitPrice, position).toFixed(3)), reason, bars: i - position.entryIndex });
-        position = null;
-      }
+      if (hitStop && hitTp) closeTrade(position.stop, "stop_first_assumed", i);
+      else if (hitStop) closeTrade(position.stop, "stop", i);
+      else if (hitTp) closeTrade(position.tp, "take_profit", i);
     }
     if (!position && entrySignals[i] && i + 1 < candles.length) {
       const entry = Number(candles[i + 1].open);
-      const stop = isShort ? entry * (1 + stopLossPct) : entry * (1 - stopLossPct);
-      const tp = isShort ? entry - takeProfitR * (stop - entry) : entry + takeProfitR * (entry - stop);
+      let stopDist;
+      if (useAtrStop && atr[i] != null) stopDist = atrMult * atr[i];
+      else stopDist = entry * stopLossPct;
+      const stop = isShort ? entry + stopDist : entry - stopDist;
+      const tp = isShort ? entry - takeProfitR * stopDist : entry + takeProfitR * stopDist;
       position = { entry, stop, tp, entryIndex: i + 1 };
     }
   }
-  if (position) {
-    const exitPrice = closes[closes.length - 1];
-    trades.push({ rMultiple: Number(rOf(exitPrice, position).toFixed(3)), pnlPct: Number(pnlOf(exitPrice, position).toFixed(3)), reason: "mark_to_market", bars: closes.length - 1 - position.entryIndex });
-  }
+  if (position) closeTrade(closes[closes.length - 1], "mark_to_market", closes.length - 1);
   return summarize(trades, riskPerTradePct);
 }
 
@@ -102,7 +146,19 @@ export async function runBacktest(db, params = {}) {
     return { status: "insufficient_data", got: candles?.length || 0, need: 40, symbol, timeframe };
   }
   const signals = strategy.signals(candles, stratParams);
-  const metrics = simulate(candles, signals, { stopLossPct: params.stopLossPct, takeProfitR: params.takeProfitR, riskPerTradePct: params.riskPerTradePct, direction: strategy.direction });
+  const metrics = simulate(candles, signals, {
+    stopLossPct: params.stopLossPct,
+    takeProfitR: params.takeProfitR,
+    riskPerTradePct: params.riskPerTradePct,
+    direction: strategy.direction,
+    barMinutes: BAR_MINUTES[timeframe] || 60,
+    feePct: params.feePct,
+    slippagePct: params.slippagePct,
+    fundingPct8h: params.fundingPct8h,
+    atrStop: params.atrStop,
+    atrMult: params.atrMult,
+    atrPeriod: params.atrPeriod
+  });
   const result = {
     id: id("bt"),
     status: "ok",

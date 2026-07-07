@@ -103,12 +103,12 @@ const TOOL_DEFS = [
   },
   {
     name: "research_strategy",
-    description: "对某交易对做自主策略研究：在 13 套多空策略（趋势/均值回归/突破/MACD/布林/Supertrend/量价突破/挤压/RSI 背离，含做空族）上做样本外寻优，按行情 regime 加权，返回样本外表现最好的策略与参数画像。想知道'这个币现在用什么策略靠谱、该做多还是做空'时用它，结果会写入长期记忆供后续决策。",
+    description: "对某交易对做自主策略研究：在 13 套多空策略上做 train/val/test 三窗样本外寻优（计入手续费/滑点/资金费率，多周期趋势确认，ATR 自适应止损）。不传 timeframe 时自动扫描 15m/1h/4h 选样本外最优周期；只有 val 与 test 双窗都合格才采纳。想知道'这个币现在用什么策略、什么周期、该做多还是做空'时用它，结果写入长期记忆。",
     schema: {
       type: "object",
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
-        timeframe: { type: "string", enum: ["1h", "4h", "1d"] }
+        timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "可选；省略则自动扫描 15m/1h/4h 选最优周期" }
       },
       required: ["symbol"]
     }
@@ -496,7 +496,8 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "research_strategy") {
     try {
-      const result = await runStrategyResearch(db, { symbols: [args.symbol], timeframe: args.timeframe || "4h" });
+      // 不传 timeframe → 自动多周期扫描（15m/1h/4h）选样本外最优；传了则只跑该周期。
+      const result = await runStrategyResearch(db, { symbols: [args.symbol], timeframe: args.timeframe });
       const profile = activeStrategyProfiles(db, args.symbol)[0];
       run.strategyProfileId = profile?.id;
       return { profile, skipped: result.skipped };
@@ -954,7 +955,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
-  if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」，样本外期望 ${result.profile.test?.expectancyR ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（样本外均不达标）";
+  if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
   if (name === "propose_trade_plan") {
     const align = result.smartMoneyAlignment;
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
