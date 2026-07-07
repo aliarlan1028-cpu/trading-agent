@@ -68,17 +68,25 @@ export function optimizeSymbol(candles, timeframe = "1h") {
         if (!bestOnTrain || train.expectancyR > bestOnTrain.train.expectancyR) {
           const val = evaluate(candles, signals, a, b, opts);
           const test = evaluate(candles, signals, b, n, opts);
-          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, val, test };
+          const oos = evaluate(candles, signals, a, n, opts); // 合并样本外（后 40%）——统计更稳
+          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, val, test, oos };
         }
       }
     }
     if (bestOnTrain) candidates.push(bestOnTrain);
   }
 
-  // 双样本外合格：val 与 test 两窗都要有足够交易且期望 R > 0（抗过拟合关键）
+  // 合并样本外合格：后 40% 作为整体样本外，交易数达标且期望 R > 0。
+  // 两个子窗（val/test）都为正 → 升级为高置信 validated；否则 oos_ok。
+  const bothPositive = (c) => c.val?.expectancyR > 0 && c.test?.expectancyR > 0;
   const robust = candidates
-    .filter((c) => qualified(c.val, MIN_OOS_TRADES) && qualified(c.test, MIN_OOS_TRADES) && c.val.expectancyR > 0 && c.test.expectancyR > 0)
-    .sort((x, y) => (y.test.expectancyR + y.val.expectancyR) - (x.test.expectancyR + x.val.expectancyR));
+    .filter((c) => qualified(c.oos, MIN_OOS_TRADES) && c.oos.expectancyR > 0)
+    .sort((x, y) => {
+      const bx = bothPositive(x) ? 1 : 0;
+      const by = bothPositive(y) ? 1 : 0;
+      if (bx !== by) return by - bx; // 双窗都正的优先
+      return y.oos.expectancyR - x.oos.expectancyR;
+    });
 
   const regime = detectRegime(candles.slice(b));
   const preferred = regimePreferredFamilies(regime);
@@ -87,12 +95,12 @@ export function optimizeSymbol(candles, timeframe = "1h") {
 
   return {
     best,
-    confidence: best ? (regimeMatched[0] ? "validated" : "oos_ok") : "low",
+    confidence: best ? (bothPositive(best) ? "validated" : "oos_ok") : "low",
     regime,
     regimeMatch: best ? preferred.includes(best.family) : false,
     preferredFamilies: preferred,
-    oosScore: best ? Number(((best.val.expectancyR + best.test.expectancyR) / 2).toFixed(3)) : null,
-    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, valExpectancyR: c.val?.expectancyR ?? null, testExpectancyR: c.test?.expectancyR ?? null, testTrades: c.test?.trades ?? 0 }))
+    oosScore: best ? Number(best.oos.expectancyR.toFixed(3)) : null,
+    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, bothWindowsPositive: bothPositive(c) }))
   };
 }
 
