@@ -7,11 +7,12 @@
 // 交易所净流入流出 / 大额链上转账 / 清算热图需要付费数据源，留待接入。
 // ---------------------------------------------------------------------------
 import { nowIso } from "./store.mjs";
+import { toOkxSymbol } from "./exchangeConnector.mjs";
 
 const COINGECKO = "https://api.coingecko.com/api/v3";
 const FNG = "https://api.alternative.me/fng/?limit=1";
 const OKX_BASE = "https://www.okx.com";
-const BINANCE_FUT = "https://fapi.binance.com";
+const RUBIK = `${OKX_BASE}/api/v5/rubik/stat/contracts`;
 
 function timer(ms = 8000) {
   const controller = new AbortController();
@@ -69,18 +70,28 @@ function interpretGlobal(g) {
 export async function fetchSmartMoney(symbol = "BTC/USDT") {
   const out = { symbol, fetchedAt: nowIso() };
   const ccy = String(symbol).split("/")[0].toUpperCase();
+  const instId = toOkxSymbol(symbol, "perpetual"); // 如 BTC-USDT-SWAP
+  const firstRatio = (settled) => {
+    const row = settled.status === "fulfilled" ? settled.value?.data?.[0] : null; // [ts, ratio]
+    return row && row[1] != null && Number.isFinite(Number(row[1])) ? Number(Number(row[1]).toFixed(3)) : null;
+  };
 
-  // OKX rubik（服务器可用）：散户账户多空比 + 主动买卖量
-  const okx = timer(8000);
+  // 全部走 OKX rubik（服务器直连可用，无地区屏蔽）：
+  //  - 大户持仓多空比 = 真·聪明钱定位（精英交易员按持仓）
+  //  - 大户账户多空比 = 精英交易员按人数
+  //  - 全体持仓人数多空比 = 散户/大众定位
+  //  - 主动买卖量 = 成交侵略性
+  const okx = timer(9000);
   try {
-    const [lsAcct, taker] = await Promise.allSettled([
-      getJson(`${OKX_BASE}/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=5m`, okx.signal),
+    const [topPos, topAcct, crowd, taker] = await Promise.allSettled([
+      getJson(`${RUBIK}/long-short-position-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
+      getJson(`${RUBIK}/long-short-account-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
+      getJson(`${RUBIK}/long-short-account-ratio-contract?instId=${instId}&period=5m`, okx.signal),
       getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=5m`, okx.signal)
     ]);
-    if (lsAcct.status === "fulfilled") {
-      const row = lsAcct.value?.data?.[0]; // [ts, ratio]
-      if (row && row[1] != null) out.retailLongShortRatio = Number(Number(row[1]).toFixed(3));
-    }
+    out.topTraderLongShortRatio = firstRatio(topPos);   // 大户持仓多空比（真·聪明钱）
+    out.topTraderAccountRatio = firstRatio(topAcct);    // 大户账户多空比
+    out.retailLongShortRatio = firstRatio(crowd);       // 全体持仓人数多空比（散户为主）
     if (taker.status === "fulfilled") {
       const row = taker.value?.data?.[0]; // [ts, sellVol, buyVol]
       if (row) {
@@ -93,19 +104,6 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
     /* OKX 不可用则跳过 */
   } finally {
     okx.cancel();
-  }
-
-  // Binance 大户持仓多空比（真·聪明钱代理；地区可能屏蔽，容错）
-  const bn = timer(6000);
-  try {
-    const bSymbol = String(symbol).replace("/", "").toUpperCase();
-    const top = await getJson(`${BINANCE_FUT}/futures/data/topLongShortPositionRatio?symbol=${bSymbol}&period=5m&limit=1`, bn.signal);
-    const row = Array.isArray(top) ? top[0] : null;
-    if (row && row.longShortRatio != null) out.topTraderLongShortRatio = Number(Number(row.longShortRatio).toFixed(3));
-  } catch {
-    /* Binance 屏蔽/失败则无大户数据 */
-  } finally {
-    bn.cancel();
   }
 
   out.interpretation = interpretSmartMoney(out);
