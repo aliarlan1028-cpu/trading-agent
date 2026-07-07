@@ -13,6 +13,34 @@ const ACTION_TO_MANDATE = {
 };
 const TERMINAL_ORDER_STATES = new Set(["filled", "canceled", "cancelled", "rejected", "expired", "closed"]);
 
+// 把内部拦截原因码翻成人话 + 指向对应开关位置，供前端/批准接口/Agent 使用。
+const GUARD_REASON_DETAIL = {
+  live_trading_disabled: { label: "实盘写入总开关未开启", fix: "系统设置 → 实盘灰度 → 勾选「LIVE_TRADING_ENABLED」并同时勾选「风险确认」" },
+  real_trading_ack_missing: { label: "尚未确认理解真实交易风险", fix: "系统设置 → 实盘灰度 → 勾选「风险确认」" },
+  real_order_write_disabled: { label: "真实下单写入未开启", fix: "系统设置 → 实盘灰度 → 勾选「真实下单写入」" },
+  gray_policy_not_enabled: { label: "未启用小额灰度策略", fix: "系统设置 → 实盘灰度 → 勾选「启用小额灰度」并设置额度/币种" },
+  symbol_not_allowed_by_gray_policy: { label: "该交易对不在灰度白名单内", fix: "系统设置 → 实盘灰度 → 把该交易对加入灰度允许列表" },
+  notional_exceeds_gray_limit: { label: "下单名义额超过灰度上限", fix: "系统设置 → 实盘灰度 → 调高「单笔灰度额度」或减小下单量" },
+  manual_approval_required: { label: "灰度策略要求人工确认", fix: "在批准时确认，或在实盘灰度里关闭「保留人工确认」" },
+  kill_switch_enabled: { label: "一键熔断已开启，禁止新交易", fix: "顶部「熔断」按钮解除，或在风控里关闭熔断" },
+  audit_chain_invalid: { label: "审计链校验未通过", fix: "联系管理员核对审计链；异常清除后才允许实盘写入" },
+  api_key_metadata_missing: { label: "缺少该交易所的 API Key 元数据", fix: "系统设置 → 交易所 → 添加只读/交易 API Key" },
+  api_key_withdraw_permission_enabled: { label: "该 API Key 带提现权限（禁止）", fix: "去交易所把该 Key 的提现权限关闭后重新配置" },
+  api_key_permission_unverified: { label: "API Key 权限尚未审计确认", fix: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
+  account_snapshot_stale: { label: "账户快照过期，无法据实计算风险", fix: "先在仪表盘/账户里运行一次私有账户同步" },
+  paper_validation_required: { label: "该策略尚未通过模拟盘前向验证", fix: "先在复盘/策略里跑模拟盘前向验证通过" },
+  mandate_not_found: { label: "未找到可用授权委托 Mandate", fix: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
+  mandate_action_not_allowed: { label: "该动作不在 Mandate 允许范围内", fix: "调整 Mandate 的允许动作或改用允许的动作" },
+  duplicate_client_order_id: { label: "重复的客户端订单号", fix: "稍后重试或换一个订单" }
+};
+
+export function describeGuardReason(reason) {
+  if (!reason) return null;
+  const detail = GUARD_REASON_DETAIL[reason];
+  if (detail) return { code: reason, ...detail };
+  return { code: reason, label: reason, fix: "" };
+}
+
 export async function executeTradeAction(db, action, payload = {}) {
   const guard = validateWriteGuard(db, action, payload);
   if (!guard.allowed) {

@@ -5,6 +5,8 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  CheckCircle2,
+  XCircle,
   BrainCircuit,
   CalendarClock,
   ChevronDown,
@@ -395,6 +397,41 @@ export function SystemConfigPanel({ data, action, ui, section }) {
         {activeConfigSection === "live" && (
           <form className="panelForm" onSubmit={saveLive}>
             <h3>实盘写入与灰度发布</h3>
+            {(() => {
+              const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
+              const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
+              const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
+              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? true;
+              const gates = [
+                { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", hint: "勾选下方 LIVE_TRADING_ENABLED" },
+                { ok: Boolean(live.acknowledged), label: "风险确认", hint: "勾选下方「风险确认」" },
+                { ok: Boolean(live.orderWriteEnabled), label: "真实下单写入", hint: "勾选下方「真实下单写入」——批准被拦时多半就是缺这个" },
+                { ok: Boolean(live.grayEnabled), label: "小额灰度策略", hint: "勾选下方「启用小额灰度」并设额度/币种" },
+                { ok: mandateOk, label: "有效授权 Mandate", hint: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
+                { ok: snapshotOk, label: "账户快照", hint: "配置交易所后同步一次私有账户" },
+                { ok: withdrawOk, label: "API 无提现权限已确认", hint: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
+                { ok: !data.system?.killSwitch, label: "未熔断", hint: "解除顶部「熔断」" },
+                { ok: auditOk, label: "审计链正常", hint: "审计链异常需先修复" }
+              ];
+              const pass = gates.filter((g) => g.ok).length;
+              return (
+                <div className="liveReadiness">
+                  <div className="liveReadinessHead">
+                    <span>实盘下单就绪清单（全部就绪后批准才会真实下单，否则只干跑）</span>
+                    <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} 就绪</b>
+                  </div>
+                  <div className="liveGateList">
+                    {gates.map((g) => (
+                      <div key={g.label} className={g.ok ? "liveGate ok" : "liveGate"}>
+                        {g.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                        <span>{g.label}</span>
+                        {!g.ok && <small>{g.hint}</small>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="switchGrid">
               <label className="checkboxLabel"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /> LIVE_TRADING_ENABLED</label>
               <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>

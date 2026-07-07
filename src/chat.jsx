@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  History,
   KeyRound,
   ListChecks,
   PlugZap,
@@ -314,6 +315,7 @@ export function ChatPage({ data, action, ui }) {
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
   const [llmConfigured, setLlmConfigured] = useState(true);
   const [provider, setProvider] = useState(null);
   const [input, setInput] = useState("");
@@ -393,15 +395,26 @@ export function ChatPage({ data, action, ui }) {
   return (
     <div className="chatPage">
       <div className="chatSessionBar">
-        <button className="newChatButton" onClick={newSession}><Plus size={14} /> 新建对话</button>
-        <div className="chatSessionList">
-          {sessions.map((session) => (
-            <button key={session.id} className={session.id === activeSessionId ? "active" : ""} onClick={() => switchSession(session.id)} title={session.title}>
-              <span>{session.title || "未命名对话"}</span>
-              <small>{formatTime(session.updatedAt || session.createdAt)}</small>
-            </button>
-          ))}
+        <div className="chatSessionSwitch">
+          <button className="csSwitchBtn" onClick={() => { newSession(); setShowHistory(false); }}><Plus size={15} /> 新建对话</button>
+          <button className={`csSwitchBtn history ${showHistory ? "active" : ""}`} onClick={() => setShowHistory((value) => !value)} aria-expanded={showHistory}>
+            <History size={15} /> 历史记录
+            {sessions.length > 1 && <b className="csCount">{sessions.length}</b>}
+          </button>
         </div>
+        {showHistory && (
+          <>
+            <div className="chatHistoryBackdrop" onClick={() => setShowHistory(false)} />
+            <div className="chatHistoryPop" role="listbox">
+              {sessions.length ? sessions.map((session) => (
+                <button key={session.id} className={session.id === activeSessionId ? "active" : ""} onClick={() => { switchSession(session.id); setShowHistory(false); }} title={session.title}>
+                  <span>{session.title || "未命名对话"}</span>
+                  <small>{formatTime(session.updatedAt || session.createdAt)}</small>
+                </button>
+              )) : <div className="chatHistoryEmpty">暂无历史对话</div>}
+            </div>
+          </>
+        )}
       </div>
       <div className="chatScroll" ref={scrollRef}>
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}

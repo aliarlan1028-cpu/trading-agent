@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { AdminPage, AuditSystemPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
+import { AdminPage, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
 import { KillConfirmDialog, MobileApp, RightRail } from "./mobile.jsx";
 import { isNativeApp } from "./lib.jsx";
@@ -37,11 +37,8 @@ if (isNativeApp()) {
 
 const navItems = [
   { id: "chat", label: "AI交易员", short: "交易员", icon: MessageSquare },
-  { id: "marketAccount", label: "仪表盘", short: "仪表盘", icon: WalletCards },
-  { id: "review", label: "复盘", short: "复盘", icon: ClipboardList },
+  { id: "cockpit", label: "驾驶舱", short: "驾驶舱", icon: WalletCards },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", icon: BookOpen },
-  { id: "eventsTasks", label: "事件与任务", short: "事件", icon: CalendarClock },
-  { id: "auditSystem", label: "审计与通知", short: "通知", icon: Bell },
   { id: "systemSettings", label: "系统设置", short: "设置", icon: Settings },
   { id: "admin", label: "Admin", short: "Admin", icon: UserCog }
 ];
@@ -139,11 +136,16 @@ function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSett
         <button type="button" role="tab" aria-selected={activeSettingsTab === "risk"} className={activeSettingsTab === "risk" ? "active" : ""} onClick={() => setActiveSettingsTab("risk")}>
           <Shield size={15} /> 风控与授权
         </button>
+        <button type="button" role="tab" aria-selected={activeSettingsTab === "tasks"} className={activeSettingsTab === "tasks" ? "active" : ""} onClick={() => setActiveSettingsTab("tasks")}>
+          <CalendarClock size={15} /> 任务调度
+        </button>
       </div>
       <div className="settingsPage">
         {activeSettingsTab === "risk"
           ? <RiskAuthPage data={data} action={action} ui={ui} embedded />
-          : <SystemConfigPanel data={data} action={action} ui={ui} />}
+          : activeSettingsTab === "tasks"
+            ? <EventsTasksPage data={data} action={action} ui={ui} embedded mode="tasks" />
+            : <SystemConfigPanel data={data} action={action} ui={ui} />}
       </div>
     </div>
   );
@@ -164,6 +166,7 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 function App() {
   const [active, setActive] = useState("chat");
   const [activeSettingsTab, setActiveSettingsTab] = useState("config");
+  const [cockpitTab, setCockpitTab] = useState("overview");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
@@ -173,21 +176,23 @@ function App() {
       setActive("systemSettings");
       return;
     }
+    // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
+    if (next === "marketAccount") { setCockpitTab("overview"); setActive("cockpit"); return; }
+    if (next === "review") { setCockpitTab("review"); setActive("cockpit"); return; }
     if (next === "systemSettings") setActiveSettingsTab("config");
     setActive(next);
   }
   const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
-    if (active === "marketAccount") return <MarketAccountPage data={data} action={action} ui={ui} />;
-    if (active === "review") return <ReviewPage data={data} action={action} ui={ui} />;
+    if (active === "cockpit") return <CockpitPage data={data} action={action} ui={ui} cockpitTab={cockpitTab} setCockpitTab={setCockpitTab} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     if (active === "admin") return <AdminPage data={data} action={action} ui={ui} />;
     return <ChatPage data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, data, action]);
+  }, [active, activeSettingsTab, cockpitTab, data, action]);
 
   if (authRequired) return <LoginScreen login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;

@@ -22,7 +22,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, formatDateTime, formatTime, humanize, humanizePhase, ProgressBar, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { displayMoney, formatDate, formatDateTime, formatTime, humanize, humanizePhase, ProgressBar, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -116,6 +116,20 @@ export function RailContent({ data, action, ui }) {
           <span>人工确认<b>{mandate ? "按阈值" : "需要授权"}</b></span>
         </div>
       </div>
+
+      {(data.events || []).length > 0 && (
+        <div className="railBlock">
+          <span className="railLabel">近期事件</span>
+          {(data.events || []).slice(0, 4).map((ev) => (
+            <div className="railEventItem" key={ev.id}>
+              <b title={ev.rawTitle || ev.title}>{String(ev.shortTitle || ev.title || "-").slice(0, 30)}</b>
+              <span>{formatDate(ev.due, "待定")} · {ev.category || "事件"}</span>
+              <StatusBadge tone={ev.impact >= 80 ? "danger" : ev.impact >= 50 ? "warning" : "neutral"}>{ev.impactLabel || "低影响"}</StatusBadge>
+            </div>
+          ))}
+          <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}>刷新事件源 <ChevronRight size={13} /></button>
+        </div>
+      )}
 
       {(positions.length > 0 || orders.length > 0) && (
         <div className="railBlock">

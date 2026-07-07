@@ -4,8 +4,39 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const rssParser = new Parser();
 
+// 精选、可靠、无需密钥的事件源。交易所公告页是 JS 动态渲染、抓不到，
+// 用币圈新闻 RSS（会覆盖上下架/安全/监管）+ 美联储宏观来替代。
+const DEFAULT_EVENT_SOURCES = [
+  { id: "src_fed_press", name: "Federal Reserve Press Releases", type: "rss", url: "https://www.federalreserve.gov/feeds/press_all.xml", category: "宏观", enabled: true, trustScore: 92 },
+  { id: "src_coindesk", name: "CoinDesk", type: "rss", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", category: "币圈", enabled: true, trustScore: 80 },
+  { id: "src_cointelegraph", name: "Cointelegraph", type: "rss", url: "https://cointelegraph.com/rss", category: "币圈", enabled: true, trustScore: 76 },
+  { id: "src_theblock", name: "The Block", type: "rss", url: "https://www.theblock.co/rss.xml", category: "币圈", enabled: true, trustScore: 80 },
+  { id: "src_decrypt", name: "Decrypt", type: "rss", url: "https://decrypt.co/feed", category: "币圈", enabled: true, trustScore: 72 }
+];
+
+export function ensureDefaultEventSources(db) {
+  db.eventSources ||= [];
+  // 清理冒烟测试残留的占位源，避免污染事件源列表。
+  db.eventSources = db.eventSources.filter((source) => !/smoke/i.test(source.name || "") && !/smoke/i.test(source.id || ""));
+  // 停用抓不到内容的交易所 HTML 源，避免每次刷新都失败刷屏。
+  for (const source of db.eventSources) {
+    if ((source.id === "src_binance_ann" || source.id === "src_okx_ann") && source.type === "html") source.enabled = false;
+  }
+  for (const preset of DEFAULT_EVENT_SOURCES) {
+    const existing = db.eventSources.find((item) => item.id === preset.id);
+    if (existing) {
+      // 补齐缺失字段，但尊重用户手动 enabled 设置。
+      existing.url = preset.url; existing.type = preset.type; existing.name ||= preset.name; existing.category ||= preset.category;
+    } else {
+      db.eventSources.push({ ...preset });
+    }
+  }
+  return db.eventSources;
+}
+
 export async function refreshEventSources(db) {
   const results = [];
+  ensureDefaultEventSources(db);
   pruneStaleEvents(db);
   for (const source of (db.eventSources || []).filter((item) => item.enabled)) {
     try {
@@ -20,9 +51,22 @@ export async function refreshEventSources(db) {
       results.push({ sourceId: source.id, status: "failed", error: error.message, items: [] });
     }
   }
+  sortEventsByRecency(db);
   appendAudit(db, "刷新真实事件源", "event_sources", "EventSourceManager", results.some((r) => r.status === "failed") ? "warning" : "info");
   appendTrace(db, "event_sources", "refresh event sources", results.some((r) => r.status === "failed") ? "warning" : "ok");
-  return { status: "ok", results };
+  return { status: "ok", results, ingested: results.reduce((sum, r) => sum + (r.items?.length || 0), 0) };
+}
+
+// 按事件时间倒序：最新的排最前；无法解析日期的（即时/新近）排在有日期项之后但保持相对新。
+function eventTime(event) {
+  const raw = event.due || event.createdAt;
+  if (!raw || raw === "即时" || raw === "新近") return new Date(event.createdAt || 0).getTime();
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? new Date(event.createdAt || 0).getTime() : t;
+}
+
+function sortEventsByRecency(db) {
+  db.events = (db.events || []).sort((a, b) => eventTime(b) - eventTime(a));
 }
 
 function recentItems(items = []) {
@@ -117,7 +161,7 @@ function upsertEventFromItem(db, source, item) {
     shortTitle: shortTitle(title),
     summary: item.summary,
     sourceLink: item.link,
-    category: source.name.includes("Fed") ? "宏观事件" : "交易所事件",
+    category: source.category === "宏观" || source.name.includes("Fed") ? "宏观事件" : source.category === "币圈" ? "币圈事件" : "交易所事件",
     status: "待确认",
     confidence: source.trustScore || 70,
     impact: estimateImpact(item.title),

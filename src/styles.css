@@ -8,7 +8,7 @@
 
   /* ==========================================================
      Design tokens（暖色洗练）— 统一字阶/色板/间距/圆角/阴影
-     目前先在 .dashRefined（仪表盘样板）落地，确认后横展开。
+     已全站落地（见文件末尾"全站视觉基线"区块）。
      ========================================================== */
 
   /* 表面与描边 */
@@ -4182,67 +4182,123 @@ button.danger:disabled,
 }
 
 .chatSessionBar {
+  position: relative;
   display: flex;
-  align-items: stretch;
-  gap: 10px;
-  padding: 4px 4px 0;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) 0;
 }
 
-.newChatButton {
-  flex: none;
-  border: 1px solid #e2dac9;
-  border-radius: 10px;
+/* 分段胶囊控件：新建对话 / 历史记录 */
+.chatSessionSwitch {
+  display: inline-flex;
+  gap: var(--sp-2);
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+}
+
+.csSwitchBtn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  min-height: 42px;
-  padding: 0 12px;
-  color: #e07a3f;
-  background: #fff8ef;
-  font-weight: 900;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.chatSessionList {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  min-width: 0;
-  flex: 1;
-  padding-bottom: 2px;
+.csSwitchBtn:hover { background: var(--surface-2); color: var(--text); }
+
+.csSwitchBtn.history { color: var(--pos); }
+.csSwitchBtn.history:hover { background: var(--pos-weak); }
+.csSwitchBtn.history.active {
+  color: var(--pos);
+  border-color: var(--pos);
+  background: var(--pos-weak);
 }
 
-.chatSessionList button {
-  flex: 0 0 148px;
-  border: 1px solid #e7ded0;
-  border-radius: 10px;
+.csCount {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--pos);
+  background: var(--pos-weak);
+  border: 1px solid var(--pos);
+}
+
+/* 历史记录下拉 */
+.chatHistoryBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.chatHistoryPop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: var(--sp-1);
+  z-index: 31;
+  width: min(320px, 90vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+}
+
+.chatHistoryPop button {
   display: grid;
   gap: 2px;
   justify-items: start;
-  padding: 8px 10px;
-  color: #6f6658;
-  background: #fff;
   text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
 }
 
-.chatSessionList button.active {
-  border-color: #e07a3f;
-  color: #e07a3f;
-  background: #fff3e8;
+.chatHistoryPop button:hover { background: var(--surface-2); }
+
+.chatHistoryPop button.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-ink);
 }
 
-.chatSessionList span {
+.chatHistoryPop span {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 900;
+  font-size: var(--fs-2);
+  font-weight: 600;
 }
 
-.chatSessionList small {
-  color: #9b907f;
-  font-size: 10px;
+.chatHistoryPop small { color: var(--text-3); font-size: var(--fs-1); }
+
+.chatHistoryEmpty {
+  padding: var(--sp-4);
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--fs-2);
 }
 
 .chatMessage {
@@ -5023,6 +5079,16 @@ button.danger:disabled,
   min-height: 30px;
   font-size: 11px;
 }
+
+.railEventItem {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.railEventItem b { color: var(--text); font-size: var(--fs-2); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.railEventItem > span { color: var(--text-3); font-size: var(--fs-1); }
+.railEventItem .statusBadge { justify-self: start; margin-top: 2px; }
 
 .railActionItem > span {
   color: #8a8171;
@@ -6953,20 +7019,71 @@ button.danger:disabled,
   gap: 6px;
 }
 
+/* 驾驶舱页头 + 子标签 */
+.cockpitHead { display: grid; gap: var(--sp-3); }
+.cockpitTabs { max-width: 340px; }
+
+/* 实盘下单就绪清单 */
+.liveReadiness {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.liveReadinessHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.liveReadinessHead span { font-size: var(--fs-1); color: var(--text-3); }
+.liveReadinessHead b { font-size: var(--fs-2); font-weight: 700; }
+.liveReadinessHead b.ok { color: var(--pos); }
+.liveReadinessHead b.warn { color: var(--warn); }
+
+.liveGateList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.liveGate {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--warn);
+}
+
+.liveGate.ok { color: var(--pos); }
+.liveGate svg { margin-top: 2px; }
+.liveGate span { color: var(--text); font-size: var(--fs-2); font-weight: 600; }
+.liveGate small { grid-column: 2; color: var(--text-3); font-size: var(--fs-1); line-height: 1.35; }
+
+@media (max-width: 900px) {
+  .liveGateList { grid-template-columns: 1fr; }
+}
+
 /* ==============================================================
-   仪表盘视觉样板 v1（暖色洗练）— 仅作用于 .dashRefined
-   目的：用 design token 统一字阶/对比/圆角/阴影/留白，作为方向样板。
-   确认方向后，把同一套规则去掉 .dashRefined 前缀即可横展开。
+   全站视觉基线（暖色洗练）— 基于 :root design token，作用于所有页面
+   统一字阶/对比/圆角/阴影/留白；置于文件末尾借助 source order 覆盖旧值。
    ============================================================== */
-.dashRefined.pageStack { gap: var(--sp-5); }
 
 /* — 页头：主标题层级更清晰 — */
-.dashRefined .pageHeader { gap: var(--sp-1); }
-.dashRefined .pageHeader h1 { font-size: var(--fs-5); font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
-.dashRefined .pageHeader p { font-size: var(--fs-2); color: var(--text-2); }
+.pageHeader { gap: var(--sp-1); }
+.pageHeader h1 { font-size: var(--fs-5); font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.pageHeader p { font-size: var(--fs-2); color: var(--text-2); }
 
 /* — 卡片：统一描边/圆角/阴影/内距 — */
-.dashRefined .dashCard {
+.dashCard {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -6975,66 +7092,66 @@ button.danger:disabled,
 }
 
 /* — 区块标题 — */
-.dashRefined .sectionTitle h2 { font-size: var(--fs-4); font-weight: 640; color: var(--text); }
-.dashRefined .sectionIcon { background: var(--accent-weak); color: var(--accent-ink); border-radius: var(--r-md); }
+.sectionTitle h2 { font-size: var(--fs-4); font-weight: 640; color: var(--text); }
+.sectionIcon { background: var(--accent-weak); color: var(--accent-ink); border-radius: var(--r-md); }
 
 /* — 指标卡：数值主导、标签克制、图标统一 — */
-.dashRefined .metricCard { padding: var(--sp-5); border-radius: var(--r-lg); box-shadow: var(--sh-1); border-color: var(--border); }
-.dashRefined .metricCard:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > span {
+.metricCard { padding: var(--sp-5); border-radius: var(--r-lg); box-shadow: var(--sh-1); border-color: var(--border); }
+.metricCard:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
+.metricCard > div:not(.metricIcon):not(.metricSpark) > span {
   font-size: var(--fs-1); color: var(--text-3); font-weight: 500; letter-spacing: 0.02em;
 }
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong {
+.metricCard > div:not(.metricIcon):not(.metricSpark) > strong {
   display: block; margin-top: var(--sp-1);
   font-size: var(--fs-6); font-weight: 680; line-height: 1.12; color: var(--text);
 }
 /* 语义色须与上面同路径同等/更高详细度，否则会被上面的 color:var(--text) 覆盖 */
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.positive { color: var(--pos); }
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.warning { color: var(--warn); }
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > strong.negative { color: var(--neg); }
-.dashRefined .metricCard > div:not(.metricIcon):not(.metricSpark) > small {
+.metricCard > div:not(.metricIcon):not(.metricSpark) > strong.positive { color: var(--pos); }
+.metricCard > div:not(.metricIcon):not(.metricSpark) > strong.warning { color: var(--warn); }
+.metricCard > div:not(.metricIcon):not(.metricSpark) > strong.negative { color: var(--neg); }
+.metricCard > div:not(.metricIcon):not(.metricSpark) > small {
   display: block; margin-top: var(--sp-1); font-size: var(--fs-1); color: var(--text-3);
 }
-.dashRefined .metricIcon {
+.metricIcon {
   width: 42px; height: 42px; border-radius: var(--r-md);
   background: var(--accent-weak); color: var(--accent);
 }
 
 /* — 语义色（暖调、克制点缀）— */
-.dashRefined .metricCard strong.positive, .dashRefined .qualityGrid .positive, .dashRefined .microGrid .positive { color: var(--pos); }
-.dashRefined .metricCard strong.warning, .dashRefined .warning { color: var(--warn); }
-.dashRefined .metricCard strong.negative, .dashRefined .microGrid .negative, .dashRefined .qualityGrid .negative { color: var(--neg); }
+.metricCard strong.positive, .qualityGrid .positive, .microGrid .positive { color: var(--pos); }
+.metricCard strong.warning, .warning { color: var(--warn); }
+.metricCard strong.negative, .microGrid .negative, .qualityGrid .negative { color: var(--neg); }
 
 /* — 账户健康 / 微观结构 内格：更强对比与统一底 — */
-.dashRefined .healthGrid > div,
-.dashRefined .microGrid > div {
+.healthGrid > div,
+.microGrid > div {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
 }
-.dashRefined .healthGrid span,
-.dashRefined .microGrid span { color: var(--text-3); font-size: var(--fs-1); }
-.dashRefined .healthGrid strong,
-.dashRefined .microGrid strong { color: var(--text); font-size: var(--fs-3); font-weight: 620; }
+.healthGrid span,
+.microGrid span { color: var(--text-3); font-size: var(--fs-1); }
+.healthGrid strong,
+.microGrid strong { color: var(--text); font-size: var(--fs-3); font-weight: 620; }
 
 /* — 收益质量 / 风险承压 行 — */
-.dashRefined .riskLine { border-bottom-color: var(--border); }
-.dashRefined .riskLine span { color: var(--text-2); }
-.dashRefined .riskLine b { color: var(--text); font-weight: 600; }
+.riskLine { border-bottom-color: var(--border); }
+.riskLine span { color: var(--text-2); }
+.riskLine b { color: var(--text); font-weight: 600; }
 
 /* — 弱化文字统一到高对比 muted — */
-.dashRefined .muted, .dashRefined .dashCard small, .dashRefined .centerMuted { color: var(--text-3); }
+.muted, .dashCard small, .centerMuted { color: var(--text-3); }
 
 /* — 工具条 / 分段筛选 — */
-.dashRefined .dashboardToolbar > span { color: var(--text-3); font-size: var(--fs-2); }
+.dashboardToolbar > span { color: var(--text-3); font-size: var(--fs-2); }
 
 /* — 接入 CTA：更醒目但克制 — */
-.dashRefined .connectExchangeCta {
+.connectExchangeCta {
   background: linear-gradient(180deg, var(--accent-weak), var(--surface));
   border-color: var(--border-strong);
 }
-.dashRefined .connectExchangeCta strong { color: var(--accent-ink); }
+.connectExchangeCta strong { color: var(--accent-ink); }
 
 /* — 空状态：从"半成品"变成有意图的提示 — */
-.dashRefined .emptyPanel {
+.emptyPanel {
   color: var(--text-3); background: var(--surface-2);
   border: 1px dashed var(--border-strong); border-radius: var(--r-md);
 }

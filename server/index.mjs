@@ -22,7 +22,7 @@ import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
-import { refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
+import { ensureDefaultEventSources, refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
@@ -39,7 +39,7 @@ import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
 import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, verifyAuditChain } from "./store.mjs";
-import { executeTradeAction } from "./tradeActions.mjs";
+import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
 
 dotenv.config();
 installProxyFromEnv();
@@ -57,6 +57,7 @@ const host = process.env.HOST || "127.0.0.1";
 db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
+ensureDefaultEventSources(db);
 saveDb(db);
 
 app.use(cors());
@@ -1265,13 +1266,14 @@ app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), 
   appendAudit(db, "人工批准交易计划", plan.id, db.user.name, "warning");
   // 批准即进入执行引擎：实盘开启则真实下单，关闭则记录干跑结果。
   const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
+  const guard = describeGuardReason(execution.reason);
   const messages = {
     dry_run: "计划已批准。实盘写入关闭，执行引擎完成了数量与价格计算（干跑），未向交易所提交。",
     submitted: "计划已批准，入场单已提交到交易所。",
-    blocked: `计划已批准，但执行被安全闸拦截：${execution.reason || ""}`,
+    blocked: guard ? `计划已批准，但执行被安全闸拦截：${guard.label}。${guard.fix ? "开启方式：" + guard.fix : ""}` : "计划已批准，但执行被安全闸拦截。",
     already_executing: "该计划已有在途执行单。"
   };
-  persist(res, { plan, execution, message: messages[execution.status] || `执行状态：${execution.status}` });
+  persist(res, { plan, execution, guard, message: messages[execution.status] || `执行状态：${execution.status}` });
 });
 
 app.post("/api/trade-plans/:id/cancel", requirePermission("write:trade_plan"), (req, res) => {

@@ -41,7 +41,29 @@ import {
 } from "lucide-react";
 import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote } from "./lib.jsx";
 
-export function MarketAccountPage({ data, action, ui }) {
+// 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
+export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
+  return (
+    <div className="pageStack">
+      <div className="cockpitHead">
+        <PageHeader active="cockpit" />
+        <div className="settingsSubNav cockpitTabs" role="tablist" aria-label="驾驶舱导航">
+          <button type="button" role="tab" aria-selected={cockpitTab === "overview"} className={cockpitTab === "overview" ? "active" : ""} onClick={() => setCockpitTab("overview")}>
+            <Gauge size={15} /> 总览
+          </button>
+          <button type="button" role="tab" aria-selected={cockpitTab === "review"} className={cockpitTab === "review" ? "active" : ""} onClick={() => setCockpitTab("review")}>
+            <ClipboardList size={15} /> 复盘
+          </button>
+        </div>
+      </div>
+      {cockpitTab === "review"
+        ? <ReviewPage data={data} action={action} ui={ui} embedded />
+        : <MarketAccountPage data={data} action={action} ui={ui} embedded />}
+    </div>
+  );
+}
+
+export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
   const market = data.activeMarket || data.markets?.[0] || { candles: [] };
   const pr = data.portfolioRisk || { portfolioVolPct: null, positions: [], correlations: [] };
@@ -81,8 +103,8 @@ export function MarketAccountPage({ data, action, ui }) {
   ];
 
   return (
-    <div className="pageStack dashRefined">
-      <PageHeader active="marketAccount" />
+    <div className="pageStack">
+      {!embedded && <PageHeader active="marketAccount" />}
       <div className={`metricGrid ${configuredAccounts ? "five" : "three"}`}>
         {configuredAccounts ? (
           <>
@@ -169,7 +191,9 @@ export function MarketAccountPage({ data, action, ui }) {
   );
 }
 
-export function EventsTasksPage({ data, action, ui, embedded = false }) {
+export function EventsTasksPage({ data, action, ui, embedded = false, mode = "all" }) {
+  const showEvents = mode === "all" || mode === "events";
+  const showTasks = mode === "all" || mode === "tasks";
   const events = data.events || [];
   const tasks = data.tasks || [];
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -205,6 +229,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false }) {
     <div className="pageStack">
       {!embedded && <PageHeader active="eventsTasks" />}
       <div className="eventsGrid">
+        {showEvents && (
         <Card className="eventRadarCard">
           <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
           <div className="dateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => { setSelectedEventId(event.id); ui.notify(`已选择事件：${event.title}`); }}><span>{formatDate(event.due, "待定")}</span><span>{event.category}</span></button>)}</div>
@@ -233,7 +258,9 @@ export function EventsTasksPage({ data, action, ui, embedded = false }) {
             </div>
           </div>
         </Card>
+        )}
 
+        {showTasks && (
         <Card className="taskCard">
           <SectionTitle icon={CalendarClock} title="定时任务" action={<button className="primaryButton" onClick={() => ui.openPanel("taskManager")}><Plus size={15} /> 新建任务</button>} />
           <div className="taskTabs">{taskTabs.map(([name, count]) => <button className={taskFilter === name ? "active" : ""} key={name} onClick={() => { setTaskFilter(name); ui.notify(`任务筛选：${name}`); }}>{name} {count}</button>)}</div>
@@ -241,9 +268,11 @@ export function EventsTasksPage({ data, action, ui, embedded = false }) {
             { key: "name", label: "任务名称" }, { key: "schedule", label: "触发方式" }, { key: "next", label: "下次运行" }, { key: "status", label: "状态" }, { key: "type", label: "任务分类" }, { key: "op", label: "操作" }
           ]} rows={filteredTasks.slice(0, 5).map((task) => ({ id: task.id, name: task.name, schedule: task.schedule || "Every 1h", next: formatDateTime(task.nextRunAt, task.nextRun || "-"), status: <StatusBadge>{humanize(task.status || "running")}</StatusBadge>, type: task.role || "风控", op: <span className="rowActions"><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button></span> }))} />
         </Card>
+        )}
       </div>
 
       <div className="eventsBottom">
+        {showEvents && (
         <Card>
           <SectionTitle icon={GitBranch} title="事件规则" action={<button className="primaryButton" onClick={() => ui.openPanel("eventRule")}><Plus size={14} /> 新建规则</button>} />
           {!eventRuleRows.length && (
@@ -263,6 +292,8 @@ export function EventsTasksPage({ data, action, ui, embedded = false }) {
             ]} rows={eventRuleRows} />
           )}
         </Card>
+        )}
+        {showTasks && (
         <Card>
           <SectionTitle icon={ClipboardList} title="任务健康摘要" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>日志中心 <ChevronRight size={14} /></button>} />
           <div className="healthGrid">
@@ -272,6 +303,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false }) {
             <div><span>失败次数</span><strong>{(data.jobRuns || []).filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length}</strong><StatusBadge tone="warning">近记录</StatusBadge></div>
           </div>
         </Card>
+        )}
       </div>
     </div>
   );
@@ -593,7 +625,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   );
 }
 
-export function ReviewPage({ data, action, ui }) {
+export function ReviewPage({ data, action, ui, embedded = false }) {
   const [reviewTab, setReviewTab] = useState("strategy");
   const performance = data.performance || {};
   const reviews = data.reviews || [];
@@ -636,7 +668,7 @@ export function ReviewPage({ data, action, ui }) {
   }));
   return (
     <div className="pageStack">
-      <PageHeader active="review" />
+      {!embedded && <PageHeader active="review" />}
       <div className="metricGrid five">
         <MetricCard icon={BarChart3} label="累计盈亏" value={displayMoney(performance.totalPnlUsdt)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(performance.totalPnlUsdt || 0) >= 0 ? "positive" : "warning"} />
         <MetricCard icon={Target} label="胜率" value={performance.trades ? `${performance.winRatePct}%` : "暂无数据"} sub="按已平仓交易统计" />
