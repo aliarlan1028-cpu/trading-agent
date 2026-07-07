@@ -243,7 +243,7 @@ export function hashPassword(password) {
   return `scrypt:${salt}:${hash}`;
 }
 
-function verifyPassword(password, encoded = "") {
+export function verifyPassword(password, encoded = "") {
   const [, salt, hash] = String(encoded).split(":");
   if (!salt || !hash) return false;
   const candidate = crypto.scryptSync(password, salt, 64);

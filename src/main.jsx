@@ -93,6 +93,7 @@ function useIsMobileViewport() {
 
 function AppTopbar({ data, setActive, notify, action }) {
   const [killConfirm, setKillConfirm] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const accounts = data.exchangeAccounts || [];
   const binance = accounts.find((item) => item.exchange === "BINANCE") || {};
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
@@ -119,8 +120,12 @@ function AppTopbar({ data, setActive, notify, action }) {
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
+        {!data.user?.isOwner && (
+          <button className="bellButton" title="账户 · 修改密码" onClick={() => setShowPassword(true)}><UserCog size={18} /></button>
+        )}
       </div>
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
+      {showPassword && <ChangePasswordDialog action={action} notify={notify} onClose={() => setShowPassword(false)} />}
     </header>
   );
 }
@@ -146,6 +151,32 @@ function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSett
           : activeSettingsTab === "tasks"
             ? <EventsTasksPage data={data} action={action} ui={ui} embedded mode="tasks" />
             : <SystemConfigPanel data={data} action={action} ui={ui} />}
+      </div>
+    </div>
+  );
+}
+
+function ChangePasswordDialog({ action, notify, onClose }) {
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  async function submit() {
+    if (newPassword.length < 10) return notify("新密码至少 10 位");
+    if (newPassword !== confirm) return notify("两次输入的新密码不一致");
+    const result = await action("/api/auth/change-password", { oldPassword, newPassword });
+    if (result && result.ok !== false) { notify("密码已修改"); onClose(); }
+  }
+  return (
+    <div className="modalOverlay" onClick={onClose}>
+      <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+        <h3>修改密码</h3>
+        <label>原密码<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
+        <label>新密码（至少 10 位）<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+        <label>确认新密码<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+        <div className="modalActions">
+          <button className="secondaryButton" onClick={onClose}>取消</button>
+          <button className="primaryButton" onClick={submit}>确认修改</button>
+        </div>
       </div>
     </div>
   );

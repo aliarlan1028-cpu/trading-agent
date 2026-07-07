@@ -117,18 +117,20 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     <div className="pageStack cockpitOverview">
       {!embedded && <PageHeader active="marketAccount" />}
 
-      <div className="cockpitStrip">
-        {stripCells.map((cell) => {
-          const clickable = Boolean(cell.onClick);
-          return (
-            <div key={cell.label} className={`stripCell ${clickable ? "clickable" : ""}`} {...(clickable ? { role: "button", tabIndex: 0, onClick: cell.onClick } : {})}>
-              <span>{cell.label}</span>
-              <strong className={cell.tone}>{cell.value}</strong>
-              {cell.sub && <small>{cell.sub}</small>}
-            </div>
-          );
-        })}
-        <div className="stripCell stripFilter">
+      <div className="cockpitStripRow">
+        <div className="cockpitStrip">
+          {stripCells.map((cell) => {
+            const clickable = Boolean(cell.onClick);
+            return (
+              <div key={cell.label} className={`stripCell ${clickable ? "clickable" : ""}`} {...(clickable ? { role: "button", tabIndex: 0, onClick: cell.onClick } : {})}>
+                <span>{cell.label}</span>
+                <strong className={cell.tone}>{cell.value}</strong>
+                {cell.sub && <small>{cell.sub}</small>}
+              </div>
+            );
+          })}
+        </div>
+        <div className="cockpitPnlWindow">
           <span>盈亏区间</span>
           <div className="filterGroup mini">{["本月", "季度", "全年"].map((item) => <button className={pnlWindow === item ? "active" : ""} key={item} onClick={() => setPnlWindow(item)}>{item}</button>)}</div>
         </div>
@@ -1119,6 +1121,12 @@ export function AdminPage({ data, action }) {
   function updatePlanDraft(id, patch) {
     setPlanDrafts((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }));
   }
+  function resetUserPassword(user) {
+    const password = window.prompt(`为 ${user.email || user.name} 设置新的临时密码（至少 10 位）。设置后请让 TA 登录并在“账户 → 修改密码”里自行更换。`);
+    if (!password) return;
+    if (password.length < 10) { ui.notify?.("临时密码至少 10 位"); return; }
+    action(`/api/admin/users/${user.id}/reset-password`, { password }, "POST");
+  }
   function savePlan(plan) {
     const draft = planDrafts[plan.id] || plan;
     action(`/api/admin/subscription-plans/${plan.id}`, {
@@ -1182,12 +1190,19 @@ export function AdminPage({ data, action }) {
               {users.map((user) => {
                 const sub = subscriptionFor(user);
                 return (
-                  <div className="adminUserRow" key={user.id}>
+                  <div className={`adminUserRow ${user.isOwner ? "owner" : ""}`} key={user.id}>
                     <div className="adminUserIdentity"><strong>{user.name || user.email || user.id}</strong><small>{user.email || "-"} · {user.tenantId}</small></div>
-                    <select value={user.role || "交易用户"} onChange={(event) => action(`/api/admin/users/${user.id}`, { role: event.target.value }, "PATCH")}><option>交易用户</option><option>管理员</option></select>
-                    <select value={user.status || "active"} onChange={(event) => action(`/api/admin/users/${user.id}`, { status: event.target.value }, "PATCH")}><option value="active">启用</option><option value="disabled">停用</option></select>
-                    <div className="adminSubState"><StatusBadge tone={sub?.status === "active" ? "ok" : "warning"}>{sub?.source === "owner_grant" ? "Owner 免费授权" : humanize(sub?.status, "未订阅")}</StatusBadge><small>{sub?.currentPeriodEnd ? `到期 ${formatDate(sub.currentPeriodEnd)}` : "未设置到期"}</small></div>
-                    <button className="secondaryButton" onClick={() => action(`/api/admin/users/${user.id}/grant-free`, { months: grantMonths })}>赠送</button>
+                    <select value={user.role || "交易用户"} disabled={user.isOwner} onChange={(event) => action(`/api/admin/users/${user.id}`, { role: event.target.value }, "PATCH")}><option>交易用户</option><option>管理员</option></select>
+                    <select value={user.status || "active"} disabled={user.isOwner} onChange={(event) => action(`/api/admin/users/${user.id}`, { status: event.target.value }, "PATCH")}><option value="active">启用</option><option value="disabled">停用</option></select>
+                    <div className="adminSubState"><StatusBadge tone={sub?.status === "active" ? "ok" : "warning"}>{sub?.source === "owner_grant" ? "Owner 免费授权" : humanize(sub?.status, "未订阅")}</StatusBadge><small>{sub?.currentPeriodEnd ? `到期 ${formatDate(sub.currentPeriodEnd)}` : "长期有效"}</small></div>
+                    <span className="adminUserActions">
+                      {user.isOwner ? <span className="muted">Owner</span> : (
+                        <>
+                          <button className="secondaryButton" onClick={() => action(`/api/admin/users/${user.id}/grant-free`, { months: grantMonths })}>赠送 {grantMonths} 月</button>
+                          <button className="secondaryButton" onClick={() => resetUserPassword(user)}>重置密码</button>
+                        </>
+                      )}
+                    </span>
                   </div>
                 );
               })}

@@ -87,13 +87,6 @@ export function RailContent({ data, action, ui }) {
     : orders.length
       ? `${orders.length} 个委托需要避让`
       : "暂无持仓/委托冲突";
-  // 把"Agent 动作 + 事件"合并成一条按时间倒序的统一动态流，取代原来重叠的三块。
-  const feed = [
-    ...timeline.slice(0, 6).map((t) => ({ id: `a_${t.id}`, kind: "Agent", text: cleanAgentText(t.title, "-"), time: t.createdAt, cls: "act" })),
-    ...(data.events || []).slice(0, 5).map((e) => ({ id: `e_${e.id}`, kind: "事件", text: String(e.shortTitle || e.title || "-"), time: (e.due && e.due !== "即时" && e.due !== "新近") ? e.due : e.createdAt, cls: e.impact >= 80 ? "danger" : e.impact >= 50 ? "warn" : "ev" }))
-  ].sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
-    .filter((item, index, arr) => arr.findIndex((x) => x.kind === item.kind && x.text === item.text) === index)
-    .slice(0, 7);
 
   return (
     <>
@@ -122,22 +115,6 @@ export function RailContent({ data, action, ui }) {
         </div>
       </div>
 
-      {/* 3. 最近动态：Agent 动作 + 事件 合并时间线 */}
-      <div className="railBlock">
-        <div className="railStatusTop">
-          <span className="railLabel">最近动态</span>
-          <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}>刷新</button>
-        </div>
-        {!feed.length && <span className="railSub">暂无动态</span>}
-        {feed.map((item) => (
-          <div className="railFeedItem" key={item.id}>
-            <span className={`railFeedTag ${item.cls}`}>{item.kind}</span>
-            <b title={item.text}>{String(item.text).slice(0, 34)}</b>
-            <time>{item.time ? formatTime(item.time) : ""}</time>
-          </div>
-        ))}
-        <button className="textButton" onClick={() => ui.setActive("review")}>进入复盘 <ChevronRight size={13} /></button>
-      </div>
 
       {/* 4. 快捷操作 */}
       <div className="railBlock railActions">

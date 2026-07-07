@@ -3703,15 +3703,22 @@ h3 {
 }
 
 .adminUserRow {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) 130px 110px minmax(150px, .8fr) 82px;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  border: 1px solid #eadfce;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fffaf7;
+  gap: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  background: var(--surface-2);
 }
+.adminUserRow.owner { background: var(--accent-weak); border-color: var(--border-strong); }
+.adminUserIdentity { flex: 1 1 180px; min-width: 0; }
+.adminUserRow > select { flex: 0 0 auto; width: 104px; }
+.adminSubState { flex: 1 1 150px; }
+.adminUserActions { flex: 1 1 auto; display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.adminUserActions .secondaryButton { white-space: nowrap; padding: 6px 12px; }
+.adminUserActions .muted { color: var(--text-3); font-size: var(--fs-1); }
 
 .adminUserIdentity,
 .adminSubState {
@@ -3732,7 +3739,7 @@ h3 {
   background: var(--surface-2);
 }
 
-.planEditRow textarea { min-height: 52px; }
+.planEditRow textarea { min-height: 88px; line-height: 1.5; resize: vertical; }
 .planToggle { border: 0; background: transparent; padding: 0; cursor: pointer; flex: none; }
 .planEditRow .primaryButton { justify-self: start; padding: 6px 14px; }
 
@@ -7057,6 +7064,16 @@ button.danger:disabled,
   gap: 6px;
 }
 
+/* 设置 → 任务调度：紧凑卡片 + 单行紧凑表格 */
+.settingsPage .eventsGrid,
+.settingsPage .eventsBottom { grid-template-columns: 1fr; gap: var(--sp-3); }
+.settingsPage .taskCard,
+.settingsPage .eventsBottom > .dashCard { padding: var(--sp-4); }
+.settingsPage .dataHead,
+.settingsPage .dataRow { min-height: 32px; padding: 6px var(--sp-3); font-size: var(--fs-1); gap: var(--sp-2); }
+.settingsPage .taskCard .healthGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.settingsPage .eventsBottom .healthGrid > div { padding: var(--sp-2) var(--sp-3); }
+
 /* 驾驶舱页头 + 子标签 */
 .cockpitHead { display: grid; gap: var(--sp-3); }
 .cockpitTabs { max-width: 340px; }
@@ -7065,15 +7082,19 @@ button.danger:disabled,
 .cockpitOverview { gap: var(--sp-3); }
 
 /* 顶部关键指标带：一行密排，分隔线切分 */
+.cockpitStripRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; }
 .cockpitStrip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: var(--sh-1);
   overflow: hidden;
 }
+.cockpitPnlWindow { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.cockpitPnlWindow > span { font-size: var(--fs-1); color: var(--text-3); }
+.filterGroup.mini { display: inline-flex; flex-wrap: nowrap; gap: 4px; }
 
 .stripCell {
   display: grid;
@@ -7180,6 +7201,22 @@ button.danger:disabled,
   .stripCell { border-right: none; border-bottom: 1px solid var(--border); }
   .cockpitGrid { grid-template-columns: 1fr; }
 }
+
+/* 修改密码等小弹窗 */
+.modalCard {
+  width: min(420px, 92vw);
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+}
+.modalCard h3 { font-size: var(--fs-4); font-weight: 640; color: var(--text); }
+.modalCard label { display: grid; gap: 4px; font-size: var(--fs-1); color: var(--text-3); }
+.modalCard input { padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-2); }
+.modalActions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-2); }
 
 /* AI 交易员：对话/情报 视图切换 */
 .chatViewSwitch {

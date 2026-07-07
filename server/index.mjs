@@ -11,7 +11,7 @@ import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } 
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
-import { hashPassword, installAuth, invalidateSessions, requirePermission } from "./auth.mjs";
+import { hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
@@ -84,6 +84,7 @@ registerTaskHandler("strategy_research", (database) => runStrategyResearch(datab
 registerTaskHandler("paper_forward", (database) => runPaperForward(database));
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
+registerTaskHandler("payment_verify", (database) => verifyTrc20Payments(database));
 registerTaskHandler("okx_readonly_sync", (database) => {
   const account = (database.exchangeAccounts || []).find((item) => item.exchange === "OKX");
   return account ? syncPrivateReadOnly(database, account.id) : { status: "missing_okx_account" };
@@ -95,6 +96,7 @@ ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", h
 ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上核验", handler: "payment_verify", schedule: "Every 2m" }, saveDb);
 
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
@@ -151,6 +153,43 @@ function activateSubscriptionFromPayment(payment) {
   else db.subscriptions.unshift({ id: id("sub"), ...payload });
   const tenant = (db.tenants || []).find((item) => item.id === payment.tenantId);
   if (tenant) Object.assign(tenant, { planId: payment.planId, status: "active", updatedAt: nowIso() });
+}
+
+// 真·链上验证：查 TronGrid 上收款地址的 USDT(TRC20) 转入，金额匹配的待支付单自动确认。
+// 无 TRC20 地址则跳过；无 TRONGRID_API_KEY 也能查（有 key 更稳、限流更高）。
+const USDT_TRC20_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+async function verifyTrc20Payments(db) {
+  const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
+  const pending = (db.paymentRequests || []).filter((item) => item.status === "pending");
+  if (!address) return { status: "skipped", reason: "no_receive_address" };
+  if (!pending.length) return { status: "ok", checked: 0, confirmed: 0 };
+  const apiKey = process.env.TRONGRID_API_KEY;
+  const url = `https://api.trongrid.io/v1/accounts/${address}/transactions/trc20?only_to=true&limit=50&contract_address=${USDT_TRC20_CONTRACT}`;
+  try {
+    const response = await fetch(url, { headers: apiKey ? { "TRON-PRO-API-KEY": apiKey } : {} });
+    if (!response.ok) return { status: "failed", error: `TronGrid HTTP ${response.status}` };
+    const json = await response.json();
+    const txs = (json.data || []).map((tx) => ({ txid: tx.transaction_id, value: Number(tx.value) / 1e6, from: tx.from, at: tx.block_timestamp }));
+    const usedTx = new Set((db.paymentRequests || []).map((item) => item.txid).filter(Boolean));
+    let confirmed = 0;
+    for (const payment of pending) {
+      const match = txs.find((tx) => !usedTx.has(tx.txid) && Math.abs(tx.value - Number(payment.amount || 0)) < 0.01);
+      if (match) {
+        payment.status = "confirmed";
+        payment.txid = match.txid;
+        payment.confirmedAt = nowIso();
+        payment.verifiedOnChain = true;
+        usedTx.add(match.txid);
+        activateSubscriptionFromPayment(payment);
+        appendAudit(db, `TRC20 链上确认订阅：${match.txid}`, payment.id, "PaymentVerifier");
+        confirmed++;
+      }
+    }
+    if (confirmed) saveDb(db);
+    return { status: "ok", checked: txs.length, confirmed };
+  } catch (error) {
+    return { status: "failed", error: error.message };
+  }
 }
 
 async function importAndMaybeParseKnowledge(payload = {}) {
@@ -241,6 +280,36 @@ app.patch("/api/admin/users/:id", requirePermission("admin:system"), (req, res) 
   user.updatedAt = nowIso();
   appendAudit(db, `更新用户：${user.email || user.id}`, user.id, req.user?.name || db.user.name);
   persist(res, { user: sanitizeUserRecord(user) });
+});
+
+// 用户自助修改密码（校验原密码）。Owner 密码由 ADMIN_PASSWORD 环境变量管理，不在此改。
+app.post("/api/auth/change-password", (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "未登录" });
+  if (user.isOwner || !user.passwordHash) return res.status(400).json({ error: "Owner 密码通过 ADMIN_PASSWORD 环境变量管理，不在此修改" });
+  const oldPassword = String(req.body?.oldPassword || "");
+  const newPassword = String(req.body?.newPassword || "");
+  if (!verifyPassword(oldPassword, user.passwordHash)) return res.status(401).json({ error: "原密码不正确" });
+  if (newPassword.length < 10) return res.status(400).json({ error: "新密码至少 10 位" });
+  user.passwordHash = hashPassword(newPassword);
+  user.mustChangePassword = false;
+  user.updatedAt = nowIso();
+  appendAudit(db, "用户自助修改密码", user.id, user.name || user.email);
+  persist(res, { ok: true });
+});
+
+// Admin 重置某用户密码为临时密码（用户登录后应自行修改）。
+app.post("/api/admin/users/:id/reset-password", requirePermission("admin:system"), (req, res) => {
+  const user = (db.users || []).find((item) => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  if (user.isOwner) return res.status(400).json({ error: "Owner 密码由 ADMIN_PASSWORD 管理，无法在此重置" });
+  const password = String(req.body?.password || "");
+  if (password.length < 10) return res.status(400).json({ error: "临时密码至少 10 位" });
+  user.passwordHash = hashPassword(password);
+  user.mustChangePassword = true;
+  user.updatedAt = nowIso();
+  appendAudit(db, `重置用户密码：${user.email || user.id}`, user.id, req.user?.name || db.user.name, "warning");
+  persist(res, { ok: true });
 });
 
 app.post("/api/admin/users/:id/grant-free", requirePermission("admin:system"), (req, res) => {
@@ -334,6 +403,11 @@ app.post("/api/payments/trc20/request", requirePermission("write:mandate"), (req
   persist(res, payment);
 });
 
+app.post("/api/payments/trc20/verify", requirePermission("admin:system"), async (_req, res) => {
+  const result = await verifyTrc20Payments(db);
+  persist(res, result);
+});
+
 app.post("/api/payments/trc20/webhook", (req, res) => {
   const payload = req.body || {};
   const txid = payload.txid || payload.transactionId || payload.hash;
@@ -341,16 +415,21 @@ app.post("/api/payments/trc20/webhook", (req, res) => {
   const event = { id: id("payhook"), provider: payload.provider || "trc20", txid, paymentId, payload, createdAt: nowIso() };
   db.paymentWebhooks ||= [];
   db.paymentWebhooks.unshift(event);
+  // 安全：只有配置了 PAYMENT_WEBHOOK_SECRET 且签名匹配，回调才允许开通订阅；
+  // 否则只记录回调、不自动开通（真正的开通走 TronGrid 链上核验 payment_verify）。
+  const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+  const signatureOk = secret && (req.headers["x-webhook-secret"] === secret || payload.secret === secret);
   const payment = paymentId ? (db.paymentRequests || []).find((item) => item.id === paymentId) : null;
-  if (payment && (payload.status === "confirmed" || payload.confirmed === true)) {
+  if (payment && signatureOk && (payload.status === "confirmed" || payload.confirmed === true)) {
     payment.status = "confirmed";
     payment.txid = txid;
     payment.confirmedAt = nowIso();
+    payment.verifiedBy = "webhook_signed";
     activateSubscriptionFromPayment(payment);
   }
-  appendAudit(db, `收到 TRC20 支付回调：${txid || paymentId || "unknown"}`, event.id, "PaymentWebhook");
+  appendAudit(db, `收到 TRC20 支付回调：${txid || paymentId || "unknown"}${signatureOk ? "（已验签开通）" : "（未验签，仅记录）"}`, event.id, "PaymentWebhook", signatureOk ? "info" : "warning");
   saveDb(db);
-  res.json({ ok: true });
+  res.json({ ok: true, activated: Boolean(payment && signatureOk) });
 });
 
 app.post("/api/system/autonomy", requirePermission("write:mandate"), (req, res) => {
