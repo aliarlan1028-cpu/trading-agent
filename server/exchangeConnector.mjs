@@ -296,7 +296,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     recentTimer.cancel();
   }
   let guard = 0;
-  while (raw.length < target && guard < 15) {
+  while (raw.length < target && guard < 32) {
     guard += 1;
     const oldest = raw[raw.length - 1]?.[0]; // data 为最新在前，末位最旧
     if (!oldest) break;

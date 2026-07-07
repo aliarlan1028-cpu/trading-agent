@@ -289,7 +289,7 @@ export async function buildSystemPrompt(db, userText = "") {
   const profiles = (db.strategyProfiles || []).filter((p) => p.strategyId).slice(0, 5);
   if (profiles.length) {
     const text = profiles
-      .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 胜率 ${p.test?.winRatePct ?? "-"}%，置信度 ${p.confidence}，regime ${p.regime}`)
+      .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 胜率 ${p.oos?.winRatePct ?? "-"}%（${p.oosFolds || "-"}），置信度 ${p.confidence}，regime ${p.regime}`)
       .join("\n");
     sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
   }

@@ -130,7 +130,7 @@ function summarize(trades, riskPerTradePct) {
 export async function runBacktest(db, params = {}) {
   const symbol = String(params.symbol || "BTC/USDT").toUpperCase();
   const timeframe = params.timeframe || "1h";
-  const limit = Math.min(Number(params.limit || 1000), 1200);
+  const limit = Math.min(Number(params.limit || 2500), 3000);
   const strategy = getStrategy(params.strategy || "trend");
   const stratParams = { ...strategy.defaultParams, ...(params.params || {}) };
   if (params.fast) stratParams.fast = Number(params.fast);

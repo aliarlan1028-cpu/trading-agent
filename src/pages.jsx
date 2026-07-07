@@ -862,9 +862,9 @@ function StrategyResearchCard({ data, action }) {
         ]} rows={profiles.map((p) => ({
           id: p.id,
           symbol: `${p.symbol} · ${p.timeframe}`,
-          strategy: p.label,
-          oos: p.test?.expectancyR !== null && p.test?.expectancyR !== undefined ? `${p.test.expectancyR}R（${p.test.trades} 笔）` : "-",
-          winrate: p.test?.winRatePct !== null && p.test?.winRatePct !== undefined ? `${p.test.winRatePct}%` : "-",
+          strategy: `${p.label}${p.direction === "short" ? " · 做空" : p.direction === "long" ? " · 做多" : ""}`,
+          oos: p.oosScore !== null && p.oosScore !== undefined ? `${p.oosScore}R（${p.oos?.trades ?? "-"} 笔·${p.oosFolds || "-"}）` : "-",
+          winrate: p.oos?.winRatePct !== null && p.oos?.winRatePct !== undefined ? `${p.oos.winRatePct}%` : "-",
           conf: <StatusBadge tone={confTone[p.confidence] || "warning"}>{confLabel[p.confidence] || p.confidence}</StatusBadge>,
           regime: p.regime || "-"
         }))} />

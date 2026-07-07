@@ -19,8 +19,9 @@ const EXIT_GRID = [
   { atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 1.5 },
   { atrStop: true, atrMult: 3, atrPeriod: 14, takeProfitR: 2.5 }
 ];
-const MIN_TRAIN_TRADES = 5;  // 训练窗最小交易数（提高门槛，抗过拟合；受限于 ≤500 根样本）
-const MIN_OOS_TRADES = 3;    // 每个样本外窗（val/test）最小交易数——双窗都要过
+const MIN_TRAIN_TRADES = 10; // 训练窗最小交易数（样本已扩到 ~2500 根，可上调）
+const MIN_OOS_TRADES = 8;    // 合并样本外（后 60%，跨多段/多月）最小交易数
+const MIN_FOLD_TRADES = 2;   // 单个样本外折最小交易数（判断该折是否"算数"）
 
 function qualified(metrics, minTrades) {
   return metrics && metrics.trades >= minTrades && metrics.expectancyR !== null && Number.isFinite(metrics.expectancyR);
@@ -50,8 +51,9 @@ export function optimizeSymbol(candles, timeframe = "1h") {
   const n = candles.length;
   const barMinutes = BAR_MINUTES[timeframe] || 60;
   const uptrend = htfUptrend(candles);
-  const a = Math.floor(n * 0.6); // train: [0,a)
-  const b = Math.floor(n * 0.8); // val: [a,b) ; test: [b,n)
+  // 锚定式多折 walk-forward：前 40% 训练寻优，后 60% 切成 3 段独立样本外（跨不同时段/月）。
+  const t = Math.floor(n * 0.4);
+  const folds = [[t, Math.floor(n * 0.6)], [Math.floor(n * 0.6), Math.floor(n * 0.8)], [Math.floor(n * 0.8), n]];
   const candidates = [];
 
   for (const strategy of Object.values(STRATEGIES)) {
@@ -59,48 +61,49 @@ export function optimizeSymbol(candles, timeframe = "1h") {
     let bestOnTrain = null;
     for (const entryParams of strategy.paramGrid) {
       const raw = strategy.signals(candles, entryParams);
-      // 多周期确认：只在大周期同向时入场
-      const signals = raw.map((s, i) => Boolean(s) && (isLong ? uptrend[i] : !uptrend[i]));
+      const signals = raw.map((s, i) => Boolean(s) && (isLong ? uptrend[i] : !uptrend[i])); // 多周期确认
       for (const exit of EXIT_GRID) {
         const opts = { ...exit, riskPerTradePct: 0.5, direction: strategy.direction, barMinutes };
-        const train = evaluate(candles, signals, 0, a, opts);
+        const train = evaluate(candles, signals, 0, t, opts);
         if (!qualified(train, MIN_TRAIN_TRADES)) continue;
         if (!bestOnTrain || train.expectancyR > bestOnTrain.train.expectancyR) {
-          const val = evaluate(candles, signals, a, b, opts);
-          const test = evaluate(candles, signals, b, n, opts);
-          const oos = evaluate(candles, signals, a, n, opts); // 合并样本外（后 40%）——统计更稳
-          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, val, test, oos };
+          const foldMetrics = folds.map(([from, to]) => evaluate(candles, signals, from, to, opts));
+          const oos = evaluate(candles, signals, t, n, opts); // 合并样本外（后 60%）
+          bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, folds: foldMetrics, oos };
         }
       }
     }
     if (bestOnTrain) candidates.push(bestOnTrain);
   }
 
-  // 合并样本外合格：后 40% 作为整体样本外，交易数达标且期望 R > 0。
-  // 两个子窗（val/test）都为正 → 升级为高置信 validated；否则 oos_ok。
-  const bothPositive = (c) => c.val?.expectancyR > 0 && c.test?.expectancyR > 0;
+  // 跨段一致性：有足够交易的样本外折里，期望 R>0 的折数。
+  const positiveFolds = (c) => c.folds.filter((f) => f.trades >= MIN_FOLD_TRADES && f.expectancyR > 0).length;
+  const activeFolds = (c) => c.folds.filter((f) => f.trades >= MIN_FOLD_TRADES).length;
+
+  // 合格：合并样本外交易数达标、期望 R>0，且至少一半"算数"的折为正（避免靠单段撑起）。
   const robust = candidates
-    .filter((c) => qualified(c.oos, MIN_OOS_TRADES) && c.oos.expectancyR > 0)
+    .filter((c) => qualified(c.oos, MIN_OOS_TRADES) && c.oos.expectancyR > 0 && positiveFolds(c) * 2 >= Math.max(1, activeFolds(c)))
     .sort((x, y) => {
-      const bx = bothPositive(x) ? 1 : 0;
-      const by = bothPositive(y) ? 1 : 0;
-      if (bx !== by) return by - bx; // 双窗都正的优先
+      if (positiveFolds(y) !== positiveFolds(x)) return positiveFolds(y) - positiveFolds(x); // 跨段一致性优先
       return y.oos.expectancyR - x.oos.expectancyR;
     });
 
-  const regime = detectRegime(candles.slice(b));
+  const regime = detectRegime(candles.slice(folds[2][0]));
   const preferred = regimePreferredFamilies(regime);
   const regimeMatched = robust.filter((c) => preferred.includes(c.family));
   const best = regimeMatched[0] || robust[0] || null;
+  const bestPos = best ? positiveFolds(best) : 0;
+  const bestActive = best ? activeFolds(best) : 0;
 
   return {
     best,
-    confidence: best ? (bothPositive(best) ? "validated" : "oos_ok") : "low",
+    confidence: best ? (bestPos === bestActive && bestActive >= 2 ? "validated" : "oos_ok") : "low",
     regime,
     regimeMatch: best ? preferred.includes(best.family) : false,
     preferredFamilies: preferred,
     oosScore: best ? Number(best.oos.expectancyR.toFixed(3)) : null,
-    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, bothWindowsPositive: bothPositive(c) }))
+    oosFolds: best ? `${bestPos}/${bestActive} 段样本外为正` : null,
+    candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, positiveFolds: positiveFolds(c) }))
   };
 }
 
@@ -115,9 +118,10 @@ function profileFrom(symbol, timeframe, opt) {
     direction: best?.direction || null,
     params: best?.params || null,
     train: best?.train || null,
-    val: best?.val || null,
-    test: best?.test || null,
+    folds: best?.folds || null,
+    oos: best?.oos || null,
     oosScore: opt.oosScore,
+    oosFolds: opt.oosFolds,
     regime: opt.regime,
     regimeMatch: opt.regimeMatch,
     family: best?.family || null,
@@ -131,7 +135,7 @@ function writeProfileToMemory(db, profiles) {
   const file = db.agentStateFiles.AGENT ||= { id: "state_agent", title: "AGENT.md", content: "", updatedAt: nowIso() };
   const lines = profiles
     .filter((p) => p.strategyId)
-    .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」参数 ${JSON.stringify(p.params)}，样本外期望 ${p.test?.expectancyR ?? "-"}R / 盈亏比 ${p.test?.profitFactor ?? "-"}，置信度 ${p.confidence}，当前 regime ${p.regime}${p.regimeMatch ? "（策略与 regime 匹配）" : "（注意：与当前 regime 不完全匹配，谨慎）"}。`);
+    .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 盈亏比 ${p.oos?.profitFactor ?? "-"}（${p.oosFolds || "-"}），置信度 ${p.confidence}，当前 regime ${p.regime}${p.regimeMatch ? "（策略与 regime 匹配）" : "（注意：与当前 regime 不完全匹配，谨慎）"}。`);
   if (!lines.length) return;
   const marker = "## 已验证策略画像（自动更新）";
   const base = String(file.content || "").split(marker)[0].trim();
@@ -167,7 +171,7 @@ export async function runStrategyResearch(db, options = {}) {
   const symbols = (options.symbols?.length ? options.symbols : (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"])).slice(0, 5);
   // 显式指定周期→只跑该周期；否则多周期扫描，自动选样本外最优周期。
   const timeframes = options.timeframe ? [options.timeframe] : RESEARCH_TIMEFRAMES;
-  const limit = Math.min(Number(options.limit || 1000), 1200);
+  const limit = Math.min(Number(options.limit || 2500), 3000);
   db.strategyProfiles ||= [];
   const updated = [];
   const skipped = [];
