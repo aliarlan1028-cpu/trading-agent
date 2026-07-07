@@ -7373,6 +7373,19 @@ button.danger:disabled,
   color: var(--text-3);
 }
 .intelDelete:hover { color: var(--neg); background: var(--neg-weak); border-color: var(--neg); }
+.dangerTextButton {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.dangerTextButton:hover { color: var(--neg); background: var(--neg-weak); border-color: var(--neg); }
 .intelTitleRow { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .intelTitleRow b { font-size: var(--fs-3); font-weight: 640; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .intelHot { flex: none; font-size: var(--fs-1); font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; }

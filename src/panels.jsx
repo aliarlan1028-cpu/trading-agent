@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Trash2,
   Activity,
   AlertTriangle,
   BarChart3,
@@ -852,6 +853,7 @@ export function KnowledgeListPanel({ data, action, ui }) {
             <div><strong>{source.title}</strong><small>{source.domain || source.type} · {chunkCount} 个片段 · {formatDateTime(source.importedAt, "未记录")}</small></div>
             <StatusBadge tone={source.status === "parsed" ? "ok" : "warning"}>{humanize(source.status)}</StatusBadge>
             <button className="secondaryButton" onClick={() => action(`/api/knowledge/sources/${source.id}/parse-real`, {})}>{source.status === "parsed" ? "重新解析" : "解析"}</button>
+            <button className="dangerTextButton" title="删除该知识来源及其片段" onClick={() => { if (window.confirm(`确定删除「${source.title}」？其片段、概念卡与规则将一并移除。`)) action(`/api/knowledge/sources/${source.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
           </div>
         );
       })}

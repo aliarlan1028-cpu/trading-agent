@@ -772,6 +772,21 @@ app.post("/api/knowledge/sources/:id/parse-real", requirePermission("write:knowl
   }
 });
 
+app.delete("/api/knowledge/sources/:id", requirePermission("write:knowledge"), (req, res) => {
+  const source = db.knowledge.sources.find((item) => item.id === req.params.id);
+  if (!source) return res.status(404).json({ error: "Knowledge source not found" });
+  const sid = source.id;
+  db.knowledge.sources = db.knowledge.sources.filter((item) => item.id !== sid);
+  db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== sid);
+  db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== sid);
+  db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(sid));
+  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((rule) => !rule.sourceRefs?.includes(sid));
+  db.knowledge.theoryFrameworks = (db.knowledge.theoryFrameworks || []).filter((fw) => !fw.sourceRefs?.includes(sid));
+  appendAudit(db, "删除知识来源", sid, "Curator");
+  appendTrace(db, "knowledge_delete", `删除知识来源 ${source.title}`);
+  persist(res, { removed: sid });
+});
+
 app.post("/api/knowledge/rag-query", async (req, res) => {
   const result = await ragQuery(db, req.body.query || req.body.question || "", req.body);
   persist(res, result);
