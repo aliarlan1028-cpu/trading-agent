@@ -280,8 +280,63 @@ async function withExchangeFailover(exchange, fetcher) {
   }
 }
 
+// OKX 分页取数：先取最近 300，再用 history-candles 用 after 往回翻，直到 target 根。
+async function fetchOkxKlinesPaged(symbol, timeframe, target) {
+  const tf = OKX_BARS[timeframe] ? timeframe : "1h";
+  const bar = OKX_BARS[tf];
+  const inst = toOkxSymbol(symbol);
+  const raw = [];
+  const recentTimer = timeoutSignal(8000);
+  try {
+    const response = await fetch(`${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`, { signal: recentTimer.signal });
+    if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
+    const payload = await response.json();
+    raw.push(...(payload.data || []));
+  } finally {
+    recentTimer.cancel();
+  }
+  let guard = 0;
+  while (raw.length < target && guard < 15) {
+    guard += 1;
+    const oldest = raw[raw.length - 1]?.[0]; // data 为最新在前，末位最旧
+    if (!oldest) break;
+    const pageTimer = timeoutSignal(8000);
+    let batch = [];
+    try {
+      const response = await fetch(`${OKX_BASE}/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`, { signal: pageTimer.signal });
+      if (!response.ok) break;
+      const payload = await response.json();
+      batch = payload.data || [];
+    } catch {
+      break;
+    } finally {
+      pageTimer.cancel();
+    }
+    if (!batch.length) break;
+    raw.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return raw.slice(0, target).map((row) => ({
+    time: Number(row[0]),
+    open: Number(row[1]),
+    high: Number(row[2]),
+    low: Number(row[3]),
+    close: Number(row[4]),
+    volume: Number(row[5])
+  })).reverse();
+}
+
 // 回测用：拉取历史 K 线（OKX 主、Binance 备），不改动 db 状态。
+// limit>300 时对 OKX 走分页，凑足样本（专业回测需要足够 bar）。
 export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX") {
+  if (String(exchange).toUpperCase() === "OKX" && limit > 300) {
+    try {
+      const paged = await fetchOkxKlinesPaged(symbol, timeframe, limit);
+      if (paged.length >= 300) return paged;
+    } catch {
+      /* 分页失败则回退单页 */
+    }
+  }
   const { result } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe, limit));
   return result;
 }

@@ -167,7 +167,7 @@ export async function runStrategyResearch(db, options = {}) {
   const symbols = (options.symbols?.length ? options.symbols : (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"])).slice(0, 5);
   // 显式指定周期→只跑该周期；否则多周期扫描，自动选样本外最优周期。
   const timeframes = options.timeframe ? [options.timeframe] : RESEARCH_TIMEFRAMES;
-  const limit = Math.min(Number(options.limit || 500), 500);
+  const limit = Math.min(Number(options.limit || 1000), 1200);
   db.strategyProfiles ||= [];
   const updated = [];
   const skipped = [];
