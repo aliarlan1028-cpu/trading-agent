@@ -924,7 +924,7 @@ export function SkillImportPanel({ data, action, ui }) {
 }
 
 export function TaskManagerPanel({ data, action }) {
-  const [form, setForm] = useState({ name: "", type: "Every", schedule: "Every 5m", role: "风控" });
+  const [form, setForm] = useState({ name: "", type: "Every", schedule: "Every 5m", role: "风控", kind: "standard", mission: "" });
   const [taskFilter, setTaskFilter] = useState("全部");
   const tasks = data.tasks || [];
   const taskTabs = [
@@ -938,24 +938,36 @@ export function TaskManagerPanel({ data, action }) {
     const schedule = type === "Cron" ? "*/5 * * * *" : type === "At" ? new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) : "Every 5m";
     setForm((current) => ({ ...current, type, schedule }));
   }
+  const isMission = form.kind === "mission";
   async function submit(event) {
     event.preventDefault();
-    const name = form.name.trim();
+    const name = (form.name || form.mission).trim().slice(0, 40);
     if (!name) return;
+    if (isMission && !form.mission.trim()) return;
     const schedule = form.type === "At" ? new Date(form.schedule).toISOString() : form.schedule.trim();
-    await action("/api/tasks", { ...form, name, schedule, enabled: true });
-    setForm({ name: "", type: form.type, schedule: form.schedule, role: form.role });
+    const payload = { name, type: form.type, schedule, enabled: true, role: isMission ? "情报" : form.role };
+    if (isMission) payload.mission = form.mission.trim();
+    await action("/api/tasks", payload);
+    setForm((current) => ({ ...current, name: "", mission: "" }));
   }
   return (
     <div className="panelStack">
       <form className="panelForm" onSubmit={submit}>
-        <label>任务名称<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="例如：行情扫描 / 知识过期检查" /></label>
+        <div className="taskTabs taskKindSwitch">
+          <button type="button" className={!isMission ? "active" : ""} onClick={() => setForm((current) => ({ ...current, kind: "standard" }))}>常规任务</button>
+          <button type="button" className={isMission ? "active" : ""} onClick={() => setForm((current) => ({ ...current, kind: "mission" }))}>情报 · 自由任务</button>
+        </div>
+        <label>任务名称<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder={isMission ? "例如：俄乌停战跟踪（留空自动取目标）" : "例如：行情扫描 / 知识过期检查"} /></label>
+        {isMission && (
+          <label>追踪目标（自然语言）<textarea rows={2} value={form.mission} onChange={(event) => setForm((current) => ({ ...current, mission: event.target.value }))} placeholder="例如：每天追踪俄乌停战进展并总结影响；或：盯 ETH ETF 审批，有动静就产出简报" /></label>
+        )}
         <div className="formGrid">
           <label>触发类型<select value={form.type} onChange={(event) => updateType(event.target.value)}><option>Every</option><option>Cron</option><option>At</option></select></label>
-          <label>任务分类<input value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} /></label>
+          {!isMission && <label>任务分类<input value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} /></label>}
         </div>
         <label>{form.type === "At" ? "运行时间" : "触发表达式"}<input type={form.type === "At" ? "datetime-local" : "text"} value={form.schedule} onChange={(event) => setForm((current) => ({ ...current, schedule: event.target.value }))} /></label>
-        <button className="primaryButton" type="submit">创建任务</button>
+        {isMission && <span className="fieldHint">Agent 会按此计划刷新情报、匹配相关事件专题、产出简报（在通知与情报中心可见）。无需 API key 也能跑，有 LLM 时更聪明。</span>}
+        <button className="primaryButton" type="submit">{isMission ? "派发情报任务" : "创建任务"}</button>
       </form>
       <div className="taskManagerList">
         <div className="taskManagerHead">

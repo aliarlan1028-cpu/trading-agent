@@ -22,7 +22,7 @@ import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
-import { ensureDefaultEventSources, refreshEventSources, refreshOnchainSignals } from "./eventSources.mjs";
+import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission } from "./eventSources.mjs";
 import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
@@ -83,6 +83,7 @@ registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 registerTaskHandler("paper_forward", (database) => runPaperForward(database));
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
+registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("okx_readonly_sync", (database) => {
   const account = (database.exchangeAccounts || []).find((item) => item.exchange === "OKX");
   return account ? syncPrivateReadOnly(database, account.id) : { status: "missing_okx_account" };
@@ -499,6 +500,16 @@ app.post("/api/mandates/:id/revoke", requirePermission("write:mandate"), (req, r
 
 app.get("/api/events", (_req, res) => res.json(db.events));
 
+// 热点情报流：按影响度+热度+时效+与持仓/授权标的相关性排序的事件专题
+app.get("/api/events/intel", (_req, res) => {
+  const watchSymbols = [
+    ...(db.positions || []).map((p) => p.symbol),
+    ...(db.mandates || []).flatMap((m) => m.allowedSymbols || []),
+    db.activeMarket?.symbol
+  ].filter(Boolean);
+  res.json(rankEvents(db, { watchSymbols }));
+});
+
 app.post("/api/events", requirePermission("write:event"), (req, res) => {
   const event = {
     id: id("event"),
@@ -570,6 +581,8 @@ app.post("/api/tasks", requirePermission("write:task"), (req, res) => {
     ...req.body,
     createdAt: nowIso()
   };
+  // 带自然语言 mission 的任务 → 走通用 Agent 情报任务处理器
+  if (task.mission && !task.handler) { task.handler = "agent_mission"; task.role = task.role || "情报"; }
   db.tasks.unshift(task);
   appendAudit(db, "创建定时任务", task.id, db.user.name);
   scheduleTask(db, task, saveDb);

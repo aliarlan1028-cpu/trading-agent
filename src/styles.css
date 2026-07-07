@@ -7181,6 +7181,69 @@ button.danger:disabled,
   .cockpitGrid { grid-template-columns: 1fr; }
 }
 
+/* AI 交易员：对话/情报 视图切换 */
+.chatViewSwitch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+}
+.chatViewSwitch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-2);
+  font-weight: 600;
+}
+.chatViewSwitch button.active { color: #fff; background: var(--accent); }
+
+/* 情报中心 */
+.intelCenter { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: var(--sp-3); align-content: start; padding: var(--sp-1) var(--sp-1) var(--sp-4); }
+.intelHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.intelHead h3 { font-size: var(--fs-4); font-weight: 640; color: var(--text); }
+.intelHead span { font-size: var(--fs-1); color: var(--text-3); display: block; margin-top: 2px; max-width: 60ch; }
+
+.intelList { display: grid; gap: var(--sp-2); }
+.intelCard {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: var(--sp-3) var(--sp-4);
+}
+.intelCard.danger { border-left-color: var(--neg); }
+.intelCard.warning { border-left-color: var(--warn); }
+
+.intelCardHead { width: 100%; border: 0; background: transparent; display: grid; gap: 6px; text-align: left; cursor: pointer; }
+.intelTitleRow { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.intelTitleRow b { font-size: var(--fs-3); font-weight: 640; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intelHot { flex: none; font-size: var(--fs-1); font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.intelMeta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-1); color: var(--text-3); }
+.intelDir { font-weight: 600; }
+.intelDir.positive { color: var(--pos); }
+.intelDir.negative { color: var(--neg); }
+.intelSym { padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+.intelChevron { margin-left: auto; color: var(--text-3); transition: transform 0.15s ease; }
+.intelChevron.open { transform: rotate(180deg); }
+.intelAssess { margin-top: var(--sp-2); font-size: var(--fs-2); color: var(--text-2); line-height: 1.4; }
+
+.intelTimeline { margin-top: var(--sp-3); display: grid; gap: 0; border-top: 1px solid var(--border); padding-top: var(--sp-2); }
+.intelUpdate { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: var(--sp-2); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.intelUpdate:last-child { border-bottom: 0; }
+.intelUpdate > time { font-size: var(--fs-1); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.intelUpdateBody { min-width: 0; }
+.intelUpdateBody b { display: block; font-size: var(--fs-2); font-weight: 500; color: var(--text); }
+.intelUpdateBody small { color: var(--text-3); font-size: var(--fs-1); }
+
 /* AI 交易员右栏（三段式：状态 / 闸门 / 时间线） */
 .railStatusTop { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .railStatusHead { display: grid; gap: 4px; }

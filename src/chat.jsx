@@ -8,6 +8,9 @@ import {
   ChevronDown,
   ChevronRight,
   History,
+  MessageSquare,
+  Radar,
+  RefreshCw,
   Trash2,
   KeyRound,
   ListChecks,
@@ -19,7 +22,7 @@ import {
   Wrench,
   XCircle
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPct, formatTime, humanize, StatusBadge } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, StatusBadge } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -317,6 +320,7 @@ export function ChatPage({ data, action, ui }) {
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [view, setView] = useState("chat");
   const [llmConfigured, setLlmConfigured] = useState(true);
   const [provider, setProvider] = useState(null);
   const [input, setInput] = useState("");
@@ -399,6 +403,11 @@ export function ChatPage({ data, action, ui }) {
   return (
     <div className="chatPage">
       <div className="chatSessionBar">
+        <div className="chatViewSwitch">
+          <button className={view === "chat" ? "active" : ""} onClick={() => setView("chat")}><MessageSquare size={15} /> 对话</button>
+          <button className={view === "intel" ? "active" : ""} onClick={() => setView("intel")}><Radar size={15} /> 情报</button>
+        </div>
+        {view === "chat" && (
         <div className="chatSessionSwitch">
           <button className="csSwitchBtn" onClick={() => { newSession(); setShowHistory(false); }}><Plus size={15} /> 新建对话</button>
           <button className={`csSwitchBtn history ${showHistory ? "active" : ""}`} onClick={() => setShowHistory((value) => !value)} aria-expanded={showHistory}>
@@ -406,7 +415,8 @@ export function ChatPage({ data, action, ui }) {
             {sessions.length > 1 && <b className="csCount">{sessions.length}</b>}
           </button>
         </div>
-        {showHistory && (
+        )}
+        {view === "chat" && showHistory && (
           <>
             <div className="chatHistoryBackdrop" onClick={() => setShowHistory(false)} />
             <div className="chatHistoryPop" role="listbox">
@@ -423,6 +433,8 @@ export function ChatPage({ data, action, ui }) {
           </>
         )}
       </div>
+      {view === "intel" && <IntelCenter action={action} />}
+      {view === "chat" && (<>
       <div className="chatScroll" ref={scrollRef}>
         {(data.pendingActions || []).length > 0 && (
           <div className="pendingActions">
@@ -487,6 +499,90 @@ export function ChatPage({ data, action, ui }) {
           <ArrowUp size={17} />
         </button>
       </div>
+      </>)}
+    </div>
+  );
+}
+
+// 情报中心：把新闻聚合成的"事件专题"按热点排序展示，每个专题可展开看持续跟进的时间线。
+function IntelCenter({ action }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState({});
+
+  async function load() {
+    setLoading(true);
+    try {
+      const response = await fetch(apiUrl("/api/events/intel"), { headers: authHeaders() });
+      const json = await response.json();
+      setEvents(Array.isArray(json) ? json : []);
+    } catch {} finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, []);
+
+  async function refresh() {
+    setBusy(true);
+    try {
+      await fetch(apiUrl("/api/event-sources/refresh"), { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: "{}" });
+      await load();
+    } catch {} finally { setBusy(false); }
+  }
+
+  return (
+    <div className="intelCenter">
+      <div className="intelHead">
+        <div>
+          <h3>情报中心</h3>
+          <span>把零散新闻聚合成事件专题，按影响度、热度、时效与你的持仓相关性排序、持续跟进</span>
+        </div>
+        <button className="secondaryButton" onClick={refresh} disabled={busy}><RefreshCw size={14} /> {busy ? "刷新中…" : "刷新情报"}</button>
+      </div>
+      {loading && !events.length ? (
+        <div className="emptyPanel">加载中…</div>
+      ) : !events.length ? (
+        <div className="emptyPanel emptyPanelAction"><strong>暂无情报</strong><button className="secondaryButton" onClick={refresh}><RefreshCw size={14} /> 刷新情报</button></div>
+      ) : (
+        <div className="intelList">
+          {events.map((ev) => {
+            const open = expanded[ev.id];
+            const tone = ev.impact >= 80 ? "danger" : ev.impact >= 50 ? "warning" : "neutral";
+            const dirTone = /空/.test(ev.directionHint || "") ? "negative" : /多/.test(ev.directionHint || "") ? "positive" : "";
+            return (
+              <div className={`intelCard ${tone}`} key={ev.id}>
+                <button className="intelCardHead" onClick={() => setExpanded((state) => ({ ...state, [ev.id]: !state[ev.id] }))}>
+                  <div className="intelTitleRow">
+                    <span className="intelHot">🔥 {ev.hotScore}</span>
+                    <b>{ev.title}</b>
+                    <StatusBadge tone={tone}>{ev.impactLabel}</StatusBadge>
+                  </div>
+                  <div className="intelMeta">
+                    <span>{ev.updateCount || 1} 条报道</span>
+                    {ev.directionHint && <span className={`intelDir ${dirTone}`}>{ev.directionHint}</span>}
+                    {(ev.relatedSymbols || []).slice(0, 3).map((symbol) => <span key={symbol} className="intelSym">{symbol}</span>)}
+                    <ChevronDown size={14} className={open ? "intelChevron open" : "intelChevron"} />
+                  </div>
+                </button>
+                {ev.action && <p className="intelAssess">{ev.action}</p>}
+                {open && (
+                  <div className="intelTimeline">
+                    {(ev.timeline || []).map((update, index) => (
+                      <div className="intelUpdate" key={index}>
+                        <time>{formatDateTime(update.at, "—")}</time>
+                        <div className="intelUpdateBody">
+                          <b>{update.title}</b>
+                          {update.source && <small>{update.source}</small>}
+                        </div>
+                      </div>
+                    ))}
+                    {!(ev.timeline || []).length && <div className="intelUpdate"><span className="muted">暂无跟进记录</span></div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
