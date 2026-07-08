@@ -1312,6 +1312,11 @@ export function AdminPage({ data, action }) {
                       <label><span>价格 · USDT</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
                     </div>
                     <textarea rows={2} value={draft.features || ""} onChange={(event) => updatePlanDraft(plan.id, { features: event.target.value })} placeholder="套餐权益，每行一条" />
+                    {String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean).length > 0 && (
+                      <div className="planFeatureChips">
+                        {String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean).map((f, i) => <span className="planFeatureChip" key={i}><CheckCircle2 size={12} /> {f}</span>)}
+                      </div>
+                    )}
                     <button className="primaryButton" onClick={() => savePlan(plan)}>保存</button>
                   </div>
                 );

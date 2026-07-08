@@ -3857,6 +3857,16 @@ h3 {
 .planEditRow textarea { min-height: 88px; line-height: 1.5; resize: vertical; }
 .planToggle { border: 0; background: transparent; padding: 0; cursor: pointer; flex: none; }
 .planEditRow .primaryButton { justify-self: start; padding: 6px 14px; }
+/* 套餐权益预览：换行文本 → 带勾的胶囊标签 */
+.planFeatureChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.planFeatureChip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--r-pill);
+  background: var(--pos-weak); color: var(--pos);
+  border: 1px solid #cfe3cf;
+  font-size: 12px; font-weight: 600;
+}
+.planFeatureChip svg { flex: none; }
 
 .planEditHeader {
   display: flex;
