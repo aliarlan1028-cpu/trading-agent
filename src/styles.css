@@ -3808,6 +3808,86 @@ h3 {
   gap: var(--sp-2);
 }
 
+/* 用户授权：公开注册开关 + 搜索 + 可滚动列表（用户多时页面不再无限拉长） */
+.regToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: var(--sp-2) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.regToggle.on { border-color: var(--accent); background: var(--accent-weak); }
+.regToggle input { display: none; }
+.regToggleTrack {
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--border-strong, #c8ccd8);
+  position: relative;
+  transition: background .15s;
+}
+.regToggle.on .regToggleTrack { background: var(--accent); }
+.regToggleThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transition: transform .15s;
+}
+.regToggle.on .regToggleThumb { transform: translateX(16px); }
+.regToggleText { display: grid; gap: 2px; }
+.regToggleText b { font-size: var(--fs-2); font-weight: 650; }
+.regToggleText small { font-size: var(--fs-1); color: var(--text-3); }
+
+.adminUserToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 6px;
+}
+.adminSearch {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-3);
+}
+.adminSearch input {
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: var(--fs-2);
+  color: var(--text-1);
+  min-width: 0;
+}
+.adminUserCount { flex: none; font-size: var(--fs-1); color: var(--text-3); white-space: nowrap; }
+
+.adminUserScroll {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  max-height: 452px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+@media (max-width: 1100px) {
+  .adminUserScroll { grid-template-columns: 1fr; }
+}
+
 .newPlanBox {
   display: grid;
   gap: 10px;
@@ -4309,6 +4389,15 @@ button.danger:disabled,
   background: #fbeae5;
 }
 
+.chatShell {
+  display: flex;
+  gap: 18px;
+  max-width: 1540px;
+  margin: 0 auto;
+  width: 100%;
+  align-items: stretch;
+}
+
 .chatPage {
   display: flex;
   flex-direction: column;
@@ -4317,6 +4406,185 @@ button.danger:disabled,
   margin: 0 auto;
   width: 100%;
 }
+
+.chatShell .chatPage {
+  max-width: none;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* AI 交易员右栏：把"该我关注/该我处理"集中于此，其余交给 AI。 */
+.agentRail {
+  width: 316px;
+  flex: none;
+  height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding: var(--sp-3) 2px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.arCard {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e8eaf0);
+  border-radius: var(--r-lg, 16px);
+  padding: 14px;
+  box-shadow: var(--sh-sm, 0 1px 2px rgba(20, 24, 40, 0.04));
+}
+
+.arHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #1a1d29);
+  margin-bottom: 10px;
+}
+
+.arHead svg { color: var(--accent, #4a6cf7); }
+
+.arBadge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--neg, #e5484d);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arRefresh {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-weak, #8a90a2);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+  display: inline-flex;
+}
+.arRefresh:hover { color: var(--accent, #4a6cf7); background: var(--accent-weak, #eef2ff); }
+
+.arEmpty {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--pos, #30a46c);
+  padding: 4px 0;
+}
+
+.arItem {
+  border-top: 1px solid var(--border, #eef0f5);
+  padding: 10px 0 2px;
+}
+.arItem:first-of-type { border-top: none; padding-top: 2px; }
+
+.arItemTop { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.arItemTop b { font-size: 13px; font-weight: 650; color: var(--text, #1a1d29); }
+.arItemTop small { font-size: 11px; color: var(--text-weak, #8a90a2); }
+
+.arItemActions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.arBtn {
+  border: 1px solid var(--border, #dfe2ea);
+  background: var(--surface, #fff);
+  color: var(--text, #1a1d29);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: var(--r-md, 9px);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: background .12s, border-color .12s;
+}
+.arBtn:hover { background: var(--hover, #f4f6fb); }
+.arBtn.primary { background: var(--accent, #4a6cf7); border-color: var(--accent, #4a6cf7); color: #fff; }
+.arBtn.primary:hover { filter: brightness(1.05); }
+.arBtn.danger { color: var(--neg, #e5484d); border-color: var(--neg-weak, #f4c6c7); }
+.arBtn.ai { color: var(--accent, #4a6cf7); border-color: var(--accent-weak, #cdd8fb); background: var(--accent-weak, #eef2ff); }
+.arBtn.ai:hover { background: #e2e9ff; }
+
+.arPnl {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.arPnl span { font-size: 12px; color: var(--text-weak, #8a90a2); }
+.arPnl strong { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.arPnl strong.positive, .positive { color: var(--pos, #30a46c); }
+.arPnl strong.negative, .negative { color: var(--neg, #e5484d); }
+
+.arRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 5px 0;
+}
+.arRow > span { color: var(--text-weak, #8a90a2); }
+.arRow b { font-weight: 650; color: var(--text, #1a1d29); font-variant-numeric: tabular-nums; }
+
+.arLink {
+  border: none;
+  background: transparent;
+  color: var(--accent, #4a6cf7);
+  font-weight: 650;
+  font-size: 12.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+}
+.arLink:hover { text-decoration: underline; }
+
+.arStateRow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.arGate {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.arGate.ok { color: var(--pos, #30a46c); background: var(--pos-weak, #e7f6ee); }
+.arGate.warning { color: #a56100; background: #fdf3dc; }
+.arGate.danger { color: var(--neg, #e5484d); background: var(--neg-weak, #fbe5e6); }
+
+.arMandate {
+  font-size: 11.5px;
+  color: var(--text-weak, #8a90a2);
+  background: var(--hover, #f6f7fb);
+  border-radius: 8px;
+  padding: 6px 9px;
+  margin-bottom: 8px;
+}
+
+.arControls { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.arAskLink {
+  margin-top: 8px;
+  width: 100%;
+  border: 1px dashed var(--accent-weak, #cdd8fb);
+  background: transparent;
+  color: var(--accent, #4a6cf7);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px;
+  border-radius: var(--r-md, 9px);
+  cursor: pointer;
+}
+.arAskLink:hover { background: var(--accent-weak, #eef2ff); }
 
 .llmBanner {
   display: flex;
@@ -6468,6 +6736,12 @@ button.danger:disabled,
 
 /* 手机端对话不再显示总控（已挤竖，改到总览悬浮） */
 .mChatContent .chatAgentControls { display: none; }
+.mChatContent .agentRail { display: none; }
+.mShell .chatShell { display: block; }
+@media (max-width: 1080px) {
+  .agentRail { display: none; }
+  .chatShell { max-width: 1200px; }
+}
 
 .mQuickGrid span {
   font-size: 10.5px;
@@ -6741,6 +7015,7 @@ button.danger:disabled,
 .mSubContent .adminStack,
 .mSubContent .adminFormStack,
 .mSubContent .adminUserList,
+.mSubContent .adminUserScroll,
 .mSubContent .planEditList,
 .mSubContent .paymentRequestList,
 .mSubContent .adminAgentGrid {

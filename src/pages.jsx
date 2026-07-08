@@ -1180,8 +1180,15 @@ export function AdminPage({ data, action }) {
   const [planDrafts, setPlanDrafts] = useState({});
   const [grantMonths, setGrantMonths] = useState(12);
   const [adminTab, setAdminTab] = useState("users");
+  const [userSearch, setUserSearch] = useState("");
   const plans = data.subscriptionPlans || [];
   const users = data.users || [];
+  const regEnabled = data.publicRegistrationEnabled === true;
+  const filteredUsers = users.filter((user) => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [user.name, user.email, user.id, user.tenantId, user.role].some((v) => String(v || "").toLowerCase().includes(q));
+  });
   const payments = data.paymentRequests || [];
   const subscriptions = data.subscriptions || [];
   const profiles = (data.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
@@ -1267,8 +1274,17 @@ export function AdminPage({ data, action }) {
 
           <Card>
             <SectionTitle icon={Lock} title="用户授权" action={<label className="inlineControl"><span>默认赠送</span><input type="number" min="1" value={grantMonths} onChange={(event) => setGrantMonths(event.target.value)} /> 月</label>} />
-            <div className="adminUserList">
-              {users.map((user) => {
+            <label className={`regToggle ${regEnabled ? "on" : ""}`}>
+              <input type="checkbox" checked={regEnabled} onChange={() => action("/api/config", { PUBLIC_REGISTRATION_ENABLED: regEnabled ? "false" : "true" })} />
+              <span className="regToggleTrack"><span className="regToggleThumb" /></span>
+              <span className="regToggleText"><b>公开注册</b><small>{regEnabled ? "已开启：访客可在登录页自助注册并订阅" : "已关闭：仅 Owner 可在此开通账号"}</small></span>
+            </label>
+            <div className="adminUserToolbar">
+              <div className="adminSearch"><Search size={15} /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索姓名 / 邮箱 / 角色" /></div>
+              <span className="adminUserCount">{userSearch ? `${filteredUsers.length} / ${users.length}` : `共 ${users.length} 人`}</span>
+            </div>
+            <div className="adminUserScroll">
+              {filteredUsers.map((user) => {
                 const sub = subscriptionFor(user);
                 return (
                   <div className={`adminUserRow ${user.isOwner ? "owner" : ""}`} key={user.id}>
@@ -1287,6 +1303,7 @@ export function AdminPage({ data, action }) {
                   </div>
                 );
               })}
+              {!filteredUsers.length && <div className="emptyPanel">没有匹配的用户</div>}
             </div>
           </Card>
         </div>

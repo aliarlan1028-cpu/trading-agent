@@ -22,7 +22,7 @@ import {
   Wrench,
   XCircle
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, StatusBadge } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -348,6 +348,112 @@ function AccountSyncCard({ data, action, ui }) {
   );
 }
 
+// AI 交易员右栏：把"该我关注/该我处理"的东西集中在这里，其余交给 AI。
+function AgentRail({ data, action, ui, send }) {
+  const system = data.system || {};
+  const agentStatus = data.agentStatus || {};
+  const riskWall = agentStatus.riskWall || {};
+  const portfolio = data.portfolio || {};
+  const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const awaitingPlans = (data.tradePlans || []).filter((p) => p.status === "awaiting_approval").slice(0, 3);
+  const pendingActions = (data.pendingActions || []).slice(0, 3);
+  const pendingMandates = (data.mandates || []).filter((m) => m.status === "pending_confirmation").slice(0, 2);
+  const openIncidents = (data.riskIncidents || []).filter((i) => i.status === "open");
+  const inboxCount = awaitingPlans.length + pendingActions.length + pendingMandates.length + (openIncidents.length ? 1 : 0);
+  const todayPnl = Number(portfolio.todayPnl || 0);
+  const budget = system.remainingDailyLossUsdt;
+  const positions = data.positions || [];
+  const orders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled_closed"].includes(String(o.status || "").toLowerCase()));
+  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
+  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
+  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
+  const stateLabel = agentStatus.stateLabel || humanize(agentStatus.state, "观察中");
+  const gm = data.marketRegime?.global || {};
+  const sm = data.marketRegime?.smartMoney || {};
+
+  async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
+  async function releaseKill() { if (window.confirm("确认解除熔断？")) await action("/api/risk/kill-switch", { enabled: false, reason: "" }); }
+
+  return (
+    <aside className="agentRail">
+      {/* ① 需要你处理 */}
+      <div className="arCard">
+        <div className="arHead"><ListChecks size={14} /> 需要你处理{inboxCount ? <span className="arBadge">{inboxCount}</span> : null}</div>
+        {inboxCount === 0 && <div className="arEmpty"><CheckCircle2 size={14} /> 暂无待办 · 系统运行正常</div>}
+        {awaitingPlans.map((p) => (
+          <div className="arItem" key={p.id}>
+            <div className="arItemTop"><b>{p.direction === "short" ? "做空" : "做多"} {p.symbol}</b><small>待批准交易计划</small></div>
+            <div className="arItemActions">
+              <button className="arBtn primary" onClick={() => action(`/api/trade-plans/${p.id}/approve`, {})}>批准</button>
+              <button className="arBtn" onClick={() => action(`/api/trade-plans/${p.id}/cancel`, { reason: "user_rejected" })}>驳回</button>
+              <button className="arBtn ai" onClick={() => send(`帮我评估待批准的交易计划 ${p.symbol}（${p.direction === "short" ? "做空" : "做多"}），该不该批准？给结论和理由。`)}>🤖 交给AI</button>
+            </div>
+          </div>
+        ))}
+        {pendingActions.map((pa) => (
+          <div className="arItem" key={pa.id}>
+            <div className="arItemTop"><b>{pa.title}</b><small>{pa.detail}</small></div>
+            <div className="arItemActions">
+              <button className="arBtn primary" onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认</button>
+              <button className="arBtn" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
+            </div>
+          </div>
+        ))}
+        {pendingMandates.map((m) => (
+          <div className="arItem" key={m.id}>
+            <div className="arItemTop"><b>激活授权委托</b><small>{m.goal || m.name || "确认后 AI 才能提出可执行计划"}</small></div>
+            <div className="arItemActions"><button className="arBtn primary" onClick={() => action(`/api/mandates/${m.id}/activate`, {})}>确认激活</button></div>
+          </div>
+        ))}
+        {openIncidents.length > 0 && (
+          <div className="arItem">
+            <div className="arItemTop"><b>{openIncidents.length} 个未关闭风险事件</b></div>
+            <div className="arItemActions">
+              <button className="arBtn" onClick={() => ui.setActive("auditSystem")}>去查看 <ChevronRight size={12} /></button>
+              <button className="arBtn ai" onClick={() => send("帮我处理当前未关闭的风险事件：逐条说明影响并给出建议。")}>🤖 交给AI</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ② 账户与风险 */}
+      <div className="arCard">
+        <div className="arHead"><BarChart3 size={14} /> 账户与风险</div>
+        <div className="arPnl">
+          <span>今日盈亏</span>
+          <strong className={todayPnl >= 0 ? "positive" : "negative"}>{todayPnl >= 0 ? "+" : ""}{displayMoney(todayPnl, 2, "0.00")} USDT</strong>
+        </div>
+        <div className="arRow" title="今日还能亏多少就触发日亏上限"><span className="term">剩余日亏预算</span><b>{budget === null || budget === undefined ? "未授权" : `${displayMoney(budget)} USDT`}</b></div>
+        <div className="arRow"><span>持仓 / 在途</span><button className="arLink" onClick={() => ui.setActive("cockpit")}>{positions.length} / {orders.length} <ChevronRight size={12} /></button></div>
+      </div>
+
+      {/* ③ AI 状态与总控 */}
+      <div className="arCard">
+        <div className="arHead"><BrainCircuit size={14} /> AI 状态</div>
+        <div className="arStateRow">
+          <StatusBadge tone={statusTone(agentStatus.state || system.apiHealth)}>{stateLabel}</StatusBadge>
+          <span className={`arGate ${gateTone}`}>{gateLabel}</span>
+        </div>
+        {mandate && <div className="arMandate">做 {(mandate.allowedSymbols || []).slice(0, 3).join("·") || "—"} · {mandate.max_leverage || 1}x · 日亏≤{mandate.maxDailyLossPct || "-"}%</div>}
+        <div className="arControls">
+          <button className="arBtn" onClick={toggleAutonomy}>{system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}</button>
+          {system.killSwitch && <button className="arBtn danger" onClick={releaseKill}>解除熔断</button>}
+        </div>
+      </div>
+
+      {/* ④ 市场速览 */}
+      <div className="arCard">
+        <div className="arHead"><TrendingUp size={14} /> 市场速览 <button className="arRefresh" title="刷新大盘/聪明钱" onClick={() => ui.refresh?.(true)}><RefreshCw size={12} /></button></div>
+        <div className="arRow"><span className="term" title="BTC 市值占全市场比例；上升时山寨相对弱势">BTC 主导</span><b>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "—"}</b></div>
+        <div className="arRow"><span className="term" title="市场情绪：极低=极度恐惧（常是反向机会），极高=极度贪婪（注意回撤）">恐惧贪婪</span><b>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "—"}</b></div>
+        <div className="arRow"><span className="term" title="精英交易员的多空持仓比，>1 偏多、<1 偏空">大户多空</span><b className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "—"}</b></div>
+        <div className="arRow"><span className="term" title="全体/散户的多空持仓比，常作反向指标">散户多空</span><b>{sm.retailLongShortRatio ?? "—"}</b></div>
+        <button className="arAskLink" onClick={() => send("用大白话讲讲现在的大盘和聪明钱信号，对我的交易有什么提示？")}>🤖 让 AI 解读当前行情</button>
+      </div>
+    </aside>
+  );
+}
+
 function SetupChecklist({ onExample }) {
   const examples = [
     "看看 BTC 现在的走势，说说你的判断",
@@ -364,19 +470,6 @@ function SetupChecklist({ onExample }) {
 }
 
 export function ChatPage({ data, action, ui }) {
-  const system = data.system || {};
-  const riskWall = data.agentStatus?.riskWall || {};
-  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
-  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
-  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
-  async function toggleAutonomy() {
-    await action("/api/system/autonomy", { enabled: !system.autonomyEnabled });
-  }
-  async function releaseKill() {
-    if (window.confirm("确认解除熔断？解除后 Agent 可恢复按授权推进。")) {
-      await action("/api/risk/kill-switch", { enabled: false, reason: "" });
-    }
-  }
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -462,6 +555,7 @@ export function ChatPage({ data, action, ui }) {
   }
 
   return (
+    <div className="chatShell">
     <div className="chatPage">
       <div className="chatSessionBar">
         <div className="chatViewSwitch">
@@ -469,13 +563,6 @@ export function ChatPage({ data, action, ui }) {
           <button className={view === "intel" ? "active" : ""} onClick={() => setView("intel")}><Radar size={15} /> 情报</button>
         </div>
         <AccountSyncCard data={data} action={action} ui={ui} />
-        <div className="chatAgentControls">
-          <span className={`chatGateChip ${gateTone}`}><Shield size={13} /> {gateLabel}</span>
-          <button className="chatAgentBtn" onClick={toggleAutonomy}>
-            {system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}
-          </button>
-          {system.killSwitch && <button className="chatAgentBtn danger" onClick={releaseKill}>解除熔断</button>}
-        </div>
         {view === "chat" && (
         <div className="chatSessionSwitch">
           <button className="csSwitchBtn" onClick={() => { newSession(); setShowHistory(false); }}><Plus size={15} /> 新建对话</button>
@@ -569,6 +656,8 @@ export function ChatPage({ data, action, ui }) {
         </button>
       </div>
       </>)}
+    </div>
+    {view === "chat" && <AgentRail data={data} action={action} ui={ui} send={send} />}
     </div>
   );
 }

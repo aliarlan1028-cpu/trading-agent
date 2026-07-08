@@ -38,7 +38,6 @@ if (isNativeApp()) {
 
 const navItems = [
   { id: "chat", label: "AI交易员", short: "交易员", icon: MessageSquare },
-  { id: "cockpit", label: "驾驶舱", short: "驾驶舱", icon: WalletCards },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", icon: BookOpen },
   { id: "systemSettings", label: "系统设置", short: "设置", icon: Settings },
   { id: "admin", label: "Admin", short: "Admin", icon: UserCog }
@@ -344,7 +343,7 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
               <label><span>邮箱</span><input value={registerForm.email} onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })} placeholder="you@example.com" /></label>
               <label><span>密码</span><input type="password" value={registerForm.password} onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })} placeholder="至少 10 位" /></label>
               <button className="primaryButton" type="submit" disabled={!publicInfo?.registrationEnabled}><UserPlus size={16} /> 创建账号并生成支付单</button>
-              {!publicInfo?.registrationEnabled && <small>当前未开启公开注册，Owner 可在服务器开启 PUBLIC_REGISTRATION_ENABLED。</small>}
+              {!publicInfo?.registrationEnabled && <small>当前未开启公开注册。Owner 可在 Admin → 用户授权 里打开“公开注册”开关，或直接为用户开通账号。</small>}
               {payment && <div className="paymentBox"><strong>TRC20 USDT 支付信息</strong><span>{payment.amount} USDT</span><code>{payment.address}</code><small>支付确认后订阅会自动开通；Owner 也可以在 Admin 页面直接赠送授权。</small></div>}
             </form>
           )}

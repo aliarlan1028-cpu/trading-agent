@@ -481,6 +481,7 @@ app.get("/api/overview", (_req, res) => {
     subscriptions: db.subscriptions || [],
     paymentRequests: db.paymentRequests?.slice(0, 20) || [],
     system: db.system,
+    publicRegistrationEnabled: process.env.PUBLIC_REGISTRATION_ENABLED === "true",
     agentStatus: getAgentStatus(db),
     agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
