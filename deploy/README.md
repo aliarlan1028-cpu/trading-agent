@@ -12,6 +12,7 @@
       新客户实例直接复用该镜像，不必每次重建。
 - [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
+- [ ] **宕机告警**：`cp deploy/monitor.env.example deploy/monitor.env` 填 Lark Webhook，`chmod 600`；把 `monitor-tenants.sh` 挂 cron（每 3 分钟），实例掉线/恢复时推送。
 - [ ] **脚本落到服务器**：`/opt/trading-agent/deploy/` 下（随主仓库 rsync 即可），
       `chmod +x deploy/*.sh`。
 

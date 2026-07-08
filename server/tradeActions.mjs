@@ -129,8 +129,9 @@ function validateApiKeySafety(db, payload) {
   const metadata = (db.apiKeyMetadata || []).find((item) => item.exchange === exchange);
   if (!metadata) return { allowed: false, reason: "api_key_metadata_missing", exchange };
   if (metadata.withdrawPermission === true) return { allowed: false, reason: "api_key_withdraw_permission_enabled", exchange };
-  if (process.env.REQUIRE_API_PERMISSION_VERIFICATION === "false") return { allowed: true };
-  if (!metadata.permissionVerifiedAt) return { allowed: false, reason: "api_key_permission_unverified", exchange };
+  // 实盘写入时绝不放行未经审计确认无提现权限的 Key；REQUIRE_API_PERMISSION_VERIFICATION=false 的开发旁路仅在非实盘生效。
+  const allowUnverifiedBypass = process.env.REQUIRE_API_PERMISSION_VERIFICATION === "false" && !db.system.liveTradingEnabled;
+  if (!allowUnverifiedBypass && !metadata.permissionVerifiedAt) return { allowed: false, reason: "api_key_permission_unverified", exchange };
   return { allowed: true };
 }
 
