@@ -52,6 +52,15 @@ mkdir -p "$DIR/data" "$DIR/backups"
 MASTER_KEY="$(openssl rand -hex 32)"
 ADMIN_PW="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
 
+# 统一提供的 LLM key：从 vendor.env 注入（客户进实例后仍可在密钥库改成自己的）。
+VENDOR_ENV="${VENDOR_ENV:-$(cd "$(dirname "$0")" && pwd)/vendor.env}"
+LLM_LINES=""
+LLM_STATUS="未注入（该实例 AI 只做数据巡检，直到客户自配 key）"
+if [ -f "$VENDOR_ENV" ]; then
+  LLM_LINES="$(grep -E '^(ANTHROPIC_API_KEY|ANTHROPIC_MODEL|OPENAI_API_KEY|OPENAI_MODEL|DEEPSEEK_API_KEY|DEEPSEEK_MODEL|GEMINI_API_KEY|GEMINI_MODEL)=' "$VENDOR_ENV" 2>/dev/null || true)"
+  [ -n "$LLM_LINES" ] && LLM_STATUS="已注入统一 LLM key（客户可在密钥库覆盖）"
+fi
+
 umask 077
 cat > "$DIR/.env" <<EOF
 # 客户实例: $SLUG  ($OWNER_EMAIL)  —— 由 provision-tenant.sh 生成，请勿提交到仓库
@@ -70,6 +79,10 @@ REAL_ORDER_WRITE_ENABLED=false
 MAX_LIVE_NOTIONAL_USDT=50
 REALTIME_RECONCILER_ENABLED=false
 EOF
+# 追加统一 LLM key（若 vendor.env 提供）。
+if [ -n "$LLM_LINES" ]; then
+  printf '%s\n' "$LLM_LINES" >> "$DIR/.env"
+fi
 chmod 600 "$DIR/.env"
 
 cat > "$DIR/docker-compose.yml" <<EOF
@@ -111,6 +124,7 @@ echo "   Owner 邮箱   : $OWNER_EMAIL"
 echo "   初始密码     : $ADMIN_PW   （只显示这一次，安全交付给客户后让 TA 登录）"
 echo "   容器端口     : 127.0.0.1:$PORT （不对外，仅 Caddy 可达）"
 echo "   数据目录     : $DIR/data"
+echo "   LLM key      : $LLM_STATUS"
 echo "==============================================================="
 echo " 提醒: 让客户在 [系统设置→密钥库] 填自己的交易所 API Key"
 echo "       （权限只勾'交易'，务必不要勾'提币'），并自行开启实盘闸门。"

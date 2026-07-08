@@ -10,6 +10,7 @@
       （Caddy 会为每个 `<slug>.yegidawir.xyz` 用 HTTP-01 自动签发证书，需能解析到本机。）
 - [ ] **镜像**：主实例 `docker compose build` 后本机已有 `trading-agent-trading-agent:latest`；
       新客户实例直接复用该镜像，不必每次重建。
+- [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
 - [ ] **脚本落到服务器**：`/opt/trading-agent/deploy/` 下（随主仓库 rsync 即可），
       `chmod +x deploy/*.sh`。
