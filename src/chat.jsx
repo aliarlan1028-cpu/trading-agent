@@ -329,23 +329,22 @@ function AccountSyncCard({ data, action, ui }) {
   const autoSync = configured && autoTask && autoTask.enabled !== false;
   const todayPnl = Number(data.portfolio?.todayPnl || 0);
   const todayPct = data.portfolio?.todayPnlPct;
+  const tip = hasData
+    ? `来源：${readAccount.exchange} API ｜ 自动同步：${autoSync ? "每分钟" : "未开启"} ｜ 最后同步：${formatDateTime(lastSync, "未记录")}\n点击立即同步账户`
+    : "未连接交易所 · 点击去连接 OKX 只读 API";
   return (
-    <div className={`acctSyncBar ${hasData ? "" : "unconfigured"}`}>
-      <div className={`asbIcon ${hasData ? "ok" : ""}`} title={hasData ? `最后同步：${formatDateTime(lastSync, "未记录")}` : "未连接交易所"}><RefreshCw size={15} /></div>
-      <span className="asbStatus">{hasData ? "已同步" : configured ? "待同步" : "未连接"}</span>
-      {hasData && <StatusBadge tone="ok">最新</StatusBadge>}
-      <span className="asbSep" />
-      <span className="asbItem"><i>余额</i><b>{hasData ? `${displayMoney(balance)} USDT` : "未同步"}</b>{hasData && <em className={todayPnl >= 0 ? "positive" : "negative"}>{todayPnl >= 0 ? "+" : ""}{displayMoney(todayPnl, 2, "0.00")}{todayPct !== null && todayPct !== undefined ? `（${displayPct(todayPct)}）` : ""}</em>}</span>
-      <span className="asbItem"><i>来源</i><b>{configured ? `${readAccount.exchange} API` : "—"}</b></span>
-      <span className="asbItem"><i>自动同步</i><b className={autoSync ? "positive" : ""}>{autoSync ? "每分钟" : "未开启"}</b></span>
-      <div className="asbActions">
-        {configured
-          ? <button className="primaryButton" onClick={() => action(`/api/exchange/${readAccount.id}/sync-readonly`, {})}>立即同步</button>
-          : <button className="primaryButton" onClick={() => ui.setActive("systemSettings")}>连接 API</button>}
-        <button className="secondaryButton" title="设置自动同步" onClick={() => ui.setActive("systemSettings")}>自动同步</button>
-        <button className="secondaryButton" title="查看同步日志" onClick={() => ui.setActive("auditSystem")}>日志</button>
-      </div>
-    </div>
+    <button
+      type="button"
+      className={`acctChip ${hasData ? "ok" : "unconfigured"}`}
+      title={tip}
+      onClick={() => (configured ? action(`/api/exchange/${readAccount.id}/sync-readonly`, {}) : ui.setActive("systemSettings"))}
+    >
+      <RefreshCw size={13} />
+      <b>{hasData ? "已同步" : configured ? "待同步" : "未连接"}</b>
+      {hasData
+        ? <span className="acctBal">{displayMoney(balance)} USDT{todayPct !== null && todayPct !== undefined && Number(todayPct) !== 0 ? <em className={todayPnl >= 0 ? "positive" : "negative"}>{displayPct(todayPct)}</em> : null}</span>
+        : <span className="acctBal muted">连接交易所</span>}
+    </button>
   );
 }
 
@@ -469,6 +468,7 @@ export function ChatPage({ data, action, ui }) {
           <button className={view === "chat" ? "active" : ""} onClick={() => setView("chat")}><MessageSquare size={15} /> 对话</button>
           <button className={view === "intel" ? "active" : ""} onClick={() => setView("intel")}><Radar size={15} /> 情报</button>
         </div>
+        <AccountSyncCard data={data} action={action} ui={ui} />
         <div className="chatAgentControls">
           <span className={`chatGateChip ${gateTone}`}><Shield size={13} /> {gateLabel}</span>
           <button className="chatAgentBtn" onClick={toggleAutonomy}>
@@ -504,7 +504,6 @@ export function ChatPage({ data, action, ui }) {
       </div>
       {view === "intel" && <IntelCenter action={action} />}
       {view === "chat" && (<>
-      <AccountSyncCard data={data} action={action} ui={ui} />
       <div className="chatScroll" ref={scrollRef}>
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
         {messages.map((message) => (
