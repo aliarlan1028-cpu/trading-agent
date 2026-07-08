@@ -338,9 +338,10 @@ function buildRiskWall(db, mandate) {
     singleRiskPct: mandate?.maxSingleTradeRiskPct || mandate?.max_single_trade_risk_pct,
     dailyLossPct: mandate?.maxDailyLossPct || mandate?.max_daily_loss_pct,
     remainingDailyLossUsdt: db.system.remainingDailyLossUsdt,
-    allowOpen: mandate?.allow_open_position ?? false,
-    allowClose: mandate?.allow_close_position ?? false,
-    allowReduceOnly: mandate?.allow_reduce_only ?? false,
+    // 显式 allow_* 优先；老授权（对话草案）没这些字段时回退到 allowedActions，避免激活后仍"禁止开仓"。
+    allowOpen: mandate?.allow_open_position ?? mandate?.allowedActions?.includes("open") ?? false,
+    allowClose: mandate?.allow_close_position ?? mandate?.allowedActions?.includes("close") ?? false,
+    allowReduceOnly: mandate?.allow_reduce_only ?? mandate?.allowedActions?.includes("close") ?? false,
     allowAdd: mandate?.allow_add_position ?? false
   };
 }

@@ -41,7 +41,7 @@ import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
-import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, verifyAuditChain } from "./store.mjs";
+import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
 
 dotenv.config();
@@ -61,6 +61,9 @@ const host = process.env.HOST || "127.0.0.1";
 db.system.realTradingAck = db.system.realTradingAck ?? (process.env.I_UNDERSTAND_REAL_TRADING === "true");
 db.system.orderWriteEnabled = db.system.orderWriteEnabled ?? (process.env.REAL_ORDER_WRITE_ENABLED === "true");
 db.system.liveTradingEnabled = (db.system.liveTradingEnabled ?? (process.env.LIVE_TRADING_ENABLED === "true")) && db.system.realTradingAck === true;
+// 交易用户角色对齐到最新权限集（除用户管理外与 Owner 一致）——覆盖旧库里被限制的种子。
+const traderRole = (db.roles || []).find((role) => role.name === "交易用户" || role.id === "role_trader");
+if (traderRole) traderRole.permissions = TRADER_PERMISSIONS;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
 ensureDefaultEventSources(db);
@@ -111,7 +114,14 @@ registerTaskHandler("market_signal_refresh", async (database) => {
   }
   try {
     const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
-    database.marketRegime = { ...regime, updatedAt: nowIso() };
+    const prev = database.marketRegime || {};
+    // 免费额度偶发 429 会返回 null；此时保留上一次的好值，避免主导率/聪明钱闪成"未取"。
+    database.marketRegime = {
+      ...regime,
+      global: regime.global || prev.global || null,
+      smartMoney: regime.smartMoney || prev.smartMoney || null,
+      updatedAt: nowIso()
+    };
   } catch { /* 大盘拉取失败不阻断 */ }
   return { status: "ok", synced };
 });
@@ -551,8 +561,14 @@ app.get("/api/market/regime", async (_req, res) => {
   try {
     const symbol = db.mandates?.find((m) => ["active", "running"].includes(m.status))?.allowedSymbols?.[0] || "BTC/USDT";
     const regime = await fetchMarketRegime(symbol);
-    db.marketRegime = { ...regime, updatedAt: nowIso() };
-    persist(res, regime);
+    const prev = db.marketRegime || {};
+    db.marketRegime = {
+      ...regime,
+      global: regime.global || prev.global || null,
+      smartMoney: regime.smartMoney || prev.smartMoney || null,
+      updatedAt: nowIso()
+    };
+    persist(res, db.marketRegime);
   } catch (error) {
     res.status(500).json({ error: `全局大盘/聪明钱同步失败：${error.message}` });
   }
@@ -1702,6 +1718,33 @@ app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (req, r
 });
 
 app.get("/api/risk/incidents", (_req, res) => res.json(db.riskIncidents));
+
+// 关闭单个风险事件（标记已处理/已读）。
+app.post("/api/risk/incidents/:id/close", requirePermission("write:risk"), (req, res) => {
+  const incident = (db.riskIncidents || []).find((item) => item.id === req.params.id);
+  if (!incident) return res.status(404).json({ error: "Incident not found" });
+  incident.status = "resolved";
+  incident.resolvedAt = nowIso();
+  incident.resolvedBy = db.user?.name || "user";
+  if (req.body?.note) incident.resolveNote = String(req.body.note).slice(0, 500);
+  appendAudit(db, `关闭风险事件：${incident.title || incident.id}`, incident.id, db.user?.name || "user");
+  persist(res, { incident, message: "已标记为已处理" });
+});
+
+// 批量关闭所有未处理事件（用户"全部标记已处理"或 AI 分析完成后统一收尾）。
+app.post("/api/risk/incidents/close-all", requirePermission("write:risk"), (req, res) => {
+  const open = (db.riskIncidents || []).filter((item) => item.status === "open");
+  const now = nowIso();
+  const by = db.user?.name || "user";
+  for (const incident of open) {
+    incident.status = "resolved";
+    incident.resolvedAt = now;
+    incident.resolvedBy = by;
+    if (req.body?.note) incident.resolveNote = String(req.body.note).slice(0, 500);
+  }
+  if (open.length) appendAudit(db, `批量关闭 ${open.length} 个风险事件`, "risk.incidents", by, "info");
+  persist(res, { closed: open.length, message: `已标记 ${open.length} 个事件为已处理` });
+});
 
 app.post("/api/event-sources", requirePermission("write:event"), (req, res) => {
   const source = {

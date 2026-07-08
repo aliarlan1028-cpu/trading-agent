@@ -23,7 +23,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, formatDate, formatDateTime, formatTime, humanize, humanizePhase, ProgressBar, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { displayMoney, formatDate, formatDateTime, formatTime, humanize, humanizePhase, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -594,7 +594,7 @@ function MobileRisk({ data, action, ui }) {
         </header>
         <div className="mKvRows">
           <span>交易所<b>{(mandate.exchanges || []).join("、") || "未授权"}</b></span>
-          <span>交易对白名单<b>{(mandate.allowedSymbols || []).join("、") || "未授权"}</b></span>
+          <span>交易对白名单<SymbolChips symbols={mandate.allowedSymbols} /></span>
           <span>有效期<b>{validUntil ? `截至 ${formatDateTime(validUntil)}` : "未记录"}</b></span>
         </div>
         <div className="mInboxActions">

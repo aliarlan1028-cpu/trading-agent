@@ -40,7 +40,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -133,33 +133,37 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     blockedChecks ? `近期风控阻断 ${blockedChecks} 次，已自动降级` : "近期风控检查全部通过"
   ];
 
+  const positions = data.positions || [];
+  const posRows = positions.map((p, index) => {
+    const isShort = p.direction === "short" || p.direction === "空";
+    const pnlNum = Number(p.pnl || 0);
+    return {
+      id: p.id || `${p.symbol}-${index}`,
+      symbol: <span className="posSym">{p.symbol}{p.exchange ? <small>{p.exchange}</small> : null}</span>,
+      dir: <span className={isShort ? "negative" : "positive"}>{isShort ? "做空" : "做多"}</span>,
+      size: displayMoney(p.size, 4, "-"),
+      entry: displayMoney(p.entry, 2, "-"),
+      mark: displayMoney(p.mark, 2, "-"),
+      pnl: <span className={pnlNum >= 0 ? "positive" : "negative"}>{pnlNum >= 0 ? "+" : ""}{displayMoney(pnlNum, 2, "-")}</span>,
+      lev: p.leverage ? `${p.leverage}x` : "-"
+    };
+  });
+  const winTone = performance.winRatePct >= 50 ? "positive" : "warning";
+  const cumPnl = Number(performance.totalPnlUsdt || 0);
+
   return (
     <div className="pageStack cockpitOverview">
       {!embedded && <PageHeader active="marketAccount" />}
 
-      <Card className="cpConclusion">
-        <div className="cpcMain">
-          <div className={`cpcIcon ${conclusion.tone}`}><Gauge size={24} /></div>
-          <div>
-            <div className="cpcLabel">系统结论</div>
-            <div className={`cpcStatus ${conclusion.tone}`}>{conclusion.label}</div>
-            <div className="cpcSub">当前风险等级：<StatusBadge tone={riskTone}>{riskLabel}</StatusBadge></div>
-            <div className="cpcTime">结论时间：{formatDateTime(latestSnapshot?.createdAt, "实时")}（每 2 分钟更新）</div>
-          </div>
-        </div>
-        <div className="cpcCol">
-          <b>原因</b>
-          <ul>{conclusionReasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-        </div>
-        <div className="cpcCol">
-          <b>建议下一步动作</b>
-          <ol>{actionItems.slice(0, 3).map((a, i) => <li key={i}><span className="cpcNum">{i + 1}</span>{a}</li>)}</ol>
-        </div>
-        <div className="cpcAction">
-          <button className="secondaryButton" onClick={() => ui.setActive("review")}>查看复盘结论 <ChevronRight size={14} /></button>
-        </div>
-      </Card>
+      {/* 一句话系统状态（细节在最下方"系统监控明细"里） */}
+      <div className={`cpStatusBar ${conclusion.tone}`}>
+        <span className="cpStatusDot" />
+        <b>系统结论：{conclusion.label}</b>
+        <StatusBadge tone={riskTone}>{riskLabel}</StatusBadge>
+        <small>更新 {formatDateTime(latestSnapshot?.createdAt, "实时")}</small>
+      </div>
 
+      {/* 账户概览条 */}
       <div className="cockpitStripRow">
         <div className="cockpitStrip">
           {stripCells.map((cell) => {
@@ -179,83 +183,117 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         </div>
       </div>
 
-      <div className="cockpitGrid">
-        <Card className="cpCard">
-          <SectionTitle icon={Gauge} title="账户健康" />
-          <div className="healthGrid tight">
-            {accountHealthRows.map(([label, value, tone]) => <div key={label}><span>{label}</span><strong>{value}</strong><StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "高危" : "待处理"}</StatusBadge></div>)}
+      {/* ① 我的持仓 —— 清清楚楚看现在持有什么 */}
+      <Card className="cpCard cpFull">
+        <SectionTitle icon={Layers} title={`我的持仓（${positions.length}）`} action={<button className="iconButton" title="刷新账户" onClick={() => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings")}><RefreshCw size={14} /></button>} />
+        {positions.length ? (
+          <DataTable
+            columns={[
+              { key: "symbol", label: "品种" },
+              { key: "dir", label: "方向", width: "0.7fr" },
+              { key: "size", label: "数量" },
+              { key: "entry", label: "开仓价" },
+              { key: "mark", label: "标记价" },
+              { key: "pnl", label: "未实现盈亏" },
+              { key: "lev", label: "杠杆", width: "0.6fr" }
+            ]}
+            rows={posRows}
+          />
+        ) : (
+          <div className="emptyPanel">{configured ? "当前没有持仓。开仓后这里实时显示品种、方向、数量、开仓/标记价、未实现盈亏与杠杆。" : "先在系统设置连接交易所（只读即可），这里就会显示你的真实持仓。"}</div>
+        )}
+      </Card>
+
+      {/* ② 交易战绩 —— 最有用的真实成绩单 */}
+      <Card className="cpCard cpFull">
+        <SectionTitle icon={BarChart3} title="交易战绩" action={<button className="textButton" onClick={() => ui.setActive("review")}>去复盘拆解（按策略/品种/时段） <ChevronRight size={14} /></button>} />
+        {performance.trades ? (
+          <div className="statGrid">
+            <div><span>已平仓笔数</span><strong>{performance.trades}</strong></div>
+            <div><span className="term" title="盈利笔数占比。长期看 50% 以上更稳，但低胜率+高盈亏比也能赚。">胜率</span><strong className={winTone}>{performance.winRatePct}%</strong></div>
+            <div><span>累计盈亏</span><strong className={cumPnl >= 0 ? "positive" : "negative"}>{cumPnl >= 0 ? "+" : ""}{displayMoney(cumPnl, 2, "0.00")} USDT</strong></div>
+            <div><span className="term" title="总盈利 ÷ 总亏损。>1 才是赚的，>1.5 较健康。">盈亏比</span><strong className={Number(performance.profitFactor) >= 1 ? "positive" : "negative"}>{performance.profitFactor ?? "-"}</strong></div>
+            <div><span className="term" title="账户净值从最高点回落的最大幅度，衡量最坏时亏了多少。">最大回撤</span><strong className="negative">{data.portfolio.maxDrawdownPct != null ? displayPct(-Math.abs(Number(data.portfolio.maxDrawdownPct))) : "未同步"}</strong></div>
           </div>
-        </Card>
+        ) : (
+          <div className="emptyPanel">还没有已平仓交易。完成一轮闭环后这里显示笔数、胜率、累计盈亏与盈亏比；<b>策略与回测的表现拆解在复盘页</b>。</div>
+        )}
+      </Card>
 
-        <Card className="cpCard">
-          <SectionTitle icon={Target} title="风险承压" />
-          <div className="qualityGrid">
-            <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
-            <RiskLine label="持仓数量" value={`${data.positions?.length || 0} 个`} />
-            <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
-            <RiskLine label="系统状态" value={systemStatus(data).label} />
-          </div>
-        </Card>
+      {/* ③ 系统监控明细 —— AI 在盯，你平时不用看，问起来 AI 会告诉你 */}
+      <details className="cpCard cpDetails cpMoreDetails">
+        <summary><span className="cpSummaryTitle"><Eye size={15} /> 系统监控明细（AI 在盯，你平时不用看）</span><ChevronDown size={14} className="cpChevron" /></summary>
+        <div className="cockpitGrid">
+          <Card className="cpCard">
+            <SectionTitle icon={Gauge} title="账户健康" />
+            <div className="healthGrid tight">
+              {accountHealthRows.map(([label, value, tone]) => <div key={label}><span>{label}</span><strong>{value}</strong><StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "高危" : "待处理"}</StatusBadge></div>)}
+            </div>
+          </Card>
 
-        <Card className="cpCard">
-          <SectionTitle icon={BarChart3} title="收益质量" action={<button className="textButton" onClick={() => ui.setActive("review")}>去复盘 <ChevronRight size={14} /></button>} />
-          <div className="qualityGrid">
-            {qualityRows.map(([label, value]) => <RiskLine key={label} label={label} value={value} />)}
-          </div>
-        </Card>
+          <Card className="cpCard">
+            <SectionTitle icon={Target} title="风险承压" />
+            <div className="qualityGrid">
+              <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
+              <RiskLine label="持仓数量" value={`${positions.length} 个`} />
+              <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
+              <RiskLine label="系统状态" value={systemStatus(data).label} />
+            </div>
+          </Card>
 
-        <Card className="cpCard">
-          <SectionTitle icon={Activity} title="合约微观结构" action={<button className="iconButton" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /></button>} />
-          <div className="microGrid">
-            <div><span className="term" title="永续合约里多头付给空头（或反之）的周期费用。绝对值越大，说明多空越拥挤，反向挤压风险越高。">资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
-            <div><span className="term" title="未平仓合约的总量（Open Interest）。OI 上升且价格同向，说明趋势有真金白银承接。">未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
-            <div><span className="term" title="订单簿里买单量占买卖总量的比例。大于 50% 表示买盘占优，小于 50% 卖盘占优。">买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
-            <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
-          </div>
-        </Card>
+          <Card className="cpCard">
+            <SectionTitle icon={Activity} title="合约微观结构" action={<button className="iconButton" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /></button>} />
+            <div className="microGrid">
+              <div><span className="term" title="永续合约里多头付给空头（或反之）的周期费用。绝对值越大，说明多空越拥挤，反向挤压风险越高。">资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
+              <div><span className="term" title="未平仓合约的总量（Open Interest）。OI 上升且价格同向，说明趋势有真金白银承接。">未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
+              <div><span className="term" title="订单簿里买单量占买卖总量的比例。大于 50% 表示买盘占优，小于 50% 卖盘占优。">买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
+              <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
+            </div>
+          </Card>
 
-        <Card className="cpCard">
-          <SectionTitle icon={Globe2} title="大盘与聪明钱" action={<button className="iconButton" title="刷新大盘与聪明钱" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={14} /></button>} />
-          {hasRegime ? (
-            <>
-              <div className="microGrid">
-                <div><span>BTC 主导率</span><strong>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</strong></div>
-                <div><span>总市值 24h</span><strong className={gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "positive" : "negative"}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</strong></div>
-                <div><span>恐惧贪婪</span><strong className={gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "negative" : gm.fearGreed.value >= 75 ? "warning" : ""}>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "未取"}</strong></div>
-                <div><span>大户持仓多空比</span><strong className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "未取"}</strong></div>
-                <div><span>散户多空比</span><strong>{sm.retailLongShortRatio ?? "未取"}</strong></div>
-                <div><span>主动买卖比</span><strong className={sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "positive" : "negative"}>{sm.takerBuySellRatio ?? "未取"}</strong></div>
-                <div><span>近期爆仓 多/空</span><strong className={sm.liquidations == null ? "" : sm.liquidations.dominantSide === "short" ? "positive" : sm.liquidations.dominantSide === "long" ? "negative" : ""}>{sm.liquidations ? `${sm.liquidations.longLiqCount} / ${sm.liquidations.shortLiqCount}` : "未取"}</strong></div>
-              </div>
-              {(gm.interpretation || sm.interpretation) && <p className="regimeReadout">{[gm.interpretation, sm.ok ? sm.interpretation : null].filter(Boolean).join("；")}</p>}
-            </>
-          ) : (
-            <div className="emptyPanel">点右上角刷新：拉取 BTC 主导率、总市值趋势、恐惧贪婪与大户/散户多空比，让 Agent 先判大盘再看个币。</div>
-          )}
-        </Card>
+          <Card className="cpCard">
+            <SectionTitle icon={Globe2} title="大盘与聪明钱" action={<button className="iconButton" title="刷新大盘与聪明钱" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={14} /></button>} />
+            {hasRegime ? (
+              <>
+                <div className="microGrid">
+                  <div><span>BTC 主导率</span><strong>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</strong></div>
+                  <div><span>总市值 24h</span><strong className={gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "positive" : "negative"}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</strong></div>
+                  <div><span>恐惧贪婪</span><strong className={gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "negative" : gm.fearGreed.value >= 75 ? "warning" : ""}>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "未取"}</strong></div>
+                  <div><span>大户持仓多空比</span><strong className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "未取"}</strong></div>
+                  <div><span>散户多空比</span><strong>{sm.retailLongShortRatio ?? "未取"}</strong></div>
+                  <div><span>主动买卖比</span><strong className={sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "positive" : "negative"}>{sm.takerBuySellRatio ?? "未取"}</strong></div>
+                  <div><span>近期爆仓 多/空</span><strong className={sm.liquidations == null ? "" : sm.liquidations.dominantSide === "short" ? "positive" : sm.liquidations.dominantSide === "long" ? "negative" : ""}>{sm.liquidations ? `${sm.liquidations.longLiqCount} / ${sm.liquidations.shortLiqCount}` : "未取"}</strong></div>
+                </div>
+                {(gm.interpretation || sm.interpretation) && <p className="regimeReadout">{[gm.interpretation, sm.ok ? sm.interpretation : null].filter(Boolean).join("；")}</p>}
+              </>
+            ) : (
+              <div className="emptyPanel">点右上角刷新：拉取 BTC 主导率、总市值趋势、恐惧贪婪与大户/散户多空比，让 Agent 先判大盘再看个币。</div>
+            )}
+          </Card>
 
-        <Card className="cpCard">
-          <SectionTitle icon={Gauge} title="组合波动预算" />
-          {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
-            <>
-              <div className="microGrid">
-                <div><span>组合日波动</span><strong>{pr.portfolioVolPct}%</strong></div>
-                <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
-                <div><span>预算使用</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
-                <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
-              </div>
-              <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
-            </>
-          ) : (
-            <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后显示组合波动与预算使用。"}</div>
-          )}
-        </Card>
+          <Card className="cpCard">
+            <SectionTitle icon={Gauge} title="组合波动预算" />
+            {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
+              <>
+                <div className="microGrid">
+                  <div><span>组合日波动</span><strong>{pr.portfolioVolPct}%</strong></div>
+                  <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
+                  <div><span>预算使用</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
+                  <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
+                </div>
+                <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
+              </>
+            ) : (
+              <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后显示组合波动与预算使用。"}</div>
+            )}
+          </Card>
 
-        <details className="cpCard cpDetails">
-          <summary><span className="cpSummaryTitle"><ListChecks size={15} /> 下一步动作</span><ChevronDown size={14} className="cpChevron" /></summary>
-          <div className="actionList">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
-        </details>
-      </div>
+          <Card className="cpCard">
+            <SectionTitle icon={ListChecks} title="建议下一步动作" />
+            <div className="actionList">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+          </Card>
+        </div>
+      </details>
     </div>
   );
 }
@@ -657,7 +695,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <div className="mandateRows">
             <RiskLine label="授权范围" value={humanizeList(mandate.marketTypes, "未设置")} />
             <RiskLine label="交易所" value={safeList(mandate.exchanges, "未授权")} />
-            <RiskLine label="交易对白名单" value={safeList(mandate.allowedSymbols, "未授权")} />
+            <RiskLine label="交易对白名单" value={<SymbolChips symbols={mandate.allowedSymbols} />} />
             <RiskLine label="最大杠杆倍数" value={mandate.max_leverage || mandate.maxLeverageBySymbol ? `${mandate.max_leverage || Math.max(1, ...Object.values(mandate.maxLeverageBySymbol || { default: 1 }))}x` : "未授权"} />
             <RiskLine label="单日最大亏损" value={`${mandate.maxDailyLossPct || "-"}%`} />
             <RiskLine label="审批阈值（单笔下单）" value={mandate.id ? `≥ ${formatMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)} USDT` : "未授权"} />
@@ -1051,7 +1089,7 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
           <MiniChart title="告警数量" value={String(incidents.length)} sub="风险事件 + 外部告警" />
           <div className="incidentPanel">
             <h3>近期告警与事件</h3>
-            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{item.title || item.message || item.action || item.id}</span><small>{formatTime(item.createdAt)}</small></div>)}
+            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{item.title || item.message || item.action || item.id}</span><small>{formatTime(item.createdAt)}</small>{item.status === "open" && String(item.id).startsWith("incident") && <button className="linkCell" title="标记为已处理" onClick={() => action(`/api/risk/incidents/${item.id}/close`, {})}>标记已处理</button>}</div>)}
             {!incidents.length && <div className="emptyPanel">暂无真实告警。</div>}
           </div>
         </div>
@@ -1172,7 +1210,7 @@ export function AgentProfilesPanel({ data, action }) {
   );
 }
 
-export function AdminPage({ data, action }) {
+export function AdminPage({ data, action, embedded = false }) {
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "交易用户", freeMonths: 0 });
@@ -1233,7 +1271,7 @@ export function AdminPage({ data, action }) {
   ];
   return (
     <div className="pageStack">
-      <PageHeader active="admin" />
+      {!embedded && <PageHeader active="admin" />}
       <Card className="adminHero">
         <div>
           <span>Owner Control Center</span>

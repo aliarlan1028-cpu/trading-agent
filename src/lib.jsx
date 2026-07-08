@@ -725,6 +725,13 @@ export function DataTable({ columns, rows }) {
   );
 }
 
+// 交易对/币种白名单：渲染成可换行、可滚动的胶囊标签，币多也不难看。
+export function SymbolChips({ symbols, empty = "未授权" }) {
+  const list = (Array.isArray(symbols) ? symbols : []).filter(Boolean);
+  if (!list.length) return <span className="symChipsEmpty">{empty}</span>;
+  return <span className="symChips">{list.map((s) => <span className="symChip" key={s}>{s}</span>)}</span>;
+}
+
 export function RiskLine({ label, value, progress }) {
   return (
     <div className="riskLine">

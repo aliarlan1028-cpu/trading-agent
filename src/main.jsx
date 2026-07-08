@@ -39,8 +39,7 @@ if (isNativeApp()) {
 const navItems = [
   { id: "chat", label: "AI交易员", short: "交易员", icon: MessageSquare },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", icon: BookOpen },
-  { id: "systemSettings", label: "系统设置", short: "设置", icon: Settings },
-  { id: "admin", label: "Admin", short: "Admin", icon: UserCog }
+  { id: "systemSettings", label: "系统设置", short: "设置", icon: Settings }
 ];
 
 function BrandLogo({ size = 34 }) {
@@ -91,7 +90,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, notify, action }) {
+function AppTopbar({ data, active, setActive, notify, action }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const accounts = data.exchangeAccounts || [];
@@ -103,11 +102,22 @@ function AppTopbar({ data, setActive, notify, action }) {
   const live = data.system?.liveTradingEnabled;
   return (
     <header className="appTopbar">
+      <button className="topbarBrand" title="回到对话" onClick={() => setActive("chat")}><BrandLogo size={30} /></button>
       <div className="topbarStatusGroup">
         <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings")} />
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings")} />
         {live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
       </div>
+      <nav className="topbarNav" aria-label="主导航">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button key={item.id} className={`topbarNavItem ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
+              <Icon size={16} /> {item.label}
+            </button>
+          );
+        })}
+      </nav>
       <div className="topbarActions">
         <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskAuth")}>
           <span />
@@ -131,31 +141,41 @@ function AppTopbar({ data, setActive, notify, action }) {
 }
 
 function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSettingsTab }) {
+  const isOwner = data.user?.isOwner === true;
+  // 非 Owner 不能停留在"用户管理"tab。
+  const tab = activeSettingsTab === "users" && !isOwner ? "config" : activeSettingsTab;
   return (
     <div className="pageStack">
       <PageHeader active="systemSettings" />
       <div className="settingsSubNav" role="tablist" aria-label="系统设置导航">
-        <button type="button" role="tab" aria-selected={activeSettingsTab === "config"} className={activeSettingsTab === "config" ? "active" : ""} onClick={() => setActiveSettingsTab("config")}>
+        <button type="button" role="tab" aria-selected={tab === "config"} className={tab === "config" ? "active" : ""} onClick={() => setActiveSettingsTab("config")}>
           <Settings size={15} /> 系统配置
         </button>
-        <button type="button" role="tab" aria-selected={activeSettingsTab === "risk"} className={activeSettingsTab === "risk" ? "active" : ""} onClick={() => setActiveSettingsTab("risk")}>
+        <button type="button" role="tab" aria-selected={tab === "risk"} className={tab === "risk" ? "active" : ""} onClick={() => setActiveSettingsTab("risk")}>
           <Shield size={15} /> 风控与授权
         </button>
-        <button type="button" role="tab" aria-selected={activeSettingsTab === "tasks"} className={activeSettingsTab === "tasks" ? "active" : ""} onClick={() => setActiveSettingsTab("tasks")}>
+        <button type="button" role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "active" : ""} onClick={() => setActiveSettingsTab("tasks")}>
           <CalendarClock size={15} /> 任务调度
         </button>
-        <button type="button" role="tab" aria-selected={activeSettingsTab === "agents"} className={activeSettingsTab === "agents" ? "active" : ""} onClick={() => setActiveSettingsTab("agents")}>
+        <button type="button" role="tab" aria-selected={tab === "agents"} className={tab === "agents" ? "active" : ""} onClick={() => setActiveSettingsTab("agents")}>
           <BrainCircuit size={15} /> Agent 配置
         </button>
+        {isOwner && (
+          <button type="button" role="tab" aria-selected={tab === "users"} className={tab === "users" ? "active" : ""} onClick={() => setActiveSettingsTab("users")}>
+            <UserCog size={15} /> 用户管理
+          </button>
+        )}
       </div>
       <div className="settingsPage">
-        {activeSettingsTab === "risk"
+        {tab === "risk"
           ? <RiskAuthPage data={data} action={action} ui={ui} embedded />
-          : activeSettingsTab === "tasks"
+          : tab === "tasks"
             ? <EventsTasksPage data={data} action={action} ui={ui} embedded mode="tasks" />
-            : activeSettingsTab === "agents"
+            : tab === "agents"
               ? <AgentProfilesPanel data={data} action={action} />
-              : <SystemConfigPanel data={data} action={action} ui={ui} />}
+              : tab === "users" && isOwner
+                ? <AdminPage data={data} action={action} ui={ui} embedded />
+                : <SystemConfigPanel data={data} action={action} ui={ui} />}
       </div>
     </div>
   );
@@ -215,6 +235,8 @@ function App() {
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
     if (next === "marketAccount") { setCockpitTab("overview"); setActive("cockpit"); return; }
     if (next === "review") { setCockpitTab("review"); setActive("cockpit"); return; }
+    // Admin 已并入系统设置的"用户管理"tab（仅 Owner 可见）。
+    if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
     if (next === "systemSettings") setActiveSettingsTab("config");
     setActive(next);
   }
@@ -226,7 +248,6 @@ function App() {
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
-    if (active === "admin") return <AdminPage data={data} action={action} ui={ui} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, cockpitTab, data, action]);
 
@@ -239,10 +260,9 @@ function App() {
   }
 
   return (
-    <div className="appShell">
-      <Sidebar active={active} setActive={navigate} />
+    <div className="appShell noSidebar">
       <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} />
+        <AppTopbar data={data} active={active} setActive={navigate} notify={notify} action={action} />
         <div className="content">{content}</div>
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}

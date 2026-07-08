@@ -440,9 +440,14 @@ export function SystemConfigPanel({ data, action, ui, section }) {
               <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>
               <label className="checkboxLabel"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /> 真实下单写入</label>
               <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /> 启用小额灰度</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认（取消勾选＝授权与额度内全自动下单）</label>
             </div>
-            <label>单笔灰度额度 USDT<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
+            {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
+              <div className="autoTradeBanner on">🤖 全自动执行已开启：AI 自主巡检发现符合授权的机会时，会在「单笔灰度额度」内自动下单，超额度仍转你人工批准。</div>
+            ) : (
+              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开启实盘写入三道闸 + 取消勾选「保留人工确认」。</div>
+            )}
+            <label>单笔灰度额度 USDT（全自动下单的单笔上限）<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
             <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
           </form>
         )}

@@ -9,6 +9,7 @@ import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { executeApprovedPlan } from "./executionEngine.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
 import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
@@ -248,6 +249,23 @@ const TOOL_DEFS = [
       },
       required: ["type"]
     }
+  },
+  {
+    name: "list_risk_incidents",
+    description: "读取当前未处理（open）的风险事件列表，用于逐条分析后决定是否可以标记为已处理。",
+    schema: { type: "object", properties: {} }
+  },
+  {
+    name: "resolve_risk_incidents",
+    description: "把已经分析确认无碍的风险事件标记为已处理（关闭）。可传具体 ids，或 all=true 关闭全部未处理事件。务必在真正逐条分析确认后再调用，并在 note 里简述处理结论。",
+    schema: {
+      type: "object",
+      properties: {
+        ids: { type: "array", items: { type: "string" }, description: "要关闭的事件 id 列表" },
+        all: { type: "boolean", description: "为 true 时关闭全部 open 事件" },
+        note: { type: "string", description: "处理结论备注" }
+      }
+    }
   }
 ];
 
@@ -257,7 +275,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 1. 任何价格、指标、行情结论都必须来自 sync_market 返回的真实数据；没有同步过就说"尚未同步"，绝不编造数字。
 2. 提出交易计划必须调用 propose_trade_plan，让硬风控引擎检查；不要在文本里口头给交易参数。
 3. 用户给出交易目标/授权边界时，先调用 create_mandate_draft 固化，再继续分析。
-4. 执行永远需要人工批准，你无权直接下单；不要承诺"已下单"。
+4. 默认执行需人工批准。仅当主人已开启实盘写入且在灰度策略里关闭「保留人工确认」时，你提出并通过硬风控的计划会在授权与名义金额上限内自动执行（超上限仍转人工批准）。不要在拿到工具返回的执行状态前声称"已下单"，一切以 propose_trade_plan 返回的 status/execution 为准。
 5. 回答克制、专业、可解释：结论 + 依据 + 风险。不确定就说不确定。
 6. 永远不索取或输出 API 密钥等敏感信息。
 7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。
@@ -487,6 +505,26 @@ export async function executeTool(db, run, name, args = {}) {
     }));
   }
 
+  if (name === "list_risk_incidents") {
+    return (db.riskIncidents || []).filter((item) => item.status === "open").slice(0, 40).map((item) => ({
+      id: item.id, title: item.title, severity: item.severity, source: item.source, createdAt: item.createdAt
+    }));
+  }
+
+  if (name === "resolve_risk_incidents") {
+    const open = (db.riskIncidents || []).filter((item) => item.status === "open");
+    const targets = args.all ? open : open.filter((item) => (args.ids || []).includes(item.id));
+    const now = nowIso();
+    for (const incident of targets) {
+      incident.status = "resolved";
+      incident.resolvedAt = now;
+      incident.resolvedBy = "AI";
+      if (args.note) incident.resolveNote = String(args.note).slice(0, 500);
+    }
+    if (targets.length) appendAudit(db, `AI 标记 ${targets.length} 个风险事件为已处理${args.note ? `：${args.note}` : ""}`, "risk.incidents", "AI", "info");
+    return { closed: targets.length, remaining: open.length - targets.length };
+  }
+
   if (name === "query_knowledge") {
     const retrieved = await retrieveChunksSemantic(db, `${args.question || ""} ${args.symbol || ""}`, 5);
     const bundle = runExpertAnalysis(db, {
@@ -546,6 +584,11 @@ export async function executeTool(db, run, name, args = {}) {
       humanApprovalNotionalUsdt: Number(args.humanApprovalNotionalUsdt || 5000),
       manual_approval_threshold_usdt: Number(args.humanApprovalNotionalUsdt || 5000),
       allowedActions: ["open", "cancel", "amend", "close", "move_stop", "take_profit"],
+      // 风控闸门（riskWall）只读这几个字段；缺了 allow_open_position 会导致激活后仍"禁止开仓"。
+      allow_open_position: true,
+      allow_close_position: true,
+      allow_reduce_only: true,
+      allow_add_position: false,
       validFrom: nowIso(),
       validUntil: new Date(Date.now() + validHours * 3600 * 1000).toISOString(),
       createdAt: nowIso(),
@@ -706,8 +749,41 @@ export async function executeTool(db, run, name, args = {}) {
     db.tradePlans.unshift(plan);
     run.tradePlanId = plan.id;
     run.riskCheckId = risk.id;
-    appendAudit(db, risk.passed ? "Agent 提出交易计划，待人工批准" : "Agent 交易计划被风控拒绝", plan.id, "AgentChat", risk.passed ? "info" : "warning");
-    appendTrace(db, "agent_chat", `计划 ${symbol} ${args.direction}`, risk.passed ? "ok" : "blocked");
+    // 授权后全自动执行：仅当①实盘写入已开启 ②灰度策略关闭「保留人工确认」时，AI 自主批准并下单。
+    // 名义金额超过灰度上限会被写入闸拦截 → 自动回退为待人工批准（大单永远需要你拍板，防御纵深）。
+    let autoExecution = null;
+    if (plan.status === "awaiting_approval") {
+      const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
+      const autoEligible = db.system.liveTradingEnabled === true && grayPolicy && grayPolicy.requiresManualApproval === false;
+      if (autoEligible) {
+        plan.status = "approved";
+        plan.approvedAt = nowIso();
+        plan.approvedBy = "AI·自动执行";
+        plan.autoApproved = true;
+        autoExecution = await executeApprovedPlan(db, plan.id, { manualApproval: false, autoExecuted: true });
+        if (["submitted", "dry_run"].includes(autoExecution.status)) {
+          appendAudit(db, `AI 自动批准并执行（${autoExecution.status}）：${symbol} ${plan.direction}`, plan.id, "AgentAuto", "critical");
+          appendTrace(db, "agent_chat", `自动执行 ${symbol} ${plan.direction}`, "ok");
+          await notifyLark(db, {
+            severity: "critical",
+            title: "🤖 AI 已自动执行交易",
+            body: `对 **${symbol}** ${plan.direction === "short" ? "做空" : "做多"}，已在授权与灰度上限内自动${autoExecution.status === "submitted" ? "提交交易所" : "干跑（实盘写入未开）"}。`,
+            fields: [{ label: "入场", value: `${args.entryLow} - ${args.entryHigh}` }, { label: "止损", value: String(args.stopLoss) }]
+          });
+        } else {
+          // 被安全闸拦截（超上限/快照过期等）→ 回退人工批准
+          plan.status = "awaiting_approval";
+          plan.autoApproved = false;
+          autoExecution = { ...autoExecution, fellBackToManual: true };
+          appendAudit(db, `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}），转人工批准`, plan.id, "AgentAuto", "warning");
+        }
+      }
+    }
+
+    if (!plan.autoApproved) {
+      appendAudit(db, risk.passed ? "Agent 提出交易计划，待人工批准" : "Agent 交易计划被风控拒绝", plan.id, "AgentChat", risk.passed ? "info" : "warning");
+      appendTrace(db, "agent_chat", `计划 ${symbol} ${args.direction}`, risk.passed ? "ok" : "blocked");
+    }
     if (plan.status === "awaiting_approval") {
       await notifyLark(db, {
         severity: "warning",
@@ -724,9 +800,13 @@ export async function executeTool(db, run, name, args = {}) {
     return {
       planId: plan.id,
       status: plan.status,
+      autoExecuted: plan.autoApproved === true,
+      execution: autoExecution ? { status: autoExecution.status, reason: autoExecution.reason || null } : null,
       riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
       smartMoneyAlignment: alignment,
-      note: risk.passed ? "计划已进入待批准队列，用户批准后才会进入执行链路。" : "计划被风控拒绝，请调整参数或修正授权边界。"
+      note: plan.autoApproved
+        ? `已在授权与灰度上限内自动执行（${autoExecution.status}）。`
+        : (risk.passed ? "计划已进入待批准队列，用户批准后才会进入执行链路。" : "计划被风控拒绝，请调整参数或修正授权边界。")
     };
   }
 
@@ -981,13 +1061,16 @@ function summarizeToolResult(name, result = {}) {
   if (name === "propose_trade_plan") {
     const align = result.smartMoneyAlignment;
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
-    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}`;
+    const autoNote = result.autoExecuted ? `｜🤖自动执行(${result.execution?.status || "-"})` : "";
+    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}${autoNote}`;
   }
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
   if (name === "query_knowledge") return String(result.summary || "").slice(0, 120);
   if (name === "get_account") return `净值 ${result.portfolio?.totalEquityUsdt ?? "未同步"}，持仓 ${result.positions?.length || 0}`;
   if (name === "get_events") return `${Array.isArray(result) ? result.length : 0} 个事件`;
+  if (name === "list_risk_incidents") return `${Array.isArray(result) ? result.length : 0} 个未处理风险事件`;
+  if (name === "resolve_risk_incidents") return `已标记 ${result.closed || 0} 个事件为已处理，剩余 ${result.remaining ?? "-"}`;
   return JSON.stringify(result).slice(0, 120);
 }
 

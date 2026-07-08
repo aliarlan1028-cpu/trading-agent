@@ -22,7 +22,7 @@ import {
   Wrench,
   XCircle
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -292,7 +292,7 @@ function MandateCard({ mandate, action }) {
     <div className="chatMandateCard">
       <header><Shield size={15} /><b>授权委托{pending ? "草案" : ""}</b><StatusBadge tone={pending ? "warning" : "ok"}>{humanize(mandate.status)}</StatusBadge></header>
       <div className="mandateGridMini">
-        <span><small>交易对</small><b>{(mandate.allowedSymbols || []).join("、") || "-"}</b></span>
+        <span><small>交易对</small><SymbolChips symbols={mandate.allowedSymbols} empty="-" /></span>
         <span><small>最大杠杆</small><b>{mandate.max_leverage || 1}x</b></span>
         <span><small>单笔风险</small><b>{mandate.maxSingleTradeRiskPct}%</b></span>
         <span><small>日亏上限</small><b>{mandate.maxDailyLossPct}%</b></span>
@@ -407,10 +407,11 @@ function AgentRail({ data, action, ui, send }) {
         ))}
         {openIncidents.length > 0 && (
           <div className="arItem">
-            <div className="arItemTop"><b>{openIncidents.length} 个未关闭风险事件</b></div>
+            <div className="arItemTop"><b>{openIncidents.length} 个未处理风险事件</b><small>已分析确认无碍后可标记已处理</small></div>
             <div className="arItemActions">
               <button className="arBtn" onClick={() => ui.setActive("auditSystem")}>去查看 <ChevronRight size={12} /></button>
-              <button className="arBtn ai" onClick={() => send("帮我处理当前未关闭的风险事件：逐条说明影响并给出建议。")}>🤖 交给AI</button>
+              <button className="arBtn" onClick={() => { if (window.confirm(`确认把 ${openIncidents.length} 个事件全部标记为已处理？`)) action("/api/risk/incidents/close-all", {}); }}>全部标记已处理</button>
+              <button className="arBtn ai" onClick={() => send("逐条读取并分析当前未处理的风险事件（用 list_risk_incidents 工具），对确认无碍的用 resolve_risk_incidents 标记为已处理，并向我汇报每条的处理结论。")}>🤖 交给AI</button>
             </div>
           </div>
         )}

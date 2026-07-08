@@ -7,6 +7,19 @@ import "dotenv/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
+
+// 全部权限清单（种子）。
+export const ALL_PERMISSIONS = [
+  "market.read", "account.read", "trade.write_guarded", "risk.check", "risk.kill_switch",
+  "write:mandate", "write:trade_plan", "write:risk", "write:knowledge", "write:skills",
+  "write:event", "write:exchange", "write:realtime", "write:review", "write:mcp", "write:task",
+  "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
+  "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.export"
+];
+
+// 交易用户（非 Owner）：拥有除「用户管理 admin:system」外的全部功能——
+// 可连交易所、开实盘、批准/执行交易、开熔断、装 skill、写知识等，与 Owner 一致，只是不能管理用户。
+export const TRADER_PERMISSIONS = ALL_PERMISSIONS.filter((p) => p !== "admin:system");
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || "data");
 const jsonDbPath = path.join(dataDir, "db.json");
 const sqliteDbPath = path.join(dataDir, "trading-agent.sqlite");
@@ -316,7 +329,7 @@ function cleanSeedDatabase(createdAt) {
     users: [{ id: "user_local_admin", tenantId: "tenant_owner", name: "Owner", email: defaultOwnerEmail, role: "管理员", status: "active", isOwner: true, createdAt }],
     roles: [
       { id: "role_admin", name: "管理员", permissions: ["*"] },
-      { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge"] },
+      { id: "role_trader", name: "交易用户", permissions: TRADER_PERMISSIONS },
       { id: "role_auditor", name: "审计员", permissions: ["audit.read", "trace.read"] }
     ],
     permissions: [

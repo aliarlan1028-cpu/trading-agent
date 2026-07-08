@@ -103,6 +103,21 @@ h3 {
   background: #faf9f7;
 }
 
+.appShell.noSidebar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.autoTradeBanner {
+  margin: 4px 0 2px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+}
+.autoTradeBanner.on { background: #fbe9e7; border-color: #f2c0b8; color: #b23c17; font-weight: 600; }
+.autoTradeBanner.off { background: var(--surface-2); color: var(--text-3); }
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -216,14 +231,60 @@ h3 {
   z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   min-width: 0;
-  padding: 16px 32px;
+  padding: 14px 28px;
   background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid #e7e0d5;
   backdrop-filter: blur(12px);
 }
+
+/* 顶栏承载主导航（无左侧栏）：品牌回对话 + 导航按钮 */
+.topbarBrand {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.topbarBrand:hover { opacity: 0.85; }
+
+.topbarNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.topbarNavItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.topbarNavItem svg { color: var(--text-3); }
+.topbarNavItem:hover { background: var(--surface-2); color: var(--text); }
+.topbarNavItem.active {
+  background: var(--accent-weak);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.topbarNavItem.active svg { color: var(--accent-ink); }
+
+.appTopbar .topbarActions { margin-left: auto; }
 
 .globalSearch {
   width: min(420px, 42vw);
@@ -7832,6 +7893,79 @@ button.danger:disabled,
 }
 
 .cpCard { padding: var(--sp-4); }
+
+/* 简化版驾驶舱：状态条 + 我的持仓 + 交易战绩 + 折叠明细 */
+.cpStatusBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.cpStatusBar b { font-size: var(--fs-3); font-weight: 700; }
+.cpStatusBar small { margin-left: auto; color: var(--text-3); font-size: var(--fs-1); }
+.cpStatusDot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex: none; }
+.cpStatusBar.positive .cpStatusDot { background: var(--pos, #30a46c); }
+.cpStatusBar.warning .cpStatusDot { background: #e0a800; }
+.cpStatusBar.danger .cpStatusDot { background: var(--neg, #e5484d); }
+
+.cpFull { grid-column: 1 / -1; }
+
+/* 交易对/币种白名单胶囊：换行 + 币多时容器内滚动 */
+.symChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+  max-height: 66px;
+  overflow-y: auto;
+}
+.symChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-weak, #eef2ff);
+  color: var(--accent, #4a6cf7);
+  border: 1px solid var(--accent-weak, #dbe3fb);
+  font-size: 11.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.symChipsEmpty { color: var(--text-3, #8a90a2); }
+.mandateGridMini .symChips { justify-content: flex-start; }
+.mKvRows .symChips { justify-content: flex-start; max-height: 88px; }
+
+.posSym { display: inline-flex; flex-direction: column; line-height: 1.25; }
+.posSym small { color: var(--text-3); font-size: 10px; font-weight: 500; }
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.statGrid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.statGrid > div > span { font-size: var(--fs-1); color: var(--text-3); }
+.statGrid > div > strong { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.cpMoreDetails { grid-column: auto; }
+.cpMoreDetails > summary { cursor: pointer; }
+.cpMoreDetails .cockpitGrid { margin-top: var(--sp-3); }
+
+@media (max-width: 900px) {
+  .statGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .cpCard .sectionTitle { display: flex; min-height: auto; margin-bottom: var(--sp-3); align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: var(--sp-2); }
 .cpCard .sectionTitle > div:first-child { display: inline-flex; align-items: center; height: auto; min-height: 0; padding: 0; flex: 1 1 auto; min-width: 0; }
 .cpCard .sectionTitle > .iconButton,
