@@ -64,6 +64,19 @@ export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCock
   );
 }
 
+// Terminal 页头：H1 + 英文代号 + 副标题 + 右侧动作。
+function TermHead({ title, code, sub, right }) {
+  return (
+    <div className="termHead">
+      <div className="termHeadMain">
+        <h1>{title} <span className="termCode">{code}</span></h1>
+        {sub && <p>{sub}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
 export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
   const [symbolSel, setSymbolSel] = useState(null);
@@ -603,8 +616,8 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const enabledSkills = (data.skills || []).filter((skill) => skill.status === "已启用").length;
   const connectedMcp = data.mcpServers?.filter((item) => item.status === "connected").length || 0;
   return (
-    <div className="pageStack">
-      {!embedded && <PageHeader active="knowledgeSkills" />}
+    <div className="pageStack termPage">
+      {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
       <div className="subTabBar">
         <button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><BookOpen size={15} /> 知识库</button>
         <button className={tab === "skills" ? "active" : ""} onClick={() => setTab("skills")}><Sparkles size={15} /> Skill 中心</button>
@@ -842,8 +855,8 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         ? `${formatDate(validFrom)} 起`
         : "未记录";
   return (
-    <div className="pageStack">
-      {!embedded && <PageHeader active="riskAuth" />}
+    <div className="pageStack termPage">
+      {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
       <div className="riskAuthGrid">
         <Card>
           <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" title="编辑授权委托" onClick={() => ui.openPanel("mandate")}><Pencil size={15} /></button></>} />
@@ -1189,8 +1202,8 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
     ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成", Search]
   ];
   return (
-    <div className="pageStack">
-      {!embedded && <PageHeader active="auditSystem" />}
+    <div className="pageStack termPage">
+      {!embedded && <TermHead title="审计与系统" code="AUDIT · SYSTEM" sub="全链路审计、工具调用日志与系统可观测性" />}
       <div className="metricGrid five">
         <MetricCard icon={Gauge} label="API 健康" value={data.system.apiHealth || "未知"} sub={`实现 ${data.readiness?.implementationCompletionPct || 0}%`} />
         <MetricCard icon={Activity} label="WebSocket 状态" value={data.realtimeStarted ? "运行中" : "未启动"} sub={data.realtimeStarted ? `${data.realtimeConnections?.filter((item) => item.status === "connected").length || 0} / ${data.realtimeConnections?.length || 0} 已连接` : "实时管理器未开启"} tone={data.realtimeStarted ? "positive" : "warning"} />

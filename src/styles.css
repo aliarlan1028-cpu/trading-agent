@@ -8613,3 +8613,54 @@ button.danger:disabled,
 @media (max-width: 1120px) {
   .termGrid.evTop, .termGrid.evBot { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Terminal 密度覆盖：作用于 .termPage 里复用的共享组件
+   （页面 ③知识 ④风控 ⑤审计；不影响 ①②的 .termCard）
+   ============================================================ */
+.termPage .dashCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: none; }
+.termPage .sectionTitle { margin-bottom: 10px; min-height: auto; }
+.termPage .sectionTitle h2 { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+.termPage .sectionIcon { width: 22px; height: 22px; border-radius: 6px; }
+.termPage .sectionIcon svg { width: 14px; height: 14px; }
+
+.termPage .metricGrid { display: grid; gap: 8px; }
+.termPage .metricGrid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.termPage .metricCard { padding: 13px 14px; gap: 11px; align-items: center; }
+.termPage .metricCard > div { display: flex; flex-direction: column; gap: 3px; }
+.termPage .metricCard span { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.termPage .metricCard strong { font-size: 21px; font-weight: 600; font-family: var(--font-mono); color: var(--text); }
+.termPage .metricCard small { font-size: 10.5px; color: var(--text-3); }
+.termPage .metricIcon { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-weak); color: var(--accent); flex: none; }
+.termPage .metricIcon svg { width: 18px; height: 18px; }
+.termPage .metricIcon.positive { background: var(--pos-weak); color: var(--pos); }
+
+.termPage .dataTable { border: 0; }
+.termPage .dataHead { border-bottom: 1px solid var(--border); }
+.termPage .dataHead span { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-5); font-weight: 700; }
+.termPage .dataRow { border-bottom: 1px solid var(--hairline); }
+.termPage .dataRow span { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+
+.termPage .subTabBar { display: inline-flex; gap: 2px; background: var(--surface-2); padding: 2px; border-radius: 8px; width: fit-content; }
+.termPage .subTabBar button { border: 0; background: transparent; color: var(--text-2); font: 600 12.5px var(--font-ui); padding: 6px 14px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.termPage .subTabBar button.active { background: var(--dark); color: var(--dark-ink); }
+.termPage .subTabBar button.active svg { color: var(--dark-ink); }
+
+.termPage .healthGrid strong { font-family: var(--font-mono); }
+.termPage .knowledgeGrid { gap: 8px; }
+.termPage .metricSpark { align-self: center; }
+
+/* ============================================================
+   Terminal「AI 交易员 · 对话」页 polish
+   ============================================================ */
+.botAvatar { background: var(--accent-grad); box-shadow: var(--sh-accent); }
+.arCard { border-radius: 12px; }
+.arHead { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.arHead::before { content: ""; width: 5px; height: 5px; border-radius: 1px; background: var(--accent); flex: none; margin-right: -2px; }
+.arPnl strong { font-family: var(--font-mono); font-weight: 600; }
+.arRow b, .arGate, .arMandate { font-family: var(--font-mono); }
+.arRow b { font-family: var(--font-mono); }
+.chatMessage.user .chatContent { background: var(--bubble-user); }
+.chatMessage.agent .chatContent { background: var(--bubble-ai); }
+/* 对话为主：气泡正文用 Public Sans，字号 14 */
+.chatContent { font-family: var(--font-body); }
