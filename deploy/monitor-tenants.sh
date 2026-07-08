@@ -11,9 +11,35 @@ TENANTS_DIR="${TENANTS_DIR:-/opt/tenants}"
 STATE_DIR="$APP_DIR/data/.monitor"
 mkdir -p "$STATE_DIR"
 
+COMPOSE="$APP_DIR/docker-compose.yml"
+SERVICE="${SERVICE:-trading-agent}"
+WEBHOOK_CACHE="$STATE_DIR/.webhook"
+
+# 告警地址优先级：monitor.env 显式配置 > 前端「系统设置→外部服务→飞书」配的（从金库解密） > 上次缓存。
+# 缓存是为了在 App 宕机时仍能发出告警（此时无法实时从金库读）。
 # shellcheck disable=SC1090
 [ -f "$APP_DIR/deploy/monitor.env" ] && . "$APP_DIR/deploy/monitor.env"
 WEBHOOK="${LARK_WEBHOOK_URL:-}"
+
+if [ -z "$WEBHOOK" ]; then
+  DEC="$APP_DIR/data/.mon-webhook.mjs"
+  cat > "$DEC" <<'NODE'
+import Database from "better-sqlite3"; import crypto from "node:crypto";
+const r = new Database((process.env.DATA_DIR||"/app/data")+"/trading-agent.sqlite",{readonly:true})
+  .prepare("SELECT value FROM collections WHERE name=?").get("vaultItems");
+const item = (r?JSON.parse(r.value):[]).find(v=>v.name==="LARK_WEBHOOK_URL"&&v.encrypted);
+if (item) {
+  const key = crypto.createHash("sha256").update(process.env.SECRETS_MASTER_KEY||"development-only-master-key").digest();
+  const d = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(item.encrypted.iv,"base64"));
+  d.setAuthTag(Buffer.from(item.encrypted.tag,"base64"));
+  process.stdout.write(Buffer.concat([d.update(Buffer.from(item.encrypted.ciphertext,"base64")), d.final()]).toString("utf8"));
+}
+NODE
+  FRESH="$(docker compose -f "$COMPOSE" exec -T "$SERVICE" node /app/data/.mon-webhook.mjs 2>/dev/null || true)"
+  rm -f "$DEC"
+  if [ -n "$FRESH" ]; then umask 077; printf '%s' "$FRESH" > "$WEBHOOK_CACHE"; fi
+  [ -z "$WEBHOOK" ] && [ -f "$WEBHOOK_CACHE" ] && WEBHOOK="$(cat "$WEBHOOK_CACHE")"
+fi
 
 send_alert() { # $1=title  $2=text
   if [ -z "$WEBHOOK" ]; then echo "[无 webhook] $1 | $2"; return; fi
