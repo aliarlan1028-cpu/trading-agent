@@ -1311,12 +1311,30 @@ export function AdminPage({ data, action }) {
                       <label><span>周期 · 月</span><input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
                       <label><span>价格 · USDT</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
                     </div>
-                    <textarea rows={2} value={draft.features || ""} onChange={(event) => updatePlanDraft(plan.id, { features: event.target.value })} placeholder="套餐权益，每行一条" />
-                    {String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean).length > 0 && (
-                      <div className="planFeatureChips">
-                        {String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean).map((f, i) => <span className="planFeatureChip" key={i}><CheckCircle2 size={12} /> {f}</span>)}
-                      </div>
-                    )}
+                    {(() => {
+                      const feats = String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean);
+                      const setFeats = (arr) => updatePlanDraft(plan.id, { features: arr.join("\n") });
+                      return (
+                        <div className="featureTagBox">
+                          {feats.map((f, i) => (
+                            <span className="featureTag" key={i}><CheckCircle2 size={12} /> {f}<button type="button" title="移除" onClick={() => setFeats(feats.filter((_, j) => j !== i))}>×</button></span>
+                          ))}
+                          <input
+                            className="featureTagInput"
+                            placeholder={feats.length ? "加一条权益，回车确认" : "输入套餐权益，回车添加"}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === ",") {
+                                event.preventDefault();
+                                const t = event.target.value.trim();
+                                if (t) { setFeats([...feats, t]); event.target.value = ""; }
+                              } else if (event.key === "Backspace" && !event.target.value && feats.length) {
+                                setFeats(feats.slice(0, -1));
+                              }
+                            }}
+                          />
+                        </div>
+                      );
+                    })()}
                     <button className="primaryButton" onClick={() => savePlan(plan)}>保存</button>
                   </div>
                 );

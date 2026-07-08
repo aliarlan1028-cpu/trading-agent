@@ -87,8 +87,8 @@ function validateWriteGuard(db, action, payload) {
   const duplicate = action === "place_order" || action === "take_profit" ? findDuplicateClientOrder(db, payload) : null;
   if (duplicate) return { allowed: false, reason: "duplicate_client_order_id", clientOrderId: payload.clientOrderId, orderId: duplicate.id };
   if (!db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
-  if (process.env.I_UNDERSTAND_REAL_TRADING !== "true") return { allowed: false, reason: "real_trading_ack_missing" };
-  if (process.env.REAL_ORDER_WRITE_ENABLED !== "true") return { allowed: false, reason: "real_order_write_disabled" };
+  if (!(db.system.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) return { allowed: false, reason: "real_trading_ack_missing" };
+  if (!(db.system.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) return { allowed: false, reason: "real_order_write_disabled" };
   const apiKeySafety = validateApiKeySafety(db, payload);
   if (!apiKeySafety.allowed) return apiKeySafety;
   if (process.env.REQUIRE_AUDIT_CHAIN_OK !== "false") {

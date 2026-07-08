@@ -128,9 +128,9 @@ export function getConfigStatus(db) {
       okx: { hasKey: has("OKX_API_KEY"), hasSecret: has("OKX_API_SECRET"), hasPassphrase: has("OKX_API_PASSPHRASE") }
     },
     liveTrading: {
-      liveTradingEnabled: process.env.LIVE_TRADING_ENABLED === "true",
-      acknowledged: process.env.I_UNDERSTAND_REAL_TRADING === "true",
-      orderWriteEnabled: process.env.REAL_ORDER_WRITE_ENABLED === "true",
+      liveTradingEnabled: db.system.liveTradingEnabled === true || process.env.LIVE_TRADING_ENABLED === "true",
+      acknowledged: db.system.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true",
+      orderWriteEnabled: db.system.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true",
       effective: db.system.liveTradingEnabled === true,
       maxNotionalUsdt: Number(process.env.MAX_LIVE_NOTIONAL_USDT || gray.maxNotionalUsdt || 50),
       grayEnabled: Boolean(gray.enabled),

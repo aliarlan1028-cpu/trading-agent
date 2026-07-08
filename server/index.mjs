@@ -57,7 +57,10 @@ applyStoredConfigToEnv(db);
 installProxyFromEnv();
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
-db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
+// 实盘三道闸以 db.system 持久化值为准（存 sqlite，重启不丢）；仅在未初始化时用 env 兜底。
+db.system.realTradingAck = db.system.realTradingAck ?? (process.env.I_UNDERSTAND_REAL_TRADING === "true");
+db.system.orderWriteEnabled = db.system.orderWriteEnabled ?? (process.env.REAL_ORDER_WRITE_ENABLED === "true");
+db.system.liveTradingEnabled = (db.system.liveTradingEnabled ?? (process.env.LIVE_TRADING_ENABLED === "true")) && db.system.realTradingAck === true;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
 ensureDefaultEventSources(db);
@@ -1826,6 +1829,12 @@ app.post("/api/config/live-trading", requirePermission("admin:security"), (req, 
   if (req.body.orderWriteEnabled !== undefined) entries.REAL_ORDER_WRITE_ENABLED = req.body.orderWriteEnabled ? "true" : "false";
   if (req.body.maxNotionalUsdt !== undefined) entries.MAX_LIVE_NOTIONAL_USDT = String(Number(req.body.maxNotionalUsdt) || 50);
   setConfig(db, entries);
+
+  // 同步持久化到 db.system（存 sqlite，重启不丢，作为实盘闸的权威源）。
+  if (req.body.acknowledged !== undefined) db.system.realTradingAck = Boolean(req.body.acknowledged);
+  if (req.body.orderWriteEnabled !== undefined) db.system.orderWriteEnabled = Boolean(req.body.orderWriteEnabled);
+  if (req.body.liveTradingEnabled !== undefined) db.system.liveTradingEnabled = Boolean(req.body.liveTradingEnabled) && db.system.realTradingAck === true;
+  else db.system.liveTradingEnabled = db.system.liveTradingEnabled === true && db.system.realTradingAck === true;
 
   const gray = (db.grayReleasePolicies || []).find((item) => item.id === "gray_live_small_notional");
   if (gray) {

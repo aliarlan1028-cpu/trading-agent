@@ -3857,16 +3857,29 @@ h3 {
 .planEditRow textarea { min-height: 88px; line-height: 1.5; resize: vertical; }
 .planToggle { border: 0; background: transparent; padding: 0; cursor: pointer; flex: none; }
 .planEditRow .primaryButton { justify-self: start; padding: 6px 14px; }
-/* 套餐权益预览：换行文本 → 带勾的胶囊标签 */
-.planFeatureChips { display: flex; flex-wrap: wrap; gap: 6px; }
-.planFeatureChip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 10px; border-radius: var(--r-pill);
-  background: var(--pos-weak); color: var(--pos);
-  border: 1px solid #cfe3cf;
-  font-size: 12px; font-weight: 600;
+/* 套餐权益：框内可编辑胶囊标签（回车添加、× 删除）*/
+.featureTagBox {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: 44px; padding: 7px 9px;
+  border: 1px solid #e2dac9; border-radius: 10px; background: #fff;
 }
-.planFeatureChip svg { flex: none; }
+.featureTag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 6px 4px 10px; border-radius: var(--r-pill);
+  background: var(--pos-weak); color: var(--pos);
+  border: 1px solid #cfe3cf; font-size: 12px; font-weight: 600;
+}
+.featureTag svg { flex: none; }
+.featureTag button {
+  width: 16px; height: 16px; padding: 0; line-height: 1;
+  display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: rgba(0,0,0,0.06); color: inherit; font-size: 13px; cursor: pointer;
+}
+.featureTag button:hover { background: var(--neg); color: #fff; }
+.featureTagInput {
+  flex: 1; min-width: 120px; border: 0 !important; outline: none;
+  background: transparent !important; padding: 4px 2px !important; font-size: 13px;
+}
 
 .planEditHeader {
   display: flex;
