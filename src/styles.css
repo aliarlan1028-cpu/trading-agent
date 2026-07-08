@@ -1333,6 +1333,10 @@ h3 {
   background: #f8f1e9;
 }
 
+/* 术语提示：虚线下划线暗示可悬停看人话解释 */
+.term { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; cursor: help; }
+.term:hover { text-decoration-color: var(--accent); }
+
 /* 数字统一等宽对齐（正负色由各处自带的 .positive/.negative 决定）*/
 .metricCell strong, .microGrid strong, .healthGrid strong, .qualityGrid b,
 .riskLine b, .kpi .value, .asBalance strong, .asFields b, .regimeReadout,

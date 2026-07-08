@@ -115,7 +115,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     { label: "未实现盈亏", value: configured ? displayMoney(data.portfolio.weekPnl) : "未同步", sub: configured ? displayPct(data.portfolio.weekPnlPct) : "接入后同步", tone: configured ? (Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "negative") : "" },
     { label: `累计盈亏·${pnlWindow}`, value: displayMoney(monthlyPnl), sub: `${performance.trades || 0} 笔已平仓`, tone: Number(monthlyPnl || 0) >= 0 ? "positive" : "warning" },
     { label: "可用保证金", value: displayMoney(availableMargin), sub: `占用 ${displayMoney(usedMargin)}` },
-    { label: "保证金率", value: marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%` },
+    { label: "保证金率", hint: "账户净值与已用保证金的比值。越高越安全；接近 100% 表示几乎没用杠杆，偏低则爆仓风险上升。", value: marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%` },
     { label: "对账", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "positive" : "warning", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
   ];
 
@@ -166,7 +166,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             const clickable = Boolean(cell.onClick);
             return (
               <div key={cell.label} className={`stripCell ${clickable ? "clickable" : ""}`} {...(clickable ? { role: "button", tabIndex: 0, onClick: cell.onClick } : {})}>
-                <span>{cell.label}</span>
+                <span className={cell.hint ? "term" : ""} title={cell.hint || undefined}>{cell.label}</span>
                 <strong className={cell.tone}>{cell.value}</strong>
                 {cell.sub && <small>{cell.sub}</small>}
               </div>
@@ -207,9 +207,9 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         <Card className="cpCard">
           <SectionTitle icon={Activity} title="合约微观结构" action={<button className="iconButton" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /></button>} />
           <div className="microGrid">
-            <div><span>资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
-            <div><span>未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
-            <div><span>买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
+            <div><span className="term" title="永续合约里多头付给空头（或反之）的周期费用。绝对值越大，说明多空越拥挤，反向挤压风险越高。">资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
+            <div><span className="term" title="未平仓合约的总量（Open Interest）。OI 上升且价格同向，说明趋势有真金白银承接。">未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
+            <div><span className="term" title="订单簿里买单量占买卖总量的比例。大于 50% 表示买盘占优，小于 50% 卖盘占优。">买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
             <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
           </div>
         </Card>
