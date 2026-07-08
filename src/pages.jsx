@@ -448,86 +448,125 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
     ["Every", tasks.filter((task) => task.type === "Every").length],
     ["At", tasks.filter((task) => task.type === "At").length]
   ];
+  const dueTs = primaryEvent.due ? new Date(primaryEvent.due).getTime() : null;
+  const cdDiff = dueTs ? dueTs - Date.now() : null;
+  const cd = cdDiff && cdDiff > 0 ? { d: Math.floor(cdDiff / 86400000), h: Math.floor((cdDiff % 86400000) / 3600000), m: Math.floor((cdDiff % 3600000) / 60000) } : null;
+  const jobRuns = data.jobRuns || [];
+  const impactTone = (im) => im >= 80 ? "neg" : im >= 50 ? "warn" : "";
   return (
-    <div className="pageStack">
-      {!embedded && <PageHeader active="eventsTasks" />}
-      <div className="eventsGrid">
-        {showEvents && (
-        <Card className="eventRadarCard">
-          <SectionTitle icon={Target} title="重要事件雷达" action={<button className="secondaryButton" title="刷新事件源" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>} />
-          <div className="dateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => { setSelectedEventId(event.id); ui.notify(`已选择事件：${event.title}`); }}><span>{formatDate(event.due, "待定")}</span><span>{event.category}</span></button>)}</div>
-          {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
-          <div className="eventRadarInner">
-            <div className="eventTimeline">
-              {eventRows.map((event, index) => (
-                <div className="eventTimelineItem" key={event.id} title={event.rawTitle || event.title}>
-                  <b>{formatDateTime(event.due, "待定")}<small>{event.category}</small></b>
-                  <span>{event.shortTitle || event.title}</span>
-                  <StatusBadge tone={event.impact >= 80 ? "danger" : event.impact >= 50 ? "warning" : "neutral"}>{event.impactLabel || "中影响"}</StatusBadge>
-                </div>
-              ))}
-            </div>
-            <div className="eventDetail">
-              <div className="eventDetailHead"><strong title={primaryEvent.rawTitle || primaryEvent.title}>{primaryEvent.shortTitle || primaryEvent.title || "暂无事件"}</strong><StatusBadge tone={primaryEvent.impact >= 80 ? "danger" : primaryEvent.impact >= 50 ? "warning" : "neutral"}>{primaryEvent.impactLabel || "待评估"}</StatusBadge><button className="textButton" onClick={() => ui.openPanel("eventSources")}>事件详情 <ChevronRight size={14} /></button></div>
-              <div className="countdown eventDue"><b>{formatDateTime(primaryEvent.due, "待定")}</b></div>
-              <div className="eventMetrics">
-                <span>影响等级<b className={primaryEvent.impact >= 80 ? "negative" : primaryEvent.impact >= 50 ? "warning" : ""}>{primaryEvent.impactLabel || "待评估"}</b></span>
-                <span>市场影响度<b>{primaryEvent.impact ? `${Number(primaryEvent.impact) / 10}/10` : "未评估"}</b><ProgressBar value={primaryEvent.impact || 0} tone="red" /></span>
-                <span>历史波动率<b>{data.activeMarket?.candles?.length ? "待计算" : "未同步"}</b><MiniSparkline candles={data.activeMarket?.candles} /></span>
-                <span>置信度<b>{primaryEvent.confidence ? `${primaryEvent.confidence}%` : "未评估"}</b><ProgressBar value={primaryEvent.confidence || 0} /></span>
-              </div>
-              <div className="assetChips">{(primaryEvent.relatedSymbols || []).map((symbol) => <span key={symbol}>{symbol}</span>)}</div>
-              <p className="eventAdvice">{primaryEvent.action || "暂无事件建议；刷新真实事件源后显示。"}</p>
-            </div>
+    <div className="pageStack termPage eventsPage">
+      {!embedded && (
+        <div className="termHead">
+          <div className="termHeadMain">
+            <h1>事件与任务 <span className="termCode">EVENTS · TASKS</span></h1>
+            <p>宏观与链上事件雷达、焦点事件倒计时，以及定时任务的调度与运行日志</p>
           </div>
-        </Card>
+          <button className="termRefresh mono" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={12} /> 刷新事件源</button>
+        </div>
+      )}
+      <div className="termGrid evTop">
+        {showEvents && (
+        <div className="termCard">
+          <div className="secLabel">重要事件雷达</div>
+          <div className="termDateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => setSelectedEventId(event.id)}><b className="mono">{formatDate(event.due, "待定")}</b><span>{event.category}</span></button>)}</div>
+          {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
+          <div className="evTimeline">
+            {eventRows.map((event) => (
+              <button className={`evItem ${(selectedEventId ? selectedEventId === event.id : eventRows[0]?.id === event.id) ? "on" : ""}`} key={event.id} title={event.rawTitle || event.title} onClick={() => setSelectedEventId(event.id)}>
+                <span className="evTime mono">{formatDateTime(event.due, "待定")}</span>
+                <span className="evTitle">{event.shortTitle || event.title}</span>
+                <b className={`evBadge ${impactTone(event.impact)}`}>{event.impactLabel || "中影响"}</b>
+                <b className="evCat">{event.category}</b>
+              </button>
+            ))}
+          </div>
+        </div>
         )}
 
-        {showTasks && (
-        <Card className="taskCard">
-          <SectionTitle icon={CalendarClock} title="定时任务" action={<button className="primaryButton" onClick={() => ui.openPanel("taskManager")}><Plus size={15} /> 新建任务</button>} />
-          <div className="taskTabs">{taskTabs.map(([name, count]) => <button className={taskFilter === name ? "active" : ""} key={name} onClick={() => { setTaskFilter(name); ui.notify(`任务筛选：${name}`); }}>{name} {count}</button>)}</div>
-          <DataTable columns={[
-            { key: "name", label: "任务名称" }, { key: "schedule", label: "触发方式" }, { key: "next", label: "下次运行" }, { key: "status", label: "状态" }, { key: "type", label: "任务分类" }, { key: "op", label: "操作" }
-          ]} rows={filteredTasks.slice(0, 5).map((task) => ({ id: task.id, name: task.name, schedule: task.schedule || "Every 1h", next: formatDateTime(task.nextRunAt, task.nextRun || "-"), status: <StatusBadge>{humanize(task.status || "running")}</StatusBadge>, type: task.role || "风控", op: <span className="rowActions"><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button></span> }))} />
-        </Card>
+        {showEvents && (
+        <div className="termCard focusCard">
+          <div className="secLabel focusHead">焦点事件<button className="textButton" onClick={() => ui.openPanel("eventSources")}>详情 <ChevronRight size={13} /></button></div>
+          <div className="focusTitle">{primaryEvent.shortTitle || primaryEvent.title || "暂无事件"} <b className={`evBadge ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></div>
+          <div className="cdBlock mono">
+            {cd
+              ? <><span>{String(cd.d).padStart(2, "0")}</span><i>天</i><span>{String(cd.h).padStart(2, "0")}</span><i>时</i><span className="cdHot">{String(cd.m).padStart(2, "0")}</span><i>分</i></>
+              : <span className="cdNone">{formatDateTime(primaryEvent.due, "待定")}</span>}
+          </div>
+          <div className="focusMetrics">
+            <div><span>影响等级</span><b className={impactTone(primaryEvent.impact)}>{primaryEvent.impactLabel || "待评估"}</b></div>
+            <div><span>市场影响度</span><b className="mono">{primaryEvent.impact ? `${Number(primaryEvent.impact) / 10}/10` : "—"}</b></div>
+            <div><span>置信度</span><b className="mono">{primaryEvent.confidence ? `${primaryEvent.confidence}%` : "—"}</b></div>
+          </div>
+          {(primaryEvent.relatedSymbols || []).length > 0 && <div className="assetChips">{(primaryEvent.relatedSymbols || []).map((symbol) => <span key={symbol}>{symbol}</span>)}</div>}
+          <p className="focusAdvice">{primaryEvent.action || "暂无事件建议；刷新真实事件源后显示。"}</p>
+        </div>
         )}
       </div>
 
-      <div className="eventsBottom">
-        {showEvents && (
-        <Card>
-          <SectionTitle icon={GitBranch} title="事件规则" action={<button className="primaryButton" onClick={() => ui.openPanel("eventRule")}><Plus size={14} /> 新建规则</button>} />
-          {!eventRuleRows.length && (
+      <div className="termGrid evBot">
+        {showTasks && (
+        <div className="termCard">
+          <div className="secLabel taskHead">定时任务<button className="termMiniBtn" onClick={() => ui.openPanel("taskManager")}><Plus size={13} /> 新建任务</button></div>
+          <div className="ordSwitch taskFilterRow">{taskTabs.map(([name, count]) => <button className={taskFilter === name ? "active" : ""} key={name} onClick={() => setTaskFilter(name)}>{name} {count}</button>)}</div>
+          <div className="taskList">
+            <div className="taskRowHead mono"><span>任务</span><span>触发</span><span>下次</span><span>状态</span><span>操作</span></div>
+            {filteredTasks.slice(0, 6).map((task) => (
+              <div className="taskRow" key={task.id}>
+                <span className="taskName">{task.name}</span>
+                <span className="mono taskSched">{task.schedule || "Every 1h"}</span>
+                <span className="mono taskNext">{formatDateTime(task.nextRunAt, task.nextRun || "-")}</span>
+                <span><b className={`evBadge ${task.enabled === false ? "warn" : "ok"}`}>{humanize(task.status || (task.enabled === false ? "已暂停" : "运行"))}</b></span>
+                <span className="rowActions"><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button><button className="linkCell" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button></span>
+              </div>
+            ))}
+            {!filteredTasks.length && <div className="emptyPanel">暂无定时任务。</div>}
+          </div>
+        </div>
+        )}
+        {showTasks && (
+        <div className="termCard">
+          <div className="secLabel taskHead">任务运行日志<button className="textButton" onClick={() => ui.setActive("auditSystem")}>日志中心 <ChevronRight size={13} /></button></div>
+          <div className="logList">
+            {jobRuns.slice(0, 8).map((run) => {
+              const ok = String(run.status || "").toLowerCase() === "ok";
+              const bad = ["failed", "error"].includes(String(run.status || "").toLowerCase());
+              return (
+                <div className="logRow" key={run.id}>
+                  <span className="logTime mono">{formatTime(run.createdAt)}</span>
+                  <span className={`logDot ${ok ? "ok" : bad ? "bad" : "warn"}`} />
+                  <span className="logName">{run.name || humanize(run.handler || run.taskName, "任务")}</span>
+                  <b className={`evBadge ${ok ? "ok" : bad ? "neg" : "warn"}`}>{ok ? "成功" : bad ? "失败" : humanize(run.status, "触发")}</b>
+                  <span className="logDetail mono">{typeof run.output === "string" ? run.output.slice(0, 40) : (run.summary || "")}</span>
+                </div>
+              );
+            })}
+            {!jobRuns.length && <div className="emptyPanel">暂无运行记录。</div>}
+          </div>
+        </div>
+        )}
+      </div>
+
+      {showEvents && (
+      <details className="cpCard cpDetails cpMoreDetails">
+        <summary><span className="cpSummaryTitle"><GitBranch size={15} /> 事件规则（触发时自动执行动作）</span><ChevronDown size={14} className="cpChevron" /></summary>
+        <div className="detailsBody">
+          <div className="secLabel taskHead" style={{ marginBottom: 8 }}>事件规则<button className="termMiniBtn" onClick={() => ui.openPanel("eventRule")}><Plus size={13} /> 新建规则</button></div>
+          {!eventRuleRows.length ? (
             <div className="emptyPanel emptyPanelGuide">
               <strong>还没有事件规则</strong>
               <small>规则会在事件触发时自动执行动作（告警 / 暂停开仓）。从模板一键创建：</small>
               <div className="templateChips">
-                {eventRuleTemplates.map((template) => (
-                  <button key={template.name} onClick={() => action("/api/risk/rules", template)}>{template.name}</button>
-                ))}
+                {eventRuleTemplates.map((template) => <button key={template.name} onClick={() => action("/api/risk/rules", template)}>{template.name}</button>)}
               </div>
             </div>
-          )}
-          {eventRuleRows.length > 0 && (
+          ) : (
             <DataTable columns={[
               { key: "rule", label: "规则名称" }, { key: "event", label: "触发事件" }, { key: "condition", label: "触发条件" }, { key: "action", label: "执行动作" }, { key: "status", label: "状态" }, { key: "op", label: "操作" }
             ]} rows={eventRuleRows} />
           )}
-        </Card>
-        )}
-        {showTasks && (
-        <Card>
-          <SectionTitle icon={ClipboardList} title="任务健康摘要" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>日志中心 <ChevronRight size={14} /></button>} />
-          <div className="healthGrid">
-            <div><span>任务总数</span><strong>{tasks.length}</strong><StatusBadge>{tasks.length ? "已创建" : "暂无"}</StatusBadge></div>
-            <div><span>启用任务</span><strong>{tasks.filter((task) => task.enabled !== false).length}</strong><StatusBadge tone="ok">运行</StatusBadge></div>
-            <div><span>最近运行</span><strong>{formatDateTime(data.jobRuns?.[0]?.createdAt, "暂无")}</strong><StatusBadge tone={statusTone(data.jobRuns?.[0]?.status)}>{humanize(data.jobRuns?.[0]?.status, "未运行")}</StatusBadge></div>
-            <div><span>失败次数</span><strong>{(data.jobRuns || []).filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length}</strong><StatusBadge tone="warning">近记录</StatusBadge></div>
-          </div>
-        </Card>
-        )}
-      </div>
+        </div>
+      </details>
+      )}
     </div>
   );
 }

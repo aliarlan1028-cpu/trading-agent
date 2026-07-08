@@ -8546,3 +8546,70 @@ button.danger:disabled,
   .termGrid.r2, .termGrid.r3 { grid-template-columns: 1fr; }
   .termGrid.r4 { grid-template-columns: 1fr 1fr; }
 }
+
+/* ============================================================
+   Terminal「事件与任务」
+   ============================================================ */
+.termGrid.evTop { grid-template-columns: 1fr 1.05fr; }
+.termGrid.evBot { grid-template-columns: 1fr 1fr; }
+
+.evBadge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 5px; white-space: nowrap; background: var(--surface-2); color: var(--text-2); }
+.evBadge.neg { background: var(--neg-weak); color: var(--neg); }
+.evBadge.warn { background: var(--warn-weak); color: var(--warn); }
+.evBadge.ok { background: var(--pos-weak); color: var(--pos); }
+
+.termDateStrip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.termDateStrip button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-white); cursor: pointer; }
+.termDateStrip button b { font-size: 11px; color: var(--text); }
+.termDateStrip button span { font-size: 9px; color: var(--text-4); }
+.termDateStrip button.active { background: var(--dark); border-color: var(--dark); }
+.termDateStrip button.active b, .termDateStrip button.active span { color: var(--dark-ink); }
+
+.evTimeline { display: flex; flex-direction: column; }
+.evItem { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; text-align: left; width: 100%; padding: 9px 6px; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; cursor: pointer; border-radius: 6px; }
+.evItem:last-child { border-bottom: 0; }
+.evItem.on { background: var(--accent-weak); }
+.evTime { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.evTitle { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evCat { font-size: 9px; font-weight: 700; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+
+.focusHead button, .taskHead button { margin-left: auto; }
+.focusTitle { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.cdBlock { background: var(--dark); border-radius: 9px; padding: 12px; display: flex; align-items: baseline; justify-content: center; gap: 4px; color: var(--dark-ink); }
+.cdBlock span { font-size: 26px; font-weight: 600; }
+.cdBlock i { font-size: 11px; font-style: normal; color: #9a9184; margin-right: 6px; }
+.cdBlock .cdHot { color: #e68a4e; }
+.cdBlock .cdNone { font-size: 15px; }
+.focusMetrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.focusMetrics > div { background: var(--surface-white); border: 1px solid var(--hairline); border-radius: 7px; padding: 8px 9px; display: flex; flex-direction: column; gap: 3px; }
+.focusMetrics span { font-size: 9.5px; color: var(--text-3); }
+.focusMetrics b { font-size: 13px; color: var(--text); }
+.assetChips { display: flex; flex-wrap: wrap; gap: 5px; }
+.assetChips span { font-size: 10.5px; font-family: var(--font-mono); padding: 2px 7px; border-radius: 5px; background: var(--accent-weak); color: var(--accent-ink); }
+.focusAdvice { font-size: 11.5px; line-height: 1.5; color: var(--text-2); background: var(--warn-weak); border-radius: 7px; padding: 9px 11px; margin: 0; }
+
+.termMiniBtn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: var(--surface-white); border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; text-transform: none; letter-spacing: 0; }
+.termMiniBtn:hover { border-color: var(--accent); }
+.taskFilterRow { gap: 12px; }
+.taskList { display: flex; flex-direction: column; }
+.taskRowHead, .taskRow { display: grid; grid-template-columns: 1.6fr 1.2fr 1.3fr 0.9fr 1fr; gap: 8px; align-items: center; }
+.taskRowHead { font-size: 9.5px; color: var(--text-5); font-weight: 700; letter-spacing: 0.06em; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.taskRow { font-size: 12px; padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+.taskRow:last-child { border-bottom: 0; }
+.taskName { color: var(--text); }
+.taskSched, .taskNext { color: var(--text-3); font-size: 11px; }
+.taskRow .rowActions { display: flex; gap: 8px; }
+
+.logList { display: flex; flex-direction: column; }
+.logRow { display: grid; grid-template-columns: auto auto 1fr auto 1.3fr; gap: 8px; align-items: center; font-size: 11.5px; padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+.logRow:last-child { border-bottom: 0; }
+.logTime { color: var(--text-4); }
+.logDot { width: 7px; height: 7px; border-radius: 50%; }
+.logDot.ok { background: var(--pos); } .logDot.bad { background: var(--neg); } .logDot.warn { background: var(--warn); }
+.logName { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logDetail { color: var(--text-4); font-size: 10.5px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detailsBody { padding-top: 10px; }
+
+@media (max-width: 1120px) {
+  .termGrid.evTop, .termGrid.evBot { grid-template-columns: 1fr; }
+}
