@@ -48,7 +48,25 @@ function evaluate(candles, signals, from, to, params) {
   return simulate(c, s, params);
 }
 
-export function optimizeSymbol(candles, timeframe = "1h") {
+// 实盘表现权重：对有足够真实平仓样本的策略，按胜率/盈亏比给一个 [0.7,1.3] 的乘子，
+// 在"已通过样本外"的合格策略之间再加权（不替代样本外门槛，只影响优选谁）。
+function buildLiveStrategyWeights(db) {
+  let analytics;
+  try { analytics = buildReviewAnalytics(db); } catch { return {}; }
+  const weights = {};
+  const min = Number(process.env.LIVE_WEIGHT_MIN_TRADES || 10);
+  for (const s of analytics.breakdowns?.strategy || []) {
+    if (!s.key || Number(s.trades) < min) continue;
+    const wr = s.winRatePct != null ? Number(s.winRatePct) / 100 : 0.5;
+    const pf = Number.isFinite(Number(s.profitFactor)) ? Number(s.profitFactor) : (Number(s.pnl) >= 0 ? 1.1 : 0.9);
+    const mult = Math.max(0.7, Math.min(1.3, 1 + 0.4 * (wr - 0.5) + 0.15 * (pf - 1)));
+    weights[s.key] = Number(mult.toFixed(3));
+  }
+  return weights;
+}
+
+export function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
+  const liveMult = (c) => liveWeights[c.strategyId] ?? liveWeights[c.label] ?? 1;
   const n = candles.length;
   const barMinutes = BAR_MINUTES[timeframe] || 60;
   const uptrend = htfUptrend(candles);
@@ -86,7 +104,7 @@ export function optimizeSymbol(candles, timeframe = "1h") {
     .filter((c) => qualified(c.oos, MIN_OOS_TRADES) && c.oos.expectancyR > 0 && positiveFolds(c) * 2 >= Math.max(1, activeFolds(c)))
     .sort((x, y) => {
       if (positiveFolds(y) !== positiveFolds(x)) return positiveFolds(y) - positiveFolds(x); // 跨段一致性优先
-      return y.oos.expectancyR - x.oos.expectancyR;
+      return (y.oos.expectancyR * liveMult(y)) - (x.oos.expectancyR * liveMult(x)); // 同等一致性下，用样本外期望×实盘权重优选
     });
 
   const regime = detectRegime(candles.slice(folds[2][0]));
@@ -110,6 +128,7 @@ export function optimizeSymbol(candles, timeframe = "1h") {
     tokenProfile: profile.ok ? profile : null,
     oosScore: best ? Number(best.oos.expectancyR.toFixed(3)) : null,
     oosFolds: best ? `${bestPos}/${bestActive} 段样本外为正` : null,
+    liveWeight: best ? Number(liveMult(best).toFixed(3)) : null,
     candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, positiveFolds: positiveFolds(c) }))
   };
 }
@@ -129,6 +148,7 @@ function profileFrom(symbol, timeframe, opt) {
     oos: best?.oos || null,
     oosScore: opt.oosScore,
     oosFolds: opt.oosFolds,
+    liveWeight: opt.liveWeight ?? null,
     tokenProfile: opt.tokenProfile || null,
     regime: opt.regime,
     regimeMatch: opt.regimeMatch,
@@ -183,6 +203,7 @@ export async function runStrategyResearch(db, options = {}) {
   db.strategyProfiles ||= [];
   const updated = [];
   const skipped = [];
+  const liveWeights = buildLiveStrategyWeights(db); // ③ 把真实成交表现纳入优选权重
 
   for (const symbol of symbols) {
     const sym = String(symbol).toUpperCase();
@@ -195,7 +216,7 @@ export async function runStrategyResearch(db, options = {}) {
         continue;
       }
       if (!Array.isArray(candles) || candles.length < 120) continue;
-      const opt = optimizeSymbol(candles, tf);
+      const opt = optimizeSymbol(candles, tf, liveWeights);
       if (opt.best && (!winner || (opt.oosScore ?? -99) > (winner.opt.oosScore ?? -99))) {
         winner = { timeframe: tf, opt };
       } else if (!winner) {

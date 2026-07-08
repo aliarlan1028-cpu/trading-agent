@@ -32,7 +32,7 @@ import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
-import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle } from "./reviewEngine.mjs";
+import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
@@ -91,6 +91,18 @@ registerTaskHandler("agent_cycle", async (database) => {
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 registerTaskHandler("paper_forward", (database) => runPaperForward(database));
+// ② 平仓自动复盘：逐笔沉淀教训入记忆。
+registerTaskHandler("trade_reflection", (database) => runTradeReflection(database));
+// ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
+registerTaskHandler("strategy_improvement", (database) => {
+  const closes = (database.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl))).length;
+  const last = Number(database.system.lastImprovementCloses || 0);
+  const need = Number(process.env.IMPROVEMENT_MIN_NEW_CLOSES || 10);
+  if (closes - last < need) return { status: "skipped", reason: `新增平仓 ${closes - last}/${need} 未达触发线` };
+  const cycle = createStrategyImprovementCycle(database);
+  database.system.lastImprovementCloses = closes;
+  return { status: "ok", experimentId: cycle.experiment?.id, hypothesis: cycle.experiment?.hypothesis };
+});
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", (database) => verifyTrc20Payments(database));
@@ -134,6 +146,8 @@ ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", h
 ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_trade_reflection", name: "平仓自动复盘", handler: "trade_reflection", schedule: "Every 30m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_strategy_improvement", name: "策略改进闭环", handler: "strategy_improvement", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上核验", handler: "payment_verify", schedule: "Every 2m" }, saveDb);
 
 startScheduler(db, saveDb);

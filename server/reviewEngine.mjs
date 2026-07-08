@@ -282,3 +282,51 @@ export function createStrategyImprovementCycle(db, payload = {}) {
   appendTrace(db, "review", "策略改进闭环", "ok");
   return { message: "已创建策略改进闭环", review, experiment, analytics };
 }
+
+// 平仓后自动复盘：逐笔对比"入场依据/计划 vs 真实结果"，沉淀教训进长期记忆，供决策时读取。
+// 幂等：处理过的成交打 reflectedAt，不重复。只把亏损+显著盈利写记忆，避免小额刷屏决策上下文。
+export function runTradeReflection(db) {
+  const closes = (db.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)) && !f.reflectedAt);
+  if (!closes.length) return { reflected: 0, memorized: 0, lessons: [] };
+  db.memoryItems ||= [];
+  const lessons = [];
+  let memorized = 0;
+  const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
+  for (const fill of closes.slice(0, 15)) {
+    const plan = (db.tradePlans || []).find((p) => p.id === fill.planId) || {};
+    const pnl = Number(fill.realizedPnl);
+    const win = pnl > 0;
+    const dir = fill.direction === "short" || fill.direction === "空" ? "做空" : "做多";
+    const slip = Number(fill.slippageBps);
+    const facts = [`${fill.symbol} ${dir}（${fill.strategy || "手动"}）${win ? "盈利" : "亏损"} ${pnl.toFixed(2)} USDT`];
+    if (fill.regime) facts.push(`regime ${fill.regime}`);
+    if (fill.holdingMinutes != null) facts.push(`持仓 ${Math.round(Number(fill.holdingMinutes))} 分钟`);
+    if (Number.isFinite(slip) && Math.abs(slip) >= 15) facts.push(`滑点 ${slip.toFixed(0)}bps 偏大`);
+    if (fill.exitReason) facts.push(`出场：${fill.exitReason}`);
+    const rationale = fill.entryRationale || plan.rationale || plan.reasoningSummary || "未记录入场理由";
+    const lesson = win
+      ? `盈利复盘：${facts.join("；")}。入场依据「${rationale}」本次兑现——该「策略×品种×regime」组合在相似条件下可保持。`
+      : `亏损复盘：${facts.join("；")}。入场依据「${rationale}」未兑现${Number.isFinite(slip) && Math.abs(slip) >= 15 ? "，且滑点偏大侵蚀收益" : ""}。后续同类信号需更严格确认（多周期/聪明钱一致）或减小仓位。`;
+    fill.reflectedAt = nowIso();
+    lessons.push({ fillId: fill.id, symbol: fill.symbol, win, pnl: Number(pnl.toFixed(2)) });
+    if (!win || Math.abs(pnl) >= minMemo) {
+      db.memoryItems.unshift({
+        id: id("mem"),
+        layer: "episodic",
+        title: `复盘 ${fill.symbol} ${win ? "✓ 盈" : "✗ 亏"}`,
+        content: lesson,
+        tags: ["auto_reflection", fill.strategy || "manual", win ? "win" : "loss"],
+        source: "auto_reflection",
+        fillId: fill.id,
+        createdAt: nowIso()
+      });
+      memorized += 1;
+    }
+  }
+  if (db.memoryItems.length > 200) db.memoryItems = db.memoryItems.slice(0, 200);
+  if (lessons.length) {
+    appendAudit(db, `平仓自动复盘 ${lessons.length} 笔，沉淀 ${memorized} 条教训入记忆`, "trade_reflection", "ReflectionEngine", "info");
+    appendTrace(db, "reflection", `复盘 ${lessons.length} 笔`, "ok");
+  }
+  return { reflected: lessons.length, memorized, lessons };
+}
