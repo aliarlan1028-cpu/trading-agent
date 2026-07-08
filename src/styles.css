@@ -1,37 +1,61 @@
 :root {
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-  font-size: 14px;
-  color: #2a2620;
-  background: #faf9f7;
-  font-synthesis: none;
-  text-rendering: geometricPrecision;
-
   /* ==========================================================
-     Design tokens（暖色洗练）— 统一字阶/色板/间距/圆角/阴影
-     已全站落地（见文件末尾"全站视觉基线"区块）。
+     Design tokens — "Terminal"（专业交易终端）
+     暖橙浅色底 + 等宽数字 + 高密度栅格 + 发丝分隔线。
+     颜色/字体/间距为设计规范唯一真值来源。
      ========================================================== */
 
+  /* 字体 */
+  --font-ui: "Space Grotesk", "Public Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: "Public Sans", "Noto Sans SC", "PingFang SC", sans-serif;
+
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: #1e1b16;
+  background: #f4f1eb;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+
   /* 表面与描边 */
-  --bg: #faf9f7;
-  --surface: #ffffff;
-  --surface-2: #f8f1e9;      /* 暖色浅底（chip/内格）*/
-  --border: #e8e1d6;
-  --border-strong: #dcd3c4;
+  --bg: #f4f1eb;             /* 页面底色 */
+  --bg-canvas: #eae5db;      /* 画布外底色 */
+  --surface: #fbf9f5;        /* 卡片/面板背景 */
+  --surface-white: #ffffff;  /* 卡片内嵌白块 */
+  --surface-2: #f1eadf;      /* 暖色浅底（chip/内格）*/
+  --border: #e3dcce;         /* 主边框 */
+  --border-strong: #d8cfbc;
+  --hairline: #ede7db;       /* 次级分隔线（发丝线）*/
 
-  /* 文字（对比度已提升到 WCAG AA）*/
-  --text: #2a2620;           /* 主文字/数值 */
-  --text-2: #5c5648;         /* 次级文字 */
-  --text-3: #6b6455;         /* 弱化说明（对 --bg ≈ 5.3:1）*/
+  /* 文字 */
+  --text: #1e1b16;           /* 正文主色/数值 */
+  --text-2: #6b6455;         /* 正文次色 */
+  --text-3: #8a8172;         /* 弱化文字 */
+  --text-4: #a89e8a;         /* 更弱标签/代号 */
+  --text-5: #b3a992;         /* 表头等最弱 */
 
-  /* 语义色 + 各自的浅底 */
-  --accent: #e07a3f;         /* 品牌橙（作差点缀）*/
-  --accent-ink: #b45f2a;     /* 橙色文字（浅底上高对比）*/
-  --accent-weak: #f8f1e9;
-  --pos: #3f8f5b;  --pos-weak: #eaf3ec;
-  --warn: #c2803a; --warn-weak: #f9f0e2;
-  --neg: #c9553d;  --neg-weak: #f7ebe7;
+  /* 深色（侧栏激活/主按钮/终端标签）*/
+  --dark: #1e1b16;
+  --dark-ink: #f5e9db;       /* 深色上的浅文字 */
 
-  /* 字阶（7 档，取代原先 22 种散号）*/
+  /* 语义色 + 各自浅底 */
+  --accent: #d06a22;         /* 强调橙 */
+  --accent-ink: #a8511a;     /* 橙色文字/链接（浅底上高对比）*/
+  --accent-weak: #fbeddf;    /* 橙浅底 */
+  --accent-weak2: #f1eadf;
+  --accent-grad: linear-gradient(150deg, #e68a4e, #d06a22);
+  --pos: #1f7a50;  --pos-weak: #e6f1ea;
+  --warn: #c79a3a; --warn-weak: #fbf1de;
+  --neg: #c43f28;  --neg-weak: #f7e6e2;
+  --info: #2a6fdb; --info-weak: #eaf0fb;
+  --purple: #7a4fd0; --purple-weak: #f0eafb;
+
+  /* 聊天气泡 */
+  --bubble-user: #efe7db;
+  --bubble-ai: #f4f1eb;
+
+  /* 字阶 */
   --fs-1: 12px;   /* caption/说明 */
   --fs-2: 13px;   /* body-sm */
   --fs-3: 14px;   /* body */
@@ -40,17 +64,18 @@
   --fs-6: 28px;   /* 指标数值 */
   --fs-7: 40px;   /* 英雄数值 */
 
-  /* 间距（4 基准）*/
+  /* 间距（4 基准，高密度）*/
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
   --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
 
-  /* 圆角（3 档 + 胶囊）*/
-  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+  /* 圆角 */
+  --r-xs: 5px; --r-sm: 7px; --r-md: 9px; --r-lg: 12px; --r-pill: 999px;
 
-  /* 阴影（3 档）*/
-  --sh-1: 0 1px 2px rgba(60, 45, 30, 0.05);
-  --sh-2: 0 6px 20px rgba(60, 45, 30, 0.07);
-  --sh-3: 0 14px 34px rgba(60, 45, 30, 0.09);
+  /* 阴影（极克制：卡片靠 1px 边框，不投影）*/
+  --sh-1: 0 1px 2px rgba(60, 45, 30, 0.04);
+  --sh-2: 0 6px 20px rgba(60, 45, 30, 0.06);
+  --sh-3: 0 14px 34px rgba(60, 45, 30, 0.08);
+  --sh-accent: 0 8px 20px -8px rgba(208, 106, 34, 0.8);
 }
 
 * {
@@ -60,7 +85,16 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: #faf9f7;
+  background: var(--bg-canvas);
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+/* 等宽数字工具类：金额/价格/百分比/时间戳/ID 统一用 IBM Plex Mono 对齐。 */
+.mono, .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 button,
@@ -99,8 +133,8 @@ h3 {
 .appShell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  background: #faf9f7;
+  grid-template-columns: 212px minmax(0, 1fr);
+  background: var(--bg);
 }
 
 .appShell.noSidebar {
@@ -124,30 +158,31 @@ h3 {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 28px 24px;
-  background: #ffffff;
-  border-right: 1px solid #e7e0d5;
+  gap: 14px;
+  padding: 16px 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: 44px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #ece7de;
+  gap: 10px;
+  padding: 2px 6px 14px;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .brandMark {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
+  flex: none;
   display: grid;
   place-items: center;
-  color: #ffffff;
-  background: linear-gradient(145deg, #e88a52, #e07a3f);
-  box-shadow: 0 10px 24px rgba(224, 122, 63, 0.24);
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow: var(--sh-accent);
+  overflow: hidden;
 }
 
 .brandMark .brandLogo,
@@ -159,26 +194,24 @@ h3 {
   object-fit: cover;
 }
 
-.brand strong {
-  font-size: 13px;
-  letter-spacing: 0;
-}
+.brandText { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.brandText strong { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.brandSub { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.16em; color: var(--text-4); }
 
 .nav {
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
 .navItem {
   position: relative;
   width: 100%;
-  min-height: 46px;
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: 7px;
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 0 14px;
+  gap: 11px;
+  padding: 8px 11px;
   color: var(--text-2);
   background: transparent;
   text-align: left;
@@ -188,41 +221,53 @@ h3 {
   transition: background 0.14s ease, color 0.14s ease;
 }
 
-.navItem svg {
-  color: var(--text-3);
-  transition: color 0.14s ease;
-}
-
-.navItem .navLabelShort {
-  display: none;
-}
-
-.railFab,
-.railSheetOverlay {
-  display: none;
-}
+.navItem svg { color: var(--text-3); flex: none; transition: color 0.14s ease; }
+.navItem .navLabelShort { display: none; }
+.railFab, .railSheetOverlay { display: none; }
 
 .navItem:hover { color: var(--text); background: var(--surface-2); }
 .navItem.active {
-  color: var(--accent-ink);
-  background: var(--accent-weak);
+  color: var(--dark-ink);
+  background: var(--dark);
   font-weight: 700;
 }
-.navItem.active::before {
-  content: "";
-  position: absolute;
-  left: 4px; top: 50%;
-  width: 3px; height: 20px;
-  border-radius: 3px;
-  background: var(--accent);
-  transform: translateY(-50%);
+.navItem.active svg { color: var(--dark-ink); }
+
+/* 侧栏底部：系统状态卡 + 系统设置齿轮 */
+.sidebarFoot { margin-top: auto; display: grid; gap: 8px; }
+.sysStatusCard {
+  background: #eee9df;
+  border-radius: 9px;
+  padding: 10px 11px;
+  display: grid;
+  gap: 4px;
 }
-.navItem.active svg { color: var(--accent-ink); }
+.sscHead { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--pos); }
+.sysStatusCard.warn .sscHead { color: var(--warn); }
+.sscDot { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); flex: none; }
+.sysStatusCard.warn .sscDot { background: var(--warn); }
+.sscMeta { font-size: 10px; color: #948b77; }
+.sscLink { border: 0; background: transparent; padding: 0; text-align: left; font-size: 11px; font-weight: 600; color: var(--accent-ink); cursor: pointer; }
+.sscLink:hover { color: #a8511a; }
+.navGear {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.navGear:hover { background: var(--surface-2); color: var(--text); }
 
 .mainArea {
   min-width: 0;
   display: grid;
-  grid-template-rows: 72px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .appTopbar {
@@ -231,60 +276,73 @@ h3 {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   min-width: 0;
-  padding: 14px 28px;
-  background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid #e7e0d5;
+  padding: 11px 24px;
+  background: rgba(244, 241, 235, 0.9);
+  border-bottom: 1px solid var(--border);
   backdrop-filter: blur(12px);
 }
 
-/* 顶栏承载主导航（无左侧栏）：品牌回对话 + 导航按钮 */
-.topbarBrand {
-  flex: none;
-  width: 34px;
+/* 顶栏搜索框 */
+.topSearch {
+  flex: 1 1 340px;
+  max-width: 340px;
   height: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-}
-.topbarBrand:hover { opacity: 0.85; }
-
-.topbarNav {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-white);
+  color: var(--text-3);
 }
-.topbarNavItem {
+.topSearch input {
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 12.5px;
+  color: var(--text);
+  min-width: 0;
+}
+.topSearch input::placeholder { color: var(--text-4); }
+
+/* AUTO ON 标（深底闪烁绿点）*/
+.autoOnPill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
-}
-.topbarNavItem svg { color: var(--text-3); }
-.topbarNavItem:hover { background: var(--surface-2); color: var(--text); }
-.topbarNavItem.active {
-  background: var(--accent-weak);
-  color: var(--accent-ink);
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 7px;
+  background: var(--dark);
+  color: #8fe0b0;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
 }
-.topbarNavItem.active svg { color: var(--accent-ink); }
+.autoDot { width: 7px; height: 7px; border-radius: 50%; background: #3ddc84; animation: pulseDot 2s infinite; }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-.appTopbar .topbarActions { margin-left: auto; }
+.topAvatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow: var(--sh-accent);
+}
+
+.appTopbar .topbarActions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 .globalSearch {
   width: min(420px, 42vw);

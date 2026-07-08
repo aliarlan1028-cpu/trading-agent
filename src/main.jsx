@@ -4,6 +4,7 @@ import {
   Activity,
   Bell,
   BookOpen,
+  Bot,
   BrainCircuit,
   CalendarClock,
   CheckCircle2,
@@ -11,8 +12,12 @@ import {
   ChevronRight,
   ClipboardList,
   MessageSquare,
+  PieChart,
+  RefreshCw,
+  Search,
   Settings,
   Shield,
+  ShieldCheck,
   UserPlus,
   UserCog,
   WalletCards,
@@ -37,34 +42,52 @@ if (isNativeApp()) {
 }
 
 const navItems = [
-  { id: "chat", label: "AI交易员", short: "交易员", icon: MessageSquare },
-  { id: "knowledgeSkills", label: "知识与技能", short: "知识", icon: BookOpen },
-  { id: "systemSettings", label: "系统设置", short: "设置", icon: Settings }
+  { id: "chat", label: "AI 交易员", short: "交易员", code: "AGENT", icon: Bot },
+  { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart },
+  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
+  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
+  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
+  { id: "auditSystem", label: "审计与系统", short: "审计", code: "AUDIT", icon: Settings }
 ];
 
 function BrandLogo({ size = 34 }) {
   return <img className="brandLogo" src="/trading-agent-logo.svg" alt="Trading Agent" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive }) {
+function Sidebar({ active, setActive, data }) {
+  const healthy = !data?.system?.killSwitch && (data?.system?.apiHealth ? !/异常|错误|失败/.test(String(data.system.apiHealth)) : true);
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brandMark"><BrandLogo size={28} /></div>
-        <strong>Trader Agent</strong>
+        <div className="brandMark"><BrandLogo size={20} /></div>
+        <div className="brandText">
+          <strong>交易 Agent</strong>
+          <span className="brandSub">AI · DIGITAL ASSET</span>
+        </div>
       </div>
       <nav className="nav">
         {navItems.map((item) => {
           const Icon = item.icon;
+          const on = active === item.id;
           return (
-            <button className={`navItem ${active === item.id ? "active" : ""}`} key={item.id} title={item.label} aria-label={item.label} onClick={() => setActive(item.id)}>
-              <Icon size={20} />
+            <button className={`navItem ${on ? "active" : ""}`} key={item.id} title={item.label} onClick={() => setActive(item.id)}>
+              <Icon size={16} />
               <span className="navLabelFull">{item.label}</span>
               <span className="navLabelShort">{item.short}</span>
             </button>
           );
         })}
       </nav>
+      <div className="sidebarFoot">
+        <div className={`sysStatusCard ${healthy ? "ok" : "warn"}`}>
+          <div className="sscHead"><span className="sscDot" /> <b>系统状态 · {healthy ? "全盘正常" : "需关注"}</b></div>
+          <div className="sscMeta mono">api · ws · sync · {healthy ? "healthy" : "check"}</div>
+          <button className="sscLink" onClick={() => setActive("auditSystem")}>查看运行日志 ›</button>
+        </div>
+        <button className="navGear" title="系统设置 / 密钥 / 用户管理" onClick={() => setActive("systemSettings")}>
+          <Settings size={15} /> 系统设置
+        </button>
+      </div>
     </aside>
   );
 }
@@ -100,24 +123,20 @@ function AppTopbar({ data, active, setActive, notify, action }) {
   const currentStatus = systemStatus(data);
   const operatingStage = data.readiness?.operatingStage;
   const live = data.system?.liveTradingEnabled;
+  const autoOn = live && data.grayReleasePolicies?.some((p) => p.enabled && p.requiresManualApproval === false);
   return (
     <header className="appTopbar">
-      <button className="topbarBrand" title="回到对话" onClick={() => setActive("chat")}><BrandLogo size={30} /></button>
+      <div className="topSearch">
+        <Search size={15} />
+        <input placeholder="搜索市场 / 交易对 / 知识 / 功能" aria-label="搜索" />
+      </div>
       <div className="topbarStatusGroup">
         <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings")} />
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings")} />
-        {live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
+        {autoOn
+          ? <span className="autoOnPill" title="全自动执行已开启"><span className="autoDot" /> AUTO ON</span>
+          : live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
       </div>
-      <nav className="topbarNav" aria-label="主导航">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button key={item.id} className={`topbarNavItem ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
-              <Icon size={16} /> {item.label}
-            </button>
-          );
-        })}
-      </nav>
       <div className="topbarActions">
         <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskAuth")}>
           <span />
@@ -133,6 +152,7 @@ function AppTopbar({ data, active, setActive, notify, action }) {
         {!data.user?.isOwner && (
           <button className="bellButton" title="账户 · 修改密码" onClick={() => setShowPassword(true)}><UserCog size={18} /></button>
         )}
+        <button className="topAvatar" title={data.user?.name || "账户"} onClick={() => data.user?.isOwner ? setActive("systemSettings") : setShowPassword(true)} aria-label="账户">{(data.user?.name || "A").slice(0, 1).toUpperCase()}</button>
       </div>
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
       {showPassword && <ChangePasswordDialog action={action} notify={notify} onClose={() => setShowPassword(false)} />}
@@ -227,15 +247,10 @@ function App() {
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   function navigate(next) {
-    if (next === "riskAuth") {
-      setActiveSettingsTab("risk");
-      setActive("systemSettings");
-      return;
-    }
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
-    if (next === "marketAccount") { setCockpitTab("overview"); setActive("cockpit"); return; }
+    if (next === "marketAccount" || next === "market") { setCockpitTab("overview"); setActive("cockpit"); return; }
     if (next === "review") { setCockpitTab("review"); setActive("cockpit"); return; }
-    // Admin 已并入系统设置的"用户管理"tab（仅 Owner 可见）。
+    // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
     if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
     if (next === "systemSettings") setActiveSettingsTab("config");
     setActive(next);
@@ -246,6 +261,7 @@ function App() {
     if (active === "cockpit") return <CockpitPage data={data} action={action} ui={ui} cockpitTab={cockpitTab} setCockpitTab={setCockpitTab} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
+    if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
@@ -260,7 +276,8 @@ function App() {
   }
 
   return (
-    <div className="appShell noSidebar">
+    <div className="appShell">
+      <Sidebar active={active} setActive={navigate} data={data} />
       <main className="mainArea">
         <AppTopbar data={data} active={active} setActive={navigate} notify={notify} action={action} />
         <div className="content">{content}</div>
