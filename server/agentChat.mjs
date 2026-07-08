@@ -820,7 +820,15 @@ export function activeProvider() {
   if (process.env.ANTHROPIC_API_KEY) return { name: "anthropic", model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" };
   if (process.env.OPENAI_API_KEY) return { name: "openai", model: process.env.OPENAI_MODEL || "gpt-5.2" };
   if (process.env.DEEPSEEK_API_KEY) return { name: "deepseek", model: process.env.DEEPSEEK_MODEL || "deepseek-chat" };
+  if (process.env.GEMINI_API_KEY) return { name: "gemini", model: process.env.GEMINI_MODEL || "gemini-2.5-pro" };
   return null;
+}
+
+// OpenAI 兼容客户端：DeepSeek / Gemini 走各自 baseURL，其余走 OpenAI。
+function openAiCompatClient(providerName) {
+  if (providerName === "deepseek") return new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" });
+  if (providerName === "gemini") return new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/" });
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 // 简单文本补全（无工具），供知识蒸馏等复用。无 LLM key 时返回 null。
@@ -838,9 +846,7 @@ export async function llmComplete(userText, systemPrompt = "") {
       const json = await res.json();
       return (json.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
     }
-    const client = provider.name === "deepseek"
-      ? new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" })
-      : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = openAiCompatClient(provider.name);
     const res = await client.chat.completions.create({
       model: provider.model,
       messages: [
@@ -879,9 +885,7 @@ async function anthropicTurn(model, messages, systemPrompt, tools) {
 }
 
 async function openaiCompatTurn(providerName, model, messages, systemPrompt, tools) {
-  const client = providerName === "deepseek"
-    ? new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" })
-    : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = openAiCompatClient(providerName);
   const response = await client.chat.completions.create({
     model,
     messages: [{ role: "system", content: systemPrompt || BASE_RULES }, ...messages],
