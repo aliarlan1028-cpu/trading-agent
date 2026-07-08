@@ -155,23 +155,27 @@ h3 {
 }
 
 .navItem {
+  position: relative;
   width: 100%;
   min-height: 46px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   gap: 13px;
   padding: 0 14px;
-  color: #4a443b;
+  color: var(--text-2);
   background: transparent;
   text-align: left;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 
 .navItem svg {
-  color: #6b6455;
+  color: var(--text-3);
+  transition: color 0.14s ease;
 }
 
 .navItem .navLabelShort {
@@ -183,15 +187,22 @@ h3 {
   display: none;
 }
 
-.navItem:hover,
+.navItem:hover { color: var(--text); background: var(--surface-2); }
 .navItem.active {
-  color: #e07a3f;
-  background: linear-gradient(90deg, #f6efe6, #f6efe6);
+  color: var(--accent-ink);
+  background: var(--accent-weak);
+  font-weight: 700;
 }
-
-.navItem.active svg {
-  color: #e07a3f;
+.navItem.active::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: 50%;
+  width: 3px; height: 20px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform: translateY(-50%);
 }
+.navItem.active svg { color: var(--accent-ink); }
 
 .mainArea {
   min-width: 0;
@@ -936,26 +947,34 @@ h3 {
 .linkCell,
 .launchButton {
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 36px;
+  min-height: 38px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, filter 0.14s ease, transform 0.06s ease;
 }
+.primaryButton:active,
+.secondaryButton:active { transform: translateY(0.5px); }
 
 .primaryButton {
-  padding: 0 14px;
+  padding: 0 16px;
   color: #ffffff;
-  background: #e07a3f;
+  background: var(--accent);
+  box-shadow: 0 2px 8px rgba(224, 122, 63, 0.22);
 }
+.primaryButton:hover { filter: brightness(0.96); }
 
 .secondaryButton {
   padding: 0 14px;
-  color: #e07a3f;
-  background: #f7f2ea;
+  color: var(--accent-ink);
+  background: var(--accent-weak);
   border: 1px solid #ecdfce;
 }
+.secondaryButton:hover { border-color: var(--accent); background: #fbeee2; }
 
 .textButton,
 .linkCell {
@@ -1287,7 +1306,7 @@ h3 {
 .settingsSubNav button {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 34px;
+  min-height: 38px;
   border: 0;
   border-radius: var(--r-sm);
   display: inline-flex;
@@ -1296,20 +1315,28 @@ h3 {
   gap: 6px;
   color: var(--text-2);
   background: transparent;
-  font-size: var(--fs-2);
-  font-weight: 600;
+  font-size: var(--fs-3);
+  font-weight: 650;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 
 .settingsSubNav button.active {
   color: #ffffff;
   background: var(--accent);
+  box-shadow: 0 2px 8px rgba(224, 122, 63, 0.24);
 }
 
 .settingsSubNav button:not(.active):hover {
   color: #c9642e;
   background: #f8f1e9;
 }
+
+/* 数字统一等宽对齐（正负色由各处自带的 .positive/.negative 决定）*/
+.metricCell strong, .microGrid strong, .healthGrid strong, .qualityGrid b,
+.riskLine b, .kpi .value, .asBalance strong, .asFields b, .regimeReadout,
+.cpConclusion .cpcTime, .stat-card strong { font-variant-numeric: tabular-nums; }
 
 .ragQueryBar {
   display: flex;
@@ -1937,15 +1964,18 @@ h3 {
 .chartEmpty,
 .emptyTable,
 .emptyPanel {
-  border: 1px dashed #d7ccb8;
-  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
-  color: #7a7264;
-  background: #faf9f7;
-  line-height: 1.5;
+  gap: 6px;
+  padding: 22px 18px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  line-height: 1.55;
   text-align: center;
 }
+.emptyPanel strong { color: var(--text); font-size: 14px; }
 
 .emptyPanel.emptyPanelGuide {
   gap: 8px;
