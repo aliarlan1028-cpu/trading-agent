@@ -66,7 +66,11 @@ export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCock
 
 export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const [pnlWindow, setPnlWindow] = useState("本月");
-  const market = data.activeMarket || data.markets?.[0] || { candles: [] };
+  const [symbolSel, setSymbolSel] = useState(null);
+  const [tf, setTf] = useState("1H");
+  const [ordTab, setOrdTab] = useState("open");
+  const marketList = (data.markets || []).filter((m) => m && m.symbol);
+  const market = marketList.find((m) => m.symbol === symbolSel) || data.activeMarket || marketList[0] || { candles: [] };
   const pr = data.portfolioRisk || { portfolioVolPct: null, positions: [], correlations: [] };
   const latestReconcile = data.reconciliationReports?.[0];
   const latestSnapshot = data.accountSnapshots?.[0];
@@ -151,76 +155,188 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const winTone = performance.winRatePct >= 50 ? "positive" : "warning";
   const cumPnl = Number(performance.totalPnlUsdt || 0);
 
+  // ---- Terminal「市场与账户」派生数据 ----
+  const chgPos = Number(market.changePct || 0) >= 0;
+  const symbolTabs = marketList.slice(0, 4).map((m) => m.symbol);
+  const lastCandle = (market.candles || [])[(market.candles || []).length - 1] || {};
+  const ocv = (a, b) => lastCandle[a] ?? lastCandle[b];
+  const ohlc = { o: ocv("open", "o"), h: ocv("high", "h"), l: ocv("low", "l"), c: ocv("close", "c") ?? market.price };
+  const metrics = [
+    { label: "总资产 USDT", value: displayMoney(data.portfolio.totalEquityUsdt), sub: latestSnapshot ? `快照 ${formatTime(latestSnapshot.createdAt)}` : "同步后显示" },
+    { label: "可用保证金", value: displayMoney(availableMargin), sub: marginRate === null ? "—" : `可用率 ${formatMoney(100 - marginRate, 1)}%` },
+    { label: "今日盈亏", value: `${Number(data.portfolio.todayPnl || 0) >= 0 ? "+" : ""}${displayMoney(data.portfolio.todayPnl, 2, "—")}`, sub: configured ? displayPct(data.portfolio.todayPnlPct) : "接入后同步", tone: Number(data.portfolio.todayPnl || 0) >= 0 ? "pos" : "neg", spark: true },
+    { label: "未实现盈亏", value: `${Number(data.portfolio.weekPnl || 0) >= 0 ? "+" : ""}${displayMoney(data.portfolio.weekPnl, 2, "—")}`, sub: configured ? displayPct(data.portfolio.weekPnlPct) : "接入后同步", tone: Number(data.portfolio.weekPnl || 0) >= 0 ? "pos" : "neg", spark: true },
+    { label: "对账状态", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "pos" : "warn", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
+  ];
+  const snapRows = [
+    ["最新价", displayMoney(market.price, 2, "—"), ""],
+    ["24h 涨跌", displayPct(market.changePct), chgPos ? "pos" : "neg"],
+    ["24h 高 / 低", (ohlc.h != null && ohlc.l != null) ? `${displayMoney(ohlc.h, 2)} / ${displayMoney(ohlc.l, 2)}` : "未同步", ""],
+    ["资金费率", market.fundingRate == null ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`, Number(market.fundingRate) >= 0 ? "pos" : "neg"],
+    ["未平仓 OI", market.openInterest ? formatMoney(market.openInterest, 0) : "未同步", ""],
+    ["成交量 24h", market.volume ? formatMoney(market.volume, 0) : (market.quoteVolume ? formatMoney(market.quoteVolume, 0) : "未同步"), ""],
+    ["买盘占比", market.bookImbalancePct == null ? "未同步" : `${market.bookImbalancePct}%`, Number(market.bookImbalancePct) >= 50 ? "pos" : "neg"],
+    ["市场状态", gm.interpretation ? "多头趋势" : (market.regime || "观察"), "badge"]
+  ];
+  const openOrders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled", "filled_closed", "rejected"].includes(String(o.status || "").toLowerCase()));
+  const recentFills = (data.fills || []).slice(0, 6);
+  const walletVals = [
+    ["钱包余额", displayMoney(data.portfolio.totalEquityUsdt)],
+    ["可用保证金", displayMoney(availableMargin)],
+    ["已用保证金", displayMoney(usedMargin)],
+    ["未实现盈亏", displayMoney(data.portfolio.weekPnl, 2, "—")]
+  ];
+  const usagePct = marginRate === null ? 0 : Math.min(100, Math.max(0, marginRate));
+
   return (
-    <div className="pageStack cockpitOverview">
-      {!embedded && <PageHeader active="marketAccount" />}
-
-      {/* 一句话系统状态（细节在最下方"系统监控明细"里） */}
-      <div className={`cpStatusBar ${conclusion.tone}`}>
-        <span className="cpStatusDot" />
-        <b>系统结论：{conclusion.label}</b>
-        <StatusBadge tone={riskTone}>{riskLabel}</StatusBadge>
-        <small>更新 {formatDateTime(latestSnapshot?.createdAt, "实时")}</small>
-      </div>
-
-      {/* 账户概览条 */}
-      <div className="cockpitStripRow">
-        <div className="cockpitStrip">
-          {stripCells.map((cell) => {
-            const clickable = Boolean(cell.onClick);
-            return (
-              <div key={cell.label} className={`stripCell ${clickable ? "clickable" : ""}`} {...(clickable ? { role: "button", tabIndex: 0, onClick: cell.onClick } : {})}>
-                <span className={cell.hint ? "term" : ""} title={cell.hint || undefined}>{cell.label}</span>
-                <strong className={cell.tone}>{cell.value}</strong>
-                {cell.sub && <small>{cell.sub}</small>}
-              </div>
-            );
-          })}
-        </div>
-        <div className="cockpitPnlWindow">
-          <span>盈亏区间</span>
-          <div className="filterGroup mini">{["本月", "季度", "全年"].map((item) => <button className={pnlWindow === item ? "active" : ""} key={item} onClick={() => setPnlWindow(item)}>{item}</button>)}</div>
-        </div>
-      </div>
-
-      {/* ① 我的持仓 —— 清清楚楚看现在持有什么 */}
-      <Card className="cpCard cpFull">
-        <SectionTitle icon={Layers} title={`我的持仓（${positions.length}）`} action={<button className="iconButton" title="刷新账户" onClick={() => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings")}><RefreshCw size={14} /></button>} />
-        {positions.length ? (
-          <DataTable
-            columns={[
-              { key: "symbol", label: "品种" },
-              { key: "dir", label: "方向", width: "0.7fr" },
-              { key: "size", label: "数量" },
-              { key: "entry", label: "开仓价" },
-              { key: "mark", label: "标记价" },
-              { key: "pnl", label: "未实现盈亏" },
-              { key: "lev", label: "杠杆", width: "0.6fr" }
-            ]}
-            rows={posRows}
-          />
-        ) : (
-          <div className="emptyPanel">{configured ? "当前没有持仓。开仓后这里实时显示品种、方向、数量、开仓/标记价、未实现盈亏与杠杆。" : "先在系统设置连接交易所（只读即可），这里就会显示你的真实持仓。"}</div>
-        )}
-      </Card>
-
-      {/* ② 交易战绩 —— 最有用的真实成绩单 */}
-      <Card className="cpCard cpFull">
-        <SectionTitle icon={BarChart3} title="交易战绩" action={<button className="textButton" onClick={() => ui.setActive("review")}>去复盘拆解（按策略/品种/时段） <ChevronRight size={14} /></button>} />
-        {performance.trades ? (
-          <div className="statGrid">
-            <div><span>已平仓笔数</span><strong>{performance.trades}</strong></div>
-            <div><span className="term" title="盈利笔数占比。长期看 50% 以上更稳，但低胜率+高盈亏比也能赚。">胜率</span><strong className={winTone}>{performance.winRatePct}%</strong></div>
-            <div><span>累计盈亏</span><strong className={cumPnl >= 0 ? "positive" : "negative"}>{cumPnl >= 0 ? "+" : ""}{displayMoney(cumPnl, 2, "0.00")} USDT</strong></div>
-            <div><span className="term" title="总盈利 ÷ 总亏损。>1 才是赚的，>1.5 较健康。">盈亏比</span><strong className={Number(performance.profitFactor) >= 1 ? "positive" : "negative"}>{performance.profitFactor ?? "-"}</strong></div>
-            <div><span className="term" title="账户净值从最高点回落的最大幅度，衡量最坏时亏了多少。">最大回撤</span><strong className="negative">{data.portfolio.maxDrawdownPct != null ? displayPct(-Math.abs(Number(data.portfolio.maxDrawdownPct))) : "未同步"}</strong></div>
+    <div className="pageStack termPage marketPage">
+      {!embedded && (
+        <div className="termHead">
+          <div className="termHeadMain">
+            <h1>市场与账户 <span className="termCode">MARKET · ACCOUNT</span></h1>
+            <p>实时监控市场行情、持仓与账户余额，掌握整体资金动向</p>
           </div>
-        ) : (
-          <div className="emptyPanel">还没有已平仓交易。完成一轮闭环后这里显示笔数、胜率、累计盈亏与盈亏比；<b>策略与回测的表现拆解在复盘页</b>。</div>
-        )}
-      </Card>
+          <button className="termRefresh mono" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={12} /> {formatTime(new Date().toISOString())}</button>
+        </div>
+      )}
 
-      {/* ③ 系统监控明细 —— AI 在盯，你平时不用看，问起来 AI 会告诉你 */}
+      {/* Row 1 — 指标行 */}
+      <div className="metricRow">
+        {metrics.map((m) => (
+          <div key={m.label} className={`metricCell ${m.onClick ? "clickable" : ""}`} {...(m.onClick ? { role: "button", tabIndex: 0, onClick: m.onClick } : {})}>
+            <span className="metricLabel">{m.label}</span>
+            <strong className={`metricVal mono ${m.tone || ""}`}>{m.value}</strong>
+            <div className="metricSub">
+              <span className={m.tone || ""}>{m.sub}</span>
+              {m.spark && <MiniSparkline candles={market.candles} />}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Row 2 — 行情 + 市场快照 */}
+      <div className="termGrid r2">
+        <div className="termCard chartCard">
+          <div className="chartHead">
+            <div className="segCtl">
+              {(symbolTabs.length ? symbolTabs : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).map((s) => (
+                <button key={s} className={(market.symbol === s) ? "active" : ""} onClick={() => setSymbolSel(s)}>{s.replace("/USDT", "")}</button>
+              ))}
+            </div>
+            <div className="segCtl tf">
+              {["1m", "15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}
+            </div>
+          </div>
+          <div className="priceHead">
+            <b className="mono">{displayMoney(market.price, 2, "—")}</b>
+            <span className={`priceChg ${chgPos ? "pos" : "neg"} mono`}>{chgPos ? "▲" : "▼"} {displayPct(market.changePct)}</span>
+            <span className="ohlcRow mono">O {displayMoney(ohlc.o, 2, "—")} · H {displayMoney(ohlc.h, 2, "—")} · L {displayMoney(ohlc.l, 2, "—")} · C {displayMoney(ohlc.c, 2, "—")}</span>
+          </div>
+          <div className="chartBox">
+            {market.candles?.length ? <CandleChart candles={market.candles} /> : <div className="emptyPanel">同步交易所后显示 K 线</div>}
+          </div>
+        </div>
+        <div className="termCard snapCard">
+          <div className="secLabel">市场快照</div>
+          <div className="snapList">
+            {snapRows.map(([k, v, tone]) => (
+              <div className="snapRow" key={k}>
+                <span>{k}</span>
+                {tone === "badge"
+                  ? <b className="snapBadge pos">{v}</b>
+                  : <b className={`mono ${tone || ""}`}>{v}</b>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3 — 持仓 + 委托/成交 */}
+      <div className="termGrid r3">
+        <div className="termCard">
+          <div className="secLabel">持仓（{positions.length}）</div>
+          {positions.length ? (
+            <div className="posTable">
+              <div className="posHead mono">
+                <span>SYMBOL</span><span>SIDE</span><span>QTY</span><span>ENTRY</span><span>MARK</span><span>UPNL</span><span>LEV</span>
+              </div>
+              {positions.map((p, i) => {
+                const short = p.direction === "short" || p.direction === "空";
+                const pnlN = Number(p.pnl || 0);
+                return (
+                  <div className="posRow mono" key={p.id || `${p.symbol}-${i}`}>
+                    <span className="posSym">{p.symbol}{p.exchange ? <small>{p.exchange}</small> : null}</span>
+                    <span><b className={`sideTag ${short ? "neg" : "pos"}`}>{short ? "做空" : "做多"}</b></span>
+                    <span>{displayMoney(p.size, 4, "-")}</span>
+                    <span>{displayMoney(p.entry, 2, "-")}</span>
+                    <span>{displayMoney(p.mark, 2, "-")}</span>
+                    <span className={pnlN >= 0 ? "pos" : "neg"}>{pnlN >= 0 ? "+" : ""}{displayMoney(pnlN, 2, "-")}</span>
+                    <span>{p.leverage ? `${p.leverage}x` : "-"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="emptyPanel">{configured ? "当前没有持仓。" : "先在系统设置连接交易所（只读即可），这里显示你的真实持仓。"}</div>
+          )}
+        </div>
+        <div className="termCard">
+          <div className="secLabel ordSwitch">
+            <button className={ordTab === "open" ? "active" : ""} onClick={() => setOrdTab("open")}>当前委托 {openOrders.length}</button>
+            <button className={ordTab === "fills" ? "active" : ""} onClick={() => setOrdTab("fills")}>最近成交 {recentFills.length}</button>
+          </div>
+          <div className="ordList">
+            {(ordTab === "open" ? openOrders : recentFills).slice(0, 6).map((o, i) => {
+              const buy = /buy|long|做多|多/i.test(String(o.side || o.direction || ""));
+              return (
+                <div className="ordRow mono" key={o.id || i}>
+                  <span className="ordSym">{o.symbol}</span>
+                  <b className={`sideTag ${buy ? "pos" : "neg"}`}>{buy ? "买" : "卖"}</b>
+                  <span className="ordType">{humanize(o.type || o.kind || o.status, "—")}</span>
+                  <span className="ordPx">{displayMoney(o.price ?? o.avgPrice ?? o.entry, 2, "—")}</span>
+                  <span className="ordTime">{formatTime(o.createdAt)}</span>
+                </div>
+              );
+            })}
+            {!(ordTab === "open" ? openOrders : recentFills).length && <div className="emptyPanel">{ordTab === "open" ? "当前无挂单。" : "暂无成交记录。"}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 4 — 账户余额 / 保证金率 / 强平安全 / 交易所同步 */}
+      <div className="termGrid r4">
+        <div className="termCard">
+          <div className="secLabel">账户余额</div>
+          <div className="walletGrid">
+            {walletVals.map(([k, v]) => <div key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+          </div>
+        </div>
+        <div className="termCard donutCard">
+          <div className="secLabel">保证金率</div>
+          <div className="donutWrap"><SemiGauge value={usagePct} max={100} unit="%" color="#d06a22" size={116} /></div>
+        </div>
+        <div className="termCard">
+          <div className="secLabel">强平安全</div>
+          <div className="liqLabel mono">占用保证金 {marginRate === null ? "—" : `${formatMoney(marginRate, 1)}%`}</div>
+          <div className="liqBar"><span className="liqMark" style={{ left: `${usagePct}%` }} /></div>
+          <div className="liqLegend"><span className="pos">安全</span><span className="warn">警戒</span><span className="neg">强平</span></div>
+        </div>
+        <div className="termCard">
+          <div className="secLabel">交易所同步</div>
+          <div className="exSyncList">
+            {(data.exchangeAccounts || []).map((a) => (
+              <div className="exSyncRow" key={a.id}>
+                <span className={`exDot ${a.readEnabled ? "on" : "off"}`} />
+                <b>{a.exchange}</b>
+                <small className="mono">{a.readEnabled ? "synced" : "未配置"}</small>
+              </div>
+            ))}
+            {!(data.exchangeAccounts || []).length && <div className="emptyPanel">未接入交易所</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* 系统监控明细 —— 大盘/聪明钱/波动预算等（折叠，功能保留）*/}
       <details className="cpCard cpDetails cpMoreDetails">
         <summary><span className="cpSummaryTitle"><Eye size={15} /> 系统监控明细（AI 在盯，你平时不用看）</span><ChevronDown size={14} className="cpChevron" /></summary>
         <div className="cockpitGrid">

@@ -8447,3 +8447,102 @@ button.danger:disabled,
   color: var(--text-3); background: var(--surface-2);
   border: 1px dashed var(--border-strong); border-radius: var(--r-md);
 }
+
+/* ============================================================
+   Terminal 页面通用 + 「市场与账户」
+   ============================================================ */
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.warn { color: var(--warn); }
+
+.termPage { display: flex; flex-direction: column; gap: 8px; }
+
+.termHead { display: flex; justify-content: space-between; align-items: flex-end; padding: 2px 0 6px; gap: 12px; }
+.termHead h1 { font: 600 22px/1.2 var(--font-ui); color: var(--text); }
+.termCode { font: 400 12px var(--font-mono); color: var(--text-4); letter-spacing: 0.04em; margin-left: 8px; }
+.termHead p { font-size: 12px; color: var(--text-2); margin: 3px 0 0; }
+.termRefresh { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #948b77; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.termRefresh:hover { color: var(--accent-ink); }
+
+.metricRow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.metricCell { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.metricCell.clickable { cursor: pointer; }
+.metricCell.clickable:hover { border-color: var(--accent); }
+.metricLabel { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
+.metricVal { font-size: 20px; font-weight: 600; white-space: nowrap; color: var(--text); }
+.metricVal.pos { color: var(--pos); } .metricVal.neg { color: var(--neg); } .metricVal.warn { color: var(--warn); }
+.metricSub { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-3); }
+.metricSub svg { flex: none; }
+
+.termGrid { display: grid; gap: 8px; align-items: stretch; }
+.termGrid.r2 { grid-template-columns: 1.75fr 1fr; }
+.termGrid.r3 { grid-template-columns: 1.55fr 1fr; }
+.termGrid.r4 { grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+
+.termCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.secLabel { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
+.secLabel::before { content: ""; width: 5px; height: 5px; border-radius: 1px; background: var(--accent); flex: none; }
+
+.chartCard { gap: 8px; }
+.chartHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.segCtl { display: inline-flex; gap: 2px; background: var(--surface-2); padding: 2px; border-radius: 7px; }
+.segCtl button { border: 0; background: transparent; font: 600 11.5px var(--font-ui); color: var(--text-2); padding: 4px 9px; border-radius: 5px; cursor: pointer; }
+.segCtl button.active { background: var(--dark); color: var(--dark-ink); }
+.segCtl.tf button.active { background: var(--accent); color: #fff; }
+.priceHead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.priceHead > b { font-size: 26px; font-weight: 600; color: var(--text); }
+.priceChg { font-size: 13px; font-weight: 600; }
+.ohlcRow { font-size: 11px; color: var(--text-3); }
+.chartBox { flex: 1; min-height: 230px; display: flex; }
+.chartBox svg { width: 100%; height: auto; }
+
+.snapList { display: flex; flex-direction: column; }
+.snapRow { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--hairline); font-size: 12.5px; }
+.snapRow:last-child { border-bottom: 0; }
+.snapRow > span { color: var(--text-2); }
+.snapRow > b { font-size: 12.5px; color: var(--text); }
+.snapBadge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: var(--pos-weak); color: var(--pos); }
+
+.posTable, .ordList { display: flex; flex-direction: column; }
+.posHead, .posRow { display: grid; grid-template-columns: 1.4fr 0.7fr 1fr 1fr 1fr 1fr 0.6fr; gap: 8px; align-items: center; }
+.posHead { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-5); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.posRow { font-size: 12.5px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.posRow:last-child { border-bottom: 0; }
+.posSym { display: flex; flex-direction: column; line-height: 1.25; }
+.posSym small { font-size: 9px; color: var(--text-4); }
+.sideTag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 5px; }
+.sideTag.pos { background: var(--pos-weak); color: var(--pos); }
+.sideTag.neg { background: var(--neg-weak); color: var(--neg); }
+
+.ordSwitch { gap: 14px; }
+.ordSwitch::before { display: none; }
+.ordSwitch button { border: 0; background: transparent; font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-4); cursor: pointer; padding: 0; }
+.ordSwitch button.active { color: var(--accent-ink); }
+.ordRow { display: grid; grid-template-columns: 1.4fr 0.5fr 1fr 1fr 0.9fr; gap: 6px; align-items: center; font-size: 11.5px; padding: 8px 0; border-bottom: 1px solid var(--hairline); color: var(--text); }
+.ordRow:last-child { border-bottom: 0; }
+.ordTime { color: var(--text-4); text-align: right; }
+.ordType { color: var(--text-2); }
+
+.walletGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.walletGrid > div { background: var(--surface-white); border: 1px solid var(--hairline); border-radius: 7px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; }
+.walletGrid span { font-size: 10px; color: var(--text-3); }
+.walletGrid b { font-size: 14px; color: var(--text); }
+
+.donutCard .donutWrap { flex: 1; display: grid; place-items: center; }
+.liqLabel { font-size: 12px; color: var(--text-2); }
+.liqBar { height: 8px; border-radius: 5px; background: linear-gradient(90deg, var(--pos), var(--warn), var(--neg)); position: relative; margin: 6px 0; }
+.liqMark { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--text); border-radius: 2px; transform: translateX(-50%); }
+.liqLegend { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; }
+
+.exSyncList { display: flex; flex-direction: column; gap: 9px; }
+.exSyncRow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); }
+.exDot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.exDot.on { background: var(--pos); } .exDot.off { background: var(--text-4); }
+.exSyncRow small { margin-left: auto; color: var(--text-3); }
+
+@media (max-width: 1120px) {
+  .metricRow { grid-template-columns: repeat(2, 1fr); }
+  .termGrid.r2, .termGrid.r3 { grid-template-columns: 1fr; }
+  .termGrid.r4 { grid-template-columns: 1fr 1fr; }
+}

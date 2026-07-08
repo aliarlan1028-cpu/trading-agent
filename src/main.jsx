@@ -248,8 +248,7 @@ function App() {
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   function navigate(next) {
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
-    if (next === "marketAccount" || next === "market") { setCockpitTab("overview"); setActive("cockpit"); return; }
-    if (next === "review") { setCockpitTab("review"); setActive("cockpit"); return; }
+    if (next === "marketAccount" || next === "market") { setActive("cockpit"); return; }
     // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
     if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
     if (next === "systemSettings") setActiveSettingsTab("config");
@@ -258,7 +257,8 @@ function App() {
   const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
-    if (active === "cockpit") return <CockpitPage data={data} action={action} ui={ui} cockpitTab={cockpitTab} setCockpitTab={setCockpitTab} />;
+    if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
+    if (active === "review") return <ReviewPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
