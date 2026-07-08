@@ -4327,43 +4327,35 @@ button.danger:disabled,
 }
 
 /* AI 交易员：账户同步状态卡（对话视图顶部） */
-.acctSyncCard {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.3fr) 1fr 1fr auto;
-  gap: var(--sp-4);
+/* 账户同步：单行细条 */
+.acctSyncBar {
+  display: flex;
   align-items: center;
+  gap: 10px;
   margin: var(--sp-2) var(--sp-1) 0;
-  padding: 10px 16px;
+  padding: 8px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: var(--sh-1);
+  font-size: 12.5px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.acctSyncCard.unconfigured { background: var(--surface); }
-.asMain { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.asIcon { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: #f6eee4; color: var(--accent, #c2803a); }
-.asIcon.ok { background: var(--pos-weak); color: var(--pos); }
-.asLabel { font-size: 11px; color: var(--text-3); }
-.asTitle { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 750; margin: 1px 0; }
-.asMeta { font-size: 11px; color: var(--text-3); overflow-wrap: anywhere; }
-.asBalance { display: flex; align-items: baseline; gap: 8px; border-left: 1px solid var(--border); padding-left: var(--sp-4); flex-wrap: wrap; }
-.asBalance > span { font-size: 11px; color: var(--text-3); flex-basis: 100%; }
-.asBalance > strong { font-size: 18px; font-weight: 850; font-variant-numeric: tabular-nums; }
-.asBalance > b { font-size: 12.5px; }
-.asBalance > b.positive { color: var(--pos); }
-.asBalance > b.negative { color: var(--neg); }
-.asFields { display: grid; gap: 6px; }
-.asFields > div { display: flex; align-items: baseline; gap: 6px; }
-.asFields span { font-size: 11px; color: var(--text-3); }
-.asFields b { font-size: 12.5px; font-weight: 700; }
-.asFields b.positive { color: var(--pos); }
-.asActions { display: inline-flex; gap: 6px; }
-.asActions button { white-space: nowrap; min-height: 32px; padding: 0 11px; font-size: 12.5px; }
-@media (max-width: 1100px) {
-  .acctSyncCard { grid-template-columns: 1fr 1fr; }
-  .asBalance { border-left: 0; padding-left: 0; }
-  .asActions { flex-wrap: wrap; }
-}
+.acctSyncBar::-webkit-scrollbar { display: none; }
+.asbIcon { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #f6eee4; color: var(--accent); }
+.asbIcon.ok { background: var(--pos-weak); color: var(--pos); }
+.asbStatus { font-weight: 750; font-size: 13.5px; white-space: nowrap; }
+.asbSep { flex: none; width: 1px; height: 18px; background: var(--border); }
+.asbItem { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.asbItem > i { font-style: normal; color: var(--text-3); font-size: 11.5px; }
+.asbItem > b { font-weight: 750; font-variant-numeric: tabular-nums; }
+.asbItem > b.positive { color: var(--pos); }
+.asbItem > em { font-style: normal; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.asbItem > em.positive { color: var(--pos); }
+.asbItem > em.negative { color: var(--neg); }
+.asbActions { margin-left: auto; display: inline-flex; gap: 6px; flex: none; }
+.asbActions button { white-space: nowrap; min-height: 30px; padding: 0 11px; font-size: 12px; }
 
 /* 页头右侧：AI 交易员总控（能否交易 + 自主推进开关 + 解除熔断） */
 .chatAgentControls {

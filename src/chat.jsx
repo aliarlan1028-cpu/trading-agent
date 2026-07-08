@@ -330,30 +330,20 @@ function AccountSyncCard({ data, action, ui }) {
   const todayPnl = Number(data.portfolio?.todayPnl || 0);
   const todayPct = data.portfolio?.todayPnlPct;
   return (
-    <div className={`acctSyncCard ${hasData ? "" : "unconfigured"}`}>
-      <div className="asMain">
-        <div className={`asIcon ${hasData ? "ok" : ""}`}><RefreshCw size={22} /></div>
-        <div>
-          <div className="asLabel">当前账户同步状态</div>
-          <div className="asTitle">{hasData ? "已同步" : configured ? "待同步" : "未连接交易所"}{hasData && <StatusBadge tone="ok">最新</StatusBadge>}</div>
-          <div className="asMeta">{hasData ? `最后同步：${formatDateTime(lastSync, "未记录")}` : "在系统设置中连接 OKX 只读 API 后同步真实资产"}</div>
-        </div>
-      </div>
-      <div className="asBalance">
-        <span>账户余额（USDT）</span>
-        <strong>{hasData ? displayMoney(balance) : "未同步"}</strong>
-        {hasData && <b className={todayPnl >= 0 ? "positive" : "negative"}>{todayPnl >= 0 ? "+" : ""}{displayMoney(todayPnl, 2, "0.00")}{todayPct !== null && todayPct !== undefined ? `（${displayPct(todayPct)}）` : ""}</b>}
-      </div>
-      <div className="asFields">
-        <div><span>同步来源</span><b>{configured ? `${readAccount.exchange} API` : "—"}</b></div>
-        <div><span>自动同步</span><b className={autoSync ? "positive" : ""}>{autoSync ? "已开启（每分钟）" : "未开启"}</b></div>
-      </div>
-      <div className="asActions">
+    <div className={`acctSyncBar ${hasData ? "" : "unconfigured"}`}>
+      <div className={`asbIcon ${hasData ? "ok" : ""}`} title={hasData ? `最后同步：${formatDateTime(lastSync, "未记录")}` : "未连接交易所"}><RefreshCw size={15} /></div>
+      <span className="asbStatus">{hasData ? "已同步" : configured ? "待同步" : "未连接"}</span>
+      {hasData && <StatusBadge tone="ok">最新</StatusBadge>}
+      <span className="asbSep" />
+      <span className="asbItem"><i>余额</i><b>{hasData ? `${displayMoney(balance)} USDT` : "未同步"}</b>{hasData && <em className={todayPnl >= 0 ? "positive" : "negative"}>{todayPnl >= 0 ? "+" : ""}{displayMoney(todayPnl, 2, "0.00")}{todayPct !== null && todayPct !== undefined ? `（${displayPct(todayPct)}）` : ""}</em>}</span>
+      <span className="asbItem"><i>来源</i><b>{configured ? `${readAccount.exchange} API` : "—"}</b></span>
+      <span className="asbItem"><i>自动同步</i><b className={autoSync ? "positive" : ""}>{autoSync ? "每分钟" : "未开启"}</b></span>
+      <div className="asbActions">
         {configured
-          ? <button className="primaryButton" onClick={() => action(`/api/exchange/${readAccount.id}/sync-readonly`, {})}>立即同步账户</button>
-          : <button className="primaryButton" onClick={() => ui.setActive("systemSettings")}>连接交易所 API</button>}
-        <button className="secondaryButton" onClick={() => ui.setActive("systemSettings")}>设置自动同步</button>
-        <button className="secondaryButton" onClick={() => ui.setActive("auditSystem")}>查看同步日志</button>
+          ? <button className="primaryButton" onClick={() => action(`/api/exchange/${readAccount.id}/sync-readonly`, {})}>立即同步</button>
+          : <button className="primaryButton" onClick={() => ui.setActive("systemSettings")}>连接 API</button>}
+        <button className="secondaryButton" title="设置自动同步" onClick={() => ui.setActive("systemSettings")}>自动同步</button>
+        <button className="secondaryButton" title="查看同步日志" onClick={() => ui.setActive("auditSystem")}>日志</button>
       </div>
     </div>
   );
