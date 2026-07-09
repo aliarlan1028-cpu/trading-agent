@@ -3,24 +3,31 @@ import {
   AlertTriangle,
   ArrowUp,
   BarChart3,
+  Bot,
   BrainCircuit,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
+  Eye,
   History,
+  Hourglass,
   MessageSquare,
   Radar,
   RefreshCw,
+  Rocket,
   Trash2,
   KeyRound,
   ListChecks,
   PlugZap,
   Plus,
   Shield,
+  ShieldCheck,
   Target,
   TrendingUp,
   Wrench,
-  XCircle
+  XCircle,
+  Zap
 } from "lucide-react";
 import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
@@ -348,110 +355,129 @@ function AccountSyncCard({ data, action, ui }) {
   );
 }
 
-// AI 交易员右栏：把"该我关注/该我处理"的东西集中在这里，其余交给 AI。
+// AI 交易员右栏：严格照设计稿（当前 Agent 状态 / 授权与风控墙 / 运行轨迹 / KPI），接真实数据。
 function AgentRail({ data, action, ui, send }) {
   const system = data.system || {};
   const agentStatus = data.agentStatus || {};
   const riskWall = agentStatus.riskWall || {};
   const portfolio = data.portfolio || {};
-  const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status));
-  const awaitingPlans = (data.tradePlans || []).filter((p) => p.status === "awaiting_approval").slice(0, 3);
-  const pendingActions = (data.pendingActions || []).slice(0, 3);
-  const pendingMandates = (data.mandates || []).filter((m) => m.status === "pending_confirmation").slice(0, 2);
-  const openIncidents = (data.riskIncidents || []).filter((i) => i.status === "open");
-  const inboxCount = awaitingPlans.length + pendingActions.length + pendingMandates.length + (openIncidents.length ? 1 : 0);
-  const todayPnl = Number(portfolio.todayPnl || 0);
-  const budget = system.remainingDailyLossUsdt;
+  const perf = data.performance || {};
+  const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status)) || {};
+  const hasMandate = Boolean(mandate.id);
+  const plan = (data.tradePlans || []).find((p) => ["awaiting_approval", "approved", "executing"].includes(p.status));
   const positions = data.positions || [];
-  const orders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled_closed"].includes(String(o.status || "").toLowerCase()));
-  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
-  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
-  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
-  const stateLabel = agentStatus.stateLabel || humanize(agentStatus.state, "观察中");
   const gm = data.marketRegime?.global || {};
   const sm = data.marketRegime?.smartMoney || {};
+  const btc = (data.markets || []).find((m) => /BTC/i.test(m.symbol || ""));
+  const latestRun = (data.agentRuns || [])[0] || {};
+  const todayPnl = Number(portfolio.todayPnl || 0);
+  const monthPnl = Number(perf.totalPnlUsdt ?? portfolio.weekPnl ?? 0);
+  const autoOn = system.autonomyEnabled === true && !system.killSwitch;
+  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
+  const ratio = sm.topTraderLongShortRatio;
+  const judge = system.killSwitch ? "已熔断" : ratio == null ? "观察中" : ratio >= 1.05 ? "多头趋势" : ratio <= 0.95 ? "空头趋势" : "多空平衡";
+  const judgePos = judge === "多头趋势";
+  const nextStep = agentStatus.nextAction || (canOpen ? "等待信号" : "观察中");
+  const remaining = system.remainingDailyLossUsdt;
+  const cap = mandate.maxDailyLossPct && portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(portfolio.totalEquityUsdt) : null;
+  const budgetPct = cap && remaining != null ? Math.max(0, Math.min(100, (Number(remaining) / cap) * 100)) : null;
+  const marginRate = portfolio.totalEquityUsdt ? (Math.max(0, Number(portfolio.totalEquityUsdt) - Number(portfolio.availableMarginUsdt ?? portfolio.totalEquityUsdt)) / Math.max(1, Number(portfolio.totalEquityUsdt))) * 100 : null;
+
+  const mandateRows = hasMandate ? [
+    { k: "授权范围", v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
+    { k: "交易所", v: (mandate.exchanges || []).join("·") || "—" },
+    { k: "白名单", v: `${(mandate.allowedSymbols || []).length} 币` },
+    { k: "最大杠杆", v: `${mandate.max_leverage || 1}x` },
+    { k: "单笔风险", v: `${mandate.maxSingleTradeRiskPct ?? "-"}%` },
+    { k: "审批阈值", v: `≥${displayMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` }
+  ] : [
+    { k: "授权范围", v: "未授权" }, { k: "交易所", v: "—" }, { k: "白名单", v: "—" },
+    { k: "最大杠杆", v: "—" }, { k: "单笔风险", v: "—" }, { k: "审批阈值", v: "—" }
+  ];
+
+  const trajSteps = [
+    { Icon: Eye, t: "观察市场" }, { Icon: BrainCircuit, t: "分析研判" }, { Icon: ClipboardList, t: "生成计划" },
+    { Icon: Shield, t: "风险检查" }, { Icon: Hourglass, t: "等待执行" }
+  ];
+  const trajTime = latestRun.createdAt ? formatTime(latestRun.createdAt) : "—";
+
+  const kpis = [
+    { k: "总资产", v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: Number(portfolio.todayPnl || 0) >= 0 },
+    { k: "持仓风险", v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} 仓`, plain: true },
+    { k: "今日盈亏", v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: todayPnl >= 0, colorVal: true },
+    { k: "本月盈亏", v: `${monthPnl >= 0 ? "+" : ""}${displayMoney(monthPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "", pos: monthPnl >= 0, colorVal: true },
+    { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "", pos: Number(btc?.changePct || 0) >= 0 }
+  ];
 
   async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
-  async function releaseKill() { if (window.confirm("确认解除熔断？")) await action("/api/risk/kill-switch", { enabled: false, reason: "" }); }
+  async function fireKill() { if (window.confirm(system.killSwitch ? "确认解除熔断？" : "确认一键熔断？将立即阻断所有新开仓。")) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
 
   return (
-    <aside className="agentRail">
-      {/* ① 需要你处理 */}
-      <div className="arCard">
-        <div className="arHead"><ListChecks size={14} /> 需要你处理{inboxCount ? <span className="arBadge">{inboxCount}</span> : null}</div>
-        {inboxCount === 0 && <div className="arEmpty"><CheckCircle2 size={14} /> 暂无待办 · 系统运行正常</div>}
-        {awaitingPlans.map((p) => (
-          <div className="arItem" key={p.id}>
-            <div className="arItemTop"><b>{p.direction === "short" ? "做空" : "做多"} {p.symbol}</b><small>待批准交易计划</small></div>
-            <div className="arItemActions">
-              <button className="arBtn primary" onClick={() => action(`/api/trade-plans/${p.id}/approve`, {})}>批准</button>
-              <button className="arBtn" onClick={() => action(`/api/trade-plans/${p.id}/cancel`, { reason: "user_rejected" })}>驳回</button>
-              <button className="arBtn ai" onClick={() => send(`帮我评估待批准的交易计划 ${p.symbol}（${p.direction === "short" ? "做空" : "做多"}），该不该批准？给结论和理由。`)}>🤖 交给AI</button>
-            </div>
-          </div>
-        ))}
-        {pendingActions.map((pa) => (
-          <div className="arItem" key={pa.id}>
-            <div className="arItemTop"><b>{pa.title}</b><small>{pa.detail}</small></div>
-            <div className="arItemActions">
-              <button className="arBtn primary" onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认</button>
-              <button className="arBtn" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
-            </div>
-          </div>
-        ))}
-        {pendingMandates.map((m) => (
-          <div className="arItem" key={m.id}>
-            <div className="arItemTop"><b>激活授权委托</b><small>{m.goal || m.name || "确认后 AI 才能提出可执行计划"}</small></div>
-            <div className="arItemActions"><button className="arBtn primary" onClick={() => action(`/api/mandates/${m.id}/activate`, {})}>确认激活</button></div>
-          </div>
-        ))}
-        {openIncidents.length > 0 && (
-          <div className="arItem">
-            <div className="arItemTop"><b>{openIncidents.length} 个未处理风险事件</b><small>已分析确认无碍后可标记已处理</small></div>
-            <div className="arItemActions">
-              <button className="arBtn" onClick={() => ui.setActive("auditSystem")}>去查看 <ChevronRight size={12} /></button>
-              <button className="arBtn" onClick={() => { if (window.confirm(`确认把 ${openIncidents.length} 个事件全部标记为已处理？`)) action("/api/risk/incidents/close-all", {}); }}>全部标记已处理</button>
-              <button className="arBtn ai" onClick={() => send("逐条读取并分析当前未处理的风险事件（用 list_risk_incidents 工具），对确认无碍的用 resolve_risk_incidents 标记为已处理，并向我汇报每条的处理结论。")}>🤖 交给AI</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ② 账户与风险 */}
-      <div className="arCard">
-        <div className="arHead"><BarChart3 size={14} /> 账户与风险</div>
-        <div className="arPnl">
-          <span>今日盈亏</span>
-          <strong className={todayPnl >= 0 ? "positive" : "negative"}>{todayPnl >= 0 ? "+" : ""}{displayMoney(todayPnl, 2, "0.00")} USDT</strong>
+    <div className="agRail">
+      {/* 当前 Agent 状态 */}
+      <div className="agCard">
+        <div className="agHeadNum"><span className="agNum">2</span>当前 Agent 状态</div>
+        <div className="agMiniGrid">
+          <div className="agMini"><div className="agMiniK">目标</div><div className="agMiniV mono">{hasMandate && mandate.targetMonthlyPct ? `${mandate.targetMonthlyPct}%` : "—"}</div><div className="agMiniS">{hasMandate && mandate.maxWeeklyDrawdownPct ? `回撤${mandate.maxWeeklyDrawdownPct}%` : "按授权"}</div></div>
+          <div className="agMini"><div className="agMiniK">状态</div><div className={`agMiniV sg ${autoOn ? "pos" : ""}`}>{autoOn ? "运行中" : "已暂停"}</div><div className="agMiniS">{system.killSwitch ? "已熔断" : autoOn ? "已开启" : "待启动"}</div></div>
+          <div className="agMini"><div className="agMiniK">判断</div><div className={`agMiniV sg ${judgePos ? "pos" : ""}`}>{judge}</div><div className="agMiniS">{ratio != null ? `大户${ratio}` : "待同步"}</div></div>
+          <div className="agMini"><div className="agMiniK">下一步</div><div className="agMiniV sg">{nextStep}</div><div className="agMiniS">{canOpen ? "允许开仓" : "禁止开仓"}</div></div>
         </div>
-        <div className="arRow" title="今日还能亏多少就触发日亏上限"><span className="term">剩余日亏预算</span><b>{budget === null || budget === undefined ? "未授权" : `${displayMoney(budget)} USDT`}</b></div>
-        <div className="arRow"><span>持仓 / 在途</span><button className="arLink" onClick={() => ui.setActive("cockpit")}>{positions.length} / {orders.length} <ChevronRight size={12} /></button></div>
-      </div>
-
-      {/* ③ AI 状态与总控 */}
-      <div className="arCard">
-        <div className="arHead"><BrainCircuit size={14} /> AI 状态</div>
-        <div className="arStateRow">
-          <StatusBadge tone={statusTone(agentStatus.state || system.apiHealth)}>{stateLabel}</StatusBadge>
-          <span className={`arGate ${gateTone}`}>{gateLabel}</span>
-        </div>
-        {mandate && <div className="arMandate">做 {(mandate.allowedSymbols || []).slice(0, 3).join("·") || "—"} · {mandate.max_leverage || 1}x · 日亏≤{mandate.maxDailyLossPct || "-"}%</div>}
-        <div className="arControls">
-          <button className="arBtn" onClick={toggleAutonomy}>{system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}</button>
-          {system.killSwitch && <button className="arBtn danger" onClick={releaseKill}>解除熔断</button>}
+        <div className="agPlan">
+          <div className="agPlanHead">
+            <span className="agPlanBtc">₿</span>
+            <b className="mono">{plan?.symbol || (mandate.allowedSymbols || [])[0] || "BTC/USDT"}</b>
+            <span className="agPlanTag">{humanize(plan?.strategy || mandate.strategies?.[0] || "趋势策略")}</span>
+            <span className="agPlanRight mono">{plan ? "当前交易计划" : "暂无计划"}</span>
+          </div>
+          <div className="agPlanGrid">
+            <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
+            <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayMoney(plan.stopLoss ?? plan.stop_loss, 0, "—") : "—"}</b></div>
+            <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayMoney(t, 0)).join("/") : "—"}</b></div>
+            <div><div className="agPlanK">仓位·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
+            <div><div className="agPlanK">盈亏比</div><b className="mono">{plan?.riskReward ? `1 : ${plan.riskReward}` : "—"}</b></div>
+            <div><div className="agPlanK">置信度</div><b className="mono">{plan?.confidence ? `${plan.confidence}%` : "—"}</b></div>
+          </div>
         </div>
       </div>
 
-      {/* ④ 市场速览 */}
-      <div className="arCard">
-        <div className="arHead"><TrendingUp size={14} /> 市场速览 <button className="arRefresh" title="刷新大盘/聪明钱" onClick={() => ui.refresh?.(true)}><RefreshCw size={12} /></button></div>
-        <div className="arRow"><span className="term" title="BTC 市值占全市场比例；上升时山寨相对弱势">BTC 主导</span><b>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "—"}</b></div>
-        <div className="arRow"><span className="term" title="市场情绪：极低=极度恐惧（常是反向机会），极高=极度贪婪（注意回撤）">恐惧贪婪</span><b>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "—"}</b></div>
-        <div className="arRow"><span className="term" title="精英交易员的多空持仓比，>1 偏多、<1 偏空">大户多空</span><b className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "—"}</b></div>
-        <div className="arRow"><span className="term" title="全体/散户的多空持仓比，常作反向指标">散户多空</span><b>{sm.retailLongShortRatio ?? "—"}</b></div>
-        <button className="arAskLink" onClick={() => send("用大白话讲讲现在的大盘和聪明钱信号，对我的交易有什么提示？")}>🤖 让 AI 解读当前行情</button>
+      {/* 授权与风控墙 */}
+      <div className="agCard">
+        <div className="agHeadIcon"><ShieldCheck size={13} /> 授权与风控墙</div>
+        <div className="agWallGrid">
+          {mandateRows.map((r) => <div className="agWallRow" key={r.k}><span>{r.k}</span><b className="mono">{r.v}</b></div>)}
+        </div>
+        <div className="agBudget">
+          <div className="agBudgetTop"><span>今日亏损预算</span><span>{remaining != null ? `${displayMoney(remaining, 0)} 剩余${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : "未授权"}</span></div>
+          <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
+        </div>
+        <div className="agWallBtns">
+          <button className="agBtnGhost" onClick={toggleAutonomy}>{autoOn ? "暂停" : "恢复"}</button>
+          <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? "解除熔断" : "一键熔断"}</button>
+        </div>
       </div>
-    </aside>
+
+      {/* Agent 运行轨迹 */}
+      <div className="agCard">
+        <div className="agTrajHead"><span className="agSecLabel"><i />Agent 运行轨迹 · 最新循环</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>完整 ›</button></div>
+        <div className="agTrajGrid">
+          {trajSteps.map(({ Icon, t }) => (
+            <div className="agTrajCell" key={t}><span className="agTrajIcon"><Icon size={12} /></span><b>{t}</b><div className="agTrajTime mono">{trajTime}</div></div>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI 条 */}
+      <div className="agKpiRow">
+        {kpis.map((kp) => (
+          <div className="agKpi" key={kp.k}>
+            <div className="agKpiK">{kp.k}</div>
+            <div className={`agKpiV mono ${kp.colorVal ? (kp.pos ? "pos" : "neg") : ""}`}>{kp.v}</div>
+            <div className={`agKpiD mono ${kp.plain ? "warn" : kp.pos ? "pos" : "neg"}`}>{kp.d}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

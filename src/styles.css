@@ -8664,3 +8664,80 @@ button.danger:disabled,
 .chatMessage.agent .chatContent { background: var(--bubble-ai); }
 /* 对话为主：气泡正文用 Public Sans，字号 14 */
 .chatContent { font-family: var(--font-body); }
+
+/* ============================================================
+   Terminal「AI 交易员」右栏 —— 严格照设计稿 .dc.html
+   ============================================================ */
+.chatShell { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); gap: 10px; align-items: stretch; width: 100%; }
+.chatShell .chatPage { max-width: none; margin: 0; flex: none; min-width: 0; }
+.agRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; height: calc(100vh - 96px); overflow-y: auto; padding-bottom: 8px; }
+
+.agCard { background: #FBF9F5; border: 1px solid #E3DCCE; border-radius: 10px; padding: 11px 13px; display: flex; flex-direction: column; gap: 8px; }
+.agHeadNum { display: flex; align-items: center; gap: 6px; font: 700 10.5px "Space Grotesk"; color: #1E1B16; }
+.agNum { width: 16px; height: 16px; border-radius: 4px; background: #1E1B16; color: #fff; display: grid; place-items: center; font: 700 9px "IBM Plex Mono"; flex: none; }
+.agHeadIcon { display: flex; align-items: center; gap: 6px; font: 700 10.5px "Space Grotesk"; color: #1E1B16; }
+.agHeadIcon svg { color: #D06A22; }
+
+.agMiniGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.agMini { border: 1px solid #E3DCCE; border-radius: 7px; padding: 7px 8px; background: #fff; }
+.agMiniK { font: 600 8px "Space Grotesk"; color: #a89e8a; text-transform: uppercase; letter-spacing: 0.05em; }
+.agMiniV { margin-top: 2px; color: #1E1B16; }
+.agMiniV.mono { font: 600 13px "IBM Plex Mono"; }
+.agMiniV.sg { font: 700 11.5px "Space Grotesk"; white-space: nowrap; }
+.agMiniV.pos { color: #1F7A50; }
+.agMiniS { font-size: 8.5px; color: #8a8172; }
+
+.agPlan { border: 1px solid #E3DCCE; border-radius: 8px; padding: 9px 10px; background: #fff; }
+.agPlanHead { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.agPlanBtc { width: 16px; height: 16px; border-radius: 50%; background: #F7931A; color: #fff; display: grid; place-items: center; font: 700 8px "Space Grotesk"; flex: none; }
+.agPlanHead > b { font: 600 11px "IBM Plex Mono"; }
+.agPlanTag { padding: 1px 6px; border-radius: 4px; background: #FBEDDF; color: #C9631F; font: 700 9px "Space Grotesk"; }
+.agPlanRight { margin-left: auto; font: 500 9px "IBM Plex Mono"; color: #a89e8a; }
+.agPlanGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
+.agPlanK { font-size: 9px; color: #948B77; }
+.agPlanGrid b { font: 500 11px "IBM Plex Mono"; color: #1E1B16; }
+.agPlanGrid b.neg { color: #C43F28; }
+.agPlanGrid b.pos { color: #1F7A50; }
+
+.agWallGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+.agWallRow { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #EDE7DB; font-size: 10.5px; }
+.agWallRow span { color: #6B6455; white-space: nowrap; }
+.agWallRow b { font: 600 10.5px "IBM Plex Mono"; color: #1E1B16; white-space: nowrap; }
+.agBudget { margin-top: 2px; }
+.agBudgetTop { display: flex; justify-content: space-between; font-size: 9.5px; color: #6B6455; margin-bottom: 4px; }
+.agBudgetBar { height: 5px; border-radius: 3px; background: #EDE7DB; overflow: hidden; }
+.agBudgetBar i { display: block; height: 100%; background: linear-gradient(90deg, #E68A4E, #D06A22); }
+.agWallBtns { display: flex; gap: 6px; margin-top: 2px; }
+.agBtnGhost { flex: 1; height: 30px; border: 1px solid #E3DCCE; border-radius: 7px; background: #fff; font: 700 10.5px "Space Grotesk"; color: #544d40; cursor: pointer; }
+.agBtnKill { flex: 1; height: 30px; border: none; border-radius: 7px; background: #C43F28; color: #fff; font: 700 10.5px "Space Grotesk"; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; }
+
+.agTrajHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.agSecLabel { display: flex; align-items: center; gap: 6px; font: 700 9px "Space Grotesk"; letter-spacing: 0.08em; text-transform: uppercase; color: #8a8172; }
+.agSecLabel i { width: 4px; height: 4px; background: #D06A22; flex: none; }
+.agLink { border: 0; background: transparent; font: 600 10px "Space Grotesk"; color: #C9631F; cursor: pointer; padding: 0; }
+.agTrajGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.agTrajCell { border: 1px solid #E3DCCE; border-radius: 7px; padding: 7px 6px; background: #fff; text-align: center; }
+.agTrajIcon { width: 22px; height: 22px; border-radius: 6px; background: #F1EADF; color: #D06A22; display: grid; place-items: center; margin: 0 auto; }
+.agTrajCell b { display: block; font: 600 10px "Space Grotesk"; margin-top: 4px; color: #1E1B16; }
+.agTrajTime { font: 500 8px "IBM Plex Mono"; color: #a89e8a; margin-top: 1px; }
+
+.agKpiRow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.agKpi { background: #FBF9F5; border: 1px solid #E3DCCE; border-radius: 8px; padding: 8px 9px; }
+.agKpiK { font: 600 8px "Space Grotesk"; color: #a89e8a; text-transform: uppercase; letter-spacing: 0.04em; }
+.agKpiV { font: 600 12.5px "IBM Plex Mono"; margin-top: 2px; white-space: nowrap; color: #1E1B16; }
+.agKpiV.pos { color: #1F7A50; } .agKpiV.neg { color: #C43F28; }
+.agKpiD { font: 600 9px "IBM Plex Mono"; }
+.agKpiD.pos { color: #1F7A50; } .agKpiD.neg { color: #C43F28; } .agKpiD.warn { color: #C79A3A; }
+
+.mChatContent .agRail { display: none; }
+@media (max-width: 1080px) { .agRail { display: none; } .chatShell { grid-template-columns: 1fr; } }
+
+/* Terminal 设计：桌面固定 212px 侧栏（覆盖旧的 1320px 折叠为 96px 图标栏）。900px 以下交给移动壳。 */
+@media (min-width: 901px) and (max-width: 1320px) {
+  .appShell { grid-template-columns: 212px minmax(0, 1fr); }
+  .sidebar .brand { justify-content: flex-start; }
+  .sidebar .brand strong { display: block; }
+  .navItem { justify-content: flex-start; padding: 8px 11px; }
+  .navItem span { display: inline; }
+  .navItem .navLabelShort { display: none; }
+}
