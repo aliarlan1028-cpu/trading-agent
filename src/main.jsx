@@ -165,8 +165,13 @@ function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSett
   // 非 Owner 不能停留在"用户管理"tab。
   const tab = activeSettingsTab === "users" && !isOwner ? "config" : activeSettingsTab;
   return (
-    <div className="pageStack">
-      <PageHeader active="systemSettings" />
+    <div className="pageStack termPage settingsTermPage">
+      <div className="termHead">
+        <div className="termHeadMain">
+          <h1>系统设置 <span className="termCode">SETTINGS · CONFIG</span></h1>
+          <p>模型、交易所密钥、实盘闸门、任务调度、Agent 配置与用户管理集中在这里</p>
+        </div>
+      </div>
       <div className="settingsSubNav" role="tablist" aria-label="系统设置导航">
         <button type="button" role="tab" aria-selected={tab === "config"} className={tab === "config" ? "active" : ""} onClick={() => setActiveSettingsTab("config")}>
           <Settings size={15} /> 系统配置
