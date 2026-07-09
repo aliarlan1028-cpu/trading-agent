@@ -815,13 +815,13 @@ export function RiskLine({ label, value, progress }) {
   );
 }
 
-export function MiniChart({ title, value, sub, bars = false }) {
+export function MiniChart({ title, value, sub }) {
+  // 只展示真实指标（标题/值/说明），不画任何装饰性/占位图形，避免出现与数据无关的假图。
   return (
     <div className="miniChart">
       <h3>{title}</h3>
       <strong>{value}</strong>
       <small>{sub}</small>
-      {bars ? <div className="barChart">{[18, 25, 16, 21, 13, 8].map((h, index) => <span style={{ height: `${h * 2}px` }} key={index} />)}</div> : <MiniSparkline />}
     </div>
   );
 }

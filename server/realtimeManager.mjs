@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 import WebSocket from "ws";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+
+// ws 库不走 undici 的全局代理；若环境配了代理（如本机 Clash），WS 需显式带 agent，否则直连被重置。
+function wsOptions() {
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+  return proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : undefined;
+}
 
 const BINANCE_PUBLIC_BASE = "wss://stream.binance.com:9443/stream";
 const BINANCE_USER_BASE = "wss://stream.binance.com:9443/ws";
@@ -16,15 +23,22 @@ const runtime = {
 export function startRealtimeManager(db, saveDb, options = {}) {
   if (runtime.started && !options.force) return realtimeStatus(db);
   runtime.started = true;
-  if (process.env.REALTIME_RECONCILER_ENABLED !== "true" && !options.force) {
-    markAllStopped(db, "disabled_by_env");
-    return realtimeStatus(db);
-  }
-  connectPublicMarket(db, saveDb, "BINANCE");
+  const okxKeys = process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE;
+  const binanceKeys = process.env.BINANCE_API_KEY;
+  // 公有行情 WS：OKX 免密钥、可用，一直连；Binance 会被地区屏蔽，仅在已配置密钥（说明能连）时才连，
+  // 避免凭空产生一堆连不上的失败连接、把「WebSocket X/Y」拉成 0。
   connectPublicMarket(db, saveDb, "OKX");
-  connectPrivateUser(db, saveDb, "BINANCE");
-  connectPrivateUser(db, saveDb, "OKX");
+  if (binanceKeys) connectPublicMarket(db, saveDb, "BINANCE");
+  else removeConnection(db, "BINANCE", "public_market");
+  // 私有用户 WS：只有配了对应交易所密钥才连（否则本就 missing_credentials）。
+  if (okxKeys) connectPrivateUser(db, saveDb, "OKX"); else removeConnection(db, "OKX", "private_user");
+  if (binanceKeys) connectPrivateUser(db, saveDb, "BINANCE"); else removeConnection(db, "BINANCE", "private_user");
   return realtimeStatus(db);
+}
+
+// 去掉不适用的连接记录（未配置的交易所），避免显示成失败连接。
+function removeConnection(db, exchange, streamType) {
+  db.realtimeConnections = (db.realtimeConnections || []).filter((item) => !(item.exchange === exchange && item.streamType === streamType));
 }
 
 export function stopRealtimeManager(db, reason = "manual_stop") {
@@ -83,7 +97,7 @@ async function connectBinancePrivate(db, saveDb, connection) {
     const { listenKey } = await response.json();
     connection.url = `${BINANCE_USER_BASE}/***`;
     connection.listenKeyCreatedAt = nowIso();
-    const socket = new WebSocket(`${BINANCE_USER_BASE}/${listenKey}`);
+    const socket = new WebSocket(`${BINANCE_USER_BASE}/${listenKey}`, wsOptions());
     runtime.sockets.set(connection.id, socket);
     wireSocket(db, saveDb, connection, socket, (message) => {
       const payload = JSON.parse(message.toString());
@@ -105,7 +119,7 @@ function connectOkxPrivate(db, saveDb, connection) {
   }
   connection.status = "connecting";
   connection.url = OKX_PRIVATE_WS;
-  const socket = new WebSocket(OKX_PRIVATE_WS);
+  const socket = new WebSocket(OKX_PRIVATE_WS, wsOptions());
   runtime.sockets.set(connection.id, socket);
   socket.on("open", () => {
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -130,7 +144,7 @@ function connectBinancePublic(db, saveDb, connection) {
   const url = `${BINANCE_PUBLIC_BASE}?streams=${streams}`;
   connection.status = "connecting";
   connection.url = redactUrl(url);
-  const socket = new WebSocket(url);
+  const socket = new WebSocket(url, wsOptions());
   runtime.sockets.set(connection.id, socket);
   wireSocket(db, saveDb, connection, socket, (message) => {
     const payload = JSON.parse(message.toString());
@@ -151,7 +165,7 @@ function connectBinancePublic(db, saveDb, connection) {
 function connectOkxPublic(db, saveDb, connection) {
   connection.status = "connecting";
   connection.url = OKX_PUBLIC_WS;
-  const socket = new WebSocket(OKX_PUBLIC_WS);
+  const socket = new WebSocket(OKX_PUBLIC_WS, wsOptions());
   runtime.sockets.set(connection.id, socket);
   socket.on("open", () => {
     socket.send(JSON.stringify({

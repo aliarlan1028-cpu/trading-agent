@@ -28,7 +28,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -882,6 +882,7 @@ function MobileMarket({ data, action, ui }) {
     ["未实现盈亏", configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : "未同步", configured ? portfolio.unrealizedPnl : null]
   ];
   const chgPos = Number(market.changePct || 0) >= 0;
+  const tvInterval = { "15m": "15", "1H": "60", "4H": "240", "1D": "D" }[tf] || "60";
   const circ = 2 * Math.PI * 24;
   const dash = `${((marginRate ?? 0) / 100) * circ} ${circ}`;
   return (
@@ -897,7 +898,7 @@ function MobileMarket({ data, action, ui }) {
         <div className="mMktPrice mono">{displayPrice(market.price)}</div>
         {markets.length > 1 && <div className="mSymPills">{markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}</div>}
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
-        <div className="mKline">{market.candles?.length ? <CandleChart candles={market.candles} /> : <div className="mKlineEmpty">同步交易所后显示真实 K 线</div>}</div>
+        <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} /></div>
       </div>
       <div className="mCard">
         <div className="mCardHead"><b>持仓</b><button className="mLink" onClick={() => ui.setActive("positions")}>全部 ›</button></div>
