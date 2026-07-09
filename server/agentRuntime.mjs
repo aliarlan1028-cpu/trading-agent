@@ -81,16 +81,28 @@ export function recheckActivePlanRisk(db) {
   if (!plan) return null;
   const risk = evaluateTradePlan(db, plan);
   if (!risk.passed && plan.status !== "risk_rejected") {
-    appendAudit(db, `执行中计划风控复查失败：${risk.summary}`, plan.id, "AgentCycle", "warning");
-    appendTrace(db, "risk_check", `${plan.symbol} 复查失败`, "blocked");
-    db.riskIncidents.unshift({
-      id: id("incident"),
-      severity: "high",
-      status: "open",
-      title: `计划 ${plan.symbol} 风控复查失败：${risk.summary}`,
-      source: plan.id,
-      createdAt: nowIso()
-    });
+    // 去重：同一计划的风控复查失败只保留一条 open 事件，重复只更新时间与计数，避免每轮巡检刷屏。
+    const existing = (db.riskIncidents || []).find(
+      (item) => item.status === "open" && item.source === plan.id && String(item.title || "").includes("风控复查失败")
+    );
+    if (existing) {
+      existing.count = (existing.count || 1) + 1;
+      existing.lastSeenAt = nowIso();
+      existing.title = `计划 ${plan.symbol} 风控复查失败：${risk.summary}`;
+    } else {
+      appendAudit(db, `执行中计划风控复查失败：${risk.summary}`, plan.id, "AgentCycle", "warning");
+      appendTrace(db, "risk_check", `${plan.symbol} 复查失败`, "blocked");
+      db.riskIncidents.unshift({
+        id: id("incident"),
+        severity: "high",
+        status: "open",
+        title: `计划 ${plan.symbol} 风控复查失败：${risk.summary}`,
+        source: plan.id,
+        count: 1,
+        createdAt: nowIso(),
+        lastSeenAt: nowIso()
+      });
+    }
   }
   return risk;
 }

@@ -56,6 +56,23 @@ export const pageCopy = {
 export function formatMoney(value, digits = 2) {
   return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
+// 价格按量级自适应精度：BTC 用 2 位、SUI(0.7x) 用 4 位、meme 币(0.00001x) 用更多位。
+export function priceDigits(value) {
+  const a = Math.abs(Number(value) || 0);
+  if (a === 0) return 2;
+  if (a >= 1000) return 2;
+  if (a >= 1) return 3;
+  if (a >= 0.1) return 4;
+  if (a >= 0.01) return 5;
+  if (a >= 0.001) return 6;
+  return 8;
+}
+export function displayPrice(value, fallback = "—") {
+  if (value === undefined || value === null || value === "") return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return number.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: priceDigits(number) });
+}
 
 export function displayMoney(value, digits = 2, fallback = "未同步") {
   if (value === undefined || value === null || value === "") return fallback;

@@ -29,7 +29,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -472,8 +472,8 @@ function AgentRail({ data, action, ui, send }) {
           </div>
           <div className="agPlanGrid">
             <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
-            <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayMoney(plan.stopLoss ?? plan.stop_loss, 0, "—") : "—"}</b></div>
-            <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayMoney(t, 0)).join("/") : "—"}</b></div>
+            <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>
+            <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayPrice(t)).join(" / ") : "—"}</b></div>
             <div><div className="agPlanK">仓位·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
             <div><div className="agPlanK">盈亏比</div><b className="mono">{plan?.riskReward ? `1 : ${plan.riskReward}` : "—"}</b></div>
             <div><div className="agPlanK">置信度</div><b className="mono">{plan?.confidence ? `${plan.confidence}%` : "—"}</b></div>

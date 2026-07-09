@@ -45,7 +45,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -195,17 +195,17 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const metrics = [
     { label: "总资产 USDT", value: displayMoney(data.portfolio.totalEquityUsdt), sub: latestSnapshot ? `快照 ${formatTime(latestSnapshot.createdAt)}` : "同步后显示" },
     { label: "可用保证金", value: displayMoney(availableMargin), sub: marginRate === null ? "—" : `可用率 ${formatMoney(100 - marginRate, 1)}%` },
-    { label: "今日盈亏", value: `${Number(data.portfolio.todayPnl || 0) >= 0 ? "+" : ""}${displayMoney(data.portfolio.todayPnl, 2, "—")}`, sub: configured ? displayPct(data.portfolio.todayPnlPct) : "接入后同步", tone: Number(data.portfolio.todayPnl || 0) >= 0 ? "pos" : "neg", spark: true },
-    { label: "未实现盈亏", value: `${Number(data.portfolio.weekPnl || 0) >= 0 ? "+" : ""}${displayMoney(data.portfolio.weekPnl, 2, "—")}`, sub: configured ? displayPct(data.portfolio.weekPnlPct) : "接入后同步", tone: Number(data.portfolio.weekPnl || 0) >= 0 ? "pos" : "neg", spark: true },
+    { label: "今日盈亏", value: (configured && data.portfolio.todayPnl != null) ? `${Number(data.portfolio.todayPnl) >= 0 ? "+" : ""}${displayMoney(data.portfolio.todayPnl, 2)}` : "未同步", sub: configured ? displayPct(data.portfolio.todayPnlPct) : "接入后同步", tone: !configured || data.portfolio.todayPnl == null ? "" : (Number(data.portfolio.todayPnl) >= 0 ? "pos" : "neg") },
+    { label: "未实现盈亏", value: (configured && data.portfolio.unrealizedPnl != null) ? `${Number(data.portfolio.unrealizedPnl) >= 0 ? "+" : ""}${displayMoney(data.portfolio.unrealizedPnl, 2)}` : "未同步", sub: configured && data.portfolio.unrealizedPnl != null ? "浮动盈亏" : "接入后同步", tone: !configured || data.portfolio.unrealizedPnl == null ? "" : (Number(data.portfolio.unrealizedPnl) >= 0 ? "pos" : "neg") },
     { label: "对账状态", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "pos" : "warn", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
   ];
   const snapRows = [
-    ["最新价", displayMoney(market.price, 2, "—"), ""],
+    ["最新价", displayPrice(market.price), ""],
     ["24h 涨跌", displayPct(market.changePct), chgPos ? "pos" : "neg"],
-    ["24h 高 / 低", (ohlc.h != null && ohlc.l != null) ? `${displayMoney(ohlc.h, 2)} / ${displayMoney(ohlc.l, 2)}` : "未同步", ""],
+    ["24h 高 / 低", (market.high24h != null || ohlc.h != null) ? `${displayPrice(market.high24h ?? ohlc.h)} / ${displayPrice(market.low24h ?? ohlc.l)}` : "未同步", ""],
     ["资金费率", market.fundingRate == null ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`, Number(market.fundingRate) >= 0 ? "pos" : "neg"],
     ["未平仓 OI", market.openInterest ? formatMoney(market.openInterest, 0) : "未同步", ""],
-    ["成交量 24h", market.volume ? formatMoney(market.volume, 0) : (market.quoteVolume ? formatMoney(market.quoteVolume, 0) : "未同步"), ""],
+    ["成交量 24h", market.volume24h || (market.volume ? formatMoney(market.volume, 0) : "未同步"), ""],
     ["买盘占比", market.bookImbalancePct == null ? "未同步" : `${market.bookImbalancePct}%`, Number(market.bookImbalancePct) >= 50 ? "pos" : "neg"],
     ["市场状态", gm.interpretation ? "多头趋势" : (market.regime || "观察"), "badge"]
   ];
@@ -288,7 +288,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             </div>
           </div>
           <div className="priceHead">
-            <b className="mono">{displayMoney(market.price, 2, "—")}</b>
+            <b className="mono">{displayPrice(market.price)}</b>
             <span className={`priceChg ${chgPos ? "pos" : "neg"} mono`}>{chgPos ? "▲" : "▼"} {displayPct(market.changePct)}</span>
             <span className="ohlcRow mono">{activeSymbol}</span>
           </div>
@@ -1469,7 +1469,7 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
           <MiniChart title="告警数量" value={String(incidents.length)} sub="风险事件 + 外部告警" />
           <div className="incidentPanel">
             <h3>近期告警与事件</h3>
-            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{item.title || item.message || item.action || item.id}</span><small>{formatTime(item.createdAt)}</small>{item.status === "open" && String(item.id).startsWith("incident") && <button className="linkCell" title="标记为已处理" onClick={() => action(`/api/risk/incidents/${item.id}/close`, {})}>标记已处理</button>}</div>)}
+            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{item.title || item.message || item.action || item.id}{item.count > 1 ? ` ×${item.count}` : ""}</span><small>{formatTime(item.lastSeenAt || item.createdAt)}</small>{item.status === "open" && String(item.id).startsWith("incident") && <button className="linkCell" title="标记为已处理" onClick={() => action(`/api/risk/incidents/${item.id}/close`, {})}>标记已处理</button>}</div>)}
             {!incidents.length && <div className="emptyPanel">暂无真实告警。</div>}
           </div>
         </div>

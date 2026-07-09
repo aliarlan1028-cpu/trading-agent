@@ -9303,3 +9303,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .wlOption span { font: 600 12.5px var(--font-mono); color: #1e1b16; }
 .wlOption small { font-size: 10.5px; color: var(--text-4); }
 .wlEmpty { padding: 16px; text-align: center; font-size: 12px; color: var(--text-3); }
+
+/* 系统可观测性：告警列表限高内部滚动，避免整页被撑长 */
+.observabilityGrid .incidentPanel { max-height: 360px; overflow-y: auto; }
