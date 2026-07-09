@@ -194,12 +194,16 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const openOrders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled", "filled_closed", "rejected"].includes(String(o.status || "").toLowerCase()));
   const recentFills = (data.fills || []).slice(0, 6);
   const walletVals = [
-    ["钱包余额", displayMoney(data.portfolio.totalEquityUsdt)],
-    ["可用保证金", displayMoney(availableMargin)],
-    ["已用保证金", displayMoney(usedMargin)],
-    ["未实现盈亏", displayMoney(data.portfolio.weekPnl, 2, "—")]
+    ["总资产", displayMoney(data.portfolio.totalEquityUsdt)],
+    ["可用", displayMoney(availableMargin)],
+    ["占用", displayMoney(usedMargin)],
+    ["冻结", displayMoney(data.portfolio.frozenMarginUsdt ?? 0, 2, "0.00")]
   ];
   const usagePct = marginRate === null ? 0 : Math.min(100, Math.max(0, marginRate));
+  const marginTone = usagePct >= 80 ? "neg" : usagePct >= 50 ? "warn" : "pos";
+  const marginToneLabel = usagePct >= 80 ? "偏高" : usagePct >= 50 ? "中等" : "健康";
+  const donutDash = 2 * Math.PI * 31;
+  const donutOffset = donutDash * (1 - usagePct / 100);
 
   return (
     <div className="pageStack termPage marketPage">
@@ -318,30 +322,36 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
 
       {/* Row 4 — 账户余额 / 保证金率 / 强平安全 / 交易所同步 */}
       <div className="termGrid r4">
-        <div className="termCard">
-          <div className="secLabel">账户余额</div>
-          <div className="walletGrid">
-            {walletVals.map(([k, v]) => <div key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+        <div className="termCard balCard">
+          <div className="balLabel">账户余额 USDT</div>
+          <div className="balGrid">
+            {walletVals.map(([k, v]) => <div key={k}><div className="balK mono">{k}</div><b className="mono">{v}</b></div>)}
           </div>
         </div>
         <div className="termCard donutCard">
-          <div className="secLabel">保证金率</div>
-          <div className="donutWrap"><SemiGauge value={usagePct} max={100} unit="%" color="#d06a22" size={116} /></div>
+          <svg viewBox="0 0 80 80" className="donutSvg">
+            <circle cx="40" cy="40" r="31" fill="none" stroke="#EDE7DB" strokeWidth="8" />
+            <circle cx="40" cy="40" r="31" fill="none" stroke="#D06A22" strokeWidth="8" strokeLinecap="round" strokeDasharray={donutDash} strokeDashoffset={donutOffset} transform="rotate(-90 40 40)" />
+          </svg>
+          <div>
+            <div className="balLabel">保证金率</div>
+            <b className="donutVal mono">{marginRate === null ? "—" : `${formatMoney(usagePct, 1)}%`}</b>
+            <div className={`donutRisk ${marginTone}`}>风险 {marginToneLabel}</div>
+          </div>
         </div>
         <div className="termCard">
-          <div className="secLabel">强平安全</div>
-          <div className="liqLabel mono">占用保证金 {marginRate === null ? "—" : `${formatMoney(marginRate, 1)}%`}</div>
-          <div className="liqBar"><span className="liqMark" style={{ left: `${usagePct}%` }} /></div>
-          <div className="liqLegend"><span className="pos">安全</span><span className="warn">警戒</span><span className="neg">强平</span></div>
+          <div className="balLabel">强平安全</div>
+          <div className="liqTop"><span>距强平</span><b className="mono">{marginRate === null ? "—" : `${formatMoney(100 - usagePct, 1)}%`}</b></div>
+          <div className="liqBar2"><span className="liqMark2" style={{ left: `${usagePct}%` }} /></div>
+          <div className="liqLegend2 mono"><span>SAFE</span><span>WARN</span><span>LIQ</span></div>
         </div>
         <div className="termCard">
-          <div className="secLabel">交易所同步</div>
+          <div className="balLabel">交易所同步</div>
           <div className="exSyncList">
             {(data.exchangeAccounts || []).map((a) => (
-              <div className="exSyncRow" key={a.id}>
-                <span className={`exDot ${a.readEnabled ? "on" : "off"}`} />
-                <b>{a.exchange}</b>
-                <small className="mono">{a.readEnabled ? "synced" : "未配置"}</small>
+              <div className="exSyncRow2" key={a.id}>
+                <span>{a.exchange}</span>
+                <span className={`exSyncState ${a.readEnabled ? "on" : "off"} mono`}><i />{a.readEnabled ? "synced" : "未配置"}</span>
               </div>
             ))}
             {!(data.exchangeAccounts || []).length && <div className="emptyPanel">未接入交易所</div>}

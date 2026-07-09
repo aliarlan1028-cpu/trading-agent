@@ -8784,3 +8784,27 @@ button.danger:disabled,
 .agSend { width: 36px; height: 36px; border: none; border-radius: 9px; background: #1E1B16; color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
 .agSend:disabled { opacity: 0.45; cursor: default; }
 .agChat .pendingActionsDock { margin: 6px 0 0; }
+
+/* 市场页 Row4 —— 严格照设计稿 .dc.html */
+.marketPage .termCard { border-radius: 11px; padding: 13px 15px; }
+.balLabel { font: 700 10px "Space Grotesk"; letter-spacing: 0.1em; text-transform: uppercase; color: #8a8172; margin-bottom: 10px; }
+.balGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.balK { font: 500 10.5px "IBM Plex Mono"; color: #948B77; }
+.balGrid b { font: 600 16px "IBM Plex Mono"; color: #1E1B16; }
+.donutCard { flex-direction: row !important; align-items: center; gap: 14px; }
+.donutSvg { width: 66px; height: 66px; flex: none; }
+.donutCard .balLabel { margin-bottom: 0; }
+.donutVal { display: block; font: 600 24px "IBM Plex Mono"; color: #1E1B16; margin: 2px 0; }
+.donutRisk { font: 600 11px "Space Grotesk"; }
+.donutRisk.warn { color: #C79A3A; } .donutRisk.neg { color: #C43F28; } .donutRisk.pos { color: #1F7A50; }
+.liqTop { display: flex; align-items: baseline; gap: 7px; margin: 5px 0 11px; }
+.liqTop span { font-size: 11px; color: #6B6455; }
+.liqTop b { font: 600 22px "IBM Plex Mono"; color: #1E1B16; }
+.liqBar2 { height: 6px; border-radius: 3px; background: linear-gradient(90deg, #1F7A50, #C79A3A 66%, #C43F28); position: relative; }
+.liqMark2 { position: absolute; top: -3px; width: 2.5px; height: 12px; background: #1E1B16; transform: translateX(-50%); }
+.liqLegend2 { display: flex; justify-content: space-between; font: 500 9.5px "IBM Plex Mono"; color: #b3a992; margin-top: 5px; }
+.exSyncRow2 { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #EDE7DB; font: 600 12.5px "Space Grotesk"; color: #1E1B16; }
+.exSyncRow2:last-child { border-bottom: 0; }
+.exSyncState { display: inline-flex; align-items: center; gap: 6px; font: 500 11px "IBM Plex Mono"; color: #1F7A50; }
+.exSyncState i { width: 6px; height: 6px; border-radius: 50%; background: #1F7A50; }
+.exSyncState.off { color: #a89e8a; } .exSyncState.off i { background: #a89e8a; }
