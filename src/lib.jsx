@@ -711,13 +711,16 @@ export function CandleChart({ candles = [] }) {
 // capacitor:// 源下会被 TradingView 拒绝，故改用其开源库）。导出名保持 TradingViewChart，调用方不变。
 const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
 const KLINE_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
-// K 线图：TradingView 官方开源库 lightweight-charts + 真实 OKX K 线。
-// livePrice（来自实时 SSE 行情）会逐 tick 更新当前这根蜡烛的收/高/低，并在周期切换时自动开新蜡烛，
-// 让图上的价格与标题实时一致；另每 20s 拉一次真实 K 线纠正已收线的 OHLC。导出名保持 TradingViewChart。
+const OKX_BAR = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
+// K 线图：lightweight-charts + 【直连 OKX 公有 WebSocket 的 candle 频道】。
+// 图表价格不再经我们后端中转（少一跳、少延迟），而是客户端直接订阅 OKX candle{bar}，
+// 拿到的就是 OKX 正在形成的这根蜡烛的实时 OHLC——与 OKX 自家图表同源同速。
+// 若客户端直连 OKX 被网络限制，退回后端 SSE 实时价（onLivePrice）驱动。导出名保持 TradingViewChart。
 export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null }) {
   const holder = useRef(null);
   const seriesRef = useRef(null);
   const lastBarRef = useRef(null);
+  const lastOkxRef = useRef(0);
   const [status, setStatus] = useState("loading");
   const tf = KLINE_TF[interval] || "1h";
   const barSeconds = KLINE_SECONDS[tf] || 3600;
@@ -725,10 +728,16 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
   useEffect(() => {
     let disposed = false;
     let chart = null;
+    let ws = null;
+    let pingTimer = null;
+    let reconnectTimer = null;
     let refetchTimer = null;
     setStatus("loading");
     seriesRef.current = null;
     lastBarRef.current = null;
+    const okxBar = OKX_BAR[tf] || "1H";
+    const instId = `${String(symbol).replace("/", "-").toUpperCase()}-SWAP`;
+
     const fetchRows = async () => {
       try {
         const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=200`));
@@ -740,6 +749,40 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
           .sort((a, b) => a.time - b.time);
       } catch { return []; }
     };
+    const applyOkxCandle = (arr) => {
+      const series = seriesRef.current;
+      if (!series || !arr) return;
+      const time = Math.floor(Number(arr[0]) / 1000);
+      const bar = { time, open: Number(arr[1]), high: Number(arr[2]), low: Number(arr[3]), close: Number(arr[4]) };
+      if (!Number.isFinite(time) || !Number.isFinite(bar.close)) return;
+      const last = lastBarRef.current;
+      if (last && time < last.time) return; // 防回退
+      lastOkxRef.current = Date.now();
+      try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
+    };
+    const scheduleReconnect = () => {
+      if (reconnectTimer || disposed) return;
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connectOkx(); }, 3000);
+    };
+    function connectOkx() {
+      if (disposed) return;
+      try { ws = new WebSocket("wss://ws.okx.com:8443/ws/v5/public"); } catch { scheduleReconnect(); return; }
+      ws.onopen = () => {
+        try { ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: `candle${okxBar}`, instId }] })); } catch { /* noop */ }
+        pingTimer = setInterval(() => { try { ws.send("ping"); } catch { /* noop */ } }, 25000);
+      };
+      ws.onmessage = (event) => {
+        const text = typeof event.data === "string" ? event.data : "";
+        if (text === "pong" || !text) return;
+        let msg; try { msg = JSON.parse(text); } catch { return; }
+        if (msg.event) return; // 订阅确认/错误回执
+        const d = msg.data && msg.data[0];
+        if (d) applyOkxCandle(d);
+      };
+      ws.onclose = () => { if (pingTimer) clearInterval(pingTimer); pingTimer = null; if (!disposed) scheduleReconnect(); };
+      ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+    }
+
     (async () => {
       const rows = await fetchRows();
       if (disposed || !holder.current) return;
@@ -763,29 +806,35 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       chart.timeScale().fitContent();
       seriesRef.current = series;
       lastBarRef.current = rows[rows.length - 1];
-      // 定期拉真实 K 线纠正已收线蜡烛（保留当前 live 蜡烛不回退）。
+      connectOkx(); // 直连 OKX 实时 candle
+      // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
       refetchTimer = setInterval(async () => {
         const fresh = await fetchRows();
         if (disposed || !seriesRef.current || !fresh.length) return;
         const live = lastBarRef.current;
-        // 若最新一根真实蜡烛比当前 live 蜡烛更新（周期已滚动），整体重置；否则只补历史、保留 live 蜡烛。
         if (live && fresh[fresh.length - 1].time <= live.time) {
-          const merged = fresh.filter((b) => b.time < live.time).concat([live]);
-          seriesRef.current.setData(merged);
+          seriesRef.current.setData(fresh.filter((b) => b.time < live.time).concat([live]));
         } else {
           seriesRef.current.setData(fresh);
           lastBarRef.current = fresh[fresh.length - 1];
         }
-      }, 20000);
+      }, 30000);
     })();
-    return () => { disposed = true; if (refetchTimer) clearInterval(refetchTimer); if (chart) { try { chart.remove(); } catch { /* noop */ } } seriesRef.current = null; };
+    return () => {
+      disposed = true;
+      if (pingTimer) clearInterval(pingTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (refetchTimer) clearInterval(refetchTimer);
+      if (ws) { try { ws.close(); } catch { /* noop */ } }
+      if (chart) { try { chart.remove(); } catch { /* noop */ } }
+      seriesRef.current = null;
+    };
   }, [symbol, interval]);
 
-  // 实时价：逐 tick 订阅 SSE 价格（不经 React 节流），每个 tick 更新当前蜡烛的收/高/低、
-  // 周期切换时开新蜡烛，让图表跟上 OKX 每秒多次的变化。
+  // 兜底：直连 OKX 静默(>3s)时，用后端 SSE 实时价驱动当前蜡烛（网络限制客户端直连 OKX 的情况）。
   useEffect(() => {
     const applyPrice = (sym, price) => {
-      if (sym !== symbol) return;
+      if (sym !== symbol || Date.now() - lastOkxRef.current < 3000) return;
       const series = seriesRef.current;
       const last = lastBarRef.current;
       const p = Number(price);
