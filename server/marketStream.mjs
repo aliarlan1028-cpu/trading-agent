@@ -131,8 +131,9 @@ function handleMessage(raw) {
     const open = Number(d.open24h);
     if (Number.isFinite(last)) { market.price = last; update.price = last; }
     if (open > 0 && Number.isFinite(last)) { market.changePct = Number((((last - open) / open) * 100).toFixed(3)); update.changePct = market.changePct; }
-    if (d.high24h) market.high24h = Number(d.high24h);
-    if (d.low24h) market.low24h = Number(d.low24h);
+    if (d.high24h) { market.high24h = Number(d.high24h); update.high24h = market.high24h; }
+    if (d.low24h) { market.low24h = Number(d.low24h); update.low24h = market.low24h; }
+    // 成交量单位口径以 REST(quoteVolume, USDT) 为准，不用 WS 的 volCcy24h(单位不同)覆盖，避免数值不一致。
     market.lastRealtimeAt = nowIso();
     market.lastRealtimeSource = "OKX_WS";
     market.status = "synced";

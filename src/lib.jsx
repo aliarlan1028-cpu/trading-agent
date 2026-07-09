@@ -562,6 +562,9 @@ export function useApi() {
       if (u.changePct !== undefined) next.changePct = u.changePct;
       if (u.fundingRate !== undefined) next.fundingRate = u.fundingRate;
       if (u.openInterest !== undefined) next.openInterest = u.openInterest;
+      if (u.high24h !== undefined) next.high24h = u.high24h;
+      if (u.low24h !== undefined) next.low24h = u.low24h;
+      if (u.volume24h !== undefined) next.volume24h = u.volume24h;
       next.lastRealtimeAt = new Date().toISOString();
       return next;
     };
