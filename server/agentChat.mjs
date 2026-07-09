@@ -383,18 +383,14 @@ export async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
-  // B 路：已回测通过的书本策略假设 → 作为可采用的候选策略注入（闭环落地，不再只停在 UI 标记）。
-  const passedHypos = (db.knowledge?.strategyHypotheses || []).filter((h) => h.status === "已验证" && h.executable);
-  if (passedHypos.length) {
-    const text = passedHypos.slice(0, 6)
-      .map((h) => `- ${h.name}（${h.symbolScope} · ${h.timeframe} · ${h.direction}）入场 ${h.entry || "-"}｜止损 ${h.stop || "-"}｜止盈 ${h.takeProfit || "-"}${h.backtest?.expectancyR != null ? `（回测期望 ${h.backtest.expectancyR}R / 胜率 ${h.backtest.winRatePct}%）` : ""}`)
+  // B 路：书本交易方法/进场 setup —— 作为「参考专家方法」注入决策，帮 AI 判断"什么行情、什么信号该怎么进出"，
+  // 提升方向与入场准确率。顾问性质：AI 结合当前真实行情/信号/风控自主决策，不照搬；风控闸门仍最终把关。
+  const methods = db.knowledge?.tradingMethods || [];
+  if (methods.length) {
+    const text = methods.slice(0, 14)
+      .map((m) => `- 《${m.source?.title || "书"}》${m.name}（${m.marketRegime} · ${m.symbolScope} · ${m.timeframe} · ${m.direction}）｜进场 ${m.entry || "-"}${m.confirmation ? `（确认:${m.confirmation}）` : ""}｜止损 ${m.stop || "-"}｜止盈 ${m.takeProfit || "-"}${m.invalidation ? `｜不做:${m.invalidation}` : ""}`)
       .join("\n");
-    sections.push(`【已回测通过的书本策略（可作为提计划的参考方向，仍需结合当前行情/风控确认）】\n${text}`);
-  }
-  // B 路硬闸：未回测通过的书本策略假设禁止直接实盘。
-  const pendingHypos = (db.knowledge?.strategyHypotheses || []).filter((h) => h.status !== "已验证");
-  if (pendingHypos.length) {
-    sections.push(`【策略假设约束】知识库有 ${pendingHypos.length} 条来自书籍的未验证策略假设，它们只是灵感、未经样本外回测，禁止据此直接提出实盘计划；只有经回测通过（已验证）的才可作为参考方向。`);
+    sections.push(`【书本交易方法·参考（共 ${methods.length} 条，来自你已学习的经典交易著作）】\n这些是专家总结的"什么行情、什么信号该怎么进出场"的方法框架。提计划时：先判断当前行情属于哪种 regime，再参考匹配的方法确定方向与入场/止损/止盈——但必须用当前真实数据与风控确认，不照搬、不硬套。\n${text}`);
   }
 
   return sections.join("\n\n");

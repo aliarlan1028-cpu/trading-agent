@@ -985,6 +985,68 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
   );
 }
 
+// 轻量自绘 K 线（纯 SVG，不加载 lightweight-charts）：给 App 端用——拉真实 OKX 历史 K 线，
+// 最后一根蜡烛吃直连 OKX / SSE / 轮询的实时价逐 tick 动。比嵌 lightweight-charts 轻、启动快。
+export function LiveCandleChart({ symbol = "BTC/USDT", interval = "60" }) {
+  const [candles, setCandles] = useState([]);
+  const [status, setStatus] = useState("loading");
+  const tf = KLINE_TF[interval] || "1h";
+  const barSeconds = KLINE_SECONDS[tf] || 3600;
+  useEffect(() => {
+    let disposed = false;
+    let timer = null;
+    const load = async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=120`));
+        const json = await res.json();
+        const rows = (Array.isArray(json.candles) ? json.candles : [])
+          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume) || 0 }))
+          .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
+          .sort((a, b) => a.time - b.time);
+        if (disposed) return;
+        if (rows.length) { setCandles(rows); setStatus("ok"); } else if (status !== "ok") setStatus("empty");
+      } catch { if (!disposed && status !== "ok") setStatus("empty"); }
+    };
+    setStatus("loading");
+    load();
+    timer = setInterval(load, 30000);
+    return () => { disposed = true; if (timer) clearInterval(timer); };
+  }, [symbol, tf]);
+  // 实时价 → 更新/新增最后一根蜡烛（rAF 节流，避免每 tick 重绘整图）。
+  useEffect(() => {
+    let latest = null, raf = null;
+    const flush = () => {
+      raf = null;
+      if (latest == null) return;
+      const p = latest; latest = null;
+      setCandles((prev) => {
+        if (!prev.length) return prev;
+        const arr = prev.slice();
+        const last = arr[arr.length - 1];
+        const bucket = Math.floor(Math.floor(Date.now() / 1000) / barSeconds) * barSeconds;
+        if (bucket > last.time) {
+          arr.push({ time: bucket, open: p, high: p, low: p, close: p, volume: 0 });
+          if (arr.length > 120) arr.shift();
+        } else {
+          arr[arr.length - 1] = { ...last, high: Math.max(last.high, p), low: Math.min(last.low, p), close: p };
+        }
+        return arr;
+      });
+    };
+    const apply = (price) => {
+      const p = Number(price);
+      if (!Number.isFinite(p) || p <= 0) return;
+      latest = p;
+      if (!raf) { if (typeof requestAnimationFrame !== "undefined") raf = requestAnimationFrame(flush); else flush(); }
+    };
+    const offOkx = subscribeOkxTicker(symbol, (t) => apply(t.price));
+    const offSse = onLivePrice((s, price) => { if (s === symbol) apply(price); });
+    return () => { if (raf) cancelAnimationFrame(raf); offOkx(); offSse(); };
+  }, [symbol, barSeconds]);
+  if (status !== "ok" && !candles.length) return <div className="chartEmpty">{status === "empty" ? "同步交易所后显示真实 K 线" : "加载 K 线…"}</div>;
+  return <CandleChart candles={candles} />;
+}
+
 export function LinePriceChart({ candles = [] }) {
   const series = candles.length ? candles.slice(-72) : [];
   if (!series.length) return <div className="chartEmpty">同步公开行情后显示真实价格线</div>;

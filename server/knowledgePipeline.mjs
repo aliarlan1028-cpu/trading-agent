@@ -14,8 +14,8 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 //   strategies（价格行为/日内 setup，带入场/止损/止盈/参数）—— 只是"假设"，必须过回测才可实盘。
 // 无 LLM key 时返回 null，退回高频词抽取。
 async function distillWithLlm(text, source) {
-  const system = "你是专业的交易知识蒸馏引擎，服务于一个交易加密货币永续合约（带杠杆、硬风控、短中周期）的自主交易 Agent。只输出 JSON，不要多余文字。\n\n关键原则：把书里的内容拆成两类——\n1) disciplineRules：纪律/风控/心理/禁止交易/仓位/杠杆/盘口执行 这类『避免亏损、保持一致性』的硬约束，可直接采用；\n2) strategies：价格行为规则、日内 setup 这类『预测方向、追求胜率』的可回测方法，带明确入场/止损/止盈/参数——这些只是待验证假设，绝不能直接实盘，必须先回测。\n资料若来自传统金融（股票/长期/无杠杆），在 assetScope/rationale 里注明适用边界，避免被误用到杠杆合约。宁缺毋滥：抽不出具体条件的就不要编。";
-  const prompt = `资料标题：${source.title}\n领域：${source.domain || "未标注"}\n\n蒸馏为 JSON：\n{\n"summary":"一句话主旨",\n"assetScope":"适用资产/周期边界",\n"disciplineRules":[{"category":"风控|心理|仓位|杠杆|禁止交易|执行","rule":"规则(<=40字)","condition":"触发条件","action":"pause_opening|reduce|notify|none","rationale":"依据"}],\n"strategies":[{"name":"策略名","kind":"price_action|intraday_setup|breakout|mean_reversion|trend|other","symbolScope":"如BTC/ETH或通用","timeframe":"1m|5m|15m|1H|4H|1D","direction":"long|short|both","entry":"入场条件","stop":"止损条件","takeProfit":"止盈条件","sizing":"仓位管理","leverage":"杠杆建议","invalidation":"失效/禁止条件","rationale":"依据"}],\n"reviewTemplates":["复盘要点/模板条目"],\n"concepts":[{"name":"概念名(<=12字)","meaning":"含义与适用边界(<=70字)"}],\n"counterViews":["反方观点或适用边界"]\n}\n数量参考：disciplineRules 3-8 条、strategies 0-5 条（没有可执行 setup 就留空）、concepts 4-8 个。\n\n资料正文：\n${text}`;
+  const system = "你是专业的交易知识蒸馏引擎，服务于一个自主交易加密永续合约（带杠杆、硬风控、短中周期）的 AI 交易员。只输出 JSON，不要多余文字。\n\n把书里可用于实盘的内容拆成三类：\n1) tradingMethods（交易方法/进场 setup）——【正向】：什么行情、什么信号该进场、怎么设止损止盈。这是给 AI 决策时参考的专家方法，越具体、越可判断越好。这是重点，尽量多抽。\n2) disciplineRules（风控纪律）——【反向】：仓位/杠杆/止损/禁止交易/心理这类『避免亏损、保持一致』的硬约束。\n3) concepts（概念）——交易术语/框架，带类别与关联概念，用于知识图谱。\n资料若来自传统金融（股票/长期/无杠杆），在 rationale/assetScope 注明用到加密永续的适用边界。宁缺毋滥：抽不出具体条件的不要编。";
+  const prompt = `资料标题：${source.title}\n领域：${source.domain || "未标注"}\n\n蒸馏为 JSON：\n{\n"summary":"一句话主旨",\n"assetScope":"适用资产/周期边界",\n"tradingMethods":[{"name":"方法名(<=24字)","marketRegime":"适用行情(如:上升趋势/区间震荡/突破放量/高波动/事件前后)","timeframe":"1m|5m|15m|1H|4H|1D","symbolScope":"如BTC/ETH或通用","direction":"long|short|both","entry":"进场条件(具体可判断)","confirmation":"确认信号","stop":"止损条件","takeProfit":"止盈/离场条件","invalidation":"失效/不做条件","rationale":"为什么有效/依据"}],\n"disciplineRules":[{"category":"风控|心理|仓位|杠杆|禁止交易|执行","rule":"规则(<=40字)","condition":"触发条件","action":"pause_opening|reduce|notify|none","rationale":"依据"}],\n"concepts":[{"name":"概念名(<=12字)","meaning":"含义与适用边界(<=70字)","category":"技术|风控|心理|宏观|结构|资金","relatedTo":["相关概念名(必须是本列表其它概念名)"]}],\n"reviewTemplates":["复盘要点/模板条目"],\n"counterViews":["反方观点或适用边界"]\n}\n数量参考：tradingMethods 2-6 条（书里有可操作 setup 就尽量抽全）、disciplineRules 3-8 条、concepts 4-8 个（尽量给 relatedTo 连边）。\n\n资料正文：\n${text}`;
   const raw = await llmComplete(prompt, system);
   if (!raw) return null;
   try {
@@ -89,6 +89,9 @@ export async function parseKnowledgeSource(db, sourceId) {
   db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);
   db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== source.id);
   db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(source.id));
+  // 重解析时先清掉该来源旧的派生项，避免重复堆积（未批准的规则一并清；已批准的保留）。
+  db.knowledge.tradingMethods = (db.knowledge.tradingMethods || []).filter((m) => m.source?.id !== source.id);
+  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((r) => !r.sourceRefs?.includes(source.id) || r.status === "已批准");
 
   const chunks = chunkText(text).map((chunk, index) => ({
     id: id("chunk"),
@@ -131,6 +134,8 @@ export async function parseKnowledgeSource(db, sourceId) {
       id: id("concept"),
       name: String(item.name || "").slice(0, 24) || "概念",
       domain: source.domain,
+      category: String(item.category || "").slice(0, 8) || "其他",
+      relatedTo: Array.isArray(item.relatedTo) ? item.relatedTo.map((r) => String(r).slice(0, 24)).slice(0, 6) : [],
       sourceRefs: [source.id],
       indicators: [],
       tradingMeaning: String(item.meaning || "").slice(0, 220) || `来自 ${source.title}`,
@@ -152,6 +157,7 @@ export async function parseKnowledgeSource(db, sourceId) {
   }
   db.knowledge.conceptCards.unshift(...concepts);
 
+  db.knowledge.tradingMethods ||= [];
   db.knowledge.strategyHypotheses ||= [];
   db.knowledge.reviewTemplates ||= [];
   let ruleDraft = null;
@@ -177,28 +183,25 @@ export async function parseKnowledgeSource(db, sourceId) {
     ruleDraft = ruleDraft || draft;
   }
 
-  // B 路 · 可回测策略假设 —— 只入库、硬闸禁止实盘，必须先回测通过才能升级为已验证策略。
-  const strategies = (distilled?.strategies || []).slice(0, 5);
-  for (const s of strategies) {
-    if (!s || (!s.entry && !s.name)) continue;
-    db.knowledge.strategyHypotheses.unshift({
-      id: id("hypo"),
-      name: String(s.name || `${source.title} 策略`).slice(0, 40),
-      kind: String(s.kind || "other").slice(0, 20),
-      symbolScope: String(s.symbolScope || "通用").slice(0, 40),
-      timeframe: String(s.timeframe || "1H").slice(0, 8),
-      direction: ["long", "short", "both"].includes(s.direction) ? s.direction : "both",
-      entry: String(s.entry || "").slice(0, 200),
-      stop: String(s.stop || "").slice(0, 160),
-      takeProfit: String(s.takeProfit || "").slice(0, 160),
-      sizing: String(s.sizing || "").slice(0, 120),
-      leverage: String(s.leverage || "").slice(0, 40),
-      invalidation: String(s.invalidation || "").slice(0, 160),
-      rationale: String(s.rationale || "").slice(0, 200),
+  // B 路 · 交易方法/进场 setup —— 【正向】顾问知识：决策时注入 AI 推理，帮它判断"什么行情该怎么进"，
+  // 提升准确率。AI 仍自主决策、风控闸门把关，不自动照搬；不再走假回测。
+  const methods = (distilled?.tradingMethods || distilled?.strategies || []).slice(0, 6);
+  for (const m of methods) {
+    if (!m || (!m.entry && !m.name)) continue;
+    db.knowledge.tradingMethods.unshift({
+      id: id("method"),
+      name: String(m.name || `${source.title} 方法`).slice(0, 40),
+      marketRegime: String(m.marketRegime || m.kind || "通用").slice(0, 40),
+      symbolScope: String(m.symbolScope || "通用").slice(0, 40),
+      timeframe: String(m.timeframe || "1H").slice(0, 8),
+      direction: ["long", "short", "both"].includes(m.direction) ? m.direction : "both",
+      entry: String(m.entry || "").slice(0, 220),
+      confirmation: String(m.confirmation || "").slice(0, 160),
+      stop: String(m.stop || "").slice(0, 160),
+      takeProfit: String(m.takeProfit || "").slice(0, 160),
+      invalidation: String(m.invalidation || "").slice(0, 160),
+      rationale: String(m.rationale || "").slice(0, 220),
       source: { id: source.id, title: source.title },
-      status: "待回测",     // 待回测 → 已验证 / 未通过
-      executable: false,     // 硬闸：未回测通过前绝不实盘
-      backtest: null,
       createdAt: nowIso()
     });
   }
@@ -228,7 +231,7 @@ export async function parseKnowledgeSource(db, sourceId) {
   source.parsedAt = nowIso();
   appendAudit(db, "解析并切片知识来源", source.id, "KnowledgePipeline");
   appendTrace(db, "knowledge_rag", `解析 ${source.title}`);
-  return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
+  return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, methods: methods.length, rules: disciplineRules.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
 }
 
 // LLM 智能去重：把同类别下语义重复的规则草案合并成精简规范集（阈值冲突时取更严格的）。

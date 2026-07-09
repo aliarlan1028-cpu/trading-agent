@@ -681,6 +681,51 @@ export function latestAnalysisRows(data) {
   return [...views, ...citations].slice(0, 6);
 }
 
+const CONCEPT_COLORS = { 技术: "#2A6FDB", 风控: "#C43F28", 心理: "#7A4FD0", 宏观: "#D06A22", 结构: "#1F7A50", 资金: "#B08900", 其他: "#8a8172" };
+
+// 概念图谱 v1：概念为节点（按类别着色，环形布局），relatedTo 连边，点击高亮关联并看含义。
+function ConceptGraph({ concepts = [] }) {
+  const [sel, setSel] = useState(null);
+  const nodes = concepts.slice(0, 20);
+  if (!nodes.length) return <div className="emptyPanel" style={{ minHeight: 180 }}>导入资料后自动抽取概念与关系图谱</div>;
+  const W = 460, H = 300, cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 44;
+  const nameIdx = {};
+  nodes.forEach((c, i) => { nameIdx[c.name] = i; });
+  const pos = nodes.map((_, i) => {
+    const a = -Math.PI / 2 + (i / nodes.length) * 2 * Math.PI;
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  });
+  const edges = [];
+  nodes.forEach((c, i) => (c.relatedTo || []).forEach((rn) => { const j = nameIdx[rn]; if (j != null && j > i) edges.push([i, j]); }));
+  const selIdx = sel != null ? nameIdx[sel] : null;
+  const connected = (i) => selIdx == null || i === selIdx || edges.some(([a, b]) => (a === selIdx && b === i) || (b === selIdx && a === i));
+  const selConcept = selIdx != null ? nodes[selIdx] : null;
+  const cats = [...new Set(nodes.map((c) => c.category || "其他"))];
+  return (
+    <div className="conceptGraph">
+      <svg viewBox={`0 0 ${W} ${H}`} className="cgSvg" preserveAspectRatio="xMidYMid meet">
+        {edges.map(([a, b], k) => (
+          <line key={k} x1={pos[a].x} y1={pos[a].y} x2={pos[b].x} y2={pos[b].y}
+            className={`cgEdge ${selIdx == null || a === selIdx || b === selIdx ? "on" : "off"}`} />
+        ))}
+        {nodes.map((c, i) => {
+          const col = CONCEPT_COLORS[c.category] || CONCEPT_COLORS.其他;
+          return (
+            <g key={c.id} className={`cgNode ${selIdx != null && !connected(i) ? "dim" : ""}`} onClick={() => setSel(sel === c.name ? null : c.name)}>
+              <circle cx={pos[i].x} cy={pos[i].y} r={i === selIdx ? 7 : 4.5} fill={col} stroke="#FBF9F5" strokeWidth="1.5" />
+              <text x={pos[i].x} y={pos[i].y - 8} textAnchor="middle" className="cgLabel" fill={col}>{c.name}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="cgLegend">{cats.map((cat) => <span key={cat}><i style={{ background: CONCEPT_COLORS[cat] || CONCEPT_COLORS.其他 }} />{cat}</span>)}</div>
+      {selConcept
+        ? <div className="cgDetail"><b style={{ color: CONCEPT_COLORS[selConcept.category] || CONCEPT_COLORS.其他 }}>{selConcept.name}</b><span className="cgCat">{selConcept.category}</span><p>{selConcept.tradingMeaning}</p></div>
+        : <div className="cgHint">点击概念看含义与关联 · {nodes.length} 概念 / {edges.length} 关系</div>}
+    </div>
+  );
+}
+
 export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const [ruleTab, setRuleTab] = useState("graph");
   const [rag, setRag] = useState("");
@@ -718,26 +763,30 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         ))}
       </div>
 
-      {(knowledge.strategyHypotheses || []).length > 0 && (
-        <div className="termCard hypoCard">
-          <div className="kHead"><span className="secLabel">策略假设 · 来自书籍，回测通过才可实盘</span><span className="hypoLegend mono">{(knowledge.strategyHypotheses || []).filter((h) => h.status === "已验证").length} 已验证 / {(knowledge.strategyHypotheses || []).length} 条</span></div>
-          <div className="hypoList">
-            {(knowledge.strategyHypotheses || []).slice(0, 10).map((h) => (
-              <div className={`hypoRow ${h.status === "已验证" ? "ok" : (h.status === "未通过" || h.status === "回测失败") ? "bad" : ""}`} key={h.id}>
-                <div className="hypoMain">
-                  <div className="hypoTop"><b>{h.name}</b><span className="hypoTag">{humanize(h.kind)}</span><span className="hypoTf mono">{h.symbolScope} · {h.timeframe} · {h.direction}</span>{h.source?.title && <span className="hypoSrc">《{h.source.title}》</span>}</div>
-                  <div className="hypoCond mono">入 {h.entry || "-"} ｜ 损 {h.stop || "-"} ｜ 盈 {h.takeProfit || "-"}</div>
-                  {h.rationale && <div className="hypoWhy">依据：{h.rationale}</div>}
-                  {h.backtest && h.backtest.expectancyR != null && <div className="hypoBt mono">回测：{h.backtest.trades} 笔 · 胜率 {h.backtest.winRatePct}% · 期望 {h.backtest.expectancyR}R · 盈亏比 {h.backtest.profitFactor ?? "-"}（近似）</div>}
+      {(knowledge.tradingMethods || []).length > 0 && (
+        <div className="termCard methodCard">
+          <div className="kHead"><span className="secLabel">交易方法 · 进场 setup（来自书籍，注入 AI 决策参考）</span><span className="hypoLegend mono">{(knowledge.tradingMethods || []).length} 条方法</span></div>
+          <div className="methodList">
+            {(knowledge.tradingMethods || []).slice(0, 14).map((m) => (
+              <div className="methodRow" key={m.id}>
+                <div className="methodTop">
+                  <b>{m.name}</b>
+                  <span className={`mDir ${m.direction}`}>{m.direction === "short" ? "做空" : m.direction === "long" ? "做多" : "多空"}</span>
+                  <span className="mRegime">{m.marketRegime}</span>
+                  <span className="mTf mono">{m.symbolScope} · {m.timeframe}</span>
+                  {m.source?.title && <span className="hypoSrc">《{m.source.title}》</span>}
                 </div>
-                <div className="hypoRight">
-                  <StatusBadge tone={h.status === "已验证" ? "ok" : h.status === "待回测" ? "warning" : "neutral"}>{h.status}</StatusBadge>
-                  <button className="miniBtn" onClick={() => action(`/api/knowledge/hypotheses/${h.id}/backtest`, {})}><BarChart3 size={13} /> 回测</button>
+                <div className="methodCond">
+                  <span><i>进场</i>{m.entry || "-"}{m.confirmation ? `（确认：${m.confirmation}）` : ""}</span>
+                  <span><i>止损</i>{m.stop || "-"}</span>
+                  <span><i>止盈</i>{m.takeProfit || "-"}</span>
+                  {m.invalidation && <span className="mInval"><i>不做</i>{m.invalidation}</span>}
                 </div>
+                {m.rationale && <div className="hypoWhy">依据：{m.rationale}</div>}
               </div>
             ))}
           </div>
-          <div className="hypoNote">书里的 setup 只是假设，未经样本外回测不会用于实盘。回测用最接近的内置策略近似验证其方向/周期是否有历史边际。</div>
+          <div className="hypoNote">这些是从经典交易著作蒸馏的"什么行情、什么信号该怎么进出场"的方法框架，每次决策时注入 AI 参考——AI 仍结合实时行情与风控自主判断，不照搬、不硬套。</div>
         </div>
       )}
 
@@ -758,12 +807,15 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         </div>
 
         <div className="termCard">
-          <div className="kHead"><div className="kSeg"><button className={ruleTab === "graph" ? "on" : ""} onClick={() => setRuleTab("graph")}>概念图谱</button><button className={ruleTab === "rules" ? "on" : ""} onClick={() => setRuleTab("rules")}>规则库</button></div><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 ›</button></div>
-          <div className="kGraph"><div className="kHub"><b>知识图谱</b><small>{conceptCount} 概念 · {ruleCount} 规则</small></div>{(knowledge.conceptCards || []).slice(0, 6).map((c, i) => <span className={`kNode ${i < 2 ? "pri" : ""}`} key={c.id}>{c.name}</span>)}</div>
-          <div className="kRuleCards">
-            {(knowledge.ruleProposals || []).slice(0, 4).map((r) => <button className="kRuleCard" key={r.id} onClick={() => ui.openPanel("ruleLibrary")}><div className="kRuleTop"><b>{r.name}</b><span className="kRuleDot" /></div><div>{r.description || "基于专家知识库生成"}</div></button>)}
-            {!ruleCount && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>导入资料后自动抽取概念与规则</div>}
-          </div>
+          <div className="kHead"><div className="kSeg"><button className={ruleTab === "graph" ? "on" : ""} onClick={() => setRuleTab("graph")}>概念图谱</button><button className={ruleTab === "rules" ? "on" : ""} onClick={() => setRuleTab("rules")}>风控纪律</button></div><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 ›</button></div>
+          {ruleTab === "graph"
+            ? <ConceptGraph concepts={knowledge.conceptCards || []} />
+            : (
+              <div className="kRuleCards">
+                {(knowledge.ruleProposals || []).slice(0, 6).map((r) => <button className="kRuleCard" key={r.id} onClick={() => ui.openPanel("ruleLibrary")}><div className="kRuleTop"><b>{r.name}</b>{r.category && <span className="kRuleCat">{r.category}</span>}</div><div>{r.description || "基于专家知识库生成"}</div></button>)}
+                {!ruleCount && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>导入资料后自动抽取概念与规则</div>}
+              </div>
+            )}
         </div>
 
         <div className="termCard">

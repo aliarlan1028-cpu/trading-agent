@@ -28,7 +28,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -904,7 +904,7 @@ function MobileMarket({ data, action, ui }) {
         </LivePrice>
         {markets.length > 1 && <div className="mSymPills">{markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}</div>}
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
-        <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
+        <div className="mKline"><LiveCandleChart symbol={market.symbol} interval={tvInterval} /></div>
       </div>
       <div className="mCard">
         <div className="mCardHead"><b>持仓</b><button className="mLink" onClick={() => ui.setActive("positions")}>全部 ›</button></div>
