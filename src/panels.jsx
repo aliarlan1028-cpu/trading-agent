@@ -350,6 +350,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                       role={section ? "button" : undefined}
                       onClick={section ? () => setOpenProvider(openProvider === idName ? "" : idName) : undefined}
                     >
+                      <span className="cfgProvLogo" data-p={idName}>{label.charAt(0)}</span>
                       <strong>{label}</strong>
                       {idName === config.llm?.activeProvider && <span className="cfgUsing">使用中</span>}
                       <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "neutral"}>{providers[idName]?.hasKey ? "已配置" : "未配置"}</StatusBadge>

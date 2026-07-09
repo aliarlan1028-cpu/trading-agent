@@ -67,6 +67,25 @@ if (traderRole) traderRole.permissions = TRADER_PERMISSIONS;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
 ensureDefaultEventSources(db);
+// 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
+(function collapseDuplicateIncidents() {
+  const groups = new Map();
+  for (const inc of db.riskIncidents || []) {
+    if (inc.status !== "open" || !inc.source) { continue; }
+    const key = `${inc.source}|${String(inc.title || "").replace(/[·×].*$/, "").slice(0, 40)}`;
+    const seen = groups.get(key);
+    if (seen) {
+      seen.count = (seen.count || 1) + (inc.count || 1);
+      if (new Date(inc.createdAt) > new Date(seen.createdAt)) seen.lastSeenAt = inc.createdAt;
+      inc.__drop = true;
+    } else {
+      groups.set(key, inc);
+    }
+  }
+  const before = (db.riskIncidents || []).length;
+  db.riskIncidents = (db.riskIncidents || []).filter((inc) => !inc.__drop);
+  if (db.riskIncidents.length !== before) appendAudit(db, `收敛重复告警 ${before - db.riskIncidents.length} 条`, "startup", "Maintenance");
+})();
 saveDb(db);
 
 app.use(cors());
