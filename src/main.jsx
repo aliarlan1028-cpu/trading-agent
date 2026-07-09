@@ -162,25 +162,21 @@ function AppTopbar({ data, active, setActive, notify, action }) {
 
 function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSettingsTab }) {
   const isOwner = data.user?.isOwner === true;
+  // 风控与授权、任务调度已收进左侧导航（风控与授权 / 事件与任务），设置里不再重复。
+  let tab = activeSettingsTab === "risk" || activeSettingsTab === "tasks" ? "config" : activeSettingsTab;
   // 非 Owner 不能停留在"用户管理"tab。
-  const tab = activeSettingsTab === "users" && !isOwner ? "config" : activeSettingsTab;
+  if (tab === "users" && !isOwner) tab = "config";
   return (
     <div className="pageStack termPage settingsTermPage">
       <div className="termHead">
         <div className="termHeadMain">
           <h1>系统设置 <span className="termCode">SETTINGS · CONFIG</span></h1>
-          <p>模型、交易所密钥、实盘闸门、任务调度、Agent 配置与用户管理集中在这里</p>
+          <p>模型、交易所密钥、实盘闸门、Agent 配置与用户管理集中在这里</p>
         </div>
       </div>
       <div className="settingsSubNav" role="tablist" aria-label="系统设置导航">
         <button type="button" role="tab" aria-selected={tab === "config"} className={tab === "config" ? "active" : ""} onClick={() => setActiveSettingsTab("config")}>
           <Settings size={15} /> 系统配置
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "risk"} className={tab === "risk" ? "active" : ""} onClick={() => setActiveSettingsTab("risk")}>
-          <Shield size={15} /> 风控与授权
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "active" : ""} onClick={() => setActiveSettingsTab("tasks")}>
-          <CalendarClock size={15} /> 任务调度
         </button>
         <button type="button" role="tab" aria-selected={tab === "agents"} className={tab === "agents" ? "active" : ""} onClick={() => setActiveSettingsTab("agents")}>
           <BrainCircuit size={15} /> Agent 配置
@@ -192,15 +188,11 @@ function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSett
         )}
       </div>
       <div className="settingsPage">
-        {tab === "risk"
-          ? <RiskAuthPage data={data} action={action} ui={ui} embedded />
-          : tab === "tasks"
-            ? <EventsTasksPage data={data} action={action} ui={ui} embedded mode="tasks" />
-            : tab === "agents"
-              ? <AgentProfilesPanel data={data} action={action} />
-              : tab === "users" && isOwner
-                ? <AdminPage data={data} action={action} ui={ui} embedded />
-                : <SystemConfigPanel data={data} action={action} ui={ui} />}
+        {tab === "agents"
+          ? <AgentProfilesPanel data={data} action={action} />
+          : tab === "users" && isOwner
+            ? <AdminPage data={data} action={action} ui={ui} embedded />
+            : <SystemConfigPanel data={data} action={action} ui={ui} />}
       </div>
     </div>
   );

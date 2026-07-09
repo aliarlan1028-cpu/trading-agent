@@ -9012,3 +9012,74 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .settingsTermPage .settingsSubNav button.active { background: var(--dark); color: var(--dark-ink); }
 .settingsTermPage .settingsSubNav button.active svg { color: var(--dark-ink); }
 .settingsTermPage .settingsPage { margin-top: 8px; }
+
+/* ── 系统设置：内部面板整体 Terminal 化（与其他页一致的暖面板/发丝线/深色激活）── */
+.settingsTermPage .settingsPage { max-width: none; }
+.settingsTermPage .settingsConsole { gap: 12px; }
+
+/* 分类导航（模型/交易所/实盘/外部服务/运行参数）*/
+.settingsTermPage .settingsNav { background: var(--surface); border-color: var(--hairline); border-radius: 10px; padding: 6px; gap: 6px; }
+.settingsTermPage .settingsNav button { border-radius: 8px; color: var(--text-2); transition: background .12s ease, color .12s ease; }
+.settingsTermPage .settingsNav button svg { color: var(--text-3); }
+.settingsTermPage .settingsNav button small { color: var(--text-4); }
+.settingsTermPage .settingsNav button:not(.active):hover { background: var(--surface-2); }
+.settingsTermPage .settingsNav button.active { background: var(--dark); color: var(--dark-ink); }
+.settingsTermPage .settingsNav button.active svg,
+.settingsTermPage .settingsNav button.active small { color: var(--dark-ink); }
+
+/* 表单卡片 */
+.settingsTermPage .panelForm { background: var(--surface); border-color: var(--hairline); border-radius: 10px; padding: 16px; }
+.settingsTermPage .panelForm.compact { background: var(--surface-white); }
+.settingsTermPage .panelForm h3 { font-family: var(--font-ui); font-size: 14px; font-weight: 700; color: #1e1b16; letter-spacing: .01em; }
+.settingsTermPage .panelForm label { color: var(--text-2); font-weight: 640; }
+.settingsTermPage .panelForm input,
+.settingsTermPage .panelForm textarea,
+.settingsTermPage .panelForm select,
+.settingsTermPage .panelItem select { background: var(--surface-white); border-color: var(--border); border-radius: 8px; color: #2a2620; }
+.settingsTermPage .panelForm input:focus,
+.settingsTermPage .panelForm textarea:focus,
+.settingsTermPage .panelForm select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-weak); }
+.settingsTermPage .formTitleRow span { color: var(--text-3); }
+
+/* 子框：交易所列、配置组、集成模块面板 */
+.settingsTermPage .exchangeCol,
+.settingsTermPage .configFieldset,
+.settingsTermPage .modulePanel { background: var(--surface-white); border-color: var(--hairline); border-radius: 10px; }
+.settingsTermPage .exchangeColHead,
+.settingsTermPage .configFieldsetHead { border-bottom-color: var(--hairline); }
+.settingsTermPage .exchangeColHead strong,
+.settingsTermPage .configFieldsetHead strong { color: #1e1b16; }
+
+/* 集成模块卡格 → 深色激活 */
+.settingsTermPage .integrationModuleGrid button { border-color: var(--hairline); color: var(--text-2); }
+.settingsTermPage .integrationModuleGrid button svg { color: var(--text-3); }
+.settingsTermPage .integrationModuleGrid button small { color: var(--text-4); }
+.settingsTermPage .integrationModuleGrid button.active { border-color: var(--dark); background: var(--dark); color: var(--dark-ink); box-shadow: none; }
+.settingsTermPage .integrationModuleGrid button.active svg,
+.settingsTermPage .integrationModuleGrid button.active small,
+.settingsTermPage .integrationModuleGrid button.active span { color: var(--dark-ink); }
+
+/* 实盘就绪清单 / 开关格 用暖底 */
+.settingsTermPage .liveReadiness { border-color: var(--hairline); }
+.settingsTermPage .checkboxLabel { color: var(--text-2); }
+
+/* ── 系统设置 → 用户管理（Owner）& Agent 配置：Terminal 化 ── */
+.settingsTermPage .adminHero { background: var(--surface); border-color: var(--hairline); border-radius: 10px; }
+.settingsTermPage .adminHero span { color: var(--accent); }
+.settingsTermPage .adminHero h2 { color: #1e1b16; }
+.settingsTermPage .adminHero p { color: var(--text-2); }
+.settingsTermPage .adminHeroMetrics div { background: var(--surface-white); border-color: var(--hairline); border-radius: 8px; }
+.settingsTermPage .adminHeroMetrics strong { font-family: var(--font-mono); color: #1e1b16; }
+.settingsTermPage .adminHeroMetrics span { color: var(--text-3); }
+.settingsTermPage .adminTabs button { border-color: var(--hairline); color: var(--text-2); background: var(--surface); border-radius: 8px; }
+.settingsTermPage .adminTabs button:not(.active):hover { background: var(--surface-2); }
+.settingsTermPage .adminTabs button.active { border-color: var(--dark); background: var(--dark); color: var(--dark-ink); }
+.settingsTermPage .adminTwoColumn .dashCard,
+.settingsTermPage .adminCreateCard { background: var(--surface); border-color: var(--hairline); }
+.settingsTermPage .adminFormStack input,
+.settingsTermPage .adminFormStack select,
+.settingsTermPage .adminFormStack textarea { background: var(--surface-white); border-color: var(--border); }
+.settingsTermPage .adminAgentGrid .adminAgentMini { border-color: var(--hairline); background: var(--surface-white); border-radius: 10px; }
+.settingsTermPage .adminAgentMini b { font-family: var(--font-mono); color: var(--accent); }
+.settingsTermPage .adminAgentMini strong { color: #1e1b16; }
+.settingsTermPage .adminAgentMini small { color: var(--text-3); }
