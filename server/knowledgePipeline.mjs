@@ -231,6 +231,55 @@ export async function parseKnowledgeSource(db, sourceId) {
   return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
 }
 
+// LLM 智能去重：把同类别下语义重复的规则草案合并成精简规范集（阈值冲突时取更严格的）。
+// 只动"待审批"草案，已批准的一律保留；无 LLM 时原样返回不改动。
+async function mergeCategoryRules(category, list) {
+  const system = "你是交易风控规则整编专家。把同类多条规则去重合并成精简、不冗余的规范集：语义相同或相近的合并为一条；遇到不同阈值时保留【更严格/更保守】的那个（如单笔亏损 1% 与 2% 取 1%，杠杆 2 倍与 3 倍取 2 倍）。绝不发明新规则，只做合并与规范化。只输出 JSON 数组，不要多余文字。";
+  const items = list.map((r, i) => `${i + 1}. ${r.name}｜条件:${r.condition || "-"}｜动作:${r.action || "notify"}｜依据:${r.description || "-"}`).join("\n");
+  const prompt = `类别：${category}\n把下面 ${list.length} 条规则合并去重，输出精简后的规则数组 JSON：\n[{"name":"规则(<=40字)","condition":"触发条件","action":"pause_opening|reduce|notify|none","description":"依据/为什么(<=120字)"}]\n语义重复的必须合并，只保留真正不同的规则。\n\n规则清单：\n${items}`;
+  const raw = await llmComplete(prompt, system);
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
+    if (!Array.isArray(arr) || !arr.length) return null;
+    const sourceRefs = [...new Set(list.flatMap((r) => r.sourceRefs || []))];
+    return arr.slice(0, list.length).map((r) => ({
+      id: id("rule"),
+      name: String(r.name || "").slice(0, 40) || "规则",
+      kind: "discipline",
+      category,
+      level: "L2",
+      status: "待审批",
+      action: ["pause_opening", "notify", "reduce", "none"].includes(r.action) ? r.action : "notify",
+      condition: String(r.condition || "").slice(0, 160),
+      description: String(r.description || "").slice(0, 240),
+      sourceRefs,
+      distilledBy: "llm_merge",
+      createdAt: nowIso()
+    }));
+  } catch { return null; }
+}
+
+export async function consolidateRuleProposals(db) {
+  const rules = db.knowledge.ruleProposals || [];
+  const approved = rules.filter((r) => r.status === "已批准");
+  const pending = rules.filter((r) => r.status !== "已批准");
+  if (pending.length < 2) return { removed: 0, remaining: rules.length, method: "none" };
+  const byCat = {};
+  for (const r of pending) (byCat[r.category || "其他"] ||= []).push(r);
+  const out = [];
+  let usedLlm = false;
+  for (const [cat, list] of Object.entries(byCat)) {
+    if (list.length < 2) { out.push(...list); continue; }
+    const merged = await mergeCategoryRules(cat, list).catch(() => null);
+    if (merged && merged.length) { out.push(...merged); usedLlm = true; } else out.push(...list);
+  }
+  db.knowledge.ruleProposals = [...out, ...approved];
+  const removed = Math.max(0, pending.length - out.length);
+  appendAudit(db, `规则库智能去重：待审批 ${pending.length} → ${out.length} 条`, "rule_dedup", "KnowledgePipeline");
+  return { removed, remaining: db.knowledge.ruleProposals.length, method: usedLlm ? "llm" : "keep" };
+}
+
 // 词频检索（同步，回退用）：无 embedding 服务或片段未向量化时使用。
 export function retrieveChunks(db, query, topK = 5) {
   const text = String(query || "").trim();

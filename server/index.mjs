@@ -26,7 +26,7 @@ import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, 
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission } from "./eventSources.mjs";
-import { embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
+import { consolidateRuleProposals, embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
@@ -1136,20 +1136,28 @@ app.delete("/api/knowledge/rules/:id", requirePermission("write:knowledge"), (re
   persist(res, { removed: 1 });
 });
 
-// 一键去重：同类别下名称规范化后重复的草案只保留一条；已批准的一律保留（避免误删已生效风控）。
+// 一键去重（智能合并）：把同类别下语义重复的待审批草案用 LLM 合并成精简规范集，
+// 阈值冲突取更严格；已批准的一律保留。LLM 调用较慢（数十秒），先立即响应、后台执行，
+// 前端 15s 轮询会自动刷新结果。无 LLM 时退回按名称精确去重。
 app.post("/api/knowledge/rules/dedup", requirePermission("write:knowledge"), (_req, res) => {
-  const norm = (s) => String(s || "").toLowerCase().replace(/[\s\p{P}]/gu, "");
-  const seen = new Set();
-  const kept = [];
-  const removedIds = [];
-  for (const r of db.knowledge.ruleProposals || []) {
-    const key = `${norm(r.category)}|${norm(r.name)}|${norm(r.description).slice(0, 40)}`;
-    if (r.status === "已批准" || !seen.has(key)) { seen.add(key); kept.push(r); } else removedIds.push(r.id);
-  }
-  db.knowledge.ruleProposals = kept;
-  if (removedIds.length) db.riskRules = (db.riskRules || []).filter((r) => !removedIds.some((rid) => r.id === `risk_from_${rid}`));
-  appendAudit(db, `规则库去重，移除 ${removedIds.length} 条重复草案`, "rule_dedup", db.user.name, removedIds.length ? "info" : "info");
-  persist(res, { removed: removedIds.length, remaining: kept.length });
+  const pendingCount = (db.knowledge.ruleProposals || []).filter((r) => r.status !== "已批准").length;
+  res.json({ message: "规则库去重进行中，稍后自动刷新", status: "processing", pending: pendingCount });
+  consolidateRuleProposals(db)
+    .then((r) => {
+      if (r.method !== "llm") {
+        // 无 LLM：退回按 类别+名称+依据 精确去重
+        const norm = (s) => String(s || "").toLowerCase().replace(/[\s\p{P}]/gu, "");
+        const seen = new Set(); const kept = []; const removedIds = [];
+        for (const rule of db.knowledge.ruleProposals || []) {
+          const key = `${norm(rule.category)}|${norm(rule.name)}|${norm(rule.description).slice(0, 40)}`;
+          if (rule.status === "已批准" || !seen.has(key)) { seen.add(key); kept.push(rule); } else removedIds.push(rule.id);
+        }
+        db.knowledge.ruleProposals = kept;
+      }
+      saveDb(db);
+      try { broadcastRaw({ type: "knowledge_updated", status: "rules_deduped" }); } catch { /* SSE 可选 */ }
+    })
+    .catch((err) => { appendAudit(db, `规则库去重失败：${err.message}`, "rule_dedup", "System", "warning"); });
 });
 
 app.post("/api/knowledge/runtime-query", requirePermission("write:knowledge"), (req, res) => {
