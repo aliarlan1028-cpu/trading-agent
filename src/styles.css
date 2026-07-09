@@ -8924,3 +8924,30 @@ button.danger:disabled,
 .acReconcile > span:first-child { display: flex; align-items: center; gap: 6px; font: 600 11.5px "Space Grotesk"; color: #1F7A50; }
 .acReconcile > span:last-child { font: 500 10.5px "IBM Plex Mono"; color: #3d6b53; }
 @media (max-width: 1120px) { .termPage .termGrid.auditTop { grid-template-columns: 1fr; } }
+
+/* 风控页 风险状态墙 —— 严格照设计稿 .dc.html */
+.riskBanner { display: flex; align-items: center; gap: 12px; border-radius: 9px; padding: 12px 14px; }
+.riskBanner.pos { background: #E6F1EA; }
+.riskBanner.warn { background: #FBF1DE; }
+.riskBanner.neg { background: #F7E6E2; }
+.riskBannerIcon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; flex: none; }
+.riskBanner.pos .riskBannerIcon { background: #1F7A50; }
+.riskBanner.warn .riskBannerIcon { background: #C79A3A; }
+.riskBanner.neg .riskBannerIcon { background: #C43F28; }
+.riskBannerMain { flex: 1; min-width: 0; }
+.riskBannerK { font-size: 11px; color: #6B6455; white-space: nowrap; }
+.riskBannerMain b { font: 700 14px "Space Grotesk"; white-space: nowrap; }
+.riskBanner.pos .riskBannerMain b { color: #1F7A50; }
+.riskBanner.warn .riskBannerMain b { color: #C79A3A; }
+.riskBanner.neg .riskBannerMain b { color: #C43F28; }
+.riskBannerScore { text-align: right; }
+.riskBannerScore b { font: 600 22px "IBM Plex Mono"; }
+.riskBanner.pos .riskBannerScore b { color: #1F7A50; }
+.riskBanner.warn .riskBannerScore b { color: #C79A3A; }
+.riskBanner.neg .riskBannerScore b { color: #C43F28; }
+.riskBannerScore span { font: 500 11px "IBM Plex Mono"; color: #8a8172; }
+.riskBtns { display: flex; gap: 6px; }
+.riskBtns button { flex: 1; height: 34px; border-radius: 7px; font: 700 11px "Space Grotesk"; cursor: pointer; }
+.rbPause { border: 1px solid #E3DCCE; background: #EAF0FB; color: #2A6FDB; }
+.rbReduce { border: 1px solid #F0DCC5; background: #FBEDDF; color: #C9631F; }
+.rbKill { border: none; background: #C43F28; color: #fff; }

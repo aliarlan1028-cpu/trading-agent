@@ -31,6 +31,7 @@ import {
   Search,
   Settings,
   Shield,
+  ShieldCheck,
   Sparkles,
   SquareActivity,
   Target,
@@ -929,6 +930,8 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   const rawRiskScore = latestRisk.riskScore ?? data.portfolio.riskScore;
   const hasRiskScore = rawRiskScore !== null && rawRiskScore !== undefined && rawRiskScore !== "" && Number.isFinite(Number(rawRiskScore));
   const riskScore = hasRiskScore ? Number(rawRiskScore) : 0;
+  const riskLevel = data.portfolio.riskLabel || (riskScore >= 70 ? "高风险" : riskScore >= 40 ? "中风险" : "低风险");
+  const riskBannerTone = /高/.test(riskLevel) ? "neg" : /中/.test(riskLevel) ? "warn" : "pos";
   const mandateTone = mandate.status === "running" || mandate.status === "active" ? "ok" : statusTone(mandate.status);
   const validFrom = mandate.validFrom || mandate.valid_from;
   const validUntil = mandate.validUntil || mandate.valid_until;
@@ -964,13 +967,17 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         </Card>
         <Card className="riskStatusWall">
           <SectionTitle title="风险状态墙" action={<small>实时更新 {formatDateTime(latestRisk.createdAt || data.system.updatedAt)} <RefreshCw size={13} /></small>} />
-          <div className="riskScoreBox"><Shield size={28} /><span>当前风险等级<strong>{data.portfolio.riskLabel || "未同步"}</strong></span><SemiGauge value={hasRiskScore ? riskScore : NaN} max={100} unit="风险分 /100" size={132} color={riskScore >= 70 ? "#c0392b" : riskScore >= 40 ? "#e07a3f" : "#3f8f5b"} /></div>
+          <div className={`riskBanner ${riskBannerTone}`}>
+            <span className="riskBannerIcon"><ShieldCheck size={19} /></span>
+            <div className="riskBannerMain"><div className="riskBannerK">当前风险等级</div><b>{riskLevel} · {riskBannerTone === "pos" ? "正常" : riskBannerTone === "warn" ? "关注" : "高危"}</b></div>
+            <div className="riskBannerScore"><b className="mono">{hasRiskScore ? riskScore : "—"}</b><span className="mono">/100</span></div>
+          </div>
           <div className="lossBudget"><span>剩余亏损预算（今日）<b>{data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt, 2, "0.00")} USDT`}</b></span><small>日亏损上限 {mandate.maxDailyLossPct || "-"}%</small><ProgressBar value={hasRiskScore ? Math.max(0, 100 - riskScore) : 0} /></div>
           <RiskLine label="灰度实盘额度" value={grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"} />
           <RiskLine label="最大杠杆倍数" value={mandate.max_leverage || mandate.maxLeverageBySymbol ? `${mandate.max_leverage || Math.max(1, ...Object.values(mandate.maxLeverageBySymbol || { default: 1 }))}x` : "未授权"} />
           <RiskLine label="最近风控结论" value={latestRisk.summary || humanize(latestRisk.decision, "暂无检查")} />
           <RiskLine label="系统状态" value={systemStatus(data).label} />
-          <div className="riskActionRow"><button onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停交易</button><button onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="danger" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
+          <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
           <small className="centerMuted">触发后将立即生效，并记录审计日志。</small>
         </Card>
       </div>
