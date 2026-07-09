@@ -30,8 +30,15 @@ async function distillWithLlm(text, source) {
 async function generateBookSynthesis(source) {
   const system = "你是精读过大量经典交易著作的资深交易员。基于你对该书的真实理解，用【你自己的话】把这本书里可用于实盘交易的方法讲清楚——写的是方法论综述/读书笔记，不是照搬原文，绝不逐段复制书里的句子。忠于原书的核心观点与逻辑，重在可操作。用中文。";
   const prompt = `书名：${source.title}${source.author ? `\n作者：${source.author}` : ""}${source.bookFocus ? `\n侧重：${source.bookFocus}` : ""}\n\n请写一份 1200-2200 字的结构化方法综述，用小标题分节，覆盖（该书有则写、没有则略）：\n- 核心理念与它对市场的基本假设\n- 具体的交易 setup 与识别方法（越具体越好）\n- 入场条件 / 止损条件 / 止盈或离场条件（尽量给可判断的标准）\n- 仓位管理与杠杆纪律\n- 盘口/执行要点\n- 交易心理与行为纪律\n- 风控规则\n- 复盘方法/模板\n- 明确的『不要交易』条件\n只写方法与判断标准，不要泛泛而谈，也不要照抄原书文字。若该书面向股票/无杠杆/长周期，请注明用到加密永续合约时的适用边界。`;
-  const raw = await llmComplete(prompt, system);
-  return String(raw || "").trim();
+  try {
+    const raw = await llmComplete(prompt, system);
+    const text = String(raw || "").trim();
+    if (!text) source.error = "LLM 未返回内容（可能未配置可用的 LLM，或额度不足）";
+    return text;
+  } catch (err) {
+    source.error = `按书名蒸馏调用 LLM 失败：${err.message}`;
+    return "";
+  }
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,8 +82,8 @@ export async function parseKnowledgeSource(db, sourceId) {
   else text = `${source.title}\n${source.summary || ""}`;
   if (source.type === "book_title" && !text) {
     source.status = "failed";
-    source.error = "未配置 LLM，无法按书名蒸馏知识";
-    return { status: "failed", source, message: "按书名蒸馏需要先在系统设置里配置 LLM API" };
+    source.error = source.error || "未配置 LLM，无法按书名蒸馏知识";
+    return { status: "failed", source, message: source.error };
   }
 
   db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);

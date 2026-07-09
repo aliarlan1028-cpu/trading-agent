@@ -314,6 +314,29 @@ async function importAndMaybeParseKnowledge(payload = {}) {
   return { message: parsed.message || "知识来源已导入并解析", source: parsed.source || source, parsed };
 }
 
+// 先把来源落库并立即响应，再在后台做可能长耗时（LLM 按书名蒸馏 / 抓取网页）的解析——
+// 避免请求超时把已创建的来源“丢掉”，失败也会以 status/error 显式呈现在知识库。
+async function handleKnowledgeImport(req, res) {
+  try {
+    const source = await importKnowledgeReal(db, req.body);
+    if (req.body.autoParse === false) { persist(res, { message: "知识来源已导入，尚未解析", source }); return; }
+    source.status = "processing";
+    saveDb(db);
+    res.json({ message: "知识来源已导入，正在后台蒸馏，稍后自动出现在知识库", source, parsed: { status: "processing" } });
+    parseKnowledgeRealSource(db, source.id)
+      .then(() => { saveDb(db); try { broadcastRaw({ type: "knowledge_updated", sourceId: source.id, status: source.status }); } catch { /* SSE 可选 */ } })
+      .catch((err) => {
+        source.status = "failed";
+        source.error = err.message;
+        appendAudit(db, `知识后台蒸馏失败：${err.message}`, source.id, "KnowledgePipeline", "warning");
+        saveDb(db);
+        try { broadcastRaw({ type: "knowledge_updated", sourceId: source.id, status: "failed" }); } catch { /* SSE 可选 */ }
+      });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, liveTradingEnabled: db.system.liveTradingEnabled, updatedAt: db.meta.updatedAt, storage: getStorageInfo() });
 });
@@ -971,23 +994,9 @@ app.post("/api/tasks/:id/run", requirePermission("write:task"), async (req, res)
   res.json(result);
 });
 
-app.post("/api/knowledge/import", requirePermission("write:knowledge"), async (req, res) => {
-  try {
-    const result = await importAndMaybeParseKnowledge(req.body);
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+app.post("/api/knowledge/import", requirePermission("write:knowledge"), handleKnowledgeImport);
 
-app.post("/api/knowledge/import-real", requirePermission("write:knowledge"), async (req, res) => {
-  try {
-    const result = await importAndMaybeParseKnowledge(req.body);
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+app.post("/api/knowledge/import-real", requirePermission("write:knowledge"), handleKnowledgeImport);
 
 app.post("/api/knowledge/github-import", requirePermission("write:knowledge"), async (req, res) => {
   try {

@@ -306,7 +306,15 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         <div className="termCard snapCard">
           <div className="secLabel">市场快照</div>
           <div className="snapList">
-            {snapRows.map(([k, v, tone]) => (
+            <LivePrice symbol={activeSymbol} fallbackPrice={market.price} fallbackChange={market.changePct}>
+              {(livePrice, liveChange) => (
+                <>
+                  <div className="snapRow"><span>最新价</span><b className="mono">{displayPrice(livePrice)}</b></div>
+                  <div className="snapRow"><span>24h 涨跌</span><b className={`mono ${Number(liveChange) >= 0 ? "pos" : "neg"}`}>{displayPct(liveChange)}</b></div>
+                </>
+              )}
+            </LivePrice>
+            {snapRows.slice(2).map(([k, v, tone]) => (
               <div className="snapRow" key={k}>
                 <span>{k}</span>
                 {tone === "badge"
