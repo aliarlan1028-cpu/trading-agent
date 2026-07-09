@@ -6,8 +6,15 @@
 // 账户余额/持仓的实时推送需要私有 WS（要 API 凭证），待配置交易所后再接。
 // ---------------------------------------------------------------------------
 import WebSocket from "ws";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
 import { nowIso } from "./store.mjs";
+
+// ws 库不走 undici 全局代理；有代理环境（如本机 Clash）需显式带 agent，否则实时行情 WS 直连被重置。
+function wsOptions() {
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+  return proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : undefined;
+}
 
 const OKX_WS = "wss://ws.okx.com:8443/ws/v5/public";
 const listeners = new Set();
@@ -48,7 +55,7 @@ export function startMarketStream(db) {
 
 function connect() {
   try {
-    ws = new WebSocket(OKX_WS);
+    ws = new WebSocket(OKX_WS, wsOptions());
   } catch {
     scheduleReconnect();
     return;
