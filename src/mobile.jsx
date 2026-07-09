@@ -933,9 +933,9 @@ function MobileAudit({ data, ui }) {
   const exTotal = data.exchangeAccounts?.length || 0;
   const sysCards = [
     ["API 健康", sys.apiHealth || "未知", "#2A6FDB", "#EAF0FB"],
-    ["WebSocket", rt.filter((c) => c.status === "connected").length + "/" + (rt.length || 0), "#7A4FD0", "#F0EAFB"],
+    ["WebSocket", data.realtimeStarted ? `${rt.filter((c) => c.status === "connected").length}/${rt.length || 0}` : "未启动", "#7A4FD0", "#F0EAFB"],
     ["任务引擎", String(tasks), "#D06A22", "#FBEDDF"],
-    ["交易所同步", `${exSynced}/${exTotal}`, "#1F7A50", "#E6F1EA"]
+    ["交易所同步", exTotal ? `${exSynced}/${exTotal}` : "未接入", "#1F7A50", "#E6F1EA"]
   ];
   const chain = (data.traces || []).slice(0, 6);
   const logs = (data.auditLogs || []).slice(0, 5);

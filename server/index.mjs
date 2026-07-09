@@ -516,6 +516,13 @@ app.post("/api/system/autonomy", requirePermission("write:mandate"), (req, res) 
 });
 
 app.get("/api/overview", (_req, res) => {
+  // 实时计算 API 健康度（原来是固定种子值 "待配置"，配置后也不变，属显示 bug）。
+  {
+    const cfgStatus = getConfigStatus(db);
+    const configured = (db.exchangeAccounts || []).some((a) => a.readEnabled) || cfgStatus?.exchange?.okx?.hasKey || cfgStatus?.exchange?.binance?.hasKey;
+    const criticalOpen = (db.riskIncidents || []).some((i) => i.status === "open" && (i.severity === "critical" || i.severity === "high"));
+    db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : criticalOpen ? "异常" : configured ? "正常" : "待配置";
+  }
   res.json({
     user: db.user,
     users: (db.users || []).map(sanitizeUserRecord),

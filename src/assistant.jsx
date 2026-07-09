@@ -2,6 +2,25 @@ import React, { useState } from "react";
 import { Sparkles, X, RefreshCw, Bot } from "lucide-react";
 import { displayMoney } from "./lib.jsx";
 
+function renderInline(text) {
+  return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : <React.Fragment key={i}>{part}</React.Fragment>
+  );
+}
+
+// 把助手的总结（自然语言或结构化事实）渲染成清爽的要点/键值，而不是一堆挤在一起的段落。
+function renderSummary(text) {
+  return String(text).split("\n").map((raw) => raw.trim()).filter(Boolean).map((line, i) => {
+    const head = line.match(/^#{1,4}\s+(.+)$/) || line.match(/^【(.+)】[:：]?$/);
+    if (head) return <div className="asstH" key={i}>{head[1]}</div>;
+    const bullet = line.match(/^[-*•·]\s+(.+)$/) || line.match(/^\d+[.)、]\s+(.+)$/);
+    if (bullet) return <div className="asstLi" key={i}><span className="asstDot" /><span>{renderInline(bullet[1])}</span></div>;
+    const kv = line.match(/^([^：:]{1,8})[：:]\s*(.+)$/);
+    if (kv) return <div className="asstKvRow" key={i}><b>{kv[1]}</b><span>{renderInline(kv[2])}</span></div>;
+    return <p key={i}>{renderInline(line)}</p>;
+  });
+}
+
 // 悬浮 AI 助手：随时总结账户状态、自主运行、今日行为、待办与风险。
 export function AssistantWidget({ data, action }) {
   const [open, setOpen] = useState(false);
@@ -52,11 +71,7 @@ export function AssistantWidget({ data, action }) {
           <button className="asstSumBtn" onClick={summarize} disabled={loading}>
             <RefreshCw size={13} className={loading ? "spin" : ""} /> {loading ? "总结中…" : "让 AI 总结当前状态"}
           </button>
-          {summary && (
-            <div className="asstSummary">
-              {summary.split("\n").filter((line) => line.trim()).map((line, i) => <p key={i}>{line}</p>)}
-            </div>
-          )}
+          {summary && <div className="asstSummary">{renderSummary(summary)}</div>}
         </div>
       )}
     </>
