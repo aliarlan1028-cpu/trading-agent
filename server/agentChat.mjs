@@ -383,10 +383,18 @@ export async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
+  // B 路：已回测通过的书本策略假设 → 作为可采用的候选策略注入（闭环落地，不再只停在 UI 标记）。
+  const passedHypos = (db.knowledge?.strategyHypotheses || []).filter((h) => h.status === "已验证" && h.executable);
+  if (passedHypos.length) {
+    const text = passedHypos.slice(0, 6)
+      .map((h) => `- ${h.name}（${h.symbolScope} · ${h.timeframe} · ${h.direction}）入场 ${h.entry || "-"}｜止损 ${h.stop || "-"}｜止盈 ${h.takeProfit || "-"}${h.backtest?.expectancyR != null ? `（回测期望 ${h.backtest.expectancyR}R / 胜率 ${h.backtest.winRatePct}%）` : ""}`)
+      .join("\n");
+    sections.push(`【已回测通过的书本策略（可作为提计划的参考方向，仍需结合当前行情/风控确认）】\n${text}`);
+  }
   // B 路硬闸：未回测通过的书本策略假设禁止直接实盘。
   const pendingHypos = (db.knowledge?.strategyHypotheses || []).filter((h) => h.status !== "已验证");
   if (pendingHypos.length) {
-    sections.push(`【策略假设约束】知识库有 ${pendingHypos.length} 条来自书籍的未验证策略假设，它们只是灵感、未经样本外回测，禁止据此直接提出实盘计划；只有经回测通过并进入"已验证策略画像"的策略才可采用。`);
+    sections.push(`【策略假设约束】知识库有 ${pendingHypos.length} 条来自书籍的未验证策略假设，它们只是灵感、未经样本外回测，禁止据此直接提出实盘计划；只有经回测通过（已验证）的才可作为参考方向。`);
   }
 
   return sections.join("\n\n");
