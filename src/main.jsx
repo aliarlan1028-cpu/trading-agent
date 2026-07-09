@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
+import { AssistantWidget } from "./assistant.jsx";
 import { AdminPage, AgentProfilesPanel, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
 import { KillConfirmDialog, MobileApp } from "./mobile.jsx";
@@ -281,6 +282,7 @@ function App() {
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
+      <AssistantWidget data={data} action={action} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

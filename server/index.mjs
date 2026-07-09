@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
-import { activeProvider, runAgentChat } from "./agentChat.mjs";
+import { activeProvider, runAgentChat, llmComplete } from "./agentChat.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
@@ -596,6 +596,45 @@ app.get("/api/market/instruments", async (_req, res) => {
   } catch (error) {
     res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
   }
+});
+
+// 悬浮 AI 助手：把系统里的账户/自主状态/今日活动/待办/风险汇成一段可读总结。
+app.post("/api/assistant/summarize", async (req, res) => {
+  refreshAccounting(db);
+  const pf = db.portfolio || {};
+  const positions = db.positions || [];
+  const sys = db.system || {};
+  const awaitingPlans = (db.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
+  const pendingActions = (db.pendingActions || []).filter((a) => !a.status || a.status === "pending");
+  const openIncidents = (db.riskIncidents || []).filter((i) => i.status === "open");
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const runsToday = (db.agentRuns || []).filter((r) => new Date(r.createdAt) >= dayStart).length;
+  const auditsToday = (db.auditLogs || []).filter((a) => new Date(a.createdAt) >= dayStart).length;
+  const lastSnap = (db.accountSnapshots || [])[0];
+  const digest = {
+    account: {
+      totalEquityUsdt: pf.totalEquityUsdt ?? null,
+      todayPnl: pf.todayPnl ?? null,
+      unrealizedPnl: pf.unrealizedPnl ?? null,
+      positions: positions.length,
+      lastSyncAt: lastSnap?.createdAt || null
+    },
+    autonomy: { enabled: sys.autonomyEnabled === true, killSwitch: sys.killSwitch === true, liveTrading: sys.liveTradingEnabled === true },
+    todayActivity: { agentRuns: runsToday, auditEvents: auditsToday },
+    todos: { plansAwaitingApproval: awaitingPlans.length, pendingActions: pendingActions.length },
+    risk: { openIncidents: openIncidents.length, topIncident: openIncidents[0]?.title || null }
+  };
+  const facts = [
+    `账户：总资产 ${digest.account.totalEquityUsdt ?? "未同步"} USDT，今日盈亏 ${digest.account.todayPnl ?? "未同步"} USDT，未实现 ${digest.account.unrealizedPnl ?? "未同步"} USDT，持仓 ${digest.account.positions} 个，最后同步 ${digest.account.lastSyncAt || "从未"}`,
+    `自主：${digest.autonomy.killSwitch ? "已熔断" : digest.autonomy.enabled ? "自主运行中" : "已暂停"}，实盘写入 ${digest.autonomy.liveTrading ? "开启" : "关闭"}`,
+    `今日活动：自主巡检 ${digest.todayActivity.agentRuns} 次，审计事件 ${digest.todayActivity.auditEvents} 条`,
+    `待办：待批准计划 ${digest.todos.plansAwaitingApproval} 个，待确认操作 ${digest.todos.pendingActions} 个`,
+    `风险：未处理告警 ${digest.risk.openIncidents} 条${digest.risk.topIncident ? `（最新：${digest.risk.topIncident}）` : ""}`
+  ].join("\n");
+  const system = "你是用户的交易系统助手。用中文把下面的系统状态总结成 3-5 条简洁要点（账户、自主状态、今日活动、待办、风险），并在最后给一句最该关注的行动建议。只基于给定事实，不要编造任何数字，不确定的写『未同步』。";
+  let summary = null;
+  try { summary = await llmComplete(facts, system); } catch { summary = null; }
+  res.json({ summary: summary || facts, digest, llm: Boolean(summary) });
 });
 
 // 关注列表：独立于授权白名单的自选币对（从 OKX 永续合约里增删）。
