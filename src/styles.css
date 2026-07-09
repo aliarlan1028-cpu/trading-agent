@@ -9395,3 +9395,42 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .settingsTermPage .switchGrid { gap: 8px; }
 /* 运行参数字段网格更整齐 */
 .settingsTermPage .panelForm .formGrid { gap: 12px; }
+
+/* ===== 移动端 Terminal 重设计：外壳 + 汉堡抽屉（design_handoff_ios_app）===== */
+.mShell2 { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #F4F1EB; overflow: hidden; }
+.mHeader2 { flex: none; display: flex; align-items: center; gap: 12px; padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 12px; background: #FBF9F5; border-bottom: 1px solid #EDE7DB; }
+.mMenuBtn { width: 38px; height: 38px; border: 0; border-radius: 10px; background: #F1EADF; color: #1E1B16; display: grid; place-items: center; flex: none; cursor: pointer; }
+.mHeaderMid { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.mHeaderMid strong { font: 700 17px "Space Grotesk"; color: #1E1B16; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mHeaderMid small { font: 500 11px "IBM Plex Mono"; color: #8a8172; }
+.mHeaderRight { flex: none; display: flex; align-items: center; gap: 8px; }
+.mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
+.mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }
+.mRunBadge .pulseDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulseDot 2s infinite; }
+@keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.mMain2 { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(30px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+.mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; }
+.mMain2.mMainChat > .mChatContent { flex: 1; min-height: 0; }
+.mShell2 .chatShell { display: block; height: 100%; }
+.mShell2 .agRail { display: none; }
+
+/* 汉堡抽屉 */
+.mDrawerOverlay { position: fixed; inset: 0; z-index: 120; background: rgba(30,27,22,.42); backdrop-filter: blur(2px); animation: mDrawerFade .2s ease; }
+@keyframes mDrawerFade { from { opacity: 0; } to { opacity: 1; } }
+.mDrawer { position: absolute; left: 0; top: 0; bottom: 0; width: 80%; max-width: 300px; background: #FBF9F5; border-right: 1px solid #E3DCCE; box-shadow: 12px 0 40px -8px rgba(30,27,22,.3); padding: calc(30px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 14px calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); display: flex; flex-direction: column; animation: mDrawerIn .22s ease-out; }
+@keyframes mDrawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+.mDrawerBrand { display: flex; align-items: center; gap: 11px; padding: 4px 6px 14px; border-bottom: 1px solid #EDE7DB; margin-bottom: 12px; }
+.mDrawerLogo { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; display: grid; place-items: center; font-size: 16px; flex: none; }
+.mDrawerBrandText { display: grid; gap: 1px; }
+.mDrawerBrandText b { font: 700 15px "Space Grotesk"; color: #1E1B16; }
+.mDrawerBrandText small { font: 600 9px "Space Grotesk"; letter-spacing: .1em; color: #a89e8a; }
+.mDrawerNav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.mDrawerItem { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 13px; border: 0; border-radius: 10px; background: transparent; color: #4b443a; font: 600 15px "Space Grotesk"; cursor: pointer; text-align: left; }
+.mDrawerItem svg { color: #8a8172; flex: none; }
+.mDrawerItem.active { background: #1E1B16; color: #F5E9DB; font-weight: 700; }
+.mDrawerItem.active svg { color: #F5E9DB; }
+.mDrawerFoot { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #EDE7DB; }
+.mDrawerStatus { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: #E6F1EA; color: #1F7A50; font: 700 12px "Space Grotesk"; }
+.mDrawerStatus span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.mDrawerStatus.warning { background: #FBF1DE; color: #9a7420; } .mDrawerStatus.critical, .mDrawerStatus.danger { background: #F7E6E2; color: #C43F28; }
+.mDrawerClose { border: 1px solid #E3DCCE; background: #fff; border-radius: 10px; padding: 11px; font: 700 13px "Space Grotesk"; color: #6B6455; cursor: pointer; }

@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
+  Bot,
+  Menu,
+  PieChart,
+  ShieldCheck,
+  X,
   BookOpen,
   CalendarClock,
   ChevronDown,
@@ -819,107 +824,109 @@ function MobileManage({ onOpen, data }) {
   );
 }
 
+// 移动端主导航（与桌面 6 页 IA 一致 + 系统设置），走顶部汉堡抽屉。
+const mobileNav = [
+  { id: "chat", label: "AI 交易员", code: "ALPHA-01 · 趋势策略", icon: Bot },
+  { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
+  { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
+  { id: "knowledgeSkills", label: "知识与技能", code: "KNOWLEDGE · SKILLS", icon: BookOpen },
+  { id: "riskAuth", label: "风控与授权", code: "RISK · MANDATE", icon: ShieldCheck },
+  { id: "auditSystem", label: "审计与系统", code: "AUDIT · SYSTEM", icon: Activity },
+  { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
+];
+
+function MobileHeader({ route, onMenu, right }) {
+  const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
+  return (
+    <header className="mHeader2">
+      <button className="mMenuBtn" onClick={onMenu} aria-label="打开菜单"><Menu size={20} /></button>
+      <div className="mHeaderMid"><strong>{item.label}</strong><small className="mono">{item.code}</small></div>
+      <div className="mHeaderRight">{right}</div>
+    </header>
+  );
+}
+
+function NavDrawer({ open, route, onNavigate, onClose, data }) {
+  if (!open) return null;
+  const status = systemStatus(data);
+  return (
+    <div className="mDrawerOverlay" onClick={onClose}>
+      <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
+        <div className="mDrawerBrand"><span className="mDrawerLogo">◆</span><div className="mDrawerBrandText"><b>交易 Agent</b><small>AI · DIGITAL ASSET</small></div></div>
+        <div className="mDrawerNav">
+          {mobileNav.map((n) => {
+            const Icon = n.icon;
+            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span>{n.label}</span></button>;
+          })}
+        </div>
+        <div className="mDrawerFoot">
+          <div className={`mDrawerStatus ${status.tone}`}><span />{status.label}</div>
+          <button className="mDrawerClose" onClick={onClose}>关闭菜单</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export function MobileApp({ api }) {
   const { data, action, toast, busy, notify, download, refresh } = api;
-  const [tab, setTab] = useState("home");
+  const [route, setRoute] = useState("chat");
+  const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
-  const [railOpen, setRailOpen] = useState(false);
   const [killConfirm, setKillConfirm] = useState(false);
-  // 打开「动态」（通知中心）即把未读标为已读
+  // 打开审计/动态即把未读通知标为已读
   useEffect(() => {
-    if (tab === "feed" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
-  }, [tab]);
+    if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
+  }, [route]);
 
   function navigate(next) {
-    if (next === "chat") { setTab("chat"); setSubPage(""); return; }
-    if (next === "auditSystem") { setTab("feed"); setSubPage(""); setRailOpen(false); return; }
-    if (manageLabels[next]) { setTab("manage"); setSubPage(next); setRailOpen(false); return; }
-    setTab("home");
-    setSubPage("");
+    if (mobileNav.some((n) => n.id === next)) { setRoute(next); setSubPage(""); setDrawer(false); return; }
+    if (next === "positions" || next === "marketAccount") { setRoute("cockpit"); setSubPage(next); setDrawer(false); return; }
+    if (next === "review") { setRoute("auditSystem"); setSubPage("review"); setDrawer(false); return; }
+    if (next === "admin" || next === "systemSettings") { setRoute("systemSettings"); setSubPage(next === "admin" ? "admin" : ""); setDrawer(false); return; }
+    if (String(next).startsWith("settings:")) { setRoute("systemSettings"); setSubPage(next); setDrawer(false); return; }
+    setRoute("cockpit"); setSubPage(""); setDrawer(false);
   }
 
   const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
-  const currentStatus = systemStatus(data);
-  const live = data.system?.liveTradingEnabled;
-
+  const autoOn = data.system?.autonomyEnabled === true && !data.system?.killSwitch;
   const settingsSection = subPage.startsWith("settings:") ? subPage.slice(9) : "";
 
   let content = null;
-  if (tab === "manage" && subPage === "positions") {
-    content = <MobilePositions data={data} action={action} ui={ui} />;
-  } else if (tab === "manage" && subPage === "systemSettings") {
-    content = <MobileSettingsIndex data={data} onOpen={setSubPage} />;
-  } else if (tab === "manage" && subPage) {
-    content = (
-      <>
-        {subPage === "marketAccount" && <MobileAccountHealth data={data} action={action} />}
-        {subPage === "review" && <MobileReview data={data} ui={ui} />}
-        {subPage === "knowledgeSkills" && <MobileKnowledge data={data} action={action} ui={ui} />}
-        {subPage === "eventsTasks" && <MobileTasks data={data} action={action} ui={ui} />}
-        {subPage === "riskAuth" && <MobileRisk data={data} action={action} ui={ui} />}
-        {subPage === "admin" && <div className="content mSubContent mAdminContent"><AdminPage data={data} action={action} ui={ui} /></div>}
-        {settingsSection && <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>}
-      </>
-    );
-  } else if (tab === "chat") {
+  if (route === "chat") {
     content = <div className="content mChatContent"><ChatPage data={data} action={action} ui={ui} /></div>;
-  } else if (tab === "feed") {
-    content = <MobileFeed data={data} />;
-  } else if (tab === "manage") {
-    content = <MobileManage onOpen={(id) => setSubPage(id)} data={data} />;
+  } else if (route === "cockpit") {
+    content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
+      : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
+        : <MobileHome data={data} action={action} ui={ui} onOpenRail={() => {}} />;
+  } else if (route === "eventsTasks") {
+    content = <MobileTasks data={data} action={action} ui={ui} />;
+  } else if (route === "knowledgeSkills") {
+    content = <MobileKnowledge data={data} action={action} ui={ui} />;
+  } else if (route === "riskAuth") {
+    content = <MobileRisk data={data} action={action} ui={ui} />;
+  } else if (route === "auditSystem") {
+    content = subPage === "review" ? <MobileReview data={data} ui={ui} /> : <MobileFeed data={data} />;
+  } else if (route === "systemSettings") {
+    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>
+      : subPage === "admin" ? <div className="content mSubContent mAdminContent"><AdminPage data={data} action={action} ui={ui} /></div>
+        : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
-    content = <MobileHome data={data} action={action} ui={ui} onOpenRail={() => setRailOpen(true)} />;
+    content = <MobileHome data={data} action={action} ui={ui} onOpenRail={() => {}} />;
   }
 
+  const headerRight = subPage
+    ? <button className="mBack" onClick={() => setSubPage("")} aria-label="返回"><ChevronLeft size={19} /></button>
+    : route === "chat"
+      ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? "运行中" : "已暂停"}</span>
+      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> 熔断</button>;
+
   return (
-    <div className="mShell">
-      <header className="mHeader">
-        {tab === "manage" && subPage ? (
-          <>
-            <button className="mBack" onClick={() => setSubPage(settingsSection ? "systemSettings" : "")} aria-label="返回"><ChevronLeft size={19} /></button>
-            <strong className="mHeaderTitle">{manageLabels[subPage]}</strong>
-            <span className="mHeaderSpacer" />
-          </>
-        ) : (
-          <>
-            <div className="mHeaderStatus">
-              <button className={`mStatusPill ${currentStatus.tone}`} onClick={() => navigate("riskAuth")}>
-                <span />{currentStatus.label}
-              </button>
-              <span className={`mLivePill ${live ? "on" : ""}`}>{live ? "实盘" : "模拟盘"}</span>
-            </div>
-            <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> 熔断</button>
-          </>
-        )}
-      </header>
-
-      <main className={`mMain ${tab === "chat" && !subPage ? "mMainChat" : ""}`}>{content}</main>
-
-      <nav className="mTabbar">
-        {mobileTabs.map((item) => {
-          const Icon = item.icon;
-          const active = tab === item.id;
-          return (
-            <button key={item.id} className={active ? "active" : ""} onClick={() => { setTab(item.id); setSubPage(""); }} aria-label={item.label}>
-              <Icon size={20} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {railOpen && (
-        <div className="railSheetOverlay" onClick={() => setRailOpen(false)}>
-          <div className="railSheet" onClick={(event) => event.stopPropagation()}>
-            <div className="railSheetHead">
-              <strong>Agent 状态</strong>
-              <button onClick={() => setRailOpen(false)} aria-label="关闭"><ChevronDown size={17} /></button>
-            </div>
-            <RailContent data={data} action={action} ui={{ ...ui, setActive: (next) => { setRailOpen(false); navigate(next); } }} />
-          </div>
-        </div>
-      )}
+    <div className="mShell2">
+      <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} />
+      <main className={`mMain2 ${route === "chat" && !subPage ? "mMainChat" : ""}`}>{content}</main>
+      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} />
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
