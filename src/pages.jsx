@@ -1090,7 +1090,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <div className="secRow"><span>邮件通知</span><b className={`evBadge ${data.integrations?.alerts?.hasWebhook ? "ok" : "warn"}`}>{data.integrations?.alerts?.hasWebhook ? "已启用" : "未配置"}</b></div>
         </div>
         <div className="termCard">
-          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>IP 白名单</span><button className="agLink" onClick={() => ui.openPanel("exchange")}>管理</button></div>
+          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>IP 白名单</span><button className="agLink" onClick={() => ui.openPanel("ip")}>管理</button></div>
           <div className="secRow"><span className="mono">建议绑定交易所 IP</span><b className="evBadge warn">未设置</b></div>
         </div>
         <div className="termCard">
