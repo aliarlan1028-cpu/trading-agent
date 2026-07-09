@@ -942,47 +942,102 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
       : validFrom
         ? `${formatDate(validFrom)} 起`
         : "未记录";
+  const riskRules = data.riskRules || [];
+  const scopeOf = (s) => { const t = String(s || "").toLowerCase(); if (/account|portfolio|loss|margin|equity/.test(t)) return "account"; if (/event/.test(t)) return "event"; if (/system|knowledge|kill|api/.test(t)) return "system"; return "trade"; };
+  const ruleGroups = [
+    { key: "account", title: "账户风险", Icon: WalletCards, bg: "#EAF0FB", color: "#2A6FDB" },
+    { key: "trade", title: "交易风险", Icon: TrendingUp, bg: "#E6F1EA", color: "#1F7A50" },
+    { key: "event", title: "事件风险", Icon: Bell, bg: "#FBEDDF", color: "#D06A22" },
+    { key: "system", title: "系统风险", Icon: Shield, bg: "#F0EAFB", color: "#7A4FD0" }
+  ].map((g) => ({ ...g, rules: riskRules.filter((r) => scopeOf(r.scope) === g.key) }));
+  const maxLev = mandate.max_leverage || (mandate.maxLeverageBySymbol && Object.values(mandate.maxLeverageBySymbol).length ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : null);
+  const mandateRows2 = [
+    { Icon: Layers, k: "授权范围", v: humanizeList(mandate.marketTypes, "未设置") },
+    { Icon: WalletCards, k: "交易所", v: safeList(mandate.exchanges, "未授权") },
+    { Icon: ListChecks, k: "白名单", v: (mandate.allowedSymbols || []).length ? `${mandate.allowedSymbols.length} 币` : "未授权" },
+    { Icon: TrendingUp, k: "最大杠杆", v: maxLev ? `${maxLev}x` : "未授权" },
+    { Icon: Target, k: "单日最大亏损", v: `${mandate.maxDailyLossPct || "-"}%`, color: "neg" },
+    { Icon: CheckCircle2, k: "审批阈值", v: mandate.id ? `≥${formatMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` : "未授权" },
+    { Icon: CalendarClock, k: "有效期", v: mandateValidity },
+    { Icon: Activity, k: "状态", v: humanize(mandate.status, "未授权"), color: mandateTone === "ok" ? "pos" : "" }
+  ];
+  const budget = data.system.remainingDailyLossUsdt;
+  const budgetCap = mandate.maxDailyLossPct && data.portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(data.portfolio.totalEquityUsdt) : null;
+  const budgetPct = budgetCap && budget != null ? Math.max(0, Math.min(100, (Number(budget) / budgetCap) * 100)) : null;
+  const limitRows = [
+    ["灰度实盘额度", grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"],
+    ["最大杠杆", maxLev ? `${maxLev}x` : "—"],
+    ["单笔风险上限", `${mandate.maxSingleTradeRiskPct ?? "-"}%`],
+    ["最近风控结论", latestRisk.summary || humanize(latestRisk.decision, "暂无")]
+  ];
+  const exAccounts = data.exchangeAccounts || [];
+  const keyPerms = [
+    ["读取行情", "允许", "pos"], ["读取账户", "允许", "pos"],
+    ["交易下单", data.system?.liveTradingEnabled ? "允许" : "关闭", data.system?.liveTradingEnabled ? "pos" : ""],
+    ["提现权限", "禁止", "neg"]
+  ];
+  const authHist = (data.auditLogs || []).filter((item) => item.target?.includes("mandate") || item.action?.includes("授权") || item.action?.includes("风控") || item.action?.includes("熔断")).slice(0, 4);
   return (
-    <div className="pageStack termPage">
+    <div className="pageStack termPage riskPage">
       {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
-      <div className="riskAuthGrid">
-        <Card>
-          <SectionTitle title="授权委托" action={<><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge><button className="secondaryButton" title="编辑授权委托" onClick={() => ui.openPanel("mandate")}><Pencil size={15} /></button></>} />
-          <div className="mandateRows">
-            <RiskLine label="授权范围" value={humanizeList(mandate.marketTypes, "未设置")} />
-            <RiskLine label="交易所" value={safeList(mandate.exchanges, "未授权")} />
-            <RiskLine label="交易对白名单" value={<SymbolChips symbols={mandate.allowedSymbols} />} />
-            <RiskLine label="最大杠杆倍数" value={mandate.max_leverage || mandate.maxLeverageBySymbol ? `${mandate.max_leverage || Math.max(1, ...Object.values(mandate.maxLeverageBySymbol || { default: 1 }))}x` : "未授权"} />
-            <RiskLine label="单日最大亏损" value={`${mandate.maxDailyLossPct || "-"}%`} />
-            <RiskLine label="审批阈值（单笔下单）" value={mandate.id ? `≥ ${formatMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)} USDT` : "未授权"} />
-            <RiskLine label="有效期" value={mandateValidity} />
-            <RiskLine label="状态" value={humanize(mandate.status, "未授权")} />
+      <div className="termGrid riskTop">
+        <div className="termCard">
+          <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
+          <div className="mandList">
+            {mandateRows2.map((r) => <div className="mandRow" key={r.k}><span className="mandK"><r.Icon size={14} /> {r.k}</span><b className={`mono ${r.color || ""}`}>{r.v}</b></div>)}
           </div>
-          <button className="textButton centered" onClick={() => ui.openPanel("mandate")}>查看委托详情与审批记录 <ChevronRight size={14} /></button>
-        </Card>
-        <Card>
-          <SectionTitle title="风险规则" action={<button className="secondaryButton" title="管理风险规则" onClick={() => ui.openPanel("riskRules")}><Settings size={15} /></button>} />
-          <RiskQuadrants rules={data.riskRules || []} />
-          <InsightNote icon={Shield} title="规则执行">规则触发将按预设动作执行，可在右侧风险状态墙中手动干预。</InsightNote>
-        </Card>
-        <Card className="riskStatusWall">
-          <SectionTitle title="风险状态墙" action={<small>实时更新 {formatDateTime(latestRisk.createdAt || data.system.updatedAt)} <RefreshCw size={13} /></small>} />
+          <button className="agLink" onClick={() => ui.openPanel("mandate")}>查看委托详情与审计 ›</button>
+        </div>
+
+        <div className="rrGrid">
+          {ruleGroups.map((g) => (
+            <div className="termCard rrCard" key={g.key}>
+              <div className="rrHead"><span className="rrIcon" style={{ background: g.bg, color: g.color }}><g.Icon size={14} /></span><b>{g.title}</b><span className="rrCount">{g.rules.length}</span></div>
+              {g.rules.slice(0, 3).map((r) => <div className="rrRow" key={r.id}><span>{(r.name || "规则").slice(0, 12)}</span><b>{humanize(r.action, r.level || "-")}</b></div>)}
+              {!g.rules.length && <div className="rrEmpty">无规则</div>}
+              <div className="rrOk"><span className="rrDot" />正常</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="termCard riskWallCard">
+          <div className="kHead"><b className="rwTitle">风险状态墙</b><span className="rwTime mono">实时 {formatTime(latestRisk.createdAt || data.system.updatedAt)}</span></div>
           <div className={`riskBanner ${riskBannerTone}`}>
             <span className="riskBannerIcon"><ShieldCheck size={19} /></span>
             <div className="riskBannerMain"><div className="riskBannerK">当前风险等级</div><b>{riskLevel} · {riskBannerTone === "pos" ? "正常" : riskBannerTone === "warn" ? "关注" : "高危"}</b></div>
             <div className="riskBannerScore"><b className="mono">{hasRiskScore ? riskScore : "—"}</b><span className="mono">/100</span></div>
           </div>
-          <div className="lossBudget"><span>剩余亏损预算（今日）<b>{data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt, 2, "0.00")} USDT`}</b></span><small>日亏损上限 {mandate.maxDailyLossPct || "-"}%</small><ProgressBar value={hasRiskScore ? Math.max(0, 100 - riskScore) : 0} /></div>
-          <RiskLine label="灰度实盘额度" value={grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"} />
-          <RiskLine label="最大杠杆倍数" value={mandate.max_leverage || mandate.maxLeverageBySymbol ? `${mandate.max_leverage || Math.max(1, ...Object.values(mandate.maxLeverageBySymbol || { default: 1 }))}x` : "未授权"} />
-          <RiskLine label="最近风控结论" value={latestRisk.summary || humanize(latestRisk.decision, "暂无检查")} />
-          <RiskLine label="系统状态" value={systemStatus(data).label} />
+          <div className="rwBudget">
+            <div className="rwBudgetTop"><span>剩余亏损预算（今日）</span><b className="mono">{budget == null ? "未授权" : `${displayMoney(budget, 0)} · ${budgetPct != null ? budgetPct.toFixed(0) + "%" : "—"}`}</b></div>
+            <div className="rwBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
+          </div>
+          <div className="rwLimits">
+            <div className="rwLimitsHead"><b>当前生效限制</b><button className="agLink" onClick={() => ui.openPanel("riskRules")}>查看全部 ›</button></div>
+            {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+          </div>
           <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
-          <small className="centerMuted">触发后将立即生效，并记录审计日志。</small>
-        </Card>
+        </div>
       </div>
-      <div className="authHistoryGrid">
-        <Card><SectionTitle title="授权历史" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>查看全部 <ChevronRight size={14} /></button>} /><div className="historyList">{(data.auditLogs || []).filter((item) => item.target?.includes("mandate") || item.action?.includes("授权")).slice(0, 4).map((item) => <div key={item.id}><StatusBadge>{item.severity}</StatusBadge><span>{item.action}</span><small>{item.actor}</small></div>)}</div><button className="textButton centered" onClick={() => ui.download("/api/audit-logs/export?format=csv", "audit-logs.csv")}>导出审计日志 <ChevronRight size={14} /></button></Card>
+
+      <div className="termGrid riskBot">
+        <div className="termCard">
+          <div className="balLabel">API 与账户安全</div>
+          {exAccounts.map((a) => <div className="secRow" key={a.id}><span>{a.exchange}</span><span className="secRowR"><b className={`evBadge ${a.readEnabled ? "ok" : "warn"}`}>{a.readEnabled ? "已连接" : "未配置"}</b></span></div>)}
+          <div className="secRow"><span>邮件通知</span><b className={`evBadge ${data.integrations?.alerts?.hasWebhook ? "ok" : "warn"}`}>{data.integrations?.alerts?.hasWebhook ? "已启用" : "未配置"}</b></div>
+        </div>
+        <div className="termCard">
+          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>IP 白名单</span><button className="agLink" onClick={() => ui.openPanel("exchange")}>管理</button></div>
+          <div className="secRow"><span className="mono">建议绑定交易所 IP</span><b className="evBadge warn">未设置</b></div>
+        </div>
+        <div className="termCard">
+          <div className="balLabel">密钥权限</div>
+          {keyPerms.map(([k, v, tone]) => <div className="secRow" key={k}><span>{k}</span><b className={`sg ${tone}`}>{v}</b></div>)}
+        </div>
+        <div className="termCard">
+          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>授权历史</span><button className="agLink" onClick={() => ui.download("/api/audit-logs/export?format=csv", "audit-logs.csv")}>导出</button></div>
+          {authHist.map((item) => <div className="authRow" key={item.id}><span className="authDot" /><div className="authInfo"><b>{item.action}</b><div>{item.actor}</div></div><span className="authTime mono">{formatTime(item.createdAt)}</span></div>)}
+          {!authHist.length && <div className="emptyPanel">暂无授权变更记录</div>}
+        </div>
       </div>
     </div>
   );

@@ -8951,3 +8951,56 @@ button.danger:disabled,
 .rbPause { border: 1px solid #E3DCCE; background: #EAF0FB; color: #2A6FDB; }
 .rbReduce { border: 1px solid #F0DCC5; background: #FBEDDF; color: #C9631F; }
 .rbKill { border: none; background: #C43F28; color: #fff; }
+
+/* 风控与授权 —— 严格照设计稿 .dc.html */
+.riskPage .termCard { border-radius: 11px; padding: 13px 15px; }
+.termGrid.riskTop { grid-template-columns: 1fr 1.15fr 1fr; gap: 8px; align-items: start; }
+.mandTitle { font: 700 12px "Space Grotesk"; }
+.mandTitle em { font: 500 10px "IBM Plex Mono"; color: #a89e8a; font-style: normal; margin-left: 6px; }
+.mandList { display: flex; flex-direction: column; margin: 4px 0 9px; }
+.mandRow { display: flex; align-items: center; justify-content: space-between; padding: 8.5px 0; border-bottom: 1px solid #EDE7DB; font-size: 12px; }
+.mandRow:last-child { border-bottom: 0; }
+.mandK { display: flex; align-items: center; gap: 8px; color: #6B6455; white-space: nowrap; }
+.mandK svg { color: #a89e8a; }
+.mandRow b { font: 600 12px "IBM Plex Mono"; color: #1E1B16; text-align: right; }
+.mandRow b.neg { color: #C43F28; } .mandRow b.pos { color: #1F7A50; }
+.rrGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rrCard { padding: 12px 13px !important; }
+.rrHead { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
+.rrIcon { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: none; }
+.rrHead b { font: 700 12px "Space Grotesk"; }
+.rrCount { margin-left: auto; font: 600 11px "IBM Plex Mono"; color: #a89e8a; }
+.rrRow { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 11.5px; }
+.rrRow span { color: #6B6455; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rrRow b { font: 600 11.5px "Space Grotesk"; color: #1E1B16; white-space: nowrap; }
+.rrEmpty { font-size: 11px; color: #a89e8a; padding: 5px 0; }
+.rrOk { margin-top: 7px; display: inline-flex; align-items: center; gap: 5px; font: 600 10.5px "Space Grotesk"; color: #1F7A50; }
+.rrDot { width: 6px; height: 6px; border-radius: 50%; background: #1F7A50; }
+.riskWallCard { display: flex; flex-direction: column; gap: 11px; }
+.rwTitle { font: 700 12px "Space Grotesk"; }
+.rwTime { font: 500 10px "IBM Plex Mono"; color: #a89e8a; }
+.rwBudgetTop { display: flex; justify-content: space-between; font-size: 9.5px; color: #6B6455; margin-bottom: 4px; }
+.rwBudgetTop b { font: 600 9.5px "IBM Plex Mono"; }
+.rwBudgetBar { height: 5px; border-radius: 3px; background: #EDE7DB; overflow: hidden; }
+.rwBudgetBar i { display: block; height: 100%; background: linear-gradient(90deg, #E68A4E, #D06A22); }
+.rwLimits { border-top: 1px solid #EDE7DB; padding-top: 9px; }
+.rwLimitsHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.rwLimitsHead b { font: 700 11px "Space Grotesk"; }
+.rwLimitRow { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 11.5px; }
+.rwLimitRow span { color: #6B6455; }
+.rwLimitRow b { font: 600 11.5px "IBM Plex Mono"; }
+.termGrid.riskBot { grid-template-columns: 1fr 1fr 1fr 1.2fr; gap: 8px; }
+.secRow { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #EDE7DB; font: 600 12px "Space Grotesk"; color: #1E1B16; }
+.secRow:last-child { border-bottom: 0; }
+.secRowR { display: flex; align-items: center; gap: 6px; }
+.secLabelSpread { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.secRow b.sg, b.sg { font: 600 11.5px "Space Grotesk"; }
+b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
+.authRow { display: flex; gap: 9px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid #EDE7DB; }
+.authRow:last-child { border-bottom: 0; }
+.authDot { width: 7px; height: 7px; border-radius: 50%; background: #D06A22; margin-top: 5px; flex: none; }
+.authInfo { flex: 1; min-width: 0; }
+.authInfo b { font-size: 11.5px; }
+.authInfo div { font-size: 10px; color: #a89e8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authTime { font: 500 9.5px "IBM Plex Mono"; color: #b3a992; flex: none; }
+@media (max-width: 1120px) { .termGrid.riskTop { grid-template-columns: 1fr; } .termGrid.riskBot { grid-template-columns: 1fr 1fr; } }
