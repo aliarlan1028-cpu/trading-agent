@@ -9169,3 +9169,79 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
   .userTableRow { grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; }
   .userTableRow > .uIdentity, .userTableRow > .uActions { grid-column: 1 / -1; }
 }
+
+/* ===== 套餐与支付 ===== */
+.adminBillingWrap { display: grid; gap: 12px; }
+.billingLead { display: inline-flex; align-items: center; gap: 8px; }
+.billingLead svg { color: var(--accent); }
+.billingLead strong { font-size: 14px; color: #1e1b16; }
+.billingLead small { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
+
+.planCreateGrid { display: grid; grid-template-columns: 1.4fr .8fr .8fr auto; gap: 12px; padding: 16px; align-items: end; }
+.planCreateGrid label { display: grid; gap: 6px; font-size: 12px; font-weight: 640; color: var(--text-2); }
+.planCreateGrid .planCreateFeats { grid-column: 1 / -1; }
+.planCreateGrid input, .planCreateGrid textarea { padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-white); font-size: 13px; color: #2a2620; }
+.planCreateGrid textarea { min-height: 60px; resize: vertical; font-family: var(--font-body); }
+.planCreateGrid input:focus, .planCreateGrid textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.planCreateGrid > .primaryButton { height: 38px; white-space: nowrap; }
+@media (max-width: 1000px) { .planCreateGrid { grid-template-columns: 1fr 1fr; } .planCreateGrid > .primaryButton { grid-column: 1 / -1; } }
+
+.planGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.planCard { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); padding: 16px; display: grid; gap: 12px; align-content: start; }
+.planCard.off { opacity: .66; }
+.planCardTop { display: flex; align-items: center; gap: 10px; }
+.planName { flex: 1; min-width: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: 5px 7px; margin: -5px -7px; font: 700 15px var(--font-ui); color: #1e1b16; }
+.planName:hover { border-color: var(--hairline); }
+.planName:focus { outline: none; border-color: var(--accent); background: var(--surface-white); box-shadow: 0 0 0 3px var(--accent-weak); }
+.planPrice { display: flex; align-items: baseline; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline); }
+.planPrice b { font: 600 26px var(--font-mono); color: var(--accent); line-height: 1; }
+.planPrice span { font-size: 12px; font-weight: 700; color: var(--text-3); }
+.planPrice em { margin-left: auto; font-style: normal; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
+.planFields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.planFields label { display: grid; gap: 5px; font-size: 11.5px; font-weight: 640; color: var(--text-3); }
+.planFields input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-white); font: 600 13px var(--font-mono); color: #1e1b16; }
+.planFields input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.planSave { justify-self: stretch; }
+
+.payBlock { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.payHead { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--hairline); background: var(--surface-2); }
+.payHead svg { color: var(--accent); }
+.payHead strong { font-size: 13px; color: #1e1b16; flex: 1; }
+.payHead small { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+.payTable { display: grid; }
+.payRow { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.2fr) auto; gap: 14px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--hairline); }
+.payRow:last-child { border-bottom: 0; }
+.payRow.head { font: 700 10.5px var(--font-ui); letter-spacing: .05em; color: var(--text-4); text-transform: uppercase; padding: 8px 16px; }
+.payRow > span { font-size: 12px; color: var(--text-2); }
+.payRow > strong { font-size: 13px; color: #1e1b16; }
+.payRow > small { font-size: 12px; color: var(--text-3); }
+
+/* ===== 安全维护 ===== */
+.secGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+@media (max-width: 900px) { .secGrid { grid-template-columns: 1fr; } }
+.secCard { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); padding: 18px; display: grid; gap: 14px; align-content: start; }
+.secCard.danger { border-color: #eecabf; background: linear-gradient(180deg, var(--neg-weak) 0%, var(--surface) 58%); }
+.secHead { display: flex; align-items: center; gap: 12px; }
+.secIcon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-weak); color: var(--accent); flex: none; }
+.secIcon.danger { background: #f6d9d0; color: var(--neg); }
+.secHeadText { display: grid; gap: 2px; }
+.secHeadText strong { font-size: 14px; color: #1e1b16; }
+.secHeadText small { font-size: 11.5px; color: var(--text-3); }
+.secField { display: grid; gap: 7px; font-size: 12px; font-weight: 640; color: var(--text-2); }
+.secField b { color: var(--neg); }
+.secField input { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-white); font-size: 13px; color: #2a2620; }
+.secField input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.secNote { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #9a7420; background: var(--warn-weak); padding: 8px 11px; border-radius: 8px; line-height: 1.4; }
+.secNote svg { flex: none; color: var(--warn); }
+.resetLists { display: grid; gap: 10px; }
+.resetCol { display: grid; gap: 6px; }
+.resetLabel { font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.resetCol.clear .resetLabel { color: var(--neg); }
+.resetCol.keep .resetLabel { color: var(--pos); }
+.resetChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.resetChips em { font-style: normal; font-size: 11.5px; font-weight: 640; padding: 3px 9px; border-radius: 6px; }
+.resetCol.clear em { color: #a5341c; background: var(--neg-weak); }
+.resetCol.keep em { color: #1f7a50; background: var(--pos-weak); }
+.secCard button.danger { border: 0; border-radius: 9px; padding: 11px 14px; background: var(--neg); color: #fff; font: 700 13px var(--font-ui); cursor: pointer; }
+.secCard button.danger:hover { filter: brightness(.95); }
+.secCard button.danger:disabled { opacity: .45; cursor: not-allowed; filter: none; }

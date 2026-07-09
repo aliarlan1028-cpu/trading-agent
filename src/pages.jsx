@@ -1556,6 +1556,7 @@ export function AdminPage({ data, action, ui, embedded = false }) {
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showNewPlan, setShowNewPlan] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "交易用户", freeMonths: 0 });
   const [newPlan, setNewPlan] = useState({ name: "", months: 1, priceUsdt: 0, features: "" });
   const [planDrafts, setPlanDrafts] = useState({});
@@ -1716,100 +1717,102 @@ export function AdminPage({ data, action, ui, embedded = false }) {
       )}
 
       {adminTab === "billing" && (
-        <div className="adminTwoColumn billing">
-          <Card>
-            <SectionTitle icon={WalletCards} title="订阅套餐定价" />
-            <div className="planEditList pretty">
-              {plans.map((plan) => {
-                const draft = planDrafts[plan.id] || plan;
-                return (
-                  <div className="planEditRow" key={plan.id}>
-                    <div className="planEditHeader">
-                      <input value={draft.name || ""} onChange={(event) => updatePlanDraft(plan.id, { name: event.target.value })} placeholder="套餐名称" />
-                      <button type="button" className="planToggle" title="点击启用/停用" onClick={() => updatePlanDraft(plan.id, { enabled: draft.enabled === false })}>
-                        <StatusBadge tone={draft.enabled === false ? "warning" : "ok"}>{draft.enabled === false ? "已停用" : "启用中"}</StatusBadge>
-                      </button>
-                    </div>
-                    <div className="adminInlineFields">
-                      <label><span>周期 · 月</span><input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
-                      <label><span>价格 · USDT</span><input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
-                    </div>
-                    {(() => {
-                      const feats = String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean);
-                      const setFeats = (arr) => updatePlanDraft(plan.id, { features: arr.join("\n") });
-                      return (
-                        <div className="featureTagBox">
-                          {feats.map((f, i) => (
-                            <span className="featureTag" key={i}><CheckCircle2 size={12} /> {f}<button type="button" title="移除" onClick={() => setFeats(feats.filter((_, j) => j !== i))}>×</button></span>
-                          ))}
-                          <input
-                            className="featureTagInput"
-                            placeholder={feats.length ? "加一条权益，回车确认" : "输入套餐权益，回车添加"}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === ",") {
-                                event.preventDefault();
-                                const t = event.target.value.trim();
-                                if (t) { setFeats([...feats, t]); event.target.value = ""; }
-                              } else if (event.key === "Backspace" && !event.target.value && feats.length) {
-                                setFeats(feats.slice(0, -1));
-                              }
-                            }}
-                          />
-                        </div>
-                      );
-                    })()}
-                    <button className="primaryButton" onClick={() => savePlan(plan)}>保存</button>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-          <div className="adminStack">
-            <Card>
-              <SectionTitle icon={Plus} title="新增套餐" />
-              <div className="adminFormStack">
-                <input value={newPlan.name} onChange={(event) => setNewPlan({ ...newPlan, name: event.target.value })} placeholder="套餐名" />
-                <div className="adminInlineFields">
-                  <input type="number" min="1" value={newPlan.months} onChange={(event) => setNewPlan({ ...newPlan, months: event.target.value })} placeholder="月数" />
-                  <input type="number" min="0" value={newPlan.priceUsdt} onChange={(event) => setNewPlan({ ...newPlan, priceUsdt: event.target.value })} placeholder="USDT 价格" />
-                </div>
-                <textarea value={newPlan.features} onChange={(event) => setNewPlan({ ...newPlan, features: event.target.value })} placeholder="套餐权益，每行一条" />
-                <button className="secondaryButton" onClick={() => action("/api/admin/subscription-plans", { ...newPlan, features: String(newPlan.features || "").split("\n").filter(Boolean) })}>新增套餐</button>
+        <div className="adminBillingWrap">
+          <div className="userToolbar">
+            <div className="billingLead"><WalletCards size={16} /><strong>订阅套餐定价</strong><small>{plans.length} 个套餐 · {plans.filter((plan) => plan.enabled !== false).length} 启用</small></div>
+            <button className="primaryButton" onClick={() => setShowNewPlan((value) => !value)}><Plus size={15} /> 新增套餐</button>
+          </div>
+
+          {showNewPlan && (
+            <div className="userCreatePanel">
+              <div className="userCreateHead"><Plus size={15} /><strong>新增套餐</strong><button type="button" className="ghostClose" onClick={() => setShowNewPlan(false)}><X size={15} /></button></div>
+              <div className="planCreateGrid">
+                <label>套餐名<input value={newPlan.name} onChange={(event) => setNewPlan({ ...newPlan, name: event.target.value })} placeholder="如：季度订阅" /></label>
+                <label>周期 · 月<input type="number" min="1" value={newPlan.months} onChange={(event) => setNewPlan({ ...newPlan, months: event.target.value })} /></label>
+                <label>价格 · USDT<input type="number" min="0" value={newPlan.priceUsdt} onChange={(event) => setNewPlan({ ...newPlan, priceUsdt: event.target.value })} /></label>
+                <label className="planCreateFeats">套餐权益（每行一条）<textarea value={newPlan.features} onChange={(event) => setNewPlan({ ...newPlan, features: event.target.value })} placeholder={"交易驾驶舱\nAgent 团队\n知识库"} /></label>
+                <button className="primaryButton" onClick={() => { action("/api/admin/subscription-plans", { ...newPlan, features: String(newPlan.features || "").split("\n").filter(Boolean) }); setShowNewPlan(false); }}>新增套餐</button>
               </div>
-            </Card>
-            <Card>
-              <SectionTitle icon={Database} title="TRC20 支付请求" />
-              <div className="paymentRequestList">
+            </div>
+          )}
+
+          <div className="planGrid">
+            {plans.map((plan) => {
+              const draft = planDrafts[plan.id] || plan;
+              const off = draft.enabled === false;
+              const feats = String(draft.features || "").split("\n").map((s) => s.trim()).filter(Boolean);
+              const setFeats = (arr) => updatePlanDraft(plan.id, { features: arr.join("\n") });
+              return (
+                <div className={`planCard ${off ? "off" : ""}`} key={plan.id}>
+                  <div className="planCardTop">
+                    <input className="planName" value={draft.name || ""} onChange={(event) => updatePlanDraft(plan.id, { name: event.target.value })} placeholder="套餐名称" />
+                    <button type="button" className={`statusPill ${off ? "off" : "on"}`} title="点击启用/停用" onClick={() => updatePlanDraft(plan.id, { enabled: off })}><span className="dot" />{off ? "已停用" : "启用中"}</button>
+                  </div>
+                  <div className="planPrice"><b>{draft.priceUsdt ?? 0}</b><span>USDT</span><em>/ {draft.months || 1} 月</em></div>
+                  <div className="planFields">
+                    <label>周期 · 月<input type="number" min="1" value={draft.months || 1} onChange={(event) => updatePlanDraft(plan.id, { months: event.target.value })} /></label>
+                    <label>价格 · USDT<input type="number" min="0" value={draft.priceUsdt ?? 0} onChange={(event) => updatePlanDraft(plan.id, { priceUsdt: event.target.value })} /></label>
+                  </div>
+                  <div className="featureTagBox">
+                    {feats.map((f, i) => (
+                      <span className="featureTag" key={i}><CheckCircle2 size={12} /> {f}<button type="button" title="移除" onClick={() => setFeats(feats.filter((_, j) => j !== i))}>×</button></span>
+                    ))}
+                    <input
+                      className="featureTagInput"
+                      placeholder={feats.length ? "加一条权益，回车确认" : "输入套餐权益，回车添加"}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === ",") {
+                          event.preventDefault();
+                          const t = event.target.value.trim();
+                          if (t) { setFeats([...feats, t]); event.target.value = ""; }
+                        } else if (event.key === "Backspace" && !event.target.value && feats.length) {
+                          setFeats(feats.slice(0, -1));
+                        }
+                      }}
+                    />
+                  </div>
+                  <button className="primaryButton planSave" onClick={() => savePlan(plan)}>保存</button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="payBlock">
+            <div className="payHead"><Database size={15} /><strong>TRC20 支付请求</strong><small>{payments.length ? `${payments.length} 条` : "暂无"}</small></div>
+            {payments.length ? (
+              <div className="payTable">
+                <div className="payRow head"><span>时间</span><span>金额</span><span>套餐</span><span>状态</span></div>
                 {payments.slice(0, 8).map((payment) => (
-                  <div key={payment.id}>
-                    <span>{formatTime(payment.createdAt)}</span>
-                    <strong>{displayMoney(payment.amount, 2, "0")} USDT</strong>
+                  <div className="payRow" key={payment.id}>
+                    <span className="mono">{formatTime(payment.createdAt)}</span>
+                    <strong className="mono">{displayMoney(payment.amount, 2, "0")} USDT</strong>
                     <small>{payment.planId}</small>
                     <StatusBadge tone={payment.status === "confirmed" ? "ok" : "warning"}>{humanize(payment.status)}</StatusBadge>
                   </div>
                 ))}
-                {!payments.length && <div className="emptyPanel">暂无支付请求。</div>}
               </div>
-            </Card>
+            ) : <div className="userEmpty">暂无支付请求</div>}
           </div>
         </div>
       )}
 
       {adminTab === "security" && (
-        <div className="adminTwoColumn">
-          <Card>
-            <SectionTitle icon={KeyRound} title="修改管理员密码" action={<InsightNote icon={AlertTriangle} title="提示">修改后当前会话可能仍短暂有效；建议保存后退出并用新密码重新登录。</InsightNote>} />
-            <div className="adminFormStack">
-              <label><span>新密码</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 12 位" /></label>
-              <button className="primaryButton" disabled={password.length < 12} onClick={() => action("/api/admin/password", { password })}>保存密码</button>
+        <div className="secGrid">
+          <div className="secCard">
+            <div className="secHead"><div className="secIcon"><KeyRound size={17} /></div><div className="secHeadText"><strong>修改管理员密码</strong><small>建议保存后退出并用新密码重新登录</small></div></div>
+            <label className="secField"><span>新密码</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 12 位" /></label>
+            <div className="secNote"><AlertTriangle size={13} /> 修改后当前会话可能仍短暂有效，请重新登录以确保生效。</div>
+            <button className="primaryButton" disabled={password.length < 12} onClick={() => action("/api/admin/password", { password })}>保存密码</button>
+          </div>
+          <div className="secCard danger">
+            <div className="secHead"><div className="secIcon danger"><RefreshCw size={17} /></div><div className="secHeadText"><strong>清空工作数据</strong><small>危险操作 · 不可撤销</small></div></div>
+            <div className="resetLists">
+              <div className="resetCol clear"><span className="resetLabel">将清空</span><div className="resetChips">{["行情", "计划", "持仓", "订单", "复盘", "记忆", "任务运行", "通知"].map((item) => <em key={item}>{item}</em>)}</div></div>
+              <div className="resetCol keep"><span className="resetLabel">将保留</span><div className="resetChips">{["用户", "密钥", "系统配置", "风险规则", "Agent Profile", "套餐"].map((item) => <em key={item}>{item}</em>)}</div></div>
             </div>
-          </Card>
-          <Card>
-            <SectionTitle icon={RefreshCw} title="清空工作数据" />
-            <p className="muted">清空行情、计划、持仓、订单、复盘、记忆、任务运行和通知，保留用户、密钥、系统配置、风险规则、Agent Profile 与套餐。</p>
-            <label className="dangerConfirm"><span>输入 RESET 确认</span><input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="RESET" /></label>
+            <label className="secField"><span>输入 <b>RESET</b> 确认</span><input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="RESET" /></label>
             <button className="danger" disabled={confirmText !== "RESET"} onClick={() => action("/api/system/reset-operational-data", { keepAudit: true })}>清空并开始投入</button>
-          </Card>
+          </div>
         </div>
       )}
     </div>
