@@ -9597,3 +9597,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 }
 .flagTip:hover::after, .flagTip:focus::after { opacity: 1; transform: translateY(0); }
 .flagTip:hover::before, .flagTip:focus::before { opacity: 1; }
+
+/* K线（lightweight-charts）加载/空态覆盖层 */
+.tvChart { width: 100%; height: 100%; position: relative; }
+.tvOverlay { position: absolute; inset: 0; display: grid; place-items: center; background: #FBF9F5; color: #a89e8a; font-size: 12px; }

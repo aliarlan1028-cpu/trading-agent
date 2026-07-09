@@ -14,7 +14,7 @@ import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateComm
 import { hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus } from "./marketStream.mjs";
@@ -682,6 +682,19 @@ app.delete("/api/watchlist/:symbol", requirePermission("write:realtime"), (req, 
   db.watchlist = ((db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).filter((s) => s !== symbol);
   saveDb(db);
   res.json({ ok: true, watchlist: db.watchlist });
+});
+
+// 公有 K 线（给自绘图表用真实 OKX 数据）。公开数据，走鉴权白名单。
+app.get("/api/market/klines", async (req, res) => {
+  try {
+    const symbol = String(req.query.symbol || "BTC/USDT").toUpperCase();
+    const tf = String(req.query.tf || "1h");
+    const limit = Math.min(Number(req.query.limit || 200), 500);
+    const candles = await getHistoricalKlines(symbol, tf, limit);
+    res.json({ symbol, tf, candles: candles || [] });
+  } catch (error) {
+    res.status(500).json({ error: `K线获取失败：${error.message}`, candles: [] });
+  }
 });
 
 app.get("/api/market/token-profile", async (req, res) => {

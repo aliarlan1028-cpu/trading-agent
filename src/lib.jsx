@@ -681,60 +681,58 @@ export function CandleChart({ candles = [] }) {
   );
 }
 
-// TradingView 嵌入式图表（官方 widget，走 TradingView 自己的行情）。
-let tvScriptPromise = null;
-function loadTradingView() {
-  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
-  if (window.TradingView && window.TradingView.widget) return Promise.resolve();
-  if (tvScriptPromise) return tvScriptPromise;
-  tvScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/tv.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => { tvScriptPromise = null; reject(new Error("tv.js load failed")); };
-    document.head.appendChild(script);
-  });
-  return tvScriptPromise;
-}
-
-export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", theme = "light" }) {
+// K 线图：TradingView 官方开源库 lightweight-charts + 真实 OKX K 线数据。
+// 自托管、无外部 iframe/来源校验，在浏览器与 Capacitor WKWebView 里都可靠渲染（嵌入式 widget 在原生 app 的
+// capacitor:// 源下会被 TradingView 拒绝，故改用其开源库）。导出名保持 TradingViewChart，调用方不变。
+const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
+export function TradingViewChart({ symbol = "BTC/USDT", interval = "60" }) {
   const holder = useRef(null);
-  const containerId = useRef(`tv_${Math.random().toString(36).slice(2, 9)}`);
-  const [failed, setFailed] = useState(false);
+  const [status, setStatus] = useState("loading");
   useEffect(() => {
-    let cancelled = false;
-    setFailed(false);
-    loadTradingView()
-      .then(() => {
-        if (cancelled || !holder.current || !window.TradingView) return;
-        holder.current.innerHTML = "";
-        const inner = document.createElement("div");
-        inner.id = containerId.current;
-        inner.style.height = "100%";
-        inner.style.width = "100%";
-        holder.current.appendChild(inner);
-        const base = String(symbol || "BTC/USDT").replace("/", "").toUpperCase();
-        // eslint-disable-next-line no-new
-        new window.TradingView.widget({
-          autosize: true,
-          symbol: `OKX:${base}.P`,
-          interval,
-          timezone: "Asia/Shanghai",
-          theme,
-          style: "1",
-          locale: "zh_CN",
-          hide_side_toolbar: true,
-          allow_symbol_change: false,
-          save_image: false,
-          container_id: containerId.current
-        });
-      })
-      .catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; };
-  }, [symbol, interval, theme]);
-  if (failed) return <div className="chartEmpty">TradingView 图表加载失败，请检查网络后重试</div>;
-  return <div className="tvChart" ref={holder} />;
+    let disposed = false;
+    let chart = null;
+    let ro = null;
+    setStatus("loading");
+    (async () => {
+      const tf = KLINE_TF[interval] || "1h";
+      let candles = [];
+      try {
+        const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=200`));
+        const json = await res.json();
+        candles = Array.isArray(json.candles) ? json.candles : [];
+      } catch { candles = []; }
+      if (disposed || !holder.current) return;
+      if (!candles.length) { setStatus("empty"); return; }
+      const lc = await import("lightweight-charts");
+      if (disposed || !holder.current) return;
+      setStatus("ok");
+      holder.current.innerHTML = "";
+      chart = lc.createChart(holder.current, {
+        autoSize: true,
+        layout: { background: { color: "#FBF9F5" }, textColor: "#8a8172", fontFamily: "IBM Plex Mono, monospace" },
+        grid: { vertLines: { color: "#EDE7DB" }, horzLines: { color: "#EDE7DB" } },
+        rightPriceScale: { borderColor: "#E3DCCE" },
+        timeScale: { borderColor: "#E3DCCE", timeVisible: true },
+        crosshair: { mode: 0 }
+      });
+      const series = chart.addSeries(lc.CandlestickSeries, {
+        upColor: "#1F7A50", downColor: "#C43F28", borderUpColor: "#1F7A50", borderDownColor: "#C43F28", wickUpColor: "#1F7A50", wickDownColor: "#C43F28"
+      });
+      const rows = candles
+        .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
+        .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
+        .sort((a, b) => a.time - b.time);
+      series.setData(rows);
+      chart.timeScale().fitContent();
+    })();
+    return () => { disposed = true; if (ro) ro.disconnect(); if (chart) { try { chart.remove(); } catch { /* noop */ } } };
+  }, [symbol, interval]);
+  return (
+    <div className="tvChart" style={{ position: "relative" }}>
+      <div ref={holder} style={{ width: "100%", height: "100%" }} />
+      {status !== "ok" && <div className="chartEmpty tvOverlay">{status === "empty" ? "同步交易所后显示真实 K 线" : "加载 K 线…"}</div>}
+    </div>
+  );
 }
 
 export function LinePriceChart({ candles = [] }) {
