@@ -17,7 +17,7 @@ import { executeTradePlan } from "./executor.mjs";
 import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
-import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus } from "./marketStream.mjs";
+import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
@@ -173,6 +173,49 @@ startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
 startMarketStream(db); // 实时行情流（OKX 公有 WS）→ 内存更新 + SSE 推前端
 refreshAccounting(db);
+
+// 实时仓位/盈亏：每个价格 tick 立即重算浮盈亏与组合，并把「持仓+组合」实时推给前端；
+// 同时节流地跑一次持仓管理（止盈止损/保本/跟踪，用实时价），作为交易所条件单之外的安全网。
+let __lastPnlBroadcast = 0;
+let __lastMonitorTick = 0;
+let __monitorBusy = false;
+setMarketTickHook((database, symbol, price) => {
+  const positions = (database.positions || []).filter((p) => p.symbol === symbol);
+  for (const p of positions) {
+    const entry = Number(p.entry ?? p.entryPrice ?? p.avgPx);
+    const size = Number(p.size ?? p.qty ?? p.pos);
+    if (!Number.isFinite(entry) || !Number.isFinite(size)) continue;
+    const short = p.direction === "空" || String(p.direction || p.side || p.posSide || "").toLowerCase().includes("short");
+    p.mark = price;
+    p.pnl = Number(((price - entry) * size * (short ? -1 : 1)).toFixed(2));
+    p.unrealizedPnl = p.pnl;
+    if (entry) p.roiPct = Number((((price - entry) / entry) * 100 * (short ? -1 : 1) * (Number(p.leverage) || 1)).toFixed(2));
+  }
+  const now = Date.now();
+  // 组合浮盈亏最多每 1s 广播一次（tick 很密，避免过度渲染）。
+  if (now - __lastPnlBroadcast > 1000) {
+    __lastPnlBroadcast = now;
+    try {
+      refreshAccounting(database);
+      broadcastRaw({
+        type: "portfolio",
+        portfolio: {
+          unrealizedPnl: database.portfolio?.unrealizedPnl ?? null,
+          todayPnl: database.portfolio?.todayPnl ?? null,
+          todayPnlPct: database.portfolio?.todayPnlPct ?? null,
+          totalEquityUsdt: database.portfolio?.totalEquityUsdt ?? null
+        },
+        positions: (database.positions || []).map((p) => ({ id: p.id, symbol: p.symbol, mark: p.mark, pnl: p.pnl, unrealizedPnl: p.unrealizedPnl, roiPct: p.roiPct }))
+      });
+    } catch { /* noop */ }
+  }
+  // 实时止盈止损安全网：最多每 3s 跑一次（用实时价），避免重入。
+  if (!__monitorBusy && now - __lastMonitorTick > 3000 && (database.positions || []).some((p) => p.source === "execution_engine")) {
+    __lastMonitorTick = now;
+    __monitorBusy = true;
+    Promise.resolve(monitorPositions(database)).catch(() => {}).finally(() => { __monitorBusy = false; });
+  }
+});
 
 function persist(res, payload) {
   saveDb(db);
@@ -1988,6 +2031,10 @@ app.post("/api/config", requirePermission("admin:security"), async (req, res) =>
       if (names.some((name) => applied.includes(name)) && account.readEnabled) {
         exchangeValidations.push(await syncPrivateReadOnly(db, account.id));
       }
+    }
+    // 交易所密钥变动后立即重连实时 WS（含私有用户流），让持仓/订单/账户实时推送生效，不必等重启。
+    if (applied.some((name) => /API_KEY|API_SECRET|API_PASSPHRASE/.test(name))) {
+      try { startRealtimeManager(db, saveDb, { force: true }); } catch { /* noop */ }
     }
     saveDb(db);
     const failedValidation = exchangeValidations.find((item) => item.status !== "ok");

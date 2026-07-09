@@ -565,20 +565,33 @@ export function useApi() {
       next.lastRealtimeAt = new Date().toISOString();
       return next;
     };
+    let pendingPortfolio = null;
     const flush = () => {
       timer = null;
       const ups = pending;
       pending = {};
+      const pf = pendingPortfolio;
+      pendingPortfolio = null;
       setData((prev) => {
         if (!prev) return prev;
         const markets = (prev.markets || []).map((m) => patch(m, ups));
         const activeMarket = prev.activeMarket && ups[prev.activeMarket.symbol] ? patch(prev.activeMarket, ups) : prev.activeMarket;
-        return { ...prev, markets, activeMarket };
+        const next = { ...prev, markets, activeMarket };
+        if (pf) {
+          // 实时组合浮盈亏 + 逐仓 PnL 合并（不等 15s 轮询）。
+          next.portfolio = { ...prev.portfolio, ...pf.portfolio };
+          if (pf.positions?.length && prev.positions?.length) {
+            const byId = Object.fromEntries(pf.positions.map((p) => [p.id, p]));
+            next.positions = prev.positions.map((p) => (byId[p.id] ? { ...p, ...byId[p.id] } : p));
+          }
+        }
+        return next;
       });
     };
     source.onmessage = (event) => {
       try {
         const u = JSON.parse(event.data);
+        if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 1000); return; }
         if (!u || !u.symbol) return;
         pending[u.symbol] = { ...pending[u.symbol], ...u };
         if (!timer) timer = setTimeout(flush, 1000);

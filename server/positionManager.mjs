@@ -36,9 +36,14 @@ export async function monitorPositions(db) {
 
   for (const position of managed) {
     try {
-      await syncPublicMarket(db, "OKX", position.symbol).catch(() => {});
-      const market = db.markets?.find((item) => item.symbol === position.symbol);
-      const mark = Number(market?.price);
+      // 优先用实时 WS 价（marketStream 持续更新 db.markets）；无实时价时才回退 REST。
+      let market = db.markets?.find((item) => item.symbol === position.symbol);
+      let mark = Number(market?.price);
+      if (!Number.isFinite(mark)) {
+        await syncPublicMarket(db, "OKX", position.symbol).catch(() => {});
+        market = db.markets?.find((item) => item.symbol === position.symbol);
+        mark = Number(market?.price);
+      }
       if (!Number.isFinite(mark)) continue;
       position.mark = mark;
       updateExcursion(db, position, mark);

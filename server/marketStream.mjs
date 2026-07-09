@@ -18,6 +18,11 @@ function wsOptions() {
 
 const OKX_WS = "wss://ws.okx.com:8443/ws/v5/public";
 const listeners = new Set();
+let tickHook = null;
+// 注册"每个价格 tick"回调（index.mjs 用它实时重算浮盈亏/组合并推前端 + 实时止盈止损）。
+export function setMarketTickHook(fn) { tickHook = fn; }
+// 直接向 SSE 订阅者广播任意对象（如组合/持仓实时更新）。
+export function broadcastRaw(obj) { for (const fn of listeners) { try { fn(obj); } catch { /* noop */ } } }
 
 let ws = null;
 let pingTimer = null;
@@ -131,6 +136,8 @@ function handleMessage(raw) {
     market.lastRealtimeAt = nowIso();
     market.lastRealtimeSource = "OKX_WS";
     market.status = "synced";
+    // 每个价格 tick 触发实时浮盈亏/组合重算 + 实时止盈止损检查（交易所条件单之外的安全网）。
+    if (tickHook && Number.isFinite(last)) { try { tickHook(dbRef, symbol, last); } catch { /* noop */ } }
   } else if (channel === "funding-rate") {
     market.fundingRate = Number(d.fundingRate) * 100;
     update.fundingRate = market.fundingRate;
