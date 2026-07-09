@@ -698,24 +698,40 @@ export function CandleChart({ candles = [] }) {
 // 自托管、无外部 iframe/来源校验，在浏览器与 Capacitor WKWebView 里都可靠渲染（嵌入式 widget 在原生 app 的
 // capacitor:// 源下会被 TradingView 拒绝，故改用其开源库）。导出名保持 TradingViewChart，调用方不变。
 const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
-export function TradingViewChart({ symbol = "BTC/USDT", interval = "60" }) {
+const KLINE_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+// K 线图：TradingView 官方开源库 lightweight-charts + 真实 OKX K 线。
+// livePrice（来自实时 SSE 行情）会逐 tick 更新当前这根蜡烛的收/高/低，并在周期切换时自动开新蜡烛，
+// 让图上的价格与标题实时一致；另每 20s 拉一次真实 K 线纠正已收线的 OHLC。导出名保持 TradingViewChart。
+export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null }) {
   const holder = useRef(null);
+  const seriesRef = useRef(null);
+  const lastBarRef = useRef(null);
   const [status, setStatus] = useState("loading");
+  const tf = KLINE_TF[interval] || "1h";
+  const barSeconds = KLINE_SECONDS[tf] || 3600;
+
   useEffect(() => {
     let disposed = false;
     let chart = null;
-    let ro = null;
+    let refetchTimer = null;
     setStatus("loading");
-    (async () => {
-      const tf = KLINE_TF[interval] || "1h";
-      let candles = [];
+    seriesRef.current = null;
+    lastBarRef.current = null;
+    const fetchRows = async () => {
       try {
         const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=200`));
         const json = await res.json();
-        candles = Array.isArray(json.candles) ? json.candles : [];
-      } catch { candles = []; }
+        const candles = Array.isArray(json.candles) ? json.candles : [];
+        return candles
+          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
+          .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
+          .sort((a, b) => a.time - b.time);
+      } catch { return []; }
+    };
+    (async () => {
+      const rows = await fetchRows();
       if (disposed || !holder.current) return;
-      if (!candles.length) { setStatus("empty"); return; }
+      if (!rows.length) { setStatus("empty"); return; }
       const lc = await import("lightweight-charts");
       if (disposed || !holder.current) return;
       setStatus("ok");
@@ -731,15 +747,44 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60" }) {
       const series = chart.addSeries(lc.CandlestickSeries, {
         upColor: "#1F7A50", downColor: "#C43F28", borderUpColor: "#1F7A50", borderDownColor: "#C43F28", wickUpColor: "#1F7A50", wickDownColor: "#C43F28"
       });
-      const rows = candles
-        .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
-        .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
-        .sort((a, b) => a.time - b.time);
       series.setData(rows);
       chart.timeScale().fitContent();
+      seriesRef.current = series;
+      lastBarRef.current = rows[rows.length - 1];
+      // 定期拉真实 K 线纠正已收线蜡烛（保留当前 live 蜡烛不回退）。
+      refetchTimer = setInterval(async () => {
+        const fresh = await fetchRows();
+        if (disposed || !seriesRef.current || !fresh.length) return;
+        const live = lastBarRef.current;
+        // 若最新一根真实蜡烛比当前 live 蜡烛更新（周期已滚动），整体重置；否则只补历史、保留 live 蜡烛。
+        if (live && fresh[fresh.length - 1].time <= live.time) {
+          const merged = fresh.filter((b) => b.time < live.time).concat([live]);
+          seriesRef.current.setData(merged);
+        } else {
+          seriesRef.current.setData(fresh);
+          lastBarRef.current = fresh[fresh.length - 1];
+        }
+      }, 20000);
     })();
-    return () => { disposed = true; if (ro) ro.disconnect(); if (chart) { try { chart.remove(); } catch { /* noop */ } } };
+    return () => { disposed = true; if (refetchTimer) clearInterval(refetchTimer); if (chart) { try { chart.remove(); } catch { /* noop */ } } seriesRef.current = null; };
   }, [symbol, interval]);
+
+  // 实时价：逐 tick 更新当前蜡烛的收/高/低，周期切换时开新蜡烛。
+  useEffect(() => {
+    const price = Number(livePrice);
+    const series = seriesRef.current;
+    const last = lastBarRef.current;
+    if (!series || !last || !Number.isFinite(price) || price <= 0) return;
+    const bucket = Math.floor(Math.floor(Date.now() / 1000) / barSeconds) * barSeconds;
+    let bar;
+    if (bucket > last.time) {
+      bar = { time: bucket, open: price, high: price, low: price, close: price };
+    } else {
+      bar = { time: last.time, open: last.open, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
+    }
+    try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
+  }, [livePrice, barSeconds]);
+
   return (
     <div className="tvChart" style={{ position: "relative" }}>
       <div ref={holder} style={{ width: "100%", height: "100%" }} />

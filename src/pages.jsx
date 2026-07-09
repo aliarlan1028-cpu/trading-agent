@@ -293,7 +293,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             <span className="ohlcRow mono">{activeSymbol}</span>
           </div>
           <div className="chartBox tv">
-            <TradingViewChart symbol={activeSymbol} interval={tvInterval} />
+            <TradingViewChart symbol={activeSymbol} interval={tvInterval} livePrice={market.price} />
           </div>
         </div>
         <div className="termCard snapCard">
