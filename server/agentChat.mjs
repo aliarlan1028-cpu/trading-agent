@@ -11,6 +11,7 @@ import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { executeApprovedPlan } from "./executionEngine.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
+import { refreshAccounting } from "./accounting.mjs";
 import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
 import { recordLangSmithRun } from "./langSmith.mjs";
@@ -331,6 +332,36 @@ export async function buildSystemPrompt(db, userText = "") {
   const pr = buildPortfolioRisk(db, db.mandates?.find((m) => ["active", "running"].includes(m.status)));
   if (pr.portfolioVolPct !== null) {
     sections.push(`【组合波动预算】当前组合日度波动 ${pr.portfolioVolPct}%，预算 ${pr.budgetPct}%，已用 ${pr.utilizationPct}%。接近或超过预算时应减小新仓名义额度或避免同向相关加仓（执行引擎会自动按组合波动上限压低仓位）。`);
+  }
+
+  // 实时账户快照：让 Agent 用当前真实数字说话，而不是靠 HISTORY.md / 记忆里的旧余额。
+  try { refreshAccounting(db); } catch { /* 无账户数据时忽略 */ }
+  const pf = db.portfolio || {};
+  const snap = (db.accountSnapshots || [])[0];
+  const acctBits = [];
+  if (pf.totalEquityUsdt != null) acctBits.push(`总资产 ${pf.totalEquityUsdt} USDT`);
+  if (pf.availableMarginUsdt != null) acctBits.push(`可用保证金 ${pf.availableMarginUsdt} USDT`);
+  if (pf.todayPnl != null) acctBits.push(`今日盈亏 ${pf.todayPnl} USDT`);
+  if (pf.unrealizedPnl != null) acctBits.push(`未实现盈亏 ${pf.unrealizedPnl} USDT`);
+  const openPositions = db.positions || [];
+  const posText = openPositions.slice(0, 8).map((p) => {
+    const sym = p.symbol || p.instId || "?";
+    const dir = String(p.direction || p.side || p.posSide || "").trim();
+    const entry = p.entry ?? p.entryPrice ?? p.avgPx ?? p.avgPrice;
+    const upl = p.pnl ?? p.upl ?? p.unrealizedPnl;
+    return `${sym}${dir ? " " + dir : ""} 开仓 ${entry ?? "-"} 浮盈亏 ${upl ?? "-"}`;
+  }).join("；");
+  const lastSync = snap?.createdAt;
+  const staleMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
+  if (acctBits.length || openPositions.length || lastSync) {
+    const body = [
+      acctBits.length ? acctBits.join(" ｜ ") : "账户未同步或暂无数据",
+      openPositions.length ? `持仓：${posText}` : "当前无持仓",
+      lastSync
+        ? `最后同步：${lastSync}（约 ${staleMin} 分钟前）${staleMin != null && staleMin > 5 ? " —— 已过期" : ""}`
+        : "尚未同步过私有账户"
+    ].join("\n");
+    sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
   }
 
   const chunks = await retrieveChunksSemantic(db, userText, 5);

@@ -100,28 +100,6 @@ export function id(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function makeCandles() {
-  const candles = [];
-  let price = 65000;
-  for (let i = 0; i < 96; i += 1) {
-    const drift = Math.sin(i / 7) * 180 + Math.cos(i / 4) * 90 + (i > 66 ? 35 : 0);
-    const open = price;
-    const close = Math.max(60000, open + drift + (Math.random() - 0.45) * 210);
-    const high = Math.max(open, close) + 160 + Math.random() * 260;
-    const low = Math.min(open, close) - 140 - Math.random() * 230;
-    candles.push({
-      time: `07-${String(Math.floor(i / 24) + 1).padStart(2, "0")} ${String(i % 24).padStart(2, "0")}:00`,
-      open: Number(open.toFixed(2)),
-      high: Number(high.toFixed(2)),
-      low: Number(low.toFixed(2)),
-      close: Number(close.toFixed(2)),
-      volume: Number((240 + Math.random() * 980).toFixed(0))
-    });
-    price = close;
-  }
-  return candles;
-}
-
 function emptyKnowledge() {
   return {
     sources: [],
