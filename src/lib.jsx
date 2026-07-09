@@ -664,6 +664,62 @@ export function CandleChart({ candles = [] }) {
   );
 }
 
+// TradingView 嵌入式图表（官方 widget，走 TradingView 自己的行情）。
+let tvScriptPromise = null;
+function loadTradingView() {
+  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+  if (window.TradingView && window.TradingView.widget) return Promise.resolve();
+  if (tvScriptPromise) return tvScriptPromise;
+  tvScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/tv.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => { tvScriptPromise = null; reject(new Error("tv.js load failed")); };
+    document.head.appendChild(script);
+  });
+  return tvScriptPromise;
+}
+
+export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", theme = "light" }) {
+  const holder = useRef(null);
+  const containerId = useRef(`tv_${Math.random().toString(36).slice(2, 9)}`);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    loadTradingView()
+      .then(() => {
+        if (cancelled || !holder.current || !window.TradingView) return;
+        holder.current.innerHTML = "";
+        const inner = document.createElement("div");
+        inner.id = containerId.current;
+        inner.style.height = "100%";
+        inner.style.width = "100%";
+        holder.current.appendChild(inner);
+        const base = String(symbol || "BTC/USDT").replace("/", "").toUpperCase();
+        // eslint-disable-next-line no-new
+        new window.TradingView.widget({
+          autosize: true,
+          symbol: `OKX:${base}.P`,
+          interval,
+          timezone: "Asia/Shanghai",
+          theme,
+          style: "1",
+          locale: "zh_CN",
+          hide_side_toolbar: true,
+          allow_symbol_change: false,
+          save_image: false,
+          container_id: containerId.current
+        });
+      })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [symbol, interval, theme]);
+  if (failed) return <div className="chartEmpty">TradingView 图表加载失败，请检查网络后重试</div>;
+  return <div className="tvChart" ref={holder} />;
+}
+
 export function LinePriceChart({ candles = [] }) {
   const series = candles.length ? candles.slice(-72) : [];
   if (!series.length) return <div className="chartEmpty">同步公开行情后显示真实价格线</div>;

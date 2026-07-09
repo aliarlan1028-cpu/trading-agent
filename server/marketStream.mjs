@@ -26,7 +26,8 @@ function instToSymbol(instId) {
 
 function trackedSymbols(db) {
   const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
-  return [...new Set(["BTC/USDT", "ETH/USDT", ...((mandate && mandate.allowedSymbols) || [])])].slice(0, 6);
+  const watchlist = (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+  return [...new Set(["BTC/USDT", "ETH/USDT", ...watchlist, ...((mandate && mandate.allowedSymbols) || [])])].slice(0, 12);
 }
 
 function ensureMarket(db, symbol) {

@@ -510,6 +510,7 @@ app.get("/api/overview", (_req, res) => {
     agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
     markets: db.markets,
+    watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     positions: db.positions,
     mandates: db.mandates,
@@ -595,6 +596,27 @@ app.get("/api/market/instruments", async (_req, res) => {
   } catch (error) {
     res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
   }
+});
+
+// 关注列表：独立于授权白名单的自选币对（从 OKX 永续合约里增删）。
+function normalizeSymbol(raw) {
+  const s = String(raw || "").trim().toUpperCase().replace(/-SWAP$/i, "").replace(/-/g, "/");
+  if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(s)) return null;
+  return s;
+}
+app.post("/api/watchlist", requirePermission("write:realtime"), (req, res) => {
+  const symbol = normalizeSymbol(req.body.symbol);
+  if (!symbol) return res.status(400).json({ error: "无效的交易对" });
+  db.watchlist = (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+  if (!db.watchlist.includes(symbol)) db.watchlist = [...db.watchlist, symbol];
+  saveDb(db);
+  res.json({ ok: true, watchlist: db.watchlist });
+});
+app.delete("/api/watchlist/:symbol", requirePermission("write:realtime"), (req, res) => {
+  const symbol = normalizeSymbol(decodeURIComponent(req.params.symbol));
+  db.watchlist = ((db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).filter((s) => s !== symbol);
+  saveDb(db);
+  res.json({ ok: true, watchlist: db.watchlist });
 });
 
 app.get("/api/market/token-profile", async (req, res) => {

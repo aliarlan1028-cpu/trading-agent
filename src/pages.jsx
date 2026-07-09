@@ -45,7 +45,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -87,8 +87,21 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const [symbolSel, setSymbolSel] = useState(null);
   const [tf, setTf] = useState("1H");
   const [ordTab, setOrdTab] = useState("open");
+  const [addOpen, setAddOpen] = useState(false);
+  const [instruments, setInstruments] = useState([]);
+  const [instrQuery, setInstrQuery] = useState("");
   const marketList = (data.markets || []).filter((m) => m && m.symbol);
-  const market = marketList.find((m) => m.symbol === symbolSel) || data.activeMarket || marketList[0] || { candles: [] };
+  const watchlist = (data.watchlist && data.watchlist.length) ? data.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+  const activeSymbol = symbolSel || (marketList.find((m) => m.symbol === symbolSel)?.symbol) || watchlist[0] || "BTC/USDT";
+  const market = marketList.find((m) => m.symbol === activeSymbol) || { symbol: activeSymbol, candles: [] };
+  const tvInterval = { "1m": "1", "15m": "15", "1H": "60", "4H": "240", "1D": "D" }[tf] || "60";
+  useEffect(() => {
+    if (addOpen && !instruments.length) {
+      Promise.resolve(action("/api/market/instruments", {}, "GET")).then((r) => setInstruments(r?.instruments || [])).catch(() => {});
+    }
+  }, [addOpen]);
+  async function addWatch(sym) { await action("/api/watchlist", { symbol: sym }); setAddOpen(false); setInstrQuery(""); setSymbolSel(sym); }
+  async function removeWatch(sym) { await action(`/api/watchlist/${encodeURIComponent(sym)}`, {}, "DELETE"); if (activeSymbol === sym) setSymbolSel(null); }
   const pr = data.portfolioRisk || { portfolioVolPct: null, positions: [], correlations: [] };
   const latestReconcile = data.reconciliationReports?.[0];
   const latestSnapshot = data.accountSnapshots?.[0];
@@ -240,10 +253,35 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
       <div className="termGrid r2">
         <div className="termCard chartCard">
           <div className="chartHead">
-            <div className="segCtl">
-              {(symbolTabs.length ? symbolTabs : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).map((s) => (
-                <button key={s} className={(market.symbol === s) ? "active" : ""} onClick={() => setSymbolSel(s)}>{s.replace("/USDT", "")}</button>
+            <div className="wlTabs">
+              {watchlist.map((s) => (
+                <div key={s} className={`wlTab ${activeSymbol === s ? "active" : ""}`}>
+                  <button className="wlTabSel" onClick={() => setSymbolSel(s)}>{s.replace("/USDT", "")}</button>
+                  {watchlist.length > 1 && <button className="wlTabDel" title="移除关注" onClick={() => removeWatch(s)}>×</button>}
+                </div>
               ))}
+              <div className="wlAddWrap">
+                <button className="wlAdd" title="添加币对" onClick={() => setAddOpen((v) => !v)}><Plus size={13} /></button>
+                {addOpen && (
+                  <div className="wlDropdown">
+                    <div className="wlSearch"><Search size={13} /><input autoFocus value={instrQuery} onChange={(e) => setInstrQuery(e.target.value)} placeholder="搜索 OKX 永续，如 SUI" /></div>
+                    <div className="wlList">
+                      {instruments
+                        .filter((it) => !watchlist.includes(it.symbol))
+                        .filter((it) => !instrQuery.trim() || it.symbol.toLowerCase().includes(instrQuery.trim().toLowerCase()))
+                        .slice(0, 40)
+                        .map((it) => (
+                          <button className="wlOption" key={it.symbol} onClick={() => addWatch(it.symbol)}>
+                            <span>{it.symbol}</span>
+                            <small>{(it.exchanges || []).join(" · ")}</small>
+                          </button>
+                        ))}
+                      {!instruments.length && <div className="wlEmpty">正在拉取 OKX 合约清单…</div>}
+                      {instruments.length > 0 && !instruments.filter((it) => !watchlist.includes(it.symbol) && (!instrQuery.trim() || it.symbol.toLowerCase().includes(instrQuery.trim().toLowerCase()))).length && <div className="wlEmpty">无匹配合约</div>}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="segCtl tf">
               {["1m", "15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}
@@ -252,10 +290,10 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
           <div className="priceHead">
             <b className="mono">{displayMoney(market.price, 2, "—")}</b>
             <span className={`priceChg ${chgPos ? "pos" : "neg"} mono`}>{chgPos ? "▲" : "▼"} {displayPct(market.changePct)}</span>
-            <span className="ohlcRow mono">O {displayMoney(ohlc.o, 2, "—")} · H {displayMoney(ohlc.h, 2, "—")} · L {displayMoney(ohlc.l, 2, "—")} · C {displayMoney(ohlc.c, 2, "—")}</span>
+            <span className="ohlcRow mono">{activeSymbol}</span>
           </div>
-          <div className="chartBox">
-            {market.candles?.length ? <CandleChart candles={market.candles} /> : <div className="emptyPanel">同步交易所后显示 K 线</div>}
+          <div className="chartBox tv">
+            <TradingViewChart symbol={activeSymbol} interval={tvInterval} />
           </div>
         </div>
         <div className="termCard snapCard">

@@ -39,6 +39,7 @@ const collectionNames = [
   "system",
   "portfolio",
   "markets",
+  "watchlist",
   "mandates",
   "positions",
   "orders",
@@ -350,6 +351,7 @@ function cleanSeedDatabase(createdAt) {
       { symbol: "ETH/USDT", status: "not_synced", candles: [] },
       { symbol: "SOL/USDT", status: "not_synced", candles: [] }
     ],
+    watchlist: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     mandates: [],
     positions: [],
     orders: [],
