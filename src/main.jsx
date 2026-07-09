@@ -277,7 +277,7 @@ function App() {
       <Sidebar active={active} setActive={navigate} data={data} />
       <main className="mainArea">
         <AppTopbar data={data} active={active} setActive={navigate} notify={notify} action={action} />
-        <div className="content">{content}</div>
+        <div className={active === "chat" ? "content contentChat" : "content"}>{content}</div>
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}

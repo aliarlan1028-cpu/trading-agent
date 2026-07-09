@@ -67,7 +67,21 @@ function parseRichText(text = "") {
   let bullets = [];
   let steps = [];
   let metrics = [];
+  let tableLines = [];
 
+  function flushTable() {
+    if (!tableLines.length) return;
+    const rows = tableLines
+      .map((l) => l.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim()));
+    const sepIdx = rows.findIndex((r) => r.length && r.every((c) => /^:?-{2,}:?$/.test(c) || /^:?-+:?$/.test(c)));
+    let header = null;
+    let body = rows;
+    if (sepIdx === 0) { body = rows.slice(1); }
+    else if (sepIdx > 0) { header = rows[sepIdx - 1]; body = rows.slice(sepIdx + 1); }
+    body = body.filter((r) => r.some((c) => c !== ""));
+    if (header || body.length) blocks.push({ type: "table", header, rows: body });
+    tableLines = [];
+  }
   function flushParagraph() {
     if (paragraph.length) {
       blocks.push({ type: "paragraph", text: paragraph.join("\n") });
@@ -97,6 +111,7 @@ function parseRichText(text = "") {
     flushBullets();
     flushSteps();
     flushMetrics();
+    flushTable();
   }
 
   for (const rawLine of String(text || "").split("\n")) {
@@ -105,6 +120,15 @@ function parseRichText(text = "") {
       flushAll();
       continue;
     }
+    if (/^\|.*\|\s*$/.test(line) && (line.match(/\|/g) || []).length >= 2) {
+      flushParagraph();
+      flushBullets();
+      flushSteps();
+      flushMetrics();
+      tableLines.push(line);
+      continue;
+    }
+    flushTable();
     const heading = line.match(/^#{1,4}\s+(.+)$/) || line.match(/^【(.+)】$/);
     if (heading) {
       flushAll();
@@ -160,6 +184,22 @@ function RichMessage({ text = "", compact = false, onSuggest = null }) {
         if (block.type === "heading") {
           const Icon = sectionIcon(block.text);
           return <div className="richHeading" key={index}><Icon size={14} /><strong>{block.text}</strong></div>;
+        }
+        if (block.type === "table") {
+          return (
+            <div className="richTableWrap" key={index}>
+              <table className="richTable">
+                {block.header && (
+                  <thead><tr>{block.header.map((cell, cellIndex) => <th key={cellIndex}>{renderInline(cell)}</th>)}</tr></thead>
+                )}
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderInline(cell)}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
         }
         if (block.type === "metrics") {
           return (
