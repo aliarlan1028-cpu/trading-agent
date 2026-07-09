@@ -497,6 +497,8 @@ function SetupChecklist({ onExample }) {
 }
 
 export function ChatPage({ data, action, ui }) {
+  const system = data.system || {};
+  const autoOn = system.autonomyEnabled === true && !system.killSwitch;
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -582,81 +584,67 @@ export function ChatPage({ data, action, ui }) {
   }
 
   return (
-    <div className="chatShell">
-    <div className="chatPage">
-      <div className="chatSessionBar">
-        <div className="chatViewSwitch">
-          <button className={view === "chat" ? "active" : ""} onClick={() => setView("chat")}><MessageSquare size={15} /> 对话</button>
-          <button className={view === "intel" ? "active" : ""} onClick={() => setView("intel")}><Radar size={15} /> 情报</button>
+    <div className={`chatShell ${view === "intel" ? "intel" : ""}`}>
+    <div className="agChat">
+      <div className="agChatHead">
+        <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? "与 AI 交易员对话" : "情报中心"}</div>
+        <div className="agChatHeadR">
+          <div className="agViewToggle">
+            <button className={view === "chat" ? "on" : ""} title="对话" onClick={() => setView("chat")}><MessageSquare size={13} /></button>
+            <button className={view === "intel" ? "on" : ""} title="情报" onClick={() => setView("intel")}><Radar size={13} /></button>
+          </div>
+          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? "运行中" : system.killSwitch ? "已熔断" : "已暂停"}</span>
+          <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? "暂停自主" : "启动自主交易"}</button>
         </div>
-        <AccountSyncCard data={data} action={action} ui={ui} />
-        {view === "chat" && (
-        <div className="chatSessionSwitch">
-          <button className="csSwitchBtn" onClick={() => { newSession(); setShowHistory(false); }}><Plus size={15} /> 新建对话</button>
-          <button className={`csSwitchBtn history ${showHistory ? "active" : ""}`} onClick={() => setShowHistory((value) => !value)} aria-expanded={showHistory}>
-            <History size={15} /> 历史记录
-            {sessions.length > 1 && <b className="csCount">{sessions.length}</b>}
-          </button>
-        </div>
-        )}
-        {view === "chat" && showHistory && (
-          <>
-            <div className="chatHistoryBackdrop" onClick={() => setShowHistory(false)} />
-            <div className="chatHistoryPop" role="listbox">
-              {sessions.length ? sessions.map((session) => (
-                <div className={`chatHistoryItem ${session.id === activeSessionId ? "active" : ""}`} key={session.id}>
-                  <button className="chatHistoryOpen" onClick={() => { switchSession(session.id); setShowHistory(false); }} title={session.title}>
-                    <span>{session.title || "未命名对话"}</span>
-                    <small>{formatTime(session.updatedAt || session.createdAt)}</small>
-                  </button>
-                  <button className="chatHistoryDelete" title="删除对话" onClick={(event) => deleteSession(session.id, event)}><Trash2 size={13} /></button>
-                </div>
-              )) : <div className="chatHistoryEmpty">暂无历史对话</div>}
-            </div>
-          </>
-        )}
       </div>
-      {view === "intel" && <IntelCenter action={action} />}
-      {view === "chat" && (<>
-      <div className="chatScroll" ref={scrollRef}>
+
+      {view === "intel" ? <IntelCenter action={action} /> : (<>
+      <div className="agHistBar">
+        <span className="agHistLabel">历史会话</span>
+        <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> 新建</button>
+        {sessions.map((s) => (
+          <button className={`agSessChip ${s.id === activeSessionId ? "on" : ""}`} key={s.id} onClick={() => switchSession(s.id)} title={s.title}>
+            {s.id === activeSessionId && <MessageSquare size={12} />}
+            {(s.title || "未命名对话").slice(0, 12)} · {formatTime(s.updatedAt || s.createdAt)}
+            <i className="agSessDel" title="删除" onClick={(e) => deleteSession(s.id, e)}>×</i>
+          </button>
+        ))}
+      </div>
+
+      <div className="agMsgs" ref={scrollRef}>
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
-        {messages.map((message) => (
-          <div className={`chatMessage ${message.role}`} key={message.id}>
-            {message.role === "agent" && <div className="botAvatar"><BrainCircuit size={16} /></div>}
-            <div className="chatBody">
-              <div className="chatContent"><RichMessage text={message.content} compact={message.role === "user"} onSuggest={message.role === "agent" && !pending ? (t) => send(t) : null} /></div>
+        {messages.map((message) => (message.role === "user" ? (
+          <div className="agMsgUserRow" key={message.id}>
+            <div className="agBubbleUser"><RichMessage text={message.content} compact onSuggest={null} /></div>
+          </div>
+        ) : (
+          <div className="agMsgAiRow" key={message.id}>
+            <span className="agAvatar"><Bot size={18} /></span>
+            <div className="agBubbleAi">
+              <div className="agAiLabel">AI 交易员</div>
+              <RichMessage text={message.content} onSuggest={!pending ? (t) => send(t) : null} />
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
-                <PlanCard
-                  plan={findPlan(message.planId)}
-                  executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)}
-                  action={action}
-                  ui={ui}
-                />
+                <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} />
               )}
               <ToolTrace trace={message.toolTrace || []} />
-              <small className="chatMeta">
-                {formatTime(message.createdAt)}{message.role === "agent" && message.model ? ` · ${message.model}` : ""}
-              </small>
+              <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
             </div>
           </div>
-        ))}
+        )))}
         {pending && (
-          <div className="chatMessage agent">
-            <div className="botAvatar"><BrainCircuit size={16} /></div>
-            <div className="chatBody"><div className="thinkingDots"><span /><span /><span /></div></div>
+          <div className="agMsgAiRow">
+            <span className="agAvatar"><Bot size={18} /></span>
+            <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div></div>
           </div>
         )}
       </div>
+
       {(data.pendingActions || []).length > 0 && (
         <div className="pendingActionsDock">
           {(data.pendingActions || []).map((pa) => (
             <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
-              <div className="paInfo">
-                <span className="paBadge">待确认操作</span>
-                <b>{pa.title}</b>
-                <small>{pa.detail}</small>
-              </div>
+              <div className="paInfo"><span className="paBadge">待确认操作</span><b>{pa.title}</b><small>{pa.detail}</small></div>
               <div className="paActions">
                 <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
                 <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认执行</button>
@@ -665,22 +653,16 @@ export function ChatPage({ data, action, ui }) {
           ))}
         </div>
       )}
-      <div className="chatInputBar">
+
+      <div className="agInputBar">
         <textarea
           value={input}
           rows={1}
-          placeholder={provider ? `下达目标或提问（${provider.name}/${provider.model}）` : "下达目标或提问，例如：稳健观察 BTC，单笔风险不超过 0.3%"}
+          placeholder={provider ? `输入指令，与 AI 交易员对话…（${provider.name}/${provider.model}）` : "输入指令，与 AI 交易员对话… 例如「把仓位降到 5%」"}
           onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              send();
-            }
-          }}
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
         />
-        <button className="sendButton" disabled={pending || !input.trim()} onClick={() => send()} aria-label="发送">
-          <ArrowUp size={17} />
-        </button>
+        <button className="agSend" disabled={pending || !input.trim()} onClick={() => send()} aria-label="发送"><ArrowUp size={18} /></button>
       </div>
       </>)}
     </div>
