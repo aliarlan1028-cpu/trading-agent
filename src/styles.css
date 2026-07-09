@@ -8827,3 +8827,66 @@ button.danger:disabled,
 .termMiniBtn.dark { background: #1E1B16; color: #fff; border-color: #1E1B16; }
 .termMiniBtn.dark:hover { border-color: #1E1B16; filter: brightness(1.1); }
 .focusMetrics b.sg { font: 700 13px "Space Grotesk"; }
+
+/* 知识与技能 —— 严格照设计稿 .dc.html */
+.knowPage .termCard { border-radius: 11px; padding: 13px 15px; }
+.kStatRow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.kStat { background: #FBF9F5; border: 1px solid #E3DCCE; border-radius: 9px; padding: 13px 15px; display: flex; align-items: center; gap: 12px; }
+.kStatIcon { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+.kStatK { font: 600 10px "Space Grotesk"; color: #a89e8a; text-transform: uppercase; letter-spacing: 0.05em; }
+.kStatV { font: 600 20px "IBM Plex Mono"; color: #1E1B16; }
+.kStatText { font: 700 15px "Space Grotesk"; color: #1F7A50; margin-top: 2px; }
+.kStatS { font: 600 10px "Space Grotesk"; color: #1F7A50; }
+.kGrid3 { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 8px; align-items: start; }
+.kHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.kbList { display: flex; flex-direction: column; }
+.kbRow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EDE7DB; width: 100%; border-left: 0; border-right: 0; border-top: 0; background: transparent; cursor: pointer; text-align: left; }
+.kbRow:last-of-type { border-bottom: 0; }
+.kbIcon { width: 30px; height: 30px; border-radius: 7px; background: #F1EADF; display: grid; place-items: center; color: #D06A22; flex: none; }
+.kbInfo { flex: 1; min-width: 0; }
+.kbInfo b { font-size: 12.5px; color: #1E1B16; }
+.kbInfo div { font-size: 10.5px; color: #a89e8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbCount { font: 600 12px "IBM Plex Mono"; color: #6B6455; flex: none; }
+.kImportBtn { margin-top: 9px; width: 100%; height: 34px; border: none; border-radius: 8px; background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; font: 700 12px "Space Grotesk"; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 6px 14px -8px rgba(208, 106, 34, .9); }
+.kSeg { display: flex; border: 1px solid #E3DCCE; border-radius: 6px; overflow: hidden; font: 600 11px "Space Grotesk"; }
+.kSeg button { border: 0; background: transparent; padding: 4px 10px; color: #8a8172; cursor: pointer; }
+.kSeg button.on { background: #1E1B16; color: #fff; }
+.kGraph { position: relative; min-height: 130px; border-radius: 8px; background: #F8F3EB; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; padding: 12px; margin-bottom: 10px; }
+.kHub { position: absolute; text-align: center; background: #1E1B16; color: #F5E9DB; border-radius: 9px; padding: 8px 12px; box-shadow: 0 6px 16px -8px rgba(0,0,0,.4); }
+.kHub b { display: block; font: 700 11px "Space Grotesk"; }
+.kHub small { font: 500 8.5px "IBM Plex Mono"; color: #a89e8a; }
+.kNode { font: 600 10px "Space Grotesk"; padding: 3px 9px; border-radius: 999px; background: #fff; border: 1px solid #E3DCCE; color: #6B6455; }
+.kNode.pri { background: #FBEDDF; border-color: #F0DCC5; color: #C9631F; }
+.kRuleCards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kRuleCard { border: 1px solid #E3DCCE; border-radius: 8px; padding: 9px 10px; background: #fff; text-align: left; cursor: pointer; }
+.kRuleTop { display: flex; align-items: center; justify-content: space-between; }
+.kRuleTop b { font-size: 11.5px; color: #1E1B16; }
+.kRuleDot { width: 6px; height: 6px; border-radius: 50%; background: #1F7A50; }
+.kRuleCard > div:last-child { font-size: 10px; color: #a89e8a; margin-top: 3px; line-height: 1.4; }
+.kSkillList { display: flex; flex-direction: column; }
+.kSkillRow { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid #EDE7DB; }
+.kSkillRow:last-child { border-bottom: 0; }
+.kSkillIcon { width: 26px; height: 26px; border-radius: 6px; background: #1E1B16; color: #8fe0b0; display: grid; place-items: center; flex: none; }
+.kSkillInfo { flex: 1; min-width: 0; }
+.kSkillInfo b { font-size: 12px; color: #1E1B16; }
+.kSkillInfo span { font: 500 10px "IBM Plex Mono"; color: #a89e8a; }
+.kImportBtns { display: flex; gap: 7px; margin: 10px 0; }
+.kImportBtns button { flex: 1; height: 32px; border: 1px solid #E3DCCE; border-radius: 7px; background: #fff; font: 600 11px "Space Grotesk"; color: #544d40; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.kMcp { border-top: 1px solid #EDE7DB; padding-top: 9px; }
+.kMcpTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.kMcpTop b { font: 700 11px "Space Grotesk"; }
+.kMcpTop span { font: 500 10px "IBM Plex Mono"; color: #1F7A50; }
+.kMcpChips { display: flex; flex-wrap: wrap; gap: 5px; }
+.kMcpChip { padding: 2px 7px; border-radius: 5px; font: 600 10px "Space Grotesk"; background: #F1EADF; color: #8a8172; }
+.kMcpChip.on { background: #E6F1EA; color: #1F7A50; }
+.kRagBar { display: flex; align-items: center; gap: 6px; }
+.kRagBar input { width: 260px; max-width: 40vw; height: 28px; border: 1px solid #E3DCCE; border-radius: 6px; background: #fff; padding: 0 10px; font-size: 11.5px; color: #1E1B16; outline: none; }
+.kCite { display: flex; flex-direction: column; }
+.kCiteHead, .kCiteRow { display: grid; grid-template-columns: 1.3fr 0.6fr 2fr 0.5fr 0.8fr; gap: 8px; align-items: center; }
+.kCiteHead { font: 600 9.5px "Space Grotesk"; letter-spacing: 0.05em; text-transform: uppercase; color: #b3a992; border-bottom: 1px solid #E3DCCE; padding: 6px 2px; }
+.kCiteRow { font-size: 11.5px; padding: 9px 2px; border-bottom: 1px solid #EDE7DB; }
+.kCiteRow:last-child { border-bottom: 0; }
+.kCiteRow .cb { font-weight: 600; color: #1E1B16; }
+.kCiteRow .ell { color: #6B6455; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kCiteRow .r { text-align: right; }
+@media (max-width: 1120px) { .kStatRow { grid-template-columns: repeat(2, 1fr); } .kGrid3 { grid-template-columns: 1fr; } }

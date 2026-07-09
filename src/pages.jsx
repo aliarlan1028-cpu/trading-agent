@@ -624,24 +624,92 @@ export function latestAnalysisRows(data) {
 }
 
 export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
-  const [tab, setTab] = useState("knowledge");
+  const [ruleTab, setRuleTab] = useState("graph");
+  const [rag, setRag] = useState("");
   const knowledge = data.knowledge || {};
   const sourceCount = knowledge.sources?.length || 0;
   const conceptCount = knowledge.conceptCards?.length || 0;
   const ruleCount = knowledge.ruleProposals?.length || 0;
   const chunkCount = knowledge.chunks?.length || 0;
-  const enabledSkills = (data.skills || []).filter((skill) => skill.status === "已启用").length;
-  const connectedMcp = data.mcpServers?.filter((item) => item.status === "connected").length || 0;
+  const skills = data.skills || [];
+  const enabledSkills = skills.filter((skill) => skill.status === "已启用").length;
+  const mcp = data.mcpServers || [];
+  const mcpConnected = mcp.filter((item) => item.status === "connected").length;
+  const embed = data.embeddingStatus || { mode: "lexical" };
+  const cites = latestAnalysisRows(data) || [];
+  const stats = [
+    { Icon: BookOpen, bg: "#EAF0FB", color: "#2A6FDB", label: "知识文档", value: sourceCount, sub: `${chunkCount} 片段` },
+    { Icon: Settings, bg: "#E6F1EA", color: "#1F7A50", label: "专家规则", value: ruleCount, sub: "已抽取" },
+    { Icon: Sparkles, bg: "#F0EAFB", color: "#7A4FD0", label: "已安装技能", value: enabledSkills, sub: `共 ${skills.length}` },
+    { Icon: RefreshCw, bg: "#FBEDDF", color: "#D06A22", label: "检索模式", text: embed.mode === "semantic" ? "语义向量" : "词频匹配" }
+  ];
   return (
-    <div className="pageStack termPage">
+    <div className="pageStack termPage knowPage">
       {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
-      <div className="subTabBar">
-        <button className={tab === "knowledge" ? "active" : ""} onClick={() => setTab("knowledge")}><BookOpen size={15} /> 知识库</button>
-        <button className={tab === "skills" ? "active" : ""} onClick={() => setTab("skills")}><Sparkles size={15} /> Skill 中心</button>
+
+      <div className="kStatRow">
+        {stats.map((s) => (
+          <div className="kStat" key={s.label}>
+            <span className="kStatIcon" style={{ background: s.bg, color: s.color }}><s.Icon size={18} /></span>
+            <div>
+              <div className="kStatK">{s.label}</div>
+              {s.text ? <div className="kStatText">{s.text}</div> : <div className="kStatV mono">{s.value}</div>}
+              {s.sub && !s.text && <div className="kStatS">{s.sub}</div>}
+            </div>
+          </div>
+        ))}
       </div>
-      {tab === "knowledge"
-        ? <KnowledgeBaseTab data={data} action={action} ui={ui} sourceCount={sourceCount} conceptCount={conceptCount} ruleCount={ruleCount} chunkCount={chunkCount} knowledge={knowledge} />
-        : <SkillCenterTab data={data} action={action} ui={ui} enabledSkills={enabledSkills} connectedMcp={connectedMcp} />}
+
+      <div className="kGrid3">
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel">专家知识库</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部知识 ›</button></div>
+          <div className="kbList">
+            {(knowledge.sources || []).slice(0, 6).map((s) => (
+              <button className="kbRow" key={s.id} onClick={() => ui.openPanel("knowledgeList")}>
+                <span className="kbIcon"><Globe2 size={15} /></span>
+                <div className="kbInfo"><b>{s.domain || s.type || "知识"}</b><div>{s.title}</div></div>
+                <b className="mono kbCount">{humanize(s.status)}</b>
+              </button>
+            ))}
+            {!sourceCount && <div className="emptyPanel">暂无知识来源，导入书籍/网页/PDF 后可检索</div>}
+          </div>
+          <button className="kImportBtn" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> 导入知识</button>
+        </div>
+
+        <div className="termCard">
+          <div className="kHead"><div className="kSeg"><button className={ruleTab === "graph" ? "on" : ""} onClick={() => setRuleTab("graph")}>概念图谱</button><button className={ruleTab === "rules" ? "on" : ""} onClick={() => setRuleTab("rules")}>规则库</button></div><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 ›</button></div>
+          <div className="kGraph"><div className="kHub"><b>知识图谱</b><small>{conceptCount} 概念 · {ruleCount} 规则</small></div>{(knowledge.conceptCards || []).slice(0, 6).map((c, i) => <span className={`kNode ${i < 2 ? "pri" : ""}`} key={c.id}>{c.name}</span>)}</div>
+          <div className="kRuleCards">
+            {(knowledge.ruleProposals || []).slice(0, 4).map((r) => <button className="kRuleCard" key={r.id} onClick={() => ui.openPanel("ruleLibrary")}><div className="kRuleTop"><b>{r.name}</b><span className="kRuleDot" /></div><div>{r.description || "基于专家知识库生成"}</div></button>)}
+            {!ruleCount && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>导入资料后自动抽取概念与规则</div>}
+          </div>
+        </div>
+
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel">Skills 中心</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>全部技能 ›</button></div>
+          <div className="kSkillList">
+            {skills.slice(0, 3).map((sk) => <div className="kSkillRow" key={sk.id}><span className="kSkillIcon"><Sparkles size={14} /></span><div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version}`}</span></div><span className="evBadge ok">{sk.status || "已启用"}</span></div>)}
+            {!skills.length && <div className="emptyPanel">暂无 Skill，从 GitHub / Skill.md 导入</div>}
+          </div>
+          <div className="kImportBtns"><button onClick={() => ui.openPanel("skillImport")}><GitBranch size={13} /> GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
+          <div className="kMcp"><div className="kMcpTop"><b>MCP 工具</b><span className="mono">{mcpConnected}/{mcp.length} 已连接</span></div><div className="kMcpChips">{mcp.slice(0, 4).map((m) => <span className={`kMcpChip ${m.status === "connected" ? "on" : ""}`} key={m.id}>{m.name}</span>)}{mcp.length > 4 && <span className="kMcpChip more">+{mcp.length - 4}</span>}{!mcp.length && <span className="kMcpChip more">未接入</span>}</div></div>
+        </div>
+      </div>
+
+      <div className="termCard">
+        <div className="kHead">
+          <span className="secLabel">本次决策引用知识</span>
+          <div className="kRagBar">
+            <input value={rag} onChange={(e) => setRag(e.target.value)} placeholder="RAG 检索：例如 CPI 前后如何控仓？" onKeyDown={(e) => { if (e.key === "Enter" && rag.trim()) action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 }); }} />
+            <button className="termMiniBtn dark" disabled={!rag.trim()} onClick={() => action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 })}><Search size={13} /> 检索</button>
+          </div>
+        </div>
+        <div className="kCite">
+          <div className="kCiteHead"><span>知识 / 规则 / 技能</span><span>类型</span><span>引用片段</span><span className="r">置信度</span><span className="r">来源</span></div>
+          {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span><span className="r">{c.source}</span></div>)}
+          {!cites.length && <div className="emptyPanel">尚无引用；发起一次 RAG 检索或对话后显示本次决策引用的知识片段</div>}
+        </div>
+      </div>
     </div>
   );
 }
