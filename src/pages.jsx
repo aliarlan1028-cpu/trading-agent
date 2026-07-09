@@ -490,7 +490,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
       <div className="termGrid evTop">
         {showEvents && (
         <div className="termCard">
-          <div className="secLabel">重要事件雷达</div>
+          <div className="evCardHead"><Target size={15} className="evHeadIcon" /> 重要事件雷达</div>
           <div className="termDateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => setSelectedEventId(event.id)}><b className="mono">{formatDate(event.due, "待定")}</b><span>{event.category}</span></button>)}</div>
           {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
           <div className="evTimeline">
@@ -508,17 +508,24 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
 
         {showEvents && (
         <div className="termCard focusCard">
-          <div className="secLabel focusHead">焦点事件<button className="textButton" onClick={() => ui.openPanel("eventSources")}>详情 <ChevronRight size={13} /></button></div>
-          <div className="focusTitle">{primaryEvent.shortTitle || primaryEvent.title || "暂无事件"} <b className={`evBadge ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></div>
-          <div className="cdBlock mono">
+          <div className="focusTop">
+            <span className="focusName">{primaryEvent.shortTitle || primaryEvent.title || "暂无焦点事件"} <b className={`evBadge ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></span>
+            <button className="agLink" onClick={() => ui.openPanel("eventSources")}>事件详情 ›</button>
+          </div>
+          <div className="focusSub">{primaryEvent.due ? `预计发布 ${formatDateTime(primaryEvent.due)} · 倒计时` : "待定发布时间"}</div>
+          <div className="cd3">
             {cd
-              ? <><span>{String(cd.d).padStart(2, "0")}</span><i>天</i><span>{String(cd.h).padStart(2, "0")}</span><i>时</i><span className="cdHot">{String(cd.m).padStart(2, "0")}</span><i>分</i></>
-              : <span className="cdNone">{formatDateTime(primaryEvent.due, "待定")}</span>}
+              ? <>
+                  <div className="cd3b"><b className="mono">{String(cd.d).padStart(2, "0")}</b><span>天</span></div>
+                  <div className="cd3b"><b className="mono">{String(cd.h).padStart(2, "0")}</b><span>时</span></div>
+                  <div className="cd3b hot"><b className="mono">{String(cd.m).padStart(2, "0")}</b><span>分</span></div>
+                </>
+              : <div className="cd3b full"><b className="mono">{formatDateTime(primaryEvent.due, "待定")}</b><span>待发布</span></div>}
           </div>
           <div className="focusMetrics">
-            <div><span>影响等级</span><b className={impactTone(primaryEvent.impact)}>{primaryEvent.impactLabel || "待评估"}</b></div>
-            <div><span>市场影响度</span><b className="mono">{primaryEvent.impact ? `${Number(primaryEvent.impact) / 10}/10` : "—"}</b></div>
-            <div><span>置信度</span><b className="mono">{primaryEvent.confidence ? `${primaryEvent.confidence}%` : "—"}</b></div>
+            <div><span>影响等级</span><b className={`sg ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></div>
+            <div><span>市场敏感度</span><b className="mono">{primaryEvent.impact ? `${(Number(primaryEvent.impact) / 10).toFixed(1)}/10` : "—"}</b></div>
+            <div><span>置信度</span><b className="mono pos">{primaryEvent.confidence ? `${primaryEvent.confidence}%` : "—"}</b></div>
           </div>
           {(primaryEvent.relatedSymbols || []).length > 0 && <div className="assetChips">{(primaryEvent.relatedSymbols || []).map((symbol) => <span key={symbol}>{symbol}</span>)}</div>}
           <p className="focusAdvice">{primaryEvent.action || "暂无事件建议；刷新真实事件源后显示。"}</p>
@@ -529,7 +536,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
       <div className="termGrid evBot">
         {showTasks && (
         <div className="termCard">
-          <div className="secLabel taskHead">定时任务<button className="termMiniBtn" onClick={() => ui.openPanel("taskManager")}><Plus size={13} /> 新建任务</button></div>
+          <div className="evCardHead spread"><span><Timer size={15} className="evHeadIcon" /> 定时任务</span><button className="termMiniBtn dark" onClick={() => ui.openPanel("taskManager")}><Plus size={13} /> 新建任务</button></div>
           <div className="ordSwitch taskFilterRow">{taskTabs.map(([name, count]) => <button className={taskFilter === name ? "active" : ""} key={name} onClick={() => setTaskFilter(name)}>{name} {count}</button>)}</div>
           <div className="taskList">
             <div className="taskRowHead mono"><span>任务</span><span>触发</span><span>下次</span><span>状态</span><span>操作</span></div>
@@ -548,7 +555,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
         )}
         {showTasks && (
         <div className="termCard">
-          <div className="secLabel taskHead">任务运行日志<button className="textButton" onClick={() => ui.setActive("auditSystem")}>日志中心 <ChevronRight size={13} /></button></div>
+          <div className="evCardHead spread"><span><ClipboardList size={15} className="evHeadIcon" /> 任务运行日志</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>全部日志 ›</button></div>
           <div className="logList">
             {jobRuns.slice(0, 8).map((run) => {
               const ok = String(run.status || "").toLowerCase() === "ok";

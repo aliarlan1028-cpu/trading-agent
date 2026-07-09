@@ -8808,3 +8808,22 @@ button.danger:disabled,
 .exSyncState { display: inline-flex; align-items: center; gap: 6px; font: 500 11px "IBM Plex Mono"; color: #1F7A50; }
 .exSyncState i { width: 6px; height: 6px; border-radius: 50%; background: #1F7A50; }
 .exSyncState.off { color: #a89e8a; } .exSyncState.off i { background: #a89e8a; }
+
+/* 事件页 —— 严格照设计稿 .dc.html */
+.evCardHead { display: flex; align-items: center; gap: 7px; font: 700 12px "Space Grotesk"; color: #1E1B16; margin-bottom: 11px; }
+.evCardHead.spread { justify-content: space-between; }
+.evCardHead.spread > span { display: inline-flex; align-items: center; gap: 7px; }
+.evHeadIcon { color: #D06A22; }
+.focusCard { gap: 11px; }
+.focusTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.focusName { font-size: 13px; font-weight: 600; color: #1E1B16; display: inline-flex; align-items: center; gap: 7px; }
+.focusSub { font-size: 11px; color: #6B6455; }
+.cd3 { display: flex; gap: 8px; }
+.cd3b { flex: 1; text-align: center; background: #1E1B16; color: #F5E9DB; border-radius: 9px; padding: 12px 0; }
+.cd3b b { display: block; font: 600 26px "IBM Plex Mono"; }
+.cd3b span { font: 600 9px "Space Grotesk"; letter-spacing: 0.1em; color: #a89e8a; }
+.cd3b.hot b { color: #E68A4E; }
+.cd3b.full b { font-size: 15px; }
+.termMiniBtn.dark { background: #1E1B16; color: #fff; border-color: #1E1B16; }
+.termMiniBtn.dark:hover { border-color: #1E1B16; filter: brightness(1.1); }
+.focusMetrics b.sg { font: 700 13px "Space Grotesk"; }
