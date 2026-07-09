@@ -345,6 +345,8 @@ const okxTickerSubs = new Map(); // symbol -> Set(cb)
 let okxTickerWs = null;
 let okxTickerPing = null;
 let okxTickerReconnect = null;
+let lastOkxTickerAt = 0; // 最近一次直连 OKX 收到 tick 的时间；用于判断是否还需 REST 轮询兜底
+export function okxTickerFresh(withinMs = 2500) { return Date.now() - lastOkxTickerAt < withinMs; }
 function okxInstId(symbol) { return `${String(symbol).replace("/", "-").toUpperCase()}-SWAP`; }
 function okxSendSub(symbols) {
   if (!okxTickerWs || okxTickerWs.readyState !== 1 || !symbols.length) return;
@@ -362,6 +364,7 @@ function connectOkxTicker() {
     let msg; try { msg = JSON.parse(text); } catch { return; }
     if (msg.event || msg.arg?.channel !== "tickers") return;
     const d = msg.data?.[0]; if (!d) return;
+    lastOkxTickerAt = Date.now(); // 直连 OKX 确实在推价（含 App 端 WKWebView 能连上的情况）
     const symbol = String(msg.arg.instId).replace("-SWAP", "").replace("-", "/");
     const cbs = okxTickerSubs.get(symbol); if (!cbs) return;
     const last = Number(d.last); const open = Number(d.open24h);
@@ -396,9 +399,9 @@ export function LivePrice({ symbol, fallbackPrice = null, fallbackChange = null,
     let latest = { price: null, change: null }; let raf = null;
     const flush = () => { raf = null; setV({ ...latest }); };
     const schedule = () => { if (raf) return; if (typeof requestAnimationFrame !== "undefined") raf = requestAnimationFrame(flush); else flush(); };
-    // 网页端：直连 OKX tickers（最快、含涨跌幅）。App 端 WKWebView 直连 OKX:8443 常被拦截，
-    // 直接跳过、只走后端 SSE，避免无谓重连并确保移动端实时。
-    const offOkx = isNativeApp() ? () => {} : subscribeOkxTicker(symbol, (t) => { latest = { price: t.price, change: t.changePct }; schedule(); });
+    // 直连 OKX tickers（最快、含涨跌幅）。App 端也尝试直连——WKWebView 能连上就和 Web 一样逐 tick；
+    // 连不上时下面的 onLivePrice（后端 SSE / REST 轮询兜底）仍会驱动价格。
+    const offOkx = subscribeOkxTicker(symbol, (t) => { latest = { price: t.price, change: t.changePct }; schedule(); });
     // App 端 WKWebView 常拦截直连 OKX，这里再订阅后端 SSE 转发的逐 tick 价，保证移动端也实时。
     const offSse = onLivePrice((s, price) => {
       if (s !== symbol) return;
@@ -696,23 +699,28 @@ export function useApi() {
     let t = null;
     const poll = async () => {
       if (stop) return;
-      try {
-        const res = await fetch(apiUrl("/api/markets", apiBase), { headers: headers() });
-        if (res.ok) {
-          const markets = await res.json();
-          if (Array.isArray(markets)) {
-            for (const m of markets) if (m && m.symbol && m.price != null) emitLivePrice(m.symbol, m.price);
-            const byId = Object.fromEntries(markets.map((m) => [m.symbol, m]));
-            const merge = (mk) => {
-              const u = byId[mk.symbol];
-              if (!u) return mk;
-              return { ...mk, price: u.price, changePct: u.changePct, high24h: u.high24h, low24h: u.low24h, fundingRate: u.fundingRate ?? mk.fundingRate, openInterest: u.openInterest ?? mk.openInterest, volume24h: u.volume24h ?? mk.volume24h, lastRealtimeAt: new Date().toISOString() };
-            };
-            setData((prev) => prev ? { ...prev, markets: (prev.markets || []).map(merge), activeMarket: prev.activeMarket ? merge(prev.activeMarket) : prev.activeMarket } : prev);
+      // 直连 OKX 正常推价时（含 App 端 WKWebView 能连上的情况）退避到 4s，仅刷新资金费/OI 等慢字段；
+      // 直连静默时才 ~0.5s 快轮询兜底价格，尽量贴近 Web 的实时。
+      const okxLive = okxTickerFresh(2500);
+      if (!okxLive) {
+        try {
+          const res = await fetch(apiUrl("/api/markets", apiBase), { headers: headers() });
+          if (res.ok) {
+            const markets = await res.json();
+            if (Array.isArray(markets)) {
+              for (const m of markets) if (m && m.symbol && m.price != null) emitLivePrice(m.symbol, m.price);
+              const byId = Object.fromEntries(markets.map((m) => [m.symbol, m]));
+              const merge = (mk) => {
+                const u = byId[mk.symbol];
+                if (!u) return mk;
+                return { ...mk, price: u.price, changePct: u.changePct, high24h: u.high24h, low24h: u.low24h, fundingRate: u.fundingRate ?? mk.fundingRate, openInterest: u.openInterest ?? mk.openInterest, volume24h: u.volume24h ?? mk.volume24h, lastRealtimeAt: new Date().toISOString() };
+              };
+              setData((prev) => prev ? { ...prev, markets: (prev.markets || []).map(merge), activeMarket: prev.activeMarket ? merge(prev.activeMarket) : prev.activeMarket } : prev);
+            }
           }
-        }
-      } catch { /* 网络抖动，下次再拉 */ }
-      if (!stop) t = setTimeout(poll, 1200);
+        } catch { /* 网络抖动，下次再拉 */ }
+      }
+      if (!stop) t = setTimeout(poll, okxLive ? 4000 : 500);
     };
     t = setTimeout(poll, 800);
     return () => { stop = true; if (t) clearTimeout(t); };
@@ -925,8 +933,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       chart.timeScale().fitContent();
       seriesRef.current = series;
       lastBarRef.current = rows[rows.length - 1];
-      // App 端 WKWebView 直连 OKX:8443 常被拦截，跳过、只靠后端 SSE 实时价（onLivePrice）驱动当前蜡烛。
-      if (!isNativeApp()) connectOkx();
+      connectOkx(); // 直连 OKX 实时 candle（App 端也试；连不上时由 onLivePrice 兜底驱动）
       // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
       refetchTimer = setInterval(async () => {
         const fresh = await fetchRows();
@@ -954,8 +961,8 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
   // 兜底：直连 OKX 静默(>3s)时，用后端 SSE 实时价驱动当前蜡烛（网络限制客户端直连 OKX 的情况）。
   useEffect(() => {
     const applyPrice = (sym, price) => {
-      // App 端不走直连 OKX，去掉 3s 静默闸，SSE 逐 tick 直接驱动；网页端仍以直连 OKX 为主、静默才回退。
-      if (sym !== symbol || (!isNativeApp() && Date.now() - lastOkxRef.current < 3000)) return;
+      // 直连 OKX 正常推价时以它为主；静默 >3s（含 App 端连不上 OKX）才用后端 SSE / REST 轮询兜底驱动。
+      if (sym !== symbol || Date.now() - lastOkxRef.current < 3000) return;
       const series = seriesRef.current;
       const last = lastBarRef.current;
       const p = Number(price);
