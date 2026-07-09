@@ -92,6 +92,17 @@ export function ConfigPanel({ panel, data, action, ui }) {
   );
 }
 
+// 系统配置各分区的统一头部（图标 + 标题 + 说明 + 状态），与其他页面的卡片头风格一致。
+function CfgHead({ icon: Icon, title, sub, status, statusTone = "" }) {
+  return (
+    <div className="cfgHead">
+      <span className="cfgHeadIcon">{Icon && <Icon size={16} />}</span>
+      <div className="cfgHeadText"><b>{title}</b>{sub && <small>{sub}</small>}</div>
+      {status && <span className={`cfgHeadStatus ${statusTone}`}>{status}</span>}
+    </div>
+  );
+}
+
 export function SystemConfigPanel({ data, action, ui, section }) {
   const config = data.config || {};
   const providers = config.llm?.providers || {};
@@ -328,18 +339,19 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "llm" && (
           <form className="panelForm" onSubmit={saveLlm}>
-            <h3>AI 模型 API</h3>
+            <CfgHead icon={BrainCircuit} title="AI 模型 API" sub="驱动 Agent 分析与决策的大模型；对话与自主巡检都用当前启用的 provider" status={config.llm?.activeProvider ? `使用中 · ${config.llm.activeProvider}` : "未配置"} statusTone={config.llm?.activeProvider ? "ok" : ""} />
             <div className="providerGrid">
               {providerRows.map(([idName, label, keyName, modelName]) => {
                 const collapsed = Boolean(section) && openProvider !== idName;
                 return (
-                  <div className={`configFieldset ${collapsed ? "collapsed" : ""}`} key={idName}>
+                  <div className={`configFieldset ${collapsed ? "collapsed" : ""} ${idName === config.llm?.activeProvider ? "cfgActive" : ""}`} key={idName}>
                     <div
                       className="configFieldsetHead"
                       role={section ? "button" : undefined}
                       onClick={section ? () => setOpenProvider(openProvider === idName ? "" : idName) : undefined}
                     >
                       <strong>{label}</strong>
+                      {idName === config.llm?.activeProvider && <span className="cfgUsing">使用中</span>}
                       <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "neutral"}>{providers[idName]?.hasKey ? "已配置" : "未配置"}</StatusBadge>
                       {section && <ChevronDown size={15} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />}
                     </div>
@@ -360,7 +372,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "exchange" && (
           <form className="panelForm" onSubmit={saveExchange}>
-            <h3>交易所密钥与账户安全</h3>
+            <CfgHead icon={WalletCards} title="交易所密钥与账户安全" sub="只读密钥用于同步账户与行情；实盘下单另需在「实盘灰度」开启。绝不勾选提币权限" status="仅读写交易，禁提币" statusTone="warn" />
             <div className="exchangeColumns">
               <div className="exchangeCol">
                 <div className="exchangeColHead" {...sectionHeadProps(openExchange, setOpenExchange, "binance")}><span className="exchangeLogo binance">◆</span><strong>Binance</strong><StatusBadge tone={exchange.binance?.hasSecret ? "ok" : "neutral"}>{exchange.binance?.hasSecret ? "读写就绪" : exchange.binance?.hasKey ? "仅 Key" : "未配置"}</StatusBadge>{section && <ChevronDown size={15} style={{ transform: openExchange === "binance" ? "rotate(180deg)" : "none" }} />}</div>
@@ -399,7 +411,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "live" && (
           <form className="panelForm" onSubmit={saveLive}>
-            <h3>实盘写入与灰度发布</h3>
+            <CfgHead icon={Zap} title="实盘写入与灰度发布" sub="多道安全闸全部就绪后，批准的计划才会真实下单，否则一律干跑" status={live.effective ? "实盘已开启" : "实盘关闭"} statusTone={live.effective ? "neg" : ""} />
             {(() => {
               const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
               const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
@@ -577,7 +589,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "runtime" && (
           <form className="panelForm" onSubmit={saveRuntime}>
-            <h3>系统运行参数</h3>
+            <CfgHead icon={Settings} title="系统运行参数" sub="鉴权、市场类型、代理、沙箱镜像、实时对账等运行时开关" status={runtime.authRequired === false ? "免登录" : "鉴权开启"} statusTone={runtime.authRequired === false ? "warn" : "ok"} />
             <div className="formGrid">
               {runtimeSecretRows.map(([keyName, label, configured]) => (
                 <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>

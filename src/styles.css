@@ -9349,3 +9349,16 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 @keyframes asstspin { to { transform: rotate(360deg); } }
 .asstSummary { border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-white); padding: 11px 13px; display: grid; gap: 6px; }
 .asstSummary p { font-size: 12.5px; line-height: 1.6; color: #332c20; }
+
+/* 系统配置分区头部 + 当前使用高亮（NEW3 视觉升级）*/
+.settingsTermPage .cfgHead { display: flex; align-items: center; gap: 11px; padding-bottom: 4px; margin-bottom: 2px; }
+.settingsTermPage .cfgHeadIcon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-weak); color: var(--accent); flex: none; }
+.settingsTermPage .cfgHeadText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.settingsTermPage .cfgHeadText b { font-size: 14px; color: #1e1b16; }
+.settingsTermPage .cfgHeadText small { font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+.settingsTermPage .cfgHeadStatus { flex: none; font: 700 11px var(--font-ui); padding: 4px 10px; border-radius: 7px; background: var(--surface-2); color: var(--text-2); }
+.settingsTermPage .cfgHeadStatus.ok { background: var(--pos-weak); color: #1f7a50; }
+.settingsTermPage .cfgHeadStatus.warn { background: var(--warn-weak); color: #9a7420; }
+.settingsTermPage .cfgHeadStatus.neg { background: var(--neg-weak); color: #a5341c; }
+.settingsTermPage .configFieldset.cfgActive { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.settingsTermPage .cfgUsing { font: 700 10px var(--font-ui); color: #fff; background: var(--accent); padding: 1px 7px; border-radius: 5px; margin-right: auto; margin-left: 2px; }
