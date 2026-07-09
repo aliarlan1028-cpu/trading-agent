@@ -760,6 +760,16 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       lastOkxRef.current = Date.now();
       try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
     };
+    // tickers 频道 ~100ms 推一次最新价（OKX 自家价格显示同源），驱动当前蜡烛收/高/低逐 tick 动。
+    const applyTickerPrice = (lastPx) => {
+      const series = seriesRef.current;
+      const bar = lastBarRef.current;
+      const p = Number(lastPx);
+      if (!series || !bar || !Number.isFinite(p) || p <= 0) return;
+      lastOkxRef.current = Date.now();
+      const next = { time: bar.time, open: bar.open, high: Math.max(bar.high, p), low: Math.min(bar.low, p), close: p };
+      try { series.update(next); lastBarRef.current = next; } catch { /* noop */ }
+    };
     const scheduleReconnect = () => {
       if (reconnectTimer || disposed) return;
       reconnectTimer = setTimeout(() => { reconnectTimer = null; connectOkx(); }, 3000);
@@ -768,7 +778,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       if (disposed) return;
       try { ws = new WebSocket("wss://ws.okx.com:8443/ws/v5/public"); } catch { scheduleReconnect(); return; }
       ws.onopen = () => {
-        try { ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: `candle${okxBar}`, instId }] })); } catch { /* noop */ }
+        try { ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: `candle${okxBar}`, instId }, { channel: "tickers", instId }] })); } catch { /* noop */ }
         pingTimer = setInterval(() => { try { ws.send("ping"); } catch { /* noop */ } }, 25000);
       };
       ws.onmessage = (event) => {
@@ -776,8 +786,11 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
         if (text === "pong" || !text) return;
         let msg; try { msg = JSON.parse(text); } catch { return; }
         if (msg.event) return; // 订阅确认/错误回执
+        const ch = msg.arg && msg.arg.channel;
         const d = msg.data && msg.data[0];
-        if (d) applyOkxCandle(d);
+        if (!d) return;
+        if (ch === "tickers") applyTickerPrice(d.last);           // ~100ms 高频，逐 tick 动
+        else if (ch && ch.startsWith("candle")) applyOkxCandle(d); // 权威 OHLC + 周期滚动
       };
       ws.onclose = () => { if (pingTimer) clearInterval(pingTimer); pingTimer = null; if (!disposed) scheduleReconnect(); };
       ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
