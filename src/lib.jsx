@@ -456,7 +456,7 @@ export function useApi() {
   }
 
   async function readOverview(base) {
-    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, isNativeApp() ? 5000 : 8000);
+    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, isNativeApp() ? 12000 : 12000);
     if (response.status === 401) {
       expireSession();
       return null;

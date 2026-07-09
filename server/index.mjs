@@ -609,7 +609,9 @@ app.get("/api/overview", (_req, res) => {
     tradePlans: db.tradePlans,
     events: db.events,
     tasks: db.tasks,
-    knowledge: db.knowledge,
+    // 蒸馏出的 chunk 正文/词频向量（导入 11 本书后达 ~1.4MB）客户端并不渲染，只用到条数；
+    // 这里剥掉 chunk 重字段，overview 从 ~1.5MB 降到几十 KB，移动端才不会超时。RAG 检索在服务端做。
+    knowledge: { ...db.knowledge, chunks: (db.knowledge.chunks || []).map((c) => ({ id: c.id, sourceId: c.sourceId })) },
     skills: db.skills,
     tools: db.tools,
     mcpServers: db.mcpServers,
@@ -751,13 +753,20 @@ app.delete("/api/watchlist/:symbol", requirePermission("write:realtime"), (req, 
 });
 
 // 公有 K 线（给自绘图表用真实 OKX 数据）。公开数据，走鉴权白名单。
+// 服务端→OKX REST 拉一次 ~4s，移动端易超时；这里加 10s 内存缓存，重复请求即时返回。
+const klineCache = new Map(); // key -> { at, payload }
 app.get("/api/market/klines", async (req, res) => {
   try {
     const symbol = String(req.query.symbol || "BTC/USDT").toUpperCase();
     const tf = String(req.query.tf || "1h");
     const limit = Math.min(Number(req.query.limit || 200), 500);
+    const key = `${symbol}|${tf}|${limit}`;
+    const hit = klineCache.get(key);
+    if (hit && Date.now() - hit.at < 10000) { res.json(hit.payload); return; }
     const candles = await getHistoricalKlines(symbol, tf, limit);
-    res.json({ symbol, tf, candles: candles || [] });
+    const payload = { symbol, tf, candles: candles || [] };
+    if (candles && candles.length) klineCache.set(key, { at: Date.now(), payload });
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: `K线获取失败：${error.message}`, candles: [] });
   }
