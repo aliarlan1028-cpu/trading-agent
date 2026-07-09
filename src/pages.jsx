@@ -818,7 +818,7 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
             {!knowledge.sources?.length && (
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无真实知识来源</strong>
-                <span>把交易类书籍与资料喂给 AI：可粘贴文本、导入网页链接、上传 PDF/EPUB/DOCX/MD/TXT，或填写本地文件路径。AI 会拆成「纪律规则（直接生效）」与「可回测策略假设（需先回测验证）」两类。</span>
+                <span>把交易类书籍与资料喂给 AI：可**直接输入书名**（经典公开著作 AI 能自行蒸馏，无需 PDF）、粘贴文本、导入网页链接、上传 PDF/EPUB/DOCX/MD/TXT，或填写本地路径。AI 会拆成「纪律规则（直接生效）」与「可回测策略假设（需先回测验证）」两类。</span>
               </div>
             )}
           </div>

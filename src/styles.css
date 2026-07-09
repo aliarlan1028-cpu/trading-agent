@@ -9602,3 +9602,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 /* K线（lightweight-charts）加载/空态覆盖层 */
 .tvChart { width: 100%; height: 100%; position: relative; }
 .tvOverlay { position: absolute; inset: 0; display: grid; place-items: center; background: #FBF9F5; color: #a89e8a; font-size: 12px; }
+
+/* 知识导入·按书名 提示 */
+.bookHint { font-size: 12px; line-height: 1.55; color: var(--text-2); background: var(--accent-weak); border: 1px solid #f0d9c2; border-radius: 9px; padding: 10px 12px; }

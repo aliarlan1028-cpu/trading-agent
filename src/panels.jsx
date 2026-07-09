@@ -832,10 +832,13 @@ export function KnowledgeImportPanel({ action, ui }) {
     subPath: "",
     filePath: "",
     content: "",
+    author: "",
+    bookFocus: "",
     trustScore: 70,
     createRuleDraft: false
   });
   const modes = [
+    ["book", "按书名"],
     ["text", "粘贴文本"],
     ["web", "网页链接"],
     ["upload", "上传文件"],
@@ -860,6 +863,12 @@ export function KnowledgeImportPanel({ action, ui }) {
       return result;
     }
     const body = { ...common };
+    if (mode === "book") {
+      if (!form.title.trim()) return ui.notify("请填写书名");
+      body.type = "book_title";
+      body.author = form.author.trim();
+      body.bookFocus = form.bookFocus.trim();
+    }
     if (mode === "text") {
       if (!form.content.trim()) return ui.notify("请粘贴知识文本");
       body.type = "text";
@@ -892,6 +901,15 @@ export function KnowledgeImportPanel({ action, ui }) {
         <label>标题<input value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="例如：趋势交易笔记" /></label>
         <label>领域<input value={form.domain} onChange={(event) => update("domain", event.target.value)} placeholder="交易策略 / 风控 / 宏观" /></label>
       </div>
+      {mode === "book" && (
+        <>
+          <div className="bookHint">买不到 PDF 也能喂：对经典公开著作，AI 会基于它对这本书的理解，用自己的话把可执行的交易方法蒸馏成结构化知识（纪律规则 + 待回测策略）。上面「标题」填书名即可。</div>
+          <div className="formGrid">
+            <label>作者（可选）<input value={form.author} onChange={(event) => update("author", event.target.value)} placeholder="如 Al Brooks / Mark Douglas" /></label>
+            <label>侧重（可选）<input value={form.bookFocus} onChange={(event) => update("bookFocus", event.target.value)} placeholder="如 价格行为 setup / 交易心理 / 风控" /></label>
+          </div>
+        </>
+      )}
       {mode === "text" && <label>知识文本<textarea className="largeTextarea" value={form.content} onChange={(event) => update("content", event.target.value)} placeholder="粘贴 Markdown、交易规则、研究笔记或复盘内容" /></label>}
       {mode === "web" && <label>网页链接<input value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://..." /></label>}
       {mode === "upload" && <label>上传文件<input type="file" accept=".pdf,.epub,.docx,.md,.txt,.json,.csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>}
