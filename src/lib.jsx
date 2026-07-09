@@ -333,6 +333,12 @@ function connectionErrorMessage(error) {
   return error?.message || "连接失败";
 }
 
+// 实时价 pub/sub：SSE 每个价格 tick 直接分发给订阅者（如 K 线图），不经 React 状态节流，
+// 让图表能跟上 OKX 的逐 tick 更新；React 状态仍轻度节流避免整页高频重渲染。
+const livePriceListeners = new Set();
+export function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceListeners.delete(fn); }
+function emitLivePrice(symbol, price) { for (const fn of livePriceListeners) { try { fn(symbol, price); } catch { /* noop */ } } }
+
 export function useApi() {
   const [token, setToken] = useState(() => localStorage.getItem("agent_token") || "");
   const [apiBase, setApiBaseState] = useState(defaultApiBase);
@@ -594,10 +600,13 @@ export function useApi() {
     source.onmessage = (event) => {
       try {
         const u = JSON.parse(event.data);
-        if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 1000); return; }
+        if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 300); return; }
         if (!u || !u.symbol) return;
+        // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
+        if (u.price !== undefined) emitLivePrice(u.symbol, u.price);
         pending[u.symbol] = { ...pending[u.symbol], ...u };
-        if (!timer) timer = setTimeout(flush, 1000);
+        // React 状态（标题/快照）轻度节流到 250ms（约 4 次/秒），避免整页高频重渲染。
+        if (!timer) timer = setTimeout(flush, 250);
       } catch { /* 忽略解析失败 */ }
     };
     return () => { if (source) source.close(); if (timer) clearTimeout(timer); };
@@ -772,21 +781,24 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
     return () => { disposed = true; if (refetchTimer) clearInterval(refetchTimer); if (chart) { try { chart.remove(); } catch { /* noop */ } } seriesRef.current = null; };
   }, [symbol, interval]);
 
-  // 实时价：逐 tick 更新当前蜡烛的收/高/低，周期切换时开新蜡烛。
+  // 实时价：逐 tick 订阅 SSE 价格（不经 React 节流），每个 tick 更新当前蜡烛的收/高/低、
+  // 周期切换时开新蜡烛，让图表跟上 OKX 每秒多次的变化。
   useEffect(() => {
-    const price = Number(livePrice);
-    const series = seriesRef.current;
-    const last = lastBarRef.current;
-    if (!series || !last || !Number.isFinite(price) || price <= 0) return;
-    const bucket = Math.floor(Math.floor(Date.now() / 1000) / barSeconds) * barSeconds;
-    let bar;
-    if (bucket > last.time) {
-      bar = { time: bucket, open: price, high: price, low: price, close: price };
-    } else {
-      bar = { time: last.time, open: last.open, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
-    }
-    try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
-  }, [livePrice, barSeconds]);
+    const applyPrice = (sym, price) => {
+      if (sym !== symbol) return;
+      const series = seriesRef.current;
+      const last = lastBarRef.current;
+      const p = Number(price);
+      if (!series || !last || !Number.isFinite(p) || p <= 0) return;
+      const bucket = Math.floor(Math.floor(Date.now() / 1000) / barSeconds) * barSeconds;
+      const bar = bucket > last.time
+        ? { time: bucket, open: p, high: p, low: p, close: p }
+        : { time: last.time, open: last.open, high: Math.max(last.high, p), low: Math.min(last.low, p), close: p };
+      try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
+    };
+    if (livePrice != null) applyPrice(symbol, livePrice);
+    return onLivePrice(applyPrice);
+  }, [symbol, barSeconds]);
 
   return (
     <div className="tvChart" style={{ position: "relative" }}>
