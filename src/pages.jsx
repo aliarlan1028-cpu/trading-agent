@@ -45,7 +45,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, FlagTip, SymbolChips } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LivePrice, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, FlagTip, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -288,8 +288,15 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             </div>
           </div>
           <div className="priceHead">
-            <b className="mono">{displayPrice(market.price)}</b>
-            <span className={`priceChg ${chgPos ? "pos" : "neg"} mono`}>{chgPos ? "▲" : "▼"} {displayPct(market.changePct)}</span>
+            <LivePrice symbol={activeSymbol} fallbackPrice={market.price} fallbackChange={market.changePct}>
+              {(price, change) => {
+                const up = Number(change || 0) >= 0;
+                return <>
+                  <b className="mono">{displayPrice(price)}</b>
+                  <span className={`priceChg ${up ? "pos" : "neg"} mono`}>{up ? "▲" : "▼"} {displayPct(change)}</span>
+                </>;
+              }}
+            </LivePrice>
             <span className="ohlcRow mono">{activeSymbol}</span>
           </div>
           <div className="chartBox tv">

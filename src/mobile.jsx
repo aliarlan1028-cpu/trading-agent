@@ -28,7 +28,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -891,11 +891,17 @@ function MobileMarket({ data, action, ui }) {
         {metrics.map(([k, v, pn]) => <div className="mMetricCell" key={k}><span>{k}</span><b className={`mono ${pn != null ? (Number(pn) >= 0 ? "pos" : "neg") : ""}`}>{v}</b></div>)}
       </div>
       <div className="mCard">
-        <div className="mMktHead">
-          <div className="mMktSym"><span className="mCoinDot">{(market.symbol || "B").charAt(0)}</span><b className="mono">{market.symbol}</b></div>
-          <div className={`mMktChg ${chgPos ? "pos" : "neg"} mono`}>{displayPct(market.changePct)}</div>
-        </div>
-        <div className="mMktPrice mono">{displayPrice(market.price)}</div>
+        <LivePrice symbol={market.symbol} fallbackPrice={market.price} fallbackChange={market.changePct}>
+          {(price, change) => (
+            <>
+              <div className="mMktHead">
+                <div className="mMktSym"><span className="mCoinDot">{(market.symbol || "B").charAt(0)}</span><b className="mono">{market.symbol}</b></div>
+                <div className={`mMktChg ${Number(change || 0) >= 0 ? "pos" : "neg"} mono`}>{displayPct(change)}</div>
+              </div>
+              <div className="mMktPrice mono">{displayPrice(price)}</div>
+            </>
+          )}
+        </LivePrice>
         {markets.length > 1 && <div className="mSymPills">{markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}</div>}
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>

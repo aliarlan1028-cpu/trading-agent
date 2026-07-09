@@ -339,6 +339,70 @@ const livePriceListeners = new Set();
 export function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceListeners.delete(fn); }
 function emitLivePrice(symbol, price) { for (const fn of livePriceListeners) { try { fn(symbol, price); } catch { /* noop */ } } }
 
+// 共享 OKX tickers 直连管理：一条 WS 按 symbol 多路复用，标题/快照直接吃 OKX ~100ms 最新价，
+// 和 K 线同源同速（不再经我们后端中转）。多个订阅者共用同一条连接。
+const okxTickerSubs = new Map(); // symbol -> Set(cb)
+let okxTickerWs = null;
+let okxTickerPing = null;
+let okxTickerReconnect = null;
+function okxInstId(symbol) { return `${String(symbol).replace("/", "-").toUpperCase()}-SWAP`; }
+function okxSendSub(symbols) {
+  if (!okxTickerWs || okxTickerWs.readyState !== 1 || !symbols.length) return;
+  try { okxTickerWs.send(JSON.stringify({ op: "subscribe", args: symbols.map((s) => ({ channel: "tickers", instId: okxInstId(s) })) })); } catch { /* noop */ }
+}
+function connectOkxTicker() {
+  try { okxTickerWs = new WebSocket("wss://ws.okx.com:8443/ws/v5/public"); } catch { scheduleOkxTickerReconnect(); return; }
+  okxTickerWs.onopen = () => {
+    okxSendSub([...okxTickerSubs.keys()]);
+    okxTickerPing = setInterval(() => { try { okxTickerWs.send("ping"); } catch { /* noop */ } }, 25000);
+  };
+  okxTickerWs.onmessage = (event) => {
+    const text = typeof event.data === "string" ? event.data : "";
+    if (text === "pong" || !text) return;
+    let msg; try { msg = JSON.parse(text); } catch { return; }
+    if (msg.event || msg.arg?.channel !== "tickers") return;
+    const d = msg.data?.[0]; if (!d) return;
+    const symbol = String(msg.arg.instId).replace("-SWAP", "").replace("-", "/");
+    const cbs = okxTickerSubs.get(symbol); if (!cbs) return;
+    const last = Number(d.last); const open = Number(d.open24h);
+    const payload = { price: last, changePct: open > 0 && Number.isFinite(last) ? Number((((last - open) / open) * 100).toFixed(3)) : null, high24h: Number(d.high24h), low24h: Number(d.low24h) };
+    for (const cb of cbs) { try { cb(payload); } catch { /* noop */ } }
+  };
+  okxTickerWs.onclose = () => { if (okxTickerPing) clearInterval(okxTickerPing); okxTickerPing = null; scheduleOkxTickerReconnect(); };
+  okxTickerWs.onerror = () => { try { okxTickerWs.close(); } catch { /* noop */ } };
+}
+function scheduleOkxTickerReconnect() {
+  if (okxTickerReconnect) return;
+  okxTickerReconnect = setTimeout(() => { okxTickerReconnect = null; if (okxTickerSubs.size) connectOkxTicker(); }, 3000);
+}
+export function subscribeOkxTicker(symbol, cb) {
+  if (!symbol || typeof WebSocket === "undefined") return () => {};
+  let set = okxTickerSubs.get(symbol);
+  if (!set) { set = new Set(); okxTickerSubs.set(symbol, set); }
+  set.add(cb);
+  if (!okxTickerWs || okxTickerWs.readyState > 1) connectOkxTicker();
+  else if (okxTickerWs.readyState === 1) okxSendSub([symbol]);
+  return () => {
+    const s = okxTickerSubs.get(symbol);
+    if (s) { s.delete(cb); if (!s.size) okxTickerSubs.delete(symbol); }
+  };
+}
+
+// 实时价渲染（render-prop）：订阅 OKX tickers，只重渲染自己这一小块，不拖累整页。
+export function LivePrice({ symbol, fallbackPrice = null, fallbackChange = null, children }) {
+  const [v, setV] = useState({ price: null, change: null });
+  useEffect(() => {
+    setV({ price: null, change: null });
+    let latest = null; let raf = null;
+    const flush = () => { raf = null; if (latest) setV(latest); };
+    const off = subscribeOkxTicker(symbol, (t) => { latest = { price: t.price, change: t.changePct }; if (!raf && typeof requestAnimationFrame !== "undefined") raf = requestAnimationFrame(flush); });
+    return () => { if (raf) cancelAnimationFrame(raf); off(); };
+  }, [symbol]);
+  const price = v.price ?? fallbackPrice;
+  const change = v.change ?? fallbackChange;
+  return children(price, change);
+}
+
 export function useApi() {
   const [token, setToken] = useState(() => localStorage.getItem("agent_token") || "");
   const [apiBase, setApiBaseState] = useState(defaultApiBase);
