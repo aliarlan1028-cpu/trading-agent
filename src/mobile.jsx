@@ -28,7 +28,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, formatDate, formatDateTime, formatTime, humanize, humanizePhase, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -491,12 +491,15 @@ function MobilePositions({ data, action, ui }) {
   );
 }
 
+// 屏 S5 — 系统设置：账户卡 + 交易所列表 + 系统配置分区 + 订阅卡。
 function MobileSettingsIndex({ data, onOpen }) {
   const config = data.config || {};
   const exchange = config.exchange || {};
   const integrations = config.integrations || {};
   const live = config.liveTrading || {};
   const runtime = config.runtime || {};
+  const user = data.user || {};
+  const sub = (data.subscriptions || [])[0] || {};
   const subs = {
     llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置",
     exchange: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置",
@@ -504,18 +507,51 @@ function MobileSettingsIndex({ data, onOpen }) {
     integrations: integrations.telegram?.configured ? "TG 已接入" : integrations.lark?.hasWebhook ? "飞书已接入" : "未配置",
     runtime: runtime.authRequired === false ? "免登录" : "鉴权开启"
   };
+  const exchanges = [
+    { id: "binance", name: "Binance", letter: "B", cls: "binance", connected: exchange.binance?.hasKey },
+    { id: "okx", name: "OKX", letter: "O", cls: "okx", connected: exchange.okx?.hasKey }
+  ];
   return (
-    <div className="mManage">
-      <div className="mList">
+    <div className="mScreen">
+      <div className="mCard mAcctCard">
+        <span className="mAcctAvatar">{String(user.name || user.email || "U").charAt(0).toUpperCase()}</span>
+        <div className="mAcctInfo"><b>{user.name || "量化交易员"}</b><small>{user.email || "—"}</small></div>
+        <span className="mAcctPlan">{user.isOwner ? "OWNER" : sub.status ? "PRO" : "—"}</span>
+      </div>
+
+      <div className="mCard">
+        <div className="mCardHead"><b>交易所与 API 密钥</b><small>{exchanges.filter((e) => e.connected).length} 已连接</small></div>
+        {exchanges.map((e) => (
+          <button className="mExRow" key={e.id} onClick={() => onOpen("settings:exchange")}>
+            <span className={`mExLogo ${e.cls}`}>{e.letter}</span>
+            <div className="mExInfo"><b>{e.name}</b><small>{e.connected ? "已配置密钥" : "未配置"}</small></div>
+            <StatusBadge tone={e.connected ? "ok" : "neutral"}>{e.connected ? "已连接" : "未连接"}</StatusBadge>
+            <ChevronRight size={15} />
+          </button>
+        ))}
+        <div className="mSecNote"><Shield size={13} /> 密钥加密存储；只勾读写交易，绝不勾选提币权限</div>
+      </div>
+
+      <div className="mCard">
+        <div className="mCardHead"><b>系统配置</b></div>
         {settingsSections.map((item) => (
-          <button key={item.id} onClick={() => onOpen(`settings:${item.id}`)}>
+          <button className="mCfgRow" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}>
             <span>{item.label}</span>
-            <small className="mListSub">{subs[item.id]}</small>
+            <small className="mono">{subs[item.id]}</small>
             <ChevronRight size={15} />
           </button>
         ))}
       </div>
-      <p className="mManageNote">每项单独一页，改完即存。</p>
+
+      {sub.status && (
+        <div className="mCard mPlanCard">
+          <div className="mPlanTop">
+            <div><b>{sub.planName || "专业版"}</b><small>{sub.source === "owner_grant" ? "Owner 免费授权" : humanize(sub.status)}</small></div>
+            <span className="mPlanBadge">生效中</span>
+          </div>
+          <div className="mPlanFoot mono">到期 {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : "长期有效"}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -577,52 +613,54 @@ function MobileReview({ data, ui }) {
   );
 }
 
+// 屏 S3 — 风控与授权：风险墙 + 亏损预算 + MANDATE 6 行 + 规则 2×2 + 操作按钮行。
 function MobileRisk({ data, action, ui }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
+  const sys = data.system || {};
   const rules = data.riskRules || [];
-  const mandateTone = ["running", "active"].includes(mandate.status) ? "ok" : statusTone(mandate.status);
   const maxLeverage = mandate.max_leverage || (mandate.maxLeverageBySymbol ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : null);
   const approvalThreshold = mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt;
   const validUntil = mandate.validUntil || mandate.valid_until;
+  const budgetRemain = sys.remainingDailyLossUsdt;
+  const budgetCap = sys.dailyLossCapUsdt;
+  const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
+  const killed = sys.killSwitch;
+  const active = ["running", "active"].includes(mandate.status);
+  const wall = killed ? { label: "熔断停机 · 已阻断开仓", tone: "critical" } : active ? { label: "低风险 · 正常运行", tone: "ok" } : { label: "未授权 · 观察模式", tone: "warning" };
+  const mandateTone = active ? "ok" : statusTone(mandate.status);
+  const mandRows = [
+    ["授权范围", (mandate.exchanges || []).length ? "已授权交易" : "未授权", ""],
+    ["交易所", (mandate.exchanges || []).join("、") || "—", ""],
+    ["最大杠杆", maxLeverage ? `${maxLeverage}x` : "—", ""],
+    ["单日最大亏损", mandate.maxDailyLossPct ? `${mandate.maxDailyLossPct}%` : "—", "neg"],
+    ["审批阈值", approvalThreshold != null && mandate.id ? `${displayMoney(approvalThreshold, 0)} U` : "—", ""],
+    ["有效期", validUntil ? formatDate(validUntil) : "长期有效", ""]
+  ];
+  const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
+  const scopeCount = (name) => rules.filter((r) => String(r.scope || r.category || r.name || "").includes(name)).length;
   return (
-    <div className="mSubPage">
-      <div className="mPageStats">
-        <div><span>单日亏损上限</span><strong>{mandate.maxDailyLossPct ? `${mandate.maxDailyLossPct}%` : "未授权"}</strong></div>
-        <div><span>最大杠杆</span><strong>{maxLeverage ? `${maxLeverage}x` : "未授权"}</strong></div>
-        <div><span>审批阈值</span><strong>{mandate.id && approvalThreshold !== undefined ? `${displayMoney(approvalThreshold, 0)}U` : "未授权"}</strong></div>
+    <div className="mScreen">
+      <div className={`mRiskWall ${wall.tone}`}>
+        <ShieldCheck size={22} />
+        <div><b>{wall.label}</b><small>{active ? "授权与硬风控生效中" : "配置授权后进入自主"}</small></div>
       </div>
-
-      <div className="mSectionCard">
-        <header>
-          <span>授权委托</span>
-          <StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge>
-        </header>
-        <div className="mKvRows">
-          <span>交易所<b>{(mandate.exchanges || []).join("、") || "未授权"}</b></span>
-          <span>交易对白名单<SymbolChips symbols={mandate.allowedSymbols} /></span>
-          <span>有效期<b>{validUntil ? `截至 ${formatDateTime(validUntil)}` : "未记录"}</b></span>
-        </div>
-        <div className="mInboxActions">
-          <button onClick={() => ui.openPanel("mandate")}>编辑授权</button>
-        </div>
+      <div className="mCard mBudgetCard">
+        <div className="mBudgetTop"><span>剩余亏损预算</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : "未授权"}</b></div>
+        <div className="mBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
       </div>
-
-      <div className="mSectionCard">
-        <header><span>风控规则（{rules.length}）</span></header>
-        {!rules.length && <p className="mInboxEmpty">暂无风控规则。</p>}
-        {rules.slice(0, 12).map((rule) => (
-          <div className="mRuleRow" key={rule.id}>
-            <span>
-              <b>{rule.name}</b>
-              <small>{rule.level || "L2"} · {humanize(rule.action, "notify")}{rule.condition ? ` · ${rule.condition}` : ""}</small>
-            </span>
-            <button
-              className={`mMiniToggle ${rule.enabled === false ? "" : "on"}`}
-              aria-label={rule.enabled === false ? "启用规则" : "停用规则"}
-              onClick={() => action(`/api/risk/rules/${rule.id}`, { enabled: rule.enabled === false }, "PATCH")}
-            ><i /></button>
-          </div>
-        ))}
+      <div className="mCard">
+        <div className="mCardHead"><b>授权委托 MANDATE</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge></div>
+        <div className="mMandList">{mandRows.map(([k, v, tone]) => <div className="mMandRow" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}</div>
+        <button className="mLink2" onClick={() => ui.openPanel("mandate")}>编辑授权 ›</button>
+      </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>风险规则</b></div>
+        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{scopeCount(name)} 条 · 正常</small><i style={{ background: c }} /></div>)}</div>
+      </div>
+      <div className="mRiskBtns">
+        <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
+        <button className="mRbReduce" onClick={() => ui.openPanel("riskRules")}>只减仓</button>
+        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
       </div>
     </div>
   );
@@ -824,6 +862,133 @@ function MobileManage({ onOpen, data }) {
   );
 }
 
+// 屏 S2 — 市场与账户：指标 2×2 + 行情卡（SVG K线）+ 持仓卡 + 保证金甜甜圈。
+function MobileMarket({ data, action, ui }) {
+  const [tf, setTf] = useState("1H");
+  const [sym, setSym] = useState(null);
+  const portfolio = data.portfolio || {};
+  const configured = (data.exchangeAccounts || []).some((a) => a.readEnabled);
+  const markets = (data.markets || []).filter((m) => m && m.symbol);
+  const market = markets.find((m) => m.symbol === sym) || markets[0] || { symbol: "BTC/USDT", candles: [] };
+  const positions = data.positions || [];
+  const equity = portfolio.totalEquityUsdt;
+  const avail = portfolio.availableMarginUsdt;
+  const used = equity != null && avail != null ? Math.max(0, Number(equity) - Number(avail)) : null;
+  const marginRate = equity ? (used / Number(equity)) * 100 : null;
+  const metrics = [
+    ["总资产", configured && equity != null ? displayMoney(equity, 2) : "未同步", null],
+    ["今日盈亏", configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : "未同步", configured ? portfolio.todayPnl : null],
+    ["可用保证金", configured && avail != null ? displayMoney(avail, 2) : "未同步", null],
+    ["未实现盈亏", configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : "未同步", configured ? portfolio.unrealizedPnl : null]
+  ];
+  const chgPos = Number(market.changePct || 0) >= 0;
+  const circ = 2 * Math.PI * 24;
+  const dash = `${((marginRate ?? 0) / 100) * circ} ${circ}`;
+  return (
+    <div className="mScreen">
+      <div className="mMetric2x2">
+        {metrics.map(([k, v, pn]) => <div className="mMetricCell" key={k}><span>{k}</span><b className={`mono ${pn != null ? (Number(pn) >= 0 ? "pos" : "neg") : ""}`}>{v}</b></div>)}
+      </div>
+      <div className="mCard">
+        <div className="mMktHead">
+          <div className="mMktSym"><span className="mCoinDot">{(market.symbol || "B").charAt(0)}</span><b className="mono">{market.symbol}</b></div>
+          <div className={`mMktChg ${chgPos ? "pos" : "neg"} mono`}>{displayPct(market.changePct)}</div>
+        </div>
+        <div className="mMktPrice mono">{displayPrice(market.price)}</div>
+        {markets.length > 1 && <div className="mSymPills">{markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}</div>}
+        <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
+        <div className="mKline">{market.candles?.length ? <CandleChart candles={market.candles} /> : <div className="mKlineEmpty">同步交易所后显示真实 K 线</div>}</div>
+      </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>持仓</b><button className="mLink" onClick={() => ui.setActive("positions")}>全部 ›</button></div>
+        {positions.length ? positions.slice(0, 3).map((p, i) => {
+          const short = String(p.direction || p.side || p.posSide || "").toLowerCase().includes("short");
+          const pnl = Number(p.pnl ?? p.upl ?? p.unrealizedPnl ?? 0);
+          return (
+            <div className="mPosRow" key={i}>
+              <div className="mPosL"><b className="mono">{p.symbol || p.instId}</b><span className={`mPosDir ${short ? "short" : "long"}`}>{short ? "做空" : "做多"}</span></div>
+              <div className="mPosR"><b className={`mono ${pnl >= 0 ? "pos" : "neg"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b><small className="mono">{displayMoney(p.size ?? p.qty ?? p.pos ?? 0, 2)} · {displayPct(p.roiPct ?? p.uplRatioPct)}</small></div>
+            </div>
+          );
+        }) : <div className="mEmpty">连接交易所后显示真实持仓</div>}
+      </div>
+      <div className="mCard mMarginCard">
+        <svg className="mDonut" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="24" fill="none" stroke="#EDE7DB" strokeWidth="6" />
+          <circle cx="28" cy="28" r="24" fill="none" stroke="#D06A22" strokeWidth="6" strokeDasharray={dash} strokeLinecap="round" transform="rotate(-90 28 28)" />
+          <text x="28" y="31" textAnchor="middle" className="mDonutTxt">{marginRate != null ? `${marginRate.toFixed(0)}%` : "—"}</text>
+        </svg>
+        <div className="mMarginInfo"><b>保证金率</b><small>{marginRate != null ? `已用保证金 ${marginRate.toFixed(1)}%` : "连接账户后显示"}</small></div>
+      </div>
+    </div>
+  );
+}
+
+// 屏 S4 — 审计与系统：系统卡 2×2 + 审计链 + 决策/工具日志。
+function MobileAudit({ data, ui }) {
+  const sys = data.system || {};
+  const rt = data.realtimeConnections || [];
+  const tasks = (data.tasks || []).filter((t) => t.enabled).length;
+  const exSynced = (data.exchangeAccounts || []).filter((a) => a.readEnabled).length;
+  const exTotal = data.exchangeAccounts?.length || 0;
+  const sysCards = [
+    ["API 健康", sys.apiHealth || "未知", "#2A6FDB", "#EAF0FB"],
+    ["WebSocket", rt.filter((c) => c.status === "connected").length + "/" + (rt.length || 0), "#7A4FD0", "#F0EAFB"],
+    ["任务引擎", String(tasks), "#D06A22", "#FBEDDF"],
+    ["交易所同步", `${exSynced}/${exTotal}`, "#1F7A50", "#E6F1EA"]
+  ];
+  const chain = (data.traces || []).slice(0, 6);
+  const logs = (data.auditLogs || []).slice(0, 5);
+  return (
+    <div className="mScreen">
+      <div className="mMetric2x2">
+        {sysCards.map(([k, v, c, bg]) => <div className="mMetricCell" key={k}><span style={{ color: c }}>{k}</span><b className="mono" style={{ color: c }}>{v}</b><i className="mSysDot" style={{ background: bg }} /></div>)}
+      </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>运行审计链</b><button className="mLink" onClick={() => ui.openPanel("auditChain")}>完整 ›</button></div>
+        {chain.length ? chain.map((t, i) => (
+          <div className="mChainRow" key={t.id || i}>
+            <span className={`mChainDot ${statusTone(t.status)}`} />
+            <div className="mChainMid"><b>{t.title || t.type}</b><small className="mono">{t.id ? String(t.id).slice(0, 14) : t.type}</small></div>
+            <small className="mono mChainTime">{formatTime(t.createdAt)}</small>
+          </div>
+        )) : <div className="mEmpty">暂无审计链记录</div>}
+      </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>决策与工具日志</b></div>
+        {logs.length ? logs.map((l, i) => (
+          <div className="mLogRow" key={l.id || i}>
+            <small className="mono">{formatTime(l.createdAt)}</small>
+            <b>{l.action}</b>
+            <StatusBadge tone={statusTone(l.severity)}>{humanize(l.severity || "ok")}</StatusBadge>
+          </div>
+        )) : <div className="mEmpty">暂无日志</div>}
+      </div>
+    </div>
+  );
+}
+
+// 屏 S1 — AI 交易员：顶栏下 4 等分状态条。
+function MobileChatStatus({ data }) {
+  const sys = data.system || {};
+  const pf = data.portfolio || {};
+  const autoOn = sys.autonomyEnabled === true && !sys.killSwitch;
+  const smMob = data.marketRegime?.smartMoney || {};
+  const bias = smMob.ok ? (Number(smMob.topTraderLongShortRatio || 1) >= 1 ? "偏多" : "偏空") : "待同步";
+  const mandate = data.mandates?.find((m) => ["active", "running"].includes(m.status));
+  const cells = [
+    ["状态", autoOn ? "运行中" : "已暂停", autoOn ? "pos" : ""],
+    ["判断", bias, bias === "偏多" ? "pos" : bias === "偏空" ? "neg" : ""],
+    ["今日", pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
+    ["目标", mandate?.targetMonthlyPct ? `${mandate.targetMonthlyPct}%` : "—", ""]
+  ];
+  return (
+    <div className="mChatStatus">
+      {cells.map(([k, v, tone]) => <div className="mChatStatCell" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}
+    </div>
+  );
+}
+
 // 移动端主导航（与桌面 6 页 IA 一致 + 系统设置），走顶部汉堡抽屉。
 const mobileNav = [
   { id: "chat", label: "AI 交易员", code: "ALPHA-01 · 趋势策略", icon: Bot },
@@ -895,11 +1060,11 @@ export function MobileApp({ api }) {
 
   let content = null;
   if (route === "chat") {
-    content = <div className="content mChatContent"><ChatPage data={data} action={action} ui={ui} /></div>;
+    content = <div className="content mChatContent"><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} /></div>;
   } else if (route === "cockpit") {
     content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
-        : <MobileHome data={data} action={action} ui={ui} onOpenRail={() => {}} />;
+        : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
     content = <MobileTasks data={data} action={action} ui={ui} />;
   } else if (route === "knowledgeSkills") {
@@ -907,7 +1072,7 @@ export function MobileApp({ api }) {
   } else if (route === "riskAuth") {
     content = <MobileRisk data={data} action={action} ui={ui} />;
   } else if (route === "auditSystem") {
-    content = subPage === "review" ? <MobileReview data={data} ui={ui} /> : <MobileFeed data={data} />;
+    content = subPage === "review" ? <MobileReview data={data} ui={ui} /> : <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
     content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>
       : subPage === "admin" ? <div className="content mSubContent mAdminContent"><AdminPage data={data} action={action} ui={ui} /></div>
