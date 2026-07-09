@@ -1278,13 +1278,13 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
   });
   const traceTypes = ["全部", ...Array.from(new Set(traces.map((trace) => trace.type).filter(Boolean))).slice(0, 3)];
   const chainItems = [
-    ["授权任务", latestPlan.mandateId, humanize(data.agentStatus?.activeMandate?.status, "未授权"), KeyRound],
-    ["分析包", latestPlan.analysisBundleId, latestPlan.analysisBundleId ? "已生成" : "未生成", FileText],
-    ["交易计划", latestPlan.id, humanize(latestPlan.status, "未生成"), ClipboardList],
-    ["风险校验", latestPlan.riskCheckId || latestRisk.id, humanize(latestRisk.decision || latestRisk.result, "未检查"), Shield],
-    ["执行", latestOrder.id, humanize(latestOrder.status, "真实写关闭"), Rocket],
-    ["结算对账", data.reconciliationReports?.[0]?.id, humanize(data.reconciliationReports?.[0]?.status, "未对账"), RefreshCw],
-    ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成", Search]
+    ["授权任务", latestPlan.mandateId, humanize(data.agentStatus?.activeMandate?.status, "未授权"), KeyRound, "MANDATE"],
+    ["分析包", latestPlan.analysisBundleId, latestPlan.analysisBundleId ? "已生成" : "未生成", FileText, "ANALYSIS"],
+    ["交易计划", latestPlan.id, humanize(latestPlan.status, "未生成"), ClipboardList, "PLAN"],
+    ["风险校验", latestPlan.riskCheckId || latestRisk.id, humanize(latestRisk.decision || latestRisk.result, "未检查"), Shield, "RISK CHECK"],
+    ["执行", latestOrder.id, humanize(latestOrder.status, "真实写关闭"), Rocket, "EXECUTE"],
+    ["结算对账", data.reconciliationReports?.[0]?.id, humanize(data.reconciliationReports?.[0]?.status, "未对账"), RefreshCw, "RECONCILE"],
+    ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成", Search, "REVIEW"]
   ];
   return (
     <div className="pageStack termPage">
@@ -1297,41 +1297,64 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
         <MetricCard icon={Shield} label="审计链" value={auditOk ? "正常" : "异常"} sub={`${data.auditLogs?.length || 0} 条日志`} />
       </div>
 
-      <Card className="auditChainCard">
-        <SectionTitle title="Agent 运行审计链" />
-        <div className="auditChain stepper">
-          {chainItems.map(([item, value, state, Icon], index) => (
-            <div className="auditStep" key={item} title={value || "未生成"}>
-              <div className="auditStepIcon">{Icon ? <Icon size={18} /> : index + 1}</div>
-              <strong>{item}</strong>
-              <small>{shortId(value)}</small>
-              <StatusBadge tone={statusTone(state)}>{state}</StatusBadge>
-            </div>
-          ))}
+      <div className="termGrid auditTop">
+      <div className="termCard">
+        <div className="kHead"><span className="secLabel">Agent 运行审计链</span><button className="agLink" onClick={() => ui.openPanel("auditChain")}>完整链路 ›</button></div>
+        <div className="acChain">
+          {chainItems.map(([item, value, state, Icon, en]) => {
+            const done = Boolean(value);
+            return (
+              <div className="acRow" key={item} title={value || "未生成"}>
+                <span className={`acIcon ${done ? "done" : "pending"}`}>{Icon ? <Icon size={13} /> : null}</span>
+                <div className="acInfo"><span className="acStep"><b>{item}</b> <em className="acEn mono">{en}</em></span><div className="acId mono">{shortId(value) || "—"} · {humanize(state)}</div></div>
+                {done ? <CheckCircle2 size={14} className="acCheck" /> : <span className="acDash">—</span>}
+              </div>
+            );
+          })}
         </div>
-        <footer><span>最近耗时 <b>{formatDuration(traces[0]?.latencyMs)}</b></span><span>状态 <b className={latestRisk.passed ? "positive" : "warning"}>{humanize(latestRisk.decision || latestPlan.status, "未生成")}</b></span><button className="secondaryButton" onClick={() => ui.openPanel("auditChain")}>查看完整链路 <ChevronRight size={14} /></button></footer>
-      </Card>
+        <div className="acFoot"><span>整体耗时 <b className="mono">{formatDuration(traces[0]?.latencyMs) || "—"}</b></span><span>状态 <b className={latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "运行中")}</b></span></div>
+      </div>
 
-      <div className="auditGrid two">
-        <Card>
-          <SectionTitle title="决策日志" action={<div className="filterGroup">{traceTypes.map((type) => <button className={traceTypeFilter === type ? "active" : ""} key={type} onClick={() => setTraceTypeFilter(type)}>{humanize(type, type)}</button>)}<button className={traceWindow === "24h" ? "active" : ""} onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} <ChevronDown size={13} /></button></div>} />
-          <DataTable columns={[
-            { key: "time", label: "时间" }, { key: "agent", label: "Agent / 步骤" }, { key: "type", label: "类型" }, { key: "detail", label: "详情", width: "1.5fr" }, { key: "status", label: "状态" }
-          ]} rows={filteredTraces.slice(0, 8).map((trace) => ({ id: trace.id, time: formatTime(trace.createdAt), agent: humanize(trace.type || "步骤"), type: trace.type?.includes("tool") ? "工具调用" : "决策", detail: trace.title, status: <StatusBadge tone={statusTone(trace.status)}>{humanize(trace.status)}</StatusBadge> }))} />
-        </Card>
-        <Card className="executionAuditCard">
-          <SectionTitle title="执行审计" />
-          <div className="executionAudit">
-            <RiskLine label="订单 ID" value={shortId(latestOrder.id)} />
-            <RiskLine label="交易计划 ID" value={shortId(latestPlan.id)} />
-            <RiskLine label="风险校验 ID" value={shortId(latestPlan.riskCheckId || latestRisk.id)} />
-            <RiskLine label="交易对" value={latestPlan.symbol || latestOrder.symbol || "-"} />
-            <RiskLine label="方向 / 类型" value={`${humanize(latestPlan.direction || latestOrder.side, "-")} / ${humanize(latestOrder.type || latestPlan.entry?.type, "-")}`} />
-            <RiskLine label="执行状态" value={humanize(latestOrder.status, "真实写操作关闭")} />
-            <RiskLine label="对账结果" value={humanize(data.reconciliationReports?.[0]?.status, "未对账")} />
-          </div>
-          <button className="textButton centered" onClick={() => ui.openPanel("executionDetail")}>查看详情 <ChevronRight size={14} /></button>
-        </Card>
+      <div className="termCard">
+        <div className="kHead"><span className="secLabel">决策与工具调用日志</span><button className="agLink" onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} ›</button></div>
+        <div className="acLog">
+          <div className="acLogHead mono"><span>时间</span><span>AGENT/步骤</span><span>类型</span><span>详情</span><span className="r">状态</span></div>
+          {filteredTraces.slice(0, 8).map((trace) => {
+            const tool = trace.type?.includes("tool");
+            return (
+              <div className="acLogRow mono" key={trace.id}>
+                <span className="acLogTime">{formatTime(trace.createdAt)}</span>
+                <span className="acLogStep">{humanize(trace.type || "步骤")}</span>
+                <span><b className={`evBadge ${tool ? "" : "ok"}`}>{tool ? "工具" : "决策"}</b></span>
+                <span className="acLogDetail">{trace.title}</span>
+                <span className="r pos">✓</span>
+              </div>
+            );
+          })}
+          {!filteredTraces.length && <div className="emptyPanel">近 24 小时暂无决策/工具调用记录。</div>}
+        </div>
+      </div>
+
+      <div className="termCard">
+        <div className="secLabel">执行审计</div>
+        <div className="acExecGrid">
+          <div><div className="acExecK">订单 ID</div><b className="mono">{shortId(latestOrder.id) || "—"}</b></div>
+          <div className="r"><span className={`evBadge ${latestOrder.status ? "ok" : ""}`}>{humanize(latestOrder.status, "未生成")}</span></div>
+          <div><div className="acExecK">交易计划 ID</div><b className="mono">{shortId(latestPlan.id) || "—"}</b></div>
+          <div className="r"><div className="acExecK">风控校验</div><b className="mono">{shortId(latestPlan.riskCheckId || latestRisk.id) || "—"}</b></div>
+        </div>
+        <div className="acExecGrid divided">
+          <div><div className="acExecK">交易对 · 方向</div><b className="mono">{latestPlan.symbol || latestOrder.symbol || "—"} {humanize(latestPlan.direction || latestOrder.side, "")}</b></div>
+          <div className="r"><div className="acExecK">数量</div><b className="mono">{displayMoney(latestOrder.quantity ?? latestOrder.size, 4, "—")}</b></div>
+          <div><div className="acExecK">成交均价</div><b className="mono">{displayMoney(latestOrder.avgPrice ?? latestOrder.price, 2, "—")}</b></div>
+          <div className="r"><div className="acExecK">交易所</div><b>{latestPlan.exchange || latestOrder.exchange || "—"}</b></div>
+        </div>
+        <div className={`acReconcile ${data.reconciliationReports?.[0]?.status === "ok" ? "ok" : ""}`}>
+          <span><CheckCircle2 size={14} /> {humanize(data.reconciliationReports?.[0]?.status, "未对账")}</span>
+          <span className="mono">{data.reconciliationReports?.[0] ? `差异 ${displayMoney(data.reconciliationReports[0].diffUsdt ?? 0, 0)} · ${formatTime(data.reconciliationReports[0].createdAt)}` : "—"}</span>
+        </div>
+        <button className="agLink" onClick={() => ui.openPanel("executionDetail")}>查看详情 ›</button>
+      </div>
       </div>
 
       <Card>

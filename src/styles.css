@@ -8890,3 +8890,37 @@ button.danger:disabled,
 .kCiteRow .ell { color: #6B6455; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kCiteRow .r { text-align: right; }
 @media (max-width: 1120px) { .kStatRow { grid-template-columns: repeat(2, 1fr); } .kGrid3 { grid-template-columns: 1fr; } }
+
+/* 审计与系统 —— 严格照设计稿 .dc.html */
+.termPage .termGrid.auditTop { grid-template-columns: 1fr 1.05fr 0.85fr; gap: 8px; align-items: start; }
+.auditTop .termCard { border-radius: 11px; padding: 13px 15px; }
+.acChain { display: flex; flex-direction: column; gap: 2px; }
+.acRow { display: flex; gap: 10px; align-items: center; padding: 7px 0; }
+.acIcon { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; flex: none; }
+.acIcon.done { background: #1F7A50; }
+.acIcon.pending { background: #d6cdbc; }
+.acInfo { flex: 1; min-width: 0; }
+.acStep b { font-size: 12px; color: #1E1B16; }
+.acEn { font: 500 10px "IBM Plex Mono"; color: #a89e8a; font-style: normal; margin-left: 4px; }
+.acId { font: 500 10px "IBM Plex Mono"; color: #b3a992; }
+.acCheck { color: #1F7A50; flex: none; }
+.acDash { color: #b3a992; flex: none; font-size: 12px; }
+.acFoot { display: flex; align-items: center; gap: 14px; border-top: 1px solid #EDE7DB; margin-top: 6px; padding-top: 9px; font-size: 11.5px; color: #6B6455; }
+.acFoot b { color: #1E1B16; } .acFoot b.pos { color: #1F7A50; } .acFoot b.warn { color: #C79A3A; }
+.acLog { display: flex; flex-direction: column; }
+.acLogHead, .acLogRow { display: grid; grid-template-columns: 0.7fr 1.1fr 0.6fr 1.3fr 0.5fr; align-items: center; gap: 6px; }
+.acLogHead { font: 600 9px "Space Grotesk"; letter-spacing: 0.05em; text-transform: uppercase; color: #b3a992; border-bottom: 1px solid #E3DCCE; padding: 6px 2px; }
+.acLogRow { font: 500 10.5px "IBM Plex Mono"; padding: 7.5px 2px; border-bottom: 1px solid #EDE7DB; }
+.acLogRow:last-child { border-bottom: 0; }
+.acLogTime { color: #8a8172; } .acLogStep { color: #3d3629; }
+.acLogDetail { color: #6B6455; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acLog .r { text-align: right; } .acLogRow .r.pos { color: #1F7A50; font-weight: 600; }
+.acExecGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 8px; }
+.acExecGrid.divided { border-top: 1px solid #EDE7DB; margin: 10px 0; padding-top: 9px; }
+.acExecGrid .r { text-align: right; }
+.acExecK { font-size: 10px; color: #948B77; }
+.acExecGrid b { font: 500 11.5px "IBM Plex Mono"; color: #1E1B16; }
+.acReconcile { background: #E6F1EA; border-radius: 8px; padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; }
+.acReconcile > span:first-child { display: flex; align-items: center; gap: 6px; font: 600 11.5px "Space Grotesk"; color: #1F7A50; }
+.acReconcile > span:last-child { font: 500 10.5px "IBM Plex Mono"; color: #3d6b53; }
+@media (max-width: 1120px) { .termPage .termGrid.auditTop { grid-template-columns: 1fr; } }
