@@ -955,9 +955,14 @@ export function KnowledgeListPanel({ data, action, ui }) {
   );
 }
 
+const RULE_ACTION_LABEL = { notify: "通知", pause_opening: "暂停开仓", reduce: "减仓", none: "仅记录", restrict: "限制", block: "阻断", kill_switch: "熔断" };
+
 export function RuleLibraryPanel({ data, action, ui }) {
   const knowledge = data.knowledge || {};
   const [newRule, setNewRule] = useState({ name: "", description: "", level: "L2", action: "notify" });
+  const rules = knowledge.ruleProposals || [];
+  const sourceMap = useMemo(() => Object.fromEntries((knowledge.sources || []).map((s) => [s.id, s.title])), [knowledge.sources]);
+  const pending = rules.filter((r) => r.status !== "已批准" && r.status !== "已拒绝").length;
   async function createRule(event) {
     event.preventDefault();
     await action("/api/knowledge/rules/proposals", newRule);
@@ -965,19 +970,45 @@ export function RuleLibraryPanel({ data, action, ui }) {
   }
   return (
     <div className="panelStack">
-      {!(knowledge.ruleProposals || []).length && (
+      <div className="ruleLibNote">
+        <strong>规则库 = 从书里蒸馏出的「纪律/风控」约束</strong>
+        <small>每条都标注了来源书籍与依据。批准后写入风控引擎、并注入 AI 提示词；可预测方向的「策略」不在这里，而是走「策略假设」必须先回测。共 {rules.length} 条，{pending} 条待审批。</small>
+        <div className="ruleLibActions">
+          <button className="secondaryButton" disabled={rules.length < 2} onClick={() => { if (window.confirm("按「类别+规则名+依据」规范化后合并重复草案（已批准的保留），确定去重？")) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> 一键去重</button>
+        </div>
+      </div>
+      {!rules.length && (
         <div className="emptyPanel emptyPanelAction">
           <strong>还没有规则草案</strong>
           <button className="secondaryButton" onClick={() => ui.openPanel("knowledgeImport")}>从知识生成</button>
         </div>
       )}
-      {(knowledge.ruleProposals || []).map((rule) => (
-        <div className="panelItem" key={rule.id}>
-          <div><strong>{rule.name}</strong><small>{rule.description || "基于专家知识库生成"} · {rule.level}</small></div>
-          <StatusBadge tone={rule.status === "已批准" ? "ok" : "warning"}>{humanize(rule.status, "待审批")}</StatusBadge>
-          <button className="secondaryButton" onClick={() => rule.status === "已批准" ? ui.openPanel("riskRules") : action(`/api/knowledge/rules/${rule.id}/approve`, { approved: true })}>{rule.status === "已批准" ? "看风控" : "批准"}</button>
-        </div>
-      ))}
+      {rules.map((rule) => {
+        const src = (rule.sourceRefs || []).map((id) => sourceMap[id]).filter(Boolean)[0];
+        const approved = rule.status === "已批准";
+        return (
+          <div className="ruleItem" key={rule.id}>
+            <div className="ruleItemHead">
+              <b>{rule.name}</b>
+              <StatusBadge tone={approved ? "ok" : rule.status === "已拒绝" ? "neutral" : "warning"}>{humanize(rule.status, "待审批")}</StatusBadge>
+            </div>
+            <div className="ruleItemMeta">
+              {rule.category && <span className="ruleTag cat">{rule.category}</span>}
+              <span className="ruleTag act">动作：{RULE_ACTION_LABEL[rule.action] || rule.action || "通知"}</span>
+              {rule.level && <span className="ruleTag lv">{rule.level}</span>}
+              {src && <span className="ruleTag src">《{src}》</span>}
+            </div>
+            {rule.condition && <div className="ruleItemLine"><i>触发条件</i>{rule.condition}</div>}
+            <div className="ruleItemLine"><i>依据 / 为什么</i>{rule.description || "基于专家知识库生成"}</div>
+            <div className="ruleItemBtns">
+              {!approved && <button className="primaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: true })}>批准</button>}
+              {!approved && rule.status !== "已拒绝" && <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: false })}>拒绝</button>}
+              {approved && <button className="secondaryButton sm" onClick={() => ui.openPanel("riskRules")}>看风控</button>}
+              <button className="dangerTextButton sm" title="删除该规则草案" onClick={() => { if (window.confirm(`删除规则「${rule.name}」？`)) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> 删除</button>
+            </div>
+          </div>
+        );
+      })}
       <form className="panelForm compact" onSubmit={createRule}>
         <h3>新增规则草案</h3>
         <label>名称<input value={newRule.name} onChange={(event) => setNewRule((current) => ({ ...current, name: event.target.value }))} placeholder="例如：重大事件前禁止高杠杆" /></label>

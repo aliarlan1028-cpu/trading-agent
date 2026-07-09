@@ -687,6 +687,37 @@ export function useApi() {
     return () => { if (source) source.close(); if (timer) clearTimeout(timer); };
   }, [token, apiBase]);
 
+  // App 端兜底：Capacitor WKWebView 对 SSE(EventSource) 支持不稳定（常缓冲、onmessage 不实时），
+  // 直连 OKX WS 也被拦截，价格会“完全不动”。这里用 REST 轮询后端 db.markets（后端已逐 OKX tick 更新），
+  // 逐次 emitLivePrice 直推标题/K线，并合并进 markets 刷新快照字段。仅原生 App 生效，网页端不受影响。
+  useEffect(() => {
+    if (!isNativeApp() || !token) return undefined;
+    let stop = false;
+    let t = null;
+    const poll = async () => {
+      if (stop) return;
+      try {
+        const res = await fetch(apiUrl("/api/markets", apiBase), { headers: headers() });
+        if (res.ok) {
+          const markets = await res.json();
+          if (Array.isArray(markets)) {
+            for (const m of markets) if (m && m.symbol && m.price != null) emitLivePrice(m.symbol, m.price);
+            const byId = Object.fromEntries(markets.map((m) => [m.symbol, m]));
+            const merge = (mk) => {
+              const u = byId[mk.symbol];
+              if (!u) return mk;
+              return { ...mk, price: u.price, changePct: u.changePct, high24h: u.high24h, low24h: u.low24h, fundingRate: u.fundingRate ?? mk.fundingRate, openInterest: u.openInterest ?? mk.openInterest, volume24h: u.volume24h ?? mk.volume24h, lastRealtimeAt: new Date().toISOString() };
+            };
+            setData((prev) => prev ? { ...prev, markets: (prev.markets || []).map(merge), activeMarket: prev.activeMarket ? merge(prev.activeMarket) : prev.activeMarket } : prev);
+          }
+        }
+      } catch { /* 网络抖动，下次再拉 */ }
+      if (!stop) t = setTimeout(poll, 1200);
+    };
+    t = setTimeout(poll, 800);
+    return () => { stop = true; if (t) clearTimeout(t); };
+  }, [token, apiBase]);
+
   return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 

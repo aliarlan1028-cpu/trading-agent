@@ -8901,6 +8901,27 @@ button.danger:disabled,
 .kCiteHead { font: 600 9.5px "Space Grotesk"; letter-spacing: 0.05em; text-transform: uppercase; color: #b3a992; border-bottom: 1px solid #E3DCCE; padding: 6px 2px; }
 .kCiteRow { font-size: 11.5px; padding: 9px 2px; border-bottom: 1px solid #EDE7DB; }
 .kCiteRow:last-child { border-bottom: 0; }
+
+/* 规则库面板：来源/依据/动作透明化 + 批准/拒绝/删除/去重 */
+.ruleLibNote { border: 1px solid #E3DCCE; border-radius: 9px; background: #FBF7EF; padding: 11px 13px; margin-bottom: 12px; }
+.ruleLibNote strong { display: block; font: 700 12.5px "Space Grotesk"; color: #1E1B16; }
+.ruleLibNote small { display: block; font-size: 11px; color: #8a8172; line-height: 1.5; margin-top: 3px; }
+.ruleLibActions { display: flex; gap: 8px; margin-top: 9px; }
+.ruleItem { border: 1px solid #E3DCCE; border-radius: 9px; background: #fff; padding: 11px 13px; margin-bottom: 9px; }
+.ruleItemHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ruleItemHead b { font: 700 12.5px "Space Grotesk"; color: #1E1B16; }
+.ruleItemMeta { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0; }
+.ruleTag { padding: 2px 7px; border-radius: 5px; font: 600 10px "Space Grotesk"; background: #F1EADF; color: #8a8172; }
+.ruleTag.cat { background: #E6F1EA; color: #1F7A50; }
+.ruleTag.act { background: #FBEDDF; color: #C0631B; }
+.ruleTag.src { background: #EAF0FB; color: #2A6FDB; }
+.ruleItemLine { font-size: 11.5px; color: #4a4437; line-height: 1.5; margin-top: 4px; }
+.ruleItemLine i { display: inline-block; min-width: 66px; font-style: normal; font: 600 9.5px "Space Grotesk"; letter-spacing: 0.04em; text-transform: uppercase; color: #b3a992; margin-right: 6px; }
+.ruleItemBtns { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
+.primaryButton.sm, .secondaryButton.sm, .dangerTextButton.sm { height: 28px; padding: 0 11px; font-size: 11px; }
+.dangerTextButton.sm { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.hypoSrc { font: 600 10px "Space Grotesk"; color: #2A6FDB; background: #EAF0FB; padding: 1px 6px; border-radius: 4px; }
+.hypoWhy { font-size: 11px; color: #8a8172; line-height: 1.45; margin-top: 3px; }
 .kCiteRow .cb { font-weight: 600; color: #1E1B16; }
 .kCiteRow .ell { color: #6B6455; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kCiteRow .r { text-align: right; }

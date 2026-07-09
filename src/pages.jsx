@@ -725,8 +725,9 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
             {(knowledge.strategyHypotheses || []).slice(0, 10).map((h) => (
               <div className={`hypoRow ${h.status === "已验证" ? "ok" : (h.status === "未通过" || h.status === "回测失败") ? "bad" : ""}`} key={h.id}>
                 <div className="hypoMain">
-                  <div className="hypoTop"><b>{h.name}</b><span className="hypoTag">{humanize(h.kind)}</span><span className="hypoTf mono">{h.symbolScope} · {h.timeframe} · {h.direction}</span></div>
+                  <div className="hypoTop"><b>{h.name}</b><span className="hypoTag">{humanize(h.kind)}</span><span className="hypoTf mono">{h.symbolScope} · {h.timeframe} · {h.direction}</span>{h.source?.title && <span className="hypoSrc">《{h.source.title}》</span>}</div>
                   <div className="hypoCond mono">入 {h.entry || "-"} ｜ 损 {h.stop || "-"} ｜ 盈 {h.takeProfit || "-"}</div>
+                  {h.rationale && <div className="hypoWhy">依据：{h.rationale}</div>}
                   {h.backtest && h.backtest.expectancyR != null && <div className="hypoBt mono">回测：{h.backtest.trades} 笔 · 胜率 {h.backtest.winRatePct}% · 期望 {h.backtest.expectancyR}R · 盈亏比 {h.backtest.profitFactor ?? "-"}（近似）</div>}
                 </div>
                 <div className="hypoRight">

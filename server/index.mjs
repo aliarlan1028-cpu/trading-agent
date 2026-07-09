@@ -1127,6 +1127,31 @@ app.post("/api/knowledge/rules/:id/approve", requirePermission("write:risk"), (r
   persist(res, rule);
 });
 
+app.delete("/api/knowledge/rules/:id", requirePermission("write:knowledge"), (req, res) => {
+  const before = (db.knowledge.ruleProposals || []).length;
+  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((r) => r.id !== req.params.id);
+  if ((db.knowledge.ruleProposals || []).length === before) return res.status(404).json({ error: "Rule not found" });
+  db.riskRules = (db.riskRules || []).filter((r) => r.id !== `risk_from_${req.params.id}`);
+  appendAudit(db, "删除知识规则草案", req.params.id, db.user.name);
+  persist(res, { removed: 1 });
+});
+
+// 一键去重：同类别下名称规范化后重复的草案只保留一条；已批准的一律保留（避免误删已生效风控）。
+app.post("/api/knowledge/rules/dedup", requirePermission("write:knowledge"), (_req, res) => {
+  const norm = (s) => String(s || "").toLowerCase().replace(/[\s\p{P}]/gu, "");
+  const seen = new Set();
+  const kept = [];
+  const removedIds = [];
+  for (const r of db.knowledge.ruleProposals || []) {
+    const key = `${norm(r.category)}|${norm(r.name)}|${norm(r.description).slice(0, 40)}`;
+    if (r.status === "已批准" || !seen.has(key)) { seen.add(key); kept.push(r); } else removedIds.push(r.id);
+  }
+  db.knowledge.ruleProposals = kept;
+  if (removedIds.length) db.riskRules = (db.riskRules || []).filter((r) => !removedIds.some((rid) => r.id === `risk_from_${rid}`));
+  appendAudit(db, `规则库去重，移除 ${removedIds.length} 条重复草案`, "rule_dedup", db.user.name, removedIds.length ? "info" : "info");
+  persist(res, { removed: removedIds.length, remaining: kept.length });
+});
+
 app.post("/api/knowledge/runtime-query", requirePermission("write:knowledge"), (req, res) => {
   const bundle = runExpertAnalysis(db, req.body);
   appendAudit(db, "生成运行时专家分析", bundle.id, "专家知识库");
