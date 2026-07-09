@@ -16,20 +16,16 @@ const DEFAULT_EVENT_SOURCES = [
 
 export function ensureDefaultEventSources(db) {
   db.eventSources ||= [];
-  // 清理冒烟测试残留的占位源，避免污染事件源列表。
+  db.meta ||= {};
+  // 清理冒烟测试残留的占位源。
   db.eventSources = db.eventSources.filter((source) => !/smoke/i.test(source.name || "") && !/smoke/i.test(source.id || ""));
-  // 停用抓不到内容的交易所 HTML 源，避免每次刷新都失败刷屏。
-  for (const source of db.eventSources) {
-    if ((source.id === "src_binance_ann" || source.id === "src_okx_ann") && source.type === "html") source.enabled = false;
-  }
-  for (const preset of DEFAULT_EVENT_SOURCES) {
-    const existing = db.eventSources.find((item) => item.id === preset.id);
-    if (existing) {
-      // 补齐缺失字段，但尊重用户手动 enabled 设置。
-      existing.url = preset.url; existing.type = preset.type; existing.name ||= preset.name; existing.category ||= preset.category;
-    } else {
-      db.eventSources.push({ ...preset });
-    }
+  // 不再内置默认事件源：一次性移除历史内置源 + 清空由它们抓来的旧新闻事件；
+  // 之后由用户在「任务中心 → 事件来源」里自行配置从哪拉信息。
+  if (!db.meta.eventSourcesCleared) {
+    const builtinIds = new Set([...DEFAULT_EVENT_SOURCES.map((s) => s.id), "src_binance_ann", "src_okx_ann"]);
+    db.eventSources = db.eventSources.filter((s) => !builtinIds.has(s.id));
+    db.events = [];
+    db.meta.eventSourcesCleared = true;
   }
   return db.eventSources;
 }

@@ -9575,3 +9575,25 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 /* 移动端行情卡：TradingView 真实 K 线（替换自绘），给足高度 */
 .mKline.tv { height: 220px; border-radius: 8px; overflow: hidden; background: #fff; }
 .mKline.tv .tvChart { width: 100%; height: 100%; }
+
+/* 异常/高风险标记 + 悬停提示（不把原因直接铺成文案）*/
+.flagTip { position: relative; border-bottom: 1px dashed var(--warn); cursor: help; }
+.flagTip.neg { border-bottom-color: var(--neg); }
+.flagTip.warn { border-bottom-color: var(--warn); }
+.flagTip::after {
+  content: attr(data-tip);
+  position: absolute; left: 0; bottom: calc(100% + 7px);
+  z-index: 80; width: max-content; max-width: 280px;
+  padding: 8px 11px; border-radius: 8px;
+  background: #1E1B16; color: #F5E9DB;
+  font: 500 11.5px var(--font-ui); line-height: 1.5; text-align: left;
+  white-space: normal; box-shadow: 0 10px 26px -8px rgba(30,27,22,.5);
+  opacity: 0; transform: translateY(3px); pointer-events: none; transition: opacity .12s ease, transform .12s ease;
+}
+.flagTip::before {
+  content: ""; position: absolute; left: 12px; bottom: calc(100% + 1px);
+  z-index: 80; border: 6px solid transparent; border-top-color: #1E1B16;
+  opacity: 0; pointer-events: none; transition: opacity .12s ease;
+}
+.flagTip:hover::after, .flagTip:focus::after { opacity: 1; transform: translateY(0); }
+.flagTip:hover::before, .flagTip:focus::before { opacity: 1; }

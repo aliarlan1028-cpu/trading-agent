@@ -798,6 +798,12 @@ export function DataTable({ columns, rows }) {
   );
 }
 
+// 异常/高风险标记：给标题加虚线下划标记（不直接把原因铺成文案），鼠标悬停/聚焦显示具体问题。
+export function FlagTip({ reason, tone = "warn", children }) {
+  if (!reason) return <>{children}</>;
+  return <span className={`flagTip ${tone}`} data-tip={String(reason)} tabIndex={0} role="note" aria-label={String(reason)}>{children}</span>;
+}
+
 // 交易对/币种白名单：渲染成可换行、可滚动的胶囊标签，币多也不难看。
 export function SymbolChips({ symbols, empty = "未授权" }) {
   const list = (Array.isArray(symbols) ? symbols : []).filter(Boolean);

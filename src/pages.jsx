@@ -45,7 +45,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, FlagTip, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -535,7 +535,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
         <div className="termCard">
           <div className="evCardHead"><Target size={15} className="evHeadIcon" /> 重要事件雷达</div>
           <div className="termDateStrip">{eventRows.map((event, index) => <button className={(selectedEventId ? selectedEventId === event.id : index === 0) ? "active" : ""} key={event.id} onClick={() => setSelectedEventId(event.id)}><b className="mono">{formatDate(event.due, "待定")}</b><span>{event.category}</span></button>)}</div>
-          {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实事件卡</strong><button className="secondaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button></div>}
+          {!eventRows.length && <div className="emptyPanel emptyPanelAction"><strong>暂无事件源</strong><span className="muted">默认来源已移除，请自行配置从哪拉取信息</span><button className="secondaryButton" onClick={() => ui.openPanel("eventSources")}><Plus size={14} /> 配置事件源</button></div>}
           <div className="evTimeline">
             {eventRows.map((event) => (
               <button className={`evItem ${(selectedEventId ? selectedEventId === event.id : eventRows[0]?.id === event.id) ? "on" : ""}`} key={event.id} title={event.rawTitle || event.title} onClick={() => setSelectedEventId(event.id)}>
@@ -555,7 +555,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
             <span className="focusName">{primaryEvent.shortTitle || primaryEvent.title || "暂无焦点事件"} <b className={`evBadge ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></span>
             <button className="agLink" onClick={() => ui.openPanel("eventSources")}>事件详情 ›</button>
           </div>
-          <div className="focusSub">{primaryEvent.due ? `预计发布 ${formatDateTime(primaryEvent.due)} · 倒计时` : "待定发布时间"}</div>
+          <div className="focusSub">{!primaryEvent.due ? "待定发布时间" : (dueTs && dueTs > Date.now() ? `预计发布 ${formatDateTime(primaryEvent.due)} · 倒计时` : `发布于 ${formatDateTime(primaryEvent.due)}`)}</div>
           <div className="cd3">
             {cd
               ? <>
@@ -563,7 +563,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
                   <div className="cd3b"><b className="mono">{String(cd.h).padStart(2, "0")}</b><span>时</span></div>
                   <div className="cd3b hot"><b className="mono">{String(cd.m).padStart(2, "0")}</b><span>分</span></div>
                 </>
-              : <div className="cd3b full"><b className="mono">{formatDateTime(primaryEvent.due, "待定")}</b><span>待发布</span></div>}
+              : <div className="cd3b full"><b className="mono">{formatDateTime(primaryEvent.due, "待定")}</b><span>{dueTs && dueTs <= Date.now() ? "已发布" : "待定"}</span></div>}
           </div>
           <div className="focusMetrics">
             <div><span>影响等级</span><b className={`sg ${impactTone(primaryEvent.impact)}`}>{primaryEvent.impactLabel || "待评估"}</b></div>
@@ -1491,7 +1491,14 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
           <MiniChart title="告警数量" value={String(incidents.length)} sub="风险事件 + 外部告警" />
           <div className="incidentPanel">
             <h3>近期告警与事件</h3>
-            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{item.title || item.message || item.action || item.id}{item.count > 1 ? ` ×${item.count}` : ""}</span><small>{formatTime(item.lastSeenAt || item.createdAt)}</small>{item.status === "open" && String(item.id).startsWith("incident") && <button className="linkCell" title="标记为已处理" onClick={() => action(`/api/risk/incidents/${item.id}/close`, {})}>标记已处理</button>}</div>)}
+            {incidents.map((item) => <div key={item.id}><StatusBadge tone={statusTone(item.severity || item.status)}>{humanize(item.status || item.severity, "记录")}</StatusBadge><span>{(() => {
+              const title = `${item.title || item.message || item.action || item.id}${item.count > 1 ? ` ×${item.count}` : ""}`;
+              const sev = String(item.severity || item.status || "").toLowerCase();
+              const isProblem = item.status === "open" || ["critical", "high", "warning", "error", "blocked"].some((k) => sev.includes(k));
+              if (!isProblem) return title;
+              const reason = `${humanize(item.severity || item.status, "告警")}${item.source ? ` · 来源 ${item.source}` : ""}${item.count > 1 ? ` · 累计 ${item.count} 次` : ""}`;
+              return <FlagTip reason={reason} tone={/(critical|high|error)/.test(sev) ? "neg" : "warn"}>{title}</FlagTip>;
+            })()}</span><small>{formatTime(item.lastSeenAt || item.createdAt)}</small>{item.status === "open" && String(item.id).startsWith("incident") && <button className="linkCell" title="标记为已处理" onClick={() => action(`/api/risk/incidents/${item.id}/close`, {})}>标记已处理</button>}</div>)}
             {!incidents.length && <div className="emptyPanel">暂无真实告警。</div>}
           </div>
         </div>
