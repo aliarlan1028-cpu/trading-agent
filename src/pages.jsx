@@ -703,6 +703,28 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         ))}
       </div>
 
+      {(knowledge.strategyHypotheses || []).length > 0 && (
+        <div className="termCard hypoCard">
+          <div className="kHead"><span className="secLabel">策略假设 · 来自书籍，回测通过才可实盘</span><span className="hypoLegend mono">{(knowledge.strategyHypotheses || []).filter((h) => h.status === "已验证").length} 已验证 / {(knowledge.strategyHypotheses || []).length} 条</span></div>
+          <div className="hypoList">
+            {(knowledge.strategyHypotheses || []).slice(0, 10).map((h) => (
+              <div className={`hypoRow ${h.status === "已验证" ? "ok" : (h.status === "未通过" || h.status === "回测失败") ? "bad" : ""}`} key={h.id}>
+                <div className="hypoMain">
+                  <div className="hypoTop"><b>{h.name}</b><span className="hypoTag">{humanize(h.kind)}</span><span className="hypoTf mono">{h.symbolScope} · {h.timeframe} · {h.direction}</span></div>
+                  <div className="hypoCond mono">入 {h.entry || "-"} ｜ 损 {h.stop || "-"} ｜ 盈 {h.takeProfit || "-"}</div>
+                  {h.backtest && h.backtest.expectancyR != null && <div className="hypoBt mono">回测：{h.backtest.trades} 笔 · 胜率 {h.backtest.winRatePct}% · 期望 {h.backtest.expectancyR}R · 盈亏比 {h.backtest.profitFactor ?? "-"}（近似）</div>}
+                </div>
+                <div className="hypoRight">
+                  <StatusBadge tone={h.status === "已验证" ? "ok" : h.status === "待回测" ? "warning" : "neutral"}>{h.status}</StatusBadge>
+                  <button className="miniBtn" onClick={() => action(`/api/knowledge/hypotheses/${h.id}/backtest`, {})}><BarChart3 size={13} /> 回测</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hypoNote">书里的 setup 只是假设，未经样本外回测不会用于实盘。回测用最接近的内置策略近似验证其方向/周期是否有历史边际。</div>
+        </div>
+      )}
+
       <div className="kGrid3">
         <div className="termCard">
           <div className="kHead"><span className="secLabel">专家知识库</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部知识 ›</button></div>
@@ -796,7 +818,7 @@ function KnowledgeBaseTab({ data, action, ui, sourceCount, conceptCount, ruleCou
             {!knowledge.sources?.length && (
               <div className="emptyPanel emptyPanelAction">
                 <strong>暂无真实知识来源</strong>
-                <span>把金融、交易、经济类书籍与资料喂给 AI：可粘贴文本、导入网页链接、上传 PDF/DOCX/MD/TXT，或填写本地文件路径。</span>
+                <span>把交易类书籍与资料喂给 AI：可粘贴文本、导入网页链接、上传 PDF/EPUB/DOCX/MD/TXT，或填写本地文件路径。AI 会拆成「纪律规则（直接生效）」与「可回测策略假设（需先回测验证）」两类。</span>
               </div>
             )}
           </div>

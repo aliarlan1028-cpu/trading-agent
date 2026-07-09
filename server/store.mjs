@@ -106,6 +106,8 @@ function emptyKnowledge() {
     sources: [],
     conceptCards: [],
     ruleProposals: [],
+    strategyHypotheses: [],
+    reviewTemplates: [],
     sourceVersions: [],
     documentNodes: [],
     chunks: [],

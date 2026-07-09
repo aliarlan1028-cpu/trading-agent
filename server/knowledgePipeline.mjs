@@ -9,10 +9,13 @@ import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddin
 import { llmComplete } from "./agentChat.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
-// LLM 蒸馏：把资料提炼成"概念 + 规则 + 反方观点"，而不是取高频词。无 LLM key 时返回 null。
+// LLM 蒸馏：把交易资料提炼成"结构化、可交易的知识"，并按能否被证伪分成两类：
+//   disciplineRules（纪律/风控/心理/禁止交易/仓位/杠杆/执行）—— 直接约束，不需回测；
+//   strategies（价格行为/日内 setup，带入场/止损/止盈/参数）—— 只是"假设"，必须过回测才可实盘。
+// 无 LLM key 时返回 null，退回高频词抽取。
 async function distillWithLlm(text, source) {
-  const system = "你是专业的金融/交易知识蒸馏助手，服务于一个交易加密货币永续合约（带杠杆、硬风控、短中周期）的 Agent。只输出 JSON，不要多余文字。资料可能来自传统金融——若涉及股票、长期持有、无杠杆等，请在 meaning 里注明其资产类别与时间周期的适用边界，避免被误用到杠杆合约。";
-  const prompt = `资料标题：${source.title}\n领域：${source.domain || "未标注"}\n\n蒸馏为 JSON（概念 5-8 个、规则 2-4 条）：\n{"summary":"一句话主旨","concepts":[{"name":"概念名(<=12字)","meaning":"在交易/风控中的含义与用法及适用边界(<=70字)"}],"rules":[{"name":"规则名","condition":"触发条件","action":"pause_opening|notify|reduce|none","rationale":"依据"}],"counterViews":["需警惕的反方观点或适用边界"]}\n\n资料正文：\n${text}`;
+  const system = "你是专业的交易知识蒸馏引擎，服务于一个交易加密货币永续合约（带杠杆、硬风控、短中周期）的自主交易 Agent。只输出 JSON，不要多余文字。\n\n关键原则：把书里的内容拆成两类——\n1) disciplineRules：纪律/风控/心理/禁止交易/仓位/杠杆/盘口执行 这类『避免亏损、保持一致性』的硬约束，可直接采用；\n2) strategies：价格行为规则、日内 setup 这类『预测方向、追求胜率』的可回测方法，带明确入场/止损/止盈/参数——这些只是待验证假设，绝不能直接实盘，必须先回测。\n资料若来自传统金融（股票/长期/无杠杆），在 assetScope/rationale 里注明适用边界，避免被误用到杠杆合约。宁缺毋滥：抽不出具体条件的就不要编。";
+  const prompt = `资料标题：${source.title}\n领域：${source.domain || "未标注"}\n\n蒸馏为 JSON：\n{\n"summary":"一句话主旨",\n"assetScope":"适用资产/周期边界",\n"disciplineRules":[{"category":"风控|心理|仓位|杠杆|禁止交易|执行","rule":"规则(<=40字)","condition":"触发条件","action":"pause_opening|reduce|notify|none","rationale":"依据"}],\n"strategies":[{"name":"策略名","kind":"price_action|intraday_setup|breakout|mean_reversion|trend|other","symbolScope":"如BTC/ETH或通用","timeframe":"1m|5m|15m|1H|4H|1D","direction":"long|short|both","entry":"入场条件","stop":"止损条件","takeProfit":"止盈条件","sizing":"仓位管理","leverage":"杠杆建议","invalidation":"失效/禁止条件","rationale":"依据"}],\n"reviewTemplates":["复盘要点/模板条目"],\n"concepts":[{"name":"概念名(<=12字)","meaning":"含义与适用边界(<=70字)"}],\n"counterViews":["反方观点或适用边界"]\n}\n数量参考：disciplineRules 3-8 条、strategies 0-5 条（没有可执行 setup 就留空）、concepts 4-8 个。\n\n资料正文：\n${text}`;
   const raw = await llmComplete(prompt, system);
   if (!raw) return null;
   try {
@@ -125,33 +128,73 @@ export async function parseKnowledgeSource(db, sourceId) {
   }
   db.knowledge.conceptCards.unshift(...concepts);
 
+  db.knowledge.strategyHypotheses ||= [];
+  db.knowledge.reviewTemplates ||= [];
   let ruleDraft = null;
-  const distilledRules = (distilled?.rules || []).slice(0, 4);
-  if (distilledRules.length) {
-    for (const rule of distilledRules) {
-      const draft = {
-        id: id("rule"),
-        name: String(rule.name || `${source.title} 规则`).slice(0, 40),
-        level: "L2",
-        status: "待审批",
-        action: ["pause_opening", "notify", "reduce", "none"].includes(rule.action) ? rule.action : "notify",
-        condition: String(rule.condition || "").slice(0, 160),
-        description: String(rule.rationale || rule.condition || `由 ${source.title} 蒸馏，请人工复核后启用`).slice(0, 240),
-        sourceRefs: [source.id],
-        distilledBy: "llm",
-        createdAt: nowIso()
-      };
-      db.knowledge.ruleProposals.unshift(draft);
-      ruleDraft = ruleDraft || draft;
-    }
-  } else if (source.createRuleDraft) {
+
+  // A 路 · 纪律/风控/心理/禁止交易/仓位/杠杆/执行 —— 待批准规则，批准后进 Agent 提示词与风控证据。
+  const disciplineRules = (distilled?.disciplineRules || distilled?.rules || []).slice(0, 8);
+  for (const rule of disciplineRules) {
+    const draft = {
+      id: id("rule"),
+      name: String(rule.rule || rule.name || `${source.title} 纪律`).slice(0, 40),
+      kind: "discipline",
+      category: String(rule.category || "风控").slice(0, 12),
+      level: "L2",
+      status: "待审批",
+      action: ["pause_opening", "notify", "reduce", "none"].includes(rule.action) ? rule.action : "notify",
+      condition: String(rule.condition || "").slice(0, 160),
+      description: String(rule.rationale || rule.condition || `由《${source.title}》蒸馏，请人工复核后启用`).slice(0, 240),
+      sourceRefs: [source.id],
+      distilledBy: "llm",
+      createdAt: nowIso()
+    };
+    db.knowledge.ruleProposals.unshift(draft);
+    ruleDraft = ruleDraft || draft;
+  }
+
+  // B 路 · 可回测策略假设 —— 只入库、硬闸禁止实盘，必须先回测通过才能升级为已验证策略。
+  const strategies = (distilled?.strategies || []).slice(0, 5);
+  for (const s of strategies) {
+    if (!s || (!s.entry && !s.name)) continue;
+    db.knowledge.strategyHypotheses.unshift({
+      id: id("hypo"),
+      name: String(s.name || `${source.title} 策略`).slice(0, 40),
+      kind: String(s.kind || "other").slice(0, 20),
+      symbolScope: String(s.symbolScope || "通用").slice(0, 40),
+      timeframe: String(s.timeframe || "1H").slice(0, 8),
+      direction: ["long", "short", "both"].includes(s.direction) ? s.direction : "both",
+      entry: String(s.entry || "").slice(0, 200),
+      stop: String(s.stop || "").slice(0, 160),
+      takeProfit: String(s.takeProfit || "").slice(0, 160),
+      sizing: String(s.sizing || "").slice(0, 120),
+      leverage: String(s.leverage || "").slice(0, 40),
+      invalidation: String(s.invalidation || "").slice(0, 160),
+      rationale: String(s.rationale || "").slice(0, 200),
+      source: { id: source.id, title: source.title },
+      status: "待回测",     // 待回测 → 已验证 / 未通过
+      executable: false,     // 硬闸：未回测通过前绝不实盘
+      backtest: null,
+      createdAt: nowIso()
+    });
+  }
+
+  // 复盘模板
+  const templates = (distilled?.reviewTemplates || []).slice(0, 10).map((t) => String(t).slice(0, 160)).filter(Boolean);
+  if (templates.length) {
+    db.knowledge.reviewTemplates.unshift({ id: id("rvtpl"), sourceId: source.id, sourceTitle: source.title, items: templates, createdAt: nowIso() });
+  }
+
+  if (!disciplineRules.length && source.createRuleDraft) {
     ruleDraft = {
       id: id("rule"),
       name: `${source.title} 规则草案`,
+      kind: "discipline",
+      category: "风控",
       level: "L2",
       status: "待审批",
       action: "notify",
-      description: `由 ${source.title} 自动生成的知识规则草案，请人工复核后再启用。`,
+      description: `由《${source.title}》自动生成的知识规则草案，请人工复核后再启用。`,
       sourceRefs: [source.id],
       createdAt: nowIso()
     };
@@ -292,7 +335,53 @@ async function extractFromFile(filePath) {
     const result = await pdfParse(data);
     return result.text;
   }
+  if (ext === ".epub") {
+    return extractFromEpub(filePath);
+  }
   return fs.readFile(filePath, "utf8");
+}
+
+// EPUB = zip 里一堆 XHTML。解压后按 spine 顺序（拿不到就按文件名）抽正文文本。
+async function extractFromEpub(filePath) {
+  const JSZip = (await import("jszip")).default;
+  const buf = await fs.readFile(filePath);
+  const zip = await JSZip.loadAsync(buf);
+  // 尝试从 OPF spine 拿阅读顺序
+  let ordered = [];
+  try {
+    const containerFile = zip.file("META-INF/container.xml");
+    if (containerFile) {
+      const container = await containerFile.async("string");
+      const opfPath = cheerio.load(container, { xmlMode: true })("rootfile").attr("full-path");
+      const opfFile = opfPath && zip.file(opfPath);
+      if (opfFile) {
+        const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+        const $opf = cheerio.load(await opfFile.async("string"), { xmlMode: true });
+        const manifest = {};
+        $opf("manifest > item").each((_, el) => { manifest[$opf(el).attr("id")] = $opf(el).attr("href"); });
+        $opf("spine > itemref").each((_, el) => {
+          const href = manifest[$opf(el).attr("idref")];
+          if (href) ordered.push(opfDir + href.replace(/^\.\//, ""));
+        });
+      }
+    }
+  } catch { /* 解析失败则退回按文件名 */ }
+  if (!ordered.length) {
+    ordered = Object.keys(zip.files).filter((name) => /\.(xhtml|html?|htm)$/i.test(name)).sort();
+  }
+  const parts = [];
+  for (const name of ordered.slice(0, 400)) {
+    const entry = zip.file(name);
+    if (!entry) continue;
+    try {
+      const html = await entry.async("string");
+      const $ = cheerio.load(html);
+      $("script,style,nav,head").remove();
+      const text = $("body").text().replace(/\s+/g, " ").trim();
+      if (text) parts.push(text);
+    } catch { /* 跳过坏章节 */ }
+  }
+  return parts.join("\n\n");
 }
 
 async function preparePayload(payload = {}) {

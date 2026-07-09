@@ -374,6 +374,20 @@ export async function buildSystemPrompt(db, userText = "") {
     sections.push("【专业知识库】主人尚未导入任何金融/交易知识，暂无可检索内容。");
   }
 
+  // A 路：已批准的纪律/风控规则必须无条件遵守。
+  const approvedRules = (db.knowledge?.ruleProposals || []).filter((r) => r.status === "已批准");
+  if (approvedRules.length) {
+    const text = approvedRules.slice(0, 14)
+      .map((r) => `- [${r.category || "纪律"}] ${r.name}${r.condition ? `（当 ${r.condition}）` : ""}${r.action && r.action !== "none" ? ` → ${r.action}` : ""}`)
+      .join("\n");
+    sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
+  }
+  // B 路硬闸：未回测通过的书本策略假设禁止直接实盘。
+  const pendingHypos = (db.knowledge?.strategyHypotheses || []).filter((h) => h.status !== "已验证");
+  if (pendingHypos.length) {
+    sections.push(`【策略假设约束】知识库有 ${pendingHypos.length} 条来自书籍的未验证策略假设，它们只是灵感、未经样本外回测，禁止据此直接提出实盘计划；只有经回测通过并进入"已验证策略画像"的策略才可采用。`);
+  }
+
   return sections.join("\n\n");
 }
 

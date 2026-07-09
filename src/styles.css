@@ -9306,3 +9306,21 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 
 /* 系统可观测性：告警列表限高内部滚动，避免整页被撑长 */
 .observabilityGrid .incidentPanel { max-height: 360px; overflow-y: auto; }
+
+/* 知识库：策略假设（B 路，回测门控）*/
+.hypoCard { display: flex; flex-direction: column; gap: 10px; }
+.hypoLegend { font-size: 11px; color: var(--text-3); }
+.hypoList { display: flex; flex-direction: column; gap: 8px; }
+.hypoRow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 13px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-white); }
+.hypoRow.ok { border-color: #bfe0cd; background: var(--pos-weak); }
+.hypoRow.bad { border-color: #e6cabf; background: var(--neg-weak); }
+.hypoMain { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.hypoTop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hypoTop b { font-size: 13px; color: #1e1b16; }
+.hypoTag { font: 700 10px var(--font-ui); color: var(--accent); background: var(--accent-weak); padding: 1px 7px; border-radius: 5px; }
+.hypoTf { font-size: 11px; color: var(--text-3); }
+.hypoCond { font-size: 11.5px; color: var(--text-2); line-height: 1.5; }
+.hypoBt { font-size: 11px; color: var(--pos); }
+.hypoRow.bad .hypoBt { color: var(--neg); }
+.hypoRight { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none; }
+.hypoNote { font-size: 11px; color: var(--text-3); line-height: 1.5; padding-top: 2px; }

@@ -881,7 +881,7 @@ export function KnowledgeImportPanel({ action, ui }) {
       </div>
       {mode === "text" && <label>知识文本<textarea className="largeTextarea" value={form.content} onChange={(event) => update("content", event.target.value)} placeholder="粘贴 Markdown、交易规则、研究笔记或复盘内容" /></label>}
       {mode === "web" && <label>网页链接<input value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://..." /></label>}
-      {mode === "upload" && <label>上传文件<input type="file" accept=".pdf,.docx,.md,.txt,.json,.csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>}
+      {mode === "upload" && <label>上传文件<input type="file" accept=".pdf,.epub,.docx,.md,.txt,.json,.csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>}
       {mode === "path" && <label>本地文件路径<input value={form.filePath} onChange={(event) => update("filePath", event.target.value)} placeholder="/Users/ely/Desktop/xxx.pdf" /></label>}
       {mode === "github" && (
         <>

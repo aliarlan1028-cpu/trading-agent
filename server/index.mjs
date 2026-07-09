@@ -930,6 +930,31 @@ app.post("/api/knowledge/reembed", requirePermission("write:knowledge"), async (
   }
 });
 
+// B 路：回测一条书本策略假设（用最接近的内置策略近似验证其方向/周期是否有历史边际）。
+// 硬闸：只有回测通过（正期望 + 足够样本 + 盈亏比>1）才把 executable 置 true。
+app.post("/api/knowledge/hypotheses/:id/backtest", requirePermission("write:knowledge"), async (req, res) => {
+  const hypo = (db.knowledge?.strategyHypotheses || []).find((item) => item.id === req.params.id);
+  if (!hypo) return res.status(404).json({ error: "策略假设不存在" });
+  const kindMap = { price_action: "trend", trend: "trend", breakout: "breakout", mean_reversion: "meanrev", intraday_setup: "trend", momentum: "macd", other: "trend" };
+  let strat = kindMap[hypo.kind] || "trend";
+  if (hypo.direction === "short" && strat === "trend") strat = "death_cross";
+  const symbol = /\//.test(hypo.symbolScope) ? hypo.symbolScope.split(/[，,、\s/]+/).filter(Boolean).slice(0, 1).map((s) => (s.includes("/") ? s : `${s}/USDT`))[0] || "BTC/USDT" : "BTC/USDT";
+  const symbolFixed = symbol.includes("/") ? symbol : `${symbol}/USDT`;
+  const tfMap = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d" };
+  const result = await runBacktest(db, { symbol: symbolFixed, timeframe: tfMap[hypo.timeframe] || "1h", strategy: strat });
+  if (result.status !== "ok") {
+    hypo.backtest = { status: result.status, at: nowIso() };
+    hypo.status = "回测失败";
+    return persist(res, { ok: false, error: `回测失败：${result.status}`, hypothesis: hypo });
+  }
+  const passed = result.expectancyR > 0 && result.trades >= 20 && (result.profitFactor == null || result.profitFactor > 1);
+  hypo.backtest = { at: nowIso(), approxStrategy: strat, symbol: symbolFixed, timeframe: result.timeframe, trades: result.trades, winRatePct: result.winRatePct, expectancyR: result.expectancyR, profitFactor: result.profitFactor, netReturnPct: result.netReturnPct, maxDrawdownPct: result.maxDrawdownPct, approx: true };
+  hypo.status = passed ? "已验证" : "未通过";
+  hypo.executable = passed;
+  appendAudit(db, `策略假设回测「${hypo.name}」：${passed ? "通过" : "未通过"}（期望 ${result.expectancyR}R · ${result.trades} 笔 · 胜率 ${result.winRatePct}%）`, hypo.id, "KnowledgeBacktest", passed ? "ok" : "warning");
+  persist(res, { ok: true, passed, result, hypothesis: hypo });
+});
+
 app.post("/api/knowledge/cards/concept", requirePermission("write:knowledge"), (req, res) => {
   const card = {
     id: id("concept"),
