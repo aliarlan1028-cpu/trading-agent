@@ -39,6 +39,10 @@ import {
   TrendingUp,
   UserCog,
   WalletCards,
+  UserPlus,
+  Gift,
+  Crown,
+  X,
   Zap
 } from "lucide-react";
 import { pageCopy, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, SymbolChips } from "./lib.jsx";
@@ -1548,9 +1552,10 @@ export function AgentProfilesPanel({ data, action }) {
   );
 }
 
-export function AdminPage({ data, action, embedded = false }) {
+export function AdminPage({ data, action, ui, embedded = false }) {
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "交易用户", freeMonths: 0 });
   const [newPlan, setNewPlan] = useState({ name: "", months: 1, priceUsdt: 0, features: "" });
   const [planDrafts, setPlanDrafts] = useState({});
@@ -1603,26 +1608,27 @@ export function AdminPage({ data, action, embedded = false }) {
     }, "PATCH");
   }
   const adminTabs = [
-    ["users", "用户授权", UserCog],
-    ["billing", "套餐支付", WalletCards],
+    ["users", "用户", UserCog],
+    ["billing", "套餐与支付", WalletCards],
     ["security", "安全维护", Shield]
   ];
+  const initialOf = (u) => String(u.name || u.email || u.id || "?").trim().charAt(0).toUpperCase();
   return (
     <div className="pageStack">
       {!embedded && <PageHeader active="admin" />}
-      <Card className="adminHero">
-        <div>
-          <span>Owner Control Center</span>
-          <h2>用户、订阅、Agent 与安全维护集中在这里</h2>
-          <p>日常交易页面只展示交易工作流；这里负责谁能登录、谁被授权、套餐如何定价，以及后台 Agent 能力是否启用。</p>
+
+      <div className="ownerBar">
+        <div className="ownerBarLead">
+          <span className="ownerKicker">OWNER CONTROL CENTER</span>
+          <h2>用户管理</h2>
         </div>
-        <div className="adminHeroMetrics">
-          <div><strong>{users.length}</strong><span>用户</span></div>
-          <div><strong>{activeSubs}</strong><span>有效订阅</span></div>
-          <div><strong>{ownerGrants}</strong><span>免费授权</span></div>
-          <div><strong>{activeProfiles}/{profiles.length}</strong><span>Agent 启用</span></div>
+        <div className="ownerStats">
+          <div><b>{users.length}</b><span>用户</span></div>
+          <div><b>{activeSubs}</b><span>有效订阅</span></div>
+          <div><b>{ownerGrants}</b><span>免费授权</span></div>
+          <div><b>{activeProfiles}/{profiles.length}</b><span>Agent 启用</span></div>
         </div>
-      </Card>
+      </div>
 
       <div className="adminTabs" role="tablist" aria-label="Admin sections">
         {adminTabs.map(([id, label, Icon]) => (
@@ -1633,55 +1639,79 @@ export function AdminPage({ data, action, embedded = false }) {
       </div>
 
       {adminTab === "users" && (
-        <div className="adminTwoColumn">
-          <Card className="adminCreateCard">
-            <SectionTitle icon={UserCog} title="Owner 开通账号" action={<StatusBadge tone="ok">免费授权可选</StatusBadge>} />
-            <div className="adminFormStack">
-              <label><span>姓名</span><input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} placeholder="用户姓名" /></label>
-              <label><span>邮箱</span><input value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} placeholder="user@example.com" /></label>
-              <label><span>初始密码</span><input type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} placeholder="至少 10 位" /></label>
-              <div className="adminInlineFields">
-                <label><span>角色</span><select value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}><option>交易用户</option><option>管理员</option></select></label>
-                <label><span>免费月数</span><input type="number" min="0" value={newUser.freeMonths} onChange={(event) => setNewUser({ ...newUser, freeMonths: event.target.value })} /></label>
-              </div>
-              <button className="primaryButton" onClick={() => action("/api/admin/users", newUser)}>创建账号</button>
+        <div className="adminUsersWrap">
+          <div className="userToolbar">
+            <div className="adminSearch"><Search size={15} /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索姓名 / 邮箱 / 租户 / 角色" /></div>
+            <div className="userToolbarRight">
+              <label className="grantDefault"><span>默认赠送</span><input type="number" min="1" value={grantMonths} onChange={(event) => setGrantMonths(event.target.value)} /><span>月</span></label>
+              <button type="button" className={`regPill ${regEnabled ? "on" : ""}`} onClick={() => action("/api/config", { PUBLIC_REGISTRATION_ENABLED: regEnabled ? "false" : "true" })}>
+                <span className="sw" /> 公开注册 {regEnabled ? "开" : "关"}
+              </button>
+              <button className="primaryButton" onClick={() => setShowCreate((value) => !value)}><UserPlus size={15} /> 开通账号</button>
             </div>
-          </Card>
+          </div>
+          <div className="userHint">{regEnabled ? "公开注册已开启：访客可在登录页自助注册并订阅。" : "公开注册已关闭：仅 Owner 可在此开通账号。"}</div>
 
-          <Card>
-            <SectionTitle icon={Lock} title="用户授权" action={<label className="inlineControl"><span>默认赠送</span><input type="number" min="1" value={grantMonths} onChange={(event) => setGrantMonths(event.target.value)} /> 月</label>} />
-            <label className={`regToggle ${regEnabled ? "on" : ""}`}>
-              <input type="checkbox" checked={regEnabled} onChange={() => action("/api/config", { PUBLIC_REGISTRATION_ENABLED: regEnabled ? "false" : "true" })} />
-              <span className="regToggleTrack"><span className="regToggleThumb" /></span>
-              <span className="regToggleText"><b>公开注册</b><small>{regEnabled ? "已开启：访客可在登录页自助注册并订阅" : "已关闭：仅 Owner 可在此开通账号"}</small></span>
-            </label>
-            <div className="adminUserToolbar">
-              <div className="adminSearch"><Search size={15} /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索姓名 / 邮箱 / 角色" /></div>
-              <span className="adminUserCount">{userSearch ? `${filteredUsers.length} / ${users.length}` : `共 ${users.length} 人`}</span>
+          {showCreate && (
+            <div className="userCreatePanel">
+              <div className="userCreateHead"><UserPlus size={15} /><strong>开通新账号</strong><button type="button" className="ghostClose" onClick={() => setShowCreate(false)}><X size={15} /></button></div>
+              <div className="userCreateGrid">
+                <label>姓名<input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} placeholder="用户姓名" /></label>
+                <label>邮箱<input value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} placeholder="user@example.com" /></label>
+                <label>初始密码<input type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} placeholder="至少 10 位" /></label>
+                <label>角色<select value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}><option>交易用户</option><option>管理员</option></select></label>
+                <label>免费月数<input type="number" min="0" value={newUser.freeMonths} onChange={(event) => setNewUser({ ...newUser, freeMonths: event.target.value })} /></label>
+                <button className="primaryButton" onClick={() => { action("/api/admin/users", newUser); setShowCreate(false); }}>创建账号</button>
+              </div>
             </div>
-            <div className="adminUserScroll">
-              {filteredUsers.map((user) => {
-                const sub = subscriptionFor(user);
-                return (
-                  <div className={`adminUserRow ${user.isOwner ? "owner" : ""}`} key={user.id}>
-                    <div className="adminUserIdentity"><strong>{user.name || user.email || user.id}</strong><small>{user.email || "-"} · {user.tenantId}</small></div>
-                    <select value={user.role || "交易用户"} disabled={user.isOwner} onChange={(event) => action(`/api/admin/users/${user.id}`, { role: event.target.value }, "PATCH")}><option>交易用户</option><option>管理员</option></select>
-                    <select value={user.status || "active"} disabled={user.isOwner} onChange={(event) => action(`/api/admin/users/${user.id}`, { status: event.target.value }, "PATCH")}><option value="active">启用</option><option value="disabled">停用</option></select>
-                    <div className="adminSubState"><StatusBadge tone={sub?.status === "active" ? "ok" : "warning"}>{sub?.source === "owner_grant" ? "Owner 免费授权" : humanize(sub?.status, "未订阅")}</StatusBadge><small>{sub?.currentPeriodEnd ? `到期 ${formatDate(sub.currentPeriodEnd)}` : "长期有效"}</small></div>
-                    <span className="adminUserActions">
-                      {user.isOwner ? <span className="muted">Owner</span> : (
-                        <>
-                          <button className="secondaryButton" onClick={() => action(`/api/admin/users/${user.id}/grant-free`, { months: grantMonths })}>赠送 {grantMonths} 月</button>
-                          <button className="secondaryButton" onClick={() => resetUserPassword(user)}>重置密码</button>
-                        </>
-                      )}
-                    </span>
+          )}
+
+          <div className="userTable">
+            <div className="userTableHead">
+              <span>用户</span><span>角色</span><span>订阅</span><span>状态</span><span>操作</span>
+            </div>
+            {filteredUsers.map((user) => {
+              const sub = subscriptionFor(user);
+              const off = user.status === "disabled";
+              return (
+                <div className={`userTableRow ${user.isOwner ? "owner" : ""} ${off ? "off" : ""}`} key={user.id}>
+                  <div className="uCell uIdentity">
+                    <div className="uAvatar">{initialOf(user)}</div>
+                    <div className="uMeta">
+                      <strong>{user.name || user.email || user.id}{user.isOwner && <em className="ownerTag"><Crown size={11} /> Owner</em>}</strong>
+                      <small>{user.email || "-"} · {user.tenantId}</small>
+                    </div>
                   </div>
-                );
-              })}
-              {!filteredUsers.length && <div className="emptyPanel">没有匹配的用户</div>}
-            </div>
-          </Card>
+                  <div className="uCell">
+                    <select value={user.role || "交易用户"} disabled={user.isOwner} onChange={(event) => action(`/api/admin/users/${user.id}`, { role: event.target.value }, "PATCH")}><option>交易用户</option><option>管理员</option></select>
+                  </div>
+                  <div className="uCell uSub">
+                    <StatusBadge tone={sub?.status === "active" ? "ok" : "warning"}>{sub?.source === "owner_grant" ? "Owner 免费授权" : humanize(sub?.status, "未订阅")}</StatusBadge>
+                    <small>{sub?.currentPeriodEnd ? `到期 ${formatDate(sub.currentPeriodEnd)}` : "长期有效"}</small>
+                  </div>
+                  <div className="uCell">
+                    <button type="button" className={`statusPill ${off ? "off" : "on"}`} disabled={user.isOwner} onClick={() => action(`/api/admin/users/${user.id}`, { status: off ? "active" : "disabled" }, "PATCH")}>
+                      <span className="dot" />{off ? "已停用" : "启用中"}
+                    </button>
+                  </div>
+                  <div className="uCell uActions">
+                    {user.isOwner ? <span className="muted">—</span> : (
+                      <>
+                        <button className="miniBtn" onClick={() => action(`/api/admin/users/${user.id}/grant-free`, { months: grantMonths })}><Gift size={13} /> 赠 {grantMonths} 月</button>
+                        <button className="miniBtn" onClick={() => resetUserPassword(user)}><KeyRound size={13} /> 重置密码</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {!filteredUsers.length && <div className="userEmpty">没有匹配的用户</div>}
+          </div>
+
+          <div className="userTableFoot">
+            <span>{userSearch ? `筛选出 ${filteredUsers.length} / ${users.length} 人` : `共 ${users.length} 人`}</span>
+            <span className="mono">{activeSubs} 有效订阅 · {ownerGrants} 免费授权</span>
+          </div>
         </div>
       )}
 

@@ -9083,3 +9083,89 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .settingsTermPage .adminAgentMini b { font-family: var(--font-mono); color: var(--accent); }
 .settingsTermPage .adminAgentMini strong { color: #1e1b16; }
 .settingsTermPage .adminAgentMini small { color: var(--text-3); }
+
+/* ===== 用户管理（Owner 控制台）完全重构 ===== */
+.ownerBar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ownerBarLead { display: grid; gap: 3px; }
+.ownerKicker { font: 800 11px var(--font-mono); letter-spacing: .14em; color: var(--accent); }
+.ownerBarLead h2 { font: 700 20px var(--font-ui); color: #1e1b16; letter-spacing: .01em; }
+.ownerStats { display: flex; gap: 8px; flex-wrap: wrap; }
+.ownerStats > div { min-width: 92px; display: grid; gap: 2px; padding: 8px 14px; background: var(--surface-white); border: 1px solid var(--hairline); border-radius: 9px; }
+.ownerStats b { font: 600 19px var(--font-mono); color: #1e1b16; line-height: 1.1; }
+.ownerStats span { font-size: 11px; color: var(--text-3); }
+
+.adminUsersWrap { display: grid; gap: 12px; }
+
+/* 工具条 */
+.userToolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.userToolbar .adminSearch { flex: 1 1 260px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-white); border: 1px solid var(--border); border-radius: 9px; }
+.userToolbar .adminSearch svg { color: var(--text-3); flex: none; }
+.userToolbar .adminSearch input { border: 0; background: transparent; width: 100%; font-size: 13px; color: #2a2620; }
+.userToolbar .adminSearch input:focus { outline: none; }
+.userToolbarRight { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grantDefault { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-weight: 640; }
+.grantDefault input { width: 50px; text-align: center; padding: 7px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-white); font: 600 12px var(--font-mono); color: #1e1b16; }
+.grantDefault input:focus { outline: none; border-color: var(--accent); }
+
+/* 公开注册开关 */
+.regPill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-white); cursor: pointer; font-size: 12px; font-weight: 700; color: var(--text-2); }
+.regPill.on { border-color: #bfe0cd; background: var(--pos-weak); color: #1f7a50; }
+.regPill .sw { width: 30px; height: 17px; border-radius: 999px; background: #d9d1c2; position: relative; transition: background .15s ease; flex: none; }
+.regPill.on .sw { background: #3fae7a; }
+.regPill .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .15s ease; }
+.regPill.on .sw::after { left: 15px; }
+.userHint { font-size: 11.5px; color: var(--text-3); margin-top: -4px; }
+
+/* 开通账号面板 */
+.userCreatePanel { border: 1px solid var(--border); border-radius: 11px; background: var(--surface); overflow: hidden; }
+.userCreateHead { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--hairline); background: var(--accent-weak); }
+.userCreateHead svg { color: var(--accent); }
+.userCreateHead strong { font-size: 13px; color: #1e1b16; flex: 1; }
+.ghostClose { border: 0; background: transparent; color: var(--text-3); cursor: pointer; display: grid; place-items: center; padding: 4px; border-radius: 6px; }
+.ghostClose:hover { background: rgba(0,0,0,.05); color: var(--neg); }
+.userCreateGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 12px; padding: 16px; align-items: end; }
+.userCreateGrid label { display: grid; gap: 6px; font-size: 12px; font-weight: 640; color: var(--text-2); }
+.userCreateGrid input, .userCreateGrid select { padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-white); font-size: 13px; color: #2a2620; }
+.userCreateGrid input:focus, .userCreateGrid select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.userCreateGrid > .primaryButton { white-space: nowrap; height: 38px; }
+@media (max-width: 1120px) { .userCreateGrid { grid-template-columns: repeat(2, 1fr); } .userCreateGrid > .primaryButton { grid-column: 1 / -1; } }
+
+/* 用户表 */
+.userTable { border: 1px solid var(--hairline); border-radius: 11px; overflow: hidden; background: var(--surface); }
+.userTableHead, .userTableRow { display: grid; grid-template-columns: minmax(0, 2.2fr) 116px minmax(0, 1.35fr) 104px minmax(0, 1.5fr); align-items: center; gap: 14px; padding: 12px 16px; }
+.userTableHead { background: var(--surface-2); border-bottom: 1px solid var(--hairline); font: 700 10.5px var(--font-ui); letter-spacing: .05em; color: var(--text-4); text-transform: uppercase; }
+.userTableRow { border-bottom: 1px solid var(--hairline); transition: background .12s ease; }
+.userTableRow:last-child { border-bottom: 0; }
+.userTableRow:hover { background: var(--surface-white); }
+.userTableRow.owner { background: linear-gradient(90deg, var(--accent-weak) 0%, transparent 42%); }
+.userTableRow.off { opacity: .6; }
+.uCell { min-width: 0; }
+.uIdentity { display: flex; align-items: center; gap: 11px; }
+.uAvatar { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--dark); color: var(--dark-ink); font: 700 14px var(--font-ui); flex: none; }
+.userTableRow.owner .uAvatar { background: var(--accent-grad); color: #fff; }
+.uMeta { min-width: 0; display: grid; gap: 2px; }
+.uMeta strong { font-size: 13.5px; color: #1e1b16; display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uMeta small { font: 500 11px var(--font-mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ownerTag { display: inline-flex; align-items: center; gap: 3px; font: 700 10px var(--font-ui); color: var(--accent); background: var(--accent-weak); padding: 1px 6px; border-radius: 5px; font-style: normal; flex: none; }
+.uCell > select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-white); font-size: 12.5px; color: #2a2620; }
+.uCell > select:disabled { opacity: .5; cursor: not-allowed; }
+.uSub { display: grid; gap: 3px; justify-items: start; }
+.uSub small { font: 500 11px var(--font-mono); color: var(--text-3); }
+.statusPill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-white); font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text-2); }
+.statusPill .dot { width: 7px; height: 7px; border-radius: 50%; background: #b9b0a0; }
+.statusPill.on { border-color: #bfe0cd; background: var(--pos-weak); color: #1f7a50; }
+.statusPill.on .dot { background: #2fa96e; }
+.statusPill:disabled { cursor: default; opacity: .65; }
+.uActions { display: flex; gap: 7px; flex-wrap: wrap; }
+.miniBtn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-white); font-size: 12px; font-weight: 650; color: var(--text-2); cursor: pointer; }
+.miniBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+.miniBtn svg { color: var(--accent); flex: none; }
+.userEmpty { padding: 40px; text-align: center; color: var(--text-3); font-size: 13px; }
+.userTableFoot { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: var(--text-3); }
+.userTableFoot .mono { font-family: var(--font-mono); }
+
+@media (max-width: 900px) {
+  .userTableHead { display: none; }
+  .userTableRow { grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; }
+  .userTableRow > .uIdentity, .userTableRow > .uActions { grid-column: 1 / -1; }
+}
