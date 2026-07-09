@@ -1534,7 +1534,6 @@ export function AgentProfilesPanel({ data, action }) {
   return (
     <Card>
       <SectionTitle icon={BrainCircuit} title="Agent Profile 配置" />
-      <p className="muted">后台能力开关；这些 Agent 会在交易计划、风控、执行与复盘流程中发挥作用。</p>
       <div className="adminAgentGrid">
         {profiles.map((profile) => (
           <div className={`adminAgentMini ${profile.enabled === false ? "disabled" : ""}`} key={profile.id}>
