@@ -112,6 +112,27 @@ check() { # $1=name  $2=url  $3=auto_heal(main 才传 1)
 }
 
 check "main" "$MAIN_URL" 1
+
+# 前端资产探测：API 健康不代表页面能开（曾发生 CORS 把自家 JS 403 掉的全站白屏，/api/health 全程 200）。
+# 模拟浏览器带 Origin 头请求首页引用的第一个 JS 资产，非 200 即告警（状态翻转去重）。
+check_frontend() {
+  local base="${FRONTEND_URL:-http://127.0.0.1:8787}" statefile="$STATE_DIR/frontend.state" prev="up" now="down"
+  [ -f "$statefile" ] && prev="$(cat "$statefile")"
+  local asset
+  asset="$(curl -s -m 8 "$base/" 2>/dev/null | grep -oE 'assets/[A-Za-z0-9._-]+\.js' | head -1)"
+  if [ -n "$asset" ]; then
+    local code
+    code=$(curl -s -o /dev/null -m 8 -w "%{http_code}" -H "Origin: ${PUBLIC_ORIGIN:-https://yegidawir.xyz}" "$base/$asset" 2>/dev/null || echo 000)
+    [ "$code" = "200" ] && now="up"
+  fi
+  if [ "$now" != "$prev" ]; then
+    if [ "$now" = "down" ]; then send_alert "🟠 前端异常" "页面资产加载失败（API 可能仍正常），请检查 CORS/构建 · $(date '+%F %T')";
+    else send_alert "🟢 前端恢复" "页面资产恢复加载 · $(date '+%F %T')"; fi
+    echo "$now" > "$statefile"
+  fi
+  echo "$(date '+%F %T') frontend: $now"
+}
+check_frontend
 if [ -d "$TENANTS_DIR" ]; then
   for d in "$TENANTS_DIR"/*/; do
     [ -d "$d" ] || continue
