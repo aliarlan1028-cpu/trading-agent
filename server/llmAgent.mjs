@@ -69,7 +69,7 @@ async function decideNextAction(context, role, goal) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
     body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       messages: [{ role: "system", content: systemPrompt() }, { role: "user", content: `${context}\nRole: ${role}\nGoal: ${goal}\nReturn JSON only.` }],
       temperature: 0.2
     })
@@ -117,6 +117,6 @@ function buildContext(db, role, goal) {
 
 function selectedModel() {
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_MODEL || "gpt-5.2";
-  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
   return "deterministic-local";
 }

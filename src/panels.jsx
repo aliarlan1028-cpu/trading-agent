@@ -117,7 +117,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     OPENAI_API_KEY: "",
     OPENAI_MODEL: providers.openai?.model || "gpt-5.2",
     DEEPSEEK_API_KEY: "",
-    DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-chat",
+    DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-v4-flash",
     GEMINI_API_KEY: "",
     GEMINI_MODEL: providers.gemini?.model || "gemini-2.5-pro"
   });
