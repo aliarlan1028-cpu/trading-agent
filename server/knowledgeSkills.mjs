@@ -13,8 +13,8 @@ const MAX_INVOCATIONS = 1000;
 const MIN_LIVE_ATTRIBUTION_TRADES = Math.max(5, Number(process.env.KNOWLEDGE_SKILL_MIN_LIVE_TRADES || 10));
 
 const TEMPLATE_RULES = [
-  { pattern: /底背离|bull(?:ish)? divergence/i, long: "rsi_bull_div", short: "rsi_bear_div" },
-  { pattern: /顶背离|bear(?:ish)? divergence/i, long: "rsi_bull_div", short: "rsi_bear_div" },
+  // 背离类统一按技能方向选模板：long→底背离模板，short→顶背离模板（文字只用于识别"这是背离方法"）。
+  { pattern: /底背离|顶背离|bull(?:ish)? divergence|bear(?:ish)? divergence/i, long: "rsi_bull_div", short: "rsi_bear_div" },
   { pattern: /布林|bollinger/i, long: "bollinger", short: "rsi_short" },
   { pattern: /macd/i, long: "macd", short: "death_cross" },
   { pattern: /均值回归|超卖|rsi|mean.?reversion|oversold/i, long: "meanrev", short: "rsi_short" },
@@ -444,12 +444,18 @@ export function selectActiveKnowledgeSkills(db, context = {}, options = {}) {
 
 export function evaluateKnowledgeSkillSignal(db, skill, symbol) {
   const market = (db.markets || []).find((item) => item.symbol === String(symbol || "").toUpperCase());
-  const candles = Array.isArray(market?.candles) ? market.candles : [];
-  if (normalizeTimeframe(market?.candlesTimeframe) !== skill.spec.timeframe) {
+  // 优先按技能声明的周期取多周期缓存（candlesByTf），退回单值 candles（周期匹配时）。
+  const wanted = skill.spec.timeframe;
+  const cached = market?.candlesByTf?.[wanted];
+  let candles = Array.isArray(cached?.candles) ? cached.candles : [];
+  if (!candles.length && normalizeTimeframe(market?.candlesTimeframe) === wanted && Array.isArray(market?.candles)) {
+    candles = market.candles;
+  }
+  if (!candles.length) {
     return {
       triggered: false,
       reason: "candle_timeframe_mismatch",
-      expectedTimeframe: skill.spec.timeframe,
+      expectedTimeframe: wanted,
       actualTimeframe: market?.candlesTimeframe || null
     };
   }

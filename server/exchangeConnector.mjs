@@ -360,6 +360,10 @@ export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/U
   market.candles = candles;
   market.candlesTimeframe = timeframe;
   market.candlesSyncedAt = nowIso();
+  // 按周期各存一份（截尾 200 根）：知识技能可能声明 4h/1d 等非默认周期，
+  // 若只有单一 candlesTimeframe，非 1h 技能会永远 candle_timeframe_mismatch 而静默失效。
+  market.candlesByTf ||= {};
+  market.candlesByTf[String(timeframe).toLowerCase()] = { candles: candles.slice(-200), syncedAt: nowIso() };
   if (candles.length) {
     const last = candles[candles.length - 1];
     market.price = last.close;

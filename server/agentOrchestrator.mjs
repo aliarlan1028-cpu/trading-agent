@@ -1,6 +1,6 @@
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { bindKnowledgeSkillsToPlan } from "./knowledgeSkills.mjs";
+import { bindKnowledgeSkillsToPlan, evaluateKnowledgeSkillSignal, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
@@ -222,6 +222,18 @@ function createTradeIntent(db, run, mandateDraft, bundle) {
     created_at: nowIso()
   };
   intent.trade_intent_id = intent.id;
+  // 巡检路径的技能"显式采用"：此前 intent 从不产出 knowledgeSkillIds，
+  // bindKnowledgeSkillsToPlan(requireExplicitAdoption) 永远选中 0 个技能（死代码）。
+  // 由确定性引擎替 LLM 做采用决定：只挑当前闭合 K 线真实触发、且币对/方向匹配的 active 技能。
+  intent.knowledgeSkillIds = [];
+  if (intent.direction === "long" || intent.direction === "short") {
+    try {
+      const candidates = selectActiveKnowledgeSkills(db, { symbol: intent.symbol, direction: intent.direction }, { limit: 3 });
+      intent.knowledgeSkillIds = candidates
+        .filter((skill) => evaluateKnowledgeSkillSignal(db, skill, intent.symbol)?.triggered)
+        .map((skill) => skill.id);
+    } catch { /* 技能评估失败不阻断巡检 */ }
+  }
   db.tradeIntents.unshift(intent);
   return intent;
 }

@@ -149,6 +149,11 @@ app.use(cors({
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+// CORS 拒绝返回干净的 403，而不是落进默认错误处理器变 500（可能带栈信息）。
+app.use((err, _req, res, next) => {
+  if (err && err.message === "CORS origin denied") return res.status(403).json({ error: "Origin not allowed" });
+  next(err);
+});
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -230,6 +235,18 @@ registerTaskHandler("market_signal_refresh", async (database) => {
       updatedAt: nowIso()
     };
   } catch { /* 大盘拉取失败不阻断 */ }
+  // 知识技能声明的非默认周期（4h/1d 等）也要有 K 线，否则技能信号永远无法评估。
+  try {
+    const skillTfs = [...new Set((database.knowledge?.tradingSkills || [])
+      .filter((s) => ["active", "paper_validating", "paper_validated"].includes(s.status))
+      .map((s) => s.spec?.timeframe)
+      .filter((tf) => tf && tf !== "1h"))].slice(0, 3);
+    for (const tf of skillTfs) {
+      for (const symbol of symbols.slice(0, 2)) {
+        try { await syncPublicKlines(database, "OKX", symbol, tf); } catch { /* 单周期失败不阻断 */ }
+      }
+    }
+  } catch { /* 技能周期补拉失败不阻断 */ }
   return { status: "ok", synced };
 });
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
@@ -1190,7 +1207,11 @@ app.post("/api/knowledge/reembed", requirePermission("write:knowledge"), async (
 });
 
 app.get("/api/knowledge/skills", (_req, res) => {
-  res.json(knowledgeSkillSummary(db));
+  // knowledgeSkillSummary 内部会做生命周期同步（paper_validated/degraded 转移+归因），
+  // 这些状态变更必须落盘——否则重启即丢，且与 POST 路由一律 persist 的约定不一致。
+  const summary = knowledgeSkillSummary(db);
+  saveDb(db);
+  res.json(summary);
 });
 
 app.post("/api/knowledge/methods/:id/compile", requirePermission("write:knowledge"), (req, res) => {
@@ -1302,9 +1323,16 @@ app.post("/api/knowledge/rules/:id/approve", requirePermission("approve:knowledg
   rule.status = req.body.approved === false ? "已拒绝" : "已批准";
   rule.reviewedAt = nowIso();
   rule.reviewedBy = req.user?.name || db.user.name;
+  let enforcementWarning = null;
   if (rule.status === "已批准") {
     const conditionSpec = rule.conditionSpec || compileNaturalRiskCondition(rule.condition);
     const conditionValidation = validateConditionSpec(conditionSpec);
+    if (!conditionValidation.valid) {
+      // 显式告知：这条规则编译不成结构化条件，只会作为提示注入提示词、不会被风控引擎硬拦截。
+      // 否则运维会以为"配上了就在拦"，实际是静默放行。
+      enforcementWarning = "该规则的自然语言条件无法编译为结构化拦截条件，批准后仅注入 AI 提示词作纪律提醒，不会被风控引擎硬性拦截；如需硬拦截请在规则库补充结构化条件（conditionSpec）。";
+      appendAudit(db, `知识规则「${rule.name}」批准为仅提示（条件不可编译，无硬拦截）`, rule.id, "RiskCompiler", "warning");
+    }
     db.riskRules.unshift({
       id: `risk_from_${rule.id}`,
       name: rule.name,
@@ -1319,7 +1347,7 @@ app.post("/api/knowledge/rules/:id/approve", requirePermission("approve:knowledg
     });
   }
   appendAudit(db, `${rule.status}知识规则`, rule.id, req.user?.name || db.user.name);
-  persist(res, rule);
+  persist(res, { ...rule, enforcementWarning });
 });
 
 app.delete("/api/knowledge/rules/:id", requirePermission("write:knowledge"), (req, res) => {

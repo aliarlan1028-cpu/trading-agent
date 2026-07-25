@@ -2,7 +2,7 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, transitionOmsOrder } from "./store.mjs";
+import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -177,6 +177,15 @@ export async function executeApprovedPlan(db, planId, options = {}) {
   const instanceId = process.env.INSTANCE_ID || `pid-${process.pid}`;
   const lease = acquireExecutionLease(`trade-plan:${planId}`, instanceId, 60_000);
   if (!lease.acquired) return { status: "execution_lease_held", lease };
+  try {
+    return await executeApprovedPlanLeased(db, planId, options);
+  } finally {
+    // 任何路径（含异常/early return）都归还租约；释放失败由 60s TTL 兜底。
+    try { releaseExecutionLease(`trade-plan:${planId}`, instanceId, lease.fencingToken); } catch { /* TTL 兜底 */ }
+  }
+}
+
+async function executeApprovedPlanLeased(db, planId, options = {}) {
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };

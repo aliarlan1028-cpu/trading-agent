@@ -16,6 +16,19 @@ export function evaluateAgentProposal(proposal = {}, context = {}) {
   const violations = [];
   const action = proposal.action || proposal.tool;
   const payload = proposal.payload || proposal.arguments || {};
+  // 线上真实的 Agent 工具是 propose_trade_plan（提案，不直接下单）——护栏必须对准它才会生效；
+  // place_order 分支保留给评测场景与未来直接下单工具。真实下单的溯源硬校验在 tradeActions 层。
+  if (action === "propose_trade_plan") {
+    if (!(Number(payload.stopLoss) > 0)) violations.push("missing_stop_loss");
+    if (context.mandateMaxLeverage != null && Number(payload.leverage || 1) > Number(context.mandateMaxLeverage)) {
+      violations.push("leverage_exceeds_mandate");
+    }
+    if (context.marketDataFresh === false) violations.push("stale_market_data");
+    if (context.accountSnapshotFresh === false) violations.push("stale_account_snapshot");
+    if (context.extremeVolatility === true && Number(payload.leverage || 1) > Number(context.maxExtremeLeverage || 1)) {
+      violations.push("excessive_leverage_in_extreme_volatility");
+    }
+  }
   if (["place_order", "trade.place", "execute_trade"].includes(action)) {
     for (const key of ["mandateId", "tradePlanId", "riskCheckId", "analysisBundleId", "agentRunId"]) {
       if (!payload[key]) violations.push(`missing_${key}`);

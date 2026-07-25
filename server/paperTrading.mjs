@@ -174,9 +174,13 @@ export async function createPaperSession(db, opts = {}) {
   db.paperSessions ||= [];
   db.paperSessions.unshift(session);
   if (db.paperSessions.length > MAX_SESSIONS) {
-    const running = db.paperSessions.filter((item) => item.status === "running");
+    // seeded 会话永不毕业 → 永远 running → 旧逻辑"保留全部 running"会让集合无上限增长。
+    // 纯前向 running（真实验证中）全保留；seeded running 只留最新 10 个；终态按余量截断。
+    const runningForward = db.paperSessions.filter((item) => item.status === "running" && item.seeded === false);
+    const runningSeeded = db.paperSessions.filter((item) => item.status === "running" && item.seeded !== false).slice(0, 10);
     const terminal = db.paperSessions.filter((item) => item.status !== "running");
-    db.paperSessions = [...running, ...terminal.slice(0, Math.max(0, MAX_SESSIONS - running.length))];
+    const kept = [...runningForward, ...runningSeeded];
+    db.paperSessions = [...kept, ...terminal.slice(0, Math.max(0, MAX_SESSIONS - kept.length))];
   }
   appendAudit(db, `创建模拟盘会话 ${symbol} ${strategy.label}${session.seeded ? "（含历史预热）" : "（纯前向）"}`, session.id, "PaperTrading");
   return { status: "ok", session };

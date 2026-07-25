@@ -116,6 +116,10 @@ export function installAuth(app, db) {
 }
 
 function recordLoginFailure(key) {
+  // 防内存无界增长：大量不同来源 IP 失败会让 Map 只增不减（成功才 delete），定期清掉过期项。
+  if (loginAttempts.size > 1000) {
+    for (const [k, v] of loginAttempts) if (v.resetAt <= Date.now()) loginAttempts.delete(k);
+  }
   const current = loginAttempts.get(key);
   if (!current || current.resetAt <= Date.now()) {
     loginAttempts.set(key, { count: 1, resetAt: Date.now() + LOGIN_WINDOW_MS });

@@ -1066,6 +1066,17 @@ export function markOutboxPublished(eventId) {
   return result.changes === 1;
 }
 
+// 发布失败：attempts+1 并线性退避 available_at（30s×次数，上限 10 分钟），
+// 避免坏事件每分钟无限原地重试刷日志。
+export function deferOutboxEvent(eventId, attempts = 0) {
+  ensureSqlite();
+  const delayMs = Math.min(10 * 60_000, 30_000 * Math.max(1, Number(attempts) + 1));
+  const result = sqlite.prepare(`
+    update outbox_events set attempts = attempts + 1, available_at = ? where id = ? and status = 'pending'
+  `).run(new Date(Date.now() + delayMs).toISOString(), eventId);
+  return result.changes === 1;
+}
+
 function deserializeOmsOrder(row) {
   return {
     id: row.id,
@@ -1142,11 +1153,14 @@ function persistTradingEntities(db, updatedAt) {
       updated_at = excluded.updated_at,
       doc = excluded.doc
   `);
-  const removeType = sqlite.prepare("delete from trading_entities where resource_type = ?");
+  // 删除必须按 (resource_type, tenant_id) 限定：内存 db 只装载当前租户（单实例即 tenant_owner），
+  // 无条件按类型全删会把其他租户的行一并清掉（跨租户数据丢失）。
+  const removeTypeForTenant = sqlite.prepare("delete from trading_entities where resource_type = ? and tenant_id = ?");
   for (const resourceType of entityCollectionNames) {
-    removeType.run(resourceType);
-    for (const item of db[resourceType] || []) {
-      if (!item?.id) continue;
+    const rows = (db[resourceType] || []).filter((item) => item?.id);
+    const tenants = [...new Set(rows.map((item) => item.tenantId || "tenant_owner"))];
+    for (const tenant of tenants.length ? tenants : ["tenant_owner"]) removeTypeForTenant.run(resourceType, tenant);
+    for (const item of rows) {
       const tenantId = item.tenantId || "tenant_owner";
       const createdAt = item.createdAt || item.startedAt || updatedAt;
       const doc = { ...item, tenantId };

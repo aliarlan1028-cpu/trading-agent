@@ -21,7 +21,12 @@ export async function shipAuditToWorm(db, options = {}) {
       records: batch.map((item) => item.entry)
     })
   });
-  if (!response.ok) throw new Error(`WORM audit sink rejected batch: ${response.status}`);
+  if (!response.ok) {
+    // 软失败：游标不前移（下轮重试同一批），记 warning 而不是 throw——
+    // 抛异常会让定时任务每分钟产生一次失败噪音，WORM 端点抖动即刷屏。
+    appendTrace(db, "audit_worm", `WORM 端点拒收（HTTP ${response.status}），批次保留待重试`, "warning", 0);
+    return { status: "deferred", shipped: 0, httpStatus: response.status };
+  }
   commitAuditSinkCursor(sinkId, batch.at(-1).cursor);
   appendTrace(db, "audit_worm", `审计外送 ${batch.length} 条`, "ok", 0);
   return { status: "ok", shipped: batch.length, cursor: batch.at(-1).cursor };

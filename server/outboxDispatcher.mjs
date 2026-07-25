@@ -1,4 +1,4 @@
-import { appendTrace, markOutboxPublished, pendingOutboxEvents } from "./store.mjs";
+import { appendTrace, deferOutboxEvent, markOutboxPublished, pendingOutboxEvents } from "./store.mjs";
 
 // Transactional outbox dispatcher. Production may supply a durable broker
 // publisher; the local default records delivery in trace and marks it published.
@@ -13,6 +13,7 @@ export async function dispatchOutbox(db, options = {}) {
       await publish(event);
       results.push({ id: event.id, published: markOutboxPublished(event.id) });
     } catch (error) {
+      deferOutboxEvent(event.id, event.attempts); // 失败退避，避免每分钟无限原地重试
       results.push({ id: event.id, published: false, error: error.message });
     }
   }

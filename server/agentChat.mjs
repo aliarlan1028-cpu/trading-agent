@@ -798,6 +798,8 @@ export async function executeTool(db, run, name, args = {}) {
       reduce_only: false,
       status: "draft",
       reasoningSummary: args.rationale,
+      // 落库计划周期：执行层要用它做技能模拟盘的周期一致性校验（此前从未写入，校验被静默跳过）。
+      timeframe: args.timeframe || "1h",
       source: "agent_chat",
       createdAt: nowIso()
     };
@@ -1112,10 +1114,32 @@ async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, 
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
+// 给安全护栏提供真实上下文（此前恒为空 → 新鲜度/杠杆检查全部空转）。
+function buildSafetyContext(db, name, args) {
+  if (name !== "propose_trade_plan") return {};
+  const symbol = String(args?.symbol || "").toUpperCase();
+  const market = (db.markets || []).find((m) => m.symbol === symbol);
+  const marketAgeMs = market?.lastRealtimeAt || market?.lastSyncedAt
+    ? Date.now() - new Date(market.lastRealtimeAt || market.lastSyncedAt).getTime()
+    : null;
+  const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const snapshot = (db.accountSnapshots || [])[0];
+  const snapshotAgeMs = snapshot?.createdAt ? Date.now() - new Date(snapshot.createdAt).getTime() : null;
+  return {
+    // 行情 10 分钟内算新鲜；没有该币行情记录 → 明确判 stale（不许对着空数据提计划）
+    marketDataFresh: market ? (marketAgeMs != null && marketAgeMs < 10 * 60 * 1000) : false,
+    // 账户快照仅在实盘开启时要求新鲜（30 分钟）；纸面/未配置不作要求（undefined 不触发违规）
+    accountSnapshotFresh: db.system?.liveTradingEnabled
+      ? (snapshotAgeMs != null && snapshotAgeMs < 30 * 60 * 1000)
+      : undefined,
+    mandateMaxLeverage: mandate?.maxLeverage != null ? Number(mandate.maxLeverage) : null
+  };
+}
+
 async function runToolTracked(db, run, name, args, toolTrace) {
   const startedAt = Date.now();
   let result;
-  const safety = evaluateAgentProposal({ action: name, payload: args });
+  const safety = evaluateAgentProposal({ action: name, payload: args }, buildSafetyContext(db, name, args));
   if (!safety.passed) {
     result = { error: "Agent safety policy blocked this tool call", violations: safety.violations };
     appendAudit(db, `Agent 工具调用被安全策略阻断：${name}`, run.id, "AgentSafety", "warning");
