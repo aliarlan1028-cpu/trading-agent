@@ -586,8 +586,11 @@ app.get("/api/overview", (_req, res) => {
   {
     const cfgStatus = getConfigStatus(db);
     const configured = (db.exchangeAccounts || []).some((a) => a.readEnabled) || cfgStatus?.exchange?.okx?.hasKey || cfgStatus?.exchange?.binance?.hasKey;
-    const criticalOpen = (db.riskIncidents || []).some((i) => i.status === "open" && (i.severity === "critical" || i.severity === "high"));
-    db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : criticalOpen ? "异常" : configured ? "正常" : "待配置";
+    // API 健康只反映系统/交易所连通性，不受风控告警影响——被风控挡下的计划是风控在正常工作，不是 API 故障。
+    // 仅当实时连接已启动却全部断开时判为「连接异常」；风控事件在「风控状态」单独呈现。
+    const rtStarted = Boolean(db.realtimeStarted) || (db.realtimeConnections || []).length > 0;
+    const rtConnected = (db.realtimeConnections || []).some((c) => c.status === "connected");
+    db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : !configured ? "待配置" : (rtStarted && !rtConnected) ? "连接异常" : "正常";
   }
   res.json({
     user: db.user,
