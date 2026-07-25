@@ -1,12 +1,15 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import mammoth from "mammoth";
 import simpleGit from "simple-git";
+import { assertSafeExternalUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
 import { llmComplete } from "./agentChat.mjs";
+import { compileTradingMethod, retireSkillsForSource } from "./knowledgeSkills.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // LLM 蒸馏：把交易资料提炼成"结构化、可交易的知识"，并按能否被证伪分成两类：
@@ -65,6 +68,7 @@ export async function importKnowledge(db, payload = {}) {
     domain: payload.domain || "综合",
     author: payload.author || undefined,
     bookFocus: payload.bookFocus || undefined,
+    synthetic: payload.type === "book_title",
     importedAt: nowIso()
   };
   db.knowledge.sources.unshift(source);
@@ -85,7 +89,11 @@ export async function parseKnowledgeSource(db, sourceId) {
     source.error = source.error || "未配置 LLM，无法按书名蒸馏知识";
     return { status: "failed", source, message: source.error };
   }
+  source.contentHash = crypto.createHash("sha256").update(String(text || "")).digest("hex");
+  source.parsedTextLength = String(text || "").length;
 
+  // 重解析会改变知识正文与派生规则。旧版本技能必须先退役，不能继续以旧指纹自主交易。
+  retireSkillsForSource(db, source.id, "KnowledgePipeline", "source_reparsed");
   db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);
   db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== source.id);
   db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(source.id));
@@ -186,9 +194,10 @@ export async function parseKnowledgeSource(db, sourceId) {
   // B 路 · 交易方法/进场 setup —— 【正向】顾问知识：决策时注入 AI 推理，帮它判断"什么行情该怎么进"，
   // 提升准确率。AI 仍自主决策、风控闸门把关，不自动照搬；不再走假回测。
   const methods = (distilled?.tradingMethods || distilled?.strategies || []).slice(0, 6);
+  const createdMethods = [];
   for (const m of methods) {
     if (!m || (!m.entry && !m.name)) continue;
-    db.knowledge.tradingMethods.unshift({
+    const method = {
       id: id("method"),
       name: String(m.name || `${source.title} 方法`).slice(0, 40),
       marketRegime: String(m.marketRegime || m.kind || "通用").slice(0, 40),
@@ -203,7 +212,20 @@ export async function parseKnowledgeSource(db, sourceId) {
       rationale: String(m.rationale || "").slice(0, 220),
       source: { id: source.id, title: source.title },
       createdAt: nowIso()
-    });
+    };
+    db.knowledge.tradingMethods.unshift(method);
+    createdMethods.push(method);
+  }
+
+  // 自动生成“编译草案”，但不自动验证、批准或启用。编译失败的方法仍保留为顾问知识。
+  const compiledSkills = [];
+  for (const method of createdMethods) {
+    if (method.direction === "both") {
+      compiledSkills.push(compileTradingMethod(db, method.id, { direction: "long" }));
+      compiledSkills.push(compileTradingMethod(db, method.id, { direction: "short" }));
+    } else {
+      compiledSkills.push(compileTradingMethod(db, method.id));
+    }
   }
 
   // 复盘模板
@@ -231,7 +253,17 @@ export async function parseKnowledgeSource(db, sourceId) {
   source.parsedAt = nowIso();
   appendAudit(db, "解析并切片知识来源", source.id, "KnowledgePipeline");
   appendTrace(db, "knowledge_rag", `解析 ${source.title}`);
-  return { status: "ok", source, chunks: chunks.length, concepts: concepts.length, methods: methods.length, rules: disciplineRules.length, ruleDraft, message: `已导入并解析 ${chunks.length} 个片段` };
+  return {
+    status: "ok",
+    source,
+    chunks: chunks.length,
+    concepts: concepts.length,
+    methods: createdMethods.length,
+    compiledSkills: compiledSkills.map((skill) => ({ id: skill.id, status: skill.status, errors: skill.compileErrors })),
+    rules: disciplineRules.length,
+    ruleDraft,
+    message: `已导入并解析 ${chunks.length} 个片段，生成 ${createdMethods.length} 条交易方法与 ${compiledSkills.filter((skill) => skill.status === "compiled").length} 个可验证技能草案`
+  };
 }
 
 // LLM 智能去重：把同类别下语义重复的规则草案合并成精简规范集（阈值冲突时取更严格的）。
@@ -378,9 +410,10 @@ export async function ragQuery(db, query, options = {}) {
 
 export async function importGithubKnowledge(db, repoUrl, subPath = "") {
   await fs.mkdir(importsDir, { recursive: true });
+  await assertSafeExternalUrl(repoUrl);
   const target = path.join(importsDir, id("repo"));
   await simpleGit().clone(repoUrl, target, ["--depth", "1"]);
-  const base = path.join(target, subPath || "");
+  const base = resolveContainedPath(target, subPath);
   const files = await listTextFiles(base);
   const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill" });
   const combined = [];
@@ -392,9 +425,8 @@ export async function importGithubKnowledge(db, repoUrl, subPath = "") {
 }
 
 async function extractFromUrl(url) {
-  const response = await fetch(url);
+  const { response, text: html } = await fetchExternalText(url, { maxBytes: 8 * 1024 * 1024, timeoutMs: 15_000 });
   if (!response.ok) throw new Error(`URL fetch failed ${response.status}`);
-  const html = await response.text();
   const $ = cheerio.load(html);
   $("script,style,noscript").remove();
   return $("body").text().replace(/\s+/g, " ").trim();
@@ -474,7 +506,20 @@ async function preparePayload(payload = {}) {
     await fs.writeFile(target, String(payload.content), "utf8");
     return { filePath: target, originalFileName };
   }
-  return { filePath: payload.filePath, originalFileName: payload.fileName };
+  if (payload.filePath) {
+    const allowedRoots = String(process.env.KNOWLEDGE_ALLOWED_PATHS || importsDir)
+      .split(path.delimiter)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const requested = path.resolve(payload.filePath);
+    const allowed = allowedRoots.some((root) => {
+      const resolved = path.resolve(root);
+      return requested === resolved || requested.startsWith(`${resolved}${path.sep}`);
+    });
+    if (!allowed) throw new Error("本地知识文件不在 KNOWLEDGE_ALLOWED_PATHS 允许目录内，请改用文件上传");
+    return { filePath: requested, originalFileName: payload.fileName || path.basename(requested) };
+  }
+  return { filePath: null, originalFileName: payload.fileName };
 }
 
 function safeFileName(value) {

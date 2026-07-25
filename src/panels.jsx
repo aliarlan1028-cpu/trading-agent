@@ -724,11 +724,28 @@ export function MandatePanel({ data, action }) {
 }
 
 export function RiskRulesPanel({ data, action }) {
-  const [newRule, setNewRule] = useState({ name: "", level: "L3", action: "block", description: "" });
+  const [newRule, setNewRule] = useState({
+    name: "",
+    level: "L3",
+    action: "block",
+    description: "",
+    conditionField: "plan.leverage",
+    conditionOperator: "gt",
+    conditionValue: "3"
+  });
   async function createRule(event) {
     event.preventDefault();
-    await action("/api/risk/rules", { ...newRule, scope: "trade" });
-    setNewRule({ name: "", level: "L3", action: "block", description: "" });
+    const { conditionField, conditionOperator, conditionValue, ...rule } = newRule;
+    await action("/api/risk/rules", {
+      ...rule,
+      scope: "trade",
+      conditionSpec: {
+        field: conditionField,
+        operator: conditionOperator,
+        value: Number(conditionValue)
+      }
+    });
+    setNewRule((current) => ({ ...current, name: "", description: "" }));
   }
   return (
     <div className="panelStack">
@@ -743,6 +760,20 @@ export function RiskRulesPanel({ data, action }) {
         <h3>新增规则</h3>
         <label>规则名称<input value={newRule.name} onChange={(event) => setNewRule((current) => ({ ...current, name: event.target.value }))} placeholder="例如：高波动暂停新开仓" /></label>
         <label>说明<textarea value={newRule.description} onChange={(event) => setNewRule((current) => ({ ...current, description: event.target.value }))} /></label>
+        <div className="formGrid">
+          <label>指标<select value={newRule.conditionField} onChange={(event) => setNewRule((current) => ({ ...current, conditionField: event.target.value }))}>
+            <option value="plan.leverage">计划杠杆</option>
+            <option value="plan.riskPercent">单笔风险百分比</option>
+            <option value="market.fundingRate">资金费率</option>
+            <option value="market.spreadBps">盘口点差 bps</option>
+            <option value="event.maxImpact">相关事件最高影响分</option>
+            <option value="account.remainingDailyLossUsdt">剩余日亏损额度</option>
+          </select></label>
+          <label>比较<select value={newRule.conditionOperator} onChange={(event) => setNewRule((current) => ({ ...current, conditionOperator: event.target.value }))}>
+            <option value="gt">大于</option><option value="gte">大于等于</option><option value="lt">小于</option><option value="lte">小于等于</option><option value="abs_gt">绝对值大于</option>
+          </select></label>
+          <label>阈值<input type="number" step="any" value={newRule.conditionValue} onChange={(event) => setNewRule((current) => ({ ...current, conditionValue: event.target.value }))} /></label>
+        </div>
         <div className="formGrid">
           <label>等级<select value={newRule.level} onChange={(event) => setNewRule((current) => ({ ...current, level: event.target.value }))}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
           <label>动作<select value={newRule.action} onChange={(event) => setNewRule((current) => ({ ...current, action: event.target.value }))}><option value="notify">通知</option><option value="restrict">限制</option><option value="block">阻断</option><option value="kill_switch">熔断</option></select></label>
@@ -903,7 +934,7 @@ export function KnowledgeImportPanel({ action, ui }) {
       </div>
       {mode === "book" && (
         <>
-          <div className="bookHint">买不到 PDF 也能喂：对经典公开著作，AI 会基于它对这本书的理解，用自己的话把可执行的交易方法蒸馏成结构化知识（纪律规则 + 待回测策略）。上面「标题」填书名即可。</div>
+          <div className="bookHint">仅填写书名时，AI 只能生成“合成读书笔记”，不能证明内容来自原书，因此永久禁止编译为自主交易技能。要让 Agent 真正学习并验证该书方法，请上传你有权使用的 PDF/EPUB/DOCX 或粘贴原文笔记。</div>
           <div className="formGrid">
             <label>作者（可选）<input value={form.author} onChange={(event) => update("author", event.target.value)} placeholder="如 Al Brooks / Mark Douglas" /></label>
             <label>侧重（可选）<input value={form.bookFocus} onChange={(event) => update("bookFocus", event.target.value)} placeholder="如 价格行为 setup / 交易心理 / 风控" /></label>

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { storeSecret } from "./securityOps.mjs";
 import { appendAudit, nowIso } from "./store.mjs";
+import { getMasterKeyMaterial, keyProviderStatus } from "./keyProvider.mjs";
 
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
 export const SECRET_KEYS = new Set([
@@ -11,6 +12,7 @@ export const SECRET_KEYS = new Set([
   "ALERT_WEBHOOK_URL", "ETHERSCAN_API_KEY", "LANGSMITH_API_KEY",
   "LARK_WEBHOOK_URL", "LARK_WEBHOOK_SECRET",
   "TELEGRAM_BOT_TOKEN",
+  "WORM_AUDIT_TOKEN",
   "ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"
 ]);
 
@@ -25,11 +27,12 @@ export const PLAIN_KEYS = new Set([
   "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "REQUIRE_PAPER_VALIDATION",
   "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED",
   "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", "TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT",
-  "TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES"
+  "TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES",
+  "WORM_AUDIT_ENDPOINT", "WORM_AUDIT_SINK_ID"
 ]);
 
 function masterKey() {
-  return crypto.createHash("sha256").update(process.env.SECRETS_MASTER_KEY || "development-only-master-key").digest();
+  return crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
 }
 
 function decrypt(enc) {
@@ -173,6 +176,7 @@ export function getConfigStatus(db) {
       host: process.env.HOST || "127.0.0.1",
       port: process.env.PORT || "8787"
     },
-    secretsMasterKeySet: Boolean(process.env.SECRETS_MASTER_KEY)
+    secretsMasterKeySet: keyProviderStatus().configured,
+    keyProvider: keyProviderStatus()
   };
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import "dotenv/config";
+import { currentRequestContext } from "./requestContext.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -14,12 +15,17 @@ export const ALL_PERMISSIONS = [
   "write:mandate", "write:trade_plan", "write:risk", "write:knowledge", "write:skills",
   "write:event", "write:exchange", "write:realtime", "write:review", "write:mcp", "write:task",
   "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
-  "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.export"
+  "approve:trade_plan", "approve:live_config", "approve:knowledge_skill",
+  "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.read", "trace.read", "audit.export"
 ];
 
-// 交易用户（非 Owner）：拥有除「用户管理 admin:system」外的全部功能——
-// 可连交易所、开实盘、批准/执行交易、开熔断、装 skill、写知识等，与 Owner 一致，只是不能管理用户。
-export const TRADER_PERMISSIONS = ALL_PERMISSIONS.filter((p) => p !== "admin:system");
+// 最小权限交易员：可以研究、创建计划和请求风控，但不能管理密钥/插件，
+// 也不能直接跨过“批准者/执行者”职责边界。Owner 仍通过管理员角色拥有全部权限。
+export const TRADER_PERMISSIONS = [
+  "market.read", "account.read", "risk.check", "knowledge.read", "knowledge.write",
+  "write:mandate", "write:trade_plan", "write:knowledge",
+  "write:event", "write:review", "write:task"
+];
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || "data");
 const jsonDbPath = path.join(dataDir, "db.json");
 const sqliteDbPath = path.join(dataDir, "trading-agent.sqlite");
@@ -90,6 +96,14 @@ const collectionNames = [
   "reviews",
   "pendingActions"
 ];
+// High-value trading objects are also persisted one row per entity. This avoids
+// rewriting an entire JSON collection for every fill/order/risk update and gives
+// tenant/resource indexes for recovery and future repository-only operation.
+const entityCollectionNames = [
+  "mandates", "positions", "orders", "fills", "tradePlans", "events", "tasks",
+  "riskChecks", "riskIncidents", "executionOrders", "accountSnapshots",
+  "reconciliationReports", "reviews", "agentRuns", "paperSessions", "strategyProfiles"
+];
 
 let sqlite;
 
@@ -106,6 +120,10 @@ function emptyKnowledge() {
     sources: [],
     conceptCards: [],
     ruleProposals: [],
+    tradingMethods: [],
+    tradingSkills: [],
+    skillInvocations: [],
+    skillAttributions: [],
     strategyHypotheses: [],
     reviewTemplates: [],
     sourceVersions: [],
@@ -318,6 +336,7 @@ function cleanSeedDatabase(createdAt) {
       "write:mandate", "write:trade_plan", "write:risk", "write:knowledge", "write:skills",
       "write:event", "write:exchange", "write:realtime", "write:review", "write:mcp", "write:task",
       "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
+      "approve:knowledge_skill",
       "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.export"
     ],
     subscriptionPlans: defaultSubscriptionPlans(createdAt),
@@ -626,7 +645,17 @@ export function appendAudit(db, action, target, actor = "System", severity = "in
   // created_at 相同的批量写入/重启边界上顺序不确定，会与校验时的 created_at asc, rowid asc
   // 排序产生分叉，导致 prevHash 断裂）。
   const prevHash = db.meta.auditChainTip ?? db.auditLogs?.[0]?.hash ?? null;
-  const entry = { id: id("audit"), actor, action, target, severity, prevHash, createdAt: nowIso() };
+  const request = currentRequestContext();
+  const entry = {
+    id: id("audit"),
+    actor,
+    action,
+    target,
+    severity,
+    prevHash,
+    createdAt: nowIso(),
+    ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
+  };
   entry.hash = auditHash(entry);
   db.auditLogs.unshift(entry);
   db.meta.auditChainTip = entry.hash;
@@ -693,8 +722,372 @@ function ensureSqlite() {
     );
     create index if not exists idx_trace_created_at on trace_entries(created_at);
     create index if not exists idx_trace_type on trace_entries(type);
+    create table if not exists oms_orders (
+      id text primary key,
+      tenant_id text not null,
+      exchange text not null,
+      client_order_id text not null,
+      action text not null,
+      state text not null,
+      exchange_order_id text,
+      plan_id text,
+      payload_hash text not null,
+      request_doc text,
+      response_doc text,
+      version integer not null default 1,
+      created_at text not null,
+      updated_at text not null,
+      unique (tenant_id, exchange, client_order_id)
+    );
+    create index if not exists idx_oms_orders_plan on oms_orders(tenant_id, plan_id);
+    create index if not exists idx_oms_orders_state on oms_orders(tenant_id, state);
+    create table if not exists oms_order_events (
+      id integer primary key autoincrement,
+      order_id text not null,
+      from_state text,
+      to_state text not null,
+      event_type text not null,
+      doc text,
+      created_at text not null,
+      foreign key(order_id) references oms_orders(id)
+    );
+    create index if not exists idx_oms_events_order on oms_order_events(order_id, id);
+    create table if not exists outbox_events (
+      id text primary key,
+      tenant_id text not null,
+      aggregate_type text not null,
+      aggregate_id text not null,
+      event_type text not null,
+      payload_doc text not null,
+      status text not null default 'pending',
+      attempts integer not null default 0,
+      available_at text not null,
+      created_at text not null,
+      published_at text
+    );
+    create index if not exists idx_outbox_pending on outbox_events(status, available_at, id);
+    create table if not exists execution_leases (
+      resource text primary key,
+      owner_id text not null,
+      fencing_token integer not null,
+      expires_at text not null,
+      updated_at text not null
+    );
+    create table if not exists audit_sink_offsets (
+      sink_id text primary key,
+      last_rowid integer not null default 0,
+      updated_at text not null
+    );
+    create table if not exists tenant_resources (
+      tenant_id text not null,
+      resource_type text not null,
+      resource_id text not null,
+      version integer not null default 1,
+      doc text not null,
+      created_at text not null,
+      updated_at text not null,
+      primary key (tenant_id, resource_type, resource_id)
+    );
+    create index if not exists idx_tenant_resource_list
+      on tenant_resources(tenant_id, resource_type, updated_at desc);
+    create table if not exists trading_entities (
+      tenant_id text not null,
+      resource_type text not null,
+      resource_id text not null,
+      version integer not null default 1,
+      status text,
+      symbol text,
+      created_at text not null,
+      updated_at text not null,
+      doc text not null,
+      primary key (tenant_id, resource_type, resource_id)
+    );
+    create index if not exists idx_trading_entities_type_status
+      on trading_entities(tenant_id, resource_type, status, updated_at desc);
+    create index if not exists idx_trading_entities_symbol
+      on trading_entities(tenant_id, resource_type, symbol, updated_at desc);
   `);
+  ensureColumn(sqlite, "oms_orders", "request_doc", "text");
   return sqlite;
+}
+
+function ensureColumn(database, table, column, definition) {
+  const columns = database.prepare(`pragma table_info(${table})`).all();
+  if (!columns.some((item) => item.name === column)) {
+    database.exec(`alter table ${table} add column ${column} ${definition}`);
+  }
+}
+
+export function putTenantResource(tenantId, resourceType, resource, expectedVersion = null) {
+  ensureSqlite();
+  if (!tenantId || !resourceType || !resource?.id) throw new Error("tenantId, resourceType and resource.id are required");
+  const existing = sqlite.prepare(`
+    select version, created_at from tenant_resources
+    where tenant_id = ? and resource_type = ? and resource_id = ?
+  `).get(tenantId, resourceType, resource.id);
+  if (expectedVersion !== null && Number(existing?.version || 0) !== Number(expectedVersion)) {
+    const error = new Error("Tenant resource optimistic version conflict");
+    error.code = "VERSION_CONFLICT";
+    throw error;
+  }
+  const version = Number(existing?.version || 0) + 1;
+  const updatedAt = nowIso();
+  const createdAt = existing?.created_at || resource.createdAt || updatedAt;
+  const doc = { ...resource, tenantId, version, updatedAt, createdAt };
+  sqlite.prepare(`
+    insert into tenant_resources
+      (tenant_id, resource_type, resource_id, version, doc, created_at, updated_at)
+    values (?, ?, ?, ?, ?, ?, ?)
+    on conflict(tenant_id, resource_type, resource_id) do update set
+      version = excluded.version, doc = excluded.doc, updated_at = excluded.updated_at
+  `).run(tenantId, resourceType, resource.id, version, JSON.stringify(doc), createdAt, updatedAt);
+  return doc;
+}
+
+export function listTenantResources(tenantId, resourceType, limit = 500) {
+  ensureSqlite();
+  return sqlite.prepare(`
+    select doc from tenant_resources
+    where tenant_id = ? and resource_type = ?
+    order by updated_at desc, resource_id asc limit ?
+  `).all(tenantId, resourceType, Math.max(1, Math.min(Number(limit) || 500, 2000)))
+    .map((row) => JSON.parse(row.doc));
+}
+
+export function getTenantResource(tenantId, resourceType, resourceId) {
+  ensureSqlite();
+  const row = sqlite.prepare(`
+    select doc from tenant_resources
+    where tenant_id = ? and resource_type = ? and resource_id = ?
+  `).get(tenantId, resourceType, resourceId);
+  return row ? JSON.parse(row.doc) : null;
+}
+
+export function deleteTenantResource(tenantId, resourceType, resourceId, expectedVersion = null) {
+  ensureSqlite();
+  const sql = expectedVersion === null
+    ? "delete from tenant_resources where tenant_id = ? and resource_type = ? and resource_id = ?"
+    : "delete from tenant_resources where tenant_id = ? and resource_type = ? and resource_id = ? and version = ?";
+  const params = expectedVersion === null
+    ? [tenantId, resourceType, resourceId]
+    : [tenantId, resourceType, resourceId, Number(expectedVersion)];
+  return sqlite.prepare(sql).run(...params).changes === 1;
+}
+
+export function migrateOwnerResourcesToTenantStore(db) {
+  const types = [
+    "mandates", "positions", "orders", "fills", "tradePlans", "riskChecks",
+    "executionOrders", "reviews", "events", "tasks", "knowledgeSources"
+  ];
+  let migrated = 0;
+  for (const type of types) {
+    const items = type === "knowledgeSources" ? (db.knowledge?.sources || []) : (db[type] || []);
+    for (const item of items) {
+      if (!item?.id) continue;
+      putTenantResource(item.tenantId || "tenant_owner", type, item);
+      migrated += 1;
+    }
+  }
+  return { migrated, types };
+}
+
+export function readAuditSinkBatch(sinkId = "primary", limit = 100) {
+  ensureSqlite();
+  const offset = sqlite.prepare("select last_rowid from audit_sink_offsets where sink_id = ?").get(sinkId)?.last_rowid || 0;
+  return sqlite.prepare(`
+    select rowid as cursor, doc from audit_log_entries
+    where rowid > ? order by rowid asc limit ?
+  `).all(offset, Math.max(1, Math.min(Number(limit) || 100, 500))).map((row) => ({
+    cursor: row.cursor,
+    entry: JSON.parse(row.doc)
+  }));
+}
+
+export function commitAuditSinkCursor(sinkId, cursor) {
+  ensureSqlite();
+  sqlite.prepare(`
+    insert into audit_sink_offsets (sink_id, last_rowid, updated_at)
+    values (?, ?, ?)
+    on conflict(sink_id) do update set
+      last_rowid = case when excluded.last_rowid > last_rowid then excluded.last_rowid else last_rowid end,
+      updated_at = excluded.updated_at
+  `).run(sinkId, Number(cursor), nowIso());
+}
+
+export function acquireExecutionLease(resource, ownerId, ttlMs = 30_000) {
+  ensureSqlite();
+  const now = Date.now();
+  const expiresAt = new Date(now + Math.max(5_000, Number(ttlMs) || 30_000)).toISOString();
+  const tx = sqlite.transaction(() => {
+    const current = sqlite.prepare("select * from execution_leases where resource = ?").get(resource);
+    if (current && new Date(current.expires_at).getTime() > now && current.owner_id !== ownerId) {
+      return { acquired: false, ownerId: current.owner_id, fencingToken: current.fencing_token, expiresAt: current.expires_at };
+    }
+    const fencingToken = Number(current?.fencing_token || 0) + 1;
+    sqlite.prepare(`
+      insert into execution_leases (resource, owner_id, fencing_token, expires_at, updated_at)
+      values (?, ?, ?, ?, ?)
+      on conflict(resource) do update set
+        owner_id = excluded.owner_id,
+        fencing_token = excluded.fencing_token,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    `).run(resource, ownerId, fencingToken, expiresAt, nowIso());
+    return { acquired: true, ownerId, fencingToken, expiresAt };
+  });
+  return tx();
+}
+
+export function releaseExecutionLease(resource, ownerId, fencingToken) {
+  ensureSqlite();
+  const result = sqlite.prepare(`
+    update execution_leases set expires_at = ?, updated_at = ?
+    where resource = ? and owner_id = ? and fencing_token = ?
+  `).run(new Date(0).toISOString(), nowIso(), resource, ownerId, fencingToken);
+  return result.changes === 1;
+}
+
+function stablePayloadHash(payload = {}) {
+  const normalized = {};
+  for (const key of Object.keys(payload).sort()) {
+    if (["apiSecret", "secret", "passphrase", "manualApproval"].includes(key)) continue;
+    normalized[key] = payload[key];
+  }
+  return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+// 在调用交易所之前用唯一约束预留 clientOrderId。即使进程在 HTTP 请求后崩溃，
+// 重启后的同一请求也会命中这条持久记录，而不是再次下单。
+export function reserveOmsOrder({ tenantId = "tenant_owner", exchange, clientOrderId, action, planId, payload = {} }) {
+  if (!clientOrderId) return { status: "not_applicable" };
+  ensureSqlite();
+  const existing = sqlite.prepare(`
+    select * from oms_orders where tenant_id = ? and exchange = ? and client_order_id = ?
+  `).get(tenantId, exchange, clientOrderId);
+  const payloadHash = stablePayloadHash(payload);
+  if (existing) {
+    return {
+      status: existing.payload_hash === payloadHash ? "replay" : "conflict",
+      order: deserializeOmsOrder(existing)
+    };
+  }
+  const createdAt = nowIso();
+  const orderId = id("oms");
+  const tx = sqlite.transaction(() => {
+    sqlite.prepare(`
+      insert into oms_orders
+        (id, tenant_id, exchange, client_order_id, action, state, plan_id, payload_hash, request_doc, created_at, updated_at)
+      values (?, ?, ?, ?, ?, 'SUBMITTING', ?, ?, ?, ?, ?)
+    `).run(orderId, tenantId, exchange, clientOrderId, action, planId || null, payloadHash, JSON.stringify(sanitizeStoredPayload(payload)), createdAt, createdAt);
+    sqlite.prepare(`
+      insert into oms_order_events (order_id, from_state, to_state, event_type, doc, created_at)
+      values (?, null, 'SUBMITTING', 'order_reserved', ?, ?)
+    `).run(orderId, JSON.stringify({ action, planId }), createdAt);
+  });
+  tx();
+  return { status: "reserved", order: { id: orderId, tenantId, exchange, clientOrderId, action, state: "SUBMITTING", planId, createdAt } };
+}
+
+export function transitionOmsOrder(orderId, toState, details = {}) {
+  ensureSqlite();
+  const current = sqlite.prepare("select * from oms_orders where id = ?").get(orderId);
+  if (!current) return null;
+  const updatedAt = nowIso();
+  const responseDoc = details.response === undefined ? current.response_doc : JSON.stringify(details.response);
+  const exchangeOrderId = details.exchangeOrderId ?? current.exchange_order_id;
+  const outboxId = id("outbox");
+  const tx = sqlite.transaction(() => {
+    const result = sqlite.prepare(`
+      update oms_orders
+      set state = ?, exchange_order_id = ?, response_doc = ?, version = version + 1, updated_at = ?
+      where id = ? and version = ?
+    `).run(toState, exchangeOrderId || null, responseDoc || null, updatedAt, orderId, current.version);
+    if (result.changes !== 1) throw new Error("OMS optimistic version conflict");
+    sqlite.prepare(`
+      insert into oms_order_events (order_id, from_state, to_state, event_type, doc, created_at)
+      values (?, ?, ?, ?, ?, ?)
+    `).run(orderId, current.state, toState, details.eventType || "state_changed", JSON.stringify(details), updatedAt);
+    sqlite.prepare(`
+      insert into outbox_events
+        (id, tenant_id, aggregate_type, aggregate_id, event_type, payload_doc, status, available_at, created_at)
+      values (?, ?, 'order', ?, ?, ?, 'pending', ?, ?)
+    `).run(outboxId, current.tenant_id, orderId, details.eventType || "order_state_changed", JSON.stringify({
+      orderId,
+      fromState: current.state,
+      toState,
+      exchangeOrderId
+    }), updatedAt, updatedAt);
+  });
+  tx();
+  return getOmsOrder(orderId);
+}
+
+export function getOmsOrder(orderId) {
+  ensureSqlite();
+  const row = sqlite.prepare("select * from oms_orders where id = ?").get(orderId);
+  return row ? deserializeOmsOrder(row) : null;
+}
+
+export function listOmsOrdersByState(states = ["UNKNOWN"], limit = 100) {
+  ensureSqlite();
+  const wanted = [...new Set(states.map(String))].slice(0, 20);
+  if (!wanted.length) return [];
+  const placeholders = wanted.map(() => "?").join(",");
+  return sqlite.prepare(`
+    select * from oms_orders where state in (${placeholders})
+    order by updated_at asc limit ?
+  `).all(...wanted, Math.max(1, Math.min(Number(limit) || 100, 500))).map(deserializeOmsOrder);
+}
+
+export function pendingOutboxEvents(limit = 100) {
+  ensureSqlite();
+  return sqlite.prepare(`
+    select * from outbox_events
+    where status = 'pending' and available_at <= ?
+    order by created_at asc, id asc limit ?
+  `).all(nowIso(), Math.max(1, Math.min(Number(limit) || 100, 500))).map((row) => ({
+    id: row.id,
+    tenantId: row.tenant_id,
+    aggregateType: row.aggregate_type,
+    aggregateId: row.aggregate_id,
+    eventType: row.event_type,
+    payload: JSON.parse(row.payload_doc),
+    attempts: row.attempts,
+    createdAt: row.created_at
+  }));
+}
+
+export function markOutboxPublished(eventId) {
+  ensureSqlite();
+  const publishedAt = nowIso();
+  const result = sqlite.prepare(`
+    update outbox_events set status = 'published', published_at = ? where id = ? and status = 'pending'
+  `).run(publishedAt, eventId);
+  return result.changes === 1;
+}
+
+function deserializeOmsOrder(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    exchange: row.exchange,
+    clientOrderId: row.client_order_id,
+    action: row.action,
+    state: row.state,
+    exchangeOrderId: row.exchange_order_id,
+    planId: row.plan_id,
+    request: row.request_doc ? JSON.parse(row.request_doc) : null,
+    response: row.response_doc ? JSON.parse(row.response_doc) : null,
+    version: row.version,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function sanitizeStoredPayload(payload = {}) {
+  const safe = { ...payload };
+  for (const key of ["apiSecret", "secret", "passphrase", "password", "apiKey"]) delete safe[key];
+  return safe;
 }
 
 function loadFromSqlite() {
@@ -702,6 +1095,18 @@ function loadFromSqlite() {
   if (!rows.length) return null;
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
+  const entityRows = sqlite.prepare(`
+    select resource_type, doc from trading_entities
+    order by resource_type asc, updated_at desc, resource_id asc
+  `).all();
+  if (entityRows.length) {
+    const grouped = new Map();
+    for (const row of entityRows) {
+      if (!grouped.has(row.resource_type)) grouped.set(row.resource_type, []);
+      grouped.get(row.resource_type).push(JSON.parse(row.doc));
+    }
+    for (const [resourceType, items] of grouped) db[resourceType] = items;
+  }
   db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
   db.traces = sqlite.prepare("select doc from trace_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
   return db;
@@ -720,8 +1125,43 @@ function saveToSqlite(db) {
     }
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);
+    persistTradingEntities(db, updatedAt);
   });
   write();
+}
+
+function persistTradingEntities(db, updatedAt) {
+  const upsert = sqlite.prepare(`
+    insert into trading_entities
+      (tenant_id, resource_type, resource_id, version, status, symbol, created_at, updated_at, doc)
+    values (@tenant_id, @resource_type, @resource_id, 1, @status, @symbol, @created_at, @updated_at, @doc)
+    on conflict(tenant_id, resource_type, resource_id) do update set
+      version = trading_entities.version + 1,
+      status = excluded.status,
+      symbol = excluded.symbol,
+      updated_at = excluded.updated_at,
+      doc = excluded.doc
+  `);
+  const removeType = sqlite.prepare("delete from trading_entities where resource_type = ?");
+  for (const resourceType of entityCollectionNames) {
+    removeType.run(resourceType);
+    for (const item of db[resourceType] || []) {
+      if (!item?.id) continue;
+      const tenantId = item.tenantId || "tenant_owner";
+      const createdAt = item.createdAt || item.startedAt || updatedAt;
+      const doc = { ...item, tenantId };
+      upsert.run({
+        tenant_id: tenantId,
+        resource_type: resourceType,
+        resource_id: item.id,
+        status: item.status || null,
+        symbol: item.symbol || null,
+        created_at: createdAt,
+        updated_at: item.updatedAt || updatedAt,
+        doc: JSON.stringify(doc)
+      });
+    }
+  }
 }
 
 function writeAuditEntry(entry) {
@@ -759,7 +1199,7 @@ function writeTraceEntry(entry) {
 export function normalizeDatabase(db) {
   const seed = seedDatabase();
   db.meta ||= seed.meta;
-  db.meta.schemaVersion = 2;
+  db.meta.schemaVersion = 3;
   db.user ||= seed.user;
   db.system ||= seed.system;
   db.portfolio ||= seed.portfolio;
@@ -782,8 +1222,14 @@ export function normalizeDatabase(db) {
   db.roles ||= [
     { id: "role_admin", name: "管理员", permissions: ["*"] },
     { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge"] },
+    { id: "role_risk_approver", name: "风控审批员", permissions: ["market.read", "account.read", "risk.check", "write:risk", "approve:trade_plan", "approve:knowledge_skill", "risk.kill_switch", "audit.export"] },
     { id: "role_auditor", name: "审计员", permissions: ["audit.read", "trace.read"] }
   ];
+  if (!db.roles.some((role) => role.id === "role_risk_approver")) {
+    db.roles.push({ id: "role_risk_approver", name: "风控审批员", permissions: ["market.read", "account.read", "risk.check", "write:risk", "approve:trade_plan", "approve:knowledge_skill", "risk.kill_switch", "audit.export"] });
+  }
+  const riskApproverRole = db.roles.find((role) => role.id === "role_risk_approver");
+  if (riskApproverRole) riskApproverRole.permissions = [...new Set([...(riskApproverRole.permissions || []), "approve:knowledge_skill"])];
   db.permissions ||= [
     "market.read",
     "account.read",
@@ -805,12 +1251,16 @@ export function normalizeDatabase(db) {
     "admin:system",
     "critical:trade_execution",
     "critical:kill_switch",
+    "approve:trade_plan",
+    "approve:live_config",
+    "approve:knowledge_skill",
     "knowledge.read",
     "knowledge.write",
     "skill.install",
     "mcp.register",
     "audit.export"
   ];
+  db.permissions = [...new Set([...db.permissions, ...ALL_PERMISSIONS])];
   db.tenants ||= [{ id: "tenant_owner", name: "Owner 工作区", ownerUserId: "user_local_admin", planId: "owner", status: "owner", createdAt: db.meta.createdAt || nowIso() }];
   db.users = (db.users || [{ ...db.user, email: defaultOwnerEmail, status: "active", isOwner: true }]).map((user) => ({
     tenantId: user.tenantId || "tenant_owner",
@@ -971,6 +1421,10 @@ export function normalizeDatabase(db) {
   }
 
   db.knowledge.sourceVersions ||= [];
+  db.knowledge.tradingMethods ||= [];
+  db.knowledge.tradingSkills ||= [];
+  db.knowledge.skillInvocations ||= [];
+  db.knowledge.skillAttributions ||= [];
   db.knowledge.documentNodes ||= [];
   db.knowledge.chunks ||= [];
   db.knowledge.bookCards ||= [];
@@ -1015,7 +1469,7 @@ function auditLogsForVerification(db) {
 }
 
 function auditHash(entry) {
-  const canonical = JSON.stringify({
+  const payload = {
     id: entry.id,
     actor: entry.actor,
     action: entry.action,
@@ -1023,6 +1477,12 @@ function auditHash(entry) {
     severity: entry.severity,
     prevHash: entry.prevHash || null,
     createdAt: entry.createdAt
-  });
+  };
+  if (entry.requestedBy) {
+    payload.requestedBy = entry.requestedBy;
+    payload.requestedByUserId = entry.requestedByUserId || null;
+    payload.tenantId = entry.tenantId || null;
+  }
+  const canonical = JSON.stringify(payload);
   return crypto.createHash("sha256").update(canonical).digest("hex");
 }

@@ -11,7 +11,8 @@ import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } 
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
-import { hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
+import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
+import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
@@ -28,6 +29,17 @@ import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.m
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission } from "./eventSources.mjs";
 import { consolidateRuleProposals, embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
+import {
+  approveKnowledgeSkill,
+  bindKnowledgeSkillsToPlan,
+  compileTradingMethod,
+  knowledgeSkillSummary,
+  retireKnowledgeSkill,
+  retireSkillsForSource,
+  startKnowledgeSkillPaper,
+  syncKnowledgeSkillLifecycle,
+  validateKnowledgeSkill
+} from "./knowledgeSkills.mjs";
 import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
@@ -35,6 +47,7 @@ import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
+import { compileNaturalRiskCondition, validateConditionSpec } from "./dynamicRiskRules.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
@@ -43,6 +56,11 @@ import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
 import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
+import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
+import { dispatchOutbox } from "./outboxDispatcher.mjs";
+import { shipAuditToWorm } from "./auditSink.mjs";
+import { recoverUncertainOrders } from "./omsRecovery.mjs";
+import { requestContextMiddleware } from "./requestContext.mjs";
 
 dotenv.config();
 installProxyFromEnv();
@@ -67,6 +85,39 @@ if (traderRole) traderRole.permissions = TRADER_PERMISSIONS;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
 ensureDefaultEventSources(db);
+for (const server of db.mcpServers || []) {
+  const legacyApiKey = server.apiKey || server.headers?.Authorization?.replace(/^Bearer\s+/i, "");
+  if (!legacyApiKey) continue;
+  try {
+    const secretName = server.apiKeySecretName || `MCP_${server.id}_API_KEY`;
+    storeSecret(db, secretName, legacyApiKey, "mcp");
+    server.apiKeySecretName = secretName;
+    server.credentialMigration = "encrypted";
+  } catch {
+    server.enabled = false;
+    server.status = "secret_migration_required";
+    server.credentialMigration = "removed_plaintext_reenter_required";
+  }
+  delete server.apiKey;
+  if (server.headers) {
+    delete server.headers.Authorization;
+    delete server.headers.authorization;
+    if (!Object.keys(server.headers).length) delete server.headers;
+  }
+}
+for (const method of db.knowledge?.tradingMethods || []) {
+  const alreadyCompiled = (db.knowledge?.tradingSkills || []).some((skill) => skill.sourceMethodId === method.id && !["retired", "superseded"].includes(skill.status));
+  if (!alreadyCompiled) {
+    try {
+      if (method.direction === "both") {
+        compileTradingMethod(db, method.id, { direction: "long" }, "StartupMigration");
+        compileTradingMethod(db, method.id, { direction: "short" }, "StartupMigration");
+      } else {
+        compileTradingMethod(db, method.id, {}, "StartupMigration");
+      }
+    } catch { /* 保留为不可执行顾问知识 */ }
+  }
+}
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();
@@ -88,7 +139,24 @@ ensureDefaultEventSources(db);
 })();
 saveDb(db);
 
-app.use(cors());
+const corsAllowlist = String(process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",").map((item) => item.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsAllowlist.includes(origin) || (corsAllowlist.length === 0 && host === "127.0.0.1")) return callback(null, true);
+    return callback(new Error("CORS origin denied"));
+  },
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'");
+  next();
+});
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(publicDir));
 app.get(/^\/(?!api(?:\/|$)).*/, (_req, res, next) => {
@@ -97,6 +165,7 @@ app.get(/^\/(?!api(?:\/|$)).*/, (_req, res, next) => {
   });
 });
 installAuth(app, db);
+app.use(requestContextMiddleware);
 
 // 注册真实任务处理器并确保系统任务存在（执行轮询/持仓监控/核算/自主巡检/对账）
 registerTaskHandler("execution_poll", (database) => pollExecutionOrders(database));
@@ -109,7 +178,11 @@ registerTaskHandler("agent_cycle", async (database) => {
 });
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
-registerTaskHandler("paper_forward", (database) => runPaperForward(database));
+registerTaskHandler("paper_forward", async (database) => {
+  const paper = await runPaperForward(database);
+  const skills = syncKnowledgeSkillLifecycle(database);
+  return { ...paper, knowledgeSkills: skills };
+});
 // ② 平仓自动复盘：逐笔沉淀教训入记忆。
 registerTaskHandler("trade_reflection", (database) => runTradeReflection(database));
 // ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
@@ -125,6 +198,9 @@ registerTaskHandler("strategy_improvement", (database) => {
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", (database) => verifyTrc20Payments(database));
+registerTaskHandler("outbox_dispatch", (database) => dispatchOutbox(database));
+registerTaskHandler("audit_worm_ship", (database) => shipAuditToWorm(database));
+registerTaskHandler("oms_recovery", (database) => recoverUncertainOrders(database));
 registerTaskHandler("okx_readonly_sync", async (database) => {
   const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
   if (!accounts.length) return { status: "no_read_account" };
@@ -168,6 +244,9 @@ ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验�
 ensureSystemTask(db, { id: "task_sys_trade_reflection", name: "平仓自动复盘", handler: "trade_reflection", schedule: "Every 30m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_improvement", name: "策略改进闭环", handler: "strategy_improvement", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上核验", handler: "payment_verify", schedule: "Every 2m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_outbox", name: "交易事件 Outbox 派发", handler: "outbox_dispatch", schedule: "Every 1m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_audit_worm", name: "审计日志 WORM 外送", handler: "audit_worm_ship", schedule: "Every 1m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_oms_recovery", name: "不确定订单恢复", handler: "oms_recovery", schedule: "Every 1m" }, saveDb);
 
 startScheduler(db, saveDb);
 startRealtimeManager(db, saveDb);
@@ -570,13 +649,18 @@ app.post("/api/payments/trc20/webhook", (req, res) => {
   res.json({ ok: true, activated: Boolean(payment && signatureOk) });
 });
 
-app.post("/api/system/autonomy", requirePermission("write:mandate"), (req, res) => {
+app.post("/api/system/autonomy", (req, res) => {
+  const requiredPermission = req.body.enabled === false ? "write:mandate" : "approve:live_config";
+  if (!userHasPermission(db, req.user, requiredPermission)) {
+    return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
+  }
   db.system.autonomyEnabled = req.body.enabled !== false;
-  if (db.system.autonomyEnabled && db.system.killSwitch) db.system.killSwitch = false;
-  db.system.riskStatus = db.system.autonomyEnabled ? "正常" : "人工暂停";
-  db.system.latestAction = db.system.autonomyEnabled ? "恢复 AI 交易员观察与计划" : "暂停 AI 交易员自动推进";
+  db.system.riskStatus = db.system.killSwitch ? "熔断停机" : db.system.autonomyEnabled ? "正常" : "人工暂停";
+  db.system.latestAction = db.system.autonomyEnabled
+    ? db.system.killSwitch ? "AI 交易员保持熔断，仅恢复非交易观察" : "恢复 AI 交易员观察与计划"
+    : "暂停 AI 交易员自动推进";
   db.system.updatedAt = nowIso();
-  appendAudit(db, db.system.autonomyEnabled ? "恢复自动交易推进" : "暂停自动交易推进", "system.autonomy", db.user.name, db.system.autonomyEnabled ? "info" : "warning");
+  appendAudit(db, db.system.autonomyEnabled ? "恢复自动交易推进" : "暂停自动交易推进", "system.autonomy", req.user?.name || db.user.name, db.system.autonomyEnabled ? "info" : "warning");
   appendTrace(db, "system", db.system.latestAction, db.system.autonomyEnabled ? "ok" : "paused");
   persist(res, db.system);
 });
@@ -758,17 +842,24 @@ app.delete("/api/watchlist/:symbol", requirePermission("write:realtime"), (req, 
 // 公有 K 线（给自绘图表用真实 OKX 数据）。公开数据，走鉴权白名单。
 // 服务端→OKX REST 拉一次 ~4s，移动端易超时；这里加 10s 内存缓存，重复请求即时返回。
 const klineCache = new Map(); // key -> { at, payload }
+// 纯公开 OKX K 线（无账户数据）：保持免鉴权——前端图表 fetch 不带 Authorization 头。
 app.get("/api/market/klines", async (req, res) => {
   try {
-    const symbol = String(req.query.symbol || "BTC/USDT").toUpperCase();
+    const symbol = normalizeSymbol(String(req.query.symbol || "BTC/USDT"));
+    if (!symbol) return res.status(400).json({ error: "无效的交易对", candles: [] });
     const tf = String(req.query.tf || "1h");
-    const limit = Math.min(Number(req.query.limit || 200), 500);
+    if (!["5m", "15m", "1h", "4h", "1d"].includes(tf)) return res.status(400).json({ error: "无效的 K 线周期", candles: [] });
+    const requestedLimit = Number(req.query.limit || 200);
+    const limit = Number.isFinite(requestedLimit) ? Math.max(20, Math.min(requestedLimit, 500)) : 200;
     const key = `${symbol}|${tf}|${limit}`;
     const hit = klineCache.get(key);
     if (hit && Date.now() - hit.at < 10000) { res.json(hit.payload); return; }
     const candles = await getHistoricalKlines(symbol, tf, limit);
     const payload = { symbol, tf, candles: candles || [] };
-    if (candles && candles.length) klineCache.set(key, { at: Date.now(), payload });
+    if (candles && candles.length) {
+      klineCache.set(key, { at: Date.now(), payload });
+      while (klineCache.size > 100) klineCache.delete(klineCache.keys().next().value);
+    }
     res.json(payload);
   } catch (error) {
     res.status(500).json({ error: `K线获取失败：${error.message}`, candles: [] });
@@ -784,8 +875,24 @@ app.get("/api/market/token-profile", async (req, res) => {
   }
 });
 
-// 实时行情 SSE：把 OKX WS 逐笔更新推给前端（公有行情，无需鉴权）。
+// 实时行情 SSE：匿名端点只能发送公有市场字段。
+// 组合/持仓广播也共用内部 listener，因此必须在边界显式过滤，防止账户数据泄露。
+// 鉴权流票据：EventSource 无法携带 Authorization 头。登录后先领短票，再以 ?ticket= 连流。
+// 票据只授权“读取实时流”（不是会话令牌，泄漏面远小于 token）；有效期内可复用，
+// 浏览器断线自动重连沿用同一 URL 也能续上。匿名连接仍只收公开行情白名单字段。
+const streamTickets = new Map(); // ticket -> { userId, expiresAt }
+const STREAM_TICKET_TTL_MS = 12 * 3600 * 1000;
+app.post("/api/stream/ticket", (req, res) => {
+  if (authRequired() && !req.user) return res.status(401).json({ error: "Authentication required" });
+  for (const [t, info] of streamTickets) if (info.expiresAt <= Date.now()) streamTickets.delete(t); // 顺带清理过期票
+  const ticket = crypto.randomBytes(24).toString("hex");
+  streamTickets.set(ticket, { userId: req.user?.id || db.user?.id || "owner", expiresAt: Date.now() + STREAM_TICKET_TTL_MS });
+  res.json({ ticket, expiresInMs: STREAM_TICKET_TTL_MS });
+});
+
 app.get("/api/stream", (req, res) => {
+  const ticketInfo = req.query.ticket ? streamTickets.get(String(req.query.ticket)) : null;
+  const authenticated = !authRequired() || Boolean(ticketInfo && ticketInfo.expiresAt > Date.now());
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -793,7 +900,11 @@ app.get("/api/stream", (req, res) => {
     "X-Accel-Buffering": "no"
   });
   res.write("retry: 3000\n\n");
-  const send = (update) => { try { res.write(`data: ${JSON.stringify(update)}\n\n`); } catch { /* noop */ } };
+  const send = (update) => {
+    // 匿名连接只放行公开行情；持有效票据的连接可收 portfolio/knowledge_updated 等本人数据。
+    if (!authenticated && !isPublicMarketStreamUpdate(update)) return;
+    try { res.write(`data: ${JSON.stringify(update)}\n\n`); } catch { /* noop */ }
+  };
   addStreamListener(send);
   const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* noop */ } }, 25000);
   req.on("close", () => { clearInterval(keepAlive); removeStreamListener(send); });
@@ -812,6 +923,7 @@ app.post("/api/mandates/parse", requirePermission("write:mandate"), (req, res) =
 app.post("/api/mandates", requirePermission("write:mandate"), (req, res) => {
   const mandate = {
     id: id("mandate"),
+    version: 1,
     status: "active",
     createdAt: nowIso(),
     allowedActions: ["open", "cancel", "amend", "close", "move_stop", "take_profit"],
@@ -832,7 +944,7 @@ app.get("/api/mandates/:id", (req, res) => {
 app.patch("/api/mandates/:id", requirePermission("write:mandate"), (req, res) => {
   const mandate = db.mandates.find((item) => item.id === req.params.id);
   if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  Object.assign(mandate, req.body, { updatedAt: nowIso() });
+  Object.assign(mandate, req.body, { version: Number(mandate.version || 1) + 1, updatedAt: nowIso() });
   appendAudit(db, `更新授权状态：${req.body.status || "updated"}`, mandate.id, db.user.name);
   persist(res, mandate);
 });
@@ -840,6 +952,7 @@ app.patch("/api/mandates/:id", requirePermission("write:mandate"), (req, res) =>
 app.post("/api/mandates/:id/activate", requirePermission("write:mandate"), (req, res) => {
   const mandate = activateMandate(db, req.params.id);
   if (!mandate) return res.status(404).json({ error: "Mandate not found" });
+  mandate.version = Number(mandate.version || 1) + 1;
   persist(res, mandate);
 });
 
@@ -847,6 +960,7 @@ app.post("/api/mandates/:id/pause", requirePermission("write:mandate"), (req, re
   const mandate = db.mandates.find((item) => item.id === req.params.id);
   if (!mandate) return res.status(404).json({ error: "Mandate not found" });
   mandate.status = "paused";
+  mandate.version = Number(mandate.version || 1) + 1;
   mandate.pausedAt = nowIso();
   appendAudit(db, "暂停授权委托", mandate.id, db.user.name, "warning");
   persist(res, mandate);
@@ -856,6 +970,7 @@ app.post("/api/mandates/:id/revoke", requirePermission("write:mandate"), (req, r
   const mandate = db.mandates.find((item) => item.id === req.params.id);
   if (!mandate) return res.status(404).json({ error: "Mandate not found" });
   mandate.status = "revoked";
+  mandate.version = Number(mandate.version || 1) + 1;
   mandate.revokedAt = nowIso();
   appendAudit(db, "撤销授权委托", mandate.id, db.user.name, "warning");
   persist(res, mandate);
@@ -1046,15 +1161,17 @@ app.delete("/api/knowledge/sources/:id", requirePermission("write:knowledge"), (
   const source = db.knowledge.sources.find((item) => item.id === req.params.id);
   if (!source) return res.status(404).json({ error: "Knowledge source not found" });
   const sid = source.id;
+  const retiredSkills = retireSkillsForSource(db, sid, db.user.name, "knowledge_source_deleted");
   db.knowledge.sources = db.knowledge.sources.filter((item) => item.id !== sid);
   db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== sid);
   db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== sid);
   db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(sid));
+  db.knowledge.tradingMethods = (db.knowledge.tradingMethods || []).filter((method) => method.source?.id !== sid && method.sourceId !== sid);
   db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((rule) => !rule.sourceRefs?.includes(sid));
   db.knowledge.theoryFrameworks = (db.knowledge.theoryFrameworks || []).filter((fw) => !fw.sourceRefs?.includes(sid));
   appendAudit(db, "删除知识来源", sid, "Curator");
   appendTrace(db, "knowledge_delete", `删除知识来源 ${source.title}`);
-  persist(res, { removed: sid });
+  persist(res, { removed: sid, retiredSkills });
 });
 
 app.post("/api/knowledge/rag-query", async (req, res) => {
@@ -1069,6 +1186,59 @@ app.post("/api/knowledge/reembed", requirePermission("write:knowledge"), async (
     persist(res, { ...result, embeddingStatus: embeddingStatus(db) });
   } catch (error) {
     res.status(500).json({ error: `语义向量化失败：${error.message}` });
+  }
+});
+
+app.get("/api/knowledge/skills", (_req, res) => {
+  res.json(knowledgeSkillSummary(db));
+});
+
+app.post("/api/knowledge/methods/:id/compile", requirePermission("write:knowledge"), (req, res) => {
+  try {
+    const skill = compileTradingMethod(db, req.params.id, req.body || {}, req.user?.name || db.user.name);
+    persist(res, { skill });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/knowledge/skills/:id/validate", requirePermission("write:review"), async (req, res) => {
+  try {
+    const result = await validateKnowledgeSkill(db, req.params.id, req.body || {}, req.user?.name || db.user.name);
+    persist(res, result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/knowledge/skills/:id/paper", requirePermission("write:review"), async (req, res) => {
+  try {
+    const result = await startKnowledgeSkillPaper(db, req.params.id, req.body || {}, req.user?.name || db.user.name);
+    persist(res, result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/knowledge/skills/sync", requirePermission("write:review"), (req, res) => {
+  persist(res, syncKnowledgeSkillLifecycle(db, req.user?.name || db.user.name));
+});
+
+app.post("/api/knowledge/skills/:id/approve", requirePermission("approve:knowledge_skill"), (req, res) => {
+  try {
+    const skill = approveKnowledgeSkill(db, req.params.id, req.user?.name || db.user.name, req.body.note);
+    persist(res, { skill });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/knowledge/skills/:id/retire", requirePermission("approve:knowledge_skill"), (req, res) => {
+  try {
+    const skill = retireKnowledgeSkill(db, req.params.id, req.user?.name || db.user.name, req.body.reason);
+    persist(res, { skill });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -1126,16 +1296,29 @@ app.post("/api/knowledge/rules/proposals", requirePermission("write:knowledge"),
   persist(res, rule);
 });
 
-app.post("/api/knowledge/rules/:id/approve", requirePermission("write:risk"), (req, res) => {
+app.post("/api/knowledge/rules/:id/approve", requirePermission("approve:knowledge_skill"), (req, res) => {
   const rule = db.knowledge.ruleProposals.find((item) => item.id === req.params.id);
   if (!rule) return res.status(404).json({ error: "Rule not found" });
   rule.status = req.body.approved === false ? "已拒绝" : "已批准";
   rule.reviewedAt = nowIso();
-  rule.reviewedBy = db.user.name;
+  rule.reviewedBy = req.user?.name || db.user.name;
   if (rule.status === "已批准") {
-    db.riskRules.unshift({ id: `risk_from_${rule.id}`, name: rule.name, scope: "knowledge", level: rule.level, enabled: true, action: rule.action, description: `来自专家知识库规则 ${rule.id}` });
+    const conditionSpec = rule.conditionSpec || compileNaturalRiskCondition(rule.condition);
+    const conditionValidation = validateConditionSpec(conditionSpec);
+    db.riskRules.unshift({
+      id: `risk_from_${rule.id}`,
+      name: rule.name,
+      scope: "knowledge",
+      level: rule.level,
+      enabled: true,
+      action: rule.action,
+      condition: rule.condition || "",
+      conditionSpec: conditionValidation.valid ? conditionSpec : null,
+      enforcementStatus: conditionValidation.valid ? "enforced" : "advisory_uncompiled",
+      description: `来自专家知识库规则 ${rule.id}${conditionValidation.valid ? "" : "；自然语言条件尚未编译，当前仅作提示"}`
+    });
   }
-  appendAudit(db, `${rule.status}知识规则`, rule.id, db.user.name);
+  appendAudit(db, `${rule.status}知识规则`, rule.id, req.user?.name || db.user.name);
   persist(res, rule);
 });
 
@@ -1253,7 +1436,13 @@ app.delete("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (
 
 app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
   try {
-    const result = await runAgentChat(db, { message: req.body.message, sessionId: req.body.sessionId }, saveDb);
+    const result = await runAgentChat(db, {
+      message: req.body.message,
+      sessionId: req.body.sessionId,
+      tenantId: req.tenantId,
+      userId: req.user?.id,
+      userName: req.user?.name
+    }, saveDb);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -1303,7 +1492,8 @@ app.post("/api/paper/spawn-from-profiles", requirePermission("write:review"), as
 app.post("/api/paper/run", requirePermission("write:review"), async (_req, res) => {
   try {
     const result = await runPaperForward(db);
-    persist(res, result);
+    const knowledgeSkills = syncKnowledgeSkillLifecycle(db, db.user.name);
+    persist(res, { ...result, knowledgeSkills });
   } catch (error) {
     res.status(500).json({ error: `前向推进失败：${error.message}` });
   }
@@ -1449,9 +1639,11 @@ app.post("/api/skills/:id/scan", requirePermission("write:skills"), (req, res) =
   persist(res, skill);
 });
 
-app.post("/api/skills/:id/install", requirePermission("write:skills"), (req, res) => {
+app.post("/api/skills/:id/install", requirePermission("skill.install"), (req, res) => {
   try {
-    const skill = installSkill(db, req.params.id, db.user.name);
+    const skill = installSkill(db, req.params.id, req.user?.name || db.user.name, {
+      securityApproved: req.body.securityApproved === true
+    });
     if (!skill) return res.status(404).json({ error: "Skill not found" });
     persist(res, skill);
   } catch (error) {
@@ -1484,13 +1676,24 @@ app.post("/api/skills/:id/run-sandbox", requirePermission("write:skills"), async
   persist(res, run);
 });
 
-app.get("/api/mcp", (_req, res) => res.json(db.mcpServers));
+app.get("/api/mcp", (_req, res) => res.json((db.mcpServers || []).map(({ apiKey, apiKeySecretName, headers, ...server }) => ({
+  ...server,
+  hasApiKey: Boolean(apiKeySecretName || apiKey)
+}))));
 
 app.post("/api/mcp", requirePermission("write:mcp"), (req, res) => {
-  const server = { id: id("mcp"), status: "registered", toolCount: 0, tools: [], enabled: true, permissions: [], ...req.body };
+  const serverId = id("mcp");
+  const { apiKey, headers: _headers, ...safeBody } = req.body || {};
+  const server = { id: serverId, status: "registered", toolCount: 0, tools: [], enabled: true, permissions: [], allowedTools: [], ...safeBody };
+  if (apiKey) {
+    const secretName = `MCP_${serverId}_API_KEY`;
+    storeSecret(db, secretName, apiKey, "mcp");
+    server.apiKeySecretName = secretName;
+  }
   db.mcpServers.unshift(server);
-  appendAudit(db, "注册 MCP Server", server.id, db.user.name);
-  persist(res, server);
+  appendAudit(db, "注册 MCP Server", server.id, req.user?.name || db.user.name);
+  const { apiKeySecretName, ...safeServer } = server;
+  persist(res, { ...safeServer, hasApiKey: Boolean(apiKeySecretName) });
 });
 
 app.post("/api/mcp/:id/connect", requirePermission("write:mcp"), async (req, res) => {
@@ -1654,14 +1857,18 @@ app.get("/api/reconciler/reports", (_req, res) => {
 });
 
 app.post("/api/trade-plans", requirePermission("write:trade_plan"), (req, res) => {
+  const selectedMandate = req.body.mandateId
+    ? db.mandates.find((item) => item.id === req.body.mandateId)
+    : db.mandates[0];
   const plan = {
     id: id("plan"),
-    mandateId: db.mandates[0]?.id,
+    mandateId: selectedMandate?.id,
     exchange: "BINANCE",
     marketType: "perpetual_usdt",
     strategy: "manual_review",
     status: "draft",
     ...req.body,
+    mandateVersion: Number(selectedMandate?.version || 1),
     createdAt: nowIso()
   };
   const bundle = runExpertAnalysis(db, {
@@ -1670,6 +1877,10 @@ app.post("/api/trade-plans", requirePermission("write:trade_plan"), (req, res) =
     symbol: plan.symbol
   });
   plan.analysisBundleId = bundle.id;
+  bindKnowledgeSkillsToPlan(db, plan, {
+    timeframe: req.body.timeframe || "1h",
+    regime: db.marketRegime?.regime || db.marketRegime?.label || ""
+  }, db.user.name);
   db.tradePlans.unshift(plan);
   appendAudit(db, "创建交易计划", plan.id, "AI 交易员");
   persist(res, { plan, analysisBundle: bundle });
@@ -1682,7 +1893,7 @@ app.get("/api/trade-plans/:id", (req, res) => {
   res.json(plan);
 });
 
-app.post("/api/trade-plans/:id/risk-check", requirePermission("write:risk"), (req, res) => {
+app.post("/api/trade-plans/:id/risk-check", requirePermission("risk.check"), (req, res) => {
   const plan = db.tradePlans.find((item) => item.id === req.params.id);
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
   const result = evaluateTradePlan(db, { ...plan, ...req.body });
@@ -1705,7 +1916,7 @@ app.post("/api/trade-plans/:id/request-approval", requirePermission("write:trade
   persist(res, plan);
 });
 
-app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), async (req, res) => {
+app.post("/api/trade-plans/:id/approve", requirePermission("approve:trade_plan"), async (req, res) => {
   const plan = db.tradePlans.find((item) => item.id === req.params.id);
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
   if (!plan.lastRiskCheck) return res.status(400).json({ error: "计划尚未通过风控检查，先运行 risk-check" });
@@ -1723,8 +1934,8 @@ app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), 
   }
   plan.status = "approved";
   plan.approvedAt = nowIso();
-  plan.approvedBy = db.user.name;
-  appendAudit(db, "人工批准交易计划", plan.id, db.user.name, "warning");
+  plan.approvedBy = req.user?.name || db.user.name;
+  appendAudit(db, "人工批准交易计划", plan.id, req.user?.name || db.user.name, "warning");
   // 批准即进入执行引擎：实盘开启则真实下单，关闭则记录干跑结果。
   const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
   const guard = describeGuardReason(execution.reason);
@@ -1738,9 +1949,8 @@ app.post("/api/trade-plans/:id/approve", requirePermission("write:trade_plan"), 
 });
 
 // AI 交易员代操作：待确认操作的执行（点确认后）。真钱/授权动作仍受各自的硬闸约束（防御纵深）。
-async function executePendingAction(db, record) {
+async function executePendingAction(db, record, actor = "Owner") {
   const a = record.args || {};
-  const actor = db.user?.name || "Owner";
   if (record.type === "run_reconcile") {
     return { ok: true, result: runReconciler(db, { mode: "agent_confirm" }) };
   }
@@ -1788,13 +1998,23 @@ async function executePendingAction(db, record) {
   return { ok: false, error: "unknown_action_type" };
 }
 
-app.post("/api/agent/actions/:id/confirm", requirePermission("write:mandate"), async (req, res) => {
+app.post("/api/agent/actions/:id/confirm", async (req, res) => {
   const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
   if (!record) return res.status(404).json({ error: "待确认操作不存在" });
   if (record.status !== "awaiting_confirmation") return res.status(400).json({ error: "该操作已处理" });
-  const result = await executePendingAction(db, record);
+  if (record.tenantId && record.tenantId !== (req.tenantId || "tenant_owner")) {
+    return res.status(404).json({ error: "待确认操作不存在" });
+  }
+  const authorization = canConfirmPendingAction(db, req.user, record);
+  if (!authorization.allowed) {
+    return res.status(403).json({ error: `Missing permission: ${authorization.requiredPermission || "unknown_action"}` });
+  }
+  const actor = req.user?.name || "Unknown user";
+  const result = await executePendingAction(db, record, actor);
   record.status = result.ok ? "executed" : "failed";
   record.result = result;
+  record.resolvedByUserId = req.user?.id || null;
+  record.resolvedBy = actor;
   record.resolvedAt = nowIso();
   persist(res, { action: record, result });
 });
@@ -1802,7 +2022,11 @@ app.post("/api/agent/actions/:id/confirm", requirePermission("write:mandate"), a
 app.post("/api/agent/actions/:id/cancel", requirePermission("write:mandate"), (req, res) => {
   const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
   if (!record) return res.status(404).json({ error: "待确认操作不存在" });
+  if (record.tenantId && record.tenantId !== (req.tenantId || "tenant_owner")) return res.status(404).json({ error: "待确认操作不存在" });
+  if (record.status !== "awaiting_confirmation") return res.status(400).json({ error: "该操作已处理" });
   record.status = "cancelled";
+  record.resolvedByUserId = req.user?.id || null;
+  record.resolvedBy = req.user?.name || "Unknown user";
   record.resolvedAt = nowIso();
   persist(res, { action: record });
 });
@@ -1852,11 +2076,11 @@ app.get("/api/performance", (_req, res) => {
   res.json(performanceReport(db));
 });
 
-app.post("/api/accounting/refresh", requirePermission("write:risk"), (_req, res) => {
+app.post("/api/accounting/refresh", requirePermission("risk.check"), (_req, res) => {
   persist(res, refreshAccounting(db));
 });
 
-app.post("/api/risk/check-trade-plan", requirePermission("write:risk"), (req, res) => {
+app.post("/api/risk/check-trade-plan", requirePermission("risk.check"), (req, res) => {
   const plan = req.body.tradePlanId ? db.tradePlans.find((item) => item.id === req.body.tradePlanId) : req.body;
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
   const result = evaluateTradePlan(db, plan);
@@ -1866,11 +2090,25 @@ app.post("/api/risk/check-trade-plan", requirePermission("write:risk"), (req, re
   persist(res, result);
 });
 
-app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), async (req, res) => {
+app.post("/api/risk/kill-switch", async (req, res) => {
+  const requiredPermission = req.body.enabled === false ? "risk.kill_switch" : "risk.check";
+  if (!userHasPermission(db, req.user, requiredPermission)) {
+    return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
+  }
   db.system.killSwitch = Boolean(req.body.enabled);
   db.system.autonomyEnabled = !db.system.killSwitch;
   db.system.riskStatus = db.system.killSwitch ? "熔断停机" : "正常";
   if (db.system.killSwitch) {
+    const cancellationResults = [];
+    for (const executionOrder of db.executionOrders || []) {
+      if (!["entry_pending", "entry_partial", "entry_filled", "protecting"].includes(executionOrder.status)) continue;
+      const result = await closeExecution(db, executionOrder.id, "kill_switch");
+      cancellationResults.push({
+        executionOrderId: executionOrder.id,
+        status: result.status,
+        detail: result.result?.reason || result.result?.status || null
+      });
+    }
     const cancelRequested = [];
     for (const order of db.orders || []) {
       const open = ["open", "new", "partially_filled", "submitted"].includes(String(order.status || "").toLowerCase());
@@ -1881,7 +2119,7 @@ app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), async (
         cancelRequested.push(order.id);
       }
     }
-    if (cancelRequested.length) {
+    if (cancelRequested.length || cancellationResults.length) {
       db.riskIncidents.unshift({
         id: id("incident"),
         severity: "critical",
@@ -1889,17 +2127,28 @@ app.post("/api/risk/kill-switch", requirePermission("risk.kill_switch"), async (
         title: "一键熔断触发撤单请求",
         source: "risk.kill_switch",
         affectedOrders: cancelRequested,
+        cancellationResults,
+        unconfirmed: cancellationResults.filter((item) => !["cancelled", "closed"].includes(item.status)),
         createdAt: nowIso()
       });
     }
+    db.system.lastKillSwitchCancellation = {
+      requested: cancellationResults.length,
+      confirmed: cancellationResults.filter((item) => ["cancelled", "closed"].includes(item.status)).length,
+      unconfirmed: cancellationResults.filter((item) => !["cancelled", "closed"].includes(item.status)).length,
+      results: cancellationResults,
+      checkedAt: nowIso()
+    };
   }
   const killReason = String(req.body.reason || "").trim();
-  appendAudit(db, `${db.system.killSwitch ? "启用一键熔断" : "解除一键熔断"}${killReason ? `：${killReason}` : ""}`, "risk.kill_switch", db.user.name, db.system.killSwitch ? "critical" : "info");
+  appendAudit(db, `${db.system.killSwitch ? "启用一键熔断" : "解除一键熔断"}${killReason ? `：${killReason}` : ""}`, "risk.kill_switch", req.user?.name || db.user.name, db.system.killSwitch ? "critical" : "info");
   appendTrace(db, "risk", db.system.killSwitch ? "一键熔断开启" : "一键熔断解除", db.system.killSwitch ? "blocked" : "ok");
   await notifyLark(db, {
     severity: db.system.killSwitch ? "critical" : "info",
     title: db.system.killSwitch ? "🛑 一键熔断已触发" : "🟢 熔断已解除",
-    body: `${db.system.killSwitch ? "所有新开仓已被阻断，在途委托已请求撤单。请检查账户与市场。" : "熔断解除，系统恢复正常风控运行。"}${killReason ? `\n原因：${killReason}` : ""}`
+    body: `${db.system.killSwitch
+      ? `所有新开仓已被阻断；风险降低动作确认 ${db.system.lastKillSwitchCancellation?.confirmed || 0} 笔，未确认 ${db.system.lastKillSwitchCancellation?.unconfirmed || 0} 笔。未确认项必须人工检查交易所。`
+      : "熔断解除，系统恢复正常风控运行。"}${killReason ? `\n原因：${killReason}` : ""}`
   });
   persist(res, db.system);
 });
@@ -1910,9 +2159,27 @@ app.get("/api/risk/status", (_req, res) => {
 
 app.get("/api/risk/rules", (_req, res) => res.json(db.riskRules));
 app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
-  const rule = { id: id("risk"), name: req.body.name || "新风控规则", scope: req.body.scope || "trade", level: req.body.level || "L2", enabled: true, action: req.body.action || "notify", description: req.body.description || "", event: req.body.event || "", condition: req.body.condition || "", createdAt: nowIso() };
+  const conditionValidation = validateConditionSpec(req.body.conditionSpec);
+  const action = req.body.action || "notify";
+  if (action !== "notify" && !conditionValidation.valid) {
+    return res.status(400).json({ error: `阻断型规则必须提供受支持的 conditionSpec：${conditionValidation.reason}` });
+  }
+  const rule = {
+    id: id("risk"),
+    name: req.body.name || "新风控规则",
+    scope: req.body.scope || "trade",
+    level: req.body.level || "L2",
+    enabled: true,
+    action,
+    description: req.body.description || "",
+    event: req.body.event || "",
+    condition: req.body.condition || "",
+    conditionSpec: conditionValidation.valid ? req.body.conditionSpec : null,
+    enforcementStatus: conditionValidation.valid ? "enforced" : "advisory_uncompiled",
+    createdAt: nowIso()
+  };
   db.riskRules.unshift(rule);
-  appendAudit(db, "创建风控规则", rule.id, db.user.name);
+  appendAudit(db, "创建风控规则", rule.id, req.user?.name || db.user.name);
   persist(res, rule);
 });
 
@@ -2188,13 +2455,13 @@ app.post("/api/review/strategy-improvement", requirePermission("write:review"), 
   });
 });
 
-app.get("/api/traces", (_req, res) => res.json(db.traces));
-app.get("/api/audit-logs", (_req, res) => res.json(db.auditLogs));
-app.get("/api/audit-logs/export", (req, res) => {
+app.get("/api/traces", requirePermission("trace.read"), (_req, res) => res.json(db.traces));
+app.get("/api/audit-logs", requirePermission("audit.read"), (_req, res) => res.json(db.auditLogs));
+app.get("/api/audit-logs/export", requirePermission("audit.export"), (req, res) => {
   const format = req.query.format === "csv" ? "csv" : "json";
   res.type(format === "csv" ? "text/csv" : "application/json").send(exportAuditLogs(db, format));
 });
-app.get("/api/traces/export", (req, res) => {
+app.get("/api/traces/export", requirePermission("audit.export"), (req, res) => {
   const format = req.query.format === "csv" ? "csv" : "json";
   res.type(format === "csv" ? "text/csv" : "application/json").send(exportTraces(db, format));
 });

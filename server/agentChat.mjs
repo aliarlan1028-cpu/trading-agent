@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
+import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEval.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
+import { bindKnowledgeSkillsToPlan, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
@@ -229,7 +231,9 @@ const TOOL_DEFS = [
         stopLoss: { type: "number" },
         takeProfits: { type: "array", items: { type: "number" } },
         leverage: { type: "number" },
+        timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "计划使用的分析周期" },
         riskPercent: { type: "number", description: "单笔风险占比，如 0.3" },
+        knowledgeSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用的 active 知识技能 ID；只有实际用于推理与计划条件时才填写" },
         rationale: { type: "string", description: "完整推理：依据哪些行情结构、知识规则与事件判断" }
       },
       required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "rationale"]
@@ -301,6 +305,19 @@ function clip(text, max) {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
+function quarantineInjectedKnowledge(db, chunks = []) {
+  const safe = [];
+  for (const chunk of chunks) {
+    const classification = classifyUntrustedContent(chunk.text);
+    if (!classification.safe) {
+      appendTrace(db, "knowledge_security", `隔离疑似提示注入：${chunk.citationLocator || chunk.id || "unknown"}`, "blocked");
+      continue;
+    }
+    safe.push(chunk);
+  }
+  return safe;
+}
+
 export async function buildSystemPrompt(db, userText = "") {
   const sections = [BASE_RULES];
   const state = db.agentStateFiles || {};
@@ -365,7 +382,7 @@ export async function buildSystemPrompt(db, userText = "") {
     sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
   }
 
-  const chunks = await retrieveChunksSemantic(db, userText, 5);
+  const chunks = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, userText, 5));
   if (chunks.length) {
     const knowledge = chunks
       .map((chunk, index) => `[[${index + 1}]] 来源：${chunk.citationLocator}\n${clip(chunk.text, 600)}`)
@@ -383,14 +400,14 @@ export async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
-  // B 路：书本交易方法/进场 setup —— 作为「参考专家方法」注入决策，帮 AI 判断"什么行情、什么信号该怎么进出"，
-  // 提升方向与入场准确率。顾问性质：AI 结合当前真实行情/信号/风控自主决策，不照搬；风控闸门仍最终把关。
-  const methods = db.knowledge?.tradingMethods || [];
-  if (methods.length) {
-    const text = methods.slice(0, 14)
-      .map((m) => `- 《${m.source?.title || "书"}》${m.name}（${m.marketRegime} · ${m.symbolScope} · ${m.timeframe} · ${m.direction}）｜进场 ${m.entry || "-"}${m.confirmation ? `（确认:${m.confirmation}）` : ""}｜止损 ${m.stop || "-"}｜止盈 ${m.takeProfit || "-"}${m.invalidation ? `｜不做:${m.invalidation}` : ""}`)
+  // 只有“历史验证 → 纯前向模拟 → 人工批准”全部完成、且版本指纹未变化的知识技能，
+  // 才能进入自主交易上下文。原始方法草案仍可通过 RAG 阅读，但不能被称为可执行技能。
+  const activeSkills = selectActiveKnowledgeSkills(db, {}, { limit: 5 });
+  if (activeSkills.length) {
+    const text = activeSkills
+      .map((skill) => `- [${skill.id}@v${skill.version}]《${skill.sourceTitle || "知识来源"}》${skill.name}｜模板 ${skill.spec.templateLabel}｜${skill.spec.symbolScope.join("/")} · ${skill.spec.timeframe} · ${skill.spec.direction}｜止损 ${skill.spec.stopDescription}｜退出 ${skill.spec.takeProfitDescription}`)
       .join("\n");
-    sections.push(`【书本交易方法·参考（共 ${methods.length} 条，来自你已学习的经典交易著作）】\n这些是专家总结的"什么行情、什么信号该怎么进出场"的方法框架。提计划时：先判断当前行情属于哪种 regime，再参考匹配的方法确定方向与入场/止损/止盈——但必须用当前真实数据与风控确认，不照搬、不硬套。\n${text}`);
+    sections.push(`【已验证且已批准的知识交易技能】\n只能在交易对、方向、周期和市场状态匹配时使用。若某技能确实参与了本次入场、确认或退出推理，调用 propose_trade_plan 时必须把其 ID 放入 knowledgeSkillIds；未明确声明采用的技能不会自动绑定或获得绩效归因。风控还会复查技能状态、版本、指纹和当前信号。\n${text}`);
   }
 
   return sections.join("\n\n");
@@ -444,7 +461,7 @@ function summarizePendingAction(db, args = {}) {
   }
 }
 
-function createPendingAction(db, args = {}) {
+function createPendingAction(db, args = {}, run = {}) {
   const info = summarizePendingAction(db, args);
   const record = {
     id: id("pact"),
@@ -454,6 +471,9 @@ function createPendingAction(db, args = {}) {
     detail: info.detail,
     danger: Boolean(info.danger),
     status: "awaiting_confirmation",
+    tenantId: run.tenantId || "tenant_owner",
+    requestedByUserId: run.requestedByUserId || null,
+    requestedBy: run.requestedBy || "Agent",
     createdAt: nowIso()
   };
   db.pendingActions ||= [];
@@ -467,7 +487,7 @@ export async function executeTool(db, run, name, args = {}) {
   // 已连接的 MCP server 工具
   if (isMcpTool(name)) return runMcpTool(db, name, args);
 
-  if (name === "request_action") return createPendingAction(db, args);
+  if (name === "request_action") return createPendingAction(db, args, run);
 
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";
@@ -576,7 +596,7 @@ export async function executeTool(db, run, name, args = {}) {
   }
 
   if (name === "query_knowledge") {
-    const retrieved = await retrieveChunksSemantic(db, `${args.question || ""} ${args.symbol || ""}`, 5);
+    const retrieved = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, `${args.question || ""} ${args.symbol || ""}`, 5));
     const bundle = runExpertAnalysis(db, {
       trigger_type: "agent_chat",
       question: args.question,
@@ -781,6 +801,12 @@ export async function executeTool(db, run, name, args = {}) {
       source: "agent_chat",
       createdAt: nowIso()
     };
+    bindKnowledgeSkillsToPlan(db, plan, {
+      timeframe: args.timeframe || "1h",
+      regime: market.regime || db.marketRegime?.regime || "",
+      selectedSkillIds: args.knowledgeSkillIds || [],
+      requireExplicitAdoption: true
+    }, "AgentChat");
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;
@@ -964,6 +990,9 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     status: "running",
     source: "chat",
     sessionId: session.id,
+    tenantId: payload.tenantId || "tenant_owner",
+    requestedByUserId: payload.userId || null,
+    requestedBy: payload.userName || "Agent",
     steps: [],
     createdAt: nowIso()
   };
@@ -1086,10 +1115,16 @@ async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, 
 async function runToolTracked(db, run, name, args, toolTrace) {
   const startedAt = Date.now();
   let result;
-  try {
-    result = await executeTool(db, run, name, args);
-  } catch (error) {
-    result = { error: error.message };
+  const safety = evaluateAgentProposal({ action: name, payload: args });
+  if (!safety.passed) {
+    result = { error: "Agent safety policy blocked this tool call", violations: safety.violations };
+    appendAudit(db, `Agent 工具调用被安全策略阻断：${name}`, run.id, "AgentSafety", "warning");
+  } else {
+    try {
+      result = await executeTool(db, run, name, args);
+    } catch (error) {
+      result = { error: error.message };
+    }
   }
   const trace = {
     name,

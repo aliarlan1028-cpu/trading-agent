@@ -2,6 +2,8 @@ import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { getStrategy } from "./strategies.mjs";
 import { notifyLarkThrottled } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { applyCompiledSignalConstraints } from "./compiledSignals.mjs";
+import { BAR_MINUTES } from "./backtestEngine.mjs";
 
 // ---------------------------------------------------------------------------
 // 模拟盘前向验证（三段验证的中段：回测 → 模拟盘 → 小额实盘）。
@@ -10,7 +12,7 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 // 才"毕业"，作为放大实盘额度前的最后安全垫。
 // ---------------------------------------------------------------------------
 
-const MIN_FORWARD_TRADES = 8;
+const MIN_FORWARD_TRADES = Math.max(20, Number(process.env.MIN_FORWARD_TRADES || 30));
 const MAX_DRAWDOWN_CAP = 20; // %
 const MAX_SESSIONS = 30;
 
@@ -21,6 +23,8 @@ function summarizePaper(trades) {
   const grossWin = wins.reduce((s, t) => s + t.rMultiple, 0);
   const grossLoss = Math.abs(trades.filter((t) => t.rMultiple <= 0).reduce((s, t) => s + t.rMultiple, 0));
   const expectancyR = trades.reduce((s, t) => s + t.rMultiple, 0) / count;
+  const varianceR = count > 1 ? trades.reduce((s, t) => s + (t.rMultiple - expectancyR) ** 2, 0) / (count - 1) : 0;
+  const expectancyStdErrR = Math.sqrt(varianceR / count);
   let equity = 100;
   let peak = 100;
   let maxDd = 0;
@@ -34,6 +38,8 @@ function summarizePaper(trades) {
     winRatePct: Number(((wins.length / count) * 100).toFixed(1)),
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
     expectancyR: Number(expectancyR.toFixed(3)),
+    expectancyStdErrR: Number(expectancyStdErrR.toFixed(3)),
+    expectancyLower90R: Number((expectancyR - 1.645 * expectancyStdErrR).toFixed(3)),
     maxDrawdownPct: Number(maxDd.toFixed(2)),
     netReturnPct: Number((equity - 100).toFixed(2))
   };
@@ -41,19 +47,26 @@ function summarizePaper(trades) {
 
 function gradeSession(session) {
   const m = session.metrics || {};
+  // 历史预热只用于检查管线，绝不能被当作真实前向证据。
+  if (session.seeded) return "running";
   if (m.trades >= MIN_FORWARD_TRADES) {
-    if (m.expectancyR > 0 && (m.maxDrawdownPct ?? 0) <= MAX_DRAWDOWN_CAP) return "passed";
+    if (m.expectancyLower90R > 0 && m.profitFactor >= 1.1 && (m.maxDrawdownPct ?? 0) <= MAX_DRAWDOWN_CAP) return "passed";
     return "failed";
   }
   return "running";
 }
 
 // 处理一个会话：把 startBarTime 之后、尚未处理的新 K 线逐根前向模拟。
-function advanceSession(session, candles) {
+export function advanceSession(session, candles) {
   const strategy = getStrategy(session.strategyId);
-  const signals = strategy.signals(candles, session.params || {});
+  const signals = applyCompiledSignalConstraints(
+    candles,
+    strategy.signals(candles, session.params || {}),
+    { confirmationSpec: session.params?.compiledConfirmationSpec }
+  );
   const slPct = Math.max(0.1, Number(session.params?.stopLossPct || 2)) / 100;
   const tpR = Math.max(0.5, Number(session.params?.takeProfitR || 2));
+  const isShort = String(session.direction || strategy.direction || "long") === "short";
   let processed = 0;
 
   for (let i = 0; i < candles.length; i += 1) {
@@ -63,24 +76,51 @@ function advanceSession(session, candles) {
     // 管理已有模拟持仓
     if (session.paperPosition) {
       const pos = session.paperPosition;
-      const hitStop = Number(bar.low) <= pos.stop;
-      const hitTp = Number(bar.high) >= pos.tp;
+      const hitStop = isShort ? Number(bar.high) >= pos.stop : Number(bar.low) <= pos.stop;
+      const hitTp = isShort ? Number(bar.low) <= pos.tp : Number(bar.high) >= pos.tp;
       let exit = null;
       let reason = null;
       if (hitStop && hitTp) { exit = pos.stop; reason = "stop_first_assumed"; }
       else if (hitStop) { exit = pos.stop; reason = "stop"; }
       else if (hitTp) { exit = pos.tp; reason = "take_profit"; }
       if (exit !== null) {
-        const rMultiple = (exit - pos.entry) / (pos.entry - pos.stop);
-        session.trades.push({ entry: pos.entry, exit, rMultiple: Number(rMultiple.toFixed(3)), pnlPct: Number((((exit - pos.entry) / pos.entry) * 100).toFixed(3)), reason, entryTime: pos.entryTime, exitTime: t });
+        const grossR = isShort
+          ? (pos.entry - exit) / (pos.stop - pos.entry)
+          : (exit - pos.entry) / (pos.entry - pos.stop);
+        const stopRiskPct = Math.abs(pos.entry - pos.stop) / pos.entry;
+        const holdingBars = Math.max(1, i - Number(pos.entryIndex || i));
+        const feeBps = Math.max(0, Number(process.env.PAPER_FEE_BPS || 4));
+        const slippageBps = Math.max(0, Number(process.env.PAPER_SLIPPAGE_BPS || 3));
+        const fundingRatePct = Number(session.params?.fundingRatePct || 0);
+        const holdingHours = holdingBars * Number(BAR_MINUTES[session.timeframe] || 60) / 60;
+        const costFraction = ((feeBps * 2 + slippageBps * 2) / 10_000)
+          + Math.abs(fundingRatePct / 100) * (holdingHours / 8);
+        const costR = stopRiskPct > 0 ? costFraction / stopRiskPct : 0;
+        const rMultiple = grossR - costR;
+        const pnlPct = isShort
+          ? ((pos.entry - exit) / pos.entry) * 100
+          : ((exit - pos.entry) / pos.entry) * 100;
+        session.trades.push({
+          entry: pos.entry,
+          exit,
+          grossR: Number(grossR.toFixed(3)),
+          costR: Number(costR.toFixed(3)),
+          rMultiple: Number(rMultiple.toFixed(3)),
+          pnlPct: Number(pnlPct.toFixed(3)),
+          reason,
+          entryTime: pos.entryTime,
+          exitTime: t
+        });
         session.paperPosition = null;
       }
     }
     // 平仓状态下若本 bar 有入场信号 → 以收盘价开模拟仓
     if (!session.paperPosition && signals[i]) {
       const entry = Number(bar.close);
-      const stop = entry * (1 - slPct);
-      session.paperPosition = { entry, stop, tp: entry + tpR * (entry - stop), entryTime: t };
+      const stop = isShort ? entry * (1 + slPct) : entry * (1 - slPct);
+      const riskDistance = Math.abs(entry - stop);
+      const tp = isShort ? entry - tpR * riskDistance : entry + tpR * riskDistance;
+      session.paperPosition = { entry, stop, tp, entryTime: t, entryIndex: i };
     }
     session.lastBarTime = t;
     processed += 1;
@@ -99,7 +139,8 @@ export async function createPaperSession(db, opts = {}) {
   } catch (error) {
     return { status: "data_fetch_failed", error: error.message };
   }
-  if (!Array.isArray(candles) || candles.length < 40) return { status: "insufficient_data", got: candles?.length || 0 };
+  if (!Array.isArray(candles) || candles.length < 41) return { status: "insufficient_data", got: candles?.length || 0 };
+  candles = candles.slice(0, -1);
 
   // lookbackBars>0：从最近 N 根历史开始"预热"前向记录（便于立即看到管线运行，标记 seeded）。
   // 默认 0：从当下开始，纯前向，随真实时间累积。
@@ -111,10 +152,13 @@ export async function createPaperSession(db, opts = {}) {
     timeframe,
     strategyId: strategy.id,
     label: strategy.label,
+    direction: opts.direction || strategy.direction || "long",
     params,
     status: "running",
     seeded: lookback > 0,
     source: opts.source || "manual",
+    knowledgeSkillId: opts.knowledgeSkillId || null,
+    knowledgeSkillVersion: opts.knowledgeSkillVersion || null,
     startedAt: nowIso(),
     startBarTime: Number(candles[startIndex].time),
     lastBarTime: Number(candles[startIndex].time),
@@ -129,7 +173,11 @@ export async function createPaperSession(db, opts = {}) {
   session.status = gradeSession(session);
   db.paperSessions ||= [];
   db.paperSessions.unshift(session);
-  if (db.paperSessions.length > MAX_SESSIONS) db.paperSessions = db.paperSessions.slice(0, MAX_SESSIONS);
+  if (db.paperSessions.length > MAX_SESSIONS) {
+    const running = db.paperSessions.filter((item) => item.status === "running");
+    const terminal = db.paperSessions.filter((item) => item.status !== "running");
+    db.paperSessions = [...running, ...terminal.slice(0, Math.max(0, MAX_SESSIONS - running.length))];
+  }
   appendAudit(db, `创建模拟盘会话 ${symbol} ${strategy.label}${session.seeded ? "（含历史预热）" : "（纯前向）"}`, session.id, "PaperTrading");
   return { status: "ok", session };
 }
@@ -162,8 +210,8 @@ export async function runPaperForward(db) {
   for (const session of running) {
     try {
       const candles = await getHistoricalKlines(session.symbol, session.timeframe, 300);
-      if (!Array.isArray(candles) || !candles.length) { results.push({ id: session.id, status: "no_data" }); continue; }
-      const processed = advanceSession(session, candles);
+      if (!Array.isArray(candles) || candles.length < 2) { results.push({ id: session.id, status: "no_data" }); continue; }
+      const processed = advanceSession(session, candles.slice(0, -1));
       session.metrics = summarizePaper(session.trades);
       session.updatedAt = nowIso();
       const graded = gradeSession(session);
@@ -187,9 +235,19 @@ export async function runPaperForward(db) {
   return { checked: running.length, results };
 }
 
-export function hasPassedPaper(db, symbol) {
-  if (!symbol) return false;
-  return (db.paperSessions || []).some((s) => s.symbol === String(symbol).toUpperCase() && s.status === "passed");
+export function hasPassedPaper(db, criteria) {
+  const request = typeof criteria === "string" ? { symbol: criteria } : (criteria || {});
+  if (!request.symbol) return false;
+  const symbol = String(request.symbol).toUpperCase();
+  return (db.paperSessions || []).some((session) => {
+    if (session.status !== "passed" || session.seeded !== false || session.symbol !== symbol) return false;
+    if (request.timeframe && session.timeframe !== request.timeframe) return false;
+    if (request.strategyId && session.strategyId !== request.strategyId) return false;
+    if (request.knowledgeSkillId && session.knowledgeSkillId !== request.knowledgeSkillId) return false;
+    if (request.knowledgeSkillVersion && Number(session.knowledgeSkillVersion) !== Number(request.knowledgeSkillVersion)) return false;
+    if (request.skillFingerprint && session.params?.compiledSkillFingerprint !== request.skillFingerprint) return false;
+    return true;
+  });
 }
 
 export function paperValidationSummary(db) {

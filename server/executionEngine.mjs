@@ -2,14 +2,14 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, transitionOmsOrder } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
 // 唯一合法执行入口；直接调用 tradeActions 的路径仍受其七层安全闸约束。
 // ---------------------------------------------------------------------------
 
-const OPEN_EXECUTION_STATES = new Set(["submitted", "entry_pending", "entry_filled", "protecting"]);
+const OPEN_EXECUTION_STATES = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
 const DEFAULT_TAKER_FEE_RATE = 0.0004;
 
 function asNumber(value, fallback = null) {
@@ -115,7 +115,68 @@ function roundQuantity(quantity, price) {
   return Number(quantity.toFixed(decimals));
 }
 
+export function allocateProtectionQuantities(totalQuantity, targetCount, price) {
+  const total = Number(totalQuantity);
+  const count = Math.max(0, Number(targetCount) || 0);
+  if (!Number.isFinite(total) || total <= 0 || count <= 0) return [];
+  const decimals = price > 10000 ? 4 : price > 100 ? 3 : price > 1 ? 2 : 0;
+  const factor = 10 ** decimals;
+  const totalUnits = Math.floor(total * factor + 1e-9);
+  if (totalUnits < count) return [];
+  const baseUnits = Math.floor(totalUnits / count);
+  let remaining = totalUnits;
+  return Array.from({ length: count }, (_, index) => {
+    const units = index === count - 1 ? remaining : baseUnits;
+    remaining -= units;
+    return units / factor;
+  });
+}
+
+// 保护失败统一收口：尽力撤入场单（撤单本身也可能抛异常，必须捕获——否则会跳过熔断），
+// 并把计划置为终态 protection_failed（executeApprovedPlan 只执行 approved 计划，
+// 防止同一计划被自动路径反复执行产生多个裸仓；人工重新批准可显式解锁）。
+async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, causeDetail) {
+  let cancelResult;
+  try {
+    cancelResult = await executeTradeAction(db, "cancel_order", {
+      exchange: plan.exchange,
+      marketType: plan.marketType || "perpetual_usdt",
+      symbol: plan.symbol,
+      orderId: entry.exchangeOrderId,
+      clientOrderId: entry.clientOrderId,
+      agentRunId: plan.agentRunId,
+      analysisBundleId: plan.analysisBundleId,
+      tradePlanId: plan.id,
+      riskCheckId: plan.riskCheckId,
+      mandateId: plan.mandateId,
+      manualApproval: true
+    });
+  } catch (error) {
+    cancelResult = { status: "error", error: String(error.message || error).slice(0, 200) };
+  }
+  executionOrder.status = "protection_failed";
+  executionOrder.events.push({ at: nowIso(), event: "protection_failed", detail: `${causeDetail}；入场单撤销状态 ${cancelResult.status}` });
+  plan.status = "protection_failed";
+  plan.executionOrderId = executionOrder.id;
+  if (!["ok", "submitted"].includes(cancelResult.status)) {
+    db.system.killSwitch = true;
+    db.riskIncidents.unshift({
+      id: id("incident"),
+      severity: "critical",
+      status: "open",
+      title: "入场保护单失败且撤单未确认",
+      source: executionOrder.id,
+      createdAt: nowIso()
+    });
+  }
+  appendAudit(db, `${causeDetail}，已阻断入场并尝试撤单`, executionOrder.id, "ExecutionEngine", "critical");
+  return { status: "protection_failed", cancelResult, executionOrder };
+}
+
 export async function executeApprovedPlan(db, planId, options = {}) {
+  const instanceId = process.env.INSTANCE_ID || `pid-${process.pid}`;
+  const lease = acquireExecutionLease(`trade-plan:${planId}`, instanceId, 60_000);
+  if (!lease.acquired) return { status: "execution_lease_held", lease };
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
@@ -133,6 +194,9 @@ export async function executeApprovedPlan(db, planId, options = {}) {
   }
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
   if (!mandate || !["active", "running"].includes(mandate.status)) return { status: "mandate_not_active" };
+  if (Number(plan.mandateVersion || 1) !== Number(mandate.version || 1)) {
+    return { status: "mandate_version_stale", planVersion: plan.mandateVersion || 1, mandateVersion: mandate.version || 1 };
+  }
   const existing = (db.executionOrders || []).find((item) => item.planId === plan.id && OPEN_EXECUTION_STATES.has(item.status));
   if (existing) return { status: "already_executing", executionOrderId: existing.id };
 
@@ -153,6 +217,7 @@ export async function executeApprovedPlan(db, planId, options = {}) {
     symbol: plan.symbol,
     direction: plan.direction,
     strategy: plan.strategy || plan.strategy_type || "manual_review",
+    knowledgeSkills: plan.knowledgeSkills || [],
     entryRationale: entryRationale(plan),
     confidenceBefore: asNumber(plan.confidenceBefore ?? plan.confidence),
     confidenceAfter: asNumber(plan.confidenceAfter ?? plan.lastRiskCheck?.confidence),
@@ -179,24 +244,40 @@ export async function executeApprovedPlan(db, planId, options = {}) {
   }
 
   const side = plan.direction === "short" ? "SELL" : "BUY";
-  const result = await executeTradeAction(db, "place_order", {
-    exchange: plan.exchange,
-    marketType: plan.marketType || "perpetual_usdt",
-    symbol: plan.symbol,
-    side,
-    type: "LIMIT",
-    price: sizing.entryMid,
-    quantity: sizing.quantity,
-    stopLoss: executionOrder.stopLoss,
-    leverage: plan.leverage,
-    clientOrderId: `exec_${executionOrder.id.slice(-12)}`,
-    agentRunId: plan.agentRunId,
-    analysisBundleId: plan.analysisBundleId,
-    tradePlanId: plan.id,
-    riskCheckId: plan.riskCheckId,
-    mandateId: plan.mandateId,
-    manualApproval: options.manualApproval === true
-  });
+  const entryClientOrderId = `exec_${executionOrder.id.slice(-12)}`;
+  let result;
+  try {
+    result = await executeTradeAction(db, "place_order", {
+      exchange: plan.exchange,
+      marketType: plan.marketType || "perpetual_usdt",
+      symbol: plan.symbol,
+      side,
+      type: "LIMIT",
+      price: sizing.entryMid,
+      quantity: sizing.quantity,
+      stopLoss: executionOrder.stopLoss,
+      leverage: plan.leverage,
+      strategyId: executionOrder.strategy,
+      timeframe: plan.timeframe || plan.candlesTimeframe || null,
+      knowledgeSkills: executionOrder.knowledgeSkills,
+      clientOrderId: entryClientOrderId,
+      agentRunId: plan.agentRunId,
+      analysisBundleId: plan.analysisBundleId,
+      tradePlanId: plan.id,
+      riskCheckId: plan.riskCheckId,
+      mandateId: plan.mandateId,
+      manualApproval: options.manualApproval === true
+    });
+  } catch (error) {
+    // 入场调用抛异常（如止损附单被交易所拒绝后 HTTP 非 2xx 直接 throw）：
+    // 入场是否已在交易所存活【未知】（OMS 已置 UNKNOWN，恢复任务会对账）。
+    // 绝不允许可能存在的裸仓静默存活：按保护失败流程尽力撤单，撤不掉即熔断。
+    executionOrder.events.push({ at: nowIso(), event: "entry_exception", detail: String(error.message || error).slice(0, 200) });
+    return await failProtectionAndCancelEntry(db, plan, executionOrder, {
+      exchangeOrderId: null,
+      clientOrderId: entryClientOrderId
+    }, `入场调用异常：${String(error.message || error).slice(0, 120)}`);
+  }
 
   if (result.status === "blocked") {
     executionOrder.status = "blocked";
@@ -204,17 +285,23 @@ export async function executeApprovedPlan(db, planId, options = {}) {
     appendAudit(db, `执行被安全闸拦截：${result.reason}`, executionOrder.id, "ExecutionEngine", "warning");
     return { status: "blocked", reason: result.reason, executionOrder };
   }
-  if (result.status !== "ok" && result.status !== "submitted") {
+  if (!["ok", "submitted", "idempotent_replay"].includes(result.status)) {
     executionOrder.status = "failed";
     executionOrder.events.push({ at: nowIso(), event: "failed", detail: JSON.stringify(result).slice(0, 300) });
     appendAudit(db, "执行提交失败", executionOrder.id, "ExecutionEngine", "warning");
     return { status: "failed", result, executionOrder };
   }
+  // 新仓绝不允许以“保护单稍后再说”的状态进入市场。若交易所没有确认原生止损，
+  // 立即撤进入场单；撤单失败则熔断并产生最高级事故，交由人工处置。
+  if (!result.protection) {
+    return await failProtectionAndCancelEntry(db, plan, executionOrder, result, "原生止损未确认");
+  }
 
   executionOrder.status = "entry_pending";
   executionOrder.exchangeOrderId = result.exchangeOrderId;
+  executionOrder.omsOrderId = result.omsOrderId || null;
   executionOrder.clientOrderId = result.clientOrderId || `exec_${executionOrder.id.slice(-12)}`;
-  executionOrder.protection = result.protection ? "attached" : "pending";
+  executionOrder.protection = "attached";
   executionOrder.events.push({ at: nowIso(), event: "entry_submitted", detail: `交易所订单 ${result.exchangeOrderId || "?"}` });
   plan.status = "executing";
   plan.executionOrderId = executionOrder.id;
@@ -227,7 +314,7 @@ export async function executeApprovedPlan(db, planId, options = {}) {
 // 订单状态轮询：入场成交 → 布置止盈；终态 → 记录成交与盈亏。
 // ---------------------------------------------------------------------------
 export async function pollExecutionOrders(db) {
-  const open = (db.executionOrders || []).filter((item) => ["entry_pending", "entry_filled", "protecting"].includes(item.status));
+  const open = (db.executionOrders || []).filter((item) => ["entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status));
   const results = [];
   for (const executionOrder of open) {
     try {
@@ -244,8 +331,32 @@ async function pollOne(db, executionOrder) {
   const orderState = await fetchOrderState(executionOrder);
   if (!orderState) return { id: executionOrder.id, status: executionOrder.status, note: "no_state" };
 
-  if (executionOrder.status === "entry_pending" && orderState.state === "filled") {
+  if (["entry_pending", "entry_partial"].includes(executionOrder.status) && orderState.state === "partial") {
+    const filledQuantity = Number(orderState.filledQuantity || 0);
+    const previousFilled = Number(executionOrder.filledQuantity || 0);
+    const delta = Math.max(0, filledQuantity - previousFilled);
+    executionOrder.status = "entry_partial";
+    executionOrder.filledQuantity = filledQuantity;
+    executionOrder.filledPrice = orderState.avgPrice || executionOrder.filledPrice || executionOrder.entryPrice;
+    executionOrder.events.push({ at: nowIso(), event: "entry_partial", detail: `累计成交 ${filledQuantity}/${executionOrder.quantity}` });
+    if (delta > 0) recordFill(db, executionOrder, "entry", executionOrder.filledPrice, delta, null, { partial: true });
+    upsertPosition(db, executionOrder, filledQuantity);
+    if (executionOrder.omsOrderId) {
+      transitionOmsOrder(executionOrder.omsOrderId, "PARTIAL", {
+        eventType: "entry_partial",
+        exchangeOrderId: executionOrder.exchangeOrderId,
+        response: { avgPrice: executionOrder.filledPrice, filledQuantity }
+      });
+    }
+  } else if (["entry_pending", "entry_partial"].includes(executionOrder.status) && orderState.state === "filled") {
     executionOrder.status = "entry_filled";
+    if (executionOrder.omsOrderId) {
+      transitionOmsOrder(executionOrder.omsOrderId, "FILLED", {
+        eventType: "entry_filled",
+        exchangeOrderId: executionOrder.exchangeOrderId,
+        response: { avgPrice: orderState.avgPrice || executionOrder.entryPrice }
+      });
+    }
     executionOrder.filledPrice = orderState.avgPrice || executionOrder.entryPrice;
     executionOrder.entryFilledAt = nowIso();
     executionOrder.entrySlippageBps = slippageBps(executionOrder.filledPrice, executionOrder.entryPrice, executionOrder.direction);
@@ -253,13 +364,19 @@ async function pollOne(db, executionOrder) {
     executionOrder.maeUsdt = 0;
     executionOrder.mfeUsdt = 0;
     executionOrder.events.push({ at: nowIso(), event: "entry_filled", detail: `均价 ${executionOrder.filledPrice}` });
-    recordFill(db, executionOrder, "entry", executionOrder.filledPrice, executionOrder.quantity);
-    upsertPosition(db, executionOrder);
+    const previousFilled = Number(executionOrder.filledQuantity || 0);
+    const remainingFill = Math.max(0, Number(executionOrder.quantity) - previousFilled);
+    executionOrder.filledQuantity = Number(executionOrder.quantity);
+    if (remainingFill > 0) recordFill(db, executionOrder, "entry", executionOrder.filledPrice, remainingFill);
+    upsertPosition(db, executionOrder, executionOrder.filledQuantity);
     await placeTakeProfits(db, executionOrder);
     appendAudit(db, `入场成交：${executionOrder.symbol} @ ${executionOrder.filledPrice}`, executionOrder.id, "ExecutionEngine");
     appendTrace(db, "execution", `${executionOrder.symbol} 入场成交`, "ok");
   } else if (orderState.state === "canceled") {
     executionOrder.status = "cancelled";
+    if (executionOrder.omsOrderId) {
+      transitionOmsOrder(executionOrder.omsOrderId, "CANCELLED", { eventType: "entry_cancelled" });
+    }
     executionOrder.events.push({ at: nowIso(), event: "entry_cancelled", detail: "交易所侧订单已取消" });
     const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
     if (plan) plan.status = "cancelled";
@@ -275,15 +392,19 @@ async function fetchOrderState(executionOrder) {
     const raw = await okxSignedRequest(`/api/v5/trade/order?instId=${instId}&clOrdId=${executionOrder.clientOrderId}`, "GET");
     const order = raw.data?.[0];
     if (!order) return null;
-    const stateMap = { live: "open", partially_filled: "open", filled: "filled", canceled: "canceled" };
-    return { state: stateMap[order.state] || order.state, avgPrice: Number(order.avgPx) || null };
+    const stateMap = { live: "open", partially_filled: "partial", filled: "filled", canceled: "canceled" };
+    return {
+      state: stateMap[order.state] || order.state,
+      avgPrice: Number(order.avgPx) || null,
+      filledQuantity: Number(order.accFillSz || 0)
+    };
   }
   if (!process.env.BINANCE_API_KEY) return null;
   const symbol = toBinanceSymbol(executionOrder.symbol);
   const raw = await binanceSignedRequest("/fapi/v1/order", { symbol, origClientOrderId: executionOrder.clientOrderId });
   if (!raw?.status) return null;
-  const stateMap = { NEW: "open", PARTIALLY_FILLED: "open", FILLED: "filled", CANCELED: "canceled", EXPIRED: "canceled", REJECTED: "canceled" };
-  return { state: stateMap[raw.status] || "open", avgPrice: Number(raw.avgPrice) || null };
+  const stateMap = { NEW: "open", PARTIALLY_FILLED: "partial", FILLED: "filled", CANCELED: "canceled", EXPIRED: "canceled", REJECTED: "canceled" };
+  return { state: stateMap[raw.status] || "open", avgPrice: Number(raw.avgPrice) || null, filledQuantity: Number(raw.executedQty || 0) };
 }
 
 async function placeTakeProfits(db, executionOrder) {
@@ -292,26 +413,55 @@ async function placeTakeProfits(db, executionOrder) {
     return;
   }
   const closeSide = executionOrder.direction === "short" ? "BUY" : "SELL";
-  const perTarget = roundQuantity(executionOrder.quantity / executionOrder.takeProfits.length, executionOrder.entryPrice);
-  const result = await executeTradeAction(db, "take_profit", {
-    exchange: executionOrder.exchange,
-    marketType: "perpetual_usdt",
-    symbol: executionOrder.symbol,
-    side: closeSide,
-    quantity: perTarget,
-    targets: executionOrder.takeProfits.map((price, index) => ({
-      price,
-      stopPrice: price,
-      quantity: perTarget,
-      clientOrderId: `tp${index + 1}_${executionOrder.id.slice(-10)}`
-    })),
-    agentRunId: executionOrder.agentRunId,
-    analysisBundleId: executionOrder.analysisBundleId,
-    tradePlanId: executionOrder.planId,
-    riskCheckId: executionOrder.riskCheckId,
-    mandateId: executionOrder.mandateId,
-    manualApproval: true
-  });
+  const quantities = allocateProtectionQuantities(executionOrder.quantity, executionOrder.takeProfits.length, executionOrder.entryPrice);
+  if (quantities.length !== executionOrder.takeProfits.length) {
+    executionOrder.status = "protection_failed";
+    executionOrder.events.push({ at: nowIso(), event: "take_profit_allocation_failed", detail: "仓位数量不足以按交易精度分配止盈单" });
+    const tpPlan = db.tradePlans?.find((item) => item.id === executionOrder.planId);
+    if (tpPlan) tpPlan.status = "protection_failed"; // 锁计划，防自动路径重复执行
+    db.system.killSwitch = true;
+    return;
+  }
+  let result;
+  try {
+    result = await executeTradeAction(db, "take_profit", {
+      exchange: executionOrder.exchange,
+      marketType: "perpetual_usdt",
+      symbol: executionOrder.symbol,
+      side: closeSide,
+      quantity: Math.max(...quantities),
+      targets: executionOrder.takeProfits.map((price, index) => ({
+        price,
+        stopPrice: price,
+        quantity: quantities[index],
+        clientOrderId: `tp${index + 1}_${executionOrder.id.slice(-10)}`
+      })),
+      agentRunId: executionOrder.agentRunId,
+      analysisBundleId: executionOrder.analysisBundleId,
+      tradePlanId: executionOrder.planId,
+      riskCheckId: executionOrder.riskCheckId,
+      mandateId: executionOrder.mandateId,
+      manualApproval: true
+    });
+  } catch (error) {
+    // 止盈下单异常：仓位已成交在场、原生止损仍在（入场时已确认），但止盈缺失。
+    // 标记保护降级 + 熔断新开仓 + 事故，交由人工处置；不静默吞掉。
+    executionOrder.status = "protection_failed";
+    executionOrder.events.push({ at: nowIso(), event: "take_profit_exception", detail: String(error.message || error).slice(0, 200) });
+    const tpPlan = db.tradePlans?.find((item) => item.id === executionOrder.planId);
+    if (tpPlan) tpPlan.status = "protection_failed";
+    db.system.killSwitch = true;
+    db.riskIncidents.unshift({
+      id: id("incident"),
+      severity: "critical",
+      status: "open",
+      title: "止盈单布置失败（止损仍在），需人工确认离场计划",
+      source: executionOrder.id,
+      createdAt: nowIso()
+    });
+    appendAudit(db, "止盈单布置异常，已熔断并转人工", executionOrder.id, "ExecutionEngine", "critical");
+    return;
+  }
   executionOrder.status = "protecting";
   executionOrder.events.push({ at: nowIso(), event: "take_profits_placed", detail: `状态 ${result.status}` });
 }
@@ -334,6 +484,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     strategy: executionOrder.strategy || plan.strategy || plan.strategy_type || "manual_review",
     regime: executionOrder.regime || inferMarketRegime(db, executionOrder.symbol),
     kind,
+    partial: Boolean(extra.partial),
     price: Number(price),
     quantity: Number(quantity),
     notionalUsdt: notional,
@@ -353,7 +504,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   });
 }
 
-function upsertPosition(db, executionOrder) {
+function upsertPosition(db, executionOrder, filledSize = executionOrder.quantity) {
   db.positions ||= [];
   let position = db.positions.find((item) => item.symbol === executionOrder.symbol && item.source === "execution_engine");
   if (!position) {
@@ -362,7 +513,7 @@ function upsertPosition(db, executionOrder) {
   }
   Object.assign(position, {
     direction: executionOrder.direction === "short" ? "空" : "多",
-    size: executionOrder.quantity,
+    size: Number(filledSize),
     entry: executionOrder.filledPrice || executionOrder.entryPrice,
     stopLoss: executionOrder.stopLoss,
     takeProfits: executionOrder.takeProfits,
@@ -380,7 +531,8 @@ function upsertPosition(db, executionOrder) {
 export async function closeExecution(db, executionOrderId, reason = "manual") {
   const executionOrder = (db.executionOrders || []).find((item) => item.id === executionOrderId);
   if (!executionOrder) return { status: "missing_execution_order" };
-  if (executionOrder.status === "entry_pending") {
+  if (["entry_pending", "entry_partial"].includes(executionOrder.status)) {
+    const wasPartial = executionOrder.status === "entry_partial";
     const result = await executeTradeAction(db, "cancel_order", {
       exchange: executionOrder.exchange,
       marketType: "perpetual_usdt",
@@ -393,9 +545,18 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       mandateId: executionOrder.mandateId,
       manualApproval: true
     });
-    executionOrder.status = result.status === "blocked" ? executionOrder.status : "cancelled";
+    const confirmed = ["ok", "submitted", "idempotent_replay"].includes(result.status);
+    executionOrder.status = confirmed ? "cancelled" : executionOrder.status;
     executionOrder.events.push({ at: nowIso(), event: "cancel_requested", detail: reason });
-    return { status: executionOrder.status, result };
+    if (!confirmed) executionOrder.events.push({ at: nowIso(), event: "cancel_unconfirmed", detail: result.reason || result.status || "unknown" });
+    if (!confirmed) return { status: "cancel_unconfirmed", result };
+    if (wasPartial && Number(executionOrder.filledQuantity || 0) > 0) {
+      executionOrder.status = "entry_filled";
+      executionOrder.quantity = Number(executionOrder.filledQuantity);
+      executionOrder.events.push({ at: nowIso(), event: "partial_remainder_cancelled", detail: `剩余委托已撤，继续平掉已成交 ${executionOrder.quantity}` });
+      return closeExecution(db, executionOrder.id, reason);
+    }
+    return { status: "cancelled", result };
   }
   if (["entry_filled", "protecting"].includes(executionOrder.status)) {
     const result = await executeTradeAction(db, "close_position", {
@@ -411,7 +572,8 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       mandateId: executionOrder.mandateId,
       manualApproval: true
     });
-    if (result.status !== "blocked") {
+    const confirmed = ["ok", "submitted", "idempotent_replay"].includes(result.status);
+    if (confirmed) {
       const market = db.markets.find((item) => item.symbol === executionOrder.symbol);
       const exitPrice = Number(market?.price || executionOrder.filledPrice || executionOrder.entryPrice);
       const entry = Number(executionOrder.filledPrice || executionOrder.entryPrice);
@@ -446,8 +608,10 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
       if (plan) plan.status = "completed";
       appendAudit(db, `平仓完成：${executionOrder.symbol}，盈亏 ${pnl.toFixed(2)} USDT`, executionOrder.id, "ExecutionEngine", pnl >= 0 ? "info" : "warning");
+      return { status: executionOrder.status, result };
     }
-    return { status: executionOrder.status, result };
+    executionOrder.events.push({ at: nowIso(), event: "close_unconfirmed", detail: result.reason || result.status || "unknown" });
+    return { status: "close_unconfirmed", result };
   }
   return { status: "not_closable", currentStatus: executionOrder.status };
 }

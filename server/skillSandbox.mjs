@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import simpleGit from "simple-git";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { assertSafeExternalUrl, fetchExternalText } from "./externalInputSafety.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -14,14 +15,15 @@ export async function fetchSkillPackage(db, payload = {}) {
   const skillId = id("skill");
   const target = path.join(skillsDir, skillId);
   if (payload.sourceUrl?.includes("github.com")) {
+    await assertSafeExternalUrl(payload.sourceUrl);
     await simpleGit().clone(payload.sourceUrl, target, ["--depth", "1"]);
   } else {
     await fs.mkdir(target, { recursive: true });
     let skillMd = payload.skillMd;
     if (!skillMd && payload.sourceUrl) {
-      const response = await fetch(payload.sourceUrl);
+      const { response, text } = await fetchExternalText(payload.sourceUrl, { maxBytes: 1024 * 1024, timeoutMs: 15_000 });
       if (!response.ok) throw new Error(`Skill URL fetch failed ${response.status}`);
-      skillMd = await response.text();
+      skillMd = text;
     }
     await fs.writeFile(path.join(target, "SKILL.md"), skillMd || "# Imported Skill\n\nNo instructions.", "utf8");
   }
@@ -118,7 +120,12 @@ async function findSkillEntry(dir, depth = 0) {
 function runInContainer(workdir, command, commandArgs) {
   return new Promise((resolve) => {
     const image = process.env.SKILL_SANDBOX_IMAGE || "node:20-alpine";
-    const dockerArgs = ["run", "--rm", "--network=none", "-v", `${workdir}:/skill:ro`, "-w", "/skill", image, command, ...commandArgs];
+    const dockerArgs = [
+      "run", "--rm", "--network=none", "--read-only", "--cap-drop=ALL",
+      "--security-opt=no-new-privileges", "--pids-limit=64", "--memory=256m", "--cpus=0.5",
+      "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m",
+      "-v", `${workdir}:/skill:ro`, "-w", "/skill", image, command, ...commandArgs
+    ];
     const child = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (data) => { output += data.toString(); });

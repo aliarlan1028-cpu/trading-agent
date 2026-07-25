@@ -1,5 +1,9 @@
 const base = process.env.API_BASE_URL || "http://127.0.0.1:8787";
 
+if (process.env.SMOKE_ALLOW_MUTATIONS !== "true") {
+  throw new Error("Full smoke test mutates operational data. Run `npm run smoke:full` only against an isolated test instance.");
+}
+
 async function request(path, options) {
   const response = await fetch(`${base}${path}`, options);
   if (!response.ok) {

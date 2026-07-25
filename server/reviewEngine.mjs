@@ -131,11 +131,24 @@ export function buildReviewAnalytics(db) {
     const blocked = checks.filter((check) => /block|reject|阻断|拒绝/i.test(String(check.decision || check.result || check.status))).length;
     return { id: rule.id, name: rule.name, checks: checks.length, blocked, contribution: blocked ? "减少坏交易暴露" : "待积累样本" };
   });
-  const skillContribution = (db.skills || []).map((skill) => {
+  const extensionSkillContribution = (db.skills || []).map((skill) => {
     const runs = (db.skillRuns || []).filter((run) => run.skillId === skill.id);
     const ok = runs.filter((run) => ["ok", "completed"].includes(String(run.status).toLowerCase())).length;
     return { id: skill.id, name: skill.name, runs: runs.length, successRatePct: runs.length ? Number(((ok / runs.length) * 100).toFixed(1)) : null, contribution: runs.length ? "有运行样本" : "未验证" };
   });
+  const knowledgeSkillContribution = (db.knowledge?.tradingSkills || []).map((skill) => {
+    const metrics = skill.liveMetrics || {};
+    return {
+      id: skill.id,
+      name: `${skill.name} v${skill.version}`,
+      runs: Number(metrics.trades || 0),
+      successRatePct: metrics.winRatePct ?? null,
+      contribution: metrics.trades
+        ? `加权盈亏 ${metrics.weightedPnl ?? 0} · PF ${metrics.profitFactor ?? "-"} · ${skill.status}`
+        : `尚无已平仓归因样本 · ${skill.status}`
+    };
+  });
+  const skillContribution = [...knowledgeSkillContribution, ...extensionSkillContribution];
   const validation = db.strategyExperiments || [];
   const confidence = (db.agentRuns || []).slice(0, 20).map((run) => ({
     id: run.id,

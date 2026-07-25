@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
+import { getMasterKeyMaterial } from "./keyProvider.mjs";
 
 export function storeSecret(db, name, value, scope = "exchange") {
   assertSecretStorageConfigured();
@@ -14,6 +15,12 @@ export function storeSecret(db, name, value, scope = "exchange") {
 
 export function listVaultItems(db) {
   return (db.vaultItems || []).map(({ encrypted, ...safe }) => safe);
+}
+
+export function readSecret(db, name) {
+  const item = (db.vaultItems || []).find((entry) => entry.name === name);
+  if (!item?.encrypted) return null;
+  return decrypt(item.encrypted);
 }
 
 export async function sendAlert(db, payload = {}) {
@@ -58,18 +65,30 @@ export function runSafetyDrill(db, type = "kill_switch") {
 }
 
 function assertSecretStorageConfigured() {
-  if (process.env.SECRETS_MASTER_KEY) return;
-  if (process.env.ALLOW_INSECURE_SECRET_STORAGE === "true") return;
-  const error = new Error("SECRETS_MASTER_KEY is required before storing secrets");
-  error.status = 400;
-  throw error;
+  try {
+    getMasterKeyMaterial();
+  } catch (cause) {
+    const error = new Error(cause.message);
+    error.status = 400;
+    throw error;
+  }
 }
 
 function encrypt(value) {
-  const key = crypto.createHash("sha256").update(process.env.SECRETS_MASTER_KEY || "development-only-master-key").digest();
+  const key = crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return { algorithm: "aes-256-gcm", iv: iv.toString("base64"), tag: tag.toString("base64"), ciphertext: ciphertext.toString("base64") };
+}
+
+function decrypt(encrypted) {
+  const key = crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(encrypted.tag, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encrypted.ciphertext, "base64")),
+    decipher.final()
+  ]).toString("utf8");
 }

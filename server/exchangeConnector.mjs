@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
-const BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/24hr";
-const OKX_TICKER_URL = "https://www.okx.com/api/v5/market/ticker";
-const BINANCE_SPOT_BASE = "https://api.binance.com";
-const BINANCE_USDM_BASE = "https://fapi.binance.com";
-const OKX_BASE = "https://www.okx.com";
+const BINANCE_SPOT_BASE = process.env.BINANCE_SPOT_BASE_URL
+  || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binance.vision" : "https://api.binance.com");
+const BINANCE_USDM_BASE = process.env.BINANCE_USDM_BASE_URL
+  || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binancefuture.com" : "https://fapi.binance.com");
+const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
+const BINANCE_TICKER_URL = `${BINANCE_SPOT_BASE}/api/v3/ticker/24hr`;
+const OKX_TICKER_URL = `${OKX_BASE}/api/v5/market/ticker`;
 
 export function toBinanceSymbol(symbol) {
   return String(symbol || "BTC/USDT").replace("/", "").replace("-", "").toUpperCase();
@@ -247,6 +249,9 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   market.fundingRate = result.fundingRatePct;
   market.openInterest = result.openInterest;
   market.bookImbalancePct = result.bookImbalancePct;
+  market.bidVolume = result.bidVolume;
+  market.askVolume = result.askVolume;
+  market.spreadBps = result.spreadBps;
   market.microSyncedAt = nowIso();
   appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
   const funding = result.fundingRatePct;
@@ -689,7 +694,8 @@ export async function okxSignedRequest(pathname, method = "GET", body = "") {
         "OK-ACCESS-SIGN": sign,
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": process.env.OKX_API_PASSPHRASE,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(process.env.OKX_DEMO_TRADING === "true" ? { "x-simulated-trading": "1" } : {})
       },
       body: body || undefined
     });

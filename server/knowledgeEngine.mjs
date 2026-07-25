@@ -1,4 +1,5 @@
 import { retrieveChunks } from "./knowledgePipeline.mjs";
+import { selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { id, nowIso } from "./store.mjs";
 
 // 真实证据包：从主人导入的知识库检索相关片段，结合已批准规则与事件，
@@ -9,6 +10,12 @@ export function runExpertAnalysis(db, payload = {}) {
   const question = payload.question || `${subject} 当前是否允许自主交易？`;
   const highImpactEvents = (db.events || []).filter((event) => symbol && event.relatedSymbols?.includes(symbol) && event.impact >= 80);
   const rules = (db.knowledge?.ruleProposals || []).filter((rule) => rule.status === "已批准");
+  const eligibleSkills = selectActiveKnowledgeSkills(db, {
+    symbol,
+    direction: payload.direction,
+    timeframe: payload.timeframe,
+    regime: payload.market_context?.regime || db.marketRegime?.regime || ""
+  });
 
   // 用问题 + 交易对做知识检索，作为决策依据。
   // 异步语义检索的调用方可通过 payload.retrieved 预先传入；否则同步词频检索。
@@ -41,6 +48,14 @@ export function runExpertAnalysis(db, payload = {}) {
     ],
     rulesTriggered: rules.map((rule) => ({ ruleId: rule.id, name: rule.name, level: rule.level, action: rule.action })),
     retrievedRefs: retrieved.map((chunk) => ({ chunkId: chunk.id, score: Number(chunk.score.toFixed(3)), citationLocator: chunk.citationLocator })),
+    eligibleKnowledgeSkills: eligibleSkills.map((skill) => ({
+      skillId: skill.id,
+      version: skill.version,
+      fingerprint: skill.fingerprint,
+      name: skill.name,
+      matchScore: skill.matchScore,
+      citations: skill.citationRefs
+    })),
     citations: retrieved.map((chunk) => chunk.citationLocator),
     createdAt: nowIso()
   };

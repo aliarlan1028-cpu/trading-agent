@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -24,14 +24,25 @@ import {
   Zap
 } from "lucide-react";
 import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
-import { ChatPage } from "./chat.jsx";
 import { AssistantWidget } from "./assistant.jsx";
-import { AdminPage, AgentProfilesPanel, AuditSystemPage, CockpitPage, EventsTasksPage, KnowledgeSkillsPage, MarketAccountPage, ReviewPage, RiskAuthPage } from "./pages.jsx";
-import { ConfigPanel, SystemConfigPanel } from "./panels.jsx";
-import { KillConfirmDialog, MobileApp } from "./mobile.jsx";
 import { isNativeApp } from "./lib.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
+
+const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
+const ChatPage = lazyNamed(() => import("./chat.jsx"), "ChatPage");
+const AdminPage = lazyNamed(() => import("./pages.jsx"), "AdminPage");
+const AgentProfilesPanel = lazyNamed(() => import("./pages.jsx"), "AgentProfilesPanel");
+const AuditSystemPage = lazyNamed(() => import("./pages.jsx"), "AuditSystemPage");
+const EventsTasksPage = lazyNamed(() => import("./pages.jsx"), "EventsTasksPage");
+const KnowledgeSkillsPage = lazyNamed(() => import("./pages.jsx"), "KnowledgeSkillsPage");
+const MarketAccountPage = lazyNamed(() => import("./pages.jsx"), "MarketAccountPage");
+const ReviewPage = lazyNamed(() => import("./pages.jsx"), "ReviewPage");
+const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
+const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
+const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
+const KillConfirmDialog = lazyNamed(() => import("./mobile.jsx"), "KillConfirmDialog");
+const MobileApp = lazyNamed(() => import("./mobile.jsx"), "MobileApp");
 
 if (isNativeApp()) {
   document.documentElement.classList.add("nativeApp");
@@ -394,4 +405,8 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
 }
 
 const root = (window.__traderAgentRoot ||= createRoot(document.getElementById("root")));
-root.render(<App />);
+root.render(
+  <Suspense fallback={<div className="loading"><Activity size={28} /> 正在加载交易模块...</div>}>
+    <App />
+  </Suspense>
+);

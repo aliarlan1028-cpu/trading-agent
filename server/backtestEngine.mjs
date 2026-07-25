@@ -78,10 +78,9 @@ export function simulate(candles, entrySignals, opts = {}) {
       const hitStop = isShort ? Number(bar.high) >= position.stop : Number(bar.low) <= position.stop;
       const hitTp = isShort ? Number(bar.low) <= position.tp : Number(bar.high) >= position.tp;
       if (hitStop && hitTp) {
-        // 同根 K 线两端都被触及：按"离开盘价更近的先成交"估计路径（比一律算止损更真实，且不乐观）。
-        const openPx = Number(bar.open);
-        const stopFirst = Math.abs(openPx - position.stop) <= Math.abs(openPx - position.tp);
-        closeTrade(stopFirst ? position.stop : position.tp, stopFirst ? "stop_first_est" : "tp_first_est", i);
+        // OHLC 无法证明同一根 K 线内的真实路径。默认采用保守的止损先成交，
+        // 避免用无法验证的路径假设抬高策略表现。
+        closeTrade(position.stop, "stop_first_conservative", i);
       } else if (hitStop) closeTrade(position.stop, "stop", i);
       else if (hitTp) closeTrade(position.tp, "take_profit", i);
     }
@@ -108,6 +107,10 @@ function summarize(trades, riskPerTradePct) {
   const grossWin = wins.reduce((sum, t) => sum + t.rMultiple, 0);
   const grossLoss = Math.abs(trades.filter((t) => t.rMultiple <= 0).reduce((sum, t) => sum + t.rMultiple, 0));
   const expectancyR = trades.reduce((sum, t) => sum + t.rMultiple, 0) / count;
+  const varianceR = count > 1
+    ? trades.reduce((sum, t) => sum + (t.rMultiple - expectancyR) ** 2, 0) / (count - 1)
+    : 0;
+  const expectancyStdErrR = Math.sqrt(varianceR / count);
   let equity = 100;
   let peak = 100;
   let maxDd = 0;
@@ -124,6 +127,8 @@ function summarize(trades, riskPerTradePct) {
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
     maxDrawdownPct: Number(maxDd.toFixed(2)),
     expectancyR: Number(expectancyR.toFixed(3)),
+    expectancyStdErrR: Number(expectancyStdErrR.toFixed(3)),
+    expectancyLower90R: Number((expectancyR - 1.645 * expectancyStdErrR).toFixed(3)),
     netReturnPct: Number((equity - 100).toFixed(2)),
     avgHoldBars: Number((trades.reduce((sum, t) => sum + t.bars, 0) / count).toFixed(1)),
     equityCurve: equityCurve.slice(-60)

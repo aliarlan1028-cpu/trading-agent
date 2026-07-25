@@ -1,5 +1,6 @@
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
+import { bindKnowledgeSkillsToPlan } from "./knowledgeSkills.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
@@ -130,6 +131,12 @@ export function runAgentCommand(db, payload = {}) {
 
   const intent = createTradeIntent(db, run, mandateDraft, bundle);
   const plan = createTradePlanFromIntent(db, intent, mandateDraft, bundle);
+  bindKnowledgeSkillsToPlan(db, plan, {
+    timeframe: intent.time_horizon === "intraday" ? "1h" : "4h",
+    regime: db.marketRegime?.regime || db.marketRegime?.label || "",
+    selectedSkillIds: intent.knowledgeSkillIds || [],
+    requireExplicitAdoption: true
+  }, "AgentOrchestrator");
   const risk = evaluateTradePlan(db, plan);
   risk.tradePlanId = plan.id;
   risk.agentRunId = run.id;

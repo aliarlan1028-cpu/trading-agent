@@ -3,6 +3,9 @@ import { saveDb, nowIso, id } from "./store.mjs";
 
 const sessions = new Map();
 const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS || 30);
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const LOGIN_MAX_ATTEMPTS = Math.max(3, Number(process.env.LOGIN_MAX_ATTEMPTS || 8));
 
 export function authRequired() {
   if (process.env.AUTH_REQUIRED === "false") return false;
@@ -14,6 +17,12 @@ const ownerEmail = () => String(process.env.OWNER_EMAIL || "aliarlan1028@gmail.c
 
 export function installAuth(app, db) {
   app.post("/api/auth/login", (req, res) => {
+    const clientKey = String(req.ip || req.socket?.remoteAddress || "unknown");
+    const attempt = loginAttempts.get(clientKey);
+    if (attempt && attempt.resetAt > Date.now() && attempt.count >= LOGIN_MAX_ATTEMPTS) {
+      res.setHeader("Retry-After", String(Math.ceil((attempt.resetAt - Date.now()) / 1000)));
+      return res.status(429).json({ error: "Too many login attempts" });
+    }
     const password = String(req.body?.password || "");
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ error: "Email is required" });
@@ -23,18 +32,26 @@ export function installAuth(app, db) {
     const user = (db.users || []).find((item) => String(item.email || "").toLowerCase() === email);
     const isOwnerEmail = email === ownerEmail();
     if (isOwnerEmail && password === process.env.ADMIN_PASSWORD) {
+      loginAttempts.delete(clientKey);
       const owner = ensureOwnerUser(db);
       return createSession(res, db, owner);
     }
     if (!user || user.status === "disabled" || !verifyPassword(password, user.passwordHash)) {
+      recordLoginFailure(clientKey);
       return res.status(401).json({ error: "Invalid credentials" });
     }
+    loginAttempts.delete(clientKey);
     return createSession(res, db, user);
   });
 
   app.post("/api/auth/register", (req, res) => {
     if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true") {
       return res.status(403).json({ error: "Public registration is not enabled" });
+    }
+    // 当前交易域仍使用单一工作区状态。宁可拒绝注册，也不能创建一个会看到
+    // Owner 仓位/订单的“伪租户”。完成按 tenant_id 分区的 V2 存储后才允许开启。
+    if (process.env.TENANT_ISOLATION_V2 !== "true") {
+      return res.status(503).json({ error: "Public registration requires TENANT_ISOLATION_V2; multi-tenant trading data is fail-closed" });
     }
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
@@ -71,7 +88,9 @@ export function installAuth(app, db) {
 	      req.user = db.users?.[0] || db.user;
 	      return next();
 	    }
-	    if (req.path === "/api/health" || req.path === "/api/public/bootstrap" || req.path === "/api/auth/login" || req.path === "/api/auth/register" || req.path === "/api/payments/trc20/webhook" || req.path === "/api/stream" || req.path === "/api/market/klines") return next();
+	    // /api/market/klines 是纯公开 OKX 行情（无任何账户数据），必须免鉴权：
+    // 前端图表（TradingViewChart/LiveCandleChart）的 fetch 不带 Authorization 头，收紧会全线打断 K 线。
+    if (req.path === "/api/health" || req.path === "/api/public/bootstrap" || req.path === "/api/auth/login" || req.path === "/api/auth/register" || req.path === "/api/payments/trc20/webhook" || req.path === "/api/stream" || req.path === "/api/market/klines") return next();
 	    if (!process.env.ADMIN_PASSWORD) {
 	      if (!warnedNoPassword) {
 	        console.warn("[auth] ADMIN_PASSWORD 未配置，受保护 API 已锁定；设置 ADMIN_PASSWORD 或显式 AUTH_REQUIRED=false 仅用于本地开发。");
@@ -85,12 +104,24 @@ export function installAuth(app, db) {
     req.user = (db.users || []).find((user) => user.id === session.userId) || db.user;
     req.session = session;
     req.tenantId = session.tenantId || req.user?.tenantId || "tenant_owner";
+    if (req.tenantId !== "tenant_owner" && process.env.TENANT_ISOLATION_V2 !== "true") {
+      return res.status(403).json({ error: "Tenant trading workspace is unavailable until isolated storage is enabled" });
+    }
     next();
   });
 
   app.get("/api/users/me", (req, res) => {
     res.json({ user: sanitizeUser(req.user || db.user), authRequired: authRequired(), permissions: resolvePermissions(db, req.user || db.user) });
   });
+}
+
+function recordLoginFailure(key) {
+  const current = loginAttempts.get(key);
+  if (!current || current.resetAt <= Date.now()) {
+    loginAttempts.set(key, { count: 1, resetAt: Date.now() + LOGIN_WINDOW_MS });
+    return;
+  }
+  current.count += 1;
 }
 
 export function requirePermission(permission) {
@@ -112,9 +143,13 @@ export function invalidateSessions(db) {
   }
 }
 
-function resolvePermissions(db, user = {}) {
+export function resolvePermissions(db, user = {}) {
   if (user.status === "disabled") return [];
-  const roleName = user.role || "管理员";
+  // fail-closed：缺失角色不再默认管理员（旧逻辑 user.role || "管理员" 让任何无角色记录拿到全量权限）。
+  // 仅 owner 主账户（db.user）在缺角色时保留管理员默认，避免存量数据把主人锁在门外。
+  const isOwner = db.user && (user === db.user || (user.id && user.id === db.user.id));
+  const roleName = user.role || (isOwner ? "管理员" : null);
+  if (!roleName && !user.roleId) return [];
   const role = (db.roles || []).find((item) => item.name === roleName || item.id === user.roleId);
   return role?.permissions || [];
 }

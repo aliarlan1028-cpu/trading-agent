@@ -1,6 +1,7 @@
-import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
+import { appendAudit, appendTrace, id, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { hasPassedPaper } from "./paperTrading.mjs";
+import { validateExchangeOrderContract } from "./exchangeContract.mjs";
 
 const WRITE_ACTIONS = new Set(["place_order", "cancel_order", "amend_order", "close_position", "move_stop", "take_profit"]);
 const ACTION_TO_MANDATE = {
@@ -42,6 +43,19 @@ export function describeGuardReason(reason) {
 }
 
 export async function executeTradeAction(db, action, payload = {}) {
+  if (action === "place_order" && !payload.clientOrderId) payload = { ...payload, clientOrderId: id("coid") };
+  const replay = ["place_order", "take_profit"].includes(action) ? findDuplicateClientOrder(db, payload) : null;
+  if (replay) {
+    appendTrace(db, "trade_write_idempotency", `${action} replay ${payload.clientOrderId}`, "replayed");
+    return {
+      status: "idempotent_replay",
+      actionId: replay.id,
+      exchangeOrderId: replay.exchangeOrderId,
+      clientOrderId: replay.clientOrderId,
+      originalStatus: replay.status,
+      protection: replay.protection || replay.result?.protection || null
+    };
+  }
   const guard = validateWriteGuard(db, action, payload);
   if (!guard.allowed) {
     appendAudit(db, `交易写操作被拦截：${guard.reason}`, action, "TradeActionGateway", "warning");
@@ -49,10 +63,58 @@ export async function executeTradeAction(db, action, payload = {}) {
     return { status: "blocked", reason: guard.reason, guard };
   }
 
-  let result;
   const exchange = String(payload.exchange || "BINANCE").toUpperCase();
-  if (exchange === "OKX") result = await executeOkxAction(action, payload);
-  else result = await executeBinanceAction(action, payload);
+  // 幂等预留键与交易所载荷解耦：撤单/平仓/改单在交易所侧必须复用原单的 clientOrderId（origClientOrderId 语义），
+  // 但 OMS 预留若直接用它会撞上入场单的预留行、被误判 payload 冲突——导致保护失败撤入场/手动撤单永远被拦。
+  // 非 place 动作改用「动作:原键」派生键：同一撤单重试仍映射同一键（幂等保留），且绝不与入场行冲突。
+  const reservationKey = action === "place_order"
+    ? payload.clientOrderId
+    : (() => {
+        const base = payload.clientOrderId || payload.exchangeOrderId || payload.orderId || payload.targets?.[0]?.clientOrderId;
+        return base ? `${action}:${base}` : null; // 无任何标识则跳过预留（reserveOmsOrder 返回 not_applicable）
+      })();
+  const reservation = reserveOmsOrder({
+    tenantId: payload.tenantId || "tenant_owner",
+    exchange,
+    clientOrderId: reservationKey,
+    action,
+    planId: payload.tradePlanId || payload.planId,
+    payload
+  });
+  if (reservation.status === "conflict") {
+    appendAudit(db, "客户端订单号与不同请求载荷冲突", payload.clientOrderId, "TradeActionGateway", "critical");
+    return { status: "blocked", reason: "idempotency_payload_conflict", order: reservation.order };
+  }
+  if (reservation.status === "replay") {
+    // 展开存储的交易所响应必须在前：其内部的 status 等字段不得覆盖幂等标记（键序敏感，勿调换）。
+    return {
+      ...(reservation.order.response || {}),
+      status: "idempotent_replay",
+      actionId: reservation.order.id,
+      exchangeOrderId: reservation.order.exchangeOrderId,
+      clientOrderId: reservation.order.clientOrderId,
+      originalStatus: reservation.order.state
+    };
+  }
+
+  let result;
+  try {
+    if (exchange === "OKX") result = await executeOkxAction(action, payload);
+    else result = await executeBinanceAction(action, payload);
+  } catch (error) {
+    if (reservation.order?.id) {
+      transitionOmsOrder(reservation.order.id, "UNKNOWN", { eventType: "exchange_call_failed", response: { error: error.message } });
+    }
+    throw error;
+  }
+  if (reservation.order?.id) {
+    const accepted = ["ok", "submitted"].includes(result.status);
+    transitionOmsOrder(reservation.order.id, accepted ? "ACKNOWLEDGED" : "REJECTED", {
+      eventType: accepted ? "exchange_acknowledged" : "exchange_rejected",
+      exchangeOrderId: result.exchangeOrderId,
+      response: sanitizeExchangeResult(result)
+    });
+  }
 
   const record = {
     id: id("order_action"),
@@ -64,42 +126,50 @@ export async function executeTradeAction(db, action, payload = {}) {
   };
   db.orders.unshift({
     id: record.id,
-    planId: payload.planId,
+    planId: payload.tradePlanId || payload.planId,
     exchange,
     symbol: payload.symbol,
     type: payload.type || action,
     side: payload.side,
     price: payload.price,
     status: result.status || "submitted",
+    exchangeOrderId: result.exchangeOrderId,
+    protection: result.protection || null,
     clientOrderId: payload.clientOrderId || result.clientOrderId,
     raw: result.raw ? "[stored_in_audit]" : undefined,
     createdAt: record.createdAt
   });
   appendAudit(db, `执行交易写操作：${action}`, record.id, "TradeExecutor", result.status === "ok" ? "info" : "warning");
   appendTrace(db, "trade_write", `${exchange} ${action}`, result.status || "submitted");
-  return { status: result.status || "submitted", actionId: record.id, ...result };
+  return { status: result.status || "submitted", actionId: record.id, omsOrderId: reservation.order?.id || null, ...result };
 }
 
-function validateWriteGuard(db, action, payload) {
+export function validateWriteGuard(db, action, payload) {
   if (!WRITE_ACTIONS.has(action)) return { allowed: false, reason: "unknown_action" };
   const shape = validatePayloadShape(action, payload);
   if (!shape.allowed) return shape;
-  const duplicate = action === "place_order" || action === "take_profit" ? findDuplicateClientOrder(db, payload) : null;
-  if (duplicate) return { allowed: false, reason: "duplicate_client_order_id", clientOrderId: payload.clientOrderId, orderId: duplicate.id };
-  if (!db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
-  if (!(db.system.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) return { allowed: false, reason: "real_trading_ack_missing" };
-  if (!(db.system.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) return { allowed: false, reason: "real_order_write_disabled" };
-  const apiKeySafety = validateApiKeySafety(db, payload);
-  if (!apiKeySafety.allowed) return apiKeySafety;
-  if (process.env.REQUIRE_AUDIT_CHAIN_OK !== "false") {
+  const contract = validateExchangeOrderContract(action, payload);
+  if (!contract.ok) return { allowed: false, reason: contract.reason, contract };
+  const riskReducing = action === "cancel_order"
+    || action === "close_position"
+    || payload.reduceOnly === true
+    || payload.closePosition === true;
+  if (!riskReducing && !db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
+  if (!riskReducing && !(db.system.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) return { allowed: false, reason: "real_trading_ack_missing" };
+  if (!riskReducing && !(db.system.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) return { allowed: false, reason: "real_order_write_disabled" };
+  if (!riskReducing) {
+    const apiKeySafety = validateApiKeySafety(db, payload);
+    if (!apiKeySafety.allowed) return apiKeySafety;
+  }
+  if (!riskReducing && process.env.REQUIRE_AUDIT_CHAIN_OK !== "false") {
     const auditChain = verifyAuditChain(db);
     if (!auditChain.ok) return { allowed: false, reason: "audit_chain_invalid", breaks: auditChain.breaks.length };
   }
   const provenance = validateExecutionProvenance(payload);
   if (!provenance.allowed) return provenance;
-  if (db.system.killSwitch) return { allowed: false, reason: "kill_switch_enabled" };
+  if (!riskReducing && db.system.killSwitch) return { allowed: false, reason: "kill_switch_enabled" };
 
-  const mandateGuard = validateMandateGuard(db, action, payload);
+  const mandateGuard = riskReducing ? { allowed: true, mandateId: payload.mandateId } : validateMandateGuard(db, action, payload);
   if (!mandateGuard.allowed) return mandateGuard;
 
   // 可选安全垫：要求策略先通过模拟盘前向验证，才允许对该交易对开新仓。
@@ -109,9 +179,25 @@ function validateWriteGuard(db, action, payload) {
     const accountSnapshot = validateFreshAccountSnapshot(db, payload);
     if (!accountSnapshot.allowed) return accountSnapshot;
   }
-  if (process.env.REQUIRE_PAPER_VALIDATION === "true" && isNewEntry && !hasPassedPaper(db, payload.symbol)) {
-    return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
+  if (process.env.REQUIRE_PAPER_VALIDATION === "true" && isNewEntry) {
+    const knowledgeRefs = Array.isArray(payload.knowledgeSkills) ? payload.knowledgeSkills : [];
+    const paperValidated = knowledgeRefs.length
+      ? knowledgeRefs.every((ref) => hasPassedPaper(db, {
+          symbol: payload.symbol,
+          timeframe: payload.timeframe,
+          knowledgeSkillId: ref.skillId,
+          knowledgeSkillVersion: ref.version,
+          skillFingerprint: ref.fingerprint
+        }))
+      : hasPassedPaper(db, {
+          symbol: payload.symbol,
+          timeframe: payload.timeframe,
+          strategyId: payload.strategyId
+        });
+    if (!paperValidated) return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
   }
+
+  if (riskReducing) return { allowed: true, riskReducing: true, mandateId: payload.mandateId };
 
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   if (!policy) return { allowed: false, reason: "gray_policy_not_enabled" };
@@ -237,10 +323,23 @@ async function executeOkxAction(action, payload) {
       sz: String(payload.quantity || payload.size),
       px: payload.price ? String(payload.price) : undefined,
       clOrdId: payload.clientOrderId || id("coid"),
-      reduceOnly: Boolean(payload.reduceOnly)
+      reduceOnly: Boolean(payload.reduceOnly),
+      attachAlgoOrds: payload.stopLoss && !payload.reduceOnly ? [{
+        attachAlgoClOrdId: payload.stopClientOrderId || id("stop"),
+        slTriggerPx: String(payload.stopLoss),
+        slOrdPx: "-1",
+        slTriggerPxType: payload.workingType === "MARK_PRICE" ? "mark" : "last"
+      }] : undefined
     });
     const raw = await okxSignedRequest("/api/v5/trade/order", "POST", body);
-    return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw, exchangeOrderId: raw.data?.[0]?.ordId, clientOrderId: raw.data?.[0]?.clOrdId };
+    const accepted = raw.code === "0" && String(raw.data?.[0]?.sCode || "0") === "0";
+    return {
+      status: accepted ? "ok" : "exchange_rejected",
+      raw,
+      exchangeOrderId: raw.data?.[0]?.ordId,
+      clientOrderId: raw.data?.[0]?.clOrdId,
+      protection: accepted && payload.stopLoss && !payload.reduceOnly ? { attachedAlgoStop: true, stopLoss: Number(payload.stopLoss) } : null
+    };
   }
   if (action === "cancel_order") {
     const raw = await okxSignedRequest("/api/v5/trade/cancel-order", "POST", JSON.stringify({ instId, ordId: payload.orderId, clOrdId: payload.clientOrderId }));
@@ -292,6 +391,12 @@ function summarizePayload(payload) {
   return safe;
 }
 
+function sanitizeExchangeResult(result = {}) {
+  const safe = { ...result };
+  if (safe.raw) safe.raw = "[stored_in_exchange_audit]";
+  return safe;
+}
+
 function validatePayloadShape(action, payload) {
   if (!payload.symbol && !["cancel_order", "amend_order"].includes(action)) return { allowed: false, reason: "missing_symbol" };
   if (action === "place_order") {
@@ -306,9 +411,9 @@ function validatePayloadShape(action, payload) {
   return { allowed: true };
 }
 
-function findDuplicateClientOrder(db, payload) {
+export function findDuplicateClientOrder(db, payload) {
   if (!payload.clientOrderId) return null;
-  return (db.orders || []).find((order) => order.clientOrderId === payload.clientOrderId && !TERMINAL_ORDER_STATES.has(String(order.status || "").toLowerCase()));
+  return (db.orders || []).find((order) => order.clientOrderId === payload.clientOrderId);
 }
 
 function validateMandateGuard(db, action, payload) {
@@ -340,8 +445,7 @@ async function placeBinanceProtectiveStop(payload, symbol) {
     side,
     type: "STOP_MARKET",
     stopPrice: String(payload.stopLoss),
-    quantity: String(payload.quantity || payload.size),
-    reduceOnly: "true",
+    closePosition: "true",
     newClientOrderId: payload.stopClientOrderId || id("stop")
   };
   if (payload.positionSide) params.positionSide = String(payload.positionSide).toUpperCase();

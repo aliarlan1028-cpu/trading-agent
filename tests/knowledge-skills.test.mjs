@@ -1,0 +1,183 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "knowledge-skills-test-"));
+process.env.DATA_DIR = dataDir;
+
+const {
+  approveKnowledgeSkill,
+  bindKnowledgeSkillsToPlan,
+  compileMethodToSpec,
+  compileTradingMethod,
+  refreshKnowledgeSkillAttribution,
+  retireKnowledgeSkill,
+  syncKnowledgeSkillLifecycle,
+  validateKnowledgeSkillWithCandles,
+  validatePlanKnowledgeSkills
+} = await import("../server/knowledgeSkills.mjs");
+
+function dbFixture(direction = "long") {
+  const source = { id: "source-1", title: "用户上传的趋势交易书", type: "pdf" };
+  const method = {
+    id: "method-1",
+    name: "唐奇安突破",
+    marketRegime: "上行趋势",
+    symbolScope: "BTC",
+    timeframe: "1H",
+    direction,
+    entry: "收盘价突破过去20根K线最高价",
+    confirmation: "成交量高于20周期均量",
+    stop: "入场价下方2%",
+    takeProfit: "2R",
+    invalidation: "重大事件前不做",
+    source: { id: source.id, title: source.title }
+  };
+  const candles = Array.from({ length: 51 }, (_, index) => ({
+    time: index * 3_600_000,
+    open: index === 49 ? 110 : 100,
+    high: index === 49 ? 111 : 101,
+    low: 99,
+    close: index === 49 ? 110 : 100,
+    volume: index === 49 ? 200 : 100
+  }));
+  return {
+    meta: {},
+    auditLogs: [],
+    traces: [],
+    fills: [],
+    tradePlans: [],
+    paperSessions: [],
+    markets: [{ symbol: "BTC/USDT", candles, candlesTimeframe: "1h" }],
+    knowledge: {
+      sources: [source],
+      chunks: [{ id: "chunk-1", sourceId: source.id, citationLocator: `${source.title} #1` }],
+      tradingMethods: [method],
+      tradingSkills: [],
+      skillInvocations: [],
+      skillAttributions: []
+    }
+  };
+}
+
+test("synthetic book-title summaries can never compile into executable skills", () => {
+  const result = compileMethodToSpec({
+    id: "m",
+    name: "趋势突破",
+    direction: "long",
+    timeframe: "1H",
+    entry: "突破20周期最高价",
+    stop: "2%",
+    takeProfit: "2R"
+  }, { id: "s", type: "book_title", title: "只输入书名" });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /禁止编译/);
+});
+
+test("compiled knowledge skills require paper validation and human approval before selection", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  assert.equal(skill.status, "compiled");
+  assert.equal(skill.spec.templateId, "breakout");
+  assert.throws(() => approveKnowledgeSkill(db, skill.id, "Owner"), /纯前向模拟盘/);
+
+  skill.status = "paper_validating";
+  skill.paperSessionId = "paper-1";
+  db.paperSessions.push({
+    id: "paper-1",
+    status: "passed",
+    seeded: false,
+    knowledgeSkillId: skill.id,
+    knowledgeSkillVersion: skill.version,
+    timeframe: skill.spec.timeframe,
+    params: { compiledSkillFingerprint: skill.fingerprint }
+  });
+  syncKnowledgeSkillLifecycle(db);
+  assert.equal(skill.status, "paper_validated");
+  approveKnowledgeSkill(db, skill.id, "Owner", "验证通过");
+  assert.equal(skill.status, "active");
+
+  const plan = {
+    id: "plan-1",
+    symbol: "BTC/USDT",
+    direction: "long",
+    agentRunId: "run-1",
+    entry_range: [100, 100],
+    stop_loss: 98,
+    take_profit: [104]
+  };
+  const bindings = bindKnowledgeSkillsToPlan(db, plan, { timeframe: "1h", regime: "上行趋势" });
+  assert.equal(bindings.length, 1);
+  assert.equal(plan.knowledgeSkills[0].fingerprint, skill.fingerprint);
+  assert.equal(validatePlanKnowledgeSkills(db, plan).valid, true);
+
+  db.markets[0].candlesTimeframe = "15m";
+  assert.equal(validatePlanKnowledgeSkills(db, plan).valid, false);
+  db.markets[0].candlesTimeframe = "1h";
+  db.markets[0].candles[49].volume = 50;
+  assert.equal(validatePlanKnowledgeSkills(db, plan).valid, false);
+  db.markets[0].candles[49].volume = 200;
+
+  retireKnowledgeSkill(db, skill.id, "Owner", "策略失效");
+  const afterRetirement = validatePlanKnowledgeSkills(db, plan);
+  assert.equal(afterRetirement.valid, false);
+  assert.match(afterRetirement.violations.join(" "), /retired/);
+});
+
+test("historical validation uses chronological train, validation, and test windows", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1", {
+    params: { lookback: 5, stopLossPct: 1, takeProfitR: 1 }
+  });
+  let base = 100;
+  const candles = [];
+  for (let index = 0; index < 360; index += 1) {
+    if (index > 0 && index % 8 === 0) base *= 1.05;
+    const hitTarget = index % 8 === 1;
+    candles.push({
+      time: index * 60_000,
+      open: base,
+      high: hitTarget ? base * 1.015 : base * 1.001,
+      low: base * 0.999,
+      close: base,
+      volume: index % 8 === 0 ? 200 : 100
+    });
+  }
+  const result = validateKnowledgeSkillWithCandles(db, skill.id, candles);
+  assert.equal(result.passed, true);
+  assert.equal(skill.status, "historical_validated");
+  assert.equal(skill.validation.methodology, "40/30/30 chronological holdout");
+  assert.ok(skill.validation.validation.trades >= 3);
+  assert.ok(skill.validation.test.trades >= 3);
+});
+
+test("closed-trade attribution degrades an active skill after persistent poor live performance", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  skill.status = "active";
+  skill.executable = true;
+  skill.approval = { approved: true, fingerprint: skill.fingerprint };
+  for (let index = 0; index < 10; index += 1) {
+    const plan = {
+      id: `plan-loss-${index}`,
+      knowledgeSkills: [{ skillId: skill.id, version: skill.version, fingerprint: skill.fingerprint }]
+    };
+    db.tradePlans.push(plan);
+    db.fills.push({
+      id: `fill-${index}`,
+      kind: "close",
+      executionOrderId: `exec-${index}`,
+      tradePlanId: plan.id,
+      realizedPnl: -1,
+      createdAt: new Date(Date.now() + index * 1000).toISOString()
+    });
+  }
+  const result = refreshKnowledgeSkillAttribution(db);
+  assert.equal(result.added, 10);
+  assert.deepEqual(result.degraded, [skill.id]);
+  assert.equal(skill.status, "degraded");
+  assert.equal(skill.executable, false);
+  assert.equal(skill.liveMetrics.trades, 10);
+});

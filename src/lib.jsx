@@ -629,15 +629,31 @@ export function useApi() {
   }, [token, apiBase]);
 
   // 真·实时行情：SSE 逐笔推送，合并进 data.markets/activeMarket（节流 1s，避免过度重渲染）。
+  // 已登录时先领 stream ticket（EventSource 带不了 Authorization 头），鉴权连接才会收到
+  // portfolio 实时浮盈亏推送；领票失败退回匿名流（只有公开行情）。
   useEffect(() => {
     let source;
     let pending = {};
     let timer = null;
-    try {
-      source = new EventSource(apiUrl("/api/stream", apiBase));
-    } catch {
-      return undefined;
-    }
+    let disposed = false;
+    const openStream = (url) => {
+      if (disposed) return;
+      try { source = new EventSource(url); } catch { source = null; return; }
+      wireStream();
+    };
+    (async () => {
+      let url = apiUrl("/api/stream", apiBase);
+      if (token) {
+        try {
+          const res = await fetch(apiUrl("/api/stream/ticket", apiBase), { method: "POST", headers: headers({ "Content-Type": "application/json" }) });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.ticket) url = `${url}?ticket=${encodeURIComponent(json.ticket)}`;
+          }
+        } catch { /* 领票失败退回匿名流 */ }
+      }
+      openStream(url);
+    })();
     const patch = (market, ups) => {
       const u = ups[market.symbol];
       if (!u) return market;
@@ -675,19 +691,22 @@ export function useApi() {
         return next;
       });
     };
-    source.onmessage = (event) => {
-      try {
-        const u = JSON.parse(event.data);
-        if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 300); return; }
-        if (!u || !u.symbol) return;
-        // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
-        if (u.price !== undefined) emitLivePrice(u.symbol, u.price);
-        pending[u.symbol] = { ...pending[u.symbol], ...u };
-        // React 状态（标题/快照）轻度节流到 250ms（约 4 次/秒），避免整页高频重渲染。
-        if (!timer) timer = setTimeout(flush, 250);
-      } catch { /* 忽略解析失败 */ }
-    };
-    return () => { if (source) source.close(); if (timer) clearTimeout(timer); };
+    function wireStream() {
+      if (!source) return;
+      source.onmessage = (event) => {
+        try {
+          const u = JSON.parse(event.data);
+          if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 300); return; }
+          if (!u || !u.symbol) return;
+          // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
+          if (u.price !== undefined) emitLivePrice(u.symbol, u.price);
+          pending[u.symbol] = { ...pending[u.symbol], ...u };
+          // React 状态（标题/快照）轻度节流到 250ms（约 4 次/秒），避免整页高频重渲染。
+          if (!timer) timer = setTimeout(flush, 250);
+        } catch { /* 忽略解析失败 */ }
+      };
+    }
+    return () => { disposed = true; if (source) source.close(); if (timer) clearTimeout(timer); };
   }, [token, apiBase]);
 
   // App 端兜底：Capacitor WKWebView 对 SSE(EventSource) 支持不稳定（常缓冲、onmessage 不实时），

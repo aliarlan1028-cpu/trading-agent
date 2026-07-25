@@ -734,6 +734,8 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const conceptCount = knowledge.conceptCards?.length || 0;
   const ruleCount = knowledge.ruleProposals?.length || 0;
   const chunkCount = knowledge.chunks?.length || 0;
+  const tradingSkills = knowledge.tradingSkills || [];
+  const activeTradingSkills = tradingSkills.filter((skill) => skill.status === "active").length;
   const skills = data.skills || [];
   const enabledSkills = skills.filter((skill) => skill.status === "已启用").length;
   const mcp = data.mcpServers || [];
@@ -743,7 +745,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const stats = [
     { Icon: BookOpen, bg: "#EAF0FB", color: "#2A6FDB", label: "知识文档", value: sourceCount, sub: `${chunkCount} 片段` },
     { Icon: Settings, bg: "#E6F1EA", color: "#1F7A50", label: "专家规则", value: ruleCount, sub: "已抽取" },
-    { Icon: Sparkles, bg: "#F0EAFB", color: "#7A4FD0", label: "已安装技能", value: enabledSkills, sub: `共 ${skills.length}` },
+    { Icon: Sparkles, bg: "#F0EAFB", color: "#7A4FD0", label: "自主交易技能", value: activeTradingSkills, sub: `共 ${tradingSkills.length} 个版本` },
     { Icon: RefreshCw, bg: "#FBEDDF", color: "#D06A22", label: "检索模式", text: embed.mode === "semantic" ? "语义向量" : "词频匹配" }
   ];
   return (
@@ -765,7 +767,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
 
       {(knowledge.tradingMethods || []).length > 0 && (
         <div className="termCard methodCard">
-          <div className="kHead"><span className="secLabel">交易方法 · 进场 setup（来自书籍，注入 AI 决策参考）</span><span className="hypoLegend mono">{(knowledge.tradingMethods || []).length} 条方法</span></div>
+          <div className="kHead"><span className="secLabel">交易方法草案（仅供研究，不直接驱动自主交易）</span><span className="hypoLegend mono">{(knowledge.tradingMethods || []).length} 条方法</span></div>
           <div className="methodList">
             {(knowledge.tradingMethods || []).slice(0, 14).map((m) => (
               <div className="methodRow" key={m.id}>
@@ -783,10 +785,59 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                   {m.invalidation && <span className="mInval"><i>不做</i>{m.invalidation}</span>}
                 </div>
                 {m.rationale && <div className="hypoWhy">依据：{m.rationale}</div>}
+                {!tradingSkills.some((skill) => skill.sourceMethodId === m.id && !["retired", "superseded"].includes(skill.status)) && (
+                  <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>编译为技能草案</button>
+                )}
               </div>
             ))}
           </div>
-          <div className="hypoNote">这些是从经典交易著作蒸馏的"什么行情、什么信号该怎么进出场"的方法框架，每次决策时注入 AI 参考——AI 仍结合实时行情与风控自主判断，不照搬、不硬套。</div>
+          <div className="hypoNote">只有完成受限编译、历史样本外验证、纯前向模拟盘验证和人工批准的版本，才会进入 Agent 的自主交易技能池。</div>
+        </div>
+      )}
+
+      {tradingSkills.length > 0 && (
+        <div className="termCard methodCard">
+          <div className="kHead">
+            <span className="secLabel">知识交易技能生命周期</span>
+            <button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步验证状态</button>
+          </div>
+          <div className="methodList">
+            {tradingSkills.slice(0, 20).map((skill) => {
+              const statusLabel = {
+                compile_failed: "编译失败",
+                compiled: "待历史验证",
+                historical_rejected: "历史验证未通过",
+                historical_validated: "待模拟验证",
+                paper_validating: "模拟验证中",
+                paper_rejected: "模拟验证未通过",
+                paper_validated: "待人工批准",
+                active: "已启用",
+                degraded: "已自动降级",
+                superseded: "已被新版替代",
+                retired: "已退役"
+              }[skill.status] || skill.status;
+              return (
+                <div className="methodRow" key={skill.id}>
+                  <div className="methodTop">
+                    <b>{skill.name}</b>
+                    <span className={`evBadge ${skill.status === "active" ? "ok" : ""}`}>{statusLabel}</span>
+                    <span className="mono">v{skill.version}</span>
+                    <span className="mTf mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
+                    {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
+                  </div>
+                  {skill.compileErrors?.length > 0 && <div className="hypoWhy">不能执行：{skill.compileErrors.join("；")}</div>}
+                  {skill.validation && <div className="hypoWhy">历史验证：训练 {skill.validation.train?.trades || 0} 笔，验证 {skill.validation.validation?.trades || 0} 笔，测试 {skill.validation.test?.trades || 0} 笔</div>}
+                  {skill.liveMetrics && <div className="hypoWhy">归因：{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}% · PF {skill.liveMetrics.profitFactor ?? "-"}</div>}
+                  <div className="kImportBtns">
+                    {["compiled", "historical_rejected", "degraded"].includes(skill.status) && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/validate`, {})}>历史验证</button>}
+                    {skill.status === "historical_validated" && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/paper`, {})}>开始纯前向模拟</button>}
+                    {skill.status === "paper_validated" && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/approve`, {})}>批准启用</button>}
+                    {!["retired", "superseded"].includes(skill.status) && <button onClick={() => { if (window.confirm(`确定退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户在知识技能中心手动退役" }); }}>退役</button>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -962,6 +1013,24 @@ function McpManager({ data, action }) {
             <div className="mcpServerItem" key={s.id}>
               <div className="mcpServerMeta"><strong>{s.name}</strong><small title={s.url}>{s.url}</small><small>{sub}</small></div>
               <StatusBadge tone={tone}>{humanize(s.status, s.status)}</StatusBadge>
+              {s.status === "connected" && s.tools?.length ? <div className="mcpToolPermissions">
+                {s.tools.map((tool) => {
+                  const permission = `tool:${tool.name}`;
+                  const allowed = (s.permissions || []).includes(permission);
+                  return <label key={tool.name} title={tool.description || tool.name}>
+                    <input
+                      type="checkbox"
+                      checked={allowed}
+                      onChange={() => action(`/api/mcp/${s.id}/permissions`, {
+                        permissions: allowed
+                          ? (s.permissions || []).filter((item) => item !== permission)
+                          : [...(s.permissions || []), permission]
+                      }, "PATCH")}
+                    />
+                    {tool.name}
+                  </label>;
+                })}
+              </div> : null}
               <span className="rowActions">
                 <button className="linkCell" onClick={() => action(`/api/mcp/${s.id}/connect`, {})}>连接</button>
                 {s.status === "connected" ? <button className="linkCell" onClick={() => action(`/api/mcp/${s.id}/disable`, {})}>停用</button> : null}
@@ -971,7 +1040,7 @@ function McpManager({ data, action }) {
         })}
         {servers.length ? null : <div className="emptyPanel">暂无 MCP Server。注册后点「连接」发现工具，已连接的工具会接入 AI 交易员。</div>}
       </div>
-      <InsightNote icon={PlugZap} title="工具接入">已连接的 MCP 工具以 mcp__ 前缀接入 AI 交易员的决策循环。例：Tavily 搜索 MCP（需 API Key）给 Agent 加查实时新闻、研报的能力。</InsightNote>
+      <InsightNote icon={PlugZap} title="工具接入">MCP 工具默认拒绝。连接并发现工具后，管理员必须逐项授权，获准工具才会以 mcp__ 前缀进入 AI 交易员决策循环。</InsightNote>
     </Card>
   );
 }

@@ -1,4 +1,6 @@
 import { appendAudit, appendTrace, nowIso } from "./store.mjs";
+import { assertSafeExternalUrl } from "./externalInputSafety.mjs";
+import { readSecret } from "./securityOps.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实 MCP 客户端（Streamable HTTP + JSON-RPC 2.0）。
@@ -10,9 +12,10 @@ import { appendAudit, appendTrace, nowIso } from "./store.mjs";
 const PROTOCOL_VERSION = "2025-06-18";
 let rpcId = 0;
 
-function authHeaders(server) {
+function authHeaders(db, server) {
   const headers = { ...(server.headers || {}) };
-  if (server.apiKey) headers.Authorization = `Bearer ${server.apiKey}`;
+  const apiKey = server.apiKeySecretName ? readSecret(db, server.apiKeySecretName) : null;
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   return headers;
 }
 
@@ -23,10 +26,23 @@ function timeout(ms = 15000) {
 }
 
 // 解析响应：application/json 直接 parse；text/event-stream 从 data: 行取 JSON-RPC 消息。
+async function readRpcText(response, maxBytes = 2 * 1024 * 1024) {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("MCP response exceeds size limit");
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of response.body || []) {
+    size += chunk.byteLength;
+    if (size > maxBytes) throw new Error("MCP response exceeds size limit");
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 async function parseRpcResponse(response, requestId) {
   const contentType = response.headers.get("content-type") || "";
+  const text = await readRpcText(response);
   if (contentType.includes("text/event-stream")) {
-    const text = await response.text();
     const messages = [];
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.startsWith("data:") ? line.slice(5).trim() : "";
@@ -35,10 +51,11 @@ async function parseRpcResponse(response, requestId) {
     }
     return messages.find((m) => m.id === requestId) || messages.find((m) => m.result || m.error) || messages[messages.length - 1] || {};
   }
-  return response.json();
+  return JSON.parse(text);
 }
 
-async function mcpRpc(server, method, params = {}, options = {}) {
+async function mcpRpc(db, server, method, params = {}, options = {}) {
+  await assertSafeExternalUrl(server.url);
   const isNotification = options.notification === true;
   const id = isNotification ? undefined : (rpcId += 1);
   const body = { jsonrpc: "2.0", method, ...(isNotification ? {} : { id }), params };
@@ -51,7 +68,7 @@ async function mcpRpc(server, method, params = {}, options = {}) {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         ...(server.sessionId ? { "Mcp-Session-Id": server.sessionId } : {}),
-        ...authHeaders(server)
+        ...authHeaders(db, server)
       },
       body: JSON.stringify(body)
     });
@@ -75,14 +92,14 @@ export async function connectMcpServer(db, serverId) {
     return { status: "unreachable", server };
   }
   try {
-    const init = await mcpRpc(server, "initialize", {
+    const init = await mcpRpc(db, server, "initialize", {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: "trading-agent", version: "1.0.0" }
     });
     server.sessionId = init.sessionId;
-    await mcpRpc(server, "notifications/initialized", {}, { notification: true }).catch(() => {});
-    const list = await mcpRpc(server, "tools/list", {});
+    await mcpRpc(db, server, "notifications/initialized", {}, { notification: true }).catch(() => {});
+    const list = await mcpRpc(db, server, "tools/list", {});
     const tools = (list.result?.tools || []).map((t) => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} } }));
     server.tools = tools;
     server.toolCount = tools.length;
@@ -106,12 +123,19 @@ export function isMcpTool(name) {
   return String(name || "").startsWith("mcp__");
 }
 
+export function mcpToolAllowed(server, toolName) {
+  const allowedTools = Array.isArray(server.allowedTools) ? server.allowedTools : [];
+  const permissions = Array.isArray(server.permissions) ? server.permissions : [];
+  return allowedTools.includes(toolName) || permissions.includes(`tool:${toolName}`);
+}
+
 // 已连接且启用的 MCP server 的工具，以 mcp__<serverId>__<tool> 前缀暴露给 LLM。
 export function enabledMcpTools(db) {
   const out = [];
   for (const server of db.mcpServers || []) {
     if (server.status !== "connected" || server.enabled === false) continue;
     for (const tool of server.tools || []) {
+      if (!mcpToolAllowed(server, tool.name)) continue;
       out.push({
         name: `mcp__${server.id}__${tool.name}`,
         description: `[MCP:${server.name}] ${tool.description}`.slice(0, 400),
@@ -129,8 +153,9 @@ export async function runMcpTool(db, name, args = {}) {
   const server = (db.mcpServers || []).find((item) => item.id === serverId);
   if (!server) return { error: `未知 MCP server：${serverId}` };
   if (server.status !== "connected" || server.enabled === false) return { error: `MCP「${server.name}」未连接或未启用` };
+  if (!mcpToolAllowed(server, toolName)) return { error: `MCP 工具未获授权：${server.name}:${toolName}` };
   try {
-    const call = await mcpRpc(server, "tools/call", { name: toolName, arguments: args });
+    const call = await mcpRpc(db, server, "tools/call", { name: toolName, arguments: args });
     const content = (call.result?.content || [])
       .map((part) => (part.type === "text" ? part.text : JSON.stringify(part)))
       .join("\n");

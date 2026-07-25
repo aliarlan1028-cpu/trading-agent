@@ -1,7 +1,7 @@
 # 对外交付 · Path A：一客户一实例（single-tenant per customer）
 
 每个付费客户 = 一套**物理隔离**的独立部署：独立容器 + 独立 sqlite 数据卷 + 独立
-`SECRETS_MASTER_KEY` + 独立 owner 账号 + 独立子域名。客户各自连自己的交易所、
+KMS/Vault 挂载密钥文件（本地过渡期可用独立 `SECRETS_MASTER_KEY`）+ 独立 owner 账号 + 独立子域名。客户各自连自己的交易所、
 交易自己的钱，彼此完全看不到对方的数据。**几乎不改应用代码**，靠下面的脚本开通。
 
 ## 一次性准备（只做一次）
@@ -50,6 +50,11 @@ cd /opt/trading-agent/deploy
 - [ ] **非托管声明**：明确你不持有客户资金；客户 API Key 必须**禁用提币权限**。
 - [ ] **密钥托管**：每实例的 `SECRETS_MASTER_KEY` 在 `.env` 里，随 `data` 备份；
       丢失 = 该客户密钥不可解密，需向客户说明并有找回/重置流程。
+- [ ] **生产密钥升级**：设置 `REQUIRE_EXTERNAL_KEY_PROVIDER=true`，由 KMS/Vault sidecar
+      把至少 32 字符的数据密钥只读挂载到 `SECRETS_MASTER_KEY_FILE`。
+- [ ] **外部审计**：配置独立账号管理的 `WORM_AUDIT_ENDPOINT`；应用只拥有追加权限，
+      不拥有删除或改写权限。
+- [ ] **公开注册关闭**：Path A 必须保持 `PUBLIC_REGISTRATION_ENABLED=false`。
 - [ ] **监控告警**：容器 healthcheck 已内置；建议再加宕机告警（如 Uptime Kuma）。
 - [ ] **资源上限**：客户多了给每个 compose 加 `mem_limit`/`cpus`，避免互相拖垮。
 

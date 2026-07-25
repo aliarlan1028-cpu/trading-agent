@@ -8,6 +8,17 @@ services:
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
+    mem_limit: 1g
+    cpus: 1.0
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "scripts/healthcheck.mjs"]

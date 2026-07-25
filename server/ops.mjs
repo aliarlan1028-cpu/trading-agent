@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAudit, nowIso, verifyAuditChain } from "./store.mjs";
+import { keyProviderStatus } from "./keyProvider.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -11,8 +12,10 @@ export function buildReadinessReport(db) {
   const checks = [
     check("frontend_dashboard", "产品驾驶舱", true, true, "React 页面覆盖总览、交易、Agent、事件、知识、Skill、风控、账户、审计。"),
     check("auth_lock", "鉴权默认锁定", true, Boolean(process.env.ADMIN_PASSWORD) || process.env.AUTH_REQUIRED === "false", "生产环境必须设置 ADMIN_PASSWORD；只有显式 AUTH_REQUIRED=false 才允许本地免登录。"),
-    check("secret_master_key", "密钥主密钥", true, Boolean(process.env.SECRETS_MASTER_KEY), "保存 API Secret 前必须配置 SECRETS_MASTER_KEY。"),
-    check("sqlite_persistence", "SQLite 持久化", true, true, "核心集合、审计、Trace 已落库。"),
+    check("secret_master_key", "密钥主密钥", true, keyProviderStatus().configured, "生产环境应由 KMS/Vault sidecar 挂载 SECRETS_MASTER_KEY_FILE。"),
+    check("sqlite_persistence", "SQLite 持久化", true, true, "核心集合、审计、Trace 已落库；OMS 使用独立关系表。"),
+    check("oms_outbox", "持久化 OMS 与 Outbox", true, true, "订单幂等预留、状态事件、乐观版本和 Outbox 已使用 SQLite 事务。"),
+    check("tenant_isolation", "客户物理隔离", true, process.env.PUBLIC_REGISTRATION_ENABLED !== "true", "当前生产路径为一客户一实例；单实例公开注册必须关闭。"),
     check("trade_write_gateway", "真实交易写网关", true, true, "支持下单、撤单、改单、平仓、移动止损、分批止盈。"),
     check("fresh_risk_recheck", "执行前风控复查", true, true, "批准和执行前都会重新运行硬风控。"),
     check("trade_write_config", "真实交易配置", true, envTrue("LIVE_TRADING_ENABLED") && envTrue("I_UNDERSTAND_REAL_TRADING") && envTrue("REAL_ORDER_WRITE_ENABLED"), "最终由你确认开启。"),
@@ -27,7 +30,9 @@ export function buildReadinessReport(db) {
     check("etherscan", "链上 API", true, Boolean(process.env.ETHERSCAN_API_KEY), "配置后获取真实链上 Gas/异常信号。"),
     check("skill_sandbox", "Skill 沙箱", true, true, "GitHub/上传拉取、依赖扫描入口、Docker 无网络沙箱已实现。"),
     check("docker", "Docker 沙箱环境", true, Boolean(process.env.SKILL_SANDBOX_IMAGE), "可使用默认 node:20-alpine；本机需安装 Docker。"),
-    check("audit_chain", "不可变审计链", true, verifyAuditChain(db).ok, "审计日志带 hash 链并支持校验，不再启动时重算。"),
+    check("audit_chain", "本地审计哈希链", true, verifyAuditChain(db).ok, "本地链支持校验，但不等于外部不可篡改存储。"),
+    check("audit_worm", "外部 WORM 审计", true, Boolean(process.env.WORM_AUDIT_ENDPOINT), "配置独立管理的 WORM endpoint 后按持久游标外送。"),
+    check("exchange_test_environment", "交易所测试环境", true, process.env.BINANCE_TESTNET === "true" || process.env.OKX_DEMO_TRADING === "true", "实盘前必须运行 npm run test:exchange-contract。"),
     check("withdraw_permission_detection", "提现权限检测/确认", true, apiPermissionsVerified(db), "Binance 会自动查询 apiRestrictions；无法自动查询的交易所需人工审计确认后才允许实盘写入。"),
     check("alerts", "告警 Webhook", true, Boolean(process.env.ALERT_WEBHOOK_URL), "配置后可推送真实外部告警。"),
     check("gray_release", "小额度灰度策略", true, (db.grayReleasePolicies || []).some((item) => item.enabled), "最终由你启用并设置额度、币种、人工确认。")
