@@ -141,14 +141,22 @@ saveDb(db);
 
 const corsAllowlist = String(process.env.CORS_ALLOWED_ORIGINS || "")
   .split(",").map((item) => item.trim()).filter(Boolean);
-app.use(cors({
+// Capacitor 原生 App 的 WebView 源：App 端所有 fetch 都带这个 Origin，拒了 App 就整体断连。
+const NATIVE_APP_ORIGINS = new Set(["capacitor://localhost", "ionic://localhost"]);
+app.use((req, res, next) => cors({
   origin(origin, callback) {
-    if (!origin || corsAllowlist.includes(origin) || (corsAllowlist.length === 0 && host === "127.0.0.1")) return callback(null, true);
+    if (!origin || corsAllowlist.includes(origin) || NATIVE_APP_ORIGINS.has(origin)) return callback(null, true);
+    // 同源必须放行：ES module 的 <script> 与同源 fetch 也会带 Origin 头——
+    // 曾因未配 CORS_ALLOWED_ORIGINS + HOST=0.0.0.0 兜底不命中，把自己的 JS 资源 403 掉导致全站白屏。
+    try {
+      if (new URL(origin).host === req.headers.host) return callback(null, true);
+    } catch { /* 非法 Origin 走拒绝分支 */ }
+    if (corsAllowlist.length === 0 && host === "127.0.0.1") return callback(null, true);
     return callback(new Error("CORS origin denied"));
   },
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
-}));
+})(req, res, next));
 // CORS 拒绝返回干净的 403，而不是落进默认错误处理器变 500（可能带栈信息）。
 app.use((err, _req, res, next) => {
   if (err && err.message === "CORS origin denied") return res.status(403).json({ error: "Origin not allowed" });
