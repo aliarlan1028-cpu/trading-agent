@@ -10,7 +10,8 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/trading-agent}"
 TENANTS_DIR="${TENANTS_DIR:-/opt/tenants}"
-STATE_DIR="$APP_DIR/data/.monitor"
+STATE_DIR="${STATE_DIR:-$APP_DIR/data/.monitor}"   # 演练时可指向 /tmp 隔离状态
+MAIN_URL="${MAIN_URL:-http://127.0.0.1:8787/api/health}"  # 演练时可指向坏地址验证自愈链路
 mkdir -p "$STATE_DIR"
 
 COMPOSE="$APP_DIR/docker-compose.yml"
@@ -110,7 +111,7 @@ check() { # $1=name  $2=url  $3=auto_heal(main 才传 1)
   echo "$(date '+%F %T') $name: $now (HTTP $code)"
 }
 
-check "main" "http://127.0.0.1:8787/api/health" 1
+check "main" "$MAIN_URL" 1
 if [ -d "$TENANTS_DIR" ]; then
   for d in "$TENANTS_DIR"/*/; do
     [ -d "$d" ] || continue
