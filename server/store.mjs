@@ -531,8 +531,36 @@ export function resealAuditChain(db) {
   return { resealed: rows.length, tip: previous };
 }
 
+// 日志型集合上限：防止长期累积把 saveDb 的全库序列化拖垮（曾累积到 accountSnapshots 22K / jobRuns 95K
+// / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
+const LOG_CAPS = {
+  accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300,
+  agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
+  executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
+  eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500
+};
+function capLogCollections(db) {
+  const tsOf = (o) => new Date(o?.createdAt || o?.at || o?.startedAt || o?.finishedAt || o?.updatedAt || 0).getTime() || 0;
+  for (const [name, cap] of Object.entries(LOG_CAPS)) {
+    const arr = db[name];
+    if (Array.isArray(arr) && arr.length > cap) {
+      db[name] = arr.slice().sort((a, b) => tsOf(b) - tsOf(a)).slice(0, cap);
+    }
+  }
+  // jobLocks 应每个锁一条，按锁标识去重（历史上因未原地更新累积到 9 万条）。
+  if (Array.isArray(db.jobLocks) && db.jobLocks.length > 100) {
+    const seen = new Map();
+    for (const l of db.jobLocks.slice().sort((a, b) => tsOf(b) - tsOf(a))) {
+      const k = l.name || l.resource || l.taskId || l.id || l.key;
+      if (!seen.has(k)) seen.set(k, l);
+    }
+    db.jobLocks = [...seen.values()];
+  }
+}
+
 export function saveDb(db) {
   db.meta.updatedAt = nowIso();
+  capLogCollections(db);
   ensureSqlite();
   saveToSqlite(db);
 }
