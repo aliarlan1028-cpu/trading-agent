@@ -12,7 +12,7 @@ KMS/Vault 挂载密钥文件（本地过渡期可用独立 `SECRETS_MASTER_KEY`�
       新客户实例直接复用该镜像，不必每次重建。
 - [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
-- [ ] **宕机告警**：`cp deploy/monitor.env.example deploy/monitor.env` 填 Lark Webhook，`chmod 600`；把 `monitor-tenants.sh` 挂 cron（每 3 分钟），实例掉线/恢复时推送。
+- [ ] **宕机告警**：`cp deploy/monitor.env.example deploy/monitor.env` 填 Lark Webhook，`chmod 600`；把 `monitor-tenants.sh` 挂 cron（每 1 分钟，脚本注释即 `* * * * *`；FAIL_THRESHOLD=2 时自愈延迟约 2 分钟），实例掉线/恢复时推送。
 - [ ] **脚本落到服务器**：`/opt/trading-agent/deploy/` 下（随主仓库 rsync 即可），
       `chmod +x deploy/*.sh`。
 
@@ -62,3 +62,16 @@ cd /opt/trading-agent/deploy
 
 单机上实例数到几十、运维（备份/升级/端口/证书）开始吃力时，再评估把数据层
 按 tenant 重构成一套系统。那是数天量级的重构，届时另起工程。
+
+
+## 主实例部署（deploy.sh）
+
+本 README 之前只写了客户实例；主实例（yegidawir.xyz, /opt/trading-agent）用仓库根的 `deploy/deploy.sh`：
+
+```bash
+./deploy/deploy.sh        # rsync(排除 .env/data/deploy/vendor.env/monitor.env) → 远端 build → 90s 健康验证 → 失败自动回滚
+./deploy/deploy.sh --dry  # 只看会传什么
+```
+
+- 排除清单是历史事故后加固的，勿改；`deploy/vendor.env` 与 `deploy/monitor.env` 只存在于服务器。
+- 若 vendor.env 意外丢失：`deploy/sync-vendor-llm.sh` 可从主实例金库解密重新生成（这是唯一的自动恢复手段）。
