@@ -141,7 +141,13 @@ export function runAgentCommand(db, payload = {}) {
   risk.tradePlanId = plan.id;
   risk.agentRunId = run.id;
   risk.result = mapRiskResult(risk);
-  risk.riskScore = risk.decision === "blocked" ? 82 : risk.decision === "allowed_with_warnings" ? 56 : 38;
+  // 评分从真实检查内容派生（此前是 82/56/38 三个魔数冒充精确评分）：
+  // 基线 20 + 每条警告 8 + 每条阻断 30，封顶 95。公式简单但每一分都对应真实的检查结果。
+  {
+    const warnCount = (risk.warnings || []).length;
+    const blockCount = (risk.blockers || risk.failed || []).length || (risk.decision === "blocked" ? 1 : 0);
+    risk.riskScore = Math.min(95, 20 + warnCount * 8 + blockCount * 30);
+  }
   risk.createdAt = nowIso();
   db.riskChecks.unshift(risk);
   plan.lastRiskCheck = risk;

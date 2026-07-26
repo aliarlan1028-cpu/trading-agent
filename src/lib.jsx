@@ -276,7 +276,10 @@ export function systemStatus(data) {
   if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: "待配置", tone: "warning" };
   if (!data?.system?.autonomyEnabled) return { label: "人工暂停", tone: "warning" };
   if (data?.agentStatus?.state === "risk_paused") return { label: "风控暂停", tone: "warning" };
-  return { label: data?.system?.riskStatus || "正常", tone: "ok" };
+  // tone 跟随文案：非"正常/运行"类状态（如种子值"等待配置"、"风控暂停"）不能带绿色 ok 渲染。
+  const label = data?.system?.riskStatus || "正常";
+  const tone = /正常|运行/.test(label) ? "ok" : /熔断|高/.test(label) ? "danger" : "warning";
+  return { label, tone };
 }
 
 export function exchangeState(account = {}) {
@@ -337,6 +340,16 @@ function connectionErrorMessage(error) {
 // 让图表能跟上 OKX 的逐 tick 更新；React 状态仍轻度节流避免整页高频重渲染。
 const livePriceListeners = new Set();
 export function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceListeners.delete(fn); }
+
+// 大户持仓多空比 → 全端统一的偏向判定（阈值一处定义：≥1.05 偏多 / ≤0.95 偏空 / 之间平衡）。
+// 注意语义：这是"持仓结构偏向"，不是趋势预测——展示词统一用"偏多/偏空"，不用"趋势"。
+export function smartMoneyBias(ratio) {
+  const r = ratio == null ? null : Number(ratio);
+  if (r == null || !Number.isFinite(r)) return { label: "待同步", tone: "neutral" };
+  if (r >= 1.05) return { label: "大户偏多", tone: "pos" };
+  if (r <= 0.95) return { label: "大户偏空", tone: "neg" };
+  return { label: "多空平衡", tone: "neutral" };
+}
 function emitLivePrice(symbol, price) { for (const fn of livePriceListeners) { try { fn(symbol, price); } catch { /* noop */ } } }
 
 // 共享 OKX tickers 直连管理：一条 WS 按 symbol 多路复用，标题/快照直接吃 OKX ~100ms 最新价，

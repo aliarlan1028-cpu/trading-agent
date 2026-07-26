@@ -8517,6 +8517,8 @@ button.danger:disabled,
 .snapRow > span { color: var(--text-2); }
 .snapRow > b { font-size: 12.5px; color: var(--text); }
 .snapBadge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: var(--pos-weak); color: var(--pos); }
+.snapBadge.neg { background: var(--neg-weak); color: var(--neg); }
+.snapBadge.neutral { background: #F1EADF; color: #8a8172; }
 
 .posTable, .ordList { display: flex; flex-direction: column; }
 .posHead, .posRow { display: grid; grid-template-columns: 1.4fr 0.7fr 1fr 1fr 1fr 1fr 0.6fr; gap: 8px; align-items: center; }

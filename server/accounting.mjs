@@ -25,8 +25,12 @@ export function unrealizedPnl(db) {
     const entry = Number(position.entry);
     const size = Number(position.size);
     if (!Number.isFinite(mark) || !Number.isFinite(entry) || !Number.isFinite(size)) continue;
+    // OKX SWAP 的 size 是"张数"，必须乘合约面值 ctVal 才是币数量；面值未知时不做本地重算，
+    // 保留交易所快照给的权威 upl（此前无乘数硬算会把 BTC 浮盈放大 100 倍）。
+    const multiplier = position.contractMultiplier != null ? Number(position.contractMultiplier) : (position.exchange === "OKX" ? null : 1);
     const sign = position.direction === "空" || position.direction === "short" ? -1 : 1;
-    const pnl = (mark - entry) * size * sign;
+    if (multiplier == null) { total += Number(position.pnl || 0); continue; }
+    const pnl = (mark - entry) * size * multiplier * sign;
     position.mark = mark;
     position.pnl = Number(pnl.toFixed(2));
     total += pnl;

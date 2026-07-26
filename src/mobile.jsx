@@ -28,7 +28,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -874,7 +874,8 @@ function MobileMarket({ data, action, ui }) {
   const equity = portfolio.totalEquityUsdt;
   const avail = portfolio.availableMarginUsdt;
   const used = equity != null && avail != null ? Math.max(0, Number(equity) - Number(avail)) : null;
-  const marginRate = equity ? (used / Number(equity)) * 100 : null;
+  // used 为 null 时必须保持 null（旧代码 null/equity===0 会把"未同步"渲染成 0%）。
+  const marginRate = used != null && Number(equity) > 0 ? (used / Number(equity)) * 100 : null;
   const metrics = [
     ["总资产", configured && equity != null ? displayMoney(equity, 2) : "未同步", null],
     ["今日盈亏", configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : "未同步", configured ? portfolio.todayPnl : null],
@@ -981,7 +982,8 @@ function MobileChatStatus({ data }) {
   const pf = data.portfolio || {};
   const autoOn = sys.autonomyEnabled === true && !sys.killSwitch;
   const smMob = data.marketRegime?.smartMoney || {};
-  const bias = smMob.ok ? (Number(smMob.topTraderLongShortRatio || 1) >= 1 ? "偏多" : "偏空") : "待同步";
+  // 与桌面端共用 smartMoneyBias（1.05/0.95 三档），不再用 >=1 二分导致两端结论矛盾。
+  const bias = smMob.ok ? smartMoneyBias(smMob.topTraderLongShortRatio).label : "待同步";
   const mandate = data.mandates?.find((m) => ["active", "running"].includes(m.status));
   const cells = [
     ["状态", autoOn ? "运行中" : "已暂停", autoOn ? "pos" : ""],
@@ -998,7 +1000,7 @@ function MobileChatStatus({ data }) {
 
 // 移动端主导航（与桌面 6 页 IA 一致 + 系统设置），走顶部汉堡抽屉。
 const mobileNav = [
-  { id: "chat", label: "AI 交易员", code: "ALPHA-01 · 趋势策略", icon: Bot },
+  { id: "chat", label: "AI 交易员", code: "ALPHA-01", icon: Bot },
   { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
   { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", code: "KNOWLEDGE · SKILLS", icon: BookOpen },

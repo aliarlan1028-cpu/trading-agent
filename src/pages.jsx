@@ -45,7 +45,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LivePrice, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, FlagTip, SymbolChips } from "./lib.jsx";
+import { pageCopy, formatMoney, displayMoney, displayPrice, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, smartMoneyBias, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, TradingViewChart, LivePrice, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, SemiGauge, InsightNote, FlagTip, SymbolChips } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 export function CockpitPage({ data, action, ui, cockpitTab = "overview", setCockpitTab }) {
@@ -108,11 +108,19 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const configuredAccounts = (data.exchangeAccounts || []).filter((account) => account.readEnabled).length;
   const totalAccounts = data.exchangeAccounts?.length || 0;
   const hasAccountData = latestSnapshot || data.portfolio.totalEquityUsdt !== null && data.portfolio.totalEquityUsdt !== undefined;
-  const availableMargin = hasAccountData ? (data.portfolio.availableMarginUsdt ?? data.portfolio.availableMargin ?? 0) : null;
-  const usedMargin = hasAccountData ? Math.max(0, Number(data.portfolio.totalEquityUsdt || 0) - Number(availableMargin || 0)) : null;
-  const marginRate = data.portfolio.totalEquityUsdt ? (usedMargin / Math.max(1, data.portfolio.totalEquityUsdt)) * 100 : null;
+  // 可用保证金只认服务端真实写入（OKX availEq）；缺失就是 null →“未同步”，
+  // 绝不回退 0——旧逻辑 ??0 把缺数据伪装成“可用为零”，进而推出保证金率 100%、“距强平 0%”的假恐慌。
+  const availableMargin = data.portfolio.availableMarginUsdt ?? null;
+  const equityNum = Number(data.portfolio.totalEquityUsdt);
+  const usedMargin = availableMargin != null && Number.isFinite(equityNum)
+    ? Math.max(0, equityNum - Number(availableMargin) - Number(data.portfolio.frozenMarginUsdt ?? 0))
+    : null;
+  // 分母必须是真实净值（旧代码 Math.max(1, equity) 在小额账户下产生纯巧合数字）。
+  const marginRate = usedMargin != null && Number.isFinite(equityNum) && equityNum > 0
+    ? Math.min(100, Math.max(0, (usedMargin / equityNum) * 100))
+    : null;
   const performance = data.performance || {};
-  const monthlyPnl = pnlWindow === "本月" ? performance.totalPnlUsdt : performance.totalPnlUsdt;
+  const monthlyPnl = performance.totalPnlUsdt;
   const openExecutions = performance.openExecutions || (data.executionOrders || []).filter((item) => !["filled", "closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length;
   const riskChecks = data.riskChecks || [];
   const blockedChecks = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
@@ -125,11 +133,13 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
   ];
   // 收益质量只做一行摘要 + 去复盘入口，胜率/盈亏比的完整拆解由复盘页承载，避免与复盘重复展示。
+  // 本月交易笔数从真实成交(fills)现算——portfolio.monthlyTrades 是后端从未写入的死字段。
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const monthlyTradeCount = (data.fills || []).filter((f) => f.kind === "close" && new Date(f.createdAt) >= monthStart).length;
   const qualityRows = [
     ["交易样本", performance.trades ? `${performance.trades} 笔已平仓 · 胜率 ${performance.winRatePct}% · 盈亏比 ${performance.profitFactor ?? "-"}` : "暂无已平仓交易，完成闭环后到复盘拆解"],
-    ["最大回撤", data.portfolio.maxDrawdownPct !== null && data.portfolio.maxDrawdownPct !== undefined ? displayPct(-Math.abs(Number(data.portfolio.maxDrawdownPct))) : "未同步"],
-    ["月交易次数", data.portfolio.monthlyTrades !== null && data.portfolio.monthlyTrades !== undefined ? `${data.portfolio.monthlyTrades} / ${data.portfolio.monthlyTradeLimit || "不限"}` : "未设置"],
-    ["风险等级", data.portfolio.riskLabel || "未同步"]
+    ["本月平仓", `${monthlyTradeCount} 笔`],
+    ["风险等级", /高|中|低/.test(data.portfolio?.riskLabel || "") ? data.portfolio.riskLabel : "未评估"]
   ];
   const actionItems = [
     configuredAccounts ? "运行一次手动对账，确认账户快照与交易所一致。" : "先在系统设置中添加只读交易所 API。",
@@ -147,8 +157,8 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const stripCells = [
     { label: "总资产 USDT", value: displayMoney(data.portfolio.totalEquityUsdt), sub: latestSnapshot ? `快照 ${formatDateTime(latestSnapshot.createdAt)}` : "同步后显示" },
     { label: "今日盈亏", value: configured ? displayMoney(data.portfolio.todayPnl) : "未同步", sub: configured ? displayPct(data.portfolio.todayPnlPct) : "接入后同步", tone: configured ? (Number(data.portfolio.todayPnl || 0) >= 0 ? "positive" : "negative") : "" },
-    { label: "未实现盈亏", value: configured ? displayMoney(data.portfolio.weekPnl) : "未同步", sub: configured ? displayPct(data.portfolio.weekPnlPct) : "接入后同步", tone: configured ? (Number(data.portfolio.weekPnl || 0) >= 0 ? "positive" : "negative") : "" },
-    { label: `累计盈亏·${pnlWindow}`, value: displayMoney(monthlyPnl), sub: `${performance.trades || 0} 笔已平仓`, tone: Number(monthlyPnl || 0) >= 0 ? "positive" : "warning" },
+    { label: "未实现盈亏", value: configured ? displayMoney(data.portfolio.unrealizedPnl) : "未同步", sub: configured ? "浮动盈亏" : "接入后同步", tone: configured ? (Number(data.portfolio.unrealizedPnl || 0) >= 0 ? "positive" : "negative") : "" },
+    { label: "累计盈亏", value: displayMoney(monthlyPnl), sub: `${performance.trades || 0} 笔已平仓`, tone: Number(monthlyPnl || 0) >= 0 ? "positive" : "warning" },
     { label: "可用保证金", value: displayMoney(availableMargin), sub: `占用 ${displayMoney(usedMargin)}` },
     { label: "保证金率", hint: "账户净值与已用保证金的比值。越高越安全；接近 100% 表示几乎没用杠杆，偏低则爆仓风险上升。", value: marginRate === null ? "未同步" : `${formatMoney(marginRate, 1)}%` },
     { label: "对账", value: configured ? humanize(latestReconcile?.status, "未对账") : "待配置", tone: latestReconcile?.status === "ok" ? "positive" : "warning", onClick: () => configured ? action("/api/reconciler/run", { mode: "manual_ui" }) : ui.setActive("systemSettings") }
@@ -160,12 +170,14 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     : sys.autonomyEnabled === false ? { label: "人工暂停", tone: "warning" }
       : blockedChecks > 0 ? { label: "降级运行（风险可控）", tone: "warning" }
         : configured ? { label: "正常运行", tone: "positive" } : { label: "待接入交易所", tone: "warning" };
-  const riskLabel = /高|中|低/.test(data.portfolio?.riskLabel || "") ? data.portfolio.riskLabel : (sys.killSwitch ? "高风险" : blockedChecks > 0 ? "中风险" : "低风险");
-  const riskTone = riskLabel.includes("高") ? "danger" : riskLabel.includes("中") ? "warning" : "ok";
+  // 零样本不给安全结论：一次风控检查都没跑过时显示"未评估"，而不是绿色"低风险"。
+  const riskLabel = /高|中|低/.test(data.portfolio?.riskLabel || "") ? data.portfolio.riskLabel
+    : (sys.killSwitch ? "高风险" : blockedChecks > 0 ? "中风险" : riskChecks.length ? "低风险" : "未评估");
+  const riskTone = riskLabel.includes("高") ? "danger" : riskLabel.includes("中") || riskLabel === "未评估" ? "warning" : "ok";
   const conclusionReasons = [
     configured ? `今日剩余亏损预算 ${sys.remainingDailyLossUsdt !== null && sys.remainingDailyLossUsdt !== undefined ? `${displayMoney(sys.remainingDailyLossUsdt)} USDT` : "未授权"}` : "尚未连接交易所，当前为占位状态",
-    (data.positions || []).length ? `${(data.positions || []).length} 个持仓，关注波动与杠杆` : "当前无持仓，账户承压较低",
-    blockedChecks ? `近期风控阻断 ${blockedChecks} 次，已自动降级` : "近期风控检查全部通过"
+    (data.positions || []).length ? `${(data.positions || []).length} 个持仓，关注波动与杠杆` : "当前无持仓",
+    blockedChecks ? `近期风控阻断 ${blockedChecks} 次，已自动降级` : riskChecks.length ? `近期 ${riskChecks.length} 次风控检查无阻断` : "尚未产生风控检查记录"
   ];
 
   const positions = data.positions || [];
@@ -202,26 +214,51 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const snapRows = [
     ["最新价", displayPrice(market.price), ""],
     ["24h 涨跌", displayPct(market.changePct), chgPos ? "pos" : "neg"],
-    ["24h 高 / 低", (market.high24h != null || ohlc.h != null) ? `${displayPrice(market.high24h ?? ohlc.h)} / ${displayPrice(market.low24h ?? ohlc.l)}` : "未同步", ""],
+    // 只认 tickers 频道的真实 24h 高低；不再用"最后一根 K 线的高低"冒充（周期不同，语义失真）。
+    ["24h 高 / 低", market.high24h != null ? `${displayPrice(market.high24h)} / ${displayPrice(market.low24h)}` : "未同步", ""],
     ["资金费率", market.fundingRate == null ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`, Number(market.fundingRate) >= 0 ? "pos" : "neg"],
-    ["未平仓 OI", market.openInterest ? formatMoney(market.openInterest, 0) : "未同步", ""],
-    ["成交量 24h", market.volume24h || (market.volume ? formatMoney(market.volume, 0) : "未同步"), ""],
-    ["买盘占比", market.bookImbalancePct == null ? "未同步" : `${market.bookImbalancePct}%`, Number(market.bookImbalancePct) >= 50 ? "pos" : "neg"],
-    ["市场状态", gm.interpretation ? "多头趋势" : (market.regime || "观察"), "badge"]
+    // OKX oiCcy 是币本位数量，不是美元；标注单位并用当前价折算 ≈USD，消除"1.38 亿"无单位的误读。
+    ["未平仓 OI", market.openInterest
+      ? `${formatMoney(market.openInterest, 0)} 币${Number(market.price) > 0 ? ` ≈$${formatMoney(market.openInterest * Number(market.price), 0)}` : ""}`
+      : "未同步", ""],
+    // 后端此行来自现货 ticker 成交额（USDT），与本卡其余的永续字段口径不同——标注清楚，不冒充永续量。
+    ["成交额 24h·现货", market.volume24h || "未同步", ""],
+    // 口径：SWAP 订单簿买卖各 20 档张数占比，深度浅、噪声大，只作参考。
+    ["买盘占比·20档", market.bookImbalancePct == null ? "未同步" : `${market.bookImbalancePct}%`, Number(market.bookImbalancePct) >= 50 ? "pos" : "neg"],
+    // 大户多空比是 BTC 的（后端只取 symbols[0]）——明确标注归属，不再贴到任意币上；
+    // 判定与 AI 页/移动端共用 smartMoneyBias（阈值一处定义）。
+    ...(() => {
+      const ratio = sm.topTraderLongShortRatio != null ? Number(sm.topTraderLongShortRatio) : null;
+      const bias = smartMoneyBias(ratio);
+      const tone = bias.tone === "pos" ? "badge" : bias.tone === "neg" ? "badgeNeg" : "badgeNeutral";
+      return [["大盘多空 · BTC", ratio == null ? bias.label : `${bias.label}（${ratio}）`, tone]];
+    })()
   ];
   const openOrders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled", "filled_closed", "rejected"].includes(String(o.status || "").toLowerCase()));
   const recentFills = (data.fills || []).slice(0, 6);
   const walletVals = [
     ["总资产", displayMoney(data.portfolio.totalEquityUsdt)],
-    ["可用", displayMoney(availableMargin)],
-    ["占用", displayMoney(usedMargin)],
-    ["冻结", displayMoney(data.portfolio.frozenMarginUsdt ?? 0, 2, "0.00")]
+    ["可用", availableMargin != null ? displayMoney(availableMargin) : "未同步"],
+    ["占用", usedMargin != null ? displayMoney(usedMargin) : "未同步"],
+    // 冻结只显示真实同步值（OKX frozenBal）；缺失就是未同步，不再写死 0.00。
+    ["冻结", data.portfolio.frozenMarginUsdt != null ? displayMoney(data.portfolio.frozenMarginUsdt, 2) : "未同步"]
   ];
-  const usagePct = marginRate === null ? 0 : Math.min(100, Math.max(0, marginRate));
-  const marginTone = usagePct >= 80 ? "neg" : usagePct >= 50 ? "warn" : "pos";
-  const marginToneLabel = usagePct >= 80 ? "偏高" : usagePct >= 50 ? "中等" : "健康";
+  const usagePct = marginRate === null ? null : Math.min(100, Math.max(0, marginRate));
+  const marginTone = usagePct == null ? "" : usagePct >= 80 ? "neg" : usagePct >= 50 ? "warn" : "pos";
+  const marginToneLabel = usagePct == null ? "未同步" : usagePct >= 80 ? "偏高" : usagePct >= 50 ? "中等" : "健康";
   const donutDash = 2 * Math.PI * 31;
-  const donutOffset = donutDash * (1 - usagePct / 100);
+  const donutOffset = donutDash * (1 - (usagePct ?? 0) / 100);
+  // 真实的强平距离：取自 OKX 持仓的预估强平价 liqPx 与现价的最小距离；无持仓/无数据则不展示。
+  // （旧显示"距强平 = 100 - 保证金率"是保证金率的算术补数，与强平价毫无关系，纯属吓人的假指标。）
+  const liqDistances = (data.positions || [])
+    .map((p) => {
+      const liq = Number(p.liqPx);
+      const mk = Number(p.mark || (data.markets || []).find((m) => m.symbol === p.symbol)?.price);
+      if (!Number.isFinite(liq) || liq <= 0 || !Number.isFinite(mk) || mk <= 0) return null;
+      return Math.abs(mk - liq) / mk * 100;
+    })
+    .filter((v) => v != null);
+  const minLiqDistancePct = liqDistances.length ? Math.min(...liqDistances) : null;
 
   return (
     <div className="pageStack termPage marketPage">
@@ -317,8 +354,8 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             {snapRows.slice(2).map(([k, v, tone]) => (
               <div className="snapRow" key={k}>
                 <span>{k}</span>
-                {tone === "badge"
-                  ? <b className="snapBadge pos">{v}</b>
+                {String(tone).startsWith("badge")
+                  ? <b className={`snapBadge ${tone === "badge" ? "pos" : tone === "badgeNeg" ? "neg" : "neutral"}`}>{v}</b>
                   : <b className={`mono ${tone || ""}`}>{v}</b>}
               </div>
             ))}
@@ -367,8 +404,10 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
                 <div className="ordRow mono" key={o.id || i}>
                   <span className="ordSym">{o.symbol}</span>
                   <b className={`sideTag ${buy ? "pos" : "neg"}`}>{buy ? "买" : "卖"}</b>
-                  <span className="ordType">{humanize(o.type || o.kind || o.status, "—")}</span>
-                  <span className="ordPx">{displayMoney(o.price ?? o.avgPrice ?? o.entry, 2, "—")}</span>
+                  {/* 类型列只显示真实类型；缺失显示 —，不再拿订单状态冒充类型 */}
+                  <span className="ordType">{humanize(o.type || o.kind, "—")}</span>
+                  {/* 市价单价格为 0（OKX px 为空）时显示"市价"，不再显示 0.00 */}
+                  <span className="ordPx">{(() => { const px = o.price ?? o.avgPrice ?? o.entry; return Number(px) > 0 ? displayMoney(px, 2) : (/market/i.test(String(o.type || "")) || Number(px) === 0 ? "市价" : "—"); })()}</span>
                   <span className="ordTime">{formatTime(o.createdAt)}</span>
                 </div>
               );
@@ -399,19 +438,26 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         </div>
         <div className="termCard">
           <div className="balLabel">强平安全</div>
-          <div className="liqTop"><span>距强平</span><b className="mono">{marginRate === null ? "—" : `${formatMoney(100 - usagePct, 1)}%`}</b></div>
-          <div className="liqBar2"><span className="liqMark2" style={{ left: `${usagePct}%` }} /></div>
-          <div className="liqLegend2 mono"><span>SAFE</span><span>WARN</span><span>LIQ</span></div>
+          {/* 真实口径：OKX 持仓的预估强平价 liqPx 与现价的最小距离；无持仓时如实显示无风险敞口。 */}
+          <div className="liqTop"><span>距强平</span><b className="mono">{minLiqDistancePct != null ? `${formatMoney(minLiqDistancePct, 1)}%` : (data.positions || []).length ? "未同步" : "无持仓"}</b></div>
+          {minLiqDistancePct != null && <div className="liqBar2"><span className="liqMark2" style={{ left: `${Math.min(100, Math.max(0, 100 - minLiqDistancePct))}%` }} /></div>}
+          {minLiqDistancePct != null && <div className="liqLegend2 mono"><span>SAFE</span><span>WARN</span><span>LIQ</span></div>}
         </div>
         <div className="termCard">
           <div className="balLabel">交易所同步</div>
           <div className="exSyncList">
-            {(data.exchangeAccounts || []).map((a) => (
-              <div className="exSyncRow2" key={a.id}>
-                <span>{a.exchange}</span>
-                <span className={`exSyncState ${a.readEnabled ? "on" : "off"} mono`}><i />{a.readEnabled ? "synced" : "未配置"}</span>
-              </div>
-            ))}
+            {/* 状态取真实同步结果（readSyncStatus），不再"本地填了 key 就亮绿灯 synced"。 */}
+            {(data.exchangeAccounts || []).map((a) => {
+              const st = String(a.readSyncStatus || "");
+              const ok = st === "ok";
+              const label = ok ? "synced" : st ? humanize(st) : (a.readEnabled ? "未同步" : "未配置");
+              return (
+                <div className="exSyncRow2" key={a.id}>
+                  <span>{a.exchange}</span>
+                  <span className={`exSyncState ${ok ? "on" : "off"} mono`}><i />{label}</span>
+                </div>
+              );
+            })}
             {!(data.exchangeAccounts || []).length && <div className="emptyPanel">未接入交易所</div>}
           </div>
         </div>
@@ -456,7 +502,8 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
                   <div><span>BTC 主导率</span><strong>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</strong></div>
                   <div><span>总市值 24h</span><strong className={gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "positive" : "negative"}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</strong></div>
                   <div><span>恐惧贪婪</span><strong className={gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "negative" : gm.fearGreed.value >= 75 ? "warning" : ""}>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "未取"}</strong></div>
-                  <div><span>大户持仓多空比</span><strong className={sm.topTraderLongShortRatio == null ? "" : sm.topTraderLongShortRatio >= 1 ? "positive" : "negative"}>{sm.topTraderLongShortRatio ?? "未取"}</strong></div>
+                  {/* 着色与全端 smartMoneyBias 同阈值（1.05/0.95），不再用 >=1 二分与快照卡自相矛盾 */}
+                  <div><span>大户持仓多空比</span><strong className={(() => { const t = smartMoneyBias(sm.topTraderLongShortRatio).tone; return t === "pos" ? "positive" : t === "neg" ? "negative" : ""; })()}>{sm.topTraderLongShortRatio ?? "未取"}</strong></div>
                   <div><span>散户多空比</span><strong>{sm.retailLongShortRatio ?? "未取"}</strong></div>
                   <div><span>主动买卖比</span><strong className={sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "positive" : "negative"}>{sm.takerBuySellRatio ?? "未取"}</strong></div>
                   <div><span>近期爆仓 多/空</span><strong className={sm.liquidations == null ? "" : sm.liquidations.dominantSide === "short" ? "positive" : sm.liquidations.dominantSide === "long" ? "negative" : ""}>{sm.liquidations ? `${sm.liquidations.longLiqCount} / ${sm.liquidations.shortLiqCount}` : "未取"}</strong></div>
@@ -1196,7 +1243,8 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
               <div className="rrHead"><span className="rrIcon" style={{ background: g.bg, color: g.color }}><g.Icon size={14} /></span><b>{g.title}</b><span className="rrCount">{g.rules.length}</span></div>
               {g.rules.slice(0, 3).map((r) => <div className="rrRow" key={r.id}><span>{(r.name || "规则").slice(0, 12)}</span><b>{humanize(r.action, r.level || "-")}</b></div>)}
               {!g.rules.length && <div className="rrEmpty">无规则</div>}
-              <div className="rrOk"><span className="rrDot" />正常</div>
+              {/* 只有真有启用规则时才亮绿点；空分组不再写死"正常" */}
+              {g.rules.length > 0 && <div className="rrOk"><span className="rrDot" />已启用 {g.rules.filter((r) => r.enabled !== false).length} 条</div>}
             </div>
           ))}
         </div>
@@ -1553,7 +1601,8 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
     <div className="pageStack termPage">
       {!embedded && <TermHead title="审计与系统" code="AUDIT · SYSTEM" sub="全链路审计、工具调用日志与系统可观测性" />}
       <div className="metricGrid five">
-        <MetricCard icon={Gauge} label="API 健康" value={data.system.apiHealth || "未知"} sub={`实现 ${data.readiness?.implementationCompletionPct || 0}%`} />
+        {/* 副标改用"配置就绪度"（由 env/密钥/开关的真实状态算出）——旧"实现 100%"是 26 条检查全部硬编码 implemented:true 的假指标 */}
+        <MetricCard icon={Gauge} label="API 健康" value={data.system.apiHealth || "未知"} sub={`配置就绪 ${data.readiness?.configurationCompletionPct ?? 0}%`} />
         <MetricCard icon={Activity} label="WebSocket 状态" value={data.realtimeStarted ? "运行中" : "未启动"} sub={data.realtimeStarted ? `${data.realtimeConnections?.filter((item) => item.status === "connected").length || 0} / ${data.realtimeConnections?.length || 0} 已连接` : "实时管理器未开启"} tone={data.realtimeStarted ? "positive" : "warning"} />
         <MetricCard icon={Zap} label="任务引擎" value={String(data.tasks?.filter((task) => task.enabled).length || 0)} sub="启用任务" />
         <MetricCard icon={RefreshCw} label="交易所同步" value={`${data.exchangeAccounts?.filter((item) => item.readEnabled).length || 0} / ${data.exchangeAccounts?.length || 0}`} sub="已配置只读账户" />
@@ -1575,7 +1624,8 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
             );
           })}
         </div>
-        <div className="acFoot"><span>整体耗时 <b className="mono">{formatDuration(traces[0]?.latencyMs) || "—"}</b></span><span>状态 <b className={latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "运行中")}</b></span></div>
+        {/* 旧"整体耗时"取任意最新一条 trace 的延迟（且多为随机数），语义错误——改为最近记录时间；状态无数据时显示 —，不再默认"运行中" */}
+        <div className="acFoot"><span>最近记录 <b className="mono">{traces[0] ? formatTime(traces[0].createdAt) : "—"}</b></span><span>状态 <b className={latestRisk.passed == null ? "" : latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "—")}</b></span></div>
       </div>
 
       <div className="termCard">

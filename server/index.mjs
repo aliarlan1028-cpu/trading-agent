@@ -226,8 +226,9 @@ registerTaskHandler("okx_readonly_sync", async (database) => {
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database) => {
   const mandate = (database.mandates || []).find((m) => ["active", "running"].includes(m.status));
-  // 始终刷 BTC/ETH（常作默认展示的 activeMarket）+ 授权交易对，避免卡片显示的币未被刷新。
-  const symbols = [...new Set(["BTC/USDT", "ETH/USDT", ...(mandate?.allowedSymbols || [])])].slice(0, 4);
+  // 刷 BTC/ETH（默认展示）+ 授权交易对 + 自选列表——此前不含自选，自选里非授权币的
+  // 买盘占比/微观结构永远"未同步"。
+  const symbols = [...new Set(["BTC/USDT", "ETH/USDT", ...(mandate?.allowedSymbols || []), ...(database.watchlist || [])])].slice(0, 6);
   let synced = 0;
   for (const symbol of symbols) {
     try { await syncMicrostructure(database, "OKX", symbol); synced += 1; } catch { /* 单交易对失败不阻断 */ }
@@ -290,9 +291,13 @@ setMarketTickHook((database, symbol, price) => {
     const size = Number(p.size ?? p.qty ?? p.pos);
     if (!Number.isFinite(entry) || !Number.isFinite(size)) continue;
     const short = p.direction === "空" || String(p.direction || p.side || p.posSide || "").toLowerCase().includes("short");
+    // OKX 张数必须乘合约面值 ctVal；面值未知时不重算，保留交易所快照的权威 upl（防止放大 100 倍）。
+    const multiplier = p.contractMultiplier != null ? Number(p.contractMultiplier) : (p.exchange === "OKX" ? null : 1);
     p.mark = price;
-    p.pnl = Number(((price - entry) * size * (short ? -1 : 1)).toFixed(2));
-    p.unrealizedPnl = p.pnl;
+    if (multiplier != null) {
+      p.pnl = Number(((price - entry) * size * multiplier * (short ? -1 : 1)).toFixed(2));
+      p.unrealizedPnl = p.pnl;
+    }
     if (entry) p.roiPct = Number((((price - entry) / entry) * 100 * (short ? -1 : 1) * (Number(p.leverage) || 1)).toFixed(2));
   }
   const now = Date.now();

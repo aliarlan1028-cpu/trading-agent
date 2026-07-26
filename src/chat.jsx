@@ -29,7 +29,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -411,17 +411,26 @@ function AgentRail({ data, action, ui, send }) {
   const btc = (data.markets || []).find((m) => /BTC/i.test(m.symbol || ""));
   const latestRun = (data.agentRuns || [])[0] || {};
   const todayPnl = Number(portfolio.todayPnl || 0);
-  const monthPnl = Number(perf.totalPnlUsdt ?? portfolio.weekPnl ?? 0);
+  // 累计盈亏 = performanceReport 全时段真实合计；不再回退 weekPnl（后端从未写入的死字段）。
+  const cumPnl = Number(perf.totalPnlUsdt ?? 0);
   const autoOn = system.autonomyEnabled === true && !system.killSwitch;
   const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
   const ratio = sm.topTraderLongShortRatio;
-  const judge = system.killSwitch ? "已熔断" : ratio == null ? "观察中" : ratio >= 1.05 ? "多头趋势" : ratio <= 0.95 ? "空头趋势" : "多空平衡";
-  const judgePos = judge === "多头趋势";
-  const nextStep = agentStatus.nextAction || (canOpen ? "等待信号" : "观察中");
+  // 全端统一的偏向判定（smartMoneyBias，阈值一处定义）；语义用"偏多/偏空"不再冒充"趋势"。
+  const bias = smartMoneyBias(ratio);
+  const judge = system.killSwitch ? "已熔断" : bias.label === "待同步" ? "观察中" : bias.label;
+  const judgePos = bias.tone === "pos";
+  const judgeNeg = bias.tone === "neg";
+  // 后端真实的下一步建议是 nextActions（数组）；此前读不存在的单数 nextAction 恒 undefined，
+  // 永远落到"等待信号"这个与信号无关的假文案。
+  const nextStep = (agentStatus.nextActions || [])[0] || (canOpen ? "已授权开仓" : "未授权开仓");
   const remaining = system.remainingDailyLossUsdt;
   const cap = mandate.maxDailyLossPct && portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(portfolio.totalEquityUsdt) : null;
   const budgetPct = cap && remaining != null ? Math.max(0, Math.min(100, (Number(remaining) / cap) * 100)) : null;
-  const marginRate = portfolio.totalEquityUsdt ? (Math.max(0, Number(portfolio.totalEquityUsdt) - Number(portfolio.availableMarginUsdt ?? portfolio.totalEquityUsdt)) / Math.max(1, Number(portfolio.totalEquityUsdt))) * 100 : null;
+  // 只认真实同步的可用保证金；缺失就是 null——旧回退 totalEquity 会假装"持仓风险 0.0%"。
+  const marginRate = portfolio.availableMarginUsdt != null && Number(portfolio.totalEquityUsdt) > 0
+    ? Math.min(100, Math.max(0, ((Number(portfolio.totalEquityUsdt) - Number(portfolio.availableMarginUsdt)) / Number(portfolio.totalEquityUsdt)) * 100))
+    : null;
 
   const mandateRows = hasMandate ? [
     { k: "授权范围", v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
@@ -435,17 +444,19 @@ function AgentRail({ data, action, ui, send }) {
     { k: "最大杠杆", v: "—" }, { k: "单笔风险", v: "—" }, { k: "审批阈值", v: "—" }
   ];
 
-  const trajSteps = [
-    { Icon: Eye, t: "观察市场" }, { Icon: BrainCircuit, t: "分析研判" }, { Icon: ClipboardList, t: "生成计划" },
-    { Icon: Shield, t: "风险检查" }, { Icon: Hourglass, t: "等待执行" }
-  ];
-  const trajTime = latestRun.createdAt ? formatTime(latestRun.createdAt) : "—";
+  // 轨迹用最新 run 的真实步骤与各自时间戳——旧版是写死的五步流水 + 同一个时间戳复制五遍（假轨迹）。
+  const TRAJ_ICONS = { observe: Eye, regime: BrainCircuit, decision: ClipboardList, risk_check: Shield, execution: Hourglass };
+  const trajSteps = (latestRun.steps || []).slice(0, 5).map((s) => ({
+    Icon: TRAJ_ICONS[s.phase] || BrainCircuit,
+    t: (s.title || humanize(s.phase, "步骤")).slice(0, 6),
+    time: s.createdAt ? formatTime(s.createdAt) : "—"
+  }));
 
   const kpis = [
     { k: "总资产", v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: Number(portfolio.todayPnl || 0) >= 0 },
     { k: "持仓风险", v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} 仓`, plain: true },
     { k: "今日盈亏", v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: todayPnl >= 0, colorVal: true },
-    { k: "本月盈亏", v: `${monthPnl >= 0 ? "+" : ""}${displayMoney(monthPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "", pos: monthPnl >= 0, colorVal: true },
+    { k: "累计盈亏", v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "", pos: cumPnl >= 0, colorVal: true },
     { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "", pos: Number(btc?.changePct || 0) >= 0 }
   ];
 
@@ -458,16 +469,17 @@ function AgentRail({ data, action, ui, send }) {
       <div className="agCard">
         <div className="agHeadNum"><span className="agNum">2</span>当前 Agent 状态</div>
         <div className="agMiniGrid">
-          <div className="agMini"><div className="agMiniK">目标</div><div className="agMiniV mono">{hasMandate && mandate.targetMonthlyPct ? `${mandate.targetMonthlyPct}%` : "—"}</div><div className="agMiniS">{hasMandate && mandate.maxWeeklyDrawdownPct ? `回撤${mandate.maxWeeklyDrawdownPct}%` : "按授权"}</div></div>
+          {/* 授权边界卡：显示真实的授权字段（单笔风险/日亏上限）——旧 targetMonthlyPct 是后端从未写入的死字段，永远显示"—" */}
+          <div className="agMini"><div className="agMiniK">授权边界</div><div className="agMiniV mono">{hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/笔` : "—"}</div><div className="agMiniS">{hasMandate && mandate.maxDailyLossPct != null ? `日亏≤${mandate.maxDailyLossPct}%` : "未授权"}</div></div>
           <div className="agMini"><div className="agMiniK">状态</div><div className={`agMiniV sg ${autoOn ? "pos" : ""}`}>{autoOn ? "运行中" : "已暂停"}</div><div className="agMiniS">{system.killSwitch ? "已熔断" : autoOn ? "已开启" : "待启动"}</div></div>
-          <div className="agMini"><div className="agMiniK">判断</div><div className={`agMiniV sg ${judgePos ? "pos" : ""}`}>{judge}</div><div className="agMiniS">{ratio != null ? `大户${ratio}` : "待同步"}</div></div>
-          <div className="agMini"><div className="agMiniK">下一步</div><div className="agMiniV sg">{nextStep}</div><div className="agMiniS">{canOpen ? "允许开仓" : "禁止开仓"}</div></div>
+          <div className="agMini"><div className="agMiniK">大盘结构</div><div className={`agMiniV sg ${judgePos ? "pos" : ""} ${judgeNeg ? "neg" : ""}`}>{judge}</div><div className="agMiniS">{ratio != null ? `BTC大户${ratio}` : "待同步"}</div></div>
+          <div className="agMini"><div className="agMiniK">下一步</div><div className="agMiniV sg" title={nextStep}>{nextStep.length > 8 ? `${nextStep.slice(0, 8)}…` : nextStep}</div><div className="agMiniS">{canOpen ? "已授权开仓" : "未授权开仓"}</div></div>
         </div>
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
             <b className="mono">{plan?.symbol || (mandate.allowedSymbols || [])[0] || "BTC/USDT"}</b>
-            <span className="agPlanTag">{humanize(plan?.strategy || mandate.strategies?.[0] || "趋势策略")}</span>
+            <span className="agPlanTag">{plan?.strategy || mandate.strategies?.[0] ? humanize(plan?.strategy || mandate.strategies?.[0]) : "未指定策略"}</span>
             <span className="agPlanRight mono">{plan ? "当前交易计划" : "暂无计划"}</span>
           </div>
           <div className="agPlanGrid">
@@ -501,8 +513,9 @@ function AgentRail({ data, action, ui, send }) {
       <div className="agCard">
         <div className="agTrajHead"><span className="agSecLabel"><i />Agent 运行轨迹 · 最新循环</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>完整 ›</button></div>
         <div className="agTrajGrid">
-          {trajSteps.map(({ Icon, t }) => (
-            <div className="agTrajCell" key={t}><span className="agTrajIcon"><Icon size={12} /></span><b>{t}</b><div className="agTrajTime mono">{trajTime}</div></div>
+          {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>暂无运行记录；开启自主巡检后显示真实步骤轨迹</div>}
+          {trajSteps.map(({ Icon, t, time }, i) => (
+            <div className="agTrajCell" key={`${t}-${i}`}><span className="agTrajIcon"><Icon size={12} /></span><b>{t}</b><div className="agTrajTime mono">{time}</div></div>
           ))}
         </div>
       </div>

@@ -417,7 +417,7 @@ export async function syncPrivateReadOnly(db, accountId) {
     createdAt: nowIso()
   };
   db.accountSnapshots.unshift(snapshot);
-  if (snapshot.status === "ok") applyPrivateSnapshotToState(db, snapshot);
+  if (snapshot.status === "ok") await applyPrivateSnapshotToState(db, snapshot);
   account.lastReadSyncAt = snapshot.createdAt;
   account.readSyncStatus = snapshot.status;
   appendAudit(db, `私有只读同步：${snapshot.status}`, account.id, "ExchangeConnector", snapshot.status === "ok" ? "info" : "warning");
@@ -455,11 +455,11 @@ async function syncBinanceReadOnly() {
   }
 }
 
-function applyPrivateSnapshotToState(db, snapshot) {
+async function applyPrivateSnapshotToState(db, snapshot) {
   db.positions ||= [];
   db.orders ||= [];
   updateApiPermissionMetadata(db, snapshot);
-  if (snapshot.exchange === "OKX") applyOkxSnapshot(db, snapshot);
+  if (snapshot.exchange === "OKX") await applyOkxSnapshot(db, snapshot);
   if (snapshot.exchange === "BINANCE") applyBinanceSnapshot(db, snapshot);
 }
 
@@ -557,7 +557,21 @@ function normalizeOpenOrder(exchange, payload = {}) {
   };
 }
 
-function applyOkxSnapshot(db, snapshot) {
+// OKX 合约面值缓存：SWAP 的 pos 字段是"张数"，换算成币数量/盈亏必须乘 ctVal
+// （如 BTC-USDT-SWAP ctVal=0.01——不乘会把浮盈放大 100 倍）。
+const okxCtValCache = new Map();
+async function okxContractValue(instId) {
+  if (okxCtValCache.has(instId)) return okxCtValCache.get(instId);
+  try {
+    const timer = timeoutSignal();
+    const raw = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json());
+    const ctVal = Number(raw.data?.[0]?.ctVal);
+    if (Number.isFinite(ctVal) && ctVal > 0) { okxCtValCache.set(instId, ctVal); return ctVal; }
+  } catch { /* 拿不到面值时返回 null，调用方保持交易所 upl 不做本地重算 */ }
+  return null;
+}
+
+async function applyOkxSnapshot(db, snapshot) {
   const seen = new Set();
   for (const payload of snapshot.positions || []) {
     const size = Number(payload.pos || 0);
@@ -566,15 +580,19 @@ function applyOkxSnapshot(db, snapshot) {
     const posSide = payload.posSide || (size < 0 ? "short" : "long");
     const key = `OKX:${symbol}:${posSide}`;
     seen.add(key);
+    const ctVal = await okxContractValue(payload.instId);
     upsertExchangePosition(db, key, {
       exchange: "OKX",
       symbol,
       posSide,
       direction: posSide === "short" ? "short" : "long",
-      size: Math.abs(size),
+      size: Math.abs(size),                          // 合约张数（OKX 原始口径）
+      contractMultiplier: ctVal,                     // 面值：币数量 = 张数 × ctVal
+      coinSize: ctVal ? Math.abs(size) * ctVal : null, // 币数量（展示用，真实换算）
       entry: Number(payload.avgPx || 0),
-      mark: Number(payload.markPx || 0),
-      pnl: Number(payload.upl || 0),
+      mark: Number(payload.markPx || 0),             // 标记价（交易所强平/浮盈基准）
+      liqPx: Number(payload.liqPx) || null,          // 真实预估强平价
+      pnl: Number(payload.upl || 0),                 // 交易所权威浮盈，不用本地公式冒充
       leverage: Number(payload.lever || 0),
       marginMode: payload.mgnMode,
       rawSyncedAt: snapshot.createdAt
@@ -582,8 +600,16 @@ function applyOkxSnapshot(db, snapshot) {
   }
   pruneExchangePositions(db, "OKX", seen);
   upsertOpenOrders(db, "OKX", snapshot.openOrders);
-  const totalEq = Number(snapshot.balances?.[0]?.totalEq);
+  const account = snapshot.balances?.[0] || {};
+  const totalEq = Number(account.totalEq);
   if (Number.isFinite(totalEq) && totalEq > 0) db.portfolio.totalEquityUsdt = totalEq;
+  // 真实可用/冻结：来自 OKX balance details 的 USDT 明细（此前从未写入，前端一直显示假的 0.00）。
+  const usdtDetail = (account.details || []).find((d) => d.ccy === "USDT") || {};
+  const availEq = Number(usdtDetail.availEq ?? usdtDetail.availBal);
+  if (Number.isFinite(availEq)) db.portfolio.availableMarginUsdt = availEq;
+  const frozen = Number(usdtDetail.frozenBal ?? usdtDetail.ordFrozen);
+  if (Number.isFinite(frozen)) db.portfolio.frozenMarginUsdt = frozen;
+  db.portfolio.marginSyncedAt = snapshot.createdAt;
 }
 
 function applyBinanceSnapshot(db, snapshot) {

@@ -663,7 +663,8 @@ export function appendAudit(db, action, target, actor = "System", severity = "in
   return entry;
 }
 
-export function appendTrace(db, type, title, status = "ok", latencyMs = Math.floor(80 + Math.random() * 900)) {
+// latencyMs 只接受真实测量值；不传就是 null（此前默认随机数 80-980ms，会被前端当真实延迟画进 P95 图）。
+export function appendTrace(db, type, title, status = "ok", latencyMs = null) {
   const entry = { id: id("trace"), type, title, status, latencyMs, createdAt: nowIso() };
   db.traces.unshift(entry);
   writeTraceEntry(entry);
