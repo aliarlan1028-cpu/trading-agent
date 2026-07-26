@@ -13,7 +13,8 @@ IMAGE="trading-agent-trading-agent"
 HEALTH_URL="http://127.0.0.1:8787/api/health"
 
 EXCLUDES=(--exclude node_modules --exclude .git --exclude data --exclude backups
-          --exclude ios --exclude dist --exclude .env --exclude '*.log')
+          --exclude ios --exclude dist --exclude .env --exclude '*.log'
+          --exclude deploy/vendor.env --exclude deploy/monitor.env)  # 服务器专有密钥文件(gitignore,本地无)——曾被 --delete 误删导致新租户静默无 LLM key
 
 if [ "${1:-}" = "--dry" ]; then
   rsync -azn --delete -v "${EXCLUDES[@]}" "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/" | head -50

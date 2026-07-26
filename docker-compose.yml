@@ -4,7 +4,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"  # 只暴露给本机 Caddy 反代;曾绑 0.0.0.0 公网可直连(审计高危)
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
