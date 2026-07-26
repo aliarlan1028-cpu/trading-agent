@@ -31,7 +31,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { displayMoney, marginUsage, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -73,17 +73,14 @@ function MobilePositions({ data, action, ui }) {
   const orders = data.orders || [];
   const executions = data.executionOrders || [];
   const reduceOnly = Boolean(data.system?.reduceOnlyMode);
-  const activeExec = ["entry_submitted", "entry_filled", "protecting", "open"];
+  const activeExec = ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]; // 与后端 OPEN_EXECUTION_STATES 对齐;旧集合误用事件名 entry_submitted 且漏 3 个状态 → 少报在途单
   const activeExecutions = executions.filter((order) => activeExec.includes(String(order.status || "").toLowerCase())).length;
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((account) => account.readEnabled);
   const exposure = positions.reduce((sum, position) => sum + Math.abs(Number(position.size || 0) * Number(position.mark || position.entry || 0)), 0);
   const totalPnl = positions.reduce((sum, position) => sum + Number(position.pnl || 0), 0);
-  const equity = Number(portfolio.totalEquityUsdt || 0);
-  const availableMargin = portfolio.availableMarginUsdt ?? portfolio.availableMargin;
-  const marginRate = configured && equity > 0 && availableMargin !== undefined && availableMargin !== null
-    ? ((equity - Number(availableMargin)) / equity) * 100
-    : null;
+  const availableMargin = portfolio.availableMarginUsdt ?? portfolio.availableMargin ?? null;
+  const marginRate = configured ? marginUsage(portfolio).marginRatePct : null;
   return (
     <div className="mPositions">
       <div className="mPageStats">
@@ -320,7 +317,7 @@ const MSKILL = {
   paper_rejected: { label: "模拟未通过", tone: "danger" },
   paper_validated: { label: "待批准", tone: "warning", next: { action: "approve", label: "批准启用" } },
   active: { label: "已上岗", tone: "ok" },
-  degraded: { label: "已降级", tone: "danger" },
+  degraded: { label: "已降级", tone: "danger", next: { action: "validate", label: "重新验证" } },
   superseded: { label: "已被替代", tone: "neutral" },
   retired: { label: "已退役", tone: "neutral" }
 };
@@ -613,7 +610,7 @@ function MobileAccountHealth({ data, action }) {
     ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],
     ["私有账户快照", latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : "未同步", latestSnapshot ? "ok" : "neutral"],
     ["对账状态", configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置", latestReconcile?.status === "ok" ? "ok" : "neutral"],
-    ["实盘写入", data.system?.liveTradingEnabled ? "开启" : "关闭", data.system?.liveTradingEnabled ? "danger" : "neutral"],
+    ["实盘写入", data.system?.liveTradingEnabled ? "已开启" : "关闭", data.system?.liveTradingEnabled ? "warning" : "neutral"], // 主动授权开关≠故障,与桌面口径一致用提醒色
     ["在途执行", `${openExecutions} 个`, openExecutions ? "warning" : "ok"],
     ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
   ];
@@ -651,9 +648,8 @@ function MobileMarket({ data, action, ui }) {
   const positions = data.positions || [];
   const equity = portfolio.totalEquityUsdt;
   const avail = portfolio.availableMarginUsdt;
-  const used = equity != null && avail != null ? Math.max(0, Number(equity) - Number(avail)) : null;
-  // used 为 null 时必须保持 null（旧代码 null/equity===0 会把"未同步"渲染成 0%）。
-  const marginRate = used != null && Number(equity) > 0 ? (used / Number(equity)) * 100 : null;
+  // 保证金口径统一走 lib.marginUsage(含冻结保证金;缺数据=null,不造假)。
+  const { usedMarginUsdt: used, marginRatePct: marginRate } = marginUsage(portfolio);
   const metrics = [
     ["总资产", configured && equity != null ? displayMoney(equity, 2) : "未同步", null],
     ["今日盈亏", configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : "未同步", configured ? portfolio.todayPnl : null],

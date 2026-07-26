@@ -42,7 +42,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, smartMoneyBias, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
+import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, marginUsage, smartMoneyBias, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 function TermHead({ title, code, sub, right }) {
@@ -86,14 +86,8 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   // 可用保证金只认服务端真实写入（OKX availEq）；缺失就是 null →“未同步”，
   // 绝不回退 0——旧逻辑 ??0 把缺数据伪装成“可用为零”，进而推出保证金率 100%、“距强平 0%”的假恐慌。
   const availableMargin = data.portfolio.availableMarginUsdt ?? null;
-  const equityNum = Number(data.portfolio.totalEquityUsdt);
-  const usedMargin = availableMargin != null && Number.isFinite(equityNum)
-    ? Math.max(0, equityNum - Number(availableMargin) - Number(data.portfolio.frozenMarginUsdt ?? 0))
-    : null;
-  // 分母必须是真实净值（旧代码 Math.max(1, equity) 在小额账户下产生纯巧合数字）。
-  const marginRate = usedMargin != null && Number.isFinite(equityNum) && equityNum > 0
-    ? Math.min(100, Math.max(0, (usedMargin / equityNum) * 100))
-    : null;
+  // 保证金口径统一走 lib.marginUsage（已用=净值−可用−冻结；缺数据=null，不造假）。
+  const { usedMarginUsdt: usedMargin, marginRatePct: marginRate } = marginUsage(data.portfolio);
   const performance = data.performance || {};
   const monthlyPnl = performance.totalPnlUsdt;
   // 在途 = 真正还在交易所挂着的执行单；必须排除 blocked/setup_rejected/dry_run/failed/protection_failed 这些终态或未提交态，
@@ -1056,7 +1050,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                     <span className="kRowMeta mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
                     {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
                     {skill.spec?.lowTrust && <span className="evBadge warn" title="按书名生成的模型综述：历史验证/模拟盘门槛更严，必须人工批准才实盘">低信任</span>}
-                    <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : ""}`}>{st.label}</span>
+                    <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : st.tone === "warn" ? "warn" : ""}`}>{st.label}</span>
                     {st.next && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {}); }}>{st.next.label} →</span>}
                     {skill.status === "compile_failed" && skill.sourceMethodId && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {}); }}>重新编译 →</span>}
                     <ChevronDown size={14} className="kRowChevron" />

@@ -267,6 +267,17 @@ function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceLis
 
 // 大户持仓多空比 → 全端统一的偏向判定（阈值一处定义：≥1.05 偏多 / ≤0.95 偏空 / 之间平衡）。
 // 注意语义：这是"持仓结构偏向"，不是趋势预测——展示词统一用"偏多/偏空"，不用"趋势"。
+// 保证金占用统一口径（全站唯一实现，桌面/移动/对话页共用）：
+// 已用 = 净值 − 可用 − 冻结；率 = 已用/净值。缺数据一律 null（显示"未同步"），
+// 绝不回退 0 或净值——那会伪造出 100%/0% 的假数字（历史教训见 pages 旧注释）。
+export function marginUsage(portfolio = {}) {
+  const equity = Number(portfolio.totalEquityUsdt);
+  const avail = portfolio.availableMarginUsdt ?? portfolio.availableMargin ?? null;
+  if (avail == null || !Number.isFinite(equity) || equity <= 0) return { usedMarginUsdt: null, marginRatePct: null };
+  const used = Math.max(0, equity - Number(avail) - Number(portfolio.frozenMarginUsdt ?? 0));
+  return { usedMarginUsdt: used, marginRatePct: Math.min(100, Math.max(0, (used / equity) * 100)) };
+}
+
 export function smartMoneyBias(ratio) {
   const r = ratio == null ? null : Number(ratio);
   if (r == null || !Number.isFinite(r)) return { label: "待同步", tone: "neutral" };

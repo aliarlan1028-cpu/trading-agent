@@ -26,7 +26,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";
@@ -405,9 +405,7 @@ function AgentRail({ data, action, ui, send }) {
   const cap = mandate.maxDailyLossPct && portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(portfolio.totalEquityUsdt) : null;
   const budgetPct = cap && remaining != null ? Math.max(0, Math.min(100, (Number(remaining) / cap) * 100)) : null;
   // 只认真实同步的可用保证金；缺失就是 null——旧回退 totalEquity 会假装"持仓风险 0.0%"。
-  const marginRate = portfolio.availableMarginUsdt != null && Number(portfolio.totalEquityUsdt) > 0
-    ? Math.min(100, Math.max(0, ((Number(portfolio.totalEquityUsdt) - Number(portfolio.availableMarginUsdt)) / Number(portfolio.totalEquityUsdt)) * 100))
-    : null;
+  const marginRate = marginUsage(portfolio).marginRatePct;
 
   const mandateRows = hasMandate ? [
     { k: "授权范围", v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },

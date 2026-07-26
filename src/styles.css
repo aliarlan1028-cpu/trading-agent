@@ -5175,42 +5175,28 @@ button.danger:disabled,
 }
 
 /* ===== 移动端原生壳（MobileApp） ===== */
-.mShell {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #f7f4ee;
-}
-
 /* ---- 自适应护栏：任何画面/真实数据都不横向滑动 ---- */
 /* 内层滚动容器一律裁掉横向溢出（竖向照常滚动） */
-.mHome,
-.mFeed,
 .mChatContent,
-.mAdminContent,
 .mDetailBody,
-.mShell > .content {
+.mShell2 .content {
   overflow-x: hidden;
   max-width: 100%;
 }
 /* 媒体/预格式/表格不撑破视口；代码与宽表在自身内部滚动 */
-.mShell img,
-.mShell canvas,
-.mShell video {
+.mShell2 img,
+.mShell2 canvas,
+.mShell2 video {
   max-width: 100%;
   height: auto;
 }
-.mShell pre,
-.mShell table {
+.mShell2 pre,
+.mShell2 table {
   max-width: 100%;
   overflow-x: auto;
 }
 /* 长串（地址/大数/URL）强制断行，避免整行撑宽 */
-.mChatContent .chatContent,
-.mFeedRow,
-.mHome strong {
+.mChatContent .chatContent {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -5547,7 +5533,6 @@ button.danger:disabled,
 /* 手机端对话不再显示总控（已挤竖，改到总览悬浮） */
 .mChatContent .chatAgentControls { display: none; }
 .mChatContent .agentRail { display: none; }
-.mShell .chatShell { display: block; }
 @media (max-width: 1080px) {
   .chatShell { max-width: 1200px; }
 }
@@ -6168,23 +6153,6 @@ button.danger:disabled,
   display: flex;
   flex-direction: column;
   padding: 0 10px 6px;
-}
-
-.mShell .chatPage {
-  flex: 1;
-  min-height: 0;
-  height: auto;
-}
-
-.mShell .chatScroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.mShell .chatInputBar {
-  flex: none;
 }
 
 /* 移动子页设计语言：头部结论数字 */
