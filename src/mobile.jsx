@@ -340,7 +340,7 @@ function MobileKnowledge({ data, action, ui }) {
   return (
     <div className="mSubPage">
       <div className="mChips">
-        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
+        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.filter((k) => !["compile_failed", "superseded", "retired"].includes(k.status)).length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
       </div>
 
       {seg === "上手" && (
@@ -444,6 +444,7 @@ function MobileKnowledge({ data, action, ui }) {
               return (
                 <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
                   <button className="mKRowHead" onClick={() => setOpenId(open ? null : skill.id)}>
+                    {skill.spec?.direction && <span className={`mDir ${skill.spec.direction}`}>{skill.spec.direction === "short" ? "空" : "多"}</span>}
                     <b>{skill.name} <span className="mono">v{skill.version}</span></b>
                     {skill.spec?.lowTrust && <StatusBadge tone="warning">低信任</StatusBadge>}
                     <StatusBadge tone={st.tone}>{st.label}</StatusBadge>

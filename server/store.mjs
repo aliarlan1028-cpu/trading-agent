@@ -578,6 +578,18 @@ function capLogCollections(db) {
   }
 }
 
+// 当前生效授权的唯一选择器(全站统一)。历史 bug:多条 active 并存时各处 find() 取数组
+// 第一条(往往是最旧的 v1),计划从此绑旧版本被风控永久拒绝("计划绑定 v1,当前授权 v4")。
+// 规则:在 active/running 中取 version 最高者,同版本取激活时间最新者。
+export function activeMandate(db) {
+  const list = (db.mandates || []).filter((m) => ["active", "running"].includes(m.status));
+  if (!list.length) return null;
+  return list.slice().sort((a, b) =>
+    (Number(b.version || 1) - Number(a.version || 1)) ||
+    (new Date(b.activatedAt || b.createdAt || 0) - new Date(a.activatedAt || a.createdAt || 0))
+  )[0];
+}
+
 export function saveDb(db, options = {}) {
   db.meta.updatedAt = nowIso();
   capLogCollections(db);

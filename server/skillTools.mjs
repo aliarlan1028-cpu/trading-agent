@@ -1,5 +1,5 @@
 import { getHistoricalKlines, syncMicrostructure } from "./exchangeConnector.mjs";
-import { nowIso } from "./store.mjs";
+import { activeMandate, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // 原生交易 Skill：把技能接进 Agent 的工具循环。
@@ -16,7 +16,7 @@ function round(value, price) {
 
 function mandateSymbols(db, provided) {
   if (Array.isArray(provided) && provided.length) return provided.map((s) => String(s).toUpperCase());
-  const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(db);
   return (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).map((s) => String(s).toUpperCase());
 }
 

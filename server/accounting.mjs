@@ -1,5 +1,5 @@
 import { currentEquityUsdt } from "./executionEngine.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -59,7 +59,7 @@ export function refreshAccounting(db) {
   db.portfolio.weekPnlPct = equity ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.accountingUpdatedAt = nowIso();
 
-  const mandate = (db.mandates || []).find((item) => ["active", "running"].includes(item.status));
+  const mandate = activeMandate(db);
   if (mandate && equity) {
     const dailyLossCap = equity * (Number(mandate.maxDailyLossPct || 1) / 100);
     const lossSoFar = Math.max(0, -todayPnl);

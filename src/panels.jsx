@@ -610,7 +610,7 @@ function SymbolMultiSelect({ value = [], onChange }) {
   const selected = value || [];
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase();
-    return all.filter((item) => !selected.includes(item.symbol) && (!q || item.symbol.includes(q))).slice(0, 60);
+    return all.filter((item) => !selected.includes(item.symbol) && (!q || item.symbol.startsWith(q) || item.symbol.split("/")[0].includes(q))).slice(0, 60);
   }, [all, query, selected]);
   function add(sym) { onChange([...selected, sym]); setQuery(""); }
   function remove(sym) { onChange(selected.filter((s) => s !== sym)); }
@@ -644,16 +644,25 @@ function SymbolMultiSelect({ value = [], onChange }) {
 }
 
 export function MandatePanel({ data, action }) {
-  const mandate = data.mandates?.[0] || {};
-  const [form, setForm] = useState({
+  // 必须编辑"当前生效"的授权——历史 bug:mandates[0] 是数组第一条(往往是被替代的旧授权),
+  // 用户在表单里增删币对/改杠杆保存到旧记录,而风控卡显示的是生效记录 → 看起来"改了没生效"。
+  const mandate = data.agentStatus?.activeMandate
+    || (data.mandates || []).find((m) => ["active", "running"].includes(m.status))
+    || data.mandates?.[0] || {};
+  const remainDays = mandate.validUntil ? Math.max(1, Math.ceil((new Date(mandate.validUntil) - Date.now()) / 86400000)) : 7;
+  const buildForm = () => ({
     name: mandate.name || "主账户授权委托",
     exchange: mandate.exchanges?.[0] || "BINANCE",
     allowedSymbols: mandate.allowedSymbols?.length ? mandate.allowedSymbols.map((s) => String(s).toUpperCase()) : ["BTC/USDT", "ETH/USDT"],
     maxLeverage: mandate.max_leverage || 1,
     singleRisk: mandate.maxSingleTradeRiskPct || 0.3,
     dailyLoss: mandate.maxDailyLossPct || 1,
-    approval: mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 5000
+    approval: mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 5000,
+    validDays: remainDays
   });
+  const [form, setForm] = useState(buildForm);
+  // 生效授权切换(如保存后版本更新)时重同步表单,避免编辑陈旧快照。
+  useEffect(() => { setForm(buildForm()); }, [mandate.id, mandate.version]);
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
@@ -674,7 +683,7 @@ export function MandatePanel({ data, action }) {
       maxDailyLossPct: Number(form.dailyLoss || 0),
       humanApprovalNotionalUsdt: Number(form.approval || 0),
       manual_approval_threshold_usdt: Number(form.approval || 0),
-      validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      validUntil: new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 24 * 60 * 60 * 1000).toISOString()
     };
     await action(mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST");
   }
@@ -688,6 +697,7 @@ export function MandatePanel({ data, action }) {
         <label>单笔风险 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /></label>
         <label>日亏损上限 %<input type="number" step="0.1" min="0" value={form.dailyLoss} onChange={(event) => update("dailyLoss", event.target.value)} /></label>
         <label>人工确认阈值 USDT<input type="number" min="0" value={form.approval} onChange={(event) => update("approval", event.target.value)} /></label>
+        <label>有效期(天)<input type="number" min="1" max="365" value={form.validDays} onChange={(event) => update("validDays", event.target.value)} /><small className="fieldHint">截止 {new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 86400000).toLocaleDateString("zh-CN")}</small></label>
       </div>
       <button className="primaryButton" type="submit">保存授权</button>
     </form>

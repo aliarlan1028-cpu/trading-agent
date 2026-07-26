@@ -3,7 +3,7 @@ import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } 
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { reviewTradeSetup } from "./setupReview.mjs";
-import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
+import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -99,7 +99,7 @@ export function computePositionSize(db, plan) {
     sizedBy = `${sizedBy}+gray_capped`;
   }
   // 组合级波动率目标：相关性感知地压低会突破组合波动预算的名义额度。
-  const mandate = db.mandates.find((m) => m.id === plan.mandateId) || db.mandates.find((m) => ["active", "running"].includes(m.status));
+  const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
   const volCap = portfolioCapNotional(db, plan, equity, mandate);
   if (volCap !== null && volCap < notional) {
     quantity = volCap / entryMid;

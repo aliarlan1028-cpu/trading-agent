@@ -449,8 +449,9 @@ function AgentRail({ data, action, ui, send }) {
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
             <b className="mono">{plan?.symbol || (mandate.allowedSymbols || [])[0] || "BTC/USDT"}</b>
+            {(() => { const mk = (data.markets || []).find((m) => m.symbol === (plan?.symbol || "")); return mk?.price ? <span className="agPlanNow mono">现价 {displayPrice(mk.price)}</span> : null; })()}
             <span className="agPlanTag">{plan?.strategy || mandate.strategies?.[0] ? humanize(plan?.strategy || mandate.strategies?.[0]) : "未指定策略"}</span>
-            <span className="agPlanRight mono">{plan ? "当前交易计划" : "暂无计划"}</span>
+            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : "暂无计划"}</span>
           </div>
           <div className="agPlanGrid">
             <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
@@ -470,7 +471,7 @@ function AgentRail({ data, action, ui, send }) {
           {mandateRows.map((r) => <div className="agWallRow" key={r.k}><span>{r.k}</span><b className="mono">{r.v}</b></div>)}
         </div>
         <div className="agBudget">
-          <div className="agBudgetTop"><span>今日亏损预算</span><span>{remaining != null ? `${displayMoney(remaining, 0)} 剩余${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : "未授权"}</span></div>
+          <div className="agBudgetTop"><span>今日亏损预算</span><span>{remaining != null ? `${displayMoney(remaining, 2)} 剩余${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : "未授权"}</span></div>
           <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
         </div>
         <div className="agWallBtns">

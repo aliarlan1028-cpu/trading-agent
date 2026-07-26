@@ -54,7 +54,7 @@ import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
-import { appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
 import { dispatchOutbox } from "./outboxDispatcher.mjs";
@@ -119,6 +119,37 @@ for (const method of db.knowledge?.tradingMethods || []) {
     } catch { /* 保留为不可执行顾问知识 */ }
   }
 }
+// 存量数据自愈:多条 active 授权并存(activateMandate 旧实现从不废弃旧条)导致
+// 计划绑旧版本被风控永久拒绝。保留 version 最高/激活最新的一条,其余置 superseded。
+(function collapseDuplicateActiveMandates() {
+  const actives = (db.mandates || []).filter((m) => ["active", "running"].includes(m.status));
+  if (actives.length <= 1) return;
+  const keep = actives.slice().sort((a, b) =>
+    (Number(b.version || 1) - Number(a.version || 1)) ||
+    (new Date(b.activatedAt || b.createdAt || 0) - new Date(a.activatedAt || a.createdAt || 0))
+  )[0];
+  for (const m of actives) {
+    if (m.id === keep.id) continue;
+    m.status = "superseded";
+    m.supersededAt = nowIso();
+    appendAudit(db, `启动自愈:多 active 授权收敛,${m.id} 被 ${keep.id}(v${keep.version || 1}) 取代`, m.id, "StartupMigration", "warning");
+  }
+})();
+// 存量数据自愈:历史巡检散会话(每 15 分钟新建一个)并入固定"自主巡检"会话。
+(function mergeAutocycleSessions() {
+  const strays = (db.chatSessions || []).filter((c) => c.id !== "chat_autocycle" && String(c.title || "").startsWith("【定时巡检】"));
+  if (!strays.length) return;
+  db.chatSessions ||= [];
+  if (!db.chatSessions.some((c) => c.id === "chat_autocycle")) {
+    db.chatSessions.unshift({ id: "chat_autocycle", title: "自主巡检 · 自动汇总", status: "active", system: true, createdAt: nowIso(), updatedAt: nowIso() });
+  }
+  const strayIds = new Set(strays.map((c) => c.id));
+  for (const msg of db.chatMessages || []) {
+    if (strayIds.has(msg.sessionId)) msg.sessionId = "chat_autocycle";
+  }
+  db.chatSessions = db.chatSessions.filter((c) => !strayIds.has(c.id));
+  appendAudit(db, `启动自愈:${strays.length} 个巡检散会话并入自主巡检汇总`, "chat_autocycle", "StartupMigration");
+})();
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();
@@ -240,7 +271,7 @@ registerTaskHandler("okx_readonly_sync", async (database) => {
 });
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database) => {
-  const mandate = (database.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(database);
   // 刷 BTC/ETH（默认展示）+ 授权交易对 + 自选列表——此前不含自选，自选里非授权币的
   // 买盘占比/微观结构永远"未同步"。
   const symbols = [...new Set(["BTC/USDT", "ETH/USDT", ...(mandate?.allowedSymbols || []), ...(database.watchlist || [])])].slice(0, 6);
@@ -790,7 +821,7 @@ app.get("/api/overview", (_req, res) => {
     backtests: db.backtests?.slice(0, 10) || [],
     strategyProfiles: db.strategyProfiles || [],
     paperReport: buildPaperReport(db),
-    portfolioRisk: buildPortfolioRisk(db, db.mandates.find((m) => ["active", "running"].includes(m.status))),
+    portfolioRisk: buildPortfolioRisk(db, activeMandate(db)),
     larkConfigured: larkStatus().configured,
     telegramConfigured: telegramStatus().configured,
     mcpStatus: mcpStatus(db),
@@ -804,7 +835,7 @@ app.get("/api/overview", (_req, res) => {
 
 app.get("/api/market/regime", async (_req, res) => {
   try {
-    const symbol = db.mandates?.find((m) => ["active", "running"].includes(m.status))?.allowedSymbols?.[0] || "BTC/USDT";
+    const symbol = activeMandate(db)?.allowedSymbols?.[0] || "BTC/USDT";
     const regime = await fetchMarketRegime(symbol);
     const prev = db.marketRegime || {};
     db.marketRegime = {
@@ -1590,7 +1621,7 @@ app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
 app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
 app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
 app.get("/api/portfolio/risk", (_req, res) => {
-  const mandate = db.mandates.find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(db);
   res.json(buildPortfolioRisk(db, mandate));
 });
 

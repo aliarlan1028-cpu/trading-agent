@@ -7259,6 +7259,7 @@ button.danger:disabled,
 .agPlanBtc { width: 16px; height: 16px; border-radius: 50%; background: #F7931A; color: #fff; display: grid; place-items: center; font: 700 8px "Space Grotesk"; flex: none; }
 .agPlanHead > b { font: 600 11px "IBM Plex Mono"; }
 .agPlanTag { padding: 1px 6px; border-radius: 4px; background: #FBEDDF; color: #C9631F; font: 700 9px "Space Grotesk"; }
+.agPlanNow { margin-left: 8px; font-size: 11px; color: #8a8172; }
 .agPlanRight { margin-left: auto; font: 500 9px "IBM Plex Mono"; color: #a89e8a; }
 .agPlanGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
 .agPlanK { font-size: 9px; color: #948B77; }

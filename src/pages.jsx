@@ -954,7 +954,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
 
       {/* Tab 分区 */}
       <div className="kTabs">
-        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount], ["ext", "外部能力", skills.length + mcp.length]].map(([k, label, n]) => (
+        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount], ["ext", "外部能力", skills.length + mcp.length]].map(([k, label, n]) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label} <span className="kTabN mono">{n}</span></button>
         ))}
         {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
@@ -1020,6 +1020,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
               return (
                 <div className={`kRow ${open ? "open" : ""}`} key={skill.id}>
                   <button className="kRowHead" onClick={() => setExpanded(open ? null : skill.id)}>
+                    {skill.spec?.direction && <span className={`mDir ${skill.spec.direction}`}>{skill.spec.direction === "short" ? "空" : "多"}</span>}
                     <b className="kRowName">{skill.name} <span className="mono kRowVer">v{skill.version}</span></b>
                     <span className="kRowMeta mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
                     {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
@@ -1245,6 +1246,18 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           {(() => { const ips = exAccounts.map((a) => a.ipWhitelist).filter(Boolean); return ips.length
             ? <div className="secRow"><span className="mono">{ips.join("、").slice(0, 32)}</span><b className="evBadge ok">已绑定</b></div>
             : <div className="secRow"><span className="mono">建议在交易所侧绑定 IP</span><b className="evBadge warn">未设置</b></div>; })()}
+        </div>
+        <div className="termCard">
+          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>实盘灰度</span><button className="agLink" onClick={() => ui.setActive("systemSettings")}>去设置</button></div>
+          {(() => {
+            const gp = (data.grayReleasePolicies || [])[0];
+            if (!gp) return <div className="secRow"><span>灰度策略</span><b className="evBadge warn">未创建</b></div>;
+            return (<>
+              <div className="secRow"><span>策略状态</span><b className={`evBadge ${gp.enabled ? "ok" : ""}`}>{gp.enabled ? "已启用" : "已停用"}</b></div>
+              <div className="secRow"><span>单笔限额</span><b className="mono">{gp.maxNotionalUsdt != null ? `${gp.maxNotionalUsdt} U` : "—"}</b></div>
+              <div className="secRow"><span>人工确认</span><b className={`evBadge ${gp.requiresManualApproval === false ? "warn" : "ok"}`}>{gp.requiresManualApproval === false ? "已关闭(全自动)" : "保留"}</b></div>
+            </>);
+          })()}
         </div>
         <div className="termCard">
           <div className="balLabel">密钥权限</div>

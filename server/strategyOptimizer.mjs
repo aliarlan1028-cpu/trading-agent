@@ -4,7 +4,7 @@ import { STRATEGIES, detectRegime, regimePreferredFamilies } from "./strategies.
 import { buildTokenProfile } from "./tokenProfile.mjs";
 import { buildReviewAnalytics } from "./reviewEngine.mjs";
 import { ensurePaperSessionsFromProfiles } from "./paperTrading.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // 策略优化器 + 自主学习闭环（专业化版）。
@@ -195,7 +195,7 @@ function mineReviewLessons(db) {
 const RESEARCH_TIMEFRAMES = ["15m", "1h", "4h"];
 
 export async function runStrategyResearch(db, options = {}) {
-  const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(db);
   const symbols = (options.symbols?.length ? options.symbols : (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"])).slice(0, 5);
   // 显式指定周期→只跑该周期；否则多周期扫描，自动选样本外最优周期。
   const timeframes = options.timeframe ? [options.timeframe] : RESEARCH_TIMEFRAMES;

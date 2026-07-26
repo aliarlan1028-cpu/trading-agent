@@ -8,7 +8,7 @@
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
-import { nowIso } from "./store.mjs";
+import { activeMandate, nowIso } from "./store.mjs";
 
 // ws 库不走 undici 全局代理；有代理环境（如本机 Clash）需显式带 agent，否则实时行情 WS 直连被重置。
 function wsOptions() {
@@ -37,7 +37,7 @@ function instToSymbol(instId) {
 }
 
 function trackedSymbols(db) {
-  const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(db);
   const watchlist = (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
   return [...new Set(["BTC/USDT", "ETH/USDT", ...watchlist, ...((mandate && mandate.allowedSymbols) || [])])].slice(0, 12);
 }

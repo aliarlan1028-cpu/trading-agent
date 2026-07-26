@@ -3,7 +3,7 @@ import { refreshAccounting } from "./accounting.mjs";
 import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -12,7 +12,7 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 // ---------------------------------------------------------------------------
 
 export async function runAgentCycle(db, payload = {}, saveDb) {
-  const mandate = (db.mandates || []).find((item) => ["active", "running"].includes(item.status));
+  const mandate = activeMandate(db);
   const provider = activeProvider();
   const awaitingPlan = (db.tradePlans || []).find((plan) => plan.status === "awaiting_approval");
 
@@ -69,7 +69,13 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
   const goal = payload.goal
     || `【定时巡检】当前授权：${mandate.allowedSymbols.join("、")}，单笔风险上限 ${mandate.maxSingleTradeRiskPct}%，日亏上限 ${mandate.maxDailyLossPct}%。${regimeSummary ? `\n【大盘与聪明钱（已预取，可直接引用，也可调用 get_global_market / get_microstructure 复核）】${regimeSummary}。` : ""}\n请先判大盘再看个币：先看全局方向与情绪、大户/散户多空结构，再检查授权交易对的行情、持仓与事件；只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划，否则简要说明为什么继续观察。`;
-  const result = await runAgentChat(db, { message: goal }, saveDb);
+  // 自动巡检全部归入固定会话:此前每次巡检都新建会话,15 分钟一个,历史会话被无限堆满。
+  // 交易计划另有一等公民承载(待批准卡片/计划卡/审计链),用户手动对话保持独立会话。
+  db.chatSessions ||= [];
+  if (!db.chatSessions.some((c) => c.id === "chat_autocycle")) {
+    db.chatSessions.unshift({ id: "chat_autocycle", title: "自主巡检 · 自动汇总", status: "active", system: true, createdAt: nowIso(), updatedAt: nowIso() });
+  }
+  const result = await runAgentChat(db, { message: goal, sessionId: "chat_autocycle" }, saveDb);
   result.run.source = "agent_cycle";
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");
   return result.run;

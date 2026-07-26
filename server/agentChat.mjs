@@ -20,7 +20,7 @@ import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { setConfig } from "./runtimeConfig.mjs";
 import { scheduleTask } from "./scheduler.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const MAX_STEPS = 8;
 
@@ -347,7 +347,7 @@ async function buildSystemPrompt(db, userText = "") {
   const paper = paperValidationSummary(db);
   if (paper) sections.push(`【模拟盘前向验证状态（未通过前向验证的策略不要建议放大实盘，只观察或小额）】\n${paper}`);
 
-  const pr = buildPortfolioRisk(db, db.mandates?.find((m) => ["active", "running"].includes(m.status)));
+  const pr = buildPortfolioRisk(db, activeMandate(db));
   if (pr.portfolioVolPct !== null) {
     sections.push(`【组合波动预算】当前组合日度波动 ${pr.portfolioVolPct}%，预算 ${pr.budgetPct}%，已用 ${pr.utilizationPct}%。接近或超过预算时应减小新仓名义额度或避免同向相关加仓（执行引擎会自动按组合波动上限压低仓位）。`);
   }
@@ -380,6 +380,14 @@ async function buildSystemPrompt(db, userText = "") {
         : "尚未同步过私有账户"
     ].join("\n");
     sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
+  }
+
+  // 大盘/聪明钱快照:与定时巡检同一份预取数据(db.marketRegime)。
+  // 此前只有巡检 goal 注入这段,手动对话不注入 → 同一时刻两条路径口径不一致、结论相左。
+  const rg = db.marketRegime || {};
+  const regimeBits = [rg.global?.interpretation, rg.smartMoney?.ok !== false ? rg.smartMoney?.interpretation : null].filter(Boolean);
+  if (regimeBits.length) {
+    sections.push(`【大盘与聪明钱（系统预取快照,更新于 ${String(rg.updatedAt || "").slice(11, 16) || "?"};与定时巡检同源,可调用 get_global_market / get_microstructure 复核）】${regimeBits.join("；")}`);
   }
 
   // 全市场异动 + 消息面归因（环境感知）：让 AI 知道"今天市场在动什么、为什么"，而不是只盯授权币。
@@ -568,7 +576,7 @@ export async function executeTool(db, run, name, args = {}) {
       liveTradingEnabled: db.system.liveTradingEnabled,
       killSwitch: db.system.killSwitch,
       remainingDailyLossUsdt: db.system.remainingDailyLossUsdt,
-      activeMandate: db.mandates.find((item) => ["active", "running"].includes(item.status)) || null
+      activeMandate: activeMandate(db) || null
     };
   }
 
@@ -772,7 +780,7 @@ export async function executeTool(db, run, name, args = {}) {
     if (!market?.price) {
       return { error: `尚未同步 ${symbol} 行情，请先调用 sync_market。` };
     }
-    const mandate = db.mandates.find((item) => ["active", "running"].includes(item.status))
+    const mandate = activeMandate(db)
       || db.mandates.find((item) => item.id === run.mandateId)
       || db.mandates[0];
     const bundle = run.analysisBundleId
@@ -1129,7 +1137,7 @@ function buildSafetyContext(db, name, args) {
   const marketAgeMs = market?.lastRealtimeAt || market?.lastSyncedAt
     ? Date.now() - new Date(market.lastRealtimeAt || market.lastSyncedAt).getTime()
     : null;
-  const mandate = (db.mandates || []).find((m) => ["active", "running"].includes(m.status));
+  const mandate = activeMandate(db);
   const snapshot = (db.accountSnapshots || [])[0];
   const snapshotAgeMs = snapshot?.createdAt ? Date.now() - new Date(snapshot.createdAt).getTime() : null;
   return {
