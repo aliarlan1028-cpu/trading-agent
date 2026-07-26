@@ -1,23 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export const pageCopy = {
-  agent: { title: "AI 交易员驾驶舱", sub: "配置真实数据源、授权与风控边界后，Agent 才会生成可执行计划", search: "搜索市场、交易对、知识或功能" },
-  cockpit: { title: "驾驶舱", sub: "账户绩效、风险承压与复盘拆解合并一屏，直观掌握全局", search: "搜索绩效、账户、对账、复盘或风险" },
-  marketAccount: { title: "仪表盘", sub: "聚合账户绩效、对账健康、收益质量与风险承压，不展示交易图表噪音", search: "搜索绩效、账户、对账或风险" },
-  eventsTasks: { title: "事件与任务", sub: "接入真实事件源与任务规则后，追踪风险窗口和自动化运行记录", search: "搜索市场、交易对、知识或功能" },
-  knowledgeSkills: { title: "知识与技能", sub: "沉淀专家知识，构建规则与技能，让 Agent 更懂市场、更会交易。", search: "搜索知识、规则、技能或文档" },
-  review: { title: "复盘", sub: "复盘交易、Agent 行为、Skill 运行和可优化线索，形成下一轮改进闭环", search: "搜索交易、复盘、Skill 或优化项" },
-  riskAuth: { title: "风控与授权", sub: "集中管理授权委托、风险规则与安全策略，确保交易策略在可控范围内执行。", search: "搜索市场、交易对、知识或功能" },
-  auditSystem: { title: "审计与通知", sub: "审计 Agent 行为，监控系统健康，集中查看站内通知与告警", search: "搜索市场、交易对、知识或功能" },
-  systemSettings: { title: "系统设置", sub: "集中维护模型、交易所、告警、运行参数与实盘灰度配置", search: "搜索配置、密钥、模型或交易所" },
-  admin: { title: "Admin", sub: "管理用户、密码、订阅套餐、TRC20 支付和数据重置。", search: "搜索用户、套餐、支付或系统设置" }
-};
-
 export function formatMoney(value, digits = 2) {
   return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 // 价格按量级自适应精度：BTC 用 2 位、SUI(0.7x) 用 4 位、meme 币(0.00001x) 用更多位。
-export function priceDigits(value) {
+function priceDigits(value) {
   const a = Math.abs(Number(value) || 0);
   if (a === 0) return 2;
   if (a >= 1000) return 2;
@@ -45,11 +32,6 @@ export function displayPct(value, fallback = "未同步") {
   if (value === undefined || value === null || value === "") return fallback;
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
-  return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
-}
-
-export function pct(value) {
-  const number = Number(value || 0);
   return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
 }
 
@@ -99,17 +81,6 @@ export function formatDuration(value, fallback = "未记录") {
   if (!Number.isFinite(number)) return fallback;
   if (number < 1000) return `${Math.round(number)}ms`;
   return `${(number / 1000).toFixed(1)}s`;
-}
-
-export function orderStatus(status) {
-  return {
-    open: "挂单中",
-    new: "新订单",
-    submitted: "已提交",
-    cancel_requested: "撤单中",
-    filled: "已成交",
-    rejected: "已拒绝"
-  }[String(status || "").toLowerCase()] || status || "-";
 }
 
 export function humanize(value, fallback = "-") {
@@ -224,15 +195,6 @@ export function statusTone(status) {
   return "ok";
 }
 
-export function compactAction(text) {
-  const value = String(text || "");
-  if (!value) return "继续观察";
-  if (value.includes("CPI") || value.includes("FOMC") || value.includes("事件")) return "跟踪事件";
-  if (value.includes("资金费率")) return "刷新风险信号";
-  if (value.includes("重新生成")) return "重建计划";
-  return value.length > 8 ? `${value.slice(0, 8)}...` : value;
-}
-
 export function systemStatus(data) {
   if (data?.system?.killSwitch) return { label: "熔断中", tone: "danger" };
   if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: "待配置", tone: "warning" };
@@ -254,7 +216,7 @@ export function isNativeApp() {
   return Boolean(window.Capacitor?.isNativePlatform?.());
 }
 
-export function defaultApiBase() {
+function defaultApiBase() {
   const nativeFallback = nativeApiFallback();
   const stored = localStorage.getItem("agent_api_base") || "";
   if (isNativeApp()) {
@@ -266,11 +228,11 @@ export function defaultApiBase() {
   return "";
 }
 
-export function nativeApiFallback() {
+function nativeApiFallback() {
   return normalizeApiBase(import.meta.env.VITE_API_BASE_URL || "https://yegidawir.xyz");
 }
 
-export function normalizeApiBase(value = "") {
+function normalizeApiBase(value = "") {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
@@ -301,7 +263,7 @@ function connectionErrorMessage(error) {
 // 实时价 pub/sub：SSE 每个价格 tick 直接分发给订阅者（如 K 线图），不经 React 状态节流，
 // 让图表能跟上 OKX 的逐 tick 更新；React 状态仍轻度节流避免整页高频重渲染。
 const livePriceListeners = new Set();
-export function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceListeners.delete(fn); }
+function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceListeners.delete(fn); }
 
 // 大户持仓多空比 → 全端统一的偏向判定（阈值一处定义：≥1.05 偏多 / ≤0.95 偏空 / 之间平衡）。
 // 注意语义：这是"持仓结构偏向"，不是趋势预测——展示词统一用"偏多/偏空"，不用"趋势"。
@@ -321,7 +283,7 @@ let okxTickerWs = null;
 let okxTickerPing = null;
 let okxTickerReconnect = null;
 let lastOkxTickerAt = 0; // 最近一次直连 OKX 收到 tick 的时间；用于判断是否还需 REST 轮询兜底
-export function okxTickerFresh(withinMs = 2500) { return Date.now() - lastOkxTickerAt < withinMs; }
+function okxTickerFresh(withinMs = 2500) { return Date.now() - lastOkxTickerAt < withinMs; }
 function okxInstId(symbol) { return `${String(symbol).replace("/", "-").toUpperCase()}-SWAP`; }
 function okxSendSub(symbols) {
   if (!okxTickerWs || okxTickerWs.readyState !== 1 || !symbols.length) return;
@@ -353,7 +315,7 @@ function scheduleOkxTickerReconnect() {
   if (okxTickerReconnect) return;
   okxTickerReconnect = setTimeout(() => { okxTickerReconnect = null; if (okxTickerSubs.size) connectOkxTicker(); }, 3000);
 }
-export function subscribeOkxTicker(symbol, cb) {
+function subscribeOkxTicker(symbol, cb) {
   if (!symbol || typeof WebSocket === "undefined") return () => {};
   let set = okxTickerSubs.get(symbol);
   if (!set) { set = new Set(); okxTickerSubs.set(symbol, set); }
@@ -723,22 +685,6 @@ export function useApi() {
   return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 
-export function PageHeader({ active }) {
-  const copy = pageCopy[active] || pageCopy.agent;
-  const [showHelp, setShowHelp] = useState(false);
-  return (
-    <div className="pageHeader">
-      <div className="pageHeaderTop">
-        <h1>{copy.title}</h1>
-        {copy.sub && (
-          <button className={`pageHelp ${showHelp ? "active" : ""}`} title="页面说明" aria-label="页面说明" aria-expanded={showHelp} onClick={() => setShowHelp((value) => !value)}>?</button>
-        )}
-      </div>
-      {showHelp && copy.sub && <p className="pageHelpText">{copy.sub}</p>}
-    </div>
-  );
-}
-
 export function Card({ className = "", children, ...props }) {
   return <section className={`dashCard ${className}`} {...props}>{children}</section>;
 }
@@ -784,39 +730,6 @@ export function MiniSparkline({ candles = [] }) {
   return <svg className="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none"><path d={path} /></svg>;
 }
 
-export function CandleChart({ candles = [] }) {
-  const series = candles.length ? candles.slice(-72) : [];
-  if (!series.length) return <div className="chartEmpty">同步公开行情后显示真实 K 线</div>;
-  const min = Math.min(...series.map((item) => Number(item.low || item.close || 0)));
-  const max = Math.max(...series.map((item) => Number(item.high || item.close || 0)));
-  const width = 100 / Math.max(1, series.length);
-  const range = Math.max(1e-9, max - min);
-  const maxVolume = Math.max(1e-9, ...series.map((item) => Number(item.volume || 0)));
-  return (
-    <svg className="proChart" viewBox="0 0 100 54" preserveAspectRatio="none">
-      {series.map((item, index) => {
-        const x = index * width + width / 2;
-        const yHigh = 42 - ((item.high - min) / range) * 34;
-        const yLow = 42 - ((item.low - min) / range) * 34;
-        const yOpen = 42 - ((item.open - min) / range) * 34;
-        const yClose = 42 - ((item.close - min) / range) * 34;
-        const up = item.close >= item.open;
-        const volume = 53 - (Number(item.volume || 0) / maxVolume) * 8;
-        return (
-          <g key={`${item.time || "c"}-${index}`} className={up ? "up" : "down"}>
-            <line x1={x} x2={x} y1={yHigh} y2={yLow} />
-            <rect x={x - width * 0.24} y={Math.min(yOpen, yClose)} width={width * 0.48} height={Math.max(0.45, Math.abs(yClose - yOpen))} rx="0.08" />
-            <rect className="volume" x={x - width * 0.25} y={volume} width={width * 0.5} height={53 - volume} />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// K 线图：TradingView 官方开源库 lightweight-charts + 真实 OKX K 线数据。
-// 自托管、无外部 iframe/来源校验，在浏览器与 Capacitor WKWebView 里都可靠渲染（嵌入式 widget 在原生 app 的
-// capacitor:// 源下会被 TradingView 拒绝，故改用其开源库）。导出名保持 TradingViewChart，调用方不变。
 const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
 const KLINE_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 const OKX_BAR = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
@@ -981,102 +894,6 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
 
 // 轻量自绘 K 线（纯 SVG，不加载 lightweight-charts）：给 App 端用——拉真实 OKX 历史 K 线，
 // 最后一根蜡烛吃直连 OKX / SSE / 轮询的实时价逐 tick 动。比嵌 lightweight-charts 轻、启动快。
-export function LiveCandleChart({ symbol = "BTC/USDT", interval = "60" }) {
-  const [candles, setCandles] = useState([]);
-  const [status, setStatus] = useState("loading");
-  const tf = KLINE_TF[interval] || "1h";
-  const barSeconds = KLINE_SECONDS[tf] || 3600;
-  useEffect(() => {
-    let disposed = false;
-    let timer = null;
-    const load = async () => {
-      try {
-        const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=120`));
-        const json = await res.json();
-        const rows = (Array.isArray(json.candles) ? json.candles : [])
-          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume) || 0 }))
-          .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
-          .sort((a, b) => a.time - b.time);
-        if (disposed) return;
-        if (rows.length) { setCandles(rows); setStatus("ok"); } else if (status !== "ok") setStatus("empty");
-      } catch { if (!disposed && status !== "ok") setStatus("empty"); }
-    };
-    setStatus("loading");
-    load();
-    timer = setInterval(load, 30000);
-    return () => { disposed = true; if (timer) clearInterval(timer); };
-  }, [symbol, tf]);
-  // 实时价 → 更新/新增最后一根蜡烛（rAF 节流，避免每 tick 重绘整图）。
-  useEffect(() => {
-    let latest = null, raf = null;
-    const flush = () => {
-      raf = null;
-      if (latest == null) return;
-      const p = latest; latest = null;
-      setCandles((prev) => {
-        if (!prev.length) return prev;
-        const arr = prev.slice();
-        const last = arr[arr.length - 1];
-        const bucket = Math.floor(Math.floor(Date.now() / 1000) / barSeconds) * barSeconds;
-        if (bucket > last.time) {
-          arr.push({ time: bucket, open: p, high: p, low: p, close: p, volume: 0 });
-          if (arr.length > 120) arr.shift();
-        } else {
-          arr[arr.length - 1] = { ...last, high: Math.max(last.high, p), low: Math.min(last.low, p), close: p };
-        }
-        return arr;
-      });
-    };
-    const apply = (price) => {
-      const p = Number(price);
-      if (!Number.isFinite(p) || p <= 0) return;
-      latest = p;
-      if (!raf) { if (typeof requestAnimationFrame !== "undefined") raf = requestAnimationFrame(flush); else flush(); }
-    };
-    const offOkx = subscribeOkxTicker(symbol, (t) => apply(t.price));
-    const offSse = onLivePrice((s, price) => { if (s === symbol) apply(price); });
-    return () => { if (raf) cancelAnimationFrame(raf); offOkx(); offSse(); };
-  }, [symbol, barSeconds]);
-  if (status !== "ok" && !candles.length) return <div className="chartEmpty">{status === "empty" ? "同步交易所后显示真实 K 线" : "加载 K 线…"}</div>;
-  return <CandleChart candles={candles} />;
-}
-
-export function LinePriceChart({ candles = [] }) {
-  const series = candles.length ? candles.slice(-72) : [];
-  if (!series.length) return <div className="chartEmpty">同步公开行情后显示真实价格线</div>;
-  const min = Math.min(...series.map((item) => Number(item.close || 0)));
-  const max = Math.max(...series.map((item) => Number(item.close || 0)));
-  const path = series.map((item, index) => {
-    const x = (index / Math.max(1, series.length - 1)) * 100;
-    const y = 46 - ((Number(item.close || 0) - min) / Math.max(1, max - min)) * 38;
-    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-  return (
-    <svg className="proChart lineModeChart" viewBox="0 0 100 54" preserveAspectRatio="none">
-      <path d={path} />
-    </svg>
-  );
-}
-
-export function SemiGauge({ value = 0, max = 100, unit = "", color = "#3f8f5b", size = 128 }) {
-  const has = Number.isFinite(Number(value));
-  const pct = Math.max(0, Math.min(1, (Number(value) || 0) / max));
-  const cx = 60, cy = 60, r = 48;
-  const rad = (deg) => (deg * Math.PI) / 180;
-  const pt = (deg) => [(cx + r * Math.cos(rad(deg))).toFixed(2), (cy - r * Math.sin(rad(deg))).toFixed(2)];
-  const [ex, ey] = pt(180 - pct * 180);
-  return (
-    <div className="semiGauge" style={{ width: size }}>
-      <svg viewBox="0 0 120 74" preserveAspectRatio="xMidYMid meet">
-        <path className="semiTrack" d={`M 12 60 A ${r} ${r} 0 0 1 108 60`} />
-        {has && <path className="semiValue" style={{ stroke: color }} d={`M 12 60 A ${r} ${r} 0 0 1 ${ex} ${ey}`} />}
-        <text x="60" y="52" className="semiText" style={{ fill: has ? color : "#b7ab98" }}>{has ? value : "—"}</text>
-        {unit && <text x="60" y="68" className="semiUnit">{has ? unit : ""}</text>}
-      </svg>
-    </div>
-  );
-}
-
 export function StatusBadge({ children, tone = "ok" }) {
   return <span className={`statusBadge ${tone}`}>{children}</span>;
 }

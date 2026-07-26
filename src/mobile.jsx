@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { AdminPage, ConceptGraph } from "./pages.jsx";
+import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
@@ -57,125 +57,6 @@ export function KillConfirmDialog({ enable, action, onClose }) {
   );
 }
 
-export function RailContent({ data, action, ui }) {
-  const [releaseConfirm, setReleaseConfirm] = useState(false);
-  const [showTaskInfo, setShowTaskInfo] = useState(false);
-  const agentStatus = data.agentStatus || {};
-  const latestPlan = agentStatus.currentPlan || data.tradePlans?.[0] || {};
-  const latestAnalysis = agentStatus.latestAnalysis || data.analysisBundles?.[0] || {};
-  const latestRisk = latestPlan.lastRiskCheck || data.riskChecks?.[0] || {};
-  const riskWall = agentStatus.riskWall || {};
-  const mandate = data.mandates?.find((item) => ["active", "running"].includes(item.status));
-  const positions = data.positions || [];
-  const orders = data.orders || data.executionOrders || [];
-  const timeline = buildAgentTimeline(data);
-  const budget = data.system?.remainingDailyLossUsdt;
-  const avgExpertConfidence = latestAnalysis.expertViews?.length
-    ? latestAnalysis.expertViews.reduce((sum, view) => sum + Number(view.confidence || 0), 0) / latestAnalysis.expertViews.length
-    : null;
-  const beforeConfidence = latestPlan.confidenceBefore ?? latestPlan.confidence_before ?? null;
-  const afterConfidence = latestPlan.confidenceAfter ?? latestPlan.confidence_after ?? avgExpertConfidence;
-  const confidenceText = beforeConfidence !== null || afterConfidence !== null
-    ? `${beforeConfidence !== null ? `${Math.round(Number(beforeConfidence) * 100)}%` : "未记录"} → ${afterConfidence !== null ? `${Math.round(Number(afterConfidence) * 100)}%` : "未记录"}`
-    : "未记录";
-  const displayGoal = cleanAgentText(agentStatus.currentGoal, "观察模式巡检");
-  // 状态头标题基于授权目标/系统状态，绝不回显用户聊天内容（currentGoal 可能是最近一句对话）。
-  const railHeadline = mandate?.goal ? cleanAgentText(mandate.goal, "自主交易授权") : "只读观察巡检";
-  const displayStateLabel = isConfigNoise({ title: agentStatus.currentGoal, status: agentStatus.state })
-    ? "观察中"
-    : (agentStatus.stateLabel || humanize(agentStatus.state, "待配置"));
-  const decisionSummary = cleanAgentText(latestAnalysis.summary || latestPlan.rationale || agentStatus.currentObservation, "暂无可执行交易计划，继续观察公开行情与系统状态。");
-  const citationCount = (latestAnalysis.citations || []).length;
-  const memoryCount = (data.memoryItems || []).length;
-  const gateBlocked = latestRisk.decision === "blocked" || riskWall.allowOpen === false || data.system?.killSwitch;
-  const gateTone = gateBlocked ? "danger" : riskWall.allowOpen ? "ok" : "warning";
-  const gateLabel = cleanAgentText(data.system?.killSwitch ? "熔断中" : latestRisk.summary || (riskWall.allowOpen ? "允许开仓" : "观察中"), "观察中");
-  const nextAction = agentStatus.nextActions?.[0] || data.system?.latestAction || "等待下一轮巡检";
-  const accountConstraint = positions.length
-    ? `${positions.length} 个持仓会影响下一步判断`
-    : orders.length
-      ? `${orders.length} 个委托需要避让`
-      : "暂无持仓/委托冲突";
-
-  return (
-    <>
-      {/* 1. 状态：现在是什么状态 */}
-      <div className="railBlock railStatusHead">
-        <div className="railStatusTop">
-          <span className="railLabel">AI 交易员</span>
-          <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
-        </div>
-        <strong className="railGoal">{railHeadline}</strong>
-        <small className="railMandate">{mandate ? `授权运行 · ${mandate.name || mandate.id}` : "未授权 · 等待授权"}</small>
-      </div>
-
-      {/* 2. 能否交易：最重要的风控闸门 */}
-      <div className="railBlock">
-        <span className="railLabel">能否交易</span>
-        <div className={`gateBanner ${gateTone}`}>
-          <strong>{data.system?.killSwitch ? "熔断中" : (riskWall.allowOpen ? "允许开仓" : "禁止开仓")}</strong>
-          <small>{cleanAgentText(latestRisk.blockers?.[0]?.detail || agentStatus.reasonNotTrading || gateLabel, "等待下一次风控校验。")}</small>
-        </div>
-        <div className="railGateGrid">
-          <span>减仓<b>{riskWall.allowReduceOnly ? "允许" : "待授权"}</b></span>
-          <span>日亏损预算<b>{budget === null || budget === undefined ? "未授权" : displayMoney(budget)}</b></span>
-          <span>人工确认<b>{mandate ? "按阈值" : "需授权"}</b></span>
-          <span>持仓/委托<b>{positions.length} / {orders.length}</b></span>
-        </div>
-      </div>
-
-      {/* 4. 快捷操作 */}
-      <div className="railBlock railActions">
-        <button onClick={() => action("/api/system/autonomy", { enabled: !data.system.autonomyEnabled })}>
-          {data.system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}
-        </button>
-        {data.system.killSwitch && <button className="danger" onClick={() => setReleaseConfirm(true)}>解除熔断</button>}
-      </div>
-      {releaseConfirm && <KillConfirmDialog enable={false} action={action} onClose={() => setReleaseConfirm(false)} />}
-    </>
-  );
-}
-
-export function RightRail(props) {
-  return (
-    <aside className="rightRail">
-      <RailContent {...props} />
-    </aside>
-  );
-}
-
-const mobileTabs = [
-  { id: "home", label: "总览", icon: Gauge },
-  { id: "chat", label: "对话", icon: MessageSquare },
-  { id: "feed", label: "动态", icon: Bell },
-  { id: "manage", label: "管理", icon: SlidersHorizontal }
-];
-
-const manageGroups = [
-  {
-    title: "交易",
-    items: [
-      { id: "positions", label: "持仓与订单", icon: WalletCards },
-      { id: "review", label: "复盘与绩效", icon: ClipboardList }
-    ]
-  },
-  {
-    title: "Agent",
-    items: [
-      { id: "knowledgeSkills", label: "知识与技能", icon: BookOpen },
-      { id: "eventsTasks", label: "任务与事件", icon: CalendarClock },
-      { id: "riskAuth", label: "风控与授权", icon: Shield }
-    ]
-  },
-  {
-    title: "系统",
-    items: [
-      { id: "systemSettings", label: "系统设置", icon: Settings },
-      { id: "admin", label: "Admin 控制台", icon: UserCog }
-    ]
-  }
-];
-
 const settingsSections = [
   { id: "llm", label: "模型" },
   { id: "exchange", label: "交易所" },
@@ -183,192 +64,6 @@ const settingsSections = [
   { id: "integrations", label: "外部服务" },
   { id: "runtime", label: "运行参数" }
 ];
-
-const manageLabels = {
-  ...Object.fromEntries(manageGroups.flatMap((group) => group.items.map((item) => [item.id, item.label]))),
-  marketAccount: "账户健康与对账",
-  auditSystem: "审计链",
-  ...Object.fromEntries(settingsSections.map((item) => [`settings:${item.id}`, item.label]))
-};
-
-function isConfigNoise(item = {}) {
-  const text = `${item.phase || ""} ${item.title || ""} ${item.summary || ""} ${item.status || ""}`.toLowerCase();
-  return /交易所\s*api|api key\/secret|missing_credentials|setup_required|等待配置交易所|配置交易所/.test(text);
-}
-
-function cleanAgentText(value, fallback) {
-  return isConfigNoise({ title: value }) ? fallback : (value || fallback);
-}
-
-function isNormalActionStatus(value) {
-  const status = String(value || "").toLowerCase();
-  return !status || ["ok", "running", "completed", "success"].includes(status);
-}
-
-function agentActionLabel(item = {}) {
-  if (item.createdAt) return formatTime(item.createdAt);
-  return humanizePhase(item.phase || item.type || item.status, humanize(item.phase || item.type || item.status, "步骤"));
-}
-
-function AgentActionStatus({ status }) {
-  if (isNormalActionStatus(status)) return null;
-  return <StatusBadge tone={statusTone(status)}>{humanize(status)}</StatusBadge>;
-}
-
-function buildAgentTimeline(data, limit = 4) {
-  return (data.agentRuns || [])
-    // 聊天对话不算"Agent 动作"：只有产出交易计划/授权草案的 chat run 才进时间线，纯闲聊不显示。
-    .filter((run) => run.source !== "chat" || run.tradePlanId || run.mandateId)
-    .slice(0, limit)
-    .map((run) => ({
-      id: run.id,
-      phase: run.role || "agent_run",
-      title: run.tradePlanId ? "生成交易计划" : run.mandateId ? "生成授权草案" : run.goal,
-      status: run.status,
-      createdAt: run.createdAt
-    }))
-    .filter((item) => !isConfigNoise(item));
-}
-
-function MobileHome({ data, action, ui, onOpenRail }) {
-  const [showAgentInfo, setShowAgentInfo] = useState(false);
-  const accounts = data.exchangeAccounts || [];
-  const configuredAccounts = accounts.filter((account) => account.readEnabled).length;
-  const portfolio = data.portfolio || {};
-  const awaitingPlans = (data.tradePlans || []).filter((plan) => plan.status === "awaiting_approval").slice(0, 2);
-  const pendingMandates = (data.mandates || []).filter((mandate) => mandate.status === "pending_confirmation").slice(0, 1);
-  const openIncidents = (data.riskIncidents || []).filter((incident) => incident.status === "open");
-  const inboxCount = awaitingPlans.length + pendingMandates.length;
-  const positions = data.positions || [];
-  const orders = (data.orders || data.executionOrders || []).filter((order) => !["closed", "canceled", "cancelled", "filled_closed"].includes(String(order.status || "").toLowerCase()));
-  const budget = data.system?.remainingDailyLossUsdt;
-  const agentStatus = data.agentStatus || {};
-  const system = data.system || {};
-  const riskWall = agentStatus.riskWall || {};
-  const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
-  const gateLabel = system.killSwitch ? "熔断中" : (canOpen ? "允许开仓" : "禁止开仓");
-  const gateTone = system.killSwitch ? "danger" : (canOpen ? "ok" : "warning");
-  const regime = data.marketRegime || {};
-  const gmMob = regime.global || {};
-  const smMob = regime.smartMoney || {};
-  const hasRegimeMob = gmMob.ok || smMob.ok;
-  const displayGoal = cleanAgentText(agentStatus.currentGoal, "观察模式巡检");
-  const displayStateLabel = isConfigNoise({ title: agentStatus.currentGoal, status: agentStatus.state })
-    ? "观察中"
-    : (agentStatus.stateLabel || humanize(agentStatus.state, "待配置"));
-  const todayPnl = Number(portfolio.todayPnl || 0);
-  return (
-    <div className="mHome">
-      <section className="mEquity">
-        <span>总资产（USDT）</span>
-        <strong>{configuredAccounts ? displayMoney(portfolio.totalEquityUsdt) : "未同步"}</strong>
-        <small className={configuredAccounts ? (todayPnl >= 0 ? "positive" : "negative") : ""}>
-          {configuredAccounts ? `今日 ${todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2, "0.00")} USDT` : "连接交易所后同步真实资产"}
-        </small>
-      </section>
-
-      {inboxCount > 0 && (
-      <section className="mInbox">
-        <header><Inbox size={14} /> 需要你处理 · {inboxCount}</header>
-        {awaitingPlans.map((plan) => (
-          <div className="mInboxItem" key={plan.id}>
-            <strong>{plan.direction === "short" ? "做空" : "做多"} {plan.symbol || "计划"}</strong>
-            <small>{plan.rationale ? String(plan.rationale).slice(0, 42) : "等待你批准后进入执行引擎"}</small>
-            <div className="mInboxActions">
-              <button className="approve" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>批准</button>
-              <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>驳回</button>
-            </div>
-          </div>
-        ))}
-        {pendingMandates.map((mandate) => (
-          <div className="mInboxItem" key={mandate.id}>
-            <strong>激活授权委托</strong>
-            <small>{mandate.goal || mandate.name || "确认后 Agent 才能提出可执行计划"}</small>
-            <div className="mInboxActions">
-              <button className="approve" onClick={() => action(`/api/mandates/${mandate.id}/activate`, {})}>确认激活</button>
-            </div>
-          </div>
-        ))}
-      </section>
-      )}
-
-      <section className="mQuickGrid quad">
-        <button onClick={() => ui.setActive("positions")}><span>持仓</span><strong>{positions.length}</strong></button>
-        <button onClick={() => ui.setActive("positions")}><span>在途委托</span><strong>{orders.length}</strong></button>
-        <button onClick={() => ui.setActive("riskAuth")}><span>日亏预算</span><strong>{budget === null || budget === undefined ? "未授权" : displayMoney(budget, 0)}</strong></button>
-        <button className={openIncidents.length ? "alert" : ""} onClick={() => ui.setActive("auditSystem")}><span>风险事件</span><strong>{openIncidents.length}</strong></button>
-      </section>
-
-      <section className="mAgentCard" onClick={onOpenRail} role="button" tabIndex={0}>
-        <header>
-          <span>Agent 当前任务</span>
-          <StatusBadge tone={statusTone(agentStatus.state || data.system?.apiHealth)}>{displayStateLabel}</StatusBadge>
-        </header>
-        <strong>{displayGoal}</strong>
-      </section>
-
-      <section className="mRegimeCard" role="button" tabIndex={0} onClick={() => action("/api/market/regime", {}, "GET")}>
-        <header><span><Globe2 size={14} /> 大盘与聪明钱</span><RefreshCw size={12} /></header>
-        {hasRegimeMob ? (
-          <>
-            <div className="mRegimeGrid">
-              <span>BTC 主导<b>{gmMob.btcDominancePct != null ? `${gmMob.btcDominancePct}%` : "-"}</b></span>
-              <span>情绪<b>{gmMob.fearGreed ? gmMob.fearGreed.value : "-"}</b></span>
-              <span>大户多空<b>{smMob.topTraderLongShortRatio ?? "-"}</b></span>
-              <span>散户多空<b>{smMob.retailLongShortRatio ?? "-"}</b></span>
-            </div>
-            {smMob.ok && smMob.interpretation && <p>{smMob.interpretation}</p>}
-          </>
-        ) : (
-          <p className="mRegimeEmpty">点击拉取 BTC 主导率、情绪、大户/散户多空比与爆仓</p>
-        )}
-      </section>
-
-      <div className="mAgentDock">
-        <span className={`mGateChip ${gateTone}`}><Shield size={13} /> {gateLabel}</span>
-        <button className="mDockBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}>
-          {system.autonomyEnabled ? "暂停自主推进" : "恢复自主推进"}
-        </button>
-      </div>
-
-    </div>
-  );
-}
-
-const feedFilters = ["全部", "通知", "审计", "任务"];
-
-function MobileFeed({ data }) {
-  const [filter, setFilter] = useState("全部");
-  const items = useMemo(() => {
-    const merged = [
-      ...(data.notifications || []).map((item) => ({ id: `n:${item.id}`, kind: "通知", time: item.createdAt, title: item.title || item.body || item.message || "通知", tone: item.severity || (item.read ? "ok" : "info") })),
-      ...(data.auditLogs || []).map((item) => ({ id: `a:${item.id}`, kind: "审计", time: item.createdAt, title: item.action, tone: item.severity })),
-      ...(data.jobRuns || []).map((item) => ({ id: `j:${item.id}`, kind: "任务", time: item.createdAt, title: `${item.taskName || "任务"} · ${String(item.output || item.status || "").slice(0, 40)}`, tone: item.status }))
-    ];
-    return merged
-      .filter((item) => item.time)
-      .sort((a, b) => new Date(b.time) - new Date(a.time))
-      .slice(0, 80);
-  }, [data]);
-  const visible = filter === "全部" ? items : items.filter((item) => item.kind === filter);
-  return (
-    <div className="mFeed">
-      <div className="mChips">
-        {feedFilters.map((name) => (
-          <button key={name} className={filter === name ? "active" : ""} onClick={() => setFilter(name)}>{name}</button>
-        ))}
-      </div>
-      {!visible.length && <p className="mInboxEmpty">这里会汇总通知、审计与任务运行记录</p>}
-      {visible.map((item) => (
-        <div className="mFeedRow card" key={item.id}>
-          <span>{formatTime(item.time)}<i>{item.kind}</i></span>
-          <b>{item.title}</b>
-          <StatusBadge tone={statusTone(item.tone)}>{humanize(item.tone || "ok")}</StatusBadge>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 const positionSegments = ["持仓", "在途委托", "执行单"];
 
@@ -558,64 +253,6 @@ function MobileSettingsIndex({ data, onOpen }) {
   );
 }
 
-function MobileReview({ data, ui }) {
-  const [showLeads, setShowLeads] = useState(false);
-  const performance = data.performance || {};
-  const riskChecks = data.riskChecks || [];
-  const blocked = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
-  const failedRuns = (data.agentRuns || []).filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length;
-  const plans = (data.tradePlans || []).slice(0, 10);
-  const orders = data.executionOrders || data.orders || [];
-  const skillRuns = data.skillRuns || [];
-  const cost = data.reviewAnalytics?.cost || {};
-  const leads = [
-    blocked ? `近期 ${blocked} 次风控阻断，优先复盘入场、止损和授权边界。` : "近期没有明显风控阻断。",
-    failedRuns ? `${failedRuns} 次 Agent 运行失败，检查模型与工具调用。` : "Agent 运行链路暂无失败集中点。",
-    performance.trades ? `胜率 ${performance.winRatePct}%、盈亏比 ${performance.profitFactor ?? "未计算"}，可按策略拆分表现。` : "交易样本不足，先建立最小交易闭环。"
-  ];
-  return (
-    <div className="mSubPage">
-      <div className="mPageStats">
-        <div><span>胜率</span><strong>{performance.trades ? `${performance.winRatePct}%` : "无样本"}</strong></div>
-        <div><span>盈亏比</span><strong>{performance.profitFactor ?? "未计算"}</strong></div>
-        <div><span>风控拦截</span><strong className={blocked ? "warning" : ""}>{blocked} 次</strong></div>
-      </div>
-      <div className="mMiniStats">
-        <div><span>已平仓</span><strong>{performance.trades || 0}</strong></div>
-        <div><span>Agent 失败</span><strong className={failedRuns ? "warning" : ""}>{failedRuns}</strong></div>
-        <div><span>Skill 运行</span><strong>{skillRuns.length}</strong></div>
-        <div><span>手续费</span><strong>{cost.totalFeesUsdt === null || cost.totalFeesUsdt === undefined ? "未记录" : `${displayMoney(cost.totalFeesUsdt, 1)}U`}</strong></div>
-      </div>
-
-      <div className="mSectionCard">
-        <header><span>交易复盘（{performance.trades || 0} 笔已平仓）</span></header>
-        {!plans.length && <p className="mInboxEmpty">暂无交易计划记录。批准计划后这里会形成复盘流。</p>}
-        {plans.map((plan) => {
-          const order = orders.find((item) => item.planId === plan.id || item.id === plan.executionOrderId) || {};
-          return (
-            <button className="mRowItem" key={plan.id} onClick={() => ui.openPanel("executionDetail")}>
-              <span>{formatTime(plan.createdAt)}</span>
-              <b>{plan.symbol || order.symbol || "-"} · {plan.direction === "short" ? "做空" : "做多"}</b>
-              <StatusBadge tone={statusTone(order.status || plan.status)}>{humanize(order.status || plan.status, "未执行")}</StatusBadge>
-            </button>
-          );
-        })}
-      </div>
-
-      <button className="mToggleRow" onClick={() => setShowLeads((current) => !current)}>
-        <span><strong>优化线索</strong><small>{showLeads ? "收起" : `${leads.length} 条可执行改进`}</small></span>
-        <ChevronDown size={16} style={{ transform: showLeads ? "rotate(180deg)" : "none" }} />
-      </button>
-      {showLeads && (
-        <div className="mSectionCard">
-          {leads.map((lead, index) => <p className="mLeadLine" key={index}>{index + 1}. {lead}</p>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 屏 S3 — 风控与授权：风险墙 + 亏损预算 + MANDATE 6 行 + 规则 2×2 + 操作按钮行。
 function MobileRisk({ data, action, ui }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const sys = data.system || {};
@@ -1004,43 +641,6 @@ function MobileAccountHealth({ data, action }) {
   );
 }
 
-function MobileManage({ onOpen, data }) {
-  const accounts = data.exchangeAccounts || [];
-  const configured = accounts.filter((account) => account.readEnabled).length;
-  const activeMandate = (data.mandates || []).some((mandate) => ["active", "running"].includes(mandate.status));
-  const positions = (data.positions || []).length;
-  const badges = {
-    positions: positions ? { tone: "ok", label: `${positions} 持仓` } : null,
-    riskAuth: activeMandate ? { tone: "ok", label: "授权中" } : { tone: "neutral", label: "待授权" },
-    systemSettings: configured ? null : { tone: "neutral", label: "待配置" }
-  };
-  return (
-    <div className="mManage">
-      {manageGroups.map((group) => (
-        <div key={group.title}>
-          <p className="mGroupTitle">{group.title}</p>
-          <div className="mList">
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const badge = badges[item.id];
-              return (
-                <button key={item.id} onClick={() => onOpen(item.id)}>
-                  <Icon size={17} />
-                  <span>{item.label}</span>
-                  {badge && <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>}
-                  <ChevronRight size={15} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-      <p className="mManageNote">审计与通知已合并进「动态」标签页。</p>
-    </div>
-  );
-}
-
-// 屏 S2 — 市场与账户：指标 2×2 + 行情卡（SVG K线）+ 持仓卡 + 保证金甜甜圈。
 function MobileMarket({ data, action, ui }) {
   const [tf, setTf] = useState("1H");
   const [sym, setSym] = useState(null);
@@ -1235,8 +835,7 @@ export function MobileApp({ api }) {
   function navigate(next) {
     if (mobileNav.some((n) => n.id === next)) { setRoute(next); setSubPage(""); setDrawer(false); return; }
     if (next === "positions" || next === "marketAccount") { setRoute("cockpit"); setSubPage(next); setDrawer(false); return; }
-    if (next === "review") { setRoute("auditSystem"); setSubPage("review"); setDrawer(false); return; }
-    if (next === "admin" || next === "systemSettings") { setRoute("systemSettings"); setSubPage(next === "admin" ? "admin" : ""); setDrawer(false); return; }
+    if (next === "systemSettings") { setRoute("systemSettings"); setSubPage(""); setDrawer(false); return; }
     if (String(next).startsWith("settings:")) { setRoute("systemSettings"); setSubPage(next); setDrawer(false); return; }
     setRoute("cockpit"); setSubPage(""); setDrawer(false);
   }
@@ -1259,13 +858,12 @@ export function MobileApp({ api }) {
   } else if (route === "riskAuth") {
     content = <MobileRisk data={data} action={action} ui={ui} />;
   } else if (route === "auditSystem") {
-    content = subPage === "review" ? <MobileReview data={data} ui={ui} /> : <MobileAudit data={data} ui={ui} />;
+    content = <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
     content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>
-      : subPage === "admin" ? <div className="content mSubContent mAdminContent"><AdminPage data={data} action={action} ui={ui} /></div>
         : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
-    content = <MobileHome data={data} action={action} ui={ui} onOpenRail={() => {}} />;
+    content = <MobileMarket data={data} action={action} ui={ui} />;
   }
 
   const headerRight = subPage

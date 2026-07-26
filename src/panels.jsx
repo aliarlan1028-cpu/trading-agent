@@ -24,20 +24,16 @@ export function ConfigPanel({ panel, data, action, ui }) {
   const titles = {
     mandate: "授权委托配置",
     riskRules: "风险规则管理",
-    security: "API 与账户安全",
     ip: "IP 白名单",
-    keys: "密钥权限",
     eventRule: "事件规则",
     knowledgeImport: "导入知识",
     knowledgeList: "知识来源",
     ruleLibrary: "规则库",
     skillImport: "导入 Skill",
     taskManager: "任务管理",
-    marketIndicators: "市场指标",
     eventSources: "事件详情与来源",
     auditChain: "完整审计链",
-    executionDetail: "执行详情",
-    positions: "持仓详情"
+    executionDetail: "执行详情"
   };
   return (
     <div className="panelOverlay" onClick={ui.closePanel}>
@@ -51,20 +47,16 @@ export function ConfigPanel({ panel, data, action, ui }) {
         </header>
         {panel === "mandate" && <MandatePanel data={data} action={action} />}
         {panel === "riskRules" && <RiskRulesPanel data={data} action={action} />}
-        {panel === "security" && <SecurityPanel data={data} action={action} ui={ui} />}
         {panel === "ip" && <IpPanel data={data} action={action} />}
-        {panel === "keys" && <KeysPanel action={action} />}
         {panel === "eventRule" && <EventRulePanel action={action} />}
         {panel === "knowledgeImport" && <KnowledgeImportPanel action={action} ui={ui} />}
         {panel === "knowledgeList" && <KnowledgeListPanel data={data} action={action} ui={ui} />}
         {panel === "ruleLibrary" && <RuleLibraryPanel data={data} action={action} ui={ui} />}
         {panel === "skillImport" && <SkillImportPanel data={data} action={action} ui={ui} />}
         {panel === "taskManager" && <TaskManagerPanel data={data} action={action} />}
-        {panel === "marketIndicators" && <MarketIndicatorsPanel data={data} action={action} />}
         {panel === "eventSources" && <EventSourcesPanel data={data} action={action} ui={ui} />}
         {panel === "auditChain" && <AuditChainPanel data={data} />}
         {panel === "executionDetail" && <ExecutionDetailPanel data={data} />}
-        {panel === "positions" && <PositionsPanel data={data} />}
       </aside>
     </div>
   );
@@ -763,16 +755,6 @@ export function RiskRulesPanel({ data, action }) {
   );
 }
 
-export function SecurityPanel({ data, action, ui }) {
-  return (
-    <div className="panelStack">
-      {(data.exchangeAccounts || []).map((account) => <div className="panelItem" key={account.id}><div><strong>{account.exchange}</strong><small>{account.label}</small></div><StatusBadge tone={exchangeState(account).tone === "off" ? "warning" : "ok"}>{exchangeState(account).label}</StatusBadge><button className="secondaryButton" onClick={() => { ui.closePanel?.(); ui.setActive?.("systemSettings"); }}>去系统设置</button></div>)}
-      <button className="primaryButton" onClick={() => action("/api/security/alerts", { severity: "info", title: "安全设置测试", body: "前端安全面板触发" })}>发送测试告警</button>
-      <button className="secondaryButton" onClick={() => action("/api/security/drills/kill_switch", {})}>运行熔断演练</button>
-    </div>
-  );
-}
-
 export function IpPanel({ data, action }) {
   const [values, setValues] = useState(() => Object.fromEntries((data.exchangeAccounts || []).map((account) => [account.id, account.ipWhitelist || ""])));
   return (
@@ -785,38 +767,6 @@ export function IpPanel({ data, action }) {
         </form>
       ))}
     </div>
-  );
-}
-
-export function KeysPanel({ action }) {
-  return (
-    <div className="panelStack">
-      <ExchangeCredentialForm exchange="BINANCE" action={action} />
-      <ExchangeCredentialForm exchange="OKX" action={action} />
-    </div>
-  );
-}
-
-export function ExchangeCredentialForm({ exchange, action }) {
-  const needsPassphrase = exchange === "OKX";
-  const [form, setForm] = useState({ apiKey: "", apiSecret: "", passphrase: "", ipWhitelist: "" });
-  function update(key, value) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-  async function submit(event) {
-    event.preventDefault();
-    await action("/api/security/exchange-credentials", { exchange, ...form });
-    setForm({ apiKey: "", apiSecret: "", passphrase: "", ipWhitelist: form.ipWhitelist });
-  }
-  return (
-    <form className="panelForm compact" onSubmit={submit}>
-      <h3>{exchange} API</h3>
-      <label>API Key<input type="password" value={form.apiKey} onChange={(event) => update("apiKey", event.target.value)} autoComplete="off" /></label>
-      <label>Secret<input type="password" value={form.apiSecret} onChange={(event) => update("apiSecret", event.target.value)} autoComplete="off" /></label>
-      {needsPassphrase && <label>Passphrase<input type="password" value={form.passphrase} onChange={(event) => update("passphrase", event.target.value)} autoComplete="off" /></label>}
-      <label>IP 白名单<input value={form.ipWhitelist} onChange={(event) => update("ipWhitelist", event.target.value)} placeholder="建议填写交易所绑定 IP" /></label>
-      <button className="primaryButton" type="submit">保存 {exchange} 凭证</button>
-    </form>
   );
 }
 
@@ -1202,28 +1152,6 @@ export function TaskManagerPanel({ data, action }) {
   );
 }
 
-export function MarketIndicatorsPanel({ data, action }) {
-  const markets = data.markets || [];
-  return (
-    <div className="panelStack">
-      {markets.map((market) => (
-        <div className="panelItem" key={market.symbol}>
-          <div><strong>{market.symbol}</strong><small>状态 {humanize(market.status, "未同步")} · K 线 {market.candles?.length || 0} 根</small></div>
-          <StatusBadge tone={market.status === "synced" ? "ok" : "warning"}>{market.price ? `${displayMoney(market.price)} USDT` : "未同步"}</StatusBadge>
-          <button className="secondaryButton" onClick={() => action(`/api/exchange/BINANCE/ticker?symbol=${encodeURIComponent(market.symbol)}`, {}, "GET")}>同步</button>
-        </div>
-      ))}
-      <div className="panelForm compact">
-        <h3>当前可用指标</h3>
-        <RiskLine label="24h 涨跌幅" value={displayPct(data.activeMarket?.changePct)} />
-        <RiskLine label="资金费率" value={data.activeMarket?.fundingRate || "未同步"} />
-        <RiskLine label="持仓量 OI" value={data.activeMarket?.openInterest ? `${data.activeMarket.openInterest} USDT` : "未同步"} />
-        <RiskLine label="波动率" value={data.activeMarket?.candles?.length ? "待计算" : "需先同步 K 线"} />
-      </div>
-    </div>
-  );
-}
-
 export function EventSourcesPanel({ data, action, ui }) {
   const [form, setForm] = useState({ name: "", type: "rss", url: "", trustScore: 80 });
   async function submit(event) {
@@ -1301,25 +1229,6 @@ export function ExecutionDetailPanel({ data }) {
         <RiskLine label="对账结果" value={humanize(data.reconciliationReports?.[0]?.status, "未对账")} />
       </div>
       {!latestOrder.id && !latestPlan.id && <div className="emptyPanel emptyPanelAction"><strong>暂无执行对象</strong><span>生成交易计划并通过风控后，这里会展示订单、风控和对账详情。</span></div>}
-    </div>
-  );
-}
-
-export function PositionsPanel({ data }) {
-  const positions = data.positions || [];
-  return (
-    <div className="panelStack">
-      {positions.map((position) => (
-        <div className="panelForm compact" key={position.id}>
-          <h3>{position.symbol}</h3>
-          <RiskLine label="方向" value={position.direction || "-"} />
-          <RiskLine label="数量" value={position.size || "-"} />
-          <RiskLine label="开仓均价" value={position.entry ? formatMoney(position.entry) : "-"} />
-          <RiskLine label="标记价格" value={position.mark ? formatMoney(position.mark) : "-"} />
-          <RiskLine label="未实现盈亏" value={position.pnl ? formatMoney(position.pnl) : "-"} />
-        </div>
-      ))}
-      {!positions.length && <div className="emptyPanel emptyPanelAction"><strong>暂无真实持仓</strong><span>配置只读 API 并完成同步后，这里会展示交易所持仓明细。</span></div>}
     </div>
   );
 }

@@ -361,38 +361,6 @@ function ToolTrace({ trace = [] }) {
   );
 }
 
-function AccountSyncCard({ data, action, ui }) {
-  const accounts = data.exchangeAccounts || [];
-  const readAccount = accounts.find((a) => a.readEnabled);
-  const configured = Boolean(readAccount);
-  const snapshot = data.accountSnapshots?.[0];
-  const balance = data.portfolio?.totalEquityUsdt;
-  const hasData = configured && (snapshot || (balance !== null && balance !== undefined));
-  const lastSync = snapshot?.createdAt || readAccount?.lastSyncedAt || readAccount?.updatedAt;
-  const autoTask = (data.tasks || []).find((t) => t.handler === "okx_readonly_sync");
-  const autoSync = configured && autoTask && autoTask.enabled !== false;
-  const todayPnl = Number(data.portfolio?.todayPnl || 0);
-  const todayPct = data.portfolio?.todayPnlPct;
-  const tip = hasData
-    ? `来源：${readAccount.exchange} API ｜ 自动同步：${autoSync ? "每分钟" : "未开启"} ｜ 最后同步：${formatDateTime(lastSync, "未记录")}\n点击立即同步账户`
-    : "未连接交易所 · 点击去连接 OKX 只读 API";
-  return (
-    <button
-      type="button"
-      className={`acctChip ${hasData ? "ok" : "unconfigured"}`}
-      title={tip}
-      onClick={() => (configured ? action(`/api/exchange/${readAccount.id}/sync-readonly`, {}) : ui.setActive("systemSettings"))}
-    >
-      <RefreshCw size={13} />
-      <b>{hasData ? "已同步" : configured ? "待同步" : "未连接"}</b>
-      {hasData
-        ? <span className="acctBal">{displayMoney(balance)} USDT{todayPct !== null && todayPct !== undefined && Number(todayPct) !== 0 ? <em className={todayPnl >= 0 ? "positive" : "negative"}>{displayPct(todayPct)}</em> : null}</span>
-        : <span className="acctBal muted">连接交易所</span>}
-    </button>
-  );
-}
-
-// AI 交易员右栏：严格照设计稿（当前 Agent 状态 / 授权与风控墙 / 运行轨迹 / KPI），接真实数据。
 function AgentRail({ data, action, ui, send }) {
   const system = data.system || {};
   const agentStatus = data.agentStatus || {};
