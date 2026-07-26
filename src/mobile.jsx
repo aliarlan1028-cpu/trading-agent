@@ -706,6 +706,7 @@ function MobileKnowledge({ data, action, ui }) {
   const [hits, setHits] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const knowledge = data.knowledge || {};
   const sources = knowledge.sources || [];
   const methods = knowledge.tradingMethods || [];
@@ -825,27 +826,49 @@ function MobileKnowledge({ data, action, ui }) {
             ))}
           </div>
           {!skills.length && <p className="mInboxEmpty">还没有技能。到「方法」把方法编译成技能草案后在此推进验证。</p>}
-          {skills.map((skill) => {
-            const st = MSKILL[skill.status] || { label: skill.status, tone: "neutral" };
-            const open = openId === skill.id;
+          {(() => {
+            const ARCHIVED = new Set(["compile_failed", "superseded", "retired"]);
+            const live = skills.filter((s) => !ARCHIVED.has(s.status));
+            const archived = skills.filter((s) => ARCHIVED.has(s.status));
+            const row = (skill) => {
+              const st = MSKILL[skill.status] || { label: skill.status, tone: "neutral" };
+              const open = openId === skill.id;
+              return (
+                <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
+                  <button className="mKRowHead" onClick={() => setOpenId(open ? null : skill.id)}>
+                    <b>{skill.name} <span className="mono">v{skill.version}</span></b>
+                    {skill.spec?.lowTrust && <StatusBadge tone="warning">低信任</StatusBadge>}
+                    <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
+                  </button>
+                  {open && (
+                    <div className="mKRowBody">
+                      <p className="mKSrc">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}{skill.sourceTitle ? ` · 《${skill.sourceTitle}》` : ""}</p>
+                      {skill.compileErrors?.length > 0 && <p className="mKErr">不能执行：{skill.compileErrors.join("；")}</p>}
+                      {skill.status === "superseded" && <p className="mKSrc">已被更新版本替代，仅作追溯。</p>}
+                      {skill.liveMetrics && <p><i>实盘</i>{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}%</p>}
+                      {st.next && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {})}>{st.next.label} ›</button>}
+                      {skill.status === "compile_failed" && skill.sourceMethodId && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {})}>重新编译 ›</button>}
+                    </div>
+                  )}
+                </div>
+              );
+            };
             return (
-              <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
-                <button className="mKRowHead" onClick={() => setOpenId(open ? null : skill.id)}>
-                  <b>{skill.name} <span className="mono">v{skill.version}</span></b>
-                  {skill.spec?.lowTrust && <StatusBadge tone="warning">低信任</StatusBadge>}
-                  <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
-                </button>
-                {open && (
-                  <div className="mKRowBody">
-                    <p className="mKSrc">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}{skill.sourceTitle ? ` · 《${skill.sourceTitle}》` : ""}</p>
-                    {skill.compileErrors?.length > 0 && <p className="mKErr">不能执行：{skill.compileErrors.join("；")}</p>}
-                    {skill.liveMetrics && <p><i>实盘</i>{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}%</p>}
-                    {st.next && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {})}>{st.next.label} ›</button>}
-                  </div>
+              <>
+                {live.map(row)}
+                {!live.length && skills.length > 0 && <p className="mInboxEmpty">当前没有在流水线中的活技能，只有归档技能。</p>}
+                {archived.length > 0 && (
+                  <>
+                    <div className="mKArchiveHead">
+                      <button onClick={() => setArchivedOpen((v) => !v)}><ChevronDown size={12} className={archivedOpen ? "flip" : ""} /> 已归档 {archived.length}</button>
+                      <button className="mKArchivePurge" onClick={() => { if (window.confirm("清理归档：删除编译失败与已被替代的技能？（已退役保留）")) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={11} /> 清理</button>
+                    </div>
+                    {archivedOpen && archived.map(row)}
+                  </>
                 )}
-              </div>
+              </>
             );
-          })}
+          })()}
         </div>
       )}
 

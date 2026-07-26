@@ -952,6 +952,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const [rag, setRag] = useState("");
   const [expanded, setExpanded] = useState(null);      // 展开的行 id
   const [srcFilter, setSrcFilter] = useState("");       // 按来源书筛选
+  const [showArchived, setShowArchived] = useState(false); // 是否展开"已归档"（编译失败/已被替代/已退役）
   const knowledge = data.knowledge || {};
   const sourceCount = knowledge.sources?.length || 0;
   const conceptCount = knowledge.conceptCards?.length || 0;
@@ -1065,8 +1066,12 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
           <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div>
           <SkillStateLegend />
           {!tradingSkills.length && <div className="emptyPanel">还没有技能。到「方法草案」把方法编译成技能草案后在此推进验证</div>}
-          <div className="kRowList">
-            {tradingSkills.filter((s) => matchSrc(s.sourceTitle)).map((skill) => {
+          {(() => {
+            const ARCHIVED = new Set(["compile_failed", "superseded", "retired"]);
+            const filtered = tradingSkills.filter((s) => matchSrc(s.sourceTitle));
+            const live = filtered.filter((s) => !ARCHIVED.has(s.status));
+            const archived = filtered.filter((s) => ARCHIVED.has(s.status));
+            const renderRow = (skill) => {
               const st = SKILL_STATE[skill.status] || { label: skill.status, tone: "" };
               const open = expanded === skill.id;
               return (
@@ -1077,13 +1082,14 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                     {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
                     {skill.spec?.lowTrust && <span className="evBadge warn" title="按书名生成的模型综述：历史验证/模拟盘门槛更严，必须人工批准才实盘">低信任</span>}
                     <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : ""}`}>{st.label}</span>
-                    {/* 当前阶段的主操作直接摆在行上（不展开也能点） */}
                     {st.next && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {}); }}>{st.next.label} →</span>}
+                    {skill.status === "compile_failed" && skill.sourceMethodId && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {}); }}>重新编译 →</span>}
                     <ChevronDown size={14} className="kRowChevron" />
                   </button>
                   {open && (
                     <div className="kRowBody">
                       {skill.compileErrors?.length > 0 && <div className="hypoWhy neg">不能执行：{skill.compileErrors.join("；")}</div>}
+                      {skill.status === "superseded" && <div className="hypoWhy">已被同源方法的更新版本替代，仅作血缘追溯，不参与决策。</div>}
                       {skill.validation && <div className="hypoWhy">历史三窗：训练 {skill.validation.train?.trades || 0} · 验证 {skill.validation.validation?.trades || 0} · 测试 {skill.validation.test?.trades || 0} 笔</div>}
                       {skill.liveMetrics && <div className="hypoWhy">实盘归因：{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}% · PF {skill.liveMetrics.profitFactor ?? "-"}</div>}
                       {!["retired", "superseded"].includes(skill.status) && <button className="dangerTextButton sm" onClick={() => { if (window.confirm(`退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户手动退役" }); }}><Trash2 size={13} /> 退役</button>}
@@ -1091,8 +1097,27 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                   )}
                 </div>
               );
-            })}
-          </div>
+            };
+            return (
+              <>
+                <div className="kRowList">
+                  {live.map(renderRow)}
+                  {!live.length && filtered.length > 0 && <div className="emptyPanel">当前没有在流水线中的活技能，只有归档技能（见下方）。</div>}
+                </div>
+                {archived.length > 0 && (
+                  <div className="kArchive">
+                    <div className="kArchiveHead">
+                      <button className="kArchiveToggle" onClick={() => setShowArchived((v) => !v)}>
+                        <ChevronDown size={13} className={showArchived ? "flip" : ""} /> 已归档 {archived.length}（编译失败 / 已被替代 / 已退役）
+                      </button>
+                      <button className="dangerTextButton sm" title="删除全部编译失败与已被替代的技能（已退役保留）" onClick={() => { if (window.confirm(`清理归档：删除编译失败与已被替代的技能？（已退役保留，审计日志不受影响）`)) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={13} /> 清理</button>
+                    </div>
+                    {showArchived && <div className="kRowList">{archived.map(renderRow)}</div>}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

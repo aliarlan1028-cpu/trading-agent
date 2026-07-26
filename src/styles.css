@@ -7786,6 +7786,10 @@ button.danger:disabled,
 .mKLegendHead svg:last-child { margin-left: auto; }
 .mKLegendRow { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 5px 10px; }
 .mKLegendRow > span { font-size: 11px; line-height: 1.5; color: #6b6252; }
+.mKArchiveHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px dashed var(--hairline); margin-top: 8px; padding-top: 8px; }
+.mKArchiveHead > button:first-child { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; font: 600 11.5px "Space Grotesk"; color: #8a8172; padding: 4px 0; }
+.mKArchiveHead .flip { transform: rotate(180deg); }
+.mKArchivePurge { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--hairline); border-radius: 7px; background: #f7e6e2; color: #c43f28; font: 600 11px "Space Grotesk"; padding: 5px 9px; }
 
 .mRuleRow {
   display: flex;
@@ -9591,6 +9595,16 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kLegendRow { display: grid; grid-template-columns: 82px 1fr; gap: 9px; align-items: start; }
 .kLegendRow .evBadge { justify-self: start; }
 .kLegendDesc { font-size: 11.5px; line-height: 1.55; color: #6b6252; }
+
+/* 技能已归档区（编译失败/已被替代/已退役） */
+.kArchive { margin-top: 10px; border-top: 1px dashed var(--hairline); padding-top: 8px; }
+.kArchiveHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kArchiveHead > button { white-space: nowrap; flex: none; }
+.kArchiveHead .kArchiveToggle { flex: 1; justify-content: flex-start; }
+.kArchiveToggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; cursor: pointer; font: 600 12px "Space Grotesk"; color: #8a8172; padding: 4px 0; }
+.kArchiveToggle:hover { color: #1E1B16; }
+.kArchiveToggle .flip { transform: rotate(180deg); }
+.kArchive .kRowList { margin-top: 6px; }
 .kTabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .kTabs button { padding: 6px 12px; border-radius: 8px; border: 1px solid transparent; background: none; font: 600 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
 .kTabs button.on { background: #1E1B16; color: #fff; }

@@ -1336,6 +1336,18 @@ app.post("/api/knowledge/skills/:id/retire", requirePermission("approve:knowledg
   }
 });
 
+// 清理归档：删除"编译失败"和"已被替代"的技能（这些不参与任何决策，纯噪音）。
+// 已退役(retired)默认保留(那是你主动退役的),除非显式 includeRetired。审计日志仍留有历史事件。
+app.post("/api/knowledge/skills/purge-archived", requirePermission("approve:knowledge_skill"), (req, res) => {
+  const includeRetired = req.body?.includeRetired === true;
+  const junk = new Set(includeRetired ? ["compile_failed", "superseded", "retired"] : ["compile_failed", "superseded"]);
+  const before = (db.knowledge?.tradingSkills || []).length;
+  db.knowledge.tradingSkills = (db.knowledge.tradingSkills || []).filter((s) => !junk.has(s.status));
+  const removed = before - db.knowledge.tradingSkills.length;
+  appendAudit(db, `清理归档技能 ${removed} 个（${[...junk].join("/")}）`, "skills_purge", req.user?.name || db.user.name, "warning");
+  persist(res, { ok: true, removed, message: `已清理 ${removed} 个归档技能` });
+});
+
 // B 路：回测一条书本策略假设（用最接近的内置策略近似验证其方向/周期是否有历史边际）。
 // 硬闸：只有回测通过（正期望 + 足够样本 + 盈亏比>1）才把 executable 置 true。
 app.post("/api/knowledge/hypotheses/:id/backtest", requirePermission("write:knowledge"), async (req, res) => {
