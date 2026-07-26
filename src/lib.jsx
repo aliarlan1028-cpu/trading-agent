@@ -253,12 +253,14 @@ export function statusTone(status) {
   const raw = String(status || "");
   const dangerStates = ["blocked", "error", "failed", "rejected", "risk_rejected", "已阻断", "异常", "失败", "已拒绝", "风控拒绝"];
   const warningStates = ["warning", "degraded", "skipped_locked", "allowed_with_warnings", "paused", "降级运行", "并发锁跳过", "允许但有警告", "已暂停", "告警", "人工暂停", "风控暂停"];
-  const neutralStates = ["setup_required", "missing_credentials", "not_synced", "data_unavailable", "unconfigured", "待配置", "未配置", "未同步", "缺少数据", "只读观察", "未启用", "未连接"];
+  const neutralStates = ["setup_required", "missing_credentials", "not_synced", "data_unavailable", "unconfigured", "待配置", "未配置", "未同步", "缺少数据", "只读观察", "未启用", "未连接", "未生成", "未检查", "未授权", "未对账", "未记录", "未评估", "未测试", "未安装"];
   const infoStates = ["pending", "in_progress", "submitted", "queued", "awaiting_approval", "validating", "验证中", "进行中", "待审批", "审批中", "同步中"];
   if (dangerStates.includes(value) || dangerStates.includes(raw)) return "danger";
   if (warningStates.includes(value) || warningStates.includes(raw)) return "warning";
   if (neutralStates.includes(value) || neutralStates.includes(raw)) return "neutral";
   if (infoStates.includes(value) || infoStates.includes(raw)) return "info";
+  // 未识别状态默认中性，不再一律绿色 ok（"未*/未知"态曾被误染成绿色"正常"）。
+  if (/^未|未知|unknown/.test(raw)) return "neutral";
   return "ok";
 }
 

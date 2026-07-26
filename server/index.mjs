@@ -107,7 +107,8 @@ for (const server of db.mcpServers || []) {
   }
 }
 for (const method of db.knowledge?.tradingMethods || []) {
-  const alreadyCompiled = (db.knowledge?.tradingSkills || []).some((skill) => skill.sourceMethodId === method.id && !["retired", "superseded"].includes(skill.status));
+  // compile_failed 也要重试：方案A放宽书名编译后，历史上因"禁止编译"卡住的技能应能在重启时重新编译进流水线。
+  const alreadyCompiled = (db.knowledge?.tradingSkills || []).some((skill) => skill.sourceMethodId === method.id && !["retired", "superseded", "compile_failed"].includes(skill.status));
   if (!alreadyCompiled) {
     try {
       if (method.direction === "both") {

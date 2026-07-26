@@ -617,6 +617,7 @@ function MobileReview({ data, ui }) {
 function MobileRisk({ data, action, ui }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const sys = data.system || {};
+  const portfolio = data.portfolio || {};
   const rules = data.riskRules || [];
   const maxLeverage = mandate.max_leverage || (mandate.maxLeverageBySymbol ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : null);
   const approvalThreshold = mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt;
@@ -626,7 +627,11 @@ function MobileRisk({ data, action, ui }) {
   const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
   const killed = sys.killSwitch;
   const active = ["running", "active"].includes(mandate.status);
-  const wall = killed ? { label: "熔断停机 · 已阻断开仓", tone: "critical" } : active ? { label: "低风险 · 正常运行", tone: "ok" } : { label: "未授权 · 观察模式", tone: "warning" };
+  // 授权≠低风险：有真实风险等级就用它，否则显示"已授权·风险待评估"，不写死"低风险"。
+  const rLabel = /高|中|低/.test(portfolio.riskLabel || "") ? portfolio.riskLabel : null;
+  const wall = killed ? { label: "熔断停机 · 已阻断开仓", tone: "critical" }
+    : active ? { label: rLabel ? `${rLabel} · 运行中` : "已授权 · 风险待评估", tone: rLabel === "高风险" ? "critical" : rLabel === "中风险" ? "warning" : rLabel ? "ok" : "warning" }
+    : { label: "未授权 · 观察模式", tone: "warning" };
   const mandateTone = active ? "ok" : statusTone(mandate.status);
   const mandRows = [
     ["授权范围", (mandate.exchanges || []).length ? "已授权交易" : "未授权", ""],
@@ -655,7 +660,7 @@ function MobileRisk({ data, action, ui }) {
       </div>
       <div className="mCard">
         <div className="mCardHead"><b>风险规则</b></div>
-        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{scopeCount(name)} 条 · 正常</small><i style={{ background: c }} /></div>)}</div>
+        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} 条已启用` : "无规则"}</small><i style={{ background: c }} /></div>; })}</div>
       </div>
       <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
@@ -792,7 +797,8 @@ function MobileAccountHealth({ data, action }) {
   const latestSnapshot = data.accountSnapshots?.[0];
   const configuredAccounts = (data.exchangeAccounts || []).filter((account) => account.readEnabled).length;
   const totalAccounts = data.exchangeAccounts?.length || 0;
-  const openExecutions = (data.executionOrders || []).filter((item) => !["filled", "closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length;
+  const OPEN_EXEC = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
+  const openExecutions = (data.executionOrders || []).filter((item) => OPEN_EXEC.has(String(item.status || "").toLowerCase())).length;
   const blockedChecks = (data.riskChecks || []).filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
   const rows = [
     ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],

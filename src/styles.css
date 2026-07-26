@@ -9414,6 +9414,33 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kFunnelSide { margin-left: auto; display: flex; gap: 14px; }
 .kFunnelKv { font-size: 11px; color: #8a8172; }
 .kFunnelKv b { color: #1E1B16; margin-right: 3px; }
+
+/* —— 知识库上手引导 —— */
+.kGuide { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); padding: 12px 14px; margin-bottom: 12px; }
+.kGuideHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.kGuideTitle { display: inline-flex; align-items: center; gap: 6px; font: 700 13px "Space Grotesk"; color: #1E1B16; }
+.kGuideTitle svg { color: var(--accent, #C77B36); }
+.kGuideToggle { background: none; border: none; font-size: 11px; color: #8a8172; cursor: pointer; padding: 2px 6px; }
+.kGuideToggle:hover { color: #1E1B16; }
+.kGuideSteps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.kGuideStep { position: relative; border: 1px solid var(--hairline); border-radius: 10px; padding: 11px 12px; background: #FBF7EF; display: flex; flex-direction: column; gap: 7px; }
+.kGuideStep.active { border-color: var(--accent, #C77B36); background: #FCF3E8; box-shadow: 0 0 0 1px var(--accent, #C77B36) inset; }
+.kGuideStep.done { opacity: 0.72; }
+.kGuideStep.todo { opacity: 0.85; }
+.kGuideStepTop { display: flex; align-items: center; gap: 7px; }
+.kGuideStepTop b { font: 700 13px "Space Grotesk"; color: #1E1B16; }
+.kGuideNum { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #EFE6D6; color: #7a6f5c; flex: none; }
+.kGuideStep.active .kGuideNum { background: var(--accent, #C77B36); color: #fff; }
+.kGuideStep.done .kGuideNum { background: var(--pos-weak); color: var(--pos); }
+.kGuideNow { margin-left: auto; font-size: 9.5px; font-weight: 700; color: #fff; background: var(--accent, #C77B36); padding: 1px 6px; border-radius: 5px; }
+.kGuideOk { margin-left: auto; font-size: 9.5px; font-weight: 700; color: var(--pos); background: var(--pos-weak); padding: 1px 6px; border-radius: 5px; }
+.kGuideStep p { margin: 0; font-size: 11.5px; line-height: 1.5; color: #6b6252; flex: 1; }
+.kGuideStep button { align-self: flex-start; }
+.kGuideAllDone { margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--pos); }
+.kGuideDone { display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center; border: 1px dashed var(--hairline); border-radius: 10px; background: none; padding: 8px; font-size: 11.5px; color: #8a8172; cursor: pointer; margin-bottom: 12px; }
+.kGuideDone:hover { color: #1E1B16; border-color: #d9cdb8; }
+.kGuideDone svg { color: var(--pos); }
+@media (max-width: 720px) { .kGuideSteps { grid-template-columns: 1fr; } }
 .kTabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .kTabs button { padding: 6px 12px; border-radius: 8px; border: 1px solid transparent; background: none; font: 600 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
 .kTabs button.on { background: #1E1B16; color: #fff; }

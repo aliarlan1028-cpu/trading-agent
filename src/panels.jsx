@@ -417,7 +417,8 @@ export function SystemConfigPanel({ data, action, ui, section }) {
               const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
               const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
               const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
-              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? true;
+              // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
+              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
               const gates = [
                 { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", hint: "勾选下方 LIVE_TRADING_ENABLED" },
                 { ok: Boolean(live.acknowledged), label: "风险确认", hint: "勾选下方「风险确认」" },

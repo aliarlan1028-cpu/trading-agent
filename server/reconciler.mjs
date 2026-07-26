@@ -51,9 +51,12 @@ function checkStopLossCoverage(db) {
 function checkSnapshotFreshness(db, latestByAccount) {
   const differences = [];
   for (const account of db.exchangeAccounts || []) {
+    // 未配置只读凭证的交易所不纳入对账：它只是"没接入"（在交易所同步卡里已如实显示），
+    // 不是"缺快照"的异常——否则会让整体对账永远停在"降级运行"的噪音上。
+    if (!account.readEnabled) continue;
     const snapshot = latestByAccount.get(account.id);
     if (!snapshot) {
-      differences.push({ type: "missing_account_snapshot", severity: account.readEnabled ? "high" : "low", accountId: account.id, message: `${account.exchange} 尚无账户快照。` });
+      differences.push({ type: "missing_account_snapshot", severity: "high", accountId: account.id, message: `${account.exchange} 尚无账户快照。` });
       continue;
     }
     const ageMs = Date.now() - new Date(snapshot.createdAt).getTime();

@@ -354,18 +354,18 @@ function cleanSeedDatabase(createdAt) {
       remainingDailyLossUsdt: null
     },
     portfolio: {
+      // 全部初始为 null——缺失即"未同步/未评估"，由前端如实展示；
+      // 尤其 riskLabel 不能给 "未同步" 这种 truthy 字符串，否则会毒化前端"按真实分数回退"的逻辑。
       totalEquityUsdt: null,
       availableMarginUsdt: null,
-      frozenUsdt: null,
+      frozenMarginUsdt: null,
       todayPnl: null,
       todayPnlPct: null,
       weekPnl: null,
       weekPnlPct: null,
       maxDrawdownPct: null,
       riskScore: null,
-      riskLabel: "未同步",
-      monthlyTrades: 0,
-      monthlyTradeLimit: null
+      riskLabel: null
     },
     markets: [
       { symbol: "BTC/USDT", status: "not_synced", candles: [] },

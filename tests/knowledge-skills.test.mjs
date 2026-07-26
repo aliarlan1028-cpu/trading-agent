@@ -62,18 +62,33 @@ function dbFixture(direction = "long") {
   };
 }
 
-test("synthetic book-title summaries can never compile into executable skills", () => {
+test("book-title summaries compile but are flagged low-trust (Plan A: safety enforced by validation, not a compile ban)", () => {
+  // 方案 A：完整的书名方法可以编译进验证流水线，但必须带 lowTrust 标记 + 严门槛警告。
   const result = compileMethodToSpec({
     id: "m",
     name: "趋势突破",
     direction: "long",
     timeframe: "1H",
-    entry: "突破20周期最高价",
-    stop: "2%",
+    entry: "收盘突破过去20根K线最高价",
+    stop: "入场价下方2%",
     takeProfit: "2R"
   }, { id: "s", type: "book_title", title: "只输入书名" });
+  assert.equal(result.ok, true);
+  assert.equal(result.spec.lowTrust, true);
+  assert.match(result.warnings.join(" "), /低信任/);
+  assert.match(result.warnings.join(" "), /人工批准/);
+});
+
+test("book-title compilation still fails when the method lacks an executable setup", () => {
+  // 低信任不等于放水：缺入场/止损/止盈这种无法构造 setup 的硬缺陷依旧编译失败。
+  const result = compileMethodToSpec({
+    id: "m",
+    name: "只有名字",
+    direction: "long",
+    timeframe: "1H"
+  }, { id: "s", type: "book_title", title: "只输入书名" });
   assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /禁止编译/);
+  assert.match(result.errors.join(" "), /入场|止损|止盈|离场/);
 });
 
 test("compiled knowledge skills require paper validation and human approval before selection", () => {

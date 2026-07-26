@@ -121,14 +121,18 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
     : null;
   const performance = data.performance || {};
   const monthlyPnl = performance.totalPnlUsdt;
-  const openExecutions = performance.openExecutions || (data.executionOrders || []).filter((item) => !["filled", "closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length;
+  // 在途 = 真正还在交易所挂着的执行单；必须排除 blocked/setup_rejected/dry_run/failed/protection_failed 这些终态或未提交态，
+  // 否则被风控拦下的单会被误报成"在途待处理"。
+  const OPEN_EXEC = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
+  const openExecutions = performance.openExecutions ?? (data.executionOrders || []).filter((item) => OPEN_EXEC.has(String(item.status || "").toLowerCase())).length;
   const riskChecks = data.riskChecks || [];
   const blockedChecks = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
   const accountHealthRows = [
     ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "warning"],
     ["私有账户快照", latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : "未同步", latestSnapshot ? "ok" : "warning"],
     ["对账状态", configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置", latestReconcile?.status === "ok" ? "ok" : "warning"],
-    ["实盘写入", data.system?.liveTradingEnabled ? "开启" : "关闭", data.system?.liveTradingEnabled ? "danger" : "warning"],
+    // 实盘写入是主人主动开的授权开关，不是故障——开启用中性提醒色(warn)而非红色高危(danger)。
+    ["实盘写入", data.system?.liveTradingEnabled ? "已开启" : "关闭", data.system?.liveTradingEnabled ? "warn" : ""],
     ["在途执行", `${openExecutions} 个`, openExecutions ? "warning" : "ok"],
     ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
   ];
@@ -795,6 +799,55 @@ const FUNNEL = [
   { key: "active", label: "已上岗", tab: "skills" }
 ];
 
+function KnowledgeOnboarding({ funnelCounts, sourceCount, ui, action, goMethods, goSkills }) {
+  const KEY = "knowGuideCollapsed";
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } });
+  const toggle = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem(KEY, n ? "1" : "0"); } catch {} return n; });
+
+  const inPipeline = funnelCounts.compiled + funnelCounts.validated + funnelCounts.papering;
+  // 当前该做的一步：没知识源→喂料；有草案没进流水线→编译验证；进了流水线没上岗→批准；已上岗→完成。
+  const step = sourceCount === 0 ? 1 : (inPipeline === 0 && funnelCounts.active === 0) ? 2 : funnelCounts.active === 0 ? 3 : 4;
+
+  const steps = [
+    { n: 1, icon: BookOpen, title: "喂知识", desc: "导入交易书籍、文章或网页。系统自动蒸馏出「交易方法草案」和「风控纪律」。", cta: "导入知识源", onClick: () => ui.openPanel("knowledgeImport") },
+    { n: 2, icon: Rocket, title: "编译 + 验证", desc: "把方法草案编译成技能，自动跑历史三窗回测 + 纯前向模拟盘。跑不过的不能上岗。", cta: "去方法草案", onClick: goMethods },
+    { n: 3, icon: ShieldCheck, title: "人工批准上岗", desc: "只有你亲自批准的技能才会进入实盘决策。低信任（按书名综述）门槛更严。", cta: "去技能流水线", onClick: goSkills }
+  ];
+
+  if (step === 4 && collapsed) {
+    return (
+      <button className="kGuideDone" onClick={toggle}>
+        <CheckCircle2 size={14} /> 已有 {funnelCounts.active} 个技能上岗 · 点开查看上手引导
+      </button>
+    );
+  }
+
+  return (
+    <div className="kGuide">
+      <div className="kGuideHead">
+        <span className="kGuideTitle"><Sparkles size={14} /> 知识库怎么用？三步让 AI 交易员变强</span>
+        <button className="kGuideToggle" onClick={toggle}>{collapsed ? "展开" : "收起"}</button>
+      </div>
+      {!collapsed && (
+        <div className="kGuideSteps">
+          {steps.map((s) => {
+            const state = s.n < step ? "done" : s.n === step ? "active" : "todo";
+            const Icon = state === "done" ? CheckCircle2 : s.icon;
+            return (
+              <div className={`kGuideStep ${state}`} key={s.n}>
+                <div className="kGuideStepTop"><span className="kGuideNum"><Icon size={15} /></span><b>{s.title}</b>{state === "active" && <span className="kGuideNow">现在做这步</span>}{state === "done" && <span className="kGuideOk">已完成</span>}</div>
+                <p>{s.desc}</p>
+                <button className={state === "active" ? "primaryButton sm" : "secondaryButton sm"} onClick={s.onClick}>{s.cta} →</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!collapsed && step === 4 && <div className="kGuideAllDone"><CheckCircle2 size={13} /> 全部打通：已有 {funnelCounts.active} 个技能上岗。继续喂新书或退役失效技能来持续进化。</div>}
+    </div>
+  );
+}
+
 export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   const [tab, setTab] = useState("methods");
   const [rag, setRag] = useState("");
@@ -829,6 +882,15 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   return (
     <div className="pageStack termPage knowPage">
       {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
+
+      <KnowledgeOnboarding
+        funnelCounts={funnelCounts}
+        sourceCount={sourceCount}
+        ui={ui}
+        action={action}
+        goMethods={() => setTab("methods")}
+        goSkills={() => setTab("skills")}
+      />
 
       {/* 漏斗状态栏：一眼看清整条流水线卡在哪 */}
       <div className="kFunnel">
@@ -913,6 +975,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                     <b className="kRowName">{skill.name} <span className="mono kRowVer">v{skill.version}</span></b>
                     <span className="kRowMeta mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
                     {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
+                    {skill.spec?.lowTrust && <span className="evBadge warn" title="按书名生成的模型综述：历史验证/模拟盘门槛更严，必须人工批准才实盘">低信任</span>}
                     <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : ""}`}>{st.label}</span>
                     {/* 当前阶段的主操作直接摆在行上（不展开也能点） */}
                     {st.next && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {}); }}>{st.next.label} →</span>}
@@ -1273,10 +1336,17 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
     ["最近风控结论", latestRisk.summary || humanize(latestRisk.decision, "暂无")]
   ];
   const exAccounts = data.exchangeAccounts || [];
-  const keyPerms = [
-    ["读取行情", "允许", "pos"], ["读取账户", "允许", "pos"],
-    ["交易下单", data.system?.liveTradingEnabled ? "允许" : "关闭", data.system?.liveTradingEnabled ? "pos" : ""],
-    ["提现权限", "禁止", "neg"]
+  // 密钥权限读真实账户字段，不再写死"允许/禁止"（无账户时如实显示"未配置"）。
+  const anyRead = exAccounts.some((a) => a.readEnabled);
+  const anyTrade = exAccounts.some((a) => a.tradeEnabled);
+  const anyWithdraw = exAccounts.some((a) => a.withdrawEnabled);
+  const keyPerms = exAccounts.length ? [
+    ["读取账户/行情", anyRead ? "已开启" : "未配置", anyRead ? "pos" : ""],
+    ["交易下单", anyTrade ? "已开启" : "未开启", anyTrade ? "pos" : ""],
+    // 提现权限：检测到开着=高危(应去交易所关闭);未检测到=安全
+    ["提现权限", anyWithdraw ? "检测到开启·高危" : "未开启", anyWithdraw ? "neg" : "pos"]
+  ] : [
+    ["读取账户/行情", "未配置", ""], ["交易下单", "未配置", ""], ["提现权限", "未配置", ""]
   ];
   const authHist = (data.auditLogs || []).filter((item) => item.target?.includes("mandate") || item.action?.includes("授权") || item.action?.includes("风控") || item.action?.includes("熔断")).slice(0, 4);
   return (
@@ -1330,7 +1400,9 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         </div>
         <div className="termCard">
           <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>IP 白名单</span><button className="agLink" onClick={() => ui.openPanel("ip")}>管理</button></div>
-          <div className="secRow"><span className="mono">建议绑定交易所 IP</span><b className="evBadge warn">未设置</b></div>
+          {(() => { const ips = exAccounts.map((a) => a.ipWhitelist).filter(Boolean); return ips.length
+            ? <div className="secRow"><span className="mono">{ips.join("、").slice(0, 32)}</span><b className="evBadge ok">已绑定</b></div>
+            : <div className="secRow"><span className="mono">建议在交易所侧绑定 IP</span><b className="evBadge warn">未设置</b></div>; })()}
         </div>
         <div className="termCard">
           <div className="balLabel">密钥权限</div>
@@ -1352,6 +1424,8 @@ export function ReviewPage({ data, action, ui, embedded = false }) {
   const reviews = data.reviews || [];
   const tradePlans = data.tradePlans || [];
   const executionOrders = data.executionOrders || data.orders || [];
+  // 在途执行单：此前引用了 MarketAccountPage 里的 openExecutions（本作用域不存在）→ 打开复盘页即 ReferenceError 白屏。
+  const openExecutions = performance.openExecutions ?? (data.executionOrders || []).filter((o) => ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"].includes(String(o.status || "").toLowerCase())).length;
   const skillRuns = data.skillRuns || [];
   const agentRuns = data.agentRuns || [];
   const riskChecks = data.riskChecks || [];
@@ -1472,7 +1546,7 @@ export function ReviewPage({ data, action, ui, embedded = false }) {
             </Card>
             <Card>
               <SectionTitle title="执行质量" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>看日志中心 <ChevronRight size={14} /></button>} />
-              <RiskLine label="在途执行单" value={`${(data.executionOrders || []).filter((item) => !["closed", "cancelled", "rejected"].includes(String(item.status || "").toLowerCase())).length} 个`} />
+              <RiskLine label="在途执行单" value={`${openExecutions} 个`} />
               <RiskLine label="风控阻断" value={`${blockedRisk} 次`} />
               <RiskLine label="Agent 运行失败" value={`${failedRuns} 次`} />
               <RiskLine label="详细日志" value="已集中到审计与通知" />
@@ -1621,7 +1695,7 @@ function SegmentList({ title, rows = [] }) {
   );
 }
 
-export function AuditSystemPage({ data, ui, embedded = false }) {
+export function AuditSystemPage({ data, action, ui, embedded = false }) {
   const traces = data.traces || [];
   const jobRuns = data.jobRuns || [];
   const [traceTypeFilter, setTraceTypeFilter] = useState("全部");
@@ -1694,7 +1768,8 @@ export function AuditSystemPage({ data, ui, embedded = false }) {
                 <span className="acLogStep">{humanize(trace.type || "步骤")}</span>
                 <span><b className={`evBadge ${tool ? "" : "ok"}`}>{tool ? "工具" : "决策"}</b></span>
                 <span className="acLogDetail">{trace.title}</span>
-                <span className="r pos">✓</span>
+                {/* 按真实 trace.status 渲染成败，不再无脑绿勾 */}
+                <span className={`r ${["ok", "success", "info"].includes(String(trace.status || "ok")) ? "pos" : ["blocked", "error", "failed", "warning"].includes(String(trace.status)) ? "neg" : ""}`}>{["blocked", "error", "failed"].includes(String(trace.status)) ? "✕" : trace.status === "warning" ? "!" : "✓"}</span>
               </div>
             );
           })}

@@ -310,7 +310,9 @@ function deriveAgentState(db, mandate, run, plan) {
   if (run?.status === "awaiting_approval" || plan?.status === "awaiting_approval") return "awaiting_approval";
   if (plan?.status === "monitoring") return "monitoring";
   if (plan?.status === "approved" || plan?.status === "draft") return "waiting_entry";
-  if (run?.status === "blocked" || plan?.status === "risk_rejected") return "risk_paused";
+  // 仅当"日亏预算真的耗尽"这类系统级风控触发时才算风控暂停；
+  // 单个最近计划被风控拒(risk_rejected)只是那一次没通过，系统仍在正常观察，不能报"风控暂停"。
+  if (db.system.riskStatus === "风控暂停" || db.system.remainingDailyLossUsdt === 0) return "risk_paused";
   return "observing";
 }
 

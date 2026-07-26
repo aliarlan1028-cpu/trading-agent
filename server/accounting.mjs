@@ -50,6 +50,13 @@ export function refreshAccounting(db) {
   db.portfolio.todayPnlPct = equity ? Number(((todayPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.realizedPnlToday = Number(realizedToday.toFixed(2));
   db.portfolio.unrealizedPnl = Number(unrealized.toFixed(2));
+  // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
+  // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
+  const realizedWeek = realizedPnlSince(db, weekStart.toISOString());
+  const weekPnl = realizedWeek + unrealized;
+  db.portfolio.weekPnl = Number(weekPnl.toFixed(2));
+  db.portfolio.weekPnlPct = equity ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.accountingUpdatedAt = nowIso();
 
   const mandate = (db.mandates || []).find((item) => ["active", "running"].includes(item.status));
@@ -120,7 +127,8 @@ export function performanceReport(db) {
     bestTrade: closes.length ? Math.max(...closes.map((fill) => Number(fill.realizedPnl))) : null,
     worstTrade: closes.length ? Math.min(...closes.map((fill) => Number(fill.realizedPnl))) : null,
     dailySeries,
-    openExecutions: (db.executionOrders || []).filter((item) => ["entry_pending", "entry_filled", "protecting"].includes(item.status)).length,
+    // 与执行引擎的权威在途集合一致（此前漏 entry_partial/submitted，会少计部分成交的在途单）。
+    openExecutions: (db.executionOrders || []).filter((item) => ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status)).length,
     generatedAt: nowIso()
   };
 }

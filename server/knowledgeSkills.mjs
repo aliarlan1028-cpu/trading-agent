@@ -33,8 +33,19 @@ function ensureCollections(db) {
 }
 
 function normalizeTimeframe(value) {
-  const tf = String(value || "1h").replace("H", "h").replace("D", "d");
-  return TIMEFRAMES.has(tf) ? tf : null;
+  const raw = String(value || "1h").trim();
+  const tf = raw.replace("H", "h").replace("D", "d");
+  if (TIMEFRAMES.has(tf)) return tf;
+  // 就近映射：书里常写"日线/周线/月线/4小时/1小时/短线"等——映射到最接近的受支持周期，
+  // 而不是整条编译失败（周线/月线不适合杠杆短周期，统一收敛到 1d 上限）。
+  const t = raw.toLowerCase();
+  if (/(周线|周期|1w|week|月线|month|日线|1d|daily|swing|波段)/.test(t)) return "1d";
+  if (/(4\s*小时|4h|four)/.test(t)) return "4h";
+  if (/(1\s*小时|60m|hourly|1h)/.test(t)) return "1h";
+  if (/(15\s*分|15m|quarter)/.test(t)) return "15m";
+  if (/(5\s*分|5m|scalp|超短)/.test(t)) return "5m";
+  if (/(日内|intraday|短线)/.test(t)) return "1h";
+  return "1h"; // 兜底给 1h（原来是 null 直接 fail），验证/模拟会实测其是否有边际
 }
 
 function normalizeSymbolScope(value) {
@@ -132,17 +143,20 @@ export function compileMethodToSpec(method = {}, source = {}, overrides = {}) {
   const confirmation = compileConfirmation(method.confirmation);
   const invalidation = compileInvalidation(method.invalidation);
 
-  if (source.type === "book_title" || source.synthetic === true) {
-    errors.push("按书名生成的模型综述不是用户提供的原始证据，禁止编译为自主交易技能");
-  }
+  // 方案 A（2026-07-26 主人拍板）：按书名生成的综述不再"一刀切禁止编译"，改为可编译但标"低信任"，
+  // 安全由后续【历史验证 + 纯前向模拟盘 + 人工批准】三道流程保证——而非在编译阶段直接毙掉。
+  const lowTrust = source.type === "book_title" || source.synthetic === true;
+  // 硬错误（真的无法构造可执行 setup）才算 error，其余降级为 warning 让技能仍能进验证流水线。
   if (!String(method.entry || "").trim()) errors.push("缺少明确入场条件");
   if (!String(method.stop || "").trim()) errors.push("缺少明确止损条件");
   if (!String(method.takeProfit || "").trim()) errors.push("缺少明确止盈或离场条件");
   if (!["long", "short"].includes(direction)) errors.push("方向必须明确为 long 或 short；both 需要拆分为两个技能");
   if (!timeframe) errors.push("周期不受支持，仅允许 5m/15m/1h/4h/1d");
   if (!templateId) errors.push("自然语言方法无法安全映射到受支持的白名单策略模板");
-  if (confirmation.error) errors.push(confirmation.error);
-  if (invalidation.error) errors.push(invalidation.error);
+  // 确认/失效条件编译不了不再整条失败：降级为"该子约束不生效"的警告，技能以"仅方向+入场模板+RR"可执行子集进验证。
+  if (confirmation.error) warnings.push(`确认条件未能编译（${confirmation.error}），该子约束在运行时不生效，仅以入场模板+RR 执行`);
+  if (invalidation.error) warnings.push(`失效条件未能编译（${invalidation.error}），运行时不做该失效判定`);
+  if (lowTrust) warnings.push("来源为按书名生成的模型综述（低信任）：可进验证流水线，但历史验证/模拟盘门槛更严，且必须人工批准才实盘");
 
   const strategy = templateId ? getStrategy(templateId) : null;
   const params = strategy
@@ -156,6 +170,7 @@ export function compileMethodToSpec(method = {}, source = {}, overrides = {}) {
     schemaVersion: 1,
     templateId,
     templateLabel: strategy?.label || null,
+    lowTrust,                 // 按书名综述 → 验证门槛更严
     direction,
     symbolScope: normalizeSymbolScope(overrides.symbolScope || method.symbolScope),
     timeframe,
@@ -261,14 +276,18 @@ export function validateKnowledgeSkillWithCandles(db, skillId, candles, actor = 
   const validation = evaluateWindow(candles, signals, trainEnd, validationEnd, skill);
   const test = evaluateWindow(candles, signals, validationEnd, n, skill);
   const oosTrades = Number(validation.trades || 0) + Number(test.trades || 0);
+  // 低信任（按书名综述）技能门槛更严：样本更多、盈亏比更高——用更严的样本外证据补偿来源不是原始证据。
+  const lt = skill.spec.lowTrust === true;
+  const minPF = lt ? 1.15 : 1.05;
+  const minOos = lt ? 12 : 8;
   const passed = train.trades >= 5
     && validation.trades >= 3
     && test.trades >= 3
-    && oosTrades >= 8
+    && oosTrades >= minOos
     && validation.expectancyR > 0
     && test.expectancyR > 0
-    && (validation.profitFactor == null || validation.profitFactor >= 1.05)
-    && (test.profitFactor == null || test.profitFactor >= 1.05)
+    && (validation.profitFactor == null || validation.profitFactor >= minPF)
+    && (test.profitFactor == null || test.profitFactor >= minPF)
     && (validation.maxDrawdownPct ?? 100) <= 20
     && (test.maxDrawdownPct ?? 100) <= 20;
   skill.validation = {

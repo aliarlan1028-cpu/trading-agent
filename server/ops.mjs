@@ -37,11 +37,11 @@ export function buildReadinessReport(db) {
     check("alerts", "告警 Webhook", true, Boolean(process.env.ALERT_WEBHOOK_URL), "配置后可推送真实外部告警。"),
     check("gray_release", "小额度灰度策略", true, (db.grayReleasePolicies || []).some((item) => item.enabled), "最终由你启用并设置额度、币种、人工确认。")
   ];
-  const implemented = checks.filter((item) => item.implemented).length;
   const configured = checks.filter((item) => item.configured).length;
   return {
     generatedAt: nowIso(),
-    implementationCompletionPct: Math.round((implemented / checks.length) * 100),
+    // implementationCompletionPct 已移除：它的 implemented 全是硬编码 true，恒等于 100%，是假指标。
+    // 就绪度只看 configurationCompletionPct（由 env/密钥/开关的真实状态派生）。
     configurationCompletionPct: Math.round((configured / checks.length) * 100),
     operatingStage: buildOperatingStage(db, checks),
     checks,
