@@ -793,6 +793,8 @@ export async function executeTool(db, run, name, args = {}) {
       agent_run_id: run.id,
       mandateId: mandate?.id,
       mandate_id: mandate?.id,
+      // 计划必须钉住授权版本(P0):此前从不写入,风控按默认 v1 对比当前版本必拒。
+      mandateVersion: Number(mandate?.version || 1),
       analysisBundleId: bundle?.id,
       analysis_bundle_id: bundle?.id,
       exchange: mandate?.exchanges?.[0] || "BINANCE",
@@ -847,7 +849,7 @@ export async function executeTool(db, run, name, args = {}) {
     let autoExecution = null;
     if (plan.status === "awaiting_approval") {
       const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
-      const autoEligible = db.system.liveTradingEnabled === true && grayPolicy && grayPolicy.requiresManualApproval === false;
+      const autoEligible = db.system.autonomyEnabled === true && db.system.liveTradingEnabled === true && grayPolicy && grayPolicy.requiresManualApproval === false; // (P1-6)用户暂停自主后,对话路径也不得自动批准+下单
       if (autoEligible) {
         plan.status = "approved";
         plan.approvedAt = nowIso();

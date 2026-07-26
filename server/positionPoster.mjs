@@ -49,9 +49,8 @@ export function derivePositionShare(position = {}) {
   const computedPnl = pnl ?? (entry !== null && mark !== null && size !== null ? (mark - entry) * size * sign : null);
   const margin = entry !== null && size !== null && leverage ? Math.abs(entry * size) / leverage : null;
   const roiPct = number(position.roiPct ?? position.pnlRatio ?? position.uplRatio);
-  const computedRoiPct = roiPct !== null
-    ? (Math.abs(roiPct) <= 3 ? roiPct * 100 : roiPct)
-    : (margin ? (computedPnl / margin) * 100 : null);
+  // tick hook 统一把 roiPct 写成百分数;旧 |ROI|≤3 启发式会把 2.5% 误放大成 250%(审计发现),已移除。
+  const computedRoiPct = roiPct !== null ? roiPct : (margin ? (computedPnl / margin) * 100 : null);
   const notional = entry !== null && size !== null ? Math.abs(entry * size) : number(position.notionalUsdt ?? position.notionalUsd ?? position.notional);
 
   return {

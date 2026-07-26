@@ -1,7 +1,11 @@
 import { appendAudit, appendTrace, id, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
-import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { binanceSignedRequest, okxContractSpec, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { hasPassedPaper } from "./paperTrading.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
+
+// 授权词表(mandate.strategies) → 策略注册表 id 的映射:paper 会话按注册表 id 记录,
+// 两个命名空间不映射时 REQUIRE_PAPER_VALIDATION 会拦下全部计划(审计 P1-5)。
+const STRATEGY_PAPER_ALIAS = { trend_following: "trend", mean_reversion: "meanrev", momentum: "macd", breakout: "breakout" };
 
 const WRITE_ACTIONS = new Set(["place_order", "cancel_order", "amend_order", "close_position", "move_stop", "take_profit"]);
 const ACTION_TO_MANDATE = {
@@ -152,8 +156,12 @@ export function validateWriteGuard(db, action, payload) {
   if (!contract.ok) return { allowed: false, reason: contract.reason, contract };
   const riskReducing = action === "cancel_order"
     || action === "close_position"
+    || action === "take_profit"   // 止盈/移动止损本质是 reduceOnly 离场单——
+    || action === "move_stop"     // 此前按开仓过灰度名义额闸,顶格仓位的止盈 100% 被拦且无告警
     || payload.reduceOnly === true
     || payload.closePosition === true;
+  // 只减仓模式:此前 reduceOnlyMode 只是展示标签,无任何执行点(审计 P1-8)。
+  if (!riskReducing && db.system?.reduceOnlyMode) return { allowed: false, reason: "reduce_only_mode" };
   if (!riskReducing && !db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
   if (!riskReducing && !(db.system.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) return { allowed: false, reason: "real_trading_ack_missing" };
   if (!riskReducing && !(db.system.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) return { allowed: false, reason: "real_order_write_disabled" };
@@ -192,7 +200,7 @@ export function validateWriteGuard(db, action, payload) {
       : hasPassedPaper(db, {
           symbol: payload.symbol,
           timeframe: payload.timeframe,
-          strategyId: payload.strategyId
+          strategyId: STRATEGY_PAPER_ALIAS[payload.strategyId] || payload.strategyId
         });
     if (!paperValidated) return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
   }
@@ -315,12 +323,27 @@ async function executeOkxAction(action, payload) {
   if (!process.env.OKX_API_KEY || !process.env.OKX_API_SECRET || !process.env.OKX_API_PASSPHRASE) return { status: "missing_credentials" };
   const instId = toOkxSymbol(payload.symbol, payload.marketType);
   if (action === "place_order") {
+    // OKX SWAP 的 sz 是"张数"(P0):引擎全程用币数量,此处必须除以 ctVal 并对齐 lotSz/minSz。
+    // 自家读仓位时早已乘 ctVal 换算(exchangeConnector),下单侧此前却原样透传币数量。
+    let okxSz = Number(payload.quantity || payload.size);
+    let okxCtVal = null;
+    if (String(payload.marketType || "perpetual_usdt").includes("perp")) {
+      const spec = await okxContractSpec(instId);
+      if (!spec) return { status: "instrument_spec_unavailable", instId };
+      okxCtVal = spec.ctVal;
+      const lot = spec.lotSz > 0 ? spec.lotSz : 1;
+      const contracts = Math.floor((okxSz / spec.ctVal) / lot + 1e-9) * lot;
+      if (!(contracts >= (spec.minSz || lot))) {
+        return { status: "below_min_size", instId, coinQuantity: okxSz, minContracts: spec.minSz, ctVal: spec.ctVal };
+      }
+      okxSz = contracts;
+    }
     const body = JSON.stringify({
       instId,
       tdMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross",
       side: String(payload.side || "buy").toLowerCase(),
       ordType: String(payload.ordType || payload.type || "limit").toLowerCase(),
-      sz: String(payload.quantity || payload.size),
+      sz: String(okxSz),
       px: payload.price ? String(payload.price) : undefined,
       clOrdId: payload.clientOrderId || id("coid"),
       reduceOnly: Boolean(payload.reduceOnly),
@@ -338,6 +361,8 @@ async function executeOkxAction(action, payload) {
       raw,
       exchangeOrderId: raw.data?.[0]?.ordId,
       clientOrderId: raw.data?.[0]?.clOrdId,
+      okxCtVal,
+      okxContracts: okxSz,
       protection: accepted && payload.stopLoss && !payload.reduceOnly ? { attachedAlgoStop: true, stopLoss: Number(payload.stopLoss) } : null
     };
   }
@@ -353,8 +378,14 @@ async function executeOkxAction(action, payload) {
     const raw = await okxSignedRequest("/api/v5/trade/close-position", "POST", JSON.stringify({ instId, mgnMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross", posSide: payload.posSide }));
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
-  if (action === "move_stop" || action === "take_profit") {
-    if (action === "take_profit" && Array.isArray(payload.targets) && payload.targets.length) {
+  if (action === "move_stop") {
+    // OKX 的入场止损是 attachAlgoOrds 附加单,本接口若再下 conditional 会产生第二张止损
+    // 与附加单并存(审计 P1-3:双止损)。附加算法单的改价需 algoId 链路,当前未持久化——
+    // 如实降级:不下重复单,返回明确状态由持仓管理记录告警。
+    return { status: "unsupported_move_stop_okx", note: "OKX 附加止损暂不支持移动(需 algoId 改单链路),已保留原止损,未下重复单" };
+  }
+  if (action === "take_profit") {
+    if (Array.isArray(payload.targets) && payload.targets.length) {
       const orders = [];
       for (const target of payload.targets) {
         orders.push(await executeOkxAction("place_order", {
@@ -366,7 +397,8 @@ async function executeOkxAction(action, payload) {
           clientOrderId: target.clientOrderId || id("tp")
         }));
       }
-      return { status: "ok", batch: true, orders };
+      const failed = orders.filter((o) => !["ok", "submitted"].includes(o.status));
+      return { status: failed.length ? (failed.length === orders.length ? "exchange_rejected" : "partial_failure") : "ok", batch: true, orders, failedCount: failed.length };
     }
     return executeOkxAction("place_order", { ...payload, ordType: payload.ordType || "conditional", reduceOnly: true });
   }

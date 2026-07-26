@@ -48,10 +48,11 @@ function marketOf(db, symbol) {
 
 // 资产日度波动率（小数，如 0.04 = 4%/日）
 export function dailyVolFraction(market) {
-  const rets = returnsOf(market?.candles);
+  // 统一用 1h 周期(candlesByTf 优先):共享槽可能被其它周期临时占用,跨频率收益序列做相关性在统计上无效(审计 #13)。
+  const rets = returnsOf(market?.candlesByTf?.["1h"]?.candles || market?.candles);
   const s = stdev(rets);
   if (s === null) return null;
-  const bpd = BARS_PER_DAY[market?.candlesTimeframe || "1h"] || 24;
+  const bpd = market?.candlesByTf?.["1h"] ? 24 : (BARS_PER_DAY[market?.candlesTimeframe || "1h"] || 24);
   return s * Math.sqrt(bpd);
 }
 

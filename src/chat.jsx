@@ -368,7 +368,7 @@ function AgentRail({ data, action, ui, send }) {
   // 盈亏比可由固定的入场/止损/止盈直接算出，不该恒显"—"（计划价位是下单前定死的目标，本就不随行情变动）。
   const planRR = (() => {
     if (plan?.riskReward) return plan.riskReward;
-    const er = plan?.entry_range || (plan?.entry?.range ? null : null);
+    const er = plan?.entry_range;
     const entry = Array.isArray(er) && er.length ? (Number(er[0]) + Number(er[er.length - 1])) / 2 : Number(plan?.entry?.mid ?? plan?.entryPrice ?? NaN);
     const stop = Number(plan?.stopLoss ?? plan?.stop_loss ?? NaN);
     const tps = plan?.takeProfit || plan?.take_profit || [];
@@ -738,7 +738,8 @@ function IntelCenter({ action }) {
   async function removeIntel(id, event) {
     event.stopPropagation();
     try {
-      await fetch(apiUrl(`/api/events/${id}`), { method: "DELETE", headers: authHeaders() });
+      const response = await fetch(apiUrl(`/api/events/${id}`), { method: "DELETE", headers: authHeaders() });
+      if (!response.ok) { const j = await response.json().catch(() => ({})); throw new Error(j.error || `删除失败 ${response.status}`); } // 此前 403/404 也本地删除,刷新又复活(审计 M4)
       setEvents((current) => current.filter((item) => item.id !== id));
     } catch {}
   }

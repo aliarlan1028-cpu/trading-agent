@@ -17,9 +17,21 @@ function realizedPnlSince(db, sinceMs) {
     .reduce((sum, fill) => sum + Number(fill.realizedPnl || 0), 0);
 }
 
+// 同一真实仓位可能有两条记录(execution_engine + exchange_rest 快照)。
+// 核算按 symbol+direction 去重,优先交易所快照(权威 upl/张数)。
+export function dedupePositions(positions = []) {
+  const byKey = new Map();
+  for (const p of positions) {
+    const key = `${p.symbol}|${String(p.direction || "long").toLowerCase().replace("空", "short").replace("多", "long")}`;
+    const prev = byKey.get(key);
+    if (!prev || (p.source === "exchange_rest" && prev.source !== "exchange_rest")) byKey.set(key, p);
+  }
+  return [...byKey.values()];
+}
+
 function unrealizedPnl(db) {
   let total = 0;
-  for (const position of db.positions || []) {
+  for (const position of dedupePositions(db.positions)) {
     const market = db.markets?.find((item) => item.symbol === position.symbol);
     const mark = Number(market?.price || position.mark);
     const entry = Number(position.entry);
@@ -53,7 +65,7 @@ export function refreshAccounting(db) {
   // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
   // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
-  const realizedWeek = realizedPnlSince(db, weekStart.toISOString());
+  const realizedWeek = realizedPnlSince(db, weekStart.getTime()); // 传毫秒数(此前传 ISO 字符串,数值比较恒 false → 周已实现盈亏恒 0,周熔断失明)
   const weekPnl = realizedWeek + unrealized;
   db.portfolio.weekPnl = Number(weekPnl.toFixed(2));
   db.portfolio.weekPnlPct = equity ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;

@@ -275,7 +275,9 @@ function MobileRisk({ data, action, ui }) {
     ["有效期", validUntil ? formatDate(validUntil) : "长期有效", ""]
   ];
   const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
-  const scopeCount = (name) => rules.filter((r) => String(r.scope || r.category || r.name || "").includes(name)).length;
+  // scope 真实取值是英文(trade/account/event/knowledge),此前中文 includes 恒 0 → 永远"无规则"(审计 M3)
+  const scopeOf = (r) => { const t = String(r.scope || r.category || r.name || "").toLowerCase(); if (/account|portfolio|loss|margin|equity|账户/.test(t)) return "账户"; if (/event|事件/.test(t)) return "事件"; if (/system|knowledge|kill|api|系统/.test(t)) return "系统"; return "交易"; };
+  const scopeCount = (name) => rules.filter((r) => scopeOf(r) === name).length;
   return (
     <div className="mScreen">
       <div className={`mRiskWall ${wall.tone}`}>
@@ -302,7 +304,7 @@ function MobileRisk({ data, action, ui }) {
 
       <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
-        <button className="mRbReduce" onClick={() => ui.openPanel("riskRules")}>只减仓</button>
+        <button className="mRbReduce" onClick={() => { const on = Boolean(data.system?.reduceOnlyMode); if (window.confirm(on ? "关闭只减仓模式?" : "开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? "退出只减仓" : "只减仓"}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
         <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
       </div>
     </div>
@@ -336,7 +338,9 @@ function MobileKnowledge({ data, action, ui }) {
   async function search() {
     if (!query.trim()) return;
     const result = await action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 });
-    setHits(result.hits || result.results || result.chunks || []);
+    // 后端返回 analysisBundle{summary,retrievedRefs[]},没有 hits/results/chunks(此前永远"没有命中",审计 H6)
+    const refs = (result.retrievedRefs || []).map((r) => ({ text: r.citationLocator, score: r.score }));
+    setHits(result.id ? [{ text: result.summary, score: null }, ...refs] : []);
   }
 
   return (
@@ -379,7 +383,7 @@ function MobileKnowledge({ data, action, ui }) {
             <div className="mSectionCard">
               <header><span>检索结果（{hits.length}）</span></header>
               {!hits.length && <p className="mInboxEmpty">没有命中的知识片段。</p>}
-              {hits.slice(0, 5).map((hit, index) => <p className="mLeadLine" key={index}>{String(hit.text || hit.content || hit.chunk || "").slice(0, 120)}</p>)}
+              {hits.slice(0, 5).map((hit, index) => <p className="mLeadLine" key={index}>{String(hit.text || "").slice(0, 120)}{hit.score != null ? ` · ${hit.score}` : ""}</p>)}
             </div>
           )}
 
@@ -741,7 +745,7 @@ function MobileChatStatus({ data }) {
     ["状态", autoOn ? "运行中" : "已暂停", autoOn ? "pos" : ""],
     ["判断", bias, bias === "偏多" ? "pos" : bias === "偏空" ? "neg" : ""],
     ["今日", pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
-    ["目标", mandate?.targetMonthlyPct ? `${mandate.targetMonthlyPct}%` : "—", ""]
+    ["目标", mandate?.maxDailyLossPct ? `亏≤${mandate.maxDailyLossPct}%/日` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
   ];
   return (
     <div className="mChatStatus">
@@ -844,14 +848,14 @@ export function MobileApp({ api }) {
     ? <button className="mBack" onClick={() => setSubPage("")} aria-label="返回"><ChevronLeft size={19} /></button>
     : route === "chat"
       ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? "运行中" : "已暂停"}</span>
-      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> 熔断</button>;
+      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? "解除熔断" : "熔断"}</button>;
 
   return (
     <div className="mShell2">
       <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} />
       <main className={`mMain2 ${route === "chat" && !subPage ? "mMainChat" : ""}`}>{content}</main>
       <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} />
-      {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
+      {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
       {toast && <div className="toast">{toast}</div>}

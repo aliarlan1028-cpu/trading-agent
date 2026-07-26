@@ -108,12 +108,16 @@ export function computePositionSize(db, plan) {
   }
   quantity = roundQuantity(quantity, entryMid);
   if (quantity <= 0) return { error: "quantity_rounds_to_zero", notional, maxNotional, sizedBy };
+  // 最小名义额预检(P1-4):低于交易所普遍下限的单子不去碰交易所——
+  // 此前会被拒单→异常→去撤一张从未存在的单→撤单失败→误拉全站熔断。
+  if (quantity * entryMid < 5) return { error: "below_min_notional", notional: quantity * entryMid, minNotional: 5, sizedBy };
   return { quantity, entryMid, stopDistance, notional: quantity * entryMid, riskPct, equity, maxNotional, volCap, sizedBy };
 }
 
 function roundQuantity(quantity, price) {
   const decimals = price > 10000 ? 4 : price > 100 ? 3 : price > 1 ? 2 : 0;
-  return Number(quantity.toFixed(decimals));
+  const factor = 10 ** decimals;
+  return Math.floor(quantity * factor + 1e-9) / factor; // 向下取整:toFixed 四舍五入曾把实际风险放大近一倍
 }
 
 export function allocateProtectionQuantities(totalQuantity, targetCount, price) {
@@ -159,7 +163,11 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
   executionOrder.events.push({ at: nowIso(), event: "protection_failed", detail: `${causeDetail}；入场单撤销状态 ${cancelResult.status}` });
   plan.status = "protection_failed";
   plan.executionOrderId = executionOrder.id;
-  if (!["ok", "submitted"].includes(cancelResult.status)) {
+  // "订单不存在"类响应 = 交易所确认从未收到/已终态该单 → 无裸仓风险,不必熔断
+  // (此前小账户被拒单后撤"不存在的单"失败 → 每次尝试都误拉全站熔断,审计 P1-4)。
+  const cancelRawText = JSON.stringify(cancelResult.raw || cancelResult || {});
+  const confirmedAbsent = /unknown order|order does not exist|-2011|"51603"|"51000"/i.test(cancelRawText);
+  if (!["ok", "submitted"].includes(cancelResult.status) && !confirmedAbsent) {
     db.system.killSwitch = true;
     db.riskIncidents.unshift({
       id: id("incident"),
@@ -190,7 +198,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
-  if (!plan.lastRiskCheck?.passed) return { status: "risk_not_passed" };
+  // (P2-1)不再看陈旧 lastRiskCheck:上次复查失败会永久卡死计划,即便阻断条件已恢复;
+  // 下面的 fresh 复查才是唯一裁判。
   const freshRisk = evaluateTradePlan(db, plan);
   freshRisk.tradePlanId = plan.id;
   freshRisk.createdAt = nowIso();
@@ -277,6 +286,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
 
   const side = plan.direction === "short" ? "SELL" : "BUY";
   const entryClientOrderId = `exec_${executionOrder.id.slice(-12)}`;
+  const stopClientOrderId = `stop_${executionOrder.id.slice(-12)}`;
   let result;
   try {
     result = await executeTradeAction(db, "place_order", {
@@ -288,6 +298,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       price: sizing.entryMid,
       quantity: sizing.quantity,
       stopLoss: executionOrder.stopLoss,
+      stopClientOrderId,
       leverage: plan.leverage,
       strategyId: executionOrder.strategy,
       timeframe: plan.timeframe || plan.candlesTimeframe || null,
@@ -333,6 +344,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   executionOrder.exchangeOrderId = result.exchangeOrderId;
   executionOrder.omsOrderId = result.omsOrderId || null;
   executionOrder.clientOrderId = result.clientOrderId || `exec_${executionOrder.id.slice(-12)}`;
+  executionOrder.stopClientOrderId = stopClientOrderId;
+  executionOrder.okxCtVal = result.okxCtVal || null; // OKX 张数→币数量换算面值(轮询回填用)
   executionOrder.protection = "attached";
   executionOrder.events.push({ at: nowIso(), event: "entry_submitted", detail: `交易所订单 ${result.exchangeOrderId || "?"}` });
   plan.status = "executing";
@@ -362,6 +375,10 @@ export async function pollExecutionOrders(db) {
 async function pollOne(db, executionOrder) {
   const orderState = await fetchOrderState(executionOrder);
   if (!orderState) return { id: executionOrder.id, status: executionOrder.status, note: "no_state" };
+  // OKX 返回的 accFillSz 是张数,统一换算回币数量(引擎全程币本位)。
+  if (executionOrder.okxCtVal && orderState.filledQuantity != null) {
+    orderState.filledQuantity = Number(orderState.filledQuantity) * Number(executionOrder.okxCtVal);
+  }
 
   if (["entry_pending", "entry_partial"].includes(executionOrder.status) && orderState.state === "partial") {
     const filledQuantity = Number(orderState.filledQuantity || 0);
@@ -404,6 +421,30 @@ async function pollOne(db, executionOrder) {
     await placeTakeProfits(db, executionOrder);
     appendAudit(db, `入场成交：${executionOrder.symbol} @ ${executionOrder.filledPrice}`, executionOrder.id, "ExecutionEngine");
     appendTrace(db, "execution", `${executionOrder.symbol} 入场成交`, "ok");
+  } else if (["entry_filled", "protecting"].includes(executionOrder.status)) {
+    // (P0-3)入场已终态后,交易所侧 SL/TP 成交不会反映在入场单状态上——此前系统对
+    // 止损打掉完全失明:持仓残留、计划卡 executing、日亏预算不扣减。
+    // 以最近的交易所持仓快照为准:快照新鲜且该 symbol 仓位已消失 → 保护单已成交,推断收口。
+    const latestSnap = (db.accountSnapshots || []).find((x) => x.status === "ok");
+    const snapFresh = latestSnap && (Date.now() - new Date(latestSnap.createdAt).getTime()) < Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
+    const stillOnExchange = (db.positions || []).some((p) => p.source === "exchange_rest" && p.symbol === executionOrder.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
+    if (snapFresh && !stillOnExchange && Number(executionOrder.filledQuantity || 0) > 0) {
+      const market = db.markets?.find((m) => m.symbol === executionOrder.symbol);
+      const exitPrice = Number(market?.price) || Number(executionOrder.stopLoss) || Number(executionOrder.filledPrice);
+      const sign = executionOrder.direction === "short" ? -1 : 1;
+      const qty = Number(executionOrder.filledQuantity);
+      const realized = (exitPrice - Number(executionOrder.filledPrice)) * qty * sign - feeEstimate(exitPrice * qty);
+      recordFill(db, executionOrder, "close", exitPrice, qty, Number(realized.toFixed(2)), { inferred: true, estimated: true });
+      executionOrder.status = "closed";
+      executionOrder.closedAt = nowIso();
+      executionOrder.exitReason = "protection_triggered_inferred";
+      executionOrder.events.push({ at: nowIso(), event: "protection_triggered_inferred", detail: `交易所仓位已消失,按现价 ${exitPrice} 推断保护单成交,已实现 ${realized.toFixed(2)} USDT(估算)` });
+      db.positions = (db.positions || []).filter((p) => !(p.source === "execution_engine" && p.symbol === executionOrder.symbol));
+      const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
+      if (plan) plan.status = "completed";
+      appendAudit(db, `保护单触发推断收口:${executionOrder.symbol} 已实现 ${realized.toFixed(2)} USDT(按现价估算)`, executionOrder.id, "ExecutionEngine", "warning");
+      appendTrace(db, "execution", `${executionOrder.symbol} 保护单成交(推断)`, "ok");
+    }
   } else if (orderState.state === "canceled") {
     executionOrder.status = "cancelled";
     if (executionOrder.omsOrderId) {
@@ -445,13 +486,20 @@ async function placeTakeProfits(db, executionOrder) {
     return;
   }
   const closeSide = executionOrder.direction === "short" ? "BUY" : "SELL";
-  const quantities = allocateProtectionQuantities(executionOrder.quantity, executionOrder.takeProfits.length, executionOrder.entryPrice);
-  if (quantities.length !== executionOrder.takeProfits.length) {
-    executionOrder.status = "protection_failed";
-    executionOrder.events.push({ at: nowIso(), event: "take_profit_allocation_failed", detail: "仓位数量不足以按交易精度分配止盈单" });
-    const tpPlan = db.tradePlans?.find((item) => item.id === executionOrder.planId);
-    if (tpPlan) tpPlan.status = "protection_failed"; // 锁计划，防自动路径重复执行
-    db.system.killSwitch = true;
+  let tpTargets = executionOrder.takeProfits;
+  let quantities = allocateProtectionQuantities(executionOrder.quantity, tpTargets.length, executionOrder.entryPrice);
+  // (P1-4)数量太小分不出多档 → 降级为单档全仓止盈;彻底分不出也不熔断——
+  // 原生止损在入场时已确认存在(这是不变量),缺止盈是"离场质量降级"不是"裸仓"。
+  if (quantities.length !== tpTargets.length && tpTargets.length > 1) {
+    tpTargets = [executionOrder.takeProfits[0]];
+    quantities = allocateProtectionQuantities(executionOrder.quantity, 1, executionOrder.entryPrice);
+  }
+  if (quantities.length !== tpTargets.length) {
+    executionOrder.status = "protecting";
+    executionOrder.protection = "stop_only";
+    executionOrder.events.push({ at: nowIso(), event: "take_profit_allocation_failed", detail: "数量过小无法布置止盈,仅保留原生止损(降级)" });
+    db.riskIncidents.unshift({ id: id("incident"), severity: "medium", status: "open", title: `止盈未布置(数量过小):${executionOrder.symbol} 仅止损保护`, source: executionOrder.id, createdAt: nowIso() });
+    appendAudit(db, "止盈分配失败,降级为仅止损保护", executionOrder.id, "ExecutionEngine", "warning");
     return;
   }
   let result;
@@ -462,7 +510,7 @@ async function placeTakeProfits(db, executionOrder) {
       symbol: executionOrder.symbol,
       side: closeSide,
       quantity: Math.max(...quantities),
-      targets: executionOrder.takeProfits.map((price, index) => ({
+      targets: tpTargets.map((price, index) => ({
         price,
         stopPrice: price,
         quantity: quantities[index],
@@ -494,6 +542,16 @@ async function placeTakeProfits(db, executionOrder) {
     appendAudit(db, "止盈单布置异常，已熔断并转人工", executionOrder.id, "ExecutionEngine", "critical");
     return;
   }
+  // (P1-1)检查真实结果:批量路径此前恒 ok,交易所逐单拒绝会被静默吞掉。
+  if (!["ok", "submitted"].includes(result.status)) {
+    executionOrder.status = "protecting";
+    executionOrder.protection = "stop_only";
+    executionOrder.events.push({ at: nowIso(), event: "take_profit_rejected", detail: `止盈单未全部落地(${result.status},失败 ${result.failedCount ?? "?"}),保留原生止损` });
+    db.riskIncidents.unshift({ id: id("incident"), severity: "medium", status: "open", title: `止盈单被拒(${result.status}):${executionOrder.symbol} 仅止损保护`, source: executionOrder.id, createdAt: nowIso() });
+    appendAudit(db, `止盈单未全部落地(${result.status}),降级为仅止损保护`, executionOrder.id, "ExecutionEngine", "warning");
+    return;
+  }
+  executionOrder.tpClientOrderIds = tpTargets.map((_, index) => `tp${index + 1}_${executionOrder.id.slice(-10)}`);
   executionOrder.status = "protecting";
   executionOrder.events.push({ at: nowIso(), event: "take_profits_placed", detail: `状态 ${result.status}` });
 }

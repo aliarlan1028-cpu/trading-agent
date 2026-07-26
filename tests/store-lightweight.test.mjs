@@ -28,14 +28,15 @@ test("lightweight save skips knowledge and strips candles; full save persists bo
   const persistedFull = readCollection("markets").find((m) => m.symbol === "TEST/USDT");
   assert.equal(persistedFull.candles.length, 1, "全量落盘应包含 K 线");
 
-  // 轻量:knowledge 变更不落、markets 剥离 K 线(沿用上次值/瘦身),内存不受影响
+  // 轻量:knowledge 与 markets 都整体跳过(沿用上次全量值)——
+  // 教训:曾写 slim markets 覆盖磁盘,重启后 K 线全丢(审计发现),故 markets 也必须 continue。
   db.knowledge.sources.push({ id: "s_light", title: "轻量期间的知识变更" });
   db.markets.find((m) => m.symbol === "TEST/USDT").price = 2;
   saveDb(db, { lightweight: true });
   assert.ok(!readCollection("knowledge").sources.some((s) => s.id === "s_light"), "轻量落盘不得重写 knowledge");
   const persistedLight = readCollection("markets").find((m) => m.symbol === "TEST/USDT");
-  assert.equal(persistedLight.price, 2, "轻量落盘应更新行情标量字段");
-  assert.equal(persistedLight.candles, undefined, "轻量落盘应剥离 K 线数组");
+  assert.equal(persistedLight.price, 1, "轻量落盘不得触碰 markets(沿用上次全量值)");
+  assert.equal(persistedLight.candles.length, 1, "磁盘上的 K 线必须保留");
   assert.equal(db.markets.find((m) => m.symbol === "TEST/USDT").candles.length, 1, "内存中的 K 线不受影响");
 
   // 随后任意一次全量落盘补齐轻量期间的知识变更

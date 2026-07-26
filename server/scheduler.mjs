@@ -186,7 +186,8 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
   } finally {
     lockEntry.locked = false;
     lockEntry.releasedAt = nowIso();
-    if (saveDb) saveDb(db);
+    // 落盘统一由 recordRun 负责(skipPersist 语义才能生效);此前 finally 无条件再全量
+    // 落盘一次 → 每次任务双写、空转优化被完全抵消(审计发现)。锁状态随下次落盘持久化。
   }
 }
 
@@ -228,9 +229,9 @@ function scheduleRetryIfNeeded(db, task, saveDb, failedRun) {
   failedRun.status = "retry_scheduled";
   failedRun.nextRetryAt = new Date(Date.now() + backoffSeconds * 1000).toISOString();
   failedRun.retryCount = retryCount + 1;
-  const timer = setTimeout(() => {
-    const retryResult = runTask(db, task.id, saveDb, "retry");
-    if (retryResult.run) retryResult.run.retryOf = failedRun.id;
+  const timer = setTimeout(async () => {
+    const retryResult = await runTask(db, task.id, saveDb, "retry"); // runTask 是 async,此前不 await 导致 retryOf 永远写不上
+    if (retryResult?.run) retryResult.run.retryOf = failedRun.id;
   }, backoffSeconds * 1000);
   runtime.timeoutJobs.set(`${task.id}:retry:${failedRun.id}`, timer);
 }

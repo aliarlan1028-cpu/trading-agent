@@ -346,7 +346,7 @@ export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300,
   return result;
 }
 
-export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/USDT", timeframe = "1h") {
+export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/USDT", timeframe = "1h", options = {}) {
   const { exchange: usedExchange, result: candles, failedOver } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe));
   exchange = usedExchange;
   if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
@@ -357,9 +357,13 @@ export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/U
     market = { symbol: displaySymbol, candles: [], status: "not_synced" };
     db.markets.push(market);
   }
-  market.candles = candles;
-  market.candlesTimeframe = timeframe;
-  market.candlesSyncedAt = nowIso();
+  // sharedSlot=false 时只写 candlesByTf,不动共享 1h 槽(审计 #13:4h/1d 补拉曾把
+  // 前端图表与相关性计算用的 candles 反复翻转成混合周期,跨频率相关性统计无效)。
+  if (options.sharedSlot !== false) {
+    market.candles = candles;
+    market.candlesTimeframe = timeframe;
+    market.candlesSyncedAt = nowIso();
+  }
   // 按周期各存一份（截尾 200 根）：知识技能可能声明 4h/1d 等非默认周期，
   // 若只有单一 candlesTimeframe，非 1h 技能会永远 candle_timeframe_mismatch 而静默失效。
   market.candlesByTf ||= {};
@@ -560,15 +564,23 @@ function normalizeOpenOrder(exchange, payload = {}) {
 // OKX 合约面值缓存：SWAP 的 pos 字段是"张数"，换算成币数量/盈亏必须乘 ctVal
 // （如 BTC-USDT-SWAP ctVal=0.01——不乘会把浮盈放大 100 倍）。
 const okxCtValCache = new Map();
-async function okxContractValue(instId) {
-  if (okxCtValCache.has(instId)) return okxCtValCache.get(instId);
+const okxSpecCache = new Map();
+// 完整合约规格(下单换算用):sz 是"张数",币数量必须除以 ctVal;张数需对齐 lotSz 且 ≥ minSz。
+export async function okxContractSpec(instId) {
+  if (okxSpecCache.has(instId)) return okxSpecCache.get(instId);
   try {
     const timer = timeoutSignal();
     const raw = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json());
-    const ctVal = Number(raw.data?.[0]?.ctVal);
-    if (Number.isFinite(ctVal) && ctVal > 0) { okxCtValCache.set(instId, ctVal); return ctVal; }
-  } catch { /* 拿不到面值时返回 null，调用方保持交易所 upl 不做本地重算 */ }
+    const row = raw.data?.[0];
+    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz) || 1, minSz: Number(row.minSz) || 1 } : null;
+    if (spec && Number.isFinite(spec.ctVal) && spec.ctVal > 0) { okxSpecCache.set(instId, spec); okxCtValCache.set(instId, spec.ctVal); return spec; }
+  } catch { /* 拿不到规格返回 null,下单侧 fail-closed */ }
   return null;
+}
+async function okxContractValue(instId) {
+  if (okxCtValCache.has(instId)) return okxCtValCache.get(instId);
+  const spec = await okxContractSpec(instId);
+  return spec?.ctVal ?? null;
 }
 
 async function applyOkxSnapshot(db, snapshot) {

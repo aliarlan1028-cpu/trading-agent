@@ -214,7 +214,7 @@ function ChangePasswordDialog({ action, notify, onClose }) {
     if (newPassword.length < 10) return notify("新密码至少 10 位");
     if (newPassword !== confirm) return notify("两次输入的新密码不一致");
     const result = await action("/api/auth/change-password", { oldPassword, newPassword });
-    if (result && result.ok !== false) { notify("密码已修改"); onClose(); }
+    if (result?.ok === true) { notify("密码已修改"); onClose(); } // 失败路径返回 {}/{ok:false},此前被当成功(审计 H5)
   }
   return (
     <div className="modalOverlay" onClick={onClose}>

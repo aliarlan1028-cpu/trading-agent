@@ -302,9 +302,10 @@ export function validateKnowledgeSkillWithCandles(db, skillId, candles, actor = 
       minTrainTrades: 5,
       minValidationTrades: 3,
       minTestTrades: 3,
-      minOosTrades: 8,
+      minOosTrades: minOos,           // 落库真实门槛(此前硬编码 8/1.05,lowTrust 实际用 12/1.15,审计口径不符)
       positiveValidationAndTest: true,
-      minProfitFactor: 1.05,
+      minProfitFactor: minPF,
+      lowTrust: lt,
       maxDrawdownPct: 20
     },
     validatedAt: nowIso()

@@ -530,7 +530,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
   const primaryEvent = eventRows.find((event) => event.id === selectedEventId) || eventRows[0] || events[0] || {};
   const filteredTasks = taskFilter === "全部" ? tasks : tasks.filter((task) => task.type === taskFilter);
   const eventRuleTemplates = [
-    { name: "高影响事件前停止开仓", scope: "event", level: "L1", action: "pause_opening", event: "宏观事件（影响 ≥ 80）", condition: "事件前 30 分钟", description: "重大宏观事件公布前 30 分钟暂停新开仓，事件落地后人工确认恢复" },
+    { name: "高影响事件前停止开仓", scope: "event", level: "L1", action: "pause_opening", conditionSpec: { field: "event.maxImpact", operator: "gte", value: 80 }, event: "宏观事件（影响 ≥ 80）", condition: "事件前 30 分钟", description: "重大宏观事件公布前 30 分钟暂停新开仓，事件落地后人工确认恢复" }, // 阻断型必须带可编译条件(审计 H2)
     { name: "资金费率异常告警", scope: "event", level: "L2", action: "notify", event: "资金费率", condition: "|费率| > 0.1% / 8h", description: "永续合约资金费率绝对值超过 0.1% 时推送告警，提示极端多空失衡" },
     { name: "交易所大额流入告警", scope: "event", level: "L2", action: "notify", event: "链上事件", condition: "单笔 > 5000 BTC 流入交易所", description: "监测到大额 BTC 流入交易所地址时告警，提示潜在抛压" }
   ];
@@ -1276,7 +1276,7 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
   const latestPlan = data.tradePlans?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || latestPlan.lastRiskCheck || {};
   const latestOrder = data.orders?.[0] || data.executionOrders?.[0] || {};
-  const auditOk = data.readiness?.checks?.find((item) => item.key === "audit_chain")?.configured ?? true;
+  const auditOk = data.readiness?.checks?.find((item) => item.key === "audit_chain")?.configured ?? false /* 缺数据当未通过,与实盘就绪清单口径一致(审计 L4) */;
   const successfulRuns = jobRuns.filter((run) => ["ok", "completed"].includes(String(run.status).toLowerCase())).length;
   const successRate = jobRuns.length ? `${((successfulRuns / jobRuns.length) * 100).toFixed(1)}%` : "暂无数据";
   const latencies = traces.map((trace) => Number(trace.latencyMs)).filter(Number.isFinite).sort((a, b) => a - b);

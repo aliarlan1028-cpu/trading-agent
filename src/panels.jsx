@@ -188,6 +188,11 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   function updateLlm(key, value) {
     setLlmForm((current) => ({ ...current, [key]: value }));
   }
+  // (审计 M1)mount 快照:保存时只 PATCH 用户真实改动的字段,防止陈旧表单把别处刚改的
+  // IP 白名单/保证金模式静默写回旧值(表单是一次性快照,而 data 每 15s 在刷新)。
+  const exchangeBaselineRef = useRef(null);
+  if (exchangeBaselineRef.current === null) exchangeBaselineRef.current = { ...exchangeForm };
+  const exchangeDirty = (key) => exchangeForm[key] !== exchangeBaselineRef.current[key];
   function updateExchange(key, value) {
     setExchangeForm((current) => ({ ...current, [key]: value }));
   }
@@ -221,10 +226,10 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     const result = await action("/api/config", body);
     const binanceAccount = (data.exchangeAccounts || []).find((item) => item.exchange === "BINANCE");
     const okxAccount = (data.exchangeAccounts || []).find((item) => item.exchange === "OKX");
-    if (binanceAccount && exchangeForm.BINANCE_IP_WHITELIST !== binanceAccount.ipWhitelist) {
+    if (binanceAccount && exchangeDirty("BINANCE_IP_WHITELIST") && exchangeForm.BINANCE_IP_WHITELIST !== binanceAccount.ipWhitelist) {
       await action(`/api/exchange/accounts/${binanceAccount.id}`, { ipWhitelist: exchangeForm.BINANCE_IP_WHITELIST }, "PATCH");
     }
-    if (okxAccount && exchangeForm.OKX_IP_WHITELIST !== okxAccount.ipWhitelist) {
+    if (okxAccount && exchangeDirty("OKX_IP_WHITELIST") && exchangeForm.OKX_IP_WHITELIST !== okxAccount.ipWhitelist) {
       await action(`/api/exchange/accounts/${okxAccount.id}`, { ipWhitelist: exchangeForm.OKX_IP_WHITELIST }, "PATCH");
     }
     if (result.status) setExchangeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.includes("API") || key.includes("SECRET") || key.includes("PASSPHRASE") ? "" : value])));
@@ -702,12 +707,35 @@ export function IpPanel({ data, action }) {
 }
 
 export function EventRulePanel({ action }) {
-  const [form, setForm] = useState({ name: "高影响事件前限制新开仓", description: "事件影响未评估前，限制高杠杆新开仓。", level: "L3" });
+  // 阻断型规则必须带可编译的 conditionSpec(后端硬校验)——此前不带,本面板 100% 400(审计 H1)。
+  const [form, setForm] = useState({ name: "高影响事件前限制新开仓", description: "事件影响未评估前，限制高杠杆新开仓。", level: "L3", ruleAction: "restrict", conditionField: "event.maxImpact", conditionOperator: "gte", conditionValue: "80" });
+  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  function submit(event) {
+    event.preventDefault();
+    const body = { name: form.name, description: form.description, level: form.level, scope: "event", action: form.ruleAction };
+    if (form.ruleAction !== "notify") body.conditionSpec = { field: form.conditionField, operator: form.conditionOperator, value: Number(form.conditionValue) };
+    action("/api/risk/rules", body);
+  }
   return (
-    <form className="panelForm" onSubmit={(event) => { event.preventDefault(); action("/api/risk/rules", { ...form, scope: "event", action: "restrict" }); }}>
-      <label>规则名称<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
-      <label>说明<textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
-      <label>等级<select value={form.level} onChange={(event) => setForm((current) => ({ ...current, level: event.target.value }))}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
+    <form className="panelForm" onSubmit={submit}>
+      <label>规则名称<input value={form.name} onChange={set("name")} /></label>
+      <label>说明<textarea value={form.description} onChange={set("description")} /></label>
+      <div className="formGrid">
+        <label>等级<select value={form.level} onChange={set("level")}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
+        <label>动作<select value={form.ruleAction} onChange={set("ruleAction")}><option value="notify">通知</option><option value="restrict">限制</option><option value="pause_opening">暂停开仓</option></select></label>
+      </div>
+      {form.ruleAction !== "notify" && (
+        <div className="formGrid">
+          <label>触发字段<select value={form.conditionField} onChange={set("conditionField")}>
+            <option value="event.maxImpact">事件影响分</option>
+            <option value="market.fundingRate">资金费率</option>
+            <option value="market.spreadBps">点差(bps)</option>
+            <option value="account.remainingDailyLossUsdt">剩余日亏预算</option>
+          </select></label>
+          <label>比较<select value={form.conditionOperator} onChange={set("conditionOperator")}><option value="gte">≥</option><option value="gt">&gt;</option><option value="lte">≤</option><option value="lt">&lt;</option></select></label>
+          <label>阈值<input type="number" value={form.conditionValue} onChange={set("conditionValue")} /></label>
+        </div>
+      )}
       <button className="primaryButton" type="submit">创建事件规则</button>
     </form>
   );
@@ -1010,7 +1038,16 @@ export function SkillImportPanel({ data, action, ui }) {
         <div className="panelItem" key={skill.id}>
           <div><strong>{skill.name}</strong><small>{skill.source || "uploaded"} · v{skill.version}</small></div>
           <StatusBadge tone={skill.status === "已启用" ? "ok" : "warning"}>{skill.status}</StatusBadge>
-          <button className="secondaryButton" onClick={() => action(`/api/skills/${skill.id}/${skill.scan === "已扫描" ? "install" : "scan"}`, {})}>{skill.scan === "已扫描" ? "安装" : "扫描"}</button>
+          <button className="secondaryButton" onClick={() => {
+            // scan 真实取值:未扫描/通过/需复核/失败(此前判"已扫描"永远不成立,安装按钮不可达,审计 H3)
+            if (["通过", "需复核"].includes(skill.scan)) {
+              const needsReview = skill.scan === "需复核";
+              if (needsReview && !window.confirm(`「${skill.name}」扫描结果为需复核(含高危权限请求)。确认已人工审阅并批准安装?`)) return;
+              action(`/api/skills/${skill.id}/install`, needsReview ? { securityApproved: true } : {});
+            } else {
+              action(`/api/skills/${skill.id}/scan`, {});
+            }
+          }}>{["通过", "需复核"].includes(skill.scan) ? (skill.scan === "需复核" ? "安装(需复核)" : "安装") : skill.scan === "失败" ? "重新扫描" : "扫描"}</button>
         </div>
       ))}
     </div>
@@ -1029,7 +1066,9 @@ export function TaskManagerPanel({ data, action }) {
   ];
   const visibleTasks = taskFilter === "全部" ? tasks : tasks.filter((task) => task.type === taskFilter);
   function updateType(type) {
-    const schedule = type === "Cron" ? "*/5 * * * *" : type === "At" ? new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) : "Every 5m";
+    // datetime-local 按本地时区解释;直接 toISOString 会差出一个时区(东八区默认值显示成 7 小时前,审计 M5)
+    const localAtDefault = () => { const d = new Date(Date.now() + 60 * 60 * 1000 - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+    const schedule = type === "Cron" ? "*/5 * * * *" : type === "At" ? localAtDefault() : "Every 5m";
     setForm((current) => ({ ...current, type, schedule }));
   }
   const isMission = form.kind === "mission";
@@ -1101,7 +1140,7 @@ export function EventSourcesPanel({ data, action, ui }) {
         <div className="panelItem" key={event.id}>
           <div><strong>{event.title}</strong><small>{event.category || "事件"} · {event.due || "待定"}</small></div>
           <StatusBadge tone={event.impact >= 80 ? "danger" : "warning"}>{event.impactLabel || "待评估"}</StatusBadge>
-          <button className="secondaryButton" onClick={() => action(`/api/events/${event.id}/progress`, { note: "人工查看后标记进度" })}>标记</button>
+          <button className="secondaryButton" onClick={() => action(`/api/events/${event.id}/progress`, { text: "人工查看后标记进度" } /* 后端读 text(此前发 note 被静默丢弃,审计 L2) */)}>标记</button>
         </div>
       ))}
       {!data.events?.length && <div className="emptyPanel emptyPanelAction"><strong>暂无事件卡</strong><span>刷新事件源后会生成真实事件卡。</span></div>}

@@ -57,6 +57,7 @@ const collectionNames = [
   "jobLocks",
   "knowledge",
   "analysisBundles",
+  "backtests",
   "skills",
   "tools",
   "mcpServers",
@@ -582,7 +583,12 @@ function capLogCollections(db) {
 // 第一条(往往是最旧的 v1),计划从此绑旧版本被风控永久拒绝("计划绑定 v1,当前授权 v4")。
 // 规则:在 active/running 中取 version 最高者,同版本取激活时间最新者。
 export function activeMandate(db) {
-  const list = (db.mandates || []).filter((m) => ["active", "running"].includes(m.status));
+  const list = (db.mandates || []).filter((m) => {
+    if (!["active", "running"].includes(m.status)) return false;
+    // (P2-7)过期授权不再当作生效:过期后仍驱动 15 分钟一次的巡检提计划再被风控拒,空烧 token。
+    const exp = m.validUntil || m.valid_until;
+    return !exp || new Date(exp).getTime() > Date.now();
+  });
   if (!list.length) return null;
   return list.slice().sort((a, b) =>
     (Number(b.version || 1) - Number(a.version || 1)) ||
@@ -1151,12 +1157,10 @@ function saveToSqlite(db, options = {}) {
   const write = sqlite.transaction(() => {
     for (const name of collectionNames) {
       if (db[name] === undefined) continue;
-      if (lightweight && name === "knowledge") continue;
-      if (lightweight && name === "markets") {
-        const slim = (db.markets || []).map(({ candles, candlesByTf, ...rest }) => rest);
-        upsert.run({ name, value: JSON.stringify(slim), updated_at: updatedAt });
-        continue;
-      }
+      // lightweight:knowledge/markets 都整体跳过(沿用上次全量值)。
+      // 教训:曾写入剥离 K 线的 slim markets,高频覆盖使磁盘上几乎永远是无 K 线版本,
+      // 重启后 1h K 线无人补 → 技能信号/风控复查/相关性静默失效。
+      if (lightweight && (name === "knowledge" || name === "markets")) continue;
       upsert.run({ name, value: JSON.stringify(db[name]), updated_at: updatedAt });
     }
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);

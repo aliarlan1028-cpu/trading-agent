@@ -8,7 +8,7 @@ import mammoth from "mammoth";
 import simpleGit from "simple-git";
 import { assertSafeExternalUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
-import { llmComplete } from "./agentChat.mjs";
+import { activeProvider, llmComplete } from "./agentChat.mjs";
 import { compileTradingMethod, retireSkillsForSource } from "./knowledgeSkills.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
@@ -92,15 +92,6 @@ export async function parseKnowledgeSource(db, sourceId) {
   source.contentHash = crypto.createHash("sha256").update(String(text || "")).digest("hex");
   source.parsedTextLength = String(text || "").length;
 
-  // 重解析会改变知识正文与派生规则。旧版本技能必须先退役，不能继续以旧指纹自主交易。
-  retireSkillsForSource(db, source.id, "KnowledgePipeline", "source_reparsed");
-  db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);
-  db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== source.id);
-  db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(source.id));
-  // 重解析时先清掉该来源旧的派生项，避免重复堆积（未批准的规则一并清；已批准的保留）。
-  db.knowledge.tradingMethods = (db.knowledge.tradingMethods || []).filter((m) => m.source?.id !== source.id);
-  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((r) => !r.sourceRefs?.includes(source.id) || r.status === "已批准");
-
   const chunks = chunkText(text).map((chunk, index) => ({
     id: id("chunk"),
     sourceId: source.id,
@@ -131,11 +122,33 @@ export async function parseKnowledgeSource(db, sourceId) {
     appendAudit(db, "知识来源未解析出文本", source.id, "KnowledgePipeline", "warning");
     return { status: "empty", source, chunks: 0, concepts: 0, message: `${source.title} 没有解析出可用文本` };
   }
-  db.knowledge.documentNodes.unshift({ id: `node_${source.id}`, sourceId: source.id, parentId: null, nodeType: "document", title: source.title, orderIndex: 1, pageRange: "N/A" });
-  db.knowledge.chunks.unshift(...chunks);
 
   // 优先 LLM 蒸馏出真正的概念/规则/反方观点；无 LLM 时退回高频词抽取。
   const distilled = await distillWithLlm(text, source).catch(() => null);
+  // 两阶段替换(审计 P2):此前"先退役技能/删方法规则,后蒸馏"——LLM 瞬时故障会把该来源
+  // 整条已验证流水线清空且无法恢复。现在:蒸馏失败且该来源已有派生数据时,中止重解析保持原状。
+  const hadDerived = (db.knowledge.tradingMethods || []).some((m) => m.source?.id === source.id)
+    || (db.knowledge.tradingSkills || []).some((k) => k.sourceId === source.id && !["retired", "superseded"].includes(k.status));
+  if (!distilled && hadDerived && llmConfigured()) {
+    source.status = "distill_failed";
+    appendAudit(db, "蒸馏失败,已保留旧派生数据(两阶段保护)", source.id, "KnowledgePipeline", "warning");
+    return { status: "distill_failed", source, message: `${source.title} 蒸馏失败,旧方法/技能/规则原样保留,稍后重试` };
+  }
+
+  // 蒸馏成功(或无 LLM 走确定性回退)后才替换旧数据。旧版本技能退役,不能继续以旧指纹自主交易。
+  retireSkillsForSource(db, source.id, "KnowledgePipeline", "source_reparsed");
+  db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== source.id);
+  db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== source.id);
+  db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(source.id));
+  db.knowledge.tradingMethods = (db.knowledge.tradingMethods || []).filter((m) => m.source?.id !== source.id);
+  // 多来源合并规则不整条删除,只摘掉本来源引用(仍被其它来源支撑的保留;已批准的一律保留)。
+  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((r) => {
+    if (r.status === "已批准" || !r.sourceRefs?.includes(source.id)) return true;
+    if (r.sourceRefs.length > 1) { r.sourceRefs = r.sourceRefs.filter((x) => x !== source.id); return true; }
+    return false;
+  });
+  db.knowledge.documentNodes.unshift({ id: `node_${source.id}`, sourceId: source.id, parentId: null, nodeType: "document", title: source.title, orderIndex: 1, pageRange: "N/A" });
+  db.knowledge.chunks.unshift(...chunks);
   let concepts;
   if (distilled?.concepts?.length) {
     concepts = distilled.concepts.slice(0, 8).map((item) => ({
@@ -526,6 +539,8 @@ function safeFileName(value) {
   const cleaned = String(value || "knowledge.md").replace(/[/\\?%*:|"<>]/g, "-").trim();
   return cleaned || "knowledge.md";
 }
+
+function llmConfigured() { return Boolean(activeProvider()); }
 
 function chunkText(text) {
   const normalized = String(text || "").replace(/\s+/g, " ").trim();

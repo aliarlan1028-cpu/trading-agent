@@ -102,7 +102,15 @@ export async function escortPositions(db) {
     // 高危告警落成风险事件（走既有告警链，仍不自动下单）。
     for (const a of (parsed.alerts || []).filter((x) => x.level === "danger")) {
       db.riskIncidents ||= [];
-      db.riskIncidents.unshift({ id: `escort_${Date.now()}_${a.symbol}`, severity: "high", status: "open", title: `持仓护航告警 ${a.symbol}：${a.advice}`, source: "position_escort", createdAt: nowIso() });
+      // 同 symbol 的 open 护航告警合并滚动更新(此前每 2 分钟无脑 unshift,30 条/小时挤爆事件列表)
+      const existing = db.riskIncidents.find((i) => i.status === "open" && i.source === "position_escort" && i.symbol === a.symbol);
+      if (existing) {
+        existing.title = `持仓护航告警 ${a.symbol}：${a.advice}`;
+        existing.count = Number(existing.count || 1) + 1;
+        existing.updatedAt = nowIso();
+      } else {
+        db.riskIncidents.unshift({ id: `escort_${Date.now()}_${a.symbol}`, symbol: a.symbol, severity: "high", status: "open", title: `持仓护航告警 ${a.symbol}：${a.advice}`, source: "position_escort", count: 1, createdAt: nowIso() });
+      }
     }
     appendTrace(db, "position_escort", `持仓护航(消息面) ${positions.length} 仓`, "ok", 0);
     return db.positionEscort;

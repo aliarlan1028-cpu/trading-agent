@@ -31,7 +31,12 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   let regime = null;
   try {
     regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
-    db.marketRegime = { ...regime, updatedAt: nowIso() };
+    db.marketRegime = {
+    ...regime,
+    global: regime.global || db.marketRegime?.global || null,       // 免费源 429 时保留上次好值
+    smartMoney: regime.smartMoney || db.marketRegime?.smartMoney || null,
+    updatedAt: nowIso()
+  };
   } catch {}
   const regimeSummary = [regime?.global?.interpretation, regime?.smartMoney?.ok ? regime.smartMoney.interpretation : null].filter(Boolean).join("；");
 

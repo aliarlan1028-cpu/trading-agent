@@ -65,6 +65,13 @@ import { requestContextMiddleware } from "./requestContext.mjs";
 dotenv.config();
 installProxyFromEnv();
 
+// TENANT_ISOLATION_V2 fail-closed:该开关承诺的按租户数据隔离尚未在 chat/plans/notifications
+// 等读路径实现(审计发现)。开着它对外注册等于把 owner 全量数据暴露给任意租户——拒绝启动。
+if (process.env.TENANT_ISOLATION_V2 === "true") {
+  console.error("TENANT_ISOLATION_V2=true 但按租户隔离尚未实现(chat/plans/notifications 等读路径未过滤)。请保持 false 并用一客户一实例(Path A)交付。");
+  process.exit(1);
+}
+
 const app = express();
 const db = loadDb();
 app.locals.db = db;
@@ -106,13 +113,16 @@ for (const server of db.mcpServers || []) {
   }
 }
 for (const method of db.knowledge?.tradingMethods || []) {
-  // compile_failed 也要重试：方案A放宽书名编译后，历史上因"禁止编译"卡住的技能应能在重启时重新编译进流水线。
-  const alreadyCompiled = (db.knowledge?.tradingSkills || []).some((skill) => skill.sourceMethodId === method.id && !["retired", "superseded", "compile_failed"].includes(skill.status));
-  if (!alreadyCompiled) {
+  // compile_failed 也要重试;both 方法按方向分别判断(此前只要 long 存活就永远不补 short)。
+  const hasLive = (dir) => (db.knowledge?.tradingSkills || []).some((skill) =>
+    skill.sourceMethodId === method.id
+    && !["retired", "superseded", "compile_failed"].includes(skill.status)
+    && (!dir || skill.spec?.direction === dir));
+  if (method.direction === "both" ? !(hasLive("long") && hasLive("short")) : !hasLive()) {
     try {
       if (method.direction === "both") {
-        compileTradingMethod(db, method.id, { direction: "long" }, "StartupMigration");
-        compileTradingMethod(db, method.id, { direction: "short" }, "StartupMigration");
+        if (!hasLive("long")) compileTradingMethod(db, method.id, { direction: "long" }, "StartupMigration");
+        if (!hasLive("short")) compileTradingMethod(db, method.id, { direction: "short" }, "StartupMigration");
       } else {
         compileTradingMethod(db, method.id, {}, "StartupMigration");
       }
@@ -300,7 +310,7 @@ registerTaskHandler("market_signal_refresh", async (database) => {
       .filter((tf) => tf && tf !== "1h"))].slice(0, 3);
     for (const tf of skillTfs) {
       for (const symbol of symbols.slice(0, 2)) {
-        try { await syncPublicKlines(database, "OKX", symbol, tf); } catch { /* 单周期失败不阻断 */ }
+        try { await syncPublicKlines(database, "OKX", symbol, tf, { sharedSlot: false }); } catch { /* 单周期失败不阻断 */ } // 只写 candlesByTf,不翻转共享 1h 槽
       }
     }
   } catch { /* 技能周期补拉失败不阻断 */ }
@@ -1081,7 +1091,9 @@ app.patch("/api/mandates/:id", requirePermission("write:mandate"), (req, res) =>
 app.post("/api/mandates/:id/activate", requirePermission("write:mandate"), (req, res) => {
   const mandate = activateMandate(db, req.params.id);
   if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  mandate.version = Number(mandate.version || 1) + 1;
+  // 激活不抬版本(P0):版本语义=内容变更(PATCH 时 +1)。此前激活即 +1,
+  // 激活前提出的计划立刻全部"版本过期"被风控拒——标准主流程直接跑不通。
+  mandate.version = Number(mandate.version || 1);
   persist(res, mandate);
 });
 
@@ -1280,7 +1292,12 @@ app.delete("/api/knowledge/sources/:id", requirePermission("write:knowledge"), (
   db.knowledge.chunks = (db.knowledge.chunks || []).filter((chunk) => chunk.sourceId !== sid);
   db.knowledge.conceptCards = (db.knowledge.conceptCards || []).filter((concept) => !concept.sourceRefs?.includes(sid));
   db.knowledge.tradingMethods = (db.knowledge.tradingMethods || []).filter((method) => method.source?.id !== sid && method.sourceId !== sid);
-  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((rule) => !rule.sourceRefs?.includes(sid));
+  // 已批准纪律是注入 AI 提示词的硬闸(审计 P2):删来源不得静默撤掉;多来源合并规则只摘引用。
+  db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((rule) => {
+    if (rule.status === "已批准" || !rule.sourceRefs?.includes(sid)) return true;
+    if (rule.sourceRefs.length > 1) { rule.sourceRefs = rule.sourceRefs.filter((x) => x !== sid); return true; }
+    return false;
+  });
   db.knowledge.theoryFrameworks = (db.knowledge.theoryFrameworks || []).filter((fw) => !fw.sourceRefs?.includes(sid));
   appendAudit(db, "删除知识来源", sid, "Curator");
   appendTrace(db, "knowledge_delete", `删除知识来源 ${source.title}`);
@@ -1419,7 +1436,18 @@ app.post("/api/knowledge/frameworks", requirePermission("write:knowledge"), (req
 });
 
 app.post("/api/knowledge/rules/proposals", requirePermission("write:knowledge"), (req, res) => {
-  const rule = { id: id("rule"), name: req.body.name || "新交易规则草案", level: req.body.level || "L2", status: "待审批", action: req.body.action || "notify", sourceRefs: req.body.sourceRefs || [], createdAt: nowIso() };
+  const rule = {
+    id: id("rule"),
+    name: req.body.name || "新交易规则草案",
+    description: String(req.body.description || ""), // (审计 H4)此前不读,用户写的依据全部丢失
+    category: String(req.body.category || ""),
+    condition: String(req.body.condition || ""),
+    level: req.body.level || "L2",
+    status: "待审批",
+    action: req.body.action || "notify",
+    sourceRefs: req.body.sourceRefs || [],
+    createdAt: nowIso()
+  };
   db.knowledge.ruleProposals.unshift(rule);
   appendAudit(db, "提交知识规则草案", rule.id, "Rule Compiler");
   persist(res, rule);
@@ -2059,6 +2087,12 @@ app.post("/api/trade-plans/:id/request-approval", requirePermission("write:trade
 app.post("/api/trade-plans/:id/approve", requirePermission("approve:trade_plan"), async (req, res) => {
   const plan = db.tradePlans.find((item) => item.id === req.params.id);
   if (!plan) return res.status(404).json({ error: "Trade plan not found" });
+  // (P1-7)状态守卫:completed/cancelled 的计划此前可被再次批准并再次真实下单(幂等键随新执行单失效)。
+  const APPROVABLE = new Set(["awaiting_approval", "risk_checked", "draft", "approved"]);
+  const retryUnlock = plan.status === "protection_failed" && req.body?.retry === true;
+  if (!APPROVABLE.has(plan.status) && !retryUnlock) {
+    return res.status(400).json({ error: `计划状态 ${plan.status} 不可批准(终态计划禁止重复执行;protection_failed 需显式 retry)` });
+  }
   if (!plan.lastRiskCheck) return res.status(400).json({ error: "计划尚未通过风控检查，先运行 risk-check" });
   if (!plan.lastRiskCheck.passed) return res.status(400).json({ error: `风控未通过，禁止批准：${plan.lastRiskCheck.summary}` });
   const freshRisk = evaluateTradePlan(db, plan);
@@ -2117,7 +2151,11 @@ async function executePendingAction(db, record, actor = "Owner") {
   if (record.type === "mandate") {
     const m = (db.mandates || []).find((x) => x.id === (a.resolvedTargetId || a.mandateId)) || db.mandates?.[0];
     if (!m) return { ok: false, error: "mandate_not_found" };
-    m.status = a.op === "activate" ? "active" : a.op === "pause" ? "paused" : a.op === "revoke" ? "revoked" : m.status;
+    // 激活必须走 activateMandate(单一激活不变量):此前直接赋值 status="active",
+    // 旧 active 不被废弃 → 多 active 并存的老故障在对话确认路径复活。
+    if (a.op === "activate") activateMandate(db, m.id);
+    else if (a.op === "pause") m.status = "paused";
+    else if (a.op === "revoke") m.status = "revoked";
     m.updatedAt = nowIso();
     appendAudit(db, `对话确认：${a.op} Mandate ${m.id}`, m.id, actor, "warning");
     return { ok: true, mandate: { id: m.id, status: m.status } };
@@ -2236,7 +2274,8 @@ app.post("/api/risk/kill-switch", async (req, res) => {
     return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
   }
   db.system.killSwitch = Boolean(req.body.enabled);
-  db.system.autonomyEnabled = !db.system.killSwitch;
+  // (P1-6)开启熔断时暂停自主;解除熔断不强制重开(此前会覆盖用户手动暂停/日亏自动暂停)。
+  if (db.system.killSwitch) db.system.autonomyEnabled = false;
   db.system.riskStatus = db.system.killSwitch ? "熔断停机" : "正常";
   if (db.system.killSwitch) {
     const cancellationResults = [];

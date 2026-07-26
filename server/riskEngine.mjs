@@ -1,3 +1,4 @@
+import { dedupePositions } from "./accounting.mjs";
 import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
 import { isEventRiskActive } from "./eventRisk.mjs";
@@ -199,7 +200,7 @@ function planDirection(item) {
 function evaluateConcentration(db, plan, mandate) {
   const group = correlationGroupOf(plan.symbol);
   const planDir = planDirection(plan);
-  const openPositions = (db.positions || []).filter((position) => group.includes(position.symbol) && planDirection(position) === planDir);
+  const openPositions = dedupePositions(db.positions).filter((position) => group.includes(position.symbol) && planDirection(position) === planDir); // 去重:同仓双记录曾使集中度双计
   const openPlans = (db.tradePlans || []).filter((item) =>
     item.id !== plan.id
     && group.includes(item.symbol)

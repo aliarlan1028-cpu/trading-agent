@@ -513,6 +513,13 @@ export function useApi() {
       if (method.toUpperCase() !== "GET") request.body = JSON.stringify(body);
       const response = await fetchWithTimeout(apiUrl(url, apiBase), request, isNativeApp() ? 8000 : 12000);
       if (response.status === 401) {
+        // 业务型 401(如原密码不正确)不是会话过期,不得把用户整体登出(审计 H5)。
+        if (url.includes("/api/auth/change-password")) {
+          const j = await response.json().catch(() => ({}));
+          setToast(j.error || "校验失败");
+          window.setTimeout(() => setToast(""), 4200);
+          return { ok: false, error: j.error || "unauthorized" };
+        }
         expireSession();
         return {};
       }

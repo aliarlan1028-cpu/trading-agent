@@ -132,7 +132,9 @@ export function runAgentCommand(db, payload = {}) {
   const intent = createTradeIntent(db, run, mandateDraft, bundle);
   const plan = createTradePlanFromIntent(db, intent, mandateDraft, bundle);
   bindKnowledgeSkillsToPlan(db, plan, {
-    timeframe: intent.time_horizon === "intraday" ? "1h" : "4h",
+    // 不按周期过滤(审计 #15):time_horizon 恒 intraday 使 4h/1d 技能永远选不到;
+    // 技能信号本就按各自 spec.timeframe 在 candlesByTf 上评估,跨周期绑定是安全的。
+    timeframe: null,
     regime: db.marketRegime?.regime || db.marketRegime?.label || "",
     selectedSkillIds: intent.knowledgeSkillIds || [],
     requireExplicitAdoption: true
@@ -257,11 +259,15 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
   const market = db.markets?.find((item) => item.symbol === intent.symbol) || db.markets?.[0];
   const price = Number(market?.price || 0);
   const hasMarketPrice = Number.isFinite(price) && price > 0;
-  const low = hasMarketPrice ? Math.round(price * 0.984) : null;
-  const high = hasMarketPrice ? Math.round(price * 0.99) : null;
-  const stop = hasMarketPrice ? Math.round(price * 0.965) : null;
-  const tp1 = hasMarketPrice ? Math.round(price * 1.014) : null;
-  const tp2 = hasMarketPrice ? Math.round(price * 1.038) : null;
+  // 价格精度按币价量级取小数(此前 Math.round 会把 <1 USDT 币种的价位归零);
+  // 方向感知(此前 short 也用做多价位,止损挂在错误一侧)。
+  const px = (v) => Number(v.toFixed(price > 1000 ? 0 : price > 1 ? 3 : 6));
+  const isShort = String(intent.direction).toLowerCase() === "short";
+  const low = hasMarketPrice ? px(price * (isShort ? 1.01 : 0.984)) : null;
+  const high = hasMarketPrice ? px(price * (isShort ? 1.016 : 0.99)) : null;
+  const stop = hasMarketPrice ? px(price * (isShort ? 1.035 : 0.965)) : null;
+  const tp1 = hasMarketPrice ? px(price * (isShort ? 0.986 : 1.014)) : null;
+  const tp2 = hasMarketPrice ? px(price * (isShort ? 0.962 : 1.038)) : null;
   const plan = {
     id: id("plan"),
     trade_plan_id: null,
@@ -271,6 +277,7 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
     agent_run_id: intent.agentRunId,
     mandateId: findActiveMandate(db)?.id || mandateDraft.id,
     mandate_id: findActiveMandate(db)?.id || mandateDraft.id,
+    mandateVersion: Number((findActiveMandate(db) || mandateDraft)?.version || 1),
     analysisBundleId: bundle.id,
     analysis_bundle_id: bundle.id,
     exchange: mandateDraft.exchanges[0],
@@ -401,8 +408,8 @@ function mapRiskResult(risk) {
   return "approved";
 }
 
-function requiresApproval(plan, mandate) {
-  const price = Number(plan.entry_range?.[1] || 0);
-  const notional = price * 0.001;
-  return notional > Number(mandate.manual_approval_threshold_usdt || Infinity);
+function requiresApproval() {
+  // 名义额无法在此路径可靠估算(旧实现用硬编码 0.001 数量,几乎恒为"免批")。
+  // 巡检生成的计划一律进人工批准队列——执行侧的自动路径另有灰度闸管辖。
+  return true;
 }
