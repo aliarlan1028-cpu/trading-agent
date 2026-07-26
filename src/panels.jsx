@@ -1192,8 +1192,7 @@ export function LiveGrayPanel({ data, action, ui }) {
   }
   return (
           <form className="panelForm liveGrayForm" onSubmit={saveLive}>
-            <CfgHead icon={Zap} title="实盘写入与灰度发布" sub="多道安全闸全部就绪后，批准的计划才会真实下单，否则一律干跑" status={live.effective ? "实盘已开启" : "实盘关闭"} statusTone={live.effective ? "neg" : ""} />
-            {(() => {
+                        {(() => {
               const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
               const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
               const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;

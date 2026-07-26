@@ -8370,3 +8370,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 
 /* 知识导入·按书名 提示 */
 .bookHint { font-size: 12px; line-height: 1.55; color: var(--text-2); background: var(--accent-weak); border: 1px solid #f0d9c2; border-radius: 9px; padding: 10px 12px; }
+
+/* 复选框/单选统一品牌橙(原生蓝与暖色体系冲突) */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
