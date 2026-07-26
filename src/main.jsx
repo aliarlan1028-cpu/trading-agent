@@ -363,9 +363,45 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
     const result = await registerAccount({ ...registerForm, planId: selectedPlan?.id });
     if (result?.payment) setPayment(result.payment);
   }
+  const flow = [["喂知识", BookOpen], ["蒸馏方法/纪律", BrainCircuit], ["历史+模拟验证", CheckCircle2], ["你授权", ShieldCheck], ["实盘执行", Zap], ["自动复盘", RefreshCw]];
+  const features = [
+    [BookOpen, "知识闭环", "导入你信任的交易书籍与文章，系统蒸馏出可执行的方法与风控纪律，每一条都带来源引用。"],
+    [ShieldCheck, "执行前风控", "每笔计划在下单前都会重跑硬风控，触及杠杆、单日亏损或授权边界即被拦截。"],
+    [Shield, "授权边界", "交易所、杠杆、单日最大亏损由你设定，Agent 不得越权；API 密钥只留在后端且无提币权限。"],
+    [RefreshCw, "复盘进化", "每次平仓自动复盘；实盘表现持续变差的策略会被自动降级、退役。"]
+  ];
   return (
     <div className="landingShell">
-      <main className="landingHero">
+      <div className="landingTopbar">
+        <span className="landingBrand"><span className="landingLogo"><BrainCircuit size={17} /></span><strong>Trading Agent</strong><em>知识驱动的 AI 交易员</em></span>
+      </div>
+      <main className="landingHero split">
+        <section className="landingMarketing">
+          <span className="landingEyebrow">AI 交易员 · 知识驱动</span>
+          <h2 className="landingTitle">把你的交易书，<br />变成一个守纪律的 AI 交易员</h2>
+          <p className="landingSub">导入你信任的交易书籍与文章，系统蒸馏出可执行的方法与风控纪律。每个策略都必须先通过历史回测与模拟盘验证、并经你亲自授权，才可能进入实盘执行——全程可复盘、可追溯。</p>
+          <div className="landingFlow">
+            {flow.map(([label, Icon], i) => (
+              <React.Fragment key={label}>
+                {i > 0 && <span className="landingFlowArrow">›</span>}
+                <span className="landingFlowStep"><Icon size={14} /> {label}</span>
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="landingFeatures">
+            {features.map(([Icon, title, desc]) => (
+              <div className="landingFeature" key={title}>
+                <span className="landingFeatureIcon"><Icon size={16} /></span>
+                <b>{title}</b>
+                <p>{desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="landingChecks">
+            {["实盘写入默认关闭", "交易所密钥只在后端", "API 无提币权限", "计划必过执行前风控"].map((item) => <span key={item}><CheckCircle2 size={14} /> {item}</span>)}
+          </div>
+          <p className="landingDisclaimer">风险提示：加密货币交易风险极高，可能损失全部本金。历史回测与模拟盘验证不代表未来收益；本系统提供纪律执行与工具，不构成任何投资建议。</p>
+        </section>
         <aside className="landingPanel">
           <div className="landingModeTabs">
             <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>登录</button>
