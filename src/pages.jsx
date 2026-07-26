@@ -772,11 +772,26 @@ export function ConceptGraph({ concepts = [] }) {
   const [hover, setHover] = useState(null);
   const W = 520, H = 360;
   const { nodes, pos, edges, deg } = useMemo(() => {
-    const nodes = (concepts || []).slice(0, 20);
+    // 去重：同名概念（被不同书重复蒸馏）合并为一个节点、关系取并集——否则重名节点各自孤立，
+    // 连线只会连到 nameIdx 里最后覆盖的那一个，其余同名节点变成"没有连线的孤点"。
+    const byName = new Map();
+    (concepts || []).forEach((c) => {
+      const key = String(c.name || "").trim();
+      if (!key) return;
+      const rel = (c.relatedTo || []).map((r) => String(r).trim()).filter(Boolean);
+      const ex = byName.get(key);
+      if (ex) {
+        ex.relatedTo = [...new Set([...ex.relatedTo, ...rel])];
+        if (!ex.tradingMeaning) ex.tradingMeaning = c.tradingMeaning || c.meaning || ex.tradingMeaning;
+      } else {
+        byName.set(key, { ...c, name: key, relatedTo: [...new Set(rel)] });
+      }
+    });
+    const nodes = [...byName.values()].slice(0, 20);
     const nameIdx = {};
     nodes.forEach((c, i) => { nameIdx[c.name] = i; });
     const edges = [];
-    nodes.forEach((c, i) => (c.relatedTo || []).forEach((rn) => { const j = nameIdx[rn]; if (j != null && j > i) edges.push([i, j]); }));
+    nodes.forEach((c, i) => (c.relatedTo || []).forEach((rn) => { const j = nameIdx[String(rn).trim()]; if (j != null && j > i) edges.push([i, j]); }));
     const deg = nodes.map(() => 0);
     edges.forEach(([a, b]) => { deg[a] += 1; deg[b] += 1; });
     const pos = nodes.length ? conceptLayout(nodes, edges, W, H) : [];

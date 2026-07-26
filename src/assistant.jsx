@@ -149,7 +149,6 @@ export function AssistantWidget({ data }) {
   const [sending, setSending] = useState(false);
   const [digestOpen, setDigestOpen] = useState(true);
   const [streamId, setStreamId] = useState(null);      // 正在打字机揭示的消息 id
-  const [sessionId, setSessionId] = useState(null);
   const scrollRef = useRef(null);
   const idRef = useRef(0);
 
@@ -212,7 +211,7 @@ export function AssistantWidget({ data }) {
     }
   }
 
-  // 自由问答：走完整工具链 Agent（可查真实账户/行情/知识），单独长超时，避免被通用 8s 超时打断。
+  // 自由问答：走【只读助手】专属端点——只读账户/行情/知识回答，不下单、不写入 AI 交易员的会话历史。
   async function ask(text) {
     const q = String(text || "").trim();
     if (!q || sending) return;
@@ -220,21 +219,20 @@ export function AssistantWidget({ data }) {
     setInput("");
     setSending(true);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
+    const timer = setTimeout(() => controller.abort(), 60000);
     try {
-      const res = await fetch(apiUrl("/api/agent/chat"), {
+      const res = await fetch(apiUrl("/api/assistant/chat"), {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ message: q, sessionId }),
+        body: JSON.stringify({ message: q }),
         signal: controller.signal
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { pushBot(`抱歉，出错了：${json.error || res.status}`); return; }
-      if (json.agentMessage?.sessionId) setSessionId(json.agentMessage.sessionId);
-      const trace = json.agentMessage?.toolTrace?.length ? `\n\n> 已调用 ${json.agentMessage.toolTrace.length} 个工具查证` : "";
-      pushBot((json.agentMessage?.content || "（未返回内容）") + trace);
+      const cite = json.citations?.length ? `\n\n> 参考知识：${json.citations.slice(0, 3).join("、")}` : "";
+      pushBot((json.reply || "（未返回内容）") + cite);
     } catch (err) {
-      pushBot(err.name === "AbortError" ? "这次思考超时了（Agent 查证较久），请重试或换个更聚焦的问题。" : "网络异常，请稍后重试。");
+      pushBot(err.name === "AbortError" ? "这次思考超时了，请重试或换个更聚焦的问题。" : "网络异常，请稍后重试。");
     } finally {
       clearTimeout(timer);
       setSending(false);
@@ -258,7 +256,7 @@ export function AssistantWidget({ data }) {
         <div className="asstDrawer" role="dialog" aria-label="AI 助手">
           <div className="asstHead">
             <span className="asstAvatar"><Bot size={16} /></span>
-            <div className="asstHeadText"><b>AI 助手</b><small>问答 · 摘要 · 异动 · 护航</small></div>
+            <div className="asstHeadText"><b>AI 助手</b><small>只读 · 解读账户/行情/知识（不下单）</small></div>
             <button className="asstIconBtn" onClick={() => setDigestOpen((v) => !v)} title={digestOpen ? "收起概览" : "展开概览"}><Gauge size={15} /></button>
             <button className="asstClose" onClick={() => setOpen(false)} aria-label="关闭"><X size={16} /></button>
           </div>
@@ -276,9 +274,9 @@ export function AssistantWidget({ data }) {
           <div className="asstScroll" ref={scrollRef}>
             {!messages.length && (
               <div className="asstWelcome">
-                <b>问我任何关于你系统的问题</b>
-                <p>例如「现在该不该减仓？」「BTC 现在的结构怎么样？」「知识库里关于 CPI 怎么控仓？」——我会查真实账户、行情和知识库来回答。</p>
-                <p className="asstHint">上方按钮可一键查看状态摘要、全市场异动、持仓护航与待办。</p>
+                <b>我是你的只读助手，帮你看懂系统</b>
+                <p>例如「现在该不该减仓？」「BTC 现在的结构怎么样？」「知识库里关于 CPI 怎么控仓？」——我会读真实账户、行情和知识库来解读。</p>
+                <p className="asstHint">我只做解读与建议，<b>不下单、不改配置</b>；要执行交易/改授权，请去主页的「AI 交易员」对话。</p>
               </div>
             )}
             {messages.map((m) => (
