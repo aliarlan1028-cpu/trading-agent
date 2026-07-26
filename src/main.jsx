@@ -289,7 +289,10 @@ function App() {
       <Sidebar active={active} setActive={navigate} data={data} />
       <main className="mainArea">
         <AppTopbar data={data} active={active} setActive={navigate} notify={notify} action={action} />
-        <div className={active === "chat" ? "content contentChat" : "content"}>{content}</div>
+        {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
+        <div className={active === "chat" ? "content contentChat" : "content"}>
+          <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
+        </div>
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
@@ -400,6 +403,18 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
           {toast && <small className="landingToast">{toast}</small>}
         </aside>
       </main>
+    </div>
+  );
+}
+
+// 页面切换骨架：占位与真实页面近似的卡片轮廓，避免"白一下再弹出"。
+function PageSkeleton() {
+  return (
+    <div className="pageSkeleton" aria-busy="true">
+      <div className="skRow skHead" />
+      <div className="skGrid">{Array.from({ length: 4 }).map((_, i) => <div className="skCard" key={i} />)}</div>
+      <div className="skRow skWide" />
+      <div className="skRow skWide" />
     </div>
   );
 }

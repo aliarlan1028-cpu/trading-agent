@@ -773,114 +773,124 @@ function ConceptGraph({ concepts = [] }) {
   );
 }
 
+// 技能生命周期 → 展示态映射（一处定义，漏斗/行/筛选共用）
+const SKILL_STATE = {
+  compile_failed: { label: "编译失败", tone: "neg", stage: null },
+  compiled: { label: "待历史验证", tone: "warn", stage: "compiled", next: { action: "validate", label: "历史验证" } },
+  historical_rejected: { label: "历史未通过", tone: "neg", stage: "compiled", next: { action: "validate", label: "重跑历史验证" } },
+  historical_validated: { label: "待模拟", tone: "warn", stage: "validated", next: { action: "paper", label: "开始纯前向模拟" } },
+  paper_validating: { label: "模拟中", tone: "warn", stage: "papering" },
+  paper_rejected: { label: "模拟未通过", tone: "neg", stage: "papering" },
+  paper_validated: { label: "待批准", tone: "warn", stage: "approving", next: { action: "approve", label: "批准启用" } },
+  active: { label: "已上岗", tone: "ok", stage: "active" },
+  degraded: { label: "已降级", tone: "neg", stage: "active", next: { action: "validate", label: "重新验证" } },
+  superseded: { label: "已被替代", tone: "muted", stage: null },
+  retired: { label: "已退役", tone: "muted", stage: null }
+};
+const FUNNEL = [
+  { key: "draft", label: "方法草案", tab: "methods" },
+  { key: "compiled", label: "已编译", tab: "skills" },
+  { key: "validated", label: "已验证", tab: "skills" },
+  { key: "papering", label: "模拟中", tab: "skills" },
+  { key: "active", label: "已上岗", tab: "skills" }
+];
+
 export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
-  const [ruleTab, setRuleTab] = useState("graph");
+  const [tab, setTab] = useState("methods");
   const [rag, setRag] = useState("");
+  const [expanded, setExpanded] = useState(null);      // 展开的行 id
+  const [srcFilter, setSrcFilter] = useState("");       // 按来源书筛选
   const knowledge = data.knowledge || {};
   const sourceCount = knowledge.sources?.length || 0;
   const conceptCount = knowledge.conceptCards?.length || 0;
   const ruleCount = knowledge.ruleProposals?.length || 0;
+  const approvedRuleCount = (knowledge.ruleProposals || []).filter((r) => r.status === "已批准").length;
   const chunkCount = knowledge.chunks?.length || 0;
+  const methods = knowledge.tradingMethods || [];
   const tradingSkills = knowledge.tradingSkills || [];
-  const activeTradingSkills = tradingSkills.filter((skill) => skill.status === "active").length;
   const skills = data.skills || [];
-  const enabledSkills = skills.filter((skill) => skill.status === "已启用").length;
   const mcp = data.mcpServers || [];
   const mcpConnected = mcp.filter((item) => item.status === "connected").length;
-  const embed = data.embeddingStatus || { mode: "lexical" };
   const cites = latestAnalysisRows(data) || [];
-  const stats = [
-    { Icon: BookOpen, bg: "#EAF0FB", color: "#2A6FDB", label: "知识文档", value: sourceCount, sub: `${chunkCount} 片段` },
-    { Icon: Settings, bg: "#E6F1EA", color: "#1F7A50", label: "专家规则", value: ruleCount, sub: "已抽取" },
-    { Icon: Sparkles, bg: "#F0EAFB", color: "#7A4FD0", label: "自主交易技能", value: activeTradingSkills, sub: `共 ${tradingSkills.length} 个版本` },
-    { Icon: RefreshCw, bg: "#FBEDDF", color: "#D06A22", label: "检索模式", text: embed.mode === "semantic" ? "语义向量" : "词频匹配" }
-  ];
+
+  // 漏斗计数：草案 = 尚未编译成活跃技能的方法；其余按技能 stage 聚合。
+  const compiledMethodIds = new Set(tradingSkills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
+  const funnelCounts = {
+    draft: methods.filter((m) => !compiledMethodIds.has(m.id)).length,
+    compiled: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "compiled").length,
+    validated: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "validated").length,
+    papering: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "papering").length,
+    active: tradingSkills.filter((s) => s.status === "active").length
+  };
+  // 来源书籍列表（方法/技能共用的筛选维度）
+  const sourceTitles = [...new Set([...methods.map((m) => m.source?.title), ...tradingSkills.map((s) => s.sourceTitle)].filter(Boolean))];
+  const matchSrc = (title) => !srcFilter || title === srcFilter;
+
   return (
     <div className="pageStack termPage knowPage">
       {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
 
-      <div className="kStatRow">
-        {stats.map((s) => (
-          <div className="kStat" key={s.label}>
-            <span className="kStatIcon" style={{ background: s.bg, color: s.color }}><s.Icon size={18} /></span>
-            <div>
-              <div className="kStatK">{s.label}</div>
-              {s.text ? <div className="kStatText">{s.text}</div> : <div className="kStatV mono">{s.value}</div>}
-              {s.sub && !s.text && <div className="kStatS">{s.sub}</div>}
-            </div>
-          </div>
+      {/* 漏斗状态栏：一眼看清整条流水线卡在哪 */}
+      <div className="kFunnel">
+        {FUNNEL.map((f, i) => (
+          <React.Fragment key={f.key}>
+            {i > 0 && <span className="kFunnelArrow">›</span>}
+            <button className={`kFunnelStage ${tab === f.tab && (f.key === "draft" || tab === "skills") ? "on" : ""}`} onClick={() => setTab(f.tab)}>
+              <b className="mono">{funnelCounts[f.key]}</b>
+              <span>{f.label}</span>
+            </button>
+          </React.Fragment>
         ))}
+        <div className="kFunnelSide">
+          <span className="kFunnelKv"><b className="mono">{sourceCount}</b> 知识源</span>
+          <span className="kFunnelKv"><b className="mono">{approvedRuleCount}/{ruleCount}</b> 已批准纪律</span>
+        </div>
       </div>
 
-      {(knowledge.tradingMethods || []).length > 0 && (
-        <div className="termCard methodCard">
-          <div className="kHead"><span className="secLabel">交易方法草案（仅供研究，不直接驱动自主交易）</span><span className="hypoLegend mono">{(knowledge.tradingMethods || []).length} 条方法</span></div>
-          <div className="methodList">
-            {(knowledge.tradingMethods || []).slice(0, 14).map((m) => (
-              <div className="methodRow" key={m.id}>
-                <div className="methodTop">
-                  <b>{m.name}</b>
-                  <span className={`mDir ${m.direction}`}>{m.direction === "short" ? "做空" : m.direction === "long" ? "做多" : "多空"}</span>
-                  <span className="mRegime">{m.marketRegime}</span>
-                  <span className="mTf mono">{m.symbolScope} · {m.timeframe}</span>
-                  {m.source?.title && <span className="hypoSrc">《{m.source.title}》</span>}
-                </div>
-                <div className="methodCond">
-                  <span><i>进场</i>{m.entry || "-"}{m.confirmation ? `（确认：${m.confirmation}）` : ""}</span>
-                  <span><i>止损</i>{m.stop || "-"}</span>
-                  <span><i>止盈</i>{m.takeProfit || "-"}</span>
-                  {m.invalidation && <span className="mInval"><i>不做</i>{m.invalidation}</span>}
-                </div>
-                {m.rationale && <div className="hypoWhy">依据：{m.rationale}</div>}
-                {!tradingSkills.some((skill) => skill.sourceMethodId === m.id && !["retired", "superseded"].includes(skill.status)) && (
-                  <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>编译为技能草案</button>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="hypoNote">只有完成受限编译、历史样本外验证、纯前向模拟盘验证和人工批准的版本，才会进入 Agent 的自主交易技能池。</div>
-        </div>
-      )}
+      {/* Tab 分区 */}
+      <div className="kTabs">
+        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount], ["ext", "外部能力", skills.length + mcp.length]].map(([k, label, n]) => (
+          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label} <span className="kTabN mono">{n}</span></button>
+        ))}
+        {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
+          <select className="kSrcFilter" value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)}>
+            <option value="">全部来源书</option>
+            {sourceTitles.map((t) => <option key={t} value={t}>《{t}》</option>)}
+          </select>
+        )}
+      </div>
 
-      {tradingSkills.length > 0 && (
-        <div className="termCard methodCard">
-          <div className="kHead">
-            <span className="secLabel">知识交易技能生命周期</span>
-            <button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步验证状态</button>
-          </div>
-          <div className="methodList">
-            {tradingSkills.slice(0, 20).map((skill) => {
-              const statusLabel = {
-                compile_failed: "编译失败",
-                compiled: "待历史验证",
-                historical_rejected: "历史验证未通过",
-                historical_validated: "待模拟验证",
-                paper_validating: "模拟验证中",
-                paper_rejected: "模拟验证未通过",
-                paper_validated: "待人工批准",
-                active: "已启用",
-                degraded: "已自动降级",
-                superseded: "已被新版替代",
-                retired: "已退役"
-              }[skill.status] || skill.status;
+      {/* —— 方法草案 Tab —— */}
+      {tab === "methods" && (
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel">交易方法草案 · 仅供研究，需走验证才上岗</span><span className="hypoLegend mono">{methods.filter((m) => matchSrc(m.source?.title)).length} 条</span></div>
+          {!methods.length && <div className="emptyPanel">导入书籍后自动蒸馏交易方法草案</div>}
+          <div className="kRowList">
+            {methods.filter((m) => matchSrc(m.source?.title)).map((m) => {
+              const compiled = compiledMethodIds.has(m.id);
+              const open = expanded === m.id;
               return (
-                <div className="methodRow" key={skill.id}>
-                  <div className="methodTop">
-                    <b>{skill.name}</b>
-                    <span className={`evBadge ${skill.status === "active" ? "ok" : ""}`}>{statusLabel}</span>
-                    <span className="mono">v{skill.version}</span>
-                    <span className="mTf mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
-                    {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
-                  </div>
-                  {skill.compileErrors?.length > 0 && <div className="hypoWhy">不能执行：{skill.compileErrors.join("；")}</div>}
-                  {skill.validation && <div className="hypoWhy">历史验证：训练 {skill.validation.train?.trades || 0} 笔，验证 {skill.validation.validation?.trades || 0} 笔，测试 {skill.validation.test?.trades || 0} 笔</div>}
-                  {skill.liveMetrics && <div className="hypoWhy">归因：{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}% · PF {skill.liveMetrics.profitFactor ?? "-"}</div>}
-                  <div className="kImportBtns">
-                    {["compiled", "historical_rejected", "degraded"].includes(skill.status) && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/validate`, {})}>历史验证</button>}
-                    {skill.status === "historical_validated" && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/paper`, {})}>开始纯前向模拟</button>}
-                    {skill.status === "paper_validated" && <button onClick={() => action(`/api/knowledge/skills/${skill.id}/approve`, {})}>批准启用</button>}
-                    {!["retired", "superseded"].includes(skill.status) && <button onClick={() => { if (window.confirm(`确定退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户在知识技能中心手动退役" }); }}>退役</button>}
-                  </div>
+                <div className={`kRow ${open ? "open" : ""}`} key={m.id}>
+                  <button className="kRowHead" onClick={() => setExpanded(open ? null : m.id)}>
+                    <span className={`mDir ${m.direction}`}>{m.direction === "short" ? "空" : m.direction === "long" ? "多" : "多空"}</span>
+                    <b className="kRowName">{m.name}</b>
+                    <span className="kRowMeta mono">{m.marketRegime} · {m.timeframe}</span>
+                    {m.source?.title && <span className="hypoSrc">《{m.source.title}》</span>}
+                    <span className={`evBadge ${compiled ? "ok" : ""}`}>{compiled ? "已编译" : "草案"}</span>
+                    <ChevronDown size={14} className="kRowChevron" />
+                  </button>
+                  {open && (
+                    <div className="kRowBody">
+                      <div className="methodCond">
+                        <span><i>进场</i>{m.entry || "-"}{m.confirmation ? `（确认：${m.confirmation}）` : ""}</span>
+                        <span><i>止损</i>{m.stop || "-"}</span>
+                        <span><i>止盈</i>{m.takeProfit || "-"}</span>
+                        {m.invalidation && <span className="mInval"><i>不做</i>{m.invalidation}</span>}
+                      </div>
+                      {m.rationale && <div className="hypoWhy">依据：{m.rationale}</div>}
+                      {!compiled && <button className="primaryButton sm" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>编译为技能草案 →</button>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -888,42 +898,86 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         </div>
       )}
 
-      <div className="kGrid3">
+      {/* —— 技能流水线 Tab —— */}
+      {tab === "skills" && (
         <div className="termCard">
-          <div className="kHead"><span className="secLabel">专家知识库</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部知识 ›</button></div>
-          <div className="kbList">
-            {(knowledge.sources || []).slice(0, 6).map((s) => (
-              <button className="kbRow" key={s.id} onClick={() => ui.openPanel("knowledgeList")}>
-                <span className="kbIcon"><Globe2 size={15} /></span>
-                <div className="kbInfo"><b>{s.domain || s.type || "知识"}</b><div>{s.title}</div></div>
-                <b className="mono kbCount">{humanize(s.status)}</b>
+          <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div>
+          {!tradingSkills.length && <div className="emptyPanel">还没有技能。到「方法草案」把方法编译成技能草案后在此推进验证</div>}
+          <div className="kRowList">
+            {tradingSkills.filter((s) => matchSrc(s.sourceTitle)).map((skill) => {
+              const st = SKILL_STATE[skill.status] || { label: skill.status, tone: "" };
+              const open = expanded === skill.id;
+              return (
+                <div className={`kRow ${open ? "open" : ""}`} key={skill.id}>
+                  <button className="kRowHead" onClick={() => setExpanded(open ? null : skill.id)}>
+                    <b className="kRowName">{skill.name} <span className="mono kRowVer">v{skill.version}</span></b>
+                    <span className="kRowMeta mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
+                    {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
+                    <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : ""}`}>{st.label}</span>
+                    {/* 当前阶段的主操作直接摆在行上（不展开也能点） */}
+                    {st.next && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {}); }}>{st.next.label} →</span>}
+                    <ChevronDown size={14} className="kRowChevron" />
+                  </button>
+                  {open && (
+                    <div className="kRowBody">
+                      {skill.compileErrors?.length > 0 && <div className="hypoWhy neg">不能执行：{skill.compileErrors.join("；")}</div>}
+                      {skill.validation && <div className="hypoWhy">历史三窗：训练 {skill.validation.train?.trades || 0} · 验证 {skill.validation.validation?.trades || 0} · 测试 {skill.validation.test?.trades || 0} 笔</div>}
+                      {skill.liveMetrics && <div className="hypoWhy">实盘归因：{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}% · PF {skill.liveMetrics.profitFactor ?? "-"}</div>}
+                      {!["retired", "superseded"].includes(skill.status) && <button className="dangerTextButton sm" onClick={() => { if (window.confirm(`退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户手动退役" }); }}><Trash2 size={13} /> 退役</button>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* —— 风控纪律 Tab —— */}
+      {tab === "rules" && (
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel">风控纪律 · 批准后进 AI 提示词 + 风控引擎</span><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 · 批准/去重 ›</button></div>
+          {!ruleCount && <div className="emptyPanel">导入资料后自动抽取风控纪律</div>}
+          <div className="kRuleCards">
+            {(knowledge.ruleProposals || []).slice(0, 12).map((r) => (
+              <button className="kRuleCard" key={r.id} onClick={() => ui.openPanel("ruleLibrary")}>
+                <div className="kRuleTop"><b>{r.name}</b>{r.category && <span className="kRuleCat">{r.category}</span>}<span className={`evBadge ${r.status === "已批准" ? "ok" : ""}`}>{humanize(r.status, "待审批")}</span></div>
+                <div>{r.description || "基于专家知识库生成"}</div>
               </button>
             ))}
-            {!sourceCount && <div className="emptyPanel">暂无知识来源，导入书籍/网页/PDF 后可检索</div>}
           </div>
-          <button className="kImportBtn" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> 导入知识</button>
         </div>
+      )}
 
-        <div className="termCard">
-          <div className="kHead"><div className="kSeg"><button className={ruleTab === "graph" ? "on" : ""} onClick={() => setRuleTab("graph")}>概念图谱</button><button className={ruleTab === "rules" ? "on" : ""} onClick={() => setRuleTab("rules")}>风控纪律</button></div><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 ›</button></div>
-          {ruleTab === "graph"
-            ? <ConceptGraph concepts={knowledge.conceptCards || []} />
-            : (
-              <div className="kRuleCards">
-                {(knowledge.ruleProposals || []).slice(0, 6).map((r) => <button className="kRuleCard" key={r.id} onClick={() => ui.openPanel("ruleLibrary")}><div className="kRuleTop"><b>{r.name}</b>{r.category && <span className="kRuleCat">{r.category}</span>}</div><div>{r.description || "基于专家知识库生成"}</div></button>)}
-                {!ruleCount && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>导入资料后自动抽取概念与规则</div>}
-              </div>
-            )}
-        </div>
+      {/* —— 概念图谱 Tab —— */}
+      {tab === "graph" && (
+        <div className="termCard"><div className="kHead"><span className="secLabel">概念图谱</span></div><ConceptGraph concepts={knowledge.conceptCards || []} /></div>
+      )}
 
-        <div className="termCard">
-          <div className="kHead"><span className="secLabel">Skills 中心</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>全部技能 ›</button></div>
-          <div className="kSkillList">
-            {skills.slice(0, 3).map((sk) => <div className="kSkillRow" key={sk.id}><span className="kSkillIcon"><Sparkles size={14} /></span><div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version}`}</span></div><span className="evBadge ok">{sk.status || "已启用"}</span></div>)}
-            {!skills.length && <div className="emptyPanel">暂无 Skill，从 GitHub / Skill.md 导入</div>}
+      {/* —— 外部能力 Tab（Skills + MCP）—— */}
+      {tab === "ext" && (
+        <div className="kGrid2">
+          <div className="termCard">
+            <div className="kHead"><span className="secLabel">Skills 中心</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>全部技能 ›</button></div>
+            <div className="kSkillList">
+              {skills.slice(0, 6).map((sk) => <div className="kSkillRow" key={sk.id}><span className="kSkillIcon"><Sparkles size={14} /></span><div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version}`}</span></div><span className="evBadge ok">{sk.status || "已启用"}</span></div>)}
+              {!skills.length && <div className="emptyPanel">暂无 Skill</div>}
+            </div>
+            <div className="kImportBtns"><button onClick={() => ui.openPanel("skillImport")}><GitBranch size={13} /> GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
           </div>
-          <div className="kImportBtns"><button onClick={() => ui.openPanel("skillImport")}><GitBranch size={13} /> GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
-          <div className="kMcp"><div className="kMcpTop"><b>MCP 工具</b><span className="mono">{mcpConnected}/{mcp.length} 已连接</span></div><div className="kMcpChips">{mcp.slice(0, 4).map((m) => <span className={`kMcpChip ${m.status === "connected" ? "on" : ""}`} key={m.id}>{m.name}</span>)}{mcp.length > 4 && <span className="kMcpChip more">+{mcp.length - 4}</span>}{!mcp.length && <span className="kMcpChip more">未接入</span>}</div></div>
+          <div className="termCard">
+            <div className="kHead"><span className="secLabel">MCP 工具</span><span className="mono">{mcpConnected}/{mcp.length} 已连接</span></div>
+            <div className="kMcpChips">{mcp.map((m) => <span className={`kMcpChip ${m.status === "connected" ? "on" : ""}`} key={m.id}>{m.name}</span>)}{!mcp.length && <span className="kMcpChip more">未接入</span>}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 知识源常驻精简条：导入入口 + 最近几本，点开看全部 */}
+      <div className="termCard kSourceBar">
+        <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
+        <div className="kSourceChips">
+          {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
+          <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
         </div>
       </div>
 

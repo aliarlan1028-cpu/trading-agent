@@ -382,6 +382,13 @@ export async function buildSystemPrompt(db, userText = "") {
     sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
   }
 
+  // 全市场异动 + 消息面归因（环境感知）：让 AI 知道"今天市场在动什么、为什么"，而不是只盯授权币。
+  const movers = db.marketMovers?.movers || [];
+  if (movers.length) {
+    const text = movers.slice(0, 6).map((m) => `- ${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%（额 $${(m.quoteVolUsdt / 1e6).toFixed(0)}M）${m.narrative ? `｜${m.narrative.narrative || ""}（${m.narrative.category || ""}，情绪${m.narrative.sentiment ?? "?"}）` : ""}`).join("\n");
+    sections.push(`【全市场异动·环境感知（截至 ${db.marketMovers.scannedAt?.slice(11, 16) || "?"}，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}`);
+  }
+
   const chunks = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, userText, 5));
   if (chunks.length) {
     const knowledge = chunks

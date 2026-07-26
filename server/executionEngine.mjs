@@ -2,6 +2,7 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
+import { reviewTradeSetup } from "./setupReview.mjs";
 import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
@@ -242,6 +243,28 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     createdAt: nowIso()
   };
   db.executionOrders.unshift(executionOrder);
+
+  // 执行前 SRTL 结构审核（质量闸，风控闸之外的第二道）：喂真实 4H+1H K 线逐项审核 setup，
+  // 并用授权反推的盈亏比做硬门槛。实盘时 FAIL 直接拦截；干跑也审核但只记录不拦，便于观察质量。
+  try {
+    const review = await reviewTradeSetup(db, {
+      symbol: plan.symbol, direction: plan.direction,
+      entry: sizing.entryMid, entryLow: plan.entryLow, entryHigh: plan.entryHigh,
+      stopLoss: executionOrder.stopLoss, takeProfit: executionOrder.takeProfits, id: plan.id
+    }, { minR: Number(mandate?.minRewardRisk ?? process.env.SRTL_MIN_R ?? 2.0) });
+    executionOrder.setupReview = { verdict: review.verdict, reason: review.reason, rewardRisk: review.rewardRisk, checklist: review.checklist };
+    executionOrder.events.push({ at: nowIso(), event: "setup_review", detail: `SRTL ${review.verdict}：${review.reason || ""}` });
+    if (review.verdict === "FAIL" && db.system.liveTradingEnabled) {
+      executionOrder.status = "setup_rejected";
+      plan.status = "setup_rejected";
+      plan.executionOrderId = executionOrder.id;
+      appendAudit(db, `SRTL 结构审核拒绝，未下单：${review.reason || ""}`, executionOrder.id, "ExecutionEngine", "warning");
+      return { status: "setup_rejected", review, executionOrder };
+    }
+  } catch (error) {
+    // 审核本身异常不阻断交易主流程（风控闸已通过），仅记录。
+    executionOrder.events.push({ at: nowIso(), event: "setup_review_error", detail: String(error.message || error).slice(0, 160) });
+  }
 
   if (!db.system.liveTradingEnabled) {
     executionOrder.status = "dry_run";

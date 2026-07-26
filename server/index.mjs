@@ -17,6 +17,7 @@ import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
+import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
@@ -182,7 +183,12 @@ app.use(requestContextMiddleware);
 
 // 注册真实任务处理器并确保系统任务存在（执行轮询/持仓监控/核算/自主巡检/对账）
 registerTaskHandler("execution_poll", (database) => pollExecutionOrders(database));
-registerTaskHandler("position_monitor", (database) => monitorPositions(database));
+registerTaskHandler("position_monitor", async (database) => {
+  const r = await monitorPositions(database);
+  // 带消息面的持仓护航（有持仓才跑，节省 LLM 额度）：只产建议/告警，不自动下单。
+  try { if ((database.positions || []).some((p) => Number(p.size ?? p.pos ?? 0) !== 0)) await escortPositions(database); } catch { /* 护航失败不阻断监控 */ }
+  return r;
+});
 registerTaskHandler("accounting_refresh", (database) => refreshAccounting(database));
 registerTaskHandler("agent_cycle", async (database) => {
   const run = await runAgentCycle(database, {}, saveDb);
@@ -244,6 +250,8 @@ registerTaskHandler("market_signal_refresh", async (database) => {
       updatedAt: nowIso()
     };
   } catch { /* 大盘拉取失败不阻断 */ }
+  // 全市场异动扫描 + 重大异动消息面归因（环境感知，注入决策上下文）。
+  try { await refreshMarketMovers(database, {}); } catch { /* 异动扫描失败不阻断 */ }
   // 知识技能声明的非默认周期（4h/1d 等）也要有 K 线，否则技能信号永远无法评估。
   try {
     const skillTfs = [...new Set((database.knowledge?.tradingSkills || [])

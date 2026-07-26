@@ -114,6 +114,38 @@ export const SKILL_TOOLS = [
       const support = dedupe(swingLows.filter((l) => l < price)).sort((a, b) => b - a).slice(0, 3).map((v) => round(v, price));
       return { symbol, timeframe, price: round(price, price), resistance, support, note: `阻力 ${resistance.join("/") || "-"}，支撑 ${support.join("/") || "-"}` };
     }
+  },
+  {
+    // 借鉴 okx-ai-trading-journal 的相对强度：币近 N 日收益 ÷ BTC 收益，>1 = 强于大盘（跑赢），
+    // 帮 AI 在白名单里"选强弃弱"。零成本、纯真实 K 线派生。
+    skillId: "skill_native_rs",
+    name: "相对强度扫描",
+    toolName: "relative_strength",
+    permissions: ["market.read"],
+    description: "计算多个币种相对 BTC 的相对强度（近 N 日收益/BTC 收益），>1 强于大盘、<1 弱于大盘，用于在授权白名单里优先做最强或最弱的标的。",
+    schema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, description: "交易对列表，留空用授权白名单/主流币" }, days: { type: "number", description: "回看天数，默认 14" } } },
+    async handler(db, args) {
+      const days = Math.max(5, Math.min(60, Number(args.days) || 14));
+      const symbols = (args.symbols?.length ? args.symbols : allowedSymbols(db)).map((s) => String(s).toUpperCase()).filter((s) => !/BTC/.test(s)).slice(0, 8);
+      let btc;
+      try { btc = await getHistoricalKlines("BTC/USDT", "1d", days + 2); } catch (e) { return { error: `BTC K线失败：${e.message}` }; }
+      if (!btc || btc.length < days) return { error: "BTC K线不足" };
+      const btcRet = Number(btc[btc.length - 1].close) / Number(btc[btc.length - days].close);
+      const rows = [];
+      for (const symbol of symbols) {
+        try {
+          const c = await getHistoricalKlines(symbol, "1d", days + 2);
+          if (!c || c.length < days) continue;
+          const ret = Number(c[c.length - 1].close) / Number(c[c.length - days].close);
+          const rs = Number((ret / btcRet).toFixed(3));
+          rows.push({ symbol, rs, coinRetPct: Number(((ret - 1) * 100).toFixed(1)), vsBtc: rs >= 1 ? "强于大盘" : "弱于大盘" });
+        } catch { /* 单币失败跳过 */ }
+      }
+      rows.sort((a, b) => b.rs - a.rs);
+      const strongest = rows[0]?.symbol;
+      const weakest = rows[rows.length - 1]?.symbol;
+      return { days, btcRetPct: Number(((btcRet - 1) * 100).toFixed(1)), ranking: rows, strongest, weakest, note: rows.length ? `最强 ${strongest}(RS ${rows[0].rs})，最弱 ${weakest}(RS ${rows[rows.length - 1].rs})` : "无可比数据" };
+    }
   }
 ];
 
