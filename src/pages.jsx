@@ -36,6 +36,7 @@ import {
   SquareActivity,
   Target,
   Timer,
+  Trash2,
   TrendingUp,
   UserCog,
   WalletCards,
