@@ -9520,13 +9520,17 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 
 /* 概念图谱 v1 */
 .conceptGraph { display: flex; flex-direction: column; }
-.cgSvg { width: 100%; height: auto; max-height: 300px; }
-.cgEdge { stroke: #d9cfbc; stroke-width: 1; transition: opacity 0.15s; }
-.cgEdge.on { stroke: #b9a888; opacity: 0.85; }
-.cgEdge.off { opacity: 0.18; }
-.cgNode { transition: opacity 0.15s; }
-.cgNode.dim { opacity: 0.28; }
-.cgLabel { font: 600 9px "Space Grotesk"; pointer-events: none; }
+.cgWrap { border-radius: 12px; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #fffefb 0%, #f6f1e8 60%, #efe8db 100%); border: 1px solid var(--hairline); }
+.cgSvg { width: 100%; height: auto; max-height: 360px; display: block; }
+.cgEdge { fill: none; stroke: #c9bda0; stroke-width: 1.1; opacity: 0.5; transition: opacity 0.18s, stroke 0.18s; }
+.cgEdge.hot { stroke: #d0965a; opacity: 0.95; stroke-width: 1.6; }
+.cgEdge.cold { opacity: 0.12; }
+.cgNode { cursor: pointer; transition: opacity 0.18s; }
+.cgNode.dim { opacity: 0.32; }
+.cgHalo { transition: opacity 0.18s; }
+.cgDot { stroke: #fbf9f5; stroke-width: 2; transition: r 0.18s; }
+.cgLabelBg { fill: #fbf9f5; opacity: 0.72; }
+.cgLabel { font: 600 10.5px "Space Grotesk"; pointer-events: none; dominant-baseline: middle; }
 .cgLegend { display: flex; flex-wrap: wrap; gap: 4px 11px; padding: 4px 2px 8px; }
 .cgLegend span { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #8a8172; }
 .cgLegend i { width: 8px; height: 8px; border-radius: 50%; }

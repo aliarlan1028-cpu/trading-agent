@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { AdminPage } from "./pages.jsx";
+import { AdminPage, ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
@@ -675,7 +675,7 @@ function MobileRisk({ data, action, ui }) {
   );
 }
 
-const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则"];
+const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则", "图谱"];
 const MSKILL = {
   compile_failed: { label: "编译失败", tone: "danger" },
   compiled: { label: "待历史验证", tone: "warning", next: { action: "validate", label: "历史验证" } },
@@ -731,7 +731,7 @@ function MobileKnowledge({ data, action, ui }) {
   return (
     <div className="mSubPage">
       <div className="mChips">
-        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}</button>)}
+        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
       </div>
 
       {seg === "上手" && (
@@ -860,6 +860,13 @@ function MobileKnowledge({ data, action, ui }) {
             </div>
           ))}
           {rules.length > 0 && <button className="mPrimaryAction" onClick={() => ui.openPanel("ruleLibrary")}>去规则库批准 / 去重 ›</button>}
+        </div>
+      )}
+
+      {seg === "图谱" && (
+        <div className="mSectionCard">
+          <header><span>概念图谱（{knowledge.conceptCards?.length || 0}）</span><small>相关概念自动聚簇</small></header>
+          <ConceptGraph concepts={knowledge.conceptCards || []} />
         </div>
       )}
     </div>
