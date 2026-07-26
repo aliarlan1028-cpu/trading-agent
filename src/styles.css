@@ -746,8 +746,9 @@ h3 {
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  padding: 12px 0 34px;
+  /* 顶端对齐(而非居中)：登录↔订阅表单高度变化时卡片顶部不动，不再上下弹跳 */
+  align-items: start;
+  padding: 8vh 0 34px;
 }
 
 .landingCopy {
@@ -934,6 +935,7 @@ h3 {
   /* 登录表单较矮、订阅表单较高（差约 288px），切换时整卡上下弹跳。
      给表单区定最小高度取较高态，两态之间不再跳；内容淡入过渡更顺滑。 */
   align-content: start;
+  /* 顶端对齐后无需强撑高，给个温和下限避免登录态太矮；淡入过渡更顺滑 */
   min-height: 300px;
   animation: landingFormFade .18s ease;
 }
