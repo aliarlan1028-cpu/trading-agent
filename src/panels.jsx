@@ -989,26 +989,102 @@ export function KnowledgeListPanel({ data, action, ui }) {
 
 const RULE_ACTION_LABEL = { notify: "通知", pause_opening: "暂停开仓", reduce: "减仓", none: "仅记录", restrict: "限制", block: "阻断", kill_switch: "熔断" };
 
+// —— 规则相似度：中文按 2-gram + 拉丁词做 Jaccard，客户端聚类出"疑似重复组"给用户预览。——
+function ruleTokens(rule) {
+  const text = `${rule.name || ""} ${rule.description || ""} ${rule.condition || ""}`.toLowerCase();
+  const latin = text.match(/[a-z0-9]+/g) || [];
+  const cjk = text.replace(/[^一-龥]/g, "");
+  const grams = [];
+  for (let i = 0; i < cjk.length - 1; i += 1) grams.push(cjk.slice(i, i + 2));
+  return new Set([...latin, ...grams]);
+}
+function ruleJaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  return inter / (a.size + b.size - inter);
+}
+function clusterRules(rules, threshold = 0.5) {
+  const toks = rules.map(ruleTokens);
+  const parent = rules.map((_, i) => i);
+  const find = (x) => { let r = x; while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; } return r; };
+  for (let i = 0; i < rules.length; i += 1) {
+    for (let j = i + 1; j < rules.length; j += 1) {
+      if (ruleJaccard(toks[i], toks[j]) >= threshold) parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map();
+  rules.forEach((r, i) => { const root = find(i); if (!groups.has(root)) groups.set(root, []); groups.get(root).push(r); });
+  return [...groups.values()].filter((g) => g.length > 1);
+}
+
 export function RuleLibraryPanel({ data, action, ui }) {
   const knowledge = data.knowledge || {};
   const [newRule, setNewRule] = useState({ name: "", description: "", level: "L2", action: "notify" });
+  const [guideOpen, setGuideOpen] = useState(true);
   const rules = knowledge.ruleProposals || [];
   const sourceMap = useMemo(() => Object.fromEntries((knowledge.sources || []).map((s) => [s.id, s.title])), [knowledge.sources]);
   const pending = rules.filter((r) => r.status !== "已批准" && r.status !== "已拒绝").length;
+  const approvedCount = rules.filter((r) => r.status === "已批准").length;
+  const activeSkills = (knowledge.tradingSkills || []).filter((s) => s.status === "active").length;
+  const clusters = useMemo(() => clusterRules(rules.filter((r) => r.status !== "已拒绝")), [rules]);
+  const dupExtra = clusters.reduce((n, g) => n + g.length - 1, 0);
+
   async function createRule(event) {
     event.preventDefault();
     await action("/api/knowledge/rules/proposals", newRule);
     setNewRule({ name: "", description: "", level: "L2", action: "notify" });
   }
+  async function mergeCluster(group) {
+    const [, ...rest] = group;
+    const removable = rest.filter((r) => r.status !== "已批准");
+    if (!removable.length) return ui.notify("该组其余为已批准规则，未删除");
+    if (!window.confirm(`保留「${group[0].name}」，删除本组其余 ${removable.length} 条疑似重复草案？`)) return;
+    for (const r of removable) await action(`/api/knowledge/rules/${r.id}`, {}, "DELETE");
+  }
   return (
     <div className="panelStack">
       <div className="ruleLibNote">
         <strong>规则库 = 从书里蒸馏出的「纪律/风控」约束</strong>
-        <small>每条都标注了来源书籍与依据。批准后写入风控引擎、并注入 AI 提示词；可预测方向的「策略」不在这里，而是走「策略假设」必须先回测。共 {rules.length} 条，{pending} 条待审批。</small>
+        <small>每条都标注了来源书籍与依据。批准后写入风控引擎、并注入 AI 提示词；可预测方向的「策略」不在这里，而是走「策略假设」必须先回测。共 {rules.length} 条 · {approvedCount} 已批准 · {pending} 待审批。</small>
         <div className="ruleLibActions">
-          <button className="secondaryButton" disabled={rules.length < 2} onClick={() => { if (window.confirm("按「类别+规则名+依据」规范化后合并重复草案（已批准的保留），确定去重？")) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> 一键去重</button>
+          <button className="secondaryButton" disabled={rules.length < 2} onClick={() => { if (window.confirm("用 AI 语义合并近义规则（无 AI 时退回按 类别+名称+依据 精确去重；已批准的保留），确定去重？")) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> 一键语义去重</button>
         </div>
       </div>
+
+      {/* 上手引导：回答"规则这么多会不会一直不交易"，并给择要批准的路径 */}
+      <div className="ruleGuide">
+        <button className="ruleGuideHead" onClick={() => setGuideOpen((v) => !v)}>
+          <AlertTriangle size={14} /> <b>规则很多、很多重复，会不会导致系统一直不交易？</b>
+          <ChevronDown size={14} className={guideOpen ? "flip" : ""} />
+        </button>
+        {guideOpen && (
+          <div className="ruleGuideBody">
+            <p><b>不会因为"条数多"就不交易。</b>风控纪律是<b>护栏</b>，只在触发条件满足时限制/暂停，不会凭空阻止开仓。系统迟迟不开仓，通常是因为：<b>没有已上岗的策略技能</b>（当前 {activeSkills} 个）、没有激活的授权委托、或当日风控预算已用尽——而不是规则太多。</p>
+            <div className="ruleGuideSteps">
+              <div className={dupExtra ? "on" : "done"}><b>① 先去重</b><span>{dupExtra ? `疑似可精简 ${dupExtra} 条` : "已较精简"}</span></div>
+              <div className={approvedCount ? "done" : "on"}><b>② 择要批准</b><span>{approvedCount ? `${approvedCount} 条已批` : "每类只批最关键 1-2 条"}</span></div>
+              <div className={activeSkills ? "done" : "on"}><b>③ 上岗策略</b><span>{activeSkills ? `${activeSkills} 个策略在岗` : "先让一个技能过验证上岗"}</span></div>
+            </div>
+            {!approvedCount && <p className="ruleGuideWarn">当前 0 条已批准。批准会写入风控引擎+AI 提示词，<b>不建议一次全批</b>——先去重，再从每个类别挑最关键的批准即可。</p>}
+          </div>
+        )}
+      </div>
+
+      {/* 疑似重复分组预览：去重前先让用户看清"哪些会被合并" */}
+      {clusters.length > 0 && (
+        <div className="ruleDupWrap">
+          <div className="ruleDupHead"><Layers size={14} /> 疑似重复 <b>{clusters.length}</b> 组 · 可精简 <b>{dupExtra}</b> 条<small>相似度≥50%，合并保留每组第一条</small></div>
+          {clusters.map((group, gi) => (
+            <div className="ruleDupGroup" key={gi}>
+              <div className="ruleDupItems">
+                {group.map((r, ri) => <span className={`ruleDupChip ${ri === 0 ? "keep" : ""}`} key={r.id} title={r.description || ""}>{ri === 0 ? "保留 · " : ""}{r.name}{r.status === "已批准" ? " ✓" : ""}</span>)}
+              </div>
+              <button className="secondaryButton sm" onClick={() => mergeCluster(group)}>合并此组</button>
+            </div>
+          ))}
+        </div>
+      )}
       {!rules.length && (
         <div className="emptyPanel emptyPanelAction">
           <strong>还没有规则草案</strong>
