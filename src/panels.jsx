@@ -1,46 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Trash2,
-  Activity,
   AlertTriangle,
-  BarChart3,
   Bell,
-  BookOpen,
   CheckCircle2,
   XCircle,
   BrainCircuit,
-  CalendarClock,
   ChevronDown,
-  ChevronRight,
-  ClipboardList,
-  Database,
-  Eye,
-  FileText,
-  Gauge,
-  GitBranch,
   Globe2,
-  Hourglass,
   KeyRound,
   Layers,
-  LineChart,
-  ListChecks,
   Lock,
   PlugZap,
-  Plus,
   RefreshCw,
-  Rocket,
   Search,
   Settings,
-  Shield,
-  Sparkles,
-  SquareActivity,
-  Target,
-  Timer,
-  TrendingUp,
   WalletCards,
   Zap
 } from "lucide-react";
-import { pageCopy, apiUrl, formatMoney, displayMoney, displayPct, pct, asArray, safeList, readFileAsDataUrl, formatDateTime, formatDate, formatTime, formatDuration, orderStatus, humanize, humanizeList, humanizePhase, shortId, statusTone, compactAction, systemStatus, exchangeState, useApi, PageHeader, Card, SectionTitle, MetricCard, MiniSparkline, CandleChart, LinePriceChart, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote } from "./lib.jsx";
+import { apiUrl, formatMoney, displayMoney, displayPct, asArray, readFileAsDataUrl, formatDateTime, humanize, statusTone, exchangeState, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
 
 export function ConfigPanel({ panel, data, action, ui }) {
   const titles = {

@@ -1,44 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Bell,
-  BookOpen,
-  BrainCircuit,
-  CalendarClock,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ClipboardList,
-  Database,
-  Eye,
-  FileText,
-  Gauge,
-  GitBranch,
-  Globe2,
-  Hourglass,
-  Info,
-  KeyRound,
-  Layers,
-  LineChart,
-  ListChecks,
-  Lock,
-  PlugZap,
-  Plus,
-  RefreshCw,
-  Rocket,
-  Search,
-  Settings,
-  Shield,
-  Sparkles,
-  SquareActivity,
-  Target,
-  Timer,
-  TrendingUp,
-  WalletCards,
-  Zap
-} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 
 export const pageCopy = {
   agent: { title: "AI 交易员驾驶舱", sub: "配置真实数据源、授权与风控边界后，Agent 才会生成可执行计划", search: "搜索市场、交易对、知识或功能" },
@@ -471,7 +431,7 @@ export function useApi() {
   }
 
   async function readOverview(base) {
-    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, isNativeApp() ? 12000 : 12000);
+    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, 12000);
     if (response.status === 401) {
       expireSession();
       return null;

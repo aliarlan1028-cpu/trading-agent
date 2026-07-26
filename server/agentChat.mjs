@@ -318,7 +318,7 @@ function quarantineInjectedKnowledge(db, chunks = []) {
   return safe;
 }
 
-export async function buildSystemPrompt(db, userText = "") {
+async function buildSystemPrompt(db, userText = "") {
   const sections = [BASE_RULES];
   const state = db.agentStateFiles || {};
 

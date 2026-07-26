@@ -10,16 +10,13 @@ import {
   ChevronRight,
   ClipboardList,
   Eye,
-  History,
   Hourglass,
   MessageSquare,
   Radar,
   RefreshCw,
   Rocket,
   Trash2,
-  KeyRound,
   ListChecks,
-  PlugZap,
   Plus,
   Shield,
   ShieldCheck,
@@ -29,7 +26,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("agent_token") || "";

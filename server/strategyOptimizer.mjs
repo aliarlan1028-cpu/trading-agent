@@ -65,7 +65,7 @@ function buildLiveStrategyWeights(db) {
   return weights;
 }
 
-export function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
+function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
   const liveMult = (c) => liveWeights[c.strategyId] ?? liveWeights[c.label] ?? 1;
   const n = candles.length;
   const barMinutes = BAR_MINUTES[timeframe] || 60;

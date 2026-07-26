@@ -310,7 +310,7 @@ function mergeInto(target, event) {
   target.action = buildAssessment(target);
 }
 
-export function consolidateEvents(db) {
+function consolidateEvents(db) {
   const kept = [];
   for (const event of db.events || []) {
     if (!event.topicTags || event.topicTags.length === 0) { kept.push(event); continue; }

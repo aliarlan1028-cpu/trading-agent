@@ -71,7 +71,7 @@ export function derivePositionShare(position = {}) {
   };
 }
 
-export function buildPositionPosterSvg(position = {}) {
+function buildPositionPosterSvg(position = {}) {
   const share = derivePositionShare(position);
   const isWin = Number(share.pnl || 0) >= 0;
   const sideFill = share.side === "SHORT" ? "#ff7a59" : "#19c37d";

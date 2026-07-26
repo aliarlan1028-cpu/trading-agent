@@ -66,7 +66,7 @@ export function realtimeStatus(db) {
   };
 }
 
-export function connectPublicMarket(db, saveDb, exchange = "BINANCE") {
+function connectPublicMarket(db, saveDb, exchange = "BINANCE") {
   const normalized = String(exchange).toUpperCase();
   const connection = ensureConnection(db, normalized, "public_market");
   if (runtime.sockets.has(connection.id)) return connection;
@@ -75,7 +75,7 @@ export function connectPublicMarket(db, saveDb, exchange = "BINANCE") {
   return connectBinancePublic(db, saveDb, connection);
 }
 
-export async function connectPrivateUser(db, saveDb, exchange = "BINANCE") {
+async function connectPrivateUser(db, saveDb, exchange = "BINANCE") {
   const normalized = String(exchange).toUpperCase();
   const connection = ensureConnection(db, normalized, "private_user");
   if (runtime.sockets.has(connection.id)) return connection;
@@ -187,18 +187,6 @@ function connectOkxPublic(db, saveDb, connection) {
     });
   });
   return connection;
-}
-
-export function preparePrivateStreams(db) {
-  const binance = ensureConnection(db, "BINANCE", "private_user");
-  binance.status = process.env.BINANCE_API_KEY ? "ready_requires_listen_key" : "missing_credentials";
-  binance.note = "Binance private user stream requires a user data stream session/listen key. REST read-only sync is active separately.";
-
-  const okx = ensureConnection(db, "OKX", "private_user");
-  okx.status = process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE ? "ready_for_login" : "missing_credentials";
-  okx.note = "OKX private stream login is prepared; account/orders/positions are still reconciled through signed REST until private WS is enabled.";
-  okx.loginPreview = okx.status === "ready_for_login" ? buildOkxLoginPreview() : null;
-  return { binance, okx };
 }
 
 function wireSocket(db, saveDb, connection, socket, onMessage) {

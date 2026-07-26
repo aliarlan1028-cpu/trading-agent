@@ -7,7 +7,7 @@ import { appendTrace, nowIso } from "./store.mjs";
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 
 // 全量 SWAP tickers → 按当日(UTC0)涨幅 + 成交额门槛筛异动币。一个请求，确定性。
-export async function scanMarketMovers(options = {}) {
+async function scanMarketMovers(options = {}) {
   const minChangePct = Number(options.minChangePct ?? 12);
   const minQuoteVol = Number(options.minQuoteVolUsdt ?? 3_000_000);
   const limit = Math.max(1, Math.min(20, Number(options.limit ?? 8)));
@@ -36,7 +36,7 @@ export async function scanMarketMovers(options = {}) {
 
 // Gemini + Google 搜索给某标的的异动做消息面归因（叙事/催化剂）。无 Gemini 则返回 null（不编）。
 // 只用 Gemini（联网搜索能力），其它 provider 无搜索工具时退回纯行情推演。
-export async function attributeMoverNarrative(mover) {
+async function attributeMoverNarrative(mover) {
   if (!process.env.GEMINI_API_KEY) return null;
   const prompt = `请查询并归因 ${mover.symbol}（OKX 永续）今天的异动。当前价 $${mover.last}，24h 涨跌 ${mover.changePct}%，成交额约 $${(mover.quoteVolUsdt / 1e6).toFixed(1)}M。\n用内置搜索查最新突发新闻/催化剂，只输出 JSON：{"narrative":"推动异动的核心叙事或催化剂(没查到就写'未见明确催化，疑似情绪/资金驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件","sentiment":0到100的情绪分,"risk":"主要风险一句话"}。中文，纯 JSON。`;
   try {

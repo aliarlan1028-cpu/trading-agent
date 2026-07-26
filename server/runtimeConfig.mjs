@@ -105,7 +105,7 @@ export function clearSecret(db, key) {
   return true;
 }
 
-export function activeLlmProvider() {
+function activeLlmProvider() {
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.OPENAI_API_KEY) return "openai";
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";

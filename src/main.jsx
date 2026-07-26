@@ -8,10 +8,8 @@ import {
   BrainCircuit,
   CalendarClock,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
-  MessageSquare,
   PieChart,
   RefreshCw,
   Search,
@@ -20,10 +18,9 @@ import {
   ShieldCheck,
   UserPlus,
   UserCog,
-  WalletCards,
   Zap
 } from "lucide-react";
-import { displayMoney, exchangeState, formatTime, humanize, PageHeader, statusTone, StatusBadge, ProgressBar, systemStatus, useApi } from "./lib.jsx";
+import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { isNativeApp } from "./lib.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
@@ -126,7 +123,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, active, setActive, notify, action }) {
+function AppTopbar({ data, setActive, notify, action }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const accounts = data.exchangeAccounts || [];
@@ -252,7 +249,6 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 function App() {
   const [active, setActive] = useState("chat");
   const [activeSettingsTab, setActiveSettingsTab] = useState("config");
-  const [cockpitTab, setCockpitTab] = useState("overview");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
@@ -275,7 +271,7 @@ function App() {
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, cockpitTab, data, action]);
+  }, [active, activeSettingsTab, data, action]);
 
   if (authRequired) return <LoginScreen login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
@@ -289,7 +285,7 @@ function App() {
     <div className="appShell">
       <Sidebar active={active} setActive={navigate} data={data} />
       <main className="mainArea">
-        <AppTopbar data={data} active={active} setActive={navigate} notify={notify} action={action} />
+        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
         <div className={active === "chat" ? "content contentChat" : "content"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>

@@ -69,7 +69,7 @@ export function refreshApiKeyMetadata(db) {
   return db.apiKeyMetadata;
 }
 
-export async function fetchPublicTicker(exchange, symbol) {
+async function fetchPublicTicker(exchange, symbol) {
   const normalizedExchange = String(exchange || "BINANCE").toUpperCase();
   const timer = timeoutSignal();
   try {
@@ -137,7 +137,7 @@ export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/U
 const BINANCE_INTERVALS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
 const OKX_BARS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
 
-export async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200) {
+async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200) {
   const normalizedExchange = String(exchange || "BINANCE").toUpperCase();
   const tf = BINANCE_INTERVALS[timeframe] ? timeframe : "1h";
   const timer = timeoutSignal(8000);

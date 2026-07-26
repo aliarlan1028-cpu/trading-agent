@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 const BARS_PER_DAY = { "1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1 };
-export const DEFAULT_PORTFOLIO_VOL_PCT = 3; // 组合日度波动预算（%）
+const DEFAULT_PORTFOLIO_VOL_PCT = 3; // 组合日度波动预算（%）
 
 function returnsOf(candles, n = 150) {
   const closes = (candles || []).slice(-n).map((c) => Number(c.close)).filter(Number.isFinite);
@@ -74,10 +74,6 @@ function budgetFraction(mandate) {
 }
 
 // 单资产波动率目标名义额度：让该仓位日度美元波动 = equity * volFraction。
-export function volTargetNotional(equity, sigma, volFraction) {
-  if (!equity || !sigma || sigma <= 0) return null;
-  return equity * volFraction / sigma;
-}
 
 // 相关性感知的组合上限：给定已有持仓，求新仓在不突破组合波动预算下的最大名义额度。
 export function portfolioCapNotional(db, plan, equity, mandate) {

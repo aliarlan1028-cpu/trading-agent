@@ -11,13 +11,13 @@ function todayStart() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 }
 
-export function realizedPnlSince(db, sinceMs) {
+function realizedPnlSince(db, sinceMs) {
   return (db.fills || [])
     .filter((fill) => fill.realizedPnl !== null && fill.realizedPnl !== undefined && new Date(fill.createdAt).getTime() >= sinceMs)
     .reduce((sum, fill) => sum + Number(fill.realizedPnl || 0), 0);
 }
 
-export function unrealizedPnl(db) {
+function unrealizedPnl(db) {
   let total = 0;
   for (const position of db.positions || []) {
     const market = db.markets?.find((item) => item.symbol === position.symbol);

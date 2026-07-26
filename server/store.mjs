@@ -76,7 +76,6 @@ const collectionNames = [
   "tradeIntents",
   "executionOrders",
   "exchangeOrders",
-  "positionMonitors",
   "reviewReports",
   "strategyExperiments",
   "eventImpacts",
@@ -451,7 +450,6 @@ function cleanSeedDatabase(createdAt) {
     tradeIntents: [],
     executionOrders: [],
     exchangeOrders: [],
-    positionMonitors: [],
     reviewReports: [],
     strategyExperiments: [],
     eventImpacts: [],
@@ -528,7 +526,7 @@ function latestAuditHash() {
 
 // 按校验所用的规范顺序（created_at asc, rowid asc）重新计算整条链的 prevHash 与 hash，
 // 使 verifyAuditChain 必然通过。仅在检测到旧版本未重链时运行一次。
-export function resealAuditChain(db) {
+function resealAuditChain(db) {
   ensureSqlite();
   const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by created_at asc, rowid asc").all();
   const update = sqlite.prepare("update audit_log_entries set doc = @doc, severity = @severity where rowid = @rid");
@@ -618,7 +616,6 @@ export function resetOperationalData(db, options = {}) {
   db.tradeIntents = [];
   db.executionOrders = [];
   db.exchangeOrders = [];
-  db.positionMonitors = [];
   db.reviewReports = [];
   db.strategyExperiments = [];
   db.eventImpacts = [];
@@ -1389,7 +1386,6 @@ export function normalizeDatabase(db) {
   db.tradeIntents ||= [];
   db.executionOrders ||= [];
   db.exchangeOrders ||= [];
-  db.positionMonitors ||= [];
   db.reviewReports ||= [];
   db.strategyExperiments ||= [];
   db.eventImpacts ||= [];

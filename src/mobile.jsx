@@ -6,7 +6,6 @@ import {
   Menu,
   PieChart,
   ShieldCheck,
-  X,
   BookOpen,
   CalendarClock,
   ChevronDown,
@@ -32,7 +31,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
+import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { AdminPage, ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -124,7 +123,6 @@ export function RailContent({ data, action, ui }) {
           <span>持仓/委托<b>{positions.length} / {orders.length}</b></span>
         </div>
       </div>
-
 
       {/* 4. 快捷操作 */}
       <div className="railBlock railActions">

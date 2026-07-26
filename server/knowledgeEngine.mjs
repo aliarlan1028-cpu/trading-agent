@@ -64,17 +64,3 @@ export function runExpertAnalysis(db, payload = {}) {
   return bundle;
 }
 
-export function importKnowledgeSource(db, payload = {}) {
-  const source = {
-    id: id("src"),
-    title: payload.title || "新导入资料",
-    type: payload.type || "手动笔记",
-    permission: payload.permission || "仅个人使用",
-    status: "待解析",
-    trustScore: Number(payload.trustScore || 70),
-    domain: payload.domain || "综合",
-    importedAt: nowIso()
-  };
-  db.knowledge.sources.unshift(source);
-  return source;
-}
