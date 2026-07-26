@@ -756,6 +756,8 @@ app.get("/api/overview", (_req, res) => {
     riskIncidents: db.riskIncidents,
     realtimeConnections: db.realtimeConnections,
     marketRegime: db.marketRegime || null,
+    marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
+    positionEscort: db.positionEscort || null,
     realtimeStarted: realtimeStatus(db).started,
     marketStream: marketStreamStatus(),
     pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
