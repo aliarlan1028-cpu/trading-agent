@@ -20,7 +20,8 @@
     "smoke:full": "SMOKE_ALLOW_MUTATIONS=true node scripts/smoke-test.mjs",
     "healthcheck": "node scripts/healthcheck.mjs",
     "backup": "node scripts/backup.mjs",
-    "docx": "python3 scripts/build-unified-docx.py"
+    "docx": "python3 scripts/build-unified-docx.py",
+    "lint": "eslint src server scripts tests"
   },
   "dependencies": {
     "@capacitor-community/safe-area": "^8.0.1",
@@ -53,5 +54,9 @@
     "undici": "^8.5.0",
     "vite": "^6.0.6",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5"
   }
 }

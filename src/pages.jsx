@@ -1589,7 +1589,7 @@ export function ReviewPage({ data, action, ui, embedded = false }) {
   }));
   return (
     <div className="pageStack">
-      {!embedded && <PageHeader active="review" />}
+      {!embedded && <TermHead title="复盘与优化" code="REVIEW · OPTIMIZE" sub="收益质量拆解、回测与策略研究，让每笔交易都长出经验" />}
       <div className="metricGrid five">
         <MetricCard icon={BarChart3} label="累计盈亏" value={displayMoney(performance.totalPnlUsdt)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(performance.totalPnlUsdt || 0) >= 0 ? "positive" : "warning"} />
         <MetricCard icon={Target} label="胜率" value={performance.trades ? `${performance.winRatePct}%` : "暂无数据"} sub="按已平仓交易统计" />

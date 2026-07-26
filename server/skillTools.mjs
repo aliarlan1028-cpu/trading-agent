@@ -126,7 +126,7 @@ export const SKILL_TOOLS = [
     schema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, description: "交易对列表，留空用授权白名单/主流币" }, days: { type: "number", description: "回看天数，默认 14" } } },
     async handler(db, args) {
       const days = Math.max(5, Math.min(60, Number(args.days) || 14));
-      const symbols = (args.symbols?.length ? args.symbols : allowedSymbols(db)).map((s) => String(s).toUpperCase()).filter((s) => !/BTC/.test(s)).slice(0, 8);
+      const symbols = mandateSymbols(db, args.symbols).filter((s) => !/BTC/.test(s)).slice(0, 8);
       let btc;
       try { btc = await getHistoricalKlines("BTC/USDT", "1d", days + 2); } catch (e) { return { error: `BTC K线失败：${e.message}` }; }
       if (!btc || btc.length < days) return { error: "BTC K线不足" };
