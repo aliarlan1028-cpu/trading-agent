@@ -1,5 +1,10 @@
 // 一次性：清空知识库派生项，用新管道（交易方法+风控纪律+概念关系）重蒸馏所有来源。
 // 保留 sources 本身；未批准的规则/方法/概念/假设全清。须在主服务停机时运行（独占 sqlite）。
+// 破坏性/停机脚本守卫：必须显式 CONFIRM_REBUILD_KNOWLEDGE=true 才执行（对齐 migrate-tenant-resources 的防呆基线）。
+if (process.env.CONFIRM_REBUILD_KNOWLEDGE !== "true") {
+  console.error("此脚本会写入/清理生产数据且须停机运行。确认后用 CONFIRM_REBUILD_KNOWLEDGE=true node scripts/rebuildKnowledge.mjs 执行。");
+  process.exit(1);
+}
 import { loadDb, saveDb } from "../server/store.mjs";
 import { applyStoredConfigToEnv } from "../server/runtimeConfig.mjs";
 import { parseKnowledgeSource } from "../server/knowledgePipeline.mjs";

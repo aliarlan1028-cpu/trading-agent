@@ -60,7 +60,7 @@ const readonlySync = await request(`/api/exchange/${overview.exchangeAccounts[0]
 const realtimeStatus = await request("/api/realtime/status");
 const realtimeStart = await request("/api/realtime/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 const reconciler = await request("/api/reconciler/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "smoke" }) });
-const llmRun = await request("/api/llm-agent/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "AI 交易员", goal: "smoke LLM agent", maxSteps: 2 }) });
+const agentChat = await request("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "smoke: 只读检查当前账户与市场状态" }) });
 const rag = await request("/api/knowledge/rag-query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: "CPI 前 BTC 是否适合开多", topK: 2 }) });
 const tradePayload = { exchange: "BINANCE", marketType: "perpetual_usdt", symbol: "BTC/USDT", side: "BUY", type: "LIMIT", quantity: 0.0001, price: 10000, stopLoss: 9000, manualApproval: true };
 const tradeWrite = await request("/api/trade-actions/place_order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(tradePayload) });
@@ -122,7 +122,7 @@ console.log(JSON.stringify({
   realtimeConnections: realtimeStatus.connections.length,
   realtimeStartSocketCount: realtimeStart.socketCount,
   reconcilerStatus: reconciler.status,
-  llmRunStatus: llmRun.status,
+  agentChatStatus: agentChat.run?.status || agentChat.status,
   ragRefs: rag.retrievedRefs?.length || 0,
   tradeWriteStatus: tradeWrite.status,
   tradeCancelStatus: tradeCancel.status,

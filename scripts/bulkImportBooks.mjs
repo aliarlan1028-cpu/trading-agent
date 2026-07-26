@@ -1,6 +1,11 @@
 // 一次性：把用户提供的经典交易/金融书目按书名批量导入知识库。
 // 走真实管道（importKnowledge + parseKnowledgeSource → DeepSeek 生成自有措辞方法论综述 + A/B 蒸馏）。
 // 必须在主服务停机时运行（独占 sqlite，避免与运行中进程争锁/被内存态覆盖）。
+// 破坏性/停机脚本守卫：必须显式 CONFIRM_BULK_IMPORT_BOOKS=true 才执行（对齐 migrate-tenant-resources 的防呆基线）。
+if (process.env.CONFIRM_BULK_IMPORT_BOOKS !== "true") {
+  console.error("此脚本会写入/清理生产数据且须停机运行。确认后用 CONFIRM_BULK_IMPORT_BOOKS=true node scripts/bulkImportBooks.mjs 执行。");
+  process.exit(1);
+}
 import { loadDb, saveDb } from "../server/store.mjs";
 import { importKnowledge, parseKnowledgeSource } from "../server/knowledgePipeline.mjs";
 import { applyStoredConfigToEnv } from "../server/runtimeConfig.mjs";

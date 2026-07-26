@@ -1,5 +1,10 @@
 // 一次性：裁剪长期累积、拖垮 saveDb 的日志型集合（accountSnapshots 67MB / jobRuns / jobLocks 等）。
 // 保留最近 N 条（按时间戳），jobLocks 按锁标识去重只留最新。须在主服务停机时运行。
+// 破坏性/停机脚本守卫：必须显式 CONFIRM_PRUNE_COLLECTIONS=true 才执行（对齐 migrate-tenant-resources 的防呆基线）。
+if (process.env.CONFIRM_PRUNE_COLLECTIONS !== "true") {
+  console.error("此脚本会写入/清理生产数据且须停机运行。确认后用 CONFIRM_PRUNE_COLLECTIONS=true node scripts/pruneCollections.mjs 执行。");
+  process.exit(1);
+}
 import { loadDb, saveDb } from "../server/store.mjs";
 
 const db = loadDb();

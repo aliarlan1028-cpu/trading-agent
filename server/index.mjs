@@ -41,7 +41,6 @@ import {
   syncKnowledgeSkillLifecycle,
   validateKnowledgeSkill
 } from "./knowledgeSkills.mjs";
-import { runLlmAgent } from "./llmAgent.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
@@ -1211,8 +1210,6 @@ app.post("/api/tasks/:id/run", requirePermission("write:task"), async (req, res)
   res.json(result);
 });
 
-app.post("/api/knowledge/import", requirePermission("write:knowledge"), handleKnowledgeImport);
-
 app.post("/api/knowledge/import-real", requirePermission("write:knowledge"), handleKnowledgeImport);
 
 app.post("/api/knowledge/github-import", requirePermission("write:knowledge"), async (req, res) => {
@@ -1222,20 +1219,6 @@ app.post("/api/knowledge/github-import", requirePermission("write:knowledge"), a
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
-
-app.post("/api/knowledge/sources/:id/parse", requirePermission("write:knowledge"), (req, res) => {
-  const source = db.knowledge.sources.find((item) => item.id === req.params.id);
-  if (!source) return res.status(404).json({ error: "Knowledge source not found" });
-  source.status = "已解析";
-  source.parsedAt = nowIso();
-  const node = { id: id("node"), sourceId: source.id, parentId: null, nodeType: "document", title: source.title, orderIndex: 1, pageRange: "N/A" };
-  const chunk = { id: id("chunk"), sourceId: source.id, nodeId: node.id, citationLocator: "导入文本", qualityScore: source.trustScore || 70, text: req.body.text || `${source.title} 的结构化摘要。` };
-  db.knowledge.documentNodes.unshift(node);
-  db.knowledge.chunks.unshift(chunk);
-  appendAudit(db, "解析知识来源", source.id, "Parser");
-  appendTrace(db, "knowledge_parse", `解析 ${source.title}`);
-  persist(res, { source, node, chunk });
 });
 
 app.post("/api/knowledge/sources/:id/parse-real", requirePermission("write:knowledge"), async (req, res) => {
@@ -1717,15 +1700,6 @@ app.post("/api/agent/runs/:id/stop", requirePermission("write:mandate"), (req, r
 app.post("/api/agent-runs", requirePermission("write:mandate"), async (req, res) => {
   try {
     const run = await runAgentCycle(db, req.body, saveDb);
-    persist(res, run);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/llm-agent/run", requirePermission("write:mandate"), async (req, res) => {
-  try {
-    const run = await runLlmAgent(db, req.body, saveDb);
     persist(res, run);
   } catch (error) {
     res.status(500).json({ error: error.message });
