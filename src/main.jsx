@@ -378,8 +378,13 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
       <main className="landingHero split">
         <section className="landingMarketing">
           <span className="landingEyebrow">AI 交易员 · 知识驱动</span>
-          <h2 className="landingTitle">把你的交易书，<br />变成一个守纪律的 AI 交易员</h2>
+          <h2 className="landingTitle">把你的交易书，<br />变成一个<span className="landingHl">守纪律</span>的 AI 交易员</h2>
           <p className="landingSub">导入你信任的交易书籍与文章，系统蒸馏出可执行的方法与风控纪律。每个策略都必须先通过历史回测与模拟盘验证、并经你亲自授权，才可能进入实盘执行——全程可复盘、可追溯。</p>
+          <div className="landingStats">
+            {[["40/30/30", "三窗历史回测"], ["纯前向", "模拟盘验证"], ["每一笔", "下单前重跑风控"], ["0", "提币权限"]].map(([n, l]) => (
+              <div className="landingStat" key={l}><b>{n}</b><span>{l}</span></div>
+            ))}
+          </div>
           <div className="landingFlow">
             {flow.map(([label, Icon], i) => (
               <React.Fragment key={label}>

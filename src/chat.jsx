@@ -405,6 +405,18 @@ function AgentRail({ data, action, ui, send }) {
   const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status)) || {};
   const hasMandate = Boolean(mandate.id);
   const plan = (data.tradePlans || []).find((p) => ["awaiting_approval", "approved", "executing"].includes(p.status));
+  // 盈亏比可由固定的入场/止损/止盈直接算出，不该恒显"—"（计划价位是下单前定死的目标，本就不随行情变动）。
+  const planRR = (() => {
+    if (plan?.riskReward) return plan.riskReward;
+    const er = plan?.entry_range || (plan?.entry?.range ? null : null);
+    const entry = Array.isArray(er) && er.length ? (Number(er[0]) + Number(er[er.length - 1])) / 2 : Number(plan?.entry?.mid ?? plan?.entryPrice ?? NaN);
+    const stop = Number(plan?.stopLoss ?? plan?.stop_loss ?? NaN);
+    const tps = plan?.takeProfit || plan?.take_profit || [];
+    const tp = Number(Array.isArray(tps) ? tps[0] : tps);
+    if (![entry, stop, tp].every(Number.isFinite) || entry === stop) return null;
+    const rr = Math.abs(tp - entry) / Math.abs(entry - stop);
+    return Number.isFinite(rr) && rr > 0 ? rr.toFixed(2) : null;
+  })();
   const positions = data.positions || [];
   const gm = data.marketRegime?.global || {};
   const sm = data.marketRegime?.smartMoney || {};
@@ -487,7 +499,7 @@ function AgentRail({ data, action, ui, send }) {
             <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>
             <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayPrice(t)).join(" / ") : "—"}</b></div>
             <div><div className="agPlanK">仓位·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
-            <div><div className="agPlanK">盈亏比</div><b className="mono">{plan?.riskReward ? `1 : ${plan.riskReward}` : "—"}</b></div>
+            <div><div className="agPlanK">盈亏比</div><b className="mono">{planRR ? `1 : ${planRR}` : "—"}</b></div>
             <div><div className="agPlanK">置信度</div><b className="mono">{plan?.confidence ? `${plan.confidence}%` : "—"}</b></div>
           </div>
         </div>

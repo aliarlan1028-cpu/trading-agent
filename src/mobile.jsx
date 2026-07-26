@@ -26,7 +26,11 @@ import {
   SlidersHorizontal,
   UserCog,
   WalletCards,
-  Zap
+  Zap,
+  CheckCircle2,
+  Rocket,
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import { displayMoney, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, CandleChart, TradingViewChart, LiveCandleChart, LivePrice, ProgressBar, StatusBadge, statusTone, SymbolChips, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
@@ -671,53 +675,193 @@ function MobileRisk({ data, action, ui }) {
   );
 }
 
+const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则"];
+const MSKILL = {
+  compile_failed: { label: "编译失败", tone: "danger" },
+  compiled: { label: "待历史验证", tone: "warning", next: { action: "validate", label: "历史验证" } },
+  historical_rejected: { label: "历史未通过", tone: "danger", next: { action: "validate", label: "重跑" } },
+  historical_validated: { label: "待模拟", tone: "warning", next: { action: "paper", label: "开始模拟" } },
+  paper_validating: { label: "模拟中", tone: "info" },
+  paper_rejected: { label: "模拟未通过", tone: "danger" },
+  paper_validated: { label: "待批准", tone: "warning", next: { action: "approve", label: "批准启用" } },
+  active: { label: "已上岗", tone: "ok" },
+  degraded: { label: "已降级", tone: "danger" },
+  superseded: { label: "已被替代", tone: "neutral" },
+  retired: { label: "已退役", tone: "neutral" }
+};
+const MSKILL_HELP = [
+  ["待历史验证", "warning", "已编译成可执行规则，等你点「历史验证」跑三窗回测。"],
+  ["待模拟 / 模拟中", "warning", "历史通过后进入纯前向模拟盘，用之后的真实行情逐笔积累样本。"],
+  ["待批准", "warning", "模拟也达标了，等你人工批准——只有你批准的技能才进实盘。"],
+  ["已上岗", "ok", "已批准，正在参与实盘计划生成。"],
+  ["编译失败", "danger", "方法缺明确入场/止损/止盈或周期不受支持，补全后可重编译。"],
+  ["历史/模拟未通过", "danger", "验证未达门槛，不能上岗。"],
+  ["已降级", "danger", "上岗后实盘变差被自动停用，需重新验证。"],
+  ["已被替代 / 已退役", "neutral", "旧版本被更新版取代，或已退役，仅供追溯。"]
+];
+
 function MobileKnowledge({ data, action, ui }) {
+  const [seg, setSeg] = useState("上手");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [legendOpen, setLegendOpen] = useState(false);
   const knowledge = data.knowledge || {};
   const sources = knowledge.sources || [];
+  const methods = knowledge.tradingMethods || [];
+  const skills = knowledge.tradingSkills || [];
+  const rules = knowledge.ruleProposals || [];
+  const compiledIds = new Set(skills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
+  const active = skills.filter((s) => s.status === "active").length;
+  const inPipe = skills.filter((s) => !["retired", "superseded", "compile_failed", "active"].includes(s.status)).length;
+  // 当前该做哪一步：没知识源→喂料；有草案没进流水线→编译验证；进了流水线没上岗→批准；已上岗→完成。
+  const step = sources.length === 0 ? 1 : (active === 0 && inPipe === 0) ? 2 : active === 0 ? 3 : 4;
+  const guide = [
+    { n: 1, Icon: BookOpen, title: "喂知识", desc: "导入交易书籍或文章，自动蒸馏出方法与风控纪律。", cta: "导入知识源", on: () => ui.openPanel("knowledgeImport") },
+    { n: 2, Icon: Rocket, title: "编译 + 验证", desc: "把方法编译成技能，跑历史回测 + 纯前向模拟盘。", cta: "去方法", on: () => setSeg("方法") },
+    { n: 3, Icon: ShieldCheck, title: "人工批准上岗", desc: "只有你亲自批准的技能才进入实盘决策。", cta: "去技能", on: () => setSeg("技能") }
+  ];
+
   async function search() {
     if (!query.trim()) return;
     const result = await action("/api/knowledge/rag-query", { query: query.trim(), topK: 5 });
     setHits(result.hits || result.results || result.chunks || []);
   }
+
   return (
     <div className="mSubPage">
-      <div className="mPageStats">
-        <div><span>知识来源</span><strong>{sources.length}</strong></div>
-        <div><span>概念卡</span><strong>{knowledge.conceptCards?.length || 0}</strong></div>
-        <div><span>专家规则</span><strong>{knowledge.ruleProposals?.length || 0}</strong></div>
+      <div className="mChips">
+        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}</button>)}
       </div>
 
-      <div className="mSearchBar">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="检索知识库，如：CPI 前如何控仓" onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
-        <button onClick={search} aria-label="检索"><Search size={16} /></button>
-      </div>
-      {hits !== null && (
+      {seg === "上手" && (
+        <>
+          <div className="mKGuide">
+            <div className="mKGuideTitle"><Sparkles size={14} /> 知识库怎么用？三步让 AI 交易员变强</div>
+            {guide.map((s) => {
+              const state = s.n < step ? "done" : s.n === step ? "active" : "todo";
+              const Icon = state === "done" ? CheckCircle2 : s.Icon;
+              return (
+                <div className={`mKStep ${state}`} key={s.n}>
+                  <span className="mKStepIcon"><Icon size={16} /></span>
+                  <div className="mKStepBody">
+                    <b>{s.title}{state === "active" && <em> · 现在做这步</em>}{state === "done" && <em className="ok"> · 已完成</em>}</b>
+                    <p>{s.desc}</p>
+                    <button className={state === "active" ? "mMiniPrimary" : "mMiniGhost"} onClick={s.on}>{s.cta} ›</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mPageStats">
+            <div><span>知识源</span><strong>{sources.length}</strong></div>
+            <div><span>交易方法</span><strong>{methods.length}</strong></div>
+            <div><span>已上岗技能</span><strong>{active}</strong></div>
+          </div>
+
+          <div className="mSearchBar">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="检索知识库，如：CPI 前如何控仓" onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
+            <button onClick={search} aria-label="检索"><Search size={16} /></button>
+          </div>
+          {hits !== null && (
+            <div className="mSectionCard">
+              <header><span>检索结果（{hits.length}）</span></header>
+              {!hits.length && <p className="mInboxEmpty">没有命中的知识片段。</p>}
+              {hits.slice(0, 5).map((hit, index) => <p className="mLeadLine" key={index}>{String(hit.text || hit.content || hit.chunk || "").slice(0, 120)}</p>)}
+            </div>
+          )}
+
+          <div className="mSectionCard">
+            <header><span>知识源（{sources.length}）</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>全部 <ChevronRight size={12} /></button></header>
+            {!sources.length && <p className="mInboxEmpty">还没有导入知识。点下方「导入知识」开始。</p>}
+            {sources.slice(0, 8).map((source) => (
+              <div className="mRowItem" key={source.id || source.title}>
+                <b>{source.title || source.name || "未命名"}</b>
+                <StatusBadge tone={statusTone(source.status)}>{humanize(source.status, "已导入")}</StatusBadge>
+              </div>
+            ))}
+          </div>
+          <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> 导入知识</button>
+        </>
+      )}
+
+      {seg === "方法" && (
         <div className="mSectionCard">
-          <header><span>检索结果（{hits.length}）</span></header>
-          {!hits.length && <p className="mInboxEmpty">没有命中的知识片段。</p>}
-          {hits.slice(0, 5).map((hit, index) => (
-            <p className="mLeadLine" key={index}>{String(hit.text || hit.content || hit.chunk || "").slice(0, 120)}</p>
-          ))}
+          <header><span>交易方法草案（{methods.length}）</span><small>需走验证才上岗</small></header>
+          {!methods.length && <p className="mInboxEmpty">导入书籍后自动蒸馏交易方法草案。</p>}
+          {methods.map((m) => {
+            const compiled = compiledIds.has(m.id);
+            const open = openId === m.id;
+            return (
+              <div className={`mKRow ${open ? "open" : ""}`} key={m.id}>
+                <button className="mKRowHead" onClick={() => setOpenId(open ? null : m.id)}>
+                  <span className={`mDir ${m.direction}`}>{m.direction === "short" ? "空" : m.direction === "long" ? "多" : "多空"}</span>
+                  <b>{m.name}</b>
+                  <StatusBadge tone={compiled ? "ok" : "neutral"}>{compiled ? "已编译" : "草案"}</StatusBadge>
+                </button>
+                {open && (
+                  <div className="mKRowBody">
+                    <p><i>进场</i>{m.entry || "-"}</p>
+                    <p><i>止损</i>{m.stop || "-"}</p>
+                    <p><i>止盈</i>{m.takeProfit || "-"}</p>
+                    {m.source?.title && <p className="mKSrc">《{m.source.title}》</p>}
+                    {!compiled && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>编译为技能草案 ›</button>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="mSectionCard">
-        <header>
-          <span>知识来源</span>
-          <button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>全部 <ChevronRight size={12} /></button>
-        </header>
-        {!sources.length && <p className="mInboxEmpty">还没有导入知识。</p>}
-        {sources.slice(0, 8).map((source) => (
-          <div className="mRowItem" key={source.id || source.title}>
-            <b>{source.title || source.name || "未命名"}</b>
-            <StatusBadge tone={statusTone(source.status)}>{humanize(source.status, "已导入")}</StatusBadge>
+      {seg === "技能" && (
+        <div className="mSectionCard">
+          <header><span>技能流水线（{skills.length}）</span><button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>同步</button></header>
+          <div className="mKLegend">
+            <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> 这些状态是什么意思？<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
+            {legendOpen && MSKILL_HELP.map(([label, tone, desc]) => (
+              <div className="mKLegendRow" key={label}><StatusBadge tone={tone}>{label}</StatusBadge><span>{desc}</span></div>
+            ))}
           </div>
-        ))}
-      </div>
+          {!skills.length && <p className="mInboxEmpty">还没有技能。到「方法」把方法编译成技能草案后在此推进验证。</p>}
+          {skills.map((skill) => {
+            const st = MSKILL[skill.status] || { label: skill.status, tone: "neutral" };
+            const open = openId === skill.id;
+            return (
+              <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
+                <button className="mKRowHead" onClick={() => setOpenId(open ? null : skill.id)}>
+                  <b>{skill.name} <span className="mono">v{skill.version}</span></b>
+                  {skill.spec?.lowTrust && <StatusBadge tone="warning">低信任</StatusBadge>}
+                  <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
+                </button>
+                {open && (
+                  <div className="mKRowBody">
+                    <p className="mKSrc">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}{skill.sourceTitle ? ` · 《${skill.sourceTitle}》` : ""}</p>
+                    {skill.compileErrors?.length > 0 && <p className="mKErr">不能执行：{skill.compileErrors.join("；")}</p>}
+                    {skill.liveMetrics && <p><i>实盘</i>{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}%</p>}
+                    {st.next && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {})}>{st.next.label} ›</button>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> 导入知识</button>
+      {seg === "规则" && (
+        <div className="mSectionCard">
+          <header><span>风控纪律（{rules.length}）</span><button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>管理/去重 <ChevronRight size={12} /></button></header>
+          {!rules.length && <p className="mInboxEmpty">导入资料后自动抽取风控纪律。</p>}
+          {rules.slice(0, 20).map((r) => (
+            <div className="mRowItem" key={r.id}>
+              <b>{r.name}</b>
+              <StatusBadge tone={r.status === "已批准" ? "ok" : "warning"}>{humanize(r.status, "待审批")}</StatusBadge>
+            </div>
+          ))}
+          {rules.length > 0 && <button className="mPrimaryAction" onClick={() => ui.openPanel("ruleLibrary")}>去规则库批准 / 去重 ›</button>}
+        </div>
+      )}
     </div>
   );
 }

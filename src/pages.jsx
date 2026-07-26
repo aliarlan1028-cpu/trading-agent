@@ -791,6 +791,18 @@ const SKILL_STATE = {
   superseded: { label: "已被替代", tone: "muted", stage: null },
   retired: { label: "已退役", tone: "muted", stage: null }
 };
+// 每个技能状态到底是什么意思、下一步该做什么——给用户一份看得懂的图例。
+const SKILL_STATE_HELP = [
+  ["待历史验证", "warn", "已编译成可执行的入场/止损/止盈规则，等你点「历史验证」跑 40/30/30 三窗回测。"],
+  ["历史未通过", "neg", "历史回测没达到门槛（盈亏因子 / 样本外表现），不能上岗；可修方法后重跑。"],
+  ["待模拟 / 模拟中", "warn", "历史通过后进入「纯前向模拟盘」，用之后的真实行情逐笔积累样本，不回看历史。"],
+  ["待批准", "warn", "模拟盘也达标了，等你人工批准——只有你亲自批准的技能才会进入实盘决策。"],
+  ["已上岗", "ok", "已批准，正在参与实盘计划生成。"],
+  ["已降级", "neg", "上岗后实盘表现持续变差，被自动降级停用，需重新验证才能回归。"],
+  ["编译失败", "neg", "方法无法安全映射到白名单策略模板（缺明确入场/止损/止盈，或周期、方向不受支持）；补全方法草案后可重编译。"],
+  ["已被替代", "muted", "同一来源方法有了更新版本，此旧版本被取代（保留供追溯）。"],
+  ["已退役", "muted", "已手动或自动退役，不再参与决策。"]
+];
 const FUNNEL = [
   { key: "draft", label: "方法草案", tab: "methods" },
   { key: "compiled", label: "已编译", tab: "skills" },
@@ -798,6 +810,29 @@ const FUNNEL = [
   { key: "papering", label: "模拟中", tab: "skills" },
   { key: "active", label: "已上岗", tab: "skills" }
 ];
+
+function SkillStateLegend() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="kLegend">
+      <button className="kLegendHead" onClick={() => setOpen((v) => !v)}>
+        <HelpBadge /> 这些状态是什么意思？
+        <ChevronDown size={13} className={open ? "flip" : ""} />
+      </button>
+      {open && (
+        <div className="kLegendBody">
+          {SKILL_STATE_HELP.map(([label, tone, desc]) => (
+            <div className="kLegendRow" key={label}>
+              <span className={`evBadge ${tone === "ok" ? "ok" : tone === "neg" ? "neg" : tone === "warn" ? "warn" : ""}`}>{label}</span>
+              <span className="kLegendDesc">{desc}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function HelpBadge() { return <span className="kHelpDot">?</span>; }
 
 function KnowledgeOnboarding({ funnelCounts, sourceCount, ui, action, goMethods, goSkills }) {
   const KEY = "knowGuideCollapsed";
@@ -964,6 +999,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       {tab === "skills" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div>
+          <SkillStateLegend />
           {!tradingSkills.length && <div className="emptyPanel">还没有技能。到「方法草案」把方法编译成技能草案后在此推进验证</div>}
           <div className="kRowList">
             {tradingSkills.filter((s) => matchSrc(s.sourceTitle)).map((skill) => {
@@ -1396,7 +1432,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         <div className="termCard">
           <div className="balLabel">API 与账户安全</div>
           {exAccounts.map((a) => <div className="secRow" key={a.id}><span>{a.exchange}</span><span className="secRowR"><b className={`evBadge ${a.readEnabled ? "ok" : "warn"}`}>{a.readEnabled ? "已连接" : "未配置"}</b></span></div>)}
-          <div className="secRow"><span>邮件通知</span><b className={`evBadge ${data.integrations?.alerts?.hasWebhook ? "ok" : "warn"}`}>{data.integrations?.alerts?.hasWebhook ? "已启用" : "未配置"}</b></div>
+          <div className="secRow"><span>Lark 通知</span><b className={`evBadge ${data.larkConfigured ? "ok" : "warn"}`}>{data.larkConfigured ? "已启用" : "未配置"}</b></div>
         </div>
         <div className="termCard">
           <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>IP 白名单</span><button className="agLink" onClick={() => ui.openPanel("ip")}>管理</button></div>

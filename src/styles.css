@@ -767,9 +767,23 @@ h3 {
   width: min(1120px, calc(100% - 40px));
   grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
   gap: 48px;
-  align-items: center;
-  padding: 5vh 0 40px;
+  /* 顶端对齐（不是 center）：登录↔订阅切换时右侧面板高度变化，不再牵动左栏上下跳动 */
+  align-items: start;
+  padding: 6vh 0 40px;
 }
+.landingHl {
+  background: linear-gradient(120deg, #e68a4e, #d06a22);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #d06a22;
+}
+.landingStats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  border-top: 1px solid #ece3d4; border-bottom: 1px solid #ece3d4; padding: 14px 0;
+}
+.landingStat { display: grid; gap: 3px; }
+.landingStat b { font-size: 20px; color: #211d17; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
+.landingStat span { font-size: 11px; color: #8a8172; }
+@media (max-width: 560px) { .landingStats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .landingMarketing { display: grid; gap: 20px; align-content: start; }
 .landingTitle {
   font-size: clamp(27px, 3.4vw, 39px);
@@ -7736,6 +7750,43 @@ button.danger:disabled,
   color: #6b6455;
 }
 
+/* —— 移动端知识页：上手引导 + 流水线 + 状态图例 —— */
+.mKGuide { border: 1px solid #e6ddcd; border-radius: 12px; background: var(--surface-white); padding: 12px; margin-bottom: 12px; display: grid; gap: 10px; }
+.mKGuideTitle { display: flex; align-items: center; gap: 6px; font: 700 12.5px "Space Grotesk"; color: #1e1b16; }
+.mKGuideTitle svg { color: var(--accent); }
+.mKStep { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--hairline); border-radius: 10px; padding: 10px; background: #fbf7ef; }
+.mKStep.active { border-color: var(--accent); background: #fcf3e8; }
+.mKStep.done { opacity: .68; }
+.mKStepIcon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; background: #efe6d6; color: #7a6f5c; }
+.mKStep.active .mKStepIcon { background: var(--accent); color: #fff; }
+.mKStep.done .mKStepIcon { background: var(--pos-weak); color: var(--pos); }
+.mKStepBody { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.mKStepBody b { font-size: 13px; color: #1e1b16; }
+.mKStepBody b em { font-style: normal; font-size: 10.5px; color: var(--accent); font-weight: 700; }
+.mKStepBody b em.ok { color: var(--pos); }
+.mKStepBody p { font-size: 11.5px; line-height: 1.5; color: #6b6252; }
+.mMiniPrimary { justify-self: start; border: 0; border-radius: 8px; background: var(--dark); color: var(--dark-ink); font: 700 11.5px "Space Grotesk"; padding: 7px 12px; cursor: pointer; }
+.mMiniGhost { justify-self: start; border: 1px solid var(--border-strong); border-radius: 8px; background: none; color: #4a4234; font: 600 11.5px "Space Grotesk"; padding: 7px 12px; cursor: pointer; }
+.mKRow { border-bottom: 1px solid #f0ebe2; }
+.mKRow:last-child { border-bottom: 0; }
+.mKRowHead { width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 0; border: 0; background: none; text-align: left; }
+.mKRowHead b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 650; color: #33302a; }
+.mKRowHead b .mono { font-size: 10.5px; color: #8a8171; font-weight: 500; }
+.mDir { flex: none; width: 22px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; background: var(--surface-2); color: #6b6252; }
+.mDir.long { background: var(--pos-weak); color: var(--pos); }
+.mDir.short { background: var(--neg-weak); color: var(--neg); }
+.mKRowBody { padding: 2px 0 12px; display: grid; gap: 5px; }
+.mKRowBody p { font-size: 11.5px; line-height: 1.5; color: #4a4234; display: flex; gap: 6px; }
+.mKRowBody p i { flex: none; width: 34px; font-style: normal; color: #8a8171; }
+.mKSrc { color: #8a8171 !important; }
+.mKErr { color: var(--neg) !important; }
+.mKLegend { border: 1px solid var(--hairline); border-radius: 9px; background: #fbf7ef; margin-bottom: 10px; overflow: hidden; }
+.mKLegendHead { width: 100%; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; background: none; font: 600 11.5px "Space Grotesk"; color: #4a4234; }
+.mKLegendHead .flip { transform: rotate(180deg); }
+.mKLegendHead svg:last-child { margin-left: auto; }
+.mKLegendRow { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 5px 10px; }
+.mKLegendRow > span { font-size: 11px; line-height: 1.5; color: #6b6252; }
+
 .mRuleRow {
   display: flex;
   align-items: center;
@@ -9524,6 +9575,17 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kGuideDone:hover { color: #1E1B16; border-color: #d9cdb8; }
 .kGuideDone svg { color: var(--pos); }
 @media (max-width: 720px) { .kGuideSteps { grid-template-columns: 1fr; } }
+
+/* 技能状态图例 */
+.kLegend { border: 1px solid var(--hairline); border-radius: 9px; background: #FBF7EF; margin-bottom: 10px; overflow: hidden; }
+.kLegendHead { width: 100%; display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: none; border: 0; cursor: pointer; font: 600 12px "Space Grotesk"; color: #4a4234; }
+.kLegendHead .flip { transform: rotate(180deg); }
+.kLegendHead svg { margin-left: auto; }
+.kHelpDot { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: #fff; font: 700 10px "Space Grotesk"; display: grid; place-items: center; flex: none; }
+.kLegendBody { padding: 2px 12px 11px; display: grid; gap: 7px; }
+.kLegendRow { display: grid; grid-template-columns: 82px 1fr; gap: 9px; align-items: start; }
+.kLegendRow .evBadge { justify-self: start; }
+.kLegendDesc { font-size: 11.5px; line-height: 1.55; color: #6b6252; }
 .kTabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .kTabs button { padding: 6px 12px; border-radius: 8px; border: 1px solid transparent; background: none; font: 600 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
 .kTabs button.on { background: #1E1B16; color: #fff; }
