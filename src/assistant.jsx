@@ -1,11 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, Gauge, RefreshCw } from "lucide-react";
-import { apiUrl, displayMoney } from "./lib.jsx";
-
-function authHeaders(extra = {}) {
-  const token = localStorage.getItem("agent_token") || "";
-  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-}
+import { apiUrl, authHeaders, displayMoney } from "./lib.jsx";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
    支持：标题(# / 【】)、加粗、行内代码、无序/有序列表、引用、键值、分隔线、段落。

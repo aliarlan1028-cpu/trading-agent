@@ -42,7 +42,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, marginUsage, smartMoneyBias, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
+import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, marginUsage, smartMoneyBias, SKILL_STATE, SKILL_STATE_HELP, EV_TONE, OPEN_EXECUTION_STATES, countOpenExecutions, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 function TermHead({ title, code, sub, right }) {
@@ -92,8 +92,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
   const monthlyPnl = performance.totalPnlUsdt;
   // 在途 = 真正还在交易所挂着的执行单；必须排除 blocked/setup_rejected/dry_run/failed/protection_failed 这些终态或未提交态，
   // 否则被风控拦下的单会被误报成"在途待处理"。
-  const OPEN_EXEC = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
-  const openExecutions = performance.openExecutions ?? (data.executionOrders || []).filter((item) => OPEN_EXEC.has(String(item.status || "").toLowerCase())).length;
+  const openExecutions = performance.openExecutions ?? countOpenExecutions(data.executionOrders);
   const riskChecks = data.riskChecks || [];
   const blockedChecks = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
   const accountHealthRows = [
@@ -810,32 +809,7 @@ export function ConceptGraph({ concepts = [] }) {
   );
 }
 
-// 技能生命周期 → 展示态映射（一处定义，漏斗/行/筛选共用）
-const SKILL_STATE = {
-  compile_failed: { label: "编译失败", tone: "neg", stage: null },
-  compiled: { label: "待历史验证", tone: "warn", stage: "compiled", next: { action: "validate", label: "历史验证" } },
-  historical_rejected: { label: "历史未通过", tone: "neg", stage: "compiled", next: { action: "validate", label: "重跑历史验证" } },
-  historical_validated: { label: "待模拟", tone: "warn", stage: "validated", next: { action: "paper", label: "开始纯前向模拟" } },
-  paper_validating: { label: "模拟中", tone: "warn", stage: "papering" },
-  paper_rejected: { label: "模拟未通过", tone: "neg", stage: "papering" },
-  paper_validated: { label: "待批准", tone: "warn", stage: "approving", next: { action: "approve", label: "批准启用" } },
-  active: { label: "已上岗", tone: "ok", stage: "active" },
-  degraded: { label: "已降级", tone: "neg", stage: "active", next: { action: "validate", label: "重新验证" } },
-  superseded: { label: "已被替代", tone: "muted", stage: null },
-  retired: { label: "已退役", tone: "muted", stage: null }
-};
-// 每个技能状态到底是什么意思、下一步该做什么——给用户一份看得懂的图例。
-const SKILL_STATE_HELP = [
-  ["待历史验证", "warn", "已编译成可执行的入场/止损/止盈规则，等你点「历史验证」跑 40/30/30 三窗回测。"],
-  ["历史未通过", "neg", "历史回测没达到门槛（盈亏因子 / 样本外表现），不能上岗；可修方法后重跑。"],
-  ["待模拟 / 模拟中", "warn", "历史通过后进入「纯前向模拟盘」，用之后的真实行情逐笔积累样本，不回看历史。"],
-  ["待批准", "warn", "模拟盘也达标了，等你人工批准——只有你亲自批准的技能才会进入实盘决策。"],
-  ["已上岗", "ok", "已批准，正在参与实盘计划生成。"],
-  ["已降级", "neg", "上岗后实盘表现持续变差，被自动降级停用，需重新验证才能回归。"],
-  ["编译失败", "neg", "方法无法安全映射到白名单策略模板（缺明确入场/止损/止盈，或周期、方向不受支持）；补全方法草案后可重编译。"],
-  ["已被替代", "muted", "同一来源方法有了更新版本，此旧版本被取代（保留供追溯）。"],
-  ["已退役", "muted", "已手动或自动退役，不再参与决策。"]
-];
+// SKILL_STATE / SKILL_STATE_HELP 已收敛到 lib.jsx（桌面/移动共用单一来源）。
 const FUNNEL = [
   { key: "draft", label: "方法草案", tab: "methods" },
   { key: "compiled", label: "已编译", tab: "skills" },
@@ -856,7 +830,7 @@ function SkillStateLegend() {
         <div className="kLegendBody">
           {SKILL_STATE_HELP.map(([label, tone, desc]) => (
             <div className="kLegendRow" key={label}>
-              <span className={`evBadge ${tone === "ok" ? "ok" : tone === "neg" ? "neg" : tone === "warn" ? "warn" : ""}`}>{label}</span>
+              <span className={`evBadge ${EV_TONE[tone] || ""}`}>{label}</span>
               <span className="kLegendDesc">{desc}</span>
             </div>
           ))}
@@ -1050,7 +1024,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                     <span className="kRowMeta mono">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}</span>
                     {skill.sourceTitle && <span className="hypoSrc">《{skill.sourceTitle}》</span>}
                     {skill.spec?.lowTrust && <span className="evBadge warn" title="按书名生成的模型综述：历史验证/模拟盘门槛更严，必须人工批准才实盘">低信任</span>}
-                    <span className={`evBadge ${st.tone === "ok" ? "ok" : st.tone === "neg" ? "neg" : st.tone === "warn" ? "warn" : ""}`}>{st.label}</span>
+                    <span className={`evBadge ${EV_TONE[st.tone] || ""}`}>{st.label}</span>
                     {st.next && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {}); }}>{st.next.label} →</span>}
                     {skill.status === "compile_failed" && skill.sourceMethodId && <span className="kRowAction" onClick={(e) => { e.stopPropagation(); action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {}); }}>重新编译 →</span>}
                     <ChevronDown size={14} className="kRowChevron" />
@@ -1293,7 +1267,7 @@ export function ReviewPage({ data, action, ui, embedded = false }) {
   const tradePlans = data.tradePlans || [];
   const executionOrders = data.executionOrders || data.orders || [];
   // 在途执行单：此前引用了 MarketAccountPage 里的 openExecutions（本作用域不存在）→ 打开复盘页即 ReferenceError 白屏。
-  const openExecutions = performance.openExecutions ?? (data.executionOrders || []).filter((o) => ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"].includes(String(o.status || "").toLowerCase())).length;
+  const openExecutions = performance.openExecutions ?? countOpenExecutions(data.executionOrders);
   const skillRuns = data.skillRuns || [];
   const agentRuns = data.agentRuns || [];
   const riskChecks = data.riskChecks || [];

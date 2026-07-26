@@ -267,6 +267,50 @@ function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceLis
 
 // 大户持仓多空比 → 全端统一的偏向判定（阈值一处定义：≥1.05 偏多 / ≤0.95 偏空 / 之间平衡）。
 // 注意语义：这是"持仓结构偏向"，不是趋势预测——展示词统一用"偏多/偏空"，不用"趋势"。
+// 鉴权头（全站唯一实现；chat/assistant 曾各有一份副本）。
+export function authHeaders(extra = {}) {
+  const token = localStorage.getItem("agent_token") || "";
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
+// 在途执行单状态（与后端 executionEngine OPEN_EXECUTION_STATES 对齐；曾有 3 份复制、1 份写错）。
+export const OPEN_EXECUTION_STATES = ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"];
+export function countOpenExecutions(orders = []) {
+  return orders.filter((o) => OPEN_EXECUTION_STATES.includes(String(o.status || "").toLowerCase())).length;
+}
+
+// 知识技能生命周期 → 展示态映射（全站唯一来源；曾桌面/移动两副本且已漂移——
+// tone 词表不同、移动缺 stage 与 degraded.next、文案不一致）。
+// tone 用 statusTone 的标准词表（ok/warning/danger/info/neutral）：
+// 移动 StatusBadge 直接消费；桌面 evBadge 用 EV_TONE 映射。
+export const SKILL_STATE = {
+  compile_failed: { label: "编译失败", tone: "danger", stage: null },
+  compiled: { label: "待历史验证", tone: "warning", stage: "compiled", next: { action: "validate", label: "历史验证" } },
+  historical_rejected: { label: "历史未通过", tone: "danger", stage: "compiled", next: { action: "validate", label: "重跑历史验证" } },
+  historical_validated: { label: "待模拟", tone: "warning", stage: "validated", next: { action: "paper", label: "开始纯前向模拟" } },
+  paper_validating: { label: "模拟中", tone: "info", stage: "papering" },
+  paper_rejected: { label: "模拟未通过", tone: "danger", stage: "papering" },
+  paper_validated: { label: "待批准", tone: "warning", stage: "approving", next: { action: "approve", label: "批准启用" } },
+  active: { label: "已上岗", tone: "ok", stage: "active" },
+  degraded: { label: "已降级", tone: "danger", stage: "active", next: { action: "validate", label: "重新验证" } },
+  superseded: { label: "已被替代", tone: "neutral", stage: null },
+  retired: { label: "已退役", tone: "neutral", stage: null }
+};
+// 桌面 evBadge 类名映射（evBadge 只有 ok/neg/warn 三个变体）。
+export const EV_TONE = { ok: "ok", danger: "neg", warning: "warn", info: "warn", neutral: "" };
+// 状态图例（桌面/移动共用一份释义）。
+export const SKILL_STATE_HELP = [
+  ["待历史验证", "warning", "已编译成可执行的入场/止损/止盈规则，等你点「历史验证」跑 40/30/30 三窗回测。"],
+  ["历史未通过", "danger", "历史回测没达到门槛（盈亏因子 / 样本外表现），不能上岗；可修方法后重跑。"],
+  ["待模拟 / 模拟中", "warning", "历史通过后进入「纯前向模拟盘」，用之后的真实行情逐笔积累样本，不回看历史。"],
+  ["待批准", "warning", "模拟盘也达标了，等你人工批准——只有你亲自批准的技能才会进入实盘决策。"],
+  ["已上岗", "ok", "已批准，正在参与实盘计划生成。"],
+  ["已降级", "danger", "上岗后实盘表现持续变差，被自动降级停用，需重新验证才能回归。"],
+  ["编译失败", "danger", "方法无法安全映射到白名单策略模板（缺明确入场/止损/止盈，或周期、方向不受支持）；补全方法草案后可重编译。"],
+  ["已被替代", "neutral", "同一来源方法有了更新版本，此旧版本被取代（保留供追溯）。"],
+  ["已退役", "neutral", "已手动或自动退役，不再参与决策。"]
+];
+
 // 保证金占用统一口径（全站唯一实现，桌面/移动/对话页共用）：
 // 已用 = 净值 − 可用 − 冻结；率 = 已用/净值。缺数据一律 null（显示"未同步"），
 // 绝不回退 0 或净值——那会伪造出 100%/0% 的假数字（历史教训见 pages 旧注释）。

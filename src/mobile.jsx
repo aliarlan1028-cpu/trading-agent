@@ -31,7 +31,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { displayMoney, marginUsage, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -73,7 +73,7 @@ function MobilePositions({ data, action, ui }) {
   const orders = data.orders || [];
   const executions = data.executionOrders || [];
   const reduceOnly = Boolean(data.system?.reduceOnlyMode);
-  const activeExec = ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]; // 与后端 OPEN_EXECUTION_STATES 对齐;旧集合误用事件名 entry_submitted 且漏 3 个状态 → 少报在途单
+  const activeExec = OPEN_EXECUTION_STATES; // 单一来源(lib),与后端对齐
   const activeExecutions = executions.filter((order) => activeExec.includes(String(order.status || "").toLowerCase())).length;
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((account) => account.readEnabled);
@@ -308,30 +308,6 @@ function MobileRisk({ data, action, ui }) {
 }
 
 const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则", "图谱"];
-const MSKILL = {
-  compile_failed: { label: "编译失败", tone: "danger" },
-  compiled: { label: "待历史验证", tone: "warning", next: { action: "validate", label: "历史验证" } },
-  historical_rejected: { label: "历史未通过", tone: "danger", next: { action: "validate", label: "重跑" } },
-  historical_validated: { label: "待模拟", tone: "warning", next: { action: "paper", label: "开始模拟" } },
-  paper_validating: { label: "模拟中", tone: "info" },
-  paper_rejected: { label: "模拟未通过", tone: "danger" },
-  paper_validated: { label: "待批准", tone: "warning", next: { action: "approve", label: "批准启用" } },
-  active: { label: "已上岗", tone: "ok" },
-  degraded: { label: "已降级", tone: "danger", next: { action: "validate", label: "重新验证" } },
-  superseded: { label: "已被替代", tone: "neutral" },
-  retired: { label: "已退役", tone: "neutral" }
-};
-const MSKILL_HELP = [
-  ["待历史验证", "warning", "已编译成可执行规则，等你点「历史验证」跑三窗回测。"],
-  ["待模拟 / 模拟中", "warning", "历史通过后进入纯前向模拟盘，用之后的真实行情逐笔积累样本。"],
-  ["待批准", "warning", "模拟也达标了，等你人工批准——只有你批准的技能才进实盘。"],
-  ["已上岗", "ok", "已批准，正在参与实盘计划生成。"],
-  ["编译失败", "danger", "方法缺明确入场/止损/止盈或周期不受支持，补全后可重编译。"],
-  ["历史/模拟未通过", "danger", "验证未达门槛，不能上岗。"],
-  ["已降级", "danger", "上岗后实盘变差被自动停用，需重新验证。"],
-  ["已被替代 / 已退役", "neutral", "旧版本被更新版取代，或已退役，仅供追溯。"]
-];
-
 function MobileKnowledge({ data, action, ui }) {
   const [seg, setSeg] = useState("上手");
   const [query, setQuery] = useState("");
@@ -453,7 +429,7 @@ function MobileKnowledge({ data, action, ui }) {
           <header><span>技能流水线（{skills.length}）</span><button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>同步</button></header>
           <div className="mKLegend">
             <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> 这些状态是什么意思？<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
-            {legendOpen && MSKILL_HELP.map(([label, tone, desc]) => (
+            {legendOpen && SKILL_STATE_HELP.map(([label, tone, desc]) => (
               <div className="mKLegendRow" key={label}><StatusBadge tone={tone}>{label}</StatusBadge><span>{desc}</span></div>
             ))}
           </div>
@@ -463,7 +439,7 @@ function MobileKnowledge({ data, action, ui }) {
             const live = skills.filter((s) => !ARCHIVED.has(s.status));
             const archived = skills.filter((s) => ARCHIVED.has(s.status));
             const row = (skill) => {
-              const st = MSKILL[skill.status] || { label: skill.status, tone: "neutral" };
+              const st = SKILL_STATE[skill.status] || { label: skill.status, tone: "neutral" };
               const open = openId === skill.id;
               return (
                 <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
@@ -603,8 +579,7 @@ function MobileAccountHealth({ data, action }) {
   const latestSnapshot = data.accountSnapshots?.[0];
   const configuredAccounts = (data.exchangeAccounts || []).filter((account) => account.readEnabled).length;
   const totalAccounts = data.exchangeAccounts?.length || 0;
-  const OPEN_EXEC = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
-  const openExecutions = (data.executionOrders || []).filter((item) => OPEN_EXEC.has(String(item.status || "").toLowerCase())).length;
+  const openExecutions = countOpenExecutions(data.executionOrders);
   const blockedChecks = (data.riskChecks || []).filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
   const rows = [
     ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],

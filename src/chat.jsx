@@ -26,12 +26,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
-
-function authHeaders(extra = {}) {
-  const token = localStorage.getItem("agent_token") || "";
-  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-}
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
 
 function renderInline(text = "") {
   return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
