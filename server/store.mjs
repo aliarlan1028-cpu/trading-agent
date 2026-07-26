@@ -554,7 +554,10 @@ const LOG_CAPS = {
   accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300,
   agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
-  eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500
+  eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500,
+  // 审计补:此前无上限、长期运行必然膨胀且每次 saveDb 全量重写的集合(fills 留足核算窗口)。
+  chatMessages: 400, chatSessions: 100, memoryItems: 500, analysisBundles: 200,
+  tradeIntents: 500, backtests: 100, strategyExperiments: 200, orders: 3000, fills: 5000, traces: 1000
 };
 function capLogCollections(db) {
   const tsOf = (o) => new Date(o?.createdAt || o?.at || o?.startedAt || o?.finishedAt || o?.updatedAt || 0).getTime() || 0;
@@ -575,11 +578,11 @@ function capLogCollections(db) {
   }
 }
 
-export function saveDb(db) {
+export function saveDb(db, options = {}) {
   db.meta.updatedAt = nowIso();
   capLogCollections(db);
   ensureSqlite();
-  saveToSqlite(db);
+  saveToSqlite(db, options);
 }
 
 export function resetOperationalData(db, options = {}) {
@@ -1121,16 +1124,28 @@ function loadFromSqlite() {
   return db;
 }
 
-function saveToSqlite(db) {
+function saveToSqlite(db, options = {}) {
   const updatedAt = nowIso();
   const upsert = sqlite.prepare(`
     insert into collections (name, value, updated_at)
     values (@name, @value, @updated_at)
     on conflict(name) do update set value = excluded.value, updated_at = excluded.updated_at
   `);
+  // lightweight 模式(高频后台落盘用,如行情 WS 8s 节流):
+  // - 跳过 knowledge 巨 blob(全文 chunk+1536 维向量,几十 MB;行情 tick 不会改知识,沿用上次落盘值)
+  // - markets 剥离 K 线数组(candles/candlesByTf 每次全量重写是 CPU 大头;K 线由巡检任务全量落盘)
+  // 任何业务路由的 persist() 仍是全量落盘,知识/K 线变更不会丢。
+  const lightweight = options.lightweight === true;
   const write = sqlite.transaction(() => {
     for (const name of collectionNames) {
-      if (db[name] !== undefined) upsert.run({ name, value: JSON.stringify(db[name]), updated_at: updatedAt });
+      if (db[name] === undefined) continue;
+      if (lightweight && name === "knowledge") continue;
+      if (lightweight && name === "markets") {
+        const slim = (db.markets || []).map(({ candles, candlesByTf, ...rest }) => rest);
+        upsert.run({ name, value: JSON.stringify(slim), updated_at: updatedAt });
+        continue;
+      }
+      upsert.run({ name, value: JSON.stringify(db[name]), updated_at: updatedAt });
     }
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);

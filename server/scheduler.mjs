@@ -140,7 +140,8 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
     if (task.handler && taskHandlers.has(task.handler)) {
       const result = await taskHandlers.get(task.handler)(db, task);
       output = typeof result === "string" ? result : summarizeHandlerResult(task.handler, result);
-      const run = recordRun(db, task, "ok", output, trigger, saveDb);
+      const skipPersist = result && typeof result === "object" && result.skipPersist === true && trigger !== "manual";
+      const run = recordRun(db, task, "ok", output, trigger, saveDb, { skipPersist });
       task.failureCount = 0;
       task.lastError = null;
       return run;
@@ -198,12 +199,15 @@ function summarizeHandlerResult(handler, result = {}) {
   return JSON.stringify(result).slice(0, 200);
 }
 
-function recordRun(db, task, status, output, trigger, saveDb) {
+function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
   task.lastRun = "刚刚";
   task.lastRunAt = nowIso();
   task.status = task.enabled ? "运行中" : "暂停";
   const intervalMs = parseEveryMs(task.schedule);
   if (String(task.type).toLowerCase() === "every") task.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
+  // 空转任务(如未配置 WORM 的外送、无待办的支付核验)不写 jobRun/审计、不触发全库落盘——
+  // 此前每分钟 3 个任务空跑也各做一次全库序列化(审计 §7.5)。仅后台触发时生效,手动运行仍完整记录。
+  if (opts.skipPersist) return { task, run: null, skipped: "noop_not_persisted" };
   const run = { id: id("run"), taskId: task.id, taskName: task.name, trigger, status, output, createdAt: nowIso() };
   db.jobRuns.unshift(run);
   appendAudit(db, trigger === "manual" ? "立即运行任务" : "后台运行任务", task.id, "调度员", status === "ok" ? "info" : "warning");

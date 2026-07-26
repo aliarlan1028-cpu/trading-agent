@@ -206,7 +206,7 @@ function wireSocket(db, saveDb, connection, socket, onMessage) {
       // 关键：公有行情 WS 每秒推 10-40 条，绝不能每条都 saveDb（每次都全库序列化落盘→100% CPU）。
       // 逐条更新只留在内存（API 从内存读），落盘全局节流到最多每 8s 一次，足够重启后恢复连接状态/私有仓位。
       const now = Date.now();
-      if (saveDb && now - lastMsgSaveAt > 8000) { lastMsgSaveAt = now; saveDb(db); }
+      if (saveDb && now - lastMsgSaveAt > 8000) { lastMsgSaveAt = now; saveDb(db, { lightweight: true }); }
     } catch (error) {
       connection.lastError = error.message;
     }

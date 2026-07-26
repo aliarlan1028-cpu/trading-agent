@@ -216,10 +216,19 @@ registerTaskHandler("strategy_improvement", (database) => {
 });
 registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
-registerTaskHandler("payment_verify", (database) => verifyTrc20Payments(database));
+registerTaskHandler("payment_verify", async (database) => {
+  const r = await verifyTrc20Payments(database);
+  return { ...r, skipPersist: r.status === "skipped" || (r.status === "ok" && !r.checked) };
+});
 registerTaskHandler("outbox_dispatch", (database) => dispatchOutbox(database));
-registerTaskHandler("audit_worm_ship", (database) => shipAuditToWorm(database));
-registerTaskHandler("oms_recovery", (database) => recoverUncertainOrders(database));
+registerTaskHandler("audit_worm_ship", async (database) => {
+  const r = await shipAuditToWorm(database);
+  return { ...r, skipPersist: ["not_configured", "up_to_date"].includes(r.status) };
+});
+registerTaskHandler("oms_recovery", async (database) => {
+  const r = await recoverUncertainOrders(database);
+  return { ...r, skipPersist: !r.checked };
+});
 registerTaskHandler("okx_readonly_sync", async (database) => {
   const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
   if (!accounts.length) return { status: "no_read_account" };
