@@ -648,6 +648,20 @@ export function ChatPage({ data, action, ui }) {
     }
   }
 
+  // 一次性清空全部对话历史（含早期悬浮助手混入的只读问答）。计划/授权/审计/成交不受影响。
+  async function resetHistory() {
+    if (!window.confirm("清空全部对话历史？（含早期 AI 助手混入的问答）\n交易计划、授权、审计、成交记录不受影响，无法撤销。")) return;
+    try {
+      const response = await fetch(apiUrl("/api/agent/chat/reset"), { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: "{}" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "清空失败");
+      setSessions([]); setActiveSessionId(""); setMessages([]);
+      ui.notify?.(json.message || "已清空聊天历史");
+    } catch (error) {
+      ui.notify?.(error.message || "清空失败");
+    }
+  }
+
   return (
     <div className={`chatShell ${view === "intel" ? "intel" : ""}`}>
     <div className="agChat">
@@ -667,6 +681,7 @@ export function ChatPage({ data, action, ui }) {
       <div className="agHistBar">
         <span className="agHistLabel">历史会话</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> 新建</button>
+        {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title="清空全部对话历史（含早期 AI 助手混入的问答）"><Trash2 size={11} /> 清空</button>}
         {sessions.map((s) => (
           <button className={`agSessChip ${s.id === activeSessionId ? "on" : ""}`} key={s.id} onClick={() => switchSession(s.id)} title={s.title}>
             {s.id === activeSessionId && <MessageSquare size={12} />}

@@ -1535,6 +1535,19 @@ app.delete("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (
   persist(res, { ok: true, sessions: chatSessionsSorted() });
 });
 
+// 一次性清空聊天历史：早期悬浮助手复用 /api/agent/chat 时把只读问答混进了交易员历史，
+// 且无标记无法逐条区分。此端点清空全部对话(会话+消息+chat 来源的 agentRun)，
+// 但不动交易计划/授权/审计/成交——那些是独立持久记录。仅 Owner 可用。
+app.post("/api/agent/chat/reset", requirePermission("admin:system"), (req, res) => {
+  const removedSessions = (db.chatSessions || []).length;
+  const removedMessages = (db.chatMessages || []).length;
+  db.chatSessions = [];
+  db.chatMessages = [];
+  db.agentRuns = (db.agentRuns || []).filter((r) => r.source !== "chat");
+  appendAudit(db, `清空聊天历史（会话 ${removedSessions} · 消息 ${removedMessages}）`, "chat_reset", req.user?.name || "Owner", "warning");
+  persist(res, { ok: true, removedSessions, removedMessages, message: `已清空 ${removedSessions} 个对话、${removedMessages} 条消息` });
+});
+
 app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
   try {
     const result = await runAgentChat(db, {

@@ -8910,6 +8910,7 @@ button.danger:disabled,
 .agSessChip { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 7px; background: #F1EADF; color: #6B6455; font: 600 11px "Space Grotesk"; white-space: nowrap; flex: none; border: 0; cursor: pointer; }
 .agSessChip.on { background: #1E1B16; color: #F5E9DB; }
 .agSessChip.newSess { background: #FBEDDF; color: #C9631F; }
+.agSessChip.clearAll { background: #F7E6E2; color: #C43F28; }
 .agSessDel { font-style: normal; margin-left: 3px; opacity: 0.45; font-size: 13px; line-height: 1; }
 .agSessDel:hover { opacity: 1; color: #C43F28; }
 
