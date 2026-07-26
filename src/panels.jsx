@@ -104,14 +104,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     BINANCE_MARGIN_MODE: data.runtimeConfig?.BINANCE_MARGIN_MODE || "cross",
     BINANCE_POSITION_MODE: data.runtimeConfig?.BINANCE_POSITION_MODE || "one_way"
   });
-  const [liveForm, setLiveForm] = useState({
-    liveTradingEnabled: Boolean(live.liveTradingEnabled),
-    acknowledged: Boolean(live.acknowledged),
-    orderWriteEnabled: Boolean(live.orderWriteEnabled),
-    grayEnabled: Boolean(live.grayEnabled),
-    grayRequiresApproval: live.grayRequiresApproval !== false,
-    maxNotionalUsdt: live.maxNotionalUsdt || 50
-  });
   const [integrationForm, setIntegrationForm] = useState({
     LANGSMITH_API_KEY: "",
     LANGSMITH_ENDPOINT: integrations.langsmith?.endpoint || "https://api.smith.langchain.com",
@@ -183,7 +175,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   const configSections = [
     { id: "llm", icon: BrainCircuit, title: "模型", sub: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置" },
     { id: "exchange", icon: WalletCards, title: "交易所", sub: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置" },
-    { id: "live", icon: Zap, title: "实盘灰度", sub: live.effective ? "已开启" : "关闭" },
     { id: "integrations", icon: PlugZap, title: "外部服务", sub: integrations.telegram?.configured ? "TG 已接入" : integrations.lark?.hasWebhook ? "飞书已接入" : (integrations.langsmith?.hasKey || integrations.alerts?.hasWebhook ? "部分已配置" : "未配置") },
     { id: "runtime", icon: Settings, title: "运行参数", sub: runtime.authRequired === false ? "免登录" : "鉴权开启" }
   ];
@@ -199,9 +190,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   }
   function updateExchange(key, value) {
     setExchangeForm((current) => ({ ...current, [key]: value }));
-  }
-  function updateLive(key, value) {
-    setLiveForm((current) => ({ ...current, [key]: value }));
   }
   function updateIntegration(key, value) {
     setIntegrationForm((current) => ({ ...current, [key]: value }));
@@ -240,17 +228,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       await action(`/api/exchange/accounts/${okxAccount.id}`, { ipWhitelist: exchangeForm.OKX_IP_WHITELIST }, "PATCH");
     }
     if (result.status) setExchangeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.includes("API") || key.includes("SECRET") || key.includes("PASSPHRASE") ? "" : value])));
-  }
-  async function saveLive(event) {
-    event.preventDefault();
-    if (liveForm.liveTradingEnabled && !liveForm.acknowledged) {
-      ui.notify("开启实盘前必须勾选风险确认");
-      return;
-    }
-    await action("/api/config/live-trading", {
-      ...liveForm,
-      maxNotionalUsdt: Number(liveForm.maxNotionalUsdt || 50)
-    });
   }
   async function saveIntegrations(event) {
     event.preventDefault();
@@ -377,62 +354,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
               </div>
             </div>
             <button className="primaryButton" type="submit"><Lock size={14} /> 保存交易所配置</button>
-          </form>
-        )}
-
-        {activeConfigSection === "live" && (
-          <form className="panelForm" onSubmit={saveLive}>
-            <CfgHead icon={Zap} title="实盘写入与灰度发布" sub="多道安全闸全部就绪后，批准的计划才会真实下单，否则一律干跑" status={live.effective ? "实盘已开启" : "实盘关闭"} statusTone={live.effective ? "neg" : ""} />
-            {(() => {
-              const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
-              const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
-              const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
-              // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
-              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
-              const gates = [
-                { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", hint: "勾选下方 LIVE_TRADING_ENABLED" },
-                { ok: Boolean(live.acknowledged), label: "风险确认", hint: "勾选下方「风险确认」" },
-                { ok: Boolean(live.orderWriteEnabled), label: "真实下单写入", hint: "勾选下方「真实下单写入」——批准被拦时多半就是缺这个" },
-                { ok: Boolean(live.grayEnabled), label: "小额灰度策略", hint: "勾选下方「启用小额灰度」并设额度/币种" },
-                { ok: mandateOk, label: "有效授权 Mandate", hint: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
-                { ok: snapshotOk, label: "账户快照", hint: "配置交易所后同步一次私有账户" },
-                { ok: withdrawOk, label: "API 无提现权限已确认", hint: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
-                { ok: !data.system?.killSwitch, label: "未熔断", hint: "解除顶部「熔断」" },
-                { ok: auditOk, label: "审计链正常", hint: "审计链异常需先修复" }
-              ];
-              const pass = gates.filter((g) => g.ok).length;
-              return (
-                <div className="liveReadiness">
-                  <div className="liveReadinessHead">
-                    <span>实盘下单就绪清单（全部就绪后批准才会真实下单，否则只干跑）</span>
-                    <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} 就绪</b>
-                  </div>
-                  <div className="liveGateList">
-                    {gates.map((g) => (
-                      <div key={g.label} className={g.ok ? "liveGate ok" : "liveGate"}>
-                        {g.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                        <span>{g.label}</span>
-                        {!g.ok && <small>{g.hint}</small>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="switchGrid">
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /> LIVE_TRADING_ENABLED</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /> 真实下单写入</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /> 启用小额灰度</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认（取消勾选＝授权与额度内全自动下单）</label>
-            </div>
-            {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
-              <div className="autoTradeBanner on">🤖 全自动执行已开启：AI 自主巡检发现符合授权的机会时，会在「单笔灰度额度」内自动下单，超额度仍转你人工批准。</div>
-            ) : (
-              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开启实盘写入三道闸 + 取消勾选「保留人工确认」。</div>
-            )}
-            <label>单笔灰度额度 USDT（全自动下单的单笔上限）<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
-            <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
           </form>
         )}
 
@@ -1240,5 +1161,89 @@ export function ExecutionDetailPanel({ data }) {
       </div>
       {!latestOrder.id && !latestPlan.id && <div className="emptyPanel emptyPanelAction"><strong>暂无执行对象</strong><span>生成交易计划并通过风控后，这里会展示订单、风控和对账详情。</span></div>}
     </div>
+  );
+}
+
+// 实盘写入与灰度发布(独立组件):按用户要求从「系统设置」整体迁到「风控与授权」页——
+// 灰度的每一项(额度/人工确认/安全闸)本质都是风控边界,放风控页更合理。
+export function LiveGrayPanel({ data, action, ui }) {
+  const live = data.config?.liveTrading || {};
+  const [liveForm, setLiveForm] = useState({
+    liveTradingEnabled: Boolean(live.liveTradingEnabled),
+    acknowledged: Boolean(live.acknowledged),
+    orderWriteEnabled: Boolean(live.orderWriteEnabled),
+    grayEnabled: Boolean(live.grayEnabled),
+    grayRequiresApproval: live.grayRequiresApproval !== false,
+    maxNotionalUsdt: live.maxNotionalUsdt || 50
+  });
+  function updateLive(key, value) {
+    setLiveForm((current) => ({ ...current, [key]: value }));
+  }
+  async function saveLive(event) {
+    event.preventDefault();
+    if (liveForm.liveTradingEnabled && !liveForm.acknowledged) {
+      ui?.notify?.("开启实盘前必须勾选风险确认");
+      return;
+    }
+    await action("/api/config/live-trading", {
+      ...liveForm,
+      maxNotionalUsdt: Number(liveForm.maxNotionalUsdt || 50)
+    });
+  }
+  return (
+          <form className="panelForm liveGrayForm" onSubmit={saveLive}>
+            <CfgHead icon={Zap} title="实盘写入与灰度发布" sub="多道安全闸全部就绪后，批准的计划才会真实下单，否则一律干跑" status={live.effective ? "实盘已开启" : "实盘关闭"} statusTone={live.effective ? "neg" : ""} />
+            {(() => {
+              const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
+              const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
+              const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
+              // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
+              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
+              const gates = [
+                { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", hint: "勾选下方 LIVE_TRADING_ENABLED" },
+                { ok: Boolean(live.acknowledged), label: "风险确认", hint: "勾选下方「风险确认」" },
+                { ok: Boolean(live.orderWriteEnabled), label: "真实下单写入", hint: "勾选下方「真实下单写入」——批准被拦时多半就是缺这个" },
+                { ok: Boolean(live.grayEnabled), label: "小额灰度策略", hint: "勾选下方「启用小额灰度」并设额度/币种" },
+                { ok: mandateOk, label: "有效授权 Mandate", hint: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
+                { ok: snapshotOk, label: "账户快照", hint: "配置交易所后同步一次私有账户" },
+                { ok: withdrawOk, label: "API 无提现权限已确认", hint: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
+                { ok: !data.system?.killSwitch, label: "未熔断", hint: "解除顶部「熔断」" },
+                { ok: auditOk, label: "审计链正常", hint: "审计链异常需先修复" }
+              ];
+              const pass = gates.filter((g) => g.ok).length;
+              return (
+                <div className="liveReadiness">
+                  <div className="liveReadinessHead">
+                    <span>实盘下单就绪清单（全部就绪后批准才会真实下单，否则只干跑）</span>
+                    <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} 就绪</b>
+                  </div>
+                  <div className="liveGateList">
+                    {gates.map((g) => (
+                      <div key={g.label} className={g.ok ? "liveGate ok" : "liveGate"}>
+                        {g.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                        <span>{g.label}</span>
+                        {!g.ok && <small>{g.hint}</small>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="switchGrid">
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /> LIVE_TRADING_ENABLED</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /> 真实下单写入</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /> 启用小额灰度</label>
+              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认（取消勾选＝授权与额度内全自动下单）</label>
+            </div>
+            {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
+              <div className="autoTradeBanner on">🤖 全自动执行已开启：AI 自主巡检发现符合授权的机会时，会在「单笔灰度额度」内自动下单，超额度仍转你人工批准。</div>
+            ) : (
+              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开启实盘写入三道闸 + 取消勾选「保留人工确认」。</div>
+            )}
+            <label>单笔灰度额度 USDT（全自动下单的单笔上限）<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
+            <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
+          </form>
+        
   );
 }

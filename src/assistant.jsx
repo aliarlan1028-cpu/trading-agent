@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, Gauge, RefreshCw } from "lucide-react";
+import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw } from "lucide-react";
 import { apiUrl, authHeaders, displayMoney } from "./lib.jsx";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
@@ -124,6 +124,35 @@ function escortBroadcast(data) {
   return `${head}\n${rows}\n\n> 护航只给建议与告警，任何减仓/平仓仍走风控与授权流程，绝不自动裸下单。`;
 }
 
+// 复盘播报(原「复盘与优化」页下架后由助手承接;全部真实数据,缺数据如实说)。
+function reviewBroadcast(data) {
+  const perf = data.performance || {};
+  const reviews = data.reviews || [];
+  const riskChecks = data.riskChecks || [];
+  const agentRuns = data.agentRuns || [];
+  const paper = data.paperReport || {};
+  const blocked = riskChecks.filter((c) => ["blocked", "rejected", "risk_rejected"].includes(String(c.decision || c.result || c.status || "").toLowerCase())).length;
+  const failedRuns = agentRuns.filter((r) => ["failed", "error"].includes(String(r.status || "").toLowerCase())).length;
+  const lines = ["**复盘与优化**", ""];
+  lines.push("### 收益质量");
+  lines.push(perf.trades
+    ? `- 已平仓 **${perf.trades}** 笔 · 胜率 **${perf.winRatePct}%** · 盈亏比 **${perf.profitFactor ?? "未计算"}**`
+    : "- 暂无已平仓交易,先完成最小交易闭环(模拟盘或小额灰度)");
+  if (perf.openExecutions) lines.push(`- 在途执行 ${perf.openExecutions} 个`);
+  const sessions = paper.sessions || [];
+  if (sessions.length) lines.push(`- 模拟盘会话 ${sessions.length} 个(纯前向,技能上岗的必经关卡)`);
+  lines.push("", "### 优化建议(按真实数据生成)");
+  lines.push(blocked ? `- 近期 **${blocked}** 次风控阻断:优先复盘入场、止损与授权边界` : "- 近期无明显风控阻断 ✅");
+  lines.push(failedRuns ? `- **${failedRuns}** 次 Agent 运行失败:检查模型/工具/网络配置` : "- Agent 运行链路无失败集中点 ✅");
+  if (perf.trades) lines.push("- 可继续按策略/品种拆分表现,定位优势场景");
+  if (reviews.length) {
+    lines.push("", `### 最近复盘(${reviews.length} 条)`);
+    reviews.slice(0, 3).forEach((r) => lines.push(`- ${String(r.summary || r.note || "复盘记录").slice(0, 60)}`));
+  }
+  lines.push("", "> 每次平仓系统会自动复盘并沉淀进改进闭环;想深挖某笔交易直接问我。");
+  return lines.join("\n");
+}
+
 function todosBroadcast(data) {
   const awaiting = (data.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
   const pending = (data.pendingActions || []).filter((a) => !a.status || a.status === "pending" || a.status === "awaiting_confirmation");
@@ -182,6 +211,7 @@ export function AssistantWidget({ data }) {
   function broadcast(kind) {
     if (sending) return;
     const map = {
+      review: ["复盘与优化", reviewBroadcast(data)],
       movers: ["今日全市场异动", moversBroadcast(data)],
       escort: ["持仓护航播报", escortBroadcast(data)],
       todos: ["待办清单", todosBroadcast(data)]
@@ -236,6 +266,7 @@ export function AssistantWidget({ data }) {
 
   const quick = [
     { k: "summary", label: "总结状态", icon: Gauge, on: summarize },
+    { k: "review", label: "复盘", icon: ClipboardList, on: () => broadcast("review") },
     { k: "movers", label: "今日异动", icon: Radar, on: () => broadcast("movers") },
     { k: "escort", label: "持仓护航", icon: ShieldCheck, on: () => broadcast("escort") },
     { k: "todos", label: "待办", icon: ListChecks, on: () => broadcast("todos") }

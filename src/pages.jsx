@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { LiveGrayPanel } from "./panels.jsx";
 import {
   Activity,
   AlertTriangle,
@@ -1235,6 +1236,12 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         </div>
       </div>
 
+      {/* 实盘写入与灰度发布:从系统设置整体迁入(灰度额度/人工确认/安全闸都是风控边界) */}
+      <div className="termCard liveGrayCard">
+        <div className="kHead"><span className="secLabel">实盘写入与灰度发布 · LIVE / GRAY RELEASE</span><span className={`evBadge ${data.config?.liveTrading?.effective ? "neg" : ""}`}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</span></div>
+        <LiveGrayPanel data={data} action={action} ui={ui} />
+      </div>
+
       <div className="termGrid riskBot">
         <div className="termCard">
           <div className="balLabel">API 与账户安全</div>
@@ -1248,18 +1255,6 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
             : <div className="secRow"><span className="mono">建议在交易所侧绑定 IP</span><b className="evBadge warn">未设置</b></div>; })()}
         </div>
         <div className="termCard">
-          <div className="secLabelSpread"><span className="balLabel" style={{ marginBottom: 0 }}>实盘灰度</span><button className="agLink" onClick={() => ui.setActive("systemSettings")}>去设置</button></div>
-          {(() => {
-            const gp = (data.grayReleasePolicies || [])[0];
-            if (!gp) return <div className="secRow"><span>灰度策略</span><b className="evBadge warn">未创建</b></div>;
-            return (<>
-              <div className="secRow"><span>策略状态</span><b className={`evBadge ${gp.enabled ? "ok" : ""}`}>{gp.enabled ? "已启用" : "已停用"}</b></div>
-              <div className="secRow"><span>单笔限额</span><b className="mono">{gp.maxNotionalUsdt != null ? `${gp.maxNotionalUsdt} U` : "—"}</b></div>
-              <div className="secRow"><span>人工确认</span><b className={`evBadge ${gp.requiresManualApproval === false ? "warn" : "ok"}`}>{gp.requiresManualApproval === false ? "已关闭(全自动)" : "保留"}</b></div>
-            </>);
-          })()}
-        </div>
-        <div className="termCard">
           <div className="balLabel">密钥权限</div>
           {keyPerms.map(([k, v, tone]) => <div className="secRow" key={k}><span>{k}</span><b className={`sg ${tone}`}>{v}</b></div>)}
         </div>
@@ -1269,283 +1264,6 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           {!authHist.length && <div className="emptyPanel">暂无授权变更记录</div>}
         </div>
       </div>
-    </div>
-  );
-}
-
-export function ReviewPage({ data, action, ui, embedded = false }) {
-  const [reviewTab, setReviewTab] = useState("strategy");
-  const performance = data.performance || {};
-  const reviews = data.reviews || [];
-  const tradePlans = data.tradePlans || [];
-  const executionOrders = data.executionOrders || data.orders || [];
-  // 在途执行单：此前引用了 MarketAccountPage 里的 openExecutions（本作用域不存在）→ 打开复盘页即 ReferenceError 白屏。
-  const openExecutions = performance.openExecutions ?? countOpenExecutions(data.executionOrders);
-  const skillRuns = data.skillRuns || [];
-  const agentRuns = data.agentRuns || [];
-  const riskChecks = data.riskChecks || [];
-  const analytics = data.reviewAnalytics || {};
-  const breakdowns = analytics.breakdowns || {};
-  const cost = analytics.cost || {};
-  const attribution = analytics.attribution || {};
-  const failedRuns = agentRuns.filter((run) => ["failed", "error"].includes(String(run.status || "").toLowerCase())).length;
-  const blockedRisk = riskChecks.filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
-  const latestReview = reviews[0] || {};
-  const optimizationItems = [
-    blockedRisk ? `近期有 ${blockedRisk} 次风控阻断，优先复盘入场、止损和授权边界。` : "近期没有明显风控阻断，继续小样本验证策略稳定性。",
-    failedRuns ? `有 ${failedRuns} 次 Agent 运行失败，需要检查模型、工具调用和网络配置。` : "Agent 运行链路暂未暴露失败集中点。",
-    performance.trades ? `胜率 ${performance.winRatePct}%、盈亏比 ${performance.profitFactor ?? "未计算"}，下一步按策略和市场状态拆分表现。` : "交易样本不足，先建立最小交易日志闭环。",
-    skillRuns.length ? "已有 Skill 运行记录，可按成功率、耗时和输出质量筛选高价值 Skill。" : "Skill 尚未形成运行样本，建议先用知识解析和风控复盘类 Skill。"
-  ];
-  const tradeRows = tradePlans.slice(0, 8).map((plan) => {
-    const order = executionOrders.find((item) => item.planId === plan.id || item.id === plan.executionOrderId) || {};
-    return {
-      id: plan.id,
-      time: formatTime(plan.createdAt),
-      symbol: plan.symbol || order.symbol || "-",
-      direction: humanize(plan.direction || order.side, "-"),
-      status: <StatusBadge tone={statusTone(order.status || plan.status)}>{humanize(order.status || plan.status, "未执行")}</StatusBadge>,
-      risk: humanize(plan.lastRiskCheck?.decision || plan.status, "未检查"),
-      review: <button className="linkCell" onClick={() => ui.openPanel("executionDetail")}>详情</button>
-    };
-  });
-  const skillRows = skillRuns.slice(0, 8).map((run) => ({
-    id: run.id,
-    time: formatTime(run.createdAt),
-    skill: run.skillName || run.name || run.skillId || "Skill",
-    status: <StatusBadge tone={statusTone(run.status)}>{humanize(run.status, "已记录")}</StatusBadge>,
-    output: run.output || run.summary || run.resultSummary || "-"
-  }));
-  return (
-    <div className="pageStack">
-      {!embedded && <TermHead title="复盘与优化" code="REVIEW · OPTIMIZE" sub="收益质量拆解、回测与策略研究，让每笔交易都长出经验" />}
-      <div className="metricGrid five">
-        <MetricCard icon={BarChart3} label="累计盈亏" value={displayMoney(performance.totalPnlUsdt)} sub={`${performance.trades || 0} 笔已平仓`} tone={Number(performance.totalPnlUsdt || 0) >= 0 ? "positive" : "warning"} />
-        <MetricCard icon={Target} label="胜率" value={performance.trades ? `${performance.winRatePct}%` : "暂无数据"} sub="按已平仓交易统计" />
-        <MetricCard icon={Gauge} label="盈亏比" value={performance.profitFactor ?? "暂无数据"} sub="Profit Factor" />
-        <MetricCard icon={BrainCircuit} label="Agent 运行" value={`${agentRuns.length} 次`} sub={`${failedRuns} 次失败`} tone={failedRuns ? "warning" : "positive"} />
-        <MetricCard icon={Sparkles} label="Skill 复盘" value={`${skillRuns.length} 次`} sub="运行样本" />
-      </div>
-
-      <div className="reviewGrid">
-        <Card className="reviewFocus">
-          <SectionTitle icon={ListChecks} title="自我优化线索" action={<span className="sectionActions"><button className="secondaryButton" title="补全字段" onClick={() => action("/api/review/backfill-fields", {})}><RefreshCw size={14} /> 补全字段</button><button className="secondaryButton" title="创建改进闭环" onClick={() => action("/api/review/strategy-improvement", {})}><BrainCircuit size={14} /> 创建改进闭环</button></span>} />
-          <div className="actionList">{optimizationItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
-        </Card>
-        <Card>
-          <SectionTitle icon={ClipboardList} title="最近复盘结论" />
-          {latestReview.id ? (
-            <div className="reviewNote">
-              <strong>{latestReview.title || latestReview.id}</strong>
-              <p>{latestReview.summary || latestReview.content || "已记录复盘，但缺少摘要。"}</p>
-              <small>{formatDateTime(latestReview.createdAt)}</small>
-            </div>
-          ) : <div className="emptyPanel emptyPanelAction"><strong>暂无复盘报告</strong><span>完成交易闭环或运行复盘 Agent 后，这里会沉淀结论。</span></div>}
-        </Card>
-      </div>
-
-      <div className="subTabBar">
-        <button className={reviewTab === "strategy" ? "active" : ""} onClick={() => setReviewTab("strategy")}><Rocket size={15} /> 策略与验证</button>
-        <button className={reviewTab === "perf" ? "active" : ""} onClick={() => setReviewTab("perf")}><BarChart3 size={15} /> 绩效拆解</button>
-        <button className={reviewTab === "trades" ? "active" : ""} onClick={() => setReviewTab("trades")}><ClipboardList size={15} /> 交易与行为</button>
-      </div>
-
-      {reviewTab === "strategy" && (
-        <>
-          <StrategyResearchCard data={data} action={action} />
-          <PaperValidationCard data={data} action={action} />
-          <BacktestCard data={data} action={action} />
-        </>
-      )}
-
-      {reviewTab === "perf" && (
-        <>
-          <div className="reviewGrid">
-            <Card>
-              <SectionTitle icon={BarChart3} title="拆分胜率与盈亏比" />
-              <div className="segmentGrid">
-                <SegmentList title="按策略" rows={breakdowns.strategy} />
-                <SegmentList title="按币种" rows={breakdowns.symbol} />
-                <SegmentList title="按时段" rows={breakdowns.session} />
-                <SegmentList title="按行情 Regime" rows={breakdowns.regime} />
-              </div>
-            </Card>
-            <Card>
-              <SectionTitle icon={Gauge} title="交易质量指标" />
-              <RiskLine label="平均 MAE" value={cost.avgMaeUsdt === null || cost.avgMaeUsdt === undefined ? "未记录" : `${displayMoney(cost.avgMaeUsdt)} USDT`} />
-              <RiskLine label="平均 MFE" value={cost.avgMfeUsdt === null || cost.avgMfeUsdt === undefined ? "未记录" : `${displayMoney(cost.avgMfeUsdt)} USDT`} />
-              <RiskLine label="平均滑点" value={cost.avgSlippageBps === null || cost.avgSlippageBps === undefined ? "未记录" : `${formatMoney(cost.avgSlippageBps, 2)} bps`} />
-              <RiskLine label="手续费合计" value={`${displayMoney(cost.totalFeesUsdt)} USDT`} />
-              <RiskLine label="资金费率合计" value={`${displayMoney(cost.totalFundingUsdt)} USDT`} />
-              <RiskLine label="平均持仓时长" value={cost.avgHoldingMinutes === null || cost.avgHoldingMinutes === undefined ? "未记录" : `${formatMoney(cost.avgHoldingMinutes, 0)} 分钟`} />
-            </Card>
-          </div>
-          <Card>
-            <SectionTitle icon={AlertTriangle} title="亏损聚类" />
-            <div className="clusterList">
-              {(analytics.lossClusters || []).map((cluster) => <div key={cluster.key}><strong>{cluster.key}</strong><span>{cluster.count} 笔 · {displayMoney(cluster.pnl)} USDT</span><small>{cluster.suggestion}</small></div>)}
-              {!analytics.lossClusters?.length && <div className="emptyPanel">暂无可聚类亏损样本。</div>}
-            </div>
-          </Card>
-        </>
-      )}
-
-      {reviewTab === "trades" && (
-        <>
-          <div className="reviewGrid">
-            <Card>
-              <SectionTitle title="交易记录复盘" />
-              <DataTable columns={[
-                { key: "time", label: "时间" }, { key: "symbol", label: "交易对" }, { key: "direction", label: "方向" }, { key: "status", label: "执行" }, { key: "risk", label: "风控" }, { key: "review", label: "操作" }
-              ]} rows={tradeRows} />
-            </Card>
-            <Card>
-              <SectionTitle title="执行质量" action={<button className="textButton" onClick={() => ui.setActive("auditSystem")}>看日志中心 <ChevronRight size={14} /></button>} />
-              <RiskLine label="在途执行单" value={`${openExecutions} 个`} />
-              <RiskLine label="风控阻断" value={`${blockedRisk} 次`} />
-              <RiskLine label="Agent 运行失败" value={`${failedRuns} 次`} />
-              <RiskLine label="详细日志" value="已集中到审计与通知" />
-            </Card>
-          </div>
-          <Card>
-            <SectionTitle title="贡献复盘" action={<button className="textButton" onClick={() => ui.setActive("knowledgeSkills")}>管理 Skill <ChevronRight size={14} /></button>} />
-            <div className="reviewGrid nested">
-              <DataTable columns={[
-                { key: "time", label: "时间" }, { key: "skill", label: "Skill" }, { key: "status", label: "状态" }, { key: "output", label: "输出摘要", width: "1.8fr" }
-              ]} rows={skillRows} />
-              <div className="contributionList">
-                {(attribution.rules || []).slice(0, 6).map((rule) => <div key={rule.id}><strong>{rule.name}</strong><span>{rule.checks} 次检查 · {rule.blocked} 次阻断</span><small>{rule.contribution}</small></div>)}
-                {(attribution.skills || []).slice(0, 6).map((skill) => <div key={skill.id}><strong>{skill.name}</strong><span>{skill.runs} 次运行 · 成功率 {skill.successRatePct ?? "未验证"}</span><small>{skill.contribution}</small></div>)}
-              </div>
-            </div>
-          </Card>
-        </>
-      )}
-    </div>
-  );
-}
-
-function EquitySparkline({ values = [] }) {
-  if (!values || values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(1e-9, max - min);
-  const path = values.map((value, index) => {
-    const x = (index / (values.length - 1)) * 100;
-    const y = 44 - ((value - min) / range) * 40;
-    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-  return <svg className="equityCurve" viewBox="0 0 100 48" preserveAspectRatio="none"><path d={path} /></svg>;
-}
-
-function PaperValidationCard({ data, action }) {
-  const report = data.paperReport || { minForwardTrades: 8, sessions: [] };
-  const sessions = report.sessions || [];
-  const tone = { passed: "ok", failed: "danger", running: "warning" };
-  const label = { passed: "已通过", failed: "未通过", running: "验证中" };
-  return (
-    <Card>
-      <SectionTitle icon={GitBranch} title="模拟盘前向验证（回测 → 模拟盘 → 小额实盘）" action={<span className="sectionActions"><button className="secondaryButton" title="从已验证策略开盘" onClick={() => action("/api/paper/spawn-from-profiles", {})}><Plus size={14} /> 从已验证策略开盘</button><button className="secondaryButton" title="前向推进" onClick={() => action("/api/paper/run", {})}><RefreshCw size={14} /> 前向推进</button></span>} />
-      {sessions.length ? (
-        <DataTable columns={[
-          { key: "symbol", label: "交易对" }, { key: "strategy", label: "策略", width: "1.4fr" }, { key: "progress", label: "前向交易" }, { key: "exp", label: "前向期望" }, { key: "dd", label: "最大回撤" }, { key: "status", label: "状态" }
-        ]} rows={sessions.map((s) => ({
-          id: s.id,
-          symbol: `${s.symbol} · ${s.timeframe}`,
-          strategy: `${s.label}${s.seeded ? " · 含预热" : ""}`,
-          progress: `${s.metrics?.trades ?? 0} / ${report.minForwardTrades}`,
-          exp: s.metrics?.expectancyR !== null && s.metrics?.expectancyR !== undefined ? `${s.metrics.expectancyR}R` : "-",
-          dd: s.metrics?.maxDrawdownPct !== null && s.metrics?.maxDrawdownPct !== undefined ? `${s.metrics.maxDrawdownPct}%` : "-",
-          status: <StatusBadge tone={tone[s.status] || "warning"}>{label[s.status] || s.status}</StatusBadge>
-        }))} />
-      ) : (
-        <div className="emptyPanel emptyPanelAction">
-          <strong>还没有模拟盘会话</strong>
-          <span>先在上方「自适应策略研究」跑出已验证策略，再点「从已验证策略开盘」——系统会对这些策略开纯前向模拟盘，随真实行情累积样本，通过后才建议放大实盘。</span>
-          <button className="secondaryButton" onClick={() => action("/api/paper/spawn-from-profiles", {})}>从已验证策略开盘</button>
-        </div>
-      )}
-      <InsightNote icon={Rocket} title="前向验证">只在会话创建后到来的 K 线上模拟成交，无法过拟合历史；前向满 {report.minForwardTrades} 笔且期望为正、回撤可控才通过。开启 REQUIRE_PAPER_VALIDATION 后，未通过的交易对将禁止开实盘新仓。</InsightNote>
-    </Card>
-  );
-}
-
-function StrategyResearchCard({ data, action }) {
-  const profiles = data.strategyProfiles || [];
-  const confTone = { validated: "ok", low: "warning", none: "danger" };
-  const confLabel = { validated: "已验证", low: "低置信", none: "无合格策略" };
-  return (
-    <Card>
-      <SectionTitle icon={BrainCircuit} title="自适应策略研究（样本外验证）" action={<button className="secondaryButton" title="运行研究" onClick={() => action("/api/strategy/research", {})}><Rocket size={14} /> 运行研究</button>} />
-      {profiles.length ? (
-        <DataTable columns={[
-          { key: "symbol", label: "交易对" }, { key: "character", label: "币种性格" }, { key: "strategy", label: "优选策略", width: "1.4fr" }, { key: "oos", label: "样本外期望" }, { key: "winrate", label: "样本外胜率" }, { key: "conf", label: "置信度" }
-        ]} rows={profiles.map((p) => ({
-          id: p.id,
-          symbol: `${p.symbol} · ${p.timeframe}`,
-          character: p.tokenProfile ? `${p.tokenProfile.character === "trend" ? "趋势型" : p.tokenProfile.character === "meanrev" ? "回归型" : "混合"} · 波动${p.tokenProfile.volState === "high" ? "高" : p.tokenProfile.volState === "low" ? "低" : "中"}` : "-",
-          strategy: `${p.label}${p.direction === "short" ? " · 做空" : p.direction === "long" ? " · 做多" : ""}`,
-          oos: p.oosScore !== null && p.oosScore !== undefined ? `${p.oosScore}R（${p.oos?.trades ?? "-"} 笔·${p.oosFolds || "-"}）` : "-",
-          winrate: p.oos?.winRatePct !== null && p.oos?.winRatePct !== undefined ? `${p.oos.winRatePct}%` : "-",
-          conf: <StatusBadge tone={confTone[p.confidence] || "warning"}>{confLabel[p.confidence] || p.confidence}</StatusBadge>
-        }))} />
-      ) : (
-        <div className="emptyPanel emptyPanelAction">
-          <strong>还没有策略画像</strong>
-          <span>点击「运行研究」：在趋势/均值回归/突破多套策略上做 train→test 样本外寻优，胜出者自动写入 Agent 记忆并参与后续决策。每 6 小时也会自动跑一次。</span>
-        </div>
-      )}
-      <InsightNote icon={Search} title="样本外验证">用前 70% 数据寻优、后 30% 验证，降低过拟合风险；低置信表示样本外交易太少，不足以采信。</InsightNote>
-    </Card>
-  );
-}
-
-function BacktestCard({ data, action }) {
-  const [form, setForm] = useState({ symbol: "BTC/USDT", timeframe: "1h", fastPeriod: 10, slowPeriod: 30, stopLossPct: 2, takeProfitR: 2 });
-  const latest = (data.backtests || [])[0];
-  const positive = latest && Number(latest.netReturnPct) >= 0;
-  return (
-    <Card>
-      <SectionTitle icon={LineChart} title="策略回测" action={<button className="secondaryButton" title="运行回测" onClick={() => action("/api/backtest/run", { ...form, fastPeriod: Number(form.fastPeriod), slowPeriod: Number(form.slowPeriod), stopLossPct: Number(form.stopLossPct), takeProfitR: Number(form.takeProfitR) })}><Rocket size={14} /> 运行回测</button>} />
-      <div className="dashboardToolbar">
-        <div className="filterGroup">{["15m", "1h", "4h", "1d"].map((tf) => <button className={form.timeframe === tf ? "active" : ""} key={tf} onClick={() => setForm((current) => ({ ...current, timeframe: tf }))}>{tf}</button>)}</div>
-        <span>SMA({form.fastPeriod}/{form.slowPeriod}) 金叉开多 · 止损 {form.stopLossPct}% · 止盈 {form.takeProfitR}R</span>
-      </div>
-      {latest ? (
-        <>
-          <div className="btMetrics">
-            <div><span>交易笔数</span><strong>{latest.trades}</strong></div>
-            <div><span>胜率</span><strong>{latest.winRatePct === null ? "-" : `${latest.winRatePct}%`}</strong></div>
-            <div><span>盈亏比</span><strong>{latest.profitFactor ?? "-"}</strong></div>
-            <div><span>期望</span><strong>{latest.expectancyR ?? "-"}R</strong></div>
-            <div><span>最大回撤</span><strong className="negative">{latest.maxDrawdownPct ?? "-"}%</strong></div>
-            <div><span>净收益</span><strong className={positive ? "positive" : "negative"}>{displayPct(latest.netReturnPct)}</strong></div>
-          </div>
-          <EquitySparkline values={latest.equityCurve} />
-          <p className="muted">{latest.symbol} {latest.timeframe} · {latest.candles} 根 K 线 · {latest.strategy}{latest.note ? ` · ${latest.note}` : ""}</p>
-        </>
-      ) : (
-        <div className="emptyPanel emptyPanelAction">
-          <strong>还没有回测结果</strong>
-          <span>点击「运行回测」在历史 K 线上验证策略，得到胜率、盈亏比与最大回撤——上实盘前先用它证明策略有效。</span>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function SegmentList({ title, rows = [] }) {
-  return (
-    <div className="segmentList">
-      <h3>{title}</h3>
-      {rows.slice(0, 4).map((row) => (
-        <div key={row.key}>
-          <strong>{row.key}</strong>
-          <span>{row.trades} 笔 · 胜率 {row.winRatePct === null ? "暂无" : `${row.winRatePct}%`} · 盈亏比 {row.profitFactor ?? "暂无"}</span>
-          <b className={Number(row.pnl || 0) >= 0 ? "positive" : "negative"}>{displayMoney(row.pnl)} USDT</b>
-        </div>
-      ))}
-      {!rows.length && <div className="emptyPanel">暂无样本。</div>}
     </div>
   );
 }

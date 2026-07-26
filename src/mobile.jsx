@@ -34,7 +34,7 @@ import {
 import { displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
-import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
+import { ConfigPanel, LiveGrayPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
@@ -60,7 +60,6 @@ export function KillConfirmDialog({ enable, action, onClose }) {
 const settingsSections = [
   { id: "llm", label: "模型" },
   { id: "exchange", label: "交易所" },
-  { id: "live", label: "实盘灰度" },
   { id: "integrations", label: "外部服务" },
   { id: "runtime", label: "运行参数" }
 ];
@@ -190,14 +189,12 @@ function MobileSettingsIndex({ data, onOpen }) {
   const config = data.config || {};
   const exchange = config.exchange || {};
   const integrations = config.integrations || {};
-  const live = config.liveTrading || {};
   const runtime = config.runtime || {};
   const user = data.user || {};
   const sub = (data.subscriptions || [])[0] || {};
   const subs = {
     llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置",
     exchange: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置",
-    live: live.effective ? "已开启" : "关闭",
     integrations: integrations.telegram?.configured ? "TG 已接入" : integrations.lark?.hasWebhook ? "飞书已接入" : "未配置",
     runtime: runtime.authRequired === false ? "免登录" : "鉴权开启"
   };
@@ -298,6 +295,11 @@ function MobileRisk({ data, action, ui }) {
         <div className="mCardHead"><b>风险规则</b></div>
         <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} 条已启用` : "无规则"}</small><i style={{ background: c }} /></div>; })}</div>
       </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>实盘写入与灰度</b><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</StatusBadge></div>
+        <LiveGrayPanel data={data} action={action} ui={ui} />
+      </div>
+
       <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
         <button className="mRbReduce" onClick={() => ui.openPanel("riskRules")}>只减仓</button>

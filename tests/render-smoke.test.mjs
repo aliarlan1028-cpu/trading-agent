@@ -47,7 +47,7 @@ process.on("exit", () => { try { fs.rmSync(outFile, { force: true }); } catch { 
 esbuild.buildSync({
   stdin: {
     contents: `
-      export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, ReviewPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
+      export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
       export { ChatPage } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
@@ -164,7 +164,6 @@ test("desktop pages render with realistic data (all statuses)", () => {
     EventsTasksPage: C.EventsTasksPage,
     RiskAuthPage: C.RiskAuthPage,
     AuditSystemPage: C.AuditSystemPage,
-    ReviewPage: C.ReviewPage,
     AgentProfilesPanel: C.AgentProfilesPanel,
     ChatPage: C.ChatPage
   };

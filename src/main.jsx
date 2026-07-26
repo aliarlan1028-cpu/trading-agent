@@ -34,7 +34,6 @@ const AuditSystemPage = lazyNamed(() => import("./pages.jsx"), "AuditSystemPage"
 const EventsTasksPage = lazyNamed(() => import("./pages.jsx"), "EventsTasksPage");
 const KnowledgeSkillsPage = lazyNamed(() => import("./pages.jsx"), "KnowledgeSkillsPage");
 const MarketAccountPage = lazyNamed(() => import("./pages.jsx"), "MarketAccountPage");
-const ReviewPage = lazyNamed(() => import("./pages.jsx"), "ReviewPage");
 const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
 const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
@@ -55,7 +54,6 @@ const navItems = [
   { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart },
   { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
-  { id: "review", label: "复盘与优化", short: "复盘", code: "REVIEW", icon: ClipboardList },
   { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
   { id: "auditSystem", label: "审计与系统", short: "审计", code: "AUDIT", icon: Settings }
 ];
@@ -264,7 +262,6 @@ function App() {
   const content = useMemo(() => {
     if (!data) return null;
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
-    if (active === "review") return <ReviewPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
