@@ -34,6 +34,26 @@ export function evaluateTradePlan(db, plan) {
   add("策略范围", strategies.length > 0 && strategies.includes(strategy), `${strategy} 必须在策略 allowlist 内`);
   add("授权有效期", validUntil && new Date(validUntil).getTime() > Date.now(), `有效期至 ${validUntil || "未设置"}`);
 
+  // 计划新鲜度(用户实锤:ADA 计划入场 0.193 挂到现价 0.1647——现价已跌穿止损,
+  // 批准会立即以市价成交且止损在成交价错误一侧,一开仓即触发止损)。
+  {
+    const market = (db.markets || []).find((m) => m.symbol === plan.symbol);
+    const price = Number(market?.price);
+    const entryLow = Number(plan.entry_range?.[0]);
+    const entryHigh = Number(plan.entry_range?.[1] ?? entryLow);
+    const stop = Number(plan.stopLoss ?? plan.stop_loss);
+    if (Number.isFinite(price) && price > 0 && Number.isFinite(stop)) {
+      const isShort = String(plan.direction).toLowerCase() === "short";
+      const stopIntact = isShort ? price < stop : price > stop;
+      add("止损未被跌穿", stopIntact, stopIntact ? `现价 ${price} 在止损 ${stop} 的安全侧` : `现价 ${price} 已越过止损 ${stop}——计划已失效,批准会立即触发止损`);
+      if (Number.isFinite(entryLow) && entryLow > 0) {
+        const mid = (entryLow + entryHigh) / 2;
+        const devPct = Math.abs(mid - price) / price * 100;
+        add("入场区间贴近现价", devPct <= 8, `入场中值 ${mid} 偏离现价 ${devPct.toFixed(1)}%（>8% 视为陈旧计划,须重新生成）`);
+      }
+    }
+  }
+
   const maxLeverageBySymbol = mandate.maxLeverageBySymbol || {};
   const maxLeverage = Number(maxLeverageBySymbol[plan.symbol] ?? mandate.maxLeverage ?? mandate.max_leverage ?? 1);
   add("杠杆上限", Number(plan.leverage) <= maxLeverage, `计划 ${plan.leverage}x，上限 ${maxLeverage}x`);

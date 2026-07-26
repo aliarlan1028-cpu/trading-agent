@@ -449,7 +449,21 @@ function AgentRail({ data, action, ui, send }) {
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
             <b className="mono">{plan?.symbol || (mandate.allowedSymbols || [])[0] || "BTC/USDT"}</b>
-            {(() => { const mk = (data.markets || []).find((m) => m.symbol === (plan?.symbol || "")); return mk?.price ? <span className="agPlanNow mono">现价 {displayPrice(mk.price)}</span> : null; })()}
+            {(() => {
+              const mk = (data.markets || []).find((m) => m.symbol === (plan?.symbol || ""));
+              if (!mk?.price || !plan) return null;
+              const price = Number(mk.price);
+              const stop = Number(plan.stopLoss ?? plan.stop_loss);
+              const mid = Array.isArray(plan.entry_range) && plan.entry_range.length ? (Number(plan.entry_range[0]) + Number(plan.entry_range[plan.entry_range.length - 1])) / 2 : NaN;
+              const isShort = String(plan.direction).toLowerCase() === "short";
+              const stopCrossed = Number.isFinite(stop) && (isShort ? price >= stop : price <= stop);
+              const devPct = Number.isFinite(mid) && mid > 0 ? Math.abs(mid - price) / price * 100 : 0;
+              return (<>
+                <span className="agPlanNow mono">现价 {displayPrice(price)}</span>
+                {stopCrossed ? <span className="evBadge neg">已失效 · 现价越过止损</span>
+                  : devPct > 8 ? <span className="evBadge warn">偏离现价 {devPct.toFixed(0)}% · 陈旧</span> : null}
+              </>);
+            })()}
             <span className="agPlanTag">{plan?.strategy || mandate.strategies?.[0] ? humanize(plan?.strategy || mandate.strategies?.[0]) : "未指定策略"}</span>
             <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : "暂无计划"}</span>
           </div>

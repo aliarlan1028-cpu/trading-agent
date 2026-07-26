@@ -70,3 +70,24 @@ test("mandate changes invalidate previously bound plans", () => {
   assert.equal(result.passed, false);
   assert.ok(result.blockers.some((item) => item.name === "授权版本"));
 });
+
+test("陈旧计划被新鲜度检查拦截:现价越过止损/入场偏离超阈值", () => {
+  const db = fixture();
+  db.markets[0].price = 0.1647; // 用户实锤场景:ADA 跌到 0.1647,旧计划入场 0.193
+  const stale = {
+    id: "p_stale", mandateId: "m1", mandateVersion: 1, symbol: "BTC/USDT",
+    marketType: "perpetual_usdt", strategy: "trend", direction: "long",
+    entry_range: [0.1927, 0.1935], stopLoss: 0.1888, take_profit: [0.1986],
+    leverage: 2, max_loss_pct: 0.3
+  };
+  const risk = evaluateTradePlan(db, stale);
+  assert.equal(risk.passed, false);
+  const failed = risk.checks.filter((c) => !c.passed).map((c) => c.name);
+  assert.ok(failed.includes("止损未被跌穿"), `应拦截跌穿止损,实际失败项:${failed.join(",")}`);
+
+  // 新鲜计划(贴近现价、止损在安全侧)不受两项新检查影响
+  const fresh = { ...stale, id: "p_fresh", entry_range: [0.162, 0.164], stopLoss: 0.158, take_profit: [0.172] };
+  const risk2 = evaluateTradePlan(db, fresh);
+  const freshFailed = risk2.checks.filter((c) => !c.passed).map((c) => c.name);
+  assert.ok(!freshFailed.includes("止损未被跌穿") && !freshFailed.includes("入场区间贴近现价"), `新鲜计划不应被新检查拦:${freshFailed.join(",")}`);
+});

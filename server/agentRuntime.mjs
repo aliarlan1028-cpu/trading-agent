@@ -88,6 +88,18 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
 
 // 巡检后复查最新执行中计划的风控（授权过期、预算变化等）
 export function recheckActivePlanRisk(db) {
+  // 计划时效清扫:awaiting/approved 超过 24h 自动过期(用户实锤:7 月 7 日的 approved 计划
+  // 挂了 19 天仍可被执行;行情早已作废它,计划必须有保质期)。executing 不动(有真实仓位)。
+  const EXPIRY_MS = 24 * 60 * 60 * 1000;
+  for (const p of db.tradePlans || []) {
+    if (!["awaiting_approval", "approved"].includes(p.status)) continue;
+    const age = Date.now() - new Date(p.createdAt || 0).getTime();
+    if (age > EXPIRY_MS) {
+      p.status = "expired";
+      p.expiredAt = nowIso();
+      appendAudit(db, `计划超时自动过期(${Math.round(age / 3600000)}h 未成交):${p.symbol}`, p.id, "PlanExpiry", "info");
+    }
+  }
   const plan = (db.tradePlans || []).find((item) => ["approved", "executing", "awaiting_approval"].includes(item.status));
   if (!plan) return null;
   const risk = evaluateTradePlan(db, plan);
