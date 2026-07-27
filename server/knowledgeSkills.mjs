@@ -825,9 +825,22 @@ const CURATED_METHODS = [
   }
 ];
 
+// 只种一次:提高这个版本号会让精选集重新播种一次(用于将来新增精选技能)。
+const CURATED_SEED_VERSION = 1;
+
 export function ensureCuratedSkills(db, actor = "CuratedSkills") {
   ensureCollections(db);
+  db.meta ||= {};
+  // 关键修复:此前每次启动都"发现没技能就重建",导致用户清理/退役掉的精选技能一重启就复活、
+  // 又要重新编译(用户实锤)。改为按版本只种一次——种过就永不再自动重建,尊重用户的清理。
+  if (db.meta.curatedSeedVersion === CURATED_SEED_VERSION) return { created: 0, skipped: "already_seeded" };
   db.knowledge.sources ||= [];
+  // 已存在精选来源 = 之前播过种(老库升级):直接标记已播种,不再重建任何被用户清理掉的精选技能。
+  if (db.knowledge.sources.some((source) => source.id === CURATED_SOURCE.id)) {
+    db.meta.curatedSeedVersion = CURATED_SEED_VERSION;
+    return { created: 0, skipped: "already_seeded_legacy" };
+  }
+
   if (!db.knowledge.sources.some((source) => source.id === CURATED_SOURCE.id)) {
     db.knowledge.sources.push({ ...CURATED_SOURCE, createdAt: nowIso() });
   }
@@ -837,13 +850,13 @@ export function ensureCuratedSkills(db, actor = "CuratedSkills") {
       const { templateId, params, ...fields } = method;
       db.knowledge.tradingMethods.push({ ...fields, source: { id: CURATED_SOURCE.id, title: CURATED_SOURCE.title }, curated: true, createdAt: nowIso() });
     }
-    // 一次性编译:该方法已有任何技能记录(含被拒/被替代)就不再重编,避免每次启动刷新版本
     if (db.knowledge.tradingSkills.some((skill) => skill.sourceMethodId === method.id)) continue;
     const skill = compileTradingMethod(db, method.id, { templateId: method.templateId, params: method.params }, actor);
     skill.curated = true;
     if (skill.status === "compiled") created += 1;
   }
-  if (created) appendAudit(db, `精选手写技能入列:新编译 ${created} 个(待历史验证)`, CURATED_SOURCE.id, actor);
+  db.meta.curatedSeedVersion = CURATED_SEED_VERSION; // 标记已播种,之后永不自动重建
+  if (created) appendAudit(db, `精选手写技能入列(首次播种):新编译 ${created} 个`, CURATED_SOURCE.id, actor);
   return { created };
 }
 
