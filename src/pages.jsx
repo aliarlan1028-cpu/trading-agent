@@ -1152,8 +1152,39 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       {domain === "capabilities" && (() => {
         const enabledCount = skills.filter((s) => s.status === "已启用" || s.native).length;
         const disabledCount = skills.filter((s) => s.status === "已禁用" || s.status === "已回滚").length;
+        const board = data.strategyBoard || { rows: [], summary: {} };
+        const dirCn = (d) => d === "short" ? "空" : d === "both" ? "双" : "多";
+        const num = (v, suf = "") => v === null || v === undefined ? "—" : `${v}${suf}`;
         return (
           <>
+            {/* 统一策略表现看板:三类在用策略(知识/自适应/受信任导入)一处看全、一处上下线 */}
+            <div className="termCard">
+              <div className="kHead"><span className="secLabel">策略表现看板 · 在用策略实盘复盘</span><span className="mono">{board.summary.live || 0} 在用{board.summary.suggestRetire ? ` · ${board.summary.suggestRetire} 建议下线` : ""}</span></div>
+              {!board.rows.length && <div className="emptyPanel">暂无在用策略。技能流水线上岗、或信任一个导入 skill 后在此复盘。</div>}
+              {board.rows.length > 0 && (
+                <div className="stratBoard">
+                  <div className="stratHead"><span>策略</span><span>来源</span><span className="r">实盘</span><span className="r">盈亏因子</span><span className="r">累计</span><span className="r">裁定</span><span className="r">操作</span></div>
+                  {board.rows.map((row) => (
+                    <div className="stratRow" key={row.id}>
+                      <div className="stratName"><span className={`mDir ${row.direction === "short" ? "short" : "long"}`}>{dirCn(row.direction)}</span><b>{row.name}</b><small className="mono">{row.scope !== "-" ? `${row.scope}·${row.timeframe}` : ""}</small></div>
+                      <span className="stratSrc">{row.sourceLabel}</span>
+                      <span className="r mono">{row.live ? `${row.live.trades}笔 ${num(row.live.winRatePct, "%")}` : row.backtest ? `回测 ${num(row.backtest.expectancyR, "R")}` : "—"}</span>
+                      <span className="r mono">{row.live ? num(row.live.profitFactor) : "—"}</span>
+                      <span className={`r mono ${row.live && row.live.weightedPnl > 0 ? "pos" : row.live && row.live.weightedPnl < 0 ? "neg" : ""}`}>{row.live && row.live.weightedPnl != null ? `${row.live.weightedPnl > 0 ? "+" : ""}${row.live.weightedPnl}` : "—"}</span>
+                      <span className="r"><span className={`evBadge ${EV_TONE[row.verdict.tone] || ""}`}>{row.verdict.label}</span></span>
+                      <span className="r stratActs">
+                        {row.controls.includes("retire") && <button className="dangerText" onClick={() => { if (window.confirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
+                        {row.controls.includes("reactivate") && <button onClick={() => action(`/api/knowledge/skills/${row.id}/validate`, {})}>重验</button>}
+                        {row.controls.includes("untrust") && <button className="dangerText" onClick={() => { if (window.confirm(`撤销信任「${row.name}」？将移出 AI 工具表。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
+                        {!row.controls.length && <small>自动</small>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="kCapHint">实盘=真金白银归因（样本&lt;10 显示"样本不足"不误判）；自适应画像来自寻优/前向，系统自动换代。裁定阈值=自动下线阈值，展示与执行同口径。</p>
+            </div>
+
             <div className="kCapHealth">
               <div className="kCapStat ok"><b className="mono">{enabledCount}</b><span>可用 · Agent 现在就能调用</span></div>
               <div className="kCapStat warn"><b className="mono">{skills.filter((s) => !s.native && s.status !== "已启用" && s.status !== "已禁用" && s.status !== "已回滚").length}</b><span>待审核 · 确认安全后启用</span></div>
@@ -1176,6 +1207,9 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                           <span className="kSkillActs">
                             <button className={open ? "on" : ""} title="查看详情" onClick={() => setSkillDetail(open ? null : sk.id)}>详情</button>
                             {!sk.native && <button title="安全扫描" onClick={() => action(`/api/skills/${sk.id}/scan`, {})}>扫描</button>}
+                            {!sk.native && (sk.trusted
+                              ? <button className="on" title="已信任为 AI 决策工具,点击撤销" onClick={() => { if (window.confirm(`撤销信任「${sk.name}」？将移出 AI 工具表。`)) action(`/api/skills/${sk.id}/untrust`, {}); }}>已信任</button>
+                              : <button title={scanned ? "信任为 AI 决策工具(进工具表,按成绩复盘)" : "先扫描通过"} disabled={!scanned} onClick={() => { if (window.confirm(`信任「${sk.name}」为 AI 决策工具？\nAI 将可自动调用它，其信号仅作参考、仍过硬风控；系统按真实成绩复盘，不达标自动撤信任。`)) action(`/api/skills/${sk.id}/trust`, {}); }}>信任</button>)}
                             {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
                             {!sk.native && (on
                               ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>

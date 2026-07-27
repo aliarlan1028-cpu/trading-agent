@@ -7991,6 +7991,19 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kProfileInfo span { color: #6b6357; }
 .kProfileTf { color: #8a8171 !important; }
 .kProfileMetric { font-size: 11px; color: #3f8f5b; white-space: nowrap; }
+/* 策略表现看板 */
+.stratBoard { display: grid; gap: 3px; margin-top: 4px; }
+.stratHead, .stratRow { display: grid; grid-template-columns: minmax(0,1.6fr) 44px 88px 56px 64px 74px 68px; gap: 6px; align-items: center; }
+.stratHead { font-size: 10px; color: #8a8171; padding: 0 8px 4px; }
+.stratHead .r, .stratRow .r { text-align: right; justify-self: end; }
+.stratRow { padding: 7px 8px; border: 1px solid #f0ece3; border-radius: 8px; background: #fffdf9; font-size: 12px; }
+.stratName { min-width: 0; display: flex; gap: 5px; align-items: baseline; flex-wrap: wrap; }
+.stratName b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stratName small { color: #8a8171; }
+.stratSrc { font-size: 11px; color: #8a8171; }
+.stratActs button { border: 1px solid var(--hairline); background: var(--surface-white); border-radius: 6px; padding: 2px 7px; font-size: 11px; cursor: pointer; color: #6b6357; }
+.stratActs button.dangerText { color: #bc4b34; }
+@media (max-width: 620px) { .stratHead { display: none; } .stratRow { grid-template-columns: 1fr auto; row-gap: 3px; } .stratRow .r { justify-self: start; text-align: left; } }
 .kCapHint { font-size: 11px; color: #8a8171; line-height: 1.6; margin-top: 8px; }
 @media (max-width: 560px) { .kCapHealth { grid-template-columns: 1fr; } .kSkillRow2 { grid-template-columns: 22px minmax(0, 1fr); } .kSkillActs { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; } }
 

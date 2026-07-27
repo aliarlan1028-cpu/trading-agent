@@ -15,7 +15,7 @@ import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { executeApprovedPlan } from "./executionEngine.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
 import { refreshAccounting } from "./accounting.mjs";
-import { enabledSkillTools, isSkillTool, runSkillTool } from "./skillTools.mjs";
+import { enabledSkillTools, importedToolName, isSkillTool, runSkillTool } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
 import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
@@ -958,6 +958,11 @@ export async function executeTool(db, run, name, args = {}) {
       selectedSkillIds: args.knowledgeSkillIds || [],
       requireExplicitAdoption: true
     }, "AgentChat");
+    // 归因受信任导入 skill:本轮若调用过某受信任 skill 的工具,视为该计划采纳了它——
+    // 用真实平仓成绩复盘,差了自动撤信任(推断式归因,无需 AI 显式声明)。
+    const usedTrusted = (db.skills || []).filter((s) => !s.native && s.trusted
+      && (run.steps || []).some((step) => step.phase === importedToolName(s)));
+    if (usedTrusted.length) plan.adoptedTrustedSkillIds = usedTrusted.map((s) => s.id);
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;

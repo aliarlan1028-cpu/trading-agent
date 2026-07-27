@@ -172,17 +172,44 @@ export function seedSkillTools(db) {
   }
 }
 
-export function isSkillTool(name) {
-  return SKILL_TOOLS.some((t) => t.toolName === name);
+// 受信任导入 skill 的工具名(稳定、合法标识符)
+export function importedToolName(skill) {
+  return `imported_${String(skill.id).replace(/[^a-zA-Z0-9]/g, "").slice(-20)}`;
 }
 
-// 只返回"已启用"技能对应的工具定义，供合并进 LLM 工具列表。
+export function isSkillTool(name) {
+  return SKILL_TOOLS.some((t) => t.toolName === name) || String(name).startsWith("imported_");
+}
+
+// 返回可挂进 LLM 工具表的技能:①已启用的内置原生工具 ②用户点了"信任"且扫描通过的导入 skill。
 export function enabledSkillTools(db) {
   const enabled = new Set((db.skills || []).filter((s) => s.native && s.status === "已启用").map((s) => s.id));
-  return SKILL_TOOLS.filter((t) => enabled.has(t.skillId)).map((t) => ({ name: t.toolName, description: t.description, schema: t.schema }));
+  const native = SKILL_TOOLS.filter((t) => enabled.has(t.skillId)).map((t) => ({ name: t.toolName, description: t.description, schema: t.schema }));
+  const trusted = (db.skills || [])
+    .filter((s) => !s.native && s.trusted && ["通过", "需复核"].includes(s.scan))
+    .map((s) => ({
+      name: importedToolName(s),
+      description: `【导入·受信任·未经系统回测,当顾问参考】${s.name}：${s.description || "用户导入的分析/决策 skill,在沙箱内运行返回结果"}。它的信号只是参考,是否下单仍由你判断并过硬风控。`,
+      schema: { type: "object", properties: { symbol: { type: "string", description: "交易对,如 BTC/USDT" } } }
+    }));
+  return [...native, ...trusted];
 }
 
 export async function runSkillTool(db, name, args = {}) {
+  // 导入的受信任 skill:沙箱运行,输出作为顾问数据返回(不能直接下单)。
+  if (String(name).startsWith("imported_")) {
+    const skill = (db.skills || []).find((s) => !s.native && s.trusted && importedToolName(s) === name);
+    if (!skill) return { error: `受信任导入技能未找到或已撤信任：${name}` };
+    skill.invocations = Number(skill.invocations || 0) + 1;
+    skill.lastCalledAt = nowIso();
+    try {
+      const { runSkillSandbox } = await import("./skillSandbox.mjs");
+      const run = await runSkillSandbox(db, skill.id, { symbol: args.symbol });
+      return { skill: skill.name, sandboxStatus: run.status, output: String(run.output || "").slice(0, 2000), note: "导入 skill 沙箱输出,仅供参考,未经系统验证" };
+    } catch (error) {
+      return { error: `沙箱运行失败：${error.message}` };
+    }
+  }
   const tool = SKILL_TOOLS.find((t) => t.toolName === name);
   if (!tool) return { error: `未知技能工具：${name}` };
   const skill = (db.skills || []).find((s) => s.id === tool.skillId);

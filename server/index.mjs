@@ -47,6 +47,7 @@ import {
 } from "./knowledgeSkills.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup, deriveAutomationState } from "./ops.mjs";
+import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
@@ -279,7 +280,8 @@ registerTaskHandler("paper_forward", async (database) => {
   // 小额实盘验证模式:新编译的技能(如新导入书本产出的)自动上岗试用;syncLifecycle 里含转正/退役复盘。
   if (database.system.skillLiveValidationMode) promoteCompiledToProbation(database);
   const skills = syncKnowledgeSkillLifecycle(database);
-  return { ...paper, knowledgeSkills: skills };
+  const trusted = refreshTrustedSkillMetrics(database); // 受信任导入 skill 复盘 + 差了自动撤信任
+  return { ...paper, knowledgeSkills: skills, trustedSkills: trusted };
 });
 // ② 平仓自动复盘：逐笔沉淀教训入记忆。
 registerTaskHandler("trade_reflection", (database) => runTradeReflection(database));
@@ -813,6 +815,7 @@ app.get("/api/overview", (_req, res) => {
     system: db.system,
     publicRegistrationEnabled: process.env.PUBLIC_REGISTRATION_ENABLED === "true",
     automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
+    strategyBoard: buildStrategyBoard(db),
     agentStatus: getAgentStatus(db),
     agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
@@ -1892,6 +1895,31 @@ app.delete("/api/skills/:id", requirePermission("write:skills"), (req, res) => {
   appendAudit(db, `删除 Skill「${removed.name}」`, removed.id, db.user?.name || "Owner", "warning");
   persist(res, { message: `已删除 Skill：${removed.name}`, id: removed.id });
 });
+
+// 信任导入 skill 为 AI 决策工具:必须扫描通过 + 二次确认。信任后进 AI 工具表,并像策略一样被复盘,差了自动撤信任。
+app.post("/api/skills/:id/trust", requirePermission("skill.install"), (req, res) => {
+  const skill = (db.skills || []).find((item) => item.id === req.params.id);
+  if (!skill) return res.status(404).json({ error: "Skill not found" });
+  if (skill.native) return res.status(400).json({ error: "内置技能无需信任,直接启用即可" });
+  if (!["通过", "需复核"].includes(skill.scan)) return res.status(400).json({ error: "必须先安全扫描通过才能信任为决策工具" });
+  skill.trusted = true;
+  skill.trustedAt = nowIso();
+  skill.trustedBy = db.user?.name || "Owner";
+  skill.status = "已启用";
+  appendAudit(db, `信任导入 Skill 为 AI 决策工具「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
+  persist(res, { message: `已信任「${skill.name}」,AI 可调用；将按真实成绩复盘,不达标自动撤信任`, skill });
+});
+
+app.post("/api/skills/:id/untrust", requirePermission("write:skills"), (req, res) => {
+  const skill = (db.skills || []).find((item) => item.id === req.params.id);
+  if (!skill) return res.status(404).json({ error: "Skill not found" });
+  skill.trusted = false;
+  skill.untrustedAt = nowIso();
+  appendAudit(db, `撤销信任导入 Skill「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
+  persist(res, { message: `已撤销信任「${skill.name}」,已移出 AI 工具表`, skill });
+});
+
+app.get("/api/strategy-board", (_req, res) => res.json(buildStrategyBoard(db)));
 
 app.post("/api/skills/:id/rollback", requirePermission("write:skills"), (req, res) => {
   const skill = db.skills.find((item) => item.id === req.params.id);
