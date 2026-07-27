@@ -7970,6 +7970,27 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kSkillActs button:hover { border-color: #c9beac; }
 .kSkillActs button.dangerText { color: #bc4b34; }
 .kSkillActs button.dangerText:hover { border-color: #bc4b34; }
+.kSkillActs button.on { border-color: #e07a3f; color: #b8551f; }
+.kSkillActs button:disabled { opacity: 0.45; cursor: not-allowed; }
+.kSkillItem { border: 1px solid #f0ece3; border-radius: 8px; background: #fffdf9; overflow: hidden; }
+.kSkillItem .kSkillRow2 { border: 0; border-radius: 0; background: transparent; }
+.kSkillDetail { padding: 8px 10px 10px; border-top: 1px dashed #ece4d8; background: #fbf8f2; }
+.kSkillMeta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 14px; }
+.kSkillMeta > div { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.kSkillMeta span { color: #8a8171; }
+.kSkillMeta b { color: #4f493f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kSkillDesc { font-size: 11px; color: #6b6357; line-height: 1.6; margin: 8px 0 4px; }
+.kSkillDetail details { font-size: 11px; color: #8a8171; }
+.kSkillDetail summary { cursor: pointer; padding: 4px 0; }
+.kSkillJson { max-height: 220px; overflow: auto; background: #2f2d29; color: #e8e2d6; padding: 8px 10px; border-radius: 6px; font-size: 10px; line-height: 1.5; white-space: pre; }
+/* 自适应策略画像 */
+.kProfileCard { border-color: #d9e6da; }
+.kProfileList { display: grid; gap: 5px; margin-top: 4px; }
+.kProfileRow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 9px; border: 1px solid #eef1ec; border-radius: 8px; background: #fafdf9; font-size: 12px; }
+.kProfileInfo { min-width: 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.kProfileInfo span { color: #6b6357; }
+.kProfileTf { color: #8a8171 !important; }
+.kProfileMetric { font-size: 11px; color: #3f8f5b; white-space: nowrap; }
 .kCapHint { font-size: 11px; color: #8a8171; line-height: 1.6; margin-top: 8px; }
 @media (max-width: 560px) { .kCapHealth { grid-template-columns: 1fr; } .kSkillRow2 { grid-template-columns: 22px minmax(0, 1fr); } .kSkillActs { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; } }
 

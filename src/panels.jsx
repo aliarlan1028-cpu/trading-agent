@@ -1051,22 +1051,7 @@ export function SkillImportPanel({ data, action, ui }) {
         <label>Skill.md 内容<textarea className="largeTextarea" value={form.skillMd} onChange={(event) => setForm((current) => ({ ...current, skillMd: event.target.value }))} placeholder="# Skill Name" /></label>
         <button className="primaryButton" type="submit">导入 Skill</button>
       </form>
-      {(data.skills || []).map((skill) => (
-        <div className="panelItem" key={skill.id}>
-          <div><strong>{skill.name}</strong><small>{skill.source || "uploaded"} · v{skill.version}</small></div>
-          <StatusBadge tone={skill.status === "已启用" ? "ok" : "warning"}>{skill.status}</StatusBadge>
-          <button className="secondaryButton" onClick={() => {
-            // scan 真实取值:未扫描/通过/需复核/失败(此前判"已扫描"永远不成立,安装按钮不可达,审计 H3)
-            if (["通过", "需复核"].includes(skill.scan)) {
-              const needsReview = skill.scan === "需复核";
-              if (needsReview && !window.confirm(`「${skill.name}」扫描结果为需复核(含高危权限请求)。确认已人工审阅并批准安装?`)) return;
-              action(`/api/skills/${skill.id}/install`, needsReview ? { securityApproved: true } : {});
-            } else {
-              action(`/api/skills/${skill.id}/scan`, {});
-            }
-          }}>{["通过", "需复核"].includes(skill.scan) ? (skill.scan === "需复核" ? "安装(需复核)" : "安装") : skill.scan === "失败" ? "重新扫描" : "扫描"}</button>
-        </div>
-      ))}
+      <p className="fieldHint">导入后在「能力与工具 → Skills 中心」查看全部技能、扫描 / 启用 / 运行 / 删除与详情。</p>
     </div>
   );
 }

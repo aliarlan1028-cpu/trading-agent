@@ -911,6 +911,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   // 两大平级板块:知识(让 AI 更懂) / 能力与工具(AI 的手脚)。外部能力从末尾附属 Tab 提升为半壁江山。
   const [domain, setDomain] = useState("knowledge");
   const [tab, setTab] = useState("methods");
+  const [skillDetail, setSkillDetail] = useState(null); // 展开查看某 Skill 的详情(结构化 + JSON)
   const KNOWLEDGE_TABS = ["methods", "skills", "rules", "graph"];
   function goKnowledge(next) { setDomain("knowledge"); if (next) setTab(next); else if (!KNOWLEDGE_TABS.includes(tab)) setTab("methods"); }
   const [rag, setRag] = useState("");
@@ -1043,6 +1044,24 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       )}
 
       {/* —— 技能流水线 Tab —— */}
+      {domain === "knowledge" && tab === "skills" && (() => {
+        const profiles = (data.strategyProfiles || []).filter((p) => p.strategyId);
+        return profiles.length ? (
+          <div className="termCard kProfileCard">
+            <div className="kHead"><span className="secLabel">自适应策略画像 · 自动寻优产出（数据驱动，可注入决策）</span><span className="mono">{profiles.length}</span></div>
+            <div className="kProfileList">
+              {profiles.map((p) => (
+                <div className="kProfileRow" key={p.symbol + p.timeframe}>
+                  <span className={`mDir ${p.direction === "short" ? "short" : "long"}`}>{p.direction === "short" ? "空" : "多"}</span>
+                  <div className="kProfileInfo"><b className="mono">{p.symbol}</b> <span>{p.label}</span> <span className="mono kProfileTf">{p.timeframe}</span></div>
+                  <span className="kProfileMetric mono" title="合并样本外期望 R / 置信度">{p.oosScore ?? "-"}R · 置信 {p.confidence ?? "-"}</span>
+                </div>
+              ))}
+            </div>
+            <p className="kCapHint">这是系统对授权币持续网格寻优、按样本外表现选出的当前最优参数策略；与下方书本/口述技能一起构成 AI 可参考的策略库。</p>
+          </div>
+        ) : null;
+      })()}
       {domain === "knowledge" && tab === "skills" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(() => { const n = tradingSkills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
@@ -1147,19 +1166,33 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                   {skills.map((sk) => {
                     const on = sk.status === "已启用" || sk.native;
                     const scanned = ["通过", "需复核"].includes(sk.scan);
+                    const open = skillDetail === sk.id;
                     return (
-                      <div className="kSkillRow2" key={sk.id}>
-                        <span className="kSkillIcon"><Sparkles size={14} /></span>
-                        <div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version || 1}`}</span></div>
-                        <span className={`evBadge ${on ? "ok" : ""}`}>{sk.status || (sk.native ? "内置" : "待扫描")}</span>
-                        <span className="kSkillActs">
-                          <button title="详情" onClick={() => ui.openPanel("skillImport")}>详情</button>
-                          {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
-                          {!sk.native && (on
-                            ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>
-                            : <button title={scanned ? "启用" : "先扫描"} onClick={() => action(`/api/skills/${sk.id}/${scanned ? "install" : "scan"}`, {})}>{scanned ? "启用" : "扫描"}</button>)}
-                          {!sk.native && <button className="dangerText" title="删除" onClick={() => { if (window.confirm(`删除 Skill「${sk.name}」？`)) action(`/api/skills/${sk.id}`, {}, "DELETE"); }}>删除</button>}
-                        </span>
+                      <div className="kSkillItem" key={sk.id}>
+                        <div className="kSkillRow2">
+                          <span className="kSkillIcon"><Sparkles size={14} /></span>
+                          <div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version || 1}`}</span></div>
+                          <span className={`evBadge ${on ? "ok" : ""}`}>{sk.status || (sk.native ? "内置" : "待扫描")}</span>
+                          <span className="kSkillActs">
+                            <button className={open ? "on" : ""} title="查看详情" onClick={() => setSkillDetail(open ? null : sk.id)}>详情</button>
+                            {!sk.native && <button title="安全扫描" onClick={() => action(`/api/skills/${sk.id}/scan`, {})}>扫描</button>}
+                            {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
+                            {!sk.native && (on
+                              ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>
+                              : <button title={scanned ? "启用" : "先扫描后启用"} disabled={!scanned} onClick={() => action(`/api/skills/${sk.id}/install`, {})}>启用</button>)}
+                            {!sk.native && <button className="dangerText" title="删除" onClick={() => { if (window.confirm(`删除 Skill「${sk.name}」？`)) action(`/api/skills/${sk.id}`, {}, "DELETE"); }}>删除</button>}
+                          </span>
+                        </div>
+                        {open && (
+                          <div className="kSkillDetail">
+                            <div className="kSkillMeta">
+                              {[["来源", sk.source || (sk.native ? "内置" : "上传")], ["版本", sk.version || "-"], ["格式", sk.format || "-"], ["工具名", sk.toolName || "-"], ["扫描", sk.scan || "未扫描"], ["权限", (sk.permissions || []).join("、") || "无"]]
+                                .map(([k, v]) => <div key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+                            </div>
+                            {sk.description && <p className="kSkillDesc">{sk.description}</p>}
+                            <details><summary>原始 JSON</summary><pre className="kSkillJson">{JSON.stringify(sk, null, 2)}</pre></details>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

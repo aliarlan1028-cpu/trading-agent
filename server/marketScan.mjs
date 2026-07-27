@@ -8,7 +8,9 @@ const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 
 // 全量 SWAP tickers → 按当日(UTC0)涨幅 + 成交额门槛筛异动币。一个请求，确定性。
 async function scanMarketMovers(options = {}) {
-  const minChangePct = Number(options.minChangePct ?? 12);
+  // 阈值 12% 太高:平静日无币达标 → marketMovers 常年空,环境感知失效(用户实锤)。
+  // 降到 7% 让它更常surface异动;成交额门槛保留,滤掉不流动的小币。
+  const minChangePct = Number(options.minChangePct ?? process.env.MOVER_MIN_CHANGE_PCT ?? 7);
   const minQuoteVol = Number(options.minQuoteVolUsdt ?? 3_000_000);
   const limit = Math.max(1, Math.min(20, Number(options.limit ?? 8)));
   const controller = new AbortController();
