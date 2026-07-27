@@ -669,6 +669,7 @@ export function ChatPage({ data, action, ui }) {
         {messages.map((message) => (message.role === "user" ? (
           <div className="agMsgUserRow" key={message.id}>
             <div className="agBubbleUser"><RichMessage text={message.content} compact onSuggest={null} /></div>
+            <small className="agMsgMeta userSide">{formatTime(message.createdAt)}</small>
           </div>
         ) : (
           <div className="agMsgAiRow" key={message.id}>

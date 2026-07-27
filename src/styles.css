@@ -8374,3 +8374,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 
 /* 复选框/单选统一品牌橙(原生蓝与暖色体系冲突) */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
+.agMsgUserRow { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.agMsgMeta.userSide { text-align: right; opacity: .75; }
