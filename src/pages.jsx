@@ -811,12 +811,20 @@ export function ConceptGraph({ concepts = [] }) {
 }
 
 // SKILL_STATE / SKILL_STATE_HELP 已收敛到 lib.jsx（桌面/移动共用单一来源）。
-const FUNNEL = [
+// 经典生命周期(历史验证→前向→人工批准)
+const FUNNEL_CLASSIC = [
   { key: "draft", label: "方法草案", tab: "methods" },
   { key: "compiled", label: "已编译", tab: "skills" },
   { key: "validated", label: "已验证", tab: "skills" },
   { key: "papering", label: "模拟中", tab: "skills" },
   { key: "active", label: "已上岗", tab: "skills" }
+];
+// 小额实盘验证模式:编译即上岗试用,真实成绩转正
+const FUNNEL_LIVE = [
+  { key: "draft", label: "方法草案", tab: "methods" },
+  { key: "compiled", label: "已编译", tab: "skills" },
+  { key: "probation", label: "小额试用", tab: "skills" },
+  { key: "active", label: "已转正", tab: "skills" }
 ];
 
 function SkillStateLegend() {
@@ -842,16 +850,24 @@ function SkillStateLegend() {
 }
 function HelpBadge() { return <span className="kHelpDot">?</span>; }
 
-function KnowledgeOnboarding({ funnelCounts, sourceCount, ui, action, goMethods, goSkills }) {
+function KnowledgeOnboarding({ funnelCounts, sourceCount, liveMode, ui, action, goMethods, goSkills }) {
   const KEY = "knowGuideCollapsed";
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } });
   const toggle = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem(KEY, n ? "1" : "0"); } catch {} return n; });
 
-  const inPipeline = funnelCounts.compiled + funnelCounts.validated + funnelCounts.papering;
-  // 当前该做的一步：没知识源→喂料；有草案没进流水线→编译验证；进了流水线没上岗→批准；已上岗→完成。
-  const step = sourceCount === 0 ? 1 : (inPipeline === 0 && funnelCounts.active === 0) ? 2 : funnelCounts.active === 0 ? 3 : 4;
+  // 小额验证模式:草案→编译上岗试用→真实成绩转正;经典模式:草案→编译验证→人工批准。
+  const inPipeline = liveMode
+    ? funnelCounts.compiled + funnelCounts.probation
+    : funnelCounts.compiled + funnelCounts.validated + funnelCounts.papering;
+  const graduated = funnelCounts.active;
+  // 当前该做的一步：没知识源→喂料；没技能进流水线→编译；试用中还没转正→等真实成绩；已有转正→完成。
+  const step = sourceCount === 0 ? 1 : (inPipeline === 0 && graduated === 0) ? 2 : graduated === 0 ? 3 : 4;
 
-  const steps = [
+  const steps = liveMode ? [
+    { n: 1, icon: BookOpen, title: "喂知识", desc: "导入交易书籍、文章或网页。系统自动蒸馏出「交易方法草案」和「风控纪律」。", cta: "导入知识源", onClick: () => ui.openPanel("knowledgeImport") },
+    { n: 2, icon: Rocket, title: "编译上岗试用", desc: "方法草案编译成技能后直接上岗「小额试用」——用真实小额成交检验，无需历史回测/人工批准。", cta: "去技能流水线", onClick: goSkills },
+    { n: 3, icon: ShieldCheck, title: "真实成绩转正", desc: "试用期用真实成交复盘：达标（足够笔数且盈亏比过关）自动转正为「已验证」，不达标自动退役。", cta: "去技能流水线", onClick: goSkills }
+  ] : [
     { n: 1, icon: BookOpen, title: "喂知识", desc: "导入交易书籍、文章或网页。系统自动蒸馏出「交易方法草案」和「风控纪律」。", cta: "导入知识源", onClick: () => ui.openPanel("knowledgeImport") },
     { n: 2, icon: Rocket, title: "编译 + 验证", desc: "把方法草案编译成技能，自动跑历史三窗回测 + 纯前向模拟盘。跑不过的不能上岗。", cta: "去方法草案", onClick: goMethods },
     { n: 3, icon: ShieldCheck, title: "人工批准上岗", desc: "只有你亲自批准的技能才会进入实盘决策。低信任（按书名综述）门槛更严。", cta: "去技能流水线", onClick: goSkills }
@@ -916,13 +932,16 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
 
   // 漏斗计数：草案 = 尚未编译成活跃技能的方法；其余按技能 stage 聚合。
   const compiledMethodIds = new Set(tradingSkills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
+  const liveMode = data.system?.skillLiveValidationMode !== false;
   const funnelCounts = {
     draft: methods.filter((m) => !compiledMethodIds.has(m.id)).length,
     compiled: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "compiled").length,
     validated: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "validated").length,
     papering: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "papering").length,
+    probation: tradingSkills.filter((s) => s.status === "live_probation").length,
     active: tradingSkills.filter((s) => s.status === "active").length
   };
+  const FUNNEL = liveMode ? FUNNEL_LIVE : FUNNEL_CLASSIC;
   // 来源书籍列表（方法/技能共用的筛选维度）
   const sourceTitles = [...new Set([...methods.map((m) => m.source?.title), ...tradingSkills.map((s) => s.sourceTitle)].filter(Boolean))];
   const matchSrc = (title) => !srcFilter || title === srcFilter;
@@ -948,6 +967,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       {domain === "knowledge" && <KnowledgeOnboarding
         funnelCounts={funnelCounts}
         sourceCount={sourceCount}
+        liveMode={liveMode}
         ui={ui}
         action={action}
         goMethods={() => goKnowledge("methods")}
