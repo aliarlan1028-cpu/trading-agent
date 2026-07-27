@@ -137,3 +137,36 @@ test("撤销:活跃哨可撤,已结束哨不可重复撤", () => {
   assert.equal(w.status, "cancelled");
   assert.match(cancelWatch(db, w.id).error, /未找到/);
 });
+
+test("快速异动探测:不依赖挂哨,窗内急速涨跌超阈值即生成异动+冷却", async () => {
+  const { detectFastMoves, FAST_MOVE } = await import("../server/watchSentinel.mjs");
+  const db = { system: {}, auditLogs: [], traces: [] };
+  const base = 100;
+  // t0:建基线(第一个样本,预热不足不判)
+  let now = 1_000_000;
+  detectFastMoves(db, new Map([["ADA/USDT", base]]), now);
+  // 6分钟后价格没怎么动 → 不触发
+  now += 6 * 60_000;
+  let ev = detectFastMoves(db, new Map([["ADA/USDT", 99.9]]), now);
+  assert.equal(ev.length, 0);
+  // 再过1分钟,自窗内高点 100 跌到 96.5(-3.5% > 2.5%阈值) → 触发下跌异动
+  now += 60_000;
+  ev = detectFastMoves(db, new Map([["ADA/USDT", 96.5]]), now);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].direction, "down");
+  assert.ok(ev[0].movePct >= FAST_MOVE.pct);
+  // 冷却中:紧接着再跌也不重复触发
+  now += 60_000;
+  ev = detectFastMoves(db, new Map([["ADA/USDT", 95]]), now);
+  assert.equal(ev.length, 0, "冷却期内不重复触发");
+});
+
+test("快速异动:窗内平缓移动不误触发", async () => {
+  const { detectFastMoves } = await import("../server/watchSentinel.mjs");
+  const db = { system: {}, auditLogs: [], traces: [] };
+  let now = 2_000_000;
+  detectFastMoves(db, new Map([["BTC/USDT", 65000]]), now);
+  now += 6 * 60_000;
+  const ev = detectFastMoves(db, new Map([["BTC/USDT", 65200]]), now); // +0.3%,远低于阈值
+  assert.equal(ev.length, 0);
+});

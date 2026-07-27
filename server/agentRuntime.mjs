@@ -49,6 +49,9 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
 
   // 观察哨触发消费：无论走 LLM 还是 patrol_only，都在这一轮处理掉，防止无限重触发
   const triggeredWatches = consumeTriggeredWatches(db);
+  // 快速异动消费:哨兵探测到的急速涨跌,本轮消费掉并注入目标,让 AI 优先评估(用户实锤:ADA一小时跌4%没反应)
+  const fastMoves = db.system.pendingFastMoves || [];
+  db.system.pendingFastMoves = [];
 
   const skipReasons = [];
   if (!db.system.autonomyEnabled) skipReasons.push("自主推进已暂停");
@@ -69,6 +72,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       source: "agent_cycle",
       steps: [
         { phase: "observe", summary: syncedSymbols.length ? `已同步 ${syncedSymbols.join("、")} 真实行情。` : "行情同步失败或无授权交易对。" },
+        ...(fastMoves.length ? [{ phase: "fast_move", summary: `快速异动但本轮未进入 LLM 决策：${fastMoves.map((e) => `${e.symbol} ${e.windowMin}分钟${e.direction === "down" ? "跌" : "涨"}${e.movePct}%`).join("；")}。` }] : []),
         ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${describeWatch(w)}(触发价 ${w.triggerPrice})`).join("；")}。` }] : []),
         ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
@@ -87,16 +91,24 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 标题带批次开始时间(北京时间),用户在长会话里靠它区分每轮巡检。
   const startedHhmm = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
   const watchBullets = triggeredWatches.map((w) => `- ${describeWatch(w)} 已触发（触发价 ${w.triggerPrice}）${w.note ? ` · 登记理由：${w.note}` : ""}`);
+  const moveBullets = fastMoves.map((e) => `- ${e.symbol} ${e.windowMin} 分钟内${e.direction === "down" ? "快速下跌" : "快速上涨"} ${e.movePct}%（现价 ${e.price}，自${e.direction === "down" ? "高" : "低"}点 ${e.refPrice}）`);
   const goal = payload.goal
     || [
-      triggeredWatches.length ? `【⚠ 观察哨触发 · ${startedHhmm}】` : `【定时巡检 · ${startedHhmm}】`,
+      fastMoves.length ? `【⚠ 快速异动 · ${startedHhmm}】` : triggeredWatches.length ? `【⚠ 观察哨触发 · ${startedHhmm}】` : `【定时巡检 · ${startedHhmm}】`,
+      ...(moveBullets.length ? [...moveBullets, ""] : []),
       ...(watchBullets.length ? [...watchBullets, ""] : []),
       `- 授权白名单：${mandate.allowedSymbols.join("、")}`,
       `- 单笔风险上限 ${mandate.maxSingleTradeRiskPct}% · 日亏上限 ${mandate.maxDailyLossPct}%`,
       ...(regimeBullets ? ["", "【大盘与聪明钱 · 系统预取，可调用 get_global_market / get_microstructure 复核】", regimeBullets] : []),
       "",
       "【本轮任务】",
-      ...(triggeredWatches.length
+      ...(fastMoves.length
+        ? [
+          "1. 立即复核异动币种：sync_market + get_microstructure 看这波急速涨跌是否伴随放量、订单簿失衡与结构破位（识别无量假突破/急跌诱空）",
+          "2. 顺势评估机会：急跌可评估做空或规避、急涨可评估做多或止盈；按授权边界与盈亏比决定是否 propose_trade_plan，不达标则说明原因",
+          "3. 若判断后续还有关键触发位（如跌破某支撑加速），逐条 register_watch 登记让哨兵继续盯"
+        ]
+        : triggeredWatches.length
         ? [
           "1. 优先复核触发币种：用 sync_market / get_microstructure 确认触发是否伴随量能与结构（无量假突破/假跌破要识别出来）",
           "2. 确认有效则按授权边界评估是否提出交易计划；无效或不确定则说明原因，需要时重新登记观察哨",

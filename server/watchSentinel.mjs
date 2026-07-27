@@ -201,6 +201,43 @@ export function sweepWatches(db, prices = new Map(), now = Date.now()) {
   return { triggered, expired, invalidated, changed };
 }
 
+// 无条件快速异动探测:不依赖 AI 事先挂哨——每分钟对授权币维护滚动价格缓冲,
+// 若某币在回看窗内相对窗内高/低点急速异动超阈值,就生成一条待处理异动,唤起 AI 立即评估。
+// (用户实锤:ADA 一小时跌 4%,系统靠 15 分钟定时巡检+空哨,没能及时反应。)
+export const FAST_MOVE = {
+  pct: Number(process.env.FAST_MOVE_PCT || 2.5),   // 阈值:窗内高→现价 或 低→现价 变动百分比
+  lookbackMs: 15 * 60_000,                          // 回看窗 15 分钟
+  minSampleAgeMs: 5 * 60_000,                       // 至少要有 5 分钟前的样本才判(否则还在预热)
+  cooldownMs: 20 * 60_000,                          // 同币触发后冷却,避免持续行情里刷屏
+  bufferMs: 20 * 60_000
+};
+
+export function detectFastMoves(db, prices, now = Date.now()) {
+  db.system.priceBuffer ||= {};
+  db.system.fastMoveCooldownAt ||= {};
+  const events = [];
+  for (const [symbol, price] of prices) {
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const buf = (db.system.priceBuffer[symbol] || []).filter((s) => now - s.t <= FAST_MOVE.bufferMs);
+    buf.push({ t: now, p: price });
+    db.system.priceBuffer[symbol] = buf;
+    const window = buf.filter((s) => now - s.t <= FAST_MOVE.lookbackMs);
+    const oldest = window[0];
+    if (!oldest || now - oldest.t < FAST_MOVE.minSampleAgeMs) continue; // 预热不足,不误报
+    const high = Math.max(...window.map((s) => s.p));
+    const low = Math.min(...window.map((s) => s.p));
+    const dropPct = high > 0 ? ((high - price) / high) * 100 : 0;   // 自窗内高点下跌
+    const risePct = low > 0 ? ((price - low) / low) * 100 : 0;      // 自窗内低点上涨
+    const down = dropPct >= risePct;
+    const movePct = down ? dropPct : risePct;
+    if (movePct < FAST_MOVE.pct) continue;
+    if (now - (db.system.fastMoveCooldownAt[symbol] || 0) < FAST_MOVE.cooldownMs) continue; // 冷却中
+    db.system.fastMoveCooldownAt[symbol] = now;
+    events.push({ symbol, direction: down ? "down" : "up", movePct: Number(movePct.toFixed(2)), price, refPrice: down ? high : low, windowMin: Math.round((now - oldest.t) / 60_000) });
+  }
+  return events;
+}
+
 // 哨兵触发的 LLM 巡检限频：每小时最多 N 次（超出的触发保持 pending，由下一轮定时巡检兜底处理）
 export function sentinelCycleAllowed(db, now = Date.now()) {
   db.system.sentinelCycleAt = (db.system.sentinelCycleAt || []).filter((iso) => now - new Date(iso).getTime() < 3_600_000);
@@ -211,24 +248,36 @@ export function sentinelCycleAllowed(db, now = Date.now()) {
 export async function runWatchSentinel(db, saveDb) {
   db.watchTriggers ||= [];
   const active = listActiveWatches(db);
-  const hasPending = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
-  if (!active.length && !hasPending) return { status: "idle", skipPersist: true };
-
-  // 系统暂停/熔断：不评估穿越（避免基于暂停期行情触发），清空基线待恢复后重新定基
+  const mandate = activeMandate(db);
+  // 系统暂停/熔断：不评估（避免基于暂停期行情触发），清空基线待恢复后重新定基
   if (!db.system.autonomyEnabled || db.system.killSwitch) {
     for (const w of active) w.lastPrice = null;
+    db.system.priceBuffer = {}; // 暂停期价格不连续,清空快速异动缓冲避免恢复后误判
     return { status: "paused", skipPersist: true };
   }
+  // 授权失效则无事可做
+  if (!mandate?.allowedSymbols?.length && !active.length) return { status: "idle", skipPersist: true };
 
-  // 拉取所关注币种现价（静默、带交易所故障切换；单币失败不影响其他哨）
+  // 无论有没有挂哨,都对授权币 + 已挂哨币拉现价——快速异动探测不依赖事先挂哨。
   const prices = new Map();
-  const symbols = [...new Set(active.map((w) => w.symbol))];
+  const symbols = [...new Set([...active.map((w) => w.symbol), ...(mandate?.allowedSymbols || [])])].slice(0, 6);
   await Promise.all(symbols.map(async (symbol) => {
     try {
       const ticker = await fetchTickerQuiet(symbol);
       if (Number.isFinite(Number(ticker?.price))) prices.set(symbol, Number(ticker.price));
     } catch { /* 该币本 tick 跳过，穿越语义保证不漏 */ }
   }));
+
+  // 快速异动:窗内急速涨跌超阈值 → 生成待处理异动,注入下一轮巡检唤起 AI
+  const fastMoves = detectFastMoves(db, prices);
+  if (fastMoves.length) {
+    db.system.pendingFastMoves = [...(db.system.pendingFastMoves || []), ...fastMoves.map((e) => ({ ...e, at: nowIso() }))].slice(-12);
+    for (const e of fastMoves) {
+      const dir = e.direction === "down" ? "快速下跌" : "快速上涨";
+      appendAudit(db, `快速异动:${e.symbol} ${e.windowMin}分钟内${dir} ${e.movePct}%(现价 ${e.price})`, "fast_move", "WatchSentinel", "warning");
+      createNotification(db, { eventType: "fast_move", severity: "warning", title: "快速异动", body: `${e.symbol} ${e.windowMin} 分钟内${dir} ${e.movePct}%，已唤起 AI 交易员立即评估。` });
+    }
+  }
 
   const result = sweepWatches(db, prices);
   for (const w of result.triggered) {
@@ -238,20 +287,23 @@ export async function runWatchSentinel(db, saveDb) {
   for (const w of result.expired) appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(w)}`, "ok");
   for (const w of result.invalidated) appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(w)}（${w.closeReason}）`, "warning");
 
-  // 有未处理触发 → 立即请求一轮完整巡检（同一任务、同一并发锁、同一风控链）。
-  // 锁被占 / 限频超额时不丢：哨保持 pending，下一 tick 或下轮定时巡检兜底。
+  // 观察哨触发 或 快速异动 → 立即请求一轮完整巡检（同一任务、同一并发锁、同一风控链）。
+  // 锁被占 / 限频超额时不丢：哨保持 pending / 异动留在 pendingFastMoves，下一 tick 或定时巡检兜底。
   let cycle = null;
-  const pendingNow = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
-  if (pendingNow && sentinelCycleAllowed(db)) {
+  const watchPending = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
+  const movePending = (db.system.pendingFastMoves || []).length > 0;
+  if ((watchPending || movePending) && sentinelCycleAllowed(db)) {
     db.system.sentinelCycleAt.push(nowIso());
     cycle = await runTask(db, "task_sys_agent_cycle", saveDb, "sentinel");
   }
+  const changed = result.changed || fastMoves.length > 0;
   return {
-    status: result.triggered.length ? "triggered" : "watched",
+    status: fastMoves.length ? "fast_move" : result.triggered.length ? "triggered" : "watched",
     watched: active.length,
     triggered: result.triggered.map((w) => describeWatch(w)),
+    fastMoves: fastMoves.map((e) => `${e.symbol} ${e.direction === "down" ? "-" : "+"}${e.movePct}%`),
     expired: result.expired.length,
     cycle: cycle?.status || null,
-    skipPersist: !result.changed
+    skipPersist: !changed
   };
 }
