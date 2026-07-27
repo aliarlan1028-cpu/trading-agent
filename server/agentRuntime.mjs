@@ -73,13 +73,19 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
 
   // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
   const regimeBullets = regimeSummary ? regimeSummary.split(/[;；]\s*/).filter(Boolean).map((x) => `- ${x.trim()}`).join("\n") : "";
+  // 标题带批次开始时间(北京时间),用户在长会话里靠它区分每轮巡检。
+  const startedHhmm = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
   const goal = payload.goal
     || [
-      "【定时巡检】",
-      `- 授权：${mandate.allowedSymbols.join("、")} · 单笔风险 ≤${mandate.maxSingleTradeRiskPct}% · 日亏 ≤${mandate.maxDailyLossPct}%`,
-      ...(regimeBullets ? ["", "【大盘与聪明钱 · 系统预取】", regimeBullets] : []),
+      `【定时巡检 · ${startedHhmm}】`,
+      `- 授权白名单：${mandate.allowedSymbols.join("、")}`,
+      `- 单笔风险上限 ${mandate.maxSingleTradeRiskPct}% · 日亏上限 ${mandate.maxDailyLossPct}%`,
+      ...(regimeBullets ? ["", "【大盘与聪明钱 · 系统预取，可调用 get_global_market / get_microstructure 复核】", regimeBullets] : []),
       "",
-      "任务：先判大盘，再逐一检查授权币对的行情/持仓/事件；只有出现符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划，否则用 1-2 句说明继续观察的理由即可。"
+      "【本轮任务】",
+      "1. 先判大盘：全局方向与情绪、大户/散户多空结构",
+      "2. 再看个币：逐一检查授权交易对的行情、持仓与事件",
+      "3. 只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划；否则简要说明为什么继续观察"
     ].join("\n");
   // 自动巡检全部归入固定会话:此前每次巡检都新建会话,15 分钟一个,历史会话被无限堆满。
   // 交易计划另有一等公民承载(待批准卡片/计划卡/审计链),用户手动对话保持独立会话。
