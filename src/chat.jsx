@@ -117,6 +117,11 @@ function parseRichText(text = "") {
       flushAll();
       continue;
     }
+    // 代码围栏(``` 或 ```lang):模型偶尔用它包住指标块,前端不渲染代码块,裸 ``` 会漏出来(用户实锤)。
+    // 直接吞掉围栏行本身,里面的内容照常按富文本解析。
+    if (/^`{3,}[a-zA-Z0-9_-]*$/.test(line)) {
+      continue;
+    }
     if (/^\|.*\|\s*$/.test(line) && (line.match(/\|/g) || []).length >= 2) {
       flushParagraph();
       flushBullets();
@@ -624,6 +629,21 @@ export function ChatPage({ data, action, ui }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, pending]);
 
+  // 切走页面会 unmount ChatPage,发出去的问题在后端照常处理并落库,但组件本地的"思考中"状态丢了。
+  // 重新进入时:若最后一条是用户消息(还没等到 AI 回复),说明有一轮在后端进行/刚完成——
+  // 显示思考态并轮询,回复落库后自动补上,不再"停止思考不回答"(用户实锤)。
+  const awaitingReply = messages.length > 0 && messages[messages.length - 1].role === "user";
+  useEffect(() => {
+    if (!awaitingReply || pending) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      loadMessages();
+      if (tries >= 40) clearInterval(timer); // 最多轮询 2 分钟
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [awaitingReply, pending, activeSessionId]);
+
   async function send(textOverride) {
     const text = String(textOverride ?? input).trim();
     if (!text || pending) return;
@@ -743,10 +763,10 @@ export function ChatPage({ data, action, ui }) {
             </div>
           </div>
         )))}
-        {pending && (
+        {(pending || awaitingReply) && (
           <div className="agMsgAiRow">
             <span className="agAvatar"><Bot size={18} /></span>
-            <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div></div>
+            <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div>{awaitingReply && !pending && <small className="agThinkNote">思考中·可切走稍后回来查看</small>}</div>
           </div>
         )}
       </div>

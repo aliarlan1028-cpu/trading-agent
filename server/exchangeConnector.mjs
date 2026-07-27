@@ -624,7 +624,11 @@ async function applyOkxSnapshot(db, snapshot) {
   // 真实可用/冻结：来自 OKX balance details 的 USDT 明细（此前从未写入，前端一直显示假的 0.00）。
   const usdtDetail = (account.details || []).find((d) => d.ccy === "USDT") || {};
   const availEq = Number(usdtDetail.availEq ?? usdtDetail.availBal);
-  if (Number.isFinite(availEq)) db.portfolio.availableMarginUsdt = availEq;
+  // OKX 账户级 totalEq 与币种级 availEq 口径/取整不同,availEq 可能微超 totalEq(实测 10.108>10.099)。
+  // 可用保证金物理上不可能超过总权益,按不变量夹取,避免"可用>总资产"的荒谬展示。
+  if (Number.isFinite(availEq)) {
+    db.portfolio.availableMarginUsdt = Number.isFinite(totalEq) && totalEq > 0 ? Math.min(availEq, totalEq) : availEq;
+  }
   const frozen = Number(usdtDetail.frozenBal ?? usdtDetail.ordFrozen);
   if (Number.isFinite(frozen)) db.portfolio.frozenMarginUsdt = frozen;
   db.portfolio.marginSyncedAt = snapshot.createdAt;

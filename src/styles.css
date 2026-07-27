@@ -4068,6 +4068,7 @@ button.danger:disabled,
   min-width: 0;
 }
 
+.agThinkNote { display: block; margin-top: 4px; font-size: 11px; color: #8a8171; }
 .thinkingDots {
   display: flex;
   gap: 5px;

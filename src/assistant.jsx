@@ -32,6 +32,7 @@ function renderMarkdown(text = "") {
     const line = raw.replace(/\s+$/, "");
     if (!line.trim()) { flush(); continue; }
     if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { flush(); blocks.push({ hr: true }); continue; }
+    if (/^\s*`{3,}[a-zA-Z0-9_-]*\s*$/.test(line)) { continue; } // 吞掉裸代码围栏 ```
     const head = line.match(/^\s*#{1,4}\s+(.+)$/) || line.match(/^\s*【(.+?)】[:：]?\s*$/);
     if (head) { flush(); blocks.push({ h: head[1] }); continue; }
     const ol = line.match(/^\s*\d+[.)、]\s+(.+)$/);
