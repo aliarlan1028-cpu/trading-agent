@@ -275,7 +275,7 @@ function App() {
   if (loading || !data) return <div className="loading"><Activity size={28} /> 正在启动 Trader Agent...</div>;
 
   if (isNativeApp || isMobileViewport) {
-    return <MobileApp api={{ data, action, toast, busy, notify, download, refresh }} />;
+    return <MobileApp api={{ data, action, toast, busy, notify, download, refresh, connectionError }} />;
   }
 
   return (

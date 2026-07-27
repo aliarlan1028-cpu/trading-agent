@@ -767,13 +767,16 @@ const mobileNav = [
   { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
 ];
 
-function MobileHeader({ route, onMenu, right }) {
+function MobileHeader({ route, onMenu, right, reconnecting }) {
   const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
   return (
     <header className="mHeader2">
       <button className="mMenuBtn" onClick={onMenu} aria-label="打开菜单"><Menu size={20} /></button>
       <div className="mHeaderMid"><strong>{item.label}</strong><small className="mono">{item.code}</small></div>
-      <div className="mHeaderRight">{right}</div>
+      <div className="mHeaderRight">
+        {reconnecting && <span className="mReconnect"><span className="pulseDot" />重连中</span>}
+        {right}
+      </div>
     </header>
   );
 }
@@ -801,7 +804,7 @@ function NavDrawer({ open, route, onNavigate, onClose, data }) {
 }
 
 export function MobileApp({ api }) {
-  const { data, action, toast, busy, notify, download, refresh } = api;
+  const { data, action, toast, busy, notify, download, refresh, connectionError } = api;
   const [route, setRoute] = useState("chat");
   const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
@@ -854,7 +857,7 @@ export function MobileApp({ api }) {
 
   return (
     <div className="mShell2">
-      <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} />
+      <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
       <main className={`mMain2 ${route === "chat" && !subPage ? "mMainChat" : ""}`}>{content}</main>
       <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} />
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}

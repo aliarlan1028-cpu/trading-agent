@@ -289,10 +289,12 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 9. 用户明确命令你执行系统内部操作时，优先调用工具完成；涉及密钥、实盘开关、清空数据、改密码等高敏操作时说明风险并避免回显敏感信息。
 
 输出格式：
-- 面向前端可视化展示，优先使用清晰 Markdown 小节：### 结论、### 依据、### 风险、### 下一步。
-- 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"、"风险：重大事件前不建议开仓"。
-- 列表每条只表达一个判断，避免大段长文本；需要行动时用 1. 2. 3. 步骤。
-- 不要输出表格、HTML、JSON 或代码块，除非用户明确要求。
+- 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
+- 面向前端可视化展示，优先使用清晰 Markdown 小节：### 结论、### 依据、### 风险、### 下一步；无实质内容的小节直接省略。
+- 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"。
+- 列表每条只表达一个判断，一条尽量不超过一行；同类信息合并成一条，整体列表不超过 6 条；需要行动时用 1. 2. 3. 步骤。
+- 不要输出表格、HTML、JSON、代码块或 --- 分隔线，除非用户明确要求。
+- 所有时间一律使用北京时间（UTC+8）并注明，如"14:30（UTC+8）"；不要输出 UTC 裸时间。
 
 ${SYSTEM_GUIDE}`;
 
@@ -316,6 +318,12 @@ function quarantineInjectedKnowledge(db, chunks = []) {
     safe.push(chunk);
   }
   return safe;
+}
+
+// 北京时间 HH:mm(注入提示词的时间戳统一 UTC+8;ISO 直接 slice 是 UTC 会差 8 小时)。
+function hhmmCn(iso) {
+  const d = new Date(iso || 0);
+  return !iso || Number.isNaN(d.getTime()) ? "?" : d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 async function buildSystemPrompt(db, userText = "") {
@@ -387,14 +395,14 @@ async function buildSystemPrompt(db, userText = "") {
   const rg = db.marketRegime || {};
   const regimeBits = [rg.global?.interpretation, rg.smartMoney?.ok !== false ? rg.smartMoney?.interpretation : null].filter(Boolean);
   if (regimeBits.length) {
-    sections.push(`【大盘与聪明钱（系统预取快照,更新于 ${String(rg.updatedAt || "").slice(11, 16) || "?"};与定时巡检同源,可调用 get_global_market / get_microstructure 复核）】${regimeBits.join("；")}`);
+    sections.push(`【大盘与聪明钱（系统预取快照,更新于 ${hhmmCn(rg.updatedAt)} (UTC+8);与定时巡检同源,可调用 get_global_market / get_microstructure 复核）】${regimeBits.join("；")}`);
   }
 
   // 全市场异动 + 消息面归因（环境感知）：让 AI 知道"今天市场在动什么、为什么"，而不是只盯授权币。
   const movers = db.marketMovers?.movers || [];
   if (movers.length) {
     const text = movers.slice(0, 6).map((m) => `- ${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%（额 $${(m.quoteVolUsdt / 1e6).toFixed(0)}M）${m.narrative ? `｜${m.narrative.narrative || ""}（${m.narrative.category || ""}，情绪${m.narrative.sentiment ?? "?"}）` : ""}`).join("\n");
-    sections.push(`【全市场异动·环境感知（截至 ${db.marketMovers.scannedAt?.slice(11, 16) || "?"}，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}`);
+    sections.push(`【全市场异动·环境感知（截至 ${hhmmCn(db.marketMovers.scannedAt)} (UTC+8)，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}`);
   }
 
   const chunks = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, userText, 5));

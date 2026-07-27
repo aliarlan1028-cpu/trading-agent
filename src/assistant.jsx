@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw } from "lucide-react";
-import { apiUrl, authHeaders, displayMoney } from "./lib.jsx";
+import { apiUrl, authHeaders, displayMoney, hhmmCn } from "./lib.jsx";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
    支持：标题(# / 【】)、加粗、行内代码、无序/有序列表、引用、键值、分隔线、段落。
@@ -96,14 +96,14 @@ function moversBroadcast(data) {
   const mv = data.marketMovers;
   const list = mv?.movers || [];
   if (!mv) return "**全市场异动**\n\n暂无扫描数据。系统巡检时会自动扫描 OKX 全量永续（按当日涨幅+成交额），稍后再来看。";
-  if (!list.length) return `**全市场异动**（截至 ${(mv.scannedAt || "").slice(11, 16) || "?"}）\n\n本轮未筛出达标异动币（涨跌幅/成交额未过门槛）。${mv.error ? `\n\n> 扫描提示：${mv.error}` : ""}`;
+  if (!list.length) return `**全市场异动**（截至 ${hhmmCn(mv.scannedAt)}）\n\n本轮未筛出达标异动币（涨跌幅/成交额未过门槛）。${mv.error ? `\n\n> 扫描提示：${mv.error}` : ""}`;
   const rows = list.slice(0, 8).map((t) => {
     const dir = t.changePct >= 0 ? "+" : "";
     const vol = t.quoteVolUsdt >= 1e8 ? `${(t.quoteVolUsdt / 1e8).toFixed(1)}亿U` : `${Math.round(t.quoteVolUsdt / 1e6)}百万U`;
     const narr = t.narrative?.narrative ? ` — ${t.narrative.narrative}` : "";
     return `- **${t.symbol}** ${dir}${t.changePct}% · 成交 ${vol}${narr}`;
   }).join("\n");
-  return `**全市场异动**（截至 ${(mv.scannedAt || "").slice(11, 16) || "?"}，仅供理解大盘情绪与轮动，不是追涨信号）\n\n${rows}\n\n> 只在你的授权白名单内交易；异动仅作环境感知。`;
+  return `**全市场异动**（截至 ${hhmmCn(mv.scannedAt)}，仅供理解大盘情绪与轮动，不是追涨信号）\n\n${rows}\n\n> 只在你的授权白名单内交易；异动仅作环境感知。`;
 }
 
 function escortBroadcast(data) {
@@ -112,8 +112,8 @@ function escortBroadcast(data) {
   if (e.note && !(e.positions || []).length) return `**持仓护航**\n\n${e.note}。`;
   const alerts = e.alerts || [];
   const head = e.overall
-    ? `**持仓护航**（${e.source === "gemini" ? "含消息面" : "纯行情"}，截至 ${(e.at || "").slice(11, 16)}）\n\n${e.overall}\n`
-    : `**持仓护航**（截至 ${(e.at || "").slice(11, 16)}）\n`;
+    ? `**持仓护航**（${e.source === "gemini" ? "含消息面" : "纯行情"}，截至 ${hhmmCn(e.at)}）\n\n${e.overall}\n`
+    : `**持仓护航**（截至 ${hhmmCn(e.at)}）\n`;
   if (e.error) return `${head}\n> 消息面归因暂不可用：${e.error}`;
   if (!alerts.length) return `${head}\n当前 ${(e.positions || []).length} 个持仓，暂无护航告警。`;
   const rows = alerts.map((a) => {

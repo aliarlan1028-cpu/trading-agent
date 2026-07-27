@@ -3990,70 +3990,54 @@ button.danger:disabled,
 .richBulletList,
 .richSteps {
   display: grid;
-  gap: 7px;
+  gap: 4px;
 }
 
+/* 去卡片化：巡检/AI 输出里每条 bullet 不再各自一个框，改为纯文本行 + 彩色圆点。 */
 .richBullet {
-  border: 1px solid #ece4d8;
-  border-radius: 10px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 7px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
   align-items: start;
-  padding: 8px 10px;
-  background: #fffdf9;
+  padding: 1px 0;
   color: #4f493f;
   font-size: 12px;
   line-height: 1.55;
 }
 
 .richBullet i {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: #f3ece1;
-  color: #8a8171;
+  height: 19px; /* 对齐首行文字中心(12px * 1.55 行高),圆点与告警图标共用 */
+  color: #c4b8a4;
   font-style: normal;
-  margin-top: 1px;
 }
 
 .richBullet i > span {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.richBullet.ok {
-  border-color: #d4e5d3;
-  background: #f7fbf6;
-}
-
 .richBullet.ok i {
   color: #3f8f5b;
-  background: #e8f3e7;
-}
-
-.richBullet.warning {
-  border-color: #f0dfbc;
-  background: #fffaf0;
 }
 
 .richBullet.warning i {
   color: #b17724;
-  background: #f8ecd1;
 }
 
-.richBullet.danger {
-  border-color: #f0cfc6;
-  background: #fff6f3;
+.richBullet.warning {
+  color: #7a5c22;
 }
 
 .richBullet.danger i {
   color: #bc4b34;
-  background: #f7e0d9;
+}
+
+.richBullet.danger {
+  color: #8f3a27;
 }
 
 .richStep {
@@ -6005,8 +5989,8 @@ button.danger:disabled,
 }
 
 .mChatContent .richBullet {
-  grid-template-columns: 18px minmax(0, 1fr);
-  padding: 8px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  padding: 1px 0;
 }
 
 /* 管理页分组与持仓页 */
@@ -8174,6 +8158,9 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
 .mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }
 .mRunBadge .pulseDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulseDot 2s infinite; }
+/* 弱网轮询失败时顶栏静默提示(替代反复弹"连接后端失败"的 toast) */
+.mReconnect { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font: 700 11px "Space Grotesk"; background: #FBEFDD; color: #B17724; }
+.mReconnect .pulseDot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulseDot 1.4s infinite; }
 @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .mMain2 { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(30px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
 .mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; flex-direction: column; }

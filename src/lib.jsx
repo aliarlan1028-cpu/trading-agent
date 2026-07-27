@@ -59,21 +59,29 @@ export function formatDateTime(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 export function formatDate(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Shanghai" });
+}
+
+// 北京时间 HH:mm(全站时间统一 UTC+8;ISO 直接 slice 是 UTC 会差 8 小时)。
+export function hhmmCn(value, fallback = "?") {
+  if (!value) return fallback;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return fallback;
+  return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 export function formatTime(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 export function formatDuration(value, fallback = "未记录") {
@@ -419,6 +427,8 @@ export function useApi() {
   const [connectionError, setConnectionError] = useState("");
   const [busyCount, setBusyCount] = useState(0);
   const [publicInfo, setPublicInfo] = useState({ registrationEnabled: false, trc20Configured: false, subscriptionPlans: [] });
+  // 轮询闭包里读不到最新 data,用 ref 记录"是否已有数据"来区分首连失败与掉线重连。
+  const hasDataRef = useRef(false);
 
   function setApiBase(value) {
     const normalized = normalizeApiBase(value);
@@ -442,9 +452,18 @@ export function useApi() {
     localStorage.removeItem("agent_token");
     setToken("");
     setData(null);
+    hasDataRef.current = false;
     setAuthRequired(true);
     setConnectionError("");
     notify(message, 4200);
+  }
+
+  // 已有数据时轮询失败只静默标记(顶部显示"重连中"),避免 App 弱网下每 15 秒弹一次"连接后端失败"。
+  function reportConnectionFailure(message) {
+    setConnectionError(message);
+    if (hasDataRef.current) return;
+    setToast(`连接后端失败：${message}`);
+    window.setTimeout(() => setToast(""), 3200);
   }
 
   async function readOverview(base) {
@@ -469,6 +488,7 @@ export function useApi() {
       let json = await readOverview(activeBase);
       if (!json) return;
       setData(json);
+      hasDataRef.current = true;
       setAuthRequired(false);
       setConnectionError("");
     } catch (error) {
@@ -480,23 +500,18 @@ export function useApi() {
           const json = await readOverview(fallback);
           if (!json) return;
           setData(json);
+          hasDataRef.current = true;
           setAuthRequired(false);
           setConnectionError("");
           setToast("已自动切换到默认后端");
           window.setTimeout(() => setToast(""), 2200);
           return;
         } catch (fallbackError) {
-          const message = connectionErrorMessage(fallbackError);
-          setConnectionError(message);
-          setToast(`连接后端失败：${message}`);
-          window.setTimeout(() => setToast(""), 3200);
+          reportConnectionFailure(connectionErrorMessage(fallbackError));
           return;
         }
       }
-      const message = connectionErrorMessage(error);
-      setConnectionError(message);
-      setToast(`连接后端失败：${message}`);
-      window.setTimeout(() => setToast(""), 3200);
+      reportConnectionFailure(connectionErrorMessage(error));
     } finally {
       if (showLoading) setLoading(false);
     }
