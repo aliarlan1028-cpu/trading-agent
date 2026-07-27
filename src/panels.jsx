@@ -358,6 +358,23 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 )}
               </div>
             </div>
+            {/* API Key 权限核验:七层安全闸之一(api_key_permission_unverified)会拦截所有实盘新开仓,
+                此前实盘灰度面板提示来这里核验,但这里根本没有入口——按钮在此补上。 */}
+            {(data.apiKeyMetadata || []).some((k) => k.hasApiKey) && (
+              <div className="keyVerifyBlock">
+                <strong>API Key 权限核验</strong>
+                <small>实盘下单前必须核验 Key 无提现权限（OKX 无权限查询接口，需你在 OKX API 管理页确认未勾选 Withdraw 后在此确认）。未核验时安全闸会拦截所有真实开仓。</small>
+                {(data.apiKeyMetadata || []).filter((k) => k.hasApiKey).map((k) => (
+                  <div className="keyVerifyRow" key={k.id || k.exchange}>
+                    <b>{k.exchange}</b>
+                    <StatusBadge tone={k.permissionVerifiedAt ? "ok" : "warn"}>{k.permissionVerifiedAt ? `已核验 · ${k.permissionVerificationStatus === "manual_confirmed" ? "人工确认" : "接口验证"}` : "未核验 · 实盘开仓被拦截"}</StatusBadge>
+                    {!k.permissionVerifiedAt && (
+                      <button className="secondaryButton" type="button" onClick={() => { if (window.confirm(`确认你已在 ${k.exchange} API 管理页面核对过该 Key 未开启提现(Withdraw)权限？`)) action(`/api/exchange/api-key-metadata/${k.id}/confirm-no-withdraw`, {}); }}>确认无提现权限</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <button className="primaryButton" type="submit"><Lock size={14} /> 保存交易所配置</button>
           </form>
         )}

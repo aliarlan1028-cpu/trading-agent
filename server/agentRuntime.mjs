@@ -20,12 +20,16 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 前置巡检：同步授权交易对行情 + 刷新真实核算
   const symbols = mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"];
   const syncedSymbols = [];
+  const syncErrors = []; // 失败原因必须留痕:空 catch 会让"没有机会"和"系统看不到数据"混为一谈(外审 P1)
   for (const symbol of symbols.slice(0, 3)) {
     try {
       await syncPublicMarket(db, "OKX", symbol);
       syncedSymbols.push(symbol);
-    } catch {}
+    } catch (error) {
+      syncErrors.push(`${symbol}: ${String(error.message || error).slice(0, 80)}`);
+    }
   }
+  if (syncErrors.length) appendTrace(db, "agent_cycle", `巡检行情同步失败 ${syncErrors.join("；")}`, "warning");
   const accounting = refreshAccounting(db);
 
   // 先判大盘：全局大盘 + 首个交易对聪明钱（免费公开数据，容错，不阻断）
@@ -38,7 +42,9 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
     smartMoney: regime.smartMoney || db.marketRegime?.smartMoney || null,
     updatedAt: nowIso()
   };
-  } catch {}
+  } catch (error) {
+    appendTrace(db, "agent_cycle", `大盘/聪明钱预取失败：${String(error.message || error).slice(0, 100)}（沿用上次快照）`, "warning");
+  }
   const regimeSummary = [regime?.global?.interpretation, regime?.smartMoney?.ok ? regime.smartMoney.interpretation : null].filter(Boolean).join("；");
 
   // 观察哨触发消费：无论走 LLM 还是 patrol_only，都在这一轮处理掉，防止无限重触发

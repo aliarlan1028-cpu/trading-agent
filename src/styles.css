@@ -8158,6 +8158,13 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
 .mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }
 .mRunBadge .pulseDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulseDot 2s infinite; }
+/* API Key 权限核验块(交易所设置):未核验时实盘开仓被安全闸拦截,在此人工确认 */
+.keyVerifyBlock { display: grid; gap: 8px; border: 1px solid #f0dfbc; border-radius: 10px; background: #fffaf0; padding: 12px; }
+.keyVerifyBlock > strong { font-size: 13px; color: #6b513b; }
+.keyVerifyBlock > small { color: #8a8171; font-size: 11px; line-height: 1.6; }
+.keyVerifyRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.keyVerifyRow b { font-size: 12px; min-width: 64px; }
+
 /* 观察哨卡片:活跃哨一行一条(呼吸绿点),已结束哨灰显 */
 .agWatchEmpty { display: block; color: #8a8171; font-size: 11px; line-height: 1.6; }
 .agWatchList { display: grid; gap: 6px; }

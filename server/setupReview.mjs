@@ -8,10 +8,23 @@ import { appendAudit, appendTrace, nowIso } from "./store.mjs";
 
 // 借鉴"提线木偶"：从授权单笔风险% + 计划的止损距离，反推这笔交易的真实盈亏比与所需波动，
 // 作为 SRTL 的一条硬门槛（R 不达标直接不用喂 LLM，省 token 也更诚实）。
+// 入场价归一:执行引擎传数字,但 Agent 原始计划里 entry 是对象({type,range,riskPercent})、
+// 区间在 entry_range/entryLow+entryHigh——Number(对象) 是 NaN,曾导致 2R 硬门槛被静默跳过(外审 P0)。
+function resolveEntryPrice(plan) {
+  const direct = Number(plan.entry);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const lo = Number(plan.entryLow ?? plan.entry_range?.[0]);
+  const hi = Number(plan.entryHigh ?? plan.entry_range?.[plan.entry_range?.length - 1]);
+  if (Number.isFinite(lo) && Number.isFinite(hi) && lo > 0) return (lo + hi) / 2;
+  const price = Number(plan.price);
+  return Number.isFinite(price) && price > 0 ? price : NaN;
+}
+
 function computeRewardRisk(plan) {
-  const entry = Number(plan.entry ?? ((Number(plan.entryLow) + Number(plan.entryHigh)) / 2) ?? plan.price);
+  const entry = resolveEntryPrice(plan);
   const stop = Number(plan.stopLoss ?? plan.stop_loss);
-  const tps = (Array.isArray(plan.takeProfit) ? plan.takeProfit : [plan.takeProfit]).map(Number).filter(Number.isFinite);
+  const rawTps = plan.takeProfit ?? plan.take_profit;
+  const tps = (Array.isArray(rawTps) ? rawTps : [rawTps]).map(Number).filter(Number.isFinite);
   const tp = tps.length ? (plan.direction === "short" ? Math.max(...tps) : Math.min(...tps)) : null; // 取最近的止盈算保守 R
   if (!Number.isFinite(entry) || !Number.isFinite(stop) || tp == null || entry <= 0) return { r: null, riskPct: null, rewardPct: null };
   const riskDist = Math.abs(entry - stop);
@@ -29,6 +42,12 @@ const SYSTEM = "你是顶级加密永续合约技术分析审核系统，严格�
 export async function reviewTradeSetup(db, plan, options = {}) {
   const minR = Number(options.minR ?? process.env.SRTL_MIN_R ?? 2.0);
   const rr = computeRewardRisk(plan);
+  // 算不出盈亏比(缺入场/止损/止盈) → 实盘 fail-closed:此前 r=null 会静默跳过 2R 门槛(外审 P0)。
+  if (rr.r == null && db.system?.liveTradingEnabled) {
+    const verdict = { verdict: "FAIL", reason: "无法计算盈亏比（入场/止损/止盈缺失或非法），实盘拒绝执行", rewardRisk: rr, checklist: [{ item: "盈亏比达标", passed: false, reason: "盈亏比不可计算" }] };
+    appendAudit(db, "SRTL 审核拒绝（盈亏比不可计算）", plan.id, "SetupReview", "warning");
+    return verdict;
+  }
   // 盈亏比硬门槛（木偶式反推）：R 不达标直接判 FAIL，不浪费 LLM 调用。
   if (rr.r != null && rr.r < minR) {
     const verdict = { verdict: "FAIL", reason: `盈亏比 ${rr.r}R < 门槛 ${minR}R（止损距离 ${rr.riskPct}% / 止盈距离 ${rr.rewardPct}%）`, rewardRisk: rr, checklist: [{ item: "盈亏比达标", passed: false, reason: `${rr.r}R < ${minR}R` }] };
