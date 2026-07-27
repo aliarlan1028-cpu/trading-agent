@@ -1013,7 +1013,11 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
           {(() => {
             const ARCHIVED = new Set(["compile_failed", "superseded", "retired"]);
             const filtered = tradingSkills.filter((s) => matchSrc(s.sourceTitle));
-            const live = filtered.filter((s) => !ARCHIVED.has(s.status));
+            // 可操作优先排序:待批准/待模拟/模拟中浮到最顶,历史未通过沉底——
+            // 用户实锤:唯一一条"待模拟"埋在 48 条"历史未通过"里找不到。
+            const STATUS_RANK = { paper_validated: 0, historical_validated: 1, paper_validating: 2, compiled: 3, degraded: 4, historical_rejected: 5, paper_rejected: 6 };
+            const live = filtered.filter((s) => !ARCHIVED.has(s.status))
+              .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9));
             const archived = filtered.filter((s) => ARCHIVED.has(s.status));
             const renderRow = (skill) => {
               const st = SKILL_STATE[skill.status] || { label: skill.status, tone: "" };

@@ -60,20 +60,35 @@ function normalizeSymbolScope(value) {
   return [...new Set(symbols)].slice(0, 12);
 }
 
-function inferExitParams(method = {}) {
+// 周期噪声下限:价格止损低于该周期的典型噪声幅度时,任何策略都会被反复扫损
+// (用户实锤:1d 技能带 1% 价格止损,验证窗 PF 1.66 的策略被测试窗噪声打死)。
+const STOP_FLOOR_PCT = { "5m": 0.4, "15m": 0.6, "1h": 1, "4h": 1.8, "1d": 3 };
+
+function inferExitParams(method = {}, timeframe = "1h") {
   const stopText = String(method.stop || "");
   const targetText = String(method.takeProfit || "");
-  const stopPct = Number(stopText.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]);
+  // 语义甄别:书里"风险/本金/资金/账户 X%"是仓位管理(每笔风险占本金),不是价格止损距离。
+  // 旧实现抓取任意百分数当价格距离 → "风险1%"被编成"止损距入场1%",日线上必被噪声扫损。
+  const riskContext = /(?:本金|资金|账户|总资|仓位|风险)[^%。;；]{0,12}\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*%[^。;；]{0,8}(?:本金|资金|风险)/.test(stopText);
+  const stopPct = riskContext ? NaN : Number(stopText.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]);
   const atrMult = Number(stopText.match(/(\d+(?:\.\d+)?)\s*(?:倍\s*)?ATR/i)?.[1]);
   const rewardRisk = Number(targetText.match(/(\d+(?:\.\d+)?)\s*R\b/i)?.[1]);
-  const params = {
-    stopLossPct: Number.isFinite(stopPct) ? Math.max(0.1, Math.min(stopPct, 10)) : 2,
-    takeProfitR: Number.isFinite(rewardRisk) ? Math.max(0.5, Math.min(rewardRisk, 8)) : 2
-  };
+  const floor = STOP_FLOOR_PCT[timeframe] ?? 1;
+  const params = { takeProfitR: Number.isFinite(rewardRisk) ? Math.max(0.5, Math.min(rewardRisk, 8)) : 2 };
   if (Number.isFinite(atrMult)) {
     params.atrStop = true;
     params.atrMult = Math.max(0.5, Math.min(atrMult, 6));
     params.atrPeriod = 14;
+    params.stopLossPct = Number.isFinite(stopPct) ? Math.max(0.1, Math.min(stopPct, 10)) : 2;
+  } else if (Number.isFinite(stopPct) && stopPct >= floor) {
+    // 明确的价格止损且不低于该周期噪声下限 → 尊重原文
+    params.stopLossPct = Math.min(stopPct, 10);
+  } else {
+    // 无明确价格止损 / 是资金风险语义 / 低于周期噪声下限 → 用 ATR 自适应止损(专业默认)
+    params.atrStop = true;
+    params.atrMult = 2;
+    params.atrPeriod = 14;
+    params.stopLossPct = Math.max(floor, 2); // 兜底名义值(ATR 生效时仅作 fallback)
   }
   return params;
 }
@@ -160,7 +175,7 @@ export function compileMethodToSpec(method = {}, source = {}, overrides = {}) {
 
   const strategy = templateId ? getStrategy(templateId) : null;
   const params = strategy
-    ? { ...strategy.defaultParams, ...inferEntryParams(method, templateId), ...inferExitParams(method), ...(overrides.params || {}) }
+    ? { ...strategy.defaultParams, ...inferEntryParams(method, templateId), ...inferExitParams(method, timeframe), ...(overrides.params || {}) }
     : {};
   if (!/(\d|ATR|均线|RSI|MACD|布林|突破|跌破|成交量|背离)/i.test(String(method.entry || ""))) {
     warnings.push("入场描述缺少明显可计算指标，模板仅代表保守近似，审批前必须人工核对");
@@ -168,6 +183,7 @@ export function compileMethodToSpec(method = {}, source = {}, overrides = {}) {
 
   const spec = {
     schemaVersion: 1,
+    compilerRev: 2,   // 止损语义修复版:资金风险%≠价格距离,周期噪声下限,ATR 默认
     templateId,
     templateLabel: strategy?.label || null,
     lowTrust,                 // 按书名综述 → 验证门槛更严

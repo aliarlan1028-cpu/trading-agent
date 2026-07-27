@@ -161,6 +161,28 @@ for (const method of db.knowledge?.tradingMethods || []) {
   db.chatSessions = db.chatSessions.filter((c) => !strayIds.has(c.id));
   appendAudit(db, `启动自愈:${strays.length} 个巡检散会话并入自主巡检汇总`, "chat_autocycle", "StartupMigration");
 })();
+// 编译器修订迁移:止损语义修复(compilerRev 2)后,旧版编译的技能(仅限
+// compiled/historical_rejected,不动模拟中/已上岗)自动重编译成新版本,
+// 用户重跑「一键历史验证」即可用正确的止损口径重新考试。
+(function recompileStaleCompilerRev() {
+  const stale = new Map();
+  for (const skill of db.knowledge?.tradingSkills || []) {
+    if (!["compiled", "historical_rejected"].includes(skill.status)) continue;
+    if (Number(skill.spec?.compilerRev || 1) >= 2) continue;
+    if (skill.sourceMethodId) stale.set(skill.sourceMethodId + "|" + (skill.spec?.direction || ""), skill);
+  }
+  if (!stale.size) return;
+  let redone = 0;
+  for (const [key, skill] of stale) {
+    const method = (db.knowledge?.tradingMethods || []).find((m) => m.id === skill.sourceMethodId);
+    if (!method) continue;
+    try {
+      compileTradingMethod(db, method.id, { direction: skill.spec?.direction }, "CompilerRevMigration");
+      redone += 1;
+    } catch { /* 单条失败不阻断启动 */ }
+  }
+  if (redone) appendAudit(db, `编译器修订迁移:${redone} 个旧止损口径技能已重编译(待重新历史验证)`, "compiler_rev_2", "StartupMigration");
+})();
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();

@@ -196,3 +196,30 @@ test("closed-trade attribution degrades an active skill after persistent poor li
   assert.equal(skill.executable, false);
   assert.equal(skill.liveMetrics.trades, 10);
 });
+
+test("止损语义甄别:资金风险%不再被误编为价格止损;日线小止损转 ATR", () => {
+  // "风险控制在本金1%"是仓位管理,不是价格距离——旧编译器抓任意百分数当止损距离
+  const riskSemantics = compileMethodToSpec({
+    id: "m_risk", name: "三重滤网", direction: "long", timeframe: "1d",
+    entry: "周线趋势向上时日线回调买入", stop: "单笔亏损控制在本金的1%即离场", takeProfit: "2R"
+  }, { id: "s", type: "pdf", title: "以交易为生" });
+  assert.equal(riskSemantics.ok, true);
+  assert.equal(riskSemantics.spec.params.atrStop, true, "资金风险语义应转 ATR 自适应止损");
+  assert.notEqual(riskSemantics.spec.params.stopLossPct, 1, "1% 不得被当作价格止损距离");
+
+  // 明确价格止损但低于日线噪声下限(3%) → 也转 ATR
+  const tinyStop = compileMethodToSpec({
+    id: "m_tiny", name: "日线突破", direction: "long", timeframe: "1d",
+    entry: "突破20日高点", stop: "入场价下方1%", takeProfit: "2R"
+  }, { id: "s", type: "pdf", title: "书" });
+  assert.equal(tinyStop.spec.params.atrStop, true, "低于周期噪声下限应转 ATR");
+
+  // 明确且合理的价格止损 → 尊重原文
+  const explicit = compileMethodToSpec({
+    id: "m_ok", name: "小时突破", direction: "long", timeframe: "1H",
+    entry: "突破20周期高点", stop: "入场价下方2%", takeProfit: "2R"
+  }, { id: "s", type: "pdf", title: "书" });
+  assert.equal(explicit.spec.params.stopLossPct, 2);
+  assert.ok(!explicit.spec.params.atrStop, "合理的明确价格止损不应被覆盖");
+  assert.equal(explicit.spec.compilerRev, 2);
+});

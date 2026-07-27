@@ -442,7 +442,9 @@ function MobileKnowledge({ data, action, ui }) {
           {!skills.length && <p className="mInboxEmpty">还没有技能。到「方法」把方法编译成技能草案后在此推进验证。</p>}
           {(() => {
             const ARCHIVED = new Set(["compile_failed", "superseded", "retired"]);
-            const live = skills.filter((s) => !ARCHIVED.has(s.status));
+            const STATUS_RANK = { paper_validated: 0, historical_validated: 1, paper_validating: 2, compiled: 3, degraded: 4, historical_rejected: 5, paper_rejected: 6 };
+            const live = skills.filter((s) => !ARCHIVED.has(s.status))
+              .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9));
             const archived = skills.filter((s) => ARCHIVED.has(s.status));
             const row = (skill) => {
               const st = SKILL_STATE[skill.status] || { label: skill.status, tone: "neutral" };
