@@ -1885,6 +1885,14 @@ app.post("/api/skills/:id/disable", requirePermission("write:skills"), (req, res
   persist(res, skill);
 });
 
+app.delete("/api/skills/:id", requirePermission("write:skills"), (req, res) => {
+  const idx = (db.skills || []).findIndex((item) => item.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: "Skill not found" });
+  const [removed] = db.skills.splice(idx, 1);
+  appendAudit(db, `删除 Skill「${removed.name}」`, removed.id, db.user?.name || "Owner", "warning");
+  persist(res, { message: `已删除 Skill：${removed.name}`, id: removed.id });
+});
+
 app.post("/api/skills/:id/rollback", requirePermission("write:skills"), (req, res) => {
   const skill = db.skills.find((item) => item.id === req.params.id);
   if (!skill) return res.status(404).json({ error: "Skill not found" });

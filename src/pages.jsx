@@ -1129,34 +1129,64 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         <div className="termCard"><div className="kHead"><span className="secLabel">概念图谱</span></div><ConceptGraph concepts={knowledge.conceptCards || []} /></div>
       )}
 
-      {/* —— 外部能力 Tab（Skills + MCP）—— */}
-      {domain === "capabilities" && (
-        <div className="kGrid2">
-          <div className="termCard">
-            <div className="kHead"><span className="secLabel">Skills 中心</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>全部技能 ›</button></div>
-            <div className="kSkillList">
-              {skills.slice(0, 6).map((sk) => <div className="kSkillRow" key={sk.id}><span className="kSkillIcon"><Sparkles size={14} /></span><div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version}`}</span></div><span className="evBadge ok">{sk.status || "已启用"}</span></div>)}
-              {!skills.length && <div className="emptyPanel">暂无 Skill</div>}
+      {/* —— 能力与工具板块（Skills 全量可滚动 + 逐项操作 + MCP）—— */}
+      {domain === "capabilities" && (() => {
+        const enabledCount = skills.filter((s) => s.status === "已启用" || s.native).length;
+        const disabledCount = skills.filter((s) => s.status === "已禁用" || s.status === "已回滚").length;
+        return (
+          <>
+            <div className="kCapHealth">
+              <div className="kCapStat ok"><b className="mono">{enabledCount}</b><span>可用 · Agent 现在就能调用</span></div>
+              <div className="kCapStat warn"><b className="mono">{skills.filter((s) => !s.native && s.status !== "已启用" && s.status !== "已禁用" && s.status !== "已回滚").length}</b><span>待审核 · 确认安全后启用</span></div>
+              <div className="kCapStat"><b className="mono">{disabledCount}</b><span>已停用 · 当前不被调用</span></div>
             </div>
-            <div className="kImportBtns"><button onClick={() => ui.openPanel("skillImport")}><GitBranch size={13} /> GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
-          </div>
-          <div className="termCard">
-            <div className="kHead"><span className="secLabel">MCP 工具</span><span className="mono">{mcpConnected}/{mcp.length} 已连接</span></div>
-            <div className="kMcpChips">{mcp.map((m) => <span className={`kMcpChip ${m.status === "connected" ? "on" : ""}`} key={m.id}>{m.name}</span>)}{!mcp.length && <span className="kMcpChip more">未接入</span>}</div>
-          </div>
-        </div>
-      )}
+            <div className="kGrid2">
+              <div className="termCard">
+                <div className="kHead"><span className="secLabel">Skills 中心（{skills.length}）</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>导入 / 详情 ›</button></div>
+                <div className="kSkillListScroll">
+                  {skills.map((sk) => {
+                    const on = sk.status === "已启用" || sk.native;
+                    const scanned = ["通过", "需复核"].includes(sk.scan);
+                    return (
+                      <div className="kSkillRow2" key={sk.id}>
+                        <span className="kSkillIcon"><Sparkles size={14} /></span>
+                        <div className="kSkillInfo"><b>{sk.name}</b> <span className="mono">{sk.native ? "内置" : `v${sk.version || 1}`}</span></div>
+                        <span className={`evBadge ${on ? "ok" : ""}`}>{sk.status || (sk.native ? "内置" : "待扫描")}</span>
+                        <span className="kSkillActs">
+                          <button title="详情" onClick={() => ui.openPanel("skillImport")}>详情</button>
+                          {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
+                          {!sk.native && (on
+                            ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>
+                            : <button title={scanned ? "启用" : "先扫描"} onClick={() => action(`/api/skills/${sk.id}/${scanned ? "install" : "scan"}`, {})}>{scanned ? "启用" : "扫描"}</button>)}
+                          {!sk.native && <button className="dangerText" title="删除" onClick={() => { if (window.confirm(`删除 Skill「${sk.name}」？`)) action(`/api/skills/${sk.id}`, {}, "DELETE"); }}>删除</button>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {!skills.length && <div className="emptyPanel">暂无 Skill——点右上「导入」从 GitHub 或粘贴 Skill.md 添加分析工具</div>}
+                </div>
+                <div className="kImportBtns"><button onClick={() => ui.openPanel("skillImport")}><GitBranch size={13} /> GitHub 导入</button><button onClick={() => ui.openPanel("skillImport")}>粘贴 Skill.md</button></div>
+              </div>
+              <div className="termCard">
+                <div className="kHead"><span className="secLabel">MCP 工具</span><span className="mono">{mcpConnected}/{mcp.length} 已连接</span></div>
+                <div className="kMcpChips">{mcp.map((m) => <span className={`kMcpChip ${m.status === "connected" ? "on" : ""}`} key={m.id}>{m.name}</span>)}{!mcp.length && <span className="kMcpChip more">未接入</span>}</div>
+                <p className="kCapHint">已启用的 Skill 与 MCP 工具会自动进入 AI 的工具表，由它按当前分析需要自动挑选调用——你不必手动指派。</p>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
-      {/* 知识源常驻精简条：导入入口 + 最近几本，点开看全部 */}
-      <div className="termCard kSourceBar">
+      {/* 知识源常驻精简条：导入入口 + 最近几本，点开看全部（仅知识板块） */}
+      {domain === "knowledge" && <div className="termCard kSourceBar">
         <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
         <div className="kSourceChips">
           {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
           <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
         </div>
-      </div>
+      </div>}
 
-      <div className="termCard">
+      {domain === "knowledge" && <div className="termCard">
         <div className="kHead">
           <span className="secLabel">本次决策引用知识</span>
           <div className="kRagBar">
@@ -1169,7 +1199,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
           {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span><span className="r">{c.source}</span></div>)}
           {!cites.length && <div className="emptyPanel">尚无引用；发起一次 RAG 检索或对话后显示本次决策引用的知识片段</div>}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

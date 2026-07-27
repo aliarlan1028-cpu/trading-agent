@@ -7951,6 +7951,27 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kRuleCat { padding: 1px 6px; border-radius: 4px; background: #E6F1EA; font: 600 9.5px "Space Grotesk"; color: #1F7A50; }
 
 /* 知识页 v2：漏斗状态栏 + Tab + 折叠行 */
+/* 能力与工具板块:健康度三格 + 可滚动技能列表 + 逐项操作 */
+.kCapHealth { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.kCapStat { display: grid; gap: 3px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); }
+.kCapStat b { font-size: 22px; color: #2f2d29; }
+.kCapStat span { font-size: 11px; color: #8a8171; }
+.kCapStat.ok { border-color: #d4e5d3; background: #f7fbf6; }
+.kCapStat.ok b { color: #3f8f5b; }
+.kCapStat.warn { border-color: #f0dfbc; background: #fffaf0; }
+.kCapStat.warn b { color: #b17724; }
+.kSkillListScroll { display: grid; gap: 4px; max-height: 340px; overflow-y: auto; padding-right: 2px; margin-bottom: 8px; }
+.kSkillRow2 { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; background: #fffdf9; border: 1px solid #f0ece3; }
+.kSkillRow2 .kSkillInfo { min-width: 0; overflow: hidden; }
+.kSkillRow2 .kSkillInfo b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kSkillActs { display: inline-flex; gap: 4px; }
+.kSkillActs button { border: 1px solid var(--hairline); background: var(--surface-white); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: #6b6357; cursor: pointer; }
+.kSkillActs button:hover { border-color: #c9beac; }
+.kSkillActs button.dangerText { color: #bc4b34; }
+.kSkillActs button.dangerText:hover { border-color: #bc4b34; }
+.kCapHint { font-size: 11px; color: #8a8171; line-height: 1.6; margin-top: 8px; }
+@media (max-width: 560px) { .kCapHealth { grid-template-columns: 1fr; } .kSkillRow2 { grid-template-columns: 22px minmax(0, 1fr); } .kSkillActs { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; } }
+
 /* 两大平级板块:知识 / 能力与工具——等宽等重,一眼看出是同级 */
 .kDomains { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .kDomain { position: relative; display: grid; gap: 3px; text-align: left; padding: 13px 16px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); cursor: pointer; transition: border-color .15s, background .15s; }
