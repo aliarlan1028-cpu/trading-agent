@@ -892,7 +892,11 @@ function KnowledgeOnboarding({ funnelCounts, sourceCount, ui, action, goMethods,
 }
 
 export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
+  // 两大平级板块:知识(让 AI 更懂) / 能力与工具(AI 的手脚)。外部能力从末尾附属 Tab 提升为半壁江山。
+  const [domain, setDomain] = useState("knowledge");
   const [tab, setTab] = useState("methods");
+  const KNOWLEDGE_TABS = ["methods", "skills", "rules", "graph"];
+  function goKnowledge(next) { setDomain("knowledge"); if (next) setTab(next); else if (!KNOWLEDGE_TABS.includes(tab)) setTab("methods"); }
   const [rag, setRag] = useState("");
   const [expanded, setExpanded] = useState(null);      // 展开的行 id
   const [srcFilter, setSrcFilter] = useState("");       // 按来源书筛选
@@ -927,17 +931,31 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
     <div className="pageStack termPage knowPage">
       {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
 
-      <KnowledgeOnboarding
+      {/* 两大平级板块:知识(让 AI 更懂) · 能力与工具(AI 的手脚)——两者都喂给行情分析,平起平坐 */}
+      <div className="kDomains">
+        <button className={`kDomain ${domain === "knowledge" ? "on" : ""}`} onClick={() => goKnowledge()}>
+          <span className="kDomainT">知识</span>
+          <span className="kDomainS">让 AI 更懂 · 方法/纪律/概念/RAG</span>
+          <span className="kDomainN mono">{methods.length + tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length + ruleCount + conceptCount}</span>
+        </button>
+        <button className={`kDomain ${domain === "capabilities" ? "on" : ""}`} onClick={() => setDomain("capabilities")}>
+          <span className="kDomainT">能力与工具</span>
+          <span className="kDomainS">AI 的手脚 · Skill/插件/MCP/ClawHub</span>
+          <span className="kDomainN mono">{skills.length + mcp.length}</span>
+        </button>
+      </div>
+
+      {domain === "knowledge" && <KnowledgeOnboarding
         funnelCounts={funnelCounts}
         sourceCount={sourceCount}
         ui={ui}
         action={action}
-        goMethods={() => setTab("methods")}
-        goSkills={() => setTab("skills")}
-      />
+        goMethods={() => goKnowledge("methods")}
+        goSkills={() => goKnowledge("skills")}
+      />}
 
       {/* 漏斗状态栏：一眼看清整条流水线卡在哪 */}
-      <div className="kFunnel">
+      {domain === "knowledge" && <div className="kFunnel">
         {FUNNEL.map((f, i) => (
           <React.Fragment key={f.key}>
             {i > 0 && <span className="kFunnelArrow">›</span>}
@@ -951,11 +969,11 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
           <span className="kFunnelKv"><b className="mono">{sourceCount}</b> 知识源</span>
           <span className="kFunnelKv"><b className="mono">{approvedRuleCount}/{ruleCount}</b> 已批准纪律</span>
         </div>
-      </div>
+      </div>}
 
-      {/* Tab 分区 */}
-      <div className="kTabs">
-        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount], ["ext", "外部能力", skills.length + mcp.length]].map(([k, label, n]) => (
+      {/* 知识板块的子 Tab（外部能力已提升为平级大区，不再挤在这排） */}
+      {domain === "knowledge" && <div className="kTabs">
+        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n]) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label} <span className="kTabN mono">{n}</span></button>
         ))}
         {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
@@ -964,10 +982,10 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
             {sourceTitles.map((t) => <option key={t} value={t}>《{t}》</option>)}
           </select>
         )}
-      </div>
+      </div>}
 
       {/* —— 方法草案 Tab —— */}
-      {tab === "methods" && (
+      {domain === "knowledge" && tab === "methods" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">交易方法草案 · 仅供研究，需走验证才上岗</span><span className="hypoLegend mono">{methods.filter((m) => matchSrc(m.source?.title)).length} 条</span></div>
           {!methods.length && <div className="emptyPanel">导入书籍后自动蒸馏交易方法草案</div>}
@@ -1005,7 +1023,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       )}
 
       {/* —— 技能流水线 Tab —— */}
-      {tab === "skills" && (
+      {domain === "knowledge" && tab === "skills" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(() => { const n = tradingSkills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
           <SkillStateLegend />
@@ -1071,7 +1089,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       )}
 
       {/* —— 风控纪律 Tab —— */}
-      {tab === "rules" && (
+      {domain === "knowledge" && tab === "rules" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">风控纪律 · 批准后进 AI 提示词 + 风控引擎</span><button className="agLink" onClick={() => ui.openPanel("ruleLibrary")}>全部规则 · 批准/去重 ›</button></div>
           {!ruleCount && <div className="emptyPanel">导入资料后自动抽取风控纪律</div>}
@@ -1087,12 +1105,12 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       )}
 
       {/* —— 概念图谱 Tab —— */}
-      {tab === "graph" && (
+      {domain === "knowledge" && tab === "graph" && (
         <div className="termCard"><div className="kHead"><span className="secLabel">概念图谱</span></div><ConceptGraph concepts={knowledge.conceptCards || []} /></div>
       )}
 
       {/* —— 外部能力 Tab（Skills + MCP）—— */}
-      {tab === "ext" && (
+      {domain === "capabilities" && (
         <div className="kGrid2">
           <div className="termCard">
             <div className="kHead"><span className="secLabel">Skills 中心</span><button className="agLink" onClick={() => ui.openPanel("skillImport")}>全部技能 ›</button></div>

@@ -7951,6 +7951,17 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kRuleCat { padding: 1px 6px; border-radius: 4px; background: #E6F1EA; font: 600 9.5px "Space Grotesk"; color: #1F7A50; }
 
 /* 知识页 v2：漏斗状态栏 + Tab + 折叠行 */
+/* 两大平级板块:知识 / 能力与工具——等宽等重,一眼看出是同级 */
+.kDomains { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.kDomain { position: relative; display: grid; gap: 3px; text-align: left; padding: 13px 16px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); cursor: pointer; transition: border-color .15s, background .15s; }
+.kDomain.on { border-color: #e07a3f; background: #fff8ef; }
+.kDomainT { font: 700 15px "Space Grotesk", sans-serif; color: #2f2d29; }
+.kDomain.on .kDomainT { color: #b8551f; }
+.kDomainS { font-size: 11px; color: #8a8171; }
+.kDomainN { position: absolute; top: 12px; right: 14px; font-size: 13px; font-weight: 700; color: #b6ab98; }
+.kDomain.on .kDomainN { color: #e07a3f; }
+@media (max-width: 560px) { .kDomains { grid-template-columns: 1fr; } }
+
 .kFunnel { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); padding: 10px 14px; margin-bottom: 12px; }
 .kFunnelStage { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 62px; padding: 5px 10px; border-radius: 8px; border: 1px solid transparent; background: none; cursor: pointer; }
 .kFunnelStage:hover { background: #F6F1E8; }
