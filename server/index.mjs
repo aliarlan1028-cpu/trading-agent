@@ -42,6 +42,7 @@ import {
   retireSkillsForSource,
   startKnowledgeSkillPaper,
   syncKnowledgeSkillLifecycle,
+  promoteCompiledToProbation,
   validateKnowledgeSkill
 } from "./knowledgeSkills.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
@@ -187,6 +188,12 @@ for (const method of db.knowledge?.tradingMethods || []) {
 })();
 // 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+// 小额实盘验证模式(主人选择:用小资金当验证器):默认开启,编译好的技能直接上岗试用,
+// 真实成绩决定转正/退役,不再被历史验证/前向/人工批准三道墙卡死。可通过 system.skillLiveValidationMode 关闭。
+db.system.skillLiveValidationMode ??= true;
+if (db.system.skillLiveValidationMode) {
+  try { promoteCompiledToProbation(db); } catch (error) { appendTrace(db, "system", `技能上岗试用失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+}
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();
@@ -269,6 +276,8 @@ registerTaskHandler("watch_sentinel", (database) => runWatchSentinel(database, s
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 registerTaskHandler("paper_forward", async (database) => {
   const paper = await runPaperForward(database);
+  // 小额实盘验证模式:新编译的技能(如新导入书本产出的)自动上岗试用;syncLifecycle 里含转正/退役复盘。
+  if (database.system.skillLiveValidationMode) promoteCompiledToProbation(database);
   const skills = syncKnowledgeSkillLifecycle(database);
   return { ...paper, knowledgeSkills: skills };
 });

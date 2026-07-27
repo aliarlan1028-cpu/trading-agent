@@ -469,14 +469,22 @@ async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
-  // 只有“历史验证 → 纯前向模拟 → 人工批准”全部完成、且版本指纹未变化的知识技能，
-  // 才能进入自主交易上下文。原始方法草案仍可通过 RAG 阅读，但不能被称为可执行技能。
-  const activeSkills = selectActiveKnowledgeSkills(db, {}, { limit: 5 });
+  // 可用技能分两层如实标注:active=已用真实成绩转正(可信);live_probation=小额实盘试用中(未验证)。
+  // 绝不把试用技能说成"已验证"——否则 LLM 会拿它当可信依据推理,污染判断。
+  const usableSkills = selectActiveKnowledgeSkills(db, {}, { limit: 6 });
+  const fmtSkill = (skill) => {
+    const lm = skill.liveMetrics;
+    const perf = lm?.trades ? `｜实盘 ${lm.trades} 笔 PF ${lm.profitFactor ?? "-"} 胜率 ${lm.winRatePct}%` : "";
+    const bt = skill.validation?.test?.expectancyR != null ? `｜回测参考 ${skill.validation.test.expectancyR}R` : "";
+    return `- [${skill.id}@v${skill.version}]《${skill.sourceTitle || "知识来源"}》${skill.name}｜${skill.spec.symbolScope.join("/")} · ${skill.spec.timeframe} · ${skill.spec.direction}｜止损 ${skill.spec.stopDescription}${perf}${bt}`;
+  };
+  const activeSkills = usableSkills.filter((s) => s.status === "active");
+  const probationSkills = usableSkills.filter((s) => s.status === "live_probation");
   if (activeSkills.length) {
-    const text = activeSkills
-      .map((skill) => `- [${skill.id}@v${skill.version}]《${skill.sourceTitle || "知识来源"}》${skill.name}｜模板 ${skill.spec.templateLabel}｜${skill.spec.symbolScope.join("/")} · ${skill.spec.timeframe} · ${skill.spec.direction}｜止损 ${skill.spec.stopDescription}｜退出 ${skill.spec.takeProfitDescription}`)
-      .join("\n");
-    sections.push(`【已验证且已批准的知识交易技能】\n只能在交易对、方向、周期和市场状态匹配时使用。若某技能确实参与了本次入场、确认或退出推理，调用 propose_trade_plan 时必须把其 ID 放入 knowledgeSkillIds；未明确声明采用的技能不会自动绑定或获得绩效归因。风控还会复查技能状态、版本、指纹和当前信号。\n${text}`);
+    sections.push(`【已验证技能（已用真实成绩转正，可信）】\n匹配交易对/方向/周期/市场状态时可用；实际参与推理须把 ID 放入 knowledgeSkillIds。风控会复查状态、版本、指纹与当前信号。\n${activeSkills.map(fmtSkill).join("\n")}`);
+  }
+  if (probationSkills.length) {
+    sections.push(`【小额试用中的技能（尚未验证，正用小额实盘检验，表现不足会自动退役）】\n这些是候选、非结论：可以参考并在小额度内试用，但不要当作已证实的优势重仓押注；回测参考分仅供权衡，不代表已验证。若采用请照样放入 knowledgeSkillIds 以便真实成绩归因（这正是它转正或退役的依据）。\n${probationSkills.map(fmtSkill).join("\n")}`);
   }
 
   return sections.join("\n\n");

@@ -7,7 +7,12 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints, runtimeInvalidationTriggered } from "./compiledSignals.mjs";
 
 const TIMEFRAMES = new Set(["5m", "15m", "1h", "4h", "1d"]);
-const EXECUTABLE_STATES = new Set(["active"]);
+// active=已用真实成绩转正;live_probation=小额实盘试用中(可影响真实下单,但对 LLM 如实标"未验证")。
+// 两者都可被选用/绑定,区别只在提示词里的信任标签与转正/退役逻辑。
+const EXECUTABLE_STATES = new Set(["active", "live_probation"]);
+// 小额试用转正门槛(真实成绩说话):≥N 笔归因交易、盈亏因子达标、近期无连亏。
+const PROBATION_GRADUATE_TRADES = Math.max(6, Number(process.env.SKILL_PROBATION_GRADUATE_TRADES || 10));
+const PROBATION_GRADUATE_PF = Number(process.env.SKILL_PROBATION_GRADUATE_PF || 1.2);
 const TERMINAL_STATES = new Set(["retired", "superseded"]);
 const MAX_INVOCATIONS = 1000;
 const MIN_LIVE_ATTRIBUTION_TRADES = Math.max(5, Number(process.env.KNOWLEDGE_SKILL_MIN_LIVE_TRADES || 10));
@@ -259,7 +264,7 @@ export function compileTradingMethod(db, methodId, overrides = {}, actor = "Know
 function transition(skill, next, reason, actor) {
   const from = skill.status;
   skill.status = next;
-  skill.executable = next === "active";
+  skill.executable = EXECUTABLE_STATES.has(next);
   skill.updatedAt = nowIso();
   skill.lifecycle ||= [];
   skill.lifecycle.push({ from, to: next, reason, actor, at: skill.updatedAt });
@@ -485,9 +490,12 @@ export function selectActiveKnowledgeSkills(db, context = {}, options = {}) {
   const timeframe = normalizeTimeframe(context.timeframe) || null;
   const regime = String(context.regime || "");
   return db.knowledge.tradingSkills
-    .filter((skill) => EXECUTABLE_STATES.has(skill.status) && skill.approval?.fingerprint === skill.fingerprint)
+    // active 需人工批准指纹匹配;live_probation 是小额试用态,无需批准即可参与(未验证,如实标注)
+    .filter((skill) => EXECUTABLE_STATES.has(skill.status) && (skill.status === "active" ? skill.approval?.fingerprint === skill.fingerprint : true))
     .filter((skill) => scopeMatches(skill.spec.symbolScope, symbol))
-    .filter((skill) => !skill.spec.symbolScope.includes("*") || !symbol || skill.validation?.validatedSymbols?.includes(symbol))
+    // 通配符(*)范围的技能:active 需该币真的历史验证过;live_probation 是小额实盘验证态,
+    // 本就没跑历史验证(用真实成绩验证),不能拿 validatedSymbols 卡它,否则永远选不出来。
+    .filter((skill) => !skill.spec.symbolScope.includes("*") || !symbol || skill.status === "live_probation" || skill.validation?.validatedSymbols?.includes(symbol))
     .filter((skill) => !direction || skill.spec.direction === direction)
     .filter((skill) => !timeframe || skill.spec.timeframe === timeframe)
     .filter((skill) => regimeMatches(skill.spec.marketRegimes, regime))
@@ -690,6 +698,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
   }
 
   const degraded = [];
+  const graduated = [];
   for (const skill of db.knowledge.tradingSkills) {
     const rows = db.knowledge.skillAttributions.filter((row) => row.skillId === skill.id && row.skillVersion === skill.version);
     if (!rows.length) continue;
@@ -715,13 +724,50 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
       (skill.liveMetrics.profitFactor !== null && skill.liveMetrics.profitFactor < 0.8)
       || skill.liveMetrics.consecutiveLosses >= 5
     );
+    // 已转正的 active:实盘劣化 → 降级(保护阈值,原逻辑)
     if (skill.status === "active" && poor) {
       transition(skill, "degraded", "live_performance_guard", actor);
       degraded.push(skill.id);
       appendAudit(db, `知识技能自动降级「${skill.name}」：实盘表现触发保护阈值`, skill.id, actor, "warning");
+      continue;
+    }
+    // 小额试用中的技能:真实成绩说话——好则自动转正、差则自动退役(这就是主人要的"上岗→复盘→退役"循环)
+    if (skill.status === "live_probation") {
+      if (poor) {
+        transition(skill, "degraded", "probation_live_underperformance", actor);
+        degraded.push(skill.id);
+        appendAudit(db, `小额试用技能自动退役「${skill.name}」：真实成绩不达标(PF ${skill.liveMetrics.profitFactor ?? "-"}/连亏 ${skill.liveMetrics.consecutiveLosses})`, skill.id, actor, "warning");
+      } else if (rows.length >= PROBATION_GRADUATE_TRADES
+        && skill.liveMetrics.weightedPnl > 0
+        // PF 为 null = 期间无亏损单(全胜),配合正盈亏即达标;有亏损单则需 PF ≥ 门槛
+        && (skill.liveMetrics.profitFactor === null || skill.liveMetrics.profitFactor >= PROBATION_GRADUATE_PF)
+        && skill.liveMetrics.consecutiveLosses < 3) {
+        skill.approval = { approved: true, approvedBy: actor, note: `小额实盘验证转正:${rows.length} 笔 PF ${skill.liveMetrics.profitFactor}`, approvedAt: nowIso(), fingerprint: skill.fingerprint };
+        transition(skill, "active", "probation_graduated_by_live_performance", actor);
+        graduated.push(skill.id);
+        appendAudit(db, `小额试用技能转正「${skill.name}」：真实成绩达标(${rows.length} 笔 PF ${skill.liveMetrics.profitFactor})`, skill.id, actor, "info");
+      }
     }
   }
-  return { added, degraded };
+  return { added, degraded, graduated };
+}
+
+// 小额实盘验证模式:编译好的技能直接上岗试用(不走历史验证/前向/人工批准三道墙),
+// 用真实小额成交的复盘来决定转正还是退役。这是主人明确选择的路线(用小资金当验证器)。
+// 已跑过的历史验证分数仍保留在 skill.validation 里作参考,只是不再当门槛。
+export function promoteCompiledToProbation(db, actor = "LiveValidation") {
+  ensureCollections(db);
+  const promotable = new Set(["compiled", "historical_rejected", "historical_validated", "paper_validated", "degraded"]);
+  let promoted = 0;
+  for (const skill of db.knowledge.tradingSkills) {
+    if (!promotable.has(skill.status)) continue;
+    if (!skill.spec || !STRATEGIES[skill.spec.templateId]) continue; // 编译失败/模板缺失的不上岗
+    transition(skill, "live_probation", "small_live_validation_promoted", actor);
+    skill.probationStartedAt = nowIso();
+    promoted += 1;
+  }
+  if (promoted) appendAudit(db, `小额实盘验证:${promoted} 个技能上岗试用(未验证,真实成绩决定转正/退役)`, "skills_live_validation", actor);
+  return { promoted };
 }
 
 export function knowledgeSkillSummary(db) {
