@@ -381,6 +381,11 @@ async function buildSystemPrompt(db, userText = "") {
       .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 胜率 ${p.oos?.winRatePct ?? "-"}%（${p.oosFolds || "-"}），置信度 ${p.confidence}，regime ${p.regime}`)
       .join("\n");
     sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
+  } else {
+    // 诚实纪律:画像为空时明确告知,防止模型把策略模板/知识方法名冒充"已验证策略"
+    // (用户实锤:巡检里把唐奇安/布林挤压/Supertrend 三个做多模板说成"已验证策略"逐币匹配,
+    // 而生产库画像为空——且清一色做多,造成"系统只有做多"的假象)。
+    sections.push("【已验证策略画像】当前没有任何已验证的策略画像。严禁把策略模板名或知识库方法名说成\"已验证策略\"去逐币匹配；分析时直接基于真实行情结构+知识库原则判断。注意策略模板库是双向的（做空模板：死叉做空/唐奇安下破/RSI 超买回落/RSI 顶背离），当你判断行情偏空时应同等考虑做空机会，而不是在做多清单里逐个否决；无验证支撑时无论方向都要更保守。");
   }
 
   const paper = paperValidationSummary(db);

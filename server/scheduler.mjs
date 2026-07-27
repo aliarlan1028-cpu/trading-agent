@@ -29,6 +29,21 @@ export function ensureSystemTask(db, task, saveDb) {
   return created;
 }
 
+// 长间隔任务的启动补跑判定(纯函数,便于测试):
+// setInterval 在每次进程重启后从零重新计时,部署/自动重启频繁的日子里,
+// 6h 级任务(策略研究/改进闭环)可能永远轮不到执行。间隔 ≥ 30 分钟且已超期的任务,
+// 启动后错峰补跑一次;短间隔任务本来 1-2 分钟内就会自然触发,不需要补。
+export function overdueLongTasks(db, now = Date.now()) {
+  const MIN_INTERVAL_MS = 30 * 60_000;
+  return (db.tasks || []).filter((task) => {
+    if (!task.enabled || String(task.type || "").toLowerCase() !== "every") return false;
+    const intervalMs = parseEveryMs(task.schedule);
+    if (intervalMs < MIN_INTERVAL_MS) return false;
+    if (!task.lastRunAt) return true; // 从未跑过的长间隔任务也补
+    return now - new Date(task.lastRunAt).getTime() > intervalMs;
+  });
+}
+
 export function startScheduler(db, saveDb) {
   if (runtime.started) return schedulerStatus(db);
   runtime.started = true;
@@ -44,6 +59,15 @@ export function startScheduler(db, saveDb) {
   for (const task of db.tasks || []) {
     scheduleTask(db, task, saveDb);
   }
+  // 超期长任务补跑:等启动稳定 2 分钟后开始,彼此错峰 90s,避免启动即 CPU 打满
+  const overdue = overdueLongTasks(db);
+  overdue.forEach((task, index) => {
+    const timer = setTimeout(() => {
+      appendTrace(db, "scheduled_task", `${task.name} 启动补跑（上次运行 ${task.lastRunAt || "从未"}，超过间隔 ${task.schedule}）`, "ok");
+      runTask(db, task.id, saveDb, "startup_catchup");
+    }, 120_000 + index * 90_000);
+    runtime.timeoutJobs.set(`catchup_${task.id}`, timer);
+  });
   return schedulerStatus(db);
 }
 
