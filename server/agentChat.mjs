@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEval.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
-import { bindKnowledgeSkillsToPlan, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
+import { bindKnowledgeSkillsToPlan, createSkillFromIdea, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
@@ -254,6 +254,26 @@ const TOOL_DEFS = [
         mandateId: { type: "string", description: "mandate 操作的目标 id，缺省用最近一个 Mandate" }
       },
       required: ["type"]
+    }
+  },
+  {
+    name: "create_skill_from_idea",
+    description: "把主人在对话里口述的交易策略想法保存成他自己的知识技能。当主人说“帮我建一个策略/把这个想法存成技能/我想要一个……的策略”时调用。你负责把自然语言想法抽取成结构化字段。技能会走和书本方法相同的生命周期(小额实盘验证模式下直接上岗试用,用真实成绩决定转正/退役)。注意:策略逻辑必须能落到受支持的模板上(突破/趋势/RSI/均值回归/MACD/布林/Supertrend/量价突破等),且必须有明确的入场与止损,否则会编译失败——失败时把原因如实转述给主人并请他补充。不要虚构主人没说的参数;缺关键要素(方向/周期/入场/止损)时先问清楚再调用。",
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "策略名称,简洁可辨识" },
+        direction: { type: "string", enum: ["long", "short"], description: "做多或做空(单一方向)" },
+        timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "分析周期" },
+        entry: { type: "string", description: "入场条件的自然语言描述,如‘收盘突破过去20根K线最高价’‘RSI 跌破30后回升’" },
+        confirmation: { type: "string", description: "可选:入场确认条件,如‘成交量高于20周期均量’" },
+        stop: { type: "string", description: "止损描述,如‘入场价下方2%’或‘2倍ATR自适应’——必填" },
+        takeProfit: { type: "string", description: "止盈描述,如‘2R’‘3%’,缺省按2R" },
+        symbol: { type: "string", description: "可选:限定交易对(如 BTC/USDT);不填则通用" },
+        marketRegime: { type: "string", description: "可选:适用的市场状态,如‘上行趋势’‘震荡’" },
+        templateId: { type: "string", enum: ["trend", "meanrev", "breakout", "macd", "bollinger", "death_cross", "rsi_short", "breakdown", "supertrend", "vol_breakout", "squeeze", "rsi_bull_div", "rsi_bear_div"], description: "可选:若你能明确判断该想法对应哪个模板就直接指定,能提高编译成功率;不确定则留空由系统从描述推断" }
+      },
+      required: ["name", "direction", "timeframe", "entry", "stop"]
     }
   },
   {
@@ -624,6 +644,25 @@ export async function executeTool(db, run, name, args = {}) {
     } catch (error) {
       return { error: `全局大盘同步失败：${error.message}` };
     }
+  }
+
+  if (name === "create_skill_from_idea") {
+    const result = createSkillFromIdea(db, args, run?.role === "AI 交易员" ? "用户(经 AI)" : "用户");
+    if (!result.ok) return { error: result.error, status: result.status || "invalid" };
+    const s = result.skill;
+    return {
+      status: result.status,
+      skillId: s.id,
+      name: s.name,
+      template: s.spec.templateLabel,
+      direction: s.spec.direction,
+      timeframe: s.spec.timeframe,
+      stop: s.spec.stopDescription,
+      takeProfit: s.spec.takeProfitDescription,
+      note: result.status === "live_probation"
+        ? "已保存为你的技能并上岗小额试用(未验证);它会参与决策并用真实成交成绩复盘,达标自动转正、不达标自动退役。"
+        : "已保存为你的技能(待验证)。"
+    };
   }
 
   if (name === "register_watch") {
@@ -1283,6 +1322,7 @@ function summarizeToolResult(name, result = {}) {
     const autoNote = result.autoExecuted ? `｜🤖自动执行(${result.execution?.status || "-"})` : "";
     return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}${autoNote}`;
   }
+  if (name === "create_skill_from_idea") return `技能「${result.name}」已保存（${result.status === "live_probation" ? "上岗试用" : result.status}）：${result.direction}·${result.timeframe}·${result.template || "-"}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
   if (name === "query_knowledge") return String(result.summary || "").slice(0, 120);

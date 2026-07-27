@@ -86,3 +86,28 @@ test("绑定到计划:试用技能信号触发即可绑定(用于真实成绩归
   assert.equal(bindings.length, 1);
   assert.equal(plan.knowledgeSkills[0].skillId, skill.id);
 });
+
+test("聊天口述策略存成技能:合法则上岗试用、缺要素则拒、逻辑无法映射则编译失败", async () => {
+  const { createSkillFromIdea } = await import("../server/knowledgeSkills.mjs");
+  const db = dbFixture();
+  db.system = { skillLiveValidationMode: true };
+  // 合法想法 → 编译 + 上岗试用
+  const ok = createSkillFromIdea(db, {
+    name: "我的唐奇安突破", direction: "long", timeframe: "1h",
+    entry: "收盘价突破过去20根K线最高价", stop: "入场价下方2%", takeProfit: "2R", templateId: "breakout"
+  }, "用户");
+  assert.equal(ok.ok, true);
+  assert.equal(ok.status, "live_probation");
+  assert.equal(ok.skill.userAuthored, true);
+  assert.equal(ok.skill.spec.direction, "long");
+  // 缺止损 → 拒绝(不编译)
+  const noStop = createSkillFromIdea(db, { name: "缺止损", direction: "long", timeframe: "1h", entry: "突破" }, "用户");
+  assert.equal(noStop.ok, false);
+  assert.match(noStop.error, /止损/);
+  // 缺名字 → 拒绝
+  assert.equal(createSkillFromIdea(db, { direction: "long", timeframe: "1h", entry: "x", stop: "2%" }, "用户").ok, false);
+  // 非法 templateId → 拒绝
+  const badTpl = createSkillFromIdea(db, { name: "x", direction: "long", timeframe: "1h", entry: "突破", stop: "2%", templateId: "not_a_template" }, "用户");
+  assert.equal(badTpl.ok, false);
+  assert.match(badTpl.error, /templateId/);
+});

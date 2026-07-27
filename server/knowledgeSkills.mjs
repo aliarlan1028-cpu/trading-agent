@@ -846,3 +846,55 @@ export function ensureCuratedSkills(db, actor = "CuratedSkills") {
   if (created) appendAudit(db, `精选手写技能入列:新编译 ${created} 个(待历史验证)`, CURATED_SOURCE.id, actor);
   return { created };
 }
+
+// 用户在聊天里口述策略 → agent 抽取结构化字段 → 复用编译流水线存成"我的技能"。
+// 与书本方法、精选技能同一条生命周期(小额试用模式下直接上岗试用,真实成绩决定转正/退役)。
+const USER_SKILL_SOURCE = { id: "src_user_authored", title: "我的策略(聊天口述)", type: "user_authored" };
+const VALID_TEMPLATES = new Set(["trend", "meanrev", "breakout", "macd", "bollinger", "death_cross", "rsi_short", "breakdown", "supertrend", "vol_breakout", "squeeze", "rsi_bull_div", "rsi_bear_div"]);
+
+export function createSkillFromIdea(db, idea = {}, actor = "用户") {
+  ensureCollections(db);
+  const name = String(idea.name || "").trim();
+  const direction = idea.direction === "short" ? "short" : "long";
+  const timeframe = normalizeTimeframe(idea.timeframe) || "1h";
+  if (!name) return { ok: false, error: "策略需要一个名字。" };
+  if (!idea.entry) return { ok: false, error: "策略必须说明入场条件。" };
+  if (!idea.stop) return { ok: false, error: "策略必须说明止损(价格距离或 ATR/百分比),否则无法上岗。" };
+  if (idea.templateId && !VALID_TEMPLATES.has(idea.templateId)) {
+    return { ok: false, error: `templateId 必须是受支持的模板之一:${[...VALID_TEMPLATES].join("/")}。` };
+  }
+
+  db.knowledge.sources ||= [];
+  if (!db.knowledge.sources.some((s) => s.id === USER_SKILL_SOURCE.id)) {
+    db.knowledge.sources.push({ ...USER_SKILL_SOURCE, createdAt: nowIso() });
+  }
+  const methodId = id("umethod");
+  db.knowledge.tradingMethods.push({
+    id: methodId,
+    name,
+    direction,
+    timeframe,
+    symbolScope: idea.symbol ? String(idea.symbol).toUpperCase() : "*",
+    marketRegime: String(idea.marketRegime || "").slice(0, 40),
+    entry: String(idea.entry).slice(0, 300),
+    confirmation: String(idea.confirmation || "").slice(0, 300),
+    stop: String(idea.stop).slice(0, 200),
+    takeProfit: String(idea.takeProfit || "2R").slice(0, 120),
+    invalidation: String(idea.invalidation || "").slice(0, 200),
+    source: { id: USER_SKILL_SOURCE.id, title: USER_SKILL_SOURCE.title },
+    userAuthored: true,
+    createdAt: nowIso()
+  });
+  const skill = compileTradingMethod(db, methodId, { templateId: idea.templateId, params: idea.params || {} }, actor);
+  skill.userAuthored = true;
+  if (skill.status === "compile_failed") {
+    return { ok: false, status: "compile_failed", error: `无法编译成可执行技能:${(skill.compileErrors || []).join("；") || "策略逻辑无法映射到受支持的模板(突破/趋势/RSI/均值回归/Supertrend/布林等),或缺明确入场/止损/止盈"}`, skill };
+  }
+  // 小额实盘验证模式:直接上岗试用,和别的技能同样用真实成绩验证
+  if (db.system?.skillLiveValidationMode) {
+    transition(skill, "live_probation", "user_authored_promoted", actor);
+    skill.probationStartedAt = nowIso();
+  }
+  appendAudit(db, `用户口述策略存为技能「${skill.name}」${skill.status === "live_probation" ? "(已上岗试用)" : ""}`, skill.id, actor);
+  return { ok: true, status: skill.status, skill };
+}
