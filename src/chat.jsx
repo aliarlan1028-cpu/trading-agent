@@ -483,6 +483,46 @@ function AgentRail({ data, action, ui, send }) {
         </div>
       </div>
 
+      {/* 观察哨：AI 登记的价格触发条件，哨兵每分钟盯盘，命中即刻唤起巡检 */}
+      <div className="agCard">
+        <div className="agHeadIcon"><Eye size={13} /> 观察哨 · 分钟级盯盘</div>
+        {(() => {
+          const all = data.watchTriggers || [];
+          const actives = all.filter((w) => w.status === "active");
+          const recent = all.filter((w) => w.status !== "active").slice(0, 2);
+          const label = { triggered: "已触发", expired: "已过期", cancelled: "已撤销", invalidated: "已作废" };
+          const desc = (w) => w.kind === "price_above" ? `向上突破 ${displayPrice(w.level)}`
+            : w.kind === "price_below" ? `向下跌破 ${displayPrice(w.level)}`
+              : `回踩 ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
+          if (!all.length) return <small className="agWatchEmpty">暂无观察哨。巡检得出"若跌破/突破某价位"的结论时，AI 会把条件登记在这里，哨兵每分钟核对真实行情，命中即刻唤起 AI 重新决策。</small>;
+          return (
+            <div className="agWatchList">
+              {actives.map((w) => {
+                const remainH = Math.max(0, (new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000);
+                return (
+                  <div className="agWatchRow" key={w.id}>
+                    <span className="agWatchDot" />
+                    <div className="agWatchBody">
+                      <b className="mono">{w.symbol}</b> {desc(w)}
+                      {w.note && <small title={w.note}>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
+                    </div>
+                    <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
+                    <button className="agWatchCancel" title="撤销观察哨" onClick={() => { if (window.confirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
+                  </div>
+                );
+              })}
+              {recent.map((w) => (
+                <div className="agWatchRow closed" key={w.id}>
+                  <span className={`agWatchDot ${w.status}`} />
+                  <div className="agWatchBody"><b className="mono">{w.symbol}</b> {desc(w)}</div>
+                  <span className="agWatchMeta mono">{label[w.status] || w.status}{w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
       {/* 授权与风控墙 */}
       <div className="agCard">
         <div className="agHeadIcon"><ShieldCheck size={13} /> 授权与风控墙</div>

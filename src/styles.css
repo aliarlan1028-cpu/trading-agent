@@ -8158,6 +8158,20 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
 .mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }
 .mRunBadge .pulseDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulseDot 2s infinite; }
+/* 观察哨卡片:活跃哨一行一条(呼吸绿点),已结束哨灰显 */
+.agWatchEmpty { display: block; color: #8a8171; font-size: 11px; line-height: 1.6; }
+.agWatchList { display: grid; gap: 6px; }
+.agWatchRow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 7px; align-items: center; font-size: 12px; color: #4f493f; }
+.agWatchRow.closed { opacity: 0.55; }
+.agWatchDot { width: 7px; height: 7px; border-radius: 50%; background: #3f8f5b; animation: pulseDot 2s infinite; }
+.agWatchDot.triggered { background: #b17724; animation: none; }
+.agWatchDot.expired, .agWatchDot.cancelled, .agWatchDot.invalidated { background: #c4b8a4; animation: none; }
+.agWatchBody { min-width: 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.agWatchBody small { color: #8a8171; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.agWatchMeta { color: #8a8171; font-size: 11px; white-space: nowrap; }
+.agWatchCancel { border: 0; background: transparent; color: #c4b8a4; cursor: pointer; display: grid; place-items: center; padding: 2px; }
+.agWatchCancel:hover { color: #bc4b34; }
+
 /* 弱网轮询失败时顶栏静默提示(替代反复弹"连接后端失败"的 toast) */
 .mReconnect { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font: 700 11px "Space Grotesk"; background: #FBEFDD; color: #B17724; }
 .mReconnect .pulseDot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulseDot 1.4s infinite; }

@@ -4,6 +4,7 @@ import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -40,6 +41,9 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   } catch {}
   const regimeSummary = [regime?.global?.interpretation, regime?.smartMoney?.ok ? regime.smartMoney.interpretation : null].filter(Boolean).join("；");
 
+  // 观察哨触发消费：无论走 LLM 还是 patrol_only，都在这一轮处理掉，防止无限重触发
+  const triggeredWatches = consumeTriggeredWatches(db);
+
   const skipReasons = [];
   if (!db.system.autonomyEnabled) skipReasons.push("自主推进已暂停");
   if (db.system.killSwitch) skipReasons.push("熔断开启");
@@ -59,6 +63,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       source: "agent_cycle",
       steps: [
         { phase: "observe", summary: syncedSymbols.length ? `已同步 ${syncedSymbols.join("、")} 真实行情。` : "行情同步失败或无授权交易对。" },
+        ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${describeWatch(w)}(触发价 ${w.triggerPrice})`).join("；")}。` }] : []),
         ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
         { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。` }
@@ -75,17 +80,28 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const regimeBullets = regimeSummary ? regimeSummary.split(/[;；]\s*/).filter(Boolean).map((x) => `- ${x.trim()}`).join("\n") : "";
   // 标题带批次开始时间(北京时间),用户在长会话里靠它区分每轮巡检。
   const startedHhmm = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
+  const watchBullets = triggeredWatches.map((w) => `- ${describeWatch(w)} 已触发（触发价 ${w.triggerPrice}）${w.note ? ` · 登记理由：${w.note}` : ""}`);
   const goal = payload.goal
     || [
-      `【定时巡检 · ${startedHhmm}】`,
+      triggeredWatches.length ? `【⚠ 观察哨触发 · ${startedHhmm}】` : `【定时巡检 · ${startedHhmm}】`,
+      ...(watchBullets.length ? [...watchBullets, ""] : []),
       `- 授权白名单：${mandate.allowedSymbols.join("、")}`,
       `- 单笔风险上限 ${mandate.maxSingleTradeRiskPct}% · 日亏上限 ${mandate.maxDailyLossPct}%`,
       ...(regimeBullets ? ["", "【大盘与聪明钱 · 系统预取，可调用 get_global_market / get_microstructure 复核】", regimeBullets] : []),
       "",
       "【本轮任务】",
-      "1. 先判大盘：全局方向与情绪、大户/散户多空结构",
-      "2. 再看个币：逐一检查授权交易对的行情、持仓与事件",
-      "3. 只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划；否则简要说明为什么继续观察"
+      ...(triggeredWatches.length
+        ? [
+          "1. 优先复核触发币种：用 sync_market / get_microstructure 确认触发是否伴随量能与结构（无量假突破/假跌破要识别出来）",
+          "2. 确认有效则按授权边界评估是否提出交易计划；无效或不确定则说明原因，需要时重新登记观察哨",
+          "3. 顺带检查其余授权交易对与大盘环境是否有变化"
+        ]
+        : [
+          "1. 先判大盘：全局方向与情绪、大户/散户多空结构",
+          "2. 再看个币：逐一检查授权交易对的行情、持仓与事件",
+          "3. 只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划；否则简要说明为什么继续观察",
+          "4. 结论里的关键触发条件（若跌破/若突破/若回踩）用 register_watch 登记成观察哨，让哨兵分钟级盯盘"
+        ])
     ].join("\n");
   // 自动巡检全部归入固定会话:此前每次巡检都新建会话,15 分钟一个,历史会话被无限堆满。
   // 交易计划另有一等公民承载(待批准卡片/计划卡/审计链),用户手动对话保持独立会话。

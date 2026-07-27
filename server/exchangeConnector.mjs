@@ -109,6 +109,12 @@ async function fetchPublicTicker(exchange, symbol) {
   }
 }
 
+// 高频只读场景（观察哨每分钟核对）用：拉一次 ticker，不写审计/trace，不动 db。
+export async function fetchTickerQuiet(symbol, exchange = "OKX") {
+  const { result } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
+  return result;
+}
+
 export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/USDT") {
   const { result: ticker, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
   if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");

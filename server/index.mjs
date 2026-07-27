@@ -8,6 +8,7 @@ import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
 import { activeProvider, runAgentChat, llmComplete } from "./agentChat.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
+import { cancelWatch, runWatchSentinel } from "./watchSentinel.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
@@ -260,6 +261,8 @@ registerTaskHandler("agent_cycle", async (database) => {
   return run;
 });
 registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
+// 观察哨哨兵:每分钟机械核对已登记的价格条件,命中即通过 agent_cycle 任务(同锁同风控)触发完整巡检。
+registerTaskHandler("watch_sentinel", (database) => runWatchSentinel(database, saveDb));
 registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
 registerTaskHandler("paper_forward", async (database) => {
   const paper = await runPaperForward(database);
@@ -345,6 +348,7 @@ ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询"
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", handler: "agent_cycle", schedule: "Every 15m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_watch_sentinel", name: "观察哨哨兵", handler: "watch_sentinel", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: "reconcile", schedule: "Every 10m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
@@ -805,6 +809,7 @@ app.get("/api/overview", (_req, res) => {
     positions: db.positions,
     mandates: db.mandates,
     tradePlans: db.tradePlans,
+    watchTriggers: (db.watchTriggers || []).slice(0, 20),
     events: db.events,
     tasks: db.tasks,
     // 蒸馏出的 chunk 正文/词频向量（导入 11 本书后达 ~1.4MB）客户端并不渲染，只用到条数；
@@ -1138,6 +1143,13 @@ app.post("/api/mandates/:id/revoke", requirePermission("write:mandate"), (req, r
   mandate.revokedAt = nowIso();
   appendAudit(db, "撤销授权委托", mandate.id, db.user.name, "warning");
   persist(res, mandate);
+});
+
+// 观察哨：主人手动撤销（登记/自动撤销走 AI 工具与哨兵，均带审计）
+app.post("/api/watch-triggers/:id/cancel", requirePermission("write:mandate"), (req, res) => {
+  const result = cancelWatch(db, req.params.id, db.user?.name || "Owner", String(req.body?.reason || "主人手动撤销"));
+  if (!result.ok) return res.status(404).json({ error: result.error });
+  persist(res, { message: `已撤销观察哨：${req.params.id}`, watch: result.watch });
 });
 
 app.get("/api/events", (_req, res) => res.json(db.events));

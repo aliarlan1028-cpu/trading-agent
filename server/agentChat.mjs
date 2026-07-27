@@ -4,7 +4,8 @@ import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEv
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { bindKnowledgeSkillsToPlan, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { fetchTickerQuiet, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
@@ -256,6 +257,35 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "register_watch",
+    description: "登记观察哨：把'若价格发生 X 则需要重新评估'的关键条件落地成结构化价格哨。哨兵每分钟用真实行情核对，条件命中（穿越语义）会立即触发一轮完整巡检让你重新决策——哨兵本身绝不下单。巡检结论里出现'若跌破/若突破/若回踩某区间'这类可执行触发条件时必须登记，不要只写在文字里。条件当前已成立时会被拒绝（此时应直接分析而不是挂哨）。同币同向且价位相近的哨会自动合并更新，不必担心重复。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "币对，如 BTC/USDT，必须在授权白名单内" },
+        kind: { type: "string", enum: ["price_above", "price_below", "enter_zone"], description: "price_above=向上突破 level；price_below=向下跌破 level；enter_zone=回踩进入 [levelLow, levelHigh] 区间" },
+        level: { type: "number", description: "price_above / price_below 的触发价" },
+        levelLow: { type: "number", description: "enter_zone 区间下沿" },
+        levelHigh: { type: "number", description: "enter_zone 区间上沿" },
+        note: { type: "string", description: "登记理由与触发后的评估要点，如'放量跌破则短期偏空，评估做空'" },
+        ttlHours: { type: "number", description: "有效期小时数，默认 24，最大 48；过期自动作废" }
+      },
+      required: ["symbol", "kind", "note"]
+    }
+  },
+  {
+    name: "cancel_watch",
+    description: "撤销一个不再需要的活跃观察哨（行情结构变化使条件失去意义、或需要腾出名额时）。",
+    schema: {
+      type: "object",
+      properties: {
+        watchId: { type: "string", description: "要撤销的观察哨 id（可从系统提示的观察哨列表或 register_watch 返回中获得）" },
+        reason: { type: "string", description: "撤销原因" }
+      },
+      required: ["watchId"]
+    }
+  },
+  {
     name: "list_risk_incidents",
     description: "读取当前未处理（open）的风险事件列表，用于逐条分析后决定是否可以标记为已处理。",
     schema: { type: "object", properties: {} }
@@ -287,6 +317,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。
 8. 用户问本系统功能、页面或配置概念时，优先使用内置系统说明，不要回答"知识库没有资料"。
 9. 用户明确命令你执行系统内部操作时，优先调用工具完成；涉及密钥、实盘开关、清空数据、改密码等高敏操作时说明风险并避免回显敏感信息。
+10. 观察哨纪律：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，必须调用 register_watch 把它登记成观察哨（哨兵每分钟盯盘，命中即刻唤起你重新决策），不要只写在文字里；已有等价观察哨则不必重复登记，条件失去意义时用 cancel_watch 撤掉。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -403,6 +434,16 @@ async function buildSystemPrompt(db, userText = "") {
   if (movers.length) {
     const text = movers.slice(0, 6).map((m) => `- ${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%（额 $${(m.quoteVolUsdt / 1e6).toFixed(0)}M）${m.narrative ? `｜${m.narrative.narrative || ""}（${m.narrative.category || ""}，情绪${m.narrative.sentiment ?? "?"}）` : ""}`).join("\n");
     sections.push(`【全市场异动·环境感知（截至 ${hhmmCn(db.marketMovers.scannedAt)} (UTC+8)，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}`);
+  }
+
+  // 活跃观察哨：让每条对话路径都知道"哨兵正在盯什么"，避免重复登记、支持按 id 撤销。
+  const watches = listActiveWatches(db);
+  if (watches.length) {
+    const lines = watches.map((w) => {
+      const remainH = Math.max(0, Math.round((new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000));
+      return `- ${w.id}: ${describeWatch(w)} · 余 ${remainH}h${w.note ? ` · ${w.note}` : ""}`;
+    }).join("\n");
+    sections.push(`【当前观察哨（哨兵每分钟核对，命中即触发巡检；等价条件勿重复登记）】\n${lines}`);
   }
 
   const chunks = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, userText, 5));
@@ -570,6 +611,33 @@ export async function executeTool(db, run, name, args = {}) {
     } catch (error) {
       return { error: `全局大盘同步失败：${error.message}` };
     }
+  }
+
+  if (name === "register_watch") {
+    const symbol = String(args.symbol || "").trim().toUpperCase();
+    let price = null;
+    try {
+      const ticker = await fetchTickerQuiet(symbol);
+      price = Number(ticker?.price);
+    } catch { /* 下面回退到已同步行情 */ }
+    if (!Number.isFinite(price) || price <= 0) {
+      price = Number((db.markets || []).find((m) => m.symbol === symbol)?.price);
+    }
+    const result = registerWatch(db, args, price, run?.role || "AI 交易员");
+    if (!result.ok) return { error: result.error };
+    return {
+      status: result.updated ? "updated" : "registered",
+      watchId: result.watch.id,
+      watch: describeWatch(result.watch),
+      expiresAt: result.watch.expiresAt,
+      activeWatches: listActiveWatches(db).map((w) => `${w.id}: ${describeWatch(w)}`)
+    };
+  }
+
+  if (name === "cancel_watch") {
+    const result = cancelWatch(db, String(args.watchId || ""), run?.role || "AI 交易员", String(args.reason || ""));
+    if (!result.ok) return { error: result.error };
+    return { status: "cancelled", watch: describeWatch(result.watch) };
   }
 
   if (name === "get_account") {
