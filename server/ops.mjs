@@ -1,12 +1,37 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { appendAudit, nowIso, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, nowIso, verifyAuditChain } from "./store.mjs";
 import { keyProviderStatus } from "./keyProvider.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const backupDir = path.join(rootDir, "backups");
+
+// 单一派生自动化状态:把 熔断/自主/实盘写入/风险确认/下单写入/Key核验/灰度 等分散开关
+// 按真实执行链顺序汇成一句结论——"自主运行中"曾被误解为"会自动下单"(外审 P1)。
+// 判定顺序与 validateWriteGuard 的七层闸一致,展示与执行不会各说各话。
+export function deriveAutomationState(db, options = {}) {
+  const sys = db.system || {};
+  if (sys.killSwitch) return { mode: "halted", label: "已熔断", detail: "解除熔断前只允许平仓/撤单等降风险动作", tone: "danger", blockers: [] };
+  if (!sys.autonomyEnabled) return { mode: "paused", label: "自主推进已暂停", detail: "恢复后按定时巡检 + 观察哨自主决策", tone: "warning", blockers: [] };
+  const blockers = [];
+  if (!activeMandate(db)) blockers.push("无激活授权");
+  if (!options.hasProvider) blockers.push("未配置 LLM");
+  if (sys.remainingDailyLossUsdt !== null && sys.remainingDailyLossUsdt !== undefined && sys.remainingDailyLossUsdt <= 0) blockers.push("日亏预算耗尽");
+  if (blockers.length) return { mode: "blocked", label: "自主决策被拦", detail: blockers.join("、"), tone: "warning", blockers };
+  if (!sys.liveTradingEnabled) return { mode: "observe", label: "观察模式·干跑", detail: "计划走完整风控流程但不提交真实订单", tone: "neutral", blockers: [] };
+  if (!(sys.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) blockers.push("实盘风险确认未勾选");
+  if (!(sys.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) blockers.push("真实下单写入未开启");
+  if (!apiPermissionsVerified(db)) blockers.push("API Key 权限未核验");
+  const gray = (db.grayReleasePolicies || []).find((item) => item.enabled);
+  if (!gray) blockers.push("灰度策略未启用");
+  if (blockers.length) return { mode: "live_blocked", label: "实盘开仓被拦", detail: blockers.join("、"), tone: "warning", blockers };
+  if (gray.requiresManualApproval) {
+    return { mode: "semi_auto", label: "半自动", detail: `计划自动生成,真实下单前需你批准 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] };
+  }
+  return { mode: "full_auto_small", label: "全自动·小额实盘", detail: `通过硬风控+SRTL 即自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "danger", blockers: [] };
+}
 
 export function buildReadinessReport(db) {
   const checks = [

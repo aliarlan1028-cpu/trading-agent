@@ -446,7 +446,19 @@ function AgentRail({ data, action, ui, send }) {
         <div className="agMiniGrid">
           {/* 授权边界卡：显示真实的授权字段（单笔风险/日亏上限）——旧 targetMonthlyPct 是后端从未写入的死字段，永远显示"—" */}
           <div className="agMini"><div className="agMiniK">授权边界</div><div className="agMiniV mono">{hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/笔` : "—"}</div><div className="agMiniS">{hasMandate && mandate.maxDailyLossPct != null ? `日亏≤${mandate.maxDailyLossPct}%` : "未授权"}</div></div>
-          <div className="agMini"><div className="agMiniK">状态</div><div className={`agMiniV sg ${autoOn ? "pos" : ""}`}>{autoOn ? "运行中" : "已暂停"}</div><div className="agMiniS">{system.killSwitch ? "已熔断" : autoOn ? "已开启" : "待启动"}</div></div>
+          {(() => {
+            // 派生自动化状态:后端按执行链七层闸推导出单一结论,不再让用户从多个开关自己拼语义
+            const st = data.automationState;
+            if (!st) return <div className="agMini"><div className="agMiniK">状态</div><div className={`agMiniV sg ${autoOn ? "pos" : ""}`}>{autoOn ? "运行中" : "已暂停"}</div><div className="agMiniS">{system.killSwitch ? "已熔断" : "-"}</div></div>;
+            const tone = st.mode === "full_auto_small" ? "pos" : ["halted", "blocked", "live_blocked"].includes(st.mode) ? "neg" : "";
+            return (
+              <div className="agMini" title={st.detail}>
+                <div className="agMiniK">自动化状态</div>
+                <div className={`agMiniV sg ${tone}`}>{st.label}</div>
+                <div className="agMiniS" title={st.detail}>{st.blockers?.length ? st.blockers[0] + (st.blockers.length > 1 ? ` 等${st.blockers.length}项` : "") : st.detail}</div>
+              </div>
+            );
+          })()}
           <div className="agMini"><div className="agMiniK">大盘结构</div><div className={`agMiniV sg ${judgePos ? "pos" : ""} ${judgeNeg ? "neg" : ""}`}>{judge}</div><div className="agMiniS">{ratio != null ? `BTC大户${ratio}` : "待同步"}</div></div>
           <div className="agMini"><div className="agMiniK">下一步</div><div className="agMiniV sg" title={nextStep}>{nextStep.length > 8 ? `${nextStep.slice(0, 8)}…` : nextStep}</div><div className="agMiniS">{canOpen ? "已授权开仓" : "未授权开仓"}</div></div>
         </div>

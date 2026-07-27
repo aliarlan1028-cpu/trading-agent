@@ -738,3 +738,65 @@ export function knowledgeSkillSummary(db) {
     recentAttributions: db.knowledge.skillAttributions.slice(0, 100)
   };
 }
+
+// ---------------------------------------------------------------------------
+// 精选手写技能:知识库蒸馏的散文方法大多无法机械量化(48 条历史被拒是诚实结果——
+// 21 条样本内就无优势、17 条信号太稀疏)。这里维护一小组参数明确、信号频率足够的
+// 规范 spec(含做空),与书本方法走同一条 编译→历史验证→前向模拟→人工批准 流水线,
+// 没有任何验证捷径;历史验证被拒就被拒,不重复重编译刷版本。
+// ---------------------------------------------------------------------------
+const CURATED_SOURCE = { id: "src_manual_curated", title: "手写规范策略(精选)", type: "manual_curated" };
+const CURATED_METHODS = [
+  {
+    id: "cm_donchian_long", name: "唐奇安20突破做多(精选)", direction: "long", timeframe: "1h",
+    templateId: "breakout", params: { lookback: 20, atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 2 },
+    entry: "收盘价突破过去20根1小时K线最高价", confirmation: "突破K线收盘确认,不追盘中假突破",
+    stop: "ATR 自适应止损(2×ATR14)", takeProfit: "2R", marketRegime: "趋势"
+  },
+  {
+    id: "cm_donchian_short", name: "唐奇安20下破做空(精选)", direction: "short", timeframe: "1h",
+    templateId: "breakdown", params: { lookback: 20, atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 2 },
+    entry: "收盘价跌破过去20根1小时K线最低价", confirmation: "下破K线收盘确认",
+    stop: "ATR 自适应止损(2×ATR14)", takeProfit: "2R", marketRegime: "下行趋势"
+  },
+  {
+    id: "cm_squeeze_long", name: "布林挤压突破做多(精选)", direction: "long", timeframe: "15m",
+    templateId: "squeeze", params: { period: 20, k: 2, squeeze: 0.04, atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 2 },
+    entry: "布林带宽收窄至4%以下后收盘价上破上轨", confirmation: "挤压释放方向确认",
+    stop: "ATR 自适应止损(2×ATR14)", takeProfit: "2R", marketRegime: "震荡转趋势"
+  },
+  {
+    id: "cm_rsi_short", name: "RSI超买回落做空(精选)", direction: "short", timeframe: "1h",
+    templateId: "rsi_short", params: { period: 14, overbought: 70, atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 2 },
+    entry: "RSI14 高于70后回落跌破70时做空", confirmation: "回落K线收盘确认",
+    stop: "ATR 自适应止损(2×ATR14)", takeProfit: "2R", marketRegime: "冲高回落"
+  },
+  {
+    id: "cm_supertrend_long", name: "Supertrend趋势做多(精选)", direction: "long", timeframe: "4h",
+    templateId: "supertrend", params: { period: 10, mult: 3, atrStop: true, atrMult: 2, atrPeriod: 14, takeProfitR: 2 },
+    entry: "Supertrend(10,3) 由空翻多时顺势做多", confirmation: "翻转K线收盘确认",
+    stop: "ATR 自适应止损(2×ATR14)", takeProfit: "2R", marketRegime: "趋势"
+  }
+];
+
+export function ensureCuratedSkills(db, actor = "CuratedSkills") {
+  ensureCollections(db);
+  db.knowledge.sources ||= [];
+  if (!db.knowledge.sources.some((source) => source.id === CURATED_SOURCE.id)) {
+    db.knowledge.sources.push({ ...CURATED_SOURCE, createdAt: nowIso() });
+  }
+  let created = 0;
+  for (const method of CURATED_METHODS) {
+    if (!db.knowledge.tradingMethods.some((item) => item.id === method.id)) {
+      const { templateId, params, ...fields } = method;
+      db.knowledge.tradingMethods.push({ ...fields, source: { id: CURATED_SOURCE.id, title: CURATED_SOURCE.title }, curated: true, createdAt: nowIso() });
+    }
+    // 一次性编译:该方法已有任何技能记录(含被拒/被替代)就不再重编,避免每次启动刷新版本
+    if (db.knowledge.tradingSkills.some((skill) => skill.sourceMethodId === method.id)) continue;
+    const skill = compileTradingMethod(db, method.id, { templateId: method.templateId, params: method.params }, actor);
+    skill.curated = true;
+    if (skill.status === "compiled") created += 1;
+  }
+  if (created) appendAudit(db, `精选手写技能入列:新编译 ${created} 个(待历史验证)`, CURATED_SOURCE.id, actor);
+  return { created };
+}

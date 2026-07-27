@@ -35,6 +35,7 @@ import {
   approveKnowledgeSkill,
   bindKnowledgeSkillsToPlan,
   compileTradingMethod,
+  ensureCuratedSkills,
   validateAllCompiledSkills,
   knowledgeSkillSummary,
   retireKnowledgeSkill,
@@ -44,7 +45,7 @@ import {
   validateKnowledgeSkill
 } from "./knowledgeSkills.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
-import { buildReadinessReport, createSystemBackup } from "./ops.mjs";
+import { buildReadinessReport, createSystemBackup, deriveAutomationState } from "./ops.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
@@ -184,6 +185,8 @@ for (const method of db.knowledge?.tradingMethods || []) {
   }
   if (redone) appendAudit(db, `编译器修订迁移:${redone} 个旧止损口径技能已重编译(待重新历史验证)`, "compiler_rev_2", "StartupMigration");
 })();
+// 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
+try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();
@@ -800,6 +803,7 @@ app.get("/api/overview", (_req, res) => {
     paymentRequests: db.paymentRequests?.slice(0, 20) || [],
     system: db.system,
     publicRegistrationEnabled: process.env.PUBLIC_REGISTRATION_ENABLED === "true",
+    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
     agentStatus: getAgentStatus(db),
     agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
