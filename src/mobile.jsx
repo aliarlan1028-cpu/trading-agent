@@ -432,7 +432,7 @@ function MobileKnowledge({ data, action, ui }) {
 
       {seg === "技能" && (
         <div className="mSectionCard">
-          <header><span>技能流水线（{skills.length}）</span><button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>同步</button></header>
+          <header><span>技能流水线（{skills.length}）</span><span style={{ display: "flex", gap: 8 }}>{(() => { const n = skills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?`)) action("/api/knowledge/skills/validate-all", {}); }}>一键验证({n})</button>; })()}<button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>同步</button></span></header>
           <div className="mKLegend">
             <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> 这些状态是什么意思？<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
             {legendOpen && SKILL_STATE_HELP.map(([label, tone, desc]) => (

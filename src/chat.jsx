@@ -448,7 +448,7 @@ function AgentRail({ data, action, ui, send }) {
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
-            <b className="mono">{plan?.symbol || (mandate.allowedSymbols || [])[0] || "BTC/USDT"}</b>
+            <b className="mono">{plan?.symbol || "暂无交易计划"}</b>
             {(() => {
               const mk = (data.markets || []).find((m) => m.symbol === (plan?.symbol || ""));
               if (!mk?.price || !plan) return null;
@@ -464,8 +464,8 @@ function AgentRail({ data, action, ui, send }) {
                   : devPct > 8 ? <span className="evBadge warn">偏离现价 {devPct.toFixed(0)}% · 陈旧</span> : null}
               </>);
             })()}
-            <span className="agPlanTag">{plan?.strategy || mandate.strategies?.[0] ? humanize(plan?.strategy || mandate.strategies?.[0]) : "未指定策略"}</span>
-            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : "暂无计划"}</span>
+            {plan && <span className="agPlanTag">{plan.strategy ? humanize(plan.strategy) : "未指定策略"}</span>}
+            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : `白名单 ${(mandate.allowedSymbols || []).slice(0, 3).join(" / ") || "未设置"} · 等巡检提出机会`}</span>
           </div>
           <div className="agPlanGrid">
             <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>

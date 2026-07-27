@@ -34,6 +34,7 @@ import {
   approveKnowledgeSkill,
   bindKnowledgeSkillsToPlan,
   compileTradingMethod,
+  validateAllCompiledSkills,
   knowledgeSkillSummary,
   retireKnowledgeSkill,
   retireSkillsForSource,
@@ -1352,6 +1353,14 @@ app.post("/api/knowledge/skills/:id/paper", requirePermission("write:review"), a
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+app.post("/api/knowledge/skills/validate-all", requirePermission("write:review"), (req, res) => {
+  const result = validateAllCompiledSkills(db, saveDb, req.user?.name || db.user.name);
+  const message = result.started
+    ? `已开始批量历史验证 ${result.total} 个技能(后台执行,数分钟内按门槛自动流转,完成后审计日志有汇总)`
+    : result.reason === "already_running" ? "批量验证已在进行中" : "没有待历史验证的技能";
+  res.json({ ...result, message });
 });
 
 app.post("/api/knowledge/skills/sync", requirePermission("write:review"), (req, res) => {

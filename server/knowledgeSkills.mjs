@@ -331,6 +331,33 @@ export async function validateKnowledgeSkill(db, skillId, options = {}, actor = 
   return result;
 }
 
+// 批量历史验证:把所有 compiled/historical_rejected 技能顺序推过 40/30/30 三窗回测。
+// 后台执行(51 个技能×K线拉取需数分钟,HTTP 即时返回);单飞标志防重复触发;
+// 每个技能间 400ms 缓冲避免打爆 OKX 公共接口;完成后审计汇总。
+let batchValidationRunning = false;
+export function validateAllCompiledSkills(db, saveDb, actor = "BatchValidator") {
+  if (batchValidationRunning) return { started: false, reason: "already_running" };
+  const targets = (db.knowledge?.tradingSkills || [])
+    .filter((s) => ["compiled", "historical_rejected"].includes(s.status))
+    .map((s) => s.id);
+  if (!targets.length) return { started: false, reason: "no_targets", total: 0 };
+  batchValidationRunning = true;
+  (async () => {
+    let passed = 0, rejected = 0, errored = 0;
+    for (const skillId of targets) {
+      try {
+        const r = await validateKnowledgeSkill(db, skillId, {}, actor);
+        if (r?.passed) passed += 1; else rejected += 1;
+      } catch { errored += 1; }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    appendAudit(db, `批量历史验证完成:通过 ${passed} · 未达门槛 ${rejected} · 数据不足/出错 ${errored}(共 ${targets.length})`, "skills_batch_validate", actor);
+    if (saveDb) saveDb(db);
+    batchValidationRunning = false;
+  })();
+  return { started: true, total: targets.length };
+}
+
 export async function startKnowledgeSkillPaper(db, skillId, options = {}, actor = "KnowledgeValidator") {
   ensureCollections(db);
   const skill = db.knowledge.tradingSkills.find((item) => item.id === skillId);

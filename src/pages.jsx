@@ -1007,7 +1007,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       {/* —— 技能流水线 Tab —— */}
       {tab === "skills" && (
         <div className="termCard">
-          <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div>
+          <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(() => { const n = tradingSkills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
           <SkillStateLegend />
           {!tradingSkills.length && <div className="emptyPanel">还没有技能。到「方法草案」把方法编译成技能草案后在此推进验证</div>}
           {(() => {
