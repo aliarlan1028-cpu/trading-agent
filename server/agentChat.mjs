@@ -337,7 +337,11 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。
 8. 用户问本系统功能、页面或配置概念时，优先使用内置系统说明，不要回答"知识库没有资料"。
 9. 用户明确命令你执行系统内部操作时，优先调用工具完成；涉及密钥、实盘开关、清空数据、改密码等高敏操作时说明风险并避免回显敏感信息。
-10. 观察哨纪律：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，必须调用 register_watch 把它登记成观察哨（哨兵每分钟盯盘，命中即刻唤起你重新决策），不要只写在文字里；已有等价观察哨则不必重复登记，条件失去意义时用 cancel_watch 撤掉。
+10. 观察哨纪律【强制·最容易犯错】：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，**唯一正确做法是调用 register_watch 工具**把它登记。
+   - 在回复正文里写"观察哨一览"表格、列出"哨兵/条件/距触发/逻辑"这类文字，**完全不算登记**——那只是空话，哨兵根本没在盯，等于欺骗主人。绝对禁止在文字里画观察哨表格或声称"已挂 N 个观察哨/全部保留"。
+   - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
+   - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次工具，然后在文字里最多用一句话说"已登记 N 个观察哨盯盘"，不要展开成表。
+   - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -1161,6 +1165,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id);
     }
     run.status = "completed";
+    // 诚实守卫:模型若在正文里画"观察哨一览"表却没真调 register_watch(弱模型常犯),留痕警告——
+    // 避免"嘴上说在盯、实际哨兵空转"的假象无声无息(用户实锤 bug)。
+    const claimsWatch = /观察哨一览|距触发|哨兵\s*[\|｜]|若跌破|若突破|回踩.*(做空|做多)/.test(finalText || "");
+    const registeredThisRun = toolTrace.some((t) => t.name === "register_watch" && !String(t.summary || "").startsWith("失败"));
+    if (claimsWatch && !registeredThisRun) {
+      appendTrace(db, "agent_chat", "⚠ 回复提及观察哨/触发条件但本轮未成功调用 register_watch——哨兵未实际登记,勿被文字误导", "warning");
+    }
     recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
