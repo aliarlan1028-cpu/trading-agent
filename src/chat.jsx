@@ -112,6 +112,11 @@ function parseRichText(text = "") {
       flushAll();
       continue;
     }
+    // Markdown 水平分隔线(--- / *** / ___):模型偶尔会输出,渲染成裸文本很丑,直接当段落分隔吞掉。
+    if (/^([-*_])\1{2,}$/.test(line.replace(/\s+/g, ""))) {
+      flushAll();
+      continue;
+    }
     if (/^\|.*\|\s*$/.test(line) && (line.match(/\|/g) || []).length >= 2) {
       flushParagraph();
       flushBullets();
