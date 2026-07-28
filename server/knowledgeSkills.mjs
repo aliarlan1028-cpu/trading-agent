@@ -16,6 +16,8 @@ const PROBATION_GRADUATE_PF = Number(process.env.SKILL_PROBATION_GRADUATE_PF || 
 const TERMINAL_STATES = new Set(["retired", "superseded"]);
 const MAX_INVOCATIONS = 1000;
 const MIN_LIVE_ATTRIBUTION_TRADES = Math.max(5, Number(process.env.KNOWLEDGE_SKILL_MIN_LIVE_TRADES || 10));
+// 每轮 paper_forward 最多新起几个纯前向模拟盘,避免一次性对行情接口开几十路拉取。
+const PAPER_START_PER_CYCLE = Math.max(1, Number(process.env.SKILL_PAPER_START_PER_CYCLE || 6));
 
 const TEMPLATE_RULES = [
   // 背离类统一按技能方向选模板：long→底背离模板，short→顶背离模板（文字只用于识别"这是背离方法"）。
@@ -406,6 +408,49 @@ export async function startKnowledgeSkillPaper(db, skillId, options = {}, actor 
   transition(skill, "paper_validating", "forward_paper_started", actor);
   appendAudit(db, `知识技能进入纯前向模拟盘「${skill.name}」`, skill.id, actor);
   return { status: "ok", skill, session: result.session };
+}
+
+// 模拟前向为主的流水线驱动:把 compiled 技能推过历史 OOS 预筛,再把 historical_validated
+// 的技能逐个起"纯前向模拟盘"。runPaperForward + syncKnowledgeSkillLifecycle(已在 paper_forward
+// 定时任务里)负责把跑够前向笔数的会话判 passed/failed → paper_validated/paper_rejected。
+// 这条链路本就完整,之前被 skillLiveValidationMode 一把全扫进 live_probation 短路了,本函数把它接活。
+export async function advanceSkillsThroughPaperLane(db, saveDb, actor = "PaperForwardDriver") {
+  ensureCollections(db);
+  // 1) compiled/historical_rejected → 历史 40/30/30 OOS 验证(后台批量,内部 400ms 节流,单飞防重)
+  const batch = validateAllCompiledSkills(db, saveDb, actor);
+  // 2) historical_validated 且未开模拟盘 → 起纯前向模拟盘(每轮限量,避免打爆行情接口)
+  const ready = db.knowledge.tradingSkills.filter(
+    (s) => s.status === "historical_validated" && !s.paperSessionId && s.spec && STRATEGIES[s.spec.templateId]
+  );
+  let paperStarted = 0;
+  for (const skill of ready.slice(0, PAPER_START_PER_CYCLE)) {
+    try {
+      const r = await startKnowledgeSkillPaper(db, skill.id, {}, actor);
+      if (r.status === "ok") paperStarted += 1;
+    } catch { /* 数据不足/交易对超范围等,下轮再试 */ }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return { historicalBatch: batch, paperStarted, paperQueue: ready.length };
+}
+
+// 一次性迁移:把因旧"小额实盘验证"模式死锁在 live_probation、且没有任何真实(非模拟)成交归因的
+// 技能退回 compiled,让它们重新进入"模拟前向"验证车道。有真实成绩的技能保持不动(不抹掉战绩)。
+export function resetProbationSkillsToPaperLane(db, actor = "PaperForwardMigration") {
+  ensureCollections(db);
+  const realAttr = new Set(
+    (db.knowledge.skillAttributions || []).filter((a) => a.mode !== "paper").map((a) => a.skillId)
+  );
+  let reset = 0;
+  for (const skill of db.knowledge.tradingSkills) {
+    if (skill.status === "live_probation" && !realAttr.has(skill.id)) {
+      skill.paperSessionId = null;
+      skill.probationStartedAt = null;
+      transition(skill, "compiled", "reset_to_paper_forward_lane", actor);
+      reset += 1;
+    }
+  }
+  if (reset) appendAudit(db, `模拟前向迁移:${reset} 个死锁在小额试用的技能退回编译态,重新进入模拟前向验证车道`, "skills_paper_migration", actor, "warning");
+  return { reset };
 }
 
 export function syncKnowledgeSkillLifecycle(db, actor = "KnowledgeLifecycle") {
