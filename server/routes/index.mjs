@@ -10,6 +10,9 @@ import { registerPaperRoutes } from "./paper.mjs";
 import { registerMcpRoutes } from "./mcp.mjs";
 import { registerEventSourceRoutes } from "./eventSources.mjs";
 import { registerSecurityConfigRoutes } from "./securityConfig.mjs";
+import { registerPaymentRoutes } from "./payments.mjs";
+import { registerStrategyRoutes } from "./strategy.mjs";
+import { registerReviewRoutes } from "./review.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -21,4 +24,7 @@ export function registerAllRoutes(app, ctx) {
   registerMcpRoutes(app, ctx);
   registerEventSourceRoutes(app, ctx);
   registerSecurityConfigRoutes(app, ctx);
+  registerPaymentRoutes(app, ctx);
+  registerStrategyRoutes(app, ctx);
+  registerReviewRoutes(app, ctx);
 }

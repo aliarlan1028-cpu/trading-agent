@@ -732,58 +732,7 @@ app.patch("/api/admin/subscription-plans/:id", requirePermission("admin:system")
   persist(res, plan);
 });
 
-app.post("/api/payments/trc20/request", requirePermission("write:mandate"), (req, res) => {
-  const plan = (db.subscriptionPlans || []).find((item) => item.id === req.body.planId && item.enabled !== false);
-  if (!plan) return res.status(404).json({ error: "Plan not found" });
-  const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
-  if (!address) return res.status(503).json({ error: "TRC20_USDT_RECEIVE_ADDRESS is not configured" });
-  const payment = {
-    id: id("pay"),
-    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
-    userId: req.user?.id,
-    planId: plan.id,
-    network: "TRON",
-    asset: "USDT",
-    amount: Number(plan.priceUsdt || 0),
-    address,
-    status: "pending",
-    expiresAt: addMonthsIso(0, 30),
-    createdAt: nowIso()
-  };
-  db.paymentRequests ||= [];
-  db.paymentRequests.unshift(payment);
-  appendAudit(db, `创建 TRC20 USDT 支付请求：${plan.name}`, payment.id, req.user?.name || db.user.name);
-  persist(res, payment);
-});
-
-app.post("/api/payments/trc20/verify", requirePermission("admin:system"), async (_req, res) => {
-  const result = await verifyTrc20Payments(db);
-  persist(res, result);
-});
-
-app.post("/api/payments/trc20/webhook", (req, res) => {
-  const payload = req.body || {};
-  const txid = payload.txid || payload.transactionId || payload.hash;
-  const paymentId = payload.paymentId || payload.orderId;
-  const event = { id: id("payhook"), provider: payload.provider || "trc20", txid, paymentId, payload, createdAt: nowIso() };
-  db.paymentWebhooks ||= [];
-  db.paymentWebhooks.unshift(event);
-  // 安全：只有配置了 PAYMENT_WEBHOOK_SECRET 且签名匹配，回调才允许开通订阅；
-  // 否则只记录回调、不自动开通（真正的开通走 TronGrid 链上核验 payment_verify）。
-  const secret = process.env.PAYMENT_WEBHOOK_SECRET;
-  const signatureOk = secret && (req.headers["x-webhook-secret"] === secret || payload.secret === secret);
-  const payment = paymentId ? (db.paymentRequests || []).find((item) => item.id === paymentId) : null;
-  if (payment && signatureOk && (payload.status === "confirmed" || payload.confirmed === true)) {
-    payment.status = "confirmed";
-    payment.txid = txid;
-    payment.confirmedAt = nowIso();
-    payment.verifiedBy = "webhook_signed";
-    activateSubscriptionFromPayment(payment);
-  }
-  appendAudit(db, `收到 TRC20 支付回调：${txid || paymentId || "unknown"}${signatureOk ? "（已验签开通）" : "（未验签，仅记录）"}`, event.id, "PaymentWebhook", signatureOk ? "info" : "warning");
-  saveDb(db);
-  res.json({ ok: true, activated: Boolean(payment && signatureOk) });
-});
+// payments(TRC20) 路由组已迁至 server/routes/payments.mjs
 
 app.post("/api/system/autonomy", (req, res) => {
   const requiredPermission = req.body.enabled === false ? "write:mandate" : "approve:live_config";
@@ -1504,15 +1453,7 @@ app.get("/api/portfolio/risk", (_req, res) => {
 });
 
 // paper 模拟盘路由组已迁至 server/routes/paper.mjs
-app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
-app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
-  try {
-    const result = await runStrategyResearch(db, req.body || {});
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: `策略研究失败：${error.message}` });
-  }
-});
+// strategy 路由组(profiles/research/board)已迁至 server/routes/strategy.mjs
 app.post("/api/backtest/run", requirePermission("write:review"), async (req, res) => {
   try {
     const result = await runBacktest(db, req.body || {});
@@ -1656,8 +1597,6 @@ app.post("/api/skills/:id/untrust", requirePermission("write:skills"), (req, res
   appendAudit(db, `撤销信任导入 Skill「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
   persist(res, { message: `已撤销信任「${skill.name}」，已移出 AI 决策方法论`, skill });
 });
-
-app.get("/api/strategy-board", (_req, res) => res.json(buildStrategyBoard(db)));
 
 app.post("/api/skills/:id/rollback", requirePermission("write:skills"), (req, res) => {
   const skill = db.skills.find((item) => item.id === req.params.id);
@@ -2215,41 +2154,7 @@ app.post("/api/risk/incidents/close-all", requirePermission("write:risk"), (req,
 // security & config 路由组（vault/交易所凭证/LLM 配置/实盘开关/密钥删除/告警/演练/审计链）
 // 已迁至 server/routes/securityConfig.mjs（见文件末尾 registerSecurityConfigRoutes）
 
-app.post("/api/reviews", requirePermission("write:review"), (req, res) => {
-  const review = { id: id("review"), title: req.body.title || "交易复盘", summary: req.body.summary || "", tags: req.body.tags || [], tradePlanId: req.body.tradePlanId, createdAt: nowIso() };
-  db.reviews.unshift(review);
-  appendAudit(db, "创建复盘", review.id, "复盘员");
-  persist(res, review);
-});
-
-app.get("/api/review/analytics", (_req, res) => {
-  res.json(buildReviewAnalytics(db));
-});
-
-app.post("/api/review/backfill-fields", requirePermission("write:review"), (_req, res) => {
-  const result = backfillReviewFields(db);
-  appendAudit(db, "补全复盘字段", "review_backfill", "ReviewEngine");
-  persist(res, { message: `已补全复盘字段：${result.updated} 处`, ...result, analytics: buildReviewAnalytics(db) });
-});
-
-app.post("/api/review/strategy-improvement", requirePermission("write:review"), async (req, res) => {
-  // 记录改进假设/成功标准（复盘产物），并真正发起研究 → 自动开模拟盘（前向验证）。
-  const cycle = createStrategyImprovementCycle(db, req.body || {});
-  let research = null;
-  try {
-    research = await runStrategyResearch(db, req.body?.symbols ? { symbols: req.body.symbols } : {});
-  } catch (error) {
-    research = { status: "research_failed", error: error.message };
-  }
-  persist(res, {
-    ...cycle,
-    research,
-    message: research?.status === "ok"
-      ? `已发起改进闭环：研究 ${research.updated?.length || 0} 个交易对，自动开模拟盘 ${research.paperSpawned || 0} 个`
-      : `已创建改进假设；研究未完成（${research?.error || research?.status || "unknown"}）`
-  });
-});
-
+// reviews / review 路由组已迁至 server/routes/review.mjs
 // traces / audit-logs 路由已迁至 server/routes/observability.mjs
 
 // —— 已按 registrar 范式抽出的所有路由组，统一在此一处注册（ctx 为各组依赖并集）——
@@ -2262,7 +2167,10 @@ registerAllRoutes(app, {
   buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
   storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals,
   listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,
-  getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain
+  getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain,
+  addMonthsIso, verifyTrc20Payments, activateSubscriptionFromPayment,
+  activeStrategyProfiles, runStrategyResearch, buildStrategyBoard,
+  buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle
 });
 
 app.listen(port, host, () => {
