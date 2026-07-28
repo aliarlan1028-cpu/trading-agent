@@ -83,11 +83,11 @@ test("陈旧计划被新鲜度检查拦截:现价越过止损/入场偏离超阈
   const risk = evaluateTradePlan(db, stale);
   assert.equal(risk.passed, false);
   const failed = risk.checks.filter((c) => !c.passed).map((c) => c.name);
-  assert.ok(failed.includes("止损未被跌穿"), `应拦截跌穿止损,实际失败项:${failed.join(",")}`);
+  assert.ok(failed.includes("现价在止损安全侧"), `应拦截跌穿止损,实际失败项:${failed.join(",")}`);
 
   // 新鲜计划(贴近现价、止损在安全侧)不受两项新检查影响
   const fresh = { ...stale, id: "p_fresh", entry_range: [0.162, 0.164], stopLoss: 0.158, take_profit: [0.172] };
   const risk2 = evaluateTradePlan(db, fresh);
   const freshFailed = risk2.checks.filter((c) => !c.passed).map((c) => c.name);
-  assert.ok(!freshFailed.includes("止损未被跌穿") && !freshFailed.includes("入场区间贴近现价"), `新鲜计划不应被新检查拦:${freshFailed.join(",")}`);
+  assert.ok(!freshFailed.includes("现价在止损安全侧") && !freshFailed.includes("入场区间贴近现价"), `新鲜计划不应被新检查拦:${freshFailed.join(",")}`);
 });

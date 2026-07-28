@@ -28,6 +28,15 @@ import {
 } from "lucide-react";
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
 
+// 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
+// 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
+function stripCitationMarkers(text = "") {
+  return String(text)
+    .replace(/\[\[\d+\]\]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([，。、；：）】」』"])/g, "$1");
+}
+
 function renderInline(text = "") {
   return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
     part.startsWith("**") && part.endsWith("**")
@@ -177,7 +186,7 @@ function parseRichText(text = "") {
 }
 
 function RichMessage({ text = "", compact = false, onSuggest = null }) {
-  const blocks = parseRichText(text);
+  const blocks = parseRichText(stripCitationMarkers(text));
   const isSuggestion = (t) => /[?？]\s*$/.test(String(t || "").trim());
   const cleanSuggest = (t) => String(t || "").replace(/\*\*/g, "").trim();
   return (
@@ -261,22 +270,32 @@ const EXECUTION_LABELS = {
   closed: "已平仓",
   cancelled: "已取消",
   blocked: "被安全闸拦截",
-  failed: "提交失败"
+  failed: "提交失败",
+  setup_rejected: "结构审核未过 · 未下单",
+  protection_failed: "保护单布置失败"
 };
 
-function PlanCard({ plan, executionOrder, action, ui }) {
+function PlanCard({ plan, executionOrder, action, ui, markets }) {
   if (!plan) return null;
   const risk = plan.lastRiskCheck || {};
   const checks = risk.checks || [];
   const passedCount = checks.filter((check) => check.passed).length;
   const [showChecks, setShowChecks] = useState(false);
   const awaiting = plan.status === "awaiting_approval";
+  // 计划新鲜度:现价已越过止损的做多/做空计划已失效,批准必被风控复查拒绝(且会一开仓即触发止损)——
+  // 直接在卡上禁用"批准计划"并说明原因,别让用户点了才被拒。
+  const nowPrice = Number((markets || []).find((m) => m.symbol === plan.symbol)?.price);
+  const stopVal = Number(plan.stopLoss ?? plan.stop_loss);
+  const isShort = String(plan.direction).toLowerCase() === "short";
+  const stopCrossed = Number.isFinite(nowPrice) && nowPrice > 0 && Number.isFinite(stopVal) && (isShort ? nowPrice >= stopVal : nowPrice <= stopVal);
+  const invalidForApproval = stopCrossed || plan.status === "expired";
   return (
     <div className={`chatPlanCard ${risk.passed ? "" : "rejected"}`}>
       <header>
         <b>{plan.symbol}</b>
         <span className={plan.direction === "short" ? "negative" : "positive"}>{plan.direction === "short" ? "做空" : "做多"}</span>
         <StatusBadge tone={plan.status === "risk_rejected" ? "danger" : awaiting ? "warning" : "ok"}>{humanize(plan.status)}</StatusBadge>
+        {stopCrossed && <span className="evBadge neg">已失效 · 现价越过止损</span>}
         <small>{plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
       </header>
       <div className="planNumbers">
@@ -311,11 +330,13 @@ function PlanCard({ plan, executionOrder, action, ui }) {
         </div>
       )}
       <footer>
-        {awaiting && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>批准计划</button>}
-        {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>拒绝</button>}
+        {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>批准计划</button>}
+        {awaiting && invalidForApproval && <button className="approveButton" disabled title="现价已越过止损，计划已失效，无法批准">已失效 · 不可批准</button>}
+        {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? "作废" : "拒绝"}</button>}
         <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>审计链 <ChevronRight size={13} /></button>
       </footer>
-      {awaiting && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
+      {awaiting && invalidForApproval && <small className="planHint danger">现价 {displayPrice(nowPrice)} 已越过止损 {displayPrice(stopVal)}——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。</small>}
+      {awaiting && !invalidForApproval && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
       {executionOrder && (
         <div className="executionStrip">
           <span className={`execDot ${["entry_filled", "protecting"].includes(executionOrder.status) ? "on" : executionOrder.status === "closed" ? "done" : ""}`} />
@@ -324,6 +345,7 @@ function PlanCard({ plan, executionOrder, action, ui }) {
             数量 {executionOrder.quantity} · 名义 {displayMoney(executionOrder.notionalUsdt)} USDT
             {executionOrder.filledPrice ? ` · 成交 ${displayMoney(executionOrder.filledPrice)}` : ""}
             {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · 盈亏 ${displayMoney(executionOrder.realizedPnl)}` : ""}
+            {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · 原因：${executionOrder.setupReview.reason}` : ""}
           </small>
           {["entry_pending", "entry_filled", "protecting"].includes(executionOrder.status) && (
             <button onClick={() => action(`/api/execution-orders/${executionOrder.id}/close`, { reason: "manual_ui" })}>撤单/平仓</button>
@@ -757,7 +779,7 @@ export function ChatPage({ data, action, ui }) {
               <RichMessage text={message.content} onSuggest={!pending ? (t) => send(t) : null} />
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
-                <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} />
+                <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} />
               )}
               <ToolTrace trace={message.toolTrace || []} />
               <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>

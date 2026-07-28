@@ -1048,16 +1048,34 @@ export async function executeTool(db, run, name, args = {}) {
         ]
       });
     }
+    // 计划停在待批准、但自主已开——诊断到底哪道自动执行闸没合，直白告诉用户(不然会误以为"自主交易坏了")。
+    // 自主交易(观察+提计划+自动批准)≠ 自动下单：自动下单还要 实盘写入开 + 有一条灰度策略且「无需人工批准」。
+    let autoGateReason = null;
+    if (risk.passed && !plan.autoApproved && !(autoExecution && autoExecution.fellBackToManual)) {
+      const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
+      if (db.system.autonomyEnabled !== true) autoGateReason = "自主交易已暂停";
+      else if (db.system.liveTradingEnabled !== true) autoGateReason = "「实盘写入」开关未开启";
+      else if (!grayPolicy) autoGateReason = "未启用任何灰度发布策略";
+      else if (grayPolicy.requiresManualApproval !== false) autoGateReason = "当前灰度策略仍要求「人工批准」";
+    } else if (autoExecution && autoExecution.fellBackToManual) {
+      const srtl = autoExecution.review?.reason || autoExecution.executionOrder?.setupReview?.reason;
+      autoGateReason = autoExecution.status === "setup_rejected"
+        ? `执行前结构审核未过（${srtl || "盈亏比/结构不达标"}）`
+        : `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}）`;
+    }
     return {
       planId: plan.id,
       status: plan.status,
       autoExecuted: plan.autoApproved === true,
+      autoGateReason,
       execution: autoExecution ? { status: autoExecution.status, reason: autoExecution.reason || null } : null,
       riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
       smartMoneyAlignment: alignment,
       note: plan.autoApproved
         ? `已在授权与灰度上限内自动执行（${autoExecution.status}）。`
-        : (risk.passed ? "计划已进入待批准队列，用户批准后才会进入执行链路。" : "计划被风控拒绝，请调整参数或修正授权边界。")
+        : (risk.passed
+          ? `计划已进入待批准队列，用户批准后才会进入执行链路。${autoGateReason ? `未自动下单原因：${autoGateReason}——自主交易只负责观察与提计划/自动批准，真正自动下单还需实盘写入开启且灰度策略设为「无需人工批准」。` : ""}`
+          : "计划被风控拒绝，请调整参数或修正授权边界。")
     };
   }
 
@@ -1192,11 +1210,14 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     // 诚实守卫:模型(尤其弱模型)常在正文声称"已登记 N 个观察哨/哨兵在盯"却根本没调用 register_watch。
     // 只留 trace 不够——用户会被正文误导(实锤:正文说"已登记3个",右侧观察哨面板却空)。
     // 这里同时在可见回复末尾加注更正,让聊天文字与面板口径一致。
-    const claimsWatch = /已?登记.{0,6}观察哨|观察哨.{0,4}(登记|盯|核对)|哨兵.{0,6}(盯|核对|触发|每分钟)|观察哨一览|距触发|若跌破|若突破|回踩.*(做空|做多)/.test(finalText || "");
+    // 只在模型明确"声称已登记/哨兵已在盯"却没真调工具时才加注——
+    // 收窄到显式登记声明,别再命中"若跌破 X 做空"这类正常条件分析(那是行情研判不是观察哨声明,
+    // 之前的宽正则会对做交易计划的正常回复误报)。
+    const claimsWatch = /(已|帮你|我已|为你)[^。\n]{0,6}(登记|设好|布好|建好|设置好)[^。\n]{0,4}观察哨|观察哨[^。\n]{0,6}(已登记|已设置|已就位|在盯|盯着|每分钟)|哨兵[^。\n]{0,6}(已在盯|盯着|每分钟)|观察哨一览/.test(finalText || "");
     const registeredThisRun = toolTrace.some((t) => t.name === "register_watch" && !String(t.summary || "").startsWith("失败"));
     if (claimsWatch && !registeredThisRun) {
-      appendTrace(db, "agent_chat", "⚠ 回复提及观察哨/触发条件但本轮未成功调用 register_watch——哨兵未实际登记,已在回复末尾加注更正", "warning");
-      finalText = `${finalText || ""}\n\n> ⚠️ **系统更正**：本轮实际上**没有登记任何观察哨**——模型只在文字里说了、但没有调用登记工具，哨兵不会盯盘。请以右侧「观察哨」面板为准（换用更强模型可避免此类"嘴上说、没真做"）。`;
+      appendTrace(db, "agent_chat", "⚠ 回复声称已登记观察哨但本轮未成功调用 register_watch——哨兵未实际登记,已在回复末尾加注更正", "warning");
+      finalText = `${finalText || ""}\n\n> ⚠️ **系统更正**：本轮回复提到了观察哨，但**未实际调用登记工具**，哨兵不会自动盯盘。若需盯盘触发，请在右侧「观察哨」面板确认已登记。`;
     }
     recordRunHistory(db, run, finalText);
   } catch (error) {

@@ -45,7 +45,7 @@ export function evaluateTradePlan(db, plan) {
     if (Number.isFinite(price) && price > 0 && Number.isFinite(stop)) {
       const isShort = String(plan.direction).toLowerCase() === "short";
       const stopIntact = isShort ? price < stop : price > stop;
-      add("止损未被跌穿", stopIntact, stopIntact ? `现价 ${price} 在止损 ${stop} 的安全侧` : `现价 ${price} 已越过止损 ${stop}——计划已失效,批准会立即触发止损`);
+      add("现价在止损安全侧", stopIntact, stopIntact ? `现价 ${price} 在止损 ${stop} 的安全侧` : `现价 ${price} 已越过止损 ${stop}——计划已失效,批准会一开仓即触发止损`);
       if (Number.isFinite(entryLow) && entryLow > 0) {
         const mid = (entryLow + entryHigh) / 2;
         const devPct = Math.abs(mid - price) / price * 100;
@@ -244,6 +244,8 @@ function summarize(checks) {
     checks,
     blockers,
     warnings,
-    summary: blockers.length > 0 ? `拒绝：${blockers.map((item) => item.name).join("、")}` : warnings.length > 0 ? `通过但需关注：${warnings.map((item) => item.name).join("、")}` : "全部风控检查通过"
+    // 拒绝理由用 detail(具体到"现价已越过止损 X")而非 check 名——名字如"现价在止损安全侧"
+    // 当拒绝时单看名字反而读不通,detail 才是给用户看的可执行原因。
+    summary: blockers.length > 0 ? `拒绝：${blockers.map((item) => item.detail || item.name).join("；")}` : warnings.length > 0 ? `通过但需关注：${warnings.map((item) => item.detail || item.name).join("；")}` : "全部风控检查通过"
   };
 }
