@@ -1336,9 +1336,9 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   const budget = data.system.remainingDailyLossUsdt;
   const budgetCap = mandate.maxDailyLossPct && data.portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(data.portfolio.totalEquityUsdt) : null;
   const budgetPct = budgetCap && budget != null ? Math.max(0, Math.min(100, (Number(budget) / budgetCap) * 100)) : null;
+  // 最大杠杆已在上方委托明细行展示，此处不再重复（生效限制并入授权委托卡后避免同卡内重复）
   const limitRows = [
     ["灰度实盘额度", grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"],
-    ["最大杠杆", maxLev ? `${maxLev}x` : "—"],
     ["单笔风险上限", `${mandate.maxSingleTradeRiskPct ?? "-"}%`],
     ["最近风控结论", latestRisk.summary || humanize(latestRisk.decision, "暂无")]
   ];
@@ -1361,12 +1361,17 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
       {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
       {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等高并排（Y 轴一致，X 宽 0.85:1.15 之和铺满整页）*/}
       <div className="termGrid riskRow1">
-        <div className="termCard">
+        <div className="termCard mandCard">
           <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
           <div className="mandList">
             {mandateRows2.map((r) => <div className="mandRow" key={r.k}><span className="mandK"><r.Icon size={14} /> {r.k}</span><b className={`mono ${r.color || ""}`}>{r.v}</b></div>)}
           </div>
-          <button className="agLink" onClick={() => ui.openPanel("mandate")}>查看委托详情与审计 ›</button>
+          {/* 当前生效限制并入本卡（原在风险状态墙，与「风险规则·管理」重复入口，去重后收此填充留白）*/}
+          <div className="rwLimits mandLimits">
+            <div className="rwLimitsHead"><b>当前生效限制</b></div>
+            {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+          </div>
+          <button className="agLink mandDetailLink" onClick={() => ui.openPanel("mandate")}>查看委托详情与审计 ›</button>
         </div>
 
         {/* 实盘写入与灰度发布:从系统设置整体迁入(灰度额度/人工确认/安全闸都是风控边界) */}
@@ -1403,10 +1408,6 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <div className="rwBudget">
             <div className="rwBudgetTop"><span>剩余亏损预算（今日）</span><b className="mono">{budget == null ? "未授权" : `${displayMoney(budget, 0)} · ${budgetPct != null ? budgetPct.toFixed(0) + "%" : "—"}`}</b></div>
             <div className="rwBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
-          </div>
-          <div className="rwLimits">
-            <div className="rwLimitsHead"><b>当前生效限制</b><button className="agLink" onClick={() => ui.openPanel("riskRules")}>查看全部 ›</button></div>
-            {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
           </div>
           <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
         </div>
@@ -1486,20 +1487,19 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
         ))}
       </div>
 
-      {/* 手动操作条：本页 95% 是只读的观测/审计展示，真正能你手动触发的操作集中在这里，不再散落/隐藏。 */}
-      <div className="auditActions">
-        <span className="auditActionsHint"><Eye size={13} /> 本页主要是<b>只读观测与审计</b>——你能手动触发的操作：</span>
-        <div className="auditActionsBtns">
-          <button onClick={() => action("/api/reconciler/run", {})}><RefreshCw size={13} /> 立即对账</button>
-          <button onClick={() => { if (window.confirm("生成一份系统数据备份？（写入服务器 data 备份目录，不含明文密钥）")) action("/api/system/backup", {}); }}><Database size={13} /> 系统备份</button>
-          {openIncidents > 0 && <button className="warn" onClick={() => { if (window.confirm(`把 ${openIncidents} 条未处理风险事件全部标记为已处理？`)) action("/api/risk/incidents/close-all", {}); }}><CheckCircle2 size={13} /> 全部标记已处理（{openIncidents}）</button>}
-          <button onClick={() => ui.openPanel("auditChain")}><Shield size={13} /> 完整审计链</button>
-        </div>
-      </div>
-
-      {/* 全链路审计：竖排 7 行清单 → 横向可视化步骤条，一眼看到卡在哪一步 */}
+      {/* 全链路审计：竖排 7 行清单 → 横向可视化步骤条，一眼看到卡在哪一步。
+          手动操作（对账/备份/标记已处理）收进本卡头部，不再单列一条提示带。 */}
       <div className="termCard acStepCard">
-        <div className="kHead"><span className="secLabel">Agent 运行审计链</span><span className="acStepMeta">最近记录 <b className="mono">{traces[0] ? formatTime(traces[0].createdAt) : "—"}</b> · 状态 <b className={latestRisk.passed == null ? "" : latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "—")}</b> · <button className="agLink" onClick={() => ui.openPanel("auditChain")}>完整链路 ›</button></span></div>
+        <div className="kHead">
+          <span className="secLabel">Agent 运行审计链</span>
+          <div className="acStepActs">
+            <button onClick={() => action("/api/reconciler/run", {})}><RefreshCw size={13} /> 立即对账</button>
+            <button onClick={() => { if (window.confirm("生成一份系统数据备份？（写入服务器 data 备份目录，不含明文密钥）")) action("/api/system/backup", {}); }}><Database size={13} /> 系统备份</button>
+            {openIncidents > 0 && <button className="warn" onClick={() => { if (window.confirm(`把 ${openIncidents} 条未处理风险事件全部标记为已处理？`)) action("/api/risk/incidents/close-all", {}); }}><CheckCircle2 size={13} /> 全部标记已处理（{openIncidents}）</button>}
+            <button onClick={() => ui.openPanel("auditChain")}><Shield size={13} /> 完整审计链</button>
+          </div>
+        </div>
+        <div className="acStepMeta">最近记录 <b className="mono">{traces[0] ? formatTime(traces[0].createdAt) : "—"}</b> · 状态 <b className={latestRisk.passed == null ? "" : latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "—")}</b></div>
         <div className="acStepper">
           {chainItems.map(([item, value, state, Icon], i) => {
             const done = Boolean(value);

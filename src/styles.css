@@ -7528,7 +7528,11 @@ button.danger:disabled,
 
 /* 全链路审计横向步骤条 */
 .acStepCard { margin-bottom: 8px; }
-.acStepMeta { font-size: 10.5px; color: var(--text-3); }
+.acStepActs { display: flex; gap: 6px; flex-wrap: wrap; }
+.acStepActs button { display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px "Space Grotesk"; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--hairline); background: #fff; color: #1E1B16; cursor: pointer; }
+.acStepActs button:hover { background: #F6F1E8; }
+.acStepActs button.warn { border-color: #f2c0b8; background: #fbe9e7; color: #b23c17; }
+.acStepMeta { font-size: 10.5px; color: var(--text-3); margin-top: 6px; }
 .acStepMeta b { font: 600 10.5px "IBM Plex Mono"; color: #1E1B16; }
 .acStepMeta b.pos { color: var(--pos); } .acStepMeta b.warn { color: var(--warn); }
 .acStepper { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
@@ -7617,6 +7621,11 @@ button.danger:disabled,
 .termGrid.riskRow1 { grid-template-columns: 0.85fr 1.15fr; gap: 8px; align-items: stretch; margin-bottom: 8px; }
 .termGrid.riskRow1 > .termCard { display: flex; flex-direction: column; }
 .termGrid.riskRow1 .liveGrayForm { flex: 1; }
+/* 授权委托卡：生效限制并入后，让明细列表吃满剩余高度、限制块+详情链接沉底，消除留白 */
+.termGrid.riskRow1 .mandCard .mandList { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; }
+.mandCard .mandLimits { margin-top: 12px; border-top: 1px solid #EDE7DB; padding-top: 10px; }
+.mandCard .mandLimits .rwLimitsHead { margin-bottom: 6px; }
+.mandCard .mandDetailLink { margin-top: 10px; align-self: flex-start; }
 .termGrid.riskRow2 { grid-template-columns: 1.35fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
 .riskRules { display: flex; flex-direction: column; gap: 8px; }
 .riskRulesHead { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
