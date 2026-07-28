@@ -15,7 +15,7 @@ import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { executeApprovedPlan } from "./executionEngine.mjs";
 import { paperValidationSummary } from "./paperTrading.mjs";
 import { refreshAccounting } from "./accounting.mjs";
-import { enabledSkillTools, importedToolName, isSkillTool, runSkillTool } from "./skillTools.mjs";
+import { enabledSkillTools, isSkillTool, runSkillTool, trustedSkillMethodologies } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
 import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
@@ -235,6 +235,7 @@ const TOOL_DEFS = [
         timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "计划使用的分析周期" },
         riskPercent: { type: "number", description: "单笔风险占比，如 0.3" },
         knowledgeSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用的 active 知识技能 ID；只有实际用于推理与计划条件时才填写" },
+        adoptedToolSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用了哪些【受信任导入方法论】的 ID（见系统提示里的受信任导入方法论区块）；只有真的照它的方法做了这个计划才填，用于按真实成绩复盘该方法论" },
         rationale: { type: "string", description: "完整推理：依据哪些行情结构、知识规则与事件判断" }
       },
       required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "rationale"]
@@ -483,6 +484,14 @@ async function buildSystemPrompt(db, userText = "") {
     sections.push(`【相关专业知识（从主人导入的知识库检索，可引用编号 [[n]]）】\n${knowledge}`);
   } else if ((db.knowledge?.chunks || []).length === 0) {
     sections.push("【专业知识库】主人尚未导入任何金融/交易知识，暂无可检索内容。");
+  }
+
+  // 受信任的导入 skill:把它的方法论(SKILL.md)注入决策上下文,让 AI 照这套方法分析。
+  // 转正的可信度更高(已用真实成绩验证);试用中的当参考、别重仓押注。
+  const trustedMethods = trustedSkillMethodologies(db);
+  for (const t of trustedMethods.slice(0, 3)) {
+    const tag = t.graduated ? "已用真实成绩转正" : "小额试用·未验证";
+    sections.push(`【受信任导入方法论（${tag}）· ${t.name}｜采用其思路做计划时把 ID「${t.id}」放入 propose_trade_plan 的 adoptedToolSkillIds 以便复盘归因】\n${t.instructions}`);
   }
 
   // A 路：已批准的纪律/风控规则必须无条件遵守。
@@ -958,11 +967,11 @@ export async function executeTool(db, run, name, args = {}) {
       selectedSkillIds: args.knowledgeSkillIds || [],
       requireExplicitAdoption: true
     }, "AgentChat");
-    // 归因受信任导入 skill:本轮若调用过某受信任 skill 的工具,视为该计划采纳了它——
-    // 用真实平仓成绩复盘,差了自动撤信任(推断式归因,无需 AI 显式声明)。
-    const usedTrusted = (db.skills || []).filter((s) => !s.native && s.trusted
-      && (run.steps || []).some((step) => step.phase === importedToolName(s)));
-    if (usedTrusted.length) plan.adoptedTrustedSkillIds = usedTrusted.map((s) => s.id);
+    // 归因受信任导入方法论:AI 用 adoptedToolSkillIds 声明本计划采纳了哪些受信任 skill 的方法论,
+    // 据此用真实平仓成绩复盘(达标转正/不达标退役)。只认真实存在且受信任的 id。
+    const declared = Array.isArray(args.adoptedToolSkillIds) ? args.adoptedToolSkillIds.map(String) : [];
+    const validTrusted = (db.skills || []).filter((s) => !s.native && s.trusted && declared.includes(s.id)).map((s) => s.id);
+    if (validTrusted.length) plan.adoptedTrustedSkillIds = validTrusted;
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;

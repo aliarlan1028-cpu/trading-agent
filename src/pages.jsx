@@ -1210,8 +1210,8 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                             <button className={open ? "on" : ""} title="查看详情" onClick={() => setSkillDetail(open ? null : sk.id)}>详情</button>
                             {!sk.native && <button title="安全扫描" onClick={() => action(`/api/skills/${sk.id}/scan`, {})}>扫描</button>}
                             {!sk.native && (sk.trusted
-                              ? <button className="on" title="已信任为 AI 决策工具,点击撤销" onClick={() => { if (window.confirm(`撤销信任「${sk.name}」？将移出 AI 工具表。`)) action(`/api/skills/${sk.id}/untrust`, {}); }}>已信任</button>
-                              : <button title={scanned ? "信任为 AI 决策工具(进工具表,按成绩复盘)" : "先扫描通过"} disabled={!scanned} onClick={() => { if (window.confirm(`信任「${sk.name}」为 AI 决策工具？\nAI 将可自动调用它，其信号仅作参考、仍过硬风控；系统按真实成绩复盘，不达标自动撤信任。`)) action(`/api/skills/${sk.id}/trust`, {}); }}>信任</button>)}
+                              ? <button className="on" title="已信任(方法论已注入AI决策),点击撤销" onClick={() => { if (window.confirm(`撤销信任「${sk.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${sk.id}/untrust`, {}); }}>已信任</button>
+                              : <button title={scanned ? "信任(方法论注入AI决策,按成绩复盘)" : "先扫描通过"} disabled={!scanned} onClick={() => { if (window.confirm(`信任「${sk.name}」？\n它的方法论将注入 AI 决策(AI 照这套方法分析)，仍过硬风控；进小额试用，按真实成绩转正/退役。`)) action(`/api/skills/${sk.id}/trust`, {}); }}>信任</button>)}
                             {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
                             {!sk.native && (on
                               ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>

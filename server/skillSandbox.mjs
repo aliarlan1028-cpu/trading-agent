@@ -134,3 +134,21 @@ function runInContainer(workdir, command, commandArgs) {
     child.on("close", (code) => resolve({ code, output }));
   });
 }
+
+// 读取 skill 的 SKILL.md 方法论正文(供"信任后注入 AI 提示词"用,不依赖 Docker 沙箱)。
+export async function readSkillInstructions(skill, maxChars = 4000) {
+  if (!skill?.localPath) return "";
+  const candidate = skill.entryFile && skill.entryFile !== "native"
+    ? path.join(skill.localPath, skill.entryFile)
+    : path.join(skill.localPath, "SKILL.md");
+  try {
+    return String(await fs.readFile(candidate, "utf8")).slice(0, maxChars);
+  } catch {
+    try {
+      const entry = await findSkillEntry(skill.localPath);
+      return String(await fs.readFile(entry, "utf8")).slice(0, maxChars);
+    } catch {
+      return "";
+    }
+  }
+}

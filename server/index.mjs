@@ -58,7 +58,7 @@ import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securi
 import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
-import { fetchSkillPackage, runSkillSandbox } from "./skillSandbox.mjs";
+import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
 import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
@@ -1896,19 +1896,23 @@ app.delete("/api/skills/:id", requirePermission("write:skills"), (req, res) => {
   persist(res, { message: `已删除 Skill：${removed.name}`, id: removed.id });
 });
 
-// 信任导入 skill 为 AI 决策工具:必须扫描通过 + 二次确认。信任后进 AI 工具表,并像策略一样被复盘,差了自动撤信任。
-app.post("/api/skills/:id/trust", requirePermission("skill.install"), (req, res) => {
+// 信任导入 skill:把它的 SKILL.md 方法论注入 AI 决策提示词(不走 Docker 沙箱——本机无 Docker,
+// 且 ClawHub/Claude skill 本就是"给 LLM 的方法说明书")。必须扫描通过 + 二次确认;进小额试用生命周期。
+app.post("/api/skills/:id/trust", requirePermission("skill.install"), async (req, res) => {
   const skill = (db.skills || []).find((item) => item.id === req.params.id);
   if (!skill) return res.status(404).json({ error: "Skill not found" });
   if (skill.native) return res.status(400).json({ error: "内置技能无需信任,直接启用即可" });
-  if (!["通过", "需复核"].includes(skill.scan)) return res.status(400).json({ error: "必须先安全扫描通过才能信任为决策工具" });
+  if (!["通过", "需复核"].includes(skill.scan)) return res.status(400).json({ error: "必须先安全扫描通过才能信任" });
+  const instructions = await readSkillInstructions(skill).catch(() => "");
+  if (!instructions.trim()) return res.status(400).json({ error: "读不到该 skill 的方法论正文(SKILL.md),无法注入决策——请确认导入内容非空" });
+  skill.instructions = instructions;
   skill.trusted = true;
   skill.trustedAt = nowIso();
   skill.trustedBy = db.user?.name || "Owner";
-  skill.trustStatus = "live_probation"; // 与技能流水线同一生命周期:先进"小额试用",真实成绩好转正/差退役
+  skill.trustStatus = "live_probation";
   skill.status = "已启用";
-  appendAudit(db, `信任导入 Skill 为 AI 决策工具（进小额试用）「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
-  persist(res, { message: `已信任「${skill.name}」,进入小额试用；AI 可调用，按真实成绩转正或自动退役`, skill });
+  appendAudit(db, `信任导入 Skill（方法论注入 AI 决策，进小额试用）「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
+  persist(res, { message: `已信任「${skill.name}」，其方法论已注入 AI 决策；进入小额试用，按真实成绩转正/退役`, skill });
 });
 
 app.post("/api/skills/:id/untrust", requirePermission("write:skills"), (req, res) => {
@@ -1917,7 +1921,7 @@ app.post("/api/skills/:id/untrust", requirePermission("write:skills"), (req, res
   skill.trusted = false;
   skill.untrustedAt = nowIso();
   appendAudit(db, `撤销信任导入 Skill「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
-  persist(res, { message: `已撤销信任「${skill.name}」,已移出 AI 工具表`, skill });
+  persist(res, { message: `已撤销信任「${skill.name}」，已移出 AI 决策方法论`, skill });
 });
 
 app.get("/api/strategy-board", (_req, res) => res.json(buildStrategyBoard(db)));

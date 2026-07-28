@@ -138,7 +138,7 @@ export function refreshTrustedSkillMetrics(db, actor = "TrustedSkillGuard") {
       skill.untrustReason = `实盘不达标(PF ${m2.profitFactor ?? "-"}/连亏 ${streak})`;
       untrusted.push(skill.id);
       appendAudit(db, `受信任导入 skill 自动退役「${skill.name}」：${skill.untrustReason}`, skill.id, actor, "warning");
-      createNotification(db, { eventType: "skill_untrust", severity: "warning", title: "导入策略自动下线", body: `${skill.name} 真实成绩不达标（${skill.untrustReason}），已自动退役、移出 AI 工具表。` });
+      createNotification(db, { eventType: "skill_untrust", severity: "warning", title: "导入策略自动下线", body: `${skill.name} 真实成绩不达标（${skill.untrustReason}），已自动退役、移出 AI 决策。` });
     } else if (good && skill.trustStatus !== "active") {
       skill.trustStatus = "active";
       skill.graduatedAt = nowIso();
@@ -154,7 +154,7 @@ export function buildStrategyBoard(db) {
   const rows = [...knowledgeRows(db), ...trustedRows(db), ...profileRows(db)];
   const summary = {
     total: rows.length,
-    live: rows.filter((r) => ["active", "live_probation", "trusted_active"].includes(r.status)).length,
+    live: rows.filter((r) => ["active", "live_probation"].includes(r.status)).length,
     suggestRetire: rows.filter((r) => r.verdict.key === "retire").length,
     generatedAt: nowIso()
   };
