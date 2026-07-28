@@ -18,6 +18,9 @@ import { registerMandateRoutes } from "./routes/mandates.mjs";
 import { registerEventRoutes } from "./routes/events.mjs";
 import { registerTaskRoutes } from "./routes/tasks.mjs";
 import { registerNotificationRoutes } from "./routes/notifications.mjs";
+import { registerPaperRoutes } from "./routes/paper.mjs";
+import { registerMcpRoutes } from "./routes/mcp.mjs";
+import { registerEventSourceRoutes } from "./routes/eventSources.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -1507,28 +1510,7 @@ app.get("/api/portfolio/risk", (_req, res) => {
   res.json(buildPortfolioRisk(db, mandate));
 });
 
-app.get("/api/paper/sessions", (_req, res) => res.json(buildPaperReport(db)));
-app.post("/api/paper/start", requirePermission("write:review"), async (req, res) => {
-  try {
-    const result = await createPaperSession(db, req.body || {});
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: `开模拟盘失败：${error.message}` });
-  }
-});
-app.post("/api/paper/spawn-from-profiles", requirePermission("write:review"), async (req, res) => {
-  const created = await ensurePaperSessionsFromProfiles(db, req.body || {});
-  persist(res, { message: `已从已验证画像开出 ${created.length} 个模拟盘会话`, created });
-});
-app.post("/api/paper/run", requirePermission("write:review"), async (_req, res) => {
-  try {
-    const result = await runPaperForward(db);
-    const knowledgeSkills = syncKnowledgeSkillLifecycle(db, db.user.name);
-    persist(res, { ...result, knowledgeSkills });
-  } catch (error) {
-    res.status(500).json({ error: `前向推进失败：${error.message}` });
-  }
-});
+// paper 模拟盘路由组已迁至 server/routes/paper.mjs
 app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
 app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
   try {
@@ -1699,48 +1681,7 @@ app.post("/api/skills/:id/run-sandbox", requirePermission("write:skills"), async
   persist(res, run);
 });
 
-app.get("/api/mcp", (_req, res) => res.json((db.mcpServers || []).map(({ apiKey, apiKeySecretName, headers, ...server }) => ({
-  ...server,
-  hasApiKey: Boolean(apiKeySecretName || apiKey)
-}))));
-
-app.post("/api/mcp", requirePermission("write:mcp"), (req, res) => {
-  const serverId = id("mcp");
-  const { apiKey, headers: _headers, ...safeBody } = req.body || {};
-  const server = { id: serverId, status: "registered", toolCount: 0, tools: [], enabled: true, permissions: [], allowedTools: [], ...safeBody };
-  if (apiKey) {
-    const secretName = `MCP_${serverId}_API_KEY`;
-    storeSecret(db, secretName, apiKey, "mcp");
-    server.apiKeySecretName = secretName;
-  }
-  db.mcpServers.unshift(server);
-  appendAudit(db, "注册 MCP Server", server.id, req.user?.name || db.user.name);
-  const { apiKeySecretName, ...safeServer } = server;
-  persist(res, { ...safeServer, hasApiKey: Boolean(apiKeySecretName) });
-});
-
-app.post("/api/mcp/:id/connect", requirePermission("write:mcp"), async (req, res) => {
-  const result = await connectMcpServer(db, req.params.id);
-  if (result.status === "missing_server") return res.status(404).json({ error: "MCP server not found" });
-  persist(res, { ...result, message: result.status === "connected" ? `已连接，发现 ${result.server.toolCount} 个工具` : `连接失败：${result.error || result.status}` });
-});
-
-app.post("/api/mcp/:id/disable", requirePermission("write:mcp"), (req, res) => {
-  const server = db.mcpServers.find((item) => item.id === req.params.id);
-  if (!server) return res.status(404).json({ error: "MCP server not found" });
-  server.enabled = false;
-  appendAudit(db, "停用 MCP Server", server.id, db.user.name);
-  persist(res, { message: `${server.name} 已停用`, server });
-});
-
-app.patch("/api/mcp/:id/permissions", requirePermission("admin:security"), (req, res) => {
-  const server = db.mcpServers.find((item) => item.id === req.params.id);
-  if (!server) return res.status(404).json({ error: "MCP server not found" });
-  server.permissions = req.body.permissions || server.permissions || [];
-  server.updatedAt = nowIso();
-  appendAudit(db, "更新 MCP 权限", server.id, db.user.name);
-  persist(res, server);
-});
+// mcp 路由组已迁至 server/routes/mcp.mjs
 
 app.get("/api/exchange/accounts", (_req, res) => {
   refreshApiKeyMetadata(db);
@@ -2276,32 +2217,7 @@ app.post("/api/risk/incidents/close-all", requirePermission("write:risk"), (req,
   persist(res, { closed: open.length, message: `已标记 ${open.length} 个事件为已处理` });
 });
 
-app.post("/api/event-sources", requirePermission("write:event"), (req, res) => {
-  const source = {
-    id: id("event_source"),
-    name: req.body.name || "新事件源",
-    type: req.body.type || "rss",
-    url: req.body.url || "",
-    enabled: req.body.enabled !== false,
-    trustScore: Number(req.body.trustScore || 70),
-    createdAt: nowIso()
-  };
-  db.eventSources.unshift(source);
-  appendAudit(db, "新增事件源", source.id, db.user.name);
-  persist(res, source);
-});
-
-app.post("/api/event-sources/refresh", requirePermission("write:event"), async (_req, res) => {
-  const result = await refreshEventSources(db);
-  persist(res, result);
-});
-
-app.post("/api/event-sources/onchain", requirePermission("write:event"), async (_req, res) => {
-  const result = await refreshOnchainSignals(db);
-  persist(res, result);
-});
-
-app.get("/api/event-sources", (_req, res) => res.json(db.eventSources || []));
+// event-sources 路由组已迁至 server/routes/eventSources.mjs
 
 app.get("/api/security/vault", (_req, res) => res.json(listVaultItems(db)));
 app.post("/api/security/vault", requirePermission("admin:security"), (req, res) => {
@@ -2500,6 +2416,9 @@ registerMandateRoutes(app, {
 registerEventRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, rankEvents });
 registerTaskRoutes(app, { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, scheduleTask, runTask });
 registerNotificationRoutes(app, { db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster });
+registerPaperRoutes(app, { db, persist, requirePermission, buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle });
+registerMcpRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, storeSecret, connectMcpServer });
+registerEventSourceRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, refreshEventSources, refreshOnchainSignals });
 
 app.listen(port, host, () => {
   console.log(`AI Trading Agent API listening on http://${host}:${port}`);
