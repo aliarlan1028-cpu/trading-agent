@@ -6934,9 +6934,11 @@ button.danger:disabled,
 }
 .lgGroupHead .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; }
 .lgSwitches { display: grid; gap: 7px; }
-.lgSw { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-1); color: var(--text-1); cursor: pointer; }
-.lgSw input { margin-top: 2px; flex: none; }
-.lgSw .sub { display: block; color: var(--text-3); font-size: 11px; margin-top: 1px; font-weight: 400; }
+/* 用 .liveGrayForm 前缀提升特异度，压过通用 .panelForm label{display:grid} 与 input{width:100%}
+   —— 否则复选框会被撑成整行、掉到标签上方（#5b 曾误伤，这里修复）。 */
+.liveGrayForm .lgSw { display: flex; align-items: flex-start; gap: 8px; font: 600 var(--fs-1)/1.4 inherit; color: var(--text-1); cursor: pointer; }
+.liveGrayForm .lgSw input { width: auto; padding: 0; margin: 2px 0 0; flex: none; }
+.liveGrayForm .lgSw .sub { display: block; color: var(--text-3); font-size: 11px; margin-top: 1px; font-weight: 400; }
 .liveGrayForm .lgAmt {
   display: flex; align-items: center; gap: 10px;
   font-size: var(--fs-1); color: var(--text-2); margin-bottom: var(--sp-4);
@@ -7580,6 +7582,24 @@ button.danger:disabled,
 
 /* 风控与授权 —— 严格照设计稿 .dc.html */
 .riskPage .termCard { border-radius: 11px; padding: 13px 15px; }
+/* 顶部分段：风控与授权 / 审计 */
+.riskSeg { display: inline-flex; gap: 3px; background: var(--surface-2); border-radius: 10px; padding: 3px; margin-bottom: 10px; }
+.riskSeg button { border: 0; background: none; padding: 6px 18px; border-radius: 8px; font: 700 13px "Space Grotesk"; color: var(--text-3); cursor: pointer; }
+.riskSeg button.on { background: var(--surface); color: var(--text-1); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+/* 重排后的两栏行：MANDATE↔实盘写入 等宽；风险规则↔风险状态墙 */
+.termGrid.riskRow1 { grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+.termGrid.riskRow2 { grid-template-columns: 1.35fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+.riskRules { display: flex; flex-direction: column; gap: 8px; }
+.riskRulesHead { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+/* 审计段：5 指标压成一条小卡带 */
+.auditStrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-bottom: 12px; }
+.auditStripCell { border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-white); padding: 9px 11px; }
+.auditStripCell .asK { font-size: 10px; color: var(--text-3); }
+.auditStripCell .asV { font: 800 15px "Space Grotesk"; color: var(--text-1); margin-top: 2px; }
+.auditStripCell .asV.pos { color: var(--pos); } .auditStripCell .asV.warn { color: var(--warn); }
+.auditStripCell .asS { font-size: 9.5px; color: #a89a80; margin-top: 1px; }
+@media (max-width: 900px) { .termGrid.riskRow1, .termGrid.riskRow2 { grid-template-columns: 1fr; } .auditStrip { grid-template-columns: repeat(2, 1fr); } }
+
 .termGrid.riskTop { grid-template-columns: 1fr 1.15fr 1fr; gap: 8px; align-items: start; }
 .mandTitle { font: 700 12px "Space Grotesk"; }
 .mandTitle em { font: 500 10px "IBM Plex Mono"; color: #a89e8a; font-style: normal; margin-left: 6px; }

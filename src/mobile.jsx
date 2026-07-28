@@ -763,7 +763,7 @@ const mobileNav = [
   { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", code: "KNOWLEDGE · SKILLS", icon: BookOpen },
   { id: "riskAuth", label: "风控与授权", code: "RISK · MANDATE", icon: ShieldCheck },
-  { id: "auditSystem", label: "审计与系统", code: "AUDIT · SYSTEM", icon: Activity },
+  { id: "auditSystem", label: "审计", code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
 ];
 

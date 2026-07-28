@@ -1297,7 +1297,8 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   );
 }
 
-export function RiskAuthPage({ data, action, ui, embedded = false }) {
+export function RiskAuthPage({ data, action, ui, embedded = false, initialSegment = "risk" }) {
+  const [seg, setSeg] = useState(initialSegment === "audit" ? "audit" : "risk");
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || {};
   const grayPolicy = data.grayReleasePolicies?.[0] || {};
@@ -1361,7 +1362,15 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   return (
     <div className="pageStack termPage riskPage">
       {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
-      <div className="termGrid riskTop">
+      {/* 顶部分段：风控与授权 / 审计（审计页已并入本页，见 initialSegment 路由）*/}
+      <div className="riskSeg">
+        <button className={seg === "risk" ? "on" : ""} onClick={() => setSeg("risk")}>风控与授权</button>
+        <button className={seg === "audit" ? "on" : ""} onClick={() => setSeg("audit")}>审计</button>
+      </div>
+
+      {seg === "risk" && <>
+      {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等宽并排（灰度收成半栏，不再霸屏满宽）*/}
+      <div className="termGrid riskRow1">
         <div className="termCard">
           <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
           <div className="mandList">
@@ -1370,16 +1379,28 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <button className="agLink" onClick={() => ui.openPanel("mandate")}>查看委托详情与审计 ›</button>
         </div>
 
-        <div className="rrGrid">
-          {ruleGroups.map((g) => (
-            <div className="termCard rrCard" key={g.key}>
-              <div className="rrHead"><span className="rrIcon" style={{ background: g.bg, color: g.color }}><g.Icon size={14} /></span><b>{g.title}</b><span className="rrCount">{g.rules.length}</span></div>
-              {g.rules.slice(0, 3).map((r) => <div className="rrRow" key={r.id}><span>{(r.name || "规则").slice(0, 12)}</span><b>{humanize(r.action, r.level || "-")}</b></div>)}
-              {!g.rules.length && <div className="rrEmpty">无规则</div>}
-              {/* 只有真有启用规则时才亮绿点；空分组不再写死"正常" */}
-              {g.rules.length > 0 && <div className="rrOk"><span className="rrDot" />已启用 {g.rules.filter((r) => r.enabled !== false).length} 条</div>}
-            </div>
-          ))}
+        {/* 实盘写入与灰度发布:从系统设置整体迁入(灰度额度/人工确认/安全闸都是风控边界) */}
+        <div className="termCard liveGrayCard">
+          <div className="kHead"><span className="secLabel">实盘写入与灰度发布 · LIVE / GRAY RELEASE</span><span className={`evBadge ${data.config?.liveTrading?.effective ? "neg" : ""}`}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</span></div>
+          <LiveGrayPanel data={data} action={action} ui={ui} />
+        </div>
+      </div>
+
+      {/* Row2：风险规则（4 类 2×2）↔ 风险状态墙 */}
+      <div className="termGrid riskRow2">
+        <div className="riskRules">
+          <div className="riskRulesHead"><span className="secLabel">风险规则</span><button className="agLink" onClick={() => ui.openPanel("riskRules")}>{riskRules.length} 条 · 管理 ›</button></div>
+          <div className="rrGrid">
+            {ruleGroups.map((g) => (
+              <div className="termCard rrCard" key={g.key}>
+                <div className="rrHead"><span className="rrIcon" style={{ background: g.bg, color: g.color }}><g.Icon size={14} /></span><b>{g.title}</b><span className="rrCount">{g.rules.length}</span></div>
+                {g.rules.slice(0, 3).map((r) => <div className="rrRow" key={r.id}><span>{(r.name || "规则").slice(0, 12)}</span><b>{humanize(r.action, r.level || "-")}</b></div>)}
+                {!g.rules.length && <div className="rrEmpty">无规则</div>}
+                {/* 只有真有启用规则时才亮绿点；空分组不再写死"正常" */}
+                {g.rules.length > 0 && <div className="rrOk"><span className="rrDot" />已启用 {g.rules.filter((r) => r.enabled !== false).length} 条</div>}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="termCard riskWallCard">
@@ -1401,12 +1422,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         </div>
       </div>
 
-      {/* 实盘写入与灰度发布:从系统设置整体迁入(灰度额度/人工确认/安全闸都是风控边界) */}
-      <div className="termCard liveGrayCard">
-        <div className="kHead"><span className="secLabel">实盘写入与灰度发布 · LIVE / GRAY RELEASE</span><span className={`evBadge ${data.config?.liveTrading?.effective ? "neg" : ""}`}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</span></div>
-        <LiveGrayPanel data={data} action={action} ui={ui} />
-      </div>
-
+      {/* Row3：账户安全四小卡 */}
       <div className="termGrid riskBot">
         <div className="termCard">
           <div className="balLabel">API 与账户安全</div>
@@ -1429,6 +1445,9 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           {!authHist.length && <div className="emptyPanel">暂无授权变更记录</div>}
         </div>
       </div>
+      </>}
+
+      {seg === "audit" && <AuditSystemPage data={data} action={action} ui={ui} embedded />}
     </div>
   );
 }
@@ -1467,13 +1486,17 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
   return (
     <div className="pageStack termPage">
       {!embedded && <TermHead title="审计与系统" code="AUDIT · SYSTEM" sub="全链路审计、工具调用日志与系统可观测性" />}
-      <div className="metricGrid five">
-        {/* 副标改用"配置就绪度"（由 env/密钥/开关的真实状态算出）——旧"实现 100%"是 26 条检查全部硬编码 implemented:true 的假指标 */}
-        <MetricCard icon={Gauge} label="API 健康" value={data.system.apiHealth || "未知"} sub={`配置就绪 ${data.readiness?.configurationCompletionPct ?? 0}%`} />
-        <MetricCard icon={Activity} label="WebSocket 状态" value={data.realtimeStarted ? "运行中" : "未启动"} sub={data.realtimeStarted ? `${data.realtimeConnections?.filter((item) => item.status === "connected").length || 0} / ${data.realtimeConnections?.length || 0} 已连接` : "实时管理器未开启"} tone={data.realtimeStarted ? "positive" : "warning"} />
-        <MetricCard icon={Zap} label="任务引擎" value={String(data.tasks?.filter((task) => task.enabled).length || 0)} sub="启用任务" />
-        <MetricCard icon={RefreshCw} label="交易所同步" value={`${data.exchangeAccounts?.filter((item) => item.readEnabled).length || 0} / ${data.exchangeAccounts?.length || 0}`} sub="已配置只读账户" />
-        <MetricCard icon={Shield} label="审计链" value={auditOk ? "正常" : "异常"} sub={`${data.auditLogs?.length || 0} 条日志`} />
+      {/* 精简：5 个系统指标从大卡压成一条 5 列小卡带（副标用真实"配置就绪度"，非假的"实现 100%"）*/}
+      <div className="auditStrip">
+        {[
+          ["API 健康", data.system.apiHealth || "未知", `就绪 ${data.readiness?.configurationCompletionPct ?? 0}%`, ""],
+          ["WebSocket", data.realtimeStarted ? "运行中" : "未启动", data.realtimeStarted ? `${data.realtimeConnections?.filter((item) => item.status === "connected").length || 0}/${data.realtimeConnections?.length || 0} 已连` : "未开启", data.realtimeStarted ? "pos" : "warn"],
+          ["任务引擎", String(data.tasks?.filter((task) => task.enabled).length || 0), "启用任务", ""],
+          ["交易所同步", `${data.exchangeAccounts?.filter((item) => item.readEnabled).length || 0}/${data.exchangeAccounts?.length || 0}`, "只读账户", ""],
+          ["审计链", auditOk ? "正常" : "异常", `${data.auditLogs?.length || 0} 条日志`, auditOk ? "" : "warn"]
+        ].map(([k, v, s, tone]) => (
+          <div className="auditStripCell" key={k}><div className="asK">{k}</div><div className={`asV ${tone}`}>{v}</div><div className="asS">{s}</div></div>
+        ))}
       </div>
 
       {/* 手动操作条：本页 95% 是只读的观测/审计展示，真正能你手动触发的操作集中在这里，不再散落/隐藏。 */}

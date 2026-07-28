@@ -55,7 +55,7 @@ const navItems = [
   { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
   { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
-  { id: "auditSystem", label: "审计与系统", short: "审计", code: "AUDIT", icon: Settings }
+  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings }
 ];
 
 function BrandLogo({ size = 34 }) {
@@ -264,8 +264,9 @@ function App() {
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
-    if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
-    if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
+    if (active === "riskAuth") return <RiskAuthPage key="riskAuth" data={data} action={action} ui={ui} initialSegment="risk" />;
+    // 审计已并入风控与授权页——审计入口打开同一页的「审计」分段（保留深链：铃铛/运行轨迹/任务日志）
+    if (active === "auditSystem") return <RiskAuthPage key="auditSystem" data={data} action={action} ui={ui} initialSegment="audit" />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, data, action]);
