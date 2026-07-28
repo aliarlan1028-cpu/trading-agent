@@ -106,11 +106,26 @@ export function computePositionSize(db, plan) {
     notional = volCap;
     sizedBy = `${sizedBy}+portfolio_vol_capped`;
   }
+  const MIN_NOTIONAL = 5;
   quantity = roundQuantity(quantity, entryMid);
+  if (quantity <= 0 && equity > 0) quantity = 0; // 先按四舍五入后的量,下方小账户放大再兜
+  // 小账户自动放大:AI 选的风险%算出的仓位低于交易所最小额时,自动上调到最小额(取整后仍≥5U),
+  // 但风险严格封顶在授权单笔风险上限内(用户要"按更接近上限定仓")。上限也不够才如实拒。
+  const capped = `${sizedBy}`.includes("gray_capped") || `${sizedBy}`.includes("vol_capped");
+  if (quantity * entryMid < MIN_NOTIONAL && !capped && MIN_NOTIONAL <= maxNotional) {
+    const decimals = entryMid > 10000 ? 4 : entryMid > 100 ? 3 : entryMid > 1 ? 2 : 0;
+    const factor = 10 ** decimals;
+    const minQty = Math.ceil((MIN_NOTIONAL / entryMid) * factor - 1e-9) / factor; // 向上取整确保取整后仍≥最小额
+    const ceilingPct = Number(mandate?.maxSingleTradeRiskPct ?? mandate?.max_single_trade_risk_pct ?? riskPct);
+    const minRiskPct = equity > 0 ? (minQty * stopDistance / equity) * 100 : Infinity;
+    if (minRiskPct <= ceilingPct + 1e-9) {
+      quantity = minQty;
+      notional = quantity * entryMid;
+      sizedBy = `${sizedBy}+min_notional_scaled(风险升至${minRiskPct.toFixed(2)}%≤上限${ceilingPct}%)`;
+    }
+  }
   if (quantity <= 0) return { error: "quantity_rounds_to_zero", notional, maxNotional, sizedBy };
-  // 最小名义额预检(P1-4):低于交易所普遍下限的单子不去碰交易所——
-  // 此前会被拒单→异常→去撤一张从未存在的单→撤单失败→误拉全站熔断。
-  if (quantity * entryMid < 5) return { error: "below_min_notional", notional: quantity * entryMid, minNotional: 5, sizedBy };
+  if (quantity * entryMid < MIN_NOTIONAL) return { error: "below_min_notional", notional: quantity * entryMid, minNotional: MIN_NOTIONAL, sizedBy, ceilingPct: Number(mandate?.maxSingleTradeRiskPct ?? "-") };
   return { quantity, entryMid, stopDistance, notional: quantity * entryMid, riskPct, equity, maxNotional, volCap, sizedBy };
 }
 

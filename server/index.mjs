@@ -117,23 +117,25 @@ for (const server of db.mcpServers || []) {
     if (!Object.keys(server.headers).length) delete server.headers;
   }
 }
-for (const method of db.knowledge?.tradingMethods || []) {
-  // compile_failed 也要重试;both 方法按方向分别判断(此前只要 long 存活就永远不补 short)。
-  const hasLive = (dir) => (db.knowledge?.tradingSkills || []).some((skill) =>
-    skill.sourceMethodId === method.id
-    && !["retired", "superseded", "compile_failed"].includes(skill.status)
-    && (!dir || skill.spec?.direction === dir));
-  if (method.direction === "both" ? !(hasLive("long") && hasLive("short")) : !hasLive()) {
+// 方法首次编译只种一次(用户实锤:每次启动都重编"没存活技能"的方法,导致清理掉的 compile_failed
+// 一重启又复活、又必然编译失败)。新导入书本由蒸馏管道当场编译,不靠这段;老库已播过种直接跳过。
+(function seedCompileMethodsOnce() {
+  db.meta ||= {};
+  if (db.meta.methodsSeedCompiledVersion === 1) return;
+  // 已存在任何技能 = 之前播过种(老库升级):只打标记,绝不重建被用户清理掉的
+  if ((db.knowledge?.tradingSkills || []).length > 0) { db.meta.methodsSeedCompiledVersion = 1; return; }
+  for (const method of db.knowledge?.tradingMethods || []) {
     try {
       if (method.direction === "both") {
-        if (!hasLive("long")) compileTradingMethod(db, method.id, { direction: "long" }, "StartupMigration");
-        if (!hasLive("short")) compileTradingMethod(db, method.id, { direction: "short" }, "StartupMigration");
+        compileTradingMethod(db, method.id, { direction: "long" }, "StartupMigration");
+        compileTradingMethod(db, method.id, { direction: "short" }, "StartupMigration");
       } else {
         compileTradingMethod(db, method.id, {}, "StartupMigration");
       }
     } catch { /* 保留为不可执行顾问知识 */ }
   }
-}
+  db.meta.methodsSeedCompiledVersion = 1;
+})();
 // 存量数据自愈:多条 active 授权并存(activateMandate 旧实现从不废弃旧条)导致
 // 计划绑旧版本被风控永久拒绝。保留 version 最高/激活最新的一条,其余置 superseded。
 (function collapseDuplicateActiveMandates() {
