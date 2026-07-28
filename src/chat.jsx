@@ -494,7 +494,7 @@ function AgentRail({ data, action, ui, send }) {
             <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
             <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>
             <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayPrice(t)).join(" / ") : "—"}</b></div>
-            <div><div className="agPlanK">仓位·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
+            <div><div className="agPlanK" title="打到止损这笔亏账户的百分比(≤授权单笔风险上限);不是仓位大小">本笔风险·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
             <div><div className="agPlanK">盈亏比</div><b className="mono">{planRR ? `1 : ${planRR}` : "—"}</b></div>
             <div><div className="agPlanK">置信度</div><b className="mono">{plan?.confidence ? `${plan.confidence}%` : "—"}</b></div>
           </div>
