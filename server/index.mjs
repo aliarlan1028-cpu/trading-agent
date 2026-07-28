@@ -13,15 +13,7 @@ import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./exec
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { validateRuntimeConfig } from "./schema.mjs";
-import { registerObservabilityRoutes } from "./routes/observability.mjs";
-import { registerMandateRoutes } from "./routes/mandates.mjs";
-import { registerEventRoutes } from "./routes/events.mjs";
-import { registerTaskRoutes } from "./routes/tasks.mjs";
-import { registerNotificationRoutes } from "./routes/notifications.mjs";
-import { registerPaperRoutes } from "./routes/paper.mjs";
-import { registerMcpRoutes } from "./routes/mcp.mjs";
-import { registerEventSourceRoutes } from "./routes/eventSources.mjs";
-import { registerSecurityConfigRoutes } from "./routes/securityConfig.mjs";
+import { registerAllRoutes } from "./routes/index.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -2260,25 +2252,16 @@ app.post("/api/review/strategy-improvement", requirePermission("write:review"), 
 
 // traces / audit-logs 路由已迁至 server/routes/observability.mjs
 
-// —— 已按组抽出的路由（建立 registrar 拆分范式，其余组后续增量迁移）——
-registerObservabilityRoutes(app, {
+// —— 已按 registrar 范式抽出的所有路由组，统一在此一处注册（ctx 为各组依赖并集）——
+registerAllRoutes(app, {
   db, saveDb, persist, requirePermission,
-  normalizeSymbol, runReconciler, exportTraces, exportAuditLogs,
-  schedulerStatus, startScheduler
-});
-registerMandateRoutes(app, {
-  db, persist, requirePermission, parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace
-});
-registerEventRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, rankEvents });
-registerTaskRoutes(app, { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, scheduleTask, runTask });
-registerNotificationRoutes(app, { db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster });
-registerPaperRoutes(app, { db, persist, requirePermission, buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle });
-registerMcpRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, storeSecret, connectMcpServer });
-registerEventSourceRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, refreshEventSources, refreshOnchainSignals });
-registerSecurityConfigRoutes(app, {
-  db, persist, saveDb, requirePermission,
-  listVaultItems, storeSecret, clearSecret, nowIso, appendAudit, appendTrace,
-  refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,
+  normalizeSymbol, runReconciler, exportTraces, exportAuditLogs, schedulerStatus, startScheduler,
+  parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace,
+  rankEvents, scheduleTask, runTask,
+  larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
+  buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
+  storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals,
+  listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,
   getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain
 });
 
