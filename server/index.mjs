@@ -15,6 +15,9 @@ import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerObservabilityRoutes } from "./routes/observability.mjs";
 import { registerMandateRoutes } from "./routes/mandates.mjs";
+import { registerEventRoutes } from "./routes/events.mjs";
+import { registerTaskRoutes } from "./routes/tasks.mjs";
+import { registerNotificationRoutes } from "./routes/notifications.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -1103,146 +1106,7 @@ app.post("/api/watch-triggers/:id/cancel", requirePermission("write:mandate"), (
   persist(res, { message: `已撤销观察哨：${req.params.id}`, watch: result.watch });
 });
 
-app.get("/api/events", (_req, res) => res.json(db.events));
-
-// 热点情报流：按影响度+热度+时效+与持仓/授权标的相关性排序的事件专题
-app.get("/api/events/intel", (_req, res) => {
-  const watchSymbols = [
-    ...(db.positions || []).map((p) => p.symbol),
-    ...(db.mandates || []).flatMap((m) => m.allowedSymbols || []),
-    db.activeMarket?.symbol
-  ].filter(Boolean);
-  res.json(rankEvents(db, { watchSymbols }));
-});
-
-app.post("/api/events", requirePermission("write:event"), (req, res) => {
-  const event = {
-    id: id("event"),
-    status: "待确认",
-    confidence: 60,
-    impact: 50,
-    progress: [],
-    ...req.body,
-    createdAt: nowIso()
-  };
-  db.events.unshift(event);
-  appendAudit(db, "创建事件卡", event.id, "事件分析员");
-  appendTrace(db, "event", `事件建档：${event.title}`);
-  persist(res, event);
-});
-
-app.patch("/api/events/:id", requirePermission("write:event"), (req, res) => {
-  const event = db.events.find((item) => item.id === req.params.id);
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  Object.assign(event, req.body, { latestUpdateAt: nowIso() });
-  appendAudit(db, "更新事件进度", event.id, "事件分析员");
-  persist(res, event);
-});
-
-app.delete("/api/events/:id", requirePermission("write:event"), (req, res) => {
-  const exists = (db.events || []).some((item) => item.id === req.params.id);
-  if (!exists) return res.status(404).json({ error: "Event not found" });
-  db.events = (db.events || []).filter((item) => item.id !== req.params.id);
-  appendAudit(db, "删除情报事件专题", req.params.id, req.user?.name || "Owner");
-  persist(res, { ok: true });
-});
-
-app.post("/api/events/:id/progress", requirePermission("write:event"), (req, res) => {
-  const event = db.events.find((item) => item.id === req.params.id);
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  event.progress ||= [];
-  const item = req.body.text || req.body.progress || "追加事件进度";
-  event.progress.push(item);
-  event.latestUpdateAt = nowIso();
-  if (req.body.status) event.status = req.body.status;
-  appendAudit(db, "追加事件进度", event.id, "事件分析员");
-  appendTrace(db, "event_progress", `${event.title}: ${item}`);
-  persist(res, event);
-});
-
-app.post("/api/events/:id/review", requirePermission("write:review"), (req, res) => {
-  const event = db.events.find((item) => item.id === req.params.id);
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  const review = {
-    id: id("event_review"),
-    eventId: event.id,
-    title: req.body.title || `${event.title} 事件复盘`,
-    summary: req.body.summary || "事件影响已记录，等待人工补充验证结论。",
-    tradingImpact: req.body.tradingImpact || event.action,
-    createdAt: nowIso()
-  };
-  db.reviews.unshift(review);
-  appendAudit(db, "创建事件复盘", review.id, "复盘员");
-  persist(res, review);
-});
-
-app.get("/api/tasks", (_req, res) => res.json(db.tasks));
-app.get("/api/job-runs", (_req, res) => res.json(db.jobRuns));
-// scheduler 路由已迁至 server/routes/observability.mjs
-
-app.post("/api/tasks", requirePermission("write:task"), (req, res) => {
-  const task = {
-    id: id("task"),
-    type: "Every",
-    enabled: true,
-    status: "等待中",
-    allowlist: [],
-    ...req.body,
-    createdAt: nowIso()
-  };
-  // 带自然语言 mission 的任务 → 走通用 Agent 情报任务处理器
-  if (task.mission && !task.handler) { task.handler = "agent_mission"; task.role = task.role || "情报"; }
-  db.tasks.unshift(task);
-  appendAudit(db, "创建定时任务", task.id, db.user.name);
-  scheduleTask(db, task, saveDb);
-  persist(res, task);
-});
-
-app.patch("/api/tasks/:id", requirePermission("write:task"), (req, res) => {
-  const task = db.tasks.find((item) => item.id === req.params.id);
-  if (!task) return res.status(404).json({ error: "Task not found" });
-  Object.assign(task, req.body, { updatedAt: nowIso() });
-  appendAudit(db, "更新定时任务", task.id, db.user.name);
-  if (task.enabled) scheduleTask(db, task, saveDb);
-  persist(res, task);
-});
-
-app.delete("/api/tasks/:id", requirePermission("write:task"), (req, res) => {
-  const index = db.tasks.findIndex((item) => item.id === req.params.id);
-  if (index === -1) return res.status(404).json({ error: "Task not found" });
-  const [task] = db.tasks.splice(index, 1);
-  db.jobRuns = (db.jobRuns || []).filter((run) => run.taskId !== task.id);
-  appendAudit(db, "删除定时任务", task.id, db.user.name, "warning");
-  persist(res, { message: `${task.name || task.id} 已删除`, task });
-});
-
-app.post("/api/tasks/:id/pause", requirePermission("write:task"), (req, res) => {
-  const task = db.tasks.find((item) => item.id === req.params.id);
-  if (!task) return res.status(404).json({ error: "Task not found" });
-  task.enabled = false;
-  task.status = "已暂停";
-  task.pauseReason = req.body.reason || "manual_pause";
-  task.updatedAt = nowIso();
-  appendAudit(db, "暂停定时任务", task.id, db.user.name);
-  persist(res, task);
-});
-
-app.post("/api/tasks/:id/resume", requirePermission("write:task"), (req, res) => {
-  const task = db.tasks.find((item) => item.id === req.params.id);
-  if (!task) return res.status(404).json({ error: "Task not found" });
-  task.enabled = true;
-  task.status = "运行中";
-  task.updatedAt = nowIso();
-  appendAudit(db, "恢复定时任务", task.id, db.user.name);
-  scheduleTask(db, task, saveDb);
-  persist(res, task);
-});
-
-app.post("/api/tasks/:id/run", requirePermission("write:task"), async (req, res) => {
-  const result = await runTask(db, req.params.id, saveDb, "manual");
-  if (result.status === "missing_task") return res.status(404).json({ error: "Task not found" });
-  res.json(result);
-});
+// events / tasks(含 job-runs) 路由组已迁至 server/routes/events.mjs 与 server/routes/tasks.mjs
 
 app.post("/api/knowledge/import-real", requirePermission("write:knowledge"), handleKnowledgeImport);
 
@@ -1683,44 +1547,7 @@ app.post("/api/backtest/run", requirePermission("write:review"), async (req, res
   }
 });
 
-app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
-
-// 打开通知中心即把未读标为已读（清除未读徽章）
-app.post("/api/notifications/read", (_req, res) => {
-  let marked = 0;
-  for (const item of db.notifications || []) { if (!item.read) { item.read = true; marked++; } }
-  if (marked) saveDb(db);
-  res.json({ ok: true, marked });
-});
-app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
-app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
-app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
-  const result = await notifyLark(db, {
-    severity: "info",
-    title: "🔔 飞书通知测试",
-    body: "如果你在飞书里看到这条消息，说明 AI 交易员的主动通知已打通。",
-    fields: [{ label: "来源", value: "AI 交易员" }, { label: "状态", value: "测试" }]
-  });
-  saveDb(db);
-  res.json({ message: `飞书通知：${result.deliveryStatus}`, notification: result });
-});
-app.post("/api/notifications/telegram-test", requirePermission("admin:security"), async (_req, res) => {
-  const position = db.positions?.find((item) => Number(item.pnl ?? item.upl ?? item.unrealizedPnl) > 0) || {
-    id: "telegram_test_position",
-    exchange: "OKX",
-    symbol: "BTC/USDT",
-    direction: "long",
-    size: 0.01,
-    entry: 100000,
-    mark: 103500,
-    leverage: 5,
-    pnl: 35,
-    updatedAt: nowIso()
-  };
-  const result = await sendTelegramPositionPoster(db, position, { caption: "Telegram 盈利仓位海报测试" });
-  saveDb(db);
-  res.json({ message: `Telegram 海报：${result.status}`, ...result });
-});
+// notifications 路由组已迁至 server/routes/notifications.mjs
 
 app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {
   const result = runAgentCommand(db, req.body || {});
@@ -2670,6 +2497,9 @@ registerObservabilityRoutes(app, {
 registerMandateRoutes(app, {
   db, persist, requirePermission, parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace
 });
+registerEventRoutes(app, { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, rankEvents });
+registerTaskRoutes(app, { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, scheduleTask, runTask });
+registerNotificationRoutes(app, { db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster });
 
 app.listen(port, host, () => {
   console.log(`AI Trading Agent API listening on http://${host}:${port}`);
