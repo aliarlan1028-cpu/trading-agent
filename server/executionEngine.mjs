@@ -221,9 +221,17 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
 
   const sizing = computePositionSize(db, plan);
   if (sizing.error) {
-    appendAudit(db, `执行引擎拒绝计划：${sizing.error}`, plan.id, "ExecutionEngine", "warning");
-    return { status: "sizing_failed", ...sizing };
+    // 把"批准了却没下单"的真实原因写到计划上,前端好显示(用户实锤:approved 但无订单、界面不说为什么)。
+    const human = sizing.error === "below_min_notional"
+      ? `仓位约 ${Number(sizing.notional || 0).toFixed(2)} USDT，低于交易所最小名义额 ${sizing.minNotional || 5} USDT——账户太小或单笔风险%太低，无法下出有效订单`
+      : sizing.error === "quantity_rounds_to_zero" ? "计算仓位四舍五入为 0，账户过小"
+      : sizing.error === "invalid_entry_or_stop" ? "入场/止损数值非法"
+      : sizing.error === "zero_stop_distance" ? "入场与止损相等，止损距离为 0" : sizing.error;
+    plan.executionBlock = { reason: sizing.error, detail: human, at: nowIso() };
+    appendAudit(db, `执行引擎未下单（${sizing.error}）：${human}`, plan.id, "ExecutionEngine", "warning");
+    return { status: "sizing_failed", ...sizing, detail: human };
   }
+  plan.executionBlock = null;
 
   const executionOrder = {
     id: id("exec"),

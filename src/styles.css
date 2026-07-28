@@ -7991,7 +7991,29 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kProfileInfo span { color: #6b6357; }
 .kProfileTf { color: #8a8171 !important; }
 .kProfileMetric { font-size: 11px; color: #3f8f5b; white-space: nowrap; }
-/* 策略表现看板 */
+/* 策略表现看板 · 卡片式(旧表格太挤,重设计) */
+.stratGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 6px; }
+.stratCard { display: grid; gap: 8px; padding: 12px 13px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); }
+.stratCardTop { display: flex; align-items: center; gap: 8px; }
+.stratCardName { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.stratCardName b { font-size: 13px; color: #2f2d29; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stratCardName small { font-size: 10px; color: #8a8171; }
+.stratChips { display: flex; gap: 5px; flex-wrap: wrap; }
+.stratChip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: #f3ece1; color: #8a8171; }
+.stratChip.lc { background: #eef3ee; color: #5f8a63; }
+.stratMetrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 0; border-top: 1px solid #f3ece1; border-bottom: 1px solid #f3ece1; }
+.stratMetrics > div { display: grid; gap: 2px; }
+.stratMetrics span { font-size: 10px; color: #8a8171; }
+.stratMetrics b { font-size: 13px; color: #2f2d29; }
+.stratCardActs { display: flex; justify-content: flex-end; gap: 6px; }
+.stratCardActs button { border: 1px solid var(--hairline); background: var(--surface-white); border-radius: 7px; padding: 4px 12px; font-size: 12px; cursor: pointer; color: #6b6357; }
+.stratCardActs button:hover { border-color: #c9beac; }
+.stratCardActs button.dangerText { color: #bc4b34; }
+.stratCardActs button.dangerText:hover { border-color: #bc4b34; }
+.stratAuto { font-size: 11px; color: #b6ab98; align-self: center; }
+.stratMetrics b.pos { color: #3f8f5b; } .stratMetrics b.neg { color: #bc4b34; }
+
+/* 旧表格式(保留兼容) */
 .stratBoard { display: grid; gap: 3px; margin-top: 4px; }
 .stratHead, .stratRow { display: grid; grid-template-columns: minmax(0,1.6fr) 44px 88px 56px 64px 74px 68px; gap: 6px; align-items: center; }
 .stratHead { font-size: 10px; color: #8a8171; padding: 0 8px 4px; }

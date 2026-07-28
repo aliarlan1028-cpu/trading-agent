@@ -487,6 +487,7 @@ function AgentRail({ data, action, ui, send }) {
               </>);
             })()}
             {plan && <span className="agPlanTag">{plan.strategy ? humanize(plan.strategy) : "未指定策略"}</span>}
+            {plan?.executionBlock && <span className="evBadge neg" title={plan.executionBlock.detail}>已批准未下单 · {plan.executionBlock.detail.length > 22 ? `${plan.executionBlock.detail.slice(0, 22)}…` : plan.executionBlock.detail}</span>}
             <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : `白名单 ${(mandate.allowedSymbols || []).slice(0, 3).join(" / ") || "未设置"} · 等巡检提出机会`}</span>
           </div>
           <div className="agPlanGrid">

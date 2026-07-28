@@ -1163,25 +1163,40 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
               <div className="kHead"><span className="secLabel">策略表现看板 · 在用策略实盘复盘</span><span className="mono">{board.summary.live || 0} 在用{board.summary.suggestRetire ? ` · ${board.summary.suggestRetire} 建议下线` : ""}</span></div>
               {!board.rows.length && <div className="emptyPanel">暂无在用策略。技能流水线上岗、或信任一个导入 skill 后在此复盘。</div>}
               {board.rows.length > 0 && (
-                <div className="stratBoard">
-                  <div className="stratHead"><span>策略</span><span>来源</span><span className="r">实盘</span><span className="r">盈亏因子</span><span className="r">累计</span><span className="r">裁定</span><span className="r">操作</span></div>
-                  {board.rows.map((row) => (
-                    <div className="stratRow" key={row.id}>
-                      <div className="stratName"><span className={`mDir ${row.direction === "short" ? "short" : "long"}`}>{dirCn(row.direction)}</span><b>{row.name}</b><small className="mono">{row.scope !== "-" ? `${row.scope}·${row.timeframe}` : ""}</small></div>
-                      <span className="stratSrc">{row.sourceLabel}{statusCn[row.status] ? <i className="stratLc">{statusCn[row.status]}</i> : null}</span>
-                      <span className="r mono">{row.live ? `${row.live.trades}笔 ${num(row.live.winRatePct, "%")}` : row.backtest ? `回测 ${num(row.backtest.expectancyR, "R")}` : "—"}</span>
-                      <span className="r mono">{row.live ? num(row.live.profitFactor) : "—"}</span>
-                      <span className={`r mono ${row.live && row.live.weightedPnl > 0 ? "pos" : row.live && row.live.weightedPnl < 0 ? "neg" : ""}`}>{row.live && row.live.weightedPnl != null ? `${row.live.weightedPnl > 0 ? "+" : ""}${row.live.weightedPnl}` : "—"}</span>
-                      <span className="r"><span className={`evBadge ${EV_TONE[row.verdict.tone] || ""}`}>{row.verdict.label}</span></span>
-                      <span className="r stratActs">
-                        {row.controls.includes("retire") && <button className="dangerText" onClick={() => { if (window.confirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
-                        {row.controls.includes("reactivate") && <button onClick={() => action(`/api/knowledge/skills/${row.id}/validate`, {})}>重验</button>}
-                        {row.controls.includes("untrust") && <button className="dangerText" onClick={() => { if (window.confirm(`撤销信任「${row.name}」？将移出 AI 工具表。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
-                        {row.controls.includes("retrust") && <button onClick={() => { if (window.confirm(`重新信任「${row.name}」？将重新进入小额试用。`)) action(`/api/skills/${row.id}/trust`, {}); }}>重新信任</button>}
-                        {!row.controls.length && <small>自动</small>}
-                      </span>
-                    </div>
-                  ))}
+                <div className="stratGrid">
+                  {board.rows.map((row) => {
+                    const lm = row.live;
+                    const metrics = lm && lm.trades
+                      ? [["实盘", `${lm.trades} 笔`], ["胜率", num(lm.winRatePct, "%")], ["盈亏因子", num(lm.profitFactor)], ["累计", lm.weightedPnl != null ? `${lm.weightedPnl > 0 ? "+" : ""}${lm.weightedPnl}` : "—"]]
+                      : row.backtest
+                        ? [["回测期望", num(row.backtest.expectancyR, "R")], ["置信度", num(row.backtest.confidence)], ["实盘", "样本不足"]]
+                        : [["实盘", "样本不足"]];
+                    return (
+                      <div className="stratCard" key={row.id}>
+                        <div className="stratCardTop">
+                          <span className={`mDir ${row.direction === "short" ? "short" : "long"}`}>{dirCn(row.direction)}</span>
+                          <div className="stratCardName"><b>{row.name}</b>{row.scope !== "-" && <small className="mono">{row.scope} · {row.timeframe}</small>}</div>
+                          <span className={`evBadge ${EV_TONE[row.verdict.tone] || ""}`}>{row.verdict.label}</span>
+                        </div>
+                        <div className="stratChips">
+                          <span className="stratChip">{row.sourceLabel}</span>
+                          {statusCn[row.status] && <span className="stratChip lc">{statusCn[row.status]}</span>}
+                        </div>
+                        <div className="stratMetrics">
+                          {metrics.map(([k, v]) => (
+                            <div key={k}><span>{k}</span><b className={`mono ${k === "累计" && String(v).startsWith("+") ? "pos" : k === "累计" && String(v).startsWith("-") ? "neg" : ""}`}>{v}</b></div>
+                          ))}
+                        </div>
+                        <div className="stratCardActs">
+                          {row.controls.includes("retire") && <button className="dangerText" onClick={() => { if (window.confirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
+                          {row.controls.includes("reactivate") && <button onClick={() => action(`/api/knowledge/skills/${row.id}/validate`, {})}>重验</button>}
+                          {row.controls.includes("untrust") && <button className="dangerText" onClick={() => { if (window.confirm(`撤销信任「${row.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
+                          {row.controls.includes("retrust") && <button onClick={() => { if (window.confirm(`重新信任「${row.name}」？将重新进入小额试用。`)) action(`/api/skills/${row.id}/trust`, {}); }}>重新信任</button>}
+                          {!row.controls.length && <span className="stratAuto">系统自动换代</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <p className="kCapHint">实盘=真金白银归因（样本&lt;10 显示"样本不足"不误判）；自适应画像来自寻优/前向，系统自动换代。裁定阈值=自动下线阈值，展示与执行同口径。</p>
