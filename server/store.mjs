@@ -882,6 +882,21 @@ export function getTenantResource(tenantId, resourceType, resourceId) {
   return row ? JSON.parse(row.doc) : null;
 }
 
+// 用 trading_entities 的类型化列(status/symbol)+ 索引直接查实体，替代"整集合装内存再 filter"。
+// 例：queryEntities("tradePlans", { status: "approved" })、queryEntities("orders", { symbol: "BTC/USDT" })。
+// 命中 idx_trading_entities_type_status / _symbol 两个索引，规模大时远快于全量扫描内存数组。
+export function queryEntities(resourceType, { status, symbol, tenantId = "tenant_owner", limit = 500 } = {}) {
+  ensureSqlite();
+  const where = ["resource_type = ?", "tenant_id = ?"];
+  const params = [resourceType, tenantId];
+  if (status != null) { where.push("status = ?"); params.push(status); }
+  if (symbol != null) { where.push("symbol = ?"); params.push(symbol); }
+  params.push(Math.max(1, Math.min(Number(limit) || 500, 5000)));
+  return sqlite.prepare(
+    `select doc from trading_entities where ${where.join(" and ")} order by updated_at desc, resource_id asc limit ?`
+  ).all(...params).map((row) => JSON.parse(row.doc));
+}
+
 export function deleteTenantResource(tenantId, resourceType, resourceId, expectedVersion = null) {
   ensureSqlite();
   const sql = expectedVersion === null

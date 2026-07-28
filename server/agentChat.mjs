@@ -7,6 +7,8 @@ import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
+import { deterministicDecision } from "./deterministicDecision.mjs";
+import { validateTradePlan } from "./schema.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
@@ -961,6 +963,14 @@ export async function executeTool(db, run, name, args = {}) {
       source: "agent_chat",
       createdAt: nowIso()
     };
+    // Schema 硬闸:挡住结构非法的计划(方向错、止损在错误一侧、NaN、区间颠倒)——
+    // 这类逻辑错误比"说错方向"更隐蔽,过去要靠风控引擎间接兜,现在写入前直接拒。
+    const planCheck = validateTradePlan(plan);
+    if (!planCheck.valid) {
+      return { error: `交易计划结构非法，未提交：${planCheck.errors.join("；")}。请修正后重新调用 propose_trade_plan。` };
+    }
+    Object.assign(plan, planCheck.normalized); // 规范化双字段，保持全库一致
+    if (planCheck.warnings.length) plan.schemaWarnings = planCheck.warnings;
     bindKnowledgeSkillsToPlan(db, plan, {
       timeframe: args.timeframe || "1h",
       regime: market.regime || db.marketRegime?.regime || "",
@@ -1394,6 +1404,27 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
     const market = await runToolTracked(db, run, "sync_market", { symbol }, toolTrace);
     if (!market.error) {
       lines.push(`已同步真实行情：${symbol} 现价 ${market.price} USDT，24h 涨跌 ${market.change24hPct ?? "-"}%，近 48 根 K 线区间 ${market.recentLow} ~ ${market.recentHigh}。`);
+      // 确定性决策兜底：即使没有 LLM，也用真实多源信号给一个透明、可解释、非编造的方向读数。
+      const full = db.markets?.find((mk) => mk.symbol === symbol) || {};
+      const smart = await fetchSmartMoney(symbol).catch(() => null);
+      const rangeAtr = Number(market.recentHigh) - Number(market.recentLow);
+      const d = deterministicDecision({
+        market: {
+          symbol,
+          price: Number(market.price),
+          changePct: full.changePct ?? Number(market.change24hPct),
+          fundingRate: full.fundingRate,
+          bookImbalancePct: full.bookImbalancePct,
+          atrPct: rangeAtr > 0 && Number(market.price) > 0 ? (rangeAtr / Number(market.price)) * 0.25 : undefined
+        },
+        smartMoney: smart,
+        mandate: activeMandate(db) || db.mandates?.[0] || null
+      });
+      const dirCn = d.direction === "long" ? "偏多" : d.direction === "short" ? "偏空" : "观望";
+      lines.push("", `**确定性规则决策（无 LLM 兜底，非编造）：${dirCn}，置信度 ${d.confidence}。**`,
+        `因子分：动量 ${d.scores.momentum}｜资金费率 ${d.scores.funding}｜盘口 ${d.scores.book}｜聪明钱 ${d.scores.smartMoney}（融合 ${d.net}）。`);
+      if (d.reasons.length) lines.push(`说明：${d.reasons.join("；")}。`);
+      if (d.plan) lines.push(`参考结构（仅供参考，非实盘计划）：入场 ${d.plan.entryLow}–${d.plan.entryHigh}，止损 ${d.plan.stopLoss}，止盈 ${d.plan.takeProfits.join(" / ")}，风险 ${d.plan.riskPercent}%·${d.plan.leverage}x。配置 LLM 后可自动过硬风控并转成可执行计划。`);
     }
   }
   const account = await runToolTracked(db, run, "get_account", {}, toolTrace);

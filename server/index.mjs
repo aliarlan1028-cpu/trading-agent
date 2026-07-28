@@ -12,6 +12,8 @@ import { cancelWatch, runWatchSentinel } from "./watchSentinel.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
+import { validateRuntimeConfig } from "./schema.mjs";
+import { registerObservabilityRoutes } from "./routes/observability.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -1014,20 +1016,7 @@ function normalizeSymbol(raw) {
   if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(s)) return null;
   return s;
 }
-app.post("/api/watchlist", requirePermission("write:realtime"), (req, res) => {
-  const symbol = normalizeSymbol(req.body.symbol);
-  if (!symbol) return res.status(400).json({ error: "无效的交易对" });
-  db.watchlist = (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
-  if (!db.watchlist.includes(symbol)) db.watchlist = [...db.watchlist, symbol];
-  saveDb(db);
-  res.json({ ok: true, watchlist: db.watchlist });
-});
-app.delete("/api/watchlist/:symbol", requirePermission("write:realtime"), (req, res) => {
-  const symbol = normalizeSymbol(decodeURIComponent(req.params.symbol));
-  db.watchlist = ((db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).filter((s) => s !== symbol);
-  saveDb(db);
-  res.json({ ok: true, watchlist: db.watchlist });
-});
+// watchlist 路由已迁至 server/routes/observability.mjs（见文件末尾 registerObservabilityRoutes）
 
 // 公有 K 线（给自绘图表用真实 OKX 数据）。公开数据，走鉴权白名单。
 // 服务端→OKX REST 拉一次 ~4s，移动端易超时；这里加 10s 内存缓存，重复请求即时返回。
@@ -1250,11 +1239,7 @@ app.post("/api/events/:id/review", requirePermission("write:review"), (req, res)
 
 app.get("/api/tasks", (_req, res) => res.json(db.tasks));
 app.get("/api/job-runs", (_req, res) => res.json(db.jobRuns));
-app.get("/api/scheduler/status", (_req, res) => res.json(schedulerStatus(db)));
-app.post("/api/scheduler/recover", requirePermission("write:task"), (_req, res) => {
-  const status = startScheduler(db, saveDb);
-  persist(res, status);
-});
+// scheduler 路由已迁至 server/routes/observability.mjs
 
 app.post("/api/tasks", requirePermission("write:task"), (req, res) => {
   const task = {
@@ -2119,14 +2104,7 @@ app.post("/api/realtime/stop", requirePermission("write:realtime"), (req, res) =
   persist(res, status);
 });
 
-app.post("/api/reconciler/run", requirePermission("write:exchange"), (req, res) => {
-  const report = runReconciler(db, req.body || {});
-  persist(res, report);
-});
-
-app.get("/api/reconciler/reports", (_req, res) => {
-  res.json(db.reconciliationReports || []);
-});
+// reconciler 路由已迁至 server/routes/observability.mjs
 
 app.post("/api/trade-plans", requirePermission("write:trade_plan"), (req, res) => {
   const selectedMandate = req.body.mandateId
@@ -2625,7 +2603,11 @@ app.get("/api/config", (_req, res) => {
 // 通用配置写入：LLM 密钥/模型、非敏感开关。敏感项加密入库，不回传明文。
 app.post("/api/config", requirePermission("admin:security"), async (req, res) => {
   try {
+    // Schema 校验:挡住空模型名、含空白的模型名、非 true/false 的开关（写错模型名会导致全线抽风）。
+    const cfgCheck = validateRuntimeConfig(req.body || {});
+    if (!cfgCheck.valid) return res.status(400).json({ error: `配置校验未通过：${cfgCheck.errors.join("；")}` });
     const applied = setConfig(db, req.body || {});
+    if (cfgCheck.warnings.length) appendTrace(db, "config", `配置提醒：${cfgCheck.warnings.join("；")}`, "warning");
     refreshApiKeyMetadata(db);
     const exchangeValidations = [];
     for (const account of db.exchangeAccounts || []) {
@@ -2738,15 +2720,13 @@ app.post("/api/review/strategy-improvement", requirePermission("write:review"), 
   });
 });
 
-app.get("/api/traces", requirePermission("trace.read"), (_req, res) => res.json(db.traces));
-app.get("/api/audit-logs", requirePermission("audit.read"), (_req, res) => res.json(db.auditLogs));
-app.get("/api/audit-logs/export", requirePermission("audit.export"), (req, res) => {
-  const format = req.query.format === "csv" ? "csv" : "json";
-  res.type(format === "csv" ? "text/csv" : "application/json").send(exportAuditLogs(db, format));
-});
-app.get("/api/traces/export", requirePermission("audit.export"), (req, res) => {
-  const format = req.query.format === "csv" ? "csv" : "json";
-  res.type(format === "csv" ? "text/csv" : "application/json").send(exportTraces(db, format));
+// traces / audit-logs 路由已迁至 server/routes/observability.mjs
+
+// —— 已按组抽出的路由（建立 registrar 拆分范式，其余组后续增量迁移）——
+registerObservabilityRoutes(app, {
+  db, saveDb, persist, requirePermission,
+  normalizeSymbol, runReconciler, exportTraces, exportAuditLogs,
+  schedulerStatus, startScheduler
 });
 
 app.listen(port, host, () => {
