@@ -851,105 +851,8 @@ app.post("/api/watch-triggers/:id/cancel", requirePermission("write:mandate"), (
 
 // knowledge 概念/框架/规则路由已迁至 server/routes/knowledgeRules.mjs
 
-app.get("/api/agent/state-files", (_req, res) => res.json(db.agentStateFiles));
-app.patch("/api/agent/state-files/:name", requirePermission("admin:system"), (req, res) => {
-  try {
-    const file = updateStateFile(db, req.params.name, req.body.content || "");
-    persist(res, file);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.get("/api/agent/status", (_req, res) => {
-  res.json(getAgentStatus(db));
-});
-
-app.get("/api/agent/profiles", (_req, res) => {
-  res.json((db.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
-});
-
-app.patch("/api/agent/profiles/:id", requirePermission("write:knowledge"), (req, res) => {
-  const profile = (db.agentProfiles || []).find((item) => item.id === req.params.id);
-  if (!profile) return res.status(404).json({ error: "Agent profile not found" });
-  const allowed = ["name", "role", "enabled", "declaration", "personality", "mission", "boundaries", "tools", "outputSchema", "memoryPolicy"];
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) profile[key] = req.body[key];
-  }
-  profile.updatedAt = nowIso();
-  appendAudit(db, `更新 Agent Profile：${profile.name}`, profile.id, req.user?.name || db.user.name);
-  persist(res, profile);
-});
-
-function chatSessionsSorted() {
-  return (db.chatSessions || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
-}
-
-app.get("/api/agent/chat", (req, res) => {
-  const sessions = chatSessionsSorted();
-  const activeSessionId = req.query.sessionId || sessions[0]?.id || null;
-  res.json({
-    sessions,
-    activeSessionId,
-    messages: (db.chatMessages || []).filter((message) => !activeSessionId || message.sessionId === activeSessionId).slice(-100),
-    provider: activeProvider(),
-    llmConfigured: Boolean(activeProvider())
-  });
-});
-
-app.post("/api/agent/chat/sessions", requirePermission("write:mandate"), (req, res) => {
-  const title = String(req.body.title || "新对话").trim().slice(0, 32) || "新对话";
-  const session = { id: id("chat"), title, status: "active", createdAt: nowIso(), updatedAt: nowIso() };
-  db.chatSessions ||= [];
-  db.chatSessions.unshift(session);
-  persist(res, { session, sessions: chatSessionsSorted() });
-});
-
-app.patch("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
-  const session = (db.chatSessions || []).find((item) => item.id === req.params.id);
-  if (!session) return res.status(404).json({ error: "Chat session not found" });
-  if (req.body.title !== undefined) session.title = String(req.body.title || "未命名对话").trim().slice(0, 32);
-  if (req.body.status !== undefined) session.status = String(req.body.status);
-  session.updatedAt = nowIso();
-  persist(res, { session, sessions: chatSessionsSorted() });
-});
-
-app.delete("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
-  const exists = (db.chatSessions || []).some((item) => item.id === req.params.id);
-  if (!exists) return res.status(404).json({ error: "Chat session not found" });
-  db.chatSessions = (db.chatSessions || []).filter((item) => item.id !== req.params.id);
-  db.chatMessages = (db.chatMessages || []).filter((message) => message.sessionId !== req.params.id);
-  appendAudit(db, "删除对话会话", req.params.id, req.user?.name || "Owner");
-  persist(res, { ok: true, sessions: chatSessionsSorted() });
-});
-
-// 一次性清空聊天历史：早期悬浮助手复用 /api/agent/chat 时把只读问答混进了交易员历史，
-// 且无标记无法逐条区分。此端点清空全部对话(会话+消息+chat 来源的 agentRun)，
-// 但不动交易计划/授权/审计/成交——那些是独立持久记录。仅 Owner 可用。
-app.post("/api/agent/chat/reset", requirePermission("admin:system"), (req, res) => {
-  const removedSessions = (db.chatSessions || []).length;
-  const removedMessages = (db.chatMessages || []).length;
-  db.chatSessions = [];
-  db.chatMessages = [];
-  db.agentRuns = (db.agentRuns || []).filter((r) => r.source !== "chat");
-  appendAudit(db, `清空聊天历史（会话 ${removedSessions} · 消息 ${removedMessages}）`, "chat_reset", req.user?.name || "Owner", "warning");
-  persist(res, { ok: true, removedSessions, removedMessages, message: `已清空 ${removedSessions} 个对话、${removedMessages} 条消息` });
-});
-
-app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res) => {
-  try {
-    const result = await runAgentChat(db, {
-      message: req.body.message,
-      sessionId: req.body.sessionId,
-      tenantId: req.tenantId,
-      userId: req.user?.id,
-      userName: req.user?.name
-    }, saveDb);
-    res.json(result);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+// agent 对话路由(chat/sessions/reset/command)已迁至 server/routes/agentChatRoutes.mjs
+// agent 运行/状态/画像/记忆/runs 路由已迁至 server/routes/agentRuns.mjs
 
 // exchange klines/microstructure 路由已迁至 server/routes/exchange.mjs
 
@@ -959,47 +862,7 @@ app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res)
 
 // notifications 路由组已迁至 server/routes/notifications.mjs
 
-app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {
-  const result = runAgentCommand(db, req.body || {});
-  persist(res, result);
-});
-
-app.get("/api/agent/memory", (_req, res) => res.json(db.memoryItems));
-app.post("/api/agent/memory", requirePermission("write:knowledge"), (req, res) => {
-  const item = addMemoryItem(db, req.body);
-  persist(res, item);
-});
-
-app.get("/api/agent-runs", (_req, res) => res.json(db.agentRuns));
-app.get("/api/agent/runs", (_req, res) => res.json(db.agentRuns));
-app.get("/api/agent/runs/:id", (req, res) => {
-  const run = db.agentRuns.find((item) => item.id === req.params.id);
-  if (!run) return res.status(404).json({ error: "AgentRun not found" });
-  res.json(run);
-});
-app.post("/api/agent/runs/:id/pause", requirePermission("write:mandate"), (req, res) => {
-  const run = changeAgentRunStatus(db, req.params.id, "paused");
-  if (!run) return res.status(404).json({ error: "AgentRun not found" });
-  persist(res, run);
-});
-app.post("/api/agent/runs/:id/resume", requirePermission("write:mandate"), (req, res) => {
-  const run = changeAgentRunStatus(db, req.params.id, "observing");
-  if (!run) return res.status(404).json({ error: "AgentRun not found" });
-  persist(res, run);
-});
-app.post("/api/agent/runs/:id/stop", requirePermission("write:mandate"), (req, res) => {
-  const run = changeAgentRunStatus(db, req.params.id, "stopped");
-  if (!run) return res.status(404).json({ error: "AgentRun not found" });
-  persist(res, run);
-});
-app.post("/api/agent-runs", requirePermission("write:mandate"), async (req, res) => {
-  try {
-    const run = await runAgentCycle(db, req.body, saveDb);
-    persist(res, run);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// agent command/memory/runs 路由已迁至 server/routes/agentChatRoutes.mjs 与 agentRuns.mjs
 
 // skills 路由组(列表/导入/拉取/扫描/安装/停用/删除/信任/撤信任/回滚/沙箱)已迁至 server/routes/skills.mjs
 
@@ -1151,7 +1014,8 @@ registerAllRoutes(app, {
   realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate,
   handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks,
   knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, approveKnowledgeSkill, retireKnowledgeSkill,
-  compileNaturalRiskCondition, consolidateRuleProposals, broadcastRaw
+  compileNaturalRiskCondition, consolidateRuleProposals, broadcastRaw,
+  activeProvider, runAgentChat, runAgentCommand, updateStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle
 });
 
 app.listen(port, host, () => {
