@@ -7617,15 +7617,8 @@ button.danger:disabled,
 .riskSeg button { border: 0; background: none; padding: 6px 18px; border-radius: 8px; font: 700 13px "Space Grotesk"; color: var(--text-3); cursor: pointer; }
 .riskSeg button.on { background: var(--surface); color: var(--text-1); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 /* 重排后的两栏行：MANDATE↔实盘写入 等宽；风险规则↔风险状态墙 */
-/* Row1 等高：align-items: stretch 让两卡同高（Y 轴一致）；宽度 0.85:1.15 之和铺满整页 */
-.termGrid.riskRow1 { grid-template-columns: 0.85fr 1.15fr; gap: 8px; align-items: stretch; margin-bottom: 8px; }
-.termGrid.riskRow1 > .termCard { display: flex; flex-direction: column; }
-.termGrid.riskRow1 .liveGrayForm { flex: 1; }
-/* 授权委托卡：生效限制并入后，让明细列表吃满剩余高度、限制块+详情链接沉底，消除留白 */
-.termGrid.riskRow1 .mandCard .mandList { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; }
-.mandCard .mandLimits { margin-top: 12px; border-top: 1px solid #EDE7DB; padding-top: 10px; }
-.mandCard .mandLimits .rwLimitsHead { margin-bottom: 6px; }
-.mandCard .mandDetailLink { margin-top: 10px; align-self: flex-start; }
+/* Row1：授权委托 ↔ 实盘写入，宽度 0.85:1.15 之和铺满整页；自然高度顶部对齐（不强拉等高，避免授权卡留白）*/
+.termGrid.riskRow1 { grid-template-columns: 0.85fr 1.15fr; gap: 8px; align-items: start; margin-bottom: 8px; }
 .termGrid.riskRow2 { grid-template-columns: 1.35fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
 .riskRules { display: flex; flex-direction: column; gap: 8px; }
 .riskRulesHead { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
