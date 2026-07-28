@@ -18,6 +18,10 @@ import { registerExchangeRoutes } from "./exchange.mjs";
 import { registerRiskRoutes } from "./risk.mjs";
 import { registerTradePlanRoutes } from "./tradePlans.mjs";
 import { registerSkillRoutes } from "./skills.mjs";
+import { registerMarketRoutes } from "./market.mjs";
+import { registerTradingDataRoutes } from "./tradingData.mjs";
+import { registerRealtimeRoutes } from "./realtime.mjs";
+import { registerExecutionOrderRoutes } from "./executionOrders.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -37,4 +41,8 @@ export function registerAllRoutes(app, ctx) {
   registerRiskRoutes(app, ctx);
   registerTradePlanRoutes(app, ctx);
   registerSkillRoutes(app, ctx);
+  registerMarketRoutes(app, ctx);
+  registerTradingDataRoutes(app, ctx);
+  registerRealtimeRoutes(app, ctx);
+  registerExecutionOrderRoutes(app, ctx);
 }

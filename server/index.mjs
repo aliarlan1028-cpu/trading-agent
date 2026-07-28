@@ -697,31 +697,7 @@ app.get("/api/overview", (_req, res) => {
   });
 });
 
-app.get("/api/market/regime", async (_req, res) => {
-  try {
-    const symbol = activeMandate(db)?.allowedSymbols?.[0] || "BTC/USDT";
-    const regime = await fetchMarketRegime(symbol);
-    const prev = db.marketRegime || {};
-    db.marketRegime = {
-      ...regime,
-      global: regime.global || prev.global || null,
-      smartMoney: regime.smartMoney || prev.smartMoney || null,
-      updatedAt: nowIso()
-    };
-    persist(res, db.marketRegime);
-  } catch (error) {
-    res.status(500).json({ error: `全局大盘/聪明钱同步失败：${error.message}` });
-  }
-});
-
-app.get("/api/market/instruments", async (_req, res) => {
-  try {
-    const instruments = await fetchPerpetualInstruments();
-    res.json({ instruments, count: instruments.length });
-  } catch (error) {
-    res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
-  }
-});
+// market/regime · market/instruments 路由已迁至 server/routes/market.mjs
 
 // 悬浮 AI 助手：把系统里的账户/自主状态/今日活动/待办/风险汇成一段可读总结。
 app.post("/api/assistant/summarize", async (req, res) => {
@@ -820,40 +796,7 @@ function normalizeSymbol(raw) {
 // watchlist 路由已迁至 server/routes/observability.mjs（见文件末尾 registerObservabilityRoutes）
 
 // 公有 K 线（给自绘图表用真实 OKX 数据）。公开数据，走鉴权白名单。
-// 服务端→OKX REST 拉一次 ~4s，移动端易超时；这里加 10s 内存缓存，重复请求即时返回。
-const klineCache = new Map(); // key -> { at, payload }
-// 纯公开 OKX K 线（无账户数据）：保持免鉴权——前端图表 fetch 不带 Authorization 头。
-app.get("/api/market/klines", async (req, res) => {
-  try {
-    const symbol = normalizeSymbol(String(req.query.symbol || "BTC/USDT"));
-    if (!symbol) return res.status(400).json({ error: "无效的交易对", candles: [] });
-    const tf = String(req.query.tf || "1h");
-    if (!["5m", "15m", "1h", "4h", "1d"].includes(tf)) return res.status(400).json({ error: "无效的 K 线周期", candles: [] });
-    const requestedLimit = Number(req.query.limit || 200);
-    const limit = Number.isFinite(requestedLimit) ? Math.max(20, Math.min(requestedLimit, 500)) : 200;
-    const key = `${symbol}|${tf}|${limit}`;
-    const hit = klineCache.get(key);
-    if (hit && Date.now() - hit.at < 10000) { res.json(hit.payload); return; }
-    const candles = await getHistoricalKlines(symbol, tf, limit);
-    const payload = { symbol, tf, candles: candles || [] };
-    if (candles && candles.length) {
-      klineCache.set(key, { at: Date.now(), payload });
-      while (klineCache.size > 100) klineCache.delete(klineCache.keys().next().value);
-    }
-    res.json(payload);
-  } catch (error) {
-    res.status(500).json({ error: `K线获取失败：${error.message}`, candles: [] });
-  }
-});
-
-app.get("/api/market/token-profile", async (req, res) => {
-  try {
-    const profile = await fetchTokenProfile(req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
-    res.json(profile);
-  } catch (error) {
-    res.status(500).json({ error: `币种画像失败：${error.message}`, ok: false });
-  }
-});
+// market/klines · market/token-profile 路由已迁至 server/routes/market.mjs（klineCache 亦移入该模块）
 
 // 实时行情 SSE：匿名端点只能发送公有市场字段。
 // 组合/持仓广播也共用内部 listener，因此必须在边界显式过滤，防止账户数据泄露。
@@ -890,10 +833,7 @@ app.get("/api/stream", (req, res) => {
   req.on("close", () => { clearInterval(keepAlive); removeStreamListener(send); });
 });
 
-app.get("/api/markets", (_req, res) => res.json(db.markets));
-app.get("/api/positions", (_req, res) => res.json(db.positions));
-app.get("/api/orders", (_req, res) => res.json(db.orders));
-app.get("/api/fills", (_req, res) => res.json(db.fills));
+// markets/positions/orders/fills 路由已迁至 server/routes/tradingData.mjs
 // mandates 路由组已迁至 server/routes/mandates.mjs（见文件末尾 registerMandateRoutes）
 
 // 观察哨：主人手动撤销（登记/自动撤销走 AI 工具与哨兵，均带审计）
@@ -1279,23 +1219,9 @@ app.post("/api/agent/chat", requirePermission("write:mandate"), async (req, res)
 
 // exchange klines/microstructure 路由已迁至 server/routes/exchange.mjs
 
-app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
-app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
-app.get("/api/portfolio/risk", (_req, res) => {
-  const mandate = activeMandate(db);
-  res.json(buildPortfolioRisk(db, mandate));
-});
-
+// backtests/strategies/portfolio-risk/backtest-run 路由已迁至 server/routes/tradingData.mjs
 // paper 模拟盘路由组已迁至 server/routes/paper.mjs
 // strategy 路由组(profiles/research/board)已迁至 server/routes/strategy.mjs
-app.post("/api/backtest/run", requirePermission("write:review"), async (req, res) => {
-  try {
-    const result = await runBacktest(db, req.body || {});
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: `回测失败：${error.message}` });
-  }
-});
 
 // notifications 路由组已迁至 server/routes/notifications.mjs
 
@@ -1358,19 +1284,7 @@ app.post("/api/trade-actions/:action", requirePermission("critical:trade_executi
   }
 });
 
-app.get("/api/realtime/status", (_req, res) => {
-  res.json(realtimeStatus(db));
-});
-
-app.post("/api/realtime/start", requirePermission("write:realtime"), (req, res) => {
-  const status = startRealtimeManager(db, saveDb, { force: true });
-  persist(res, status);
-});
-
-app.post("/api/realtime/stop", requirePermission("write:realtime"), (req, res) => {
-  const status = stopRealtimeManager(db, req.body.reason || "manual_stop");
-  persist(res, status);
-});
+// realtime status/start/stop 路由已迁至 server/routes/realtime.mjs
 
 // reconciler 路由已迁至 server/routes/observability.mjs
 
@@ -1466,35 +1380,8 @@ app.post("/api/agent/actions/:id/cancel", requirePermission("write:mandate"), (r
 
 // trade-plans cancel/execute 路由已迁至 server/routes/tradePlans.mjs
 
-app.get("/api/execution-orders", (_req, res) => res.json(db.executionOrders || []));
-
-app.post("/api/execution-orders/poll", requirePermission("write:trade_plan"), async (_req, res) => {
-  try {
-    const result = await pollExecutionOrders(db);
-    refreshAccounting(db);
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/execution-orders/:id/close", requirePermission("critical:trade_execution"), async (req, res) => {
-  try {
-    const result = await closeExecution(db, req.params.id, req.body.reason || "manual_ui");
-    refreshAccounting(db);
-    persist(res, result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get("/api/performance", (_req, res) => {
-  res.json(performanceReport(db));
-});
-
-app.post("/api/accounting/refresh", requirePermission("risk.check"), (_req, res) => {
-  persist(res, refreshAccounting(db));
-});
+// execution-orders 路由已迁至 server/routes/executionOrders.mjs
+// performance / accounting/refresh 路由已迁至 server/routes/tradingData.mjs
 
 // risk 路由组(计划校验/熔断/状态/规则/灰度/只减仓/事件收尾)已迁至 server/routes/risk.mjs
 
@@ -1524,7 +1411,10 @@ registerAllRoutes(app, {
   syncPublicKlines, syncMicrostructure, reconcileAccount, syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction,
   evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec,
   runExpertAnalysis, bindKnowledgeSkillsToPlan, executeApprovedPlan, describeGuardReason, executeTradePlan,
-  fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox
+  fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox,
+  fetchMarketRegime, fetchPerpetualInstruments, getHistoricalKlines, fetchTokenProfile,
+  listStrategies, buildPortfolioRisk, runBacktest, performanceReport, refreshAccounting,
+  realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate
 });
 
 app.listen(port, host, () => {
