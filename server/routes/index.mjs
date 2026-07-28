@@ -16,6 +16,7 @@ import { registerReviewRoutes } from "./review.mjs";
 import { registerAdminUserRoutes } from "./adminUsers.mjs";
 import { registerExchangeRoutes } from "./exchange.mjs";
 import { registerRiskRoutes } from "./risk.mjs";
+import { registerTradePlanRoutes } from "./tradePlans.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -33,4 +34,5 @@ export function registerAllRoutes(app, ctx) {
   registerAdminUserRoutes(app, ctx);
   registerExchangeRoutes(app, ctx);
   registerRiskRoutes(app, ctx);
+  registerTradePlanRoutes(app, ctx);
 }
