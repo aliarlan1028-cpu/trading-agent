@@ -6,7 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
-import { activeProvider, runAgentChat, llmComplete } from "./agentChat.mjs";
+import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
+import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
 import { cancelWatch, runWatchSentinel } from "./watchSentinel.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
@@ -676,7 +677,17 @@ app.get("/api/overview", (_req, res) => {
     reviewAnalytics: buildReviewAnalytics(db),
     runtimeConfig: db.runtimeConfig || {},
     config: getConfigStatus(db),
-    readiness: buildReadinessReport(db)
+    readiness: buildReadinessReport(db),
+    // 分析透明度:如实汇总"当前真正在决策里起作用"的引擎配置(权重/阈值/兜底默认/SRTL 门槛/LLM/工具目录)。
+    // 动态信号(regime/聪明钱/异动/技能)前端直接用上面已有字段,这里只补静态但真实的引擎常量。
+    analysisEngine: {
+      weights: DECISION_WEIGHTS,
+      thresholds: DECISION_THRESHOLDS,
+      defaults: DECISION_DEFAULTS,
+      srtlMinR: Number(activeMandate(db)?.minRewardRisk ?? process.env.SRTL_MIN_R ?? 2.0),
+      llmModel: process.env.DEEPSEEK_MODEL || db.runtimeConfig?.DEEPSEEK_MODEL || null,
+      tools: listAgentTools()
+    }
   });
 });
 

@@ -35,6 +35,7 @@ const EventsTasksPage = lazyNamed(() => import("./pages.jsx"), "EventsTasksPage"
 const KnowledgeSkillsPage = lazyNamed(() => import("./pages.jsx"), "KnowledgeSkillsPage");
 const MarketAccountPage = lazyNamed(() => import("./pages.jsx"), "MarketAccountPage");
 const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
+const AnalysisRoomPage = lazyNamed(() => import("./pages.jsx"), "AnalysisRoomPage");
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
 const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
 const KillConfirmDialog = lazyNamed(() => import("./mobile.jsx"), "KillConfirmDialog");
@@ -54,6 +55,7 @@ const navItems = [
   { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart },
   { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
+  { id: "analysisRoom", label: "分析作战室", short: "作战室", code: "ANALYSIS", icon: Activity },
   { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
   { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings }
 ];
@@ -264,6 +266,7 @@ function App() {
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
+    if (active === "analysisRoom") return <AnalysisRoomPage data={data} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;

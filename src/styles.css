@@ -7647,6 +7647,35 @@ button.danger:disabled,
 .mandK svg { color: #a89e8a; }
 .mandRow b { font: 600 12px "IBM Plex Mono"; color: #1E1B16; text-align: right; }
 .mandRow b.neg { color: #C43F28; } .mandRow b.pos { color: #1F7A50; }
+
+/* 分析作战室 */
+.analysisRoom .arGrid { grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
+.analysisRoom .arSpan { grid-column: 1 / -1; }
+@media (max-width: 900px) { .analysisRoom .arGrid { grid-template-columns: 1fr; } }
+.arWeights { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 4px; }
+.arWeightRow { display: grid; grid-template-columns: 128px 1fr 40px; align-items: center; gap: 10px; }
+.arWLabel b { font-size: 12px; color: var(--text-1); display: block; }
+.arWLabel small { font-size: 10.5px; color: var(--text-3); }
+.arWBar { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.arWBar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #E08A3C); border-radius: 99px; }
+.arWPct { font-size: 12px; text-align: right; color: var(--text-1); font-weight: 700; }
+.arNote { font-size: 11px; color: var(--text-3); line-height: 1.5; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.arSignal { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.arSignal span { color: var(--text-3); } .arSignal b { color: var(--text-1); }
+.arMovers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.arMover { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px; font-family: "IBM Plex Mono", monospace; }
+.arMover.pos { background: var(--pos-weak); color: var(--pos); }
+.arMover.neg { background: var(--neg-weak); color: var(--neg); }
+.arFunnel { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.arFunnelStep { display: flex; flex-direction: column; align-items: center; min-width: 62px; padding: 8px 6px; background: var(--surface-2); border-radius: var(--r-md); }
+.arFunnelStep b { font-size: 17px; color: var(--text-1); font-family: "IBM Plex Mono", monospace; }
+.arFunnelStep small { font-size: 10.5px; color: var(--text-3); margin-top: 2px; }
+.arFunnelArrow { color: var(--text-3); flex: none; }
+.arTools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+@media (max-width: 720px) { .arTools { grid-template-columns: 1fr; } }
+.arTool { display: flex; flex-direction: column; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.arTool b { font-size: 12px; color: var(--accent); }
+.arTool small { font-size: 11px; color: var(--text-3); line-height: 1.45; margin-top: 2px; }
 .rrGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rrCard { padding: 12px 13px !important; }
 .rrHead { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }

@@ -14,7 +14,7 @@ export const THRESHOLDS = {
   smartShort: 0.95,     // ≤ 此值偏空
   extremeFundingAbs: 0.0005 // |资金费率| 超过此值视为拥挤，反向计分
 };
-const DEFAULTS = { stopPct: 0.015, rr: [1.5, 2.5], leverageCap: 3, riskPct: 0.3 };
+export const DEFAULTS = { stopPct: 0.015, rr: [1.5, 2.5], leverageCap: 3, riskPct: 0.3 };
 
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);

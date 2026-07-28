@@ -327,6 +327,11 @@ const TOOL_DEFS = [
   }
 ];
 
+// 分析透明度页用:如实列出 Agent 决策时可调用的工具目录(名称+用途),不编造。
+export function listAgentTools() {
+  return TOOL_DEFS.map((t) => ({ name: t.name, description: t.description }));
+}
+
 const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服务唯一主人。工作语言为中文。
 
 铁律：

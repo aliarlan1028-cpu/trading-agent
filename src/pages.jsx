@@ -1436,6 +1436,134 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   );
 }
 
+// ② 分析作战室:如实展示"此刻真正在行情分析里起作用"的引擎/数据源/信号/技能/工具。全读真实数据,缺的写未同步。
+export function AnalysisRoomPage({ data, embedded = false }) {
+  const eng = data.analysisEngine || {};
+  const w = eng.weights || {};
+  const th = eng.thresholds || {};
+  const df = eng.defaults || {};
+  const regime = data.marketRegime || {};
+  const smart = regime.smartMoney || {};
+  const movers = (data.marketMovers?.movers || []).slice(0, 6);
+  const skills = data.knowledge?.tradingSkills || [];
+  const stageCount = (stage) => skills.filter((s) => SKILL_STATE[s.status]?.stage === stage).length;
+  const execSkills = skills.filter((s) => ["active", "live_probation"].includes(s.status));
+  const exAccounts = data.exchangeAccounts || [];
+  const lastSnap = (data.accountSnapshots || [])[0];
+  const markets = data.markets || [];
+  const lastMarket = markets.map((m) => m.updatedAt || m.ts).filter(Boolean).sort().slice(-1)[0];
+
+  const WEIGHT_ROWS = [
+    { k: "momentum", label: "价格动量", desc: "多周期趋势 / 突破强度" },
+    { k: "smartMoney", label: "聪明钱", desc: "大户多空比 + 主动买卖盘" },
+    { k: "funding", label: "资金费率", desc: "拥挤度 / 反向信号" },
+    { k: "book", label: "盘口微观", desc: "买卖盘失衡" }
+  ];
+  const dataSources = [
+    { name: "交易所行情 · OKX / Binance", ok: exAccounts.some((a) => a.readEnabled), detail: exAccounts.length ? exAccounts.map((a) => `${a.exchange}${a.readEnabled ? "" : "(未连)"}`).join(" / ") : "未接入" },
+    { name: "实时 K 线", ok: markets.length > 0, detail: markets.length ? `${markets.length} 交易对 · ${lastMarket ? formatTime(lastMarket) : "—"}` : "未同步" },
+    { name: "账户快照(私有)", ok: Boolean(lastSnap), detail: lastSnap ? formatDateTime(lastSnap.createdAt) : "未同步" },
+    { name: "大盘 / 聪明钱 · OKX rubik", ok: Boolean(regime.global || smart.label), detail: regime.updatedAt ? formatTime(regime.updatedAt) : (regime.global ? "已取" : "未同步") },
+    { name: "全市场异动扫描", ok: Boolean(data.marketMovers?.scannedAt), detail: data.marketMovers?.scannedAt ? formatTime(data.marketMovers.scannedAt) : "未扫描" }
+  ];
+  const engRows = [
+    ["聪明钱偏多 / 偏空阈值", `≥ ${th.smartLong ?? "—"} / ≤ ${th.smartShort ?? "—"}`],
+    ["极端资金费(反向计分)", th.extremeFundingAbs != null ? `|>${(th.extremeFundingAbs * 100).toFixed(3)}%|` : "—"],
+    ["无 LLM 兜底默认", `止损 ${df.stopPct != null ? (df.stopPct * 100).toFixed(1) + "%" : "—"} · 盈亏比 ${df.rr ? df.rr.join("–") : "—"} · 杠杆 ≤ ${df.leverageCap ?? "—"}x · 单笔风险 ${df.riskPct ?? "—"}%`],
+    ["SRTL 结构审核质量闸", `最低盈亏比 ${eng.srtlMinR ?? "—"}R(不达标不下单)`],
+    ["决策 LLM 模型", eng.llmModel || "未配置"]
+  ];
+  const funnel = [
+    ["待历史验证", stageCount("compiled")],
+    ["待模拟", stageCount("validated")],
+    ["模拟中", stageCount("papering")],
+    ["待批准", stageCount("approving")],
+    ["已上岗", skills.filter((s) => s.status === "active").length]
+  ];
+
+  return (
+    <div className="termPage analysisRoom">
+      {!embedded && <TermHead title="分析作战室" code="ANALYSIS · ENGINE" sub="此刻真正在行情分析里起作用的引擎、数据源、信号、技能与工具，一页看清" />}
+
+      <div className="termGrid arGrid">
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel"><Gauge size={14} /> 决策融合打分 · 权重</span><span className="evBadge">确定性内核</span></div>
+          <div className="arWeights">
+            {WEIGHT_ROWS.map((r) => (
+              <div className="arWeightRow" key={r.k}>
+                <div className="arWLabel"><b>{r.label}</b><small>{r.desc}</small></div>
+                <div className="arWBar"><i style={{ width: `${(Number(w[r.k]) || 0) * 100}%` }} /></div>
+                <span className="mono arWPct">{((Number(w[r.k]) || 0) * 100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+          <div className="arNote">融合分 ≥ {th.longNet ?? "—"} → 做多候选 · ≤ {th.shortNet ?? "—"} → 做空候选 · 置信度 &lt; {th.minConfidence ?? "—"} 只观望</div>
+        </div>
+
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel"><Target size={14} /> 引擎参数 · 硬门槛</span></div>
+          <div className="mandList">
+            {engRows.map(([k, v]) => <div className="mandRow" key={k}><span className="mandK">{k}</span><b className="mono">{v}</b></div>)}
+          </div>
+        </div>
+
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel"><Database size={14} /> 数据源 · 接入与新鲜度</span></div>
+          <div className="mandList">
+            {dataSources.map((s) => (
+              <div className="mandRow" key={s.name}>
+                <span className="mandK">{s.ok ? <CheckCircle2 size={13} className="positive" /> : <AlertTriangle size={13} className="warn" />} {s.name}</span>
+                <b className={`mono ${s.ok ? "" : "warn"}`}>{s.detail}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="termCard">
+          <div className="kHead"><span className="secLabel"><TrendingUp size={14} /> 实时信号 · 此刻读数</span></div>
+          <div className="arSignal"><span>大盘 regime</span><b>{regime.global?.label || regime.global?.trend || "未同步"}</b></div>
+          <div className="arSignal"><span>聪明钱</span><b>{smart.label ? `${smart.label}${smart.ratio != null ? ` · ${smart.ratio}` : ""}` : "未同步"}</b></div>
+          <div className="arMovers">
+            {movers.length ? movers.map((m) => (
+              <span key={m.symbol} className={`arMover ${Number(m.changePct) >= 0 ? "pos" : "neg"}`}>{m.symbol} {Number(m.changePct) >= 0 ? "+" : ""}{m.changePct}%</span>
+            )) : <span className="arNote">异动扫描未同步</span>}
+          </div>
+        </div>
+
+        <div className="termCard arSpan">
+          <div className="kHead"><span className="secLabel"><BrainCircuit size={14} /> 知识技能 · 验证漏斗与进决策</span><span className="evBadge">{execSkills.length} 个进决策</span></div>
+          <div className="arFunnel">
+            {funnel.map(([label, n], i) => (
+              <React.Fragment key={label}>
+                <div className="arFunnelStep"><b className="mono">{n}</b><small>{label}</small></div>
+                {i < funnel.length - 1 && <ChevronRight size={13} className="arFunnelArrow" />}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="arNote">
+            {execSkills.length
+              ? <>进决策的技能(已上岗 / 小额试用)：{execSkills.slice(0, 8).map((s) => `${s.name}${s.status === "live_probation" ? "(试用)" : ""}`).join("、")}{execSkills.length > 8 ? ` 等 ${execSkills.length} 个` : ""}</>
+              : "当前没有已上岗或试用中的技能进入决策——技能需先跑完模拟前向验证并经你批准。其余都在上面的验证漏斗里流动。"}
+          </div>
+        </div>
+
+        <div className="termCard arSpan">
+          <div className="kHead"><span className="secLabel"><PlugZap size={14} /> Agent 工具目录 · 决策时可调用</span><span className="evBadge">{(eng.tools || []).length} 个</span></div>
+          <div className="arTools">
+            {(eng.tools || []).map((t) => (
+              <div className="arTool" key={t.name}>
+                <b className="mono">{t.name}</b>
+                <small>{t.description}</small>
+              </div>
+            ))}
+            {!(eng.tools || []).length && <div className="arNote">工具目录未同步</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AuditSystemPage({ data, action, ui, embedded = false }) {
   const traces = data.traces || [];
   const jobRuns = data.jobRuns || [];
