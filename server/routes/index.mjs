@@ -13,6 +13,7 @@ import { registerSecurityConfigRoutes } from "./securityConfig.mjs";
 import { registerPaymentRoutes } from "./payments.mjs";
 import { registerStrategyRoutes } from "./strategy.mjs";
 import { registerReviewRoutes } from "./review.mjs";
+import { registerAdminUserRoutes } from "./adminUsers.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -27,4 +28,5 @@ export function registerAllRoutes(app, ctx) {
   registerPaymentRoutes(app, ctx);
   registerStrategyRoutes(app, ctx);
   registerReviewRoutes(app, ctx);
+  registerAdminUserRoutes(app, ctx);
 }
