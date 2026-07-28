@@ -187,11 +187,16 @@ export function enabledSkillTools(db) {
   const native = SKILL_TOOLS.filter((t) => enabled.has(t.skillId)).map((t) => ({ name: t.toolName, description: t.description, schema: t.schema }));
   const trusted = (db.skills || [])
     .filter((s) => !s.native && s.trusted && ["通过", "需复核"].includes(s.scan))
-    .map((s) => ({
-      name: importedToolName(s),
-      description: `【导入·受信任·未经系统回测,当顾问参考】${s.name}：${s.description || "用户导入的分析/决策 skill,在沙箱内运行返回结果"}。它的信号只是参考,是否下单仍由你判断并过硬风控。`,
-      schema: { type: "object", properties: { symbol: { type: "string", description: "交易对,如 BTC/USDT" } } }
-    }));
+    .map((s) => {
+      // 与技能流水线策略同一层信任标注:转正(active)=已用真实成绩验证;试用(默认)=未验证参考。
+      const graduated = s.trustStatus === "active";
+      const tag = graduated ? "导入·已用真实成绩转正" : "导入·小额试用·未验证";
+      return {
+        name: importedToolName(s),
+        description: `【${tag},当顾问参考】${s.name}：${s.description || "用户导入的分析/决策 skill,在沙箱内运行返回结果"}。信号仅参考,是否下单仍由你判断并过硬风控。`,
+        schema: { type: "object", properties: { symbol: { type: "string", description: "交易对,如 BTC/USDT" } } }
+      };
+    });
   return [...native, ...trusted];
 }
 

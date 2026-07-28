@@ -1155,6 +1155,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         const board = data.strategyBoard || { rows: [], summary: {} };
         const dirCn = (d) => d === "short" ? "空" : d === "both" ? "双" : "多";
         const num = (v, suf = "") => v === null || v === undefined ? "—" : `${v}${suf}`;
+        const statusCn = { live_probation: "小额试用", active: "已转正", degraded: "已退役", adaptive: "自适应" };
         return (
           <>
             {/* 统一策略表现看板:三类在用策略(知识/自适应/受信任导入)一处看全、一处上下线 */}
@@ -1167,7 +1168,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                   {board.rows.map((row) => (
                     <div className="stratRow" key={row.id}>
                       <div className="stratName"><span className={`mDir ${row.direction === "short" ? "short" : "long"}`}>{dirCn(row.direction)}</span><b>{row.name}</b><small className="mono">{row.scope !== "-" ? `${row.scope}·${row.timeframe}` : ""}</small></div>
-                      <span className="stratSrc">{row.sourceLabel}</span>
+                      <span className="stratSrc">{row.sourceLabel}{statusCn[row.status] ? <i className="stratLc">{statusCn[row.status]}</i> : null}</span>
                       <span className="r mono">{row.live ? `${row.live.trades}笔 ${num(row.live.winRatePct, "%")}` : row.backtest ? `回测 ${num(row.backtest.expectancyR, "R")}` : "—"}</span>
                       <span className="r mono">{row.live ? num(row.live.profitFactor) : "—"}</span>
                       <span className={`r mono ${row.live && row.live.weightedPnl > 0 ? "pos" : row.live && row.live.weightedPnl < 0 ? "neg" : ""}`}>{row.live && row.live.weightedPnl != null ? `${row.live.weightedPnl > 0 ? "+" : ""}${row.live.weightedPnl}` : "—"}</span>
@@ -1176,6 +1177,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                         {row.controls.includes("retire") && <button className="dangerText" onClick={() => { if (window.confirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
                         {row.controls.includes("reactivate") && <button onClick={() => action(`/api/knowledge/skills/${row.id}/validate`, {})}>重验</button>}
                         {row.controls.includes("untrust") && <button className="dangerText" onClick={() => { if (window.confirm(`撤销信任「${row.name}」？将移出 AI 工具表。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
+                        {row.controls.includes("retrust") && <button onClick={() => { if (window.confirm(`重新信任「${row.name}」？将重新进入小额试用。`)) action(`/api/skills/${row.id}/trust`, {}); }}>重新信任</button>}
                         {!row.controls.length && <small>自动</small>}
                       </span>
                     </div>

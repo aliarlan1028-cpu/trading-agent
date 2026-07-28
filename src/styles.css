@@ -8000,7 +8000,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .stratName { min-width: 0; display: flex; gap: 5px; align-items: baseline; flex-wrap: wrap; }
 .stratName b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stratName small { color: #8a8171; }
-.stratSrc { font-size: 11px; color: #8a8171; }
+.stratSrc { font-size: 11px; color: #8a8171; display: flex; flex-direction: column; gap: 1px; }
+.stratLc { font-style: normal; font-size: 10px; color: #b6ab98; }
 .stratActs button { border: 1px solid var(--hairline); background: var(--surface-white); border-radius: 6px; padding: 2px 7px; font-size: 11px; cursor: pointer; color: #6b6357; }
 .stratActs button.dangerText { color: #bc4b34; }
 @media (max-width: 620px) { .stratHead { display: none; } .stratRow { grid-template-columns: 1fr auto; row-gap: 3px; } .stratRow .r { justify-self: start; text-align: left; } }

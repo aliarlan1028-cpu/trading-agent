@@ -1905,9 +1905,10 @@ app.post("/api/skills/:id/trust", requirePermission("skill.install"), (req, res)
   skill.trusted = true;
   skill.trustedAt = nowIso();
   skill.trustedBy = db.user?.name || "Owner";
+  skill.trustStatus = "live_probation"; // 与技能流水线同一生命周期:先进"小额试用",真实成绩好转正/差退役
   skill.status = "已启用";
-  appendAudit(db, `信任导入 Skill 为 AI 决策工具「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
-  persist(res, { message: `已信任「${skill.name}」,AI 可调用；将按真实成绩复盘,不达标自动撤信任`, skill });
+  appendAudit(db, `信任导入 Skill 为 AI 决策工具（进小额试用）「${skill.name}」`, skill.id, db.user?.name || "Owner", "warning");
+  persist(res, { message: `已信任「${skill.name}」,进入小额试用；AI 可调用，按真实成绩转正或自动退役`, skill });
 });
 
 app.post("/api/skills/:id/untrust", requirePermission("write:skills"), (req, res) => {

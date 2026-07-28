@@ -39,3 +39,16 @@ test("受信任 skill 实盘不达标自动撤信任+通知", () => {
   assert.equal(db.skills[0].trusted, false);
   assert.equal(db.notifications.length, 1);
 });
+
+test("受信任 skill 实盘达标自动转正(与流水线同生命周期)", () => {
+  const db = {
+    skills: [{ id: "sk_good", name: "好信号", native: false, trusted: true, trustStatus: "live_probation", status: "已启用" }],
+    tradePlans: Array.from({ length: 10 }, (_, i) => ({ id: `g${i}`, adoptedTrustedSkillIds: ["sk_good"] })),
+    fills: Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `g${i}`, realizedPnl: 3 })),
+    auditLogs: [], notifications: []
+  };
+  const r = refreshTrustedSkillMetrics(db);
+  assert.ok(r.graduated.includes("sk_good"));
+  assert.equal(db.skills[0].trustStatus, "active");
+  assert.equal(db.skills[0].trusted, true, "转正后仍受信任");
+});

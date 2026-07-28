@@ -70,7 +70,8 @@ function profileRows(db) {
 }
 
 function trustedRows(db) {
-  return (db.skills || []).filter((s) => !s.native && s.trusted).map((s) => {
+  // 与技能流水线策略同一生命周期:live_probation(试用)/active(转正)/degraded(退役)
+  return (db.skills || []).filter((s) => !s.native && (s.trusted || s.trustStatus === "degraded")).map((s) => {
     const m = s.liveMetrics || {};
     return {
       id: s.id,
@@ -80,7 +81,7 @@ function trustedRows(db) {
       direction: s.direction || "both",
       scope: "-",
       timeframe: "-",
-      status: s.status === "已启用" ? "trusted_active" : s.status,
+      status: s.trustStatus || "live_probation",
       since: s.trustedAt || null,
       live: {
         trades: Number(m.trades || 0),
@@ -92,7 +93,7 @@ function trustedRows(db) {
       backtest: null, // 导入 skill 无系统回测
       invocations: Number(s.invocations || 0),
       verdict: healthVerdict(m),
-      controls: ["untrust"]
+      controls: s.trustStatus === "degraded" ? ["retrust"] : ["untrust"]
     };
   });
 }
@@ -101,9 +102,10 @@ function trustedRows(db) {
 // 达阈值(盈亏因子<0.8 或连亏5,样本≥N)自动撤信任并通知(用户选:自动下线+通知)。
 export function refreshTrustedSkillMetrics(db, actor = "TrustedSkillGuard") {
   const trusted = (db.skills || []).filter((s) => !s.native && s.trusted);
-  if (!trusted.length) return { untrusted: [] };
+  if (!trusted.length) return { untrusted: [], graduated: [] };
   const closes = (db.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
   const untrusted = [];
+  const graduated = [];
   for (const skill of trusted) {
     const rows = [];
     for (const f of closes) {
@@ -125,17 +127,27 @@ export function refreshTrustedSkillMetrics(db, actor = "TrustedSkillGuard") {
       consecutiveLosses: streak,
       updatedAt: nowIso()
     };
-    const v = healthVerdict(skill.liveMetrics);
-    if (v.key === "retire") {
+    // 与技能流水线策略同一套生命周期:试用(live_probation)→真实成绩好则转正(active)、差则退役(degraded)
+    const m2 = skill.liveMetrics;
+    const poor = m2.trades >= MIN_JUDGE_TRADES && ((m2.profitFactor !== null && m2.profitFactor < POOR_PF) || streak >= POOR_STREAK);
+    const good = m2.trades >= MIN_JUDGE_TRADES && m2.weightedPnl > 0 && (m2.profitFactor === null || m2.profitFactor >= GOOD_PF) && streak < 3;
+    if (poor) {
+      skill.trustStatus = "degraded";
       skill.trusted = false;
       skill.untrustedAt = nowIso();
-      skill.untrustReason = `实盘不达标(PF ${skill.liveMetrics.profitFactor ?? "-"}/连亏 ${streak})`;
+      skill.untrustReason = `实盘不达标(PF ${m2.profitFactor ?? "-"}/连亏 ${streak})`;
       untrusted.push(skill.id);
-      appendAudit(db, `受信任导入 skill 自动撤信任「${skill.name}」：${skill.untrustReason}`, skill.id, actor, "warning");
-      createNotification(db, { eventType: "skill_untrust", severity: "warning", title: "导入策略自动下线", body: `${skill.name} 真实成绩不达标（${skill.untrustReason}），已自动撤信任、移出 AI 工具表。` });
+      appendAudit(db, `受信任导入 skill 自动退役「${skill.name}」：${skill.untrustReason}`, skill.id, actor, "warning");
+      createNotification(db, { eventType: "skill_untrust", severity: "warning", title: "导入策略自动下线", body: `${skill.name} 真实成绩不达标（${skill.untrustReason}），已自动退役、移出 AI 工具表。` });
+    } else if (good && skill.trustStatus !== "active") {
+      skill.trustStatus = "active";
+      skill.graduatedAt = nowIso();
+      graduated.push(skill.id);
+      appendAudit(db, `受信任导入 skill 转正「${skill.name}」：真实成绩达标(${m2.trades}笔 PF ${m2.profitFactor})`, skill.id, actor, "info");
+      createNotification(db, { eventType: "skill_graduate", severity: "info", title: "导入策略转正", body: `${skill.name} 真实成绩达标（${m2.trades} 笔 PF ${m2.profitFactor}），已转正为已验证策略。` });
     }
   }
-  return { untrusted };
+  return { untrusted, graduated };
 }
 
 export function buildStrategyBoard(db) {
