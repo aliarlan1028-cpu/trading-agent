@@ -1231,59 +1231,69 @@ export function LiveGrayPanel({ data, action, ui }) {
       maxNotionalUsdt: Number(liveForm.maxNotionalUsdt || 50)
     });
   }
+  const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
+  const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
+  const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
+  // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
+  const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
+  const gates = [
+    { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", short: "实盘总开关", hint: "勾选「实盘写入总开关」" },
+    { ok: Boolean(live.acknowledged), label: "风险确认", short: "风险确认", hint: "勾选「风险确认」" },
+    { ok: Boolean(live.orderWriteEnabled), label: "真实下单写入", short: "真实下单写入", hint: "勾选「真实下单写入」（批准被拦多半缺它）" },
+    { ok: Boolean(live.grayEnabled), label: "小额灰度策略", short: "小额灰度", hint: "勾选「启用小额灰度」并设额度/币种" },
+    { ok: mandateOk, label: "有效授权 Mandate", short: "有效授权", hint: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
+    { ok: snapshotOk, label: "账户快照", short: "账户快照", hint: "配置交易所后同步一次私有账户" },
+    { ok: withdrawOk, label: "API 无提现权限已确认", short: "无提现权限确认", hint: "系统设置里确认该 API Key 无提现权限" },
+    { ok: !data.system?.killSwitch, label: "未熔断", short: "未熔断", hint: "解除顶部「熔断」" },
+    { ok: auditOk, label: "审计链正常", short: "审计链正常", hint: "审计链异常需先修复" }
+  ];
+  const pass = gates.filter((g) => g.ok).length;
+  const failing = gates.filter((g) => !g.ok);
+  const marks = "①②③④⑤⑥⑦⑧⑨";
+  const hintLine = failing.length
+    ? `还差 ${failing.length} 项 → ` + failing.map((g, i) => `${marks[i] || "·"}${g.hint}`).join("；")
+    : "全部就绪，批准后将真实下单。";
   return (
           <form className="panelForm liveGrayForm" onSubmit={saveLive}>
-                        {(() => {
-              const snapshotOk = (data.accountSnapshots || []).some((s) => s.status === "ok");
-              const mandateOk = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
-              const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
-              // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
-              const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
-              const gates = [
-                { ok: Boolean(live.liveTradingEnabled), label: "实盘写入总开关", hint: "勾选下方 LIVE_TRADING_ENABLED" },
-                { ok: Boolean(live.acknowledged), label: "风险确认", hint: "勾选下方「风险确认」" },
-                { ok: Boolean(live.orderWriteEnabled), label: "真实下单写入", hint: "勾选下方「真实下单写入」——批准被拦时多半就是缺这个" },
-                { ok: Boolean(live.grayEnabled), label: "小额灰度策略", hint: "勾选下方「启用小额灰度」并设额度/币种" },
-                { ok: mandateOk, label: "有效授权 Mandate", hint: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
-                { ok: snapshotOk, label: "账户快照", hint: "配置交易所后同步一次私有账户" },
-                { ok: withdrawOk, label: "API 无提现权限已确认", hint: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
-                { ok: !data.system?.killSwitch, label: "未熔断", hint: "解除顶部「熔断」" },
-                { ok: auditOk, label: "审计链正常", hint: "审计链异常需先修复" }
-              ];
-              const pass = gates.filter((g) => g.ok).length;
-              return (
-                <div className="liveReadiness">
-                  <div className="liveReadinessHead">
-                    <span>实盘下单就绪清单（全部就绪后批准才会真实下单，否则只干跑）</span>
-                    <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} 就绪</b>
-                  </div>
-                  <div className="liveGateList">
-                    {gates.map((g) => (
-                      <div key={g.label} className={g.ok ? "liveGate ok" : "liveGate"}>
-                        {g.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                        <span>{g.label}</span>
-                        {!g.ok && <small>{g.hint}</small>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="switchGrid">
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /> LIVE_TRADING_ENABLED</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /> 风险确认</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /> 真实下单写入</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /> 启用小额灰度</label>
-              <label className="checkboxLabel"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /> 保留人工确认（取消勾选＝授权与额度内全自动下单）</label>
+            {/* 就绪清单：9 项压成一排彩色胶囊 + 一句"还差什么" */}
+            <div className="lgReady">
+              <div className="lgReadyHead">
+                <span>实盘下单就绪清单 · 全绿才会真实下单，否则只干跑</span>
+                <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} 就绪</b>
+              </div>
+              <div className="lgGates">
+                {gates.map((g) => (
+                  <span key={g.label} className={`lgGate ${g.ok ? "ok" : "bad"}`} title={g.ok ? g.label : g.hint}>
+                    {g.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{g.short}
+                  </span>
+                ))}
+              </div>
+              <p className={`lgHint ${failing.length ? "" : "ok"}`}>{hintLine}</p>
+            </div>
+            {/* 三道实盘写入闸：缺一则只干跑不下真单 */}
+            <div className="lgGroup">
+              <div className="lgGroupHead"><span className="dot" /> 三道实盘写入闸 · 缺一则只干跑不下真单</div>
+              <div className="lgSwitches">
+                <label className="lgSw"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /><span>实盘写入总开关（LIVE_TRADING_ENABLED）</span></label>
+                <label className="lgSw"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /><span>风险确认<span className="sub">我已知晓实盘会用真实资金下单</span></span></label>
+                <label className="lgSw"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /><span>真实下单写入<span className="sub">关掉时即使批准也只记录不真发单</span></span></label>
+              </div>
+            </div>
+            {/* 灰度与自动化 */}
+            <div className="lgGroup">
+              <div className="lgGroupHead"><span className="dot" /> 灰度与自动化</div>
+              <div className="lgSwitches">
+                <label className="lgSw"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /><span>启用小额灰度<span className="sub">先用很小额度跑真实单验证策略</span></span></label>
+                <label className="lgSw"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /><span>保留人工确认<span className="sub">取消勾选＝授权与额度内全自动下单</span></span></label>
+              </div>
             </div>
             {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
               <div className="autoTradeBanner on">🤖 全自动执行已开启：AI 自主巡检发现符合授权的机会时，会在「单笔灰度额度」内自动下单，超额度仍转你人工批准。</div>
             ) : (
-              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开启实盘写入三道闸 + 取消勾选「保留人工确认」。</div>
+              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开齐三道闸 + 取消勾选「保留人工确认」。</div>
             )}
-            <label>单笔灰度额度 USDT（全自动下单的单笔上限）<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /></label>
+            <label className="lgAmt">单笔灰度额度<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /> USDT · 全自动下单的单笔上限</label>
             <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
           </form>
-        
   );
 }

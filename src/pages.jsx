@@ -439,76 +439,78 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
       {/* 系统监控明细 —— 大盘/聪明钱/波动预算等（折叠，功能保留）*/}
       <details className="cpCard cpDetails cpMoreDetails">
         <summary><span className="cpSummaryTitle"><Eye size={15} /> 系统监控明细（AI 在盯，你平时不用看）</span><ChevronDown size={14} className="cpChevron" /></summary>
-        <div className="cockpitGrid">
-          <Card className="cpCard">
-            <SectionTitle icon={Gauge} title="账户健康" />
-            <div className="healthGrid tight">
-              {accountHealthRows.map(([label, value, tone]) => <div key={label}><span>{label}</span><strong>{value}</strong><StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "高危" : "待处理"}</StatusBadge></div>)}
+        <div className="monPanel">
+          {/* ① 账户与风险 —— 账户健康 + 风险承压合并成一组扁平读数 */}
+          <div className="monGroup">
+            <div className="monGroupHead"><span className="dot" /> 账户与风险</div>
+            <div className="monMetrics">
+              {accountHealthRows.map(([label, value, tone]) => (
+                <span className="monMetric" key={label}><span className="k">{label}</span><span className={`v ${tone === "ok" ? "pos" : tone === "danger" ? "neg" : tone === "warning" ? "warn" : ""}`}>{value}</span></span>
+              ))}
+              <span className="monMetric"><span className="k">今日亏损预算</span><span className="v">{data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`}</span></span>
+              <span className="monMetric"><span className="k">持仓/委托</span><span className="v">{positions.length} / {data.orders?.length || 0}</span></span>
+              <span className="monMetric"><span className="k">系统状态</span><span className="v">{systemStatus(data).label}</span></span>
             </div>
-          </Card>
+          </div>
 
-          <Card className="cpCard">
-            <SectionTitle icon={Target} title="风险承压" />
-            <div className="qualityGrid">
-              <RiskLine label="今日亏损预算" value={data.system.remainingDailyLossUsdt === null || data.system.remainingDailyLossUsdt === undefined ? "未授权" : `${displayMoney(data.system.remainingDailyLossUsdt)} USDT`} />
-              <RiskLine label="持仓数量" value={`${positions.length} 个`} />
-              <RiskLine label="当前委托" value={`${data.orders?.length || 0} 个`} />
-              <RiskLine label="系统状态" value={systemStatus(data).label} />
+          {/* ② 合约微观结构 */}
+          <div className="monGroup">
+            <div className="monGroupHead"><span className="dot" /> 合约微观结构 · {market.symbol || "BTC/USDT"}<button className="iconButton monRefresh" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={12} /></button></div>
+            <div className="monMetrics">
+              <span className="monMetric"><span className="k term" title="永续合约里多头付给空头（或反之）的周期费用。绝对值越大，说明多空越拥挤，反向挤压风险越高。">资金费率</span><span className={`v ${Number(market.fundingRate) >= 0 ? "pos" : "neg"}`}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</span></span>
+              <span className="monMetric"><span className="k term" title="未平仓合约的总量（Open Interest）。OI 上升且价格同向，说明趋势有真金白银承接。">未平仓量</span><span className="v">{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</span></span>
+              <span className="monMetric"><span className="k term" title="订单簿里买单量占买卖总量的比例。大于 50% 表示买盘占优，小于 50% 卖盘占优。">买盘占比</span><span className={`v ${Number(market.bookImbalancePct) >= 50 ? "pos" : "neg"}`}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</span></span>
+              <span className="monMetric"><span className="k">24h</span><span className={`v ${Number(market.changePct) >= 0 ? "pos" : "neg"}`}>{displayPct(market.changePct)}</span></span>
             </div>
-          </Card>
+          </div>
 
-          <Card className="cpCard">
-            <SectionTitle icon={Activity} title="合约微观结构" action={<button className="iconButton" title="刷新微观结构" onClick={() => action(`/api/exchange/OKX/microstructure?symbol=${encodeURIComponent(market.symbol || "BTC/USDT")}`, {}, "GET")}><RefreshCw size={14} /></button>} />
-            <div className="microGrid">
-              <div><span className="term" title="永续合约里多头付给空头（或反之）的周期费用。绝对值越大，说明多空越拥挤，反向挤压风险越高。">资金费率</span><strong className={Number(market.fundingRate) >= 0 ? "positive" : "negative"}>{market.fundingRate === null || market.fundingRate === undefined ? "未同步" : `${Number(market.fundingRate).toFixed(4)}%`}</strong></div>
-              <div><span className="term" title="未平仓合约的总量（Open Interest）。OI 上升且价格同向，说明趋势有真金白银承接。">未平仓量 OI</span><strong>{market.openInterest ? formatMoney(market.openInterest, 0) : "未同步"}</strong></div>
-              <div><span className="term" title="订单簿里买单量占买卖总量的比例。大于 50% 表示买盘占优，小于 50% 卖盘占优。">买盘占比</span><strong className={Number(market.bookImbalancePct) >= 50 ? "positive" : "negative"}>{market.bookImbalancePct === null || market.bookImbalancePct === undefined ? "未同步" : `${market.bookImbalancePct}%`}</strong></div>
-              <div><span>24h 涨跌</span><strong className={Number(market.changePct) >= 0 ? "positive" : "negative"}>{displayPct(market.changePct)}</strong></div>
-            </div>
-          </Card>
-
-          <Card className="cpCard">
-            <SectionTitle icon={Globe2} title="大盘与聪明钱" action={<button className="iconButton" title="刷新大盘与聪明钱" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={14} /></button>} />
+          {/* ③ 大盘与聪明钱 */}
+          <div className="monGroup">
+            <div className="monGroupHead"><span className="dot" /> 大盘与聪明钱<button className="iconButton monRefresh" title="刷新大盘与聪明钱" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={12} /></button></div>
             {hasRegime ? (
               <>
-                <div className="microGrid">
-                  <div><span>BTC 主导率</span><strong>{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</strong></div>
-                  <div><span>总市值 24h</span><strong className={gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "positive" : "negative"}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</strong></div>
-                  <div><span>恐惧贪婪</span><strong className={gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "negative" : gm.fearGreed.value >= 75 ? "warning" : ""}>{gm.fearGreed ? `${gm.fearGreed.value} · ${gm.fearGreed.label}` : "未取"}</strong></div>
-                  {/* 着色与全端 smartMoneyBias 同阈值（1.05/0.95），不再用 >=1 二分与快照卡自相矛盾 */}
-                  <div><span>大户持仓多空比</span><strong className={(() => { const t = smartMoneyBias(sm.topTraderLongShortRatio).tone; return t === "pos" ? "positive" : t === "neg" ? "negative" : ""; })()}>{sm.topTraderLongShortRatio ?? "未取"}</strong></div>
-                  <div><span>散户多空比</span><strong>{sm.retailLongShortRatio ?? "未取"}</strong></div>
-                  <div><span>主动买卖比</span><strong className={sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "positive" : "negative"}>{sm.takerBuySellRatio ?? "未取"}</strong></div>
-                  <div><span>近期爆仓 多/空</span><strong className={sm.liquidations == null ? "" : sm.liquidations.dominantSide === "short" ? "positive" : sm.liquidations.dominantSide === "long" ? "negative" : ""}>{sm.liquidations ? `${sm.liquidations.longLiqCount} / ${sm.liquidations.shortLiqCount}` : "未取"}</strong></div>
+                <div className="monMetrics">
+                  <span className="monMetric"><span className="k">BTC主导率</span><span className="v">{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</span></span>
+                  <span className="monMetric"><span className="k">总市值24h</span><span className={`v ${gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "pos" : "neg"}`}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</span></span>
+                  <span className="monMetric"><span className="k">恐惧贪婪</span><span className={`v ${gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "neg" : gm.fearGreed.value >= 75 ? "warn" : ""}`}>{gm.fearGreed ? `${gm.fearGreed.value}·${gm.fearGreed.label}` : "未取"}</span></span>
+                  {/* 着色与全端 smartMoneyBias 同阈值（1.05/0.95） */}
+                  <span className="monMetric"><span className="k">大户多空</span><span className={`v ${(() => { const t = smartMoneyBias(sm.topTraderLongShortRatio).tone; return t === "pos" ? "pos" : t === "neg" ? "neg" : ""; })()}`}>{sm.topTraderLongShortRatio ?? "未取"}</span></span>
+                  <span className="monMetric"><span className="k">散户多空</span><span className="v">{sm.retailLongShortRatio ?? "未取"}</span></span>
+                  <span className="monMetric"><span className="k">主动买卖</span><span className={`v ${sm.takerBuySellRatio == null ? "" : sm.takerBuySellRatio >= 1 ? "pos" : "neg"}`}>{sm.takerBuySellRatio ?? "未取"}</span></span>
+                  <span className="monMetric"><span className="k">爆仓多/空</span><span className={`v ${sm.liquidations == null ? "" : sm.liquidations.dominantSide === "short" ? "pos" : sm.liquidations.dominantSide === "long" ? "neg" : ""}`}>{sm.liquidations ? `${sm.liquidations.longLiqCount} / ${sm.liquidations.shortLiqCount}` : "未取"}</span></span>
                 </div>
-                {(gm.interpretation || sm.interpretation) && <p className="regimeReadout">{[gm.interpretation, sm.ok ? sm.interpretation : null].filter(Boolean).join("；")}</p>}
+                {(gm.interpretation || sm.interpretation) && <p className="monRead">{[gm.interpretation, sm.ok ? sm.interpretation : null].filter(Boolean).join("；")}</p>}
               </>
             ) : (
-              <div className="emptyPanel">点右上角刷新：拉取 BTC 主导率、总市值趋势、恐惧贪婪与大户/散户多空比，让 Agent 先判大盘再看个币。</div>
+              <p className="monRead">点右上角刷新：拉取 BTC 主导率、总市值趋势、恐惧贪婪与大户/散户多空比，让 Agent 先判大盘再看个币。</p>
             )}
-          </Card>
+          </div>
 
-          <Card className="cpCard">
-            <SectionTitle icon={Gauge} title="组合波动预算" />
+          {/* ④ 组合波动预算 */}
+          <div className="monGroup">
+            <div className="monGroupHead"><span className="dot" /> 组合波动预算</div>
             {pr.portfolioVolPct !== null && pr.portfolioVolPct !== undefined ? (
               <>
-                <div className="microGrid">
-                  <div><span>组合日波动</span><strong>{pr.portfolioVolPct}%</strong></div>
-                  <div><span>波动预算</span><strong>{pr.budgetPct}%</strong></div>
-                  <div><span>预算使用</span><strong className={pr.utilizationPct > 100 ? "negative" : pr.utilizationPct > 80 ? "warning" : "positive"}>{pr.utilizationPct}%</strong></div>
-                  <div><span>持仓数</span><strong>{pr.positions.length}</strong></div>
+                <div className="monMetrics">
+                  <span className="monMetric"><span className="k">组合日波动</span><span className="v">{pr.portfolioVolPct}%</span></span>
+                  <span className="monMetric"><span className="k">波动预算</span><span className="v">{pr.budgetPct}%</span></span>
+                  <span className="monMetric"><span className="k">预算使用</span><span className={`v ${pr.utilizationPct > 100 ? "neg" : pr.utilizationPct > 80 ? "warn" : "pos"}`}>{pr.utilizationPct}%</span></span>
+                  <span className="monMetric"><span className="k">持仓数</span><span className="v">{pr.positions.length}</span></span>
                 </div>
-                <ProgressBar value={Math.min(100, pr.utilizationPct || 0)} tone={pr.utilizationPct > 100 ? "red" : "blue"} />
+                <div className="monBar"><i style={{ width: `${Math.min(100, pr.utilizationPct || 0)}%`, background: pr.utilizationPct > 100 ? "#bc4b34" : "#e07a3f" }} /></div>
               </>
             ) : (
-              <div className="emptyPanel">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后显示组合波动与预算使用。"}</div>
+              <p className="monRead">{pr.status === "no_equity" ? "同步私有账户净值后，按组合波动预算给每个仓位定量。" : "暂无持仓；开仓后显示组合波动与预算使用。"}</p>
             )}
-          </Card>
+          </div>
 
-          <Card className="cpCard">
-            <SectionTitle icon={ListChecks} title="建议下一步动作" />
-            <div className="actionList">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
-          </Card>
+          {/* ⑤ 建议下一步动作 */}
+          {actionItems.length > 0 && (
+            <div className="monGroup">
+              <div className="monGroupHead"><span className="dot" /> 建议下一步动作</div>
+              <div className="monActions">{actionItems.map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+            </div>
+          )}
         </div>
       </details>
     </div>
@@ -852,7 +854,8 @@ function HelpBadge() { return <span className="kHelpDot">?</span>; }
 
 function KnowledgeOnboarding({ funnelCounts, sourceCount, liveMode, ui, action, goMethods, goSkills }) {
   const KEY = "knowGuideCollapsed";
-  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } });
+  // 有知识源就默认收起引导（不再用三张大卡霸占首屏）；用户显式展开/收起后记住其选择。
+  const [collapsed, setCollapsed] = useState(() => { try { const v = localStorage.getItem(KEY); if (v !== null) return v === "1"; } catch {} return sourceCount > 0; });
   const toggle = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem(KEY, n ? "1" : "0"); } catch {} return n; });
 
   // 小额验证模式:草案→编译上岗试用→真实成绩转正;经典模式:草案→编译验证→人工批准。
@@ -980,30 +983,24 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         goSkills={() => goKnowledge("skills")}
       />}
 
-      {/* 漏斗状态栏：一眼看清整条流水线卡在哪 */}
-      {domain === "knowledge" && <div className="kFunnel">
-        {FUNNEL.map((f, i) => (
-          <React.Fragment key={f.key}>
-            {i > 0 && <span className="kFunnelArrow">›</span>}
-            <button className={`kFunnelStage ${tab === f.tab && (f.key === "draft" || tab === "skills") ? "on" : ""}`} onClick={() => setTab(f.tab)}>
-              <b className="mono">{funnelCounts[f.key]}</b>
-              <span>{f.label}</span>
-            </button>
-          </React.Fragment>
-        ))}
-        <div className="kFunnelSide">
-          <span className="kFunnelKv"><b className="mono">{sourceCount}</b> 知识源</span>
-          <span className="kFunnelKv"><b className="mono">{approvedRuleCount}/{ruleCount}</b> 已批准纪律</span>
+      {/* 合并工具栏：左＝子 Tab 导航，右＝流水线阶段读数（可点跳转）+ 来源书筛选。
+          原来「漏斗状态栏」和「Tab」是两条独立满宽 bar、功能重叠，现压成一条。 */}
+      {domain === "knowledge" && <div className="kBar">
+        <div className="kBarTabs">
+          {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n]) => (
+            <button key={k} className={`kBarTab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{label} <span className="n mono">{n}</span></button>
+          ))}
         </div>
-      </div>}
-
-      {/* 知识板块的子 Tab（外部能力已提升为平级大区，不再挤在这排） */}
-      {domain === "knowledge" && <div className="kTabs">
-        {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label} <span className="kTabN mono">{n}</span></button>
-        ))}
+        <div className="kBarPipe" title="整条流水线卡在哪，点数字跳到对应清单">
+          {FUNNEL.map((f, i) => (
+            <React.Fragment key={f.key}>
+              {i > 0 && <span className="kPipeArrow">›</span>}
+              <button className="kPipeStage" onClick={() => setTab(f.tab)}><b className="mono">{funnelCounts[f.key]}</b>{f.label}</button>
+            </React.Fragment>
+          ))}
+        </div>
         {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
-          <select className="kSrcFilter" value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)}>
+          <select className="kBarSrc" value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)}>
             <option value="">全部来源书</option>
             {sourceTitles.map((t) => <option key={t} value={t}>《{t}》</option>)}
           </select>
@@ -1271,27 +1268,29 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         );
       })()}
 
-      {/* 知识源常驻精简条：导入入口 + 最近几本，点开看全部（仅知识板块） */}
-      {domain === "knowledge" && <div className="termCard kSourceBar">
-        <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
-        <div className="kSourceChips">
-          {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
-          <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
-        </div>
-      </div>}
-
-      {domain === "knowledge" && <div className="termCard">
-        <div className="kHead">
-          <span className="secLabel">本次决策引用知识</span>
-          <div className="kRagBar">
-            <input value={rag} onChange={(e) => setRag(e.target.value)} placeholder="RAG 检索：例如 CPI 前后如何控仓？" onKeyDown={(e) => { if (e.key === "Enter" && rag.trim()) action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 }); }} />
-            <button className="termMiniBtn dark" disabled={!rag.trim()} onClick={() => action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 })}><Search size={13} /> 检索</button>
+      {/* 底部合并页脚：知识源常驻条 + RAG/引用 并排两栏（窄屏自动竖排），不再各占一张满宽卡 */}
+      {domain === "knowledge" && <div className="kFoot">
+        <div className="termCard kSourceBar">
+          <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
+          <div className="kSourceChips">
+            {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
+            <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
           </div>
         </div>
-        <div className="kCite">
-          <div className="kCiteHead"><span>知识 / 规则 / 技能</span><span>类型</span><span>引用片段</span><span className="r">置信度</span><span className="r">来源</span></div>
-          {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span><span className="r">{c.source}</span></div>)}
-          {!cites.length && <div className="emptyPanel">尚无引用；发起一次 RAG 检索或对话后显示本次决策引用的知识片段</div>}
+
+        <div className="termCard">
+          <div className="kHead">
+            <span className="secLabel">本次决策引用知识</span>
+            <div className="kRagBar">
+              <input value={rag} onChange={(e) => setRag(e.target.value)} placeholder="RAG 检索：例如 CPI 前后如何控仓？" onKeyDown={(e) => { if (e.key === "Enter" && rag.trim()) action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 }); }} />
+              <button className="termMiniBtn dark" disabled={!rag.trim()} onClick={() => action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 })}><Search size={13} /> 检索</button>
+            </div>
+          </div>
+          <div className="kCite">
+            <div className="kCiteHead"><span>知识 / 规则 / 技能</span><span>类型</span><span>引用片段</span><span className="r">置信度</span><span className="r">来源</span></div>
+            {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span><span className="r">{c.source}</span></div>)}
+            {!cites.length && <div className="emptyPanel">尚无引用；发起一次 RAG 检索或对话后显示本次决策引用的知识片段</div>}
+          </div>
         </div>
       </div>}
     </div>
@@ -1448,6 +1447,7 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
   const latencies = traces.map((trace) => Number(trace.latencyMs)).filter(Number.isFinite).sort((a, b) => a - b);
   const p95 = latencies.length ? formatDuration(latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]) : "暂无数据";
   const incidents = [...(data.riskIncidents || []), ...(data.alerts || [])].slice(0, 5);
+  const openIncidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const cutoff = traceWindow === "24h" ? Date.now() - 24 * 60 * 60 * 1000 : 0;
   const filteredTraces = traces.filter((trace) => {
     const withinWindow = !cutoff || new Date(trace.createdAt).getTime() >= cutoff;
@@ -1474,6 +1474,17 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
         <MetricCard icon={Zap} label="任务引擎" value={String(data.tasks?.filter((task) => task.enabled).length || 0)} sub="启用任务" />
         <MetricCard icon={RefreshCw} label="交易所同步" value={`${data.exchangeAccounts?.filter((item) => item.readEnabled).length || 0} / ${data.exchangeAccounts?.length || 0}`} sub="已配置只读账户" />
         <MetricCard icon={Shield} label="审计链" value={auditOk ? "正常" : "异常"} sub={`${data.auditLogs?.length || 0} 条日志`} />
+      </div>
+
+      {/* 手动操作条：本页 95% 是只读的观测/审计展示，真正能你手动触发的操作集中在这里，不再散落/隐藏。 */}
+      <div className="auditActions">
+        <span className="auditActionsHint"><Eye size={13} /> 本页主要是<b>只读观测与审计</b>——你能手动触发的操作：</span>
+        <div className="auditActionsBtns">
+          <button onClick={() => action("/api/reconciler/run", {})}><RefreshCw size={13} /> 立即对账</button>
+          <button onClick={() => { if (window.confirm("生成一份系统数据备份？（写入服务器 data 备份目录，不含明文密钥）")) action("/api/system/backup", {}); }}><Database size={13} /> 系统备份</button>
+          {openIncidents > 0 && <button className="warn" onClick={() => { if (window.confirm(`把 ${openIncidents} 条未处理风险事件全部标记为已处理？`)) action("/api/risk/incidents/close-all", {}); }}><CheckCircle2 size={13} /> 全部标记已处理（{openIncidents}）</button>}
+          <button onClick={() => ui.openPanel("auditChain")}><Shield size={13} /> 完整审计链</button>
+        </div>
       </div>
 
       <div className="termGrid auditTop">
