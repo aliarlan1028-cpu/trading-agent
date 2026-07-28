@@ -1183,6 +1183,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
                       <div className="stratChips">
                         <span className="stratChip">{row.sourceLabel}</span>
                         {statusCn[row.status] && <span className="stratChip lc">{statusCn[row.status]}</span>}
+                        {row.adopted && <span className={`stratChip ${row.adopted.count > 0 ? "use" : ""}`} title={row.adopted.lastAt ? `最近被采纳 ${formatTime(row.adopted.lastAt)}` : "AI 尚未在真实计划里采纳它"}>被采纳 {row.adopted.count} 次{row.adopted.count > 0 && row.adopted.lastAt ? ` · 最近 ${formatTime(row.adopted.lastAt)}` : ""}</span>}
                       </div>
                       <div className="stratMetrics">
                         {metrics.map(([k, v]) => (

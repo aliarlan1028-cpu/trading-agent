@@ -25,9 +25,12 @@ export function healthVerdict(m) {
 
 function knowledgeRows(db) {
   const shown = new Set(["active", "live_probation", "degraded"]);
+  const invocations = db.knowledge?.skillInvocations || [];
   return (db.knowledge?.tradingSkills || []).filter((s) => shown.has(s.status)).map((s) => {
     const m = s.liveMetrics || {};
+    const inv = invocations.filter((i) => i.skillId === s.id);
     return {
+      adopted: { count: inv.length, lastAt: inv[0]?.createdAt || null },
       id: s.id,
       kind: "knowledge",
       name: s.name,
@@ -64,6 +67,7 @@ function profileRows(db) {
     since: p.updatedAt || p.createdAt || null,
     live: null, // 画像来自寻优/前向,不是逐笔实盘归因
     backtest: { expectancyR: p.oosScore ?? null, confidence: p.confidence ?? null },
+    adopted: null, // 画像为顾问注入,不逐笔绑定归因
     verdict: { key: "adaptive", label: "自动换代", tone: "info" },
     controls: [] // 系统自动换代,不手动上下线
   }));
@@ -91,7 +95,7 @@ function trustedRows(db) {
         consecutiveLosses: Number(m.consecutiveLosses || 0)
       },
       backtest: null, // 导入 skill 无系统回测
-      invocations: Number(s.invocations || 0),
+      adopted: { count: Number(s.invocations || 0), lastAt: s.lastCalledAt || null },
       verdict: healthVerdict(m),
       controls: s.trustStatus === "degraded" ? ["retrust"] : ["untrust"]
     };

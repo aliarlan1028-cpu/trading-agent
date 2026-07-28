@@ -8001,6 +8001,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .stratChips { display: flex; gap: 5px; flex-wrap: wrap; }
 .stratChip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: #f3ece1; color: #8a8171; }
 .stratChip.lc { background: #eef3ee; color: #5f8a63; }
+.stratChip.use { background: #fbeeda; color: #b8551f; }
 .stratMetrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 0; border-top: 1px solid #f3ece1; border-bottom: 1px solid #f3ece1; }
 .stratMetrics > div { display: grid; gap: 2px; }
 .stratMetrics span { font-size: 10px; color: #8a8171; }
