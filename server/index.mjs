@@ -11,7 +11,7 @@ import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } 
 import { cancelWatch, runWatchSentinel } from "./watchSentinel.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
-import { activateMandate, changeAgentRunStatus, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
+import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -800,6 +800,8 @@ app.post("/api/system/autonomy", (req, res) => {
 });
 
 app.get("/api/overview", (_req, res) => {
+  // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
+  if (expireStalePlans(db).length) saveDb(db);
   // 实时计算 API 健康度（原来是固定种子值 "待配置"，配置后也不变，属显示 bug）。
   {
     const cfgStatus = getConfigStatus(db);

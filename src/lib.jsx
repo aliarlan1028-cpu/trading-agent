@@ -127,6 +127,7 @@ export function humanize(value, fallback = "-") {
     risk_rejected: "风控拒绝",
     awaiting_approval: "等待确认",
     approved: "已批准",
+    expired: "已过期作废",
     draft: "草案",
     monitoring: "持仓监控",
     submitted: "已提交",

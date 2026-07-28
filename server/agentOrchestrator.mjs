@@ -5,6 +5,30 @@ import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
 
+// 计划陈旧作废:按周期推导 TTL,超时未成交的 awaiting_approval/approved 计划置为 expired。
+// 解决"隔夜旧计划一直挂在当前计划卡、与'暂无待处理计划'自相矛盾",也防止被后台巡检误执行。
+const PLAN_TTL_HOURS = { "1m": 1, "5m": 2, "15m": 3, "1h": 6, "4h": 24, "1d": 72 };
+export function expireStalePlans(db, actor = "PlanExpiry") {
+  const now = Date.now();
+  const expired = [];
+  for (const p of db.tradePlans || []) {
+    if (!["awaiting_approval", "approved"].includes(p.status)) continue;
+    if (p.executionOrderId || p.executedAt) continue; // 已成交/已下单的不算陈旧
+    const created = new Date(p.createdAt || p.approvedAt || 0).getTime();
+    if (!Number.isFinite(created) || created <= 0) continue;
+    const ttlH = PLAN_TTL_HOURS[p.timeframe] || 6;
+    const ageH = (now - created) / 3_600_000;
+    if (ageH > ttlH) {
+      p.status = "expired";
+      p.expiredAt = nowIso();
+      p.expireReason = `${p.timeframe || "未标周期"}计划超 ${ttlH}h 未成交，自动作废（已挂约 ${Math.round(ageH)}h）`;
+      appendAudit(db, `交易计划自动作废「${p.symbol}」：${p.expireReason}`, p.id, actor, "info");
+      expired.push(p.id);
+    }
+  }
+  return expired;
+}
+
 export function getAgentStatus(db) {
   const activeMandate = findActiveMandate(db);
   const latestRun = db.agentRuns?.[0] || null;

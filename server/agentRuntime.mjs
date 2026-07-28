@@ -1,4 +1,5 @@
 import { activeProvider, runAgentChat } from "./agentChat.mjs";
+import { expireStalePlans } from "./agentOrchestrator.mjs";
 import { refreshAccounting } from "./accounting.mjs";
 import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime } from "./marketSignals.mjs";
@@ -15,6 +16,8 @@ import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
 export async function runAgentCycle(db, payload = {}, saveDb) {
   const mandate = activeMandate(db);
   const provider = activeProvider();
+  // 巡检开始先作废陈旧计划,避免后台把隔夜旧计划当成"待执行"误下单。
+  expireStalePlans(db);
   const awaitingPlan = (db.tradePlans || []).find((plan) => plan.status === "awaiting_approval");
 
   // 前置巡检：同步授权交易对行情 + 刷新真实核算
