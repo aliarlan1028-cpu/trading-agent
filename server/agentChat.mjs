@@ -4,7 +4,7 @@ import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEv
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { bindKnowledgeSkillsToPlan, createSkillFromIdea, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { fetchTickerQuiet, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { deterministicDecision } from "./deterministicDecision.mjs";
@@ -355,6 +355,8 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 高周期结构优先：方向必须与 4H 结构一致（4H BOS 定方向）。不要仅凭单根低周期(1m/5m/15m)放量 K 线就逆着大结构开仓——低周期单根放量+整数关口，多半是流动性扫荡(先砸后拉/先拉后砸)而不是真突破。
    - 止损别扎在猎杀区：止损不要正好压在破位/突破那根 K 线的最高/最低点上方(下方)一点点——那里止损最密集、最容易被"扫损"；要放到结构真正失效位之外，给足缓冲。
    - 记住这个反例：曾对 BTC 在 15m 单根放量砸穿整数关口后立刻做空、止损压在破位高点上方、RR 仅 1.5，结果价格反向扫掉上方止损、计划失败。"低周期逆结构 + 紧止损 + 低 RR"是典型错误组合，别再犯。
+12. 合约下单口径【硬事实·禁止手算】：OKX/币安永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币（BTC-USDT-SWAP 每张 0.01 BTC）；最小下单量是 minSz 张——BTC 为 0.01 张 = 0.0001 BTC ≈ 6 USDT 名义、5x 约 1.3 USDT 保证金，**不是** 0.01 BTC(那是整整 1 张、≈640 USDT)。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
+   - 【绝对禁止】把「0.01 张」当成「0.01 币」、或自己手算合约最小值/名义/保证金，更不能据此断言「账户太小、即使批准也会被交易所拒」——这几乎总是错的(极易算成 100 倍)。真实可下量由执行引擎按 minSz/lotSz/最小名义额(~5 USDT)自动对齐并强制(不足才返回 below_min_size)。可下与否一律以 propose_trade_plan 返回的 sizing 与引擎结果为准，不要自己下结论。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -644,10 +646,25 @@ export async function executeTool(db, run, name, args = {}) {
       const micro = await syncMicrostructure(db, args.exchange || "OKX", symbol);
       // 叠加聪明钱：大户/散户多空持仓比、主动买卖比（免费公开数据，容错）
       const smart = await fetchSmartMoney(symbol).catch(() => null);
-      if (smart?.ok) {
-        return { ...micro, smartMoney: smart, interpretation: [micro.interpretation, smart.interpretation].filter(Boolean).join("；") };
-      }
-      return micro;
+      // 合约规格(下单单位是"张"不是"币")——喂真实 ctVal/minSz/lotSz + 最小下单名义,
+      // 防止模型把"0.01 张"误当成"0.01 币"、手算成 100 倍名义再瞎断言"账户太小下不了单"。
+      let contractSpec = null;
+      try {
+        const base = symbol.split("/")[0];
+        const spec = await okxContractSpec(`${symbol.replace("/", "-")}-SWAP`);
+        const px = Number(micro?.markPrice ?? micro?.price ?? (db.markets || []).find((m) => m.symbol === symbol)?.price ?? 0);
+        if (spec) contractSpec = {
+          unit: "张(contract)",
+          ctVal: spec.ctVal, ctValCcy: base, minSz: spec.minSz, lotSz: spec.lotSz,
+          note: `1 张 = ${spec.ctVal} ${base}；最小下单 ${spec.minSz} 张（不是 ${spec.minSz} ${base}）`,
+          minOrderCoin: Number((spec.minSz * spec.ctVal).toPrecision(6)),
+          minOrderNotionalUsdt: px > 0 ? Number((spec.minSz * spec.ctVal * px).toFixed(2)) : null
+        };
+      } catch { /* 规格拿不到不阻断微观结构 */ }
+      const out = smart?.ok
+        ? { ...micro, smartMoney: smart, interpretation: [micro.interpretation, smart.interpretation].filter(Boolean).join("；") }
+        : { ...micro };
+      return contractSpec ? { ...out, contractSpec } : out;
     } catch (error) {
       return { error: `微观结构同步失败：${error.message}` };
     }
