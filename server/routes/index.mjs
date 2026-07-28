@@ -22,6 +22,9 @@ import { registerMarketRoutes } from "./market.mjs";
 import { registerTradingDataRoutes } from "./tradingData.mjs";
 import { registerRealtimeRoutes } from "./realtime.mjs";
 import { registerExecutionOrderRoutes } from "./executionOrders.mjs";
+import { registerKnowledgeImportRoutes } from "./knowledgeImport.mjs";
+import { registerKnowledgeSkillRoutes } from "./knowledgeSkills.mjs";
+import { registerKnowledgeRuleRoutes } from "./knowledgeRules.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -45,4 +48,7 @@ export function registerAllRoutes(app, ctx) {
   registerTradingDataRoutes(app, ctx);
   registerRealtimeRoutes(app, ctx);
   registerExecutionOrderRoutes(app, ctx);
+  registerKnowledgeImportRoutes(app, ctx);
+  registerKnowledgeSkillRoutes(app, ctx);
+  registerKnowledgeRuleRoutes(app, ctx);
 }
