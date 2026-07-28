@@ -27,6 +27,8 @@ import { registerKnowledgeSkillRoutes } from "./knowledgeSkills.mjs";
 import { registerKnowledgeRuleRoutes } from "./knowledgeRules.mjs";
 import { registerAgentChatRoutes } from "./agentChatRoutes.mjs";
 import { registerAgentRunRoutes } from "./agentRuns.mjs";
+import { registerSystemRoutes } from "./system.mjs";
+import { registerAssistantRoutes } from "./assistant.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -55,4 +57,6 @@ export function registerAllRoutes(app, ctx) {
   registerKnowledgeRuleRoutes(app, ctx);
   registerAgentChatRoutes(app, ctx);
   registerAgentRunRoutes(app, ctx);
+  registerSystemRoutes(app, ctx);
+  registerAssistantRoutes(app, ctx);
 }
