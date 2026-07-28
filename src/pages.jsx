@@ -983,20 +983,21 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         goSkills={() => goKnowledge("skills")}
       />}
 
-      {/* 合并工具栏：左＝子 Tab 导航，右＝流水线阶段读数（可点跳转）+ 来源书筛选。
-          原来「漏斗状态栏」和「Tab」是两条独立满宽 bar、功能重叠，现压成一条。 */}
-      {domain === "knowledge" && <div className="kBar">
-        <div className="kBarTabs">
-          {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n]) => (
-            <button key={k} className={`kBarTab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{label} <span className="n mono">{n}</span></button>
+      {/* 流水线导航条（唯一导航）：知识源 › 方法草案 › 技能流水线 › 风控纪律 › 概念图谱，右端挂 编译/试用/上岗 读数 */}
+      {domain === "knowledge" && <div className="kNav">
+        <button className="kNavSrc" onClick={() => ui.openPanel("knowledgeList")} title="查看全部知识源"><BookOpen size={13} /> 知识源 <span className="n mono">{sourceCount}</span></button>
+        <span className="kNavArrow">›</span>
+        <div className="kNavTabs">
+          {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n], i) => (
+            <React.Fragment key={k}>
+              {i > 0 && <span className="kNavArrow">›</span>}
+              <button className={`kNavTab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{label} <span className="n mono">{n}</span></button>
+            </React.Fragment>
           ))}
         </div>
-        <div className="kBarPipe" title="整条流水线卡在哪，点数字跳到对应清单">
-          {FUNNEL.map((f, i) => (
-            <React.Fragment key={f.key}>
-              {i > 0 && <span className="kPipeArrow">›</span>}
-              <button className="kPipeStage" onClick={() => setTab(f.tab)}><b className="mono">{funnelCounts[f.key]}</b>{f.label}</button>
-            </React.Fragment>
+        <div className="kNavPipe" title="整条流水线卡在哪，点数字跳到对应清单">
+          {FUNNEL.map((f) => (
+            <button key={f.key} className="kPipeStage" onClick={() => setTab(f.tab)}><b className="mono">{funnelCounts[f.key]}</b>{f.label}</button>
           ))}
         </div>
         {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
@@ -1007,8 +1008,9 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         )}
       </div>}
 
-      {/* —— 方法草案 Tab —— */}
-      {domain === "knowledge" && tab === "methods" && (
+      {/* 双栏：左＝主内容(跟随所选段) · 右＝侧栏(知识源 + RAG，原来在页面最底两张满宽卡) */}
+      {domain === "knowledge" && (<div className="kBody"><div className="kMain">
+      {tab === "methods" && (
         <div className="termCard">
           <div className="kHead"><span className="secLabel">交易方法草案 · 仅供研究，需走验证才上岗</span><span className="hypoLegend mono">{methods.filter((m) => matchSrc(m.source?.title)).length} 条</span></div>
           {!methods.length && <div className="emptyPanel">导入书籍后自动蒸馏交易方法草案</div>}
@@ -1146,11 +1148,32 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
       )}
 
       {/* —— 概念图谱 Tab —— */}
-      {domain === "knowledge" && tab === "graph" && (
+      {tab === "graph" && (
         <div className="termCard"><div className="kHead"><span className="secLabel">概念图谱</span></div><ConceptGraph concepts={knowledge.conceptCards || []} /></div>
       )}
+      </div>
+      <aside className="kRail">
+        <div className="termCard kSourceBar">
+          <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
+          <div className="kSourceChips">
+            {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
+            <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
+          </div>
+        </div>
+        <div className="termCard kRagCard">
+          <div className="kHead"><span className="secLabel">本次决策引用 · RAG</span></div>
+          <div className="kRagBar">
+            <input value={rag} onChange={(e) => setRag(e.target.value)} placeholder="RAG 检索：例如 CPI 前后如何控仓？" onKeyDown={(e) => { if (e.key === "Enter" && rag.trim()) action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 }); }} />
+            <button className="termMiniBtn dark" disabled={!rag.trim()} onClick={() => action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 })}><Search size={13} /> 检索</button>
+          </div>
+          <div className="kCite railCite">
+            {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span></div>)}
+            {!cites.length && <div className="emptyPanel">尚无引用；检索或对话后显示本次决策引用的知识片段</div>}
+          </div>
+        </div>
+      </aside>
+      </div>)}
 
-      {/* —— 能力与工具板块（Skills 全量可滚动 + 逐项操作 + MCP）—— */}
       {/* —— 策略表现（独立平级板块）—— */}
       {domain === "strategy" && (() => {
         const board = data.strategyBoard || { rows: [], summary: {} };
@@ -1268,37 +1291,11 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
         );
       })()}
 
-      {/* 底部合并页脚：知识源常驻条 + RAG/引用 并排两栏（窄屏自动竖排），不再各占一张满宽卡 */}
-      {domain === "knowledge" && <div className="kFoot">
-        <div className="termCard kSourceBar">
-          <div className="kHead"><span className="secLabel">知识源（{sourceCount}）</span><button className="agLink" onClick={() => ui.openPanel("knowledgeList")}>全部 ›</button></div>
-          <div className="kSourceChips">
-            {(knowledge.sources || []).slice(0, 8).map((s) => <button className="kSourceChip" key={s.id} onClick={() => ui.openPanel("knowledgeList")} title={s.title}>{(s.title || "").slice(0, 14)}<i className={`kSrcDot ${s.status === "parsed" ? "ok" : ""}`} /></button>)}
-            <button className="kSourceChip add" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={13} /> 导入</button>
-          </div>
-        </div>
-
-        <div className="termCard">
-          <div className="kHead">
-            <span className="secLabel">本次决策引用知识</span>
-            <div className="kRagBar">
-              <input value={rag} onChange={(e) => setRag(e.target.value)} placeholder="RAG 检索：例如 CPI 前后如何控仓？" onKeyDown={(e) => { if (e.key === "Enter" && rag.trim()) action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 }); }} />
-              <button className="termMiniBtn dark" disabled={!rag.trim()} onClick={() => action("/api/knowledge/rag-query", { query: rag.trim(), topK: 5 })}><Search size={13} /> 检索</button>
-            </div>
-          </div>
-          <div className="kCite">
-            <div className="kCiteHead"><span>知识 / 规则 / 技能</span><span>类型</span><span>引用片段</span><span className="r">置信度</span><span className="r">来源</span></div>
-            {cites.map((c, i) => <div className="kCiteRow" key={i}><span className="cb">{c.name}</span><span><b className="evBadge">{c.type}</b></span><span className="ell">{c.quote}</span><span className="r pos mono">{c.confidence}</span><span className="r">{c.source}</span></div>)}
-            {!cites.length && <div className="emptyPanel">尚无引用；发起一次 RAG 检索或对话后显示本次决策引用的知识片段</div>}
-          </div>
-        </div>
-      </div>}
     </div>
   );
 }
 
-export function RiskAuthPage({ data, action, ui, embedded = false, initialSegment = "risk" }) {
-  const [seg, setSeg] = useState(initialSegment === "audit" ? "audit" : "risk");
+export function RiskAuthPage({ data, action, ui, embedded = false }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || {};
   const grayPolicy = data.grayReleasePolicies?.[0] || {};
@@ -1362,14 +1359,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false, initialSegmen
   return (
     <div className="pageStack termPage riskPage">
       {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
-      {/* 顶部分段：风控与授权 / 审计（审计页已并入本页，见 initialSegment 路由）*/}
-      <div className="riskSeg">
-        <button className={seg === "risk" ? "on" : ""} onClick={() => setSeg("risk")}>风控与授权</button>
-        <button className={seg === "audit" ? "on" : ""} onClick={() => setSeg("audit")}>审计</button>
-      </div>
-
-      {seg === "risk" && <>
-      {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等宽并排（灰度收成半栏，不再霸屏满宽）*/}
+      {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等高并排（Y 轴一致，X 宽 0.85:1.15 之和铺满整页）*/}
       <div className="termGrid riskRow1">
         <div className="termCard">
           <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
@@ -1445,9 +1435,6 @@ export function RiskAuthPage({ data, action, ui, embedded = false, initialSegmen
           {!authHist.length && <div className="emptyPanel">暂无授权变更记录</div>}
         </div>
       </div>
-      </>}
-
-      {seg === "audit" && <AuditSystemPage data={data} action={action} ui={ui} embedded />}
     </div>
   );
 }
@@ -1485,7 +1472,7 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
   ];
   return (
     <div className="pageStack termPage">
-      {!embedded && <TermHead title="审计与系统" code="AUDIT · SYSTEM" sub="全链路审计、工具调用日志与系统可观测性" />}
+      {!embedded && <TermHead title="审计" code="AUDIT" sub="全链路审计、决策/工具调用日志与系统可观测性" />}
       {/* 精简：5 个系统指标从大卡压成一条 5 列小卡带（副标用真实"配置就绪度"，非假的"实现 100%"）*/}
       <div className="auditStrip">
         {[
@@ -1510,25 +1497,27 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
         </div>
       </div>
 
-      <div className="termGrid auditTop">
-      <div className="termCard">
-        <div className="kHead"><span className="secLabel">Agent 运行审计链</span><button className="agLink" onClick={() => ui.openPanel("auditChain")}>完整链路 ›</button></div>
-        <div className="acChain">
-          {chainItems.map(([item, value, state, Icon, en]) => {
+      {/* 全链路审计：竖排 7 行清单 → 横向可视化步骤条，一眼看到卡在哪一步 */}
+      <div className="termCard acStepCard">
+        <div className="kHead"><span className="secLabel">Agent 运行审计链</span><span className="acStepMeta">最近记录 <b className="mono">{traces[0] ? formatTime(traces[0].createdAt) : "—"}</b> · 状态 <b className={latestRisk.passed == null ? "" : latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "—")}</b> · <button className="agLink" onClick={() => ui.openPanel("auditChain")}>完整链路 ›</button></span></div>
+        <div className="acStepper">
+          {chainItems.map(([item, value, state, Icon], i) => {
             const done = Boolean(value);
             return (
-              <div className="acRow" key={item} title={value || "未生成"}>
-                <span className={`acIcon ${done ? "done" : "pending"}`}>{Icon ? <Icon size={13} /> : null}</span>
-                <div className="acInfo"><span className="acStep"><b>{item}</b> <em className="acEn mono">{en}</em></span><div className="acId mono">{shortId(value) || "—"} · {humanize(state)}</div></div>
-                {done ? <CheckCircle2 size={14} className="acCheck" /> : <span className="acDash">—</span>}
-              </div>
+              <React.Fragment key={item}>
+                {i > 0 && <span className="acStepArrow">›</span>}
+                <div className={`acStep ${done ? "done" : "pending"}`} title={`${item} · ${humanize(state)}${value ? " · " + shortId(value) : ""}`}>
+                  <span className="acStepIcon">{Icon ? <Icon size={13} /> : null}</span>
+                  <div className="acStepText"><b>{item}</b><em className="mono">{done ? humanize(state) : "未生成"}</em></div>
+                  {done ? <CheckCircle2 size={12} className="acStepCheck" /> : <span className="acStepDash">—</span>}
+                </div>
+              </React.Fragment>
             );
           })}
         </div>
-        {/* 旧"整体耗时"取任意最新一条 trace 的延迟（且多为随机数），语义错误——改为最近记录时间；状态无数据时显示 —，不再默认"运行中" */}
-        <div className="acFoot"><span>最近记录 <b className="mono">{traces[0] ? formatTime(traces[0].createdAt) : "—"}</b></span><span>状态 <b className={latestRisk.passed == null ? "" : latestRisk.passed ? "pos" : "warn"}>{humanize(latestRisk.decision || latestPlan.status, "—")}</b></span></div>
       </div>
 
+      <div className="termGrid auditBot2">
       <div className="termCard">
         <div className="kHead"><span className="secLabel">决策与工具调用日志</span><button className="agLink" onClick={() => setTraceWindow((current) => current === "24h" ? "all" : "24h")}>{traceWindow === "24h" ? "近 24 小时" : "全部时间"} ›</button></div>
         <div className="acLog">

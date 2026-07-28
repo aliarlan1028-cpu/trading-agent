@@ -264,9 +264,8 @@ function App() {
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
-    if (active === "riskAuth") return <RiskAuthPage key="riskAuth" data={data} action={action} ui={ui} initialSegment="risk" />;
-    // 审计已并入风控与授权页——审计入口打开同一页的「审计」分段（保留深链：铃铛/运行轨迹/任务日志）
-    if (active === "auditSystem") return <RiskAuthPage key="auditSystem" data={data} action={action} ui={ui} initialSegment="audit" />;
+    if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
+    if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, data, action]);

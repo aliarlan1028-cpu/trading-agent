@@ -6927,7 +6927,13 @@ button.danger:disabled,
 .lgHint { font-size: 11px; color: var(--neg); margin: 9px 0 0; line-height: 1.5; }
 .lgHint.ok { color: var(--pos); }
 
-.lgGroup { margin-bottom: 13px; }
+/* 两组开关并排两列，压缩本卡高度 */
+.lgGroups { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 12px; }
+.lgGroup { margin-bottom: 0; }
+.lgFoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.liveGrayForm .lgFoot .lgAmt { margin-bottom: 0; }
+.liveGrayForm .lgFoot .primaryButton { flex: none; white-space: nowrap; }
+@media (max-width: 900px) { .lgGroups { grid-template-columns: 1fr; } }
 .lgGroupHead {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 700; color: var(--text-2); margin-bottom: 7px;
@@ -7520,6 +7526,26 @@ button.danger:disabled,
 .auditActionsBtns button.warn { border-color: #f2c0b8; background: #fbe9e7; color: #b23c17; }
 @media (max-width: 640px) { .auditActions { flex-direction: column; align-items: stretch; } .auditActionsBtns { justify-content: flex-start; } }
 
+/* 全链路审计横向步骤条 */
+.acStepCard { margin-bottom: 8px; }
+.acStepMeta { font-size: 10.5px; color: var(--text-3); }
+.acStepMeta b { font: 600 10.5px "IBM Plex Mono"; color: #1E1B16; }
+.acStepMeta b.pos { color: var(--pos); } .acStepMeta b.warn { color: var(--warn); }
+.acStepper { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.acStep { flex: 1 1 0; min-width: 110px; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-white); }
+.acStep.pending { opacity: 0.62; border-style: dashed; }
+.acStepIcon { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; background: var(--pos-weak); color: var(--pos); }
+.acStep.pending .acStepIcon { background: var(--surface-2); color: var(--text-3); }
+.acStepText { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.acStepText b { font: 700 11.5px "Space Grotesk"; color: #1E1B16; white-space: nowrap; }
+.acStepText em { font-size: 9.5px; color: var(--text-3); font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acStepCheck { color: var(--pos); flex: none; }
+.acStepDash { color: #c9bda6; flex: none; font-size: 12px; }
+.acStepArrow { align-self: center; color: #c9bda6; font-size: 13px; flex: none; }
+@media (max-width: 900px) { .acStepArrow { display: none; } .acStep { flex-basis: 46%; } }
+.termPage .termGrid.auditBot2 { grid-template-columns: 1.5fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+@media (max-width: 900px) { .termPage .termGrid.auditBot2 { grid-template-columns: 1fr; } }
+
 .termPage .termGrid.auditTop { grid-template-columns: 1fr 1.05fr 0.85fr; gap: 8px; align-items: start; }
 .auditTop .termCard { border-radius: 11px; padding: 13px 15px; }
 .acChain { display: flex; flex-direction: column; gap: 2px; }
@@ -7587,7 +7613,10 @@ button.danger:disabled,
 .riskSeg button { border: 0; background: none; padding: 6px 18px; border-radius: 8px; font: 700 13px "Space Grotesk"; color: var(--text-3); cursor: pointer; }
 .riskSeg button.on { background: var(--surface); color: var(--text-1); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 /* 重排后的两栏行：MANDATE↔实盘写入 等宽；风险规则↔风险状态墙 */
-.termGrid.riskRow1 { grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+/* Row1 等高：align-items: stretch 让两卡同高（Y 轴一致）；宽度 0.85:1.15 之和铺满整页 */
+.termGrid.riskRow1 { grid-template-columns: 0.85fr 1.15fr; gap: 8px; align-items: stretch; margin-bottom: 8px; }
+.termGrid.riskRow1 > .termCard { display: flex; flex-direction: column; }
+.termGrid.riskRow1 .liveGrayForm { flex: 1; }
 .termGrid.riskRow2 { grid-template-columns: 1.35fr 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
 .riskRules { display: flex; flex-direction: column; gap: 8px; }
 .riskRulesHead { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
@@ -8088,19 +8117,29 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .kDomain.on .kDomainN { color: #e07a3f; }
 @media (max-width: 640px) { .kDomains { grid-template-columns: 1fr; } }
 
-/* 合并工具栏：左 Tab 导航 + 右流水线读数 + 来源筛选（原 kFunnel/kTabs 两条并一条）*/
-.kBar { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); padding: 8px 12px; margin-bottom: 12px; }
-.kBarTabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.kBarTab { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 8px; border: 0; background: none; font: 600 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
-.kBarTab.on { background: #1E1B16; color: #fff; }
-.kBarTab .n { font-size: 10px; opacity: 0.7; }
-.kBarTab.on .n { opacity: 0.85; }
-.kBarPipe { margin-left: auto; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+/* 流水线导航条：知识源 › 4 Tab › 流水线读数 + 来源筛选（唯一导航，替代原漏斗+Tab 两条）*/
+.kNav { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); padding: 8px 12px; margin-bottom: 10px; }
+.kNavSrc { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--hairline); background: #fbf7ef; font: 700 12px "Space Grotesk"; color: #6b513b; cursor: pointer; }
+.kNavSrc .n { font-size: 10px; color: #d06a22; }
+.kNavArrow { color: #c9bda6; font-size: 13px; flex: none; }
+.kNavTabs { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.kNavTab { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 8px; border: 0; background: none; font: 600 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
+.kNavTab.on { background: #1E1B16; color: #fff; }
+.kNavTab .n { font-size: 10px; opacity: 0.7; }
+.kNavTab.on .n { opacity: 0.85; }
+.kNavPipe { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kPipeStage { display: inline-flex; align-items: baseline; gap: 3px; padding: 2px 4px; border: 0; background: none; cursor: pointer; font-size: 11px; color: #8a8172; border-radius: 6px; }
 .kPipeStage:hover { background: #F6F1E8; }
 .kPipeStage b { font-size: 12.5px; color: #1E1B16; font-weight: 700; }
-.kPipeArrow { color: #c9bda6; font-size: 12px; }
 .kBarSrc { height: 28px; border: 1px solid var(--hairline); border-radius: 7px; background: #fff; padding: 0 8px; font-size: 11px; color: #1E1B16; }
+/* 双栏：主内容 + 右侧栏 */
+.kBody { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; align-items: start; }
+.kMain { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.kRail { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 8px; }
+.kRagCard .kRagBar { margin-bottom: 8px; }
+.kCite.railCite { display: flex; flex-direction: column; gap: 4px; }
+.kCite.railCite .kCiteRow { display: flex; flex-wrap: wrap; gap: 4px 8px; grid-template-columns: none; }
+@media (max-width: 1000px) { .kBody { grid-template-columns: 1fr; } .kRail { position: static; } .kNavPipe { margin-left: 0; width: 100%; } }
 
 /* —— 知识库上手引导 —— */
 .kGuide { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-white); padding: 12px 14px; margin-bottom: 12px; }

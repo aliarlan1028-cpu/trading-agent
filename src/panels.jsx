@@ -1270,21 +1270,22 @@ export function LiveGrayPanel({ data, action, ui }) {
               </div>
               <p className={`lgHint ${failing.length ? "" : "ok"}`}>{hintLine}</p>
             </div>
-            {/* 三道实盘写入闸：缺一则只干跑不下真单 */}
-            <div className="lgGroup">
-              <div className="lgGroupHead"><span className="dot" /> 三道实盘写入闸 · 缺一则只干跑不下真单</div>
-              <div className="lgSwitches">
-                <label className="lgSw"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /><span>实盘写入总开关（LIVE_TRADING_ENABLED）</span></label>
-                <label className="lgSw"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /><span>风险确认<span className="sub">我已知晓实盘会用真实资金下单</span></span></label>
-                <label className="lgSw"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /><span>真实下单写入<span className="sub">关掉时即使批准也只记录不真发单</span></span></label>
+            {/* 两组开关并排成两列，压缩高度使本卡与 MANDATE 卡齐平 */}
+            <div className="lgGroups">
+              <div className="lgGroup">
+                <div className="lgGroupHead"><span className="dot" /> 三道实盘写入闸 · 缺一只干跑</div>
+                <div className="lgSwitches">
+                  <label className="lgSw"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /><span>实盘写入总开关<span className="sub">LIVE_TRADING_ENABLED</span></span></label>
+                  <label className="lgSw"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /><span>风险确认<span className="sub">已知晓实盘用真实资金下单</span></span></label>
+                  <label className="lgSw"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /><span>真实下单写入<span className="sub">关掉即使批准也只记录不发单</span></span></label>
+                </div>
               </div>
-            </div>
-            {/* 灰度与自动化 */}
-            <div className="lgGroup">
-              <div className="lgGroupHead"><span className="dot" /> 灰度与自动化</div>
-              <div className="lgSwitches">
-                <label className="lgSw"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /><span>启用小额灰度<span className="sub">先用很小额度跑真实单验证策略</span></span></label>
-                <label className="lgSw"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /><span>保留人工确认<span className="sub">取消勾选＝授权与额度内全自动下单</span></span></label>
+              <div className="lgGroup">
+                <div className="lgGroupHead"><span className="dot" /> 灰度与自动化</div>
+                <div className="lgSwitches">
+                  <label className="lgSw"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /><span>启用小额灰度<span className="sub">先用很小额度跑真实单验证</span></span></label>
+                  <label className="lgSw"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /><span>保留人工确认<span className="sub">取消勾选＝额度内全自动下单</span></span></label>
+                </div>
               </div>
             </div>
             {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
@@ -1292,8 +1293,10 @@ export function LiveGrayPanel({ data, action, ui }) {
             ) : (
               <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开齐三道闸 + 取消勾选「保留人工确认」。</div>
             )}
-            <label className="lgAmt">单笔灰度额度<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /> USDT · 全自动下单的单笔上限</label>
-            <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
+            <div className="lgFoot">
+              <label className="lgAmt">单笔灰度额度<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /> USDT</label>
+              <button className="primaryButton" type="submit"><Zap size={14} /> 保存实盘配置</button>
+            </div>
           </form>
   );
 }
