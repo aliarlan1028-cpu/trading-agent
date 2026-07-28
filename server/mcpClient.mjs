@@ -103,6 +103,8 @@ export async function connectMcpServer(db, serverId) {
     const tools = (list.result?.tools || []).map((t) => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} } }));
     server.tools = tools;
     server.toolCount = tools.length;
+    // 官方只读数据源(如 CoinGecko)自动放行全部工具,免去逐个勾选;第三方仍需手动授权。
+    if (server.autoAllowAll) server.allowedTools = tools.map((t) => t.name);
     server.status = "connected";
     server.enabled = server.enabled !== false;
     server.connectedAt = nowIso();
@@ -174,4 +176,30 @@ export function mcpStatus(db) {
     connected: servers.filter((s) => s.status === "connected").length,
     tools: servers.reduce((sum, s) => sum + (s.toolCount || 0), 0)
   };
+}
+
+// 开机种子:接入 CoinGecko 官方免费 MCP(行业领先、免 key、10k 调用/月、只读行情/OHLCV/链上)。
+// 幂等:已存在则不重复注册;返回是否需要连接。
+export function ensureCoingeckoMcp(db) {
+  db.mcpServers ||= [];
+  const existing = db.mcpServers.find((s) => s.id === "mcp_coingecko");
+  if (existing) return existing;
+  const server = {
+    id: "mcp_coingecko",
+    name: "CoinGecko 行情",
+    url: "https://mcp.api.coingecko.com/mcp",
+    transport: "streamable_http",
+    source: "official",
+    status: "registered",
+    enabled: true,
+    autoAllowAll: true, // 官方只读源,连接后自动放行全部工具
+    permissions: [],
+    allowedTools: [],
+    tools: [],
+    toolCount: 0,
+    createdAt: nowIso()
+  };
+  db.mcpServers.unshift(server);
+  appendAudit(db, "接入 CoinGecko 官方 MCP(免费只读行情)", server.id, "McpSeed");
+  return server;
 }

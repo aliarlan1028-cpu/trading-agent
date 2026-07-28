@@ -57,7 +57,7 @@ import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, scheduler
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
-import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
+import { connectMcpServer, ensureCoingeckoMcp, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
 import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
@@ -374,6 +374,9 @@ ensureSystemTask(db, { id: "task_sys_audit_worm", name: "审计日志 WORM 外�
 ensureSystemTask(db, { id: "task_sys_oms_recovery", name: "不确定订单恢复", handler: "oms_recovery", schedule: "Every 1m" }, saveDb);
 
 startScheduler(db, saveDb);
+// 接入 CoinGecko 官方免费 MCP(行业领先只读行情源),启动后台连接并自动放行只读工具;失败不阻断。
+ensureCoingeckoMcp(db);
+setTimeout(() => { connectMcpServer(db, "mcp_coingecko").then((r) => { if (r.status === "connected") saveDb(db); }).catch(() => {}); }, 8000);
 startRealtimeManager(db, saveDb);
 startMarketStream(db); // 实时行情流（OKX 公有 WS）→ 内存更新 + SSE 推前端
 refreshAccounting(db);
