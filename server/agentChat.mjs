@@ -1179,12 +1179,14 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id);
     }
     run.status = "completed";
-    // 诚实守卫:模型若在正文里画"观察哨一览"表却没真调 register_watch(弱模型常犯),留痕警告——
-    // 避免"嘴上说在盯、实际哨兵空转"的假象无声无息(用户实锤 bug)。
-    const claimsWatch = /观察哨一览|距触发|哨兵\s*[\|｜]|若跌破|若突破|回踩.*(做空|做多)/.test(finalText || "");
+    // 诚实守卫:模型(尤其弱模型)常在正文声称"已登记 N 个观察哨/哨兵在盯"却根本没调用 register_watch。
+    // 只留 trace 不够——用户会被正文误导(实锤:正文说"已登记3个",右侧观察哨面板却空)。
+    // 这里同时在可见回复末尾加注更正,让聊天文字与面板口径一致。
+    const claimsWatch = /已?登记.{0,6}观察哨|观察哨.{0,4}(登记|盯|核对)|哨兵.{0,6}(盯|核对|触发|每分钟)|观察哨一览|距触发|若跌破|若突破|回踩.*(做空|做多)/.test(finalText || "");
     const registeredThisRun = toolTrace.some((t) => t.name === "register_watch" && !String(t.summary || "").startsWith("失败"));
     if (claimsWatch && !registeredThisRun) {
-      appendTrace(db, "agent_chat", "⚠ 回复提及观察哨/触发条件但本轮未成功调用 register_watch——哨兵未实际登记,勿被文字误导", "warning");
+      appendTrace(db, "agent_chat", "⚠ 回复提及观察哨/触发条件但本轮未成功调用 register_watch——哨兵未实际登记,已在回复末尾加注更正", "warning");
+      finalText = `${finalText || ""}\n\n> ⚠️ **系统更正**：本轮实际上**没有登记任何观察哨**——模型只在文字里说了、但没有调用登记工具，哨兵不会盯盘。请以右侧「观察哨」面板为准（换用更强模型可避免此类"嘴上说、没真做"）。`;
     }
     recordRunHistory(db, run, finalText);
   } catch (error) {
