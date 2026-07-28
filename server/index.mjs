@@ -14,6 +14,7 @@ import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerObservabilityRoutes } from "./routes/observability.mjs";
+import { registerMandateRoutes } from "./routes/mandates.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
@@ -1093,69 +1094,7 @@ app.get("/api/markets", (_req, res) => res.json(db.markets));
 app.get("/api/positions", (_req, res) => res.json(db.positions));
 app.get("/api/orders", (_req, res) => res.json(db.orders));
 app.get("/api/fills", (_req, res) => res.json(db.fills));
-app.get("/api/mandates", (_req, res) => res.json(db.mandates));
-
-app.post("/api/mandates/parse", requirePermission("write:mandate"), (req, res) => {
-  res.json(parseMandateCommand(db, req.body.command || req.body.text || ""));
-});
-
-app.post("/api/mandates", requirePermission("write:mandate"), (req, res) => {
-  const mandate = {
-    id: id("mandate"),
-    version: 1,
-    status: "active",
-    createdAt: nowIso(),
-    allowedActions: ["open", "cancel", "amend", "close", "move_stop", "take_profit"],
-    ...req.body
-  };
-  db.mandates.unshift(mandate);
-  appendAudit(db, "创建自主交易授权", mandate.id, db.user.name);
-  appendTrace(db, "mandate", `创建授权 ${mandate.name || mandate.id}`);
-  persist(res, mandate);
-});
-
-app.get("/api/mandates/:id", (req, res) => {
-  const mandate = db.mandates.find((item) => item.id === req.params.id);
-  if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  res.json(mandate);
-});
-
-app.patch("/api/mandates/:id", requirePermission("write:mandate"), (req, res) => {
-  const mandate = db.mandates.find((item) => item.id === req.params.id);
-  if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  Object.assign(mandate, req.body, { version: Number(mandate.version || 1) + 1, updatedAt: nowIso() });
-  appendAudit(db, `更新授权状态：${req.body.status || "updated"}`, mandate.id, db.user.name);
-  persist(res, mandate);
-});
-
-app.post("/api/mandates/:id/activate", requirePermission("write:mandate"), (req, res) => {
-  const mandate = activateMandate(db, req.params.id);
-  if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  // 激活不抬版本(P0):版本语义=内容变更(PATCH 时 +1)。此前激活即 +1,
-  // 激活前提出的计划立刻全部"版本过期"被风控拒——标准主流程直接跑不通。
-  mandate.version = Number(mandate.version || 1);
-  persist(res, mandate);
-});
-
-app.post("/api/mandates/:id/pause", requirePermission("write:mandate"), (req, res) => {
-  const mandate = db.mandates.find((item) => item.id === req.params.id);
-  if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  mandate.status = "paused";
-  mandate.version = Number(mandate.version || 1) + 1;
-  mandate.pausedAt = nowIso();
-  appendAudit(db, "暂停授权委托", mandate.id, db.user.name, "warning");
-  persist(res, mandate);
-});
-
-app.post("/api/mandates/:id/revoke", requirePermission("write:mandate"), (req, res) => {
-  const mandate = db.mandates.find((item) => item.id === req.params.id);
-  if (!mandate) return res.status(404).json({ error: "Mandate not found" });
-  mandate.status = "revoked";
-  mandate.version = Number(mandate.version || 1) + 1;
-  mandate.revokedAt = nowIso();
-  appendAudit(db, "撤销授权委托", mandate.id, db.user.name, "warning");
-  persist(res, mandate);
-});
+// mandates 路由组已迁至 server/routes/mandates.mjs（见文件末尾 registerMandateRoutes）
 
 // 观察哨：主人手动撤销（登记/自动撤销走 AI 工具与哨兵，均带审计）
 app.post("/api/watch-triggers/:id/cancel", requirePermission("write:mandate"), (req, res) => {
@@ -2727,6 +2666,9 @@ registerObservabilityRoutes(app, {
   db, saveDb, persist, requirePermission,
   normalizeSymbol, runReconciler, exportTraces, exportAuditLogs,
   schedulerStatus, startScheduler
+});
+registerMandateRoutes(app, {
+  db, persist, requirePermission, parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace
 });
 
 app.listen(port, host, () => {
