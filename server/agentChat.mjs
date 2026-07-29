@@ -557,6 +557,10 @@ async function buildSystemPrompt(db, userText = "") {
   if (adoptedLenses.length) {
     sections.push(`【采纳的分析纪律 / 透镜（来自知识库，决策时遵循；只塑造分析、绝不直接下单）】\n${adoptedLenses.slice(0, 8).map((l) => `- ${l.name}：${l.promptText}${l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}`);
   }
+  const adoptedWorkflows = (db.knowledge?.workflows || []).filter((w) => w.active);
+  if (adoptedWorkflows.length) {
+    sections.push(`【采纳的分析工作流（来自知识库，遇到相符场景就按步骤走，仍受硬风控约束）】\n${adoptedWorkflows.slice(0, 6).map((w) => `- ${w.name}：${(w.steps || []).join(" → ")}${w.sourceTitle ? `（《${w.sourceTitle}》）` : ""}`).join("\n")}`);
+  }
   // 可用技能分两层如实标注:active=已用真实成绩转正(可信);live_probation=小额实盘试用中(未验证)。
   // 绝不把试用技能说成"已验证"——否则 LLM 会拿它当可信依据推理,污染判断。
   const usableSkills = selectActiveKnowledgeSkills(db, {}, { limit: 6 });

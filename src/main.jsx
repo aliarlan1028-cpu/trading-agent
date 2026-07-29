@@ -387,9 +387,9 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
     const result = await registerAccount({ ...registerForm, planId: selectedPlan?.id });
     if (result?.payment) setPayment(result.payment);
   }
-  const flow = [["喂知识", BookOpen], ["蒸馏方法/纪律", BrainCircuit], ["历史+模拟验证", CheckCircle2], ["你授权", ShieldCheck], ["实盘执行", Zap], ["自动复盘", RefreshCw]];
+  const flow = [["喂知识", BookOpen], ["读懂转成能力", BrainCircuit], ["采纳即用", CheckCircle2], ["下单前硬风控", ShieldCheck], ["自动执行", Zap], ["在用复盘·留退", RefreshCw]];
   const features = [
-    [BookOpen, "知识闭环", "导入你信任的交易书籍与文章，系统蒸馏出可执行的方法与风控纪律，每一条都带来源引用。"],
+    [BookOpen, "知识闭环", "导入你信任的交易书籍与文章，系统读懂后转成可直接用的策略、分析提示词与风控纪律，每一条都带来源引用。"],
     [ShieldCheck, "执行前风控", "每笔计划在下单前都会重跑硬风控，触及杠杆、单日亏损或授权边界即被拦截。"],
     [Shield, "授权边界", "交易所、杠杆、单日最大亏损由你设定，Agent 不得越权；API 密钥只留在后端且无提币权限。"],
     [RefreshCw, "复盘进化", "每次平仓自动复盘；实盘表现持续变差的策略会被自动降级、退役。"]
@@ -403,9 +403,9 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
         <section className="landingMarketing">
           <span className="landingEyebrow">AI 交易员 · 知识驱动</span>
           <h2 className="landingTitle">把你的交易书，<br />变成一个<span className="landingHl">守纪律</span>的 AI 交易员</h2>
-          <p className="landingSub">导入你信任的交易书籍与文章，系统蒸馏出可执行的方法与风控纪律。每个策略都必须先通过历史回测与模拟盘验证、并经你亲自授权，才可能进入实盘执行——全程可复盘、可追溯。</p>
+          <p className="landingSub">导入你信任的交易书籍与文章，系统读懂后转成可直接使用的策略、分析提示词与风控纪律。每一笔真实下单前都重跑硬风控、受你设定的授权边界与额度约束；用真实表现持续复盘，好的留下、差的自动退役——全程可复盘、可追溯。</p>
           <div className="landingStats">
-            {[["40/30/30", "三窗历史回测"], ["纯前向", "模拟盘验证"], ["每一笔", "下单前重跑风控"], ["0", "提币权限"]].map(([n, l]) => (
+            {[["书→能力", "策略/提示词/工作流"], ["在用验证", "真实表现留/退"], ["每一笔", "下单前重跑风控"], ["0", "提币权限"]].map(([n, l]) => (
               <div className="landingStat" key={l}><b>{n}</b><span>{l}</span></div>
             ))}
           </div>
