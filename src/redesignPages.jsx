@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { TrendingUp, Target, Layers, CheckCircle2, ChevronRight } from "lucide-react";
-import { displayMoney } from "./lib.jsx";
+import { TrendingUp, Target, Layers, CheckCircle2, ChevronRight, BookOpen } from "lucide-react";
+import { displayMoney, humanize, SKILL_STATE } from "./lib.jsx";
 import { LiveGrayPanel } from "./panels.jsx";
+import { ConceptGraph } from "./pages.jsx";
 import "./redesign.css";
+
+// 折叠区(知识库/能力页共用)
+function Fold({ title, n, open, onT, children }) {
+  return (
+    <div className="rdFold">
+      <div className={`rdFoldH ${open ? "open" : ""}`} onClick={onT}><b>{title}</b><span className="cn">{n}</span><ChevronRight size={15} className="chev" /></div>
+      {open && <div className="rdFoldB">{children}</div>}
+    </div>
+  );
+}
 
 // ============ ④ 风控总览(只读 · 3 秒看懂) ============
 export function RiskOverviewPage({ data, action, ui }) {
@@ -165,6 +176,139 @@ export function RiskSettingsPage({ data, action, ui }) {
           <div className="rdSec" key={a.id}><span className={`dot ${a.readEnabled ? "g" : "w"}`} /><span>{a.exchange}</span><span className={`sv ${a.readEnabled ? "g" : "w"}`}>{a.readEnabled ? "已连接" : "未配置"}{a.withdrawEnabled ? " · 提现高危" : ""}</span></div>
         ))}
         {!(data.exchangeAccounts || []).length && <div className="rdRuleEmpty">未配置交易所密钥</div>}
+      </div>
+    </div>
+  );
+}
+
+// ============ ① 知识库 · 转换工作台 ============
+export function KnowledgeWorkbenchPage({ data, action, ui }) {
+  const k = data.knowledge || {};
+  const sources = k.sources || [];
+  const methods = k.tradingMethods || [];
+  const concepts = k.conceptCards || [];
+  const rules = k.ruleProposals || [];
+  const allCands = k.candidates || [];
+  const candidates = allCands.filter((c) => c.status === "candidate");
+  const [typeF, setTypeF] = useState("all");
+  const [openRef, setOpenRef] = useState("");
+  const TYPE_CN = { strategy: "交易策略", lens: "分析 prompt", workflow: "工作流" };
+  const srcAgg = (sid) => ({
+    methods: methods.filter((m) => m.source?.id === sid).length,
+    concepts: concepts.filter((c) => (c.source?.id || c.sourceId) === sid).length,
+    rules: rules.filter((r) => (r.sourceRefs || []).includes(sid) || r.source?.id === sid).length,
+    cand: allCands.filter((c) => c.sourceId === sid && c.status === "candidate").length,
+    adopted: allCands.filter((c) => c.sourceId === sid && c.status === "adopted").length
+  });
+  const shown = candidates.filter((c) => typeF === "all" || c.type === typeF);
+  return (
+    <div className="rdPage">
+      <div className="rdHead"><div><h1>知识库 <em>KNOWLEDGE</em></h1><p>把书变成 AI 能用的能力：导入 → 生成候选 → 采纳即用。方法/概念是副产物，收在下方参考。</p></div></div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>知识源</b><span className="rdCode">Sources</span><div className="rdR"><button className="rdBtn ghost" onClick={() => ui.openPanel("knowledgeImport")}>导入新书 / 文章</button></div></div>
+        {sources.map((s) => { const a = srcAgg(s.id); return (
+          <div className="rdSrc" key={s.id}>
+            <span className="si"><BookOpen size={16} /></span>
+            <div className="sinfo"><div className="sname">《{s.title}》</div>
+              <div className="schips"><span className="rdChip">方法 {a.methods}</span><span className="rdChip">概念 {a.concepts}</span><span className="rdChip">纪律 {a.rules}</span>{a.cand > 0 && <span className="rdChip on">候选 {a.cand}</span>}{a.adopted > 0 && <span className="rdChip on">已采纳 {a.adopted}</span>}</div>
+            </div>
+            <button className="rdBtn" onClick={() => { if (window.confirm(`从《${s.title}》生成候选？后台调用 LLM 读懂并产出，需十几秒。`)) action("/api/knowledge/convert", { sourceId: s.id }); }}>生成候选</button>
+          </div>
+        ); })}
+        {!sources.length && <div className="rdEmpty">还没有知识源。点「导入新书」喂进交易/心理/策略书籍。</div>}
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>转换产出 · 候选能力</b><span className="rdCode">采纳即用</span></div>
+        <div className="rdTypeTabs">
+          {[["all", "全部", candidates.length], ["strategy", "交易策略", candidates.filter((c) => c.type === "strategy").length], ["lens", "分析 prompt", candidates.filter((c) => c.type === "lens").length], ["workflow", "工作流", candidates.filter((c) => c.type === "workflow").length]].map(([kk, l, n]) => (
+            <button key={kk} className={typeF === kk ? "on" : ""} onClick={() => setTypeF(kk)}>{l} {n}</button>
+          ))}
+        </div>
+        {shown.length ? <div className="rdCands">{shown.map((c) => (
+          <div className="rdCand" key={c.id}>
+            <span className={`ctype t-${c.type}`}>{TYPE_CN[c.type] || c.type}</span>
+            <div className="cname">{c.name}</div>
+            <div className="cdesc">{c.summary}</div>
+            {c.type === "strategy" && c.payload && <div className="cparams"><span>{c.payload.templateId || "模板?"}</span><span>{c.payload.direction === "short" ? "做空" : "做多"}</span><span>{c.payload.timeframe || "?"}</span><span>止损 {c.payload.stop || "?"}</span></div>}
+            {c.type === "workflow" && c.payload?.steps && <div className="cdesc rdMono" style={{ fontSize: 10.5 }}>{c.payload.steps.join(" → ")}</div>}
+            <div className="csrc">《{c.sourceTitle}》{c.sourceRef ? ` · ${c.sourceRef}` : ""}</div>
+            <div className="cbtns"><button className="ignore" onClick={() => action(`/api/knowledge/candidates/${c.id}/ignore`, {})}>忽略</button><button className="adopt" onClick={() => action(`/api/knowledge/candidates/${c.id}/adopt`, {})}>采纳</button></div>
+          </div>
+        ))}</div> : <div className="rdEmpty">暂无候选。选一本书点「生成候选」，系统读懂后产出策略/提示词/工作流，再逐条采纳。</div>}
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>已理解的知识</b><span className="rdCode">参考 · 折叠</span></div>
+        <Fold title="交易方法草案" n={methods.length} open={openRef === "m"} onT={() => setOpenRef(openRef === "m" ? "" : "m")}>
+          {methods.slice(0, 40).map((m) => <div className="rdLine" key={m.id}><div><b style={{ fontSize: 12.5 }}>{m.name}</b>{m.direction && <span style={{ marginLeft: 6, opacity: .6, fontSize: 11 }}>{m.direction === "short" ? "空" : "多"} · {m.timeframe || ""}</span>}</div>{m.source?.title && <span className="lsrc">《{m.source.title}》</span>}</div>)}
+          {!methods.length && <div className="rdEmpty">导入书后自动蒸馏</div>}
+        </Fold>
+        <Fold title="风控纪律" n={rules.length} open={openRef === "r"} onT={() => setOpenRef(openRef === "r" ? "" : "r")}>
+          {rules.slice(0, 40).map((r) => <div className="rdLine" key={r.id}><div><b style={{ fontSize: 12.5 }}>{r.name}</b>{r.status === "已批准" && <span style={{ marginLeft: 6, color: "var(--rd-good)", fontSize: 11 }}>已批准</span>}</div>{r.sourceTitle && <span className="lsrc">《{r.sourceTitle}》</span>}</div>)}
+          {!rules.length && <div className="rdEmpty">暂无</div>}
+        </Fold>
+        <Fold title="概念图谱" n={concepts.length} open={openRef === "c"} onT={() => setOpenRef(openRef === "c" ? "" : "c")}>
+          <ConceptGraph concepts={concepts} />
+        </Fold>
+      </div>
+    </div>
+  );
+}
+
+// ============ ② 能力与工具 ============
+export function CapabilitiesPage({ data, action, ui }) {
+  const k = data.knowledge || {};
+  const skills = k.tradingSkills || [];
+  const inUse = skills.filter((s) => ["active", "degraded"].includes(s.status));
+  const pipeline = skills.filter((s) => !["active", "degraded", "retired", "superseded", "compile_failed"].includes(s.status));
+  const lenses = (k.lenses || []).filter((l) => l.active);
+  const workflows = (k.workflows || []).filter((w) => w.active);
+  const tools = data.analysisEngine?.tools || [];
+  const ext = data.skills || [];
+  const mcp = data.mcpServers || [];
+  const [pipeOpen, setPipeOpen] = useState(false);
+  const retire = (s) => { if (window.confirm(`退役技能「${s.name}」？退役后不再参与决策。`)) action(`/api/knowledge/skills/${s.id}/retire`, { reason: "manual" }); };
+  const skillRow = (s) => { const lm = s.liveMetrics || {}; const deg = s.status === "degraded"; return (
+    <div className="rdCap" key={s.id}>
+      <div className="cmain"><div className="cnm">{s.name}</div><div className="cmeta">{(s.spec?.symbolScope || ["*"]).join("/")} · {s.spec?.timeframe || ""} · {s.spec?.direction === "short" ? "空" : "多"}{s.sourceTitle ? ` · 《${s.sourceTitle}》` : ""}</div></div>
+      {lm.trades ? <div className="rdMetrics"><div className="m"><b>{lm.trades}</b><span>笔</span></div><div className="m"><b>{lm.winRatePct}%</b><span>胜率</span></div><div className="m"><b>{lm.profitFactor ?? "-"}</b><span>盈亏因子</span></div></div> : <span className="cmeta">暂无成交</span>}
+      <span className={`rdStatePill ${deg ? "deg" : "live"}`}>{deg ? "已降级" : "在用"}</span>
+      <button className="rdEditBtn" onClick={() => retire(s)}>退役</button>
+    </div>
+  ); };
+  return (
+    <div className="rdPage">
+      <div className="rdHead"><div><h1>能力与工具 <em>CAPABILITIES</em></h1><p>AI 现在拥有的所有手脚：采纳的能力(在用 + 真实成绩)、内置工具、外部插件。</p></div><button className="rdLink" onClick={() => ui.setActive("knowledgeBase")}>去知识库造能力 ›</button></div>
+
+      <div className="rdCard"><div className="rdStatRow">
+        <div className="rdStat"><b>{inUse.length}</b><span>在用能力</span></div>
+        <div className="rdStat"><b>{lenses.length}</b><span>分析透镜</span></div>
+        <div className="rdStat"><b>{workflows.length}</b><span>工作流</span></div>
+        <div className="rdStat"><b>{tools.length}</b><span>内置工具</span></div>
+        <div className="rdStat"><b>{ext.length + mcp.length}</b><span>外部插件/MCP</span></div>
+      </div></div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>我的能力</b><span className="rdCode">采纳即用 · 在用/表现</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.openPanel("skillImport")}>从想法建策略</button></div></div>
+        <div className="rdCapSub">交易策略 · {inUse.length}</div>
+        {inUse.length ? inUse.map(skillRow) : <div className="rdEmpty">暂无在用策略。去知识库采纳或从想法新建。</div>}
+        {lenses.length > 0 && <><div className="rdCapSub">分析透镜 · {lenses.length}</div>{lenses.map((l) => <div className="rdCap" key={l.id}><div className="cmain"><div className="cnm">{l.name}</div><div className="cmeta">{l.promptText}</div></div>{l.sourceTitle && <span className="cmeta rdMono" style={{ flex: "none" }}>《{l.sourceTitle}》</span>}<span className="rdStatePill live">在用</span></div>)}</>}
+        {workflows.length > 0 && <><div className="rdCapSub">工作流 · {workflows.length}</div>{workflows.map((w) => <div className="rdCap" key={w.id}><div className="cmain"><div className="cnm">{w.name}</div><div className="cmeta">{(w.steps || []).join(" → ")}</div></div><span className="rdStatePill live">在用</span></div>)}</>}
+        {pipeline.length > 0 && <div style={{ marginTop: 14 }}><Fold title="流水线中(传统验证路径)" n={pipeline.length} open={pipeOpen} onT={() => setPipeOpen(!pipeOpen)}>{pipeline.map((s) => <div className="rdLine" key={s.id}><div><b style={{ fontSize: 12.5 }}>{s.name}</b></div><span className="lsrc">{SKILL_STATE[s.status]?.label || humanize(s.status)}</span></div>)}</Fold></div>}
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>内置工具</b><span className="rdCode">AI 天生会用 · 只读</span></div>
+        <div className="rdToolGrid">{tools.map((t, i) => <div className="rdTool" key={t.name || i}><b>{t.name || String(t)}</b><span>{t.description || ""}</span></div>)}{!tools.length && <div className="rdEmpty">工具目录未同步</div>}</div>
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>外部插件 / MCP</b><span className="rdCode">Plugins</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.openPanel("skillImport")}>导入</button></div></div>
+        {ext.map((s) => <div className="rdCap" key={s.id}><div className="cmain"><div className="cnm">{s.name}</div><div className="cmeta">{humanize(s.status)}</div></div></div>)}
+        {mcp.map((m) => <div className="rdCap" key={m.id}><div className="cmain"><div className="cnm">{m.name || m.id}</div><div className="cmeta">MCP</div></div><span className={`rdStatePill ${m.status === "connected" ? "live" : "deg"}`}>{m.status === "connected" ? "已连接" : "未连接"}</span></div>)}
+        {!ext.length && !mcp.length && <div className="rdEmpty">暂无外部插件</div>}
       </div>
     </div>
   );

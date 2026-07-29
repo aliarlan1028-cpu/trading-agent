@@ -42,6 +42,8 @@ const LiveOperationsPage = lazyNamed(() => import("./professionalPages.jsx"), "L
 // IA 重构 W1:新页/合并页(纯前端搬家,零后端逻辑改动)
 const RiskOverviewPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskOverviewPage");
 const RiskSettingsPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskSettingsPage");
+const KnowledgeWorkbenchPage = lazyNamed(() => import("./redesignPages.jsx"), "KnowledgeWorkbenchPage");
+const CapabilitiesPage = lazyNamed(() => import("./redesignPages.jsx"), "CapabilitiesPage");
 const SignalHubPage = lazyNamed(() => import("./relayoutPages.jsx"), "SignalHubPage");
 const TradeJournalPage = lazyNamed(() => import("./relayoutPages.jsx"), "TradeJournalPage");
 const StrategyAnalysisPage = lazyNamed(() => import("./relayoutPages.jsx"), "StrategyAnalysisPage");
@@ -291,8 +293,8 @@ function App() {
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
     if (active === "signalHub") return <SignalHubPage data={data} action={action} ui={ui} />;
     if (active === "tradeJournal") return <TradeJournalPage data={data} action={action} ui={ui} />;
-    if (active === "knowledgeBase") return <KnowledgeSkillsPage data={data} action={action} ui={ui} view="knowledge" />;
-    if (active === "capabilities") return <KnowledgeSkillsPage data={data} action={action} ui={ui} view="capabilities" />;
+    if (active === "knowledgeBase") return <KnowledgeWorkbenchPage data={data} action={action} ui={ui} />;
+    if (active === "capabilities") return <CapabilitiesPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
     if (active === "riskOverview") return <RiskOverviewPage data={data} action={action} ui={ui} />;
