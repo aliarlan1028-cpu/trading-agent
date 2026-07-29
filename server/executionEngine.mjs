@@ -353,6 +353,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       symbol: plan.symbol,
       side,
       posSide: plan.direction === "short" ? "short" : "long",
+      positionSide: plan.direction === "short" ? "SHORT" : "LONG", // 币安对冲模式必需(OKX 用上面的 posSide),缺则 -4061 拒(审计 exch-F3)
+
       type: "LIMIT",
       price: sizing.entryMid,
       quantity: sizing.quantity,

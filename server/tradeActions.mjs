@@ -3,6 +3,10 @@ import { binanceSignedRequest, okxContractSpec, okxPositionMode, okxSignedReques
 import { hasPassedPaper } from "./paperTrading.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
 
+// OKX clOrdId 只允许字母+数字(≤32)。下单/撤单/改单必须用同一个清洗函数,否则发出去清洗过、
+// 撤单用原值(带下划线)→ OKX 找不到单 → 撤不掉的孤儿单(审计 exch-F2)。全链路统一走它。
+export const okxCleanClOrdId = (s) => String(s || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+
 // 授权词表(mandate.strategies) → 策略注册表 id 的映射:paper 会话按注册表 id 记录,
 // 两个命名空间不映射时 REQUIRE_PAPER_VALIDATION 会拦下全部计划(审计 P1-5)。
 const STRATEGY_PAPER_ALIAS = { trend_following: "trend", mean_reversion: "meanrev", momentum: "macd", breakout: "breakout" };
@@ -397,11 +401,12 @@ async function executeOkxAction(action, payload) {
     };
   }
   if (action === "cancel_order") {
-    const raw = await okxSignedRequest("/api/v5/trade/cancel-order", "POST", JSON.stringify({ instId, ordId: payload.orderId, clOrdId: payload.clientOrderId }));
+    // clOrdId 必须与下单时同一清洗口径,否则 OKX 找不到单、撤不掉(审计 exch-F2)。有 ordId 则优先用 ordId。
+    const raw = await okxSignedRequest("/api/v5/trade/cancel-order", "POST", JSON.stringify({ instId, ordId: payload.orderId, clOrdId: payload.orderId ? undefined : okxCleanClOrdId(payload.clientOrderId) }));
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
   if (action === "amend_order") {
-    const raw = await okxSignedRequest("/api/v5/trade/amend-order", "POST", JSON.stringify({ instId, ordId: payload.orderId, clOrdId: payload.clientOrderId, newSz: payload.newSize ? String(payload.newSize) : undefined, newPx: payload.newPrice ? String(payload.newPrice) : undefined }));
+    const raw = await okxSignedRequest("/api/v5/trade/amend-order", "POST", JSON.stringify({ instId, ordId: payload.orderId, clOrdId: payload.orderId ? undefined : okxCleanClOrdId(payload.clientOrderId), newSz: payload.newSize ? String(payload.newSize) : undefined, newPx: payload.newPrice ? String(payload.newPrice) : undefined }));
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
   if (action === "close_position") {
