@@ -34,6 +34,7 @@ import {
 import { displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
+import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
 import { ConfigPanel, LiveGrayPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
@@ -756,13 +757,16 @@ function MobileChatStatus({ data }) {
   );
 }
 
-// 移动端主导航（与桌面 6 页 IA 一致 + 系统设置），走顶部汉堡抽屉。
+// 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
+// W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
 const mobileNav = [
   { id: "chat", label: "AI 交易员", code: "ALPHA-01", icon: Bot },
+  { id: "signalHub", label: "信号中心", code: "SIGNALS · BOARD", icon: Zap },
   { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
-  { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
+  { id: "tradeJournal", label: "交易日志", code: "TRADE · JOURNAL", icon: ClipboardList },
   { id: "knowledgeSkills", label: "知识与技能", code: "KNOWLEDGE · SKILLS", icon: BookOpen },
   { id: "riskAuth", label: "风控与授权", code: "RISK · MANDATE", icon: ShieldCheck },
+  { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "auditSystem", label: "审计", code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
 ];
@@ -830,6 +834,10 @@ export function MobileApp({ api }) {
   let content = null;
   if (route === "chat") {
     content = <div className="content mChatContent"><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} /></div>;
+  } else if (route === "signalHub") {
+    content = <div className="content mSubContent"><SignalHubPage data={data} action={action} ui={ui} /></div>;
+  } else if (route === "tradeJournal") {
+    content = <div className="content mSubContent"><TradeJournalPage data={data} /></div>;
   } else if (route === "cockpit") {
     content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
