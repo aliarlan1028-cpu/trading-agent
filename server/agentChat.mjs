@@ -668,23 +668,25 @@ export async function executeTool(db, run, name, args = {}) {
       const smart = await fetchSmartMoney(symbol).catch(() => null);
       // 合约规格(下单单位是"张"不是"币")——喂真实 ctVal/minSz/lotSz + 最小下单名义,
       // 防止模型把"0.01 张"误当成"0.01 币"、手算成 100 倍名义再瞎断言"账户太小下不了单"。
-      let contractSpec = null;
+      // 合约规格拿不到时给显式 available:false 哨兵(不静默丢),否则模型会退回手算最小量/名义(审计 llm-F2)。
+      let contractSpec = { available: false, note: "合约规格未取到——禁止手算最小量/名义/保证金,可下量以执行引擎返回为准" };
       try {
         const base = symbol.split("/")[0];
         const spec = await okxContractSpec(`${symbol.replace("/", "-")}-SWAP`);
         const px = Number(micro?.markPrice ?? micro?.price ?? (db.markets || []).find((m) => m.symbol === symbol)?.price ?? 0);
         if (spec) contractSpec = {
+          available: true,
           unit: "张(contract)",
           ctVal: spec.ctVal, ctValCcy: base, minSz: spec.minSz, lotSz: spec.lotSz,
           note: `1 张 = ${spec.ctVal} ${base}；最小下单 ${spec.minSz} 张（不是 ${spec.minSz} ${base}）`,
           minOrderCoin: Number((spec.minSz * spec.ctVal).toPrecision(6)),
           minOrderNotionalUsdt: px > 0 ? Number((spec.minSz * spec.ctVal * px).toFixed(2)) : null
         };
-      } catch { /* 规格拿不到不阻断微观结构 */ }
+      } catch { /* 保持 available:false 哨兵 */ }
       const out = smart?.ok
         ? { ...micro, smartMoney: smart, interpretation: [micro.interpretation, smart.interpretation].filter(Boolean).join("；") }
         : { ...micro };
-      return contractSpec ? { ...out, contractSpec } : out;
+      return { ...out, contractSpec };
     } catch (error) {
       return { error: `微观结构同步失败：${error.message}` };
     }
@@ -1110,9 +1112,13 @@ export async function executeTool(db, run, name, args = {}) {
     }
     // 计划结果如实播报:autoApproved 在执行前就被置 true,不能拿它当"已下单"——SRTL 拒了就没下单。
     // 用真实执行状态判定 placed(是否产生真实订单),分清"真下单 / 被结构闸拒 / 停在待批准"三种。
-    const placed = Boolean(autoExecution && ["submitted", "dry_run", "entry_pending", "entry_filled", "protecting"].includes(autoExecution.status));
+    // dry_run 是"算了没下单",绝不能算"已下单"(审计 llm-F3)——否则模型会谎报"已自动下单"。
+    const placed = Boolean(autoExecution && ["submitted", "entry_pending", "entry_filled", "protecting"].includes(autoExecution.status));
+    const simulated = Boolean(autoExecution && autoExecution.status === "dry_run");
     let autoGateReason = null;
-    if (autoExecution && !placed) {
+    if (simulated) {
+      autoGateReason = "干跑：实盘写入未开，已完成数量/价格计算但未向交易所提交(未真下单)";
+    } else if (autoExecution && !placed) {
       // 已自动送执行但没真正下单——最常见是执行前结构质量闸(SRTL)拒绝。
       const srtl = autoExecution.review?.reason || autoExecution.executionOrder?.setupReview?.reason;
       autoGateReason = autoExecution.status === "setup_rejected"
@@ -1137,7 +1143,9 @@ export async function executeTool(db, run, name, args = {}) {
       smartMoneyAlignment: alignment,
       note: placed
         ? `已在授权与灰度上限内自动执行并下单（${autoExecution.status}）。`
-        : autoExecution
+        : simulated
+          ? `干跑完成（实盘写入未开）：已算好数量/价格但未向交易所提交，未真下单。要真实下单请开启「实盘写入」。`
+          : autoExecution
           ? `计划已自动送执行，但${autoGateReason}。未产生真实订单——这【不是】"等待人工批准"，需重提更优 setup 或调整参数。`
           : (risk.passed
             ? `计划已进入待批准队列，你批准后才进入执行链路（执行时仍会过 SRTL 结构质量闸，硬风控通过≠一定会下单）。${autoGateReason ? `未自动下单原因：${autoGateReason}。` : ""}`
@@ -1401,7 +1409,13 @@ function buildSafetyContext(db, name, args) {
     accountSnapshotFresh: db.system?.liveTradingEnabled
       ? (snapshotAgeMs != null && snapshotAgeMs < 30 * 60 * 1000)
       : undefined,
-    mandateMaxLeverage: mandate?.maxLeverage != null ? Number(mandate.maxLeverage) : null
+    // 读真实写入的键(max_leverage / maxLeverageBySymbol);旧代码读扁平 maxLeverage(从不写入)→
+    // agentSafetyEval 杠杆闸永久失效(审计 concept-F1)。这里改成与 riskEngine 同口径,让防线复活。
+    mandateMaxLeverage: (() => {
+      const bySym = mandate?.maxLeverageBySymbol ? Object.values(mandate.maxLeverageBySymbol).map(Number).filter(Number.isFinite) : [];
+      const v = mandate?.max_leverage ?? mandate?.maxLeverage ?? (bySym.length ? Math.max(...bySym) : null);
+      return v != null ? Number(v) : null;
+    })()
   };
 }
 

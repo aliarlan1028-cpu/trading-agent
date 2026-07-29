@@ -26,7 +26,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -294,7 +294,7 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
       <header>
         <b>{plan.symbol}</b>
         <span className={plan.direction === "short" ? "negative" : "positive"}>{plan.direction === "short" ? "做空" : "做多"}</span>
-        <StatusBadge tone={plan.status === "risk_rejected" ? "danger" : awaiting ? "warning" : "ok"}>{humanize(plan.status)}</StatusBadge>
+        <StatusBadge tone={awaiting ? "warning" : statusTone(plan.status)}>{humanize(plan.status)}</StatusBadge>
         {stopCrossed && <span className="evBadge neg">已失效 · 现价越过止损</span>}
         <small>{plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
       </header>

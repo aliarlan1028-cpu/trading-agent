@@ -125,6 +125,15 @@ export function humanize(value, fallback = "-") {
     allowed_with_warnings: "允许但有警告",
     allow_small_position: "允许小仓位",
     risk_rejected: "风控拒绝",
+    setup_rejected: "结构审核未过",
+    protection_failed: "保护单失败",
+    cancelled: "已取消",
+    canceled: "已取消",
+    dry_run: "干跑(未下单)",
+    executing: "执行中",
+    entry_pending: "入场挂单中",
+    entry_filled: "入场已成交",
+    protecting: "止盈止损中",
     awaiting_approval: "等待确认",
     approved: "已批准",
     expired: "已过期作废",
@@ -191,10 +200,10 @@ export function shortId(value, fallback = "未生成") {
 export function statusTone(status) {
   const value = String(status || "").toLowerCase();
   const raw = String(status || "");
-  const dangerStates = ["blocked", "error", "failed", "rejected", "risk_rejected", "已阻断", "异常", "失败", "已拒绝", "风控拒绝"];
+  const dangerStates = ["blocked", "error", "failed", "rejected", "risk_rejected", "setup_rejected", "protection_failed", "已阻断", "异常", "失败", "已拒绝", "风控拒绝"];
   const warningStates = ["warning", "degraded", "skipped_locked", "allowed_with_warnings", "paused", "降级运行", "并发锁跳过", "允许但有警告", "已暂停", "告警", "人工暂停", "风控暂停"];
-  const neutralStates = ["setup_required", "missing_credentials", "not_synced", "data_unavailable", "unconfigured", "待配置", "未配置", "未同步", "缺少数据", "只读观察", "未启用", "未连接", "未生成", "未检查", "未授权", "未对账", "未记录", "未评估", "未测试", "未安装"];
-  const infoStates = ["pending", "in_progress", "submitted", "queued", "awaiting_approval", "validating", "验证中", "进行中", "待审批", "审批中", "同步中"];
+  const neutralStates = ["setup_required", "missing_credentials", "not_synced", "data_unavailable", "unconfigured", "cancelled", "canceled", "dry_run", "expired", "待配置", "未配置", "未同步", "缺少数据", "只读观察", "未启用", "未连接", "未生成", "未检查", "未授权", "未对账", "未记录", "未评估", "未测试", "未安装"];
+  const infoStates = ["pending", "in_progress", "submitted", "queued", "awaiting_approval", "validating", "executing", "entry_pending", "entry_filled", "protecting", "验证中", "进行中", "待审批", "审批中", "同步中"];
   if (dangerStates.includes(value) || dangerStates.includes(raw)) return "danger";
   if (warningStates.includes(value) || warningStates.includes(raw)) return "warning";
   if (neutralStates.includes(value) || neutralStates.includes(raw)) return "neutral";
