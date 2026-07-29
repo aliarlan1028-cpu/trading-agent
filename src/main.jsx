@@ -39,6 +39,11 @@ const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
 const AnalysisRoomPage = lazyNamed(() => import("./pages.jsx"), "AnalysisRoomPage");
 const StrategyWorkbenchPage = lazyNamed(() => import("./professionalPages.jsx"), "StrategyWorkbenchPage");
 const LiveOperationsPage = lazyNamed(() => import("./professionalPages.jsx"), "LiveOperationsPage");
+// IA 重构 W1:新页/合并页(纯前端搬家,零后端逻辑改动)
+const SignalHubPage = lazyNamed(() => import("./relayoutPages.jsx"), "SignalHubPage");
+const TradeJournalPage = lazyNamed(() => import("./relayoutPages.jsx"), "TradeJournalPage");
+const StrategyAnalysisPage = lazyNamed(() => import("./relayoutPages.jsx"), "StrategyAnalysisPage");
+const AuditOpsPage = lazyNamed(() => import("./relayoutPages.jsx"), "AuditOpsPage");
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
 const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
 const KillConfirmDialog = lazyNamed(() => import("./mobile.jsx"), "KillConfirmDialog");
@@ -55,16 +60,19 @@ if (isNativeApp()) {
 
 // 按心智模型把 9 页归并成 3 组(交易/研究/风控),降低"一堵墙 9 个平铺项"的认知负荷。
 // 页面本身不动(不合并组件,零回归风险),只在侧栏加分组小标题。
+// IA 重构 W1:导航按"交易 / 能力(知识→能力→使用) / 风控与运维"重排。
+// 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
+// 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
 const navItems = [
   { id: "chat", label: "AI 交易员", short: "交易员", code: "AGENT", icon: Bot, group: "交易" },
+  { id: "signalHub", label: "信号中心", short: "信号", code: "SIGNALS", icon: Zap, group: "交易" },
   { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart, group: "交易" },
-  { id: "liveOperations", label: "实盘运营", short: "运营", code: "LIVE OPS", icon: Shield, group: "交易" },
-  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "研究" },
-  { id: "strategyWorkbench", label: "策略研究", short: "研究", code: "RESEARCH", icon: FlaskConical, group: "研究" },
-  { id: "analysisRoom", label: "分析作战室", short: "作战室", code: "ANALYSIS", icon: Activity, group: "研究" },
-  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck, group: "风控" },
-  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock, group: "风控" },
-  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings, group: "风控" }
+  { id: "tradeJournal", label: "交易日志", short: "日志", code: "JOURNAL", icon: ClipboardList, group: "交易" },
+  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "能力" },
+  { id: "strategyAnalysis", label: "策略与分析", short: "策略", code: "STRATEGY", icon: Activity, group: "能力" },
+  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck, group: "风控与运维" },
+  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock, group: "风控与运维" },
+  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings, group: "风控与运维" }
 ];
 
 function BrandLogo({ size = 34 }) {
@@ -277,13 +285,13 @@ function App() {
   const content = useMemo(() => {
     if (!data) return null;
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
+    if (active === "signalHub") return <SignalHubPage data={data} action={action} ui={ui} />;
+    if (active === "tradeJournal") return <TradeJournalPage data={data} action={action} ui={ui} />;
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
-    if (active === "analysisRoom") return <AnalysisRoomPage data={data} ui={ui} />;
-    if (active === "strategyWorkbench") return <StrategyWorkbenchPage data={data} action={action} ui={ui} />;
-    if (active === "liveOperations") return <LiveOperationsPage data={data} action={action} ui={ui} />;
+    if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
-    if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
+    if (active === "auditSystem") return <AuditOpsPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, data, action]);
