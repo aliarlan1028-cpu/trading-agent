@@ -60,7 +60,7 @@ export function evaluateTradePlan(db, plan) {
   add("杠杆上限", Number(plan.leverage) <= maxLeverage, `计划 ${plan.leverage}x，上限 ${maxLeverage}x`);
   // 杠杆下限只做提示(低于下限=更保守,不危险),不硬拦。
   add("杠杆下限", Number(plan.leverage) >= minLeverage, `计划 ${plan.leverage}x，建议下限 ${minLeverage}x`, Number(plan.leverage) >= minLeverage ? "ok" : "warn");
-  add("止损存在", Boolean(plan.stopLoss), "自主交易计划必须带止损");
+  add("止损存在", Boolean(plan.stopLoss ?? plan.stop_loss), "自主交易计划必须带止损");
 
   const riskPercent = Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? plan.max_loss_pct ?? 999);
   const maxSingleTradeRiskPct = Number(mandate.maxSingleTradeRiskPct ?? mandate.max_single_trade_risk_pct ?? 0);

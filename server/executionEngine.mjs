@@ -300,7 +300,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   try {
     const review = await reviewTradeSetup(db, {
       symbol: plan.symbol, direction: plan.direction,
-      entry: sizing.entryMid, entryLow: plan.entryLow, entryHigh: plan.entryHigh,
+      entry: sizing.entryMid, entryLow: plan.entryLow ?? plan.entry_range?.[0], entryHigh: plan.entryHigh ?? plan.entry_range?.[plan.entry_range.length - 1],
       stopLoss: executionOrder.stopLoss, takeProfit: executionOrder.takeProfits, id: plan.id
     }, { minR: Number(mandate?.minRewardRisk ?? process.env.SRTL_MIN_R ?? 2.0) });
     executionOrder.setupReview = { verdict: review.verdict, grade: review.grade, sizeMultiplier: review.sizeMultiplier, reason: review.reason, rewardRisk: review.rewardRisk, checklist: review.checklist };
