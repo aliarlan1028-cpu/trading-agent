@@ -322,7 +322,9 @@ function upsertBinanceExecution(db, payload) {
 function upsertOkxOrder(db, payload) {
   const existing = db.orders.find((order) => order.exchangeOrderId === payload.ordId || order.clientOrderId === payload.clOrdId);
   const order = existing || { id: id("ord"), exchange: "OKX", exchangeOrderId: payload.ordId, clientOrderId: payload.clOrdId, createdAt: nowIso() };
-  order.symbol = payload.instId?.replace("-", "/");
+  // 与 REST/执行引擎同口径(去 -SWAP),否则 WS 订单/成交显示 "BTC/USDT-SWAP"、引擎显示 "BTC/USDT",
+  // 同一永续被当成两个符号,用户误以为多了个"现货 BTC/USDT"(实锤截图)。
+  if (payload.instId) order.symbol = okxDisplaySymbol(payload.instId);
   order.side = payload.side;
   order.type = payload.ordType;
   order.status = payload.state;
