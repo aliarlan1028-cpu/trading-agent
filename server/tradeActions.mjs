@@ -338,6 +338,8 @@ async function executeOkxAction(action, payload) {
       }
       okxSz = contracts;
     }
+    // OKX clOrdId 只允许字母数字(≤32),带下划线整单被 51000 拒——最后一道兜底清洗。
+    const okxClOrdId = (s) => String(s).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
     const body = JSON.stringify({
       instId,
       tdMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross",
@@ -345,10 +347,10 @@ async function executeOkxAction(action, payload) {
       ordType: String(payload.ordType || payload.type || "limit").toLowerCase(),
       sz: String(okxSz),
       px: payload.price ? String(payload.price) : undefined,
-      clOrdId: payload.clientOrderId || id("coid"),
+      clOrdId: okxClOrdId(payload.clientOrderId || id("coid")),
       reduceOnly: Boolean(payload.reduceOnly),
       attachAlgoOrds: payload.stopLoss && !payload.reduceOnly ? [{
-        attachAlgoClOrdId: payload.stopClientOrderId || id("stop"),
+        attachAlgoClOrdId: okxClOrdId(payload.stopClientOrderId || id("stop")),
         slTriggerPx: String(payload.stopLoss),
         slOrdPx: "-1",
         slTriggerPxType: payload.workingType === "MARK_PRICE" ? "mark" : "last"

@@ -207,7 +207,10 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
       return [["大盘多空 · BTC", ratio == null ? bias.label : `${bias.label}（${ratio}）`, tone]];
     })()
   ];
-  const openOrders = (data.orders || data.executionOrders || []).filter((o) => !["closed", "canceled", "cancelled", "filled", "filled_closed", "rejected"].includes(String(o.status || "").toLowerCase()));
+  // 当前委托只认执行引擎在途单(有完整生命周期)，用白名单 OPEN_EXECUTION_STATES 严格取——
+  // 曾用黑名单漏了 exchange_rejected/failed/setup_rejected，把交易所已拒的单显示成"当前委托"
+  // (用户去 OKX 根本没有)。orders 日志只是下单快照、无生命周期，不适合当挂单源。
+  const openOrders = (data.executionOrders || []).filter((o) => OPEN_EXECUTION_STATES.includes(String(o.status || "").toLowerCase()));
   const recentFills = (data.fills || []).slice(0, 6);
   const walletVals = [
     ["总资产", displayMoney(data.portfolio.totalEquityUsdt)],
@@ -380,7 +383,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
                   {/* 类型列只显示真实类型；缺失显示 —，不再拿订单状态冒充类型 */}
                   <span className="ordType">{humanize(o.type || o.kind, "—")}</span>
                   {/* 市价单价格为 0（OKX px 为空）时显示"市价"，不再显示 0.00 */}
-                  <span className="ordPx">{(() => { const px = o.price ?? o.avgPrice ?? o.entry; return Number(px) > 0 ? displayMoney(px, 2) : (/market/i.test(String(o.type || "")) || Number(px) === 0 ? "市价" : "—"); })()}</span>
+                  <span className="ordPx">{(() => { const px = o.price ?? o.avgPrice ?? o.entryPrice ?? o.entry; return Number(px) > 0 ? displayMoney(px, 2) : (/market/i.test(String(o.type || "")) || Number(px) === 0 ? "市价" : "—"); })()}</span>
                   <span className="ordTime">{formatTime(o.createdAt)}</span>
                 </div>
               );

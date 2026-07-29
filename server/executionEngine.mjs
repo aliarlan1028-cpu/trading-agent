@@ -12,6 +12,9 @@ import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, now
 
 const OPEN_EXECUTION_STATES = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
 const DEFAULT_TAKER_FEE_RATE = 0.0004;
+// OKX clOrdId 只接受字母+数字(≤32)——带下划线会被 51000「Parameter clOrdId error」整单拒绝
+// (曾导致所有 OKX 自动单静默失败)。统一清洗成字母数字;币安也接受字母数字,故两所通用。
+const cleanClOrdId = (seed) => String(seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
 
 function asNumber(value, fallback = null) {
   const parsed = Number(value);
@@ -308,8 +311,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   }
 
   const side = plan.direction === "short" ? "SELL" : "BUY";
-  const entryClientOrderId = `exec_${executionOrder.id.slice(-12)}`;
-  const stopClientOrderId = `stop_${executionOrder.id.slice(-12)}`;
+  const entryClientOrderId = cleanClOrdId(`exec${executionOrder.id.slice(-12)}`);
+  const stopClientOrderId = cleanClOrdId(`stop${executionOrder.id.slice(-12)}`);
   let result;
   try {
     result = await executeTradeAction(db, "place_order", {
@@ -366,7 +369,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   executionOrder.status = "entry_pending";
   executionOrder.exchangeOrderId = result.exchangeOrderId;
   executionOrder.omsOrderId = result.omsOrderId || null;
-  executionOrder.clientOrderId = result.clientOrderId || `exec_${executionOrder.id.slice(-12)}`;
+  executionOrder.clientOrderId = result.clientOrderId || entryClientOrderId;
   executionOrder.stopClientOrderId = stopClientOrderId;
   executionOrder.okxCtVal = result.okxCtVal || null; // OKX 张数→币数量换算面值(轮询回填用)
   executionOrder.protection = "attached";
@@ -537,7 +540,7 @@ async function placeTakeProfits(db, executionOrder) {
         price,
         stopPrice: price,
         quantity: quantities[index],
-        clientOrderId: `tp${index + 1}_${executionOrder.id.slice(-10)}`
+        clientOrderId: cleanClOrdId(`tp${index + 1}${executionOrder.id.slice(-10)}`)
       })),
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
