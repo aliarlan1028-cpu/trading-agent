@@ -597,7 +597,10 @@ export function MandatePanel({ data, action }) {
     name: mandate.name || "主账户授权委托",
     exchange: mandate.exchanges?.[0] || "BINANCE",
     allowedSymbols: mandate.allowedSymbols?.length ? mandate.allowedSymbols.map((s) => String(s).toUpperCase()) : ["BTC/USDT", "ETH/USDT"],
+    minLeverage: mandate.min_leverage ?? mandate.minLeverage ?? 1,
     maxLeverage: mandate.max_leverage || 1,
+    sizingMode: mandate.sizingMode || "risk_pct",
+    equityPct: mandate.equityPct ?? 50,
     singleRisk: mandate.maxSingleTradeRiskPct || 0.3,
     dailyLoss: mandate.maxDailyLossPct || 1,
     approval: mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 5000,
@@ -613,6 +616,7 @@ export function MandatePanel({ data, action }) {
     event.preventDefault();
     const symbols = (Array.isArray(form.allowedSymbols) ? form.allowedSymbols : asArray(form.allowedSymbols)).map((item) => String(item).toUpperCase());
     const maxLeverage = Number(form.maxLeverage || 1);
+    const minLeverage = Math.max(1, Math.min(maxLeverage, Number(form.minLeverage || 1)));
     const body = {
       name: form.name,
       status: "active",
@@ -622,6 +626,10 @@ export function MandatePanel({ data, action }) {
       strategies: ["manual_review"],
       maxLeverageBySymbol: Object.fromEntries(symbols.map((symbol) => [symbol, maxLeverage])),
       max_leverage: maxLeverage,
+      min_leverage: minLeverage,
+      minLeverage,
+      sizingMode: form.sizingMode === "equity_pct" ? "equity_pct" : "risk_pct",
+      equityPct: Math.max(1, Math.min(100, Number(form.equityPct || 50))),
       maxSingleTradeRiskPct: Number(form.singleRisk || 0),
       maxDailyLossPct: Number(form.dailyLoss || 0),
       humanApprovalNotionalUsdt: Number(form.approval || 0),
@@ -636,10 +644,16 @@ export function MandatePanel({ data, action }) {
       <label>交易所<select value={form.exchange} onChange={(event) => update("exchange", event.target.value)}><option>BINANCE</option><option>OKX</option></select></label>
       <label className="symbolLabel">交易对白名单<SymbolMultiSelect value={form.allowedSymbols} onChange={(next) => update("allowedSymbols", next)} /></label>
       <div className="formGrid">
-        <label>最大杠杆<input type="number" min="1" value={form.maxLeverage} onChange={(event) => update("maxLeverage", event.target.value)} /></label>
-        <label>单笔风险 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /></label>
+        <label>最低杠杆<input type="number" min="1" value={form.minLeverage} onChange={(event) => update("minLeverage", event.target.value)} /><small className="fieldHint">AI 只在区间内选</small></label>
+        <label>最高杠杆<input type="number" min="1" value={form.maxLeverage} onChange={(event) => update("maxLeverage", event.target.value)} /><small className="fieldHint">想固定就与最低相同</small></label>
         <label>日亏损上限 %<input type="number" step="0.1" min="0" value={form.dailyLoss} onChange={(event) => update("dailyLoss", event.target.value)} /></label>
         <label>人工确认阈值 USDT<input type="number" min="0" value={form.approval} onChange={(event) => update("approval", event.target.value)} /></label>
+      </div>
+      <div className="formGrid">
+        <label>仓位模式<select value={form.sizingMode} onChange={(event) => update("sizingMode", event.target.value)}><option value="risk_pct">按单笔风险%</option><option value="equity_pct">按权益百分比</option></select></label>
+        {form.sizingMode === "equity_pct"
+          ? <label>每单名义 = 权益 ×<input type="number" step="1" min="1" max="100" value={form.equityPct} onChange={(event) => update("equityPct", event.target.value)} /><small className="fieldHint">% 权益（如 50 = 半仓名义）</small></label>
+          : <label>单笔风险 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /><small className="fieldHint">亏到止损这单亏账户的%</small></label>}
         <label>有效期(天)<input type="number" min="1" max="365" value={form.validDays} onChange={(event) => update("validDays", event.target.value)} /><small className="fieldHint">截止 {new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 86400000).toLocaleDateString("zh-CN")}</small></label>
       </div>
       <button className="primaryButton" type="submit">保存授权</button>

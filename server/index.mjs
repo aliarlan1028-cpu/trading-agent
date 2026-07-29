@@ -211,6 +211,28 @@ if (!db.meta.skillPaperForwardMigration) {
 if (db.system.skillLiveValidationMode) {
   try { promoteCompiledToProbation(db); } catch (error) { appendTrace(db, "system", `技能上岗试用失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 }
+// 一次性清运营数据(用户要求:清掉旧交易痕迹,不让旧代码/旧数据污染新系统)。
+// 保留:知识库(11本书)、技能流水线、系统配置、API密钥、风控规则、授权委托、Agent长期记忆、
+// 系统任务/事件源。清:所有交易/执行/分析/对话/巡检痕迹。bump 版本号可再触发一次。
+const OPERATIONAL_WIPE_VERSION = 1;
+if ((db.meta.operationalWipeVersion || 0) < OPERATIONAL_WIPE_VERSION) {
+  const wipeColls = [
+    "tradePlans", "orders", "executionOrders", "exchangeOrders", "fills", "positions",
+    "accountSnapshots", "agentRuns", "chatMessages", "chatSessions", "watchTriggers",
+    "tradeIntents", "reconciliationReports", "riskChecks", "riskIncidents", "alerts",
+    "drillRuns", "llmRuns", "toolExecutions", "skillRuns", "analysisBundles",
+    "reviewReports", "strategyExperiments", "agentSteps", "agentToolCalls", "eventImpacts",
+    "pendingActions", "positionMonitors", "notifications", "jobRuns"
+  ];
+  let cleared = 0;
+  for (const c of wipeColls) { if (Array.isArray(db[c]) && db[c].length) { cleared += db[c].length; db[c] = []; } }
+  // 组合权益归零:旧的成交/持仓已清,下次同步会从交易所拉真实值,避免残留旧数字。
+  if (db.portfolio) { db.portfolio.totalEquityUsdt = null; db.portfolio.todayPnl = null; db.portfolio.unrealizedPnl = null; }
+  db.system.remainingDailyLossUsdt = null;
+  db.meta.operationalWipeVersion = OPERATIONAL_WIPE_VERSION;
+  appendAudit(db, `一次性清空运营数据(${cleared} 条),保留知识库/技能/配置/密钥/风控规则/授权/记忆`, "operational_wipe", "System", "warning");
+  appendTrace(db, "system", `运营数据已清空(${cleared} 条),系统进入干净状态`, "warning");
+}
 // 一次性收敛历史重复告警：同一来源(source)的 open 事件只保留最新一条，累计计数，避免刷屏。
 (function collapseDuplicateIncidents() {
   const groups = new Map();
