@@ -40,6 +40,8 @@ const AnalysisRoomPage = lazyNamed(() => import("./pages.jsx"), "AnalysisRoomPag
 const StrategyWorkbenchPage = lazyNamed(() => import("./professionalPages.jsx"), "StrategyWorkbenchPage");
 const LiveOperationsPage = lazyNamed(() => import("./professionalPages.jsx"), "LiveOperationsPage");
 // IA 重构 W1:新页/合并页(纯前端搬家,零后端逻辑改动)
+const RiskOverviewPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskOverviewPage");
+const RiskSettingsPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskSettingsPage");
 const SignalHubPage = lazyNamed(() => import("./relayoutPages.jsx"), "SignalHubPage");
 const TradeJournalPage = lazyNamed(() => import("./relayoutPages.jsx"), "TradeJournalPage");
 const StrategyAnalysisPage = lazyNamed(() => import("./relayoutPages.jsx"), "StrategyAnalysisPage");
@@ -293,8 +295,8 @@ function App() {
     if (active === "capabilities") return <KnowledgeSkillsPage data={data} action={action} ui={ui} view="capabilities" />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
-    if (active === "riskOverview") return <RiskAuthPage data={data} action={action} ui={ui} view="overview" />;
-    if (active === "riskSettings") return <RiskAuthPage data={data} action={action} ui={ui} view="settings" />;
+    if (active === "riskOverview") return <RiskOverviewPage data={data} action={action} ui={ui} />;
+    if (active === "riskSettings") return <RiskSettingsPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditOpsPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
