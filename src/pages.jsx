@@ -1331,7 +1331,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
     { Icon: WalletCards, k: "交易所", v: safeList(mandate.exchanges, "未授权") },
     { Icon: ListChecks, k: "白名单", v: (mandate.allowedSymbols || []).length ? `${mandate.allowedSymbols.length} 币` : "未授权" },
     { Icon: TrendingUp, k: "杠杆区间", v: maxLev ? ((mandate.min_leverage ?? mandate.minLeverage ?? 1) === maxLev ? `固定 ${maxLev}x` : `${mandate.min_leverage ?? mandate.minLeverage ?? 1}–${maxLev}x`) : "未授权" },
-    { Icon: WalletCards, k: "仓位模式", v: mandate.sizingMode === "equity_pct" ? `权益 ${mandate.equityPct ?? 50}%` : `风险 ${mandate.maxSingleTradeRiskPct ?? 0.3}%` },
+    { Icon: WalletCards, k: "仓位模式", v: (mandate.sizingMode === "balance_pct" || mandate.sizingMode === "equity_pct") ? `余额 ${mandate.positionPct ?? mandate.equityPct ?? 30}%/单` : `风险 ${mandate.maxSingleTradeRiskPct ?? 0.3}%` },
     { Icon: Target, k: "单日最大亏损", v: `${mandate.maxDailyLossPct || "-"}%`, color: "neg" },
     { Icon: CheckCircle2, k: "审批阈值", v: mandate.id ? `≥${formatMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` : "未授权" },
     { Icon: CalendarClock, k: "有效期", v: mandateValidity },

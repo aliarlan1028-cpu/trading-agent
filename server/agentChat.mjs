@@ -144,8 +144,8 @@ const TOOL_DEFS = [
         allowedSymbols: { type: "array", items: { type: "string" }, description: "如 [\"BTC/USDT\"]" },
         maxLeverage: { type: "number" },
         minLeverage: { type: "number", description: "最低杠杆(杠杆区间下限);想固定杠杆就与 maxLeverage 相同" },
-        sizingMode: { type: "string", enum: ["risk_pct", "equity_pct"], description: "仓位模式:risk_pct=按单笔风险%反推;equity_pct=每单名义=权益×equityPct%" },
-        equityPct: { type: "number", description: "sizingMode=equity_pct 时每单名义占权益的百分比(如 50)" },
+        sizingMode: { type: "string", enum: ["risk_pct", "balance_pct"], description: "仓位模式:risk_pct=按单笔风险%反推;balance_pct=每单保证金=余额×positionPct%,名义=保证金×杠杆" },
+        positionPct: { type: "number", description: "sizingMode=balance_pct 时每单保证金占余额的百分比(如 30)" },
         maxSingleTradeRiskPct: { type: "number" },
         maxDailyLossPct: { type: "number" },
         humanApprovalNotionalUsdt: { type: "number" },
@@ -364,10 +364,10 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 有两道独立的闸：**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆，返回如 36/36) 与 **SRTL 结构质量闸**(执行前审核 setup 结构，管 4H 供需区/1H CHoCH/盈亏比)。**硬风控全过 ≠ 会下单**——还要过 SRTL。绝不能因为"风控 36/36 通过"就说"可执行/等你批准/马上下单"。
    - 按返回的 status 字段播报，**不许自己脑补**：status 为 setup_rejected → 说"已自动送执行但被 SRTL 结构质量闸拒绝、**未下单**，原因 X，需重提更优 setup"，【绝对禁止】说成"等待人工批准"；orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 awaiting_approval → 才说"等待人工批准"。
    - 自主已开(autonomy+实盘写入+灰度「无需人工批准」全开)时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
-14. 禁追末端 · 识别见底见顶【关键·最容易犯:大跌后追空】：不要在单边大跌/大涨已充分展开、价格已到极值附近时，还顺着这波方向追单。
-   - 【大跌后接近 24h 低点(rangePosition24h < ~20%)时，绝不新开做空】：此时快速下跌 + 多头爆仓 + 散户恐慌，多是【капитуляция 恐慌见底】而非续跌——正是反弹起点。要么等反弹回上方供需区/阻力再考虑空，要么识别反转，绝不在底部追空。大涨接近 24h 高点(rangePosition24h > ~80%)同理不追多。
-   - "已跌 N%、贴着前低"本身就是做空胜率大幅下降的信号。非对称(以小搏大)机会来自"回撤到供需区再顺势"，不是"破位后在低点接着砸"。做空的理想位置是【反弹到阻力】，不是【刚砸下来的低点】。
-   - 判断用真实数据：sync_market 的 changePct(24h涨跌)与 rangePosition24h(价格在24h高低区间的百分位,越低=越接近低点)。当日大跌且 rangePosition24h 很低 → 你想做空 = 追末端，除非价格已明确回抽到上方供需区并出现衰竭确认。
+14. 极值处不追单 · 换位置换确认【关键·最容易犯:大跌后在低点追空】：单边大跌/大涨已充分展开、价格到极值附近时，【不禁止】该方向，但【禁止在原地"追"】——必须换更好的位置或更强的确认，别在恐慌的最后一根里追进去。
+   - 大跌贴近 24h 低点(rangePosition24h 很低)想做空时：不要因为"已经跌很多/还会跌"就在低点直接追空(原地追，反弹会被扫、真续跌也是烂价位)。**正确做法二选一**：①等反弹回上方阻力/供需区，在衰竭确认处做空(高抛，最佳)；②若判断是延续破位，用 register_watch 登记"跌破 24h 低点 X 后回踩确认"的观察哨，做【破位回踩】，而不是在破位前的低点追。
+   - 一句话：做空要么"反弹到阻力高抛"、要么"破位回踩确认"，绝不"在刚砸下来的低点追"。大涨追多同理(等回踩支撑做多，或破位向上回踩确认)。
+   - 这样既不会在底部被反弹扫，又不会错过真正的续跌——续跌用破位观察哨接住。判断用 sync_market 的 changePct 与 rangePosition24h(价格在24h高低区间百分位)。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -857,8 +857,8 @@ export async function executeTool(db, run, name, args = {}) {
       max_leverage: Number(args.maxLeverage || 1),
       min_leverage: Math.max(1, Math.min(Number(args.maxLeverage || 1), Number(args.minLeverage || 1))),
       minLeverage: Math.max(1, Math.min(Number(args.maxLeverage || 1), Number(args.minLeverage || 1))),
-      sizingMode: args.sizingMode === "equity_pct" ? "equity_pct" : "risk_pct",
-      equityPct: Math.max(1, Math.min(100, Number(args.equityPct || 50))),
+      sizingMode: args.sizingMode === "balance_pct" ? "balance_pct" : "risk_pct",
+      positionPct: Math.max(1, Math.min(100, Number(args.positionPct || 30))),
       maxSingleTradeRiskPct: Number(args.maxSingleTradeRiskPct || 0.5),
       maxDailyLossPct: Number(args.maxDailyLossPct || 1),
       humanApprovalNotionalUsdt: Number(args.humanApprovalNotionalUsdt || 5000),

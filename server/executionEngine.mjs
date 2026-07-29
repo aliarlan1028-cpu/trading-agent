@@ -86,14 +86,15 @@ export function computePositionSize(db, plan) {
   const maxNotional = Number(policy?.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
   const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
   const sizingMode = mandate?.sizingMode || mandate?.sizing_mode || "risk_pct";
-  const equityPct = Number(mandate?.equityPct ?? mandate?.equity_pct ?? 0);
+  const positionPct = Number(mandate?.positionPct ?? mandate?.equityPct ?? mandate?.equity_pct ?? 0);
 
   let quantity;
   let sizedBy;
-  if (sizingMode === "equity_pct" && equity > 0 && equityPct > 0) {
-    // 权益百分比仓位:每单名义 = 权益 × equityPct%(用户自定仓位大小,不按风险%反推)。
-    quantity = (equity * (equityPct / 100)) / entryMid;
-    sizedBy = `equity_pct(${equityPct}%权益)`;
+  if (["balance_pct", "equity_pct"].includes(sizingMode) && equity > 0 && positionPct > 0) {
+    // 每单保证金 = 权益 × positionPct%，名义 = 保证金 × 杠杆(用户自定"每单下多少钱、放大几倍")。
+    const lev = Math.max(1, Number(plan.leverage) || 1);
+    quantity = (equity * (positionPct / 100) * lev) / entryMid;
+    sizedBy = `balance_pct(${positionPct}%余额×${lev}x)`;
   } else if (equity) {
     const riskAmount = equity * (riskPct / 100);
     quantity = riskAmount / stopDistance;
