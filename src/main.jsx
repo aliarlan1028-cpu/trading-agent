@@ -53,16 +53,18 @@ if (isNativeApp()) {
   );
 }
 
+// 按心智模型把 9 页归并成 3 组(交易/研究/风控),降低"一堵墙 9 个平铺项"的认知负荷。
+// 页面本身不动(不合并组件,零回归风险),只在侧栏加分组小标题。
 const navItems = [
-  { id: "chat", label: "AI 交易员", short: "交易员", code: "AGENT", icon: Bot },
-  { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart },
-  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
-  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
-  { id: "analysisRoom", label: "分析作战室", short: "作战室", code: "ANALYSIS", icon: Activity },
-  { id: "strategyWorkbench", label: "策略研究", short: "研究", code: "RESEARCH", icon: FlaskConical },
-  { id: "liveOperations", label: "实盘运营", short: "运营", code: "LIVE OPS", icon: Shield },
-  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
-  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings }
+  { id: "chat", label: "AI 交易员", short: "交易员", code: "AGENT", icon: Bot, group: "交易" },
+  { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart, group: "交易" },
+  { id: "liveOperations", label: "实盘运营", short: "运营", code: "LIVE OPS", icon: Shield, group: "交易" },
+  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "研究" },
+  { id: "strategyWorkbench", label: "策略研究", short: "研究", code: "RESEARCH", icon: FlaskConical, group: "研究" },
+  { id: "analysisRoom", label: "分析作战室", short: "作战室", code: "ANALYSIS", icon: Activity, group: "研究" },
+  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck, group: "风控" },
+  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock, group: "风控" },
+  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings, group: "风控" }
 ];
 
 function BrandLogo({ size = 34 }) {
@@ -81,15 +83,19 @@ function Sidebar({ active, setActive, data }) {
         </div>
       </div>
       <nav className="nav">
-        {navItems.map((item) => {
+        {navItems.map((item, i) => {
           const Icon = item.icon;
           const on = active === item.id;
+          const newGroup = i === 0 || navItems[i - 1].group !== item.group;
           return (
-            <button className={`navItem ${on ? "active" : ""}`} key={item.id} title={item.label} onClick={() => setActive(item.id)}>
-              <Icon size={16} />
-              <span className="navLabelFull">{item.label}</span>
-              <span className="navLabelShort">{item.short}</span>
-            </button>
+            <React.Fragment key={item.id}>
+              {newGroup && <div className="navGroupLabel">{item.group}</div>}
+              <button className={`navItem ${on ? "active" : ""}`} title={item.label} onClick={() => setActive(item.id)}>
+                <Icon size={16} />
+                <span className="navLabelFull">{item.label}</span>
+                <span className="navLabelShort">{item.short}</span>
+              </button>
+            </React.Fragment>
           );
         })}
       </nav>

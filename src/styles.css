@@ -203,6 +203,13 @@ h3 {
   display: grid;
   gap: 3px;
 }
+.navGroupLabel {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); padding: 10px 12px 4px; opacity: 0.7;
+}
+.navGroupLabel:first-child { padding-top: 2px; }
+/* 折叠成窄栏/移动端图标模式时隐藏分组标题,避免挤压。 */
+.sidebar.collapsed .navGroupLabel { display: none; }
 
 .navItem {
   position: relative;
