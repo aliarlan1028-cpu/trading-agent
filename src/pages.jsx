@@ -871,8 +871,8 @@ function KnowledgeOnboarding({ funnelCounts, sourceCount, liveMode, ui, action, 
 
   const steps = liveMode ? [
     { n: 1, icon: BookOpen, title: "喂知识", desc: "导入交易书籍、文章或网页。系统自动蒸馏出「交易方法草案」和「风控纪律」。", cta: "导入知识源", onClick: () => ui.openPanel("knowledgeImport") },
-    { n: 2, icon: Rocket, title: "编译上岗试用", desc: "方法草案编译成技能后直接上岗「小额试用」——用真实小额成交检验，无需历史回测/人工批准。", cta: "去技能流水线", onClick: goSkills },
-    { n: 3, icon: ShieldCheck, title: "真实成绩转正", desc: "试用期用真实成交复盘：达标（足够笔数且盈亏比过关）自动转正为「已验证」，不达标自动退役。", cta: "去技能流水线", onClick: goSkills }
+    { n: 2, icon: Rocket, title: "编译 + 验证", desc: "方法先经过历史样本外验证和纯前向模拟，任何一步失败都不能进入实盘。", cta: "去技能流水线", onClick: goSkills },
+    { n: 3, icon: ShieldCheck, title: "批准 + 小额试用", desc: "人工批准后仅进入小额实盘试用；真实成绩达到门槛才转正，不达标自动退役。", cta: "去技能流水线", onClick: goSkills }
   ] : [
     { n: 1, icon: BookOpen, title: "喂知识", desc: "导入交易书籍、文章或网页。系统自动蒸馏出「交易方法草案」和「风控纪律」。", cta: "导入知识源", onClick: () => ui.openPanel("knowledgeImport") },
     { n: 2, icon: Rocket, title: "编译 + 验证", desc: "把方法草案编译成技能，自动跑历史三窗回测 + 纯前向模拟盘。跑不过的不能上岗。", cta: "去方法草案", onClick: goMethods },
@@ -939,7 +939,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
 
   // 漏斗计数：草案 = 尚未编译成活跃技能的方法；其余按技能 stage 聚合。
   const compiledMethodIds = new Set(tradingSkills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
-  const liveMode = data.system?.skillLiveValidationMode !== false;
+  const liveMode = false;
   const funnelCounts = {
     draft: methods.filter((m) => !compiledMethodIds.has(m.id)).length,
     compiled: tradingSkills.filter((s) => SKILL_STATE[s.status]?.stage === "compiled").length,
@@ -948,7 +948,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
     probation: tradingSkills.filter((s) => s.status === "live_probation").length,
     active: tradingSkills.filter((s) => s.status === "active").length
   };
-  const FUNNEL = liveMode ? FUNNEL_LIVE : FUNNEL_CLASSIC;
+  const FUNNEL = FUNNEL_CLASSIC;
   // 来源书籍列表（方法/技能共用的筛选维度）
   const sourceTitles = [...new Set([...methods.map((m) => m.source?.title), ...tradingSkills.map((s) => s.sourceTitle)].filter(Boolean))];
   const matchSrc = (title) => !srcFilter || title === srcFilter;

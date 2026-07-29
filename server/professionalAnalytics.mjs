@@ -1,0 +1,89 @@
+import { activeMandate, nowIso } from "./store.mjs";
+import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
+
+const ageMs = (value) => value ? Math.max(0, Date.now() - new Date(value).getTime()) : null;
+const pct = (n, d = 2) => Number.isFinite(Number(n)) ? Number(Number(n).toFixed(d)) : null;
+const quantile = (values, q) => {
+  const rows = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!rows.length) return null;
+  return rows[Math.min(rows.length - 1, Math.floor((rows.length - 1) * q))];
+};
+
+export function buildSloReport(db) {
+  const marketAges = (db.markets || []).map((m) => ageMs(m.updatedAt || m.syncedAt)).filter(Number.isFinite);
+  const ackLatencies = (db.executionOrders || []).map((o) => {
+    const start = new Date(o.submittedAt || o.createdAt).getTime();
+    const end = new Date(o.acknowledgedAt || o.entrySubmittedAt || 0).getTime();
+    return start > 0 && end >= start ? end - start : null;
+  }).filter(Number.isFinite);
+  const protectedOrders = (db.executionOrders || []).filter((o) => ["entry_filled", "protecting", "protected", "closed"].includes(o.status));
+  const covered = protectedOrders.filter((o) => o.protection === "confirmed" || o.protection === "stop_only" || o.stopOrderId || o.stopClientOrderId).length;
+  const reconcileAge = ageMs(db.reconciliationReports?.[0]?.createdAt);
+  const objectives = {
+    marketFreshnessMs: Number(process.env.SLO_MARKET_FRESHNESS_MS || 15000),
+    orderAckP95Ms: Number(process.env.SLO_ORDER_ACK_P95_MS || 3000),
+    protectionCoveragePct: Number(process.env.SLO_PROTECTION_COVERAGE_PCT || 100),
+    reconciliationFreshnessMs: Number(process.env.SLO_RECONCILIATION_FRESHNESS_MS || 300000)
+  };
+  const metrics = {
+    marketFreshnessMs: marketAges.length ? Math.max(...marketAges) : null,
+    orderAckP95Ms: quantile(ackLatencies, 0.95),
+    protectionCoveragePct: protectedOrders.length ? pct(covered / protectedOrders.length * 100, 1) : null,
+    reconciliationFreshnessMs: reconcileAge
+  };
+  const checks = Object.entries(objectives).map(([key, target]) => ({
+    key, target, value: metrics[key],
+    status: metrics[key] === null ? "unknown" : key === "protectionCoveragePct" ? (metrics[key] >= target ? "met" : "breached") : (metrics[key] <= target ? "met" : "breached")
+  }));
+  return { generatedAt: nowIso(), objectives, metrics, checks, status: checks.some((c) => c.status === "breached") ? "breached" : checks.some((c) => c.status === "unknown") ? "unknown" : "met" };
+}
+
+export function buildTradingPermissionEvidence(db) {
+  const mandate = activeMandate(db);
+  const snapshot = (db.accountSnapshots || []).find((s) => s.status === "ok");
+  const latestMarket = (db.markets || []).filter((m) => m.price).sort((a, b) => new Date(b.updatedAt || b.syncedAt || 0) - new Date(a.updatedAt || a.syncedAt || 0))[0];
+  const latestReconcile = db.reconciliationReports?.[0];
+  const auditHealthy = db.meta?.auditChainBroken !== true;
+  const degradation = assessOperationalDegradation(db);
+  const checks = [
+    ["kill_switch", "一键熔断未开启", !db.system?.killSwitch, db.system?.killSwitch ? "系统处于熔断" : "未熔断"],
+    ["autonomy", "自主推进已开启", db.system?.autonomyEnabled === true, db.system?.autonomyEnabled ? "已开启" : "人工暂停"],
+    ["mandate", "存在有效授权", Boolean(mandate), mandate ? `${(mandate.allowedSymbols || []).join("、") || "已授权"}` : "无激活授权"],
+    ["market", "行情数据新鲜", ageMs(latestMarket?.updatedAt || latestMarket?.syncedAt) !== null && ageMs(latestMarket?.updatedAt || latestMarket?.syncedAt) <= 15000, latestMarket ? `${latestMarket.symbol} · ${Math.round(ageMs(latestMarket.updatedAt || latestMarket.syncedAt) / 1000)}秒前` : "无行情"],
+    ["account", "账户风险基准新鲜", Boolean(snapshot) && ageMs(snapshot.createdAt) <= 300000, snapshot ? `${Math.round(ageMs(snapshot.createdAt) / 1000)}秒前` : "无账户快照"],
+    ["reconcile", "最近对账正常", latestReconcile?.status === "ok" && ageMs(latestReconcile.createdAt) <= 300000, latestReconcile ? `${latestReconcile.status} · ${Math.round(ageMs(latestReconcile.createdAt) / 1000)}秒前` : "未对账"],
+    ["loss_budget", "日亏损预算未耗尽", db.system?.remainingDailyLossUsdt == null || Number(db.system.remainingDailyLossUsdt) > 0, db.system?.remainingDailyLossUsdt == null ? "未配置/未知" : `${db.system.remainingDailyLossUsdt} USDT`],
+    ["audit", "审计链正常", auditHealthy, auditHealthy ? "正常" : "异常"]
+    ,["operational", "交易运行链路正常", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? degradation.reasons.join("、") : db.system?.reduceOnlyMode ? "当前只减仓" : "正常"]
+  ].map(([key, label, passed, evidence]) => ({ key, label, passed, evidence }));
+  const blocking = checks.filter((c) => !c.passed);
+  return { generatedAt: nowIso(), decision: blocking.length ? "blocked" : "allowed", summary: blocking.length ? `当前禁止新开仓：${blocking.map((c) => c.label).join("、")}` : "当前满足新开仓前置条件；具体计划仍需逐单风控", checks };
+}
+
+export function buildExecutionQuality(db) {
+  const fills = (db.fills || []).filter((f) => Number.isFinite(Number(f.slippageBps)));
+  const slips = fills.map((f) => Number(f.slippageBps));
+  const orders = db.executionOrders || [];
+  const partial = orders.filter((o) => /partial/.test(String(o.status)) || Number(o.filledQuantity || 0) > 0 && Number(o.filledQuantity) < Number(o.quantity)).length;
+  return { fills: fills.length, avgSlippageBps: slips.length ? pct(slips.reduce((a, b) => a + b, 0) / slips.length) : null, p95SlippageBps: quantile(slips, .95), partialFillRatePct: orders.length ? pct(partial / orders.length * 100) : null };
+}
+
+export function buildReplayBundles(db, limit = 20) {
+  return (db.agentRuns || []).slice(0, limit).map((run) => {
+    const plan = (db.tradePlans || []).find((p) => p.id === run.tradePlanId);
+    const risk = (db.riskChecks || []).find((r) => r.id === run.riskCheckId || r.tradePlanId === plan?.id);
+    const executions = (db.executionOrders || []).filter((o) => o.agentRunId === run.id || o.planId === plan?.id);
+    const fills = (db.fills || []).filter((f) => f.agentRunId === run.id || f.tradePlanId === plan?.id);
+    return {
+      traceId: run.traceId || run.id, agentRunId: run.id, tradePlanId: plan?.id || null, riskCheckId: risk?.id || null,
+      executionOrderIds: executions.map((o) => o.id), fillIds: fills.map((f) => f.id), positionIds: (db.positions || []).filter((p) => executions.some((o) => o.id === p.executionOrderId)).map((p) => p.id),
+      versions: { model: run.model || db.runtimeConfig?.DEEPSEEK_MODEL || null, prompt: run.promptVersion || "agent-chat-v1", toolSchema: "agent-tools-v1", knowledge: (plan?.knowledgeSkills || []).map((s) => ({ id: s.skillId, version: s.version, fingerprint: s.fingerprint })), strategy: plan?.strategyVersion || plan?.strategy || null },
+      createdAt: run.createdAt, status: run.status
+    };
+  });
+}
+
+export function buildProfessionalSnapshot(db) {
+  return { permissionEvidence: buildTradingPermissionEvidence(db), slo: buildSloReport(db), executionQuality: buildExecutionQuality(db), portfolioRisk: buildPortfolioRisk(db, activeMandate(db)), replayBundles: buildReplayBundles(db) };
+}

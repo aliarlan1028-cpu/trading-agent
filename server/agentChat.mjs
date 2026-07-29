@@ -264,7 +264,7 @@ const TOOL_DEFS = [
   },
   {
     name: "create_skill_from_idea",
-    description: "把主人在对话里口述的交易策略想法保存成他自己的知识技能。当主人说“帮我建一个策略/把这个想法存成技能/我想要一个……的策略”时调用。你负责把自然语言想法抽取成结构化字段。技能会走和书本方法相同的生命周期(小额实盘验证模式下直接上岗试用,用真实成绩决定转正/退役)。注意:策略逻辑必须能落到受支持的模板上(突破/趋势/RSI/均值回归/MACD/布林/Supertrend/量价突破等),且必须有明确的入场与止损,否则会编译失败——失败时把原因如实转述给主人并请他补充。不要虚构主人没说的参数;缺关键要素(方向/周期/入场/止损)时先问清楚再调用。",
+    description: "把主人在对话里口述的交易策略想法保存成知识技能草案。当主人说“帮我建一个策略/把这个想法存成技能”时调用。技能必须依次通过历史样本外验证、纯前向模拟和人工批准，之后才进入小额实盘试用；真实成绩达标方可转正。策略逻辑必须落到受支持模板，且有明确入场与止损；不要虚构主人没说的参数。",
     schema: {
       type: "object",
       properties: {
@@ -1254,6 +1254,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
 
   const run = {
     id: id("agent_run"),
+    traceId: null,
     role: "AI 交易员",
     goal: userText,
     status: "running",
@@ -1265,9 +1266,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     steps: [],
     createdAt: nowIso()
   };
+  run.traceId = run.id;
   db.agentRuns.unshift(run);
 
   const provider = activeProvider();
+  run.model = provider ? `${provider.name}/${provider.model}` : "local-fallback";
+  run.promptVersion = "agent-chat-v1";
+  run.toolSchemaVersion = "agent-tools-v1";
   const toolTrace = [];
   let finalText = "";
   let errorText = "";

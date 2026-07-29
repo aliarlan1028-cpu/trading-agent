@@ -226,6 +226,7 @@ async function fetchMicrostructureRaw(exchange, symbol) {
 
 function bookImbalance(bids = [], asks = []) {
   const sum = (rows) => (rows || []).reduce((total, row) => total + Number(row[1] || 0), 0);
+  const notional = (rows) => (rows || []).reduce((total, row) => total + Number(row[0] || 0) * Number(row[1] || 0), 0);
   const bidVol = sum(bids);
   const askVol = sum(asks);
   const total = bidVol + askVol;
@@ -234,6 +235,7 @@ function bookImbalance(bids = [], asks = []) {
   return {
     bidVolume: Number(bidVol.toFixed(2)),
     askVolume: Number(askVol.toFixed(2)),
+    depthUsdt: Number((notional(bids) + notional(asks)).toFixed(2)),
     bookImbalancePct: total > 0 ? Number(((bidVol / total) * 100).toFixed(1)) : null,
     bestBid,
     bestAsk,
@@ -257,6 +259,7 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   market.bookImbalancePct = result.bookImbalancePct;
   market.bidVolume = result.bidVolume;
   market.askVolume = result.askVolume;
+  market.depthUsdt = result.depthUsdt;
   market.spreadBps = result.spreadBps;
   market.microSyncedAt = nowIso();
   appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);

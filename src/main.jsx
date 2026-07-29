@@ -16,6 +16,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  FlaskConical,
   UserPlus,
   UserCog,
   Zap
@@ -36,6 +37,8 @@ const KnowledgeSkillsPage = lazyNamed(() => import("./pages.jsx"), "KnowledgeSki
 const MarketAccountPage = lazyNamed(() => import("./pages.jsx"), "MarketAccountPage");
 const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
 const AnalysisRoomPage = lazyNamed(() => import("./pages.jsx"), "AnalysisRoomPage");
+const StrategyWorkbenchPage = lazyNamed(() => import("./professionalPages.jsx"), "StrategyWorkbenchPage");
+const LiveOperationsPage = lazyNamed(() => import("./professionalPages.jsx"), "LiveOperationsPage");
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
 const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
 const KillConfirmDialog = lazyNamed(() => import("./mobile.jsx"), "KillConfirmDialog");
@@ -56,6 +59,8 @@ const navItems = [
   { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen },
   { id: "analysisRoom", label: "分析作战室", short: "作战室", code: "ANALYSIS", icon: Activity },
+  { id: "strategyWorkbench", label: "策略研究", short: "研究", code: "RESEARCH", icon: FlaskConical },
+  { id: "liveOperations", label: "实盘运营", short: "运营", code: "LIVE OPS", icon: Shield },
   { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck },
   { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings }
 ];
@@ -133,7 +138,9 @@ function AppTopbar({ data, setActive, notify, action }) {
   const currentStatus = systemStatus(data);
   const operatingStage = data.readiness?.operatingStage;
   const live = data.system?.liveTradingEnabled;
-  const autoOn = live && data.grayReleasePolicies?.some((p) => p.enabled && p.requiresManualApproval === false);
+  // 用后端唯一真相 automationState.mode 判"全自动",别再自己拿 2 个开关猜(否则实盘写入没开/
+  // 熔断/只减仓时照样喊 AUTO ON,与状态卡、AI 口径各说各话)。
+  const autoOn = data.automationState?.mode === "full_auto_small";
   return (
     <header className="appTopbar">
       <div className="topSearch">
@@ -267,6 +274,8 @@ function App() {
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "analysisRoom") return <AnalysisRoomPage data={data} ui={ui} />;
+    if (active === "strategyWorkbench") return <StrategyWorkbenchPage data={data} action={action} ui={ui} />;
+    if (active === "liveOperations") return <LiveOperationsPage data={data} action={action} ui={ui} />;
     if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
     if (active === "auditSystem") return <AuditSystemPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;

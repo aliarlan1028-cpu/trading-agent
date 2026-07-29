@@ -2,6 +2,7 @@ import { dedupePositions } from "./accounting.mjs";
 import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
 import { isEventRiskActive } from "./eventRisk.mjs";
+import { evaluateProfessionalPlanRisks } from "./professionalRiskGate.mjs";
 
 export function evaluateTradePlan(db, plan) {
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
@@ -116,7 +117,7 @@ export function evaluateTradePlan(db, plan) {
 
   // 组合相关性/集中度：主流币高度相关，同向叠加等于放大单一风险。
   const concentration = evaluateConcentration(db, plan, mandate);
-  add("组合相关性", concentration.passed, concentration.detail, concentration.passed ? "ok" : "warn");
+  add("组合相关性", concentration.passed, concentration.detail, concentration.passed ? "ok" : (db.system.liveTradingEnabled && db.system.professionalRiskMode === true) ? "block" : "warn");
 
   const marginUtilizationPct = equity > 0 ? ((equity - margin) / equity) * 100 : null;
   const maxMarginUtilizationPct = Number(mandate.maxMarginUtilizationPct || 70);
@@ -196,7 +197,10 @@ export function evaluateTradePlan(db, plan) {
   const maxLossStreak = Number(mandate.maxConsecutiveLosses || 4);
   add("连续亏损熔断", lossStreak < maxLossStreak, `当前连续亏损 ${lossStreak} 笔，上限 ${maxLossStreak} 笔`);
 
-  return summarize(checks);
+  const professional = evaluateProfessionalPlanRisks(db, plan, mandate);
+  for (const check of professional.checks) add(check.name, check.passed, check.detail, check.severity);
+
+  return { ...summarize(checks), professional };
 }
 
 function arrayValue(primary, fallback) {

@@ -1,5 +1,7 @@
 import { getHistoricalKlines, syncMicrostructure } from "./exchangeConnector.mjs";
 import { activeMandate, nowIso } from "./store.mjs";
+import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { buildExecutionQuality, buildSloReport } from "./professionalAnalytics.mjs";
 
 // ---------------------------------------------------------------------------
 // 原生交易 Skill：把技能接进 Agent 的工具循环。
@@ -146,6 +148,44 @@ export const SKILL_TOOLS = [
       const weakest = rows[rows.length - 1]?.symbol;
       return { days, btcRetPct: Number(((btcRet - 1) * 100).toFixed(1)), ranking: rows, strongest, weakest, note: rows.length ? `最强 ${strongest}(RS ${rows[0].rs})，最弱 ${weakest}(RS ${rows[rows.length - 1].rs})` : "无可比数据" };
     }
+  },
+  {
+    skillId: "skill_native_contract_risk", name: "合约风险画像", toolName: "contract_risk_profile", version: "1.0.0", permissions: ["market.read", "account.read"], freshnessMs: 15000, failClosed: true,
+    description: "计算持仓强平距离、标记价偏差、保证金模式与资金费率压力；数据缺失时明确阻断结论。",
+    schema: { type:"object", properties:{ symbol:{type:"string"} }, required:["symbol"] }, outputSchema:{ type:"object", required:["status","symbol","risk"] },
+    async handler(db,args){ const symbol=String(args.symbol).toUpperCase(); const p=(db.positions||[]).find(x=>x.symbol===symbol); const m=(db.markets||[]).find(x=>x.symbol===symbol); if(!p||!m?.price)return {status:"blocked",symbol,reason:"position_or_mark_missing",risk:null}; const mark=Number(p.mark||m.price),liq=Number(p.liquidationPrice||p.liqPx); const dist=Number.isFinite(liq)&&liq>0?Math.abs(mark-liq)/mark*100:null; return {status:dist===null?"blocked":"ok",symbol,risk:{markPrice:mark,liquidationPrice:liq||null,liquidationDistancePct:dist===null?null:Number(dist.toFixed(2)),marginMode:p.marginMode||p.mgnMode||"unknown",fundingRatePct:m.fundingRatePct??null}}; }
+  },
+  {
+    skillId:"skill_native_portfolio_exposure",name:"组合暴露分析",toolName:"portfolio_exposure",version:"1.0.0",permissions:["market.read","account.read"],freshnessMs:60000,failClosed:true,
+    description:"输出组合波动、相关矩阵、净方向暴露和同向集中度。",schema:{type:"object",properties:{}},outputSchema:{type:"object",required:["status","portfolio"]},
+    async handler(db){const portfolio=buildPortfolioRisk(db,activeMandate(db));const ps=db.positions||[];const signed=ps.map(p=>(/空|short/i.test(p.direction)?-1:1)*Number(p.size||0)*Number(p.mark||p.entry||0));const gross=signed.reduce((a,b)=>a+Math.abs(b),0),net=signed.reduce((a,b)=>a+b,0);return {status:portfolio.status==="no_equity"?"blocked":"ok",portfolio:{...portfolio,netDeltaUsdt:Number(net.toFixed(2)),grossExposureUsdt:Number(gross.toFixed(2)),directionalConcentrationPct:gross?Number(Math.abs(net)/gross*100).toFixed(1):null}};}
+  },
+  {
+    skillId:"skill_native_liquidity",name:"流动性与冲击成本",toolName:"liquidity_impact",version:"1.0.0",permissions:["market.read"],freshnessMs:5000,failClosed:true,
+    description:"基于盘口点差与深度估算冲击、容量和拆单建议。",schema:{type:"object",properties:{symbol:{type:"string"},notionalUsdt:{type:"number"}},required:["symbol","notionalUsdt"]},outputSchema:{type:"object",required:["status","estimate"]},
+    async handler(db,args){const symbol=String(args.symbol).toUpperCase();const m=await syncMicrostructure(db,"OKX",symbol);const spread=Number(m.spreadBps),depth=Number(m.depthUsdt||m.orderBookDepthUsdt);if(!Number.isFinite(spread)||!Number.isFinite(depth)||depth<=0)return {status:"blocked",reason:"fresh_depth_unavailable",estimate:null};const n=Number(args.notionalUsdt);const impact=spread/2+Math.max(0,n/depth*10000);return {status:"ok",estimate:{symbol,spreadBps:spread,depthUsdt:depth,expectedImpactBps:Number(impact.toFixed(2)),maxNotionalAt10Bps:Number((depth*Math.max(0,10-spread/2)/10000).toFixed(2)),splitCount:Math.max(1,Math.ceil(impact/10))}};}
+  },
+  {
+    skillId:"skill_native_basis",name:"资金费率与基差",toolName:"funding_basis",version:"1.0.0",permissions:["market.read"],freshnessMs:15000,failClosed:true,
+    description:"评估资金费率、永续基差与拥挤反转风险。",schema:{type:"object",properties:{symbol:{type:"string"}},required:["symbol"]},outputSchema:{type:"object",required:["status","signal"]},
+    async handler(db,args){const symbol=String(args.symbol).toUpperCase();const m=await syncMicrostructure(db,"OKX",symbol);const market=(db.markets||[]).find(x=>x.symbol===symbol)||{};const mark=Number(m.markPrice||market.price),index=Number(m.indexPrice||market.indexPrice);if(!Number.isFinite(mark)||!Number.isFinite(index)||!index)return {status:"blocked",reason:"mark_or_index_missing",signal:null};const basis=(mark/index-1)*100;const funding=Number(m.fundingRatePct);return {status:"ok",signal:{symbol,fundingRatePct:Number.isFinite(funding)?funding:null,basisPct:Number(basis.toFixed(4)),crowding:Math.abs(funding)>=.05?funding>0?"long_crowded":"short_crowded":"balanced"}};}
+  },
+  {
+    skillId:"skill_native_regime",name:"市场状态分类",toolName:"deterministic_market_regime",version:"1.0.0",permissions:["market.read"],freshnessMs:60000,failClosed:true,
+    description:"以确定性价格、波动和流动性特征分类趋势、震荡、高波动与低流动性。",schema:{type:"object",properties:{symbol:{type:"string"},timeframe:{type:"string"}},required:["symbol"]},outputSchema:{type:"object",required:["status","regime"]},
+    async handler(db,args){const symbol=String(args.symbol).toUpperCase(),m=(db.markets||[]).find(x=>x.symbol===symbol);const c=(m?.candlesByTf?.[args.timeframe||"1h"]?.candles||m?.candles||[]).slice(-30);if(c.length<20)return {status:"blocked",reason:"insufficient_closed_bars",regime:null};const closes=c.map(x=>Number(x.close)),ret=closes.slice(1).map((x,i)=>x/closes[i]-1),vol=Math.sqrt(ret.reduce((s,x)=>s+x*x,0)/ret.length)*100,trend=(closes.at(-1)/closes[0]-1)*100;return {status:"ok",regime:{symbol,label:vol>2?"high_volatility":Math.abs(trend)>vol*2?trend>0?"uptrend":"downtrend":"range",realizedVolPct:Number(vol.toFixed(2)),trendPct:Number(trend.toFixed(2)),asOf:m.updatedAt||m.syncedAt}};}
+  },
+  {
+    skillId:"skill_native_execution_quality",name:"执行质量分析",toolName:"execution_quality",version:"1.0.0",permissions:["account.read"],freshnessMs:300000,failClosed:false,
+    description:"分析滑点、部分成交与保护覆盖率。",schema:{type:"object",properties:{}},outputSchema:{type:"object",required:["status","metrics"]},async handler(db){const metrics=buildExecutionQuality(db);return {status:metrics.fills?"ok":"insufficient_sample",metrics};}
+  },
+  {
+    skillId:"skill_native_drift",name:"交易复盘与漂移检测",toolName:"strategy_drift",version:"1.0.0",permissions:["account.read"],freshnessMs:3600000,failClosed:false,
+    description:"比较近期与历史成交表现，区分策略表现漂移和执行恶化。",schema:{type:"object",properties:{strategy:{type:"string"}}},outputSchema:{type:"object",required:["status","diagnosis"]},async handler(db,args){let f=(db.fills||[]).filter(x=>x.kind==="close"&&Number.isFinite(Number(x.realizedPnl)));if(args.strategy)f=f.filter(x=>x.strategy===args.strategy);const vals=f.map(x=>Number(x.realizedPnl)),recent=vals.slice(0,10),base=vals.slice(10,40);const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;const rm=mean(recent),bm=mean(base);return {status:f.length<20?"insufficient_sample":"ok",diagnosis:{trades:f.length,recentExpectancy:rm,baselineExpectancy:bm,performanceDrift:rm!==null&&bm!==null&&rm<bm*.5,executionQuality:buildExecutionQuality(db)}};}
+  },
+  {
+    skillId:"skill_native_exchange_degrade",name:"交易所故障降级",toolName:"exchange_degradation",version:"1.0.0",permissions:["market.read","account.read"],freshnessMs:15000,failClosed:true,
+    description:"统一判断行情断流、私有 WS、对账、UNKNOWN 订单与 SLO 违约并给出降级模式。",schema:{type:"object",properties:{}},outputSchema:{type:"object",required:["status","mode","reasons"]},async handler(db){const slo=buildSloReport(db);const reasons=[];if(slo.status==="breached")reasons.push("slo_breached");if((db.realtimeConnections||[]).some(x=>x.streamType==="private"&&x.status!=="connected"))reasons.push("private_ws_disconnected");if((db.executionOrders||[]).some(x=>String(x.status).toUpperCase()==="UNKNOWN"))reasons.push("unknown_order_state");return {status:reasons.length?"degraded":"ok",mode:reasons.length?"reduce_only":"normal",reasons,slo};}
   }
 ];
 
@@ -160,13 +200,17 @@ export function seedSkillTools(db) {
       toolName: tool.toolName,
       native: true,
       source: "built-in",
-      version: "1.0.0",
+      version: tool.version || "1.0.0",
       format: "native",
       entryFile: "native",
       status: "已拉取",
       scan: "未扫描",
       permissions: tool.permissions,
       description: tool.description,
+      inputSchema: tool.schema,
+      outputSchema: tool.outputSchema || { type: "object" },
+      freshnessMs: tool.freshnessMs || 60000,
+      failClosed: tool.failClosed === true,
       fetchedAt: nowIso()
     });
   }
@@ -200,9 +244,28 @@ export async function runSkillTool(db, name, args = {}) {
   const skill = (db.skills || []).find((s) => s.id === tool.skillId);
   if (!skill || skill.status !== "已启用") return { error: `技能「${tool.name}」未启用，无法调用` };
   skill.lastCalledAt = nowIso();
+  skill.evalMetrics ||= { calls: 0, passed: 0, blocked: 0, failed: 0 };
+  skill.evalMetrics.calls += 1;
+  const symbol = args.symbol ? String(args.symbol).toUpperCase() : null;
+  const market = symbol ? (db.markets || []).find((m) => m.symbol === symbol) : null;
+  const observedAt = market?.updatedAt || market?.syncedAt || market?.microSyncedAt;
+  const dataAgeMs = observedAt ? Date.now() - new Date(observedAt).getTime() : null;
+  if (tool.failClosed && symbol && (!market || dataAgeMs === null || dataAgeMs > tool.freshnessMs)) {
+    skill.evalMetrics.blocked += 1;
+    return { status: "blocked", error: "stale_or_missing_market_data", dataAgeMs, freshnessMs: tool.freshnessMs };
+  }
   try {
-    return await tool.handler(db, args);
+    const result = await tool.handler(db, args);
+    const missing = (tool.outputSchema?.required || []).filter((key) => result?.[key] === undefined);
+    if (missing.length) {
+      skill.evalMetrics.failed += 1;
+      return { status: "blocked", error: "output_schema_violation", missing };
+    }
+    if (["blocked", "degraded"].includes(result?.status)) skill.evalMetrics.blocked += 1;
+    else skill.evalMetrics.passed += 1;
+    return { ...result, contract: { version: tool.version || "1.0.0", dataAgeMs, freshnessMs: tool.freshnessMs, failClosed: tool.failClosed === true } };
   } catch (error) {
-    return { error: error.message };
+    skill.evalMetrics.failed += 1;
+    return { status: tool.failClosed ? "blocked" : "error", error: error.message };
   }
 }

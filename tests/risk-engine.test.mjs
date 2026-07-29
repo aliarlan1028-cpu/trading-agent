@@ -11,6 +11,8 @@ function fixture({ live = false } = {}) {
       symbol: "BTC/USDT",
       fundingRate: 0.01,
       spreadBps: 2,
+      depthUsdt: 1_000_000,
+      updatedAt: new Date().toISOString(),
       microSyncedAt: new Date().toISOString()
     }],
     events: [],

@@ -3,6 +3,7 @@ import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } 
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { reviewTradeSetup } from "./setupReview.mjs";
+import { applyOperationalDegradation, professionalNotionalCap } from "./professionalRiskGate.mjs";
 import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
 
 // ---------------------------------------------------------------------------
@@ -106,6 +107,12 @@ export function computePositionSize(db, plan) {
     quantity = maxNotional / entryMid;
     notional = maxNotional;
     sizedBy = `${sizedBy}+gray_capped`;
+  }
+  const professionalCap = professionalNotionalCap(db, plan, notional);
+  if (professionalCap.cap < notional) {
+    quantity = professionalCap.cap / entryMid;
+    notional = professionalCap.cap;
+    sizedBy = `${sizedBy}+${professionalCap.reasons.join("+")}`;
   }
   // 组合级波动率目标：相关性感知地压低会突破组合波动预算的名义额度。
   const volCap = portfolioCapNotional(db, plan, equity, mandate);
@@ -232,6 +239,10 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
+  // 更新运行降级评估(含自愈);实际拦截只认 reduceOnlyMode——它只在 professionalRiskMode 开启+
+  // 降级时才被自动置位(或用户手动只减仓)。flag 关时降级仅记录不拦,不再默认焊死交易。
+  const degradation = applyOperationalDegradation(db, "ExecutionEngine");
+  if (db.system.reduceOnlyMode) return { status: "operational_degraded_reduce_only", degradation };
   // (P2-1)不再看陈旧 lastRiskCheck:上次复查失败会永久卡死计划,即便阻断条件已恢复;
   // 下面的 fresh 复查才是唯一裁判。
   const freshRisk = evaluateTradePlan(db, plan);

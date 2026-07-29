@@ -14,6 +14,8 @@ const backupDir = path.join(rootDir, "backups");
 export function deriveAutomationState(db, options = {}) {
   const sys = db.system || {};
   if (sys.killSwitch) return { mode: "halted", label: "已熔断", detail: "解除熔断前只允许平仓/撤单等降风险动作", tone: "danger", blockers: [] };
+  // 只减仓也纳入唯一真相源:否则状态卡会显示"全自动"而每笔新开仓其实被只减仓拦(口径裂缝)。
+  if (sys.reduceOnlyMode) return { mode: "reduce_only", label: "只减仓", detail: sys.latestAction || "仅允许平仓/撤单等降风险动作，禁止新开仓", tone: "warning", blockers: ["只减仓模式"] };
   if (!sys.autonomyEnabled) return { mode: "paused", label: "自主推进已暂停", detail: "恢复后按定时巡检 + 观察哨自主决策", tone: "warning", blockers: [] };
   const blockers = [];
   if (!activeMandate(db)) blockers.push("无激活授权");

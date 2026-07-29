@@ -6,6 +6,7 @@ import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
+import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -34,6 +35,9 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   }
   if (syncErrors.length) appendTrace(db, "agent_cycle", `巡检行情同步失败 ${syncErrors.join("；")}`, "warning");
   const accounting = refreshAccounting(db);
+  // 先给公开行情同步一次自愈机会，再按 SLO 裁定是否自动进入只减仓。
+  // 否则调度刚启动时的旧缓存会在成功刷新前误触发永久人工解锁。
+  applyOperationalDegradation(db, "AgentRuntime");
 
   // 先判大盘：全局大盘 + 首个交易对聪明钱（免费公开数据，容错，不阻断）
   let regime = null;
@@ -69,6 +73,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   if (skipReasons.length) {
     const run = {
       id: id("run"),
+      traceId: null,
       role: "AI 交易员",
       goal: payload.goal || "周期巡检",
       status: "patrol_only",
@@ -83,6 +88,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       ],
       createdAt: nowIso()
     };
+    run.traceId = run.id;
     db.agentRuns.unshift(run);
     appendTrace(db, "agent_cycle", `巡检（${skipReasons[0]}）`, "ok");
     if (saveDb) saveDb(db);

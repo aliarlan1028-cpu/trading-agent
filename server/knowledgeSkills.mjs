@@ -485,8 +485,11 @@ export function approveKnowledgeSkill(db, skillId, approvedBy, note = "") {
   syncKnowledgeSkillLifecycle(db);
   if (skill.status !== "paper_validated") throw new Error("技能必须先通过纯前向模拟盘验证");
   skill.approval = { approved: true, approvedBy, note: String(note || "").slice(0, 500), approvedAt: nowIso(), fingerprint: skill.fingerprint };
-  transition(skill, "active", "human_approved", approvedBy);
-  appendAudit(db, `批准并启用知识技能「${skill.name}」v${skill.version}`, skill.id, approvedBy, "warning");
+  // 唯一生产口径：历史 OOS → 纯前向 → 人工批准 → 小额实盘试用 → 真实成绩转正。
+  // 批准不是“已验证盈利”，因此先进入受限 probation，不能直接标 active。
+  transition(skill, "live_probation", "human_approved_for_live_probation", approvedBy);
+  skill.probationStartedAt = nowIso();
+  appendAudit(db, `批准知识技能进入小额实盘试用「${skill.name}」v${skill.version}`, skill.id, approvedBy, "warning");
   return skill;
 }
 
@@ -535,12 +538,11 @@ export function selectActiveKnowledgeSkills(db, context = {}, options = {}) {
   const timeframe = normalizeTimeframe(context.timeframe) || null;
   const regime = String(context.regime || "");
   return db.knowledge.tradingSkills
-    // active 需人工批准指纹匹配;live_probation 是小额试用态,无需批准即可参与(未验证,如实标注)
-    .filter((skill) => EXECUTABLE_STATES.has(skill.status) && (skill.status === "active" ? skill.approval?.fingerprint === skill.fingerprint : true))
+    // active 与 live_probation 都必须具备匹配当前版本的人工批准指纹。
+    .filter((skill) => EXECUTABLE_STATES.has(skill.status) && skill.approval?.fingerprint === skill.fingerprint)
     .filter((skill) => scopeMatches(skill.spec.symbolScope, symbol))
-    // 通配符(*)范围的技能:active 需该币真的历史验证过;live_probation 是小额实盘验证态,
-    // 本就没跑历史验证(用真实成绩验证),不能拿 validatedSymbols 卡它,否则永远选不出来。
-    .filter((skill) => !skill.spec.symbolScope.includes("*") || !symbol || skill.status === "live_probation" || skill.validation?.validatedSymbols?.includes(symbol))
+    // 通配符范围也只能用于历史验证实际覆盖过的交易对。
+    .filter((skill) => !skill.spec.symbolScope.includes("*") || !symbol || skill.validation?.validatedSymbols?.includes(symbol))
     .filter((skill) => !direction || skill.spec.direction === direction)
     .filter((skill) => !timeframe || skill.spec.timeframe === timeframe)
     .filter((skill) => regimeMatches(skill.spec.marketRegimes, regime))
@@ -664,7 +666,8 @@ export function validatePlanKnowledgeSkills(db, plan) {
   for (const ref of references) {
     const skill = db.knowledge.tradingSkills.find((item) => item.id === ref.skillId);
     if (!skill) violations.push(`知识技能 ${ref.skillId} 不存在`);
-    else if (skill.status !== "active") violations.push(`知识技能「${skill.name}」当前状态为 ${skill.status}`);
+    else if (!EXECUTABLE_STATES.has(skill.status)) violations.push(`知识技能「${skill.name}」当前状态为 ${skill.status}`);
+    else if (skill.approval?.fingerprint !== skill.fingerprint) violations.push(`知识技能「${skill.name}」缺少当前版本人工批准`);
     else if (skill.version !== ref.version || skill.fingerprint !== ref.fingerprint) violations.push(`知识技能「${skill.name}」版本或指纹已变化`);
     else {
       const currentSignal = evaluateKnowledgeSkillSignal(db, skill, plan.symbol);
@@ -797,22 +800,12 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
   return { added, degraded, graduated };
 }
 
-// 小额实盘验证模式:编译好的技能直接上岗试用(不走历史验证/前向/人工批准三道墙),
-// 用真实小额成交的复盘来决定转正还是退役。这是主人明确选择的路线(用小资金当验证器)。
-// 已跑过的历史验证分数仍保留在 skill.validation 里作参考,只是不再当门槛。
+// 旧版兼容入口：禁止编译结果绕过历史、前向和人工审批直接进入真实资金试用。
 export function promoteCompiledToProbation(db, actor = "LiveValidation") {
   ensureCollections(db);
-  const promotable = new Set(["compiled", "historical_rejected", "historical_validated", "paper_validated", "degraded"]);
-  let promoted = 0;
-  for (const skill of db.knowledge.tradingSkills) {
-    if (!promotable.has(skill.status)) continue;
-    if (!skill.spec || !STRATEGIES[skill.spec.templateId]) continue; // 编译失败/模板缺失的不上岗
-    transition(skill, "live_probation", "small_live_validation_promoted", actor);
-    skill.probationStartedAt = nowIso();
-    promoted += 1;
-  }
-  if (promoted) appendAudit(db, `小额实盘验证:${promoted} 个技能上岗试用(未验证,真实成绩决定转正/退役)`, "skills_live_validation", actor);
-  return { promoted };
+  // 兼容旧调用点，但不再提供绕过验证/审批的捷径。
+  appendTrace(db, "knowledge_skill", "已拒绝旧版编译即实盘试用捷径；请完成历史、前向与人工审批", "blocked");
+  return { promoted: 0, blocked: true, reason: "historical_paper_and_human_approval_required", actor };
 }
 
 export function knowledgeSkillSummary(db) {
@@ -906,7 +899,7 @@ export function ensureCuratedSkills(db, actor = "CuratedSkills") {
 }
 
 // 用户在聊天里口述策略 → agent 抽取结构化字段 → 复用编译流水线存成"我的技能"。
-// 与书本方法、精选技能同一条生命周期(小额试用模式下直接上岗试用,真实成绩决定转正/退役)。
+// 与书本方法、精选技能同一条严格生命周期：编译→历史→纯前向→人工批准→小额试用→转正。
 const USER_SKILL_SOURCE = { id: "src_user_authored", title: "我的策略(聊天口述)", type: "user_authored" };
 const VALID_TEMPLATES = new Set(["trend", "meanrev", "breakout", "macd", "bollinger", "death_cross", "rsi_short", "breakdown", "supertrend", "vol_breakout", "squeeze", "rsi_bull_div", "rsi_bear_div"]);
 
@@ -948,11 +941,6 @@ export function createSkillFromIdea(db, idea = {}, actor = "用户") {
   if (skill.status === "compile_failed") {
     return { ok: false, status: "compile_failed", error: `无法编译成可执行技能:${(skill.compileErrors || []).join("；") || "策略逻辑无法映射到受支持的模板(突破/趋势/RSI/均值回归/Supertrend/布林等),或缺明确入场/止损/止盈"}`, skill };
   }
-  // 小额实盘验证模式:直接上岗试用,和别的技能同样用真实成绩验证
-  if (db.system?.skillLiveValidationMode) {
-    transition(skill, "live_probation", "user_authored_promoted", actor);
-    skill.probationStartedAt = nowIso();
-  }
-  appendAudit(db, `用户口述策略存为技能「${skill.name}」${skill.status === "live_probation" ? "(已上岗试用)" : ""}`, skill.id, actor);
+  appendAudit(db, `用户口述策略存为技能「${skill.name}」(待历史与纯前向验证)`, skill.id, actor);
   return { ok: true, status: skill.status, skill };
 }

@@ -112,7 +112,8 @@ test("compiled knowledge skills require paper validation and human approval befo
   syncKnowledgeSkillLifecycle(db);
   assert.equal(skill.status, "paper_validated");
   approveKnowledgeSkill(db, skill.id, "Owner", "验证通过");
-  assert.equal(skill.status, "active");
+  assert.equal(skill.status, "live_probation");
+  assert.equal(skill.approval.approved, true);
 
   const plan = {
     id: "plan-1",

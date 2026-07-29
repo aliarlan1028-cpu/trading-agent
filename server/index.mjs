@@ -28,6 +28,7 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { listStrategies } from "./strategies.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { buildProfessionalSnapshot } from "./professionalAnalytics.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
@@ -199,7 +200,10 @@ try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精�
 // 模拟前向为主(主人选择):编译好的技能走「历史 OOS 预筛 → 纯前向模拟盘 → 已验证(模拟)」这条链,
 // 用真实行情前向验证,而不是等那个几乎不产生成交的小账户——破解"零真实成交→零归因→永不采纳"的死锁。
 db.system.skillPaperForwardMode ??= true;
-db.system.skillLiveValidationMode ??= true;
+// 专业风险闸(运营降级只减仓/流动性冲击/组合波动/强平距离)默认关:开启前它是"信息展示",
+// 不硬拦交易、不自动只减仓;等数据管道(连续流+定时对账)达标再由主人显式开启来强制执行。
+db.system.professionalRiskMode ??= false;
+db.system.skillLiveValidationMode = false;
 // 一次性迁移:关掉旧的"小额实盘验证=一把全扫进 live_probation"短路模式,并把因此死锁在
 // live_probation、且没有任何真实(非模拟)成交归因的技能退回 compiled,重新进入模拟前向车道。
 if (!db.meta.skillPaperForwardMigration) {
@@ -692,6 +696,7 @@ app.get("/api/overview", (_req, res) => {
     strategyProfiles: db.strategyProfiles || [],
     paperReport: buildPaperReport(db),
     portfolioRisk: buildPortfolioRisk(db, activeMandate(db)),
+    professional: buildProfessionalSnapshot(db),
     larkConfigured: larkStatus().configured,
     telegramConfigured: telegramStatus().configured,
     mcpStatus: mcpStatus(db),
