@@ -317,9 +317,19 @@ export function runTradeReflection(db) {
     if (Number.isFinite(slip) && Math.abs(slip) >= 15) facts.push(`滑点 ${slip.toFixed(0)}bps 偏大`);
     if (fill.exitReason) facts.push(`出场：${fill.exitReason}`);
     const rationale = fill.entryRationale || plan.rationale || plan.reasoningSummary || "未记录入场理由";
+    // 亏损归因拆分:是"策略(setup 本身错)/执行(滑点·成交质量)/市场异常(突发消息·异常波动)"哪一类。
+    // 用途:执行问题→改执行,市场异常→不苛责策略,策略问题→才降权该 setup。避免"一笔亏损就否定策略"。
+    let attribution = null;
+    if (!win) {
+      const bigSlip = Number.isFinite(slip) && Math.abs(slip) >= 15;
+      const newsShock = (db.events || []).some((e) => e.intel && e.intel.fakeRisk !== "high" && /即时|数小时/.test(e.intel.impactHorizon || "") && (e.intel.credibility || 0) >= 0.7 && (e.intel.affectedSymbols || []).some((s) => { const u = String(s).toUpperCase(); const base = String(fill.symbol).split(/[/-]/)[0].toUpperCase(); return u.includes(base) || base.includes(u); }));
+      attribution = bigSlip ? "执行" : newsShock ? "市场异常" : "策略";
+      fill.lossAttribution = attribution;
+    }
+    const attribNote = attribution ? `｜亏损归因：${attribution}（${attribution === "执行" ? "滑点/成交质量,改执行而非否定 setup" : attribution === "市场异常" ? "突发消息/异常波动,非策略之过" : "setup 未兑现,考虑降权该组合"}）` : "";
     const lesson = win
       ? `盈利复盘：${facts.join("；")}。入场依据「${rationale}」本次兑现——该「策略×品种×regime」组合在相似条件下可保持。`
-      : `亏损复盘：${facts.join("；")}。入场依据「${rationale}」未兑现${Number.isFinite(slip) && Math.abs(slip) >= 15 ? "，且滑点偏大侵蚀收益" : ""}。后续同类信号需更严格确认（多周期/聪明钱一致）或减小仓位。`;
+      : `亏损复盘：${facts.join("；")}${attribNote}。入场依据「${rationale}」未兑现${Number.isFinite(slip) && Math.abs(slip) >= 15 ? "，且滑点偏大侵蚀收益" : ""}。后续同类信号需更严格确认（多周期/聪明钱一致）或减小仓位。`;
     fill.reflectedAt = nowIso();
     lessons.push({ fillId: fill.id, symbol: fill.symbol, win, pnl: Number(pnl.toFixed(2)) });
     if (!win || Math.abs(pnl) >= minMemo) {

@@ -131,6 +131,24 @@ export function computePositionSize(db, plan) {
       sizedBy = `${sizedBy}+risk_capped(≤${riskCapPct}%)`;
     }
   }
+  // Kelly 上限:对有真实成绩(≥10 笔)的策略,按半 Kelly 分数封顶名义——低边际策略自动缩仓,
+  // 高边际才敢放大。用盈亏因子近似赔率 R,Kelly f* = W − (1−W)/R,取一半保守。
+  {
+    const lm = (plan.knowledgeSkillIds || [])
+      .map((sid) => (db.knowledge?.tradingSkills || []).find((s) => s.id === sid)?.liveMetrics)
+      .filter((x) => x && x.trades >= 10 && x.winRatePct != null && Number(x.profitFactor) > 0)[0];
+    if (lm && equity > 0) {
+      const W = Number(lm.winRatePct) / 100;
+      const R = Number(lm.profitFactor);
+      const kelly = Math.max(0, W - (1 - W) / R);
+      const kellyCapNotional = equity * Math.min(kelly * 0.5, 0.5) * Math.max(1, Number(plan.leverage) || 1);
+      if (kellyCapNotional > 0 && kellyCapNotional < notional) {
+        quantity = kellyCapNotional / entryMid;
+        notional = kellyCapNotional;
+        sizedBy = `${sizedBy}+kelly_capped(f*${kelly.toFixed(2)})`;
+      }
+    }
+  }
   const MIN_NOTIONAL = 5;
   quantity = roundQuantity(quantity, entryMid);
   if (quantity <= 0 && equity > 0) quantity = 0; // 先按四舍五入后的量,下方小账户放大再兜

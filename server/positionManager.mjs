@@ -66,6 +66,29 @@ export async function monitorPositions(db) {
         }
       }
 
+      // 持仓论点重评:开仓后不能只盯价格——资金费转为强烈不利、或出现高可信度反向即时新闻,
+      // 说明"当初开仓的逻辑可能已变",提示复核/减仓(只建议+告警,不自动平)。
+      {
+        const base = String(position.symbol).split(/[/-]/)[0].toUpperCase();
+        const isShort = position.direction === "空" || position.direction === "short";
+        const funding = Number(market?.fundingRate);
+        const fundingAgainst = Number.isFinite(funding) && Math.abs(funding) > 0.05 && ((isShort && funding < -0.05) || (!isShort && funding > 0.05));
+        const news = (db.events || []).find((e) => {
+          const it = e.intel; if (!it || it.fakeRisk === "high") return false;
+          const hits = (it.affectedSymbols || []).some((s) => { const u = String(s).toUpperCase(); return u.includes(base) || base.includes(u); });
+          const against = isShort ? it.sentiment === "利多" : it.sentiment === "利空";
+          return hits && against && /即时|数小时/.test(it.impactHorizon || "") && (it.credibility || 0) >= 0.6;
+        });
+        if ((fundingAgainst || news) && !position.thesisFlaggedAt) {
+          position.thesisFlaggedAt = nowIso();
+          const why = [fundingAgainst ? `资金费 ${funding}% 强烈不利于当前方向(拥挤/反向挤压)` : "", news ? `反向新闻：${news.intel.oneLine || news.title}` : ""].filter(Boolean).join("；");
+          raiseIncident(db, position, "high", `${position.symbol} 开仓论点可能已变化，建议复核/减仓：${why}`);
+          await notifyLarkThrottled(db, `thesis:${position.id}`, 30 * 60 * 1000, { severity: "warning", title: "🔎 持仓论点复核", body: `**${position.symbol}** ${position.direction || ""} 开仓逻辑出现反向信号，建议复核是否减仓。\n${why}` });
+          actions.push({ symbol: position.symbol, action: "thesis_review", why });
+        }
+        if (!fundingAgainst && !news) position.thesisFlaggedAt = null;
+      }
+
       if (!position.stopLoss) {
         raiseIncident(db, position, "critical", `${position.symbol} 持仓缺少止损，必须立即补挂`);
         await notifyLarkThrottled(db, `missing_stop:${position.id}`, 30 * 60 * 1000, {
