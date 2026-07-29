@@ -978,9 +978,11 @@ function KnowledgeOnboarding({ funnelCounts, sourceCount, liveMode, ui, action, 
   );
 }
 
-export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
-  // 两大平级板块:知识(让 AI 更懂) / 能力与工具(AI 的手脚)。外部能力从末尾附属 Tab 提升为半壁江山。
-  const [domain, setDomain] = useState("knowledge");
+export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view = "all" }) {
+  // W3:一页拆多页——view 锁定板块(knowledge=知识库 / capabilities=能力与工具 / strategy=策略表现),
+  // 切换交给导航;view="all" 时保留原三选一切换(供旧入口/嵌入)。domain 由 view 派生,切页即时生效。
+  const [domainState, setDomain] = useState("knowledge");
+  const domain = view === "all" ? domainState : view;
   const [tab, setTab] = useState("methods");
   const [skillDetail, setSkillDetail] = useState(null); // 展开查看某 Skill 的详情(结构化 + JSON)
   const KNOWLEDGE_TABS = ["methods", "skills", "rules", "graph"];
@@ -1020,10 +1022,10 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
 
   return (
     <div className="pageStack termPage knowPage">
-      {!embedded && <TermHead title="知识与技能" code="KNOWLEDGE · SKILLS" sub="喂知识、装技能、接工具，让 AI 交易员持续变强" />}
+      {!embedded && <TermHead title={view === "knowledge" ? "知识库" : view === "capabilities" ? "能力与工具" : view === "strategy" ? "策略表现" : "知识与技能"} code="KNOWLEDGE · SKILLS" sub={view === "knowledge" ? "喂书 → 蒸馏方法/纪律/概念,产出可用能力" : view === "capabilities" ? "AI 的手脚:技能、插件/MCP 工具" : "喂知识、装技能、接工具，让 AI 交易员持续变强"} />}
 
-      {/* 两大平级板块:知识(让 AI 更懂) · 能力与工具(AI 的手脚)——两者都喂给行情分析,平起平坐 */}
-      <div className="kDomains">
+      {/* 板块切换:仅 view="all" 显示(拆分后由左侧导航承担 知识库/能力与工具/策略表现) */}
+      {view === "all" && <div className="kDomains">
         <button className={`kDomain ${domain === "knowledge" ? "on" : ""}`} onClick={() => goKnowledge()}>
           <span className="kDomainT">知识</span>
           <span className="kDomainS">让 AI 更懂 · 方法/纪律/概念/RAG</span>
@@ -1039,7 +1041,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
           <span className="kDomainS">在用策略实盘复盘 · 上下线</span>
           <span className="kDomainN mono">{(data.strategyBoard?.summary?.live) || 0}</span>
         </button>
-      </div>
+      </div>}
 
       {domain === "knowledge" && <KnowledgeOnboarding
         funnelCounts={funnelCounts}

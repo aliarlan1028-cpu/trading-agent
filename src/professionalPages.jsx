@@ -21,7 +21,7 @@ export function StrategyWorkbenchPage({ data, action, ui }) {
     </div>
     <div className="proGrid two">
       <section className="proCard"><div className="proTitle"><b>策略组合</b><button onClick={() => action('/api/strategy/research', {}, 'POST')}>启动研究</button></div>{profiles.slice(0,8).map(p => <div className="proRow" key={p.id}><span>{p.symbol || p.name}</span><b>{p.timeframe || '—'} · {humanize(p.status, '研究中')}</b></div>)}{!profiles.length && <div className="proEmpty">暂无策略研究结果</div>}</section>
-      <section className="proCard"><div className="proTitle"><b>验证队列</b><button onClick={() => ui.setActive('knowledgeSkills')}>管理技能</button></div>{skills.filter(s => !['retired','superseded'].includes(s.status)).slice(0,10).map(s => <div className="proRow" key={s.id}><span>{s.name}</span><b>{humanize(s.status)}</b></div>)}{!skills.length && <div className="proEmpty">暂无可验证技能</div>}</section>
+      <section className="proCard"><div className="proTitle"><b>验证队列</b><button onClick={() => ui.setActive('knowledgeBase')}>管理技能</button></div>{skills.filter(s => !['retired','superseded'].includes(s.status)).slice(0,10).map(s => <div className="proRow" key={s.id}><span>{s.name}</span><b>{humanize(s.status)}</b></div>)}{!skills.length && <div className="proEmpty">暂无可验证技能</div>}</section>
     </div>
   </div>;
 }

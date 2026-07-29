@@ -1,6 +1,6 @@
 import React from "react";
 import { displayMoney, formatTime, humanize } from "./lib.jsx";
-import { AnalysisRoomPage, AuditSystemPage } from "./pages.jsx";
+import { AnalysisRoomPage, AuditSystemPage, KnowledgeSkillsPage } from "./pages.jsx";
 import { StrategyWorkbenchPage, LiveOperationsPage } from "./professionalPages.jsx";
 import "./professional.css";
 
@@ -138,6 +138,8 @@ export function StrategyAnalysisPage({ data, action, ui }) {
   return (
     <div>
       <StrategyWorkbenchPage data={data} action={action} ui={ui} />
+      {/* 策略表现看板:原知识页 domain="strategy",拆分后并到"策略与分析"的使用侧 */}
+      <KnowledgeSkillsPage data={data} action={action} ui={ui} view="strategy" embedded />
       <AnalysisRoomPage data={data} embedded />
     </div>
   );

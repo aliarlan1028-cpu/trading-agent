@@ -68,7 +68,8 @@ const navItems = [
   { id: "signalHub", label: "信号中心", short: "信号", code: "SIGNALS", icon: Zap, group: "交易" },
   { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart, group: "交易" },
   { id: "tradeJournal", label: "交易日志", short: "日志", code: "JOURNAL", icon: ClipboardList, group: "交易" },
-  { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "能力" },
+  { id: "knowledgeBase", label: "知识库", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "能力" },
+  { id: "capabilities", label: "能力与工具", short: "能力", code: "CAPABILITIES", icon: BrainCircuit, group: "能力" },
   { id: "strategyAnalysis", label: "策略与分析", short: "策略", code: "STRATEGY", icon: Activity, group: "能力" },
   { id: "riskOverview", label: "风控总览", short: "总览", code: "RISK VIEW", icon: ShieldCheck, group: "风控与运维" },
   { id: "riskSettings", label: "风控设置", short: "设置", code: "RISK CFG", icon: Shield, group: "风控与运维" },
@@ -288,7 +289,8 @@ function App() {
     if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
     if (active === "signalHub") return <SignalHubPage data={data} action={action} ui={ui} />;
     if (active === "tradeJournal") return <TradeJournalPage data={data} action={action} ui={ui} />;
-    if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
+    if (active === "knowledgeBase") return <KnowledgeSkillsPage data={data} action={action} ui={ui} view="knowledge" />;
+    if (active === "capabilities") return <KnowledgeSkillsPage data={data} action={action} ui={ui} view="capabilities" />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
     if (active === "riskOverview") return <RiskAuthPage data={data} action={action} ui={ui} view="overview" />;
