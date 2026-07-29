@@ -25,6 +25,7 @@ import { registerExecutionOrderRoutes } from "./executionOrders.mjs";
 import { registerKnowledgeImportRoutes } from "./knowledgeImport.mjs";
 import { registerKnowledgeSkillRoutes } from "./knowledgeSkills.mjs";
 import { registerKnowledgeRuleRoutes } from "./knowledgeRules.mjs";
+import { registerKnowledgeConvertRoutes } from "./knowledgeConvert.mjs";
 import { registerAgentChatRoutes } from "./agentChatRoutes.mjs";
 import { registerAgentRunRoutes } from "./agentRuns.mjs";
 import { registerSystemRoutes } from "./system.mjs";
@@ -55,6 +56,7 @@ export function registerAllRoutes(app, ctx) {
   registerKnowledgeImportRoutes(app, ctx);
   registerKnowledgeSkillRoutes(app, ctx);
   registerKnowledgeRuleRoutes(app, ctx);
+  registerKnowledgeConvertRoutes(app, ctx);
   registerAgentChatRoutes(app, ctx);
   registerAgentRunRoutes(app, ctx);
   registerSystemRoutes(app, ctx);

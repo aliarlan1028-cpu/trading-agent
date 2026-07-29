@@ -1053,6 +1053,32 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
         goSkills={() => goKnowledge("skills")}
       />}
 
+      {/* W4:知识库转换引擎——书→策略/分析prompt/工作流 候选,逐条采纳、采纳即用 */}
+      {domain === "knowledge" && (() => {
+        const cands = (knowledge.candidates || []).filter((c) => c.status === "candidate");
+        const TYPE_CN = { strategy: "交易策略", lens: "分析 prompt", workflow: "工作流" };
+        return (
+          <div className="termCard">
+            <div className="kHead"><span className="secLabel">转换产出 · 候选能力 <em className="mono">采纳即用</em></span><button className="primaryButton sm" onClick={() => { if (window.confirm("从所有知识源生成候选？后台调用 LLM 读懂书籍并产出，可能需十几秒。")) action("/api/knowledge/convert", {}); }}>生成候选</button></div>
+            {!cands.length && <div className="emptyPanel">点「生成候选」把书里的金融/心理/策略知识转成可用的 交易策略 / 分析 prompt / 工作流，再逐条采纳；采纳即生效，在用中按真实表现留/退。</div>}
+            {cands.map((c) => (
+              <div key={c.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0", borderTop: "1px solid var(--kLine,#eceff2)" }}>
+                <span className="evBadge">{TYPE_CN[c.type] || c.type}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: 13 }}>{c.name}</b>
+                  <div style={{ fontSize: 12, opacity: 0.72, margin: "3px 0" }}>{c.summary}</div>
+                  <span className="mono" style={{ fontSize: 10.5, opacity: 0.55 }}>《{c.sourceTitle}》{c.sourceRef ? ` · ${c.sourceRef}` : ""}</span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flex: "none" }}>
+                  <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/candidates/${c.id}/ignore`, {})}>忽略</button>
+                  <button className="primaryButton sm" onClick={() => action(`/api/knowledge/candidates/${c.id}/adopt`, {})}>采纳</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* 流水线导航条（唯一导航）：知识源 › 方法草案 › 技能流水线 › 风控纪律 › 概念图谱，右端挂 编译/试用/上岗 读数 */}
       {domain === "knowledge" && <div className="kNav">
         <button className="kNavSrc" onClick={() => ui.openPanel("knowledgeList")} title="查看全部知识源"><BookOpen size={13} /> 知识源 <span className="n mono">{sourceCount}</span></button>

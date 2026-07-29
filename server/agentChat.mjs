@@ -552,6 +552,11 @@ async function buildSystemPrompt(db, userText = "") {
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
+  // W4:采纳的分析透镜/纪律(知识库转换产出、采纳即用),决策时遵循。只塑造分析、不直接下单。
+  const adoptedLenses = (db.knowledge?.lenses || []).filter((l) => l.active);
+  if (adoptedLenses.length) {
+    sections.push(`【采纳的分析纪律 / 透镜（来自知识库，决策时遵循；只塑造分析、绝不直接下单）】\n${adoptedLenses.slice(0, 8).map((l) => `- ${l.name}：${l.promptText}${l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}`);
+  }
   // 可用技能分两层如实标注:active=已用真实成绩转正(可信);live_probation=小额实盘试用中(未验证)。
   // 绝不把试用技能说成"已验证"——否则 LLM 会拿它当可信依据推理,污染判断。
   const usableSkills = selectActiveKnowledgeSkills(db, {}, { limit: 6 });
