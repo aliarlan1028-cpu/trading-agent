@@ -248,6 +248,36 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         </div>
       )}
 
+      {/* 真相盘：系统到底赚不赚钱——只读真实成交,不含模拟/演示。0 成交=盈利能力未验证,如实说。 */}
+      {(() => {
+        const perf = data.performance || {};
+        const skills = data.knowledge?.tradingSkills || [];
+        const attrib = data.knowledge?.skillAttributions || [];
+        const realAttrib = attrib.filter((a) => a.mode !== "paper").length;
+        const paperVal = skills.filter((s) => s.status === "paper_validated").length;
+        const liveSkills = skills.filter((s) => s.status === "active").length;
+        const traded = Number(perf.trades || 0);
+        const pnl = perf.totalPnlUsdt;
+        const verified = traded > 0;
+        return (
+          <div className={`truthPanel ${!verified ? "unverified" : Number(pnl) >= 0 ? "pos" : "neg"}`}>
+            <div className="truthHead"><b><Target size={14} /> 真相盘 · 系统到底赚不赚钱</b><small>只读真实成交，不含模拟/回测/演示</small></div>
+            {verified ? (
+              <div className="truthGrid">
+                <div><small>真实净盈亏</small><b className={`mono ${Number(pnl) >= 0 ? "pos" : "neg"}`}>{Number(pnl) >= 0 ? "+" : ""}{displayMoney(pnl, 2)} USDT</b></div>
+                <div><small>真实成交</small><b className="mono">{traded} 笔</b></div>
+                <div><small>胜率</small><b className="mono">{perf.winRatePct ?? "—"}%</b></div>
+                <div><small>盈亏因子</small><b className="mono">{perf.profitFactor ?? "—"}</b></div>
+                <div><small>最好 / 最差单</small><b className="mono">{displayMoney(perf.bestTrade, 2)} / {displayMoney(perf.worstTrade, 2)}</b></div>
+              </div>
+            ) : (
+              <div className="truthEmpty">⚠️ 尚无任何真实成交 —— <b>系统的盈利能力还没有被验证过。</b>在拿到足够真实成交样本前，一切策略战绩都只是模拟/回测，不代表真实赚钱能力。</div>
+            )}
+            <div className="truthEvidence">策略验证战绩：已验证(模拟前向) <b>{paperVal}</b> · 已上岗 <b>{liveSkills}</b> · 真实成交归因 <b>{realAttrib}</b> 笔{realAttrib < 30 ? `（距"可信"样本 ≥30 笔还差 ${Math.max(0, 30 - realAttrib)} 笔）` : "（已达可信样本）"}</div>
+          </div>
+        );
+      })()}
+
       {/* Row 1 — 指标行 */}
       <div className="metricRow">
         {metrics.map((m) => (

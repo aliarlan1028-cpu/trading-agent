@@ -7648,6 +7648,26 @@ button.danger:disabled,
 .mandRow b { font: 600 12px "IBM Plex Mono"; color: #1E1B16; text-align: right; }
 .mandRow b.neg { color: #C43F28; } .mandRow b.pos { color: #1F7A50; }
 
+/* 真相盘：系统到底赚不赚钱 */
+.truthPanel { border: 1px solid var(--border); border-left: 4px solid var(--text-3); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
+.truthPanel.unverified { border-left-color: #C9A227; background: #FDF9EC; }
+.truthPanel.pos { border-left-color: var(--pos); }
+.truthPanel.neg { border-left-color: var(--neg); }
+:root[data-theme="dark"] .truthPanel.unverified { background: #2a2410; }
+.truthHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.truthHead b { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-1); }
+.truthHead small { font-size: 10.5px; color: var(--text-3); }
+.truthGrid { display: flex; flex-wrap: wrap; gap: 18px 26px; }
+.truthGrid > div { display: flex; flex-direction: column; gap: 2px; }
+.truthGrid small { font-size: 10.5px; color: var(--text-3); }
+.truthGrid b { font-size: 16px; color: var(--text-1); }
+.truthGrid b.pos { color: var(--pos); } .truthGrid b.neg { color: var(--neg); }
+.truthEmpty { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+.truthEmpty b { color: #9A7B0A; }
+:root[data-theme="dark"] .truthEmpty b { color: #E8C349; }
+.truthEvidence { font-size: 11px; color: var(--text-3); margin-top: 9px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.truthEvidence b { color: var(--text-1); }
+
 /* 分析作战室 */
 .analysisRoom .arGrid { grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
 .analysisRoom .arSpan { grid-column: 1 / -1; }
