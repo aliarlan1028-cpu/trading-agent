@@ -561,6 +561,12 @@ async function buildSystemPrompt(db, userText = "") {
   if (adoptedWorkflows.length) {
     sections.push(`【采纳的分析工作流（来自知识库，遇到相符场景就按步骤走，仍受硬风控约束）】\n${adoptedWorkflows.slice(0, 6).map((w) => `- ${w.name}：${(w.steps || []).join(" → ")}${w.sourceTitle ? `（《${w.sourceTitle}》）` : ""}`).join("\n")}`);
   }
+  // 信息面智能简报:已按可信度/是否计价/假消息过滤过的关键新闻(未证实的别当事实)。
+  try {
+    const { newsBriefForPrompt } = await import("./newsIntelligence.mjs");
+    const brief = newsBriefForPrompt(db);
+    if (brief.length) sections.push(`【信息面 · 关键新闻（已按来源可信度/多源印证/是否已计价/假消息风险过滤;标"⚠未证实"的只当线索、不当事实,影响面别只看标题）】\n${brief.join("\n")}`);
+  } catch { /* 信息面简报不阻断 */ }
   // 可用技能分两层如实标注:active=已用真实成绩转正(可信);live_probation=小额实盘试用中(未验证)。
   // 绝不把试用技能说成"已验证"——否则 LLM 会拿它当可信依据推理,污染判断。
   const usableSkills = selectActiveKnowledgeSkills(db, {}, { limit: 6 });
@@ -821,7 +827,9 @@ export async function executeTool(db, run, name, args = {}) {
       category: event.category,
       due: event.due,
       impact: event.impact,
-      action: event.action
+      action: event.action,
+      // 信息面智能:情绪/影响币种/影响时长/来源可信度/多源印证/已计价程度/假消息风险
+      intel: event.intel ? { sentiment: event.intel.sentiment, symbols: event.intel.affectedSymbols, horizon: event.intel.impactHorizon, credibility: event.intel.credibility, corroboration: event.intel.corroboration, pricedIn: event.intel.pricedIn, fakeRisk: event.intel.fakeRisk, note: event.intel.oneLine } : null
     }));
   }
 

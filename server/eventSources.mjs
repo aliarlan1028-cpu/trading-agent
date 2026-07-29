@@ -66,6 +66,8 @@ export async function refreshEventSources(db) {
   }
   consolidateEvents(db);
   sortEventsByRecency(db);
+  // 信息面智能:对新拉取的新闻做可信度/交叉验证/情绪/影响币种/计价程度/假消息 富化(用现有 LLM,失败不阻断)。
+  try { const { enrichEvents } = await import("./newsIntelligence.mjs"); await enrichEvents(db); } catch { /* 信息面富化失败不影响事件刷新 */ }
   appendAudit(db, "刷新真实事件源", "event_sources", "EventSourceManager", results.some((r) => r.status === "failed") ? "warning" : "info");
   appendTrace(db, "event_sources", "refresh event sources", results.some((r) => r.status === "failed") ? "warning" : "ok");
   return { status: "ok", results, ingested: results.reduce((sum, r) => sum + (r.items?.length || 0), 0) };
