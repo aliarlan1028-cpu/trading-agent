@@ -5,6 +5,7 @@ import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
 import { bindKnowledgeSkillsToPlan, createSkillFromIdea, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { deriveAutomationState } from "./ops.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { deterministicDecision } from "./deterministicDecision.mjs";
@@ -1057,8 +1058,10 @@ export async function executeTool(db, run, name, args = {}) {
     // 名义金额超过灰度上限会被写入闸拦截 → 自动回退为待人工批准（大单永远需要你拍板，防御纵深）。
     let autoExecution = null;
     if (plan.status === "awaiting_approval") {
-      const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
-      const autoEligible = db.system.autonomyEnabled === true && db.system.liveTradingEnabled === true && grayPolicy && grayPolicy.requiresManualApproval === false; // (P1-6)用户暂停自主后,对话路径也不得自动批准+下单
+      // 唯一真相源:自动下单与否用 deriveAutomationState(与状态卡/前端横幅同一判定,11 道闸按执行链)。
+      // 旧的 4 闸 autoEligible 漏了 killSwitch/orderWrite/风险确认/Key核验,与状态卡各说各话(审计 gating)。
+      const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
+      const autoEligible = auto.mode === "full_auto_small";
       if (autoEligible) {
         plan.status = "approved";
         plan.approvedAt = nowIso();
@@ -1125,12 +1128,11 @@ export async function executeTool(db, run, name, args = {}) {
         ? `执行前结构审核(SRTL 质量闸)未过、未下单：${srtl || "盈亏比/结构不达标"}`
         : `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
     } else if (risk.passed && !plan.autoApproved) {
-      // 停在待批准、但自主已开——诊断哪道自动下单闸没合(自主≠自动下单:还要实盘写入开+灰度「无需人工批准」)。
-      const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
-      if (db.system.autonomyEnabled !== true) autoGateReason = "自主交易已暂停";
-      else if (db.system.liveTradingEnabled !== true) autoGateReason = "「实盘写入」开关未开启";
-      else if (!grayPolicy) autoGateReason = "未启用任何灰度发布策略";
-      else if (grayPolicy.requiresManualApproval !== false) autoGateReason = "当前灰度策略仍要求「人工批准」";
+      // 停在待批准、但自主已开——用同一个 deriveAutomationState 说清缺哪道闸(与状态卡口径一致,不再各算各的)。
+      const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
+      autoGateReason = auto.mode === "semi_auto"
+        ? "当前为半自动:灰度策略仍要求「人工批准」(取消勾选即全自动)"
+        : (auto.blockers?.length ? auto.blockers.join("、") : auto.detail);
     }
     return {
       planId: plan.id,

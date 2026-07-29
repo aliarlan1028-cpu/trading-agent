@@ -1299,10 +1299,12 @@ export function LiveGrayPanel({ data, action, ui }) {
                 </div>
               </div>
             </div>
-            {live.liveTradingEnabled && liveForm.grayRequiresApproval === false ? (
+            {/* 用后端唯一真相 automationState.mode 判定,别再自己拿 2 个开关猜(审计 gating:
+                旧横幅只看 live+gray,实盘写入没开/自主暂停/熔断照样喊"已开启")。*/}
+            {data.automationState?.mode === "full_auto_small" ? (
               <div className="autoTradeBanner on">🤖 全自动执行已开启：AI 自主巡检发现符合授权的机会时，会在「单笔灰度额度」内自动下单，超额度仍转你人工批准。</div>
             ) : (
-              <div className="autoTradeBanner off">当前为「人工批准」模式：AI 提计划，你点批准后才下单。要全自动：开齐三道闸 + 取消勾选「保留人工确认」。</div>
+              <div className="autoTradeBanner off">当前为「{data.automationState?.label || "人工批准"}」：{data.automationState?.blockers?.length ? `还缺 ${data.automationState.blockers.join("、")}` : "AI 提计划，你点批准后才下单"}。要全自动：开齐三道闸 + 取消勾选「保留人工确认」。</div>
             )}
             <div className="lgFoot">
               <label className="lgAmt">单笔灰度额度<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /> USDT</label>
