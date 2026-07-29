@@ -215,6 +215,17 @@ if (!db.meta.skillPaperForwardMigration) {
 if (db.system.skillLiveValidationMode) {
   try { promoteCompiledToProbation(db); } catch (error) { appendTrace(db, "system", `技能上岗试用失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 }
+// 一次性清历史重复成交:此前 WS 用户流与执行引擎对同一笔成交各记一条,WS 记的用旧符号
+// 口径 "…-SWAP"(引擎一律归一化去 -SWAP)。故 symbol 含 "-SWAP" 的 fills 全是 WS 重复记录,
+// 删掉只留引擎权威那条,让"最近成交"与笔数/胜率/盈亏统计不再翻倍。去重逻辑已在写入侧修好。
+if (!db.meta.fillDedupeVersion) {
+  const before = (db.fills || []).length;
+  db.fills = (db.fills || []).filter((f) => !/-SWAP/i.test(String(f.symbol || "")));
+  const removed = before - db.fills.length;
+  if (removed > 0) appendTrace(db, "system", `清理历史重复成交 ${removed} 条(WS 与引擎重复记账)`, "ok");
+  db.meta.fillDedupeVersion = 1;
+  saveDb(db);
+}
 // 一次性清运营数据(用户要求:清掉旧交易痕迹,不让旧代码/旧数据污染新系统)。
 // 保留:知识库(11本书)、技能流水线、系统配置、API密钥、风控规则、授权委托、Agent长期记忆、
 // 系统任务/事件源。清:所有交易/执行/分析/对话/巡检痕迹。bump 版本号可再触发一次。

@@ -309,13 +309,15 @@ function upsertBinanceExecution(db, payload) {
   order.updatedAt = nowIso();
   if (!existing) db.orders.unshift(order);
   if (payload.x === "TRADE") {
-    db.fills.unshift(enrichRealtimeFill(db, order, {
+    const fill = enrichRealtimeFill(db, order, {
       exchange: "BINANCE",
       price: Number(payload.L),
       quantity: Number(payload.l),
       feeUsdt: parseFee(payload.n, payload.N),
       side: order.side
-    }));
+    });
+    // 同 OKX:映射到本引擎执行单的成交由引擎权威落账,WS 只补记外部/手动单,避免重复记账。
+    if (!fill.executionOrderId) db.fills.unshift(fill);
   }
 }
 
@@ -332,7 +334,10 @@ function upsertOkxOrder(db, payload) {
   order.quantity = payload.sz;
   order.updatedAt = nowIso();
   if (!existing) db.orders.unshift(order);
-  if (payload.fillSz && Number(payload.fillSz) > 0) {
+  // 成交去重(单一权威源):本引擎下的单都带 clOrdId,其入场/平仓成交由执行引擎轮询权威落账
+  // (真实币量 + 已实现盈亏 + planId 归因)。WS 只为"无 clOrdId 的外部/手动单"补记,
+  // 否则同一笔被 WS 与引擎各记一次(实锤:1 入 1 平的真实成交被记成 4 行,污染笔数/胜率/盈亏)。
+  if (payload.fillSz && Number(payload.fillSz) > 0 && !payload.clOrdId) {
     db.fills.unshift(enrichRealtimeFill(db, order, {
       exchange: "OKX",
       price: Number(payload.fillPx || 0),
