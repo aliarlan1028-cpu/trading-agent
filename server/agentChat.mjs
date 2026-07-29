@@ -567,6 +567,12 @@ async function buildSystemPrompt(db, userText = "") {
     const brief = newsBriefForPrompt(db);
     if (brief.length) sections.push(`【信息面 · 关键新闻（已按来源可信度/多源印证/是否已计价/假消息风险过滤;标"⚠未证实"的只当线索、不当事实,影响面别只看标题）】\n${brief.join("\n")}`);
   } catch { /* 信息面简报不阻断 */ }
+  // 链上/基本面简报(DefiLlama 免费源:TVL/稳定币供应=中期资金面背景;巨鲸/净流未接则不臆断)。
+  try {
+    const { onchainBriefForPrompt } = await import("./onchainFundamentals.mjs");
+    const oc = onchainBriefForPrompt(db);
+    if (oc) sections.push(`【链上 / 基本面 · 资金面背景（中期视角,不是短线信号;长期利好别直接当短多）】${oc}`);
+  } catch { /* 链上简报不阻断 */ }
   // 可用技能分两层如实标注:active=已用真实成绩转正(可信);live_probation=小额实盘试用中(未验证)。
   // 绝不把试用技能说成"已验证"——否则 LLM 会拿它当可信依据推理,污染判断。
   const usableSkills = selectActiveKnowledgeSkills(db, {}, { limit: 6 });

@@ -106,13 +106,16 @@ function pruneStaleEvents(db) {
 
 export async function refreshOnchainSignals(db) {
   const signals = [];
-  if (process.env.ETHERSCAN_API_KEY) {
-    const url = `https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=${process.env.ETHERSCAN_API_KEY}`;
-    const response = await fetch(url);
-    const json = await response.json();
-    signals.push({ source: "etherscan_gas", status: json.status, result: json.result });
-  } else {
-    signals.push({ source: "etherscan_gas", status: "missing_api_key" });
+  let onchain = null;
+  // 真实链上基本面(DefiLlama 免费源:全网 TVL / 稳定币供应)。付费维度(巨鲸/净流/解锁)如实标未接。
+  try {
+    const { fetchOnchainFundamentals } = await import("./onchainFundamentals.mjs");
+    onchain = await fetchOnchainFundamentals(db);
+    if (onchain.totalTvlUsd) signals.push({ source: "defillama_tvl", status: "ok", totalTvlUsd: onchain.totalTvlUsd });
+    if (onchain.stableMcapUsd) signals.push({ source: "defillama_stablecoins", status: "ok", stableMcapUsd: onchain.stableMcapUsd });
+    signals.push({ source: "advanced_onchain", ...(onchain.advanced || {}) });
+  } catch (error) {
+    signals.push({ source: "onchain", status: "error", error: String(error.message || error).slice(0, 80) });
   }
   // 链上信号是一个"持续更新"的实时事件，而不是每次刷新都新建一条——否则事件列表会被
   // 无限重复的"链上信号刷新"淹没，且 due="即时" 永不被 pruneStaleEvents 清理。
@@ -126,12 +129,12 @@ export async function refreshOnchainSignals(db) {
     title: "链上信号刷新",
     category: "链上事件",
     status: "已刷新",
-    confidence: process.env.ETHERSCAN_API_KEY ? 80 : 40,
+    confidence: onchain?.available ? 75 : 40,
     impact: 35,
     impactLabel: "低影响",
     due: "即时",
-    relatedSymbols: ["ETH/USDT"],
-    action: "观察链上拥堵与 Gas 异常",
+    relatedSymbols: ["BTC/USDT", "ETH/USDT"],
+    action: onchain?.available ? `链上资金面：TVL $${((onchain.totalTvlUsd || 0) / 1e9).toFixed(1)}B · 稳定币 $${((onchain.stableMcapUsd || 0) / 1e9).toFixed(1)}B` : "链上数据源未接入",
     progress: [JSON.stringify(signals).slice(0, 300)],
     updatedAt: nowIso()
   };
