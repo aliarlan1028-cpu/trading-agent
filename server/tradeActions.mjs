@@ -338,6 +338,17 @@ async function executeOkxAction(action, payload) {
       }
       okxSz = contracts;
     }
+    // OKX 必须先 set-leverage,否则新仓用的是账户默认杠杆、plan.leverage 被完全忽略(审计发现:
+    // 之前从不设杠杆)。只对新开仓设;失败即 fail-closed,绝不用错误杠杆开仓(保证金/爆仓价会错)。
+    if (payload.leverage && !payload.reduceOnly && !payload.closePosition) {
+      try {
+        const levRes = await okxSignedRequest("/api/v5/account/set-leverage", "POST",
+          JSON.stringify({ instId, lever: String(payload.leverage), mgnMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross" }));
+        if (String(levRes.code) !== "0") return { status: "set_leverage_failed", instId, leverage: payload.leverage, reason: levRes.data?.[0]?.sMsg || levRes.msg || `code ${levRes.code}` };
+      } catch (error) {
+        return { status: "set_leverage_failed", instId, leverage: payload.leverage, reason: String(error.message || error).slice(0, 120) };
+      }
+    }
     // OKX clOrdId 只允许字母数字(≤32),带下划线整单被 51000 拒——最后一道兜底清洗。
     const okxClOrdId = (s) => String(s).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
     const body = JSON.stringify({

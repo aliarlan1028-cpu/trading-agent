@@ -84,10 +84,17 @@ export function computePositionSize(db, plan) {
   const equity = currentEquityUsdt(db);
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   const maxNotional = Number(policy?.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
+  const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
+  const sizingMode = mandate?.sizingMode || mandate?.sizing_mode || "risk_pct";
+  const equityPct = Number(mandate?.equityPct ?? mandate?.equity_pct ?? 0);
 
   let quantity;
   let sizedBy;
-  if (equity) {
+  if (sizingMode === "equity_pct" && equity > 0 && equityPct > 0) {
+    // 权益百分比仓位:每单名义 = 权益 × equityPct%(用户自定仓位大小,不按风险%反推)。
+    quantity = (equity * (equityPct / 100)) / entryMid;
+    sizedBy = `equity_pct(${equityPct}%权益)`;
+  } else if (equity) {
     const riskAmount = equity * (riskPct / 100);
     quantity = riskAmount / stopDistance;
     sizedBy = "risk_budget";
@@ -102,7 +109,6 @@ export function computePositionSize(db, plan) {
     sizedBy = `${sizedBy}+gray_capped`;
   }
   // 组合级波动率目标：相关性感知地压低会突破组合波动预算的名义额度。
-  const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
   const volCap = portfolioCapNotional(db, plan, equity, mandate);
   if (volCap !== null && volCap < notional) {
     quantity = volCap / entryMid;
@@ -287,14 +293,28 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       entry: sizing.entryMid, entryLow: plan.entryLow, entryHigh: plan.entryHigh,
       stopLoss: executionOrder.stopLoss, takeProfit: executionOrder.takeProfits, id: plan.id
     }, { minR: Number(mandate?.minRewardRisk ?? process.env.SRTL_MIN_R ?? 2.0) });
-    executionOrder.setupReview = { verdict: review.verdict, reason: review.reason, rewardRisk: review.rewardRisk, checklist: review.checklist };
-    executionOrder.events.push({ at: nowIso(), event: "setup_review", detail: `SRTL ${review.verdict}：${review.reason || ""}` });
+    executionOrder.setupReview = { verdict: review.verdict, grade: review.grade, sizeMultiplier: review.sizeMultiplier, reason: review.reason, rewardRisk: review.rewardRisk, checklist: review.checklist };
+    executionOrder.events.push({ at: nowIso(), event: "setup_review", detail: `SRTL ${review.grade || ""}(${review.verdict})：${review.reason || ""}` });
     if (review.verdict === "FAIL" && db.system.liveTradingEnabled) {
       executionOrder.status = "setup_rejected";
       plan.status = "setup_rejected";
       plan.executionOrderId = executionOrder.id;
-      appendAudit(db, `SRTL 结构审核拒绝，未下单：${review.reason || ""}`, executionOrder.id, "ExecutionEngine", "warning");
+      appendAudit(db, `SRTL 结构审核拒绝（C 级），未下单：${review.reason || ""}`, executionOrder.id, "ExecutionEngine", "warning");
       return { status: "setup_rejected", review, executionOrder };
+    }
+    // B 级机会缩量执行(A=100%,B=60%)。缩到低于最小可下单额则维持原量,不因缩量而下不出单。
+    const mult = Number(review.sizeMultiplier ?? 1);
+    if (review.verdict === "PASS" && mult > 0 && mult < 1 && executionOrder.quantity > 0) {
+      const scaledQty = roundQuantity(executionOrder.quantity * mult, sizing.entryMid);
+      const scaledNotional = scaledQty * sizing.entryMid;
+      if (scaledQty > 0 && scaledNotional >= 5) {
+        sizing.quantity = executionOrder.quantity = scaledQty;
+        sizing.notional = executionOrder.notionalUsdt = scaledNotional;
+        executionOrder.sizedBy = `${executionOrder.sizedBy}+srtl_B_downsize(${Math.round(mult * 100)}%)`;
+        executionOrder.events.push({ at: nowIso(), event: "srtl_b_downsize", detail: `B 级缩量至 ${Math.round(mult * 100)}%：数量 ${scaledQty}，名义 ${scaledNotional.toFixed(2)} USDT` });
+      } else {
+        executionOrder.events.push({ at: nowIso(), event: "srtl_b_downsize_skipped", detail: `B 级缩量后低于最小名义额，维持原量` });
+      }
     }
   } catch (error) {
     // 审核本身异常不阻断交易主流程（风控闸已通过），仅记录。

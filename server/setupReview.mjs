@@ -37,7 +37,10 @@ function computeRewardRisk(plan) {
   };
 }
 
-const SYSTEM = "你是顶级加密永续合约技术分析审核系统，严格执行 SRTL V1.0：顺大周期结构(4H BOS 定方向)，只在价格回到导致该 BOS 的高质量供需区、且触发周期(1H)出现流动性扫荡+结构转换(CHoCH)确认时才放行。震荡市不交易。只输出 JSON，逐项给 checklist 与 PASS/FAIL，宁可错杀不可放过。";
+// SRTL 目标是"找到顺 4H 结构的非对称(以小搏大)机会",不是一味否决。二元 PASS/FAIL 会把够格但
+// 不完美的 B 级机会一并错杀→系统永不出手。改成 A/B/C 分级:A 教科书级、B 够格(缩量执行)、C 才拒。
+const SYSTEM = "你是加密永续合约结构审核系统，执行 SRTL——目标是【找到顺 4H 结构的非对称(以小搏大)机会】，不是一味拒绝。给每个 setup 评级：A=教科书级(顺 4H BOS + 回到优质供需区 + 1H 流动性扫荡 + CHoCH 确认齐全)；B=够格但不完美(顺 4H 方向，且已到供需区或有 1H 结构确认之一，结构成立即可)；C=逆 4H 结构、或震荡无依据、或纯追单。只有 C 才拒绝(verdict=FAIL)；A/B 一律放行(verdict=PASS)。宁缺毋滥，但 B 级合理机会不要错杀。只输出纯 JSON。";
+const GRADE_SIZE = { A: 1, B: Number(process.env.SRTL_B_SIZE_MULT || 0.6), C: 0 };
 
 export async function reviewTradeSetup(db, plan, options = {}) {
   const minR = Number(options.minR ?? process.env.SRTL_MIN_R ?? 2.0);
@@ -73,7 +76,7 @@ export async function reviewTradeSetup(db, plan, options = {}) {
   }
   const fmt = (rows) => rows.slice(-15).map((c) => ({ t: new Date(c.time).toISOString().slice(5, 16), o: c.open, h: c.high, l: c.low, c: c.close }));
 
-  const prompt = `资产：${symbol}（永续）\n计划方向：${plan.direction}\n入场：${plan.entry ?? `${plan.entryLow}-${plan.entryHigh}`}｜止损：${plan.stopLoss ?? plan.stop_loss}｜止盈：${JSON.stringify(plan.takeProfit)}\n已算盈亏比：${rr.r}R（止损${rr.riskPct}%/止盈${rr.rewardPct}%）\n\n=== 近 15 根 4H（最新在后）===\n${JSON.stringify(fmt(h4))}\n=== 近 15 根 1H（用于找流动性扫荡与 CHoCH）===\n${JSON.stringify(fmt(h1))}\n\n按 SRTL 逐项审核，只返回纯 JSON：\n{"direction":"LONG|SHORT|NEUTRAL","zoneCheck":true,"triggerLevel":"S|A|NONE","verdict":"PASS|FAIL","reason":"一句话结论","marketContext":"结构与流动性简述","checklist":[{"item":"顺应4H方向(BOS)","passed":true,"reason":""},{"item":"回到有效供需区","passed":true,"reason":""},{"item":"1H流动性扫荡","passed":true,"reason":""},{"item":"CHoCH结构转换确认","passed":true,"reason":""},{"item":"盈亏比达标","passed":true,"reason":"${rr.r}R"}]}\n规则：计划方向必须与 4H BOS 一致；必须已回到供需区；1H 必须有 S 级(扫荡+收回+CHoCH)或 A 级(强反应+CHoCH)触发，否则 verdict=FAIL。`;
+  const prompt = `资产：${symbol}（永续）\n计划方向：${plan.direction}\n入场：${plan.entry ?? `${plan.entryLow}-${plan.entryHigh}`}｜止损：${plan.stopLoss ?? plan.stop_loss}｜止盈：${JSON.stringify(plan.takeProfit)}\n已算盈亏比：${rr.r}R（止损${rr.riskPct}%/止盈${rr.rewardPct}%）\n\n=== 近 15 根 4H（最新在后）===\n${JSON.stringify(fmt(h4))}\n=== 近 15 根 1H（用于找流动性扫荡与 CHoCH）===\n${JSON.stringify(fmt(h1))}\n\n按 SRTL 分级审核，只返回纯 JSON：\n{"direction":"LONG|SHORT|NEUTRAL","grade":"A|B|C","zoneCheck":true,"triggerLevel":"S|A|NONE","verdict":"PASS|FAIL","reason":"一句话结论(含评级理由)","marketContext":"结构与流动性简述","checklist":[{"item":"顺应4H方向(BOS)","passed":true,"reason":""},{"item":"回到有效供需区","passed":true,"reason":""},{"item":"1H流动性扫荡","passed":true,"reason":""},{"item":"CHoCH结构转换确认","passed":true,"reason":""},{"item":"盈亏比达标","passed":true,"reason":"${rr.r}R"}]}\n评级规则：A=顺4H方向且供需区+1H扫荡+CHoCH齐全；B=顺4H方向且(已到供需区 或 有1H扫荡/CHoCH其一)、结构成立但不完美；C=逆4H结构 或 震荡无据 或 纯追单。grade=C→verdict=FAIL；grade=A或B→verdict=PASS(B 会自动缩量执行)。方向逆 4H 结构必判 C。`;
 
   let parsed = null;
   try {
@@ -83,9 +86,12 @@ export async function reviewTradeSetup(db, plan, options = {}) {
     appendAudit(db, "SRTL 审核 LLM 解析失败，保守放行但标注", plan.id, "SetupReview", "warning");
     return { verdict: "SKIP", reason: "结构审核模型异常，未拦截（请人工留意）", rewardRisk: rr, checklist: [] };
   }
-  const verdict = parsed.verdict === "PASS" ? "PASS" : "FAIL";
-  const result = { ...parsed, verdict, rewardRisk: rr };
-  appendTrace(db, "setup_review", `SRTL ${symbol} ${verdict}`, verdict === "PASS" ? "ok" : "warning", 0);
-  appendAudit(db, `SRTL 结构审核：${verdict}（${parsed.reason || ""}）`, plan.id, "SetupReview", verdict === "PASS" ? "info" : "warning");
+  // 分级为准:C 才拒;A/B 放行(B 缩量)。模型只给旧式 verdict 时按 PASS→B / FAIL→C 兼容。
+  const grade = ["A", "B", "C"].includes(parsed.grade) ? parsed.grade : (parsed.verdict === "PASS" ? "B" : "C");
+  const verdict = grade === "C" ? "FAIL" : "PASS";
+  const sizeMultiplier = GRADE_SIZE[grade] ?? (verdict === "PASS" ? 1 : 0);
+  const result = { ...parsed, grade, verdict, sizeMultiplier, rewardRisk: rr };
+  appendTrace(db, "setup_review", `SRTL ${symbol} ${grade}(${verdict})`, verdict === "PASS" ? "ok" : "warning", 0);
+  appendAudit(db, `SRTL 结构审核：${grade} 级 ${verdict}${grade === "B" ? `（缩量至 ${Math.round(sizeMultiplier * 100)}%）` : ""}（${parsed.reason || ""}）`, plan.id, "SetupReview", verdict === "PASS" ? "info" : "warning");
   return result;
 }

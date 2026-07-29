@@ -58,13 +58,16 @@ function buildPlan(price, direction, mandate, atrPct) {
   const ceilingRisk = num(mandate?.maxSingleTradeRiskPct);
   const riskPct = ceilingRisk != null ? Math.min(ceilingRisk, DEFAULTS.riskPct) : DEFAULTS.riskPct;
   const maxLev = num(mandate?.max_leverage) || num(mandate?.maxLeverage) || DEFAULTS.leverageCap;
+  const minLev = num(mandate?.min_leverage) || num(mandate?.minLeverage) || 1;
+  // 杠杆落在授权区间 [minLev, maxLev] 内:默认取保守档(leverageCap),但不低于用户设的下限。
+  const lev = Math.max(minLev, Math.min(maxLev, DEFAULTS.leverageCap));
   return {
     direction,
     entryLow: Number(entryLow.toFixed(8)),
     entryHigh: Number(entryHigh.toFixed(8)),
     stopLoss: Number(stop.toFixed(8)),
     takeProfits: targets.map((t) => Number(t.toFixed(8))),
-    leverage: Math.min(DEFAULTS.leverageCap, maxLev),
+    leverage: lev,
     riskPercent: riskPct,
     riskReward: DEFAULTS.rr[0],
     stopPct: Number(stopPct.toFixed(4))
