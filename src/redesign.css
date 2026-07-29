@@ -1,22 +1,23 @@
 /* 重建页面统一样式(量身设计,美观有条理)。scoped 到 .rdPage,自带明暗双主题。 */
+/* 直接引用系统 design token(暖色奶油底 + 赤陶橙主色),永远与全站/明暗主题一致。 */
 .rdPage{
-  --rd-panel:#ffffff; --rd-panel2:#f2f5f3; --rd-ink:#10201e; --rd-muted:#5d7073; --rd-faint:#8ba09f;
-  --rd-line:#e6ebe8; --rd-line2:#d4ddd9; --rd-accent:#0c9c78; --rd-good:#12915a; --rd-warn:#b57d18; --rd-bad:#d1355f; --rd-info:#2f6fd6; --rd-use:#7a4fd0;
+  --rd-panel: var(--surface-white, #ffffff);
+  --rd-panel2: var(--accent-weak, #fbeddf);
+  --rd-ink: var(--text, #1e1b16);
+  --rd-muted:#6f665a; --rd-faint:#9a8f7d;
+  --rd-line: var(--border, #e3dcce);
+  --rd-line2: var(--border-strong, #d8cfbc);
+  --rd-accent: var(--accent, #d06a22);
+  --rd-good: var(--pos, #1f7a50);
+  --rd-warn: var(--warn, #c79a3a);
+  --rd-bad: var(--neg, #c43f28);
+  --rd-info: var(--info, #2a6fdb);
+  --rd-use: var(--purple, #7a4fd0);
   --rd-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   color:var(--rd-ink); display:flex; flex-direction:column; gap:16px; padding-bottom:36px;
 }
-@media (prefers-color-scheme:dark){ .rdPage{
-  --rd-panel:#10171a; --rd-panel2:#0d1416; --rd-ink:#dce7e5; --rd-muted:#879b9e; --rd-faint:#5f7376;
-  --rd-line:#1f2c2f; --rd-line2:#2c3d40; --rd-accent:#33e0b0; --rd-good:#34d399; --rd-warn:#f0b04e; --rd-bad:#f4557a; --rd-info:#5aa9ff; --rd-use:#b98cff;
-}}
-:root[data-theme="dark"] .rdPage{
-  --rd-panel:#10171a; --rd-panel2:#0d1416; --rd-ink:#dce7e5; --rd-muted:#879b9e; --rd-faint:#5f7376;
-  --rd-line:#1f2c2f; --rd-line2:#2c3d40; --rd-accent:#33e0b0; --rd-good:#34d399; --rd-warn:#f0b04e; --rd-bad:#f4557a; --rd-info:#5aa9ff; --rd-use:#b98cff;
-}
-:root[data-theme="light"] .rdPage{
-  --rd-panel:#ffffff; --rd-panel2:#f2f5f3; --rd-ink:#10201e; --rd-muted:#5d7073; --rd-faint:#8ba09f;
-  --rd-line:#e6ebe8; --rd-line2:#d4ddd9; --rd-accent:#0c9c78; --rd-good:#12915a; --rd-warn:#b57d18; --rd-bad:#d1355f; --rd-info:#2f6fd6; --rd-use:#7a4fd0;
-}
+/* 暗色由全站 [data-theme=dark] 覆盖上面引用的 token 自动生效;这里只补面板底与灰阶。 */
+:root[data-theme="dark"] .rdPage{ --rd-panel: var(--surface, #12181a); --rd-panel2: var(--bg-canvas, #0f1416); --rd-muted:#9aa0a0; --rd-faint:#6a7274; }
 .rdPage *{box-sizing:border-box;}
 .rdMono{font-family:var(--rd-mono);}
 
