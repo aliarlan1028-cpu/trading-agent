@@ -589,6 +589,19 @@ async function okxContractValue(instId) {
   return spec?.ctVal ?? null;
 }
 
+// OKX 持仓模式:long_short_mode(双向/对冲)下每单必须带 posSide;net_mode(单向)下不能带。
+// 不知道模式就瞎带/不带都会被 51000「Parameter posSide error」拒。缓存 10 分钟(模式极少变)。
+let okxPosModeCache = { mode: null, at: 0 };
+export async function okxPositionMode() {
+  if (okxPosModeCache.mode && Date.now() - okxPosModeCache.at < 600000) return okxPosModeCache.mode;
+  try {
+    const raw = await okxSignedRequest("/api/v5/account/config", "GET");
+    const mode = raw?.data?.[0]?.posMode || null;
+    if (mode) okxPosModeCache = { mode, at: Date.now() };
+    return mode;
+  } catch { return okxPosModeCache.mode; }
+}
+
 async function applyOkxSnapshot(db, snapshot) {
   const seen = new Set();
   for (const payload of snapshot.positions || []) {

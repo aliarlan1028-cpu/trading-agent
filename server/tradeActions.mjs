@@ -1,5 +1,5 @@
 import { appendAudit, appendTrace, id, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
-import { binanceSignedRequest, okxContractSpec, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { binanceSignedRequest, okxContractSpec, okxPositionMode, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { hasPassedPaper } from "./paperTrading.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
 
@@ -351,15 +351,26 @@ async function executeOkxAction(action, payload) {
     }
     // OKX clOrdId 只允许字母数字(≤32),带下划线整单被 51000 拒——最后一道兜底清洗。
     const okxClOrdId = (s) => String(s).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+    // 双向持仓(long_short_mode)必须带 posSide,单向(net_mode)不能带——否则 51000 posSide error。
+    // 开仓:卖=空/买=多;平仓(reduceOnly):卖平多/买平空。net 模式下 posSide 留空。
+    const posMode = await okxPositionMode();
+    const okxSide = String(payload.side || "buy").toLowerCase();
+    const okxPosSide = posMode === "long_short_mode"
+      ? (payload.posSide || (payload.reduceOnly
+          ? (okxSide === "sell" ? "long" : "short")
+          : (okxSide === "sell" ? "short" : "long")))
+      : undefined;
+    // net_mode 下 OKX 不接受 reduceOnly 与 posSide 同存;hedge 下用 posSide 平仓、不传 reduceOnly。
     const body = JSON.stringify({
       instId,
       tdMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross",
-      side: String(payload.side || "buy").toLowerCase(),
+      side: okxSide,
       ordType: String(payload.ordType || payload.type || "limit").toLowerCase(),
       sz: String(okxSz),
       px: payload.price ? String(payload.price) : undefined,
+      posSide: okxPosSide,
       clOrdId: okxClOrdId(payload.clientOrderId || id("coid")),
-      reduceOnly: Boolean(payload.reduceOnly),
+      reduceOnly: okxPosSide ? undefined : Boolean(payload.reduceOnly),
       attachAlgoOrds: payload.stopLoss && !payload.reduceOnly ? [{
         attachAlgoClOrdId: okxClOrdId(payload.stopClientOrderId || id("stop")),
         slTriggerPx: String(payload.stopLoss),

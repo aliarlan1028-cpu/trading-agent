@@ -350,6 +350,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       marketType: plan.marketType || "perpetual_usdt",
       symbol: plan.symbol,
       side,
+      posSide: plan.direction === "short" ? "short" : "long",
       type: "LIMIT",
       price: sizing.entryMid,
       quantity: sizing.quantity,
