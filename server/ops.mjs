@@ -32,7 +32,7 @@ export function deriveAutomationState(db, options = {}) {
   if (gray.requiresManualApproval) {
     return { mode: "semi_auto", label: "半自动", detail: `计划自动生成,真实下单前需你批准 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] };
   }
-  return { mode: "full_auto_small", label: "全自动·小额实盘", detail: `通过硬风控+SRTL 即自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "danger", blockers: [] };
+  return { mode: "full_auto_small", label: "全自动·小额实盘", detail: `通过硬风控即自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "danger", blockers: [] };
 }
 
 export function buildReadinessReport(db) {

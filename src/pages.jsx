@@ -1568,7 +1568,7 @@ export function AnalysisRoomPage({ data, embedded = false }) {
     ["聪明钱偏多 / 偏空阈值", `≥ ${th.smartLong ?? "—"} / ≤ ${th.smartShort ?? "—"}`],
     ["极端资金费(反向计分)", th.extremeFundingAbs != null ? `|>${(th.extremeFundingAbs * 100).toFixed(3)}%|` : "—"],
     ["无 LLM 兜底默认", `止损 ${df.stopPct != null ? (df.stopPct * 100).toFixed(1) + "%" : "—"} · 盈亏比 ${df.rr ? df.rr.join("–") : "—"} · 杠杆 ≤ ${df.leverageCap ?? "—"}x · 单笔风险 ${df.riskPct ?? "—"}%`],
-    ["SRTL 结构审核质量闸", `最低盈亏比 ${eng.srtlMinR ?? "—"}R(不达标不下单)`],
+    ["结构分析 analyze_market_structure", "分析参谋工具(非执行审批闸)· 盈亏比≥2R 为提示词纪律,非硬拦"],
     ["决策 LLM 模型", eng.llmModel || "未配置"]
   ];
   const funnel = [

@@ -1146,7 +1146,7 @@ export async function executeTool(db, run, name, args = {}) {
         ]
       });
     }
-    // 计划结果如实播报:autoApproved 在执行前就被置 true,不能拿它当"已下单"——SRTL 拒了就没下单。
+    // 计划结果如实播报:autoApproved 在执行前就被置 true,不能拿它当"已下单"——下单闸拦了/入场被拒就没下单。
     // 用真实执行状态判定 placed(是否产生真实订单),分清"真下单 / 被结构闸拒 / 停在待批准"三种。
     // dry_run 是"算了没下单",绝不能算"已下单"(审计 llm-F3)——否则模型会谎报"已自动下单"。
     const placed = Boolean(autoExecution && ["submitted", "entry_pending", "entry_filled", "protecting"].includes(autoExecution.status));
@@ -1155,11 +1155,8 @@ export async function executeTool(db, run, name, args = {}) {
     if (simulated) {
       autoGateReason = "干跑：实盘写入未开，已完成数量/价格计算但未向交易所提交(未真下单)";
     } else if (autoExecution && !placed) {
-      // 已自动送执行但没真正下单——最常见是执行前结构质量闸(SRTL)拒绝。
-      const srtl = autoExecution.review?.reason || autoExecution.executionOrder?.setupReview?.reason;
-      autoGateReason = autoExecution.status === "setup_rejected"
-        ? `执行前结构审核(SRTL 质量闸)未过、未下单：${srtl || "盈亏比/结构不达标"}`
-        : `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
+      // 已自动送执行但没真正下单(被下单闸拦、入场被拒、部分成交撤单等)——如实报状态,不脑补。
+      autoGateReason = `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
     } else if (risk.passed && !plan.autoApproved) {
       // 停在待批准、但自主已开——用同一个 deriveAutomationState 说清缺哪道闸(与状态卡口径一致,不再各算各的)。
       const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
