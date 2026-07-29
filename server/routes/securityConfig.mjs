@@ -134,6 +134,45 @@ export function registerSecurityConfigRoutes(app, ctx) {
     res.json({ message: "实盘配置已更新", status: getConfigStatus(db) });
   });
 
+  // 运行模式单一控制:观察/半自动/全自动 三选一,底层自动配好各闸——用户选"意图",不用理解 6 个开关。
+  app.post("/api/system/operating-mode", requirePermission("approve:live_config"), (req, res) => {
+    const mode = String(req.body?.mode || "");
+    const MODE_CN = { observe: "观察", semi_auto: "半自动", full_auto: "全自动" };
+    if (!MODE_CN[mode]) return res.status(400).json({ error: "mode 必须是 observe / semi_auto / full_auto" });
+    if (db.system.killSwitch) return res.status(409).json({ error: "已熔断，请先解除熔断再切换模式" });
+    const wantsLive = mode !== "observe";
+    if (wantsLive && req.body?.acknowledged !== true && db.system.realTradingAck !== true) {
+      return res.status(412).json({ error: "切到半自动/全自动前必须确认：这会用真实资金下单", needAck: true });
+    }
+    if (mode === "observe") {
+      // 观察:自主开(照常分析/提计划),实盘写入关 → 只干跑,绝不真下单。
+      db.system.autonomyEnabled = true;
+      db.system.liveTradingEnabled = false;
+      setConfig(db, { LIVE_TRADING_ENABLED: "false" });
+    } else {
+      // 半自动/全自动:开齐实盘三闸 + 灰度;差别只在灰度是否"保留人工确认"。
+      if (req.body?.acknowledged === true) { db.system.realTradingAck = true; setConfig(db, { I_UNDERSTAND_REAL_TRADING: "true" }); }
+      db.system.autonomyEnabled = true;
+      db.system.orderWriteEnabled = true;
+      db.system.liveTradingEnabled = db.system.realTradingAck === true;
+      if (db.system.reduceOnlyBy === "professional_risk_gate") { db.system.reduceOnlyMode = false; db.system.reduceOnlyBy = null; }
+      setConfig(db, { LIVE_TRADING_ENABLED: "true", REAL_ORDER_WRITE_ENABLED: "true" });
+      db.grayReleasePolicies ||= [];
+      let gray = db.grayReleasePolicies.find((g) => g.id === "gray_live_small_notional") || db.grayReleasePolicies.find((g) => g.enabled) || db.grayReleasePolicies[0];
+      if (!gray) { gray = { id: "gray_live_small_notional", name: "小额灰度", maxNotionalUsdt: 50, createdAt: nowIso() }; db.grayReleasePolicies.unshift(gray); }
+      gray.enabled = true;
+      gray.requiresManualApproval = mode === "semi_auto";
+      gray.updatedAt = nowIso();
+    }
+    db.system.riskStatus = "正常";
+    db.system.latestAction = `运行模式切换为「${MODE_CN[mode]}」`;
+    db.system.updatedAt = nowIso();
+    appendAudit(db, `切换运行模式 → ${MODE_CN[mode]}`, "system.operating_mode", db.user.name, mode === "full_auto" ? "critical" : "warning");
+    appendTrace(db, "system", `运行模式:${MODE_CN[mode]}`, "ok");
+    saveDb(db);
+    res.json({ message: `已切换到「${MODE_CN[mode]}」`, status: getConfigStatus(db) });
+  });
+
   app.delete("/api/config/secret/:key", requirePermission("admin:security"), (req, res) => {
     const ok = clearSecret(db, req.params.key);
     refreshApiKeyMetadata(db);

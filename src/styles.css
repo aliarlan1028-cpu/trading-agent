@@ -7668,6 +7668,20 @@ button.danger:disabled,
 .truthEvidence { font-size: 11px; color: var(--text-3); margin-top: 9px; border-top: 1px dashed var(--border); padding-top: 8px; }
 .truthEvidence b { color: var(--text-1); }
 
+/* 运行模式单一控制 */
+.modeSelector { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
+.modeSelLabel { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--text-1); flex: none; }
+.modeSelLabel small { font-weight: 400; color: var(--text-3); font-size: 11px; }
+.modeSelBtns { display: flex; gap: 8px; flex: 1; min-width: 260px; }
+.modeBtn { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-sm, 6px); background: var(--surface-2); cursor: pointer; text-align: left; transition: all .12s; }
+.modeBtn b { font-size: 13px; color: var(--text-1); }
+.modeBtn span { font-size: 10.5px; color: var(--text-3); }
+.modeBtn:hover { border-color: var(--text-3); }
+.modeBtn.on { border-color: var(--accent); background: var(--accent); }
+.modeBtn.on b, .modeBtn.on span { color: #fff; }
+.modeBtn.full_auto.on { border-color: var(--neg); background: var(--neg); }
+.modeBtn.observe.on { border-color: var(--text-2); background: var(--text-2); }
+
 /* 下一步引导 */
 .nextStepCard { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 10px 14px; margin-bottom: 10px; }
 .nextStepCard.warn { border-left: 4px solid #C9A227; }

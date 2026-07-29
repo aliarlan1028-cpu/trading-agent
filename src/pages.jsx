@@ -1422,6 +1422,41 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   return (
     <div className="pageStack termPage riskPage">
       {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
+
+      {/* 运行模式单一控制:观察/半自动/全自动 三选一,底层自动配好 6 道闸。选意图,不用理解一堆开关。 */}
+      {(() => {
+        const auto = data.automationState || {};
+        const cur = auto.mode === "full_auto_small" ? "full_auto" : auto.mode === "semi_auto" ? "semi_auto" : auto.mode === "observe" ? "observe" : null;
+        const MODES = [
+          { id: "observe", label: "观察", desc: "只分析、绝不下单(干跑)" },
+          { id: "semi_auto", label: "半自动", desc: "AI 提计划，你批准才下单" },
+          { id: "full_auto", label: "全自动", desc: "够格机会自动下单" }
+        ];
+        async function setMode(m) {
+          if (m === cur) return;
+          let ack = false;
+          if (m !== "observe") {
+            if (!window.confirm(m === "full_auto"
+              ? "切到「全自动」：AI 发现符合授权的机会时会用真实资金自动下单，不再问你。确认？"
+              : "切到「半自动」：会用真实资金交易，但每单需你点批准。确认？")) return;
+            ack = true;
+          }
+          await action("/api/system/operating-mode", { mode: m, acknowledged: ack });
+        }
+        return (
+          <div className="modeSelector">
+            <div className="modeSelLabel"><Shield size={14} /> 运行模式<small>当前：{auto.label || "—"}{auto.blockers?.length ? ` · 缺 ${auto.blockers.join("、")}` : ""}</small></div>
+            <div className="modeSelBtns">
+              {MODES.map((m) => (
+                <button key={m.id} className={`modeBtn ${m.id} ${cur === m.id ? "on" : ""}`} onClick={() => setMode(m.id)}>
+                  <b>{m.label}</b><span>{m.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等高并排（Y 轴一致，X 宽 0.85:1.15 之和铺满整页）*/}
       <div className="termGrid riskRow1">
         <div className="termCard">
