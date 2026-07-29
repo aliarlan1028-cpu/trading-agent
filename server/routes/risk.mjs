@@ -1,4 +1,6 @@
-// 风控路由组（计划风控校验/一键熔断/状态/规则 CRUD/灰度策略/只减仓/风险事件收尾）——
+import { riskGateDecision } from "../riskEngine.mjs";
+import { executeTradeAction } from "../tradeActions.mjs";
+// 风控路由组（计划风控校验/一键熔断/状态/规则 CRUD/灰度策略/只减仓/一键平仓/风险事件收尾）——
 // 从 index.mjs 按 registrar 范式迁出。熔断/只减仓/事件收尾为高危控制面，处理器逐字保留原实现：
 // 熔断即撤单+暂停自主+建 incident+飞书告警；解除熔断不强制重开自主。依赖经 ctx 注入。
 export function registerRiskRoutes(app, ctx) {
@@ -8,10 +10,32 @@ export function registerRiskRoutes(app, ctx) {
     const plan = req.body.tradePlanId ? db.tradePlans.find((item) => item.id === req.body.tradePlanId) : req.body;
     if (!plan) return res.status(404).json({ error: "Trade plan not found" });
     const result = evaluateTradePlan(db, plan);
+    // 六态统一裁决:ALLOW / REJECT / REDUCE_SIZE / REQUIRE_CONFIRMATION / CLOSE_ONLY / EMERGENCY_STOP
+    const gate = riskGateDecision(db, plan);
+    result.gateState = gate.state;
+    result.gateReason = gate.reason;
     result.tradePlanId = plan.id;
     result.createdAt = nowIso();
     db.riskChecks.unshift(result);
     persist(res, result);
+  });
+
+  // 一键平仓:市价平掉所有持仓 + 切只减仓(禁新开仓)。高危,与熔断并列。减风险动作,不受实盘写入闸限制。
+  app.post("/api/risk/emergency-flatten", requirePermission("risk.kill_switch"), async (req, res) => {
+    const positions = (db.positions || []).slice();
+    const closed = [], errors = [];
+    for (const p of positions) {
+      try {
+        const r = await executeTradeAction(db, "close_position", { exchange: p.exchange || "OKX", marketType: "perpetual_usdt", symbol: p.symbol, positionSide: p.posSide || p.direction, quantity: p.size, reduceOnly: true, manualApproval: true });
+        if (["ok", "submitted", "idempotent_replay"].includes(r.status)) closed.push(p.symbol); else errors.push(`${p.symbol}: ${r.reason || r.status}`);
+      } catch (error) { errors.push(`${p.symbol}: ${error.message}`); }
+    }
+    db.system.reduceOnlyMode = true;
+    db.system.reduceOnlyBy = "emergency_flatten";
+    appendAudit(db, `一键平仓：平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓`, "emergency_flatten", db.user.name, "critical");
+    appendTrace(db, "risk", `一键平仓 ${closed.length} 仓`, errors.length ? "warning" : "ok");
+    try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓已触发", body: `已平 **${closed.length}** 个持仓${errors.length ? `，${errors.length} 个失败` : ""}，系统已切「只减仓」禁新开仓。` }); } catch { /* noop */ }
+    persist(res, { closed, errors, reduceOnly: true, message: `已平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓` });
   });
 
   app.post("/api/risk/kill-switch", async (req, res) => {

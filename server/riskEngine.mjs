@@ -241,6 +241,20 @@ function evaluateConcentration(db, plan, mandate) {
   return { passed: true, detail: correlatedCount > 1 ? `同向相关仓位 ${correlatedCount}/${maxCorrelated}，在可控范围` : "无相关性集中" };
 }
 
+// 六态统一风控裁决:把现有各闸(熔断/只减仓/硬风控/是否全自动/组合约束)收敛成单一状态,
+// 供 Agent 播报、执行判定与前端统一口径使用。行为与既有闸一致,只是统一了返回。
+export function riskGateDecision(db, plan) {
+  if (db.system?.killSwitch) return { state: "EMERGENCY_STOP", reason: "已一键熔断，禁止一切开仓" };
+  if (db.system?.reduceOnlyMode) return { state: "CLOSE_ONLY", reason: "只减仓模式，仅允许平仓/减仓/撤单" };
+  const risk = evaluateTradePlan(db, plan);
+  if (!risk.passed) return { state: "REJECT", reason: risk.summary, risk };
+  const gray = (db.grayReleasePolicies || []).find((g) => g.enabled);
+  const autoAll = db.system?.autonomyEnabled && db.system?.liveTradingEnabled && db.system?.orderWriteEnabled && gray && gray.requiresManualApproval === false;
+  if (!autoAll) return { state: "REQUIRE_CONFIRMATION", reason: "非全自动：需人工批准后才可下单", risk };
+  if ((risk.warnings || []).some((w) => /相关|波动预算|流动性|集中/.test(String(w.name || "") + String(w.detail || "")))) return { state: "REDUCE_SIZE", reason: "组合相关性/波动预算约束，建议缩量执行", risk };
+  return { state: "ALLOW", reason: "全部风控通过，可自动执行", risk };
+}
+
 function summarize(checks) {
   const blockers = checks.filter((check) => !check.passed && check.severity === "block");
   const warnings = checks.filter((check) => !check.passed && check.severity === "warn");

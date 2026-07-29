@@ -81,6 +81,7 @@ export function RiskOverviewPage({ data, action, ui }) {
         <div className="rdEmerg">
           <button className="warn" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
           <button className="warn" onClick={() => { const on = Boolean(reduceOnly); if (window.confirm(on ? "关闭只减仓模式？" : "开启只减仓模式？将禁止新开仓，仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{reduceOnly ? "退出只减仓" : "只减仓"}</button>
+          <button className="bad" onClick={() => { if (window.confirm("一键平仓？将市价平掉所有持仓，并切到只减仓禁新开仓。")) action("/api/risk/emergency-flatten", {}); }}>一键平仓</button>
           <button className="bad" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
         </div>
       </div>

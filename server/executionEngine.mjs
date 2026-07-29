@@ -320,6 +320,26 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     return { status: "dry_run", executionOrder };
   }
 
+  // 执行时滑点保护:下单前用最新真实价核对,现价偏离入场中值超阈值即拒——防在急动/闪崩里以坏价成交
+  // (plan 时的"入场贴近现价 ≤8%"是提计划口径,这里是执行口径,阈值更紧,默认 1%)。
+  {
+    const maxSlipPct = Number(process.env.MAX_ENTRY_SLIPPAGE_PCT || 1.0);
+    const livePx = Number((db.markets || []).find((mk) => mk.symbol === plan.symbol)?.price);
+    if (Number.isFinite(livePx) && livePx > 0 && Number.isFinite(sizing.entryMid) && sizing.entryMid > 0) {
+      const devPct = Math.abs(livePx - sizing.entryMid) / sizing.entryMid * 100;
+      if (devPct > maxSlipPct) {
+        executionOrder.status = "slippage_rejected";
+        executionOrder.events.push({ at: nowIso(), event: "slippage_rejected", detail: `现价 ${livePx} 偏离入场 ${sizing.entryMid} ${devPct.toFixed(2)}% > ${maxSlipPct}%，拒绝以坏价成交` });
+        appendAudit(db, `滑点保护拒单：偏离 ${devPct.toFixed(2)}%（>${maxSlipPct}%）`, executionOrder.id, "ExecutionEngine", "warning");
+        appendTrace(db, "execution", `${plan.symbol} 滑点保护拒单 ${devPct.toFixed(2)}%`, "warning");
+        plan.status = "failed";
+        plan.executionOrderId = executionOrder.id;
+        plan.failedReason = `滑点保护：现价偏离入场 ${devPct.toFixed(2)}%（>${maxSlipPct}%）`;
+        return { status: "slippage_rejected", devPct, executionOrder };
+      }
+    }
+  }
+
   const side = plan.direction === "short" ? "SELL" : "BUY";
   const entryClientOrderId = cleanClOrdId(`exec${executionOrder.id.slice(-12)}`);
   const stopClientOrderId = cleanClOrdId(`stop${executionOrder.id.slice(-12)}`);
