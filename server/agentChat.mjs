@@ -357,6 +357,10 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 记住这个反例：曾对 BTC 在 15m 单根放量砸穿整数关口后立刻做空、止损压在破位高点上方、RR 仅 1.5，结果价格反向扫掉上方止损、计划失败。"低周期逆结构 + 紧止损 + 低 RR"是典型错误组合，别再犯。
 12. 合约下单口径【硬事实·禁止手算】：OKX/币安永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币（BTC-USDT-SWAP 每张 0.01 BTC）；最小下单量是 minSz 张——BTC 为 0.01 张 = 0.0001 BTC ≈ 6 USDT 名义、5x 约 1.3 USDT 保证金，**不是** 0.01 BTC(那是整整 1 张、≈640 USDT)。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
    - 【绝对禁止】把「0.01 张」当成「0.01 币」、或自己手算合约最小值/名义/保证金，更不能据此断言「账户太小、即使批准也会被交易所拒」——这几乎总是错的(极易算成 100 倍)。真实可下量由执行引擎按 minSz/lotSz/最小名义额(~5 USDT)自动对齐并强制(不足才返回 below_min_size)。可下与否一律以 propose_trade_plan 返回的 sizing 与引擎结果为准，不要自己下结论。
+13. 计划结果播报【必须照 propose_trade_plan 的返回字段如实说，禁止想当然】：
+   - 有两道独立的闸：**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆，返回如 36/36) 与 **SRTL 结构质量闸**(执行前审核 setup 结构，管 4H 供需区/1H CHoCH/盈亏比)。**硬风控全过 ≠ 会下单**——还要过 SRTL。绝不能因为"风控 36/36 通过"就说"可执行/等你批准/马上下单"。
+   - 按返回的 status 字段播报，**不许自己脑补**：status 为 setup_rejected → 说"已自动送执行但被 SRTL 结构质量闸拒绝、**未下单**，原因 X，需重提更优 setup"，【绝对禁止】说成"等待人工批准"；orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 awaiting_approval → 才说"等待人工批准"。
+   - 自主已开(autonomy+实盘写入+灰度「无需人工批准」全开)时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -1075,34 +1079,40 @@ export async function executeTool(db, run, name, args = {}) {
         ]
       });
     }
-    // 计划停在待批准、但自主已开——诊断到底哪道自动执行闸没合，直白告诉用户(不然会误以为"自主交易坏了")。
-    // 自主交易(观察+提计划+自动批准)≠ 自动下单：自动下单还要 实盘写入开 + 有一条灰度策略且「无需人工批准」。
+    // 计划结果如实播报:autoApproved 在执行前就被置 true,不能拿它当"已下单"——SRTL 拒了就没下单。
+    // 用真实执行状态判定 placed(是否产生真实订单),分清"真下单 / 被结构闸拒 / 停在待批准"三种。
+    const placed = Boolean(autoExecution && ["submitted", "dry_run", "entry_pending", "entry_filled", "protecting"].includes(autoExecution.status));
     let autoGateReason = null;
-    if (risk.passed && !plan.autoApproved && !(autoExecution && autoExecution.fellBackToManual)) {
+    if (autoExecution && !placed) {
+      // 已自动送执行但没真正下单——最常见是执行前结构质量闸(SRTL)拒绝。
+      const srtl = autoExecution.review?.reason || autoExecution.executionOrder?.setupReview?.reason;
+      autoGateReason = autoExecution.status === "setup_rejected"
+        ? `执行前结构审核(SRTL 质量闸)未过、未下单：${srtl || "盈亏比/结构不达标"}`
+        : `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
+    } else if (risk.passed && !plan.autoApproved) {
+      // 停在待批准、但自主已开——诊断哪道自动下单闸没合(自主≠自动下单:还要实盘写入开+灰度「无需人工批准」)。
       const grayPolicy = (db.grayReleasePolicies || []).find((p) => p.enabled);
       if (db.system.autonomyEnabled !== true) autoGateReason = "自主交易已暂停";
       else if (db.system.liveTradingEnabled !== true) autoGateReason = "「实盘写入」开关未开启";
       else if (!grayPolicy) autoGateReason = "未启用任何灰度发布策略";
       else if (grayPolicy.requiresManualApproval !== false) autoGateReason = "当前灰度策略仍要求「人工批准」";
-    } else if (autoExecution && autoExecution.fellBackToManual) {
-      const srtl = autoExecution.review?.reason || autoExecution.executionOrder?.setupReview?.reason;
-      autoGateReason = autoExecution.status === "setup_rejected"
-        ? `执行前结构审核未过（${srtl || "盈亏比/结构不达标"}）`
-        : `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}）`;
     }
     return {
       planId: plan.id,
       status: plan.status,
-      autoExecuted: plan.autoApproved === true,
+      autoExecuted: placed,
+      orderPlaced: placed,
       autoGateReason,
       execution: autoExecution ? { status: autoExecution.status, reason: autoExecution.reason || null } : null,
       riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
       smartMoneyAlignment: alignment,
-      note: plan.autoApproved
-        ? `已在授权与灰度上限内自动执行（${autoExecution.status}）。`
-        : (risk.passed
-          ? `计划已进入待批准队列，用户批准后才会进入执行链路。${autoGateReason ? `未自动下单原因：${autoGateReason}——自主交易只负责观察与提计划/自动批准，真正自动下单还需实盘写入开启且灰度策略设为「无需人工批准」。` : ""}`
-          : "计划被风控拒绝，请调整参数或修正授权边界。")
+      note: placed
+        ? `已在授权与灰度上限内自动执行并下单（${autoExecution.status}）。`
+        : autoExecution
+          ? `计划已自动送执行，但${autoGateReason}。未产生真实订单——这【不是】"等待人工批准"，需重提更优 setup 或调整参数。`
+          : (risk.passed
+            ? `计划已进入待批准队列，你批准后才进入执行链路（执行时仍会过 SRTL 结构质量闸，硬风控通过≠一定会下单）。${autoGateReason ? `未自动下单原因：${autoGateReason}。` : ""}`
+            : "计划被风控拒绝，请调整参数或修正授权边界。")
     };
   }
 
