@@ -370,6 +370,12 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   if (!["ok", "submitted", "idempotent_replay"].includes(result.status)) {
     executionOrder.status = "failed";
     executionOrder.events.push({ at: nowIso(), event: "failed", detail: JSON.stringify(result).slice(0, 300) });
+    // 入场提交失败 → 计划立即置终态。否则计划仍停在 approved/awaiting_approval,
+    // 会被巡检的 awaitingPlan 闸当成"待处理计划"而冻结整条自主决策(实锤:08:29 失败单
+    // 让计划僵在 awaiting_approval,后续每轮巡检都 patrol_only 空转 3h+,再无一单)。
+    plan.status = "failed";
+    plan.executionOrderId = executionOrder.id;
+    plan.failedReason = `入场提交失败:${result.status}${result.reason ? `(${result.reason})` : ""}`.slice(0, 160);
     appendAudit(db, "执行提交失败", executionOrder.id, "ExecutionEngine", "warning");
     return { status: "failed", result, executionOrder };
   }

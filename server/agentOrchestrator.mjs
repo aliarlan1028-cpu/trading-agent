@@ -13,6 +13,17 @@ export function expireStalePlans(db, actor = "PlanExpiry") {
   const expired = [];
   for (const p of db.tradePlans || []) {
     if (!["awaiting_approval", "approved"].includes(p.status)) continue;
+    // 执行已硬失败的计划:立即置终态,不等 TTL。修复"入场失败未回写计划状态 → 僵尸计划
+    // 卡在 awaiting_approval,巡检 awaitingPlan 闸每轮空转"的死锁(实锤:08:29 失败单冻结巡检)。
+    const failedOrder = (db.executionOrders || []).find((o) => o.planId === p.id && o.status === "failed");
+    if (failedOrder) {
+      p.status = "failed";
+      p.executionOrderId ||= failedOrder.id;
+      p.failedReason ||= `关联执行单 ${failedOrder.id} 入场失败,计划作废`;
+      appendAudit(db, `交易计划因执行失败作废「${p.symbol}」`, p.id, actor, "warning");
+      expired.push(p.id);
+      continue;
+    }
     if (p.executionOrderId || p.executedAt) continue; // 已成交/已下单的不算陈旧
     const created = new Date(p.createdAt || p.approvedAt || 0).getTime();
     if (!Number.isFinite(created) || created <= 0) continue;

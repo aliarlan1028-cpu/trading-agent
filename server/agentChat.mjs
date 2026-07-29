@@ -27,7 +27,9 @@ import { setConfig } from "./runtimeConfig.mjs";
 import { scheduleTask } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
-const MAX_STEPS = 8;
+// 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
+// 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
+const MAX_STEPS = 12;
 
 const SYSTEM_GUIDE = `【本系统内置说明】
 - AI交易员：对话入口，可读取行情、账户、事件、知识、授权和风控状态；能创建授权草案、交易计划、定时任务，并触发事件刷新/账户同步等系统动作。
