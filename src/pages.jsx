@@ -985,7 +985,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
   const domain = view === "all" ? domainState : view;
   const [tab, setTab] = useState("methods");
   const [skillDetail, setSkillDetail] = useState(null); // 展开查看某 Skill 的详情(结构化 + JSON)
-  const KNOWLEDGE_TABS = ["methods", "skills", "rules", "graph"];
+  const KNOWLEDGE_TABS = ["methods", "rules", "graph"];
   function goKnowledge(next) { setDomain("knowledge"); if (next) setTab(next); else if (!KNOWLEDGE_TABS.includes(tab)) setTab("methods"); }
   const [rag, setRag] = useState("");
   const [expanded, setExpanded] = useState(null);      // 展开的行 id
@@ -1022,7 +1022,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
 
   return (
     <div className="pageStack termPage knowPage">
-      {!embedded && <TermHead title={view === "knowledge" ? "知识库" : view === "capabilities" ? "能力与工具" : view === "strategy" ? "策略表现" : "知识与技能"} code="KNOWLEDGE · SKILLS" sub={view === "knowledge" ? "喂书 → 蒸馏方法/纪律/概念,产出可用能力" : view === "capabilities" ? "AI 的手脚:技能、插件/MCP 工具" : "喂知识、装技能、接工具，让 AI 交易员持续变强"} />}
+      {!embedded && <TermHead title={view === "knowledge" ? "知识库" : view === "capabilities" ? "能力与工具" : view === "strategy" ? "策略表现" : "知识与技能"} code="KNOWLEDGE · SKILLS" sub={view === "knowledge" ? "喂书 → 蒸馏方法/纪律/概念,产出可用能力" : view === "capabilities" ? "AI 的手脚:技能流水线、采纳的透镜/工作流、内置工具、插件/MCP" : "喂知识、装技能、接工具，让 AI 交易员持续变强"} />}
 
       {/* 板块切换:仅 view="all" 显示(拆分后由左侧导航承担 知识库/能力与工具/策略表现) */}
       {view === "all" && <div className="kDomains">
@@ -1050,7 +1050,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
         ui={ui}
         action={action}
         goMethods={() => goKnowledge("methods")}
-        goSkills={() => goKnowledge("skills")}
+        goSkills={() => ui.setActive("capabilities")}
       />}
 
       {/* W4:知识库转换引擎——书→策略/分析prompt/工作流 候选,逐条采纳、采纳即用 */}
@@ -1084,7 +1084,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
         <button className="kNavSrc" onClick={() => ui.openPanel("knowledgeList")} title="查看全部知识源"><BookOpen size={13} /> 知识源 <span className="n mono">{sourceCount}</span></button>
         <span className="kNavArrow">›</span>
         <div className="kNavTabs">
-          {[["methods", "方法草案", methods.length], ["skills", "技能流水线", tradingSkills.filter((s) => !["compile_failed", "superseded", "retired"].includes(s.status)).length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n], i) => (
+          {[["methods", "方法草案", methods.length], ["rules", "风控纪律", ruleCount], ["graph", "概念图谱", conceptCount]].map(([k, label, n], i) => (
             <React.Fragment key={k}>
               {i > 0 && <span className="kNavArrow">›</span>}
               <button className={`kNavTab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{label} <span className="n mono">{n}</span></button>
@@ -1093,10 +1093,10 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
         </div>
         <div className="kNavPipe" title="整条流水线卡在哪，点数字跳到对应清单">
           {FUNNEL.map((f) => (
-            <button key={f.key} className="kPipeStage" onClick={() => setTab(f.tab)}><b className="mono">{funnelCounts[f.key]}</b>{f.label}</button>
+            <button key={f.key} className="kPipeStage" onClick={() => f.tab === "skills" ? ui.setActive("capabilities") : setTab(f.tab)}><b className="mono">{funnelCounts[f.key]}</b>{f.label}</button>
           ))}
         </div>
-        {sourceTitles.length > 0 && (tab === "methods" || tab === "skills") && (
+        {sourceTitles.length > 0 && tab === "methods" && (
           <select className="kBarSrc" value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)}>
             <option value="">全部来源书</option>
             {sourceTitles.map((t) => <option key={t} value={t}>《{t}》</option>)}
@@ -1144,7 +1144,32 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
       )}
 
       {/* —— 技能流水线 Tab —— */}
-      {domain === "knowledge" && tab === "skills" && (() => {
+      {/* W5:采纳的分析透镜/工作流(来自知识库转换)+ 内置工具目录 —— 归入能力与工具 */}
+      {domain === "capabilities" && (() => {
+        const tools = data.analysisEngine?.tools || [];
+        const lenses = (knowledge.lenses || []).filter((l) => l.active);
+        const workflows = (knowledge.workflows || []).filter((w) => w.active);
+        const rowStyle = { display: "flex", gap: 8, padding: "8px 0", borderTop: "1px solid var(--kLine,#eceff2)" };
+        return (
+          <>
+            {(lenses.length > 0 || workflows.length > 0) && (
+              <div className="termCard">
+                <div className="kHead"><span className="secLabel">采纳的分析透镜 / 工作流 · 来自知识库(采纳即用)</span><span className="mono">{lenses.length + workflows.length}</span></div>
+                {lenses.map((l) => <div style={rowStyle} key={l.id}><span className="evBadge">透镜</span><div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 12.5 }}>{l.name}</b><div style={{ fontSize: 11.5, opacity: 0.72 }}>{l.promptText}</div></div>{l.sourceTitle && <span className="mono" style={{ fontSize: 10, opacity: 0.5 }}>《{l.sourceTitle}》</span>}</div>)}
+                {workflows.map((w) => <div style={rowStyle} key={w.id}><span className="evBadge">工作流</span><div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 12.5 }}>{w.name}</b><div style={{ fontSize: 11.5, opacity: 0.72 }}>{(w.steps || []).join(" → ")}</div></div></div>)}
+              </div>
+            )}
+            <div className="termCard">
+              <div className="kHead"><span className="secLabel">内置工具 · AI 天生会用的手脚(只读)</span><span className="mono">{tools.length}</span></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 8 }}>
+                {tools.map((t, i) => <div key={t.name || i} style={{ border: "1px solid var(--kLine,#eceff2)", borderRadius: 8, padding: "8px 10px" }}><b className="mono" style={{ fontSize: 11.5 }}>{t.name || String(t)}</b>{t.description && <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{String(t.description).slice(0, 64)}</div>}</div>)}
+                {!tools.length && <div className="emptyPanel">工具目录未同步。</div>}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+      {domain === "capabilities" &&(() => {
         const profiles = (data.strategyProfiles || []).filter((p) => p.strategyId);
         return profiles.length ? (
           <div className="termCard kProfileCard">
@@ -1162,7 +1187,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
           </div>
         ) : null;
       })()}
-      {domain === "knowledge" && tab === "skills" && (
+      {domain === "capabilities" &&(
         <div className="termCard">
           <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(() => { const n = tradingSkills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
           <SkillStateLegend />
