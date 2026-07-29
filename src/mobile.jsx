@@ -248,7 +248,9 @@ function MobileSettingsIndex({ data, onOpen }) {
   );
 }
 
-function MobileRisk({ data, action, ui }) {
+function MobileRisk({ data, action, ui, view = "all" }) {
+  const showOverview = view === "all" || view === "overview";
+  const showSettings = view === "all" || view === "settings";
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const sys = data.system || {};
   const portfolio = data.portfolio || {};
@@ -281,40 +283,43 @@ function MobileRisk({ data, action, ui }) {
   const scopeCount = (name) => rules.filter((r) => scopeOf(r) === name).length;
   return (
     <div className="mScreen">
-      <div className={`mRiskWall ${wall.tone}`}>
+      {showOverview && <div className={`mRiskWall ${wall.tone}`}>
         <ShieldCheck size={22} />
         <div><b>{wall.label}</b><small>{active ? "授权与硬风控生效中" : "配置授权后进入自主"}</small></div>
-      </div>
-      <div className="mCard mBudgetCard">
+      </div>}
+      {showOverview && <div className="mCard mBudgetCard">
         <div className="mBudgetTop"><span>剩余亏损预算</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : "未授权"}</b></div>
         <div className="mBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
-      </div>
-      <div className="mCard">
+      </div>}
+      {showSettings && <div className="mCard">
         <div className="mCardHead"><b>授权委托 MANDATE</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge></div>
         <div className="mMandList">{mandRows.map(([k, v, tone]) => <div className="mMandRow" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}</div>
         <button className="mLink2" onClick={() => ui.openPanel("mandate")}>编辑授权 ›</button>
-      </div>
-      <div className="mCard">
+      </div>}
+      {showOverview && <div className="mCard">
         <div className="mCardHead"><b>风险规则</b></div>
         <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} 条已启用` : "无规则"}</small><i style={{ background: c }} /></div>; })}</div>
-      </div>
-      <div className="mCard">
+      </div>}
+      {showSettings && <div className="mCard">
         <div className="mCardHead"><b>实盘写入与灰度</b><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</StatusBadge></div>
         <LiveGrayPanel data={data} action={action} ui={ui} />
-      </div>
+      </div>}
 
-      <div className="mRiskBtns">
+      {showOverview && <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
         <button className="mRbReduce" onClick={() => { const on = Boolean(data.system?.reduceOnlyMode); if (window.confirm(on ? "关闭只减仓模式?" : "开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? "退出只减仓" : "只减仓"}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
         <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
-      </div>
+      </div>}
     </div>
   );
 }
 
 const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则", "图谱"];
-function MobileKnowledge({ data, action, ui }) {
-  const [seg, setSeg] = useState("上手");
+function MobileKnowledge({ data, action, ui, view = "all" }) {
+  // 与桌面对齐:知识库(view=knowledge)只留 上手/方法/规则/图谱;能力与工具(view=capabilities)只留 技能。
+  const segs = view === "capabilities" ? ["技能"] : view === "knowledge" ? ["上手", "方法", "规则", "图谱"] : KNOW_SEGMENTS;
+  const [segState, setSeg] = useState(view === "capabilities" ? "技能" : "上手");
+  const seg = segs.includes(segState) ? segState : segs[0];
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -347,7 +352,7 @@ function MobileKnowledge({ data, action, ui }) {
   return (
     <div className="mSubPage">
       <div className="mChips">
-        {KNOW_SEGMENTS.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.filter((k) => !["compile_failed", "superseded", "retired"].includes(k.status)).length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
+        {segs.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.filter((k) => !["compile_failed", "superseded", "retired"].includes(k.status)).length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
       </div>
 
       {seg === "上手" && (
@@ -764,8 +769,10 @@ const mobileNav = [
   { id: "signalHub", label: "信号中心", code: "SIGNALS · BOARD", icon: Zap },
   { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
   { id: "tradeJournal", label: "交易日志", code: "TRADE · JOURNAL", icon: ClipboardList },
-  { id: "knowledgeSkills", label: "知识与技能", code: "KNOWLEDGE · SKILLS", icon: BookOpen },
-  { id: "riskAuth", label: "风控与授权", code: "RISK · MANDATE", icon: ShieldCheck },
+  { id: "knowledgeBase", label: "知识库", code: "KNOWLEDGE", icon: BookOpen },
+  { id: "capabilities", label: "能力与工具", code: "CAPABILITIES", icon: Sparkles },
+  { id: "riskOverview", label: "风控总览", code: "RISK · VIEW", icon: ShieldCheck },
+  { id: "riskSettings", label: "风控设置", code: "RISK · CFG", icon: SlidersHorizontal },
   { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "auditSystem", label: "审计", code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
@@ -844,10 +851,14 @@ export function MobileApp({ api }) {
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
     content = <MobileTasks data={data} action={action} ui={ui} />;
-  } else if (route === "knowledgeSkills") {
-    content = <MobileKnowledge data={data} action={action} ui={ui} />;
-  } else if (route === "riskAuth") {
-    content = <MobileRisk data={data} action={action} ui={ui} />;
+  } else if (route === "knowledgeBase") {
+    content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
+  } else if (route === "capabilities") {
+    content = <MobileKnowledge data={data} action={action} ui={ui} view="capabilities" />;
+  } else if (route === "riskOverview") {
+    content = <MobileRisk data={data} action={action} ui={ui} view="overview" />;
+  } else if (route === "riskSettings") {
+    content = <MobileRisk data={data} action={action} ui={ui} view="settings" />;
   } else if (route === "auditSystem") {
     content = <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
