@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { TrendingUp, Target, Layers, CheckCircle2, ChevronRight, BookOpen } from "lucide-react";
-import { displayMoney, humanize, SKILL_STATE } from "./lib.jsx";
+import { displayMoney, humanize, SKILL_STATE, formatTime } from "./lib.jsx";
 import { LiveGrayPanel } from "./panels.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import "./redesign.css";
@@ -309,6 +309,135 @@ export function CapabilitiesPage({ data, action, ui }) {
         {ext.map((s) => <div className="rdCap" key={s.id}><div className="cmain"><div className="cnm">{s.name}</div><div className="cmeta">{humanize(s.status)}</div></div></div>)}
         {mcp.map((m) => <div className="rdCap" key={m.id}><div className="cmain"><div className="cnm">{m.name || m.id}</div><div className="cmeta">MCP</div></div><span className={`rdStatePill ${m.status === "connected" ? "live" : "deg"}`}>{m.status === "connected" ? "已连接" : "未连接"}</span></div>)}
         {!ext.length && !mcp.length && <div className="rdEmpty">暂无外部插件</div>}
+      </div>
+    </div>
+  );
+}
+
+// ============ ③ 策略与分析(在用 / 表现 / 复盘) ============
+export function StrategyAnalysisPage({ data, action, ui }) {
+  const k = data.knowledge || {};
+  const skills = (k.tradingSkills || []).filter((s) => ["active", "degraded"].includes(s.status));
+  const profiles = (data.strategyProfiles || []).filter((p) => p.strategyId);
+  const weights = data.analysisEngine?.weights || {};
+  const regime = data.marketRegime || {};
+  const lenses = (k.lenses || []).filter((l) => l.active);
+  const plans = data.tradePlans || [];
+  const fills = data.fills || [];
+  const reviews = data.reviews || [];
+  const [openSkill, setOpenSkill] = useState("");
+  const [researchOpen, setResearchOpen] = useState(false);
+  const WLABEL = { momentum: "价格动量", smartMoney: "聪明钱", funding: "资金费率", structure: "结构", volatility: "波动", trend: "趋势" };
+  const skillFills = (sid) => { const pids = new Set(plans.filter((p) => (p.knowledgeSkillIds || []).includes(sid)).map((p) => p.id)); return fills.filter((f) => pids.has(f.planId || f.tradePlanId)); };
+  const advise = (lm) => { if (!lm || !lm.trades) return { t: "观察中", c: "deg" }; if (lm.profitFactor != null && lm.profitFactor < 0.8) return { t: "建议退役", c: "bad" }; if (lm.trades < 5) return { t: "观察中", c: "deg" }; return { t: "继续用", c: "live" }; };
+  return (
+    <div className="rdPage">
+      <div className="rdHead"><div><h1>策略与分析 <em>IN USE</em></h1><p>策略/能力在用得怎么样、在决策里起了什么作用、平仓复盘。</p></div></div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>此刻在决策里起作用</b><span className="rdCode">Live</span></div>
+        <div className="rdField"><span className="fk">决策权重</span><span className="fv rdMono" style={{ fontSize: 12 }}>{Object.entries(weights).map(([kk, v]) => `${WLABEL[kk] || kk} ${v}`).join(" · ") || "—"}</span></div>
+        <div className="rdField"><span className="fk">当前大盘</span><span className="fv" style={{ fontSize: 12.5 }}>{regime.global?.interpretation || "未同步"}</span></div>
+        <div className="rdField"><span className="fk">聪明钱</span><span className="fv" style={{ fontSize: 12.5 }}>{regime.smartMoney?.ok !== false ? (regime.smartMoney?.interpretation || "未同步") : "未取"}</span></div>
+        <div className="rdField"><span className="fk">在用能力</span><span className="fv" style={{ fontSize: 12.5 }}>{[...skills.map((s) => s.name), ...lenses.map((l) => l.name)].join("、") || "暂无"}</span></div>
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>策略表现</b><span className="rdCode">表现决定留/退</span></div>
+        {skills.length ? skills.map((s) => { const lm = s.liveMetrics || {}; const adv = advise(lm); const sf = skillFills(s.id); const open = openSkill === s.id; return (
+          <div key={s.id}>
+            <div className="rdCap" style={{ cursor: sf.length ? "pointer" : "default" }} onClick={() => sf.length && setOpenSkill(open ? "" : s.id)}>
+              <div className="cmain"><div className="cnm">{s.name}{sf.length > 0 && <ChevronRight size={13} style={{ transform: open ? "rotate(90deg)" : "", transition: ".2s", verticalAlign: "middle", marginLeft: 4, color: "var(--rd-faint)" }} />}</div><div className="cmeta">{(s.spec?.symbolScope || ["*"]).join("/")} · {s.spec?.timeframe || ""} · {s.spec?.direction === "short" ? "空" : "多"}</div></div>
+              {lm.trades ? <div className="rdMetrics"><div className="m"><b>{lm.trades}</b><span>笔</span></div><div className="m"><b>{lm.winRatePct}%</b><span>胜率</span></div><div className="m"><b>{lm.profitFactor ?? "-"}</b><span>盈亏因子</span></div></div> : <span className="cmeta">暂无成交</span>}
+              <span className={`rdStatePill ${adv.c}`}>{adv.t}</span>
+            </div>
+            {open && sf.length > 0 && <div style={{ padding: "0 0 8px 12px" }}>{sf.slice(0, 10).map((f, i) => <div className="rdLine" key={f.id || i} style={{ fontSize: 11.5 }}><span className="rdMono">{f.symbol} {f.kind === "close" ? "平" : "开"} @{f.price}</span><span className="lsrc" style={{ color: f.realizedPnl > 0 ? "var(--rd-good)" : f.realizedPnl < 0 ? "var(--rd-bad)" : "" }}>{f.realizedPnl != null ? `${Number(f.realizedPnl).toFixed(2)} U` : ""}</span></div>)}</div>}
+          </div>
+        ); }) : <div className="rdEmpty">暂无在用策略。去知识库采纳能力后，这里按真实成绩显示表现与建议(继续/观察/退役)。</div>}
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>最近复盘</b><span className="rdCode">Review</span></div>
+        {reviews.length ? reviews.slice(0, 6).map((r, i) => <div className="rdLine" key={r.id || i}><div style={{ fontSize: 12.5 }}>{r.summary || r.note || "复盘记录"}</div></div>) : <div className="rdEmpty">平仓后系统自动复盘，结论会沉淀在此。</div>}
+      </div>
+
+      <div className="rdCard">
+        <div className="rdCardH"><b>策略研究</b><span className="rdCode">想找新策略时用 · 折叠</span></div>
+        <Fold title="自适应策略画像(样本外寻优)" n={profiles.length} open={researchOpen} onT={() => setResearchOpen(!researchOpen)}>
+          <div className="rdR" style={{ marginBottom: 10 }}><button className="rdBtn" onClick={() => action("/api/strategy/research", {}, "POST")}>启动研究</button></div>
+          {profiles.map((p) => <div className="rdLine" key={p.symbol + p.timeframe}><div><b style={{ fontSize: 12.5 }}>{p.symbol}</b> <span style={{ opacity: .7 }}>{p.label} · {p.direction === "short" ? "空" : "多"} · {p.timeframe}</span></div><span className="lsrc">{p.oosScore ?? "-"}R · 置信 {p.confidence ?? "-"}</span></div>)}
+          {!profiles.length && <div className="rdEmpty">暂无寻优结果</div>}
+        </Fold>
+      </div>
+    </div>
+  );
+}
+
+// ============ ⑥ 审计(整合实盘运营) ============
+export function AuditOpsPage({ data, action, ui }) {
+  const pro = data.professional || {};
+  const permit = pro.permissionEvidence || { checks: [] };
+  const slo = pro.slo || { checks: [], metrics: {} };
+  const risk = pro.portfolioRisk || {};
+  const replays = pro.replayBundles || [];
+  const plans = data.tradePlans || [];
+  const eos = data.executionOrders || [];
+  const fills = data.fills || [];
+  const audits = data.auditLogs || [];
+  const [openTrace, setOpenTrace] = useState("");
+  const [sloOpen, setSloOpen] = useState(false);
+  const m = slo.metrics || {};
+  return (
+    <div className="rdPage">
+      <div className="rdHead"><div><h1>审计 <em>AUDIT + OPS</em></h1><p>证明系统做了什么、跑得安不安全：交易许可、SLO、可回放链、审计链、授权历史，一处看全。</p></div></div>
+
+      <div className={`rdWall ${permit.decision === "allowed" ? "good" : "warn"}`}>
+        <span className="ic">{permit.decision === "allowed" ? "✅" : "⚠"}</span>
+        <div className="mid"><div className="k">交易许可</div><div className="lv">{permit.decision === "allowed" ? "允许进入逐单风控" : "禁止新开仓"}</div><small>{permit.summary || "等待系统证据"}</small></div>
+      </div>
+
+      <div className="rdCard"><div className="rdCardH"><b>运维 SLO</b><span className="rdCode">从实盘运营并入</span></div>
+        <div className="rdTiles">
+          <div className="rdTile"><div className="tk">行情新鲜度</div><div className="tv sm" style={{ color: m.marketFreshnessMs != null && m.marketFreshnessMs < 15000 ? "var(--rd-good)" : "var(--rd-warn)" }}>{m.marketFreshnessMs != null ? `${(m.marketFreshnessMs / 1000).toFixed(1)}s` : "—"}</div></div>
+          <div className="rdTile"><div className="tk">保护覆盖率</div><div className="tv sm">{m.protectionCoveragePct != null ? `${m.protectionCoveragePct}%` : "—"}</div></div>
+          <div className="rdTile"><div className="tk">订单 ACK P95</div><div className="tv sm">{m.orderAckP95Ms != null ? `${Math.round(m.orderAckP95Ms)}ms` : "—"}</div></div>
+          <div className="rdTile"><div className="tk">对账延迟</div><div className="tv sm">{m.reconciliationFreshnessMs != null ? `${Math.round(m.reconciliationFreshnessMs / 1000)}s` : "—"}</div></div>
+        </div>
+      </div>
+
+      <div className="rdCard"><div className="rdCardH"><b>为何允许 / 不允许交易</b><span className="rdCode">逐项证据</span></div>
+        {(permit.checks || []).map((c) => <div className="rdSec" key={c.key}><span className={`dot ${c.passed ? "g" : "r"}`} /><span>{c.label}</span><span className={`sv ${c.passed ? "g" : "r"}`} style={{ maxWidth: "48%", textAlign: "right", whiteSpace: "normal" }}>{c.evidence}</span></div>)}
+        {!(permit.checks || []).length && <div className="rdEmpty">专业风控证据未启用或无数据</div>}
+      </div>
+
+      <div className="rdCard"><div className="rdCardH"><b>决策 → 订单 → 成交 可回放链</b><span className="rdCode">Replay</span></div>
+        {replays.length ? replays.slice(0, 8).map((r) => { const open = openTrace === r.traceId; const plan = plans.find((p) => p.id === r.tradePlanId); const os = eos.filter((o) => (r.executionOrderIds || []).includes(o.id)); const fs = fills.filter((f) => (r.fillIds || []).includes(f.id)); return (
+          <div key={r.traceId}>
+            <div className="rdLine" style={{ cursor: "pointer" }} onClick={() => setOpenTrace(open ? "" : r.traceId)}>
+              <ChevronRight size={13} style={{ transform: open ? "rotate(90deg)" : "", transition: ".2s", color: "var(--rd-faint)", flex: "none" }} />
+              <div><b className="rdMono" style={{ fontSize: 11.5 }}>{r.traceId}</b> <span style={{ opacity: .65, fontSize: 11 }}>{plan ? `${plan.symbol} ${plan.direction === "short" ? "空" : "多"}` : "无计划"}</span></div>
+              <span className="lsrc">{os.length} 单 / {fs.length} 成交</span>
+            </div>
+            {open && <div style={{ padding: "2px 0 8px 20px" }}>
+              {plan && <div className="rdMono" style={{ opacity: .82, fontSize: 11 }}>计划 {humanize(plan.status)} · 入场 {plan.entryLow ?? "?"} 止损 {plan.stopLoss ?? "?"}</div>}
+              {os.map((o) => <div key={o.id} className="rdMono" style={{ opacity: .82, fontSize: 11 }}>执行单 {humanize(o.status)}{o.exchangeOrderId ? ` · ${o.exchangeOrderId}` : ""}</div>)}
+              {fs.map((f) => <div key={f.id} className="rdMono" style={{ opacity: .82, fontSize: 11 }}>成交 {f.kind} @{f.price}{f.realizedPnl != null ? ` · ${f.realizedPnl}U` : ""}</div>)}
+            </div>}
+          </div>
+        ); }) : <div className="rdEmpty">暂无可回放决策链</div>}
+      </div>
+
+      <div className="rdCard"><div className="rdCardH"><b>审计链 + 授权变更历史</b><span className="rdCode">Chain</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.download("/api/audit-logs/export?format=csv", "audit-logs.csv")}>导出</button></div></div>
+        {audits.filter((a) => /mandate|授权|风控|熔断/.test(String(a.target || "") + String(a.action || ""))).slice(0, 6).map((a) => <div className="rdLine" key={a.id}><div><b style={{ fontSize: 12 }}>{a.action}</b><span style={{ opacity: .6, marginLeft: 6, fontSize: 11 }}>{a.actor}</span></div><span className="lsrc">{formatTime(a.createdAt)}</span></div>)}
+        {!audits.length && <div className="rdEmpty">暂无授权/风控变更记录</div>}
+      </div>
+
+      <div className="rdCard"><div className="rdCardH"><b>深看</b><span className="rdCode">SLO 明细 · 组合相关性</span></div>
+        <Fold title="SLO 检查项 + 组合相关性" n={(slo.checks || []).length + (risk.correlations || []).length} open={sloOpen} onT={() => setSloOpen(!sloOpen)}>
+          {(slo.checks || []).map((c) => <div className="rdLine" key={c.key}><span>{({ marketFreshnessMs: "行情新鲜度", orderAckP95Ms: "订单ACK P95", protectionCoveragePct: "保护覆盖率", reconciliationFreshnessMs: "对账新鲜度" })[c.key] || c.key}</span><span className="lsrc">{c.value == null ? "未知" : c.key.includes("Pct") ? `${c.value}%` : `${Math.round(c.value)}`}</span></div>)}
+          {(risk.correlations || []).map((c) => <div className="rdLine" key={c.pair}><span>{c.pair}</span><span className="lsrc">ρ {c.rho}</span></div>)}
+          {!(slo.checks || []).length && !(risk.correlations || []).length && <div className="rdEmpty">暂无</div>}
+        </Fold>
       </div>
     </div>
   );

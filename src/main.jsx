@@ -44,6 +44,8 @@ const RiskOverviewPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskOve
 const RiskSettingsPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskSettingsPage");
 const KnowledgeWorkbenchPage = lazyNamed(() => import("./redesignPages.jsx"), "KnowledgeWorkbenchPage");
 const CapabilitiesPage = lazyNamed(() => import("./redesignPages.jsx"), "CapabilitiesPage");
+const StrategyAnalysisPageV2 = lazyNamed(() => import("./redesignPages.jsx"), "StrategyAnalysisPage");
+const AuditOpsPageV2 = lazyNamed(() => import("./redesignPages.jsx"), "AuditOpsPage");
 const SignalHubPage = lazyNamed(() => import("./relayoutPages.jsx"), "SignalHubPage");
 const TradeJournalPage = lazyNamed(() => import("./relayoutPages.jsx"), "TradeJournalPage");
 const StrategyAnalysisPage = lazyNamed(() => import("./relayoutPages.jsx"), "StrategyAnalysisPage");
@@ -296,10 +298,10 @@ function App() {
     if (active === "knowledgeBase") return <KnowledgeWorkbenchPage data={data} action={action} ui={ui} />;
     if (active === "capabilities") return <CapabilitiesPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
-    if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
+    if (active === "strategyAnalysis") return <StrategyAnalysisPageV2 data={data} action={action} ui={ui} />;
     if (active === "riskOverview") return <RiskOverviewPage data={data} action={action} ui={ui} />;
     if (active === "riskSettings") return <RiskSettingsPage data={data} action={action} ui={ui} />;
-    if (active === "auditSystem") return <AuditOpsPage data={data} action={action} ui={ui} />;
+    if (active === "auditSystem") return <AuditOpsPageV2 data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, data, action]);
