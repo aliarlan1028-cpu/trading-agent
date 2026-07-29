@@ -1073,11 +1073,20 @@ export async function executeTool(db, run, name, args = {}) {
             fields: [{ label: "入场", value: `${args.entryLow} - ${args.entryHigh}` }, { label: "止损", value: String(args.stopLoss) }]
           });
         } else {
-          // 被安全闸拦截（超上限/快照过期等）→ 回退人工批准
-          plan.status = "awaiting_approval";
-          plan.autoApproved = false;
-          autoExecution = { ...autoExecution, fellBackToManual: true };
-          appendAudit(db, `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}），转人工批准`, plan.id, "AgentAuto", "warning");
+          // 只有"可重试的安全闸拦截"(超额度/快照过期/额度不足等)才回退人工批准。
+          // 引擎终态(结构审核未过/保护单失败/执行失败)必须保留引擎设的状态——绝不能改回
+          // awaiting_approval,否则被拒/可能裸仓的计划会变成"可一键再批准",绕过防重试锁(审计 state-F1)。
+          const terminalReject = ["setup_rejected", "protection_failed", "failed", "risk_recheck_failed", "cancelled"].includes(autoExecution.status);
+          if (terminalReject) {
+            plan.autoApproved = false;
+            autoExecution = { ...autoExecution, fellBackToManual: false };
+            appendAudit(db, `自动执行被引擎终态拦截（${autoExecution.status}：${autoExecution.reason || autoExecution.review?.reason || ""}），未下单，不转人工批准`, plan.id, "AgentAuto", "warning");
+          } else {
+            plan.status = "awaiting_approval";
+            plan.autoApproved = false;
+            autoExecution = { ...autoExecution, fellBackToManual: true };
+            appendAudit(db, `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}），转人工批准`, plan.id, "AgentAuto", "warning");
+          }
         }
       }
     }

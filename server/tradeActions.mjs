@@ -354,9 +354,15 @@ async function executeOkxAction(action, payload) {
     // 双向持仓(long_short_mode)必须带 posSide,单向(net_mode)不能带——否则 51000 posSide error。
     // 开仓:卖=空/买=多;平仓(reduceOnly):卖平多/买平空。net 模式下 posSide 留空。
     const posMode = await okxPositionMode();
+    const isNewEntryOrder = !payload.reduceOnly && !payload.closePosition;
+    // 持仓模式拉取失败时 fail-closed:不知道该不该带 posSide 就别下新仓,免得又被 51000 posSide error
+    // 拒(旧代码默认当单向、省掉 posSide,账户是双向就必挂——这正是"posSide 一直失败"的真凶之一)。
+    if (!posMode && isNewEntryOrder) {
+      return { status: "position_mode_unknown", instId, reason: "无法确定 OKX 持仓模式(账户配置拉取失败),为避免 posSide 错单已拒(fail-closed)" };
+    }
     const okxSide = String(payload.side || "buy").toLowerCase();
     const okxPosSide = posMode === "long_short_mode"
-      ? (payload.posSide || (payload.reduceOnly
+      ? (payload.posSide || payload.positionSide || (payload.reduceOnly
           ? (okxSide === "sell" ? "long" : "short")
           : (okxSide === "sell" ? "short" : "long")))
       : undefined;
@@ -399,7 +405,13 @@ async function executeOkxAction(action, payload) {
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
   if (action === "close_position") {
-    const raw = await okxSignedRequest("/api/v5/trade/close-position", "POST", JSON.stringify({ instId, mgnMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross", posSide: payload.posSide }));
+    // 平仓也要按持仓模式带对 posSide:双向=long/short(调用方传的是 positionSide),单向=net。
+    // 旧代码读 payload.posSide,但调用方(executionEngine)传的是 positionSide → 永远 undefined → 平仓被 posSide error 拒、仓位关不掉。
+    const posMode = await okxPositionMode();
+    const closePosSide = posMode === "long_short_mode"
+      ? (payload.posSide || payload.positionSide)
+      : "net";
+    const raw = await okxSignedRequest("/api/v5/trade/close-position", "POST", JSON.stringify({ instId, mgnMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross", posSide: closePosSide }));
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
   if (action === "move_stop") {

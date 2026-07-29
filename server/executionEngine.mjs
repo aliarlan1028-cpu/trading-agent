@@ -337,6 +337,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     appendAudit(db, "执行引擎干跑：实盘写入关闭", executionOrder.id, "ExecutionEngine");
     appendTrace(db, "execution", `${plan.symbol} 干跑（实盘关闭）`, "guarded");
     plan.executionOrderId = executionOrder.id;
+    // 干跑是终态:计划必须落到 dry_run,不能停在 approved——否则永不过期、还能被再批准而下重复单(审计 state-F4)。
+    plan.status = "dry_run";
     return { status: "dry_run", executionOrder };
   }
 
@@ -503,13 +505,25 @@ async function pollOne(db, executionOrder) {
       appendTrace(db, "execution", `${executionOrder.symbol} 保护单成交(推断)`, "ok");
     }
   } else if (orderState.state === "canceled") {
-    executionOrder.status = "cancelled";
-    if (executionOrder.omsOrderId) {
-      transitionOmsOrder(executionOrder.omsOrderId, "CANCELLED", { eventType: "entry_cancelled" });
+    // 部分成交后剩余被撤:已有真实仓位,绝不能标"已取消"把它变成无人管的孤儿仓(审计 state-F5)。
+    // 有成交量 → 当作 entry_filled 收口(按已成交量挂止盈、纳入管理);零成交才是真取消。
+    const filled = Number(executionOrder.filledQuantity || 0);
+    if (filled > 0) {
+      executionOrder.quantity = filled;
+      executionOrder.status = "entry_filled";
+      executionOrder.events.push({ at: nowIso(), event: "entry_partial_cancel_settled", detail: `剩余被交易所取消,已成交 ${filled} 转入持仓管理(挂止盈)` });
+      try { await placeTakeProfits(db, executionOrder); } catch (error) { executionOrder.events.push({ at: nowIso(), event: "tp_error", detail: String(error.message || error).slice(0, 150) }); }
+      const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
+      if (plan) plan.status = "executing";
+    } else {
+      executionOrder.status = "cancelled";
+      if (executionOrder.omsOrderId) {
+        transitionOmsOrder(executionOrder.omsOrderId, "CANCELLED", { eventType: "entry_cancelled" });
+      }
+      executionOrder.events.push({ at: nowIso(), event: "entry_cancelled", detail: "交易所侧订单已取消(零成交)" });
+      const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
+      if (plan) plan.status = "cancelled";
     }
-    executionOrder.events.push({ at: nowIso(), event: "entry_cancelled", detail: "交易所侧订单已取消" });
-    const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
-    if (plan) plan.status = "cancelled";
   }
   return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state };
 }
