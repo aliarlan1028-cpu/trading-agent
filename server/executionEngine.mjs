@@ -85,19 +85,17 @@ export function computePositionSize(db, plan) {
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   const maxNotional = Number(policy?.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
   const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
-  const sizingMode = mandate?.sizingMode || mandate?.sizing_mode || "risk_pct";
+  // 仓位模式(决定"下多大"):按余额%做保证金——每单保证金 = 权益 × positionPct%，名义 = 保证金 × 杠杆。
+  // 未配置 positionPct 时退回按风险预算(不为0)。单笔风险%不是仓位模式,是下方独立的风控上限闸。
   const positionPct = Number(mandate?.positionPct ?? mandate?.equityPct ?? mandate?.equity_pct ?? 0);
-
   let quantity;
   let sizedBy;
-  if (["balance_pct", "equity_pct"].includes(sizingMode) && equity > 0 && positionPct > 0) {
-    // 每单保证金 = 权益 × positionPct%，名义 = 保证金 × 杠杆(用户自定"每单下多少钱、放大几倍")。
+  if (positionPct > 0 && equity > 0) {
     const lev = Math.max(1, Number(plan.leverage) || 1);
     quantity = (equity * (positionPct / 100) * lev) / entryMid;
     sizedBy = `balance_pct(${positionPct}%余额×${lev}x)`;
   } else if (equity) {
-    const riskAmount = equity * (riskPct / 100);
-    quantity = riskAmount / stopDistance;
+    quantity = (equity * (riskPct / 100)) / stopDistance;
     sizedBy = "risk_budget";
   } else {
     quantity = maxNotional / entryMid;
@@ -115,6 +113,17 @@ export function computePositionSize(db, plan) {
     quantity = volCap / entryMid;
     notional = volCap;
     sizedBy = `${sizedBy}+portfolio_vol_capped`;
+  }
+  // 单笔风险上限(风控闸,与仓位模式正交):无论仓位怎么定,亏到止损这单最多亏账户 maxSingleTradeRiskPct%。
+  // 超了就把仓位缩到刚好达标——让"单笔风险%"是真正的上限闸,而不是一种仓位模式。
+  const riskCapPct = Number(mandate?.maxSingleTradeRiskPct ?? mandate?.max_single_trade_risk_pct ?? 0);
+  if (riskCapPct > 0 && equity > 0 && stopDistance > 0) {
+    const maxQtyByRisk = (equity * (riskCapPct / 100)) / stopDistance;
+    if (quantity > maxQtyByRisk) {
+      quantity = maxQtyByRisk;
+      notional = quantity * entryMid;
+      sizedBy = `${sizedBy}+risk_capped(≤${riskCapPct}%)`;
+    }
   }
   const MIN_NOTIONAL = 5;
   quantity = roundQuantity(quantity, entryMid);

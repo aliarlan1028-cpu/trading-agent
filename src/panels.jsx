@@ -599,9 +599,8 @@ export function MandatePanel({ data, action }) {
     allowedSymbols: mandate.allowedSymbols?.length ? mandate.allowedSymbols.map((s) => String(s).toUpperCase()) : ["BTC/USDT", "ETH/USDT"],
     minLeverage: mandate.min_leverage ?? mandate.minLeverage ?? 1,
     maxLeverage: mandate.max_leverage || 1,
-    sizingMode: mandate.sizingMode === "balance_pct" || mandate.sizingMode === "equity_pct" ? "balance_pct" : "risk_pct",
     positionPct: mandate.positionPct ?? mandate.equityPct ?? 30,
-    singleRisk: mandate.maxSingleTradeRiskPct || 0.3,
+    singleRisk: mandate.maxSingleTradeRiskPct || 2,
     dailyLoss: mandate.maxDailyLossPct || 1,
     approval: mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 5000,
     validDays: remainDays
@@ -628,7 +627,7 @@ export function MandatePanel({ data, action }) {
       max_leverage: maxLeverage,
       min_leverage: minLeverage,
       minLeverage,
-      sizingMode: form.sizingMode === "balance_pct" ? "balance_pct" : "risk_pct",
+      sizingMode: "balance_pct",
       positionPct: Math.max(1, Math.min(100, Number(form.positionPct || 30))),
       maxSingleTradeRiskPct: Number(form.singleRisk || 0),
       maxDailyLossPct: Number(form.dailyLoss || 0),
@@ -650,10 +649,8 @@ export function MandatePanel({ data, action }) {
         <label>人工确认阈值 USDT<input type="number" min="0" value={form.approval} onChange={(event) => update("approval", event.target.value)} /></label>
       </div>
       <div className="formGrid">
-        <label>仓位模式<select value={form.sizingMode} onChange={(event) => update("sizingMode", event.target.value)}><option value="risk_pct">按单笔风险%</option><option value="balance_pct">按余额%(做保证金)</option></select></label>
-        {form.sizingMode === "balance_pct"
-          ? <label>每单保证金 = 余额 ×<input type="number" step="1" min="1" max="100" value={form.positionPct} onChange={(event) => update("positionPct", event.target.value)} /><small className="fieldHint">% 余额 · 名义=保证金×杠杆（如 30%×8x）</small></label>
-          : <label>单笔风险 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /><small className="fieldHint">亏到止损这单亏账户的%</small></label>}
+        <label>仓位 · 每单保证金=余额×<input type="number" step="1" min="1" max="100" value={form.positionPct} onChange={(event) => update("positionPct", event.target.value)} /><small className="fieldHint">% 余额 · 名义=保证金×杠杆（如 30%×8x）</small></label>
+        <label>单笔风险上限 %<input type="number" step="0.1" min="0" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /><small className="fieldHint">风控闸:亏到止损这单最多亏账户%,超了自动缩仓</small></label>
         <label>有效期(天)<input type="number" min="1" max="365" value={form.validDays} onChange={(event) => update("validDays", event.target.value)} /><small className="fieldHint">截止 {new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 86400000).toLocaleDateString("zh-CN")}</small></label>
       </div>
       <button className="primaryButton" type="submit">保存授权</button>
