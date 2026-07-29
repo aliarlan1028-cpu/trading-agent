@@ -7668,6 +7668,19 @@ button.danger:disabled,
 .truthEvidence { font-size: 11px; color: var(--text-3); margin-top: 9px; border-top: 1px dashed var(--border); padding-top: 8px; }
 .truthEvidence b { color: var(--text-1); }
 
+/* 下一步引导 */
+.nextStepCard { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 10px 14px; margin-bottom: 10px; }
+.nextStepCard.warn { border-left: 4px solid #C9A227; }
+.nextStepCard.danger { border-left: 4px solid var(--neg); }
+.nextStepCard.neutral { border-left: 4px solid var(--text-3); }
+.nextStepCard.ok { border-left: 4px solid var(--pos); }
+.nsIcon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; flex: none; }
+.nsBody { flex: 1; min-width: 0; }
+.nsBody b { font-size: 12px; color: var(--text-3); display: block; }
+.nsBody p { font-size: 13px; color: var(--text-1); margin: 2px 0 0; line-height: 1.4; }
+.nsWhere { font-size: 11px; color: var(--text-3); white-space: nowrap; flex: none; }
+@media (max-width: 720px) { .nextStepCard { flex-wrap: wrap; } .nsWhere { width: 100%; } }
+
 /* 分析作战室 */
 .analysisRoom .arGrid { grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
 .analysisRoom .arSpan { grid-column: 1 / -1; }

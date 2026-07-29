@@ -48,6 +48,24 @@ export async function monitorPositions(db) {
       position.mark = mark;
       updateExcursion(db, position, mark);
 
+      // 强平距离盯盘(交易员命门):杠杆永续在两次巡检之间就可能触及强平。逼近 → 严重告警 + 建议减仓/加保证金。
+      const liqPx = Number(position.liqPx ?? position.liquidationPrice);
+      if (Number.isFinite(liqPx) && liqPx > 0) {
+        const liqDistPct = Math.abs(mark - liqPx) / mark * 100;
+        const liqThreshold = Number(process.env.LIQ_DISTANCE_ALERT_PCT || 8);
+        position.liqDistancePct = Number(liqDistPct.toFixed(2));
+        if (liqDistPct < liqThreshold) {
+          raiseIncident(db, position, "critical", `${position.symbol} 逼近强平：现价 ${mark} 距强平 ${liqPx} 仅 ${liqDistPct.toFixed(1)}%（<${liqThreshold}%），建议立即减仓或加保证金`);
+          await notifyLarkThrottled(db, `liq_near:${position.id}`, 10 * 60 * 1000, {
+            severity: "critical",
+            title: "🚨 持仓逼近强平",
+            body: `**${position.symbol}** ${position.direction || ""} 现价距强平仅 **${liqDistPct.toFixed(1)}%**，请立即减仓或加保证金。`,
+            fields: [{ label: "标记价", value: String(mark) }, { label: "强平价", value: String(liqPx) }]
+          });
+          actions.push({ symbol: position.symbol, action: "near_liquidation_alert", liqDistancePct: position.liqDistancePct });
+        }
+      }
+
       if (!position.stopLoss) {
         raiseIncident(db, position, "critical", `${position.symbol} 持仓缺少止损，必须立即补挂`);
         await notifyLarkThrottled(db, `missing_stop:${position.id}`, 30 * 60 * 1000, {

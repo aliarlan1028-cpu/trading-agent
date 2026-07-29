@@ -278,6 +278,35 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         );
       })()}
 
+      {/* 下一步引导：从真实状态算出"现在该做的唯一一件事",别让用户逆向工程 5 道闸。 */}
+      {(() => {
+        const ex = (data.exchangeAccounts || []).some((a) => a.readEnabled);
+        const hasMandate = (data.mandates || []).some((m) => ["active", "running"].includes(m.status));
+        const sys = data.system || {};
+        const auto = data.automationState || {};
+        const skills = data.knowledge?.tradingSkills || [];
+        const paperVal = skills.filter((s) => s.status === "paper_validated").length;
+        const traded = Number(data.performance?.trades || 0);
+        let step;
+        if (!ex) step = { do: "配置交易所 API Key（只读+交易，禁提现）", where: "系统设置 → 交易所", tone: "warn" };
+        else if (!hasMandate) step = { do: "创建并激活一个授权委托（币对 / 杠杆区间 / 仓位 / 日亏上限）", where: "风控与授权 → 授权委托", tone: "warn" };
+        else if (sys.killSwitch) step = { do: "解除一键熔断（当前禁止所有新交易）", where: "顶部「熔断」按钮", tone: "danger" };
+        else if (!sys.autonomyEnabled) step = { do: "开启自主交易", where: "风控与授权", tone: "warn" };
+        else if (sys.reduceOnlyMode) step = { do: `当前只减仓，禁新开仓：${auto.detail || "仅允许降风险动作"}`, where: "风控与授权", tone: "warn" };
+        else if (!sys.liveTradingEnabled) step = { do: "现在是干跑（不会真下单）。确认要真金白银交易后，开齐「实盘写入」三道闸", where: "风控与授权 → 实盘写入与灰度", tone: "neutral" };
+        else if (auto.mode !== "full_auto_small" && auto.blockers?.length) step = { do: `距全自动下单还缺：${auto.blockers.join("、")}`, where: "风控与授权", tone: "warn" };
+        else if (paperVal > 0) step = { do: `${paperVal} 个技能已通过模拟前向验证，批准上岗后才会进入实盘决策`, where: "知识与技能 → 技能流水线", tone: "neutral" };
+        else if (traded === 0) step = { do: "系统已就绪，正在等一个够格的结构机会自动下单（可能要等）。也可去「AI 交易员」让它现在分析某个币", where: "AI 交易员", tone: "ok" };
+        else step = { do: "系统运行中，已有真实成交——盯上方真相盘看盈亏与胜率", where: "本页真相盘", tone: "ok" };
+        return (
+          <div className={`nextStepCard ${step.tone}`}>
+            <span className="nsIcon"><ChevronRight size={16} /></span>
+            <div className="nsBody"><b>现在该做什么</b><p>{step.do}</p></div>
+            <span className="nsWhere">{step.where}</span>
+          </div>
+        );
+      })()}
+
       {/* Row 1 — 指标行 */}
       <div className="metricRow">
         {metrics.map((m) => (
