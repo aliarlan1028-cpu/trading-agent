@@ -430,22 +430,41 @@ async function executeOkxAction(action, payload) {
     return { status: "unsupported_move_stop_okx", note: "OKX 附加止损暂不支持移动(需 algoId 改单链路),已保留原止损,未下重复单" };
   }
   if (action === "take_profit") {
-    if (Array.isArray(payload.targets) && payload.targets.length) {
-      const orders = [];
-      for (const target of payload.targets) {
-        orders.push(await executeOkxAction("place_order", {
-          ...payload,
-          ...target,
-          side: target.side || payload.side || "sell",
-          ordType: target.ordType || target.type || "conditional",
-          reduceOnly: true,
-          clientOrderId: target.clientOrderId || id("tp")
-        }));
-      }
-      const failed = orders.filter((o) => !["ok", "submitted"].includes(o.status));
-      return { status: failed.length ? (failed.length === orders.length ? "exchange_rejected" : "partial_failure") : "ok", batch: true, orders, failedCount: failed.length };
+    // OKX 止盈是"条件算法单",必须发到 /api/v5/trade/order-algo(带 tpTriggerPx),不是普通下单口
+    // (旧代码把 ordType:conditional 发到 /trade/order → 该口不收 → 止盈从来没成功过,审计 exch-F4)。
+    // sz 也必须是"张数"(除以 ctVal 对齐 lotSz),tpOrdPx "-1"=触发后市价平。
+    const posMode = await okxPositionMode();
+    const spec = String(payload.marketType || "perpetual_usdt").includes("perp") ? await okxContractSpec(instId) : null;
+    const toContracts = (coinQty) => {
+      if (!spec) return coinQty;
+      const lot = spec.lotSz > 0 ? spec.lotSz : 1;
+      return Math.floor((Number(coinQty) / spec.ctVal) / lot + 1e-9) * lot;
+    };
+    const tdMode = payload.tdMode || process.env.OKX_MARGIN_MODE || "cross";
+    const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload];
+    const orders = [];
+    for (const target of targets) {
+      const tpSide = String(target.side || payload.side || "sell").toLowerCase();
+      // 双向:平多用 posSide long / 平空用 posSide short(sell 平多、buy 平空);单向:reduceOnly 平仓。
+      const tpPosSide = posMode === "long_short_mode"
+        ? (payload.posSide || payload.positionSide || (tpSide === "sell" ? "long" : "short"))
+        : undefined;
+      const contracts = toContracts(target.quantity ?? target.sz ?? payload.quantity);
+      const triggerPx = String(target.stopPrice ?? target.price ?? target.triggerPrice ?? payload.price);
+      const algo = {
+        instId, tdMode, side: tpSide, ordType: "conditional",
+        sz: String(contracts),
+        tpTriggerPx: triggerPx, tpOrdPx: "-1", tpTriggerPxType: "last",
+        posSide: tpPosSide,
+        reduceOnly: tpPosSide ? undefined : true,
+        algoClOrdId: okxCleanClOrdId(target.clientOrderId || id("tp"))
+      };
+      const raw = await okxSignedRequest("/api/v5/trade/order-algo", "POST", JSON.stringify(algo));
+      const accepted = raw.code === "0" && String(raw.data?.[0]?.sCode || "0") === "0";
+      orders.push({ status: accepted ? "ok" : "exchange_rejected", raw, algoId: raw.data?.[0]?.algoId, clientOrderId: algo.algoClOrdId });
     }
-    return executeOkxAction("place_order", { ...payload, ordType: payload.ordType || "conditional", reduceOnly: true });
+    const failed = orders.filter((o) => o.status !== "ok");
+    return { status: failed.length ? (failed.length === orders.length ? "exchange_rejected" : "partial_failure") : "ok", batch: true, orders, failedCount: failed.length };
   }
   return { status: "unsupported_action" };
 }

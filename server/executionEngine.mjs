@@ -2,7 +2,6 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
-import { reviewTradeSetup } from "./setupReview.mjs";
 import { applyOperationalDegradation, professionalNotionalCap } from "./professionalRiskGate.mjs";
 import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
 
@@ -306,41 +305,9 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   };
   db.executionOrders.unshift(executionOrder);
 
-  // 执行前 SRTL 结构审核（质量闸，风控闸之外的第二道）：喂真实 4H+1H K 线逐项审核 setup，
-  // 并用授权反推的盈亏比做硬门槛。实盘时 FAIL 直接拦截；干跑也审核但只记录不拦，便于观察质量。
-  try {
-    const review = await reviewTradeSetup(db, {
-      symbol: plan.symbol, direction: plan.direction,
-      entry: sizing.entryMid, entryLow: plan.entryLow ?? plan.entry_range?.[0], entryHigh: plan.entryHigh ?? plan.entry_range?.[plan.entry_range.length - 1],
-      stopLoss: executionOrder.stopLoss, takeProfit: executionOrder.takeProfits, id: plan.id
-    }, { minR: Number(mandate?.minRewardRisk ?? process.env.SRTL_MIN_R ?? 2.0) });
-    executionOrder.setupReview = { verdict: review.verdict, grade: review.grade, sizeMultiplier: review.sizeMultiplier, reason: review.reason, rewardRisk: review.rewardRisk, checklist: review.checklist };
-    executionOrder.events.push({ at: nowIso(), event: "setup_review", detail: `SRTL ${review.grade || ""}(${review.verdict})：${review.reason || ""}` });
-    if (review.verdict === "FAIL" && db.system.liveTradingEnabled) {
-      executionOrder.status = "setup_rejected";
-      plan.status = "setup_rejected";
-      plan.executionOrderId = executionOrder.id;
-      appendAudit(db, `SRTL 结构审核拒绝（C 级），未下单：${review.reason || ""}`, executionOrder.id, "ExecutionEngine", "warning");
-      return { status: "setup_rejected", review, executionOrder };
-    }
-    // B 级机会缩量执行(A=100%,B=60%)。缩到低于最小可下单额则维持原量,不因缩量而下不出单。
-    const mult = Number(review.sizeMultiplier ?? 1);
-    if (review.verdict === "PASS" && mult > 0 && mult < 1 && executionOrder.quantity > 0) {
-      const scaledQty = roundQuantity(executionOrder.quantity * mult, sizing.entryMid);
-      const scaledNotional = scaledQty * sizing.entryMid;
-      if (scaledQty > 0 && scaledNotional >= 5) {
-        sizing.quantity = executionOrder.quantity = scaledQty;
-        sizing.notional = executionOrder.notionalUsdt = scaledNotional;
-        executionOrder.sizedBy = `${executionOrder.sizedBy}+srtl_B_downsize(${Math.round(mult * 100)}%)`;
-        executionOrder.events.push({ at: nowIso(), event: "srtl_b_downsize", detail: `B 级缩量至 ${Math.round(mult * 100)}%：数量 ${scaledQty}，名义 ${scaledNotional.toFixed(2)} USDT` });
-      } else {
-        executionOrder.events.push({ at: nowIso(), event: "srtl_b_downsize_skipped", detail: `B 级缩量后低于最小名义额，维持原量` });
-      }
-    }
-  } catch (error) {
-    // 审核本身异常不阻断交易主流程（风控闸已通过），仅记录。
-    executionOrder.events.push({ at: nowIso(), event: "setup_review_error", detail: String(error.message || error).slice(0, 160) });
-  }
+  // SRTL 结构审核作为"执行前硬闸"已移除(它一味拒单、把交易焊死)。SMC 方法学(4H BOS/供需区/
+  // 流动性扫荡/CHoCH/RR)改为分析阶段的工具 analyze_market_structure——AI 分析时主动调用、用来
+  // 指导方向与入场,而不是事后否决。RR≥2 等纪律仍在 BASE_RULES 与风控警告里,不再硬拦执行。
 
   if (!db.system.liveTradingEnabled) {
     executionOrder.status = "dry_run";

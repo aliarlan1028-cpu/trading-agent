@@ -6,6 +6,7 @@ import { bindKnowledgeSkillsToPlan, createSkillFromIdea, selectActiveKnowledgeSk
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { deriveAutomationState } from "./ops.mjs";
+import { analyzeMarketStructure } from "./setupReview.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { deterministicDecision } from "./deterministicDecision.mjs";
@@ -63,6 +64,18 @@ const TOOL_DEFS = [
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
         exchange: { type: "string", enum: ["OKX", "BINANCE"] }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "analyze_market_structure",
+    description: "用 SMC/供需方法对真实 4H+1H K 线做结构分析：给出大周期结构方向(BOS/趋势)、当前处于结构哪一段、优质供需区/关键位、1H 流动性扫荡与 CHoCH 现状、以及可执行的方向与入场思路(含结构失效位=止损参考)。这是你做方向判断和入场设计的核心参谋工具——提计划前应先调用它把结构看清;它是参谋不是审批,结构不清晰会诚实说'建议观望'。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        direction: { type: "string", enum: ["long", "short"], description: "你倾向的方向(可选),用于让分析师针对性核对结构是否支持" }
       },
       required: ["symbol"]
     }
@@ -353,16 +366,16 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
    - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次工具，然后在文字里最多用一句话说"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
-11. Setup 质量纪律【提计划前自检，避免被 SRTL 质量闸打回、更避免真金白银的错单】：propose_trade_plan 之前逐项确认——
-   - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交一个必被质量闸(SRTL)拒的 <2R 计划。
+11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 把 4H 结构、供需区、1H 流动性/CHoCH 看清**(它是你的结构参谋),再逐项确认——
+   - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交 <2R 的低质量计划。
    - 高周期结构优先：方向必须与 4H 结构一致（4H BOS 定方向）。不要仅凭单根低周期(1m/5m/15m)放量 K 线就逆着大结构开仓——低周期单根放量+整数关口，多半是流动性扫荡(先砸后拉/先拉后砸)而不是真突破。
    - 止损别扎在猎杀区：止损不要正好压在破位/突破那根 K 线的最高/最低点上方(下方)一点点——那里止损最密集、最容易被"扫损"；要放到结构真正失效位之外，给足缓冲。
    - 记住这个反例：曾对 BTC 在 15m 单根放量砸穿整数关口后立刻做空、止损压在破位高点上方、RR 仅 1.5，结果价格反向扫掉上方止损、计划失败。"低周期逆结构 + 紧止损 + 低 RR"是典型错误组合，别再犯。
 12. 合约下单口径【硬事实·禁止手算】：OKX/币安永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币（BTC-USDT-SWAP 每张 0.01 BTC）；最小下单量是 minSz 张——BTC 为 0.01 张 = 0.0001 BTC ≈ 6 USDT 名义、5x 约 1.3 USDT 保证金，**不是** 0.01 BTC(那是整整 1 张、≈640 USDT)。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
    - 【绝对禁止】把「0.01 张」当成「0.01 币」、或自己手算合约最小值/名义/保证金，更不能据此断言「账户太小、即使批准也会被交易所拒」——这几乎总是错的(极易算成 100 倍)。真实可下量由执行引擎按 minSz/lotSz/最小名义额(~5 USDT)自动对齐并强制(不足才返回 below_min_size)。可下与否一律以 propose_trade_plan 返回的 sizing 与引擎结果为准，不要自己下结论。
 13. 计划结果播报【必须照 propose_trade_plan 的返回字段如实说，禁止想当然】：
-   - 有两道独立的闸：**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆，返回如 36/36) 与 **SRTL 结构质量闸**(执行前审核 setup 结构，管 4H 供需区/1H CHoCH/盈亏比)。**硬风控全过 ≠ 会下单**——还要过 SRTL。绝不能因为"风控 36/36 通过"就说"可执行/等你批准/马上下单"。
-   - 按返回的 status 字段播报，**不许自己脑补**：status 为 setup_rejected → 说"已自动送执行但被 SRTL 结构质量闸拒绝、**未下单**，原因 X，需重提更优 setup"，【绝对禁止】说成"等待人工批准"；orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 awaiting_approval → 才说"等待人工批准"。
+   - 执行前的闸只有一道:**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆/盈亏比等，返回如 36/36)。结构质量靠你在提计划前用 analyze_market_structure 自己把关(不再有事后否决的 SRTL 硬闸)。硬风控通过后:自主全开则自动下单,否则进待批准。
+   - 按返回的 status 字段播报，**不许自己脑补**：orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 awaiting_approval → 才说"等待人工批准"；被硬风控拒 → 说风控原因,别说成等待批准。
    - 自主已开(autonomy+实盘写入+灰度「无需人工批准」全开)时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
 14. 极值处不追单 · 换位置换确认【关键·最容易犯:大跌后在低点追空】：单边大跌/大涨已充分展开、价格到极值附近时，【不禁止】该方向，但【禁止在原地"追"】——必须换更好的位置或更强的确认，别在恐慌的最后一根里追进去。
    - 大跌贴近 24h 低点(rangePosition24h 很低)想做空时：不要因为"已经跌很多/还会跌"就在低点直接追空(原地追，反弹会被扫、真续跌也是烂价位)。**正确做法二选一**：①等反弹回上方阻力/供需区，在衰竭确认处做空(高抛，最佳)；②若判断是延续破位，用 register_watch 登记"跌破 24h 低点 X 后回踩确认"的观察哨，做【破位回踩】，而不是在破位前的低点追。
@@ -698,6 +711,14 @@ export async function executeTool(db, run, name, args = {}) {
       return await fetchTokenProfile(args.symbol || "BTC/USDT", args.timeframe || "1h");
     } catch (error) {
       return { error: `币种画像失败：${error.message}` };
+    }
+  }
+
+  if (name === "analyze_market_structure") {
+    try {
+      return await analyzeMarketStructure(db, args.symbol || "BTC/USDT", args.direction || null);
+    } catch (error) {
+      return { available: false, reason: `结构分析失败：${error.message}` };
     }
   }
 
@@ -1150,7 +1171,7 @@ export async function executeTool(db, run, name, args = {}) {
           : autoExecution
           ? `计划已自动送执行，但${autoGateReason}。未产生真实订单——这【不是】"等待人工批准"，需重提更优 setup 或调整参数。`
           : (risk.passed
-            ? `计划已进入待批准队列，你批准后才进入执行链路（执行时仍会过 SRTL 结构质量闸，硬风控通过≠一定会下单）。${autoGateReason ? `未自动下单原因：${autoGateReason}。` : ""}`
+            ? `计划已进入待批准队列，你批准后进入执行链路。${autoGateReason ? `未自动下单原因：${autoGateReason}。` : ""}`
             : "计划被风控拒绝，请调整参数或修正授权边界。")
     };
   }
@@ -1458,6 +1479,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "get_token_profile") return result.ok === false ? `画像不可用：${result.reason || result.error || "-"}` : result.interpretation || `性格 ${result.character}，波动 ${result.volState}`;
+  if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `结构 ${result.bias || "?"}(4H ${result.structure4h || "?"})，${result.phase || ""}；入场思路：${result.entryIdea || "-"}`;
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
