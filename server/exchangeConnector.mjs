@@ -474,6 +474,9 @@ async function applyPrivateSnapshotToState(db, snapshot) {
   updateApiPermissionMetadata(db, snapshot);
   if (snapshot.exchange === "OKX") await applyOkxSnapshot(db, snapshot);
   if (snapshot.exchange === "BINANCE") applyBinanceSnapshot(db, snapshot);
+  // 兜底清扫:丢弃任何 size=0/非法 的空持仓(OKX WS/REST 都可能推 pos:0 的空槽,历史脏数据也在此清)。
+  // 空槽不是持仓,不该占"持仓(N)"。真实持仓的 size 恒为正。
+  db.positions = (db.positions || []).filter((p) => { const s = Number(p.size); return Number.isFinite(s) && s !== 0; });
 }
 
 function updateApiPermissionMetadata(db, snapshot) {

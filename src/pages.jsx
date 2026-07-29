@@ -155,7 +155,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
 
   const positions = data.positions || [];
   const posRows = positions.map((p, index) => {
-    const isShort = p.direction === "short" || p.direction === "空";
+    const isShort = p.direction === "short" || p.direction === "空" || p.posSide === "short";
     const pnlNum = Number(p.pnl || 0);
     return {
       id: p.id || `${p.symbol}-${index}`,
@@ -408,7 +408,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
                 <span>SYMBOL</span><span>SIDE</span><span>QTY</span><span>ENTRY</span><span>MARK</span><span>UPNL</span><span>LEV</span>
               </div>
               {positions.map((p, i) => {
-                const short = p.direction === "short" || p.direction === "空";
+                const short = p.direction === "short" || p.direction === "空" || p.posSide === "short";
                 const pnlN = Number(p.pnl || 0);
                 return (
                   <div className="posRow mono" key={p.id || `${p.symbol}-${i}`}>

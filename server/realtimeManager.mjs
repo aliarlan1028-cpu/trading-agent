@@ -389,18 +389,35 @@ function parseFee(value, currency) {
   return null;
 }
 
+// OKX 展示符号:与 exchangeConnector.normalizeOkxDisplaySymbol 同口径(去 -SWAP、首个 - 换 /)。
+// 此前 WS 用 replace("-","/") 得到 "BTC/USDT-SWAP",REST 得到 "BTC/USDT",两者不匹配 → 同一仓被记成两条。
+function okxDisplaySymbol(instId) {
+  return String(instId || "").replace(/-SWAP$/i, "").replace("-", "/").toUpperCase();
+}
+
 function updateOkxPositions(db, positions) {
   for (const payload of positions) {
-    const symbol = payload.instId?.replace("-", "/");
-    if (!symbol) continue;
-    const existing = db.positions.find((position) => position.exchange === "OKX" && position.symbol === symbol && position.posSide === payload.posSide);
-    const position = existing || { id: id("pos"), exchange: "OKX", symbol, posSide: payload.posSide, createdAt: nowIso() };
-    position.size = payload.pos;
+    if (!payload.instId) continue;
+    const symbol = okxDisplaySymbol(payload.instId);
+    const posSide = payload.posSide;
+    const size = Number(payload.pos || 0);
+    const idx = db.positions.findIndex((position) => position.exchange === "OKX" && position.symbol === symbol && position.posSide === posSide);
+    // 仓位归零(平仓或双向持仓的空槽)→ 移除,别把 pos:"0" 当一条"持仓"留在面板
+    // (实锤:BTC 幽灵持仓,size/entry/mark 全 0 却显示"持仓(1)")。
+    if (!Number.isFinite(size) || size === 0) {
+      if (idx >= 0) db.positions.splice(idx, 1);
+      continue;
+    }
+    const position = idx >= 0 ? db.positions[idx] : { id: id("pos"), exchange: "OKX", symbol, source: "exchange_ws", createdAt: nowIso() };
+    position.posSide = posSide;
+    position.direction = posSide === "short" ? "short" : "long"; // 前端 SIDE 读 direction,漏设会误显"做多"
+    position.size = Math.abs(size);
     position.entry = Number(payload.avgPx || 0);
     position.mark = Number(payload.markPx || 0);
+    position.liqPx = Number(payload.liqPx) || null;
     position.pnl = Number(payload.upl || 0);
     position.leverage = Number(payload.lever || 0);
     position.updatedAt = nowIso();
-    if (!existing) db.positions.unshift(position);
+    if (idx < 0) db.positions.unshift(position);
   }
 }
