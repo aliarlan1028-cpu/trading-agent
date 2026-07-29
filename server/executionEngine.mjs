@@ -628,6 +628,11 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     mandateId: executionOrder.mandateId,
     symbol: executionOrder.symbol,
     direction: executionOrder.direction,
+    // 成交买卖方向:开仓=持仓方向对应的买卖(多→买/空→卖),平仓=反向(平空=买/平多=卖)。
+    side: (() => {
+      const isLong = executionOrder.direction === "long" || executionOrder.direction === "多";
+      return (kind === "close" || kind === "exit") ? (isLong ? "sell" : "buy") : (isLong ? "buy" : "sell");
+    })(),
     strategy: executionOrder.strategy || plan.strategy || plan.strategy_type || "manual_review",
     regime: executionOrder.regime || inferMarketRegime(db, executionOrder.symbol),
     kind,

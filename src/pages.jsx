@@ -434,7 +434,13 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
           </div>
           <div className="ordList">
             {(ordTab === "open" ? openOrders : recentFills).slice(0, 6).map((o, i) => {
-              const buy = /buy|long|做多|多/i.test(String(o.side || o.direction || ""));
+              // 买卖方向:优先用交易所真实 side;成交只有 direction/kind 时按"开仓=方向本身、
+              // 平仓=反向"推(平空=买/平多=卖)。此前只看 direction,导致平空也显示"卖"(应为买)。
+              const isClose = /close|exit|平/i.test(String(o.kind || ""));
+              const dirLong = /long|做多|多/i.test(String(o.direction || ""));
+              const buy = /buy|sell/i.test(String(o.side || ""))
+                ? /buy/i.test(String(o.side))
+                : (isClose ? !dirLong : dirLong);
               return (
                 <div className="ordRow mono" key={o.id || i}>
                   <span className="ordSym">{o.symbol}</span>
