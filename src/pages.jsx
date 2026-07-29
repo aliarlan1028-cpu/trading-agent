@@ -1363,7 +1363,11 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false }) {
   );
 }
 
-export function RiskAuthPage({ data, action, ui, embedded = false }) {
+export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" }) {
+  // W2:一页拆两页——view="overview" 只看(风险姿态/账户安全/应急),view="settings" 只改
+  // (运行模式/授权委托/实盘灰度/风险规则)。复用同一份派生逻辑,按 view 条件渲染,零重复。
+  const showOverview = view === "all" || view === "overview";
+  const showSettings = view === "all" || view === "settings";
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || {};
   const grayPolicy = data.grayReleasePolicies?.[0] || {};
@@ -1427,10 +1431,15 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
   const authHist = (data.auditLogs || []).filter((item) => item.target?.includes("mandate") || item.action?.includes("授权") || item.action?.includes("风控") || item.action?.includes("熔断")).slice(0, 4);
   return (
     <div className="pageStack termPage riskPage">
-      {!embedded && <TermHead title="风控与授权" code="RISK · MANDATE" sub="授权边界、风险规则与账户安全，一处管住 AI 的手" />}
+      {!embedded && <TermHead title={view === "overview" ? "风控总览" : view === "settings" ? "风控设置" : "风控与授权"} code="RISK · MANDATE" sub={view === "overview" ? "此刻的风险姿态与账户安全，一眼看懂；要改配置去「风控设置」" : view === "settings" ? "授权边界、风险规则、实盘/灰度、密钥一处配置" : "授权边界、风险规则与账户安全，一处管住 AI 的手"} />}
 
-      {/* 运行模式单一控制:观察/半自动/全自动 三选一,底层自动配好 6 道闸。选意图,不用理解一堆开关。 */}
-      {(() => {
+      {/* 风控总览:顶部只读显示当前运行模式 + 跳转设置 */}
+      {showOverview && !showSettings && (
+        <div className="modeSelector"><div className="modeSelLabel"><Shield size={14} /> 运行模式<small>当前：{data.automationState?.label || "—"}{data.automationState?.blockers?.length ? ` · 缺 ${data.automationState.blockers.join("、")}` : ""}</small></div><button className="agLink" onClick={() => ui.setActive("riskSettings")}>去风控设置调整 ›</button></div>
+      )}
+
+      {/* 运行模式单一控制:观察/半自动/全自动 —— 归入风控设置(改) */}
+      {showSettings && (() => {
         const auto = data.automationState || {};
         const cur = auto.mode === "full_auto_small" ? "full_auto" : auto.mode === "semi_auto" ? "semi_auto" : auto.mode === "observe" ? "observe" : null;
         const MODES = [
@@ -1463,8 +1472,8 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
         );
       })()}
 
-      {/* Row1：授权委托 MANDATE ↔ 实盘写入与灰度 等高并排（Y 轴一致，X 宽 0.85:1.15 之和铺满整页）*/}
-      <div className="termGrid riskRow1">
+      {/* Row1：授权委托 + 实盘写入与灰度 —— 归入风控设置(改) */}
+      {showSettings && <div className="termGrid riskRow1">
         <div className="termCard">
           <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
           <div className="mandList">
@@ -1478,11 +1487,11 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           <div className="kHead"><span className="secLabel">实盘写入与灰度发布 · LIVE / GRAY RELEASE</span><span className={`evBadge ${data.config?.liveTrading?.effective ? "neg" : ""}`}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</span></div>
           <LiveGrayPanel data={data} action={action} ui={ui} />
         </div>
-      </div>
+      </div>}
 
-      {/* Row2：风险规则（4 类 2×2）↔ 风险状态墙 */}
+      {/* Row2：风险规则(4 类)→ 风控设置 ; 风险状态墙 → 风控总览 */}
       <div className="termGrid riskRow2">
-        <div className="rrGrid">
+        {showSettings && <div className="rrGrid">
           {ruleGroups.map((g) => (
             <div className="termCard rrCard" key={g.key}>
               <div className="rrHead"><span className="rrIcon" style={{ background: g.bg, color: g.color }}><g.Icon size={14} /></span><b>{g.title}</b><span className="rrCount">{g.rules.length}</span></div>
@@ -1492,9 +1501,9 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
               {g.rules.length > 0 && <div className="rrOk"><span className="rrDot" />已启用 {g.rules.filter((r) => r.enabled !== false).length} 条</div>}
             </div>
           ))}
-        </div>
+        </div>}
 
-        <div className="termCard riskWallCard">
+        {showOverview && <div className="termCard riskWallCard">
           <div className="kHead"><b className="rwTitle">风险状态墙</b><span className="rwTime mono">实时 {formatTime(latestRisk.createdAt || data.system.updatedAt)}</span></div>
           <div className={`riskBanner ${riskBannerTone}`}>
             <span className="riskBannerIcon"><ShieldCheck size={19} /></span>
@@ -1510,11 +1519,11 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
             {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
           </div>
           <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
-        </div>
+        </div>}
       </div>
 
-      {/* Row3：账户安全四小卡 */}
-      <div className="termGrid riskBot">
+      {/* Row3：账户安全四小卡 —— 风控总览(看) */}
+      {showOverview && <div className="termGrid riskBot">
         <div className="termCard">
           <div className="balLabel">API 与账户安全</div>
           {exAccounts.map((a) => <div className="secRow" key={a.id}><span>{a.exchange}</span><span className="secRowR"><b className={`evBadge ${a.readEnabled ? "ok" : "warn"}`}>{a.readEnabled ? "已连接" : "未配置"}</b></span></div>)}
@@ -1535,7 +1544,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false }) {
           {authHist.map((item) => <div className="authRow" key={item.id}><span className="authDot" /><div className="authInfo"><b>{item.action}</b><div>{item.actor}</div></div><span className="authTime mono">{formatTime(item.createdAt)}</span></div>)}
           {!authHist.length && <div className="emptyPanel">暂无授权变更记录</div>}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

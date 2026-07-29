@@ -70,7 +70,8 @@ const navItems = [
   { id: "tradeJournal", label: "交易日志", short: "日志", code: "JOURNAL", icon: ClipboardList, group: "交易" },
   { id: "knowledgeSkills", label: "知识与技能", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "能力" },
   { id: "strategyAnalysis", label: "策略与分析", short: "策略", code: "STRATEGY", icon: Activity, group: "能力" },
-  { id: "riskAuth", label: "风控与授权", short: "风控", code: "RISK", icon: ShieldCheck, group: "风控与运维" },
+  { id: "riskOverview", label: "风控总览", short: "总览", code: "RISK VIEW", icon: ShieldCheck, group: "风控与运维" },
+  { id: "riskSettings", label: "风控设置", short: "设置", code: "RISK CFG", icon: Shield, group: "风控与运维" },
   { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock, group: "风控与运维" },
   { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings, group: "风控与运维" }
 ];
@@ -169,7 +170,7 @@ function AppTopbar({ data, setActive, notify, action }) {
           : live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
       </div>
       <div className="topbarActions">
-        <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskAuth")}>
+        <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskSettings")}>
           <span />
           {currentStatus.label}
         </button>
@@ -290,7 +291,8 @@ function App() {
     if (active === "knowledgeSkills") return <KnowledgeSkillsPage data={data} action={action} ui={ui} />;
     if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
     if (active === "strategyAnalysis") return <StrategyAnalysisPage data={data} action={action} ui={ui} />;
-    if (active === "riskAuth") return <RiskAuthPage data={data} action={action} ui={ui} />;
+    if (active === "riskOverview") return <RiskAuthPage data={data} action={action} ui={ui} view="overview" />;
+    if (active === "riskSettings") return <RiskAuthPage data={data} action={action} ui={ui} view="settings" />;
     if (active === "auditSystem") return <AuditOpsPage data={data} action={action} ui={ui} />;
     if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
     return <ChatPage data={data} action={action} ui={ui} />;
