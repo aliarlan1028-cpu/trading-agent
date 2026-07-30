@@ -511,13 +511,12 @@ h3 {
   overflow-y: auto;
 }
 
-/* AI 交易员：页面本身不滚，滚动交给聊天流与右栏各自的容器 */
+/* AI 交易员：新版由 AiTraderCenter 各自容器控高(对话壳 calc 定高、情报正常滚动)，
+   不再让外层 flex+overflow:hidden 压窄 uxCenter，否则对话/情报横向都占不满(右侧留空)。 */
 .content.contentChat {
-  overflow: hidden;
   padding-bottom: 20px;
-  display: flex;
 }
-.content.contentChat > .chatShell { height: 100%; }
+.content.contentChat > .uxCenter { width: 100%; min-width: 0; }
 
 .pageStack {
   display: grid;
