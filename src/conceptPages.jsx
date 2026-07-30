@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SystemConfigPanel } from "./panels.jsx";
-import { displayMoney, displayPct, formatDateTime, formatTime, humanize } from "./lib.jsx";
+import { displayMoney, displayPct, formatDateTime, formatTime, humanize, TradingViewChart } from "./lib.jsx";
 import "./conceptPages.css";
 import "./conceptSettings.css";
 
@@ -134,7 +134,7 @@ export function TradingOverviewConcept({ data, ui }) {
     <div className="cp2TradingHero">
       <ConceptCard title={activeMarket.symbol || "BTC/USDT"} meta="实时行情 · 交易所公开数据" className="cp2ChartCard" action={<button className="cp2Link" onClick={() => ui.setActive("marketAccount")}>查看完整行情 ›</button>}>
         <div className="cp2Quote"><b>{activeMarket.price == null ? "待同步" : money(activeMarket.price)}</b><Pill tone={num(activeMarket.changePct) >= 0 ? "good" : "bad"}>{activeMarket.changePct == null ? "—" : `${num(activeMarket.changePct) >= 0 ? "+" : ""}${num(activeMarket.changePct).toFixed(2)}%`}</Pill></div>
-        <MiniLine values={arr(activeMarket.candles).slice(-36).map((item) => item.close)} height={150}/>
+        <div className="cp2CandleBox"><TradingViewChart symbol={activeMarket.symbol || "BTC/USDT"} interval="60"/></div>
       </ConceptCard>
       <ConceptCard title="账户与持仓" meta={`${positions.length} 个持仓`}>
         <div className="cp2Allocation"><Donut value={positions.length ? 68 : 0} label={positions.length ? `${positions.length} 仓` : "空仓"} sub="持仓"/><div><b>{equity == null ? "未同步" : `${money(equity)} USDT`}</b><small>总账户权益</small><span className="good">{`${num(pf.unrealizedPnl) >= 0 ? "+" : ""}${money(pf.unrealizedPnl, "0")} 未实现`}</span></div></div>
@@ -163,7 +163,7 @@ export function MarketConcept({ data, action }) {
     <ConceptCard className="cp2MainChart" title={selected.symbol || symbol} meta={`${tf} · 公开行情`} action={<div className="cp2FormActions"><button className="cp2Secondary" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}>手动对账</button><button className="cp2IconButton" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={13}/></button></div>}>
       <div className="cp2ChartToolbar"><select value={symbol} onChange={(event) => setSymbol(event.target.value)}>{markets.length ? markets.map((item) => <option key={item.symbol}>{item.symbol}</option>) : <option>BTC/USDT</option>}</select>{["1m","5m","15m","1h","4h","1D"].map((name) => <button className={name === tf ? "active" : ""} onClick={() => setTf(name)} key={name}>{name}</button>)}</div>
       <div className="cp2Quote large"><b>{selected.price == null ? "待同步" : money(selected.price)}</b><Pill tone={num(selected.change) >= 0 ? "good" : "bad"}>{selected.change == null ? "—" : `${num(selected.change)>=0?"+":""}${num(selected.change).toFixed(2)}%`}</Pill></div>
-      <MiniLine values={arr(selected.candles).slice(-80).map((item) => item.close)} height={260}/>
+      <div className="cp2CandleBox tall"><TradingViewChart symbol={symbol} interval={{ "1m": "1m", "5m": "5m", "15m": "15m", "1h": "60", "4h": "240", "1D": "D" }[tf] || "60"}/></div>
     </ConceptCard>
     <aside className="cp2MarketRail">
       <ConceptCard title="自选列表" meta={`${watchlist.length || markets.length} 个`} action={<button className="cp2Link" onClick={addWatch}><Plus size={12}/> 添加</button>}><ConceptTable compact columns={[{key:"symbol",label:"交易对",render:r=><button className="cp2Link" onClick={()=>setSymbol(r.symbol)}>{r.symbol}</button>},{key:"price",label:"价格",render:r=>money(r.price)},{key:"change",label:"24h",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change)>=0?"+":""}${num(r.change).toFixed(2)}%`}</span>},{key:"remove",label:"",render:r=>watchlist.length>1&&watchlist.includes(r.symbol)?<button className="cp2IconButton" title="移除自选" onClick={()=>action(`/api/watchlist/${encodeURIComponent(r.symbol)}`,{},"DELETE")}>×</button>:null}]} rows={markets.filter(item=>!watchlist.length||watchlist.includes(item.symbol))} empty="行情待同步"/></ConceptCard>
