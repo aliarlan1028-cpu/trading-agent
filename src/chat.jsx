@@ -584,16 +584,35 @@ function AgentRail({ data, action, ui, send }) {
         </div>
       </div>
 
-      {/* KPI 条 */}
-      <div className="agKpiRow">
-        {kpis.map((kp) => (
-          <div className="agKpi" key={kp.k}>
-            <div className="agKpiK">{kp.k}</div>
-            <div className={`agKpiV mono ${kp.colorVal ? (kp.pos ? "pos" : "neg") : ""}`}>{kp.v}</div>
-            <div className={`agKpiD mono ${kp.plain ? "warn" : kp.pos ? "pos" : "neg"}`}>{kp.d}</div>
-          </div>
-        ))}
-      </div>
+    </div>
+  );
+}
+
+// 顶部横向 KPI 条:概念图对齐——把资产/风险/盈亏搬到 AI 交易员页顶部空白处
+export function ChatKpiStrip({ data }) {
+  const portfolio = data.portfolio || {};
+  const perf = data.performance || {};
+  const positions = data.positions || [];
+  const btc = (data.markets || []).find((m) => /BTC/i.test(m.symbol || ""));
+  const todayPnl = Number(portfolio.todayPnl || 0);
+  const cumPnl = Number(perf.totalPnlUsdt ?? 0);
+  const marginRate = marginUsage(portfolio).marginRatePct;
+  const kpis = [
+    { k: "总资产", v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: "账户实时净值", plain: true },
+    { k: "持仓风险", v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} 个持仓`, plain: true },
+    { k: "今日盈亏", v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "等待账户同步", pos: todayPnl >= 0, colorVal: true },
+    { k: "累计盈亏", v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "尚无成交", pos: cumPnl >= 0, colorVal: true },
+    { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "待同步", pos: Number(btc?.changePct || 0) >= 0, colorVal: btc?.changePct != null }
+  ];
+  return (
+    <div className="chatKpiStrip">
+      {kpis.map((kp) => (
+        <div className="chatKpi" key={kp.k}>
+          <div className="chatKpiK">{kp.k}</div>
+          <div className={`chatKpiV mono ${kp.colorVal ? (kp.pos ? "pos" : "neg") : ""}`}>{kp.v}</div>
+          <div className={`chatKpiD mono ${kp.plain ? "" : kp.pos ? "pos" : "neg"}`}>{kp.d}</div>
+        </div>
+      ))}
     </div>
   );
 }

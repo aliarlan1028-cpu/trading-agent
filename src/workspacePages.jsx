@@ -7,6 +7,7 @@ import {
   RiskPostureConcept, RulesConcept, SettingsConcept, StrategyConcept,
   TasksConcept, TradingOverviewConcept
 } from "./conceptPages.jsx";
+import { ChatKpiStrip } from "./chat.jsx";
 import "./workspace.css";
 import "./workspace-additions.css";
 
@@ -32,7 +33,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children }) {
 
 export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const [tab, setTab] = useState(initialTab);
-  return <CenterShell title="AI 交易员" subtitle="对话 · 决策 · 执行" tabs={TABS.ai} active={tab} onChange={setTab}>{tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : <IntelligenceConcept data={data} action={action} ui={ui}/>}</CenterShell>;
+  return <CenterShell title="AI 交易员" subtitle="对话 · 决策 · 执行" tabs={TABS.ai} active={tab} onChange={setTab}>{tab === "dialog" ? <><ChatKpiStrip data={data}/><AiDialogConcept data={data} action={action} ui={ui}/></> : <IntelligenceConcept data={data} action={action} ui={ui}/>}</CenterShell>;
 }
 
 export function TradingCenter({ data, action, ui, initialTab = "overview" }) {

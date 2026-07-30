@@ -93,7 +93,7 @@ export function IntelligenceConcept({ data, action, ui }) {
         </div>
       </ConceptCard>
       <ConceptCard title="情报动态" meta={`${filtered.length} 条`}>
-        <div className="cp2IntelList">{filtered.map((item, index) => <button key={item.id} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span className={`cp2IntelIcon ${toneOf(item.impact)}`}><Activity size={14}/></span><div><b>{item.title || "未命名情报"}</b><small>{item.source} · {formatTime(item.createdAt || item.due || item.time)}</small><p>{item.summary || item.description || "等待更多来源交叉验证。"}</p></div><Pill tone={num(item.impact) >= 80 ? "bad" : num(item.impact) >= 50 ? "warn" : "good"}>{num(item.impact) >= 80 ? "高" : num(item.impact) >= 50 ? "中" : "低"}</Pill></button>)}</div>
+        <div className="cp2IntelList">{filtered.map((item, index) => <button key={item.id} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span className={`cp2IntelIcon ${toneOf(item.impact)}`}><Activity size={14}/></span><div><b>{item.title || "未命名情报"}</b><small>{item.source} · {formatTime(item.createdAt || item.due || item.time)}</small><p>{item.summary || item.description || "等待更多来源交叉验证。"}</p></div><Pill tone={num(item.impact) >= 80 ? "bad" : num(item.impact) >= 50 ? "warn" : "good"}>{num(item.impact) >= 80 ? "高" : num(item.impact) >= 50 ? "中" : "低"}</Pill></button>)}{!filtered.length && <div className="cp2Empty"><Sparkles size={20}/><b>暂无情报动态</b><span>配置事件源后,新闻 / 链上 / 异动会在此汇总并交叉验证。</span></div>}</div>
       </ConceptCard>
     </main>
     <aside className="cp2IntelDetail">
