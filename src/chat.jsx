@@ -588,8 +588,8 @@ function AgentRail({ data, action, ui, send }) {
   );
 }
 
-// 顶部横向 KPI 条:概念图对齐——把资产/风险/盈亏搬到 AI 交易员页顶部空白处
-export function ChatKpiStrip({ data }) {
+// 顶部 KPI 条:塞进「对话/情报」Tab 行右侧(bar=紧凑内联),填补标题区空白
+export function ChatKpiStrip({ data, bar = false }) {
   const portfolio = data.portfolio || {};
   const perf = data.performance || {};
   const positions = data.positions || [];
@@ -605,12 +605,11 @@ export function ChatKpiStrip({ data }) {
     { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "待同步", pos: Number(btc?.changePct || 0) >= 0, colorVal: btc?.changePct != null }
   ];
   return (
-    <div className="chatKpiStrip">
+    <div className={bar ? "chatKpiBar" : "chatKpiStrip"}>
       {kpis.map((kp) => (
         <div className="chatKpi" key={kp.k}>
           <div className="chatKpiK">{kp.k}</div>
-          <div className={`chatKpiV mono ${kp.colorVal ? (kp.pos ? "pos" : "neg") : ""}`}>{kp.v}</div>
-          <div className={`chatKpiD mono ${kp.plain ? "" : kp.pos ? "pos" : "neg"}`}>{kp.d}</div>
+          <div className="chatKpiLine"><span className={`chatKpiV mono ${kp.colorVal ? (kp.pos ? "pos" : "neg") : ""}`}>{kp.v}</span><span className={`chatKpiD mono ${kp.plain ? "" : kp.pos ? "pos" : "neg"}`}>{kp.d}</span></div>
         </div>
       ))}
     </div>
