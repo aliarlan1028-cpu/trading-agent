@@ -74,6 +74,10 @@
 @media (max-width: 1100px) { .chatKpiStrip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 720px) { .chatKpiStrip { grid-template-columns: repeat(2, 1fr); } }
 
+/* 子页 Tab 内联到标题行(「对话·决策·执行」处),不再单占一行 */
+.uxHeadLeft { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; min-width: 0; }
+.uxTabs.uxTabsInline { height: auto; border-bottom: 0; margin-bottom: 0; gap: 22px; align-items: baseline; }
+.uxTabs.uxTabsInline button { height: auto; padding: 0 0 3px; }
 /* KPI 条与「AI 交易员」标题同一行右侧(紧凑内联、字号调小) */
 .uxHeadExtra { align-self: flex-end; display: flex; align-items: flex-end; min-width: 0; padding-bottom: 2px; }
 .chatKpiBar { display: flex; align-items: center; gap: 22px; flex-wrap: nowrap; }

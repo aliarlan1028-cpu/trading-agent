@@ -22,10 +22,7 @@ const TABS = {
 function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsExtra }) {
   return (
     <div className="uxCenter">
-      <header className="uxCenterHead"><div><h1>{title}</h1><span>{subtitle}</span></div>{tabsExtra && <div className="uxHeadExtra">{tabsExtra}</div>}</header>
-      <nav className="uxTabs" aria-label={`${title}子页面`}>
-        {tabs.map(([id, label]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{label}</button>)}
-      </nav>
+      <header className="uxCenterHead"><div className="uxHeadLeft"><h1>{title}</h1><span>{subtitle}</span><nav className="uxTabs uxTabsInline" aria-label={`${title}子页面`}>{tabs.map(([id, label]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{label}</button>)}</nav></div>{tabsExtra && <div className="uxHeadExtra">{tabsExtra}</div>}</header>
       <div className={`uxCenterBody uxSection-${active}`}>{children}</div>
     </div>
   );
