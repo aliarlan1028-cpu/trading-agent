@@ -106,7 +106,7 @@ function NumField({ label, value, unit, onSave }) {
   return <div className="rdField"><span className="fk">{label}</span><span className="fv"><input value={v ?? ""} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} inputMode="decimal" /><span className="unit">{unit}</span></span></div>;
 }
 
-export function RiskSettingsPage({ data, action, ui }) {
+export function RiskSettingsPage({ data, action, ui, section = "all" }) {
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const auto = data.automationState || {};
   const rules = data.riskRules || [];
@@ -123,16 +123,21 @@ export function RiskSettingsPage({ data, action, ui }) {
   const maxLev = mandate.max_leverage || (mandate.maxLeverageBySymbol && Object.values(mandate.maxLeverageBySymbol).length ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : "");
   const minLev = mandate.min_leverage ?? mandate.minLeverage ?? "";
   const MODES = [{ id: "observe", label: "观察", desc: "只分析，绝不下单(干跑)" }, { id: "semi_auto", label: "半自动", desc: "AI 提计划，你批准才下单" }, { id: "full_auto", label: "全自动", desc: "够格机会自动下单" }];
+  const showMandate = section === "all" || section === "mandate";
+  const showRules = section === "all" || section === "rules";
+  const showLive = section === "all" || section === "live";
+  const showKeys = section === "all" || section === "keys";
   return (
     <div className="rdPage">
-      <div className="rdHead"><div><h1>风控设置 <em>RISK · CONFIG</em></h1><p>授权边界、风险规则、实盘/灰度、密钥一处配置。</p></div><button className="rdLink" onClick={() => ui.setActive("riskOverview")}>去风控总览 ›</button></div>
+      <div className="rdHead"><div><h1>风控设置 <em>RISK · CONFIG</em></h1><p>授权边界、风险规则、实盘/灰度、密钥一处配置。</p></div><button className="rdLink" onClick={() => ui.setActive("riskCenter")}>去风控总览 ›</button></div>
 
-      <div className="rdCard">
+      {showMandate && <div className="rdCard">
         <div className="rdCardH"><b>运行模式</b><span className="rdCode">Mode</span><div className="rdR"><span className="rdMono" style={{ fontSize: 11, color: "var(--rd-faint)" }}>当前：{auto.label || "—"}</span></div></div>
         <div className="rdModes">{MODES.map((m) => <button key={m.id} className={`rdMode ${cur === m.id ? "on" : ""}`} onClick={() => setMode(m.id)}><b>{m.label}</b><span>{m.desc}</span></button>)}</div>
-      </div>
+      </div>}
 
-      <div className="rdGrid2">
+      {(showMandate || showLive) && <div className={`rdGrid2 ${showMandate !== showLive ? "single" : ""}`}>
+        {showMandate &&
         <div className="rdCard">
           <div className="rdCardH"><b>授权委托</b><span className="rdCode">Mandate</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.openPanel("mandate")}>白名单/详情</button></div></div>
           <div className="rdField"><span className="fk">白名单</span><span className="fv"><b>{(mandate.allowedSymbols || []).join("、") || "未授权"}</b></span></div>
@@ -142,15 +147,16 @@ export function RiskSettingsPage({ data, action, ui }) {
           <NumField label="单笔风险" value={mandate.maxSingleTradeRiskPct ?? ""} unit="%" onSave={(v) => patchMandate("maxSingleTradeRiskPct", v)} />
           <NumField label="单日亏损" value={mandate.maxDailyLossPct ?? ""} unit="%" onSave={(v) => patchMandate("maxDailyLossPct", v)} />
           <NumField label="审批阈值" value={mandate.humanApprovalNotionalUsdt ?? ""} unit="U" onSave={(v) => patchMandate("humanApprovalNotionalUsdt", v)} />
-        </div>
+        </div>}
 
+        {showLive &&
         <div className="rdCard">
           <div className="rdCardH"><b>实盘写入与灰度</b><span className="rdCode">Live / Gray</span></div>
           <LiveGrayPanel data={data} action={action} ui={ui} />
-        </div>
-      </div>
+        </div>}
+      </div>}
 
-      <div className="rdCard">
+      {showRules && <div className="rdCard">
         <div className="rdCardH"><b>风险规则</b><span className="rdCode">Rules · 可开关 · 标来源</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.openPanel("ruleLibrary")}>批准/去重</button></div></div>
         {RULE_CATS.map((cat) => {
           const list = rules.filter((r) => SCOPE_OF(r) === cat.key);
@@ -169,15 +175,15 @@ export function RiskSettingsPage({ data, action, ui }) {
             </div>
           );
         })}
-      </div>
+      </div>}
 
-      <div className="rdCard">
+      {showKeys && <div className="rdCard">
         <div className="rdCardH"><b>密钥与 IP</b><span className="rdCode">Keys</span><div className="rdR"><button className="rdEditBtn" onClick={() => ui.openPanel("ip")}>管理 IP</button></div></div>
         {(data.exchangeAccounts || []).map((a) => (
           <div className="rdSec" key={a.id}><span className={`dot ${a.readEnabled ? "g" : "w"}`} /><span>{a.exchange}</span><span className={`sv ${a.readEnabled ? "g" : "w"}`}>{a.readEnabled ? "已连接" : "未配置"}{a.withdrawEnabled ? " · 提现高危" : ""}</span></div>
         ))}
         {!(data.exchangeAccounts || []).length && <div className="rdRuleEmpty">未配置交易所密钥</div>}
-      </div>
+      </div>}
     </div>
   );
 }

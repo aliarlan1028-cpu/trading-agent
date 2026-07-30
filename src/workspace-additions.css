@@ -1,0 +1,40 @@
+.uxServiceList {
+  display: grid;
+  gap: 2px;
+}
+
+.uxServiceList > div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.uxServiceList > div:last-child { border-bottom: 0; }
+.uxServiceList > div > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-4);
+}
+.uxServiceList > div > span.good {
+  background: var(--pos);
+  box-shadow: 0 0 0 3px rgba(31, 122, 80, .1);
+}
+.uxServiceList > div > span.bad {
+  background: var(--neg);
+  box-shadow: 0 0 0 3px rgba(196, 63, 40, .1);
+}
+.uxServiceList b { font-size: 12px; }
+.uxServiceList small { color: var(--text-3); font-size: 11px; }
+
+/* AI 中心已有一级“对话 / 情报”标签，移除旧对话卡内部的同名切换，避免双重导航。 */
+.uxSection-dialog .agViewToggle { display: none; }
+
+.navGear.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-ink);
+}

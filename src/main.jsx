@@ -19,6 +19,7 @@ import {
   FlaskConical,
   UserPlus,
   UserCog,
+  WalletCards,
   Zap
 } from "lucide-react";
 import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
@@ -28,32 +29,15 @@ import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
-const ChatPage = lazyNamed(() => import("./chat.jsx"), "ChatPage");
-const AdminPage = lazyNamed(() => import("./pages.jsx"), "AdminPage");
-const AgentProfilesPanel = lazyNamed(() => import("./pages.jsx"), "AgentProfilesPanel");
-const AuditSystemPage = lazyNamed(() => import("./pages.jsx"), "AuditSystemPage");
-const EventsTasksPage = lazyNamed(() => import("./pages.jsx"), "EventsTasksPage");
-const KnowledgeSkillsPage = lazyNamed(() => import("./pages.jsx"), "KnowledgeSkillsPage");
-const MarketAccountPage = lazyNamed(() => import("./pages.jsx"), "MarketAccountPage");
-const RiskAuthPage = lazyNamed(() => import("./pages.jsx"), "RiskAuthPage");
-const AnalysisRoomPage = lazyNamed(() => import("./pages.jsx"), "AnalysisRoomPage");
-const StrategyWorkbenchPage = lazyNamed(() => import("./professionalPages.jsx"), "StrategyWorkbenchPage");
-const LiveOperationsPage = lazyNamed(() => import("./professionalPages.jsx"), "LiveOperationsPage");
-// IA 重构 W1:新页/合并页(纯前端搬家,零后端逻辑改动)
-const RiskOverviewPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskOverviewPage");
-const RiskSettingsPage = lazyNamed(() => import("./redesignPages.jsx"), "RiskSettingsPage");
-const KnowledgeWorkbenchPage = lazyNamed(() => import("./redesignPages.jsx"), "KnowledgeWorkbenchPage");
-const CapabilitiesPage = lazyNamed(() => import("./redesignPages.jsx"), "CapabilitiesPage");
-const StrategyAnalysisPageV2 = lazyNamed(() => import("./redesignPages.jsx"), "StrategyAnalysisPage");
-const AuditOpsPageV2 = lazyNamed(() => import("./redesignPages.jsx"), "AuditOpsPage");
-const SignalHubPage = lazyNamed(() => import("./relayoutPages.jsx"), "SignalHubPage");
-const TradeJournalPage = lazyNamed(() => import("./relayoutPages.jsx"), "TradeJournalPage");
-const StrategyAnalysisPage = lazyNamed(() => import("./relayoutPages.jsx"), "StrategyAnalysisPage");
-const AuditOpsPage = lazyNamed(() => import("./relayoutPages.jsx"), "AuditOpsPage");
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
-const SystemConfigPanel = lazyNamed(() => import("./panels.jsx"), "SystemConfigPanel");
 const KillConfirmDialog = lazyNamed(() => import("./mobile.jsx"), "KillConfirmDialog");
 const MobileApp = lazyNamed(() => import("./mobile.jsx"), "MobileApp");
+const AiTraderCenter = lazyNamed(() => import("./workspacePages.jsx"), "AiTraderCenter");
+const TradingCenter = lazyNamed(() => import("./workspacePages.jsx"), "TradingCenter");
+const ResearchCenter = lazyNamed(() => import("./workspacePages.jsx"), "ResearchCenter");
+const RiskCenter = lazyNamed(() => import("./workspacePages.jsx"), "RiskCenter");
+const OperationsCenter = lazyNamed(() => import("./workspacePages.jsx"), "OperationsCenter");
+const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "SettingsConcept");
 
 if (isNativeApp()) {
   document.documentElement.classList.add("nativeApp");
@@ -70,17 +54,11 @@ if (isNativeApp()) {
 // 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
 // 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
 const navItems = [
-  { id: "chat", label: "AI 交易员", short: "交易员", code: "AGENT", icon: Bot, group: "交易" },
-  { id: "signalHub", label: "信号中心", short: "信号", code: "SIGNALS", icon: Zap, group: "交易" },
-  { id: "cockpit", label: "市场与账户", short: "市场", code: "MARKET", icon: PieChart, group: "交易" },
-  { id: "tradeJournal", label: "交易日志", short: "日志", code: "JOURNAL", icon: ClipboardList, group: "交易" },
-  { id: "knowledgeBase", label: "知识库", short: "知识", code: "KNOWLEDGE", icon: BookOpen, group: "能力" },
-  { id: "capabilities", label: "能力与工具", short: "能力", code: "CAPABILITIES", icon: BrainCircuit, group: "能力" },
-  { id: "strategyAnalysis", label: "策略与分析", short: "策略", code: "STRATEGY", icon: Activity, group: "能力" },
-  { id: "riskOverview", label: "风控总览", short: "总览", code: "RISK VIEW", icon: ShieldCheck, group: "风控与运维" },
-  { id: "riskSettings", label: "风控设置", short: "设置", code: "RISK CFG", icon: Shield, group: "风控与运维" },
-  { id: "eventsTasks", label: "事件与任务", short: "事件", code: "EVENTS", icon: CalendarClock, group: "风控与运维" },
-  { id: "auditSystem", label: "审计", short: "审计", code: "AUDIT", icon: Settings, group: "风控与运维" }
+  { id: "chat", label: "AI 交易员", short: "交易员", icon: Bot },
+  { id: "cockpit", label: "交易驾驶舱", short: "驾驶舱", icon: PieChart },
+  { id: "researchCenter", label: "研究中心", short: "研究", icon: BookOpen },
+  { id: "riskCenter", label: "风控中心", short: "风控", icon: ShieldCheck },
+  { id: "operationsCenter", label: "系统运营", short: "运营", icon: Settings }
 ];
 
 function BrandLogo({ size = 34 }) {
@@ -99,19 +77,15 @@ function Sidebar({ active, setActive, data }) {
         </div>
       </div>
       <nav className="nav">
-        {navItems.map((item, i) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const on = active === item.id;
-          const newGroup = i === 0 || navItems[i - 1].group !== item.group;
           return (
-            <React.Fragment key={item.id}>
-              {newGroup && <div className="navGroupLabel">{item.group}</div>}
-              <button className={`navItem ${on ? "active" : ""}`} title={item.label} onClick={() => setActive(item.id)}>
+              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={item.label} onClick={() => setActive(item.id)}>
                 <Icon size={16} />
                 <span className="navLabelFull">{item.label}</span>
                 <span className="navLabelShort">{item.short}</span>
               </button>
-            </React.Fragment>
           );
         })}
       </nav>
@@ -119,9 +93,9 @@ function Sidebar({ active, setActive, data }) {
         <div className={`sysStatusCard ${healthy ? "ok" : "warn"}`}>
           <div className="sscHead"><span className="sscDot" /> <b>系统状态 · {healthy ? "全盘正常" : "需关注"}</b></div>
           <div className="sscMeta mono">api · ws · sync · {healthy ? "healthy" : "check"}</div>
-          <button className="sscLink" onClick={() => setActive("auditSystem")}>查看运行日志 ›</button>
+          <button className="sscLink" onClick={() => setActive("operationsCenter")}>查看运行日志 ›</button>
         </div>
-        <button className="navGear" title="系统设置 / 密钥 / 用户管理" onClick={() => setActive("systemSettings")}>
+        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title="系统设置 / 密钥 / 用户管理" onClick={() => setActive("systemSettings")}>
           <Settings size={15} /> 系统设置
         </button>
       </div>
@@ -170,8 +144,8 @@ function AppTopbar({ data, setActive, notify, action }) {
         <input placeholder="搜索市场 / 交易对 / 知识 / 功能" aria-label="搜索" />
       </div>
       <div className="topbarStatusGroup">
-        <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings")} />
-        <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings")} />
+        <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings:exchange")} />
+        <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
         {autoOn
           ? <span className="autoOnPill" title="全自动执行已开启"><span className="autoDot" /> AUTO ON</span>
           : live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
@@ -196,44 +170,6 @@ function AppTopbar({ data, setActive, notify, action }) {
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
       {showPassword && <ChangePasswordDialog action={action} notify={notify} onClose={() => setShowPassword(false)} />}
     </header>
-  );
-}
-
-function SystemSettingsPage({ data, action, ui, activeSettingsTab, setActiveSettingsTab }) {
-  const isOwner = data.user?.isOwner === true;
-  // 风控与授权、任务调度已收进左侧导航（风控与授权 / 事件与任务），设置里不再重复。
-  let tab = activeSettingsTab === "risk" || activeSettingsTab === "tasks" ? "config" : activeSettingsTab;
-  // 非 Owner 不能停留在"用户管理"tab。
-  if (tab === "users" && !isOwner) tab = "config";
-  return (
-    <div className="pageStack termPage settingsTermPage">
-      <div className="termHead">
-        <div className="termHeadMain">
-          <h1>系统设置 <span className="termCode">SETTINGS · CONFIG</span></h1>
-          <p>模型、交易所密钥、实盘闸门、Agent 配置与用户管理集中在这里</p>
-        </div>
-      </div>
-      <div className="settingsSubNav" role="tablist" aria-label="系统设置导航">
-        <button type="button" role="tab" aria-selected={tab === "config"} className={tab === "config" ? "active" : ""} onClick={() => setActiveSettingsTab("config")}>
-          <Settings size={15} /> 系统配置
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "agents"} className={tab === "agents" ? "active" : ""} onClick={() => setActiveSettingsTab("agents")}>
-          <BrainCircuit size={15} /> Agent 配置
-        </button>
-        {isOwner && (
-          <button type="button" role="tab" aria-selected={tab === "users"} className={tab === "users" ? "active" : ""} onClick={() => setActiveSettingsTab("users")}>
-            <UserCog size={15} /> 用户管理
-          </button>
-        )}
-      </div>
-      <div className="settingsPage">
-        {tab === "agents"
-          ? <AgentProfilesPanel data={data} action={action} />
-          : tab === "users" && isOwner
-            ? <AdminPage data={data} action={action} ui={ui} embedded />
-            : <SystemConfigPanel data={data} action={action} ui={ui} />}
-      </div>
-    </div>
   );
 }
 
@@ -277,34 +213,46 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 
 function App() {
   const [active, setActive] = useState("chat");
-  const [activeSettingsTab, setActiveSettingsTab] = useState("config");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
+  const [activeSettingsTab, setActiveSettingsTab] = useState("base");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   function navigate(next) {
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
-    if (next === "marketAccount" || next === "market") { setActive("cockpit"); return; }
+    if (next === "chat") { setActiveWorkspaceTab("dialog"); setActive("chat"); return; }
+    if (next === "cockpit") { setActiveWorkspaceTab("overview"); setActive("cockpit"); return; }
+    if (next === "researchCenter") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
+    if (next === "riskCenter") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
+    if (next === "operationsCenter") { setActiveWorkspaceTab("overview"); setActive("operationsCenter"); return; }
+    if (next === "marketAccount" || next === "market") { setActiveWorkspaceTab("market"); setActive("cockpit"); return; }
+    if (next === "signalHub") { setActiveWorkspaceTab("orders"); setActive("cockpit"); return; }
+    if (next === "tradeJournal") { setActiveWorkspaceTab("journal"); setActive("cockpit"); return; }
+    if (next === "knowledgeBase") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
+    if (next === "capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
+    if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
+    if (next === "riskOverview") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
+    if (next === "riskSettings") { setActiveWorkspaceTab("rules"); setActive("riskCenter"); return; }
+    if (next === "eventsTasks" || next === "eventsTasks:events") { setActiveWorkspaceTab("events"); setActive("operationsCenter"); return; }
+    if (next === "eventsTasks:tasks") { setActiveWorkspaceTab("tasks"); setActive("operationsCenter"); return; }
+    if (next === "auditSystem") { setActiveWorkspaceTab("audit"); setActive("operationsCenter"); return; }
     // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
     if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
-    if (next === "systemSettings") setActiveSettingsTab("config");
+    if (next === "systemSettings:exchange") { setActiveSettingsTab("exchange"); setActive("systemSettings"); return; }
+    if (next === "systemSettings") setActiveSettingsTab("base");
     setActive(next);
   }
   const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
-    if (active === "cockpit") return <MarketAccountPage data={data} action={action} ui={ui} />;
-    if (active === "signalHub") return <SignalHubPage data={data} action={action} ui={ui} />;
-    if (active === "tradeJournal") return <TradeJournalPage data={data} action={action} ui={ui} />;
-    if (active === "knowledgeBase") return <KnowledgeWorkbenchPage data={data} action={action} ui={ui} />;
-    if (active === "capabilities") return <CapabilitiesPage data={data} action={action} ui={ui} />;
-    if (active === "eventsTasks") return <EventsTasksPage data={data} action={action} ui={ui} />;
-    if (active === "strategyAnalysis") return <StrategyAnalysisPageV2 data={data} action={action} ui={ui} />;
-    if (active === "riskOverview") return <RiskOverviewPage data={data} action={action} ui={ui} />;
-    if (active === "riskSettings") return <RiskSettingsPage data={data} action={action} ui={ui} />;
-    if (active === "auditSystem") return <AuditOpsPageV2 data={data} action={action} ui={ui} />;
-    if (active === "systemSettings") return <SystemSettingsPage data={data} action={action} ui={ui} activeSettingsTab={activeSettingsTab} setActiveSettingsTab={setActiveSettingsTab} />;
-    return <ChatPage data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, data, action]);
+    if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
+    return <AiTraderCenter data={data} action={action} ui={ui} />;
+  }, [active, activeSettingsTab, activeWorkspaceTab, data, action]);
 
   if (authRequired) return <LoginScreen login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
