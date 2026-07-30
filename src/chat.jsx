@@ -749,23 +749,6 @@ export function ChatPage({ data, action, ui, concept = false }) {
 
   return (
     <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""}`}>
-    {concept && view === "chat" && (
-      <aside className="conceptSessions">
-        <div className="conceptSessionsHead"><b>对话历史</b><button onClick={() => newSession()}><Plus size={13} /> 新对话</button></div>
-        <div className="conceptSessionSearch"><Search size={13}/><span>搜索对话…</span></div>
-        <small>今天</small>
-        <div className="conceptSessionList">
-          {sessions.map((s) => (
-            <button className={s.id === activeSessionId ? "active" : ""} key={s.id} onClick={() => switchSession(s.id)} title={s.title}>
-              <span>{(s.title || "未命名对话").slice(0, 18)}</span><small>{formatTime(s.updatedAt || s.createdAt)}</small>
-              <i title="删除" onClick={(e) => deleteSession(s.id, e)}>×</i>
-            </button>
-          ))}
-          {!sessions.length && <div className="conceptSessionEmpty">发送第一条消息后，会话会保存在这里。</div>}
-        </div>
-        {sessions.length > 0 && <button className="conceptClear" onClick={resetHistory}><Trash2 size={12}/> 清空历史</button>}
-      </aside>
-    )}
     <div className="agChat">
       <div className="agChatHead">
         <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? "与 AI 交易员对话" : "情报中心"}</div>
@@ -780,8 +763,8 @@ export function ChatPage({ data, action, ui, concept = false }) {
       </div>
 
       {view === "intel" ? <IntelCenter action={action} /> : (<>
-      {!concept && <div className="agHistBar">
-        <span className="agHistLabel">历史会话</span>
+      {<div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
+        <span className="agHistLabel">对话历史</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> 新建</button>
         {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title="清空全部对话历史（含早期 AI 助手混入的问答）"><Trash2 size={11} /> 清空</button>}
         {sessions.map((s) => (
