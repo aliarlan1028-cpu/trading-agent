@@ -30,8 +30,9 @@ set -euo pipefail
 cd "$REMOTE_DIR"
 grep -q '^HOST=0.0.0.0' .env || { echo "FATAL: .env 缺少 HOST=0.0.0.0（会 502），中止"; exit 1; }
 docker image inspect "$IMAGE:latest" >/dev/null 2>&1 && docker tag "$IMAGE:latest" "$IMAGE:rollback"
-docker compose build 2>&1 | tail -2
-docker compose up -d 2>&1 | tail -1
+docker compose build </dev/null 2>&1 | tail -2
+# up -d 必须断开 stdin/stdout/stderr：否则容器继承 ssh 的 stdout fd，ssh 等不到 EOF 会永久挂死（曾致部署"卡住"37 分钟）
+docker compose up -d </dev/null >/dev/null 2>&1 && echo "  up -d ok"
 REMOTE
 
 echo "==> [3/4] 验证（最多 90s：health 200 且 CPU 恢复正常）"
@@ -46,7 +47,7 @@ for i in \$(seq 1 18); do
   echo "  ... 第 \$i 次检查 HTTP \$code"
 done
 [ "\$ok" = "1" ] || { echo "健康检查未通过"; exit 1; }
-cpu=\$(docker stats --no-stream --format "{{.CPUPerc}}" \$(docker compose ps -q "$SERVICE") 2>/dev/null | tr -d '%' | cut -d. -f1)
+cpu=\$(docker stats --no-stream --format "{{.CPUPerc}}" \$(docker compose ps -q "$SERVICE" </dev/null) 2>/dev/null | tr -d '%' | cut -d. -f1)
 echo "  health 200 · CPU \${cpu:-?}%"
 if [ -n "\$cpu" ] && [ "\$cpu" -gt 80 ]; then echo "CPU 异常偏高(\${cpu}%)"; exit 1; fi
 exit 0
@@ -60,7 +61,7 @@ set -euo pipefail
 cd "$REMOTE_DIR"
 docker image inspect "$IMAGE:rollback" >/dev/null 2>&1 || { echo "无回滚镜像，需人工介入"; exit 1; }
 docker tag "$IMAGE:rollback" "$IMAGE:latest"
-docker compose up -d --force-recreate 2>&1 | tail -1
+docker compose up -d --force-recreate </dev/null >/dev/null 2>&1 && echo "  回滚 up -d ok"
 sleep 8
 code=\$(curl -s -o /dev/null -m 5 -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo 000)
 echo "回滚后 health: HTTP \$code"
