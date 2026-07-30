@@ -58,7 +58,7 @@ const navItems = [
   { id: "cockpit", label: "交易驾驶舱", short: "驾驶舱", icon: PieChart },
   { id: "researchCenter", label: "研究中心", short: "研究", icon: BookOpen },
   { id: "riskCenter", label: "风控中心", short: "风控", icon: ShieldCheck },
-  { id: "operationsCenter", label: "系统运营", short: "运营", icon: Settings }
+  { id: "operationsCenter", label: "系统运营", short: "运营", icon: Activity }
 ];
 
 function BrandLogo({ size = 34 }) {
