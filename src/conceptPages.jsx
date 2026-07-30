@@ -269,7 +269,7 @@ export function CapabilitiesConcept({ data, ui }) {
       </aside>
       <ConceptCard title="能力列表" meta={`${shown.length}/${items.length} 项`} className="cp2CapabilityTable" action={<button className="cp2Link" onClick={()=>setInstalling(true)}><Plus size={12}/> 安装能力</button>}>
         <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索能力名称"/></div>
-        <div className="cp2ScrollList"><ConceptTable columns={[{key:"name",label:"能力名称",render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{r.name}</button>},{key:"kind",label:"类型",render:r=>humanize(r.kind)},{key:"version",label:"版本",render:r=>r.version||"—"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?"已停用":"可用")}</Pill>},{key:"runs",label:"调用量",render:r=>r.runs??r.runCount??"—"}]} rows={shown} empty="无匹配能力"/></div>
+        <div className="cp2ScrollList tall"><ConceptTable columns={[{key:"name",label:"能力名称",render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{r.name}</button>},{key:"kind",label:"类型",render:r=>humanize(r.kind)},{key:"version",label:"版本",render:r=>r.version||"—"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?"已停用":"可用")}</Pill>},{key:"runs",label:"调用量",render:r=>r.runs??r.runCount??"—"}]} rows={shown} empty="无匹配能力"/></div>
       </ConceptCard>
       <ConceptCard title="能力详情" className="cp2CapabilityDetail">
         <div className="cp2CapabilityTitle"><span><Wrench size={18}/></span><div><b>{selected.name||"选择能力"}</b><small>{humanize(selected.kind)}</small></div><Pill tone={toneOf(selected.status)}>{humanize(selected.status,"可用")}</Pill></div>
@@ -329,15 +329,13 @@ export function LiveConcept({ data, action, ui }) {
   const checks=arr(data.readiness?.checks); const policies=arr(data.grayReleasePolicies); const drills=arr(data.drillRuns); const ready=checks.filter(c=>c.configured);
   return <div className="cp2Stack"><div className="cp2RiskBanner good"><ShieldCheck/><b>实盘就绪状态 {ready.length}/{checks.length}</b><span>所有关键安全闸通过后才会真实写单</span><span>配置完成度 <strong>{data.readiness?.configurationCompletionPct??0}%</strong></span><button onClick={()=>ui.openPanel("mandate")}>查看缺失项</button></div>
     <div className="cp2Grid liveTop">
-      <div className="cp2LiveMain">
-        <ConceptCard title="实盘写入配置"><LiveGrayPanel data={data} action={action} ui={ui}/></ConceptCard>
-        <ConceptCard title="灰度策略" meta="按币种小额放量验证"><div className="cp2GrayList">{policies.slice(0,6).map((p,index)=><div key={p.id||index}><b>{p.name||p.symbol||"灰度策略"}</b><Pill tone={p.enabled?"good":"warn"}>{p.enabled?"运行中":"未启用"}</Pill><small>单笔 {money(p.maxNotionalUsdt)}U · 人工确认 {p.requiresApproval===false?"否":"是"} · 样本 {p.sampleCount??0}</small></div>)}{!policies.length&&<div className="cp2Empty"><Gauge/><b>暂无灰度策略</b><span>在上方启用后显示。</span></div>}</div></ConceptCard>
-      </div>
-      <div className="cp2LiveRail">
-        <ConceptCard title="就绪检查"><div className="cp2Checklist vertical">{checks.slice(0,12).map(c=><span className={c.configured?"":"warn"} key={c.key}>{c.configured?<CheckCircle2/>:<AlertTriangle/>}{c.label}<small>{c.configured?"通过":"待配置"}</small></span>)}{!checks.length&&<span><AlertTriangle/>待配置就绪检查<small>—</small></span>}</div></ConceptCard>
-        <ConceptCard title="灰度进度"><ConceptTable compact columns={[{key:"createdAt",label:"时间",render:r=>formatDateTime(r.createdAt)},{key:"name",label:"演练",render:r=>r.name||r.scenario},{key:"status",label:"结果",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill>}]} rows={drills.slice(0,6)} empty="暂无演练记录"/></ConceptCard>
-        <ConceptCard title="回退条件"><div className="cp2Checklist vertical"><span><AlertTriangle/>连续订单失败</span><span><AlertTriangle/>对账不一致</span><span><AlertTriangle/>行情数据陈旧</span><span><AlertTriangle/>风控检查异常</span></div></ConceptCard>
-      </div>
+      <ConceptCard title="实盘写入配置"><LiveGrayPanel data={data} action={action} ui={ui}/></ConceptCard>
+      <ConceptCard title="就绪检查" meta={`${ready.length}/${checks.length} 通过`}><div className="cp2ScrollList" style={{maxHeight:520}}><div className="cp2Checklist vertical">{checks.map(c=><span className={c.configured?"":"warn"} key={c.key}>{c.configured?<CheckCircle2/>:<AlertTriangle/>}{c.label}<small>{c.configured?"通过":"待配置"}</small></span>)}{!checks.length&&<span><AlertTriangle/>待配置就绪检查<small>—</small></span>}</div></div></ConceptCard>
+    </div>
+    <div className="cp2Grid three liveBottom">
+      <ConceptCard title="灰度策略" meta="按币种小额放量验证"><div className="cp2GrayList">{policies.slice(0,6).map((p,index)=><div key={p.id||index}><b>{p.name||p.symbol||"灰度策略"}</b><Pill tone={p.enabled?"good":"warn"}>{p.enabled?"运行中":"未启用"}</Pill><small>单笔 {money(p.maxNotionalUsdt)}U · 人工确认 {p.requiresApproval===false?"否":"是"} · 样本 {p.sampleCount??0}</small></div>)}{!policies.length&&<div className="cp2Empty"><Gauge/><b>暂无灰度策略</b><span>在上方启用后显示。</span></div>}</div></ConceptCard>
+      <ConceptCard title="灰度进度"><ConceptTable compact columns={[{key:"createdAt",label:"时间",render:r=>formatDateTime(r.createdAt)},{key:"name",label:"演练",render:r=>r.name||r.scenario},{key:"status",label:"结果",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill>}]} rows={drills.slice(0,6)} empty="暂无演练记录"/></ConceptCard>
+      <ConceptCard title="回退条件"><div className="cp2Checklist vertical"><span><AlertTriangle/>连续订单失败</span><span><AlertTriangle/>对账不一致</span><span><AlertTriangle/>行情数据陈旧</span><span><AlertTriangle/>风控检查异常</span></div></ConceptCard>
     </div></div>;
 }
 

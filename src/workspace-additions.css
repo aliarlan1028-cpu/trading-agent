@@ -74,8 +74,8 @@
 @media (max-width: 1100px) { .chatKpiStrip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 720px) { .chatKpiStrip { grid-template-columns: repeat(2, 1fr); } }
 
-/* KPI 条塞进「对话/情报」Tab 行右侧(紧凑内联、字号调小) */
-.uxTabsExtra { margin-left: auto; align-self: center; display: flex; align-items: center; min-width: 0; padding-bottom: 4px; }
+/* KPI 条与「AI 交易员」标题同一行右侧(紧凑内联、字号调小) */
+.uxHeadExtra { align-self: flex-end; display: flex; align-items: flex-end; min-width: 0; padding-bottom: 2px; }
 .chatKpiBar { display: flex; align-items: center; gap: 22px; flex-wrap: nowrap; }
 .chatKpiBar .chatKpi { background: none; border: 0; padding: 0; display: flex; flex-direction: column; min-width: 0; }
 .chatKpiBar .chatKpiK { font-size: 10px; color: var(--text-4); line-height: 1.2; white-space: nowrap; }
@@ -86,4 +86,4 @@
 .chatKpiBar .chatKpiD { font-size: 9.5px; color: var(--text-4); white-space: nowrap; }
 .chatKpiBar .chatKpiD.pos { color: var(--pos); }
 .chatKpiBar .chatKpiD.neg { color: var(--neg); }
-@media (max-width: 1180px) { .uxTabsExtra { display: none; } }
+@media (max-width: 1180px) { .uxHeadExtra { display: none; } }
