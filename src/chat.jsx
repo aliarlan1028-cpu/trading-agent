@@ -471,25 +471,18 @@ function AgentRail({ data, action, ui, send }) {
       {/* 当前 Agent 状态 */}
       <div className="agCard">
         <div className="agHeadNum"><span className="agNum">2</span>当前 Agent 状态</div>
-        <div className="agMiniGrid">
-          {/* 授权边界卡：显示真实的授权字段（单笔风险/日亏上限）——旧 targetMonthlyPct 是后端从未写入的死字段，永远显示"—" */}
-          <div className="agMini"><div className="agMiniK">授权边界</div><div className="agMiniV mono">{hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/笔` : "—"}</div><div className="agMiniS">{hasMandate && mandate.maxDailyLossPct != null ? `日亏≤${mandate.maxDailyLossPct}%` : "未授权"}</div></div>
-          {(() => {
-            // 派生自动化状态:后端按执行链七层闸推导出单一结论,不再让用户从多个开关自己拼语义
-            const st = data.automationState;
-            if (!st) return <div className="agMini"><div className="agMiniK">状态</div><div className={`agMiniV sg ${autoOn ? "pos" : ""}`}>{autoOn ? "运行中" : "已暂停"}</div><div className="agMiniS">{system.killSwitch ? "已熔断" : "-"}</div></div>;
-            const tone = st.mode === "full_auto_small" ? "pos" : ["halted", "blocked", "live_blocked"].includes(st.mode) ? "neg" : "";
-            return (
-              <div className="agMini" title={st.detail}>
-                <div className="agMiniK">自动化状态</div>
-                <div className={`agMiniV sg ${tone}`}>{st.label}</div>
-                <div className="agMiniS" title={st.detail}>{st.blockers?.length ? st.blockers[0] + (st.blockers.length > 1 ? ` 等${st.blockers.length}项` : "") : st.detail}</div>
-              </div>
-            );
-          })()}
-          <div className="agMini"><div className="agMiniK">大盘结构</div><div className={`agMiniV sg ${judgePos ? "pos" : ""} ${judgeNeg ? "neg" : ""}`}>{judge}</div><div className="agMiniS">{ratio != null ? `BTC大户${ratio}` : "待同步"}</div></div>
-          <div className="agMini"><div className="agMiniK">下一步</div><div className="agMiniV sg" title={nextStep}>{nextStep.length > 8 ? `${nextStep.slice(0, 8)}…` : nextStep}</div><div className="agMiniS">{canOpen ? "已授权开仓" : "未授权开仓"}</div></div>
+        {/* 概念图对齐:当前 Agent 状态改为 label:value 行(映射真实字段),不再用四宫格 */}
+        <div className="agStatusRows">
+          {[
+            { k: "策略模式", v: plan?.strategy ? humanize(plan.strategy) : (data.automationState?.label || (autoOn ? "自主运行" : "待命")), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
+            { k: "市场环境", v: judge, tone: judgePos ? "pos" : judgeNeg ? "neg" : "" },
+            { k: "当前任务", v: latestRun.steps?.[0]?.title || (plan ? `${plan.symbol} 策略评估` : "等待巡检机会") },
+            { k: "授权边界", v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/笔 · 日亏≤${mandate.maxDailyLossPct ?? "-"}%` : "未授权" },
+            { k: "下一步", v: nextStep },
+            { k: "最近决策", v: trajSteps[0] && trajSteps[0].time !== "—" ? `${trajSteps[0].time} ${trajSteps[0].t}` : "—" }
+          ].map((r) => <div className="agStatusRow" key={r.k}><span>{r.k}</span><b className={`mono ${r.tone || ""}`} title={typeof r.v === "string" ? r.v : ""}>{r.v}</b></div>)}
         </div>
+        <div className="agStatusFoot"><ShieldCheck size={11} /> 受风控中心授权约束</div>
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
