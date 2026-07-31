@@ -304,7 +304,8 @@ export function CapabilitiesConcept({ data, ui }) {
 // 策略库:所有会输出交易主张(方向/入场/止损)的策略——蒸馏产出 / 导入 / LLM 生成,
 // 复用能力库同款三栏布局(筛选/列表/详情)保证不溢出、样式统一;底部嵌入回测研究。
 export function StrategyLibraryConcept({ data, action, ui }) {
-  const strategies=arr(data.knowledge?.tradingSkills).map((s,i)=>({...s,id:s.id||`str-${i}`,name:s.name||s.title||"未命名策略",origin:s.origin||(s.methodId?"蒸馏":/用户|手写|llm|idea/i.test(String(s.createdBy||s.source||""))?"LLM/手写":"内置")}));
+  // 策略库=蒸馏/手写产出的交易策略(tradingSkills)+ 导入的 kind==strategy 的 skill,由 kind 字段驱动分流。
+  const strategies=[...arr(data.knowledge?.tradingSkills),...arr(data.skills).filter(s=>s.kind==="strategy")].map((s,i)=>({...s,id:s.id||`str-${i}`,name:s.name||s.title||"未命名策略",origin:s.origin||(s.methodId?"蒸馏":s.userAuthored||/用户|手写|llm|idea/i.test(String(s.createdBy||s.source||""))?"LLM/手写":/imported|uploaded|github|clawhub/i.test(String(s.source||""))?"导入":"内置")}));
   const isActive=s=>/active|trusted|live|adopted/i.test(String(s.status));
   const isValidating=s=>/probation|paper|compiled|pending|trial|validating|candidate/i.test(String(s.status));
   const isRetired=s=>/retired|superseded|disabled|compile_failed|replaced|reject/i.test(String(s.status));

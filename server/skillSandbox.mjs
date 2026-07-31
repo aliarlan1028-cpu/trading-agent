@@ -31,6 +31,8 @@ export async function fetchSkillPackage(db, payload = {}) {
   const skill = {
     id: skillId,
     name: payload.name || manifest.name || path.basename(payload.sourceUrl || skillId),
+    // kind:决定落到策略库还是能力库——显式 payload.kind > manifest 判定 > 默认工具。
+    kind: payload.kind === "strategy" || manifest.kind === "strategy" ? "strategy" : "tool",
     source: payload.sourceUrl || "uploaded",
     version: manifest.version || "0.1.0",
     format: manifest.format || "codex",
@@ -76,9 +78,17 @@ async function readSkillManifest(dir) {
     const version = text.match(/version:\s*([^\s]+)/i)?.[1] || lock?.version || origin?.version;
     const permissions = [...text.matchAll(/permission[s]?:\s*([a-z0-9_., -]+)/gi)]
       .flatMap((match) => match[1].split(/[,\s]+/).filter(Boolean));
+    // kind:显式声明优先(front-matter `kind: strategy|tool`),否则按正文判定——
+    // 会输出交易主张(方向/入场/止损)的归策略库,否则归能力库(工具)。
+    const declaredKind = (text.match(/^\s*kind:\s*(strategy|tool|策略|工具)/im)?.[1] || origin?.kind || "").toLowerCase();
+    const looksStrategy = /入场|进场|止损|止盈|做多|做空|\bentry\b|\bstop\s?loss\b|\btake\s?profit\b|\blong\b|\bshort\b|策略信号/i.test(text);
+    const kind = declaredKind === "strategy" || declaredKind === "策略" ? "strategy"
+      : declaredKind === "tool" || declaredKind === "工具" ? "tool"
+      : looksStrategy ? "strategy" : "tool";
     return {
       name: origin?.name || name,
       version,
+      kind,
       permissions: permissions.length ? permissions : origin?.permissions,
       format: origin || lock || /clawhub/i.test(text) ? "clawhub" : "codex",
       entryFile: path.relative(dir, entryPath),

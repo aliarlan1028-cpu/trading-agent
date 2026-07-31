@@ -198,6 +198,7 @@ export function seedSkillTools(db) {
       id: tool.skillId,
       name: tool.name,
       toolName: tool.toolName,
+      kind: "tool", // 原生技能=Agent 可调用的分析/执行工具,归能力库
       native: true,
       source: "built-in",
       version: tool.version || "1.0.0",
