@@ -291,6 +291,23 @@ function MobileRisk({ data, action, ui, view = "all" }) {
         <div className="mBudgetTop"><span>剩余亏损预算</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : "未授权"}</b></div>
         <div className="mBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
       </div>}
+      {showOverview && (() => {
+        // 风险事件处理:按标题折叠去重、显条数,逐组/一键标记已处理(接 close / close-all)。移动版此前完全没有。
+        const openInc = (data.riskIncidents || []).filter((i) => i.status === "open");
+        const incGroups = [];
+        for (const inc of openInc) { const k = inc.title || inc.source || "风险事件"; const g = incGroups.find((x) => x.key === k); if (g) { g.count += 1; g.items.push(inc); } else incGroups.push({ key: k, count: 1, items: [inc] }); }
+        return <div className="mCard">
+          <div className="mCardHead"><b>风险事件</b><span className={openInc.length ? "mIncCount on" : "mIncCount"}>{openInc.length ? `${openInc.length} 项未处理` : "全部已处理"}</span></div>
+          {!openInc.length && <div className="mEmpty">当前没有未处理的风险事件。</div>}
+          {incGroups.map((g) => (
+            <div className="mIncRow" key={g.key}>
+              <div className="mIncL"><b>{g.key}</b>{g.count > 1 && <span className="mIncX">×{g.count}</span>}</div>
+              <button className="mIncBtn" onClick={async () => { for (const inc of g.items) await action(`/api/risk/incidents/${inc.id}/close`, {}); ui.notify?.("已处理"); }}>{g.count > 1 ? `处理 ${g.count} 项` : "标记已处理"}</button>
+            </div>
+          ))}
+          {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>全部标记已处理 ›</button>}
+        </div>;
+      })()}
       {showSettings && <div className="mCard">
         <div className="mCardHead"><b>授权委托 MANDATE</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge></div>
         <div className="mMandList">{mandRows.map(([k, v, tone]) => <div className="mMandRow" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}</div>
