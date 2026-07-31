@@ -839,6 +839,20 @@ function MobileChatStatus({ data }) {
 
 // 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
 // W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
+// 风控中心(移动版):把风控总览 + 风控设置合并到一个导航项,顶部 Tab 切换。
+function MobileRiskHub({ data, action, ui }) {
+  const [tab, setTab] = useState("overview");
+  return (
+    <div className="mHub">
+      <div className="mHubTabs">
+        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>风控总览</button>
+        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>风控设置</button>
+      </div>
+      <MobileRisk data={data} action={action} ui={ui} view={tab} />
+    </div>
+  );
+}
+
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
 function MobileStrategy({ data }) {
   const strategies = [...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
@@ -873,14 +887,10 @@ function MobileStrategy({ data }) {
 
 const mobileNav = [
   { id: "chat", label: "AI 交易员", code: "ALPHA-01", icon: Bot },
-  { id: "signalHub", label: "信号中心", code: "SIGNALS · BOARD", icon: Zap },
   { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
-  { id: "tradeJournal", label: "交易日志", code: "TRADE · JOURNAL", icon: ClipboardList },
+  { id: "riskHub", label: "风控中心", code: "RISK · CONTROL", icon: ShieldCheck },
   { id: "knowledgeBase", label: "知识库", code: "KNOWLEDGE", icon: BookOpen },
   { id: "strategyLib", label: "策略库", code: "STRATEGY · LIB", icon: Rocket },
-  { id: "capabilities", label: "能力库", code: "CAPABILITY · LIB", icon: Sparkles },
-  { id: "riskOverview", label: "风控总览", code: "RISK · VIEW", icon: ShieldCheck },
-  { id: "riskSettings", label: "风控设置", code: "RISK · CFG", icon: SlidersHorizontal },
   { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "auditSystem", label: "审计", code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
@@ -983,26 +993,18 @@ export function MobileApp({ api }) {
   let content = null;
   if (route === "chat") {
     content = <div className="content mChatContent"><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} /></div>;
-  } else if (route === "signalHub") {
-    content = <div className="content mSubContent"><SignalHubPage data={data} action={action} ui={ui} /></div>;
-  } else if (route === "tradeJournal") {
-    content = <div className="content mSubContent"><TradeJournalPage data={data} /></div>;
   } else if (route === "cockpit") {
     content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
+  } else if (route === "riskHub") {
+    content = <MobileRiskHub data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
     content = <MobileTasks data={data} action={action} ui={ui} />;
   } else if (route === "knowledgeBase") {
     content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
   } else if (route === "strategyLib") {
     content = <div className="content mSubContent"><MobileStrategy data={data} /></div>;
-  } else if (route === "capabilities") {
-    content = <MobileKnowledge data={data} action={action} ui={ui} view="capabilities" />;
-  } else if (route === "riskOverview") {
-    content = <MobileRisk data={data} action={action} ui={ui} view="overview" />;
-  } else if (route === "riskSettings") {
-    content = <MobileRisk data={data} action={action} ui={ui} view="settings" />;
   } else if (route === "auditSystem") {
     content = <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
