@@ -8474,7 +8474,17 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mReconnect { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font: 700 11px "Space Grotesk"; background: #FBEFDD; color: #B17724; }
 .mReconnect .pulseDot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulseDot 1.4s infinite; }
 @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
-.mMain2 { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(30px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+.mMain2 { position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(30px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+/* 下拉刷新指示条(藏在容器顶部上方,靠 translateY 露出) */
+.mPtr { position: absolute; top: -44px; left: 0; right: 0; height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; color: #8a8172; font-size: 12px; pointer-events: none; transition: opacity .15s; }
+.mPtr svg { color: #D06A22; }
+.mSpin { animation: mSpin .8s linear infinite; }
+@keyframes mSpin { to { transform: rotate(360deg); } }
+/* 底部弹层拖拽把手 + 按压微动效 */
+.mSheetGrip { display: flex; justify-content: center; padding: 9px 0 3px; touch-action: none; }
+.mSheetGrip span { width: 38px; height: 4px; border-radius: 3px; background: #D8CFBE; }
+.mSymPills button, .mSheetRow, .mIncBtn, .mSymMore { transition: transform .1s ease, background .12s ease; }
+.mSymPills button:active, .mSheetRow:active, .mIncBtn:active, .mSymMore:active, .mCard.mTap:active { transform: scale(.96); }
 .mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; flex-direction: column; }
 .mMain2.mMainChat > .mChatContent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mChatContent > .mChatStatus { flex: none; }

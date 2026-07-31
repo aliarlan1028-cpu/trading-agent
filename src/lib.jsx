@@ -236,6 +236,16 @@ export function isNativeApp() {
   return Boolean(window.Capacitor?.isNativePlatform?.());
 }
 
+// 触觉反馈:只在原生 App 上震动(Web 无操作、失败静默)。动态引入避免影响 Web 包。
+export async function haptic(style = "light") {
+  try {
+    if (!isNativeApp()) return;
+    const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+    const map = { light: ImpactStyle.Light, medium: ImpactStyle.Medium, heavy: ImpactStyle.Heavy };
+    await Haptics.impact({ style: map[style] || ImpactStyle.Light });
+  } catch { /* 无 haptics 或不支持:忽略 */ }
+}
+
 function defaultApiBase() {
   const nativeFallback = nativeApiFallback();
   const stored = localStorage.getItem("agent_api_base") || "";

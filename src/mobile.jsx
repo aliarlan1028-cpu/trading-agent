@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -31,7 +31,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { apiUrl, authHeaders, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
@@ -662,11 +662,18 @@ function useMobileInstruments() {
 // 移动版底部弹层选币器:搜索全部永续合约、点选切换、可加自选。替代原来只有 4 个硬编码的 pill。
 function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) {
   const [q, setQ] = useState("");
+  const [drag, setDrag] = useState(0);
+  const startY = useRef(null);
   const qU = q.trim().toUpperCase();
   const list = (instruments || []).filter((s) => !qU || s.includes(qU)).slice(0, 200);
+  // 下滑关闭手势:拖住把手往下拉超过阈值即关闭。
+  const dStart = (e) => { startY.current = e.touches[0].clientY; };
+  const dMove = (e) => { if (startY.current == null) return; const dy = e.touches[0].clientY - startY.current; if (dy > 0) setDrag(dy); };
+  const dEnd = () => { const close = drag > 90; startY.current = null; if (close) { haptic("light"); onClose(); } else setDrag(0); };
   return (
     <div className="mSheetOverlay" onClick={onClose}>
-      <div className="mSheet" onClick={(e) => e.stopPropagation()}>
+      <div className="mSheet" onClick={(e) => e.stopPropagation()} style={{ transform: drag ? `translateY(${drag}px)` : "", transition: startY.current == null ? "transform .22s ease-out" : "none" }}>
+        <div className="mSheetGrip" onTouchStart={dStart} onTouchMove={dMove} onTouchEnd={dEnd}><span /></div>
         <div className="mSheetHead"><b>选择币对</b><button className="mSheetClose" onClick={onClose} aria-label="关闭"><ChevronDown size={20} /></button></div>
         <div className="mSheetSearch"><Search size={15} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入币种，如 BTC / SOL" /></div>
         <div className="mSheetList">
@@ -915,6 +922,39 @@ function NavDrawer({ open, route, onNavigate, onClose, data }) {
   );
 }
 
+// 下拉刷新:滚到顶再下拉超过阈值 → 触发 refresh + 轻触觉。原生 App 的核心手感。
+function PullToRefresh({ onRefresh, className, children }) {
+  const ref = useRef(null);
+  const startY = useRef(null);
+  const [pull, setPull] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const THRESHOLD = 66;
+  const onStart = (e) => { startY.current = (ref.current && ref.current.scrollTop <= 0 && !busy) ? e.touches[0].clientY : null; };
+  const onMove = (e) => {
+    if (startY.current == null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 0) { if (e.cancelable) e.preventDefault(); setPull(Math.min(dy * 0.5, 88)); }
+    else setPull(0);
+  };
+  const onEnd = async () => {
+    if (startY.current == null) return;
+    const shouldRefresh = pull >= THRESHOLD && !busy;
+    startY.current = null;
+    if (shouldRefresh) { setBusy(true); setPull(46); haptic("light"); try { await onRefresh?.(); } catch { /* 忽略 */ } setBusy(false); }
+    setPull(0);
+  };
+  return (
+    <main ref={ref} className={className} onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd}
+      style={{ transform: pull ? `translateY(${pull}px)` : "", transition: startY.current == null ? "transform .24s cubic-bezier(.2,.8,.2,1)" : "none" }}>
+      <div className="mPtr" style={{ opacity: pull || busy ? 1 : 0 }}>
+        <RefreshCw size={16} className={busy ? "mSpin" : ""} style={{ transform: busy ? "" : `rotate(${Math.min(pull * 4, 360)}deg)` }} />
+        <span>{busy ? "刷新中…" : pull >= THRESHOLD ? "松开刷新" : "下拉刷新"}</span>
+      </div>
+      {children}
+    </main>
+  );
+}
+
 export function MobileApp({ api }) {
   const { data, action, toast, busy, notify, download, refresh, connectionError } = api;
   const [route, setRoute] = useState("chat");
@@ -928,6 +968,7 @@ export function MobileApp({ api }) {
   }, [route]);
 
   function navigate(next) {
+    haptic("light");
     if (mobileNav.some((n) => n.id === next)) { setRoute(next); setSubPage(""); setDrawer(false); return; }
     if (next === "positions" || next === "marketAccount") { setRoute("cockpit"); setSubPage(next); setDrawer(false); return; }
     if (next === "systemSettings") { setRoute("systemSettings"); setSubPage(""); setDrawer(false); return; }
@@ -980,7 +1021,9 @@ export function MobileApp({ api }) {
   return (
     <div className="mShell2">
       <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
-      <main className={`mMain2 ${route === "chat" && !subPage ? "mMainChat" : ""}`}>{content}</main>
+      {route === "chat" && !subPage
+        ? <main className="mMain2 mMainChat">{content}</main>
+        : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
       <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} />
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
