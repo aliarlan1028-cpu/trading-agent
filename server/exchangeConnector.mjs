@@ -565,8 +565,12 @@ function upsertExchangePosition(db, key, fields) {
 }
 
 function pruneExchangePositions(db, exchange, seenKeys) {
+  // 权威 REST 快照应用后:剪掉该交易所里"快照没有"的非引擎持仓——不止 exchange_rest,
+  // 也含 WS 补记的 exchange_ws 外部/手动仓(否则漏收平仓回执的 WS 仓会成幽灵仓,size≠0 逃过空槽清扫)。
+  // 引擎托管仓(execution_engine)不在此剪,由 reconcileAccount 逐仓比对告警。
   db.positions = (db.positions || []).filter((position) => {
-    if (position.source !== "exchange_rest" || position.exchange !== exchange) return true;
+    if (position.exchange !== exchange) return true;
+    if (position.source !== "exchange_rest" && position.source !== "exchange_ws") return true;
     return seenKeys.has(position.exchangePositionKey);
   });
 }
