@@ -31,7 +31,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { apiUrl, authHeaders, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
@@ -628,13 +628,54 @@ function MobileAccountHealth({ data, action }) {
   );
 }
 
+// 全部 OKX/币安 USDT 永续合约清单(真实拉取),供移动版行情搜索选币用。
+function useMobileInstruments() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    fetch(apiUrl("/api/market/instruments"), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : { instruments: [] }))
+      .then((d) => { if (alive) setList((d.instruments || []).map((i) => i.symbol || i).filter(Boolean)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return list;
+}
+
+// 移动版底部弹层选币器:搜索全部永续合约、点选切换、可加自选。替代原来只有 4 个硬编码的 pill。
+function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) {
+  const [q, setQ] = useState("");
+  const qU = q.trim().toUpperCase();
+  const list = (instruments || []).filter((s) => !qU || s.includes(qU)).slice(0, 200);
+  return (
+    <div className="mSheetOverlay" onClick={onClose}>
+      <div className="mSheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mSheetHead"><b>选择币对</b><button className="mSheetClose" onClick={onClose} aria-label="关闭"><ChevronDown size={20} /></button></div>
+        <div className="mSheetSearch"><Search size={15} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入币种，如 BTC / SOL" /></div>
+        <div className="mSheetList">
+          {list.map((s) => (
+            <button key={s} className={`mSheetRow ${s === current ? "on" : ""}`} onClick={() => { onPick(s); onClose(); }}>
+              <span>{s}</span>
+              {onAddWatch && <span className="mSheetAdd" role="button" onClick={(e) => { e.stopPropagation(); onAddWatch(s); }}><Plus size={15} /></span>}
+            </button>
+          ))}
+          {!list.length && <div className="mEmpty">{instruments && instruments.length ? "无匹配币对" : "合约清单加载中…"}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MobileMarket({ data, action, ui }) {
   const [tf, setTf] = useState("1H");
   const [sym, setSym] = useState(null);
+  const [sheet, setSheet] = useState(false);
+  const instruments = useMobileInstruments();
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((a) => a.readEnabled);
   const markets = (data.markets || []).filter((m) => m && m.symbol);
-  const market = markets.find((m) => m.symbol === sym) || markets[0] || { symbol: "BTC/USDT", candles: [] };
+  // 选中的币对可能不在已同步的 markets 里(从全量清单选的),用最小对象兜底让图表/标题正常切换。
+  const market = markets.find((m) => m.symbol === sym) || (sym ? { symbol: sym, candles: [] } : markets[0]) || { symbol: "BTC/USDT", candles: [] };
   const positions = data.positions || [];
   const equity = portfolio.totalEquityUsdt;
   const avail = portfolio.availableMarginUsdt;
@@ -667,7 +708,16 @@ function MobileMarket({ data, action, ui }) {
             </>
           )}
         </LivePrice>
-        {markets.length > 1 && <div className="mSymPills">{markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}</div>}
+        <div className="mSnapRow">
+          <span>24h高<b className="mono">{market.high24h != null ? displayMoney(market.high24h, 2) : "—"}</b></span>
+          <span>24h低<b className="mono">{market.low24h != null ? displayMoney(market.low24h, 2) : "—"}</b></span>
+          <span>成交额<b className="mono">{market.volume24h ? String(market.volume24h) : "—"}</b></span>
+          <span>资金费率<b className="mono">{market.fundingRate == null ? "—" : `${Number(market.fundingRate) >= 0 ? "+" : ""}${Number(market.fundingRate).toFixed(4)}%`}</b></span>
+        </div>
+        <div className="mSymPills">
+          {markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}
+          <button className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> 全部币对</button>
+        </div>
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
       </div>
@@ -692,6 +742,7 @@ function MobileMarket({ data, action, ui }) {
         </svg>
         <div className="mMarginInfo"><b>保证金率</b><small>{marginRate != null ? `已用保证金 ${marginRate.toFixed(1)}%` : "连接账户后显示"}</small></div>
       </div>
+      {sheet && <MobilePairSheet instruments={instruments} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`已加入自选 ${s}`); }} />}
     </div>
   );
 }

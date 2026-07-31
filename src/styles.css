@@ -8537,8 +8537,28 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mMktChg { font: 600 13px "IBM Plex Mono"; }
 .mMktPrice { font: 600 28px "IBM Plex Mono"; color: #1E1B16; margin: 8px 0 10px; }
 .mSymPills, .mTfPills { display: inline-flex; gap: 4px; background: #F1EADF; border-radius: 8px; padding: 3px; margin-bottom: 10px; }
+.mSymPills { flex-wrap: wrap; }
 .mSymPills button, .mTfPills button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; font: 700 12px "Space Grotesk"; color: #8a8172; cursor: pointer; }
 .mSymPills button.active, .mTfPills button.active { background: #1E1B16; color: #F5E9DB; }
+.mSymMore { display: inline-flex; align-items: center; gap: 4px; color: #D06A22 !important; }
+/* 行情 24h 快照条 */
+.mSnapRow { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; margin: 2px 0 10px; }
+.mSnapRow > span { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: #8a8172; border-bottom: 1px solid #EDE7DB; padding-bottom: 5px; }
+.mSnapRow > span b { color: #1E1B16; font-size: 11.5px; }
+/* 移动版底部弹层选币器 */
+.mSheetOverlay { position: fixed; inset: 0; z-index: 60; background: rgba(30,27,22,.38); display: flex; align-items: flex-end; }
+.mSheet { width: 100%; max-height: 78vh; background: #FBF9F4; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; box-shadow: 0 -6px 24px rgba(62,45,24,.18); animation: mSheetUp .18s ease-out; }
+@keyframes mSheetUp { from { transform: translateY(24px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+.mSheetHead { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; }
+.mSheetHead b { font-size: 15px; color: #1E1B16; }
+.mSheetClose { border: 0; background: transparent; color: #8a8172; padding: 4px; }
+.mSheetSearch { display: flex; align-items: center; gap: 8px; margin: 0 16px 8px; padding: 10px 12px; background: #fff; border: 1px solid #E3DCCE; border-radius: 10px; color: #8a8172; }
+.mSheetSearch input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 14px; color: #1E1B16; }
+.mSheetList { overflow-y: auto; padding: 0 8px 16px; -webkit-overflow-scrolling: touch; }
+.mSheetRow { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; padding: 13px 10px; border-radius: 9px; font: 600 14px "Space Grotesk"; color: #2c281f; cursor: pointer; }
+.mSheetRow.on { background: #F6ECDF; color: #A9531A; }
+.mSheetRow:active { background: #F1EADF; }
+.mSheetAdd { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: #F1EADF; color: #D06A22; }
 .mKline { height: 200px; border-radius: 8px; overflow: hidden; background: #fff; }
 .mKline .proChart { height: 200px; width: 100%; }
 .mKlineEmpty { height: 120px; display: grid; place-items: center; color: #a89e8a; font-size: 12px; border: 1px dashed #E3DCCE; border-radius: 8px; }
