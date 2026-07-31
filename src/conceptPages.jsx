@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot, CalendarDays,
-  CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, Eye,
+  CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Clock3, Database, Eye,
   FileText, Filter, Gauge, GitBranch, KeyRound, Layers3, ListChecks,
   LockKeyhole, Play, Plus, RefreshCw, Search, Server, ShieldCheck,
   SlidersHorizontal, Sparkles, Target, TrendingUp, Users, WalletCards,
@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SystemConfigPanel } from "./panels.jsx";
-import { displayMoney, displayPct, formatDateTime, formatTime, humanize, TradingViewChart } from "./lib.jsx";
+import { apiUrl, authHeaders, displayMoney, displayPct, formatDateTime, formatTime, humanize, TradingViewChart } from "./lib.jsx";
 import "./conceptPages.css";
 import "./conceptSettings.css";
 
@@ -118,7 +118,12 @@ export function IntelligenceConcept({ data, action, ui }) {
           ? <div className="cp2AssetRows">{activeSymbols.length ? activeSymbols.map((symbol)=>{const im=num(active.impact);return <div key={symbol}><span>{symbol}</span><Pill tone={im>=80?"bad":im>=50?"warn":"neutral"}>{im>=80?"高":im>=50?"中度":"轻度"}</Pill><small>{active.intel?.sentiment||"—"}</small></div>;}) : <div className="cp2Empty" style={{minHeight:60}}><b>该情报暂无明确关联资产</b><span>接入并富化事件源后自动标注。</span></div>}</div>
           : <div className="cp2AssetRows">{relatedPlans.length ? relatedPlans.slice(0,6).map((p)=><div key={p.id}><span>{p.symbol}</span><Pill tone={toneOf(p.status)}>{humanize(p.status)}</Pill><small>{humanize(p.direction,"—")}</small></div>) : <div className="cp2Empty" style={{minHeight:60}}><b>暂无关联交易计划</b><span>该情报涉及币种当前无在途计划。</span></div>}</div>}
         <div className="cp2Relation"><b>关联结论</b><p>{active.summary || active.description || "当前情报尚未形成可执行结论，只作为 AI 分析上下文。"}</p></div>
-        <button className="cp2Secondary" onClick={() => ui.setActive("chat")}>加入上下文</button>
+        <button className="cp2Secondary" disabled={!active.title} onClick={async () => {
+          // 把这条情报写入 AI 交易员的记忆(决策时注入系统提示词),让 Agent 在后续分析中考虑它。
+          const body = `情报｜${active.title}｜${active.summary || active.description || ""}｜关联资产：${activeSymbols.join("、") || "—"}｜影响：${num(active.impact) >= 80 ? "高" : num(active.impact) >= 50 ? "中" : "低"}`;
+          await action("/api/agent/memory", { layer: "semantic", title: `情报上下文：${active.title}`, content: body.slice(0, 500), tags: ["情报", "上下文"], source: "intel" });
+          ui.notify?.("已加入 AI 交易员分析上下文");
+        }}>加入上下文</button>
         <button className="cp2Primary" onClick={() => action("/api/event-sources/refresh", {})}>刷新情报</button>
       </ConceptCard>
     </aside>
@@ -134,6 +139,42 @@ function marketRows(data) {
     change: item.changePct ?? item.change24hPct,
     volume: item.volume24h ?? item.quoteVolume
   }));
+}
+
+// 全部 OKX/币安 USDT 永续合约清单(真实拉取,含 ~400 个交易对),供行情选币与加自选使用。
+function useInstruments() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    fetch(apiUrl("/api/market/instruments"), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : { instruments: [] }))
+      .then((d) => { if (alive) setList((d.instruments || []).map((i) => i.symbol || i).filter(Boolean)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return list;
+}
+
+// 搜索式币对选择器:输入币种即时过滤,支持全部永续合约;点选回填。替代原生 prompt 与 12 个的硬编码下拉。
+function PairPicker({ instruments, value, onPick, label = "选择币对", triggerClass = "cp2PairTrigger" }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const qU = q.trim().toUpperCase();
+  const list = (instruments || []).filter((s) => !qU || s.includes(qU)).slice(0, 80);
+  const close = () => { setOpen(false); setQ(""); };
+  return <div className="cp2PairPicker">
+    <button type="button" className={triggerClass} onClick={() => setOpen((o) => !o)}>{value || label}<ChevronDown size={13}/></button>
+    {open && <>
+      <div className="cp2PairBackdrop" onClick={close}/>
+      <div className="cp2PairMenu">
+        <div className="cp2Search"><Search size={13}/><input autoFocus className="cp2SearchInput" value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入币种，如 BTC / SOL"/></div>
+        <div className="cp2PairList">
+          {list.map((s) => <button type="button" key={s} className={s === value ? "on" : ""} onClick={() => { onPick(s); close(); }}>{s}</button>)}
+          {!list.length && <span className="cp2PairEmpty">{instruments && instruments.length ? "无匹配币对" : "合约清单加载中…"}</span>}
+        </div>
+      </div>
+    </>}
+  </div>;
 }
 
 export function TradingOverviewConcept({ data, ui }) {
@@ -171,20 +212,22 @@ export function TradingOverviewConcept({ data, ui }) {
 }
 
 export function MarketConcept({ data, action }) {
-  const markets = marketRows(data); const watchlist = arr(data.watchlist); const [symbol, setSymbol] = useState(markets[0]?.symbol || "BTC/USDT"); const [tf, setTf] = useState("1h");
+  const markets = marketRows(data); const watchlist = arr(data.watchlist); const instruments = useInstruments();
+  const [symbol, setSymbol] = useState(markets[0]?.symbol || watchlist[0] || "BTC/USDT"); const [tf, setTf] = useState("1h");
   const selected = markets.find((item) => item.symbol === symbol) || markets[0] || {};
-  const addWatch = () => {
-    const value = window.prompt("输入要加入自选的交易对，例如 BTC/USDT");
-    if (value?.trim()) action("/api/watchlist", { symbol: value.trim().toUpperCase() });
-  };
+  // 自选列表按真实的 watchlist 逐条渲染(带上有的行情),让历史误加的脏交易对(如「/USDT」)也能被移除。
+  const allMarkets = arr(data.markets);
+  const wlSymbols = watchlist.length ? watchlist : markets.map((m) => m.symbol);
+  const wlRows = wlSymbols.map((sym) => { const m = markets.find((x) => x.symbol === sym) || allMarkets.find((x) => x.symbol === sym) || {}; return { id: sym, symbol: sym, price: m.price ?? m.last, change: m.changePct ?? m.change24hPct }; });
+  const addWatch = (sym) => { if (sym) action("/api/watchlist", { symbol: sym }); };
   return <div className="cp2MarketLayout">
     <ConceptCard className="cp2MainChart" title={selected.symbol || symbol} meta={`${tf} · 公开行情`} action={<div className="cp2FormActions"><button className="cp2Secondary" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}>手动对账</button><button className="cp2IconButton" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={13}/></button></div>}>
-      <div className="cp2ChartToolbar"><select value={symbol} onChange={(event) => setSymbol(event.target.value)}>{markets.length ? markets.map((item) => <option key={item.symbol}>{item.symbol}</option>) : <option>BTC/USDT</option>}</select>{["1m","5m","15m","1h","4h","1D"].map((name) => <button className={name === tf ? "active" : ""} onClick={() => setTf(name)} key={name}>{name}</button>)}</div>
+      <div className="cp2ChartToolbar"><PairPicker instruments={instruments} value={symbol} onPick={setSymbol}/>{["1m","5m","15m","1h","4h","1D"].map((name) => <button className={name === tf ? "active" : ""} onClick={() => setTf(name)} key={name}>{name}</button>)}</div>
       <div className="cp2Quote large"><b>{selected.price == null ? "待同步" : money(selected.price)}</b><Pill tone={num(selected.change) >= 0 ? "good" : "bad"}>{selected.change == null ? "—" : `${num(selected.change)>=0?"+":""}${num(selected.change).toFixed(2)}%`}</Pill></div>
       <div className="cp2CandleBox tall"><TradingViewChart symbol={symbol} interval={{ "1m": "1m", "5m": "5m", "15m": "15m", "1h": "60", "4h": "240", "1D": "D" }[tf] || "60"}/></div>
     </ConceptCard>
     <aside className="cp2MarketRail">
-      <ConceptCard title="自选列表" meta={`${watchlist.length || markets.length} 个`} action={<button className="cp2Link" onClick={addWatch}><Plus size={12}/> 添加</button>}><ConceptTable compact columns={[{key:"symbol",label:"交易对",render:r=><button className="cp2Link" onClick={()=>setSymbol(r.symbol)}>{r.symbol}</button>},{key:"price",label:"价格",render:r=>money(r.price)},{key:"change",label:"24h",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change)>=0?"+":""}${num(r.change).toFixed(2)}%`}</span>},{key:"remove",label:"",render:r=>watchlist.length>1&&watchlist.includes(r.symbol)?<button className="cp2IconButton" title="移除自选" onClick={()=>action(`/api/watchlist/${encodeURIComponent(r.symbol)}`,{},"DELETE")}>×</button>:null}]} rows={markets.filter(item=>!watchlist.length||watchlist.includes(item.symbol))} empty="行情待同步"/></ConceptCard>
+      <ConceptCard title="自选列表" meta={`${wlRows.length} 个`} action={<PairPicker instruments={instruments} value="" label="＋ 添加" onPick={addWatch} triggerClass="cp2Link"/>}><ConceptTable compact columns={[{key:"symbol",label:"交易对",render:r=><button className="cp2Link" onClick={()=>setSymbol(r.symbol)}>{r.symbol}</button>},{key:"price",label:"价格",render:r=>money(r.price)},{key:"change",label:"24h",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change)>=0?"+":""}${num(r.change).toFixed(2)}%`}</span>},{key:"remove",label:"",render:r=>watchlist.length>1&&watchlist.includes(r.symbol)?<button className="cp2IconButton" title="移除自选" onClick={()=>action(`/api/watchlist/${encodeURIComponent(r.symbol)}`,{},"DELETE")}>×</button>:null}]} rows={wlRows} empty="行情待同步"/></ConceptCard>
       <ConceptCard title="市场快照"><div className="cp2Kv"><span>24h 高<b>{money(selected.high24h ?? selected.high)}</b></span><span>24h 低<b>{money(selected.low24h ?? selected.low)}</b></span><span>成交额<b>{money(selected.volume)}</b></span><span>资金费率<b>{selected.fundingRate == null ? "待同步" : displayPct(selected.fundingRate)}</b></span></div></ConceptCard>
     </aside>
     <div className="cp2MarketBottom">
