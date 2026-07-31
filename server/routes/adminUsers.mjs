@@ -123,6 +123,21 @@ export function registerAdminUserRoutes(app, ctx) {
     res.json({ message: "管理员密码已更新，已退出当前登录，请用新密码重新登录。", logoutRequired: true, status: getConfigStatus(db) });
   });
 
+  // 风控阈值(运行时可调,写 runtimeConfig 并同步 process.env → 各风控读取处即时生效)。
+  app.get("/api/admin/risk-thresholds", requirePermission("admin:system"), async (_req, res) => {
+    const { currentRiskThresholds, RISK_THRESHOLD_DEFS } = await import("../riskThresholds.mjs");
+    res.json({ values: currentRiskThresholds(), defs: RISK_THRESHOLD_DEFS.map(({ toEnv, fromEnv, ...d }) => d) });
+  });
+  app.post("/api/admin/risk-thresholds", requirePermission("admin:system"), async (req, res) => {
+    try {
+      const { applyRiskThresholds } = await import("../riskThresholds.mjs");
+      const result = applyRiskThresholds(db, req.body || {}, setConfig);
+      if (result.applied.length) appendAudit(db, `更新风控阈值:${result.applied.join("、")}`, "risk_thresholds", req.user?.name || db.user.name, "warning");
+      saveDb(db);
+      res.json({ ok: true, ...result, message: result.applied.length ? "风控阈值已更新，即时生效" : "无变更" });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
   // 公开注册开关(运行时,写 runtimeConfig 并同步 process.env → auth.register 立即生效)。
   // ⚠️ 一客户一实例的生产路径下开启=允许陌生访客自助注册,务必知悉安全含义。
   app.post("/api/admin/registration", requirePermission("admin:system"), (req, res) => {

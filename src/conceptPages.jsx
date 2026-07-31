@@ -423,13 +423,48 @@ export function RiskPostureConcept({ data, action, ui }) {
     <ConceptCard title="应急操作" className="cp2Emergency"><div className="cp2EmergencyActions"><button onClick={async () =>action("/api/system/autonomy",{enabled:false})}><Activity/><span><b>暂停自主</b><small>停止 AI 自主交易</small></span></button><button onClick={async () =>action("/api/risk/reduce-only",{enabled:!data.system?.reduceOnlyMode})}><RefreshCw/><span><b>{data.system?.reduceOnlyMode?"退出只减仓":"只减仓"}</b><small>控制新增风险敞口</small></span></button><button onClick={async () =>{if(await uiConfirm("确认一键平掉所有持仓并进入只减仓模式？"))action("/api/risk/emergency-flatten",{});}}><Target/><span><b>一键平仓</b><small>市价平掉全部持仓</small></span></button><button className="bad" onClick={async () =>action("/api/risk/kill-switch",{enabled:!data.system?.killSwitch,reason:""})}><Zap/><span><b>{data.system?.killSwitch?"解除熔断":"一键熔断"}</b><small>立即阻断所有新交易</small></span></button></div></ConceptCard></div>;
 }
 
+// 风控阈值面板:《交易条令》里「引擎硬拦」类阈值的运行时控制台(改完即时生效,无需重部署)。
+const RISK_THRESH_FIELDS=[
+  {key:"minRewardRisk",label:"盈亏比下限",unit:"R",min:1,max:5,step:0.1,hint:"计划 RR 低于此值不下（条令 R0.2）"},
+  {key:"protectMaxConsecLosses",label:"连亏冷却 · 触发笔数",unit:"笔",min:2,max:10,step:1,hint:"尾部连亏达此触发冷却（P5）"},
+  {key:"protectCooldownHours",label:"连亏冷却 · 时长",unit:"小时",min:0.5,max:48,step:0.5,hint:"冷却期暂停新开仓"},
+  {key:"protectMaxDrawdownPct",label:"回撤锁仓 · 阈值",unit:"%",min:3,max:50,step:0.5,hint:"近期成交回撤达此（占权益）锁仓"},
+  {key:"protectDrawdownLockHours",label:"回撤锁仓 · 时长",unit:"小时",min:1,max:72,step:1,hint:"锁仓期暂停新开仓"},
+  {key:"trailActivatePct",label:"追踪止损 · 激活盈利",unit:"%",min:0.3,max:10,step:0.1,hint:"浮盈达此即启动追踪止损（P3）"},
+  {key:"trailDistancePct",label:"追踪止损 · 跟踪距离",unit:"%",min:0.3,max:5,step:0.1,hint:"止损跟在现价后方此距离"},
+  {key:"eventBlackoutMinutes",label:"事件静默窗口",unit:"分钟",min:0,max:240,step:5,hint:"高影响事件前此分钟内不开高杠杆（S7）"}
+];
+function RiskThresholdsCard({ data, action, ui }){
+  const base=data.riskThresholds||{};
+  const [form,setForm]=useState(base); const [saving,setSaving]=useState(false);
+  useEffect(()=>{ setForm(data.riskThresholds||{}); },[JSON.stringify(data.riskThresholds||{})]);
+  const dirty=RISK_THRESH_FIELDS.some(f=>Number(form[f.key])!==Number(base[f.key]));
+  async function save(){
+    const body={}; RISK_THRESH_FIELDS.forEach(f=>{ const n=Number(form[f.key]); if(Number.isFinite(n)) body[f.key]=Math.min(f.max,Math.max(f.min,n)); });
+    setSaving(true); const r=await action("/api/admin/risk-thresholds",body); setSaving(false);
+    if(r&&!r.error) ui.notify?.("风控阈值已更新，即时生效");
+  }
+  return <ConceptCard title="风控阈值 · 运行时可调" meta="改完即时生效 · 无需重部署">
+    <p className="cp2Intro">《交易条令》里「引擎硬拦」类阈值的统一控制台——调这里就是调 Agent 的硬闸。不确定就保留默认。</p>
+    <div className="cp2ThreshGrid">
+      {RISK_THRESH_FIELDS.map(f=><label key={f.key} className="cp2ThreshField">
+        <span className="cp2ThreshLabel"><b>{f.label}</b><em>{f.hint}</em></span>
+        <span className="cp2ThreshInput"><input type="number" min={f.min} max={f.max} step={f.step} value={form[f.key]??""} onChange={e=>setForm(c=>({...c,[f.key]:e.target.value}))}/><i>{f.unit}</i></span>
+      </label>)}
+    </div>
+    <div className="cp2FormActions"><button className="cp2Secondary" disabled={!dirty} onClick={()=>setForm(data.riskThresholds||{})}>还原</button><button className="cp2Primary" disabled={!dirty||saving} onClick={save}>{saving?"保存中…":"保存并生效"}</button></div>
+  </ConceptCard>;
+}
+
 export function MandateConcept({ data, action, ui }) {
   const mandate=data.agentStatus?.activeMandate||arr(data.mandates)[0]||{}; const history=arr(data.mandates);
   const curMode=data.automationState?.mode==="full_auto_small"?"full_auto":data.automationState?.mode==="semi_auto"?"semi_auto":data.automationState?.mode==="observe"?"observe":null;
   const setMode=async (m) =>{ if(m===curMode||!action)return; let ack=false; if(m!=="observe"){ if(!await uiConfirm(m==="full_auto"?"切到「全自动」:AI 发现符合授权的机会会用真实资金自动下单,不再逐单询问。确认?":"切到「半自动」:会用真实资金交易,但每单需你点批准。确认?"))return; ack=true; } action("/api/system/operating-mode",{mode:m,acknowledged:ack}); };
   return <div className="cp2Stack"><p className="cp2Intro">授权边界定义 AI 交易员能做什么、能用多少风险；修改后必须重新生效。</p><div className="cp2Grid mandateTop"><ConceptCard title="运行模式"><div className="cp2ModeCards">{[["observe","观察","仅分析不下单"],["semi_auto","半自动","计划需人工批准"],["full_auto","全自动","边界内自动执行"]].map(([id,label,desc])=><button className={curMode===id?"active":""} key={id} onClick={()=>setMode(id)}><i/><span><b>{label}</b><small>{desc}</small></span></button>)}</div></ConceptCard><ConceptCard title="当前授权委托" className="span2"><div className="cp2MandateSummary"><Pill tone={mandate.status==="active"?"good":"warn"}>{humanize(mandate.status,"未激活")}</Pill><div><small>委托名称</small><b>{mandate.name||"未创建授权"}</b></div><div><small>生效时间</small><b>{formatDateTime(mandate.activatedAt||mandate.createdAt)}</b></div><div><small>到期时间</small><b>{formatDateTime(mandate.expiresAt)}</b></div></div></ConceptCard></div>
     <div className="cp2MandateGrid"><ConceptCard title="交易白名单"><div className="cp2TokenBox">{arr(mandate.allowedSymbols).map(s=><Pill key={s}>{s}</Pill>)}{!arr(mandate.allowedSymbols).length&&<span>未配置交易对</span>}</div></ConceptCard><ConceptCard title="杠杆范围"><div className="cp2Range"><b>{mandate.minLeverage??1}x</b><i/><b>{mandate.maxLeverage??"—"}x</b></div></ConceptCard><ConceptCard title="单笔风险"><div className="cp2BigNumber">{mandate.maxSingleTradeRiskPct==null?"—":`${mandate.maxSingleTradeRiskPct}%`}<small>账户净值上限</small></div></ConceptCard><ConceptCard title="单日亏损"><div className="cp2BigNumber">{mandate.maxDailyLossPct==null?"—":`${mandate.maxDailyLossPct}%`}<small>触发后停止开仓</small></div></ConceptCard><ConceptCard title="审批阈值"><div className="cp2BigNumber">{mandate.humanApprovalNotionalUsdt==null?"—":`${money(mandate.humanApprovalNotionalUsdt)} U`}<small>超额转人工</small></div></ConceptCard><ConceptCard title="委托有效期"><div className="cp2BigNumber small">{formatDateTime(mandate.expiresAt)}<small>到期自动失效</small></div></ConceptCard></div>
-    <div className="cp2Grid two"><ConceptCard title="变更预览"><div className="cp2Kv column"><span>运行模式<b>{data.automationState?.label||"观察"}</b></span><span>最大杠杆<b>{mandate.maxLeverage?`${mandate.maxLeverage}x`:"—"}</b></span><span>单笔风险<b>{mandate.maxSingleTradeRiskPct==null?"—":`${mandate.maxSingleTradeRiskPct}%`}</b></span><span>审批阈值<b>{mandate.humanApprovalNotionalUsdt==null?"—":`${money(mandate.humanApprovalNotionalUsdt)} U`}</b></span></div></ConceptCard><ConceptCard title="变更记录"><ConceptTable compact columns={[{key:"createdAt",label:"时间",render:r=>formatDateTime(r.updatedAt||r.createdAt)},{key:"name",label:"授权"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill>}]} rows={history.slice(0,6)} empty="暂无变更记录"/></ConceptCard></div><div className="cp2FormActions"><button className="cp2Secondary" onClick={()=>ui.openPanel("mandate")}>保存草稿</button><button className="cp2Primary" onClick={()=>ui.openPanel("mandate")}>编辑并提交生效</button></div></div>;
+    <div className="cp2Grid two"><ConceptCard title="变更预览"><div className="cp2Kv column"><span>运行模式<b>{data.automationState?.label||"观察"}</b></span><span>最大杠杆<b>{mandate.maxLeverage?`${mandate.maxLeverage}x`:"—"}</b></span><span>单笔风险<b>{mandate.maxSingleTradeRiskPct==null?"—":`${mandate.maxSingleTradeRiskPct}%`}</b></span><span>审批阈值<b>{mandate.humanApprovalNotionalUsdt==null?"—":`${money(mandate.humanApprovalNotionalUsdt)} U`}</b></span></div></ConceptCard><ConceptCard title="变更记录"><ConceptTable compact columns={[{key:"createdAt",label:"时间",render:r=>formatDateTime(r.updatedAt||r.createdAt)},{key:"name",label:"授权"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill>}]} rows={history.slice(0,6)} empty="暂无变更记录"/></ConceptCard></div>
+    <RiskThresholdsCard data={data} action={action} ui={ui}/>
+    <div className="cp2FormActions"><button className="cp2Secondary" onClick={()=>ui.openPanel("mandate")}>保存草稿</button><button className="cp2Primary" onClick={()=>ui.openPanel("mandate")}>编辑并提交生效</button></div></div>;
 }
 
 export function RulesConcept({ data, action, ui }) {

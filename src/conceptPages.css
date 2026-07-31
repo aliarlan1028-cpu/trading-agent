@@ -69,6 +69,16 @@
 .cp2ChipRow button.active{border-color:var(--accent);background:var(--accent-weak);color:var(--accent-ink);font-weight:700}
 .cp2Input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:5px;padding:9px 11px;font-size:11.5px;color:var(--text);font-family:var(--font-ui);outline:none}
 .cp2Input:focus{border-color:var(--accent)}
+.cp2ThreshGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;margin:12px 0 4px}
+.cp2ThreshField{display:flex;flex-direction:column;gap:6px}
+.cp2ThreshLabel{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cp2ThreshLabel b{font-size:12px;color:var(--text);font-weight:600}
+.cp2ThreshLabel em{font-style:normal;font-size:10.5px;color:var(--text-4);line-height:1.4}
+.cp2ThreshInput{display:flex;align-items:center;border:1px solid var(--border);border-radius:5px;background:#fff;overflow:hidden}
+.cp2ThreshInput:focus-within{border-color:var(--accent)}
+.cp2ThreshInput input{flex:1;min-width:0;border:0;outline:none;background:transparent;padding:8px 10px;font-size:12.5px;color:var(--text);font-family:var(--font-ui)}
+.cp2ThreshInput i{font-style:normal;font-size:11px;color:var(--text-4);padding:0 10px;border-left:1px solid var(--hairline);background:#faf9f6;align-self:stretch;display:flex;align-items:center}
+@media (max-width:640px){.cp2ThreshGrid{grid-template-columns:1fr}}
 .cp2InlineSelect{border:1px solid var(--border);border-radius:4px;background:#fff;color:var(--text);font-size:11px;padding:3px 6px;font-family:var(--font-ui);cursor:pointer}
 .cp2ToggleRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
 .cp2ToggleRow>div{min-width:0}

@@ -60,6 +60,7 @@ import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCy
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
+import { currentRiskThresholds } from "./riskThresholds.mjs";
 import { compileNaturalRiskCondition, validateConditionSpec } from "./dynamicRiskRules.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
@@ -712,6 +713,7 @@ app.get("/api/overview", (_req, res) => {
     paymentRequests: db.paymentRequests?.slice(0, 20) || [],
     system: db.system,
     publicRegistrationEnabled: process.env.PUBLIC_REGISTRATION_ENABLED === "true",
+    riskThresholds: currentRiskThresholds(),
     automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
     strategyBoard: buildStrategyBoard(db),
     agentStatus: getAgentStatus(db),
