@@ -265,38 +265,74 @@ function InstallCapabilityDialog({ onClose, notify }) {
 }
 
 export function CapabilitiesConcept({ data, ui }) {
-  const rawItems=[...arr(data.knowledge?.tradingSkills),...arr(data.skills),...arr(data.analysisEngine?.tools),...arr(data.tools),...arr(data.mcpServers)];
-  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名能力",kind:item.type||item.category||(item.serverName?"MCP":"交易能力")}));
+  // 能力库=工具:内置工具 + 分析引擎工具 + MCP + 导入的工具类 skill;策略类(tradingSkills)归策略库,不在此。
+  const rawItems=[...arr(data.skills).filter(s=>s.kind!=="strategy"),...arr(data.analysisEngine?.tools),...arr(data.tools),...arr(data.mcpServers)];
+  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名工具",kind:item.type||item.category||(item.serverName?"MCP":"工具")}));
   const isEnabled=i=>["active","trusted","enabled","ready"].includes(i.status)||i.enabled===true;
   const isCandidate=i=>/candidate|pending|trial|paper/i.test(String(i.status));
   const isDisabled=i=>i.enabled===false||/disabled|retired/i.test(String(i.status));
-  const TYPES=[["全部能力",()=>true],["交易策略",i=>/交易|策略|strateg|trad/i.test(String(i.kind))],["分析工具",i=>/分析|analy/i.test(String(i.kind))],["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],["工具 (MCP)",i=>/MCP/i.test(String(i.kind))]];
+  const TYPES=[["全部工具",()=>true],["分析工具",i=>/分析|analy|工具|tool/i.test(String(i.kind))&&!/MCP/i.test(String(i.kind))],["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],["工具 (MCP)",i=>/MCP/i.test(String(i.kind))]];
   const STATUSES=[["全部状态",()=>true],["已启用",isEnabled],["候选中",isCandidate],["已停用",isDisabled]];
-  const [typeF,setTypeF]=useState("全部能力"); const [statusF,setStatusF]=useState("全部状态"); const [detailTab,setDetailTab]=useState("概览"); const [installing,setInstalling]=useState(false); const [q,setQ]=useState("");
+  const [typeF,setTypeF]=useState("全部工具"); const [statusF,setStatusF]=useState("全部状态"); const [detailTab,setDetailTab]=useState("概览"); const [installing,setInstalling]=useState(false); const [q,setQ]=useState("");
   const typeFn=(TYPES.find(t=>t[0]===typeF)||TYPES[0])[1]; const statusFn=(STATUSES.find(s=>s[0]===statusF)||STATUSES[0])[1];
   const shown=items.filter(i=>typeFn(i)&&statusFn(i)&&(!q||String(i.name).toLowerCase().includes(q.toLowerCase())));
   const [selectedId,setSelectedId]=useState(items[0]?.id||""); const selected=shown.find(i=>i.id===selectedId)||items.find(i=>i.id===selectedId)||shown[0]||items[0]||{};
   return <div className="cp2Stack">
-    <div className="cp2Metrics four"><ConceptMetric label="全部能力" value={String(items.length)}/><ConceptMetric label="已启用" value={String(items.filter(isEnabled).length)} tone="good"/><ConceptMetric label="候选中" value={String(items.filter(isCandidate).length)} tone="warn"/><ConceptMetric label="已停用" value={String(items.filter(isDisabled).length)} tone="bad"/></div>
+    <div className="cp2Metrics four"><ConceptMetric label="全部工具" value={String(items.length)}/><ConceptMetric label="已启用" value={String(items.filter(isEnabled).length)} tone="good"/><ConceptMetric label="候选中" value={String(items.filter(isCandidate).length)} tone="warn"/><ConceptMetric label="已停用" value={String(items.filter(isDisabled).length)} tone="bad"/></div>
     <div className="cp2CapabilitiesLayout">
       <aside className="cp2SideFilter">
         <b>类型</b>{TYPES.map(([name,fn])=><button key={name} className={typeF===name?"active":""} onClick={()=>setTypeF(name)}>{name}<span>{items.filter(fn).length}</span></button>)}
         <b>状态</b>{STATUSES.map(([name,fn])=><button key={name} className={statusF===name?"active":""} onClick={()=>setStatusF(name)}>{name}<span>{items.filter(fn).length}</span></button>)}
       </aside>
-      <ConceptCard title="能力列表" meta={`${shown.length}/${items.length} 项`} className="cp2CapabilityTable" action={<button className="cp2Link" onClick={()=>setInstalling(true)}><Plus size={12}/> 安装能力</button>}>
-        <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索能力名称"/></div>
-        <div className="cp2ScrollList tall"><ConceptTable columns={[{key:"name",label:"能力名称",render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{r.name}</button>},{key:"kind",label:"类型",render:r=>humanize(r.kind)},{key:"version",label:"版本",render:r=>r.version||"—"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?"已停用":"可用")}</Pill>},{key:"runs",label:"调用量",render:r=>r.runs??r.runCount??"—"}]} rows={shown} empty="无匹配能力"/></div>
+      <ConceptCard title="工具列表" meta={`${shown.length}/${items.length} 项`} className="cp2CapabilityTable" action={<button className="cp2Link" onClick={()=>setInstalling(true)}><Plus size={12}/> 安装工具</button>}>
+        <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索工具名称"/></div>
+        <div className="cp2ScrollList tall"><ConceptTable columns={[{key:"name",label:"工具名称",render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{r.name}</button>},{key:"kind",label:"类型",render:r=>humanize(r.kind)},{key:"version",label:"版本",render:r=>r.version||"—"},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?"已停用":"可用")}</Pill>},{key:"runs",label:"调用量",render:r=>r.runs??r.runCount??"—"}]} rows={shown} empty="无匹配工具"/></div>
       </ConceptCard>
-      <ConceptCard title="能力详情" className="cp2CapabilityDetail">
-        <div className="cp2CapabilityTitle"><span><Wrench size={18}/></span><div><b>{selected.name||"选择能力"}</b><small>{humanize(selected.kind)}</small></div><Pill tone={toneOf(selected.status)}>{humanize(selected.status,"可用")}</Pill></div>
+      <ConceptCard title="工具详情" className="cp2CapabilityDetail">
+        <div className="cp2CapabilityTitle"><span><Wrench size={18}/></span><div><b>{selected.name||"选择工具"}</b><small>{humanize(selected.kind)}</small></div><Pill tone={toneOf(selected.status)}>{humanize(selected.status,"可用")}</Pill></div>
         <div className="cp2DetailTabs">{["概览","输入输出","调用日志"].map(t=><button key={t} className={detailTab===t?"active":""} onClick={()=>setDetailTab(t)}>{t}</button>)}</div>
-        {detailTab==="概览"&&<><p>{selected.description||selected.summary||"系统能力会在 Agent 工作流中按权限调用。"}</p><div className="cp2Kv column"><span>版本<b>{selected.version||"—"}</b></span><span>来源<b>{selected.source||selected.packageName||"内置"}</b></span><span>权限级别<b>{humanize(selected.permission||selected.riskLevel,"受控")}</b></span><span>最近运行<b>{formatDateTime(selected.lastRunAt)}</b></span></div></>}
+        {detailTab==="概览"&&<><p>{selected.description||selected.summary||"系统工具会在 Agent 工作流中按权限调用。"}</p><div className="cp2Kv column"><span>版本<b>{selected.version||"—"}</b></span><span>来源<b>{selected.source||selected.packageName||"内置"}</b></span><span>权限级别<b>{humanize(selected.permission||selected.riskLevel,"受控")}</b></span><span>最近运行<b>{formatDateTime(selected.lastRunAt)}</b></span></div></>}
         {detailTab==="输入输出"&&<div className="cp2Kv column"><span>输入<b>{humanize(selected.inputSchema||selected.input,"未声明")}</b></span><span>输出<b>{humanize(selected.outputSchema||selected.output,"未声明")}</b></span><span>参数<b>{Object.keys(selected.parameters||{}).length?`${Object.keys(selected.parameters).length} 项`:"未声明"}</b></span></div>}
         {detailTab==="调用日志"&&<div className="cp2Kv column"><span>累计调用<b>{selected.runs??selected.runCount??"—"}</b></span><span>最近运行<b>{formatDateTime(selected.lastRunAt)}</b></span><span>明细<b>{selected.lastRunAt?"见系统运营·审计":"暂无调用"}</b></span></div>}
-        <button className="cp2Secondary" onClick={()=>ui.openPanel("skillImport")}>管理能力</button>
+        <button className="cp2Secondary" onClick={()=>ui.openPanel("skillImport")}>管理工具</button>
       </ConceptCard>
     </div>
     {installing&&<InstallCapabilityDialog onClose={()=>setInstalling(false)} notify={ui.notify}/>}
+  </div>;
+}
+
+// 策略库:所有会输出交易主张(方向/入场/止损)的策略——蒸馏产出 / 导入 / LLM 生成,
+// 复用能力库同款三栏布局(筛选/列表/详情)保证不溢出、样式统一;底部嵌入回测研究。
+export function StrategyLibraryConcept({ data, action, ui }) {
+  const strategies=arr(data.knowledge?.tradingSkills).map((s,i)=>({...s,id:s.id||`str-${i}`,name:s.name||s.title||"未命名策略",origin:s.origin||(s.methodId?"蒸馏":/用户|手写|llm|idea/i.test(String(s.createdBy||s.source||""))?"LLM/手写":"内置")}));
+  const isActive=s=>/active|trusted|live|adopted/i.test(String(s.status));
+  const isValidating=s=>/probation|paper|compiled|pending|trial|validating|candidate/i.test(String(s.status));
+  const isRetired=s=>/retired|superseded|disabled|compile_failed|replaced|reject/i.test(String(s.status));
+  const STATUSES=[["全部",()=>true],["已上岗",isActive],["验证中",isValidating],["已停用",isRetired]];
+  const ORIGINS=[["全部来源",()=>true],["蒸馏",s=>s.origin==="蒸馏"],["LLM/手写",s=>/LLM|手写/.test(s.origin)],["导入",s=>/导入|imported/i.test(s.origin)]];
+  const [statusF,setStatusF]=useState("全部"); const [originF,setOriginF]=useState("全部来源"); const [q,setQ]=useState("");
+  const sFn=(STATUSES.find(x=>x[0]===statusF)||STATUSES[0])[1]; const oFn=(ORIGINS.find(x=>x[0]===originF)||ORIGINS[0])[1];
+  const shown=strategies.filter(s=>sFn(s)&&oFn(s)&&(!q||String(s.name).toLowerCase().includes(q.toLowerCase())));
+  const [selId,setSelId]=useState(strategies[0]?.id||""); const sel=shown.find(s=>s.id===selId)||strategies.find(s=>s.id===selId)||shown[0]||strategies[0]||{};
+  return <div className="cp2Stack">
+    <div className="cp2Metrics four"><ConceptMetric label="全部策略" value={String(strategies.length)}/><ConceptMetric label="已上岗" value={String(strategies.filter(isActive).length)} tone="good"/><ConceptMetric label="验证中" value={String(strategies.filter(isValidating).length)} tone="warn"/><ConceptMetric label="已停用" value={String(strategies.filter(isRetired).length)} tone="bad"/></div>
+    <div className="cp2CapabilitiesLayout">
+      <aside className="cp2SideFilter">
+        <b>状态</b>{STATUSES.map(([name,fn])=><button key={name} className={statusF===name?"active":""} onClick={()=>setStatusF(name)}>{name}<span>{strategies.filter(fn).length}</span></button>)}
+        <b>来源</b>{ORIGINS.map(([name,fn])=><button key={name} className={originF===name?"active":""} onClick={()=>setOriginF(name)}>{name}<span>{strategies.filter(fn).length}</span></button>)}
+      </aside>
+      <ConceptCard title="策略列表" meta={`${shown.length}/${strategies.length} 条`} className="cp2CapabilityTable" action={<button className="cp2Link" onClick={()=>ui.openPanel("skillImport")}><Plus size={12}/> 导入 / 新建策略</button>}>
+        <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索策略名称"/></div>
+        <div className="cp2ScrollList tall"><ConceptTable columns={[{key:"name",label:"策略",render:r=><button className={`cp2Link ${r.id===sel.id?"on":""}`} onClick={()=>setSelId(r.id)}>{r.name}</button>},{key:"dir",label:"方向·周期",render:r=>`${humanize(r.direction,"—")} · ${r.timeframe||"—"}`},{key:"origin",label:"来源",render:r=>r.origin},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,"—")}</Pill>},{key:"pf",label:"盈亏比",render:r=>r.profitFactor??r.backtest?.profitFactor??"—"}]} rows={shown} empty="暂无策略（喂书蒸馏或导入后在此出现）"/></div>
+      </ConceptCard>
+      <ConceptCard title="策略详情" className="cp2CapabilityDetail">
+        <div className="cp2CapabilityTitle"><span><Activity size={18}/></span><div><b>{sel.name||"选择策略"}</b><small>{[humanize(sel.direction,""),sel.timeframe].filter(Boolean).join(" · ")||"—"}</small></div><Pill tone={toneOf(sel.status)}>{humanize(sel.status,"—")}</Pill></div>
+        <p>{sel.entry||sel.description||sel.summary||"选择一条策略查看其进场/止损/止盈逻辑与验证状态。"}</p>
+        <div className="cp2Kv column"><span>来源<b>{sel.origin||"—"}</b></span><span>模板<b>{humanize(sel.template,"—")}</b></span><span>回测状态<b>{humanize(sel.backtestStatus,"未回测")}</b></span><span>胜率<b>{sel.winRatePct!=null?`${sel.winRatePct}%`:"—"}</b></span><span>盈亏比<b>{sel.profitFactor??sel.backtest?.profitFactor??"—"}</b></span><span>最近运行<b>{formatDateTime(sel.lastRunAt)}</b></span></div>
+        <button className="cp2Secondary" onClick={()=>action("/api/strategy/research",{},"POST")}><Play size={12}/> 运行回测 / 研究</button>
+      </ConceptCard>
+    </div>
+    <StrategyConcept data={data} action={action}/>
   </div>;
 }
 
