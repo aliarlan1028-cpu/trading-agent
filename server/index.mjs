@@ -59,6 +59,7 @@ import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
+import { applyProtections } from "./tradeProtections.mjs";
 import { compileNaturalRiskCondition, validateConditionSpec } from "./dynamicRiskRules.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
@@ -364,6 +365,8 @@ registerTaskHandler("position_monitor", async (database) => {
   const r = await monitorPositions(database);
   // 带消息面的持仓护航（有持仓才跑，节省 LLM 额度）：只产建议/告警，不自动下单。
   try { if ((database.positions || []).some((p) => Number(p.size ?? p.pos ?? 0) !== 0)) await escortPositions(database); } catch { /* 护航失败不阻断监控 */ }
+  // freqtrade 式交易保护:每轮刷新连亏冷却/回撤锁仓状态,新触发时抬风险事件(到期自动解除)。
+  try { applyProtections(database); } catch { /* 保护评估失败不阻断监控 */ }
   return r;
 });
 registerTaskHandler("accounting_refresh", (database) => refreshAccounting(database));

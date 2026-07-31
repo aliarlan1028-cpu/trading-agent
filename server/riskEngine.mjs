@@ -3,6 +3,7 @@ import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
 import { isEventRiskActive } from "./eventRisk.mjs";
 import { evaluateProfessionalPlanRisks } from "./professionalRiskGate.mjs";
+import { evaluateProtections } from "./tradeProtections.mjs";
 
 export function evaluateTradePlan(db, plan) {
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
@@ -87,6 +88,15 @@ export function evaluateTradePlan(db, plan) {
     db.system.liveTradingEnabled ? "block" : "warn"
   );
   add("系统熔断", !db.system.killSwitch, db.system.killSwitch ? "一键熔断已开启" : "未熔断");
+
+  // freqtrade 式交易保护(连亏冷却 / 回撤锁仓)——只拦新开仓,实盘时为硬闸、非实盘仅提示。到期自动解除。
+  const prot = evaluateProtections(db);
+  if (prot.enabled) {
+    const c = prot.cooldown;
+    add("连亏冷却", !c.active, c.active ? `连续 ${c.streak} 笔亏损(≥${c.maxLosses}),暂停新开仓至 ${c.until}` : `尾部连亏 ${c.streak}/${c.maxLosses}，未触发`, c.active ? (db.system.liveTradingEnabled ? "block" : "warn") : "ok");
+    const d = prot.drawdown;
+    add("回撤锁仓", !d.active, d.active ? `回撤 ${d.drawdownPct}% ≥ 上限 ${d.maxDrawdownPct}%，暂停新开仓至 ${d.until}` : `近期成交回撤 ${d.drawdownPct ?? "—"}%（上限 ${d.maxDrawdownPct}%）`, d.active ? (db.system.liveTradingEnabled ? "block" : "warn") : "ok");
+  }
   for (const rule of evaluateDynamicRiskRules(db, plan)) {
     if (!rule.enforceable) {
       add(`动态规则：${rule.name}`, true, rule.detail, "ok");

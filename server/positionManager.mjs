@@ -4,7 +4,8 @@ import { notifyLarkThrottled } from "./larkNotifier.mjs";
 import { publishProfitablePositionPosters } from "./telegramNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
-const TRAIL_PCT = 0.012; // 保本后按 1.2% 跟踪止损锁定利润
+const TRAIL_PCT = Math.max(0.001, Number(process.env.TRAIL_PCT || 0.012));            // 跟踪止损距离(默认 1.2%)
+const TRAIL_ACTIVATE_PCT = Math.max(0, Number(process.env.TRAIL_ACTIVATE_PCT || 1.5)) / 100; // 盈利达此(默认 1.5%)即启动追踪(freqtrade trailing_stop_positive)
 
 async function moveStopTo(db, position, newStop, label) {
   const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
@@ -130,8 +131,10 @@ export async function monitorPositions(db) {
         }
       }
 
-      // 保本后启用跟踪止损：随盈利推进，只进不退地锁定利润
-      if (position.breakevenMoved) {
+      // 跟踪止损:盈利达激活阈值(默认 1.5%)即启动,不必等 TP1(freqtrade trailing_stop_positive)。
+      // 之后随盈利推进只进不退;stillProfitable 保证永不把止损移进亏损区,只锁真实利润。
+      const profitPct = entry > 0 ? (isShort ? (entry - mark) / entry : (mark - entry) / entry) : 0;
+      if (position.breakevenMoved || position.trailingActive || profitPct >= TRAIL_ACTIVATE_PCT) {
         const trailStop = isShort ? mark * (1 + TRAIL_PCT) : mark * (1 - TRAIL_PCT);
         const improves = isShort ? trailStop < Number(position.stopLoss) : trailStop > Number(position.stopLoss);
         const stillProfitable = isShort ? trailStop < entry : trailStop > entry;
