@@ -31,8 +31,10 @@ export async function fetchSkillPackage(db, payload = {}) {
   const skill = {
     id: skillId,
     name: payload.name || manifest.name || path.basename(payload.sourceUrl || skillId),
-    // kind:决定落到策略库还是能力库——显式 payload.kind > manifest 判定 > 默认工具。
-    kind: payload.kind === "strategy" || manifest.kind === "strategy" ? "strategy" : "tool",
+    // kind:决定落到策略库还是能力库——用户显式选择 payload.kind 最高优先,否则 manifest 判定,默认工具。
+    kind: payload.kind === "strategy" ? "strategy"
+      : payload.kind === "tool" ? "tool"
+      : manifest.kind === "strategy" ? "strategy" : "tool",
     source: payload.sourceUrl || "uploaded",
     version: manifest.version || "0.1.0",
     format: manifest.format || "codex",

@@ -1047,22 +1047,33 @@ export function RuleLibraryPanel({ data, action, ui }) {
 }
 
 export function SkillImportPanel({ data, action, ui }) {
-  const [form, setForm] = useState({ name: "", sourceUrl: "", skillMd: "" });
+  const [form, setForm] = useState({ name: "", sourceUrl: "", skillMd: "", kind: "auto" });
   async function submit(event) {
     event.preventDefault();
     if (!form.sourceUrl.trim() && !form.skillMd.trim()) return ui.notify("请填写 GitHub/URL 或粘贴 Skill.md");
-    await action("/api/skills/fetch", { name: form.name.trim(), sourceUrl: form.sourceUrl.trim(), skillMd: form.skillMd });
-    setForm({ name: "", sourceUrl: "", skillMd: "" });
+    await action("/api/skills/fetch", {
+      name: form.name.trim(),
+      sourceUrl: form.sourceUrl.trim(),
+      skillMd: form.skillMd,
+      // auto → 不传 kind,由后端按 SKILL.md 内容自动判定;显式选择则强制归类。
+      ...(form.kind === "auto" ? {} : { kind: form.kind })
+    });
+    setForm({ name: "", sourceUrl: "", skillMd: "", kind: "auto" });
   }
   return (
     <div className="panelStack">
       <form className="panelForm" onSubmit={submit}>
         <label>Skill 名称<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="可留空，自动读取 SKILL.md 标题" /></label>
+        <label>归类<select value={form.kind} onChange={(event) => setForm((current) => ({ ...current, kind: event.target.value }))}>
+          <option value="auto">自动判定（含 方向/入场/止损 → 策略，否则工具）</option>
+          <option value="strategy">策略库（会输出交易主张：方向/入场/止损）</option>
+          <option value="tool">能力库（分析 / 执行工具，供 Agent 调用）</option>
+        </select></label>
         <label>GitHub / Skill.md URL<input value={form.sourceUrl} onChange={(event) => setForm((current) => ({ ...current, sourceUrl: event.target.value }))} placeholder="https://github.com/user/skill 或 https://.../SKILL.md" /></label>
         <label>Skill.md 内容<textarea className="largeTextarea" value={form.skillMd} onChange={(event) => setForm((current) => ({ ...current, skillMd: event.target.value }))} placeholder="# Skill Name" /></label>
         <button className="primaryButton" type="submit">导入 Skill</button>
       </form>
-      <p className="fieldHint">导入后在「能力与工具 → Skills 中心」查看全部技能、扫描 / 启用 / 运行 / 删除与详情。</p>
+      <p className="fieldHint">按「归类」落库：策略 → 研究中心·策略库；工具 → 研究中心·能力库。导入后可扫描 / 启用 / 运行 / 删除与查看详情。</p>
     </div>
   );
 }
