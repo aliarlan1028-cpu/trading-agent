@@ -221,25 +221,30 @@ for (const server of db.mcpServers || []) {
 // 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 try { ensureTurtleStrategy(db); } catch (error) { appendTrace(db, "system", `海龟策略入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
-// 一次性:给刚入列的海龟策略立刻跑历史样本外验证,过了就起纯前向模拟(异步,不阻塞启动;过不了诚实停在 historical_rejected)。
-if (!db.meta.turtleKickoffV1) {
-  db.meta.turtleKickoffV1 = true;
-  (async () => {
-    try {
-      const turtle = (db.knowledge?.tradingSkills || []).filter((s) => /唐奇安/.test(s.name || ""));
+// 海龟策略验证/前向启动(异步,不阻塞启动)。验证一次性;前向启动幂等——每次启动给"过了历史但还没起
+// 前向"的海龟补起模拟盘(createPaperSession 偶发拉 K 线失败会静默返回,下次启动/paper_forward 定时任务重试)。
+(async () => {
+  try {
+    const turtle = (db.knowledge?.tradingSkills || []).filter((s) => /唐奇安/.test(s.name || ""));
+    if (!turtle.length) return;
+    if (!db.meta.turtleKickoffV1) { // 一次性历史样本外验证(过不了诚实停在 historical_rejected,不反复重验)
+      db.meta.turtleKickoffV1 = true;
       for (const skill of turtle) {
-        try {
-          await validateKnowledgeSkill(db, skill.id, {}, "TurtleKickoff");         // 拉真实历史K线 40/30/30 样本外回测
-          if (skill.status === "historical_validated") {
-            await startKnowledgeSkillPaper(db, skill.id, {}, "TurtleKickoff");      // 过历史才起纯前向模拟盘
-          }
-        } catch (error) { appendTrace(db, "system", `海龟验证/前向 ${skill.name}:${String(error.message || error).slice(0, 90)}`, "warning"); }
+        try { await validateKnowledgeSkill(db, skill.id, {}, "TurtleKickoff"); }   // 拉真实历史K线 40/30/30 样本外回测
+        catch (error) { appendTrace(db, "system", `海龟历史验证 ${skill.name}:${String(error.message || error).slice(0, 90)}`, "warning"); }
       }
-      appendAudit(db, `海龟策略立即验证:${turtle.map((s) => `${s.name}=${s.status}`).join("；")}`, "src_manual_curated", "TurtleKickoff");
-      saveDb(db);
-    } catch (error) { appendTrace(db, "system", `海龟启动验证异常:${String(error.message || error).slice(0, 90)}`, "warning"); }
-  })();
-}
+    }
+    let started = 0;
+    for (const skill of turtle) { // 幂等:仅对"过了历史且无前向会话"的海龟起纯前向模拟盘
+      if (skill.status === "historical_validated" && !skill.paperSessionId) {
+        try { const r = await startKnowledgeSkillPaper(db, skill.id, {}, "TurtleKickoff"); if (r.status === "ok") started += 1; }
+        catch (error) { appendTrace(db, "system", `海龟前向启动 ${skill.name}:${String(error.message || error).slice(0, 90)}`, "warning"); }
+      }
+    }
+    if (started) appendAudit(db, `海龟策略起纯前向模拟盘 ${started} 个;当前:${turtle.map((s) => `${s.name}=${s.status}`).join("；")}`, "src_manual_curated", "TurtleKickoff");
+    saveDb(db);
+  } catch (error) { appendTrace(db, "system", `海龟验证/前向异常:${String(error.message || error).slice(0, 90)}`, "warning"); }
+})();
 // 模拟前向为主(主人选择):编译好的技能走「历史 OOS 预筛 → 纯前向模拟盘 → 已验证(模拟)」这条链,
 // 用真实行情前向验证,而不是等那个几乎不产生成交的小账户——破解"零真实成交→零归因→永不采纳"的死锁。
 db.system.skillPaperForwardMode ??= true;
