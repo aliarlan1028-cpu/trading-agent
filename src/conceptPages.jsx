@@ -156,7 +156,7 @@ function useInstruments() {
 }
 
 // 搜索式币对选择器:输入币种即时过滤,支持全部永续合约;点选回填。替代原生 prompt 与 12 个的硬编码下拉。
-function PairPicker({ instruments, value, onPick, label = "选择币对", triggerClass = "cp2PairTrigger" }) {
+function PairPicker({ instruments, value, onPick, label = "选择币对", triggerClass = "cp2PairTrigger", align = "left" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const qU = q.trim().toUpperCase();
@@ -166,7 +166,7 @@ function PairPicker({ instruments, value, onPick, label = "选择币对", trigge
     <button type="button" className={triggerClass} onClick={() => setOpen((o) => !o)}>{value || label}<ChevronDown size={13}/></button>
     {open && <>
       <div className="cp2PairBackdrop" onClick={close}/>
-      <div className="cp2PairMenu">
+      <div className={`cp2PairMenu ${align === "right" ? "alignRight" : ""}`}>
         <div className="cp2Search"><Search size={13}/><input autoFocus className="cp2SearchInput" value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入币种，如 BTC / SOL"/></div>
         <div className="cp2PairList">
           {list.map((s) => <button type="button" key={s} className={s === value ? "on" : ""} onClick={() => { onPick(s); close(); }}>{s}</button>)}
@@ -227,7 +227,7 @@ export function MarketConcept({ data, action }) {
       <div className="cp2CandleBox tall"><TradingViewChart symbol={symbol} interval={{ "1m": "1m", "5m": "5m", "15m": "15m", "1h": "60", "4h": "240", "1D": "D" }[tf] || "60"}/></div>
     </ConceptCard>
     <aside className="cp2MarketRail">
-      <ConceptCard title="自选列表" meta={`${wlRows.length} 个`} action={<PairPicker instruments={instruments} value="" label="＋ 添加" onPick={addWatch} triggerClass="cp2Link"/>}><ConceptTable compact columns={[{key:"symbol",label:"交易对",render:r=><button className="cp2Link" onClick={()=>setSymbol(r.symbol)}>{r.symbol}</button>},{key:"price",label:"价格",render:r=>money(r.price)},{key:"change",label:"24h",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change)>=0?"+":""}${num(r.change).toFixed(2)}%`}</span>},{key:"remove",label:"",render:r=>watchlist.length>1&&watchlist.includes(r.symbol)?<button className="cp2IconButton" title="移除自选" onClick={()=>action(`/api/watchlist/${encodeURIComponent(r.symbol)}`,{},"DELETE")}>×</button>:null}]} rows={wlRows} empty="行情待同步"/></ConceptCard>
+      <ConceptCard title="自选列表" meta={`${wlRows.length} 个`} action={<PairPicker instruments={instruments} value="" label="＋ 添加" onPick={addWatch} triggerClass="cp2Link" align="right"/>}><ConceptTable compact columns={[{key:"symbol",label:"交易对",render:r=><button className="cp2Link" onClick={()=>setSymbol(r.symbol)}>{r.symbol}</button>},{key:"price",label:"价格",render:r=>money(r.price)},{key:"change",label:"24h",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change)>=0?"+":""}${num(r.change).toFixed(2)}%`}</span>},{key:"remove",label:"",render:r=>watchlist.length>1&&watchlist.includes(r.symbol)?<button className="cp2IconButton" title="移除自选" onClick={()=>action(`/api/watchlist/${encodeURIComponent(r.symbol)}`,{},"DELETE")}>×</button>:null}]} rows={wlRows} empty="行情待同步"/></ConceptCard>
       <ConceptCard title="市场快照"><div className="cp2Kv column"><span>24h 高<b>{money(selected.high24h ?? selected.high)}</b></span><span>24h 低<b>{money(selected.low24h ?? selected.low)}</b></span><span>24h 成交额<b>{selected.volume ? String(selected.volume) : "—"}</b></span><span>资金费率<b>{selected.fundingRate == null ? "待同步" : `${num(selected.fundingRate) >= 0 ? "+" : ""}${num(selected.fundingRate).toFixed(4)}%`}</b></span></div></ConceptCard>
     </aside>
     <div className="cp2MarketBottom">

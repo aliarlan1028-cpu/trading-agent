@@ -14,6 +14,7 @@
 .cp2PairTrigger svg{color:var(--text-4);flex:none}
 .cp2PairBackdrop{position:fixed;inset:0;z-index:40}
 .cp2PairMenu{position:absolute;top:calc(100% + 4px);left:0;z-index:41;width:240px;max-width:80vw;background:#fff;border:1px solid var(--border);border-radius:7px;box-shadow:0 8px 24px rgba(62,45,24,.14);padding:8px;display:flex;flex-direction:column;gap:7px}
+.cp2PairMenu.alignRight{left:auto;right:0}
 .cp2PairMenu .cp2Search{min-height:30px}
 .cp2PairList{display:flex;flex-direction:column;gap:1px;max-height:264px;overflow:auto}
 .cp2PairList>button{text-align:left;border:0;background:transparent;border-radius:4px;padding:7px 9px;font:500 12px var(--font-ui);color:var(--text-2);cursor:pointer}
