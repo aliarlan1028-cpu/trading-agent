@@ -102,6 +102,18 @@ const traderRole = (db.roles || []).find((role) => role.name === "交易用户" 
 if (traderRole) traderRole.permissions = TRADER_PERMISSIONS;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
+// 启动清理:历史上 runReconciler 无去重,重复的「对账发现差异」事件曾堆到 100+ 条。
+// 收敛成最多一条 open(留最新一条,其余标为已处理),经服务端自身 saveDb 落盘(不与运行时抢写)。
+{
+  const isRecon = (i) => i.status === "open" && (i.kind === "reconcile" || i.title === "实时/账户对账发现差异");
+  const openRecon = (db.riskIncidents || []).filter(isRecon).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  if (openRecon.length > 1) {
+    const now = nowIso();
+    for (const dup of openRecon.slice(1)) { dup.status = "resolved"; dup.resolvedAt = now; dup.resolvedBy = "StartupDedup"; dup.kind = "reconcile"; }
+    saveDb(db);
+    console.log(`[startup] 收敛重复对账事件 ${openRecon.length} → 1`);
+  }
+}
 ensureDefaultEventSources(db);
 for (const server of db.mcpServers || []) {
   const legacyApiKey = server.apiKey || server.headers?.Authorization?.replace(/^Bearer\s+/i, "");
