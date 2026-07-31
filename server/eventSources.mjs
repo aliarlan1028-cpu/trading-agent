@@ -19,13 +19,12 @@ export function ensureDefaultEventSources(db) {
   db.meta ||= {};
   // 清理冒烟测试残留的占位源。
   db.eventSources = db.eventSources.filter((source) => !/smoke/i.test(source.name || "") && !/smoke/i.test(source.id || ""));
-  // 不再内置默认事件源：一次性移除历史内置源 + 清空由它们抓来的旧新闻事件；
-  // 之后由用户在「任务中心 → 事件来源」里自行配置从哪拉信息。
-  if (!db.meta.eventSourcesCleared) {
-    const builtinIds = new Set([...DEFAULT_EVENT_SOURCES.map((s) => s.id), "src_binance_ann", "src_okx_ann"]);
-    db.eventSources = db.eventSources.filter((s) => !builtinIds.has(s.id));
-    db.events = [];
-    db.meta.eventSourcesCleared = true;
+  // 默认启用内置 RSS 消息源（用户 2026-07-31 要求"开箱即用消息面"）：
+  // 只补种一次，尊重用户之后的手动删除（删了不会再回来）。
+  if (!db.meta.defaultSourcesRestored) {
+    const have = new Set((db.eventSources || []).map((s) => s.id));
+    for (const src of DEFAULT_EVENT_SOURCES) if (!have.has(src.id)) db.eventSources.push({ ...src, createdAt: nowIso() });
+    db.meta.defaultSourcesRestored = true;
   }
   return db.eventSources;
 }

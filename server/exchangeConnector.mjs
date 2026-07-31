@@ -648,7 +648,8 @@ export async function okxContractSpec(instId) {
     const timer = timeoutSignal();
     const raw = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json());
     const row = raw.data?.[0];
-    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz) || 1, minSz: Number(row.minSz) || 1 } : null;
+    // tickSz=价格最小变动(px/止损/止盈价必须是它的整数倍),lotSz=张数步长,minSz=最小张数,ctVal=每张面值。
+    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz) || 1, minSz: Number(row.minSz) || 1, tickSz: Number(row.tickSz) || null } : null;
     if (spec && Number.isFinite(spec.ctVal) && spec.ctVal > 0) { okxSpecCache.set(instId, spec); okxCtValCache.set(instId, spec.ctVal); return spec; }
   } catch { /* 拿不到规格返回 null,下单侧 fail-closed */ }
   return null;
@@ -657,6 +658,34 @@ async function okxContractValue(instId) {
   if (okxCtValCache.has(instId)) return okxCtValCache.get(instId);
   const spec = await okxContractSpec(instId);
   return spec?.ctVal ?? null;
+}
+
+// 币安下单精度:价格必须是 tickSize 整数倍、数量必须是 stepSize 整数倍且 ≥ minQty、名义额 ≥ minNotional。
+// 从 exchangeInfo 的 PRICE_FILTER/LOT_SIZE/(MIN_)NOTIONAL 读取。缓存 1 小时(规格极少变)。
+const binanceFilterCache = new Map();
+export async function binanceSymbolFilters(symbol, futures = true) {
+  const sym = toBinanceSymbol(symbol);
+  const key = `${futures ? "F" : "S"}:${sym}`;
+  const cached = binanceFilterCache.get(key);
+  if (cached && Date.now() - cached.at < 3_600_000) return cached.spec;
+  try {
+    const base = futures ? BINANCE_USDM_BASE : BINANCE_SPOT_BASE;
+    const infoPath = futures ? "/fapi/v1/exchangeInfo" : "/api/v3/exchangeInfo";
+    const timer = timeoutSignal();
+    const j = await fetch(`${base}${infoPath}?symbol=${encodeURIComponent(sym)}`, { signal: timer.signal }).then((r) => r.json());
+    const row = (j?.symbols || []).find((s) => s.symbol === sym);
+    if (!row) return null;
+    const f = (t) => (row.filters || []).find((x) => x.filterType === t) || {};
+    const price = f("PRICE_FILTER"), lot = f("LOT_SIZE"), notional = f("MIN_NOTIONAL").notional ? f("MIN_NOTIONAL") : f("NOTIONAL");
+    const spec = {
+      tickSize: Number(price.tickSize) || null,
+      stepSize: Number(lot.stepSize) || null,
+      minQty: Number(lot.minQty) || 0,
+      minNotional: Number(notional.minNotional || notional.notional) || 0
+    };
+    binanceFilterCache.set(key, { spec, at: Date.now() });
+    return spec;
+  } catch { return null; }
 }
 
 // OKX 持仓模式:long_short_mode(双向/对冲)下每单必须带 posSide;net_mode(单向)下不能带。

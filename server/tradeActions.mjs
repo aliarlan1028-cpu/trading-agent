@@ -1,5 +1,5 @@
 import { appendAudit, appendTrace, id, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
-import { binanceSignedRequest, okxContractSpec, okxPositionMode, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { binanceSignedRequest, binanceSymbolFilters, okxContractSpec, okxPositionMode, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
 import { hasPassedPaper } from "./paperTrading.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
@@ -7,6 +7,33 @@ import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 // OKX clOrdId 只允许字母+数字(≤32)。下单/撤单/改单必须用同一个清洗函数,否则发出去清洗过、
 // 撤单用原值(带下划线)→ OKX 找不到单 → 撤不掉的孤儿单(审计 exch-F2)。全链路统一走它。
 export const okxCleanClOrdId = (s) => String(s || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+
+// ── 交易所精度对齐(OKX/币安通用)──────────────────────────────────────────
+// 交易所要求:价格必须是 tickSz 的整数倍、数量必须是 lotSz/stepSize 的整数倍且 ≥ 最小值。
+// 引擎/LLM 按 ATR/百分比算出的价格几乎永不是整 tick,不对齐会被交易所直接拒单。
+// step 可能是科学计数(PEPE tickSz=1e-9)或非 10 次幂(如 0.5),都要正确处理。
+function stepDecimals(step) {
+  const s = Number(step);
+  if (!Number.isFinite(s) || s <= 0) return 0;
+  const str = s.toExponential();                 // 统一成 "m e±n",规避 0.000000001 → "1e-9" 的解析坑
+  const [mant, expPart] = str.split("e");
+  const exp = Number(expPart) || 0;
+  const mantDec = mant.includes(".") ? mant.split(".")[1].length : 0;
+  return Math.max(0, mantDec - exp);
+}
+// 把 value 对齐到 step 的整数倍(round/floor/ceil),返回已消除浮点尾巴的数字。
+function roundToStep(value, step, mode = "round") {
+  const v = Number(value), s = Number(step);
+  if (!Number.isFinite(v) || !Number.isFinite(s) || s <= 0) return Number.isFinite(v) ? v : null;
+  const n = mode === "floor" ? Math.floor(v / s + 1e-9) : mode === "ceil" ? Math.ceil(v / s - 1e-9) : Math.round(v / s);
+  return Number((n * s).toFixed(stepDecimals(s)));
+}
+// 生成发给交易所的定点小数字符串(避免 1.23e-7 这种科学计数被拒)。step 缺失则原样返回。
+function fmtStep(value, step, mode = "round") {
+  if (step == null || !Number.isFinite(Number(step)) || Number(step) <= 0) return value == null ? undefined : String(value);
+  const rounded = roundToStep(value, step, mode);
+  return rounded == null ? undefined : rounded.toFixed(stepDecimals(step));
+}
 
 // 授权词表(mandate.strategies) → 策略注册表 id 的映射:paper 会话按注册表 id 记录,
 // 两个命名空间不映射时 REQUIRE_PAPER_VALIDATION 会拦下全部计划(审计 P1-5)。
@@ -271,20 +298,29 @@ async function executeBinanceAction(action, payload) {
   const futures = isBinanceFutures(payload);
   const orderPath = futures ? "/fapi/v1/order" : "/api/v3/order";
   if (action === "place_order") {
+    // 币安精度对齐:数量对齐 stepSize(向下)、价格对齐 tickSize,并强制 minQty/minNotional。
+    // 拿不到 filters 则 fail-closed(不发未对齐的单,免得被 -1111/-1013/-4164 拒或下出无效单)。
+    const flt = await binanceSymbolFilters(payload.symbol, futures);
+    if (!flt) return { status: "instrument_spec_unavailable", symbol };
+    const qtyNum = roundToStep(Number(payload.quantity), flt.stepSize ?? undefined, "floor");
+    if (flt.minQty && qtyNum < flt.minQty) return { status: "below_min_size", symbol, quantity: qtyNum, minQty: flt.minQty };
+    const refPx = Number(payload.price || payload.stopPrice || payload.stopLoss || 0);
+    if (flt.minNotional && refPx > 0 && qtyNum * refPx < flt.minNotional) return { status: "below_min_notional", symbol, notional: qtyNum * refPx, minNotional: flt.minNotional };
     const params = {
       symbol,
       side: String(payload.side || "BUY").toUpperCase(),
       type: String(payload.type || "LIMIT").toUpperCase(),
-      quantity: String(payload.quantity),
+      quantity: fmtStep(qtyNum, flt.stepSize),
       newClientOrderId: payload.clientOrderId || id("coid")
     };
     if (futures && payload.reduceOnly !== undefined) params.reduceOnly = String(Boolean(payload.reduceOnly));
     if (futures && payload.positionSide) params.positionSide = String(payload.positionSide).toUpperCase();
     if (futures && payload.closePosition) params.closePosition = "true";
     if (futures && payload.workingType) params.workingType = payload.workingType;
-    if (params.type === "LIMIT") Object.assign(params, { timeInForce: payload.timeInForce || "GTC", price: String(payload.price) });
-    if (params.type === "STOP_LOSS_LIMIT" || params.type === "TAKE_PROFIT_LIMIT") Object.assign(params, { stopPrice: String(payload.stopPrice || payload.stopLoss), price: String(payload.price || payload.stopPrice || payload.stopLoss), timeInForce: payload.timeInForce || "GTC" });
-    if (params.type === "STOP_MARKET" || params.type === "TAKE_PROFIT_MARKET") Object.assign(params, { stopPrice: String(payload.stopPrice || payload.stopLoss || payload.price) });
+    const px = (v) => fmtStep(v, flt.tickSize);
+    if (params.type === "LIMIT") Object.assign(params, { timeInForce: payload.timeInForce || "GTC", price: px(payload.price) });
+    if (params.type === "STOP_LOSS_LIMIT" || params.type === "TAKE_PROFIT_LIMIT") Object.assign(params, { stopPrice: px(payload.stopPrice || payload.stopLoss), price: px(payload.price || payload.stopPrice || payload.stopLoss), timeInForce: payload.timeInForce || "GTC" });
+    if (params.type === "STOP_MARKET" || params.type === "TAKE_PROFIT_MARKET") Object.assign(params, { stopPrice: px(payload.stopPrice || payload.stopLoss || payload.price) });
     const raw = await binanceSignedRequest(orderPath, params, { method: "POST" });
     const protection = payload.stopLoss && payload.attachProtection !== false && futures && !payload.reduceOnly
       ? await placeBinanceProtectiveStop(payload, symbol)
@@ -335,12 +371,16 @@ async function executeOkxAction(action, payload) {
     // 自家读仓位时早已乘 ctVal 换算(exchangeConnector),下单侧此前却原样透传币数量。
     let okxSz = Number(payload.quantity || payload.size);
     let okxCtVal = null;
+    let okxTickSz = null;   // 价格步长(px/止损/止盈价必须对齐),非永续时为 null → 不改价、维持原行为
+    let okxLotSz = null;    // 张数步长(sz 必须对齐)
     if (String(payload.marketType || "perpetual_usdt").includes("perp")) {
       const spec = await okxContractSpec(instId);
       if (!spec) return { status: "instrument_spec_unavailable", instId };
       okxCtVal = spec.ctVal;
+      okxTickSz = spec.tickSz;
       const lot = spec.lotSz > 0 ? spec.lotSz : 1;
-      const contracts = Math.floor((okxSz / spec.ctVal) / lot + 1e-9) * lot;
+      okxLotSz = lot;
+      const contracts = roundToStep(Math.floor((okxSz / spec.ctVal) / lot + 1e-9) * lot, lot, "floor"); // 向下对齐张数步长,消除浮点尾巴
       if (!(contracts >= (spec.minSz || lot))) {
         return { status: "below_min_size", instId, coinQuantity: okxSz, minContracts: spec.minSz, ctVal: spec.ctVal };
       }
@@ -380,14 +420,14 @@ async function executeOkxAction(action, payload) {
       tdMode: payload.tdMode || process.env.OKX_MARGIN_MODE || "cross",
       side: okxSide,
       ordType: String(payload.ordType || payload.type || "limit").toLowerCase(),
-      sz: String(okxSz),
-      px: payload.price ? String(payload.price) : undefined,
+      sz: fmtStep(okxSz, okxLotSz),                                  // 张数对齐 lotSz、无浮点尾巴
+      px: payload.price ? fmtStep(payload.price, okxTickSz) : undefined, // 限价对齐 tickSz,否则 OKX 拒单
       posSide: okxPosSide,
       clOrdId: okxClOrdId(payload.clientOrderId || id("coid")),
       reduceOnly: okxPosSide ? undefined : Boolean(payload.reduceOnly),
       attachAlgoOrds: payload.stopLoss && !payload.reduceOnly ? [{
         attachAlgoClOrdId: okxClOrdId(payload.stopClientOrderId || id("stop")),
-        slTriggerPx: String(payload.stopLoss),
+        slTriggerPx: fmtStep(payload.stopLoss, okxTickSz),          // 止损触发价也必须对齐 tickSz
         slOrdPx: "-1",
         slTriggerPxType: payload.workingType === "MARK_PRICE" ? "mark" : "last"
       }] : undefined
@@ -450,11 +490,12 @@ async function executeOkxAction(action, payload) {
         ? (payload.posSide || payload.positionSide || (tpSide === "sell" ? "long" : "short"))
         : undefined;
       const contracts = toContracts(target.quantity ?? target.sz ?? payload.quantity);
-      const triggerPx = String(target.stopPrice ?? target.price ?? target.triggerPrice ?? payload.price);
+      const rawTrigger = target.stopPrice ?? target.price ?? target.triggerPrice ?? payload.price;
       const algo = {
         instId, tdMode, side: tpSide, ordType: "conditional",
-        sz: String(contracts),
-        tpTriggerPx: triggerPx, tpOrdPx: "-1", tpTriggerPxType: "last",
+        sz: fmtStep(contracts, spec?.lotSz),                        // 张数对齐 lotSz
+        tpTriggerPx: fmtStep(rawTrigger, spec?.tickSz) ?? String(rawTrigger), // 触发价对齐 tickSz
+        tpOrdPx: "-1", tpTriggerPxType: "last",
         posSide: tpPosSide,
         reduceOnly: tpPosSide ? undefined : true,
         algoClOrdId: okxCleanClOrdId(target.clientOrderId || id("tp"))
@@ -536,11 +577,12 @@ function isBinanceFutures(payload) {
 
 async function placeBinanceProtectiveStop(payload, symbol) {
   const side = String(payload.side || "BUY").toUpperCase() === "BUY" ? "SELL" : "BUY";
+  const flt = await binanceSymbolFilters(payload.symbol, isBinanceFutures(payload));
   const params = {
     symbol,
     side,
     type: "STOP_MARKET",
-    stopPrice: String(payload.stopLoss),
+    stopPrice: flt?.tickSize ? fmtStep(payload.stopLoss, flt.tickSize) : String(payload.stopLoss), // 触发价对齐 tickSize
     closePosition: "true",
     newClientOrderId: payload.stopClientOrderId || id("stop")
   };
