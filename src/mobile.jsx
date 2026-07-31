@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   Activity,
   Bell,
@@ -324,7 +325,7 @@ function MobileRisk({ data, action, ui, view = "all" }) {
 
       {showOverview && <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
-        <button className="mRbReduce" onClick={() => { const on = Boolean(data.system?.reduceOnlyMode); if (window.confirm(on ? "关闭只减仓模式?" : "开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? "退出只减仓" : "只减仓"}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
+        <button className="mRbReduce" onClick={async () => { const on = Boolean(data.system?.reduceOnlyMode); if (await uiConfirm(on ? "关闭只减仓模式?" : "开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? "退出只减仓" : "只减仓"}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
         <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
       </div>}
     </div>
@@ -455,7 +456,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
 
       {seg === "技能" && (
         <div className="mSectionCard">
-          <header><span>技能流水线（{skills.length}）</span><span style={{ display: "flex", gap: 8 }}>{(() => { const n = skills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?`)) action("/api/knowledge/skills/validate-all", {}); }}>一键验证({n})</button>; })()}<button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>同步</button></span></header>
+          <header><span>技能流水线（{skills.length}）</span><span style={{ display: "flex", gap: 8 }}>{(async () => { const n = skills.filter(async (k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`批量历史验证 ${n} 个技能?`)) action("/api/knowledge/skills/validate-all", {}); }}>一键验证({n})</button>; })()}<button className="textButton" onClick={async () => action("/api/knowledge/skills/sync", {})}>同步</button></span></header>
           <div className="mKLegend">
             <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> 这些状态是什么意思？<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
             {legendOpen && SKILL_STATE_HELP.map(([label, tone, desc]) => (
@@ -501,7 +502,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
                   <>
                     <div className="mKArchiveHead">
                       <button onClick={() => setArchivedOpen((v) => !v)}><ChevronDown size={12} className={archivedOpen ? "flip" : ""} /> 已归档 {archived.length}</button>
-                      <button className="mKArchivePurge" onClick={() => { if (window.confirm("清理归档：删除编译失败与已被替代的技能？（已退役保留）")) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={11} /> 清理</button>
+                      <button className="mKArchivePurge" onClick={async () => { if (await uiConfirm("清理归档：删除编译失败与已被替代的技能？（已退役保留）")) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={11} /> 清理</button>
                     </div>
                     {archivedOpen && archived.map(row)}
                   </>

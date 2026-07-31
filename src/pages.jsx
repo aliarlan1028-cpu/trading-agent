@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import { LiveGrayPanel } from "./panels.jsx";
 import {
   Activity,
@@ -1059,7 +1060,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
         const TYPE_CN = { strategy: "交易策略", lens: "分析 prompt", workflow: "工作流" };
         return (
           <div className="termCard">
-            <div className="kHead"><span className="secLabel">转换产出 · 候选能力 <em className="mono">采纳即用</em></span><button className="primaryButton sm" onClick={() => { if (window.confirm("从所有知识源生成候选？后台调用 LLM 读懂书籍并产出，可能需十几秒。")) action("/api/knowledge/convert", {}); }}>生成候选</button></div>
+            <div className="kHead"><span className="secLabel">转换产出 · 候选能力 <em className="mono">采纳即用</em></span><button className="primaryButton sm" onClick={async () => { if (await uiConfirm("从所有知识源生成候选？后台调用 LLM 读懂书籍并产出，可能需十几秒。")) action("/api/knowledge/convert", {}); }}>生成候选</button></div>
             {!cands.length && <div className="emptyPanel">点「生成候选」把书里的金融/心理/策略知识转成可用的 交易策略 / 分析 prompt / 工作流，再逐条采纳；采纳即生效，在用中按真实表现留/退。</div>}
             {cands.map((c) => (
               <div key={c.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0", borderTop: "1px solid var(--kLine,#eceff2)" }}>
@@ -1189,7 +1190,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
       })()}
       {domain === "capabilities" &&(
         <div className="termCard">
-          <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(() => { const n = tradingSkills.filter((k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={() => { if (window.confirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={() => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
+          <div className="kHead"><span className="secLabel">知识交易技能 · 编译→历史验证→模拟盘→批准→上岗</span><div style={{ display: "flex", gap: 6 }}>{(async () => { const n = tradingSkills.filter(async (k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="primaryButton sm" onClick={async () => { if (await uiConfirm(`批量历史验证 ${n} 个技能?后台执行需数分钟,通过的自动进入「待模拟」。`)) action("/api/knowledge/skills/validate-all", {}); }}>一键历史验证({n})</button>; })()}<button className="secondaryButton sm" onClick={async () => action("/api/knowledge/skills/sync", {})}>同步状态</button></div></div>
           <SkillStateLegend />
           {!tradingSkills.length && <div className="emptyPanel">还没有技能。到「方法草案」把方法编译成技能草案后在此推进验证</div>}
           {(() => {
@@ -1223,7 +1224,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
                       {skill.status === "superseded" && <div className="hypoWhy">已被同源方法的更新版本替代，仅作血缘追溯，不参与决策。</div>}
                       {skill.validation && <div className="hypoWhy">历史三窗：训练 {skill.validation.train?.trades || 0} · 验证 {skill.validation.validation?.trades || 0} · 测试 {skill.validation.test?.trades || 0} 笔</div>}
                       {skill.liveMetrics && <div className="hypoWhy">实盘归因：{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}% · PF {skill.liveMetrics.profitFactor ?? "-"}</div>}
-                      {!["retired", "superseded"].includes(skill.status) && <button className="dangerTextButton sm" onClick={() => { if (window.confirm(`退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户手动退役" }); }}><Trash2 size={13} /> 退役</button>}
+                      {!["retired", "superseded"].includes(skill.status) && <button className="dangerTextButton sm" onClick={async () => { if (await uiConfirm(`退役「${skill.name}」v${skill.version}？`)) action(`/api/knowledge/skills/${skill.id}/retire`, { reason: "用户手动退役" }); }}><Trash2 size={13} /> 退役</button>}
                     </div>
                   )}
                 </div>
@@ -1241,7 +1242,7 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
                       <button className="kArchiveToggle" onClick={() => setShowArchived((v) => !v)}>
                         <ChevronDown size={13} className={showArchived ? "flip" : ""} /> 已归档 {archived.length}（编译失败 / 已被替代 / 已退役）
                       </button>
-                      <button className="dangerTextButton sm" title="删除全部编译失败与已被替代的技能（已退役保留）" onClick={() => { if (window.confirm(`清理归档：删除编译失败与已被替代的技能？（已退役保留，审计日志不受影响）`)) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={13} /> 清理</button>
+                      <button className="dangerTextButton sm" title="删除全部编译失败与已被替代的技能（已退役保留）" onClick={async () => { if (await uiConfirm(`清理归档：删除编译失败与已被替代的技能？（已退役保留，审计日志不受影响）`)) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={13} /> 清理</button>
                     </div>
                     {showArchived && <div className="kRowList">{archived.map(renderRow)}</div>}
                   </div>
@@ -1332,10 +1333,10 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
                         ))}
                       </div>
                       <div className="stratCardActs">
-                        {row.controls.includes("retire") && <button className="dangerText" onClick={() => { if (window.confirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
+                        {row.controls.includes("retire") && <button className="dangerText" onClick={async () => { if (await uiConfirm(`下线策略「${row.name}」？（可日后重新验证上岗）`)) action(`/api/knowledge/skills/${row.id}/retire`, { reason: "手动下线" }); }}>下线</button>}
                         {row.controls.includes("reactivate") && <button onClick={() => action(`/api/knowledge/skills/${row.id}/validate`, {})}>重验</button>}
-                        {row.controls.includes("untrust") && <button className="dangerText" onClick={() => { if (window.confirm(`撤销信任「${row.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
-                        {row.controls.includes("retrust") && <button onClick={() => { if (window.confirm(`重新信任「${row.name}」？将重新进入小额试用。`)) action(`/api/skills/${row.id}/trust`, {}); }}>重新信任</button>}
+                        {row.controls.includes("untrust") && <button className="dangerText" onClick={async () => { if (await uiConfirm(`撤销信任「${row.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${row.id}/untrust`, {}); }}>撤信任</button>}
+                        {row.controls.includes("retrust") && <button onClick={async () => { if (await uiConfirm(`重新信任「${row.name}」？将重新进入小额试用。`)) action(`/api/skills/${row.id}/trust`, {}); }}>重新信任</button>}
                         {!row.controls.length && <span className="stratAuto">系统自动换代</span>}
                       </div>
                     </div>
@@ -1376,13 +1377,13 @@ export function KnowledgeSkillsPage({ data, action, ui, embedded = false, view =
                             <button className={open ? "on" : ""} title="查看详情" onClick={() => setSkillDetail(open ? null : sk.id)}>详情</button>
                             {!sk.native && <button title="安全扫描" onClick={() => action(`/api/skills/${sk.id}/scan`, {})}>扫描</button>}
                             {!sk.native && (sk.trusted
-                              ? <button className="on" title="已信任(方法论已注入AI决策),点击撤销" onClick={() => { if (window.confirm(`撤销信任「${sk.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${sk.id}/untrust`, {}); }}>已信任</button>
-                              : <button title={scanned ? "信任(方法论注入AI决策,按成绩复盘)" : "先扫描通过"} disabled={!scanned} onClick={() => { if (window.confirm(`信任「${sk.name}」？\n它的方法论将注入 AI 决策(AI 照这套方法分析)，仍过硬风控；进小额试用，按真实成绩转正/退役。`)) action(`/api/skills/${sk.id}/trust`, {}); }}>信任</button>)}
+                              ? <button className="on" title="已信任(方法论已注入AI决策),点击撤销" onClick={async () => { if (await uiConfirm(`撤销信任「${sk.name}」？将移出 AI 决策方法论。`)) action(`/api/skills/${sk.id}/untrust`, {}); }}>已信任</button>
+                              : <button title={scanned ? "信任(方法论注入AI决策,按成绩复盘)" : "先扫描通过"} disabled={!scanned} onClick={async () => { if (await uiConfirm(`信任「${sk.name}」？\n它的方法论将注入 AI 决策(AI 照这套方法分析)，仍过硬风控；进小额试用，按真实成绩转正/退役。`)) action(`/api/skills/${sk.id}/trust`, {}); }}>信任</button>)}
                             {!sk.native && <button title="沙箱运行" onClick={() => action(`/api/skills/${sk.id}/run-sandbox`, {})}>运行</button>}
                             {!sk.native && (on
                               ? <button title="停用" onClick={() => action(`/api/skills/${sk.id}/disable`, {})}>停用</button>
                               : <button title={scanned ? "启用" : "先扫描后启用"} disabled={!scanned} onClick={() => action(`/api/skills/${sk.id}/install`, {})}>启用</button>)}
-                            {!sk.native && <button className="dangerText" title="删除" onClick={() => { if (window.confirm(`删除 Skill「${sk.name}」？`)) action(`/api/skills/${sk.id}`, {}, "DELETE"); }}>删除</button>}
+                            {!sk.native && <button className="dangerText" title="删除" onClick={async () => { if (await uiConfirm(`删除 Skill「${sk.name}」？`)) action(`/api/skills/${sk.id}`, {}, "DELETE"); }}>删除</button>}
                           </span>
                         </div>
                         {open && (
@@ -1504,7 +1505,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
           if (m === cur) return;
           let ack = false;
           if (m !== "observe") {
-            if (!window.confirm(m === "full_auto"
+            if (!await uiConfirm(m === "full_auto"
               ? "切到「全自动」：AI 发现符合授权的机会时会用真实资金自动下单，不再问你。确认？"
               : "切到「半自动」：会用真实资金交易，但每单需你点批准。确认？")) return;
             ack = true;
@@ -1928,8 +1929,8 @@ export function AdminPage({ data, action, ui, embedded = false }) {
   function updatePlanDraft(id, patch) {
     setPlanDrafts((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }));
   }
-  function resetUserPassword(user) {
-    const password = window.prompt(`为 ${user.email || user.name} 设置新的临时密码（至少 10 位）。设置后请让 TA 登录并在“账户 → 修改密码”里自行更换。`);
+  async function resetUserPassword(user) {
+    const password = await uiPrompt(`为 ${user.email || user.name} 设置新的临时密码（至少 10 位）。设置后请让 TA 登录并在“账户 → 修改密码”里自行更换。`);
     if (!password) return;
     if (password.length < 10) { ui.notify?.("临时密码至少 10 位"); return; }
     action(`/api/admin/users/${user.id}/reset-password`, { password }, "POST");

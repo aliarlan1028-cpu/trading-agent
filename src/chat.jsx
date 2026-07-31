@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   AlertTriangle,
   ArrowUp,
@@ -464,7 +465,7 @@ function AgentRail({ data, action, ui, send }) {
   ];
 
   async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
-  async function fireKill() { if (window.confirm(system.killSwitch ? "确认解除熔断？" : "确认一键熔断？将立即阻断所有新开仓。")) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
+  async function fireKill() { if (await uiConfirm(system.killSwitch ? "确认解除熔断？" : "确认一键熔断？将立即阻断所有新开仓。")) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
 
   return (
     <div className="agRail">
@@ -541,7 +542,7 @@ function AgentRail({ data, action, ui, send }) {
                       {w.note && <small title={w.note}>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
                     </div>
                     <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
-                    <button className="agWatchCancel" title="撤销观察哨" onClick={() => { if (window.confirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
+                    <button className="agWatchCancel" title="撤销观察哨" onClick={async () => { if (await uiConfirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
                   </div>
                 );
               })}
@@ -735,7 +736,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
 
   // 一次性清空全部对话历史（含早期悬浮助手混入的只读问答）。计划/授权/审计/成交不受影响。
   async function resetHistory() {
-    if (!window.confirm("清空全部对话历史？（含早期 AI 助手混入的问答）\n交易计划、授权、审计、成交记录不受影响，无法撤销。")) return;
+    if (!await uiConfirm("清空全部对话历史？（含早期 AI 助手混入的问答）\n交易计划、授权、审计、成交记录不受影响，无法撤销。")) return;
     try {
       const response = await fetch(apiUrl("/api/agent/chat/reset"), { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: "{}" });
       const json = await response.json();

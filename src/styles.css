@@ -8734,3 +8734,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
 .agMsgUserRow { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .agMsgMeta.userSide { text-align: right; opacity: .75; }
+
+/* 全站应用内确认弹窗(替代原生 window.confirm/prompt),桌面+移动通用 */
+.cfmOverlay{position:fixed;inset:0;z-index:2000;background:rgba(30,27,22,.42);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(1px)}
+.cfmCard{width:100%;max-width:390px;background:var(--surface,#fff);border:1px solid var(--border,#e4dfd5);border-radius:12px;box-shadow:0 22px 60px -14px rgba(30,27,22,.5);padding:20px;animation:cfmIn .14s ease-out}
+@keyframes cfmIn{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
+.cfmHead{font:700 15px/1.2 var(--font-ui,inherit);color:var(--text,#241d13);margin-bottom:8px}
+.cfmMsg{font-size:12.5px;line-height:1.6;color:var(--text-2,#4a4033);margin:0;white-space:pre-wrap}
+.cfmInput{width:100%;box-sizing:border-box;margin-top:12px;border:1px solid var(--border,#e4dfd5);border-radius:6px;padding:10px 12px;font-size:13px;color:var(--text,#241d13);font-family:var(--font-ui,inherit);outline:none}
+.cfmInput:focus{border-color:var(--accent,#c96a1f)}
+.cfmFoot{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+.cfmBtn{border-radius:7px;font:600 12.5px var(--font-ui,inherit);padding:9px 18px;cursor:pointer;border:1px solid transparent}
+.cfmCancel{background:#fff;border-color:var(--border-strong,#d8d2c6);color:var(--text-2,#4a4033)}
+.cfmCancel:hover{background:#faf8f4}
+.cfmOk{background:var(--accent,#c96a1f);color:#fff}
+.cfmOk:hover{filter:brightness(1.05)}
+.cfmDanger{background:var(--neg,#c43f28);color:#fff}
+.cfmDanger:hover{filter:brightness(1.05)}

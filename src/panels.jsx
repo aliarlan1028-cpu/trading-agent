@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   Trash2,
   AlertTriangle,
@@ -371,7 +372,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                     <b>{k.exchange}</b>
                     <StatusBadge tone={k.permissionVerifiedAt ? "ok" : "warn"}>{k.permissionVerifiedAt ? `已核验 · ${k.permissionVerificationStatus === "manual_confirmed" ? "人工确认" : "接口验证"}` : "未核验 · 实盘开仓被拦截"}</StatusBadge>
                     {!k.permissionVerifiedAt && (
-                      <button className="secondaryButton" type="button" onClick={() => { if (window.confirm(`确认你已在 ${k.exchange} API 管理页面核对过该 Key 未开启提现(Withdraw)权限？`)) action(`/api/exchange/api-key-metadata/${k.id}/confirm-no-withdraw`, {}); }}>确认无提现权限</button>
+                      <button className="secondaryButton" type="button" onClick={async () => { if (await uiConfirm(`确认你已在 ${k.exchange} API 管理页面核对过该 Key 未开启提现(Withdraw)权限？`)) action(`/api/exchange/api-key-metadata/${k.id}/confirm-no-withdraw`, {}); }}>确认无提现权限</button>
                     )}
                   </div>
                 ))}
@@ -909,7 +910,7 @@ export function KnowledgeListPanel({ data, action, ui }) {
             <div><strong>{source.title}</strong><small>{source.domain || source.type} · {chunkCount} 个片段 · {formatDateTime(source.importedAt, "未记录")}</small></div>
             <StatusBadge tone={source.status === "parsed" ? "ok" : "warning"}>{humanize(source.status)}</StatusBadge>
             <button className="secondaryButton" onClick={() => action(`/api/knowledge/sources/${source.id}/parse-real`, {})}>{source.status === "parsed" ? "重新解析" : "解析"}</button>
-            <button className="dangerTextButton" title="删除该知识来源及其片段" onClick={() => { if (window.confirm(`确定删除「${source.title}」？其片段、概念卡与规则将一并移除。`)) action(`/api/knowledge/sources/${source.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
+            <button className="dangerTextButton" title="删除该知识来源及其片段" onClick={async () => { if (await uiConfirm(`确定删除「${source.title}」？其片段、概念卡与规则将一并移除。`)) action(`/api/knowledge/sources/${source.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
           </div>
         );
       })}
@@ -969,7 +970,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
     const [, ...rest] = group;
     const removable = rest.filter((r) => r.status !== "已批准");
     if (!removable.length) return ui.notify("该组其余为已批准规则，未删除");
-    if (!window.confirm(`保留「${group[0].name}」，删除本组其余 ${removable.length} 条疑似重复草案？`)) return;
+    if (!await uiConfirm(`保留「${group[0].name}」，删除本组其余 ${removable.length} 条疑似重复草案？`)) return;
     for (const r of removable) await action(`/api/knowledge/rules/${r.id}`, {}, "DELETE");
   }
   return (
@@ -978,7 +979,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
         <strong>规则库 = 从书里蒸馏出的「纪律/风控」约束</strong>
         <small>每条都标注了来源书籍与依据。批准后写入风控引擎、并注入 AI 提示词；可预测方向的「策略」不在这里，而是走「策略假设」必须先回测。共 {rules.length} 条 · {approvedCount} 已批准 · {pending} 待审批。</small>
         <div className="ruleLibActions">
-          <button className="secondaryButton" disabled={rules.length < 2} onClick={() => { if (window.confirm("用 AI 语义合并近义规则（无 AI 时退回按 类别+名称+依据 精确去重；已批准的保留），确定去重？")) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> 一键语义去重</button>
+          <button className="secondaryButton" disabled={rules.length < 2} onClick={async () => { if (await uiConfirm("用 AI 语义合并近义规则（无 AI 时退回按 类别+名称+依据 精确去重；已批准的保留），确定去重？")) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> 一键语义去重</button>
         </div>
       </div>
 
@@ -1042,7 +1043,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
               {!approved && <button className="primaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: true })}>批准</button>}
               {!approved && rule.status !== "已拒绝" && <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: false })}>拒绝</button>}
               {approved && <button className="secondaryButton sm" onClick={() => ui.openPanel("riskRules")}>看风控</button>}
-              <button className="dangerTextButton sm" title="删除该规则草案" onClick={() => { if (window.confirm(`删除规则「${rule.name}」？`)) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> 删除</button>
+              <button className="dangerTextButton sm" title="删除该规则草案" onClick={async () => { if (await uiConfirm(`删除规则「${rule.name}」？`)) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> 删除</button>
             </div>
           </div>
         );

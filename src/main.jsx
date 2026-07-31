@@ -25,6 +25,7 @@ import {
 import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { isNativeApp } from "./lib.jsx";
+import { ConfirmHost } from "./confirm.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 
@@ -442,5 +443,6 @@ const root = (window.__traderAgentRoot ||= createRoot(document.getElementById("r
 root.render(
   <Suspense fallback={<div className="loading"><Activity size={28} /> 正在加载交易模块...</div>}>
     <App />
+    <ConfirmHost />
   </Suspense>
 );
