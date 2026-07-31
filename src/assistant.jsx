@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw } from "lucide-react";
+import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw, AlertTriangle, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, displayMoney, hhmmCn } from "./lib.jsx";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
@@ -167,7 +167,7 @@ function todosBroadcast(data) {
 }
 
 // 悬浮 AI 助手：自由问答（走真实工具链 Agent）+ 一键摘要/异动/护航/待办播报。
-export function AssistantWidget({ data }) {
+export function AssistantWidget({ data, ui }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);       // { id, role, content }
   const [input, setInput] = useState("");
@@ -185,12 +185,17 @@ export function AssistantWidget({ data }) {
   const incidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const todoTotal = awaiting + pending + incidents;
   const autonomyLabel = sys.killSwitch ? "已熔断" : sys.autonomyEnabled ? "自主运行中" : "已暂停";
+  // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)
+  const criticalIncidents = (data.riskIncidents || []).filter((i) => i.status === "open" && ["critical", "high"].includes(String(i.severity || "").toLowerCase()));
+  // 新鲜度:取最新账户快照/组合同步时间,如实反映数据"截至"何时
+  const asOf = data.accountSnapshots?.[0]?.createdAt || pf.updatedAt || data.marketMovers?.scannedAt || null;
+  const go = (page) => { ui?.setActive?.(page); setOpen(false); };
 
   const digestRows = [
-    ["账户", pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · 持仓 ${positions.length}` : "未同步"],
-    ["今日盈亏", pf.todayPnl != null ? `${pf.todayPnl >= 0 ? "+" : ""}${displayMoney(pf.todayPnl, 2)} U` : "未同步"],
-    ["自主", `${autonomyLabel} · 实盘${sys.liveTradingEnabled ? "开" : "关"}`],
-    ["待办", `批准 ${awaiting} · 确认 ${pending} · 告警 ${incidents}`]
+    ["账户", pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · 持仓 ${positions.length}` : "未同步", () => go("cockpit")],
+    ["今日盈亏", pf.todayPnl != null ? `${pf.todayPnl >= 0 ? "+" : ""}${displayMoney(pf.todayPnl, 2)} U` : "未同步", null],
+    ["自主", `${autonomyLabel} · 实盘${sys.liveTradingEnabled ? "开" : "关"}`, () => go("riskCenter")],
+    ["待办", `批准 ${awaiting} · 确认 ${pending} · 告警 ${incidents}`, todoTotal ? () => go("cockpit") : null]
   ];
 
   const scrollToBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
@@ -283,14 +288,22 @@ export function AssistantWidget({ data }) {
         <div className="asstDrawer" role="dialog" aria-label="AI 助手">
           <div className="asstHead">
             <span className="asstAvatar"><Bot size={16} /></span>
-            <div className="asstHeadText"><b>AI 助手</b><small>只读 · 解读账户/行情/知识（不下单）</small></div>
+            <div className="asstHeadText"><b>AI 助手</b><small>只读 · 不下单 · 数据截至 {asOf ? hhmmCn(asOf) : "未同步"}</small></div>
             <button className="asstIconBtn" onClick={() => setDigestOpen((v) => !v)} title={digestOpen ? "收起概览" : "展开概览"}><Gauge size={15} /></button>
             <button className="asstClose" onClick={() => setOpen(false)} aria-label="关闭"><X size={16} /></button>
           </div>
 
           {digestOpen && (
             <div className="asstDigest">
-              {digestRows.map(([k, v]) => <div className="asstRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
+              {digestRows.map(([k, v, onClick]) => <div className={`asstRow ${onClick ? "clickable" : ""}`} key={k} onClick={onClick || undefined}><span>{k}</span><b className="mono">{v}</b>{onClick && <ChevronRight size={12} className="asstRowGo" />}</div>)}
+            </div>
+          )}
+
+          {criticalIncidents.length > 0 && (
+            <div className="asstAlerts">
+              <div className="asstAlertHead"><AlertTriangle size={13} /> {criticalIncidents.length} 项待处理风险</div>
+              {criticalIncidents.slice(0, 2).map((i) => <button key={i.id} className="asstAlertRow" onClick={() => go("riskCenter")}><span>{i.title || i.source || "风险告警"}</span><ChevronRight size={13} /></button>)}
+              {criticalIncidents.length > 2 && <button className="asstAlertMore" onClick={() => go("riskCenter")}>查看全部 {criticalIncidents.length} 项 ›</button>}
             </div>
           )}
 

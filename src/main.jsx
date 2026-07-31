@@ -274,7 +274,7 @@ function App() {
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
-      <AssistantWidget data={data} />
+      <AssistantWidget data={data} ui={ui} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
