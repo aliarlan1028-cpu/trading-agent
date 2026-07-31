@@ -119,7 +119,7 @@ export async function fetchTickerQuiet(symbol, exchange = "OKX") {
 // （BTC 和小币的"极端"不是一个量级）。失败/样本不足返回 null，由调用方回落固定阈值。
 export async function fetchFundingPercentile(symbol, pct = 85) {
   try {
-    const instId = toOkxSymbol(symbol);
+    const instId = toOkxSymbol(symbol, "swap"); // 资金费率是永续专属,必须用 -SWAP instId(现货无资金费率)
     const res = await fetch(`${OKX_BASE}/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const j = await res.json();
