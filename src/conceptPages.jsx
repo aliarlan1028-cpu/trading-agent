@@ -9,7 +9,14 @@ import {
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SystemConfigPanel } from "./panels.jsx";
-import { apiUrl, authHeaders, displayMoney, displayPct, formatDateTime, formatTime, humanize, TradingViewChart } from "./lib.jsx";
+import { apiUrl, authHeaders, displayMoney, displayPct, formatDateTime, formatTime, humanize, SKILL_STATE, TradingViewChart } from "./lib.jsx";
+
+// 技能/策略生命周期状态 → 中文短标签 + Pill 颜色(cp2Pill 用 good/warn/bad/neutral)。
+// 修:此前策略详情用 humanize 直接吐英文原值(historical_rejected → "historical rejected")又长又跨行,
+// 且 toneOf 匹配不到把"历史未通过"错染成绿色。统一走 SKILL_STATE。
+const SKILL_TONE_CLASS = { ok: "good", warning: "warn", danger: "bad", info: "warn", neutral: "neutral" };
+const skillStatusLabel = (status) => SKILL_STATE[status]?.label || humanize(status, "—");
+const skillStatusTone = (status) => SKILL_STATE[status] ? (SKILL_TONE_CLASS[SKILL_STATE[status].tone] || "neutral") : toneOf(status);
 import "./conceptPages.css";
 import "./conceptSettings.css";
 
@@ -380,10 +387,10 @@ export function StrategyLibraryConcept({ data, action, ui }) {
       </aside>
       <ConceptCard title="策略列表" meta={`${shown.length}/${strategies.length} 条`} className="cp2CapabilityTable" action={<button className="cp2Link" onClick={()=>ui.openPanel("skillImport")}><Plus size={12}/> 导入 / 新建策略</button>}>
         <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索策略名称"/></div>
-        <div className="cp2ScrollList tall"><ConceptTable onRowClick={r=>setSelId(r.id)} activeId={sel.id} columns={[{key:"name",label:"策略",render:r=><button className={`cp2Link ${r.id===sel.id?"on":""}`} onClick={()=>setSelId(r.id)}>{r.name}</button>},{key:"dir",label:"方向·周期",render:r=>`${humanize(r.direction,"—")} · ${r.timeframe||"—"}`},{key:"origin",label:"来源",render:r=>r.origin},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,"—")}</Pill>},{key:"pf",label:"盈亏比",render:r=>r.profitFactor??r.backtest?.profitFactor??"—"}]} rows={shown} empty="暂无策略（喂书蒸馏或导入后在此出现）"/></div>
+        <div className="cp2ScrollList tall"><ConceptTable onRowClick={r=>setSelId(r.id)} activeId={sel.id} columns={[{key:"name",label:"策略",render:r=><button className={`cp2Link ${r.id===sel.id?"on":""}`} onClick={()=>setSelId(r.id)}>{r.name}</button>},{key:"dir",label:"方向·周期",render:r=>`${humanize(r.direction,"—")} · ${r.timeframe||"—"}`},{key:"origin",label:"来源",render:r=>r.origin},{key:"status",label:"状态",render:r=><Pill tone={skillStatusTone(r.status)}>{skillStatusLabel(r.status)}</Pill>},{key:"pf",label:"盈亏比",render:r=>r.profitFactor??r.backtest?.profitFactor??"—"}]} rows={shown} empty="暂无策略（喂书蒸馏或导入后在此出现）"/></div>
       </ConceptCard>
       <ConceptCard title="策略详情" className="cp2CapabilityDetail">
-        <div className="cp2CapabilityTitle"><span><Activity size={18}/></span><div><b>{sel.name||"选择策略"}</b><small>{[humanize(sel.direction,""),sel.timeframe].filter(Boolean).join(" · ")||"—"}</small></div><Pill tone={toneOf(sel.status)}>{humanize(sel.status,"—")}</Pill></div>
+        <div className="cp2CapabilityTitle"><span><Activity size={18}/></span><div><b>{sel.name||"选择策略"}</b><small>{[humanize(sel.direction,""),sel.timeframe].filter(Boolean).join(" · ")||"—"}</small></div>{sel.status&&<Pill tone={skillStatusTone(sel.status)}>{skillStatusLabel(sel.status)}</Pill>}</div>
         <p>{sel.entry||sel.description||sel.summary||"选择一条策略查看其进场/止损/止盈逻辑与验证状态。"}</p>
         <div className="cp2Kv column"><span>来源<b>{sel.origin||"—"}</b></span><span>模板<b>{humanize(sel.template,"—")}</b></span><span>回测状态<b>{humanize(sel.backtestStatus,"未回测")}</b></span><span>胜率<b>{sel.winRatePct!=null?`${sel.winRatePct}%`:"—"}</b></span><span>盈亏比<b>{sel.profitFactor??sel.backtest?.profitFactor??"—"}</b></span><span>最近运行<b>{formatDateTime(sel.lastRunAt)}</b></span></div>
         <button className="cp2Secondary" onClick={()=>action("/api/strategy/research",{},"POST")}><Play size={12}/> 运行回测 / 研究</button>

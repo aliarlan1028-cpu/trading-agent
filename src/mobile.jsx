@@ -877,7 +877,7 @@ function MobileStrategy({ data }) {
         {shown.length ? shown.map((s) => (
           <div className="mIncRow" key={s.id}>
             <div className="mIncL"><b>{s.name}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div>
-            <StatusBadge tone={statusTone(s.status)}>{humanize(s.status, "—")}</StatusBadge>
+            {(() => { const st = SKILL_STATE[s.status] || { label: humanize(s.status, "—"), tone: statusTone(s.status) }; return <StatusBadge tone={st.tone}>{st.label}</StatusBadge>; })()}
           </div>
         )) : <div className="mEmpty">暂无策略（喂书蒸馏或导入策略后在此出现）</div>}
       </div>
