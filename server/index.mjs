@@ -40,6 +40,7 @@ import {
   bindKnowledgeSkillsToPlan,
   compileTradingMethod,
   ensureCuratedSkills,
+  ensureTurtleStrategy,
   validateAllCompiledSkills,
   knowledgeSkillSummary,
   retireKnowledgeSkill,
@@ -219,6 +220,7 @@ for (const server of db.mcpServers || []) {
 })();
 // 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+try { ensureTurtleStrategy(db); } catch (error) { appendTrace(db, "system", `海龟策略入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 // 模拟前向为主(主人选择):编译好的技能走「历史 OOS 预筛 → 纯前向模拟盘 → 已验证(模拟)」这条链,
 // 用真实行情前向验证,而不是等那个几乎不产生成交的小账户——破解"零真实成交→零归因→永不采纳"的死锁。
 db.system.skillPaperForwardMode ??= true;

@@ -898,6 +898,37 @@ export function ensureCuratedSkills(db, actor = "CuratedSkills") {
   return { created };
 }
 
+// 海龟交易法(唐奇安通道突破)——用户 2026-07-31 指定加入。精选集当年种过后被清空且不再自动重建
+// (curatedSeedVersion 已置位),故用独立开关【定向】补种海龟双向策略,不触碰其它已被用户清理的精选技能。
+// 走与所有策略相同的 编译→历史验证→纯前向模拟→人工批准 流水线,无任何验证捷径。
+export function ensureTurtleStrategy(db, actor = "TurtleSeed") {
+  ensureCollections(db);
+  db.meta ||= {};
+  if (db.meta.turtleSeedV1) return { created: 0, skipped: "already_seeded" };
+  db.knowledge.sources ||= [];
+  if (!db.knowledge.sources.some((source) => source.id === CURATED_SOURCE.id)) {
+    db.knowledge.sources.push({ ...CURATED_SOURCE, createdAt: nowIso() });
+  }
+  // 加密永续适配边界:经典海龟是日线股票/期货,这里用 1h;止损 2×ATR14;
+  // 10 日反向通道离场与金字塔加仓受引擎单入场限制未实现,以 2R 止盈近似。必须过前向模拟才可实盘。
+  const cryptoNote = "海龟法则加密永续适配:周期1h(经典为日线);止损2×ATR14;10日反向通道离场与金字塔加仓受引擎单入场限制未实现,以2R止盈近似;必须过纯前向模拟并人工批准才可实盘。";
+  const turtle = CURATED_METHODS.filter((method) => method.id === "cm_donchian_long" || method.id === "cm_donchian_short");
+  let created = 0;
+  for (const method of turtle) {
+    if (!db.knowledge.tradingMethods.some((item) => item.id === method.id)) {
+      const { templateId, params, ...fields } = method;
+      db.knowledge.tradingMethods.push({ ...fields, source: { id: CURATED_SOURCE.id, title: CURATED_SOURCE.title }, curated: true, cryptoAdapted: true, note: cryptoNote, createdAt: nowIso() });
+    }
+    if (db.knowledge.tradingSkills.some((skill) => skill.sourceMethodId === method.id)) continue;
+    const skill = compileTradingMethod(db, method.id, { templateId: method.templateId, params: method.params }, actor);
+    skill.curated = true;
+    if (skill.status === "compiled") created += 1;
+  }
+  db.meta.turtleSeedV1 = true;
+  if (created) appendAudit(db, `海龟策略(唐奇安20突破/下破 双向)入列:新编译 ${created} 个,待历史+纯前向验证`, CURATED_SOURCE.id, actor);
+  return { created };
+}
+
 // 用户在聊天里口述策略 → agent 抽取结构化字段 → 复用编译流水线存成"我的技能"。
 // 与书本方法、精选技能同一条严格生命周期：编译→历史→纯前向→人工批准→小额试用→转正。
 const USER_SKILL_SOURCE = { id: "src_user_authored", title: "我的策略(聊天口述)", type: "user_authored" };
