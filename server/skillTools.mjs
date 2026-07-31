@@ -1,4 +1,4 @@
-import { getHistoricalKlines, syncMicrostructure } from "./exchangeConnector.mjs";
+import { getHistoricalKlines, syncMicrostructure, fetchFundingPercentile } from "./exchangeConnector.mjs";
 import { activeMandate, nowIso } from "./store.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildExecutionQuality, buildSloReport } from "./professionalAnalytics.mjs";
@@ -22,6 +22,23 @@ function mandateSymbols(db, provided) {
   return (mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT", "SOL/USDT"]).map((s) => String(s).toUpperCase());
 }
 
+const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
+
+// 摆动结构:3 根分形取最近两个摆动高/低点。HH+HL=多头结构(1)，LH+LL=空头结构(-1)，其它=0。
+function swingStructure(highs, lows, w = 2) {
+  const sh = [], sl = [];
+  for (let i = w; i < highs.length - w; i += 1) {
+    let isH = true, isL = true;
+    for (let j = i - w; j <= i + w; j += 1) { if (highs[j] > highs[i]) isH = false; if (lows[j] < lows[i]) isL = false; }
+    if (isH) sh.push(highs[i]);
+    if (isL) sl.push(lows[i]);
+  }
+  if (sh.length < 2 || sl.length < 2) return 0;
+  if (sh.at(-1) > sh.at(-2) && sl.at(-1) > sl.at(-2)) return 1;
+  if (sh.at(-1) < sh.at(-2) && sl.at(-1) < sl.at(-2)) return -1;
+  return 0;
+}
+
 export const SKILL_TOOLS = [
   {
     skillId: "skill_native_mtf",
@@ -31,25 +48,34 @@ export const SKILL_TOOLS = [
     description: "在 1h/4h/1d 三个周期判断趋势方向是否一致。多周期一致时趋势信号更可靠；不一致时应谨慎。内置 sync_market 只看单周期，这个技能补多周期确认。",
     schema: { type: "object", properties: { symbol: { type: "string", description: "交易对，如 BTC/USDT" } }, required: ["symbol"] },
     async handler(db, args) {
+      // v1.1:每个周期用三票判定——①价格 vs SMA20 位置 ②SMA20 斜率 ③摆动结构(HH/HL vs LH/LL)。
+      // 三票需 ≥2 同向且无反向票才给方向,否则 neutral(避免单根穿越 SMA 的假信号)。
       const symbol = String(args.symbol || "BTC/USDT").toUpperCase();
       const tfs = ["1h", "4h", "1d"];
       const timeframes = {};
       for (const tf of tfs) {
         try {
-          const candles = await getHistoricalKlines(symbol, tf, 60);
+          const candles = await getHistoricalKlines(symbol, tf, 80);
           const closes = candles.map((c) => Number(c.close));
-          if (closes.length < 20) { timeframes[tf] = { error: "K线不足" }; continue; }
-          const sma = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-          const smaEarlier = closes.slice(-40, -20).reduce((a, b) => a + b, 0) / 20;
+          const highs = candles.map((c) => Number(c.high));
+          const lows = candles.map((c) => Number(c.low));
+          if (closes.length < 40) { timeframes[tf] = { error: "K线不足" }; continue; }
+          const sma = avg(closes.slice(-20));
+          const smaEarlier = avg(closes.slice(-40, -20));
           const last = closes[closes.length - 1];
-          timeframes[tf] = { close: round(last, last), sma20: round(sma, last), trend: last > sma ? "up" : "down", slope: sma > smaEarlier ? "rising" : "falling" };
+          const struct = swingStructure(highs, lows);
+          const votes = [last > sma ? 1 : -1, sma > smaEarlier ? 1 : -1, struct];
+          const up = votes.filter((v) => v > 0).length, dn = votes.filter((v) => v < 0).length;
+          const trend = up >= 2 && dn === 0 ? "up" : dn >= 2 && up === 0 ? "down" : "neutral";
+          timeframes[tf] = { close: round(last, last), sma20: round(sma, last), pricePos: last > sma ? "above" : "below", maSlope: sma > smaEarlier ? "rising" : "falling", structure: struct > 0 ? "HH/HL" : struct < 0 ? "LH/LL" : "unclear", trend };
         } catch (error) {
           timeframes[tf] = { error: error.message };
         }
       }
       const dirs = Object.values(timeframes).map((t) => t.trend).filter(Boolean);
-      const aligned = dirs.length === tfs.length && dirs.every((d) => d === dirs[0]);
-      return { symbol, timeframes, aligned, direction: aligned ? dirs[0] : "mixed", note: aligned ? `三周期一致${dirs[0] === "up" ? "多头" : "空头"}，趋势信号较强` : "多周期方向不一致，趋势信号弱，宜观望或降杠杆" };
+      const directional = dirs.filter((d) => d !== "neutral");
+      const aligned = directional.length === tfs.length && directional.every((d) => d === directional[0]);
+      return { symbol, timeframes, aligned, direction: aligned ? directional[0] : "mixed", note: aligned ? `三周期(价格/均线斜率/结构)一致${directional[0] === "up" ? "多头" : "空头"}，趋势信号强` : "多周期方向不一致或有背离，趋势信号弱，宜观望或降杠杆" };
     }
   },
   {
@@ -60,17 +86,28 @@ export const SKILL_TOOLS = [
     description: "扫描一组交易对的资金费率与订单簿不平衡，标出多空拥挤（|资金费率|≥0.05%）的品种。反向挤压风险预警。内置 get_microstructure 一次只看一个币，这个技能批量扫描。",
     schema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, description: "交易对列表，留空则用授权白名单或主流币" } } },
     async handler(db, args) {
+      // v1.1:①每币自适应阈值——用该币资金费率历史 |值| 的 P85(夹在 0.03%~0.15%)代替固定 0.05%
+      //      (BTC 与小币的"极端"量级不同);拉不到历史则回落 0.05%。
+      //      ②盘口失衡与费率同向确认——两者一致时拥挤判定更可靠。
       const list = mandateSymbols(db, args.symbols).slice(0, 8);
       const rows = [];
       for (const symbol of list) {
         try {
           const m = await syncMicrostructure(db, "OKX", symbol);
-          rows.push({ symbol, fundingRatePct: m.fundingRatePct, bookImbalancePct: m.bookImbalancePct, crowded: Math.abs(Number(m.fundingRatePct) || 0) >= 0.05 });
+          const funding = Number(m.fundingRatePct) || 0;
+          const imb = Number(m.bookImbalancePct);
+          const p85 = await fetchFundingPercentile(symbol, 85);
+          const thr = Number.isFinite(p85) ? Math.min(0.15, Math.max(0.03, p85)) : 0.05;
+          const fundingCrowded = Math.abs(funding) >= thr;
+          const imbExtreme = Number.isFinite(imb) && Math.abs(imb - 50) >= 20;
+          const imbAgrees = Number.isFinite(imb) && ((funding > 0 && imb > 50) || (funding < 0 && imb < 50));
+          const crowded = fundingCrowded || (Math.abs(funding) >= Math.max(0.03, thr * 0.6) && imbExtreme && imbAgrees);
+          rows.push({ symbol, fundingRatePct: m.fundingRatePct, bookImbalancePct: Number.isFinite(imb) ? imb : null, thresholdPct: Number(thr.toFixed(3)), adaptive: Number.isFinite(p85), crowded, crowdSide: crowded ? (funding > 0 ? "long_crowded" : "short_crowded") : "balanced" });
         } catch { /* 单个失败跳过 */ }
       }
       rows.sort((a, b) => Math.abs(Number(b.fundingRatePct) || 0) - Math.abs(Number(a.fundingRatePct) || 0));
       const extremes = rows.filter((r) => r.crowded);
-      return { scanned: rows.length, extremes, all: rows, note: extremes.length ? `${extremes.map((e) => e.symbol).join("、")} 资金费率偏极端，警惕反向挤压` : "无明显资金费率拥挤" };
+      return { scanned: rows.length, extremes, all: rows, note: extremes.length ? `${extremes.map((e) => e.symbol).join("、")} 资金费率偏极端(自适应阈值+盘口确认)，警惕反向挤压` : "无明显资金费率拥挤" };
     }
   },
   {
@@ -163,17 +200,52 @@ export const SKILL_TOOLS = [
   {
     skillId:"skill_native_liquidity",name:"流动性与冲击成本",toolName:"liquidity_impact",version:"1.0.0",permissions:["market.read"],freshnessMs:5000,failClosed:true,
     description:"基于盘口点差与深度估算冲击、容量和拆单建议。",schema:{type:"object",properties:{symbol:{type:"string"},notionalUsdt:{type:"number"}},required:["symbol","notionalUsdt"]},outputSchema:{type:"object",required:["status","estimate"]},
-    async handler(db,args){const symbol=String(args.symbol).toUpperCase();const m=await syncMicrostructure(db,"OKX",symbol);const spread=Number(m.spreadBps),depth=Number(m.depthUsdt||m.orderBookDepthUsdt);if(!Number.isFinite(spread)||!Number.isFinite(depth)||depth<=0)return {status:"blocked",reason:"fresh_depth_unavailable",estimate:null};const n=Number(args.notionalUsdt);const impact=spread/2+Math.max(0,n/depth*10000);return {status:"ok",estimate:{symbol,spreadBps:spread,depthUsdt:depth,expectedImpactBps:Number(impact.toFixed(2)),maxNotionalAt10Bps:Number((depth*Math.max(0,10-spread/2)/10000).toFixed(2)),splitCount:Math.max(1,Math.ceil(impact/10))}};}
+    async handler(db,args){
+      // v1.1:线性冲击 → 平方根冲击律(机构标准:冲击 ∝ √参与率)。半价差为基础成本,
+      // K=100bps 为参与率系数(参与率=下单额/盘口深度;满深度≈100bps 冲击,再按 √ 放大)。
+      const symbol=String(args.symbol).toUpperCase();
+      const m=await syncMicrostructure(db,"OKX",symbol);
+      const spread=Number(m.spreadBps),depth=Number(m.depthUsdt||m.orderBookDepthUsdt);
+      if(!Number.isFinite(spread)||!Number.isFinite(depth)||depth<=0)return {status:"blocked",reason:"fresh_depth_unavailable",estimate:null};
+      const n=Number(args.notionalUsdt);
+      const halfSpread=spread/2, K=100, participation=Math.max(0,n/depth);
+      const impact=halfSpread+K*Math.sqrt(participation);
+      const maxNotionalAt10Bps=halfSpread>=10?0:Number((depth*Math.pow((10-halfSpread)/K,2)).toFixed(2));
+      const splitCount=maxNotionalAt10Bps>0?Math.max(1,Math.ceil(n/maxNotionalAt10Bps)):Math.max(1,Math.ceil(impact/10));
+      return {status:"ok",estimate:{symbol,model:"square_root",spreadBps:spread,depthUsdt:depth,participationPct:Number((participation*100).toFixed(1)),expectedImpactBps:Number(impact.toFixed(2)),maxNotionalAt10Bps,splitCount}};
+    }
   },
   {
     skillId:"skill_native_basis",name:"资金费率与基差",toolName:"funding_basis",version:"1.0.0",permissions:["market.read"],freshnessMs:15000,failClosed:true,
     description:"评估资金费率、永续基差与拥挤反转风险。",schema:{type:"object",properties:{symbol:{type:"string"}},required:["symbol"]},outputSchema:{type:"object",required:["status","signal"]},
-    async handler(db,args){const symbol=String(args.symbol).toUpperCase();const m=await syncMicrostructure(db,"OKX",symbol);const market=(db.markets||[]).find(x=>x.symbol===symbol)||{};const mark=Number(m.markPrice||market.price),index=Number(m.indexPrice||market.indexPrice);if(!Number.isFinite(mark)||!Number.isFinite(index)||!index)return {status:"blocked",reason:"mark_or_index_missing",signal:null};const basis=(mark/index-1)*100;const funding=Number(m.fundingRatePct);return {status:"ok",signal:{symbol,fundingRatePct:Number.isFinite(funding)?funding:null,basisPct:Number(basis.toFixed(4)),crowding:Math.abs(funding)>=.05?funding>0?"long_crowded":"short_crowded":"balanced"}};}
+    async handler(db,args){
+      // v1.1:拥挤阈值改为该币资金费率历史 P85 自适应(夹 0.03%~0.15%),拉不到回落 0.05%。
+      const symbol=String(args.symbol).toUpperCase();
+      const m=await syncMicrostructure(db,"OKX",symbol);
+      const market=(db.markets||[]).find(x=>x.symbol===symbol)||{};
+      const mark=Number(m.markPrice||market.price),index=Number(m.indexPrice||market.indexPrice);
+      if(!Number.isFinite(mark)||!Number.isFinite(index)||!index)return {status:"blocked",reason:"mark_or_index_missing",signal:null};
+      const basis=(mark/index-1)*100;
+      const funding=Number(m.fundingRatePct);
+      const p85=await fetchFundingPercentile(symbol,85);
+      const thr=Number.isFinite(p85)?Math.min(0.15,Math.max(0.03,p85)):0.05;
+      return {status:"ok",signal:{symbol,fundingRatePct:Number.isFinite(funding)?funding:null,basisPct:Number(basis.toFixed(4)),thresholdPct:Number(thr.toFixed(3)),crowding:Math.abs(funding)>=thr?funding>0?"long_crowded":"short_crowded":"balanced"}};
+    }
   },
   {
     skillId:"skill_native_regime",name:"市场状态分类",toolName:"deterministic_market_regime",version:"1.0.0",permissions:["market.read"],freshnessMs:60000,failClosed:true,
     description:"以确定性价格、波动和流动性特征分类趋势、震荡、高波动与低流动性。",schema:{type:"object",properties:{symbol:{type:"string"},timeframe:{type:"string"}},required:["symbol"]},outputSchema:{type:"object",required:["status","regime"]},
-    async handler(db,args){const symbol=String(args.symbol).toUpperCase(),m=(db.markets||[]).find(x=>x.symbol===symbol);const c=(m?.candlesByTf?.[args.timeframe||"1h"]?.candles||m?.candles||[]).slice(-30);if(c.length<20)return {status:"blocked",reason:"insufficient_closed_bars",regime:null};const closes=c.map(x=>Number(x.close)),ret=closes.slice(1).map((x,i)=>x/closes[i]-1),vol=Math.sqrt(ret.reduce((s,x)=>s+x*x,0)/ret.length)*100,trend=(closes.at(-1)/closes[0]-1)*100;return {status:"ok",regime:{symbol,label:vol>2?"high_volatility":Math.abs(trend)>vol*2?trend>0?"uptrend":"downtrend":"range",realizedVolPct:Number(vol.toFixed(2)),trendPct:Number(trend.toFixed(2)),asOf:m.updatedAt||m.syncedAt}};}
+    async handler(db,args){
+      // v1.1:补上"低流动性"分类(此前描述有、代码无)——盘口点差 >5bps 视为盘口偏薄,优先标 low_liquidity。
+      const symbol=String(args.symbol).toUpperCase(),m=(db.markets||[]).find(x=>x.symbol===symbol);
+      const c=(m?.candlesByTf?.[args.timeframe||"1h"]?.candles||m?.candles||[]).slice(-30);
+      if(c.length<20)return {status:"blocked",reason:"insufficient_closed_bars",regime:null};
+      const closes=c.map(x=>Number(x.close)),ret=closes.slice(1).map((x,i)=>x/closes[i]-1),vol=Math.sqrt(ret.reduce((s,x)=>s+x*x,0)/ret.length)*100,trend=(closes.at(-1)/closes[0]-1)*100;
+      const spreadBps=Number(m?.spreadBps);
+      const lowLiq=Number.isFinite(spreadBps)&&spreadBps>5;
+      const label=lowLiq?"low_liquidity":vol>2?"high_volatility":Math.abs(trend)>vol*2?trend>0?"uptrend":"downtrend":"range";
+      return {status:"ok",regime:{symbol,label,realizedVolPct:Number(vol.toFixed(2)),trendPct:Number(trend.toFixed(2)),spreadBps:Number.isFinite(spreadBps)?spreadBps:null,asOf:m.updatedAt||m.syncedAt}};
+    }
   },
   {
     skillId:"skill_native_execution_quality",name:"执行质量分析",toolName:"execution_quality",version:"1.0.0",permissions:["account.read"],freshnessMs:300000,failClosed:false,
@@ -181,7 +253,18 @@ export const SKILL_TOOLS = [
   },
   {
     skillId:"skill_native_drift",name:"交易复盘与漂移检测",toolName:"strategy_drift",version:"1.0.0",permissions:["account.read"],freshnessMs:3600000,failClosed:false,
-    description:"比较近期与历史成交表现，区分策略表现漂移和执行恶化。",schema:{type:"object",properties:{strategy:{type:"string"}}},outputSchema:{type:"object",required:["status","diagnosis"]},async handler(db,args){let f=(db.fills||[]).filter(x=>x.kind==="close"&&Number.isFinite(Number(x.realizedPnl)));if(args.strategy)f=f.filter(x=>x.strategy===args.strategy);const vals=f.map(x=>Number(x.realizedPnl)),recent=vals.slice(0,10),base=vals.slice(10,40);const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;const rm=mean(recent),bm=mean(base);return {status:f.length<20?"insufficient_sample":"ok",diagnosis:{trades:f.length,recentExpectancy:rm,baselineExpectancy:bm,performanceDrift:rm!==null&&bm!==null&&rm<bm*.5,executionQuality:buildExecutionQuality(db)}};}
+    description:"比较近期与历史成交表现，区分策略表现漂移和执行恶化。",schema:{type:"object",properties:{strategy:{type:"string"}}},outputSchema:{type:"object",required:["status","diagnosis"]},async handler(db,args){
+      // v1.1:漂移判定加 Welch t 检验——只在近期与基线期望差异"统计显著(|t|≥2≈p<0.05)"且近期更弱时才标漂移,避免小样本波动误报。
+      let f=(db.fills||[]).filter(x=>x.kind==="close"&&Number.isFinite(Number(x.realizedPnl)));
+      if(args.strategy)f=f.filter(x=>x.strategy===args.strategy);
+      const vals=f.map(x=>Number(x.realizedPnl)),recent=vals.slice(0,10),base=vals.slice(10,40);
+      const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+      const variance=(a,m)=>a.length>1?a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1):null;
+      const rm=mean(recent),bm=mean(base);
+      let tStat=null,significant=false;
+      if(recent.length>=5&&base.length>=5&&rm!==null&&bm!==null){const vr=variance(recent,rm),vb=variance(base,bm);const se=Math.sqrt((vr/recent.length)+(vb/base.length));tStat=se>0?Number(((rm-bm)/se).toFixed(2)):null;significant=tStat!==null&&Math.abs(tStat)>=2;}
+      const performanceDrift=significant&&rm<bm;
+      return {status:f.length<20?"insufficient_sample":"ok",diagnosis:{trades:f.length,recentExpectancy:rm,baselineExpectancy:bm,tStat,significant,performanceDrift,note:!significant?"近期与基线差异不显著,可能只是正常波动":performanceDrift?"近期显著弱于基线,存在表现漂移":"近期显著强于基线",executionQuality:buildExecutionQuality(db)}};}
   },
   {
     skillId:"skill_native_exchange_degrade",name:"交易所故障降级",toolName:"exchange_degradation",version:"1.0.0",permissions:["market.read","account.read"],freshnessMs:15000,failClosed:true,

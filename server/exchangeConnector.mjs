@@ -115,6 +115,20 @@ export async function fetchTickerQuiet(symbol, exchange = "OKX") {
   return result;
 }
 
+// 拉 OKX 资金费率历史，返回 |资金费率%| 的第 pct 百分位——给"资金费率极端"做该币自适应阈值
+// （BTC 和小币的"极端"不是一个量级）。失败/样本不足返回 null，由调用方回落固定阈值。
+export async function fetchFundingPercentile(symbol, pct = 85) {
+  try {
+    const instId = toOkxSymbol(symbol);
+    const res = await fetch(`${OKX_BASE}/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const vals = (j?.data || []).map((d) => Math.abs(Number(d.fundingRate) * 100)).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    if (vals.length < 10) return null;
+    return vals[Math.min(vals.length - 1, Math.floor((pct / 100) * vals.length))];
+  } catch { return null; }
+}
+
 export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/USDT") {
   const { result: ticker, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
   if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
