@@ -90,7 +90,8 @@ function buildLossClusters(closes) {
 }
 
 export function buildReviewAnalytics(db) {
-  const closes = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)));
+  // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
+  const closes = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)) && (fill.tradePlanId || fill.planId || fill.executionOrderId));
   const enriched = closes.map((fill) => {
     const plan = (db.tradePlans || []).find((item) => item.id === fill.tradePlanId || item.id === fill.planId) || {};
     const market = (db.markets || []).find((item) => item.symbol === (fill.symbol || plan.symbol));
