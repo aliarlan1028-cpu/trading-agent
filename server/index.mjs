@@ -107,12 +107,22 @@ seedSkillTools(db);
 {
   const isRecon = (i) => i.status === "open" && (i.kind === "reconcile" || i.title === "实时/账户对账发现差异");
   const openRecon = (db.riskIncidents || []).filter(isRecon).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  let changed = false;
   if (openRecon.length > 1) {
     const now = nowIso();
     for (const dup of openRecon.slice(1)) { dup.status = "resolved"; dup.resolvedAt = now; dup.resolvedBy = "StartupDedup"; dup.kind = "reconcile"; }
-    saveDb(db);
+    changed = true;
     console.log(`[startup] 收敛重复对账事件 ${openRecon.length} → 1`);
   }
+  // 对账报告数组曾被一次 DB 还原打乱顺序(旧报告排在最前),前端读 [0] 拿到陈旧状态;顺手按时间倒序并限长。
+  const reports = db.reconciliationReports || [];
+  if (reports.length) {
+    const before = reports[0]?.createdAt;
+    reports.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    if (reports.length > 200) reports.length = 200;
+    if (reports[0]?.createdAt !== before) { changed = true; console.log(`[startup] 对账报告重排,最新 ${reports[0]?.createdAt}`); }
+  }
+  if (changed) saveDb(db);
 }
 ensureDefaultEventSources(db);
 for (const server of db.mcpServers || []) {

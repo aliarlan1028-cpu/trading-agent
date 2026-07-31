@@ -21,6 +21,10 @@ export function runReconciler(db, options = {}) {
     createdAt: nowIso()
   };
   db.reconciliationReports.unshift(report);
+  // 严格按时间倒序 + 限长:历史一次 DB 还原把数组顺序打乱了,导致前端读 [0] 拿到的是旧报告
+  // (对账结果显示成 3 天前);同时数组从未限长、会无限增长。两处一并修好。
+  db.reconciliationReports.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  if (db.reconciliationReports.length > 200) db.reconciliationReports.length = 200;
   // 对账类风险事件折叠:每个巡检周期只维护【一条】open 记录,不再无限堆叠(曾累积到 100+ 条纯重复告警)。
   // 先清掉所有 open 的对账重复项(它们无独立信息,完整差异历史留在 reconciliationReports 里),
   // 再按当前状态决定是否保留一条;对账恢复正常时自然清零。兼容历史上没有 kind 的旧记录(按标题匹配)。
