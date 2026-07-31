@@ -556,39 +556,92 @@ function AgentSettingsConcept({ data, action, ui }) {
   </div>;
 }
 
+// 用户管理弹窗:新增用户 / 重置他人密码 / Owner 改自己密码。替代原生 prompt()。
+function UserManageDialog({ mode, user, action, onClose, notify }) {
+  const [f, setF] = useState({ email: "", name: "", password: "", role: "交易用户", freeMonths: 0, newPassword: "" });
+  const [busy, setBusy] = useState(false);
+  const up = (k, v) => setF((c) => ({ ...c, [k]: v }));
+  const title = mode === "create" ? "新增用户" : mode === "ownerpw" ? "修改 Owner 登录密码" : `重置密码 · ${user?.name || user?.email || ""}`;
+  async function submit() {
+    if (busy) return;
+    let req;
+    if (mode === "create") {
+      if (!f.email.trim()) return notify?.("请填写邮箱");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) return notify?.("邮箱格式不正确");
+      if (f.password.length < 10) return notify?.("初始密码至少 10 位");
+      req = ["/api/admin/users", { email: f.email.trim(), name: f.name.trim() || f.email.split("@")[0], password: f.password, role: f.role, freeMonths: Number(f.freeMonths) || 0 }];
+    } else if (mode === "reset") {
+      if (f.password.length < 10) return notify?.("临时密码至少 10 位");
+      req = [`/api/admin/users/${user.id}/reset-password`, { password: f.password }];
+    } else { // ownerpw
+      if (f.newPassword.length < 12) return notify?.("Owner 密码至少 12 位");
+      req = ["/api/admin/password", { password: f.newPassword }];
+    }
+    setBusy(true);
+    const r = await action(req[0], req[1]);
+    setBusy(false);
+    if (!r || r.error) return; // action 自身已提示错误
+    onClose();
+  }
+  return <div className="cp2Modal" onClick={onClose}><div className="cp2ModalCard" onClick={(e) => e.stopPropagation()}>
+    <div className="cp2ModalHead"><b>{title}</b><button className="cp2ModalX" onClick={onClose}>×</button></div>
+    {mode === "create" && <>
+      <label className="cp2FieldLabel">邮箱</label>
+      <input className="cp2Input" type="email" value={f.email} onChange={(e) => up("email", e.target.value)} placeholder="user@example.com" autoFocus />
+      <label className="cp2FieldLabel">姓名（可留空，默认取邮箱前缀）</label>
+      <input className="cp2Input" value={f.name} onChange={(e) => up("name", e.target.value)} placeholder="选填" />
+      <label className="cp2FieldLabel">初始密码（至少 10 位）</label>
+      <input className="cp2Input" type="text" value={f.password} onChange={(e) => up("password", e.target.value)} placeholder="用户登录后应自行更换" />
+      <label className="cp2FieldLabel">角色</label>
+      <div className="cp2ChipRow">{["交易用户", "管理员"].map((r) => <button key={r} className={f.role === r ? "active" : ""} onClick={() => up("role", r)}>{r}</button>)}</div>
+      <label className="cp2FieldLabel">赠送免费授权（月，0 = 不赠送）</label>
+      <input className="cp2Input" type="number" min="0" max="60" value={f.freeMonths} onChange={(e) => up("freeMonths", e.target.value)} />
+    </>}
+    {mode === "reset" && <>
+      <p className="cp2Intro">为该用户设置一个临时密码，TA 登录后需在「账户 → 修改密码」自行更换。</p>
+      <label className="cp2FieldLabel">临时密码（至少 10 位）</label>
+      <input className="cp2Input" type="text" value={f.password} onChange={(e) => up("password", e.target.value)} autoFocus />
+    </>}
+    {mode === "ownerpw" && <>
+      <p className="cp2Intro">修改 Owner 登录密码后会立即退出登录，请用新密码重新登录。</p>
+      <label className="cp2FieldLabel">新密码（至少 12 位）</label>
+      <input className="cp2Input" type="text" value={f.newPassword} onChange={(e) => up("newPassword", e.target.value)} autoFocus />
+    </>}
+    <div className="cp2ModalFoot"><button className="cp2Secondary" onClick={onClose}>取消</button><button className="cp2Primary" disabled={busy} onClick={submit}>{busy ? "提交中…" : "确定"}</button></div>
+  </div></div>;
+}
+
 function UsersSettingsConcept({ data, action, ui }) {
   const users=arr(data.users); const subscriptions=arr(data.subscriptions); const profiles=arr(data.agentProfiles);
   const [selectedId,setSelectedId]=useState(users[0]?.id||""); const selected=users.find(user=>user.id===selectedId)||users[0]||{};
   const subscription=subscriptions.find(item=>item.userId===selected.id||item.tenantId===selected.tenantId)||{};
-  const resetPassword=()=>{
-    const password=window.prompt(`为 ${selected.email||selected.name} 设置至少 10 位的临时密码`);
-    if(!password)return;
-    if(password.length<10){ui.notify?.("临时密码至少 10 位");return;}
-    action(`/api/admin/users/${selected.id}/reset-password`,{password});
+  const [dialog,setDialog]=useState(null); // {mode,user}
+  const regOn=data.publicRegistrationEnabled===true;
+  const toggleRegistration=()=>{
+    const next=!regOn;
+    if(next&&!window.confirm("开启公开注册后，任何访客都可在登录页自助注册账号。当前为一客户一实例部署，确认开启？"))return;
+    action("/api/admin/registration",{enabled:next});
   };
-  const createUser=()=>{
-    const email=window.prompt("新用户邮箱");
-    if(!email)return;
-    const name=window.prompt("用户姓名",email.split("@")[0])||email.split("@")[0];
-    const password=window.prompt("初始密码（至少 10 位）");
-    if(!password)return;
-    action("/api/admin/users",{email,name,password,role:"交易用户",freeMonths:0});
-  };
+  const changePassword=()=>setDialog({mode:selected.isOwner?"ownerpw":"reset",user:selected});
   return <div className="cp2Stack">
+    {dialog&&<UserManageDialog mode={dialog.mode} user={dialog.user} action={action} notify={ui.notify} onClose={()=>setDialog(null)}/>}
     <div className="cp2Metrics six"><ConceptMetric label="活跃用户" value={`${users.filter(u=>u.status!=="disabled").length}/${users.length}`}/><ConceptMetric label="订阅计划" value={String(arr(data.subscriptionPlans).length)} sub="套餐"/><ConceptMetric label="到期时间" value={formatDateTime(subscription.currentPeriodEnd)} sub="当前选中用户"/><ConceptMetric label="席位使用" value={`${users.length}/${Math.max(users.length,20)}`}/><ConceptMetric label="使用额度" value={`${arr(data.llmRuns).length}`} sub="模型调用"/><ConceptMetric label="即将到期" value={String(subscriptions.filter(s=>s.currentPeriodEnd&&new Date(s.currentPeriodEnd).getTime()-Date.now()<30*86400000).length)} sub="30 天内"/></div>
     <div className="cp2UsersLayout">
-      <ConceptCard title="用户列表" action={<button className="cp2Primary" onClick={createUser}><Plus size={12}/> 新增用户</button>}>
+      <ConceptCard title="用户列表" action={<button className="cp2Primary" onClick={()=>setDialog({mode:"create"})}><Plus size={12}/> 新增用户</button>}>
         <div className="cp2Search"><Search/><span>搜索姓名 / 邮箱 / 角色</span></div>
         <ConceptTable columns={[{key:"name",label:"用户",render:r=><button className="cp2UserName" onClick={()=>setSelectedId(r.id)}><i>{String(r.name||r.email||"?").charAt(0)}</i><span><b>{r.name||r.email}</b><small>{r.email}</small></span></button>},{key:"role",label:"角色",render:r=><select value={r.role||"交易用户"} disabled={r.isOwner} onChange={event=>action(`/api/admin/users/${r.id}`,{role:event.target.value},"PATCH")}><option>交易用户</option><option>管理员</option></select>},{key:"status",label:"状态",render:r=><Pill tone={r.status==="disabled"?"warn":"good"}>{r.status==="disabled"?"已停用":"正常"}</Pill>},{key:"createdAt",label:"创建时间",render:r=>formatDateTime(r.createdAt)}]} rows={users} empty="暂无用户"/>
       </ConceptCard>
-      <ConceptCard title="用户详情" action={<div className="cp2FormActions"><button className="cp2Secondary" disabled={selected.isOwner} onClick={()=>action(`/api/admin/users/${selected.id}`,{status:selected.status==="disabled"?"active":"disabled"},"PATCH")}>{selected.status==="disabled"?"启用用户":"停用用户"}</button><button className="cp2Secondary" disabled={selected.isOwner} onClick={resetPassword}>修改密码</button></div>}>
+      <ConceptCard title="用户详情" action={<div className="cp2FormActions"><button className="cp2Secondary" disabled={selected.isOwner} onClick={()=>action(`/api/admin/users/${selected.id}`,{status:selected.status==="disabled"?"active":"disabled"},"PATCH")}>{selected.status==="disabled"?"启用用户":"停用用户"}</button><button className="cp2Secondary" onClick={changePassword}>{selected.isOwner?"修改 Owner 密码":"重置密码"}</button></div>}>
         <div className="cp2UserDetailHead"><i>{String(selected.name||selected.email||"?").charAt(0)}</i><span><b>{selected.name||"选择用户"}</b><small>{selected.email||"—"}</small></span><Pill tone={selected.status==="disabled"?"warn":"good"}>{selected.status==="disabled"?"已停用":"正常"}</Pill></div>
-        <div className="cp2Kv column"><span>角色<b>{selected.role||"—"}</b></span><span>租户 ID<b>{selected.tenantId||"—"}</b></span><span>创建时间<b>{formatDateTime(selected.createdAt)}</b></span><span>最近更新<b>{formatDateTime(selected.updatedAt)}</b></span></div>
+        <div className="cp2Kv column"><span>角色<b>{selected.isOwner?"Owner（不可改）":<select className="cp2InlineSelect" value={selected.role||"交易用户"} onChange={e=>action(`/api/admin/users/${selected.id}`,{role:e.target.value},"PATCH")}><option>交易用户</option><option>管理员</option></select>}</b></span><span>租户 ID<b>{selected.tenantId||"—"}</b></span><span>创建时间<b>{formatDateTime(selected.createdAt)}</b></span><span>最近更新<b>{formatDateTime(selected.updatedAt)}</b></span></div>
         <b className="cp2Subhead">角色权限</b><div className="cp2TokenBox">{["资产只读","风险设置","交易审批","知识库访问",...(selected.isOwner?["系统管理","用户管理"]:[])].map(name=><Pill key={name}>{name}</Pill>)}</div>
         <div className="cp2SubscriptionCard"><div><small>订阅计划</small><b>{subscription.planId||"未订阅"}</b></div><div><small>到期时间</small><b>{formatDateTime(subscription.currentPeriodEnd)}</b></div><div><small>席位</small><b>1 / 1</b></div><button className="cp2Secondary" disabled={selected.isOwner} onClick={()=>action(`/api/admin/users/${selected.id}/grant-free`,{months:12})}>续期 12 月</button></div>
         <div className="cp2Usage"><span>使用额度 <b>{arr(data.llmRuns).filter(run=>run.userId===selected.id).length} 次模型调用</b></span><i><b style={{width:`${Math.min(100,arr(data.llmRuns).filter(run=>run.userId===selected.id).length)}%`}}/></i></div>
       </ConceptCard>
-      <aside><ConceptCard title="订阅概况"><div className="cp2Kv column"><span>有效订阅<b>{subscriptions.filter(s=>["active","trialing"].includes(s.status)).length}</b></span><span>免费授权<b>{subscriptions.filter(s=>s.source==="owner_grant").length}</b></span><span>Agent 启用<b>{profiles.filter(p=>p.enabled!==false).length}/{profiles.length}</b></span><span>公开注册<b>{data.publicRegistrationEnabled?"开启":"关闭"}</b></span></div></ConceptCard></aside>
+      <aside><ConceptCard title="订阅概况"><div className="cp2Kv column"><span>有效订阅<b>{subscriptions.filter(s=>["active","trialing"].includes(s.status)).length}</b></span><span>免费授权<b>{subscriptions.filter(s=>s.source==="owner_grant").length}</b></span><span>Agent 启用<b>{profiles.filter(p=>p.enabled!==false).length}/{profiles.length}</b></span></div>
+        <b className="cp2Subhead">公开注册</b>
+        <div className="cp2ToggleRow"><div><b>{regOn?"已开启":"已关闭"}</b><small>{regOn?"访客可在登录页自助注册并订阅":"仅 Owner 可在此开通账号（推荐）"}</small></div><button className={`cp2Switch ${regOn?"on":""}`} onClick={toggleRegistration}><i/></button></div>
+      </ConceptCard></aside>
     </div>
   </div>;
 }

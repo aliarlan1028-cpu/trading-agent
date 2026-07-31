@@ -123,6 +123,16 @@ export function registerAdminUserRoutes(app, ctx) {
     res.json({ message: "管理员密码已更新，已退出当前登录，请用新密码重新登录。", logoutRequired: true, status: getConfigStatus(db) });
   });
 
+  // 公开注册开关(运行时,写 runtimeConfig 并同步 process.env → auth.register 立即生效)。
+  // ⚠️ 一客户一实例的生产路径下开启=允许陌生访客自助注册,务必知悉安全含义。
+  app.post("/api/admin/registration", requirePermission("admin:system"), (req, res) => {
+    const enabled = req.body?.enabled === true || req.body?.enabled === "true";
+    setConfig(db, { PUBLIC_REGISTRATION_ENABLED: enabled ? "true" : "false" });
+    appendAudit(db, `公开注册已${enabled ? "开启" : "关闭"}`, "public_registration", req.user?.name || db.user.name, enabled ? "warning" : "info");
+    saveDb(db);
+    res.json({ ok: true, publicRegistrationEnabled: enabled, message: `公开注册已${enabled ? "开启" : "关闭"}` });
+  });
+
   app.get("/api/admin/subscription-plans", requirePermission("admin:system"), (_req, res) => {
     res.json(db.subscriptionPlans || []);
   });
