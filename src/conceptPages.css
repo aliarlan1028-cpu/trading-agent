@@ -29,6 +29,9 @@
 .cp2CapabilityDetail{overflow:hidden}
 .cp2CapabilityTitle{flex-wrap:wrap}
 .cp2CapabilityTitle>div{min-width:0}
+.cp2CapabilityTitle .cp2Pill{white-space:normal;max-width:100%;height:auto;line-height:1.3;flex:none}
+.cp2CapabilityDetail{overflow:hidden}
+.cp2CapabilityTitle>div{min-width:0}
 .cp2CapabilityTitle b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .cp2CapabilityTitle .cp2Pill{margin-left:auto;white-space:normal;max-width:100%}
 .cp2CapabilityDetail p{word-break:break-word;overflow-wrap:anywhere}

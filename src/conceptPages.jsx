@@ -67,6 +67,7 @@ export function AiDialogConcept({ data, action, ui }) {
 export function IntelligenceConcept({ data, action, ui }) {
   const [category, setCategory] = useState("全部");
   const [selected, setSelected] = useState(0);
+  const [detailTab, setDetailTab] = useState("关联资产");
   const events = arr(data.events);
   const movers = arr(data.marketMovers?.movers);
   const knowledge = arr(data.knowledge);
@@ -77,6 +78,9 @@ export function IntelligenceConcept({ data, action, ui }) {
   ];
   const filtered = category === "全部" ? items : items.filter((item) => item.category === category);
   const active = filtered[selected] || filtered[0] || {};
+  // 真实关联资产:优先取情报富化的 affectedSymbols,再取事件 relatedSymbols,异动取自身 symbol;都没有则诚实留空
+  const activeSymbols = arr(active.intel?.affectedSymbols).length ? arr(active.intel.affectedSymbols) : arr(active.relatedSymbols).length ? arr(active.relatedSymbols) : (active.symbol ? [active.symbol] : []);
+  const relatedPlans = arr(data.tradePlans).filter((p) => activeSymbols.some((s) => String(p.symbol || "").toUpperCase().includes(String(s).replace(/[/-].*/, "").toUpperCase())));
   return <div className="cp2IntelLayout">
     <aside className="cp2SideFilter">
       <b>情报分类</b>
@@ -98,9 +102,11 @@ export function IntelligenceConcept({ data, action, ui }) {
     </main>
     <aside className="cp2IntelDetail">
       <ConceptCard title="影响评估" icon={Target}>
-        <div className="cp2DetailTabs"><button className="active">关联资产</button><button>关联计划</button></div>
+        <div className="cp2DetailTabs">{["关联资产","关联计划"].map((t)=><button key={t} className={detailTab===t?"active":""} onClick={()=>setDetailTab(t)}>{t}</button>)}</div>
         <b className="cp2DetailTitle">{active.title || "选择一条情报"}</b>
-        <div className="cp2AssetRows">{["BTC/USDT", "ETH/USDT", "SOL/USDT"].map((symbol, index) => <div key={symbol}><span>{symbol}</span><Pill tone={index ? "neutral" : "warn"}>{index ? "轻度" : "中度"}</Pill><small>{index === 0 ? "偏空" : "中性"}</small></div>)}</div>
+        {detailTab==="关联资产"
+          ? <div className="cp2AssetRows">{activeSymbols.length ? activeSymbols.map((symbol)=>{const im=num(active.impact);return <div key={symbol}><span>{symbol}</span><Pill tone={im>=80?"bad":im>=50?"warn":"neutral"}>{im>=80?"高":im>=50?"中度":"轻度"}</Pill><small>{active.intel?.sentiment||"—"}</small></div>;}) : <div className="cp2Empty" style={{minHeight:60}}><b>该情报暂无明确关联资产</b><span>接入并富化事件源后自动标注。</span></div>}</div>
+          : <div className="cp2AssetRows">{relatedPlans.length ? relatedPlans.slice(0,6).map((p)=><div key={p.id}><span>{p.symbol}</span><Pill tone={toneOf(p.status)}>{humanize(p.status)}</Pill><small>{humanize(p.direction,"—")}</small></div>) : <div className="cp2Empty" style={{minHeight:60}}><b>暂无关联交易计划</b><span>该情报涉及币种当前无在途计划。</span></div>}</div>}
         <div className="cp2Relation"><b>关联结论</b><p>{active.summary || active.description || "当前情报尚未形成可执行结论，只作为 AI 分析上下文。"}</p></div>
         <button className="cp2Secondary" onClick={() => ui.setActive("chat")}>加入上下文</button>
         <button className="cp2Primary" onClick={() => action("/api/event-sources/refresh", {})}>刷新情报</button>
@@ -173,8 +179,8 @@ export function MarketConcept({ data, action }) {
     </aside>
     <div className="cp2MarketBottom">
       <ConceptCard title="未平仓量"><div className="cp2BigNumber">{selected.openInterest == null ? "—" : money(selected.openInterest)}<small>公开合约数据</small></div><MiniLine values={arr(selected.candles).slice(-24).map(item=>item.volume)} height={52}/></ConceptCard>
-      <ConceptCard title="多空比"><div className="cp2BigNumber">1.36<small>多头略占优</small></div><BarRows rows={[{label:"多头",value:58},{label:"空头",value:42}]}/></ConceptCard>
-      <ConceptCard title="市场情绪"><div className="cp2Centered"><Donut value={63} label="63" sub="偏多"/></div></ConceptCard>
+      <ConceptCard title="多空比">{(()=>{const r=data.marketRegime?.smartMoney?.topTraderLongShortRatio;if(r==null)return <div className="cp2BigNumber small">待同步<small>大户多空比未取</small></div>;const rn=num(r);const longPct=Math.round(rn/(1+rn)*100);return <><div className="cp2BigNumber">{rn.toFixed(2)}<small>{longPct>=55?"多头占优":longPct<=45?"空头占优":"多空均衡"}</small></div><BarRows rows={[{label:"多头",value:longPct},{label:"空头",value:100-longPct}]}/></>;})()}</ConceptCard>
+      <ConceptCard title="市场情绪">{(()=>{const fg=data.marketRegime?.global?.fearGreed;if(!fg)return <div className="cp2Centered"><div className="cp2BigNumber small">待评估<small>恐惧贪婪未取</small></div></div>;return <div className="cp2Centered"><Donut value={num(fg.value)} label={String(fg.value)} sub={fg.label||""}/></div>;})()}</ConceptCard>
       <ConceptCard title="全球市场动态"><ConceptTable compact columns={[{key:"symbol",label:"资产"},{key:"change",label:"涨跌",render:r=><span className={num(r.change)>=0?"good":"bad"}>{r.change==null?"—":`${num(r.change).toFixed(2)}%`}</span>}]} rows={markets.slice(0,5)} empty="暂无行情"/></ConceptCard>
     </div>
   </div>;
