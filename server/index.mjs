@@ -623,6 +623,22 @@ app.get("/api/storage", (_req, res) => {
 // admin 用户/订阅/密码 + auth/change-password 路由组已迁至 server/routes/adminUsers.mjs
 // payments(TRC20) 路由组已迁至 server/routes/payments.mjs
 
+// 连接器工具(交易所/LLM)的状态在建库时被烙成种子字符串,后来配置了密钥也不会刷新 → 显示 bug。
+// 这里按运行时真实密钥实时重算(启动时 applyStoredConfigToEnv 已把金库密钥解密注入 process.env),
+// 不改库里的种子值,只影响前端展示。Public Market Data 无需密钥,原样透传。
+function liveConnectorToolStatus(tools = []) {
+  const has = (k) => Boolean(process.env[k]);
+  const okxOk = has("OKX_API_KEY") && has("OKX_API_SECRET") && has("OKX_API_PASSPHRASE");
+  const binanceOk = has("BINANCE_API_KEY") && has("BINANCE_API_SECRET");
+  const llmOk = has("ANTHROPIC_API_KEY") || has("OPENAI_API_KEY") || has("DEEPSEEK_API_KEY") || has("GEMINI_API_KEY");
+  return (tools || []).map((t) => {
+    if (t.id === "tool_okx") return { ...t, status: okxOk ? "configured" : "missing_credentials" };
+    if (t.id === "tool_binance") return { ...t, status: binanceOk ? "configured" : "missing_credentials" };
+    if (t.id === "tool_llm") return { ...t, status: llmOk ? "configured" : "missing_credentials" };
+    return t;
+  });
+}
+
 app.get("/api/overview", (_req, res) => {
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
   if (expireStalePlans(db).length) saveDb(db);
@@ -663,7 +679,7 @@ app.get("/api/overview", (_req, res) => {
     // 这里剥掉 chunk 重字段，overview 从 ~1.5MB 降到几十 KB，移动端才不会超时。RAG 检索在服务端做。
     knowledge: { ...db.knowledge, chunks: (db.knowledge.chunks || []).map((c) => ({ id: c.id, sourceId: c.sourceId })) },
     skills: db.skills,
-    tools: db.tools,
+    tools: liveConnectorToolStatus(db.tools),
     mcpServers: db.mcpServers,
     traces: db.traces.slice(0, 10),
     auditLogs: db.auditLogs.slice(0, 20),

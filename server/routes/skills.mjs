@@ -60,6 +60,20 @@ export function registerSkillRoutes(app, ctx) {
     persist(res, skill);
   });
 
+  // 内置工具一键(重新)启用:第一方只读分析代码,无需走扫描→安装闸(那是给不可信导入 skill 的)。
+  // 导入 skill 仍必须扫描通过后 install,不走此路。
+  app.post("/api/skills/:id/enable", requirePermission("write:skills"), (req, res) => {
+    const skill = findSkill(req.params.id);
+    if (!skill) return notFound(res);
+    if (!skill.native) return res.status(400).json({ error: "仅内置工具可直接启用；导入 Skill 需扫描通过后安装。" });
+    skill.status = "已启用";
+    skill.enabled = true;
+    if (skill.scan === "未扫描") skill.scan = "内置免扫描";
+    delete skill.disabledAt;
+    appendAudit(db, "启用内置工具", skill.id, req.user?.name || db.user?.name || "Owner");
+    persist(res, skill);
+  });
+
   app.delete("/api/skills/:id", requirePermission("write:skills"), (req, res) => {
     const idx = (db.skills || []).findIndex((item) => item.id === req.params.id);
     if (idx < 0) return notFound(res);

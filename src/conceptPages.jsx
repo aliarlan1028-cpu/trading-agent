@@ -264,11 +264,13 @@ function InstallCapabilityDialog({ onClose, notify }) {
   </div></div>;
 }
 
-export function CapabilitiesConcept({ data, ui }) {
+export function CapabilitiesConcept({ data, action, ui }) {
   // 能力库=工具:内置工具 + 分析引擎工具 + MCP + 导入的工具类 skill;策略类(tradingSkills)归策略库,不在此。
   const rawItems=[...arr(data.skills).filter(s=>s.kind!=="strategy"),...arr(data.analysisEngine?.tools),...arr(data.tools),...arr(data.mcpServers)];
-  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名工具",kind:item.type||item.category||(item.serverName?"MCP":"工具")}));
-  const isEnabled=i=>["active","trusted","enabled","ready"].includes(i.status)||i.enabled===true;
+  // MCP 服务器记录没有 type/serverName,靠 transport 或 mcp_ 前缀 id 识别,否则会被误判成普通「工具」。
+  const isMcp=i=>Boolean(i.serverName||i.transport||/^mcp_/i.test(String(i.id||"")));
+  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名工具",kind:item.type||item.category||(isMcp(item)?"MCP":"工具"),runs:isMcp(item)?(item.toolCount??item.tools?.length):(item.runs??item.runCount)}));
+  const isEnabled=i=>["active","trusted","enabled","ready","connected"].includes(i.status)||i.enabled===true;
   const isCandidate=i=>/candidate|pending|trial|paper/i.test(String(i.status));
   const isDisabled=i=>i.enabled===false||/disabled|retired/i.test(String(i.status));
   const TYPES=[["全部工具",()=>true],["分析工具",i=>/分析|analy|工具|tool/i.test(String(i.kind))&&!/MCP/i.test(String(i.kind))],["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],["工具 (MCP)",i=>/MCP/i.test(String(i.kind))]];
@@ -294,7 +296,14 @@ export function CapabilitiesConcept({ data, ui }) {
         {detailTab==="概览"&&<><p>{selected.description||selected.summary||"系统工具会在 Agent 工作流中按权限调用。"}</p><div className="cp2Kv column"><span>版本<b>{selected.version||"—"}</b></span><span>来源<b>{selected.source||selected.packageName||"内置"}</b></span><span>权限级别<b>{humanize(selected.permission||selected.riskLevel,"受控")}</b></span><span>最近运行<b>{formatDateTime(selected.lastRunAt)}</b></span></div></>}
         {detailTab==="输入输出"&&<div className="cp2Kv column"><span>输入<b>{humanize(selected.inputSchema||selected.input,"未声明")}</b></span><span>输出<b>{humanize(selected.outputSchema||selected.output,"未声明")}</b></span><span>参数<b>{Object.keys(selected.parameters||{}).length?`${Object.keys(selected.parameters).length} 项`:"未声明"}</b></span></div>}
         {detailTab==="调用日志"&&<div className="cp2Kv column"><span>累计调用<b>{selected.runs??selected.runCount??"—"}</b></span><span>最近运行<b>{formatDateTime(selected.lastRunAt)}</b></span><span>明细<b>{selected.lastRunAt?"见系统运营·审计":"暂无调用"}</b></span></div>}
-        <button className="cp2Secondary" onClick={()=>ui.openPanel("skillImport")}>管理工具</button>
+        {(()=>{const sid=String(selected.id||"");
+          if(selected.kind==="MCP") return <button className="cp2Secondary" onClick={()=>ui.notify?.("MCP 连接在『系统设置』管理，此处只读展示")}>MCP · 系统设置管理</button>;
+          if(/^tool_/.test(sid)) return <button className="cp2Secondary" onClick={()=>ui.notify?.("交易所 / 模型密钥在『风控中心 · 密钥安全』配置")}>去『密钥安全』配置</button>;
+          if(selected.native) return isEnabled(selected)
+            ? <button className="cp2Secondary" onClick={()=>action(`/api/skills/${sid}/disable`,{})}>停用工具</button>
+            : <button className="cp2Primary" onClick={()=>action(`/api/skills/${sid}/enable`,{})}>启用工具</button>;
+          return <button className="cp2Secondary" onClick={()=>ui.openPanel("skillImport")}>管理 Skill</button>;
+        })()}
       </ConceptCard>
     </div>
     {installing&&<InstallCapabilityDialog onClose={()=>setInstalling(false)} notify={ui.notify}/>}

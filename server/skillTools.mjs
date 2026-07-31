@@ -193,7 +193,19 @@ export const SKILL_TOOLS = [
 export function seedSkillTools(db) {
   db.skills ||= [];
   for (const tool of SKILL_TOOLS) {
-    if (db.skills.some((s) => s.id === tool.skillId)) continue;
+    const existing = db.skills.find((s) => s.id === tool.skillId);
+    if (existing) {
+      // 迁移:早期原生工具被种成「已拉取/未扫描」而从未启用 → agent 一个内置工具都调不了。
+      // 内置工具是第一方只读分析代码,无需扫描→安装闸(那是给不可信导入 skill 的);
+      // 只升级从未被人工改动过的默认态,尊重用户手动停用的选择。
+      if (existing.native && existing.status === "已拉取" && existing.scan === "未扫描") {
+        existing.status = "已启用";
+        existing.scan = "内置免扫描";
+        existing.enabled = true;
+      }
+      if (existing.native && existing.kind !== "tool") existing.kind = "tool";
+      continue;
+    }
     db.skills.push({
       id: tool.skillId,
       name: tool.name,
@@ -204,8 +216,10 @@ export function seedSkillTools(db) {
       version: tool.version || "1.0.0",
       format: "native",
       entryFile: "native",
-      status: "已拉取",
-      scan: "未扫描",
+      // 第一方内置工具默认启用(只读分析,无写权限);扫描→安装闸只对导入 skill 生效。
+      status: "已启用",
+      scan: "内置免扫描",
+      enabled: true,
       permissions: tool.permissions,
       description: tool.description,
       inputSchema: tool.schema,
