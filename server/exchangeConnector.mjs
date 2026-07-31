@@ -388,22 +388,68 @@ export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/U
   return { symbol: displaySymbol, timeframe, count: candles.length, latestClose: candles.at(-1)?.close };
 }
 
+// base 币种提取:BTC/USDT | BTCUSDT | BTC-USDT-SWAP → BTC
+function reconBase(sym) {
+  const s = String(sym || "").toUpperCase();
+  if (/[-/]/.test(s)) return s.split(/[-/]/)[0];
+  return s.replace(/(USDT|USDC|BUSD|USD)$/, "") || s;
+}
+// 交易所只读快照的真实持仓归一:OKX pos=张、Binance positionAmt=币,均与引擎 size 同口径
+function reconSnapshotPositions(snap) {
+  const map = new Map();
+  for (const p of (snap.positions || [])) {
+    const qty = Math.abs(Number(p.pos ?? p.positionAmt ?? p.size));
+    if (!Number.isFinite(qty) || qty === 0) continue;
+    const base = reconBase(p.instId || p.symbol || p.sym || "");
+    map.set(base, (map.get(base) || 0) + qty);
+  }
+  return map;
+}
+
+// 真对账:引擎托管仓 vs 交易所权威快照逐仓比对数量;外部/手动仓信息级;缺止损按托管/手动分级。
 export function reconcileAccount(db, accountId) {
   const account = db.exchangeAccounts.find((item) => item.id === accountId) || db.exchangeAccounts[0];
   if (!account) return { status: "missing_account", differences: [] };
   const differences = [];
-  const stoplessPositions = db.positions.filter((position) => !position.stopLoss);
-  for (const position of stoplessPositions) {
-    differences.push({ type: "missing_stop_loss", symbol: position.symbol, severity: "high" });
+
+  // 缺止损:引擎托管仓=风控高危;手动/外部仓=信息级(用户自管,不逼 AI 去补)
+  for (const position of (db.positions || []).filter((p) => !p.stopLoss)) {
+    const managed = position.source === "execution_engine";
+    differences.push({ type: "missing_stop_loss", symbol: position.symbol, severity: managed ? "high" : "info", managed });
   }
+
+  const snap = (db.accountSnapshots || []).find((s) => s.accountId === account.id && s.status === "ok")
+    || (db.accountSnapshots || []).find((s) => s.status === "ok");
+  if (!snap) {
+    account.reconcileNote = "无交易所只读快照,无法账实比对(仅本地检查)";
+  } else {
+    const exMap = reconSnapshotPositions(snap);
+    const engineBases = new Set();
+    // 引擎托管仓 vs 交易所真实持仓(逐仓比对数量,2% 容差)
+    for (const p of (db.positions || []).filter((x) => x.source === "execution_engine")) {
+      const base = reconBase(p.symbol); engineBases.add(base);
+      const localQty = Math.abs(Number(p.size) || 0);
+      const exQty = exMap.get(base) || 0;
+      if (exQty < 1e-9) differences.push({ type: "missing_on_exchange", symbol: p.symbol, severity: "high", localQty, exchangeQty: 0 });
+      else if (Math.abs(localQty - exQty) > Math.max(1e-6, localQty * 0.02)) differences.push({ type: "size_mismatch", symbol: p.symbol, severity: "high", localQty, exchangeQty: exQty });
+    }
+    // 交易所有、引擎未托管 → 外部/手动仓(信息级,不当异常)
+    for (const [base, qty] of exMap) {
+      const trackedManual = (db.positions || []).some((x) => x.source !== "execution_engine" && reconBase(x.symbol) === base);
+      if (!engineBases.has(base) && !trackedManual) differences.push({ type: "untracked_on_exchange", symbol: base, severity: "info", exchangeQty: qty });
+    }
+    account.reconcileSnapshotAt = snap.createdAt;
+  }
+
   account.lastReconciledAt = nowIso();
-  account.reconcileStatus = differences.length ? "needs_attention" : "ok";
-  const result = { id: id("reconcile"), accountId: account.id, status: account.reconcileStatus, differences, createdAt: nowIso() };
-  if (differences.length) {
-    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title: "账户对账发现异常", source: account.id, details: differences, createdAt: nowIso() });
+  const hasHigh = differences.some((d) => d.severity === "high");
+  account.reconcileStatus = hasHigh ? "needs_attention" : (differences.length ? "info" : "ok");
+  const result = { id: id("reconcile"), accountId: account.id, status: account.reconcileStatus, differences, snapshotAt: snap?.createdAt || null, createdAt: nowIso() };
+  if (hasHigh) {
+    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title: "账户对账发现账实不符", source: account.id, details: differences.filter((d) => d.severity === "high"), createdAt: nowIso() });
   }
-  appendAudit(db, "账户与持仓对账", account.id, "ExchangeConnector", differences.length ? "warning" : "info");
-  appendTrace(db, "reconcile", `${account.exchange} 对账`, differences.length ? "warning" : "ok");
+  appendAudit(db, `账户与持仓对账:${differences.length ? differences.length + " 项差异" : "账实一致"}`, account.id, "ExchangeConnector", hasHigh ? "warning" : "info");
+  appendTrace(db, "reconcile", `${account.exchange} 对账${snap ? "" : "(无快照)"}`, hasHigh ? "warning" : "ok");
   return result;
 }
 
