@@ -67,7 +67,7 @@ async function mcpRpc(db, server, method, params = {}, options = {}) {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
-        ...(server.sessionId ? { "Mcp-Session-Id": server.sessionId } : {}),
+        ...((server.sessionId && method !== "initialize") ? { "Mcp-Session-Id": server.sessionId } : {}),
         ...authHeaders(db, server)
       },
       body: JSON.stringify(body)
@@ -91,6 +91,7 @@ export async function connectMcpServer(db, serverId) {
     server.lastError = "无有效 URL（本地占位不可连接）";
     return { status: "unreachable", server };
   }
+  server.sessionId = undefined; // 每次连接前清掉持久化的旧会话:MCP 规范要求 initialize 不得带 sessionId(带了会被 CoinGecko 等以 -32600 拒绝)
   try {
     const init = await mcpRpc(db, server, "initialize", {
       protocolVersion: PROTOCOL_VERSION,
