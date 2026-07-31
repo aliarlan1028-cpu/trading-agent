@@ -832,13 +832,46 @@ function MobileChatStatus({ data }) {
 
 // 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
 // W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
+// 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
+function MobileStrategy({ data }) {
+  const strategies = [...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
+    .map((s, i) => ({ ...s, id: s.id || `str-${i}`, name: s.name || s.title || "未命名策略", origin: s.origin || (s.methodId ? "蒸馏" : s.userAuthored ? "LLM/手写" : /imported|uploaded|github|clawhub/i.test(String(s.source || "")) ? "导入" : "内置") }));
+  const isActive = (s) => /active|trusted|live|adopted/i.test(String(s.status));
+  const isValidating = (s) => /probation|paper|compiled|pending|trial|validating|candidate/i.test(String(s.status));
+  const isRetired = (s) => /retired|superseded|disabled|compile_failed|replaced|reject/i.test(String(s.status));
+  const FILTERS = [["全部", () => true], ["已上岗", isActive], ["验证中", isValidating], ["已停用", isRetired]];
+  const [f, setF] = useState("全部");
+  const fn = (FILTERS.find((x) => x[0] === f) || FILTERS[0])[1];
+  const shown = strategies.filter(fn);
+  return (
+    <div className="mScreen">
+      <div className="mMetric2x2">
+        <div className="mMetricCell"><span>全部策略</span><b className="mono">{strategies.length}</b></div>
+        <div className="mMetricCell"><span>已上岗</span><b className="mono pos">{strategies.filter(isActive).length}</b></div>
+        <div className="mMetricCell"><span>验证中</span><b className="mono">{strategies.filter(isValidating).length}</b></div>
+        <div className="mMetricCell"><span>已停用</span><b className="mono neg">{strategies.filter(isRetired).length}</b></div>
+      </div>
+      <div className="mSymPills">{FILTERS.map(([name]) => <button key={name} className={f === name ? "active" : ""} onClick={() => setF(name)}>{name}</button>)}</div>
+      <div className="mCard">
+        {shown.length ? shown.map((s) => (
+          <div className="mIncRow" key={s.id}>
+            <div className="mIncL"><b>{s.name}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div>
+            <StatusBadge tone={statusTone(s.status)}>{humanize(s.status, "—")}</StatusBadge>
+          </div>
+        )) : <div className="mEmpty">暂无策略（喂书蒸馏或导入策略后在此出现）</div>}
+      </div>
+    </div>
+  );
+}
+
 const mobileNav = [
   { id: "chat", label: "AI 交易员", code: "ALPHA-01", icon: Bot },
   { id: "signalHub", label: "信号中心", code: "SIGNALS · BOARD", icon: Zap },
   { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
   { id: "tradeJournal", label: "交易日志", code: "TRADE · JOURNAL", icon: ClipboardList },
   { id: "knowledgeBase", label: "知识库", code: "KNOWLEDGE", icon: BookOpen },
-  { id: "capabilities", label: "能力与工具", code: "CAPABILITIES", icon: Sparkles },
+  { id: "strategyLib", label: "策略库", code: "STRATEGY · LIB", icon: Rocket },
+  { id: "capabilities", label: "能力库", code: "CAPABILITY · LIB", icon: Sparkles },
   { id: "riskOverview", label: "风控总览", code: "RISK · VIEW", icon: ShieldCheck },
   { id: "riskSettings", label: "风控设置", code: "RISK · CFG", icon: SlidersHorizontal },
   { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
@@ -921,6 +954,8 @@ export function MobileApp({ api }) {
     content = <MobileTasks data={data} action={action} ui={ui} />;
   } else if (route === "knowledgeBase") {
     content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
+  } else if (route === "strategyLib") {
+    content = <div className="content mSubContent"><MobileStrategy data={data} /></div>;
   } else if (route === "capabilities") {
     content = <MobileKnowledge data={data} action={action} ui={ui} view="capabilities" />;
   } else if (route === "riskOverview") {
