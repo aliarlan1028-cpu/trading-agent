@@ -779,7 +779,8 @@ export function KnowledgeImportPanel({ action, ui }) {
     domain: "交易策略",
     url: "",
     subPath: "",
-    filePath: "",
+    crawlDepth: 1,
+    crawlMaxPages: 12,
     content: "",
     author: "",
     bookFocus: "",
@@ -791,7 +792,6 @@ export function KnowledgeImportPanel({ action, ui }) {
     ["text", "粘贴文本"],
     ["web", "网页链接"],
     ["upload", "上传文件"],
-    ["path", "本地路径"],
     ["github", "GitHub"]
   ];
   function update(key, value) {
@@ -828,10 +828,8 @@ export function KnowledgeImportPanel({ action, ui }) {
       if (!form.url.trim()) return ui.notify("请填写网页链接");
       body.type = "web";
       body.url = form.url.trim();
-    }
-    if (mode === "path") {
-      if (!form.filePath.trim()) return ui.notify("请填写本地文件路径");
-      body.filePath = form.filePath.trim();
+      body.crawlDepth = Number(form.crawlDepth);
+      body.crawlMaxPages = Number(form.crawlMaxPages);
     }
     if (mode === "upload") {
       if (!file) return ui.notify("请选择 PDF、DOCX、MD 或 TXT 文件");
@@ -860,13 +858,28 @@ export function KnowledgeImportPanel({ action, ui }) {
         </>
       )}
       {mode === "text" && <label>知识文本<textarea className="largeTextarea" value={form.content} onChange={(event) => update("content", event.target.value)} placeholder="粘贴 Markdown、交易规则、研究笔记或复盘内容" /></label>}
-      {mode === "web" && <label>网页链接<input value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://..." /></label>}
+      {mode === "web" && (
+        <>
+          <label>网页链接<input value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://..." /></label>
+          <div className="bookHint">浅爬取：只在同一域名内、按下面的深度/页数抓取。深度 0＝只抓本页，1＝含直接子链接。动态渲染(需 JS/登录)的页面可能抓不到正文。</div>
+          <div className="formGrid">
+            <label>抓取深度
+              <select value={form.crawlDepth} onChange={(event) => update("crawlDepth", event.target.value)}>
+                <option value="0">0 · 仅本页</option>
+                <option value="1">1 · 含直接子链接</option>
+                <option value="2">2 · 再深一层</option>
+              </select>
+            </label>
+            <label>最多页数<input type="number" min="1" max="40" value={form.crawlMaxPages} onChange={(event) => update("crawlMaxPages", event.target.value)} /></label>
+          </div>
+        </>
+      )}
       {mode === "upload" && <label>上传文件<input type="file" accept=".pdf,.epub,.docx,.md,.txt,.json,.csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>}
-      {mode === "path" && <label>本地文件路径<input value={form.filePath} onChange={(event) => update("filePath", event.target.value)} placeholder="/Users/ely/Desktop/xxx.pdf" /></label>}
       {mode === "github" && (
         <>
           <label>GitHub 仓库<input value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://github.com/user/repo.git" /></label>
-          <label>子目录<input value={form.subPath} onChange={(event) => update("subPath", event.target.value)} placeholder="可留空" /></label>
+          <label>子目录<input value={form.subPath} onChange={(event) => update("subPath", event.target.value)} placeholder="可留空，只导入某个子目录" /></label>
+          <div className="bookHint">浅克隆仓库，优先纳入 README/docs 与文档，再补源码（最多 300 个文本文件，跳过锁文件/超大文件）。仓库很大时会按优先级截断，导入完成后会如实说明纳入了多少个。</div>
         </>
       )}
       <div className="formGrid">

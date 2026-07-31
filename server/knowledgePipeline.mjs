@@ -58,7 +58,7 @@ export async function importKnowledge(db, payload = {}) {
     title: payload.title || payload.url || payload.fileName || payload.filePath || "Knowledge Source",
     type: payload.type || inferType({ ...payload, filePath: prepared.filePath }),
     url: payload.url?.trim() || undefined,
-    filePath: prepared.filePath || payload.filePath,
+    filePath: prepared.filePath,
     originalFileName: prepared.originalFileName,
     summary: payload.summary || "",
     createRuleDraft: payload.createRuleDraft === true,
@@ -69,6 +69,8 @@ export async function importKnowledge(db, payload = {}) {
     author: payload.author || undefined,
     bookFocus: payload.bookFocus || undefined,
     synthetic: payload.type === "book_title",
+    crawlDepth: payload.crawlDepth != null ? clampInt(payload.crawlDepth, 0, 3, 1) : undefined,
+    crawlMaxPages: payload.crawlMaxPages != null ? clampInt(payload.crawlMaxPages, 1, 40, 12) : undefined,
     importedAt: nowIso()
   };
   db.knowledge.sources.unshift(source);
@@ -81,7 +83,7 @@ export async function parseKnowledgeSource(db, sourceId) {
   if (!source) return { status: "missing_source" };
   let text = "";
   if (source.type === "book_title") text = await generateBookSynthesis(source);
-  else if (source.url) text = await extractFromUrl(source.url);
+  else if (source.url) text = await extractFromUrl(source.url, { maxDepth: source.crawlDepth, maxPages: source.crawlMaxPages });
   else if (source.filePath) text = await extractFromFile(source.filePath);
   else text = `${source.title}\n${source.summary || ""}`;
   if (source.type === "book_title" && !text) {
@@ -421,28 +423,124 @@ export async function ragQuery(db, query, options = {}) {
   return bundle;
 }
 
+const GITHUB_MAX_FILES = 300;             // 纳入的文本文件数上限(原为 80)
+const GITHUB_MAX_FILE_BYTES = 256 * 1024; // 单文件字节上限,跳过超大/压缩产物
+const GITHUB_MAX_TOTAL_CHARS = 400_000;   // 合并后总量上限,防炸 LLM 上下文
+
+// 文档优先级:README/docs/纯文档先纳入,保证截断时留下的是知识密度最高的文件
+function githubDocPriority(rel) {
+  const l = rel.toLowerCase();
+  if (/(^|\/)readme\.(md|mdx|markdown|rst|txt)$/.test(l)) return 0;
+  if (/(^|\/)(docs?|guide|guides|wiki|handbook|manual|tutorial)\//.test(l)) return 1;
+  if (/\.(md|mdx|markdown|rst|adoc)$/.test(l)) return 2;
+  if (/(strategy|strategies|signal|indicator|research|backtest|trading)/.test(l)) return 3;
+  return 5;
+}
+
 export async function importGithubKnowledge(db, repoUrl, subPath = "") {
   await fs.mkdir(importsDir, { recursive: true });
   await assertSafeExternalUrl(repoUrl);
   const target = path.join(importsDir, id("repo"));
-  await simpleGit().clone(repoUrl, target, ["--depth", "1"]);
+  await simpleGit().clone(repoUrl, target, ["--depth", "1", "--single-branch"]);
   const base = resolveContainedPath(target, subPath);
-  const files = await listTextFiles(base);
+  const allFiles = await listTextFiles(base);
+  // 附上相对路径/大小/优先级,按优先级+路径排序;超大文件先剔除
+  const ranked = [];
+  for (const full of allFiles) {
+    let stat;
+    try { stat = await fs.stat(full); } catch { continue; }
+    if (stat.size > GITHUB_MAX_FILE_BYTES) continue;
+    const rel = path.relative(base, full);
+    ranked.push({ full, rel, pr: githubDocPriority(rel) });
+  }
+  ranked.sort((a, b) => a.pr - b.pr || a.rel.localeCompare(b.rel));
   const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill" });
   const combined = [];
-  for (const file of files.slice(0, 80)) combined.push(`\n# ${path.relative(base, file)}\n${await fs.readFile(file, "utf8")}`);
+  let used = 0, totalChars = 0;
+  for (const f of ranked) {
+    if (used >= GITHUB_MAX_FILES || totalChars >= GITHUB_MAX_TOTAL_CHARS) break;
+    let content;
+    try { content = await fs.readFile(f.full, "utf8"); } catch { continue; }
+    const block = `\n# ${f.rel}\n${content}`;
+    combined.push(block);
+    used += 1;
+    totalChars += block.length;
+  }
   const syntheticPath = path.join(importsDir, `${source.id}.md`);
   await fs.writeFile(syntheticPath, combined.join("\n"), "utf8");
   source.filePath = syntheticPath;
-  return parseKnowledgeSource(db, source.id);
+  source.githubStats = { totalFound: allFiles.length, eligible: ranked.length, included: used };
+  const result = await parseKnowledgeSource(db, source.id);
+  // 诚实汇报截断:纪律要求「不静默截断」
+  const note = ranked.length > used
+    ? `（仓库共 ${allFiles.length} 个文本文件，按 README/docs 优先纳入 ${used} 个，其余因文件数/体量上限未纳入）`
+    : `（纳入 ${used} 个文本文件）`;
+  return { ...result, githubStats: source.githubStats, message: `${result.message || "已导入 GitHub 知识"}${note}` };
 }
 
-async function extractFromUrl(url) {
-  const { response, text: html } = await fetchExternalText(url, { maxBytes: 8 * 1024 * 1024, timeoutMs: 15_000 });
-  if (!response.ok) throw new Error(`URL fetch failed ${response.status}`);
-  const $ = cheerio.load(html);
-  $("script,style,noscript").remove();
-  return $("body").text().replace(/\s+/g, " ").trim();
+// 抓取时跳过的二进制/资源后缀(避免把图片/压缩包当页面抓)
+const CRAWL_SKIP_EXT = /\.(pdf|zip|gz|tar|rar|7z|png|jpe?g|gif|svg|webp|ico|mp4|mp3|wav|avi|mov|css|js|mjs|woff2?|ttf|eot|xml|rss|json|csv|xlsx?|docx?|pptx?)(\?|#|$)/i;
+const CRAWL_TOTAL_CHARS = 200_000; // 多页合并后喂给 LLM 的总量上限,防炸上下文
+
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+// 从已加载的 cheerio 文档里收集同域、可抓的子链接(相对路径按 baseUrl 解析)
+function collectSameOriginLinks($, baseUrl, seedHost) {
+  const out = new Set();
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    let abs;
+    try { abs = new URL(href, baseUrl); } catch { return; }
+    if (abs.protocol !== "http:" && abs.protocol !== "https:") return;
+    if (abs.hostname.toLowerCase() !== seedHost) return; // 只在同一域名内浅爬
+    if (CRAWL_SKIP_EXT.test(abs.pathname)) return;
+    abs.hash = "";
+    out.add(abs.toString());
+  });
+  return [...out];
+}
+
+// URL 浅爬:从种子 URL 出发,按 BFS 顺着同域子链接抓最多 maxPages 页 / 最深 maxDepth 层。
+// depth=0 只抓本页;depth=1 含直接子链接;复用 fetchExternalText 的 SSRF 防护与字节/超时限制。
+async function extractFromUrl(url, options = {}) {
+  const maxDepth = clampInt(options.maxDepth, 0, 3, 1);
+  const maxPages = clampInt(options.maxPages, 1, 40, 12);
+  const seed = await assertSafeExternalUrl(url); // 返回 URL 对象,内含 SSRF/私网校验
+  const seedHost = seed.hostname.toLowerCase();
+  const queue = [{ url: seed.toString(), depth: 0 }];
+  const visited = new Set([seed.toString()]);
+  const pages = [];
+  let totalChars = 0;
+  while (queue.length && pages.length < maxPages && totalChars < CRAWL_TOTAL_CHARS) {
+    const { url: current, depth } = queue.shift();
+    let html, finalUrl, ok = false, ctype = "";
+    try {
+      const r = await fetchExternalText(current, { maxBytes: 8 * 1024 * 1024, timeoutMs: 15_000 });
+      ok = r.response.ok;
+      ctype = r.response.headers.get("content-type") || "";
+      html = r.text;
+      finalUrl = r.finalUrl || current;
+    } catch { continue; } // 单页失败不影响整体
+    if (!ok) continue;
+    if (ctype && !/html|xml|text\//i.test(ctype)) continue; // 只吃 HTML/文本
+    const $ = cheerio.load(html);
+    const links = depth < maxDepth ? collectSameOriginLinks($, finalUrl, seedHost) : [];
+    $("script,style,noscript,nav,header,footer,aside,form,iframe,svg").remove();
+    const body = ($("main").text() || $("article").text() || $("body").text() || "").replace(/\s+/g, " ").trim();
+    if (body) { pages.push(`# ${finalUrl}\n${body}`); totalChars += body.length; }
+    for (const link of links) {
+      if (visited.has(link) || visited.size >= maxPages * 6) continue;
+      visited.add(link);
+      queue.push({ url: link, depth: depth + 1 });
+    }
+  }
+  if (!pages.length) throw new Error(`URL 抓取未得到可用文本(可能是需要 JS 渲染的动态页面或需登录)：${url}`);
+  return pages.join("\n\n");
 }
 
 async function extractFromFile(filePath) {
@@ -520,17 +618,8 @@ async function preparePayload(payload = {}) {
     return { filePath: target, originalFileName };
   }
   if (payload.filePath) {
-    const allowedRoots = String(process.env.KNOWLEDGE_ALLOWED_PATHS || importsDir)
-      .split(path.delimiter)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const requested = path.resolve(payload.filePath);
-    const allowed = allowedRoots.some((root) => {
-      const resolved = path.resolve(root);
-      return requested === resolved || requested.startsWith(`${resolved}${path.sep}`);
-    });
-    if (!allowed) throw new Error("本地知识文件不在 KNOWLEDGE_ALLOWED_PATHS 允许目录内，请改用文件上传");
-    return { filePath: requested, originalFileName: payload.fileName || path.basename(requested) };
+    // 本地路径导入已停用(2026-07):服务器无法访问用户设备文件,且客户端传服务器路径有越权风险。
+    throw new Error("本地路径导入已停用，请改用『上传文件』(PDF/EPUB/DOCX/MD/TXT)或『网页链接』导入");
   }
   return { filePath: null, originalFileName: payload.fileName };
 }
@@ -578,13 +667,20 @@ function extractConcepts(text) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([token]) => token);
 }
 
+const GITHUB_SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "out", "vendor", ".next", ".nuxt", "coverage", "__pycache__", ".venv", "venv", "target", ".cache", ".idea", ".vscode"]);
+const GITHUB_TEXT_EXT = /\.(md|mdx|markdown|rst|adoc|txt|json|ya?ml|toml|ini|js|jsx|ts|tsx|py|go|rs|java|kt|c|cpp|h|hpp|cs|rb|php|sol|sh|ipynb)$/i;
+const GITHUB_SKIP_FILE = /(\.min\.(js|css)$|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|go\.sum|Cargo\.lock|composer\.lock)$)/i;
+
 async function listTextFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory() && ![".git", "node_modules", "dist"].includes(entry.name)) files.push(...await listTextFiles(full));
-    if (entry.isFile() && /\.(md|txt|json|yaml|yml|js|ts|py)$/i.test(entry.name)) files.push(full);
+    if (entry.isDirectory()) {
+      if (!GITHUB_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) files.push(...await listTextFiles(full));
+    } else if (entry.isFile() && GITHUB_TEXT_EXT.test(entry.name) && !GITHUB_SKIP_FILE.test(entry.name)) {
+      files.push(full);
+    }
   }
   return files;
 }
