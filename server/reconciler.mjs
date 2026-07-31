@@ -21,9 +21,15 @@ export function runReconciler(db, options = {}) {
     createdAt: nowIso()
   };
   db.reconciliationReports.unshift(report);
+  // 对账类风险事件折叠:每个巡检周期只维护【一条】open 记录,不再无限堆叠(曾累积到 100+ 条纯重复告警)。
+  // 先清掉所有 open 的对账重复项(它们无独立信息,完整差异历史留在 reconciliationReports 里),
+  // 再按当前状态决定是否保留一条;对账恢复正常时自然清零。兼容历史上没有 kind 的旧记录(按标题匹配)。
+  const isReconIncident = (item) => item.status === "open" && (item.kind === "reconcile" || item.title === "实时/账户对账发现差异");
+  db.riskIncidents = (db.riskIncidents || []).filter((item) => !isReconIncident(item));
   if (report.status === "needs_attention") {
     db.riskIncidents.unshift({
       id: id("incident"),
+      kind: "reconcile",
       severity,
       status: "open",
       title: "实时/账户对账发现差异",

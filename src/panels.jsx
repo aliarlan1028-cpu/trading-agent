@@ -29,6 +29,7 @@ export function ConfigPanel({ panel, data, action, ui }) {
     knowledgeImport: "导入知识",
     knowledgeList: "知识来源",
     ruleLibrary: "规则库",
+    riskIncidents: "风险事件处理",
     skillImport: "导入 Skill",
     taskManager: "任务管理",
     eventSources: "事件详情与来源",
@@ -52,6 +53,7 @@ export function ConfigPanel({ panel, data, action, ui }) {
         {panel === "knowledgeImport" && <KnowledgeImportPanel action={action} ui={ui} />}
         {panel === "knowledgeList" && <KnowledgeListPanel data={data} action={action} ui={ui} />}
         {panel === "ruleLibrary" && <RuleLibraryPanel data={data} action={action} ui={ui} />}
+        {panel === "riskIncidents" && <RiskIncidentsPanel data={data} action={action} ui={ui} />}
         {panel === "skillImport" && <SkillImportPanel data={data} action={action} ui={ui} />}
         {panel === "taskManager" && <TaskManagerPanel data={data} action={action} />}
         {panel === "eventSources" && <EventSourcesPanel data={data} action={action} ui={ui} />}
@@ -1045,6 +1047,49 @@ export function RuleLibraryPanel({ data, action, ui }) {
     </div>
   );
 }
+
+// 风险事件处理:列出未处理事件(按标题归并去重,给出条数),支持逐条关闭与「全部标记已处理」。
+// 只读助手不能改状态,处理入口收在这里。对账类重复告警已在服务端折叠成一条。
+export function RiskIncidentsPanel({ data, action, ui }) {
+  const open = (data.riskIncidents || []).filter((i) => i.status === "open");
+  const groups = [];
+  for (const inc of open) {
+    const key = inc.title || inc.source || "风险事件";
+    const g = groups.find((x) => x.key === key);
+    if (g) { g.count += 1; g.items.push(inc); if (SEVERITY_RANK(inc.severity) > SEVERITY_RANK(g.severity)) g.severity = inc.severity; }
+    else groups.push({ key, count: 1, severity: inc.severity, items: [inc] });
+  }
+  async function closeOne(id) { await action(`/api/risk/incidents/${id}/close`, {}); }
+  async function closeGroup(g) { for (const inc of g.items) await action(`/api/risk/incidents/${inc.id}/close`, {}); ui.notify?.(`已处理 ${g.count} 项「${g.key}」`); }
+  async function closeAll() { await action(`/api/risk/incidents/close-all`, {}); ui.notify?.("已标记全部为已处理"); }
+  return (
+    <div className="panelStack">
+      <div className="panelToolbar">
+        <span className="fieldHint">未处理事件 {open.length} 项{groups.length ? `（${groups.length} 类）` : ""}</span>
+        {open.length > 0 && <button className="secondaryButton sm" onClick={closeAll}>全部标记已处理</button>}
+      </div>
+      {open.length === 0 && <p className="fieldHint">当前没有未处理的风险事件。</p>}
+      {groups.map((g) => (
+        <div className="incidentGroup" key={g.key}>
+          <div className="incidentGroupHead">
+            <span className={`pill ${SEVERITY_TONE(g.severity)}`}>{humanizeSeverity(g.severity)}</span>
+            <b>{g.key}</b>
+            {g.count > 1 && <span className="incidentCount">×{g.count}</span>}
+          </div>
+          <div className="incidentGroupBody">
+            <span className="fieldHint">最近 {formatDateTime(g.items[0]?.createdAt)}</span>
+            <button className="secondaryButton sm" onClick={() => (g.count > 1 ? closeGroup(g) : closeOne(g.items[0].id))}>
+              {g.count > 1 ? `处理这 ${g.count} 项` : "标记已处理"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function SEVERITY_RANK(s) { return { critical: 4, high: 3, medium: 2, low: 1 }[String(s || "").toLowerCase()] || 0; }
+function SEVERITY_TONE(s) { const r = SEVERITY_RANK(s); return r >= 3 ? "bad" : r === 2 ? "warn" : "good"; }
+function humanizeSeverity(s) { return { critical: "严重", high: "高", medium: "中", low: "低" }[String(s || "").toLowerCase()] || "提示"; }
 
 export function SkillImportPanel({ data, action, ui }) {
   const [form, setForm] = useState({ name: "", sourceUrl: "", skillMd: "", kind: "auto" });

@@ -7514,6 +7514,19 @@ button.danger:disabled,
 .ruleItemBtns { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
 .primaryButton.sm, .secondaryButton.sm, .dangerTextButton.sm { height: 28px; padding: 0 11px; font-size: 11px; }
 .dangerTextButton.sm { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+
+/* 风险事件处理面板 */
+.panelToolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.incidentGroup { border: 1px solid #e8e1d4; border-radius: 9px; padding: 11px 13px; background: #fff; }
+.incidentGroup + .incidentGroup { margin-top: 9px; }
+.incidentGroupHead { display: flex; align-items: center; gap: 8px; }
+.incidentGroupHead b { font-size: 13px; font-weight: 600; color: #1e1b16; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.incidentCount { flex: none; font: 600 11px "Space Grotesk"; color: #8a8073; background: #f1ece2; border-radius: 10px; padding: 1px 8px; }
+.incidentGroupBody { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; }
+.incidentGroup .pill { flex: none; font-size: 10.5px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.incidentGroup .pill.bad { background: #fbe6e0; color: #c43f28; }
+.incidentGroup .pill.warn { background: #fdefdb; color: #b9741f; }
+.incidentGroup .pill.good { background: #e5f2ea; color: #1f7a50; }
 .hypoSrc { font: 600 10px "Space Grotesk"; color: #2A6FDB; background: #EAF0FB; padding: 1px 6px; border-radius: 4px; }
 .hypoWhy { font-size: 11px; color: #8a8172; line-height: 1.45; margin-top: 3px; }
 .kCiteRow .cb { font-weight: 600; color: #1E1B16; }

@@ -185,11 +185,14 @@ export function AssistantWidget({ data, ui }) {
   const incidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const todoTotal = awaiting + pending + incidents;
   const autonomyLabel = sys.killSwitch ? "已熔断" : sys.autonomyEnabled ? "自主运行中" : "已暂停";
-  // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)
+  // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)。按标题折叠去重,避免同类刷屏。
   const criticalIncidents = (data.riskIncidents || []).filter((i) => i.status === "open" && ["critical", "high"].includes(String(i.severity || "").toLowerCase()));
+  const criticalGroups = [];
+  for (const i of criticalIncidents) { const k = i.title || i.source || "风险告警"; const g = criticalGroups.find((x) => x.key === k); if (g) g.count += 1; else criticalGroups.push({ key: k, count: 1 }); }
   // 新鲜度:取最新账户快照/组合同步时间,如实反映数据"截至"何时
   const asOf = data.accountSnapshots?.[0]?.createdAt || pf.updatedAt || data.marketMovers?.scannedAt || null;
   const go = (page) => { ui?.setActive?.(page); setOpen(false); };
+  const goIncidents = () => { ui?.openPanel?.("riskIncidents"); setOpen(false); };
 
   const digestRows = [
     ["账户", pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · 持仓 ${positions.length}` : "未同步", () => go("cockpit")],
@@ -302,8 +305,8 @@ export function AssistantWidget({ data, ui }) {
           {criticalIncidents.length > 0 && (
             <div className="asstAlerts">
               <div className="asstAlertHead"><AlertTriangle size={13} /> {criticalIncidents.length} 项待处理风险</div>
-              {criticalIncidents.slice(0, 2).map((i) => <button key={i.id} className="asstAlertRow" onClick={() => go("riskCenter")}><span>{i.title || i.source || "风险告警"}</span><ChevronRight size={13} /></button>)}
-              {criticalIncidents.length > 2 && <button className="asstAlertMore" onClick={() => go("riskCenter")}>查看全部 {criticalIncidents.length} 项 ›</button>}
+              {criticalGroups.slice(0, 3).map((g) => <button key={g.key} className="asstAlertRow" onClick={goIncidents}><span>{g.key}{g.count > 1 ? ` ×${g.count}` : ""}</span><ChevronRight size={13} /></button>)}
+              <button className="asstAlertMore" onClick={goIncidents}>去处理 {criticalIncidents.length} 项 ›</button>
             </div>
           )}
 
