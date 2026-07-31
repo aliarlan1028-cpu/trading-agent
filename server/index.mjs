@@ -67,7 +67,7 @@ import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, ensureCoingeckoMcp, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
-import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, resealAuditChain, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, executeTradeAction } from "./tradeActions.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
 import { dispatchOutbox } from "./outboxDispatcher.mjs";
@@ -222,6 +222,16 @@ for (const server of db.mcpServers || []) {
 // 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 try { ensureTurtleStrategy(db); } catch (error) { appendTrace(db, "system", `海龟策略入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+// 审计链自愈:启动时若发现少量写入竞态断点(同秒批量写/跨进程写导致的 prevHash 错位),按校验顺序重连,
+// 只重写 prevHash+hash、不改任何条目内容。断点过多则拒绝自愈交人工。
+try {
+  const av = verifyAuditChain(db);
+  if (!av.ok) {
+    const r = resealAuditChain(db);
+    if (r.healed) { saveDb(db); appendTrace(db, "system", `审计链自愈:修复 ${r.breaksFixed} 处断点(重写 ${r.healed} 条链接)`, "ok"); }
+    else appendTrace(db, "system", `审计链未自愈:${r.reason}`, "warning");
+  }
+} catch (error) { appendTrace(db, "system", `审计链自愈异常:${String(error.message || error).slice(0, 120)}`, "warning"); }
 // 海龟策略验证/前向启动(异步,不阻塞启动)。验证一次性;前向启动幂等——每次启动给"过了历史但还没起
 // 前向"的海龟补起模拟盘(createPaperSession 偶发拉 K 线失败会静默返回,下次启动/paper_forward 定时任务重试)。
 (async () => {

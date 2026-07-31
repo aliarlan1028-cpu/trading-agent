@@ -1515,6 +1515,51 @@ export function verifyAuditChain(db) {
   return { ok: breaks.length === 0, checked: logs.length, breaks };
 }
 
+// 审计链自愈:按校验顺序(created_at asc, rowid asc)从首个断点起重连 prevHash 并重算 hash。
+// 只修"写入竞态/同秒批量写导致的链接错位"——【绝不改任何条目内容】(action/actor/target/severity/createdAt 原样),
+// 仅重写 prevHash+hash 使链内部自洽。安全上限:断点过多(可能是真问题)则拒绝自愈、交人工。
+export function resealAuditChain(db, actor = "AuditChainReseal") {
+  const verify = verifyAuditChain(db);
+  if (verify.ok) return { ok: true, healed: 0, reason: "no_breaks" };
+  const cap = Number(process.env.AUDIT_RESEAL_MAX_BREAKS || 20);
+  if (verify.breaks.length > cap) return { ok: false, healed: 0, reason: `断点 ${verify.breaks.length} 超过上限 ${cap},疑似真问题,拒绝自愈,请人工复核` };
+  const logs = auditLogsForVerification(db);
+  // 先走到首个断点,记录其前一条(最后一条正确条目)的正确 hash 作为锚点
+  let previous = null;
+  let firstBreak = -1;
+  for (let i = 0; i < logs.length; i += 1) {
+    const e = logs[i];
+    const selfOk = !e.hash || e.hash === auditHash(e);
+    if (e.prevHash !== previous || !selfOk) { firstBreak = i; break; }
+    previous = e.hash || auditHash(e);
+  }
+  if (firstBreak === -1) return { ok: true, healed: 0, reason: "no_breaks" };
+  let sqliteOk = true;
+  try { ensureSqlite(); } catch { sqliteOk = false; }
+  const changed = [];
+  for (let i = firstBreak; i < logs.length; i += 1) {
+    const e = logs[i];
+    const correctPrev = previous;
+    const newHash = auditHash({ ...e, prevHash: correctPrev });
+    if (e.prevHash !== correctPrev || e.hash !== newHash) {
+      e.prevHash = correctPrev;
+      e.hash = newHash;
+      changed.push(e);
+    }
+    previous = e.hash;
+  }
+  if (sqliteOk && changed.length) {
+    const upd = sqlite.prepare("update audit_log_entries set doc=@doc where id=@id");
+    const tx = sqlite.transaction((rows) => { for (const r of rows) upd.run({ id: r.id, doc: JSON.stringify(r) }); });
+    tx(changed);
+  }
+  db.meta ||= {};
+  db.meta.auditChainTip = previous;
+  db.meta.auditChainBroken = false;
+  appendAudit(db, `审计链自愈:重连并重算 ${changed.length} 条,修复 ${verify.breaks.length} 处写入竞态断点(未改任何条目内容)`, "audit_chain_reseal", actor, "warning");
+  return { ok: true, healed: changed.length, breaksFixed: verify.breaks.length };
+}
+
 function auditLogsForVerification(db) {
   try {
     ensureSqlite();
