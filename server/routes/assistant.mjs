@@ -2,7 +2,7 @@
 // 只读：只解读账户/行情/知识，绝不下单/改配置/生成计划，也不写「AI 交易员」会话历史。
 // 只基于真实上下文回答、不编造数字、缺数据写「未同步」。依赖经 ctx 注入。
 export function registerAssistantRoutes(app, ctx) {
-  const { db, refreshAccounting, llmComplete, ragQuery, appendTrace } = ctx;
+  const { db, refreshAccounting, llmComplete, ragQuery, appendTrace, saveDb, id, nowIso } = ctx;
 
   app.post("/api/assistant/summarize", async (req, res) => {
     refreshAccounting(db);
@@ -52,19 +52,38 @@ export function registerAssistantRoutes(app, ctx) {
       const pf = db.portfolio || {};
       const sys = db.system || {};
       const positions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? 0) !== 0);
-      const awaiting = (db.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status)).length;
+      const awaitingPlans = (db.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
+      const awaiting = awaitingPlans.length;
       const pending = (db.pendingActions || []).filter((a) => !a.status || a.status === "pending" || a.status === "awaiting_confirmation").length;
       const incidents = (db.riskIncidents || []).filter((i) => i.status === "open");
       const regime = db.marketRegime || {};
       const movers = (db.marketMovers?.movers || []).slice(0, 6).map((m) => `${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%`).join("、");
+      // #4 补充上下文:待批准计划详情、风险预算、最近对账结果
+      const planDetail = awaitingPlans.slice(0, 4).map((p) => `${p.symbol} ${p.direction === "short" ? "做空" : "做多"} 入场${(p.entry_range || []).join("-") || p.entryPrice || "?"} 止损${p.stopLoss ?? p.stop_loss ?? "?"} 状态${p.status}`).join("；");
+      const acct = (db.exchangeAccounts || [])[0] || {};
+      const reconTxt = acct.reconcileStatus === "ok" ? "账实一致" : acct.reconcileStatus === "needs_attention" ? "发现账实不符，需关注" : acct.reconcileStatus === "info" ? "有外部/手动仓等信息项" : null;
+      // #5 记忆:注入历史"记住"的偏好/事实
+      const memory = (db.assistantMemory || []).slice(-8).map((m) => m.content).join("；");
       const contextText = [
         `账户：总资产 ${pf.totalEquityUsdt ?? "未同步"} USDT，今日盈亏 ${pf.todayPnl ?? "未同步"}，未实现 ${pf.unrealizedPnl ?? "未同步"}，持仓 ${positions.length} 个`,
         positions.length ? `持仓明细：${positions.map((p) => `${p.symbol} ${p.direction || ""} 浮盈 ${p.pnl ?? p.upl ?? "?"} ROI ${p.roiPct ?? "?"}%`).join("；")}` : "当前无持仓",
+        sys.remainingDailyLossUsdt != null ? `今日剩余风险预算：${sys.remainingDailyLossUsdt} USDT` : "",
         `自主：${sys.killSwitch ? "已熔断" : sys.autonomyEnabled ? "自主运行中" : "已暂停"}，实盘写入 ${sys.liveTradingEnabled ? "开启" : "关闭"}`,
         `待办：待批准计划 ${awaiting}，待确认操作 ${pending}；未处理风险告警 ${incidents.length}${incidents[0] ? `（最新：${incidents[0].title || ""}）` : ""}`,
+        planDetail ? `待批准计划详情：${planDetail}` : "",
+        reconTxt ? `最近账户对账：${reconTxt}${acct.reconcileSnapshotAt ? `（快照 ${acct.reconcileSnapshotAt}）` : ""}` : "",
         regime.global || regime.smartMoney ? `大盘：${regime.global?.label || regime.global?.trend || "?"}${regime.smartMoney?.label ? ` · 聪明钱 ${regime.smartMoney.label}` : ""}` : "",
-        movers ? `今日异动：${movers}` : ""
+        movers ? `今日异动：${movers}` : "",
+        memory ? `【用户此前让我记住的偏好/事实】${memory}` : ""
       ].filter(Boolean).join("\n");
+
+      // #5 记忆写入:用户明确"记住…"时存一条(只读助手唯一的写——只写自己的记忆,绝不碰交易/配置)
+      if (/记住|记一下|记下|以后(都|请)?|我(喜欢|偏好|习惯|倾向|不想|想要)|remember/i.test(question)) {
+        db.assistantMemory ||= [];
+        db.assistantMemory.push({ id: id("mem"), content: question.slice(0, 200), createdAt: nowIso() });
+        if (db.assistantMemory.length > 50) db.assistantMemory = db.assistantMemory.slice(-50);
+        try { saveDb(db); } catch { /* 记忆落盘失败不阻断问答 */ }
+      }
 
       // 知识问答：轻量 RAG 召回相关片段做接地（服务端 chunk 有正文）。
       let knowledge = "";
@@ -80,7 +99,8 @@ export function registerAssistantRoutes(app, ctx) {
 
       const system = "你是交易系统的【只读助手 copilot】。职责：帮用户理解账户状态、行情与知识库，做解读与建议。"
         + "你不能下单、撤单、改配置或生成交易计划——那是『AI 交易员』的职责；用户要执行交易/改授权时，引导他去主对话『AI 交易员』操作。"
-        + "只依据下面给定的真实上下文与知识片段回答，不编造任何数字，不确定就说『未同步/未知』。用中文，简洁，可用 Markdown。";
+        + "只依据下面给定的真实上下文与知识片段回答，不编造任何数字，不确定就说『未同步/未知』。用中文，简洁，可用 Markdown。"
+        + "若上下文提供了『用户此前让我记住的偏好/事实』，回答与建议时要主动考虑它们；若用户这次是让你记住某偏好，先明确回复『已记住』再作答，之后会一直参考。";
       const prompt = `用户问题：${question}\n\n【系统只读上下文】\n${contextText}${knowledge ? `\n\n【相关知识片段】\n${knowledge}` : ""}`;
       let reply = null;
       try { reply = await llmComplete(prompt, system); } catch { reply = null; }
