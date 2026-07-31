@@ -32,6 +32,7 @@ const sqliteDbPath = path.join(dataDir, "trading-agent.sqlite");
 const defaultOwnerEmail = process.env.OWNER_EMAIL || "aliarlan1028@gmail.com";
 const collectionNames = [
   "meta",
+  "assistantMemory",
   "user",
   "tenants",
   "users",
