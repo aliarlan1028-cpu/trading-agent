@@ -24,7 +24,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
   const tabNav = <nav className={`uxTabs ${inlineTabs ? "uxTabsInline" : ""}`} aria-label={`${title}子页面`}>{tabs.map(([id, label]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{label}</button>)}</nav>;
   return (
     <div className="uxCenter">
-      <header className="uxCenterHead"><div className="uxHeadLeft"><h1>{title}</h1><span>{subtitle}</span>{inlineTabs && tabNav}</div>{tabsExtra && <div className="uxHeadExtra">{tabsExtra}</div>}</header>
+      <header className="uxCenterHead"><div className="uxHeadLeft"><h1>{title}</h1>{subtitle && <span>{subtitle}</span>}{inlineTabs && tabNav}</div>{tabsExtra && <div className="uxHeadExtra">{tabsExtra}</div>}</header>
       {!inlineTabs && tabNav}
       <div className={`uxCenterBody uxSection-${active}`}>{children}</div>
     </div>
@@ -33,7 +33,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
 
 export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const [tab, setTab] = useState(initialTab);
-  return <CenterShell title="AI 交易员" subtitle="对话 · 决策 · 执行" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={tab === "dialog" ? <ChatKpiStrip data={data} bar/> : null}>{tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : <IntelligenceConcept data={data} action={action} ui={ui}/>}</CenterShell>;
+  return <CenterShell title="AI 交易员" subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={tab === "dialog" ? <ChatKpiStrip data={data} bar/> : null}>{tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : <IntelligenceConcept data={data} action={action} ui={ui}/>}</CenterShell>;
 }
 
 export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
