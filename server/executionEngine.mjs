@@ -443,11 +443,44 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
 // ---------------------------------------------------------------------------
 // 订单状态轮询：入场成交 → 布置止盈；终态 → 记录成交与盈亏。
 // ---------------------------------------------------------------------------
-// 久未成交/已失效的入场挂单:主动撤单,别让它无人看管地一直挂着(Q1)。
-// 两条撤单理由(都不影响已成交/持仓,只针对还没进场的挂单):
-//  ①超时:挂单超过 ENTRY_ORDER_TTL_MINUTES(默认90分钟)还没成交 → 撤(行情早已不是下单时那样)。
-//  ②失效反转:现价已越过止损一侧(此时成交=一开仓即触发止损),或已大幅偏离入场(默认>8%,机会已走) → 撤。
-// 撤单走 closeExecution(真向交易所撤),并把计划置终态 + 落审计 + 通知。
+// 久未成交/已失效的入场挂单是否该撤——纯决策函数(可单测,不碰交易所/时间外部依赖除 now)。
+// 返回 { reason, followUp }：followUp=true 表示"想抓的这波已自己走完、挂单错过了进场",
+// 撤单后应立刻重新评估以【追踪趋势】(而不仅仅撤了拉倒)。撤单优先级由高到低:
+//  ①行情已自行走到止盈方向、入场仍未成交 = 错过进场(followUp,追趋势);
+//  ②现价越过止损 = 成交即止损,失效;
+//  ③超时(默认90分钟);
+//  ④大幅偏离入场(默认>8%,机会已走/结构变)。
+export function staleEntryDecision(eo, price, cfg = {}) {
+  const ttlMin = Number(cfg.ttlMin ?? 90);
+  const devPct = Number(cfg.devPct ?? 8);
+  const isShort = String(eo.direction).toLowerCase() === "short";
+  const px = Number(price);
+  const hasPx = Number.isFinite(px) && px > 0;
+  // ① 行情已走到止盈方向、入场未成交:取最靠近入场的那个止盈(短=最高TP、多=最低TP)。
+  const tps = (eo.takeProfits || eo.takeProfit || []).map(Number).filter(Number.isFinite);
+  const firstTp = tps.length ? (isShort ? Math.max(...tps) : Math.min(...tps)) : null;
+  if (hasPx && Number.isFinite(firstTp) && (isShort ? px <= firstTp : px >= firstTp)) {
+    return { reason: `现价 ${px} 已走到止盈 ${firstTp} 方向、入场单仍未成交——这波行情已自行走完、挂单错过进场，撤单并重新评估以追踪趋势`, followUp: true };
+  }
+  // ② 现价越过止损
+  const stop = Number(eo.stopLoss);
+  if (hasPx && Number.isFinite(stop) && (isShort ? px >= stop : px <= stop)) {
+    return { reason: `现价 ${px} 已越过止损 ${stop}（成交即触发止损），撤未成交入场单`, followUp: false };
+  }
+  // ③ 超时
+  const startedAt = new Date(eo.entryPendingAt || eo.createdAt || 0).getTime();
+  const ageMin = Number.isFinite(startedAt) && startedAt > 0 ? (Date.now() - startedAt) / 60000 : 0;
+  if (ttlMin > 0 && ageMin >= ttlMin) return { reason: `挂单 ${Math.round(ageMin)} 分钟未成交（超过 ${ttlMin} 分钟保质期），撤单`, followUp: false };
+  // ④ 大幅偏离入场
+  const entry = Number(eo.entryPrice ?? eo.filledPrice);
+  if (hasPx && Number.isFinite(entry) && entry > 0 && Math.abs(px - entry) / entry * 100 >= devPct) {
+    return { reason: `现价 ${px} 已偏离入场 ${entry} 逾 ${devPct}%（机会已走/结构改变），撤未成交入场单`, followUp: false };
+  }
+  return { reason: null, followUp: false };
+}
+
+// 久未成交/已失效的入场挂单:主动撤单(真向交易所撤),置计划终态 + 落审计 + 通知。
+// followUp 的(错过进场):把该 symbol 推进快速异动队列,下一轮巡检立刻优先重评估→可追这波趋势(#2)。
 async function manageStalePendingEntries(db) {
   const ttlMin = Number(process.env.ENTRY_ORDER_TTL_MINUTES || db.runtimeConfig?.ENTRY_ORDER_TTL_MINUTES || 90);
   const devPct = Number(process.env.ENTRY_STALE_DEVIATION_PCT || db.runtimeConfig?.ENTRY_STALE_DEVIATION_PCT || 8);
@@ -456,22 +489,9 @@ async function manageStalePendingEntries(db) {
   for (const eo of pendings) {
     if (Number(eo.filledQuantity || 0) > 0) continue; // 已部分成交=有仓位,交给成交/保护逻辑,不在此撤
     const market = (db.markets || []).find((m) => m.symbol === eo.symbol);
-    const price = Number(market?.price);
-    const isShort = String(eo.direction).toLowerCase() === "short";
-    const startedAt = new Date(eo.entryPendingAt || eo.createdAt).getTime();
-    const ageMin = Number.isFinite(startedAt) ? (Date.now() - startedAt) / 60000 : 0;
-    let reason = null;
-    if (ttlMin > 0 && ageMin >= ttlMin) reason = `挂单 ${Math.round(ageMin)} 分钟未成交（超过 ${ttlMin} 分钟保质期），撤单`;
-    else if (Number.isFinite(price) && price > 0) {
-      const stop = Number(eo.stopLoss);
-      const entry = Number(eo.entryPrice ?? eo.filledPrice);
-      if (Number.isFinite(stop) && (isShort ? price >= stop : price <= stop)) {
-        reason = `现价 ${price} 已越过止损 ${stop}（成交即触发止损），撤未成交入场单`;
-      } else if (Number.isFinite(entry) && entry > 0 && Math.abs(price - entry) / entry * 100 >= devPct) {
-        reason = `现价 ${price} 已偏离入场 ${entry} 逾 ${devPct}%（机会已走/结构改变），撤未成交入场单`;
-      }
-    }
+    const { reason, followUp } = staleEntryDecision(eo, market?.price, { ttlMin, devPct });
     if (!reason) continue;
+    const isShort = String(eo.direction).toLowerCase() === "short";
     try {
       const result = await closeExecution(db, eo.id, reason);
       if (["cancelled", "cancel_unconfirmed"].includes(result.status)) {
@@ -479,11 +499,19 @@ async function manageStalePendingEntries(db) {
         if (plan && !["completed", "cancelled"].includes(plan.status)) plan.status = "cancelled";
         appendAudit(db, `挂单主动撤销：${eo.symbol} — ${reason}`, eo.id, "EntryTTL", "warning");
         appendTrace(db, "execution", `${eo.symbol} 挂单撤销（${reason.slice(0, 20)}）`, "ok");
+        // 错过进场→触发重评估追趋势:推入 pendingFastMoves,agent 巡检开头会优先评估该 symbol。
+        if (followUp) {
+          db.system ||= {};
+          db.system.pendingFastMoves ||= [];
+          if (!db.system.pendingFastMoves.some((m) => m.symbol === eo.symbol && m.source === "missed_entry_reeval")) {
+            db.system.pendingFastMoves.push({ symbol: eo.symbol, windowMin: 0, direction: isShort ? "down" : "up", movePct: 0, source: "missed_entry_reeval", note: "挂单错过进场,重评估是否追这波趋势" });
+          }
+        }
         try {
           const { notifyLark } = await import("./larkNotifier.mjs");
-          await notifyLark(db, { severity: "warning", title: "🗑 未成交挂单已撤销", body: `**${eo.symbol}** ${isShort ? "做空" : "做多"} 挂单已撤：${reason}` });
+          await notifyLark(db, { severity: "warning", title: "🗑 未成交挂单已撤销", body: `**${eo.symbol}** ${isShort ? "做空" : "做多"} 挂单已撤：${reason}${followUp ? "\n已排入重评估队列，将判断是否追踪这波趋势。" : ""}` });
         } catch { /* 通知失败不阻断 */ }
-        cancelled.push({ id: eo.id, symbol: eo.symbol, reason });
+        cancelled.push({ id: eo.id, symbol: eo.symbol, reason, followUp });
       }
     } catch (error) {
       eo.events.push({ at: nowIso(), event: "stale_cancel_error", detail: String(error.message || error).slice(0, 160) });
