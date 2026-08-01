@@ -13,6 +13,7 @@ import { deterministicDecision } from "./deterministicDecision.mjs";
 import { validateTradePlan } from "./schema.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { scanOpportunities } from "./opportunityScanner.mjs";
+import { explainMarketMove } from "./marketScan.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -146,6 +147,17 @@ const TOOL_DEFS = [
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
         timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "可选；省略则自动扫描 15m/1h/4h 选最优周期" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "explain_market_move",
+    description: "归因【某个币这波为什么涨/跌】：结合 24h 涨跌、近15分钟短窗口急动、区间位、成交额，用联网搜索(Gemini+Google)查最近的突发新闻/催化剂/宏观事件/连锁清算/市场情绪，解释这波行情的真实原因。用户问'为什么跌这么多/涨这么多'、或你评估急速异动想知道消息面推手时调用。返回叙事/类别/情绪分/风险/置信度 + 技术面快照。未配 Gemini 时诚实退回纯行情推演、不编原因。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" }
       },
       required: ["symbol"]
     }
@@ -537,7 +549,7 @@ async function buildSystemPrompt(db, userText = "") {
   const movers = db.marketMovers?.movers || [];
   if (movers.length) {
     const text = movers.slice(0, 6).map((m) => `- ${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%（额 $${(m.quoteVolUsdt / 1e6).toFixed(0)}M）${m.narrative ? `｜${m.narrative.narrative || ""}（${m.narrative.category || ""}，情绪${m.narrative.sentiment ?? "?"}）` : ""}`).join("\n");
-    sections.push(`【全市场异动·环境感知（截至 ${hhmmCn(db.marketMovers.scannedAt)} (UTC+8)，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}`);
+    sections.push(`【全市场异动·环境感知（截至 ${hhmmCn(db.marketMovers.scannedAt)} (UTC+8)，仅供理解大盘情绪与轮动，不是追涨信号；只在授权白名单内交易）】\n${text}\n用户问"某币这波为什么涨/跌"、或你要判断急动的消息面推手时，调 explain_market_move（联网搜催化剂）——别只凭 K 线猜原因。`);
   }
 
   // 活跃观察哨：让每条对话路径都知道"哨兵正在盯什么"，避免重复登记、支持按 id 撤销。
@@ -947,6 +959,10 @@ export async function executeTool(db, run, name, args = {}) {
     } catch (error) {
       return { error: `策略研究失败：${error.message}` };
     }
+  }
+
+  if (name === "explain_market_move") {
+    return explainMarketMove(db, args.symbol || "BTC/USDT");
   }
 
   if (name === "scan_market_opportunities") {
@@ -1602,6 +1618,9 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
+  if (name === "explain_market_move") return result.source === "gemini"
+    ? `${result.symbol} 归因：${result.narrative || "-"}（${result.category || "-"}·情绪${result.sentiment ?? "?"}·置信${result.confidence || "-"}）`
+    : `${result.symbol} 归因(${result.source})：${result.narrative || "-"}`;
   if (name === "scan_market_opportunities") return result.candidates?.length
     ? `全市场扫 ${result.universe} 个永续，Top ${result.candidates.length}：` + result.candidates.map((c) => `${c.symbol}${c.inWhitelist ? "✓" : ""} ${c.side === "short" ? "空" : "多"}${c.score}(${c.tag})`).join("、")
     : `未筛出候选（扫 ${result.universe || 0} 个，${result.error || "均低于流动性/评分门槛"}）`;

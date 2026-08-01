@@ -70,6 +70,41 @@ async function geminiSearchComplete(prompt) {
   }
 }
 
+// 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
+// 结合 24h 涨跌 + 近15分钟短窗口动幅 + 区间位 + 成交额,用 Gemini+Google 搜索查催化剂。
+// 无 GEMINI_API_KEY 则诚实返回"纯行情推演"(不编消息面)。
+export async function explainMarketMove(db, symbol) {
+  const sym = String(symbol || "").includes("/") ? symbol : String(symbol || "").replace(/USDT$/i, "/USDT");
+  const market = (db.markets || []).find((m) => m.symbol === sym)
+    || (db.markets || []).find((m) => String(m.symbol).split("/")[0] === String(sym).split("/")[0]);
+  if (!market) return { symbol: sym, source: "no_market", narrative: `尚未同步 ${sym} 行情，请先 sync_market 再归因。`, technical: null };
+  const last = Number(market.price);
+  const chg = Number(market.changePct);
+  const vol = Number(market.volume24h ?? market.quoteVolUsdt ?? 0);
+  const high = Number(market.high24h), low = Number(market.low24h);
+  const rangePos = (Number.isFinite(high) && Number.isFinite(low) && high > low && Number.isFinite(last)) ? Math.round((last - low) / (high - low) * 100) : null;
+  // 近 15 分钟短窗口动幅(从快速异动价格缓冲算,有就带上让归因更贴"这波")
+  let shortWin = null;
+  const buf = (db.system?.priceBuffer?.[sym] || []).filter((s) => Date.now() - s.t <= 15 * 60_000);
+  if (buf.length >= 2 && Number.isFinite(last)) {
+    const hi = Math.max(...buf.map((s) => s.p)), lo = Math.min(...buf.map((s) => s.p));
+    const drop = hi > 0 ? (hi - last) / hi * 100 : 0, rise = lo > 0 ? (last - lo) / lo * 100 : 0;
+    if (Math.max(drop, rise) >= 0.5) shortWin = drop >= rise ? { dir: "down", pct: Number(drop.toFixed(2)) } : { dir: "up", pct: Number(rise.toFixed(2)) };
+  }
+  const technical = { last, changePct24h: Number.isFinite(chg) ? chg : null, rangePosition24h: rangePos, shortWindow: shortWin, quoteVolUsdtM: Number.isFinite(vol) ? Number((vol / 1e6).toFixed(1)) : null };
+  if (!process.env.GEMINI_API_KEY) {
+    return { symbol: sym, source: "quote_only", narrative: "未配置联网搜索（GEMINI_API_KEY），无法查消息面催化——只能给纯行情推演，不编造原因。", technical, note: "配置 Gemini 后即可查'为什么'的真实催化剂。" };
+  }
+  const prompt = `请归因 ${sym}（加密永续）当前这波行情【为什么会这样涨/跌】。现价 $${last}，24h ${chg >= 0 ? "+" : ""}${chg}%${shortWin ? `，近15分钟${shortWin.dir === "down" ? "急跌" : "急涨"}${shortWin.pct}%` : ""}${rangePos != null ? `，处于24h区间${rangePos}%位` : ""}，24h成交额约 $${(vol / 1e6).toFixed(0)}M。用内置搜索查最近的突发新闻/催化剂/宏观事件/连锁清算/市场情绪，解释这波涨跌的原因。只输出 JSON：{"narrative":"核心原因或催化剂,一到两句(确实查不到就写'未见明确催化,疑似情绪/资金/杠杆连锁清算驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件|市场情绪","sentiment":0到100的情绪分,"risk":"主要风险一句话","confidence":"high|medium|low"}。中文，纯 JSON。`;
+  try {
+    const raw = await geminiSearchComplete(prompt);
+    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
+    return { symbol: sym, source: "gemini", ...parsed, technical, attributedAt: nowIso() };
+  } catch (error) {
+    return { symbol: sym, source: "gemini_failed", narrative: `消息面归因暂时失败（${error.message}）——技术面见 technical 字段。`, technical };
+  }
+}
+
 // 巡检用：扫异动 + 给最猛的前 N 个补归因，写入 db.marketMovers 供决策上下文与事件引擎引用。
 export async function refreshMarketMovers(db, options = {}) {
   const scan = await scanMarketMovers(options);

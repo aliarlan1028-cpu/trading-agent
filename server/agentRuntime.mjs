@@ -113,7 +113,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       "【本轮任务】",
       ...(fastMoves.length
         ? [
-          "1. 立即复核异动币种：sync_market + get_microstructure 看这波急速涨跌是否伴随放量、订单簿失衡与结构破位（识别无量假突破/急跌诱空）",
+          "1. 立即复核异动币种：sync_market + get_microstructure 看这波急速涨跌是否伴随放量、订单簿失衡与结构破位（识别无量假突破/急跌诱空）；并调 explain_market_move 查这波【为什么】涨/跌（消息面催化/连锁清算/情绪），把原因和技术面一起看",
           "2. 顺势评估机会：急跌可评估做空或规避、急涨可评估做多或止盈；按授权边界与盈亏比决定是否 propose_trade_plan，不达标则说明原因",
           "3. 若判断后续还有关键触发位（如跌破某支撑加速），逐条 register_watch 登记让哨兵继续盯"
         ]
