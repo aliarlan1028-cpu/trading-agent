@@ -79,6 +79,7 @@
 .cp2ThreshInput input{flex:1;min-width:0;border:0;outline:none;background:transparent;padding:8px 10px;font-size:12.5px;color:var(--text);font-family:var(--font-ui)}
 .cp2ThreshInput i{font-style:normal;font-size:11px;color:var(--text-4);padding:0 10px;border-left:1px solid var(--hairline);background:#faf9f6;align-self:stretch;display:flex;align-items:center}
 @media (max-width:640px){.cp2ThreshGrid{grid-template-columns:1fr}}
+.cp2LiveTag{display:inline-flex;align-items:center;gap:4px;color:var(--pos);font-size:11px;font-weight:600;white-space:nowrap}
 .cp2InlineSelect{border:1px solid var(--border);border-radius:4px;background:#fff;color:var(--text);font-size:11px;padding:3px 6px;font-family:var(--font-ui);cursor:pointer}
 .cp2ToggleRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
 .cp2ToggleRow>div{min-width:0}
