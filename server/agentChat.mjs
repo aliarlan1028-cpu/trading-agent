@@ -569,6 +569,24 @@ async function buildSystemPrompt(db, userText = "") {
     const brief = newsBriefForPrompt(db);
     if (brief.length) sections.push(`【信息面 · 关键新闻（已按来源可信度/多源印证/是否已计价/假消息风险过滤;标"⚠未证实"的只当线索、不当事实,影响面别只看标题）】\n${brief.join("\n")}`);
   } catch { /* 信息面简报不阻断 */ }
+  // 日程事件(向前看):未来已排期的事件 + 事件静默窗口(条令 S7)。行为提示、非硬闸。
+  try {
+    const { upcomingScheduledEvents } = await import("./scheduledEvents.mjs");
+    const upcoming = upcomingScheduledEvents(db, 168); // 未来 7 天
+    if (upcoming.length) {
+      const blackoutMin = Math.max(0, Number(process.env.EVENT_BLACKOUT_MINUTES || 30));
+      const now = Date.now();
+      const lines = upcoming.slice(0, 8).map((e) => {
+        const t = new Date(e.due || e.startAt).getTime();
+        const hrs = (t - now) / 3600000;
+        const when = hrs < 24 ? `${Math.round(hrs)} 小时后` : `${Math.round(hrs / 24)} 天后`;
+        const inBlackout = e.impact >= 70 && (t - now) <= blackoutMin * 60000;
+        return `- ${e.shortTitle || e.title}（${when} · 影响${e.impactLabel || e.impact}${inBlackout ? " · ⏸静默窗口内" : ""}）`;
+      });
+      const anyBlackout = upcoming.some((e) => e.impact >= 70 && (new Date(e.due || e.startAt).getTime() - now) <= blackoutMin * 60000);
+      sections.push(`【日程事件 · 未来已排期（向前看,S7）】\n${lines.join("\n")}\n事件静默:距高影响事件不足 ${blackoutMin} 分钟(标⏸)时,不新开高杠杆仓、降敞口、宁可等公布后再动;事件前若已持仓考虑减仓。${anyBlackout ? "【当前处于静默窗口:优先降敞口而非新开仓】" : ""}`);
+    }
+  } catch { /* 信息面简报不阻断 */ }
   // 链上/基本面简报(DefiLlama 免费源:TVL/稳定币供应=中期资金面背景;巨鲸/净流未接则不臆断)。
   try {
     const { onchainBriefForPrompt } = await import("./onchainFundamentals.mjs");

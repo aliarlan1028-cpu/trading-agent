@@ -24,6 +24,15 @@ export function registerEventRoutes(app, ctx) {
     persist(res, event);
   });
 
+  // 手动添加日程事件(向前看):用户录入 FOMC/CPI/代币解锁 等已知日期的未来事件。
+  app.post("/api/events/scheduled", requirePermission("write:event"), async (req, res) => {
+    const { createScheduledEvent } = await import("../scheduledEvents.mjs");
+    const result = createScheduledEvent(db, req.body || {}, req.user?.name || db.user?.name || "用户");
+    if (result.error) return res.status(400).json({ error: result.error });
+    appendTrace(db, "event", `手动日程事件：${result.event.title}`);
+    persist(res, result.event);
+  });
+
   app.patch("/api/events/:id", requirePermission("write:event"), (req, res) => {
     const event = findEvent(req.params.id);
     if (!event) return notFound(res);

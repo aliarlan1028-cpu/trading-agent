@@ -224,6 +224,7 @@ for (const server of db.mcpServers || []) {
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 try { ensureTurtleStrategy(db); } catch (error) { appendTrace(db, "system", `海龟策略入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 try { const { ensureTradingDoctrine } = await import("./tradingDoctrine.mjs"); ensureTradingDoctrine(db); } catch (error) { appendTrace(db, "system", `交易条令入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(db); } catch (error) { appendTrace(db, "system", `日程事件生成失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 // 海龟策略验证/前向启动(异步,不阻塞启动)。验证一次性;前向启动幂等——每次启动给"过了历史但还没起
 // 前向"的海龟补起模拟盘(createPaperSession 偶发拉 K 线失败会静默返回,下次启动/paper_forward 定时任务重试)。
 (async () => {
@@ -407,7 +408,11 @@ registerTaskHandler("strategy_improvement", (database) => {
   database.system.lastImprovementCloses = closes;
   return { status: "ok", experimentId: cycle.experiment?.id, hypothesis: cycle.experiment?.hypothesis };
 });
-registerTaskHandler("event_refresh", (database) => refreshEventSources(database));
+registerTaskHandler("event_refresh", async (database) => {
+  const r = await refreshEventSources(database);
+  try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(database); } catch { /* 日程生成失败不阻断新闻刷新 */ }
+  return r;
+});
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", async (database) => {
   const r = await verifyTrc20Payments(database);
