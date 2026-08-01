@@ -52,10 +52,9 @@ async function attributeMoverNarrative(mover) {
 
 // 直连 Gemini 的 generateContent（带 googleSearch 工具）——llmComplete 不带搜索能力，这里单独走。
 async function geminiSearchComplete(prompt) {
-  // 搜索归因专用模型默认 flash:pro 免费档只有 5RPM/~50-100次每天,后台每2分钟的归因几十分钟就 429;
-  // flash 免费额度大十几倍(~1500/天)、"搜新闻+总结催化剂"够用。与主力推理的 GEMINI_MODEL 解耦,
-  // 避免为 reasoning 设的 pro 把搜索也拖回小额度。要单独调搜索模型用 GEMINI_SEARCH_MODEL。
-  const model = process.env.GEMINI_SEARCH_MODEL || "gemini-2.5-flash";
+  // 搜索归因用 Gemini 模型:由设置里的 GEMINI_MODEL 字段控制(默认 flash——pro 免费档仅 5RPM/~50次每天
+  // 会 429,flash ~1500/天够用)。GEMINI_SEARCH_MODEL 是可选的高级单独覆盖。
+  const model = process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {

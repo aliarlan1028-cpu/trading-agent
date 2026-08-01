@@ -92,7 +92,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     DEEPSEEK_API_KEY: "",
     DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-v4-flash",
     GEMINI_API_KEY: "",
-    GEMINI_MODEL: providers.gemini?.model || "gemini-2.5-pro"
+    GEMINI_MODEL: providers.gemini?.model || "gemini-2.5-flash"
   });
   const [exchangeForm, setExchangeForm] = useState({
     BINANCE_API_KEY: "",
@@ -142,6 +142,14 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     ["deepseek", "DeepSeek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
     ["gemini", "Gemini（预留）", "GEMINI_API_KEY", "GEMINI_MODEL"]
   ];
+  // 各家常见模型下拉建议(datalist:可点选也可手输自定义,新模型出了直接打进去也行)。
+  const PROVIDER_MODELS = {
+    anthropic: ["claude-opus-4-8", "claude-sonnet-4-5", "claude-haiku-4-5"],
+    openai: ["gpt-5.2", "gpt-5", "gpt-4.1", "o4-mini"],
+    deepseek: ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
+    // flash 放首位:免费额度大十几倍,咱们用 Gemini 只做联网搜索归因,flash 够用;pro 免费档极小易 429。
+    gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+  };
   const secretRows = [
     ["BINANCE_API_KEY", "Binance API Key", exchange.binance?.hasKey],
     ["BINANCE_API_SECRET", "Binance Secret", exchange.binance?.hasSecret],
@@ -314,7 +322,10 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                     {!collapsed && (
                       <>
                         <label>API Key<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? "留空则保留现有密钥" : "粘贴 API Key"} /></label>
-                        <label>模型<input value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} /></label>
+                        <label>模型<input list={`models-${idName}`} value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} placeholder="选择或输入模型名" />
+                          <datalist id={`models-${idName}`}>{(PROVIDER_MODELS[idName] || []).map((m) => <option key={m} value={m} />)}</datalist>
+                          {idName === "gemini" && <small className="cfgHint">Gemini 在本系统只做联网搜索归因，推荐 flash（免费额度大、够用）；pro 免费档很小、易 429。</small>}
+                        </label>
                         {providers[idName]?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除 {label} Key</button>}
                       </>
                     )}

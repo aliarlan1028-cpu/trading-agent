@@ -8448,6 +8448,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .settingsTermPage .cfgHeadStatus.neg { background: var(--neg-weak); color: #a5341c; }
 .settingsTermPage .configFieldset.cfgActive { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .settingsTermPage .cfgUsing { font: 700 10px var(--font-ui); color: #fff; background: var(--accent); padding: 1px 7px; border-radius: 5px; margin-right: auto; margin-left: 2px; }
+.cfgHint { display: block; margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--text-muted, #9a917f); }
 
 /* 系统可观测性：整体更紧凑（卡片不再被拉高、告警字号更小）*/
 .observabilityGrid { align-items: start; }

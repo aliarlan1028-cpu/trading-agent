@@ -128,7 +128,7 @@ export function getConfigStatus(db) {
         anthropic: { hasKey: has("ANTHROPIC_API_KEY"), model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" },
         openai: { hasKey: has("OPENAI_API_KEY"), model: process.env.OPENAI_MODEL || "gpt-5.2" },
         deepseek: { hasKey: has("DEEPSEEK_API_KEY"), model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" },
-        gemini: { hasKey: has("GEMINI_API_KEY"), model: process.env.GEMINI_MODEL || "gemini-2.5-pro" }
+        gemini: { hasKey: has("GEMINI_API_KEY"), model: process.env.GEMINI_MODEL || "gemini-2.5-flash" }
       }
     },
     exchange: {

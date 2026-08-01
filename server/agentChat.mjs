@@ -1321,7 +1321,7 @@ export function activeProvider() {
   if (process.env.ANTHROPIC_API_KEY) return { name: "anthropic", model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" };
   if (process.env.OPENAI_API_KEY) return { name: "openai", model: process.env.OPENAI_MODEL || "gpt-5.2" };
   if (process.env.DEEPSEEK_API_KEY) return { name: "deepseek", model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" };
-  if (process.env.GEMINI_API_KEY) return { name: "gemini", model: process.env.GEMINI_MODEL || "gemini-2.5-pro" };
+  if (process.env.GEMINI_API_KEY) return { name: "gemini", model: process.env.GEMINI_MODEL || "gemini-2.5-flash" };
   return null;
 }
 
