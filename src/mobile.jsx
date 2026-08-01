@@ -793,7 +793,7 @@ function MobileAudit({ data, ui }) {
         {sysCards.map(([k, v, c, bg]) => <div className="mMetricCell" key={k}><span style={{ color: c }}>{k}</span><b className="mono" style={{ color: c }}>{v}</b><i className="mSysDot" style={{ background: bg }} /></div>)}
       </div>
       <div className="mCard">
-        <div className="mCardHead"><b>运行审计链</b><button className="mLink" onClick={() => ui.openPanel("auditChain")}>完整 ›</button></div>
+        <div className="mCardHead"><b>最近运行记录</b><button className="mLink" onClick={() => ui.openPanel("auditChain")}>完整 ›</button></div>
         {chain.length ? chain.map((t, i) => (
           <div className="mChainRow" key={t.id || i}>
             <span className={`mChainDot ${statusTone(t.status)}`} />
