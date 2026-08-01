@@ -220,7 +220,7 @@ const TOOL_DEFS = [
   },
   {
     name: "create_task",
-    description: "按用户要求创建定时任务。可创建 Every/Cron/At 类型任务，适合巡检、刷新事件、账户同步、对账、策略研究等。",
+    description: "按用户要求创建定时任务。可创建 Every/Cron/At 类型任务，适合巡检、刷新事件、账户同步、对账、策略研究等。handler 含义：agent_cycle=自主巡检决策一轮；execution_poll=轮询挂单/持仓成交；position_monitor=持仓护航；reconcile=账户对账；accounting_refresh=账务刷新；event_refresh=刷新事件源；market_signal_refresh=刷新大盘/聪明钱信号；okx_readonly_sync=OKX只读同步；strategy_research=策略研究；strategy_improvement=策略自进化改进闭环；paper_forward=模拟前向验证推进；trade_reflection=平仓复盘；missed_opportunity_review=错过机会复盘；watch_sentinel=重估观察哨。留空则为普通提醒任务。",
     schema: {
       type: "object",
       properties: {
@@ -228,7 +228,7 @@ const TOOL_DEFS = [
         type: { type: "string", enum: ["Every", "Cron", "At"] },
         schedule: { type: "string", description: "例如 Every 15m、0 */6 * * *、2026-07-06T10:00:00.000Z" },
         role: { type: "string" },
-        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "paper_forward", "event_refresh", "okx_readonly_sync", "trade_reflection", "missed_opportunity_review"] }
+        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "strategy_improvement", "paper_forward", "event_refresh", "market_signal_refresh", "okx_readonly_sync", "trade_reflection", "missed_opportunity_review", "watch_sentinel"] }
       },
       required: ["name", "type", "schedule"]
     }
@@ -1639,6 +1639,18 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_events") return `${Array.isArray(result) ? result.length : 0} 个事件`;
   if (name === "list_risk_incidents") return `${Array.isArray(result) ? result.length : 0} 个未处理风险事件`;
   if (name === "resolve_risk_incidents") return `已标记 ${result.closed || 0} 个事件为已处理，剩余 ${result.remaining ?? "-"}`;
+  if (name === "register_watch") return `${result.status === "updated" ? "更新" : "已挂"}观察哨 ${result.watchId || ""}：${result.watch || "-"}${result.activeWatches?.length ? `（当前 ${result.activeWatches.length} 个活跃）` : ""}`;
+  if (name === "cancel_watch") return `已撤销观察哨：${result.watch || "-"}`;
+  if (name === "create_task") return `已建定时任务「${result.name}」：${result.schedule}${result.handler && result.handler !== "custom" ? `·处理器 ${result.handler}` : "·普通提醒"}`;
+  if (name === "refresh_events") return `已刷新事件源，当前 ${result.eventCount ?? 0} 个事件${result.latest?.length ? `，最新：${result.latest.map((e) => e.title).slice(0, 3).join("、")}` : ""}`;
+  if (name === "explain_system") return String(result.guide || result.note || "").slice(0, 160);
+  if (name === "request_action") return result.message || `已生成待确认操作：${result.pendingAction?.title || "-"}（需你点确认才执行）`;
+  if (name === "sync_exchange_account") return result.status === "ok"
+    ? `${result.exchange} 已只读同步：持仓 ${result.positions} · 余额 ${result.balances} 项`
+    : `${result.exchange} 同步未完成（${result.status}${result.error ? "：" + result.error : ""}）`;
+  if (name === "configure_exchange_credentials") return result.status === "invalid_exchange"
+    ? "交易所无效（仅支持 BINANCE/OKX）"
+    : `${result.exchange} 凭证已保存${result.status === "ok" ? "并通过只读验证" : `（只读同步未通过：${result.error || result.status}）`}`;
   return JSON.stringify(result).slice(0, 120);
 }
 
