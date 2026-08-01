@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -163,37 +163,99 @@ function AppTopbar({ data, setActive, notify, action }) {
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
-        {!data.user?.isOwner && (
-          <button className="bellButton" title="账户 · 修改密码" onClick={() => setShowPassword(true)}><UserCog size={18} /></button>
-        )}
-        <button className="topAvatar" title={data.user?.name || "账户"} onClick={() => data.user?.isOwner ? setActive("systemSettings") : setShowPassword(true)} aria-label="账户">{(data.user?.name || "A").slice(0, 1).toUpperCase()}</button>
+        <button className="bellButton" title="账户设置 · 名称/头像/密码" onClick={() => setShowPassword(true)}><UserCog size={18} /></button>
+        <button className="topAvatar" title={data.user?.name || "账户"} onClick={() => setShowPassword(true)} aria-label="账户设置">
+          {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : (data.user?.name || "A").slice(0, 1).toUpperCase()}
+        </button>
       </div>
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
-      {showPassword && <ChangePasswordDialog action={action} notify={notify} onClose={() => setShowPassword(false)} />}
+      {showPassword && <AccountDialog user={data.user || {}} action={action} notify={notify} onClose={() => setShowPassword(false)} />}
     </header>
   );
 }
 
-function ChangePasswordDialog({ action, notify, onClose }) {
+// 账户设置：任何用户（含 Owner）都能改显示名 + 上传头像；非 Owner 还能自助改密码。
+function AccountDialog({ user = {}, action, notify, onClose }) {
+  const [name, setName] = useState(user.name || "");
+  const [avatar, setAvatar] = useState(user.avatar || "");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  async function submit() {
+  const fileRef = useRef(null);
+  const profileDirty = name.trim() !== (user.name || "") || avatar !== (user.avatar || "");
+
+  // 客户端压缩：任何尺寸图片 → 128×128 居中裁剪 → JPEG data URL，控制在几十 KB。
+  function pickAvatar(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) return notify("请选择图片文件");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 128;
+        const canvas = document.createElement("canvas");
+        canvas.width = size; canvas.height = size;
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        setAvatar(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => notify("图片无法读取");
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveProfile() {
+    const trimmed = name.trim();
+    if (trimmed.length < 1 || trimmed.length > 40) return notify("名称需 1–40 个字符");
+    setSavingProfile(true);
+    const result = await action("/api/account/profile", { name: trimmed, avatar }, "PATCH");
+    setSavingProfile(false);
+    if (result?.ok === true) notify("资料已更新");
+  }
+
+  async function changePassword() {
     if (newPassword.length < 10) return notify("新密码至少 10 位");
     if (newPassword !== confirm) return notify("两次输入的新密码不一致");
     const result = await action("/api/auth/change-password", { oldPassword, newPassword });
-    if (result?.ok === true) { notify("密码已修改"); onClose(); } // 失败路径返回 {}/{ok:false},此前被当成功(审计 H5)
+    if (result?.ok === true) { notify("密码已修改"); setOldPassword(""); setNewPassword(""); setConfirm(""); }
   }
+
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div className="modalCard" onClick={(event) => event.stopPropagation()}>
-        <h3>修改密码</h3>
-        <label>原密码<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
-        <label>新密码（至少 10 位）<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
-        <label>确认新密码<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+        <h3>账户设置</h3>
+        <div className="acctAvatarRow">
+          <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt="头像" /> : (name || "A").slice(0, 1).toUpperCase()}</div>
+          <div className="acctAvatarActions">
+            <button type="button" className="secondaryButton" onClick={() => fileRef.current?.click()}>上传头像</button>
+            {avatar && <button type="button" className="linkButton" onClick={() => setAvatar("")}>移除</button>}
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickAvatar} />
+            <small>自动压缩为 128×128，占用极小</small>
+          </div>
+        </div>
+        <label>显示名称<input type="text" maxLength={40} value={name} placeholder="给自己起个名字" onChange={(event) => setName(event.target.value)} /></label>
         <div className="modalActions">
-          <button className="secondaryButton" onClick={onClose}>取消</button>
-          <button className="primaryButton" onClick={submit}>确认修改</button>
+          <span className="modalHint">{user.email || ""}</span>
+          <button className="primaryButton" disabled={!profileDirty || savingProfile} onClick={saveProfile}>{savingProfile ? "保存中…" : "保存资料"}</button>
+        </div>
+        {user.isOwner
+          ? <p className="acctPwNote">Owner 登录密码由服务端 ADMIN_PASSWORD 管理，如需修改请在系统设置 · 安全中操作。</p>
+          : <div className="acctPwBlock">
+              <h4>修改密码</h4>
+              <label>原密码<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
+              <label>新密码（至少 10 位）<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+              <label>确认新密码<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+              <div className="modalActions">
+                <button className="secondaryButton" onClick={changePassword}>修改密码</button>
+              </div>
+            </div>}
+        <div className="modalActions">
+          <button className="secondaryButton" onClick={onClose}>关闭</button>
         </div>
       </div>
     </div>

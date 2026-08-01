@@ -351,7 +351,24 @@ h3 {
   color: #fff;
   background: var(--accent-grad);
   box-shadow: var(--sh-accent);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
 }
+.topAvatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* 账户设置弹窗：头像行 + 自助改密块 */
+.acctAvatarRow { display: flex; align-items: center; gap: 16px; margin: 4px 0 14px; }
+.acctAvatarPreview { flex: none; width: 64px; height: 64px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; color: #fff; font: 700 26px var(--font-ui); background: var(--accent-grad); box-shadow: var(--sh-accent); }
+.acctAvatarPreview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.acctAvatarActions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.acctAvatarActions small { color: var(--text-muted); font-size: 11px; }
+.acctAvatarActions .linkButton { background: none; border: 0; color: var(--danger, #d06a22); cursor: pointer; padding: 0; font-size: 12px; }
+.acctPwBlock { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border, rgba(0,0,0,.08)); }
+.acctPwBlock h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
+.acctPwNote { margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.modalHint { flex: 1; color: var(--text-muted); font-size: 12px; align-self: center; }
 
 .appTopbar .topbarActions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
@@ -8653,7 +8670,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 
 /* S5 设置 */
 .mAcctCard { display: flex; align-items: center; gap: 12px; }
-.mAcctAvatar { width: 46px; height: 46px; border-radius: 12px; background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; display: grid; place-items: center; font: 700 20px "Space Grotesk"; flex: none; }
+.mAcctAvatar { width: 46px; height: 46px; border-radius: 12px; background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; display: grid; place-items: center; font: 700 20px "Space Grotesk"; flex: none; overflow: hidden; }
+.mAcctAvatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mAcctInfo { flex: 1; min-width: 0; } .mAcctInfo b { display: block; font: 700 15px "Space Grotesk"; color: #1E1B16; } .mAcctInfo small { font-size: 12px; color: #8a8172; }
 .mAcctPlan { font: 800 10px "Space Grotesk"; letter-spacing: .06em; background: #1E1B16; color: #F5E9DB; padding: 4px 9px; border-radius: 6px; flex: none; }
 .mExRow, .mCfgRow { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 10px 0; border-bottom: 1px solid #EDE7DB; cursor: pointer; text-align: left; }

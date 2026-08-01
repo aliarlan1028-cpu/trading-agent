@@ -74,6 +74,33 @@ export function registerAdminUserRoutes(app, ctx) {
     persist(res, { ok: true });
   });
 
+  // 账户自助资料：任何登录用户（含 Owner）都能改自己的显示名与头像。
+  // 头像存 data URL（前端已压缩到 ≤128px），服务端再设 500KB 上限兜底，防止把库撑爆。
+  app.patch("/api/account/profile", (req, res) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: "未登录" });
+    const patch = {};
+    if (req.body?.name !== undefined) {
+      const name = String(req.body.name).trim();
+      if (name.length < 1 || name.length > 40) return res.status(400).json({ error: "名称需 1–40 个字符" });
+      patch.name = name;
+    }
+    if (req.body?.avatar !== undefined) {
+      const avatar = String(req.body.avatar || "");
+      if (avatar === "") {
+        patch.avatar = ""; // 允许清空回到首字母头像
+      } else {
+        if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(avatar)) return res.status(400).json({ error: "头像需为 png/jpg/webp/gif 图片" });
+        if (avatar.length > 500_000) return res.status(400).json({ error: "头像过大（压缩后仍超 500KB），请换一张" });
+        patch.avatar = avatar;
+      }
+    }
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "没有要更新的字段" });
+    Object.assign(user, patch, { updatedAt: nowIso() });
+    appendAudit(db, `账户自助更新资料（${Object.keys(patch).join("、")}）`, user.id, user.name || user.email);
+    persist(res, { ok: true, user: sanitizeUserRecord(user) });
+  });
+
   // Admin 重置某用户密码为临时密码（用户登录后应自行修改）。
   app.post("/api/admin/users/:id/reset-password", requirePermission("admin:system"), (req, res) => {
     const user = findUser(req.params.id);

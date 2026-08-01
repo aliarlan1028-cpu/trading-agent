@@ -207,7 +207,7 @@ function MobileSettingsIndex({ data, onOpen }) {
   return (
     <div className="mScreen">
       <div className="mCard mAcctCard">
-        <span className="mAcctAvatar">{String(user.name || user.email || "U").charAt(0).toUpperCase()}</span>
+        <span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(user.name || user.email || "U").charAt(0).toUpperCase()}</span>
         <div className="mAcctInfo"><b>{user.name || "量化交易员"}</b><small>{user.email || "—"}</small></div>
         <span className="mAcctPlan">{user.isOwner ? "OWNER" : sub.status ? "PRO" : "—"}</span>
       </div>
