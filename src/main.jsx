@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   FlaskConical,
   UserPlus,
-  UserCog,
   WalletCards,
   Zap
 } from "lucide-react";
@@ -163,8 +162,7 @@ function AppTopbar({ data, setActive, notify, action }) {
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
-        <button className="bellButton" title="账户设置 · 名称/头像/密码" onClick={() => setShowPassword(true)}><UserCog size={18} /></button>
-        <button className="topAvatar" title={data.user?.name || "账户"} onClick={() => setShowPassword(true)} aria-label="账户设置">
+        <button className="topAvatar" title={`${data.user?.name || "账户"} · 点击设置名称/头像`} onClick={() => setShowPassword(true)} aria-label="账户设置">
           {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : (data.user?.name || "A").slice(0, 1).toUpperCase()}
         </button>
       </div>
