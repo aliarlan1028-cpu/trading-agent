@@ -41,7 +41,9 @@ export function applyRiskThresholds(db, body = {}, setConfig) {
   const applied = [];
   for (const d of RISK_THRESHOLD_DEFS) {
     if (body[d.key] === undefined || body[d.key] === null || body[d.key] === "") continue;
-    const human = clampNum(body[d.key], d.def, d.min, d.max);
+    const raw = Number(body[d.key]);
+    if (!Number.isFinite(raw)) continue; // 非数值忽略,不静默重置为默认(typo 保护)
+    const human = Math.min(d.max, Math.max(d.min, raw));
     const envVal = d.toEnv ? d.toEnv(human) : human;
     entries[d.env] = String(envVal);
     applied.push(`${d.label}=${human}${d.unit}`);
