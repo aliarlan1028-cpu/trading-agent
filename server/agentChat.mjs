@@ -254,7 +254,7 @@ const TOOL_DEFS = [
   },
   {
     name: "propose_trade_plan",
-    description: "基于已同步的真实行情提出交易计划。计划会立即通过硬风控引擎检查，结果一并返回；通过后仍需人工批准才可能执行。入场/止损/止盈必须来自真实行情分析，不允许编造。",
+    description: "基于已同步的真实行情提出交易计划。计划会立即通过硬风控引擎检查，结果一并返回；通过后仍需人工批准才可能执行。入场/止损/止盈必须来自真实行情分析，不允许编造。【白名单外也可提】对 scan_market_opportunities 扫出并经你深分析确认优质的白名单外币对，同样可以调用本工具提计划——系统会自动把它标为『白名单外·一次性授权』候选：始终落到待人工确认、绝不自动执行，用户在计划卡点『确认下单』即按本计划下单（仅本笔授权，不加入常驻白名单、自主巡检以后也不会自动碰它）。提这类计划前务必已 sync_market + 结构/微观深分析，风控标准和白名单内一致。",
     schema: {
       type: "object",
       properties: {
@@ -381,7 +381,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
    - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次工具，然后在文字里最多用一句话说"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
-   - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；正常给完整分析结论，只在结尾用一句话提示"该币不在授权白名单，如需交易/监控可加白"，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
+   - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；但白名单外的好机会可以直接 **propose_trade_plan**——系统自动标为『白名单外·一次性授权』候选、待用户确认下单(见授权白名单区块)。正常给完整分析结论，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
 11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 把 4H 结构、供需区、1H 流动性/CHoCH 看清**(它是你的结构参谋),再逐项确认——
    - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交 <2R 的低质量计划。
    - 高周期结构优先：方向必须与 4H 结构一致（4H BOS 定方向）。不要仅凭单根低周期(1m/5m/15m)放量 K 线就逆着大结构开仓——低周期单根放量+整数关口，多半是流动性扫荡(先砸后拉/先拉后砸)而不是真突破。
@@ -511,7 +511,7 @@ async function buildSystemPrompt(db, userText = "") {
   const mdt = activeMandate(db);
   if (mdt) {
     const wl = (mdt.allowedSymbols || []).join("、") || "(当前为空)";
-    sections.push(`【授权白名单（仅这些币对可下单/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对全市场开放**——任何 OKX/币安币对都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 自由分析并给出方向结论。但 **propose_trade_plan 与 register_watch 只对白名单内币对有效**，对白名单外的币调用会被硬风控/哨兵直接拒。因此分析白名单外的币时：照常给完整分析，不要调用这两个工具，只在结尾一句话提示"不在白名单、如需交易/监控可加白（要我帮你更新授权吗）"。\n**别把视野锁死在白名单**：机会可能出现在白名单外的任何永续。要主动发现机会时先调用 **scan_market_opportunities**（全市场漏斗，按动量+区间位+振幅+流动性打分排出 Top 候选，结果里 inWhitelist 标注是否已授权），再对排前的候选逐个走 analyze_market_structure / get_microstructure 深分析；若白名单外的候选深分析后确属优质机会，明确建议主人加白（并说明理由与建议授权参数），不要因为"不在白名单"就跳过不看。`);
+    sections.push(`【授权白名单（这些币对可自动交易/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对全市场开放**——任何 OKX/币安币对都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 自由分析并给出方向结论。\n**白名单外也能提计划（一次性授权）**：对 scan_market_opportunities 扫出、经你深分析确认优质的白名单外币对，可以照常调用 **propose_trade_plan**——系统会自动标为『白名单外·一次性授权』候选：始终落到待人工确认、**绝不自动执行**，用户在计划卡点『确认下单』即按本计划下单（仅本笔、不加入常驻白名单）。所以别再对白名单外的好机会闭嘴或只会建议加白——直接把计划提出来让用户一键确认即可。（register_watch 观察哨仍只对白名单内有效，白名单外别挂哨。）\n**别把视野锁死在白名单**：机会可能出现在白名单外的任何永续。主动发现机会时先调用 **scan_market_opportunities**（全市场漏斗，按动量+区间位+振幅+流动性打分排出 Top 候选，inWhitelist 标注是否已授权），再对排前候选逐个走 analyze_market_structure / get_microstructure 深分析，达标就提计划（白名单外自动成为一次性授权候选）。`);
   }
 
   // 大盘/聪明钱快照:与定时巡检同一份预取数据(db.marketRegime)。
@@ -1139,6 +1139,14 @@ export async function executeTool(db, run, name, args = {}) {
     const declared = Array.isArray(args.adoptedToolSkillIds) ? args.adoptedToolSkillIds.map(String) : [];
     const validTrusted = (db.skills || []).filter((s) => !s.native && s.trusted && declared.includes(s.id)).map((s) => s.id);
     if (validTrusted.length) plan.adoptedTrustedSkillIds = validTrusted;
+    // 白名单外的扫描候选:标记一次性授权(仅本笔),让风控放行"交易对范围",落到 awaiting_approval
+    // 供用户在计划卡上"确认下单"。这类计划强制人工确认、永不自动执行(见下方 autoExecution 守卫),
+    // 且不把该币加入常驻白名单——自主巡检以后仍碰不了它。
+    const wlSet = new Set((mandate?.allowedSymbols || []).map((s) => String(s).toUpperCase()));
+    if (mandate && wlSet.size && !wlSet.has(symbol)) {
+      plan.outOfWhitelist = true;
+      plan.oneShotAuth = true;
+    }
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;
@@ -1160,7 +1168,8 @@ export async function executeTool(db, run, name, args = {}) {
     // 授权后全自动执行：仅当①实盘写入已开启 ②灰度策略关闭「保留人工确认」时，AI 自主批准并下单。
     // 名义金额超过灰度上限会被写入闸拦截 → 自动回退为待人工批准（大单永远需要你拍板，防御纵深）。
     let autoExecution = null;
-    if (plan.status === "awaiting_approval") {
+    // 白名单外·一次性授权计划永不自动执行:必须用户在计划卡上亲手"确认下单"(见 propose 说明)。
+    if (plan.status === "awaiting_approval" && !plan.outOfWhitelist) {
       // 唯一真相源:自动下单与否用 deriveAutomationState(与状态卡/前端横幅同一判定,11 道闸按执行链)。
       // 旧的 4 闸 autoEligible 漏了 killSwitch/orderWrite/风险确认/Key核验,与状态卡各说各话(审计 gating)。
       const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
@@ -1239,11 +1248,14 @@ export async function executeTool(db, run, name, args = {}) {
       status: plan.status,
       autoExecuted: placed,
       orderPlaced: placed,
+      outOfWhitelist: plan.outOfWhitelist === true,
       autoGateReason,
       execution: autoExecution ? { status: autoExecution.status, reason: autoExecution.reason || null } : null,
       riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
       smartMoneyAlignment: alignment,
-      note: placed
+      note: plan.outOfWhitelist && risk.passed
+        ? `${symbol} 不在授权白名单——已作为『白名单外·一次性授权』候选计划提交，等你在计划卡点『确认下单』即按本计划下单（仅本笔授权，不加入常驻白名单，自主巡检以后也不会自动碰它）。绝不会自动执行。`
+        : placed
         ? `已在授权与灰度上限内自动执行并下单（${autoExecution.status}）。`
         : simulated
           ? `干跑完成（实盘写入未开）：已算好数量/价格但未向交易所提交，未真下单。要真实下单请开启「实盘写入」。`
@@ -1569,7 +1581,8 @@ function summarizeToolResult(name, result = {}) {
     const align = result.smartMoneyAlignment;
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
     const autoNote = result.autoExecuted ? `｜🤖自动执行(${result.execution?.status || "-"})` : "";
-    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}${autoNote}`;
+    const wlNote = result.outOfWhitelist ? "｜⚠白名单外·一次性授权(待你确认下单,仅本笔)" : "";
+    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}${wlNote}${autoNote}`;
   }
   if (name === "create_skill_from_idea") return `技能「${result.name}」已保存（${result.status === "live_probation" ? "上岗试用" : result.status}）：${result.direction}·${result.timeframe}·${result.template || "-"}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;

@@ -244,7 +244,7 @@ export function validateWriteGuard(db, action, payload) {
 
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   if (!policy) return { allowed: false, reason: "gray_policy_not_enabled" };
-  if (payload.symbol && policy.allowedSymbols?.length && !policy.allowedSymbols.includes(payload.symbol)) return { allowed: false, reason: "symbol_not_allowed_by_gray_policy" };
+  if (payload.symbol && payload.oneShotAuth !== true && policy.allowedSymbols?.length && !policy.allowedSymbols.includes(payload.symbol)) return { allowed: false, reason: "symbol_not_allowed_by_gray_policy" };
 
   const notional = estimateNotional(payload);
   const maxNotional = Number(policy.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
@@ -560,7 +560,8 @@ function validateMandateGuard(db, action, payload) {
   if (!["running", "active"].includes(mandate.status)) return { allowed: false, reason: "mandate_not_active", mandateId: mandate.id };
   if (mandate.validUntil && new Date(mandate.validUntil).getTime() <= Date.now()) return { allowed: false, reason: "mandate_expired", mandateId: mandate.id };
   const symbol = payload.symbol;
-  if (symbol && mandate.allowedSymbols?.length && !mandate.allowedSymbols.includes(symbol)) return { allowed: false, reason: "symbol_not_allowed_by_mandate", mandateId: mandate.id };
+  // oneShotAuth：用户对白名单外扫描候选的一次性授权(仅本笔),放行正向白名单;但下面的显式黑名单仍然拦。
+  if (symbol && payload.oneShotAuth !== true && mandate.allowedSymbols?.length && !mandate.allowedSymbols.includes(symbol)) return { allowed: false, reason: "symbol_not_allowed_by_mandate", mandateId: mandate.id };
   if (symbol && mandate.deniedSymbols?.includes(symbol)) return { allowed: false, reason: "symbol_denied_by_mandate", mandateId: mandate.id };
   if (payload.marketType && mandate.marketTypes?.length && !mandate.marketTypes.includes(payload.marketType)) return { allowed: false, reason: "market_type_not_allowed_by_mandate", mandateId: mandate.id };
   const mandateAction = payload.reduceOnly && action === "place_order" ? "close" : ACTION_TO_MANDATE[action];

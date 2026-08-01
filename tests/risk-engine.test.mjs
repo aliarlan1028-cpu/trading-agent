@@ -73,6 +73,31 @@ test("mandate changes invalidate previously bound plans", () => {
   assert.ok(result.blockers.some((item) => item.name === "授权版本"));
 });
 
+test("白名单外币对:无一次性授权时'交易对范围'拦截,有 oneShotAuth 时放行(仅本闸)", () => {
+  const db = fixture({ live: false });
+  const offlist = { ...plan, id: "p_off", symbol: "PEPE/USDT" };
+  // 无 oneShotAuth：交易对范围必须失败
+  const blocked = evaluateTradePlan(db, offlistClone(offlist));
+  const blockedNames = blocked.checks.filter((c) => !c.passed).map((c) => c.name);
+  assert.ok(blockedNames.includes("交易对范围"), `白名单外应被交易对范围拦,实际失败:${blockedNames.join(",")}`);
+
+  // 有 oneShotAuth：交易对范围通过(整体在 paper 模式下应 passed)
+  const authed = evaluateTradePlan(db, { ...offlistClone(offlist), oneShotAuth: true });
+  const authedFailed = authed.checks.filter((c) => !c.passed).map((c) => c.name);
+  assert.ok(!authedFailed.includes("交易对范围"), `一次性授权应放行交易对范围,实际失败:${authedFailed.join(",")}`);
+  assert.equal(authed.passed, true, "一次性授权的白名单外计划在 paper 模式应整体通过");
+});
+
+test("oneShotAuth 只放行交易对范围,不绕过其他风控(如授权版本)", () => {
+  const db = fixture({ live: false });
+  db.mandates[0].version = 2;
+  const result = evaluateTradePlan(db, { ...plan, symbol: "PEPE/USDT", mandateVersion: 1, oneShotAuth: true });
+  assert.equal(result.passed, false, "授权版本不匹配仍应拦,oneShotAuth 不该绕过它");
+  assert.ok(result.blockers.some((item) => item.name === "授权版本"));
+});
+
+function offlistClone(p) { return { ...p }; }
+
 test("陈旧计划被新鲜度检查拦截:现价越过止损/入场偏离超阈值", () => {
   const db = fixture();
   db.markets[0].price = 0.1647; // 用户实锤场景:ADA 跌到 0.1647,旧计划入场 0.193

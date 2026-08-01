@@ -31,7 +31,11 @@ export function evaluateTradePlan(db, plan) {
   const strategy = plan.strategy || plan.strategy_type || "manual_review";
 
   add("授权状态", ["running", "active"].includes(mandate.status), `当前状态：${mandate.status}`);
-  add("交易对范围", allowedSymbols.length > 0 && allowedSymbols.includes(plan.symbol), `${plan.symbol} 必须在白名单内`);
+  // oneShotAuth：白名单外的扫描候选,由用户在计划卡上"确认下单"时一次性授权(仅本笔,不进常驻白名单)。
+  // 它只放行"交易对范围"这一条正向白名单闸;deniedSymbols 显式黑名单、其余所有风控闸照常。
+  // AI 自己 propose 的白名单外计划只会停在 awaiting_approval、永不自动执行——必须人工点确认才下单。
+  const symbolAuthorized = (allowedSymbols.length > 0 && allowedSymbols.includes(plan.symbol)) || plan.oneShotAuth === true;
+  add("交易对范围", symbolAuthorized, plan.oneShotAuth === true ? `${plan.symbol} 白名单外·用户一次性授权(仅本笔)` : `${plan.symbol} 必须在白名单内`);
   add("市场类型", marketTypes.length > 0 && marketTypes.includes(marketType), `${marketType} 必须在授权市场类型内`);
   add("策略范围", strategies.length > 0 && strategies.includes(strategy), `${strategy} 必须在策略 allowlist 内`);
   add("授权有效期", validUntil && new Date(validUntil).getTime() > Date.now(), `有效期至 ${validUntil || "未设置"}`);

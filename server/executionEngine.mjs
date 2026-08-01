@@ -386,6 +386,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       tradePlanId: plan.id,
       riskCheckId: plan.riskCheckId,
       mandateId: plan.mandateId,
+      oneShotAuth: plan.oneShotAuth === true, // 白名单外一次性授权计划:放行交易对正向白名单闸(仅本笔)
       manualApproval: options.manualApproval === true
     });
   } catch (error) {

@@ -1292,7 +1292,7 @@ export function normalizeDatabase(db) {
   db.users ||= [{ ...db.user, email: defaultOwnerEmail, status: "active", isOwner: true }];
   db.roles ||= [
     { id: "role_admin", name: "管理员", permissions: ["*"] },
-    { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge"] },
+    { id: "role_trader", name: "交易用户", permissions: ["trade.read", "write:mandate", "write:knowledge", "approve:trade_plan", "critical:trade_execution", "risk.check"] },
     { id: "role_risk_approver", name: "风控审批员", permissions: ["market.read", "account.read", "risk.check", "write:risk", "approve:trade_plan", "approve:knowledge_skill", "risk.kill_switch", "audit.export"] },
     { id: "role_auditor", name: "审计员", permissions: ["audit.read", "trace.read"] }
   ];
@@ -1301,6 +1301,9 @@ export function normalizeDatabase(db) {
   }
   const riskApproverRole = db.roles.find((role) => role.id === "role_risk_approver");
   if (riskApproverRole) riskApproverRole.permissions = [...new Set([...(riskApproverRole.permissions || []), "approve:knowledge_skill"])];
+  // 迁移:交易用户可确认下单(扫描候选→确认→直接下单)。给存量库补交易执行权限(幂等)。
+  const traderRole = db.roles.find((role) => role.id === "role_trader");
+  if (traderRole) traderRole.permissions = [...new Set([...(traderRole.permissions || []), "approve:trade_plan", "critical:trade_execution", "risk.check"])];
   db.permissions ||= [
     "market.read",
     "account.read",

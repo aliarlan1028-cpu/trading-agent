@@ -297,6 +297,7 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
         <b>{plan.symbol}</b>
         <span className={plan.direction === "short" ? "negative" : "positive"}>{plan.direction === "short" ? "做空" : "做多"}</span>
         <StatusBadge tone={awaiting ? "warning" : statusTone(plan.status)}>{humanize(plan.status)}</StatusBadge>
+        {plan.outOfWhitelist && <span className="evBadge warn" title="该币不在授权白名单，确认即一次性授权本笔交易，不会加入常驻白名单">⚠ 白名单外 · 一次性授权</span>}
         {stopCrossed && <span className="evBadge neg">已失效 · 现价越过止损</span>}
         <small>{plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
       </header>
@@ -332,13 +333,14 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
         </div>
       )}
       <footer>
-        {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>批准计划</button>}
+        {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>{plan.outOfWhitelist ? "确认下单（仅本笔）" : "批准计划"}</button>}
         {awaiting && invalidForApproval && <button className="approveButton" disabled title="现价已越过止损，计划已失效，无法批准">已失效 · 不可批准</button>}
         {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? "作废" : "拒绝"}</button>}
         <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>审计链 <ChevronRight size={13} /></button>
       </footer>
       {awaiting && invalidForApproval && <small className="planHint danger">现价 {displayPrice(nowPrice)} 已越过止损 {displayPrice(stopVal)}——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。</small>}
-      {awaiting && !invalidForApproval && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
+      {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
+      {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol} 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」即一次性授权本笔交易并立即进入执行引擎（实盘写入关闭时只做干跑）；仅授权这一笔，不加入常驻白名单，自主巡检以后也不会自动碰它。</small>}
       {executionOrder && (
         <div className="executionStrip">
           <span className={`execDot ${["entry_filled", "protecting"].includes(executionOrder.status) ? "on" : executionOrder.status === "closed" ? "done" : ""}`} />
