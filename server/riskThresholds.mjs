@@ -13,7 +13,9 @@ export const RISK_THRESHOLD_DEFS = [
   { key: "trailActivatePct", env: "TRAIL_ACTIVATE_PCT", def: 1.5, min: 0.3, max: 10, step: 0.1, unit: "%", label: "追踪止损·激活盈利", hint: "浮盈达此即启动追踪止损(条令 P3)" },
   { key: "trailDistancePct", env: "TRAIL_PCT", def: 1.2, min: 0.3, max: 5, step: 0.1, unit: "%", label: "追踪止损·跟踪距离", hint: "止损跟在现价后方此距离",
     toEnv: (v) => v / 100, fromEnv: (raw) => raw * 100 }, // env 存小数(0.012),UI 用百分比(1.2)
-  { key: "eventBlackoutMinutes", env: "EVENT_BLACKOUT_MINUTES", def: 30, min: 0, max: 240, step: 5, unit: "分钟", label: "事件静默窗口", hint: "高影响事件公布前此分钟数内不新开高杠杆仓(条令 S7)" }
+  { key: "eventBlackoutMinutes", env: "EVENT_BLACKOUT_MINUTES", def: 30, min: 0, max: 240, step: 5, unit: "分钟", label: "事件静默窗口", hint: "高影响事件公布前此分钟数内不新开高杠杆仓(条令 S7)" },
+  { key: "entryOrderTtlMinutes", env: "ENTRY_ORDER_TTL_MINUTES", def: 90, min: 5, max: 1440, step: 5, unit: "分钟", label: "挂单保质期", hint: "入场限价单挂此分钟数仍未成交即主动撤单(行情已变);0=不超时" },
+  { key: "entryStaleDeviationPct", env: "ENTRY_STALE_DEVIATION_PCT", def: 8, min: 1, max: 30, step: 0.5, unit: "%", label: "挂单失效偏离", hint: "未成交挂单的现价偏离入场超此百分比即撤(机会已走/结构改变)" }
 ];
 
 const clampNum = (v, def, min, max) => {

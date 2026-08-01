@@ -221,6 +221,8 @@ function summarizeHandlerResult(handler, result = {}) {
   if (handler === "accounting_refresh") return `核算刷新：今日盈亏 ${result.todayPnl ?? "-"} USDT，剩余亏损预算 ${result.remainingDailyLossUsdt ?? "未授权"}。`;
   if (handler === "agent_cycle") return `自主巡检：AgentRun ${result.id || "-"}（${result.status || "完成"}）。`;
   if (handler === "reconcile") return `对账：${result.status || "-"}，差异 ${result.differences?.length || 0} 项。`;
+  if (handler === "trade_reflection") return `平仓复盘：复盘 ${result.reflected || 0} 笔，沉淀 ${result.memorized || 0} 条教训。`;
+  if (handler === "missed_opportunity_review") return `错过机会复盘：扫 ${result.reviewed || 0} 个异动，复盘 ${result.missed || 0} 个未交易的大波动。`;
   return JSON.stringify(result).slice(0, 200);
 }
 

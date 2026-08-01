@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   BrainCircuit,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -338,6 +339,15 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
         {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? "作废" : "拒绝"}</button>}
         <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>审计链 <ChevronRight size={13} /></button>
       </footer>
+      {plan.appliedKnowledge && ((plan.appliedKnowledge.lenses || []).length > 0 || (plan.appliedKnowledge.rules || []).length > 0) && (
+        <div className="planKnowledge" title="本计划实际依据的透镜与铁律（AI 自报，已按真实知识库校验）">
+          <BookOpen size={12} />
+          <span>依据知识：
+            {(plan.appliedKnowledge.lenses || []).map((n) => <em key={`l-${n}`} className="pkLens">{n}</em>)}
+            {(plan.appliedKnowledge.rules || []).map((n) => <em key={`r-${n}`} className="pkRule">{n}</em>)}
+          </span>
+        </div>
+      )}
       {awaiting && invalidForApproval && <small className="planHint danger">现价 {displayPrice(nowPrice)} 已越过止损 {displayPrice(stopVal)}——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。</small>}
       {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
       {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol} 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」即一次性授权本笔交易并立即进入执行引擎（实盘写入关闭时只做干跑）；仅授权这一笔，不加入常驻白名单，自主巡检以后也不会自动碰它。</small>}
@@ -777,7 +787,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
         </div>
       </div>
 
-      {view === "intel" ? <IntelCenter action={action} /> : (<>
+      {view === "intel" ? <IntelCenter action={action} data={data} /> : (<>
       {<div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
         <span className="agHistLabel">对话历史</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> 新建</button>
@@ -853,7 +863,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
 }
 
 // 情报中心：把新闻聚合成的"事件专题"按热点排序展示，每个专题可展开看持续跟进的时间线。
-function IntelCenter({ action }) {
+function IntelCenter({ action, data = {} }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -895,6 +905,22 @@ function IntelCenter({ action }) {
         </div>
         <button className="secondaryButton" onClick={refresh} disabled={busy}><RefreshCw size={14} /> {busy ? "刷新中…" : "刷新情报"}</button>
       </div>
+      {(data.missedOpportunities || []).length > 0 && (
+        <div className="missedOppCard">
+          <div className="missedOppHead"><BookOpen size={14} /> 错过机会复盘 <small>大波动却没交易的复盘，已沉淀进 AI 记忆</small></div>
+          <div className="missedOppList">
+            {(data.missedOpportunities || []).slice(0, 6).map((m) => (
+              <div className={`missedOppRow ${m.inWhitelist ? "wl" : ""}`} key={m.key}>
+                <b>{m.symbol}</b>
+                <span className={m.changePct >= 0 ? "pos" : "neg"}>{m.changePct >= 0 ? "+" : ""}{m.changePct}%</span>
+                {m.inWhitelist ? <em className="tagWl">白名单内·本可做</em> : <em className="tagOff">白名单外</em>}
+                {m.analyzed && <em className="tagAn">分析过没做</em>}
+                {m.lesson && <p title={m.lesson}>{m.lesson}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {loading && !events.length ? (
         <div className="emptyPanel">加载中…</div>
       ) : !events.length ? (

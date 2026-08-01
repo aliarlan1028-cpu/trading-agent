@@ -4194,6 +4194,27 @@ button.danger:disabled,
   flex-wrap: wrap;
 }
 .smAlignRow small { flex-basis: 100%; font-weight: 500; color: #7d7466; }
+.planKnowledge { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; padding: 7px 10px; border-radius: 8px; background: #faf7f1; border: 1px solid var(--hairline, #ece7dd); font-size: 12px; color: #6b6355; }
+.planKnowledge > svg { flex: none; margin-top: 2px; color: #b07a35; }
+.planKnowledge em { font-style: normal; display: inline-block; margin: 0 4px 3px 0; padding: 1px 7px; border-radius: 5px; font-weight: 650; font-size: 11px; }
+.planKnowledge .pkLens { background: #eef4ff; color: #3a63a8; }
+.planKnowledge .pkRule { background: #fdf0e6; color: #b06a22; }
+
+.missedOppCard { margin-bottom: 14px; border: 1px solid var(--hairline, #ece7dd); border-radius: 12px; background: #fffdf9; overflow: hidden; }
+.missedOppHead { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-weight: 700; font-size: 13px; color: #6b6355; background: #faf6ee; }
+.missedOppHead > svg { color: #b07a35; }
+.missedOppHead small { font-weight: 500; color: var(--text-muted, #9a917f); margin-left: auto; }
+.missedOppList { display: flex; flex-direction: column; }
+.missedOppRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--hairline, #f0ece3); font-size: 12.5px; }
+.missedOppRow.wl { background: #fbfcfe; }
+.missedOppRow > b { font-weight: 700; min-width: 82px; }
+.missedOppRow > span.pos { color: var(--pos, #2e9e5b); font-weight: 700; }
+.missedOppRow > span.neg { color: var(--neg, #d0483a); font-weight: 700; }
+.missedOppRow em { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 5px; font-weight: 650; }
+.missedOppRow .tagWl { background: #eef4ff; color: #3a63a8; }
+.missedOppRow .tagOff { background: #f2efe9; color: #8a8272; }
+.missedOppRow .tagAn { background: #fdf0e6; color: #b06a22; }
+.missedOppRow > p { flex-basis: 100%; margin: 2px 0 0; color: #6b6355; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .smAlignRow.favor { background: #f2f8f0; color: var(--pos); border: 1px solid #cfe3cf; }
 .smAlignRow.caution { background: #fff4ef; color: var(--neg); border: 1px solid #efc8bd; }
 

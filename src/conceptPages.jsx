@@ -346,7 +346,16 @@ export function CapabilitiesConcept({ data, action, ui }) {
   const isMcp=i=>Boolean(i.serverName||i.transport||/^mcp_/i.test(String(i.id||"")));
   // 核心 Agent 工具(listAgentTools 产出)本身无 status 字段——它们是内置且始终可调,统一显示「已启用」,
   // 避免与技能的「已启用」并列时又冒出个含义不明的「可用」。连接器/技能/MCP 各自已有真实 status,不受影响。
-  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名工具",kind:item.type||item.category||(isMcp(item)?"MCP":"工具"),status:item.status||"已启用",runs:isMcp(item)?(item.toolCount??item.tools?.length):(item.runs??item.runCount)}));
+  // 调用量取真实计数:后端 toolCallStats 按工具名累计(内置/技能/MCP 工具都算),
+  // 技能回退 evalMetrics.calls;MCP 服务器行汇总它旗下各工具的调用数;都没有则诚实显 0/—。
+  const tc=data.toolCallStats||{};
+  const callsOf=(item)=>{
+    const key=item.toolName||item.name;
+    if(isMcp(item)) return (item.tools||[]).reduce((n,t)=>n+(tc[t?.name||t]?.calls||0),0);
+    return tc[key]?.calls ?? item.evalMetrics?.calls ?? item.runs ?? item.runCount;
+  };
+  const lastOf=(item)=>{ const key=item.toolName||item.name; return tc[key]?.lastAt ?? item.lastCalledAt ?? item.lastRunAt ?? null; };
+  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>({...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||"未命名工具",kind:item.type||item.category||(isMcp(item)?"MCP":"工具"),status:item.status||"已启用",runs:callsOf(item),lastRunAt:lastOf(item)}));
   // 状态词汇跨中英混用(技能=已启用/已拉取、连接器=configured/missing_credentials、MCP=connected/registered),
   // 判定必须同时认中英,否则按钮(启用/停用)与计数会错。
   const isEnabled=i=>["active","trusted","enabled","ready","connected","configured","available_without_key","已启用","已配置","已连接","免密钥可用"].includes(i.status)||i.enabled===true;

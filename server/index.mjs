@@ -57,6 +57,7 @@ import { buildReadinessReport, createSystemBackup, deriveAutomationState } from 
 import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
+import { reviewMissedOpportunities } from "./missedOpportunity.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
@@ -396,8 +397,10 @@ registerTaskHandler("paper_forward", async (database) => {
   const trusted = refreshTrustedSkillMetrics(database); // 受信任导入 skill 复盘 + 差了自动撤信任
   return { ...paper, knowledgeSkills: skills, trustedSkills: trusted };
 });
-// ② 平仓自动复盘：逐笔沉淀教训入记忆。
+// ② 平仓自动复盘：逐笔沉淀教训入记忆（含 LLM 深度复盘）。
 registerTaskHandler("trade_reflection", (database) => runTradeReflection(database));
+// ②b 错过机会复盘：大波动却没交易的复盘沉淀（#5）。
+registerTaskHandler("missed_opportunity_review", (database) => reviewMissedOpportunities(database));
 // ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
 registerTaskHandler("strategy_improvement", (database) => {
   const closes = (database.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl))).length;
@@ -484,6 +487,7 @@ ensureSystemTask(db, { id: "task_sys_reconcile", name: "账户对账", handler: 
 ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略研究", handler: "strategy_research", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_trade_reflection", name: "平仓自动复盘", handler: "trade_reflection", schedule: "Every 30m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_missed_opportunity", name: "错过机会复盘", handler: "missed_opportunity_review", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_strategy_improvement", name: "策略改进闭环", handler: "strategy_improvement", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上核验", handler: "payment_verify", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_outbox", name: "交易事件 Outbox 派发", handler: "outbox_dispatch", schedule: "Every 1m" }, saveDb);
@@ -766,6 +770,7 @@ app.get("/api/overview", (req, res) => {
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
     notifications: db.notifications,
+    missedOpportunities: (db.missedOpportunities || []).slice(0, 20),
     alerts: db.alerts?.slice(0, 20) || [],
     drillRuns: db.drillRuns?.slice(0, 10) || [],
     grayReleasePolicies: db.grayReleasePolicies || [],
@@ -801,8 +806,14 @@ app.get("/api/overview", (req, res) => {
       thresholds: DECISION_THRESHOLDS,
       defaults: DECISION_DEFAULTS,
       llmModel: process.env.DEEPSEEK_MODEL || db.runtimeConfig?.DEEPSEEK_MODEL || null,
-      tools: listAgentTools()
-    }
+      // 内置工具附真实调用量(来自 toolCallStats 计数中枢),前端「调用量」列直接读。
+      tools: listAgentTools().map((t) => ({
+        ...t,
+        runs: db.toolCallStats?.[t.name]?.calls ?? 0,
+        lastRunAt: db.toolCallStats?.[t.name]?.lastAt ?? null
+      }))
+    },
+    toolCallStats: db.toolCallStats || {}
   });
 });
 

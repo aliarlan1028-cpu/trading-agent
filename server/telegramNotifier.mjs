@@ -53,6 +53,20 @@ async function sendTelegramMultipart(method, fields, fileField, file) {
   return json;
 }
 
+// 从该持仓对应的执行单/计划里取回真实的进场分析(入场推理),拼进海报文案。
+// 只用系统自己记录的 entryRationale/reasoningSummary,不编造。TG caption 上限 1024,截断到安全长度。
+function positionAnalysisNarrative(db, position) {
+  const sym = position.symbol || position.instId;
+  const eo = (db.executionOrders || []).find((o) => o.symbol === sym && (o.entryRationale || o.strategy));
+  const plan = (db.tradePlans || []).find((p) => p.symbol === sym && (p.reasoningSummary || p.rationale));
+  const rationale = eo?.entryRationale || plan?.reasoningSummary || plan?.rationale;
+  const strategy = eo?.strategy || plan?.strategy;
+  const bits = [];
+  if (strategy && strategy !== "manual_review") bits.push(`策略：${strategy}`);
+  if (rationale) bits.push(String(rationale).replace(/\s+/g, " ").trim().slice(0, 480));
+  return bits.length ? `\n\n📊 我的进场分析\n${bits.join("\n")}` : "";
+}
+
 export async function sendTelegramPositionPoster(db, position, options = {}) {
   const status = telegramStatus();
   const share = derivePositionShare(position);
@@ -68,7 +82,7 @@ export async function sendTelegramPositionPoster(db, position, options = {}) {
 
   try {
     const poster = await renderPositionPoster(position);
-    const caption = options.caption || `盈利仓位：${share.symbol} ${share.side} · PnL ${share.pnl?.toFixed?.(2) ?? "-"} USDT`;
+    const caption = options.caption || (`盈利仓位：${share.symbol} ${share.side} · PnL ${share.pnl?.toFixed?.(2) ?? "-"} USDT` + positionAnalysisNarrative(db, position));
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
     const result = poster.type === "photo"
       ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster)

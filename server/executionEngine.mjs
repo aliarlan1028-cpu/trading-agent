@@ -425,6 +425,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   }
 
   executionOrder.status = "entry_pending";
+  executionOrder.entryPendingAt = nowIso(); // 挂单起始时刻:给"久未成交超时撤单"用
   executionOrder.exchangeOrderId = result.exchangeOrderId;
   executionOrder.omsOrderId = result.omsOrderId || null;
   executionOrder.clientOrderId = result.clientOrderId || entryClientOrderId;
@@ -442,7 +443,58 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
 // ---------------------------------------------------------------------------
 // 订单状态轮询：入场成交 → 布置止盈；终态 → 记录成交与盈亏。
 // ---------------------------------------------------------------------------
+// 久未成交/已失效的入场挂单:主动撤单,别让它无人看管地一直挂着(Q1)。
+// 两条撤单理由(都不影响已成交/持仓,只针对还没进场的挂单):
+//  ①超时:挂单超过 ENTRY_ORDER_TTL_MINUTES(默认90分钟)还没成交 → 撤(行情早已不是下单时那样)。
+//  ②失效反转:现价已越过止损一侧(此时成交=一开仓即触发止损),或已大幅偏离入场(默认>8%,机会已走) → 撤。
+// 撤单走 closeExecution(真向交易所撤),并把计划置终态 + 落审计 + 通知。
+async function manageStalePendingEntries(db) {
+  const ttlMin = Number(process.env.ENTRY_ORDER_TTL_MINUTES || db.runtimeConfig?.ENTRY_ORDER_TTL_MINUTES || 90);
+  const devPct = Number(process.env.ENTRY_STALE_DEVIATION_PCT || db.runtimeConfig?.ENTRY_STALE_DEVIATION_PCT || 8);
+  const pendings = (db.executionOrders || []).filter((o) => ["entry_pending", "entry_partial"].includes(o.status));
+  const cancelled = [];
+  for (const eo of pendings) {
+    if (Number(eo.filledQuantity || 0) > 0) continue; // 已部分成交=有仓位,交给成交/保护逻辑,不在此撤
+    const market = (db.markets || []).find((m) => m.symbol === eo.symbol);
+    const price = Number(market?.price);
+    const isShort = String(eo.direction).toLowerCase() === "short";
+    const startedAt = new Date(eo.entryPendingAt || eo.createdAt).getTime();
+    const ageMin = Number.isFinite(startedAt) ? (Date.now() - startedAt) / 60000 : 0;
+    let reason = null;
+    if (ttlMin > 0 && ageMin >= ttlMin) reason = `挂单 ${Math.round(ageMin)} 分钟未成交（超过 ${ttlMin} 分钟保质期），撤单`;
+    else if (Number.isFinite(price) && price > 0) {
+      const stop = Number(eo.stopLoss);
+      const entry = Number(eo.entryPrice ?? eo.filledPrice);
+      if (Number.isFinite(stop) && (isShort ? price >= stop : price <= stop)) {
+        reason = `现价 ${price} 已越过止损 ${stop}（成交即触发止损），撤未成交入场单`;
+      } else if (Number.isFinite(entry) && entry > 0 && Math.abs(price - entry) / entry * 100 >= devPct) {
+        reason = `现价 ${price} 已偏离入场 ${entry} 逾 ${devPct}%（机会已走/结构改变），撤未成交入场单`;
+      }
+    }
+    if (!reason) continue;
+    try {
+      const result = await closeExecution(db, eo.id, reason);
+      if (["cancelled", "cancel_unconfirmed"].includes(result.status)) {
+        const plan = (db.tradePlans || []).find((p) => p.id === eo.planId);
+        if (plan && !["completed", "cancelled"].includes(plan.status)) plan.status = "cancelled";
+        appendAudit(db, `挂单主动撤销：${eo.symbol} — ${reason}`, eo.id, "EntryTTL", "warning");
+        appendTrace(db, "execution", `${eo.symbol} 挂单撤销（${reason.slice(0, 20)}）`, "ok");
+        try {
+          const { notifyLark } = await import("./larkNotifier.mjs");
+          await notifyLark(db, { severity: "warning", title: "🗑 未成交挂单已撤销", body: `**${eo.symbol}** ${isShort ? "做空" : "做多"} 挂单已撤：${reason}` });
+        } catch { /* 通知失败不阻断 */ }
+        cancelled.push({ id: eo.id, symbol: eo.symbol, reason });
+      }
+    } catch (error) {
+      eo.events.push({ at: nowIso(), event: "stale_cancel_error", detail: String(error.message || error).slice(0, 160) });
+    }
+  }
+  return cancelled;
+}
+
 export async function pollExecutionOrders(db) {
+  // 先处理久挂/失效的入场单(超时撤/反转撤),再正常轮询成交状态。
+  const staleCancelled = await manageStalePendingEntries(db);
   const open = (db.executionOrders || []).filter((item) => ["entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status));
   const results = [];
   for (const executionOrder of open) {
@@ -453,7 +505,7 @@ export async function pollExecutionOrders(db) {
       results.push({ id: executionOrder.id, status: "poll_error", error: error.message });
     }
   }
-  return { checked: open.length, results };
+  return { checked: open.length, staleCancelled: staleCancelled.length, results };
 }
 
 async function pollOne(db, executionOrder) {

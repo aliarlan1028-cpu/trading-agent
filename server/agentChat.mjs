@@ -216,7 +216,7 @@ const TOOL_DEFS = [
         type: { type: "string", enum: ["Every", "Cron", "At"] },
         schedule: { type: "string", description: "例如 Every 15m、0 */6 * * *、2026-07-06T10:00:00.000Z" },
         role: { type: "string" },
-        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "paper_forward", "event_refresh", "okx_readonly_sync"] }
+        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "paper_forward", "event_refresh", "okx_readonly_sync", "trade_reflection", "missed_opportunity_review"] }
       },
       required: ["name", "type", "schedule"]
     }
@@ -269,6 +269,8 @@ const TOOL_DEFS = [
         riskPercent: { type: "number", description: "单笔风险占比，如 0.3" },
         knowledgeSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用的 active 知识技能 ID；只有实际用于推理与计划条件时才填写" },
         adoptedToolSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用了哪些【受信任导入方法论】的 ID（见系统提示里的受信任导入方法论区块）；只有真的照它的方法做了这个计划才填，用于按真实成绩复盘该方法论" },
+        appliedLenses: { type: "array", items: { type: "string" }, description: "本次分析【实际依据】了哪些分析透镜——填【分析条令/透镜】区块里那些透镜的名称（只填真正用于这次判断的，别全填）；用于让主人看到这笔交易到底用了哪些知识。" },
+        appliedRules: { type: "array", items: { type: "string" }, description: "本次分析【实际遵守/触发】了哪些铁律——填【交易纪律与风控规则】区块里那些规则的名称（只填真正影响了这次决策的）。" },
         rationale: { type: "string", description: "完整推理：依据哪些行情结构、知识规则与事件判断" }
       },
       required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "rationale"]
@@ -579,7 +581,7 @@ async function buildSystemPrompt(db, userText = "") {
   const adoptedLenses = (db.knowledge?.lenses || []).filter((l) => l.active)
     .sort((a, b) => (b.doctrine ? 1 : 0) - (a.doctrine ? 1 : 0)); // 条令透镜排前,不被截断
   if (adoptedLenses.length) {
-    sections.push(`【分析条令 / 透镜（决策时遵循；只塑造分析与仓位、绝不直接下单。这些是让你更专业、不是更不敢交易——2-3视角同向+清晰结构+盈亏比达标就应提计划，弱对齐用小仓而非观望）】\n${adoptedLenses.slice(0, 12).map((l) => `- ${l.name}：${l.promptText}${!l.doctrine && l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}`);
+    sections.push(`【分析条令 / 透镜（决策时遵循；只塑造分析与仓位、绝不直接下单。这些是让你更专业、不是更不敢交易——2-3视角同向+清晰结构+盈亏比达标就应提计划，弱对齐用小仓而非观望）】\n${adoptedLenses.slice(0, 12).map((l) => `- ${l.name}：${l.promptText}${!l.doctrine && l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}\n【知识归因·务必】提计划时，在 propose_trade_plan 的 appliedLenses / appliedRules 里如实填上你【这次真正依据】的透镜与铁律名称（只填用到的），让主人能看到这笔交易到底运用了哪些知识；纯分析结论也请在文末一句话点明依据了哪几条。`);
   }
   const adoptedWorkflows = (db.knowledge?.workflows || []).filter((w) => w.active);
   if (adoptedWorkflows.length) {
@@ -705,6 +707,12 @@ function createPendingAction(db, args = {}, run = {}) {
 }
 
 export async function executeTool(db, run, name, args = {}) {
+  // 工具调用真实计数中枢:每次任何工具被调用都 +1(内置/技能/MCP 全走这里),
+  // 供「能力库·工具列表」的调用量列显示真实数据(此前该列基本是空/错标)。
+  db.toolCallStats ||= {};
+  const _stat = (db.toolCallStats[name] ||= { calls: 0, lastAt: null });
+  _stat.calls += 1;
+  _stat.lastAt = nowIso();
   // 已启用的原生技能作为工具接入决策循环
   if (isSkillTool(name)) return runSkillTool(db, name, args);
   // 已连接的 MCP server 工具
@@ -1148,6 +1156,17 @@ export async function executeTool(db, run, name, args = {}) {
     const declared = Array.isArray(args.adoptedToolSkillIds) ? args.adoptedToolSkillIds.map(String) : [];
     const validTrusted = (db.skills || []).filter((s) => !s.native && s.trusted && declared.includes(s.id)).map((s) => s.id);
     if (validTrusted.length) plan.adoptedTrustedSkillIds = validTrusted;
+    // 知识归因(Q3):记录本计划【实际依据】的透镜/铁律。只认真实存在且生效的,按名称模糊匹配(容忍模型措辞),不编造。
+    const matchNames = (declared, pool) => {
+      const want = (Array.isArray(declared) ? declared : []).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+      if (!want.length) return [];
+      return pool.filter((name) => want.some((w) => name.toLowerCase().includes(w) || w.includes(name.toLowerCase()))).slice(0, 8);
+    };
+    const activeLensNames = (db.knowledge?.lenses || []).filter((l) => l.active).map((l) => l.name);
+    const approvedRuleNames = (db.knowledge?.ruleProposals || []).filter((r) => r.status === "已批准").map((r) => r.name);
+    const appliedLenses = matchNames(args.appliedLenses, activeLensNames);
+    const appliedRules = matchNames(args.appliedRules, approvedRuleNames);
+    if (appliedLenses.length || appliedRules.length) plan.appliedKnowledge = { lenses: appliedLenses, rules: appliedRules };
     // 白名单外的扫描候选:标记一次性授权(仅本笔),让风控放行"交易对范围",落到 awaiting_approval
     // 供用户在计划卡上"确认下单"。这类计划强制人工确认、永不自动执行(见下方 autoExecution 守卫),
     // 且不把该币加入常驻白名单——自主巡检以后仍碰不了它。

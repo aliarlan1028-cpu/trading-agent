@@ -297,14 +297,38 @@ export function createStrategyImprovementCycle(db, payload = {}) {
   return { message: "已创建策略改进闭环", review, experiment, analytics };
 }
 
+// LLM 深度复盘(#3/#4):让模型真正回看这笔交易——信号哪里对/错、根因、下次怎么改。
+// 只对亏损与显著盈利调用(控成本),每轮上限 6 笔;LLM 不可用则返回 null,回落模板教训。
+async function llmDeepReflection(fill, ctx) {
+  try {
+    const { llmComplete } = await import("./agentChat.mjs");
+    const sys = "你是严格的加密永续交易复盘专家。只根据给定事实复盘，不编造行情。输出必须具体、可执行、直指根因，禁止空话套话。";
+    const prompt = [
+      `复盘这笔已平仓交易（${ctx.win ? "盈利" : "亏损"}）：`,
+      `- 品种/方向/策略：${fill.symbol} ${ctx.dir}（${fill.strategy || "手动"}）`,
+      `- 入场依据（当时的判断）：${ctx.rationale}`,
+      `- 结果：${ctx.win ? "盈利" : "亏损"} ${ctx.pnl.toFixed(2)} USDT｜${ctx.facts.join("；")}`,
+      ctx.attribution ? `- 系统初判归因：${ctx.attribution}` : "",
+      "",
+      ctx.win
+        ? "回答三点，每点一句：①这次信号/判断【对在哪】（具体到结构/方向/时机）；②这套「策略×品种×regime」为什么奏效、可复用的关键；③下次同类情形如何保持并放大优势。"
+        : "回答三点，每点一句：①这次信号/判断【错在哪】（具体到：是不是把流动性扫荡当成了突破？方向读反？时机太早？止损太紧？）；②根因是策略/执行/市场异常哪一类，为什么；③下次遇到类似情形【具体怎么做】才能避免重犯。"
+    ].filter(Boolean).join("\n");
+    const out = await llmComplete(prompt, sys);
+    return out ? String(out).replace(/\s+\n/g, "\n").trim().slice(0, 700) : null;
+  } catch { return null; }
+}
+
 // 平仓后自动复盘：逐笔对比"入场依据/计划 vs 真实结果"，沉淀教训进长期记忆，供决策时读取。
 // 幂等：处理过的成交打 reflectedAt，不重复。只把亏损+显著盈利写记忆，避免小额刷屏决策上下文。
-export function runTradeReflection(db) {
+// #3/#4：亏损与显著盈利叠加 LLM 深度复盘(为什么读对/读错)，模板作兜底。
+export async function runTradeReflection(db) {
   const closes = (db.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)) && !f.reflectedAt);
   if (!closes.length) return { reflected: 0, memorized: 0, lessons: [] };
   db.memoryItems ||= [];
   const lessons = [];
   let memorized = 0;
+  let deepBudget = Number(process.env.REFLECTION_LLM_MAX_PER_RUN || 6); // 每轮 LLM 深度复盘上限,控成本
   const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
   for (const fill of closes.slice(0, 15)) {
     const plan = (db.tradePlans || []).find((p) => p.id === fill.planId) || {};
@@ -334,12 +358,18 @@ export function runTradeReflection(db) {
     fill.reflectedAt = nowIso();
     lessons.push({ fillId: fill.id, symbol: fill.symbol, win, pnl: Number(pnl.toFixed(2)) });
     if (!win || Math.abs(pnl) >= minMemo) {
+      // 亏损与显著盈利:调 LLM 做深度复盘,写进 fill + 记忆(模板作兜底)。
+      let deep = null;
+      if (deepBudget > 0) {
+        deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution });
+        if (deep) { deepBudget -= 1; fill.deepReflection = deep; }
+      }
       db.memoryItems.unshift({
         id: id("mem"),
         layer: "episodic",
         title: `复盘 ${fill.symbol} ${win ? "✓ 盈" : "✗ 亏"}`,
-        content: lesson,
-        tags: ["auto_reflection", fill.strategy || "manual", win ? "win" : "loss"],
+        content: deep ? `${lesson}\n\n【深度复盘】${deep}` : lesson,
+        tags: ["auto_reflection", fill.strategy || "manual", win ? "win" : "loss", ...(deep ? ["llm_deep"] : [])],
         source: "auto_reflection",
         fillId: fill.id,
         createdAt: nowIso()
