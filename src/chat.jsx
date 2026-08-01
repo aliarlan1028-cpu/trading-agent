@@ -490,6 +490,18 @@ function AgentRail({ data, action, ui, send }) {
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
             <b className="mono">{plan?.symbol || "暂无交易计划"}</b>
+            {plan && (() => {
+              // 挂单 vs 持仓的真实状态:限价单已提交但价格没到=挂单未成交(仓位仍为0),成交后才是持仓。
+              const eo = (data.executionOrders || []).find((o) => o.planId === plan.id);
+              const held = (data.positions || []).some((p) => p.symbol === plan.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
+              const st = held || ["entry_filled", "protecting"].includes(eo?.status) ? { t: "持仓中", c: "pos" }
+                : eo?.status === "entry_pending" ? { t: "⏳挂单未成交", c: "warn" }
+                : eo?.status === "closed" ? { t: "已平仓", c: "" }
+                : plan.status === "awaiting_approval" ? { t: "待确认", c: "warn" }
+                : plan.status === "approved" ? { t: "准备下单", c: "warn" }
+                : null;
+              return st ? <span className={`evBadge ${st.c}`}>{st.t}</span> : null;
+            })()}
             {(() => {
               const mk = (data.markets || []).find((m) => m.symbol === (plan?.symbol || ""));
               if (!mk?.price || !plan) return null;

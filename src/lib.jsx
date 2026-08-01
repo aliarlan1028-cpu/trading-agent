@@ -163,7 +163,7 @@ export function humanize(value, fallback = "-") {
     trend_pullback: "趋势回调",
     trend_following: "趋势跟随",
     event_protection: "事件保护",
-    manual_review: "人工复核",
+    manual_review: "自主研判",
     event_driven: "事件驱动",
     breakout: "突破策略",
     spot: "现货",

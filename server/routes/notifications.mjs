@@ -4,10 +4,14 @@ export function registerNotificationRoutes(app, ctx) {
 
   app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
 
-  // 打开通知中心即把未读标为已读（清除未读徽章）
-  app.post("/api/notifications/read", (_req, res) => {
+  // 标记已读:传 id 只标那一条(通知详情「标记已读」);不传 id 标全部(打开通知中心/「全部已读」清徽章)。
+  app.post("/api/notifications/read", (req, res) => {
+    const id = req.body?.id;
     let marked = 0;
-    for (const item of db.notifications || []) { if (!item.read) { item.read = true; marked++; } }
+    for (const item of db.notifications || []) {
+      if (id && item.id !== id) continue;
+      if (!item.read) { item.read = true; marked++; }
+    }
     if (marked) saveDb(db);
     res.json({ ok: true, marked });
   });

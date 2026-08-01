@@ -397,6 +397,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 大跌贴近 24h 低点(rangePosition24h 很低)想做空时：不要因为"已经跌很多/还会跌"就在低点直接追空(原地追，反弹会被扫、真续跌也是烂价位)。**正确做法二选一**：①等反弹回上方阻力/供需区，在衰竭确认处做空(高抛，最佳)；②若判断是延续破位，用 register_watch 登记"跌破 24h 低点 X 后回踩确认"的观察哨，做【破位回踩】，而不是在破位前的低点追。
    - 一句话：做空要么"反弹到阻力高抛"、要么"破位回踩确认"，绝不"在刚砸下来的低点追"。大涨追多同理(等回踩支撑做多，或破位向上回踩确认)。
    - 这样既不会在底部被反弹扫，又不会错过真正的续跌——续跌用破位观察哨接住。判断用 sync_market 的 changePct 与 rangePosition24h(价格在24h高低区间百分位)。
+15. 挂单 ≠ 持仓【措辞硬纪律·别把委托单说成持仓】：限价单已提交但价格没到、没成交 = **挂单未成交**，仓位为 0，还没进场；只有真正成交、账户快照里 size≠0 才是**持仓中**。以【实时账户快照】里"持仓"和"挂单"两行为准，绝不能把一个未成交的挂单描述成"持仓中/已建仓/已进场"。要说也说"已挂单，等价格到 X 成交"。
 
 输出格式：
 - 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
@@ -484,7 +485,8 @@ async function buildSystemPrompt(db, userText = "") {
   if (pf.availableMarginUsdt != null) acctBits.push(`可用保证金 ${pf.availableMarginUsdt} USDT`);
   if (pf.todayPnl != null) acctBits.push(`今日盈亏 ${pf.todayPnl} USDT`);
   if (pf.unrealizedPnl != null) acctBits.push(`未实现盈亏 ${pf.unrealizedPnl} USDT`);
-  const openPositions = db.positions || [];
+  // 只把真正有仓位(size≠0)的算持仓;size=0 的空槽不是持仓。
+  const openPositions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? p.contracts ?? 0) !== 0);
   const posText = openPositions.slice(0, 8).map((p) => {
     const sym = p.symbol || p.instId || "?";
     const dir = String(p.direction || p.side || p.posSide || "").trim();
@@ -492,16 +494,23 @@ async function buildSystemPrompt(db, userText = "") {
     const upl = p.pnl ?? p.upl ?? p.unrealizedPnl;
     return `${sym}${dir ? " " + dir : ""} 开仓 ${entry ?? "-"} 浮盈亏 ${upl ?? "-"}`;
   }).join("；");
+  // 已提交但未成交的入场单(限价单价格没到)——是挂单,不是持仓,必须分开告知,否则模型会把挂单说成"持仓中"。
+  const openOrders = (db.executionOrders || []).filter((o) => o.status === "entry_pending");
+  const orderText = openOrders.slice(0, 8).map((o) => {
+    const dir = String(o.direction || "").toLowerCase() === "short" ? "空" : "多";
+    return `${o.symbol} ${dir} 挂单@${o.entryPrice ?? "-"}（未成交）`;
+  }).join("；");
   const lastSync = snap?.createdAt;
   const staleMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
-  if (acctBits.length || openPositions.length || lastSync) {
+  if (acctBits.length || openPositions.length || openOrders.length || lastSync) {
     const body = [
       acctBits.length ? acctBits.join(" ｜ ") : "账户未同步或暂无数据",
-      openPositions.length ? `持仓：${posText}` : "当前无持仓",
+      openPositions.length ? `持仓（已成交、仓位≠0）：${posText}` : "当前无持仓",
+      openOrders.length ? `挂单（限价单已提交但价格未到、尚未成交、仓位仍为0，不是持仓）：${orderText}` : null,
       lastSync
         ? `最后同步：${lastSync}（约 ${staleMin} 分钟前）${staleMin != null && staleMin > 5 ? " —— 已过期" : ""}`
         : "尚未同步过私有账户"
-    ].join("\n");
+    ].filter(Boolean).join("\n");
     sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
   }
 
