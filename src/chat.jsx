@@ -529,8 +529,18 @@ function AgentRail({ data, action, ui, send }) {
             })()}
             {plan && <span className="agPlanTag">{plan.strategy ? humanize(plan.strategy) : "未指定策略"}</span>}
             {plan?.executionBlock && <span className="evBadge neg" title={plan.executionBlock.detail}>已批准未下单 · {plan.executionBlock.detail.length > 22 ? `${plan.executionBlock.detail.slice(0, 22)}…` : plan.executionBlock.detail}</span>}
-            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : `白名单 ${(mandate.allowedSymbols || []).slice(0, 3).join(" / ") || "未设置"} · 等巡检提出机会`}</span>
+            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : "等巡检提出机会"}</span>
           </div>
+          {!plan && (() => {
+            // 无计划时的授权白名单:计数 + 省略号截断(白名单再多也不挤爆,全量在 title 里),简写去 /USDT。
+            const wl = (mandate.allowedSymbols || []).map((s) => String(s));
+            return (
+              <div className="agPlanWl" title={wl.join(" · ") || "未设置授权白名单"}>
+                <span className="agPlanWlLabel">授权 {wl.length} 币</span>
+                <span className="agPlanWlList">{wl.map((s) => s.replace(/\/USDT$/i, "")).join(" · ") || "未设置"}</span>
+              </div>
+            );
+          })()}
           <div className="agPlanGrid">
             <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
             <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>

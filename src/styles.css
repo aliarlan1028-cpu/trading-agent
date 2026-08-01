@@ -7314,7 +7314,12 @@ button.danger:disabled,
 /* nowrap + flex:none：容器窄时整块换行，不再被压成竖排单字（截图那个溢出） */
 .agPlanTag { padding: 1px 6px; border-radius: 4px; background: #FBEDDF; color: #C9631F; font: 700 9px "Space Grotesk"; white-space: nowrap; flex: none; }
 .agPlanNow { margin-left: 8px; font-size: 11px; color: #8a8172; white-space: nowrap; flex: none; }
-.agPlanRight { margin-left: auto; font: 500 9px "IBM Plex Mono"; color: #a89e8a; white-space: nowrap; flex: none; }
+/* 省略号安全：容器窄时截断成"…"，绝不溢出也不压竖排 */
+.agPlanRight { margin-left: auto; font: 500 9px "IBM Plex Mono"; color: #a89e8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; text-align: right; }
+/* 无计划时的授权白名单：计数 + 省略号截断，白名单再多也不挤爆（全量在 title 悬浮） */
+.agPlanWl { display: flex; align-items: baseline; gap: 6px; margin: -2px 0 8px 22px; min-width: 0; }
+.agPlanWlLabel { flex: none; font: 700 9px "Space Grotesk"; color: #b0a690; }
+.agPlanWlList { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 500 9.5px "IBM Plex Mono"; color: #8a8172; }
 .agPlanGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
 .agPlanK { font-size: 9px; color: #948B77; }
 .agPlanGrid b { font: 500 11px "IBM Plex Mono"; color: #1E1B16; }
