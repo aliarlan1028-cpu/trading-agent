@@ -97,6 +97,9 @@ export function registerAdminUserRoutes(app, ctx) {
     }
     if (!Object.keys(patch).length) return res.status(400).json({ error: "没有要更新的字段" });
     Object.assign(user, patch, { updatedAt: nowIso() });
+    // Owner 的 db.user 与 db.users 条目是两个对象(ensureOwnerUser 不同步 name/avatar):把资料同步过去,
+    // 让审计署名、以及任何直接读 db.user 的地方保持一致(展示已由 /api/overview 改用 req.user 修正)。
+    if (db.user && (db.user === user || db.user.id === user.id || user.isOwner)) Object.assign(db.user, patch);
     appendAudit(db, `账户自助更新资料（${Object.keys(patch).join("、")}）`, user.id, user.name || user.email);
     persist(res, { ok: true, user: sanitizeUserRecord(user) });
   });

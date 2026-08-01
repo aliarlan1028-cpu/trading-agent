@@ -697,7 +697,7 @@ function liveConnectorToolStatus(tools = []) {
   });
 }
 
-app.get("/api/overview", (_req, res) => {
+app.get("/api/overview", (req, res) => {
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
   if (expireStalePlans(db).length) saveDb(db);
   // 实时计算 API 健康度（原来是固定种子值 "待配置"，配置后也不变，属显示 bug）。
@@ -711,7 +711,10 @@ app.get("/api/overview", (_req, res) => {
     db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : !configured ? "待配置" : (rtStarted && !rtConnected) ? "连接异常" : "正常";
   }
   res.json({
-    user: db.user,
+    // 展示当前登录用户本人(而非固定的 db.user 遗留对象):Owner 的 req.user 是 db.users 里的条目,
+    // 账户资料自助(改名/头像)写在那上面;此前固定返回 db.user 两对象不同步 → 保存后前端不生效。
+    // 同时用 sanitizeUserRecord 剥离密码字段(旧的裸 db.user 会外泄 passwordHash)。
+    user: sanitizeUserRecord(req.user || db.user),
     users: (db.users || []).map(sanitizeUserRecord),
     tenants: db.tenants || [],
     subscriptionPlans: db.subscriptionPlans || [],
