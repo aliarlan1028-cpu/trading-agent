@@ -129,7 +129,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     ADMIN_PASSWORD: "",
     AUTH_REQUIRED: runtime.authRequired === false ? "false" : "true",
     SKILL_SANDBOX_IMAGE: runtime.skillSandboxImage || "node:20-alpine",
-    REALTIME_RECONCILER_ENABLED: runtime.realtimeReconcilerEnabled ? "true" : "false",
     BINANCE_MARKET_TYPE: runtime.binanceMarketType || "spot",
     OKX_MARKET_TYPE: runtime.okxMarketType || "perpetual_swap",
     HTTP_PROXY: "",
@@ -267,7 +266,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     const body = {
       AUTH_REQUIRED: runtimeForm.AUTH_REQUIRED,
       SKILL_SANDBOX_IMAGE: runtimeForm.SKILL_SANDBOX_IMAGE,
-      REALTIME_RECONCILER_ENABLED: runtimeForm.REALTIME_RECONCILER_ENABLED,
       BINANCE_MARKET_TYPE: runtimeForm.BINANCE_MARKET_TYPE,
       OKX_MARKET_TYPE: runtimeForm.OKX_MARKET_TYPE,
       PORT: runtimeForm.PORT
@@ -518,7 +516,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "runtime" && (
           <form className="panelForm" onSubmit={saveRuntime}>
-            <CfgHead icon={Settings} title="系统运行参数" sub="鉴权、市场类型、代理、沙箱镜像、实时对账等运行时开关" status={runtime.authRequired === false ? "免登录" : "鉴权开启"} statusTone={runtime.authRequired === false ? "warn" : "ok"} />
+            <CfgHead icon={Settings} title="系统运行参数" sub="鉴权、市场类型、代理、沙箱镜像等运行时开关" status={runtime.authRequired === false ? "免登录" : "鉴权开启"} statusTone={runtime.authRequired === false ? "warn" : "ok"} />
             <div className="formGrid">
               {runtimeSecretRows.map(([keyName, label, configured]) => (
                 <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? "留空则保留现有配置" : "待配置"} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>移除</button>}</span></label>
@@ -528,7 +526,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
               <label>登录鉴权<select value={runtimeForm.AUTH_REQUIRED} onChange={(event) => updateRuntime("AUTH_REQUIRED", event.target.value)}><option value="true">开启</option><option value="false">关闭</option></select></label>
               <label>Binance 默认市场<select value={runtimeForm.BINANCE_MARKET_TYPE} onChange={(event) => updateRuntime("BINANCE_MARKET_TYPE", event.target.value)}><option value="spot">spot</option><option value="perpetual_usdt">perpetual_usdt</option><option value="usdm">usdm</option></select></label>
               <label>OKX 默认市场<select value={runtimeForm.OKX_MARKET_TYPE} onChange={(event) => updateRuntime("OKX_MARKET_TYPE", event.target.value)}><option value="spot">spot</option><option value="perpetual_swap">perpetual_swap</option></select></label>
-              <label>实时对账<select value={runtimeForm.REALTIME_RECONCILER_ENABLED} onChange={(event) => updateRuntime("REALTIME_RECONCILER_ENABLED", event.target.value)}><option value="false">关闭</option><option value="true">开启</option></select></label>
               <label>服务端口（重启生效）<input type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
             </div>
             <label>Skill 沙箱镜像<input value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
