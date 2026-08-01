@@ -679,6 +679,14 @@ export function ChatPage({ data, action, ui, concept = false }) {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   async function loadMessages(sessionId = activeSessionId) {
     try {
@@ -857,6 +865,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
 
       <div className="agInputBar">
         <textarea
+          ref={inputRef}
           value={input}
           rows={1}
           placeholder={provider ? `输入指令，与 AI 交易员对话…（${provider.name}/${provider.model}）` : "输入指令，与 AI 交易员对话… 例如「把仓位降到 5%」"}
