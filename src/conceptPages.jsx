@@ -279,6 +279,29 @@ export function JournalConcept({ data }) {
     <div className="cp2Grid two wideLeft"><ConceptCard title="交易复盘详情"><div className="cp2ReviewGrid">{reviews.slice(0,3).map((review,index)=><article key={review.id||index}><small>{review.symbol||"组合"} · {formatDateTime(review.createdAt)}</small><b>{review.title||review.summary||"交易复盘"}</b><p>{review.lesson||review.notes||"等待复盘结论。"}</p></article>)}{!reviews.length&&<div className="cp2Empty"><BookOpen/><b>暂无复盘</b><span>平仓后会自动进入复盘队列。</span></div>}</div></ConceptCard><ConceptCard title="纪律检查"><div className="cp2Checklist vertical"><span><CheckCircle2/>风险预算执行</span><span><CheckCircle2/>止损保护覆盖</span><span><AlertTriangle/>复盘样本仍需积累</span></div></ConceptCard></div></div>;
 }
 
+// 生效中的条令:列出已直接注入 Agent 决策的透镜(active)与铁律(已批准),点开看全文。
+function ActiveDoctrineCard({ data }){
+  const k=data.knowledge||{};
+  const lenses=arr(k.lenses).filter(l=>l.active);
+  const rules=arr(k.ruleProposals).filter(r=>r.status==="已批准"||r.status==="approved");
+  const [open,setOpen]=useState(null);
+  if(!lenses.length && !rules.length) return null;
+  const rowText=r=>r.description||r.rule||r.detail||r.condition||"（无正文）";
+  return <ConceptCard title="生效中的条令" meta={`透镜 ${lenses.length} · 铁律 ${rules.length}`}>
+    <p className="cp2Intro">这些已<b>直接注入 Agent 每次决策</b>——透镜塑造分析、铁律不可违，无需"生成候选"。点条目看全文。</p>
+    <div className="cp2DoctrineList">
+      {lenses.map(l=><div key={l.id} className={`cp2DoctrineRow ${open===l.id?"on":""}`}>
+        <button onClick={()=>setOpen(open===l.id?null:l.id)}><span className="cp2DocTag lens">透镜</span><b>{l.name}</b><ChevronDown size={13}/></button>
+        {open===l.id&&<p>{l.promptText||l.description||"（无正文）"}</p>}
+      </div>)}
+      {rules.map(r=><div key={r.id} className={`cp2DoctrineRow ${open===r.id?"on":""}`}>
+        <button onClick={()=>setOpen(open===r.id?null:r.id)}><span className="cp2DocTag iron">铁律</span><b>{r.name}</b><ChevronDown size={13}/></button>
+        {open===r.id&&<p>{rowText(r)}</p>}
+      </div>)}
+    </div>
+  </ConceptCard>;
+}
+
 export function KnowledgeConcept({ data, action, ui }) {
   const k=data.knowledge||{}; const sources=arr(k.sources); const methods=arr(k.tradingMethods); const candidates=arr(k.candidates).filter(item=>item.status==="candidate"); const skills=[...arr(k.tradingSkills),...arr(data.skills)]; const rules=[...arr(k.ruleProposals),...arr(data.riskRules)]; const memory=arr(data.memoryItems);
   const convert=async (source) =>{if(await uiConfirm(`从《${source.title||source.name}》生成候选能力？`))action("/api/knowledge/convert",{sourceId:source.id});};
@@ -287,6 +310,7 @@ export function KnowledgeConcept({ data, action, ui }) {
       <ConceptCard title="候选能力" meta={`${candidates.length} 个`} action={<button className="cp2Link" onClick={()=>ui.openPanel("skillImport")}>导入 Skill</button>}><ConceptTable compact columns={[{key:"name",label:"能力"},{key:"type",label:"类型",render:r=>humanize(r.type)},{key:"status",label:"操作",render:r=><span className="cp2FormActions"><button className="cp2Link" onClick={()=>action(`/api/knowledge/candidates/${r.id}/ignore`,{})}>忽略</button><button className="cp2Link" onClick={()=>action(`/api/knowledge/candidates/${r.id}/adopt`,{})}>采纳</button></span>}]} rows={candidates.slice(0,8)} empty="暂无候选能力"/></ConceptCard>
       <ConceptCard title="验证漏斗"><div className="cp2Funnel">{[["候选总量",candidates.length],["静态验证",skills.filter(s=>s.scanStatus==="passed").length],["回测通过",skills.filter(s=>s.backtestStatus==="passed").length],["实盘采用",skills.filter(s=>["active","trusted"].includes(s.status)).length]].map(([name,value],index)=><div style={{width:`${100-index*14}%`}} key={name}><span>{name}</span><b>{value}</b></div>)}</div><div className="cp2Kv"><span>规则总数<b>{rules.length}</b></span><span>交易方法<b>{methods.length}</b></span><span>记忆条目<b>{memory.length}</b></span><span>知识来源<b>{sources.length}</b></span></div></ConceptCard>
     </div>
+    <ActiveDoctrineCard data={data}/>
     <div className="cp2Grid two"><ConceptCard title="概念与知识网络"><div className="cp2ConceptMap"><span className="center">交易知识</span>{arr(k.conceptCards).slice(0,6).map((item,index)=><span key={item.id||index} style={{"--i":index}}>{item.name||item.title||"概念"}</span>)}{!arr(k.conceptCards).length&&["风险预算","动量","均线结构","仓位管理","波动率","止盈逻辑"].map((name,index)=><span key={name} style={{"--i":index}}>{name}</span>)}</div></ConceptCard><ConceptCard title="已沉淀的方法"><ConceptTable compact columns={[{key:"name",label:"方法",render:r=>r.name||r.title},{key:"category",label:"类型",render:r=>humanize(r.category||r.type)},{key:"status",label:"状态",render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,"已记录")}</Pill>}]} rows={[...methods,...memory].slice(0,8)} empty="暂无方法记录"/></ConceptCard></div></div>;
 }
 
