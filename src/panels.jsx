@@ -1243,7 +1243,7 @@ export function EventSourcesPanel({ data, action, ui }) {
               <small>{humanize(s.type || "rss")} · 可信 {s.trustScore ?? "-"}{s.url ? ` · ${host(s.url)}` : ""}</small>
               <small className="evtSrcStatus">
                 {s.lastStatus === "ok"
-                  ? <span className="ok">✓ 上次抓 {s.lastItemCount ?? 0} 条 · {formatDateTime(s.lastFetchedAt, "刚刚")}</span>
+                  ? <span className="ok">✓ {s.lastItemCount != null ? `上次抓 ${s.lastItemCount} 条` : "上次抓取成功"} · {formatDateTime(s.lastFetchedAt, "刚刚")}</span>
                   : s.lastStatus === "failed"
                     ? <span className="bad" title={s.lastError || ""}>✗ 抓取失败：{(s.lastError || "未知错误").slice(0, 40)}</span>
                     : <span className="muted">尚未抓取</span>}

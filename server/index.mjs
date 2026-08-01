@@ -478,6 +478,7 @@ registerTaskHandler("market_signal_refresh", async (database) => {
 });
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_event_refresh", name: "事件源刷新", handler: "event_refresh", schedule: "Every 20m" }, saveDb); // 修:此前处理器已注册但漏了定时任务,导致新闻源从不自动刷新(卡在旧时间)
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
