@@ -21,10 +21,18 @@ if [ "${1:-}" = "--dry" ]; then
   exit 0
 fi
 
-echo "==> [1/4] rsync 代码（排除 .env/data/ios/dist）"
+echo "==> [1/5] 本地测试闸（npm test；不过则中止，不碰服务器）"
+if ! ( cd "$LOCAL_DIR" && npm test ) >/tmp/deploy-test.log 2>&1; then
+  echo "  ❌ 测试未通过 → 中止部署（服务器完全没被触碰）。最后 25 行："
+  tail -25 /tmp/deploy-test.log
+  exit 1
+fi
+echo "  ✅ 测试通过（$(grep -oE 'tests [0-9]+' /tmp/deploy-test.log | tail -1 || echo ok)）"
+
+echo "==> [2/5] rsync 代码（排除 .env/data/ios/dist）"
 rsync -az --delete "${EXCLUDES[@]}" "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/"
 
-echo "==> [2/4] 远端构建 + 保留回滚镜像"
+echo "==> [3/5] 远端构建 + 保留回滚镜像"
 ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
@@ -35,7 +43,7 @@ docker compose build </dev/null 2>&1 | tail -2
 docker compose up -d </dev/null >/dev/null 2>&1 && echo "  up -d ok"
 REMOTE
 
-echo "==> [3/4] 验证（最多 90s：health 200 且 CPU 恢复正常）"
+echo "==> [4/5] 验证（最多 90s：health 200 且 CPU 恢复正常）"
 if ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
 set -uo pipefail
 cd "$REMOTE_DIR"
@@ -53,9 +61,9 @@ if [ -n "\$cpu" ] && [ "\$cpu" -gt 80 ]; then echo "CPU 异常偏高(\${cpu}%)";
 exit 0
 REMOTE
 then
-  echo "==> [4/4] ✅ 部署成功并通过验证"
+  echo "==> [5/5] ✅ 部署成功并通过验证"
 else
-  echo "==> [4/4] ❌ 验证失败 → 自动回滚上一镜像"
+  echo "==> [5/5] ❌ 验证失败 → 自动回滚上一镜像"
   ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
