@@ -12,6 +12,7 @@ import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from 
 import { deterministicDecision } from "./deterministicDecision.mjs";
 import { validateTradePlan } from "./schema.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
+import { scanOpportunities } from "./opportunityScanner.mjs";
 import { refreshEventSources } from "./eventSources.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -147,6 +148,18 @@ const TOOL_DEFS = [
         timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "可选；省略则自动扫描 15m/1h/4h 选最优周期" }
       },
       required: ["symbol"]
+    }
+  },
+  {
+    name: "scan_market_opportunities",
+    description: "全市场机会扫描器:一次拉取 OKX 全部 USDT 永续合约(200+ 个),按方向感知的多因子(24h 动量+区间位置+振幅+流动性)打分,返回评分最高的 Top N 候选。这是【漏斗/筛选器】不是信号——用它把全市场收窄到几个值得深看的币,再对候选逐个调 analyze_market_structure / get_microstructure / get_token_profile 做五视角深分析后自行判断。突破当前授权白名单的视野盲区:不在白名单的优质机会也会浮现(结果里 inWhitelist 标注),可在结尾建议加白。全部真实 ticker 数据,确定性,无编造。",
+    schema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "返回候选数,默认 8,范围 1-20" },
+        direction: { type: "string", enum: ["long", "short", "both"], description: "偏好方向:long 只挑偏多、short 只挑偏空、both 各方向择优(默认 both)" },
+        minQuoteVolUsdt: { type: "number", description: "24h 成交额下限(USDT),滤掉不流动小币避免冲击成本;默认 5000000(5M)" }
+      }
     }
   },
   {
@@ -498,7 +511,7 @@ async function buildSystemPrompt(db, userText = "") {
   const mdt = activeMandate(db);
   if (mdt) {
     const wl = (mdt.allowedSymbols || []).join("、") || "(当前为空)";
-    sections.push(`【授权白名单（仅这些币对可下单/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对全市场开放**——任何 OKX/币安币对都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 自由分析并给出方向结论。但 **propose_trade_plan 与 register_watch 只对白名单内币对有效**，对白名单外的币调用会被硬风控/哨兵直接拒。因此分析白名单外的币时：照常给完整分析，不要调用这两个工具，只在结尾一句话提示"不在白名单、如需交易/监控可加白（要我帮你更新授权吗）"。`);
+    sections.push(`【授权白名单（仅这些币对可下单/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对全市场开放**——任何 OKX/币安币对都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 自由分析并给出方向结论。但 **propose_trade_plan 与 register_watch 只对白名单内币对有效**，对白名单外的币调用会被硬风控/哨兵直接拒。因此分析白名单外的币时：照常给完整分析，不要调用这两个工具，只在结尾一句话提示"不在白名单、如需交易/监控可加白（要我帮你更新授权吗）"。\n**别把视野锁死在白名单**：机会可能出现在白名单外的任何永续。要主动发现机会时先调用 **scan_market_opportunities**（全市场漏斗，按动量+区间位+振幅+流动性打分排出 Top 候选，结果里 inWhitelist 标注是否已授权），再对排前的候选逐个走 analyze_market_structure / get_microstructure 深分析；若白名单外的候选深分析后确属优质机会，明确建议主人加白（并说明理由与建议授权参数），不要因为"不在白名单"就跳过不看。`);
   }
 
   // 大盘/聪明钱快照:与定时巡检同一份预取数据(db.marketRegime)。
@@ -917,6 +930,20 @@ export async function executeTool(db, run, name, args = {}) {
     } catch (error) {
       return { error: `策略研究失败：${error.message}` };
     }
+  }
+
+  if (name === "scan_market_opportunities") {
+    // 全市场机会漏斗:标注哪些已在授权白名单内(inWhitelist),让 Agent 深分析后对白名单外优质币建议加白。
+    const mdt = activeMandate(db);
+    const whitelist = (mdt?.allowedSymbols || []).map((s) => String(s).toUpperCase());
+    const held = (db.positions || []).filter((p) => p.status === "open").map((p) => String(p.symbol).toUpperCase());
+    return scanOpportunities(db, {
+      limit: args.limit,
+      direction: args.direction,
+      minQuoteVolUsdt: args.minQuoteVolUsdt,
+      whitelist,
+      excludeSymbols: held
+    });
   }
 
   if (name === "create_mandate_draft") {
@@ -1535,6 +1562,9 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
+  if (name === "scan_market_opportunities") return result.candidates?.length
+    ? `全市场扫 ${result.universe} 个永续，Top ${result.candidates.length}：` + result.candidates.map((c) => `${c.symbol}${c.inWhitelist ? "✓" : ""} ${c.side === "short" ? "空" : "多"}${c.score}(${c.tag})`).join("、")
+    : `未筛出候选（扫 ${result.universe || 0} 个，${result.error || "均低于流动性/评分门槛"}）`;
   if (name === "propose_trade_plan") {
     const align = result.smartMoneyAlignment;
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
