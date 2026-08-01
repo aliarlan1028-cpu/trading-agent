@@ -545,17 +545,19 @@ async function buildSystemPrompt(db, userText = "") {
   }
 
   // A 路：已批准的纪律/风控规则必须无条件遵守。
-  const approvedRules = (db.knowledge?.ruleProposals || []).filter((r) => r.status === "已批准");
+  const approvedRules = (db.knowledge?.ruleProposals || []).filter((r) => r.status === "已批准")
+    .sort((a, b) => (b.doctrine ? 1 : 0) - (a.doctrine ? 1 : 0)); // 条令铁律排前,不被截断
   if (approvedRules.length) {
-    const text = approvedRules.slice(0, 14)
+    const text = approvedRules.slice(0, 20)
       .map((r) => `- [${r.category || "纪律"}] ${r.name}${r.condition ? `（当 ${r.condition}）` : ""}${r.action && r.action !== "none" ? ` → ${r.action}` : ""}`)
       .join("\n");
     sections.push(`【交易纪律与风控规则（来自知识库、已人工批准，必须无条件遵守）】\n${text}`);
   }
   // W4:采纳的分析透镜/纪律(知识库转换产出、采纳即用),决策时遵循。只塑造分析、不直接下单。
-  const adoptedLenses = (db.knowledge?.lenses || []).filter((l) => l.active);
+  const adoptedLenses = (db.knowledge?.lenses || []).filter((l) => l.active)
+    .sort((a, b) => (b.doctrine ? 1 : 0) - (a.doctrine ? 1 : 0)); // 条令透镜排前,不被截断
   if (adoptedLenses.length) {
-    sections.push(`【采纳的分析纪律 / 透镜（来自知识库，决策时遵循；只塑造分析、绝不直接下单）】\n${adoptedLenses.slice(0, 8).map((l) => `- ${l.name}：${l.promptText}${l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}`);
+    sections.push(`【分析条令 / 透镜（决策时遵循；只塑造分析与仓位、绝不直接下单。这些是让你更专业、不是更不敢交易——2-3视角同向+清晰结构+盈亏比达标就应提计划，弱对齐用小仓而非观望）】\n${adoptedLenses.slice(0, 12).map((l) => `- ${l.name}：${l.promptText}${!l.doctrine && l.sourceTitle ? `（《${l.sourceTitle}》）` : ""}`).join("\n")}`);
   }
   const adoptedWorkflows = (db.knowledge?.workflows || []).filter((w) => w.active);
   if (adoptedWorkflows.length) {

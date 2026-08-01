@@ -223,6 +223,7 @@ for (const server of db.mcpServers || []) {
 // 精选手写技能入列(幂等):参数明确、信号频率足够的规范 spec,与书本方法同闸验证。
 try { ensureCuratedSkills(db); } catch (error) { appendTrace(db, "system", `精选技能入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 try { ensureTurtleStrategy(db); } catch (error) { appendTrace(db, "system", `海龟策略入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
+try { const { ensureTradingDoctrine } = await import("./tradingDoctrine.mjs"); ensureTradingDoctrine(db); } catch (error) { appendTrace(db, "system", `交易条令入列失败:${String(error.message || error).slice(0, 120)}`, "warning"); }
 // 海龟策略验证/前向启动(异步,不阻塞启动)。验证一次性;前向启动幂等——每次启动给"过了历史但还没起
 // 前向"的海龟补起模拟盘(createPaperSession 偶发拉 K 线失败会静默返回,下次启动/paper_forward 定时任务重试)。
 (async () => {
