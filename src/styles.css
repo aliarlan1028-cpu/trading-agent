@@ -2848,6 +2848,21 @@ h3 {
   background: #ffffff;
 }
 
+/* 事件源管理列表：每源一行(名称/类型/抓取状态) + 停用/删除 */
+.evtSrcList { display: flex; flex-direction: column; gap: 8px; }
+.evtSrcList > h3 { margin: 4px 0 2px; font-size: 13px; }
+.evtSrcList > h3 small { color: var(--text-muted, #9a917f); font-weight: 500; }
+.evtSrcRow { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--hairline, #ece7dd); border-radius: 9px; background: #fff; }
+.evtSrcRow.off { opacity: 0.55; }
+.evtSrcMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.evtSrcMain > strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.evtSrcMain > small { font-size: 11px; color: var(--text-muted, #9a917f); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.evtSrcStatus .ok { color: var(--pos, #2e9e5b); }
+.evtSrcStatus .bad { color: var(--neg, #d0483a); }
+.evtSrcStatus .muted { color: var(--text-muted, #9a917f); }
+.evtSrcRow .secondaryButton { flex: none; padding: 4px 10px; font-size: 12px; }
+.evtSrcRow .dangerTextButton { flex: none; }
+
 .panelForm label {
   display: grid;
   gap: 7px;

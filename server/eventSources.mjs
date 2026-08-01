@@ -57,6 +57,8 @@ export async function refreshEventSources(db) {
       for (const item of recentItems(result.items).slice(0, 5)) upsertEventFromItem(db, source, item);
       source.lastStatus = "ok";
       source.lastFetchedAt = nowIso();
+      source.lastItemCount = (result.items || []).length;
+      source.lastError = null;
     } catch (error) {
       source.lastStatus = "failed";
       source.lastError = error.message;

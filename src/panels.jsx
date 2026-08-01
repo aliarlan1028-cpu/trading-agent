@@ -1227,23 +1227,40 @@ export function EventSourcesPanel({ data, action, ui }) {
     await action("/api/event-sources", { ...form, trustScore: Number(form.trustScore || 80) });
     setForm({ name: "", type: form.type, url: "", trustScore: form.trustScore });
   }
+  const sources = data.eventSources || [];
+  const host = (u) => { try { return new URL(u).host; } catch { return u || ""; } };
   return (
     <div className="panelStack">
       <button className="primaryButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={14} /> 刷新事件源</button>
-      {(data.events || []).slice(0, 5).map((event) => (
-        <div className="panelItem" key={event.id}>
-          <div><strong>{event.title}</strong><small>{event.category || "事件"} · {event.due || "待定"}</small></div>
-          <StatusBadge tone={event.impact >= 80 ? "danger" : "warning"}>{event.impactLabel || "待评估"}</StatusBadge>
-          <button className="secondaryButton" onClick={() => action(`/api/events/${event.id}/progress`, { text: "人工查看后标记进度" } /* 后端读 text(此前发 note 被静默丢弃,审计 L2) */)}>标记</button>
-        </div>
-      ))}
-      {!data.events?.length && <div className="emptyPanel emptyPanelAction"><strong>暂无事件卡</strong><span>刷新事件源后会生成真实事件卡。</span></div>}
+
+      <div className="evtSrcList">
+        <h3>已配置的事件源 <small>{sources.length} 个</small></h3>
+        {!sources.length && <div className="emptyPanel"><span>还没有事件源。用下面的表单加一个 RSS 地址。</span></div>}
+        {sources.map((s) => (
+          <div className={`evtSrcRow ${s.enabled === false ? "off" : ""}`} key={s.id}>
+            <div className="evtSrcMain">
+              <strong>{s.name || "未命名源"}</strong>
+              <small>{humanize(s.type || "rss")} · 可信 {s.trustScore ?? "-"}{s.url ? ` · ${host(s.url)}` : ""}</small>
+              <small className="evtSrcStatus">
+                {s.lastStatus === "ok"
+                  ? <span className="ok">✓ 上次抓 {s.lastItemCount ?? 0} 条 · {formatDateTime(s.lastFetchedAt, "刚刚")}</span>
+                  : s.lastStatus === "failed"
+                    ? <span className="bad" title={s.lastError || ""}>✗ 抓取失败：{(s.lastError || "未知错误").slice(0, 40)}</span>
+                    : <span className="muted">尚未抓取</span>}
+              </small>
+            </div>
+            <button className="secondaryButton" title={s.enabled === false ? "启用" : "停用"} onClick={() => action(`/api/event-sources/${s.id}`, { enabled: s.enabled === false }, "PATCH")}>{s.enabled === false ? "启用" : "停用"}</button>
+            <button className="dangerTextButton" title="删除该事件源(已抓到的历史事件保留)" onClick={async () => { if (await uiConfirm(`删除事件源「${s.name}」？之后不再从它抓取（历史事件保留）。`)) action(`/api/event-sources/${s.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+
       <form className="panelForm compact" onSubmit={submit}>
         <h3>新增事件源</h3>
         <label>名称<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="例如：交易所公告 / 宏观日历 RSS" /></label>
-        <label>URL<input value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://..." /></label>
+        <label>URL<input value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://…（优先填 RSS 地址，抓取最干净）" /></label>
         <div className="formGrid">
-          <label>类型<select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}><option value="rss">RSS</option><option value="html">HTML</option><option value="json">JSON</option></select></label>
+          <label>类型<select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}><option value="rss">RSS（推荐）</option><option value="html">HTML 网页</option></select></label>
           <label>可信度<input type="number" min="1" max="100" value={form.trustScore} onChange={(event) => setForm((current) => ({ ...current, trustScore: event.target.value }))} /></label>
         </div>
         <button className="primaryButton" type="submit">保存事件源</button>
