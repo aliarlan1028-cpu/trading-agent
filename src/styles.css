@@ -6857,6 +6857,15 @@ button.danger:disabled,
 .intelDir { font-weight: 600; }
 .intelDir.positive { color: var(--pos); }
 .intelDir.negative { color: var(--neg); }
+.intelFresh { flex: none; font-size: 10px; font-weight: 700; color: var(--pos); background: color-mix(in srgb, var(--pos) 14%, transparent); border: 1px solid color-mix(in srgb, var(--pos) 30%, transparent); border-radius: 999px; padding: 1px 7px; letter-spacing: .02em; }
+/* 情报自动刷新状态条:让用户一眼看出事件源在按 20 分钟节奏自动抓,而不是只有手动点才更新 */
+.intelAutoBar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: var(--sp-2) 0 var(--sp-1); padding: 6px 10px; border-radius: var(--radius-2, 8px); background: var(--surface-2, rgba(0,0,0,.03)); border: 1px solid var(--border); font-size: var(--fs-1); }
+.intelAutoBar b { font-weight: 640; color: var(--text-1); }
+.intelAutoBar small { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.intelAutoBar .intelAutoDot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--pos); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pos) 20%, transparent); }
+.intelAutoBar.off .intelAutoDot { background: var(--text-3); box-shadow: none; }
+.intelAutoBar.on .intelAutoDot { animation: intelPulse 2s ease-in-out infinite; }
+@keyframes intelPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
 .intelSym { padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
 .intelChevron { margin-left: auto; color: var(--text-3); transition: transform 0.15s ease; }
 .intelChevron.open { transform: rotate(180deg); }

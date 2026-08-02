@@ -924,6 +924,21 @@ function IntelCenter({ action, data = {} }) {
         </div>
         <button className="secondaryButton" onClick={refresh} disabled={busy}><RefreshCw size={14} /> {busy ? "刷新中…" : "刷新情报"}</button>
       </div>
+      {(() => {
+        // 自动刷新状态条:直接读事件源刷新定时任务的真实 上次/下次,让用户看出它在按 20 分钟节奏转,
+        // 而不是"只有手动点才更新"。任务不存在(旧库未排程)时不显示。
+        const t = (data.tasks || []).find((x) => x.id === "task_sys_event_refresh");
+        if (!t) return null;
+        const paused = t.enabled === false;
+        const every = String(t.schedule || "").replace(/^Every\s*/i, "");
+        return (
+          <div className={`intelAutoBar ${paused ? "off" : "on"}`}>
+            <span className="intelAutoDot" />
+            <b>{paused ? "自动刷新已暂停" : "自动刷新中"}</b>
+            <small>每 {every} · 上次 {formatDateTime(t.lastRunAt, "—")} · 下次 {formatDateTime(t.nextRunAt, "—")}</small>
+          </div>
+        );
+      })()}
       {(data.missedOpportunities || []).length > 0 && (
         <div className="missedOppCard">
           <div className="missedOppHead"><BookOpen size={14} /> 错过机会复盘 <small>大波动却没交易的复盘，已沉淀进 AI 记忆</small></div>
@@ -950,6 +965,9 @@ function IntelCenter({ action, data = {} }) {
             const open = expanded[ev.id];
             const tone = ev.impact >= 80 ? "danger" : ev.impact >= 50 ? "warning" : "neutral";
             const dirTone = /空/.test(ev.directionHint || "") ? "negative" : /多/.test(ev.directionHint || "") ? "positive" : "";
+            // 25 分钟内有新报道并进来的专题 = 刚更新(一轮自动刷新的窗口),打新鲜标让归并进时间线的新新闻显出来。
+            const freshMs = ev.lastUpdatedAt ? Date.now() - new Date(ev.lastUpdatedAt).getTime() : Infinity;
+            const fresh = freshMs >= 0 && freshMs < 25 * 60 * 1000;
             return (
               <div className={`intelCard ${tone}`} key={ev.id}>
                 <div className="intelCardTop">
@@ -960,6 +978,7 @@ function IntelCenter({ action, data = {} }) {
                       <StatusBadge tone={tone}>{ev.impactLabel}</StatusBadge>
                     </div>
                     <div className="intelMeta">
+                      {fresh && <span className="intelFresh" title={`最近更新 ${formatDateTime(ev.lastUpdatedAt, "—")}`}>刚更新</span>}
                       <span>{ev.updateCount || 1} 条报道</span>
                       {ev.directionHint && <span className={`intelDir ${dirTone}`}>{ev.directionHint}</span>}
                       {(ev.relatedSymbols || []).slice(0, 3).map((symbol) => <span key={symbol} className="intelSym">{symbol}</span>)}

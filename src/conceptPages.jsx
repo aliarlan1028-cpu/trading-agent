@@ -114,8 +114,25 @@ export function IntelligenceConcept({ data, action, ui }) {
           <ConceptMetric label="异常波动" value={`${movers.length} 个`} sub="实时扫描"/>
         </div>
       </ConceptCard>
+      {(() => {
+        // 自动刷新状态条:读事件源刷新定时任务的真实 上次/下次,让用户看出事件源在按节奏自动抓,
+        // 而不是"只有手动点刷新才更新"。任务不存在(旧库未排程)时不显示。
+        const t = arr(data.tasks).find((x) => x.id === "task_sys_event_refresh");
+        if (!t) return null;
+        const paused = t.enabled === false;
+        const every = String(t.schedule || "").replace(/^Every\s*/i, "");
+        return <div className={`cp2AutoBar ${paused ? "off" : "on"}`}>
+          <span className="cp2AutoDot"/>
+          <b>{paused ? "自动刷新已暂停" : "事件源自动刷新中"}</b>
+          <small>每 {every} · 上次 {formatTime(t.lastRunAt) || "—"} · 下次 {formatTime(t.nextRunAt) || "—"}</small>
+        </div>;
+      })()}
       <ConceptCard title="情报动态" meta={`${filtered.length} 条`}>
-        <div className="cp2IntelList">{filtered.map((item, index) => <button key={item.id} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span className={`cp2IntelIcon ${toneOf(item.impact)}`}><Activity size={14}/></span><div><b>{item.title || "未命名情报"}</b><small>{item.source} · {formatTime(item.createdAt || item.due || item.time)}</small><p>{item.summary || item.description || "等待更多来源交叉验证。"}</p></div><Pill tone={num(item.impact) >= 80 ? "bad" : num(item.impact) >= 50 ? "warn" : "good"}>{num(item.impact) >= 80 ? "高" : num(item.impact) >= 50 ? "中" : "低"}</Pill></button>)}{!filtered.length && <div className="cp2Empty"><Sparkles size={20}/><b>暂无情报动态</b><span>配置事件源后,新闻 / 链上 / 异动会在此汇总并交叉验证。</span></div>}</div>
+        <div className="cp2IntelList">{filtered.map((item, index) => {
+          const freshMs = item.lastUpdatedAt ? nowT - new Date(item.lastUpdatedAt).getTime() : Infinity;
+          const fresh = freshMs >= 0 && freshMs < 25 * 60 * 1000;
+          return <button key={item.id} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span className={`cp2IntelIcon ${toneOf(item.impact)}`}><Activity size={14}/></span><div><b>{item.title || "未命名情报"}{fresh && <em className="cp2Fresh">刚更新</em>}</b><small>{item.source} · {formatTime(item.createdAt || item.due || item.time)}{num(item.updateCount) > 1 ? ` · ${item.updateCount} 条报道` : ""}</small><p>{item.summary || item.description || "等待更多来源交叉验证。"}</p></div><Pill tone={num(item.impact) >= 80 ? "bad" : num(item.impact) >= 50 ? "warn" : "good"}>{num(item.impact) >= 80 ? "高" : num(item.impact) >= 50 ? "中" : "低"}</Pill></button>;
+        })}{!filtered.length && <div className="cp2Empty"><Sparkles size={20}/><b>暂无情报动态</b><span>配置事件源后,新闻 / 链上 / 异动会在此汇总并交叉验证。</span></div>}</div>
       </ConceptCard>
     </main>
     <aside className="cp2IntelDetail">
