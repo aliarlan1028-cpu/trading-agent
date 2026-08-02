@@ -127,6 +127,12 @@ export function registerSecurityConfigRoutes(app, ctx) {
       if (req.body.grayEnabled !== undefined) gray.enabled = Boolean(req.body.grayEnabled);
       if (req.body.maxNotionalUsdt !== undefined) gray.maxNotionalUsdt = Number(req.body.maxNotionalUsdt) || gray.maxNotionalUsdt;
       if (req.body.grayRequiresApproval !== undefined) gray.requiresManualApproval = Boolean(req.body.grayRequiresApproval);
+      // 灰度允许币种:实盘执行范围。留空=不额外限制(授权白名单内的币都可实盘,仍受额度闸);
+      // 填了=实盘只放这几个币先跑。规范成大写去重,与计划 symbol("XXX/USDT")对齐。
+      if (req.body.allowedSymbols !== undefined) {
+        const list = Array.isArray(req.body.allowedSymbols) ? req.body.allowedSymbols : [];
+        gray.allowedSymbols = [...new Set(list.map((s) => String(s).trim().toUpperCase()).filter(Boolean))];
+      }
       gray.updatedAt = nowIso();
     }
     appendAudit(db, "更新实盘交易开关与灰度额度", "live_trading_config", db.user.name, "warning");

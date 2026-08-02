@@ -142,7 +142,8 @@ export function getConfigStatus(db) {
       effective: db.system.liveTradingEnabled === true,
       maxNotionalUsdt: Number(process.env.MAX_LIVE_NOTIONAL_USDT || gray.maxNotionalUsdt || 50),
       grayEnabled: Boolean(gray.enabled),
-      grayRequiresApproval: gray.requiresManualApproval !== false
+      grayRequiresApproval: gray.requiresManualApproval !== false,
+      grayAllowedSymbols: Array.isArray(gray.allowedSymbols) ? gray.allowedSymbols : []
     },
     integrations: {
       langsmith: {

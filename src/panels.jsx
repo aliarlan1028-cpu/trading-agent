@@ -1321,6 +1321,7 @@ export function LiveGrayPanel({ data, action, ui }) {
     orderWriteEnabled: Boolean(live.orderWriteEnabled),
     grayEnabled: Boolean(live.grayEnabled),
     grayRequiresApproval: live.grayRequiresApproval !== false,
+    allowedSymbols: Array.isArray(live.grayAllowedSymbols) ? live.grayAllowedSymbols : [],
     maxNotionalUsdt: live.maxNotionalUsdt || 50
   });
   function updateLive(key, value) {
@@ -1392,6 +1393,10 @@ export function LiveGrayPanel({ data, action, ui }) {
                   <label className="lgSw"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /><span>启用小额灰度<span className="sub">先用很小额度跑真实单验证</span></span></label>
                   <label className="lgSw"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /><span>保留人工确认<span className="sub">取消勾选＝额度内全自动下单</span></span></label>
                 </div>
+                <label className="symbolLabel lgSymbols">灰度允许币种（实盘执行范围）<SymbolMultiSelect value={liveForm.allowedSymbols} onChange={(next) => updateLive("allowedSymbols", next)} /></label>
+                <div className="lgHint">{liveForm.allowedSymbols?.length
+                  ? `实盘只放这 ${liveForm.allowedSymbols.length} 个币先跑；不在此列的币即使在交易授权白名单里、你批准了，执行也会被灰度闸拦。`
+                  : "留空＝不额外限制：凡在「交易授权白名单」内、你批准的币都可实盘（仍受单笔额度闸约束）。想只先跑几个币做灰度验证，就在这里挑。"}</div>
               </div>
             </div>
             {/* 用后端唯一真相 automationState.mode 判定,别再自己拿 2 个开关猜(审计 gating:

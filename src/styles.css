@@ -7009,6 +7009,8 @@ button.danger:disabled,
   font-size: var(--fs-1); color: var(--text-2); margin-bottom: var(--sp-4);
 }
 .liveGrayForm .lgAmt input { width: 120px; }
+.liveGrayForm .lgSymbols { margin: 12px 0 0; font: 600 var(--fs-1)/1.4 inherit; color: var(--text-1); }
+.liveGrayForm .lgHint { margin-top: 6px; color: var(--text-3); font-size: 11px; line-height: 1.5; }
 
 /* ==============================================================
    全站视觉基线（暖色洗练）— 基于 :root design token，作用于所有页面
