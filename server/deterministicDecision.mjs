@@ -12,9 +12,15 @@ export const THRESHOLDS = {
   minConfidence: 60,    // 低于此置信度只观望
   smartLong: 1.05,      // 大户多空比 ≥ 此值偏多（与全端 smartMoneyBias 同口径）
   smartShort: 0.95,     // ≤ 此值偏空
-  extremeFundingAbs: 0.0005 // |资金费率| 超过此值视为拥挤，反向计分
+  extremeFundingAbs: 0.0005, // |资金费率| 超过此值视为拥挤，反向计分
+  chaseHigh: 0.85,      // 区间位 ≥ 此值做多=追高末端
+  chaseLow: 0.15,       // 区间位 ≤ 此值做空=追空末端
+  chasePenalty: 18      // 追末端时置信度扣分(可能因此跌破 minConfidence 转观望)
 };
-export const DEFAULTS = { stopPct: 0.015, rr: [1.5, 2.5], leverageCap: 3, riskPct: 0.3 };
+// stopAtrMult: 止损=入场 ± 此倍真实 ATR(纪律 S4「按 ATR 放宽止损」);
+// minStopPct/maxStopPct: 止损占价比的安全下/上限(防 ATR 异常小/大);
+// pullbackAtr: 回调入场带宽度(顺势回调挂单,而非贴现价追单)。
+export const DEFAULTS = { stopPct: 0.015, rr: [1.5, 2.5], leverageCap: 3, riskPct: 0.3, stopAtrMult: 2, minStopPct: 0.008, maxStopPct: 0.06, pullbackAtr: 0.6 };
 
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
@@ -47,12 +53,21 @@ function smartMoneyScore(ratio) {
   return { score: 50, note: null };
 }
 
-function buildPlan(price, direction, mandate, atrPct) {
-  const stopPct = num(atrPct) && atrPct > 0 ? Math.min(Math.max(atrPct, 0.006), 0.05) : DEFAULTS.stopPct;
+function buildPlan(price, direction, mandate, vol = {}) {
   const long = direction === "long";
+  // 止损距离:优先用真实 ATR × 倍数(纪律 S4);无真实 ATR 时回落 atrPct 比例;都缺用默认。
+  // 再用 [minStopPct, maxStopPct] 夹一层,防 ATR 异常极小(噪音里被扫)或极大(单笔风险失控)。
+  const atr = num(vol.atr);
+  const atrPct = num(vol.atrPct);
+  const rawStopPct = atr && atr > 0 ? (atr * DEFAULTS.stopAtrMult) / price
+    : (atrPct && atrPct > 0 ? atrPct : DEFAULTS.stopPct);
+  const stopPct = Math.min(Math.max(rawStopPct, DEFAULTS.minStopPct), DEFAULTS.maxStopPct);
   const stopDist = price * stopPct;
-  const entryLow = long ? price * (1 - stopPct * 0.3) : price * (1 - stopPct * 0.2);
-  const entryHigh = long ? price * (1 + stopPct * 0.2) : price * (1 + stopPct * 0.3);
+  // 顺势回调入场带:做多把挂单区放在现价【下方】(等回撤买),做空放【上方】(等反抽卖),
+  // 而不是贴现价追单——这是"不追末端"的入场侧实现。带宽 = pullbackAtr × 止损距离。
+  const pull = DEFAULTS.pullbackAtr * stopDist;
+  const entryLow = long ? price - pull : price;
+  const entryHigh = long ? price : price + pull;
   const stop = long ? price - stopDist : price + stopDist;
   const targets = DEFAULTS.rr.map((rr) => (long ? price + stopDist * rr : price - stopDist * rr));
   const ceilingRisk = num(mandate?.maxSingleTradeRiskPct);
@@ -90,7 +105,21 @@ export function deterministicDecision({ market = {}, smartMoney = null, mandate 
   const net = clamp(m.score * WEIGHTS.momentum + f.score * WEIGHTS.funding + b.score * WEIGHTS.book + s.score * WEIGHTS.smartMoney);
 
   let direction = net >= THRESHOLDS.longNet ? "long" : net <= THRESHOLDS.shortNet ? "short" : "observe";
-  const confidence = clamp(Math.round(Math.abs(net - 50) * 1.6 + 50));
+  let confidence = clamp(Math.round(Math.abs(net - 50) * 1.6 + 50));
+
+  // 反追涨杀跌(纪律 S1「顺势回调进场,不摸顶」):pricePosition=价格在近程区间的位置(0贴下沿~1贴上沿)。
+  // 方向为多却已贴上沿(≥0.85)=追高末端、方向为空却已贴下沿(≤0.15)=追空末端,砍置信度;
+  // 砍到不达标就转观望,让引擎等回调而不是追在末端(这正是"信号滞后、进场即被回撤扫损"的根因之一)。
+  const pos = num(market.pricePosition);
+  if (pos != null) {
+    if (direction === "long" && pos >= THRESHOLDS.chaseHigh) {
+      confidence = clamp(confidence - THRESHOLDS.chasePenalty);
+      reasons.push(`价格贴近区间高点(${pos.toFixed(2)})，追多在末端，置信度下调 ${THRESHOLDS.chasePenalty}——等回调再进`);
+    } else if (direction === "short" && pos <= THRESHOLDS.chaseLow) {
+      confidence = clamp(confidence - THRESHOLDS.chasePenalty);
+      reasons.push(`价格贴近区间低点(${pos.toFixed(2)})，追空在末端，置信度下调 ${THRESHOLDS.chasePenalty}——等反抽再进`);
+    }
+  }
 
   // 证据不足或方向不明 → 只观望，不下计划（诚实优先，不硬凑方向）。
   if (direction === "observe") reasons.push(`多源融合分 ${Math.round(net)} 落在中性区(${THRESHOLDS.shortNet}~${THRESHOLDS.longNet})，方向不明`);
@@ -98,7 +127,8 @@ export function deterministicDecision({ market = {}, smartMoney = null, mandate 
     reasons.push(`置信度 ${confidence} 未达 ${THRESHOLDS.minConfidence}，转观望`);
     direction = "observe";
   }
-  const plan = direction === "observe" ? null : buildPlan(price, direction, mandate, market.atrPct);
+  // atr(绝对值,真实 ATR)优先;缺失时回落 atrPct 比例法。二者都缺则用默认止损比例。
+  const plan = direction === "observe" ? null : buildPlan(price, direction, mandate, { atr: num(market.atr), atrPct: num(market.atrPct), pricePosition: pos });
   return {
     symbol: market.symbol || null,
     direction,

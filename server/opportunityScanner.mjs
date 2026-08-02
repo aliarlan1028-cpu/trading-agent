@@ -7,6 +7,45 @@ import { nowIso } from "./store.mjs";
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// —— 反追涨杀跌打分(纯函数、可单测)——
+// 旧打分:rangePos 越高(贴24h上沿)longScore 越高 → 系统主动挑"已冲到顶"的币做多、"已砸到底"做空,
+// 就是买在末端、追涨杀跌,还和自身纪律 S1「顺势回调进场,不摸顶」、S2「不追突破」矛盾。
+// 新打分落实纪律:方向仍看动量正负(趋势),但入场质量奖励【顺势回调】——价格从极端位回撤到中段最优;
+// 贴极端沿(追高/追空末端)与深跌未企稳(falling knife)都扣分。
+// pullbackQuality:long 理想区间位 ~0.42、short ~0.58(留出到对边的空间),偏离越大分越低,极端处归零。
+export function pullbackQuality(pos, side) {
+  const p = Number(pos);
+  if (!Number.isFinite(p)) return 0.5; // 缺区间位:中性,不追不惩
+  const ideal = side === "short" ? 0.58 : 0.42;
+  return clamp(1 - Math.abs(p - ideal) / 0.42, 0, 1);
+}
+
+// 返回 {longScore, shortScore}:趋势强度 45 + 回调质量 40 + 振幅 15(0-100)。
+export function scoreCandidate({ momentum = 0, rangePos = 0.5, volPct = 0 } = {}) {
+  const trendLong = clamp(momentum, 0, 30) / 30;
+  const trendShort = clamp(-momentum, 0, 30) / 30;
+  const volScore = clamp(volPct, 0, 20) / 20;
+  return {
+    longScore: trendLong * 45 + pullbackQuality(rangePos, "long") * 40 + volScore * 15,
+    shortScore: trendShort * 45 + pullbackQuality(rangePos, "short") * 40 + volScore * 15
+  };
+}
+
+// 诚实标签:是顺势回调候选,还是已追高/深跌未企稳的"别追"警示。
+export function candidateTag(side, rangePos, momentum) {
+  const p = Number(rangePos);
+  if (side === "long") {
+    if (p >= 0.8) return "已贴上沿·追高风险(等回调)";
+    if (p <= 0.15) return "深跌未企稳·falling knife";
+    if (momentum > 3 && p <= 0.6) return "顺势回调候选";
+    return "偏多观察";
+  }
+  if (p <= 0.2) return "已贴下沿·追空末端(等反抽)";
+  if (p >= 0.85) return "冲高未转弱·别摸顶";
+  if (momentum < -3 && p >= 0.4) return "反抽做空候选";
+  return "偏空观察";
+}
+
 // opts: { limit(默认8,1-20), direction("long"|"short"|"both"默认both), minQuoteVolUsdt(流动性下限,默认5e6),
 //         excludeSymbols(数组,如已持仓/白名单可排除或标注) }
 export async function scanOpportunities(db, opts = {}) {
@@ -35,19 +74,15 @@ export async function scanOpportunities(db, opts = {}) {
       const volPct = (high - low) / last * 100;              // 24h 振幅 %
       const symbol = String(t.instId).replace("-SWAP", "").replace("-", "/");
 
-      // 方向感知打分(0-100):动量 40 + 区间位置 35 + 振幅 25。做多要动量正+贴上沿;做空反之。
-      const volScore = clamp(volPct, 0, 20) / 20 * 25;
-      const longScore = clamp(momentum, 0, 30) / 30 * 40 + rangePos * 35 + volScore;
-      const shortScore = clamp(-momentum, 0, 30) / 30 * 40 + (1 - rangePos) * 35 + volScore;
+      // 反追涨杀跌打分(见 scoreCandidate):方向看动量,入场质量奖励顺势回调、罚追极端。
+      const { longScore, shortScore } = scoreCandidate({ momentum, rangePos, volPct });
       let side, score;
       if (direction === "long") { side = "long"; score = longScore; }
       else if (direction === "short") { side = "short"; score = shortScore; }
       else if (longScore >= shortScore) { side = "long"; score = longScore; }
       else { side = "short"; score = shortScore; }
 
-      const tag = side === "long"
-        ? (rangePos >= 0.85 ? "逼近上沿·突破候选" : momentum >= 8 ? "强动量候选" : "偏多候选")
-        : (rangePos <= 0.15 ? "贴近下沿·破位候选" : momentum <= -8 ? "强下行候选" : "偏空候选");
+      const tag = candidateTag(side, rangePos, momentum);
 
       scored.push({
         symbol, side, score: Number(score.toFixed(1)),

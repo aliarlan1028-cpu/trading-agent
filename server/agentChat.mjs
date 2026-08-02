@@ -427,6 +427,19 @@ ${SYSTEM_GUIDE}`;
 // 动态系统提示：把长期记忆（状态文件 + 三层记忆）与专业知识库（RAG 检索）
 // 注入 LLM 上下文，让 Agent 真正"记得主人、掌握专业知识"。
 // ---------------------------------------------------------------------------
+// 从最近 K 线(OHLC)算真实 ATR:True Range = max(h-l, |h-前收|, |l-前收|) 的均值。
+// 供确定性决策用 ATR 倍数定止损(纪律 S4),比拿区间打折更贴真实波动。数据不足返回 null。
+function computeAtrFromCandles(candles) {
+  const arr = Array.isArray(candles) ? candles.filter((c) => c && Number.isFinite(c.h) && Number.isFinite(c.l) && Number.isFinite(c.c)) : [];
+  if (arr.length < 2) return null;
+  let sum = 0, n = 0;
+  for (let i = 1; i < arr.length; i++) {
+    const tr = Math.max(arr[i].h - arr[i].l, Math.abs(arr[i].h - arr[i - 1].c), Math.abs(arr[i].l - arr[i - 1].c));
+    if (Number.isFinite(tr)) { sum += tr; n++; }
+  }
+  return n ? sum / n : null;
+}
+
 function clip(text, max) {
   const value = String(text || "").trim();
   return value.length > max ? `${value.slice(0, max)}…` : value;
@@ -1692,6 +1705,9 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
       const full = db.markets?.find((mk) => mk.symbol === symbol) || {};
       const smart = await fetchSmartMoney(symbol).catch(() => null);
       const rangeAtr = Number(market.recentHigh) - Number(market.recentLow);
+      // 真实 ATR:用最近 K 线的真实波幅均值(True Range = max(h-l, |h-前c|, |l-前c|)),
+      // 供止损用 ATR 倍数(纪律 S4),而不是拿 48h 区间粗略打折。缺 K 线时回落区间比例法。
+      const atrAbs = computeAtrFromCandles(market.lastCandles);
       const d = deterministicDecision({
         market: {
           symbol,
@@ -1699,7 +1715,10 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
           changePct: full.changePct ?? Number(market.change24hPct),
           fundingRate: full.fundingRate,
           bookImbalancePct: full.bookImbalancePct,
-          atrPct: rangeAtr > 0 && Number(market.price) > 0 ? (rangeAtr / Number(market.price)) * 0.25 : undefined
+          atr: atrAbs,
+          atrPct: rangeAtr > 0 && Number(market.price) > 0 ? (rangeAtr / Number(market.price)) * 0.25 : undefined,
+          // 区间位(0贴下沿~1贴上沿),用于反追涨杀跌:贴上沿别追多、贴下沿别追空。
+          pricePosition: Number.isFinite(market.rangePosition24h) ? market.rangePosition24h / 100 : undefined
         },
         smartMoney: smart,
         mandate: activeMandate(db) || db.mandates?.[0] || null
