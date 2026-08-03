@@ -701,7 +701,7 @@ export async function okxPositionMode() {
   } catch { return okxPosModeCache.mode; }
 }
 
-async function applyOkxSnapshot(db, snapshot) {
+export async function applyOkxSnapshot(db, snapshot) {
   const seen = new Set();
   for (const payload of snapshot.positions || []) {
     const size = Number(payload.pos || 0);
@@ -732,7 +732,10 @@ async function applyOkxSnapshot(db, snapshot) {
   upsertOpenOrders(db, "OKX", snapshot.openOrders);
   const account = snapshot.balances?.[0] || {};
   const totalEq = Number(account.totalEq);
-  if (Number.isFinite(totalEq) && totalEq > 0) db.portfolio.totalEquityUsdt = totalEq;
+  if (Number.isFinite(totalEq) && totalEq > 0) {
+    db.portfolio.totalEquityUsdt = totalEq;
+    snapshot.totalEquityUsdt = totalEq; // 盖到快照(时间序列)上:持仓盈亏曲线读的是每条快照的净值,此前只写 portfolio 最新值→曲线永远空
+  }
   // 真实可用/冻结：来自 OKX balance details 的 USDT 明细（此前从未写入，前端一直显示假的 0.00）。
   const usdtDetail = (account.details || []).find((d) => d.ccy === "USDT") || {};
   const availEq = Number(usdtDetail.availEq ?? usdtDetail.availBal);
@@ -746,7 +749,7 @@ async function applyOkxSnapshot(db, snapshot) {
   db.portfolio.marginSyncedAt = snapshot.createdAt;
 }
 
-function applyBinanceSnapshot(db, snapshot) {
+export function applyBinanceSnapshot(db, snapshot) {
   const seen = new Set();
   for (const payload of snapshot.positions || []) {
     const amount = Number(payload.positionAmt || 0);
@@ -774,7 +777,10 @@ function applyBinanceSnapshot(db, snapshot) {
   upsertOpenOrders(db, "BINANCE", snapshot.openOrders);
   const usdt = (snapshot.balances || []).find((item) => item.asset === "USDT");
   const total = Number(usdt?.free || 0) + Number(usdt?.locked || 0);
-  if (Number.isFinite(total) && total > 0) db.portfolio.totalEquityUsdt = total;
+  if (Number.isFinite(total) && total > 0) {
+    db.portfolio.totalEquityUsdt = total;
+    snapshot.totalEquityUsdt = total; // 同 OKX:盖到快照上,曲线才有历史点可画
+  }
 }
 
 function normalizeBinanceDisplaySymbol(symbol) {
