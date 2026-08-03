@@ -8,6 +8,13 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 const trailPct = () => Math.max(0.001, Number(process.env.TRAIL_PCT || 0.012));            // 跟踪止损距离(小数,默认 0.012=1.2%)
 const trailActivatePct = () => Math.max(0, Number(process.env.TRAIL_ACTIVATE_PCT || 1.5)) / 100; // 盈利达此(默认 1.5%)即启动追踪(freqtrade trailing_stop_positive)
 
+// move_stop 成功判定:只有交易所真正接受(或幂等重放)才算"止损已移动"。
+// 【修复谎报保本】OKX 降级态 unsupported_move_stop_okx 的 status !== "blocked",旧代码据此误判为成功 →
+// 回写本地 stopLoss + 标 breakevenMoved + 推"✅已保本",但交易所侧止损纹丝未动,持仓实际在裸奔。
+// 这里收窄为显式白名单:白名单外(含 OKX 降级、交易所拒单、缺凭证)一律视为"未移动",绝不回写、绝不谎报。
+export const STOP_MOVE_SUCCESS = new Set(["ok", "submitted", "idempotent_replay"]);
+export const moveStopSucceeded = (result) => STOP_MOVE_SUCCESS.has(result?.status);
+
 async function moveStopTo(db, position, newStop, label) {
   const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
   const result = await executeTradeAction(db, "move_stop", {
@@ -113,11 +120,7 @@ export async function monitorPositions(db) {
       const stopBelowBreakeven = isShort ? stop > entry : stop < entry;
       if (tp1Reached && stopBelowBreakeven && !position.breakevenMoved) {
         const result = await moveStopTo(db, position, entry, "breakeven");
-        if (result.status === "blocked") {
-          // 实盘关闭或闸门拦截：记录建议而不是假装已移动
-          appendAudit(db, `建议移动止损到保本 ${entry}（${result.reason}）`, position.id, "PositionManager", "warning");
-          actions.push({ symbol: position.symbol, action: "breakeven_recommended", reason: result.reason });
-        } else {
+        if (moveStopSucceeded(result)) {
           position.stopLoss = entry;
           position.breakevenMoved = true;
           appendAudit(db, `TP1 触达，止损已移动到保本 ${entry}`, position.id, "PositionManager");
@@ -129,6 +132,21 @@ export async function monitorPositions(db) {
             fields: [{ label: "保本价", value: String(entry) }, { label: "标记价", value: String(mark) }]
           });
           actions.push({ symbol: position.symbol, action: "breakeven_moved" });
+        } else {
+          // 未真正移动:绝不回写本地止损、绝不标 breakevenMoved、绝不谎报"已保本"。
+          const blocked = result.status === "blocked"; // blocked=实盘关/闸拦(预期);其余=尝试了但交易所侧没移动(真实保护缺口)
+          appendAudit(db, `止损未能移动到保本 ${entry}（${result.status}${result.reason ? `：${result.reason}` : ""}）——本地止损保持原值，交易所侧保护未更新`, position.id, "PositionManager", "warning");
+          if (!blocked) {
+            // 交易所侧确实没移动止损(如 OKX 附加止损不支持改单),用户可能误以为已保本 → 明确告警 + 建单,提示手动处理。
+            raiseIncident(db, position, "high", `${position.symbol} TP1 触达但止损无法移动到保本(${result.status})，交易所侧保护未更新，需手动处理`);
+            await notifyLarkThrottled(db, `breakeven_fail:${position.id}`, 60 * 60 * 1000, {
+              severity: "warning",
+              title: "⚠ 止损未能自动移到保本(需手动)",
+              body: `**${position.symbol}** 触达 TP1，但系统未能在交易所把止损移到保本（${result.status}）。本单仍按原止损运行、并未保本，请手动处理。`,
+              fields: [{ label: "建议保本价", value: String(entry) }, { label: "原止损", value: String(position.stopLoss) }, { label: "原因", value: String(result.status) }]
+            });
+          }
+          actions.push({ symbol: position.symbol, action: "breakeven_recommended", reason: result.status });
         }
       }
 
@@ -143,14 +161,16 @@ export async function monitorPositions(db) {
         if (improves && stillProfitable) {
           const rounded = Number(trailStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
           const result = await moveStopTo(db, position, rounded, "trailing");
-          if (result.status !== "blocked") {
+          if (moveStopSucceeded(result)) {
             position.stopLoss = rounded;
             position.trailingActive = true;
             appendAudit(db, `跟踪止损上移到 ${rounded}`, position.id, "PositionManager");
             appendTrace(db, "position_manager", `${position.symbol} 跟踪止损 ${rounded}`, "ok");
             actions.push({ symbol: position.symbol, action: "trailing_moved", stop: rounded });
           } else {
-            actions.push({ symbol: position.symbol, action: "trailing_recommended", stop: rounded, reason: result.reason });
+            // 未真正移动(含 OKX 降级/拒单):绝不回写本地止损、绝不标 trailingActive,否则本地会记一个交易所上不存在的止损。
+            appendTrace(db, "position_manager", `${position.symbol} 跟踪止损未生效（${result.status}）——保持原止损`, result.status === "blocked" ? "ok" : "warning");
+            actions.push({ symbol: position.symbol, action: "trailing_recommended", stop: rounded, reason: result.status });
           }
         }
       }

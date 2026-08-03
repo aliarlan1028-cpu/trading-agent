@@ -121,29 +121,32 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
   return out;
 }
 
+// 机械读数:把原始比值按固定阈值分桶,给 Agent 一份客观描述——只陈述"数值落在哪个区间",
+// 不含"该做多/主力吸筹/逢高谨慎"这类方向结论或处方(那是 Agent 结合知识自己下的判断)。
+// 原始比值同时透明保留在 topTraderLongShortRatio 等字段,Agent 可绕过本读数直接看数。
 function interpretSmartMoney(s) {
   const parts = [];
   if (s.topTraderLongShortRatio != null) {
-    parts.push(`大户持仓多空比 ${s.topTraderLongShortRatio}（${s.topTraderLongShortRatio > 1.15 ? "大资金偏多" : s.topTraderLongShortRatio < 0.87 ? "大资金偏空" : "大资金中性"}）`);
+    parts.push(`大户持仓多空比 ${s.topTraderLongShortRatio}（${s.topTraderLongShortRatio > 1.15 ? "偏多" : s.topTraderLongShortRatio < 0.87 ? "偏空" : "中性"}）`);
   }
   if (s.retailLongShortRatio != null) {
-    parts.push(`散户账户多空比 ${s.retailLongShortRatio}（${s.retailLongShortRatio > 1.3 ? "散户过度看多" : s.retailLongShortRatio < 0.77 ? "散户过度看空" : "散户中性"}）`);
+    parts.push(`散户账户多空比 ${s.retailLongShortRatio}（${s.retailLongShortRatio > 1.3 ? "多头拥挤" : s.retailLongShortRatio < 0.77 ? "空头拥挤" : "中性"}）`);
   }
   if (s.topTraderLongShortRatio != null && s.retailLongShortRatio != null) {
-    if (s.topTraderLongShortRatio > 1.05 && s.retailLongShortRatio < 0.95) parts.push("大户偏多 + 散户偏空 → 主力或在吸筹，偏多有利");
-    else if (s.topTraderLongShortRatio < 0.95 && s.retailLongShortRatio > 1.05) parts.push("大户偏空 + 散户偏多 → 警惕派发/诱多，逢高谨慎");
+    if (s.topTraderLongShortRatio > 1.05 && s.retailLongShortRatio < 0.95) parts.push("大户偏多 / 散户偏空（持仓背离）");
+    else if (s.topTraderLongShortRatio < 0.95 && s.retailLongShortRatio > 1.05) parts.push("大户偏空 / 散户偏多（持仓背离）");
   }
   if (s.takerBuySellRatio != null) {
-    parts.push(`主动买卖比 ${s.takerBuySellRatio}（${s.takerBuySellRatio > 1.05 ? "主动买盘占优" : s.takerBuySellRatio < 0.95 ? "主动卖盘占优" : "买卖均衡"}）`);
+    parts.push(`主动买卖比 ${s.takerBuySellRatio}（${s.takerBuySellRatio > 1.05 ? "买盘占优" : s.takerBuySellRatio < 0.95 ? "卖盘占优" : "均衡"}）`);
   }
   if (s.liquidations?.total) {
     const L = s.liquidations;
-    const dir = L.dominantSide === "long" ? "多头爆仓为主（价格下砸、多头被清洗）"
-      : L.dominantSide === "short" ? "空头爆仓为主（轧空、价格上冲）"
+    const dir = L.dominantSide === "long" ? "多头爆仓为主"
+      : L.dominantSide === "short" ? "空头爆仓为主"
       : "多空爆仓均衡";
     parts.push(`近期爆仓 多${L.longLiqCount}/空${L.shortLiqCount} 单，${dir}`);
   }
-  return parts.join("；") || "聪明钱数据不足（数据源暂不可用）";
+  return parts.length ? "机械读数（供参考，非结论）：" + parts.join("；") : "聪明钱数据不足（数据源暂不可用）";
 }
 
 // OKX 清算明细 → 多空爆仓聚合。posSide=long 被爆=多头被清洗（下砸）；short 被爆=轧空（上冲）。

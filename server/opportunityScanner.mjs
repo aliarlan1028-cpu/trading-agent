@@ -6,44 +6,55 @@ import { nowIso } from "./store.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const num = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
-// —— 反追涨杀跌打分(纯函数、可单测)——
-// 旧打分:rangePos 越高(贴24h上沿)longScore 越高 → 系统主动挑"已冲到顶"的币做多、"已砸到底"做空,
-// 就是买在末端、追涨杀跌,还和自身纪律 S1「顺势回调进场,不摸顶」、S2「不追突破」矛盾。
-// 新打分落实纪律:方向仍看动量正负(趋势),但入场质量奖励【顺势回调】——价格从极端位回撤到中段最优;
-// 贴极端沿(追高/追空末端)与深跌未企稳(falling knife)都扣分。
-// pullbackQuality:long 理想区间位 ~0.42、short ~0.58(留出到对边的空间),偏离越大分越低,极端处归零。
+// —— 扫描器打分配置:单一事实源,可调,应以回测/寻优为准 ——
+// 定性(重要):这套权重与理想回调位是【全市场粗筛漏斗启发式 + 反追涨杀跌纪律 S1】,
+// 不是经回测验证的 alpha 模型。它只决定"200+ 币里先看哪几个、以什么顺序看",
+// 做不做、怎么做仍由 Agent 拿分解因子(动量/区间位/振幅,已在候选字段透明暴露)走深分析自判。
+// 调这些数请以回测为准、勿凭感觉;env 仅供试验,长期应沉淀进策略寻优(见 strategyOptimizer)。
+const SCAN = {
+  trendWeight: num(process.env.SCAN_TREND_WEIGHT, 45),           // 趋势(动量方向)权重
+  pullbackWeight: num(process.env.SCAN_PULLBACK_WEIGHT, 40),     // 顺势回调质量权重(纪律 S1:不摸顶/不追末端)
+  volWeight: num(process.env.SCAN_VOL_WEIGHT, 15),              // 振幅(可交易性)权重
+  idealPullbackLong: num(process.env.SCAN_IDEAL_PULLBACK_LONG, 0.42),   // 多单理想回调区间位
+  idealPullbackShort: num(process.env.SCAN_IDEAL_PULLBACK_SHORT, 0.58), // 空单理想反抽区间位
+  pullbackBand: num(process.env.SCAN_PULLBACK_BAND, 0.42),       // 偏离带宽:偏离理想位多远时归零
+  trendCap: 30,   // 动量饱和上限(±30% 封顶为满分)
+  volCap: 20      // 振幅饱和上限(20% 封顶为满分)
+};
+
+// pullbackQuality:入场质量奖励顺势回调——价格从极端位回撤到中段最优;贴极端沿(追末端)与深跌未企稳都归零。
+// 这是纪律 S1 的量化落地,不是行情预测;理想位/带宽全部来自上面的 SCAN 配置。
 export function pullbackQuality(pos, side) {
   const p = Number(pos);
   if (!Number.isFinite(p)) return 0.5; // 缺区间位:中性,不追不惩
-  const ideal = side === "short" ? 0.58 : 0.42;
-  return clamp(1 - Math.abs(p - ideal) / 0.42, 0, 1);
+  const ideal = side === "short" ? SCAN.idealPullbackShort : SCAN.idealPullbackLong;
+  return clamp(1 - Math.abs(p - ideal) / SCAN.pullbackBand, 0, 1);
 }
 
-// 返回 {longScore, shortScore}:趋势强度 45 + 回调质量 40 + 振幅 15(0-100)。
+// 返回 {longScore, shortScore}:趋势强度 + 回调质量 + 振幅,权重见 SCAN 配置(默认 45/40/15,满分 100)。
 export function scoreCandidate({ momentum = 0, rangePos = 0.5, volPct = 0 } = {}) {
-  const trendLong = clamp(momentum, 0, 30) / 30;
-  const trendShort = clamp(-momentum, 0, 30) / 30;
-  const volScore = clamp(volPct, 0, 20) / 20;
+  const trendLong = clamp(momentum, 0, SCAN.trendCap) / SCAN.trendCap;
+  const trendShort = clamp(-momentum, 0, SCAN.trendCap) / SCAN.trendCap;
+  const volScore = clamp(volPct, 0, SCAN.volCap) / SCAN.volCap;
   return {
-    longScore: trendLong * 45 + pullbackQuality(rangePos, "long") * 40 + volScore * 15,
-    shortScore: trendShort * 45 + pullbackQuality(rangePos, "short") * 40 + volScore * 15
+    longScore: trendLong * SCAN.trendWeight + pullbackQuality(rangePos, "long") * SCAN.pullbackWeight + volScore * SCAN.volWeight,
+    shortScore: trendShort * SCAN.trendWeight + pullbackQuality(rangePos, "short") * SCAN.pullbackWeight + volScore * SCAN.volWeight
   };
 }
 
-// 诚实标签:是顺势回调候选,还是已追高/深跌未企稳的"别追"警示。
-export function candidateTag(side, rangePos, momentum) {
-  const p = Number(rangePos);
-  if (side === "long") {
-    if (p >= 0.8) return "已贴上沿·追高风险(等回调)";
-    if (p <= 0.15) return "深跌未企稳·falling knife";
-    if (momentum > 3 && p <= 0.6) return "顺势回调候选";
-    return "偏多观察";
-  }
-  if (p <= 0.2) return "已贴下沿·追空末端(等反抽)";
-  if (p >= 0.85) return "冲高未转弱·别摸顶";
-  if (momentum < -3 && p >= 0.4) return "反抽做空候选";
-  return "偏空观察";
+// 中性位置事实:只陈述"价格在24h区间的哪、动量强弱",不下"追高/该等回调/别摸顶"这类结论——
+// 那是 Agent 结合纪律 S1/S2 自己的判断,扫描器不替它下。原始 rangePos/momentum 也在候选字段里透明可见。
+// (_side 保留仅为签名兼容,中性描述不依赖方向。)
+export function candidateTag(_side, rangePos, momentum) {
+  const p = Number(rangePos), m = Number(momentum);
+  const zone = !Number.isFinite(p) ? "区间位未知"
+    : p >= 0.8 ? `贴24h上沿(${p.toFixed(2)})`
+    : p <= 0.2 ? `贴24h下沿(${p.toFixed(2)})`
+    : `24h区间中段(${p.toFixed(2)})`;
+  const mo = !Number.isFinite(m) ? "" : m >= 3 ? "·动量偏强" : m <= -3 ? "·动量偏弱" : "·动量平缓";
+  return zone + mo;
 }
 
 // opts: { limit(默认8,1-20), direction("long"|"short"|"both"默认both), minQuoteVolUsdt(流动性下限,默认5e6),

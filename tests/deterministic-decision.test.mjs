@@ -111,8 +111,13 @@ test("扫描器:pullbackQuality 极端位归零、中段最高", () => {
   assert.ok(pullbackQuality(0.58, "short") > 0.95, "做空理想反抽位应接近满分");
 });
 
-test("扫描器:追高/追空给出诚实警示标签", () => {
-  assert.match(candidateTag("long", 0.9, 10), /追高/);
-  assert.match(candidateTag("short", 0.1, -10), /追空/);
-  assert.match(candidateTag("long", 0.45, 8), /回调/);
+test("扫描器:标签只给中性位置事实、不下追高/该等回调这类结论", () => {
+  // 反锚定:扫描器陈述"在哪、动量强弱",把"该不该追"的判断留给 Agent + 纪律层。
+  assert.match(candidateTag("long", 0.9, 10), /上沿/);
+  assert.match(candidateTag("short", 0.1, -10), /下沿/);
+  assert.match(candidateTag("long", 0.45, 8), /中段/);
+  // 不得再出现处方式结论词。
+  for (const t of [candidateTag("long", 0.9, 10), candidateTag("short", 0.1, -10), candidateTag("long", 0.45, 8)]) {
+    assert.doesNotMatch(t, /追高|追空|别追|别摸顶|候选/, `标签不应含处方式结论:${t}`);
+  }
 });
