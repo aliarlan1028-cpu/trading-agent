@@ -582,7 +582,7 @@ function AgentRail({ data, action, ui, send }) {
               {actives.map((w) => {
                 const remainH = Math.max(0, (new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000);
                 return (
-                  <div className="agWatchRow" key={w.id} title={fullInfo(w)}>
+                  <div className="agWatchRow" key={w.id}>
                     <span className="agWatchDot" />
                     <div className="agWatchBody">
                       <b className="mono">{w.symbol}</b> {desc(w)}
@@ -590,14 +590,16 @@ function AgentRail({ data, action, ui, send }) {
                     </div>
                     <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
                     <button className="agWatchCancel" title="撤销观察哨" onClick={async () => { if (await uiConfirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
+                    <div className="agWatchTip">{fullInfo(w).split("\n").map((ln, i) => <div key={i}>{ln}</div>)}</div>
                   </div>
                 );
               })}
               {recent.map((w) => (
-                <div className="agWatchRow closed" key={w.id} title={fullInfo(w)}>
+                <div className="agWatchRow closed" key={w.id}>
                   <span className={`agWatchDot ${w.status}`} />
                   <div className="agWatchBody"><b className="mono">{w.symbol}</b> {desc(w)}</div>
                   <span className="agWatchMeta mono">{label[w.status] || w.status}{w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}</span>
+                  <div className="agWatchTip">{fullInfo(w).split("\n").map((ln, i) => <div key={i}>{ln}</div>)}</div>
                 </div>
               ))}
             </div>

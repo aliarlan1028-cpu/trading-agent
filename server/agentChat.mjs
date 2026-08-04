@@ -175,6 +175,19 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "screen_by_profit_target",
+    description: "【盈利目标反推波动率门槛·选币工具，按需调用，不影响常规决策】给定『单笔想赚多少 USDT』，结合账户净值与假设杠杆反推『需要多少% 价格波动』，再扫全市场标注哪些币的真实 24h 振幅能给到这个波动。用于回答『我想每单赚 X，现在哪些币有这个空间』。重要：这只是【目标导向的筛选参考】，不改变任何风控/纪律、不构成方向建议——方向/入场/止损仍按你正常的五视角深分析定；白名单外候选仍只能一次性授权。",
+    schema: {
+      type: "object",
+      properties: {
+        profitTargetUsdt: { type: "number", description: "单笔目标盈利(USDT)，必填，如 100" },
+        leverage: { type: "number", description: "假设杠杆(默认取 mandate 上限或 10)，仅用于反推名义" },
+        direction: { type: "string", enum: ["long", "short", "both"], description: "方向偏好，默认 both" }
+      },
+      required: ["profitTargetUsdt"]
+    }
+  },
+  {
     name: "create_mandate_draft",
     description: "把用户的自然语言授权目标固化为结构化授权委托草案（需用户在界面上确认激活后才生效）。",
     schema: {
@@ -990,6 +1003,30 @@ export async function executeTool(db, run, name, args = {}) {
     return explainMarketMove(db, args.symbol || "BTC/USDT");
   }
 
+  if (name === "screen_by_profit_target") {
+    // 盈利目标反推波动率门槛(纯筛选,不改任何风控/纪律,不进常规决策上下文)。
+    const pf = db.portfolio || {};
+    const equity = Number(pf.totalEquityUsdt);
+    const target = Number(args.profitTargetUsdt);
+    if (!Number.isFinite(equity) || equity <= 0) return { ok: false, error: "账户净值未同步,无法反推波动门槛——先 sync_account。" };
+    if (!Number.isFinite(target) || target <= 0) return { ok: false, error: "请给出单笔目标盈利 profitTargetUsdt(USDT)。" };
+    const mdt = activeMandate(db);
+    const maxLev = Number(mdt?.maxLeverage) || 10;
+    const leverage = Math.max(1, Math.min(Number(args.leverage) || maxLev, 50));
+    const positionValue = equity * leverage;               // 满仓名义
+    const requiredMovePct = (target / positionValue) * 100; // 赚目标所需价格波动 %
+    const scan = await scanOpportunities(db, { limit: 15, direction: ["long", "short", "both"].includes(args.direction) ? args.direction : "both", minQuoteVolUsdt: 5_000_000 });
+    const qualifying = (scan.candidates || [])
+      .filter((c) => Number(c.volatilityPct) >= requiredMovePct)
+      .map((c) => ({ symbol: c.symbol, side: c.side, volatilityPct: c.volatilityPct, changePct24h: c.changePct24h, quoteVolUsdtM: c.quoteVolUsdtM, inWhitelist: c.inWhitelist }));
+    return {
+      ok: true, equity, leverage, positionValue: Number(positionValue.toFixed(0)),
+      profitTargetUsdt: target, requiredMovePct: Number(requiredMovePct.toFixed(2)),
+      qualifying, universe: scan.universe,
+      note: `以 ${leverage}x 满仓名义约 ${positionValue.toFixed(0)} USDT 计,赚 ${target}U 需价格波动约 ${requiredMovePct.toFixed(2)}%。下列币 24h 振幅达到这个量级(仅筛选参考,不构成方向建议;仍需五视角深分析,白名单外只能一次性授权)。`
+    };
+  }
+
   if (name === "scan_market_opportunities") {
     // 全市场机会漏斗:标注哪些已在授权白名单内(inWhitelist),让 Agent 深分析后对白名单外优质币建议加白。
     const mdt = activeMandate(db);
@@ -1649,6 +1686,9 @@ function summarizeToolResult(name, result = {}) {
   if (name === "scan_market_opportunities") return result.candidates?.length
     ? `全市场扫 ${result.universe} 个永续，Top ${result.candidates.length}：` + result.candidates.map((c) => `${c.symbol}${c.inWhitelist ? "✓" : ""} ${c.side === "short" ? "空" : "多"}${c.score}(${c.tag})`).join("、")
     : `未筛出候选（扫 ${result.universe || 0} 个，${result.error || "均低于流动性/评分门槛"}）`;
+  if (name === "screen_by_profit_target") return result.ok === false
+    ? `无法筛选：${result.error}`
+    : `赚 ${result.profitTargetUsdt}U 需波动 ${result.requiredMovePct}%（${result.leverage}x）；达标 ${result.qualifying.length} 个：${result.qualifying.slice(0, 8).map((c) => `${c.symbol}${c.inWhitelist ? "✓" : ""} 振幅${c.volatilityPct}%`).join("、") || "无（当前无币能给到该波动，别硬凑目标）"}`;
   if (name === "propose_trade_plan") {
     const align = result.smartMoneyAlignment;
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";

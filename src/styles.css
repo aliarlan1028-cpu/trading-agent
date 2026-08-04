@@ -8913,3 +8913,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .bcAlert.good{background:#e8f5ee;color:#227a4f;border:1px solid #c4e6d3;}
 .bcAlert.bad{background:#fbeae5;color:#b3341c;border:1px solid #f0ccc2;}
 @media (max-width:640px){.bcGrid{grid-template-columns:1fr;}}
+
+/* 观察哨悬停 tooltip(样式化,替代原生 title:即时、显示全、向左展开不被侧栏裁) */
+.agWatchRow{position:relative;}
+.agWatchTip{
+  display:none;position:absolute;right:100%;top:-4px;margin-right:8px;
+  width:280px;max-width:72vw;z-index:60;pointer-events:none;
+  background:#fffdf9;color:var(--text,#1e1b16);border:1px solid var(--border,#e3dcce);
+  border-radius:10px;padding:10px 12px;box-shadow:0 8px 28px rgba(0,0,0,.2);
+  font-size:12px;line-height:1.6;white-space:normal;word-break:break-word;text-align:left;
+}
+.agWatchTip>div{margin:1px 0;}
+.agWatchTip>div:first-child{font-weight:700;color:var(--accent-ink,#a8511a);}
+.agWatchRow:hover .agWatchTip{display:block;}
+@media (max-width:900px){.agWatchTip{right:auto;left:0;top:100%;margin:6px 0 0;}}

@@ -33,4 +33,15 @@ export function registerSystemRoutes(app, ctx) {
     appendTrace(db, "system", db.system.latestAction, db.system.autonomyEnabled ? "ok" : "paused");
     persist(res, db.system);
   });
+
+  // 盈利目标(日/月):只给监控/展示层(目标进度、日目标命中率、波动门槛工具)读——
+  // 【重要】绝不注入交易决策提示词,避免"为凑目标而追单"的报复性/过度交易。可配、可清(传 null/0)。
+  app.post("/api/system/goals", (req, res) => {
+    const dn = Number(req.body?.dailyGoalUsdt), mn = Number(req.body?.monthlyGoalUsdt);
+    if (req.body?.dailyGoalUsdt !== undefined) db.system.dailyGoalUsdt = Number.isFinite(dn) && dn > 0 ? dn : null;
+    if (req.body?.monthlyGoalUsdt !== undefined) db.system.monthlyGoalUsdt = Number.isFinite(mn) && mn > 0 ? mn : null;
+    db.system.updatedAt = nowIso();
+    appendAudit(db, `更新盈利目标:日 ${db.system.dailyGoalUsdt ?? "未设"} / 月 ${db.system.monthlyGoalUsdt ?? "未设"} USDT`, "system.goals", req.user?.name || db.user.name);
+    persist(res, db.system);
+  });
 }

@@ -202,7 +202,7 @@ function PairPicker({ instruments, value, onPick, label = "选择币对", trigge
   </div>;
 }
 
-export function TradingOverviewConcept({ data, ui }) {
+export function TradingOverviewConcept({ data, action, ui }) {
   const pf = data.portfolio || {};
   const positions = arr(data.positions); const fills = arr(data.fills); const orders = arr(data.executionOrders).length ? arr(data.executionOrders) : arr(data.orders);
   const markets = marketRows(data); const activeMarket = data.activeMarket || markets[0] || {};
@@ -229,7 +229,13 @@ export function TradingOverviewConcept({ data, ui }) {
       const dayPct = dailyGoal > 0 ? Math.max(0, Math.min(100, (todayPnl / dailyGoal) * 100)) : 0;
       const monPct = monthlyGoal > 0 ? Math.max(0, Math.min(100, (monthPnl / monthlyGoal) * 100)) : 0;
       const goalMet = dailyGoal > 0 && todayPnl >= dailyGoal, revenge = dailyGoal > 0 && todayPnl <= -0.5 * dailyGoal;
-      return <ConceptCard title="🎯 目标进度 · 行为约束" meta="日/月盈利目标(UTC+8)· 把绩效变纪律">
+      return <ConceptCard title="🎯 目标进度 · 行为约束" meta="日/月盈利目标(UTC+8)· 只做监控,不进 AI 决策" action={<button className="cp2Link" onClick={async () => {
+        const d = await uiPrompt("每日盈利目标(USDT,留空=不设)", data.system?.dailyGoalUsdt != null ? String(data.system.dailyGoalUsdt) : "");
+        if (d === null) return;
+        const m = await uiPrompt("每月盈利目标(USDT,留空=不设)", data.system?.monthlyGoalUsdt != null ? String(data.system.monthlyGoalUsdt) : "");
+        if (m === null) return;
+        action("/api/system/goals", { dailyGoalUsdt: d === "" ? null : Number(d), monthlyGoalUsdt: m === "" ? null : Number(m) });
+      }}>设置目标</button>}>
         <div className="bcGrid">
           <div className="bcGoal"><div className="bcTop"><span>今日已实现</span><b className={todayPnl >= 0 ? "good" : "bad"}>{money(todayPnl)} / {money(dailyGoal)}</b></div><div className="bcBar"><i style={{ width: `${dayPct}%`, background: todayPnl < 0 ? "var(--bad,#c8492f)" : "var(--good,#2e9e6b)" }} /></div></div>
           <div className="bcGoal"><div className="bcTop"><span>本月已实现</span><b className={monthPnl >= 0 ? "good" : "bad"}>{money(monthPnl)} / {money(monthlyGoal)}</b></div><div className="bcBar"><i style={{ width: `${monPct}%`, background: "var(--accent)" }} /></div></div>
