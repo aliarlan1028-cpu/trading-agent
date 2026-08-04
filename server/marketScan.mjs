@@ -51,25 +51,41 @@ async function attributeMoverNarrative(mover) {
 }
 
 // 直连 Gemini 的 generateContent（带 googleSearch 工具）——llmComplete 不带搜索能力，这里单独走。
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function geminiSearchComplete(prompt) {
   // 搜索归因用 Gemini 模型:由设置里的 GEMINI_MODEL 字段控制(默认 flash——pro 免费档仅 5RPM/~50次每天
   // 会 429,flash ~1500/天够用)。GEMINI_SEARCH_MODEL 是可选的高级单独覆盖。
   const model = process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] })
-    });
-    if (!res.ok) throw new Error(`Gemini ${res.status}`);
-    const json = await res.json();
-    return (json.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("");
-  } finally {
-    clearTimeout(timer);
+  // 429 退避重试:免费档限 20 RPM,多功能共用 key 会瞬时超限。Google 429 体里带 "retry in Xs",
+  // 按它建议(封顶 12s)等一下再试,最多 3 次——把瞬时限流自愈掉,不再一撞就判归因失败。
+  const MAX_TRIES = Number(process.env.GEMINI_RETRY_MAX || 3);
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] })
+      });
+      if (res.status === 429 && attempt < MAX_TRIES) {
+        const body = await res.text().catch(() => "");
+        const suggested = Number((body.match(/retry in ([\d.]+)s/i) || [])[1]);
+        const waitMs = Math.min(12000, Number.isFinite(suggested) ? Math.ceil(suggested * 1000) + 300 : attempt * 2500);
+        clearTimeout(timer);
+        await sleep(waitMs);
+        continue;
+      }
+      if (!res.ok) throw new Error(`Gemini ${res.status}`);
+      const json = await res.json();
+      return (json.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("");
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw new Error("Gemini 429（重试后仍限流）");
 }
 
 // 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
