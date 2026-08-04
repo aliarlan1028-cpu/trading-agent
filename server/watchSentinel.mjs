@@ -55,6 +55,16 @@ export function listActiveWatches(db) {
   return (db.watchTriggers || []).filter((w) => w.status === "active");
 }
 
+// 盯盘闸(纯函数):把"看"和"做"分开。
+// - killSwitch 熔断 → 全停(紧急语义:连盯盘都停,恢复后重新定基,避免基于熔断期行情误触发)。
+// - autonomy 只决定触发后要不要【自动唤起 AI 分析/下单】,绝不影响"盯盘+穿越检测+通知"本身——
+//   盯盘是只读、安全动作;用户关掉自动交易恰恰是想自己决策,但仍然要收到"价格到位了"的提醒。
+//   (旧 bug:autonomy 关时整个 runWatchSentinel 直接 paused,挂了哨也不响、快速异动也熄火。)
+export function sentinelGate(system = {}) {
+  if (system.killSwitch) return { monitor: false, autoAnalyze: false };
+  return { monitor: true, autoAnalyze: Boolean(system.autonomyEnabled) };
+}
+
 export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员") {
   const mandate = activeMandate(db);
   if (!mandate) return { ok: false, error: "当前无激活授权，观察哨只在授权生效期内可登记。" };
@@ -249,12 +259,15 @@ export async function runWatchSentinel(db, saveDb) {
   db.watchTriggers ||= [];
   const active = listActiveWatches(db);
   const mandate = activeMandate(db);
-  // 系统暂停/熔断：不评估（避免基于暂停期行情触发），清空基线待恢复后重新定基
-  if (!db.system.autonomyEnabled || db.system.killSwitch) {
+  const gate = sentinelGate(db.system);
+  // 仅熔断才全停：清空基线待恢复后重新定基,避免基于熔断期(不连续行情)误触发。
+  if (!gate.monitor) {
     for (const w of active) w.lastPrice = null;
-    db.system.priceBuffer = {}; // 暂停期价格不连续,清空快速异动缓冲避免恢复后误判
+    db.system.priceBuffer = {}; // 熔断期价格不连续,清空快速异动缓冲避免恢复后误判
     return { status: "paused", skipPersist: true };
   }
+  // autonomy 关时仍照常盯盘/通知,只是触发后不自动唤起 AI(让用户自己来决策)。
+  const autoAnalyze = gate.autoAnalyze;
   // 授权失效则无事可做
   if (!mandate?.allowedSymbols?.length && !active.length) return { status: "idle", skipPersist: true };
 
@@ -275,24 +288,27 @@ export async function runWatchSentinel(db, saveDb) {
     for (const e of fastMoves) {
       const dir = e.direction === "down" ? "快速下跌" : "快速上涨";
       appendAudit(db, `快速异动:${e.symbol} ${e.windowMin}分钟内${dir} ${e.movePct}%(现价 ${e.price})`, "fast_move", "WatchSentinel", "warning");
-      createNotification(db, { eventType: "fast_move", severity: "warning", title: "快速异动", body: `${e.symbol} ${e.windowMin} 分钟内${dir} ${e.movePct}%，已唤起 AI 交易员立即评估。` });
+      createNotification(db, { eventType: "fast_move", severity: "warning", title: "快速异动", body: `${e.symbol} ${e.windowMin} 分钟内${dir} ${e.movePct}%${autoAnalyze ? "，已唤起 AI 交易员立即评估。" : "，请打开 App 让 AI 评估或自行处理（自动巡检当前关闭）。"}` });
     }
   }
 
   const result = sweepWatches(db, prices);
   for (const w of result.triggered) {
     appendAudit(db, `观察哨触发：${describeWatch(w)}（触发价 ${w.triggerPrice}）`, w.id, "WatchSentinel");
-    createNotification(db, { eventType: "watch_trigger", severity: "warning", title: "观察哨触发", body: `${describeWatch(w)}，触发价 ${w.triggerPrice}。已请求 AI 交易员立即评估。` });
+    createNotification(db, { eventType: "watch_trigger", severity: "warning", title: "观察哨触发", body: `${describeWatch(w)}，触发价 ${w.triggerPrice}。${autoAnalyze ? "已请求 AI 交易员立即评估。" : "请打开 App 让 AI 评估或自行决策（自动巡检当前关闭）。"}` });
   }
   for (const w of result.expired) appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(w)}`, "ok");
   for (const w of result.invalidated) appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(w)}（${w.closeReason}）`, "warning");
 
   // 观察哨触发 或 快速异动 → 立即请求一轮完整巡检（同一任务、同一并发锁、同一风控链）。
   // 锁被占 / 限频超额时不丢：哨保持 pending / 异动留在 pendingFastMoves，下一 tick 或定时巡检兜底。
+  // 触发/异动后的"自动唤起 AI 完整巡检(可能自动下单)"——这才是 autonomy 该管的动作。
+  // autonomy 关时:哨已触发、用户已收到通知,但不自动唤起 AI;待处理的哨/异动留 pending,
+  // 用户开 App 或打开自主巡检后由下一轮兜底消费,不丢。
   let cycle = null;
   const watchPending = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
   const movePending = (db.system.pendingFastMoves || []).length > 0;
-  if ((watchPending || movePending) && sentinelCycleAllowed(db)) {
+  if ((watchPending || movePending) && autoAnalyze && sentinelCycleAllowed(db)) {
     db.system.sentinelCycleAt.push(nowIso());
     cycle = await runTask(db, "task_sys_agent_cycle", saveDb, "sentinel");
   }

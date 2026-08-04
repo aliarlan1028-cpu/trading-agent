@@ -15,8 +15,20 @@ const {
   crossed,
   registerWatch,
   sentinelCycleAllowed,
+  sentinelGate,
   sweepWatches
 } = await import("../server/watchSentinel.mjs");
+
+// 回归:盯盘与 autonomy 解耦。旧 bug——autonomy 关时整个哨兵 paused,挂了哨不响、异动熄火。
+test("盯盘闸:autonomy 关仍盯盘+通知,只是不自动唤起 AI;仅熔断才全停", () => {
+  // autonomy 开:盯盘 + 自动分析都开
+  assert.deepEqual(sentinelGate({ autonomyEnabled: true, killSwitch: false }), { monitor: true, autoAnalyze: true });
+  // autonomy 关:仍盯盘(monitor=true),但不自动唤起 AI(autoAnalyze=false)——用户仍会收到触发通知
+  assert.deepEqual(sentinelGate({ autonomyEnabled: false, killSwitch: false }), { monitor: true, autoAnalyze: false });
+  // 熔断:全停(连盯盘都停,紧急语义)
+  assert.deepEqual(sentinelGate({ autonomyEnabled: true, killSwitch: true }), { monitor: false, autoAnalyze: false });
+  assert.deepEqual(sentinelGate({}), { monitor: true, autoAnalyze: false });
+});
 
 function dbFixture() {
   return {
