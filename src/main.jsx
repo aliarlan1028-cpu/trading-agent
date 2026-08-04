@@ -19,6 +19,7 @@ import {
   FlaskConical,
   UserPlus,
   WalletCards,
+  Send,
   Zap
 } from "lucide-react";
 import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
@@ -483,6 +484,9 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
           {toast && <small className="landingToast">{toast}</small>}
         </aside>
       </main>
+      <a className="contactFab" href="https://t.me/e2ptradingclub" target="_blank" rel="noopener noreferrer" title="Telegram 联系我们">
+        <Send size={18} /> 联系我们
+      </a>
     </div>
   );
 }

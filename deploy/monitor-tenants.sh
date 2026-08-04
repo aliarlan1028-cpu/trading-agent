@@ -19,6 +19,8 @@ SERVICE="${SERVICE:-trading-agent}"
 CHANNEL_CACHE="$STATE_DIR/.channels"     # 缓存的告警通道（宕机时金库读不到，用上次的）
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-2}"    # 主实例连续失败 N 次才重启（每分钟一次 → 约 N 分钟）
 RESTART_COOLDOWN="${RESTART_COOLDOWN:-600}"  # 两次自动重启至少间隔秒数（防抖）
+DOWN_THRESHOLD="${DOWN_THRESHOLD:-2}"    # 连续 N 次健康检查失败才判「宕机」并告警（防抖：
+                                          # 部署 docker compose up -d 重建容器有十几秒空档，单次失败即告警会刷屏「宕机/恢复」）
 
 # ---------- 告警通道 ----------
 # shellcheck disable=SC1090
@@ -96,10 +98,18 @@ try_restart_main() { # $1=code
 }
 
 check() { # $1=name  $2=url  $3=auto_heal(main 才传 1)
-  local name="$1" url="$2" heal="${3:-0}" statefile="$STATE_DIR/$1.state" prev="up" now="down" code
+  local name="$1" url="$2" heal="${3:-0}" statefile="$STATE_DIR/$1.state" failfile="$STATE_DIR/$1.dfails" prev="up" now="up" code dfails=0
   [ -f "$statefile" ] && prev="$(cat "$statefile")"
+  [ -f "$failfile" ] && dfails="$(cat "$failfile")"
   code=$(curl -s -o /dev/null -m 8 -w "%{http_code}" "$url" 2>/dev/null || echo 000)
-  [ "$code" = "200" ] && now="up"
+  if [ "$code" = "200" ]; then
+    dfails=0; now="up"
+  else
+    dfails=$((dfails + 1))
+    # 防抖:连续失败达阈值才判宕机;未达阈值维持上一状态(不因部署重建的短暂空档误报)
+    if [ "$dfails" -ge "$DOWN_THRESHOLD" ]; then now="down"; else now="$prev"; fi
+  fi
+  echo "$dfails" > "$failfile"
   if [ "$now" != "$prev" ]; then
     if [ "$now" = "down" ]; then send_alert "🔴 实例宕机" "$name 无响应（HTTP $code） · $(date '+%F %T')";
     else send_alert "🟢 实例恢复" "$name 已恢复 · $(date '+%F %T')"; fi

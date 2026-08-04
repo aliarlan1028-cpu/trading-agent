@@ -1,22 +1,21 @@
+import QRCode from "qrcode";
 import { nowIso } from "./store.mjs";
 
 const WIDTH = 1080;
 const HEIGHT = 1440;
+const SITE_URL = process.env.POSTER_SITE_URL || "https://yegidawir.xyz/";
+// 装了 fonts-noto-cjk + fonts-dejavu-core(见 Dockerfile),librsvg 才能渲染中英文字。
+const FONT = "'Noto Sans CJK SC','DejaVu Sans','Inter',Arial,sans-serif";
 
 function escapeXml(value) {
   return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
-
 function number(value, fallback = null) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
-
 function compact(value, digits = 2) {
   const parsed = number(value);
   if (parsed === null) return "-";
@@ -24,34 +23,40 @@ function compact(value, digits = 2) {
   const fractionDigits = abs >= 1000 ? 2 : abs >= 1 ? digits : 5;
   return parsed.toLocaleString("en-US", { maximumFractionDigits: fractionDigits });
 }
-
 function money(value) {
   const parsed = number(value);
   if (parsed === null) return "-";
   const sign = parsed > 0 ? "+" : parsed < 0 ? "-" : "";
   return `${sign}${Math.abs(parsed).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`;
 }
-
 function normalizeSide(position = {}) {
   const raw = String(position.direction || position.posSide || position.positionSide || position.side || "").toLowerCase();
   if (raw.includes("short") || raw.includes("空") || raw === "sell") return "SHORT";
   return "LONG";
+}
+function holdLabel(start, end) {
+  const s = start ? new Date(start).getTime() : NaN;
+  const e = end ? new Date(end).getTime() : Date.now();
+  if (!Number.isFinite(s) || e <= s) return null;
+  const mins = Math.floor((e - s) / 60000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}m`;
 }
 
 export function derivePositionShare(position = {}) {
   const side = normalizeSide(position);
   const entry = number(position.entry ?? position.entryPrice ?? position.avgPx ?? position.avgPrice);
   const mark = number(position.mark ?? position.markPrice ?? position.lastPrice);
-  const size = number(position.size ?? position.pos ?? position.positionAmt ?? position.quantity);
+  const rawSize = number(position.size ?? position.pos ?? position.positionAmt ?? position.quantity);
+  const coins = number(position.coinSize) ?? rawSize; // 交易所仓 size 是合约张数,coinSize 才是币量
   const leverage = number(position.leverage ?? position.lever);
   const pnl = number(position.pnl ?? position.upl ?? position.unrealizedPnl);
   const sign = side === "SHORT" ? -1 : 1;
-  const computedPnl = pnl ?? (entry !== null && mark !== null && size !== null ? (mark - entry) * size * sign : null);
-  const margin = entry !== null && size !== null && leverage ? Math.abs(entry * size) / leverage : null;
+  const computedPnl = pnl ?? (entry !== null && mark !== null && coins !== null ? (mark - entry) * coins * sign : null);
+  const notional = coins !== null && mark !== null ? Math.abs(coins * mark) : (entry !== null && coins !== null ? Math.abs(entry * coins) : number(position.notionalUsdt ?? position.notional));
+  const margin = notional !== null && leverage ? notional / leverage : null;
   const roiPct = number(position.roiPct ?? position.pnlRatio ?? position.uplRatio);
-  // tick hook 统一把 roiPct 写成百分数;旧 |ROI|≤3 启发式会把 2.5% 误放大成 250%(审计发现),已移除。
   const computedRoiPct = roiPct !== null ? roiPct : (margin ? (computedPnl / margin) * 100 : null);
-  const notional = entry !== null && size !== null ? Math.abs(entry * size) : number(position.notionalUsdt ?? position.notionalUsd ?? position.notional);
 
   return {
     id: position.id || `${position.exchange || "EX"}:${position.symbol || position.instId || "UNKNOWN"}:${side}`,
@@ -60,96 +65,101 @@ export function derivePositionShare(position = {}) {
     side,
     entry,
     mark,
-    size,
+    size: coins,
     leverage,
     pnl: computedPnl,
     roiPct: computedRoiPct,
     notional,
+    stopLoss: number(position.stopLoss ?? position.stop_loss),
+    takeProfit: number((position.takeProfits || position.take_profit || [])[0] ?? position.takeProfit),
+    holdLabel: holdLabel(position.openedAt || position.createdAt, position.updatedAt || position.monitoredAt || nowIso()),
     createdAt: position.createdAt,
     updatedAt: position.updatedAt || position.monitoredAt || nowIso()
   };
 }
 
-function buildPositionPosterSvg(position = {}) {
-  const share = derivePositionShare(position);
-  const isWin = Number(share.pnl || 0) >= 0;
-  const sideFill = share.side === "SHORT" ? "#ff7a59" : "#19c37d";
-  const roiText = share.roiPct === null ? "+" : `${share.roiPct >= 0 ? "+" : ""}${share.roiPct.toFixed(2)}%`;
-  const title = `${share.symbol} ${share.side}`;
-  const updated = new Date(share.updatedAt || Date.now()).toLocaleString("zh-CN", { hour12: false });
+async function qrImage(url, px) {
+  try {
+    return await QRCode.toDataURL(url, { margin: 1, width: px, errorCorrectionLevel: "M", color: { dark: "#0b1220", light: "#ffffff" } });
+  } catch { return null; }
+}
+
+async function buildPositionPosterSvg(position = {}) {
+  const s = derivePositionShare(position);
+  const isLong = s.side === "LONG";
+  const isWin = Number(s.pnl || 0) >= 0;
+  const dirColor = isLong ? "#3ad6c0" : "#ffb24c";       // 方向色:多=青 / 空=橙
+  const pnlColor = isWin ? "#16d191" : "#ff6b6b";        // 盈亏色:盈=绿 / 亏=红(与方向色独立)
+  const dirLabel = isLong ? "▲ 做多 LONG" : "▼ 做空 SHORT";
+  const roiText = s.roiPct === null ? "—" : `${s.roiPct >= 0 ? "+" : "−"}${Math.abs(s.roiPct).toFixed(1)}%`;
+  const updated = new Date(s.updatedAt || Date.now()).toLocaleString("zh-CN", { hour12: false });
+  const metaBits = [s.leverage ? `${compact(s.leverage, 1)}×` : null, s.notional !== null ? `名义 ${compact(s.notional)} USDT` : null, s.holdLabel ? `持仓 ${s.holdLabel}` : null].filter(Boolean).join("  ·  ");
+  const qr = await qrImage(SITE_URL, 380);
+
+  // 数据格:开仓 / 现价 / 止损(红) / 止盈(绿),y 全部在页脚带之上,不再重合
+  const cell = (x, y, k, v, vColor = "#f4f8ff") => `
+    <rect x="${x}" y="${y}" width="440" height="150" rx="22" fill="rgba(255,255,255,0.035)"/>
+    <text x="${x + 30}" y="${y + 52}" fill="#8d99ad" font-family="${FONT}" font-size="26">${escapeXml(k)}</text>
+    <text x="${x + 30}" y="${y + 112}" fill="${vColor}" font-family="${FONT}" font-size="46" font-weight="800">${escapeXml(v)}</text>`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+<svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0c111d"/>
-      <stop offset="0.55" stop-color="#111827"/>
-      <stop offset="1" stop-color="#08130f"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="${isWin ? "#19c37d" : "#ff6b6b"}"/>
-      <stop offset="1" stop-color="#f4c430"/>
-    </linearGradient>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.38"/>
-    </filter>
+    <radialGradient id="bg" cx="18%" cy="0%" r="130%">
+      <stop offset="0" stop-color="${isLong ? "#16203a" : "#2a1620"}"/>
+      <stop offset="0.55" stop-color="${isLong ? "#0d1424" : "#1a0e18"}"/>
+      <stop offset="1" stop-color="${isLong ? "#070c16" : "#0b0709"}"/>
+    </radialGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e68a4e"/><stop offset="1" stop-color="#d06a22"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${dirColor}"/><stop offset="1" stop-color="${isLong ? "#16d191" : "#ff8a4c"}"/></linearGradient>
   </defs>
-  <rect width="${WIDTH}" height="${HEIGHT}" rx="0" fill="url(#bg)"/>
-  <path d="M0 0H1080V360C915 305 758 295 610 330C438 371 289 479 0 440Z" fill="#172033" opacity="0.82"/>
-  <path d="M1080 1440H0V1058C184 1118 344 1134 504 1097C701 1051 852 934 1080 942Z" fill="#10261d" opacity="0.76"/>
-  <rect x="74" y="78" width="932" height="1190" rx="44" fill="#111827" opacity="0.94" filter="url(#softShadow)"/>
-  <rect x="74" y="78" width="932" height="1190" rx="44" fill="none" stroke="#2b3548" stroke-width="2"/>
 
-  <text x="126" y="168" fill="#dbe7ff" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="800">AI Trading Agent</text>
-  <text x="126" y="214" fill="#7f8ca3" font-family="Inter, Arial, sans-serif" font-size="24">Position Share Poster</text>
-  <rect x="805" y="130" width="150" height="56" rx="28" fill="${sideFill}" opacity="0.16"/>
-  <text x="880" y="168" text-anchor="middle" fill="${sideFill}" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">${escapeXml(share.side)}</text>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#bg)"/>
+  <rect width="${WIDTH}" height="14" fill="url(#accent)"/>
 
-  <text x="126" y="322" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="70" font-weight="900">${escapeXml(title)}</text>
-  <text x="126" y="382" fill="#8d99ad" font-family="Inter, Arial, sans-serif" font-size="28">${escapeXml(share.exchange)} 永续合约 · ${escapeXml(updated)}</text>
+  <!-- 品牌行 -->
+  <rect x="80" y="72" width="84" height="84" rx="22" fill="url(#logo)"/>
+  <text x="122" y="128" text-anchor="middle" font-size="42">🤖</text>
+  <text x="184" y="112" fill="#eaf0fb" font-family="${FONT}" font-size="38" font-weight="800">AI 交易员</text>
+  <text x="184" y="150" fill="#7f8ca3" font-family="${FONT}" font-size="20" letter-spacing="3">AUTONOMOUS TRADING</text>
+  <text x="1000" y="128" text-anchor="end" fill="#7f8ca3" font-family="${FONT}" font-size="24">${escapeXml(s.exchange)} 永续</text>
 
-  <rect x="126" y="455" width="828" height="280" rx="32" fill="#0b1220" stroke="#253047" stroke-width="2"/>
-  <text x="166" y="524" fill="#8d99ad" font-family="Inter, Arial, sans-serif" font-size="28">未实现收益率</text>
-  <text x="166" y="646" fill="url(#accent)" font-family="Inter, Arial, sans-serif" font-size="118" font-weight="900">${escapeXml(roiText)}</text>
-  <text x="166" y="700" fill="${isWin ? "#19c37d" : "#ff6b6b"}" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800">${escapeXml(money(share.pnl))}</text>
+  <!-- 方向徽章 + 币种 + meta -->
+  <rect x="80" y="214" width="${isLong ? 210 : 224}" height="58" rx="14" fill="${dirColor}" opacity="0.16"/>
+  <text x="${80 + (isLong ? 210 : 224) / 2}" y="253" text-anchor="middle" fill="${dirColor}" font-family="${FONT}" font-size="30" font-weight="800">${escapeXml(dirLabel)}</text>
+  <text x="80" y="372" fill="#ffffff" font-family="${FONT}" font-size="84" font-weight="900">${escapeXml(s.symbol)}</text>
+  <text x="80" y="424" fill="#9aa6bd" font-family="${FONT}" font-size="28">${escapeXml(metaBits || "—")}</text>
 
-  <g font-family="Inter, Arial, sans-serif">
-    <rect x="126" y="790" width="390" height="138" rx="24" fill="#151f31"/>
-    <text x="162" y="842" fill="#8d99ad" font-size="24">开仓均价</text>
-    <text x="162" y="894" fill="#f6f8fb" font-size="38" font-weight="800">${escapeXml(compact(share.entry))}</text>
+  <!-- Hero:ROI 大字 + 盈亏 -->
+  <rect x="80" y="472" width="920" height="250" rx="28" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
+  <text x="120" y="546" fill="#8d99ad" font-family="${FONT}" font-size="28">未实现收益率 (ROI)</text>
+  <text x="120" y="656" fill="${pnlColor}" font-family="${FONT}" font-size="120" font-weight="900">${escapeXml(roiText)}</text>
+  <text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="40" font-weight="800">${escapeXml(money(s.pnl))}</text>
 
-    <rect x="564" y="790" width="390" height="138" rx="24" fill="#151f31"/>
-    <text x="600" y="842" fill="#8d99ad" font-size="24">标记价格</text>
-    <text x="600" y="894" fill="#f6f8fb" font-size="38" font-weight="800">${escapeXml(compact(share.mark))}</text>
+  <!-- 数据格 -->
+  ${cell(80, 772, "开仓均价", compact(s.entry))}
+  ${cell(560, 772, "当前标记价", compact(s.mark))}
+  ${cell(80, 942, "止损", s.stopLoss !== null ? compact(s.stopLoss) : "—", "#ff8a8a")}
+  ${cell(560, 942, "止盈", s.takeProfit !== null ? compact(s.takeProfit) : "—", "#7fe3b8")}
 
-    <rect x="126" y="962" width="390" height="138" rx="24" fill="#151f31"/>
-    <text x="162" y="1014" fill="#8d99ad" font-size="24">仓位数量</text>
-    <text x="162" y="1066" fill="#f6f8fb" font-size="38" font-weight="800">${escapeXml(compact(share.size, 4))}</text>
-
-    <rect x="564" y="962" width="390" height="138" rx="24" fill="#151f31"/>
-    <text x="600" y="1014" fill="#8d99ad" font-size="24">杠杆 / 名义价值</text>
-    <text x="600" y="1066" fill="#f6f8fb" font-size="38" font-weight="800">${escapeXml(share.leverage ? `${compact(share.leverage, 1)}x` : "-")} · ${escapeXml(compact(share.notional))}</text>
-  </g>
-
-  <rect x="126" y="1168" width="828" height="2" fill="#253047"/>
-  <text x="126" y="1228" fill="#8d99ad" font-family="Inter, Arial, sans-serif" font-size="24">自动生成自本地 AI 交易系统。非投资建议。</text>
-  <text x="126" y="1328" fill="#536075" font-family="Inter, Arial, sans-serif" font-size="22">Powered by Binance / OKX account data</text>
+  <!-- 页脚带:二维码(右) + 文案(左),与数据格之间留白,不重合 -->
+  <rect x="80" y="1150" width="920" height="2" fill="rgba(255,255,255,0.08)"/>
+  ${qr ? `<rect x="784" y="1176" width="216" height="216" rx="20" fill="#ffffff"/><image x="797" y="1189" width="190" height="190" xlink:href="${qr}"/>` : ""}
+  <text x="80" y="1224" fill="#c7d2e6" font-family="${FONT}" font-size="30" font-weight="700">扫码体验 AI 自主交易</text>
+  <text x="80" y="1272" fill="#7f8ca3" font-family="${FONT}" font-size="26">${escapeXml(SITE_URL.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</text>
+  <text x="80" y="1344" fill="#6d7994" font-family="${FONT}" font-size="24">AI 自动生成 · 非投资建议</text>
+  <text x="80" y="1384" fill="#55627c" font-family="${FONT}" font-size="22">${escapeXml(updated)}</text>
 </svg>`;
 }
 
 export async function renderPositionPoster(position = {}) {
-  const svg = buildPositionPosterSvg(position);
+  const svg = await buildPositionPosterSvg(position);
+  const symbol = derivePositionShare(position).symbol.replaceAll("/", "");
   try {
     const sharp = (await import("sharp")).default;
     const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
-    return { buffer, filename: `${derivePositionShare(position).symbol.replaceAll("/", "")}-position.png`, contentType: "image/png", type: "photo" };
+    return { buffer, filename: `${symbol}-position.png`, contentType: "image/png", type: "photo" };
   } catch (error) {
-    return {
-      buffer: Buffer.from(svg),
-      filename: `${derivePositionShare(position).symbol.replaceAll("/", "")}-position.svg`,
-      contentType: "image/svg+xml",
-      type: "document",
-      renderError: error.message
-    };
+    return { buffer: Buffer.from(svg), filename: `${symbol}-position.svg`, contentType: "image/svg+xml", type: "document", renderError: error.message };
   }
 }

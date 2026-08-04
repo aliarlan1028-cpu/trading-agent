@@ -33,7 +33,8 @@ export function registerNotificationRoutes(app, ctx) {
   app.post("/api/notifications/telegram-test", requirePermission("admin:security"), async (_req, res) => {
     const position = db.positions?.find((item) => Number(item.pnl ?? item.upl ?? item.unrealizedPnl) > 0) || {
       id: "telegram_test_position", exchange: "OKX", symbol: "BTC/USDT", direction: "long",
-      size: 0.01, entry: 100000, mark: 103500, leverage: 5, pnl: 35, updatedAt: nowIso()
+      size: 0.03, entry: 62000, mark: 64800, leverage: 10, pnl: 84, roiPct: 45.2,
+      stopLoss: 60800, takeProfits: [66000], openedAt: new Date(Date.now() - 3.7 * 3600_000).toISOString(), updatedAt: nowIso()
     };
     const result = await sendTelegramPositionPoster(db, position, { caption: "Telegram 盈利仓位海报测试" });
     saveDb(db);
