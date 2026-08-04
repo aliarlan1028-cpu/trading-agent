@@ -1,4 +1,5 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { fetchTradeWindowNews } from "./marketScan.mjs";
 
 function number(value, fallback = null) {
   const parsed = Number(value);
@@ -309,6 +310,7 @@ async function llmDeepReflection(fill, ctx) {
       `- 入场依据（当时的判断）：${ctx.rationale}`,
       `- 结果：${ctx.win ? "盈利" : "亏损"} ${ctx.pnl.toFixed(2)} USDT｜${ctx.facts.join("；")}`,
       ctx.attribution ? `- 系统初判归因：${ctx.attribution}` : "",
+      ctx.newsContext?.news ? `- 持仓期间真实消息面（联网检索·已反幻觉）：${ctx.newsContext.news}（${ctx.newsContext.sentiment || "中性"}）` : "",
       "",
       ctx.win
         ? "回答三点，每点一句：①这次信号/判断【对在哪】（具体到结构/方向/时机）；②这套「策略×品种×regime」为什么奏效、可复用的关键；③下次同类情形如何保持并放大优势。"
@@ -329,6 +331,7 @@ export async function runTradeReflection(db) {
   const lessons = [];
   let memorized = 0;
   let deepBudget = Number(process.env.REFLECTION_LLM_MAX_PER_RUN || 6); // 每轮 LLM 深度复盘上限,控成本
+  let newsBudget = Number(process.env.REFLECTION_NEWS_MAX_PER_RUN || 4); // ② 每轮消息面归因上限(Gemini,控配额)
   const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
   for (const fill of closes.slice(0, 15)) {
     const plan = (db.tradePlans || []).find((p) => p.id === fill.planId) || {};
@@ -361,7 +364,16 @@ export async function runTradeReflection(db) {
       // 亏损与显著盈利:调 LLM 做深度复盘,写进 fill + 记忆(模板作兜底)。
       let deep = null;
       if (deepBudget > 0) {
-        deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution });
+        // ② 消息面归因:查【开仓→平仓时间窗】内该币真实新闻(Gemini,反幻觉),喂进深度复盘——
+        // 让"对错/根因"不只看K线,也看"世界当时发生了什么"。gemini 未配/限流则 null,不影响复盘。
+        let newsContext = null;
+        if (newsBudget > 0) {
+          const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (f.executionOrderId === fill.executionOrderId || f.planId === fill.planId));
+          const openTime = entryFill?.createdAt || plan.createdAt || fill.openedAt;
+          try { newsContext = await fetchTradeWindowNews(fill.symbol, openTime, fill.createdAt); } catch { newsContext = null; }
+          if (newsContext) { newsBudget -= 1; fill.newsContext = newsContext; }
+        }
+        deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution, newsContext });
         if (deep) { deepBudget -= 1; fill.deepReflection = deep; }
       }
       db.memoryItems.unshift({

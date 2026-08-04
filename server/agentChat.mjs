@@ -541,6 +541,18 @@ async function buildSystemPrompt(db, userText = "") {
     sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
   }
 
+  // ⑤ 跨轮持仓复核(借鉴提线木偶的"跨轮信号记忆"):把每个持仓【当时的入场理由】摆回来,逼 AI 逐仓给显式
+  // 判断,而非每轮从零看盘、忘了自己为何进场。强化条令 P2/P4。只加信息与指令,不新增任何硬闸。
+  if (openPositions.length) {
+    const lines = openPositions.slice(0, 8).map((p) => {
+      const plan = (db.tradePlans || []).find((x) => x.id === p.planId) || {};
+      const rationale = String(p.entryRationale || plan.reasoningSummary || "未记录入场理由").replace(/\s+/g, " ").slice(0, 120);
+      const dir = /short|空/.test(String(p.direction || "")) ? "空" : "多";
+      return `· ${p.symbol} ${dir}｜浮盈 ${p.pnl ?? p.unrealizedPnl ?? "?"} USDT / ROI ${p.roiPct ?? "?"}%｜当时入场理由:「${rationale}」`;
+    });
+    sections.push(`【跨轮持仓复核 · 必做】你不是每轮从零看盘——下面是你当前持仓与【当时的入场理由】。逐仓对照"当时的逻辑现在是否还成立"(资金费率转强烈不利 / 反向高可信新闻 / 结构破坏 = 证伪),给出显式判断【持有 / 减仓 / 平仓 / 反转】并说明依据。开仓逻辑被证伪就按纪律减或平,绝不为亏损仓找支持性理由硬扛(条令 P2/P4)。\n${lines.join("\n")}`);
+  }
+
   // 授权白名单显式注入:此前对话提示词从不告知当前可交易/挂哨的币对,AI 只能在 register_watch
   // 失败后才知道 ACH 不在白名单 → 对白名单外的币也去挂哨、然后把"系统拒绝了"当开头,让纯分析
   // 看起来像被拦(用户实锤 ACH)。这里把白名单摆到台面上,并申明"分析全开放、下单/挂哨才受限"。

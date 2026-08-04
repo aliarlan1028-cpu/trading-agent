@@ -123,6 +123,20 @@ export async function explainMarketMove(db, symbol) {
   }
 }
 
+// 复盘用:查某币在【开仓→平仓时间窗内】的真实消息面(新闻/催化剂/宏观),强制反幻觉。
+// 借鉴 okx-journal 单笔诊断:用"世界当时发生了什么"给盈亏归因,而非只看K线。无 Gemini 则返回 null。
+export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
+  if (!process.env.GEMINI_API_KEY) return null;
+  const sym = String(symbol || "").includes("/") ? symbol : String(symbol || "").replace(/USDT$/i, "/USDT");
+  const win = `${String(fromIso || "").slice(0, 16)} → ${String(toIso || "").slice(0, 16)} (UTC)`;
+  const prompt = `用内置搜索查加密货币 ${sym} 在这个时间窗内【${win}】是否发生过重大新闻/催化剂/宏观事件/交易所动态/连锁清算,用来复盘一笔在此期间的交易。\n【硬性要求·反幻觉】只报你真的检索到、且时间确实落在该窗内的事件;确实没有就直接回"该窗内未见明确催化,疑似情绪/资金/杠杆驱动",绝对不要编造或假设新闻,不要把窗外的旧闻算进来。\n只输出 JSON:{"news":"一到两句话概括窗内真实消息面或明确写无","sentiment":"利多|利空|中性|无","confidence":"high|medium|low"}。中文,纯 JSON。`;
+  try {
+    const raw = await geminiSearchComplete(prompt);
+    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
+    return { ...parsed, window: win, at: nowIso() };
+  } catch { return null; }
+}
+
 // 巡检用：扫异动 + 给最猛的前 N 个补归因，写入 db.marketMovers 供决策上下文与事件引擎引用。
 export async function refreshMarketMovers(db, options = {}) {
   const scan = await scanMarketMovers(options);

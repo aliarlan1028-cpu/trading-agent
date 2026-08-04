@@ -8902,3 +8902,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .bpNarr .bpSec p{font-size:13px;color:var(--text-2);line-height:1.65;margin-top:4px;}
 .bpNarr .bpSec ul{margin:6px 0 0 18px;font-size:13px;color:var(--text-2);line-height:1.7;}
 @media (max-width:720px){.bpCols{grid-template-columns:1fr;} .bpHero{flex-direction:column;align-items:stretch;}}
+
+/* ── ③ 仪表盘行为约束层 ── */
+.bcGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.bcGoal .bcTop{display:flex;justify-content:space-between;font-size:13px;color:var(--text-2);margin-bottom:6px;}
+.bcGoal .bcTop .good{color:var(--good,#2e9e6b);} .bcGoal .bcTop .bad{color:var(--bad,#c8492f);}
+.bcBar{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden;}
+.bcBar i{display:block;height:100%;border-radius:6px;transition:width .3s ease;}
+.bcAlert{margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;line-height:1.5;}
+.bcAlert.good{background:#e8f5ee;color:#227a4f;border:1px solid #c4e6d3;}
+.bcAlert.bad{background:#fbeae5;color:#b3341c;border:1px solid #f0ccc2;}
+@media (max-width:640px){.bcGrid{grid-template-columns:1fr;}}

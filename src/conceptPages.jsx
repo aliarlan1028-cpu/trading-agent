@@ -215,6 +215,29 @@ export function TradingOverviewConcept({ data, ui }) {
       <ConceptMetric label="风险预算" value={data.system?.remainingDailyLossUsdt == null ? "未授权" : `${money(data.system.remainingDailyLossUsdt)} USDT`} sub="今日剩余"/>
       <ConceptMetric label="允许交易" value={data.system?.killSwitch ? "已熔断" : data.automationState?.label || "待配置"} sub={`${arr(data.riskRules).filter((rule) => rule.enabled !== false).length} 条规则生效`} tone={data.system?.killSwitch ? "bad" : "good"}/>
     </div>
+    {(() => {
+      // ③ 行为约束层:日/月盈利目标进度(UTC+8 自然日/月边界)+ 达标"落袋"提示 + 亏损触发反报复冷却。
+      const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
+      const shift = (d) => new Date(new Date(d).getTime() + 8 * 3600000);
+      const dk = (d) => { const s = shift(d); return `${s.getUTCFullYear()}-${s.getUTCMonth()}-${s.getUTCDate()}`; };
+      const mk = (d) => { const s = shift(d); return `${s.getUTCFullYear()}-${s.getUTCMonth()}`; };
+      const nowS = shift(new Date());
+      const todayKey = `${nowS.getUTCFullYear()}-${nowS.getUTCMonth()}-${nowS.getUTCDate()}`, monKey = `${nowS.getUTCFullYear()}-${nowS.getUTCMonth()}`;
+      const todayPnl = closes.filter((f) => dk(f.createdAt) === todayKey).reduce((s, f) => s + Number(f.realizedPnl), 0);
+      const monthPnl = closes.filter((f) => mk(f.createdAt) === monKey).reduce((s, f) => s + Number(f.realizedPnl), 0);
+      const dailyGoal = num(data.system?.dailyGoalUsdt, 150), monthlyGoal = num(data.system?.monthlyGoalUsdt, 4500);
+      const dayPct = dailyGoal > 0 ? Math.max(0, Math.min(100, (todayPnl / dailyGoal) * 100)) : 0;
+      const monPct = monthlyGoal > 0 ? Math.max(0, Math.min(100, (monthPnl / monthlyGoal) * 100)) : 0;
+      const goalMet = dailyGoal > 0 && todayPnl >= dailyGoal, revenge = dailyGoal > 0 && todayPnl <= -0.5 * dailyGoal;
+      return <ConceptCard title="🎯 目标进度 · 行为约束" meta="日/月盈利目标(UTC+8)· 把绩效变纪律">
+        <div className="bcGrid">
+          <div className="bcGoal"><div className="bcTop"><span>今日已实现</span><b className={todayPnl >= 0 ? "good" : "bad"}>{money(todayPnl)} / {money(dailyGoal)}</b></div><div className="bcBar"><i style={{ width: `${dayPct}%`, background: todayPnl < 0 ? "var(--bad,#c8492f)" : "var(--good,#2e9e6b)" }} /></div></div>
+          <div className="bcGoal"><div className="bcTop"><span>本月已实现</span><b className={monthPnl >= 0 ? "good" : "bad"}>{money(monthPnl)} / {money(monthlyGoal)}</b></div><div className="bcBar"><i style={{ width: `${monPct}%`, background: "var(--accent)" }} /></div></div>
+        </div>
+        {goalMet && <div className="bcAlert good">🎯 已达今日盈利目标——落袋为安,见好就收,别把利润还回去。</div>}
+        {revenge && <div className="bcAlert bad">⚠ 当日亏损已达日目标的 50%——高度警惕报复性交易,建议停手冷静、今日降频降仓。</div>}
+      </ConceptCard>;
+    })()}
     <div className="cp2TradingHero">
       <ConceptCard title={activeMarket.symbol || "BTC/USDT"} meta="实时行情 · 交易所公开数据" className="cp2ChartCard" action={<button className="cp2Link" onClick={() => ui.setActive("marketAccount")}>查看完整行情 ›</button>}>
         <div className="cp2Quote"><b>{activeMarket.price == null ? "待同步" : money(activeMarket.price)}</b><Pill tone={num(activeMarket.changePct) >= 0 ? "good" : "bad"}>{activeMarket.changePct == null ? "—" : `${num(activeMarket.changePct) >= 0 ? "+" : ""}${num(activeMarket.changePct).toFixed(2)}%`}</Pill></div>
@@ -358,6 +381,33 @@ export function JournalConcept({ data }) {
   const fills = arr(data.fills); const reviews = arr(data.reviews); const performance = data.performance || {}; const report = data.paperReport || {};
   const wins = fills.filter((item)=>num(item.realizedPnl)>0); const losses = fills.filter((item)=>num(item.realizedPnl)<0); const net = fills.reduce((sum,item)=>sum+num(item.realizedPnl),0);
   return <div className="cp2Stack"><div className="cp2Metrics six"><ConceptMetric label="已实现盈亏" value={`${net>=0?"+":""}${money(net,"0")}`} tone={net>=0?"good":"bad"}/><ConceptMetric label="胜率" value={fills.length?`${(wins.length/fills.length*100).toFixed(1)}%`:"—"}/><ConceptMetric label="盈亏比" value={performance.profitFactor!=null?num(performance.profitFactor).toFixed(2):"—"}/><ConceptMetric label="平均每笔" value={performance.avgPnlUsdt!=null?`${num(performance.avgPnlUsdt)>=0?"+":""}${money(performance.avgPnlUsdt,"0")}`:"—"} tone={performance.avgPnlUsdt!=null?(num(performance.avgPnlUsdt)>=0?"good":"bad"):undefined}/><ConceptMetric label="最大回撤" value={displayPct(performance.maxDrawdownPct??report.maxDrawdownPct,"—")} tone="bad"/><ConceptMetric label="复盘覆盖" value={fills.length?`${Math.min(100,reviews.length/fills.length*100).toFixed(0)}%`:"—"}/></div>
+    {(() => {
+      // ④ 月度聚合:按月 rollup(净盈亏/交易数/胜率)+ "日目标命中天数"(日盈利≥日目标的天数,比单纯胜率更贴稳定盈利)。
+      const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
+      if (!closes.length) return null;
+      const shift = (d) => new Date(new Date(d).getTime() + 8 * 3600000);
+      const dailyGoal = num(data.system?.dailyGoalUsdt, 150);
+      const months = {}, dayPnl = {};
+      for (const f of closes) {
+        const s = shift(f.createdAt);
+        const mKey = `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, "0")}`;
+        const dKey = `${mKey}-${String(s.getUTCDate()).padStart(2, "0")}`;
+        (months[mKey] ||= { net: 0, n: 0, wins: 0, days: new Set(), goalDays: new Set() });
+        const m = months[mKey]; m.net += Number(f.realizedPnl); m.n++; if (Number(f.realizedPnl) > 0) m.wins++; m.days.add(dKey);
+        dayPnl[dKey] = (dayPnl[dKey] || 0) + Number(f.realizedPnl);
+      }
+      for (const [dKey, pnl] of Object.entries(dayPnl)) { const mKey = dKey.slice(0, 7); if (months[mKey] && dailyGoal > 0 && pnl >= dailyGoal) months[mKey].goalDays.add(dKey); }
+      const rows = Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).map(([month, m]) => ({ month, net: m.net, n: m.n, winRate: m.n ? Math.round((m.wins / m.n) * 100) : 0, tradeDays: m.days.size, goalDays: m.goalDays.size }));
+      return <ConceptCard title="📅 月度聚合" meta="按月 · 日目标命中率(UTC+8)">
+        <ConceptTable columns={[
+          { key: "month", label: "月份" },
+          { key: "net", label: "净盈亏", render: (r) => <span className={r.net >= 0 ? "good" : "bad"}>{money(r.net)}</span> },
+          { key: "n", label: "交易数" },
+          { key: "winRate", label: "胜率", render: (r) => `${r.winRate}%` },
+          { key: "goalDays", label: "日目标命中", render: (r) => `${r.goalDays}/${r.tradeDays} 天` }
+        ]} rows={rows} empty="暂无月度数据" />
+      </ConceptCard>;
+    })()}
     <div className="cp2Grid journalMain"><ConceptCard title="已平仓交易" meta="超 20 条容器内滚动" className="span2"><div className="cp2ScrollList tall"><ConceptTable columns={[{key:"createdAt",label:"时间",render:r=>formatDateTime(r.createdAt)},{key:"symbol",label:"交易对"},{key:"side",label:"方向",render:r=>humanize(r.side||r.kind)},{key:"quantity",label:"数量",render:r=>r.quantity??r.size??"—"},{key:"price",label:"成交价",render:r=>money(r.price)},{key:"realizedPnl",label:"已实现盈亏",render:r=><span className={num(r.realizedPnl)>=0?"good":"bad"}>{money(r.realizedPnl)}</span>},{key:"status",label:"状态",render:r=><Pill tone="good">已成交</Pill>}]} rows={fills} empty="暂无已平仓交易"/></div></ConceptCard><ConceptCard title="业绩拆解"><div className="cp2Centered"><Donut value={fills.length?wins.length/fills.length*100:0} label={fills.length?`${(wins.length/fills.length*100).toFixed(0)}%`:"—"} sub="胜率"/></div><BarRows rows={[{label:"盈利交易",value:wins.length,display:`${wins.length} 笔`},{label:"亏损交易",value:losses.length,display:`${losses.length} 笔`},{label:"复盘完成",value:reviews.length,display:`${reviews.length} 份`}]} /></ConceptCard></div>
     <div className="cp2Grid two wideLeft"><ConceptCard title="交易复盘详情"><div className="cp2ReviewGrid">{reviews.slice(0,3).map((review,index)=><article key={review.id||index}><small>{review.symbol||"组合"} · {formatDateTime(review.createdAt)}</small><b>{review.title||review.summary||"交易复盘"}</b><p>{review.lesson||review.notes||"等待复盘结论。"}</p></article>)}{!reviews.length&&<div className="cp2Empty"><BookOpen/><b>暂无复盘</b><span>平仓后会自动进入复盘队列。</span></div>}</div></ConceptCard><ConceptCard title="纪律检查"><div className="cp2Checklist vertical"><span><CheckCircle2/>风险预算执行</span><span><CheckCircle2/>止损保护覆盖</span><span><AlertTriangle/>复盘样本仍需积累</span></div></ConceptCard></div></div>;
 }
