@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { performanceReport, refreshAccounting } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
 import { normalizePositionsForUi } from "./positionView.mjs";
+import { computeBehaviorProfile } from "./behaviorProfile.mjs";
 import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
 import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
@@ -738,6 +739,8 @@ app.get("/api/overview", (req, res) => {
     watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     positions: normalizePositionsForUi(db.positions),
+    behaviorProfile: computeBehaviorProfile(db),
+    behaviorNarrative: db.system?.behaviorNarrative || null,
     mandates: db.mandates,
     tradePlans: db.tradePlans,
     watchTriggers: (db.watchTriggers || []).slice(0, 20),

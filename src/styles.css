@@ -8879,3 +8879,26 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 .contactFab:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0, 136, 204, 0.52); }
 @media (max-width: 560px) { .contactFab { right: 16px; bottom: 16px; padding: 11px 16px; font-size: 13px; } }
+
+/* ── AI 交易行为画像 ── */
+.bpWrap{display:flex;flex-direction:column;gap:14px;}
+.bpHero{display:flex;gap:16px;align-items:center;}
+.bpPersona{flex:0 0 auto;text-align:center;padding:14px 20px;border-radius:12px;background:linear-gradient(150deg,var(--accent-weak),var(--surface-2));border:1px solid var(--border);}
+.bpPersona b{display:block;font-size:18px;font-weight:900;color:var(--accent-ink);line-height:1.2;}
+.bpPersona small{font-size:11px;color:var(--text-3);}
+.bpFlags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.bpFlag{border-radius:11px;padding:12px 14px;border:1px solid;display:flex;flex-direction:column;gap:5px;}
+.bpFlag.bad{background:#fbeae5;border-color:#f0ccc2;} .bpFlag.good{background:#e8f5ee;border-color:#c4e6d3;}
+.bpFlag b{font-size:13px;} .bpFlag.bad b{color:var(--bad,#c8492f);} .bpFlag.good b{color:var(--good,#2e9e6b);}
+.bpFlag span{font-size:12px;color:var(--text-2);line-height:1.5;}
+.bpScatter{max-height:230px;}
+.bpCols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;}
+.bpColH{font-size:11px;color:var(--text-3);margin-bottom:6px;font-weight:700;}
+.bpRow{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.bpRow:last-child{border-bottom:0;}
+.bpRow .good{color:var(--good,#2e9e6b);} .bpRow .bad{color:var(--bad,#c8492f);}
+.bpNarr .bpSec{margin-bottom:12px;}
+.bpNarr .bpSec b{color:var(--accent-ink);font-size:13px;}
+.bpNarr .bpSec p{font-size:13px;color:var(--text-2);line-height:1.65;margin-top:4px;}
+.bpNarr .bpSec ul{margin:6px 0 0 18px;font-size:13px;color:var(--text-2);line-height:1.7;}
+@media (max-width:720px){.bpCols{grid-template-columns:1fr;} .bpHero{flex-direction:column;align-items:stretch;}}

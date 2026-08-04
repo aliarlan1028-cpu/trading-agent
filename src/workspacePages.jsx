@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  AiDialogConcept, AuditConcept, CapabilitiesConcept, EventsConcept,
+  AiDialogConcept, AuditConcept, BehaviorProfileConcept, CapabilitiesConcept, EventsConcept,
   IntelligenceConcept, JournalConcept, KeysConcept, KnowledgeConcept,
   LiveConcept, MandateConcept, MarketConcept, NotificationsConcept,
   OperationsOverviewConcept, OrdersConcept, PositionsConcept,
@@ -13,7 +13,7 @@ import "./workspace-additions.css";
 
 const TABS = {
   ai: [["dialog", "对话"], ["intel", "情报"]],
-  trade: [["overview", "总览"], ["market", "行情"], ["positions", "持仓"], ["orders", "订单与成交"], ["journal", "交易日志"]],
+  trade: [["overview", "总览"], ["market", "行情"], ["positions", "持仓"], ["orders", "订单与成交"], ["journal", "交易日志"], ["behavior", "行为画像"]],
   research: [["knowledge", "知识库"], ["strategy", "策略库"], ["capabilities", "能力库"]],
   risk: [["posture", "风险姿态"], ["mandate", "授权边界"], ["rules", "规则库"], ["live", "实盘与灰度"], ["keys", "密钥安全"]],
   ops: [["overview", "运行总览"], ["events", "事件日历"], ["tasks", "任务调度"], ["audit", "审计记录"], ["notifications", "通知中心"]]
@@ -43,7 +43,8 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
     market: <MarketConcept data={data} action={action} ui={ui}/>,
     positions: <PositionsConcept data={data} action={action} ui={ui}/>,
     orders: <OrdersConcept data={data} action={action} ui={ui}/>,
-    journal: <JournalConcept data={data} action={action} ui={ui}/>
+    journal: <JournalConcept data={data} action={action} ui={ui}/>,
+    behavior: <BehaviorProfileConcept data={data} action={action} ui={ui}/>
   };
   return <CenterShell title="交易驾驶舱" subtitle="行情 · 账户 · 执行 · 复盘" tabs={TABS.trade} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
 }

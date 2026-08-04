@@ -288,6 +288,72 @@ export function OrdersConcept({ data, action, ui }) {
     <ConceptCard title="成交明细" meta={`${fills.length} 条 · 超 20 条容器内滚动`}><div className="cp2ScrollList tall"><ConceptTable compact columns={[{key:"createdAt",label:"成交时间",render:r=>formatDateTime(r.createdAt)},{key:"orderId",label:"订单号"},{key:"symbol",label:"交易对"},{key:"side",label:"方向",render:r=>humanize(r.side||r.kind)},{key:"quantity",label:"成交数量",render:r=>r.quantity??r.size??"—"},{key:"price",label:"成交价格",render:r=>money(r.price)},{key:"fee",label:"手续费",render:r=>money(r.fee)}]} rows={fills} empty="暂无成交"/></div></ConceptCard></div>;
 }
 
+// AI 交易行为画像:量化画像(data.behaviorProfile)+ 按需 LLM 叙述 + 喂回"行为镜"透镜。
+export function BehaviorProfileConcept({ data, action }) {
+  const p = data.behaviorProfile || {};
+  const [narr, setNarr] = useState(data.behaviorNarrative || null);
+  const [busy, setBusy] = useState(false);
+  const fmtMin = (m) => m == null ? "—" : m < 60 ? `${Math.round(m)}m` : `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, "0")}m`;
+
+  if (!p.trades) return <div className="cp2Wrap"><ConceptCard title="AI 交易行为画像" meta="让 AI 照镜子看自己的交易模式"><div className="emptyPanel">{p.note || "暂无已平仓交易——行为画像会随成交累积。"}</div></ConceptCard></div>;
+
+  const o = p.overall || {};
+  const generate = async () => { setBusy(true); try { const r = await action("/api/behavior-profile/narrative", {}); if (r?.narrative) setNarr(r.narrative); } finally { setBusy(false); } };
+  const adopt = async () => { if (narr?.disciplines?.length && await uiConfirm("把这几条纪律固化为『行为镜』透镜、注入 AI 决策提示词?")) action("/api/behavior-profile/adopt-discipline", { disciplines: narr.disciplines }); };
+
+  const pts = arr(p.scatter).filter((s) => Number.isFinite(s.holdMinutes) && Number.isFinite(s.roiPct));
+  const maxHold = Math.max(60, ...pts.map((s) => s.holdMinutes));
+  const maxRoi = Math.max(5, ...pts.map((s) => Math.abs(s.roiPct)));
+
+  return (
+    <div className="cp2Wrap bpWrap">
+      <ConceptCard title="AI 交易行为画像" meta="基于真实成交/入场理由/亏损归因 · 让 AI 照镜子">
+        <div className="bpHero">
+          <div className="bpPersona"><b>{narr?.persona ? narr.persona.slice(0, 14) : "待生成"}</b><small>{p.trades} 笔已平仓</small></div>
+          <div className="cp2Metrics compact" style={{ flex: 1 }}>
+            <ConceptMetric label="胜率" value={`${o.winRatePct}%`} tone={o.winRatePct >= 50 ? "good" : "bad"} />
+            <ConceptMetric label="盈亏比" value={o.profitFactor ?? "—"} />
+            <ConceptMetric label="期望值/笔" value={money(o.expectancyUsdt)} tone={num(o.expectancyUsdt) >= 0 ? "good" : "bad"} />
+            <ConceptMetric label="平均持仓" value={fmtMin(o.avgHoldMinutes)} />
+          </div>
+        </div>
+      </ConceptCard>
+
+      {arr(p.flags).length > 0 && (
+        <ConceptCard title="⚠ 致命习惯(自动检出 · 证据驱动)">
+          <div className="bpFlags">{p.flags.map((f) => <div className={`bpFlag ${f.severity}`} key={f.key}><b>{f.title}</b><span>{f.detail}</span></div>)}</div>
+        </ConceptCard>
+      )}
+
+      <ConceptCard title="📈 持仓时长 × 收益率 × 杠杆(点大小=杠杆 · 红绿=盈亏)">
+        {pts.length ? <svg className="bpScatter" viewBox="0 0 520 220" width="100%">
+          <line x1="40" y1="110" x2="510" y2="110" stroke="var(--border)" /><line x1="40" y1="12" x2="40" y2="208" stroke="var(--border)" />
+          <text x="46" y="22" fontSize="10" fill="var(--text-3)">收益%</text><text x="452" y="128" fontSize="10" fill="var(--text-3)">持仓时长→</text>
+          {pts.map((s, i) => <circle key={i} cx={40 + (s.holdMinutes / maxHold) * 460} cy={110 - (s.roiPct / maxRoi) * 92} r={Math.max(5, Math.min(20, (s.leverage || 5) * 1.2))} fill={s.win ? "#2e9e6b" : "#c8492f"} opacity="0.62" />)}
+        </svg> : <div className="emptyPanel">持仓时长/收益数据不足</div>}
+      </ConceptCard>
+
+      <ConceptCard title="🔬 拆解">
+        <div className="bpCols">
+          <div><div className="bpColH">按方向</div>{Object.entries(p.byDirection || {}).map(([k, v]) => <div className="bpRow" key={k}><span>{k === "long" ? "做多" : "做空"}</span><span className={v.pnl >= 0 ? "good" : "bad"}>胜率 {v.winRatePct}% · {money(v.pnl)}</span></div>)}</div>
+          <div><div className="bpColH">按 regime</div>{Object.entries(p.byRegime || {}).map(([k, v]) => <div className="bpRow" key={k}><span>{k}</span><span className={v.winRatePct >= 50 ? "good" : "bad"}>胜率 {v.winRatePct}% · {v.n}笔</span></div>)}</div>
+          <div><div className="bpColH">亏损归因</div>{Object.entries(p.lossAttribution || {}).map(([k, v]) => <div className="bpRow" key={k}><span>{k}</span><span>{v} 笔</span></div>)}{!Object.keys(p.lossAttribution || {}).length && <div className="muted">暂无亏损归因</div>}</div>
+        </div>
+      </ConceptCard>
+
+      <ConceptCard title="🪞 AI 画像叙述(deepseek 生成)" action={<button className="cp2Primary" onClick={generate} disabled={busy}>{busy ? "生成中…" : narr ? "刷新画像" : "生成画像"}</button>}>
+        {narr ? <div className="bpNarr">
+          <div className="bpSec"><b>交易性格</b><p>{narr.persona}</p></div>
+          {arr(narr.fatalHabits).length > 0 && <div className="bpSec"><b>致命习惯</b><ul>{narr.fatalHabits.map((h, i) => <li key={i}>{h}</li>)}</ul></div>}
+          {narr.blindSpots && <div className="bpSec"><b>数据盲区</b><p>{narr.blindSpots}</p></div>}
+          {arr(narr.disciplines).length > 0 && <div className="bpSec"><b>下一步可执行纪律</b><ul>{narr.disciplines.map((d, i) => <li key={i}>{d}</li>)}</ul>
+            <button className="cp2Primary" style={{ marginTop: 8 }} onClick={adopt}>🔁 把这几条喂回决策条令(行为镜)</button></div>}
+        </div> : <div className="emptyPanel">点「生成画像」让 deepseek 基于你的真实成交+入场理由+复盘,归纳交易性格、致命习惯与可执行纪律。</div>}
+      </ConceptCard>
+    </div>
+  );
+}
+
 export function JournalConcept({ data }) {
   const fills = arr(data.fills); const reviews = arr(data.reviews); const performance = data.performance || {}; const report = data.paperReport || {};
   const wins = fills.filter((item)=>num(item.realizedPnl)>0); const losses = fills.filter((item)=>num(item.realizedPnl)<0); const net = fills.reduce((sum,item)=>sum+num(item.realizedPnl),0);
