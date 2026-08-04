@@ -48,8 +48,11 @@ function slippageBps(actual, expected, direction = "long") {
   return Number((direction === "short" ? -raw : raw).toFixed(2));
 }
 
-function entryRationale(plan = {}) {
-  return plan.rationale || plan.analysis || plan.reason || plan.summary || plan.entry?.rationale || "未记录入场理由";
+// 提取入场理由:plan 把 LLM 推理存在 reasoningSummary(见 agentChat propose_trade_plan),
+// 【修复】此前只找 rationale/analysis/... 漏了 reasoningSummary → 每笔都落"未记录",复盘拿空输入还反过来
+// 把有完整结构分析的单子误判成"无纪律追单"。reasoningSummary 必须在候选里。
+export function entryRationale(plan = {}) {
+  return plan.rationale || plan.reasoningSummary || plan.analysis || plan.reason || plan.summary || plan.entry?.rationale || "未记录入场理由";
 }
 
 export function currentEquityUsdt(db) {

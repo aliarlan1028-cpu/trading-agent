@@ -384,7 +384,11 @@ function enrichRealtimeFill(db, order, payload = {}) {
     feeUsdt,
     fee: feeUsdt === null ? undefined : `${feeUsdt} USDT`,
     estimatedFee: payload.feeUsdt === undefined,
-    entryRationale: executionOrder?.entryRationale || plan.rationale || plan.analysis || "未记录入场理由",
+    // 同 executionEngine.entryRationale:plan 的推理在 reasoningSummary。executionOrder 已存的占位符
+    // "未记录入场理由"不算真值,别让它短路掉 plan 的真实理由。
+    entryRationale: (executionOrder?.entryRationale && executionOrder.entryRationale !== "未记录入场理由")
+      ? executionOrder.entryRationale
+      : (plan.reasoningSummary || plan.rationale || plan.analysis || "未记录入场理由"),
     createdAt: nowIso()
   };
 }
