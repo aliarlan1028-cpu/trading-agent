@@ -8823,3 +8823,46 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .cfmOk:hover{filter:brightness(1.05)}
 .cfmDanger{background:var(--neg,#c43f28);color:#fff}
 .cfmDanger:hover{filter:brightness(1.05)}
+
+/* ────────────────────────────────────────────────────────────
+   分析海报(社交分享获客):把 AI 交易员的巡检分析导成中/英 PNG
+   ──────────────────────────────────────────────────────────── */
+.posterOverlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(20, 16, 10, 0.55); backdrop-filter: blur(8px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 32px 16px; overflow: auto;
+}
+.posterModal { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 660px; }
+.posterToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.posterLangTabs { display: inline-flex; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.posterLangTabs button { padding: 7px 16px; border: none; background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; }
+.posterLangTabs button.active { background: var(--accent-grad); color: #fff; }
+.posterLangTabs button:disabled { opacity: 0.55; cursor: default; }
+.posterActions { display: flex; align-items: center; gap: 8px; }
+.posterClose { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: #fff; color: var(--text-2); cursor: pointer; }
+.posterClose:hover { color: var(--accent-ink); border-color: var(--accent); }
+.posterError { background: #fdecea; color: #b3261e; border: 1px solid #f3c9c5; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.posterCanvas {
+  width: 660px; max-width: 100%; background: #fff;
+  border-radius: 18px; overflow: hidden;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.28);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+}
+.posterHeader { display: flex; align-items: center; justify-content: space-between; padding: 22px 26px; background: var(--accent-grad); color: #fff; }
+.posterBrand { display: flex; align-items: center; gap: 12px; }
+.posterLogo { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(255, 255, 255, 0.18); color: #fff; }
+.posterBrandText b { display: block; font-size: 18px; font-weight: 700; line-height: 1.2; }
+.posterBrandText small { font-size: 10.5px; opacity: 0.85; font-family: var(--font-mono); letter-spacing: 0.08em; }
+.posterDate { font-family: var(--font-mono); font-size: 12px; opacity: 0.92; }
+.posterBody { padding: 22px 26px 6px; }
+.posterBody .richMessage { font-size: 15px; line-height: 1.72; }
+.posterTranslating { padding: 44px 20px; text-align: center; color: var(--text-3); }
+.posterFooter { padding: 14px 26px 22px; margin-top: 8px; border-top: 1px solid var(--border); }
+.posterTag { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); letter-spacing: 0.03em; }
+
+/* AI 消息底部:时间 + 生成海报按钮 */
+.agMsgFootRow { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.agPosterBtn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-3); font-size: 11.5px; cursor: pointer; }
+.agPosterBtn:hover { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-weak); }

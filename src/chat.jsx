@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   AlertTriangle,
@@ -27,7 +28,10 @@ import {
   TrendingUp,
   Wrench,
   XCircle,
-  Zap
+  Zap,
+  Download,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 
@@ -563,17 +567,26 @@ function AgentRail({ data, action, ui, send }) {
           const desc = (w) => w.kind === "price_above" ? `向上突破 ${displayPrice(w.level)}`
             : w.kind === "price_below" ? `向下跌破 ${displayPrice(w.level)}`
               : `回踩 ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
+          // 悬停显示完整信息(侧栏窄、note 被截断 → 鼠标放上去看全:条件 + 完整备注 + 状态 + 时间)。
+          const fullInfo = (w) => [
+            `${w.symbol} · ${desc(w)}`,
+            w.note ? `备注：${w.note}` : "",
+            w.status === "active"
+              ? `到期：${new Date(w.expiresAt).toLocaleString("zh-CN")}`
+              : `${label[w.status] || w.status}${w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}`,
+            w.createdAt ? `登记于：${new Date(w.createdAt).toLocaleString("zh-CN")}` : ""
+          ].filter(Boolean).join("\n");
           if (!all.length) return <small className="agWatchEmpty">暂无观察哨。巡检得出"若跌破/突破某价位"的结论时，AI 会把条件登记在这里，哨兵每分钟核对真实行情，命中即刻唤起 AI 重新决策。</small>;
           return (
             <div className="agWatchList">
               {actives.map((w) => {
                 const remainH = Math.max(0, (new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000);
                 return (
-                  <div className="agWatchRow" key={w.id}>
+                  <div className="agWatchRow" key={w.id} title={fullInfo(w)}>
                     <span className="agWatchDot" />
                     <div className="agWatchBody">
                       <b className="mono">{w.symbol}</b> {desc(w)}
-                      {w.note && <small title={w.note}>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
+                      {w.note && <small>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
                     </div>
                     <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
                     <button className="agWatchCancel" title="撤销观察哨" onClick={async () => { if (await uiConfirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
@@ -581,7 +594,7 @@ function AgentRail({ data, action, ui, send }) {
                 );
               })}
               {recent.map((w) => (
-                <div className="agWatchRow closed" key={w.id}>
+                <div className="agWatchRow closed" key={w.id} title={fullInfo(w)}>
                   <span className={`agWatchDot ${w.status}`} />
                   <div className="agWatchBody"><b className="mono">{w.symbol}</b> {desc(w)}</div>
                   <span className="agWatchMeta mono">{label[w.status] || w.status}{w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}</span>
@@ -666,10 +679,108 @@ function SetupChecklist({ onExample }) {
   );
 }
 
+// 把一条 AI 交易员分析渲染成精美海报,支持中/英切换与导出 PNG(社交分享获客)。
+// 内容只用消息原文(中文)+ 后端 LLM 翻译(英文),不编造。图片在前端由 html-to-image 从模板导出。
+function PosterModal({ content, meta, onClose }) {
+  const [lang, setLang] = useState("zh");
+  const [enText, setEnText] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [transError, setTransError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const posterRef = useRef(null);
+
+  useEffect(() => {
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
+
+  async function toEnglish() {
+    setLang("en");
+    if (enText || translating) return;
+    setTranslating(true); setTransError("");
+    try {
+      const response = await fetch(apiUrl("/api/posters/translate"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ text: content })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.translated) throw new Error(json.error || `翻译失败(${response.status})`);
+      setEnText(json.translated);
+    } catch (error) {
+      setTransError(error.message || "翻译失败"); setLang("zh");
+    } finally { setTranslating(false); }
+  }
+
+  async function download() {
+    if (!posterRef.current) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await toPng(posterRef.current, { pixelRatio: 2, cacheBust: true, backgroundColor: "#ffffff" });
+      const link = document.createElement("a");
+      link.download = `ai-trader-${lang}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      setTransError(`导出图片失败：${error.message || error}`);
+    } finally { setDownloading(false); }
+  }
+
+  const enReady = lang === "zh" || Boolean(enText);
+  const body = lang === "en" ? enText : content;
+  const dateStr = meta?.createdAt ? formatDateTime(meta.createdAt) : "";
+
+  return (
+    <div className="posterOverlay" onClick={onClose}>
+      <div className="posterModal" onClick={(e) => e.stopPropagation()}>
+        <div className="posterToolbar">
+          <div className="posterLangTabs">
+            <button type="button" className={lang === "zh" ? "active" : ""} onClick={() => setLang("zh")}>中文</button>
+            <button type="button" className={lang === "en" ? "active" : ""} onClick={toEnglish} disabled={translating}>
+              {translating ? "翻译中…" : "English"}
+            </button>
+          </div>
+          <div className="posterActions">
+            <button type="button" className="primaryButton" disabled={downloading || !enReady} onClick={download}>
+              <Download size={14} /> {downloading ? "生成中…" : "下载 PNG"}
+            </button>
+            <button type="button" className="posterClose" onClick={onClose} title="关闭"><X size={16} /></button>
+          </div>
+        </div>
+        {transError && <div className="posterError">{transError}</div>}
+        <div className="posterScroll">
+          <div className="posterCanvas" ref={posterRef}>
+            <div className="posterHeader">
+              <div className="posterBrand">
+                <span className="posterLogo"><Bot size={22} /></span>
+                <div className="posterBrandText">
+                  <b>{lang === "en" ? "AI Trader" : "AI 交易员"}</b>
+                  <small>{lang === "en" ? "Autonomous market analysis" : "自主行情分析"}</small>
+                </div>
+              </div>
+              {dateStr && <span className="posterDate">{dateStr}</span>}
+            </div>
+            <div className="posterBody">
+              {lang === "en" && !enText
+                ? <div className="posterTranslating">{translating ? "Translating…" : "点击 English 生成英文版"}</div>
+                : <RichMessage text={body} />}
+            </div>
+            <div className="posterFooter">
+              <span className="posterTag">{lang === "en" ? "AI-generated · Not financial advice" : "AI 自动生成 · 仅供参考，不构成投资建议"}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatPage({ data, action, ui, concept = false }) {
   const system = data.system || {};
   const autoOn = system.autonomyEnabled === true && !system.killSwitch;
   const [messages, setMessages] = useState([]);
+  const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const [showHistory, setShowHistory] = useState(false);
@@ -837,7 +948,14 @@ export function ChatPage({ data, action, ui, concept = false }) {
                 <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} />
               )}
               <ToolTrace trace={message.toolTrace || []} />
-              <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
+              <div className="agMsgFootRow">
+                <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
+                {String(message.content || "").length > 80 && (
+                  <button type="button" className="agPosterBtn" title="把这条分析做成海报（中/英，可导出）" onClick={() => setPosterMsg(message)}>
+                    <ImageIcon size={13} /> 海报
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )))}
@@ -862,6 +980,8 @@ export function ChatPage({ data, action, ui, concept = false }) {
           ))}
         </div>
       )}
+
+      {posterMsg && <PosterModal content={stripCitationMarkers(posterMsg.content)} meta={posterMsg} onClose={() => setPosterMsg(null)} />}
 
       <div className="agInputBar">
         <textarea

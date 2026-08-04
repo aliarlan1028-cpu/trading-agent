@@ -30,6 +30,7 @@ import { registerAgentChatRoutes } from "./agentChatRoutes.mjs";
 import { registerAgentRunRoutes } from "./agentRuns.mjs";
 import { registerSystemRoutes } from "./system.mjs";
 import { registerAssistantRoutes } from "./assistant.mjs";
+import { registerPosterRoutes } from "./posters.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -61,4 +62,5 @@ export function registerAllRoutes(app, ctx) {
   registerAgentRunRoutes(app, ctx);
   registerSystemRoutes(app, ctx);
   registerAssistantRoutes(app, ctx);
+  registerPosterRoutes(app, ctx);
 }
