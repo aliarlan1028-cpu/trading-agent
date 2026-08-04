@@ -14,6 +14,17 @@ STATE_DIR="${STATE_DIR:-$APP_DIR/data/.monitor}"   # 演练时可指向 /tmp 隔
 MAIN_URL="${MAIN_URL:-http://127.0.0.1:8787/api/health}"  # 演练时可指向坏地址验证自愈链路
 mkdir -p "$STATE_DIR"
 
+# 部署静默:deploy.sh 在容器重建期间写 .deploying 标记,这段短暂宕机不该告警(否则每次部署都刷「宕机/恢复」)。
+# 标记超 8 分钟(480s)视为失效,防部署卡死/ssh 掉线导致永久静默——真宕机仍会被后续巡检发现。
+DEPLOY_MARK="$STATE_DIR/.deploying"
+if [ -f "$DEPLOY_MARK" ]; then
+  mark_ts="$(stat -c %Y "$DEPLOY_MARK" 2>/dev/null || echo 0)"
+  if [ "$(( $(date +%s) - mark_ts ))" -lt 480 ]; then
+    echo "$(date '+%F %T') 部署静默中,跳过本轮巡检"
+    exit 0
+  fi
+fi
+
 COMPOSE="$APP_DIR/docker-compose.yml"
 SERVICE="${SERVICE:-trading-agent}"
 CHANNEL_CACHE="$STATE_DIR/.channels"     # 缓存的告警通道（宕机时金库读不到，用上次的）

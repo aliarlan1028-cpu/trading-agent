@@ -36,6 +36,9 @@ echo "==> [3/5] 远端构建 + 保留回滚镜像"
 ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
+# 写"部署静默"标记:容器重建的短暂宕机期间,监控(monitor-tenants.sh)跳过巡检、不发「宕机/恢复」告警。
+# 标记放 data/.monitor(rsync 排除、跨部署保留);监控端超 480s 自动失效,ssh 掉线也不会永久静默。
+mkdir -p data/.monitor && touch data/.monitor/.deploying
 grep -q '^HOST=0.0.0.0' .env || { echo "FATAL: .env 缺少 HOST=0.0.0.0（会 502），中止"; exit 1; }
 docker image inspect "$IMAGE:latest" >/dev/null 2>&1 && docker tag "$IMAGE:latest" "$IMAGE:rollback"
 docker compose build </dev/null 2>&1 | tail -2
@@ -61,6 +64,7 @@ if [ -n "\$cpu" ] && [ "\$cpu" -gt 80 ]; then echo "CPU 异常偏高(\${cpu}%)";
 exit 0
 REMOTE
 then
+  ssh -o ConnectTimeout=15 "$HOST" "rm -f $REMOTE_DIR/data/.monitor/.deploying" 2>/dev/null || true
   echo "==> [5/5] ✅ 部署成功并通过验证"
 else
   echo "==> [5/5] ❌ 验证失败 → 自动回滚上一镜像"
@@ -74,6 +78,7 @@ sleep 8
 code=\$(curl -s -o /dev/null -m 5 -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo 000)
 echo "回滚后 health: HTTP \$code"
 REMOTE
+  ssh -o ConnectTimeout=15 "$HOST" "rm -f $REMOTE_DIR/data/.monitor/.deploying" 2>/dev/null || true
   echo "已回滚到上一版本，请排查本次改动后再部署。"
   exit 1
 fi
