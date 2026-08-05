@@ -419,6 +419,21 @@ export function JournalConcept({ data }) {
     <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0,3).map((review,index)=><article key={review.id||index}><small>{review.symbol||t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title||review.summary||t("交易复盘", "Trade review")}</b><p>{review.lesson||review.notes||t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length&&<div className="cp2Empty"><BookOpen/><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2/>{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2/>{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle/>{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div></div>;
 }
 
+// 迷你走势线(指标卡内嵌,极小):给"已实现盈亏"配累计曲线。
+function Spark({ values = [], pos = true, w = 66, h = 26 }) {
+  const v = (values || []).filter((x) => Number.isFinite(x));
+  if (v.length < 2) return null;
+  const min = Math.min(...v), max = Math.max(...v), rng = (max - min) || 1;
+  const pts = v.map((x, i) => `${(i / (v.length - 1)) * (w - 2) + 1},${(h - 3) - ((x - min) / rng) * (h - 6) + 1.5}`).join(" ");
+  const last = v[v.length - 1];
+  return <svg className="erSpark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"><polyline points={pts} fill="none" stroke={pos ? "var(--pos)" : "var(--neg)"} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/><circle cx={w - 1} cy={(h - 3) - ((last - min) / rng) * (h - 6) + 1.5} r="1.7" fill={pos ? "var(--pos)" : "var(--neg)"}/></svg>;
+}
+// 迷你环(指标卡内嵌):给"胜率"配一个小环。
+function MiniRing({ pct = 0, tone = "pos" }) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return <span className={`erRing ${tone}`} style={{ "--p": `${p * 3.6}deg` }} />;
+}
+
 // 执行与复盘(整合页):把「订单与成交」「交易日志」「AI 行为画像」三页合一——
 // 统一 KPI 带(去重)+ 执行区 + 成交与成绩区(成交表合并、可切「全部/仅已平仓」)+ 复盘与画像区。
 // 保留三页全部功能:撤单/平仓、交给AI改、月度日目标、复盘卡、散点图、致命习惯、生成画像、喂回条令。
@@ -433,16 +448,21 @@ export function ExecutionReviewConcept({ data, action, ui }) {
   const wins = closes.filter((f) => num(f.realizedPnl) > 0); const losses = closes.filter((f) => num(f.realizedPnl) < 0);
   const net = closes.reduce((s, f) => s + num(f.realizedPnl), 0);
   const o = bp.overall || {};
+  const winPct = closes.length ? Math.round(wins.length / closes.length * 100) : 0;
+  const avg = performance.avgPnlUsdt != null ? num(performance.avgPnlUsdt) : num(o.expectancyUsdt);
+  const pending = orders.filter((i) => /pending|open|new/i.test(String(i.status))).length + plans.filter((i) => i.status === "awaiting_approval").length;
+  // 累计已实现盈亏曲线(按时间正序),给首格配迷你走势。
+  const cumPnl = (() => { const seq = closes.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); let s = 0; return seq.map((f) => (s += num(f.realizedPnl))); })();
   return <div className="cp2Stack erPage">
-    {/* 统一 KPI 带(合并三处、去重) */}
-    <div className="cp2Metrics seven">
-      <ConceptMetric label={t("已实现盈亏", "Realized PnL")} value={`${net >= 0 ? "+" : ""}${money(net, "0")}`} tone={net >= 0 ? "good" : "bad"} />
-      <ConceptMetric label={t("胜率", "Win rate")} value={closes.length ? `${(wins.length / closes.length * 100).toFixed(1)}%` : "—"} />
-      <ConceptMetric label={t("盈亏比", "Profit factor")} value={performance.profitFactor != null ? num(performance.profitFactor).toFixed(2) : (o.profitFactor ?? "—")} />
-      <ConceptMetric label={t("平均每笔", "Avg/trade")} value={performance.avgPnlUsdt != null ? `${num(performance.avgPnlUsdt) >= 0 ? "+" : ""}${money(performance.avgPnlUsdt, "0")}` : money(o.expectancyUsdt)} tone={num(performance.avgPnlUsdt ?? o.expectancyUsdt) >= 0 ? "good" : "bad"} />
-      <ConceptMetric label={t("最大回撤", "Max drawdown")} value={displayPct(performance.maxDrawdownPct ?? report.maxDrawdownPct, "—")} tone="bad" />
-      <ConceptMetric label={t("今日成交", "Fills")} value={String(fills.length)} sub={t("交易所回报", "Exchange")} />
-      <ConceptMetric label={t("待执行/待批", "Pending")} value={String(orders.filter((i) => /pending|open|new/i.test(String(i.status))).length + plans.filter((i) => i.status === "awaiting_approval").length)} sub={t("订单+审批", "orders+approvals")} />
+    {/* 统一 KPI 条(紧凑指标 + 迷你可视化,合并三处去重) */}
+    <div className="erKpi">
+      <div className="erStat erStatWide"><div className="erStatCol"><small>{t("已实现盈亏", "Realized PnL")}</small><b className={net >= 0 ? "good" : "bad"}>{net >= 0 ? "+" : ""}{money(net, "0")}</b></div><Spark values={cumPnl} pos={net >= 0} /></div>
+      <div className="erStat withRing"><MiniRing pct={winPct} tone={winPct >= 50 ? "pos" : "neg"} /><div className="erStatCol"><small>{t("胜率", "Win rate")}</small><b>{closes.length ? `${winPct}%` : "—"}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("盈亏比", "Profit factor")}</small><b>{performance.profitFactor != null ? num(performance.profitFactor).toFixed(2) : (o.profitFactor ?? "—")}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("平均每笔", "Avg/trade")}</small><b className={avg >= 0 ? "good" : "bad"}>{avg >= 0 ? "+" : ""}{money(avg, "0")}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("最大回撤", "Max DD")}</small><b className="bad">{displayPct(performance.maxDrawdownPct ?? report.maxDrawdownPct, "—")}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("今日成交", "Fills")}</small><b>{fills.length}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("待执行/待批", "Pending")}</small><b>{pending}</b></div></div>
     </div>
 
     {/* 执行区 */}

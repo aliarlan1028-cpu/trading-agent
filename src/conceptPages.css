@@ -129,14 +129,26 @@
 @media(max-width:1250px){.cp2Metrics.six{grid-template-columns:repeat(3,1fr)}.cp2Metrics.five{grid-template-columns:repeat(3,1fr)}.conceptChatShell{grid-template-columns:minmax(0,1fr) 260px!important}.cp2MarketBottom{grid-template-columns:repeat(2,1fr)}.cp2OrdersLayout,.cp2TasksLayout{grid-template-columns:minmax(0,1fr) 260px}.cp2OrdersLayout>.cp2Card:last-child,.cp2TasksLayout>.cp2Card:last-child{grid-column:1/-1}.cp2CapabilitiesLayout{grid-template-columns:140px minmax(0,1fr)}.cp2CapabilityDetail{grid-column:1/-1}.cp2StrategyLayout{grid-template-columns:repeat(2,1fr)}.cp2StrategyLayout>.cp2Card:last-child{grid-column:1/-1}.strategyBottom{grid-template-columns:repeat(2,1fr)}.strategyBottom>.cp2Card:last-child{grid-column:1/-1}}@media(max-width:1000px){.cp2IntelLayout,.cp2EventsLayout,.cp2AuditLayout,.cp2NotificationsLayout,.cp2SettingsBase{grid-template-columns:1fr}.cp2SideFilter{display:grid;grid-template-columns:repeat(3,1fr)}.cp2TradingHero,.positionsTop,.journalMain,.cp2Grid.wideLeft,.cp2KnowledgeGrid,.riskCards,.mandateTop,.cp2RulesLayout,.liveTop{grid-template-columns:1fr}.cp2Grid .span2{grid-column:auto}.cp2Metrics.four,.cp2Metrics.five{grid-template-columns:repeat(2,1fr)}.conceptChatShell{grid-template-columns:1fr!important}.conceptSessions,.conceptChatShell .agRail{display:none}.cp2MarketLayout{grid-template-columns:1fr}.cp2MarketRail{grid-template-columns:repeat(2,1fr);display:grid}.cp2ReviewGrid,.cp2MandateGrid,.cp2GrayCards,.cp2ExchangeCards,.cp2ChannelGrid{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.cp2Grid.two,.cp2Grid.three,.cp2Metrics.four,.cp2Metrics.five,.cp2Metrics.six,.cp2Metrics.two,.cp2MarketBottom,.cp2OrdersLayout,.cp2ReviewGrid,.cp2CapabilitiesLayout,.cp2StrategyLayout,.strategyBottom,.cp2MandateGrid,.ruleBottom,.cp2GrayCards,.cp2ExchangeCards,.cp2TasksLayout,.cp2ChannelGrid,.settingsBottom{grid-template-columns:1fr}.cp2EmergencyActions{grid-template-columns:repeat(2,1fr)}.cp2Workflow{overflow:auto;gap:14px;justify-content:flex-start}.cp2Calendar .days>div{min-height:50px}.cp2MarketRail{grid-template-columns:1fr}}
 
 /* 执行与复盘整合页(ExecutionReviewConcept)—— 精修:紧凑仪表盘风,样式全部限定在 .erPage,不影响其它页 */
-.erPage{gap:16px}
-/* KPI 带:连成一条精致的统计条(卡间细分隔线,首格已实现盈亏用左侧强调色),取代 7 个笨重白盒 */
-.cp2Metrics.seven{grid-template-columns:repeat(7,minmax(0,1fr));gap:0;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(62,45,24,.03)}
-.erPage .cp2Metrics.seven .cp2Metric{min-height:auto;border:0;border-right:1px solid var(--hairline);border-radius:0;box-shadow:none;flex-direction:column;align-items:stretch;gap:0;padding:14px 16px}
-.erPage .cp2Metrics.seven .cp2Metric:first-child{box-shadow:inset 3px 0 0 var(--accent)}
-.erPage .cp2Metrics.seven .cp2Metric:last-child{border-right:0}
-.erPage .cp2Metrics.seven .cp2Metric small,.erPage .cp2Metrics.seven .cp2Metric em{font-size:10.5px;letter-spacing:.01em;color:var(--text-4);text-transform:none}
-.erPage .cp2Metrics.seven .cp2Metric b{font-size:21px;margin:9px 0 0;letter-spacing:-.02em}
+.erPage{gap:14px}
+/* KPI 统计条:紧凑小指标 + 迷你可视化(累计走势 / 胜率环),取代 7 个笨重白盒 */
+.erKpi{display:grid;grid-template-columns:1.5fr repeat(6,minmax(0,1fr));background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(62,45,24,.03)}
+.erStat{display:flex;align-items:center;gap:9px;min-width:0;padding:10px 14px;border-right:1px solid var(--hairline)}
+.erStat:last-child{border-right:0}
+.erStatCol{display:flex;flex-direction:column;min-width:0}
+.erStat small{font-size:10px;color:var(--text-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.erStat b{font:700 18px/1.15 var(--font-ui);color:var(--text);letter-spacing:-.02em;margin-top:4px;white-space:nowrap}
+.erStat b.good{color:var(--pos)}.erStat b.bad{color:var(--neg)}
+.erStatWide{justify-content:space-between;box-shadow:inset 3px 0 0 var(--accent)}
+.erSpark{width:66px;height:26px;flex:none;opacity:.9}
+.erRing{width:26px;height:26px;flex:none;border-radius:50%;position:relative;background:conic-gradient(var(--pos) 0 var(--p,0deg),#e8e3da var(--p,0deg) 360deg)}
+.erRing.neg{background:conic-gradient(var(--neg) 0 var(--p,0deg),#e8e3da var(--p,0deg) 360deg)}
+.erRing::after{content:"";position:absolute;inset:5px;background:#fff;border-radius:50%}
+/* 画像区指标也压小(嵌入的 BehaviorProfileConcept) */
+.erPage .bpHero .cp2Metric{min-height:auto;padding:9px 11px}
+.erPage .bpHero .cp2Metric b{font-size:16px;margin:5px 0 0}
+.erPage .bpHero .cp2Metric small{font-size:10.5px}
+.erPage .bpPersona b{font-size:15px}
+.erPage .bpScatter{max-height:180px}
 /* 区块分隔标题:左侧强调色小竖条 + 细分隔线,层次更清 */
 .erZoneLabel{display:flex;align-items:center;gap:10px;margin:12px 2px 0}
 .erZoneLabel span{position:relative;padding-left:11px;font:700 13.5px var(--font-ui);color:var(--text);letter-spacing:-.01em;white-space:nowrap}
@@ -153,6 +165,5 @@
 .erPage .cp2Table.compact td,.erPage .cp2Table.compact th{padding:6px 9px}
 /* 卡片略提精致度 */
 .erPage .cp2Card{border-radius:9px}
-@media(max-width:1250px){.cp2Metrics.seven{grid-template-columns:repeat(4,1fr)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(4n){border-right:0}}
-@media(max-width:1000px){.cp2Metrics.seven{grid-template-columns:repeat(3,1fr)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(4n){border-right:1px solid var(--hairline)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(3n){border-right:0}}
-@media(max-width:720px){.cp2Metrics.seven{grid-template-columns:repeat(2,1fr)}.erPage .cp2Metrics.seven .cp2Metric{border-right:1px solid var(--hairline)!important}.erPage .cp2Metrics.seven .cp2Metric:nth-child(2n){border-right:0!important}}
+@media(max-width:1100px){.erKpi{grid-template-columns:1.5fr repeat(3,1fr)}.erKpi .erStat:nth-child(4n){border-right:0}}
+@media(max-width:720px){.erKpi{grid-template-columns:repeat(2,1fr)}.erKpi .erStatWide{grid-column:1/-1}.erKpi .erStat:nth-child(2n){border-right:0}}
