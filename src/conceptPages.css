@@ -167,3 +167,39 @@
 .erPage .cp2Card{border-radius:9px}
 @media(max-width:1100px){.erKpi{grid-template-columns:1.5fr repeat(3,1fr)}.erKpi .erStat:nth-child(4n){border-right:0}}
 @media(max-width:720px){.erKpi{grid-template-columns:repeat(2,1fr)}.erKpi .erStatWide{grid-column:1/-1}.erKpi .erStat:nth-child(2n){border-right:0}}
+
+/* ER 重构补充:散点/胜率条/归因分段/紧凑画像/半宽月度拆解(均限定语义,不影响其它页) */
+.erUnit{font-size:11px;color:var(--text-4);font-weight:500}
+.erScatter{display:block;width:100%;height:auto}
+.erLegend{display:flex;align-items:center;gap:14px;margin-top:6px;font-size:10.5px;color:var(--text-3)}
+.erLegend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.erLegend .dot.pos{background:var(--pos)}.erLegend .dot.neg{background:var(--neg)}
+.erLegend .muted{margin-left:auto;color:var(--text-4)}
+.erWinBars{display:flex;flex-direction:column;gap:8px}
+.erWinRow{display:grid;grid-template-columns:56px 1fr auto;align-items:center;gap:9px;font-size:11.5px}
+.erWinLabel{color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.erWinTrack{height:7px;border-radius:5px;background:#eeeae2;overflow:hidden}
+.erWinTrack i{display:block;height:100%;border-radius:5px}
+.erWinVal{color:var(--text-2);font-weight:600;white-space:nowrap;font-size:11px}
+.erSplit{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px}
+.erSplitLegend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:11px;color:var(--text-3)}
+.erSplitLegend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.erBehaviorTop{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+.erPersona{font-size:13px;line-height:1.55;color:var(--text-2)}
+.erFlags{display:flex;flex-direction:column;gap:7px;margin-top:11px}
+.erFlag{border-left:3px solid var(--border);padding:7px 10px;background:#fbfaf7;border-radius:0 6px 6px 0}
+.erFlag.high{border-left-color:var(--neg)}.erFlag.mid{border-left-color:#c98a2a}
+.erFlag b{display:block;font-size:12px;color:var(--text)}
+.erFlag span{font-size:11px;color:var(--text-3);line-height:1.4}
+.erDisc{margin-top:11px;border-top:1px solid var(--hairline);padding-top:9px}
+.erDisc small{font-size:10.5px;color:var(--text-4)}
+.erDisc ul{margin:6px 0 9px;padding-left:16px}
+.erDisc li{font-size:12px;color:var(--text-2);line-height:1.5;margin:2px 0}
+.erBreakdown{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.erBkH{font-size:11px;color:var(--text-4);margin-bottom:9px;font-weight:600}
+.erBreakdownMini{display:flex;align-items:center;gap:16px}
+.erBreakdownMini .cp2Centered{padding:0;flex:none}
+.erBreakdownMini .cp2Donut{width:84px!important;height:84px!important}
+.erBreakdownMini .cp2Bars{flex:1;min-width:0}
+.erHalf{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:1000px){.erBehaviorTop{grid-template-columns:1fr}.erBreakdown{grid-template-columns:1fr}.erHalf{grid-template-columns:1fr}}

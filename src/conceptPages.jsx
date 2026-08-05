@@ -434,11 +434,75 @@ function MiniRing({ pct = 0, tone = "pos" }) {
   return <span className={`erRing ${tone}`} style={{ "--p": `${p * 3.6}deg` }} />;
 }
 
+// 持仓时长 vs 收益率 散点(点大小=杠杆,绿盈红亏):重设计——零轴中线、网格、坐标、图例,诊断离场时机。
+function HoldScatter({ points = [] }) {
+  const pts = (points || []).filter((s) => Number.isFinite(s.holdMinutes) && Number.isFinite(s.roiPct));
+  if (!pts.length) return <div className="emptyPanel">{t("持仓/收益数据不足", "Not enough hold-time / return data")}</div>;
+  const maxHold = Math.max(60, ...pts.map((s) => s.holdMinutes));
+  const maxRoi = Math.max(4, ...pts.map((s) => Math.abs(s.roiPct)));
+  const W = 500, H = 170, L = 32, R = 12, T = 12, B = 20, midY = T + (H - T - B) / 2;
+  const px = (m) => L + (m / maxHold) * (W - L - R);
+  const py = (r) => midY - (r / maxRoi) * ((H - T - B) / 2);
+  const fmtH = (m) => m >= 60 ? `${Math.round(m / 60)}h` : `${Math.round(m)}m`;
+  return <div>
+    <svg className="erScatter" viewBox={`0 0 ${W} ${H}`} width="100%">
+      {[0.25, 0.5, 0.75, 1].map((f, i) => <line key={i} x1={L + (W - L - R) * f} y1={T} x2={L + (W - L - R) * f} y2={H - B} stroke="var(--hairline)" opacity="0.7" />)}
+      <line x1={L} y1={midY} x2={W - R} y2={midY} stroke="var(--border)" strokeDasharray="4 4" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--hairline)" />
+      <text x={L - 4} y={T + 8} fontSize="9" fill="var(--text-4)" textAnchor="end">+{maxRoi.toFixed(0)}%</text>
+      <text x={L - 4} y={H - B} fontSize="9" fill="var(--text-4)" textAnchor="end">−{maxRoi.toFixed(0)}%</text>
+      {[0.5, 1].map((f, i) => <text key={i} x={L + (W - L - R) * f} y={H - 6} fontSize="9" fill="var(--text-4)" textAnchor="middle">{fmtH(maxHold * f)}</text>)}
+      {pts.map((s, i) => <circle key={i} cx={px(s.holdMinutes)} cy={py(s.roiPct)} r={Math.max(4, Math.min(13, (s.leverage || 3) * 1.05))} fill={s.win ? "var(--pos)" : "var(--neg)"} fillOpacity="0.45" stroke={s.win ? "var(--pos)" : "var(--neg)"} strokeOpacity="0.65" />)}
+    </svg>
+    <div className="erLegend"><span><i className="dot pos" />{t("盈利", "Win")}</span><span><i className="dot neg" />{t("亏损", "Loss")}</span><span className="muted">{t("点越大=杠杆越高 · 横轴持仓 · 纵轴收益", "bigger = higher leverage · x hold · y return")}</span></div>
+  </div>;
+}
+// 胜率横条(按方向/regime),直观可视。
+function WinBars({ data = {}, labelMap }) {
+  const entries = Object.entries(data || {});
+  if (!entries.length) return <div className="muted">{t("暂无数据", "No data")}</div>;
+  return <div className="erWinBars">{entries.map(([k, v]) => { const wr = Math.round(v.winRatePct || 0); return <div className="erWinRow" key={k}><span className="erWinLabel">{labelMap ? labelMap(k) : k}</span><div className="erWinTrack"><i style={{ width: `${wr}%`, background: wr >= 50 ? "var(--pos)" : "var(--neg)" }} /></div><span className="erWinVal">{wr}%{v.pnl != null ? ` · ${money(v.pnl)}` : v.n != null ? ` · ${v.n}${t("笔", "")}` : ""}</span></div>; })}</div>;
+}
+// 亏损归因分段条。
+function SplitBar({ data = {} }) {
+  const colors = { "策略": "var(--neg)", "执行": "#c98a2a", "市场异常": "var(--text-3)" };
+  const entries = Object.entries(data || {}).filter(([, v]) => Number(v) > 0);
+  const total = entries.reduce((s, [, v]) => s + Number(v), 0);
+  if (!total) return <div className="muted">{t("暂无亏损归因", "No loss attribution")}</div>;
+  return <div><div className="erSplit">{entries.map(([k, v]) => <span key={k} style={{ flex: Number(v), background: colors[k] || "var(--text-3)" }} title={`${k} ${v}`} />)}</div><div className="erSplitLegend">{entries.map(([k, v]) => <span key={k}><i style={{ background: colors[k] || "var(--text-3)" }} />{k} {v}</span>)}</div></div>;
+}
+// 紧凑行为画像(取代占地过大的整块 BehaviorProfileConcept):画像+致命习惯 / 散点 / 拆解,功能保留。
+function BehaviorCompact({ data, action }) {
+  const p = data.behaviorProfile || {};
+  const [narr, setNarr] = useState(data.behaviorNarrative || null);
+  const [busy, setBusy] = useState(false);
+  const generate = async () => { setBusy(true); try { const r = await action("/api/behavior-profile/narrative", {}); if (r?.narrative) setNarr(r.narrative); } finally { setBusy(false); } };
+  const adopt = async () => { if (narr?.disciplines?.length && await uiConfirm(t("把这几条纪律固化为『行为镜』透镜、注入 AI 决策提示词?", "Lock these disciplines in as a \"behavior mirror\" lens and inject them into the AI decision prompt?"))) action("/api/behavior-profile/adopt-discipline", { disciplines: narr.disciplines }); };
+  if (!p.trades) return <ConceptCard title={t("AI 行为画像", "AI Behavior Profile")}><div className="emptyPanel">{p.note || t("暂无已平仓交易——行为画像会随成交累积。", "No closed trades yet — the profile builds up as fills accumulate.")}</div></ConceptCard>;
+  return <>
+    <div className="cp2Grid erBehaviorTop">
+      <ConceptCard title={t("AI 行为画像", "AI Behavior Profile")} meta={`${p.trades} ${t("笔已平仓 · AI 照镜子", "closed · the AI's mirror")}`} action={<button className="cp2Primary" onClick={generate} disabled={busy}>{busy ? t("生成中…", "Generating…") : narr ? t("刷新", "Refresh") : t("生成画像", "Generate")}</button>}>
+        <div className="erPersona">{narr?.persona ? narr.persona.slice(0, 90) : t("点「生成画像」让 AI 归纳交易性格、致命习惯与可执行纪律。", "Click Generate to distill the trading persona, fatal habits and disciplines.")}</div>
+        {arr(p.flags).length > 0 && <div className="erFlags">{p.flags.map((f) => <div className={`erFlag ${f.severity}`} key={f.key}><b>{f.title}</b><span>{f.detail}</span></div>)}</div>}
+        {narr && arr(narr.disciplines).length > 0 && <div className="erDisc"><small>{t("可执行纪律", "Actionable disciplines")}</small><ul>{narr.disciplines.map((d, i) => <li key={i}>{d}</li>)}</ul><button className="cp2Primary" onClick={adopt}>{t("🔁 喂回决策条令", "🔁 Feed back to doctrine")}</button></div>}
+      </ConceptCard>
+      <ConceptCard title={t("持仓时长 vs 收益率", "Hold Time vs Return")} meta={t("离场时机诊断", "Exit-timing diagnostic")}><HoldScatter points={p.scatter} /></ConceptCard>
+    </div>
+    <ConceptCard title={t("拆解", "Breakdown")} meta={t("方向 · regime · 亏损归因", "Direction · regime · loss attribution")}>
+      <div className="erBreakdown">
+        <div><div className="erBkH">{t("按方向", "By direction")}</div><WinBars data={p.byDirection} labelMap={(k) => k === "long" ? t("做多", "Long") : t("做空", "Short")} /></div>
+        <div><div className="erBkH">{t("按 regime", "By regime")}</div><WinBars data={p.byRegime} /></div>
+        <div><div className="erBkH">{t("亏损归因", "Loss attribution")}</div><SplitBar data={p.lossAttribution} /></div>
+      </div>
+    </ConceptCard>
+  </>;
+}
+
 // 执行与复盘(整合页):把「订单与成交」「交易日志」「AI 行为画像」三页合一——
 // 统一 KPI 带(去重)+ 执行区 + 成交与成绩区(成交表合并、可切「全部/仅已平仓」)+ 复盘与画像区。
 // 保留三页全部功能:撤单/平仓、交给AI改、月度日目标、复盘卡、散点图、致命习惯、生成画像、喂回条令。
 export function ExecutionReviewConcept({ data, action, ui }) {
-  const orders = arr(data.executionOrders).length ? arr(data.executionOrders) : arr(data.orders);
+  const orders = arr(data.executionOrders);
   const fills = arr(data.fills); const plans = arr(data.tradePlans); const reviews = arr(data.reviews);
   const performance = data.performance || {}; const report = data.paperReport || {}; const bp = data.behaviorProfile || {};
   const [selectedId, setSelectedId] = useState(orders[0]?.id || ""); const selected = orders.find((i) => i.id === selectedId) || orders[0] || {};
@@ -450,9 +514,16 @@ export function ExecutionReviewConcept({ data, action, ui }) {
   const o = bp.overall || {};
   const winPct = closes.length ? Math.round(wins.length / closes.length * 100) : 0;
   const avg = performance.avgPnlUsdt != null ? num(performance.avgPnlUsdt) : num(o.expectancyUsdt);
-  const pending = orders.filter((i) => /pending|open|new/i.test(String(i.status))).length + plans.filter((i) => i.status === "awaiting_approval").length;
+  const pendingApproval = plans.filter((i) => i.status === "awaiting_approval").length;
   // 累计已实现盈亏曲线(按时间正序),给首格配迷你走势。
   const cumPnl = (() => { const seq = closes.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); let s = 0; return seq.map((f) => (s += num(f.realizedPnl))); })();
+  // 手续费字段是 feeUsdt(实时/引擎成交统一);此前误读 r.fee → 恒空。estimatedFee 为真表示是估算(非交易所真实)。
+  const feeOf = (r) => r.feeUsdt ?? r.fee;
+  // 方向 pill:用 position 的 direction(多/空),不是买卖 side(fills 无 side 字段时会误显 entry/close)。
+  const dirPill = (dir) => { const short = /short|空|卖|sell/i.test(String(dir)); return <Pill tone={short ? "bad" : "good"}>{short ? t("空", "Short") : t("多", "Long")}</Pill>; };
+  // 引擎订单状态 → 清晰中文标签 + 语气(executionOrder 状态是 closed/cancelled/blocked/failed/slippage_rejected 等)。
+  const ORDER_STATUS = { closed: [t("已平仓", "Closed"), "good"], filled: [t("已成交", "Filled"), "good"], protecting: [t("持仓中", "Active"), "good"], entry_filled: [t("已入场", "Entered"), "good"], cancelled: [t("已取消", "Cancelled"), "neutral"], canceled: [t("已取消", "Cancelled"), "neutral"], blocked: [t("风控拦截", "Blocked"), "bad"], risk_rejected: [t("风控拒绝", "Rejected"), "bad"], failed: [t("执行失败", "Failed"), "bad"], slippage_rejected: [t("滑点拒绝", "Slippage"), "warn"], pending: [t("待执行", "Pending"), "warn"], awaiting_approval: [t("待批准", "Awaiting"), "warn"], executing: [t("执行中", "Executing"), "warn"] };
+  const orderStatus = (s) => ORDER_STATUS[s] || [humanize(s), toneOf(s)];
   return <div className="cp2Stack erPage">
     {/* 统一 KPI 条(紧凑指标 + 迷你可视化,合并三处去重) */}
     <div className="erKpi">
@@ -461,23 +532,25 @@ export function ExecutionReviewConcept({ data, action, ui }) {
       <div className="erStat"><div className="erStatCol"><small>{t("盈亏比", "Profit factor")}</small><b>{performance.profitFactor != null ? num(performance.profitFactor).toFixed(2) : (o.profitFactor ?? "—")}</b></div></div>
       <div className="erStat"><div className="erStatCol"><small>{t("平均每笔", "Avg/trade")}</small><b className={avg >= 0 ? "good" : "bad"}>{avg >= 0 ? "+" : ""}{money(avg, "0")}</b></div></div>
       <div className="erStat"><div className="erStatCol"><small>{t("最大回撤", "Max DD")}</small><b className="bad">{displayPct(performance.maxDrawdownPct ?? report.maxDrawdownPct, "—")}</b></div></div>
-      <div className="erStat"><div className="erStatCol"><small>{t("今日成交", "Fills")}</small><b>{fills.length}</b></div></div>
-      <div className="erStat"><div className="erStatCol"><small>{t("待执行/待批", "Pending")}</small><b>{pending}</b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("已平仓", "Closed")}</small><b>{closes.length}<span className="erUnit"> {t("笔", "")}</span></b></div></div>
+      <div className="erStat"><div className="erStatCol"><small>{t("待批准", "Awaiting")}</small><b>{pendingApproval}<span className="erUnit"> {t("笔", "")}</span></b></div></div>
     </div>
 
     {/* 执行区 */}
-    <div className="erZoneLabel"><span>{t("执行", "Execution")}</span><small>{t("订单 · 链路 · 操作", "Orders · Path · Actions")}</small></div>
+    <div className="erZoneLabel"><span>{t("执行", "Execution")}</span><small>{t("AI 委托 · 链路 · 操作", "AI orders · path · actions")}</small></div>
     <div className="cp2OrdersLayout">
-      <ConceptCard title={t("订单簿", "Order Book")} meta={`${orders.length} ${t("条", "")}`} className="cp2OrdersTable"><ConceptTable columns={[{ key: "id", label: t("订单号", "Order ID"), render: r => <button className="cp2Link" onClick={() => setSelectedId(r.id)}>{String(r.id || "—").slice(0, 12)}</button> }, { key: "symbol", label: t("交易对", "Pair") }, { key: "side", label: t("方向", "Side"), render: r => humanize(r.side || r.direction) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "price", label: t("价格", "Price"), render: r => money(r.price) }, { key: "status", label: t("状态", "Status"), render: r => <Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill> }, { key: "createdAt", label: t("时间", "Time"), render: r => formatTime(r.createdAt) }]} rows={orders} empty={t("暂无订单", "No orders")} /></ConceptCard>
-      <ConceptCard title={t("执行链路", "Execution Path")} className="cp2Execution"><div className="cp2Timeline">{[t("计划", "Plan"), t("风控", "Risk"), t("路由", "Route"), t("订单", "Order"), t("成交", "Fill"), t("保护单", "Protect")].map((name, index) => <div key={index} className={(index === 0 ? plans.length > 0 : index === 1 ? (plans.some(p => /approved|executing|passed/i.test(String(p.status))) || arr(data.riskChecks).length > 0) : index <= 3 ? orders.length > 0 : index === 4 ? fills.length > 0 : orders.some(o => /stop|protect|止/i.test(String(o.type || o.kind || o.purpose || "")))) ? "done" : ""}><i>{index + 1}</i><span><b>{name}</b><small>{index === 0 ? (plans[0]?.status ? humanize(plans[0].status) : t("等待计划", "Awaiting plan")) : index === 1 ? t("执行前复查", "Pre-trade check") : index === 2 ? t("选择交易所", "Select venue") : index === 3 ? humanize(selected.status, t("待执行", "Pending")) : index === 4 ? `${fills.length} ${t("笔成交", "fills")}` : t("止损/止盈", "SL/TP")}</small></span></div>)}</div></ConceptCard>
-      <ConceptCard title={t("订单详情", "Order Detail")} className="cp2OrderDetail"><div className="cp2Kv column">{[[t("订单号", "Order ID"), selected.id], [t("交易对", "Pair"), selected.symbol], [t("方向", "Side"), humanize(selected.side || selected.direction)], [t("类型", "Type"), humanize(selected.type)], [t("数量", "Qty"), selected.quantity ?? selected.size], [t("委托价", "Limit price"), money(selected.price)], [t("状态", "Status"), humanize(selected.status)], [t("创建时间", "Created"), formatDateTime(selected.createdAt)]].map(([k, v]) => <span key={k}>{k}<b>{v || "—"}</b></span>)}</div><button className="cp2Secondary" onClick={() => ui.setActive("chat")}>{t("交给 AI 修改", "Ask AI to modify")}</button>{selected.id && <button className="cp2Danger" onClick={() => action(`/api/execution-orders/${selected.id}/close`, { reason: "manual_ui" })}>{t("撤单/平仓", "Cancel/Close")}</button>}</ConceptCard>
+      <ConceptCard title={t("AI 委托记录", "AI Order Log")} meta={t("点行看详情 · 展示每笔的入场/止损/止盈", "Click a row · shows entry / stop / target")} className="cp2OrdersTable"><ConceptTable onRowClick={(r) => setSelectedId(r.id)} activeId={selected.id} columns={[{ key: "createdAt", label: t("时间", "Time"), render: r => formatTime(r.createdAt) }, { key: "symbol", label: t("交易对", "Pair") }, { key: "direction", label: t("方向", "Side"), render: r => dirPill(r.direction) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "entryPrice", label: t("入场价", "Entry"), render: r => money(r.entryPrice ?? r.price) }, { key: "stopLoss", label: t("止损", "Stop"), render: r => money(r.stopLoss) }, { key: "tp", label: t("止盈", "Target"), render: r => money((r.takeProfits || [])[0]) }, { key: "status", label: t("状态", "Status"), render: r => { const [lbl, tone] = orderStatus(r.status); return <Pill tone={tone}>{lbl}</Pill>; } }]} rows={orders} empty={t("暂无 AI 委托", "No AI orders")} /></ConceptCard>
+      <ConceptCard title={t("执行链路", "Execution Path")} className="cp2Execution"><div className="cp2Timeline">{[t("计划", "Plan"), t("风控", "Risk"), t("路由", "Route"), t("订单", "Order"), t("成交", "Fill"), t("保护单", "Protect")].map((name, index) => <div key={index} className={(index === 0 ? plans.length > 0 : index === 1 ? (plans.some(p => /approved|executing|passed/i.test(String(p.status))) || arr(data.riskChecks).length > 0) : index <= 3 ? orders.length > 0 : index === 4 ? fills.length > 0 : (selected.takeProfits || []).length > 0) ? "done" : ""}><i>{index + 1}</i><span><b>{name}</b><small>{index === 0 ? (plans[0]?.status ? humanize(plans[0].status) : t("等待计划", "Awaiting plan")) : index === 1 ? t("执行前复查", "Pre-trade check") : index === 2 ? t("选择交易所", "Select venue") : index === 3 ? orderStatus(selected.status)[0] : index === 4 ? `${fills.length} ${t("笔成交", "fills")}` : t("止损/止盈", "SL/TP")}</small></span></div>)}</div></ConceptCard>
+      <ConceptCard title={t("委托详情", "Order Detail")} className="cp2OrderDetail"><div className="cp2Kv column">{[[t("交易对", "Pair"), selected.symbol], [t("方向", "Side"), selected.direction ? (/short|空/.test(String(selected.direction)) ? t("做空", "Short") : t("做多", "Long")) : "—"], [t("数量", "Qty"), selected.quantity ?? selected.size], [t("入场价", "Entry"), money(selected.entryPrice ?? selected.price)], [t("止损", "Stop-loss"), money(selected.stopLoss)], [t("止盈", "Target"), money((selected.takeProfits || [])[0])], [t("策略", "Strategy"), humanize(selected.strategy)], [t("状态", "Status"), orderStatus(selected.status)[0]], [t("时间", "Created"), formatDateTime(selected.createdAt)]].map(([k, v]) => <span key={k}>{k}<b>{v || "—"}</b></span>)}</div><button className="cp2Secondary" onClick={() => ui.setActive("chat")}>{t("交给 AI 修改", "Ask AI to modify")}</button>{selected.id && /closed|filled|protecting|executing|entry_filled/i.test(String(selected.status)) && <button className="cp2Danger" onClick={() => action(`/api/execution-orders/${selected.id}/close`, { reason: "manual_ui" })}>{t("撤单/平仓", "Cancel/Close")}</button>}</ConceptCard>
     </div>
 
-    {/* 成交与成绩区 */}
+    {/* 复盘与画像区(紧凑) */}
+    <div className="erZoneLabel"><span>{t("复盘与画像", "Review & Behavior")}</span><small>{t("为什么盈亏 · AI 照镜子", "Why P&L · the AI's mirror")}</small></div>
+    <BehaviorCompact data={data} action={action} />
+    <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0, 3).map((review, index) => <article key={review.id || index}><small>{review.symbol || t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title || review.summary || t("交易复盘", "Trade review")}</b><p>{review.lesson || review.notes || t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length && <div className="cp2Empty"><BookOpen /><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2 />{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2 />{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle />{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div>
+
+    {/* 成交与成绩区(放到最下方) */}
     <div className="erZoneLabel"><span>{t("成交与成绩", "Fills & Performance")}</span><small>{t("成交流水 · 月度 · 拆解", "Fills · Monthly · Breakdown")}</small></div>
-    <ConceptCard title={t("成交", "Fills")} meta={`${shownFills.length} ${t("条 · 超 20 条容器内滚动", "· scrolls past 20")}`} action={<div className="erToggle"><button className={fillView === "all" ? "on" : ""} onClick={() => setFillView("all")}>{t("全部成交", "All fills")}</button><button className={fillView === "closed" ? "on" : ""} onClick={() => setFillView("closed")}>{t("仅已平仓", "Closed only")}</button></div>}>
-      <div className="cp2ScrollList tall"><ConceptTable compact columns={[{ key: "createdAt", label: t("时间", "Time"), render: r => formatDateTime(r.createdAt) }, { key: "orderId", label: t("订单号", "Order ID"), render: r => String(r.orderId || r.executionOrderId || "—").slice(0, 10) }, { key: "symbol", label: t("交易对", "Pair") }, { key: "side", label: t("方向", "Side"), render: r => humanize(r.side || r.kind) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "price", label: t("价格", "Price"), render: r => money(r.price) }, { key: "fee", label: t("手续费", "Fee"), render: r => money(r.fee) }, { key: "realizedPnl", label: t("已实现盈亏", "Realized PnL"), render: r => r.kind === "close" || r.realizedPnl != null ? <span className={num(r.realizedPnl) >= 0 ? "good" : "bad"}>{money(r.realizedPnl)}</span> : "—" }]} rows={shownFills} empty={t("暂无成交", "No fills")} /></div>
-    </ConceptCard>
     {(() => {
       if (!closes.length) return null;
       const shift = (d) => new Date(new Date(d).getTime() + 8 * 3600000);
@@ -493,13 +566,12 @@ export function ExecutionReviewConcept({ data, action, ui }) {
       }
       for (const [dKey, pnl] of Object.entries(dayPnl)) { const mKey = dKey.slice(0, 7); if (months[mKey] && dailyGoal > 0 && pnl >= dailyGoal) months[mKey].goalDays.add(dKey); }
       const rows = Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).map(([month, m]) => ({ month, net: m.net, n: m.n, winRate: m.n ? Math.round((m.wins / m.n) * 100) : 0, tradeDays: m.days.size, goalDays: m.goalDays.size }));
-      return <div className="cp2Grid journalMain"><ConceptCard title={t("📅 月度聚合", "📅 Monthly Rollup")} meta={t("按月 · 日目标命中率(UTC+8)", "By month · daily-goal hit rate (UTC+8)")} className="span2"><ConceptTable columns={[{ key: "month", label: t("月份", "Month") }, { key: "net", label: t("净盈亏", "Net PnL"), render: (r) => <span className={r.net >= 0 ? "good" : "bad"}>{money(r.net)}</span> }, { key: "n", label: t("交易数", "Trades") }, { key: "winRate", label: t("胜率", "Win rate"), render: (r) => `${r.winRate}%` }, { key: "goalDays", label: t("日目标命中", "Goal hits"), render: (r) => `${r.goalDays}/${r.tradeDays} ${t("天", "days")}` }]} rows={rows} empty={t("暂无月度数据", "No monthly data")} /></ConceptCard><ConceptCard title={t("业绩拆解", "Performance Breakdown")}><div className="cp2Centered"><Donut value={closes.length ? wins.length / closes.length * 100 : 0} label={closes.length ? `${(wins.length / closes.length * 100).toFixed(0)}%` : "—"} sub={t("胜率", "Win rate")} /></div><BarRows rows={[{ label: t("盈利交易", "Winners"), value: wins.length, display: `${wins.length} ${t("笔", "")}` }, { label: t("亏损交易", "Losers"), value: losses.length, display: `${losses.length} ${t("笔", "")}` }, { label: t("复盘完成", "Reviews done"), value: reviews.length, display: `${reviews.length} ${t("份", "")}` }]} /></ConceptCard></div>;
+      // 月度聚合 + 业绩拆解:并排各占一半。
+      return <div className="cp2Grid two erHalf"><ConceptCard title={t("📅 月度聚合", "📅 Monthly Rollup")} meta={t("按月 · 日目标命中(UTC+8)", "By month · daily-goal hits (UTC+8)")}><ConceptTable compact columns={[{ key: "month", label: t("月份", "Month") }, { key: "net", label: t("净盈亏", "Net PnL"), render: (r) => <span className={r.net >= 0 ? "good" : "bad"}>{money(r.net)}</span> }, { key: "n", label: t("交易", "Trades") }, { key: "winRate", label: t("胜率", "Win"), render: (r) => `${r.winRate}%` }, { key: "goalDays", label: t("日目标", "Goal"), render: (r) => `${r.goalDays}/${r.tradeDays}` }]} rows={rows} empty={t("暂无月度数据", "No monthly data")} /></ConceptCard><ConceptCard title={t("业绩拆解", "Performance Breakdown")}><div className="erBreakdownMini"><div className="cp2Centered"><Donut value={closes.length ? wins.length / closes.length * 100 : 0} label={closes.length ? `${(wins.length / closes.length * 100).toFixed(0)}%` : "—"} sub={t("胜率", "Win")} /></div><BarRows rows={[{ label: t("盈利", "Win"), value: wins.length, display: `${wins.length}` }, { label: t("亏损", "Loss"), value: losses.length, display: `${losses.length}` }, { label: t("复盘", "Rev"), value: reviews.length, display: `${reviews.length}` }]} /></div></ConceptCard></div>;
     })()}
-
-    {/* 复盘与画像区 */}
-    <div className="erZoneLabel"><span>{t("复盘与画像", "Review & Behavior")}</span><small>{t("为什么盈亏 · AI 照镜子", "Why P&L · the AI's mirror")}</small></div>
-    <BehaviorProfileConcept data={data} action={action} />
-    <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0, 3).map((review, index) => <article key={review.id || index}><small>{review.symbol || t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title || review.summary || t("交易复盘", "Trade review")}</b><p>{review.lesson || review.notes || t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length && <div className="cp2Empty"><BookOpen /><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2 />{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2 />{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle />{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div>
+    <ConceptCard title={t("成交流水", "Fills")} meta={<span>{shownFills.length} {t("条", "")} · <span className="muted">{t("手续费为估算", "fees estimated")}</span></span>} action={<div className="erToggle"><button className={fillView === "all" ? "on" : ""} onClick={() => setFillView("all")}>{t("全部成交", "All")}</button><button className={fillView === "closed" ? "on" : ""} onClick={() => setFillView("closed")}>{t("仅已平仓", "Closed")}</button></div>}>
+      <div className="cp2ScrollList tall"><ConceptTable compact columns={[{ key: "createdAt", label: t("时间", "Time"), render: r => formatDateTime(r.createdAt) }, { key: "symbol", label: t("交易对", "Pair") }, { key: "kind", label: t("开平", "Open/Close"), render: r => <Pill tone={r.kind === "close" ? "warn" : "neutral"}>{r.kind === "close" ? t("平仓", "Close") : t("开仓", "Open")}</Pill> }, { key: "direction", label: t("方向", "Side"), render: r => dirPill(r.direction) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "price", label: t("成交价", "Price"), render: r => money(r.price) }, { key: "fee", label: t("手续费", "Fee"), render: r => money(feeOf(r)) }, { key: "realizedPnl", label: t("已实现盈亏", "Realized PnL"), render: r => r.kind === "close" || r.realizedPnl != null ? <span className={num(r.realizedPnl) >= 0 ? "good" : "bad"}>{money(r.realizedPnl)}</span> : "—" }]} rows={shownFills} empty={t("暂无成交", "No fills")} /></div>
+    </ConceptCard>
   </div>;
 }
 
