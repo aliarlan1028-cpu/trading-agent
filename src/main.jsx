@@ -297,8 +297,8 @@ function App() {
     if (next === "riskCenter") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
     if (next === "operationsCenter") { setActiveWorkspaceTab("overview"); setActive("operationsCenter"); return; }
     if (next === "marketAccount" || next === "market") { setActiveWorkspaceTab("market"); setActive("cockpit"); return; }
-    if (next === "signalHub") { setActiveWorkspaceTab("orders"); setActive("cockpit"); return; }
-    if (next === "tradeJournal") { setActiveWorkspaceTab("journal"); setActive("cockpit"); return; }
+    if (next === "signalHub") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
+    if (next === "tradeJournal") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
     if (next === "knowledgeBase") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
     if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }

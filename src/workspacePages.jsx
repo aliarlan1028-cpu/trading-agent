@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import {
-  AiDialogConcept, AuditConcept, BehaviorProfileConcept, CapabilitiesConcept, EventsConcept,
-  IntelligenceConcept, JournalConcept, KeysConcept, KnowledgeConcept,
+  AiDialogConcept, AuditConcept, CapabilitiesConcept, EventsConcept,
+  ExecutionReviewConcept, IntelligenceConcept, KeysConcept, KnowledgeConcept,
   LiveConcept, MandateConcept, MarketConcept, NotificationsConcept,
-  OperationsOverviewConcept, OrdersConcept, PositionsConcept,
+  OperationsOverviewConcept, PositionsConcept,
   RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
   TasksConcept, TradingOverviewConcept
 } from "./conceptPages.jsx";
@@ -14,7 +14,7 @@ import "./workspace-additions.css";
 
 const TABS = {
   ai: [["dialog", "对话", "Dialog"], ["intel", "情报", "Intel"]],
-  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["orders", "订单与成交", "Orders"], ["journal", "交易日志", "Journal"], ["behavior", "行为画像", "Behavior"]],
+  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"]],
   research: [["knowledge", "知识库", "Knowledge"], ["strategy", "策略库", "Strategies"], ["capabilities", "能力库", "Capabilities"]],
   risk: [["posture", "风险姿态", "Posture"], ["mandate", "授权边界", "Mandate"], ["rules", "规则库", "Rules"], ["live", "实盘与灰度", "Live"], ["keys", "密钥安全", "Keys"]],
   ops: [["overview", "运行总览", "Overview"], ["events", "事件日历", "Events"], ["tasks", "任务调度", "Tasks"], ["audit", "审计记录", "Audit"], ["notifications", "通知中心", "Notifications"]]
@@ -43,9 +43,7 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
     overview: <TradingOverviewConcept data={data} action={action} ui={ui}/>,
     market: <MarketConcept data={data} action={action} ui={ui}/>,
     positions: <PositionsConcept data={data} action={action} ui={ui}/>,
-    orders: <OrdersConcept data={data} action={action} ui={ui}/>,
-    journal: <JournalConcept data={data} action={action} ui={ui}/>,
-    behavior: <BehaviorProfileConcept data={data} action={action} ui={ui}/>
+    execution: <ExecutionReviewConcept data={data} action={action} ui={ui}/>
   };
   return <CenterShell title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={TABS.trade} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
 }

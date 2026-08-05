@@ -419,6 +419,70 @@ export function JournalConcept({ data }) {
     <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0,3).map((review,index)=><article key={review.id||index}><small>{review.symbol||t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title||review.summary||t("交易复盘", "Trade review")}</b><p>{review.lesson||review.notes||t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length&&<div className="cp2Empty"><BookOpen/><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2/>{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2/>{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle/>{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div></div>;
 }
 
+// 执行与复盘(整合页):把「订单与成交」「交易日志」「AI 行为画像」三页合一——
+// 统一 KPI 带(去重)+ 执行区 + 成交与成绩区(成交表合并、可切「全部/仅已平仓」)+ 复盘与画像区。
+// 保留三页全部功能:撤单/平仓、交给AI改、月度日目标、复盘卡、散点图、致命习惯、生成画像、喂回条令。
+export function ExecutionReviewConcept({ data, action, ui }) {
+  const orders = arr(data.executionOrders).length ? arr(data.executionOrders) : arr(data.orders);
+  const fills = arr(data.fills); const plans = arr(data.tradePlans); const reviews = arr(data.reviews);
+  const performance = data.performance || {}; const report = data.paperReport || {}; const bp = data.behaviorProfile || {};
+  const [selectedId, setSelectedId] = useState(orders[0]?.id || ""); const selected = orders.find((i) => i.id === selectedId) || orders[0] || {};
+  const [fillView, setFillView] = useState("all");
+  const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(num(f.realizedPnl)));
+  const shownFills = fillView === "closed" ? closes : fills;
+  const wins = closes.filter((f) => num(f.realizedPnl) > 0); const losses = closes.filter((f) => num(f.realizedPnl) < 0);
+  const net = closes.reduce((s, f) => s + num(f.realizedPnl), 0);
+  const o = bp.overall || {};
+  return <div className="cp2Stack erPage">
+    {/* 统一 KPI 带(合并三处、去重) */}
+    <div className="cp2Metrics seven">
+      <ConceptMetric label={t("已实现盈亏", "Realized PnL")} value={`${net >= 0 ? "+" : ""}${money(net, "0")}`} tone={net >= 0 ? "good" : "bad"} />
+      <ConceptMetric label={t("胜率", "Win rate")} value={closes.length ? `${(wins.length / closes.length * 100).toFixed(1)}%` : "—"} />
+      <ConceptMetric label={t("盈亏比", "Profit factor")} value={performance.profitFactor != null ? num(performance.profitFactor).toFixed(2) : (o.profitFactor ?? "—")} />
+      <ConceptMetric label={t("平均每笔", "Avg/trade")} value={performance.avgPnlUsdt != null ? `${num(performance.avgPnlUsdt) >= 0 ? "+" : ""}${money(performance.avgPnlUsdt, "0")}` : money(o.expectancyUsdt)} tone={num(performance.avgPnlUsdt ?? o.expectancyUsdt) >= 0 ? "good" : "bad"} />
+      <ConceptMetric label={t("最大回撤", "Max drawdown")} value={displayPct(performance.maxDrawdownPct ?? report.maxDrawdownPct, "—")} tone="bad" />
+      <ConceptMetric label={t("今日成交", "Fills")} value={String(fills.length)} sub={t("交易所回报", "Exchange")} />
+      <ConceptMetric label={t("待执行/待批", "Pending")} value={String(orders.filter((i) => /pending|open|new/i.test(String(i.status))).length + plans.filter((i) => i.status === "awaiting_approval").length)} sub={t("订单+审批", "orders+approvals")} />
+    </div>
+
+    {/* 执行区 */}
+    <div className="erZoneLabel"><span>{t("执行", "Execution")}</span><small>{t("订单 · 链路 · 操作", "Orders · Path · Actions")}</small></div>
+    <div className="cp2OrdersLayout">
+      <ConceptCard title={t("订单簿", "Order Book")} meta={`${orders.length} ${t("条", "")}`} className="cp2OrdersTable"><ConceptTable columns={[{ key: "id", label: t("订单号", "Order ID"), render: r => <button className="cp2Link" onClick={() => setSelectedId(r.id)}>{String(r.id || "—").slice(0, 12)}</button> }, { key: "symbol", label: t("交易对", "Pair") }, { key: "side", label: t("方向", "Side"), render: r => humanize(r.side || r.direction) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "price", label: t("价格", "Price"), render: r => money(r.price) }, { key: "status", label: t("状态", "Status"), render: r => <Pill tone={toneOf(r.status)}>{humanize(r.status)}</Pill> }, { key: "createdAt", label: t("时间", "Time"), render: r => formatTime(r.createdAt) }]} rows={orders} empty={t("暂无订单", "No orders")} /></ConceptCard>
+      <ConceptCard title={t("执行链路", "Execution Path")} className="cp2Execution"><div className="cp2Timeline">{[t("计划", "Plan"), t("风控", "Risk"), t("路由", "Route"), t("订单", "Order"), t("成交", "Fill"), t("保护单", "Protect")].map((name, index) => <div key={index} className={(index === 0 ? plans.length > 0 : index === 1 ? (plans.some(p => /approved|executing|passed/i.test(String(p.status))) || arr(data.riskChecks).length > 0) : index <= 3 ? orders.length > 0 : index === 4 ? fills.length > 0 : orders.some(o => /stop|protect|止/i.test(String(o.type || o.kind || o.purpose || "")))) ? "done" : ""}><i>{index + 1}</i><span><b>{name}</b><small>{index === 0 ? (plans[0]?.status ? humanize(plans[0].status) : t("等待计划", "Awaiting plan")) : index === 1 ? t("执行前复查", "Pre-trade check") : index === 2 ? t("选择交易所", "Select venue") : index === 3 ? humanize(selected.status, t("待执行", "Pending")) : index === 4 ? `${fills.length} ${t("笔成交", "fills")}` : t("止损/止盈", "SL/TP")}</small></span></div>)}</div></ConceptCard>
+      <ConceptCard title={t("订单详情", "Order Detail")} className="cp2OrderDetail"><div className="cp2Kv column">{[[t("订单号", "Order ID"), selected.id], [t("交易对", "Pair"), selected.symbol], [t("方向", "Side"), humanize(selected.side || selected.direction)], [t("类型", "Type"), humanize(selected.type)], [t("数量", "Qty"), selected.quantity ?? selected.size], [t("委托价", "Limit price"), money(selected.price)], [t("状态", "Status"), humanize(selected.status)], [t("创建时间", "Created"), formatDateTime(selected.createdAt)]].map(([k, v]) => <span key={k}>{k}<b>{v || "—"}</b></span>)}</div><button className="cp2Secondary" onClick={() => ui.setActive("chat")}>{t("交给 AI 修改", "Ask AI to modify")}</button>{selected.id && <button className="cp2Danger" onClick={() => action(`/api/execution-orders/${selected.id}/close`, { reason: "manual_ui" })}>{t("撤单/平仓", "Cancel/Close")}</button>}</ConceptCard>
+    </div>
+
+    {/* 成交与成绩区 */}
+    <div className="erZoneLabel"><span>{t("成交与成绩", "Fills & Performance")}</span><small>{t("成交流水 · 月度 · 拆解", "Fills · Monthly · Breakdown")}</small></div>
+    <ConceptCard title={t("成交", "Fills")} meta={`${shownFills.length} ${t("条 · 超 20 条容器内滚动", "· scrolls past 20")}`} action={<div className="erToggle"><button className={fillView === "all" ? "on" : ""} onClick={() => setFillView("all")}>{t("全部成交", "All fills")}</button><button className={fillView === "closed" ? "on" : ""} onClick={() => setFillView("closed")}>{t("仅已平仓", "Closed only")}</button></div>}>
+      <div className="cp2ScrollList tall"><ConceptTable compact columns={[{ key: "createdAt", label: t("时间", "Time"), render: r => formatDateTime(r.createdAt) }, { key: "orderId", label: t("订单号", "Order ID"), render: r => String(r.orderId || r.executionOrderId || "—").slice(0, 10) }, { key: "symbol", label: t("交易对", "Pair") }, { key: "side", label: t("方向", "Side"), render: r => humanize(r.side || r.kind) }, { key: "quantity", label: t("数量", "Qty"), render: r => r.quantity ?? r.size ?? "—" }, { key: "price", label: t("价格", "Price"), render: r => money(r.price) }, { key: "fee", label: t("手续费", "Fee"), render: r => money(r.fee) }, { key: "realizedPnl", label: t("已实现盈亏", "Realized PnL"), render: r => r.kind === "close" || r.realizedPnl != null ? <span className={num(r.realizedPnl) >= 0 ? "good" : "bad"}>{money(r.realizedPnl)}</span> : "—" }]} rows={shownFills} empty={t("暂无成交", "No fills")} /></div>
+    </ConceptCard>
+    {(() => {
+      if (!closes.length) return null;
+      const shift = (d) => new Date(new Date(d).getTime() + 8 * 3600000);
+      const dailyGoal = num(data.system?.dailyGoalUsdt, 150);
+      const months = {}, dayPnl = {};
+      for (const f of closes) {
+        const s = shift(f.createdAt);
+        const mKey = `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, "0")}`;
+        const dKey = `${mKey}-${String(s.getUTCDate()).padStart(2, "0")}`;
+        (months[mKey] ||= { net: 0, n: 0, wins: 0, days: new Set(), goalDays: new Set() });
+        const m = months[mKey]; m.net += num(f.realizedPnl); m.n++; if (num(f.realizedPnl) > 0) m.wins++; m.days.add(dKey);
+        dayPnl[dKey] = (dayPnl[dKey] || 0) + num(f.realizedPnl);
+      }
+      for (const [dKey, pnl] of Object.entries(dayPnl)) { const mKey = dKey.slice(0, 7); if (months[mKey] && dailyGoal > 0 && pnl >= dailyGoal) months[mKey].goalDays.add(dKey); }
+      const rows = Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).map(([month, m]) => ({ month, net: m.net, n: m.n, winRate: m.n ? Math.round((m.wins / m.n) * 100) : 0, tradeDays: m.days.size, goalDays: m.goalDays.size }));
+      return <div className="cp2Grid journalMain"><ConceptCard title={t("📅 月度聚合", "📅 Monthly Rollup")} meta={t("按月 · 日目标命中率(UTC+8)", "By month · daily-goal hit rate (UTC+8)")} className="span2"><ConceptTable columns={[{ key: "month", label: t("月份", "Month") }, { key: "net", label: t("净盈亏", "Net PnL"), render: (r) => <span className={r.net >= 0 ? "good" : "bad"}>{money(r.net)}</span> }, { key: "n", label: t("交易数", "Trades") }, { key: "winRate", label: t("胜率", "Win rate"), render: (r) => `${r.winRate}%` }, { key: "goalDays", label: t("日目标命中", "Goal hits"), render: (r) => `${r.goalDays}/${r.tradeDays} ${t("天", "days")}` }]} rows={rows} empty={t("暂无月度数据", "No monthly data")} /></ConceptCard><ConceptCard title={t("业绩拆解", "Performance Breakdown")}><div className="cp2Centered"><Donut value={closes.length ? wins.length / closes.length * 100 : 0} label={closes.length ? `${(wins.length / closes.length * 100).toFixed(0)}%` : "—"} sub={t("胜率", "Win rate")} /></div><BarRows rows={[{ label: t("盈利交易", "Winners"), value: wins.length, display: `${wins.length} ${t("笔", "")}` }, { label: t("亏损交易", "Losers"), value: losses.length, display: `${losses.length} ${t("笔", "")}` }, { label: t("复盘完成", "Reviews done"), value: reviews.length, display: `${reviews.length} ${t("份", "")}` }]} /></ConceptCard></div>;
+    })()}
+
+    {/* 复盘与画像区 */}
+    <div className="erZoneLabel"><span>{t("复盘与画像", "Review & Behavior")}</span><small>{t("为什么盈亏 · AI 照镜子", "Why P&L · the AI's mirror")}</small></div>
+    <BehaviorProfileConcept data={data} action={action} />
+    <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0, 3).map((review, index) => <article key={review.id || index}><small>{review.symbol || t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title || review.summary || t("交易复盘", "Trade review")}</b><p>{review.lesson || review.notes || t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length && <div className="cp2Empty"><BookOpen /><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2 />{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2 />{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle />{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div>
+  </div>;
+}
+
 // 生效中的条令:列出已直接注入 Agent 决策的透镜(active)与铁律(已批准),点开看全文。
 function ActiveDoctrineCard({ data }){
   const k=data.knowledge||{};
