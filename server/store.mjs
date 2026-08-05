@@ -496,6 +496,12 @@ export function loadDb() {
     : normalizeDatabase(fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase());
   saveDb(normalized); // 确保所有集合（含审计条目）已落入 SQLite，再校准审计链
   ensureAuditChainIntegrity(normalized);
+  try {
+    const pruned = pruneLogRetention(normalized); // 启动收口:裁掉超额日志行(trace>2万 / audit>5万)
+    if (pruned.traceDeleted || pruned.auditDeleted) {
+      appendTrace(normalized, "system", `日志保留裁剪:trace -${pruned.traceDeleted} 行、audit -${pruned.auditDeleted} 行`, "ok");
+    }
+  } catch { /* 裁剪失败不阻断启动 */ }
   return normalized;
 }
 
@@ -700,6 +706,49 @@ export function appendTrace(db, type, title, status = "ok", latencyMs = null) {
   db.traces.unshift(entry);
   writeTraceEntry(entry);
   return entry;
+}
+
+// 日志表保留上限:trace/audit 只增不删会无限膨胀(实测一月 28万/23万行 → 库 290MB,
+// 每次 saveDb/WAL checkpoint 序列化+I/O 拖满单核 CPU,HTTP 首字节被拖到数秒)。
+// trace 是纯遥测,按行数直接裁;audit 是防篡改哈希链,裁掉最旧条目后必须 resealAuditChain 重锚链头,
+// 否则新链头 prevHash 悬空、verifyAuditChain 报断裂。
+const TRACE_KEEP = Number(process.env.TRACE_RETENTION || 20000);
+const AUDIT_KEEP = Number(process.env.AUDIT_RETENTION || 50000);
+let traceInsertsSincePrune = 0;
+
+function pruneTraceRows() {
+  if (!sqlite) return 0;
+  return sqlite.prepare(
+    "delete from trace_entries where rowid in (select rowid from trace_entries order by created_at desc, rowid desc limit -1 offset @keep)"
+  ).run({ keep: TRACE_KEEP }).changes;
+}
+
+// 启动时调用一次:裁掉超额的 trace/audit 旧行并重链审计,把长期积累的膨胀一次性收口。
+export function pruneLogRetention(db) {
+  ensureSqlite();
+  let traceDeleted = 0;
+  let auditDeleted = 0;
+  try { traceDeleted = pruneTraceRows(); } catch { /* 裁剪失败不阻断 */ }
+  try {
+    const auditCount = sqlite.prepare("select count(*) as c from audit_log_entries").get().c;
+    if (auditCount > AUDIT_KEEP) {
+      auditDeleted = sqlite.prepare(
+        "delete from audit_log_entries where rowid in (select rowid from audit_log_entries order by created_at desc, rowid desc limit -1 offset @keep)"
+      ).run({ keep: AUDIT_KEEP }).changes;
+      if (auditDeleted > 0) { resealAuditChain(db); saveDb(db); } // 重锚链头 + 持久化新链尾 hash
+    }
+  } catch { /* 审计裁剪失败保持原样,不阻断启动 */ }
+  // 一次性回收:历史膨胀裁掉后,SQLite 只是把页标为空闲、文件不缩;VACUUM 把空洞还给 OS。
+  // 用 meta 标记锁成"永远只跑一次",避免每次启动都 VACUUM(重写整库、阻塞事件循环)。
+  try {
+    db.meta ||= {};
+    if (!db.meta.logVacuumV1 && (traceDeleted > 5000 || auditDeleted > 5000)) {
+      sqlite.exec("VACUUM");
+      db.meta.logVacuumV1 = nowIso();
+      saveDb(db);
+    }
+  } catch { /* VACUUM 失败(如磁盘不足)不阻断启动,下次仍会尝试 */ }
+  return { traceDeleted, auditDeleted };
 }
 
 export function getStorageInfo() {
@@ -1265,6 +1314,10 @@ function writeTraceEntry(entry) {
     created_at: entry.createdAt || nowIso(),
     doc: JSON.stringify(entry)
   });
+  // 运行期兜底:每 2000 条 trace 裁一次,保证重启之间也不会重新膨胀(纯 DELETE,索引支撑,开销小)。
+  if ((++traceInsertsSincePrune % 2000) === 0) {
+    try { pruneTraceRows(); } catch { /* 裁剪失败忽略,下次再试 */ }
+  }
 }
 
 export function normalizeDatabase(db) {
