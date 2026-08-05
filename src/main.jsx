@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
+import { LandingPage } from "./landing.jsx";
 import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost } from "./confirm.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
@@ -324,7 +325,7 @@ function App() {
     return <AiTraderCenter data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, activeWorkspaceTab, data, action, lang]);
 
-  if (authRequired) return <LoginScreen login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
+  if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
   if (loading || !data) return <div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div>;
 
