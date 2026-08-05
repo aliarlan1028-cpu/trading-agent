@@ -353,7 +353,9 @@ app.use((_req, res, next) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'; frame-ancestors 'self'");
+  // 营销页(landing.html)用 Google Fonts(Space Grotesk / IBM Plex Mono / Public Sans / Noto Sans SC),
+  // 故 style-src/font-src 放行 fonts.googleapis.com / fonts.gstatic.com;脚本仍严格 'self'(landing.js 外置)。
+  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; frame-src 'self'; frame-ancestors 'self'");
   next();
 });
 app.use(express.json({ limit: "20mb" }));

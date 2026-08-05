@@ -8943,25 +8943,27 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .langToggle button { padding: 4px 12px; border: 0; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .langToggle button.on { background: var(--accent-grad); color: #fff; }
 
-/* 营销落地页(iframe) + 登录/订阅弹窗 */
-.lpRoot{position:fixed;inset:0;z-index:1}
+/* 营销落地页(iframe) + 登录/订阅弹窗（深色主题，匹配 landing 设计稿） */
+.lpRoot{position:fixed;inset:0;z-index:1;background:#0c0a08}
 .lpFrame{position:fixed;inset:0;width:100%;height:100%;border:0}
-.lpOverlay{position:fixed;inset:0;background:rgba(30,27,22,.5);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:200}
-.lpModal{position:relative;background:#fff;border:1px solid #e3dcce;border-radius:20px;padding:32px;width:400px;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 30px 70px rgba(30,27,22,.28)}
-.lpModal h3{font-size:23px;margin-bottom:6px;color:#1e1b16}
-.lpMsub{color:#6b6455;font-size:14px;margin-bottom:20px}
+.lpOverlay{position:fixed;inset:0;background:rgba(6,5,4,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
+.lpModal{position:relative;background:linear-gradient(180deg,#15110c,#100d0a);border:1px solid #2c2318;border-radius:20px;padding:32px;width:400px;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 30px 70px rgba(0,0,0,.6);font-family:'Space Grotesk','Public Sans','Noto Sans SC',sans-serif}
+.lpModal h3{font-size:23px;margin-bottom:6px;color:#f2ead9;font-weight:700}
+.lpMsub{color:#a89a83;font-size:14px;margin-bottom:20px}
 .lpTabs{display:flex;gap:8px;margin-bottom:18px}
-.lpTabs button{flex:1;padding:9px;border-radius:10px;border:1px solid #e3dcce;background:#fff;color:#6b6455;cursor:pointer;font-weight:700}
-.lpTabs button.on{background:#d06a22;color:#fff;border-color:#d06a22}
-.lpInput{width:100%;padding:12px 14px;border-radius:11px;border:1px solid #e3dcce;background:#f4f1eb;color:#1e1b16;margin-bottom:11px;font-size:14px}
-.lpInput:focus{outline:0;border-color:#d06a22}
-.lpBtn{width:100%;padding:13px;border-radius:12px;border:0;background:linear-gradient(150deg,#e68a4e,#d06a22);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
-.lpBtn:disabled{opacity:.55;cursor:default}
-.lpX{position:absolute;top:16px;right:18px;background:none;border:0;color:#8a8172;cursor:pointer;font-size:22px}
+.lpTabs button{flex:1;padding:9px;border-radius:10px;border:1px solid #33291c;background:rgba(255,255,255,.03);color:#a89a83;cursor:pointer;font-weight:700}
+.lpTabs button.on{background:linear-gradient(120deg,#ffa259,#ff7a2f);color:#0c0a08;border-color:#ff7a2f}
+.lpInput{width:100%;padding:12px 14px;border-radius:11px;border:1px solid #33291c;background:#17120c;color:#f2ead9;margin-bottom:11px;font-size:14px}
+.lpInput::placeholder{color:#6b6152}
+.lpInput:focus{outline:0;border-color:#ff7a2f}
+.lpBtn{width:100%;padding:13px;border-radius:12px;border:0;background:linear-gradient(120deg,#ffa259,#ff7a2f);color:#0c0a08;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 10px 26px -8px rgba(255,122,47,.8)}
+.lpBtn:disabled{opacity:.5;cursor:default;box-shadow:none}
+.lpX{position:absolute;top:16px;right:18px;background:none;border:0;color:#8f836e;cursor:pointer;font-size:22px;line-height:1}
+.lpX:hover{color:#f2ead9}
 .lpPlans{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.lpPlans button{display:flex;justify-content:space-between;align-items:center;padding:10px 13px;border-radius:10px;border:1px solid #e3dcce;background:#fff;cursor:pointer;color:#1e1b16}
-.lpPlans button.on{border-color:#d06a22;background:#fbeddf}
-.lpPlans button b{font-size:14px}.lpPlans button span{font-size:12px;color:#8a8172}
-.lpPay{margin-top:12px;background:#f1eadf;border-radius:10px;padding:12px;text-align:left;font-size:13px}
-.lpPay code{display:block;word-break:break-all;color:#a8511a;margin-top:4px}
-.lpMhint,.lpToast{display:block;color:#8a8172;font-size:12px;margin-top:8px}
+.lpPlans button{display:flex;justify-content:space-between;align-items:center;padding:10px 13px;border-radius:10px;border:1px solid #33291c;background:#17120c;cursor:pointer;color:#f2ead9}
+.lpPlans button.on{border-color:#ff7a2f;background:rgba(255,122,47,.1)}
+.lpPlans button b{font-size:14px}.lpPlans button span{font-size:12px;color:#8f836e}
+.lpPay{margin-top:12px;background:#17120c;border:1px solid #244a37;border-radius:10px;padding:12px;text-align:left;font-size:13px;color:#d8cdb6}
+.lpPay code{display:block;word-break:break-all;color:#ffb178;margin-top:4px}
+.lpMhint,.lpToast{display:block;color:#8f836e;font-size:12px;margin-top:8px}

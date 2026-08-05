@@ -20,7 +20,7 @@ export function LandingPage({ login, registerAccount, toast, apiBase, setApiBase
   };
 
   useEffect(() => {
-    const onMsg = (e) => { if (e.data && e.data.type === "lp-start") { setMode("login"); setAuthOpen(true); } };
+    const onMsg = (e) => { if (e.data && e.data.type === "lp-start") { setMode(e.data.mode === "subscribe" ? "subscribe" : "login"); setAuthOpen(true); } };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, []);

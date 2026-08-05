@@ -61,4 +61,41 @@ export function registerMarketRoutes(app, ctx) {
       res.status(500).json({ error: `币种画像失败：${error.message}`, ok: false });
     }
   });
+
+  // 公开行情跑马灯:营销页顶栏用的真实数据(OKX SWAP 最新价 + 当日涨跌 + BTC 资金费率/未平仓),
+  // 后端代取(不受地区屏蔽、避免前端跨域),15s 内存缓存防打爆 OKX。免鉴权(见 auth 白名单)。
+  const TICKER_SYMBOLS = (process.env.TICKER_SYMBOLS || "BTC,ETH,SOL,BNB,XRP,DOGE,ADA,SUI,LINK,AVAX").split(",").map((s) => s.trim()).filter(Boolean);
+  const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
+  let tickerCache = { at: 0, payload: null };
+  app.get("/api/public/ticker-bar", async (_req, res) => {
+    try {
+      if (tickerCache.payload && Date.now() - tickerCache.at < 15000) { res.json(tickerCache.payload); return; }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      const [tick, funding, oi] = await Promise.all([
+        fetch(`${OKX_BASE}/api/v5/market/tickers?instType=SWAP`, { signal: controller.signal }).then((r) => r.json()),
+        fetch(`${OKX_BASE}/api/v5/public/funding-rate?instId=BTC-USDT-SWAP`, { signal: controller.signal }).then((r) => r.json()).catch(() => null),
+        fetch(`${OKX_BASE}/api/v5/public/open-interest?instId=BTC-USDT-SWAP`, { signal: controller.signal }).then((r) => r.json()).catch(() => null)
+      ]);
+      clearTimeout(timer);
+      const byId = new Map();
+      if (tick && tick.code === "0" && Array.isArray(tick.data)) for (const t of tick.data) byId.set(t.instId, t);
+      const items = TICKER_SYMBOLS.map((sym) => {
+        const t = byId.get(`${sym}-USDT-SWAP`);
+        if (!t) return null;
+        const last = Number(t.last), sod = Number(t.sodUtc0);
+        const changePct = sod > 0 ? Number((((last - sod) / sod) * 100).toFixed(2)) : 0;
+        return { symbol: `${sym}/USDT`, last, changePct };
+      }).filter(Boolean);
+      const fr = funding?.data?.[0]?.fundingRate;
+      const fundingPct = fr !== undefined && fr !== null ? Number((Number(fr) * 100).toFixed(4)) : null;
+      const oiCcy = oi?.data?.[0]?.oiCcy;
+      const btcOi = oiCcy !== undefined && oiCcy !== null ? Number(oiCcy) : null;
+      const payload = { items, fundingPct, btcOi, at: nowIso() };
+      if (items.length) tickerCache = { at: Date.now(), payload };
+      res.json(payload);
+    } catch (error) {
+      res.json({ items: [], fundingPct: null, btcOi: null, at: nowIso(), error: String(error.message || error) });
+    }
+  });
 }
