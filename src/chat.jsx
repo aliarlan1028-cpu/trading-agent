@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
+import { SITE_URL, SITE_QR } from "./siteQr.js";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -788,7 +789,11 @@ function PosterModal({ content, meta, onClose }) {
                 : <RichMessage text={body} />}
             </div>
             <div className="posterFooter">
-              <span className="posterTag">{lang === "en" ? "AI-generated · Not financial advice" : "AI 自动生成 · 仅供参考，不构成投资建议"}</span>
+              <div className="posterFootLeft">
+                <span className="posterTag">{lang === "en" ? "AI-generated · Not financial advice" : "AI 自动生成 · 仅供参考，不构成投资建议"}</span>
+                <span className="posterSite">{lang === "en" ? "Try autonomous AI trading" : "扫码体验 AI 自主交易"} · <b>{SITE_URL}</b></span>
+              </div>
+              <img className="posterQr" src={SITE_QR} alt={SITE_URL} width="72" height="72" />
             </div>
           </div>
         </div>
