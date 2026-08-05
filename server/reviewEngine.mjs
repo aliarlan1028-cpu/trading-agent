@@ -1,5 +1,72 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { fetchTradeWindowNews } from "./marketScan.mjs";
+import { getHistoricalKlines } from "./exchangeConnector.mjs";
+
+// #4 开仓后轨迹重建:平仓后按开仓→平仓时间窗回补 K 线,还原"价格怎么走的"——
+// 先顺行还是先逆行、最高逼近止盈多少、何时见顶、之后反转几次、最深不利多少。
+// 只用真实 K 线(交易所历史),LLM 复盘据此判断"离场太早/太晚、止盈太贪、方向读反"。取数失败返回 null,不阻断复盘。
+async function computeTradeTrajectory(db, fill, plan) {
+  try {
+    const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (f.executionOrderId === fill.executionOrderId || f.planId === fill.planId));
+    const eo = (db.executionOrders || []).find((o) => o.id === fill.executionOrderId) || {};
+    const entry = number(entryFill?.price ?? plan.entry ?? eo.entry);
+    const exit = number(fill.price ?? eo.lastMark);
+    const openMs = new Date(entryFill?.createdAt || plan.createdAt || fill.openedAt || fill.createdAt).getTime();
+    const closeMs = new Date(fill.createdAt).getTime();
+    if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(openMs) || !Number.isFinite(closeMs) || closeMs <= openMs) return null;
+    const isShort = fill.direction === "short" || fill.direction === "空";
+    const dirSign = isShort ? -1 : 1;
+    const tp1 = number((plan.takeProfit || plan.take_profit || eo.takeProfits || [])[0]);
+    const stop = number(plan.stopLoss ?? plan.stop_loss ?? eo.stopLoss);
+    const holdMin = Math.max(1, (closeMs - openMs) / 60000);
+    // 周期自适应:短持仓用细粒度,长持仓放粗,控制根数 ≤ 300。
+    const tf = holdMin <= 90 ? "5m" : holdMin <= 360 ? "15m" : holdMin <= 1440 ? "1h" : "4h";
+    const tfMin = tf === "5m" ? 5 : tf === "15m" ? 15 : tf === "1h" ? 60 : 240;
+    const limit = Math.min(300, Math.ceil(holdMin / tfMin) + 6);
+    const all = await getHistoricalKlines(fill.symbol, tf, limit, (eo.exchange || "OKX"));
+    if (!Array.isArray(all) || all.length < 2) return null;
+    const win = all.filter((c) => c.time >= openMs - tfMin * 60000 && c.time <= closeMs + tfMin * 60000);
+    const candles = (win.length >= 2 ? win : all).slice(-Math.min(300, limit));
+    if (candles.length < 2) return null;
+    const tpDist = Number.isFinite(tp1) ? Math.abs(tp1 - entry) : null;
+    const stopDist = Number.isFinite(stop) ? Math.abs(entry - stop) : null;
+    // 顺行/逆行的极值(用 high/low 取当根内的最有利/最不利):
+    let maxFav = 0, maxAdv = 0, peakMs = openMs;         // 以价格相对入场的有利/不利幅度(USDT价差)
+    const closesFav = [];                                 // 每根收盘的有利幅度序列(判反转)
+    for (const c of candles) {
+      const favExtreme = isShort ? (entry - c.low) : (c.high - entry);   // 当根最有利
+      const advExtreme = isShort ? (c.high - entry) : (entry - c.low);   // 当根最不利
+      if (favExtreme > maxFav) { maxFav = favExtreme; peakMs = c.time; }
+      if (advExtreme > maxAdv) maxAdv = advExtreme;
+      closesFav.push((c.close - entry) * dirSign);
+    }
+    // 反转次数:有利幅度序列的显著摆动次数(阈值 = TP距离的15%,无TP则用入场价的0.3%)。
+    const swingThresh = (tpDist || entry * 0.003) * 0.15;
+    let reversals = 0, lastPivot = closesFav[0], up = null;
+    for (const v of closesFav) {
+      if (up === null) { if (Math.abs(v - lastPivot) >= swingThresh) { up = v > lastPivot; lastPivot = v; } continue; }
+      if (up && v < lastPivot - swingThresh) { reversals += 1; up = false; lastPivot = v; }
+      else if (!up && v > lastPivot + swingThresh) { reversals += 1; up = true; lastPivot = v; }
+      else if (up && v > lastPivot) lastPivot = v;
+      else if (!up && v < lastPivot) lastPivot = v;
+    }
+    const firstLegFav = closesFav.slice(0, Math.max(1, Math.round(closesFav.length * 0.2))).some((v) => v > (tpDist || entry * 0.003) * 0.1);
+    const reachedTpPct = tpDist ? Math.round((maxFav / tpDist) * 100) : null;
+    const maxAdvStopPct = stopDist ? Math.round((maxAdv / stopDist) * 100) : null;
+    const minsToPeak = Math.round((peakMs - openMs) / 60000);
+    const finalFav = (exit - entry) * dirSign;
+    const gaveBackFromPeak = maxFav > 0 ? Math.round((1 - Math.max(0, finalFav) / maxFav) * 100) : null;
+    const parts = [];
+    parts.push(`开仓后${firstLegFav ? "先顺行" : "先逆行"}`);
+    if (reachedTpPct != null) parts.push(`最高逼近止盈 ${reachedTpPct}%（约第 ${minsToPeak} 分钟见顶）`);
+    if (gaveBackFromPeak != null && reachedTpPct != null && reachedTpPct >= 60) parts.push(`见顶后回吐约 ${gaveBackFromPeak}% 的浮盈`);
+    if (reversals > 0) parts.push(`方向反转 ${reversals} 次`);
+    if (maxAdvStopPct != null) parts.push(`最深不利到止损方向 ${maxAdvStopPct}%`);
+    return { note: parts.join("；"), reachedTpPct, minsToPeak, reversals, maxAdvStopPct, gaveBackFromPeak, firstLegFav, tf, candles: candles.length };
+  } catch {
+    return null;
+  }
+}
 
 function number(value, fallback = null) {
   const parsed = Number(value);
@@ -310,11 +377,12 @@ async function llmDeepReflection(fill, ctx) {
       `- 入场依据（当时的判断）：${ctx.rationale}`,
       `- 结果：${ctx.win ? "盈利" : "亏损"} ${ctx.pnl.toFixed(2)} USDT｜${ctx.facts.join("；")}`,
       ctx.attribution ? `- 系统初判归因：${ctx.attribution}` : "",
+      ctx.trajectoryNote ? `- 持仓期间价格轨迹（真实K线回补）：${ctx.trajectoryNote}` : "",
       ctx.newsContext?.news ? `- 持仓期间真实消息面（联网检索·已反幻觉）：${ctx.newsContext.news}（${ctx.newsContext.sentiment || "中性"}）` : "",
       "",
       ctx.win
-        ? "回答三点，每点一句：①这次信号/判断【对在哪】（具体到结构/方向/时机）；②这套「策略×品种×regime」为什么奏效、可复用的关键；③下次同类情形如何保持并放大优势。"
-        : "回答三点，每点一句：①这次信号/判断【错在哪】（具体到：是不是把流动性扫荡当成了突破？方向读反？时机太早？止损太紧？）；②根因是策略/执行/市场异常哪一类，为什么；③下次遇到类似情形【具体怎么做】才能避免重犯。"
+        ? "回答三点，每点一句：①这次信号/判断【对在哪】（具体到结构/方向/时机）；②这套「策略×品种×regime」为什么奏效、可复用的关键；③结合价格轨迹判断【离场时机】是否合理（是否过早落袋、是否本可让利润奔跑），下次如何保持并放大优势。"
+        : "回答三点，每点一句：①这次信号/判断【错在哪】（结合轨迹：先顺行后反转说明方向对但离场太晚/止盈太贪？先逆行说明时机太早或方向读反？把流动性扫荡当突破？）；②根因是策略/执行/市场异常哪一类，为什么；③下次遇到类似情形【具体怎么做】才能避免重犯。"
     ].filter(Boolean).join("\n");
     const out = await llmComplete(prompt, sys);
     return out ? String(out).replace(/\s+\n/g, "\n").trim().slice(0, 700) : null;
@@ -332,6 +400,7 @@ export async function runTradeReflection(db) {
   let memorized = 0;
   let deepBudget = Number(process.env.REFLECTION_LLM_MAX_PER_RUN || 6); // 每轮 LLM 深度复盘上限,控成本
   let newsBudget = Number(process.env.REFLECTION_NEWS_MAX_PER_RUN || 4); // ② 每轮消息面归因上限(Gemini,控配额)
+  let trajBudget = Number(process.env.REFLECTION_TRAJ_MAX_PER_RUN || 6); // #4 每轮轨迹回补上限(K线请求,控网络)
   const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
   for (const fill of closes.slice(0, 15)) {
     const plan = (db.tradePlans || []).find((p) => p.id === fill.planId) || {};
@@ -373,7 +442,13 @@ export async function runTradeReflection(db) {
           try { newsContext = await fetchTradeWindowNews(fill.symbol, openTime, fill.createdAt); } catch { newsContext = null; }
           if (newsContext) { newsBudget -= 1; fill.newsContext = newsContext; }
         }
-        deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution, newsContext });
+        // #4 轨迹回补:重建持仓期价格路径,喂进复盘(让"离场太早/太晚、方向读反"有轨迹事实支撑)。
+        let trajectoryNote = null;
+        if (trajBudget > 0) {
+          const traj = await computeTradeTrajectory(db, fill, plan);
+          if (traj) { trajBudget -= 1; fill.trajectory = traj; trajectoryNote = traj.note; }
+        }
+        deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution, newsContext, trajectoryNote });
         if (deep) { deepBudget -= 1; fill.deepReflection = deep; }
       }
       db.memoryItems.unshift({

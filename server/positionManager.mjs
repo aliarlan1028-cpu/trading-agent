@@ -175,6 +175,44 @@ export async function monitorPositions(db) {
         }
       }
 
+      // 临近止盈保护(收紧止损锁利):价格曾逼近止盈(峰值进度≥trigger)后回吐,把止损上移锁住大部分已实现进度。
+      // 只收紧、绝不主动平仓;与追踪止损互补——追踪按"当前价 1.2% 距离",这里按"距 TP 的峰值进度"锁得更靠前,
+      // 专治"差一点到止盈又反向跑回来"。所有写操作仍经 moveStopTo → tradeActions 安全闸(reduceOnly)。
+      if (Number.isFinite(tp1) && tp1 !== entry) {
+        const tpProgress = isShort ? (entry - mark) / (entry - tp1) : (mark - entry) / (tp1 - entry);
+        position.peakTpProgress = Math.max(Number(position.peakTpProgress || 0), tpProgress);
+        const trigger = Math.min(0.99, Math.max(0.5, Number(process.env.NEAR_TP_TRIGGER || 0.9)));       // 峰值进度达此(默认 90%)才武装
+        const giveback = Math.max(0.02, Number(process.env.NEAR_TP_GIVEBACK || 0.2));                    // 从峰值回吐此比例(默认 20% 进度)才动作
+        const lockFraction = Math.min(0.95, Math.max(0.1, Number(process.env.NEAR_TP_LOCK_FRACTION || 0.55))); // 锁住峰值进度的此比例(默认 55%)
+        if (position.peakTpProgress >= trigger && tpProgress > 0 && tpProgress <= position.peakTpProgress - giveback) {
+          const lockProgress = lockFraction * position.peakTpProgress;
+          const lockStop = entry + (isShort ? -1 : 1) * lockProgress * Math.abs(tp1 - entry);
+          const improves = isShort ? lockStop < Number(position.stopLoss) : lockStop > Number(position.stopLoss);
+          const stillProfitable = isShort ? lockStop < entry : lockStop > entry;
+          if (improves && stillProfitable) {
+            const rounded = Number(lockStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
+            const result = await moveStopTo(db, position, rounded, "near_tp_protect");
+            if (moveStopSucceeded(result)) {
+              position.stopLoss = rounded;
+              position.trailingActive = true;
+              appendAudit(db, `临近止盈回吐(峰值进度 ${(position.peakTpProgress * 100).toFixed(0)}% → 当前 ${(tpProgress * 100).toFixed(0)}%),止损上移锁利到 ${rounded}`, position.id, "PositionManager");
+              appendTrace(db, "position_manager", `${position.symbol} 临近止盈锁利 止损→${rounded}`, "ok");
+              await notifyLarkThrottled(db, `near_tp:${position.id}`, 30 * 60 * 1000, {
+                severity: "success",
+                title: "🎯 临近止盈回吐 · 已收紧止损锁利",
+                body: `**${position.symbol}** 价格曾逼近止盈(进度 ${(position.peakTpProgress * 100).toFixed(0)}%)后回落,已把止损上移到 **${rounded}** 锁住利润;继续反转则带利离场,再冲高仍能吃到止盈。`,
+                fields: [{ label: "锁利止损", value: String(rounded) }, { label: "标记价", value: String(mark) }, { label: "止盈", value: String(tp1) }]
+              });
+              actions.push({ symbol: position.symbol, action: "near_tp_locked", stop: rounded });
+            } else {
+              // 未真正移动(含 OKX 附加止损不支持改单):不回写、明确告警,提示手动处理(与保本/追踪同口径)。
+              appendTrace(db, "position_manager", `${position.symbol} 临近止盈锁利未生效（${result.status}）`, result.status === "blocked" ? "ok" : "warning");
+              actions.push({ symbol: position.symbol, action: "near_tp_lock_recommended", stop: rounded, reason: result.status });
+            }
+          }
+        }
+      }
+
       // 止损距离告警：价格距止损 < 0.3% 时提示
       const stopDistancePct = Math.abs((mark - Number(position.stopLoss)) / mark) * 100;
       if (stopDistancePct < 0.3 && !position.nearStopAlerted) {
@@ -208,14 +246,27 @@ function updateExcursion(db, position, mark) {
   if (!Number.isFinite(entry) || !Number.isFinite(size)) return;
   const isShort = position.direction === "空" || position.direction === "short";
   const sign = isShort ? -1 : 1;
-  const unrealized = (Number(mark) - entry) * size * sign;
-  position.maeUsdt = Math.min(Number(position.maeUsdt || 0), Number(unrealized.toFixed(2)));
-  position.mfeUsdt = Math.max(Number(position.mfeUsdt || 0), Number(unrealized.toFixed(2)));
+  const unrealized = Number(((Number(mark) - entry) * size * sign).toFixed(2));
+  // 记录极值的同时留下【时间戳与价格】,供平仓复盘重建"何时冲到最高浮盈/最深浮亏"的轨迹(#4)。
+  if (unrealized > Number(position.mfeUsdt || 0)) {
+    position.mfeUsdt = unrealized; position.mfeAt = nowIso(); position.mfePrice = Number(mark);
+  } else if (position.mfeUsdt == null) {
+    position.mfeUsdt = 0;
+  }
+  if (unrealized < Number(position.maeUsdt || 0)) {
+    position.maeUsdt = unrealized; position.maeAt = nowIso(); position.maePrice = Number(mark);
+  } else if (position.maeUsdt == null) {
+    position.maeUsdt = 0;
+  }
   const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
   if (executionOrder) {
     executionOrder.lastMark = Number(mark);
     executionOrder.maeUsdt = Math.min(Number(executionOrder.maeUsdt || 0), position.maeUsdt);
     executionOrder.mfeUsdt = Math.max(Number(executionOrder.mfeUsdt || 0), position.mfeUsdt);
+    if (position.mfeAt) executionOrder.mfeAt = position.mfeAt;
+    if (position.maeAt) executionOrder.maeAt = position.maeAt;
+    if (position.mfePrice != null) executionOrder.mfePrice = position.mfePrice;
+    if (position.maePrice != null) executionOrder.maePrice = position.maePrice;
   }
 }
 
