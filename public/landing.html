@@ -182,7 +182,7 @@
 <nav><div class="wrap">
   <div class="logo"><span class="mk">🤖</span> Trading Agent</div>
   <div class="navlinks"><a href="#how">Doctrine</a><a href="#loop">Self-learning</a><a href="#gates">Risk gates</a><a href="#compare">Compare</a><a href="#pricing">Pricing</a></div>
-  <div class="navR"><span class="lang">🌐 EN ▾</span><button class="btn primary" onclick="sT()">Start Trading →</button></div>
+  <div class="navR"><span class="lang">🌐 EN ▾</span><button class="btn primary" data-start="">Start Trading →</button></div>
 </div></nav>
 
 <div class="ticker"><div class="tkr" id="tkr"></div></div>
@@ -192,7 +192,7 @@
     <span class="tag"><span class="pd"></span>AUTONOMOUS · RISK-GATED · SELF-IMPROVING</span>
     <h1>An autonomous AI trader — <span class="g">judgement by LLM, guardrails by hard code.</span></h1>
     <p class="sub">It reads structure, microstructure, smart-money flow, multi-timeframe and live news, then trades crypto perpetuals inside the mandate you set. Direction, entries and sizing are its call — leverage caps, mandatory stop-loss and backtest-before-live are non-negotiable.</p>
-    <div class="heroCta"><button class="btn primary" onclick="sT()">Start Trading →</button><button class="btn ghost" onclick="document.getElementById('how').scrollIntoView()">▶ See how it thinks</button></div>
+    <div class="heroCta"><button class="btn primary" data-start="">Start Trading →</button><button class="btn ghost" data-scroll="how">▶ See how it thinks</button></div>
     <div class="trust"><div><b id="c1">5</b><span>-lens analysis doctrine</span></div><div><b>Backtest</b><span>gated before live</span></div><div><b id="c2">24</b><span>/7 autonomous patrol</span></div></div>
   </div>
   <div class="live reveal in">
@@ -351,27 +351,17 @@
 <section id="pricing"><div class="wrap">
   <div class="sHead reveal"><span class="tag">PRICING</span><h2>Start on your terms</h2><p>Illustrative plans — final tiers configured per deployment.</p></div>
   <div class="plans">
-    <div class="card plan reveal"><div class="pn">Starter</div><div class="pp">$49<small>/mo</small></div><ul><li>1 exchange account</li><li>Manual-approval trading</li><li>5-lens analysis engine</li><li>Watch sentinels</li></ul><button class="btn ghost" style="width:100%" onclick="sT()">Start Trading</button></div>
-    <div class="card plan hot reveal"><span class="rib">MOST POPULAR</span><div class="pn">Pro</div><div class="pp">$149<small>/mo</small></div><ul><li>Full autonomous trading</li><li>Behavior mirror + self-review</li><li>Knowledge → strategy pipeline</li><li>News attribution (Gemini)</li></ul><button class="btn primary" style="width:100%" onclick="sT()">Start Trading</button></div>
-    <div class="card plan reveal"><div class="pn">Desk</div><div class="pp">Custom</div><ul><li>Dedicated isolated instance</li><li>Custom doctrine & mandates</li><li>White-glove onboarding</li></ul><button class="btn ghost" style="width:100%" onclick="sT()">Contact us</button></div>
+    <div class="card plan reveal"><div class="pn">Starter</div><div class="pp">$49<small>/mo</small></div><ul><li>1 exchange account</li><li>Manual-approval trading</li><li>5-lens analysis engine</li><li>Watch sentinels</li></ul><button class="btn ghost" style="width:100%" data-start="">Start Trading</button></div>
+    <div class="card plan hot reveal"><span class="rib">MOST POPULAR</span><div class="pn">Pro</div><div class="pp">$149<small>/mo</small></div><ul><li>Full autonomous trading</li><li>Behavior mirror + self-review</li><li>Knowledge → strategy pipeline</li><li>News attribution (Gemini)</li></ul><button class="btn primary" style="width:100%" data-start="">Start Trading</button></div>
+    <div class="card plan reveal"><div class="pn">Desk</div><div class="pp">Custom</div><ul><li>Dedicated isolated instance</li><li>Custom doctrine & mandates</li><li>White-glove onboarding</li></ul><button class="btn ghost" style="width:100%" data-start="">Contact us</button></div>
   </div>
 </div></section>
 
-<div class="wrap"><div class="ctaBand reveal"><h2>Ready to let the AI take the desk?</h2><p style="color:var(--tx2);margin-bottom:22px;font-size:16px">You keep the mandate and the kill-switch. It does the watching, the analysing and the discipline.</p><button class="btn primary" onclick="sT()">Start Trading →</button></div></div>
+<div class="wrap"><div class="ctaBand reveal"><h2>Ready to let the AI take the desk?</h2><p style="color:var(--tx2);margin-bottom:22px;font-size:16px">You keep the mandate and the kill-switch. It does the watching, the analysing and the discipline.</p><button class="btn primary" data-start="">Start Trading →</button></div></div>
 
 <div class="disc">Not financial advice. Trading crypto derivatives carries substantial risk of loss. The AI operates within user-set risk limits and requires approval for live trades; past or simulated performance does not guarantee future results. Figures shown are illustrative placeholders.</div>
 
 <footer><div class="wrap"><div class="logo"><span class="mk">🤖</span> Trading Agent</div><div>Contact: <a href="https://t.me/e2ptradingclub" style="color:var(--org-ink)">t.me/e2ptradingclub</a> · © 2026</div></div></footer>
 
-<script>
-  // 「Start Trading」→ 通知父页(React)唤起真实登录/订阅,营销页自身不做登录。
-  function sT(){ try{ window.parent.postMessage({ type: "lp-start" }, "*"); }catch(e){} }
-  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.1});
-  document.querySelectorAll('.reveal:not(.in)').forEach(el=>io.observe(el));
-  function cu(id,to){let n=0;const el=document.getElementById(id);if(!el)return;const t=setInterval(()=>{n+=Math.max(1,Math.ceil(to/28));if(n>=to){n=to;clearInterval(t)}el.textContent=n},34)}
-  ['c1','c2','s1','s2','s3','s4'].forEach((id,i)=>cu(id,[5,24,5,7,13,100][i]));
-  const syms=[['BTC','64,292','+0.3'],['ETH','3,148','+1.2'],['SOL','172.4','-0.8'],['ADA','0.192','+2.1'],['SUI','0.693','-0.2'],['BNB','604.1','+0.4'],['XRP','0.612','+1.7'],['DOGE','0.163','-1.1']];
-  const one=syms.map(s=>`<span>${s[0]}/USDT</span> <b>${s[1]}</b> <span class="${s[2][0]==='-'?'dn':'up'}">${s[2]}%</span>`).join('   ');
-  tkr.innerHTML=one+'   '+one;
-</script>
+<script src="/landing.js"></script>
 </body></html>
