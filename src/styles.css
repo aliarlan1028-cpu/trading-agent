@@ -3763,7 +3763,7 @@ button.danger:disabled,
 .chatShell {
   display: flex;
   gap: 18px;
-  max-width: 1540px;
+  max-width: 1680px;
   margin: 0 auto;
   width: 100%;
   align-items: stretch;
@@ -7316,7 +7316,7 @@ button.danger:disabled,
    ============================================================ */
 .chatShell { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; align-items: stretch; width: 100%; }
 .chatShell .chatPage { max-width: none; margin: 0; min-width: 0; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.agRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; height: 100%; overflow-y: auto; padding-bottom: 8px; }
+.agRail { display: flex; flex-direction: column; gap: 8px; flex: 0 0 300px; width: 300px; height: 100%; overflow-y: auto; padding-bottom: 8px; }
 
 .agCard { background: #FBF9F5; border: 1px solid #E3DCCE; border-radius: 10px; padding: 11px 13px; display: flex; flex-direction: column; gap: 8px; }
 .agHeadNum { display: flex; align-items: center; gap: 6px; font: 700 10.5px "Space Grotesk"; color: #1E1B16; }
