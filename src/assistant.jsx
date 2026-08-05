@@ -305,7 +305,7 @@ export function AssistantWidget({ data, ui }) {
           {criticalIncidents.length > 0 && (
             <div className="asstAlerts">
               <div className="asstAlertHead"><AlertTriangle size={13} /> {criticalIncidents.length} 项待处理风险</div>
-              {criticalGroups.slice(0, 3).map((g) => <button key={g.key} className="asstAlertRow" onClick={goIncidents}><span>{g.key}{g.count > 1 ? ` ×${g.count}` : ""}</span><ChevronRight size={13} /></button>)}
+              {criticalGroups.slice(0, 1).map((g) => <button key={g.key} className="asstAlertRow" onClick={goIncidents}><span>{g.key}{g.count > 1 ? ` ×${g.count}` : ""}</span><ChevronRight size={13} /></button>)}
               <button className="asstAlertMore" onClick={goIncidents}>去处理 {criticalIncidents.length} 项 ›</button>
             </div>
           )}
