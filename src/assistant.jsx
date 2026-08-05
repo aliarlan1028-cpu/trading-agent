@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw, AlertTriangle, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, displayMoney, hhmmCn } from "./lib.jsx";
+import { t } from "./i18n.js";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
    支持：标题(# / 【】)、加粗、行内代码、无序/有序列表、引用、键值、分隔线、段落。
@@ -184,7 +185,7 @@ export function AssistantWidget({ data, ui }) {
   const pending = (data.pendingActions || []).filter((a) => !a.status || a.status === "pending" || a.status === "awaiting_confirmation").length;
   const incidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const todoTotal = awaiting + pending + incidents;
-  const autonomyLabel = sys.killSwitch ? "已熔断" : sys.autonomyEnabled ? "自主运行中" : "已暂停";
+  const autonomyLabel = sys.killSwitch ? t("已熔断", "Halted") : sys.autonomyEnabled ? t("自主运行中", "Autonomous") : t("已暂停", "Paused");
   // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)。按标题折叠去重,避免同类刷屏。
   const criticalIncidents = (data.riskIncidents || []).filter((i) => i.status === "open" && ["critical", "high"].includes(String(i.severity || "").toLowerCase()));
   const criticalGroups = [];
@@ -195,10 +196,10 @@ export function AssistantWidget({ data, ui }) {
   const goIncidents = () => { ui?.openPanel?.("riskIncidents"); setOpen(false); };
 
   const digestRows = [
-    ["账户", pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · 持仓 ${positions.length}` : "未同步", () => go("cockpit")],
-    ["今日盈亏", pf.todayPnl != null ? `${pf.todayPnl >= 0 ? "+" : ""}${displayMoney(pf.todayPnl, 2)} U` : "未同步", null],
-    ["自主", `${autonomyLabel} · 实盘${sys.liveTradingEnabled ? "开" : "关"}`, () => go("riskCenter")],
-    ["待办", `批准 ${awaiting} · 确认 ${pending} · 告警 ${incidents}`, todoTotal ? () => go("cockpit") : null]
+    [t("账户", "Account"), pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · ${t("持仓", "Pos")} ${positions.length}` : t("未同步", "Not synced"), () => go("cockpit")],
+    [t("今日盈亏", "Today PnL"), pf.todayPnl != null ? `${pf.todayPnl >= 0 ? "+" : ""}${displayMoney(pf.todayPnl, 2)} U` : t("未同步", "Not synced"), null],
+    [t("自主", "Autonomy"), `${autonomyLabel} · ${t("实盘", "Live")}${sys.liveTradingEnabled ? t("开", " on") : t("关", " off")}`, () => go("riskCenter")],
+    [t("待办", "To-do"), `${t("批准", "Approve")} ${awaiting} · ${t("确认", "Confirm")} ${pending} · ${t("告警", "Alerts")} ${incidents}`, todoTotal ? () => go("cockpit") : null]
   ];
 
   const scrollToBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
@@ -220,10 +221,10 @@ export function AssistantWidget({ data, ui }) {
   function broadcast(kind) {
     if (sending) return;
     const map = {
-      review: ["复盘与优化", reviewBroadcast(data)],
-      movers: ["今日全市场异动", moversBroadcast(data)],
-      escort: ["持仓护航播报", escortBroadcast(data)],
-      todos: ["待办清单", todosBroadcast(data)]
+      review: [t("复盘与优化", "Review & optimize"), reviewBroadcast(data)],
+      movers: [t("今日全市场异动", "Today's movers"), moversBroadcast(data)],
+      escort: [t("持仓护航播报", "Position escort"), escortBroadcast(data)],
+      todos: [t("待办清单", "To-do list"), todosBroadcast(data)]
     };
     const [q, md] = map[kind];
     pushUser(q);
@@ -232,14 +233,14 @@ export function AssistantWidget({ data, ui }) {
 
   async function summarize() {
     if (sending) return;
-    pushUser("总结一下当前系统状态");
+    pushUser(t("总结一下当前系统状态","Summarize the current system status"));
     setSending(true);
     try {
       const res = await fetch(apiUrl("/api/assistant/summarize"), { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: "{}" });
       const json = await res.json().catch(() => ({}));
-      pushBot(json.summary || "未能生成摘要，请稍后再试。");
+      pushBot(json.summary || t("未能生成摘要，请稍后再试。","Could not generate a summary, please try again later."));
     } catch {
-      pushBot("摘要服务暂时不可用，请稍后再试。");
+      pushBot(t("摘要服务暂时不可用，请稍后再试。","Summary service is temporarily unavailable, please try again later."));
     } finally {
       setSending(false);
     }
@@ -262,11 +263,11 @@ export function AssistantWidget({ data, ui }) {
         signal: controller.signal
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { pushBot(`抱歉，出错了：${json.error || res.status}`); return; }
-      const cite = json.citations?.length ? `\n\n> 参考知识：${json.citations.slice(0, 3).join("、")}` : "";
-      pushBot((json.reply || "（未返回内容）") + cite);
+      if (!res.ok) { pushBot(`${t("抱歉，出错了","Sorry, an error occurred")}：${json.error || res.status}`); return; }
+      const cite = json.citations?.length ? `\n\n> ${t("参考知识","Sources")}：${json.citations.slice(0, 3).join("、")}` : "";
+      pushBot((json.reply || t("（未返回内容）","(no content returned)")) + cite);
     } catch (err) {
-      pushBot(err.name === "AbortError" ? "这次思考超时了，请重试或换个更聚焦的问题。" : "网络异常，请稍后重试。");
+      pushBot(err.name === "AbortError" ? t("这次思考超时了，请重试或换个更聚焦的问题。","This took too long — please retry or ask a more focused question.") : t("网络异常，请稍后重试。","Network error, please try again later."));
     } finally {
       clearTimeout(timer);
       setSending(false);
@@ -274,11 +275,11 @@ export function AssistantWidget({ data, ui }) {
   }
 
   const quick = [
-    { k: "summary", label: "总结状态", icon: Gauge, on: summarize },
-    { k: "review", label: "复盘", icon: ClipboardList, on: () => broadcast("review") },
-    { k: "movers", label: "今日异动", icon: Radar, on: () => broadcast("movers") },
-    { k: "escort", label: "持仓护航", icon: ShieldCheck, on: () => broadcast("escort") },
-    { k: "todos", label: "待办", icon: ListChecks, on: () => broadcast("todos") }
+    { k: "summary", label: t("总结状态","Status"), icon: Gauge, on: summarize },
+    { k: "review", label: t("复盘","Review"), icon: ClipboardList, on: () => broadcast("review") },
+    { k: "movers", label: t("今日异动","Movers"), icon: Radar, on: () => broadcast("movers") },
+    { k: "escort", label: t("持仓护航","Escort"), icon: ShieldCheck, on: () => broadcast("escort") },
+    { k: "todos", label: t("待办","To-do"), icon: ListChecks, on: () => broadcast("todos") }
   ];
 
   return (
@@ -291,8 +292,8 @@ export function AssistantWidget({ data, ui }) {
         <div className="asstDrawer" role="dialog" aria-label="AI 助手">
           <div className="asstHead">
             <span className="asstAvatar"><Bot size={16} /></span>
-            <div className="asstHeadText"><b>AI 助手</b><small>只读 · 不下单 · 数据截至 {asOf ? hhmmCn(asOf) : "未同步"}</small></div>
-            <button className="asstIconBtn" onClick={() => setDigestOpen((v) => !v)} title={digestOpen ? "收起概览" : "展开概览"}><Gauge size={15} /></button>
+            <div className="asstHeadText"><b>{t("AI 助手","AI Assistant")}</b><small>{t("只读 · 不下单 · 数据截至","Read-only · no orders · data as of")} {asOf ? hhmmCn(asOf) : t("未同步","N/A")}</small></div>
+            <button className="asstIconBtn" onClick={() => setDigestOpen((v) => !v)} title={digestOpen ? t("收起概览","Collapse") : t("展开概览","Expand")}><Gauge size={15} /></button>
             <button className="asstClose" onClick={() => setOpen(false)} aria-label="关闭"><X size={16} /></button>
           </div>
 
@@ -304,9 +305,9 @@ export function AssistantWidget({ data, ui }) {
 
           {criticalIncidents.length > 0 && (
             <div className="asstAlerts">
-              <div className="asstAlertHead"><AlertTriangle size={13} /> {criticalIncidents.length} 项待处理风险</div>
+              <div className="asstAlertHead"><AlertTriangle size={13} /> {criticalIncidents.length} {t("项待处理风险","open risks")}</div>
               {criticalGroups.slice(0, 1).map((g) => <button key={g.key} className="asstAlertRow" onClick={goIncidents}><span>{g.key}{g.count > 1 ? ` ×${g.count}` : ""}</span><ChevronRight size={13} /></button>)}
-              <button className="asstAlertMore" onClick={goIncidents}>去处理 {criticalIncidents.length} 项 ›</button>
+              <button className="asstAlertMore" onClick={goIncidents}>{t("去处理","Resolve")} {criticalIncidents.length} ›</button>
             </div>
           )}
 
@@ -317,9 +318,9 @@ export function AssistantWidget({ data, ui }) {
           <div className="asstScroll" ref={scrollRef}>
             {!messages.length && (
               <div className="asstWelcome">
-                <b>我是你的只读助手，帮你看懂系统</b>
-                <p>例如「现在该不该减仓？」「BTC 现在的结构怎么样？」「知识库里关于 CPI 怎么控仓？」——我会读真实账户、行情和知识库来解读。</p>
-                <p className="asstHint">我只做解读与建议，<b>不下单、不改配置</b>；要执行交易/改授权，请去主页的「AI 交易员」对话。</p>
+                <b>{t("我是你的只读助手，帮你看懂系统", "I'm your read-only assistant — here to help you make sense of the system")}</b>
+                <p>{t("例如「现在该不该减仓？」「BTC 现在的结构怎么样？」「知识库里关于 CPI 怎么控仓？」——我会读真实账户、行情和知识库来解读。", "e.g. “Should I trim my position now?” “What's BTC's structure right now?” “What does the knowledge base say about sizing around CPI?” — I read your real account, market data and knowledge base to answer.")}</p>
+                <p className="asstHint">{t("我只做解读与建议，", "I only interpret and advise — ")}<b>{t("不下单、不改配置", "no orders, no config changes")}</b>{t("；要执行交易/改授权，请去主页的「AI 交易员」对话。", ". To trade or change mandates, use the “AI Trader” chat on the main page.")}</p>
               </div>
             )}
             {messages.map((m) => (
@@ -332,7 +333,7 @@ export function AssistantWidget({ data, ui }) {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={sending ? "思考中…" : "问我关于账户 / 行情 / 知识的问题"}
+              placeholder={sending ? t("思考中…","Thinking…") : t("问我关于账户 / 行情 / 知识的问题","Ask about account / market / knowledge")}
               disabled={sending}
             />
             <button type="submit" className="asstSend" disabled={sending || !input.trim()} aria-label="发送">

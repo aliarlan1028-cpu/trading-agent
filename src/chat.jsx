@@ -34,6 +34,7 @@ import {
   X
 } from "lucide-react";
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { t } from "./i18n.js";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -269,18 +270,22 @@ function RichMessage({ text = "", compact = false, onSuggest = null }) {
   );
 }
 
-const EXECUTION_LABELS = {
-  dry_run: "干跑完成（实盘关闭）",
-  entry_pending: "入场单挂单中",
-  entry_filled: "入场已成交",
-  protecting: "止盈止损已布置",
-  closed: "已平仓",
-  cancelled: "已取消",
-  blocked: "被安全闸拦截",
-  failed: "提交失败",
-  setup_rejected: "结构审核未过 · 未下单",
-  protection_failed: "保护单布置失败"
-};
+// 执行状态标签在渲染时取 t()，语言切换（key=lang 重挂载）才能生效；模块级常量不会重算。
+function executionLabel(status) {
+  const map = {
+    dry_run: t("干跑完成（实盘关闭）", "Dry run done (live off)"),
+    entry_pending: t("入场单挂单中", "Entry order pending"),
+    entry_filled: t("入场已成交", "Entry filled"),
+    protecting: t("止盈止损已布置", "TP/SL placed"),
+    closed: t("已平仓", "Closed"),
+    cancelled: t("已取消", "Cancelled"),
+    blocked: t("被安全闸拦截", "Blocked by safety gate"),
+    failed: t("提交失败", "Submit failed"),
+    setup_rejected: t("结构审核未过 · 未下单", "Setup rejected · no order"),
+    protection_failed: t("保护单布置失败", "Protection order failed")
+  };
+  return map[status] || status;
+}
 
 function PlanCard({ plan, executionOrder, action, ui, markets }) {
   if (!plan) return null;
@@ -300,23 +305,23 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
     <div className={`chatPlanCard ${risk.passed ? "" : "rejected"}`}>
       <header>
         <b>{plan.symbol}</b>
-        <span className={plan.direction === "short" ? "negative" : "positive"}>{plan.direction === "short" ? "做空" : "做多"}</span>
+        <span className={plan.direction === "short" ? "negative" : "positive"}>{plan.direction === "short" ? t("做空", "Short") : t("做多", "Long")}</span>
         <StatusBadge tone={awaiting ? "warning" : statusTone(plan.status)}>{humanize(plan.status)}</StatusBadge>
-        {plan.outOfWhitelist && <span className="evBadge warn" title="该币不在授权白名单，确认即一次性授权本笔交易，不会加入常驻白名单">⚠ 白名单外 · 一次性授权</span>}
-        {stopCrossed && <span className="evBadge neg">已失效 · 现价越过止损</span>}
+        {plan.outOfWhitelist && <span className="evBadge warn" title={t("该币不在授权白名单，确认即一次性授权本笔交易，不会加入常驻白名单", "This coin is not on the whitelist; confirming authorizes only this single trade and does not add it to the standing whitelist")}>⚠ {t("白名单外 · 一次性授权", "Off whitelist · one-time")}</span>}
+        {stopCrossed && <span className="evBadge neg">{t("已失效 · 现价越过止损", "Void · price crossed stop")}</span>}
         <small>{plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
       </header>
       <div className="planNumbers">
-        <span><small>入场区间</small><b>{plan.entry?.range || "-"}</b></span>
-        <span><small>止损</small><b className="negative">{displayMoney(plan.stopLoss)}</b></span>
-        <span><small>止盈</small><b className="positive">{(plan.takeProfit || []).map((tp) => displayMoney(tp)).join(" / ") || "-"}</b></span>
-        <span><small>单笔风险</small><b>{plan.entry?.riskPercent ?? plan.max_loss_pct ?? "-"}%</b></span>
+        <span><small>{t("入场区间", "Entry zone")}</small><b>{plan.entry?.range || "-"}</b></span>
+        <span><small>{t("止损", "Stop")}</small><b className="negative">{displayMoney(plan.stopLoss)}</b></span>
+        <span><small>{t("止盈", "Take profit")}</small><b className="positive">{(plan.takeProfit || []).map((tp) => displayMoney(tp)).join(" / ") || "-"}</b></span>
+        <span><small>{t("单笔风险", "Per-trade risk")}</small><b>{plan.entry?.riskPercent ?? plan.max_loss_pct ?? "-"}%</b></span>
       </div>
       <button className="riskSummaryRow" onClick={() => setShowChecks((current) => !current)}>
         {risk.passed
           ? <CheckCircle2 size={15} className="positive" />
           : <XCircle size={15} className="negative" />}
-        <span>风控 {passedCount}/{checks.length} 通过 · {risk.summary || "未检查"}</span>
+        <span>{t("风控", "Risk")} {passedCount}/{checks.length} {t("通过", "passed")} · {risk.summary || t("未检查", "not checked")}</span>
         <ChevronDown size={14} style={{ transform: showChecks ? "rotate(180deg)" : "none" }} />
       </button>
       {showChecks && (
@@ -333,40 +338,40 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
       {plan.smartMoneyAlignment && plan.smartMoneyAlignment.alignment !== "neutral" && (
         <div className={`smAlignRow ${plan.smartMoneyAlignment.alignment}`}>
           {plan.smartMoneyAlignment.alignment === "favor" ? <TrendingUp size={14} /> : <AlertTriangle size={14} />}
-          <span>聪明钱{plan.smartMoneyAlignment.alignment === "favor" ? "支持该方向" : "与该方向相悖"}</span>
+          <span>{t("聪明钱", "Smart money")}{plan.smartMoneyAlignment.alignment === "favor" ? t("支持该方向", " favors this side") : t("与该方向相悖", " opposes this side")}</span>
           <small>{(plan.smartMoneyAlignment.reasons || []).join("；")}</small>
         </div>
       )}
       <footer>
-        {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>{plan.outOfWhitelist ? "确认下单（仅本笔）" : "批准计划"}</button>}
-        {awaiting && invalidForApproval && <button className="approveButton" disabled title="现价已越过止损，计划已失效，无法批准">已失效 · 不可批准</button>}
-        {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? "作废" : "拒绝"}</button>}
-        <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>审计链 <ChevronRight size={13} /></button>
+        {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>{plan.outOfWhitelist ? t("确认下单（仅本笔）", "Confirm order (this trade only)") : t("批准计划", "Approve plan")}</button>}
+        {awaiting && invalidForApproval && <button className="approveButton" disabled title={t("现价已越过止损，计划已失效，无法批准", "Price has crossed the stop; the plan is void and cannot be approved")}>{t("已失效 · 不可批准", "Void · cannot approve")}</button>}
+        {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? t("作废", "Discard") : t("拒绝", "Reject")}</button>}
+        <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>{t("审计链", "Audit chain")} <ChevronRight size={13} /></button>
       </footer>
       {plan.appliedKnowledge && ((plan.appliedKnowledge.lenses || []).length > 0 || (plan.appliedKnowledge.rules || []).length > 0) && (
-        <div className="planKnowledge" title="本计划实际依据的透镜与铁律（AI 自报，已按真实知识库校验）">
+        <div className="planKnowledge" title={t("本计划实际依据的透镜与铁律（AI 自报，已按真实知识库校验）", "Lenses and hard rules this plan actually relies on (AI-reported, verified against the real knowledge base)")}>
           <BookOpen size={12} />
-          <span>依据知识：
+          <span>{t("依据知识：", "Knowledge used: ")}
             {(plan.appliedKnowledge.lenses || []).map((n) => <em key={`l-${n}`} className="pkLens">{n}</em>)}
             {(plan.appliedKnowledge.rules || []).map((n) => <em key={`r-${n}`} className="pkRule">{n}</em>)}
           </span>
         </div>
       )}
-      {awaiting && invalidForApproval && <small className="planHint danger">现价 {displayPrice(nowPrice)} 已越过止损 {displayPrice(stopVal)}——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。</small>}
-      {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。</small>}
-      {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol} 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」即一次性授权本笔交易并立即进入执行引擎（实盘写入关闭时只做干跑）；仅授权这一笔，不加入常驻白名单，自主巡检以后也不会自动碰它。</small>}
+      {awaiting && invalidForApproval && <small className="planHint danger">{t("现价", "Now")} {displayPrice(nowPrice)} {t("已越过止损", "has crossed the stop")} {displayPrice(stopVal)}{t("——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。", " — the plan is void; approving would trigger the stop right on entry. Discard it and wait for the AI to re-propose.")}</small>}
+      {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">{t("批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。", "On approval it enters the execution engine immediately: it sizes from equity and stop distance, submits the entry order with a protective stop attached; when live writes are off it only runs a dry-run calculation.")}</small>}
+      {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol}{t(" 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」即一次性授权本笔交易并立即进入执行引擎（实盘写入关闭时只做干跑）；仅授权这一笔，不加入常驻白名单，自主巡检以后也不会自动碰它。", " is not on the whitelist — this opportunity came from a full-market scan. Tapping Confirm order authorizes just this single trade and enters the execution engine immediately (dry-run only when live writes are off); it authorizes this one trade only, is not added to the standing whitelist, and autonomous scans will never touch it on their own later.")}</small>}
       {executionOrder && (
         <div className="executionStrip">
           <span className={`execDot ${["entry_filled", "protecting"].includes(executionOrder.status) ? "on" : executionOrder.status === "closed" ? "done" : ""}`} />
-          <b>{EXECUTION_LABELS[executionOrder.status] || executionOrder.status}</b>
+          <b>{executionLabel(executionOrder.status)}</b>
           <small>
-            数量 {executionOrder.quantity} · 名义 {displayMoney(executionOrder.notionalUsdt)} USDT
-            {executionOrder.filledPrice ? ` · 成交 ${displayMoney(executionOrder.filledPrice)}` : ""}
-            {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · 盈亏 ${displayMoney(executionOrder.realizedPnl)}` : ""}
-            {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · 原因：${executionOrder.setupReview.reason}` : ""}
+            {t("数量", "Qty")} {executionOrder.quantity} · {t("名义", "Notional")} {displayMoney(executionOrder.notionalUsdt)} USDT
+            {executionOrder.filledPrice ? ` · ${t("成交", "Filled")} ${displayMoney(executionOrder.filledPrice)}` : ""}
+            {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · ${t("盈亏", "PnL")} ${displayMoney(executionOrder.realizedPnl)}` : ""}
+            {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · ${t("原因：", "Reason: ")}${executionOrder.setupReview.reason}` : ""}
           </small>
           {["entry_pending", "entry_filled", "protecting"].includes(executionOrder.status) && (
-            <button onClick={() => action(`/api/execution-orders/${executionOrder.id}/close`, { reason: "manual_ui" })}>撤单/平仓</button>
+            <button onClick={() => action(`/api/execution-orders/${executionOrder.id}/close`, { reason: "manual_ui" })}>{t("撤单/平仓", "Cancel/Close")}</button>
           )}
         </div>
       )}
@@ -379,14 +384,14 @@ function MandateCard({ mandate, action }) {
   const pending = mandate.status === "pending_confirmation";
   return (
     <div className="chatMandateCard">
-      <header><Shield size={15} /><b>授权委托{pending ? "草案" : ""}</b><StatusBadge tone={pending ? "warning" : "ok"}>{humanize(mandate.status)}</StatusBadge></header>
+      <header><Shield size={15} /><b>{t("授权委托", "Mandate")}{pending ? t("草案", " draft") : ""}</b><StatusBadge tone={pending ? "warning" : "ok"}>{humanize(mandate.status)}</StatusBadge></header>
       <div className="mandateGridMini">
-        <span><small>交易对</small><SymbolChips symbols={mandate.allowedSymbols} empty="-" /></span>
-        <span><small>最大杠杆</small><b>{mandate.max_leverage || 1}x</b></span>
-        <span><small>单笔风险</small><b>{mandate.maxSingleTradeRiskPct}%</b></span>
-        <span><small>日亏上限</small><b>{mandate.maxDailyLossPct}%</b></span>
+        <span><small>{t("交易对", "Symbols")}</small><SymbolChips symbols={mandate.allowedSymbols} empty="-" /></span>
+        <span><small>{t("最大杠杆", "Max leverage")}</small><b>{mandate.max_leverage || 1}x</b></span>
+        <span><small>{t("单笔风险", "Per-trade risk")}</small><b>{mandate.maxSingleTradeRiskPct}%</b></span>
+        <span><small>{t("日亏上限", "Daily loss cap")}</small><b>{mandate.maxDailyLossPct}%</b></span>
       </div>
-      {pending && <footer><button className="approveButton" onClick={() => action(`/api/mandates/${mandate.id}/activate`, {})}>确认激活</button><small>激活后 Agent 才能在此边界内提出可执行计划</small></footer>}
+      {pending && <footer><button className="approveButton" onClick={() => action(`/api/mandates/${mandate.id}/activate`, {})}>{t("确认激活", "Confirm & activate")}</button><small>{t("激活后 Agent 才能在此边界内提出可执行计划", "Only after activation can the agent propose executable plans within these bounds")}</small></footer>}
     </div>
   );
 }
@@ -397,7 +402,7 @@ function ToolTrace({ trace = [] }) {
   return (
     <div className="toolTrace">
       <button onClick={() => setOpen((current) => !current)}>
-        <Wrench size={12} /> {trace.length} 次工具调用 <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+        <Wrench size={12} /> {trace.length} {t("次工具调用", "tool calls")} <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && trace.map((item, index) => (
         <div key={index}><b>{item.name}</b><span>{item.summary}</span><small>{item.latencyMs}ms</small></div>
@@ -444,12 +449,12 @@ function AgentRail({ data, action, ui, send }) {
   const ratio = sm.topTraderLongShortRatio;
   // 全端统一的偏向判定（smartMoneyBias，阈值一处定义）；语义用"偏多/偏空"不再冒充"趋势"。
   const bias = smartMoneyBias(ratio);
-  const judge = system.killSwitch ? "已熔断" : bias.label === "待同步" ? "观察中" : bias.label;
+  const judge = system.killSwitch ? t("已熔断", "Halted") : bias.label === "待同步" ? t("观察中", "Watching") : bias.label;
   const judgePos = bias.tone === "pos";
   const judgeNeg = bias.tone === "neg";
   // 后端真实的下一步建议是 nextActions（数组）；此前读不存在的单数 nextAction 恒 undefined，
   // 永远落到"等待信号"这个与信号无关的假文案。
-  const nextStep = (agentStatus.nextActions || [])[0] || (canOpen ? "已授权开仓" : "未授权开仓");
+  const nextStep = (agentStatus.nextActions || [])[0] || (canOpen ? t("已授权开仓", "Cleared to open") : t("未授权开仓", "Not cleared to open"));
   const remaining = system.remainingDailyLossUsdt;
   const cap = mandate.maxDailyLossPct && portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(portfolio.totalEquityUsdt) : null;
   const budgetPct = cap && remaining != null ? Math.max(0, Math.min(100, (Number(remaining) / cap) * 100)) : null;
@@ -457,15 +462,15 @@ function AgentRail({ data, action, ui, send }) {
   const marginRate = marginUsage(portfolio).marginRatePct;
 
   const mandateRows = hasMandate ? [
-    { k: "授权范围", v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
-    { k: "交易所", v: (mandate.exchanges || []).join("·") || "—" },
-    { k: "白名单", v: `${(mandate.allowedSymbols || []).length} 币` },
-    { k: "最大杠杆", v: `${mandate.max_leverage || 1}x` },
-    { k: "单笔风险", v: `${mandate.maxSingleTradeRiskPct ?? "-"}%` },
-    { k: "审批阈值", v: `≥${displayMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` }
+    { k: t("授权范围", "Mandate scope"), v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
+    { k: t("交易所", "Exchange"), v: (mandate.exchanges || []).join("·") || "—" },
+    { k: t("白名单", "Whitelist"), v: `${(mandate.allowedSymbols || []).length} ${t("币", "coins")}` },
+    { k: t("最大杠杆", "Max leverage"), v: `${mandate.max_leverage || 1}x` },
+    { k: t("单笔风险", "Per-trade risk"), v: `${mandate.maxSingleTradeRiskPct ?? "-"}%` },
+    { k: t("审批阈值", "Approval threshold"), v: `≥${displayMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` }
   ] : [
-    { k: "授权范围", v: "未授权" }, { k: "交易所", v: "—" }, { k: "白名单", v: "—" },
-    { k: "最大杠杆", v: "—" }, { k: "单笔风险", v: "—" }, { k: "审批阈值", v: "—" }
+    { k: t("授权范围", "Mandate scope"), v: t("未授权", "Not authorized") }, { k: t("交易所", "Exchange"), v: "—" }, { k: t("白名单", "Whitelist"), v: "—" },
+    { k: t("最大杠杆", "Max leverage"), v: "—" }, { k: t("单笔风险", "Per-trade risk"), v: "—" }, { k: t("审批阈值", "Approval threshold"), v: "—" }
   ];
 
   // 轨迹用最新 run 的真实步骤与各自时间戳——旧版是写死的五步流水 + 同一个时间戳复制五遍（假轨迹）。
@@ -477,15 +482,15 @@ function AgentRail({ data, action, ui, send }) {
   }));
 
   const kpis = [
-    { k: "总资产", v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: Number(portfolio.todayPnl || 0) >= 0 },
-    { k: "持仓风险", v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} 仓`, plain: true },
-    { k: "今日盈亏", v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: todayPnl >= 0, colorVal: true },
-    { k: "累计盈亏", v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "", pos: cumPnl >= 0, colorVal: true },
+    { k: t("总资产", "Equity"), v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: Number(portfolio.todayPnl || 0) >= 0 },
+    { k: t("持仓风险", "Position risk"), v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} ${t("仓", "pos")}`, plain: true },
+    { k: t("今日盈亏", "Today PnL"), v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: todayPnl >= 0, colorVal: true },
+    { k: t("累计盈亏", "Cumulative PnL"), v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} ${t("笔", "trades")}` : "", pos: cumPnl >= 0, colorVal: true },
     { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "", pos: Number(btc?.changePct || 0) >= 0 }
   ];
 
   async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
-  async function fireKill() { if (await uiConfirm(system.killSwitch ? "确认解除熔断？" : "确认一键熔断？将立即阻断所有新开仓。")) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
+  async function fireKill() { if (await uiConfirm(system.killSwitch ? t("确认解除熔断？", "Lift the circuit breaker?") : t("确认一键熔断？将立即阻断所有新开仓。", "Trigger the circuit breaker? This immediately blocks all new position opens."))) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
 
   return (
     <div className="agRail">
@@ -496,39 +501,39 @@ function AgentRail({ data, action, ui, send }) {
       )}
       {/* 当前 Agent 状态 */}
       <div className="agCard">
-        <div className="agHeadNum"><span className="agNum">2</span>当前 Agent 状态</div>
+        <div className="agHeadNum"><span className="agNum">2</span>{t("当前 Agent 状态", "Agent status")}</div>
         {/* 概念图对齐:当前 Agent 状态改为 label:value 行(映射真实字段),不再用四宫格 */}
         <div className="agStatusRows">
           {[
-            { k: "策略模式", v: plan?.strategy ? humanize(plan.strategy) : (data.automationState?.label || (autoOn ? "自主运行" : "待命")), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
-            { k: "市场环境", v: judge, tone: judgePos ? "pos" : judgeNeg ? "neg" : "" },
-            { k: "当前任务", v: latestRun.steps?.[0]?.title || (plan ? `${plan.symbol} 策略评估` : "等待巡检机会") },
-            { k: "授权边界", v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/笔 · 日亏≤${mandate.maxDailyLossPct ?? "-"}%` : "未授权" },
-            { k: "下一步", v: nextStep },
-            { k: "最近决策", v: trajSteps[0] && trajSteps[0].time !== "—" ? `${trajSteps[0].time} ${trajSteps[0].t}` : "—" }
+            { k: t("策略模式", "Strategy mode"), v: plan?.strategy ? humanize(plan.strategy) : (data.automationState?.label || (autoOn ? t("自主运行", "Autonomous") : t("待命", "Standby"))), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
+            { k: t("市场环境", "Market regime"), v: judge, tone: judgePos ? "pos" : judgeNeg ? "neg" : "" },
+            { k: t("当前任务", "Current task"), v: latestRun.steps?.[0]?.title || (plan ? `${plan.symbol} ${t("策略评估", "strategy review")}` : t("等待巡检机会", "Waiting for a scan opportunity")) },
+            { k: t("授权边界", "Mandate limits"), v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/${t("笔", "trade")} · ${t("日亏≤", "daily loss ≤")}${mandate.maxDailyLossPct ?? "-"}%` : t("未授权", "Not authorized") },
+            { k: t("下一步", "Next step"), v: nextStep },
+            { k: t("最近决策", "Last decision"), v: trajSteps[0] && trajSteps[0].time !== "—" ? `${trajSteps[0].time} ${trajSteps[0].t}` : "—" }
           ].map((r) => <div className="agStatusRow" key={r.k}><span>{r.k}</span><b className={`mono ${r.tone || ""}`} title={typeof r.v === "string" ? r.v : ""}>{r.v}</b></div>)}
         </div>
-        <div className="agStatusFoot"><ShieldCheck size={11} /> 受风控中心授权约束</div>
+        <div className="agStatusFoot"><ShieldCheck size={11} /> {t("受风控中心授权约束", "Bound by Risk Center authorization")}</div>
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
-            <b className="mono">{plan?.symbol || "暂无交易计划"}</b>
+            <b className="mono">{plan?.symbol || t("暂无交易计划", "No trade plan")}</b>
             {plans.length > 1 && (
               <span className="agPlanSwitch">
-                <button type="button" onClick={() => setPlanIdx((i) => (i - 1 + plans.length) % plans.length)} title="上一个持仓/计划">‹</button>
+                <button type="button" onClick={() => setPlanIdx((i) => (i - 1 + plans.length) % plans.length)} title={t("上一个持仓/计划", "Previous position/plan")}>‹</button>
                 <em className="mono">{Math.min(planIdx, plans.length - 1) + 1}/{plans.length}</em>
-                <button type="button" onClick={() => setPlanIdx((i) => (i + 1) % plans.length)} title="下一个持仓/计划">›</button>
+                <button type="button" onClick={() => setPlanIdx((i) => (i + 1) % plans.length)} title={t("下一个持仓/计划", "Next position/plan")}>›</button>
               </span>
             )}
             {plan && (() => {
               // 挂单 vs 持仓的真实状态:限价单已提交但价格没到=挂单未成交(仓位仍为0),成交后才是持仓。
               const eo = (data.executionOrders || []).find((o) => o.planId === plan.id);
               const held = (data.positions || []).some((p) => p.symbol === plan.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
-              const st = held || ["entry_filled", "protecting"].includes(eo?.status) ? { t: "持仓中", c: "pos" }
-                : eo?.status === "entry_pending" ? { t: "⏳挂单未成交", c: "warn" }
-                : eo?.status === "closed" ? { t: "已平仓", c: "" }
-                : plan.status === "awaiting_approval" ? { t: "待确认", c: "warn" }
-                : plan.status === "approved" ? { t: "准备下单", c: "warn" }
+              const st = held || ["entry_filled", "protecting"].includes(eo?.status) ? { t: t("持仓中", "Holding"), c: "pos" }
+                : eo?.status === "entry_pending" ? { t: t("⏳挂单未成交", "⏳ Pending fill"), c: "warn" }
+                : eo?.status === "closed" ? { t: t("已平仓", "Closed"), c: "" }
+                : plan.status === "awaiting_approval" ? { t: t("待确认", "Pending"), c: "warn" }
+                : plan.status === "approved" ? { t: t("准备下单", "Ready to order"), c: "warn" }
                 : null;
               return st ? <span className={`evBadge ${st.c}`}>{st.t}</span> : null;
             })()}
@@ -542,57 +547,57 @@ function AgentRail({ data, action, ui, send }) {
               const stopCrossed = Number.isFinite(stop) && (isShort ? price >= stop : price <= stop);
               const devPct = Number.isFinite(mid) && mid > 0 ? Math.abs(mid - price) / price * 100 : 0;
               return (<>
-                <span className="agPlanNow mono">现价 {displayPrice(price)}</span>
-                {stopCrossed ? <span className="evBadge neg">已失效 · 现价越过止损</span>
-                  : devPct > 8 ? <span className="evBadge warn">偏离现价 {devPct.toFixed(0)}% · 陈旧</span> : null}
+                <span className="agPlanNow mono">{t("现价", "Now")} {displayPrice(price)}</span>
+                {stopCrossed ? <span className="evBadge neg">{t("已失效 · 现价越过止损", "Void · price crossed stop")}</span>
+                  : devPct > 8 ? <span className="evBadge warn">{t("偏离现价", "Off market")} {devPct.toFixed(0)}% · {t("陈旧", "stale")}</span> : null}
               </>);
             })()}
-            {plan && <span className="agPlanTag">{plan.strategy ? humanize(plan.strategy) : "未指定策略"}</span>}
-            {plan?.executionBlock && <span className="evBadge neg" title={plan.executionBlock.detail}>已批准未下单 · {plan.executionBlock.detail.length > 22 ? `${plan.executionBlock.detail.slice(0, 22)}…` : plan.executionBlock.detail}</span>}
-            <span className="agPlanRight mono">{plan ? "当前交易计划 · 价位为计划目标" : "等巡检提出机会"}</span>
+            {plan && <span className="agPlanTag">{plan.strategy ? humanize(plan.strategy) : t("未指定策略", "No strategy set")}</span>}
+            {plan?.executionBlock && <span className="evBadge neg" title={plan.executionBlock.detail}>{t("已批准未下单", "Approved, not ordered")} · {plan.executionBlock.detail.length > 22 ? `${plan.executionBlock.detail.slice(0, 22)}…` : plan.executionBlock.detail}</span>}
+            <span className="agPlanRight mono">{plan ? t("当前交易计划 · 价位为计划目标", "Current plan · prices are plan targets") : t("等巡检提出机会", "Awaiting scan opportunities")}</span>
           </div>
           {!plan && (() => {
             // 无计划时的授权白名单:计数 + 省略号截断(白名单再多也不挤爆,全量在 title 里),简写去 /USDT。
             const wl = (mandate.allowedSymbols || []).map((s) => String(s));
             return (
-              <div className="agPlanWl" title={wl.join(" · ") || "未设置授权白名单"}>
-                <span className="agPlanWlLabel">授权 {wl.length} 币</span>
-                <span className="agPlanWlList">{wl.map((s) => s.replace(/\/USDT$/i, "")).join(" · ") || "未设置"}</span>
+              <div className="agPlanWl" title={wl.join(" · ") || t("未设置授权白名单", "No whitelist set")}>
+                <span className="agPlanWlLabel">{t("授权", "Authorized")} {wl.length} {t("币", "coins")}</span>
+                <span className="agPlanWlList">{wl.map((s) => s.replace(/\/USDT$/i, "")).join(" · ") || t("未设置", "None set")}</span>
               </div>
             );
           })()}
           <div className="agPlanGrid">
-            <div><div className="agPlanK">入场区间</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
-            <div><div className="agPlanK">止损价</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>
-            <div><div className="agPlanK">止盈目标</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((t) => displayPrice(t)).join(" / ") : "—"}</b></div>
-            <div><div className="agPlanK" title="打到止损这笔亏账户的百分比(≤授权单笔风险上限);不是仓位大小">本笔风险·杠杆</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
-            <div><div className="agPlanK">盈亏比</div><b className="mono">{planRR ? `1 : ${planRR}` : "—"}</b></div>
-            <div><div className="agPlanK">置信度</div><b className="mono">{plan?.confidence != null ? `${plan.confidence}%` : "—"}</b></div>
+            <div><div className="agPlanK">{t("入场区间", "Entry zone")}</div><b className="mono">{plan ? (plan.entry?.range || (plan.entry_range ? plan.entry_range.join("–") : "—")) : "—"}</b></div>
+            <div><div className="agPlanK">{t("止损价", "Stop price")}</div><b className="mono neg">{plan ? displayPrice(plan.stopLoss ?? plan.stop_loss) : "—"}</b></div>
+            <div><div className="agPlanK">{t("止盈目标", "Take profit")}</div><b className="mono pos">{plan && (plan.takeProfit || plan.take_profit)?.length ? (plan.takeProfit || plan.take_profit).slice(0, 2).map((tp) => displayPrice(tp)).join(" / ") : "—"}</b></div>
+            <div><div className="agPlanK" title={t("打到止损这笔亏账户的百分比(≤授权单笔风险上限);不是仓位大小", "Percent of the account this trade loses if the stop is hit (≤ the authorized per-trade risk cap); not the position size")}>{t("本笔风险·杠杆", "Trade risk · leverage")}</div><b className="mono">{plan ? `${plan.max_loss_pct ?? "-"}% · ${plan.leverage || 1}x` : "—"}</b></div>
+            <div><div className="agPlanK">{t("盈亏比", "R:R")}</div><b className="mono">{planRR ? `1 : ${planRR}` : "—"}</b></div>
+            <div><div className="agPlanK">{t("置信度", "Confidence")}</div><b className="mono">{plan?.confidence != null ? `${plan.confidence}%` : "—"}</b></div>
           </div>
         </div>
       </div>
 
       {/* 观察哨：AI 登记的价格触发条件，哨兵每分钟盯盘，命中即刻唤起巡检 */}
       <div className="agCard">
-        <div className="agHeadIcon"><Eye size={13} /> 观察哨 · 分钟级盯盘</div>
+        <div className="agHeadIcon"><Eye size={13} /> {t("观察哨 · 分钟级盯盘", "Watch · minute-by-minute")}</div>
         {(() => {
           const all = data.watchTriggers || [];
           const actives = all.filter((w) => w.status === "active");
           const recent = all.filter((w) => w.status !== "active").slice(0, 2);
-          const label = { triggered: "已触发", expired: "已过期", cancelled: "已撤销", invalidated: "已作废" };
-          const desc = (w) => w.kind === "price_above" ? `向上突破 ${displayPrice(w.level)}`
-            : w.kind === "price_below" ? `向下跌破 ${displayPrice(w.level)}`
-              : `回踩 ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
+          const label = { triggered: t("已触发", "Triggered"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void") };
+          const desc = (w) => w.kind === "price_above" ? `${t("向上突破", "Breaks above")} ${displayPrice(w.level)}`
+            : w.kind === "price_below" ? `${t("向下跌破", "Breaks below")} ${displayPrice(w.level)}`
+              : `${t("回踩", "Pullback to")} ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
           // 悬停显示完整信息(侧栏窄、note 被截断 → 鼠标放上去看全:条件 + 完整备注 + 状态 + 时间)。
           const fullInfo = (w) => [
             `${w.symbol} · ${desc(w)}`,
-            w.note ? `备注：${w.note}` : "",
+            w.note ? `${t("备注：", "Note: ")}${w.note}` : "",
             w.status === "active"
-              ? `到期：${new Date(w.expiresAt).toLocaleString("zh-CN")}`
+              ? `${t("到期：", "Expires: ")}${new Date(w.expiresAt).toLocaleString("zh-CN")}`
               : `${label[w.status] || w.status}${w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}`,
-            w.createdAt ? `登记于：${new Date(w.createdAt).toLocaleString("zh-CN")}` : ""
+            w.createdAt ? `${t("登记于：", "Logged: ")}${new Date(w.createdAt).toLocaleString("zh-CN")}` : ""
           ].filter(Boolean).join("\n");
-          if (!all.length) return <small className="agWatchEmpty">暂无观察哨。巡检得出"若跌破/突破某价位"的结论时，AI 会把条件登记在这里，哨兵每分钟核对真实行情，命中即刻唤起 AI 重新决策。</small>;
+          if (!all.length) return <small className="agWatchEmpty">{t("暂无观察哨。巡检得出\"若跌破/突破某价位\"的结论时，AI 会把条件登记在这里，哨兵每分钟核对真实行情，命中即刻唤起 AI 重新决策。", "No watches yet. When a scan concludes \"if price breaks below/above a level\", the AI logs the condition here; the sentinel checks live prices every minute and wakes the AI to re-decide the moment it hits.")}</small>;
           return (
             <div className="agWatchList">
               {actives.map((w) => {
@@ -604,8 +609,8 @@ function AgentRail({ data, action, ui, send }) {
                       <b className="mono">{w.symbol}</b> {desc(w)}
                       {w.note && <small>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
                     </div>
-                    <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
-                    <button className="agWatchCancel" title="撤销观察哨" onClick={async () => { if (await uiConfirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
+                    <span className="agWatchMeta mono">{t("余", "Left")} {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
+                    <button className="agWatchCancel" title={t("撤销观察哨", "Cancel watch")} onClick={async () => { if (await uiConfirm(`${t("撤销观察哨：", "Cancel watch: ")}${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
                   </div>
                 );
               })}
@@ -623,25 +628,25 @@ function AgentRail({ data, action, ui, send }) {
 
       {/* 授权与风控墙 */}
       <div className="agCard">
-        <div className="agHeadIcon"><ShieldCheck size={13} /> 授权与风控墙</div>
+        <div className="agHeadIcon"><ShieldCheck size={13} /> {t("授权与风控墙", "Mandate & Risk wall")}</div>
         <div className="agWallGrid">
           {mandateRows.map((r) => <div className="agWallRow" key={r.k}><span>{r.k}</span><b className="mono">{r.v}</b></div>)}
         </div>
         <div className="agBudget">
-          <div className="agBudgetTop"><span>今日亏损预算</span><span>{remaining != null ? `${displayMoney(remaining, 2)} 剩余${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : "未授权"}</span></div>
+          <div className="agBudgetTop"><span>{t("今日亏损预算", "Today's loss budget")}</span><span>{remaining != null ? `${displayMoney(remaining, 2)} ${t("剩余", "left")}${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : t("未授权", "Not authorized")}</span></div>
           <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
         </div>
         <div className="agWallBtns">
-          <button className="agBtnGhost" onClick={toggleAutonomy}>{autoOn ? "暂停" : "恢复"}</button>
-          <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? "解除熔断" : "一键熔断"}</button>
+          <button className="agBtnGhost" onClick={toggleAutonomy}>{autoOn ? t("暂停", "Pause") : t("恢复", "Resume")}</button>
+          <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? t("解除熔断", "Lift breaker") : t("一键熔断", "Kill switch")}</button>
         </div>
       </div>
 
       {/* Agent 运行轨迹 */}
       <div className="agCard">
-        <div className="agTrajHead"><span className="agSecLabel"><i />Agent 运行轨迹 · 最新循环</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>完整 ›</button></div>
+        <div className="agTrajHead"><span className="agSecLabel"><i />{t("Agent 运行轨迹 · 最新循环", "Run trace · latest loop")}</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>{t("完整 ›", "Full ›")}</button></div>
         <div className="agTrajGrid">
-          {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>暂无运行记录；开启自主巡检后显示真实步骤轨迹</div>}
+          {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>{t("暂无运行记录；开启自主巡检后显示真实步骤轨迹", "No run records yet; enable autonomous scanning to see the real step trace")}</div>}
           {trajSteps.map(({ Icon, t, time }, i) => (
             <div className="agTrajCell" key={`${t}-${i}`}><span className="agTrajIcon"><Icon size={12} /></span><b>{t}</b><div className="agTrajTime mono">{time}</div></div>
           ))}
@@ -662,11 +667,11 @@ export function ChatKpiStrip({ data, bar = false }) {
   const cumPnl = Number(perf.totalPnlUsdt ?? 0);
   const marginRate = marginUsage(portfolio).marginRatePct;
   const kpis = [
-    { k: "总资产", v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: "账户实时净值", plain: true },
-    { k: "持仓风险", v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} 个持仓`, plain: true },
-    { k: "今日盈亏", v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "等待账户同步", pos: todayPnl >= 0, colorVal: true },
-    { k: "累计盈亏", v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} 笔` : "尚无成交", pos: cumPnl >= 0, colorVal: true },
-    { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "待同步", pos: Number(btc?.changePct || 0) >= 0, colorVal: btc?.changePct != null }
+    { k: t("总资产", "Equity"), v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: t("账户实时净值", "Live account equity"), plain: true },
+    { k: t("持仓风险", "Position risk"), v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} ${t("个持仓", "positions")}`, plain: true },
+    { k: t("今日盈亏", "Today PnL"), v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : t("等待账户同步", "Awaiting account sync"), pos: todayPnl >= 0, colorVal: true },
+    { k: t("累计盈亏", "Cumulative PnL"), v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} ${t("笔", "trades")}` : t("尚无成交", "No fills yet"), pos: cumPnl >= 0, colorVal: true },
+    { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : t("待同步", "Syncing"), pos: Number(btc?.changePct || 0) >= 0, colorVal: btc?.changePct != null }
   ];
   return (
     <div className={bar ? "chatKpiBar" : "chatKpiStrip"}>
@@ -682,9 +687,9 @@ export function ChatKpiStrip({ data, bar = false }) {
 
 function SetupChecklist({ onExample }) {
   const examples = [
-    "看看 BTC 现在的走势，说说你的判断",
-    "稳健做 BTC/ETH：单笔风险 0.3%，日亏损上限 1%，最大 3 倍杠杆，重大事件前 30 分钟停止开仓",
-    "现在有哪些高影响事件？对我的持仓有什么风险？"
+    t("看看 BTC 现在的走势，说说你的判断", "Look at BTC's current trend and give me your read"),
+    t("稳健做 BTC/ETH：单笔风险 0.3%，日亏损上限 1%，最大 3 倍杠杆，重大事件前 30 分钟停止开仓", "Trade BTC/ETH conservatively: 0.3% per-trade risk, 1% daily loss cap, max 3x leverage, stop opening 30 minutes before major events"),
+    t("现在有哪些高影响事件？对我的持仓有什么风险？", "What high-impact events are there right now? What's the risk to my positions?")
   ];
   return (
     <div className="setupChecklist">
@@ -722,10 +727,10 @@ function PosterModal({ content, meta, onClose }) {
         body: JSON.stringify({ text: content })
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok || !json.translated) throw new Error(json.error || `翻译失败(${response.status})`);
+      if (!response.ok || !json.translated) throw new Error(json.error || `${t("翻译失败", "Translation failed")}(${response.status})`);
       setEnText(json.translated);
     } catch (error) {
-      setTransError(error.message || "翻译失败"); setLang("zh");
+      setTransError(error.message || t("翻译失败", "Translation failed")); setLang("zh");
     } finally { setTranslating(false); }
   }
 
@@ -739,7 +744,7 @@ function PosterModal({ content, meta, onClose }) {
       link.href = dataUrl;
       link.click();
     } catch (error) {
-      setTransError(`导出图片失败：${error.message || error}`);
+      setTransError(`${t("导出图片失败：", "Image export failed: ")}${error.message || error}`);
     } finally { setDownloading(false); }
   }
 
@@ -754,14 +759,14 @@ function PosterModal({ content, meta, onClose }) {
           <div className="posterLangTabs">
             <button type="button" className={lang === "zh" ? "active" : ""} onClick={() => setLang("zh")}>中文</button>
             <button type="button" className={lang === "en" ? "active" : ""} onClick={toEnglish} disabled={translating}>
-              {translating ? "翻译中…" : "English"}
+              {translating ? t("翻译中…", "Translating…") : "English"}
             </button>
           </div>
           <div className="posterActions">
             <button type="button" className="primaryButton" disabled={downloading || !enReady} onClick={download}>
-              <Download size={14} /> {downloading ? "生成中…" : "下载 PNG"}
+              <Download size={14} /> {downloading ? t("生成中…", "Generating…") : t("下载 PNG", "Download PNG")}
             </button>
-            <button type="button" className="posterClose" onClick={onClose} title="关闭"><X size={16} /></button>
+            <button type="button" className="posterClose" onClick={onClose} title={t("关闭", "Close")}><X size={16} /></button>
           </div>
         </div>
         {transError && <div className="posterError">{transError}</div>}
@@ -779,7 +784,7 @@ function PosterModal({ content, meta, onClose }) {
             </div>
             <div className="posterBody">
               {lang === "en" && !enText
-                ? <div className="posterTranslating">{translating ? "Translating…" : "点击 English 生成英文版"}</div>
+                ? <div className="posterTranslating">{translating ? "Translating…" : t("点击 English 生成英文版", "Click English to generate the English version")}</div>
                 : <RichMessage text={body} />}
             </div>
             <div className="posterFooter">
@@ -862,11 +867,11 @@ export function ChatPage({ data, action, ui, concept = false }) {
         body: JSON.stringify({ message: text, sessionId: activeSessionId })
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || `请求失败 ${response.status}`);
+      if (!response.ok) throw new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
       await loadMessages(json.agentMessage?.sessionId || activeSessionId);
       await ui.refresh(false);
     } catch (error) {
-      setMessages((current) => [...current, { id: `err_${Date.now()}`, role: "agent", content: `请求失败：${error.message}`, createdAt: new Date().toISOString() }]);
+      setMessages((current) => [...current, { id: `err_${Date.now()}`, role: "agent", content: `${t("请求失败：", "Request failed: ")}${error.message}`, createdAt: new Date().toISOString() }]);
     } finally {
       setPending(false);
     }
@@ -895,25 +900,25 @@ export function ChatPage({ data, action, ui, concept = false }) {
     try {
       const response = await fetch(apiUrl(`/api/agent/chat/sessions/${sessionId}`), { method: "DELETE", headers: authHeaders() });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "删除失败");
+      if (!response.ok) throw new Error(json.error || t("删除失败", "Delete failed"));
       setSessions(json.sessions || []);
       if (sessionId === activeSessionId) { setActiveSessionId(""); setMessages([]); }
     } catch (error) {
-      ui.notify?.(error.message || "删除失败");
+      ui.notify?.(error.message || t("删除失败", "Delete failed"));
     }
   }
 
   // 一次性清空全部对话历史（含早期悬浮助手混入的只读问答）。计划/授权/审计/成交不受影响。
   async function resetHistory() {
-    if (!await uiConfirm("清空全部对话历史？（含早期 AI 助手混入的问答）\n交易计划、授权、审计、成交记录不受影响，无法撤销。")) return;
+    if (!await uiConfirm(t("清空全部对话历史？（含早期 AI 助手混入的问答）\n交易计划、授权、审计、成交记录不受影响，无法撤销。", "Clear all chat history? (including early Q&A mixed in from the assistant)\nTrade plans, mandates, audits, and fills are unaffected. This cannot be undone."))) return;
     try {
       const response = await fetch(apiUrl("/api/agent/chat/reset"), { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: "{}" });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "清空失败");
+      if (!response.ok) throw new Error(json.error || t("清空失败", "Clear failed"));
       setSessions([]); setActiveSessionId(""); setMessages([]);
-      ui.notify?.(json.message || "已清空聊天历史");
+      ui.notify?.(json.message || t("已清空聊天历史", "Chat history cleared"));
     } catch (error) {
-      ui.notify?.(error.message || "清空失败");
+      ui.notify?.(error.message || t("清空失败", "Clear failed"));
     }
   }
 
@@ -921,27 +926,27 @@ export function ChatPage({ data, action, ui, concept = false }) {
     <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""}`}>
     <div className="agChat">
       <div className="agChatHead">
-        <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? "与 AI 交易员对话" : "情报中心"}</div>
+        <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? t("与 AI 交易员对话", "Chat with the AI trader") : t("情报中心", "Intel Center")}</div>
         <div className="agChatHeadR">
           <div className="agViewToggle">
-            <button className={view === "chat" ? "on" : ""} title="对话" onClick={() => setView("chat")}><MessageSquare size={13} /></button>
-            <button className={view === "intel" ? "on" : ""} title="情报" onClick={() => setView("intel")}><Radar size={13} /></button>
+            <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
+            <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>
-          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? "运行中" : system.killSwitch ? "已熔断" : "已暂停"}</span>
-          <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? "暂停自主" : "启动自主交易"}</button>
+          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("已熔断", "Halted") : t("已暂停", "Paused")}</span>
+          <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>
         </div>
       </div>
 
       {view === "intel" ? <IntelCenter action={action} data={data} /> : (<>
       {<div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
-        <span className="agHistLabel">对话历史</span>
-        <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> 新建</button>
-        {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title="清空全部对话历史（含早期 AI 助手混入的问答）"><Trash2 size={11} /> 清空</button>}
+        <span className="agHistLabel">{t("对话历史", "History")}</span>
+        <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> {t("新建", "New")}</button>
+        {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title={t("清空全部对话历史（含早期 AI 助手混入的问答）", "Clear all chat history (including early Q&A mixed in from the assistant)")}><Trash2 size={11} /> {t("清空", "Clear")}</button>}
         {sessions.map((s) => (
           <button className={`agSessChip ${s.id === activeSessionId ? "on" : ""}`} key={s.id} onClick={() => switchSession(s.id)} title={s.title}>
             {s.id === activeSessionId && <MessageSquare size={12} />}
-            {(s.title || "未命名对话").slice(0, 12)} · {formatTime(s.updatedAt || s.createdAt)}
-            <i className="agSessDel" title="删除" onClick={(e) => deleteSession(s.id, e)}>×</i>
+            {(s.title || t("未命名对话", "Untitled")).slice(0, 12)} · {formatTime(s.updatedAt || s.createdAt)}
+            <i className="agSessDel" title={t("删除", "Delete")} onClick={(e) => deleteSession(s.id, e)}>×</i>
           </button>
         ))}
       </div>}
@@ -957,7 +962,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
           <div className="agMsgAiRow" key={message.id}>
             <span className="agAvatar"><Bot size={18} /></span>
             <div className="agBubbleAi">
-              <div className="agAiLabel">AI 交易员</div>
+              <div className="agAiLabel">{t("AI 交易员", "AI Trader")}</div>
               <RichMessage text={message.content} onSuggest={!pending ? (t) => send(t) : null} />
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
@@ -967,8 +972,8 @@ export function ChatPage({ data, action, ui, concept = false }) {
               <div className="agMsgFootRow">
                 <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
                 {String(message.content || "").length > 80 && (
-                  <button type="button" className="agPosterBtn" title="把这条分析做成海报（中/英，可导出）" onClick={() => setPosterMsg(message)}>
-                    <ImageIcon size={13} /> 海报
+                  <button type="button" className="agPosterBtn" title={t("把这条分析做成海报（中/英，可导出）", "Turn this analysis into a poster (ZH/EN, exportable)")} onClick={() => setPosterMsg(message)}>
+                    <ImageIcon size={13} /> {t("海报", "Poster")}
                   </button>
                 )}
               </div>
@@ -978,7 +983,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
         {(pending || awaitingReply) && (
           <div className="agMsgAiRow">
             <span className="agAvatar"><Bot size={18} /></span>
-            <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div>{awaitingReply && !pending && <small className="agThinkNote">思考中·可切走稍后回来查看</small>}</div>
+            <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div>{awaitingReply && !pending && <small className="agThinkNote">{t("思考中·可切走稍后回来查看", "Thinking · you can switch away and check back later")}</small>}</div>
           </div>
         )}
       </div>
@@ -987,10 +992,10 @@ export function ChatPage({ data, action, ui, concept = false }) {
         <div className="pendingActionsDock">
           {(data.pendingActions || []).map((pa) => (
             <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
-              <div className="paInfo"><span className="paBadge">待确认操作</span><b>{pa.title}</b><small>{pa.detail}</small></div>
+              <div className="paInfo"><span className="paBadge">{t("待确认操作", "Pending action")}</span><b>{pa.title}</b><small>{pa.detail}</small></div>
               <div className="paActions">
-                <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>取消</button>
-                <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>确认执行</button>
+                <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>{t("取消", "Cancel")}</button>
+                <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>{t("确认执行", "Confirm")}</button>
               </div>
             </div>
           ))}
@@ -1004,11 +1009,11 @@ export function ChatPage({ data, action, ui, concept = false }) {
           ref={inputRef}
           value={input}
           rows={1}
-          placeholder={provider ? `输入指令，与 AI 交易员对话…（${provider.name}/${provider.model}）` : "输入指令，与 AI 交易员对话… 例如「把仓位降到 5%」"}
+          placeholder={provider ? `${t("输入指令，与 AI 交易员对话…", "Message the AI trader…")}（${provider.name}/${provider.model}）` : t("输入指令，与 AI 交易员对话… 例如「把仓位降到 5%」", "Message the AI trader… e.g. \"Cut my position to 5%\"")}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
         />
-        <button className="agSend" disabled={pending || !input.trim()} onClick={() => send()} aria-label="发送"><ArrowUp size={18} /></button>
+        <button className="agSend" disabled={pending || !input.trim()} onClick={() => send()} aria-label={t("发送", "Send")}><ArrowUp size={18} /></button>
       </div>
       </>)}
     </div>
@@ -1055,23 +1060,23 @@ function IntelCenter({ action, data = {} }) {
     <div className="intelCenter">
       <div className="intelHead">
         <div>
-          <h3>情报中心</h3>
-          <span>把零散新闻聚合成事件专题，按影响度、热度、时效与你的持仓相关性排序、持续跟进</span>
+          <h3>{t("情报中心", "Intel Center")}</h3>
+          <span>{t("把零散新闻聚合成事件专题，按影响度、热度、时效与你的持仓相关性排序、持续跟进", "Aggregates scattered news into event threads, ranked by impact, heat, recency and relevance to your positions, and followed over time")}</span>
         </div>
-        <button className="secondaryButton" onClick={refresh} disabled={busy}><RefreshCw size={14} /> {busy ? "刷新中…" : "刷新情报"}</button>
+        <button className="secondaryButton" onClick={refresh} disabled={busy}><RefreshCw size={14} /> {busy ? t("刷新中…", "Refreshing…") : t("刷新情报", "Refresh intel")}</button>
       </div>
       {(() => {
         // 自动刷新状态条:直接读事件源刷新定时任务的真实 上次/下次,让用户看出它在按 20 分钟节奏转,
         // 而不是"只有手动点才更新"。任务不存在(旧库未排程)时不显示。
-        const t = (data.tasks || []).find((x) => x.id === "task_sys_event_refresh");
-        if (!t) return null;
-        const paused = t.enabled === false;
-        const every = String(t.schedule || "").replace(/^Every\s*/i, "");
+        const task = (data.tasks || []).find((x) => x.id === "task_sys_event_refresh");
+        if (!task) return null;
+        const paused = task.enabled === false;
+        const every = String(task.schedule || "").replace(/^Every\s*/i, "");
         return (
           <div className={`intelAutoBar ${paused ? "off" : "on"}`}>
             <span className="intelAutoDot" />
-            <b>{paused ? "自动刷新已暂停" : "自动刷新中"}</b>
-            <small>每 {every} · 上次 {formatDateTime(t.lastRunAt, "—")} · 下次 {formatDateTime(t.nextRunAt, "—")}</small>
+            <b>{paused ? t("自动刷新已暂停", "Auto-refresh paused") : t("自动刷新中", "Auto-refreshing")}</b>
+            <small>{t("每", "Every")} {every} · {t("上次", "Last")} {formatDateTime(task.lastRunAt, "—")} · {t("下次", "Next")} {formatDateTime(task.nextRunAt, "—")}</small>
           </div>
         );
       })()}
