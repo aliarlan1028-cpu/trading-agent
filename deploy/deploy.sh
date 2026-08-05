@@ -33,7 +33,7 @@ echo "==> [2/5] rsync 代码（排除 .env/data/ios/dist）"
 rsync -az --delete "${EXCLUDES[@]}" "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/"
 
 echo "==> [3/5] 远端构建 + 保留回滚镜像"
-ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
+ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
 grep -q '^HOST=0.0.0.0' .env || { echo "FATAL: .env 缺少 HOST=0.0.0.0（会 502），中止"; exit 1; }
@@ -44,7 +44,7 @@ docker compose up -d </dev/null >/dev/null 2>&1 && echo "  up -d ok"
 REMOTE
 
 echo "==> [4/5] 验证（最多 90s：health 200 且 CPU 恢复正常）"
-if ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
+if ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$HOST" bash -s <<REMOTE
 set -uo pipefail
 cd "$REMOTE_DIR"
 ok=0
@@ -64,7 +64,7 @@ then
   echo "==> [5/5] ✅ 部署成功并通过验证"
 else
   echo "==> [5/5] ❌ 验证失败 → 自动回滚上一镜像"
-  ssh -o ConnectTimeout=30 "$HOST" bash -s <<REMOTE
+  ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
 docker image inspect "$IMAGE:rollback" >/dev/null 2>&1 || { echo "无回滚镜像，需人工介入"; exit 1; }
