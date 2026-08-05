@@ -357,8 +357,19 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "20mb" }));
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, {
+  setHeaders(res, filePath) {
+    // Vite 产物 /assets/*.js|css 文件名带内容哈希 → 内容不可变,可永久缓存(改动会换新哈希名)。
+    // 其余入口文件(index.html / landing.html / landing.js)用 no-cache,保证发版即时生效。
+    if (/[\\/]assets[\\/]/.test(filePath)) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  }
+}));
 app.get(/^\/(?!api(?:\/|$)).*/, (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-cache");
   res.sendFile(path.join(publicDir, "index.html"), (error) => {
     if (error) next(error);
   });
