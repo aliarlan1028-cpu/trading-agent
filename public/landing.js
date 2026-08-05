@@ -19,7 +19,7 @@
       '授权后自主交易,<br><span style="' + GRAD + '">绝不无边界。</span>',
       'Autonomous once authorized —<br><span style="' + GRAD + '">never without bounds.</span>'
     ],
-    "hero.sub": ["Authorized autonomy — never boundaryless execution.", "授权范围内自主执行,绝不越界。"],
+    "hero.sub": ["Authorized autonomy — never boundaryless execution.", "Real autonomy, always inside the boundaries you set."],
     "hero.desc": [
       "学习你的交易体系,持续感知市场与事件,在授权范围内执行真实交易、管理仓位并复盘进化。每一步都被授权、硬风控与审计约束。",
       "It learns your trading system, continuously senses markets and events, and — within your mandate — executes real trades, manages positions and evolves through review. Every step is bound by authorization, hard risk controls and audit."
