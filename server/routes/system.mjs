@@ -5,6 +5,13 @@ export function registerSystemRoutes(app, ctx) {
 
   app.get("/api/system/readiness", (_req, res) => res.json(buildReadinessReport(db)));
 
+  // 界面/AI 语言偏好:前端切换语言时调,存 db.system.uiLang,AI 提示词据此决定输出语言。
+  app.post("/api/system/language", (req, res) => {
+    const lang = req.body?.lang === "en" ? "en" : "zh";
+    db.system.uiLang = lang;
+    persist(res, { message: lang === "en" ? "UI/AI language set to English" : "界面/AI 语言已设为中文", uiLang: lang });
+  });
+
   app.post("/api/system/backup", requirePermission("admin:system"), async (_req, res) => {
     try {
       persist(res, await createSystemBackup(db));

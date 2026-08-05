@@ -36,7 +36,7 @@ export function registerAssistantRoutes(app, ctx) {
       `待办：待批准计划 ${digest.todos.plansAwaitingApproval} 个，待确认操作 ${digest.todos.pendingActions} 个`,
       `风险：未处理告警 ${digest.risk.openIncidents} 条${digest.risk.topIncident ? `（最新：${digest.risk.topIncident}）` : ""}`
     ].join("\n");
-    const system = "你是用户的交易系统助手。用中文把下面的系统状态总结成 3-5 条简洁要点（账户、自主状态、今日活动、待办、风险），并在最后给一句最该关注的行动建议。只基于给定事实，不要编造任何数字，不确定的写『未同步』。";
+    const system = "你是用户的交易系统助手。用中文把下面的系统状态总结成 3-5 条简洁要点（账户、自主状态、今日活动、待办、风险），并在最后给一句最该关注的行动建议。只基于给定事实，不要编造任何数字，不确定的写『未同步』。" + (db.system?.uiLang === "en" ? " IMPORTANT: the user's language is English — respond entirely in English." : "");
     let summary = null;
     try { summary = await llmComplete(facts, system); } catch { summary = null; }
     res.json({ summary: summary || facts, digest, llm: Boolean(summary) });
@@ -100,7 +100,8 @@ export function registerAssistantRoutes(app, ctx) {
       const system = "你是交易系统的【只读助手 copilot】。职责：帮用户理解账户状态、行情与知识库，做解读与建议。"
         + "你不能下单、撤单、改配置或生成交易计划——那是『AI 交易员』的职责；用户要执行交易/改授权时，引导他去主对话『AI 交易员』操作。"
         + "只依据下面给定的真实上下文与知识片段回答，不编造任何数字，不确定就说『未同步/未知』。用中文，简洁，可用 Markdown。"
-        + "若上下文提供了『用户此前让我记住的偏好/事实』，回答与建议时要主动考虑它们；若用户这次是让你记住某偏好，先明确回复『已记住』再作答，之后会一直参考。";
+        + "若上下文提供了『用户此前让我记住的偏好/事实』，回答与建议时要主动考虑它们；若用户这次是让你记住某偏好，先明确回复『已记住』再作答，之后会一直参考。"
+        + (db.system?.uiLang === "en" ? " IMPORTANT: the user's language is English — respond entirely in English." : "");
       const prompt = `用户问题：${question}\n\n【系统只读上下文】\n${contextText}${knowledge ? `\n\n【相关知识片段】\n${knowledge}` : ""}`;
       let reply = null;
       try { reply = await llmComplete(prompt, system); } catch { reply = null; }

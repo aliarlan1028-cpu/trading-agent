@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { getLang, setLang, t } from "./i18n.js";
 import {
   Activity,
   Bell,
@@ -55,25 +56,25 @@ if (isNativeApp()) {
 // 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
 // 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
 const navItems = [
-  { id: "chat", label: "AI 交易员", short: "交易员", icon: Bot },
-  { id: "cockpit", label: "交易驾驶舱", short: "驾驶舱", icon: PieChart },
-  { id: "researchCenter", label: "研究中心", short: "研究", icon: BookOpen },
-  { id: "riskCenter", label: "风控中心", short: "风控", icon: ShieldCheck },
-  { id: "operationsCenter", label: "系统运营", short: "运营", icon: Activity }
+  { id: "chat", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
+  { id: "cockpit", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
+  { id: "researchCenter", label: "研究中心", labelEn: "Research", icon: BookOpen },
+  { id: "riskCenter", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
+  { id: "operationsCenter", label: "系统运营", labelEn: "Operations", icon: Activity }
 ];
 
 function BrandLogo({ size = 34 }) {
   return <img className="brandLogo" src="/trading-agent-logo.svg" alt="Trading Agent" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive, data }) {
+function Sidebar({ active, setActive, data, lang, switchLang }) {
   const healthy = !data?.system?.killSwitch && (data?.system?.apiHealth ? !/异常|错误|失败/.test(String(data.system.apiHealth)) : true);
   return (
     <aside className="sidebar">
       <div className="brand">
         <div className="brandMark"><BrandLogo size={20} /></div>
         <div className="brandText">
-          <strong>交易 Agent</strong>
+          <strong>{t("交易 Agent", "Trading Agent")}</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>
         </div>
       </div>
@@ -81,23 +82,28 @@ function Sidebar({ active, setActive, data }) {
         {navItems.map((item) => {
           const Icon = item.icon;
           const on = active === item.id;
+          const label = t(item.label, item.labelEn);
           return (
-              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={item.label} onClick={() => setActive(item.id)}>
+              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
                 <Icon size={16} />
-                <span className="navLabelFull">{item.label}</span>
-                <span className="navLabelShort">{item.short}</span>
+                <span className="navLabelFull">{label}</span>
+                <span className="navLabelShort">{label}</span>
               </button>
           );
         })}
       </nav>
       <div className="sidebarFoot">
-        <div className={`sysStatusCard ${healthy ? "ok" : "warn"}`}>
-          <div className="sscHead"><span className="sscDot" /> <b>系统状态 · {healthy ? "全盘正常" : "需关注"}</b></div>
-          <div className="sscMeta mono">api · ws · sync · {healthy ? "healthy" : "check"}</div>
-          <button className="sscLink" onClick={() => setActive("operationsCenter")}>查看运行日志 ›</button>
+        <div className="langToggle">
+          <button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button>
+          <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>EN</button>
         </div>
-        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title="系统设置 / 密钥 / 用户管理" onClick={() => setActive("systemSettings")}>
-          <Settings size={15} /> 系统设置
+        <div className={`sysStatusCard ${healthy ? "ok" : "warn"}`}>
+          <div className="sscHead"><span className="sscDot" /> <b>{t("系统状态", "System")} · {healthy ? t("全盘正常", "All OK") : t("需关注", "Attention")}</b></div>
+          <div className="sscMeta mono">api · ws · sync · {healthy ? "healthy" : "check"}</div>
+          <button className="sscLink" onClick={() => setActive("operationsCenter")}>{t("查看运行日志", "View logs")} ›</button>
+        </div>
+        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
+          <Settings size={15} /> {t("系统设置", "Settings")}
         </button>
       </div>
     </aside>
@@ -274,6 +280,8 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 }
 
 function App() {
+  const [lang, setLangState] = useState(getLang());
+  const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("base");
@@ -314,19 +322,19 @@ function App() {
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, activeWorkspaceTab, data, action]);
+  }, [active, activeSettingsTab, activeWorkspaceTab, data, action, lang]);
 
   if (authRequired) return <LoginScreen login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
-  if (loading || !data) return <div className="loading"><Activity size={28} /> 正在启动 Trader Agent...</div>;
+  if (loading || !data) return <div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div>;
 
   if (isNativeApp || isMobileViewport) {
     return <MobileApp api={{ data, action, toast, busy, notify, download, refresh, connectionError }} />;
   }
 
   return (
-    <div className="appShell">
-      <Sidebar active={active} setActive={navigate} data={data} />
+    <div className="appShell" key={lang}>
+      <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
       <main className="mainArea">
         <AppTopbar data={data} setActive={navigate} notify={notify} action={action} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}

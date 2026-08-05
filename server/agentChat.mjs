@@ -479,6 +479,10 @@ function hhmmCn(iso) {
 
 async function buildSystemPrompt(db, userText = "") {
   const sections = [BASE_RULES];
+  // 用户界面语言=英文时,让 AI 全程用英文输出(分析/计划/解释),符号与数字保持原样。覆盖 BASE_RULES 的"工作语言为中文"。
+  if (db.system?.uiLang === "en") {
+    sections.push("【LANGUAGE · OVERRIDE】The user's interface language is English. Respond ENTIRELY in English — all analysis, trade plans, explanations and summaries. Keep tickers, prices, numbers and percentages as-is. This overrides any earlier '工作语言为中文' instruction.");
+  }
   const state = db.agentStateFiles || {};
 
   const user = clip(state.USER?.content, 1200);

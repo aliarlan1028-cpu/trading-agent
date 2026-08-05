@@ -8937,3 +8937,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .agPlanSwitch button{width:18px;height:18px;border-radius:5px;border:1px solid var(--border,#e3dcce);background:#fff;color:var(--text-2,#6b6455);cursor:pointer;line-height:1;font-size:13px;padding:0;}
 .agPlanSwitch button:hover{color:var(--accent-ink,#a8511a);border-color:var(--accent,#d06a22);}
 .agPlanSwitch em{font-size:11px;color:var(--text-3,#8a8172);font-style:normal;}
+
+/* 语言切换(侧栏底部) */
+.langToggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.langToggle button { padding: 4px 12px; border: 0; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.langToggle button.on { background: var(--accent-grad); color: #fff; }
