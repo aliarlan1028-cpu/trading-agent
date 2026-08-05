@@ -8575,6 +8575,13 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mDrawerBrandText { display: grid; gap: 1px; }
 .mDrawerBrandText b { font: 700 15px "Space Grotesk"; color: #1E1B16; }
 .mDrawerBrandText small { font: 600 9px "Space Grotesk"; letter-spacing: .1em; color: #a89e8a; }
+/* 移动端抽屉里的语言切换(地球 + 中文/English 分段) */
+.mLangBar { display: flex; align-items: center; gap: 9px; padding: 11px 2px 13px; margin: 4px 0 6px; border-top: 1px solid #efe9de; border-bottom: 1px solid #efe9de; }
+.mLangBar > svg { color: #a89e8a; flex: none; }
+.mLangSeg { display: flex; flex: 1; border: 1px solid #e3dccd; border-radius: 10px; overflow: hidden; background: #fff; }
+.mLangSeg button { flex: 1; padding: 9px 4px; border: 0; background: transparent; color: #6b6152; font: 600 13px "Space Grotesk"; cursor: pointer; }
+.mLangSeg button:first-child { border-right: 1px solid #e3dccd; }
+.mLangSeg button.on { background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; }
 .mDrawerNav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .mDrawerItem { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 13px; border: 0; border-radius: 10px; background: transparent; color: #4b443a; font: 600 15px "Space Grotesk"; cursor: pointer; text-align: left; }
 .mDrawerItem svg { color: #8a8172; flex: none; }
@@ -8942,6 +8949,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .langToggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
 .langToggle button { padding: 4px 12px; border: 0; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .langToggle button.on { background: var(--accent-grad); color: #fff; }
+/* 语言切换:侧栏顶部品牌下方一条独立分段控件(地球图标 + 中文/English),始终可见、精致 */
+.langBar { display: flex; align-items: center; gap: 9px; padding: 10px 8px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
+.langBar > svg { color: var(--text-4); flex: none; }
+.langSeg { display: flex; flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
+.langSeg button { flex: 1; min-width: 0; padding: 6px 4px; border: 0; background: transparent; color: var(--text-3); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.langSeg button:first-child { border-right: 1px solid var(--border); }
+.langSeg button:hover:not(.on) { background: var(--accent-weak); color: var(--accent-ink); }
+.langSeg button.on { background: var(--accent-grad); color: #fff; }
 
 /* 营销落地页(iframe) + 登录/订阅弹窗（深色主题，匹配 landing 设计稿） */
 .lpRoot{position:fixed;inset:0;z-index:1;background:#0c0a08}

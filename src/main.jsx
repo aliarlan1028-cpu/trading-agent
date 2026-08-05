@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Globe,
   Shield,
   ShieldCheck,
   FlaskConical,
@@ -68,8 +69,7 @@ function BrandLogo({ size = 34 }) {
   return <img className="brandLogo" src="/trading-agent-logo.svg" alt="Trading Agent" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive, data, lang, switchLang }) {
-  const healthy = !data?.system?.killSwitch && (data?.system?.apiHealth ? !/异常|错误|失败/.test(String(data.system.apiHealth)) : true);
+function Sidebar({ active, setActive, lang, switchLang }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -77,6 +77,13 @@ function Sidebar({ active, setActive, data, lang, switchLang }) {
         <div className="brandText">
           <strong>{t("交易 Agent", "Trading Agent")}</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>
+        </div>
+      </div>
+      <div className="langBar">
+        <Globe size={13} />
+        <div className="langSeg" role="group" aria-label={t("切换语言", "Switch language")}>
+          <button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button>
+          <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button>
         </div>
       </div>
       <nav className="nav">
@@ -94,15 +101,6 @@ function Sidebar({ active, setActive, data, lang, switchLang }) {
         })}
       </nav>
       <div className="sidebarFoot">
-        <div className="langToggle">
-          <button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button>
-          <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>EN</button>
-        </div>
-        <div className={`sysStatusCard ${healthy ? "ok" : "warn"}`}>
-          <div className="sscHead"><span className="sscDot" /> <b>{t("系统状态", "System")} · {healthy ? t("全盘正常", "All OK") : t("需关注", "Attention")}</b></div>
-          <div className="sscMeta mono">api · ws · sync · {healthy ? "healthy" : "check"}</div>
-          <button className="sscLink" onClick={() => setActive("operationsCenter")}>{t("查看运行日志", "View logs")} ›</button>
-        </div>
         <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
           <Settings size={15} /> {t("系统设置", "Settings")}
         </button>
@@ -330,7 +328,8 @@ function App() {
   if (loading || !data) return <div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div>;
 
   if (isNativeApp || isMobileViewport) {
-    return <MobileApp api={{ data, action, toast, busy, notify, download, refresh, connectionError }} />;
+    // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
+    return <MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, connectionError }} />;
   }
 
   return (

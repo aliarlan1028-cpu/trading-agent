@@ -37,6 +37,7 @@ import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
 import { ConfigPanel, LiveGrayPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
+import { t } from "./i18n.js";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
@@ -47,12 +48,12 @@ export function KillConfirmDialog({ enable, action, onClose }) {
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div className="confirmDialog" onClick={(event) => event.stopPropagation()}>
-        <strong>{enable ? "确认触发一键熔断？" : "确认解除熔断？"}</strong>
-        <p>{enable ? "将立即阻断所有新交易，并请求撤销全部在途委托。" : "解除后系统恢复正常风控运行，重新允许新交易。"}</p>
-        {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="熔断原因（可选，写入审计链）" autoFocus />}
+        <strong>{enable ? t("确认触发一键熔断？", "Trigger the kill switch?") : t("确认解除熔断？", "Release the kill switch?")}</strong>
+        <p>{enable ? t("将立即阻断所有新交易，并请求撤销全部在途委托。", "This immediately blocks all new trades and requests cancellation of all open orders.") : t("解除后系统恢复正常风控运行，重新允许新交易。", "Once released, the system resumes normal risk control and allows new trades again.")}</p>
+        {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("熔断原因（可选，写入审计链）", "Kill-switch reason (optional, written to audit trail)")} autoFocus />}
         <div className="confirmActions">
-          <button type="button" className="ghostButton" onClick={onClose}>取消</button>
-          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} onClick={confirm}>{enable ? "确认熔断" : "确认解除"}</button>
+          <button type="button" className="ghostButton" onClick={onClose}>{t("取消", "Cancel")}</button>
+          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} onClick={confirm}>{enable ? t("确认熔断", "Confirm kill switch") : t("确认解除", "Confirm release")}</button>
         </div>
       </div>
     </div>
@@ -60,10 +61,10 @@ export function KillConfirmDialog({ enable, action, onClose }) {
 }
 
 const settingsSections = [
-  { id: "llm", label: "模型" },
-  { id: "exchange", label: "交易所" },
-  { id: "integrations", label: "外部服务" },
-  { id: "runtime", label: "运行参数" }
+  { id: "llm", label: t("模型", "Model") },
+  { id: "exchange", label: t("交易所", "Exchange") },
+  { id: "integrations", label: t("外部服务", "Integrations") },
+  { id: "runtime", label: t("运行参数", "Runtime") }
 ];
 
 const positionSegments = ["持仓", "在途委托", "执行单"];
@@ -85,15 +86,15 @@ function MobilePositions({ data, action, ui }) {
   return (
     <div className="mPositions">
       <div className="mPageStats">
-        <div><span>总敞口</span><strong>{configured ? displayMoney(exposure, 0) : "未同步"}</strong></div>
-        <div><span>未实现盈亏</span><strong className={totalPnl >= 0 ? "positive" : "negative"}>{configured ? `${totalPnl >= 0 ? "+" : ""}${displayMoney(totalPnl)}` : "未同步"}</strong></div>
-        <div><span>保证金率</span><strong>{marginRate === null ? "未同步" : `${marginRate.toFixed(1)}%`}</strong></div>
+        <div><span>{t("总敞口", "Total exposure")}</span><strong>{configured ? displayMoney(exposure, 0) : t("未同步", "Not synced")}</strong></div>
+        <div><span>{t("未实现盈亏", "Unrealized PnL")}</span><strong className={totalPnl >= 0 ? "positive" : "negative"}>{configured ? `${totalPnl >= 0 ? "+" : ""}${displayMoney(totalPnl)}` : t("未同步", "Not synced")}</strong></div>
+        <div><span>{t("保证金率", "Margin ratio")}</span><strong>{marginRate === null ? t("未同步", "Not synced") : `${marginRate.toFixed(1)}%`}</strong></div>
       </div>
       <div className="mMiniStats">
-        <div><span>持仓数</span><strong>{positions.length}</strong></div>
-        <div><span>在途委托</span><strong>{orders.length}</strong></div>
-        <div><span>活跃执行</span><strong>{activeExecutions}</strong></div>
-        <div><span>可用保证金</span><strong>{configured ? displayMoney(availableMargin, 0) : "未同步"}</strong></div>
+        <div><span>{t("持仓数", "Positions")}</span><strong>{positions.length}</strong></div>
+        <div><span>{t("在途委托", "Open orders")}</span><strong>{orders.length}</strong></div>
+        <div><span>{t("活跃执行", "Active executions")}</span><strong>{activeExecutions}</strong></div>
+        <div><span>{t("可用保证金", "Available margin")}</span><strong>{configured ? displayMoney(availableMargin, 0) : t("未同步", "Not synced")}</strong></div>
       </div>
       <div className="mChips">
         {positionSegments.map((name) => (
@@ -103,20 +104,20 @@ function MobilePositions({ data, action, ui }) {
 
       {segment === "持仓" && (
         <>
-          {!positions.length && <p className="mInboxEmpty">暂无真实持仓。配置只读 API 并完成同步后展示。</p>}
+          {!positions.length && <p className="mInboxEmpty">{t("暂无真实持仓。配置只读 API 并完成同步后展示。", "No live positions. Configure read-only API and sync to display.")}</p>}
           {positions.map((position) => {
             const pnl = Number(position.pnl || 0);
             return (
               <div className="mPosCard" key={position.id || position.symbol}>
                 <header>
                   <strong>{position.symbol}</strong>
-                  <StatusBadge tone={position.direction === "short" ? "danger" : "ok"}>{position.direction === "short" ? "空" : "多"}</StatusBadge>
+                  <StatusBadge tone={position.direction === "short" ? "danger" : "ok"}>{position.direction === "short" ? t("空", "Short") : t("多", "Long")}</StatusBadge>
                 </header>
-                <div className={`mPosPnl ${pnl >= 0 ? "positive" : "negative"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(position.pnl, 2, "--")} <small>未实现盈亏</small></div>
+                <div className={`mPosPnl ${pnl >= 0 ? "positive" : "negative"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(position.pnl, 2, "--")} <small>{t("未实现盈亏", "Unrealized PnL")}</small></div>
                 <div className="mPosMeta">
-                  <span>数量<b>{position.size ?? "-"}</b></span>
-                  <span>开仓均价<b>{position.entry ? displayMoney(position.entry) : "-"}</b></span>
-                  <span>标记价格<b>{position.mark ? displayMoney(position.mark) : "-"}</b></span>
+                  <span>{t("数量", "Size")}<b>{position.size ?? "-"}</b></span>
+                  <span>{t("开仓均价", "Entry price")}<b>{position.entry ? displayMoney(position.entry) : "-"}</b></span>
+                  <span>{t("标记价格", "Mark price")}<b>{position.mark ? displayMoney(position.mark) : "-"}</b></span>
                 </div>
               </div>
             );
@@ -126,7 +127,7 @@ function MobilePositions({ data, action, ui }) {
 
       {segment === "在途委托" && (
         <>
-          {!orders.length && <p className="mInboxEmpty">暂无在途委托。</p>}
+          {!orders.length && <p className="mInboxEmpty">{t("暂无在途委托。", "No open orders.")}</p>}
           {orders.map((order) => (
             <div className="mPosCard" key={order.id}>
               <header>
@@ -134,9 +135,9 @@ function MobilePositions({ data, action, ui }) {
                 <StatusBadge tone={statusTone(order.status)}>{humanize(order.status)}</StatusBadge>
               </header>
               <div className="mPosMeta">
-                <span>方向<b>{order.side || order.direction || "-"}</b></span>
-                <span>价格<b>{order.price ? displayMoney(order.price) : "市价"}</b></span>
-                <span>数量<b>{order.quantity ?? order.size ?? "-"}</b></span>
+                <span>{t("方向", "Side")}<b>{order.side || order.direction || "-"}</b></span>
+                <span>{t("价格", "Price")}<b>{order.price ? displayMoney(order.price) : t("市价", "Market")}</b></span>
+                <span>{t("数量", "Size")}<b>{order.quantity ?? order.size ?? "-"}</b></span>
               </div>
             </div>
           ))}
@@ -145,7 +146,7 @@ function MobilePositions({ data, action, ui }) {
 
       {segment === "执行单" && (
         <>
-          {!executions.length && <p className="mInboxEmpty">暂无执行单。批准交易计划后由执行引擎生成。</p>}
+          {!executions.length && <p className="mInboxEmpty">{t("暂无执行单。批准交易计划后由执行引擎生成。", "No execution orders. Generated by the execution engine after a trade plan is approved.")}</p>}
           {executions.map((order) => (
             <div className="mPosCard" key={order.id}>
               <header>
@@ -153,13 +154,13 @@ function MobilePositions({ data, action, ui }) {
                 <StatusBadge tone={statusTone(order.status)}>{humanize(order.status)}</StatusBadge>
               </header>
               <div className="mPosMeta">
-                <span>方向<b>{order.direction || "-"}</b></span>
-                <span>入场<b>{order.entryPrice ? displayMoney(order.entryPrice) : "-"}</b></span>
-                <span>止损<b>{order.stopLoss ? displayMoney(order.stopLoss) : "-"}</b></span>
+                <span>{t("方向", "Side")}<b>{order.direction || "-"}</b></span>
+                <span>{t("入场", "Entry")}<b>{order.entryPrice ? displayMoney(order.entryPrice) : "-"}</b></span>
+                <span>{t("止损", "Stop-loss")}<b>{order.stopLoss ? displayMoney(order.stopLoss) : "-"}</b></span>
               </div>
               {activeExec.includes(String(order.status || "").toLowerCase()) && (
                 <div className="mInboxActions">
-                  <button onClick={() => action(`/api/execution-orders/${order.id}/close`, { reason: "manual_mobile" })}>市价平仓</button>
+                  <button onClick={() => action(`/api/execution-orders/${order.id}/close`, { reason: "manual_mobile" })}>{t("市价平仓", "Close at market")}</button>
                 </div>
               )}
             </div>
@@ -169,8 +170,8 @@ function MobilePositions({ data, action, ui }) {
 
       <button className={`mToggleRow ${reduceOnly ? "on" : ""}`} onClick={() => action("/api/risk/reduce-only", { enabled: !reduceOnly })}>
         <span>
-          <strong>只减仓模式</strong>
-          <small>{reduceOnly ? "已开启：禁止新开仓，仅允许减仓" : "关闭中：开启后 Agent 只能减仓"}</small>
+          <strong>{t("只减仓模式", "Reduce-only mode")}</strong>
+          <small>{reduceOnly ? t("已开启：禁止新开仓，仅允许减仓", "On: no new positions, reduce only") : t("关闭中：开启后 Agent 只能减仓", "Off: when on, the Agent can only reduce")}</small>
         </span>
         <i className={reduceOnly ? "on" : ""} />
       </button>
@@ -178,7 +179,7 @@ function MobilePositions({ data, action, ui }) {
       <div className="mList">
         <button onClick={() => ui.setActive("marketAccount")}>
           <Activity size={17} />
-          <span>账户健康与对账</span>
+          <span>{t("账户健康与对账", "Account health & reconciliation")}</span>
           <ChevronRight size={15} />
         </button>
       </div>
@@ -195,10 +196,10 @@ function MobileSettingsIndex({ data, onOpen }) {
   const user = data.user || {};
   const sub = (data.subscriptions || [])[0] || {};
   const subs = {
-    llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : "未配置",
-    exchange: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join("、") || "未配置",
-    integrations: integrations.telegram?.configured ? "TG 已接入" : integrations.lark?.hasWebhook ? "飞书已接入" : "未配置",
-    runtime: runtime.authRequired === false ? "免登录" : "鉴权开启"
+    llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : t("未配置", "Not configured"),
+    exchange: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join(t("、", ", ")) || t("未配置", "Not configured"),
+    integrations: integrations.telegram?.configured ? t("TG 已接入", "Telegram connected") : integrations.lark?.hasWebhook ? t("飞书已接入", "Lark connected") : t("未配置", "Not configured"),
+    runtime: runtime.authRequired === false ? t("免登录", "No login") : t("鉴权开启", "Auth enabled")
   };
   const exchanges = [
     { id: "binance", name: "Binance", letter: "B", cls: "binance", connected: exchange.binance?.hasKey },
@@ -208,25 +209,25 @@ function MobileSettingsIndex({ data, onOpen }) {
     <div className="mScreen">
       <div className="mCard mAcctCard">
         <span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(user.name || user.email || "U").charAt(0).toUpperCase()}</span>
-        <div className="mAcctInfo"><b>{user.name || "量化交易员"}</b><small>{user.email || "—"}</small></div>
+        <div className="mAcctInfo"><b>{user.name || t("量化交易员", "Quant Trader")}</b><small>{user.email || "—"}</small></div>
         <span className="mAcctPlan">{user.isOwner ? "OWNER" : sub.status ? "PRO" : "—"}</span>
       </div>
 
       <div className="mCard">
-        <div className="mCardHead"><b>交易所与 API 密钥</b><small>{exchanges.filter((e) => e.connected).length} 已连接</small></div>
+        <div className="mCardHead"><b>{t("交易所与 API 密钥", "Exchanges & API keys")}</b><small>{exchanges.filter((e) => e.connected).length} {t("已连接", "connected")}</small></div>
         {exchanges.map((e) => (
           <button className="mExRow" key={e.id} onClick={() => onOpen("settings:exchange")}>
             <span className={`mExLogo ${e.cls}`}>{e.letter}</span>
-            <div className="mExInfo"><b>{e.name}</b><small>{e.connected ? "已配置密钥" : "未配置"}</small></div>
-            <StatusBadge tone={e.connected ? "ok" : "neutral"}>{e.connected ? "已连接" : "未连接"}</StatusBadge>
+            <div className="mExInfo"><b>{e.name}</b><small>{e.connected ? t("已配置密钥", "Key configured") : t("未配置", "Not configured")}</small></div>
+            <StatusBadge tone={e.connected ? "ok" : "neutral"}>{e.connected ? t("已连接", "Connected") : t("未连接", "Not connected")}</StatusBadge>
             <ChevronRight size={15} />
           </button>
         ))}
-        <div className="mSecNote"><Shield size={13} /> 密钥加密存储；只勾读写交易，绝不勾选提币权限</div>
+        <div className="mSecNote"><Shield size={13} /> {t("密钥加密存储；只勾读写交易，绝不勾选提币权限", "Keys are encrypted at rest; grant read/trade only, never withdrawal permission")}</div>
       </div>
 
       <div className="mCard">
-        <div className="mCardHead"><b>系统配置</b></div>
+        <div className="mCardHead"><b>{t("系统配置", "System configuration")}</b></div>
         {settingsSections.map((item) => (
           <button className="mCfgRow" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}>
             <span>{item.label}</span>
@@ -239,10 +240,10 @@ function MobileSettingsIndex({ data, onOpen }) {
       {sub.status && (
         <div className="mCard mPlanCard">
           <div className="mPlanTop">
-            <div><b>{sub.planName || "专业版"}</b><small>{sub.source === "owner_grant" ? "Owner 免费授权" : humanize(sub.status)}</small></div>
-            <span className="mPlanBadge">生效中</span>
+            <div><b>{sub.planName || t("专业版", "Pro")}</b><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small></div>
+            <span className="mPlanBadge">{t("生效中", "Active")}</span>
           </div>
-          <div className="mPlanFoot mono">到期 {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : "长期有效"}</div>
+          <div className="mPlanFoot mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</div>
         </div>
       )}
     </div>
@@ -266,17 +267,17 @@ function MobileRisk({ data, action, ui, view = "all" }) {
   const active = ["running", "active"].includes(mandate.status);
   // 授权≠低风险：有真实风险等级就用它，否则显示"已授权·风险待评估"，不写死"低风险"。
   const rLabel = /高|中|低/.test(portfolio.riskLabel || "") ? portfolio.riskLabel : null;
-  const wall = killed ? { label: "熔断停机 · 已阻断开仓", tone: "critical" }
-    : active ? { label: rLabel ? `${rLabel} · 运行中` : "已授权 · 风险待评估", tone: rLabel === "高风险" ? "critical" : rLabel === "中风险" ? "warning" : rLabel ? "ok" : "warning" }
-    : { label: "未授权 · 观察模式", tone: "warning" };
+  const wall = killed ? { label: t("熔断停机 · 已阻断开仓", "Kill switch · opening blocked"), tone: "critical" }
+    : active ? { label: rLabel ? `${rLabel} · ${t("运行中", "Running")}` : t("已授权 · 风险待评估", "Authorized · risk pending"), tone: rLabel === "高风险" ? "critical" : rLabel === "中风险" ? "warning" : rLabel ? "ok" : "warning" }
+    : { label: t("未授权 · 观察模式", "Not authorized · observe mode"), tone: "warning" };
   const mandateTone = active ? "ok" : statusTone(mandate.status);
   const mandRows = [
-    ["授权范围", (mandate.exchanges || []).length ? "已授权交易" : "未授权", ""],
-    ["交易所", (mandate.exchanges || []).join("、") || "—", ""],
-    ["最大杠杆", maxLeverage ? `${maxLeverage}x` : "—", ""],
-    ["单日最大亏损", mandate.maxDailyLossPct ? `${mandate.maxDailyLossPct}%` : "—", "neg"],
-    ["审批阈值", approvalThreshold != null && mandate.id ? `${displayMoney(approvalThreshold, 0)} U` : "—", ""],
-    ["有效期", validUntil ? formatDate(validUntil) : "长期有效", ""]
+    [t("授权范围", "Scope"), (mandate.exchanges || []).length ? t("已授权交易", "Trading authorized") : t("未授权", "Not authorized"), ""],
+    [t("交易所", "Exchanges"), (mandate.exchanges || []).join(t("、", ", ")) || "—", ""],
+    [t("最大杠杆", "Max leverage"), maxLeverage ? `${maxLeverage}x` : "—", ""],
+    [t("单日最大亏损", "Max daily loss"), mandate.maxDailyLossPct ? `${mandate.maxDailyLossPct}%` : "—", "neg"],
+    [t("审批阈值", "Approval threshold"), approvalThreshold != null && mandate.id ? `${displayMoney(approvalThreshold, 0)} U` : "—", ""],
+    [t("有效期", "Valid until"), validUntil ? formatDate(validUntil) : t("长期有效", "No expiry"), ""]
   ];
   const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
   // scope 真实取值是英文(trade/account/event/knowledge),此前中文 includes 恒 0 → 永远"无规则"(审计 M3)
@@ -286,10 +287,10 @@ function MobileRisk({ data, action, ui, view = "all" }) {
     <div className="mScreen">
       {showOverview && <div className={`mRiskWall ${wall.tone}`}>
         <ShieldCheck size={22} />
-        <div><b>{wall.label}</b><small>{active ? "授权与硬风控生效中" : "配置授权后进入自主"}</small></div>
+        <div><b>{wall.label}</b><small>{active ? t("授权与硬风控生效中", "Mandate & hard risk controls active") : t("配置授权后进入自主", "Configure a mandate to go autonomous")}</small></div>
       </div>}
       {showOverview && <div className="mCard mBudgetCard">
-        <div className="mBudgetTop"><span>剩余亏损预算</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : "未授权"}</b></div>
+        <div className="mBudgetTop"><span>{t("剩余亏损预算", "Remaining loss budget")}</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : t("未授权", "Not authorized")}</b></div>
         <div className="mBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
       </div>}
       {showOverview && (() => {
@@ -298,35 +299,35 @@ function MobileRisk({ data, action, ui, view = "all" }) {
         const incGroups = [];
         for (const inc of openInc) { const k = inc.title || inc.source || "风险事件"; const g = incGroups.find((x) => x.key === k); if (g) { g.count += 1; g.items.push(inc); } else incGroups.push({ key: k, count: 1, items: [inc] }); }
         return <div className="mCard">
-          <div className="mCardHead"><b>风险事件</b><span className={openInc.length ? "mIncCount on" : "mIncCount"}>{openInc.length ? `${openInc.length} 项未处理` : "全部已处理"}</span></div>
-          {!openInc.length && <div className="mEmpty">当前没有未处理的风险事件。</div>}
+          <div className="mCardHead"><b>{t("风险事件", "Risk incidents")}</b><span className={openInc.length ? "mIncCount on" : "mIncCount"}>{openInc.length ? `${openInc.length} ${t("项未处理", "unresolved")}` : t("全部已处理", "All resolved")}</span></div>
+          {!openInc.length && <div className="mEmpty">{t("当前没有未处理的风险事件。", "No unresolved risk incidents.")}</div>}
           {incGroups.map((g) => (
             <div className="mIncRow" key={g.key}>
               <div className="mIncL"><b>{g.key}</b>{g.count > 1 && <span className="mIncX">×{g.count}</span>}</div>
-              <button className="mIncBtn" onClick={async () => { for (const inc of g.items) await action(`/api/risk/incidents/${inc.id}/close`, {}); ui.notify?.("已处理"); }}>{g.count > 1 ? `处理 ${g.count} 项` : "标记已处理"}</button>
+              <button className="mIncBtn" onClick={async () => { for (const inc of g.items) await action(`/api/risk/incidents/${inc.id}/close`, {}); ui.notify?.(t("已处理", "Resolved")); }}>{g.count > 1 ? `${t("处理", "Resolve")} ${g.count}${t(" 项", "")}` : t("标记已处理", "Mark resolved")}</button>
             </div>
           ))}
-          {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>全部标记已处理 ›</button>}
+          {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>{t("全部标记已处理", "Mark all resolved")} ›</button>}
         </div>;
       })()}
       {showSettings && <div className="mCard">
-        <div className="mCardHead"><b>授权委托 MANDATE</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, "未授权")}</StatusBadge></div>
+        <div className="mCardHead"><b>{t("授权委托 MANDATE", "Mandate")}</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, t("未授权", "Not authorized"))}</StatusBadge></div>
         <div className="mMandList">{mandRows.map(([k, v, tone]) => <div className="mMandRow" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}</div>
-        <button className="mLink2" onClick={() => ui.openPanel("mandate")}>编辑授权 ›</button>
+        <button className="mLink2" onClick={() => ui.openPanel("mandate")}>{t("编辑授权", "Edit mandate")} ›</button>
       </div>}
       {showOverview && <div className="mCard">
-        <div className="mCardHead"><b>风险规则</b></div>
-        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} 条已启用` : "无规则"}</small><i style={{ background: c }} /></div>; })}</div>
+        <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
+        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
       </div>}
       {showSettings && <div className="mCard">
-        <div className="mCardHead"><b>实盘写入与灰度</b><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? "实盘已开启" : "实盘关闭"}</StatusBadge></div>
+        <div className="mCardHead"><b>{t("实盘写入与灰度", "Live trading & rollout")}</b><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? t("实盘已开启", "Live on") : t("实盘关闭", "Live off")}</StatusBadge></div>
         <LiveGrayPanel data={data} action={action} ui={ui} />
       </div>}
 
       {showOverview && <div className="mRiskBtns">
-        <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button>
-        <button className="mRbReduce" onClick={async () => { const on = Boolean(data.system?.reduceOnlyMode); if (await uiConfirm(on ? "关闭只减仓模式?" : "开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。")) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? "退出只减仓" : "只减仓"}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
-        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? "解除熔断" : "一键熔断"}</button>
+        <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>{t("暂停自主", "Pause autonomy")}</button>
+        <button className="mRbReduce" onClick={async () => { const on = Boolean(data.system?.reduceOnlyMode); if (await uiConfirm(on ? t("关闭只减仓模式?", "Turn off reduce-only mode?") : t("开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。", "Turn on reduce-only mode? New positions will be blocked; only reduce/close/cancel allowed."))) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? t("退出只减仓", "Exit reduce-only") : t("只减仓", "Reduce-only")}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
+        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? t("解除熔断", "Release kill switch") : t("一键熔断", "Kill switch")}</button>
       </div>}
     </div>
   );
@@ -354,9 +355,9 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
   // 当前该做哪一步：没知识源→喂料；有草案没进流水线→编译验证；进了流水线没上岗→批准；已上岗→完成。
   const step = sources.length === 0 ? 1 : (active === 0 && inPipe === 0) ? 2 : active === 0 ? 3 : 4;
   const guide = [
-    { n: 1, Icon: BookOpen, title: "喂知识", desc: "导入交易书籍或文章，自动蒸馏出方法与风控纪律。", cta: "导入知识源", on: () => ui.openPanel("knowledgeImport") },
-    { n: 2, Icon: Rocket, title: "编译 + 验证", desc: "把方法编译成技能，跑历史回测 + 纯前向模拟盘。", cta: "去方法", on: () => setSeg("方法") },
-    { n: 3, Icon: ShieldCheck, title: "人工批准上岗", desc: "只有你亲自批准的技能才进入实盘决策。", cta: "去技能", on: () => setSeg("技能") }
+    { n: 1, Icon: BookOpen, title: t("喂知识", "Feed knowledge"), desc: t("导入交易书籍或文章，自动蒸馏出方法与风控纪律。", "Import trading books or articles; methods and risk discipline are distilled automatically."), cta: t("导入知识源", "Import source"), on: () => ui.openPanel("knowledgeImport") },
+    { n: 2, Icon: Rocket, title: t("编译 + 验证", "Compile + validate"), desc: t("把方法编译成技能，跑历史回测 + 纯前向模拟盘。", "Compile methods into skills, run historical backtest + pure forward paper trading."), cta: t("去方法", "Go to methods"), on: () => setSeg("方法") },
+    { n: 3, Icon: ShieldCheck, title: t("人工批准上岗", "Manual approval"), desc: t("只有你亲自批准的技能才进入实盘决策。", "Only skills you personally approve enter live decision-making."), cta: t("去技能", "Go to skills"), on: () => setSeg("技能") }
   ];
 
   async function search() {
@@ -376,7 +377,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
       {seg === "上手" && (
         <>
           <div className="mKGuide">
-            <div className="mKGuideTitle"><Sparkles size={14} /> 知识库怎么用？三步让 AI 交易员变强</div>
+            <div className="mKGuideTitle"><Sparkles size={14} /> {t("知识库怎么用？三步让 AI 交易员变强", "How to use the knowledge base? Three steps to sharpen your AI trader")}</div>
             {guide.map((s) => {
               const state = s.n < step ? "done" : s.n === step ? "active" : "todo";
               const Icon = state === "done" ? CheckCircle2 : s.Icon;
@@ -384,7 +385,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
                 <div className={`mKStep ${state}`} key={s.n}>
                   <span className="mKStepIcon"><Icon size={16} /></span>
                   <div className="mKStepBody">
-                    <b>{s.title}{state === "active" && <em> · 现在做这步</em>}{state === "done" && <em className="ok"> · 已完成</em>}</b>
+                    <b>{s.title}{state === "active" && <em>{t(" · 现在做这步", " · do this now")}</em>}{state === "done" && <em className="ok">{t(" · 已完成", " · done")}</em>}</b>
                     <p>{s.desc}</p>
                     <button className={state === "active" ? "mMiniPrimary" : "mMiniGhost"} onClick={s.on}>{s.cta} ›</button>
                   </div>
@@ -394,58 +395,58 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
           </div>
 
           <div className="mPageStats">
-            <div><span>知识源</span><strong>{sources.length}</strong></div>
-            <div><span>交易方法</span><strong>{methods.length}</strong></div>
-            <div><span>已上岗技能</span><strong>{active}</strong></div>
+            <div><span>{t("知识源", "Sources")}</span><strong>{sources.length}</strong></div>
+            <div><span>{t("交易方法", "Methods")}</span><strong>{methods.length}</strong></div>
+            <div><span>{t("已上岗技能", "Live skills")}</span><strong>{active}</strong></div>
           </div>
 
           <div className="mSearchBar">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="检索知识库，如：CPI 前如何控仓" onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
-            <button onClick={search} aria-label="检索"><Search size={16} /></button>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("检索知识库，如：CPI 前如何控仓", "Search the knowledge base, e.g. how to size before CPI")} onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
+            <button onClick={search} aria-label={t("检索", "Search")}><Search size={16} /></button>
           </div>
           {hits !== null && (
             <div className="mSectionCard">
-              <header><span>检索结果（{hits.length}）</span></header>
-              {!hits.length && <p className="mInboxEmpty">没有命中的知识片段。</p>}
+              <header><span>{t("检索结果（", "Results (")}{hits.length}{t("）", ")")}</span></header>
+              {!hits.length && <p className="mInboxEmpty">{t("没有命中的知识片段。", "No matching knowledge snippets.")}</p>}
               {hits.slice(0, 5).map((hit, index) => <p className="mLeadLine" key={index}>{String(hit.text || "").slice(0, 120)}{hit.score != null ? ` · ${hit.score}` : ""}</p>)}
             </div>
           )}
 
           <div className="mSectionCard">
-            <header><span>知识源（{sources.length}）</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>全部 <ChevronRight size={12} /></button></header>
-            {!sources.length && <p className="mInboxEmpty">还没有导入知识。点下方「导入知识」开始。</p>}
+            <header><span>{t("知识源（", "Sources (")}{sources.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>{t("全部", "All")} <ChevronRight size={12} /></button></header>
+            {!sources.length && <p className="mInboxEmpty">{t("还没有导入知识。点下方「导入知识」开始。", "No knowledge imported yet. Tap \"Import knowledge\" below to start.")}</p>}
             {sources.slice(0, 8).map((source) => (
               <div className="mRowItem" key={source.id || source.title}>
-                <b>{source.title || source.name || "未命名"}</b>
-                <StatusBadge tone={statusTone(source.status)}>{humanize(source.status, "已导入")}</StatusBadge>
+                <b>{source.title || source.name || t("未命名", "Untitled")}</b>
+                <StatusBadge tone={statusTone(source.status)}>{humanize(source.status, t("已导入", "Imported"))}</StatusBadge>
               </div>
             ))}
           </div>
-          <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> 导入知识</button>
+          <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> {t("导入知识", "Import knowledge")}</button>
         </>
       )}
 
       {seg === "方法" && (
         <div className="mSectionCard">
-          <header><span>交易方法草案（{methods.length}）</span><small>需走验证才上岗</small></header>
-          {!methods.length && <p className="mInboxEmpty">导入书籍后自动蒸馏交易方法草案。</p>}
+          <header><span>{t("交易方法草案（", "Method drafts (")}{methods.length}{t("）", ")")}</span><small>{t("需走验证才上岗", "Must pass validation to go live")}</small></header>
+          {!methods.length && <p className="mInboxEmpty">{t("导入书籍后自动蒸馏交易方法草案。", "Method drafts are distilled automatically after importing books.")}</p>}
           {methods.map((m) => {
             const compiled = compiledIds.has(m.id);
             const open = openId === m.id;
             return (
               <div className={`mKRow ${open ? "open" : ""}`} key={m.id}>
                 <button className="mKRowHead" onClick={() => setOpenId(open ? null : m.id)}>
-                  <span className={`mDir ${m.direction}`}>{m.direction === "short" ? "空" : m.direction === "long" ? "多" : "多空"}</span>
+                  <span className={`mDir ${m.direction}`}>{m.direction === "short" ? t("空", "Short") : m.direction === "long" ? t("多", "Long") : t("多空", "Both")}</span>
                   <b>{m.name}</b>
-                  <StatusBadge tone={compiled ? "ok" : "neutral"}>{compiled ? "已编译" : "草案"}</StatusBadge>
+                  <StatusBadge tone={compiled ? "ok" : "neutral"}>{compiled ? t("已编译", "Compiled") : t("草案", "Draft")}</StatusBadge>
                 </button>
                 {open && (
                   <div className="mKRowBody">
-                    <p><i>进场</i>{m.entry || "-"}</p>
-                    <p><i>止损</i>{m.stop || "-"}</p>
-                    <p><i>止盈</i>{m.takeProfit || "-"}</p>
+                    <p><i>{t("进场", "Entry")}</i>{m.entry || "-"}</p>
+                    <p><i>{t("止损", "Stop-loss")}</i>{m.stop || "-"}</p>
+                    <p><i>{t("止盈", "Take-profit")}</i>{m.takeProfit || "-"}</p>
                     {m.source?.title && <p className="mKSrc">《{m.source.title}》</p>}
-                    {!compiled && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>编译为技能草案 ›</button>}
+                    {!compiled && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${m.id}/compile`, {})}>{t("编译为技能草案", "Compile to skill draft")} ›</button>}
                   </div>
                 )}
               </div>
@@ -456,14 +457,14 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
 
       {seg === "技能" && (
         <div className="mSectionCard">
-          <header><span>技能流水线（{skills.length}）</span><span style={{ display: "flex", gap: 8 }}>{(async () => { const n = skills.filter(async (k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`批量历史验证 ${n} 个技能?`)) action("/api/knowledge/skills/validate-all", {}); }}>一键验证({n})</button>; })()}<button className="textButton" onClick={async () => action("/api/knowledge/skills/sync", {})}>同步</button></span></header>
+          <header><span>{t("技能流水线（", "Skill pipeline (")}{skills.length}{t("）", ")")}</span><span style={{ display: "flex", gap: 8 }}>{(async () => { const n = skills.filter(async (k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`${t("批量历史验证", "Batch historical validation for")} ${n} ${t("个技能?", "skills?")}`)) action("/api/knowledge/skills/validate-all", {}); }}>{t("一键验证", "Validate all")}({n})</button>; })()}<button className="textButton" onClick={async () => action("/api/knowledge/skills/sync", {})}>{t("同步", "Sync")}</button></span></header>
           <div className="mKLegend">
-            <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> 这些状态是什么意思？<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
+            <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> {t("这些状态是什么意思？", "What do these statuses mean?")}<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
             {legendOpen && SKILL_STATE_HELP.map(([label, tone, desc]) => (
               <div className="mKLegendRow" key={label}><StatusBadge tone={tone}>{label}</StatusBadge><span>{desc}</span></div>
             ))}
           </div>
-          {!skills.length && <p className="mInboxEmpty">还没有技能。到「方法」把方法编译成技能草案后在此推进验证。</p>}
+          {!skills.length && <p className="mInboxEmpty">{t("还没有技能。到「方法」把方法编译成技能草案后在此推进验证。", "No skills yet. Go to Methods, compile a method into a skill draft, then advance validation here.")}</p>}
           {(() => {
             const ARCHIVED = new Set(["compile_failed", "superseded", "retired"]);
             const STATUS_RANK = { paper_validated: 0, historical_validated: 1, paper_validating: 2, compiled: 3, degraded: 4, historical_rejected: 5, paper_rejected: 6 };
@@ -476,19 +477,19 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
               return (
                 <div className={`mKRow ${open ? "open" : ""}`} key={skill.id}>
                   <button className="mKRowHead" onClick={() => setOpenId(open ? null : skill.id)}>
-                    {skill.spec?.direction && <span className={`mDir ${skill.spec.direction}`}>{skill.spec.direction === "short" ? "空" : "多"}</span>}
+                    {skill.spec?.direction && <span className={`mDir ${skill.spec.direction}`}>{skill.spec.direction === "short" ? t("空", "Short") : t("多", "Long")}</span>}
                     <b>{skill.name} <span className="mono">v{skill.version}</span></b>
-                    {skill.spec?.lowTrust && <StatusBadge tone="warning">低信任</StatusBadge>}
+                    {skill.spec?.lowTrust && <StatusBadge tone="warning">{t("低信任", "Low trust")}</StatusBadge>}
                     <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
                   </button>
                   {open && (
                     <div className="mKRowBody">
-                      <p className="mKSrc">{skill.spec?.templateLabel || "未编译"} · {skill.spec?.timeframe || "-"}{skill.sourceTitle ? ` · 《${skill.sourceTitle}》` : ""}</p>
-                      {skill.compileErrors?.length > 0 && <p className="mKErr">不能执行：{skill.compileErrors.join("；")}</p>}
-                      {skill.status === "superseded" && <p className="mKSrc">已被更新版本替代，仅作追溯。</p>}
-                      {skill.liveMetrics && <p><i>实盘</i>{skill.liveMetrics.trades} 笔 · 胜率 {skill.liveMetrics.winRatePct}%</p>}
+                      <p className="mKSrc">{skill.spec?.templateLabel || t("未编译", "Not compiled")} · {skill.spec?.timeframe || "-"}{skill.sourceTitle ? ` · 《${skill.sourceTitle}》` : ""}</p>
+                      {skill.compileErrors?.length > 0 && <p className="mKErr">{t("不能执行：", "Cannot execute: ")}{skill.compileErrors.join(t("；", "; "))}</p>}
+                      {skill.status === "superseded" && <p className="mKSrc">{t("已被更新版本替代，仅作追溯。", "Superseded by a newer version; kept for traceability.")}</p>}
+                      {skill.liveMetrics && <p><i>{t("实盘", "Live")}</i>{skill.liveMetrics.trades}{t(" 笔 · 胜率 ", " trades · Win ")}{skill.liveMetrics.winRatePct}%</p>}
                       {st.next && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/skills/${skill.id}/${st.next.action}`, {})}>{st.next.label} ›</button>}
-                      {skill.status === "compile_failed" && skill.sourceMethodId && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {})}>重新编译 ›</button>}
+                      {skill.status === "compile_failed" && skill.sourceMethodId && <button className="mMiniPrimary" onClick={() => action(`/api/knowledge/methods/${skill.sourceMethodId}/compile`, {})}>{t("重新编译", "Recompile")} ›</button>}
                     </div>
                   )}
                 </div>
@@ -497,12 +498,12 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
             return (
               <>
                 {live.map(row)}
-                {!live.length && skills.length > 0 && <p className="mInboxEmpty">当前没有在流水线中的活技能，只有归档技能。</p>}
+                {!live.length && skills.length > 0 && <p className="mInboxEmpty">{t("当前没有在流水线中的活技能，只有归档技能。", "No active skills in the pipeline, only archived skills.")}</p>}
                 {archived.length > 0 && (
                   <>
                     <div className="mKArchiveHead">
-                      <button onClick={() => setArchivedOpen((v) => !v)}><ChevronDown size={12} className={archivedOpen ? "flip" : ""} /> 已归档 {archived.length}</button>
-                      <button className="mKArchivePurge" onClick={async () => { if (await uiConfirm("清理归档：删除编译失败与已被替代的技能？（已退役保留）")) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={11} /> 清理</button>
+                      <button onClick={() => setArchivedOpen((v) => !v)}><ChevronDown size={12} className={archivedOpen ? "flip" : ""} /> {t("已归档", "Archived")} {archived.length}</button>
+                      <button className="mKArchivePurge" onClick={async () => { if (await uiConfirm(t("清理归档：删除编译失败与已被替代的技能？（已退役保留）", "Purge archive: delete compile-failed and superseded skills? (retired ones are kept)"))) action("/api/knowledge/skills/purge-archived", {}); }}><Trash2 size={11} /> {t("清理", "Purge")}</button>
                     </div>
                     {archivedOpen && archived.map(row)}
                   </>
@@ -515,21 +516,21 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
 
       {seg === "规则" && (
         <div className="mSectionCard">
-          <header><span>风控纪律（{rules.length}）</span><button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>管理/去重 <ChevronRight size={12} /></button></header>
-          {!rules.length && <p className="mInboxEmpty">导入资料后自动抽取风控纪律。</p>}
+          <header><span>{t("风控纪律（", "Risk discipline (")}{rules.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>{t("管理/去重", "Manage/dedupe")} <ChevronRight size={12} /></button></header>
+          {!rules.length && <p className="mInboxEmpty">{t("导入资料后自动抽取风控纪律。", "Risk discipline is extracted automatically after importing material.")}</p>}
           {rules.slice(0, 20).map((r) => (
             <div className="mRowItem" key={r.id}>
               <b>{r.name}</b>
-              <StatusBadge tone={r.status === "已批准" ? "ok" : "warning"}>{humanize(r.status, "待审批")}</StatusBadge>
+              <StatusBadge tone={r.status === "已批准" ? "ok" : "warning"}>{humanize(r.status, t("待审批", "Pending approval"))}</StatusBadge>
             </div>
           ))}
-          {rules.length > 0 && <button className="mPrimaryAction" onClick={() => ui.openPanel("ruleLibrary")}>去规则库批准 / 去重 ›</button>}
+          {rules.length > 0 && <button className="mPrimaryAction" onClick={() => ui.openPanel("ruleLibrary")}>{t("去规则库批准 / 去重", "Approve / dedupe in rule library")} ›</button>}
         </div>
       )}
 
       {seg === "图谱" && (
         <div className="mSectionCard">
-          <header><span>概念图谱（{knowledge.conceptCards?.length || 0}）</span><small>相关概念自动聚簇</small></header>
+          <header><span>{t("概念图谱（", "Concept graph (")}{knowledge.conceptCards?.length || 0}{t("）", ")")}</span><small>{t("相关概念自动聚簇", "Related concepts cluster automatically")}</small></header>
           <ConceptGraph concepts={knowledge.conceptCards || []} />
         </div>
       )}
@@ -551,9 +552,9 @@ function MobileTasks({ data, action }) {
   return (
     <div className="mSubPage">
       <div className="mPageStats">
-        <div><span>今日事件</span><strong>{todayEvents.length}</strong></div>
-        <div><span>活跃任务</span><strong>{activeTasks.length}</strong></div>
-        <div><span>事件规则</span><strong>{(data.riskRules || []).filter((rule) => rule.scope === "event").length}</strong></div>
+        <div><span>{t("今日事件", "Today's events")}</span><strong>{todayEvents.length}</strong></div>
+        <div><span>{t("活跃任务", "Active tasks")}</span><strong>{activeTasks.length}</strong></div>
+        <div><span>{t("事件规则", "Event rules")}</span><strong>{(data.riskRules || []).filter((rule) => rule.scope === "event").length}</strong></div>
       </div>
 
       <div className="mChips">
@@ -565,15 +566,15 @@ function MobileTasks({ data, action }) {
       {segment === "重要事件" && (
         <div className="mSectionCard">
           <header>
-            <span>重要事件</span>
-            <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={12} /> 刷新</button>
+            <span>{t("重要事件", "Key events")}</span>
+            <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={12} /> {t("刷新", "Refresh")}</button>
           </header>
-          {!events.length && <p className="mInboxEmpty">暂无事件。点击刷新拉取事件源。</p>}
+          {!events.length && <p className="mInboxEmpty">{t("暂无事件。点击刷新拉取事件源。", "No events. Tap refresh to pull event sources.")}</p>}
           {events.map((event) => (
             <div className="mRowItem" key={event.id} title={event.rawTitle || event.title}>
-              <span>{formatDateTime(event.due, "待定")}</span>
+              <span>{formatDateTime(event.due, t("待定", "TBD"))}</span>
               <b>{event.shortTitle || event.title}</b>
-              <StatusBadge tone={event.impact >= 80 ? "danger" : event.impact >= 50 ? "warning" : "neutral"}>{event.impactLabel || "待评估"}</StatusBadge>
+              <StatusBadge tone={event.impact >= 80 ? "danger" : event.impact >= 50 ? "warning" : "neutral"}>{event.impactLabel || t("待评估", "Pending")}</StatusBadge>
             </div>
           ))}
         </div>
@@ -581,8 +582,8 @@ function MobileTasks({ data, action }) {
 
       {segment === "定时任务" && (
         <div className="mSectionCard">
-          <header><span>定时任务（{tasks.length}）</span></header>
-          {!tasks.length && <p className="mInboxEmpty">暂无定时任务。</p>}
+          <header><span>{t("定时任务（", "Scheduled tasks (")}{tasks.length}{t("）", ")")}</span></header>
+          {!tasks.length && <p className="mInboxEmpty">{t("暂无定时任务。", "No scheduled tasks.")}</p>}
           {tasks.map((task) => (
             <div className="mRuleRow" key={task.id}>
               <span>
@@ -590,8 +591,8 @@ function MobileTasks({ data, action }) {
                 <small>{task.schedule || "Every 1h"} · {humanize(task.status || "running")}</small>
               </span>
               <div className="mRowActions">
-                <button onClick={() => action(`/api/tasks/${task.id}/run`, {})}>运行</button>
-                <button onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? "恢复" : "暂停"}</button>
+                <button onClick={() => action(`/api/tasks/${task.id}/run`, {})}>{t("运行", "Run")}</button>
+                <button onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? t("恢复", "Resume") : t("暂停", "Pause")}</button>
               </div>
             </div>
           ))}
@@ -615,33 +616,33 @@ function MobileAccountHealth({ data, action }) {
   const openExecutions = countOpenExecutions(data.executionOrders);
   const blockedChecks = (data.riskChecks || []).filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
   const rows = [
-    ["交易所账户", `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],
-    ["私有账户快照", latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : "未同步", latestSnapshot ? "ok" : "neutral"],
-    ["对账状态", configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置", latestReconcile?.status === "ok" ? "ok" : "neutral"],
-    ["实盘写入", data.system?.liveTradingEnabled ? "已开启" : "关闭", data.system?.liveTradingEnabled ? "warning" : "neutral"], // 主动授权开关≠故障,与桌面口径一致用提醒色
-    ["在途执行", `${openExecutions} 个`, openExecutions ? "warning" : "ok"],
-    ["近期风控阻断", `${blockedChecks} 次`, blockedChecks ? "warning" : "ok"]
+    [t("交易所账户", "Exchange accounts"), `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],
+    [t("私有账户快照", "Account snapshot"), latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : t("未同步", "Not synced"), latestSnapshot ? "ok" : "neutral"],
+    [t("对账状态", "Reconciliation"), configuredAccounts ? humanize(latestReconcile?.status, t("未对账", "Not reconciled")) : t("待配置", "Not configured"), latestReconcile?.status === "ok" ? "ok" : "neutral"],
+    [t("实盘写入", "Live trading"), data.system?.liveTradingEnabled ? t("已开启", "On") : t("关闭", "Off"), data.system?.liveTradingEnabled ? "warning" : "neutral"], // 主动授权开关≠故障,与桌面口径一致用提醒色
+    [t("在途执行", "In-flight executions"), `${openExecutions}${t(" 个", "")}`, openExecutions ? "warning" : "ok"],
+    [t("近期风控阻断", "Recent risk blocks"), `${blockedChecks}${t(" 次", "")}`, blockedChecks ? "warning" : "ok"]
   ];
   return (
     <div className="mSubPage">
       <div className="mPageStats">
-        <div><span>账户</span><strong>{configuredAccounts}/{totalAccounts}</strong></div>
-        <div><span>快照</span><strong>{latestSnapshot ? formatTime(latestSnapshot.createdAt) : "未同步"}</strong></div>
-        <div><span>对账</span><strong>{configuredAccounts ? humanize(latestReconcile?.status, "未对账") : "待配置"}</strong></div>
+        <div><span>{t("账户", "Accounts")}</span><strong>{configuredAccounts}/{totalAccounts}</strong></div>
+        <div><span>{t("快照", "Snapshot")}</span><strong>{latestSnapshot ? formatTime(latestSnapshot.createdAt) : t("未同步", "Not synced")}</strong></div>
+        <div><span>{t("对账", "Reconcile")}</span><strong>{configuredAccounts ? humanize(latestReconcile?.status, t("未对账", "Not reconciled")) : t("待配置", "Not configured")}</strong></div>
       </div>
 
       <div className="mSectionCard">
-        <header><span>健康检查</span></header>
+        <header><span>{t("健康检查", "Health check")}</span></header>
         {rows.map(([label, value, tone]) => (
           <div className="mRowItem" key={label}>
             <b>{label}</b>
             <em className="mRowValue">{value}</em>
-            <StatusBadge tone={tone}>{tone === "ok" ? "正常" : tone === "danger" ? "注意" : tone === "warning" ? "待处理" : "待配置"}</StatusBadge>
+            <StatusBadge tone={tone}>{tone === "ok" ? t("正常", "OK") : tone === "danger" ? t("注意", "Attention") : tone === "warning" ? t("待处理", "Pending") : t("待配置", "Not configured")}</StatusBadge>
           </div>
         ))}
       </div>
 
-      <button className="mPrimaryAction" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}><RefreshCw size={15} /> 手动对账</button>
+      <button className="mPrimaryAction" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}><RefreshCw size={15} /> {t("手动对账", "Manual reconcile")}</button>
     </div>
   );
 }
@@ -675,8 +676,8 @@ function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) 
     <div className="mSheetOverlay" onClick={onClose}>
       <div className="mSheet" onClick={(e) => e.stopPropagation()} style={{ transform: drag ? `translateY(${drag}px)` : "", transition: startY.current == null ? "transform .22s ease-out" : "none" }}>
         <div className="mSheetGrip" onTouchStart={dStart} onTouchMove={dMove} onTouchEnd={dEnd}><span /></div>
-        <div className="mSheetHead"><b>选择币对</b><button className="mSheetClose" onClick={onClose} aria-label="关闭"><ChevronDown size={20} /></button></div>
-        <div className="mSheetSearch"><Search size={15} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入币种，如 BTC / SOL" /></div>
+        <div className="mSheetHead"><b>{t("选择币对", "Select pair")}</b><button className="mSheetClose" onClick={onClose} aria-label={t("关闭", "Close")}><ChevronDown size={20} /></button></div>
+        <div className="mSheetSearch"><Search size={15} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("输入币种，如 BTC / SOL", "Enter a symbol, e.g. BTC / SOL")} /></div>
         <div className="mSheetList">
           {list.map((s) => (
             <button key={s} className={`mSheetRow ${s === current ? "on" : ""}`} onClick={() => { onPick(s); onClose(); }}>
@@ -684,7 +685,7 @@ function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) 
               {onAddWatch && <span className="mSheetAdd" role="button" onClick={(e) => { e.stopPropagation(); onAddWatch(s); }}><Plus size={15} /></span>}
             </button>
           ))}
-          {!list.length && <div className="mEmpty">{instruments && instruments.length ? "无匹配币对" : "合约清单加载中…"}</div>}
+          {!list.length && <div className="mEmpty">{instruments && instruments.length ? t("无匹配币对", "No matching pairs") : t("合约清单加载中…", "Loading contract list…")}</div>}
         </div>
       </div>
     </div>
@@ -707,10 +708,10 @@ function MobileMarket({ data, action, ui }) {
   // 保证金口径统一走 lib.marginUsage(含冻结保证金;缺数据=null,不造假)。
   const { usedMarginUsdt: used, marginRatePct: marginRate } = marginUsage(portfolio);
   const metrics = [
-    ["总资产", configured && equity != null ? displayMoney(equity, 2) : "未同步", null],
-    ["今日盈亏", configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : "未同步", configured ? portfolio.todayPnl : null],
-    ["可用保证金", configured && avail != null ? displayMoney(avail, 2) : "未同步", null],
-    ["未实现盈亏", configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : "未同步", configured ? portfolio.unrealizedPnl : null]
+    [t("总资产", "Total equity"), configured && equity != null ? displayMoney(equity, 2) : t("未同步", "Not synced"), null],
+    [t("今日盈亏", "Today's PnL"), configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : t("未同步", "Not synced"), configured ? portfolio.todayPnl : null],
+    [t("可用保证金", "Available margin"), configured && avail != null ? displayMoney(avail, 2) : t("未同步", "Not synced"), null],
+    [t("未实现盈亏", "Unrealized PnL"), configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : t("未同步", "Not synced"), configured ? portfolio.unrealizedPnl : null]
   ];
   const chgPos = Number(market.changePct || 0) >= 0;
   const tvInterval = { "15m": "15", "1H": "60", "4H": "240", "1D": "D" }[tf] || "60";
@@ -734,30 +735,30 @@ function MobileMarket({ data, action, ui }) {
           )}
         </LivePrice>
         <div className="mSnapRow">
-          <span>24h高<b className="mono">{market.high24h != null ? displayMoney(market.high24h, 2) : "—"}</b></span>
-          <span>24h低<b className="mono">{market.low24h != null ? displayMoney(market.low24h, 2) : "—"}</b></span>
-          <span>成交额<b className="mono">{market.volume24h ? String(market.volume24h) : "—"}</b></span>
-          <span>资金费率<b className="mono">{market.fundingRate == null ? "—" : `${Number(market.fundingRate) >= 0 ? "+" : ""}${Number(market.fundingRate).toFixed(4)}%`}</b></span>
+          <span>{t("24h高", "24h H")}<b className="mono">{market.high24h != null ? displayMoney(market.high24h, 2) : "—"}</b></span>
+          <span>{t("24h低", "24h L")}<b className="mono">{market.low24h != null ? displayMoney(market.low24h, 2) : "—"}</b></span>
+          <span>{t("成交额", "Volume")}<b className="mono">{market.volume24h ? String(market.volume24h) : "—"}</b></span>
+          <span>{t("资金费率", "Funding")}<b className="mono">{market.fundingRate == null ? "—" : `${Number(market.fundingRate) >= 0 ? "+" : ""}${Number(market.fundingRate).toFixed(4)}%`}</b></span>
         </div>
         <div className="mSymPills">
           {markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}
-          <button className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> 全部币对</button>
+          <button className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> {t("全部币对", "All pairs")}</button>
         </div>
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
       </div>
       <div className="mCard">
-        <div className="mCardHead"><b>持仓</b><button className="mLink" onClick={() => ui.setActive("positions")}>全部 ›</button></div>
+        <div className="mCardHead"><b>{t("持仓", "Positions")}</b><button className="mLink" onClick={() => ui.setActive("positions")}>{t("全部", "All")} ›</button></div>
         {positions.length ? positions.slice(0, 3).map((p, i) => {
           const short = String(p.direction || p.side || p.posSide || "").toLowerCase().includes("short");
           const pnl = Number(p.pnl ?? p.upl ?? p.unrealizedPnl ?? 0);
           return (
             <div className="mPosRow" key={i}>
-              <div className="mPosL"><b className="mono">{p.symbol || p.instId}</b><span className={`mPosDir ${short ? "short" : "long"}`}>{short ? "做空" : "做多"}</span></div>
+              <div className="mPosL"><b className="mono">{p.symbol || p.instId}</b><span className={`mPosDir ${short ? "short" : "long"}`}>{short ? t("做空", "Short") : t("做多", "Long")}</span></div>
               <div className="mPosR"><b className={`mono ${pnl >= 0 ? "pos" : "neg"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b><small className="mono">{displayMoney(p.size ?? p.qty ?? p.pos ?? 0, 2)} · {displayPct(p.roiPct ?? p.uplRatioPct)}</small></div>
             </div>
           );
-        }) : <div className="mEmpty">连接交易所后显示真实持仓</div>}
+        }) : <div className="mEmpty">{t("连接交易所后显示真实持仓", "Live positions appear after connecting an exchange")}</div>}
       </div>
       <div className="mCard mMarginCard">
         <svg className="mDonut" viewBox="0 0 56 56">
@@ -765,9 +766,9 @@ function MobileMarket({ data, action, ui }) {
           <circle cx="28" cy="28" r="24" fill="none" stroke="#D06A22" strokeWidth="6" strokeDasharray={dash} strokeLinecap="round" transform="rotate(-90 28 28)" />
           <text x="28" y="31" textAnchor="middle" className="mDonutTxt">{marginRate != null ? `${marginRate.toFixed(0)}%` : "—"}</text>
         </svg>
-        <div className="mMarginInfo"><b>保证金率</b><small>{marginRate != null ? `已用保证金 ${marginRate.toFixed(1)}%` : "连接账户后显示"}</small></div>
+        <div className="mMarginInfo"><b>{t("保证金率", "Margin ratio")}</b><small>{marginRate != null ? `${t("已用保证金", "Used margin")} ${marginRate.toFixed(1)}%` : t("连接账户后显示", "Shown after connecting an account")}</small></div>
       </div>
-      {sheet && <MobilePairSheet instruments={instruments} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`已加入自选 ${s}`); }} />}
+      {sheet && <MobilePairSheet instruments={instruments} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
     </div>
   );
 }
@@ -780,10 +781,10 @@ function MobileAudit({ data, ui }) {
   const exSynced = (data.exchangeAccounts || []).filter((a) => a.readEnabled).length;
   const exTotal = data.exchangeAccounts?.length || 0;
   const sysCards = [
-    ["API 健康", sys.apiHealth || "未知", "#2A6FDB", "#EAF0FB"],
-    ["WebSocket", data.realtimeStarted ? `${rt.filter((c) => c.status === "connected").length}/${rt.length || 0}` : "未启动", "#7A4FD0", "#F0EAFB"],
-    ["任务引擎", String(tasks), "#D06A22", "#FBEDDF"],
-    ["交易所同步", exTotal ? `${exSynced}/${exTotal}` : "未接入", "#1F7A50", "#E6F1EA"]
+    [t("API 健康", "API health"), sys.apiHealth || t("未知", "Unknown"), "#2A6FDB", "#EAF0FB"],
+    ["WebSocket", data.realtimeStarted ? `${rt.filter((c) => c.status === "connected").length}/${rt.length || 0}` : t("未启动", "Not started"), "#7A4FD0", "#F0EAFB"],
+    [t("任务引擎", "Task engine"), String(tasks), "#D06A22", "#FBEDDF"],
+    [t("交易所同步", "Exchange sync"), exTotal ? `${exSynced}/${exTotal}` : t("未接入", "Not connected"), "#1F7A50", "#E6F1EA"]
   ];
   const chain = (data.traces || []).slice(0, 6);
   const logs = (data.auditLogs || []).slice(0, 5);
@@ -793,24 +794,24 @@ function MobileAudit({ data, ui }) {
         {sysCards.map(([k, v, c, bg]) => <div className="mMetricCell" key={k}><span style={{ color: c }}>{k}</span><b className="mono" style={{ color: c }}>{v}</b><i className="mSysDot" style={{ background: bg }} /></div>)}
       </div>
       <div className="mCard">
-        <div className="mCardHead"><b>最近运行记录</b><button className="mLink" onClick={() => ui.openPanel("auditChain")}>完整 ›</button></div>
+        <div className="mCardHead"><b>{t("最近运行记录", "Recent runs")}</b><button className="mLink" onClick={() => ui.openPanel("auditChain")}>{t("完整", "Full")} ›</button></div>
         {chain.length ? chain.map((t, i) => (
           <div className="mChainRow" key={t.id || i}>
             <span className={`mChainDot ${statusTone(t.status)}`} />
             <div className="mChainMid"><b>{t.title || t.type}</b><small className="mono">{t.id ? String(t.id).slice(0, 14) : t.type}</small></div>
             <small className="mono mChainTime">{formatTime(t.createdAt)}</small>
           </div>
-        )) : <div className="mEmpty">暂无审计链记录</div>}
+        )) : <div className="mEmpty">{t("暂无审计链记录", "No audit trail records")}</div>}
       </div>
       <div className="mCard">
-        <div className="mCardHead"><b>决策与工具日志</b></div>
+        <div className="mCardHead"><b>{t("决策与工具日志", "Decision & tool logs")}</b></div>
         {logs.length ? logs.map((l, i) => (
           <div className="mLogRow" key={l.id || i}>
             <small className="mono">{formatTime(l.createdAt)}</small>
             <b>{l.action}</b>
             <StatusBadge tone={statusTone(l.severity)}>{humanize(l.severity || "ok")}</StatusBadge>
           </div>
-        )) : <div className="mEmpty">暂无日志</div>}
+        )) : <div className="mEmpty">{t("暂无日志", "No logs")}</div>}
       </div>
     </div>
   );
@@ -823,13 +824,13 @@ function MobileChatStatus({ data }) {
   const autoOn = sys.autonomyEnabled === true && !sys.killSwitch;
   const smMob = data.marketRegime?.smartMoney || {};
   // 与桌面端共用 smartMoneyBias（1.05/0.95 三档），不再用 >=1 二分导致两端结论矛盾。
-  const bias = smMob.ok ? smartMoneyBias(smMob.topTraderLongShortRatio).label : "待同步";
+  const bias = smMob.ok ? smartMoneyBias(smMob.topTraderLongShortRatio).label : t("待同步", "Pending sync");
   const mandate = data.mandates?.find((m) => ["active", "running"].includes(m.status));
   const cells = [
-    ["状态", autoOn ? "运行中" : "已暂停", autoOn ? "pos" : ""],
-    ["判断", bias, bias === "偏多" ? "pos" : bias === "偏空" ? "neg" : ""],
-    ["今日", pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
-    ["目标", mandate?.maxDailyLossPct ? `亏≤${mandate.maxDailyLossPct}%/日` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
+    [t("状态", "Status"), autoOn ? t("运行中", "Running") : t("已暂停", "Paused"), autoOn ? "pos" : ""],
+    [t("判断", "Read"), bias, bias === "偏多" ? "pos" : bias === "偏空" ? "neg" : ""],
+    [t("今日", "Today"), pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
+    [t("目标", "Target"), mandate?.maxDailyLossPct ? `${t("亏≤", "Loss ≤")}${mandate.maxDailyLossPct}${t("%/日", "%/day")}` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
   ];
   return (
     <div className="mChatStatus">
@@ -846,8 +847,8 @@ function MobileRiskHub({ data, action, ui }) {
   return (
     <div className="mHub">
       <div className="mHubTabs">
-        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>风控总览</button>
-        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>风控设置</button>
+        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("风控总览", "Risk overview")}</button>
+        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>{t("风控设置", "Risk settings")}</button>
       </div>
       <MobileRisk data={data} action={action} ui={ui} view={tab} />
     </div>
@@ -857,7 +858,7 @@ function MobileRiskHub({ data, action, ui }) {
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
 function MobileStrategy({ data }) {
   const strategies = [...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
-    .map((s, i) => ({ ...s, id: s.id || `str-${i}`, name: s.name || s.title || "未命名策略", origin: s.origin || (s.methodId ? "蒸馏" : s.userAuthored ? "LLM/手写" : /imported|uploaded|github|clawhub/i.test(String(s.source || "")) ? "导入" : "内置") }));
+    .map((s, i) => ({ ...s, id: s.id || `str-${i}`, name: s.name || s.title || t("未命名策略", "Untitled strategy"), origin: s.origin || (s.methodId ? t("蒸馏", "Distilled") : s.userAuthored ? t("LLM/手写", "LLM/Manual") : /imported|uploaded|github|clawhub/i.test(String(s.source || "")) ? t("导入", "Imported") : t("内置", "Built-in")) }));
   const isActive = (s) => /active|trusted|live|adopted/i.test(String(s.status));
   const isValidating = (s) => /probation|paper|compiled|pending|trial|validating|candidate/i.test(String(s.status));
   const isRetired = (s) => /retired|superseded|disabled|compile_failed|replaced|reject/i.test(String(s.status));
@@ -868,10 +869,10 @@ function MobileStrategy({ data }) {
   return (
     <div className="mScreen">
       <div className="mMetric2x2">
-        <div className="mMetricCell"><span>全部策略</span><b className="mono">{strategies.length}</b></div>
-        <div className="mMetricCell"><span>已上岗</span><b className="mono pos">{strategies.filter(isActive).length}</b></div>
-        <div className="mMetricCell"><span>验证中</span><b className="mono">{strategies.filter(isValidating).length}</b></div>
-        <div className="mMetricCell"><span>已停用</span><b className="mono neg">{strategies.filter(isRetired).length}</b></div>
+        <div className="mMetricCell"><span>{t("全部策略", "All strategies")}</span><b className="mono">{strategies.length}</b></div>
+        <div className="mMetricCell"><span>{t("已上岗", "Live")}</span><b className="mono pos">{strategies.filter(isActive).length}</b></div>
+        <div className="mMetricCell"><span>{t("验证中", "Validating")}</span><b className="mono">{strategies.filter(isValidating).length}</b></div>
+        <div className="mMetricCell"><span>{t("已停用", "Retired")}</span><b className="mono neg">{strategies.filter(isRetired).length}</b></div>
       </div>
       <div className="mSymPills">{FILTERS.map(([name]) => <button key={name} className={f === name ? "active" : ""} onClick={() => setF(name)}>{name}</button>)}</div>
       <div className="mCard">
@@ -880,44 +881,45 @@ function MobileStrategy({ data }) {
             <div className="mIncL"><b>{s.name}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div>
             {(() => { const st = SKILL_STATE[s.status] || { label: humanize(s.status, "—"), tone: statusTone(s.status) }; return <StatusBadge tone={st.tone}>{st.label}</StatusBadge>; })()}
           </div>
-        )) : <div className="mEmpty">暂无策略（喂书蒸馏或导入策略后在此出现）</div>}
+        )) : <div className="mEmpty">{t("暂无策略（喂书蒸馏或导入策略后在此出现）", "No strategies (they appear here after distilling from books or importing)")}</div>}
       </div>
     </div>
   );
 }
 
 const mobileNav = [
-  { id: "chat", label: "AI 交易员", code: "ALPHA-01", icon: Bot },
-  { id: "cockpit", label: "市场与账户", code: "MARKET · ACCOUNT", icon: PieChart },
-  { id: "riskHub", label: "风控中心", code: "RISK · CONTROL", icon: ShieldCheck },
-  { id: "knowledgeBase", label: "知识库", code: "KNOWLEDGE", icon: BookOpen },
-  { id: "strategyLib", label: "策略库", code: "STRATEGY · LIB", icon: Rocket },
-  { id: "eventsTasks", label: "事件与任务", code: "EVENTS · TASKS", icon: CalendarClock },
-  { id: "auditSystem", label: "审计", code: "AUDIT · SYSTEM", icon: Activity },
-  { id: "systemSettings", label: "系统设置", code: "SETTINGS · CONFIG", icon: Settings }
+  { id: "chat", label: t("AI 交易员", "AI Trader"), code: "ALPHA-01", icon: Bot },
+  { id: "cockpit", label: t("市场与账户", "Market & Account"), code: "MARKET · ACCOUNT", icon: PieChart },
+  { id: "riskHub", label: t("风控中心", "Risk Control"), code: "RISK · CONTROL", icon: ShieldCheck },
+  { id: "knowledgeBase", label: t("知识库", "Knowledge"), code: "KNOWLEDGE", icon: BookOpen },
+  { id: "strategyLib", label: t("策略库", "Strategy"), code: "STRATEGY · LIB", icon: Rocket },
+  { id: "eventsTasks", label: t("事件与任务", "Events & Tasks"), code: "EVENTS · TASKS", icon: CalendarClock },
+  { id: "auditSystem", label: t("审计", "Audit"), code: "AUDIT · SYSTEM", icon: Activity },
+  { id: "systemSettings", label: t("系统设置", "Settings"), code: "SETTINGS · CONFIG", icon: Settings }
 ];
 
 function MobileHeader({ route, onMenu, right, reconnecting }) {
   const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
   return (
     <header className="mHeader2">
-      <button className="mMenuBtn" onClick={onMenu} aria-label="打开菜单"><Menu size={20} /></button>
+      <button className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20} /></button>
       <div className="mHeaderMid"><strong>{item.label}</strong><small className="mono">{item.code}</small></div>
       <div className="mHeaderRight">
-        {reconnecting && <span className="mReconnect"><span className="pulseDot" />重连中</span>}
+        {reconnecting && <span className="mReconnect"><span className="pulseDot" />{t("重连中", "Reconnecting")}</span>}
         {right}
       </div>
     </header>
   );
 }
 
-function NavDrawer({ open, route, onNavigate, onClose, data }) {
+function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang }) {
   if (!open) return null;
   const status = systemStatus(data);
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
-        <div className="mDrawerBrand"><span className="mDrawerLogo">◆</span><div className="mDrawerBrandText"><b>交易 Agent</b><small>AI · DIGITAL ASSET</small></div></div>
+        <div className="mDrawerBrand"><span className="mDrawerLogo">◆</span><div className="mDrawerBrandText"><b>{t("交易 Agent", "Trading Agent")}</b><small>AI · DIGITAL ASSET</small></div></div>
+        {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
         <div className="mDrawerNav">
           {mobileNav.map((n) => {
             const Icon = n.icon;
@@ -926,7 +928,7 @@ function NavDrawer({ open, route, onNavigate, onClose, data }) {
         </div>
         <div className="mDrawerFoot">
           <div className={`mDrawerStatus ${status.tone}`}><span />{status.label}</div>
-          <button className="mDrawerClose" onClick={onClose}>关闭菜单</button>
+          <button className="mDrawerClose" onClick={onClose}>{t("关闭菜单", "Close menu")}</button>
         </div>
       </aside>
     </div>
@@ -959,14 +961,14 @@ function PullToRefresh({ onRefresh, className, children }) {
       style={{ transform: pull ? `translateY(${pull}px)` : "", transition: startY.current == null ? "transform .24s cubic-bezier(.2,.8,.2,1)" : "none" }}>
       <div className="mPtr" style={{ opacity: pull || busy ? 1 : 0 }}>
         <RefreshCw size={16} className={busy ? "mSpin" : ""} style={{ transform: busy ? "" : `rotate(${Math.min(pull * 4, 360)}deg)` }} />
-        <span>{busy ? "刷新中…" : pull >= THRESHOLD ? "松开刷新" : "下拉刷新"}</span>
+        <span>{busy ? t("刷新中…", "Refreshing…") : pull >= THRESHOLD ? t("松开刷新", "Release to refresh") : t("下拉刷新", "Pull to refresh")}</span>
       </div>
       {children}
     </main>
   );
 }
 
-export function MobileApp({ api }) {
+export function MobileApp({ api, lang, switchLang }) {
   const { data, action, toast, busy, notify, download, refresh, connectionError } = api;
   const [route, setRoute] = useState("chat");
   const [drawer, setDrawer] = useState(false);
@@ -1016,10 +1018,10 @@ export function MobileApp({ api }) {
   }
 
   const headerRight = subPage
-    ? <button className="mBack" onClick={() => setSubPage("")} aria-label="返回"><ChevronLeft size={19} /></button>
+    ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
     : route === "chat"
-      ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? "运行中" : "已暂停"}</span>
-      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? "解除熔断" : "熔断"}</button>;
+      ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? t("运行中", "Running") : t("已暂停", "Paused")}</span>
+      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("解除熔断", "Release") : t("熔断", "Kill switch")}</button>;
 
   return (
     <div className="mShell2">
@@ -1027,10 +1029,10 @@ export function MobileApp({ api }) {
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} />
+      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} lang={lang} switchLang={switchLang} />
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
-      {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
+      {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

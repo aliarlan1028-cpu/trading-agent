@@ -3,6 +3,8 @@
 // 语言存 localStorage;切换后由 App 根 remount 全量重渲染,所有 t() 立即生效。
 let current = "zh";
 try { const v = localStorage.getItem("ui_lang"); if (v === "en" || v === "zh") current = v; } catch { /* SSR/隐私模式忽略 */ }
+// URL ?lang=en/zh 优先(SEO hreflang 语言链接 / 深链可直接指定语言),并写回 localStorage。
+try { const q = new URLSearchParams(location.search).get("lang"); if (q === "en" || q === "zh") { current = q; localStorage.setItem("ui_lang", current); } } catch { /* 忽略 */ }
 
 export function getLang() { return current; }
 export function setLang(l) { current = l === "en" ? "en" : "zh"; try { localStorage.setItem("ui_lang", current); } catch { /* 忽略 */ } }
