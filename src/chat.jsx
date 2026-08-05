@@ -414,7 +414,11 @@ function AgentRail({ data, action, ui, send }) {
   const perf = data.performance || {};
   const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status)) || {};
   const hasMandate = Boolean(mandate.id);
-  const plan = (data.tradePlans || []).find((p) => ["awaiting_approval", "approved", "executing"].includes(p.status));
+  // 多仓/多计划:全部取出,卡片可切换逐个看(此前只 find 出一个,多仓时看不到其余)。
+  const plans = (data.tradePlans || []).filter((p) => ["awaiting_approval", "approved", "executing"].includes(p.status));
+  const [planIdx, setPlanIdx] = useState(0);
+  const [watchTip, setWatchTip] = useState(null); // 观察哨悬停 tooltip(fixed 定位,逃出滚动容器裁剪)
+  const plan = plans.length ? plans[Math.min(planIdx, plans.length - 1)] : null;
   // 盈亏比可由固定的入场/止损/止盈直接算出，不该恒显"—"（计划价位是下单前定死的目标，本就不随行情变动）。
   const planRR = (() => {
     if (plan?.riskReward) return plan.riskReward;
@@ -485,6 +489,11 @@ function AgentRail({ data, action, ui, send }) {
 
   return (
     <div className="agRail">
+      {watchTip && (
+        <div className="agWatchTipFixed" style={{ left: Math.max(8, watchTip.rect.left - 312), top: Math.min(watchTip.rect.top, (typeof window !== "undefined" ? window.innerHeight : 800) - 190) }}>
+          {watchTip.lines.map((ln, i) => <div key={i}>{ln}</div>)}
+        </div>
+      )}
       {/* 当前 Agent 状态 */}
       <div className="agCard">
         <div className="agHeadNum"><span className="agNum">2</span>当前 Agent 状态</div>
@@ -504,6 +513,13 @@ function AgentRail({ data, action, ui, send }) {
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
             <b className="mono">{plan?.symbol || "暂无交易计划"}</b>
+            {plans.length > 1 && (
+              <span className="agPlanSwitch">
+                <button type="button" onClick={() => setPlanIdx((i) => (i - 1 + plans.length) % plans.length)} title="上一个持仓/计划">‹</button>
+                <em className="mono">{Math.min(planIdx, plans.length - 1) + 1}/{plans.length}</em>
+                <button type="button" onClick={() => setPlanIdx((i) => (i + 1) % plans.length)} title="下一个持仓/计划">›</button>
+              </span>
+            )}
             {plan && (() => {
               // 挂单 vs 持仓的真实状态:限价单已提交但价格没到=挂单未成交(仓位仍为0),成交后才是持仓。
               const eo = (data.executionOrders || []).find((o) => o.planId === plan.id);
@@ -582,7 +598,7 @@ function AgentRail({ data, action, ui, send }) {
               {actives.map((w) => {
                 const remainH = Math.max(0, (new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000);
                 return (
-                  <div className="agWatchRow" key={w.id}>
+                  <div className="agWatchRow" key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
                     <span className="agWatchDot" />
                     <div className="agWatchBody">
                       <b className="mono">{w.symbol}</b> {desc(w)}
@@ -590,16 +606,14 @@ function AgentRail({ data, action, ui, send }) {
                     </div>
                     <span className="agWatchMeta mono">余 {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
                     <button className="agWatchCancel" title="撤销观察哨" onClick={async () => { if (await uiConfirm(`撤销观察哨：${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
-                    <div className="agWatchTip">{fullInfo(w).split("\n").map((ln, i) => <div key={i}>{ln}</div>)}</div>
                   </div>
                 );
               })}
               {recent.map((w) => (
-                <div className="agWatchRow closed" key={w.id}>
+                <div className="agWatchRow closed" key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
                   <span className={`agWatchDot ${w.status}`} />
                   <div className="agWatchBody"><b className="mono">{w.symbol}</b> {desc(w)}</div>
                   <span className="agWatchMeta mono">{label[w.status] || w.status}{w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}</span>
-                  <div className="agWatchTip">{fullInfo(w).split("\n").map((ln, i) => <div key={i}>{ln}</div>)}</div>
                 </div>
               ))}
             </div>

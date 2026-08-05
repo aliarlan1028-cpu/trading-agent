@@ -8927,3 +8927,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .agWatchTip>div:first-child{font-weight:700;color:var(--accent-ink,#a8511a);}
 .agWatchRow:hover .agWatchTip{display:block;}
 @media (max-width:900px){.agWatchTip{right:auto;left:0;top:100%;margin:6px 0 0;}}
+
+/* 观察哨悬停 tooltip:fixed 定位逃出滚动容器裁剪,深色卡显示完整信息 */
+.agWatchTipFixed{position:fixed;z-index:300;width:300px;background:#221f19;color:#f4f1eb;border-radius:10px;padding:10px 13px;font-size:12px;line-height:1.6;box-shadow:0 12px 32px rgba(0,0,0,.32);pointer-events:none;}
+.agWatchTipFixed div{white-space:normal;word-break:break-word;}
+.agWatchTipFixed div:first-child{font-weight:700;margin-bottom:3px;color:#fff;}
+/* 多仓/多计划切换器 */
+.agPlanSwitch{display:inline-flex;align-items:center;gap:4px;margin-left:6px;}
+.agPlanSwitch button{width:18px;height:18px;border-radius:5px;border:1px solid var(--border,#e3dcce);background:#fff;color:var(--text-2,#6b6455);cursor:pointer;line-height:1;font-size:13px;padding:0;}
+.agPlanSwitch button:hover{color:var(--accent-ink,#a8511a);border-color:var(--accent,#d06a22);}
+.agPlanSwitch em{font-size:11px;color:var(--text-3,#8a8172);font-style:normal;}
