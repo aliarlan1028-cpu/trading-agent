@@ -8949,14 +8949,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .langToggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
 .langToggle button { padding: 4px 12px; border: 0; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .langToggle button.on { background: var(--accent-grad); color: #fff; }
-/* 语言切换:侧栏顶部品牌下方一条独立分段控件(地球图标 + 中文/English),始终可见、精致 */
-.langBar { display: flex; align-items: center; gap: 9px; padding: 10px 8px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
-.langBar > svg { color: var(--text-4); flex: none; }
-.langSeg { display: flex; flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
-.langSeg button { flex: 1; min-width: 0; padding: 6px 4px; border: 0; background: transparent; color: var(--text-3); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.langSeg button:first-child { border-right: 1px solid var(--border); }
-.langSeg button:hover:not(.on) { background: var(--accent-weak); color: var(--accent-ink); }
-.langSeg button.on { background: var(--accent-grad); color: #fff; }
+/* 语言切换:顶栏铃铛与头像之间的地球图标,点击弹出中/英菜单 */
+.topLang { position: relative; display: inline-flex; }
+.topLangBtn { width: 42px; height: 42px; border: 1px solid #e2dac9; border-radius: 8px; background: #fff; color: #33302a; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.topLangBtn:hover, .topLangBtn.on { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); }
+.topLangBackdrop { position: fixed; inset: 0; z-index: 40; }
+.topLangMenu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 41; min-width: 138px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 34px -10px rgba(62,45,24,.28); padding: 5px; display: flex; flex-direction: column; gap: 2px; }
+.topLangMenu button { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.topLangMenu button:hover { background: #f6f2ea; }
+.topLangMenu button.on { color: var(--accent-ink); }
+.topLangCheck { color: var(--accent); font-weight: 700; }
 
 /* 营销落地页(iframe) + 登录/订阅弹窗（深色主题，匹配 landing 设计稿） */
 .lpRoot{position:fixed;inset:0;z-index:1;background:#0c0a08}

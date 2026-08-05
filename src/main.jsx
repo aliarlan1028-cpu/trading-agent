@@ -69,7 +69,7 @@ function BrandLogo({ size = 34 }) {
   return <img className="brandLogo" src="/trading-agent-logo.svg" alt="Trading Agent" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive, lang, switchLang }) {
+function Sidebar({ active, setActive }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -77,13 +77,6 @@ function Sidebar({ active, setActive, lang, switchLang }) {
         <div className="brandText">
           <strong>{t("交易 Agent", "Trading Agent")}</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>
-        </div>
-      </div>
-      <div className="langBar">
-        <Globe size={13} />
-        <div className="langSeg" role="group" aria-label={t("切换语言", "Switch language")}>
-          <button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button>
-          <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button>
         </div>
       </div>
       <nav className="nav">
@@ -130,9 +123,10 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, notify, action }) {
+function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const accounts = data.exchangeAccounts || [];
   const binance = accounts.find((item) => item.exchange === "BINANCE") || {};
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
@@ -168,6 +162,18 @@ function AppTopbar({ data, setActive, notify, action }) {
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
+        <div className="topLang">
+          <button className={`topLangBtn ${langOpen ? "on" : ""}`} title={t("切换语言 / Switch language", "切换语言 / Switch language")} aria-label={t("切换语言", "Switch language")} aria-haspopup="menu" aria-expanded={langOpen} onClick={() => setLangOpen((o) => !o)}>
+            <Globe size={18} />
+          </button>
+          {langOpen && <>
+            <div className="topLangBackdrop" onClick={() => setLangOpen(false)} />
+            <div className="topLangMenu" role="menu">
+              <button role="menuitemradio" aria-checked={lang === "zh"} className={lang === "zh" ? "on" : ""} onClick={() => { switchLang("zh"); setLangOpen(false); }}>中文{lang === "zh" && <span className="topLangCheck">✓</span>}</button>
+              <button role="menuitemradio" aria-checked={lang === "en"} className={lang === "en" ? "on" : ""} onClick={() => { switchLang("en"); setLangOpen(false); }}>English{lang === "en" && <span className="topLangCheck">✓</span>}</button>
+            </div>
+          </>}
+        </div>
         <button className="topAvatar" title={`${data.user?.name || "账户"} · 点击设置名称/头像`} onClick={() => setShowPassword(true)} aria-label="账户设置">
           {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : (data.user?.name || "A").slice(0, 1).toUpperCase()}
         </button>
@@ -336,7 +342,7 @@ function App() {
     <div className="appShell" key={lang}>
       <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
       <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} />
+        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} lang={lang} switchLang={switchLang} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
         <div className={active === "chat" ? "content contentChat" : "content"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
