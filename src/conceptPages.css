@@ -128,16 +128,31 @@
 
 @media(max-width:1250px){.cp2Metrics.six{grid-template-columns:repeat(3,1fr)}.cp2Metrics.five{grid-template-columns:repeat(3,1fr)}.conceptChatShell{grid-template-columns:minmax(0,1fr) 260px!important}.cp2MarketBottom{grid-template-columns:repeat(2,1fr)}.cp2OrdersLayout,.cp2TasksLayout{grid-template-columns:minmax(0,1fr) 260px}.cp2OrdersLayout>.cp2Card:last-child,.cp2TasksLayout>.cp2Card:last-child{grid-column:1/-1}.cp2CapabilitiesLayout{grid-template-columns:140px minmax(0,1fr)}.cp2CapabilityDetail{grid-column:1/-1}.cp2StrategyLayout{grid-template-columns:repeat(2,1fr)}.cp2StrategyLayout>.cp2Card:last-child{grid-column:1/-1}.strategyBottom{grid-template-columns:repeat(2,1fr)}.strategyBottom>.cp2Card:last-child{grid-column:1/-1}}@media(max-width:1000px){.cp2IntelLayout,.cp2EventsLayout,.cp2AuditLayout,.cp2NotificationsLayout,.cp2SettingsBase{grid-template-columns:1fr}.cp2SideFilter{display:grid;grid-template-columns:repeat(3,1fr)}.cp2TradingHero,.positionsTop,.journalMain,.cp2Grid.wideLeft,.cp2KnowledgeGrid,.riskCards,.mandateTop,.cp2RulesLayout,.liveTop{grid-template-columns:1fr}.cp2Grid .span2{grid-column:auto}.cp2Metrics.four,.cp2Metrics.five{grid-template-columns:repeat(2,1fr)}.conceptChatShell{grid-template-columns:1fr!important}.conceptSessions,.conceptChatShell .agRail{display:none}.cp2MarketLayout{grid-template-columns:1fr}.cp2MarketRail{grid-template-columns:repeat(2,1fr);display:grid}.cp2ReviewGrid,.cp2MandateGrid,.cp2GrayCards,.cp2ExchangeCards,.cp2ChannelGrid{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.cp2Grid.two,.cp2Grid.three,.cp2Metrics.four,.cp2Metrics.five,.cp2Metrics.six,.cp2Metrics.two,.cp2MarketBottom,.cp2OrdersLayout,.cp2ReviewGrid,.cp2CapabilitiesLayout,.cp2StrategyLayout,.strategyBottom,.cp2MandateGrid,.ruleBottom,.cp2GrayCards,.cp2ExchangeCards,.cp2TasksLayout,.cp2ChannelGrid,.settingsBottom{grid-template-columns:1fr}.cp2EmergencyActions{grid-template-columns:repeat(2,1fr)}.cp2Workflow{overflow:auto;gap:14px;justify-content:flex-start}.cp2Calendar .days>div{min-height:50px}.cp2MarketRail{grid-template-columns:1fr}}
 
-/* 执行与复盘整合页(ExecutionReviewConcept) */
-.cp2Metrics.seven{grid-template-columns:repeat(7,minmax(0,1fr))}
-.erPage{gap:14px}
-.erZoneLabel{display:flex;align-items:baseline;gap:10px;margin:10px 2px 0;padding-bottom:2px}
-.erZoneLabel span{font:700 13px var(--font-ui);color:var(--text);letter-spacing:-.01em;white-space:nowrap}
+/* 执行与复盘整合页(ExecutionReviewConcept)—— 精修:紧凑仪表盘风,样式全部限定在 .erPage,不影响其它页 */
+.erPage{gap:16px}
+/* KPI 带:连成一条精致的统计条(卡间细分隔线,首格已实现盈亏用左侧强调色),取代 7 个笨重白盒 */
+.cp2Metrics.seven{grid-template-columns:repeat(7,minmax(0,1fr));gap:0;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(62,45,24,.03)}
+.erPage .cp2Metrics.seven .cp2Metric{min-height:auto;border:0;border-right:1px solid var(--hairline);border-radius:0;box-shadow:none;flex-direction:column;align-items:stretch;gap:0;padding:14px 16px}
+.erPage .cp2Metrics.seven .cp2Metric:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.erPage .cp2Metrics.seven .cp2Metric:last-child{border-right:0}
+.erPage .cp2Metrics.seven .cp2Metric small,.erPage .cp2Metrics.seven .cp2Metric em{font-size:10.5px;letter-spacing:.01em;color:var(--text-4);text-transform:none}
+.erPage .cp2Metrics.seven .cp2Metric b{font-size:21px;margin:9px 0 0;letter-spacing:-.02em}
+/* 区块分隔标题:左侧强调色小竖条 + 细分隔线,层次更清 */
+.erZoneLabel{display:flex;align-items:center;gap:10px;margin:12px 2px 0}
+.erZoneLabel span{position:relative;padding-left:11px;font:700 13.5px var(--font-ui);color:var(--text);letter-spacing:-.01em;white-space:nowrap}
+.erZoneLabel span::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:14px;border-radius:2px;background:var(--accent)}
 .erZoneLabel small{font-size:11px;color:var(--text-4);white-space:nowrap}
-.erZoneLabel::after{content:"";flex:1;height:1px;background:var(--hairline);margin-left:2px}
-.erToggle{display:inline-flex;border:1px solid var(--border);border-radius:5px;overflow:hidden}
-.erToggle button{border:0;background:#fff;color:var(--text-3);font:600 11px var(--font-ui);padding:5px 11px;cursor:pointer}
+.erZoneLabel::after{content:"";flex:1;height:1px;background:var(--hairline);margin-left:4px}
+/* 成交表「全部/仅已平仓」切换:分段控件 */
+.erToggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.erToggle button{border:0;background:#fff;color:var(--text-3);font:600 11px var(--font-ui);padding:5px 12px;cursor:pointer;transition:background .12s}
 .erToggle button.on{background:var(--accent);color:#fff}
-@media(max-width:1250px){.cp2Metrics.seven{grid-template-columns:repeat(4,1fr)}}
-@media(max-width:1000px){.cp2Metrics.seven{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:720px){.cp2Metrics.seven{grid-template-columns:repeat(2,1fr)}}
+/* 表格更紧致(仅本页),减少松散感 */
+.erPage .cp2Table td{padding:8px 11px}
+.erPage .cp2Table th{padding:7px 11px}
+.erPage .cp2Table.compact td,.erPage .cp2Table.compact th{padding:6px 9px}
+/* 卡片略提精致度 */
+.erPage .cp2Card{border-radius:9px}
+@media(max-width:1250px){.cp2Metrics.seven{grid-template-columns:repeat(4,1fr)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(4n){border-right:0}}
+@media(max-width:1000px){.cp2Metrics.seven{grid-template-columns:repeat(3,1fr)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(4n){border-right:1px solid var(--hairline)}.erPage .cp2Metrics.seven .cp2Metric:nth-child(3n){border-right:0}}
+@media(max-width:720px){.cp2Metrics.seven{grid-template-columns:repeat(2,1fr)}.erPage .cp2Metrics.seven .cp2Metric{border-right:1px solid var(--hairline)!important}.erPage .cp2Metrics.seven .cp2Metric:nth-child(2n){border-right:0!important}}
