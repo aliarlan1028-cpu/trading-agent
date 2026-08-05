@@ -11,6 +11,13 @@ export function LandingPage({ login, registerAccount, toast, apiBase, setApiBase
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", password: "" });
   const [payment, setPayment] = useState(null);
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
+  // 套餐名在 DB 里是中文(月度订阅…),英文站按 interval/months 派生英文名,不改生产配置。
+  const planLabel = (p) => {
+    const byInterval = { month: "Monthly", quarter: "Quarterly", half_year: "Semi-annual", year: "Annual" };
+    if (p?.interval && byInterval[p.interval]) return byInterval[p.interval];
+    const m = Number(p?.months || 1);
+    return m >= 12 ? "Annual" : m >= 6 ? "Semi-annual" : m >= 3 ? "Quarterly" : "Monthly";
+  };
 
   useEffect(() => {
     const onMsg = (e) => { if (e.data && e.data.type === "lp-start") { setMode("login"); setAuthOpen(true); } };
@@ -47,7 +54,7 @@ export function LandingPage({ login, registerAccount, toast, apiBase, setApiBase
                 {plans.length > 0 && (
                   <div className="lpPlans">{plans.map((p) => (
                     <button type="button" key={p.id} className={selectedPlanId === p.id ? "on" : ""} onClick={() => setSelectedPlanId(p.id)}>
-                      <b>{p.name}</b><span>{p.priceUsdt} USDT · {p.months || 1}mo</span>
+                      <b>{planLabel(p)}</b><span>{p.priceUsdt} USDT · {p.months || 1}mo</span>
                     </button>
                   ))}</div>
                 )}

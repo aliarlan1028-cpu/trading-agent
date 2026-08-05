@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { t } from "./i18n.js";
 
 export function formatMoney(value, digits = 2) {
   return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -472,7 +473,7 @@ export function useApi() {
     window.setTimeout(() => setToast(""), timeout);
   }
 
-  function expireSession(message = "登录已过期，请重新登录") {
+  function expireSession(message = t("登录已过期，请重新登录", "Session expired — please sign in again")) {
     localStorage.removeItem("agent_token");
     setToken("");
     setData(null);
@@ -486,7 +487,7 @@ export function useApi() {
   function reportConnectionFailure(message) {
     setConnectionError(message);
     if (hasDataRef.current) return;
-    setToast(`连接后端失败：${message}`);
+    setToast(`${t("连接后端失败", "Backend connection failed")}：${message}`);
     window.setTimeout(() => setToast(""), 3200);
   }
 
@@ -504,7 +505,7 @@ export function useApi() {
     const activeBase = normalizeApiBase(baseOverride || apiBase);
     try {
       if (isNativeApp() && !activeBase) {
-        setConnectionError("请先填写 Trading Agent 后端地址。");
+        setConnectionError(t("请先填写 Trading Agent 后端地址。", "Please enter the Trading Agent backend URL first."));
         setLoading(false);
         return;
       }
@@ -527,7 +528,7 @@ export function useApi() {
           hasDataRef.current = true;
           setAuthRequired(false);
           setConnectionError("");
-          setToast("已自动切换到默认后端");
+          setToast(t("已自动切换到默认后端", "Switched to the default backend automatically"));
           window.setTimeout(() => setToast(""), 2200);
           return;
         } catch (fallbackError) {
@@ -544,7 +545,7 @@ export function useApi() {
   async function action(url, body = {}, method = "POST") {
     setBusyCount((count) => count + 1);
     try {
-      setToast(method.toUpperCase() === "GET" ? "正在同步数据..." : "操作处理中...");
+      setToast(method.toUpperCase() === "GET" ? t("正在同步数据...", "Syncing data…") : t("操作处理中...", "Processing…"));
       const request = {
         method,
         headers: headers({ "Content-Type": "application/json" })
@@ -555,7 +556,7 @@ export function useApi() {
         // 业务型 401(如原密码不正确)不是会话过期,不得把用户整体登出(审计 H5)。
         if (url.includes("/api/auth/change-password")) {
           const j = await response.json().catch(() => ({}));
-          setToast(j.error || "校验失败");
+          setToast(j.error || t("校验失败", "Verification failed"));
           window.setTimeout(() => setToast(""), 4200);
           return { ok: false, error: j.error || "unauthorized" };
         }
@@ -564,17 +565,17 @@ export function useApi() {
       }
       const text = await response.text();
       const json = text ? JSON.parse(text) : {};
-      if (!response.ok) throw new Error(json.error || `请求失败 ${response.status}`);
+      if (!response.ok) throw new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
       if (json.logoutRequired) {
-        expireSession(json.message || "请重新登录");
+        expireSession(json.message || t("请重新登录", "Please sign in again"));
         return json;
       }
-      setToast(json.message || json.summary || json.output || json.error || "操作已完成");
+      setToast(json.message || json.summary || json.output || json.error || t("操作已完成", "Done"));
       await refresh(false);
       window.setTimeout(() => setToast(""), 4200);
       return json;
     } catch (error) {
-      setToast(error.message || "操作失败");
+      setToast(error.message || t("操作失败", "Action failed"));
       window.setTimeout(() => setToast(""), 4200);
       return {};
     } finally {
@@ -589,7 +590,7 @@ export function useApi() {
         expireSession();
         return;
       }
-      if (!response.ok) throw new Error(`导出失败 ${response.status}`);
+      if (!response.ok) throw new Error(`${t("导出失败", "Export failed")} ${response.status}`);
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -599,9 +600,9 @@ export function useApi() {
       link.click();
       link.remove();
       URL.revokeObjectURL(objectUrl);
-      notify(`已导出 ${filename}`);
+      notify(`${t("已导出", "Exported")} ${filename}`);
     } catch (error) {
-      notify(error.message || "导出失败", 3200);
+      notify(error.message || t("导出失败", "Export failed"), 3200);
     }
   }
 
@@ -613,35 +614,35 @@ export function useApi() {
     }, isNativeApp() ? 8000 : 12000);
     const json = await response.json();
     if (!response.ok) {
-      setToast(json.error || "登录失败");
+      setToast(json.error || t("登录失败", "Sign-in failed"));
       return false;
     }
     localStorage.setItem("agent_token", json.token);
     setToken(json.token);
     setAuthRequired(false);
-    setToast("登录成功");
+    setToast(t("登录成功", "Signed in"));
     window.setTimeout(() => setToast(""), 1800);
     return true;
   }
 
   async function registerAccount(payload) {
     try {
-      setToast("正在开通账号...");
+      setToast(t("正在开通账号...", "Creating your account…"));
       const response = await fetchWithTimeout(apiUrl("/api/auth/register", apiBase), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {})
       }, isNativeApp() ? 8000 : 12000);
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "注册失败");
+      if (!response.ok) throw new Error(json.error || t("注册失败", "Registration failed"));
       localStorage.setItem("agent_token", json.token);
       setToken(json.token);
       setAuthRequired(false);
-      setToast(json.payment ? "账号已创建，请按支付信息完成订阅" : "账号已创建");
+      setToast(json.payment ? t("账号已创建，请按支付信息完成订阅", "Account created — complete the payment to activate") : t("账号已创建", "Account created"));
       window.setTimeout(() => setToast(""), 3200);
       return json;
     } catch (error) {
-      setToast(error.message || "注册失败");
+      setToast(error.message || t("注册失败", "Registration failed"));
       window.setTimeout(() => setToast(""), 4200);
       return {};
     }
