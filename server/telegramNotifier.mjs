@@ -23,6 +23,7 @@ export function telegramStatus() {
     watchNotifierEnabled: bool(process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED, false),
     watchConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && watchChatId),
     hasWatchChatId: Boolean(process.env.TELEGRAM_WATCH_CHAT_ID),
+    watchLanguage: process.env.TELEGRAM_WATCH_LANGUAGE === "zh" ? "zh" : "en",
     profitPosterEnabled: bool(process.env.TELEGRAM_PROFIT_POSTER_ENABLED, false),
     minPnlUsdt: number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT, 0),
     minRoiPct: number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT, 0),
@@ -35,14 +36,16 @@ export async function sendTelegramText(text, options = {}) {
   const chatId = options.chatId || process.env.TELEGRAM_WATCH_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is missing");
   if (!chatId) throw new Error("Telegram group chat ID is missing");
+  const payload = {
+    chat_id: chatId,
+    text: String(text || "").slice(0, 4000),
+    disable_web_page_preview: true
+  };
+  if (options.parseMode) payload.parse_mode = options.parseMode;
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: String(text || "").slice(0, 4000),
-      disable_web_page_preview: true
-    })
+    body: JSON.stringify(payload)
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok || json.ok === false) throw new Error(json.description || `Telegram sendMessage HTTP ${response.status}`);

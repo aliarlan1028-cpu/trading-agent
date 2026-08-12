@@ -98,7 +98,7 @@ test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下�
     execution: { status: "protecting", quantity: 0.01, notionalUsdt: 650, filledPrice: 65000, protection: { attachedAlgoStop: true } },
     position: { direction: "long", size: 0.01, entryPrice: 65000, markPrice: 65500, unrealizedPnl: 5, leverage: 2 }
   };
-  const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n等待回踩确认，不追多" }));
+  const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n> 等待回踩确认，不追多\n\n### 消息面\nALLO 消息面归因暂时失败（Gemini 429 rate limited），本轮不编造催化剂。\n\n### 确认清单\n- [x] 1H 结构保持 HH/HL\n- [ ] 15m CVD 转为主动买入\n\n### 指标对比\n| 周期 | OI | CVD |\n| --- | --- | --- |\n| 15m | +1.2% | 120K |" }));
   assert.match(html, /结构化|交易计划/);
   assert.match(html, /等待回踩确认，不追多/);
   for (const timeframe of ["15M", "1H", "4H"]) assert.match(html, new RegExp(timeframe));
@@ -109,6 +109,12 @@ test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下�
   assert.match(html, /\+1 币种/);
   assert.match(html, /展开完整分析与判断链/);
   assert.match(html, /批准或拒绝本计划/);
+  assert.match(html, /richHeading--summary/);
+  assert.match(html, /richQuote/);
+  assert.match(html, /richNotice danger/);
+  assert.match(html, /richChecklist/);
+  assert.match(html, /richCheck checked/);
+  assert.match(html, /richTable/);
   const liveHtml = renderToString(React.createElement(C.DecisionBrief, {
     presentation,
     content: "### 结论\n交易已完成",

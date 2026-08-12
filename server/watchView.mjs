@@ -12,8 +12,13 @@ const PURPOSE_LABELS_EN = {
   alternative: "Alternative scenario"
 };
 
-export function describeWatch(watch = {}) {
+export function describeWatch(watch = {}, language = "zh") {
   const fmt = (value) => Number(value).toLocaleString("en-US", { maximumFractionDigits: 6 });
+  if (language === "en") {
+    if (watch.kind === "price_above") return `${watch.symbol} breaks above ${fmt(watch.level)}`;
+    if (watch.kind === "price_below") return `${watch.symbol} breaks below ${fmt(watch.level)}`;
+    return `${watch.symbol} enters the ${fmt(watch.levelLow)}–${fmt(watch.levelHigh)} zone`;
+  }
   if (watch.kind === "price_above") return `${watch.symbol} 向上突破 ${fmt(watch.level)}`;
   if (watch.kind === "price_below") return `${watch.symbol} 向下跌破 ${fmt(watch.level)}`;
   return `${watch.symbol} 回踩进入 ${fmt(watch.levelLow)}-${fmt(watch.levelHigh)} 区间`;

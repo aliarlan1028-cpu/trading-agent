@@ -26,7 +26,19 @@ function extractHeadline(content = "") {
   const candidate = conclusionIndex >= 0
     ? lines.slice(conclusionIndex + 1).find((line) => !/^(依据|风险|下一步|Evidence|Risk|Next Step)[:：]?$/i.test(line))
     : lines.find((line) => !/^(结论|当前结论|依据|风险|下一步|Conclusion|Evidence|Risk|Next Step)[:：]?$/i.test(line));
-  return clip(String(candidate || "本轮决策分析").replace(/^(结论|当前结论|判断|Conclusion)[:：]\s*/i, ""), 84);
+  const cleaned = String(candidate || "本轮决策分析")
+    .replace(/^>\s*/, "")
+    .replace(/^(结论|当前结论|判断|Conclusion)[:：]\s*/i, "")
+    .trim();
+  const sentences = cleaned.match(/[^。！？!?]+[。！？!?]?/g) || [cleaned];
+  let headline = "";
+  for (const sentence of sentences) {
+    if (headline && `${headline}${sentence}`.length > 150) break;
+    headline += sentence;
+    if (headline.length >= 22) break;
+  }
+  // 优先保留完整判断句；只有模型输出一整段且没有任何句界时才做安全截断。
+  return headline.length > 180 ? clip(headline, 180) : headline;
 }
 
 function normalizedDirection(value) {
@@ -173,8 +185,10 @@ function eventVolatilitySnapshot(bundle) {
 }
 
 export function buildChatPresentation({ db = {}, run = {}, content = "", evidenceBundle = null, errorText = "" } = {}) {
+  const narrativeSystemReply = /本地系统说明回答|KORDYN 内置系统说明|本地说明模式/i.test(content)
+    && !run.tradePlanId;
   const plan = (db.tradePlans || []).find((row) => row.id === run.tradePlanId) || null;
-  const preliminarySymbol = plan?.symbol || evidenceBundle?.symbols?.[0]?.symbol || run.decisionContext?.symbols?.[0] || null;
+  const preliminarySymbol = plan?.symbol || (!narrativeSystemReply ? evidenceBundle?.symbols?.[0]?.symbol : null) || run.decisionContext?.symbols?.[0] || null;
   const watch = primaryWatchFor(db, run, preliminarySymbol);
   const symbol = preliminarySymbol || watch?.symbol || null;
   const order = plan ? (db.executionOrders || []).find((row) => row.planId === plan.id) || null : null;
@@ -214,7 +228,7 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
   ].filter(Boolean))];
   const presentation = {
     schemaVersion: PRESENTATION_SCHEMA_VERSION,
-    layout: symbol || plan || order || watch || position || evidenceRow ? "decision_brief" : "narrative",
+    layout: !narrativeSystemReply && (symbol || plan || order || watch || position || evidenceRow) ? "decision_brief" : "narrative",
     kind,
     generatedAt: run.completedAt || new Date().toISOString(),
     headline: extractHeadline(content),

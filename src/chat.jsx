@@ -105,18 +105,18 @@ function renderInline(text = "") {
 
 function visualTone(text = "") {
   const value = String(text);
-  if (/风险|警告|阻断|拒绝|失败|止损|亏损|回撤|不要|禁止|未配置|异常/.test(value)) return "danger";
-  if (/等待|观察|谨慎|不确定|授权|确认|未同步|建议/.test(value)) return "warning";
-  if (/机会|通过|正常|优势|盈利|止盈|完成|可执行/.test(value)) return "ok";
+  if (/风险|警告|阻断|拒绝|失败|止损|亏损|回撤|不要|禁止|未配置|异常|risk|warning|blocked|rejected|failed|failure|error|unavailable|stop loss|drawdown|loss/i.test(value)) return "danger";
+  if (/等待|观察|谨慎|不确定|授权|确认|未同步|建议|wait|watch|caution|uncertain|approval|confirm|pending|suggest/i.test(value)) return "warning";
+  if (/机会|通过|正常|优势|盈利|止盈|完成|可执行|opportunity|passed|healthy|profit|take profit|complete|executable/i.test(value)) return "ok";
   return "neutral";
 }
 
 function sectionIcon(title = "") {
-  if (/结论|判断|摘要/.test(title)) return Target;
-  if (/依据|数据|行情|指标/.test(title)) return BarChart3;
-  if (/风险|限制|注意/.test(title)) return AlertTriangle;
-  if (/下一步|计划|动作|执行/.test(title)) return ListChecks;
-  if (/机会|方向|趋势/.test(title)) return TrendingUp;
+  if (/结论|判断|摘要|conclusion|decision|summary|core view/i.test(title)) return Target;
+  if (/依据|数据|行情|指标|evidence|data|market|indicator/i.test(title)) return BarChart3;
+  if (/风险|限制|注意|risk|limit|warning|caution/i.test(title)) return AlertTriangle;
+  if (/下一步|计划|动作|执行|next|plan|action|execution/i.test(title)) return ListChecks;
+  if (/机会|方向|趋势|opportunity|direction|trend/i.test(title)) return TrendingUp;
   return BrainCircuit;
 }
 
@@ -127,6 +127,7 @@ function parseRichText(text = "") {
   let steps = [];
   let metrics = [];
   let tableLines = [];
+  let checklist = [];
 
   function flushTable() {
     if (!tableLines.length) return;
@@ -165,11 +166,18 @@ function parseRichText(text = "") {
       metrics = [];
     }
   }
+  function flushChecklist() {
+    if (checklist.length) {
+      blocks.push({ type: "checklist", items: checklist });
+      checklist = [];
+    }
+  }
   function flushAll() {
     flushParagraph();
     flushBullets();
     flushSteps();
     flushMetrics();
+    flushChecklist();
     flushTable();
   }
 
@@ -194,6 +202,7 @@ function parseRichText(text = "") {
       flushBullets();
       flushSteps();
       flushMetrics();
+      flushChecklist();
       tableLines.push(line);
       continue;
     }
@@ -210,12 +219,29 @@ function parseRichText(text = "") {
       blocks.push({ type: "heading", text: strongHeading[1] });
       continue;
     }
+    // 数据源异常和消息面降级属于需要先看到的上下文，单独做克制的提示块，
+    // 避免与普通分析段落混在一起；不把常规风险描述一律卡片化。
+    if (/^(?:⚠️?|🚨|❗)\s*/.test(line) || /(?:消息面|news|sentiment).*(?:失败|未知|不可用|failed|failure|unavailable|rate limited)/i.test(line)) {
+      flushAll();
+      blocks.push({ type: "notice", text: line.replace(/^(?:⚠️?|🚨|❗)\s*/, ""), tone: visualTone(line) });
+      continue;
+    }
     const numbered = line.match(/^(\d+)[.、)]\s+(.+)$/);
     if (numbered) {
       flushParagraph();
       flushBullets();
       flushMetrics();
+      flushChecklist();
       steps.push({ number: numbered[1], text: numbered[2] });
+      continue;
+    }
+    const check = line.match(/^[-*]\s+\[([ xX])\]\s+(.+)$/);
+    if (check) {
+      flushParagraph();
+      flushBullets();
+      flushSteps();
+      flushMetrics();
+      checklist.push({ checked: check[1].toLowerCase() === "x", text: check[2], tone: visualTone(check[2]) });
       continue;
     }
     const bullet = line.match(/^[-*•]\s+(.+)$/);
@@ -223,6 +249,7 @@ function parseRichText(text = "") {
       flushParagraph();
       flushSteps();
       flushMetrics();
+      flushChecklist();
       bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
       continue;
     }
@@ -231,12 +258,14 @@ function parseRichText(text = "") {
       flushParagraph();
       flushBullets();
       flushSteps();
+      flushChecklist();
       metrics.push({ label: metric[1], value: metric[2], tone: visualTone(line) });
       continue;
     }
     flushBullets();
     flushSteps();
     flushMetrics();
+    flushChecklist();
     paragraph.push(line);
   }
   flushAll();
@@ -278,7 +307,16 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
 
   if (block.type === "heading") {
     const Icon = sectionIcon(block.text);
-    return <div className="richHeading" key={blockKey}><Icon size={14} /><strong>{block.text}</strong></div>;
+    const kind = posterSectionKind(block.text);
+    return <div className={`richHeading richHeading--${kind}`} key={blockKey}><i><Icon size={14} /></i><strong>{block.text}</strong></div>;
+  }
+  if (block.type === "notice") {
+    return (
+      <div className={`richNotice ${block.tone}`} key={blockKey}>
+        <AlertTriangle size={15} />
+        <span>{renderInline(block.text)}</span>
+      </div>
+    );
   }
   if (block.type === "table") {
     return (
@@ -324,6 +362,18 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
       </div>
     );
   }
+  if (block.type === "checklist") {
+    return (
+      <div className="richChecklist" key={blockKey}>
+        {block.items.map((item, itemIndex) => (
+          <div className={`richCheck ${item.checked ? "checked" : "pending"} ${item.tone}`} key={itemIndex}>
+            <i>{item.checked ? <CheckCircle2 size={14} /> : <span />}</i>
+            <span>{renderInline(item.text)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (block.type === "steps") {
     return (
       <div className="richSteps" key={blockKey}>
@@ -342,14 +392,14 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
   }
 
   const readingLines = String(block.text).split("\n").flatMap((sourceLine) => {
-    const quote = poster && sourceLine.match(/^>\s?(.*)$/);
+    const quote = sourceLine.match(/^>\s?(.*)$/);
     const chunks = splitParagraphForReading(quote ? quote[1] : sourceLine, poster ? 88 : 108);
     return quote ? chunks.map((chunk) => `> ${chunk}`) : chunks;
   });
   return readingLines.map((line, lineIndex) => {
-    const quote = poster && line.match(/^>\s?(.*)$/);
+    const quote = line.match(/^>\s?(.*)$/);
     if (quote) {
-      return <blockquote className="posterQuote" key={`${blockKey}-${lineIndex}`}>{renderInline(quote[1])}</blockquote>;
+      return <blockquote className={poster ? "posterQuote" : "richQuote"} key={`${blockKey}-${lineIndex}`}><Target size={14} /> <span>{renderInline(quote[1])}</span></blockquote>;
     }
     const emphasized = poster && /^\s*\*\*[^*]{1,32}[：:]/.test(line);
     return <p className={emphasized ? "richParagraph posterEmphasisLine" : "richParagraph"} key={`${blockKey}-${lineIndex}`}>{renderInline(line)}</p>;
@@ -625,8 +675,8 @@ export function DecisionBrief({ presentation, content = "", currentState = null,
 
       <div className="decisionHero">
         <div>
-          <span className="decisionEyebrow">{t("本轮结论", "Decision")}</span>
-          <h3>{presentation.headline || t("本轮市场分析", "Market analysis")}</h3>
+          <span className="decisionEyebrow"><Target size={11} /> {t("核心判断", "Core view")}</span>
+          <blockquote>{presentation.headline || t("本轮市场分析", "Market analysis")}</blockquote>
         </div>
         <div className="decisionBadges">
           <span className={`decisionDirection ${decision.direction || "neutral"}`}>{directionLabel(decision.direction)}</span>

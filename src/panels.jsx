@@ -125,7 +125,8 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: integrations.telegram?.cooldownMinutes ?? 240,
     TELEGRAM_WATCH_CHAT_ID: integrations.telegram?.watchChatId || "",
     TELEGRAM_WATCH_NOTIFIER_ENABLED: integrations.telegram?.watchNotifierEnabled ? "true" : "false",
-    TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrations.telegram?.watchDailyDigestEnabled ? "true" : "false"
+    TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrations.telegram?.watchDailyDigestEnabled ? "true" : "false",
+    TELEGRAM_WATCH_LANGUAGE: integrations.telegram?.watchLanguage || "en"
   });
   const [runtimeForm, setRuntimeForm] = useState({
     ADMIN_PASSWORD: "",
@@ -246,7 +247,8 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: String(Number(integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240)),
       TELEGRAM_WATCH_CHAT_ID: integrationForm.TELEGRAM_WATCH_CHAT_ID,
       TELEGRAM_WATCH_NOTIFIER_ENABLED: integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED,
-      TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED
+      TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED,
+      TELEGRAM_WATCH_LANGUAGE: integrationForm.TELEGRAM_WATCH_LANGUAGE
     };
     for (const [keyName] of [...integrationSecretRows, ...larkSecretRows, ...telegramSecretRows]) {
       if (integrationForm[keyName]) body[keyName] = integrationForm[keyName];
@@ -423,6 +425,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                   <label>{t("最低 ROI（%）", "Minimum ROI (%)")}<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT", event.target.value)} /></label>
                   <label>{t("发送间隔（分钟）", "Cooldown (minutes)")}<input type="number" min="1" value={integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES", event.target.value)} /></label>
                   <label>{t("观察哨事件推送", "Watch event delivery")}<select value={integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_NOTIFIER_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
+                  <label>{t("观察哨推送语言", "Watch alert language")}<select value={integrationForm.TELEGRAM_WATCH_LANGUAGE} onChange={(event) => updateIntegration("TELEGRAM_WATCH_LANGUAGE", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label>
                   <label>{t("观察哨每日摘要", "Daily watch digest")}<select value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
                   <label>{t("观察哨单独群 ID（可选）", "Separate watch chat ID (optional)")}<input value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用上面的群", "Leave blank to use the primary group")} /></label>
                 </div>

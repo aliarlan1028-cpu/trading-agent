@@ -620,12 +620,13 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 15. 挂单 ≠ 持仓【措辞硬纪律·别把委托单说成持仓】：限价单已提交但价格没到、没成交 = **挂单未成交**，仓位为 0，还没进场；只有真正成交、账户快照里 size≠0 才是**持仓中**。以【实时账户快照】里"持仓"和"挂单"两行为准，绝不能把一个未成交的挂单描述成"持仓中/已建仓/已进场"。要说也说"已挂单，等价格到 X 成交"。
 
 输出格式：
-- 结论先行、信息完整：先用 1-2 句给出本轮结论，再补足理解决策所需的关键事实、判断链、风险与动作；不能为了简短而省略会影响判断的证据。
+- 结论先行、信息完整：先用 1-2 句给出本轮结论，并用 Markdown 引用块（以 > 和空格开头）承载这个核心判断；再补足理解决策所需的关键事实、判断链、风险与动作。不能为了简短而省略会影响判断的证据。
 - 禁止输出工具调用或组织答案的过程旁白，例如“计划已武装。现在汇总全貌。”“工具调用完成，下面开始总结”。工具产生的真实业务状态应直接归入对应结论或动作，不要播报写作过程。
 - 面向前端可视化展示，按本轮实际内容动态选择清晰的 Markdown 小节（如结论、交易对、依据、风险、下一步）；不强制固定模板，无实质内容的小节直接省略。
 - 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"。
-- 长分析把事实、判断、风险和动作分段；列表每条只表达一个判断，同类信息可合并，需要行动时用 1. 2. 3. 步骤。不要用一大段连续文字承载多个不同主题。
-- 不要输出表格、HTML、JSON、代码块或 --- 分隔线，除非用户明确要求。
+- 长分析把事实、判断、风险和动作分段；普通证据用减号 bullet，每条只表达一个判断；待满足条件用 - [ ] checklist，已经确认的条件用 - [x]；真正存在先后顺序的动作才用 1. 2. 3. 步骤。不要用一大段连续文字承载多个不同主题。
+- 只有 Funding、OI、CVD、Beta、价格、时间周期等短字段需要横向比较时才使用紧凑 Markdown 表格；长句绝不塞入表格。不要输出 HTML、JSON、代码块或 --- 分隔线，除非用户明确要求。
+- 表情符号只作为少量固定语义提示（如 ⚠ 风险、✅ 已确认、🎯 关注点），不要装饰性堆叠，也不要在每一行重复。
 - 所有时间一律使用北京时间（UTC+8）并注明，如"14:30（UTC+8）"；不要输出 UTC 裸时间。
 
 ${SYSTEM_GUIDE}`;
@@ -2713,24 +2714,30 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
   if (/实盘灰度|授权|风控|定时任务|事件源|api|API|admin|审计|日志|订阅|知识库/.test(userText)) {
     return [
       "### 结论",
-      "状态：本轮使用本地系统说明回答",
+      "> 本轮使用 KORDYN 内置系统说明回答，不依赖外部知识库。",
+      "状态：本地说明模式",
       "依据：这是 KORDYN 内置功能，不需要知识库资料",
       "",
       "### 系统说明",
-      SYSTEM_GUIDE,
+      SYSTEM_GUIDE.replace(/^【本系统内置说明】\n?/, ""),
       "",
       "### 下一步",
-      "1. 你可以直接让我创建定时任务、刷新事件源、同步 OKX 账户或解释任一页面。",
-      "2. 涉及 API 密钥、实盘开关、清空数据和改密码时，我会按高风险操作处理，不会回显敏感信息。"
+      "- [ ] 你可以直接让我创建定时任务、刷新事件源、同步 OKX 账户或解释任一页面。",
+      "- [x] 涉及 API 密钥、实盘开关、清空数据和改密码时，系统按高风险操作处理且不回显敏感信息。"
     ].join("\n");
   }
   const symbolMatch = userText.match(/\b(BTC|ETH|SOL|BNB|XRP|DOGE)\b/i);
-  const lines = ["**当前未配置 LLM API Key（Anthropic / OpenAI / DeepSeek），我以本地规则模式运行，只能做数据同步与风控预检，无法做真正的行情分析。**", ""];
+  const lines = [
+    "### 当前模式",
+    "> 当前未配置 LLM API Key（Anthropic / OpenAI / DeepSeek）。本轮只使用真实数据和本地确定性规则，不把规则读数冒充完整 AI 行情分析。",
+    "状态：本地规则模式",
+    ""
+  ];
   if (symbolMatch) {
     const symbol = `${symbolMatch[1].toUpperCase()}/USDT`;
     const market = await runToolTracked(db, run, "sync_market", { symbol }, toolTrace);
     if (!market.error && market.status === "fresh") {
-      lines.push(`已同步真实行情：${symbol} 现价 ${market.price} USDT，24h 涨跌 ${market.change24hPct ?? "-"}%，近 48 根 K 线区间 ${market.recentLow} ~ ${market.recentHigh}。`);
+      lines.push("### 市场快照", `交易对：${symbol}`, `现价：${market.price} USDT`, `- 24h 涨跌 ${market.change24hPct ?? "-"}%`, `- 近 48 根 K 线区间 ${market.recentLow} ~ ${market.recentHigh}`);
       // 确定性决策兜底：即使没有 LLM，也用真实多源信号给一个透明、可解释、非编造的方向读数。
       const full = db.markets?.find((mk) => mk.symbol === symbol) || {};
       const smart = await fetchSmartMoney(symbol).catch(() => null);
@@ -2754,18 +2761,18 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
         mandate: activeMandate(db) || db.mandates?.[0] || null
       });
       const dirCn = d.direction === "long" ? "偏多" : d.direction === "short" ? "偏空" : "观望";
-      lines.push("", `**确定性规则决策（无 LLM 兜底，非编造）：${dirCn}，置信度 ${d.confidence}。**`,
-        `因子分：动量 ${d.scores.momentum}｜资金费率 ${d.scores.funding}｜盘口 ${d.scores.book}｜聪明钱 ${d.scores.smartMoney}（融合 ${d.net}）。`);
-      if (d.reasons.length) lines.push(`说明：${d.reasons.join("；")}。`);
-      if (d.plan) lines.push(`参考结构（仅供参考，非实盘计划）：入场 ${d.plan.entryLow}–${d.plan.entryHigh}，止损 ${d.plan.stopLoss}，止盈 ${d.plan.takeProfits.join(" / ")}，风险 ${d.plan.riskPercent}%·${d.plan.leverage}x。配置 LLM 后可自动过硬风控并转成可执行计划。`);
+      lines.push("", "### 规则读数", `> 确定性规则当前${dirCn}，置信度 ${d.confidence}；这是透明的本地规则读数，不是 LLM 结论。`,
+        `依据：动量 ${d.scores.momentum}｜资金费率 ${d.scores.funding}｜盘口 ${d.scores.book}｜聪明钱 ${d.scores.smartMoney}（融合 ${d.net}）`);
+      if (d.reasons.length) lines.push(...d.reasons.map((reason) => `- ${reason}`));
+      if (d.plan) lines.push("", "### 参考结构", `入场：${d.plan.entryLow}–${d.plan.entryHigh}`, `止损：${d.plan.stopLoss}`, `止盈：${d.plan.takeProfits.join(" / ")}`, `风险：${d.plan.riskPercent}% · ${d.plan.leverage}x`, "⚠ 该结构仅供参考，不是实盘交易计划；配置 LLM 后才能结合完整证据生成计划并交由硬风控检查。");
     } else {
       lines.push(`${symbol} 的 OKX 关键行情证据不完整，本轮不做方向判断：${(market.errors || [market.error]).filter(Boolean).join("；") || "ticker 或闭合 K 线不可用"}。`);
     }
   }
   const account = await runToolTracked(db, run, "get_account", {}, toolTrace);
   if (!account.exchangeAccounts?.some((item) => item.readEnabled)) {
-    lines.push("交易所 API 未配置：我读不到你的账户与持仓，只能使用公开行情。");
+    lines.push("", "### 数据边界", "⚠ 交易所 API 未配置：当前读不到你的账户与持仓，只能使用公开行情。");
   }
-  lines.push("", "配置任一 LLM Key 后，我可以：解析你的授权目标 → 结合行情/知识库/事件生成交易计划 → 通过硬风控检查后交给你批准。");
+  lines.push("", "### 下一步", "- [ ] 配置任一 LLM Key", "- [ ] 解析授权目标并结合行情、知识库与事件生成交易计划", "- [ ] 交易计划通过硬风控后再进入批准或自主执行流程");
   return lines.join("\n");
 }

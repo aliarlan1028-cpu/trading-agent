@@ -48,9 +48,19 @@ export function registerNotificationRoutes(app, ctx) {
   app.post("/api/notifications/telegram-watch-test", requirePermission("admin:security"), async (_req, res) => {
     const watch = {
       id: `watch_test_${Date.now()}`, version: 1, symbol: "BTC/USDT", kind: "price_above", level: 1,
-      note: "Telegram 观察哨独立群测试，不会触发交易。", expiresAt: new Date(Date.now() + 3_600_000).toISOString()
+      status: "active", priority: "primary", purpose: "decision", createdAt: nowIso(), analysisAt: nowIso(),
+      analysisTitle: "BTC is testing a confirmation level; wait for the primary condition before reviewing the setup.",
+      note: "This test watch requests a fresh analysis only. It never places an order.",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString()
     };
-    const queued = queueWatchTelegramEvent(db, watch, "registered");
+    db.watchTriggers ||= [];
+    db.watchTriggers.unshift(watch);
+    let queued;
+    try {
+      queued = queueWatchTelegramEvent(db, watch, "registered");
+    } finally {
+      db.watchTriggers = db.watchTriggers.filter((item) => item.id !== watch.id);
+    }
     const dispatched = await dispatchTelegramWatchOutbox(db);
     saveDb(db);
     res.json({ message: `Telegram 观察哨测试：${dispatched.status}`, queued: queued.status, dispatched });

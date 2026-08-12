@@ -158,3 +158,16 @@ test("普通非交易问答继续使用叙事布局，不强塞空决策卡", ()
   assert.equal(result.symbol, null);
   assert.equal(result.kind, "market_analysis");
 });
+
+test("系统说明即使后台预取市场证据也保持叙事布局", () => {
+  const result = buildChatPresentation({ db: {}, run: { id: "run_1", decisionContext: { trigger: "manual" } }, evidenceBundle: evidenceBundle(), content: "### 结论\n> 本轮使用 KORDYN 内置系统说明回答，不依赖外部知识库。\n状态：本地说明模式" });
+  assert.equal(result.layout, "narrative");
+  assert.equal(result.symbol, null);
+});
+
+test("核心判断按完整句提炼，不在半句话中硬截断", () => {
+  const content = "### 结论\n本轮无交易计划。大盘偏空分化，但四个白名单币均贴近区间低位，不在当前位置追空。若价格反弹至供给区，再等待结构转弱确认。";
+  const result = buildChatPresentation({ db: { watchTriggers: [{ id: "w", symbol: "BTC/USDT", status: "active", priority: "primary", kind: "price_above", level: 70000 }] }, run: { id: "run_1" }, content });
+  assert.equal(result.headline, "本轮无交易计划。大盘偏空分化，但四个白名单币均贴近区间低位，不在当前位置追空。");
+  assert.doesNotMatch(result.headline, /…$/);
+});

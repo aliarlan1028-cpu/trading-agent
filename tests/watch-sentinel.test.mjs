@@ -124,8 +124,8 @@ test("Agent 一轮分析完成后才合并排队一次最终 Telegram 看板", (
   assert.equal(db.telegramWatchOutbox.length, 1);
   assert.equal(old.status, "superseded");
   assert.equal(next.status, "active");
-  assert.match(db.telegramWatchOutbox[0].message, /BTC 最新结论/);
-  assert.match(db.telegramWatchOutbox[0].message, /辅助条件（1/);
+  assert.match(db.telegramWatchOutbox[0].message, /WATCH UPDATED/);
+  assert.match(db.telegramWatchOutbox[0].message, /Supporting Conditions · 1/);
   if (previous === undefined) delete process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
   else process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = previous;
 });
