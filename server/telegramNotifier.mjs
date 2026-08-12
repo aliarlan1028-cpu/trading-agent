@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster } from "./positionPoster.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -141,6 +143,86 @@ export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
     notification.deliveryStatus = "send_failed"; notification.error = error.message;
     return { status: "send_failed", notification, trade: share, error: error.message };
   }
+}
+
+function closedTradePosterKey(lifecycle) {
+  return `closed_trade:${lifecycle.key}`;
+}
+
+export function queueClosedTradeProfitPosters(db) {
+  const status = telegramStatus();
+  if (!status.profitPosterEnabled || !status.configured) return { status: "disabled_or_unconfigured", queued: 0 };
+  db.telegramPosterOutbox ||= [];
+  db.meta ||= {};
+  if (!db.meta.telegramClosedTradePosterStartedAt) {
+    db.meta.telegramClosedTradePosterStartedAt = nowIso();
+    return { status: "initialized", queued: 0 };
+  }
+  const startedAt = new Date(db.meta.telegramClosedTradePosterStartedAt).getTime();
+  let queued = 0;
+  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) continue;
+    if (!(Number(lifecycle.realizedPnl) > status.minPnlUsdt)) continue;
+    if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) continue;
+    const key = closedTradePosterKey(lifecycle);
+    if (db.telegramPosterOutbox.some((item) => item.idempotencyKey === key)) continue;
+    const trade = { ...lifecycle.representative, closedAt: lifecycle.lastClosedAt, tradeLifecycleKey: lifecycle.key };
+    db.telegramPosterOutbox.unshift({
+      id: `tgposter_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
+      idempotencyKey: key,
+      tradeLifecycleKey: lifecycle.key,
+      fillIds: lifecycle.fills.map((fill) => fill.id).filter(Boolean),
+      trade,
+      status: "pending",
+      attempts: 0,
+      nextAttemptAt: nowIso(),
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    });
+    queued += 1;
+  }
+  return { status: "ok", queued };
+}
+
+export async function dispatchClosedTradePosterOutbox(db, options = {}) {
+  const status = telegramStatus();
+  if (!status.profitPosterEnabled || !status.configured) return { status: "disabled_or_unconfigured", checked: 0, skipPersist: true };
+  const now = Date.now();
+  const pending = (db.telegramPosterOutbox || []).filter((item) =>
+    ["pending", "retry"].includes(item.status) && new Date(item.nextAttemptAt || 0).getTime() <= now
+  ).slice(0, Math.max(1, Number(options.limit || 5)));
+  let sent = 0;
+  for (const item of pending) {
+    item.attempts = Number(item.attempts || 0) + 1;
+    item.updatedAt = nowIso();
+    const result = await sendTelegramClosedTradePoster(db, item.trade);
+    if (result.status === "sent") {
+      item.status = "sent";
+      item.sentAt = nowIso();
+      item.telegramMessageId = result.telegram?.message_id || result.notification?.telegramMessageId || null;
+      item.notificationId = result.notification?.id || null;
+      item.lastError = null;
+      for (const fill of db.fills || []) {
+        if (!item.fillIds?.includes(fill.id)) continue;
+        fill.telegramClosedTradePoster = { status: "sent", sentAt: item.sentAt, idempotencyKey: item.idempotencyKey, telegramMessageId: item.telegramMessageId };
+      }
+      sent += 1;
+    } else {
+      item.lastError = String(result.error || result.status).slice(0, 180);
+      if (item.attempts >= 5) item.status = "failed";
+      else {
+        item.status = "retry";
+        item.nextAttemptAt = new Date(Date.now() + Math.min(30, 2 ** item.attempts) * 60_000).toISOString();
+      }
+    }
+  }
+  return { status: "ok", checked: pending.length, sent, failed: pending.filter((item) => item.status === "failed").length, skipPersist: pending.length === 0 };
+}
+
+export async function processClosedTradeProfitPosters(db, options = {}) {
+  const queued = queueClosedTradeProfitPosters(db);
+  const dispatched = await dispatchClosedTradePosterOutbox(db, options);
+  return { queued, dispatched, skipPersist: queued.queued === 0 && dispatched.skipPersist === true };
 }
 
 function positionKey(position, share) {

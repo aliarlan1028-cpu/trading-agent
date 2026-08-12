@@ -41,7 +41,7 @@ import { buildProfessionalSnapshot } from "./professionalAnalytics.mjs";
 import { buildDecisionCalibrationReport } from "./decisionCalibration.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
-import { sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
+import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { dispatchTelegramWatchOutbox, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission } from "./eventSources.mjs";
 import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData } from "./marketIntelligence.mjs";
@@ -380,6 +380,8 @@ if ((db.meta.operationalWipeVersion || 0) < OPERATIONAL_WIPE_VERSION) {
   db.riskIncidents = (db.riskIncidents || []).filter((inc) => !inc.__drop);
   if (db.riskIncidents.length !== before) appendAudit(db, `收敛重复告警 ${before - db.riskIncidents.length} 条`, "startup", "Maintenance");
 })();
+// 上线时建立平仓海报水位，避免首次启用把历史盈利交易整批补发到 Telegram。
+db.meta.telegramClosedTradePosterStartedAt ||= nowIso();
 saveDb(db);
 
 const corsAllowlist = String(process.env.CORS_ALLOWED_ORIGINS || "")
@@ -556,6 +558,7 @@ registerTaskHandler("event_preparation", async (database) => {
 registerTaskHandler("daily_market_brief", (database) => buildDailyBrief(database));
 registerTaskHandler("onchain_refresh", (database) => refreshOnchainSignals(database));
 registerTaskHandler("telegram_watch_dispatch", (database) => dispatchTelegramWatchOutbox(database));
+registerTaskHandler("telegram_closed_trade_posters", (database) => processClosedTradeProfitPosters(database));
 registerTaskHandler("telegram_watch_digest", async (database) => {
   const queued = queueDailyWatchDigest(database);
   const dispatched = await dispatchTelegramWatchOutbox(database);
@@ -630,6 +633,7 @@ ensureSystemTask(db, { id: "task_sys_event_preparation", name: "高影响日程�
 ensureSystemTask(db, { id: "task_sys_daily_market_brief", name: "Daily Market Brief", handler: "daily_market_brief", type: "Cron", schedule: "45 7 * * *", timezone: "Asia/Shanghai" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_onchain_refresh", name: "链上基础资金面刷新", handler: "onchain_refresh", schedule: "Every 6h", startupCatchup: true, startupDelayMs: 45_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_watch", name: "Telegram观察哨Outbox", handler: "telegram_watch_dispatch", schedule: "Every 1m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_telegram_closed_trade", name: "Telegram平仓盈利海报", handler: "telegram_closed_trade_posters", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_watch_digest", name: "Telegram观察哨日报", handler: "telegram_watch_digest", type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 30s" }, saveDb);

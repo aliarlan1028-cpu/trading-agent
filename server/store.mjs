@@ -71,6 +71,7 @@ const collectionNames = [
   "marketIntelligenceSourceHealth",
   "dailyBriefs",
   "telegramWatchOutbox",
+  "telegramPosterOutbox",
   "tasks",
   "jobRuns",
   "jobLocks",
@@ -526,6 +527,7 @@ function cleanSeedDatabase(createdAt) {
     marketIntelligenceSourceHealth: {},
     dailyBriefs: [],
     telegramWatchOutbox: [],
+    telegramPosterOutbox: [],
     tasks: [],
     jobRuns: [],
     jobLocks: [],
@@ -752,7 +754,7 @@ const LOG_CAPS = {
   watchTriggers: 100, armedSetups: 200, opportunityCandidates: 200, opportunityEvents: 1000,
   missedOpportunities: 100,
   marketIntelligenceFacts: 2000, marketCalendarEvents: 500, dailyBriefs: 90,
-  telegramWatchOutbox: 500
+  telegramWatchOutbox: 500, telegramPosterOutbox: 500
 };
 function capLogCollections(db) {
   const tsOf = (o) => new Date(o?.createdAt || o?.at || o?.startedAt || o?.finishedAt || o?.updatedAt || 0).getTime() || 0;
@@ -828,6 +830,7 @@ export function resetOperationalData(db, options = {}) {
   db.marketIntelligenceSourceHealth = {};
   db.dailyBriefs = [];
   db.telegramWatchOutbox = [];
+  db.telegramPosterOutbox = [];
   db.tasks = [];
   db.jobRuns = [];
   db.jobLocks = [];
@@ -1567,6 +1570,7 @@ export function normalizeDatabase(db) {
   db.marketIntelligenceSourceHealth ||= seed.marketIntelligenceSourceHealth || {};
   db.dailyBriefs ||= seed.dailyBriefs || [];
   db.telegramWatchOutbox ||= seed.telegramWatchOutbox || [];
+  db.telegramPosterOutbox ||= seed.telegramPosterOutbox || [];
   db.tasks ||= seed.tasks;
   db.knowledge ||= seed.knowledge;
   db.analysisBundles ||= seed.analysisBundles;
