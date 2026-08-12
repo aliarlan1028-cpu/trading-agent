@@ -498,7 +498,11 @@ export function apiUrl(path, baseOverride) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timer = window.setTimeout(() => {
+    const timeoutError = new Error("Request timed out");
+    timeoutError.name = "TimeoutError";
+    controller.abort(timeoutError);
+  }, timeoutMs);
   try {
     return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
   } finally {
@@ -507,8 +511,18 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
 }
 
 function connectionErrorMessage(error) {
-  if (error?.name === "AbortError") return "连接超时，请确认后端地址可访问，推荐使用 https://yegidawir.xyz";
+  if (error?.name === "AbortError" || error?.name === "TimeoutError" || /aborted|timed out/i.test(String(error?.message || ""))) return "连接超时，请确认后端地址可访问，推荐使用 https://yegidawir.xyz";
   return error?.message || "连接失败";
+}
+
+// 历史研究会分页读取多个周期的 OKX K 线，不能套用普通 CRUD 的 12 秒上限。
+// 仍保留有限超时，避免断网或上游永久挂起使界面一直忙碌。
+export function actionTimeoutMs(url) {
+  const path = String(url || "");
+  if (/^\/api\/strategy\/research(?:\?|$)/.test(path)) return 180000;
+  if (/^\/api\/strategy\/studio\/drafts\/[^/]+\/backtest(?:\?|$)/.test(path)) return 120000;
+  if (/^\/api\/(?:paper\/run|knowledge\/skills\/[^/]+\/(?:validate|paper))(?:\?|$)/.test(path)) return 120000;
+  return isNativeApp() ? 8000 : 12000;
 }
 
 // 实时价 pub/sub：SSE 每个价格 tick 直接分发给订阅者（如 K 线图），不经 React 状态节流，
@@ -771,7 +785,7 @@ export function useApi() {
         headers: headers({ "Content-Type": "application/json" })
       };
       if (method.toUpperCase() !== "GET") request.body = JSON.stringify(body);
-      const response = await fetchWithTimeout(apiUrl(url, apiBase), request, isNativeApp() ? 8000 : 12000);
+      const response = await fetchWithTimeout(apiUrl(url, apiBase), request, actionTimeoutMs(url));
       if (response.status === 401) {
         // 业务型 401(如原密码不正确)不是会话过期,不得把用户整体登出(审计 H5)。
         if (url.includes("/api/auth/change-password")) {
@@ -804,11 +818,14 @@ export function useApi() {
       window.setTimeout(() => setToast(""), 4200);
       return json;
     } catch (error) {
-      setToast(error.message || t("操作失败", "Action failed"));
+      const errorMessage = (error?.name === "AbortError" || error?.name === "TimeoutError" || /aborted|timed out/i.test(String(error?.message || "")))
+        ? t("操作超时；研究任务可能仍在后台运行，请稍后刷新查看结果", "The operation timed out. Research may still be running; refresh shortly to check results.")
+        : (error.message || t("操作失败", "Action failed"));
+      setToast(errorMessage);
       window.setTimeout(() => setToast(""), 4200);
       // 调用方需要区分“空成功响应”和“真实失败”。此前统一返回 {}，资金与交易控制页
       // 只能再覆盖成笼统的“保存失败”，把后端给出的安全阻断原因全部吃掉。
-      return { ok: false, error: error.message || t("操作失败", "Action failed"), httpStatus: error.status, details: error.details, blockers: error.blockers };
+      return { ok: false, error: errorMessage, httpStatus: error.status, details: error.details, blockers: error.blockers };
     } finally {
       setBusyCount((count) => count - 1);
     }
