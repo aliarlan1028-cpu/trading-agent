@@ -2,6 +2,12 @@ ARG APP_RELEASE=dev
 
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+# better-sqlite3 normally downloads a prebuilt binary. Production builds must still
+# survive a transient prebuild CDN failure, so keep the native toolchain only in
+# the dependency stage and let node-gyp compile from source when necessary.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci
 
@@ -11,10 +17,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:22-bookworm-slim AS runtime-deps
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
+FROM deps AS runtime-deps
+# Reuse the already-installed native dependency tree instead of launching a
+# second npm ci in parallel with the frontend build on the small production VM.
+RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
 ARG APP_RELEASE
