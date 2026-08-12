@@ -16,13 +16,13 @@
 
     "hero.badge": ["数字货币自主交易 Agent", "Autonomous crypto trading"],
     "hero.h1": [
-      '让 Agent 自主交易，<br><span style="' + GRAD + '">让每一步都有边界。</span>',
-      'Let the agent trade autonomously.<br><span style="' + GRAD + '">Keep every action within bounds.</span>'
+      '持续理解市场，<br><span style="' + GRAD + '">在你的策略与边界中行动。</span>',
+      'Always reading the market,<br><span style="' + GRAD + '">guided by your strategy and limits.</span>'
     ],
-    "hero.sub": ["真正自主执行，但始终受你设定的边界约束。", "Real autonomy, always inside the boundaries you set."],
+    "hero.sub": ["自主感知、判断与执行，也始终尊重你的交易方式。", "Autonomous in sensing, deciding, and acting—always guided by the way you trade."],
     "hero.desc": [
-      "学习你的交易体系,持续感知市场与事件,在授权范围内执行真实交易、管理仓位并复盘进化。每一步都被授权、硬风控与审计约束。",
-      "It learns your trading approach, monitors markets and events around the clock, and can execute trades, manage positions, and learn from results—always within the permissions and risk limits you define. Every decision is traceable."
+      "学习你的交易体系，持续感知市场与事件，在你设定的范围内完成分析、执行、仓位管理与复盘，让自主交易始终清晰、可控。",
+      "It learns your trading approach, follows markets and events, and handles analysis, execution, position management, and review within the scope you define—keeping autonomous trading clear and controlled."
     ],
     "hero.trust": ["默认只读 · 提现权限永不开放", "READ-ONLY DEFAULT · WITHDRAW DISABLED"],
 
@@ -46,10 +46,10 @@
     "metric.always": ["全天候感知执行", "Always monitoring"],
 
     "mandate.tag": ["交易权限", "TRADING PERMISSIONS"],
-    "mandate.h2": ["你定义交易权限，<br>Agent 在边界内自主决策。", "You define the trading authority.<br>The agent decides within it."],
+    "mandate.h2": ["范围由你设定，<br>判断与执行交给 Agent。", "You set the scope.<br>The agent handles decisions and execution."],
     "mandate.desc": [
-      "交易所、币种、策略族、单笔风险、杠杆、日亏损与有效期——每一项都是可执行的硬约束。超出范围立即拦截。",
-      "Choose the exchange, markets, strategies, risk per trade, leverage, daily loss limit, and expiry. These are enforced controls, not suggestions—anything outside them is blocked."
+      "你可以按交易所、币种、策略、单笔风险、杠杆、日亏损与有效期设定范围。Agent 只在其中工作，遇到范围外的机会会保持观望。",
+      "Set the scope by exchange, markets, strategies, risk per trade, leverage, daily loss limit, and expiry. The agent works within it and stays on the sidelines when an opportunity falls outside."
     ],
     "mandate.active": ["权限已生效", "PERMISSIONS ACTIVE"],
     "mandate.riskPerTrade": ["单笔风险 · RISK / TRADE", "RISK / TRADE"],
@@ -59,7 +59,7 @@
     "mandate.expires": ["有效期 · EXPIRES", "EXPIRES"],
 
     "cap.tag": ["自主交易能力 · CAPABILITIES", "AUTONOMOUS CAPABILITIES"],
-    "cap.h2": ["四个专业角色协同，从读懂市场到执行交易", "Four specialist roles, from market insight to trade execution"],
+    "cap.h2": ["四个专业角色协同，让市场理解与交易执行自然衔接", "Four specialist roles connect market understanding with trade execution"],
     "cap.desc": [
       "AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。",
       "The AI trader, risk officer, knowledge system, and events analyst work together across research, decisions, execution, and review."
@@ -86,7 +86,7 @@
     ],
 
     "loop.tag": ["交易闭环 · LIFECYCLE", "TRADING LIFECYCLE"],
-    "loop.h2": ["从发现机会到复盘改进，每一笔交易都有完整闭环", "From opportunity to review, every trade completes the loop"],
+    "loop.h2": ["从发现机会到回看结果，每一步都清晰衔接", "From opportunity to review, every step stays connected"],
     "loop.1t": ["市场与事件感知", "Sense markets & events"],
     "loop.1d": ["行情、盘口、资金费率、OI 与事件雷达持续输入。", "Prices, order book, funding, OI and an event radar stream in continuously."],
     "loop.2t": ["知识召回", "Knowledge recall"],
@@ -105,10 +105,10 @@
     "loop.8d": ["复盘盈亏归因与偏差,写回记忆与知识库候选规则。", "Reviews PnL attribution and drift, writing back to memory and candidate rules."],
 
     "guard.tag": ["权限与风控 · GUARDRAILS", "AUTHORITY & GUARDRAILS"],
-    "guard.h2": ["每一笔交易，<br>都必须通过权限与风控。", "Every trade<br>must pass permissions and risk controls."],
+    "guard.h2": ["让每一次交易，<br>都在清晰的规则中进行。", "Every trade,<br>guided by clear rules."],
     "guard.desc": [
-      "硬风控不是可选项。交易权限、密钥隔离与紧急停止机制在代码层强制执行，任何角色、任何 Skill 都无法绕过。",
-      "Hard risk controls are enforced in code. Trading permissions, secret isolation, and emergency stops cannot be bypassed by an agent or third-party skill."
+      "交易权限、密钥隔离与紧急停止被落实在系统中，让 Agent 可以自主行动，也始终保持在你设定的范围内。",
+      "Trading permissions, secret isolation, and emergency stops are built into the system, giving the agent room to act while keeping it within the scope you set."
     ],
     "guard.kill": ["紧急停止", "EMERGENCY STOP"],
     "guard.denyT": ["禁止提现权限", "Withdrawals disabled"],
@@ -125,10 +125,10 @@
     "guard.auditD": ["交易、授权、风控与密钥变更不可被删除。", "Trades, authorizations, risk actions and key changes cannot be deleted."],
 
     "know.tag": ["交易知识库 · KNOWLEDGE", "TRADING KNOWLEDGE"],
-    "know.h2": ["把研究、策略与真实复盘，沉淀为下一次更好的决策", "Turn research, strategy, and real reviews into better decisions ahead"],
+    "know.h2": ["研究、策略与真实复盘，持续沉淀为下一次判断的依据", "Research, strategy, and real reviews become context for the next decision"],
     "know.desc": [
-      "把书籍、研报、网页、GitHub 与你的复盘转化为可调用的概念、框架、规则与反方观点——并在每一次决策时召回。",
-      "Turns books, research, web pages, GitHub and your reviews into callable concepts, frameworks, rules and counter-views — recalled on every decision."
+      "书籍、研报、网页、GitHub 与真实复盘会被整理成概念、框架、规则与反方观点，在需要判断时回到上下文中。",
+      "Books, research, web pages, GitHub, and real reviews are organized into concepts, frameworks, rules, and counter-views, then brought back into context when a decision is needed."
     ],
     "know.sources": ["来源", "SOURCES"],
     "know.s1": ["金融书籍 / 研报", "Books / research"],

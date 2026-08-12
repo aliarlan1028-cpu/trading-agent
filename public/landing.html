@@ -10,7 +10,7 @@
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta property="og:type" content="website">
 <meta property="og:title" content="KORDYN · 数字货币自主交易 Agent | Autonomous Crypto Trading Agent">
-<meta property="og:description" content="AI 数字货币永续合约交易 Agent:LLM 判断、硬编码风控。 | An autonomous AI crypto futures trading agent — LLM judgment, hard-coded guardrails.">
+<meta property="og:description" content="持续理解市场，在你设定的交易权限与风险范围内完成分析、执行、仓位管理和复盘。 | An autonomous crypto trading agent that works within the trading authority and risk scope you define.">
 <meta property="og:image" content="https://yegidawir.xyz/kordyn-share.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
@@ -49,10 +49,18 @@
   .taTickerTrack:hover { animation-play-state: paused; }
   .taLangBtn { cursor: pointer; font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #a89a83; background: rgba(255,255,255,0.03); border: 1px solid #33291c; border-radius: 999px; padding: 6px 12px; }
   .taLangBtn:hover { border-color: #4a3d2c; color: #f2ead9; }
+  .taHeroProduct { font-family: 'Space Grotesk',sans-serif !important; font-size: 38px !important; font-weight: 700; letter-spacing: -0.02em !important; color: #f2ead9 !important; background: none !important; border: 0 !important; border-radius: 0 !important; margin: 0 !important; padding: 0 !important; text-transform: none !important; }
+  .taHeroStatement { max-width: 570px; font-size: 28px !important; font-weight: 500 !important; line-height: 1.3 !important; letter-spacing: -0.015em !important; color: #c8bda9; }
+  .taSectionTitle { display: flex; align-items: baseline; gap: 12px; }
+  .taSectionIndex { flex: 0 0 auto; font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.12em; color: #ffb178; }
+  .taSectionName { font-family: 'Space Grotesk',sans-serif; font-size: 30px; font-weight: 650; letter-spacing: -0.015em; color: #f2ead9; margin: 0; }
+  .taMandateTitle { font-family: 'Space Grotesk',sans-serif !important; font-size: 30px !important; font-weight: 650; letter-spacing: -0.015em !important; color: #f2ead9 !important; margin: 0 !important; }
+  .taSectionSupport { max-width: 720px; font-size: 19px !important; font-weight: 500 !important; line-height: 1.45 !important; letter-spacing: -0.006em !important; color: #bdb29e !important; text-wrap: pretty; }
+  .taMandateSupport { font-size: 19px !important; font-weight: 500 !important; line-height: 1.48 !important; color: #bdb29e; }
   @media (max-width: 1000px) {
     .taNavLinks { display: none !important; }
     .taHero { grid-template-columns: 1fr !important; gap: 40px !important; padding-top: 48px !important; }
-    .taHero h1 { font-size: 44px !important; }
+    .taHeroStatement { font-size: 27px !important; }
     .taMetrics { grid-template-columns: 1fr 1fr !important; }
     .taMetrics > div { border-right: none !important; border-bottom: 1px solid #221b12; }
     .taMandate { grid-template-columns: 1fr !important; }
@@ -66,7 +74,12 @@
     .taKnowArrow { display: none !important; }
   }
   @media (max-width: 560px) {
-    .taHero h1 { font-size: 34px !important; }
+    .taHeroProduct { font-size: 28px !important; }
+    .taHeroStatement { font-size: 22px !important; line-height: 1.42 !important; }
+    .taSectionTitle { gap: 9px; align-items: flex-start; }
+    .taSectionName { font-size: 22px; line-height: 1.3; }
+    .taMandateTitle { font-size: 26px !important; }
+    .taSectionSupport, .taMandateSupport { font-size: 17px !important; }
     .taLoopGrid { grid-template-columns: 1fr !important; }
     .taMetrics { grid-template-columns: 1fr !important; }
   }
@@ -110,13 +123,13 @@
   <!-- HERO -->
   <section id="top" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 76px 32px 64px; display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 54px; align-items: center;" class="taHero">
     <div style="animation: taRise .7s ease both;">
-      <div style="display: inline-flex; align-items: center; gap: 9px; font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; letter-spacing: 0.12em; color: #ffb178; background: rgba(255,122,47,0.1); border: 1px solid #40301f; padding: 6px 13px; border-radius: 999px; text-transform: uppercase;">
+      <h1 class="taHeroProduct" style="display: inline-flex; align-items: center; gap: 9px; font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; letter-spacing: 0.12em; color: #ffb178; background: rgba(255,122,47,0.1); border: 1px solid #40301f; padding: 6px 13px; border-radius: 999px; text-transform: uppercase;">
         <span style="width: 7px; height: 7px; border-radius: 999px; background: #ff7a2f; animation: taBlink 1.6s infinite;"></span>
-        <span data-i18n="hero.badge">Autonomous Crypto Trading Agent</span>
-      </div>
-      <h1 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 60px; line-height: 1.02; letter-spacing: -0.03em; margin: 22px 0 0; text-wrap: balance;" data-i18n-html="hero.h1">让 Agent 自主交易，<br><span style="background: linear-gradient(120deg,#ffbe8a,#ff7a2f); -webkit-background-clip: text; background-clip: text; color: transparent;">让每一步都有边界。</span></h1>
-      <p style="font-family: 'IBM Plex Mono',monospace; font-size: 14px; letter-spacing: 0.02em; color: #8f836e; margin: 16px 0 0;" data-i18n="hero.sub">Authorized autonomy — never boundaryless execution.</p>
-      <p style="font-size: 17px; line-height: 1.65; color: #c3b8a3; max-width: 510px; margin: 22px 0 0; text-wrap: pretty;" data-i18n="hero.desc">学习你的交易体系,持续感知市场与事件,在授权范围内执行真实交易、管理仓位并复盘进化。每一步都被授权、硬风控与审计约束。</p>
+        <span data-i18n="hero.badge">数字货币自主交易 Agent</span>
+      </h1>
+      <h2 class="taHeroStatement" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 60px; line-height: 1.02; letter-spacing: -0.03em; margin: 22px 0 0; text-wrap: balance;" data-i18n-html="hero.h1">持续理解市场，<br><span style="background: linear-gradient(120deg,#ffbe8a,#ff7a2f); -webkit-background-clip: text; background-clip: text; color: transparent;">在你的策略与边界中行动。</span></h2>
+      <p style="font-family: 'IBM Plex Mono',monospace; font-size: 14px; letter-spacing: 0.02em; color: #8f836e; margin: 16px 0 0;" data-i18n="hero.sub">自主感知、判断与执行，也始终尊重你的交易方式。</p>
+      <p style="font-size: 17px; line-height: 1.65; color: #c3b8a3; max-width: 510px; margin: 22px 0 0; text-wrap: pretty;" data-i18n="hero.desc">学习你的交易体系，持续感知市场与事件，在你设定的范围内完成分析、执行、仓位管理与复盘，让自主交易始终清晰、可控。</p>
       <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px;">
         <button class="taBtn" data-action="login" style="font-weight: 600; font-size: 15px; color: #0c0a08; background: linear-gradient(120deg,#ffa259,#ff7a2f); padding: 14px 26px; border-radius: 999px; box-shadow: 0 10px 26px -8px rgba(255,122,47,.8);" data-i18n="cta.loginArrow">登录驾驶舱 →</button>
         <button class="taBtn" data-action="subscribe" style="font-weight: 600; font-size: 15px; color: #f2ead9; background: rgba(255,255,255,0.03); border: 1px solid #33291c; padding: 14px 26px; border-radius: 999px;" data-i18n="cta.subscribe">申请开通</button>
@@ -202,9 +215,9 @@
   <section class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 92px 32px 0;">
     <div class="taMandate" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 18px; overflow: hidden; display: grid; grid-template-columns: 0.85fr 1.15fr;">
       <div style="padding: 42px; border-right: 1px solid #241c13;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;"><span data-i18n="mandate.tag">交易权限</span></div>
-        <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 32px; letter-spacing: -0.02em; margin: 14px 0 0; line-height: 1.1;" data-i18n-html="mandate.h2">你定义交易权限，<br>Agent 在边界内自主决策。</h2>
-        <p style="font-size: 14.5px; line-height: 1.65; color: #b3a891; margin: 16px 0 0;" data-i18n="mandate.desc">交易所、币种、策略族、单笔风险、杠杆、日亏损与有效期——每一项都是可执行的硬约束。超出范围立即拦截。</p>
+        <h2 class="taMandateTitle" style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;"><span data-i18n="mandate.tag">交易权限</span></h2>
+        <p class="taMandateSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 32px; letter-spacing: -0.02em; margin: 14px 0 0; line-height: 1.1;" data-i18n-html="mandate.h2">范围由你设定，<br>判断与执行交给 Agent。</p>
+        <p style="font-size: 14.5px; line-height: 1.65; color: #b3a891; margin: 16px 0 0;" data-i18n="mandate.desc">你可以按交易所、币种、策略、单笔风险、杠杆、日亏损与有效期设定范围。Agent 只在其中工作，遇到范围外的机会会保持观望。</p>
         <div style="margin-top: 24px; display: inline-flex; align-items: center; gap: 9px; background: rgba(79,208,138,0.1); border: 1px solid #244a37; border-radius: 999px; padding: 8px 14px;">
           <span style="width: 7px; height: 7px; border-radius: 999px; background: #4fd08a; box-shadow:0 0 8px #4fd08a; animation: taBlink 1.6s infinite;"></span>
           <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #4fd08a;"><span data-i18n="mandate.active">权限已生效</span></span>
@@ -237,8 +250,8 @@
   <section id="capabilities" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 96px 32px 40px;">
     <div class="taCapHead" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 40px;">
       <div>
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;">01 / <span data-i18n="cap.tag">自主交易能力 · CAPABILITIES</span></div>
-        <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="cap.h2">四个专业角色协同，从读懂市场到执行交易</h2>
+        <div class="taSectionTitle"><span class="taSectionIndex">01 /</span><h2 class="taSectionName" data-i18n="cap.tag">自主交易能力 · CAPABILITIES</h2></div>
+        <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="cap.h2">四个专业角色协同，让市场理解与交易执行自然衔接</p>
       </div>
       <p style="font-size: 15px; line-height: 1.6; color: #b3a891; max-width: 360px; margin: 0;" data-i18n="cap.desc">AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。</p>
     </div>
@@ -289,8 +302,8 @@
   <!-- LIFECYCLE with animated connector -->
   <section id="lifecycle" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 72px 32px 40px;">
     <div style="margin-bottom: 44px;">
-      <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;">02 / <span data-i18n="loop.tag">交易闭环 · LIFECYCLE</span></div>
-      <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="loop.h2">从发现机会到复盘改进，每一笔交易都有完整闭环</h2>
+      <div class="taSectionTitle"><span class="taSectionIndex">02 /</span><h2 class="taSectionName" data-i18n="loop.tag">交易闭环 · LIFECYCLE</h2></div>
+      <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="loop.h2">从发现机会到回看结果，每一步都清晰衔接</p>
     </div>
     <div style="position: relative; background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 18px; padding: 40px 34px;">
       <svg viewBox="0 0 1000 4" preserveAspectRatio="none" style="position:absolute; left:34px; right:34px; width:calc(100% - 68px); top:78px; height:4px;"><line x1="0" y1="2" x2="1000" y2="2" stroke="#2c2318" stroke-width="3"/><line x1="0" y1="2" x2="1000" y2="2" stroke="#ff7a2f" stroke-width="3" stroke-dasharray="14 1000" stroke-dashoffset="0" style="animation: taDash 6s linear infinite;"/></svg>
@@ -313,9 +326,9 @@
       <div style="position:absolute; top:-80px; left:-60px; width:340px; height:340px; border-radius:999px; background:radial-gradient(circle,rgba(239,107,82,0.14),transparent 65%); filter:blur(20px);"></div>
       <div class="taGuardGrid" style="display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; position: relative;">
         <div>
-          <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;">03 / <span data-i18n="guard.tag">权限与风控 · GUARDRAILS</span></div>
-          <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0; color: #f2ead9; line-height: 1.08;" data-i18n-html="guard.h2">每一笔交易，<br>都必须通过权限与风控。</h2>
-          <p style="font-size: 15.5px; line-height: 1.7; color: #b3a891; margin: 20px 0 0; max-width: 400px;" data-i18n="guard.desc">硬风控不是可选项。授权范围、密钥隔离与熔断机制在代码层强制执行,任何角色、任何 Skill 都无法绕过。</p>
+          <div class="taSectionTitle"><span class="taSectionIndex">03 /</span><h2 class="taSectionName" data-i18n="guard.tag">权限与风控 · GUARDRAILS</h2></div>
+          <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0; color: #f2ead9; line-height: 1.08;" data-i18n-html="guard.h2">让每一次交易，<br>都在清晰的规则中进行。</p>
+          <p style="font-size: 15.5px; line-height: 1.7; color: #b3a891; margin: 20px 0 0; max-width: 400px;" data-i18n="guard.desc">交易权限、密钥隔离与紧急停止被落实在系统中，让 Agent 可以自主行动，也始终保持在你设定的范围内。</p>
           <div style="margin-top: 28px; display: inline-flex; align-items: center; gap: 10px; background: rgba(239,107,82,0.1); border: 1px solid #4a2820; border-radius: 999px; padding: 9px 16px;">
             <span style="width: 8px; height: 8px; border-radius: 999px; background: #ef6b52; box-shadow:0 0 8px #ef6b52;"></span>
             <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.04em; color: #f2ead9;"><span data-i18n="guard.kill">紧急停止</span> · EMERGENCY CONTROL READY</span>
@@ -336,9 +349,9 @@
   <!-- KNOWLEDGE with flowing pipeline -->
   <section id="knowledge" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 96px 32px 40px;">
     <div style="margin-bottom: 44px; max-width: 640px;">
-      <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;">04 / <span data-i18n="know.tag">交易知识库 · KNOWLEDGE</span></div>
-      <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="know.h2">把研究、策略与真实复盘，沉淀为下一次更好的决策</h2>
-      <p style="font-size: 15.5px; line-height: 1.65; color: #b3a891; margin: 18px 0 0;" data-i18n="know.desc">把书籍、研报、网页、GitHub 与你的复盘转化为可调用的概念、框架、规则与反方观点——并在每一次决策时召回。</p>
+      <div class="taSectionTitle"><span class="taSectionIndex">04 /</span><h2 class="taSectionName" data-i18n="know.tag">交易知识库 · KNOWLEDGE</h2></div>
+      <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="know.h2">研究、策略与真实复盘，持续沉淀为下一次判断的依据</p>
+      <p style="font-size: 15.5px; line-height: 1.65; color: #b3a891; margin: 18px 0 0;" data-i18n="know.desc">书籍、研报、网页、GitHub 与真实复盘会被整理成概念、框架、规则与反方观点，在需要判断时回到上下文中。</p>
     </div>
     <div class="taKnowGrid" style="display: grid; grid-template-columns: 1fr 60px 1fr 60px 1fr; gap: 12px; align-items: stretch;">
       <div style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 14px; padding: 24px;">
