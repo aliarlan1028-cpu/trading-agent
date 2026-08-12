@@ -16,8 +16,8 @@
 
     "hero.badge": ["数字货币自主交易 Agent", "Autonomous crypto trading"],
     "hero.h1": [
-      '授权后自主交易,<br><span style="' + GRAD + '">绝不无边界。</span>',
-      'Autonomous trading,<br><span style="' + GRAD + '">within your rules.</span>'
+      '让 Agent 自主交易，<br><span style="' + GRAD + '">让每一步都有边界。</span>',
+      'Let the agent trade autonomously.<br><span style="' + GRAD + '">Keep every action within bounds.</span>'
     ],
     "hero.sub": ["真正自主执行，但始终受你设定的边界约束。", "Real autonomy, always inside the boundaries you set."],
     "hero.desc": [
@@ -46,7 +46,7 @@
     "metric.always": ["全天候感知执行", "Always monitoring"],
 
     "mandate.tag": ["交易权限", "TRADING PERMISSIONS"],
-    "mandate.h2": ["你划定边界,<br>Agent 只在框内行动", "You set the limits.<br>The agent stays inside them."],
+    "mandate.h2": ["你定义交易权限，<br>Agent 在边界内自主决策。", "You define the trading authority.<br>The agent decides within it."],
     "mandate.desc": [
       "交易所、币种、策略族、单笔风险、杠杆、日亏损与有效期——每一项都是可执行的硬约束。超出范围立即拦截。",
       "Choose the exchange, markets, strategies, risk per trade, leverage, daily loss limit, and expiry. These are enforced controls, not suggestions—anything outside them is blocked."
@@ -58,8 +58,8 @@
     "mandate.symbols": ["允许的交易对 · ALLOWED PAIRS", "ALLOWED PAIRS"],
     "mandate.expires": ["有效期 · EXPIRES", "EXPIRES"],
 
-    "cap.tag": ["能力 · CAPABILITIES", "CAPABILITIES"],
-    "cap.h2": ["四个专业角色,一套交易大脑", "Four specialist roles, one trading brain"],
+    "cap.tag": ["自主交易能力 · CAPABILITIES", "AUTONOMOUS CAPABILITIES"],
+    "cap.h2": ["四个专业角色协同，从读懂市场到执行交易", "Four specialist roles, from market insight to trade execution"],
     "cap.desc": [
       "AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。",
       "The AI trader, risk officer, knowledge system, and events analyst work together across research, decisions, execution, and review."
@@ -85,8 +85,8 @@
       "Tracks CPI, FOMC decisions, ETF flows, exchange maintenance, on-chain anomalies, and token unlocks, then feeds their potential impact into trading and risk decisions."
     ],
 
-    "loop.tag": ["闭环 · LIFECYCLE", "LIFECYCLE"],
-    "loop.h2": ["从感知到复盘的交易闭环", "A trading loop from sensing to review"],
+    "loop.tag": ["交易闭环 · LIFECYCLE", "TRADING LIFECYCLE"],
+    "loop.h2": ["从发现机会到复盘改进，每一笔交易都有完整闭环", "From opportunity to review, every trade completes the loop"],
     "loop.1t": ["市场与事件感知", "Sense markets & events"],
     "loop.1d": ["行情、盘口、资金费率、OI 与事件雷达持续输入。", "Prices, order book, funding, OI and an event radar stream in continuously."],
     "loop.2t": ["知识召回", "Knowledge recall"],
@@ -104,8 +104,8 @@
     "loop.8t": ["复盘进化", "Review & evolve"],
     "loop.8d": ["复盘盈亏归因与偏差,写回记忆与知识库候选规则。", "Reviews PnL attribution and drift, writing back to memory and candidate rules."],
 
-    "guard.tag": ["风控 · GUARDRAILS", "GUARDRAILS"],
-    "guard.h2": ["边界写进系统,<br>而非写进承诺", "Boundaries in the system,<br>not in promises"],
+    "guard.tag": ["权限与风控 · GUARDRAILS", "AUTHORITY & GUARDRAILS"],
+    "guard.h2": ["每一笔交易，<br>都必须通过权限与风控。", "Every trade<br>must pass permissions and risk controls."],
     "guard.desc": [
       "硬风控不是可选项。交易权限、密钥隔离与紧急停止机制在代码层强制执行，任何角色、任何 Skill 都无法绕过。",
       "Hard risk controls are enforced in code. Trading permissions, secret isolation, and emergency stops cannot be bypassed by an agent or third-party skill."
@@ -124,8 +124,8 @@
     "guard.auditT": ["全程 append-only 审计", "End-to-end append-only audit"],
     "guard.auditD": ["交易、授权、风控与密钥变更不可被删除。", "Trades, authorizations, risk actions and key changes cannot be deleted."],
 
-    "know.tag": ["知识库 · KNOWLEDGE", "KNOWLEDGE"],
-    "know.h2": ["不是资料仓库,是长期专业大脑", "Not a document store — a long-term professional brain"],
+    "know.tag": ["交易知识库 · KNOWLEDGE", "TRADING KNOWLEDGE"],
+    "know.h2": ["把研究、策略与真实复盘，沉淀为下一次更好的决策", "Turn research, strategy, and real reviews into better decisions ahead"],
     "know.desc": [
       "把书籍、研报、网页、GitHub 与你的复盘转化为可调用的概念、框架、规则与反方观点——并在每一次决策时召回。",
       "Turns books, research, web pages, GitHub and your reviews into callable concepts, frameworks, rules and counter-views — recalled on every decision."
