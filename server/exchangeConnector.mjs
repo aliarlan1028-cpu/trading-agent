@@ -76,6 +76,7 @@ async function fetchPublicTicker(exchange, symbol) {
     const response = await fetch(`${OKX_TICKER_URL}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
     if (!response.ok) throw new Error(`OKX ticker HTTP ${response.status}`);
     const payload = await response.json();
+    if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX ticker API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     const ticker = payload.data?.[0];
     if (!ticker) throw new Error("OKX ticker missing data");
     const last = Number(ticker.last);
@@ -101,6 +102,25 @@ async function fetchPublicTicker(exchange, symbol) {
 // 高频只读场景（观察哨每分钟核对）用：拉一次 ticker，不写审计/trace，不动 db。
 export async function fetchTickerQuiet(symbol, exchange = "OKX") {
   return fetchPublicTicker("OKX", symbol);
+}
+
+// 中频采样专用：复用公开 ticker 但不写审计/trace，避免每2分钟每币制造运维噪声。
+export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
+  const ticker = await fetchPublicTicker("OKX", symbol);
+  const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
+  db.markets ||= [];
+  let market = db.markets.find((item) => item.symbol === displaySymbol);
+  if (!market) { market = { symbol: displaySymbol, candles: [], status: "not_synced" }; db.markets.push(market); }
+  market.price = ticker.price;
+  market.high24h = ticker.high24h;
+  market.low24h = ticker.low24h;
+  if (Number.isFinite(ticker.changePct)) market.changePct = ticker.changePct;
+  market.lastSyncedExchange = ticker.exchange;
+  market.lastSyncedAt = nowIso();
+  market.tickerSyncedAt = market.lastSyncedAt;
+  market.tickerSourceAt = Number.isFinite(Number(ticker.rawTime)) ? new Date(Number(ticker.rawTime)).toISOString() : null;
+  market.status = "synced";
+  return ticker;
 }
 
 // 拉 OKX 资金费率历史，返回 |资金费率%| 的第 pct 百分位——给"资金费率极端"做该币自适应阈值
@@ -154,6 +174,7 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
     const response = await fetch(url, { signal: timer.signal });
     if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
     const payload = await response.json();
+    if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX klines API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     const rows = (payload.data || []).map((row) => ({
       time: Number(row[0]),
       open: Number(row[1]),
@@ -235,7 +256,7 @@ function bookImbalance(bids = [], asks = []) {
 }
 
 // 同步微观结构并缓存到 market 对象，返回带解读的摘要。
-export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT") {
+export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT", options = {}) {
   exchange = "OKX";
   const result = await fetchMicrostructureRaw("OKX", symbol);
   const usedExchange = "OKX";
@@ -255,7 +276,7 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   market.spreadBps = result.spreadBps;
   market.microSyncedAt = nowIso();
   market.microSourceTimestamps = result.sourceTimestamps;
-  appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
+  if (options.quiet !== true) appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
   const funding = result.fundingRatePct;
   const interpretation = [];
   if (Number.isFinite(funding)) {
@@ -266,7 +287,7 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   if (Number.isFinite(result.bookImbalancePct)) {
     interpretation.push(result.bookImbalancePct >= 58 ? "订单簿买盘占优" : result.bookImbalancePct <= 42 ? "订单簿卖盘占优" : "订单簿买卖均衡");
   }
-  return { ...result, interpretation: interpretation.join("；") || "微观结构数据不足" };
+  return { ...result, observedAt: market.microSyncedAt, interpretation: interpretation.join("；") || "微观结构数据不足" };
 }
 
 // OKX 分页取数：先取最近 300，再用 history-candles 用 after 往回翻，直到 target 根。
@@ -280,6 +301,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     const response = await fetch(`${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`, { signal: recentTimer.signal });
     if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
     const payload = await response.json();
+    if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX candles API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     raw.push(...(payload.data || []));
   } finally {
     recentTimer.cancel();
@@ -295,6 +317,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
       const response = await fetch(`${OKX_BASE}/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`, { signal: pageTimer.signal });
       if (!response.ok) break;
       const payload = await response.json();
+      if (String(payload?.code ?? "0") !== "0") break;
       batch = payload.data || [];
     } catch {
       break;

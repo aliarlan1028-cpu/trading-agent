@@ -5,7 +5,7 @@ import { nowIso } from "./store.mjs";
 const WIDTH = 1080;
 const HEIGHT = 1440;
 const SITE_URL = process.env.POSTER_SITE_URL || "https://yegidawir.xyz/";
-const KORDYN_LOGO_DATA_URL = `data:image/png;base64,${readFileSync(new URL("../public/kordyn-logo.png", import.meta.url)).toString("base64")}`;
+const KORDYN_LOGO_DATA_URL = `data:image/svg+xml;base64,${readFileSync(new URL("../public/kordyn-logo.svg", import.meta.url)).toString("base64")}`;
 // 装了 fonts-noto-cjk + fonts-dejavu-core(见 Dockerfile),librsvg 才能渲染中英文字。
 const FONT = "'Noto Sans CJK SC','DejaVu Sans','Inter',Arial,sans-serif";
 

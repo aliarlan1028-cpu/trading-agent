@@ -41,6 +41,9 @@ test("明确保存 150U 后可开启；开启期间不能把目标清空", () =>
   handler({ body: { dailyGoalUsdt: 150, dailyGoalBreakevenEnabled: true }, user: { name: "Owner" } }, res);
   assert.equal(res.statusCode, 200);
   assert.equal(db.system.dailyGoalUsdt, 150);
+  assert.equal(db.system.monthlyGoalUsdt, 4650);
+  assert.equal(db.system.monthlyGoalDays, 31);
+  assert.equal(db.system.monthlyGoalDerived, true);
   assert.equal(db.system.dailyGoalBreakevenEnabled, true);
 
   res = response();
@@ -48,4 +51,13 @@ test("明确保存 150U 后可开启；开启期间不能把目标清空", () =>
   assert.equal(res.statusCode, 400);
   assert.equal(db.system.dailyGoalUsdt, 150, "校验失败不能留下部分内存修改");
   assert.equal(db.system.dailyGoalBreakevenEnabled, true);
+});
+
+test("月目标只能由日目标乘当月天数派生，旧客户端传值也不能覆盖", () => {
+  const { db, handler } = setup();
+  const res = response();
+  handler({ body: { dailyGoalUsdt: 100, monthlyGoalUsdt: 999999 }, user: { name: "Owner" } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(db.system.monthlyGoalUsdt, 3100);
+  assert.equal(db.system.monthlyGoalPeriod, "2026-08");
 });

@@ -165,6 +165,11 @@ const data = {
   publicRegistrationEnabled: false
 };
 data.watchTriggers = [{ id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, status: "active", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }];
+data.watchBoard = [{
+  symbol: "BTC/USDT", count: 2, analysisId: "run_watch", analysisAt: "2026-07-25T00:05:00Z", analysisTitle: "BTC 1H 结构等待突破确认",
+  primary: { id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, status: "active", priority: "primary", purpose: "decision", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" },
+  secondary: [{ id: "w2", symbol: "BTC/USDT", kind: "price_below", level: 59000, status: "active", priority: "secondary", purpose: "invalidation", note: "跌破则当前多头假设失效", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }]
+}];
 data.abnormalVolatility = [{ symbol: "BTC/USDT", status: "elevated", riskScore: 78, realizedMovePct: 2.4, caveat: "异常波动风险升高。", caveatEn: "Abnormal-move risk is elevated." }];
 data.behaviorProfile = {
   trades: 3,
@@ -201,6 +206,10 @@ test("new capital flow, review workbench, ledger, and watch page render with rea
     const html = render(React.createElement(Comp, { data, action, ui }));
     assert.ok(html.length > 500);
   }
+  const watchHtml = render(React.createElement(C.WatchMonitorConcept, { data, action, ui }));
+  assert.match(watchHtml, /主观察哨/);
+  assert.match(watchHtml, /BTC 1H 结构等待突破确认/);
+  assert.match(watchHtml, /失效条件/);
 });
 
 test("execution and review renders every workflow zone on one page", () => {

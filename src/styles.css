@@ -8672,6 +8672,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .agWatchMeta { color: #8a8171; font-size: 11px; white-space: nowrap; }
 .agWatchCancel { border: 0; background: transparent; color: #c4b8a4; cursor: pointer; display: grid; place-items: center; padding: 2px; }
 .agWatchCancel:hover { color: #bc4b34; }
+.agWatchRow.primary{margin-top:3px;padding:7px 6px;border:1px solid #cfe3d6;border-radius:7px;background:#f5faf6}.agWatchRow.supporting{padding-left:7px}.agWatchRole{padding:1px 5px;border-radius:9px;background:#efe9df;color:#756b5d;font:700 8px var(--font-ui);font-style:normal;white-space:nowrap}.agWatchRow.primary .agWatchRole{background:#dfeee4;color:#286642}.agWatchDot.superseded{background:#8a8171;animation:none}
+.mGoalDerived{display:block;margin:7px 0 10px;color:#8a8171;font-size:11px;line-height:1.5}
 
 /* 弱网轮询失败时顶栏静默提示(替代反复弹"连接后端失败"的 toast) */
 .mReconnect { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font: 700 11px "Space Grotesk"; background: #FBEFDD; color: #B17724; }

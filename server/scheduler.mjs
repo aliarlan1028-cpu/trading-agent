@@ -3,14 +3,32 @@ import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 
 const runtime = {
   started: false,
+  saveDb: null,
   cronJobs: new Map(),
   intervalJobs: new Map(),
   timeoutJobs: new Map()
 };
 
-// 真实任务处理器注册表：task.handler 命中时执行真实函数，
-// 否则退回旧的关键词描述行为。由 index.mjs 在启动时注册。
+// 真实任务处理器注册表：任务只有命中已注册处理器才算执行成功。
+// 由 index.mjs 在启动时注册，禁止再用任务名称猜测行为。
 const taskHandlers = new Map();
+
+// 普通用户可创建的任务只允许调用这些确定存在、且不会绕过交易授权链的处理器。
+// 系统任务仍可使用完整注册表，但必须由 ensureSystemTask 创建并标成 systemManaged。
+export const USER_TASK_HANDLERS = Object.freeze([
+  "reminder",
+  "agent_mission",
+  "accounting_refresh",
+  "reconcile",
+  "event_refresh",
+  "market_signal_refresh",
+  "strategy_research",
+  "paper_forward",
+  "trade_reflection",
+  "missed_opportunity_review"
+]);
+const USER_TASK_HANDLER_SET = new Set(USER_TASK_HANDLERS);
+const MAX_TIMEOUT_MS = 2_147_000_000;
 
 export function registerTaskHandler(name, fn) {
   taskHandlers.set(name, fn);
@@ -23,10 +41,11 @@ export function ensureSystemTask(db, task, saveDb) {
     for (const key of ["name", "handler", "schedule", "type", "role", "concurrencyKey", "startupCatchup", "startupDelayMs", "timezone"]) {
       if (task[key] !== undefined) existing[key] = task[key];
     }
+    existing.systemManaged = true;
     if (runtime.started) scheduleTask(db, existing, saveDb);
     return existing;
   }
-  const created = { enabled: true, type: "Every", role: "系统", createdAt: nowIso(), ...task };
+  const created = { enabled: true, type: "Every", role: "系统", systemManaged: true, createdAt: nowIso(), ...task };
   db.tasks.push(created);
   if (runtime.started) scheduleTask(db, created, saveDb);
   return created;
@@ -41,6 +60,7 @@ export function overdueLongTasks(db, now = Date.now()) {
   return (db.tasks || []).filter((task) => {
     if (!task.enabled || String(task.type || "").toLowerCase() !== "every") return false;
     const intervalMs = parseEveryMs(task.schedule);
+    if (!intervalMs) return false;
     if (intervalMs < MIN_INTERVAL_MS && task.startupCatchup !== true) return false;
     if (!task.lastRunAt) return true; // 从未跑过的长间隔任务也补
     return now - new Date(task.lastRunAt).getTime() > intervalMs;
@@ -50,6 +70,9 @@ export function overdueLongTasks(db, now = Date.now()) {
 export function startScheduler(db, saveDb) {
   if (runtime.started) return schedulerStatus(db);
   runtime.started = true;
+  // 后续由 API/Agent 动态新增的任务只会调用 scheduleTask(db, task)，也必须继承
+  // 启动时的持久化回调；否则定时器确实会跑，但运行历史/通知要等其他任务碰巧落盘。
+  runtime.saveDb = saveDb || null;
   // 新进程启动时不可能有运行中的任务：释放所有遗留并发锁
   for (const lock of db.jobLocks || []) {
     if (lock.locked) {
@@ -65,7 +88,14 @@ export function startScheduler(db, saveDb) {
   }
   recoverFailedRuns(db, saveDb);
   for (const task of db.tasks || []) {
-    scheduleTask(db, task, saveDb);
+    try {
+      scheduleTask(db, task, saveDb);
+    } catch (error) {
+      task.enabled = false;
+      task.status = "调度无效";
+      task.lastError = String(error.message || error);
+      appendTrace(db, "scheduled_task", `${task.name || task.id} 未进入调度：${task.lastError}`, "error");
+    }
   }
   // 超期长任务补跑:等启动稳定 2 分钟后开始,彼此错峰 90s,避免启动即 CPU 打满
   const overdue = overdueLongTasks(db);
@@ -73,6 +103,8 @@ export function startScheduler(db, saveDb) {
     const configuredDelay = Number(task.startupDelayMs);
     const baseDelay = Number.isFinite(configuredDelay) ? Math.max(1_000, configuredDelay) : 120_000;
     const timer = setTimeout(() => {
+      runtime.timeoutJobs.delete(`catchup_${task.id}`);
+      if (!task.enabled) return;
       appendTrace(db, "scheduled_task", `${task.name} 启动补跑（上次运行 ${task.lastRunAt || "从未"}，超过间隔 ${task.schedule}）`, "ok");
       runTask(db, task.id, saveDb, "startup_catchup");
     }, baseDelay + index * 5_000);
@@ -82,36 +114,53 @@ export function startScheduler(db, saveDb) {
 }
 
 export function scheduleTask(db, task, saveDb) {
-  clearScheduledTask(task.id);
+  clearScheduledCoreTask(task.id);
   if (!task.enabled) return;
+  const persistDb = saveDb || runtime.saveDb;
+  const validation = validateTaskDefinition(task, { allowSystemHandlers: task.systemManaged === true });
+  if (!validation.valid) throw new Error(validation.errors.join("；"));
   const type = String(task.type || "").toLowerCase();
   if (type === "every") {
     const intervalMs = parseEveryMs(task.schedule);
     const timer = setInterval(() => {
-      runTask(db, task.id, saveDb, "scheduler");
+      runTask(db, task.id, persistDb, "scheduler");
     }, intervalMs);
     runtime.intervalJobs.set(task.id, timer);
     task.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
     return;
   }
   if (type === "at") {
-    const delayMs = Math.max(0, new Date(task.schedule).getTime() - Date.now());
-    const timer = setTimeout(() => runTask(db, task.id, saveDb, "scheduler"), delayMs);
-    runtime.timeoutJobs.set(task.id, timer);
-    task.nextRunAt = new Date(Date.now() + delayMs).toISOString();
+    armAtTask(db, task, persistDb);
     return;
   }
   if (type === "cron") {
     const expression = normalizeCron(task.schedule);
-    if (cron.validate(expression)) {
-      const options = task.timezone ? { timezone: task.timezone } : undefined;
-      const job = cron.schedule(expression, () => runTask(db, task.id, saveDb, "scheduler"), options);
-      runtime.cronJobs.set(task.id, job);
-      task.normalizedCron = expression;
-    } else {
-      task.status = "调度表达式无效";
-    }
+    const options = task.timezone ? { timezone: task.timezone } : undefined;
+    const job = cron.schedule(expression, () => runTask(db, task.id, persistDb, "scheduler"), options);
+    runtime.cronJobs.set(task.id, job);
+    task.normalizedCron = expression;
+    task.nextRunAt = null; // node-cron 不暴露可靠的下一次时间，避免沿用旧值误导前端。
   }
+}
+
+function armAtTask(db, task, saveDb) {
+  const dueAt = new Date(task.schedule).getTime();
+  const remaining = dueAt - Date.now();
+  if (remaining <= 0) {
+    task.enabled = false;
+    task.status = "已过期";
+    task.nextRunAt = null;
+    return;
+  }
+  const delayMs = Math.min(remaining, MAX_TIMEOUT_MS);
+  const timer = setTimeout(() => {
+    runtime.timeoutJobs.delete(task.id);
+    if (!task.enabled) return;
+    if (dueAt - Date.now() > 500) return armAtTask(db, task, saveDb);
+    runTask(db, task.id, saveDb, "scheduler");
+  }, delayMs);
+  runtime.timeoutJobs.set(task.id, timer);
+  task.nextRunAt = new Date(dueAt).toISOString();
 }
 
 export function stopScheduler() {
@@ -122,9 +171,10 @@ export function stopScheduler() {
   runtime.intervalJobs.clear();
   runtime.timeoutJobs.clear();
   runtime.started = false;
+  runtime.saveDb = null;
 }
 
-function clearScheduledTask(taskId) {
+function clearScheduledCoreTask(taskId) {
   const cronJob = runtime.cronJobs.get(taskId);
   if (cronJob) cronJob.stop();
   runtime.cronJobs.delete(taskId);
@@ -136,6 +186,17 @@ function clearScheduledTask(taskId) {
   const timeout = runtime.timeoutJobs.get(taskId);
   if (timeout) clearTimeout(timeout);
   runtime.timeoutJobs.delete(taskId);
+}
+
+// 暂停/删除必须同时清掉主计时器、启动补跑和所有待重试计时器。
+export function unscheduleTask(taskId) {
+  clearScheduledCoreTask(taskId);
+  for (const [key, timer] of runtime.timeoutJobs) {
+    if (key === `catchup_${taskId}` || key.startsWith(`${taskId}:retry:`)) {
+      clearTimeout(timer);
+      runtime.timeoutJobs.delete(key);
+    }
+  }
 }
 
 export function schedulerStatus(db) {
@@ -153,6 +214,7 @@ export function schedulerStatus(db) {
 export async function runTask(db, taskId, saveDb, trigger = "manual") {
   const task = db.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing_task", taskId };
+  if (task.enabled === false) return { status: "skipped_disabled", taskId, trigger };
 
   const LOCK_TTL_MS = 10 * 60_000;
   const lock = db.jobLocks.find((item) => item.concurrencyKey === (task.concurrencyKey || task.id) && item.locked);
@@ -171,47 +233,23 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
   db.jobLocks.unshift(lockEntry);
   try {
     if (task.forceFailure) throw new Error("任务被配置为强制失败，用于测试重试机制。");
-    let output = `${task.name} 已完成一次运行。`;
+    if (!task.handler || !taskHandlers.has(task.handler)) {
+      throw new Error(task.handler ? `任务处理器未注册：${task.handler}` : "任务未配置可执行处理器");
+    }
+    let output;
     if (task.handler && taskHandlers.has(task.handler)) {
       const result = await taskHandlers.get(task.handler)(db, task);
+      const resultStatus = result && typeof result === "object" ? String(result.status || "").toLowerCase() : "";
+      if (["failed", "error"].includes(resultStatus)) {
+        throw new Error(result.error || result.reason || `${task.handler} 返回失败状态`);
+      }
       output = typeof result === "string" ? result : summarizeHandlerResult(task.handler, result);
       const skipPersist = result && typeof result === "object" && result.skipPersist === true && trigger !== "manual";
-      const run = recordRun(db, task, "ok", output, trigger, saveDb, { skipPersist });
       task.failureCount = 0;
       task.lastError = null;
+      const run = recordRun(db, task, resultStatus === "partial" ? "partial" : "ok", output, trigger, saveDb, { skipPersist });
       return run;
     }
-    if (task.id.includes("market") || task.name.includes("行情")) {
-      const syncedMarkets = (db.markets || []).filter((market) => market.status === "synced" || market.price);
-      output = syncedMarkets.length
-        ? `已检查 ${syncedMarkets.map((market) => market.symbol).join("、")} 的已同步公开行情。`
-        : "未同步真实行情；请先刷新公开行情或配置交易所 API。";
-    }
-    if (task.id.includes("reconcile") || task.name.includes("仓位")) {
-      output = (db.exchangeAccounts || []).some((account) => account.readEnabled)
-        ? "已完成持仓、挂单、止损和风控状态心跳检查。"
-        : "未配置交易所 API，跳过私有账户对账。";
-    }
-    if (task.id.includes("event") || task.name.includes("事件")) {
-      const event = db.events[0];
-      if (event) {
-        event.progress ||= [];
-        event.progress.unshift(`自动刷新：${new Date().toLocaleString("zh-CN")}`);
-        event.latestUpdateAt = nowIso();
-      }
-      output = event ? "已刷新重要事件进度并更新事件卡。" : "暂无真实事件卡；可先刷新事件源。";
-    }
-    if (task.id.includes("daily") || task.name.includes("复盘")) {
-      db.reviews.unshift({ id: id("review"), title: "自动日终复盘", summary: "当前没有真实交易记录；复盘仅汇总系统状态、任务日志与风控配置。", tags: ["自动复盘"], createdAt: nowIso() });
-      output = "已生成无交易日终复盘草案。";
-    }
-    if (task.name.includes("知识")) {
-      output = "已检查知识来源版本、过期状态和待审批规则。";
-    }
-    const run = recordRun(db, task, "ok", output, trigger, saveDb);
-    task.failureCount = 0;
-    task.lastError = null;
-    return run;
   } catch (error) {
     task.failureCount = Number(task.failureCount || 0) + 1;
     task.lastError = error.message;
@@ -242,9 +280,16 @@ function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
   task.lastRunAt = nowIso();
   // 这是“本次运行结束”时记录状态，不能永远写成运行中；否则前端会把已经完成、
   // 已失败或被并发锁跳过的任务全部误报为正在执行。
-  task.status = !task.enabled ? "暂停" : status === "ok" ? "完成" : status === "failed" ? "失败" : "等待";
+  const oneShotComplete = String(task.type).toLowerCase() === "at" && ["ok", "partial"].includes(status) && trigger !== "manual";
+  if (oneShotComplete) {
+    task.enabled = false;
+    task.status = "已完成";
+    task.nextRunAt = null;
+  } else {
+    task.status = !task.enabled ? "暂停" : status === "ok" ? "完成" : status === "partial" ? "部分完成" : status === "failed" ? "失败" : "等待";
+  }
   const intervalMs = parseEveryMs(task.schedule);
-  if (String(task.type).toLowerCase() === "every") task.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
+  if (String(task.type).toLowerCase() === "every" && intervalMs) task.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
   // 空转任务(如未配置 WORM 的外送、无待办的支付核验)不写 jobRun/审计、不触发全库落盘——
   // 此前每分钟 3 个任务空跑也各做一次全库序列化(审计 §7.5)。仅后台触发时生效,手动运行仍完整记录。
   if (opts.skipPersist) return { task, run: null, skipped: "noop_not_persisted" };
@@ -257,43 +302,72 @@ function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
 }
 
 function scheduleRetryIfNeeded(db, task, saveDb, failedRun) {
+  if (!failedRun || task.enabled === false) return;
   const policy = task.retryPolicy || task.retry_policy || { maxRetries: 2, backoffSeconds: 30 };
-  const maxRetries = Number(policy.maxRetries ?? policy.max_retries ?? 2);
-  const backoffSeconds = Number(policy.backoffSeconds ?? policy.backoff_seconds ?? 30);
-  const retryCount = Number(failedRun.retryCount || 0);
+  const maxRetries = Math.max(0, Math.min(10, Number(policy.maxRetries ?? policy.max_retries ?? 2) || 0));
+  const backoffSeconds = Math.max(1, Math.min(86_400, Number(policy.backoffSeconds ?? policy.backoff_seconds ?? 30) || 30));
+  const retryCount = Math.max(0, Number(task.failureCount || 1) - 1);
+  failedRun.retryCount = retryCount;
   if (retryCount >= maxRetries) {
     task.status = "失败";
+    if (String(task.type).toLowerCase() === "at") {
+      task.enabled = false;
+      task.nextRunAt = null;
+    }
+    if (saveDb) saveDb(db);
     return;
   }
   failedRun.status = "retry_scheduled";
   failedRun.nextRetryAt = new Date(Date.now() + backoffSeconds * 1000).toISOString();
   failedRun.retryCount = retryCount + 1;
   const timer = setTimeout(async () => {
+    runtime.timeoutJobs.delete(`${task.id}:retry:${failedRun.id}`);
+    if (task.enabled === false) return;
     const retryResult = await runTask(db, task.id, saveDb, "retry"); // runTask 是 async,此前不 await 导致 retryOf 永远写不上
-    if (retryResult?.run) retryResult.run.retryOf = failedRun.id;
+    if (retryResult?.run) {
+      retryResult.run.retryOf = failedRun.id;
+      if (saveDb) saveDb(db);
+    }
   }, backoffSeconds * 1000);
   runtime.timeoutJobs.set(`${task.id}:retry:${failedRun.id}`, timer);
+  if (saveDb) saveDb(db);
 }
 
 function recoverFailedRuns(db, saveDb) {
-  const pending = (db.jobRuns || []).filter((run) => run.status === "retry_scheduled" && run.nextRetryAt && new Date(run.nextRetryAt).getTime() <= Date.now());
+  const pending = (db.jobRuns || []).filter((run) => run.status === "retry_scheduled" && run.nextRetryAt);
   for (const run of pending.slice(0, 20)) {
     const task = db.tasks.find((item) => item.id === run.taskId);
     if (!task || !task.enabled) continue;
-    run.status = "retry_recovered";
-    setTimeout(() => runTask(db, task.id, saveDb, "recovered_retry"), 250);
+    const key = `${task.id}:retry:recovered:${run.id}`;
+    const runRecoveredRetry = () => {
+      runtime.timeoutJobs.delete(key);
+      if (!task.enabled) return;
+      const remaining = new Date(run.nextRetryAt).getTime() - Date.now();
+      if (remaining > MAX_TIMEOUT_MS) {
+        const later = setTimeout(runRecoveredRetry, MAX_TIMEOUT_MS);
+        runtime.timeoutJobs.set(key, later);
+        return;
+      }
+      run.status = "retry_recovered";
+      runTask(db, task.id, saveDb, "recovered_retry");
+    };
+    const delayMs = Math.max(250, Math.min(MAX_TIMEOUT_MS, new Date(run.nextRetryAt).getTime() - Date.now()));
+    const timer = setTimeout(runRecoveredRetry, delayMs);
+    runtime.timeoutJobs.set(key, timer);
   }
 }
 
-function parseEveryMs(schedule = "") {
-  const text = String(schedule);
-  const minuteMatch = text.match(/(\d+)\s*(m|分钟|min)/i);
+export function parseEveryMs(schedule = "") {
+  const text = String(schedule).trim();
+  const minuteMatch = text.match(/^Every\s+(\d+)\s*(m|分钟|min)$/i);
   if (minuteMatch) return Math.max(30_000, Number(minuteMatch[1]) * 60_000);
-  const secondMatch = text.match(/(\d+)\s*(s|秒|sec)/i);
+  const secondMatch = text.match(/^Every\s+(\d+)\s*(s|秒|sec)$/i);
   if (secondMatch) return Math.max(30_000, Number(secondMatch[1]) * 1000);
-  const hourMatch = text.match(/(\d+)\s*(h|小时|hour)/i);
+  const hourMatch = text.match(/^Every\s+(\d+)\s*(h|小时|hour)$/i);
   if (hourMatch) return Number(hourMatch[1]) * 3_600_000;
-  return 300_000;
+  const dayMatch = text.match(/^Every\s+(\d+)\s*(d|天|day)$/i);
+  if (dayMatch) return Number(dayMatch[1]) * 86_400_000;
+  return null;
 }
 
 function normalizeCron(schedule = "") {
@@ -302,4 +376,41 @@ function normalizeCron(schedule = "") {
   const daily = text.match(/每天\s*(\d{1,2}):(\d{2})/);
   if (daily) return `${Number(daily[2])} ${Number(daily[1])} * * *`;
   return text;
+}
+
+export function validateTaskDefinition(task = {}, { allowSystemHandlers = false, now = Date.now() } = {}) {
+  const errors = [];
+  const name = String(task.name || "").trim();
+  const type = String(task.type || "").trim();
+  const handler = String(task.handler || "").trim();
+  if (!name || name.length > 80) errors.push("任务名称必须为 1–80 个字符");
+  if (task.enabled !== undefined && typeof task.enabled !== "boolean") errors.push("enabled 必须是布尔值");
+  if (!["Every", "Cron", "At"].includes(type)) errors.push("任务类型必须是 Every / Cron / At");
+  if (!handler) errors.push("任务必须选择可执行处理器");
+  else if (!allowSystemHandlers && !USER_TASK_HANDLER_SET.has(handler)) errors.push(`不允许使用任务处理器：${handler}`);
+  else if (allowSystemHandlers && !taskHandlers.has(handler)) errors.push(`系统任务处理器未注册：${handler}`);
+  if (type === "Every") {
+    const intervalMs = parseEveryMs(task.schedule);
+    if (!intervalMs) errors.push("Every 表达式无效，例如 Every 15m / Every 1h");
+    else if (!allowSystemHandlers && intervalMs < 60_000) errors.push("普通任务最短间隔为 1 分钟");
+  }
+  if (type === "Cron") {
+    const expression = normalizeCron(task.schedule);
+    if (!cron.validate(expression)) errors.push("Cron 表达式无效");
+    else if (!allowSystemHandlers && expression.split(/\s+/).length !== 5) errors.push("普通任务只允许分钟级 5 段 Cron");
+  }
+  if (type === "At") {
+    const at = new Date(task.schedule).getTime();
+    if (!Number.isFinite(at)) errors.push("一次性运行时间无效");
+    else if (at <= now) errors.push("一次性运行时间必须晚于当前时间");
+  }
+  if (task.timezone) {
+    try { new Intl.DateTimeFormat("en-US", { timeZone: task.timezone }).format(); }
+    catch { errors.push("时区无效"); }
+  }
+  if (handler === "agent_mission") {
+    const mission = String(task.mission || "").trim();
+    if (!mission || mission.length > 1000) errors.push("情报任务目标必须为 1–1000 个字符");
+  }
+  return { valid: errors.length === 0, errors };
 }

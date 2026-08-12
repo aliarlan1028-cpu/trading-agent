@@ -7,7 +7,7 @@ import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { deriveAutomationState } from "./ops.mjs";
 import { analyzeMarketStructure } from "./setupReview.mjs";
-import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
+import { abortWatchAnalysis, buildWatchBoard, cancelWatch, describeWatch, finalizeWatchAnalysis, registerWatch } from "./watchSentinel.mjs";
 import { correctUnbackedWatchRegistration } from "./watchClaimGuard.mjs";
 import { armedSetupAutomationAllowed, armTradeSetup, normalizeScenarioSpec, normalizeTriggerSpec } from "./armedSetup.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
@@ -28,7 +28,7 @@ import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
 import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { setConfig } from "./runtimeConfig.mjs";
-import { scheduleTask } from "./scheduler.mjs";
+import { scheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
 import { enforceEvidenceFacts } from "./evidenceFactGuard.mjs";
@@ -302,7 +302,7 @@ const TOOL_DEFS = [
   },
   {
     name: "create_task",
-    description: "按用户要求创建定时任务。可创建 Every/Cron/At 类型任务，适合巡检、刷新事件、账户同步、对账、策略研究等。handler 含义：agent_cycle=自主巡检决策一轮；execution_poll=轮询挂单/持仓成交；position_monitor=持仓护航；reconcile=账户对账；accounting_refresh=账务刷新；event_refresh=刷新事件源；market_signal_refresh=刷新大盘/聪明钱信号；okx_readonly_sync=OKX只读同步；strategy_research=策略研究；strategy_improvement=策略自进化改进闭环；paper_forward=模拟前向验证推进；trade_reflection=平仓复盘；missed_opportunity_review=错过机会复盘；watch_sentinel=重估观察哨。留空则为普通提醒任务。",
+    description: "按用户明确要求创建定时任务。只允许低风险处理器；留空时创建真正会写入通知中心的普通提醒。交易执行、持仓控制和系统维护任务不能通过对话创建。",
     schema: {
       type: "object",
       properties: {
@@ -310,7 +310,7 @@ const TOOL_DEFS = [
         type: { type: "string", enum: ["Every", "Cron", "At"] },
         schedule: { type: "string", description: "例如 Every 15m、0 */6 * * *、2026-07-06T10:00:00.000Z" },
         role: { type: "string" },
-        handler: { type: "string", enum: ["", "execution_poll", "position_monitor", "accounting_refresh", "agent_cycle", "reconcile", "strategy_research", "strategy_improvement", "paper_forward", "event_refresh", "market_signal_refresh", "okx_readonly_sync", "trade_reflection", "missed_opportunity_review", "watch_sentinel"] }
+        handler: { type: "string", enum: ["", "accounting_refresh", "reconcile", "strategy_research", "paper_forward", "event_refresh", "market_signal_refresh", "trade_reflection", "missed_opportunity_review"] }
       },
       required: ["name", "type", "schedule"]
     }
@@ -527,7 +527,7 @@ const TOOL_DEFS = [
   },
   {
     name: "register_watch",
-    description: "登记观察哨：把'若价格发生 X 则需要重新评估'的关键条件落地成结构化价格哨。哨兵每分钟用真实行情核对，条件命中（穿越语义）会立即触发一轮完整巡检让你重新决策——哨兵本身绝不下单。巡检结论里出现'若跌破/若突破/若回踩某区间'这类可执行触发条件时必须登记，不要只写在文字里。条件当前已成立时会被拒绝（此时应直接分析而不是挂哨）。同币同向且价位相近的哨会自动合并更新，不必担心重复。",
+    description: "登记观察哨：把'若价格发生 X 则需要重新评估'的关键条件落地成结构化价格哨。哨兵每分钟用真实行情核对，命中后唤起重新决策，绝不直接下单。同一币种同一轮分析可有多个不同情景，但必须用 priority 标出唯一主观察哨，并用 purpose 解释辅助条件的区别。新一轮分析会自动取代该币种旧一轮的观察哨。",
     schema: {
       type: "object",
       properties: {
@@ -537,6 +537,8 @@ const TOOL_DEFS = [
         levelLow: { type: "number", description: "enter_zone 区间下沿" },
         levelHigh: { type: "number", description: "enter_zone 区间上沿" },
         note: { type: "string", description: "登记理由与触发后的评估要点，如'放量跌破则短期偏空，评估做空'" },
+        priority: { type: "string", enum: ["primary", "secondary"], description: "同币种本轮唯一最需要用户盯住的条件填 primary；确认/失效/备选条件填 secondary" },
+        purpose: { type: "string", enum: ["decision", "confirmation", "invalidation", "alternative"], description: "decision=核心决策点，confirmation=确认条件，invalidation=当前判断失效，alternative=备选情景" },
         ttlHours: { type: "number", description: "有效期小时数，默认 24，最大 48；过期自动作废" }
       },
       required: ["symbol", "kind", "note"]
@@ -594,7 +596,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 10. 观察哨纪律【强制·最容易犯错】：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，**唯一正确做法是调用 register_watch 工具**把它登记。
    - 在回复正文里写"观察哨一览"表格、列出"哨兵/条件/距触发/逻辑"这类文字，**完全不算登记**——那只是空话，哨兵根本没在盯，等于欺骗主人。绝对禁止在文字里画观察哨表格或声称"已挂 N 个观察哨/全部保留"。
    - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
-   - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次工具，然后在文字里最多用一句话说"已登记 N 个观察哨盯盘"，不要展开成表。
+   - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次；同一币种同一轮分析必须且只能有一个 priority=primary，其余为 secondary，并用 purpose 区分确认、失效、备选情景。系统会把同币种旧分析整组取代，Telegram 只发本轮合并后的有效看板。正文最多一句"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
    - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；但白名单外的好机会可以直接 **propose_trade_plan**——系统自动标为『白名单外·一次性授权』候选、待用户确认下单(见授权白名单区块)。正常给完整分析结论，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
 11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 读取角色感知的确定性结构事实**。日内计划核对1H/15m/5m，波段计划核对1D/4H/1H；BOS/CHoCH只是带时间和价位证据的结构事实之一，不得单独垄断方向。消息面优先使用系统已有的新鲜事件/归因缓存；只有急速异动、事件驱动币或缓存缺失且消息可能改变方向时才调用 explain_market_move。联网归因限流/不可用时必须标"消息面未知"，不得编造，但普通技术结构机会不因外部消息服务故障而空等。再逐项确认——
@@ -966,13 +968,14 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
   }
 
   // 活跃观察哨：让每条对话路径都知道"哨兵正在盯什么"，避免重复登记、支持按 id 撤销。
-  const watches = listActiveWatches(db);
-  if (watches.length) {
-    const lines = watches.map((w) => {
-      const remainH = Math.max(0, Math.round((new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000));
-      return `- ${w.id}: ${describeWatch(w)} · 余 ${remainH}h${w.note ? ` · ${w.note}` : ""}`;
+  const watchBoard = buildWatchBoard(db);
+  if (watchBoard.length) {
+    const lines = watchBoard.map((group) => {
+      const remainH = Math.max(0, Math.round((new Date(group.primary.expiresAt).getTime() - Date.now()) / 3_600_000));
+      const secondary = group.secondary.map((watch) => `辅助/${watch.displayRole}: ${watch.id} ${describeWatch(watch)}`).join("；");
+      return `- ${group.symbol}｜最新分析 ${group.analysisAt || "未知"}｜主观察哨: ${group.primary.id} ${describeWatch(group.primary)} · 余 ${remainH}h${group.primary.note ? ` · ${group.primary.note}` : ""}${secondary ? `｜${secondary}` : ""}`;
     }).join("\n");
-    sections.push(`【当前观察哨（哨兵每分钟核对，命中即触发巡检；等价条件勿重复登记）】\n${lines}`);
+    sections.push(`【当前有效观察看板（每币只先盯“主观察哨”；辅助项是同一分析内的确认/失效/备选情景，不是多份相互冲突的结论）】\n${lines}`);
   }
 
   const chunks = quarantineInjectedKnowledge(db, await retrieveChunksSemantic(db, userText, 5));
@@ -1297,14 +1300,22 @@ export async function executeTool(db, run, name, args = {}) {
     if (!Number.isFinite(price) || price <= 0) {
       price = Number((db.markets || []).find((m) => m.symbol === symbol)?.price);
     }
-    const result = registerWatch(db, args, price, run?.role || "AI 交易员");
+    const result = registerWatch(db, {
+      ...args,
+      analysisId: run?.id || null,
+      analysisAt: run?.createdAt || nowIso(),
+      analysisTitle: run?.goal || "AI 市场巡检",
+      deferTelegram: true
+    }, price, run?.role || "AI 交易员");
     if (!result.ok) return { error: result.error };
     return {
       status: result.updated ? "updated" : "registered",
       watchId: result.watch.id,
       watch: describeWatch(result.watch),
+      priority: result.watch.priority,
+      purpose: result.watch.purpose,
       expiresAt: result.watch.expiresAt,
-      activeWatches: listActiveWatches(db).map((w) => `${w.id}: ${describeWatch(w)}`)
+      currentWatchBoard: buildWatchBoard(db).filter((group) => group.symbol === symbol)
     };
   }
 
@@ -1582,17 +1593,20 @@ export async function executeTool(db, run, name, args = {}) {
       type: args.type || "Every",
       schedule: args.schedule || "Every 1h",
       role: args.role || "Agent",
-      handler: args.handler || "",
+      handler: args.handler || "reminder",
       enabled: true,
-      status: "running",
+      status: "等待",
       createdAt: nowIso(),
       source: "agent_chat"
     };
+    const validation = validateTaskDefinition(task);
+    if (!validation.valid) return { status: "invalid", error: validation.errors.join("；") };
     db.tasks ||= [];
     db.tasks.unshift(task);
-    scheduleTask(db, task);
+    try { scheduleTask(db, task); }
+    catch (error) { db.tasks = db.tasks.filter((item) => item !== task); return { status: "invalid", error: error.message }; }
     appendAudit(db, `Agent 创建定时任务：${task.name}`, task.id, "AgentChat");
-    return { status: "ok", taskId: task.id, name: task.name, schedule: task.schedule, handler: task.handler || "custom" };
+    return { status: "ok", taskId: task.id, name: task.name, schedule: task.schedule, handler: task.handler };
   }
 
   if (name === "refresh_events") {
@@ -2360,6 +2374,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
+    abortWatchAnalysis(db, run.id, "AI 本轮分析失败，未启用其中的观察条件");
     advanceDecisionContext(decisionContext, "failed", error.message);
     errorText = error.message;
     run.error = errorText;
@@ -2368,6 +2383,12 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   }
 
   run.completedAt = nowIso();
+  if (run.status === "completed") {
+    finalizeWatchAnalysis(db, run.id, {
+      analysisAt: run.completedAt,
+      analysisTitle: finalText.split(/\n+/).find((line) => line.trim()) || run.goal
+    });
+  }
   if (run.tradePlanId) {
     const linkedPlan = (db.tradePlans || []).find((item) => item.id === run.tradePlanId);
     if (linkedPlan?.reviewLearning) run.reviewLearning.applied = linkedPlan.reviewLearning.applied || [];
@@ -2649,7 +2670,9 @@ function summarizeToolResult(name, result = {}) {
   if (name === "resolve_risk_incidents") return `已标记 ${result.closed || 0} 个事件为已处理，剩余 ${result.remaining ?? "-"}`;
   if (name === "register_watch") return `${result.status === "updated" ? "更新" : "已挂"}观察哨 ${result.watchId || ""}：${result.watch || "-"}${result.activeWatches?.length ? `（当前 ${result.activeWatches.length} 个活跃）` : ""}`;
   if (name === "cancel_watch") return `已撤销观察哨：${result.watch || "-"}`;
-  if (name === "create_task") return `已建定时任务「${result.name}」：${result.schedule}${result.handler && result.handler !== "custom" ? `·处理器 ${result.handler}` : "·普通提醒"}`;
+  if (name === "create_task") return result.status === "ok"
+    ? `已建定时任务「${result.name}」：${result.schedule} · 处理器 ${result.handler}`
+    : `任务未创建：${result.error || result.status}`;
   if (name === "refresh_events") return `已刷新事件源，当前 ${result.eventCount ?? 0} 个事件${result.latest?.length ? `，最新：${result.latest.map((e) => e.title).slice(0, 3).join("、")}` : ""}`;
   if (name === "explain_system") return String(result.guide || result.note || "").slice(0, 160);
   if (name === "request_action") return result.message || `已生成待确认操作：${result.pendingAction?.title || "-"}（需你点确认才执行）`;

@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import crypto from "node:crypto";
 import Parser from "rss-parser";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { fetchExternalText } from "./externalInputSafety.mjs";
@@ -46,11 +47,22 @@ function backfillEventTimelines(db) {
   }
 }
 
-export async function refreshEventSources(db) {
+export async function refreshEventSources(db, { force = false } = {}) {
   ensureDefaultEventSources(db);
   backfillEventTimelines(db);
   pruneStaleEvents(db);
-  const enabledSources = (db.eventSources || []).filter((item) => item.enabled);
+  const configuredSources = (db.eventSources || []).filter((item) => item.enabled);
+  const enabledSources = configuredSources.filter((item) => force || !item.nextRetryAt || new Date(item.nextRetryAt).getTime() <= Date.now());
+  if (!enabledSources.length) {
+    return {
+      status: "skipped",
+      reason: configuredSources.length ? "all_sources_in_backoff" : "no_enabled_sources",
+      attempted: 0,
+      results: [],
+      ingested: 0,
+      skipPersist: true
+    };
+  }
   const results = await Promise.all(enabledSources.map(async (source) => {
     const attemptedAt = nowIso();
     source.lastAttemptAt = attemptedAt;
@@ -62,11 +74,14 @@ export async function refreshEventSources(db) {
       source.lastItemCount = (result.items || []).length;
       source.lastError = null;
       source.consecutiveFailures = 0;
+      source.nextRetryAt = null;
       return result;
     } catch (error) {
       source.lastStatus = "failed";
       source.lastError = String(error.message || error).slice(0, 180);
       source.consecutiveFailures = Number(source.consecutiveFailures || 0) + 1;
+      const backoffMs = Math.min(6 * 60 * 60_000, 5 * 60_000 * (2 ** Math.min(6, source.consecutiveFailures - 1)));
+      source.nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
       return { sourceId: source.id, status: "failed", error: source.lastError, items: [] };
     }
   }));
@@ -80,9 +95,26 @@ export async function refreshEventSources(db) {
   sortEventsByRecency(db);
   // 信息面智能:对新拉取的新闻做可信度/交叉验证/情绪/影响币种/计价程度/假消息 富化(用现有 LLM,失败不阻断)。
   try { const { enrichEvents } = await import("./newsIntelligence.mjs"); await enrichEvents(db); } catch { /* 信息面富化失败不影响事件刷新 */ }
-  appendAudit(db, "刷新真实事件源", "event_sources", "EventSourceManager", results.some((r) => r.status === "failed") ? "warning" : "info");
-  appendTrace(db, "event_sources", "refresh event sources", results.some((r) => r.status === "failed") ? "warning" : "ok");
-  return { status: "ok", results, ingested: results.reduce((sum, r) => sum + (r.items?.length || 0), 0) };
+  const failed = results.filter((item) => item.status === "failed").length;
+  const status = failed === results.length ? "failed" : failed ? "partial" : "ok";
+  appendAudit(db, `刷新真实事件源：${results.length - failed}/${results.length} 成功`, "event_sources", "EventSourceManager", failed ? "warning" : "info");
+  appendTrace(db, "event_sources", `refresh event sources ${results.length - failed}/${results.length}`, status === "failed" ? "error" : status === "partial" ? "warning" : "ok");
+  return { status, attempted: results.length, succeeded: results.length - failed, failed, results, ingested: results.reduce((sum, r) => sum + (r.items?.length || 0), 0) };
+}
+
+export async function testEventSource(source) {
+  const result = await fetchSourceWithRetry(source);
+  return {
+    status: "ok",
+    sourceId: source.id,
+    attempts: result.attempts,
+    itemCount: result.items?.length || 0,
+    preview: (result.items || []).slice(0, 3).map((item) => ({
+      title: String(item.title || "").slice(0, 160),
+      link: item.link,
+      publishedAt: item.publishedAt || null
+    }))
+  };
 }
 
 async function fetchSourceWithRetry(source) {
@@ -372,7 +404,16 @@ function escapeRe(text = "") {
 export async function runAgentMission(db, task = {}) {
   const mission = String(task.mission || task.name || "").trim();
   if (!mission) return { status: "skipped", reason: "no_mission" };
-  try { await refreshEventSources(db); } catch { /* 情报刷新失败不阻断简报 */ }
+  let refreshResult;
+  try { refreshResult = await refreshEventSources(db); }
+  catch (error) { refreshResult = { status: "failed", error: String(error?.message || error).slice(0, 180) }; }
+  const refreshLine = refreshResult.status === "failed"
+    ? `数据刷新：失败（${refreshResult.error || `${refreshResult.failed || 0}/${refreshResult.attempted || 0} 个来源失败`}），以下仅基于已存证据。`
+    : refreshResult.status === "partial"
+      ? `数据刷新：部分成功（${refreshResult.succeeded || 0}/${refreshResult.attempted || 0} 个来源成功）。`
+      : refreshResult.status === "skipped"
+        ? `数据刷新：未执行（${refreshResult.reason === "no_enabled_sources" ? "没有启用的事件源" : "所有来源都在失败退避期"}），以下基于已存证据。`
+        : "数据刷新：成功。";
   const { tags } = extractEntities(mission);
   const words = mission.split(/\s+|、|，|,/).map((w) => w.trim()).filter((w) => w.length > 1).slice(0, 8);
   const missionRe = words.length ? new RegExp(words.map(escapeRe).join("|"), "i") : null;
@@ -385,23 +426,55 @@ export async function runAgentMission(db, task = {}) {
   const lines = matches.length
     ? matches.map((event) => `· ${event.title}（${event.updateCount || 1}条报道 · ${event.impactLabel} · ${event.directionHint || "方向待观察"}）：${event.action || ""}`)
     : ["暂无匹配的事件专题；已刷新情报源，出现相关新闻会自动归入并在下次简报体现。"];
-  const briefing = `【情报任务简报】${mission}\n更新时间：${nowIso()}\n${lines.join("\n")}`;
+  const evidence = matches.map((event) => ({
+    id: event.id,
+    title: event.title,
+    impact: event.impact,
+    impactLabel: event.impactLabel,
+    directionHint: event.directionHint || "方向待观察",
+    assessment: event.action || "",
+    sources: (event.timeline || []).slice(0, 4).map((item) => ({ at: item.at, source: item.source, title: item.title, link: item.link }))
+  }));
+  const evidenceSignature = crypto.createHash("sha256").update(JSON.stringify(evidence.map((item) => ({
+    id: item.id, impact: item.impact, latest: item.sources[0]?.at || null, reports: item.sources.length, assessment: item.assessment
+  })).concat([{ refreshStatus: refreshResult.status, refreshReason: refreshResult.reason || null }]))).digest("hex");
+  task.lastCheckedAt = nowIso();
+  task.lastMatched = matches.length;
+  if (task.lastEvidenceSignature === evidenceSignature && task.lastBriefing) {
+    return { status: refreshResult.status === "failed" ? "failed" : "unchanged", error: refreshResult.status === "failed" ? "event_source_refresh_failed" : undefined, matched: matches.length, briefing: task.lastBriefing, evidenceIds: task.lastEvidenceIds || evidence.map((item) => item.id), mode: task.lastBriefingMode || "deterministic" };
+  }
+  let llmSummary = null;
+  if (evidence.length) {
+    const system = "你是市场情报编辑。只能使用给定证据，严格区分事实、推断和未知；不得给出下单指令；输出不超过500字中文纯文本，并在每个事实后标注[事件ID]。";
+    const prompt = `任务：${mission}\n证据：${JSON.stringify(evidence)}\n请输出：最新变化、可能影响、仍未知、接下来关注什么。`;
+    try {
+      const { activeProvider, llmComplete } = await import("./agentChat.mjs");
+      if (activeProvider()) llmSummary = String(await llmComplete(prompt, system) || "").trim().slice(0, 2000) || null;
+    } catch { llmSummary = null; }
+  }
+  const updatedAt = nowIso();
+  const briefing = `【情报任务简报】${mission}\n更新时间：${updatedAt}\n${refreshLine}\n${llmSummary || lines.join("\n")}`;
 
   task.lastBriefing = briefing;
-  task.lastBriefingAt = nowIso();
+  task.lastBriefingAt = updatedAt;
   task.lastMatched = matches.length;
+  task.lastEvidenceIds = evidence.map((item) => item.id);
+  task.lastEvidenceSignature = evidenceSignature;
+  task.lastBriefingMode = llmSummary ? "evidence_bound_llm" : "deterministic";
   db.notifications ||= [];
   db.notifications.unshift({
     id: id("notif"),
     type: "mission",
-    severity: matches.some((m) => m.impact >= 80) ? "warning" : "info",
+    severity: refreshResult.status === "failed" || matches.some((m) => m.impact >= 80) ? "warning" : "info",
     title: `情报任务：${mission.slice(0, 22)}`,
-    body: lines.join(" ｜ ").slice(0, 220),
+    body: briefing.slice(0, 2000),
+    evidenceIds: task.lastEvidenceIds,
+    briefingMode: task.lastBriefingMode,
     read: false,
     createdAt: nowIso()
   });
   appendAudit(db, `执行情报任务：${mission.slice(0, 30)}`, task.id || "mission", "AgentMission");
-  return { status: "ok", matched: matches.length, briefing };
+  return { status: refreshResult.status === "failed" ? "failed" : ["partial", "skipped"].includes(refreshResult.status) ? "partial" : "ok", error: refreshResult.status === "failed" ? "event_source_refresh_failed" : undefined, matched: matches.length, briefing, evidenceIds: task.lastEvidenceIds, mode: task.lastBriefingMode, refresh: refreshResult };
 }
 
 // 热点排序：影响度 + 报道热度（更新条数）+ 时效 + 与持仓/关注标的相关性

@@ -1,3 +1,5 @@
+import { applyDerivedProfitGoals } from "../profitGoals.mjs";
+
 // 系统管理路由组（就绪度/数据备份/清空工作数据/自主开关）—— 从 index.mjs 按 registrar 范式迁出。
 // autonomy 按开/关走不同权限；reset 保留用户/密钥/配置/风控规则/订阅。依赖经 ctx 注入。
 export function registerSystemRoutes(app, ctx) {
@@ -48,13 +50,10 @@ export function registerSystemRoutes(app, ctx) {
       && !userHasPermission(db, req.user, "approve:live_config")) {
       return res.status(403).json({ error: "Missing permission: approve:live_config" });
     }
-    const dn = Number(req.body?.dailyGoalUsdt), mn = Number(req.body?.monthlyGoalUsdt);
+    const dn = Number(req.body?.dailyGoalUsdt);
     const nextDailyGoal = req.body?.dailyGoalUsdt !== undefined
       ? (Number.isFinite(dn) && dn > 0 ? dn : null)
       : db.system.dailyGoalUsdt;
-    const nextMonthlyGoal = req.body?.monthlyGoalUsdt !== undefined
-      ? (Number.isFinite(mn) && mn > 0 ? mn : null)
-      : db.system.monthlyGoalUsdt;
     const nextBreakevenEnabled = req.body?.dailyGoalBreakevenEnabled !== undefined
       ? req.body.dailyGoalBreakevenEnabled === true
       : db.system.dailyGoalBreakevenEnabled === true;
@@ -62,12 +61,14 @@ export function registerSystemRoutes(app, ctx) {
       return res.status(400).json({ error: "启用每日目标保本前必须明确设置大于 0 的每日盈利目标" });
     }
     db.system.dailyGoalUsdt = nextDailyGoal;
-    db.system.monthlyGoalUsdt = nextMonthlyGoal;
+    // 月目标不再接受独立输入：始终按北京时间当前自然月的天数由日目标派生。
+    // 即使旧客户端仍发送 monthlyGoalUsdt，也不会覆盖这个确定性口径。
+    applyDerivedProfitGoals(db.system, nowIso());
     if (req.body?.dailyGoalBreakevenEnabled !== undefined) {
       db.system.dailyGoalBreakevenEnabled = nextBreakevenEnabled;
     }
     db.system.updatedAt = nowIso();
-    appendAudit(db, `更新盈利目标:日 ${db.system.dailyGoalUsdt ?? "未设"} / 月 ${db.system.monthlyGoalUsdt ?? "未设"} USDT；单笔达标保本 ${db.system.dailyGoalBreakevenEnabled ? "开启" : "关闭"}`, "system.goals", req.user?.name || db.user.name, db.system.dailyGoalBreakevenEnabled ? "warning" : "info");
+    appendAudit(db, `更新盈利目标:日 ${db.system.dailyGoalUsdt ?? "未设"} / 月 ${db.system.monthlyGoalUsdt ?? "未设"} USDT（日目标 × 当月 ${db.system.monthlyGoalDays} 天）；单笔达标保本 ${db.system.dailyGoalBreakevenEnabled ? "开启" : "关闭"}`, "system.goals", req.user?.name || db.user.name, db.system.dailyGoalBreakevenEnabled ? "warning" : "info");
     persist(res, db.system);
   });
 }

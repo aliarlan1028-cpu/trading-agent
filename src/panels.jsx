@@ -702,7 +702,7 @@ export function RiskRulesPanel({ data, action }) {
   const [newRule, setNewRule] = useState({
     name: "",
     level: "L3",
-    action: "block",
+    action: "reject_entry",
     description: "",
     conditionField: "plan.leverage",
     conditionOperator: "gt",
@@ -726,9 +726,9 @@ export function RiskRulesPanel({ data, action }) {
     <div className="panelStack">
       {(data.riskRules || []).map((rule) => (
         <div className="panelItem" key={rule.id}>
-          <div><strong>{localizeText(rule.name)}</strong><small>{localizeText(rule.description)}</small><small>{rule.enabled===false?t("当前停用","Currently disabled"):rule.enforcementStatus==="advisory_uncompiled"||(!rule.conditionSpec&&rule.action!=="notify")?t("仅作为 AI 提示，不会阻断下单","AI advisory only; does not block orders"):t("结构化条件已进入硬风控","Structured condition is enforced")}</small></div>
-          <select defaultValue={rule.action} onChange={(event) => action(`/api/risk/rules/${rule.id}`, { action: event.target.value }, "PATCH")}><option value="block">{t("阻断", "Block")}</option><option value="restrict">{t("限制", "Restrict")}</option><option value="notify">{t("通知", "Notify")}</option><option value="kill_switch">{t("紧急停止", "Emergency stop")}</option></select>
-          <button className="secondaryButton" onClick={() => action(`/api/risk/rules/${rule.id}`, { enabled: !rule.enabled }, "PATCH")}>{rule.enabled ? t("停用", "Disable") : t("启用", "Enable")}</button>
+          <div><strong>{localizeText(rule.name)}</strong><small>{localizeText(rule.description)}</small><small>{rule.enabled===false?t("当前停用","Currently disabled"):rule.enforcementStatus==="advisory_uncompiled"?t("仅作为 AI 提示，不会阻断下单","AI advisory only; does not block orders"):rule.action==="notify"?t("命中后写入通知中心，不阻断下单","Creates an in-app notification without blocking"):t("命中后阻断当前计划的新开仓，不改变全局熔断状态","Blocks this plan's new entry without changing the global kill switch")}</small></div>
+          <select disabled={rule.systemManaged} value={["notify","reject_entry","pause_opening"].includes(rule.action)?rule.action:(rule.action==="block"||rule.action==="restrict"||rule.action==="kill_switch"?"reject_entry":"notify")} onChange={(event) => action(`/api/risk/rules/${rule.id}`, { action: event.target.value }, "PATCH")}><option value="notify">{t("通知", "Notify")}</option><option value="reject_entry">{t("拒绝当前入场", "Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓", "Pause this plan's entry")}</option></select>
+          <button className="secondaryButton" disabled={rule.systemManaged} onClick={() => action(`/api/risk/rules/${rule.id}`, { enabled: !rule.enabled }, "PATCH")}>{rule.systemManaged?t("内置强制","Built-in"):rule.enabled ? t("停用", "Disable") : t("启用", "Enable")}</button>
         </div>
       ))}
       <form className="panelForm" onSubmit={createRule}>
@@ -751,7 +751,7 @@ export function RiskRulesPanel({ data, action }) {
         </div>
         <div className="formGrid">
           <label>{t("等级", "Level")}<select value={newRule.level} onChange={(event) => setNewRule((current) => ({ ...current, level: event.target.value }))}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
-          <label>{t("动作", "Action")}<select value={newRule.action} onChange={(event) => setNewRule((current) => ({ ...current, action: event.target.value }))}><option value="notify">{t("通知", "Notify")}</option><option value="restrict">{t("限制", "Restrict")}</option><option value="block">{t("阻断", "Block")}</option><option value="kill_switch">{t("紧急停止", "Emergency stop")}</option></select></label>
+          <label>{t("动作", "Action")}<select value={newRule.action} onChange={(event) => setNewRule((current) => ({ ...current, action: event.target.value }))}><option value="notify">{t("通知（不阻断）", "Notify (non-blocking)")}</option><option value="reject_entry">{t("拒绝当前入场", "Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓", "Pause this plan's entry")}</option></select></label>
         </div>
         <button className="primaryButton" type="submit">{t("创建规则", "Create rule")}</button>
       </form>
@@ -776,12 +776,12 @@ export function IpPanel({ data, action }) {
 
 export function EventRulePanel({ action }) {
   // 阻断型规则必须带可编译的 conditionSpec(后端硬校验)——此前不带,本面板 100% 400(审计 H1)。
-  const [form, setForm] = useState({ name: t("高影响事件前限制新开仓", "Restrict new entries before high-impact events"), description: t("事件影响未评估前，限制高杠杆新开仓。", "Restrict high-leverage entries until event impact has been assessed."), level: "L3", ruleAction: "restrict", conditionField: "event.maxImpact", conditionOperator: "gte", conditionValue: "80" });
+  const [form, setForm] = useState({ name: t("高影响事件前限制新开仓", "Restrict new entries before high-impact events"), description: t("事件影响未评估前，限制高杠杆新开仓。", "Restrict high-leverage entries until event impact has been assessed."), level: "L3", ruleAction: "reject_entry", conditionField: "event.maxImpact", conditionOperator: "gte", conditionValue: "80" });
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   function submit(event) {
     event.preventDefault();
     const body = { name: form.name, description: form.description, level: form.level, scope: "event", action: form.ruleAction };
-    if (form.ruleAction !== "notify") body.conditionSpec = { field: form.conditionField, operator: form.conditionOperator, value: Number(form.conditionValue) };
+    body.conditionSpec = { field: form.conditionField, operator: form.conditionOperator, value: Number(form.conditionValue) };
     action("/api/risk/rules", body);
   }
   return (
@@ -790,10 +790,9 @@ export function EventRulePanel({ action }) {
       <label>{t("说明", "Description")}<textarea value={form.description} onChange={set("description")} /></label>
       <div className="formGrid">
         <label>{t("等级", "Level")}<select value={form.level} onChange={set("level")}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
-        <label>{t("动作", "Action")}<select value={form.ruleAction} onChange={set("ruleAction")}><option value="notify">{t("通知", "Notify")}</option><option value="restrict">{t("限制", "Restrict")}</option><option value="pause_opening">{t("暂停开仓", "Pause new entries")}</option></select></label>
+        <label>{t("动作", "Action")}<select value={form.ruleAction} onChange={set("ruleAction")}><option value="notify">{t("通知（不阻断）", "Notify (non-blocking)")}</option><option value="reject_entry">{t("拒绝当前入场", "Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓", "Pause this plan's entry")}</option></select></label>
       </div>
-      {form.ruleAction !== "notify" && (
-        <div className="formGrid">
+      <div className="formGrid">
           <label>{t("触发字段", "Trigger field")}<select value={form.conditionField} onChange={set("conditionField")}>
             <option value="event.maxImpact">{t("事件影响分", "Event impact score")}</option>
             <option value="market.fundingRate">{t("资金费率", "Funding rate")}</option>
@@ -802,8 +801,7 @@ export function EventRulePanel({ action }) {
           </select></label>
           <label>{t("比较", "Comparison")}<select value={form.conditionOperator} onChange={set("conditionOperator")}><option value="gte">≥</option><option value="gt">&gt;</option><option value="lte">≤</option><option value="lt">&lt;</option></select></label>
           <label>{t("阈值", "Threshold")}<input type="number" value={form.conditionValue} onChange={set("conditionValue")} /></label>
-        </div>
-      )}
+      </div>
       <button className="primaryButton" type="submit">{t("创建事件规则", "Create event rule")}</button>
     </form>
   );
@@ -955,7 +953,7 @@ export function KnowledgeListPanel({ data, action, ui }) {
   );
 }
 
-const ruleActionLabel = (action) => ({ notify: t("通知", "Notify"), pause_opening: t("暂停开仓", "Pause new entries"), reduce: t("减仓", "Reduce position"), none: t("仅记录", "Log only"), restrict: t("限制", "Restrict"), block: t("阻断", "Block"), kill_switch: t("紧急停止", "Emergency stop") }[action] || action || t("通知", "Notify"));
+const ruleActionLabel = (action) => ({ notify: t("通知", "Notify"), reject_entry: t("拒绝当前入场", "Reject entry"), pause_opening: t("暂停当前计划开仓", "Pause plan entry"), reduce: t("减仓（旧动作）", "Reduce (legacy)"), none: t("仅记录", "Log only"), restrict: t("阻断（旧动作）", "Block (legacy)"), block: t("阻断（旧动作）", "Block (legacy)"), kill_switch: t("阻断（旧动作）", "Block (legacy)") }[action] || action || t("通知", "Notify"));
 
 // —— 规则相似度：中文按 2-gram + 拉丁词做 Jaccard，客户端聚类出"疑似重复组"给用户预览。——
 function ruleTokens(rule) {
@@ -1091,7 +1089,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
         <label>{t("说明", "Description")}<textarea value={newRule.description} onChange={(event) => setNewRule((current) => ({ ...current, description: event.target.value }))} /></label>
         <div className="formGrid">
           <label>{t("等级", "Level")}<select value={newRule.level} onChange={(event) => setNewRule((current) => ({ ...current, level: event.target.value }))}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>
-          <label>{t("动作", "Action")}<select value={newRule.action} onChange={(event) => setNewRule((current) => ({ ...current, action: event.target.value }))}><option value="notify">{t("通知", "Notify")}</option><option value="restrict">{t("限制", "Restrict")}</option><option value="block">{t("阻断", "Block")}</option><option value="kill_switch">{t("紧急停止", "Emergency stop")}</option></select></label>
+          <label>{t("动作", "Action")}<select value={newRule.action} onChange={(event) => setNewRule((current) => ({ ...current, action: event.target.value }))}><option value="notify">{t("通知", "Notify")}</option><option value="reject_entry">{t("拒绝当前入场", "Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓", "Pause this plan's entry")}</option></select></label>
         </div>
         <button className="primaryButton" type="submit">{t("提交草案", "Submit draft")}</button>
       </form>
@@ -1175,7 +1173,7 @@ export function SkillImportPanel({ data, action, ui }) {
 }
 
 export function TaskManagerPanel({ data, action }) {
-  const [form, setForm] = useState({ name: "", type: "Every", schedule: "Every 5m", role: t("风控", "Risk"), kind: "standard", mission: "" });
+  const [form, setForm] = useState({ name: "", type: "Every", schedule: "Every 5m", role: t("提醒", "Reminder"), handler: "reminder", kind: "standard", mission: "" });
   const [taskFilter, setTaskFilter] = useState("all");
   const tasks = data.tasks || [];
   const taskTabs = [
@@ -1198,7 +1196,7 @@ export function TaskManagerPanel({ data, action }) {
     if (!name) return;
     if (isMission && !form.mission.trim()) return;
     const schedule = form.type === "At" ? new Date(form.schedule).toISOString() : form.schedule.trim();
-    const payload = { name, type: form.type, schedule, enabled: true, role: isMission ? "intelligence" : form.role };
+    const payload = { name, type: form.type, schedule, enabled: true, role: isMission ? "intelligence" : form.role, handler: isMission ? "agent_mission" : form.handler };
     if (isMission) payload.mission = form.mission.trim();
     await action("/api/tasks", payload);
     setForm((current) => ({ ...current, name: "", mission: "" }));
@@ -1218,6 +1216,7 @@ export function TaskManagerPanel({ data, action }) {
           <label>{t("触发类型", "Trigger type")}<select value={form.type} onChange={(event) => updateType(event.target.value)}><option>Every</option><option>Cron</option><option>At</option></select></label>
           {!isMission && <label>{t("任务分类", "Task category")}<input value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} /></label>}
         </div>
+        {!isMission && <label>{t("执行内容", "Action")}<select value={form.handler} onChange={(event) => setForm((current) => ({ ...current, handler: event.target.value }))}><option value="reminder">{t("通知中心提醒", "Notification reminder")}</option><option value="accounting_refresh">{t("刷新账务统计", "Refresh accounting")}</option><option value="reconcile">{t("执行账户对账", "Reconcile account")}</option><option value="event_refresh">{t("刷新市场情报", "Refresh market intelligence")}</option><option value="market_signal_refresh">{t("刷新市场信号", "Refresh market signals")}</option><option value="strategy_research">{t("运行策略研究", "Run strategy research")}</option><option value="paper_forward">{t("推进模拟前向", "Advance paper validation")}</option><option value="trade_reflection">{t("生成平仓复盘", "Generate trade reflection")}</option><option value="missed_opportunity_review">{t("复盘错过机会", "Review missed opportunities")}</option></select><small className="fieldHint">{t("任务必须选择真实执行器；不会再用任务名称猜测并把空跑记成成功。", "Each task uses a real handler; names are never guessed and no-op runs are not reported as successful.")}</small></label>}
         <label>{form.type === "At" ? t("运行时间", "Run time") : t("触发表达式", "Schedule expression")}<input type={form.type === "At" ? "datetime-local" : "text"} value={form.schedule} onChange={(event) => setForm((current) => ({ ...current, schedule: event.target.value }))} /></label>
         {isMission && <span className="fieldHint">{t("Agent 会按计划刷新情报、匹配相关事件并产出简报，可在通知与情报中心查看。无 API key 也能运行，配置 LLM 后分析更完整。", "The Agent refreshes intelligence on schedule, matches related events, and publishes briefs in Notifications and Intelligence. It can run without an API key; an LLM provides richer analysis.")}</span>}
         <button className="primaryButton" type="submit">{isMission ? t("派发情报任务", "Create intelligence mission") : t("创建任务", "Create task")}</button>
@@ -1230,9 +1229,9 @@ export function TaskManagerPanel({ data, action }) {
         <div className="taskManagerScroll">
           {visibleTasks.map((task) => (
             <div className="panelItem" key={task.id}>
-              <div><strong>{localizeText(task.name)}</strong><small>{task.schedule || "-"} · {t("下次", "Next")} {formatDateTime(task.nextRunAt, t("未排期", "Not scheduled"))}</small></div>
+              <div><strong>{localizeText(task.name)}{task.systemManaged&&<small> · {t("系统托管", "System-managed")}</small>}</strong><small>{humanize(task.handler||"reminder")} · {task.schedule || "-"} · {t("下次", "Next")} {formatDateTime(task.nextRunAt, t("未排期", "Not scheduled"))}</small>{task.lastBriefing&&<small title={task.lastBriefing}>{t("最近简报", "Latest brief")}: {task.lastBriefing.slice(0,120)}</small>}</div>
               <StatusBadge tone={task.enabled === false ? "warning" : "ok"}>{task.enabled === false ? t("已暂停", "Paused") : humanize(task.status, t("运行中", "Running"))}</StatusBadge>
-              <span className="panelActions"><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/run`, {})}>{t("运行", "Run")}</button><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? t("恢复", "Resume") : t("暂停", "Pause")}</button><button className="secondaryButton dangerText" onClick={() => action(`/api/tasks/${task.id}`, {}, "DELETE")}>{t("删除", "Delete")}</button></span>
+              <span className="panelActions"><button className="secondaryButton" disabled={task.enabled===false} onClick={() => action(`/api/tasks/${task.id}/run`, {})}>{t("运行", "Run")}</button><button className="secondaryButton" onClick={() => action(`/api/tasks/${task.id}/${task.enabled === false ? "resume" : "pause"}`, task.enabled === false ? {} : { reason: "manual_ui" })}>{task.enabled === false ? t("恢复", "Resume") : t("暂停", "Pause")}</button>{!task.systemManaged&&<button className="secondaryButton dangerText" onClick={() => action(`/api/tasks/${task.id}`, {}, "DELETE")}>{t("删除", "Delete")}</button>}</span>
             </div>
           ))}
           {!visibleTasks.length && <div className="emptyPanel emptyPanelAction"><strong>{tasks.length ? t("当前类型暂无任务", "No tasks of this type") : t("暂无任务", "No tasks")}</strong><span>{tasks.length ? t("切换上方类型查看其他已创建任务。", "Select another type above to view other tasks.") : t("创建任务后会进入调度器，并在运行日志中留下记录。", "Created tasks enter the scheduler and leave an execution record in the run log.")}</span></div>}
@@ -1275,6 +1274,7 @@ export function EventSourcesPanel({ data, action, ui }) {
                     : <span className="muted">{t("尚未抓取", "Not fetched yet")}</span>}
               </small>
             </div>
+            <button className="secondaryButton" title={t("立即测试连接和解析", "Test connectivity and parsing now")} onClick={() => action(`/api/event-sources/${s.id}/test`, {})}>{t("测试", "Test")}</button>
             <button className="secondaryButton" title={s.enabled === false ? t("启用", "Enable") : t("停用", "Disable")} onClick={() => action(`/api/event-sources/${s.id}`, { enabled: s.enabled === false }, "PATCH")}>{s.enabled === false ? t("启用", "Enable") : t("停用", "Disable")}</button>
             <button className="dangerTextButton" title={t("删除该事件源（已抓取的历史事件会保留）", "Delete this source (previously fetched events are retained)")} onClick={async () => { if (await uiConfirm(t(`删除事件源「${s.name}」？之后不再从它抓取（历史事件保留）。`, `Delete event source “${s.name}”? Future fetching stops; historical events are retained.`))) action(`/api/event-sources/${s.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
           </div>
@@ -1299,6 +1299,8 @@ export function AuditChainPanel({ data }) {
   const latestPlan = data.tradePlans?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || latestPlan.lastRiskCheck || {};
   const latestOrder = data.orders?.[0] || data.executionOrders?.[0] || {};
+  const auditHealthy = data.readiness?.checks?.find((item) => item.key === "audit_chain")?.configured === true;
+  const wormConfigured = data.readiness?.checks?.find((item) => item.key === "audit_worm")?.configured === true;
   const chainItems = [
     [t("交易权限", "Trading permissions"), latestPlan.mandateId, humanize(data.agentStatus?.activeMandate?.status, t("未授权", "Not authorized"))],
     [t("分析证据包", "Analysis evidence bundle"), latestPlan.analysisBundleId, latestPlan.analysisBundleId ? t("已生成", "Generated") : t("未生成", "Not generated")],
@@ -1310,6 +1312,14 @@ export function AuditChainPanel({ data }) {
   ];
   return (
     <div className="panelStack">
+      <div className="panelItem">
+        <div><strong>{t("本地审计哈希链", "Local audit hash chain")}</strong><small>{auditHealthy ? t("完整性校验通过", "Integrity verification passed") : t("校验失败，已阻止新开仓", "Verification failed; new entries are blocked")}</small></div>
+        <StatusBadge tone={auditHealthy ? "good" : "bad"}>{auditHealthy ? t("正常", "Healthy") : t("断链", "Broken")}</StatusBadge>
+      </div>
+      <div className="panelItem">
+        <div><strong>{t("外部不可篡改归档", "External immutable archive")}</strong><small>{wormConfigured ? t("WORM 接收端已配置", "WORM endpoint configured") : t("尚未配置；不影响本地校验，但不具备外部不可篡改保证", "Not configured; local verification remains available without external immutability")}</small></div>
+        <StatusBadge tone={wormConfigured ? "good" : "warning"}>{wormConfigured ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
+      </div>
       {chainItems.map(([label, value, state], index) => (
         <div className="panelItem" key={label}>
           <div><strong>{index + 1}. {label}</strong><small>{value || t("未生成 ID", "No ID generated")}</small></div>

@@ -13,7 +13,10 @@ const {
   conditionAlreadyTrue,
   consumeTriggeredWatches,
   crossed,
+  abortWatchAnalysis,
+  finalizeWatchAnalysis,
   registerWatch,
+  buildWatchBoard,
   requestPendingAgentCycle,
   sentinelCycleAllowed,
   sentinelGate,
@@ -62,6 +65,81 @@ test("登记校验:白名单/已成立条件/离谱价位/上限全部拒绝", (
   registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "突破" }, 65079);
   registerWatch(db, { symbol: "BTC/USDT", kind: "enter_zone", levelLow: 60000, levelHigh: 61000, note: "深回踩" }, 65079);
   assert.match(registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 66500, note: "再一个" }, 65079).error, new RegExp(`上限 ${WATCH_LIMITS.maxPerSymbol}`));
+});
+
+test("同轮观察哨按币种归组且只有一个主哨，新分析整体取代旧分析", () => {
+  const db = dbFixture();
+  const first = registerWatch(db, {
+    symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "突破确认",
+    analysisId: "run_old", analysisAt: "2026-08-12T00:00:00.000Z", priority: "primary", purpose: "decision"
+  }, 65079).watch;
+  const invalidation = registerWatch(db, {
+    symbol: "BTC/USDT", kind: "price_below", level: 64800, note: "结构失效",
+    analysisId: "run_old", analysisAt: "2026-08-12T00:00:00.000Z", priority: "secondary", purpose: "invalidation"
+  }, 65079).watch;
+  let board = buildWatchBoard(db);
+  assert.equal(board.length, 1);
+  assert.equal(board[0].primary.id, first.id);
+  assert.equal(board[0].secondary[0].id, invalidation.id);
+  assert.equal(board[0].secondary[0].displayRole, "失效条件");
+
+  const replacement = registerWatch(db, {
+    symbol: "BTC/USDT", kind: "enter_zone", levelLow: 64500, levelHigh: 64800, note: "最新回踩方案",
+    analysisId: "run_new", analysisAt: "2026-08-12T01:00:00.000Z", priority: "primary", purpose: "decision"
+  }, 65079).watch;
+  assert.equal(first.status, "superseded");
+  assert.equal(invalidation.status, "superseded");
+  assert.match(first.closeReason, /最新市场分析/);
+  board = buildWatchBoard(db);
+  assert.equal(board[0].count, 1);
+  assert.equal(board[0].primary.id, replacement.id);
+  assert.equal(board[0].analysisId, "run_new");
+});
+
+test("主观察哨结束后同轮辅助条件自动提升为主哨", () => {
+  const db = dbFixture();
+  const primary = registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "主", analysisId: "run", priority: "primary" }, 65079).watch;
+  const backup = registerWatch(db, { symbol: "BTC/USDT", kind: "price_below", level: 64800, note: "备", analysisId: "run", priority: "secondary", purpose: "invalidation" }, 65079).watch;
+  cancelWatch(db, primary.id, "Owner");
+  assert.equal(primary.wasPrimary, true);
+  assert.equal(backup.priority, "primary");
+  assert.equal(buildWatchBoard(db)[0].primary.id, backup.id);
+});
+
+test("Agent 一轮分析完成后才合并排队一次最终 Telegram 看板", () => {
+  const previous = process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
+  process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = "true";
+  const db = dbFixture();
+  db.telegramWatchOutbox = [];
+  const old = registerWatch(db, { symbol: "BTC/USDT", kind: "enter_zone", levelLow: 64000, levelHigh: 64500, note: "上一轮", analysisId: "run_previous", priority: "primary" }, 65079).watch;
+  const next = registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "主", analysisId: "run_final", priority: "primary", deferTelegram: true }, 65079).watch;
+  registerWatch(db, { symbol: "BTC/USDT", kind: "price_below", level: 64800, note: "失效", analysisId: "run_final", priority: "secondary", purpose: "invalidation", deferTelegram: true }, 65079);
+  db.telegramWatchOutbox = [];
+  assert.equal(next.status, "pending_analysis");
+  assert.equal(old.status, "active", "AI 尚未完成时旧分析必须继续生效");
+  assert.equal(buildWatchBoard(db)[0].primary.id, old.id);
+  const result = finalizeWatchAnalysis(db, "run_final", { analysisAt: "2026-08-12T02:00:00.000Z", analysisTitle: "BTC 最新结论：等待关键价位" });
+  assert.equal(result.finalized, 2);
+  assert.deepEqual(result.symbols, ["BTC/USDT"]);
+  assert.equal(db.telegramWatchOutbox.length, 1);
+  assert.equal(old.status, "superseded");
+  assert.equal(next.status, "active");
+  assert.match(db.telegramWatchOutbox[0].message, /BTC 最新结论/);
+  assert.match(db.telegramWatchOutbox[0].message, /辅助条件（1/);
+  if (previous === undefined) delete process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
+  else process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = previous;
+});
+
+test("Agent 分析失败会丢弃半成品观察哨并保留上一轮有效主哨", () => {
+  const db = dbFixture();
+  const old = registerWatch(db, { symbol: "BTC/USDT", kind: "price_below", level: 64800, note: "旧分析", analysisId: "old", priority: "primary" }, 65079).watch;
+  const pending = registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "未完成分析", analysisId: "failed", priority: "primary", deferTelegram: true }, 65079).watch;
+  const result = abortWatchAnalysis(db, "failed");
+  assert.equal(result.aborted, 1);
+  assert.equal(pending.status, "invalidated");
+  assert.match(pending.closeReason, /未完成/);
+  assert.equal(old.status, "active");
+  assert.equal(buildWatchBoard(db)[0].primary.id, old.id);
 });
 
 test("穿越语义:静态高于/低于不触发,只有从未成立到成立才触发,且一次性", () => {

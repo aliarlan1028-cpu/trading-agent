@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 630 884" role="img" aria-labelledby="title desc">
+  <title id="title">KORDYN</title>
+  <desc id="desc">Green upward chevron, black center diamond, and red downward chevron.</desc>
+  <defs>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#31c879"/>
+      <stop offset="0.54" stop-color="#18ad65"/>
+      <stop offset="1" stop-color="#0b914f"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3b38"/>
+      <stop offset="0.55" stop-color="#f52329"/>
+      <stop offset="1" stop-color="#d9151d"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#green)" d="M317 12 10 319l73 73 234-234 198 202 74-73z"/>
+  <path fill="#050505" d="m315 337 103 106-103 102-103-102z"/>
+  <path fill="url(#red)" d="m112 527-73 73 275 273 300-303-71-72-229 230z"/>
+</svg>

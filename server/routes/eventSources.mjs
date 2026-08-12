@@ -1,18 +1,47 @@
 // 事件源路由组（新增/刷新 RSS/链上信号/列表）—— 从 index.mjs 按 registrar 范式迁出。
 export function registerEventSourceRoutes(app, ctx) {
-  const { db, persist, requirePermission, id, nowIso, appendAudit, refreshEventSources, refreshOnchainSignals } = ctx;
+  const { db, persist, requirePermission, id, nowIso, appendAudit, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl } = ctx;
 
-  app.post("/api/event-sources", requirePermission("write:event"), (req, res) => {
-    // 只支持 rss/html(json 无通用解析器,别让前端误传);非法一律回落 rss。
-    const type = ["rss", "html"].includes(req.body.type) ? req.body.type : "rss";
+  const normalizedUrl = (value) => {
+    let parsed;
+    try { parsed = new URL(String(value || "").trim()); }
+    catch { throw new Error("事件源 URL 无效"); }
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("事件源 URL 只允许 http/https");
+    if (parsed.username || parsed.password) throw new Error("事件源 URL 禁止内嵌凭证");
+    parsed.hash = "";
+    return parsed.toString();
+  };
+
+  function validatedInput(body = {}, existing = null) {
+    const name = String(body.name ?? existing?.name ?? "").trim();
+    const type = String(body.type ?? existing?.type ?? "").trim();
+    const url = normalizedUrl(body.url ?? existing?.url);
+    const trustScore = Number(body.trustScore ?? existing?.trustScore ?? 70);
+    if (!name || name.length > 80) throw new Error("事件源名称必须为 1–80 个字符");
+    if (!["rss", "html"].includes(type)) throw new Error("事件源类型只允许 rss/html");
+    if (!Number.isFinite(trustScore) || trustScore < 1 || trustScore > 100) throw new Error("可信度必须是 1–100 的数字");
+    return { name, type, url, trustScore, category: String(body.category ?? existing?.category ?? "自定义").trim().slice(0, 40) || "自定义" };
+  }
+
+  const duplicateUrl = (url, excludeId = null) => (db.eventSources || []).find((source) => {
+    if (source.id === excludeId) return false;
+    try { return normalizedUrl(source.url) === url; }
+    catch { return String(source.url || "").trim() === url; }
+  });
+
+  app.post("/api/event-sources", requirePermission("write:event"), async (req, res) => {
+    if (req.body.enabled !== undefined && typeof req.body.enabled !== "boolean") return res.status(400).json({ error: "enabled 必须是布尔值" });
+    let input;
+    try { input = validatedInput(req.body); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    try { await assertSafeExternalUrl(input.url); }
+    catch (error) { return res.status(400).json({ error: `事件源 URL 安全校验失败：${error.message}` }); }
+    const existing = duplicateUrl(input.url);
+    if (existing) return res.status(409).json({ error: `该 URL 已配置为「${existing.name}」`, existingId: existing.id });
     const source = {
       id: id("event_source"),
-      name: req.body.name || "新事件源",
-      type,
-      url: req.body.url || "",
-      category: req.body.category || "自定义",
+      ...input,
       enabled: req.body.enabled !== false,
-      trustScore: Number(req.body.trustScore || 70),
       createdAt: nowIso()
     };
     db.eventSources ||= [];
@@ -22,12 +51,20 @@ export function registerEventSourceRoutes(app, ctx) {
   });
 
   // 编辑/停用：改名称/URL/类型/可信度、开关 enabled。
-  app.patch("/api/event-sources/:id", requirePermission("write:event"), (req, res) => {
+  app.patch("/api/event-sources/:id", requirePermission("write:event"), async (req, res) => {
     const source = (db.eventSources || []).find((s) => s.id === req.params.id);
     if (!source) return res.status(404).json({ error: "事件源不存在" });
-    for (const key of ["name", "url", "category"]) if (req.body[key] !== undefined) source[key] = req.body[key];
-    if (req.body.type !== undefined) source.type = ["rss", "html"].includes(req.body.type) ? req.body.type : source.type;
-    if (req.body.trustScore !== undefined) source.trustScore = Number(req.body.trustScore) || source.trustScore;
+    if (req.body.enabled !== undefined && typeof req.body.enabled !== "boolean") return res.status(400).json({ error: "enabled 必须是布尔值" });
+    let input;
+    try { input = validatedInput(req.body, source); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    if ((req.body.url !== undefined && input.url !== normalizedUrl(source.url)) || req.body.enabled === true) {
+      try { await assertSafeExternalUrl(input.url); }
+      catch (error) { return res.status(400).json({ error: `事件源 URL 安全校验失败：${error.message}` }); }
+    }
+    const duplicate = duplicateUrl(input.url, source.id);
+    if (duplicate) return res.status(409).json({ error: `该 URL 已配置为「${duplicate.name}」`, existingId: duplicate.id });
+    Object.assign(source, input);
     if (req.body.enabled !== undefined) source.enabled = req.body.enabled !== false;
     source.updatedAt = nowIso();
     appendAudit(db, `更新事件源：${source.name}${req.body.enabled === false ? "(停用)" : req.body.enabled === true ? "(启用)" : ""}`, source.id, db.user.name);
@@ -44,7 +81,29 @@ export function registerEventSourceRoutes(app, ctx) {
   });
 
   app.post("/api/event-sources/refresh", requirePermission("write:event"), async (_req, res) => {
-    persist(res, await refreshEventSources(db));
+    persist(res, await refreshEventSources(db, { force: true }));
+  });
+
+  app.post("/api/event-sources/:id/test", requirePermission("write:event"), async (req, res) => {
+    const source = (db.eventSources || []).find((item) => item.id === req.params.id);
+    if (!source) return res.status(404).json({ error: "事件源不存在" });
+    source.lastAttemptAt = nowIso();
+    try {
+      const result = await testEventSource(source);
+      source.lastTestAt = nowIso();
+      source.lastTestStatus = "ok";
+      source.lastTestError = null;
+      appendAudit(db, `测试事件源成功：${source.name}`, source.id, req.user?.name || db.user.name);
+      persist(res, result);
+    } catch (error) {
+      source.lastTestAt = nowIso();
+      source.lastTestStatus = "failed";
+      source.lastTestError = String(error.message || error).slice(0, 180);
+      appendAudit(db, `测试事件源失败：${source.name}`, source.id, req.user?.name || db.user.name, "warning");
+      // 连接测试失败是一个已落库、可展示的诊断结果，不让通用 persist 丢失 HTTP 状态。
+      res.status(502);
+      persist(res, { status: "failed", error: source.lastTestError });
+    }
   });
 
   app.post("/api/event-sources/onchain", requirePermission("write:event"), async (_req, res) => {

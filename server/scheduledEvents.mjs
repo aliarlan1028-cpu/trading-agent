@@ -115,6 +115,8 @@ export function createScheduledEvent(db, payload = {}, actor = "User") {
     category: String(payload.category || "宏观").slice(0, 12),
     impact, impactLabel: impact >= 70 ? "高影响" : impact >= 50 ? "中影响" : "低影响",
     source: "日程(手动)", description: String(payload.note || "").slice(0, 200),
+    // 用户明确录入了日期时间，事件统计/分钟级静默窗口才可把它当精确时点使用。
+    timePrecision: "minute",
     relatedSymbols: Array.isArray(payload.relatedSymbols) ? payload.relatedSymbols.map((s) => String(s).toUpperCase()) : [],
     createdAt: nowIso()
   };

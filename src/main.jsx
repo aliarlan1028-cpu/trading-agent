@@ -66,7 +66,7 @@ const navItems = [
 ];
 
 function BrandLogo({ size = 34 }) {
-  return <img className="brandLogo" src="/kordyn-logo.png" alt="KORDYN" width={size} height={size} />;
+  return <img className="brandLogo" src="/kordyn-logo.svg" alt="KORDYN" width={size} height={size} />;
 }
 
 function Sidebar({ active, setActive }) {

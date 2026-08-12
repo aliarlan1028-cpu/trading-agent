@@ -2,6 +2,7 @@ import { okxContractSpec, syncMicrostructure, syncPrivateReadOnly, syncPublicKli
 import { fetchGlobalMarket, fetchSmartMoney } from "./marketSignals.mjs";
 import { latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { refreshAccounting } from "./accounting.mjs";
+import { buildMediumTermAnalytics } from "./mediumTermAnalytics.mjs";
 
 export const EVIDENCE_TTL_MS = Object.freeze({
   ticker: 10_000,
@@ -101,7 +102,7 @@ function compactAccounting(db, snapshot, now) {
   };
 }
 
-function compactSymbolEvidence(db, symbol, spec, smartMoney, now) {
+function compactSymbolEvidence(db, symbol, spec, smartMoney, now, analytics = null) {
   const market = (db.markets || []).find((row) => row.symbol === symbol) || {};
   const candleSlot = market.candlesByTf?.["1h"] || {};
   const candleQuality = market.candleQualityByTf?.["1h"] || (market.candleQuality?.timeframe === "1h" ? market.candleQuality : null);
@@ -117,6 +118,7 @@ function compactSymbolEvidence(db, symbol, spec, smartMoney, now) {
     && finite(spec?.minSz) && Number(spec.minSz) > 0
     && finite(spec?.lotSz) && Number(spec.lotSz) > 0
     && finite(spec?.tickSz) && Number(spec.tickSz) > 0;
+  const mediumTerm = (analytics || buildMediumTermAnalytics(db, { now })).symbols.find((row) => row.symbol === symbol) || null;
   return {
     symbol,
     ticker: {
@@ -142,7 +144,13 @@ function compactSymbolEvidence(db, symbol, spec, smartMoney, now) {
     smartMoney: {
       evidenceId: evidenceId("smart_money", symbol, smartFresh.fetchedAt), source: "OKX_RUBIK_API+PUBLIC_WS", endpoint: "top-trader-ratio+taker-volume+liquidation-orders-channel",
       ...smartFresh, quality: smartMoney?.ok ? "passed" : "unavailable",
-      data: smartMoney?.ok ? { topTraderLongShortRatio: smartMoney.topTraderLongShortRatio ?? null, retailLongShortRatio: smartMoney.retailLongShortRatio ?? null, takerBuySellRatio: smartMoney.takerBuySellRatio ?? null } : null
+      data: smartMoney?.ok ? { topTraderLongShortRatio: smartMoney.topTraderLongShortRatio ?? null, retailLongShortRatio: smartMoney.retailLongShortRatio ?? null, takerBuySellRatio: smartMoney.takerBuySellRatio ?? null, takerScope: smartMoney.takerScope ?? null, takerInstrument: smartMoney.takerInstrument ?? null } : null
+    },
+    mediumTerm: {
+      evidenceId: evidenceId("medium_term", symbol, mediumTerm?.latestAt), source: "SYSTEM_DERIVED_FROM_OKX_5M_FACTS", endpoint: "mediumTermAnalytics",
+      ...freshness(mediumTerm?.latestAt, 10 * 60_000, now),
+      quality: mediumTerm?.windows?.["15m"]?.status === "ok" ? "passed" : "insufficient",
+      data: mediumTerm
     }
   };
 }
@@ -214,6 +222,7 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
   try { refreshAccounting(db); } catch { /* Evidence still records missing accounting fields honestly. */ }
   const generatedAt = nowIso();
   const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  const mediumTermAnalytics = buildMediumTermAnalytics(db);
   const bundle = {
     id: `evb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     version: 1,
@@ -224,7 +233,7 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
       const previous = baseBundle?.symbols?.find((row) => row.symbol === symbol);
       const priorSpec = previous?.contractSpec?.data ? { ...previous.contractSpec.data, fetchedAt: previous.contractSpec.fetchedAt } : null;
       const priorSmart = previous?.smartMoney?.data ? { ...previous.smartMoney.data, fetchedAt: previous.smartMoney.fetchedAt, ok: previous.smartMoney.quality === "passed" } : null;
-      return compactSymbolEvidence(db, symbol, specResults.get(symbol) || priorSpec, smartResults.get(symbol) || priorSmart, Date.now());
+      return compactSymbolEvidence(db, symbol, specResults.get(symbol) || priorSpec, smartResults.get(symbol) || priorSmart, Date.now(), mediumTermAnalytics);
     }),
     account: compactAccount(db, snapshot, Date.now()),
     accounting: compactAccounting(db, snapshot, Date.now()),
@@ -234,12 +243,18 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
       data: { breadthPct: db.marketRegime.global.breadthPct ?? null, medianChangePct: db.marketRegime.global.medianChangePct ?? null, btcChangePct: db.marketRegime.global.btcChangePct ?? null }
     } : null,
     refreshErrors,
+    mediumTermEventVolatility: mediumTermAnalytics.eventVolatility,
+    mediumTermPortfolioBtcRisk: mediumTermAnalytics.portfolioBtcRisk,
     latencyMs: Date.now() - startedAt
   };
   bundle.readiness = Object.fromEntries(symbols.map((symbol) => [symbol, evaluateEvidenceReadiness(bundle, symbol, { live })]));
   bundle.criticalReady = Object.values(bundle.readiness).every((row) => row.ready);
   bundle.blockers = [...new Set(Object.values(bundle.readiness).flatMap((row) => row.blockers))];
-  bundle.supplementalWarnings = bundle.symbols.flatMap((row) => row.smartMoney.quality === "passed" ? [] : [`${row.symbol}:smart_money_unavailable`]);
+  bundle.supplementalWarnings = bundle.symbols.flatMap((row) => [
+    ...(row.smartMoney.quality === "passed" ? [] : [`${row.symbol}:smart_money_unavailable`]),
+    ...(row.mediumTerm.quality === "passed" ? [] : [`${row.symbol}:medium_term_window_insufficient`]),
+    ...(row.mediumTerm.data?.windows?.["1h"]?.cvd != null ? [] : [`${row.symbol}:medium_term_cvd_insufficient`])
+  ]);
   db.evidenceBundles ||= [];
   db.evidenceBundles.unshift(bundle);
   if (db.evidenceBundles.length > 50) db.evidenceBundles = db.evidenceBundles.slice(0, 50);
@@ -249,10 +264,11 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
 export function snapshotEvidenceFromState(db, baseBundle) {
   if (!baseBundle) return null;
   const generatedAt = nowIso();
+  const mediumTermAnalytics = buildMediumTermAnalytics(db);
   const symbols = (baseBundle.symbols || []).map((previous) => {
     const spec = previous.contractSpec?.data ? { ...previous.contractSpec.data, fetchedAt: previous.contractSpec.fetchedAt } : null;
     const smart = previous.smartMoney?.data ? { ...previous.smartMoney.data, fetchedAt: previous.smartMoney.fetchedAt, ok: previous.smartMoney.quality === "passed" } : null;
-    return compactSymbolEvidence(db, previous.symbol, spec, smart, Date.now());
+    return compactSymbolEvidence(db, previous.symbol, spec, smart, Date.now(), mediumTermAnalytics);
   });
   const bundle = {
     ...baseBundle,
@@ -260,6 +276,8 @@ export function snapshotEvidenceFromState(db, baseBundle) {
     symbols,
     account: compactAccount(db, latestSuccessfulAccountSnapshot(db, { exchange: "OKX" }), Date.now()),
     accounting: compactAccounting(db, latestSuccessfulAccountSnapshot(db, { exchange: "OKX" }), Date.now()),
+    mediumTermEventVolatility: mediumTermAnalytics.eventVolatility,
+    mediumTermPortfolioBtcRisk: mediumTermAnalytics.portfolioBtcRisk,
     global: db.marketRegime?.global ? {
       evidenceId: evidenceId("global", "OKX", db.marketRegime.global.fetchedAt), source: "OKX_PUBLIC_API", endpoint: "/api/v5/market/tickers?instType=SWAP",
       ...freshness(db.marketRegime.global.fetchedAt, EVIDENCE_TTL_MS.global, Date.now()), quality: db.marketRegime.global.ok ? "passed" : "failed",
@@ -270,6 +288,11 @@ export function snapshotEvidenceFromState(db, baseBundle) {
   bundle.readiness = Object.fromEntries(symbols.map((row) => [row.symbol, evaluateEvidenceReadiness(bundle, row.symbol, { live })]));
   bundle.criticalReady = Object.values(bundle.readiness).every((row) => row.ready);
   bundle.blockers = [...new Set(Object.values(bundle.readiness).flatMap((row) => row.blockers))];
+  bundle.supplementalWarnings = bundle.symbols.flatMap((row) => [
+    ...(row.smartMoney.quality === "passed" ? [] : [`${row.symbol}:smart_money_unavailable`]),
+    ...(row.mediumTerm.quality === "passed" ? [] : [`${row.symbol}:medium_term_window_insufficient`]),
+    ...(row.mediumTerm.data?.windows?.["1h"]?.cvd != null ? [] : [`${row.symbol}:medium_term_cvd_insufficient`])
+  ]);
   return bundle;
 }
 
@@ -278,6 +301,29 @@ export function compactEvidenceForPrompt(bundle) {
   const lines = [`证据包 ${bundle.id}｜生成 ${bundle.generatedAt}｜关键证据 ${bundle.criticalReady ? "齐全" : `不齐全(${bundle.blockers.join(",")})`}`];
   for (const row of bundle.symbols || []) {
     lines.push(`- ${row.symbol}：现价 ${row.ticker.data?.price ?? "不可用"}[${row.ticker.status}·${row.ticker.evidenceId}]；1H闭合K线 ${row.candles.data?.closedBars ?? "不可用"}${row.candles.data?.closedBars == null ? "" : " 根"}[${row.candles.status}/${row.candles.quality}·${row.candles.evidenceId}]；点差 ${row.microstructure.data?.spreadBps ?? "不可用"}${row.microstructure.data?.spreadBps == null ? "" : "bps"}/深度 ${row.microstructure.data?.depthUsdt ?? "不可用"}[${row.microstructure.status}·${row.microstructure.evidenceId}]；合约规格 ${row.contractSpec.quality}[${row.contractSpec.evidenceId}]；聪明钱 ${row.smartMoney.quality}[${row.smartMoney.evidenceId}]`);
+    const mt = row.mediumTerm?.data;
+    if (mt) {
+      const parts = ["15m", "1h", "4h"].map((tf) => {
+        const w = mt.windows?.[tf];
+        return !w || w.status !== "ok" ? `${tf}=样本不足` : `${tf}:价${w.priceChangePct}%/OI${w.oiChangePct}%/Funding${w.fundingEndPct ?? "不足"}%(${w.fundingChangePp ?? "变化不足"}pp)/${w.leverageState}/CVD净量${w.cvd ?? "不足"}(失衡${w.cvdImbalancePct ?? "不足"}%,覆盖${w.flowCoveragePct ?? 0}%)/${w.divergence}`;
+      });
+      const betaParts = ["24h", "3d", "7d"].map((window) => {
+        const value = mt.btcRisk?.[window];
+        return value?.status === "ok" ? `${window}相关${value.correlation}/Beta${value.beta}` : `${window}样本不足`;
+      });
+      lines.push(`  中频事实[${row.mediumTerm.status}/${row.mediumTerm.quality}·${row.mediumTerm.evidenceId}]：${parts.join("；")}${mt.btcRisk ? `；BTC风险 ${betaParts.join("、")}` : ""}`);
+    }
+  }
+  const eventStats = bundle.mediumTermEventVolatility;
+  if (eventStats) {
+    const summary = Object.entries(eventStats.byType || {}).map(([type, value]) => value.status === "usable"
+      ? `${type}:n=${value.samples},前1h RV=${value.avgPre1hRealizedVolPct}%,后15m/1h/4h RV=${value.avgPost15mRealizedVolPct}/${value.avgPost1hRealizedVolPct}/${value.avgPost4hRealizedVolPct}%,1h波动倍数中位=${value.medianPost1hVolExpansionRatio}(${value.typicalReaction},${value.confidence})`
+      : `${type}:n=${value.samples},样本不足`).join("；");
+    if (summary) lines.push(`- BTC宏观事件波动统计：${summary}`);
+  }
+  const portfolioBtcRisk = bundle.mediumTermPortfolioBtcRisk;
+  if (portfolioBtcRisk && !["no_positions", "insufficient"].includes(portfolioBtcRisk.status)) {
+    lines.push(`- 组合BTC Beta敞口[${portfolioBtcRisk.status}]：净等效 ${portfolioBtcRisk.netBtcEquivalentUsdt} USDT，毛等效 ${portfolioBtcRisk.grossBtcBetaExposureUsdt} USDT，对冲抵消 ${portfolioBtcRisk.hedgeOffsetPct ?? "不可用"}%`);
   }
   const account = bundle.account;
   lines.push(`- 账户：${account.status}/${account.quality}[${account.evidenceId}]，净值 ${account.data?.totalEquityUsdt ?? "不可用"}，可用保证金 ${account.data?.availableMarginUsdt ?? "不可用"}，持仓 ${account.data?.positionCount ?? "不可确认"}`);

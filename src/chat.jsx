@@ -742,9 +742,13 @@ function AgentRail({ data, action, ui, send }) {
         <div className="agHeadIcon"><Eye size={13} /> {t("观察哨 · 实时盯盘", "Watch · real-time")}</div>
         {(() => {
           const all = data.watchTriggers || [];
-          const actives = all.filter((w) => w.status === "active");
+          const board = (data.watchBoard || []).length ? data.watchBoard : [];
+          const actives = board.length
+            ? board.flatMap((group) => [group.primary, ...(group.secondary || [])].filter(Boolean).map((watch, index) => ({ ...watch, isPrimary: index === 0, boardAnalysisAt: group.analysisAt })))
+            : all.filter((w) => w.status === "active").sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary"));
           const recent = all.filter((w) => w.status !== "active").slice(0, 2);
-          const label = { triggered: t("已触发重新分析 · 不直接下单", "Triggered re-analysis · no direct order"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void") };
+          const label = { triggered: t("已触发重新分析 · 不直接下单", "Triggered re-analysis · no direct order"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void"), superseded: t("已被最新分析取代", "Superseded") };
+          const purpose = (w) => w.isPrimary || w.priority === "primary" ? t("主观察哨", "Primary") : ({ confirmation: t("确认", "Confirmation"), invalidation: t("失效", "Invalidation"), alternative: t("备选", "Alternative"), decision: t("决策", "Decision") }[w.purpose] || t("辅助", "Supporting"));
           const desc = (w) => w.kind === "price_above" ? `${t("向上突破", "Breaks above")} ${displayPrice(w.level)}`
             : w.kind === "price_below" ? `${t("向下跌破", "Breaks below")} ${displayPrice(w.level)}`
               : `${t("回踩", "Pullback to")} ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
@@ -763,11 +767,12 @@ function AgentRail({ data, action, ui, send }) {
               {actives.map((w) => {
                 const remainH = Math.max(0, (new Date(w.expiresAt).getTime() - Date.now()) / 3_600_000);
                 return (
-                  <div className="agWatchRow" key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
+                  <div className={`agWatchRow ${w.isPrimary || w.priority === "primary" ? "primary" : "supporting"}`} key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
                     <span className="agWatchDot" />
                     <div className="agWatchBody">
-                      <b className="mono">{w.symbol}</b> {desc(w)}
+                      <b className="mono">{w.symbol}</b><em className="agWatchRole">{purpose(w)}</em> {desc(w)}
                       {w.note && <small>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
+                      {(w.isPrimary || w.priority === "primary") && w.boardAnalysisAt && <small>{t("最新市场分析", "Latest market analysis")} · {new Date(w.boardAnalysisAt).toLocaleString("zh-CN")}</small>}
                     </div>
                     <span className="agWatchMeta mono">{t("余", "Left")} {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
                     <button className="agWatchCancel" title={t("撤销观察哨", "Cancel watch")} onClick={async () => { if (await uiConfirm(`${t("撤销观察哨：", "Cancel watch: ")}${w.symbol} ${desc(w)}？`)) action(`/api/watch-triggers/${w.id}/cancel`, {}); }}><XCircle size={13} /></button>
@@ -935,7 +940,7 @@ function PosterModal({ content, meta, onClose }) {
           <div className="posterCanvas" ref={posterRef}>
             <div className="posterHeader">
               <div className="posterBrand">
-                <span className="posterLogo"><img src="/kordyn-logo.png" alt="KORDYN" /></span>
+                <span className="posterLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span>
                 <div className="posterBrandText">
                   <b>KORDYN · {lang === "en" ? "AI Trader" : "AI 交易员"}</b>
                   <small>{lang === "en" ? "Autonomous market analysis" : "自主行情分析"}</small>

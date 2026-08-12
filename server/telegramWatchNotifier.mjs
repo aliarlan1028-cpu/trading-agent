@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { sendTelegramText } from "./telegramNotifier.mjs";
+import { buildWatchBoard, describeWatch, watchBoardForSymbol, watchPurposeLabel } from "./watchView.mjs";
 
 function enabled(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -16,51 +17,111 @@ export function telegramWatchStatus() {
   };
 }
 
-function watchLevel(watch) {
-  if (watch.kind === "enter_zone") return `${watch.levelLow}–${watch.levelHigh}`;
-  return String(watch.level ?? "-");
+function localTime(value) {
+  if (!value) return "未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(new Date(value));
 }
 
-function eventLabel(type) {
-  return ({ registered: "已登记", updated: "已更新", triggered: "已触发", expired: "已过期", cancelled: "已撤销", invalidated: "已作废" })[type] || type;
+function compactNote(value, max = 180) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function watchMessage(watch, eventType, context = {}) {
-  const condition = watch.kind === "price_above" ? "向上穿越" : watch.kind === "price_below" ? "向下穿越" : "进入区间";
-  const lines = [
-    `🔭 观察哨${eventLabel(eventType)}`,
-    `标的：${watch.symbol}`,
-    `条件：${condition} ${watchLevel(watch)}`,
-    `观察哨：${watch.id}`
-  ];
-  if (watch.note) lines.push(`原因：${String(watch.note).replace(/\s+/g, " ").slice(0, 300)}`);
-  if (watch.expiresAt && ["registered", "updated"].includes(eventType)) lines.push(`有效期：${watch.expiresAt}`);
-  if (eventType === "triggered") {
-    lines.push(`触发价：${watch.triggerPrice ?? context.triggerPrice ?? "-"}`);
-    lines.push(`触发时间：${watch.triggeredAt || context.at || nowIso()}`);
-    lines.push(`AI 唤醒：${context.autoAnalyze ? "已请求自主巡检" : "未自动唤醒，请人工查看"}`);
+function boardMessage(db, watch, context = {}) {
+  const board = watchBoardForSymbol(db, watch.symbol);
+  if (!board) {
+    return [
+      `🔭 ${watch.symbol} 当前观察看板`,
+      "状态：暂无有效观察哨",
+      context.reason ? `变化：${context.reason}` : "变化：主观察哨已结束",
+      "下一步：等待 AI 完成新一轮分析后再生成观察条件。",
+      "说明：历史通知不再代表当前市场判断，请以 App 最新分析为准。"
+    ].join("\n");
   }
-  if (watch.closeReason) lines.push(`结束原因：${String(watch.closeReason).slice(0, 240)}`);
+  const primary = board.primary;
+  const lines = [
+    `🔭 ${board.symbol} 当前观察看板 · 以本条为准`,
+    `最新分析：${localTime(board.analysisAt)}${board.analysisTitle ? ` · ${compactNote(board.analysisTitle, 80)}` : ""}`,
+    `🎯 主观察哨：${describeWatch(primary)}`,
+    `用途：${watchPurposeLabel(primary)}`
+  ];
+  if (primary.note) lines.push(`关注原因：${compactNote(primary.note)}`);
+  lines.push(`有效至：${localTime(primary.expiresAt)}`);
+  if (board.secondary.length) {
+    lines.push(`辅助条件（${board.secondary.length}，不是另一份市场结论）：`);
+    for (const [index, item] of board.secondary.entries()) {
+      lines.push(`${index + 1}. [${watchPurposeLabel(item)}] ${describeWatch(item)}`);
+    }
+  }
+  lines.push("只需先盯主观察哨；辅助条件用于确认、失效或备选情景。旧分析已自动退出盯盘。触发只会唤起重新分析，不会绕过风控下单。");
   return lines.join("\n");
+}
+
+function triggerMessage(db, watch, context = {}) {
+  const next = watchBoardForSymbol(db, watch.symbol)?.primary;
+  const role = watch.wasPrimary || watch.priority === "primary" ? "主观察哨" : watchPurposeLabel(watch);
+  const lines = [
+    `🚨 ${watch.symbol} ${role}已触发`,
+    `命中条件：${describeWatch(watch)}`,
+    `触发价：${watch.triggerPrice ?? context.triggerPrice ?? "-"}`,
+    `触发时间：${localTime(watch.triggeredAt || context.at || nowIso())}`,
+    `AI 状态：${context.autoAnalyze ? "已请求立即重新分析；请等待最新结论" : "自动分析未开启；请打开 App 人工查看"}`
+  ];
+  lines.push(next
+    ? `当前临时主哨：${describeWatch(next)}（新分析完成后可能更新）`
+    : "当前状态：该币种暂无有效观察哨，等待新分析生成。"
+  );
+  lines.push("不要继续按旧通知操作，以接下来的最新分析/观察看板为准。");
+  return lines.join("\n");
+}
+
+function boardSignature(board, fallbackWatch) {
+  const rows = board ? [board.primary, ...board.secondary] : [fallbackWatch];
+  return crypto.createHash("sha256").update(rows.map((item) => `${item.id}:${item.version || 1}:${item.status}`).join("|")).digest("hex").slice(0, 16);
 }
 
 export function queueWatchTelegramEvent(db, watch, eventType, context = {}) {
   const status = telegramWatchStatus();
   if (!status.enabled || !watch?.id) return { status: "disabled" };
   db.telegramWatchOutbox ||= [];
-  const version = Number(watch.version || 1);
-  const key = `${watch.id}:${eventType}:${version}`;
+  const terminal = ["expired", "cancelled", "invalidated"].includes(eventType);
+  // 辅助观察哨的撤销/过期不再逐条轰炸 Telegram；页面仍完整保留历史。
+  if (terminal && !watch.wasPrimary && watch.priority !== "primary") return { status: "suppressed" };
+
+  const board = watchBoardForSymbol(db, watch.symbol);
+  const isTriggered = eventType === "triggered";
+  const signature = isTriggered
+    ? `${watch.id}:${Number(watch.version || 1)}:${watch.triggeredAt || context.at || "triggered"}`
+    : boardSignature(board, watch);
+  const key = isTriggered ? `watch_trigger:${signature}` : `watch_board:${watch.symbol}:${signature}`;
   const existing = db.telegramWatchOutbox.find((item) => item.idempotencyKey === key);
   if (existing) return { status: "duplicate", item: existing };
+  const coalesceKey = isTriggered ? null : `watch_board:${watch.symbol}`;
+  const message = isTriggered
+    ? triggerMessage(db, watch, context)
+    : boardMessage(db, watch, { reason: watch.closeReason || context.reason });
+  const pendingBoard = coalesceKey && db.telegramWatchOutbox.find((item) => item.coalesceKey === coalesceKey && ["pending", "retry"].includes(item.status));
+  if (pendingBoard) {
+    pendingBoard.idempotencyKey = key;
+    pendingBoard.watchId = board?.primary?.id || watch.id;
+    pendingBoard.eventType = "watch_board";
+    pendingBoard.message = message;
+    pendingBoard.updatedAt = nowIso();
+    pendingBoard.status = "pending";
+    pendingBoard.nextAttemptAt = nowIso();
+    return { status: "coalesced", item: pendingBoard };
+  }
   const item = {
     id: `tgwatch_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
     idempotencyKey: key,
     watchId: watch.id,
-    eventType,
+    eventType: isTriggered ? "triggered" : "watch_board",
+    coalesceKey,
     status: "pending",
     attempts: 0,
     nextAttemptAt: nowIso(),
-    message: watchMessage(watch, eventType, context),
+    message,
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
@@ -71,14 +132,19 @@ export function queueWatchTelegramEvent(db, watch, eventType, context = {}) {
 export function queueDailyWatchDigest(db) {
   const status = telegramWatchStatus();
   if (!status.enabled || !status.dailyDigestEnabled) return { status: "disabled" };
-  const watches = (db.watchTriggers || []).filter((watch) => watch.status === "active");
-  if (!watches.length) return { status: "empty" };
+  const boards = buildWatchBoard(db);
+  if (!boards.length) return { status: "empty" };
   db.telegramWatchOutbox ||= [];
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const key = `watch_digest:${date}`;
   const existing = db.telegramWatchOutbox.find((item) => item.idempotencyKey === key);
   if (existing) return { status: "duplicate", item: existing };
-  const message = [`🔭 今日活跃观察哨（${watches.length}）`, ...watches.map((watch) => `• ${watch.symbol} · ${watch.kind} ${watchLevel(watch)} · 到期 ${watch.expiresAt}`)].join("\n");
+  const watchCount = boards.reduce((sum, board) => sum + board.count, 0);
+  const message = [
+    `🔭 今日有效观察看板（${boards.length} 个币种 / ${watchCount} 个条件）`,
+    ...boards.map((board) => `• ${board.symbol}｜主：${describeWatch(board.primary)}｜辅助 ${board.secondary.length}｜分析 ${localTime(board.analysisAt)}`),
+    "每个币种只需优先关注“主”条件；详细差异请在 AI 交易员盯盘页查看。"
+  ].join("\n");
   const item = {
     id: `tgwatch_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
     idempotencyKey: key, eventType: "daily_digest", status: "pending", attempts: 0,

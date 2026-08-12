@@ -15,3 +15,10 @@ assets/
 deploy/vendor.env
 deploy/monitor.env
 ios/build/
+
+# 本地视觉探索稿与临时渲染样本：保留在工作站，不进入正式版本或服务器。
+tmp/
+public/kordyn-concept-faithful.html
+public/kordyn-marketing-v4.html
+public/landing-concept-v3.html
+public/landing-prototype.html

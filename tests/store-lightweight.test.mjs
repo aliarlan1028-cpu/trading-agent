@@ -9,7 +9,7 @@ import test from "node:test";
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "store-light-test-"));
 process.env.DATA_DIR = dataDir;
 
-const { loadDb, saveDb } = await import("../server/store.mjs");
+const { loadDb, loadDbReadOnlySnapshot, saveDb } = await import("../server/store.mjs");
 const Database = (await import("better-sqlite3")).default;
 
 function readCollection(name) {
@@ -42,4 +42,22 @@ test("lightweight save skips knowledge and strips candles; full save persists bo
   // 随后任意一次全量落盘补齐轻量期间的知识变更
   saveDb(db);
   assert.ok(readCollection("knowledge").sources.some((s) => s.id === "s_light"), "全量落盘应补齐知识变更");
+});
+
+test("中频事实使用独立行表持久化，历史回填不会塞进巨大collection", () => {
+  const db = loadDb();
+  const bucketAt = Math.floor(Date.now() / 300_000) * 300_000;
+  db.mediumTermSamples = [{
+    symbol: "BTC/USDT", bucketAt, at: new Date(bucketAt).toISOString(), price: 100, openInterest: 1000,
+    observedAt: new Date().toISOString(), persistPending: true
+  }];
+  saveDb(db, { lightweight: true });
+  assert.equal(readCollection("mediumTermSamples"), undefined, "高频事实不得写成整块JSON collection");
+  const sqlite = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const row = sqlite.prepare("SELECT doc FROM medium_term_samples WHERE symbol = ? AND bucket_at = ?").get("BTC/USDT", bucketAt);
+  sqlite.close();
+  assert.ok(row);
+  assert.equal(JSON.parse(row.doc).persistPending, undefined, "内部落盘标记不得污染事实");
+  const snapshot = loadDbReadOnlySnapshot();
+  assert.ok(snapshot.mediumTermSamples.some((item) => item.symbol === "BTC/USDT" && item.bucketAt === bucketAt));
 });

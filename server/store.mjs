@@ -7,6 +7,7 @@ import "dotenv/config";
 import { currentRequestContext } from "./requestContext.mjs";
 import { backfillToolUsage } from "./toolUsage.mjs";
 import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
+import { applyDerivedProfitGoals } from "./profitGoals.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -58,6 +59,7 @@ const collectionNames = [
   "opportunityEvents",
   "missedOpportunities",
   "marketFeatureState",
+  "eventVolatilityObservations",
   "marketNarratives",
   "structureAnalysisCache",
   "mandates",
@@ -514,6 +516,8 @@ function cleanSeedDatabase(createdAt) {
     opportunityEvents: [],
     missedOpportunities: [],
     marketFeatureState: {},
+    mediumTermSamples: [],
+    eventVolatilityObservations: [],
     marketNarratives: {},
     structureAnalysisCache: {},
     mandates: [],
@@ -606,8 +610,8 @@ function cleanSeedDatabase(createdAt) {
     ],
     skillRuns: [],
     riskRules: [
-      { id: "risk_stop_required", name: "自主交易必须带止损", scope: "trade", level: "L4", enabled: true, action: "block", description: "无止损交易计划不得进入执行器。" },
-      { id: "risk_no_withdraw", name: "API Key 禁止提现权限", scope: "account", level: "L5", enabled: true, action: "kill_switch", description: "检测到提现权限时禁止交易并触发熔断。" }
+      { id: "risk_stop_required", name: "自主交易必须带止损", scope: "trade", level: "L4", enabled: true, systemManaged: true, action: "reject_entry", enforcementStatus: "entry_enforced", description: "无止损交易计划不得进入执行器。" },
+      { id: "risk_no_withdraw", name: "API Key 禁止提现权限", scope: "account", level: "L5", enabled: true, systemManaged: true, action: "reject_entry", enforcementStatus: "entry_enforced", description: "检测到提现权限时拒绝当前入场，并要求人工启用全局熔断。" }
     ],
     riskChecks: [],
     riskIncidents: [],
@@ -637,8 +641,10 @@ export function loadDb() {
   const normalized = sqliteState
     ? normalizeDatabase(sqliteState)
     : normalizeDatabase(fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase());
-  saveDb(normalized); // 确保所有集合（含审计条目）已落入 SQLite，再校准审计链
-  ensureAuditChainIntegrity(normalized);
+  // 必须先只读校验审计链，再做任何常规保存。发现断裂只标记故障并进入只减仓，
+  // 绝不通过重算历史 hash 让异常“看起来恢复正常”。
+  inspectAuditChainIntegrity(normalized);
+  saveDb(normalized);
   try {
     const pruned = pruneLogRetention(normalized); // 启动收口:裁掉超额日志行(trace>2万 / audit>5万)
     if (pruned.traceDeleted || pruned.auditDeleted) {
@@ -658,6 +664,14 @@ export function loadDbReadOnlySnapshot() {
     if (!rows.length) throw new Error("SQLite collections are empty");
     const db = {};
     for (const row of rows) db[row.name] = JSON.parse(row.value);
+    // 候选版本预检会先以只读方式打开“旧版本”生产库；新表尚未由候选进程迁移时
+    // 必须向后兼容，否则一次正常的新增表会反过来阻断部署。
+    try {
+      db.mediumTermSamples = reader.prepare("select doc from medium_term_samples where bucket_at >= ? order by bucket_at desc").all(Date.now() - 30 * 86_400_000).map((row) => JSON.parse(row.doc));
+    } catch (error) {
+      if (!/no such table:\s*medium_term_samples/i.test(String(error?.message || error))) throw error;
+      db.mediumTermSamples = [];
+    }
     const entityRows = reader.prepare(`
       select resource_type, doc from trading_entities
       order by resource_type asc, updated_at desc, resource_id asc
@@ -678,33 +692,54 @@ export function loadDbReadOnlySnapshot() {
   }
 }
 
-// 审计链完整性：历史数据一次性重链（修复排序缺陷造成的 prevHash 断裂），之后每次启动
-// 只把链尾 hash 同步回 db.meta.auditChainTip，供 appendAudit 续链。
-function ensureAuditChainIntegrity(db) {
+// 启动时只读校验。断链属于安全事件：保留原始证据、标记降级、阻断新的自动开仓。
+// 历史链修复只能走 repairAuditChainExplicit，并且必须先产出原库备份。
+function inspectAuditChainIntegrity(db) {
   db.meta ||= {};
-  if (!db.meta.auditChainResealedV2) {
-    const result = resealAuditChain(db);
-    appendAudit(db, `审计链重建：修复历史 prevHash 断裂，共重链 ${result.resealed} 条`, "audit_chain", "System", "warning");
-    saveDb(db);
-    return;
-  }
-  // 已做过历史重链,但若又出现新断点(同秒批量写/跨进程写竞态造成的 prevHash 错位),再自愈一次。
-  // 只重写 prevHash+hash 使链自洽,不改任何条目内容。断点过多(疑似真问题)则不自愈、留待人工。
-  const fresh = verifyAuditChain(db);
-  if (!fresh.ok) {
-    const cap = Number(process.env.AUDIT_RESEAL_MAX_BREAKS || 20);
-    if (fresh.breaks.length <= cap) {
-      const result = resealAuditChain(db);
-      appendAudit(db, `审计链自愈：修复新出现的 ${fresh.breaks.length} 处 prevHash 断裂(写入竞态),重链 ${result.resealed} 条,未改条目内容`, "audit_chain", "System", "warning");
-      saveDb(db);
-      return;
-    }
-  }
+  const result = verifyAuditChain(db);
   const tip = latestAuditHash();
-  if (tip && db.meta.auditChainTip !== tip) {
-    db.meta.auditChainTip = tip;
-    saveDb(db);
+  if (result.ok) {
+    db.meta.auditChainBroken = false;
+    db.meta.auditChainCheckedAt = nowIso();
+    db.meta.auditChainCheckedEntries = result.checked;
+    delete db.meta.auditChainBreaks;
+    if (tip) db.meta.auditChainTip = tip;
+    if (db.system?.reduceOnlyBy === "audit_chain_integrity") {
+      db.system.reduceOnlyMode = false;
+      db.system.reduceOnlyBy = null;
+      db.system.riskStatus = "正常";
+      db.system.latestAction = "审计链完整性已由可信状态恢复，解除审计链只减仓";
+      for (const incident of db.riskIncidents || []) {
+        if (incident.status === "open" && incident.source === "audit_chain_integrity") {
+          incident.status = "resolved";
+          incident.resolvedAt = nowIso();
+          incident.resolvedBy = "AuditIntegrityCheck";
+        }
+      }
+    }
+    return result;
   }
+  db.meta.auditChainBroken = true;
+  db.meta.auditChainDetectedAt ||= nowIso();
+  db.meta.auditChainCheckedAt = nowIso();
+  db.meta.auditChainCheckedEntries = result.checked;
+  db.meta.auditChainBreaks = result.breaks.slice(0, 20);
+  if (tip) db.meta.auditChainTip = tip; // 只移动后续追加锚点，不改写任何历史记录。
+  db.system ||= {};
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyBy = "audit_chain_integrity";
+  db.system.riskStatus = "审计链异常·只减仓";
+  db.system.latestAction = `审计链校验失败（${result.breaks.length} 处），已保留原始证据并禁止新开仓`;
+  db.riskIncidents ||= [];
+  if (!db.riskIncidents.some((item) => item.status === "open" && item.source === "audit_chain_integrity")) {
+    db.riskIncidents.unshift({
+      id: id("incident"), severity: "critical", status: "open", title: "审计哈希链完整性校验失败",
+      source: "audit_chain_integrity", breakCount: result.breaks.length,
+      detail: "系统未修改历史哈希；请先保存原库证据，再由管理员执行显式修复或恢复可信备份。",
+      createdAt: nowIso()
+    });
+  }
+  return result;
 }
 
 function latestAuditHash() {
@@ -717,9 +752,8 @@ function latestAuditHash() {
   }
 }
 
-// 按校验所用的规范顺序（created_at asc, rowid asc）重新计算整条链的 prevHash 与 hash，
-// 使 verifyAuditChain 必然通过。仅在检测到旧版本未重链时运行一次。
-function resealAuditChain(db) {
+// 危险运维操作：仅供显式修复命令使用。调用者必须先备份原始 SQLite 并传入确认语句。
+function resealAuditChainForExplicitRepair(db) {
   ensureSqlite();
   const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by created_at asc, rowid asc").all();
   const update = sqlite.prepare("update audit_log_entries set doc = @doc, severity = @severity where rowid = @rid");
@@ -736,9 +770,25 @@ function resealAuditChain(db) {
   tx();
   db.meta ||= {};
   db.meta.auditChainTip = previous;
-  db.meta.auditChainResealedV2 = nowIso();
+  db.meta.auditChainLastExplicitRepairAt = nowIso();
   db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
   return { resealed: rows.length, tip: previous };
+}
+
+export async function repairAuditChainExplicit(db, { acknowledgement, backupPath, actor = "SecurityAdmin" } = {}) {
+  if (acknowledgement !== "I_HAVE_PRESERVED_THE_ORIGINAL_AUDIT_DATABASE") {
+    throw new Error("缺少显式修复确认；不会重写任何审计哈希");
+  }
+  const destination = String(backupPath || "").trim();
+  if (!destination) throw new Error("显式修复前必须提供原始 SQLite 备份路径");
+  await backupSqlite(destination);
+  const before = verifyAuditChain(db);
+  const repaired = resealAuditChainForExplicitRepair(db);
+  db.meta.auditChainBroken = false;
+  delete db.meta.auditChainBreaks;
+  appendAudit(db, `管理员显式重建审计链：修复前 ${before.breaks.length} 处断裂；原库备份 ${destination}`, "audit_chain", actor, "critical");
+  saveDb(db);
+  return { before, repaired, backupPath: destination, after: verifyAuditChain(db) };
 }
 
 // 日志型集合上限：防止长期累积把 saveDb 的全库序列化拖垮（曾累积到 accountSnapshots 22K / jobRuns 95K
@@ -822,6 +872,9 @@ export function resetOperationalData(db, options = {}) {
   db.opportunityEvents = [];
   db.missedOpportunities = [];
   db.marketFeatureState = {};
+  db.mediumTermSamples = [];
+  try { ensureSqlite().prepare("delete from medium_term_samples").run(); } catch { /* 清理表失败交给上层持久化错误处理 */ }
+  db.eventVolatilityObservations = [];
   db.marketNarratives = {};
   db.structureAnalysisCache = {};
   db.events = [];
@@ -916,10 +969,8 @@ export function appendTrace(db, type, title, status = "ok", latencyMs = null) {
   return entry;
 }
 
-// 日志表保留上限:trace/audit 只增不删会无限膨胀(实测一月 28万/23万行 → 库 290MB,
-// 每次 saveDb/WAL checkpoint 序列化+I/O 拖满单核 CPU,HTTP 首字节被拖到数秒)。
-// trace 是纯遥测,按行数直接裁;audit 是防篡改哈希链,裁掉最旧条目后必须 resealAuditChain 重锚链头,
-// 否则新链头 prevHash 悬空、verifyAuditChain 报断裂。
+// trace 可按保留策略裁剪；审计日志不得在运行时自动删除或重链。
+// 达到阈值只标记容量告警，由外部 WORM/归档流程显式处理。
 const TRACE_KEEP = Number(process.env.TRACE_RETENTION || 20000);
 const AUDIT_KEEP = Number(process.env.AUDIT_RETENTION || 50000);
 let traceInsertsSincePrune = 0;
@@ -931,26 +982,23 @@ function pruneTraceRows() {
   ).run({ keep: TRACE_KEEP }).changes;
 }
 
-// 启动时调用一次:裁掉超额的 trace/audit 旧行并重链审计,把长期积累的膨胀一次性收口。
+// 启动时只裁剪 trace；审计超限仅记录容量状态，不删除、不重链。
 export function pruneLogRetention(db) {
   ensureSqlite();
   let traceDeleted = 0;
-  let auditDeleted = 0;
+  const auditDeleted = 0;
   try { traceDeleted = pruneTraceRows(); } catch { /* 裁剪失败不阻断 */ }
   try {
     const auditCount = sqlite.prepare("select count(*) as c from audit_log_entries").get().c;
-    if (auditCount > AUDIT_KEEP) {
-      auditDeleted = sqlite.prepare(
-        "delete from audit_log_entries where rowid in (select rowid from audit_log_entries order by created_at desc, rowid desc limit -1 offset @keep)"
-      ).run({ keep: AUDIT_KEEP }).changes;
-      if (auditDeleted > 0) { resealAuditChain(db); saveDb(db); } // 重锚链头 + 持久化新链尾 hash
-    }
+    db.meta ||= {};
+    db.meta.auditRetentionExceeded = auditCount > AUDIT_KEEP;
+    db.meta.auditEntryCount = auditCount;
   } catch { /* 审计裁剪失败保持原样,不阻断启动 */ }
   // 一次性回收:历史膨胀裁掉后,SQLite 只是把页标为空闲、文件不缩;VACUUM 把空洞还给 OS。
   // 用 meta 标记锁成"永远只跑一次",避免每次启动都 VACUUM(重写整库、阻塞事件循环)。
   try {
     db.meta ||= {};
-    if (!db.meta.logVacuumV1 && (traceDeleted > 5000 || auditDeleted > 5000)) {
+    if (!db.meta.logVacuumV1 && traceDeleted > 5000) {
       sqlite.exec("VACUUM");
       db.meta.logVacuumV1 = nowIso();
       saveDb(db);
@@ -1018,6 +1066,14 @@ function ensureSqlite() {
     );
     create index if not exists idx_trace_created_at on trace_entries(created_at);
     create index if not exists idx_trace_type on trace_entries(type);
+    create table if not exists medium_term_samples (
+      symbol text not null,
+      bucket_at integer not null,
+      observed_at text,
+      doc text not null,
+      primary key (symbol, bucket_at)
+    );
+    create index if not exists idx_medium_term_bucket on medium_term_samples(bucket_at);
     create table if not exists oms_orders (
       id text primary key,
       tenant_id text not null,
@@ -1426,6 +1482,8 @@ function loadFromSqlite() {
   if (!rows.length) return null;
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
+  // 高频中频事实使用独立行存储，避免每2分钟重写一个数十MB的JSON collection。
+  db.mediumTermSamples = sqlite.prepare("select doc from medium_term_samples where bucket_at >= ? order by bucket_at desc").all(Date.now() - 30 * 86_400_000).map((row) => JSON.parse(row.doc));
   const entityRows = sqlite.prepare(`
     select resource_type, doc from trading_entities
     order by resource_type asc, updated_at desc, resource_id asc
@@ -1450,6 +1508,11 @@ function saveToSqlite(db, options = {}) {
     values (@name, @value, @updated_at)
     on conflict(name) do update set value = excluded.value, updated_at = excluded.updated_at
   `);
+  const upsertMediumTerm = sqlite.prepare(`
+    insert into medium_term_samples (symbol, bucket_at, observed_at, doc)
+    values (@symbol, @bucket_at, @observed_at, @doc)
+    on conflict(symbol, bucket_at) do update set observed_at = excluded.observed_at, doc = excluded.doc
+  `);
   // lightweight 模式(高频后台落盘用,如行情 WS 8s 节流):
   // - 跳过 knowledge 巨 blob(全文 chunk+1536 维向量,几十 MB;行情 tick 不会改知识,沿用上次落盘值)
   // - markets 剥离 K 线数组(candles/candlesByTf 每次全量重写是 CPU 大头;K 线由巡检任务全量落盘)
@@ -1464,11 +1527,23 @@ function saveToSqlite(db, options = {}) {
       if (lightweight && (name === "knowledge" || name === "markets")) continue;
       upsert.run({ name, value: JSON.stringify(db[name]), updated_at: updatedAt });
     }
+    // 只写最近可能新增/被 Rubik 最终值修订的桶；历史桶是不可变事实，避免每2分钟全量JSON重写。
+    const recentCutoff = Date.now() - 20 * 60_000;
+    for (const row of db.mediumTermSamples || []) {
+      if (!row?.symbol || !Number.isFinite(Number(row.bucketAt))) continue;
+      if (Number(row.bucketAt) < recentCutoff && row.persistPending !== true) continue;
+      // persistPending 只是内存中的“首次回填待落盘”标记，不属于市场事实本身。
+      const stored = row.persistPending === true ? { ...row, persistPending: undefined } : row;
+      upsertMediumTerm.run({ symbol: row.symbol, bucket_at: Number(row.bucketAt), observed_at: row.observedAt || row.updatedAt || updatedAt, doc: JSON.stringify(stored) });
+    }
+    sqlite.prepare("delete from medium_term_samples where bucket_at < ?").run(Date.now() - 30 * 86_400_000);
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);
     persistTradingEntities(db, updatedAt);
   });
   write();
+  // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
+  for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
 }
 
 function persistTradingEntities(db, updatedAt) {
@@ -1550,6 +1625,7 @@ export function normalizeDatabase(db) {
   db.meta.schemaVersion = 5;
   db.user ||= seed.user;
   db.system ||= seed.system;
+  applyDerivedProfitGoals(db.system);
   db.portfolio ||= seed.portfolio;
   db.markets ||= seed.markets;
   db.watchlist ||= seed.watchlist;
@@ -1559,6 +1635,8 @@ export function normalizeDatabase(db) {
   db.opportunityEvents ||= seed.opportunityEvents;
   db.missedOpportunities ||= seed.missedOpportunities;
   db.marketFeatureState ||= seed.marketFeatureState;
+  db.mediumTermSamples ||= seed.mediumTermSamples || [];
+  db.eventVolatilityObservations ||= seed.eventVolatilityObservations || [];
   db.marketNarratives ||= seed.marketNarratives;
   db.structureAnalysisCache ||= seed.structureAnalysisCache;
   db.mandates ||= seed.mandates;
@@ -1770,6 +1848,17 @@ export function normalizeDatabase(db) {
   db.fills ||= [];
 
   db.riskRules ||= seed.riskRules;
+  for (const rule of db.riskRules) {
+    if (["risk_stop_required", "risk_no_withdraw"].includes(rule.id)) {
+      rule.systemManaged = true;
+      rule.enabled = true;
+      rule.enforcementStatus = "entry_enforced";
+      if (["block", "kill_switch", "restrict"].includes(rule.action)) {
+        rule.action = "reject_entry";
+        rule.migratedFromLegacyActionAt ||= nowIso();
+      }
+    }
+  }
   db.riskChecks ||= [];
   db.riskIncidents ||= [];
 

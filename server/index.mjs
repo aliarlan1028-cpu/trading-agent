@@ -12,7 +12,7 @@ import { computeBehaviorProfile } from "./behaviorProfile.mjs";
 import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
 import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
-import { cancelWatch, describeWatch, requestPendingAgentCycle, runWatchSentinel, sweepWatches } from "./watchSentinel.mjs";
+import { buildWatchBoard, cancelWatch, describeWatch, requestPendingAgentCycle, runWatchSentinel, sweepWatches } from "./watchSentinel.mjs";
 import { cancelArmedSetup, processArmedSetupTick, reconcileArmedSetupDefinitions, reconcileArmedSetupExecutions, recoverTriggeredSetups } from "./armedSetup.mjs";
 import { abnormalVolatilityBoard, opportunityEngineStatus, recordOpportunityTick, runBroadOpportunityScan } from "./earlyOpportunityEngine.mjs";
 import { createNotification } from "./notificationStore.mjs";
@@ -25,8 +25,9 @@ import { authRequired, hashPassword, installAuth, invalidateSessions, requirePer
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
-import { fetchMarketRegime, fetchPerpetualInstruments } from "./marketSignals.mjs";
+import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, syncPublicMarketQuiet } from "./exchangeConnector.mjs";
+import { fetchMarketRegime, fetchPerpetualInstruments, fetchSmartMoney } from "./marketSignals.mjs";
+import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection, recordMediumTermSample } from "./mediumTermAnalytics.mjs";
 import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
@@ -43,7 +44,7 @@ import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, 
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { dispatchTelegramWatchOutbox, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
-import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission } from "./eventSources.mjs";
+import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission, testEventSource } from "./eventSources.mjs";
 import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData } from "./marketIntelligence.mjs";
 import { refreshMeNewsFlash } from "./newsFlashFeed.mjs";
 import { prepareScheduledEventMilestones } from "./scheduledEvents.mjs";
@@ -78,11 +79,12 @@ import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./rea
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
+import { profitGoalSnapshot } from "./profitGoals.mjs";
 import { buildCurrentRiskSnapshot } from "./currentRiskSnapshot.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { backfillReviewMemoryContexts, buildReviewLearningAnalytics } from "./reviewLearning.mjs";
-import { compileNaturalRiskCondition, validateConditionSpec } from "./dynamicRiskRules.mjs";
-import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler } from "./scheduler.mjs";
+import { compileNaturalRiskCondition, validateConditionSpec, validateDynamicRiskAction } from "./dynamicRiskRules.mjs";
+import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler, unscheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
 import { installSkill, scanSkill } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
@@ -98,6 +100,7 @@ import { recoverUncertainOrders } from "./omsRecovery.mjs";
 import { requestContextMiddleware } from "./requestContext.mjs";
 import { migrateLegacyWeeklyLossMandates } from "./mandatePolicy.mjs";
 import { markRegistrationPaymentConfirmed, publicRegistrationInfo, sanitizeRegistrationApplication, updateRegistrationApplication } from "./publicRegistration.mjs";
+import { assertSafeExternalUrl } from "./externalInputSafety.mjs";
 
 dotenv.config();
 installProxyFromEnv();
@@ -471,6 +474,20 @@ registerTaskHandler("position_monitor", async (database) => {
   return r;
 });
 registerTaskHandler("accounting_refresh", (database) => refreshAccounting(database));
+registerTaskHandler("reminder", (database, task) => {
+  database.notifications ||= [];
+  database.notifications.unshift({
+    id: id("notif"),
+    type: "task_reminder",
+    severity: "info",
+    title: task.name,
+    body: String(task.description || `定时提醒已触发：${task.name}`).slice(0, 500),
+    taskId: task.id,
+    read: false,
+    createdAt: nowIso()
+  });
+  return { status: "notified", notification: task.name };
+});
 registerTaskHandler("agent_cycle", async (database) => {
   const run = await runAgentCycle(database, {}, saveDb);
   recheckActivePlanRisk(database);
@@ -580,22 +597,64 @@ registerTaskHandler("oms_recovery", async (database) => {
 });
 registerTaskHandler("okx_readonly_sync", async (database) => {
   const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
-  if (!accounts.length) return { status: "no_read_account" };
-  let synced = 0;
+  if (!accounts.length) return { status: "skipped", reason: "no_read_account", skipPersist: true };
+  let synced = 0; const errors = [];
   for (const account of accounts) {
-    try { await syncPrivateReadOnly(database, account.id); synced += 1; } catch { /* 单账户失败不阻断 */ }
+    try { await syncPrivateReadOnly(database, account.id); synced += 1; }
+    catch (error) { errors.push({ accountId: account.id, error: String(error?.message || error).slice(0, 160) }); }
   }
-  return { status: "ok", synced };
+  return { status: synced === 0 ? "failed" : synced < accounts.length ? "partial" : "ok", attempted: accounts.length, synced, errors };
 });
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database) => {
   const mandate = activeMandate(database);
   // 刷 BTC/ETH（默认展示）+ 授权交易对 + 自选列表——此前不含自选，自选里非授权币的
   // 买盘占比/微观结构永远"未同步"。
-  const symbols = [...new Set(["BTC/USDT", "ETH/USDT", ...(mandate?.allowedSymbols || []), ...(database.watchlist || [])])].slice(0, 6);
-  let synced = 0;
+  const symbols = mediumTermSymbolsForCollection(database, mandate);
+  // 价格相关性/Beta 不必空等 7 天：首次（或上次失败超过1小时）从 OKX 15m 历史 K 线回填。
+  // OI/Funding/CVD 没有被 K 线伪造，仍只使用前向采集的同频事实。
+  database.meta ||= {};
+  database.meta.mediumTermPriceBackfill ||= {};
   for (const symbol of symbols) {
-    try { await syncMicrostructure(database, "OKX", symbol); synced += 1; } catch { /* 单交易对失败不阻断 */ }
+    const state = database.meta.mediumTermPriceBackfill[symbol] || {};
+    const lastAttempt = new Date(state.attemptedAt || 0).getTime();
+    // “完成”与7d Beta使用同一覆盖口径：跨满7天且至少80% 15m时点。
+    // 不能只看最近有一行，也不能用6.5天历史宣称7d窗口已经准备好。
+    const historyFresh = mediumTermPriceHistoryReady(database.mediumTermSamples || [], symbol);
+    if ((state.status === "ok" && historyFresh) || Date.now() - lastAttempt < 60 * 60_000) continue;
+    state.attemptedAt = nowIso();
+    try {
+      const candles = await getHistoricalKlines(symbol, "15m", 700);
+      const result = backfillMediumTermPriceHistory(database, symbol, candles, { intervalMs: 15 * 60_000 });
+      Object.assign(state, { status: mediumTermPriceHistoryReady(database.mediumTermSamples || [], symbol) ? "ok" : "partial", timeframe: "15m", rows: candles.length, added: result.added, completedAt: nowIso() });
+    } catch (error) {
+      Object.assign(state, { status: "failed", error: String(error?.message || error).slice(0, 160) });
+    }
+    database.meta.mediumTermPriceBackfill[symbol] = state;
+  }
+  let synced = 0; const syncErrors = [];
+  for (const symbol of symbols) {
+    try {
+      // 三个公开源独立降级：micro 或 Rubik 短暂失败时，仍保住 ticker 价格序列，
+      // 避免 Beta/事件波动因无关接口抖动断档。各指标自己的覆盖门负责拒绝残缺结论。
+      const ticker = await syncPublicMarketQuiet(database, symbol);
+      const micro = await syncMicrostructure(database, "OKX", symbol, { quiet: true }).catch(() => null);
+      const smart = await fetchSmartMoney(symbol).catch(() => ({}));
+      const priceSourceAt = Number.isFinite(Number(ticker.rawTime)) ? Number(ticker.rawTime) : null;
+      recordMediumTermSample(database, {
+        // 存储桶与价格事实同源，避免本机时钟或网络延迟把行情错放到相邻5分钟桶。
+        symbol, at: priceSourceAt ?? nowIso(), price: ticker.price,
+        priceObservedAt: priceSourceAt ? new Date(priceSourceAt).toISOString() : null,
+        openInterest: micro?.openInterest, fundingRatePct: micro?.fundingRatePct,
+        spreadBps: micro?.spreadBps, depthUsdt: micro?.depthUsdt,
+        oiObservedAt: micro?.sourceTimestamps?.openInterest,
+        // fundingTime 是结算时点，不是“当前费率被我们观察到”的时点；当前费率按本次 API 成功时间记账。
+        fundingObservedAt: micro?.observedAt,
+        takerBuyVolume: smart.takerBuyVolume, takerSellVolume: smart.takerSellVolume, flowAt: smart.takerSourceAt, flowScope: smart.takerScope,
+        sourceAt: { ticker: ticker.rawTime || null, micro: micro?.sourceTimestamps || null, taker: smart.takerSourceAt || null }
+      });
+      synced += 1;
+    } catch (error) { syncErrors.push({ symbol, error: String(error?.message || error).slice(0, 160) }); }
   }
   try {
     const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
@@ -610,6 +669,8 @@ registerTaskHandler("market_signal_refresh", async (database) => {
   } catch { /* 大盘拉取失败不阻断 */ }
   // 全市场异动扫描 + 重大异动消息面归因（环境感知，注入决策上下文）。
   try { await refreshMarketMovers(database, {}); } catch { /* 异动扫描失败不阻断 */ }
+  // T+4h 数据完整后固化事件观察；即使 events 后续按保留策略清理，统计样本仍可长期积累。
+  captureEventVolatilityObservations(database);
   // 知识技能声明的非默认周期（4h/1d 等）也要有 K 线，否则技能信号永远无法评估。
   try {
     const skillTfs = [...new Set((database.knowledge?.tradingSkills || [])
@@ -622,7 +683,7 @@ registerTaskHandler("market_signal_refresh", async (database) => {
       }
     }
   } catch { /* 技能周期补拉失败不阻断 */ }
-  return { status: "ok", synced };
+  return { status: synced === 0 ? "failed" : synced < symbols.length ? "partial" : "ok", attempted: symbols.length, synced, errors: syncErrors };
 });
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m" }, saveDb);
@@ -940,7 +1001,7 @@ app.get("/api/overview", (req, res) => {
     subscriptionPlans: db.subscriptionPlans || [],
     subscriptions: db.subscriptions || [],
     paymentRequests: db.paymentRequests?.slice(0, 20) || [],
-    system: db.system,
+    system: profitGoalSnapshot(db.system),
     systemRelease: process.env.APP_RELEASE || "dev",
     publicRegistrationEnabled: publicRegistrationInfo(db).registrationEnabled,
     registrationMode: publicRegistrationInfo(db).registrationMode,
@@ -963,6 +1024,7 @@ app.get("/api/overview", (req, res) => {
     mandates: db.mandates,
     tradePlans: db.tradePlans,
     watchTriggers: (db.watchTriggers || []).slice(0, 20),
+    watchBoard: buildWatchBoard(db),
     events: db.events,
     tasks: db.tasks,
     // 蒸馏出的 chunk 正文/词频向量（导入 11 本书后达 ~1.4MB）客户端并不渲染，只用到条数；
@@ -988,6 +1050,7 @@ app.get("/api/overview", (req, res) => {
     currentRiskSnapshot: overviewRiskSnapshot,
     realtimeConnections: db.realtimeConnections,
     marketRegime: db.marketRegime || null,
+    mediumTermAnalytics: buildMediumTermAnalytics(db),
     marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
     positionEscort: db.positionEscort || null,
     realtimeStarted: realtimeStatus(db).started,
@@ -1294,11 +1357,11 @@ registerAllRoutes(app, {
   db, saveDb, persist, requirePermission,
   normalizeSymbol, runReconciler, exportTraces, exportAuditLogs, schedulerStatus, startScheduler,
   parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace,
-  rankEvents, scheduleTask, runTask,
+  rankEvents, scheduleTask, unscheduleTask, validateTaskDefinition, runTask,
   larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
   telegramWatchStatus, queueWatchTelegramEvent, dispatchTelegramWatchOutbox,
   buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
-  storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals,
+  storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl,
   listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,
   getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain,
   addMonthsIso, verifyTrc20Payments, activateSubscriptionFromPayment,
@@ -1306,7 +1369,7 @@ registerAllRoutes(app, {
   buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle,
   hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions,
   syncPublicKlines, syncMicrostructure, reconcileAccount, syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction,
-  evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec,
+  evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec, validateDynamicRiskAction,
   runExpertAnalysis, bindKnowledgeSkillsToPlan, executeApprovedPlan, describeGuardReason, executeTradePlan,
   cancelArmedSetup,
   fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox,
@@ -1315,7 +1378,7 @@ registerAllRoutes(app, {
   realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate,
   handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks,
   knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, approveKnowledgeSkill, retireKnowledgeSkill,
-  compileNaturalRiskCondition, consolidateRuleProposals, broadcastRaw,
+  compileNaturalRiskCondition, validateDynamicRiskAction, consolidateRuleProposals, broadcastRaw,
   activeProvider, runAgentChat, runAgentCommand, updateStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle,
   buildReadinessReport, createSystemBackup, resetOperationalData, getStorageInfo, userHasPermission, llmComplete
 });

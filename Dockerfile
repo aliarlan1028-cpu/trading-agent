@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=runtime-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY server ./server
-COPY public/kordyn-logo.png ./public/kordyn-logo.png
+COPY public/kordyn-logo.svg ./public/kordyn-logo.svg
 COPY scripts ./scripts
 COPY package*.json ./
 USER node

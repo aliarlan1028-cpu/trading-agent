@@ -2,7 +2,7 @@
 // 从 index.mjs 按 registrar 范式迁出。规则批准=编译成结构化条件则硬拦截,否则仅注入提示词(显式告警);
 // 去重先立即响应后台执行。依赖经 ctx 注入。
 export function registerKnowledgeRuleRoutes(app, ctx) {
-  const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, appendTrace, compileNaturalRiskCondition, validateConditionSpec, consolidateRuleProposals, broadcastRaw, runExpertAnalysis } = ctx;
+  const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, appendTrace, compileNaturalRiskCondition, validateConditionSpec, validateDynamicRiskAction, consolidateRuleProposals, broadcastRaw, runExpertAnalysis } = ctx;
 
   app.post("/api/knowledge/cards/concept", requirePermission("write:knowledge"), (req, res) => {
     const card = {
@@ -35,7 +35,7 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
       condition: String(req.body.condition || ""),
       level: req.body.level || "L2",
       status: "待审批",
-      action: req.body.action || "notify",
+      action: validateDynamicRiskAction(req.body.action || "notify") ? (req.body.action || "notify") : "notify",
       sourceRefs: req.body.sourceRefs || [],
       createdAt: nowIso()
     };
@@ -54,6 +54,7 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
     if (rule.status === "已批准") {
       const conditionSpec = rule.conditionSpec || compileNaturalRiskCondition(rule.condition);
       const conditionValidation = validateConditionSpec(conditionSpec);
+      const action = validateDynamicRiskAction(rule.action) ? rule.action : "notify";
       if (!conditionValidation.valid) {
         // 显式告知：这条规则编译不成结构化条件，只会作为提示注入提示词、不会被风控引擎硬拦截。
         // 否则运维会以为"配上了就在拦"，实际是静默放行。
@@ -66,10 +67,10 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
         scope: "knowledge",
         level: rule.level,
         enabled: true,
-        action: rule.action,
+        action,
         condition: rule.condition || "",
         conditionSpec: conditionValidation.valid ? conditionSpec : null,
-        enforcementStatus: conditionValidation.valid ? "enforced" : "advisory_uncompiled",
+        enforcementStatus: conditionValidation.valid ? (action === "notify" ? "notification_enforced" : "entry_enforced") : "advisory_uncompiled",
         description: `来自专家知识库规则 ${rule.id}${conditionValidation.valid ? "" : "；自然语言条件尚未编译，当前仅作提示"}`
       });
     }

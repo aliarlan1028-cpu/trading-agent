@@ -602,8 +602,7 @@ export function EventsTasksPage({ data, action, ui, embedded = false, mode = "al
   const filteredTasks = taskFilter === "全部" ? tasks : tasks.filter((task) => task.type === taskFilter);
   const eventRuleTemplates = [
     { name: "高影响事件前停止开仓", scope: "event", level: "L1", action: "pause_opening", conditionSpec: { field: "event.maxImpact", operator: "gte", value: 80 }, event: "宏观事件（影响 ≥ 80）", condition: "事件前 30 分钟", description: "重大宏观事件公布前 30 分钟暂停新开仓，事件落地后人工确认恢复" }, // 阻断型必须带可编译条件(审计 H2)
-    { name: "资金费率异常告警", scope: "event", level: "L2", action: "notify", event: "资金费率", condition: "|费率| > 0.1% / 8h", description: "永续合约资金费率绝对值超过 0.1% 时推送告警，提示极端多空失衡" },
-    { name: "交易所大额流入告警", scope: "event", level: "L2", action: "notify", event: "链上事件", condition: "单笔 > 5000 BTC 流入交易所", description: "监测到大额 BTC 流入交易所地址时告警，提示潜在抛压" }
+    { name: "资金费率异常告警", scope: "event", level: "L2", action: "notify", conditionSpec: { field: "market.fundingRate", operator: "abs_gt", value: 0.1 }, event: "资金费率", condition: "|费率| > 0.1% / 8h", description: "永续合约资金费率绝对值超过 0.1% 时写入通知中心，提示极端多空失衡" }
   ];
   const eventRuleRows = (data.riskRules || []).filter((rule) => rule.scope === "event").map((rule) => ({
     id: rule.id,

@@ -10,7 +10,7 @@ import { nowIso } from "./store.mjs";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
 import { getOkxLiquidationSummary } from "./okxLiquidationStream.mjs";
 
-const OKX_BASE = "https://www.okx.com";
+const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const RUBIK = `${OKX_BASE}/api/v5/rubik/stat/contracts`;
 
 // 永续合约清单缓存（1 小时）——合约上下架不频繁，避免每次打开面板都拉。
@@ -25,7 +25,19 @@ function timer(ms = 8000) {
 async function getJson(url, signal) {
   const response = await fetch(url, { signal, headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`${url} ${response.status}`);
-  return response.json();
+  const payload = await response.json();
+  if (String(payload?.code ?? "0") !== "0") throw new Error(`${url} API ${payload?.code}: ${payload?.msg || "unknown error"}`);
+  return payload;
+}
+
+export function parseContractTakerVolumeRow(row) {
+  if (!row) return null;
+  const ts = Array.isArray(row) ? row[0] : row.ts;
+  const sell = Number(Array.isArray(row) ? row[1] : row.sellVol);
+  const buy = Number(Array.isArray(row) ? row[2] : row.buyVol);
+  const sourceMs = Number(ts);
+  if (!Number.isFinite(sourceMs) || sourceMs <= 0 || !Number.isFinite(buy) || buy < 0 || !Number.isFinite(sell) || sell < 0) return null;
+  return { buy, sell, sourceAt: new Date(sourceMs).toISOString() };
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +105,6 @@ function interpretGlobal(g) {
 // ---------------------------------------------------------------------------
 export async function fetchSmartMoney(symbol = "BTC/USDT") {
   const out = { symbol, fetchedAt: nowIso() };
-  const ccy = String(symbol).split("/")[0].toUpperCase();
   const instId = toOkxSymbol(symbol, "perpetual"); // 如 BTC-USDT-SWAP
   const firstRatio = (settled) => {
     const row = settled.status === "fulfilled" ? settled.value?.data?.[0] : null; // [ts, ratio]
@@ -112,17 +123,24 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
       getJson(`${RUBIK}/long-short-position-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
       getJson(`${RUBIK}/long-short-account-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
       getJson(`${RUBIK}/long-short-account-ratio-contract?instId=${instId}&period=5m`, okx.signal),
-      getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=5m`, okx.signal)
+      // 必须使用单合约口径。按 ccy 的 taker-volume 会把交割期货等 CONTRACTS
+      // 混在一起，不能用于 BTC-USDT-SWAP 这类具体永续合约的 CVD。
+      getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume-contract?instId=${instId}&period=5m`, okx.signal)
     ]);
     out.topTraderLongShortRatio = firstRatio(topPos);   // 大户持仓多空比（真·聪明钱）
     out.topTraderAccountRatio = firstRatio(topAcct);    // 大户账户多空比
     out.retailLongShortRatio = firstRatio(crowd);       // 全体持仓人数多空比（散户为主）
     if (taker.status === "fulfilled") {
       const row = taker.value?.data?.[0]; // [ts, sellVol, buyVol]
-      if (row) {
-        const buy = Number(row[2]);
-        const sell = Number(row[1]);
+      const parsed = parseContractTakerVolumeRow(row);
+      if (parsed) {
+        const { buy, sell, sourceAt } = parsed;
         if (sell > 0) out.takerBuySellRatio = Number((buy / sell).toFixed(3));
+        out.takerBuyVolume = buy;
+        out.takerSellVolume = sell;
+        out.takerSourceAt = sourceAt;
+        out.takerScope = "OKX_CONTRACT_INSTRUMENT_5M";
+        out.takerInstrument = instId;
       }
     }
     const liquidations = getOkxLiquidationSummary(symbol);

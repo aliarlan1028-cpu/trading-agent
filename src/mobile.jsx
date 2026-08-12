@@ -347,6 +347,7 @@ function MobileRisk({ data, action, ui, view = "all" }) {
       {showSettings && <div className="mCard mGoalProtectionCard">
         <div className="mCardHead"><b>{t("盈利目标保护", "Profit goal protection")}</b><StatusBadge tone={goalBreakeven ? "ok" : "neutral"}>{goalBreakeven ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge></div>
         <label className="mGoalAmount"><span><b>{t("每日盈利目标", "Daily profit goal")}</b><small>{t("必须明确保存；没有目标时不会触发", "Must be explicitly saved; no goal means no trigger")}</small></span><div><input type="number" min="0.01" step="0.01" inputMode="decimal" value={dailyGoal} onChange={(event) => setDailyGoal(event.target.value)} aria-label={t("每日盈利目标", "Daily profit goal")} /><i>USDT</i></div></label>
+        <small className="mGoalDerived">{t(`月度目标自动为日目标 × 当月 ${sys.monthlyGoalDays || 30} 天${sys.monthlyGoalUsdt ? ` = ${sys.monthlyGoalUsdt} USDT` : ""}`, `Monthly goal is daily goal × ${sys.monthlyGoalDays || 30} days${sys.monthlyGoalUsdt ? ` = ${sys.monthlyGoalUsdt} USDT` : ""}`)}</small>
         <label className="mGoalToggle"><input type="checkbox" checked={goalBreakeven} onChange={(event) => setGoalBreakeven(event.target.checked)} /><span><b>{t("单个持仓浮盈达到目标后，止损至少保护到开仓价", "Move the stop to at least entry after one position reaches the goal")}</b><small>{t("只管理 AI 开立的仓位；不会放宽更有利的止损，也不改变止盈和跟踪止损", "Only AI-opened positions; never weakens a better stop or changes take-profit and trailing-stop logic")}</small></span></label>
         <button type="button" className="primaryButton mGoalSave" disabled={!goalProtectionDirty} onClick={saveGoalProtection}>{t("保存盈利保护", "Save profit protection")}</button>
       </div>}
@@ -741,6 +742,9 @@ function MobileMarket({ data, action, ui }) {
     [t("未实现盈亏", "Unrealized PnL"), configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : t("未同步", "Not synced"), configured ? portfolio.unrealizedPnl : null]
   ];
   const chgPos = Number(market.changePct || 0) >= 0;
+  const mediumTerm = data.mediumTermAnalytics || {};
+  const mediumSymbol = (mediumTerm.symbols || []).find((row) => row.symbol === market.symbol);
+  const leverageLabel = (value) => ({ leverage_build_up:t("杠杆堆积","Leverage build-up"), long_build:t("多头增仓","Long build"), long_build_crowded:t("多头拥挤","Crowded long build"), short_build:t("空头增仓","Short build"), short_build_crowded:t("空头拥挤","Crowded short build"), short_covering:t("空头回补","Short covering"), long_deleveraging:t("多头去杠杆","Long deleveraging"), price_move_without_oi_confirmation:t("价格缺OI确认","Price lacks OI confirmation"), deleveraging_without_direction:t("无方向去杠杆","Directionless deleveraging"), stable_or_mixed:t("稳定/混合","Stable/mixed") }[value] || humanize(value));
   const tvInterval = { "15m": "15", "1H": "60", "4H": "240", "1D": "D" }[tf] || "60";
   const circ = 2 * Math.PI * 24;
   const dash = `${((marginRate ?? 0) / 100) * circ} ${circ}`;
@@ -773,6 +777,13 @@ function MobileMarket({ data, action, ui }) {
         </div>
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
+      </div>
+      <div className="mCard">
+        <div className="mCardHead"><b>{t("中频合约状态", "Medium-term contract state")}</b><small>{t("5分钟事实", "5m facts")}</small></div>
+        {["15m","1h","4h"].map((window) => { const row=mediumSymbol?.windows?.[window]; return <div className="mPosRow" key={window}><div className="mPosL"><b className="mono">{window}</b><small>{row?.status==="ok"?leverageLabel(row.leverageState):t("样本积累中","Building samples")}</small></div><div className="mPosR"><b className="mono">{row?.status==="ok"?`P ${row.priceChangePct}% · OI ${row.oiChangePct}%`:`${row?.samples??0}/${row?.expected??"—"}`}</b><small className="mono">{row?.status==="ok"?`F ${row.fundingEndPct??"—"}% · CVD ${row.cvdImbalancePct==null?"—":`${row.cvdImbalancePct}%`}`:t("不足时不输出结论","No conclusion until sufficient")}</small></div></div>; })}
+        {market.symbol!=="BTC/USDT"&&<div className="mPosRow"><div className="mPosL"><b>BTC Beta</b><small>24h / 3d / 7d</small></div><div className="mPosR"><b className="mono">{["24h","3d","7d"].map((window)=>{const row=mediumSymbol?.btcRisk?.[window];return row?.status==="ok"?`${window} β${row.beta}`:`${window} —`;}).join(" · ")}</b><small>{t("15分钟收益率，严格覆盖", "15m returns with strict coverage")}</small></div></div>}
+        {mediumTerm.portfolioBtcRisk?.status&&!['no_positions','insufficient'].includes(mediumTerm.portfolioBtcRisk.status)&&<div className="mPosRow"><div className="mPosL"><b>{t("组合 BTC 风险","Portfolio BTC risk")}</b><small>{mediumTerm.portfolioBtcRisk.status}</small></div><div className="mPosR"><b className="mono">{mediumTerm.portfolioBtcRisk.netBtcEquivalentUsdt} U</b><small>{t("净 / 毛等效","Net / gross equiv.")} {mediumTerm.portfolioBtcRisk.grossBtcBetaExposureUsdt} U</small></div></div>}
+        {Object.entries(mediumTerm.eventVolatility?.byType||{}).slice(0,3).map(([type,row])=><div className="mPosRow" key={type}><div className="mPosL"><b>{type}</b><small>{t("BTC 事件波动","BTC event volatility")}</small></div><div className="mPosR"><b className="mono">{row.status==="usable"?`n=${row.samples} · RV ${row.medianPost1hRealizedVolPct}%`:`${row.samples}/${row.minimumSamples}`}</b><small>{row.status==="usable"?`p90 ${row.p90Post1hRealizedVolPct}% · ×${row.medianPost1hVolExpansionRatio}`:t("样本积累中","Building samples")}</small></div></div>)}
       </div>
       <div className="mCard">
         <div className="mCardHead"><b>{t("持仓", "Positions")}</b><button className="mLink" onClick={() => ui.setActive("positions")}>{t("全部", "All")} ›</button></div>
@@ -949,7 +960,7 @@ function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang })
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
-        <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.png" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
+        <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
         <div className="mDrawerNav">
           {mobileNav.map((n) => {

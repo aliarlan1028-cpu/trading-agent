@@ -3,6 +3,9 @@ import { createNotification } from "./notificationStore.mjs";
 import { runTask } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { queueWatchTelegramEvent } from "./telegramWatchNotifier.mjs";
+import { describeWatch } from "./watchView.mjs";
+
+export { buildWatchBoard, describeWatch } from "./watchView.mjs";
 
 // ---------------------------------------------------------------------------
 // 观察哨（Watch Sentinel）：AI 交易员把"若 X 发生则重新评估"登记成结构化价格条件，
@@ -27,13 +30,7 @@ export const WATCH_LIMITS = {
 };
 
 const KINDS = new Set(["price_above", "price_below", "enter_zone"]);
-
-export function describeWatch(watch) {
-  const fmt = (v) => Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 });
-  if (watch.kind === "price_above") return `${watch.symbol} 向上突破 ${fmt(watch.level)}`;
-  if (watch.kind === "price_below") return `${watch.symbol} 向下跌破 ${fmt(watch.level)}`;
-  return `${watch.symbol} 回踩进入 ${fmt(watch.levelLow)}-${fmt(watch.levelHigh)} 区间`;
-}
+const PURPOSES = new Set(["decision", "confirmation", "invalidation", "alternative"]);
 
 // 条件在 price 下是否"已经成立"（登记时用：已成立说明不该挂哨，该直接分析）
 export function conditionAlreadyTrue(watch, price) {
@@ -54,6 +51,35 @@ export function crossed(watch, prevPrice, price) {
 
 export function listActiveWatches(db) {
   return (db.watchTriggers || []).filter((w) => w.status === "active");
+}
+
+function analysisGroup(watch = {}) {
+  return watch.analysisId || "legacy";
+}
+
+function normalizePrimaryWatch(db, symbol, groupId = null) {
+  const matches = (db.watchTriggers || []).filter((watch) => ["active", "pending_analysis"].includes(watch.status) && watch.symbol === symbol
+    && (groupId == null || analysisGroup(watch) === groupId));
+  if (!matches.length) return;
+  const explicit = matches.find((watch) => watch.priority === "primary") || matches[0];
+  for (const watch of matches) watch.priority = watch.id === explicit.id ? "primary" : "secondary";
+}
+
+function supersedeOlderAnalysis(db, symbol, nextAnalysisId, actor) {
+  if (!nextAnalysisId) return [];
+  const closedAt = nowIso();
+  const superseded = listActiveWatches(db).filter((watch) => watch.symbol === symbol && watch.analysisId !== nextAnalysisId);
+  for (const watch of superseded) {
+    watch.wasPrimary = watch.priority === "primary";
+    watch.status = "superseded";
+    watch.closedAt = closedAt;
+    watch.closeReason = "已由该币种的最新市场分析取代";
+    watch.supersededByAnalysisId = nextAnalysisId;
+  }
+  if (superseded.length) {
+    appendAudit(db, `${symbol} 旧分析的 ${superseded.length} 个观察哨已由最新分析取代`, nextAnalysisId, actor);
+  }
+  return superseded;
 }
 
 // 盯盘闸(纯函数):把"看"和"做"分开。
@@ -86,7 +112,12 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     levelLow: Number(args.levelLow),
     levelHigh: Number(args.levelHigh),
     note: String(args.note || "").slice(0, 200),
-    status: "active",
+    purpose: PURPOSES.has(String(args.purpose || "")) ? String(args.purpose) : null,
+    priority: args.priority === "primary" ? "primary" : "secondary",
+    analysisId: String(args.analysisId || "").slice(0, 120) || null,
+    analysisAt: args.analysisAt || null,
+    analysisTitle: String(args.analysisTitle || "").replace(/\s+/g, " ").slice(0, 120) || null,
+    status: args.deferTelegram === true ? "pending_analysis" : "active",
     version: 1,
     createdAt: nowIso(),
     createdBy: actor,
@@ -117,7 +148,8 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
 
   db.watchTriggers ||= [];
   // 同币同向、价位相近 → 更新已有哨（防止每轮巡检重复登记堆积）
-  const twin = db.watchTriggers.find((w) => w.status === "active" && w.symbol === symbol && w.kind === kind
+  const twin = db.watchTriggers.find((w) => ["active", "pending_analysis"].includes(w.status) && w.symbol === symbol && w.kind === kind
+    && (!watch.analysisId || w.analysisId === watch.analysisId)
     && Math.abs(((kind === "enter_zone" ? w.levelLow : w.level) - (kind === "enter_zone" ? watch.levelLow : watch.level)) / price) * 100 <= WATCH_LIMITS.upsertTolerancePct);
   if (twin) {
     twin.version = Number(twin.version || 1) + 1;
@@ -126,12 +158,28 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     twin.level = watch.level;
     twin.levelLow = watch.levelLow;
     twin.levelHigh = watch.levelHigh;
+    twin.analysisId = watch.analysisId || twin.analysisId || null;
+    twin.analysisAt = watch.analysisAt || twin.analysisAt || twin.createdAt;
+    twin.analysisTitle = watch.analysisTitle || twin.analysisTitle || null;
+    twin.purpose = watch.purpose || twin.purpose || (twin.priority === "primary" ? "decision" : "alternative");
+    if (args.deferTelegram === true) twin.status = "pending_analysis";
+    if (args.priority === "primary") {
+      for (const other of listActiveWatches(db)) {
+        if (other.symbol === symbol && analysisGroup(other) === analysisGroup(twin)) other.priority = other.id === twin.id ? "primary" : "secondary";
+      }
+    }
+    normalizePrimaryWatch(db, symbol, analysisGroup(twin));
     appendAudit(db, `观察哨更新：${describeWatch(twin)}`, twin.id, actor);
-    queueWatchTelegramEvent(db, twin, "updated");
+    if (args.deferTelegram !== true) queueWatchTelegramEvent(db, twin, "updated");
     return { ok: true, watch: twin, updated: true };
   }
 
-  const active = listActiveWatches(db);
+  const activeBeforeReplacement = listActiveWatches(db);
+  const replacedIds = new Set(watch.analysisId
+    ? activeBeforeReplacement.filter((item) => item.symbol === symbol && item.analysisId !== watch.analysisId).map((item) => item.id)
+    : []);
+  const pendingForAnalysis = (db.watchTriggers || []).filter((item) => item.status === "pending_analysis" && item.analysisId === watch.analysisId);
+  const active = [...activeBeforeReplacement.filter((item) => !replacedIds.has(item.id)), ...pendingForAnalysis];
   if (active.length >= WATCH_LIMITS.maxActive) {
     return { ok: false, error: `活跃观察哨已达上限 ${WATCH_LIMITS.maxActive} 个，请先用 cancel_watch 撤掉不再需要的哨。当前：${active.map(describeWatch).join("；")}` };
   }
@@ -139,20 +187,64 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     return { ok: false, error: `${symbol} 的观察哨已达上限 ${WATCH_LIMITS.maxPerSymbol} 个，请先撤掉一个。` };
   }
 
+  const sameAnalysis = active.filter((item) => item.symbol === symbol && analysisGroup(item) === analysisGroup(watch));
+  if (!sameAnalysis.some((item) => item.priority === "primary")) watch.priority = "primary";
+  if (watch.priority === "primary") {
+    for (const other of sameAnalysis) other.priority = "secondary";
+  }
+  watch.purpose ||= watch.priority === "primary" ? "decision" : "alternative";
+
+  // 非 Agent/非延迟登记沿用即时生效；Agent 工具登记先保持 pending_analysis，
+  // 等整轮 LLM 成功完成后再原子取代旧分析，避免半轮失败留下半成品。
+  if (watch.status === "active") supersedeOlderAnalysis(db, symbol, watch.analysisId, actor);
   db.watchTriggers.unshift(watch);
   if (db.watchTriggers.length > 100) db.watchTriggers = db.watchTriggers.slice(0, 100);
   appendAudit(db, `观察哨登记：${describeWatch(watch)}（现价 ${price}）`, watch.id, actor);
-  queueWatchTelegramEvent(db, watch, "registered");
+  if (args.deferTelegram !== true) queueWatchTelegramEvent(db, watch, "registered");
   return { ok: true, watch };
+}
+
+export function finalizeWatchAnalysis(db, analysisId, details = {}) {
+  if (!analysisId) return { finalized: 0, symbols: [] };
+  const watches = (db.watchTriggers || []).filter((watch) => watch.analysisId === analysisId && ["pending_analysis", "active"].includes(watch.status));
+  const at = details.analysisAt || nowIso();
+  const title = String(details.analysisTitle || "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
+  const bySymbol = new Map();
+  const symbols = [...new Set(watches.map((watch) => watch.symbol))];
+  for (const symbol of symbols) normalizePrimaryWatch(db, symbol, analysisId);
+  for (const symbol of symbols) supersedeOlderAnalysis(db, symbol, analysisId, details.actor || "AI 交易员");
+  for (const watch of watches) {
+    watch.status = "active";
+    watch.analysisAt = at;
+    watch.analysisTitle = title || watch.analysisTitle || null;
+    watch.updatedAt = at;
+    if (!bySymbol.has(watch.symbol) || watch.priority === "primary") bySymbol.set(watch.symbol, watch);
+  }
+  for (const watch of bySymbol.values()) queueWatchTelegramEvent(db, watch, "updated", { analysisCompleted: true });
+  return { finalized: watches.length, symbols: [...bySymbol.keys()] };
+}
+
+export function abortWatchAnalysis(db, analysisId, reason = "AI 分析未完成") {
+  if (!analysisId) return { aborted: 0 };
+  const pending = (db.watchTriggers || []).filter((watch) => watch.analysisId === analysisId && watch.status === "pending_analysis");
+  const at = nowIso();
+  for (const watch of pending) {
+    watch.status = "invalidated";
+    watch.closedAt = at;
+    watch.closeReason = reason;
+  }
+  return { aborted: pending.length };
 }
 
 export function cancelWatch(db, watchId, actor = "AI 交易员", reason = "") {
   const watch = (db.watchTriggers || []).find((w) => w.id === watchId && w.status === "active");
   if (!watch) return { ok: false, error: "未找到该活跃观察哨（可能已触发/过期/撤销）。" };
+  watch.wasPrimary = watch.priority === "primary";
   watch.status = "cancelled";
   watch.closedAt = nowIso();
   watch.closeReason = reason || "手动撤销";
   appendAudit(db, `观察哨撤销：${describeWatch(watch)}${reason ? `（${reason}）` : ""}`, watch.id, actor);
+  normalizePrimaryWatch(db, watch.symbol, analysisGroup(watch));
   queueWatchTelegramEvent(db, watch, "cancelled");
   return { ok: true, watch };
 }
@@ -173,20 +265,25 @@ export function sweepWatches(db, prices = new Map(), now = Date.now()) {
   const expired = [];
   const invalidated = [];
   let changed = false;
+  const changedGroups = new Set();
   for (const watch of listActiveWatches(db)) {
     if (new Date(watch.expiresAt).getTime() <= now) {
+      watch.wasPrimary = watch.priority === "primary";
       watch.status = "expired";
       watch.closedAt = nowIso();
       expired.push(watch);
       changed = true;
+      changedGroups.add(`${watch.symbol}\0${analysisGroup(watch)}`);
       continue;
     }
     if (!mandate || !mandate.allowedSymbols?.includes(watch.symbol)) {
+      watch.wasPrimary = watch.priority === "primary";
       watch.status = "cancelled";
       watch.closedAt = nowIso();
       watch.closeReason = "授权变更，已不在白名单";
       invalidated.push(watch);
       changed = true;
+      changedGroups.add(`${watch.symbol}\0${analysisGroup(watch)}`);
       continue;
     }
     const price = Number(prices.get(watch.symbol));
@@ -194,26 +291,34 @@ export function sweepWatches(db, prices = new Map(), now = Date.now()) {
     if (watch.lastPrice === null || watch.lastPrice === undefined) {
       // 暂停恢复后的重新定基：暂停期间价位已越过 → 作废并说明，避免基于过期结构触发
       if (conditionAlreadyTrue(watch, price)) {
+        watch.wasPrimary = watch.priority === "primary";
         watch.status = "invalidated";
         watch.closedAt = nowIso();
         watch.closeReason = "系统暂停期间价位已越过条件，需重新评估";
         invalidated.push(watch);
         changed = true;
+        changedGroups.add(`${watch.symbol}\0${analysisGroup(watch)}`);
       } else {
         watch.lastPrice = price;
       }
       continue;
     }
     if (crossed(watch, watch.lastPrice, price)) {
+      watch.wasPrimary = watch.priority === "primary";
       watch.status = "triggered";
       watch.triggeredAt = nowIso();
       watch.triggerPrice = price;
       watch.triggerHandled = false;
       triggered.push(watch);
       changed = true;
+      changedGroups.add(`${watch.symbol}\0${analysisGroup(watch)}`);
     } else {
       watch.lastPrice = price;
     }
+  }
+  for (const key of changedGroups) {
+    const [symbol, groupId] = key.split("\0");
+    normalizePrimaryWatch(db, symbol, groupId);
   }
   return { triggered, expired, invalidated, changed };
 }

@@ -4,7 +4,7 @@ import { executeTradeAction } from "../tradeActions.mjs";
 // 从 index.mjs 按 registrar 范式迁出。熔断/只减仓/事件收尾为高危控制面，处理器逐字保留原实现：
 // 熔断即撤单+暂停自主+建 incident+飞书告警；解除熔断不强制重开自主。依赖经 ctx 注入。
 export function registerRiskRoutes(app, ctx) {
-  const { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec } = ctx;
+  const { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec, validateDynamicRiskAction } = ctx;
 
   app.post("/api/risk/check-trade-plan", requirePermission("risk.check"), (req, res) => {
     const plan = req.body.tradePlanId ? db.tradePlans.find((item) => item.id === req.body.tradePlanId) : req.body;
@@ -145,14 +145,15 @@ export function registerRiskRoutes(app, ctx) {
   app.get("/api/risk/rules", (_req, res) => res.json(db.riskRules));
 
   app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
+    const name = String(req.body.name || "").trim();
+    if (!name || name.length > 100) return res.status(400).json({ error: "规则名称必须为 1–100 个字符" });
     const conditionValidation = validateConditionSpec(req.body.conditionSpec);
     const action = req.body.action || "notify";
-    if (action !== "notify" && !conditionValidation.valid) {
-      return res.status(400).json({ error: `阻断型规则必须提供受支持的 conditionSpec：${conditionValidation.reason}` });
-    }
+    if (!validateDynamicRiskAction(action)) return res.status(400).json({ error: "规则动作只允许 notify / reject_entry / pause_opening；全局熔断只能人工或受控安全流程触发" });
+    if (!conditionValidation.valid) return res.status(400).json({ error: `规则必须提供可执行的 conditionSpec：${conditionValidation.reason}` });
     const rule = {
       id: id("risk"),
-      name: req.body.name || "新风控规则",
+      name,
       scope: req.body.scope || "trade",
       level: req.body.level || "L2",
       enabled: true,
@@ -160,8 +161,8 @@ export function registerRiskRoutes(app, ctx) {
       description: req.body.description || "",
       event: req.body.event || "",
       condition: req.body.condition || "",
-      conditionSpec: conditionValidation.valid ? req.body.conditionSpec : null,
-      enforcementStatus: conditionValidation.valid ? "enforced" : "advisory_uncompiled",
+      conditionSpec: req.body.conditionSpec,
+      enforcementStatus: action === "notify" ? "notification_enforced" : "entry_enforced",
       createdAt: nowIso()
     };
     db.riskRules.unshift(rule);
@@ -172,18 +173,30 @@ export function registerRiskRoutes(app, ctx) {
   app.patch("/api/risk/rules/:id", requirePermission("write:risk"), (req, res) => {
     const rule = db.riskRules.find((item) => item.id === req.params.id);
     if (!rule) return res.status(404).json({ error: "Risk rule not found" });
-    const nextAction = req.body.action ?? rule.action ?? "notify";
+    if (rule.systemManaged === true || ["risk_stop_required", "risk_no_withdraw"].includes(rule.id)) {
+      return res.status(403).json({ error: "内置安全规则由系统托管，不能在规则面板修改或停用" });
+    }
+    if (req.body.enabled !== undefined && typeof req.body.enabled !== "boolean") return res.status(400).json({ error: "enabled 必须是布尔值" });
+    if (req.body.name !== undefined && (!String(req.body.name).trim() || String(req.body.name).trim().length > 100)) return res.status(400).json({ error: "规则名称必须为 1–100 个字符" });
+    const requestedAction = req.body.action ?? rule.action ?? "notify";
+    // 存量 block/restrict/kill_switch 从未具备全局动作语义；首次编辑时安全迁移为“拒绝当前入场”。
+    const nextAction = validateDynamicRiskAction(requestedAction)
+      ? requestedAction
+      : ["block", "restrict", "kill_switch"].includes(requestedAction) ? "reject_entry" : requestedAction;
     const nextConditionSpec = req.body.conditionSpec ?? rule.conditionSpec;
     const conditionValidation = validateConditionSpec(nextConditionSpec);
-    if (nextAction !== "notify" && !conditionValidation.valid) {
-      return res.status(400).json({ error: `阻断型规则必须提供受支持的 conditionSpec：${conditionValidation.reason}` });
-    }
+    if (!validateDynamicRiskAction(nextAction)) return res.status(400).json({ error: "规则动作只允许 notify / reject_entry / pause_opening；全局熔断只能人工或受控安全流程触发" });
+    const preservingAdvisory = rule.enforcementStatus === "advisory_uncompiled"
+      && req.body.conditionSpec === undefined && req.body.action === undefined;
+    if (!conditionValidation.valid && !preservingAdvisory) return res.status(400).json({ error: `规则必须提供可执行的 conditionSpec：${conditionValidation.reason}` });
     const allowed = ["name", "scope", "level", "enabled", "action", "description", "event", "condition"];
     for (const key of allowed) {
       if (req.body[key] !== undefined) rule[key] = req.body[key];
     }
+    rule.name = String(rule.name).trim();
+    rule.action = nextAction;
     rule.conditionSpec = conditionValidation.valid ? nextConditionSpec : null;
-    rule.enforcementStatus = conditionValidation.valid ? "enforced" : "advisory_uncompiled";
+    rule.enforcementStatus = conditionValidation.valid ? (nextAction === "notify" ? "notification_enforced" : "entry_enforced") : "advisory_uncompiled";
     rule.updatedAt = nowIso();
     appendAudit(db, "更新风控规则", rule.id, db.user.name, rule.enabled === false ? "warning" : "info");
     persist(res, { message: `${rule.name} 已更新`, rule });
