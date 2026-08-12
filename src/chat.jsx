@@ -3,6 +3,7 @@ import { toPng } from "html-to-image";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   AlertTriangle,
+  Activity,
   ArrowUp,
   BarChart3,
   Bot,
@@ -30,6 +31,9 @@ import {
   XCircle,
   Zap,
   Download,
+  Database,
+  Layers3,
+  Clock3,
   Image as ImageIcon,
   X
 } from "lucide-react";
@@ -379,6 +383,313 @@ function RichMessage({ text = "", compact = false, onSuggest = null, poster = fa
   return (
     <div className={compact ? "richMessage compact" : "richMessage"}>
       {blocks.map((block, index) => <RichBlock block={block} blockKey={index} onSuggest={onSuggest} key={index} />)}
+    </div>
+  );
+}
+
+const DECISION_KIND_LABELS = {
+  market_analysis: ["市场研判", "Market read"],
+  watch_update: ["观察决策", "Watch decision"],
+  trade_plan: ["交易计划", "Trade plan"],
+  execution_update: ["执行进度", "Execution update"],
+  position_management: ["持仓管理", "Position management"],
+  risk_blocked: ["风控阻断", "Risk blocked"],
+  closed_trade: ["平仓复盘", "Closed trade"],
+  error: ["分析异常", "Analysis error"]
+};
+
+function decisionStateLabel(state = "") {
+  const labels = {
+    analysis_only: ["分析完成 · 未下单", "Analysis complete · no order"],
+    watching: ["观察中 · 未下单", "Watching · no order"],
+    draft: ["计划草案", "Plan draft"],
+    awaiting_approval: ["待你批准 · 未下单", "Awaiting approval · no order"],
+    armed: ["等待条件 · 未下单", "Waiting for conditions · no order"],
+    approved: ["已批准 · 准备执行", "Approved · preparing execution"],
+    created: ["执行单已创建 · 尚未提交", "Execution created · not submitted"],
+    dry_run: ["模拟计算完成 · 未提交实盘", "Dry run complete · no live order"],
+    executing: ["执行中", "Executing"],
+    entry_pending: ["入场单已提交 · 等待成交", "Entry submitted · awaiting fill"],
+    entry_filled: ["入场已成交", "Entry filled"],
+    protecting: ["持仓中 · 保护单已布置", "Holding · protection placed"],
+    closed: ["已平仓", "Closed"],
+    risk_rejected: ["风控未通过 · 未下单", "Risk rejected · no order"],
+    blocked: ["执行被阻断 · 未下单", "Execution blocked · no order"],
+    setup_rejected: ["结构审核未过 · 未下单", "Setup rejected · no order"],
+    protection_failed: ["保护单异常", "Protection failed"],
+    triggered: ["观察条件已触发 · 正在重新分析", "Watch triggered · re-analysis running"],
+    cancelled: ["已取消", "Cancelled"],
+    expired: ["已过期", "Expired"],
+    invalidated: ["已作废", "Invalidated"],
+    superseded: ["已被最新分析取代", "Superseded by latest analysis"],
+    failed: ["本轮失败", "Run failed"]
+  };
+  const pair = labels[state] || [humanize(state, "未知状态"), humanize(state, "Unknown")];
+  return t(pair[0], pair[1]);
+}
+
+function decisionTone(state = "", direction = "neutral") {
+  if (["risk_rejected", "blocked", "setup_rejected", "protection_failed", "failed"].includes(state)) return "danger";
+  if (["awaiting_approval", "armed", "approved", "executing", "entry_pending", "watching"].includes(state)) return "warning";
+  if (["entry_filled", "protecting", "closed"].includes(state)) return "ok";
+  if (direction === "long") return "long";
+  if (direction === "short") return "short";
+  return "neutral";
+}
+
+function directionLabel(direction = "neutral") {
+  if (direction === "long") return t("偏多", "Long bias");
+  if (direction === "short") return t("偏空", "Short bias");
+  return t("中性", "Neutral");
+}
+
+function structureLabel(structure) {
+  if (!structure) return t("结构样本不足", "Structure unavailable");
+  const direction = structure.direction === "long" ? t("上行", "Up") : structure.direction === "short" ? t("下行", "Down") : t("震荡", "Range");
+  const phase = {
+    pullback: t("回调", "Pullback"), rebound: t("反弹", "Rebound"),
+    continuation: t("延续", "Continuation"), range: t("区间", "Range")
+  }[structure.phase] || humanize(structure.phase, "");
+  return [direction, structure.sequence, phase].filter(Boolean).join(" · ");
+}
+
+function timeframeTone(frame) {
+  const direction = frame?.structure?.direction;
+  if (frame?.status === "insufficient") return "muted";
+  if (frame?.flow?.divergence && frame.flow.divergence !== "none") return "warning";
+  if (direction === "long") return "long";
+  if (direction === "short") return "short";
+  return "neutral";
+}
+
+function signedPct(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return `${number > 0 ? "+" : ""}${number.toFixed(digits)}%`;
+}
+
+function compactNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return Math.abs(number) >= 1_000_000 ? `${(number / 1_000_000).toFixed(1)}M`
+    : Math.abs(number) >= 1_000 ? `${(number / 1_000).toFixed(1)}K`
+      : number.toFixed(Math.abs(number) < 10 ? 2 : 0);
+}
+
+function nextActionLabel(action = {}) {
+  const labels = {
+    analysis_only: ["当前仅为分析结论；未建立计划或订单", "Analysis only; no plan or order exists"],
+    watch_primary_condition: ["先盯主观察条件；命中后重新分析，不会直接下单", "Watch the primary condition; a hit triggers re-analysis, not an order"],
+    approve_or_reject: ["检查计划与风控后，批准或拒绝本计划", "Review the plan and risk checks, then approve or reject"],
+    wait_for_trigger: ["等待价格与结构确认；触发前不会向 OKX 下单", "Wait for price and structure confirmation; no OKX order before the trigger"],
+    wait_for_fill: ["入场单已提交，等待成交或撤单", "Entry order submitted; waiting for fill or cancellation"],
+    monitor_position: ["关注保护单、失效条件与持仓风险", "Monitor protection orders, invalidation, and position risk"],
+    review_closed_trade: ["核对净收益并查看平仓复盘", "Review net PnL and the closed-trade review"],
+    rebuild_plan: ["不要绕过风控；修正结构或参数后重新生成计划", "Do not bypass risk controls; rebuild the plan with corrected structure or parameters"],
+    inspect_execution_block: ["查看执行阻断原因并按恢复条件处理", "Inspect the execution block and follow its recovery condition"],
+    review_error: ["检查本轮错误；没有产生可执行结论", "Review the error; no executable decision was produced"]
+  };
+  const pair = labels[action.code] || ["查看完整分析后决定下一步", "Open the full analysis before deciding the next step"];
+  return `${t(pair[0], pair[1])}${action.detail ? ` · ${action.detail}` : ""}`;
+}
+
+function currentNextAction(snapshotAction, state) {
+  if (!state) return snapshotAction;
+  if (state === "awaiting_approval") return { code: "approve_or_reject" };
+  if (state === "armed") return { code: "wait_for_trigger" };
+  if (state === "entry_pending") return { code: "wait_for_fill" };
+  if (["entry_filled", "protecting"].includes(state)) return { code: "monitor_position" };
+  if (state === "closed") return { code: "review_closed_trade" };
+  if (["risk_rejected", "blocked", "setup_rejected", "protection_failed", "failed"].includes(state)) return { code: "inspect_execution_block", detail: snapshotAction?.detail };
+  return snapshotAction;
+}
+
+function watchConditionLabel(watch) {
+  if (!watch) return null;
+  if (watch.kind === "price_above") return `${t("向上突破", "Break above")} ${displayPrice(watch.level)}`;
+  if (watch.kind === "price_below") return `${t("向下跌破", "Break below")} ${displayPrice(watch.level)}`;
+  return `${t("进入区间", "Enter zone")} ${displayPrice(watch.levelLow)}–${displayPrice(watch.levelHigh)}`;
+}
+
+function executionStageState(status, stage) {
+  const entryDone = ["entry_filled", "protecting", "closed", "protection_failed"].includes(status);
+  const terminalFailure = ["blocked", "failed", "setup_rejected", "cancelled"].includes(status);
+  if (stage === "plan") return terminalFailure ? "error" : "done";
+  if (stage === "entry") {
+    if (entryDone) return "done";
+    if (terminalFailure) return "error";
+    if (["created", "approved", "executing", "entry_pending"].includes(status)) return "active";
+    return "pending";
+  }
+  if (stage === "protection") {
+    if (status === "protection_failed") return "error";
+    if (["protecting", "closed"].includes(status)) return "done";
+    if (status === "entry_filled") return "active";
+    return "pending";
+  }
+  if (stage === "closed") return status === "closed" ? "done" : "pending";
+  return "pending";
+}
+
+function protectionLabel(protection, status) {
+  if (protection === "stop_only") return t("仅止损保护", "Stop only");
+  if (protection?.attachedAlgoStop) return t("原生止损已附加", "Native stop attached");
+  if (protection) return t("保护单已布置", "Protection placed");
+  if (status === "protecting") return t("保护单已布置", "Protection placed");
+  if (status === "protection_failed") return t("保护异常", "Protection failed");
+  return t("尚未布置", "Not placed");
+}
+
+function ExecutionSnapshot({ execution }) {
+  if (!execution) return null;
+  const stages = [
+    ["plan", t("计划", "Plan")],
+    ["entry", t("入场", "Entry")],
+    ["protection", t("保护", "Protection")],
+    ["closed", t("平仓", "Close")]
+  ];
+  return (
+    <section className="decisionExecution" aria-label={t("执行进度", "Execution progress")}>
+      <div className="decisionSectionLabel"><Activity size={12} /> {t("真实执行进度", "Live execution progress")}<b>{decisionStateLabel(execution.status)}</b></div>
+      <div className="decisionTimeline">
+        {stages.map(([key, label]) => {
+          const stageState = executionStageState(execution.status, key);
+          return <div className={stageState} key={key}><i>{stageState === "done" ? <CheckCircle2 size={12} /> : stageState === "error" ? <XCircle size={12} /> : stageState === "active" ? <Hourglass size={12} /> : null}</i><span>{label}</span></div>;
+        })}
+      </div>
+      <div className="decisionExecutionFacts">
+        <span><small>{t("数量", "Quantity")}</small><b className="mono">{compactNumber(execution.quantity)}</b></span>
+        <span><small>{t("名义价值", "Notional")}</small><b className="mono">{execution.notionalUsdt != null ? `${displayMoney(execution.notionalUsdt)} USDT` : "—"}</b></span>
+        <span><small>{execution.filledPrice != null ? t("实际成交均价", "Average fill") : t("计划入场参考", "Planned entry")}</small><b className="mono">{displayPrice(execution.filledPrice ?? execution.plannedEntryPrice)}</b></span>
+        <span><small>{t("保护状态", "Protection")}</small><b>{protectionLabel(execution.protection, execution.status)}</b></span>
+        {execution.realizedPnl != null && <span><small>{t("已实现盈亏", "Realized PnL")}</small><b className={`mono ${Number(execution.realizedPnl) >= 0 ? "positive" : "negative"}`}>{displayMoney(execution.realizedPnl)} USDT</b></span>}
+      </div>
+    </section>
+  );
+}
+
+function PositionSnapshot({ position, live = false }) {
+  if (!position) return null;
+  return (
+    <section className="decisionPosition" aria-label={t("当前仓位", "Current position")}>
+      <div className="decisionSectionLabel"><ShieldCheck size={12} /> {live ? t("当前真实仓位", "Current live position") : t("回复生成时仓位快照", "Position snapshot at reply time")}</div>
+      <div className="decisionPositionGrid">
+        <span><small>{t("方向 / 数量", "Side / size")}</small><b className={position.direction === "short" ? "negative" : position.direction === "long" ? "positive" : ""}>{directionLabel(position.direction)} · <i className="mono">{compactNumber(position.size)}</i></b></span>
+        <span><small>{t("入场均价", "Entry")}</small><b className="mono">{displayPrice(position.entryPrice)}</b></span>
+        <span><small>{t("标记价格", "Mark")}</small><b className="mono">{displayPrice(position.markPrice)}</b></span>
+        <span><small>{t("未实现盈亏", "Unrealized PnL")}</small><b className={`mono ${position.unrealizedPnl == null ? "" : Number(position.unrealizedPnl) >= 0 ? "positive" : "negative"}`}>{position.unrealizedPnl != null ? `${displayMoney(position.unrealizedPnl)} USDT` : "—"}</b></span>
+        <span><small>{t("杠杆", "Leverage")}</small><b className="mono">{position.leverage != null ? `${position.leverage}×` : "—"}</b></span>
+      </div>
+    </section>
+  );
+}
+
+export function DecisionBrief({ presentation, content = "", currentState = null, currentExecution = undefined, currentPosition = undefined, isLatest = true, onSuggest = null }) {
+  if (!presentation || presentation.layout !== "decision_brief") return <RichMessage text={content} onSuggest={onSuggest} />;
+  const decision = presentation.decision || {};
+  const snapshotState = decision.state || "analysis_only";
+  const state = currentState || snapshotState;
+  const tone = decisionTone(state, decision.direction);
+  const kindPair = DECISION_KIND_LABELS[presentation.kind] || DECISION_KIND_LABELS.market_analysis;
+  const frames = presentation.timeframes || [];
+  const primaryFlow = frames.find((frame) => frame.timeframe === decision.primaryTimeframe)?.flow
+    || frames.find((frame) => frame.timeframe === "1h")?.flow
+    || frames.find((frame) => frame.flow)?.flow;
+  const coverage = presentation.evidence?.coverage || {};
+  const btcRisk = presentation.evidence?.btcRisk || {};
+  const eventStat = presentation.evidence?.eventVolatility?.[0];
+  const stateChanged = currentState && currentState !== snapshotState;
+  const generatedAt = presentation.generatedAt ? formatDateTime(presentation.generatedAt) : "";
+  const symbols = presentation.symbols || (presentation.symbol ? [presentation.symbol] : []);
+  const execution = currentExecution ? { ...(presentation.execution || {}), ...currentExecution } : presentation.execution;
+  const hasLivePosition = currentPosition !== undefined;
+  const position = hasLivePosition ? currentPosition : presentation.position;
+  const nextAction = currentNextAction(presentation.nextAction, currentState);
+
+  return (
+    <div className={`decisionBrief ${tone}`}>
+      <header className="decisionBriefHead">
+        <div className="decisionBriefIdentity">
+          <span className="decisionKind"><Layers3 size={12} /> {t(kindPair[0], kindPair[1])}</span>
+          {presentation.symbol && <b className="decisionSymbol mono">{presentation.symbol}</b>}
+          {symbols.length > 1 && <span className="decisionMultiSymbols" title={symbols.join(" · ")}>{`+${symbols.length - 1} ${t("币种", "markets")}`}</span>}
+          {decision.role && <span className="decisionRole">{decision.role === "day_trader" ? t("日内", "Day") : t("波段", "Swing")}</span>}
+          {decision.primaryTimeframe && <span className="decisionRole mono">{decision.primaryTimeframe.toUpperCase()}</span>}
+        </div>
+        <div className="decisionFreshness">
+          <Clock3 size={11} />
+          <span>{isLatest ? t("当前最新分析", "Latest analysis") : t("历史分析快照", "Historical snapshot")}</span>
+          {generatedAt && <time>{generatedAt}</time>}
+        </div>
+      </header>
+
+      <div className="decisionHero">
+        <div>
+          <span className="decisionEyebrow">{t("本轮结论", "Decision")}</span>
+          <h3>{presentation.headline || t("本轮市场分析", "Market analysis")}</h3>
+        </div>
+        <div className="decisionBadges">
+          <span className={`decisionDirection ${decision.direction || "neutral"}`}>{directionLabel(decision.direction)}</span>
+          <span className={`decisionState ${tone}`}>{decisionStateLabel(state)}</span>
+        </div>
+      </div>
+
+      {stateChanged && (
+        <div className="decisionStateChanged">
+          <Activity size={13} />
+          <span>{t("这条回复生成时的状态", "State when this reply was generated")}：{decisionStateLabel(snapshotState)}；{t("当前真实状态", "current live state")}：<b>{decisionStateLabel(currentState)}</b></span>
+        </div>
+      )}
+
+      <ExecutionSnapshot execution={execution} />
+      <PositionSnapshot position={position} live={hasLivePosition} />
+
+      <div className="decisionTfGrid">
+        {frames.map((frame) => (
+          <div className={`decisionTf ${timeframeTone(frame)}`} key={frame.timeframe}>
+            <div className="decisionTfHead"><b className="mono">{frame.timeframe.toUpperCase()}</b><span>{frame.status === "complete" ? t("证据完整", "Complete") : frame.status === "partial" ? t("部分证据", "Partial") : t("样本不足", "Insufficient")}</span></div>
+            <strong>{structureLabel(frame.structure)}</strong>
+            <div className="decisionTfFacts">
+              <span>{t("价格", "Price")} <b className="mono">{signedPct(frame.flow?.priceChangePct)}</b></span>
+              <span>OI <b className="mono">{signedPct(frame.flow?.oiChangePct)}</b></span>
+            </div>
+            {frame.flow?.divergence && frame.flow.divergence !== "none" && <small className="decisionDivergence">{t("价格/CVD 背离", "Price/CVD divergence")}</small>}
+          </div>
+        ))}
+      </div>
+
+      <div className="decisionEvidenceGrid">
+        <div><span><Database size={12} /> {t("证据覆盖", "Evidence")}</span><b className="mono">{coverage.total ? `${coverage.passed}/${coverage.total}` : "—"}</b><small>{coverage.criticalReady ? coverage.complete ? t("全部证据完整", "All evidence ready") : t("核心证据通过 · 其余项缺失", "Core ready · other evidence missing") : t("核心证据缺失", "Core evidence missing")}</small></div>
+        <div><span>Funding</span><b className="mono">{signedPct(primaryFlow?.fundingEndPct, 4)}</b><small>{primaryFlow?.leverageState ? humanize(primaryFlow.leverageState) : t("样本不足", "Insufficient")}</small></div>
+        <div><span>CVD · {decision.primaryTimeframe?.toUpperCase() || "1H"}</span><b className="mono">{compactNumber(primaryFlow?.cvd)}</b><small>{Number.isFinite(Number(primaryFlow?.flowCoveragePct)) ? `${t("覆盖", "Coverage")} ${Number(primaryFlow.flowCoveragePct).toFixed(0)}%` : t("覆盖不足", "Coverage insufficient")}</small></div>
+        <div><span>BTC Beta</span><b className="mono">{btcRisk.status === "ok" ? Number(btcRisk.beta).toFixed(2) : "—"}</b><small>{btcRisk.status === "ok" ? `${btcRisk.window} · Corr ${Number(btcRisk.correlation).toFixed(2)}` : t("样本不足", "Insufficient")}</small></div>
+        {eventStat && <div><span>{eventStat.type} · {t("事件波动", "Event vol")}</span><b className="mono">{eventStat.expansionRatio != null ? `${Number(eventStat.expansionRatio).toFixed(1)}×` : "—"}</b><small>n={eventStat.samples} · {eventStat.confidence ? humanize(eventStat.confidence) : "—"}</small></div>}
+      </div>
+
+      {presentation.watch && (
+        <div className="decisionWatchStrip">
+          <Eye size={14} />
+          <div><span>{t("主观察条件 · 命中后重新分析，不直接下单", "Primary watch · triggers re-analysis, not an order")}</span><b>{watchConditionLabel(presentation.watch)}</b>{presentation.watch.note && <small>{presentation.watch.note}</small>}</div>
+          {presentation.watch.expiresAt && <time>{t("到期", "Expires")} {formatDateTime(presentation.watch.expiresAt)}</time>}
+        </div>
+      )}
+
+      {((presentation.evidence?.supportingFactors || []).length > 0 || (presentation.evidence?.conflictingFactors || []).length > 0) && (
+        <div className="decisionFactorGrid">
+          {(presentation.evidence.supportingFactors || []).length > 0 && <div className="support"><b><CheckCircle2 size={13} /> {t("支持因素", "Supporting")}</b>{presentation.evidence.supportingFactors.map((item, index) => <span key={index}>{item}</span>)}</div>}
+          {(presentation.evidence.conflictingFactors || []).length > 0 && <div className="conflict"><b><AlertTriangle size={13} /> {t("冲突与风险", "Conflicts & risks")}</b>{presentation.evidence.conflictingFactors.map((item, index) => <span key={index}>{item}</span>)}</div>}
+        </div>
+      )}
+
+      <div className={`decisionNext ${tone}`}>
+        <Target size={15} />
+        <div><span>{t("现在应该关注什么", "What to focus on now")}</span><b>{nextActionLabel(nextAction)}</b></div>
+      </div>
+
+      <details className="decisionAnalysis">
+        <summary><BrainCircuit size={13} /><span>{t("展开完整分析与判断链", "Open full analysis and reasoning")}</span><ChevronDown size={13} /></summary>
+        <div className="decisionAnalysisBody"><RichMessage text={content} onSuggest={onSuggest} /></div>
+      </details>
     </div>
   );
 }
@@ -982,6 +1293,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
   const [pending, setPending] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const latestMessageRef = useRef(null);
   // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
   useEffect(() => {
     const el = inputRef.current;
@@ -1006,6 +1318,13 @@ export function ChatPage({ data, action, ui, concept = false }) {
 
   useEffect(() => { loadMessages(); }, []);
   useEffect(() => {
+    const latest = messages[messages.length - 1];
+    // 用户消息和思考态仍贴近输入框；新的 AI 长简报必须定位到卡片顶部，
+    // 否则自动滚到底会直接跳过“本轮结论”和状态，用户第一眼只看到工具调用。
+    if (latest && latest.role !== "user" && !pending && latestMessageRef.current) {
+      latestMessageRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, pending]);
 
@@ -1053,6 +1372,57 @@ export function ChatPage({ data, action, ui, concept = false }) {
   function findMandate(mandateId) {
     return (data.mandates || []).find((mandate) => mandate.id === mandateId);
   }
+  function currentStateForMessage(message) {
+    const presentation = message.presentation;
+    if (!presentation?.linked) return null;
+    const order = (data.executionOrders || []).find((item) => item.id === presentation.linked.executionOrderId || item.planId === presentation.linked.planId);
+    if (order?.status) return order.status;
+    const plan = (data.tradePlans || []).find((item) => item.id === presentation.linked.planId);
+    if (plan?.status) return plan.status;
+    const watch = (data.watchTriggers || []).find((item) => item.id === presentation.linked.watchId);
+    if (watch?.status === "active") return "watching";
+    if (watch?.status) return watch.status;
+    return presentation.decision?.state || null;
+  }
+  function currentExecutionForMessage(message) {
+    const linked = message.presentation?.linked;
+    if (!linked?.executionOrderId && !linked?.planId) return undefined;
+    const order = (data.executionOrders || []).find((item) => item.id === linked.executionOrderId || item.planId === linked.planId);
+    if (!order) return undefined;
+    const fills = (data.fills || []).filter((item) => item.executionOrderId === order.id || (!item.executionOrderId && item.tradePlanId === linked.planId));
+    const entries = fills.filter((item) => item.kind === "entry" && Number.isFinite(Number(item.price)) && Number.isFinite(Number(item.quantity)));
+    const entryQty = entries.reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
+    const entryNotional = entries.reduce((sum, item) => sum + Math.abs(Number(item.price) * Number(item.quantity)), 0);
+    const closes = fills.filter((item) => item.kind === "close" && Number.isFinite(Number(item.realizedPnl)));
+    return {
+      status: order.status || null,
+      quantity: order.quantity ?? null,
+      notionalUsdt: order.notionalUsdt ?? null,
+      filledPrice: entryQty > 0 ? entryNotional / entryQty : order.filledPrice ?? null,
+      plannedEntryPrice: order.entryPrice ?? null,
+      realizedPnl: closes.length ? closes.reduce((sum, item) => sum + Number(item.realizedPnl), 0) : order.realizedPnl ?? null,
+      protection: order.protection || null,
+      updatedAt: order.updatedAt || order.completedAt || order.createdAt || null
+    };
+  }
+  function currentPositionForMessage(message) {
+    const symbol = message.presentation?.symbol;
+    if (!symbol) return null;
+    const row = (data.positions || []).find((item) => item.symbol === symbol && item.source === "execution_engine" && Number(item.quantity ?? item.size ?? item.pos ?? 0) !== 0)
+      || (data.positions || []).find((item) => item.symbol === symbol && Number(item.quantity ?? item.size ?? item.pos ?? 0) !== 0);
+    if (!row) return null;
+    const rawDirection = String(row.direction ?? row.posSide ?? "").toLowerCase();
+    const direction = rawDirection.includes("short") || rawDirection.includes("空") || rawDirection === "sell" ? "short" : "long";
+    return {
+      direction,
+      size: row.quantity ?? row.size ?? row.pos ?? null,
+      entryPrice: row.entry ?? row.entryPrice ?? row.avgPx ?? null,
+      markPrice: row.mark ?? row.markPrice ?? null,
+      unrealizedPnl: row.pnl ?? row.unrealizedPnl ?? null,
+      leverage: row.leverage ?? null
+    };
+  }
+  const latestAgentMessageId = [...messages].reverse().find((message) => message.role !== "user")?.id || null;
   // 新建对话只在本地开启一个"草稿会话"，不立刻建库；发第一条消息时后端才真正创建
   // 并用首句作为标题。这样空对话永远不会留进历史记录。
   function newSession() {
@@ -1123,17 +1493,27 @@ export function ChatPage({ data, action, ui, concept = false }) {
 
       <div className="agMsgs" ref={scrollRef}>
         {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
-        {messages.map((message) => (message.role === "user" ? (
-          <div className="agMsgUserRow" key={message.id}>
+        {messages.map((message, messageIndex) => (message.role === "user" ? (
+          <div className="agMsgUserRow" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}>
             <div className="agBubbleUser"><RichMessage text={message.content} compact onSuggest={null} /></div>
             <small className="agMsgMeta userSide">{formatTime(message.createdAt)}</small>
           </div>
         ) : (
-          <div className="agMsgAiRow" key={message.id}>
+          <div className="agMsgAiRow" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}>
             <span className="agAvatar"><Bot size={18} /></span>
-            <div className="agBubbleAi">
-              <div className="agAiLabel">{t("AI 交易员", "AI Trader")}</div>
-              <RichMessage text={message.content} onSuggest={!pending ? (t) => send(t) : null} />
+            <div className={`agBubbleAi ${message.presentation?.layout === "decision_brief" ? "decisionMessage" : ""}`}>
+              <div className="agAiLabel"><span>{t("AI 交易员", "AI Trader")}</span>{message.presentation?.layout === "decision_brief" && <small>{t("结构化决策简报", "Structured decision brief")}</small>}</div>
+              {message.presentation?.layout === "decision_brief" ? (
+                <DecisionBrief
+                  presentation={message.presentation}
+                  content={message.content}
+                  currentState={currentStateForMessage(message)}
+                  currentExecution={currentExecutionForMessage(message)}
+                  currentPosition={message.id === latestAgentMessageId ? currentPositionForMessage(message) : undefined}
+                  isLatest={message.id === latestAgentMessageId}
+                  onSuggest={!pending ? (value) => send(value) : null}
+                />
+              ) : <RichMessage text={message.content} onSuggest={!pending ? (value) => send(value) : null} />}
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
                 <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} data={data} />

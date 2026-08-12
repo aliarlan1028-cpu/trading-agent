@@ -44,6 +44,7 @@ import { normalizePlanLeverage } from "./mandatePolicy.mjs";
 import { buildCurrentRiskSnapshot, currentRiskSnapshotForPrompt, enforceCurrentRiskFacts } from "./currentRiskSnapshot.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { buildReviewLearningContext, retrieveRelevantReviewMemories, reviewLearningPrompt, validateAppliedReviewLessons } from "./reviewLearning.mjs";
+import { buildChatPresentation } from "./chatPresentation.mjs";
 
 // 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
@@ -2403,6 +2404,14 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       startTime: run.createdAt
     });
   } catch { /* tracing 不阻断主流程 */ }
+  const presentation = buildChatPresentation({
+    db,
+    run,
+    content: finalText,
+    evidenceBundle: run.evidenceBundle || evidenceBundle,
+    errorText
+  });
+  run.presentation = presentation;
   const agentMessage = {
     id: id("msg"),
     sessionId: session.id,
@@ -2414,6 +2423,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     mandateId: run.mandateId || null,
     analysisBundleId: run.analysisBundleId || null,
     evidenceBundleId: run.evidenceBundleId || null,
+    presentation,
     toolTrace,
     error: errorText || undefined,
     createdAt: nowIso()

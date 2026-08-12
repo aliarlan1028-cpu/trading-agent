@@ -83,6 +83,33 @@ export function recordCapabilityResult(run, toolName, args = {}, result = {}) {
       bias: result.bias || null,
       quality: result.quality || null
     };
+    // 给聊天展示层保存一份小型、确定性的多周期快照。它来自闭合 K 线计算，
+    // 不从 LLM 正文反向猜状态；只保留 15m/1h/4h 所需字段，避免把完整 K 线塞进消息。
+    run.presentationFacts ||= {};
+    run.presentationFacts.structures ||= {};
+    run.presentationFacts.structures[symbol] = {
+      symbol,
+      analyzedAt: result.analyzedAt || base.recordedAt,
+      selectedRole: result.selectedRole || null,
+      bias: result.bias || null,
+      quality: result.quality || null,
+      frames: Object.fromEntries(["15m", "1h", "4h"].map((timeframe) => {
+        const frame = result.frames?.[timeframe];
+        return [timeframe, frame?.available ? {
+          available: true,
+          timeframe,
+          lastClosedAt: frame.lastClosedAt || null,
+          trend: frame.trend || null,
+          phase: frame.phase || null,
+          latestEvent: frame.latestEvent ? {
+            kind: frame.latestEvent.kind || null,
+            direction: frame.latestEvent.direction || null,
+            level: frame.latestEvent.level ?? null
+          } : null,
+          volume: frame.volume ? { state: frame.volume.state || null } : null
+        } : { available: false, timeframe, reason: frame?.reason || "unavailable" }];
+      }))
+    };
     run.capabilityEvidence.push({
       ...base,
       capability: "deterministic_structure",

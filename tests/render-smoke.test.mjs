@@ -48,7 +48,7 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
-      export { ChatPage, cleanPresentationText } from "./src/chat.jsx";
+      export { ChatPage, DecisionBrief, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { MobileApp } from "./src/mobile.jsx";
@@ -75,6 +75,50 @@ test("AI display cleanup removes process narration without deleting trading fact
   assert.equal(C.cleanPresentationText("状态：计划已登记，等待价格条件。"), "状态：计划已登记，等待价格条件。");
   assert.equal(C.cleanPresentationText("✅ 计划已武装，现在汇总全貌。"), "");
   assert.equal(C.cleanPresentationText("The plan is armed. Now I will summarize the full picture.\n\nConclusion: Wait for confirmation."), "Conclusion: Wait for confirmation.");
+});
+
+test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下一步", () => {
+  const presentation = {
+    schemaVersion: 1,
+    layout: "decision_brief",
+    kind: "trade_plan",
+    generatedAt: "2026-08-13T02:00:00Z",
+    headline: "等待回踩确认，不追多",
+    symbol: "BTC/USDT",
+    symbols: ["BTC/USDT", "ETH/USDT"],
+    decision: { state: "awaiting_approval", direction: "long", role: "day_trader", primaryTimeframe: "1h", hasOrder: false, hasPosition: false },
+    nextAction: { code: "approve_or_reject" },
+    timeframes: ["15m", "1h", "4h"].map((timeframe) => ({
+      timeframe, status: "complete",
+      structure: { direction: "long", sequence: "HH/HL", phase: timeframe === "15m" ? "pullback" : "continuation" },
+      flow: { priceChangePct: 0.5, oiChangePct: 1.2, fundingEndPct: 0.01, leverageState: "long_build", cvd: 120, flowCoveragePct: 100, divergence: "none" }
+    })),
+    evidence: { coverage: { passed: 7, total: 7, criticalReady: true, complete: true }, btcRisk: { status: "ok", window: "7d", correlation: 0.91, beta: 1.08 }, eventVolatility: [], supportingFactors: ["1H 结构保持 HH/HL"], conflictingFactors: ["15m 主动买盘仍需确认"] },
+    linked: { planId: "tp1" }, watch: null,
+    execution: { status: "protecting", quantity: 0.01, notionalUsdt: 650, filledPrice: 65000, protection: { attachedAlgoStop: true } },
+    position: { direction: "long", size: 0.01, entryPrice: 65000, markPrice: 65500, unrealizedPnl: 5, leverage: 2 }
+  };
+  const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n等待回踩确认，不追多" }));
+  assert.match(html, /结构化|交易计划/);
+  assert.match(html, /等待回踩确认，不追多/);
+  for (const timeframe of ["15M", "1H", "4H"]) assert.match(html, new RegExp(timeframe));
+  assert.match(html, /7\/7/);
+  assert.match(html, /真实执行进度/);
+  assert.match(html, /回复生成时仓位快照/);
+  assert.match(html, /原生止损已附加/);
+  assert.match(html, /\+1 币种/);
+  assert.match(html, /展开完整分析与判断链/);
+  assert.match(html, /批准或拒绝本计划/);
+  const liveHtml = renderToString(React.createElement(C.DecisionBrief, {
+    presentation,
+    content: "### 结论\n交易已完成",
+    currentState: "closed",
+    currentExecution: { ...presentation.execution, status: "closed", realizedPnl: 8.2 }
+  }));
+  assert.match(liveHtml, /当前真实状态/);
+  assert.match(liveHtml, /已实现盈亏/);
+  assert.match(liveHtml, /8\.20(?:<!-- -->)? USDT/);
+  assert.match(liveHtml, /核对净收益并查看平仓复盘/);
 });
 
 // —— 真实形状 fixture：技能覆盖全部 11 个状态、概念含重名（触发去重）、计划/执行单覆盖典型状态 ——
