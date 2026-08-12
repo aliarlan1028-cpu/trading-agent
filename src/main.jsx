@@ -73,7 +73,7 @@ function Sidebar({ active, setActive }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brandMark"><BrandLogo size={20} /></div>
+        <div className="brandMark"><BrandLogo size={32} /></div>
         <div className="brandText">
           <strong>KORDYN</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>

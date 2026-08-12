@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 630 884" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 884 884" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
   <title id="title">KORDYN</title>
   <desc id="desc">Green upward chevron, black center diamond, and red downward chevron.</desc>
   <defs>
@@ -13,7 +13,9 @@
       <stop offset="1" stop-color="#d9151d"/>
     </linearGradient>
   </defs>
-  <path fill="url(#green)" d="M317 12 10 319l73 73 234-234 198 202 74-73z"/>
-  <path fill="#050505" d="m315 337 103 106-103 102-103-102z"/>
-  <path fill="url(#red)" d="m112 527-73 73 275 273 300-303-71-72-229 230z"/>
+  <g transform="translate(127 0)">
+    <path fill="url(#green)" d="M317 12 10 319l73 73 234-234 198 202 74-73z"/>
+    <path fill="#050505" d="m315 337 103 106-103 102-103-102z"/>
+    <path fill="url(#red)" d="m112 527-73 73 275 273 300-303-71-72-229 230z"/>
+  </g>
 </svg>
