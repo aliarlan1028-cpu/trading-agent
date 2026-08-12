@@ -1,6 +1,7 @@
-import { activeMandate, nowIso } from "./store.mjs";
+import { activeMandate, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
+import { buildSlippageCalibration } from "./executionCostModel.mjs";
 
 const ageMs = (value) => value ? Math.max(0, Date.now() - new Date(value).getTime()) : null;
 const pct = (n, d = 2) => Number.isFinite(Number(n)) ? Number(Number(n).toFixed(d)) : null;
@@ -41,7 +42,7 @@ export function buildSloReport(db) {
 
 export function buildTradingPermissionEvidence(db) {
   const mandate = activeMandate(db);
-  const snapshot = (db.accountSnapshots || []).find((s) => s.status === "ok");
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   const latestMarket = (db.markets || []).filter((m) => m.price).sort((a, b) => new Date(b.updatedAt || b.syncedAt || 0) - new Date(a.updatedAt || a.syncedAt || 0))[0];
   const latestReconcile = db.reconciliationReports?.[0];
   const auditHealthy = db.meta?.auditChainBroken !== true;
@@ -66,7 +67,9 @@ export function buildExecutionQuality(db) {
   const slips = fills.map((f) => Number(f.slippageBps));
   const orders = db.executionOrders || [];
   const partial = orders.filter((o) => /partial/.test(String(o.status)) || Number(o.filledQuantity || 0) > 0 && Number(o.filledQuantity) < Number(o.quantity)).length;
-  return { fills: fills.length, avgSlippageBps: slips.length ? pct(slips.reduce((a, b) => a + b, 0) / slips.length) : null, p95SlippageBps: quantile(slips, .95), partialFillRatePct: orders.length ? pct(partial / orders.length * 100) : null };
+  const symbols = [...new Set(fills.map((fill) => String(fill.symbol || "").toUpperCase()).filter(Boolean))];
+  const calibrationBySymbol = symbols.map((symbol) => buildSlippageCalibration(db, symbol));
+  return { fills: fills.length, avgSlippageBps: slips.length ? pct(slips.reduce((a, b) => a + b, 0) / slips.length) : null, p95SlippageBps: quantile(slips, .95), partialFillRatePct: orders.length ? pct(partial / orders.length * 100) : null, calibrationBySymbol };
 }
 
 export function buildReplayBundles(db, limit = 20) {

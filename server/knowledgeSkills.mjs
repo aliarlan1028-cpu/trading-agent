@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
+import { purgedChronologicalWindows } from "./validationStatistics.mjs";
 import { BAR_MINUTES, simulate } from "./backtestEngine.mjs";
 import { createPaperSession } from "./paperTrading.mjs";
 import { detectRegime, getStrategy, STRATEGIES } from "./strategies.mjs";
@@ -293,11 +294,10 @@ export function validateKnowledgeSkillWithCandles(db, skillId, candles, actor = 
 
   const signals = applyCompiledSignalConstraints(candles, strategy.signals(candles, skill.spec.params || {}), skill.spec);
   const n = candles.length;
-  const trainEnd = Math.floor(n * 0.4);
-  const validationEnd = Math.floor(n * 0.7);
-  const train = evaluateWindow(candles, signals, 0, trainEnd, skill);
-  const validation = evaluateWindow(candles, signals, trainEnd, validationEnd, skill);
-  const test = evaluateWindow(candles, signals, validationEnd, n, skill);
+  const windows = purgedChronologicalWindows(n, { purgeBars: 1, embargoBars: 1 });
+  const train = evaluateWindow(candles, signals, windows.train[0], windows.train[1], skill);
+  const validation = evaluateWindow(candles, signals, windows.validation[0], windows.validation[1], skill);
+  const test = evaluateWindow(candles, signals, windows.test[0], windows.test[1], skill);
   const oosTrades = Number(validation.trades || 0) + Number(test.trades || 0);
   // 低信任（按书名综述）技能门槛更严：样本更多、盈亏比更高——用更严的样本外证据补偿来源不是原始证据。
   const lt = skill.spec.lowTrust === true;
@@ -315,9 +315,11 @@ export function validateKnowledgeSkillWithCandles(db, skillId, candles, actor = 
     && (test.maxDrawdownPct ?? 100) <= 20;
   skill.validation = {
     status: passed ? "passed" : "failed",
-    methodology: "40/30/30 chronological holdout",
+    methodology: "40/30/30 purged chronological holdout",
+    purgeBars: windows.purgeBars,
+    embargoBars: windows.embargoBars,
     candles: n,
-    regime: detectRegime(candles.slice(validationEnd)),
+    regime: detectRegime(candles.slice(windows.test[0])),
     train,
     validation,
     test,

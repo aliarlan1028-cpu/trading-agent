@@ -3,7 +3,9 @@
 export function registerExecutionOrderRoutes(app, ctx) {
   const { db, persist, requirePermission, pollExecutionOrders, closeExecution, refreshAccounting } = ctx;
 
-  app.get("/api/execution-orders", (_req, res) => res.json(db.executionOrders || []));
+  app.get("/api/execution-orders", (_req, res) => res.json((db.executionOrders || []).slice().sort((a, b) =>
+    new Date(b.updatedAt || b.lastPolledAt || b.closedAt || b.createdAt || 0) - new Date(a.updatedAt || a.lastPolledAt || a.closedAt || a.createdAt || 0)
+  )));
 
   app.post("/api/execution-orders/poll", requirePermission("write:trade_plan"), async (_req, res) => {
     try {

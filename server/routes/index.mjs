@@ -32,6 +32,7 @@ import { registerSystemRoutes } from "./system.mjs";
 import { registerAssistantRoutes } from "./assistant.mjs";
 import { registerPosterRoutes } from "./posters.mjs";
 import { registerBehaviorProfileRoutes } from "./behaviorProfile.mjs";
+import { registerMarketIntelligenceRoutes } from "./marketIntelligence.mjs";
 
 export function registerAllRoutes(app, ctx) {
   registerObservabilityRoutes(app, ctx);
@@ -65,4 +66,5 @@ export function registerAllRoutes(app, ctx) {
   registerAssistantRoutes(app, ctx);
   registerPosterRoutes(app, ctx);
   registerBehaviorProfileRoutes(app, ctx);
+  registerMarketIntelligenceRoutes(app, ctx);
 }

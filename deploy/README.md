@@ -1,7 +1,7 @@
 # 对外交付 · Path A：一客户一实例（single-tenant per customer）
 
 每个付费客户 = 一套**物理隔离**的独立部署：独立容器 + 独立 sqlite 数据卷 + 独立
-KMS/Vault 挂载密钥文件（本地过渡期可用独立 `SECRETS_MASTER_KEY`）+ 独立 owner 账号 + 独立子域名。客户各自连自己的交易所、
+主密钥文件 + 独立 owner 账号 + 独立子域名。客户各自连自己的 OKX 账户、
 交易自己的钱，彼此完全看不到对方的数据。**几乎不改应用代码**，靠下面的脚本开通。
 
 ## 一次性准备（只做一次）
@@ -12,18 +12,31 @@ KMS/Vault 挂载密钥文件（本地过渡期可用独立 `SECRETS_MASTER_KEY`�
       新客户实例直接复用该镜像，不必每次重建。
 - [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
+- [ ] **异机加密备份**：为每个实例只读挂载独立的 `BACKUP_ENCRYPTION_KEY_FILE`，把
+      `BACKUP_OFFSITE_DIR` 指向另一块磁盘/NFS/rclone 挂载目录；系统禁止把明文快照复制到异机目录。
+- [ ] **恢复演练**：`npm run restore-drill` 在临时目录解密并执行 SQLite 完整性/核心表检查，
+      不替换生产数据库。部署脚本会安装每周一自动演练的 systemd timer，并记录
+      `backups/restore-drill-status.json`。
 - [ ] **宕机告警**：`cp deploy/monitor.env.example deploy/monitor.env` 填 Lark Webhook，`chmod 600`；把 `monitor-tenants.sh` 挂 cron（每 1 分钟，脚本注释即 `* * * * *`；FAIL_THRESHOLD=2 时自愈延迟约 2 分钟），实例掉线/恢复时推送。
 - [ ] **脚本落到服务器**：`/opt/trading-agent/deploy/` 下（随主仓库 rsync 即可），
       `chmod +x deploy/*.sh`。
+- [ ] **当前机器容量**：`provision-tenant.sh` 会在创建前硬检查实例数、MemAvailable 和磁盘；
+      默认至少保留 768MB 可用内存、磁盘低于 80%，容量不够会拒绝，而不是挤垮 Owner 实例。
+- [ ] **公开申请入口**：主实例只保存开通申请，不创建客户交易账号。模式为
+      `closed / invite / waitlist / auto`；正式公开候补前必须配置 Turnstile、验证邮件、
+      HTTPS 服务条款和隐私政策地址。
 
 ## 开通一个客户
 
 ```bash
 cd /opt/trading-agent/deploy
+PRODUCTION_SECURITY_PROFILE=bitlaunch_single_server \
+PUBLIC_MAX_TENANTS=1 \
 ./provision-tenant.sh alice alice@example.com
 ```
 
-脚本会：建目录 `/opt/tenants/alice/` → 生成随机 `SECRETS_MASTER_KEY` 和初始密码 →
+BitLaunch 单服务器模式会在 `/opt/tenants/<slug>/secrets/` 生成租户独立宿主机密钥；
+`external_hardened` 模式仍强制外部 KMS/WORM/告警。脚本会先执行容量闸 → 建目录 `/opt/tenants/alice/` → 生成初始密码 →
 起容器（端口只绑 `127.0.0.1`，不对外）→ 往 Caddyfile 注入
 `alice.yegidawir.xyz` 路由并 reload。最后打印 **URL + owner 邮箱 + 初始密码（仅此一次）**。
 
@@ -37,6 +50,7 @@ cd /opt/trading-agent/deploy
 ```bash
 ./list-tenants.sh                     # 看所有实例与状态
 ./backup-tenants.sh                   # 手动备份（cron 会自动跑）
+npm run restore-drill                 # 只读恢复演练，不触碰生产数据库
 ./deprovision-tenant.sh alice         # 停用（保留数据）
 ./deprovision-tenant.sh alice --purge # 停用并归档删除数据
 ```
@@ -48,15 +62,16 @@ cd /opt/trading-agent/deploy
 
 - [ ] **合规/法律**：服务条款、风险揭示、代客交易免责、司法管辖界定。
 - [ ] **非托管声明**：明确你不持有客户资金；客户 API Key 必须**禁用提币权限**。
-- [ ] **密钥托管**：每实例的 `SECRETS_MASTER_KEY` 在 `.env` 里，随 `data` 备份；
-      丢失 = 该客户密钥不可解密，需向客户说明并有找回/重置流程。
-- [ ] **生产密钥升级**：设置 `REQUIRE_EXTERNAL_KEY_PROVIDER=true`，由 KMS/Vault sidecar
-      把至少 32 字符的数据密钥只读挂载到 `SECRETS_MASTER_KEY_FILE`。
+- [ ] **密钥托管**：每实例必须使用独立 KMS/Vault 数据密钥，只读挂载到
+      `SECRETS_MASTER_KEY_FILE`；密钥不得进入 `.env`、代码仓库或数据备份。BitLaunch
+      单服务器模式使用宿主机 `0400` 独立文件；外部加固模式由 KMS/Vault sidecar 挂载。
 - [ ] **外部审计**：配置独立账号管理的 `WORM_AUDIT_ENDPOINT`；应用只拥有追加权限，
       不拥有删除或改写权限。
-- [ ] **公开注册关闭**：Path A 必须保持 `PUBLIC_REGISTRATION_ENABLED=false`。
+- [ ] **公开入口不建交易用户**：可以开放主实例申请页，但每个获批客户仍必须由
+      `provision-tenant.sh` 创建独立实例；严禁启用 `TENANT_ISOLATION_V2` 绕过物理隔离。
 - [ ] **监控告警**：容器 healthcheck 已内置；建议再加宕机告警（如 Uptime Kuma）。
-- [ ] **资源上限**：客户多了给每个 compose 加 `mem_limit`/`cpus`，避免互相拖垮。
+- [ ] **资源上限**：脚本默认每客户 512MB / 0.5 CPU / 256 PID，并配置日志轮转；
+      只能在压测和升级当前 BitLaunch 套餐后提高 `PUBLIC_MAX_TENANTS`。
 
 ## 何时该迁到 Path B（真多租户）
 

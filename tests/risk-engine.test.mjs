@@ -65,6 +65,64 @@ test("complete account risk basis permits an otherwise valid live plan", () => {
   assert.equal(result.passed, true);
 });
 
+test("授权杠杆区间的下限与上限都是执行硬边界", () => {
+  const db = fixture({ live: false });
+  db.mandates[0].minLeverage = 2;
+  db.mandates[0].maxLeverage = 5;
+  const below = evaluateTradePlan(db, { ...plan, leverage: 1 });
+  assert.equal(below.passed, false);
+  assert.ok(below.blockers.some((item) => item.name === "杠杆下限"));
+  const inside = evaluateTradePlan(db, { ...plan, leverage: 2 });
+  assert.equal(inside.passed, true);
+});
+
+test("过期连亏冷却不会被旧的永久连亏闸再次锁死", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  db.fills = Array.from({ length: 5 }, (_, index) => ({
+    id: `old-loss-${index}`,
+    executionOrderId: `old-exec-${index}`,
+    kind: "close",
+    realizedPnl: -1,
+    createdAt: new Date(Date.now() - (24 + index) * 3_600_000).toISOString()
+  }));
+  db.portfolio.weekPnl = -5;
+  const result = evaluateTradePlan(db, plan);
+  assert.equal(result.checks.some((check) => check.name === "连续亏损熔断"), false);
+  const cooldown = result.checks.find((check) => check.name === "连亏冷却");
+  assert.equal(cooldown?.passed, true);
+  assert.match(cooldown?.detail || "", /未触发/);
+});
+
+test("近7日亏损熔断读取 Mandate 前端配置值而非写死 5%", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  db.portfolio.weekPnl = -600;
+
+  db.mandates[0].maxWeeklyLossPct = 5;
+  const blocked = evaluateTradePlan(db, plan);
+  const blockedCheck = blocked.checks.find((check) => check.name === "近7日亏损熔断");
+  assert.equal(blockedCheck?.passed, false);
+  assert.match(blockedCheck?.detail || "", /上限 5%/);
+
+  db.mandates[0].maxWeeklyLossPct = 7;
+  const allowed = evaluateTradePlan(db, plan);
+  const allowedCheck = allowed.checks.find((check) => check.name === "近7日亏损熔断");
+  assert.equal(allowedCheck?.passed, true);
+  assert.match(allowedCheck?.detail || "", /上限 7%/);
+
+  delete db.mandates[0].maxWeeklyLossPct;
+  db.mandates[0].maxWeeklyDrawdownPct = 8;
+  const legacy = evaluateTradePlan(db, plan);
+  const legacyCheck = legacy.checks.find((check) => check.name === "近7日亏损熔断");
+  assert.equal(legacyCheck?.passed, false, "历史最大回撤字段不得放宽近7日累计亏损上限");
+  assert.match(legacyCheck?.detail || "", /上限 5%/);
+});
+
 test("mandate changes invalidate previously bound plans", () => {
   const db = fixture({ live: false });
   db.mandates[0].version = 2;

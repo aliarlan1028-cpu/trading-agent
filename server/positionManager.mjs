@@ -2,7 +2,8 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { notifyLarkThrottled } from "./larkNotifier.mjs";
 import { publishProfitablePositionPosters } from "./telegramNotifier.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
+import { appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 
 // 调用时读(而非加载时),这样「风控设置」运行时改 TRAIL_* 立即生效、不用重启。
 const trailPct = () => Math.max(0.001, Number(process.env.TRAIL_PCT || 0.012));            // 跟踪止损距离(小数,默认 0.012=1.2%)
@@ -15,13 +16,66 @@ const trailActivatePct = () => Math.max(0, Number(process.env.TRAIL_ACTIVATE_PCT
 export const STOP_MOVE_SUCCESS = new Set(["ok", "submitted", "idempotent_replay"]);
 export const moveStopSucceeded = (result) => STOP_MOVE_SUCCESS.has(result?.status);
 
-async function moveStopTo(db, position, newStop, label) {
+export function exchangeStopEvidence(db, position, exchangePosition, at = Date.now()) {
+  if (!position.stopLoss) return { verified: true, present: false, reason: "local_stop_missing", stopPrice: null };
   const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
-  const result = await executeTradeAction(db, "move_stop", {
+  if (!executionOrder?.stopClientOrderId) return { verified: true, present: false, reason: "stop_identity_missing", stopPrice: null };
+  const latestOkxSnapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  const snapshotAt = new Date(latestOkxSnapshot?.createdAt || 0).getTime();
+  const openedAt = new Date(position.openedAt || 0).getTime();
+  const snapshotAfterOpen = latestOkxSnapshot && snapshotAt >= openedAt && at - snapshotAt <= 2 * 60_000;
+  const snapshotOwnsMirror = snapshotAfterOpen && exchangePosition?.rawSyncedAt === latestOkxSnapshot.createdAt;
+  if (!snapshotOwnsMirror || !Array.isArray(latestOkxSnapshot.algoOrders)) {
+    return { verified: false, present: null, reason: "exchange_stop_snapshot_unverified", stopPrice: null };
+  }
+  const baseInstId = String(position.symbol).replace("/", "-").toUpperCase();
+  const instId = baseInstId.endsWith("-SWAP") ? baseInstId : `${baseInstId}-SWAP`;
+  const remoteStop = latestOkxSnapshot.algoOrders.find((order) => order.algoClOrdId === executionOrder.stopClientOrderId
+    && String(order.instId || "").toUpperCase() === instId
+    && Number(order.slTriggerPx || 0) > 0);
+  return remoteStop
+    ? { verified: true, present: true, reason: null, stopPrice: Number(remoteStop.slTriggerPx), snapshotAt: latestOkxSnapshot.createdAt }
+    : { verified: true, present: false, reason: "exchange_stop_missing", stopPrice: null, snapshotAt: latestOkxSnapshot.createdAt };
+}
+
+// 每日目标只作为“已经盈利后的降风险阈值”，绝不参与开仓方向、频率或仓位大小。
+// 触发依据必须是 OKX 权威浮盈；止损是否已更优也必须由 OKX 算法单快照证明。
+export function dailyGoalBreakevenDecision(db, position, exchangePosition, at = Date.now()) {
+  if (db.system?.dailyGoalBreakevenEnabled !== true) return { action: "none", reason: "disabled" };
+  const targetUsdt = Number(db.system?.dailyGoalUsdt);
+  if (!Number.isFinite(targetUsdt) || targetUsdt <= 0) return { action: "none", reason: "daily_goal_unconfigured" };
+  if (!exchangePosition || exchangePosition.source !== "exchange_rest" || exchangePosition.exchange !== "OKX") {
+    return { action: "wait", reason: "authoritative_position_unavailable", targetUsdt };
+  }
+  const unrealizedPnlUsdt = Number(exchangePosition.pnl);
+  if (!Number.isFinite(unrealizedPnlUsdt)) return { action: "wait", reason: "authoritative_pnl_unavailable", targetUsdt };
+  if (unrealizedPnlUsdt < targetUsdt) return { action: "wait", reason: "target_not_reached", targetUsdt, unrealizedPnlUsdt };
+  const entryPrice = Number(position.entry ?? position.entryPrice ?? exchangePosition.entry);
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return { action: "wait", reason: "entry_price_unavailable", targetUsdt, unrealizedPnlUsdt };
+  const evidence = exchangeStopEvidence(db, position, exchangePosition, at);
+  if (!evidence.verified) return { action: "wait", reason: evidence.reason, targetUsdt, unrealizedPnlUsdt, entryPrice };
+  if (!evidence.present) return { action: "wait", reason: evidence.reason, targetUsdt, unrealizedPnlUsdt, entryPrice };
+  const short = position.direction === "空" || position.direction === "short";
+  const alreadyProtected = short ? evidence.stopPrice <= entryPrice : evidence.stopPrice >= entryPrice;
+  return alreadyProtected
+    ? { action: "none", reason: "already_protected", targetUsdt, unrealizedPnlUsdt, entryPrice, currentStopPrice: evidence.stopPrice }
+    : { action: "move_to_entry", reason: "target_reached", targetUsdt, unrealizedPnlUsdt, entryPrice, currentStopPrice: evidence.stopPrice };
+}
+
+export function stopProtectionFailureReason(db, position, exchangePosition, at = Date.now()) {
+  const evidence = exchangeStopEvidence(db, position, exchangePosition, at);
+  if (!evidence.verified) return null;
+  return evidence.present ? null : evidence.reason;
+}
+
+async function moveStopTo(db, position, newStop, label, executeAction = executeTradeAction) {
+  const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
+  const result = await executeAction(db, "move_stop", {
     exchange: executionOrder?.exchange || "OKX",
     marketType: "perpetual_usdt",
     symbol: position.symbol,
     stopPrice: newStop,
+    stopClientOrderId: executionOrder?.stopClientOrderId,
     quantity: position.size,
     reduceOnly: true,
     agentRunId: executionOrder?.agentRunId,
@@ -39,9 +93,10 @@ async function moveStopTo(db, position, newStop, label) {
 // 由调度器周期驱动；所有真实写操作仍经 tradeActions 安全闸。
 // ---------------------------------------------------------------------------
 
-export async function monitorPositions(db) {
+export async function monitorPositions(db, options = {}) {
   const managed = (db.positions || []).filter((position) => position.source === "execution_engine");
   const actions = [];
+  const stopAction = options.executeTradeAction || executeTradeAction;
 
   for (const position of managed) {
     try {
@@ -55,7 +110,119 @@ export async function monitorPositions(db) {
       }
       if (!Number.isFinite(mark)) continue;
       position.mark = mark;
+      const direction = position.direction === "空" || position.direction === "short" ? "short" : "long";
+      const exchangePosition = (db.positions || []).find((item) => item.source === "exchange_rest"
+        && item.exchange === "OKX" && item.symbol === position.symbol
+        && String(item.posSide || item.direction || "long").toLowerCase().replace("空", "short").replace("多", "long") === direction);
+      if (exchangePosition) {
+        if (Number.isFinite(Number(exchangePosition.mark))) position.mark = mark = Number(exchangePosition.mark);
+        if (Number.isFinite(Number(exchangePosition.liqPx)) && Number(exchangePosition.liqPx) > 0) position.liqPx = Number(exchangePosition.liqPx);
+        if (Number.isFinite(Number(exchangePosition.leverage))) position.leverage = Number(exchangePosition.leverage);
+      }
       updateExcursion(db, position, mark);
+
+      // 真实止损存活核验：本地 stopLoss 只是“期望值”，不能证明 OKX 仍有未触发止损。
+      // 只有新于开仓、且同时包含该真实持仓和策略委托的 REST 快照，才作为缺失证据；
+      // 一旦确认保护单消失，系统自主整仓退出，绝不把裸仓留给人工发现。
+      const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
+      const missingProtectionReason = stopProtectionFailureReason(db, position, exchangePosition);
+      if (missingProtectionReason && !position.protectionEmergencySubmittedAt) {
+        const emergencyActionId = id("emergency");
+        const result = await executeTradeAction(db, "close_position", {
+          exchange: "OKX",
+          marketType: "perpetual_usdt",
+          symbol: position.symbol,
+          closePosition: true,
+          posSide: direction,
+          positionSide: direction,
+          emergencyActionId,
+          reason: missingProtectionReason
+        });
+        if (["ok", "submitted", "idempotent_replay"].includes(result.status)) {
+          position.protectionEmergencySubmittedAt = nowIso();
+          if (executionOrder) executionOrder.status = "emergency_close_pending";
+          db.system.reduceOnlyMode = true;
+          db.system.reduceOnlyBy = "protection_emergency";
+          db.system.riskStatus = "只减仓";
+          raiseIncident(db, position, "critical", `${position.symbol} 的 OKX 止损保护缺失，已自主提交整仓退出`);
+          appendAudit(db, `止损保护核验失败(${missingProtectionReason})，已自主提交整仓退出`, position.id, "PositionManager", "critical");
+          actions.push({ symbol: position.symbol, action: "missing_protection_emergency_close", emergencyActionId, status: result.status });
+        } else {
+          position.protectionEmergencyFailedAt = nowIso();
+          db.system.killSwitch = true;
+          db.system.reduceOnlyMode = true;
+          db.system.reduceOnlyBy = "protection_emergency";
+          raiseIncident(db, position, "critical", `${position.symbol} 止损保护缺失且紧急退出失败(${result.status})，已熔断`);
+          actions.push({ symbol: position.symbol, action: "missing_protection_emergency_failed", status: result.status });
+        }
+        continue;
+      }
+
+      const goalProtection = dailyGoalBreakevenDecision(db, position, exchangePosition);
+      if (goalProtection.reason === "already_protected" && !position.dailyGoalBreakevenSatisfiedAt) {
+        position.dailyGoalBreakevenSatisfiedAt = nowIso();
+        position.dailyGoalBreakevenGoalUsdt = goalProtection.targetUsdt;
+        position.dailyGoalBreakevenStatus = "already_protected";
+        db.system.dailyGoalProtectionLastEvent = {
+          symbol: position.symbol,
+          status: "already_protected",
+          targetUsdt: goalProtection.targetUsdt,
+          unrealizedPnlUsdt: goalProtection.unrealizedPnlUsdt,
+          stopPrice: goalProtection.currentStopPrice,
+          at: position.dailyGoalBreakevenSatisfiedAt
+        };
+      }
+      if (goalProtection.action === "move_to_entry") {
+        const lastAttemptAt = new Date(position.dailyGoalBreakevenAttemptAt || 0).getTime();
+        if (!Number.isFinite(lastAttemptAt) || Date.now() - lastAttemptAt >= 60_000) {
+          position.dailyGoalBreakevenAttemptAt = nowIso();
+          const result = await moveStopTo(db, position, goalProtection.entryPrice, "daily_goal_breakeven", stopAction);
+          if (moveStopSucceeded(result)) {
+            const confirmedStop = Number(result.stopPrice || goalProtection.entryPrice);
+            position.stopLoss = Number.isFinite(confirmedStop) ? confirmedStop : goalProtection.entryPrice;
+            position.dailyGoalBreakevenSatisfiedAt = nowIso();
+            position.dailyGoalBreakevenGoalUsdt = goalProtection.targetUsdt;
+            position.dailyGoalBreakevenStatus = "confirmed";
+            position.dailyGoalBreakevenLastError = null;
+            db.system.dailyGoalProtectionLastEvent = {
+              symbol: position.symbol,
+              status: "confirmed",
+              targetUsdt: goalProtection.targetUsdt,
+              unrealizedPnlUsdt: goalProtection.unrealizedPnlUsdt,
+              stopPrice: position.stopLoss,
+              at: position.dailyGoalBreakevenSatisfiedAt
+            };
+            appendAudit(db, `${position.symbol} 单笔浮盈 ${goalProtection.unrealizedPnlUsdt.toFixed(2)}U 达到每日目标 ${goalProtection.targetUsdt}U，OKX 止损已确认保护到开仓价 ${position.stopLoss}`, position.id, "PositionManager", "warning");
+            appendTrace(db, "position_manager", `${position.symbol} 每日目标保本已由 OKX 确认`, "ok");
+            await notifyLarkThrottled(db, `daily_goal_breakeven:${position.id}`, 60 * 60 * 1000, {
+              severity: "success",
+              title: "✅ 单笔达标，止损已保护到开仓价",
+              body: `**${position.symbol}** 当前浮盈 **${goalProtection.unrealizedPnlUsdt.toFixed(2)} USDT**，达到每日目标 ${goalProtection.targetUsdt} USDT；OKX 止损已确认移动到 ${position.stopLoss}。`,
+              fields: [{ label: "开仓价", value: String(goalProtection.entryPrice) }, { label: "原止损", value: String(goalProtection.currentStopPrice) }]
+            });
+            actions.push({ symbol: position.symbol, action: "daily_goal_breakeven_confirmed", stopPrice: position.stopLoss, targetUsdt: goalProtection.targetUsdt });
+          } else {
+            position.dailyGoalBreakevenStatus = "move_failed";
+            position.dailyGoalBreakevenLastError = result.status || "unknown";
+            db.system.dailyGoalProtectionLastEvent = {
+              symbol: position.symbol,
+              status: "move_failed",
+              targetUsdt: goalProtection.targetUsdt,
+              unrealizedPnlUsdt: goalProtection.unrealizedPnlUsdt,
+              error: result.status || "unknown",
+              at: nowIso()
+            };
+            appendAudit(db, `${position.symbol} 已达到每日盈利目标，但 OKX 止损未能移动到开仓价（${result.status || "unknown"}）；原止损保持不变`, position.id, "PositionManager", "warning");
+            await notifyLarkThrottled(db, `daily_goal_breakeven_fail:${position.id}`, 15 * 60 * 1000, {
+              severity: "warning",
+              title: "⚠ 达标保本改单未成功",
+              body: `**${position.symbol}** 已达到每日盈利目标，但 OKX 未确认止损移动（${result.status || "unknown"}）。原止损保持有效，系统会继续重试。`,
+              fields: [{ label: "目标保本价", value: String(goalProtection.entryPrice) }, { label: "当前已确认止损", value: String(goalProtection.currentStopPrice) }]
+            });
+            actions.push({ symbol: position.symbol, action: "daily_goal_breakeven_failed", reason: result.status || "unknown" });
+          }
+        }
+      }
 
       // 强平距离盯盘(交易员命门):杠杆永续在两次巡检之间就可能触及强平。逼近 → 严重告警 + 建议减仓/加保证金。
       const liqPx = Number(position.liqPx ?? position.liquidationPrice);
@@ -72,6 +239,36 @@ export async function monitorPositions(db) {
             fields: [{ label: "标记价", value: String(mark) }, { label: "强平价", value: String(liqPx) }]
           });
           actions.push({ symbol: position.symbol, action: "near_liquidation_alert", liqDistancePct: position.liqDistancePct });
+        }
+        const autoCloseThreshold = Math.min(liqThreshold, Number(process.env.LIQ_DISTANCE_AUTO_CLOSE_PCT || 4));
+        if (liqDistPct < autoCloseThreshold && !position.liquidationEmergencySubmittedAt) {
+          const emergencyActionId = id("emergency");
+          const result = await executeTradeAction(db, "close_position", {
+            exchange: "OKX",
+            marketType: "perpetual_usdt",
+            symbol: position.symbol,
+            closePosition: true,
+            posSide: direction,
+            positionSide: direction,
+            emergencyActionId,
+            reason: "liquidation_distance_critical"
+          });
+          if (["ok", "submitted", "idempotent_replay"].includes(result.status)) {
+            position.liquidationEmergencySubmittedAt = nowIso();
+            if (executionOrder) executionOrder.status = "emergency_close_pending";
+            db.system.reduceOnlyMode = true;
+            db.system.reduceOnlyBy = "liquidation_emergency";
+            db.system.riskStatus = "只减仓";
+            appendAudit(db, `强平距离仅 ${liqDistPct.toFixed(2)}%，已自主提交整仓退出`, position.id, "PositionManager", "critical");
+            actions.push({ symbol: position.symbol, action: "liquidation_emergency_close", emergencyActionId, status: result.status });
+          } else {
+            db.system.killSwitch = true;
+            db.system.reduceOnlyMode = true;
+            db.system.reduceOnlyBy = "liquidation_emergency";
+            raiseIncident(db, position, "critical", `${position.symbol} 强平紧急退出失败(${result.status})，已熔断`);
+            actions.push({ symbol: position.symbol, action: "liquidation_emergency_failed", status: result.status });
+          }
+          continue;
         }
       }
 
@@ -119,7 +316,7 @@ export async function monitorPositions(db) {
       const tp1Reached = Number.isFinite(tp1) && (isShort ? mark <= tp1 : mark >= tp1);
       const stopBelowBreakeven = isShort ? stop > entry : stop < entry;
       if (tp1Reached && stopBelowBreakeven && !position.breakevenMoved) {
-        const result = await moveStopTo(db, position, entry, "breakeven");
+        const result = await moveStopTo(db, position, entry, "breakeven", stopAction);
         if (moveStopSucceeded(result)) {
           position.stopLoss = entry;
           position.breakevenMoved = true;
@@ -160,7 +357,7 @@ export async function monitorPositions(db) {
         const stillProfitable = isShort ? trailStop < entry : trailStop > entry;
         if (improves && stillProfitable) {
           const rounded = Number(trailStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
-          const result = await moveStopTo(db, position, rounded, "trailing");
+          const result = await moveStopTo(db, position, rounded, "trailing", stopAction);
           if (moveStopSucceeded(result)) {
             position.stopLoss = rounded;
             position.trailingActive = true;
@@ -191,7 +388,7 @@ export async function monitorPositions(db) {
           const stillProfitable = isShort ? lockStop < entry : lockStop > entry;
           if (improves && stillProfitable) {
             const rounded = Number(lockStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
-            const result = await moveStopTo(db, position, rounded, "near_tp_protect");
+            const result = await moveStopTo(db, position, rounded, "near_tp_protect", stopAction);
             if (moveStopSucceeded(result)) {
               position.stopLoss = rounded;
               position.trailingActive = true;
@@ -236,6 +433,9 @@ export async function monitorPositions(db) {
 
   const posterResult = await publishProfitablePositionPosters(db);
   actions.push(...posterResult.actions);
+
+  // 仓位退出后自动关闭该仓位曾触发的动态风险事件，避免历史告警继续污染 AI 判断。
+  reconcileRiskIncidentLifecycle(db);
 
   return { monitored: managed.length, actions };
 }

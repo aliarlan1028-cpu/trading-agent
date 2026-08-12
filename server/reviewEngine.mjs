@@ -1,13 +1,24 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { fetchTradeWindowNews } from "./marketScan.mjs";
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
+import {
+  completeTradeReview,
+  groupClosedTradeLifecycles,
+  markTradeReviewProcessing,
+  syncTradeReviewQueue
+} from "./tradeReviewQueue.mjs";
+import { stampReviewMemoryContext } from "./reviewLearning.mjs";
 
 // #4 开仓后轨迹重建:平仓后按开仓→平仓时间窗回补 K 线,还原"价格怎么走的"——
 // 先顺行还是先逆行、最高逼近止盈多少、何时见顶、之后反转几次、最深不利多少。
 // 只用真实 K 线(交易所历史),LLM 复盘据此判断"离场太早/太晚、止盈太贪、方向读反"。取数失败返回 null,不阻断复盘。
 async function computeTradeTrajectory(db, fill, plan) {
   try {
-    const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (f.executionOrderId === fill.executionOrderId || f.planId === fill.planId));
+    const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (
+      f.executionOrderId === fill.executionOrderId
+      || f.tradePlanId === (fill.tradePlanId || fill.planId)
+      || f.planId === (fill.planId || fill.tradePlanId)
+    ));
     const eo = (db.executionOrders || []).find((o) => o.id === fill.executionOrderId) || {};
     const entry = number(entryFill?.price ?? plan.entry ?? eo.entry);
     const exit = number(fill.price ?? eo.lastMark);
@@ -159,13 +170,18 @@ function buildLossClusters(closes) {
 
 export function buildReviewAnalytics(db) {
   // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
-  const closes = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)) && (fill.tradePlanId || fill.planId || fill.executionOrderId));
+  const closes = groupClosedTradeLifecycles(db.fills || [])
+    .map((item) => item.representative)
+    .filter((fill) => fill.tradePlanId || fill.planId || fill.executionOrderId);
   const enriched = closes.map((fill) => {
     const plan = (db.tradePlans || []).find((item) => item.id === fill.tradePlanId || item.id === fill.planId) || {};
     const market = (db.markets || []).find((item) => item.symbol === (fill.symbol || plan.symbol));
     return {
       ...fill,
       strategy: fill.strategy || plan.strategy || plan.strategy_type || "manual_review",
+      strategyRef: fill.strategyRef || plan.strategyRef || null,
+      strategyBlueprintRef: fill.strategyBlueprintRef || plan.strategyBlueprintRef || null,
+      strategyVersionKey: fill.strategyVersionId || fill.strategyRef?.versionId || plan.strategyVersionId || plan.strategyRef?.versionId || "unversioned",
       symbol: fill.symbol || plan.symbol || "未知",
       regime: inferRegime(fill, market),
       entryRationale: fill.entryRationale || plan.rationale || plan.analysis || "",
@@ -174,6 +190,7 @@ export function buildReviewAnalytics(db) {
   });
   const totalLoss = enriched.filter((fill) => number(fill.realizedPnl, 0) < 0).reduce((sum, fill) => sum + number(fill.realizedPnl, 0), 0);
   const strategy = groupStats(enriched, (fill) => fill.strategy);
+  const strategyVersion = groupStats(enriched, (fill) => fill.strategyVersionKey);
   const symbol = groupStats(enriched, (fill) => fill.symbol);
   const session = groupStats(enriched, (fill) => hourBucket(fill.createdAt));
   const regime = groupStats(enriched, (fill) => fill.regime);
@@ -189,6 +206,7 @@ export function buildReviewAnalytics(db) {
     id: fill.id,
     symbol: fill.symbol,
     strategy: fill.strategy,
+    strategyVersionKey: fill.strategyVersionKey,
     pnl: number(fill.realizedPnl, 0),
     entryRationale: fill.entryRationale || "未记录入场理由",
     exitReason: fill.exitReason || "未记录出场原因",
@@ -230,7 +248,7 @@ export function buildReviewAnalytics(db) {
   return {
     generatedAt: nowIso(),
     sampleSize: enriched.length,
-    breakdowns: { strategy, symbol, session, regime },
+    breakdowns: { strategy, strategyVersion, symbol, session, regime },
     cost,
     entryExitBias,
     lossClusters,
@@ -255,6 +273,13 @@ export function backfillReviewFields(db) {
       executionOrder.strategy = plan.strategy || plan.strategy_type || "manual_review";
       updated += 1;
     }
+    if (!executionOrder.strategyRef && plan.strategyRef) {
+      executionOrder.strategyRef = { ...plan.strategyRef };
+      executionOrder.strategyProductId = plan.strategyProductId || plan.strategyRef.productId || null;
+      executionOrder.strategyVersion = plan.strategyVersion || plan.strategyRef.version || null;
+      executionOrder.strategyVersionId = plan.strategyVersionId || plan.strategyRef.versionId || null;
+      updated += 1;
+    }
     if (!executionOrder.entryRationale) {
       executionOrder.entryRationale = plan.rationale || plan.analysis || plan.reason || plan.summary || "未记录入场理由";
       updated += 1;
@@ -274,6 +299,13 @@ export function backfillReviewFields(db) {
     }
     if (!fill.strategy) {
       fill.strategy = executionOrder?.strategy || plan.strategy || plan.strategy_type || "manual_review";
+      updated += 1;
+    }
+    if (!fill.strategyRef && (executionOrder?.strategyRef || plan.strategyRef)) {
+      fill.strategyRef = { ...(executionOrder?.strategyRef || plan.strategyRef) };
+      fill.strategyProductId = executionOrder?.strategyProductId || plan.strategyProductId || fill.strategyRef.productId || null;
+      fill.strategyVersion = executionOrder?.strategyVersion || plan.strategyVersion || fill.strategyRef.version || null;
+      fill.strategyVersionId = executionOrder?.strategyVersionId || plan.strategyVersionId || fill.strategyRef.versionId || null;
       updated += 1;
     }
     if (!fill.regime) {
@@ -393,8 +425,12 @@ async function llmDeepReflection(fill, ctx) {
 // 幂等：处理过的成交打 reflectedAt，不重复。只把亏损+显著盈利写记忆，避免小额刷屏决策上下文。
 // #3/#4：亏损与显著盈利叠加 LLM 深度复盘(为什么读对/读错)，模板作兜底。
 export async function runTradeReflection(db) {
-  const closes = (db.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)) && !f.reflectedAt);
-  if (!closes.length) return { reflected: 0, memorized: 0, lessons: [] };
+  // 先把所有真实平仓补入页面可见队列；部分平仓按执行单/计划聚合为一个交易生命周期。
+  syncTradeReviewQueue(db);
+  const pendingLifecycles = groupClosedTradeLifecycles(db.fills || [], { onlyUnreflected: true });
+  const allByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((item) => [item.key, item]));
+  const lifecycles = pendingLifecycles.map((item) => allByKey.get(item.key) || item);
+  if (!lifecycles.length) return { reflected: 0, memorized: 0, lessons: [] };
   db.memoryItems ||= [];
   const lessons = [];
   let memorized = 0;
@@ -402,8 +438,10 @@ export async function runTradeReflection(db) {
   let newsBudget = Number(process.env.REFLECTION_NEWS_MAX_PER_RUN || 4); // ② 每轮消息面归因上限(Gemini,控配额)
   let trajBudget = Number(process.env.REFLECTION_TRAJ_MAX_PER_RUN || 6); // #4 每轮轨迹回补上限(K线请求,控网络)
   const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
-  for (const fill of closes.slice(0, 15)) {
-    const plan = (db.tradePlans || []).find((p) => p.id === fill.planId) || {};
+  for (const lifecycle of lifecycles.slice(0, 15)) {
+    const fill = lifecycle.representative;
+    const review = markTradeReviewProcessing(db, lifecycle);
+    const plan = (db.tradePlans || []).find((p) => p.id === fill.tradePlanId || p.id === fill.planId) || {};
     const pnl = Number(fill.realizedPnl);
     const win = pnl > 0;
     const dir = fill.direction === "short" || fill.direction === "空" ? "做空" : "做多";
@@ -427,17 +465,21 @@ export async function runTradeReflection(db) {
     const lesson = win
       ? `盈利复盘：${facts.join("；")}。入场依据「${rationale}」本次兑现——该「策略×品种×regime」组合在相似条件下可保持。`
       : `亏损复盘：${facts.join("；")}${attribNote}。入场依据「${rationale}」未兑现${Number.isFinite(slip) && Math.abs(slip) >= 15 ? "，且滑点偏大侵蚀收益" : ""}。后续同类信号需更严格确认（多周期/聪明钱一致）或减小仓位。`;
-    fill.reflectedAt = nowIso();
-    lessons.push({ fillId: fill.id, symbol: fill.symbol, win, pnl: Number(pnl.toFixed(2)) });
+    lessons.push({ fillId: fill.id, fillIds: lifecycle.fills.map((item) => item.id), symbol: fill.symbol, win, pnl: Number(pnl.toFixed(2)) });
+    let deep = null;
+    let memoryItemId = null;
     if (!win || Math.abs(pnl) >= minMemo) {
       // 亏损与显著盈利:调 LLM 做深度复盘,写进 fill + 记忆(模板作兜底)。
-      let deep = null;
       if (deepBudget > 0) {
         // ② 消息面归因:查【开仓→平仓时间窗】内该币真实新闻(Gemini,反幻觉),喂进深度复盘——
         // 让"对错/根因"不只看K线,也看"世界当时发生了什么"。gemini 未配/限流则 null,不影响复盘。
         let newsContext = null;
         if (newsBudget > 0) {
-          const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (f.executionOrderId === fill.executionOrderId || f.planId === fill.planId));
+          const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (
+            f.executionOrderId === fill.executionOrderId
+            || f.tradePlanId === (fill.tradePlanId || fill.planId)
+            || f.planId === (fill.planId || fill.tradePlanId)
+          ));
           const openTime = entryFill?.createdAt || plan.createdAt || fill.openedAt;
           try { newsContext = await fetchTradeWindowNews(fill.symbol, openTime, fill.createdAt); } catch { newsContext = null; }
           if (newsContext) { newsBudget -= 1; fill.newsContext = newsContext; }
@@ -451,18 +493,34 @@ export async function runTradeReflection(db) {
         deep = await llmDeepReflection(fill, { win, dir, pnl, facts, rationale, attribution, newsContext, trajectoryNote });
         if (deep) { deepBudget -= 1; fill.deepReflection = deep; }
       }
-      db.memoryItems.unshift({
+      const existingMemory = review?.memoryItemId ? db.memoryItems.find((item) => item.id === review.memoryItemId) : null;
+      const memoryItem = existingMemory || {
         id: id("mem"),
         layer: "episodic",
         title: `复盘 ${fill.symbol} ${win ? "✓ 盈" : "✗ 亏"}`,
-        content: deep ? `${lesson}\n\n【深度复盘】${deep}` : lesson,
         tags: ["auto_reflection", fill.strategy || "manual", win ? "win" : "loss", ...(deep ? ["llm_deep"] : [])],
         source: "auto_reflection",
         fillId: fill.id,
         createdAt: nowIso()
-      });
-      memorized += 1;
+      };
+      memoryItem.content = deep ? `${lesson}\n\n【深度复盘】${deep}` : lesson;
+      memoryItem.fillIds = lifecycle.fills.map((item) => item.id).filter(Boolean);
+      stampReviewMemoryContext(memoryItem, { fill, plan, review, lifecycle });
+      memoryItem.updatedAt = nowIso();
+      if (!existingMemory) db.memoryItems.unshift(memoryItem);
+      memoryItemId = memoryItem.id;
+      if (!existingMemory) memorized += 1;
     }
+    completeTradeReview(review, lifecycle, {
+      summary: `${fill.symbol} ${dir}${win ? "盈利" : "亏损"} ${pnl.toFixed(2)} USDT，自动复盘已完成。`,
+      lesson: deep ? `${lesson}\n\n【深度复盘】${deep}` : lesson,
+      deepReflection: deep,
+      memoryItemId,
+      attribution
+    });
+    // 完整落库后才标记已处理。若中途抛出异常，下轮仍能重试，不会出现“成交已 reflected、复盘却永久 processing”。
+    const reflectedAt = nowIso();
+    for (const closeFill of lifecycle.fills) closeFill.reflectedAt = reflectedAt;
   }
   if (db.memoryItems.length > 200) db.memoryItems = db.memoryItems.slice(0, 200);
   if (lessons.length) {

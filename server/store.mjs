@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import "dotenv/config";
 import { currentRequestContext } from "./requestContext.mjs";
+import { backfillToolUsage } from "./toolUsage.mjs";
+import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -12,7 +14,7 @@ const rootDir = path.resolve(__dirname, "..");
 // 全部权限清单（种子）。
 export const ALL_PERMISSIONS = [
   "market.read", "account.read", "trade.write_guarded", "risk.check", "risk.kill_switch",
-  "write:mandate", "write:trade_plan", "write:risk", "write:knowledge", "write:skills",
+  "write:mandate", "write:trade_plan", "write:risk", "write:risk_thresholds", "write:knowledge", "write:skills",
   "write:event", "write:exchange", "write:realtime", "write:review", "write:mcp", "write:task",
   "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
   "approve:trade_plan", "approve:live_config", "approve:knowledge_skill",
@@ -23,7 +25,7 @@ export const ALL_PERMISSIONS = [
 // 也不能直接跨过“批准者/执行者”职责边界。Owner 仍通过管理员角色拥有全部权限。
 export const TRADER_PERMISSIONS = [
   "market.read", "account.read", "risk.check", "knowledge.read", "knowledge.write",
-  "write:mandate", "write:trade_plan", "write:knowledge",
+  "write:mandate", "write:trade_plan", "write:risk_thresholds", "write:knowledge",
   "write:event", "write:review", "write:task"
 ];
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || "data");
@@ -42,22 +44,39 @@ const collectionNames = [
   "subscriptions",
   "paymentRequests",
   "paymentWebhooks",
+  "registrationApplications",
+  "registrationInvites",
+  "registrationRateLimits",
   "authSessions",
   "system",
   "portfolio",
   "markets",
   "watchlist",
+  "watchTriggers",
+  "armedSetups",
+  "opportunityCandidates",
+  "opportunityEvents",
+  "missedOpportunities",
+  "marketFeatureState",
+  "marketNarratives",
+  "structureAnalysisCache",
   "mandates",
   "positions",
   "orders",
   "fills",
   "tradePlans",
   "events",
+  "marketIntelligenceFacts",
+  "marketCalendarEvents",
+  "marketIntelligenceSourceHealth",
+  "dailyBriefs",
+  "telegramWatchOutbox",
   "tasks",
   "jobRuns",
   "jobLocks",
   "knowledge",
   "analysisBundles",
+  "evidenceBundles",
   "backtests",
   "skills",
   "tools",
@@ -69,6 +88,8 @@ const collectionNames = [
   "reconciliationReports",
   "vaultItems",
   "runtimeConfig",
+  "clearedRuntimeSecrets",
+  "toolCallStats",
   "alerts",
   "drillRuns",
   "grayReleasePolicies",
@@ -80,6 +101,14 @@ const collectionNames = [
   "exchangeOrders",
   "reviewReports",
   "strategyExperiments",
+  "strategyVersions",
+  "strategyDeployments",
+  "strategyVersionEvents",
+  "strategyStudioDrafts",
+  "strategyBlueprintVersions",
+  "strategyStudioBacktests",
+  "strategyMarketplaceListings",
+  "strategyAssignments",
   "eventImpacts",
   "toolExecutions",
   "eventSources",
@@ -103,7 +132,10 @@ const collectionNames = [
 const entityCollectionNames = [
   "mandates", "positions", "orders", "fills", "tradePlans", "events", "tasks",
   "riskChecks", "riskIncidents", "executionOrders", "accountSnapshots",
-  "reconciliationReports", "reviews", "agentRuns", "paperSessions", "strategyProfiles"
+  "reconciliationReports", "reviews", "agentRuns", "paperSessions", "strategyProfiles",
+  "armedSetups", "strategyVersions", "strategyDeployments", "strategyVersionEvents",
+  "strategyStudioDrafts", "strategyBlueprintVersions", "strategyStudioBacktests",
+  "strategyMarketplaceListings", "strategyAssignments"
 ];
 
 let sqlite;
@@ -114,6 +146,26 @@ export function nowIso() {
 
 export function id(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// trading_entities 重载顺序按 updated_at/resource_id，不等于业务 createdAt 顺序。
+// 所有账户事实必须显式取 createdAt 最新的成功快照，禁止依赖数组第一个元素。
+export function latestSuccessfulAccountSnapshot(db, filters = {}) {
+  let latest = null;
+  let latestAt = -Infinity;
+  for (const snapshot of db.accountSnapshots || []) {
+    if (snapshot?.status !== "ok") continue;
+    // 兼容早期未写 exchange 字段的单账户快照；明确标成其他交易所的仍排除。
+    if (filters.exchange && snapshot.exchange && snapshot.exchange !== filters.exchange) continue;
+    if (filters.accountId && snapshot.accountId !== filters.accountId) continue;
+    const timestamp = new Date(snapshot.createdAt || 0).getTime();
+    const comparable = Number.isFinite(timestamp) ? timestamp : 0;
+    if (!latest || comparable > latestAt) {
+      latest = snapshot;
+      latestAt = comparable;
+    }
+  }
+  return latest;
 }
 
 function emptyKnowledge() {
@@ -184,6 +236,25 @@ function defaultAgentProfiles(createdAt) {
       createdAt
     },
     {
+      id: "agent_macro_strategist",
+      order: 25,
+      name: "宏观环境分析员",
+      role: "Macro Regime Analyst",
+      phase: "macro_context",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["event.read", "market.read", "knowledge.query"],
+      declaration,
+      personality: "重证据、重时效、区分事实与推断；不会用宏观叙事替代入场信号。",
+      mission: "识别流动性、增长、通胀与风险偏好的环境，给日内和波段角色提供情景背景。",
+      boundaries: ["只输出背景与情景，不直接生成订单", "必须标注数据缺口和置信度", "未来事件不得冒充今日新闻"],
+      outputSchema: "macro_regime_context",
+      memoryPolicy: "只沉淀已被后续市场验证的宏观情景，不把临时观点写成事实。",
+      createdAt
+    },
+    {
       id: "agent_strategy_researcher",
       order: 30,
       name: "策略研究员",
@@ -219,6 +290,63 @@ function defaultAgentProfiles(createdAt) {
       boundaries: ["必须包含止损", "必须绑定授权委托", "必须交给风控官审查", "不得直接调用交易写接口"],
       outputSchema: "trade_plan",
       memoryPolicy: "记录计划参数与最终表现之间的差异。",
+      createdAt
+    },
+    {
+      id: "agent_day_trader",
+      order: 42,
+      name: "日内交易员",
+      role: "Day Trader",
+      phase: "horizon_planning",
+      enabled: true,
+      canProposeTrade: true,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["market.read", "event.read", "risk.check", "mandate.read"],
+      declaration,
+      personality: "反应快但不追价；关注 5m/15m 入场质量、流动性和当日事件窗口。",
+      mission: "构造当日结束的短周期计划，并将等待条件编译为代码可验证规则。",
+      boundaries: ["计划周期仅 5m/15m/1h", "等待计划最长12小时", "不得绕过组合裁决和统一风控"],
+      outputSchema: "intraday_trade_plan",
+      memoryPolicy: "按时段、滑点、入场延迟和当日波动环境复盘。",
+      createdAt
+    },
+    {
+      id: "agent_swing_trader",
+      order: 44,
+      name: "波段交易员",
+      role: "Swing Trader",
+      phase: "horizon_planning",
+      enabled: true,
+      canProposeTrade: true,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["market.read", "event.read", "risk.check", "mandate.read"],
+      declaration,
+      personality: "耐心、结构优先；以 4H/1D 方向为主，用较低周期改善入场。",
+      mission: "构造可跨日持有的波段计划，明确周期、失效位和事件风险。",
+      boundaries: ["计划周期仅 1h/4h/1d", "等待计划最长48小时", "不得把长期叙事当即时入场信号"],
+      outputSchema: "swing_trade_plan",
+      memoryPolicy: "按市场周期、持有时长、最大不利波动和退出质量复盘。",
+      createdAt
+    },
+    {
+      id: "agent_portfolio_arbiter",
+      order: 48,
+      name: "组合裁决员",
+      role: "Portfolio Arbiter",
+      phase: "portfolio_arbitration",
+      enabled: true,
+      canProposeTrade: false,
+      canApproveRisk: false,
+      canExecuteTrade: false,
+      tools: ["account.read", "risk.check", "mandate.read"],
+      declaration,
+      personality: "机械、中立、全局优先；不允许不同角色各自正确却让组合互相打架。",
+      mission: "在计划落库和执行前检查同币种方向冲突、共享敞口与授权容量。",
+      boundaries: ["不得修改风险阈值", "不得替代硬风控", "冲突必须给出可追溯的计划或持仓ID"],
+      outputSchema: "portfolio_intent_decision",
+      memoryPolicy: "记录被拒绝的角色冲突和最终处理方式。",
       createdAt
     },
     {
@@ -310,8 +438,6 @@ function defaultSubscriptionPlans(createdAt) {
 }
 
 function cleanSeedDatabase(createdAt) {
-  const hasBinance = Boolean(process.env.BINANCE_API_KEY);
-  const hasBinanceSecret = Boolean(process.env.BINANCE_API_SECRET);
   const hasOkx = Boolean(process.env.OKX_API_KEY);
   const hasOkxSecret = Boolean(process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
   return {
@@ -344,10 +470,17 @@ function cleanSeedDatabase(createdAt) {
     subscriptions: [{ id: "sub_owner", tenantId: "tenant_owner", userId: "user_local_admin", planId: "owner", status: "active", source: "owner_grant", startedAt: createdAt, currentPeriodEnd: null }],
     paymentRequests: [],
     paymentWebhooks: [],
+    registrationApplications: [],
+    registrationInvites: [],
+    registrationRateLimits: [],
     authSessions: [],
     system: {
       autonomyEnabled: false,
       liveTradingEnabled: false,
+      requestedOperatingMode: "observe",
+      dailyGoalUsdt: null,
+      monthlyGoalUsdt: null,
+      dailyGoalBreakevenEnabled: false,
       killSwitch: false,
       apiHealth: "待配置",
       riskStatus: "等待配置",
@@ -374,38 +507,39 @@ function cleanSeedDatabase(createdAt) {
       { symbol: "SOL/USDT", status: "not_synced", candles: [] }
     ],
     watchlist: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    watchTriggers: [],
+    armedSetups: [],
+    opportunityCandidates: [],
+    opportunityEvents: [],
+    missedOpportunities: [],
+    marketFeatureState: {},
+    marketNarratives: {},
+    structureAnalysisCache: {},
     mandates: [],
     positions: [],
     orders: [],
     fills: [],
     tradePlans: [],
     events: [],
+    marketIntelligenceFacts: [],
+    marketCalendarEvents: [],
+    marketIntelligenceSourceHealth: {},
+    dailyBriefs: [],
+    telegramWatchOutbox: [],
     tasks: [],
     jobRuns: [],
     jobLocks: [],
     knowledge: emptyKnowledge(),
     analysisBundles: [],
+    evidenceBundles: [],
     skills: [],
     tools: [
-      { id: "tool_binance", name: "Binance Connector", type: "exchange", status: hasBinance ? "configured" : "missing_credentials", permissions: ["market.read", "account.read", "trade.write_guarded"] },
       { id: "tool_okx", name: "OKX Connector", type: "exchange", status: hasOkx ? "configured" : "missing_credentials", permissions: ["market.read", "account.read", "trade.write_guarded"] },
       { id: "tool_llm", name: "LLM Agent", type: "model", status: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY ? "configured" : "missing_credentials", permissions: ["agent.reasoning"] },
       { id: "tool_public_market", name: "Public Market Data", type: "data", status: "available_without_key", permissions: ["market.read"] }
     ],
     mcpServers: [],
     exchangeAccounts: [
-      {
-        id: "ex_binance_main",
-        exchange: "BINANCE",
-        label: "Binance 主账户",
-        accountType: "unified",
-        readEnabled: hasBinance,
-        tradeEnabled: hasBinance && hasBinanceSecret,
-        withdrawEnabled: false,
-        ipWhitelist: "建议开启",
-        status: hasBinance ? "configured" : "missing_credentials",
-        lastReconciledAt: null
-      },
       {
         id: "ex_okx_main",
         exchange: "OKX",
@@ -420,19 +554,18 @@ function cleanSeedDatabase(createdAt) {
       }
     ],
     apiKeyMetadata: [
-      { id: "key_binance", exchange: "BINANCE", accountId: "ex_binance_main", hasApiKey: hasBinance, hasSecret: hasBinanceSecret, withdrawPermission: false, secretInLogs: false, updatedAt: createdAt },
       { id: "key_okx", exchange: "OKX", accountId: "ex_okx_main", hasApiKey: hasOkx, hasSecret: hasOkxSecret, withdrawPermission: false, secretInLogs: false, updatedAt: createdAt }
     ],
     accountSnapshots: [],
     realtimeConnections: [
-      { id: "rt_binance_public", exchange: "BINANCE", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
       { id: "rt_okx_public", exchange: "OKX", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
-      { id: "rt_binance_private", exchange: "BINANCE", streamType: "private_user", status: hasBinance ? "stopped" : "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 },
       { id: "rt_okx_private", exchange: "OKX", streamType: "private_user", status: hasOkx ? "stopped" : "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 }
     ],
     reconciliationReports: [],
     vaultItems: [],
     runtimeConfig: {},
+    clearedRuntimeSecrets: [],
+    toolCallStats: {},
     alerts: [],
     drillRuns: [],
     grayReleasePolicies: [
@@ -454,6 +587,14 @@ function cleanSeedDatabase(createdAt) {
     exchangeOrders: [],
     reviewReports: [],
     strategyExperiments: [],
+    strategyVersions: [],
+    strategyDeployments: [],
+    strategyVersionEvents: [],
+    strategyStudioDrafts: [],
+    strategyBlueprintVersions: [],
+    strategyStudioBacktests: [],
+    strategyMarketplaceListings: [],
+    strategyAssignments: [],
     eventImpacts: [],
     toolExecutions: [],
     eventSources: [
@@ -503,6 +644,36 @@ export function loadDb() {
     }
   } catch { /* 裁剪失败不阻断启动 */ }
   return normalized;
+}
+
+// 部署预检专用：读取一致的 SQLite/WAL 快照，但绝不运行迁移、保存、裁剪或审计链自愈。
+// 生产服务运行期间若用 loadDb() 做预检，会形成第二个写入者并让审计链分叉。
+export function loadDbReadOnlySnapshot() {
+  if (!fs.existsSync(sqliteDbPath)) throw new Error(`SQLite database not found: ${sqliteDbPath}`);
+  const reader = new Database(sqliteDbPath, { readonly: true, fileMustExist: true });
+  try {
+    const rows = reader.prepare("select name, value from collections").all();
+    if (!rows.length) throw new Error("SQLite collections are empty");
+    const db = {};
+    for (const row of rows) db[row.name] = JSON.parse(row.value);
+    const entityRows = reader.prepare(`
+      select resource_type, doc from trading_entities
+      order by resource_type asc, updated_at desc, resource_id asc
+    `).all();
+    if (entityRows.length) {
+      const grouped = new Map();
+      for (const row of entityRows) {
+        if (!grouped.has(row.resource_type)) grouped.set(row.resource_type, []);
+        grouped.get(row.resource_type).push(JSON.parse(row.doc));
+      }
+      for (const [resourceType, items] of grouped) db[resourceType] = items;
+    }
+    db.auditLogs = reader.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
+    db.traces = reader.prepare("select doc from trace_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
+    return normalizeDatabase(db);
+  } finally {
+    reader.close();
+  }
 }
 
 // 审计链完整性：历史数据一次性重链（修复排序缺陷造成的 prevHash 断裂），之后每次启动
@@ -576,8 +747,12 @@ const LOG_CAPS = {
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
   eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500,
   // 审计补:此前无上限、长期运行必然膨胀且每次 saveDb 全量重写的集合(fills 留足核算窗口)。
-  chatMessages: 400, chatSessions: 100, memoryItems: 500, analysisBundles: 200,
-  tradeIntents: 500, backtests: 100, strategyExperiments: 200, orders: 3000, fills: 5000, traces: 1000
+  chatMessages: 400, chatSessions: 100, memoryItems: 500, analysisBundles: 200, evidenceBundles: 50,
+  tradeIntents: 500, backtests: 100, strategyExperiments: 200, orders: 3000, fills: 5000, traces: 1000,
+  watchTriggers: 100, armedSetups: 200, opportunityCandidates: 200, opportunityEvents: 1000,
+  missedOpportunities: 100,
+  marketIntelligenceFacts: 2000, marketCalendarEvents: 500, dailyBriefs: 90,
+  telegramWatchOutbox: 500
 };
 function capLogCollections(db) {
   const tsOf = (o) => new Date(o?.createdAt || o?.at || o?.startedAt || o?.finishedAt || o?.updatedAt || 0).getTime() || 0;
@@ -604,6 +779,8 @@ function capLogCollections(db) {
 export function activeMandate(db) {
   const list = (db.mandates || []).filter((m) => {
     if (!["active", "running"].includes(m.status)) return false;
+    const start = m.validFrom || m.valid_from;
+    if (start && new Date(start).getTime() > Date.now()) return false;
     // (P2-7)过期授权不再当作生效:过期后仍驱动 15 分钟一次的巡检提计划再被风控拒,空烧 token。
     const exp = m.validUntil || m.valid_until;
     return !exp || new Date(exp).getTime() > Date.now();
@@ -637,12 +814,26 @@ export function resetOperationalData(db, options = {}) {
   db.orders = [];
   db.fills = [];
   db.tradePlans = [];
+  db.watchTriggers = [];
+  db.armedSetups = [];
+  db.opportunityCandidates = [];
+  db.opportunityEvents = [];
+  db.missedOpportunities = [];
+  db.marketFeatureState = {};
+  db.marketNarratives = {};
+  db.structureAnalysisCache = {};
   db.events = [];
+  db.marketIntelligenceFacts = [];
+  db.marketCalendarEvents = [];
+  db.marketIntelligenceSourceHealth = {};
+  db.dailyBriefs = [];
+  db.telegramWatchOutbox = [];
   db.tasks = [];
   db.jobRuns = [];
   db.jobLocks = [];
   db.knowledge = emptyKnowledge();
   db.analysisBundles = [];
+  db.evidenceBundles = [];
   db.skills = [];
   db.mcpServers = [];
   db.accountSnapshots = [];
@@ -658,8 +849,22 @@ export function resetOperationalData(db, options = {}) {
   db.exchangeOrders = [];
   db.reviewReports = [];
   db.strategyExperiments = [];
+  // 交易证据被清空时，策略验证状态也必须一并重置；否则会留下“无样本但已验证运行”的幽灵状态。
+  db.strategyVersions = [];
+  db.strategyDeployments = [];
+  db.strategyVersionEvents = [];
+  db.strategyStudioDrafts = [];
+  db.strategyBlueprintVersions = [];
+  db.strategyStudioBacktests = [];
+  db.strategyMarketplaceListings = [];
+  db.strategyAssignments = [];
+  syncNativeStrategyProducts(db);
   db.eventImpacts = [];
   db.toolExecutions = [];
+  db.toolCallStats = {};
+  delete db.meta.toolUsageBackfilledAt;
+  delete db.meta.toolUsageStatsSince;
+  delete db.meta.toolUsageBackfillSource;
   db.skillRuns = [];
   db.riskChecks = [];
   db.riskIncidents = [];
@@ -764,6 +969,13 @@ export function getStorageInfo() {
     auditCount,
     traceCount
   };
+}
+
+// SQLite 在线备份 API 会在 WAL 活跃时获取一致快照；禁止直接 tar/cp 正在写入的 data 目录。
+export async function backupSqlite(destination) {
+  ensureSqlite();
+  await sqlite.backup(destination);
+  return destination;
 }
 
 function ensureSqlite() {
@@ -1135,6 +1347,15 @@ export function listOmsOrdersByState(states = ["UNKNOWN"], limit = 100) {
   `).all(...wanted, Math.max(1, Math.min(Number(limit) || 100, 500))).map(deserializeOmsOrder);
 }
 
+export function listOmsOrdersForPlan(planId, limit = 20) {
+  ensureSqlite();
+  if (!planId) return [];
+  return sqlite.prepare(`
+    select * from oms_orders where tenant_id = ? and plan_id = ?
+    order by updated_at desc limit ?
+  `).all("tenant_owner", String(planId), Math.max(1, Math.min(Number(limit) || 20, 100))).map(deserializeOmsOrder);
+}
+
 export function pendingOutboxEvents(limit = 100) {
   ensureSqlite();
   return sqlite.prepare(`
@@ -1323,24 +1544,58 @@ function writeTraceEntry(entry) {
 export function normalizeDatabase(db) {
   const seed = seedDatabase();
   db.meta ||= seed.meta;
-  db.meta.schemaVersion = 3;
+  db.meta.schemaVersion = 5;
   db.user ||= seed.user;
   db.system ||= seed.system;
   db.portfolio ||= seed.portfolio;
   db.markets ||= seed.markets;
+  db.watchlist ||= seed.watchlist;
+  db.watchTriggers ||= seed.watchTriggers;
+  db.armedSetups ||= seed.armedSetups;
+  db.opportunityCandidates ||= seed.opportunityCandidates;
+  db.opportunityEvents ||= seed.opportunityEvents;
+  db.missedOpportunities ||= seed.missedOpportunities;
+  db.marketFeatureState ||= seed.marketFeatureState;
+  db.marketNarratives ||= seed.marketNarratives;
+  db.structureAnalysisCache ||= seed.structureAnalysisCache;
   db.mandates ||= seed.mandates;
   db.positions ||= seed.positions;
   db.tradePlans ||= seed.tradePlans;
   db.events ||= seed.events;
+  db.marketIntelligenceFacts ||= seed.marketIntelligenceFacts || [];
+  db.marketCalendarEvents ||= seed.marketCalendarEvents || [];
+  db.marketIntelligenceSourceHealth ||= seed.marketIntelligenceSourceHealth || {};
+  db.dailyBriefs ||= seed.dailyBriefs || [];
+  db.telegramWatchOutbox ||= seed.telegramWatchOutbox || [];
   db.tasks ||= seed.tasks;
   db.knowledge ||= seed.knowledge;
   db.analysisBundles ||= seed.analysisBundles;
+  db.evidenceBundles ||= seed.evidenceBundles;
   db.skills ||= seed.skills;
   db.tools ||= seed.tools;
   db.mcpServers ||= seed.mcpServers;
+  // 行情分析与交易执行已经统一使用 OKX。清除旧版本自动种下的 CoinGecko
+  // 行情 MCP，避免跨交易所价格口径污染以及无意义的错误状态。
+  db.mcpServers = db.mcpServers.filter((server) => server.id !== "mcp_coingecko");
   db.traces ||= seed.traces;
   db.auditLogs ||= seed.auditLogs;
   db.reviews ||= seed.reviews;
+  db.strategyVersions ||= seed.strategyVersions;
+  db.strategyDeployments ||= seed.strategyDeployments;
+  db.strategyVersionEvents ||= seed.strategyVersionEvents;
+  db.strategyStudioDrafts ||= seed.strategyStudioDrafts;
+  db.strategyBlueprintVersions ||= seed.strategyBlueprintVersions;
+  db.strategyStudioBacktests ||= seed.strategyStudioBacktests;
+  db.strategyMarketplaceListings ||= seed.strategyMarketplaceListings;
+  db.strategyAssignments ||= seed.strategyAssignments;
+  // 内置策略版本按「产品ID@语义版本」不可变落库。相同版本内容发生漂移时只报告，
+  // 不覆盖历史定义；升级必须发布新版本，确保计划/成交/复盘能永久还原当时规则。
+  const strategySync = syncNativeStrategyProducts(db);
+  if (strategySync.drift.length) {
+    db.meta.strategyVersionDrift = strategySync.drift;
+  } else {
+    delete db.meta.strategyVersionDrift;
+  }
 
   db.users ||= [{ ...db.user, email: defaultOwnerEmail, status: "active", isOwner: true }];
   db.roles ||= [
@@ -1437,22 +1692,13 @@ export function normalizeDatabase(db) {
   else db.subscriptions.unshift({ id: "sub_owner", ...ownerSubscriptionPayload });
   db.paymentRequests ||= [];
   db.paymentWebhooks ||= [];
+  db.registrationApplications ||= [];
+  db.registrationInvites ||= [];
+  db.registrationRateLimits ||= [];
   db.authSessions ||= [];
   db.authSessions = db.authSessions.filter((session) => !session.expiresAt || new Date(session.expiresAt).getTime() > Date.now());
 
   db.exchangeAccounts ||= [
-    {
-      id: "ex_binance_main",
-      exchange: "BINANCE",
-      label: "Binance 主账户",
-      accountType: "unified",
-      readEnabled: Boolean(process.env.BINANCE_API_KEY),
-      tradeEnabled: Boolean(process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET),
-      withdrawEnabled: false,
-      ipWhitelist: "建议开启",
-      status: process.env.BINANCE_API_KEY ? "configured" : "missing_credentials",
-      lastReconciledAt: null
-    },
     {
       id: "ex_okx_main",
       exchange: "OKX",
@@ -1467,19 +1713,23 @@ export function normalizeDatabase(db) {
     }
   ];
   db.apiKeyMetadata ||= [
-    { id: "key_binance", exchange: "BINANCE", accountId: "ex_binance_main", hasApiKey: Boolean(process.env.BINANCE_API_KEY), hasSecret: Boolean(process.env.BINANCE_API_SECRET), withdrawPermission: false, secretInLogs: false, updatedAt: nowIso() },
     { id: "key_okx", exchange: "OKX", accountId: "ex_okx_main", hasApiKey: Boolean(process.env.OKX_API_KEY), hasSecret: Boolean(process.env.OKX_API_SECRET), withdrawPermission: false, secretInLogs: false, updatedAt: nowIso() }
   ];
   db.accountSnapshots ||= [];
   db.realtimeConnections ||= [
-    { id: "rt_binance_public", exchange: "BINANCE", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
     { id: "rt_okx_public", exchange: "OKX", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
-    { id: "rt_binance_private", exchange: "BINANCE", streamType: "private_user", status: "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 },
     { id: "rt_okx_private", exchange: "OKX", streamType: "private_user", status: "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 }
   ];
+  // 升级迁移：配置/分析链仅保留 OKX，避免旧 Binance 元数据重新进入自动同步与状态判断。
+  db.exchangeAccounts = db.exchangeAccounts.filter((item) => item.exchange === "OKX");
+  db.apiKeyMetadata = db.apiKeyMetadata.filter((item) => item.exchange === "OKX");
+  db.realtimeConnections = db.realtimeConnections.filter((item) => item.exchange === "OKX");
+  db.tools = (db.tools || []).filter((item) => item.id !== "tool_binance");
   db.reconciliationReports ||= [];
   db.vaultItems ||= [];
   db.runtimeConfig ||= {};
+  db.clearedRuntimeSecrets ||= [];
+  db.toolCallStats ||= {};
   db.alerts ||= [];
   db.drillRuns ||= [];
   db.grayReleasePolicies ||= [
@@ -1522,7 +1772,12 @@ export function normalizeDatabase(db) {
   db.jobRuns ||= [];
   db.jobLocks ||= [];
   db.notifications ||= [];
-  db.agentProfiles ||= defaultAgentProfiles(nowIso());
+  const requiredProfiles = defaultAgentProfiles(nowIso());
+  db.agentProfiles ||= [];
+  const existingProfileIds = new Set(db.agentProfiles.map((profile) => profile.id));
+  for (const profile of requiredProfiles) {
+    if (!existingProfileIds.has(profile.id)) db.agentProfiles.push(profile);
+  }
 
   db.agentStateFiles ||= {
     USER: { id: "state_user", title: "USER.md", content: "尚未配置交易目标。请先配置交易所 API、模型 API，并创建授权委托。", updatedAt: nowIso() },
@@ -1563,11 +1818,30 @@ export function normalizeDatabase(db) {
   db.knowledge.masteryTests ||= [];
   db.knowledge.runtimeCitations ||= [];
 
+  // 调用量旧实现只写内存，部署/重启后全部归零。首次升级时从仍保留的工具轨迹
+  // 和原生 Skill 评估计数回填；之后 toolCallStats 作为正式集合持久化。
+  backfillToolUsage(db);
+
   return db;
 }
 
 export function verifyAuditChain(db) {
   const logs = auditLogsForVerification(db);
+  return verifyAuditEntries(logs);
+}
+
+export function verifyAuditChainReadOnly() {
+  if (!fs.existsSync(sqliteDbPath)) return { ok: false, checked: 0, breaks: [{ error: "sqlite_missing" }] };
+  const reader = new Database(sqliteDbPath, { readonly: true, fileMustExist: true });
+  try {
+    const logs = reader.prepare("select doc from audit_log_entries order by created_at asc, rowid asc").all().map((row) => JSON.parse(row.doc));
+    return verifyAuditEntries(logs);
+  } finally {
+    reader.close();
+  }
+}
+
+function verifyAuditEntries(logs) {
   let previous = null;
   const breaks = [];
   for (const entry of logs) {

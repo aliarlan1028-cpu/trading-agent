@@ -1,6 +1,9 @@
 // 通知中心路由组（读/标已读 + 飞书/Telegram 状态与测试）—— 从 index.mjs 按 registrar 范式迁出。
 export function registerNotificationRoutes(app, ctx) {
-  const { db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster } = ctx;
+  const {
+    db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
+    telegramWatchStatus, queueWatchTelegramEvent, dispatchTelegramWatchOutbox
+  } = ctx;
 
   app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
 
@@ -18,6 +21,7 @@ export function registerNotificationRoutes(app, ctx) {
 
   app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
   app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
+  app.get("/api/notifications/telegram-watch-status", (_req, res) => res.json(telegramWatchStatus()));
 
   app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
     const result = await notifyLark(db, {
@@ -39,5 +43,16 @@ export function registerNotificationRoutes(app, ctx) {
     const result = await sendTelegramPositionPoster(db, position, { caption: "Telegram 盈利仓位海报测试" });
     saveDb(db);
     res.json({ message: `Telegram 海报：${result.status}`, ...result });
+  });
+
+  app.post("/api/notifications/telegram-watch-test", requirePermission("admin:security"), async (_req, res) => {
+    const watch = {
+      id: `watch_test_${Date.now()}`, version: 1, symbol: "BTC/USDT", kind: "price_above", level: 1,
+      note: "Telegram 观察哨独立群测试，不会触发交易。", expiresAt: new Date(Date.now() + 3_600_000).toISOString()
+    };
+    const queued = queueWatchTelegramEvent(db, watch, "registered");
+    const dispatched = await dispatchTelegramWatchOutbox(db);
+    saveDb(db);
+    res.json({ message: `Telegram 观察哨测试：${dispatched.status}`, queued: queued.status, dispatched });
   });
 }

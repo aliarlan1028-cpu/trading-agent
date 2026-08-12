@@ -21,6 +21,18 @@ test("正常链路通过专业运行与流动性硬闸", () => {
   assert.equal(risk.checks.find(c=>c.name==="流动性与冲击成本").passed,true);
 });
 
+test("风险闸使用 OKX 实时消息时间与实际私有连接状态，不依赖失真的全局标志", () => {
+  const db=dbFixture();
+  delete db.markets[0].updatedAt;
+  delete db.markets[0].microSyncedAt;
+  db.markets[0].lastRealtimeAt=now();
+  db.exchangeAccounts=[{exchange:"OKX",readEnabled:true}];
+  db.realtimeConnections=[{exchange:"OKX",streamType:"private_user",status:"connected"}];
+  db.reconciliationReports=[{status:"ok",createdAt:now()}];
+  assert.equal(db.realtimeStarted,undefined);
+  assert.equal(assessOperationalDegradation(db).degraded,false);
+});
+
 test("陈旧行情自动切只减仓并只创建一次风险事件", () => {
   const db=dbFixture(); db.markets[0].updatedAt="2000-01-01T00:00:00.000Z"; db.markets[0].microSyncedAt=db.markets[0].updatedAt;
   const first=applyOperationalDegradation(db);
@@ -31,8 +43,39 @@ test("陈旧行情自动切只减仓并只创建一次风险事件", () => {
 test("订单 UNKNOWN 与对账异常触发运行降级", () => {
   const db=dbFixture(); db.executionOrders=[{status:"UNKNOWN"}];
   assert.ok(assessOperationalDegradation(db).reasons.includes("unknown_order_state"));
-  db.executionOrders=[]; db.exchangeAccounts=[{readEnabled:true}];
+  db.executionOrders=[]; db.exchangeAccounts=[{exchange:"OKX",readEnabled:true}];
   assert.ok(assessOperationalDegradation(db).reasons.includes("reconciliation_unhealthy"));
+});
+
+test("全自动运行中 WORM 或外部告警失联会在每次开仓前降级", () => {
+  const db=dbFixture();
+  db.system.orderWriteEnabled=true;
+  db.grayReleasePolicies[0].requiresManualApproval=false;
+  const assessment=assessOperationalDegradation(db);
+  assert.ok(assessment.reasons.includes("worm_audit_unhealthy"));
+  assert.ok(assessment.reasons.includes("external_alert_unhealthy"));
+  assert.equal(assessment.enforced,true);
+});
+
+test("BitLaunch 单服务器模式把 Lark/WORM 作为可观测增强，不耦合交易权限", () => {
+  const previousProfile=process.env.PRODUCTION_SECURITY_PROFILE;
+  const previousAlert=process.env.ALERT_WEBHOOK_URL;
+  const previousWorm=process.env.WORM_AUDIT_ENDPOINT;
+  process.env.PRODUCTION_SECURITY_PROFILE="bitlaunch_single_server";
+  delete process.env.ALERT_WEBHOOK_URL;
+  delete process.env.WORM_AUDIT_ENDPOINT;
+  try {
+    const db=dbFixture();
+    db.system.orderWriteEnabled=true;
+    db.grayReleasePolicies[0].requiresManualApproval=false;
+    const assessment=assessOperationalDegradation(db);
+    assert.equal(assessment.reasons.includes("worm_audit_unhealthy"),false);
+    assert.equal(assessment.reasons.includes("external_alert_unhealthy"),false);
+  } finally {
+    if(previousProfile===undefined)delete process.env.PRODUCTION_SECURITY_PROFILE;else process.env.PRODUCTION_SECURITY_PROFILE=previousProfile;
+    if(previousAlert===undefined)delete process.env.ALERT_WEBHOOK_URL;else process.env.ALERT_WEBHOOK_URL=previousAlert;
+    if(previousWorm===undefined)delete process.env.WORM_AUDIT_ENDPOINT;else process.env.WORM_AUDIT_ENDPOINT=previousWorm;
+  }
 });
 
 test("盘口容量限制名义金额，极端组合利用率继续压仓", () => {
@@ -57,6 +100,17 @@ test("自愈:降级消失且只减仓是本闸设的 → 自动解除", () => {
   applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,true);
   db.markets[0].updatedAt=now(); db.markets[0].microSyncedAt=now();
   applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,false); // 条件恢复自动解除
+  assert.equal(db.system.riskStatus,"正常");
+});
+
+test("旧版本只残留只减仓展示文案时自动归一为正常", () => {
+  const db=dbFixture();
+  db.system.reduceOnlyMode=false;
+  db.system.reduceOnlyBy=null;
+  db.system.riskStatus="只减仓";
+  applyOperationalDegradation(db);
+  assert.equal(db.system.reduceOnlyMode,false);
+  assert.equal(db.system.riskStatus,"正常");
 });
 
 test("强平距离不足阻断新增仓位", () => {
@@ -64,4 +118,13 @@ test("强平距离不足阻断新增仓位", () => {
   const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
   const check=risk.checks.find(c=>c.name==="现有持仓强平距离");
   assert.equal(check.passed,false); assert.equal(check.severity,"block");
+});
+
+test("缺失点差不会被当作零成本流动性", () => {
+  const db=dbFixture(); db.markets[0].spreadBps=null;
+  const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
+  const check=risk.checks.find(c=>c.name==="流动性与冲击成本");
+  assert.equal(check.severity,"warn");
+  assert.match(check.detail,/缺少可验证的盘口点差或深度/);
+  assert.equal(risk.liquidity.spreadBps,null);
 });

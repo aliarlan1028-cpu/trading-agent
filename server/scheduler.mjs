@@ -19,7 +19,10 @@ export function registerTaskHandler(name, fn) {
 export function ensureSystemTask(db, task, saveDb) {
   const existing = (db.tasks || []).find((item) => item.id === task.id);
   if (existing) {
-    existing.handler = task.handler;
+    // 系统任务升级时同步调度定义，但保留用户显式启停状态与运行历史。
+    for (const key of ["name", "handler", "schedule", "type", "role", "concurrencyKey", "startupCatchup", "startupDelayMs", "timezone"]) {
+      if (task[key] !== undefined) existing[key] = task[key];
+    }
     if (runtime.started) scheduleTask(db, existing, saveDb);
     return existing;
   }
@@ -38,7 +41,7 @@ export function overdueLongTasks(db, now = Date.now()) {
   return (db.tasks || []).filter((task) => {
     if (!task.enabled || String(task.type || "").toLowerCase() !== "every") return false;
     const intervalMs = parseEveryMs(task.schedule);
-    if (intervalMs < MIN_INTERVAL_MS) return false;
+    if (intervalMs < MIN_INTERVAL_MS && task.startupCatchup !== true) return false;
     if (!task.lastRunAt) return true; // 从未跑过的长间隔任务也补
     return now - new Date(task.lastRunAt).getTime() > intervalMs;
   });
@@ -55,6 +58,11 @@ export function startScheduler(db, saveDb) {
       lock.expired = true;
     }
   }
+  // 同理，重启后遗留的“运行中”只是旧进程最后一次写下的展示状态，不代表当前
+  // 进程仍在执行。先归一为等待；本轮真正完成/失败后 recordRun 会写准确终态。
+  for (const task of db.tasks || []) {
+    if (task.status === "运行中") task.status = task.enabled === false ? "暂停" : "等待";
+  }
   recoverFailedRuns(db, saveDb);
   for (const task of db.tasks || []) {
     scheduleTask(db, task, saveDb);
@@ -62,10 +70,12 @@ export function startScheduler(db, saveDb) {
   // 超期长任务补跑:等启动稳定 2 分钟后开始,彼此错峰 90s,避免启动即 CPU 打满
   const overdue = overdueLongTasks(db);
   overdue.forEach((task, index) => {
+    const configuredDelay = Number(task.startupDelayMs);
+    const baseDelay = Number.isFinite(configuredDelay) ? Math.max(1_000, configuredDelay) : 120_000;
     const timer = setTimeout(() => {
       appendTrace(db, "scheduled_task", `${task.name} 启动补跑（上次运行 ${task.lastRunAt || "从未"}，超过间隔 ${task.schedule}）`, "ok");
       runTask(db, task.id, saveDb, "startup_catchup");
-    }, 120_000 + index * 90_000);
+    }, baseDelay + index * 5_000);
     runtime.timeoutJobs.set(`catchup_${task.id}`, timer);
   });
   return schedulerStatus(db);
@@ -94,7 +104,8 @@ export function scheduleTask(db, task, saveDb) {
   if (type === "cron") {
     const expression = normalizeCron(task.schedule);
     if (cron.validate(expression)) {
-      const job = cron.schedule(expression, () => runTask(db, task.id, saveDb, "scheduler"));
+      const options = task.timezone ? { timezone: task.timezone } : undefined;
+      const job = cron.schedule(expression, () => runTask(db, task.id, saveDb, "scheduler"), options);
       runtime.cronJobs.set(task.id, job);
       task.normalizedCron = expression;
     } else {
@@ -229,7 +240,9 @@ function summarizeHandlerResult(handler, result = {}) {
 function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
   task.lastRun = "刚刚";
   task.lastRunAt = nowIso();
-  task.status = task.enabled ? "运行中" : "暂停";
+  // 这是“本次运行结束”时记录状态，不能永远写成运行中；否则前端会把已经完成、
+  // 已失败或被并发锁跳过的任务全部误报为正在执行。
+  task.status = !task.enabled ? "暂停" : status === "ok" ? "完成" : status === "failed" ? "失败" : "等待";
   const intervalMs = parseEveryMs(task.schedule);
   if (String(task.type).toLowerCase() === "every") task.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
   // 空转任务(如未配置 WORM 的外送、无待办的支付核验)不写 jobRun/审计、不触发全库落盘——

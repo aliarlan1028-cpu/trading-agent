@@ -48,10 +48,11 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
-      export { ChatPage } from "./src/chat.jsx";
+      export { ChatPage, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { MobileApp } from "./src/mobile.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -65,6 +66,16 @@ esbuild.buildSync({
   logLevel: "silent"
 });
 const C = require(outFile);
+
+test("AI display cleanup removes process narration without deleting trading facts", () => {
+  const cleaned = C.cleanPresentationText("计划已武装。现在汇总全貌。\n\n### 结论\n状态：系统正在等待入场条件，尚未向 OKX 下单。\n依据：BTC 1H 结构保持向上。");
+  assert.doesNotMatch(cleaned, /计划已武装|汇总全貌/);
+  assert.match(cleaned, /系统正在等待入场条件，尚未向 OKX 下单/);
+  assert.match(cleaned, /BTC 1H 结构保持向上/);
+  assert.equal(C.cleanPresentationText("状态：计划已登记，等待价格条件。"), "状态：计划已登记，等待价格条件。");
+  assert.equal(C.cleanPresentationText("✅ 计划已武装，现在汇总全貌。"), "");
+  assert.equal(C.cleanPresentationText("The plan is armed. Now I will summarize the full picture.\n\nConclusion: Wait for confirmation."), "Conclusion: Wait for confirmation.");
+});
 
 // —— 真实形状 fixture：技能覆盖全部 11 个状态、概念含重名（触发去重）、计划/执行单覆盖典型状态 ——
 function skill(id, status, extra = {}) {
@@ -123,7 +134,7 @@ const data = {
   tools: [], mcpServers: [{ id: "mcp1", name: "示例", status: "disconnected" }],
   traces: [{ id: "tr1", kind: "agent_chat", label: "测试", status: "ok", createdAt: "2026-07-25T00:00:00Z" }],
   auditLogs: [{ id: "a1", action: "测试审计", createdAt: "2026-07-25T00:00:00Z", actor: "系统" }],
-  analysisBundles: [], reviews: [{ id: "rv1", summary: "测试复盘", createdAt: "2026-07-25T00:00:00Z" }],
+  analysisBundles: [], reviews: [{ id: "rv1", type: "trade", symbol: "BTC/USDT", direction: "long", status: "completed", title: "BTC 平仓复盘", summary: "真实成交结果摘要", lesson: "下次等待回踩确认后再进场。", deepReflection: "结构方向正确，但入场时机过早；持仓期价格轨迹显示先回踩止损附近再启动。", attribution: "策略", realizedPnl: 12.5, feeUsdt: 0.4, fundingFeeUsdt: -0.1, fillIds: ["f1"], tradeLifecycleKey: "eo1", completedAt: "2026-07-25T01:00:00Z", createdAt: "2026-07-25T00:00:00Z" }],
   exchangeAccounts: [{ id: "ex1", exchange: "OKX", readEnabled: true, tradeEnabled: false, withdrawEnabled: false, ipWhitelist: "1.2.3.4" }],
   apiKeyMetadata: [{ exchange: "OKX", hasApiKey: true, hasSecret: true, withdrawPermission: false, permissionVerifiedAt: "2026-07-20T00:00:00Z" }],
   accountSnapshots: [{ id: "sn1", status: "ok", createdAt: "2026-07-26T00:00:00Z" }],
@@ -153,6 +164,18 @@ const data = {
   readiness: { checks: [], configurationCompletionPct: 40, operatingStage: { id: "observation", label: "观察模式可用", tone: "warning" } },
   publicRegistrationEnabled: false
 };
+data.watchTriggers = [{ id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, status: "active", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }];
+data.abnormalVolatility = [{ symbol: "BTC/USDT", status: "elevated", riskScore: 78, realizedMovePct: 2.4, caveat: "异常波动风险升高。", caveatEn: "Abnormal-move risk is elevated." }];
+data.behaviorProfile = {
+  trades: 3,
+  overall: { winRatePct: 67, profitFactor: 1.8, expectancyUsdt: 4.2, avgHoldMinutes: 95 },
+  scatter: [
+    { symbol: "BTC/USDT", direction: "long", holdMinutes: 45, roiPct: 3.2, leverage: 3, pnl: 12.5, win: true, regime: "趋势", closedAt: "2026-07-25T01:00:00Z" },
+    { symbol: "BTC/USDT", direction: "short", holdMinutes: 160, roiPct: -1.4, leverage: 5, pnl: -4.2, win: false, regime: "震荡", lossAttribution: "策略", closedAt: "2026-07-24T01:00:00Z" },
+    { symbol: "ETH/USDT", direction: "long", holdMinutes: 80, roiPct: 2.1, leverage: 4, pnl: 7.1, win: true, regime: "趋势", closedAt: "2026-07-23T01:00:00Z" }
+  ],
+  flags: [{ key: "sample", severity: "mid", title: "等待更多样本", detail: "当前仅有 3 笔完整生命周期" }]
+};
 
 const ui = { openPanel: () => {}, closePanel: () => {}, setActive: () => {}, notify: () => {}, download: () => {}, refresh: () => {} };
 const action = async () => ({});
@@ -171,6 +194,31 @@ test("desktop pages render with realistic data (all statuses)", () => {
     const html = render(React.createElement(Comp, { data, action, ui }));
     assert.ok(html.length > 100, `${name} 渲染输出过短`);
   }
+});
+
+test("new capital flow, review workbench, ledger, and watch page render with realistic data", () => {
+  for (const Comp of [C.MandateConcept, C.ExecutionReviewConcept, C.ExecutionLedgerConcept, C.WatchMonitorConcept]) {
+    const html = render(React.createElement(Comp, { data, action, ui }));
+    assert.ok(html.length > 500);
+  }
+});
+
+test("execution and review renders every workflow zone on one page", () => {
+  const html = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
+  for (const id of ["attention", "performance", "reviews", "diagnostics", "behavior"]) assert.ok(html.includes(`id="er-${id}"`), `missing single-page zone ${id}`);
+  assert.ok(!html.includes("id=\"er-fills\""), "raw fill ledger belongs on its own subpage");
+  assert.ok(!html.includes("AI 委托记录"), "raw AI order records belong on their own subpage");
+  assert.ok(html.includes("持仓时长与收益率"));
+  assert.ok(html.includes("绩效拆解"));
+  assert.ok(!html.includes("role=\"tablist\""), "single-page workbench must not hide sections behind tabs");
+});
+
+test("orders and fills render together on the dedicated ledger subpage", () => {
+  const html = render(React.createElement(C.ExecutionLedgerConcept, { data, action, ui }));
+  assert.ok(html.includes("id=\"el-orders\""));
+  assert.ok(html.includes("id=\"el-fills\""));
+  assert.ok(html.includes("AI 委托记录"));
+  assert.ok(html.includes("成交流水"));
 });
 
 test("knowledge page renders every tab (methods/skills/rules/graph/ext)", () => {

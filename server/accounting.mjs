@@ -1,5 +1,6 @@
 import { currentEquityUsdt } from "./executionEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -64,11 +65,15 @@ export function refreshAccounting(db) {
   db.portfolio.unrealizedPnl = Number(unrealized.toFixed(2));
   // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
   // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
-  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
-  const realizedWeek = realizedPnlSince(db, weekStart.getTime()); // 传毫秒数(此前传 ISO 字符串,数值比较恒 false → 周已实现盈亏恒 0,周熔断失明)
+  const weekEndMs = Date.now();
+  const weekStartMs = weekEndMs - 7 * 24 * 60 * 60_000;
+  const realizedWeek = realizedPnlSince(db, weekStartMs);
   const weekPnl = realizedWeek + unrealized;
   db.portfolio.weekPnl = Number(weekPnl.toFixed(2));
   db.portfolio.weekPnlPct = equity ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
+  db.portfolio.weekWindowStartAt = new Date(weekStartMs).toISOString();
+  db.portfolio.weekWindowEndAt = new Date(weekEndMs).toISOString();
+  db.portfolio.weekWindowSemantics = "rolling_168_hours";
   db.portfolio.accountingUpdatedAt = nowIso();
 
   const mandate = activeMandate(db);
@@ -112,7 +117,9 @@ export function refreshAccounting(db) {
 // 绩效统计：按平仓成交聚合。
 // ---------------------------------------------------------------------------
 export function performanceReport(db) {
-  const closes = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)));
+  // 部分平仓属于同一个仓位生命周期，绩效笔数/胜率/回撤必须先聚合，不能把三次减仓算成三笔交易。
+  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const closes = lifecycles.map((item) => item.representative);
   const wins = closes.filter((fill) => Number(fill.realizedPnl) > 0);
   const losses = closes.filter((fill) => Number(fill.realizedPnl) < 0);
   const totalPnl = closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0);
@@ -128,6 +135,21 @@ export function performanceReport(db) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, pnl]) => ({ date, pnl: Number(pnl.toFixed(2)) }));
 
+  // 已实现交易曲线的峰谷回撤：USDT 口径是精确值；百分比明确以“当前账户权益”为分母，
+  // 不冒充缺少完整充值/提现现金流时无法重建的全历史账户权益回撤。
+  let cumulative = 0;
+  let peak = 0;
+  let maxDrawdownUsdt = 0;
+  for (const fill of closes.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))) {
+    cumulative += Number(fill.realizedPnl);
+    peak = Math.max(peak, cumulative);
+    maxDrawdownUsdt = Math.max(maxDrawdownUsdt, peak - cumulative);
+  }
+  const currentEquity = Number(db.portfolio?.totalEquityUsdt);
+  const maxDrawdownPctOfCurrentEquity = Number.isFinite(currentEquity) && currentEquity > 0
+    ? Number(((maxDrawdownUsdt / currentEquity) * 100).toFixed(2))
+    : null;
+
   return {
     trades: closes.length,
     wins: wins.length,
@@ -138,6 +160,10 @@ export function performanceReport(db) {
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
     bestTrade: closes.length ? Math.max(...closes.map((fill) => Number(fill.realizedPnl))) : null,
     worstTrade: closes.length ? Math.min(...closes.map((fill) => Number(fill.realizedPnl))) : null,
+    realizedMaxDrawdownUsdt: Number(maxDrawdownUsdt.toFixed(2)),
+    realizedMaxDrawdownPctOfCurrentEquity: maxDrawdownPctOfCurrentEquity,
+    maxDrawdownBasis: "closed_trade_pnl_curve/current_equity",
+    partialCloseFills: lifecycles.reduce((sum, item) => sum + Math.max(0, item.fills.length - 1), 0),
     dailySeries,
     // 与执行引擎的权威在途集合一致（此前漏 entry_partial/submitted，会少计部分成交的在途单）。
     openExecutions: (db.executionOrders || []).filter((item) => ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status)).length,

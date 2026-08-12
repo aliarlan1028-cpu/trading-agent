@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly KORDYN backup restore drill
+
+[Timer]
+OnCalendar=Mon *-*-* 05:30:00 Asia/Shanghai
+RandomizedDelaySec=30m
+Persistent=true
+AccuracySec=1m
+Unit=trading-agent-restore-drill.service
+
+[Install]
+WantedBy=timers.target

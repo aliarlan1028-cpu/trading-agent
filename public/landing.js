@@ -9,20 +9,20 @@
     "nav.guardrails": ["风控", "Guardrails"],
     "nav.knowledge": ["知识库", "Knowledge"],
     "nav.contact": ["联系我们", "Contact"],
-    "cta.login": ["登录驾驶舱", "Enter cockpit"],
-    "cta.loginArrow": ["登录驾驶舱 →", "Enter cockpit →"],
-    "cta.subscribe": ["订阅更新", "Subscribe"],
+    "cta.login": ["登录驾驶舱", "Open dashboard"],
+    "cta.loginArrow": ["登录驾驶舱 →", "Open dashboard →"],
+    "cta.subscribe": ["申请开通", "Request access"],
     "ticker.loading": ["加载实时行情…", "Loading live prices…"],
 
-    "hero.badge": ["数字货币自主交易 Agent", "Autonomous Crypto Trading Agent"],
+    "hero.badge": ["数字货币自主交易 Agent", "Autonomous crypto trading"],
     "hero.h1": [
       '授权后自主交易,<br><span style="' + GRAD + '">绝不无边界。</span>',
-      'Autonomous once authorized —<br><span style="' + GRAD + '">never without bounds.</span>'
+      'Autonomous trading,<br><span style="' + GRAD + '">within your rules.</span>'
     ],
-    "hero.sub": ["Authorized autonomy — never boundaryless execution.", "Real autonomy, always inside the boundaries you set."],
+    "hero.sub": ["真正自主执行，但始终受你设定的边界约束。", "Real autonomy, always inside the boundaries you set."],
     "hero.desc": [
       "学习你的交易体系,持续感知市场与事件,在授权范围内执行真实交易、管理仓位并复盘进化。每一步都被授权、硬风控与审计约束。",
-      "It learns your trading system, continuously senses markets and events, and — within your mandate — executes real trades, manages positions and evolves through review. Every step is bound by authorization, hard risk controls and audit."
+      "It learns your trading approach, monitors markets and events around the clock, and can execute trades, manage positions, and learn from results—always within the permissions and risk limits you define. Every decision is traceable."
     ],
     "hero.trust": ["默认只读 · 提现权限永不开放", "READ-ONLY DEFAULT · WITHDRAW DISABLED"],
 
@@ -40,49 +40,49 @@
     ],
     "cockpit.demoNote": ["示意界面 · 数据为演示", "Illustrative UI · demo data"],
 
-    "metric.agents": ["专业 Agent 角色", "Specialized agents"],
+    "metric.agents": ["专业 Agent 角色", "Specialist AI roles"],
     "metric.layers": ["层级硬风控", "Hard risk layers"],
-    "metric.audit": ["可追踪 · 可审计", "Traceable & audited"],
-    "metric.always": ["全天候感知执行", "Always-on"],
+    "metric.audit": ["可追踪 · 可审计", "Traceable by design"],
+    "metric.always": ["全天候感知执行", "Always monitoring"],
 
-    "mandate.tag": ["授权许可证", "MANDATE"],
-    "mandate.h2": ["你划定边界,<br>Agent 只在框内行动", "You set the boundaries,<br>the Agent acts only inside them"],
+    "mandate.tag": ["交易权限", "TRADING PERMISSIONS"],
+    "mandate.h2": ["你划定边界,<br>Agent 只在框内行动", "You set the limits.<br>The agent stays inside them."],
     "mandate.desc": [
       "交易所、币种、策略族、单笔风险、杠杆、日亏损与有效期——每一项都是可执行的硬约束。超出范围立即拦截。",
-      "Exchange, symbols, strategy family, per-trade risk, leverage, daily stop and expiry — each is an enforceable hard constraint. Anything out of range is blocked instantly."
+      "Choose the exchange, markets, strategies, risk per trade, leverage, daily loss limit, and expiry. These are enforced controls, not suggestions—anything outside them is blocked."
     ],
-    "mandate.active": ["授权生效", "AUTHORIZED"],
+    "mandate.active": ["权限已生效", "PERMISSIONS ACTIVE"],
     "mandate.riskPerTrade": ["单笔风险 · RISK / TRADE", "RISK / TRADE"],
     "mandate.maxLev": ["杠杆上限 · MAX LEVERAGE", "MAX LEVERAGE"],
-    "mandate.dailyStop": ["日亏损熔断 · DAILY STOP", "DAILY STOP"],
-    "mandate.symbols": ["币种白名单 · SYMBOLS", "SYMBOLS"],
+    "mandate.dailyStop": ["单日亏损上限 · DAILY LOSS LIMIT", "DAILY LOSS LIMIT"],
+    "mandate.symbols": ["允许的交易对 · ALLOWED PAIRS", "ALLOWED PAIRS"],
     "mandate.expires": ["有效期 · EXPIRES", "EXPIRES"],
 
     "cap.tag": ["能力 · CAPABILITIES", "CAPABILITIES"],
     "cap.h2": ["四个专业角色,一套交易大脑", "Four specialist roles, one trading brain"],
     "cap.desc": [
       "AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。",
-      "The AI trader, risk officer, expert knowledge base and event analyst work in concert — closing the loop from sensing to decision, execution and review."
+      "The AI trader, risk officer, knowledge system, and events analyst work together across research, decisions, execution, and review."
     ],
     "cap.trader": ["AI 交易员", "AI Trader"],
     "cap.traderDesc": [
       "生成交易假设与结构化交易计划,绑定 analysis bundle、风控检查与 trace,从入场理由到失效条件全部可解释。",
-      "Forms trade hypotheses and structured plans bound to an analysis bundle, risk checks and traces — explainable from entry rationale to invalidation."
+      "Turns market evidence into structured trade plans with clear entry logic, sizing, stops, targets, and invalidation conditions."
     ],
     "cap.risk": ["风控官", "Risk Officer"],
     "cap.riskDesc": [
       "在授权、风险、事件、执行与 Skill 五个层级校验每笔交易;超范围、无止损、超杠杆或高风险事件一律拦截。",
-      "Validates every trade across five layers — mandate, risk, events, execution and skills; out-of-range, no-stop, over-leverage or high-risk events are all blocked."
+      "Checks every trade against permissions, risk limits, event risk, execution conditions, and strategy rules. Missing stops, excess leverage, and out-of-scope trades are blocked."
     ],
     "cap.knowledge": ["专家知识库", "Expert Knowledge"],
     "cap.knowledgeDesc": [
       "把书籍、研报、链上数据与你的复盘蒸馏成概念、框架与规则;每个交易计划都会召回相关证据。",
-      "Distills books, research, on-chain data and your reviews into concepts, frameworks and rules; every plan recalls the relevant evidence."
+      "Turns books, research, on-chain data, and your own reviews into reusable concepts, frameworks, and rules that can support future decisions."
     ],
     "cap.events": ["事件分析员", "Event Analyst"],
     "cap.eventsDesc": [
       "跟踪 CPI、FOMC、ETF、交易所维护、链上异常与解锁,评估影响并实时传递给交易与风控。",
-      "Tracks CPI, FOMC, ETF flows, exchange maintenance, on-chain anomalies and unlocks — scoring impact and feeding it live to trading and risk."
+      "Tracks CPI, FOMC decisions, ETF flows, exchange maintenance, on-chain anomalies, and token unlocks, then feeds their potential impact into trading and risk decisions."
     ],
 
     "loop.tag": ["闭环 · LIFECYCLE", "LIFECYCLE"],
@@ -90,37 +90,37 @@
     "loop.1t": ["市场与事件感知", "Sense markets & events"],
     "loop.1d": ["行情、盘口、资金费率、OI 与事件雷达持续输入。", "Prices, order book, funding, OI and an event radar stream in continuously."],
     "loop.2t": ["知识召回", "Knowledge recall"],
-    "loop.2d": ["专家知识库生成 analysis bundle 作为决策依据。", "The knowledge base assembles an analysis bundle as decision evidence."],
+    "loop.2d": ["专家知识库生成证据包，作为决策依据。", "The knowledge system gathers relevant evidence for the decision."],
     "loop.3t": ["结构化交易计划", "Structured trade plan"],
     "loop.3d": ["AI 交易员产出带止损、仓位与失效条件的计划。", "The AI trader outputs a plan with stop-loss, sizing and invalidation."],
-    "loop.4t": ["授权范围校验", "Mandate check"],
-    "loop.4d": ["MandateGuard 核对交易所、币种、策略与有效期。", "MandateGuard checks exchange, symbols, strategy and expiry."],
+    "loop.4t": ["交易权限校验", "Permission check"],
+    "loop.4d": ["系统核对交易所、币种、策略与有效期是否在你的授权范围内。", "The system verifies that the exchange, market, strategy, and time window are within your permissions."],
     "loop.5t": ["风控引擎校验", "Risk engine check"],
-    "loop.5d": ["单笔风险、日亏损、杠杆、滑点与事件风险逐项检查。", "Per-trade risk, daily stop, leverage, slippage and event risk are each checked."],
+    "loop.5d": ["单笔风险、单日亏损上限、杠杆、滑点与事件风险逐项检查。", "Per-trade risk, daily loss limits, leverage, slippage, and event risk are checked before execution."],
     "loop.6t": ["受控执行", "Controlled execution"],
-    "loop.6d": ["Executor 经统一连接器下单,幂等键 + 双通道对账。", "The executor places orders via a unified connector with idempotency keys and dual-channel reconciliation."],
+    "loop.6d": ["执行器通过统一连接器下单，并防止重复下单、持续核对成交状态。", "Orders go through a single execution path with duplicate-order protection and continuous reconciliation."],
     "loop.7t": ["仓位监控", "Position monitoring"],
-    "loop.7d": ["监控成交、止损止盈、资金费率与失效条件并可触发熔断。", "Monitors fills, stops/targets, funding and invalidation — and can trip the kill switch."],
+    "loop.7d": ["监控成交、止损止盈、资金费率与失效条件，必要时紧急停止新交易。", "Monitors fills, stops, targets, funding, and invalidation conditions, and can stop new trading in an emergency."],
     "loop.8t": ["复盘进化", "Review & evolve"],
     "loop.8d": ["复盘盈亏归因与偏差,写回记忆与知识库候选规则。", "Reviews PnL attribution and drift, writing back to memory and candidate rules."],
 
     "guard.tag": ["风控 · GUARDRAILS", "GUARDRAILS"],
     "guard.h2": ["边界写进系统,<br>而非写进承诺", "Boundaries in the system,<br>not in promises"],
     "guard.desc": [
-      "硬风控不是可选项。授权范围、密钥隔离与熔断机制在代码层强制执行,任何角色、任何 Skill 都无法绕过。",
-      "Hard risk control is not optional. Mandate scope, key isolation and the kill switch are enforced in code — no role and no skill can bypass them."
+      "硬风控不是可选项。交易权限、密钥隔离与紧急停止机制在代码层强制执行，任何角色、任何 Skill 都无法绕过。",
+      "Hard risk controls are enforced in code. Trading permissions, secret isolation, and emergency stops cannot be bypassed by an agent or third-party skill."
     ],
-    "guard.kill": ["一键熔断", "KILL SWITCH"],
-    "guard.denyT": ["禁止提现权限", "No withdraw permission"],
-    "guard.denyD": ["Trade 权限仅授权后启用,Withdraw 永不开放。", "Trade permission is enabled only after authorization; Withdraw is never granted."],
+    "guard.kill": ["紧急停止", "EMERGENCY STOP"],
+    "guard.denyT": ["禁止提现权限", "Withdrawals disabled"],
+    "guard.denyD": ["交易权限仅在授权后启用，提现权限始终关闭。", "Trading is enabled only after authorization. Withdrawal access is never granted."],
     "guard.isoT": ["API Secret 隔离", "API secret isolation"],
     "guard.isoD": ["不进入模型上下文、前端与普通日志。", "Never enters model context, the frontend or ordinary logs."],
     "guard.blockT": ["无止损即拒绝", "No stop, no trade"],
     "guard.blockD": ["无止损、超杠杆、超单笔风险的计划直接驳回。", "Plans without a stop, over leverage or over per-trade risk are rejected outright."],
     "guard.freezeT": ["高影响事件禁新仓", "Freeze on high-impact events"],
     "guard.freezeD": ["对账异常或高风险事件时仅允许降风险动作。", "On reconciliation anomalies or high-risk events, only risk-reducing actions are allowed."],
-    "guard.sandT": ["第三方 Skill 不可直连", "Third-party skills sandboxed"],
-    "guard.sandD": ["扫描、沙箱、权限声明后才能启用,不得直接下单。", "Enabled only after scanning, sandboxing and permission declaration — never allowed to place orders directly."],
+    "guard.sandT": ["第三方 Skill 不可直连", "Third-party skills are isolated"],
+    "guard.sandD": ["扫描、沙箱验证和权限声明全部通过后才能启用，第三方 Skill 不得直接下单。", "Third-party skills must pass scanning, sandbox validation, and permission review. They can never place orders directly."],
     "guard.auditT": ["全程 append-only 审计", "End-to-end append-only audit"],
     "guard.auditD": ["交易、授权、风控与密钥变更不可被删除。", "Trades, authorizations, risk actions and key changes cannot be deleted."],
 
@@ -146,17 +146,22 @@
       "Every autonomous plan calls the knowledge base and produces an evidence bundle — if knowledge is unavailable it downgrades to conservative mode or blocks trading."
     ],
 
-    "ctaBand.h2": ["把交易体系交给一个有边界的 Agent", "Hand your trading system to an Agent with boundaries"],
-    "ctaBand.desc": ["登录驾驶舱、订阅进展,或直接联系我们了解专属部署。", "Enter the cockpit, subscribe for updates, or contact us about a dedicated deployment."],
+    "ctaBand.h2": ["让 AI 在你的规则内运行交易体系", "Put your trading process to work—within your rules"],
+    "ctaBand.desc": ["登录驾驶舱、申请开通，或联系我们了解专属部署。", "Open the dashboard, request access, or contact us about a dedicated deployment."],
 
     "footer.disclaimer": [
-      "免责声明:本系统不构成投资建议、收益承诺或法律意见。数字货币与自动化交易风险极高,生产上线前须完成安全、合规、交易所权限、风控与熔断演练评审。",
-      "Disclaimer: this system is not investment advice, a profit guarantee or legal counsel. Crypto and automated trading carry substantial risk; a security, compliance, exchange-permission, risk and kill-switch review is required before production use."
+      "免责声明：本系统不构成投资建议、收益承诺或法律意见。数字货币与自动化交易风险极高，生产上线前须完成安全、合规、交易所权限、风控与紧急停止演练评审。",
+      "Disclaimer: This system does not provide investment advice, legal advice, or any guarantee of returns. Crypto assets and automated trading involve substantial risk. Review security, compliance, exchange permissions, risk limits, and emergency controls before live use."
     ]
   };
 
   var lang = "zh";
-  try { lang = localStorage.getItem("ta_lang") || "zh"; } catch (e) {}
+  try {
+    var requestedLang = new URLSearchParams(window.location.search).get("lang");
+    lang = (requestedLang === "en" || requestedLang === "zh")
+      ? requestedLang
+      : (localStorage.getItem("ui_lang") || "zh");
+  } catch (e) {}
   if (lang !== "en" && lang !== "zh") lang = "zh";
 
   function applyLang(l) {
@@ -173,7 +178,7 @@
     });
     var btn = document.querySelector('[data-action="lang"]');
     if (btn) btn.textContent = l === "en" ? "中文" : "EN";
-    try { localStorage.setItem("ta_lang", l); } catch (e) {}
+    try { localStorage.setItem("ui_lang", l); } catch (e) {}
     renderTicker(); // 重渲染 ticker 里的本地化提示
   }
 

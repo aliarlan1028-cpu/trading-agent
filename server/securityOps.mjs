@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
 import { getMasterKeyMaterial } from "./keyProvider.mjs";
+import { fetchExternalText } from "./externalInputSafety.mjs";
 
 export function storeSecret(db, name, value, scope = "exchange") {
   assertSecretStorageConfigured();
@@ -28,7 +29,9 @@ export async function sendAlert(db, payload = {}) {
   db.alerts.unshift(alert);
   if (process.env.ALERT_WEBHOOK_URL) {
     try {
-      const response = await fetch(process.env.ALERT_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(alert) });
+      const { response } = await fetchExternalText(process.env.ALERT_WEBHOOK_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(alert), timeoutMs: 8000, maxBytes: 256 * 1024
+      });
       alert.status = response.ok ? "sent" : "send_failed";
       alert.httpStatus = response.status;
     } catch (error) {

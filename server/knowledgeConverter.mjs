@@ -69,9 +69,7 @@ export function adoptCandidate(db, candidateId, actor = "用户") {
     const p = cand.payload || {};
     const res = createSkillFromIdea(db, { name: cand.name, direction: p.direction, timeframe: p.timeframe, entry: p.entry, stop: p.stop, takeProfit: p.takeProfit, templateId: p.templateId, marketRegime: "" }, actor);
     if (!res.ok) return { ok: false, error: res.error };
-    // 采纳即用:直接置 active(去掉历史验证/模拟前向/待批准/小额试用四道预闸)。标未验证 + 来源,
-    // 在用中按真实成绩由生命周期同步自动降级/退役。
-    res.skill.status = "active";
+    // 采纳只进入标准策略生命周期；知识来源不能绕过编译、模拟前向和小额试用直接实盘激活。
     res.skill.provenance = "knowledge_adopted";
     res.skill.validated = false;
     res.skill.adoptedAt = nowIso();

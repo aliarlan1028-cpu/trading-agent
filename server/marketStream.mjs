@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
 import { activeMandate, nowIso } from "./store.mjs";
+import { markOkxLiquidationStreamConnected, recordOkxLiquidationMessage } from "./okxLiquidationStream.mjs";
 
 // ws 库不走 undici 全局代理；有代理环境（如本机 Clash）需显式带 agent，否则实时行情 WS 直连被重置。
 function wsOptions() {
@@ -39,7 +40,8 @@ function instToSymbol(instId) {
 function trackedSymbols(db) {
   const mandate = activeMandate(db);
   const watchlist = (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
-  return [...new Set(["BTC/USDT", "ETH/USDT", ...watchlist, ...((mandate && mandate.allowedSymbols) || [])])].slice(0, 12);
+  // 授权白名单是自主交易的真实工作集，必须优先于普通自选；否则自选较多时允许交易的币反而被 slice 掉。
+  return [...new Set(["BTC/USDT", "ETH/USDT", ...((mandate && mandate.allowedSymbols) || []), ...watchlist])].slice(0, 24);
 }
 
 function ensureMarket(db, symbol) {
@@ -73,6 +75,7 @@ function connect() {
   ws.on("message", (raw) => handleMessage(raw));
   ws.on("close", () => {
     connected = false;
+    markOkxLiquidationStreamConnected(false);
     stopPing();
     scheduleReconnect();
   });
@@ -84,19 +87,32 @@ function connect() {
 function subscribe() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   currentSymbols = trackedSymbols(dbRef);
+  sendSubscription("subscribe", currentSymbols);
+  try {
+    ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: "liquidation-orders", instType: "SWAP" }] }));
+  } catch { /* noop */ }
+}
+
+function sendSubscription(op, symbols) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !symbols.length) return;
   const args = [];
-  for (const symbol of currentSymbols) {
+  for (const symbol of symbols) {
     const instId = toOkxSymbol(symbol, "perpetual");
     args.push({ channel: "tickers", instId });
     args.push({ channel: "funding-rate", instId });
     args.push({ channel: "open-interest", instId });
   }
-  try { ws.send(JSON.stringify({ op: "subscribe", args })); } catch { /* noop */ }
+  try { ws.send(JSON.stringify({ op, args })); } catch { /* noop */ }
 }
 
 function resubscribe() {
   const next = trackedSymbols(dbRef);
-  if (next.join(",") !== currentSymbols.join(",")) subscribe();
+  if (next.join(",") === currentSymbols.join(",")) return;
+  const previous = new Set(currentSymbols);
+  const wanted = new Set(next);
+  sendSubscription("unsubscribe", currentSymbols.filter((symbol) => !wanted.has(symbol)));
+  sendSubscription("subscribe", next.filter((symbol) => !previous.has(symbol)));
+  currentSymbols = next;
 }
 
 function startPing() {
@@ -119,8 +135,16 @@ function handleMessage(raw) {
   if (text === "pong") return;
   let msg;
   try { msg = JSON.parse(text); } catch { return; }
-  if (msg.event) return; // 订阅确认/错误回执
+  if (msg.event) {
+    if (msg.event === "subscribe" && msg.arg?.channel === "liquidation-orders") markOkxLiquidationStreamConnected(true);
+    if (msg.event === "error" && msg.arg?.channel === "liquidation-orders") markOkxLiquidationStreamConnected(false);
+    return; // 订阅确认/错误回执
+  }
   const channel = msg.arg && msg.arg.channel;
+  if (channel === "liquidation-orders") {
+    recordOkxLiquidationMessage(msg);
+    return;
+  }
   const d = msg.data && msg.data[0];
   if (!channel || !d) return;
   const symbol = instToSymbol(msg.arg.instId);
@@ -134,6 +158,11 @@ function handleMessage(raw) {
     if (d.high24h) { market.high24h = Number(d.high24h); update.high24h = market.high24h; }
     if (d.low24h) { market.low24h = Number(d.low24h); update.low24h = market.low24h; }
     // 成交量单位口径以 REST(quoteVolume, USDT) 为准，不用 WS 的 volCcy24h(单位不同)覆盖，避免数值不一致。
+    // 但保留独立的流式原始值给早期机会引擎计算短窗口变化，不污染界面/风控使用的 REST 口径。
+    if (d.volCcy24h !== undefined && Number.isFinite(Number(d.volCcy24h))) {
+      market.streamVolume24h = Number(d.volCcy24h);
+      update.streamVolume24h = market.streamVolume24h;
+    }
     market.lastRealtimeAt = nowIso();
     market.lastRealtimeSource = "OKX_WS";
     market.status = "synced";

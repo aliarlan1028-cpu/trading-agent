@@ -3,6 +3,15 @@
 export function registerPosterRoutes(app, ctx) {
   const { llmComplete, appendTrace, db } = ctx;
 
+  app.get("/api/posters/trades/:id", async (req, res) => {
+    const execution = (db.executionOrders || []).find((row) => row.id === req.params.id);
+    if (!execution || execution.status !== "closed") return res.status(404).json({ error: "未找到已平仓交易" });
+    const closeFill = (db.fills || []).filter((row) => row.executionOrderId === execution.id && row.kind === "close").sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0] || {};
+    const { renderClosedTradePoster } = await import("../positionPoster.mjs");
+    const poster = await renderClosedTradePoster({ ...execution, ...closeFill, entryPrice: execution.filledPrice || execution.entryPrice, exitPrice: closeFill.price, entryFeeUsdt: execution.entryFeeUsdt, closeFeeUsdt: closeFill.feeUsdt });
+    res.type(poster.contentType).setHeader("Content-Disposition", `inline; filename=\"${poster.filename}\"`).send(poster.buffer);
+  });
+
   // 把一段中文交易分析翻译成英文,尽量保留 Markdown 结构与交易术语。
   app.post("/api/posters/translate", async (req, res) => {
     const text = String(req.body?.text || "").trim();

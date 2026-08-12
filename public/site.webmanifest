@@ -1,0 +1,23 @@
+{
+  "name": "KORDYN",
+  "short_name": "KORDYN",
+  "description": "AI 数字货币永续合约自主交易 Agent",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9f5ef",
+  "theme_color": "#0c0a08",
+  "icons": [
+    {
+      "src": "/kordyn-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/kordyn-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

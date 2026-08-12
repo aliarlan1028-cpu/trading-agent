@@ -1,5 +1,5 @@
 import { appendAudit, appendTrace, nowIso } from "./store.mjs";
-import { assertSafeExternalUrl } from "./externalInputSafety.mjs";
+import { assertSafeExternalUrl, createSafeExternalDispatcher } from "./externalInputSafety.mjs";
 import { readSecret } from "./securityOps.mjs";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,7 @@ async function mcpRpc(db, server, method, params = {}, options = {}) {
   const id = isNotification ? undefined : (rpcId += 1);
   const body = { jsonrpc: "2.0", method, ...(isNotification ? {} : { id }), params };
   const timer = timeout(options.timeoutMs || 15000);
+  const dispatcher = createSafeExternalDispatcher();
   try {
     const response = await fetch(server.url, {
       method: "POST",
@@ -70,7 +71,8 @@ async function mcpRpc(db, server, method, params = {}, options = {}) {
         ...((server.sessionId && method !== "initialize") ? { "Mcp-Session-Id": server.sessionId } : {}),
         ...authHeaders(db, server)
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      dispatcher
     });
     const sessionId = response.headers.get("mcp-session-id") || server.sessionId;
     if (isNotification) return { sessionId };
@@ -80,6 +82,7 @@ async function mcpRpc(db, server, method, params = {}, options = {}) {
     return { result: message.result, sessionId };
   } finally {
     timer.cancel();
+    await dispatcher.close().catch(() => {});
   }
 }
 

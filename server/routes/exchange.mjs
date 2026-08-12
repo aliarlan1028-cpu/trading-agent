@@ -12,7 +12,8 @@ export function registerExchangeRoutes(app, ctx) {
 
   app.get("/api/exchange/:exchange/klines", async (req, res) => {
     try {
-      const result = await syncPublicKlines(db, req.params.exchange, req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
+      if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "行情仅允许 OKX" });
+      const result = await syncPublicKlines(db, "OKX", req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
       saveDb(db);
       const market = db.markets.find((item) => item.symbol === result.symbol);
       res.json({ ...result, candles: market?.candles || [] });
@@ -23,7 +24,8 @@ export function registerExchangeRoutes(app, ctx) {
 
   app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
     try {
-      const result = await syncMicrostructure(db, req.params.exchange, req.query.symbol || "BTC/USDT");
+      if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "微观结构仅允许 OKX" });
+      const result = await syncMicrostructure(db, "OKX", req.query.symbol || "BTC/USDT");
       persist(res, result);
     } catch (error) {
       res.status(502).json({ error: `微观结构同步失败：${error.message}` });
@@ -32,13 +34,13 @@ export function registerExchangeRoutes(app, ctx) {
 
   app.get("/api/exchange/accounts", (_req, res) => {
     refreshApiKeyMetadata(db);
-    res.json(db.exchangeAccounts);
+    res.json((db.exchangeAccounts || []).filter((item) => item.exchange === "OKX"));
   });
 
   app.post("/api/exchange/accounts", requirePermission("admin:security"), (req, res) => {
     const account = {
       id: id("ex"),
-      exchange: req.body.exchange || "BINANCE",
+      exchange: "OKX",
       label: req.body.label || "新交易所账户",
       accountType: req.body.accountType || "unified",
       readEnabled: false,
@@ -73,11 +75,8 @@ export function registerExchangeRoutes(app, ctx) {
   app.post("/api/exchange/api-key-metadata/:id/confirm-no-withdraw", requirePermission("admin:security"), (req, res) => {
     const item = (db.apiKeyMetadata || []).find((key) => key.id === req.params.id);
     if (!item) return res.status(404).json({ error: "API key metadata not found" });
-    const currentApiKey = item.exchange === "BINANCE"
-      ? process.env.BINANCE_API_KEY
-      : item.exchange === "OKX"
-        ? process.env.OKX_API_KEY
-        : "";
+    if (item.exchange !== "OKX") return res.status(400).json({ error: "仅允许核验 OKX API Key" });
+    const currentApiKey = process.env.OKX_API_KEY || "";
     item.apiKeyFingerprint = currentApiKey
       ? crypto.createHash("sha256").update(currentApiKey).digest("hex").slice(0, 16)
       : null;
@@ -102,7 +101,8 @@ export function registerExchangeRoutes(app, ctx) {
   app.get("/api/exchange/:exchange/ticker", async (req, res) => {
     const symbol = req.query.symbol || "BTC/USDT";
     try {
-      const ticker = await syncPublicMarket(db, req.params.exchange, symbol);
+      if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "行情仅允许 OKX" });
+      const ticker = await syncPublicMarket(db, "OKX", symbol);
       persist(res, ticker);
     } catch (error) {
       const cached = db.markets.find((market) => market.symbol === symbol) || db.markets[0];
@@ -110,7 +110,7 @@ export function registerExchangeRoutes(app, ctx) {
       appendTrace(db, "exchange_market", "公开行情同步失败", "error");
       saveDb(db);
       res.json({
-        exchange: String(req.params.exchange).toUpperCase(),
+        exchange: "OKX",
         symbol,
         status: "fallback_cached",
         error: error.message,

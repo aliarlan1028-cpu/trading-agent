@@ -5,7 +5,7 @@ import { validateWriteGuard } from "../server/tradeActions.mjs";
 function baseDb() {
   return {
     system: { liveTradingEnabled: false, realTradingAck: false, orderWriteEnabled: false, killSwitch: true },
-    apiKeyMetadata: [{ exchange: "BINANCE", withdrawPermission: false, permissionVerifiedAt: new Date().toISOString() }],
+    apiKeyMetadata: [{ exchange: "OKX", withdrawPermission: false, permissionVerifiedAt: new Date().toISOString() }],
     mandates: [],
     grayReleasePolicies: [],
     auditLogs: [],
@@ -14,10 +14,10 @@ function baseDb() {
 }
 
 const provenance = {
-  exchange: "BINANCE",
+  exchange: "OKX",
   marketType: "perpetual_usdt",
   symbol: "BTC/USDT",
-  clientOrderId: "entry-1",
+  clientOrderId: "entry1",
   agentRunId: "run-1",
   analysisBundleId: "analysis-1",
   tradePlanId: "plan-1",

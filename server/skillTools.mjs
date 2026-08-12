@@ -2,6 +2,8 @@ import { getHistoricalKlines, syncMicrostructure, fetchFundingPercentile } from 
 import { activeMandate, nowIso } from "./store.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildExecutionQuality, buildSloReport } from "./professionalAnalytics.mjs";
+import { estimateExecutionCost, maxNotionalForImpact } from "./executionCostModel.mjs";
+import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
 
 // ---------------------------------------------------------------------------
 // 原生交易 Skill：把技能接进 Agent 的工具循环。
@@ -208,11 +210,10 @@ export const SKILL_TOOLS = [
       const spread=Number(m.spreadBps),depth=Number(m.depthUsdt||m.orderBookDepthUsdt);
       if(!Number.isFinite(spread)||!Number.isFinite(depth)||depth<=0)return {status:"blocked",reason:"fresh_depth_unavailable",estimate:null};
       const n=Number(args.notionalUsdt);
-      const halfSpread=spread/2, K=100, participation=Math.max(0,n/depth);
-      const impact=halfSpread+K*Math.sqrt(participation);
-      const maxNotionalAt10Bps=halfSpread>=10?0:Number((depth*Math.pow((10-halfSpread)/K,2)).toFixed(2));
-      const splitCount=maxNotionalAt10Bps>0?Math.max(1,Math.ceil(n/maxNotionalAt10Bps)):Math.max(1,Math.ceil(impact/10));
-      return {status:"ok",estimate:{symbol,model:"square_root",spreadBps:spread,depthUsdt:depth,participationPct:Number((participation*100).toFixed(1)),expectedImpactBps:Number(impact.toFixed(2)),maxNotionalAt10Bps,splitCount}};
+      const estimate=estimateExecutionCost(db,{symbol,spreadBps:spread,depthUsdt:depth,notionalUsdt:n});
+      const maxNotionalAt10Bps=maxNotionalForImpact(db,{symbol,spreadBps:spread,depthUsdt:depth,maxImpactBps:10})??0;
+      const splitCount=maxNotionalAt10Bps>0?Math.max(1,Math.ceil(n/maxNotionalAt10Bps)):Math.max(1,Math.ceil(Number(estimate.expectedImpactBps||0)/10));
+      return {status:"ok",estimate:{...estimate,maxNotionalAt10Bps,splitCount}};
     }
   },
   {
@@ -240,11 +241,9 @@ export const SKILL_TOOLS = [
       const symbol=String(args.symbol).toUpperCase(),m=(db.markets||[]).find(x=>x.symbol===symbol);
       const c=(m?.candlesByTf?.[args.timeframe||"1h"]?.candles||m?.candles||[]).slice(-30);
       if(c.length<20)return {status:"blocked",reason:"insufficient_closed_bars",regime:null};
-      const closes=c.map(x=>Number(x.close)),ret=closes.slice(1).map((x,i)=>x/closes[i]-1),vol=Math.sqrt(ret.reduce((s,x)=>s+x*x,0)/ret.length)*100,trend=(closes.at(-1)/closes[0]-1)*100;
       const spreadBps=Number(m?.spreadBps);
-      const lowLiq=Number.isFinite(spreadBps)&&spreadBps>5;
-      const label=lowLiq?"low_liquidity":vol>2?"high_volatility":Math.abs(trend)>vol*2?trend>0?"uptrend":"downtrend":"range";
-      return {status:"ok",regime:{symbol,label,realizedVolPct:Number(vol.toFixed(2)),trendPct:Number(trend.toFixed(2)),spreadBps:Number.isFinite(spreadBps)?spreadBps:null,asOf:m.updatedAt||m.syncedAt}};
+      const analysis=analyzeMarketRegime(c,{spreadBps});
+      return {status:"ok",regime:{symbol,...analysis,asOf:m.updatedAt||m.syncedAt}};
     }
   },
   {
@@ -346,7 +345,7 @@ export async function runSkillTool(db, name, args = {}) {
   skill.evalMetrics.calls += 1;
   const symbol = args.symbol ? String(args.symbol).toUpperCase() : null;
   const market = symbol ? (db.markets || []).find((m) => m.symbol === symbol) : null;
-  const observedAt = market?.updatedAt || market?.syncedAt || market?.microSyncedAt;
+  const observedAt = market?.lastRealtimeAt || market?.updatedAt || market?.syncedAt || market?.microSyncedAt || market?.lastSyncedAt;
   const dataAgeMs = observedAt ? Date.now() - new Date(observedAt).getTime() : null;
   if (tool.failClosed && symbol && (!market || dataAgeMs === null || dataAgeMs > tool.freshnessMs)) {
     skill.evalMetrics.blocked += 1;

@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
+import { enforceOhlcvQuality } from "./ohlcvQuality.mjs";
 
 const BINANCE_SPOT_BASE = process.env.BINANCE_SPOT_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binance.vision" : "https://api.binance.com");
 const BINANCE_USDM_BASE = process.env.BINANCE_USDM_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binancefuture.com" : "https://fapi.binance.com");
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
-const BINANCE_TICKER_URL = `${BINANCE_SPOT_BASE}/api/v3/ticker/24hr`;
 const OKX_TICKER_URL = `${OKX_BASE}/api/v5/market/ticker`;
 
 export function toBinanceSymbol(symbol) {
@@ -70,39 +70,28 @@ export function refreshApiKeyMetadata(db) {
 }
 
 async function fetchPublicTicker(exchange, symbol) {
-  const normalizedExchange = String(exchange || "BINANCE").toUpperCase();
   const timer = timeoutSignal();
   try {
-    if (normalizedExchange === "OKX") {
-      const response = await fetch(`${OKX_TICKER_URL}?instId=${encodeURIComponent(toOkxSymbol(symbol))}`, { signal: timer.signal });
-      if (!response.ok) throw new Error(`OKX ticker HTTP ${response.status}`);
-      const payload = await response.json();
-      const ticker = payload.data?.[0];
-      if (!ticker) throw new Error("OKX ticker missing data");
-      return {
-        exchange: "OKX",
-        symbol: toOkxSymbol(symbol),
-        price: Number(ticker.last),
-        high24h: Number(ticker.high24h),
-        low24h: Number(ticker.low24h),
-        volume24h: ticker.volCcy24h,
-        rawTime: ticker.ts
-      };
-    }
-
-    const response = await fetch(`${BINANCE_TICKER_URL}?symbol=${encodeURIComponent(toBinanceSymbol(symbol))}`, { signal: timer.signal });
-    if (!response.ok) throw new Error(`Binance ticker HTTP ${response.status}`);
-    const ticker = await response.json();
-    if (!Number.isFinite(Number(ticker.lastPrice))) throw new Error(ticker?.msg || "Binance ticker unavailable");
+    const instId = toOkxSymbol(symbol, "perpetual");
+    const response = await fetch(`${OKX_TICKER_URL}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
+    if (!response.ok) throw new Error(`OKX ticker HTTP ${response.status}`);
+    const payload = await response.json();
+    const ticker = payload.data?.[0];
+    if (!ticker) throw new Error("OKX ticker missing data");
+    const last = Number(ticker.last);
+    const open24h = Number(ticker.open24h);
+    if (!Number.isFinite(last) || last <= 0) throw new Error("OKX ticker invalid last price");
     return {
-      exchange: "BINANCE",
-      symbol: toBinanceSymbol(symbol),
-      price: Number(ticker.lastPrice),
-      high24h: Number(ticker.highPrice),
-      low24h: Number(ticker.lowPrice),
-      changePct: Number(ticker.priceChangePercent),
-      volume24h: ticker.quoteVolume,
-      rawTime: ticker.closeTime
+      exchange: "OKX",
+      symbol: instId,
+      price: last,
+      high24h: Number(ticker.high24h),
+      low24h: Number(ticker.low24h),
+      changePct: Number.isFinite(last) && Number.isFinite(open24h) && open24h > 0
+        ? Number((((last - open24h) / open24h) * 100).toFixed(2))
+        : null,
+      volume24h: ticker.volCcy24h,
+      rawTime: ticker.ts
     };
   } finally {
     timer.cancel();
@@ -111,8 +100,7 @@ async function fetchPublicTicker(exchange, symbol) {
 
 // 高频只读场景（观察哨每分钟核对）用：拉一次 ticker，不写审计/trace，不动 db。
 export async function fetchTickerQuiet(symbol, exchange = "OKX") {
-  const { result } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
-  return result;
+  return fetchPublicTicker("OKX", symbol);
 }
 
 // 拉 OKX 资金费率历史，返回 |资金费率%| 的第 pct 百分位——给"资金费率极端"做该币自适应阈值
@@ -120,7 +108,7 @@ export async function fetchTickerQuiet(symbol, exchange = "OKX") {
 export async function fetchFundingPercentile(symbol, pct = 85) {
   try {
     const instId = toOkxSymbol(symbol, "swap"); // 资金费率是永续专属,必须用 -SWAP instId(现货无资金费率)
-    const res = await fetch(`${OKX_BASE}/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${OKX_BASE}/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`, { signal: globalThis.AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const j = await res.json();
     const vals = (j?.data || []).map((d) => Math.abs(Number(d.fundingRate) * 100)).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
@@ -129,9 +117,9 @@ export async function fetchFundingPercentile(symbol, pct = 85) {
   } catch { return null; }
 }
 
-export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/USDT") {
-  const { result: ticker, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange, (name) => fetchPublicTicker(name, symbol));
-  if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
+export async function syncPublicMarket(db, exchange = "OKX", symbol = "BTC/USDT") {
+  exchange = "OKX";
+  const ticker = await fetchPublicTicker("OKX", symbol);
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -147,6 +135,8 @@ export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/U
     market.volume24h = ticker.volume24h ? compactNumber(ticker.volume24h) : market.volume24h;
     market.lastSyncedExchange = ticker.exchange;
     market.lastSyncedAt = nowIso();
+    market.tickerSyncedAt = market.lastSyncedAt;
+    market.tickerSourceAt = Number.isFinite(Number(ticker.rawTime)) ? new Date(Number(ticker.rawTime)).toISOString() : null;
     market.status = "synced";
   }
   appendAudit(db, "同步公开行情", `${exchange}:${symbol}`, "ExchangeConnector");
@@ -154,41 +144,26 @@ export async function syncPublicMarket(db, exchange = "BINANCE", symbol = "BTC/U
   return ticker;
 }
 
-const BINANCE_INTERVALS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
 const OKX_BARS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
 
 async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200) {
-  const normalizedExchange = String(exchange || "BINANCE").toUpperCase();
-  const tf = BINANCE_INTERVALS[timeframe] ? timeframe : "1h";
+  const tf = OKX_BARS[timeframe] ? timeframe : "1h";
   const timer = timeoutSignal(8000);
   try {
-    if (normalizedExchange === "OKX") {
-      const url = `${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`;
-      const response = await fetch(url, { signal: timer.signal });
-      if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
-      const payload = await response.json();
-      return (payload.data || []).map((row) => ({
-        time: Number(row[0]),
-        open: Number(row[1]),
-        high: Number(row[2]),
-        low: Number(row[3]),
-        close: Number(row[4]),
-        volume: Number(row[5])
-      })).reverse();
-    }
-    const url = `${BINANCE_SPOT_BASE}/api/v3/klines?symbol=${encodeURIComponent(toBinanceSymbol(symbol))}&interval=${BINANCE_INTERVALS[tf]}&limit=${Math.min(limit, 500)}`;
+    const url = `${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`;
     const response = await fetch(url, { signal: timer.signal });
-    if (!response.ok) throw new Error(`Binance klines HTTP ${response.status}`);
-    const rows = await response.json();
-    if (!Array.isArray(rows)) throw new Error(rows?.msg || "Binance klines unavailable");
-    return rows.map((row) => ({
+    if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
+    const payload = await response.json();
+    const rows = (payload.data || []).map((row) => ({
       time: Number(row[0]),
       open: Number(row[1]),
       high: Number(row[2]),
       low: Number(row[3]),
       close: Number(row[4]),
-      volume: Number(row[5])
-    }));
+      volume: Number(row[5]),
+      confirmed: row[8] == null ? undefined : String(row[8]) === "1"
+    })).reverse();
+    return enforceOhlcvQuality(rows, { timeframe: tf }).candles;
   } finally {
     timer.cancel();
   }
@@ -196,43 +171,45 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
 
 // ---------------------------------------------------------------------------
 // 市场微观结构：资金费率 / 未平仓量(OI) / 订单簿深度不平衡。
-// 给 Agent 提供合约交易真正需要的"眼睛"。默认 OKX（本机可用），失败回退 Binance。
+// 给 Agent 提供合约交易真正需要的"眼睛"。行情、盘口和实际执行必须来自同一 OKX 市场。
 // ---------------------------------------------------------------------------
 async function fetchMicrostructureRaw(exchange, symbol) {
-  const normalized = String(exchange || "OKX").toUpperCase();
   const timer = timeoutSignal(8000);
   try {
-    if (normalized === "OKX") {
-      const instId = toOkxSymbol(symbol, "perpetual");
-      const [funding, oi, books] = await Promise.all([
-        fetch(`${OKX_BASE}/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json()),
-        fetch(`${OKX_BASE}/api/v5/public/open-interest?instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json()),
-        fetch(`${OKX_BASE}/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=20`, { signal: timer.signal }).then((r) => r.json())
-      ]);
-      const book = books.data?.[0] || {};
-      return {
-        exchange: "OKX",
-        symbol: instId,
-        fundingRatePct: funding.data?.[0]?.fundingRate !== undefined ? Number(funding.data[0].fundingRate) * 100 : null,
-        nextFundingRatePct: funding.data?.[0]?.nextFundingRate !== undefined ? Number(funding.data[0].nextFundingRate) * 100 : null,
-        openInterest: oi.data?.[0]?.oiCcy !== undefined ? Number(oi.data[0].oiCcy) : (oi.data?.[0]?.oi !== undefined ? Number(oi.data[0].oi) : null),
-        ...bookImbalance(book.bids, book.asks)
-      };
-    }
-    const bSymbol = toBinanceSymbol(symbol);
-    const [premium, oi, depth] = await Promise.all([
-      fetch(`${BINANCE_USDM_BASE}/fapi/v1/premiumIndex?symbol=${bSymbol}`, { signal: timer.signal }).then((r) => r.json()),
-      fetch(`${BINANCE_USDM_BASE}/fapi/v1/openInterest?symbol=${bSymbol}`, { signal: timer.signal }).then((r) => r.json()),
-      fetch(`${BINANCE_USDM_BASE}/fapi/v1/depth?symbol=${bSymbol}&limit=20`, { signal: timer.signal }).then((r) => r.json())
-    ]);
-    return {
-      exchange: "BINANCE",
-      symbol: bSymbol,
-      fundingRatePct: premium?.lastFundingRate !== undefined ? Number(premium.lastFundingRate) * 100 : null,
-      nextFundingRatePct: null,
-      openInterest: oi?.openInterest !== undefined ? Number(oi.openInterest) : null,
-      ...bookImbalance(depth?.bids, depth?.asks)
+    const instId = toOkxSymbol(symbol, "perpetual");
+    const getOkx = async (url, label) => {
+      const response = await fetch(url, { signal: timer.signal });
+      if (!response.ok) throw new Error(`OKX ${label} HTTP ${response.status}`);
+      const payload = await response.json();
+      if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX ${label} API ${payload?.code}: ${payload?.msg || "unknown error"}`);
+      if (!Array.isArray(payload?.data) || !payload.data.length) throw new Error(`OKX ${label} missing data`);
+      return payload;
     };
+    const [funding, oi, books] = await Promise.all([
+      getOkx(`${OKX_BASE}/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`, "funding-rate"),
+      getOkx(`${OKX_BASE}/api/v5/public/open-interest?instId=${encodeURIComponent(instId)}`, "open-interest"),
+      getOkx(`${OKX_BASE}/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=20`, "books")
+    ]);
+    const book = books.data?.[0] || {};
+    const result = {
+      exchange: "OKX",
+      symbol: instId,
+      fundingRatePct: funding.data?.[0]?.fundingRate !== undefined ? Number(funding.data[0].fundingRate) * 100 : null,
+      nextFundingRatePct: funding.data?.[0]?.nextFundingRate !== undefined ? Number(funding.data[0].nextFundingRate) * 100 : null,
+      openInterest: oi.data?.[0]?.oiCcy !== undefined ? Number(oi.data[0].oiCcy) : (oi.data?.[0]?.oi !== undefined ? Number(oi.data[0].oi) : null),
+      sourceTimestamps: {
+        funding: funding.data?.[0]?.ts || funding.data?.[0]?.fundingTime || null,
+        openInterest: oi.data?.[0]?.ts || null,
+        book: book.ts || null
+      },
+      ...bookImbalance(book.bids, book.asks)
+    };
+    if (!Number.isFinite(result.fundingRatePct) || !Number.isFinite(result.openInterest) || result.openInterest < 0
+      || !Number.isFinite(result.spreadBps) || result.spreadBps < 0
+      || !Number.isFinite(result.depthUsdt) || result.depthUsdt <= 0) {
+      throw new Error("OKX microstructure contains non-finite critical fields");
+    }
+    return result;
   } finally {
     timer.cancel();
   }
@@ -259,8 +236,9 @@ function bookImbalance(bids = [], asks = []) {
 
 // 同步微观结构并缓存到 market 对象，返回带解读的摘要。
 export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT") {
-  const { result, failedOver, exchange: usedExchange } = await withExchangeFailover(exchange === "BINANCE" ? "BINANCE" : "OKX", (name) => fetchMicrostructureRaw(name, symbol));
-  if (failedOver) appendTrace(db, "exchange_micro", `${fallbackExchange(usedExchange)} 微观数据不可用，切换 ${usedExchange}`, "warning");
+  exchange = "OKX";
+  const result = await fetchMicrostructureRaw("OKX", symbol);
+  const usedExchange = "OKX";
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -276,6 +254,7 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   market.depthUsdt = result.depthUsdt;
   market.spreadBps = result.spreadBps;
   market.microSyncedAt = nowIso();
+  market.microSourceTimestamps = result.sourceTimestamps;
   appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
   const funding = result.fundingRatePct;
   const interpretation = [];
@@ -290,29 +269,11 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   return { ...result, interpretation: interpretation.join("；") || "微观结构数据不足" };
 }
 
-function fallbackExchange(exchange) {
-  return String(exchange).toUpperCase() === "OKX" ? "BINANCE" : "OKX";
-}
-
-async function withExchangeFailover(exchange, fetcher) {
-  const primary = String(exchange || "BINANCE").toUpperCase();
-  try {
-    return { exchange: primary, result: await fetcher(primary) };
-  } catch (primaryError) {
-    const secondary = fallbackExchange(primary);
-    try {
-      return { exchange: secondary, result: await fetcher(secondary), failedOver: true, primaryError: primaryError.message };
-    } catch {
-      throw primaryError;
-    }
-  }
-}
-
 // OKX 分页取数：先取最近 300，再用 history-candles 用 after 往回翻，直到 target 根。
 async function fetchOkxKlinesPaged(symbol, timeframe, target) {
   const tf = OKX_BARS[timeframe] ? timeframe : "1h";
   const bar = OKX_BARS[tf];
-  const inst = toOkxSymbol(symbol);
+  const inst = toOkxSymbol(symbol, "perpetual");
   const raw = [];
   const recentTimer = timeoutSignal(8000);
   try {
@@ -344,20 +305,23 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     raw.push(...batch);
     if (batch.length < 100) break;
   }
-  return raw.slice(0, target).map((row) => ({
+  const rows = raw.slice(0, target).map((row) => ({
     time: Number(row[0]),
     open: Number(row[1]),
     high: Number(row[2]),
     low: Number(row[3]),
     close: Number(row[4]),
-    volume: Number(row[5])
+    volume: Number(row[5]),
+    confirmed: row[8] == null ? undefined : String(row[8]) === "1"
   })).reverse();
+  return enforceOhlcvQuality(rows, { timeframe: tf }).candles;
 }
 
-// 回测用：拉取历史 K 线（OKX 主、Binance 备），不改动 db 状态。
+// 回测用：只拉 OKX 历史 K 线，不允许用另一交易所数据替代执行市场。
 // limit>300 时对 OKX 走分页，凑足样本（专业回测需要足够 bar）。
 export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX") {
-  if (String(exchange).toUpperCase() === "OKX" && limit > 300) {
+  exchange = "OKX";
+  if (limit > 300) {
     try {
       const paged = await fetchOkxKlinesPaged(symbol, timeframe, limit);
       if (paged.length >= 300) return paged;
@@ -365,20 +329,27 @@ export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300,
       /* 分页失败则回退单页 */
     }
   }
-  const { result } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe, limit));
-  return result;
+  return fetchPublicKlines("OKX", symbol, timeframe, limit);
 }
 
-export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/USDT", timeframe = "1h", options = {}) {
-  const { exchange: usedExchange, result: candles, failedOver } = await withExchangeFailover(exchange, (name) => fetchPublicKlines(name, symbol, timeframe));
-  exchange = usedExchange;
-  if (failedOver) appendTrace(db, "exchange_market", `${fallbackExchange(usedExchange)} 不可用，已切换 ${usedExchange}`, "warning");
+export async function syncPublicKlines(db, exchange = "OKX", symbol = "BTC/USDT", timeframe = "1h", options = {}) {
+  exchange = "OKX";
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
   if (!market) {
     market = { symbol: displaySymbol, candles: [], status: "not_synced" };
     db.markets.push(market);
+  }
+  let candles;
+  try {
+    candles = await fetchPublicKlines("OKX", symbol, timeframe);
+  } catch (error) {
+    market.candleQuality = error?.report || { status: "failed", timeframe, issues: [{ type: error?.code || "fetch_failed" }], checkedAt: nowIso() };
+    market.candleQualityByTf ||= {};
+    market.candleQualityByTf[String(timeframe).toLowerCase()] = market.candleQuality;
+    appendTrace(db, "exchange_market", `OKX ${symbol} ${timeframe} K线质量失败：${String(error?.message || error).slice(0, 160)}`, "blocked");
+    throw error;
   }
   // sharedSlot=false 时只写 candlesByTf,不动共享 1h 槽(审计 #13:4h/1d 补拉曾把
   // 前端图表与相关性计算用的 candles 反复翻转成混合周期,跨频率相关性统计无效)。
@@ -387,16 +358,21 @@ export async function syncPublicKlines(db, exchange = "BINANCE", symbol = "BTC/U
     market.candlesTimeframe = timeframe;
     market.candlesSyncedAt = nowIso();
   }
+  market.candleQuality = { status: "passed", timeframe, accepted: candles.length, checkedAt: nowIso() };
+  market.candleQualityByTf ||= {};
+  market.candleQualityByTf[String(timeframe).toLowerCase()] = market.candleQuality;
   // 按周期各存一份（截尾 200 根）：知识技能可能声明 4h/1d 等非默认周期，
   // 若只有单一 candlesTimeframe，非 1h 技能会永远 candle_timeframe_mismatch 而静默失效。
   market.candlesByTf ||= {};
   market.candlesByTf[String(timeframe).toLowerCase()] = { candles: candles.slice(-200), syncedAt: nowIso() };
   if (candles.length) {
     const last = candles[candles.length - 1];
-    market.price = last.close;
+    // 闭合 K 线收盘价不是实时 ticker。并发 sync_market 时绝不能让 K 线请求
+    // 覆盖刚取得的现价，或把 ticker 新鲜度伪装成刚更新。
+    market.lastClosedPrice = last.close;
+    if (!Number.isFinite(Number(market.price))) market.price = last.close;
     market.status = "synced";
-    market.lastSyncedExchange = String(exchange).toUpperCase();
-    market.lastSyncedAt = nowIso();
+    if (options.sharedSlot !== false) market.candlesSyncedAt = market.candlesByTf[String(timeframe).toLowerCase()].syncedAt;
   }
   appendTrace(db, "exchange_market", `同步 ${exchange} ${symbol} K线 ${timeframe}`);
   return { symbol: displaySymbol, timeframe, count: candles.length, latestClose: candles.at(-1)?.close };
@@ -409,12 +385,24 @@ function reconBase(sym) {
   return s.replace(/(USDT|USDC|BUSD|USD)$/, "") || s;
 }
 // 交易所只读快照的真实持仓归一:OKX pos=张、Binance positionAmt=币,均与引擎 size 同口径
-function reconSnapshotPositions(snap) {
+function reconSnapshotPositions(snap, db) {
   const map = new Map();
   for (const p of (snap.positions || [])) {
-    const qty = Math.abs(Number(p.pos ?? p.positionAmt ?? p.size));
-    if (!Number.isFinite(qty) || qty === 0) continue;
     const base = reconBase(p.instId || p.symbol || p.sym || "");
+    // OKX SWAP 的 pos 是张数，而引擎 size 是币数量。必须使用 applyOkxSnapshot 已按 ctVal
+    // 换算的 coinSize；拿不到合约面值时不能假装可比较。
+    const normalized = snap.exchange === "OKX"
+      ? (db.positions || []).find((item) => item.source === "exchange_rest" && item.exchange === "OKX"
+          && reconBase(item.symbol) === base && item.rawSyncedAt === snap.createdAt)
+      : null;
+    const qty = snap.exchange === "OKX"
+      ? Number(normalized?.coinSize)
+      : Math.abs(Number(p.positionAmt ?? p.size));
+    if (!Number.isFinite(qty)) {
+      if (snap.exchange === "OKX") map.set(base, null);
+      continue;
+    }
+    if (qty === 0) continue;
     map.set(base, (map.get(base) || 0) + qty);
   }
   return map;
@@ -432,20 +420,25 @@ export function reconcileAccount(db, accountId) {
     differences.push({ type: "missing_stop_loss", symbol: position.symbol, severity: managed ? "high" : "info", managed });
   }
 
-  const snap = (db.accountSnapshots || []).find((s) => s.accountId === account.id && s.status === "ok")
-    || (db.accountSnapshots || []).find((s) => s.status === "ok");
+  const snap = latestSuccessfulAccountSnapshot(db, { accountId: account.id })
+    || latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   if (!snap) {
     account.reconcileNote = "无交易所只读快照,无法账实比对(仅本地检查)";
   } else {
-    const exMap = reconSnapshotPositions(snap);
+    const exMap = reconSnapshotPositions(snap, db);
     const engineBases = new Set();
     // 引擎托管仓 vs 交易所真实持仓(逐仓比对数量,2% 容差)
     for (const p of (db.positions || []).filter((x) => x.source === "execution_engine")) {
       const base = reconBase(p.symbol); engineBases.add(base);
       const localQty = Math.abs(Number(p.size) || 0);
-      const exQty = exMap.get(base) || 0;
-      if (exQty < 1e-9) differences.push({ type: "missing_on_exchange", symbol: p.symbol, severity: "high", localQty, exchangeQty: 0 });
-      else if (Math.abs(localQty - exQty) > Math.max(1e-6, localQty * 0.02)) differences.push({ type: "size_mismatch", symbol: p.symbol, severity: "high", localQty, exchangeQty: exQty });
+      const exQty = exMap.get(base);
+      if (exQty === null) {
+        differences.push({ type: "contract_value_unavailable", symbol: p.symbol, severity: "high", localQty, message: "无法取得 OKX ctVal，数量对账已按 fail-closed 处理" });
+        continue;
+      }
+      const comparableQty = exQty || 0;
+      if (comparableQty < 1e-9) differences.push({ type: "missing_on_exchange", symbol: p.symbol, severity: "high", localQty, exchangeQty: 0 });
+      else if (Math.abs(localQty - comparableQty) > Math.max(1e-6, localQty * 0.02)) differences.push({ type: "size_mismatch", symbol: p.symbol, severity: "high", localQty, exchangeQty: comparableQty });
     }
     // 交易所有、引擎未托管 → 外部/手动仓(信息级,不当异常)
     for (const [base, qty] of exMap) {
@@ -471,10 +464,9 @@ export async function syncPrivateReadOnly(db, accountId) {
   const account = db.exchangeAccounts.find((item) => item.id === accountId);
   if (!account) return { status: "missing_account", accountId };
   const exchange = String(account.exchange).toUpperCase();
-  let result;
-  if (exchange === "BINANCE") result = await syncBinanceReadOnly();
-  else if (exchange === "OKX") result = await syncOkxReadOnly();
-  else result = { status: "unsupported_exchange", exchange };
+  const result = exchange === "OKX"
+    ? await syncOkxReadOnly()
+    : { status: "unsupported_exchange", exchange, error: "Autonomous trading supports OKX only" };
 
   const snapshot = {
     id: id("snap"),
@@ -484,6 +476,7 @@ export async function syncPrivateReadOnly(db, accountId) {
     balances: result.balances || [],
     positions: result.positions || [],
     openOrders: result.openOrders || [],
+    algoOrders: result.algoOrders || [],
     fundingRates: result.fundingRates || [],
     apiPermissions: result.apiPermissions,
     error: result.error,
@@ -643,15 +636,21 @@ const okxCtValCache = new Map();
 const okxSpecCache = new Map();
 // 完整合约规格(下单换算用):sz 是"张数",币数量必须除以 ctVal;张数需对齐 lotSz 且 ≥ minSz。
 export async function okxContractSpec(instId) {
-  if (okxSpecCache.has(instId)) return okxSpecCache.get(instId);
+  const cached = okxSpecCache.get(instId);
+  if (cached && Date.now() - cached.at < 3_600_000) return cached.spec;
+  const timer = timeoutSignal();
   try {
-    const timer = timeoutSignal();
-    const raw = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal }).then((r) => r.json());
+    const response = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
+    if (!response.ok) throw new Error(`OKX instruments HTTP ${response.status}`);
+    const raw = await response.json();
+    if (String(raw?.code ?? "0") !== "0") throw new Error(`OKX instruments API ${raw?.code}`);
     const row = raw.data?.[0];
     // tickSz=价格最小变动(px/止损/止盈价必须是它的整数倍),lotSz=张数步长,minSz=最小张数,ctVal=每张面值。
-    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz) || 1, minSz: Number(row.minSz) || 1, tickSz: Number(row.tickSz) || null } : null;
-    if (spec && Number.isFinite(spec.ctVal) && spec.ctVal > 0) { okxSpecCache.set(instId, spec); okxCtValCache.set(instId, spec.ctVal); return spec; }
+    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz), minSz: Number(row.minSz), tickSz: Number(row.tickSz), fetchedAt: nowIso() } : null;
+    const valid = spec && [spec.ctVal, spec.lotSz, spec.minSz, spec.tickSz].every((value) => Number.isFinite(value) && value > 0);
+    if (valid) { okxSpecCache.set(instId, { spec, at: Date.now() }); okxCtValCache.set(instId, spec.ctVal); return spec; }
   } catch { /* 拿不到规格返回 null,下单侧 fail-closed */ }
+  finally { timer.cancel(); }
   return null;
 }
 async function okxContractValue(instId) {
@@ -801,16 +800,23 @@ async function syncOkxReadOnly() {
     return { status: "missing_credentials", error: "OKX_API_KEY, OKX_API_SECRET or OKX_API_PASSPHRASE is missing" };
   }
   try {
-    const [balance, positions, openOrders] = await Promise.all([
+    const [balance, positions, openOrders, algoOrders] = await Promise.all([
       okxSignedRequest("/api/v5/account/balance"),
       okxSignedRequest("/api/v5/account/positions"),
-      okxSignedRequest("/api/v5/trade/orders-pending")
+      okxSignedRequest("/api/v5/trade/orders-pending"),
+      // 附加止损在主单完全成交后成为 conditional algo order；必须从交易所核验，
+      // 不能只凭本地 stopLoss 字段假定仓位仍受保护。
+      okxSignedRequest("/api/v5/trade/orders-algo-pending?ordType=conditional")
     ]);
+    for (const [label, response] of [["balance", balance], ["positions", positions], ["orders", openOrders], ["algo_orders", algoOrders]]) {
+      if (String(response?.code) !== "0") throw new Error(`OKX ${label} rejected: ${response?.code || "unknown"} ${response?.msg || ""}`.trim());
+    }
     return {
       status: "ok",
       balances: balance.data || [],
       positions: positions.data || [],
       openOrders: (openOrders.data || []).map(maskOrder).slice(0, 50),
+      algoOrders: (algoOrders.data || []).map(maskOrder).slice(0, 100),
       fundingRates: []
     };
   } catch (error) {

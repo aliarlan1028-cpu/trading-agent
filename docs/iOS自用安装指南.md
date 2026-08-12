@@ -1,4 +1,4 @@
-# Trading Agent iOS 自用安装指南
+# KORDYN iOS 自用安装指南
 
 这个 iOS 版本是一个真正的 Xcode 原生工程，使用 Capacitor 把当前 React 驾驶舱打包进 iPhone App。App 只负责移动端操作、审批和查看；交易所 API Secret、LLM Key、Telegram Token 仍然只保存在后端。
 
@@ -86,4 +86,3 @@ App 不保存交易所 Secret。即使手机丢失，也应该只需要在后端
 - 审计链处理为实盘 epoch
 - 小额度灰度策略
 - Face ID / PIN 二次确认能力（**尚未实现**：当前无生物识别插件，实盘确认走服务端审批阈值与二次确认弹窗）
-

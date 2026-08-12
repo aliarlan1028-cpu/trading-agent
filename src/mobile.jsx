@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
+  ReceiptText,
   Search,
   Settings,
   Shield,
@@ -32,12 +33,13 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
 import { ConfigPanel, LiveGrayPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
+import { ExecutionLedgerConcept, ExecutionReviewConcept, WatchMonitorConcept } from "./conceptPages.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
@@ -48,12 +50,12 @@ export function KillConfirmDialog({ enable, action, onClose }) {
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div className="confirmDialog" onClick={(event) => event.stopPropagation()}>
-        <strong>{enable ? t("确认触发一键熔断？", "Trigger the kill switch?") : t("确认解除熔断？", "Release the kill switch?")}</strong>
+        <strong>{enable ? t("确认紧急停止新交易？", "Activate the emergency stop?") : t("确认恢复新交易？", "Resume new trading?")}</strong>
         <p>{enable ? t("将立即阻断所有新交易，并请求撤销全部在途委托。", "This immediately blocks all new trades and requests cancellation of all open orders.") : t("解除后系统恢复正常风控运行，重新允许新交易。", "Once released, the system resumes normal risk control and allows new trades again.")}</p>
-        {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("熔断原因（可选，写入审计链）", "Kill-switch reason (optional, written to audit trail)")} autoFocus />}
+        {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("停止原因（可选，会写入审计记录）", "Reason (optional, written to the audit trail)")} autoFocus />}
         <div className="confirmActions">
           <button type="button" className="ghostButton" onClick={onClose}>{t("取消", "Cancel")}</button>
-          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} onClick={confirm}>{enable ? t("确认熔断", "Confirm kill switch") : t("确认解除", "Confirm release")}</button>
+          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} onClick={confirm}>{enable ? t("确认紧急停止", "Confirm emergency stop") : t("确认恢复", "Confirm resume")}</button>
         </div>
       </div>
     </div>
@@ -195,21 +197,22 @@ function MobileSettingsIndex({ data, onOpen }) {
   const runtime = config.runtime || {};
   const user = data.user || {};
   const sub = (data.subscriptions || [])[0] || {};
+  const subExpiresAt = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).getTime() : null;
+  const subExpired = Number.isFinite(subExpiresAt) && subExpiresAt < Date.now();
   const subs = {
     llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : t("未配置", "Not configured"),
-    exchange: [exchange.binance?.hasKey && "Binance", exchange.okx?.hasKey && "OKX"].filter(Boolean).join(t("、", ", ")) || t("未配置", "Not configured"),
+    exchange: exchange.okx?.hasKey ? "OKX" : t("未配置", "Not configured"),
     integrations: integrations.telegram?.configured ? t("TG 已接入", "Telegram connected") : integrations.lark?.hasWebhook ? t("飞书已接入", "Lark connected") : t("未配置", "Not configured"),
     runtime: runtime.authRequired === false ? t("免登录", "No login") : t("鉴权开启", "Auth enabled")
   };
   const exchanges = [
-    { id: "binance", name: "Binance", letter: "B", cls: "binance", connected: exchange.binance?.hasKey },
     { id: "okx", name: "OKX", letter: "O", cls: "okx", connected: exchange.okx?.hasKey }
   ];
   return (
     <div className="mScreen">
       <div className="mCard mAcctCard">
-        <span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(user.name || user.email || "U").charAt(0).toUpperCase()}</span>
-        <div className="mAcctInfo"><b>{user.name || t("量化交易员", "Quant Trader")}</b><small>{user.email || "—"}</small></div>
+        <span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(localizeText(user.name || user.email || "U")).charAt(0).toUpperCase()}</span>
+        <div className="mAcctInfo"><b>{localizeText(user.name || t("量化交易员", "Quant Trader"))}</b><small>{user.email || "—"}</small></div>
         <span className="mAcctPlan">{user.isOwner ? "OWNER" : sub.status ? "PRO" : "—"}</span>
       </div>
 
@@ -241,7 +244,7 @@ function MobileSettingsIndex({ data, onOpen }) {
         <div className="mCard mPlanCard">
           <div className="mPlanTop">
             <div><b>{sub.planName || t("专业版", "Pro")}</b><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small></div>
-            <span className="mPlanBadge">{t("生效中", "Active")}</span>
+            <span className={`mPlanBadge ${subExpired ? "expired" : ""}`}>{subExpired ? t("已过期", "Expired") : t("生效中", "Active")}</span>
           </div>
           <div className="mPlanFoot mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</div>
         </div>
@@ -264,10 +267,27 @@ function MobileRisk({ data, action, ui, view = "all" }) {
   const budgetCap = sys.dailyLossCapUsdt;
   const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
   const killed = sys.killSwitch;
+  const [dailyGoal, setDailyGoal] = useState(sys.dailyGoalUsdt ?? "");
+  const [goalBreakeven, setGoalBreakeven] = useState(sys.dailyGoalBreakevenEnabled === true);
+  useEffect(() => setDailyGoal(sys.dailyGoalUsdt ?? ""), [sys.dailyGoalUsdt]);
+  useEffect(() => setGoalBreakeven(sys.dailyGoalBreakevenEnabled === true), [sys.dailyGoalBreakevenEnabled]);
+  const savedDailyGoal = sys.dailyGoalUsdt == null ? "" : String(sys.dailyGoalUsdt);
+  const goalProtectionDirty = String(dailyGoal) !== savedDailyGoal || goalBreakeven !== (sys.dailyGoalBreakevenEnabled === true);
+  async function saveGoalProtection() {
+    const amount = Number(dailyGoal);
+    if (goalBreakeven && (!Number.isFinite(amount) || amount <= 0)) {
+      ui.notify?.(t("启用目标保本前，请先填写大于 0 的每日盈利目标", "Enter a daily profit goal greater than zero before enabling goal-based break-even protection"));
+      return;
+    }
+    await action("/api/system/goals", {
+      dailyGoalUsdt: Number.isFinite(amount) && amount > 0 ? amount : null,
+      dailyGoalBreakevenEnabled: goalBreakeven
+    });
+  }
   const active = ["running", "active"].includes(mandate.status);
   // 授权≠低风险：有真实风险等级就用它，否则显示"已授权·风险待评估"，不写死"低风险"。
   const rLabel = /高|中|低/.test(portfolio.riskLabel || "") ? portfolio.riskLabel : null;
-  const wall = killed ? { label: t("熔断停机 · 已阻断开仓", "Kill switch · opening blocked"), tone: "critical" }
+  const wall = killed ? { label: t("紧急停止中 · 已阻止新开仓", "Emergency stop active · new entries blocked"), tone: "critical" }
     : active ? { label: rLabel ? `${rLabel} · ${t("运行中", "Running")}` : t("已授权 · 风险待评估", "Authorized · risk pending"), tone: rLabel === "高风险" ? "critical" : rLabel === "中风险" ? "warning" : rLabel ? "ok" : "warning" }
     : { label: t("未授权 · 观察模式", "Not authorized · observe mode"), tone: "warning" };
   const mandateTone = active ? "ok" : statusTone(mandate.status);
@@ -276,6 +296,7 @@ function MobileRisk({ data, action, ui, view = "all" }) {
     [t("交易所", "Exchanges"), (mandate.exchanges || []).join(t("、", ", ")) || "—", ""],
     [t("最大杠杆", "Max leverage"), maxLeverage ? `${maxLeverage}x` : "—", ""],
     [t("单日最大亏损", "Max daily loss"), mandate.maxDailyLossPct ? `${mandate.maxDailyLossPct}%` : "—", "neg"],
+    [t("近7日最大亏损", "Rolling 7-day loss"), mandate.id ? `${mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? 5}%` : "—", "neg"],
     [t("审批阈值", "Approval threshold"), approvalThreshold != null && mandate.id ? `${displayMoney(approvalThreshold, 0)} U` : "—", ""],
     [t("有效期", "Valid until"), validUntil ? formatDate(validUntil) : t("长期有效", "No expiry"), ""]
   ];
@@ -287,7 +308,7 @@ function MobileRisk({ data, action, ui, view = "all" }) {
     <div className="mScreen">
       {showOverview && <div className={`mRiskWall ${wall.tone}`}>
         <ShieldCheck size={22} />
-        <div><b>{wall.label}</b><small>{active ? t("授权与硬风控生效中", "Mandate & hard risk controls active") : t("配置授权后进入自主", "Configure a mandate to go autonomous")}</small></div>
+        <div><b>{wall.label}</b><small>{active ? t("交易权限与硬风控生效中", "Trading permissions and hard risk controls are active") : t("先配置交易权限，再开启自主交易", "Configure trading permissions before enabling autonomous trading")}</small></div>
       </div>}
       {showOverview && <div className="mCard mBudgetCard">
         <div className="mBudgetTop"><span>{t("剩余亏损预算", "Remaining loss budget")}</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : t("未授权", "Not authorized")}</b></div>
@@ -311,23 +332,29 @@ function MobileRisk({ data, action, ui, view = "all" }) {
         </div>;
       })()}
       {showSettings && <div className="mCard">
-        <div className="mCardHead"><b>{t("授权委托 MANDATE", "Mandate")}</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, t("未授权", "Not authorized"))}</StatusBadge></div>
+        <div className="mCardHead"><b>{t("交易权限", "Trading permissions")}</b><StatusBadge tone={mandateTone}>{humanize(mandate.status, t("未设置", "Not configured"))}</StatusBadge></div>
         <div className="mMandList">{mandRows.map(([k, v, tone]) => <div className="mMandRow" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}</div>
-        <button className="mLink2" onClick={() => ui.openPanel("mandate")}>{t("编辑授权", "Edit mandate")} ›</button>
+        <button className="mLink2" onClick={() => ui.openPanel("mandate")}>{t("编辑交易权限", "Edit trading permissions")} ›</button>
       </div>}
       {showOverview && <div className="mCard">
         <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
-        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{name}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
+        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); const label = { "账户": t("账户", "Account"), "交易": t("交易", "Trading"), "事件": t("事件", "Events"), "系统": t("系统", "System") }[name] || name; return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{label}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
       </div>}
       {showSettings && <div className="mCard">
         <div className="mCardHead"><b>{t("实盘写入与灰度", "Live trading & rollout")}</b><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? t("实盘已开启", "Live on") : t("实盘关闭", "Live off")}</StatusBadge></div>
         <LiveGrayPanel data={data} action={action} ui={ui} />
       </div>}
+      {showSettings && <div className="mCard mGoalProtectionCard">
+        <div className="mCardHead"><b>{t("盈利目标保护", "Profit goal protection")}</b><StatusBadge tone={goalBreakeven ? "ok" : "neutral"}>{goalBreakeven ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge></div>
+        <label className="mGoalAmount"><span><b>{t("每日盈利目标", "Daily profit goal")}</b><small>{t("必须明确保存；没有目标时不会触发", "Must be explicitly saved; no goal means no trigger")}</small></span><div><input type="number" min="0.01" step="0.01" inputMode="decimal" value={dailyGoal} onChange={(event) => setDailyGoal(event.target.value)} aria-label={t("每日盈利目标", "Daily profit goal")} /><i>USDT</i></div></label>
+        <label className="mGoalToggle"><input type="checkbox" checked={goalBreakeven} onChange={(event) => setGoalBreakeven(event.target.checked)} /><span><b>{t("单个持仓浮盈达到目标后，止损至少保护到开仓价", "Move the stop to at least entry after one position reaches the goal")}</b><small>{t("只管理 AI 开立的仓位；不会放宽更有利的止损，也不改变止盈和跟踪止损", "Only AI-opened positions; never weakens a better stop or changes take-profit and trailing-stop logic")}</small></span></label>
+        <button type="button" className="primaryButton mGoalSave" disabled={!goalProtectionDirty} onClick={saveGoalProtection}>{t("保存盈利保护", "Save profit protection")}</button>
+      </div>}
 
       {showOverview && <div className="mRiskBtns">
         <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>{t("暂停自主", "Pause autonomy")}</button>
         <button className="mRbReduce" onClick={async () => { const on = Boolean(data.system?.reduceOnlyMode); if (await uiConfirm(on ? t("关闭只减仓模式?", "Turn off reduce-only mode?") : t("开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。", "Turn on reduce-only mode? New positions will be blocked; only reduce/close/cancel allowed."))) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? t("退出只减仓", "Exit reduce-only") : t("只减仓", "Reduce-only")}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
-        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? t("解除熔断", "Release kill switch") : t("一键熔断", "Kill switch")}</button>
+        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? t("恢复新交易", "Resume trading") : t("紧急停止", "Emergency stop")}</button>
       </div>}
     </div>
   );
@@ -647,7 +674,7 @@ function MobileAccountHealth({ data, action }) {
   );
 }
 
-// 全部 OKX/币安 USDT 永续合约清单(真实拉取),供移动版行情搜索选币用。
+// 全部 OKX USDT 永续合约清单(真实拉取),供移动版行情搜索选币用。
 function useMobileInstruments() {
   const [list, setList] = useState([]);
   useEffect(() => {
@@ -818,7 +845,7 @@ function MobileAudit({ data, ui }) {
 }
 
 // 屏 S1 — AI 交易员：顶栏下 4 等分状态条。
-function MobileChatStatus({ data }) {
+function MobileChatStatus({ data, ui }) {
   const sys = data.system || {};
   const pf = data.portfolio || {};
   const autoOn = sys.autonomyEnabled === true && !sys.killSwitch;
@@ -833,9 +860,9 @@ function MobileChatStatus({ data }) {
     [t("目标", "Target"), mandate?.maxDailyLossPct ? `${t("亏≤", "Loss ≤")}${mandate.maxDailyLossPct}${t("%/日", "%/day")}` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
   ];
   return (
-    <div className="mChatStatus">
+    <div className="mChatStatusWrap"><div className="mChatStatus">
       {cells.map(([k, v, tone]) => <div className="mChatStatCell" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}
-    </div>
+    </div><div className="mChatShortcuts"><button onClick={()=>ui.setActive("riskHub")}><ShieldCheck/>{t("查看交易限制","Trading limits")}</button><button onClick={()=>ui.setActive("watch")}><Gauge/>{t("实时盯盘","Live watch")}<b>{(data.watchTriggers||[]).filter(item=>item.status==="active").length}</b></button></div></div>
   );
 }
 
@@ -856,54 +883,58 @@ function MobileRiskHub({ data, action, ui }) {
 }
 
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
-function MobileStrategy({ data }) {
-  const strategies = [...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
+function MobileStrategy({ data, action }) {
+  const studio = data.strategyStudio || {};
+  const products = (data.strategyCatalog?.products || []).map((row) => ({ id: row.versionId, name: t(row.definition?.name || row.id, row.definition?.nameEn || row.id), status: row.deployment?.state, origin: t("策略产品", "Product"), timeframe: (row.definition?.timeframes || []).join("/") }));
+  const strategies = [...products, ...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
     .map((s, i) => ({ ...s, id: s.id || `str-${i}`, name: s.name || s.title || t("未命名策略", "Untitled strategy"), origin: s.origin || (s.methodId ? t("蒸馏", "Distilled") : s.userAuthored ? t("LLM/手写", "LLM/Manual") : /imported|uploaded|github|clawhub/i.test(String(s.source || "")) ? t("导入", "Imported") : t("内置", "Built-in")) }));
-  const isActive = (s) => /active|trusted|live|adopted/i.test(String(s.status));
-  const isValidating = (s) => /probation|paper|compiled|pending|trial|validating|candidate/i.test(String(s.status));
-  const isRetired = (s) => /retired|superseded|disabled|compile_failed|replaced|reject/i.test(String(s.status));
-  const FILTERS = [["全部", () => true], ["已上岗", isActive], ["验证中", isValidating], ["已停用", isRetired]];
-  const [f, setF] = useState("全部");
-  const fn = (FILTERS.find((x) => x[0] === f) || FILTERS[0])[1];
-  const shown = strategies.filter(fn);
+  const [tab, setTab] = useState("catalog");
+  const [prompt, setPrompt] = useState("");
+  const drafts = studio.drafts || [];
+  const [selectedId, setSelectedId] = useState(drafts[0]?.id || "");
+  const selected = drafts.find((row) => row.id === selectedId) || drafts[0] || {};
+  const latestBt = (studio.backtests || []).find((row) => row.id === selected.latestBacktestId);
+  const listings = studio.marketplace?.listings || [];
+  const createDraft = async () => {
+    if (prompt.trim().length < 12) return;
+    const result = await action("/api/strategy/studio/drafts", { prompt }, "POST");
+    if (result?.draft?.id) { setSelectedId(result.draft.id); setPrompt(""); if (result.suite?.status === "passed") await action(`/api/strategy/studio/drafts/${result.draft.id}/backtest`, {}, "POST"); }
+  };
+  const statusLabel = (value) => ({ owner_live_observation:t("实盘观察（未验证）","Live observation"), validated_active:t("证据达标","Evidence-qualified"), tests_passed:t("自动测试通过","Tests passed"), backtest_passed:t("样本外通过","OOS passed"), backtest_failed:t("样本外未通过","OOS failed"), published:t("已发布","Published") }[value] || humanize(value, "—"));
   return (
     <div className="mScreen">
-      <div className="mMetric2x2">
-        <div className="mMetricCell"><span>{t("全部策略", "All strategies")}</span><b className="mono">{strategies.length}</b></div>
-        <div className="mMetricCell"><span>{t("已上岗", "Live")}</span><b className="mono pos">{strategies.filter(isActive).length}</b></div>
-        <div className="mMetricCell"><span>{t("验证中", "Validating")}</span><b className="mono">{strategies.filter(isValidating).length}</b></div>
-        <div className="mMetricCell"><span>{t("已停用", "Retired")}</span><b className="mono neg">{strategies.filter(isRetired).length}</b></div>
-      </div>
-      <div className="mSymPills">{FILTERS.map(([name]) => <button key={name} className={f === name ? "active" : ""} onClick={() => setF(name)}>{name}</button>)}</div>
-      <div className="mCard">
-        {shown.length ? shown.map((s) => (
-          <div className="mIncRow" key={s.id}>
-            <div className="mIncL"><b>{s.name}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div>
-            {(() => { const st = SKILL_STATE[s.status] || { label: humanize(s.status, "—"), tone: statusTone(s.status) }; return <StatusBadge tone={st.tone}>{st.label}</StatusBadge>; })()}
-          </div>
-        )) : <div className="mEmpty">{t("暂无策略（喂书蒸馏或导入策略后在此出现）", "No strategies (they appear here after distilling from books or importing)")}</div>}
-      </div>
+      <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => setTab("studio")}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>{t("市场", "Market")}</button></div>
+      {tab === "catalog" && <><div className="mMetric2x2"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div><div className="mMetricCell"><span>{t("市场发布", "Published")}</span><b className="mono">{studio.marketplace?.summary?.studio || 0}</b></div></div><div className="mCard">{strategies.length ? strategies.map((s) => <div className="mIncRow" key={s.id}><div className="mIncL"><b>{localizeText(s.name)}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge></div>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</div></>}
+        {tab === "studio" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("自然语言创建策略", "Create from natural language")}</b><p className="mStrategyHelp">{t("只编译到确定性白名单规则；创建草稿不会下单。", "Compiles only to deterministic allowlisted rules. Drafts never place orders.")}</p><textarea className="mStrategyPrompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("例：ADA/USDT 1小时，RSI 14 从30下方站回时做多，止损2%，止盈2.5R", "Example: Long ADA/USDT on 1h when RSI(14) crosses back above 30; 2% stop, 2.5R target")}/><button className="mStrategyPrimary" disabled={prompt.trim().length < 12} onClick={createDraft}><Sparkles size={14}/>{t("生成、测试并自动回测", "Generate, test, and backtest")}</button></div>
+        {drafts.length ? <div className="mCard"><b className="mSectionTitle">{t("策略草稿", "Strategy drafts")}</b><div className="mStrategyDrafts">{drafts.slice(0,20).map((row) => <button key={row.id} className={row.id === selected.id ? "active" : ""} onClick={() => setSelectedId(row.id)}><span><b>{localizeText(row.blueprint?.name)}</b><small>{row.blueprint?.symbols?.join("/")} · {row.blueprint?.timeframe} · {humanize(row.blueprint?.direction)}</small></span><StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge></button>)}</div></div> : null}
+        {selected.id && <><div className="mCard"><b className="mSectionTitle">{t("系统理解的规则", "Compiled rules")}</b><div className="mStrategyFacts"><span>{t("信号", "Signal")}<b>{t(selected.blueprint?.templateName || "—", selected.blueprint?.templateNameEn || selected.blueprint?.templateName || "—")}</b></span><span>{t("止损 / 止盈", "Stop / target")}<b>{selected.blueprint?.exitPolicy?.stopLossPct}% · {selected.blueprint?.exitPolicy?.takeProfitR}R</b></span><span>{t("参数", "Parameters")}<b className="mono">{JSON.stringify(selected.blueprint?.params || {})}</b></span></div></div><div className="mCard"><b className="mSectionTitle">{t("自动测试", "Generated tests")} · {selected.generatedTests?.passed || 0}/{selected.generatedTests?.total || 0}</b>{(selected.generatedTests?.tests || []).map((test) => <div className="mStrategyTest" key={test.id}>{test.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{t(test.name, test.nameEn || test.name)}</b><small>{t(test.detail, test.detailEn || test.detail)}</small></span></div>)}</div><div className="mCard"><b className="mSectionTitle">{t("样本外证据", "Out-of-sample evidence")}</b>{latestBt ? <div className="mStrategyFacts"><span>{t("交易 / 期望", "Trades / expectancy")}<b>{latestBt.oos?.trades || 0} · {latestBt.oos?.expectancyR ?? "—"}R</b></span><span>PF / {t("回撤", "drawdown")}<b>{latestBt.oos?.profitFactor ?? "—"} · {latestBt.oos?.maxDrawdownPct ?? "—"}%</b></span><span>{t("正向分段", "Positive folds")}<b>{latestBt.positiveFolds}/{latestBt.activeFolds}</b></span></div> : <p className="mStrategyHelp">{t("尚未运行 OKX 历史样本外回测。", "OKX historical OOS backtest has not run.")}</p>}<div className="mStrategyActions"><button disabled={selected.generatedTests?.status !== "passed"} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/backtest`, {}, "POST")}>{t("运行回测", "Run backtest")}</button><button disabled={!latestBt?.passed || Boolean(selected.publishVersionId)} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/publish`, {}, "POST")}>{selected.publishVersionId ? t("已发布", "Published") : t("发布到市场", "Publish")}</button></div></div></>}
+      </div>}
+      {tab === "market" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("内部策略市场", "Internal strategy market")}</b><p className="mStrategyHelp">{t("不依赖对外 MCP。启用只会加入 AI 可选集，仍须通过全部实时风控。", "Independent of external MCP. Enabling only adds a strategy to the AI eligible set; all live risk checks remain mandatory.")}</p></div>{listings.map((row) => { const def = row.definition || {}; const oos = row.validation?.oos; return <div className="mCard" key={row.id}><div className="mStrategyMarketHead"><b>{t(row.title || def.name, row.titleEn || row.title || def.name)}</b><StatusBadge tone={row.evidenceLevel === "live_validated" ? "ok" : "warning"}>{row.evidenceLevel === "oos_passed" ? t("样本外通过", "OOS passed") : row.evidenceLevel === "live_validated" ? t("实盘证据达标", "Live-validated") : t("实盘观察", "Live observation")}</StatusBadge></div><p className="mStrategyHelp">{t(row.summary || def.description, row.summaryEn || row.summary || def.description)}</p><div className="mStrategyFacts"><span>{t("版本", "Version")}<b className="mono">{row.strategyVersionId}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(def.direction)} · {(def.timeframes || []).join("/") || def.timeframe || "—"}</b></span><span>{t("证据", "Evidence")}<b>{row.source === "official" ? `${row.metrics?.closedTrades || 0} ${t("笔实盘", "live closes")}` : `${oos?.trades || 0} ${t("笔样本外", "OOS trades")} · ${oos?.expectancyR ?? "—"}R`}</b></span></div>{row.source === "official" ? <button className="mStrategyDisabled" disabled>{row.enabled ? t("系统当前可用", "Available") : t("已暂停", "Paused")}</button> : <button className="mStrategyPrimary" onClick={() => action(`/api/strategy/market/${encodeURIComponent(row.strategyVersionId)}/${row.enabled ? "disable" : "enable"}`, {}, "POST")}>{row.enabled ? t("从 AI 可选集移除", "Remove from AI set") : t("加入 AI 可选集", "Add to AI set")}</button>}</div>; })}</div>}
     </div>
   );
 }
 
 const mobileNav = [
-  { id: "chat", label: t("AI 交易员", "AI Trader"), code: "ALPHA-01", icon: Bot },
-  { id: "cockpit", label: t("市场与账户", "Market & Account"), code: "MARKET · ACCOUNT", icon: PieChart },
-  { id: "riskHub", label: t("风控中心", "Risk Control"), code: "RISK · CONTROL", icon: ShieldCheck },
-  { id: "knowledgeBase", label: t("知识库", "Knowledge"), code: "KNOWLEDGE", icon: BookOpen },
-  { id: "strategyLib", label: t("策略库", "Strategy"), code: "STRATEGY · LIB", icon: Rocket },
-  { id: "eventsTasks", label: t("事件与任务", "Events & Tasks"), code: "EVENTS · TASKS", icon: CalendarClock },
-  { id: "auditSystem", label: t("审计", "Audit"), code: "AUDIT · SYSTEM", icon: Activity },
-  { id: "systemSettings", label: t("系统设置", "Settings"), code: "SETTINGS · CONFIG", icon: Settings }
+  { id: "chat", label: ["AI 交易员", "AI Trader"], code: "ALPHA-01", icon: Bot },
+  { id: "watch", label: ["实时盯盘", "Live Watch"], code: "WATCH · LIVE", icon: Gauge },
+  { id: "cockpit", label: ["市场与账户", "Market & Account"], code: "MARKET · ACCOUNT", icon: PieChart },
+  { id: "executionReview", label: ["执行与复盘", "Execution & Review"], code: "EXECUTION · REVIEW", icon: ClipboardList },
+  { id: "tradeLedger", label: ["委托与成交", "Orders & Fills"], code: "ORDERS · FILLS", icon: ReceiptText },
+  { id: "riskHub", label: ["风控中心", "Risk Control"], code: "RISK · CONTROL", icon: ShieldCheck },
+  { id: "knowledgeBase", label: ["知识库", "Knowledge"], code: "KNOWLEDGE", icon: BookOpen },
+  { id: "strategyLib", label: ["策略库", "Strategy"], code: "STRATEGY · LIB", icon: Rocket },
+  { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], code: "EVENTS · TASKS", icon: CalendarClock },
+  { id: "auditSystem", label: ["审计", "Audit"], code: "AUDIT · SYSTEM", icon: Activity },
+  { id: "systemSettings", label: ["系统设置", "Settings"], code: "SETTINGS · CONFIG", icon: Settings }
 ];
+const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
 
 function MobileHeader({ route, onMenu, right, reconnecting }) {
   const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
   return (
     <header className="mHeader2">
       <button className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20} /></button>
-      <div className="mHeaderMid"><strong>{item.label}</strong><small className="mono">{item.code}</small></div>
+      <div className="mHeaderMid"><strong>{mobileNavLabel(item)}</strong><small className="mono">{item.code}</small></div>
       <div className="mHeaderRight">
         {reconnecting && <span className="mReconnect"><span className="pulseDot" />{t("重连中", "Reconnecting")}</span>}
         {right}
@@ -918,12 +949,12 @@ function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang })
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
-        <div className="mDrawerBrand"><span className="mDrawerLogo">◆</span><div className="mDrawerBrandText"><b>{t("交易 Agent", "Trading Agent")}</b><small>AI · DIGITAL ASSET</small></div></div>
+        <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.png" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
         <div className="mDrawerNav">
           {mobileNav.map((n) => {
             const Icon = n.icon;
-            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span>{n.label}</span></button>;
+            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span>{mobileNavLabel(n)}</span></button>;
           })}
         </div>
         <div className="mDrawerFoot">
@@ -982,6 +1013,7 @@ export function MobileApp({ api, lang, switchLang }) {
 
   function navigate(next) {
     haptic("light");
+    if (next === "tradeJournal") { setRoute("executionReview"); setSubPage(""); setDrawer(false); return; }
     if (mobileNav.some((n) => n.id === next)) { setRoute(next); setSubPage(""); setDrawer(false); return; }
     if (next === "positions" || next === "marketAccount") { setRoute("cockpit"); setSubPage(next); setDrawer(false); return; }
     if (next === "systemSettings") { setRoute("systemSettings"); setSubPage(""); setDrawer(false); return; }
@@ -995,11 +1027,17 @@ export function MobileApp({ api, lang, switchLang }) {
 
   let content = null;
   if (route === "chat") {
-    content = <div className="content mChatContent"><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} /></div>;
+    content = <div className="content mChatContent"><MobileChatStatus data={data} ui={ui} /><ChatPage data={data} action={action} ui={ui} /></div>;
+  } else if (route === "watch") {
+    content = <div className="content mSubContent"><WatchMonitorConcept data={data} action={action} ui={ui} /></div>;
   } else if (route === "cockpit") {
     content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
+  } else if (route === "executionReview") {
+    content = <div className="content mSubContent"><ExecutionReviewConcept data={data} action={action} ui={ui} /></div>;
+  } else if (route === "tradeLedger") {
+    content = <div className="content mSubContent"><ExecutionLedgerConcept data={data} action={action} ui={ui} /></div>;
   } else if (route === "riskHub") {
     content = <MobileRiskHub data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
@@ -1007,7 +1045,7 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "knowledgeBase") {
     content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
   } else if (route === "strategyLib") {
-    content = <div className="content mSubContent"><MobileStrategy data={data} /></div>;
+    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} /></div>;
   } else if (route === "auditSystem") {
     content = <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
@@ -1021,7 +1059,7 @@ export function MobileApp({ api, lang, switchLang }) {
     ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
     : route === "chat"
       ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? t("运行中", "Running") : t("已暂停", "Paused")}</span>
-      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("解除熔断", "Release") : t("熔断", "Kill switch")}</button>;
+      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("恢复交易", "Resume") : t("紧急停止", "Emergency stop")}</button>;
 
   return (
     <div className="mShell2">

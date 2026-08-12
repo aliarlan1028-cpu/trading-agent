@@ -24,6 +24,8 @@ test("启动补跑只挑超期的长间隔任务:短间隔/未超期/禁用/cron
       { id: "poll", enabled: true, type: "Every", schedule: "Every 1m", lastRunAt: iso(3_600_000) },
       // 15m 任务(< 30m 门槛)不补
       { id: "cycle", enabled: true, type: "Every", schedule: "Every 15m", lastRunAt: iso(3_600_000) },
+      // 关键情报任务显式要求启动补跑，即使低于 30m 门槛也要补，避免部署后继续使用旧闻。
+      { id: "intel", enabled: true, type: "Every", schedule: "Every 20m", startupCatchup: true, lastRunAt: iso(3_600_000) },
       // 禁用任务不补
       { id: "off", enabled: false, type: "Every", schedule: "Every 6h", lastRunAt: iso(10 * 3_600_000) },
       // cron 类型不归此机制管
@@ -31,5 +33,5 @@ test("启动补跑只挑超期的长间隔任务:短间隔/未超期/禁用/cron
     ]
   };
   const ids = overdueLongTasks(db, now).map((t) => t.id);
-  assert.deepEqual(ids.sort(), ["never", "research"]);
+  assert.deepEqual(ids.sort(), ["intel", "never", "research"]);
 });

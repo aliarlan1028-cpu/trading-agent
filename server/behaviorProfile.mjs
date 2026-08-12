@@ -3,6 +3,7 @@
 // 亏损归因(策略/执行/市场)、真实杠杆(plan)、持仓时长(入场↔平仓时间差)、ROI(realizedPnl÷保证金)。
 // LLM 叙述层单独在别处用主模型(deepseek)基于本结果 + 入场理由/复盘生成"性格+致命习惯+纪律"。
 import { id, nowIso, appendAudit } from "./store.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
@@ -13,10 +14,15 @@ export const fmtMin = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)}m` :
 export function buildClosedTrades(db) {
   const fills = db.fills || [];
   const plans = db.tradePlans || [];
-  const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
+  // 一次仓位生命周期可能有多次减仓；画像必须按完整交易聚合，否则胜率、杠杆习惯和样本量都会被部分平仓扭曲。
+  const closes = groupClosedTradeLifecycles(fills).map((item) => item.representative);
   return closes.map((c) => {
     const plan = plans.find((p) => p.id === c.planId || p.id === c.tradePlanId) || {};
-    const entry = fills.find((f) => f.kind === "entry" && (f.executionOrderId === c.executionOrderId || f.planId === c.planId));
+    const entry = fills.find((f) => f.kind === "entry" && (
+      f.executionOrderId === c.executionOrderId
+      || f.tradePlanId === (c.tradePlanId || c.planId)
+      || f.planId === (c.planId || c.tradePlanId)
+    ));
     const leverage = num(plan.leverage) ?? num(c.leverage);
     const pnl = num(c.realizedPnl);
     const notional = num(c.notionalUsdt);
@@ -31,6 +37,7 @@ export function buildClosedTrades(db) {
       symbol: c.symbol, direction: dirCanon(c.direction), pnl, win: pnl > 0,
       leverage, roiPct, holdMinutes, regime: c.regime || "未知",
       strategy: c.strategy || null, lossAttribution: c.lossAttribution || null,
+      entryPrice: num(entry?.price), exitPrice: num(c.price),
       slippageBps: num(c.slippageBps),
       hasRationale: Boolean(c.entryRationale && c.entryRationale !== "未记录入场理由"),
       closedAt: c.createdAt
@@ -84,7 +91,14 @@ export function computeBehaviorProfile(db) {
     byDirection: groupBy("direction"),
     byRegime: groupBy("regime"),
     lossAttribution,
-    scatter: trades.map((t) => ({ holdMinutes: t.holdMinutes, roiPct: t.roiPct, leverage: t.leverage, win: t.win, symbol: t.symbol })),
+    // 诊断图的悬浮信息和页面筛选全部使用同一笔真实平仓生命周期；
+    // 只透传已由上方 join/聚合得到的事实，不在前端根据圆点位置反推交易属性。
+    scatter: trades.map((t) => ({
+      holdMinutes: t.holdMinutes, roiPct: t.roiPct, leverage: t.leverage, win: t.win,
+      symbol: t.symbol, direction: t.direction, pnl: t.pnl, regime: t.regime,
+      strategy: t.strategy, lossAttribution: t.lossAttribution, entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice, closedAt: t.closedAt
+    })),
     flags,
     computedAt: nowIso()
   };
@@ -95,8 +109,8 @@ export function computeBehaviorProfile(db) {
 export async function generateBehaviorNarrative(db, profile) {
   if (!profile || !profile.trades) return null;
   const { llmComplete } = await import("./agentChat.mjs");
-  const recent = (db.fills || [])
-    .filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)))
+  const recent = groupClosedTradeLifecycles(db.fills || [])
+    .map((item) => item.representative)
     .slice(0, 12)
     .map((f) => ({ symbol: f.symbol, dir: f.direction, pnl: f.realizedPnl, regime: f.regime, lossAttr: f.lossAttribution || null, rationale: String(f.entryRationale || "").slice(0, 160), deep: String(f.deepReflection || "").slice(0, 200) }));
   const sys = "你是严格的交易行为分析师 + 风控教练。只根据给定的量化画像与真实成交做归纳,绝不编造数字或习惯。输出必须具体、直指要害、可执行,禁止空话套话。样本少就在 blindSpots 里说明、不硬下结论。只输出 JSON。";

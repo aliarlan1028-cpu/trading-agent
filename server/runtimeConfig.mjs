@@ -6,13 +6,13 @@ import { getMasterKeyMaterial, keyProviderStatus } from "./keyProvider.mjs";
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
 export const SECRET_KEYS = new Set([
   "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
-  "BINANCE_API_KEY", "BINANCE_API_SECRET",
   "OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE",
   "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "SERPAPI_API_KEY",
   "ALERT_WEBHOOK_URL", "ETHERSCAN_API_KEY", "LANGSMITH_API_KEY",
   "LARK_WEBHOOK_URL", "LARK_WEBHOOK_SECRET",
   "TELEGRAM_BOT_TOKEN",
   "WORM_AUDIT_TOKEN",
+  "TURNSTILE_SECRET_KEY", "REGISTRATION_EMAIL_WEBHOOK_URL", "REGISTRATION_EMAIL_WEBHOOK_TOKEN", "REGISTRATION_RATE_LIMIT_SALT",
   "ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"
 ]);
 
@@ -21,18 +21,23 @@ export const PLAIN_KEYS = new Set([
   "ANTHROPIC_MODEL", "OPENAI_MODEL", "DEEPSEEK_MODEL", "GEMINI_MODEL",
   "LIVE_TRADING_ENABLED", "I_UNDERSTAND_REAL_TRADING", "REAL_ORDER_WRITE_ENABLED",
   "MAX_LIVE_NOTIONAL_USDT", "OKX_MARGIN_MODE", "OKX_POSITION_MODE",
-  "BINANCE_MARGIN_MODE", "BINANCE_POSITION_MODE",
-  "AUTH_REQUIRED", "PUBLIC_REGISTRATION_ENABLED", "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT", "SKILL_SANDBOX_IMAGE",
-  "BINANCE_MARKET_TYPE", "OKX_MARKET_TYPE", "PORT", "HOST",
-  "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "REQUIRE_PAPER_VALIDATION",
+  "AUTH_REQUIRED", "PUBLIC_REGISTRATION_ENABLED", "PUBLIC_REGISTRATION_MODE", "PUBLIC_MAX_TENANTS", "PUBLIC_BASE_URL",
+  "TURNSTILE_SITE_KEY", "REGISTRATION_TERMS_VERSION", "REGISTRATION_PRIVACY_VERSION", "PROVISIONING_BROKER_ENABLED",
+  "REGISTRATION_TERMS_URL", "REGISTRATION_PRIVACY_URL",
+  "REQUIRE_MFA_FOR_LIVE",
+  "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT", "SKILL_SANDBOX_IMAGE",
+  "PRODUCTION_SECURITY_PROFILE", "MANDATE_POLICY_MAX_SINGLE_RISK_PCT", "MANDATE_POLICY_MAX_DAILY_LOSS_PCT", "MANDATE_POLICY_MAX_WEEKLY_LOSS_PCT",
+  "OKX_MARKET_TYPE", "PORT", "HOST",
+  "EMBEDDING_PROVIDER", "EMBEDDING_MODEL",
   "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED",
   "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", "TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT",
   "TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES",
+  "TELEGRAM_WATCH_CHAT_ID", "TELEGRAM_WATCH_NOTIFIER_ENABLED", "TELEGRAM_WATCH_DAILY_DIGEST_ENABLED",
   "WORM_AUDIT_ENDPOINT", "WORM_AUDIT_SINK_ID",
   // 风控阈值(前端「风控设置 · 风控阈值」运行时可调,改完即生效不重部署)
   "MIN_REWARD_RISK", "PROTECT_MAX_CONSEC_LOSSES", "PROTECT_COOLDOWN_HOURS",
   "PROTECT_MAX_DRAWDOWN_PCT", "PROTECT_DRAWDOWN_LOCK_HOURS", "PROTECT_DRAWDOWN_LOOKBACK",
-  "TRAIL_ACTIVATE_PCT", "TRAIL_PCT", "EVENT_BLACKOUT_MINUTES"
+  "TRAIL_ACTIVATE_PCT", "TRAIL_PCT", "EVENT_BLACKOUT_MINUTES", "ENTRY_ORDER_TTL_MINUTES", "ENTRY_STALE_DEVIATION_PCT"
 ]);
 
 function masterKey() {
@@ -48,7 +53,7 @@ function decrypt(enc) {
 }
 
 function scopeFor(key) {
-  if (key.startsWith("BINANCE") || key.startsWith("OKX")) return "exchange";
+  if (key.startsWith("OKX")) return "exchange";
   if (key.endsWith("_API_KEY") || key.endsWith("_KEY")) return "llm";
   if (key === "ADMIN_PASSWORD") return "auth";
   if (key.includes("PROXY")) return "network";
@@ -62,14 +67,22 @@ function recomputeLive(db) {
 
 // 启动时把已持久化的配置回填到 process.env，实现跨重启生效。
 export function applyStoredConfigToEnv(db) {
+  for (const key of db.clearedRuntimeSecrets || []) delete process.env[key];
   for (const item of db.vaultItems || []) {
-    if (item.encrypted && SECRET_KEYS.has(item.name) && !process.env[item.name]) {
-      try { process.env[item.name] = decrypt(item.encrypted); } catch { /* 主密钥变更导致解密失败时忽略 */ }
+    if (item.encrypted && SECRET_KEYS.has(item.name)) {
+      try {
+        // 金库是通过前端保存后的持久化运行配置，环境变量只是首次部署/灾难恢复的
+        // bootstrap 值。此前仅在 env 为空时回填，导致前端改过的 ADMIN_PASSWORD/API
+        // 密钥在每次重启后又被旧 .env 覆盖，看似“保存成功但没改”。解密成功时应以
+        // 金库为准；解密失败则保留部署环境变量，避免主密钥异常把服务直接锁死。
+        process.env[item.name] = decrypt(item.encrypted);
+      } catch { /* 主密钥变更导致解密失败时保留部署环境变量 */ }
     }
   }
   db.runtimeConfig ||= {};
   for (const [key, value] of Object.entries(db.runtimeConfig)) {
-    if (value !== undefined && value !== null && value !== "") process.env[key] = String(value);
+    // 空字符串也是用户明确保存的“清空”，必须覆盖 .env 的 bootstrap 值，避免重启复活。
+    if (value !== undefined && value !== null) process.env[key] = String(value);
   }
   recomputeLive(db);
 }
@@ -84,6 +97,7 @@ export function setConfig(db, entries = {}) {
     if (SECRET_KEYS.has(key)) {
       if (value === "") continue; // 空值不覆盖已有密钥
       storeSecret(db, key, value, scopeFor(key));
+      db.clearedRuntimeSecrets = (db.clearedRuntimeSecrets || []).filter((item) => item !== key);
       process.env[key] = value;
       applied.push(key);
     } else if (PLAIN_KEYS.has(key)) {
@@ -105,6 +119,8 @@ export function clearSecret(db, key) {
   if (!SECRET_KEYS.has(key)) return false;
   delete process.env[key];
   db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== key);
+  db.clearedRuntimeSecrets ||= [];
+  if (!db.clearedRuntimeSecrets.includes(key)) db.clearedRuntimeSecrets.push(key);
   appendAudit(db, `移除密钥：${key}`, "runtime_config", "ConfigManager", "warning");
   return true;
 }
@@ -132,7 +148,6 @@ export function getConfigStatus(db) {
       }
     },
     exchange: {
-      binance: { hasKey: has("BINANCE_API_KEY"), hasSecret: has("BINANCE_API_SECRET") },
       okx: { hasKey: has("OKX_API_KEY"), hasSecret: has("OKX_API_SECRET"), hasPassphrase: has("OKX_API_PASSPHRASE") }
     },
     liveTrading: {
@@ -164,6 +179,11 @@ export function getConfigStatus(db) {
         chatId: process.env.TELEGRAM_CHAT_ID || "",
         configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
         profitPosterEnabled: process.env.TELEGRAM_PROFIT_POSTER_ENABLED === "true",
+        watchChatId: process.env.TELEGRAM_WATCH_CHAT_ID || "",
+        watchUsesPrimaryChat: !process.env.TELEGRAM_WATCH_CHAT_ID,
+        watchConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && (process.env.TELEGRAM_WATCH_CHAT_ID || process.env.TELEGRAM_CHAT_ID)),
+        watchNotifierEnabled: process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED === "true",
+        watchDailyDigestEnabled: process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED === "true",
         minPnlUsdt: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT || 0),
         minRoiPct: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT || 0),
         cooldownMinutes: Number(process.env.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240)
@@ -173,7 +193,6 @@ export function getConfigStatus(db) {
       adminPasswordSet: has("ADMIN_PASSWORD"),
       authRequired: process.env.AUTH_REQUIRED !== "false",
       skillSandboxImage: process.env.SKILL_SANDBOX_IMAGE || "node:20-alpine",
-      binanceMarketType: process.env.BINANCE_MARKET_TYPE || "spot",
       okxMarketType: process.env.OKX_MARKET_TYPE || "perpetual_swap",
       httpProxySet: has("HTTP_PROXY"),
       httpsProxySet: has("HTTPS_PROXY"),

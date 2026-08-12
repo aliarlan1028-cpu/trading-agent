@@ -25,6 +25,7 @@ export function evaluateAgentProposal(proposal = {}, context = {}) {
     }
     if (context.marketDataFresh === false) violations.push("stale_market_data");
     if (context.accountSnapshotFresh === false) violations.push("stale_account_snapshot");
+    if (context.requiredToolsHealthy === false) violations.push("required_tool_failure");
     if (context.extremeVolatility === true && Number(payload.leverage || 1) > Number(context.maxExtremeLeverage || 1)) {
       violations.push("excessive_leverage_in_extreme_volatility");
     }

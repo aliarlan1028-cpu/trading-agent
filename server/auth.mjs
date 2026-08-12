@@ -1,11 +1,21 @@
 import crypto from "node:crypto";
-import { saveDb, nowIso, id } from "./store.mjs";
+import express from "express";
+import { appendAudit, saveDb, nowIso, id } from "./store.mjs";
+import { readSecret, storeSecret } from "./securityOps.mjs";
+import { generateTotpSecret, totpProvisioningUri, verifyTotp } from "./totp.mjs";
+import {
+  sendRegistrationVerificationEmail,
+  publicRegistrationStatus,
+  submitRegistrationApplication,
+  verifyRegistrationEmail
+} from "./publicRegistration.mjs";
 
 const sessions = new Map();
-const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS || 30);
+const SESSION_DAYS = Math.max(1 / 24, Math.min(7, Number(process.env.AUTH_SESSION_DAYS || 1)));
 const loginAttempts = new Map();
 const LOGIN_WINDOW_MS = 15 * 60_000;
 const LOGIN_MAX_ATTEMPTS = Math.max(3, Number(process.env.LOGIN_MAX_ATTEMPTS || 8));
+const authJson = express.json({ limit: "64kb" });
 
 export function authRequired() {
   if (process.env.AUTH_REQUIRED === "false") return false;
@@ -16,7 +26,7 @@ let warnedNoPassword = false;
 const ownerEmail = () => String(process.env.OWNER_EMAIL || "aliarlan1028@gmail.com").trim().toLowerCase();
 
 export function installAuth(app, db) {
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", authJson, (req, res) => {
     const clientKey = String(req.ip || req.socket?.remoteAddress || "unknown");
     const attempt = loginAttempts.get(clientKey);
     if (attempt && attempt.resetAt > Date.now() && attempt.count >= LOGIN_MAX_ATTEMPTS) {
@@ -31,54 +41,64 @@ export function installAuth(app, db) {
     }
     const user = (db.users || []).find((item) => String(item.email || "").toLowerCase() === email);
     const isOwnerEmail = email === ownerEmail();
-    if (isOwnerEmail && password === process.env.ADMIN_PASSWORD) {
-      loginAttempts.delete(clientKey);
+    if (isOwnerEmail && safeEqual(password, process.env.ADMIN_PASSWORD)) {
       const owner = ensureOwnerUser(db);
-      return createSession(res, db, owner);
+      return completePasswordLogin(req, res, db, owner, clientKey);
     }
     if (!user || user.status === "disabled" || !verifyPassword(password, user.passwordHash)) {
       recordLoginFailure(clientKey);
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    loginAttempts.delete(clientKey);
-    return createSession(res, db, user);
+    return completePasswordLogin(req, res, db, user, clientKey);
   });
 
-  app.post("/api/auth/register", (req, res) => {
-    if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true") {
-      return res.status(403).json({ error: "Public registration is not enabled" });
+  const handleRegistrationApplication = async (req, res) => {
+    try {
+      const result = await submitRegistrationApplication(db, req.body || {}, {
+        ip: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"]
+      });
+      let delivery = { sent: false, reason: result.duplicate ? "already_received" : "not_attempted" };
+      if (result.verificationToken) delivery = await sendRegistrationVerificationEmail(result.application, result.verificationToken);
+      appendAudit(db, `收到公开开通申请：${result.application.id}`, result.application.id, "PublicRegistration", "info");
+      saveDb(db);
+      // 新申请与重复邮箱使用相同状态码和外部状态，避免把入口变成邮箱存在性探针。
+      const response = {
+        ok: true,
+        application: {
+          id: id("receipt"),
+          status: "received"
+        },
+        verificationDelivery: delivery.sent ? "sent" : "manual_review",
+        message: "Application received. Verify your email if a message was sent; no trading account has been created yet."
+      };
+      if (process.env.NODE_ENV !== "production" && result.verificationToken) response.devVerificationToken = result.verificationToken;
+      res.status(202).json(response);
+    } catch (error) {
+      // 限流计数必须在失败请求上也持久化，不能靠重启清零。
+      saveDb(db);
+      throw error;
     }
-    // 当前交易域仍使用单一工作区状态。宁可拒绝注册，也不能创建一个会看到
-    // Owner 仓位/订单的“伪租户”。完成按 tenant_id 分区的 V2 存储后才允许开启。
-    if (process.env.TENANT_ISOLATION_V2 !== "true") {
-      return res.status(503).json({ error: "Public registration requires TENANT_ISOLATION_V2; multi-tenant trading data is fail-closed" });
-    }
-    const email = String(req.body?.email || "").trim().toLowerCase();
-    const password = String(req.body?.password || "");
-    const name = String(req.body?.name || email.split("@")[0] || "新用户").trim();
-    const requestedPlanId = String(req.body?.planId || "").trim();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: "Valid email is required" });
-    if (password.length < 10) return res.status(400).json({ error: "Password must be at least 10 characters" });
-    db.users ||= [];
-    if (db.users.some((item) => String(item.email || "").toLowerCase() === email)) return res.status(409).json({ error: "Email already registered" });
-    const tenantId = `tenant_${crypto.randomUUID().slice(0, 8)}`;
-    const userId = `user_${crypto.randomUUID().slice(0, 8)}`;
-    const createdAt = nowIso();
-    db.tenants ||= [];
-    db.subscriptions ||= [];
-    const tenant = { id: tenantId, name: `${name} 的工作区`, ownerUserId: userId, planId: "trial", status: "trial", createdAt };
-    const user = { id: userId, tenantId, name, email, role: "交易用户", status: "active", passwordHash: hashPassword(password), createdAt };
-    db.tenants.push(tenant);
-    db.users.push(user);
-    db.subscriptions.push({ id: `sub_${crypto.randomUUID().slice(0, 8)}`, tenantId, userId, planId: "trial", status: "trialing", source: "registration", startedAt: createdAt, currentPeriodEnd: trialEndIso(7) });
-    const payment = createPendingPayment(db, { tenantId, userId, planId: requestedPlanId });
+  };
+
+  // 兼容旧客户端的 /api/auth/register，但语义已经安全收紧为“提交开通申请”。
+  // 它不会创建用户/租户/会话，也不会让访客进入 Owner 工作区。
+  app.post("/api/auth/register", authJson, handleRegistrationApplication);
+  app.post("/api/public/registration/apply", authJson, handleRegistrationApplication);
+  app.get("/api/public/registration/verify", (req, res) => {
+    const application = verifyRegistrationEmail(db, req.query?.token);
+    appendAudit(db, `公开开通申请邮箱已验证：${application.id}`, application.id, "PublicRegistration", "info");
     saveDb(db);
-    return createSession(res, db, user, { payment });
+    res.json({ ok: true, application, statusUrl: `/api/public/registration/status?token=${encodeURIComponent(req.query?.token || "")}`, message: "Email verified. Your application is now in the onboarding queue." });
+  });
+  app.get("/api/public/registration/status", (req, res) => {
+    res.json(publicRegistrationStatus(db, req.query?.token));
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    const token = getBearerToken(req);
+    const token = getAuthToken(req);
     if (token) deleteSession(db, token);
+    clearSessionCookie(res);
     saveDb(db);
     res.json({ ok: true });
   });
@@ -98,7 +118,7 @@ export function installAuth(app, db) {
 	      }
 	      return res.status(503).json({ error: "ADMIN_PASSWORD is not configured; protected API is locked" });
 	    }
-	    const token = getBearerToken(req);
+	    const token = getAuthToken(req);
 	    const session = token ? findSession(db, token) : null;
 	    if (!session) return res.status(401).json({ error: "Authentication required" });
     req.user = (db.users || []).find((user) => user.id === session.userId) || db.user;
@@ -113,6 +133,73 @@ export function installAuth(app, db) {
   app.get("/api/users/me", (req, res) => {
     res.json({ user: sanitizeUser(req.user || db.user), authRequired: authRequired(), permissions: resolvePermissions(db, req.user || db.user) });
   });
+
+  app.post("/api/account/mfa/enroll", authJson, (req, res) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: "Authentication required" });
+    if (user.mfaEnabled) return res.status(409).json({ error: "MFA is already enabled" });
+    const secret = generateTotpSecret();
+    const secretName = `MFA_TOTP_${user.id}`;
+    storeSecret(db, secretName, secret, "authentication");
+    user.mfaPendingSecretName = secretName;
+    user.updatedAt = nowIso();
+    appendAudit(db, "开始配置双因素认证", user.id, user.name || user.email, "warning");
+    saveDb(db);
+    res.json({
+      status: "pending_confirmation",
+      secret,
+      provisioningUri: totpProvisioningUri({ secret, account: user.email || user.id }),
+      message: "请将密钥加入认证器，并输入当前 6 位验证码完成启用。"
+    });
+  });
+
+  app.post("/api/account/mfa/confirm", authJson, (req, res) => {
+    const user = req.user;
+    const secretName = user?.mfaPendingSecretName;
+    const secret = secretName ? readSecret(db, secretName) : null;
+    if (!user || !secret) return res.status(400).json({ error: "No pending MFA enrollment" });
+    if (!verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Invalid verification code" });
+    user.mfaSecretName = secretName;
+    user.mfaEnabled = true;
+    delete user.mfaPendingSecretName;
+    user.mfaEnabledAt = nowIso();
+    user.updatedAt = user.mfaEnabledAt;
+    appendAudit(db, "启用双因素认证", user.id, user.name || user.email, "warning");
+    saveDb(db);
+    res.json({ ok: true, mfaEnabled: true });
+  });
+
+  app.delete("/api/account/mfa", authJson, (req, res) => {
+    const user = req.user;
+    const secret = user?.mfaSecretName ? readSecret(db, user.mfaSecretName) : null;
+    if (!user?.mfaEnabled || !secret) return res.status(400).json({ error: "MFA is not enabled" });
+    if (!verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Invalid verification code" });
+    db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== user.mfaSecretName);
+    delete user.mfaSecretName;
+    user.mfaEnabled = false;
+    user.mfaDisabledAt = nowIso();
+    user.updatedAt = user.mfaDisabledAt;
+    appendAudit(db, "停用双因素认证", user.id, user.name || user.email, "critical");
+    saveDb(db);
+    res.json({ ok: true, mfaEnabled: false });
+  });
+}
+
+function completePasswordLogin(req, res, db, user, clientKey) {
+  if (user.mfaEnabled) {
+    let secret = null;
+    try { secret = user.mfaSecretName ? readSecret(db, user.mfaSecretName) : null; } catch { secret = null; }
+    if (!secret) {
+      recordLoginFailure(clientKey);
+      return res.status(503).json({ error: "MFA is enabled but its secret is unavailable; contact the instance owner" });
+    }
+    if (!verifyTotp(secret, req.body?.totp)) {
+      recordLoginFailure(clientKey);
+      return res.status(401).json({ error: "Two-factor verification required", mfaRequired: true });
+    }
+  }
+  loginAttempts.delete(clientKey);
+  return createSession(req, res, db, user);
 }
 
 function recordLoginFailure(key) {
@@ -158,7 +245,7 @@ export function resolvePermissions(db, user = {}) {
   return role?.permissions || [];
 }
 
-function createSession(res, db, user, extra = {}) {
+function createSession(req, res, db, user, extra = {}) {
   const token = crypto.randomBytes(32).toString("hex");
   const now = nowIso();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 3600 * 1000).toISOString();
@@ -177,7 +264,11 @@ function createSession(res, db, user, extra = {}) {
   db.authSessions.unshift(session);
   sessions.set(token, session);
   saveDb(db);
-  res.json({ token, user: sanitizeUser(user), expiresAt, expiresIn: `${SESSION_DAYS}d`, ...extra });
+  // 浏览器使用 HttpOnly cookie，令牌不再暴露给页面 JS/localStorage；Capacitor 原生 App
+  // 仍从响应体取 Bearer token，因为 WKWebView 与远端 API 跨站 cookie 不可靠。
+  const native = isNativeRequest(req);
+  if (!native) setSessionCookie(res, token, expiresAt);
+  res.json({ ...(native ? { token } : {}), user: sanitizeUser(user), expiresAt, expiresIn: `${SESSION_DAYS}d`, ...extra });
 }
 
 function hashToken(token = "") {
@@ -214,8 +305,44 @@ function getBearerToken(req) {
   return match?.[1];
 }
 
+function getAuthToken(req) {
+  return getBearerToken(req) || getCookie(req, "agent_session");
+}
+
+function getCookie(req, name) {
+  const cookies = String(req.headers.cookie || "").split(";");
+  for (const cookie of cookies) {
+    const [key, ...rest] = cookie.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
+
+function isNativeRequest(req) {
+  const origin = String(req.headers.origin || "");
+  // Origin 由 WebView/浏览器网络栈设置；不能相信页面脚本可自行伪造的 X-Native-App，
+  // 否则同源 XSS 可在登录请求上加该头，让服务端把 HttpOnly 会话令牌回显到 JSON。
+  return origin === "capacitor://localhost" || origin === "ionic://localhost";
+}
+
+function setSessionCookie(res, token, expiresAt) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `agent_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Expires=${new Date(expiresAt).toUTCString()}${secure}`);
+}
+
+function clearSessionCookie(res) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`);
+}
+
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left));
+  const b = Buffer.from(String(right));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function sanitizeUser(user = {}) {
-  const { password, passwordHash, passwordSalt, ...safe } = user;
+  const { password, passwordHash, passwordSalt, mfaSecretName, mfaPendingSecretName, ...safe } = user;
   return safe;
 }
 
@@ -288,33 +415,4 @@ export function verifyPassword(password, encoded = "") {
   const candidate = crypto.scryptSync(password, salt, 64);
   const expected = Buffer.from(hash, "hex");
   return expected.length === candidate.length && crypto.timingSafeEqual(expected, candidate);
-}
-
-function trialEndIso(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
-}
-
-function createPendingPayment(db, { tenantId, userId, planId }) {
-  const plan = (db.subscriptionPlans || []).find((item) => item.id === planId && item.enabled !== false);
-  const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
-  if (!plan || !address || Number(plan.priceUsdt || 0) <= 0) return null;
-  const payment = {
-    id: id("pay"),
-    tenantId,
-    userId,
-    planId: plan.id,
-    network: "TRON",
-    asset: "USDT",
-    amount: Number(plan.priceUsdt || 0),
-    address,
-    status: "pending",
-    source: "registration",
-    expiresAt: trialEndIso(30),
-    createdAt: nowIso()
-  };
-  db.paymentRequests ||= [];
-  db.paymentRequests.unshift(payment);
-  return payment;
 }

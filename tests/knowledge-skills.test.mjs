@@ -164,7 +164,9 @@ test("historical validation uses chronological train, validation, and test windo
   const result = validateKnowledgeSkillWithCandles(db, skill.id, candles);
   assert.equal(result.passed, true);
   assert.equal(skill.status, "historical_validated");
-  assert.equal(skill.validation.methodology, "40/30/30 chronological holdout");
+  assert.equal(skill.validation.methodology, "40/30/30 purged chronological holdout");
+  assert.equal(skill.validation.purgeBars, 1);
+  assert.equal(skill.validation.embargoBars, 1);
   assert.ok(skill.validation.validation.trades >= 3);
   assert.ok(skill.validation.test.trades >= 3);
 });

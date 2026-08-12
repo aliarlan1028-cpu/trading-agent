@@ -1,3 +1,13 @@
+import {
+  createRegistrationInvite,
+  currentRegistrationMode,
+  manuallyVerifyRegistrationEmail,
+  registrationCapacity,
+  sanitizeInvite,
+  sanitizeRegistrationApplication,
+  updateRegistrationApplication
+} from "../publicRegistration.mjs";
+
 // 管理台：用户/订阅/密码 路由组 —— 从 index.mjs 按 registrar 范式迁出。全部 admin:system/security
 // 高危面，含用户自助改密(/api/auth/change-password)。处理器逐字保留原实现，密钥/密码不回显。
 export function registerAdminUserRoutes(app, ctx) {
@@ -8,7 +18,7 @@ export function registerAdminUserRoutes(app, ctx) {
   app.get("/api/admin/users", requirePermission("admin:system"), (_req, res) => {
     res.json({
       tenants: db.tenants || [],
-      users: (db.users || []).map(({ passwordHash, password, ...safe }) => safe),
+      users: (db.users || []).map(({ passwordHash, password, mfaSecretName, mfaPendingSecretName, ...safe }) => safe),
       subscriptions: db.subscriptions || []
     });
   });
@@ -162,20 +172,74 @@ export function registerAdminUserRoutes(app, ctx) {
     try {
       const { applyRiskThresholds } = await import("../riskThresholds.mjs");
       const result = applyRiskThresholds(db, req.body || {}, setConfig);
+      const { applyProtections } = await import("../tradeProtections.mjs");
+      const currentProtection = applyProtections(db, req.user?.name || db.user.name);
       if (result.applied.length) appendAudit(db, `更新风控阈值:${result.applied.join("、")}`, "risk_thresholds", req.user?.name || db.user.name, "warning");
       saveDb(db);
-      res.json({ ok: true, ...result, message: result.applied.length ? "风控阈值已更新，即时生效" : "无变更" });
+      res.json({ ok: true, ...result, currentProtection, message: result.applied.length ? "风控阈值已更新，并已重新计算当前保护状态" : "无变更" });
     } catch (error) { res.status(500).json({ error: error.message }); }
   });
 
-  // 公开注册开关(运行时,写 runtimeConfig 并同步 process.env → auth.register 立即生效)。
-  // ⚠️ 一客户一实例的生产路径下开启=允许陌生访客自助注册,务必知悉安全含义。
+  // 公开入口只接收“客户实例开通申请”，不会在 Owner 工作区创建用户。
+  // 兼容旧 enabled 布尔值；新前端统一使用 closed/invite/waitlist/auto 四态。
   app.post("/api/admin/registration", requirePermission("admin:system"), (req, res) => {
-    const enabled = req.body?.enabled === true || req.body?.enabled === "true";
-    setConfig(db, { PUBLIC_REGISTRATION_ENABLED: enabled ? "true" : "false" });
-    appendAudit(db, `公开注册已${enabled ? "开启" : "关闭"}`, "public_registration", req.user?.name || db.user.name, enabled ? "warning" : "info");
+    const requested = req.body?.mode || ((req.body?.enabled === true || req.body?.enabled === "true") ? "waitlist" : "closed");
+    const mode = String(requested || "closed").trim().toLowerCase();
+    if (!["closed", "invite", "waitlist", "auto"].includes(mode)) return res.status(400).json({ error: "不支持的注册模式" });
+    if (mode !== "closed" && req.user?.mfaEnabled !== true) return res.status(409).json({ error: "开放客户申请前必须先为 Owner 账户启用 TOTP 双因素认证" });
+    if (mode !== "closed" && process.env.NODE_ENV === "production") {
+      if (!/^https:\/\//.test(String(process.env.REGISTRATION_TERMS_URL || "")) || !/^https:\/\//.test(String(process.env.REGISTRATION_PRIVACY_URL || ""))) {
+        return res.status(409).json({ error: "开放客户申请前必须先发布 HTTPS 服务条款和隐私政策" });
+      }
+    }
+    if (["waitlist", "auto"].includes(mode) && process.env.NODE_ENV === "production") {
+      if (!process.env.TURNSTILE_SECRET_KEY || !process.env.TURNSTILE_SITE_KEY) return res.status(409).json({ error: "公开申请前必须先配置 Cloudflare Turnstile" });
+      if (!process.env.REGISTRATION_EMAIL_WEBHOOK_URL || !process.env.PUBLIC_BASE_URL) return res.status(409).json({ error: "公开申请前必须先配置验证邮件服务和 PUBLIC_BASE_URL" });
+      if (!process.env.REGISTRATION_RATE_LIMIT_SALT) return res.status(409).json({ error: "公开申请前必须配置独立的限流哈希盐" });
+    }
+    if (mode === "auto" && process.env.PROVISIONING_BROKER_ENABLED !== "true") {
+      return res.status(409).json({ error: "自动开通代理尚未启用；请先使用候补或邀请模式" });
+    }
+    setConfig(db, {
+      PUBLIC_REGISTRATION_MODE: mode,
+      PUBLIC_REGISTRATION_ENABLED: mode === "closed" ? "false" : "true"
+    });
+    appendAudit(db, `公开申请模式切换为 ${mode}`, "public_registration", req.user?.name || db.user.name, mode === "closed" ? "info" : "warning");
     saveDb(db);
-    res.json({ ok: true, publicRegistrationEnabled: enabled, message: `公开注册已${enabled ? "开启" : "关闭"}` });
+    res.json({ ok: true, registrationMode: mode, publicRegistrationEnabled: mode !== "closed", message: `公开申请模式已切换为 ${mode}` });
+  });
+
+  app.get("/api/admin/registration/applications", requirePermission("admin:system"), (_req, res) => {
+    res.json({
+      mode: currentRegistrationMode(db),
+      capacity: registrationCapacity(db),
+      applications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
+      invites: (db.registrationInvites || []).map(sanitizeInvite)
+    });
+  });
+
+  app.post("/api/admin/registration/invites", requirePermission("admin:system"), (req, res) => {
+    try {
+      const result = createRegistrationInvite(db, req.body || {});
+      appendAudit(db, `创建注册邀请码：${result.invite.label}`, result.invite.id, req.user?.name || db.user.name, "warning");
+      persist(res, { ...result, message: "邀请码已创建；明文只显示这一次" });
+    } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+  });
+
+  app.post("/api/admin/registration/applications/:id/verify-email", requirePermission("admin:system"), (req, res) => {
+    try {
+      const application = manuallyVerifyRegistrationEmail(db, req.params.id);
+      appendAudit(db, `管理员人工确认申请邮箱：${application.id}`, application.id, req.user?.name || db.user.name, "warning");
+      persist(res, { application, message: "已人工确认邮箱" });
+    } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+  });
+
+  app.patch("/api/admin/registration/applications/:id", requirePermission("admin:system"), (req, res) => {
+    try {
+      const application = updateRegistrationApplication(db, req.params.id, req.body || {});
+      appendAudit(db, `更新开通申请状态：${application.id} -> ${application.status}`, application.id, req.user?.name || db.user.name, "warning");
+      persist(res, { application, message: `申请状态已更新为 ${application.status}` });
+    } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
   });
 
   app.get("/api/admin/subscription-plans", requirePermission("admin:system"), (_req, res) => {

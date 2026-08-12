@@ -160,7 +160,7 @@ def main():
     parse_markdown(doc, MD.read_text(encoding="utf-8"))
     footer = doc.sections[0].footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    footer.add_run("AI Trading Agent 统一需求文档").font.size = Pt(9)
+    footer.add_run("KORDYN 统一需求文档").font.size = Pt(9)
     doc.save(OUT)
     print(OUT)
 

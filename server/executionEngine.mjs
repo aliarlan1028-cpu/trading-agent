@@ -1,9 +1,15 @@
-import { executeTradeAction } from "./tradeActions.mjs";
-import { binanceSignedRequest, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
+import { executeTradeAction, mandateNotionalCapacity } from "./tradeActions.mjs";
+import { okxSignedRequest, toOkxSymbol } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyOperationalDegradation, professionalNotionalCap } from "./professionalRiskGate.mjs";
-import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
+import { ensureTradeReviewQueued } from "./tradeReviewQueue.mjs";
+import { estimateExecutionCost } from "./executionCostModel.mjs";
+import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
+import { evaluatePortfolioIntentConflict, evaluateSameSymbolEntryConflict } from "./tradingRoles.mjs";
+import { accountMarginCapacity, projectedMarginUsage } from "./tradingCapacity.mjs";
+import { ensurePlanStrategyBinding, reconcileStrategyProductHealth, strategyProductExecutionGate } from "./strategyProducts.mjs";
+import { validatePlanBlueprintGate } from "./strategyStudio.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -56,16 +62,11 @@ export function entryRationale(plan = {}) {
 }
 
 export function currentEquityUsdt(db) {
-  const snapshot = (db.accountSnapshots || []).find((item) => item.status === "ok");
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   if (snapshot) {
     if (snapshot.exchange === "OKX") {
       const total = Number(snapshot.balances?.[0]?.totalEq);
       if (Number.isFinite(total) && total > 0) return total;
-    }
-    if (snapshot.exchange === "BINANCE") {
-      const usdt = (snapshot.balances || []).find((item) => item.asset === "USDT");
-      const total = Number(usdt?.free || 0) + Number(usdt?.locked || 0);
-      if (total > 0) return total;
     }
   }
   const fromPortfolio = Number(db.portfolio?.totalEquityUsdt);
@@ -86,8 +87,34 @@ export function computePositionSize(db, plan) {
   const riskPct = Number(plan.entry?.riskPercent ?? plan.max_loss_pct ?? 0.3);
   const equity = currentEquityUsdt(db);
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
-  const maxNotional = Number(policy?.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
   const mandate = db.mandates.find((m) => m.id === plan.mandateId) || activeMandate(db);
+  const grayMaxNotional = Number(policy?.maxNotionalUsdt || process.env.MAX_LIVE_NOTIONAL_USDT || 50);
+  const mandateCapacity = mandateNotionalCapacity(db, mandate, plan.symbol);
+  if (mandateCapacity.unknownPositions.length) {
+    return { error: "position_notional_unknown", positions: mandateCapacity.unknownPositions };
+  }
+  const mandateRemaining = Number(mandateCapacity.remainingNotional);
+  const marginCapacity = accountMarginCapacity(db, {
+    mandate,
+    leverage: plan.leverage,
+    excludePlanId: plan.id,
+    live: db.system?.liveTradingEnabled === true
+  });
+  if (!marginCapacity.ok && db.system?.liveTradingEnabled === true) return { error: marginCapacity.error, marginCapacity };
+  const marginRemaining = marginCapacity.ok ? Number(marginCapacity.maxNotional) : Infinity;
+  const maxNotional = Math.min(
+    Number.isFinite(grayMaxNotional) ? grayMaxNotional : Infinity,
+    Number.isFinite(mandateRemaining) ? mandateRemaining : Infinity,
+    Number.isFinite(marginRemaining) ? marginRemaining : Infinity
+  );
+  if (!Number.isFinite(maxNotional) || maxNotional <= 0) {
+    const error = Number.isFinite(marginRemaining) && marginRemaining <= 0
+      ? "projected_margin_capacity_exhausted"
+      : Number.isFinite(mandateRemaining) && mandateRemaining <= 0
+        ? "mandate_notional_capacity_exhausted"
+        : "opening_notional_capacity_exhausted";
+    return { error, maxNotional, mandateCapacity, marginCapacity };
+  }
   // 仓位模式(决定"下多大"):按余额%做保证金——每单保证金 = 权益 × positionPct%，名义 = 保证金 × 杠杆。
   // 未配置 positionPct 时退回按风险预算(不为0)。单笔风险%不是仓位模式,是下方独立的风控上限闸。
   const positionPct = Number(mandate?.positionPct ?? mandate?.equityPct ?? mandate?.equity_pct ?? 0);
@@ -108,7 +135,12 @@ export function computePositionSize(db, plan) {
   if (notional > maxNotional) {
     quantity = maxNotional / entryMid;
     notional = maxNotional;
-    sizedBy = `${sizedBy}+gray_capped`;
+    const capSources = [];
+    const isLimit = (value) => Number.isFinite(value) && Math.abs(value - maxNotional) <= Math.max(1e-9, Math.abs(maxNotional) * 1e-9);
+    if (isLimit(grayMaxNotional)) capSources.push("gray");
+    if (isLimit(mandateRemaining)) capSources.push("mandate");
+    if (isLimit(marginRemaining)) capSources.push("available_margin");
+    sizedBy = `${sizedBy}+${capSources.join("_") || "notional"}_capped`;
   }
   const professionalCap = professionalNotionalCap(db, plan, notional);
   if (professionalCap.cap < notional) {
@@ -157,7 +189,7 @@ export function computePositionSize(db, plan) {
   if (quantity <= 0 && equity > 0) quantity = 0; // 先按四舍五入后的量,下方小账户放大再兜
   // 小账户自动放大:AI 选的风险%算出的仓位低于交易所最小额时,自动上调到最小额(取整后仍≥5U),
   // 但风险严格封顶在授权单笔风险上限内(用户要"按更接近上限定仓")。上限也不够才如实拒。
-  const capped = `${sizedBy}`.includes("gray_capped") || `${sizedBy}`.includes("vol_capped");
+  const capped = `${sizedBy}`.includes("_capped");
   if (quantity * entryMid < MIN_NOTIONAL && !capped && MIN_NOTIONAL <= maxNotional) {
     const decimals = entryMid > 10000 ? 4 : entryMid > 100 ? 3 : entryMid > 1 ? 2 : 0;
     const factor = 10 ** decimals;
@@ -172,7 +204,15 @@ export function computePositionSize(db, plan) {
   }
   if (quantity <= 0) return { error: "quantity_rounds_to_zero", notional, maxNotional, sizedBy };
   if (quantity * entryMid < MIN_NOTIONAL) return { error: "below_min_notional", notional: quantity * entryMid, minNotional: MIN_NOTIONAL, sizedBy, ceilingPct: Number(mandate?.maxSingleTradeRiskPct ?? "-") };
-  return { quantity, entryMid, stopDistance, notional: quantity * entryMid, riskPct, equity, maxNotional, volCap, sizedBy };
+  notional = quantity * entryMid;
+  const projectedMargin = marginCapacity.ok
+    ? projectedMarginUsage(marginCapacity, notional, plan.leverage)
+    : { ok: true, unavailable: true, reason: marginCapacity.error, incrementalMargin: null, projectedUtilizationPct: null };
+  if (!projectedMargin.ok) {
+    return { error: "projected_margin_limit_exceeded", notional, maxNotional, marginCapacity, projectedMargin, sizedBy };
+  }
+  const initialRiskUsdt = Number((quantity * stopDistance).toFixed(6));
+  return { quantity, entryMid, stopDistance, notional, initialRiskUsdt, riskPct, equity, maxNotional, grayMaxNotional, mandateCapacity, marginCapacity, projectedMargin, volCap, sizedBy };
 }
 
 function roundQuantity(quantity, price) {
@@ -212,6 +252,7 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
       clientOrderId: entry.clientOrderId,
       agentRunId: plan.agentRunId,
       analysisBundleId: plan.analysisBundleId,
+      evidenceBundleId: plan.evidenceBundleId,
       tradePlanId: plan.id,
       riskCheckId: plan.riskCheckId,
       mandateId: plan.mandateId,
@@ -259,6 +300,31 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
+  const strategyBinding = ensurePlanStrategyBinding(db, plan, { source: "execution_preflight" });
+  if (!strategyBinding.ok && plan.strategyRef?.classification === "version_drift") {
+    appendAudit(db, "策略版本内容与已钉住哈希不一致，已拒绝执行", plan.id, "ExecutionEngine", "critical");
+    return { status: "strategy_version_drift", strategyRef: plan.strategyRef };
+  }
+  if (!strategyBinding.ok && strategyBinding.legacyCompatible) {
+    plan.strategyValidationLabel = "legacy_unversioned_excluded_from_product_evidence";
+    appendAudit(db, "升级前计划按兼容通道执行，不计入版本化策略证据", plan.id, "ExecutionEngine", "warning");
+  } else if (!strategyBinding.ok && plan.source === "agent_chat") {
+    appendAudit(db, `AI 计划未归属于策略产品：${strategyBinding.error}`, plan.id, "ExecutionEngine", "warning");
+    return { status: "strategy_product_required", reason: strategyBinding.error, strategyRef: plan.strategyRef };
+  }
+  if (strategyBinding.ok) {
+    const strategyGate = strategyProductExecutionGate(db, plan);
+    if (!strategyGate.allowed) {
+      appendAudit(db, `策略产品当前不允许执行：${strategyGate.reason}`, plan.id, "ExecutionEngine", "warning");
+      return { status: "strategy_product_blocked", reason: strategyGate.reason, strategyRef: plan.strategyRef };
+    }
+    plan.strategyValidationLabel = strategyGate.validationLabel;
+  }
+  const blueprintGate = validatePlanBlueprintGate(db, plan);
+  if (!blueprintGate.allowed) {
+    appendAudit(db, `工作室策略版本当前不允许执行：${blueprintGate.reason}`, plan.id, "ExecutionEngine", "warning");
+    return { status: "strategy_blueprint_blocked", reason: blueprintGate.reason, strategyBlueprintRef: plan.strategyBlueprintRef };
+  }
   // 更新运行降级评估(含自愈);实际拦截只认 reduceOnlyMode——它只在 professionalRiskMode 开启+
   // 降级时才被自动置位(或用户手动只减仓)。flag 关时降级仅记录不拦,不再默认焊死交易。
   const degradation = applyOperationalDegradation(db, "ExecutionEngine");
@@ -281,8 +347,20 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   if (Number(plan.mandateVersion || 1) !== Number(mandate.version || 1)) {
     return { status: "mandate_version_stale", planVersion: plan.mandateVersion || 1, mandateVersion: mandate.version || 1 };
   }
+  const portfolioIntent = evaluatePortfolioIntentConflict(db, plan, { positionsOnly: true });
+  if (!portfolioIntent.ok) {
+    plan.executionBlock = { reason: portfolioIntent.reason, detail: portfolioIntent.detail, at: nowIso() };
+    appendAudit(db, `组合裁决拒绝新增相反敞口：${portfolioIntent.detail}`, plan.id, "PortfolioArbiter", "warning");
+    return { status: "portfolio_intent_conflict", ...portfolioIntent };
+  }
   const existing = (db.executionOrders || []).find((item) => item.planId === plan.id && OPEN_EXECUTION_STATES.has(item.status));
   if (existing) return { status: "already_executing", executionOrderId: existing.id };
+  const sameSymbolEntry = evaluateSameSymbolEntryConflict(db, plan, mandate);
+  if (!sameSymbolEntry.ok) {
+    plan.executionBlock = { reason: sameSymbolEntry.reason, detail: sameSymbolEntry.detail, at: nowIso() };
+    appendAudit(db, `重复敞口保护拒绝执行：${sameSymbolEntry.detail}`, plan.id, "ExecutionEngine", "warning");
+    return { status: "same_symbol_entry_conflict", ...sameSymbolEntry };
+  }
 
   const sizing = computePositionSize(db, plan);
   if (sizing.error) {
@@ -291,12 +369,32 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       ? `仓位约 ${Number(sizing.notional || 0).toFixed(2)} USDT，低于交易所最小名义额 ${sizing.minNotional || 5} USDT——账户太小或单笔风险%太低，无法下出有效订单`
       : sizing.error === "quantity_rounds_to_zero" ? "计算仓位四舍五入为 0，账户过小"
       : sizing.error === "invalid_entry_or_stop" ? "入场/止损数值非法"
-      : sizing.error === "zero_stop_distance" ? "入场与止损相等，止损距离为 0" : sizing.error;
+      : sizing.error === "zero_stop_distance" ? "入场与止损相等，止损距离为 0"
+      : sizing.error === "account_snapshot_required" ? "缺少最新 OKX 账户快照，无法按真实资金定仓"
+      : sizing.error === "account_snapshot_stale" ? "OKX 账户快照已过期，必须同步后重新计算仓位"
+      : sizing.error === "account_snapshot_time_invalid" ? "OKX 账户快照时间异常，必须校准系统时间并重新同步"
+      : sizing.error === "available_margin_unavailable" ? "OKX 可用保证金不可用，已禁止猜测下单金额"
+      : sizing.error === "account_equity_unavailable" ? "OKX 账户权益不可用，已禁止猜测下单金额"
+      : sizing.error === "projected_margin_limit_exceeded" ? "下单后的预计保证金使用率会超过授权上限"
+      : sizing.error === "projected_margin_capacity_exhausted" ? "当前保证金使用率已达到授权上限，没有新增仓位空间"
+      : sizing.error;
     plan.executionBlock = { reason: sizing.error, detail: human, at: nowIso() };
     appendAudit(db, `执行引擎未下单（${sizing.error}）：${human}`, plan.id, "ExecutionEngine", "warning");
     return { status: "sizing_failed", ...sizing, detail: human };
   }
   plan.executionBlock = null;
+  // R 期望必须以实际定仓后的初始止损风险为分母。缺该值时策略证据层会保持 null，
+  // 绝不从计划风险百分比或名义额猜测；写在 plan/order/fill 链上供永久归因。
+  plan.initialRiskUsdt = sizing.initialRiskUsdt;
+  plan.accountEquityAtEntryUsdt = sizing.equity;
+
+  const marketForCost = (db.markets || []).find((item) => item.symbol === plan.symbol) || {};
+  const executionCostEstimate = estimateExecutionCost(db, {
+    symbol: plan.symbol,
+    spreadBps: marketForCost.spreadBps,
+    depthUsdt: marketForCost.depthUsdt || marketForCost.orderBookDepthUsdt || marketForCost.depth5Usdt,
+    notionalUsdt: sizing.notional
+  });
 
   const executionOrder = {
     id: id("exec"),
@@ -305,11 +403,20 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     mandateId: plan.mandateId,
     riskCheckId: plan.riskCheckId,
     analysisBundleId: plan.analysisBundleId,
+    evidenceBundleId: plan.evidenceBundleId,
     exchange: plan.exchange,
     symbol: plan.symbol,
     direction: plan.direction,
+    leverage: Number(plan.leverage || 1),
     strategy: plan.strategy || plan.strategy_type || "manual_review",
+    strategyRef: plan.strategyRef ? { ...plan.strategyRef } : null,
+    strategyBlueprintRef: plan.strategyBlueprintRef ? { ...plan.strategyBlueprintRef } : null,
+    strategyProductId: plan.strategyProductId || null,
+    strategyVersion: plan.strategyVersion || null,
+    strategyVersionId: plan.strategyVersionId || null,
+    strategyInstance: plan.strategyInstance ? structuredClone(plan.strategyInstance) : null,
     knowledgeSkills: plan.knowledgeSkills || [],
+    reviewLearning: plan.reviewLearning ? structuredClone(plan.reviewLearning) : null,
     entryRationale: entryRationale(plan),
     confidenceBefore: asNumber(plan.confidenceBefore ?? plan.confidence),
     confidenceAfter: asNumber(plan.confidenceAfter ?? plan.lastRiskCheck?.confidence),
@@ -319,9 +426,16 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     stopLoss: Number(plan.stopLoss ?? plan.stop_loss),
     takeProfits: (plan.takeProfit || plan.take_profit || []).map(Number).filter(Number.isFinite),
     notionalUsdt: sizing.notional,
+    initialRiskUsdt: sizing.initialRiskUsdt,
+    accountEquityAtEntryUsdt: sizing.equity,
     sizedBy: sizing.sizedBy,
+    accountCapacity: sizing.marginCapacity,
+    projectedMargin: sizing.projectedMargin,
+    executionCostEstimate: executionCostEstimate.ok ? executionCostEstimate : null,
     status: "created",
-    events: [{ at: nowIso(), event: "created", detail: `数量 ${sizing.quantity}，名义 ${sizing.notional.toFixed(2)} USDT（${sizing.sizedBy}）` }],
+    events: [{ at: nowIso(), event: "created", detail: sizing.projectedMargin.unavailable
+      ? `数量 ${sizing.quantity}，名义 ${sizing.notional.toFixed(2)} USDT（非实盘，账户保证金数据不可用；${sizing.sizedBy}）`
+      : `数量 ${sizing.quantity}，名义 ${sizing.notional.toFixed(2)} USDT，预计占用保证金 ${sizing.projectedMargin.incrementalMargin.toFixed(2)} USDT、成交后使用率 ${sizing.projectedMargin.projectedUtilizationPct.toFixed(1)}%（${sizing.sizedBy}）` }],
     createdAt: nowIso()
   };
   db.executionOrders.unshift(executionOrder);
@@ -381,11 +495,15 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       stopClientOrderId,
       leverage: plan.leverage,
       strategyId: executionOrder.strategy,
+      strategyProductId: executionOrder.strategyProductId,
+      strategyVersion: executionOrder.strategyVersion,
+      strategyVersionId: executionOrder.strategyVersionId,
       timeframe: plan.timeframe || plan.candlesTimeframe || null,
       knowledgeSkills: executionOrder.knowledgeSkills,
       clientOrderId: entryClientOrderId,
       agentRunId: plan.agentRunId,
       analysisBundleId: plan.analysisBundleId,
+      evidenceBundleId: plan.evidenceBundleId,
       tradePlanId: plan.id,
       riskCheckId: plan.riskCheckId,
       mandateId: plan.mandateId,
@@ -592,7 +710,7 @@ async function pollOne(db, executionOrder) {
     // (P0-3)入场已终态后,交易所侧 SL/TP 成交不会反映在入场单状态上——此前系统对
     // 止损打掉完全失明:持仓残留、计划卡 executing、日亏预算不扣减。
     // 以最近的交易所持仓快照为准:快照新鲜且该 symbol 仓位已消失 → 保护单已成交,推断收口。
-    const latestSnap = (db.accountSnapshots || []).find((x) => x.status === "ok");
+    const latestSnap = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
     const snapFresh = latestSnap && (Date.now() - new Date(latestSnap.createdAt).getTime()) < Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
     const stillOnExchange = (db.positions || []).some((p) => p.source === "exchange_rest" && p.symbol === executionOrder.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
     if (snapFresh && !stillOnExchange && Number(executionOrder.filledQuantity || 0) > 0) {
@@ -633,30 +751,24 @@ async function pollOne(db, executionOrder) {
       if (plan) plan.status = "cancelled";
     }
   }
+  executionOrder.lastPolledAt = nowIso();
+  executionOrder.updatedAt = executionOrder.lastPolledAt;
   return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state };
 }
 
 async function fetchOrderState(executionOrder) {
-  const exchange = String(executionOrder.exchange || "BINANCE").toUpperCase();
-  if (exchange === "OKX") {
-    if (!process.env.OKX_API_KEY) return null;
-    const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
-    const raw = await okxSignedRequest(`/api/v5/trade/order?instId=${instId}&clOrdId=${executionOrder.clientOrderId}`, "GET");
-    const order = raw.data?.[0];
-    if (!order) return null;
-    const stateMap = { live: "open", partially_filled: "partial", filled: "filled", canceled: "canceled" };
-    return {
-      state: stateMap[order.state] || order.state,
-      avgPrice: Number(order.avgPx) || null,
-      filledQuantity: Number(order.accFillSz || 0)
-    };
-  }
-  if (!process.env.BINANCE_API_KEY) return null;
-  const symbol = toBinanceSymbol(executionOrder.symbol);
-  const raw = await binanceSignedRequest("/fapi/v1/order", { symbol, origClientOrderId: executionOrder.clientOrderId });
-  if (!raw?.status) return null;
-  const stateMap = { NEW: "open", PARTIALLY_FILLED: "partial", FILLED: "filled", CANCELED: "canceled", EXPIRED: "canceled", REJECTED: "canceled" };
-  return { state: stateMap[raw.status] || "open", avgPrice: Number(raw.avgPrice) || null, filledQuantity: Number(raw.executedQty || 0) };
+  const exchange = String(executionOrder.exchange || "OKX").toUpperCase();
+  if (exchange !== "OKX" || !process.env.OKX_API_KEY) return null;
+  const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+  const raw = await okxSignedRequest(`/api/v5/trade/order?instId=${instId}&clOrdId=${executionOrder.clientOrderId}`, "GET");
+  const order = raw.data?.[0];
+  if (!order) return null;
+  const stateMap = { live: "open", partially_filled: "partial", filled: "filled", canceled: "canceled" };
+  return {
+    state: stateMap[order.state] || order.state,
+    avgPrice: Number(order.avgPx) || null,
+    filledQuantity: Number(order.accFillSz || 0)
+  };
 }
 
 async function placeTakeProfits(db, executionOrder) {
@@ -697,6 +809,7 @@ async function placeTakeProfits(db, executionOrder) {
       })),
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
+      evidenceBundleId: executionOrder.evidenceBundleId,
       tradePlanId: executionOrder.planId,
       riskCheckId: executionOrder.riskCheckId,
       mandateId: executionOrder.mandateId,
@@ -740,12 +853,14 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   const notional = Number(price) * Number(quantity);
   const plan = (db.tradePlans || []).find((item) => item.id === executionOrder.planId) || {};
   const feeUsdt = extra.feeUsdt ?? (kind === "entry" ? executionOrder.entryFeeUsdt : feeEstimate(notional));
-  db.fills.unshift({
+  const fill = {
     id: id("fill"),
     executionOrderId: executionOrder.id,
     planId: executionOrder.planId,
     tradePlanId: executionOrder.planId,
     agentRunId: executionOrder.agentRunId,
+    analysisBundleId: executionOrder.analysisBundleId,
+    evidenceBundleId: executionOrder.evidenceBundleId,
     riskCheckId: executionOrder.riskCheckId,
     mandateId: executionOrder.mandateId,
     symbol: executionOrder.symbol,
@@ -756,6 +871,14 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
       return (kind === "close" || kind === "exit") ? (isLong ? "sell" : "buy") : (isLong ? "buy" : "sell");
     })(),
     strategy: executionOrder.strategy || plan.strategy || plan.strategy_type || "manual_review",
+    strategyRef: executionOrder.strategyRef ? { ...executionOrder.strategyRef } : (plan.strategyRef ? { ...plan.strategyRef } : null),
+    strategyBlueprintRef: executionOrder.strategyBlueprintRef ? { ...executionOrder.strategyBlueprintRef } : (plan.strategyBlueprintRef ? { ...plan.strategyBlueprintRef } : null),
+    strategyProductId: executionOrder.strategyProductId || plan.strategyProductId || null,
+    strategyVersion: executionOrder.strategyVersion || plan.strategyVersion || null,
+    strategyVersionId: executionOrder.strategyVersionId || plan.strategyVersionId || null,
+    strategyInstance: executionOrder.strategyInstance ? structuredClone(executionOrder.strategyInstance) : (plan.strategyInstance ? structuredClone(plan.strategyInstance) : null),
+    reviewLearning: executionOrder.reviewLearning ? structuredClone(executionOrder.reviewLearning) : (plan.reviewLearning ? structuredClone(plan.reviewLearning) : null),
+    timeframe: plan.timeframe || plan.strategyInstance?.timeframe || null,
     regime: executionOrder.regime || inferMarketRegime(db, executionOrder.symbol),
     kind,
     partial: Boolean(extra.partial),
@@ -764,6 +887,10 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     notionalUsdt: notional,
     expectedPrice: kind === "entry" ? executionOrder.entryPrice : extra.expectedPrice,
     slippageBps: extra.slippageBps ?? (kind === "entry" ? executionOrder.entrySlippageBps : null),
+    predictedImpactBps: kind === "entry" ? executionOrder.executionCostEstimate?.expectedImpactBps ?? null : null,
+    impactPredictionErrorBps: kind === "entry" && Number.isFinite(Number(executionOrder.entrySlippageBps)) && Number.isFinite(Number(executionOrder.executionCostEstimate?.expectedImpactBps))
+      ? Number((Number(executionOrder.entrySlippageBps) - Number(executionOrder.executionCostEstimate.expectedImpactBps)).toFixed(3))
+      : null,
     feeUsdt,
     estimatedFee: extra.feeUsdt === undefined,
     fundingRate: extra.fundingRate,
@@ -774,8 +901,15 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     entryRationale: executionOrder.entryRationale || entryRationale(plan),
     exitReason: extra.exitReason,
     realizedPnl,
+    initialRiskUsdt: executionOrder.initialRiskUsdt || plan.initialRiskUsdt || null,
+    accountEquityAtEntryUsdt: executionOrder.accountEquityAtEntryUsdt || plan.accountEquityAtEntryUsdt || null,
     createdAt: nowIso()
-  });
+  };
+  db.fills.unshift(fill);
+  if (kind === "close") reconcileStrategyProductHealth(db);
+  // 平仓确认即进入真实复盘队列；30 分钟复盘任务只负责深度处理与失败重试。
+  ensureTradeReviewQueued(db, fill);
+  return fill;
 }
 
 function upsertPosition(db, executionOrder, filledSize = executionOrder.quantity) {
@@ -793,6 +927,7 @@ function upsertPosition(db, executionOrder, filledSize = executionOrder.quantity
     takeProfits: executionOrder.takeProfits,
     executionOrderId: executionOrder.id,
     planId: executionOrder.planId,
+    evidenceBundleId: executionOrder.evidenceBundleId,
     openedAt: executionOrder.entryFilledAt || nowIso(),
     maeUsdt: 0,
     mfeUsdt: 0,
@@ -814,6 +949,7 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       clientOrderId: executionOrder.clientOrderId,
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
+      evidenceBundleId: executionOrder.evidenceBundleId,
       tradePlanId: executionOrder.planId,
       riskCheckId: executionOrder.riskCheckId,
       mandateId: executionOrder.mandateId,
@@ -841,6 +977,7 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       positionSide: executionOrder.direction,
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
+      evidenceBundleId: executionOrder.evidenceBundleId,
       tradePlanId: executionOrder.planId,
       riskCheckId: executionOrder.riskCheckId,
       mandateId: executionOrder.mandateId,
@@ -874,6 +1011,7 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       executionOrder.realizedPnl = pnl;
       executionOrder.exitReason = reason;
       executionOrder.closedAt = nowIso();
+      executionOrder.updatedAt = executionOrder.closedAt;
       executionOrder.holdingMinutes = holdingMinutes;
       executionOrder.closeFeeUsdt = closeFeeUsdt;
       executionOrder.fundingFeeUsdt = fundingFeeUsdt;

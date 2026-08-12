@@ -2,14 +2,23 @@
 // 都从已平仓成交(db.fills, kind="close" + realizedPnl)【无状态】计算,自动到期解除——
 // 不引入需持久化的锁状态,避免运行时抢写/漂移。只拦"新开仓",不影响平仓/减仓。
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 
 const HOUR_MS = 3600000;
 const envNum = (key, def) => { const n = Number(process.env[key]); return Number.isFinite(n) ? n : def; };
 
 // 已平仓成交按时间正序 → { pnl, at }
 function closedTrades(db) {
-  return (db.fills || [])
-    .filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)))
+  // 部分平仓属于同一交易生命周期，必须合并后再计算连亏和回撤，避免一次分批退出被算成多笔亏损。
+  // 极旧数据可能没有任何订单/计划/fill id；给它仅在本次计算内使用的稳定索引，不能静默漏算。
+  const normalized = (db.fills || []).map((fill, index) => (
+    fill?.executionOrderId || fill?.tradePlanId || fill?.planId || fill?.positionId || fill?.id
+      ? fill
+      : { ...fill, id: `legacy_unkeyed_close_${index}` }
+  ));
+  return groupClosedTradeLifecycles(normalized)
+    .map((lifecycle) => lifecycle.representative)
     .map((f) => ({ pnl: Number(f.realizedPnl), at: new Date(f.createdAt || f.closedAt || 0).getTime() }))
     .filter((t) => Number.isFinite(t.at) && t.at > 0)
     .sort((a, b) => a.at - b.at);
@@ -81,5 +90,6 @@ export function applyProtections(db, actor = "TradeProtections") {
   if (prot.drawdown.active && !prev?.drawdown?.active) {
     raise("drawdown", `回撤锁仓触发:回撤 ${prot.drawdown.drawdownPct}% ≥ ${prot.drawdown.maxDrawdownPct}%,暂停新开仓至 ${prot.drawdown.until}`);
   }
+  reconcileRiskIncidentLifecycle(db, { protections: prot });
   return prot;
 }

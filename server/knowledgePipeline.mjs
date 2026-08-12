@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import mammoth from "mammoth";
 import simpleGit from "simple-git";
-import { assertSafeExternalUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
+import { assertSafeExternalUrl, assertSafeGitHubRepositoryUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
 import { activeProvider, llmComplete } from "./agentChat.mjs";
 import { compileTradingMethod, retireSkillsForSource } from "./knowledgeSkills.mjs";
@@ -439,7 +439,7 @@ function githubDocPriority(rel) {
 
 export async function importGithubKnowledge(db, repoUrl, subPath = "") {
   await fs.mkdir(importsDir, { recursive: true });
-  await assertSafeExternalUrl(repoUrl);
+  await assertSafeGitHubRepositoryUrl(repoUrl);
   const target = path.join(importsDir, id("repo"));
   await simpleGit().clone(repoUrl, target, ["--depth", "1", "--single-branch"]);
   const base = resolveContainedPath(target, subPath);

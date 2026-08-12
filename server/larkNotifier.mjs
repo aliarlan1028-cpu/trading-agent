@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
+import { fetchExternalText } from "./externalInputSafety.mjs";
 
 // ---------------------------------------------------------------------------
 // 飞书（Lark）通知：把关键交易/风控事件主动推送给主人。
@@ -52,12 +53,15 @@ export async function notifyLark(db, payload = {}) {
       message.timestamp = String(timestamp);
       message.sign = signPayload(process.env.LARK_WEBHOOK_SECRET, timestamp);
     }
-    const response = await fetch(url, {
+    const { response, text } = await fetchExternalText(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(message)
+      body: JSON.stringify(message),
+      timeoutMs: 8000,
+      maxBytes: 256 * 1024
     });
-    const json = await response.json().catch(() => ({}));
+    let json = {};
+    try { json = JSON.parse(text); } catch { /* 非 JSON 响应按发送失败处理 */ }
     // 飞书成功返回 code:0（或 StatusCode:0 旧版）
     notification.deliveryStatus = response.ok && (json.code === 0 || json.StatusCode === 0 || json.StatusMessage === "success") ? "sent" : "send_failed";
     notification.providerResponse = json.msg || json.StatusMessage || String(response.status);

@@ -6,6 +6,7 @@
 // 这样相关的主流币同向叠加会被自动压小，避免"三个仓其实是一个 Beta"。
 // 数据不足时返回 null，由调用方回退到原有单笔风险定仓（不破坏现有行为）。
 // ---------------------------------------------------------------------------
+import { latestSuccessfulAccountSnapshot } from "./store.mjs";
 
 const BARS_PER_DAY = { "1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1 };
 const DEFAULT_PORTFOLIO_VOL_PCT = 3; // 组合日度波动预算（%）
@@ -57,7 +58,7 @@ export function dailyVolFraction(market) {
 }
 
 function equityOf(db) {
-  const snapshot = (db.accountSnapshots || []).find((item) => item.status === "ok");
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   if (snapshot?.exchange === "OKX") {
     const total = Number(snapshot.balances?.[0]?.totalEq);
     if (Number.isFinite(total) && total > 0) return total;

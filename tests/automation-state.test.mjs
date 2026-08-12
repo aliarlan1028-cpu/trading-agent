@@ -8,17 +8,21 @@ const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "automation-state-test-"
 process.env.DATA_DIR = dataDir;
 delete process.env.I_UNDERSTAND_REAL_TRADING;
 delete process.env.REAL_ORDER_WRITE_ENABLED;
+process.env.WORM_AUDIT_ENDPOINT = "https://audit.example.com/append";
+process.env.ALERT_WEBHOOK_URL = "https://alerts.example.com/hook";
 
 const { deriveAutomationState } = await import("../server/ops.mjs");
+const { partitionAutonomousBlockers } = await import("../server/routes/securityConfig.mjs");
 const { ensureCuratedSkills } = await import("../server/knowledgeSkills.mjs");
 
 function dbFixture() {
   return {
-    system: { autonomyEnabled: true, killSwitch: false, liveTradingEnabled: false, remainingDailyLossUsdt: 100 },
+    system: { autonomyEnabled: true, killSwitch: false, liveTradingEnabled: false, remainingDailyLossUsdt: 100, professionalRiskMode: true, wormAuditLastSuccessAt: new Date().toISOString() },
     mandates: [{ id: "m1", status: "active", version: 1, allowedSymbols: ["BTC/USDT"], activatedAt: "2026-07-27T00:00:00.000Z" }],
     apiKeyMetadata: [{ id: "key_okx", exchange: "OKX", hasApiKey: true, hasSecret: true, withdrawPermission: false }],
+    accountSnapshots: [{ id: "snap-1", exchange: "OKX", status: "ok", createdAt: new Date().toISOString() }],
     grayReleasePolicies: [],
-    auditLogs: [],
+    auditLogs: [], alerts: [{ status: "sent", createdAt: new Date().toISOString() }],
     traces: []
   };
 }
@@ -64,6 +68,65 @@ test("实盘链:Key 未核验/灰度未启用逐项点名,全通且免批则为�
   // 日亏预算耗尽回落为被拦
   db.system.remainingDailyLossUsdt = 0;
   assert.equal(deriveAutomationState(db, { hasProvider: true }).mode, "blocked");
+});
+
+test("历史成功快照不能让实盘状态继续显示可下单", () => {
+  const db = dbFixture();
+  db.system.liveTradingEnabled = true;
+  db.system.realTradingAck = true;
+  db.system.orderWriteEnabled = true;
+  db.apiKeyMetadata[0].permissionVerifiedAt = new Date().toISOString();
+  db.grayReleasePolicies = [{ id: "g1", enabled: true, requiresManualApproval: false, maxNotionalUsdt: 200 }];
+  db.accountSnapshots[0].createdAt = new Date(Date.now() - 11 * 60_000).toISOString();
+  const state = deriveAutomationState(db, { hasProvider: true });
+  assert.equal(state.mode, "live_blocked");
+  assert.equal(state.requestedMode, "full_auto", "临时阻断不能把用户选择改写成只分析");
+  assert.ok(state.blockers.includes("账户快照缺失或已过期"));
+});
+
+test("已保存执行方式与当前有效状态分离", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "full_auto";
+  db.system.liveTradingEnabled = true;
+  db.system.realTradingAck = true;
+  db.system.orderWriteEnabled = true;
+  db.system.reduceOnlyMode = true;
+  const state = deriveAutomationState(db, { hasProvider: true });
+  assert.equal(state.mode, "reduce_only");
+  assert.equal(state.requestedMode, "full_auto");
+  assert.equal(state.requestedLabel, "符合限制时自动下单");
+});
+
+test("自动交易保存只拒绝结构性缺项，临时运行故障保留为等待恢复", () => {
+  const result = partitionAutonomousBlockers([
+    "OKX 私有 WebSocket 未连接",
+    "OKX 账户对账未通过",
+    "没有当前有效的 OKX Mandate",
+    "本地审计链校验失败"
+  ]);
+  assert.deepEqual(result.transient, ["OKX 私有 WebSocket 未连接", "OKX 账户对账未通过"]);
+  assert.deepEqual(result.hard, ["没有当前有效的 OKX Mandate", "本地审计链校验失败"]);
+});
+
+test("BitLaunch 单服务器模式不伪造 WORM，但不把缺少外部 WORM 当成自动交易阻断", () => {
+  const previousProfile = process.env.PRODUCTION_SECURITY_PROFILE;
+  const previousWorm = process.env.WORM_AUDIT_ENDPOINT;
+  process.env.PRODUCTION_SECURITY_PROFILE = "bitlaunch_single_server";
+  delete process.env.WORM_AUDIT_ENDPOINT;
+  try {
+    const db = dbFixture();
+    db.system.liveTradingEnabled = true;
+    db.system.realTradingAck = true;
+    db.system.orderWriteEnabled = true;
+    db.apiKeyMetadata[0].permissionVerifiedAt = new Date().toISOString();
+    db.grayReleasePolicies = [{ id: "g1", enabled: true, requiresManualApproval: false, maxNotionalUsdt: 200 }];
+    assert.equal(deriveAutomationState(db, { hasProvider: true }).mode, "full_auto_small");
+  } finally {
+    if (previousProfile === undefined) delete process.env.PRODUCTION_SECURITY_PROFILE;
+    else process.env.PRODUCTION_SECURITY_PROFILE = previousProfile;
+    if (previousWorm === undefined) delete process.env.WORM_AUDIT_ENDPOINT;
+    else process.env.WORM_AUDIT_ENDPOINT = previousWorm;
+  }
 });
 
 test("精选手写技能:入列5个已编译(含2个做空),幂等且不给被拒技能刷版本", () => {

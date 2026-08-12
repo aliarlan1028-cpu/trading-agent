@@ -2,6 +2,7 @@ import { fetchTickerQuiet } from "./exchangeConnector.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { runTask } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { queueWatchTelegramEvent } from "./telegramWatchNotifier.mjs";
 
 // ---------------------------------------------------------------------------
 // 观察哨（Watch Sentinel）：AI 交易员把"若 X 发生则重新评估"登记成结构化价格条件，
@@ -86,6 +87,7 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     levelHigh: Number(args.levelHigh),
     note: String(args.note || "").slice(0, 200),
     status: "active",
+    version: 1,
     createdAt: nowIso(),
     createdBy: actor,
     lastPrice: price,
@@ -118,12 +120,14 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
   const twin = db.watchTriggers.find((w) => w.status === "active" && w.symbol === symbol && w.kind === kind
     && Math.abs(((kind === "enter_zone" ? w.levelLow : w.level) - (kind === "enter_zone" ? watch.levelLow : watch.level)) / price) * 100 <= WATCH_LIMITS.upsertTolerancePct);
   if (twin) {
+    twin.version = Number(twin.version || 1) + 1;
     twin.note = watch.note || twin.note;
     twin.expiresAt = watch.expiresAt;
     twin.level = watch.level;
     twin.levelLow = watch.levelLow;
     twin.levelHigh = watch.levelHigh;
     appendAudit(db, `观察哨更新：${describeWatch(twin)}`, twin.id, actor);
+    queueWatchTelegramEvent(db, twin, "updated");
     return { ok: true, watch: twin, updated: true };
   }
 
@@ -138,6 +142,7 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
   db.watchTriggers.unshift(watch);
   if (db.watchTriggers.length > 100) db.watchTriggers = db.watchTriggers.slice(0, 100);
   appendAudit(db, `观察哨登记：${describeWatch(watch)}（现价 ${price}）`, watch.id, actor);
+  queueWatchTelegramEvent(db, watch, "registered");
   return { ok: true, watch };
 }
 
@@ -148,10 +153,12 @@ export function cancelWatch(db, watchId, actor = "AI 交易员", reason = "") {
   watch.closedAt = nowIso();
   watch.closeReason = reason || "手动撤销";
   appendAudit(db, `观察哨撤销：${describeWatch(watch)}${reason ? `（${reason}）` : ""}`, watch.id, actor);
+  queueWatchTelegramEvent(db, watch, "cancelled");
   return { ok: true, watch };
 }
 
-// 巡检消费触发的哨：返回未处理的已触发哨并标记已处理（LLM 巡检和 patrol_only 都要调）
+// 巡检消费触发的哨：只在已确定进入 LLM 决策后调用；
+// patrol_only 必须保留 pending，等熔断/配置/待批准等阻塞解除后再处理。
 export function consumeTriggeredWatches(db) {
   const pending = (db.watchTriggers || []).filter((w) => w.status === "triggered" && !w.triggerHandled);
   for (const w of pending) w.triggerHandled = true;
@@ -254,6 +261,27 @@ export function sentinelCycleAllowed(db, now = Date.now()) {
   return db.system.sentinelCycleAt.length < WATCH_LIMITS.maxTriggeredCyclesPerHour;
 }
 
+// WebSocket 发现机会/观察哨穿越后可直接调用；复用分钟哨兵相同的 autonomy、限频和任务锁。
+// pending 事实由 agent_cycle 进入后消费，锁冲突或限频时仍保留，由后续定时任务兜底。
+export async function requestPendingAgentCycle(db, saveDb, source = "sentinel") {
+  const gate = sentinelGate(db.system);
+  const watchPending = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
+  const movePending = (db.system?.pendingFastMoves || []).length > 0;
+  const opportunityPending = (db.system?.pendingOpportunitySignals || []).length > 0;
+  const newsPending = (db.system?.pendingNewsSignals || []).length > 0;
+  if (!(watchPending || movePending || opportunityPending || newsPending)) return { status: "nothing_pending" };
+  if (!gate.autoAnalyze) return { status: "auto_analysis_disabled" };
+  if ((db.tradePlans || []).some((plan) => plan.status === "awaiting_approval")) return { status: "decision_deferred_pending_approval" };
+  if (!sentinelCycleAllowed(db)) return { status: "rate_limited" };
+  const cycle = await runTask(db, "task_sys_agent_cycle", saveDb, source);
+  // 只统计真正进入决策且成功返回的轮次。并发锁、任务失败和 patrol_only
+  // 都没有消耗 LLM 分析额度，不能白白占用每小时上限。
+  const output = String(cycle?.run?.output || "");
+  const completedDecision = cycle?.run?.status === "ok" && !/patrol_only/i.test(output);
+  if (completedDecision) db.system.sentinelCycleAt.push(nowIso());
+  return cycle;
+}
+
 // 调度任务入口：每 1 分钟一跳
 export async function runWatchSentinel(db, saveDb) {
   db.watchTriggers ||= [];
@@ -296,9 +324,16 @@ export async function runWatchSentinel(db, saveDb) {
   for (const w of result.triggered) {
     appendAudit(db, `观察哨触发：${describeWatch(w)}（触发价 ${w.triggerPrice}）`, w.id, "WatchSentinel");
     createNotification(db, { eventType: "watch_trigger", severity: "warning", title: "观察哨触发", body: `${describeWatch(w)}，触发价 ${w.triggerPrice}。${autoAnalyze ? "已请求 AI 交易员立即评估。" : "请打开 App 让 AI 评估或自行决策（自动巡检当前关闭）。"}` });
+    queueWatchTelegramEvent(db, w, "triggered", { autoAnalyze, triggerPrice: w.triggerPrice });
   }
-  for (const w of result.expired) appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(w)}`, "ok");
-  for (const w of result.invalidated) appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(w)}（${w.closeReason}）`, "warning");
+  for (const w of result.expired) {
+    appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(w)}`, "ok");
+    queueWatchTelegramEvent(db, w, "expired");
+  }
+  for (const w of result.invalidated) {
+    appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(w)}（${w.closeReason}）`, "warning");
+    queueWatchTelegramEvent(db, w, w.status === "cancelled" ? "cancelled" : "invalidated");
+  }
 
   // 观察哨触发 或 快速异动 → 立即请求一轮完整巡检（同一任务、同一并发锁、同一风控链）。
   // 锁被占 / 限频超额时不丢：哨保持 pending / 异动留在 pendingFastMoves，下一 tick 或定时巡检兜底。
@@ -306,15 +341,11 @@ export async function runWatchSentinel(db, saveDb) {
   // autonomy 关时:哨已触发、用户已收到通知,但不自动唤起 AI;待处理的哨/异动留 pending,
   // 用户开 App 或打开自主巡检后由下一轮兜底消费,不丢。
   let cycle = null;
-  const watchPending = (db.watchTriggers || []).some((w) => w.status === "triggered" && !w.triggerHandled);
-  const movePending = (db.system.pendingFastMoves || []).length > 0;
-  if ((watchPending || movePending) && autoAnalyze && sentinelCycleAllowed(db)) {
-    db.system.sentinelCycleAt.push(nowIso());
-    cycle = await runTask(db, "task_sys_agent_cycle", saveDb, "sentinel");
-  }
+  const opportunityPending = (db.system.pendingOpportunitySignals || []).length > 0;
+  if (autoAnalyze) cycle = await requestPendingAgentCycle(db, saveDb, "sentinel");
   const changed = result.changed || fastMoves.length > 0;
   return {
-    status: fastMoves.length ? "fast_move" : result.triggered.length ? "triggered" : "watched",
+    status: fastMoves.length ? "fast_move" : result.triggered.length ? "triggered" : opportunityPending ? "opportunity_pending" : "watched",
     watched: active.length,
     triggered: result.triggered.map((w) => describeWatch(w)),
     fastMoves: fastMoves.map((e) => `${e.symbol} ${e.direction === "down" ? "-" : "+"}${e.movePct}%`),

@@ -10,7 +10,6 @@
     "build": "vite build",
     "test": "node --test tests/*.test.mjs",
     "eval:agent": "node scripts/agent-eval.mjs",
-    "test:exchange-contract": "node scripts/exchange-contract-check.mjs",
     "migrate:tenant-resources": "node scripts/migrate-tenant-resources.mjs",
     "preflight:production": "node scripts/production-preflight.mjs",
     "preview": "vite preview --host 0.0.0.0",
@@ -20,6 +19,7 @@
     "smoke:full": "SMOKE_ALLOW_MUTATIONS=true node scripts/smoke-test.mjs",
     "healthcheck": "node scripts/healthcheck.mjs",
     "backup": "node scripts/backup.mjs",
+    "restore-drill": "node scripts/restore-drill.mjs",
     "docx": "python3 scripts/build-unified-docx.py",
     "lint": "eslint src server scripts tests"
   },
@@ -34,6 +34,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-async-errors": "^3.1.1",
     "html-to-image": "^1.11.13",
     "https-proxy-agent": "^9.1.0",
     "jszip": "^3.10.1",
@@ -47,9 +48,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "rss-parser": "^3.13.0",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.3",
     "simple-git": "^3.36.0",
-    "undici": "^8.5.0",
+    "undici": "^8.10.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {

@@ -1,6 +1,10 @@
 services:
   trading-agent:
-    build: .
+    build:
+      context: .
+      args:
+        APP_RELEASE: "${APP_RELEASE:-dev}"
+    user: "1000:1000"
     env_file:
       - .env
     ports:
@@ -8,6 +12,10 @@ services:
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
+      # Mount this host path from a separate disk/NFS/rclone target before enabling BACKUP_OFFSITE_DIR=/app/offsite-backups.
+      - "${BACKUP_OFFSITE_HOST_DIR:-./offsite-backups}:/app/offsite-backups"
+      # Host directory must be populated by KMS/Vault; do not store this key in .env or data backups.
+      - "${SECRETS_DIR:-./secrets}:/run/secrets/trading-agent:ro"
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
@@ -16,10 +24,16 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    pids_limit: 512
     stop_grace_period: 30s
     mem_limit: 1g
     cpus: 1.0
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "3"
     healthcheck:
       test: ["CMD", "node", "scripts/healthcheck.mjs"]
       interval: 30s

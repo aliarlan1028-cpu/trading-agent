@@ -1,6 +1,8 @@
 import dns from "node:dns/promises";
+import dnsCallback from "node:dns";
 import net from "node:net";
 import path from "node:path";
+import { Agent, fetch as undiciFetch } from "undici";
 
 export function isPrivateIp(address) {
   const kind = net.isIP(String(address || ""));
@@ -8,7 +10,9 @@ export function isPrivateIp(address) {
   let candidate = String(address).toLowerCase();
   if (kind === 6) {
     if (candidate === "::1" || candidate === "::") return true;
-    if (candidate.startsWith("fc") || candidate.startsWith("fd") || candidate.startsWith("fe80:")) return true;
+    if (candidate.startsWith("fc") || candidate.startsWith("fd") || candidate.startsWith("fe80:")
+      || candidate.startsWith("fec") || candidate.startsWith("fed") || candidate.startsWith("fee") || candidate.startsWith("fef")
+      || candidate.startsWith("ff") || candidate.startsWith("2001:db8:")) return true;
     // IPv4-mapped 形式（::ffff:127.0.0.1 / ::ffff:7f00:1）必须拆出 IPv4 再判——
     // 旧实现对 ::ffff:127.0.0.1 会误判为公网（split "." 得到 NaN 段全部落空）。
     const dotted = candidate.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
@@ -34,8 +38,12 @@ export function isPrivateIp(address) {
     || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
     || (parts[0] === 192 && parts[1] === 168)
     || (parts[0] === 192 && parts[1] === 0 && parts[2] === 0)      // 192.0.0.0/24 保留
+    || (parts[0] === 192 && parts[1] === 0 && parts[2] === 2)      // 文档示例地址
+    || (parts[0] === 198 && parts[1] === 51 && parts[2] === 100)   // 文档示例地址
+    || (parts[0] === 203 && parts[1] === 0 && parts[2] === 113)    // 文档示例地址
     || (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19))  // 198.18.0.0/15 基准测试段
-    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127);
+    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127)
+    || parts[0] >= 224;                                            // 组播、保留和广播
 }
 
 export async function assertSafeExternalUrl(value) {
@@ -53,10 +61,38 @@ export async function assertSafeExternalUrl(value) {
   }
   const addresses = net.isIP(host) ? [{ address: host }] : await dns.lookup(host, { all: true, verbatim: true });
   if (!addresses.length || addresses.some((item) => isPrivateIp(item.address))) throw new Error("外部 URL 解析到私有或保留地址");
-  // 已知局限（TOCTOU/DNS rebinding）：此处校验后 fetch 仍按 hostname 重新解析，短 TTL 恶意域名
-  // 存在换址窗口。彻底修复需 IP-pinning（undici Agent 自定义 connect），当前威胁面为
-  // Owner 自填 URL + 每跳重定向重校验，风险可接受；引入 undici 依赖时再收口。
   return url;
+}
+
+// fetch 真正建连时再次检查被选中的 IP，关闭“校验时公网、连接时变私网”的 DNS rebinding 窗口。
+export function createSafeExternalDispatcher() {
+  return new Agent({
+    connect: {
+      lookup(hostname, options, callback) {
+        const all = options?.all === true;
+        dnsCallback.lookup(hostname, { family: options?.family || 0, all, verbatim: true }, (error, address, family) => {
+          if (error) return callback(error);
+          if (all) {
+            const addresses = Array.isArray(address) ? address : [];
+            if (!addresses.length || addresses.some((item) => isPrivateIp(item.address))) return callback(new Error("外部 URL 连接解析到私有或保留地址"));
+            return callback(null, addresses);
+          }
+          if (isPrivateIp(address)) return callback(new Error("外部 URL 连接解析到私有或保留地址"));
+          return callback(null, address, family);
+        });
+      }
+    }
+  });
+}
+
+export async function assertSafeGitHubRepositoryUrl(value) {
+  let url;
+  try { url = new URL(String(value || "")); } catch { throw new Error("GitHub 仓库地址格式无效"); }
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "github.com") throw new Error("Git 仓库仅允许 https://github.com");
+  if (!/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(url.pathname) || url.search || url.hash) {
+    throw new Error("GitHub 仓库地址格式无效");
+  }
+  return assertSafeExternalUrl(url.toString());
 }
 
 async function readBodyLimited(response, maxBytes) {
@@ -79,13 +115,17 @@ export async function fetchExternalText(value, options = {}) {
   for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Number(options.timeoutMs || 15_000));
+    const dispatcher = createSafeExternalDispatcher();
     try {
-      const response = await fetch(current, {
+      // dispatcher 来自 npm undici，必须配同版本 undici.fetch；传给 Node 内置 fetch
+      // 会因内部 undici 协议版本不同报 UND_ERR_INVALID_ARG，导致所有安全外部抓取假性断网。
+      const response = await undiciFetch(current, {
         method: options.method || "GET",
         headers: options.headers,
         body: options.body,
         signal: controller.signal,
-        redirect: "manual"
+        redirect: "manual",
+        dispatcher
       });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         if (redirect === maxRedirects) throw new Error("外部 URL 重定向次数过多");
@@ -96,6 +136,7 @@ export async function fetchExternalText(value, options = {}) {
       return { response, text, finalUrl: current.toString() };
     } finally {
       clearTimeout(timer);
+      await dispatcher.close().catch(() => {});
     }
   }
   throw new Error("外部 URL 获取失败");

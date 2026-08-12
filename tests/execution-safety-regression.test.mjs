@@ -5,8 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "execution-safety-"));
-delete process.env.BINANCE_API_KEY;
-delete process.env.BINANCE_API_SECRET;
+delete process.env.OKX_API_KEY;
+delete process.env.OKX_API_SECRET;
+delete process.env.OKX_API_PASSPHRASE;
 
 const { closeExecution, executeApprovedPlan } = await import("../server/executionEngine.mjs");
 
@@ -29,7 +30,7 @@ function dbFixture() {
     lastRiskCheck: { passed: true },
     mandateId: "m1",
     mandateVersion: 1,
-    exchange: "BINANCE",
+    exchange: "OKX",
     symbol: "BTC/USDT",
     marketType: "perpetual_usdt",
     strategy: "trend",
@@ -59,7 +60,7 @@ function dbFixture() {
     auditLogs: [],
     traces: [],
     meta: {},
-    apiKeyMetadata: [{ exchange: "BINANCE", withdrawPermission: false, permissionVerifiedAt: new Date().toISOString() }],
+    apiKeyMetadata: [{ exchange: "OKX", withdrawPermission: false, permissionVerifiedAt: new Date().toISOString() }],
     orders: [],
     paperSessions: []
   };
@@ -79,7 +80,7 @@ test("missing exchange credentials never produce a false local cancellation", as
   db.executionOrders.push({
     id: "exec-pending",
     status: "entry_pending",
-    exchange: "BINANCE",
+    exchange: "OKX",
     symbol: "BTC/USDT",
     clientOrderId: "entry-1",
     agentRunId: "run-1",

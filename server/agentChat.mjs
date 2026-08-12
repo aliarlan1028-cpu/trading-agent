@@ -8,6 +8,8 @@ import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostru
 import { deriveAutomationState } from "./ops.mjs";
 import { analyzeMarketStructure } from "./setupReview.mjs";
 import { cancelWatch, describeWatch, listActiveWatches, registerWatch } from "./watchSentinel.mjs";
+import { correctUnbackedWatchRegistration } from "./watchClaimGuard.mjs";
+import { armedSetupAutomationAllowed, armTradeSetup, normalizeScenarioSpec, normalizeTriggerSpec } from "./armedSetup.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { deterministicDecision } from "./deterministicDecision.mjs";
 import { validateTradePlan } from "./schema.mjs";
@@ -27,7 +29,21 @@ import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { setConfig } from "./runtimeConfig.mjs";
 import { scheduleTask } from "./scheduler.mjs";
-import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
+import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
+import { enforceEvidenceFacts } from "./evidenceFactGuard.mjs";
+import { buildOpportunitySetupSnapshot } from "./opportunitySetup.mjs";
+import { recordToolExecution } from "./toolUsage.mjs";
+import { evaluatePortfolioIntentConflict, tradingRolesForPrompt, validateTradingRolePlan } from "./tradingRoles.mjs";
+import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
+import { bindPlanToEnabledBlueprint, enabledStrategyBlueprints } from "./strategyStudio.mjs";
+import { buildCapabilityPlan, capabilityPlanForPrompt, recordCapabilityResult, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
+import { advanceDecisionContext, createDecisionContext, decisionContextForPrompt, triggerFromPayload } from "./decisionCoordinator.mjs";
+import { assessAbnormalVolatility } from "./earlyOpportunityEngine.mjs";
+import { normalizePlanLeverage } from "./mandatePolicy.mjs";
+import { buildCurrentRiskSnapshot, currentRiskSnapshotForPrompt, enforceCurrentRiskFacts } from "./currentRiskSnapshot.mjs";
+import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
+import { buildReviewLearningContext, retrieveRelevantReviewMemories, reviewLearningPrompt, validateAppliedReviewLessons } from "./reviewLearning.mjs";
 
 // 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
@@ -36,9 +52,10 @@ const MAX_STEPS = 12;
 const SYSTEM_GUIDE = `【本系统内置说明】
 - AI交易员：对话入口，可读取行情、账户、事件、知识、授权和风控状态；能创建授权草案、交易计划、定时任务，并触发事件刷新/账户同步等系统动作。
 - 仪表盘：展示真实账户资产、今日盈亏、对账健康和收益质量；只有交易所私有只读同步成功后才显示真实资产。
-- 系统设置 / 交易所：保存 Binance 或 OKX API。Binance 至少需要 Key+Secret，OKX 需要 Key+Secret+Passphrase 才能做账户只读同步。任何提现权限都不应开启。
-- 实盘灰度：真实交易的最小额度试运行机制。它不是放开自动交易，而是在 liveTradingEnabled、确认风险、写单开关、最大名义额、人工批准和风控全部满足时，只允许小额度真实订单。
+- 系统设置 / 交易所：系统只使用 OKX。OKX 需要 Key+Secret+Passphrase 才能做账户只读同步，且任何提现权限都不应开启。
+- 实盘灰度：真实交易的有界额度机制。半自动模式保留逐单批准；全自动模式取消逐单批准，但仍强制 Mandate、专业风险闸、名义额上限、实盘小额验证与归因、审计、告警和账实对账；不把 OKX 模拟环境作为切换实盘的前置硬闸。
 - 风控与授权：授权委托限定交易所、交易对、杠杆、单笔风险、日亏上限和人工审批阈值；交易计划必须经过硬风控。
+- 策略产品：新交易计划必须归属于趋势回调、向上突破回踩、向下跌破反抽、区间边缘反转、假突破回归五类版本化策略之一；多阶段场景是执行实例，不等于策略本身。当前策略处于所有者授权的实盘观察期，证据不足时不得称为“已验证”。
 - 事件与任务：事件源负责同步宏观/交易所事件；定时任务负责执行轮询、持仓监控、账户对账、策略研究、模拟盘推进等。
 - 审计与通知：集中查看日志、任务运行、通知和安全审计；普通业务页只展示关键状态，不应堆流水账。
 - Admin：Owner 管理用户、免费授权、订阅套餐、支付请求、Agent Profile 与安全维护。`;
@@ -49,12 +66,12 @@ const SYSTEM_GUIDE = `【本系统内置说明】
 const TOOL_DEFS = [
   {
     name: "sync_market",
-    description: "同步指定交易对的真实公开行情与 K 线（Binance/OKX 公开数据，无需密钥）。分析任何行情前必须先调用。",
+    description: "同步指定交易对的 OKX 真实公开行情与 K 线（无需密钥）。强制证据包缺失/过期、需要非 1H 周期或要主动复核时调用；自主分析与执行统一使用 OKX。",
     schema: {
       type: "object",
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
-        exchange: { type: "string", enum: ["BINANCE", "OKX"] },
+        exchange: { type: "string", enum: ["OKX"] },
         timeframe: { type: "string", enum: ["1m", "5m", "15m", "1h", "4h", "1d"] }
       },
       required: ["symbol"]
@@ -67,19 +84,20 @@ const TOOL_DEFS = [
       type: "object",
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
-        exchange: { type: "string", enum: ["OKX", "BINANCE"] }
+        exchange: { type: "string", enum: ["OKX"] }
       },
       required: ["symbol"]
     }
   },
   {
     name: "analyze_market_structure",
-    description: "用 SMC/供需方法对真实 4H+1H K 线做结构分析：给出大周期结构方向(BOS/趋势)、当前处于结构哪一段、优质供需区/关键位、1H 流动性扫荡与 CHoCH 现状、以及可执行的方向与入场思路(含结构失效位=止损参考)。这是你做方向判断和入场设计的核心参谋工具——提计划前应先调用它把结构看清;它是参谋不是审批,结构不清晰会诚实说'建议观望'。",
+    description: "从真实 OKX 闭合K线确定性计算多周期结构事实，不再调用内层LLM。日内角色使用1H背景+15m结构+5m确认；波段角色使用1D背景+4H结构+1H确认。返回可核验的Swing High/Low、BOS/CHoCH发生时间和价位、收盘突破、ATR、成交量、区间、参考供需区与角色影子适配分。它提供事实，不代替Agent综合判断，也不控制风控或执行。",
     schema: {
       type: "object",
       properties: {
         symbol: { type: "string", description: "交易对，如 BTC/USDT" },
-        direction: { type: "string", enum: ["long", "short"], description: "你倾向的方向(可选),用于让分析师针对性核对结构是否支持" }
+        direction: { type: "string", enum: ["long", "short"], description: "当前候选方向（可选），只用于对照，不会改写结构事实" },
+        traderRole: { type: "string", enum: ["day_trader", "swing_trader"], description: "候选交易角色；不填时系统同时计算日内与波段并给影子适配建议" }
       },
       required: ["symbol"]
     }
@@ -98,7 +116,7 @@ const TOOL_DEFS = [
   },
   {
     name: "get_global_market",
-    description: "读取全局大盘：BTC 主导率、加密总市值 24h 趋势、恐惧贪婪指数。判断个币方向前应先看大盘——大盘走弱/极度贪婪时对做多更保守；BTC 主导率上升时山寨相对弱势。自上而下决策的第一步。",
+    description: "读取 OKX USDT 永续全市场广度：上涨家数占比、涨跌中位数与 BTC 24h 涨跌。判断个币方向前应先看同一交易所的大盘环境；不使用其他交易所、第三方总市值或恐惧贪婪指数替代。",
     schema: { type: "object", properties: {} }
   },
   {
@@ -109,6 +127,40 @@ const TOOL_DEFS = [
   {
     name: "get_events",
     description: "读取当前跟踪的宏观/交易所事件（CPI、FOMC 等）及影响评估。",
+    schema: { type: "object", properties: {} }
+  },
+  {
+    name: "get_market_intelligence",
+    description: "读取经过来源、时间戳、有效期和证据标识约束的市场情报事实。用于新闻/催化剂/市场情绪背景；返回事实不等于交易信号，过期或缺失字段不得猜测。",
+    schema: { type: "object", properties: {
+      symbols: { type: "array", items: { type: "string" } },
+      horizonHours: { type: "number", description: "回看小时数，默认48" },
+      categories: { type: "array", items: { type: "string" } },
+      limit: { type: "number", description: "最多返回数量，默认30" }
+    } }
+  },
+  {
+    name: "get_daily_market_brief",
+    description: "读取北京时间今日结构化市场日报：重要新闻、未来事件、资金流、数据质量和约束提示。日报只作为分析上下文，不能单独触发交易。",
+    schema: { type: "object", properties: { date: { type: "string", description: "可选 YYYY-MM-DD" } } }
+  },
+  {
+    name: "get_event_calendar",
+    description: "读取官方宏观日历。严格保留时间精度：只有 date 的事件不得被当成精确发布时间或分钟级静默窗口。",
+    schema: { type: "object", properties: {
+      from: { type: "string", description: "ISO起始时间，默认现在" },
+      to: { type: "string", description: "ISO结束时间，默认未来7天" },
+      importance: { type: "string", enum: ["high", "medium", "low"] }
+    } }
+  },
+  {
+    name: "get_flow_snapshot",
+    description: "读取公开网页 ETF 日净流、OKX 官方公开强平活动（事件数量，不是全市场美元总额）和 BTC 情绪快照。数据过期或抓取失败时会明确返回 unavailable，禁止猜值。",
+    schema: { type: "object", properties: {} }
+  },
+  {
+    name: "get_source_health",
+    description: "读取信息源健康、新鲜度、最后成功时间和失败原因。做信息面结论前可用于确认数据是否仍可用。",
     schema: { type: "object", properties: {} }
   },
   {
@@ -163,6 +215,18 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "assess_abnormal_volatility",
+    description: "判断某交易对是否已经出现、或未来几分钟是否存在【异常波动风险】。使用 OKX WebSocket 的 1m/3m/5m 真实涨跌与加速度，并结合系统已核验的实时快讯和未来高影响事件。默认定义为 5 分钟绝对涨跌达到 5%。结果严格区分 confirmed（已经发生）、elevated（风险升高但不是预测）、normal、insufficient_data；用户问‘会不会突然涨跌/5分钟会不会超过5%/下一步是否可能异常波动’时必须调用，不得凭知识库猜测。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "交易对，如 BTC/USDT" },
+        thresholdPct: { type: "number", description: "5分钟绝对涨跌阈值，默认 5，允许 0.5–30" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
     name: "scan_market_opportunities",
     description: "全市场机会扫描器:一次拉取 OKX 全部 USDT 永续合约(200+ 个),按方向感知的多因子(24h 动量+区间位置+振幅+流动性)打分,返回评分最高的 Top N 候选。这是【漏斗/筛选器】不是信号——用它把全市场收窄到几个值得深看的币,再对候选逐个调 analyze_market_structure / get_microstructure / get_token_profile 做五视角深分析后自行判断。突破当前授权白名单的视野盲区:不在白名单的优质机会也会浮现(结果里 inWhitelist 标注),可在结尾建议加白。全部真实 ticker 数据,确定性,无编造。",
     schema: {
@@ -201,7 +265,12 @@ const TOOL_DEFS = [
         positionPct: { type: "number", description: "仓位:每单保证金占余额的百分比(如 30),名义=保证金×杠杆" },
         maxSingleTradeRiskPct: { type: "number" },
         maxDailyLossPct: { type: "number" },
+        maxWeeklyLossPct: { type: "number", description: "近7日累计亏损上限百分比，默认 5" },
         humanApprovalNotionalUsdt: { type: "number" },
+        maxOrderNotionalUsdt: { type: "number", description: "单笔最大名义价值（USDT）" },
+        maxSymbolNotionalUsdt: { type: "number", description: "单交易对最大累计名义价值（USDT），不得小于单笔上限" },
+        maxPortfolioNotionalUsdt: { type: "number", description: "组合最大累计名义价值（USDT），不得小于单交易对上限" },
+        maxConcurrentPositions: { type: "integer", description: "最大同时持仓数，1–20" },
         validHours: { type: "number" }
       },
       required: ["goal", "allowedSymbols"]
@@ -257,7 +326,7 @@ const TOOL_DEFS = [
     schema: {
       type: "object",
       properties: {
-        exchange: { type: "string", enum: ["BINANCE", "OKX"] }
+        exchange: { type: "string", enum: ["OKX"] }
       },
       required: ["exchange"]
     }
@@ -268,7 +337,7 @@ const TOOL_DEFS = [
     schema: {
       type: "object",
       properties: {
-        exchange: { type: "string", enum: ["BINANCE", "OKX"] },
+        exchange: { type: "string", enum: ["OKX"] },
         apiKey: { type: "string" },
         apiSecret: { type: "string" },
         passphrase: { type: "string" },
@@ -278,8 +347,45 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "query_review_lessons",
+    description: "按交易对、策略形态、分析周期、方向和当前市场环境精确检索真实平仓复盘。系统提示里的相关复盘不足以覆盖本次具体 setup 时调用；只返回真实 auto_reflection 记忆，不生成内容。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        setupType: { type: "string", enum: ["trend_continuation", "trend_pullback", "breakout_retest", "breakdown_retest", "reversal_reclaim", "fake_breakout", "range_rejection"] },
+        timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"] },
+        direction: { type: "string", enum: ["long", "short"] },
+        regime: { type: "string" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "record_review_application",
+    description: "当相关真实交易复盘确实影响了本轮分析、但本轮可能不提出交易计划时，记录采用关系和具体影响。只能引用系统提示中本轮检索到的复盘记忆 ID；仅阅读但未影响判断时不要调用。若随后提出计划，仍应在 propose_trade_plan.appliedReviewLessons 中带上同样的引用。",
+    schema: {
+      type: "object",
+      properties: {
+        applications: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              memoryId: { type: "string" },
+              influence: { type: "string", enum: ["reinforced", "changed", "avoided"] },
+              note: { type: "string" }
+            },
+            required: ["memoryId", "influence", "note"]
+          }
+        }
+      },
+      required: ["applications"]
+    }
+  },
+  {
     name: "propose_trade_plan",
-    description: "基于已同步的真实行情提出交易计划。计划会立即通过硬风控引擎检查，结果一并返回；通过后仍需人工批准才可能执行。入场/止损/止盈必须来自真实行情分析，不允许编造。【白名单外也可提】对 scan_market_opportunities 扫出并经你深分析确认优质的白名单外币对，同样可以调用本工具提计划——系统会自动把它标为『白名单外·一次性授权』候选：始终落到待人工确认、绝不自动执行，用户在计划卡点『确认下单』即按本计划下单（仅本笔授权，不加入常驻白名单、自主巡检以后也不会自动碰它）。提这类计划前务必已 sync_market + 结构/微观深分析，风控标准和白名单内一致。",
+    description: "基于已同步的 OKX 真实行情提出交易计划，并选择一个版本化策略产品。executionMode=immediate 表示当前价格已合适，过硬风控后按运行模式立即执行/待批；executionMode=armed 表示结构已确认但价格尚未到位，先登记完整的等待入场计划，价格与确认条件满足后刷新事实、重跑硬风控并进入执行，不重新等待 LLM。白名单外候选只能一次性人工授权，不能建立自动触发计划。",
     schema: {
       type: "object",
       properties: {
@@ -289,16 +395,98 @@ const TOOL_DEFS = [
         entryHigh: { type: "number" },
         stopLoss: { type: "number" },
         takeProfits: { type: "array", items: { type: "number" } },
-        leverage: { type: "number" },
+        leverage: { type: "number", description: "计划杠杆。系统会在计划层自动贴合当前授权的最低/最高杠杆，并按校正后的杠杆重新计算仓位与保证金；最终写单仍硬拒绝越界。" },
         timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "计划使用的分析周期" },
+        traderRole: { type: "string", enum: ["day_trader", "swing_trader"], description: "负责该计划的交易角色。日内交易员侧重当日机会；波段交易员侧重4H/1D结构。未填时系统按计划周期确定。" },
         riskPercent: { type: "number", description: "单笔风险占比，如 0.3" },
+        executionMode: { type: "string", enum: ["immediate", "armed"], description: "immediate=当前执行；armed=等待结构化价格条件触发，默认 immediate" },
+        triggerKind: { type: "string", enum: ["price_above", "price_below", "enter_zone"], description: "armed 必填：突破、跌破或进入区间" },
+        triggerLevel: { type: "number", description: "armed 的 price_above/price_below 触发价" },
+        triggerLevelLow: { type: "number", description: "armed 的 enter_zone 下沿" },
+        triggerLevelHigh: { type: "number", description: "armed 的 enter_zone 上沿" },
+        triggerConfirmation: { type: "string", description: "给用户看的确认依据说明。若不只是价格触发，必须同时填写 triggerConfirmations；系统不会执行无法结构化的文字条件" },
+        triggerConfirmationMode: { type: "string", enum: ["all", "any"], description: "多个确认规则是全部满足(all)还是任一满足(any)，默认 all" },
+        triggerConfirmations: {
+          type: "array",
+          description: "等待入场计划的可执行K线确认规则。写了 pin bar、收盘确认、放量或缩量等文字条件时必须结构化填写；无法计算的条件不能登记",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["rejection_wick", "engulfing", "volume_contraction", "volume_expansion", "close_above", "close_below"] },
+              timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"] },
+              level: { type: "number", description: "close_above/close_below 必填" },
+              lookback: { type: "number", description: "成交量均值回看根数，默认20" },
+              threshold: { type: "number", description: "影线占整根K线比例或成交量/均量比例" },
+              negate: { type: "boolean", description: "true=该形态不得出现；例如‘不得出现放量阴线’必须设 true" },
+              candleDirection: { type: "string", enum: ["bullish", "bearish", "any"], description: "成交量规则作用于阳线、阴线或任意K线" }
+            },
+            required: ["kind", "timeframe"]
+          }
+        },
+        scenarioStages: {
+          type: "array",
+          description: "可选的多阶段交易场景（1-4步）。例如先突破，再回踩，最后出现K线确认。只有最后一步满足后才允许执行；不要把分析观察条件混入可执行场景。",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              label: { type: "string", description: "给用户看的阶段名称，例如‘确认突破’、‘等待回踩’" },
+              kind: { type: "string", enum: ["price_above", "price_below", "enter_zone"] },
+              level: { type: "number" },
+              levelLow: { type: "number" },
+              levelHigh: { type: "number" },
+              confirmation: { type: "string" },
+              confirmationMode: { type: "string", enum: ["all", "any"] },
+              confirmations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    kind: { type: "string", enum: ["rejection_wick", "engulfing", "volume_contraction", "volume_expansion", "close_above", "close_below"] },
+                    timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"] },
+                    level: { type: "number" }, lookback: { type: "number" }, threshold: { type: "number" }, negate: { type: "boolean" },
+                    candleDirection: { type: "string", enum: ["bullish", "bearish", "any"] }
+                  },
+                  required: ["kind", "timeframe"]
+                }
+              }
+            },
+            required: ["id", "label", "kind"]
+          }
+        },
+        scenarioGroupId: { type: "string", description: "同一市场判断下互斥分支的组ID；某分支进入最终执行时，其余分支自动失效" },
+        scenarioBranchId: { type: "string", description: "当前场景分支ID" },
+        invalidationKind: { type: "string", enum: ["price_above", "price_below", "enter_zone"], description: "可选：任一阶段等待期间触发即令整个场景失效" },
+        invalidationLevel: { type: "number" },
+        invalidationLevelLow: { type: "number" },
+        invalidationLevelHigh: { type: "number" },
+        ttlHours: { type: "number", description: "armed 有效期，默认12小时，最大48小时" },
         knowledgeSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用的 active 知识技能 ID；只有实际用于推理与计划条件时才填写" },
         adoptedToolSkillIds: { type: "array", items: { type: "string" }, description: "本计划明确采用了哪些【受信任导入方法论】的 ID（见系统提示里的受信任导入方法论区块）；只有真的照它的方法做了这个计划才填，用于按真实成绩复盘该方法论" },
+        setupType: { type: "string", enum: ["trend_continuation", "trend_pullback", "breakout_retest", "breakdown_retest", "reversal_reclaim", "fake_breakout", "range_rejection"], description: "本计划采用的策略产品；必须与行情结构、方向和触发方式一致。不能用 custom 绕过策略版本归因" },
+        strategyBlueprintVersionId: { type: "string", description: "可选。仅填写系统提示中已启用且交易对、方向、周期和基础策略产品完全匹配的工作室策略版本 ID；系统会再次校验版本哈希和启用状态" },
+        directionBias: { type: "string", enum: ["long", "short", "neutral"], description: "高周期/当前regime的方向偏置；反转计划允许与偏置相反，但必须在 conflictingFactors 说明" },
+        entryQuality: { type: "string", enum: ["ready", "conditional"], description: "ready=当前位置已经合适；conditional=价格/确认尚未到位，应使用armed" },
+        supportingFactors: { type: "array", items: { type: "string" }, description: "本次实际支持计划的事实因子，写事实与证据，不写空泛结论" },
+        conflictingFactors: { type: "array", items: { type: "string" }, description: "与计划方向冲突或仍缺失的证据；无则传空数组" },
         appliedLenses: { type: "array", items: { type: "string" }, description: "本次分析【实际依据】了哪些分析透镜——填【分析条令/透镜】区块里那些透镜的名称（只填真正用于这次判断的，别全填）；用于让主人看到这笔交易到底用了哪些知识。" },
         appliedRules: { type: "array", items: { type: "string" }, description: "本次分析【实际遵守/触发】了哪些铁律——填【交易纪律与风控规则】区块里那些规则的名称（只填真正影响了这次决策的）。" },
+        appliedReviewLessons: {
+          type: "array",
+          description: "本轮检索到相关真实复盘时，声明哪些复盘确实影响了计划；只允许引用提示词给出的记忆 ID。没有适用教训必须传空数组。",
+          items: {
+            type: "object",
+            properties: {
+              memoryId: { type: "string", description: "相关真实复盘区块中的记忆 ID" },
+              influence: { type: "string", enum: ["reinforced", "changed", "avoided"], description: "reinforced=强化原判断，changed=改变原判断，avoided=避免重复错误" },
+              note: { type: "string", description: "该复盘具体怎样改变了方向、入场、止损、仓位或放弃交易的判断" }
+            },
+            required: ["memoryId", "influence", "note"]
+          }
+        },
         rationale: { type: "string", description: "完整推理：依据哪些行情结构、知识规则与事件判断" }
       },
-      required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "rationale"]
+      required: ["symbol", "direction", "entryLow", "entryHigh", "stopLoss", "setupType", "directionBias", "entryQuality", "supportingFactors", "conflictingFactors", "appliedReviewLessons", "rationale"]
     }
   },
   {
@@ -393,11 +581,11 @@ export function listAgentTools() {
 const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服务唯一主人。工作语言为中文。
 
 铁律：
-1. 任何价格、指标、行情结论都必须来自 sync_market 返回的真实数据；没有同步过就说"尚未同步"，绝不编造数字。
+1. 任何价格、指标、行情结论都必须来自本轮强制证据包或 sync_market 返回的真实 OKX 数据；证据 missing/stale 就说"无法确认"并重新同步，绝不凭记忆或知识库编造当前数字。
 2. 提出交易计划必须调用 propose_trade_plan，让硬风控引擎检查；不要在文本里口头给交易参数。
 3. 用户给出交易目标/授权边界时，先调用 create_mandate_draft 固化，再继续分析。
 【自主交易分工·最重要】主人只负责设定"授权边界"：允许交易的币对、单笔风险%、日亏上限、最大杠杆、是否开启自动执行。而"做多还是做空、入场/止损/止盈价位、时机、仓位大小"全部是你从真实数据（行情/微观结构/聪明钱/事件/知识库/已验证策略画像）分析后**自己决定**的——这正是"自主交易"的意义。**绝对不能反过来问主人"你想做多还是做空/单笔想亏多少"**。当有人问"你会怎么自动交易/你的步骤是什么"时，正确回答是：①确认或请主人设定授权边界(币对/单笔风险/日亏/杠杆) → ②同步真实行情与信号、结合知识库与已验证策略形成方向判断 → ③用 propose_trade_plan 产出结构化计划(方向/入场/止损/止盈/仓位)过硬风控 → ④在授权与额度内自动执行或转人工批准 → ⑤实时监控、按止盈止损/保本/跟踪管理仓位 → ⑥平仓后复盘沉淀。方向与参数是你的活，不是问主人。没有 Mandate 时只问边界，不问方向。
-4. 默认执行需人工批准。仅当主人已开启实盘写入且在灰度策略里关闭「保留人工确认」时，你提出并通过硬风控的计划会在授权与名义金额上限内自动执行（超上限仍转人工批准）。不要在拿到工具返回的执行状态前声称"已下单"，一切以 propose_trade_plan 返回的 status/execution 为准。
+4. 执行服从运行模式：全自动模式在 Mandate 边界内不逐单问主人；半自动模式才等待批准。任何越界或安全条件失败都应拒绝/重新定仓，不能把越界单转给人工绕过。不要在拿到工具返回的执行状态前声称"已下单"，一切以 propose_trade_plan 返回的 status/execution 为准。
 5. 回答克制、专业、可解释：结论 + 依据 + 风险。不确定就说不确定。
 6. 永远不索取或输出 API 密钥等敏感信息。
 7. 你拥有长期记忆（下方"主人档案/交易纪律/近期历史/长期记忆"）与专业知识库（下方"相关专业知识"）。决策时必须结合它们：遵守主人的偏好与纪律，引用知识库结论并说明依据。
@@ -409,28 +597,31 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
    - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次工具，然后在文字里最多用一句话说"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
    - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；但白名单外的好机会可以直接 **propose_trade_plan**——系统自动标为『白名单外·一次性授权』候选、待用户确认下单(见授权白名单区块)。正常给完整分析结论，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
-11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 把 4H 结构、供需区、1H 流动性/CHoCH 看清**(它是你的结构参谋);**并且必须先调用 explain_market_move 查该币最新消息面(利空/利好/催化剂)——别只看 K 线**。事件源(下方"信息面简报")可能没覆盖到这个币,所以要用 explain_market_move 主动联网搜它自己的新闻,把消息面纳入方向判断:有未计价的重大利空就别硬做多、有强利好就别硬做空;若消息面与你的技术方向明显相悖,降级为观望或减小仓位。再逐项确认——
+11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 读取角色感知的确定性结构事实**。日内计划核对1H/15m/5m，波段计划核对1D/4H/1H；BOS/CHoCH只是带时间和价位证据的结构事实之一，不得单独垄断方向。消息面优先使用系统已有的新鲜事件/归因缓存；只有急速异动、事件驱动币或缓存缺失且消息可能改变方向时才调用 explain_market_move。联网归因限流/不可用时必须标"消息面未知"，不得编造，但普通技术结构机会不因外部消息服务故障而空等。再逐项确认——
    - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交 <2R 的低质量计划。
-   - 高周期结构优先：方向必须与 4H 结构一致（4H BOS 定方向）。不要仅凭单根低周期(1m/5m/15m)放量 K 线就逆着大结构开仓——低周期单根放量+整数关口，多半是流动性扫荡(先砸后拉/先拉后砸)而不是真突破。
+   - 角色周期一致：波段计划以1D/4H为方向背景、1H改善入场；日内计划以1H为背景、15m定结构、5m做确认，4H只作风险背景而非机械否决。不要仅凭单根低周期放量K线逆着角色背景开仓；结构突破必须核对收盘、ATR距离和成交量。
    - 止损别扎在猎杀区：止损不要正好压在破位/突破那根 K 线的最高/最低点上方(下方)一点点——那里止损最密集、最容易被"扫损"；要放到结构真正失效位之外，给足缓冲。
    - 记住这个反例：曾对 BTC 在 15m 单根放量砸穿整数关口后立刻做空、止损压在破位高点上方、RR 仅 1.5，结果价格反向扫掉上方止损、计划失败。"低周期逆结构 + 紧止损 + 低 RR"是典型错误组合，别再犯。
-12. 合约下单口径【硬事实·禁止手算】：OKX/币安永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币（BTC-USDT-SWAP 每张 0.01 BTC）；最小下单量是 minSz 张——BTC 为 0.01 张 = 0.0001 BTC ≈ 6 USDT 名义、5x 约 1.3 USDT 保证金，**不是** 0.01 BTC(那是整整 1 张、≈640 USDT)。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
+12. 合约下单口径【硬事实·禁止手算】：OKX 永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币；最小下单量是 minSz 张。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
    - 【绝对禁止】把「0.01 张」当成「0.01 币」、或自己手算合约最小值/名义/保证金，更不能据此断言「账户太小、即使批准也会被交易所拒」——这几乎总是错的(极易算成 100 倍)。真实可下量由执行引擎按 minSz/lotSz/最小名义额(~5 USDT)自动对齐并强制(不足才返回 below_min_size)。可下与否一律以 propose_trade_plan 返回的 sizing 与引擎结果为准，不要自己下结论。
+   - 时机分流：当前价格已经合适才用 executionMode=immediate；结构明确但在等突破/跌破/回踩时，用 executionMode=armed 并提交完整触发条件、入场、止损、止盈和有效期。若逻辑是“先突破/跌破，再回踩，再确认”，必须用 scenarioStages 分阶段表达；系统只在最后阶段满足后执行，不得把第一阶段当成入场。若本轮分析开始前突破已经成为可核验的既成事实，就从当前仍未发生的“等待回踩”阶段登记，不要把已经成立的价格条件重新登记为第一阶段。若文字里要求 pin bar、收盘、放量或缩量确认，必须同步填写 confirmations，让代码能够真实验证；无法结构化的文字条件禁止写入计划。不要把一个本可提前登记的待入场计划退化成“触发后再从头分析”的普通观察哨。
 13. 计划结果播报【必须照 propose_trade_plan 的返回字段如实说，禁止想当然】：
    - 执行前的闸只有一道:**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆/盈亏比等，返回如 36/36)。结构质量靠你在提计划前用 analyze_market_structure 自己把关(不再有事后否决的 SRTL 硬闸)。硬风控通过后:自主全开则自动下单,否则进待批准。
-   - 按返回的 status 字段播报，**不许自己脑补**：orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 awaiting_approval → 才说"等待人工批准"；被硬风控拒 → 说风控原因,别说成等待批准。
+   - 按返回的 status 字段播报，**不许自己脑补**：orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 armed → 只能说"系统正在等待入场条件，尚未向 OKX 下单"；status 为 awaiting_approval → 才说"等待人工批准"；被硬风控拒 → 说风控原因,别说成等待批准。
    - 自主已开(autonomy+实盘写入+灰度「无需人工批准」全开)时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
 14. 极值处不追单 · 换位置换确认【关键·最容易犯:大跌后在低点追空】：单边大跌/大涨已充分展开、价格到极值附近时，【不禁止】该方向，但【禁止在原地"追"】——必须换更好的位置或更强的确认，别在恐慌的最后一根里追进去。
    - 大跌贴近 24h 低点(rangePosition24h 很低)想做空时：不要因为"已经跌很多/还会跌"就在低点直接追空(原地追，反弹会被扫、真续跌也是烂价位)。**正确做法二选一**：①等反弹回上方阻力/供需区，在衰竭确认处做空(高抛，最佳)；②若判断是延续破位，用 register_watch 登记"跌破 24h 低点 X 后回踩确认"的观察哨，做【破位回踩】，而不是在破位前的低点追。
    - 一句话：做空要么"反弹到阻力高抛"、要么"破位回踩确认"，绝不"在刚砸下来的低点追"。大涨追多同理(等回踩支撑做多，或破位向上回踩确认)。
    - 这样既不会在底部被反弹扫，又不会错过真正的续跌——续跌用破位观察哨接住。判断用 sync_market 的 changePct 与 rangePosition24h(价格在24h高低区间百分位)。
+   - 【方向≠位置≠Setup】rangePosition24h 只说明当前位置，绝不是多空信号。每次结论必须分开写清：①marketRegime；②directionBias；③当前入场质量；④采用 trendContinuation / breakoutRetest / reversalReclaim 哪条通道。66% 之类的中间位置不能脱离 regime 单独否决趋势单；低位也不能因为“便宜”直接翻多，只有反向腿后出现极值回收、短动量翻向并经结构/微观复核，才是反转候选。
 15. 挂单 ≠ 持仓【措辞硬纪律·别把委托单说成持仓】：限价单已提交但价格没到、没成交 = **挂单未成交**，仓位为 0，还没进场；只有真正成交、账户快照里 size≠0 才是**持仓中**。以【实时账户快照】里"持仓"和"挂单"两行为准，绝不能把一个未成交的挂单描述成"持仓中/已建仓/已进场"。要说也说"已挂单，等价格到 X 成交"。
 
 输出格式：
-- 结论先行、极度精简：先用 1-2 句给出本轮结论，再补必要依据；不复述任务要求、不逐条汇报"我检查了什么"，只说发现了什么和决定了什么。
-- 面向前端可视化展示，优先使用清晰 Markdown 小节：### 结论、### 依据、### 风险、### 下一步；无实质内容的小节直接省略。
+- 结论先行、信息完整：先用 1-2 句给出本轮结论，再补足理解决策所需的关键事实、判断链、风险与动作；不能为了简短而省略会影响判断的证据。
+- 禁止输出工具调用或组织答案的过程旁白，例如“计划已武装。现在汇总全貌。”“工具调用完成，下面开始总结”。工具产生的真实业务状态应直接归入对应结论或动作，不要播报写作过程。
+- 面向前端可视化展示，按本轮实际内容动态选择清晰的 Markdown 小节（如结论、交易对、依据、风险、下一步）；不强制固定模板，无实质内容的小节直接省略。
 - 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"。
-- 列表每条只表达一个判断，一条尽量不超过一行；同类信息合并成一条，整体列表不超过 6 条；需要行动时用 1. 2. 3. 步骤。
+- 长分析把事实、判断、风险和动作分段；列表每条只表达一个判断，同类信息可合并，需要行动时用 1. 2. 3. 步骤。不要用一大段连续文字承载多个不同主题。
 - 不要输出表格、HTML、JSON、代码块或 --- 分隔线，除非用户明确要求。
 - 所有时间一律使用北京时间（UTC+8）并注明，如"14:30（UTC+8）"；不要输出 UTC 裸时间。
 
@@ -455,7 +646,167 @@ function computeAtrFromCandles(candles) {
 
 function clip(text, max) {
   const value = String(text || "").trim();
-  return value.length > max ? `${value.slice(0, max)}…` : value;
+  return truncateUtf16Safely(value, max, true);
+}
+
+export function truncateUtf16Safely(value = "", max = 0, ellipsis = false) {
+  const raw = String(value);
+  const limit = Math.max(0, Number(max) || 0);
+  if (raw.length <= limit) return typeof raw.toWellFormed === "function" ? raw.toWellFormed() : raw;
+  let end = limit;
+  // slice 的边界若刚好落在 emoji/扩展字符的 UTF-16 高低代理项之间，向前退一位；
+  // 否则会制造 JSON 无法被严格网关解析的孤立半字符。
+  if (end > 0) {
+    const previous = raw.charCodeAt(end - 1);
+    const next = raw.charCodeAt(end);
+    if (previous >= 0xD800 && previous <= 0xDBFF && next >= 0xDC00 && next <= 0xDFFF) end -= 1;
+  }
+  const sliced = raw.slice(0, end);
+  const wellFormed = typeof sliced.toWellFormed === "function" ? sliced.toWellFormed() : sliced;
+  return `${wellFormed}${ellipsis ? "…" : ""}`;
+}
+
+const HISTORICAL_ACCOUNT_FACT = /(当前|目前|现有|账户仅|账户余额|余额|净值|总资产|可用保证金|持仓|仓位|浮盈|浮亏|日亏预算|剩余.{0,8}(?:日亏|亏损)|开仓空间)/i;
+const HISTORICAL_DYNAMIC_RISK_FACT = /(周亏|近\s*7\s*日|连续亏损|连亏|回撤锁仓|只减仓|运行降级|WS\s*断|对账异常|审计异常|风控暂停)/i;
+
+// 历史回复和长期记忆只用于保留推理经验，不能继续向模型提供已经失效的余额、持仓和盈亏数字。
+// 用户原话不经过这里，避免把用户正在纠正的问题本身删掉。
+export function sanitizeHistoricalAccountClaims(content = "") {
+  let redacted = false;
+  let riskRedacted = false;
+  const lines = String(content || "").split("\n");
+  const safe = [];
+  for (const line of lines) {
+    const hasAccountFact = HISTORICAL_ACCOUNT_FACT.test(line);
+    const looksStateful = /(?:\d|无持仓|没有持仓|空仓|size\s*[=:])/i.test(line);
+    if (hasAccountFact && looksStateful) {
+      if (!redacted) safe.push("[历史账户状态已省略；余额、持仓、挂单和盈亏必须以本轮 OKX 实时快照为准]");
+      redacted = true;
+      continue;
+    }
+    if (HISTORICAL_DYNAMIC_RISK_FACT.test(line) && /(?:\d|开启|关闭|触发|熔断|暂停|异常|断连|正常)/i.test(line)) {
+      if (!riskRedacted) safe.push("[历史动态风控状态已省略；周亏损、连续亏损、只减仓和运行降级必须以本轮实时风险快照为准]");
+      riskRedacted = true;
+      continue;
+    }
+    safe.push(line);
+  }
+  return safe.join("\n").trim();
+}
+
+function normalizeOkxSymbol(instId = "") {
+  return String(instId).replace(/-SWAP$/i, "").replace("-", "/").toUpperCase();
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function authoritativeAccountFacts(db) {
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  let positions;
+  if (snapshot) {
+    const synced = (db.positions || []).filter((item) => item.exchange === "OKX"
+      && item.source === "exchange_rest"
+      && item.rawSyncedAt === snapshot.createdAt
+      && Number(item.size ?? item.pos ?? item.contracts ?? 0) !== 0);
+    positions = synced.length ? synced : (snapshot.positions || [])
+      .filter((item) => Number(item.pos ?? item.size ?? 0) !== 0)
+      .map((item) => ({
+        exchange: "OKX",
+        symbol: normalizeOkxSymbol(item.instId || item.symbol),
+        direction: item.posSide || (Number(item.pos) < 0 ? "short" : "long"),
+        size: Math.abs(Number(item.pos ?? item.size ?? 0)),
+        entry: Number(item.avgPx ?? item.entryPrice ?? 0),
+        pnl: Number(item.upl ?? item.unrealizedPnl ?? 0)
+      }));
+  } else {
+    positions = (db.positions || []).filter((item) => Number(item.size ?? item.pos ?? item.contracts ?? 0) !== 0);
+  }
+
+  const account = snapshot?.balances?.[0] || {};
+  const usdt = (account.details || []).find((item) => item.ccy === "USDT") || {};
+  const snapshotEquity = optionalNumber(snapshot?.totalEquityUsdt ?? account.totalEq);
+  const snapshotAvailable = optionalNumber(usdt.availEq ?? usdt.availBal);
+  const portfolioEquity = optionalNumber(db.portfolio?.totalEquityUsdt);
+  const portfolioAvailable = optionalNumber(db.portfolio?.availableMarginUsdt);
+  return {
+    snapshot,
+    positions,
+    equity: snapshotEquity != null && snapshotEquity > 0
+      ? snapshotEquity
+      : portfolioEquity,
+    availableMargin: snapshotAvailable != null
+      ? (snapshotEquity != null && snapshotEquity > 0 ? Math.min(snapshotAvailable, snapshotEquity) : snapshotAvailable)
+      : portfolioAvailable,
+    remainingDailyLoss: optionalNumber(db.system?.remainingDailyLossUsdt),
+    dailyLossCap: optionalNumber(db.system?.dailyLossCapUsdt)
+  };
+}
+
+function formatAuthoritativePositions(facts) {
+  const snapshotAt = facts.snapshot?.createdAt ? `，快照 ${facts.snapshot.createdAt}` : "";
+  if (!facts.snapshot) return "**当前持仓：无法确认（尚无成功的 OKX 私有账户快照，必须先同步账户）。**";
+  if (!facts.positions.length) return `**当前持仓：无（以最近一次成功的 OKX 私有账户快照为准${snapshotAt}）。**`;
+  const positions = facts.positions.slice(0, 8).map((position) => {
+    const symbol = position.symbol || normalizeOkxSymbol(position.instId) || "?";
+    const direction = /short|空/i.test(String(position.direction || position.posSide || "")) ? "short" : "long";
+    const size = optionalNumber(position.size ?? position.pos);
+    const entry = optionalNumber(position.entry ?? position.entryPrice ?? position.avgPx);
+    const pnl = optionalNumber(position.pnl ?? position.upl ?? position.unrealizedPnl);
+    return `${symbol} ${direction}，数量 ${size ?? "-"}，开仓价 ${entry ?? "-"}，浮动盈亏 ${pnl ?? "-"} USDT`;
+  });
+  return `**当前持仓（OKX 快照${snapshotAt}）**：${positions.join("；")}。`;
+}
+
+function isCurrentPositionClaim(line) {
+  if (!/(持仓|仓位|浮盈|浮亏|开仓价|已开仓)/i.test(line)) return false;
+  if (/(历史|曾经|当时|复盘|假设|如果|若|计划|建议|候选|等待|挂单|未成交|不存在|已平仓|无持仓|没有持仓|空仓)/i.test(line)) return false;
+  return /(?:\b[A-Z0-9]{2,12}(?=(?:\/USDT|-USDT(?:-SWAP)?|\s+(?:short|long))\b)|浮[盈亏][^\d+\-]{0,8}[+\-]?\d|开仓(?:价)?[^\d]{0,8}\d|持仓[^\n]{0,30}[+\-]?\d)/i.test(line);
+}
+
+function isUnsupportedCapacityClaim(line) {
+  return /(账户|余额|净值|总资产|日亏预算|日亏损容忍额|剩余.{0,8}(?:日亏|亏损))[^\n]{0,120}(无法开仓|不能开仓|开不了仓|不足以开仓|无开仓空间|没有开仓空间|几乎[^\n]{0,8}开仓空间)/i.test(line);
+}
+
+// 模型输出的最后一道确定性事实闸：即便提示词被旧对话污染，也不能把旧仓位或余额推断展示给用户。
+export function enforceCurrentAccountFacts(db, content = "", toolTrace = []) {
+  const facts = authoritativeAccountFacts(db);
+  const lines = String(content || "").split("\n");
+  const output = [];
+  const reasons = [];
+  let positionCorrectionAdded = false;
+  let capacityCorrectionAdded = false;
+  const sizingFailure = (toolTrace || []).find((item) => /(below_min_notional|quantity_rounds_to_zero|insufficient_(?:margin|balance)|sizing_failed)/i.test(String(item.summary || "")));
+
+  for (const line of lines) {
+    const badPosition = isCurrentPositionClaim(line);
+    const badCapacity = isUnsupportedCapacityClaim(line);
+    if (!badPosition && !badCapacity) {
+      output.push(line);
+      continue;
+    }
+    if (badPosition && !positionCorrectionAdded) {
+      output.push(formatAuthoritativePositions(facts));
+      positionCorrectionAdded = true;
+      reasons.push("stale_or_unverified_position_claim");
+    }
+    if (badCapacity && !capacityCorrectionAdded) {
+      if (sizingFailure) {
+        output.push(`**开仓能力更正**：本轮执行引擎已返回本笔定仓失败（${String(sizingFailure.summary).slice(0, 180)}）；这是本笔合约规格、定仓与硬风控的实际结果，不能仅由账户净值大小推断。`);
+      } else {
+        const equity = facts.equity != null ? `${facts.equity} USDT` : "未同步";
+        const margin = facts.availableMargin != null ? `${facts.availableMargin} USDT` : "未同步";
+        const lossRoom = facts.remainingDailyLoss != null ? `${facts.remainingDailyLoss} USDT` : "未计算";
+        output.push(`**开仓能力更正**：账户净值 ${equity}，可用保证金 ${margin}；剩余日亏损容忍额 ${lossRoom} 是今天还能承受的损失上限，不是开仓额度。34 USDT 账户仍可提交满足最小下单量与风险边界的小额计划；本笔能否执行必须以执行引擎定仓、OKX 合约规格和硬风控的实际结果为准。`);
+      }
+      capacityCorrectionAdded = true;
+      reasons.push("unsupported_opening_capacity_claim");
+    }
+  }
+  return { text: output.join("\n").trim(), corrected: reasons.length > 0, reasons };
 }
 
 function quarantineInjectedKnowledge(db, chunks = []) {
@@ -477,8 +828,13 @@ function hhmmCn(iso) {
   return !iso || Number.isNaN(d.getTime()) ? "?" : d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
-async function buildSystemPrompt(db, userText = "") {
+export async function buildSystemPrompt(db, userText = "", evidenceBundle = null, decisionContext = null, capabilityPlan = null, reviewLearningContext = null) {
   const sections = [BASE_RULES];
+  const coordinatorText = decisionContextForPrompt(decisionContext);
+  if (coordinatorText) sections.push(`【Decision Coordinator · 确定性阶段】\n${coordinatorText}`);
+  const capabilityText = capabilityPlanForPrompt(capabilityPlan);
+  if (capabilityText) sections.push(`【Capability Router · 本轮证据计划】\n${capabilityText}`);
+  sections.push(`【交易周期角色与组合裁决】\n${tradingRolesForPrompt()}\n每个计划必须明确 traderRole。角色只负责发现与构造相应周期的计划；所有角色共享同一 Mandate、风险额度、真实持仓和执行引擎。宏观分析员只提供环境与情景，不得直接下单。同一交易对已有相反持仓或有效计划时，组合裁决会拒绝新增相反敞口。`);
   // 用户界面语言=英文时,让 AI 全程用英文输出(分析/计划/解释),符号与数字保持原样。覆盖 BASE_RULES 的"工作语言为中文"。
   if (db.system?.uiLang === "en") {
     sections.push("【LANGUAGE · OVERRIDE】The user's interface language is English. Respond ENTIRELY in English — all analysis, trade plans, explanations and summaries. Keep tickers, prices, numbers and percentages as-is. This overrides any earlier '工作语言为中文' instruction.");
@@ -491,13 +847,16 @@ async function buildSystemPrompt(db, userText = "") {
   const agent = clip(state.AGENT?.content, 1200);
   if (agent && !agent.startsWith("Agent 当前处于待配置")) sections.push(`【交易纪律 AGENT.md】\n${agent}`);
 
-  const history = clip(state.HISTORY?.content, 1000);
-  if (history && !history.startsWith("暂无真实运行历史")) sections.push(`【近期运行历史 HISTORY.md（最新在前）】\n${history}`);
+  const history = clip(sanitizeHistoricalAccountClaims(state.HISTORY?.content), 1000);
+  if (history && !history.startsWith("暂无真实运行历史")) sections.push(`【近期运行历史 HISTORY.md（最新在前；仅代表历史过程，不代表当前账户状态）】\n${history}`);
 
-  const memories = (db.memoryItems || []).slice(0, 8)
-    .map((item) => `- [${item.layer || "memory"}] ${item.title}：${clip(item.content, 200)}`)
+  const memories = (db.memoryItems || []).filter((item) => item.source !== "auto_reflection").slice(0, 8)
+    .map((item) => `- [${item.layer || "memory"}] ${item.title}：${clip(sanitizeHistoricalAccountClaims(item.content), 200)}`)
     .join("\n");
-  if (memories) sections.push(`【长期记忆】\n${memories}`);
+  if (memories) sections.push(`【长期记忆（历史经验，不代表当前余额、持仓、挂单或盈亏）】\n${memories}`);
+
+  const reviewLearningText = reviewLearningPrompt(reviewLearningContext || {});
+  if (reviewLearningText) sections.push(reviewLearningText);
 
   const profiles = (db.strategyProfiles || []).filter((p) => p.strategyId).slice(0, 5);
   if (profiles.length) {
@@ -512,6 +871,12 @@ async function buildSystemPrompt(db, userText = "") {
     sections.push("【已验证策略画像】当前没有任何已验证的策略画像。严禁把策略模板名或知识库方法名说成\"已验证策略\"去逐币匹配；分析时直接基于真实行情结构+知识库原则判断。\n重要:提交交易计划(propose_trade_plan)不需要有\"已验证策略\"背书——策略画像只是加分项、不是前置条件。当行情结构清晰(如放量破位、明确的供需区反应)且盈亏比达标时,你可以也应该按方向下计划,包括做空;绝不能因为\"没有已验证的做空策略\"就机械地只观望而放走清晰的做空机会。无验证支撑时用更小仓位、更严结构确认来控制风险,而不是一刀切不做。");
   }
 
+  const enabledBlueprints = enabledStrategyBlueprints(db).slice(0, 20);
+  if (enabledBlueprints.length) {
+    const catalog = enabledBlueprints.map((row) => `- ${row.id}｜${row.name}｜${row.symbols.join("/")} ${row.timeframe} ${row.direction}｜基础产品 ${row.baseProductId}｜模板 ${row.templateId} 参数 ${JSON.stringify(row.params)}｜当前确定性信号 ${row.symbols.map((symbol) => `${symbol}:${row.runtimeBySymbol?.[symbol]?.ready ? `已触发(${row.runtimeBySymbol[symbol].signalAgeBars}根前)` : `未就绪(${row.runtimeBySymbol?.[symbol]?.reason || "unknown"})`}`).join("，")}｜样本外已通过、仍处所有者实盘观察`).join("\n");
+    sections.push(`【策略工作室·已启用策略】\n${catalog}\n只有当前确定性信号为“已触发”，且市场结构与其交易对、方向、周期、基础产品都完全匹配时，才把对应 ID 填入 propose_trade_plan.strategyBlueprintVersionId；后端会用 OKX 收盘 K 线复算，不能只贴标签。它通过了自动测试和样本外回测，但仍不等于实盘已验证；不匹配时使用基础策略产品，不得硬套。`);
+  }
+
   const paper = paperValidationSummary(db);
   if (paper) sections.push(`【模拟盘前向验证状态（未通过前向验证的策略不要建议放大实盘，只观察或小额）】\n${paper}`);
 
@@ -523,14 +888,17 @@ async function buildSystemPrompt(db, userText = "") {
   // 实时账户快照：让 Agent 用当前真实数字说话，而不是靠 HISTORY.md / 记忆里的旧余额。
   try { refreshAccounting(db); } catch { /* 无账户数据时忽略 */ }
   const pf = db.portfolio || {};
-  const snap = (db.accountSnapshots || [])[0];
+  const accountFacts = authoritativeAccountFacts(db);
+  const snap = accountFacts.snapshot;
   const acctBits = [];
-  if (pf.totalEquityUsdt != null) acctBits.push(`总资产 ${pf.totalEquityUsdt} USDT`);
-  if (pf.availableMarginUsdt != null) acctBits.push(`可用保证金 ${pf.availableMarginUsdt} USDT`);
+  if (accountFacts.equity != null) acctBits.push(`总资产 ${accountFacts.equity} USDT`);
+  if (accountFacts.availableMargin != null) acctBits.push(`可用保证金 ${accountFacts.availableMargin} USDT`);
   if (pf.todayPnl != null) acctBits.push(`今日盈亏 ${pf.todayPnl} USDT`);
   if (pf.unrealizedPnl != null) acctBits.push(`未实现盈亏 ${pf.unrealizedPnl} USDT`);
+  if (accountFacts.remainingDailyLoss != null) acctBits.push(`剩余日亏损容忍额 ${accountFacts.remainingDailyLoss} USDT`);
+  if (accountFacts.dailyLossCap != null) acctBits.push(`当日亏损上限 ${accountFacts.dailyLossCap} USDT`);
   // 只把真正有仓位(size≠0)的算持仓;size=0 的空槽不是持仓。
-  const openPositions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? p.contracts ?? 0) !== 0);
+  const openPositions = accountFacts.positions;
   const posText = openPositions.slice(0, 8).map((p) => {
     const sym = p.symbol || p.instId || "?";
     const dir = String(p.direction || p.side || p.posSide || "").trim();
@@ -546,6 +914,7 @@ async function buildSystemPrompt(db, userText = "") {
   }).join("；");
   const lastSync = snap?.createdAt;
   const staleMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
+  let accountAuthoritySection;
   if (acctBits.length || openPositions.length || openOrders.length || lastSync) {
     const body = [
       acctBits.length ? acctBits.join(" ｜ ") : "账户未同步或暂无数据",
@@ -555,7 +924,9 @@ async function buildSystemPrompt(db, userText = "") {
         ? `最后同步：${lastSync}（约 ${staleMin} 分钟前）${staleMin != null && staleMin > 5 ? " —— 已过期" : ""}`
         : "尚未同步过私有账户"
     ].filter(Boolean).join("\n");
-    sections.push(`【实时账户快照（以此为准，禁止用记忆/历史里的旧余额或旧持仓回答；当用户问当前余额/持仓、或上面数据已过期时，先调用 sync_account 再 get_account 取最新值再作答）】\n${body}`);
+    accountAuthoritySection = `【最终账户事实 · 本提示词中的最高时效权威】\n${body}\n口径纪律：剩余日亏损容忍额是今天还能承受的损失上限，不是可用保证金，也不是开仓额度。不得仅凭账户净值较小或剩余日亏额度较小就断言“无法开仓/没有开仓空间”；是否能开本笔仓，只能以执行引擎定仓结果、OKX 合约规格与最小下单量、可用保证金和硬风控的实际返回为准。禁止引用 HISTORY、长期记忆或历史聊天里的旧余额、旧持仓和旧盈亏。用户询问当前余额/持仓或快照已过期时，先调用 sync_exchange_account，再调用 get_account 后回答。`;
+  } else {
+    accountAuthoritySection = "【最终账户事实 · 本提示词中的最高时效权威】\n当前没有成功的 OKX 私有账户快照，余额和持仓均无法确认。禁止用 HISTORY、长期记忆或历史聊天中的数字补全当前账户状态；必须先同步 OKX 账户。";
   }
 
   // ⑤ 跨轮持仓复核(借鉴提线木偶的"跨轮信号记忆"):把每个持仓【当时的入场理由】摆回来,逼 AI 逐仓给显式
@@ -576,7 +947,7 @@ async function buildSystemPrompt(db, userText = "") {
   const mdt = activeMandate(db);
   if (mdt) {
     const wl = (mdt.allowedSymbols || []).join("、") || "(当前为空)";
-    sections.push(`【授权白名单（这些币对可自动交易/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对全市场开放**——任何 OKX/币安币对都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 自由分析并给出方向结论。\n**白名单外也能提计划（一次性授权）**：对 scan_market_opportunities 扫出、经你深分析确认优质的白名单外币对，可以照常调用 **propose_trade_plan**——系统会自动标为『白名单外·一次性授权』候选：始终落到待人工确认、**绝不自动执行**，用户在计划卡点『确认下单』即按本计划下单（仅本笔、不加入常驻白名单）。所以别再对白名单外的好机会闭嘴或只会建议加白——直接把计划提出来让用户一键确认即可。（register_watch 观察哨仍只对白名单内有效，白名单外别挂哨。）\n**别把视野锁死在白名单**：机会可能出现在白名单外的任何永续。主动发现机会时先调用 **scan_market_opportunities**（全市场漏斗，按动量+区间位+振幅+流动性打分排出 Top 候选，inWhitelist 标注是否已授权），再对排前候选逐个走 analyze_market_structure / get_microstructure 深分析，达标就提计划（白名单外自动成为一次性授权候选）。`);
+    sections.push(`【授权白名单（这些币对可自动交易/挂观察哨/自动监控）】${wl}\n重要边界：**行情分析对 OKX 全市场开放**——任何 OKX USDT 永续都能用 sync_market / get_microstructure / analyze_market_structure / get_token_profile / research_strategy 分析；行情、盘口、合约规格与执行必须全部来自 OKX，禁止跨交易所替代。\n**白名单外也能提计划（一次性授权）**：对 scan_market_opportunities 扫出、经深分析确认优质的白名单外币对，可以提出一次性候选，但它不属于常驻自主授权，必须由用户确认后才执行。（register_watch 仍只对白名单内有效。）\n**别把研究视野锁死在白名单**：先扫描 OKX 全市场，再对候选走结构与微观分析；只有白名单内、Mandate 有效且全套生产风控通过的计划才可全自主执行。`);
   }
 
   // 大盘/聪明钱快照:与定时巡检同一份预取数据(db.marketRegime)。
@@ -647,6 +1018,13 @@ async function buildSystemPrompt(db, userText = "") {
     const brief = newsBriefForPrompt(db);
     if (brief.length) sections.push(`【信息面 · 关键新闻（已按来源可信度/多源印证/是否已计价/假消息风险过滤;标"⚠未证实"的只当线索、不当事实,影响面别只看标题）】\n${brief.join("\n")}`);
   } catch { /* 信息面简报不阻断 */ }
+  // 今日结构化情报：由确定性数据流水线生成。它只提供背景与证据索引，不得直接触发交易；
+  // 过期简报会显式降级，避免旧闻继续冒充当前催化剂。
+  try {
+    const { dailyBriefForPrompt } = await import("./marketIntelligence.mjs");
+    const daily = dailyBriefForPrompt(db);
+    if (daily) sections.push(`【Daily Market Brief · 今日情报上下文】\n${daily}`);
+  } catch { /* Daily 简报不阻断行情与持仓管理 */ }
   // 日程事件(向前看):未来已排期的事件 + 事件静默窗口(条令 S7)。行为提示、非硬闸。
   try {
     const { upcomingScheduledEvents } = await import("./scheduledEvents.mjs");
@@ -689,6 +1067,13 @@ async function buildSystemPrompt(db, userText = "") {
     sections.push(`【小额试用中的技能（尚未验证，正用小额实盘检验，表现不足会自动退役）】\n这些是候选、非结论：可以参考并在小额度内试用，但不要当作已证实的优势重仓押注；回测参考分仅供权衡，不代表已验证。若采用请照样放入 knowledgeSkillIds 以便真实成绩归因（这正是它转正或退役的依据）。\n${probationSkills.map(fmtSkill).join("\n")}`);
   }
 
+  // 强制证据包与账户权威放在提示词最后，避免知识、历史或旧对话覆盖 API 当前事实。
+  if (evidenceBundle) {
+    sections.push(`【强制事实证据包 · 当前数字的唯一来源】\n${compactEvidenceForPrompt(evidenceBundle)}\n任何当前行情、账户、持仓、微观结构、合约规格和市场广度数字都必须来自本证据包或本轮工具返回，并带证据 ID。记忆与知识库只能用于方法和历史经验，不能补写当前数字。`);
+  }
+  sections.push(accountAuthoritySection);
+  const currentRisk = buildCurrentRiskSnapshot(db);
+  sections.push(`【最终风险事实 · 本提示词中的最高时效权威】\n${currentRiskSnapshotForPrompt(currentRisk)}\n纪律：周亏损、连续亏损、回撤保护、只减仓与运行降级均为动态状态，历史回复、记忆和未闭环事件不得覆盖本快照。需要解释风险拒绝时，必须引用当前快照和本轮 riskChecks，不得复述旧阈值。`);
   return sections.join("\n\n");
 }
 
@@ -761,12 +1146,6 @@ function createPendingAction(db, args = {}, run = {}) {
 }
 
 export async function executeTool(db, run, name, args = {}) {
-  // 工具调用真实计数中枢:每次任何工具被调用都 +1(内置/技能/MCP 全走这里),
-  // 供「能力库·工具列表」的调用量列显示真实数据(此前该列基本是空/错标)。
-  db.toolCallStats ||= {};
-  const _stat = (db.toolCallStats[name] ||= { calls: 0, lastAt: null });
-  _stat.calls += 1;
-  _stat.lastAt = nowIso();
   // 已启用的原生技能作为工具接入决策循环
   if (isSkillTool(name)) return runSkillTool(db, name, args);
   // 已连接的 MCP server 工具
@@ -776,33 +1155,52 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "sync_market") {
     const symbol = args.symbol || "BTC/USDT";
-    const exchange = args.exchange || "BINANCE";
+    const exchange = "OKX";
     const timeframe = args.timeframe || "1h";
     const [ticker, klines] = await Promise.all([
       syncPublicMarket(db, exchange, symbol).catch((error) => ({ error: error.message })),
       syncPublicKlines(db, exchange, symbol, timeframe).catch((error) => ({ error: error.message }))
     ]);
     const market = db.markets.find((item) => item.symbol === (symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT")));
-    const candles = market?.candles || [];
+    const tickerAvailable = !ticker?.error && Number.isFinite(Number(market?.price ?? ticker?.price));
+    const candlesAvailable = !klines?.error;
+    const candles = candlesAvailable ? (market?.candles || []) : [];
     const recent = candles.slice(-48);
     // 24h 区间位置:价格在 [low24h, high24h] 的百分位。0=贴24h低点、100=贴24h高点。
     // 用于纪律 14:大跌后 rangePosition 很低=接近低点=追空在末端;大涨后很高=追多在末端。
-    const px = Number(market?.price ?? ticker?.price);
+    const px = tickerAvailable ? Number(market?.price ?? ticker?.price) : null;
     const rangePosition24h = (Number.isFinite(market?.high24h) && Number.isFinite(market?.low24h) && market.high24h > market.low24h && Number.isFinite(px))
       ? Math.round(((px - market.low24h) / (market.high24h - market.low24h)) * 100) : null;
+    const featureState = db.marketFeatureState?.[market?.symbol || symbol] || {};
+    const setupSnapshot = buildOpportunitySetupSnapshot({
+      market: { ...(market || {}), price: px },
+      candles,
+      early: featureState.features || null,
+      reversal: featureState.reversal || null
+    });
     return {
       symbol,
       timeframe,
-      price: market?.price ?? ticker?.price,
-      change24hPct: market?.changePct,
-      high24h: market?.high24h,
-      low24h: market?.low24h,
+      source: "OKX_PUBLIC_API",
+      tickerFetchedAt: market?.tickerSyncedAt || null,
+      tickerSourceAt: market?.tickerSourceAt || null,
+      candlesFetchedAt: market?.candlesByTf?.[String(timeframe).toLowerCase()]?.syncedAt || null,
+      candleQuality: market?.candleQualityByTf?.[String(timeframe).toLowerCase()] || market?.candleQuality || null,
+      status: tickerAvailable && candlesAvailable ? "fresh" : "incomplete",
+      price: tickerAvailable ? (market?.price ?? ticker?.price) : null,
+      change24hPct: tickerAvailable ? market?.changePct : null,
+      high24h: tickerAvailable ? market?.high24h : null,
+      low24h: tickerAvailable ? market?.low24h : null,
       rangePosition24h,
+      marketRegime: setupSnapshot.marketRegime,
+      directionBias: setupSnapshot.directionBias,
+      setupChannels: setupSnapshot.setupChannels,
+      setupDiscipline: setupSnapshot.discipline,
       extensionNote: rangePosition24h == null ? null
         : rangePosition24h <= 20 ? `价格在 24h 区间 ${rangePosition24h}%（接近 24h 低点）——若当日大跌，此处做空是追末端/易抄在恐慌见底，慎空`
         : rangePosition24h >= 80 ? `价格在 24h 区间 ${rangePosition24h}%（接近 24h 高点）——若当日大涨，此处做多是追末端，慎多`
         : `价格在 24h 区间 ${rangePosition24h}% 位`,
-      volume24h: market?.volume24h,
+      volume24h: tickerAvailable ? market?.volume24h : null,
       candleCount: candles.length,
       recentHigh: recent.length ? Math.max(...recent.map((c) => c.high)) : null,
       recentLow: recent.length ? Math.min(...recent.map((c) => c.low)) : null,
@@ -837,7 +1235,8 @@ export async function executeTool(db, run, name, args = {}) {
       const out = smart?.ok
         ? { ...micro, smartMoney: smart, interpretation: [micro.interpretation, smart.interpretation].filter(Boolean).join("；") }
         : { ...micro };
-      return { ...out, contractSpec };
+      const market = (db.markets || []).find((item) => item.symbol === normalizeEvidenceSymbol(symbol));
+      return { ...out, source: "OKX_PUBLIC_API", fetchedAt: market?.microSyncedAt || nowIso(), sourceTimestamps: market?.microSourceTimestamps || null, contractSpec };
     } catch (error) {
       return { error: `微观结构同步失败：${error.message}` };
     }
@@ -853,7 +1252,7 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "analyze_market_structure") {
     try {
-      return await analyzeMarketStructure(db, args.symbol || "BTC/USDT", args.direction || null);
+      return await analyzeMarketStructure(db, args.symbol || "BTC/USDT", args.direction || null, { traderRole: args.traderRole });
     } catch (error) {
       return { available: false, reason: `结构分析失败：${error.message}` };
     }
@@ -916,9 +1315,30 @@ export async function executeTool(db, run, name, args = {}) {
   }
 
   if (name === "get_account") {
+    const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+    const facts = authoritativeAccountFacts(db);
+    const refreshedEvidence = run?.evidenceBundle ? snapshotEvidenceFromState(db, run.evidenceBundle) : null;
+    if (refreshedEvidence && run) {
+      run.evidenceBundle = refreshedEvidence;
+      run.evidenceBundleId = refreshedEvidence.id;
+    }
+    const evidence = refreshedEvidence?.account;
+    const snapshotAgeMs = snapshot?.createdAt ? Math.max(0, Date.now() - new Date(snapshot.createdAt).getTime()) : null;
     return {
-      portfolio: db.portfolio,
-      positions: db.positions,
+      source: "OKX_PRIVATE_API",
+      evidenceId: evidence?.evidenceId || null,
+      fetchedAt: snapshot?.createdAt || null,
+      ageMs: evidence?.ageMs ?? snapshotAgeMs,
+      status: evidence?.status || (snapshot ? "available" : "missing"),
+      quality: evidence?.quality || (snapshot?.status === "ok" ? "passed" : "failed"),
+      portfolio: {
+        ...(db.portfolio || {}),
+        totalEquityUsdt: evidence?.data?.totalEquityUsdt ?? facts.equity ?? null,
+        availableMarginUsdt: evidence?.data?.availableMarginUsdt ?? facts.availableMargin ?? null
+      },
+      // 没有成功私有快照时必须返回“无法确认”，不能回退到可能残留的 db.positions。
+      positions: snapshot ? facts.positions : [],
+      positionsConfirmed: Boolean(snapshot),
       exchangeAccounts: (db.exchangeAccounts || []).map((account) => ({
         exchange: account.exchange,
         readEnabled: account.readEnabled,
@@ -943,7 +1363,29 @@ export async function executeTool(db, run, name, args = {}) {
     }));
   }
 
+  if (["get_market_intelligence", "get_daily_market_brief", "get_event_calendar", "get_flow_snapshot", "get_source_health"].includes(name)) {
+    const intelligence = await import("./marketIntelligence.mjs");
+    if (name === "get_market_intelligence") return intelligence.getMarketIntelligence(db, args);
+    if (name === "get_daily_market_brief") {
+      const brief = intelligence.getDailyBrief(db, args.date);
+      return brief || { status: "missing", date: args.date || "today", note: "今日简报尚未生成，请调用 refresh_events。" };
+    }
+    if (name === "get_event_calendar") {
+      const { getOfficialCalendar } = await import("./officialCalendar.mjs");
+      return getOfficialCalendar(db, {
+        from: args.from ? new Date(args.from).getTime() : Date.now(),
+        to: args.to ? new Date(args.to).getTime() : Date.now() + 7 * 86_400_000,
+        importance: args.importance
+      });
+    }
+    if (name === "get_flow_snapshot") return intelligence.getFlowSnapshot(db);
+    return intelligence.sourceHealthSummary(db);
+  }
+
   if (name === "list_risk_incidents") {
+    // 先自动闭环已经恢复/终结的事件，再把真正仍 active 的事件交给模型。
+    const snapshot = buildCurrentRiskSnapshot(db);
+    reconcileRiskIncidentLifecycle(db, { degradation: snapshot.operationalDegradation, snapshot });
     return (db.riskIncidents || []).filter((item) => item.status === "open").slice(0, 40).map((item) => ({
       id: item.id, title: item.title, severity: item.severity, source: item.source, createdAt: item.createdAt
     }));
@@ -1007,6 +1449,10 @@ export async function executeTool(db, run, name, args = {}) {
     return explainMarketMove(db, args.symbol || "BTC/USDT");
   }
 
+  if (name === "assess_abnormal_volatility") {
+    return assessAbnormalVolatility(db, args.symbol || "BTC/USDT", { thresholdPct: args.thresholdPct });
+  }
+
   if (name === "screen_by_profit_target") {
     // 盈利目标反推波动率门槛(纯筛选,不改任何风控/纪律,不进常规决策上下文)。
     const pf = db.portfolio || {};
@@ -1053,10 +1499,10 @@ export async function executeTool(db, run, name, args = {}) {
       name: "对话授权草案",
       status: "pending_confirmation",
       goal: args.goal,
-      exchanges: args.exchanges?.length ? args.exchanges : ["BINANCE"],
+      exchanges: ["OKX"],
       marketTypes: ["perpetual_usdt"],
       allowedSymbols: symbols,
-      strategies: ["trend_following", "event_protection", "manual_review"],
+      strategies: ["trend_following", "event_protection", "mean_reversion", "momentum", "breakout"],
       maxLeverageBySymbol: Object.fromEntries(symbols.map((s) => [s, Number(args.maxLeverage || 1)])),
       max_leverage: Number(args.maxLeverage || 1),
       min_leverage: Math.max(1, Math.min(Number(args.maxLeverage || 1), Number(args.minLeverage || 1))),
@@ -1065,6 +1511,12 @@ export async function executeTool(db, run, name, args = {}) {
       positionPct: Math.max(1, Math.min(100, Number(args.positionPct || 30))),
       maxSingleTradeRiskPct: Number(args.maxSingleTradeRiskPct || 0.5),
       maxDailyLossPct: Number(args.maxDailyLossPct || 1),
+      maxWeeklyLossPct: Number(args.maxWeeklyLossPct || 5),
+      max_weekly_loss_pct: Number(args.maxWeeklyLossPct || 5),
+      maxOrderNotionalUsdt: Math.max(1, Number(args.maxOrderNotionalUsdt || args.humanApprovalNotionalUsdt || 5000)),
+      maxSymbolNotionalUsdt: Math.max(1, Number(args.maxSymbolNotionalUsdt || args.humanApprovalNotionalUsdt || 5000)),
+      maxPortfolioNotionalUsdt: Math.max(1, Number(args.maxPortfolioNotionalUsdt || args.humanApprovalNotionalUsdt || 5000)),
+      maxConcurrentPositions: Math.max(1, Math.floor(Number(args.maxConcurrentPositions || 3))),
       humanApprovalNotionalUsdt: Number(args.humanApprovalNotionalUsdt || 5000),
       manual_approval_threshold_usdt: Number(args.humanApprovalNotionalUsdt || 5000),
       allowedActions: ["open", "cancel", "amend", "close", "move_stop", "take_profit"],
@@ -1145,7 +1597,14 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "refresh_events") {
     const result = await refreshEventSources(db);
-    return { ...result, eventCount: db.events?.length || 0, latest: (db.events || []).slice(0, 5).map((event) => ({ title: event.title, due: event.due, category: event.category })) };
+    let marketIntelligence = null;
+    try {
+      const { refreshMarketIntelligence } = await import("./marketIntelligence.mjs");
+      marketIntelligence = await refreshMarketIntelligence(db);
+    } catch (error) {
+      marketIntelligence = { status: "failed", error: String(error.message || error).slice(0, 180) };
+    }
+    return { ...result, marketIntelligence, eventCount: db.events?.length || 0, latest: (db.events || []).slice(0, 5).map((event) => ({ title: event.title, due: event.due, category: event.category })) };
   }
 
   if (name === "sync_exchange_account") {
@@ -1158,34 +1617,163 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "configure_exchange_credentials") {
     const exchange = String(args.exchange || "").toUpperCase();
-    if (!["BINANCE", "OKX"].includes(exchange)) return { status: "invalid_exchange" };
-    const entries = exchange === "OKX"
-      ? { OKX_API_KEY: args.apiKey, OKX_API_SECRET: args.apiSecret, OKX_API_PASSPHRASE: args.passphrase }
-      : { BINANCE_API_KEY: args.apiKey, BINANCE_API_SECRET: args.apiSecret };
+    if (exchange !== "OKX") return { status: "invalid_exchange", error: "自主交易系统仅允许 OKX" };
+    const entries = { OKX_API_KEY: args.apiKey, OKX_API_SECRET: args.apiSecret, OKX_API_PASSPHRASE: args.passphrase };
     const applied = setConfig(db, entries);
     const account = (db.exchangeAccounts || []).find((item) => item.exchange === exchange);
     if (account && args.ipWhitelist !== undefined) account.ipWhitelist = args.ipWhitelist || "建议开启";
     refreshApiKeyMetadata(db);
     const snapshot = account?.readEnabled
       ? await syncPrivateReadOnly(db, account.id)
-      : { status: "missing_credentials", error: exchange === "OKX" ? "OKX 需要 API Key、Secret、Passphrase 三项。" : "Binance 需要 API Key、Secret 两项。" };
+      : { status: "missing_credentials", error: "OKX 需要 API Key、Secret、Passphrase 三项。" };
     appendAudit(db, `Agent 配置 ${exchange} API 凭证`, account?.id || exchange, "AgentChat", "warning");
     return { status: snapshot.status, exchange, applied, error: snapshot.error, note: snapshot.status === "ok" ? "凭证已保存并通过只读同步验证。" : "凭证已保存，但只读同步未通过。" };
   }
 
+  if (name === "record_review_application") {
+    const checked = validateAppliedReviewLessons(run.reviewLearningContext || {}, args.applications);
+    run.reviewLearning ||= { retrievedMemoryIds: [], retrievedCount: 0, applied: [] };
+    run.reviewLearning.applied = [...(run.reviewLearning.applied || []), ...checked.applied]
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.memoryId === item.memoryId) === index)
+      .slice(0, 6);
+    run.reviewLearning.rejectedMemoryIds = [...new Set([...(run.reviewLearning.rejectedMemoryIds || []), ...checked.rejected])];
+    if (checked.applied.length) {
+      appendAudit(db, `本轮分析明确采用 ${checked.applied.length} 条真实交易复盘`, run.id, "ReviewLearning", "info");
+    }
+    return { recorded: checked.applied, rejectedMemoryIds: checked.rejected };
+  }
+
+  if (name === "query_review_lessons") {
+    const retrieved = retrieveRelevantReviewMemories(db, {
+      symbols: [args.symbol],
+      setupType: args.setupType,
+      timeframe: args.timeframe,
+      direction: args.direction,
+      regime: args.regime,
+      limit: 6
+    });
+    run.reviewLearningContext ||= { schemaVersion: 1, generatedAt: nowIso(), query: {}, retrieved: [] };
+    run.reviewLearningContext.retrieved = [...(run.reviewLearningContext.retrieved || []), ...retrieved]
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)
+      .slice(0, 12);
+    run.reviewLearning ||= { retrievedMemoryIds: [], retrievedCount: 0, applied: [] };
+    run.reviewLearning.retrievedMemoryIds = run.reviewLearningContext.retrieved.map((item) => item.id);
+    run.reviewLearning.retrievedCount = run.reviewLearning.retrievedMemoryIds.length;
+    return { lessons: retrieved, count: retrieved.length, note: retrieved.length ? "仅在确实影响判断时记录采用关系" : "没有匹配的真实复盘" };
+  }
+
   if (name === "propose_trade_plan") {
-    const symbol = String(args.symbol || "").toUpperCase();
+    const symbol = normalizeEvidenceSymbol(args.symbol);
+    const capabilityCoverage = validateProposalCapabilityCoverage(run, args);
+    run.capabilityCoverage = capabilityCoverage;
+    if (!capabilityCoverage.ok) {
+      return {
+        error: `交易证据能力未完成：${capabilityCoverage.reason}。${capabilityCoverage.instruction}`,
+        reason: capabilityCoverage.reason,
+        missingCapabilities: capabilityCoverage.missing,
+        role: capabilityCoverage.role,
+        symbol
+      };
+    }
+    // A proposal refresh is deliberately single-symbol. Keep it separate from
+    // the run-wide multi-symbol bundle used to guard the final patrol report.
+    const proposalEvidence = run?.proposalEvidenceBundle || run?.evidenceBundle;
+    const evidenceReadiness = evaluateEvidenceReadiness(proposalEvidence, symbol, { live: db.system?.liveTradingEnabled === true });
+    if (!evidenceReadiness.ready) {
+      return { error: `强制证据包不完整，交易计划已拒绝：${evidenceReadiness.blockers.join("、")}`, evidenceBundleId: proposalEvidence?.id || null, blockers: evidenceReadiness.blockers };
+    }
+    const symbolEvidence = proposalEvidence.symbols.find((row) => row.symbol === symbol);
     const market = db.markets?.find((item) => item.symbol === symbol);
     if (!market?.price) {
       return { error: `尚未同步 ${symbol} 行情，请先调用 sync_market。` };
     }
+    if (args.entryQuality === "conditional" && args.executionMode !== "armed") {
+      return { error: "当前入场条件尚未成熟，必须登记为等待入场计划，不能以 immediate 在条件未成熟时原地追单。" };
+    }
+    const primaryTriggerInput = Array.isArray(args.scenarioStages) && args.scenarioStages.length
+      ? args.scenarioStages[0]
+      : {
+          kind: args.triggerKind,
+          level: args.triggerLevel,
+          levelLow: args.triggerLevelLow,
+          levelHigh: args.triggerLevelHigh,
+          confirmation: args.triggerConfirmation,
+          confirmationMode: args.triggerConfirmationMode,
+          confirmations: args.triggerConfirmations
+        };
+    const normalizedTrigger = args.executionMode === "armed"
+      ? normalizeTriggerSpec(primaryTriggerInput, { direction: args.direction, timeframe: args.timeframe || "1h" })
+      : null;
+    if (normalizedTrigger && !normalizedTrigger.valid) {
+      return { error: `等待入场条件无法可靠执行：${normalizedTrigger.error}`, reason: normalizedTrigger.error };
+    }
+    const normalizedScenario = args.executionMode === "armed" ? normalizeScenarioSpec({
+      type: args.setupType,
+      groupId: args.scenarioGroupId,
+      branchId: args.scenarioBranchId,
+      stages: args.scenarioStages,
+      invalidationKind: args.invalidationKind,
+      invalidationLevel: args.invalidationLevel,
+      invalidationLevelLow: args.invalidationLevelLow,
+      invalidationLevelHigh: args.invalidationLevelHigh
+    }, { direction: args.direction, timeframe: args.timeframe || "1h" }, normalizedTrigger?.spec) : null;
+    if (normalizedScenario && !normalizedScenario.valid) {
+      return { error: `多阶段交易场景无法可靠执行：${normalizedScenario.error}`, reason: normalizedScenario.error };
+    }
+    const scenarioConfirmations = normalizedScenario?.scenario?.stages?.flatMap((stage) => stage.trigger.confirmations || []) || [];
+    const roleValidation = validateTradingRolePlan({
+      traderRole: args.traderRole,
+      timeframe: args.timeframe || "1h",
+      confirmations: scenarioConfirmations.length ? scenarioConfirmations : normalizedTrigger?.spec?.confirmations || args.triggerConfirmations,
+      ttlHours: args.executionMode === "armed" ? args.ttlHours : undefined
+    });
+    if (!roleValidation.ok) {
+      return { error: `交易角色与计划不一致：${roleValidation.detail}`, reason: roleValidation.reason };
+    }
     const mandate = activeMandate(db)
       || db.mandates.find((item) => item.id === run.mandateId)
       || db.mandates[0];
+    const leveragePolicy = normalizePlanLeverage(mandate, symbol, args.leverage);
+    if (!leveragePolicy.valid) {
+      return {
+        error: "当前交易权限中的最低/最高杠杆边界无效，计划已拒绝，请先修正资金与交易边界。",
+        reason: leveragePolicy.reason,
+        leverageRange: { min: leveragePolicy.minimum, max: leveragePolicy.maximum }
+      };
+    }
+    const addPositionAuthorized = mandate?.allow_add_position === true || mandate?.allowAddPosition === true;
+    const portfolioConflict = evaluatePortfolioIntentConflict(db, { symbol, direction: args.direction }, { replaceArmedSameSymbol: !addPositionAuthorized });
+    if (!portfolioConflict.ok) {
+      return { error: `组合方向冲突：${portfolioConflict.detail}`, reason: portfolioConflict.reason, conflictId: portfolioConflict.conflictId };
+    }
     const bundle = run.analysisBundleId
       ? db.analysisBundles.find((item) => item.id === run.analysisBundleId)
       : runExpertAnalysis(db, { trigger_type: "agent_chat", question: args.rationale, symbol });
     const riskPercent = Number(args.riskPercent || mandate?.maxSingleTradeRiskPct || 0.3);
+    const featureState = db.marketFeatureState?.[symbol] || {};
+    const setupSnapshot = buildOpportunitySetupSnapshot({
+      market,
+      candles: market?.candlesByTf?.[args.timeframe || "1h"]?.candles || market?.candles || [],
+      early: featureState.features || null,
+      reversal: featureState.reversal || null
+    });
+    // 工具调用发生在分析末端，期间流式行情可能已经由旧趋势切成反向回收。
+    // 新鲜且完整的相反反转证据属于事实冲突：拒绝用旧结论落计划，要求模型重新同步，而不是让两边同时进入执行链。
+    const reversalObservedAt = new Date(featureState.reversal?.observedAt || 0).getTime();
+    const oppositeReversalFresh = featureState.reversal?.qualified === true
+      && featureState.reversal.direction !== args.direction
+      && Number.isFinite(reversalObservedAt)
+      && Date.now() - reversalObservedAt <= Number(process.env.OPPOSITE_REVERSAL_FACT_TTL_MS || 90_000);
+    if (oppositeReversalFresh) {
+      return {
+        error: `计划方向与刚确认的反向回收证据冲突（当前 ${featureState.reversal.direction}，score=${featureState.reversal.score}），旧分析已失效。请重新 sync_market 并复核后再提计划。`,
+        setupSnapshot
+      };
+    }
+    const reviewLessonValidation = validateAppliedReviewLessons(run.reviewLearningContext || {}, args.appliedReviewLessons);
+    const appliedReviewLessons = [...(run.reviewLearning?.applied || []), ...reviewLessonValidation.applied]
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.memoryId === item.memoryId) === index)
+      .slice(0, 6);
     const plan = {
       id: id("plan"),
       agentRunId: run.id,
@@ -1196,7 +1784,16 @@ export async function executeTool(db, run, name, args = {}) {
       mandateVersion: Number(mandate?.version || 1),
       analysisBundleId: bundle?.id,
       analysis_bundle_id: bundle?.id,
-      exchange: mandate?.exchanges?.[0] || "BINANCE",
+      evidenceBundleId: proposalEvidence.id,
+      evidence_bundle_id: proposalEvidence.id,
+      evidenceIds: [
+        symbolEvidence?.ticker?.evidenceId,
+        symbolEvidence?.candles?.evidenceId,
+        symbolEvidence?.microstructure?.evidenceId,
+        symbolEvidence?.contractSpec?.evidenceId,
+        proposalEvidence.account?.evidenceId
+      ].filter(Boolean),
+      exchange: "OKX",
       marketType: "perpetual_usdt",
       market_type: "perpetual",
       symbol,
@@ -1208,17 +1805,66 @@ export async function executeTool(db, run, name, args = {}) {
       stop_loss: Number(args.stopLoss),
       takeProfit: (args.takeProfits || []).map(Number),
       take_profit: (args.takeProfits || []).map(Number),
-      leverage: Number(args.leverage || 1),
+      leverage: leveragePolicy.applied,
+      leveragePolicy: {
+        requested: leveragePolicy.requested,
+        applied: leveragePolicy.applied,
+        minimum: leveragePolicy.minimum,
+        maximum: leveragePolicy.maximum,
+        adjusted: leveragePolicy.adjusted,
+        reason: leveragePolicy.reason
+      },
       max_loss_pct: riskPercent,
       max_slippage_pct: 0.08,
       reduce_only: false,
+      executionMode: args.executionMode === "armed" ? "armed" : "immediate",
+      scenarioType: normalizedScenario?.scenario?.type || (args.setupType === "trend_continuation" ? "trend_pullback" : args.setupType),
+      scenario: normalizedScenario?.scenario || null,
+      traderRole: roleValidation.traderRole,
+      tradingHorizon: roleValidation.traderRole === "day_trader" ? "intraday" : "swing",
       status: "draft",
       reasoningSummary: args.rationale,
+      reviewLearning: {
+        schemaVersion: 1,
+        retrievedMemoryIds: (run.reviewLearningContext?.retrieved || []).map((item) => item.id),
+        applied: appliedReviewLessons,
+        rejectedMemoryIds: reviewLessonValidation.rejected,
+        recordedAt: nowIso()
+      },
+      decisionContext: {
+        version: 1,
+        setupType: args.setupType,
+        declaredDirectionBias: args.directionBias,
+        entryQuality: args.entryQuality,
+        supportingFactors: (args.supportingFactors || []).map(String).slice(0, 12),
+        conflictingFactors: (args.conflictingFactors || []).map(String).slice(0, 12),
+        deterministicSetupSnapshot: setupSnapshot,
+        deterministicStructureRef: run.structureFactRefs?.[symbol] || null,
+        roleSuitabilityShadow: run.roleSuitabilityShadow?.[symbol] || null,
+        capabilityCoverage: run.capabilityCoverage || null,
+        leverageNormalization: {
+          requested: leveragePolicy.requested,
+          applied: leveragePolicy.applied,
+          range: [leveragePolicy.minimum, leveragePolicy.maximum],
+          adjusted: leveragePolicy.adjusted,
+          reason: leveragePolicy.reason
+        }
+      },
       // 落库计划周期：执行层要用它做技能模拟盘的周期一致性校验（此前从未写入，校验被静默跳过）。
       timeframe: args.timeframe || "1h",
       source: "agent_chat",
       createdAt: nowIso()
     };
+    // 每个新 AI 计划必须钉住不可变的策略产品版本。scenario 仍负责具体等待/执行，
+    // strategyRef 负责说明这笔计划依据哪一版策略合同，供成交与复盘永久归因。
+    const strategyBinding = bindPlanToStrategyProduct(db, plan, { source: "agent_chat_proposal" });
+    if (!strategyBinding.ok) {
+      return { error: `交易计划未匹配可用策略产品（${strategyBinding.error}），未提交。请改用趋势回调、突破回踩、跌破反抽、区间边缘反转或假突破回归之一，并确保方向一致。` };
+    }
+    const blueprintBinding = bindPlanToEnabledBlueprint(db, plan, args.strategyBlueprintVersionId);
+    if (!blueprintBinding.ok) {
+      return { error: `工作室策略版本不能用于本计划（${blueprintBinding.error}），未提交。请只选择已启用且交易对、方向、周期、基础产品完全匹配的版本。` };
+    }
     // Schema 硬闸:挡住结构非法的计划(方向错、止损在错误一侧、NaN、区间颠倒)——
     // 这类逻辑错误比"说错方向"更隐蔽,过去要靠风控引擎间接兜,现在写入前直接拒。
     const planCheck = validateTradePlan(plan);
@@ -1257,12 +1903,19 @@ export async function executeTool(db, run, name, args = {}) {
       plan.outOfWhitelist = true;
       plan.oneShotAuth = true;
     }
+    if (plan.outOfWhitelist && plan.executionMode === "armed") {
+      return { error: `${symbol} 不在授权白名单，禁止建立自动触发的条件计划；只有当前价格已适合时才能改用 immediate 提交一次性人工授权计划。` };
+    }
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
     risk.agentRunId = run.id;
+    risk.evidenceBundleId = proposalEvidence.id;
+    risk.evidenceIds = plan.evidenceIds;
     risk.createdAt = nowIso();
     // 聪明钱择时过滤（软性）：拉当前交易对的大户/散户/爆仓，判断与计划方向是否对齐。
-    const smartMoney = await fetchSmartMoney(symbol).catch(() => null);
+    const smartMoney = symbolEvidence?.smartMoney?.quality === "passed"
+      ? { ok: true, ...symbolEvidence.smartMoney.data, fetchedAt: symbolEvidence.smartMoney.fetchedAt }
+      : await fetchSmartMoney(symbol).catch(() => null);
     const alignment = evaluateSmartMoneyAlignment(smartMoney, plan.direction);
     plan.smartMoneyAlignment = alignment;
     if (alignment.alignment === "caution") {
@@ -1273,10 +1926,64 @@ export async function executeTool(db, run, name, args = {}) {
     plan.riskCheckId = risk.id;
     plan.status = risk.passed ? "awaiting_approval" : "risk_rejected";
     db.tradePlans.unshift(plan);
+    if (leveragePolicy.adjusted) {
+      appendAudit(
+        db,
+        `计划杠杆按授权边界校正：${leveragePolicy.requested == null ? "未填写" : `${leveragePolicy.requested}x`} → ${leveragePolicy.applied}x（允许 ${leveragePolicy.minimum}x–${leveragePolicy.maximum}x）；后续仓位、保证金与风险按 ${leveragePolicy.applied}x 重新计算`,
+        plan.id,
+        "AgentLeveragePolicy"
+      );
+    }
+    // 把“发现”闭环到结构化计划，避免同一早期候选在冷却后再次唤起并重复提案。
+    const opportunityCandidate = (db.opportunityCandidates || []).find((row) =>
+      row.symbol === symbol && row.direction === plan.direction && ["DISCOVERED", "ANALYZING", "QUALIFIED"].includes(row.status)
+    );
+    if (opportunityCandidate) {
+      opportunityCandidate.planId = plan.id;
+      opportunityCandidate.status = risk.passed ? "QUALIFIED" : "REJECTED";
+      opportunityCandidate.closeReason = risk.passed ? null : risk.summary;
+      opportunityCandidate.updatedAt = nowIso();
+    }
     run.tradePlanId = plan.id;
     run.riskCheckId = risk.id;
+    let armedResult = null;
+    let armedGateReason = null;
+    if (risk.passed && plan.executionMode === "armed" && !plan.outOfWhitelist) {
+      const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
+      const canArm = armedSetupAutomationAllowed(auto, db.system?.liveTradingEnabled === true);
+      if (canArm) {
+        armedResult = armTradeSetup(db, {
+          plan,
+          currentPrice: market.price,
+          ttlHours: roleValidation.ttlHours,
+          actor: "AI 交易员",
+          trigger: {
+            ...(normalizedTrigger?.spec || {
+              kind: args.triggerKind,
+              level: args.triggerLevel,
+              levelLow: args.triggerLevelLow,
+              levelHigh: args.triggerLevelHigh,
+              confirmation: args.triggerConfirmation,
+              confirmationMode: args.triggerConfirmationMode,
+              confirmations: args.triggerConfirmations
+            })
+          },
+          scenario: normalizedScenario?.scenario || null
+        });
+        if (!armedResult.ok) {
+          armedGateReason = armedResult.error;
+          plan.status = "auto_blocked";
+          plan.executionBlock = { reason: armedResult.error, at: nowIso() };
+        }
+      } else {
+        armedGateReason = auto.blockers?.join("、") || auto.detail || auto.mode;
+        // 半自动“批准”接口会立即执行，不能拿它冒充“批准后再等触发”；未建立真实 armed setup 就必须阻断。
+        plan.status = "auto_blocked";
+        plan.executionBlock = { reason: `armed_mode_unavailable:${auto.mode}`, detail: armedGateReason, at: nowIso() };
+      }
+    }
     // 授权后全自动执行：仅当①实盘写入已开启 ②灰度策略关闭「保留人工确认」时，AI 自主批准并下单。
-    // 名义金额超过灰度上限会被写入闸拦截 → 自动回退为待人工批准（大单永远需要你拍板，防御纵深）。
+    // 任何越过 Mandate/灰度/运行安全边界的计划都直接失败或等待下一轮重算，绝不转人工绕过硬边界。
     let autoExecution = null;
     // 白名单外·一次性授权计划永不自动执行:必须用户在计划卡上亲手"确认下单"(见 propose 说明)。
     if (plan.status === "awaiting_approval" && !plan.outOfWhitelist) {
@@ -1300,26 +2007,30 @@ export async function executeTool(db, run, name, args = {}) {
             fields: [{ label: "入场", value: `${args.entryLow} - ${args.entryHigh}` }, { label: "止损", value: String(args.stopLoss) }]
           });
         } else {
-          // 只有"可重试的安全闸拦截"(超额度/快照过期/额度不足等)才回退人工批准。
-          // 引擎终态(结构审核未过/保护单失败/执行失败)必须保留引擎设的状态——绝不能改回
-          // awaiting_approval,否则被拒/可能裸仓的计划会变成"可一键再批准",绕过防重试锁(审计 state-F1)。
+          // 全自动下任何执行拦截都不能回退成人工批准，否则会把 Mandate/额度/运行闸变成可人为绕过。
+          // 引擎终态保留原状态；其余安全拦截统一落 auto_blocked，下一轮基于新数据重新提计划。
           const terminalReject = ["setup_rejected", "protection_failed", "failed", "risk_recheck_failed", "cancelled"].includes(autoExecution.status);
           if (terminalReject) {
             plan.autoApproved = false;
             autoExecution = { ...autoExecution, fellBackToManual: false };
             appendAudit(db, `自动执行被引擎终态拦截（${autoExecution.status}：${autoExecution.reason || autoExecution.review?.reason || ""}），未下单，不转人工批准`, plan.id, "AgentAuto", "warning");
           } else {
-            plan.status = "awaiting_approval";
+            plan.status = "auto_blocked";
+            plan.failedReason = autoExecution.reason || autoExecution.status;
             plan.autoApproved = false;
-            autoExecution = { ...autoExecution, fellBackToManual: true };
-            appendAudit(db, `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}），转人工批准`, plan.id, "AgentAuto", "warning");
+            autoExecution = { ...autoExecution, fellBackToManual: false };
+            appendAudit(db, `自动执行被安全闸拦截（${autoExecution.reason || autoExecution.status}），未下单且不转人工绕过`, plan.id, "AgentAuto", "warning");
           }
         }
       }
     }
 
     if (!plan.autoApproved) {
-      appendAudit(db, risk.passed ? "Agent 提出交易计划，待人工批准" : "Agent 交易计划被风控拒绝", plan.id, "AgentChat", risk.passed ? "info" : "warning");
+      const auditAction = !risk.passed ? "Agent 交易计划被风控拒绝"
+        : plan.status === "armed" ? "等待入场计划已启动（尚未下单）"
+        : plan.status === "awaiting_approval" ? "Agent 提出交易计划，待人工批准"
+          : `Agent 全自动计划未执行：${plan.status}`;
+      appendAudit(db, auditAction, plan.id, "AgentChat", plan.status === "awaiting_approval" ? "info" : "warning");
       appendTrace(db, "agent_chat", `计划 ${symbol} ${args.direction}`, risk.passed ? "ok" : "blocked");
     }
     if (plan.status === "awaiting_approval") {
@@ -1340,12 +2051,29 @@ export async function executeTool(db, run, name, args = {}) {
     // dry_run 是"算了没下单",绝不能算"已下单"(审计 llm-F3)——否则模型会谎报"已自动下单"。
     const placed = Boolean(autoExecution && ["submitted", "entry_pending", "entry_filled", "protecting"].includes(autoExecution.status));
     const simulated = Boolean(autoExecution && autoExecution.status === "dry_run");
+    const armed = plan.status === "armed" && armedResult?.ok;
+    if (opportunityCandidate) {
+      opportunityCandidate.status = armed ? "ARMED"
+        : placed ? "EXECUTED"
+        : simulated ? "DRY_RUN"
+        : autoExecution ? "EXECUTION_FAILED"
+        : plan.status === "awaiting_approval" ? "QUALIFIED"
+        : risk.passed ? "DEFERRED"
+        : "REJECTED";
+      opportunityCandidate.armedSetupId = armedResult?.setup?.id || null;
+      opportunityCandidate.executionStatus = autoExecution?.status || null;
+      opportunityCandidate.updatedAt = nowIso();
+    }
     let autoGateReason = null;
     if (simulated) {
       autoGateReason = "干跑：实盘写入未开，已完成数量/价格计算但未向交易所提交(未真下单)";
     } else if (autoExecution && !placed) {
       // 已自动送执行但没真正下单(被下单闸拦、入场被拒、部分成交撤单等)——如实报状态,不脑补。
       autoGateReason = `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
+    } else if (armed) {
+      autoGateReason = null;
+    } else if (armedGateReason) {
+      autoGateReason = `等待入场计划创建失败：${armedGateReason}`;
     } else if (risk.passed && !plan.autoApproved) {
       // 停在待批准、但自主已开——用同一个 deriveAutomationState 说清缺哪道闸(与状态卡口径一致,不再各算各的)。
       const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
@@ -1358,13 +2086,20 @@ export async function executeTool(db, run, name, args = {}) {
       status: plan.status,
       autoExecuted: placed,
       orderPlaced: placed,
+      armed,
+      armedSetupId: armedResult?.setup?.id || null,
+      trigger: armedResult?.setup?.trigger || null,
+      expiresAt: armedResult?.setup?.expiresAt || null,
       outOfWhitelist: plan.outOfWhitelist === true,
       autoGateReason,
       execution: autoExecution ? { status: autoExecution.status, reason: autoExecution.reason || null } : null,
+      leverage: plan.leveragePolicy,
       riskCheck: { passed: risk.passed, decision: risk.decision, summary: risk.summary, checks: risk.checks, warnings: risk.warnings || [] },
       smartMoneyAlignment: alignment,
       note: plan.outOfWhitelist && risk.passed
         ? `${symbol} 不在授权白名单——已作为『白名单外·一次性授权』候选计划提交，等你在计划卡点『确认下单』即按本计划下单（仅本笔授权，不加入常驻白名单，自主巡检以后也不会自动碰它）。绝不会自动执行。`
+        : armed
+        ? `待入场计划已登记（${armedResult.setup.id}）：系统正在监控价格与结构化确认条件；满足后会刷新易变事实、重跑硬风控并进入 OMS，触发前不会向 OKX 下单。`
         : placed
         ? `已在授权与灰度上限内自动执行并下单（${autoExecution.status}）。`
         : simulated
@@ -1398,6 +2133,36 @@ function openAiCompatClient(providerName) {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+// LLM 网关边界净化：数据库中的导入知识、Skill 说明或历史消息可能包含代码示例里的
+// `\x` / `\u`、孤立 UTF-16 代理项或不可见控制字符。JSON.stringify 对标准服务是安全的，
+// 但部分 OpenAI-compatible 网关会对 messages[].content 再做一次转义解析，进而把普通
+// 文本中的反斜杠误当成十六进制转义并返回 unexpected end of hex escape。
+// 这里只改变发给模型的副本，不修改知识库/记忆原文；全角反斜杠保留可读语义。
+export function sanitizeLlmMessageContent(value = "") {
+  const raw = String(value);
+  const wellFormed = typeof raw.toWellFormed === "function"
+    ? raw.toWellFormed()
+    : raw.replace(/[\uD800-\uDFFF]/g, "�");
+  return wellFormed
+    .replace(/\\/g, "＼")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
+}
+
+function sanitizeOpenAiMessages(messages = []) {
+  return messages.map((message) => {
+    if (typeof message?.content === "string") return { ...message, content: sanitizeLlmMessageContent(message.content) };
+    if (Array.isArray(message?.content)) {
+      return {
+        ...message,
+        content: message.content.map((part) => part?.type === "text" && typeof part.text === "string"
+          ? { ...part, text: sanitizeLlmMessageContent(part.text) }
+          : part)
+      };
+    }
+    return message;
+  });
+}
+
 // 简单文本补全（无工具），供知识蒸馏等复用。无 LLM key 时返回 null。
 export async function llmComplete(userText, systemPrompt = "") {
   const provider = activeProvider();
@@ -1416,10 +2181,10 @@ export async function llmComplete(userText, systemPrompt = "") {
     const client = openAiCompatClient(provider.name);
     const res = await client.chat.completions.create({
       model: provider.model,
-      messages: [
+      messages: sanitizeOpenAiMessages([
         { role: "system", content: systemPrompt || "你是专业的金融知识蒸馏助手。" },
         { role: "user", content: String(userText).slice(0, 24000) }
-      ],
+      ]),
       temperature: 0.2
     });
     return res.choices?.[0]?.message?.content || null;
@@ -1455,7 +2220,7 @@ async function openaiCompatTurn(providerName, model, messages, systemPrompt, too
   const client = openAiCompatClient(providerName);
   const response = await client.chat.completions.create({
     model,
-    messages: [{ role: "system", content: systemPrompt || BASE_RULES }, ...messages],
+    messages: sanitizeOpenAiMessages([{ role: "system", content: systemPrompt || BASE_RULES }, ...messages]),
     tools: (tools || TOOL_DEFS).map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
     temperature: 0.2
   });
@@ -1489,6 +2254,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     createdAt: nowIso()
   };
   run.traceId = run.id;
+  const decisionContext = payload.decisionContext || createDecisionContext({
+    trigger: triggerFromPayload(payload),
+    source: payload.sessionId === "chat_autocycle" ? "agent_cycle" : "agent_chat",
+    symbols: payload.symbols || [],
+    detail: userText.slice(0, 160)
+  });
+  run.decisionContext = decisionContext;
   db.agentRuns.unshift(run);
 
   const provider = activeProvider();
@@ -1498,9 +2270,44 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   const toolTrace = [];
   let finalText = "";
   let errorText = "";
+  let evidenceBundle = null;
 
   try {
-    const systemPrompt = await buildSystemPrompt(db, userText);
+    const evidenceRequired = session.id === "chat_autocycle"
+      || /(行情|市场|价格|现价|K线|资金费率|OI|订单簿|交易|下单|开仓|做多|做空|持仓|仓位|账户|余额|净值|保证金|盈亏|风控|合约|USDT|\b[A-Z0-9]{2,12}(?:USDT|\/USDT|-USDT)\b)/i.test(userText);
+    if (evidenceRequired) {
+      evidenceBundle = await buildForcedEvidenceBundle(db, {
+        text: userText,
+        mandate: activeMandate(db),
+        live: db.system?.liveTradingEnabled === true,
+        refresh: true
+      });
+      Object.defineProperty(run, "evidenceBundle", { value: evidenceBundle, writable: true, configurable: true, enumerable: false });
+      run.evidenceBundleId = evidenceBundle.id;
+      decisionContext.symbols = evidenceBundle.symbols?.map((row) => row.symbol) || decisionContext.symbols;
+      // Do not label the coordinator as fact-ready when the deterministic
+      // evidence gate is incomplete. Analysis may explain the outage, but a
+      // proposal must remain blocked until a later refresh actually succeeds.
+      advanceDecisionContext(
+        decisionContext,
+        evidenceBundle.criticalReady ? "base_facts_ready" : "triggered",
+        evidenceBundle.criticalReady ? "强制事实证据齐全" : `证据缺失：${evidenceBundle.blockers.join("、")}`
+      );
+      run.steps.push({ id: id("step"), phase: "forced_evidence", title: "强制事实证据包", summary: evidenceBundle.criticalReady ? "关键证据齐全" : `缺失：${evidenceBundle.blockers.join("、")}`, createdAt: nowIso() });
+    }
+    const capabilityPlan = buildCapabilityPlan({ trigger: decisionContext.trigger, symbols: decisionContext.symbols });
+    run.capabilityPlan = capabilityPlan;
+    const reviewLearningContext = buildReviewLearningContext(db, {
+      text: userText,
+      symbols: decisionContext.symbols || []
+    });
+    Object.defineProperty(run, "reviewLearningContext", { value: reviewLearningContext, writable: true, configurable: true, enumerable: false });
+    run.reviewLearning = {
+      retrievedMemoryIds: reviewLearningContext.retrieved.map((item) => item.id),
+      retrievedCount: reviewLearningContext.retrieved.length,
+      applied: []
+    };
+    const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
     const tools = [...TOOL_DEFS, ...enabledSkillTools(db), ...enabledMcpTools(db)];
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
@@ -1510,27 +2317,61 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id);
     }
     run.status = "completed";
+    advanceDecisionContext(decisionContext, "completed", run.tradePlanId ? `计划 ${run.tradePlanId}` : "分析完成");
     // 诚实守卫:模型(尤其弱模型)常在正文声称"已登记 N 个观察哨/哨兵在盯"却根本没调用 register_watch。
     // 只留 trace 不够——用户会被正文误导(实锤:正文说"已登记3个",右侧观察哨面板却空)。
     // 这里同时在可见回复末尾加注更正,让聊天文字与面板口径一致。
     // 只在模型明确"声称已登记/哨兵已在盯"却没真调工具时才加注——
     // 收窄到显式登记声明,别再命中"若跌破 X 做空"这类正常条件分析(那是行情研判不是观察哨声明,
     // 之前的宽正则会对做交易计划的正常回复误报)。
-    const claimsWatch = /(已|帮你|我已|为你)[^。\n]{0,6}(登记|设好|布好|建好|设置好)[^。\n]{0,4}观察哨|观察哨[^。\n]{0,6}(已登记|已设置|已就位|在盯|盯着|每分钟)|哨兵[^。\n]{0,6}(已在盯|盯着|每分钟)|观察哨一览/.test(finalText || "");
-    const registeredThisRun = toolTrace.some((t) => t.name === "register_watch" && !String(t.summary || "").startsWith("失败"));
-    if (claimsWatch && !registeredThisRun) {
-      appendTrace(db, "agent_chat", "⚠ 回复声称已登记观察哨但本轮未成功调用 register_watch——哨兵未实际登记,已在回复末尾加注更正", "warning");
-      finalText = `${finalText || ""}\n\n> ⚠️ **系统更正**：本轮回复提到了观察哨，但**未实际调用登记工具**，哨兵不会自动盯盘。若需盯盘触发，请在右侧「观察哨」面板确认已登记。`;
+    const watchClaimGuard = correctUnbackedWatchRegistration(finalText, toolTrace);
+    if (watchClaimGuard.corrected) {
+      appendTrace(db, "agent_chat", "⚠ 回复声称新增/更新观察哨但本轮未成功调用 register_watch——已更正,现有观察哨不受影响", "warning");
+      finalText = watchClaimGuard.text;
+    }
+    const accountFactGuard = enforceCurrentAccountFacts(db, finalText, toolTrace);
+    if (accountFactGuard.corrected) {
+      finalText = accountFactGuard.text;
+      appendTrace(db, "agent_chat", `账户事实守卫已更正模型回复：${accountFactGuard.reasons.join("、")}`, "warning");
+    }
+    const finalEvidence = snapshotEvidenceFromState(db, run.evidenceBundle || evidenceBundle);
+    if (finalEvidence) {
+      run.evidenceBundle = finalEvidence;
+      const storedIndex = (db.evidenceBundles || []).findIndex((bundle) => bundle.id === finalEvidence.id);
+      if (storedIndex >= 0) db.evidenceBundles[storedIndex] = finalEvidence;
+      const factGuard = enforceEvidenceFacts(finalEvidence, finalText);
+      finalText = factGuard.text;
+      run.evidenceFactGuard = {
+        mode: factGuard.mode,
+        correctedCount: factGuard.violations.length,
+        shadowViolationCount: factGuard.shadowViolations.length,
+        violations: factGuard.violations.slice(0, 20),
+        shadowViolations: factGuard.shadowViolations.slice(0, 20)
+      };
+      if (factGuard.corrected) appendTrace(db, "agent_chat", `全字段事实守卫硬更正 ${factGuard.violations.length} 项`, "warning");
+      if (factGuard.shadowViolations.length) appendTrace(db, "agent_chat", `全字段事实守卫影子命中 ${factGuard.shadowViolations.length} 项`, "warning");
+    }
+    const riskFactGuard = enforceCurrentRiskFacts(db, finalText);
+    run.currentRiskSnapshot = riskFactGuard.snapshot;
+    if (riskFactGuard.corrected) {
+      finalText = riskFactGuard.text;
+      appendTrace(db, "agent_chat", `动态风险事实守卫已更正 ${riskFactGuard.violations.length} 条过期陈述`, "warning");
     }
     recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
+    advanceDecisionContext(decisionContext, "failed", error.message);
     errorText = error.message;
+    run.error = errorText;
     finalText = `本轮决策循环出错：${error.message}`;
     appendAudit(db, "AgentChat 运行失败", run.id, "AgentChat", "warning");
   }
 
   run.completedAt = nowIso();
+  if (run.tradePlanId) {
+    const linkedPlan = (db.tradePlans || []).find((item) => item.id === run.tradePlanId);
+    if (linkedPlan?.reviewLearning) run.reviewLearning.applied = linkedPlan.reviewLearning.applied || [];
+  }
   // 主对话 agent 的运行上报 LangSmith（配 key 则推云端，否则本地记录）；失败不影响对话。
   try {
     run.langSmith = await recordLangSmithRun(db, {
@@ -1551,6 +2392,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     planId: run.tradePlanId || null,
     mandateId: run.mandateId || null,
     analysisBundleId: run.analysisBundleId || null,
+    evidenceBundleId: run.evidenceBundleId || null,
     toolTrace,
     error: errorText || undefined,
     createdAt: nowIso()
@@ -1591,11 +2433,8 @@ async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, 
       return textParts.join("\n").trim() || "（模型未返回内容）";
     }
     messages.push({ role: "assistant", content: response.content });
-    const results = [];
-    for (const toolUse of toolUses) {
-      const result = await runToolTracked(db, run, toolUse.name, toolUse.input, toolTrace);
-      results.push({ type: "tool_result", tool_use_id: toolUse.id, content: JSON.stringify(result).slice(0, 6000) });
-    }
+    const toolResults = await runToolBatch(db, run, toolUses.map((toolUse) => ({ name: toolUse.name, args: toolUse.input })), toolTrace);
+    const results = toolUses.map((toolUse, index) => ({ type: "tool_result", tool_use_id: toolUse.id, content: JSON.stringify(toolResults[index]).slice(0, 6000) }));
     messages.push({ role: "user", content: results });
   }
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
@@ -1610,34 +2449,75 @@ async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, 
       return (message.content || "").trim() || "（模型未返回内容）";
     }
     messages.push(message);
-    for (const toolCall of message.tool_calls) {
+    const parsedCalls = message.tool_calls.map((toolCall) => {
       let args = {};
       try { args = JSON.parse(toolCall.function.arguments || "{}"); } catch { args = {}; }
-      const result = await runToolTracked(db, run, toolCall.function.name, args, toolTrace);
+      return { name: toolCall.function.name, args };
+    });
+    const toolResults = await runToolBatch(db, run, parsedCalls, toolTrace);
+    for (let index = 0; index < message.tool_calls.length; index += 1) {
+      const toolCall = message.tool_calls[index];
+      const result = toolResults[index];
       messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result).slice(0, 6000) });
     }
   }
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
+// 只并行互不依赖的只读/行情刷新工具；计划、观察哨、记忆、授权、执行等有副作用的工具
+// 始终保持模型给出的顺序。每个并行调用使用独立 trace 槽，最终仍按请求顺序写入审计展示。
+const PARALLEL_SAFE_TOOLS = new Set([
+  "sync_market", "get_microstructure", "analyze_market_structure", "get_token_profile",
+  "get_global_market", "get_account", "get_events", "get_market_intelligence", "get_daily_market_brief",
+  "get_event_calendar", "get_flow_snapshot", "get_source_health", "query_knowledge"
+]);
+
+async function runToolBatch(db, run, calls, toolTrace) {
+  const output = new Array(calls.length);
+  for (let index = 0; index < calls.length;) {
+    const call = calls[index];
+    if (!PARALLEL_SAFE_TOOLS.has(call.name)) {
+      output[index] = await runToolTracked(db, run, call.name, call.args, toolTrace);
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < calls.length && PARALLEL_SAFE_TOOLS.has(calls[end].name)) end += 1;
+    const localTraces = calls.slice(index, end).map(() => []);
+    const localSteps = calls.slice(index, end).map(() => []);
+    const values = await Promise.all(calls.slice(index, end).map((item, offset) =>
+      runToolTracked(db, run, item.name, item.args, localTraces[offset], localSteps[offset])
+    ));
+    for (let offset = 0; offset < values.length; offset += 1) {
+      output[index + offset] = values[offset];
+      toolTrace.push(...localTraces[offset]);
+      run.steps.push(...localSteps[offset]);
+    }
+    index = end;
+  }
+  return output;
+}
+
 // 给安全护栏提供真实上下文（此前恒为空 → 新鲜度/杠杆检查全部空转）。
-function buildSafetyContext(db, name, args) {
+function buildSafetyContext(db, name, args, evidenceBundle = null) {
   if (name !== "propose_trade_plan") return {};
-  const symbol = String(args?.symbol || "").toUpperCase();
+  const symbol = normalizeEvidenceSymbol(args?.symbol);
   const market = (db.markets || []).find((m) => m.symbol === symbol);
   const marketAgeMs = market?.lastRealtimeAt || market?.lastSyncedAt
     ? Date.now() - new Date(market.lastRealtimeAt || market.lastSyncedAt).getTime()
     : null;
   const mandate = activeMandate(db);
-  const snapshot = (db.accountSnapshots || [])[0];
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   const snapshotAgeMs = snapshot?.createdAt ? Date.now() - new Date(snapshot.createdAt).getTime() : null;
+  const evidence = evidenceBundle ? evaluateEvidenceReadiness(evidenceBundle, symbol, { live: db.system?.liveTradingEnabled === true }) : null;
+  const marketEvidenceBlocked = evidence?.blockers.some((reason) => ["ticker_not_fresh", "closed_candles_not_fresh_or_invalid", "microstructure_not_fresh", "contract_spec_unavailable"].includes(reason));
   return {
-    // 行情 10 分钟内算新鲜；没有该币行情记录 → 明确判 stale（不许对着空数据提计划）
-    marketDataFresh: market ? (marketAgeMs != null && marketAgeMs < 10 * 60 * 1000) : false,
-    // 账户快照仅在实盘开启时要求新鲜（30 分钟）；纸面/未配置不作要求（undefined 不触发违规）
+    // 有强制证据包时按各字段独立 TTL 判定；旧路径只作为兼容性后备。
+    marketDataFresh: evidence ? !marketEvidenceBlocked : (market ? (marketAgeMs != null && marketAgeMs < 10 * 60 * 1000) : false),
     accountSnapshotFresh: db.system?.liveTradingEnabled
-      ? (snapshotAgeMs != null && snapshotAgeMs < 30 * 60 * 1000)
+      ? (evidence ? !evidence.blockers.includes("account_snapshot_not_fresh") : (snapshotAgeMs != null && snapshotAgeMs < 30 * 60 * 1000))
       : undefined,
+    requiredToolsHealthy: evidence?.ready ?? false,
     // 读真实写入的键(max_leverage / maxLeverageBySymbol);旧代码读扁平 maxLeverage(从不写入)→
     // agentSafetyEval 杠杆闸永久失效(审计 concept-F1)。这里改成与 riskEngine 同口径,让防线复活。
     mandateMaxLeverage: (() => {
@@ -1648,10 +2528,39 @@ function buildSafetyContext(db, name, args) {
   };
 }
 
-async function runToolTracked(db, run, name, args, toolTrace) {
+async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.steps) {
   const startedAt = Date.now();
+  const startedAtIso = nowIso();
   let result;
-  const safety = evaluateAgentProposal({ action: name, payload: args }, buildSafetyContext(db, name, args));
+  if (name === "propose_trade_plan") {
+    run.proposalEvidenceBundle = null;
+    try {
+      const refreshed = await buildForcedEvidenceBundle(db, {
+        symbols: [normalizeEvidenceSymbol(args?.symbol)],
+        mandate: activeMandate(db),
+        live: db.system?.liveTradingEnabled === true,
+        refresh: true,
+        baseBundle: run.evidenceBundle || null
+      });
+      Object.defineProperty(run, "proposalEvidenceBundle", { value: refreshed, writable: true, configurable: true, enumerable: false });
+      run.proposalEvidenceBundleId = refreshed.id;
+    } catch (error) {
+      appendTrace(db, "agent_evidence", `提案前证据刷新失败：${error.message}`, "error");
+    }
+  }
+  const callEvidence = name === "propose_trade_plan" ? (run.proposalEvidenceBundle || run.evidenceBundle) : run.evidenceBundle;
+  // 安全预检位于计划落库之前。若直接检查 Agent 原始杠杆，15x 会先被旧的“超过上限”
+  // 规则挡住，永远到不了计划层的 15x→10x 校正。预检只读取校正后的副本；executeTool
+  // 仍收到原始 args，才能把 requested/applied 都写入审计。最终交易写网关还会独立硬校验。
+  let safetyPayload = args;
+  if (name === "propose_trade_plan") {
+    const safetyMandate = activeMandate(db)
+      || db.mandates.find((item) => item.id === run.mandateId)
+      || db.mandates[0];
+    const leveragePolicy = normalizePlanLeverage(safetyMandate, normalizeEvidenceSymbol(args?.symbol), args?.leverage);
+    if (leveragePolicy.valid) safetyPayload = { ...args, leverage: leveragePolicy.applied };
+  }
+  const safety = evaluateAgentProposal({ action: name, payload: safetyPayload }, buildSafetyContext(db, name, safetyPayload, callEvidence));
   if (!safety.passed) {
     result = { error: "Agent safety policy blocked this tool call", violations: safety.violations };
     appendAudit(db, `Agent 工具调用被安全策略阻断：${name}`, run.id, "AgentSafety", "warning");
@@ -1662,14 +2571,33 @@ async function runToolTracked(db, run, name, args, toolTrace) {
       result = { error: error.message };
     }
   }
+  recordCapabilityResult(run, name, args, result);
+  if (name === "analyze_market_structure" && !result?.error && result?.available !== false) {
+    advanceDecisionContext(run.decisionContext, "deep_analysis", `${normalizeEvidenceSymbol(args.symbol)} ${result.selectedRole || "auto"} 确定性多周期结构已完成`);
+  }
+  if (name === "propose_trade_plan" && !result?.error) {
+    advanceDecisionContext(run.decisionContext, "proposal", `${normalizeEvidenceSymbol(args.symbol)} ${result.status || "submitted"}`);
+  }
   const trace = {
     name,
     args: sanitizeArgs(args),
     summary: summarizeToolResult(name, result),
     latencyMs: Date.now() - startedAt
   };
+  recordToolExecution(db, {
+    runId: run?.id || null,
+    sessionId: run?.sessionId || null,
+    name,
+    args: sanitizeArgs(args),
+    result,
+    summary: trace.summary,
+    latencyMs: trace.latencyMs,
+    startedAt: startedAtIso,
+    finishedAt: nowIso(),
+    source: "agent_tool_call"
+  });
   toolTrace.push(trace);
-  run.steps.push({ id: id("step"), phase: name, title: `工具 ${name}`, summary: trace.summary, createdAt: nowIso() });
+  stepSink.push({ id: id("step"), phase: name, title: `工具 ${name}`, summary: trace.summary, createdAt: nowIso() });
   return result;
 }
 
@@ -1680,13 +2608,14 @@ function summarizeToolResult(name, result = {}) {
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "get_token_profile") return result.ok === false ? `画像不可用：${result.reason || result.error || "-"}` : result.interpretation || `性格 ${result.character}，波动 ${result.volState}`;
-  if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `结构 ${result.bias || "?"}(4H ${result.structure4h || "?"})，${result.phase || ""}；入场思路：${result.entryIdea || "-"}`;
-  if (name === "get_global_market") return result.interpretation || `BTC 主导率 ${result.btcDominancePct ?? "-"}%，情绪 ${result.fearGreed?.value ?? "-"}`;
+  if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `确定性结构 ${result.bias || "?"}（${result.selectedRole === "day_trader" ? "日内1H/15m/5m" : "波段1D/4H/1H"}，4H ${result.structure4h || "?"}），${result.phase || ""}；影子角色建议 ${result.roleSuitability?.recommendation || "-"}`;
+  if (name === "get_global_market") return result.interpretation || `OKX 上涨家数 ${result.breadthPct ?? "-"}%，涨跌中位数 ${result.medianChangePct ?? "-"}%`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
   if (name === "explain_market_move") return result.source === "gemini"
     ? `${result.symbol} 归因：${result.narrative || "-"}（${result.category || "-"}·情绪${result.sentiment ?? "?"}·置信${result.confidence || "-"}）`
     : `${result.symbol} 归因(${result.source})：${result.narrative || "-"}`;
+  if (name === "assess_abnormal_volatility") return `${result.symbol} 5分钟异动：${result.status}，风险分 ${result.riskScore ?? "-"}，实测 ${result.realizedMovePct ?? "数据不足"}%｜${result.caveat || ""}`;
   if (name === "scan_market_opportunities") return result.candidates?.length
     ? `全市场扫 ${result.universe} 个永续，Top ${result.candidates.length}：` + result.candidates.map((c) => `${c.symbol}${c.inWhitelist ? "✓" : ""} ${c.side === "short" ? "空" : "多"}${c.score}(${c.tag})`).join("、")
     : `未筛出候选（扫 ${result.universe || 0} 个，${result.error || "均低于流动性/评分门槛"}）`;
@@ -1698,8 +2627,18 @@ function summarizeToolResult(name, result = {}) {
     const alignNote = align && align.alignment !== "neutral" ? `｜聪明钱${align.alignment === "favor" ? "支持" : "相悖⚠"}` : "";
     const autoNote = result.autoExecuted ? `｜🤖自动执行(${result.execution?.status || "-"})` : "";
     const wlNote = result.outOfWhitelist ? "｜⚠白名单外·一次性授权(待你确认下单,仅本笔)" : "";
-    return `${result.status}：${result.riskCheck?.summary || ""}${alignNote}${wlNote}${autoNote}`;
+    const armedNote = result.armed ? `｜⚡等待入场（尚未下单） ${result.armedSetupId || ""}` : "";
+    const leverageNote = result.leverage?.adjusted
+      ? `｜杠杆已按授权校正 ${result.leverage.requested == null ? "未填写" : `${result.leverage.requested}x`}→${result.leverage.applied}x`
+      : "";
+    return `${result.status}：${result.riskCheck?.summary || ""}${leverageNote}${alignNote}${wlNote}${armedNote}${autoNote}`;
   }
+  if (name === "record_review_application") return result.recorded?.length
+    ? `已记录 ${result.recorded.length} 条复盘如何影响本轮分析`
+    : `没有可验证的复盘采用关系${result.rejectedMemoryIds?.length ? `（拒绝 ${result.rejectedMemoryIds.length} 个无效引用）` : ""}`;
+  if (name === "query_review_lessons") return result.count
+    ? `检索到 ${result.count} 条同类真实复盘：${result.lessons.map((item) => `${item.id} ${item.title}`).join("、")}`
+    : "没有匹配的真实交易复盘";
   if (name === "create_skill_from_idea") return `技能「${result.name}」已保存（${result.status === "live_probation" ? "上岗试用" : result.status}）：${result.direction}·${result.timeframe}·${result.template || "-"}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
@@ -1718,7 +2657,7 @@ function summarizeToolResult(name, result = {}) {
     ? `${result.exchange} 已只读同步：持仓 ${result.positions} · 余额 ${result.balances} 项`
     : `${result.exchange} 同步未完成（${result.status}${result.error ? "：" + result.error : ""}）`;
   if (name === "configure_exchange_credentials") return result.status === "invalid_exchange"
-    ? "交易所无效（仅支持 BINANCE/OKX）"
+    ? "交易所无效（自主交易系统仅支持 OKX）"
     : `${result.exchange} 凭证已保存${result.status === "ok" ? "并通过只读验证" : `（只读同步未通过：${result.error || result.status}）`}`;
   return JSON.stringify(result).slice(0, 120);
 }
@@ -1730,7 +2669,9 @@ function sanitizeArgs(args = {}) {
 function buildHistoryForLlm(db, sessionId) {
   return (db.chatMessages || []).filter((message) => !sessionId || message.sessionId === sessionId).slice(-12, -1).map((message) => ({
     role: message.role === "agent" ? "assistant" : "user",
-    content: String(message.content || "").slice(0, 2000)
+    content: message.role === "agent"
+      ? `[历史回复，仅供对话连续性；其中账户状态可能已失效]\n${sanitizeHistoricalAccountClaims(String(message.content || "").slice(0, 2000))}`
+      : String(message.content || "").slice(0, 2000)
   })).filter((message) => message.content);
 }
 
@@ -1740,7 +2681,7 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
     return [
       "### 结论",
       "状态：本轮使用本地系统说明回答",
-      "依据：这是 Trading Agent 内置功能，不需要知识库资料",
+      "依据：这是 KORDYN 内置功能，不需要知识库资料",
       "",
       "### 系统说明",
       SYSTEM_GUIDE,
@@ -1755,7 +2696,7 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
   if (symbolMatch) {
     const symbol = `${symbolMatch[1].toUpperCase()}/USDT`;
     const market = await runToolTracked(db, run, "sync_market", { symbol }, toolTrace);
-    if (!market.error) {
+    if (!market.error && market.status === "fresh") {
       lines.push(`已同步真实行情：${symbol} 现价 ${market.price} USDT，24h 涨跌 ${market.change24hPct ?? "-"}%，近 48 根 K 线区间 ${market.recentLow} ~ ${market.recentHigh}。`);
       // 确定性决策兜底：即使没有 LLM，也用真实多源信号给一个透明、可解释、非编造的方向读数。
       const full = db.markets?.find((mk) => mk.symbol === symbol) || {};
@@ -1784,6 +2725,8 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
         `因子分：动量 ${d.scores.momentum}｜资金费率 ${d.scores.funding}｜盘口 ${d.scores.book}｜聪明钱 ${d.scores.smartMoney}（融合 ${d.net}）。`);
       if (d.reasons.length) lines.push(`说明：${d.reasons.join("；")}。`);
       if (d.plan) lines.push(`参考结构（仅供参考，非实盘计划）：入场 ${d.plan.entryLow}–${d.plan.entryHigh}，止损 ${d.plan.stopLoss}，止盈 ${d.plan.takeProfits.join(" / ")}，风险 ${d.plan.riskPercent}%·${d.plan.leverage}x。配置 LLM 后可自动过硬风控并转成可执行计划。`);
+    } else {
+      lines.push(`${symbol} 的 OKX 关键行情证据不完整，本轮不做方向判断：${(market.errors || [market.error]).filter(Boolean).join("；") || "ticker 或闭合 K 线不可用"}。`);
     }
   }
   const account = await runToolTracked(db, run, "get_account", {}, toolTrace);

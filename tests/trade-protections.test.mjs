@@ -33,6 +33,20 @@ test("连亏冷却:仅2笔亏损(<阈值3)→ 不触发", () => {
   assert.equal(consecutiveLossCooldown(db).active, false);
 });
 
+test("同一交易的多次部分平仓只算一个连亏生命周期", () => {
+  const executionOrderId = "exec_partial";
+  const db = {
+    fills: [
+      { ...fill(-5, 2), id: "partial-1", executionOrderId, partial: true },
+      { ...fill(-7, 1.5), id: "partial-2", executionOrderId, partial: true },
+      { ...fill(-8, 1), id: "final", executionOrderId, partial: false }
+    ]
+  };
+  const result = consecutiveLossCooldown(db);
+  assert.equal(result.streak, 1);
+  assert.equal(result.active, false);
+});
+
 test("连亏冷却:阈值可用 env 覆盖", () => {
   const prev = process.env.PROTECT_MAX_CONSEC_LOSSES;
   process.env.PROTECT_MAX_CONSEC_LOSSES = "2";

@@ -2,6 +2,7 @@ import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { bindKnowledgeSkillsToPlan, evaluateKnowledgeSkillSignal, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
 
@@ -78,10 +79,12 @@ export function parseMandateCommand(db, text = DEFAULT_COMMAND) {
   if (/SOL/i.test(command)) symbols.push("SOL/USDT");
   const leverage = Number(command.match(/(\d+)\s*[x倍]/i)?.[1] || 1);
   const dailyLoss = Number(command.match(/日(?:内)?(?:最大)?亏损(?:超过|上限)?\s*(\d+(?:\.\d+)?)%/)?.[1] || 2);
+  const weeklyLoss = Number(command.match(/(?:近\s*7\s*日|周)(?:内)?(?:最大)?亏损(?:超过|上限)?\s*(\d+(?:\.\d+)?)%/)?.[1] || 5);
   const singleRisk = Number(command.match(/单笔(?:最大)?(?:亏损|风险).*?(\d+(?:\.\d+)?)%/)?.[1] || 0.5);
   const threshold = Number(command.match(/(\d+(?:,\d{3})*|\d+)\s*USDT.*?(?:确认|人工)/i)?.[1]?.replace(/,/g, "") || 20000);
   const noOpenBefore = Number(command.match(/(?:CPI|FOMC|非农).*?前\s*(\d+)\s*分钟/)?.[1] || 30);
-  const exchange = /OKX/i.test(command) && !/Binance/i.test(command) ? "OKX" : "BINANCE";
+  // 自主交易只使用 OKX 作为唯一事实源与执行场所，避免跨所行情/盘口/合约规格错配。
+  const exchange = "OKX";
   const now = new Date();
   const validUntil = new Date(now);
   validUntil.setHours(23, 59, 59, 0);
@@ -108,8 +111,8 @@ export function parseMandateCommand(db, text = DEFAULT_COMMAND) {
     max_single_trade_risk_pct: singleRisk,
     maxDailyLossPct: dailyLoss,
     max_daily_loss_pct: dailyLoss,
-    maxWeeklyDrawdownPct: 5,
-    max_weekly_drawdown_pct: 5,
+    maxWeeklyLossPct: weeklyLoss,
+    max_weekly_loss_pct: weeklyLoss,
     max_notional_usdt: threshold,
     allow_open_position: true,
     allow_close_position: true,
@@ -266,7 +269,7 @@ function createTradeIntent(db, run, mandateDraft, bundle) {
     market_type: "perpetual",
     direction: /空|short/i.test(run.goal) ? "short" : /多|long|买/i.test(run.goal) ? "long" : "observe",
     time_horizon: "intraday",
-    strategy_type: mandateDraft.strategies?.[0] || "manual_review",
+    strategy_type: mandateDraft.strategies?.[0] || "trend_following",
     thesis: bundle.hypothesis,
     invalidation_condition: "缺少真实行情或授权边界不满足",
     confidence: 0,
@@ -319,7 +322,7 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
     marketType: "perpetual_usdt",
     market_type: "perpetual",
     symbol: intent.symbol,
-    strategy: mandateDraft.strategies?.[0] || "manual_review",
+    strategy: mandateDraft.strategies?.[0] || "trend_following",
     direction: intent.direction,
     entry: hasMarketPrice ? { type: "limit", range: `${low} - ${high}`, riskPercent: Math.min(0.45, mandateDraft.maxSingleTradeRiskPct) } : { type: "pending_market_data", range: "等待真实行情同步", riskPercent: 999 },
     entry_type: "limit",
@@ -339,6 +342,7 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
     createdAt: nowIso()
   };
   plan.trade_plan_id = plan.id;
+  bindPlanToStrategyProduct(db, plan, { source: "legacy_command_orchestrator" });
   db.tradePlans.unshift(plan);
   return plan;
 }

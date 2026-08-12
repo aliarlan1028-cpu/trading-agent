@@ -24,7 +24,7 @@ import {
   Send,
   Zap
 } from "lucide-react";
-import { displayMoney, exchangeState, systemStatus, useApi } from "./lib.jsx";
+import { displayMoney, exchangeState, localizeText, systemStatus, TurnstileWidget, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
 import { isNativeApp } from "./lib.jsx";
@@ -66,7 +66,7 @@ const navItems = [
 ];
 
 function BrandLogo({ size = 34 }) {
-  return <img className="brandLogo" src="/trading-agent-logo.svg" alt="Trading Agent" width={size} height={size} />;
+  return <img className="brandLogo" src="/kordyn-logo.png" alt="KORDYN" width={size} height={size} />;
 }
 
 function Sidebar({ active, setActive }) {
@@ -75,7 +75,7 @@ function Sidebar({ active, setActive }) {
       <div className="brand">
         <div className="brandMark"><BrandLogo size={20} /></div>
         <div className="brandText">
-          <strong>{t("交易 Agent", "Trading Agent")}</strong>
+          <strong>KORDYN</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>
         </div>
       </div>
@@ -128,37 +128,39 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const accounts = data.exchangeAccounts || [];
-  const binance = accounts.find((item) => item.exchange === "BINANCE") || {};
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
   const unread = (data.notifications || []).filter((item) => !item.read).length;
   const currentStatus = systemStatus(data);
   const operatingStage = data.readiness?.operatingStage;
   const live = data.system?.liveTradingEnabled;
+  const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
   // 用后端唯一真相 automationState.mode 判"全自动",别再自己拿 2 个开关猜(否则实盘写入没开/
   // 熔断/只减仓时照样喊 AUTO ON,与状态卡、AI 口径各说各话)。
   const autoOn = data.automationState?.mode === "full_auto_small";
+  const autoRequested = data.automationState?.requestedMode === "full_auto";
   return (
     <header className="appTopbar">
       <div className="topSearch">
         <Search size={15} />
-        <input placeholder="搜索市场 / 交易对 / 知识 / 功能" aria-label="搜索" />
+        <input placeholder={t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")} aria-label={t("搜索", "Search")} />
       </div>
       <div className="topbarStatusGroup">
-        <ExchangePill name="Binance" tone="binance" account={binance} onClick={() => setActive("systemSettings:exchange")} />
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
         {autoOn
-          ? <span className="autoOnPill" title="全自动执行已开启"><span className="autoDot" /> AUTO ON</span>
-          : live && <span className="livePill on" title="真实交易写入已开启">实盘写入开启</span>}
+          ? <span className="autoOnPill" title={t("自动执行已开启", "Automated execution is on")}><span className="autoDot" /> AUTO ON</span>
+          : autoRequested
+            ? <span className="livePill on" title={localizeText(data.automationState?.detail,t("自动交易已设置，但当前安全条件暂未满足","Automatic trading is configured but temporarily blocked by safety checks"))}>{t("自动交易暂缓","AUTO PAUSED")}</span>
+          : live && <span className="livePill on" title={t("实盘交易已开启", "Live trading is enabled")}>{t("实盘交易", "LIVE")}</span>}
       </div>
       <div className="topbarActions">
         <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskSettings")}>
           <span />
           {currentStatus.label}
         </button>
-        <button className="killButton" title="一键熔断：立即阻断所有新交易" onClick={() => setKillConfirm(true)}>
-          <Zap size={15} /> 熔断
+        <button className="killButton" title={t("紧急停止：立即阻止所有新交易", "Emergency stop: block all new trades immediately")} onClick={() => setKillConfirm(true)}>
+          <Zap size={15} /> {t("紧急停止", "STOP")}
         </button>
-        <button className="bellButton" title="通知" onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
+        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
@@ -174,8 +176,8 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
             </div>
           </>}
         </div>
-        <button className="topAvatar" title={`${data.user?.name || "账户"} · 点击设置名称/头像`} onClick={() => setShowPassword(true)} aria-label="账户设置">
-          {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : (data.user?.name || "A").slice(0, 1).toUpperCase()}
+        <button className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setShowPassword(true)} aria-label={t("账户设置", "Account settings")}>
+          {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : displayUserName.slice(0, 1).toUpperCase()}
         </button>
       </div>
       {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
@@ -192,6 +194,8 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [mfaEnrollment, setMfaEnrollment] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
   const fileRef = useRef(null);
   const profileDirty = name.trim() !== (user.name || "") || avatar !== (user.avatar || "");
 
@@ -199,10 +203,10 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
   function pickAvatar(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!/^image\//.test(file.type)) return notify("请选择图片文件");
+    if (!/^image\//.test(file.type)) return notify(t("请选择图片文件", "Please choose an image file"));
     const reader = new FileReader();
     reader.onload = () => {
-      const img = new Image();
+      const img = new globalThis.Image();
       img.onload = () => {
         const size = 128;
         const canvas = document.createElement("canvas");
@@ -213,7 +217,7 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
         ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
         setAvatar(canvas.toDataURL("image/jpeg", 0.85));
       };
-      img.onerror = () => notify("图片无法读取");
+      img.onerror = () => notify(t("图片无法读取", "Unable to read this image"));
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -221,51 +225,80 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
 
   async function saveProfile() {
     const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 40) return notify("名称需 1–40 个字符");
+    if (trimmed.length < 1 || trimmed.length > 40) return notify(t("名称需 1–40 个字符", "Name must be 1–40 characters"));
     setSavingProfile(true);
     const result = await action("/api/account/profile", { name: trimmed, avatar }, "PATCH");
     setSavingProfile(false);
-    if (result?.ok === true) notify("资料已更新");
+    if (result?.ok === true) notify(t("资料已更新", "Profile updated"));
   }
 
   async function changePassword() {
-    if (newPassword.length < 10) return notify("新密码至少 10 位");
-    if (newPassword !== confirm) return notify("两次输入的新密码不一致");
+    if (newPassword.length < 10) return notify(t("新密码至少 10 位", "New password must be at least 10 characters"));
+    if (newPassword !== confirm) return notify(t("两次输入的新密码不一致", "New passwords do not match"));
     const result = await action("/api/auth/change-password", { oldPassword, newPassword });
-    if (result?.ok === true) { notify("密码已修改"); setOldPassword(""); setNewPassword(""); setConfirm(""); }
+    if (result?.ok === true) { notify(t("密码已修改", "Password updated")); setOldPassword(""); setNewPassword(""); setConfirm(""); }
+  }
+
+  async function startMfaEnrollment() {
+    const result = await action("/api/account/mfa/enroll", {});
+    if (result?.secret) { setMfaEnrollment(result); setMfaCode(""); }
+  }
+
+  async function confirmMfa() {
+    const result = await action("/api/account/mfa/confirm", { code: mfaCode });
+    if (result?.ok) { notify(t("双因素认证已启用", "Two-factor authentication enabled")); setMfaEnrollment(null); setMfaCode(""); }
+  }
+
+  async function disableMfa() {
+    const result = await action("/api/account/mfa", { code: mfaCode }, "DELETE");
+    if (result?.ok) { notify(t("双因素认证已停用", "Two-factor authentication disabled")); setMfaCode(""); }
   }
 
   return (
     <div className="modalOverlay" onClick={onClose}>
       <div className="modalCard" onClick={(event) => event.stopPropagation()}>
-        <h3>账户设置</h3>
+        <h3>{t("账户设置", "Account Settings")}</h3>
         <div className="acctAvatarRow">
-          <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt="头像" /> : (name || "A").slice(0, 1).toUpperCase()}</div>
+          <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt={t("头像", "Avatar")} /> : (name || "A").slice(0, 1).toUpperCase()}</div>
           <div className="acctAvatarActions">
-            <button type="button" className="secondaryButton" onClick={() => fileRef.current?.click()}>上传头像</button>
-            {avatar && <button type="button" className="linkButton" onClick={() => setAvatar("")}>移除</button>}
+            <button type="button" className="secondaryButton" onClick={() => fileRef.current?.click()}>{t("上传头像", "Upload avatar")}</button>
+            {avatar && <button type="button" className="linkButton" onClick={() => setAvatar("")}>{t("移除", "Remove")}</button>}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickAvatar} />
-            <small>自动压缩为 128×128，占用极小</small>
+            <small>{t("自动压缩为 128×128", "Automatically resized to 128×128")}</small>
           </div>
         </div>
-        <label>显示名称<input type="text" maxLength={40} value={name} placeholder="给自己起个名字" onChange={(event) => setName(event.target.value)} /></label>
+        <label>{t("显示名称", "Display name")}<input type="text" maxLength={40} value={name} placeholder={t("输入显示名称", "Enter a display name")} onChange={(event) => setName(event.target.value)} /></label>
         <div className="modalActions">
           <span className="modalHint">{user.email || ""}</span>
-          <button className="primaryButton" disabled={!profileDirty || savingProfile} onClick={saveProfile}>{savingProfile ? "保存中…" : "保存资料"}</button>
+          <button className="primaryButton" disabled={!profileDirty || savingProfile} onClick={saveProfile}>{savingProfile ? t("保存中…", "Saving…") : t("保存资料", "Save profile")}</button>
         </div>
         {user.isOwner
-          ? <p className="acctPwNote">Owner 登录密码由服务端 ADMIN_PASSWORD 管理，如需修改请在系统设置 · 安全中操作。</p>
+          ? <p className="acctPwNote">{t("Owner 登录密码由服务端 ADMIN_PASSWORD 管理。如需修改，请前往“系统设置 > 安全”。", "The Owner password is managed by the server ADMIN_PASSWORD setting. To change it, go to System Settings > Security.")}</p>
           : <div className="acctPwBlock">
-              <h4>修改密码</h4>
-              <label>原密码<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
-              <label>新密码（至少 10 位）<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
-              <label>确认新密码<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+              <h4>{t("修改密码", "Change Password")}</h4>
+              <label>{t("当前密码", "Current password")}<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
+              <label>{t("新密码（至少 10 位）", "New password (10+ characters)")}<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+              <label>{t("确认新密码", "Confirm new password")}<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
               <div className="modalActions">
-                <button className="secondaryButton" onClick={changePassword}>修改密码</button>
+                <button className="secondaryButton" onClick={changePassword}>{t("修改密码", "Update password")}</button>
               </div>
             </div>}
+        <div className="acctPwBlock">
+          <h4>{t("双因素认证（TOTP）", "Two-Factor Authentication (TOTP)")}</h4>
+          <p className="acctPwNote">{user.mfaEnabled ? t("已启用。登录时还需输入认证器生成的 6 位验证码。", "Enabled. Sign-in also requires a six-digit code from your authenticator.") : t("建议 Owner 启用。密钥加密保存在本机，不会发送给第三方。", "Recommended for the Owner account. The secret is encrypted locally and never sent to a third party.")}</p>
+          {!user.mfaEnabled && !mfaEnrollment && <button className="secondaryButton" onClick={startMfaEnrollment}>{t("开始配置", "Set up 2FA")}</button>}
+          {mfaEnrollment && <>
+            <label>{t("认证器密钥", "Authenticator secret")}<input type="text" readOnly value={mfaEnrollment.secret} /></label>
+            <small>{t("将密钥添加到 Google Authenticator、1Password 或其他 TOTP 认证器，再输入当前验证码。此密钥仅显示一次。", "Add this secret to Google Authenticator, 1Password, or another TOTP app, then enter the current code. The secret is shown only once.")}</small>
+          </>}
+          {(user.mfaEnabled || mfaEnrollment) && <label>{t("6 位动态验证码", "Six-digit verification code")}<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>}
+          <div className="modalActions">
+            {mfaEnrollment && <button className="primaryButton" disabled={mfaCode.length !== 6} onClick={confirmMfa}>{t("确认启用", "Enable 2FA")}</button>}
+            {user.mfaEnabled && <button className="secondaryButton dangerText" disabled={mfaCode.length !== 6} onClick={disableMfa}>{t("验证并停用", "Verify and disable")}</button>}
+          </div>
+        </div>
         <div className="modalActions">
-          <button className="secondaryButton" onClick={onClose}>关闭</button>
+          <button className="secondaryButton" onClick={onClose}>{t("关闭", "Close")}</button>
         </div>
       </div>
     </div>
@@ -299,10 +332,12 @@ function App() {
     if (next === "cockpit") { setActiveWorkspaceTab("overview"); setActive("cockpit"); return; }
     if (next === "researchCenter") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "riskCenter") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
+    if (next === "riskMandate") { setActiveWorkspaceTab("mandate"); setActive("riskCenter"); return; }
     if (next === "operationsCenter") { setActiveWorkspaceTab("overview"); setActive("operationsCenter"); return; }
     if (next === "marketAccount" || next === "market") { setActiveWorkspaceTab("market"); setActive("cockpit"); return; }
     if (next === "signalHub") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
     if (next === "tradeJournal") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
+    if (next === "tradeLedger") { setActiveWorkspaceTab("ledger"); setActive("cockpit"); return; }
     if (next === "knowledgeBase") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
     if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
@@ -349,8 +384,8 @@ function App() {
         </div>
       </main>
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
-      {busy && <div className="busyIndicator"><Activity size={13} /> 执行中</div>}
-      <AssistantWidget data={data} ui={ui} />
+      {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
+      <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -361,12 +396,12 @@ function BackendField({ apiBase, setApiBase, isNativeApp }) {
   if (!isNativeApp) return null;
   return (
     <label className="backendField">
-      <span>后端地址</span>
+      <span>{t("后端地址", "Server URL")}</span>
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => setApiBase(value)}
-        placeholder="例如 https://yegidawir.xyz"
+        placeholder={t("例如 https://yegidawir.xyz", "Example: https://yegidawir.xyz")}
         inputMode="url"
       />
     </label>
@@ -384,11 +419,11 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
     <div className="loginScreen">
       <form className="loginPanel mobileConnectPanel" onSubmit={save}>
         <div className="brandMark"><BrandLogo size={36} /></div>
-        <h1>连接 Trading Agent</h1>
-        <p>{isNativeApp ? "填写你的后端地址。交易所密钥只保存在后端，App 只作为手机驾驶舱。" : "当前无法连接后端，请确认服务已启动。"}</p>
+        <h1>{t("连接 KORDYN", "Connect to KORDYN")}</h1>
+        <p>{isNativeApp ? t("填写后端地址。交易所密钥只保存在服务器，App 仅作为手机控制台。", "Enter your server URL. Exchange keys remain on the server; the app is only a mobile control surface.") : t("当前无法连接服务器，请确认服务已启动。", "The server is unavailable. Confirm that the service is running.")}</p>
         <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />
-        <button className="primaryButton" type="submit">保存并连接</button>
-        <button className="secondaryButton" type="button" onClick={() => refresh()}>重新连接</button>
+        <button className="primaryButton" type="submit">{t("保存并连接", "Save and connect")}</button>
+        <button className="secondaryButton" type="button" onClick={() => refresh()}>{t("重新连接", "Reconnect")}</button>
         {(connectionError || toast) && <small>{connectionError || toast}</small>}
       </form>
     </div>
@@ -400,9 +435,9 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   const defaultPlanId = plans[0]?.id || "";
   const [mode, setMode] = useState("login");
   const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [registerForm, setRegisterForm] = useState({ name: "", email: "", password: "" });
-  const [payment, setPayment] = useState(null);
+  const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
+  const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
+  const [application, setApplication] = useState(null);
   useEffect(() => {
     if (!selectedPlanId && defaultPlanId) setSelectedPlanId(defaultPlanId);
   }, [defaultPlanId, selectedPlanId]);
@@ -410,12 +445,12 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   async function submitLogin(event) {
     event.preventDefault();
     const email = loginForm.email.trim();
-    await login({ email, password: loginForm.password });
+    await login({ email, password: loginForm.password, totp: loginForm.totp });
   }
   async function submitRegister(event) {
     event.preventDefault();
     const result = await registerAccount({ ...registerForm, planId: selectedPlan?.id });
-    if (result?.payment) setPayment(result.payment);
+    if (result?.application) setApplication(result.application);
   }
   const flow = [["喂知识", BookOpen], ["读懂转成能力", BrainCircuit], ["采纳即用", CheckCircle2], ["下单前硬风控", ShieldCheck], ["自动执行", Zap], ["在用复盘·留退", RefreshCw]];
   const features = [
@@ -427,7 +462,7 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   return (
     <div className="landingShell">
       <div className="landingTopbar">
-        <span className="landingBrand"><span className="landingLogo"><BrainCircuit size={17} /></span><strong>Trading Agent</strong><em>知识驱动的 AI 交易员</em></span>
+        <span className="landingBrand"><span className="landingLogo"><BrandLogo size={24} /></span><strong>KORDYN</strong><em>知识驱动的 AI 交易员</em></span>
       </div>
       <main className="landingHero split">
         <section className="landingMarketing">
@@ -471,6 +506,7 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
             <form className="landingForm" onSubmit={submitLogin}>
               <label><span>邮箱</span><input value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
               <label><span>密码</span><input type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="登录密码" /></label>
+              <label><span>动态验证码（启用后必填）</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6 位验证码" /></label>
               <button className="primaryButton" type="submit">进入交易驾驶舱</button>
               <button className="textButton centered" type="button" onClick={() => setMode("subscribe")}>还没有订阅？先开通账号 <ChevronRight size={14} /></button>
             </form>
@@ -486,10 +522,15 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
               </div>
               <label><span>姓名</span><input value={registerForm.name} onChange={(event) => setRegisterForm({ ...registerForm, name: event.target.value })} placeholder="你的名字" /></label>
               <label><span>邮箱</span><input value={registerForm.email} onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })} placeholder="you@example.com" /></label>
-              <label><span>密码</span><input type="password" value={registerForm.password} onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })} placeholder="至少 10 位" /></label>
-              <button className="primaryButton" type="submit" disabled={!publicInfo?.registrationEnabled}><UserPlus size={16} /> 创建账号并生成支付单</button>
-              {!publicInfo?.registrationEnabled && <small>当前未开启公开注册。Owner 可在 Admin → 用户授权 里打开“公开注册”开关，或直接为用户开通账号。</small>}
-              {payment && <div className="paymentBox"><strong>TRC20 USDT 支付信息</strong><span>{payment.amount} USDT</span><code>{payment.address}</code><small>支付确认后订阅会自动开通；Owner 也可以在 Admin 页面直接赠送授权。</small></div>}
+              {publicInfo?.inviteRequired && <label><span>邀请码</span><input value={registerForm.inviteCode} onChange={(event) => setRegisterForm({ ...registerForm, inviteCode: event.target.value })} placeholder="INV-..." /></label>}
+              <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptTerms} onChange={(event) => setRegisterForm({ ...registerForm, acceptTerms: event.target.checked })} /><span>我同意<a href={publicInfo?.termsUrl || "#"} target="_blank" rel="noreferrer">服务条款</a>（版本 {publicInfo?.termsVersion || "当前"}）</span></label>
+              <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptPrivacy} onChange={(event) => setRegisterForm({ ...registerForm, acceptPrivacy: event.target.checked })} /><span>我同意<a href={publicInfo?.privacyUrl || "#"} target="_blank" rel="noreferrer">隐私政策</a></span></label>
+              <label className="lpConsent"><input type="checkbox" checked={registerForm.acknowledgeRisk} onChange={(event) => setRegisterForm({ ...registerForm, acknowledgeRisk: event.target.checked })} /><span>我理解加密货币交易可能损失全部本金</span></label>
+              <TurnstileWidget siteKey={publicInfo?.turnstileSiteKey} onToken={(turnstileToken) => setRegisterForm((current) => ({ ...current, turnstileToken }))} />
+              <button className="primaryButton" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}><UserPlus size={16} /> 提交独立实例开通申请</button>
+              {!publicInfo?.registrationEnabled && <small>当前未开放客户实例申请，请联系 Owner。</small>}
+              {publicInfo?.registrationEnabled && !publicInfo?.capacity?.canProvision && <small>申请入口开放，但当前容量已满，新申请将进入候补队列。</small>}
+              {application && <div className="paymentBox"><strong>申请已收到</strong><span>{application.id}</span><small>状态：{application.status}。请查收验证邮件或等待人工审核；系统尚未创建交易账号。</small></div>}
             </form>
           )}
           <div className="landingChecks">
@@ -519,7 +560,7 @@ function PageSkeleton() {
 
 const root = (window.__traderAgentRoot ||= createRoot(document.getElementById("root")));
 root.render(
-  <Suspense fallback={<div className="loading"><Activity size={28} /> 正在加载交易模块...</div>}>
+  <Suspense fallback={<div className="loading"><Activity size={28} /> {t("正在加载交易模块...", "Loading trading modules...")}</div>}>
     <App />
     <ConfirmHost />
   </Suspense>

@@ -1,6 +1,6 @@
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
-import { derivePositionShare, renderPositionPoster } from "./positionPoster.mjs";
+import { deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster } from "./positionPoster.mjs";
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -13,15 +13,38 @@ function bool(value, fallback = false) {
 }
 
 export function telegramStatus() {
+  const watchChatId = process.env.TELEGRAM_WATCH_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
   return {
     configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     hasBotToken: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     hasChatId: Boolean(process.env.TELEGRAM_CHAT_ID),
+    watchNotifierEnabled: bool(process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED, false),
+    watchConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && watchChatId),
+    hasWatchChatId: Boolean(process.env.TELEGRAM_WATCH_CHAT_ID),
     profitPosterEnabled: bool(process.env.TELEGRAM_PROFIT_POSTER_ENABLED, false),
     minPnlUsdt: number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT, 0),
     minRoiPct: number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT, 0),
     cooldownMinutes: number(process.env.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES, 240)
   };
+}
+
+export async function sendTelegramText(text, options = {}) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = options.chatId || process.env.TELEGRAM_WATCH_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN is missing");
+  if (!chatId) throw new Error("Telegram group chat ID is missing");
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: String(text || "").slice(0, 4000),
+      disable_web_page_preview: true
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json.ok === false) throw new Error(json.description || `Telegram sendMessage HTTP ${response.status}`);
+  return json.result;
 }
 
 function addNotification(db, payload = {}) {
@@ -98,6 +121,25 @@ export async function sendTelegramPositionPoster(db, position, options = {}) {
     notification.error = error.message;
     appendAudit(db, `Telegram 海报推送失败：${error.message}`, notification.id, "TelegramNotifier", "warning");
     return { status: "send_failed", notification, position: share, error: error.message };
+  }
+}
+
+export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
+  const status = telegramStatus();
+  const share = deriveClosedTradeShare(trade);
+  if (!status.profitPosterEnabled || !status.configured || !(Number(share.pnl) > status.minPnlUsdt)) return { status: "disabled_or_unconfigured", trade: share };
+  const notification = addNotification(db, { severity: "success", eventType: "closed_trade_profit_poster", title: `已平仓盈利海报：${share.symbol}`, body: `${share.symbol} ${share.side} 已实现 ${share.pnl?.toFixed?.(2)} USDT` });
+  try {
+    const poster = await renderClosedTradePoster(trade);
+    const caption = options.caption || `已平仓盈利：${share.symbol} ${share.side} · 已实现 ${share.pnl?.toFixed?.(2)} USDT`;
+    const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
+    const result = poster.type === "photo" ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster) : await sendTelegramMultipart("sendDocument", payload, "document", poster);
+    notification.deliveryStatus = "sent"; notification.telegramMessageId = result.result?.message_id;
+    appendAudit(db, `Telegram 已平仓盈利海报已推送：${share.symbol}`, notification.id, "TelegramNotifier", "info");
+    return { status: "sent", notification, trade: share, telegram: result.result };
+  } catch (error) {
+    notification.deliveryStatus = "send_failed"; notification.error = error.message;
+    return { status: "send_failed", notification, trade: share, error: error.message };
   }
 }
 

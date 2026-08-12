@@ -90,4 +90,6 @@
 .chatKpiBar .chatKpiD { font-size: 9.5px; color: var(--text-4); white-space: nowrap; }
 .chatKpiBar .chatKpiD.pos { color: var(--pos); }
 .chatKpiBar .chatKpiD.neg { color: var(--neg); }
-@media (max-width: 1180px) { .uxHeadExtra { display: none; } }
+.aiTopCluster{display:flex;align-items:flex-end;gap:18px;min-width:0}.aiTopLinks{display:flex;align-items:center;gap:6px;padding-left:14px;border-left:1px solid var(--border)}.aiTopLinks button{display:flex;align-items:center;gap:5px;height:31px;padding:0 9px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text-3);font-size:9.5px;cursor:pointer;white-space:nowrap}.aiTopLinks button:hover{border-color:#d79a6c;color:var(--accent-ink);background:#fff8f1}.aiTopLinks svg{width:12px}.aiTopLinks b{color:var(--text);font-size:10px}
+@media (max-width: 1360px) { .chatKpiBar .chatKpi:nth-child(4),.chatKpiBar .chatKpi:nth-child(5){display:none}.chatKpiBar{gap:14px} }
+@media (max-width: 1180px) { .uxHeadExtra { display:none } }

@@ -1,8 +1,10 @@
 // 交易计划路由组（创建/列表/详情/风控校验/请求批准/批准执行/取消/直接执行拒绝）——
 // 从 index.mjs 按 registrar 范式迁出（agent/actions 确认路由与 executePendingAction 仍留 index.mjs）。
 // 批准前风控复查、终态计划禁止重复执行(P1-7)、直接执行接口硬拒 等语义逐字保留。依赖经 ctx 注入。
+import { bindPlanToStrategyProduct } from "../strategyProducts.mjs";
+
 export function registerTradePlanRoutes(app, ctx) {
-  const { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, runExpertAnalysis, bindKnowledgeSkillsToPlan, evaluateTradePlan, executeApprovedPlan, describeGuardReason, executeTradePlan } = ctx;
+  const { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, runExpertAnalysis, bindKnowledgeSkillsToPlan, evaluateTradePlan, executeApprovedPlan, describeGuardReason, executeTradePlan, cancelArmedSetup } = ctx;
   const findPlan = (idv) => db.tradePlans.find((item) => item.id === idv);
   const notFound = (res) => res.status(404).json({ error: "Trade plan not found" });
 
@@ -13,9 +15,9 @@ export function registerTradePlanRoutes(app, ctx) {
     const plan = {
       id: id("plan"),
       mandateId: selectedMandate?.id,
-      exchange: "BINANCE",
+      exchange: "OKX",
       marketType: "perpetual_usdt",
-      strategy: "manual_review",
+      strategy: selectedMandate?.strategies?.[0] || "trend_following",
       status: "draft",
       ...req.body,
       mandateVersion: Number(selectedMandate?.version || 1),
@@ -31,6 +33,9 @@ export function registerTradePlanRoutes(app, ctx) {
       timeframe: req.body.timeframe || "1h",
       regime: db.marketRegime?.regime || db.marketRegime?.label || ""
     }, db.user.name);
+    // 手工/API 创建仍允许研究性自定义计划，但只对能确定匹配的五类策略写入版本归因；
+    // 未归类计划会明确标成 legacy_unclassified，不会混入任何策略产品的成绩。
+    bindPlanToStrategyProduct(db, plan, { source: "trade_plan_api" });
     db.tradePlans.unshift(plan);
     appendAudit(db, "创建交易计划", plan.id, "AI 交易员");
     persist(res, { plan, analysisBundle: bundle });
@@ -107,6 +112,9 @@ export function registerTradePlanRoutes(app, ctx) {
   app.post("/api/trade-plans/:id/cancel", requirePermission("write:trade_plan"), (req, res) => {
     const plan = findPlan(req.params.id);
     if (!plan) return notFound(res);
+    if (plan.armedSetupId && typeof cancelArmedSetup === "function") {
+      cancelArmedSetup(db, plan.armedSetupId, req.user?.name || db.user.name, req.body.reason || "user_cancelled");
+    }
     plan.status = "cancelled";
     plan.cancelledAt = nowIso();
     plan.cancelReason = req.body.reason || "user_cancelled";

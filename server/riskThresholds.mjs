@@ -6,14 +6,14 @@
 // toEnv: 人类单位 → env 原生值; fromEnv: env 原生值 → 人类单位。
 export const RISK_THRESHOLD_DEFS = [
   { key: "minRewardRisk", env: "MIN_REWARD_RISK", def: 2, min: 1, max: 5, step: 0.1, unit: "R", label: "盈亏比下限", hint: "计划 RR 低于此值不下(条令 R0.2)" },
-  { key: "protectMaxConsecLosses", env: "PROTECT_MAX_CONSEC_LOSSES", def: 3, min: 2, max: 10, step: 1, unit: "笔", label: "连亏冷却触发笔数", hint: "尾部连亏达此触发冷却(条令 P5)" },
+  { key: "protectMaxConsecLosses", env: "PROTECT_MAX_CONSEC_LOSSES", def: 3, min: 1, max: 100, step: 1, unit: "笔", label: "连亏冷却触发笔数", hint: "尾部连亏达此触发冷却(条令 P5)" },
   { key: "protectCooldownHours", env: "PROTECT_COOLDOWN_HOURS", def: 4, min: 0.5, max: 48, step: 0.5, unit: "小时", label: "连亏冷却时长", hint: "冷却期暂停新开仓" },
   { key: "protectMaxDrawdownPct", env: "PROTECT_MAX_DRAWDOWN_PCT", def: 10, min: 3, max: 50, step: 0.5, unit: "%", label: "回撤锁仓阈值", hint: "近期成交回撤达此(占权益)触发锁仓" },
   { key: "protectDrawdownLockHours", env: "PROTECT_DRAWDOWN_LOCK_HOURS", def: 12, min: 1, max: 72, step: 1, unit: "小时", label: "回撤锁仓时长", hint: "锁仓期暂停新开仓" },
   { key: "trailActivatePct", env: "TRAIL_ACTIVATE_PCT", def: 1.5, min: 0.3, max: 10, step: 0.1, unit: "%", label: "追踪止损·激活盈利", hint: "浮盈达此即启动追踪止损(条令 P3)" },
   { key: "trailDistancePct", env: "TRAIL_PCT", def: 1.2, min: 0.3, max: 5, step: 0.1, unit: "%", label: "追踪止损·跟踪距离", hint: "止损跟在现价后方此距离",
     toEnv: (v) => v / 100, fromEnv: (raw) => raw * 100 }, // env 存小数(0.012),UI 用百分比(1.2)
-  { key: "eventBlackoutMinutes", env: "EVENT_BLACKOUT_MINUTES", def: 30, min: 0, max: 240, step: 5, unit: "分钟", label: "事件静默窗口", hint: "高影响事件公布前此分钟数内不新开高杠杆仓(条令 S7)" },
+  { key: "eventBlackoutMinutes", env: "EVENT_BLACKOUT_MINUTES", def: 30, min: 0, max: 240, step: 5, unit: "分钟", label: "事件静默窗口", hint: "具有精确发布时间的高影响事件前，此分钟数内暂停新开仓(条令 S7)" },
   { key: "entryOrderTtlMinutes", env: "ENTRY_ORDER_TTL_MINUTES", def: 90, min: 5, max: 1440, step: 5, unit: "分钟", label: "挂单保质期", hint: "入场限价单挂此分钟数仍未成交即主动撤单(行情已变);0=不超时" },
   { key: "entryStaleDeviationPct", env: "ENTRY_STALE_DEVIATION_PCT", def: 8, min: 1, max: 30, step: 0.5, unit: "%", label: "挂单失效偏离", hint: "未成交挂单的现价偏离入场超此百分比即撤(机会已走/结构改变)" }
 ];

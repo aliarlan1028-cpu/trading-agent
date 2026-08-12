@@ -1,0 +1,14 @@
+[Unit]
+Description=Safely prune old KORDYN Docker build cache
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=DISK_CLEANUP_THRESHOLD_PCT=70
+Environment=DOCKER_BUILD_CACHE_MAX_AGE=168h
+ExecStart=/usr/local/sbin/trading-agent-safe-cleanup
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true

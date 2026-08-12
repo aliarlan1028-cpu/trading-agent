@@ -5,8 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "cancel-idem-"));
-delete process.env.BINANCE_API_KEY;
-delete process.env.BINANCE_API_SECRET;
+delete process.env.OKX_API_KEY;
+delete process.env.OKX_API_SECRET;
+delete process.env.OKX_API_PASSPHRASE;
 
 const { executeTradeAction } = await import("../server/tradeActions.mjs");
 const { reserveOmsOrder } = await import("../server/store.mjs");
@@ -25,10 +26,10 @@ function dbFixture() {
 
 test("cancel_order must not collide with the entry order's idempotency reservation", async () => {
   const db = dbFixture();
-  const entryCoid = "exec_regress0001";
+  const entryCoid = "execregress0001";
   // 模拟入场单已占用该 clientOrderId 的 OMS 预留（与实际执行路径一致）
   const entry = reserveOmsOrder({
-    exchange: "BINANCE",
+    exchange: "OKX",
     clientOrderId: entryCoid,
     action: "place_order",
     payload: { symbol: "BTC/USDT", side: "BUY", type: "LIMIT", price: 100, quantity: 1, clientOrderId: entryCoid }
@@ -38,7 +39,7 @@ test("cancel_order must not collide with the entry order's idempotency reservati
   // 保护失败/手动撤单路径：撤单复用入场 coid（交易所 origClientOrderId 语义）。
   // 修复前：预留键相同、payload 不同 → 被误判 idempotency_payload_conflict 而 blocked。
   const cancel = await executeTradeAction(db, "cancel_order", {
-    exchange: "BINANCE",
+    exchange: "OKX",
     marketType: "perpetual_usdt",
     symbol: "BTC/USDT",
     orderId: "77001",
@@ -57,7 +58,7 @@ test("cancel_order must not collide with the entry order's idempotency reservati
 
   // 同一撤单重试仍应幂等（派生键 cancel_order:<coid> 命中 replay，不产生第二次预留）
   const retry = await executeTradeAction(db, "cancel_order", {
-    exchange: "BINANCE",
+    exchange: "OKX",
     marketType: "perpetual_usdt",
     symbol: "BTC/USDT",
     orderId: "77001",

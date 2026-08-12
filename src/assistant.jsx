@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw, AlertTriangle, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, displayMoney, hhmmCn } from "./lib.jsx";
-import { t } from "./i18n.js";
+import { getLang, t } from "./i18n.js";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
    支持：标题(# / 【】)、加粗、行内代码、无序/有序列表、引用、键值、分隔线、段落。
@@ -167,8 +167,8 @@ function todosBroadcast(data) {
   return lines.join("\n");
 }
 
-// 悬浮 AI 助手：自由问答（走真实工具链 Agent）+ 一键摘要/异动/护航/待办播报。
-export function AssistantWidget({ data, ui }) {
+// 悬浮系统客服：版本化产品知识 + 当前页面上下文 + 只读诊断证据。
+export function AssistantWidget({ data, ui, currentPage = "" }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);       // { id, role, content }
   const [input, setInput] = useState("");
@@ -185,7 +185,7 @@ export function AssistantWidget({ data, ui }) {
   const pending = (data.pendingActions || []).filter((a) => !a.status || a.status === "pending" || a.status === "awaiting_confirmation").length;
   const incidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const todoTotal = awaiting + pending + incidents;
-  const autonomyLabel = sys.killSwitch ? t("已熔断", "Halted") : sys.autonomyEnabled ? t("自主运行中", "Autonomous") : t("已暂停", "Paused");
+  const autonomyLabel = sys.killSwitch ? t("紧急停止中", "Emergency stop active") : sys.autonomyEnabled ? t("自主运行中", "Autonomous") : t("已暂停", "Paused");
   // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)。按标题折叠去重,避免同类刷屏。
   const criticalIncidents = (data.riskIncidents || []).filter((i) => i.status === "open" && ["critical", "high"].includes(String(i.severity || "").toLowerCase()));
   const criticalGroups = [];
@@ -259,12 +259,12 @@ export function AssistantWidget({ data, ui }) {
       const res = await fetch(apiUrl("/api/assistant/chat"), {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ message: q }),
+        body: JSON.stringify({ message: q, pageContext: { page: currentPage, language: getLang() } }),
         signal: controller.signal
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { pushBot(`${t("抱歉，出错了","Sorry, an error occurred")}：${json.error || res.status}`); return; }
-      const cite = json.citations?.length ? `\n\n> ${t("参考知识","Sources")}：${json.citations.slice(0, 3).join("、")}` : "";
+      const cite = json.citations?.length ? `\n\n> ${t("回答依据","Evidence")}：${json.citations.slice(0, 4).join("、")}` : "";
       pushBot((json.reply || t("（未返回内容）","(no content returned)")) + cite);
     } catch (err) {
       pushBot(err.name === "AbortError" ? t("这次思考超时了，请重试或换个更聚焦的问题。","This took too long — please retry or ask a more focused question.") : t("网络异常，请稍后重试。","Network error, please try again later."));
@@ -284,15 +284,15 @@ export function AssistantWidget({ data, ui }) {
 
   return (
     <>
-      <button className={`asstFab ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)} title="AI 助手" aria-label="AI 助手">
+      <button className={`asstFab ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)} title={t("系统客服", "Product Support")} aria-label={t("系统客服", "Product Support")}>
         {open ? <X size={20} /> : <Sparkles size={20} />}
         {!open && todoTotal > 0 && <span className="asstBadge">{todoTotal}</span>}
       </button>
       {open && (
-        <div className="asstDrawer" role="dialog" aria-label="AI 助手">
+        <div className="asstDrawer" role="dialog" aria-label={t("系统客服", "Product Support")}>
           <div className="asstHead">
             <span className="asstAvatar"><Bot size={16} /></span>
-            <div className="asstHeadText"><b>{t("AI 助手","AI Assistant")}</b><small>{t("只读 · 不下单 · 数据截至","Read-only · no orders · data as of")} {asOf ? hhmmCn(asOf) : t("未同步","N/A")}</small></div>
+            <div className="asstHeadText"><b>{t("系统客服","Product Support")}</b><small>{t("懂功能 · 会排障 · 只读不操作 · 数据截至","Product help · diagnostics · read-only · data as of")} {asOf ? hhmmCn(asOf) : t("未同步","N/A")}</small></div>
             <button className="asstIconBtn" onClick={() => setDigestOpen((v) => !v)} title={digestOpen ? t("收起概览","Collapse") : t("展开概览","Expand")}><Gauge size={15} /></button>
             <button className="asstClose" onClick={() => setOpen(false)} aria-label="关闭"><X size={16} /></button>
           </div>
@@ -318,9 +318,9 @@ export function AssistantWidget({ data, ui }) {
           <div className="asstScroll" ref={scrollRef}>
             {!messages.length && (
               <div className="asstWelcome">
-                <b>{t("我是你的只读助手，帮你看懂系统", "I'm your read-only assistant — here to help you make sense of the system")}</b>
-                <p>{t("例如「现在该不该减仓？」「BTC 现在的结构怎么样？」「知识库里关于 CPI 怎么控仓？」——我会读真实账户、行情和知识库来解读。", "e.g. “Should I trim my position now?” “What's BTC's structure right now?” “What does the knowledge base say about sizing around CPI?” — I read your real account, market data and knowledge base to answer.")}</p>
-                <p className="asstHint">{t("我只做解读与建议，", "I only interpret and advise — ")}<b>{t("不下单、不改配置", "no orders, no config changes")}</b>{t("；要执行交易/改授权，请去主页的「AI 交易员」对话。", ". To trade or change mandates, use the “AI Trader” chat on the main page.")}</p>
+                <b>{t("我是系统内置客服，帮你理解功能和排查问题", "I'm the built-in product support assistant for features and troubleshooting")}</b>
+                <p>{t("可以问我：这个状态是什么意思、某项设置在哪里、为什么被风控阻止、OKX 是否真的有委托、某个数据截至什么时候。", "Ask what a status means, where a setting lives, why a risk check blocked, whether an OKX order really exists, or how fresh a data point is.")}</p>
+                <p className="asstHint">{t("我的回答基于当前版本说明和只读诊断证据；", "Answers are grounded in the current release and read-only diagnostics. ")}<b>{t("不下单、不改授权、不读取密钥原文", "I never trade, change mandates, or read secret values")}</b>{t("。", ".")}</p>
               </div>
             )}
             {messages.map((m) => (
@@ -333,7 +333,7 @@ export function AssistantWidget({ data, ui }) {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={sending ? t("思考中…","Thinking…") : t("问我关于账户 / 行情 / 知识的问题","Ask about account / market / knowledge")}
+              placeholder={sending ? t("正在查证…","Checking…") : t("询问功能、状态、设置或故障","Ask about a feature, status, setting, or issue")}
               disabled={sending}
             />
             <button type="submit" className="asstSend" disabled={sending || !input.trim()} aria-label="发送">

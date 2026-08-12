@@ -1,6 +1,7 @@
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { detectRegime, getStrategy } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { attachDeflatedSharpe, distributionStats } from "./validationStatistics.mjs";
 
 export const BAR_MINUTES = { "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440 };
 
@@ -95,10 +96,10 @@ export function simulate(candles, entrySignals, opts = {}) {
     }
   }
   if (position) closeTrade(closes[closes.length - 1], "mark_to_market", closes.length - 1);
-  return summarize(trades, riskPerTradePct);
+  return summarize(trades, riskPerTradePct, opts.trialCount || 1);
 }
 
-function summarize(trades, riskPerTradePct) {
+function summarize(trades, riskPerTradePct, trialCount = 1) {
   const count = trades.length;
   if (!count) {
     return { trades: 0, winRatePct: null, profitFactor: null, maxDrawdownPct: null, expectancyR: null, netReturnPct: 0, avgHoldBars: null, equityCurve: [] };
@@ -107,6 +108,7 @@ function summarize(trades, riskPerTradePct) {
   const grossWin = wins.reduce((sum, t) => sum + t.rMultiple, 0);
   const grossLoss = Math.abs(trades.filter((t) => t.rMultiple <= 0).reduce((sum, t) => sum + t.rMultiple, 0));
   const expectancyR = trades.reduce((sum, t) => sum + t.rMultiple, 0) / count;
+  const distribution = distributionStats(trades.map((trade) => trade.rMultiple));
   const varianceR = count > 1
     ? trades.reduce((sum, t) => sum + (t.rMultiple - expectancyR) ** 2, 0) / (count - 1)
     : 0;
@@ -121,7 +123,7 @@ function summarize(trades, riskPerTradePct) {
     maxDd = Math.max(maxDd, ((peak - equity) / peak) * 100);
     equityCurve.push(Number(equity.toFixed(2)));
   }
-  return {
+  return attachDeflatedSharpe({
     trades: count,
     winRatePct: Number(((wins.length / count) * 100).toFixed(1)),
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
@@ -129,10 +131,14 @@ function summarize(trades, riskPerTradePct) {
     expectancyR: Number(expectancyR.toFixed(3)),
     expectancyStdErrR: Number(expectancyStdErrR.toFixed(3)),
     expectancyLower90R: Number((expectancyR - 1.645 * expectancyStdErrR).toFixed(3)),
+    rStdDev: distribution.stdDev == null ? null : Number(distribution.stdDev.toFixed(4)),
+    tradeSharpe: distribution.sharpe == null ? null : Number(distribution.sharpe.toFixed(4)),
+    skewness: distribution.skewness == null ? null : Number(distribution.skewness.toFixed(4)),
+    kurtosis: distribution.kurtosis == null ? null : Number(distribution.kurtosis.toFixed(4)),
     netReturnPct: Number((equity - 100).toFixed(2)),
     avgHoldBars: Number((trades.reduce((sum, t) => sum + t.bars, 0) / count).toFixed(1)),
     equityCurve: equityCurve.slice(-60)
-  };
+  }, trialCount);
 }
 
 // 单次回测（取数 + 跑一个策略 + 落库），供 UI/Agent 单独调用。

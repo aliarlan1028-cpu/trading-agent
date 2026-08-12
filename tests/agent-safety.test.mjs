@@ -43,3 +43,17 @@ test("extreme volatility, stale data, and contradictory evidence fail closed", (
   assert.ok(result.violations.includes("required_tool_failure"));
   assert.ok(result.violations.includes("contradictory_evidence_requires_critic"));
 });
+
+test("trade proposal is blocked when its forced evidence bundle is incomplete", () => {
+  const result = evaluateAgentProposal({
+    action: "propose_trade_plan",
+    payload: { symbol: "BTC/USDT", stopLoss: 59000, leverage: 1 }
+  }, {
+    marketDataFresh: true,
+    accountSnapshotFresh: true,
+    requiredToolsHealthy: false,
+    mandateMaxLeverage: 3
+  });
+  assert.equal(result.passed, false);
+  assert.ok(result.violations.includes("required_tool_failure"));
+});

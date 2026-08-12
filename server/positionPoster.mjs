@@ -1,9 +1,11 @@
 import QRCode from "qrcode";
+import { readFileSync } from "node:fs";
 import { nowIso } from "./store.mjs";
 
 const WIDTH = 1080;
 const HEIGHT = 1440;
 const SITE_URL = process.env.POSTER_SITE_URL || "https://yegidawir.xyz/";
+const KORDYN_LOGO_DATA_URL = `data:image/png;base64,${readFileSync(new URL("../public/kordyn-logo.png", import.meta.url)).toString("base64")}`;
 // 装了 fonts-noto-cjk + fonts-dejavu-core(见 Dockerfile),librsvg 才能渲染中英文字。
 const FONT = "'Noto Sans CJK SC','DejaVu Sans','Inter',Arial,sans-serif";
 
@@ -110,7 +112,6 @@ async function buildPositionPosterSvg(position = {}) {
       <stop offset="0.55" stop-color="${isLong ? "#0d1424" : "#1a0e18"}"/>
       <stop offset="1" stop-color="${isLong ? "#070c16" : "#0b0709"}"/>
     </radialGradient>
-    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e68a4e"/><stop offset="1" stop-color="#d06a22"/></linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${dirColor}"/><stop offset="1" stop-color="${isLong ? "#16d191" : "#ff8a4c"}"/></linearGradient>
   </defs>
 
@@ -118,10 +119,9 @@ async function buildPositionPosterSvg(position = {}) {
   <rect width="${WIDTH}" height="14" fill="url(#accent)"/>
 
   <!-- 品牌行 -->
-  <rect x="80" y="72" width="84" height="84" rx="22" fill="url(#logo)"/>
-  <text x="122" y="128" text-anchor="middle" font-size="42">🤖</text>
-  <text x="184" y="112" fill="#eaf0fb" font-family="${FONT}" font-size="38" font-weight="800">AI 交易员</text>
-  <text x="184" y="150" fill="#7f8ca3" font-family="${FONT}" font-size="20" letter-spacing="3">AUTONOMOUS TRADING</text>
+  <image x="80" y="65" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/>
+  <text x="194" y="112" fill="#eaf0fb" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text>
+  <text x="194" y="150" fill="#7f8ca3" font-family="${FONT}" font-size="20" letter-spacing="3">AI TRADING AGENT</text>
   <text x="1000" y="128" text-anchor="end" fill="#7f8ca3" font-family="${FONT}" font-size="24">${escapeXml(s.exchange)} 永续</text>
 
   <!-- 方向徽章 + 币种 + meta -->
@@ -161,5 +161,48 @@ export async function renderPositionPoster(position = {}) {
     return { buffer, filename: `${symbol}-position.png`, contentType: "image/png", type: "photo" };
   } catch (error) {
     return { buffer: Buffer.from(svg), filename: `${symbol}-position.svg`, contentType: "image/svg+xml", type: "document", renderError: error.message };
+  }
+}
+
+// 已平仓交易必须使用“已实现”口径，不能再复用持仓海报并写成当前价/浮盈。
+export function deriveClosedTradeShare(trade = {}) {
+  const side = normalizeSide(trade);
+  const entry = number(trade.filledPrice ?? trade.entryPrice ?? trade.entry);
+  const exit = number(trade.exitPrice ?? trade.price ?? trade.mark);
+  const pnl = number(trade.realizedPnl);
+  const feeUsdt = Math.abs(number(trade.feeUsdt, 0)) + Math.abs(number(trade.entryFeeUsdt, 0)) + Math.abs(number(trade.closeFeeUsdt, 0));
+  const fundingFeeUsdt = number(trade.fundingFeeUsdt, 0);
+  const leverage = number(trade.leverage);
+  const quantity = number(trade.quantity ?? trade.size);
+  const notional = number(trade.notionalUsdt ?? trade.entryNotionalUsdt) ?? (entry !== null && quantity !== null ? Math.abs(entry * quantity) : null);
+  const margin = number(trade.marginUsdt) ?? (notional !== null && leverage ? notional / leverage : null);
+  const roiPct = number(trade.realizedRoiPct) ?? (pnl !== null && margin ? pnl / margin * 100 : null);
+  return {
+    symbol: trade.symbol || trade.instId || "UNKNOWN", side, entry, exit, pnl, feeUsdt, fundingFeeUsdt,
+    leverage, notional, roiPct, quantity,
+    holdLabel: trade.holdingMinutes != null ? `${Math.floor(Number(trade.holdingMinutes) / 60)}h${String(Number(trade.holdingMinutes) % 60).padStart(2, "0")}m` : holdLabel(trade.openedAt || trade.entryFilledAt || trade.createdAt, trade.closedAt),
+    exchange: String(trade.exchange || "OKX").toUpperCase(), closedAt: trade.closedAt || trade.createdAt || nowIso(),
+    exitReason: trade.exitReason || null
+  };
+}
+
+async function buildClosedTradePosterSvg(trade = {}) {
+  const s = deriveClosedTradeShare(trade), win = Number(s.pnl || 0) >= 0, long = s.side === "LONG";
+  const accent = long ? "#3ad6c0" : "#ffb24c", pnlColor = win ? "#16d191" : "#ff6b6b";
+  const qr = await qrImage(SITE_URL, 300);
+  const roi = s.roiPct === null ? "—" : `${s.roiPct >= 0 ? "+" : "−"}${Math.abs(s.roiPct).toFixed(2)}%`;
+  const meta = [s.leverage ? `${compact(s.leverage, 1)}×` : null, s.holdLabel ? `持仓 ${s.holdLabel}` : null, s.exitReason ? `退出 ${s.exitReason}` : null].filter(Boolean).join("  ·  ");
+  const cell = (x, y, label, value, color = "#f4f8ff") => `<rect x="${x}" y="${y}" width="440" height="142" rx="22" fill="rgba(255,255,255,.04)"/><text x="${x+28}" y="${y+48}" fill="#8d99ad" font-family="${FONT}" font-size="25">${escapeXml(label)}</text><text x="${x+28}" y="${y+104}" fill="${color}" font-family="${FONT}" font-size="42" font-weight="800">${escapeXml(value)}</text>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><radialGradient id="closedBg" cx="15%" cy="0" r="130%"><stop offset="0" stop-color="${long ? "#18243a" : "#2d1920"}"/><stop offset="1" stop-color="#080c14"/></radialGradient></defs><rect width="1080" height="1440" fill="url(#closedBg)"/><rect width="1080" height="14" fill="${accent}"/><image x="80" y="63" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/><text x="194" y="109" fill="#f4f8ff" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text><text x="194" y="148" fill="#8896ac" font-family="${FONT}" font-size="20" letter-spacing="3">REALIZED TRADE RESULT</text><rect x="80" y="212" width="250" height="58" rx="14" fill="${accent}" opacity=".16"/><text x="205" y="251" text-anchor="middle" fill="${accent}" font-family="${FONT}" font-size="28" font-weight="800">✓ 已平仓 ${escapeXml(s.side)}</text><text x="80" y="370" fill="#fff" font-family="${FONT}" font-size="82" font-weight="900">${escapeXml(s.symbol)}</text><text x="80" y="422" fill="#9aa6bd" font-family="${FONT}" font-size="27">${escapeXml(meta || "真实成交结果")}</text><rect x="80" y="470" width="920" height="265" rx="28" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.08)"/><text x="120" y="542" fill="#8d99ad" font-family="${FONT}" font-size="28">已实现盈亏（交易系统记录）</text><text x="120" y="648" fill="${pnlColor}" font-family="${FONT}" font-size="102" font-weight="900">${escapeXml(money(s.pnl))}</text><text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="38" font-weight="800">收益率 ${escapeXml(roi)}</text>${cell(80,775,"开仓均价",compact(s.entry))}${cell(560,775,"平仓均价",compact(s.exit))}${cell(80,937,"成交数量",compact(s.quantity))}${cell(560,937,"手续费（单列）",`${s.feeUsdt ? "−" : ""}${compact(s.feeUsdt,4)} USDT`,"#ffcf80")}<text x="80" y="1138" fill="#75839a" font-family="${FONT}" font-size="23">资金费：${escapeXml(money(s.fundingFeeUsdt))} · 数据来源：${escapeXml(s.exchange)} 成交与 OMS 对账</text><rect x="80" y="1178" width="920" height="2" fill="rgba(255,255,255,.08)"/>${qr?`<rect x="800" y="1204" width="200" height="200" rx="18" fill="#fff"/><image x="812" y="1216" width="176" height="176" xlink:href="${qr}"/>`:""}<text x="80" y="1250" fill="#d3dceb" font-family="${FONT}" font-size="30" font-weight="700">KORDYN · 数字货币永续合约专属 Agent</text><text x="80" y="1300" fill="#7f8ca3" font-family="${FONT}" font-size="25">${escapeXml(SITE_URL.replace(/^https?:\/\//,"").replace(/\/$/,""))}</text><text x="80" y="1370" fill="#617088" font-family="${FONT}" font-size="22">真实成交结果 · 非投资建议 · ${escapeXml(new Date(s.closedAt).toLocaleString("zh-CN",{hour12:false}))}</text></svg>`;
+}
+
+export async function renderClosedTradePoster(trade = {}) {
+  const svg = await buildClosedTradePosterSvg(trade);
+  const symbol = deriveClosedTradeShare(trade).symbol.replaceAll("/", "");
+  try {
+    const sharp = (await import("sharp")).default;
+    return { buffer: await sharp(Buffer.from(svg)).png().toBuffer(), filename: `${symbol}-realized.png`, contentType: "image/png", type: "photo" };
+  } catch (error) {
+    return { buffer: Buffer.from(svg), filename: `${symbol}-realized.svg`, contentType: "image/svg+xml", type: "document", renderError: error.message };
   }
 }

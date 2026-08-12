@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly safe Docker build-cache cleanup for KORDYN
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00 Asia/Shanghai
+RandomizedDelaySec=30m
+Persistent=true
+AccuracySec=1m
+Unit=trading-agent-cache-prune.service
+
+[Install]
+WantedBy=timers.target

@@ -1,3 +1,5 @@
+import { assertNativeStrategyContracts, buildNativeStrategyContract } from "./strategyContracts.mjs";
+
 // ---------------------------------------------------------------------------
 // 策略库：每个策略把历史 K 线转成"开多信号数组"（第 i 根是否触发入场）。
 // 出场统一交给回测引擎的止损/止盈-R 模型，保证跨策略可比。
@@ -400,12 +402,31 @@ export function regimePreferredFamilies(regime) {
   return ["trend", "meanrev"];
 }
 
+export function strategyMatchesRegime(strategy, regime) {
+  const preferred = regimePreferredFamilies(regime);
+  if (!preferred.includes(strategy?.family)) return false;
+  const value = String(regime || "");
+  const direction = strategy?.direction || "long";
+  if (value.includes("上行") && direction === "short") return false;
+  if (value.includes("下行") && direction === "long") return false;
+  return true;
+}
+
 export function getStrategy(id) {
   return STRATEGIES[id] || STRATEGIES.trend;
 }
 
 export function listStrategies() {
-  return Object.values(STRATEGIES).map((s) => ({ id: s.id, label: s.label, defaultParams: s.defaultParams }));
+  const strategies = Object.values(STRATEGIES);
+  assertNativeStrategyContracts(strategies);
+  return strategies.map((strategy) => ({
+    id: strategy.id,
+    label: strategy.label,
+    family: strategy.family,
+    direction: strategy.direction || "long",
+    defaultParams: strategy.defaultParams,
+    contract: buildNativeStrategyContract(strategy)
+  }));
 }
 
 // 简单行情 regime 判定（用于策略画像标注）

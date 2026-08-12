@@ -36,11 +36,11 @@ test("其余项直存(非换算):RR/连亏/静默分钟", () => {
   assert.equal(process.env.EVENT_BLACKOUT_MINUTES, "45");
 });
 
-test("越界夹取:RR 99→5,连亏 1→2,回撤 99→50", () => {
+test("越界夹取:RR 99→5,连亏允许1且上限100,回撤99→50", () => {
   clearEnv();
   const r = applyRiskThresholds({}, { minRewardRisk: 99, protectMaxConsecLosses: 1, protectMaxDrawdownPct: 99 }, fakeSetConfig);
   assert.equal(r.current.minRewardRisk, 5);
-  assert.equal(r.current.protectMaxConsecLosses, 2);
+  assert.equal(r.current.protectMaxConsecLosses, 1);
   assert.equal(r.current.protectMaxDrawdownPct, 50);
 });
 

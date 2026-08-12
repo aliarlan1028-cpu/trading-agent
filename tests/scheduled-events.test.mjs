@@ -1,5 +1,5 @@
-// 日程事件(向前看):确定性生成的日期必须精确(非农=首个周五、季度交割=季末月最后周五),
-// 且幂等、手动录入有校验、未来窗口过滤正确。日期算错会把 Agent 引向错误的"事件避险"。
+// 日程事件(向前看):季度交割可确定性生成；宏观事件只能接纳官方日历的精确时间。
+// 禁止用“首个周五/近似 UTC”猜非农，否则会把 Agent 引向错误的事件避险。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ensureScheduledEvents, createScheduledEvent, upcomingScheduledEvents } from "../server/scheduledEvents.mjs";
@@ -15,12 +15,20 @@ test("生成的日程事件全部落在周五(UTC)", () => {
   assert.equal(notFriday.length, 0, "非农/季度交割都应在周五");
 });
 
-test("非农为高影响、季度交割为中影响,类别正确", () => {
+test("不再生成近似非农；官方 minute 精度宏观事件才进入高影响风险链", () => {
   const db = minimalDb();
   ensureScheduledEvents(db);
-  const nfp = db.events.find((e) => /非农/.test(e.shortTitle || ""));
+  assert.equal(db.events.some((e) => String(e.scheduledKey || "").startsWith("sched_nfp_")), false);
+  db.marketCalendarEvents = [{
+    id: "bls_nfp_exact", sourceName: "BLS", sourceUrl: "https://www.bls.gov/example",
+    title: "Employment Situation", due: new Date(Date.now() + 86_400_000).toISOString(),
+    timePrecision: "minute", importance: "high"
+  }];
+  ensureScheduledEvents(db);
+  const nfp = db.events.find((e) => e.scheduledKey === "official_bls_nfp_exact");
   const exp = db.events.find((e) => /季度交割/.test(e.shortTitle || ""));
   assert.ok(nfp && nfp.impact >= 70 && nfp.category === "宏观");
+  assert.equal(nfp.timePrecision, "minute");
   assert.ok(exp && exp.category === "衍生品");
 });
 

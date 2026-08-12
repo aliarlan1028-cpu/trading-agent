@@ -1,5 +1,45 @@
 import React, { useEffect, useRef, useState } from "react";
-import { t } from "./i18n.js";
+import { getLang, t } from "./i18n.js";
+
+export function TurnstileWidget({ siteKey, onToken }) {
+  const hostRef = useRef(null);
+  const callbackRef = useRef(onToken);
+  useEffect(() => { callbackRef.current = onToken; }, [onToken]);
+  useEffect(() => {
+    if (!siteKey || !hostRef.current) return undefined;
+    let cancelled = false;
+    let widgetId;
+    const render = () => {
+      if (cancelled || !hostRef.current || !window.turnstile || widgetId !== undefined) return;
+      widgetId = window.turnstile.render(hostRef.current, {
+        sitekey: siteKey,
+        callback: (token) => callbackRef.current?.(token),
+        "expired-callback": () => callbackRef.current?.(""),
+        "error-callback": () => callbackRef.current?.("")
+      });
+    };
+    let script = document.querySelector('script[data-trading-agent-turnstile="true"]');
+    if (!script) {
+      script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.dataset.tradingAgentTurnstile = "true";
+      document.head.appendChild(script);
+    }
+    script.addEventListener("load", render);
+    const poll = window.setInterval(render, 250);
+    render();
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      script?.removeEventListener("load", render);
+      if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey]);
+  if (!siteKey) return null;
+  return <div className="turnstileHost" ref={hostRef} />;
+}
 
 export function formatMoney(value, digits = 2) {
   return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -22,14 +62,14 @@ export function displayPrice(value, fallback = "—") {
   return number.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: priceDigits(number) });
 }
 
-export function displayMoney(value, digits = 2, fallback = "未同步") {
+export function displayMoney(value, digits = 2, fallback = t("未同步", "Not synced")) {
   if (value === undefined || value === null || value === "") return fallback;
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return number.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export function displayPct(value, fallback = "未同步") {
+export function displayPct(value, fallback = t("未同步", "Not synced")) {
   if (value === undefined || value === null || value === "") return fallback;
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -44,14 +84,14 @@ export function asArray(value) {
 
 export function safeList(value, fallback = "-") {
   const items = asArray(value);
-  return items.length ? items.join("、") : fallback;
+  return items.length ? items.join(t("、", ", ")) : fallback;
 }
 
 export function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error || new Error("文件读取失败"));
+    reader.onerror = () => reject(reader.error || new Error(t("文件读取失败", "Unable to read file")));
     reader.readAsDataURL(file);
   });
 }
@@ -60,14 +100,14 @@ export function formatDateTime(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
+  return date.toLocaleString(getLang() === "en" ? "en-US" : "zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 export function formatDate(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Shanghai" });
+  return date.toLocaleDateString(getLang() === "en" ? "en-US" : "zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 // 北京时间 HH:mm(全站时间统一 UTC+8;ISO 直接 slice 是 UTC 会差 8 小时)。
@@ -75,17 +115,17 @@ export function hhmmCn(value, fallback = "?") {
   if (!value) return fallback;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
+  return d.toLocaleTimeString(getLang() === "en" ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
 export function formatTime(value, fallback = "-") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Shanghai" });
+  return date.toLocaleTimeString(getLang() === "en" ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
-export function formatDuration(value, fallback = "未记录") {
+export function formatDuration(value, fallback = t("未记录", "Not recorded")) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   if (number < 1000) return `${Math.round(number)}ms`;
@@ -97,103 +137,282 @@ export function humanize(value, fallback = "-") {
   if (!key) return fallback;
   const normalized = key.toLowerCase();
   const labels = {
-    running: "运行中",
-    active: "已生效",
-    paused: "已暂停",
-    revoked: "已撤销",
-    pending_confirmation: "待确认",
-    setup_required: "待配置",
-    missing_credentials: "未配置",
-    missing: "未授权",
-    not_synced: "未同步",
-    data_unavailable: "缺少数据",
-    configured: "已配置",
-    connected: "已连接",
-    registered: "待连接",
-    available_without_key: "免密钥可用",
-    imported: "已导入",
-    parsed: "已解析",
-    empty: "无可用文本",
-    degraded: "降级运行",
-    ok: "正常",
-    blocked: "已阻断",
-    block: "阻断",
-    kill_switch: "熔断",
-    error: "异常",
-    warning: "告警",
-    failed: "失败",
-    stopped: "已停止",
-    completed: "已完成",
-    open: "挂单中",
-    allowed: "允许",
-    allowed_with_warnings: "允许但有警告",
-    allow_small_position: "允许小仓位",
-    risk_rejected: "风控拒绝",
-    setup_rejected: "结构审核未过",
-    protection_failed: "保护单失败",
-    cancelled: "已取消",
-    canceled: "已取消",
-    dry_run: "干跑(未下单)",
-    executing: "执行中",
-    entry_pending: "入场挂单中",
-    entry_filled: "入场已成交",
-    protecting: "止盈止损中",
-    awaiting_approval: "等待确认",
-    approved: "已批准",
-    expired: "已过期作废",
-    draft: "草案",
-    monitoring: "持仓监控",
-    submitted: "已提交",
-    skipped_locked: "并发锁跳过",
-    scheduled_task: "定时任务",
-    risk_check: "风控检查",
-    mandate: "授权检查",
-    "mandate checking": "授权检查",
-    observing: "观察市场",
-    analyzing: "生成分析",
-    planning: "生成计划",
-    "risk checking": "风控检查",
-    reconciling: "结算对账",
-    reviewing: "复盘审查",
-    agent_orchestrator: "Agent 编排",
-    exchange_private_read: "交易所只读同步",
-    exchange_market: "公开行情",
-    realtime_ws: "实时连接",
-    trade_execution: "交易执行",
-    system: "系统",
-    trend_pullback: "趋势回调",
-    trend_following: "趋势跟随",
-    event_protection: "事件保护",
-    manual_review: "自主研判",
-    event_driven: "事件驱动",
-    breakout: "突破策略",
-    spot: "现货",
-    perpetual_usdt: "U 本位永续",
-    perpetual: "永续合约"
+    running: ["运行中", "Running"], active: ["已生效", "Active"], trialing: ["试用中", "Trial"], paused: ["已暂停", "Paused"], revoked: ["已撤销", "Revoked"],
+    pending_confirmation: ["待确认", "Needs confirmation"], setup_required: ["待配置", "Setup required"], missing_credentials: ["未配置", "Credentials missing"], missing: ["未授权", "Not authorized"], not_synced: ["未同步", "Not synced"], data_unavailable: ["缺少数据", "Data unavailable"],
+    configured: ["已配置", "Configured"], connected: ["已连接", "Connected"], registered: ["待连接", "Awaiting connection"], available_without_key: ["免密钥可用", "Available without a key"], imported: ["已导入", "Imported"], parsed: ["已解析", "Parsed"], empty: ["无可用文本", "No usable text"], degraded: ["降级运行", "Degraded"], ok: ["正常", "Healthy"],
+    blocked: ["已阻断", "Blocked"], block: ["阻断", "Block"], kill_switch: ["紧急停止", "Emergency stop"], error: ["异常", "Error"], warning: ["告警", "Warning"], failed: ["失败", "Failed"], stopped: ["已停止", "Stopped"], completed: ["已完成", "Completed"], open: ["挂单中", "Open order"],
+    allowed: ["允许", "Allowed"], allowed_with_warnings: ["允许但有警告", "Allowed with warnings"], allow_small_position: ["允许小仓位", "Small position allowed"], risk_rejected: ["风控拒绝", "Rejected by risk controls"], auto_blocked: ["自动执行被阻断", "Automated execution blocked"], setup_rejected: ["交易计划未通过", "Trade plan rejected"], protection_failed: ["保护单失败", "Protection order failed"],
+    cancelled: ["已取消", "Cancelled"], canceled: ["已取消", "Cancelled"], dry_run: ["模拟执行（未下单）", "Simulation only (no order)"], executing: ["执行中", "Executing"], entry_pending: ["入场挂单中", "Entry order open"], entry_filled: ["入场已成交", "Entry filled"], protecting: ["止盈止损中", "Exit protection active"], awaiting_approval: ["等待确认", "Awaiting approval"], armed: ["等待价格条件（未下单）", "Waiting for price (no order)"], triggered: ["价格已到，执行前复核", "Price reached; pre-trade checks"], fast_validating: ["刷新行情、账户与风控", "Refreshing market, account, and risk"], approved: ["已批准", "Approved"], expired: ["已过期", "Expired"], invalidated: ["计划已失效", "Plan invalidated"], superseded: ["已被新计划替代", "Replaced by a newer plan"], draft: ["草案", "Draft"], monitoring: ["持仓监控", "Position monitoring"], submitted: ["已提交", "Submitted"],
+    skipped_locked: ["任务繁忙，已跳过", "Skipped while another run was active"], scheduled_task: ["定时任务", "Scheduled task"], risk_check: ["风控检查", "Risk check"], mandate: ["交易权限检查", "Trading permission check"], "mandate checking": ["交易权限检查", "Trading permission check"], observing: ["观察市场", "Monitoring market"], analyzing: ["生成分析", "Analyzing"], planning: ["生成计划", "Building trade plan"], "risk checking": ["风控检查", "Risk check"], reconciling: ["账户对账", "Reconciling account"], reviewing: ["复盘审查", "Reviewing"],
+    agent_orchestrator: ["Agent 编排", "Agent orchestration"], exchange_private_read: ["交易所账户同步", "Exchange account sync"], exchange_market: ["公开行情", "Public market data"], realtime_ws: ["实时连接", "Real-time connection"], trade_execution: ["交易执行", "Trade execution"], system: ["系统", "System"],
+    trend_pullback: ["趋势回调", "Trend pullback"], trend_continuation: ["趋势延续", "Trend continuation"], breakout_retest: ["突破后回踩", "Breakout retest"], breakdown_retest: ["跌破后回抽", "Breakdown retest"], reversal_reclaim: ["反转回收", "Reversal reclaim"], fake_breakout: ["假突破回收", "False-break reclaim"], range_rejection: ["区间边界拒绝", "Range rejection"], trend_following: ["趋势跟随", "Trend following"], event_protection: ["事件保护", "Event protection"], manual_review: ["自主研判", "AI review"], event_driven: ["事件驱动", "Event-driven"], breakout: ["突破策略", "Breakout"], spot: ["现货", "Spot"], perpetual_usdt: ["U 本位永续", "USDT perpetual"], perpetual: ["永续合约", "Perpetual"],
+    "已启用": ["已启用", "Enabled"], "工具": ["工具", "Tool"], "完成": ["完成", "Completed"], "等待": ["等待", "Waiting"], "待批准": ["待批准", "Awaiting approval"], "待复核": ["待复核", "Awaiting review"], "待安全复核": ["待安全复核", "Awaiting security review"],
+    create_mandate_draft: ["创建交易权限草案", "Create trading-permissions draft"],
+    "低影响": ["低影响", "Low impact"], "中影响": ["中影响", "Medium impact"], "高影响": ["高影响", "High impact"],
+    "宏观": ["宏观", "Macro"], "衍生品": ["衍生品", "Derivatives"], "币圈": ["币圈", "Crypto"], "币圈事件": ["币圈事件", "Crypto"], "链上事件": ["链上事件", "On-chain"], "项目": ["项目", "Project"]
   };
-  return labels[key] || labels[normalized] || key.replace(/_/g, " ");
+  const label = labels[key] || labels[normalized];
+  return label ? t(label[0], label[1]) : key.replace(/_/g, " ");
+}
+
+// 后端审计与状态数据历史上以中文持久化；英文界面展示时在边界层翻译，
+// 不改写原始审计事实，也避免把运行时语言偏好混入服务端状态机。
+export function localizeText(value, fallback = "-") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  const legacy = {
+    "条件已武装": ["等待入场（尚未下单）", "Waiting for entry (no order placed)"],
+    "Agent 条件交易计划已武装": ["等待入场计划已启动（尚未下单）", "Entry monitoring started (no order placed)"],
+    "授权委托配置": ["交易权限设置", "Trading permissions"],
+    "主账户授权委托": ["主账户交易权限", "Primary account trading permissions"]
+  };
+  if (legacy[raw]) return t(legacy[raw][0], legacy[raw][1]);
+  if (getLang() !== "en") return raw;
+  const exact = {
+    "默认对话": "Default conversation",
+    "本地管理员": "Local Admin",
+    "自主决策被拦": "Autonomous decisions blocked",
+    "无激活授权": "No active trading permissions",
+    "未配置 LLM": "LLM not configured",
+    "检测到提现权限时禁止交易并触发熔断。": "Block trading and activate the emergency stop if withdrawal permission is detected.",
+    "自主推进已暂停": "Autonomy paused",
+    "恢复后按定时巡检 + 观察哨自主决策": "Resume to run scheduled reviews and monitor registered watch conditions.",
+    "配置交易所 API Key/Secret": "Add your OKX API key and secret",
+    "确认 API Key 无提现权限并设置 IP 白名单": "Disable withdrawals and add an IP allowlist for the API key",
+    "配置 LLM API Key": "Add an LLM API key",
+    "同步公开行情与只读账户": "Sync public market data and the read-only account",
+    "人工批准": "Per-trade approval",
+    "人工暂停": "Paused manually",
+    "风控暂停": "Paused by risk controls",
+    "等待配置": "Setup required",
+    "只读观察": "Observe only",
+    "自动交易": "Automated trading",
+    "正常": "Healthy",
+    "市场观察员": "Market Analyst",
+    "事件分析员": "News & Events Analyst",
+    "策略研究员": "Strategy Researcher",
+    "交易计划员": "Trade Planner",
+    "风控官": "Risk Officer",
+    "执行监督员": "Execution Supervisor",
+    "持仓管理员": "Position Manager",
+    "复盘/记忆管理员": "Review & Memory Manager",
+    "我不是来替你冒险的，我是来把风险变得可见、可控、可复盘的。": "I do not take unmanaged risks on your behalf. I make risk visible, controlled, and reviewable.",
+    "冷静、克制、证据优先；只描述市场状态，不把噪声包装成机会。": "Calm, disciplined, and evidence-first. Describe market conditions without dressing noise up as opportunity.",
+    "警觉、保守、重视尾部风险；宁可提前降噪，也不忽略黑天鹅。": "Alert and conservative, with close attention to tail risk. Filter noise early without ignoring black swans.",
+    "好奇但不冲动；把假设当假设，把证据当证据。": "Curious without being impulsive. Keep hypotheses separate from evidence.",
+    "结构化、耐心、尊重授权边界；没有止损就不算计划。": "Structured, patient, and respectful of trading permissions. A plan without a stop is not a valid plan.",
+    "怀疑、严格、保护型；默认先问这笔交易怎么亏。": "Skeptical, strict, and protective. Start by asking how the trade can lose.",
+    "谨慎、机械、关注细节；只相信执行引擎和交易所回执。": "Cautious, procedural, and detail-oriented. Trust only the execution engine and exchange acknowledgements.",
+    "防守优先、少做动作；盈利时保护利润，亏损时尊重止损。": "Defense first, with minimal intervention. Protect gains and respect stops.",
+    "诚实、细致、不找借口；把亏损变成规则，把盈利变成可验证方法。": "Honest and meticulous, without excuses. Turn losses into rules and wins into testable methods.",
+    "读取行情、资金费率、成交量、波动率和订单簿，形成结构化市场观察。": "Read prices, funding, volume, volatility, and the order book to produce structured market observations.",
+    "分析宏观、链上、交易所公告和突发新闻对授权交易对的影响。": "Assess how macro events, on-chain activity, exchange announcements, and breaking news affect allowed markets.",
+    "从知识库、历史复盘和行情结构中提出可验证的交易假设。": "Develop testable trading hypotheses from the knowledge base, historical reviews, and market structure.",
+    "把交易假设转成结构化计划：方向、入场、止损、止盈、杠杆、仓位理由。": "Turn a trading hypothesis into a structured plan covering direction, entry, stop, targets, leverage, and sizing rationale.",
+    "检查授权边界、单笔风险、日亏损、杠杆、事件窗口、相关性和止损。": "Check trading permissions, per-trade risk, daily loss, leverage, event windows, correlation, and stops.",
+    "监督计划进入执行引擎后的订单状态、滑点、保护单、撤单和平仓条件。": "Monitor order status, slippage, protective orders, cancellations, and exit conditions after a plan reaches execution.",
+    "监控已有仓位，建议移动止损、减仓、止盈或关闭风险仓位。": "Monitor open positions and recommend stop adjustments, reductions, profit-taking, or risk exits.",
+    "交易后总结原因、执行质量、错误类型，并决定是否写入长期记忆或更新规则。": "After a trade, review rationale, execution quality, and error type, then decide whether to update long-term memory or rules.",
+    "只写入高置信、可复盘的市场状态变化。": "Store only high-confidence market-state changes that can be reviewed later.",
+    "记录事件前后市场反应和误判来源。": "Record market reactions around events and the sources of incorrect assessments.",
+    "把被验证或被否定的策略假设写入长期记忆。": "Store validated and rejected strategy hypotheses in long-term memory.",
+    "记录计划参数与最终表现之间的差异。": "Record the difference between planned parameters and final performance.",
+    "把被拦截计划和真实损失案例沉淀为风控经验。": "Turn blocked plans and realized-loss cases into reusable risk lessons.",
+    "记录滑点、拒单、保护单失败等执行质量问题。": "Record execution-quality issues such as slippage, rejections, and failed protective orders.",
+    "记录持仓管理动作对回撤和利润回吐的影响。": "Record how position-management actions affect drawdown and profit giveback.",
+    "负责长期记忆质量，定期清理低质量或过期经验。": "Maintain long-term memory quality and remove low-quality or stale lessons.",
+    "不得给出下单指令": "Must not issue order instructions",
+    "必须标注数据来源与同步时间": "Must identify data sources and synchronization time",
+    "证据不足时输出继续观察": "Must continue monitoring when evidence is insufficient",
+    "不得独立生成交易计划": "Must not create a trade plan independently",
+    "高影响事件必须触发风险提示": "High-impact events must produce a risk warning",
+    "必须区分事实、推断和未知": "Must distinguish facts, inferences, and unknowns",
+    "不得跳过样本和失败条件": "Must not omit samples or failure conditions",
+    "不得把研究结论直接变成订单": "Must not turn research conclusions directly into orders",
+    "必须写清失效条件": "Must state invalidation conditions clearly",
+    "必须包含止损": "A stop loss is required",
+    "必须绑定授权委托": "Must be bound to active trading permissions",
+    "必须交给风控官审查": "Must be reviewed by the Risk Officer",
+    "不得直接调用交易写接口": "Must not call trading write APIs directly",
+    "只能批准/拒绝/要求降风险": "May only approve, reject, or require lower risk",
+    "不得为了收益放宽硬规则": "Must not relax hard controls to pursue returns",
+    "风控失败必须写审计": "Risk-control failures must be audited",
+    "不能绕过执行引擎": "Must not bypass the execution engine",
+    "不能直接下单": "Must not place orders directly",
+    "订单异常必须升级给风控官": "Order anomalies must be escalated to the Risk Officer",
+    "加仓默认禁止": "Adding to a position is prohibited by default",
+    "只能建议降风险动作": "May recommend only risk-reducing actions",
+    "不得扩大未授权风险敞口": "Must not increase unauthorized exposure",
+    "不得篡改历史记录": "Must not alter historical records",
+    "不得只记录盈利样本": "Must not record only winning samples",
+    "复盘结论必须可验证": "Review conclusions must be testable",
+    "需要完成基础配置": "Basic setup required",
+    "自主交易必须带止损": "Stop loss required for automated trades",
+    "API Key 禁止提现权限": "API key must not allow withdrawals",
+    "主账户授权委托": "Primary account trading permissions",
+    "手写规范策略(精选)": "Curated rule-based strategies",
+    "加密永续交易条令 v1": "Crypto perpetual trading doctrine v1",
+    "条令·核心判读与反瘫痪": "Doctrine · decisive analysis without paralysis",
+    "条令·行情场景手册(按当前regime套用,只有一个成立)": "Doctrine · market-regime playbook (use the single matching regime)",
+    "条令·持仓生命周期管理": "Doctrine · position lifecycle management",
+    "条令·执行与成本": "Doctrine · execution and costs",
+    "条令·风险与压力测试": "Doctrine · risk and stress testing",
+    "反叙事开仓:无统计支撑、说不出失效条件的形态式开仓禁止": "No narrative-only entries: a setup needs statistical support and a clear invalidation condition",
+    "反过拟合:只认样本外+纯前向验证过的策略,不把模板名/知识方法冒充'已验证策略'": "Anti-overfitting: only out-of-sample and forward-tested strategies count as validated",
+    "投机≠赌博:入场前必须有预定的失效/离场点,没有预定退出的仓不开": "Speculation is not gambling: define invalidation and exit before entry",
+    "亏损中绝不下移止损扩大亏损": "Never widen a stop to increase risk on a losing position",
+    "绝不无计划加仓摊平(扛单)": "Never average down without a pre-defined plan",
+    "连续盈利后仓位不随浮盈膨胀、不超计划上限": "Do not let position size expand after a winning streak or exceed its planned limit",
+    "持仓逻辑被证伪时不找支持性信息硬扛,按纪律减/平": "When the thesis is invalidated, reduce or exit instead of seeking confirmation bias",
+    "复盘按过程打分不按结果:结果好但过程错的单也要标记、亏损单必复盘": "Score the process, not only the outcome; flag bad process even on winners and review every loss",
+    "Binance 公告": "Binance announcements",
+    "OKX 公告": "OKX announcements",
+    "链上信号刷新": "On-chain signal refresh",
+    "即时": "Now",
+    "季度交割": "Quarterly settlement",
+    "日程(系统)": "System calendar",
+    "历史": "Historical record",
+    "跟进中": "Monitoring",
+    "已刷新": "Refreshed",
+    "方向待观察": "Direction unclear",
+    "偏空信号": "Bearish signal",
+    "偏多信号": "Bullish signal",
+    "季度交割前后波动与基差收敛,注意持仓与保证金": "Quarterly settlement can increase volatility and compress basis; review positions and margin.",
+    "产品驾驶舱": "Product dashboard",
+    "鉴权默认锁定": "Sign-in locked by default"
+    ,"Owner 双因素认证": "Owner two-factor authentication"
+    ,"密钥主密钥": "Secret master key"
+    ,"SQLite 持久化": "SQLite persistence"
+    ,"持久化 OMS 与 Outbox": "Persistent OMS and outbox"
+    ,"客户物理隔离": "Tenant isolation"
+    ,"真实交易写网关": "Live-trading write gateway"
+    ,"执行前风控复查": "Pre-execution risk recheck"
+    ,"真实交易配置": "Live-trading configuration"
+    ,"私有 REST 持仓同步": "Private REST position sync"
+    ,"OKX 私有 WebSocket": "OKX private WebSocket"
+    ,"真实 LLM Agent": "Live LLM agent"
+    ,"真实知识库解析": "Knowledge ingestion pipeline"
+    ,"真实事件源": "Live event sources"
+    ,"链上 API": "On-chain API"
+    ,"Skill 沙箱": "Skill sandbox"
+    ,"Docker 沙箱环境": "Docker sandbox runtime"
+    ,"本地审计哈希链": "Local audit hash chain"
+    ,"外部 WORM 审计": "External WORM audit storage"
+    ,"提现权限确认": "Withdrawal permission check"
+    ,"外部告警通道": "External alert channel"
+    ,"最近一致性备份": "Recent consistent backup"
+    ,"最近恢复演练": "Recent restore drill"
+    ,"加密异机备份": "Encrypted off-host backup"
+    ,"发布版本身份": "Release identity"
+    ,"小额度灰度策略": "Small-size live validation"
+    ,"交易所余额同步": "Exchange balance sync"
+    ,"行情信号刷新": "Market signal refresh"
+    ,"ME News 重要快讯快车道": "ME News breaking-news feed"
+    ,"RSS 新闻源刷新": "RSS news refresh"
+    ,"市场情报深层整合": "Market intelligence synthesis"
+    ,"高影响日程分阶段准备": "High-impact event preparation"
+    ,"链上基础资金面刷新": "On-chain fundamentals refresh"
+    ,"Telegram观察哨Outbox": "Telegram watch outbox"
+    ,"Telegram观察哨日报": "Telegram watch daily summary"
+    ,"执行订单轮询": "Execution order polling"
+    ,"持仓风险监控": "Position risk monitoring"
+    ,"盈亏核算刷新": "PnL accounting refresh"
+    ,"自主巡检决策": "Autonomous market review"
+    ,"观察哨哨兵": "Watch-condition monitor"
+    ,"全市场早期机会快扫": "Early-opportunity market scan"
+    ,"账户对账": "Account reconciliation"
+    ,"自适应策略研究": "Adaptive strategy research"
+    ,"模拟盘前向验证": "Forward strategy validation"
+    ,"平仓自动复盘": "Automatic closed-trade review"
+    ,"错过机会复盘": "Missed-opportunity review"
+    ,"策略改进闭环": "Strategy improvement loop"
+    ,"TRC20 支付链上核验": "TRC20 payment verification"
+    ,"交易事件 Outbox 派发": "Trade-event outbox delivery"
+    ,"审计日志 WORM 外送": "WORM audit-log delivery"
+    ,"不确定订单恢复": "Uncertain-order recovery"
+    ,"趋势跟随（均线交叉）": "Trend following (moving-average crossover)"
+    ,"均值回归（RSI 超卖反弹）": "Mean reversion (RSI oversold rebound)"
+    ,"突破（唐奇安通道）": "Breakout (Donchian channel)"
+    ,"MACD 金叉（趋势动量）": "MACD bullish crossover (trend momentum)"
+    ,"布林带下轨反弹（均值回归）": "Lower Bollinger Band rebound (mean reversion)"
+    ,"死叉做空（均线下穿）": "Bearish moving-average crossover"
+    ,"RSI 超买回落（做空）": "RSI overbought reversal (short)"
+    ,"唐奇安下破（做空）": "Donchian breakdown (short)"
+    ,"Supertrend（ATR 趋势翻多）": "Supertrend bullish reversal (ATR)"
+    ,"量价确认突破": "Volume-confirmed breakout"
+    ,"布林挤压突破": "Bollinger squeeze breakout"
+    ,"RSI 底背离（做多）": "RSI bullish divergence"
+    ,"RSI 顶背离（做空）": "RSI bearish divergence"
+    ,"多周期趋势对齐": "Multi-timeframe trend alignment"
+    ,"资金费率极值扫描": "Extreme funding-rate scan"
+    ,"市场状态分类": "Market regime classification"
+    ,"支撑阻力位识别": "Support and resistance detection"
+    ,"相对强度扫描": "Relative strength scan"
+    ,"资金费率与基差": "Funding rate and basis"
+    ,"流动性与冲击成本": "Liquidity and market impact"
+    ,"合约风险画像": "Derivatives risk profile"
+    ,"组合暴露分析": "Portfolio exposure analysis"
+    ,"执行质量分析": "Execution quality analysis"
+    ,"交易复盘与漂移检测": "Trade review and strategy drift detection"
+    ,"交易所故障降级": "Exchange outage fallback"
+    ,"无止损交易计划不得进入执行器。": "A trade plan without a stop loss cannot reach execution."
+    ,"禁止提现权限": "Withdrawals must be disabled"
+    ,"暂无已平仓交易——先建立交易闭环,行为画像会随成交累积。": "No closed trades yet. The behavior profile will build as completed trades accumulate."
+    ,"Supertrend趋势做多(精选)": "Supertrend long (curated)"
+    ,"RSI超买回落做空(精选)": "RSI overbought reversal short (curated)"
+    ,"唐奇安20下破做空(精选)": "Donchian 20-period breakdown short (curated)"
+    ,"唐奇安20突破做多(精选)": "Donchian 20-period breakout long (curated)"
+    ,"布林挤压突破做多(精选)": "Bollinger squeeze breakout long (curated)"
+    ,"小额度实盘灰度": "Small-size live validation"
+    ,"调度员": "Scheduler"
+    ,"后台运行任务": "Background task run"
+    ,"实时 WebSocket 错误": "Real-time WebSocket error"
+    ,"在 1h/4h/1d 三个周期判断趋势方向是否一致。多周期一致时趋势信号更可靠；不一致时应谨慎。内置 sync_market 只看单周期，这个技能补多周期确认。": "Checks whether the 1h, 4h, and 1d trends agree. Alignment strengthens a trend signal; disagreement calls for caution."
+    ,"趋势确认后进入，禁止在区间极值追单": "Enter only after trend confirmation; do not chase at range extremes."
+    ,"尚未产生合格样本外画像": "No qualifying out-of-sample profile yet."
+    ,"低影响": "Low impact"
+    ,"币圈事件": "Crypto",
+    "链上事件": "On-chain",
+    "衍生品": "Derivatives"
+  };
+  if (exact[raw]) return exact[raw];
+  const quarterly = raw.match(/^(\d{4})年(3|6|9|12)月季度合约交割$/);
+  if (quarterly) return `Q${Number(quarterly[2]) / 3} ${quarterly[1]} quarterly contract settlement`;
+  if (/^后台运行任务/.test(raw)) return raw.replace(/^后台运行任务/, "Background task run");
+  if (/^执行对账：/.test(raw)) return raw.replace(/^执行对账：/, "Reconciliation run: ");
+  if (/^市场事件：/.test(raw)) return raw.replace(/^市场事件：/, "Market event: ");
+  if (/^部分必要信息源陈旧或失败：/.test(raw)) return raw
+    .replace(/^部分必要信息源陈旧或失败：/, "Some required sources are stale or failing: ")
+    .replace(/；不得把旧内容当作当前催化剂。$/, "; do not treat stale content as a current catalyst.")
+    .replace(/_/g, " ");
+  if (/专题$/.test(raw)) return raw
+    .replace(/稳定币/g, "Stablecoins")
+    .replace(/安全事件/g, "Security")
+    .replace(/\s*专题$/, " focus topic");
+  if (/^批量历史验证完成/.test(raw)) return raw.replace(/^批量历史验证完成:通过\s*(\d+)\s*·\s*未达门槛\s*(\d+)\s*·\s*数据不足\/出错\s*(\d+)\(共\s*(\d+)\)$/, "Batch historical validation finished: $1 passed, $2 below threshold, $3 insufficient data/errors ($4 total)");
+  return humanize(raw, raw);
 }
 
 export function humanizeList(value, fallback = "-") {
   const items = asArray(value).map((item) => humanize(item));
-  return items.length ? items.join("、") : fallback;
+  return items.length ? items.join(t("、", ", ")) : fallback;
 }
 
 export function humanizePhase(value, fallback = "-") {
   const normalized = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   if (!normalized) return fallback;
-  if (normalized.includes("mandate") && normalized.includes("check")) return "授权检查";
-  if (normalized.includes("risk") && normalized.includes("check")) return "风控检查";
-  if (normalized.includes("observ")) return "观察市场";
-  if (normalized.includes("analy")) return "生成分析";
-  if (normalized.includes("plan")) return "生成计划";
-  if (normalized.includes("execut")) return "执行交易";
-  if (normalized.includes("reconcil")) return "结算对账";
-  if (normalized.includes("review")) return "复盘审查";
+  if (normalized.includes("mandate") && normalized.includes("check")) return t("交易权限检查", "Trading permission check");
+  if (normalized.includes("risk") && normalized.includes("check")) return t("风控检查", "Risk check");
+  if (normalized.includes("observ")) return t("观察市场", "Monitoring market");
+  if (normalized.includes("analy")) return t("生成分析", "Analyzing");
+  if (normalized.includes("plan")) return t("生成计划", "Building trade plan");
+  if (normalized.includes("execut")) return t("执行交易", "Executing trade");
+  if (normalized.includes("reconcil")) return t("账户对账", "Reconciling account");
+  if (normalized.includes("review")) return t("复盘审查", "Reviewing");
   return humanize(value, fallback);
 }
 
-export function shortId(value, fallback = "未生成") {
+export function shortId(value, fallback = t("未生成", "Not generated")) {
   const text = String(value || "");
   if (!text) return fallback;
   if (text.length <= 18) return text;
@@ -217,20 +436,21 @@ export function statusTone(status) {
 }
 
 export function systemStatus(data) {
-  if (data?.system?.killSwitch) return { label: "熔断中", tone: "danger" };
-  if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: "待配置", tone: "warning" };
-  if (!data?.system?.autonomyEnabled) return { label: "人工暂停", tone: "warning" };
-  if (data?.agentStatus?.state === "risk_paused") return { label: "风控暂停", tone: "warning" };
+  if (data?.system?.killSwitch) return { label: t("紧急停止中", "Emergency stop active"), tone: "danger" };
+  if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: t("待配置", "Setup required"), tone: "warning" };
+  if (!data?.system?.autonomyEnabled) return { label: t("自主运行已暂停", "Autonomy paused"), tone: "warning" };
+  if (data?.agentStatus?.state === "risk_paused") return { label: t("风控暂停", "Paused by risk controls"), tone: "warning" };
   // tone 跟随文案：非"正常/运行"类状态（如种子值"等待配置"、"风控暂停"）不能带绿色 ok 渲染。
-  const label = data?.system?.riskStatus || "正常";
-  const tone = /正常|运行/.test(label) ? "ok" : /熔断|高/.test(label) ? "danger" : "warning";
+  const raw = data?.system?.riskStatus || "正常";
+  const label = humanize(raw, raw === "正常" ? t("正常", "Healthy") : raw);
+  const tone = /正常|运行|healthy|running/i.test(raw) ? "ok" : /熔断|高|halt|critical/i.test(raw) ? "danger" : "warning";
   return { label, tone };
 }
 
 export function exchangeState(account = {}) {
-  if (account.readEnabled && account.tradeEnabled) return { label: "交易可用", tone: "on" };
-  if (account.readEnabled) return { label: "只读", tone: "warn" };
-  return { label: "未配置", tone: "off" };
+  if (account.readEnabled && account.tradeEnabled) return { label: t("交易可用", "Trading enabled"), tone: "on" };
+  if (account.readEnabled) return { label: t("只读", "Read-only"), tone: "warn" };
+  return { label: t("未配置", "Not configured"), tone: "off" };
 }
 
 export function isNativeApp() {
@@ -280,7 +500,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
   } finally {
     window.clearTimeout(timer);
   }
@@ -300,8 +520,8 @@ function onLivePrice(fn) { livePriceListeners.add(fn); return () => livePriceLis
 // 注意语义：这是"持仓结构偏向"，不是趋势预测——展示词统一用"偏多/偏空"，不用"趋势"。
 // 鉴权头（全站唯一实现；chat/assistant 曾各有一份副本）。
 export function authHeaders(extra = {}) {
-  const token = localStorage.getItem("agent_token") || "";
-  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const token = isNativeApp() ? (localStorage.getItem("agent_token") || "") : "";
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}`, "X-Native-App": "true" } : {}) };
 }
 
 // 在途执行单状态（与后端 executionEngine OPEN_EXECUTION_STATES 对齐；曾有 3 份复制、1 份写错）。
@@ -443,7 +663,7 @@ export function LivePrice({ symbol, fallbackPrice = null, fallbackChange = null,
 }
 
 export function useApi() {
-  const [token, setToken] = useState(() => localStorage.getItem("agent_token") || "");
+  const [token, setToken] = useState(() => isNativeApp() ? (localStorage.getItem("agent_token") || "") : "");
   const [apiBase, setApiBaseState] = useState(defaultApiBase);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -465,7 +685,7 @@ export function useApi() {
   }
 
   function headers(extra = {}) {
-    return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    return { ...extra, ...(token ? { Authorization: `Bearer ${token}`, "X-Native-App": "true" } : {}) };
   }
 
   function notify(message, timeout = 2400) {
@@ -505,7 +725,7 @@ export function useApi() {
     const activeBase = normalizeApiBase(baseOverride || apiBase);
     try {
       if (isNativeApp() && !activeBase) {
-        setConnectionError(t("请先填写 Trading Agent 后端地址。", "Please enter the Trading Agent backend URL first."));
+        setConnectionError(t("请先填写 KORDYN 后端地址。", "Please enter the KORDYN backend URL first."));
         setLoading(false);
         return;
       }
@@ -565,19 +785,30 @@ export function useApi() {
       }
       const text = await response.text();
       const json = text ? JSON.parse(text) : {};
-      if (!response.ok) throw new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
+      if (!response.ok) {
+        const requestError = new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
+        requestError.status = response.status;
+        requestError.details = json.details;
+        requestError.blockers = json.blockers;
+        throw requestError;
+      }
       if (json.logoutRequired) {
         expireSession(json.message || t("请重新登录", "Please sign in again"));
         return json;
       }
-      setToast(json.message || json.summary || json.output || json.error || t("操作已完成", "Done"));
+      const localizedMessage = (json.messageZh || json.messageEn)
+        ? t(json.messageZh || json.message || "", json.messageEn || json.message || "")
+        : (json.message || json.summary || json.output || json.error || t("操作已完成", "Done"));
+      setToast(localizedMessage);
       await refresh(false);
       window.setTimeout(() => setToast(""), 4200);
       return json;
     } catch (error) {
       setToast(error.message || t("操作失败", "Action failed"));
       window.setTimeout(() => setToast(""), 4200);
-      return {};
+      // 调用方需要区分“空成功响应”和“真实失败”。此前统一返回 {}，资金与交易控制页
+      // 只能再覆盖成笼统的“保存失败”，把后端给出的安全阻断原因全部吃掉。
+      return { ok: false, error: error.message || t("操作失败", "Action failed"), httpStatus: error.status, details: error.details, blockers: error.blockers };
     } finally {
       setBusyCount((count) => count - 1);
     }
@@ -617,8 +848,13 @@ export function useApi() {
       setToast(json.error || t("登录失败", "Sign-in failed"));
       return false;
     }
-    localStorage.setItem("agent_token", json.token);
-    setToken(json.token);
+    if (isNativeApp()) {
+      localStorage.setItem("agent_token", json.token);
+      setToken(json.token);
+    } else {
+      localStorage.removeItem("agent_token");
+      setToken("");
+    }
     setAuthRequired(false);
     setToast(t("登录成功", "Signed in"));
     window.setTimeout(() => setToast(""), 1800);
@@ -627,18 +863,16 @@ export function useApi() {
 
   async function registerAccount(payload) {
     try {
-      setToast(t("正在开通账号...", "Creating your account…"));
-      const response = await fetchWithTimeout(apiUrl("/api/auth/register", apiBase), {
+      setToast(t("正在提交开通申请...", "Submitting your application…"));
+      const response = await fetchWithTimeout(apiUrl("/api/public/registration/apply", apiBase), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {})
       }, isNativeApp() ? 8000 : 12000);
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || t("注册失败", "Registration failed"));
-      localStorage.setItem("agent_token", json.token);
-      setToken(json.token);
-      setAuthRequired(false);
-      setToast(json.payment ? t("账号已创建，请按支付信息完成订阅", "Account created — complete the payment to activate") : t("账号已创建", "Account created"));
+      // 公开入口只提交物理隔离实例的开通申请，不创建本实例会话，避免访客进入 Owner 工作区。
+      setToast(t("申请已收到，请查收验证邮件或等待人工审核", "Application received — verify your email or wait for manual review"));
       window.setTimeout(() => setToast(""), 3200);
       return json;
     } catch (error) {
@@ -989,7 +1223,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
   return (
     <div className="tvChart" style={{ position: "relative" }}>
       <div ref={holder} style={{ width: "100%", height: "100%" }} />
-      {status !== "ok" && <div className="chartEmpty tvOverlay">{status === "empty" ? "同步交易所后显示真实 K 线" : "加载 K 线…"}</div>}
+      {status !== "ok" && <div className="chartEmpty tvOverlay">{status === "empty" ? t("同步 OKX 后显示真实 K 线", "Connect OKX to display live candlesticks") : t("加载 K 线…", "Loading candlesticks…")}</div>}
     </div>
   );
 }

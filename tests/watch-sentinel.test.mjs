@@ -14,6 +14,7 @@ const {
   consumeTriggeredWatches,
   crossed,
   registerWatch,
+  requestPendingAgentCycle,
   sentinelCycleAllowed,
   sentinelGate,
   sweepWatches
@@ -139,6 +140,42 @@ test("哨兵触发 LLM 巡检限频:每小时最多 4 次,过期记录滚动清�
   // 一小时前的记录滚动过期后恢复可用
   db.system.sentinelCycleAt = [1, 2, 3, 4].map((i) => new Date(now - 3_600_000 - i * 60_000).toISOString());
   assert.equal(sentinelCycleAllowed(db, now), true);
+  assert.equal(db.system.sentinelCycleAt.length, 0);
+});
+
+test("Agent 任务锁冲突不消耗哨兵每小时唤起额度", async () => {
+  const { registerTaskHandler } = await import("../server/scheduler.mjs");
+  let release;
+  const blocker = new Promise((resolve) => { release = resolve; });
+  registerTaskHandler("test_agent_cycle_lock", async () => { await blocker; return { id: "run_test", status: "completed" }; });
+  const db = dbFixture();
+  db.system.pendingOpportunitySignals = [{ candidateId: "opp", symbol: "BTC/USDT", queuedAt: new Date().toISOString() }];
+  db.tradePlans = [];
+  db.tasks = [{ id: "task_sys_agent_cycle", name: "test", handler: "test_agent_cycle_lock", type: "Every", schedule: "Every 15m", enabled: true }];
+  db.jobLocks = [];
+  db.jobRuns = [];
+  const first = requestPendingAgentCycle(db, null, "test_first");
+  await new Promise((resolve) => setImmediate(resolve));
+  const locked = await requestPendingAgentCycle(db, null, "test_locked");
+  assert.equal(locked.run.status, "skipped_locked");
+  assert.equal(db.system.sentinelCycleAt.length, 0, "锁冲突不能白白占一次额度");
+  release();
+  await first;
+  assert.equal(db.system.sentinelCycleAt.length, 1);
+});
+
+test("patrol_only 没有进入 LLM 决策，不消耗唤起额度", async () => {
+  const { registerTaskHandler } = await import("../server/scheduler.mjs");
+  registerTaskHandler("test_agent_cycle_patrol", async () => ({ id: "run_patrol", status: "patrol_only" }));
+  const db = dbFixture();
+  db.system.pendingFastMoves = [{ symbol: "BTC/USDT", direction: "up", movePct: 3 }];
+  db.tradePlans = [];
+  db.tasks = [{ id: "task_sys_agent_cycle", name: "test", handler: "test_agent_cycle_patrol", type: "Every", schedule: "Every 15m", enabled: true }];
+  db.jobLocks = [];
+  db.jobRuns = [];
+  const result = await requestPendingAgentCycle(db, null, "test_patrol");
+  assert.equal(result.run.status, "ok");
+  assert.match(result.run.output, /patrol_only/);
   assert.equal(db.system.sentinelCycleAt.length, 0);
 });
 

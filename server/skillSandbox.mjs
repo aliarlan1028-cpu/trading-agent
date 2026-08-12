@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import simpleGit from "simple-git";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
-import { assertSafeExternalUrl, fetchExternalText } from "./externalInputSafety.mjs";
+import { assertSafeGitHubRepositoryUrl, fetchExternalText } from "./externalInputSafety.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -15,7 +15,7 @@ export async function fetchSkillPackage(db, payload = {}) {
   const skillId = id("skill");
   const target = path.join(skillsDir, skillId);
   if (payload.sourceUrl?.includes("github.com")) {
-    await assertSafeExternalUrl(payload.sourceUrl);
+    await assertSafeGitHubRepositoryUrl(payload.sourceUrl);
     await simpleGit().clone(payload.sourceUrl, target, ["--depth", "1"]);
   } else {
     await fs.mkdir(target, { recursive: true });

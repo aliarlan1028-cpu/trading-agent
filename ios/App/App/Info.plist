@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Trading Agent</string>
+		<string>KORDYN</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -32,7 +32,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Trading Agent 需要连接你自己运行的本地或局域网后端，用于读取账户状态、Agent 决策和审批信息。</string>
+	<string>KORDYN 需要连接你自己运行的本地或局域网后端，用于读取账户状态、Agent 决策和审批信息。</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

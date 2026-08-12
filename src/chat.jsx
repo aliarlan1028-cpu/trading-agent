@@ -33,7 +33,7 @@ import {
   Image as ImageIcon,
   X
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 
@@ -44,6 +44,51 @@ function stripCitationMarkers(text = "") {
     .replace(/\[\[\d+\]\]/g, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([，。、；：）】」』"])/g, "$1");
+}
+
+// 模型在工具调用后偶尔会留下“计划已武装。现在汇总全貌。”一类过程旁白。
+// 这不是行情事实，也不是交易依据：展示层过滤它，原始消息仍完整保存在会话与审计记录中。
+// 规则只匹配完整的过程句，不做关键词删除，避免误伤“状态：等待价格条件”等有用信息。
+const PROCESS_NARRATION_PATTERNS = [
+  /^(?:(?:✅|☑️|⚡)\s*)?(?:好的[，,。!！]?\s*)?(?:(?:交易|条件)?计划|条件)(?:均|全部)?(?:已|已经)武装[。.!！；;,，]?\s*(?:(?:现在|下面|接下来)(?:我来|将|开始)?(?:汇总|总结|梳理|呈现)(?:全貌|本轮|分析|结果|情况)?[。.!！]?)?$/,
+  /^(?:现在|下面|接下来)(?:我来|将|开始)?(?:汇总|总结|梳理|呈现)(?:全貌|本轮|分析|结果|情况)?[。.!！]?$/,
+  /^(?:工具调用|数据同步|行情同步)(?:均|全部)?(?:已|已经)?(?:完成|结束)[。.!！]?\s*(?:(?:现在|下面|接下来)(?:我来|将|开始)?(?:汇总|总结|梳理|呈现)(?:全貌|本轮|分析|结果|情况)?[。.!！]?)?$/,
+  /^(?:the\s+)?(?:plan|setup|conditions?)(?:\s+(?:is|are|has\s+been|have\s+been))?\s+armed[.!]?\s*(?:(?:now|next|below),?\s*(?:i(?:'ll|\s+will)\s+)?(?:summari[sz]e|present|recap)(?:\s+(?:the\s+)?(?:full\s+picture|analysis|results?))?[.!]?)?$/i,
+  /^(?:now|next|below),?\s*(?:i(?:'ll|\s+will)\s+)?(?:summari[sz]e|present|recap)(?:\s+(?:the\s+)?(?:full\s+picture|analysis|results?))?[.!]?$/i
+];
+
+export function cleanPresentationText(text = "") {
+  const cleaned = String(text)
+    .split("\n")
+    .filter((line) => {
+      const candidate = line.trim().replace(/^\*\*(.+)\*\*$/, "$1").trim();
+      return !PROCESS_NARRATION_PATTERNS.some((pattern) => pattern.test(candidate));
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return cleaned;
+}
+
+// 只在句号等自然边界处分段；不摘要、不改写，也不强行切断数字、价位或英文长句。
+function splitParagraphForReading(text = "", maxLength = 108) {
+  return String(text).split("\n").flatMap((line) => {
+    const value = line.trim();
+    if (!value || value.length <= maxLength) return value ? [value] : [];
+    const sentences = value.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [value];
+    const chunks = [];
+    let chunk = "";
+    for (const sentence of sentences) {
+      if (chunk && chunk.length + sentence.length > maxLength) {
+        chunks.push(chunk.trim());
+        chunk = sentence;
+      } else {
+        chunk += sentence;
+      }
+    }
+    if (chunk.trim()) chunks.push(chunk.trim());
+    return chunks;
+  });
 }
 
 function renderInline(text = "") {
@@ -177,7 +222,7 @@ function parseRichText(text = "") {
       bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
       continue;
     }
-    const metric = line.match(/^(结论|方向|交易对|价格|入场|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|下一步|依据)[:：]\s*(.+)$/);
+    const metric = line.match(/^(结论|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Conclusion|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
     if (metric) {
       flushParagraph();
       flushBullets();
@@ -194,79 +239,146 @@ function parseRichText(text = "") {
   return blocks.length ? blocks : [{ type: "paragraph", text }];
 }
 
-function RichMessage({ text = "", compact = false, onSuggest = null }) {
-  const blocks = parseRichText(stripCitationMarkers(text));
+function posterSectionKind(title = "") {
+  const value = String(title);
+  if (/结论|摘要|总览|summary|conclusion|overview/i.test(value)) return "summary";
+  if (/风险|警告|注意|risk|warning|caution/i.test(value)) return "risk";
+  if (/持仓|仓位|position|portfolio/i.test(value)) return "position";
+  if (/全市场|市场|market/i.test(value)) return "market";
+  if (/依据|数据|指标|证据|evidence|data|indicator/i.test(value)) return "evidence";
+  if (/下一步|动作|执行|计划|观察|action|next|execution|plan|watch/i.test(value)) return "action";
+  if (/机会|方向|趋势|setup|opportunity|direction|trend/i.test(value)) return "opportunity";
+  return "detail";
+}
+
+// 海报内容不是固定模板：仅按实际出现的 Markdown 标题动态分区，标题数量和正文长度均不设上限。
+// 没有标题的内容仍原样进入引言区，避免为了排版而删改模型输出。
+function groupPosterBlocks(blocks = []) {
+  const groups = [];
+  let current = { heading: null, blocks: [] };
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      if (current.heading || current.blocks.length) groups.push(current);
+      current = { heading: block, blocks: [] };
+    } else {
+      current.blocks.push(block);
+    }
+  }
+  if (current.heading || current.blocks.length) groups.push(current);
+  return groups;
+}
+
+function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
   const isSuggestion = (t) => /[?？]\s*$/.test(String(t || "").trim());
   const cleanSuggest = (t) => String(t || "").replace(/\*\*/g, "").trim();
+
+  if (block.type === "heading") {
+    const Icon = sectionIcon(block.text);
+    return <div className="richHeading" key={blockKey}><Icon size={14} /><strong>{block.text}</strong></div>;
+  }
+  if (block.type === "table") {
+    return (
+      <div className="richTableWrap" key={blockKey}>
+        <table className="richTable">
+          {block.header && (
+            <thead><tr>{block.header.map((cell, cellIndex) => <th key={cellIndex}>{renderInline(cell)}</th>)}</tr></thead>
+          )}
+          <tbody>
+            {block.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderInline(cell)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (block.type === "metrics") {
+    return (
+      <div className="richMetricGrid" key={blockKey}>
+        {block.items.map((item, itemIndex) => (
+          <div className={`richMetric ${item.tone}`} key={`${item.label}-${itemIndex}`}>
+            <span>{item.label}</span>
+            <b>{renderInline(item.value)}</b>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (block.type === "bullets") {
+    return (
+      <div className="richBulletList" key={blockKey}>
+        {block.items.map((item, itemIndex) => (
+          onSuggest && isSuggestion(item.text)
+            ? <button type="button" className="chatSuggestBtn" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
+            : (
+              <div className={`richBullet ${item.tone}`} key={itemIndex}>
+                <i>{item.tone === "danger" ? <AlertTriangle size={12} /> : item.tone === "ok" ? <CheckCircle2 size={12} /> : <span />}</i>
+                <span>{renderInline(item.text)}</span>
+              </div>
+            )
+        ))}
+      </div>
+    );
+  }
+  if (block.type === "steps") {
+    return (
+      <div className="richSteps" key={blockKey}>
+        {block.items.map((item, itemIndex) => (
+          onSuggest && isSuggestion(item.text)
+            ? <button type="button" className="chatSuggestBtn step" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><b>{item.number}</b><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
+            : (
+              <div className="richStep" key={itemIndex}>
+                <b>{item.number}</b>
+                <span>{renderInline(item.text)}</span>
+              </div>
+            )
+        ))}
+      </div>
+    );
+  }
+
+  const readingLines = String(block.text).split("\n").flatMap((sourceLine) => {
+    const quote = poster && sourceLine.match(/^>\s?(.*)$/);
+    const chunks = splitParagraphForReading(quote ? quote[1] : sourceLine, poster ? 88 : 108);
+    return quote ? chunks.map((chunk) => `> ${chunk}`) : chunks;
+  });
+  return readingLines.map((line, lineIndex) => {
+    const quote = poster && line.match(/^>\s?(.*)$/);
+    if (quote) {
+      return <blockquote className="posterQuote" key={`${blockKey}-${lineIndex}`}>{renderInline(quote[1])}</blockquote>;
+    }
+    const emphasized = poster && /^\s*\*\*[^*]{1,32}[：:]/.test(line);
+    return <p className={emphasized ? "richParagraph posterEmphasisLine" : "richParagraph"} key={`${blockKey}-${lineIndex}`}>{renderInline(line)}</p>;
+  });
+}
+
+function RichMessage({ text = "", compact = false, onSuggest = null, poster = false }) {
+  const blocks = parseRichText(cleanPresentationText(stripCitationMarkers(text)));
+
+  if (poster) {
+    const groups = groupPosterBlocks(blocks);
+    return (
+      <div className="richMessage posterRichMessage">
+        {groups.map((group, groupIndex) => {
+          const kind = group.heading ? posterSectionKind(group.heading.text) : "intro";
+          return (
+            <section className={`posterSection posterSection--${kind}`} key={groupIndex}>
+              {group.heading && <RichBlock block={group.heading} blockKey={`${groupIndex}-heading`} poster />}
+              <div className="posterSectionContent">
+                {group.blocks.map((block, blockIndex) => (
+                  <RichBlock block={block} blockKey={`${groupIndex}-${blockIndex}`} poster key={blockIndex} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className={compact ? "richMessage compact" : "richMessage"}>
-      {blocks.map((block, index) => {
-        if (block.type === "heading") {
-          const Icon = sectionIcon(block.text);
-          return <div className="richHeading" key={index}><Icon size={14} /><strong>{block.text}</strong></div>;
-        }
-        if (block.type === "table") {
-          return (
-            <div className="richTableWrap" key={index}>
-              <table className="richTable">
-                {block.header && (
-                  <thead><tr>{block.header.map((cell, cellIndex) => <th key={cellIndex}>{renderInline(cell)}</th>)}</tr></thead>
-                )}
-                <tbody>
-                  {block.rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderInline(cell)}</td>)}</tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        }
-        if (block.type === "metrics") {
-          return (
-            <div className="richMetricGrid" key={index}>
-              {block.items.map((item, itemIndex) => (
-                <div className={`richMetric ${item.tone}`} key={`${item.label}-${itemIndex}`}>
-                  <span>{item.label}</span>
-                  <b>{renderInline(item.value)}</b>
-                </div>
-              ))}
-            </div>
-          );
-        }
-        if (block.type === "bullets") {
-          return (
-            <div className="richBulletList" key={index}>
-              {block.items.map((item, itemIndex) => (
-                onSuggest && isSuggestion(item.text)
-                  ? <button type="button" className="chatSuggestBtn" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
-                  : (
-                    <div className={`richBullet ${item.tone}`} key={itemIndex}>
-                      <i>{item.tone === "danger" ? <AlertTriangle size={12} /> : item.tone === "ok" ? <CheckCircle2 size={12} /> : <span />}</i>
-                      <span>{renderInline(item.text)}</span>
-                    </div>
-                  )
-              ))}
-            </div>
-          );
-        }
-        if (block.type === "steps") {
-          return (
-            <div className="richSteps" key={index}>
-              {block.items.map((item, itemIndex) => (
-                onSuggest && isSuggestion(item.text)
-                  ? <button type="button" className="chatSuggestBtn step" key={itemIndex} onClick={() => onSuggest(cleanSuggest(item.text))}><b>{item.number}</b><span>{renderInline(item.text)}</span><ChevronRight size={14} /></button>
-                  : (
-                    <div className="richStep" key={itemIndex}>
-                      <b>{item.number}</b>
-                      <span>{renderInline(item.text)}</span>
-                    </div>
-                  )
-              ))}
-            </div>
-          );
-        }
-        return String(block.text).split("\n").map((line, lineIndex) => <p key={`${index}-${lineIndex}`}>{renderInline(line)}</p>);
-      })}
+      {blocks.map((block, index) => <RichBlock block={block} blockKey={index} onSuggest={onSuggest} key={index} />)}
     </div>
   );
 }
@@ -288,7 +400,7 @@ function executionLabel(status) {
   return map[status] || status;
 }
 
-function PlanCard({ plan, executionOrder, action, ui, markets }) {
+function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
   if (!plan) return null;
   const risk = plan.lastRiskCheck || {};
   const checks = risk.checks || [];
@@ -302,6 +414,19 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
   const isShort = String(plan.direction).toLowerCase() === "short";
   const stopCrossed = Number.isFinite(nowPrice) && nowPrice > 0 && Number.isFinite(stopVal) && (isShort ? nowPrice >= stopVal : nowPrice <= stopVal);
   const invalidForApproval = stopCrossed || plan.status === "expired";
+  const armedSetup = (data?.armedSetups || []).find((setup) => setup.id === plan.armedSetupId || setup.planId === plan.id);
+  const scenarioStages = armedSetup?.scenario?.stages || plan.scenario?.stages || [];
+  const scenarioStageIndex = Number(armedSetup?.scenario?.currentStageIndex ?? plan.scenario?.currentStageIndex ?? 0);
+  const scenarioStage = scenarioStages[scenarioStageIndex];
+  const scenarioProgress = scenarioStages.length > 1 ? `${scenarioStageIndex + 1}/${scenarioStages.length} · ${scenarioStage?.label || t("等待当前阶段", "Waiting for current stage")}` : null;
+  const waitingState = armedSetup?.status === "FAST_VALIDATING"
+    ? t("正在刷新行情、账户与风控（尚未提交订单）", "Refreshing market, account, and risk checks (no order submitted yet)")
+    : armedSetup?.status === "TRIGGERED"
+      ? t("价格条件已达到，正在执行前复核（尚未提交订单）", "Price condition reached; running pre-trade checks (no order submitted yet)")
+      : armedSetup?.confirmationPending
+        ? t("价格已进入目标区，等待K线确认（尚未提交订单）", "Price reached the target zone; waiting for candle confirmation (no order submitted yet)")
+        : t("系统正在等待价格条件（尚未向 OKX 下单）", "Waiting for the price condition (no OKX order placed)");
+  const currentProtection = data?.system?.tradeProtections;
   return (
     <div className={`chatPlanCard ${risk.passed ? "" : "rejected"}`}>
       <header>
@@ -310,23 +435,30 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
         <StatusBadge tone={awaiting ? "warning" : statusTone(plan.status)}>{humanize(plan.status)}</StatusBadge>
         {plan.outOfWhitelist && <span className="evBadge warn" title={t("该币不在授权白名单，确认即一次性授权本笔交易，不会加入常驻白名单", "This coin is not on the whitelist; confirming authorizes only this single trade and does not add it to the standing whitelist")}>⚠ {t("白名单外 · 一次性授权", "Off whitelist · one-time")}</span>}
         {stopCrossed && <span className="evBadge neg">{t("已失效 · 现价越过止损", "Void · price crossed stop")}</span>}
-        <small>{plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
+        <small>{plan.traderRole === "day_trader" ? t("日内交易", "Day trade") : plan.traderRole === "swing_trader" ? t("波段交易", "Swing trade") : plan.strategy ? humanize(plan.strategy) : ""} {plan.leverage ? `· ${plan.leverage}x` : ""}</small>
       </header>
       <div className="planNumbers">
         <span><small>{t("入场区间", "Entry zone")}</small><b>{plan.entry?.range || "-"}</b></span>
-        <span><small>{t("止损", "Stop")}</small><b className="negative">{displayMoney(plan.stopLoss)}</b></span>
-        <span><small>{t("止盈", "Take profit")}</small><b className="positive">{(plan.takeProfit || []).map((tp) => displayMoney(tp)).join(" / ") || "-"}</b></span>
+        <span><small>{t("止损", "Stop")}</small><b className="negative">{displayPrice(plan.stopLoss)}</b></span>
+        <span><small>{t("止盈", "Take profit")}</small><b className="positive">{(plan.takeProfit || []).map((tp) => displayPrice(tp)).join(" / ") || "-"}</b></span>
         <span><small>{t("单笔风险", "Per-trade risk")}</small><b>{plan.entry?.riskPercent ?? plan.max_loss_pct ?? "-"}%</b></span>
       </div>
       <button className="riskSummaryRow" onClick={() => setShowChecks((current) => !current)}>
         {risk.passed
           ? <CheckCircle2 size={15} className="positive" />
           : <XCircle size={15} className="negative" />}
-        <span>{t("风控", "Risk")} {passedCount}/{checks.length} {t("通过", "passed")} · {risk.summary || t("未检查", "not checked")}</span>
+        <span>{t("该计划最近一次风控快照", "Latest risk snapshot for this plan")} · {passedCount}/{checks.length} {t("通过", "passed")} · {risk.summary || t("未检查", "not checked")}</span>
         <ChevronDown size={14} style={{ transform: showChecks ? "rotate(180deg)" : "none" }} />
       </button>
       {showChecks && (
         <div className="riskCheckList">
+          {currentProtection?.cooldown && (
+            <div className={currentProtection.cooldown.active ? "failed" : ""}>
+              {currentProtection.cooldown.active ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+              <span>{t("当前账户保护", "Current account protection")}</span>
+              <small>{t("连续亏损", "Consecutive losses")} {currentProtection.cooldown.streak}/{currentProtection.cooldown.maxLosses} · {currentProtection.cooldown.active ? t("冷却中", "cooldown active") : t("未触发", "not active")}</small>
+            </div>
+          )}
           {checks.map((check) => (
             <div key={check.name} className={check.passed ? "" : "failed"}>
               {check.passed ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
@@ -343,10 +475,21 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
           <small>{(plan.smartMoneyAlignment.reasons || []).join("；")}</small>
         </div>
       )}
+      {plan.status === "armed" && plan.armedTrigger && (
+        <div className="planHint">
+          ⚡ {waitingState}{scenarioProgress ? ` · ${scenarioProgress}` : ""} · {plan.armedTrigger.kind === "price_above"
+            ? `${t("等待向上穿越", "Waiting to cross above")} ${displayPrice(plan.armedTrigger.level)}`
+            : plan.armedTrigger.kind === "price_below"
+              ? `${t("等待向下穿越", "Waiting to cross below")} ${displayPrice(plan.armedTrigger.level)}`
+              : `${t("等待进入区间", "Waiting to enter zone")} ${displayPrice(plan.armedTrigger.levelLow)}–${displayPrice(plan.armedTrigger.levelHigh)}`}
+          {plan.armedExpiresAt ? ` · ${t("到期", "expires")} ${formatTime(plan.armedExpiresAt)}` : ""}
+        </div>
+      )}
       <footer>
         {awaiting && !invalidForApproval && <button className="approveButton" onClick={() => action(`/api/trade-plans/${plan.id}/approve`, {})}>{plan.outOfWhitelist ? t("确认下单（仅本笔）", "Confirm order (this trade only)") : t("批准计划", "Approve plan")}</button>}
         {awaiting && invalidForApproval && <button className="approveButton" disabled title={t("现价已越过止损，计划已失效，无法批准", "Price has crossed the stop; the plan is void and cannot be approved")}>{t("已失效 · 不可批准", "Void · cannot approve")}</button>}
         {awaiting && <button onClick={() => action(`/api/trade-plans/${plan.id}/cancel`, { reason: "user_rejected" })}>{invalidForApproval ? t("作废", "Discard") : t("拒绝", "Reject")}</button>}
+        {plan.status === "armed" && plan.armedSetupId && <button onClick={() => action(`/api/armed-setups/${plan.armedSetupId}/cancel`, { reason: "user_cancelled" })}>{t("停止等待", "Stop waiting")}</button>}
         <button className="ghostButton" onClick={() => ui.openPanel("auditChain")}>{t("审计链", "Audit chain")} <ChevronRight size={13} /></button>
       </footer>
       {plan.appliedKnowledge && ((plan.appliedKnowledge.lenses || []).length > 0 || (plan.appliedKnowledge.rules || []).length > 0) && (
@@ -355,6 +498,14 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
           <span>{t("依据知识：", "Knowledge used: ")}
             {(plan.appliedKnowledge.lenses || []).map((n) => <em key={`l-${n}`} className="pkLens">{n}</em>)}
             {(plan.appliedKnowledge.rules || []).map((n) => <em key={`r-${n}`} className="pkRule">{n}</em>)}
+          </span>
+        </div>
+      )}
+      {(plan.reviewLearning?.applied || []).length > 0 && (
+        <div className="planKnowledge planReviewLearning" title={t("本计划明确采用的真实交易复盘；ID 与影响说明已经服务端校验并进入成交归因", "Real trade reviews explicitly applied by this plan; IDs and impact notes are server-validated and carried into fill attribution") }>
+          <BrainCircuit size={12} />
+          <span><b>{t("采用复盘：", "Reviews applied: ")}</b>
+            {(plan.reviewLearning.applied || []).map((item) => <em key={item.memoryId} className="pkReview" title={item.memoryId}>{item.note}</em>)}
           </span>
         </div>
       )}
@@ -367,6 +518,8 @@ function PlanCard({ plan, executionOrder, action, ui, markets }) {
           <b>{executionLabel(executionOrder.status)}</b>
           <small>
             {t("数量", "Qty")} {executionOrder.quantity} · {t("名义", "Notional")} {displayMoney(executionOrder.notionalUsdt)} USDT
+            {Number.isFinite(Number(executionOrder.projectedMargin?.incrementalMargin)) ? ` · ${t("预计保证金", "Est. margin")} ${displayMoney(executionOrder.projectedMargin.incrementalMargin)} USDT` : ""}
+            {Number.isFinite(Number(executionOrder.projectedMargin?.projectedUtilizationPct)) ? ` · ${t("成交后使用率", "Post-trade use")} ${Number(executionOrder.projectedMargin.projectedUtilizationPct).toFixed(1)}%` : ""}
             {executionOrder.filledPrice ? ` · ${t("成交", "Filled")} ${displayMoney(executionOrder.filledPrice)}` : ""}
             {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · ${t("盈亏", "PnL")} ${displayMoney(executionOrder.realizedPnl)}` : ""}
             {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · ${t("原因：", "Reason: ")}${executionOrder.setupReview.reason}` : ""}
@@ -385,12 +538,13 @@ function MandateCard({ mandate, action }) {
   const pending = mandate.status === "pending_confirmation";
   return (
     <div className="chatMandateCard">
-      <header><Shield size={15} /><b>{t("授权委托", "Mandate")}{pending ? t("草案", " draft") : ""}</b><StatusBadge tone={pending ? "warning" : "ok"}>{humanize(mandate.status)}</StatusBadge></header>
+      <header><Shield size={15} /><b>{t("交易权限", "Trading permissions")}{pending ? t("草案", " draft") : ""}</b><StatusBadge tone={pending ? "warning" : "ok"}>{humanize(mandate.status)}</StatusBadge></header>
       <div className="mandateGridMini">
         <span><small>{t("交易对", "Symbols")}</small><SymbolChips symbols={mandate.allowedSymbols} empty="-" /></span>
         <span><small>{t("最大杠杆", "Max leverage")}</small><b>{mandate.max_leverage || 1}x</b></span>
         <span><small>{t("单笔风险", "Per-trade risk")}</small><b>{mandate.maxSingleTradeRiskPct}%</b></span>
         <span><small>{t("日亏上限", "Daily loss cap")}</small><b>{mandate.maxDailyLossPct}%</b></span>
+        <span><small>{t("近7日亏损上限", "Rolling 7-day loss cap")}</small><b>{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? 5}%</b></span>
       </div>
       {pending && <footer><button className="approveButton" onClick={() => action(`/api/mandates/${mandate.id}/activate`, {})}>{t("确认激活", "Confirm & activate")}</button><small>{t("激活后 Agent 才能在此边界内提出可执行计划", "Only after activation can the agent propose executable plans within these bounds")}</small></footer>}
     </div>
@@ -421,7 +575,7 @@ function AgentRail({ data, action, ui, send }) {
   const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status)) || {};
   const hasMandate = Boolean(mandate.id);
   // 多仓/多计划:全部取出,卡片可切换逐个看(此前只 find 出一个,多仓时看不到其余)。
-  const plans = (data.tradePlans || []).filter((p) => ["awaiting_approval", "approved", "executing"].includes(p.status));
+  const plans = (data.tradePlans || []).filter((p) => ["armed", "awaiting_approval", "approved", "executing"].includes(p.status));
   const [planIdx, setPlanIdx] = useState(0);
   const [watchTip, setWatchTip] = useState(null); // 观察哨悬停 tooltip(fixed 定位,逃出滚动容器裁剪)
   const plan = plans.length ? plans[Math.min(planIdx, plans.length - 1)] : null;
@@ -450,7 +604,7 @@ function AgentRail({ data, action, ui, send }) {
   const ratio = sm.topTraderLongShortRatio;
   // 全端统一的偏向判定（smartMoneyBias，阈值一处定义）；语义用"偏多/偏空"不再冒充"趋势"。
   const bias = smartMoneyBias(ratio);
-  const judge = system.killSwitch ? t("已熔断", "Halted") : bias.label === "待同步" ? t("观察中", "Watching") : bias.label;
+  const judge = system.killSwitch ? t("紧急停止中", "Emergency stop active") : bias.label === "待同步" ? t("观察中", "Watching") : bias.label;
   const judgePos = bias.tone === "pos";
   const judgeNeg = bias.tone === "neg";
   // 后端真实的下一步建议是 nextActions（数组）；此前读不存在的单数 nextAction 恒 undefined，
@@ -463,14 +617,14 @@ function AgentRail({ data, action, ui, send }) {
   const marginRate = marginUsage(portfolio).marginRatePct;
 
   const mandateRows = hasMandate ? [
-    { k: t("授权范围", "Mandate scope"), v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
+    { k: t("允许的市场", "Allowed market"), v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
     { k: t("交易所", "Exchange"), v: (mandate.exchanges || []).join("·") || "—" },
     { k: t("白名单", "Whitelist"), v: `${(mandate.allowedSymbols || []).length} ${t("币", "coins")}` },
     { k: t("最大杠杆", "Max leverage"), v: `${mandate.max_leverage || 1}x` },
     { k: t("单笔风险", "Per-trade risk"), v: `${mandate.maxSingleTradeRiskPct ?? "-"}%` },
     { k: t("审批阈值", "Approval threshold"), v: `≥${displayMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` }
   ] : [
-    { k: t("授权范围", "Mandate scope"), v: t("未授权", "Not authorized") }, { k: t("交易所", "Exchange"), v: "—" }, { k: t("白名单", "Whitelist"), v: "—" },
+    { k: t("允许的市场", "Allowed market"), v: t("未设置", "Not configured") }, { k: t("交易所", "Exchange"), v: "—" }, { k: t("允许的交易对", "Allowed pairs"), v: "—" },
     { k: t("最大杠杆", "Max leverage"), v: "—" }, { k: t("单笔风险", "Per-trade risk"), v: "—" }, { k: t("审批阈值", "Approval threshold"), v: "—" }
   ];
 
@@ -491,7 +645,7 @@ function AgentRail({ data, action, ui, send }) {
   ];
 
   async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
-  async function fireKill() { if (await uiConfirm(system.killSwitch ? t("确认解除熔断？", "Lift the circuit breaker?") : t("确认一键熔断？将立即阻断所有新开仓。", "Trigger the circuit breaker? This immediately blocks all new position opens."))) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
+  async function fireKill() { if (await uiConfirm(system.killSwitch ? t("确认恢复新交易？", "Resume new trading?") : t("确认紧急停止？系统会立即阻止所有新开仓。", "Activate the emergency stop? This immediately blocks all new position opens."))) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
 
   return (
     <div className="agRail">
@@ -506,11 +660,11 @@ function AgentRail({ data, action, ui, send }) {
         {/* 概念图对齐:当前 Agent 状态改为 label:value 行(映射真实字段),不再用四宫格 */}
         <div className="agStatusRows">
           {[
-            { k: t("策略模式", "Strategy mode"), v: plan?.strategy ? humanize(plan.strategy) : (data.automationState?.label || (autoOn ? t("自主运行", "Autonomous") : t("待命", "Standby"))), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
+            { k: t("策略模式", "Strategy mode"), v: plan?.strategy ? humanize(plan.strategy) : localizeText(data.automationState?.label, autoOn ? t("自主运行", "Autonomous") : t("待命", "Standby")), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
             { k: t("市场环境", "Market regime"), v: judge, tone: judgePos ? "pos" : judgeNeg ? "neg" : "" },
             { k: t("当前任务", "Current task"), v: latestRun.steps?.[0]?.title || (plan ? `${plan.symbol} ${t("策略评估", "strategy review")}` : t("等待巡检机会", "Waiting for a scan opportunity")) },
-            { k: t("授权边界", "Mandate limits"), v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/${t("笔", "trade")} · ${t("日亏≤", "daily loss ≤")}${mandate.maxDailyLossPct ?? "-"}%` : t("未授权", "Not authorized") },
-            { k: t("下一步", "Next step"), v: nextStep },
+            { k: t("交易限制", "Trading limits"), v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/${t("笔", "trade")} · ${t("日亏≤", "daily loss ≤")}${mandate.maxDailyLossPct ?? "-"}% · ${t("近7日≤", "7-day loss ≤")}${mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? 5}%` : t("未设置", "Not configured") },
+            { k: t("下一步", "Next step"), v: localizeText(nextStep) },
             { k: t("最近决策", "Last decision"), v: trajSteps[0] && trajSteps[0].time !== "—" ? `${trajSteps[0].time} ${trajSteps[0].t}` : "—" }
           ].map((r) => <div className="agStatusRow" key={r.k}><span>{r.k}</span><b className={`mono ${r.tone || ""}`} title={typeof r.v === "string" ? r.v : ""}>{r.v}</b></div>)}
         </div>
@@ -529,10 +683,15 @@ function AgentRail({ data, action, ui, send }) {
             {plan && (() => {
               // 挂单 vs 持仓的真实状态:限价单已提交但价格没到=挂单未成交(仓位仍为0),成交后才是持仓。
               const eo = (data.executionOrders || []).find((o) => o.planId === plan.id);
+              const armedSetup = (data.armedSetups || []).find((setup) => setup.id === plan.armedSetupId || setup.planId === plan.id);
               const held = (data.positions || []).some((p) => p.symbol === plan.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
               const st = held || ["entry_filled", "protecting"].includes(eo?.status) ? { t: t("持仓中", "Holding"), c: "pos" }
                 : eo?.status === "entry_pending" ? { t: t("⏳挂单未成交", "⏳ Pending fill"), c: "warn" }
                 : eo?.status === "closed" ? { t: t("已平仓", "Closed"), c: "" }
+                : armedSetup?.status === "FAST_VALIDATING" ? { t: t("复核行情与风控 · 未下单", "Refreshing facts and risk · no order"), c: "warn" }
+                : armedSetup?.status === "TRIGGERED" ? { t: t("价格已到 · 执行前复核", "Price reached · pre-trade checks"), c: "warn" }
+                : armedSetup?.confirmationPending ? { t: t("价格已到 · 等待K线确认", "Price reached · waiting for candle confirmation"), c: "warn" }
+                : plan.status === "armed" ? (()=>{const stages=armedSetup?.scenario?.stages||[];const i=Number(armedSetup?.scenario?.currentStageIndex||0);return { t: stages.length>1?t(`等待第 ${i+1}/${stages.length} 步：${stages[i]?.label||"价格条件"} · 未下单`, `Waiting for step ${i+1}/${stages.length}: ${stages[i]?.label||"price condition"} · no order`):t("等待价格条件 · 未下单", "Waiting for price · no order"), c:"pos" };})()
                 : plan.status === "awaiting_approval" ? { t: t("待确认", "Pending"), c: "warn" }
                 : plan.status === "approved" ? { t: t("准备下单", "Ready to order"), c: "warn" }
                 : null;
@@ -578,14 +737,14 @@ function AgentRail({ data, action, ui, send }) {
         </div>
       </div>
 
-      {/* 观察哨：AI 登记的价格触发条件，哨兵每分钟盯盘，命中即刻唤起巡检 */}
+      {/* 观察哨：AI 登记的价格触发条件，实时 tick 盯盘，命中即刻唤起巡检 */}
       <div className="agCard">
-        <div className="agHeadIcon"><Eye size={13} /> {t("观察哨 · 分钟级盯盘", "Watch · minute-by-minute")}</div>
+        <div className="agHeadIcon"><Eye size={13} /> {t("观察哨 · 实时盯盘", "Watch · real-time")}</div>
         {(() => {
           const all = data.watchTriggers || [];
           const actives = all.filter((w) => w.status === "active");
           const recent = all.filter((w) => w.status !== "active").slice(0, 2);
-          const label = { triggered: t("已触发", "Triggered"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void") };
+          const label = { triggered: t("已触发重新分析 · 不直接下单", "Triggered re-analysis · no direct order"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void") };
           const desc = (w) => w.kind === "price_above" ? `${t("向上突破", "Breaks above")} ${displayPrice(w.level)}`
             : w.kind === "price_below" ? `${t("向下跌破", "Breaks below")} ${displayPrice(w.level)}`
               : `${t("回踩", "Pullback to")} ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
@@ -598,7 +757,7 @@ function AgentRail({ data, action, ui, send }) {
               : `${label[w.status] || w.status}${w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}`,
             w.createdAt ? `${t("登记于：", "Logged: ")}${new Date(w.createdAt).toLocaleString("zh-CN")}` : ""
           ].filter(Boolean).join("\n");
-          if (!all.length) return <small className="agWatchEmpty">{t("暂无观察哨。巡检得出\"若跌破/突破某价位\"的结论时，AI 会把条件登记在这里，哨兵每分钟核对真实行情，命中即刻唤起 AI 重新决策。", "No watches yet. When a scan concludes \"if price breaks below/above a level\", the AI logs the condition here; the sentinel checks live prices every minute and wakes the AI to re-decide the moment it hits.")}</small>;
+          if (!all.length) return <small className="agWatchEmpty">{t("暂无观察哨。巡检得出\"若跌破/突破某价位\"的结论时，AI 会把条件登记在这里，WebSocket 实时核对真实行情，命中即刻唤起 AI 重新决策。", "No watches yet. When a scan concludes \"if price breaks below/above a level\", the AI logs the condition here; WebSocket ticks check live prices and wake the AI immediately when it hits.")}</small>;
           return (
             <div className="agWatchList">
               {actives.map((w) => {
@@ -629,7 +788,7 @@ function AgentRail({ data, action, ui, send }) {
 
       {/* 授权与风控墙 */}
       <div className="agCard">
-        <div className="agHeadIcon"><ShieldCheck size={13} /> {t("授权与风控墙", "Mandate & Risk wall")}</div>
+        <div className="agHeadIcon"><ShieldCheck size={13} /> {t("交易权限与硬风控", "Trading permissions & hard risk controls")}</div>
         <div className="agWallGrid">
           {mandateRows.map((r) => <div className="agWallRow" key={r.k}><span>{r.k}</span><b className="mono">{r.v}</b></div>)}
         </div>
@@ -639,7 +798,7 @@ function AgentRail({ data, action, ui, send }) {
         </div>
         <div className="agWallBtns">
           <button className="agBtnGhost" onClick={toggleAutonomy}>{autoOn ? t("暂停", "Pause") : t("恢复", "Resume")}</button>
-          <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? t("解除熔断", "Lift breaker") : t("一键熔断", "Kill switch")}</button>
+          <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? t("恢复新交易", "Resume trading") : t("紧急停止", "Emergency stop")}</button>
         </div>
       </div>
 
@@ -710,6 +869,7 @@ function PosterModal({ content, meta, onClose }) {
   const [transError, setTransError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const posterRef = useRef(null);
+  const publishableContent = cleanPresentationText(content);
 
   useEffect(() => {
     const onEsc = (e) => { if (e.key === "Escape") onClose(); };
@@ -725,7 +885,7 @@ function PosterModal({ content, meta, onClose }) {
       const response = await fetch(apiUrl("/api/posters/translate"), {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ text: content })
+        body: JSON.stringify({ text: publishableContent })
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.translated) throw new Error(json.error || `${t("翻译失败", "Translation failed")}(${response.status})`);
@@ -750,7 +910,7 @@ function PosterModal({ content, meta, onClose }) {
   }
 
   const enReady = lang === "zh" || Boolean(enText);
-  const body = lang === "en" ? enText : content;
+  const body = lang === "en" ? enText : publishableContent;
   const dateStr = meta?.createdAt ? formatDateTime(meta.createdAt) : "";
 
   return (
@@ -775,9 +935,9 @@ function PosterModal({ content, meta, onClose }) {
           <div className="posterCanvas" ref={posterRef}>
             <div className="posterHeader">
               <div className="posterBrand">
-                <span className="posterLogo"><Bot size={22} /></span>
+                <span className="posterLogo"><img src="/kordyn-logo.png" alt="KORDYN" /></span>
                 <div className="posterBrandText">
-                  <b>{lang === "en" ? "AI Trader" : "AI 交易员"}</b>
+                  <b>KORDYN · {lang === "en" ? "AI Trader" : "AI 交易员"}</b>
                   <small>{lang === "en" ? "Autonomous market analysis" : "自主行情分析"}</small>
                 </div>
               </div>
@@ -786,7 +946,7 @@ function PosterModal({ content, meta, onClose }) {
             <div className="posterBody">
               {lang === "en" && !enText
                 ? <div className="posterTranslating">{translating ? "Translating…" : t("点击 English 生成英文版", "Click English to generate the English version")}</div>
-                : <RichMessage text={body} />}
+                : <RichMessage text={body} poster />}
             </div>
             <div className="posterFooter">
               <div className="posterFootLeft">
@@ -937,7 +1097,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
             <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>
-          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("已熔断", "Halted") : t("已暂停", "Paused")}</span>
+          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("紧急停止中", "Emergency stop active") : t("已暂停", "Paused")}</span>
           <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>
         </div>
       </div>
@@ -950,7 +1110,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
         {sessions.map((s) => (
           <button className={`agSessChip ${s.id === activeSessionId ? "on" : ""}`} key={s.id} onClick={() => switchSession(s.id)} title={s.title}>
             {s.id === activeSessionId && <MessageSquare size={12} />}
-            {(s.title || t("未命名对话", "Untitled")).slice(0, 12)} · {formatTime(s.updatedAt || s.createdAt)}
+            {localizeText(s.title || t("未命名对话", "Untitled")).slice(0, 24)} · {formatTime(s.updatedAt || s.createdAt)}
             <i className="agSessDel" title={t("删除", "Delete")} onClick={(e) => deleteSession(s.id, e)}>×</i>
           </button>
         ))}
@@ -971,7 +1131,7 @@ export function ChatPage({ data, action, ui, concept = false }) {
               <RichMessage text={message.content} onSuggest={!pending ? (t) => send(t) : null} />
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
               {message.planId && (
-                <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} />
+                <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} data={data} />
               )}
               <ToolTrace trace={message.toolTrace || []} />
               <div className="agMsgFootRow">
@@ -1073,18 +1233,35 @@ function IntelCenter({ action, data = {} }) {
       {(() => {
         // 自动刷新状态条:直接读事件源刷新定时任务的真实 上次/下次,让用户看出它在按 20 分钟节奏转,
         // 而不是"只有手动点才更新"。任务不存在(旧库未排程)时不显示。
-        const task = (data.tasks || []).find((x) => x.id === "task_sys_event_refresh");
-        if (!task) return null;
-        const paused = task.enabled === false;
-        const every = String(task.schedule || "").replace(/^Every\s*/i, "");
+        const lanes = [
+          ["task_sys_news_flash", t("快讯", "Flash")],
+          ["task_sys_event_source_refresh", "RSS"],
+          ["task_sys_event_refresh", t("深层整合", "Deep")]
+        ].map(([id, label]) => [(data.tasks || []).find((x) => x.id === id), label]).filter(([task]) => task);
+        if (!lanes.length) return null;
+        const paused = lanes.every(([task]) => task.enabled === false);
         return (
           <div className={`intelAutoBar ${paused ? "off" : "on"}`}>
             <span className="intelAutoDot" />
-            <b>{paused ? t("自动刷新已暂停", "Auto-refresh paused") : t("自动刷新中", "Auto-refreshing")}</b>
-            <small>{t("每", "Every")} {every} · {t("上次", "Last")} {formatDateTime(task.lastRunAt, "—")} · {t("下次", "Next")} {formatDateTime(task.nextRunAt, "—")}</small>
+            <b>{paused ? t("自动刷新已暂停", "Auto-refresh paused") : t("分层新闻流运行中", "Layered news feed running")}</b>
+            <small>{lanes.map(([task, label]) => `${label} ${String(task.schedule || "").replace(/^Every\s*/i, "")}`).join(" · ")}</small>
           </div>
         );
       })()}
+      {(data.newsFeed || []).length > 0 && (
+        <div className="missedOppCard">
+          <div className="missedOppHead"><Radar size={14} /> {t("7×24 实时快讯", "24/7 Flash News")} <small>{t("重要且相关的快讯只会唤起 AI 复核，不会直接下单", "Important relevant flashes only wake AI review; never trade directly")}</small></div>
+          <div className="missedOppList">
+            {(data.newsFeed || []).slice(0, 10).map((item) => (
+              <div className="missedOppRow" key={item.id}>
+                <b>{item.values?.important ? t("重要", "Important") : t("快讯", "Flash")}</b>
+                <span>{formatDateTime(item.publishedAt, "—")}</span>
+                <p title={item.summary}>{item.sourceUrl ? <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.title}</a> : item.title}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {(data.missedOpportunities || []).length > 0 && (
         <div className="missedOppCard">
           <div className="missedOppHead"><BookOpen size={14} /> 错过机会复盘 <small>大波动却没交易的复盘，已沉淀进 AI 记忆</small></div>

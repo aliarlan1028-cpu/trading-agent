@@ -140,7 +140,7 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
 
   // 系统结论（顶部大卡）：由风控/熔断/持仓/阻断次数派生。
   const sys = data.system || {};
-  const conclusion = sys.killSwitch ? { label: "已熔断", tone: "danger" }
+  const conclusion = sys.killSwitch ? { label: "紧急停止中", tone: "danger" }
     : sys.autonomyEnabled === false ? { label: "人工暂停", tone: "warning" }
       : blockedChecks > 0 ? { label: "降级运行（风险可控）", tone: "warning" }
         : configured ? { label: "正常运行", tone: "positive" } : { label: "待接入交易所", tone: "warning" };
@@ -290,8 +290,8 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
         const traded = Number(data.performance?.trades || 0);
         let step;
         if (!ex) step = { do: "配置交易所 API Key（只读+交易，禁提现）", where: "系统设置 → 交易所", tone: "warn" };
-        else if (!hasMandate) step = { do: "创建并激活一个授权委托（币对 / 杠杆区间 / 仓位 / 日亏上限）", where: "风控与授权 → 授权委托", tone: "warn" };
-        else if (sys.killSwitch) step = { do: "解除一键熔断（当前禁止所有新交易）", where: "顶部「熔断」按钮", tone: "danger" };
+        else if (!hasMandate) step = { do: "创建并启用交易权限（币对 / 杠杆区间 / 仓位 / 日亏上限）", where: "风控中心 → 交易权限", tone: "warn" };
+        else if (sys.killSwitch) step = { do: "解除紧急停止（当前禁止所有新交易）", where: "顶部「紧急停止」按钮", tone: "danger" };
         else if (!sys.autonomyEnabled) step = { do: "开启自主交易", where: "风控与授权", tone: "warn" };
         else if (sys.reduceOnlyMode) step = { do: `当前只减仓，禁新开仓：${auto.detail || "仅允许降风险动作"}`, where: "风控与授权", tone: "warn" };
         else if (!sys.liveTradingEnabled) step = { do: "现在是干跑（不会真下单）。确认要真金白银交易后，开齐「实盘写入」三道闸", where: "风控与授权 → 实盘写入与灰度", tone: "neutral" };
@@ -539,9 +539,9 @@ export function MarketAccountPage({ data, action, ui, embedded = false }) {
             {hasRegime ? (
               <>
                 <div className="monMetrics">
-                  <span className="monMetric"><span className="k">BTC主导率</span><span className="v">{gm.btcDominancePct != null ? `${gm.btcDominancePct}%` : "未取"}</span></span>
-                  <span className="monMetric"><span className="k">总市值24h</span><span className={`v ${gm.mcap24hChangePct == null ? "" : Number(gm.mcap24hChangePct) >= 0 ? "pos" : "neg"}`}>{gm.mcap24hChangePct != null ? displayPct(gm.mcap24hChangePct) : "未取"}</span></span>
-                  <span className="monMetric"><span className="k">恐惧贪婪</span><span className={`v ${gm.fearGreed == null ? "" : gm.fearGreed.value <= 25 ? "neg" : gm.fearGreed.value >= 75 ? "warn" : ""}`}>{gm.fearGreed ? `${gm.fearGreed.value}·${gm.fearGreed.label}` : "未取"}</span></span>
+                  <span className="monMetric"><span className="k">OKX上涨家数</span><span className="v">{gm.breadthPct != null ? `${gm.breadthPct}%` : "未取"}</span></span>
+                  <span className="monMetric"><span className="k">全市场中位数</span><span className={`v ${gm.medianChangePct == null ? "" : Number(gm.medianChangePct) >= 0 ? "pos" : "neg"}`}>{gm.medianChangePct != null ? displayPct(gm.medianChangePct) : "未取"}</span></span>
+                  <span className="monMetric"><span className="k">BTC永续24h</span><span className={`v ${gm.btcChangePct == null ? "" : Number(gm.btcChangePct) >= 0 ? "pos" : "neg"}`}>{gm.btcChangePct != null ? displayPct(gm.btcChangePct) : "未取"}</span></span>
                   {/* 着色与全端 smartMoneyBias 同阈值（1.05/0.95） */}
                   <span className="monMetric"><span className="k">大户多空</span><span className={`v ${(() => { const t = smartMoneyBias(sm.topTraderLongShortRatio).tone; return t === "pos" ? "pos" : t === "neg" ? "neg" : ""; })()}`}>{sm.topTraderLongShortRatio ?? "未取"}</span></span>
                   <span className="monMetric"><span className="k">散户多空</span><span className="v">{sm.retailLongShortRatio ?? "未取"}</span></span>
@@ -1456,6 +1456,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
     { Icon: TrendingUp, k: "杠杆区间", v: maxLev ? ((mandate.min_leverage ?? mandate.minLeverage ?? 1) === maxLev ? `固定 ${maxLev}x` : `${mandate.min_leverage ?? mandate.minLeverage ?? 1}–${maxLev}x`) : "未授权" },
     { Icon: WalletCards, k: "仓位", v: `余额 ${(mandate.positionPct ?? mandate.equityPct) != null ? (mandate.positionPct ?? mandate.equityPct)+"%" : "未设"}/单 · 风险≤${mandate.maxSingleTradeRiskPct ?? "-"}%` },
     { Icon: Target, k: "单日最大亏损", v: `${mandate.maxDailyLossPct || "-"}%`, color: "neg" },
+    { Icon: Target, k: "近7日最大亏损", v: mandate.id ? `${mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? 5}%` : "—", color: "neg" },
     { Icon: CheckCircle2, k: "审批阈值", v: mandate.id ? `≥${formatMoney(mandate.humanApprovalNotionalUsdt || mandate.manual_approval_threshold_usdt || 0, 0)}` : "未授权" },
     { Icon: CalendarClock, k: "有效期", v: mandateValidity },
     { Icon: Activity, k: "状态", v: humanize(mandate.status, "未授权"), color: mandateTone === "ok" ? "pos" : "" }
@@ -1467,7 +1468,10 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
     ["灰度实盘额度", grayPolicy.enabled ? `${formatMoney(grayPolicy.maxNotionalUsdt, 0)} USDT` : "未启用"],
     ["最大杠杆", maxLev ? `${maxLev}x` : "—"],
     ["单笔风险上限", `${mandate.maxSingleTradeRiskPct ?? "-"}%`],
-    ["最近风控结论", latestRisk.summary || humanize(latestRisk.decision, "暂无")]
+    ["最近计划的风控快照", latestRisk.summary || humanize(latestRisk.decision, "暂无")],
+    ["当前连续亏损保护", data.system?.tradeProtections?.cooldown
+      ? `${data.system.tradeProtections.cooldown.streak}/${data.system.tradeProtections.cooldown.maxLosses} · ${data.system.tradeProtections.cooldown.active ? "冷却中" : "未触发"}`
+      : "待实时评估"]
   ];
   const exAccounts = data.exchangeAccounts || [];
   // 密钥权限读真实账户字段，不再写死"允许/禁止"（无账户时如实显示"未配置"）。
@@ -1529,11 +1533,11 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
       {/* Row1：授权委托 + 实盘写入与灰度 —— 归入风控设置(改) */}
       {showSettings && <div className="termGrid riskRow1">
         <div className="termCard">
-          <div className="kHead"><span className="mandTitle">授权委托 <em className="mono">MANDATE</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
+          <div className="kHead"><span className="mandTitle">交易权限 <em className="mono">PERMISSIONS</em></span><span className={`evBadge ${mandateTone === "ok" ? "ok" : "warn"}`}>● {humanize(mandate.status, "未授权")}</span></div>
           <div className="mandList">
             {mandateRows2.map((r) => <div className="mandRow" key={r.k}><span className="mandK"><r.Icon size={14} /> {r.k}</span><b className={`mono ${r.color || ""}`}>{r.v}</b></div>)}
           </div>
-          <button className="agLink" onClick={() => ui.openPanel("mandate")}>查看委托详情与审计 ›</button>
+          <button className="agLink" onClick={() => ui.openPanel("mandate")}>查看交易权限与审计 ›</button>
         </div>
 
         {/* 实盘写入与灰度发布:从系统设置整体迁入(灰度额度/人工确认/安全闸都是风控边界) */}
@@ -1572,7 +1576,7 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
             <div className="rwLimitsHead"><b>当前生效限制</b><button className="agLink" onClick={() => ui.openPanel("riskRules")}>查看全部 ›</button></div>
             {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
           </div>
-          <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>一键熔断</button></div>
+          <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>紧急停止</button></div>
         </div>}
       </div>
 
@@ -1627,7 +1631,7 @@ export function AnalysisRoomPage({ data, embedded = false }) {
     { k: "book", label: "盘口微观", desc: "买卖盘失衡" }
   ];
   const dataSources = [
-    { name: "交易所行情 · OKX / Binance", ok: exAccounts.some((a) => a.readEnabled), detail: exAccounts.length ? exAccounts.map((a) => `${a.exchange}${a.readEnabled ? "" : "(未连)"}`).join(" / ") : "未接入" },
+    { name: "交易所行情 · OKX", ok: exAccounts.some((a) => a.exchange === "OKX" && a.readEnabled), detail: exAccounts.length ? exAccounts.filter((a) => a.exchange === "OKX").map((a) => `${a.exchange}${a.readEnabled ? "" : "(未连)"}`).join(" / ") : "未接入" },
     { name: "实时 K 线", ok: markets.length > 0, detail: markets.length ? `${markets.length} 交易对 · ${lastMarket ? formatTime(lastMarket) : "—"}` : "未同步" },
     { name: "账户快照(私有)", ok: Boolean(lastSnap), detail: lastSnap ? formatDateTime(lastSnap.createdAt) : "未同步" },
     { name: "大盘 / 聪明钱 · OKX rubik", ok: Boolean(regime.global || smart.label), detail: regime.updatedAt ? formatTime(regime.updatedAt) : (regime.global ? "已取" : "未同步") },
@@ -1903,6 +1907,7 @@ export function AdminPage({ data, action, ui, embedded = false }) {
   const plans = data.subscriptionPlans || [];
   const users = data.users || [];
   const regEnabled = data.publicRegistrationEnabled === true;
+  const registrationMode = data.registrationMode || (regEnabled ? "waitlist" : "closed");
   const filteredUsers = users.filter((user) => {
     const q = userSearch.trim().toLowerCase();
     if (!q) return true;
@@ -1981,13 +1986,13 @@ export function AdminPage({ data, action, ui, embedded = false }) {
             <div className="adminSearch"><Search size={15} /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索姓名 / 邮箱 / 租户 / 角色" /></div>
             <div className="userToolbarRight">
               <label className="grantDefault"><span>默认赠送</span><input type="number" min="1" value={grantMonths} onChange={(event) => setGrantMonths(event.target.value)} /><span>月</span></label>
-              <button type="button" className={`regPill ${regEnabled ? "on" : ""}`} onClick={() => action("/api/config", { PUBLIC_REGISTRATION_ENABLED: regEnabled ? "false" : "true" })}>
-                <span className="sw" /> 公开注册 {regEnabled ? "开" : "关"}
-              </button>
+              <select value={registrationMode} onChange={(event) => action("/api/admin/registration", { mode: event.target.value })}>
+                <option value="closed">申请关闭</option><option value="invite">邀请码申请</option><option value="waitlist">公开候补</option><option value="auto">自动开通</option>
+              </select>
               <button className="primaryButton" onClick={() => setShowCreate((value) => !value)}><UserPlus size={15} /> 开通账号</button>
             </div>
           </div>
-          <div className="userHint">{regEnabled ? "公开注册已开启：访客可在登录页自助注册并订阅。" : "公开注册已关闭：仅 Owner 可在此开通账号。"}</div>
+          <div className="userHint">{regEnabled ? `客户实例申请已开放（${registrationMode}）：访客不会被加入 Owner 工作区。` : "客户实例申请已关闭。"}</div>
 
           {showCreate && (
             <div className="userCreatePanel">

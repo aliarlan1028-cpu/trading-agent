@@ -32,6 +32,11 @@ test("总体指标:胜率/盈亏比/期望值", () => {
   assert.equal(p.overall.winRatePct, 50);
   assert.ok(Math.abs(p.overall.profitFactor - 18 / 27) < 0.01, "PF=毛盈18/毛亏27");
   assert.equal(p.overall.expectancyUsdt, Number(((10 + 8 - 15 - 12) / 4).toFixed(2)));
+  const point = p.scatter.find((item) => item.pnl === 10);
+  assert.equal(point.direction, "long", "诊断点透传真实方向");
+  assert.equal(point.pnl, 10, "诊断点透传真实已实现盈亏");
+  assert.equal(point.closedAt, "2026-08-01T10:30:00Z", "诊断点透传真实平仓时间");
+  assert.equal(point.regime, "趋势", "诊断点与绩效拆解使用同一市场状态事实");
 });
 
 test("致命习惯告警:越亏越加杠杆 + 拿不住盈利单", () => {
@@ -52,4 +57,19 @@ test("亏损归因分布 + 空数据不崩", () => {
   assert.equal(p.lossAttribution["策略"], 1);
   assert.equal(p.lossAttribution["市场异常"], 1);
   assert.equal(computeBehaviorProfile({ fills: [], tradePlans: [] }).trades, 0);
+});
+
+test("部分平仓按一个交易生命周期进入行为画像", () => {
+  const partialDb = {
+    tradePlans: [{ id: "p1", leverage: 5 }],
+    fills: [
+      { id: "in", kind: "entry", executionOrderId: "e1", tradePlanId: "p1", createdAt: "2026-08-01T00:00:00Z" },
+      { id: "p", kind: "close", executionOrderId: "e1", tradePlanId: "p1", partial: true, symbol: "BTC/USDT", direction: "long", realizedPnl: 3, notionalUsdt: 40, createdAt: "2026-08-01T01:00:00Z" },
+      { id: "f", kind: "close", executionOrderId: "e1", tradePlanId: "p1", symbol: "BTC/USDT", direction: "long", realizedPnl: -1, notionalUsdt: 60, createdAt: "2026-08-01T02:00:00Z" }
+    ]
+  };
+  const trades = buildClosedTrades(partialDb);
+  assert.equal(trades.length, 1);
+  assert.equal(trades[0].pnl, 2);
+  assert.equal(computeBehaviorProfile(partialDb).overall.winRatePct, 100);
 });

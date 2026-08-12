@@ -1,14 +1,14 @@
-const CLIENT_ID_LIMITS = { BINANCE: 36, OKX: 32 };
-const SUPPORTED_EXCHANGES = new Set(["BINANCE", "OKX"]);
+const CLIENT_ID_LIMITS = { OKX: 32 };
+const SUPPORTED_EXCHANGES = new Set(["OKX"]);
 
 export function validateExchangeOrderContract(action, payload = {}) {
-  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
+  const exchange = String(payload.exchange || "OKX").toUpperCase();
   if (!SUPPORTED_EXCHANGES.has(exchange)) return { ok: false, reason: "unsupported_exchange" };
   const clientOrderId = String(payload.clientOrderId || "");
   if (clientOrderId && clientOrderId.length > CLIENT_ID_LIMITS[exchange]) {
     return { ok: false, reason: "client_order_id_too_long", limit: CLIENT_ID_LIMITS[exchange] };
   }
-  if (clientOrderId && !/^[A-Za-z0-9_:-]+$/.test(clientOrderId)) {
+  if (clientOrderId && !/^[A-Za-z0-9]+$/.test(clientOrderId)) {
     return { ok: false, reason: "invalid_client_order_id" };
   }
   if (action === "place_order" && !payload.reduceOnly && !payload.closePosition) {
@@ -47,7 +47,6 @@ export function normalizeExchangeOrderState(exchange, state) {
 
 export function exchangeContractCapabilities(exchange) {
   const key = String(exchange || "").toUpperCase();
-  if (key === "BINANCE") return { nativeStop: "closePosition", amend: "cancel_replace", clientOrderIdMax: 36 };
   if (key === "OKX") return { nativeStop: "attachAlgoOrds", amend: "native", clientOrderIdMax: 32 };
   return null;
 }

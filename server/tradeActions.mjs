@@ -1,8 +1,10 @@
-import { appendAudit, appendTrace, id, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
-import { binanceSignedRequest, binanceSymbolFilters, okxContractSpec, okxPositionMode, okxSignedRequest, toBinanceSymbol, toOkxSymbol } from "./exchangeConnector.mjs";
-import { hasPassedPaper } from "./paperTrading.mjs";
+import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
+import { okxContractSpec, okxPositionMode, okxSignedRequest, toOkxSymbol } from "./exchangeConnector.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
-import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
+import { assessOperationalDegradation, fullAutoSafetyEnforced } from "./professionalRiskGate.mjs";
+import { accountMarginCapacity, accountSnapshotFreshness, projectedMarginUsage } from "./tradingCapacity.mjs";
+import { evaluateSameSymbolEntryConflict } from "./tradingRoles.mjs";
+import { leverageBoundsForMandate } from "./mandatePolicy.mjs";
 
 // OKX clOrdId 只允许字母+数字(≤32)。下单/撤单/改单必须用同一个清洗函数,否则发出去清洗过、
 // 撤单用原值(带下划线)→ OKX 找不到单 → 撤不掉的孤儿单(审计 exch-F2)。全链路统一走它。
@@ -35,9 +37,6 @@ function fmtStep(value, step, mode = "round") {
   return rounded == null ? undefined : rounded.toFixed(stepDecimals(step));
 }
 
-// 授权词表(mandate.strategies) → 策略注册表 id 的映射:paper 会话按注册表 id 记录,
-// 两个命名空间不映射时 REQUIRE_PAPER_VALIDATION 会拦下全部计划(审计 P1-5)。
-const STRATEGY_PAPER_ALIAS = { trend_following: "trend", mean_reversion: "meanrev", momentum: "macd", breakout: "breakout" };
 
 const WRITE_ACTIONS = new Set(["place_order", "cancel_order", "amend_order", "close_position", "move_stop", "take_profit"]);
 const ACTION_TO_MANDATE = {
@@ -65,10 +64,19 @@ const GUARD_REASON_DETAIL = {
   api_key_withdraw_permission_enabled: { label: "该 API Key 带提现权限（禁止）", fix: "去交易所把该 Key 的提现权限关闭后重新配置" },
   api_key_permission_unverified: { label: "API Key 权限尚未审计确认", fix: "系统设置 → 交易所 → 确认该 Key 无提现权限" },
   account_snapshot_stale: { label: "账户快照过期，无法据实计算风险", fix: "先在仪表盘/账户里运行一次私有账户同步" },
-  paper_validation_required: { label: "该策略尚未通过模拟盘前向验证", fix: "先在复盘/策略里跑模拟盘前向验证通过" },
+  account_snapshot_time_invalid: { label: "账户快照时间异常，无法据实计算风险", fix: "校准服务器时间后重新运行 OKX 私有账户同步" },
+  account_snapshot_required: { label: "缺少账户快照，无法据实计算风险", fix: "先运行一次 OKX 私有账户同步" },
+  available_margin_unavailable: { label: "可用保证金不可用", fix: "检查 OKX 账户同步与 API 读取权限" },
+  account_equity_unavailable: { label: "账户权益不可用", fix: "检查 OKX 账户同步与 API 读取权限" },
+  projected_margin_limit_exceeded: { label: "成交后预计保证金使用率超限", fix: "减小下单额或先释放已有仓位/挂单占用" },
+  same_symbol_position_add_not_authorized: { label: "该交易对已有仓位，未授权追加仓位", fix: "先平仓，或在资金与交易边界中明确允许追加仓位" },
+  same_symbol_order_in_flight: { label: "该交易对已有入场订单正在处理", fix: "等待、撤销或结束旧订单后再提交" },
   mandate_not_found: { label: "未找到可用授权委托 Mandate", fix: "先创建并激活一个 Mandate（可让 AI 交易员协助）" },
   mandate_action_not_allowed: { label: "该动作不在 Mandate 允许范围内", fix: "调整 Mandate 的允许动作或改用允许的动作" },
-  duplicate_client_order_id: { label: "重复的客户端订单号", fix: "稍后重试或换一个订单" }
+  duplicate_client_order_id: { label: "重复的客户端订单号", fix: "稍后重试或换一个订单" },
+  invalid_order_leverage: { label: "下单杠杆缺失或非法", fix: "重新生成交易计划，让系统按当前授权区间选择杠杆" },
+  leverage_below_mandate: { label: "下单杠杆低于授权下限", fix: "重新生成计划；系统会在计划阶段校正并重新计算仓位" },
+  leverage_exceeds_mandate: { label: "下单杠杆超过授权上限", fix: "重新生成计划；系统会在计划阶段校正并重新计算仓位" }
 };
 
 export function describeGuardReason(reason) {
@@ -99,7 +107,7 @@ export async function executeTradeAction(db, action, payload = {}) {
     return { status: "blocked", reason: guard.reason, guard };
   }
 
-  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
+  const exchange = String(payload.exchange || "OKX").toUpperCase();
   // 幂等预留键与交易所载荷解耦：撤单/平仓/改单在交易所侧必须复用原单的 clientOrderId（origClientOrderId 语义），
   // 但 OMS 预留若直接用它会撞上入场单的预留行、被误判 payload 冲突——导致保护失败撤入场/手动撤单永远被拦。
   // 非 place 动作改用「动作:原键」派生键：同一撤单重试仍映射同一键（幂等保留），且绝不与入场行冲突。
@@ -115,6 +123,9 @@ export async function executeTradeAction(db, action, payload = {}) {
     clientOrderId: reservationKey,
     action,
     planId: payload.tradePlanId || payload.planId,
+    strategyProductId: payload.strategyProductId || null,
+    strategyVersion: payload.strategyVersion || null,
+    strategyVersionId: payload.strategyVersionId || null,
     payload
   });
   if (reservation.status === "conflict") {
@@ -135,8 +146,7 @@ export async function executeTradeAction(db, action, payload = {}) {
 
   let result;
   try {
-    if (exchange === "OKX") result = await executeOkxAction(action, payload);
-    else result = await executeBinanceAction(action, payload);
+    result = await executeOkxAction(action, payload);
   } catch (error) {
     if (reservation.order?.id) {
       transitionOmsOrder(reservation.order.id, "UNKNOWN", { eventType: "exchange_call_failed", response: { error: error.message } });
@@ -163,6 +173,10 @@ export async function executeTradeAction(db, action, payload = {}) {
   db.orders.unshift({
     id: record.id,
     planId: payload.tradePlanId || payload.planId,
+    strategyProductId: payload.strategyProductId || null,
+    strategyVersion: payload.strategyVersion || null,
+    strategyVersionId: payload.strategyVersionId || null,
+    source: "trade_action_history",
     exchange,
     symbol: payload.symbol,
     type: payload.type || action,
@@ -172,6 +186,7 @@ export async function executeTradeAction(db, action, payload = {}) {
     exchangeOrderId: result.exchangeOrderId,
     protection: result.protection || null,
     clientOrderId: payload.clientOrderId || result.clientOrderId,
+    reduceOnly: payload.reduceOnly === true || payload.closePosition === true,
     raw: result.raw ? "[stored_in_audit]" : undefined,
     createdAt: record.createdAt
   });
@@ -192,6 +207,9 @@ export function validateWriteGuard(db, action, payload) {
     || action === "move_stop"     // 此前按开仓过灰度名义额闸,顶格仓位的止盈 100% 被拦且无告警
     || payload.reduceOnly === true
     || payload.closePosition === true;
+  if (String(payload.exchange || "OKX").toUpperCase() !== "OKX") {
+    return { allowed: false, reason: "autonomous_exchange_must_be_okx" };
+  }
   // 只减仓模式:此前 reduceOnlyMode 只是展示标签,无任何执行点(审计 P1-8)。
   if (!riskReducing && db.system?.reduceOnlyMode) return { allowed: false, reason: "reduce_only_mode" };
   if (!riskReducing && !db.system.liveTradingEnabled) return { allowed: false, reason: "live_trading_disabled" };
@@ -205,42 +223,38 @@ export function validateWriteGuard(db, action, payload) {
     const auditChain = verifyAuditChain(db);
     if (!auditChain.ok) return { allowed: false, reason: "audit_chain_invalid", breaks: auditChain.breaks.length };
   }
-  const provenance = validateExecutionProvenance(payload);
+  // 紧急撤单/平仓使用独立 EmergencyAction 来源链，不依赖普通开仓计划五元组。
+  // 只对真正降风险的 cancel/close 开放，reduceOnly place_order 等仍必须带完整交易来源。
+  const emergencyRiskAction = riskReducing
+    && ["cancel_order", "close_position"].includes(action)
+    && /^emergency_[a-z0-9_-]+$/i.test(String(payload.emergencyActionId || ""));
+  const provenance = emergencyRiskAction
+    ? { allowed: true, emergencyActionId: payload.emergencyActionId }
+    : validateExecutionProvenance(payload);
   if (!provenance.allowed) return provenance;
   if (!riskReducing && db.system.killSwitch) return { allowed: false, reason: "kill_switch_enabled" };
 
   const mandateGuard = riskReducing ? { allowed: true, mandateId: payload.mandateId } : validateMandateGuard(db, action, payload);
   if (!mandateGuard.allowed) return mandateGuard;
 
-  // 可选安全垫：要求策略先通过模拟盘前向验证，才允许对该交易对开新仓。
-  // 只拦截"开仓"，绝不拦截减仓/平仓/撤单等降风险动作。
   const isNewEntry = action === "place_order" && !payload.reduceOnly && !payload.closePosition;
   if (isNewEntry) {
+    if (!payload.evidenceBundleId) return { allowed: false, reason: "missing_evidence_bundle_provenance" };
+    if (!(db.evidenceBundles || []).some((bundle) => bundle.id === payload.evidenceBundleId)) {
+      return { allowed: false, reason: "evidence_bundle_not_found", evidenceBundleId: payload.evidenceBundleId };
+    }
     // 只有开了 professionalRiskMode 才把运行降级当硬闸;否则不拦(reduceOnlyMode 另有独立检查)。
     const operational = assessOperationalDegradation(db);
-    if (operational.degraded && db.system?.professionalRiskMode === true) return { allowed: false, reason: "operational_degraded_reduce_only", degradation: operational };
+    if (operational.degraded && fullAutoSafetyEnforced(db)) return { allowed: false, reason: "operational_degraded_reduce_only", degradation: operational };
     const accountSnapshot = validateFreshAccountSnapshot(db, payload);
     if (!accountSnapshot.allowed) return accountSnapshot;
   }
-  if (process.env.REQUIRE_PAPER_VALIDATION === "true" && isNewEntry) {
-    const knowledgeRefs = Array.isArray(payload.knowledgeSkills) ? payload.knowledgeSkills : [];
-    const paperValidated = knowledgeRefs.length
-      ? knowledgeRefs.every((ref) => hasPassedPaper(db, {
-          symbol: payload.symbol,
-          timeframe: payload.timeframe,
-          knowledgeSkillId: ref.skillId,
-          knowledgeSkillVersion: ref.version,
-          skillFingerprint: ref.fingerprint
-        }))
-      : hasPassedPaper(db, {
-          symbol: payload.symbol,
-          timeframe: payload.timeframe,
-          strategyId: STRATEGY_PAPER_ALIAS[payload.strategyId] || payload.strategyId
-        });
-    if (!paperValidated) return { allowed: false, reason: "paper_validation_required", symbol: payload.symbol };
-  }
-
-  if (riskReducing) return { allowed: true, riskReducing: true, mandateId: payload.mandateId };
+  if (riskReducing) return {
+    allowed: true,
+    riskReducing: true,
+    mandateId: payload.mandateId,
+    emergencyActionId: emergencyRiskAction ? payload.emergencyActionId : null
+  };
 
   const policy = (db.grayReleasePolicies || []).find((item) => item.enabled);
   if (!policy) return { allowed: false, reason: "gray_policy_not_enabled" };
@@ -254,7 +268,7 @@ export function validateWriteGuard(db, action, payload) {
 }
 
 function validateApiKeySafety(db, payload) {
-  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
+  const exchange = String(payload.exchange || "OKX").toUpperCase();
   const metadata = (db.apiKeyMetadata || []).find((item) => item.exchange === exchange);
   if (!metadata) return { allowed: false, reason: "api_key_metadata_missing", exchange };
   if (metadata.withdrawPermission === true) return { allowed: false, reason: "api_key_withdraw_permission_enabled", exchange };
@@ -265,20 +279,11 @@ function validateApiKeySafety(db, payload) {
 }
 
 function validateFreshAccountSnapshot(db, payload) {
-  const exchange = String(payload.exchange || "BINANCE").toUpperCase();
-  const maxAgeMs = Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 10 * 60_000);
-  const snapshots = (db.accountSnapshots || []).filter((item) => {
-    if (String(item.exchange || "").toUpperCase() !== exchange) return false;
-    if (payload.accountId && item.accountId !== payload.accountId) return false;
-    return item.status === "ok";
-  });
-  const snapshot = snapshots[0];
-  if (!snapshot) return { allowed: false, reason: "account_snapshot_required", exchange };
-  const ageMs = Date.now() - new Date(snapshot.createdAt).getTime();
-  if (!Number.isFinite(ageMs) || ageMs > maxAgeMs) {
-    return { allowed: false, reason: "account_snapshot_stale", exchange, snapshotId: snapshot.id, ageMs, maxAgeMs };
-  }
-  return { allowed: true, snapshotId: snapshot.id, ageMs };
+  const exchange = String(payload.exchange || "OKX").toUpperCase();
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange, accountId: payload.accountId });
+  const freshness = accountSnapshotFreshness(snapshot);
+  if (!freshness.ok) return { allowed: false, reason: freshness.error, exchange, snapshotId: snapshot?.id || null, ...freshness };
+  return { allowed: true, snapshotId: snapshot.id, ageMs: freshness.ageMs };
 }
 
 function validateExecutionProvenance(payload) {
@@ -290,77 +295,6 @@ function validateExecutionProvenance(payload) {
 
 function toSnake(key) {
   return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
-}
-
-async function executeBinanceAction(action, payload) {
-  if (!process.env.BINANCE_API_KEY || !process.env.BINANCE_API_SECRET) return { status: "missing_credentials" };
-  const symbol = toBinanceSymbol(payload.symbol);
-  const futures = isBinanceFutures(payload);
-  const orderPath = futures ? "/fapi/v1/order" : "/api/v3/order";
-  if (action === "place_order") {
-    // 币安精度对齐:数量对齐 stepSize(向下)、价格对齐 tickSize,并强制 minQty/minNotional。
-    // 拿不到 filters 则 fail-closed(不发未对齐的单,免得被 -1111/-1013/-4164 拒或下出无效单)。
-    const flt = await binanceSymbolFilters(payload.symbol, futures);
-    if (!flt) return { status: "instrument_spec_unavailable", symbol };
-    const qtyNum = roundToStep(Number(payload.quantity), flt.stepSize ?? undefined, "floor");
-    if (flt.minQty && qtyNum < flt.minQty) return { status: "below_min_size", symbol, quantity: qtyNum, minQty: flt.minQty };
-    const refPx = Number(payload.price || payload.stopPrice || payload.stopLoss || 0);
-    if (flt.minNotional && refPx > 0 && qtyNum * refPx < flt.minNotional) return { status: "below_min_notional", symbol, notional: qtyNum * refPx, minNotional: flt.minNotional };
-    const params = {
-      symbol,
-      side: String(payload.side || "BUY").toUpperCase(),
-      type: String(payload.type || "LIMIT").toUpperCase(),
-      quantity: fmtStep(qtyNum, flt.stepSize),
-      newClientOrderId: payload.clientOrderId || id("coid")
-    };
-    if (futures && payload.reduceOnly !== undefined) params.reduceOnly = String(Boolean(payload.reduceOnly));
-    if (futures && payload.positionSide) params.positionSide = String(payload.positionSide).toUpperCase();
-    if (futures && payload.closePosition) params.closePosition = "true";
-    if (futures && payload.workingType) params.workingType = payload.workingType;
-    const px = (v) => fmtStep(v, flt.tickSize);
-    if (params.type === "LIMIT") Object.assign(params, { timeInForce: payload.timeInForce || "GTC", price: px(payload.price) });
-    if (params.type === "STOP_LOSS_LIMIT" || params.type === "TAKE_PROFIT_LIMIT") Object.assign(params, { stopPrice: px(payload.stopPrice || payload.stopLoss), price: px(payload.price || payload.stopPrice || payload.stopLoss), timeInForce: payload.timeInForce || "GTC" });
-    if (params.type === "STOP_MARKET" || params.type === "TAKE_PROFIT_MARKET") Object.assign(params, { stopPrice: px(payload.stopPrice || payload.stopLoss || payload.price) });
-    const raw = await binanceSignedRequest(orderPath, params, { method: "POST" });
-    const protection = payload.stopLoss && payload.attachProtection !== false && futures && !payload.reduceOnly
-      ? await placeBinanceProtectiveStop(payload, symbol)
-      : null;
-    return { status: "ok", raw, exchangeOrderId: raw.orderId, clientOrderId: raw.clientOrderId, protection };
-  }
-  if (action === "cancel_order") {
-    const raw = await binanceSignedRequest(orderPath, { symbol, orderId: payload.orderId, origClientOrderId: payload.clientOrderId }, { method: "DELETE" });
-    return { status: "ok", raw, exchangeOrderId: raw.orderId };
-  }
-  if (action === "amend_order") {
-    const cancel = await executeBinanceAction("cancel_order", payload);
-    const place = await executeBinanceAction("place_order", { ...payload, clientOrderId: payload.newClientOrderId || id("coid") });
-    return { status: "ok", cancel, place };
-  }
-  if (action === "close_position") {
-    return executeBinanceAction("place_order", { ...payload, side: payload.positionSide === "short" ? "BUY" : "SELL", type: "MARKET", reduceOnly: true, manualApproval: true });
-  }
-  if (action === "move_stop") {
-    return executeBinanceAction("amend_order", { ...payload, type: isBinanceFutures(payload) ? "STOP_MARKET" : "STOP_LOSS_LIMIT", stopPrice: payload.stopPrice, price: payload.price || payload.stopPrice, reduceOnly: true });
-  }
-  if (action === "take_profit") {
-    if (Array.isArray(payload.targets) && payload.targets.length) {
-      const orders = [];
-      for (const target of payload.targets) {
-        orders.push(await executeBinanceAction("place_order", {
-          ...payload,
-          ...target,
-          side: target.side || payload.side || "SELL",
-          type: target.type || (isBinanceFutures(payload) ? "TAKE_PROFIT_MARKET" : "TAKE_PROFIT_LIMIT"),
-          stopPrice: target.stopPrice || target.price,
-          reduceOnly: true,
-          clientOrderId: target.clientOrderId || id("tp")
-        }));
-      }
-      return { status: "ok", batch: true, orders };
-    }
-    return executeBinanceAction("place_order", { ...payload, side: payload.side || "SELL", type: isBinanceFutures(payload) ? "TAKE_PROFIT_MARKET" : "TAKE_PROFIT_LIMIT", stopPrice: payload.stopPrice || payload.price, reduceOnly: true });
-  }
-  return { status: "unsupported_action" };
 }
 
 async function executeOkxAction(action, payload) {
@@ -464,10 +398,25 @@ async function executeOkxAction(action, payload) {
     return { status: raw.code === "0" ? "ok" : "exchange_rejected", raw };
   }
   if (action === "move_stop") {
-    // OKX 的入场止损是 attachAlgoOrds 附加单,本接口若再下 conditional 会产生第二张止损
-    // 与附加单并存(审计 P1-3:双止损)。附加算法单的改价需 algoId 链路,当前未持久化——
-    // 如实降级:不下重复单,返回明确状态由持仓管理记录告警。
-    return { status: "unsupported_move_stop_okx", note: "OKX 附加止损暂不支持移动(需 algoId 改单链路),已保留原止损,未下重复单" };
+    // 入场附加止损在主单成交后会成为算法单，并继承 attachAlgoClOrdId → algoClOrdId。
+    // 使用 amend-algos 原地修改，cxlOnFail=false 确保改单失败时旧止损继续有效；绝不取消后重挂，
+    // 避免保护空窗和双止损。OKX 官方允许 algoId 或 algoClOrdId 二选一。
+    const algoClOrdId = okxCleanClOrdId(payload.stopClientOrderId || payload.algoClOrdId);
+    if (!algoClOrdId) return { status: "missing_stop_algo_client_id" };
+    const spec = await okxContractSpec(instId);
+    if (!spec?.tickSz) return { status: "instrument_spec_unavailable", instId };
+    const newStop = fmtStep(payload.stopPrice || payload.stopLoss, spec.tickSz);
+    const raw = await okxSignedRequest("/api/v5/trade/amend-algos", "POST", JSON.stringify({
+      instId,
+      algoClOrdId,
+      cxlOnFail: false,
+      reqId: okxCleanClOrdId(payload.requestId || id("amendstop")),
+      newSlTriggerPx: newStop,
+      newSlOrdPx: "-1",
+      newSlTriggerPxType: payload.workingType === "MARK_PRICE" ? "mark" : "last"
+    }));
+    const accepted = raw.code === "0" && String(raw.data?.[0]?.sCode || "0") === "0";
+    return { status: accepted ? "ok" : "exchange_rejected", raw, algoId: raw.data?.[0]?.algoId, algoClOrdId, stopPrice: Number(newStop) };
   }
   if (action === "take_profit") {
     // OKX 止盈是"条件算法单",必须发到 /api/v5/trade/order-algo(带 tpTriggerPx),不是普通下单口
@@ -558,7 +507,11 @@ function validateMandateGuard(db, action, payload) {
     || db.mandates.find((item) => ["running", "active"].includes(item.status));
   if (!mandate) return { allowed: false, reason: "missing_active_mandate" };
   if (!["running", "active"].includes(mandate.status)) return { allowed: false, reason: "mandate_not_active", mandateId: mandate.id };
-  if (mandate.validUntil && new Date(mandate.validUntil).getTime() <= Date.now()) return { allowed: false, reason: "mandate_expired", mandateId: mandate.id };
+  const validFrom = mandate.validFrom || mandate.valid_from;
+  if (validFrom && new Date(validFrom).getTime() > Date.now()) return { allowed: false, reason: "mandate_not_started", mandateId: mandate.id };
+  const validUntil = mandate.validUntil || mandate.valid_until;
+  if (validUntil && new Date(validUntil).getTime() <= Date.now()) return { allowed: false, reason: "mandate_expired", mandateId: mandate.id };
+  if (String(payload.exchange || "OKX").toUpperCase() !== "OKX") return { allowed: false, reason: "exchange_not_allowed_by_mandate", mandateId: mandate.id };
   const symbol = payload.symbol;
   // oneShotAuth：用户对白名单外扫描候选的一次性授权(仅本笔),放行正向白名单;但下面的显式黑名单仍然拦。
   if (symbol && payload.oneShotAuth !== true && mandate.allowedSymbols?.length && !mandate.allowedSymbols.includes(symbol)) return { allowed: false, reason: "symbol_not_allowed_by_mandate", mandateId: mandate.id };
@@ -566,28 +519,157 @@ function validateMandateGuard(db, action, payload) {
   if (payload.marketType && mandate.marketTypes?.length && !mandate.marketTypes.includes(payload.marketType)) return { allowed: false, reason: "market_type_not_allowed_by_mandate", mandateId: mandate.id };
   const mandateAction = payload.reduceOnly && action === "place_order" ? "close" : ACTION_TO_MANDATE[action];
   if (mandateAction && mandate.allowedActions?.length && !mandate.allowedActions.includes(mandateAction)) return { allowed: false, reason: "action_not_allowed_by_mandate", mandateId: mandate.id, mandateAction };
-  const maxLeverage = Number(mandate.maxLeverageBySymbol?.[symbol] || mandate.maxLeverage || 1);
-  if (payload.leverage && Number(payload.leverage) > maxLeverage) return { allowed: false, reason: "leverage_exceeds_mandate", mandateId: mandate.id, maxLeverage };
-  return { allowed: true, mandateId: mandate.id };
-}
-
-function isBinanceFutures(payload) {
-  const marketType = String(payload.marketType || process.env.BINANCE_MARKET_TYPE || "").toLowerCase();
-  return marketType.includes("perpetual") || marketType.includes("future") || marketType.includes("usdm");
-}
-
-async function placeBinanceProtectiveStop(payload, symbol) {
-  const side = String(payload.side || "BUY").toUpperCase() === "BUY" ? "SELL" : "BUY";
-  const flt = await binanceSymbolFilters(payload.symbol, isBinanceFutures(payload));
-  const params = {
+  if (mandateAction === "open") {
+    const leverage = Number(payload.leverage);
+    const bounds = leverageBoundsForMandate(mandate, symbol);
+    if (!Number.isFinite(leverage) || leverage <= 0 || !bounds.valid) {
+      return { allowed: false, reason: "invalid_order_leverage", mandateId: mandate.id, leverage, minLeverage: bounds.minimum, maxLeverage: bounds.maximum };
+    }
+    if (leverage < bounds.minimum) return { allowed: false, reason: "leverage_below_mandate", mandateId: mandate.id, leverage, minLeverage: bounds.minimum };
+    if (leverage > bounds.maximum) return { allowed: false, reason: "leverage_exceeds_mandate", mandateId: mandate.id, leverage, maxLeverage: bounds.maximum };
+  }
+  const requestedNotional = estimateNotional(payload);
+  if (!Number.isFinite(requestedNotional) || requestedNotional <= 0) return { allowed: false, reason: "invalid_order_notional", mandateId: mandate.id };
+  const capacity = mandateNotionalCapacity(db, mandate, symbol);
+  if (capacity.unknownPositions.length) {
+    return { allowed: false, reason: "position_notional_unknown", mandateId: mandate.id, positions: capacity.unknownPositions };
+  }
+  const maxOrderNotional = capacity.maxOrderNotional;
+  if (Number.isFinite(maxOrderNotional) && requestedNotional > maxOrderNotional) {
+    return { allowed: false, reason: "order_notional_exceeds_mandate", mandateId: mandate.id, requestedNotional, maxOrderNotional };
+  }
+  const { positions, symbolExposure, portfolioExposure, maxSymbolNotional, maxPortfolioNotional } = capacity;
+  const sameSymbol = evaluateSameSymbolEntryConflict(db, {
+    id: payload.tradePlanId || payload.planId,
     symbol,
-    side,
-    type: "STOP_MARKET",
-    stopPrice: flt?.tickSize ? fmtStep(payload.stopLoss, flt.tickSize) : String(payload.stopLoss), // 触发价对齐 tickSize
-    closePosition: "true",
-    newClientOrderId: payload.stopClientOrderId || id("stop")
+    direction: payload.posSide || payload.positionSide || (String(payload.side).toLowerCase() === "sell" ? "short" : "long")
+  }, mandate);
+  if (!sameSymbol.ok) return { allowed: false, ...sameSymbol, mandateId: mandate.id };
+  const marginCapacity = accountMarginCapacity(db, {
+    mandate,
+    leverage: payload.leverage,
+    excludePlanId: payload.tradePlanId || payload.planId,
+    live: db.system?.liveTradingEnabled === true,
+    exchange: payload.exchange
+  });
+  if (!marginCapacity.ok) return { allowed: false, reason: marginCapacity.error, mandateId: mandate.id, marginCapacity };
+  const projectedMargin = projectedMarginUsage(marginCapacity, requestedNotional, payload.leverage);
+  if (!projectedMargin.ok) {
+    return { allowed: false, reason: "projected_margin_limit_exceeded", mandateId: mandate.id, requestedNotional, marginCapacity, projectedMargin };
+  }
+  if (Number.isFinite(maxSymbolNotional) && symbolExposure + requestedNotional > maxSymbolNotional) {
+    return { allowed: false, reason: "symbol_notional_exceeds_mandate", mandateId: mandate.id, requestedNotional, symbolExposure, maxSymbolNotional };
+  }
+  if (Number.isFinite(maxPortfolioNotional) && portfolioExposure + requestedNotional > maxPortfolioNotional) {
+    return { allowed: false, reason: "portfolio_notional_exceeds_mandate", mandateId: mandate.id, requestedNotional, portfolioExposure, maxPortfolioNotional };
+  }
+  const direction = String(payload.posSide || payload.positionSide || (String(payload.side).toLowerCase() === "sell" ? "short" : "long"))
+    .toLowerCase().replace("空", "short").replace("多", "long");
+  const alreadyOpen = positions.some((position) => position.symbol === symbol && position.direction === direction);
+  const maxConcurrentPositions = Number(mandate.maxConcurrentPositions || 3);
+  if (!alreadyOpen && positions.length >= maxConcurrentPositions) {
+    return { allowed: false, reason: "concurrent_positions_exceed_mandate", mandateId: mandate.id, openPositions: positions.length, maxConcurrentPositions };
+  }
+  return { allowed: true, mandateId: mandate.id, requestedNotional, symbolExposure, portfolioExposure, marginCapacity, projectedMargin };
+}
+
+// 执行定仓与最终写单必须共用同一套授权容量口径。此前定仓只看灰度/组合预算，
+// 算出 53.20U 后才在最终写单发现 Mandate 单笔上限 50U，导致本可安全缩仓的计划
+// 被整笔拒绝。这里返回“当前还能新增多少名义额”，供定仓先行裁剪，写单再复核。
+export function mandateNotionalCapacity(db, mandate, symbol) {
+  const exposure = currentPositionExposure(db);
+  const maxOrderNotional = Number(mandate?.maxOrderNotionalUsdt ?? mandate?.max_notional_usdt);
+  const symbolExposure = exposure.positions
+    .filter((position) => position.symbol === symbol)
+    .reduce((sum, position) => sum + position.notional, 0);
+  const portfolioExposure = exposure.positions.reduce((sum, position) => sum + position.notional, 0);
+  const maxSymbolNotional = Number(mandate?.maxSymbolNotionalUsdt ?? maxOrderNotional);
+  const maxPortfolioNotional = Number(mandate?.maxPortfolioNotionalUsdt ?? maxSymbolNotional);
+  const caps = [
+    Number.isFinite(maxOrderNotional) ? maxOrderNotional : Infinity,
+    Number.isFinite(maxSymbolNotional) ? Math.max(0, maxSymbolNotional - symbolExposure) : Infinity,
+    Number.isFinite(maxPortfolioNotional) ? Math.max(0, maxPortfolioNotional - portfolioExposure) : Infinity
+  ];
+  return {
+    maxOrderNotional,
+    maxSymbolNotional,
+    maxPortfolioNotional,
+    symbolExposure,
+    portfolioExposure,
+    remainingNotional: Math.min(...caps),
+    positions: exposure.positions,
+    unknownPositions: exposure.unknown
   };
-  if (payload.positionSide) params.positionSide = String(payload.positionSide).toUpperCase();
-  if (payload.workingType) params.workingType = payload.workingType;
-  return binanceSignedRequest("/fapi/v1/order", params, { method: "POST" });
+}
+
+// 对外展示额度时也必须与执行层使用同一口径。灰度额度和交易权限额度是两道独立上限，
+// 最终单笔可用上限取较小值；不能只展示灰度 200U，却把 Mandate 50U 隐藏到下单失败时才出现。
+export function effectiveOpeningNotionalLimits(db) {
+  const mandate = activeMandate(db);
+  const enabledGray = (db.grayReleasePolicies || []).find((item) => item.enabled) || null;
+  const gray = enabledGray
+    || (db.grayReleasePolicies || []).find((item) => item.id === "gray_live_small_notional")
+    || (db.grayReleasePolicies || [])[0]
+    || null;
+  const positive = (value) => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+  const grayEnabled = Boolean(enabledGray);
+  const grayConfiguredMax = positive(gray?.maxNotionalUsdt ?? process.env.MAX_LIVE_NOTIONAL_USDT);
+  const grayOrderMax = grayEnabled ? grayConfiguredMax : null;
+  const mandateOrderMax = positive(mandate?.maxOrderNotionalUsdt ?? mandate?.max_notional_usdt);
+  // “最终有效”必须表示当前真的可进入灰度执行；灰度关闭时不能拿环境变量伪装成有效额度。
+  const effectiveOrderMax = grayOrderMax !== null && mandateOrderMax !== null
+    ? Math.min(grayOrderMax, mandateOrderMax)
+    : null;
+  const limitingLayers = [
+    grayOrderMax !== null && grayOrderMax === effectiveOrderMax ? "gray_release" : null,
+    mandateOrderMax !== null && mandateOrderMax === effectiveOrderMax ? "trading_permissions" : null
+  ].filter(Boolean);
+  return {
+    grayEnabled,
+    grayConfiguredMax,
+    grayOrderMax,
+    mandateOrderMax,
+    mandateSymbolMax: positive(mandate?.maxSymbolNotionalUsdt),
+    mandatePortfolioMax: positive(mandate?.maxPortfolioNotionalUsdt),
+    effectiveOrderMax,
+    limitingLayers,
+    rule: "min(grayOrderMax, mandateOrderMax)",
+    mandateId: mandate?.id || null,
+    mandateVersion: mandate?.version || null
+  };
+}
+
+// REST/WS/执行引擎可能同时保存同一真实仓位。按 symbol+方向去重并优先交易所 REST 权威快照；
+// OKX 张数必须乘 ctVal，任何无法可靠换算的在场仓位都 fail-closed，防止低估总敞口。
+function currentPositionExposure(db) {
+  const byKey = new Map();
+  const priority = { exchange_rest: 3, exchange_ws: 2, execution_engine: 1 };
+  for (const position of db.positions || []) {
+    const size = Math.abs(Number(position.size ?? position.quantity ?? 0));
+    if (!Number.isFinite(size) || size <= 0) continue;
+    const direction = String(position.posSide || position.direction || "long").toLowerCase().replace("空", "short").replace("多", "long");
+    const key = `${position.symbol}|${direction}`;
+    const previous = byKey.get(key);
+    if (!previous || (priority[position.source] || 0) > (priority[previous.source] || 0)) byKey.set(key, position);
+  }
+  const positions = [];
+  const unknown = [];
+  for (const position of byKey.values()) {
+    const size = Math.abs(Number(position.size ?? position.quantity));
+    const mark = Number(position.mark || position.price || position.entry || db.markets?.find((item) => item.symbol === position.symbol)?.price);
+    let notional = Number(position.notionalUsdt ?? position.notional);
+    if (!Number.isFinite(notional) || notional <= 0) {
+      if (Number.isFinite(Number(position.coinSize)) && Number(position.coinSize) > 0 && Number.isFinite(mark) && mark > 0) {
+        notional = Math.abs(Number(position.coinSize) * mark);
+      } else if (Number.isFinite(Number(position.contractMultiplier)) && Number(position.contractMultiplier) > 0 && Number.isFinite(mark) && mark > 0) {
+        notional = Math.abs(size * Number(position.contractMultiplier) * mark);
+      } else if (position.source === "execution_engine" && Number.isFinite(mark) && mark > 0) {
+        notional = Math.abs(size * mark);
+      }
+    }
+    const direction = String(position.posSide || position.direction || "long").toLowerCase().replace("空", "short").replace("多", "long");
+    if (!Number.isFinite(notional) || notional <= 0) unknown.push(position.id || `${position.symbol}:${direction}`);
+    else positions.push({ id: position.id, symbol: position.symbol, direction, notional });
+  }
+  return { positions, unknown };
 }

@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import Parser from "rss-parser";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { fetchExternalText } from "./externalInputSafety.mjs";
 
 const rssParser = new Parser();
 
@@ -46,24 +47,34 @@ function backfillEventTimelines(db) {
 }
 
 export async function refreshEventSources(db) {
-  const results = [];
   ensureDefaultEventSources(db);
   backfillEventTimelines(db);
   pruneStaleEvents(db);
-  for (const source of (db.eventSources || []).filter((item) => item.enabled)) {
+  const enabledSources = (db.eventSources || []).filter((item) => item.enabled);
+  const results = await Promise.all(enabledSources.map(async (source) => {
+    const attemptedAt = nowIso();
+    source.lastAttemptAt = attemptedAt;
     try {
-      const result = source.type === "rss" ? await parseRssSource(source) : await parseHtmlSource(source);
-      results.push(result);
-      for (const item of recentItems(result.items).slice(0, 5)) upsertEventFromItem(db, source, item);
+      const result = await fetchSourceWithRetry(source);
       source.lastStatus = "ok";
       source.lastFetchedAt = nowIso();
+      source.lastSuccessAt = source.lastFetchedAt;
       source.lastItemCount = (result.items || []).length;
       source.lastError = null;
+      source.consecutiveFailures = 0;
+      return result;
     } catch (error) {
       source.lastStatus = "failed";
-      source.lastError = error.message;
-      results.push({ sourceId: source.id, status: "failed", error: error.message, items: [] });
+      source.lastError = String(error.message || error).slice(0, 180);
+      source.consecutiveFailures = Number(source.consecutiveFailures || 0) + 1;
+      return { sourceId: source.id, status: "failed", error: source.lastError, items: [] };
     }
+  }));
+  // 网络请求并发、落库串行：避免异步写入导致同一专题合并顺序不确定。
+  for (const result of results) {
+    if (result.status !== "ok") continue;
+    const source = enabledSources.find((item) => item.id === result.sourceId);
+    for (const item of recentItems(result.items).slice(0, 5)) upsertEventFromItem(db, source, item);
   }
   consolidateEvents(db);
   sortEventsByRecency(db);
@@ -72,6 +83,21 @@ export async function refreshEventSources(db) {
   appendAudit(db, "刷新真实事件源", "event_sources", "EventSourceManager", results.some((r) => r.status === "failed") ? "warning" : "info");
   appendTrace(db, "event_sources", "refresh event sources", results.some((r) => r.status === "failed") ? "warning" : "ok");
   return { status: "ok", results, ingested: results.reduce((sum, r) => sum + (r.items?.length || 0), 0) };
+}
+
+async function fetchSourceWithRetry(source) {
+  const retries = Math.max(0, Math.min(3, Number(process.env.EVENT_SOURCE_RETRIES ?? 1)));
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const result = source.type === "rss" ? await parseRssSource(source) : await parseHtmlSource(source);
+      return { ...result, attempts: attempt + 1 };
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error("事件源刷新失败");
 }
 
 // 按事件时间倒序：最新的排最前；无法解析日期的（即时/新近）排在有日期项之后但保持相对新。
@@ -149,7 +175,8 @@ export async function refreshOnchainSignals(db) {
 }
 
 async function parseRssSource(source) {
-  const feed = await rssParser.parseURL(source.url);
+  const { text } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
+  const feed = await rssParser.parseString(text);
   return {
     sourceId: source.id,
     status: "ok",
@@ -158,9 +185,8 @@ async function parseRssSource(source) {
 }
 
 async function parseHtmlSource(source) {
-  const response = await fetch(source.url);
+  const { response, text: html } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const html = await response.text();
   const $ = cheerio.load(html);
   const items = [];
   $("a").each((_idx, el) => {
@@ -272,6 +298,7 @@ function upsertEventFromItem(db, source, item) {
   const title = tags.length ? `${tags.slice(0, 3).join(" · ")} 专题` : localized;
   const event = {
     id: id("event"),
+    sourceId: source.id,
     title,
     rawTitle: item.title,
     shortTitle: shortTitle(title),

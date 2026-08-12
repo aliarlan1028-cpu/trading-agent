@@ -77,12 +77,24 @@ export async function enrichEvents(db, { max = 8 } = {}) {
 
 // 给 buildSystemPrompt 用:挑高可信度、未计价、非高假风险的关键新闻,压成决策可读的简报。
 export function newsBriefForPrompt(db, { max = 5 } = {}) {
-  const withIntel = (db.events || []).filter((e) => e.intel && e.intel.sentiment && e.intel.sentiment !== "中性");
-  const scored = withIntel.map((e) => ({ e, score: (e.intel.credibility || 0.5) * (1 - (e.intel.pricedIn ?? 0.5)) * (e.intel.fakeRisk === "high" ? 0.3 : 1) }));
+  const now = Date.now();
+  const maxAgeMs = Math.max(1, Number(process.env.NEWS_PROMPT_MAX_AGE_HOURS || 36)) * 3_600_000;
+  const withIntel = (db.events || []).filter((e) => {
+    if (!e.intel || !e.intel.sentiment || e.intel.sentiment === "中性") return false;
+    const published = new Date(e.timeline?.[0]?.at || e.due || e.lastUpdatedAt || e.createdAt || 0).getTime();
+    return Number.isFinite(published) && now - published <= maxAgeMs;
+  });
+  const scored = withIntel.map((e) => {
+    const source = (db.eventSources || []).find((item) => item.id === e.sourceId || item.name === e.timeline?.[0]?.source);
+    const sourcePenalty = source?.lastStatus === "failed" ? 0.75 : 1;
+    return { e, source, score: (e.intel.credibility || 0.5) * (1 - (e.intel.pricedIn ?? 0.5)) * (e.intel.fakeRisk === "high" ? 0.3 : 1) * sourcePenalty };
+  });
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, max).map(({ e }) => {
+  return scored.slice(0, max).map(({ e, source }) => {
     const it = e.intel;
-    const flags = [it.fakeRisk === "high" ? "⚠未证实" : it.corroboration >= 1 ? `${it.corroboration}源印证` : "单源", it.pricedIn != null ? `已计价${Math.round(it.pricedIn * 100)}%` : ""].filter(Boolean).join(" · ");
+    const published = e.timeline?.[0]?.at || e.due || e.lastUpdatedAt || e.createdAt;
+    const ageHours = Math.max(0, (now - new Date(published).getTime()) / 3_600_000);
+    const flags = [it.fakeRisk === "high" ? "⚠未证实" : it.corroboration >= 1 ? `${it.corroboration}源印证` : "单源", it.pricedIn != null ? `已计价${Math.round(it.pricedIn * 100)}%` : "", source?.lastStatus === "failed" ? "源刷新异常" : "", `${ageHours.toFixed(1)}小时前`].filter(Boolean).join(" · ");
     return `- [${it.sentiment}${it.affectedSymbols.length ? " " + it.affectedSymbols.join("/") : ""}${it.impactHorizon ? " · " + it.impactHorizon : ""}] ${it.oneLine || e.title}（可信 ${Math.round((it.credibility || 0) * 100)}% · ${flags}）`;
   });
 }

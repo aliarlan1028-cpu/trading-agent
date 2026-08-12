@@ -22,20 +22,42 @@ export function registerRiskRoutes(app, ctx) {
 
   // 一键平仓:市价平掉所有持仓 + 切只减仓(禁新开仓)。高危,与熔断并列。减风险动作,不受实盘写入闸限制。
   app.post("/api/risk/emergency-flatten", requirePermission("risk.kill_switch"), async (req, res) => {
-    const positions = (db.positions || []).slice();
+    const emergencyActionId = id("emergency");
+    // 同一真实仓可能同时存在 execution_engine 与 exchange_rest/ws 行；按 OKX+symbol+方向去重，
+    // 优先交易所快照，避免一键平仓对同一仓位重复发送 close-position。
+    const byPosition = new Map();
+    for (const position of db.positions || []) {
+      const size = Math.abs(Number(position.size ?? position.pos ?? position.positionAmt ?? 0));
+      if (!size || String(position.exchange || "OKX").toUpperCase() !== "OKX") continue;
+      const side = String(position.posSide || position.direction || "net").toLowerCase();
+      const key = `${position.symbol}|${side}`;
+      const current = byPosition.get(key);
+      const authoritative = ["exchange_rest", "exchange_ws"].includes(position.source);
+      if (!current || authoritative) byPosition.set(key, { ...position, size });
+    }
+    const positions = [...byPosition.values()];
     const closed = [], errors = [];
     for (const p of positions) {
       try {
-        const r = await executeTradeAction(db, "close_position", { exchange: p.exchange || "OKX", marketType: "perpetual_usdt", symbol: p.symbol, positionSide: p.posSide || p.direction, quantity: p.size, reduceOnly: true, manualApproval: true });
+        const r = await executeTradeAction(db, "close_position", {
+          exchange: "OKX",
+          marketType: "perpetual_usdt",
+          symbol: p.symbol,
+          positionSide: p.posSide || p.direction,
+          quantity: p.size,
+          reduceOnly: true,
+          emergencyActionId,
+          emergencyReason: String(req.body?.reason || "operator_emergency_flatten").slice(0, 200)
+        });
         if (["ok", "submitted", "idempotent_replay"].includes(r.status)) closed.push(p.symbol); else errors.push(`${p.symbol}: ${r.reason || r.status}`);
       } catch (error) { errors.push(`${p.symbol}: ${error.message}`); }
     }
     db.system.reduceOnlyMode = true;
     db.system.reduceOnlyBy = "emergency_flatten";
-    appendAudit(db, `一键平仓：平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓`, "emergency_flatten", db.user.name, "critical");
+    appendAudit(db, `一键平仓：平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓`, emergencyActionId, db.user.name, "critical");
     appendTrace(db, "risk", `一键平仓 ${closed.length} 仓`, errors.length ? "warning" : "ok");
     try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓已触发", body: `已平 **${closed.length}** 个持仓${errors.length ? `，${errors.length} 个失败` : ""}，系统已切「只减仓」禁新开仓。` }); } catch { /* noop */ }
-    persist(res, { closed, errors, reduceOnly: true, message: `已平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓` });
+    persist(res, { emergencyActionId, closed, errors, reduceOnly: true, message: `已平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓` });
   });
 
   app.post("/api/risk/kill-switch", async (req, res) => {
@@ -106,6 +128,20 @@ export function registerRiskRoutes(app, ctx) {
     res.json({ system: db.system, rules: db.riskRules, incidents: db.riskIncidents, checks: db.riskChecks.slice(0, 20) });
   });
 
+  app.post("/api/risk/thresholds", requirePermission("write:risk_thresholds"), async (req, res) => {
+    try {
+      const { applyRiskThresholds } = await import("../riskThresholds.mjs");
+      const { applyProtections } = await import("../tradeProtections.mjs");
+      const { setConfig } = await import("../runtimeConfig.mjs");
+      const result = applyRiskThresholds(db, req.body || {}, setConfig);
+      const currentProtection = applyProtections(db, req.user?.name || db.user.name);
+      if (result.applied.length) appendAudit(db, `更新风控阈值:${result.applied.join("、")}`, "risk_thresholds", req.user?.name || db.user.name, "warning");
+      persist(res, { ok: true, ...result, currentProtection, message: result.applied.length ? "风控阈值已更新，并已重新计算当前保护状态" : "无变更" });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
   app.get("/api/risk/rules", (_req, res) => res.json(db.riskRules));
 
   app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
@@ -136,27 +172,27 @@ export function registerRiskRoutes(app, ctx) {
   app.patch("/api/risk/rules/:id", requirePermission("write:risk"), (req, res) => {
     const rule = db.riskRules.find((item) => item.id === req.params.id);
     if (!rule) return res.status(404).json({ error: "Risk rule not found" });
+    const nextAction = req.body.action ?? rule.action ?? "notify";
+    const nextConditionSpec = req.body.conditionSpec ?? rule.conditionSpec;
+    const conditionValidation = validateConditionSpec(nextConditionSpec);
+    if (nextAction !== "notify" && !conditionValidation.valid) {
+      return res.status(400).json({ error: `阻断型规则必须提供受支持的 conditionSpec：${conditionValidation.reason}` });
+    }
     const allowed = ["name", "scope", "level", "enabled", "action", "description", "event", "condition"];
     for (const key of allowed) {
       if (req.body[key] !== undefined) rule[key] = req.body[key];
     }
+    rule.conditionSpec = conditionValidation.valid ? nextConditionSpec : null;
+    rule.enforcementStatus = conditionValidation.valid ? "enforced" : "advisory_uncompiled";
     rule.updatedAt = nowIso();
     appendAudit(db, "更新风控规则", rule.id, db.user.name, rule.enabled === false ? "warning" : "info");
     persist(res, { message: `${rule.name} 已更新`, rule });
   });
 
-  app.post("/api/risk/gray-policies/:id", requirePermission("write:risk"), (req, res) => {
-    const policy = db.grayReleasePolicies.find((item) => item.id === req.params.id);
-    if (!policy) return res.status(404).json({ error: "Gray policy not found" });
-    Object.assign(policy, {
-      enabled: req.body.enabled ?? policy.enabled,
-      maxNotionalUsdt: req.body.maxNotionalUsdt ?? policy.maxNotionalUsdt,
-      allowedSymbols: req.body.allowedSymbols || policy.allowedSymbols,
-      requiresManualApproval: req.body.requiresManualApproval ?? policy.requiresManualApproval,
-      updatedAt: nowIso()
-    });
-    appendAudit(db, "更新灰度实盘策略", policy.id, db.user.name, policy.enabled ? "warning" : "info");
-    persist(res, policy);
+  // 历史灰度写入口缺少 MFA、全自动安全条件与额度数值校验，能绕过统一实盘配置闸。
+  // 保留明确的退役响应，避免旧客户端误以为保存成功；所有变更必须走唯一入口。
+  app.post("/api/risk/gray-policies/:id", requirePermission("admin:security"), (_req, res) => {
+    res.status(410).json({ error: "该接口已停用，请使用 /api/config/live-trading 更新实盘验证设置" });
   });
 
   app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (req, res) => {

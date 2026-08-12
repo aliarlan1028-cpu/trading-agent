@@ -1,6 +1,6 @@
 {
   "appId": "com.ely.tradingagent",
-  "appName": "Trading Agent",
+  "appName": "KORDYN",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "plugins": {

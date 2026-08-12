@@ -25,15 +25,11 @@ export function startRealtimeManager(db, saveDb, options = {}) {
   if (runtime.started && !options.force) return realtimeStatus(db);
   runtime.started = true;
   const okxKeys = process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE;
-  const binanceKeys = process.env.BINANCE_API_KEY;
-  // 公有行情 WS：OKX 免密钥、可用，一直连；Binance 会被地区屏蔽，仅在已配置密钥（说明能连）时才连，
-  // 避免凭空产生一堆连不上的失败连接、把「WebSocket X/Y」拉成 0。
+  // 自主交易统一使用 OKX。移除 Binance 连接，避免共享 symbol 行情被另一交易所覆盖。
   connectPublicMarket(db, saveDb, "OKX");
-  if (binanceKeys) connectPublicMarket(db, saveDb, "BINANCE");
-  else removeConnection(db, "BINANCE", "public_market");
-  // 私有用户 WS：只有配了对应交易所密钥才连（否则本就 missing_credentials）。
+  removeConnection(db, "BINANCE", "public_market");
   if (okxKeys) connectPrivateUser(db, saveDb, "OKX"); else removeConnection(db, "OKX", "private_user");
-  if (binanceKeys) connectPrivateUser(db, saveDb, "BINANCE"); else removeConnection(db, "BINANCE", "private_user");
+  removeConnection(db, "BINANCE", "private_user");
   return realtimeStatus(db);
 }
 
@@ -182,7 +178,8 @@ function connectOkxPublic(db, saveDb, connection) {
       price: Number(ticker.last),
       high24h: Number(ticker.high24h),
       low24h: Number(ticker.low24h),
-      volume24h: ticker.volCcy24h,
+      // OKX volCcy24h 是币本位流式值，不能覆盖 REST 的 USDT quoteVolume 口径。
+      streamVolume24h: Number(ticker.volCcy24h),
       source: "OKX_WS"
     });
   });
@@ -253,6 +250,7 @@ function updateMarketFromTicker(db, rawSymbol, ticker) {
   if (Number.isFinite(ticker.low24h)) market.low24h = ticker.low24h;
   if (Number.isFinite(ticker.changePct)) market.changePct = ticker.changePct;
   if (ticker.volume24h) market.volume24h = compactNumber(ticker.volume24h);
+  if (Number.isFinite(ticker.streamVolume24h)) market.streamVolume24h = ticker.streamVolume24h;
   market.lastRealtimeSource = ticker.source;
   market.lastRealtimeAt = nowIso();
 }
@@ -268,11 +266,12 @@ function toBinanceSymbol(symbol) {
 }
 
 function toOkxSymbol(symbol) {
-  return String(symbol || "BTC/USDT").replace("/", "-").toUpperCase();
+  const instId = String(symbol || "BTC/USDT").replace("/", "-").toUpperCase();
+  return instId.endsWith("-SWAP") ? instId : `${instId}-SWAP`;
 }
 
 function normalizeDisplaySymbol(rawSymbol) {
-  const text = String(rawSymbol || "BTCUSDT").replace("-", "").toUpperCase();
+  const text = String(rawSymbol || "BTCUSDT").replace(/-SWAP$/i, "").replaceAll("-", "").toUpperCase();
   if (text.endsWith("USDT")) return `${text.slice(0, -4)}/USDT`;
   return text;
 }
@@ -374,6 +373,12 @@ function enrichRealtimeFill(db, order, payload = {}) {
     side: payload.side,
     direction: executionOrder?.direction,
     strategy: executionOrder?.strategy || plan.strategy || plan.strategy_type || "manual_review",
+    strategyRef: executionOrder?.strategyRef ? { ...executionOrder.strategyRef } : (plan.strategyRef ? { ...plan.strategyRef } : null),
+    strategyBlueprintRef: executionOrder?.strategyBlueprintRef ? { ...executionOrder.strategyBlueprintRef } : (plan.strategyBlueprintRef ? { ...plan.strategyBlueprintRef } : null),
+    strategyProductId: executionOrder?.strategyProductId || plan.strategyProductId || null,
+    strategyVersion: executionOrder?.strategyVersion || plan.strategyVersion || null,
+    strategyVersionId: executionOrder?.strategyVersionId || plan.strategyVersionId || null,
+    strategyInstance: executionOrder?.strategyInstance ? structuredClone(executionOrder.strategyInstance) : (plan.strategyInstance ? structuredClone(plan.strategyInstance) : null),
     kind: order.reduceOnly || /sell|buy/i.test(String(payload.side || "")) && executionOrder?.status === "protecting" ? "close" : "entry",
     price,
     size: quantity,
@@ -382,6 +387,8 @@ function enrichRealtimeFill(db, order, payload = {}) {
     expectedPrice,
     slippageBps,
     feeUsdt,
+    initialRiskUsdt: executionOrder?.initialRiskUsdt || plan.initialRiskUsdt || null,
+    accountEquityAtEntryUsdt: executionOrder?.accountEquityAtEntryUsdt || plan.accountEquityAtEntryUsdt || null,
     fee: feeUsdt === null ? undefined : `${feeUsdt} USDT`,
     estimatedFee: payload.feeUsdt === undefined,
     // 同 executionEngine.entryRationale:plan 的推理在 reasoningSummary。executionOrder 已存的占位符

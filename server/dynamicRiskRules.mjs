@@ -67,7 +67,7 @@ function builtInTriggered(rule, facts) {
 export function evaluateDynamicRiskRules(db, plan) {
   const market = (db.markets || []).find((item) => item.symbol === plan.symbol) || {};
   const relatedEvents = (db.events || []).filter((event) => isEventRiskActive(event) && event.relatedSymbols?.includes(plan.symbol));
-  const metadata = (db.apiKeyMetadata || []).find((item) => String(item.exchange || "").toUpperCase() === String(plan.exchange || "BINANCE").toUpperCase()) || {};
+  const metadata = (db.apiKeyMetadata || []).find((item) => String(item.exchange || "").toUpperCase() === String(plan.exchange || "OKX").toUpperCase()) || {};
   const facts = {
     plan: {
       leverage: Number(plan.leverage),

@@ -9,9 +9,9 @@ import "./professional.css";
 // 策略与分析=策略研究+分析作战室合并;审计=审计+实盘运营合并。
 
 const AWAIT = ["awaiting_approval"];
-const AUTO = ["approved", "executing", "monitoring"];
+const AUTO = ["armed", "approved", "executing", "monitoring"];
 const DONE = ["completed"];
-const DEAD = ["risk_rejected", "failed", "protection_failed", "setup_rejected", "expired", "cancelled", "dry_run"];
+const DEAD = ["risk_rejected", "auto_blocked", "failed", "protection_failed", "setup_rejected", "expired", "cancelled", "dry_run"];
 
 const isShort = (d) => d === "short" || d === "空";
 const dirCn = (d) => (isShort(d) ? "空" : "多");
@@ -37,7 +37,7 @@ export function SignalHubPage({ data, ui }) {
 
       <div className="proGrid four">
         <div className="metric"><span>待你批准</span><b style={{ color: "#f0b04e" }}>{awaiting.length}</b></div>
-        <div className="metric"><span>自动 / 执行中</span><b style={{ color: "#2f8f4f" }}>{auto.length}</b></div>
+        <div className="metric"><span>等待入场 / 执行中</span><b style={{ color: "#2f8f4f" }}>{auto.length}</b></div>
         <div className="metric"><span>已完成</span><b>{done.length}</b></div>
         <div className="metric"><span>被拒 / 失败</span><b style={{ color: "#cf3560" }}>{dead.length}</b></div>
       </div>
@@ -59,11 +59,11 @@ export function SignalHubPage({ data, ui }) {
         </section>
 
         <section className="proCard">
-          <div className="proTitle"><b>✅ 已自动 / ▶ 执行中</b></div>
+          <div className="proTitle"><b>⚡ 等待入场 / ▶ 执行中</b></div>
           {auto.map((p) => (
             <div className="proRow" key={p.id}><span style={{ color: dirColor(p.direction) }}>{p.symbol} {dirCn(p.direction)}</span><b>{humanize(p.status)}</b></div>
           ))}
-          {!auto.length && <div className="proEmpty">暂无自动执行 / 在途计划。</div>}
+          {!auto.length && <div className="proEmpty">暂无等待触发或执行中的计划。</div>}
         </section>
       </div>
 

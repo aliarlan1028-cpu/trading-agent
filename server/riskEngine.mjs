@@ -4,6 +4,8 @@ import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
 import { isEventRiskActive } from "./eventRisk.mjs";
 import { evaluateProfessionalPlanRisks } from "./professionalRiskGate.mjs";
 import { evaluateProtections } from "./tradeProtections.mjs";
+import { DEFAULT_WEEKLY_LOSS_PCT } from "./mandatePolicy.mjs";
+import { currentRiskThresholds } from "./riskThresholds.mjs";
 
 export function evaluateTradePlan(db, plan) {
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
@@ -64,9 +66,36 @@ export function evaluateTradePlan(db, plan) {
   const maxLeverage = Number(maxLeverageBySymbol[plan.symbol] ?? mandate.maxLeverage ?? mandate.max_leverage ?? 1);
   const minLeverage = Number(mandate.minLeverage ?? mandate.min_leverage ?? 1);
   add("杠杆上限", Number(plan.leverage) <= maxLeverage, `计划 ${plan.leverage}x，上限 ${maxLeverage}x`);
-  // 杠杆下限只做提示(低于下限=更保守,不危险),不硬拦。
-  add("杠杆下限", Number(plan.leverage) >= minLeverage, `计划 ${plan.leverage}x，建议下限 ${minLeverage}x`, Number(plan.leverage) >= minLeverage ? "ok" : "warn");
+  // 用户配置的是允许区间而不是“偏好”。低杠杆本身更保守，但放行区间外计划会让
+  // 前端承诺、Agent 决策与 OKX 实际仓位不一致，因此和上限一样作为授权硬边界。
+  add("杠杆下限", Number(plan.leverage) >= minLeverage, `计划 ${plan.leverage}x，下限 ${minLeverage}x`);
   add("止损存在", Boolean(plan.stopLoss ?? plan.stop_loss), "自主交易计划必须带止损");
+
+  // 前端“最低盈亏比”必须是真正的硬风控，而不是只保存一个看起来生效的数字。
+  // 用入场中值、止损和第一止盈确定性计算；缺失止盈同样不能通过。
+  {
+    const range = plan.entry_range || plan.entry?.range || [];
+    const entry = Array.isArray(range) && range.length
+      ? (Number(range[0]) + Number(range[1] ?? range[0])) / 2
+      : Number(plan.entry?.price ?? plan.entryPrice ?? plan.price);
+    const stop = Number(plan.stopLoss ?? plan.stop_loss);
+    const target = Number((plan.takeProfits || plan.take_profits || [])[0] ?? plan.takeProfit ?? plan.take_profit);
+    const isShort = planDirection(plan) === "short";
+    const riskDistance = Math.abs(entry - stop);
+    const rewardDistance = isShort ? entry - target : target - entry;
+    const rr = Number.isFinite(entry) && Number.isFinite(stop) && Number.isFinite(target) && riskDistance > 0 && rewardDistance > 0
+      ? rewardDistance / riskDistance : null;
+    const minimum = currentRiskThresholds().minRewardRisk;
+    if (!Number.isFinite(target)) {
+      // 系统允许由跟踪止损/结构退出管理的无固定止盈计划；这种计划不能伪称达到 RR，
+      // 但也不能因新增配置把既有动态退出策略整体焊死。
+      add("最低盈亏比", false, `未设置固定止盈，无法验证 ${minimum}R；继续受止损与动态退出管理`, "warn");
+    } else {
+      add("最低盈亏比", rr !== null && rr >= minimum, rr === null
+        ? `止盈方向无效，无法形成正收益距离；要求 ≥ ${minimum}R`
+        : `计划 ${rr.toFixed(2)}R，要求 ≥ ${minimum}R`);
+    }
+  }
 
   const riskPercent = Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? plan.max_loss_pct ?? 999);
   const maxSingleTradeRiskPct = Number(mandate.maxSingleTradeRiskPct ?? mandate.max_single_trade_risk_pct ?? 0);
@@ -117,16 +146,25 @@ export function evaluateTradePlan(db, plan) {
     );
   }
 
-  const highImpactEvent = db.events.find((event) => isEventRiskActive(event) && event.impact >= 90 && event.relatedSymbols?.includes(plan.symbol));
+  const blackoutMinutes = currentRiskThresholds().eventBlackoutMinutes;
+  const highImpactEvent = db.events.find((event) => {
+    if (!isEventRiskActive(event) || Number(event.impact) < 90) return false;
+    const related = !Array.isArray(event.relatedSymbols) || !event.relatedSymbols.length || event.relatedSymbols.includes(plan.symbol);
+    const due = new Date(event.due || event.publishedAt).getTime();
+    const delta = due - Date.now();
+    const precision = String(event.timePrecision || event.time_precision || event.precision || "").toLowerCase();
+    const exactTime = !["date", "day", "unknown"].includes(precision);
+    return related && exactTime && Number.isFinite(delta) && delta >= 0 && delta <= blackoutMinutes * 60_000;
+  });
   if (highImpactEvent) {
     add(
-      "事件风险",
-      plan.leverage <= Math.max(2, Math.floor(maxLeverage / 2)),
-      `${highImpactEvent.title} 影响分 ${highImpactEvent.impact}，高杠杆新仓受限`,
+      "重大事件静默窗口",
+      false,
+      `${highImpactEvent.title} 将在 ${blackoutMinutes} 分钟静默窗口内公布，暂停所有新开仓；事件落地并刷新事实后重新评估`,
       db.system.liveTradingEnabled ? "block" : "warn"
     );
   } else {
-    add("事件风险", true, "未发现阻断级事件");
+    add("重大事件静默窗口", true, `未来 ${blackoutMinutes} 分钟未发现具有精确时间的阻断级事件`);
   }
 
   // 组合相关性/集中度：主流币高度相关，同向叠加等于放大单一风险。
@@ -191,26 +229,15 @@ export function evaluateTradePlan(db, plan) {
   );
 
   const weekPnl = db.portfolio.weekPnl === null || db.portfolio.weekPnl === undefined ? null : Number(db.portfolio.weekPnl);
-  const maxWeeklyLossPct = Number(mandate.maxWeeklyLossPct || 5);
-  const weeklyLossPct = equity > 0 && weekPnl !== null && Number.isFinite(weekPnl) ? Math.max(0, (-weekPnl / equity) * 100) : null;
+  const maxWeeklyLossPct = Number(mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? DEFAULT_WEEKLY_LOSS_PCT);
+  const rollingStartEquity = equity > 0 && weekPnl !== null && Number.isFinite(weekPnl) ? equity - weekPnl : null;
+  const weeklyLossPct = rollingStartEquity > 0 ? Math.max(0, (-weekPnl / rollingStartEquity) * 100) : null;
   add(
-    "周亏损熔断",
+    "近7日亏损熔断",
     weeklyLossPct !== null && weeklyLossPct < maxWeeklyLossPct,
-    weeklyLossPct === null ? "缺少周盈亏数据" : `本周亏损 ${weeklyLossPct.toFixed(2)}%，上限 ${maxWeeklyLossPct}%`,
+    weeklyLossPct === null ? "缺少近7日盈亏数据" : `近7日亏损 ${weeklyLossPct.toFixed(2)}%，上限 ${maxWeeklyLossPct}%`,
     db.system.liveTradingEnabled ? "block" : "warn"
   );
-  const closedFills = (db.fills || [])
-    .filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)))
-    .slice()
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  let lossStreak = 0;
-  for (const fill of closedFills) {
-    if (Number(fill.realizedPnl) < 0) lossStreak += 1;
-    else break;
-  }
-  const maxLossStreak = Number(mandate.maxConsecutiveLosses || 4);
-  add("连续亏损熔断", lossStreak < maxLossStreak, `当前连续亏损 ${lossStreak} 笔，上限 ${maxLossStreak} 笔`);
-
   const professional = evaluateProfessionalPlanRisks(db, plan, mandate);
   for (const check of professional.checks) add(check.name, check.passed, check.detail, check.severity);
 

@@ -1,0 +1,13 @@
+[Unit]
+Description=KORDYN read-only backup restore drill
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trading-agent
+ExecStart=/usr/bin/docker compose -f /opt/trading-agent/docker-compose.yml exec -T trading-agent npm run restore-drill
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true

@@ -51,15 +51,46 @@ async function attributeMoverNarrative(mover) {
 }
 
 // 直连 Gemini 的 generateContent（带 googleSearch 工具）——llmComplete 不带搜索能力，这里单独走。
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// 搜索归因是辅助事实源，不应因免费额度 429 把整轮交易决策拖慢几十秒。
+const geminiCircuit = {
+  openUntil: 0,
+  consecutiveFailures: 0,
+  lastError: null,
+  lastFailureAt: null,
+  lastSuccessAt: null
+};
 
-async function geminiSearchComplete(prompt) {
+function openGeminiCircuit(error, durationMs) {
+  geminiCircuit.consecutiveFailures += 1;
+  geminiCircuit.lastError = String(error?.message || error).slice(0, 160);
+  geminiCircuit.lastFailureAt = nowIso();
+  geminiCircuit.openUntil = Math.max(geminiCircuit.openUntil, Date.now() + durationMs);
+}
+
+export function geminiSearchCircuitStatus(now = Date.now()) {
+  return {
+    state: geminiCircuit.openUntil > now ? "open" : "closed",
+    openUntil: geminiCircuit.openUntil ? new Date(geminiCircuit.openUntil).toISOString() : null,
+    consecutiveFailures: geminiCircuit.consecutiveFailures,
+    lastError: geminiCircuit.lastError,
+    lastFailureAt: geminiCircuit.lastFailureAt,
+    lastSuccessAt: geminiCircuit.lastSuccessAt
+  };
+}
+
+export function resetGeminiSearchCircuit() {
+  Object.assign(geminiCircuit, { openUntil: 0, consecutiveFailures: 0, lastError: null, lastFailureAt: null, lastSuccessAt: null });
+}
+
+export async function geminiSearchComplete(prompt) {
+  if (geminiCircuit.openUntil > Date.now()) {
+    throw new Error(`Gemini circuit open until ${new Date(geminiCircuit.openUntil).toISOString()}`);
+  }
   // 搜索归因用 Gemini 模型:由设置里的 GEMINI_MODEL 字段控制(默认 flash——pro 免费档仅 5RPM/~50次每天
   // 会 429,flash ~1500/天够用)。GEMINI_SEARCH_MODEL 是可选的高级单独覆盖。
   const model = process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  // 429 退避重试:免费档限 20 RPM,多功能共用 key 会瞬时超限。Google 429 体里带 "retry in Xs",
-  // 按它建议(封顶 12s)等一下再试,最多 3 次——把瞬时限流自愈掉,不再一撞就判归因失败。
-  const MAX_TRIES = Number(process.env.GEMINI_RETRY_MAX || 3);
+  // 默认只试一次。429 立即熔断，后台下一轮再试；不在交易关键路径内 sleep 重试。
+  const MAX_TRIES = Math.max(1, Math.min(2, Number(process.env.GEMINI_RETRY_MAX || 1)));
   for (let attempt = 1; attempt <= MAX_TRIES; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
@@ -70,22 +101,41 @@ async function geminiSearchComplete(prompt) {
         signal: controller.signal,
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] })
       });
-      if (res.status === 429 && attempt < MAX_TRIES) {
+      if (res.status === 429) {
         const body = await res.text().catch(() => "");
         const suggested = Number((body.match(/retry in ([\d.]+)s/i) || [])[1]);
-        const waitMs = Math.min(12000, Number.isFinite(suggested) ? Math.ceil(suggested * 1000) + 300 : attempt * 2500);
-        clearTimeout(timer);
-        await sleep(waitMs);
-        continue;
+        const configured = Number(process.env.GEMINI_CIRCUIT_429_MS || 5 * 60_000);
+        const duration = Math.max(configured, Number.isFinite(suggested) ? Math.ceil(suggested * 1000) : 0);
+        const error = new Error("Gemini 429 rate limited");
+        openGeminiCircuit(error, duration);
+        throw error;
       }
-      if (!res.ok) throw new Error(`Gemini ${res.status}`);
+      if (!res.ok) {
+        const error = new Error(`Gemini ${res.status}`);
+        if (attempt < MAX_TRIES) continue;
+        throw error;
+      }
       const json = await res.json();
+      geminiCircuit.openUntil = 0;
+      geminiCircuit.consecutiveFailures = 0;
+      geminiCircuit.lastError = null;
+      geminiCircuit.lastSuccessAt = nowIso();
       return (json.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("");
+    } catch (error) {
+      if (!String(error.message || error).includes("429") && !String(error.message || error).includes("circuit open")) {
+        geminiCircuit.consecutiveFailures += 1;
+        geminiCircuit.lastError = String(error.message || error).slice(0, 160);
+        geminiCircuit.lastFailureAt = nowIso();
+        if (geminiCircuit.consecutiveFailures >= 3) {
+          geminiCircuit.openUntil = Math.max(geminiCircuit.openUntil, Date.now() + Number(process.env.GEMINI_CIRCUIT_ERROR_MS || 60_000));
+        }
+      }
+      if (attempt >= MAX_TRIES || geminiCircuit.openUntil > Date.now()) throw error;
     } finally {
       clearTimeout(timer);
     }
   }
-  throw new Error("Gemini 429（重试后仍限流）");
+  throw new Error("Gemini search unavailable");
 }
 
 // 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
@@ -110,6 +160,12 @@ export async function explainMarketMove(db, symbol) {
     if (Math.max(drop, rise) >= 0.5) shortWin = drop >= rise ? { dir: "down", pct: Number(drop.toFixed(2)) } : { dir: "up", pct: Number(rise.toFixed(2)) };
   }
   const technical = { last, changePct24h: Number.isFinite(chg) ? chg : null, rangePosition24h: rangePos, shortWindow: shortWin, quoteVolUsdtM: Number.isFinite(vol) ? Number((vol / 1e6).toFixed(1)) : null };
+  db.marketNarratives ||= {};
+  const cached = db.marketNarratives[sym];
+  const narrativeTtlMs = Number(process.env.MARKET_NARRATIVE_CACHE_MS || 15 * 60_000);
+  if (cached?.attributedAt && Date.now() - new Date(cached.attributedAt).getTime() <= narrativeTtlMs) {
+    return { ...cached, symbol: sym, source: "gemini_cache", technical, cacheHit: true };
+  }
   if (!process.env.GEMINI_API_KEY) {
     return { symbol: sym, source: "quote_only", narrative: "未配置联网搜索（GEMINI_API_KEY），无法查消息面催化——只能给纯行情推演，不编造原因。", technical, note: "配置 Gemini 后即可查'为什么'的真实催化剂。" };
   }
@@ -117,7 +173,9 @@ export async function explainMarketMove(db, symbol) {
   try {
     const raw = await geminiSearchComplete(prompt);
     const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
-    return { symbol: sym, source: "gemini", ...parsed, technical, attributedAt: nowIso() };
+    const result = { symbol: sym, source: "gemini", ...parsed, technical, attributedAt: nowIso(), cacheHit: false };
+    db.marketNarratives[sym] = result;
+    return result;
   } catch (error) {
     return { symbol: sym, source: "gemini_failed", narrative: `消息面归因暂时失败（${error.message}）——技术面见 technical 字段。`, technical };
   }

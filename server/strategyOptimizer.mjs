@@ -1,10 +1,13 @@
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import { simulate, BAR_MINUTES } from "./backtestEngine.mjs";
-import { STRATEGIES, detectRegime, regimePreferredFamilies } from "./strategies.mjs";
+import { STRATEGIES, detectRegime, regimePreferredFamilies, strategyMatchesRegime } from "./strategies.mjs";
 import { buildTokenProfile } from "./tokenProfile.mjs";
 import { buildReviewAnalytics } from "./reviewEngine.mjs";
 import { ensurePaperSessionsFromProfiles } from "./paperTrading.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { anchoredPurgedOosFolds, attachDeflatedSharpe, rollingPurgedWalkForwardFolds } from "./validationStatistics.mjs";
+import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
+import { assertNativeStrategyContracts } from "./strategyContracts.mjs";
 
 // ---------------------------------------------------------------------------
 // 策略优化器 + 自主学习闭环（专业化版）。
@@ -48,6 +51,52 @@ function evaluate(candles, signals, from, to, params) {
   return simulate(c, s, params);
 }
 
+function rollingOptimizerDiagnostics(candles, trialRecords) {
+  const split = rollingPurgedWalkForwardFolds(candles.length, { purgeBars: 1, embargoBars: 1 });
+  const foldResults = [];
+  for (let foldIndex = 0; foldIndex < split.folds.length; foldIndex += 1) {
+    const fold = split.folds[foldIndex];
+    let selected = null;
+    for (const trial of trialRecords) {
+      const train = evaluate(candles, trial.signals, fold.train[0], fold.train[1], trial.opts);
+      if (!qualified(train, MIN_TRAIN_TRADES)) continue;
+      if (!selected || train.expectancyR > selected.train.expectancyR) selected = { trial, train };
+    }
+    if (!selected) {
+      foldResults.push({ fold: foldIndex, train: fold.train, test: fold.test, status: "no_qualified_training_candidate" });
+      continue;
+    }
+    const testMetrics = evaluate(candles, selected.trial.signals, fold.test[0], fold.test[1], selected.trial.opts);
+    foldResults.push({
+      fold: foldIndex,
+      train: fold.train,
+      test: fold.test,
+      status: qualified(testMetrics, MIN_FOLD_TRADES) ? "evaluated" : "insufficient_test_trades",
+      selectedStrategyId: selected.trial.strategyId,
+      selectedParams: selected.trial.params,
+      trainMetrics: selected.train,
+      testMetrics
+    });
+  }
+  const evaluated = foldResults.filter((fold) => fold.status === "evaluated");
+  const positive = evaluated.filter((fold) => fold.testMetrics.expectancyR > 0);
+  const trades = evaluated.reduce((sum, fold) => sum + fold.testMetrics.trades, 0);
+  const weightedExpectancyR = trades
+    ? evaluated.reduce((sum, fold) => sum + fold.testMetrics.expectancyR * fold.testMetrics.trades, 0) / trades
+    : null;
+  return {
+    method: "rolling_retrain_purged_walk_forward",
+    purgeBars: split.purgeBars,
+    embargoBars: split.embargoBars,
+    folds: foldResults,
+    evaluatedFolds: evaluated.length,
+    positiveFolds: positive.length,
+    totalOosTrades: trades,
+    weightedOosExpectancyR: weightedExpectancyR == null ? null : Number(weightedExpectancyR.toFixed(3)),
+    passed: evaluated.length >= 2 && positive.length * 2 >= evaluated.length && trades >= MIN_OOS_TRADES && weightedExpectancyR > 0
+  };
+}
+
 // 实盘表现权重：对有足够真实平仓样本的策略，按胜率/盈亏比给一个 [0.7,1.3] 的乘子，
 // 在"已通过样本外"的合格策略之间再加权（不替代样本外门槛，只影响优选谁）。
 function buildLiveStrategyWeights(db) {
@@ -65,15 +114,19 @@ function buildLiveStrategyWeights(db) {
   return weights;
 }
 
-function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
+export function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
+  assertNativeStrategyContracts(Object.values(STRATEGIES));
   const liveMult = (c) => liveWeights[c.strategyId] ?? liveWeights[c.label] ?? 1;
   const n = candles.length;
   const barMinutes = BAR_MINUTES[timeframe] || 60;
   const uptrend = htfUptrend(candles);
-  // 锚定式多折 walk-forward：前 40% 训练寻优，后 60% 切成 3 段独立样本外（跨不同时段/月）。
-  const t = Math.floor(n * 0.4);
-  const folds = [[t, Math.floor(n * 0.6)], [Math.floor(n * 0.6), Math.floor(n * 0.8)], [Math.floor(n * 0.8), n]];
+  // 锚定式多折样本外：参数只在前 40% 选择。训练/OOS 边界之间显式 purge+embargo，
+  // 避免相邻 K 线、标签持有期和指标窗口把训练信息泄漏进验证段。
+  const split = anchoredPurgedOosFolds(n, { trainFraction: 0.4, foldCount: 3, purgeBars: 1, embargoBars: 1 });
+  const folds = split.folds;
   const candidates = [];
+  let parameterTrials = 0;
+  const trialRecords = [];
 
   for (const strategy of Object.values(STRATEGIES)) {
     const isLong = (strategy.direction || "long") !== "short";
@@ -82,18 +135,25 @@ function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
       const raw = strategy.signals(candles, entryParams);
       const signals = raw.map((s, i) => Boolean(s) && (isLong ? uptrend[i] : !uptrend[i])); // 多周期确认
       for (const exit of EXIT_GRID) {
+        parameterTrials += 1;
         const opts = { ...exit, riskPerTradePct: 0.5, direction: strategy.direction, barMinutes };
-        const train = evaluate(candles, signals, 0, t, opts);
+        const train = evaluate(candles, signals, split.train[0], split.train[1], opts);
+        trialRecords.push({ strategyId: strategy.id, params: { ...entryParams, ...exit }, signals, opts });
         if (!qualified(train, MIN_TRAIN_TRADES)) continue;
         if (!bestOnTrain || train.expectancyR > bestOnTrain.train.expectancyR) {
           const foldMetrics = folds.map(([from, to]) => evaluate(candles, signals, from, to, opts));
-          const oos = evaluate(candles, signals, t, n, opts); // 合并样本外（后 60%）
+          const oos = evaluate(candles, signals, split.oos[0], split.oos[1], opts);
           bestOnTrain = { strategyId: strategy.id, label: strategy.label, family: strategy.family, direction: strategy.direction || "long", params: { ...entryParams, ...exit }, train, folds: foldMetrics, oos };
         }
       }
     }
     if (bestOnTrain) candidates.push(bestOnTrain);
   }
+  for (const candidate of candidates) {
+    candidate.oos = attachDeflatedSharpe(candidate.oos, parameterTrials);
+    candidate.validationMethod = { name: "anchored_purged_multi_oos", purgeBars: split.purgeBars, embargoBars: split.embargoBars, parameterTrials };
+  }
+  const rollingValidation = rollingOptimizerDiagnostics(candles, trialRecords);
 
   // 跨段一致性：有足够交易的样本外折里，期望 R>0 的折数。
   const positiveFolds = (c) => c.folds.filter((f) => f.trades >= MIN_FOLD_TRADES && f.expectancyR > 0).length;
@@ -108,27 +168,37 @@ function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
     });
 
   const regime = detectRegime(candles.slice(folds[2][0]));
+  const regimeDiagnostics = analyzeMarketRegime(candles.slice(-120));
   const profile = buildTokenProfile(candles, timeframe); // 该币的统计性格
   // 家族偏好：该币性格（趋势/回归，更稳）优先，叠加近期 regime。
   const preferred = [...new Set([
     ...(profile.ok && profile.preferredFamily ? [profile.preferredFamily] : []),
     ...regimePreferredFamilies(regime)
   ])];
-  const regimeMatched = robust.filter((c) => preferred.includes(c.family));
+  const regimeMatched = robust.filter((candidate) => strategyMatchesRegime(candidate, regime));
   const best = regimeMatched[0] || robust[0] || null;
+  const bestRegimeMatch = best ? strategyMatchesRegime(best, regime) : false;
   const bestPos = best ? positiveFolds(best) : 0;
   const bestActive = best ? activeFolds(best) : 0;
 
   return {
     best,
-    confidence: best ? (bestPos === bestActive && bestActive >= 2 ? "validated" : "oos_ok") : "low",
+    confidence: best ? (bestRegimeMatch
+      && bestPos === bestActive && bestActive >= 2
+      && (best.oos.deflatedSharpeProbability ?? 0) >= 0.5
+      && rollingValidation.passed
+      && !(regimeDiagnostics.transition.detected && regimeDiagnostics.transition.confidence >= 0.65)
+      ? "validated" : "oos_ok") : "low",
     regime,
-    regimeMatch: best ? preferred.includes(best.family) : false,
+    regimeMatch: bestRegimeMatch,
     preferredFamilies: preferred,
     tokenProfile: profile.ok ? profile : null,
     oosScore: best ? Number(best.oos.expectancyR.toFixed(3)) : null,
     oosFolds: best ? `${bestPos}/${bestActive} 段样本外为正` : null,
     liveWeight: best ? Number(liveMult(best).toFixed(3)) : null,
+    overfitDiagnostics: best ? { deflatedSharpeProbability: best.oos.deflatedSharpeProbability, parameterTrials, purgeBars: split.purgeBars, embargoBars: split.embargoBars } : null,
+    regimeDiagnostics,
+    rollingValidation,
     candidates: candidates.map((c) => ({ strategyId: c.strategyId, label: c.label, family: c.family, direction: c.direction || "long", params: c.params, oosExpectancyR: c.oos?.expectancyR ?? null, oosTrades: c.oos?.trades ?? 0, positiveFolds: positiveFolds(c) }))
   };
 }
@@ -149,6 +219,9 @@ function profileFrom(symbol, timeframe, opt) {
     oosScore: opt.oosScore,
     oosFolds: opt.oosFolds,
     liveWeight: opt.liveWeight ?? null,
+    overfitDiagnostics: opt.overfitDiagnostics || null,
+    regimeDiagnostics: opt.regimeDiagnostics || null,
+    rollingValidation: opt.rollingValidation || null,
     tokenProfile: opt.tokenProfile || null,
     regime: opt.regime,
     regimeMatch: opt.regimeMatch,
