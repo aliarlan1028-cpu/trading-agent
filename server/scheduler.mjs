@@ -58,13 +58,39 @@ export function ensureSystemTask(db, task, saveDb) {
 export function overdueLongTasks(db, now = Date.now()) {
   const MIN_INTERVAL_MS = 30 * 60_000;
   return (db.tasks || []).filter((task) => {
-    if (!task.enabled || String(task.type || "").toLowerCase() !== "every") return false;
+    if (!task.enabled) return false;
+    if (String(task.type || "").toLowerCase() === "cron") return cronStartupCatchupDue(task, now);
+    if (String(task.type || "").toLowerCase() !== "every") return false;
     const intervalMs = parseEveryMs(task.schedule);
     if (!intervalMs) return false;
     if (intervalMs < MIN_INTERVAL_MS && task.startupCatchup !== true) return false;
     if (!task.lastRunAt) return true; // 从未跑过的长间隔任务也补
     return now - new Date(task.lastRunAt).getTime() > intervalMs;
   });
+}
+
+function zonedParts(value, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timeZone || "UTC", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date(value));
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+// 仅支持系统使用的“每天 H:M”五段 cron；复杂 cron 仍交给 node-cron，不做猜测式补跑。
+function cronStartupCatchupDue(task, now) {
+  if (task.startupCatchup !== true) return false;
+  const match = String(task.schedule || "").trim().match(/^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+\*$/);
+  if (!match) return false;
+  const current = zonedParts(now, task.timezone);
+  const scheduledMinutes = Number(match[2]) * 60 + Number(match[1]);
+  const currentMinutes = Number(current.hour) * 60 + Number(current.minute);
+  if (currentMinutes < scheduledMinutes) return false;
+  if (!task.lastRunAt) return true;
+  const previous = zonedParts(task.lastRunAt, task.timezone);
+  const currentDay = `${current.year}-${current.month}-${current.day}`;
+  const previousDay = `${previous.year}-${previous.month}-${previous.day}`;
+  return previousDay !== currentDay;
 }
 
 export function startScheduler(db, saveDb) {
@@ -247,7 +273,8 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
       const skipPersist = result && typeof result === "object" && result.skipPersist === true && trigger !== "manual";
       task.failureCount = 0;
       task.lastError = null;
-      const run = recordRun(db, task, resultStatus === "partial" ? "partial" : "ok", output, trigger, saveDb, { skipPersist });
+      const completionStatus = resultStatus === "partial" ? "partial" : resultStatus === "skipped" ? "skipped" : "ok";
+      const run = recordRun(db, task, completionStatus, output, trigger, saveDb, { skipPersist });
       return run;
     }
   } catch (error) {

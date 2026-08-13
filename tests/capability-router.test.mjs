@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { auditRequiredCapabilityCoverage, buildCapabilityPlan, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "../server/capabilityRouter.mjs";
+import { auditRequiredCapabilityCoverage, buildCapabilityPlan, buildVisibleCapabilityCoverage, capabilityCoverageText, marketScanDeepDiveCalls, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "../server/capabilityRouter.mjs";
 import { advanceDecisionContext, createDecisionContext } from "../server/decisionCoordinator.mjs";
 
 test("capability router emits distinct day and swing evidence contracts without deciding direction", () => {
@@ -29,6 +29,41 @@ test("scheduled patrol deterministically preflights relevant built-in capabiliti
   assert.ok(calls.some((item) => item.name === "relative_strength"));
   assert.ok(calls.some((item) => item.name === "scan_market_opportunities"));
   assert.equal(calls.some((item) => item.name === "strategy_drift"), false, "无关能力不应为了凑调用量而执行");
+});
+
+test("every autonomous trigger keeps whitelist coverage and full-market scan", () => {
+  const available = ["get_global_market", "scan_market_opportunities", "analyze_market_structure", "get_microstructure", "support_resistance_levels", "funding_extremes_scanner", "relative_strength"];
+  for (const trigger of ["watch_trigger", "news", "fast_move", "early_opportunity"]) {
+    const plan = buildCapabilityPlan({ trigger, symbols: ["SUI/USDT", "BTC/USDT", "ADA/USDT"], focusSymbols: ["SUI/USDT"], marketAnalysis: true });
+    const calls = requiredCapabilityCalls(plan, available);
+    assert.equal(calls.filter((item) => item.name === "analyze_market_structure").length, 3, `${trigger} 不得省略其余白名单`);
+    assert.equal(calls.filter((item) => item.name === "get_microstructure").length, 3, `${trigger} 不得省略其余白名单微观结构`);
+    assert.ok(calls.some((item) => item.name === "scan_market_opportunities"), `${trigger} 必须执行全市场漏斗`);
+  }
+});
+
+test("market scan top off-whitelist candidates are deterministically deep-reviewed and visible", () => {
+  const scan = { universe: 431, candidates: [
+    { symbol: "BTC/USDT", side: "long", score: 80, inWhitelist: true },
+    { symbol: "DOGE/USDT", side: "short", score: 77, tag: "动量偏弱" },
+    { symbol: "ETH/USDT", side: "long", score: 72 }
+  ] };
+  const deep = marketScanDeepDiveCalls(scan, ["BTC/USDT"], ["analyze_market_structure", "get_microstructure"], 2);
+  assert.deepEqual(deep.candidates.map((item) => item.symbol), ["DOGE/USDT", "ETH/USDT"]);
+  assert.equal(deep.calls.length, 4);
+  const required = [
+    { name: "scan_market_opportunities", args: {}, reason: "scan" },
+    ...deep.calls
+  ];
+  const trace = [
+    { name: "scan_market_opportunities", args: {}, summary: "全市场扫 431 个" },
+    ...deep.calls.map((call) => ({ name: call.name, args: call.args, summary: "已完成" }))
+  ];
+  const coverage = buildVisibleCapabilityCoverage({ requiredCalls: required, toolTrace: trace, whitelist: ["BTC/USDT"], watchSymbols: [], scanResult: scan, deepCandidates: deep.candidates });
+  assert.equal(coverage.marketScan.universe, 431);
+  assert.equal(coverage.externalCandidates.every((item) => item.analyzed), true);
+  assert.match(capabilityCoverageText(coverage), /全市场 431 个/);
+  assert.match(capabilityCoverageText(coverage), /DOGE\/USDT 偏空/);
 });
 
 test("capability preflight audit exposes omissions instead of silently accepting them", () => {

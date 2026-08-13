@@ -7,6 +7,27 @@ import { evaluateProtections } from "./tradeProtections.mjs";
 import { DEFAULT_WEEKLY_LOSS_PCT } from "./mandatePolicy.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
 
+function firstTakeProfit(plan = {}) {
+  const source = plan.takeProfits ?? plan.take_profits ?? plan.takeProfit ?? plan.take_profit;
+  const value = Array.isArray(source) ? source[0] : source;
+  const target = Number(value);
+  return Number.isFinite(target) ? target : null;
+}
+
+export function minimumStopAtrForPlan(plan = {}) {
+  const base = Math.max(0.5, Number(process.env.MIN_PLAN_STOP_ATR || 1.25));
+  const snapshot = plan.decisionContext?.deterministicSetupSnapshot || {};
+  const regime = snapshot.marketRegime || {};
+  const label = String(regime.label || "").toLowerCase();
+  const transition = String(regime.transition?.type || "").toLowerCase();
+  const volatile = ["high_volatility", "low_liquidity"].includes(label)
+    || transition === "volatility_expansion"
+    || Number(regime.volatilityRatio || 0) >= 1.6;
+  // 高波动扩张和低流动性下，1.25 ATR 仍常落在正常影线/滑点区。扩大到 1.5 ATR，
+  // 风险金额不变，由仓位引擎同比缩小仓位，而不是放大单笔最大亏损。
+  return volatile ? Math.max(base, Number(process.env.VOLATILE_MIN_PLAN_STOP_ATR || 1.5)) : base;
+}
+
 export function evaluateTradePlan(db, plan) {
   const mandate = db.mandates.find((item) => item.id === plan.mandateId);
   const checks = [];
@@ -107,7 +128,7 @@ export function evaluateTradePlan(db, plan) {
       const entryMid = (entryLow + entryHigh) / 2;
       const stopDistance = short ? stop - entryMid : entryMid - stop;
       const stopAtr = stopDistance / atr14;
-      const minimumStopAtr = Math.max(0.5, Number(process.env.MIN_PLAN_STOP_ATR || 1.25));
+      const minimumStopAtr = minimumStopAtrForPlan(plan);
       const enough = stopDistance > 0 && stopAtr >= minimumStopAtr;
       add(
         "止损波动缓冲",
@@ -116,6 +137,13 @@ export function evaluateTradePlan(db, plan) {
           ? `计划入场中值至止损 ${stopAtr.toFixed(2)}×ATR14，达到 ≥${minimumStopAtr.toFixed(2)}×`
           : `仅 ${Math.max(0, stopAtr).toFixed(2)}×ATR14，低于 ${minimumStopAtr.toFixed(2)}×；止损应移到结构失效位外并等比例缩小仓位`,
         enough ? "ok" : (db.system.liveTradingEnabled ? "block" : "warn")
+      );
+    } else if (structure && db.system.liveTradingEnabled) {
+      add(
+        "止损波动证据",
+        false,
+        "新 Agent 计划缺少有效 ATR14/入场区间/止损快照，无法证明止损位在正常市场噪声之外",
+        "block"
       );
     }
   }
@@ -128,7 +156,7 @@ export function evaluateTradePlan(db, plan) {
       ? (Number(range[0]) + Number(range[1] ?? range[0])) / 2
       : Number(plan.entry?.price ?? plan.entryPrice ?? plan.price);
     const stop = Number(plan.stopLoss ?? plan.stop_loss);
-    const target = Number((plan.takeProfits || plan.take_profits || [])[0] ?? plan.takeProfit ?? plan.take_profit);
+    const target = firstTakeProfit(plan);
     const isShort = planDirection(plan) === "short";
     const riskDistance = Math.abs(entry - stop);
     const rewardDistance = isShort ? entry - target : target - entry;

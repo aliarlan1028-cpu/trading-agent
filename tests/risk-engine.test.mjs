@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateTradePlan } from "../server/riskEngine.mjs";
+import { evaluateTradePlan, minimumStopAtrForPlan } from "../server/riskEngine.mjs";
 
 function fixture({ live = false } = {}) {
   return {
@@ -228,4 +228,47 @@ test("实盘止损必须从计划入场中值保留至少 1.25 ATR 缓冲", () =
 
   const buffered = evaluateTradePlan(db, { ...withSnapshot, stopLoss: 99.75 });
   assert.equal(buffered.checks.find((item) => item.name === "止损波动缓冲")?.passed, true);
+});
+
+test("高波动扩张时止损缓冲自适应提高到至少 1.5 ATR", () => {
+  const volatile = {
+    decisionContext: { deterministicSetupSnapshot: { marketRegime: { label: "high_volatility", volatilityRatio: 1.9 } } }
+  };
+  assert.equal(minimumStopAtrForPlan(volatile), 1.5);
+  assert.equal(minimumStopAtrForPlan({ decisionContext: { deterministicSetupSnapshot: { marketRegime: { label: "range" } } } }), 1.25);
+});
+
+test("take_profit 数组按第一目标计算最低盈亏比，不再误判为未设置止盈", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  const weak = evaluateTradePlan(db, {
+    ...plan,
+    direction: "long",
+    entry_range: [100, 100],
+    stopLoss: 98,
+    take_profit: [102.5]
+  });
+  const check = weak.checks.find((item) => item.name === "最低盈亏比");
+  assert.equal(check?.passed, false);
+  assert.match(check?.detail || "", /1\.25R/);
+  assert.doesNotMatch(check?.detail || "", /未设置固定止盈/);
+  assert.ok(weak.blockers.some((item) => item.name === "最低盈亏比"));
+});
+
+test("实盘 Agent 计划缺少 ATR 快照时失败关闭", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  const result = evaluateTradePlan(db, {
+    ...plan,
+    take_profit: [120000],
+    decisionContext: {
+      setupType: "trend_pullback",
+      deterministicStructureRef: { bias: "LONG", quality: "A" }
+    }
+  });
+  assert.ok(result.blockers.some((item) => item.name === "止损波动证据"));
 });

@@ -4630,6 +4630,12 @@ button.danger:disabled,
   padding: 0 4px;
 }
 
+.toolTrace button > span {
+  min-width: 0;
+  text-align: left;
+  line-height: 1.45;
+}
+
 .toolTrace > div {
   display: flex;
   align-items: baseline;

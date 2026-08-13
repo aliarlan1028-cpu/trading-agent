@@ -2,7 +2,7 @@
 export function registerNotificationRoutes(app, ctx) {
   const {
     db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
-    telegramWatchStatus, queueWatchTelegramEvent, dispatchTelegramWatchOutbox
+    telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox
   } = ctx;
 
   app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
@@ -21,7 +21,7 @@ export function registerNotificationRoutes(app, ctx) {
 
   app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
   app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
-  app.get("/api/notifications/telegram-watch-status", (_req, res) => res.json(telegramWatchStatus()));
+  app.get("/api/notifications/telegram-watch-status", (_req, res) => res.json(telegramWatchDeliveryHealth(db)));
 
   app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
     const result = await notifyLark(db, {

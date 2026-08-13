@@ -7,7 +7,7 @@ import test from "node:test";
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "telegram-watch-test-"));
 process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = "true";
 process.env.TELEGRAM_WATCH_LANGUAGE = "en";
-const { buildWatchTelegramMessage, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchStatus } = await import("../server/telegramWatchNotifier.mjs");
+const { buildWatchTelegramMessage, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchDeliveryHealth, telegramWatchStatus } = await import("../server/telegramWatchNotifier.mjs");
 
 test("观察哨登记和例行更新不打扰 Telegram", () => {
   const watch = { id: "w1", version: 1, symbol: "BTC/USDT", kind: "price_below", level: 60000, note: "结构失效", priority: "primary", purpose: "invalidation", status: "active", analysisId: "run_1", analysisAt: "2026-08-12T00:00:00.000Z", expiresAt: new Date().toISOString() };
@@ -37,6 +37,33 @@ test("每日观察哨摘要默认关闭，不产生消息", () => {
   delete process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED;
   assert.equal(queueDailyWatchDigest(db).status, "disabled");
   assert.equal(db.telegramWatchOutbox.length, 0);
+});
+
+test("每日摘要即使没有活跃观察哨也发送明确的零状态，且按日期幂等", () => {
+  process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED = "true";
+  const db = { telegramWatchOutbox: [], watchTriggers: [] };
+  const now = new Date("2026-08-14T00:05:00.000Z");
+  const queued = queueDailyWatchDigest(db, { now });
+  assert.equal(queued.status, "queued");
+  assert.match(queued.item.message, /0 MARKETS/);
+  assert.match(queued.item.message, /No active watch conditions/i);
+  assert.equal(queueDailyWatchDigest(db, { now }).status, "duplicate");
+  delete process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED;
+});
+
+test("Telegram 健康状态区分配置可用与真实回执", () => {
+  process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  process.env.TELEGRAM_CHAT_ID = "123";
+  const db = { telegramWatchOutbox: [{
+    id: "digest", idempotencyKey: "watch_digest:2026-08-14", eventType: "daily_digest",
+    status: "sent", sentAt: "2026-08-14T00:05:02.000Z", attempts: 1
+  }] };
+  const health = telegramWatchDeliveryHealth(db, Date.parse("2026-08-14T01:00:00.000Z"));
+  assert.equal(health.operational, true);
+  assert.equal(health.todayDigest.status, "sent");
+  assert.equal(health.lastDigestSentAt, "2026-08-14T00:05:02.000Z");
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_CHAT_ID;
 });
 
 test("观察哨推送语言独立于界面语言且可切回中文", () => {

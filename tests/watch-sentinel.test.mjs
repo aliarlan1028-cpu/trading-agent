@@ -15,6 +15,7 @@ const {
   crossed,
   abortWatchAnalysis,
   finalizeWatchAnalysis,
+  publishWatchSweep,
   registerWatch,
   buildWatchBoard,
   requestPendingAgentCycle,
@@ -180,6 +181,28 @@ test("行情缺失不漏触发:跳过的 tick 后仍能用旧基线检出穿越"
   // 恢复后价格已在条件区:相对旧基线仍是穿越 → 触发(迟到但不漏)
   r = sweepWatches(db, new Map([["BTC/USDT", 64700]]));
   assert.equal(r.triggered.length, 1);
+});
+
+test("实时行情命中与分钟哨兵共用通知链，必定写入站内通知和 Telegram outbox", () => {
+  const previous = process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
+  process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = "true";
+  const db = dbFixture();
+  db.telegramWatchOutbox = [];
+  registerWatch(db, {
+    symbol: "BTC/USDT", kind: "price_below", level: 64800,
+    direction: "short", thesis: "跌破关键支撑后评估做空", triggerMeaning: "支撑已失守，需要复核卖盘后决定是否做空"
+  }, 65079);
+  db.telegramWatchOutbox = [];
+  const sweep = sweepWatches(db, new Map([["BTC/USDT", 64750]]));
+  const published = publishWatchSweep(db, sweep, { autoAnalyze: true, actor: "MarketStream", realtime: true });
+  assert.equal(published.triggered, 1);
+  assert.equal(db.notifications[0].eventType, "watch_trigger");
+  assert.match(db.notifications[0].body, /原判断/);
+  assert.equal(db.telegramWatchOutbox.length, 1);
+  assert.equal(db.telegramWatchOutbox[0].eventType, "triggered");
+  assert.match(db.telegramWatchOutbox[0].message, /Short scenario/);
+  if (previous === undefined) delete process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
+  else process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = previous;
 });
 
 test("过期/授权变更清扫 + 暂停恢复重定基:越过条件的哨作废而非误触发", () => {

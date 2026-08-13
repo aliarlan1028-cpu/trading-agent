@@ -330,6 +330,48 @@ export function sweepWatches(db, prices = new Map(), now = Date.now()) {
   return { triggered, expired, invalidated, changed };
 }
 
+// 实时 WebSocket 与每分钟哨兵必须走同一条通知链。过去实时行情会先把观察哨
+// 改成 triggered，却只写站内通知、没有写 Telegram outbox；分钟哨兵随后看见
+// 它已经不再 active，因而永久漏推。把所有 sweep 后副作用集中到这里，避免两条
+// 行情入口今后再次出现行为漂移。
+export function publishWatchSweep(db, sweep = {}, options = {}) {
+  const autoAnalyze = options.autoAnalyze === true;
+  const actor = options.actor || "WatchSentinel";
+  const realtime = options.realtime === true;
+  const telegram = [];
+  for (const watch of sweep.triggered || []) {
+    if (realtime) watch.realtimeNotifiedAt = nowIso();
+    appendAudit(db, `观察哨${realtime ? "实时" : ""}触发：${describeWatch(watch)}（触发价 ${watch.triggerPrice}）`, watch.id, actor, "warning");
+    createNotification(db, {
+      eventType: "watch_trigger",
+      severity: "warning",
+      title: `${watch.symbol} · ${watchDirectionLabel(watch)}观察条件命中`,
+      body: `原判断：${watchThesis(watch)} 条件：${describeWatch(watch)}，触发价 ${watch.triggerPrice}。这代表：${watchTriggerMeaning(watch)} ${autoAnalyze ? "已进入 AI 复核队列。" : "自动复核当前关闭，请人工重新分析后再决策。"}`
+    });
+    telegram.push(queueWatchTelegramEvent(db, watch, "triggered", { autoAnalyze, triggerPrice: watch.triggerPrice }));
+  }
+  for (const watch of sweep.expired || []) {
+    appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(watch)}`, "ok");
+    telegram.push(queueWatchTelegramEvent(db, watch, "expired"));
+  }
+  for (const watch of sweep.invalidated || []) {
+    appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(watch)}（${watch.closeReason}）`, "warning");
+    createNotification(db, {
+      eventType: "watch_invalidated",
+      severity: "warning",
+      title: `${watch.symbol} · 原${watchDirectionLabel(watch)}观察判断已失效`,
+      body: `原判断：${watchThesis(watch)} 作废条件：${describeWatch(watch)}。原因：${watch.closeReason || "原场景已经失效"}。系统已停止盯这条条件，等待新的分析。`
+    });
+    telegram.push(queueWatchTelegramEvent(db, watch, watch.status === "cancelled" ? "cancelled" : "invalidated", { reason: watch.closeReason }));
+  }
+  return {
+    triggered: (sweep.triggered || []).length,
+    expired: (sweep.expired || []).length,
+    invalidated: (sweep.invalidated || []).length,
+    telegram
+  };
+}
+
 // 无条件快速异动探测:不依赖 AI 事先挂哨——每分钟对授权币维护滚动价格缓冲,
 // 若某币在回看窗内相对窗内高/低点急速异动超阈值,就生成一条待处理异动,唤起 AI 立即评估。
 // (用户实锤:ADA 一小时跌 4%,系统靠 15 分钟定时巡检+空哨,没能及时反应。)
@@ -433,22 +475,7 @@ export async function runWatchSentinel(db, saveDb) {
   }
 
   const result = sweepWatches(db, prices);
-  for (const w of result.triggered) {
-    appendAudit(db, `观察哨触发：${describeWatch(w)}（触发价 ${w.triggerPrice}）`, w.id, "WatchSentinel");
-    createNotification(db, {
-      eventType: "watch_trigger", severity: "warning", title: `${w.symbol} · ${watchDirectionLabel(w)}观察条件命中`,
-      body: `原判断：${watchThesis(w)} 条件：${describeWatch(w)}，触发价 ${w.triggerPrice}。这代表：${watchTriggerMeaning(w)} ${autoAnalyze ? "已请求 AI 交易员立即评估。" : "请打开 App 让 AI 评估或自行决策（自动巡检当前关闭）。"}`
-    });
-    queueWatchTelegramEvent(db, w, "triggered", { autoAnalyze, triggerPrice: w.triggerPrice });
-  }
-  for (const w of result.expired) {
-    appendTrace(db, "watch_sentinel", `观察哨过期：${describeWatch(w)}`, "ok");
-    queueWatchTelegramEvent(db, w, "expired");
-  }
-  for (const w of result.invalidated) {
-    appendTrace(db, "watch_sentinel", `观察哨作废：${describeWatch(w)}（${w.closeReason}）`, "warning");
-    queueWatchTelegramEvent(db, w, w.status === "cancelled" ? "cancelled" : "invalidated");
-  }
+  publishWatchSweep(db, result, { autoAnalyze, actor: "WatchSentinel" });
 
   // 观察哨触发 或 快速异动 → 立即请求一轮完整巡检（同一任务、同一并发锁、同一风控链）。
   // 锁被占 / 限频超额时不丢：哨保持 pending / 异动留在 pendingFastMoves，下一 tick 或定时巡检兜底。

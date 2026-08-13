@@ -25,6 +25,40 @@ export function telegramWatchStatus() {
   };
 }
 
+function shanghaiDate(value = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date(value));
+}
+
+// 配置状态只能回答“理论上能不能发”；这里同时给出真实 outbox 回执，避免管理页
+// 把 enabled/configured 当成已经投递成功。
+export function telegramWatchDeliveryHealth(db, now = Date.now()) {
+  const config = telegramWatchStatus();
+  const outbox = db.telegramWatchOutbox || [];
+  const todayKey = `watch_digest:${shanghaiDate(now)}`;
+  const todayDigest = outbox.find((item) => item.idempotencyKey === todayKey) || null;
+  const sent = outbox.filter((item) => item.status === "sent");
+  const lastSent = sent.sort((a, b) => String(b.sentAt || b.updatedAt).localeCompare(String(a.sentAt || a.updatedAt)))[0] || null;
+  const lastDigest = sent.filter((item) => item.eventType === "daily_digest")[0] || null;
+  const failed = outbox.filter((item) => item.status === "failed");
+  return {
+    ...config,
+    operational: config.enabled && config.configured,
+    pending: outbox.filter((item) => ["pending", "retry"].includes(item.status)).length,
+    failed: failed.length,
+    lastSentAt: lastSent?.sentAt || null,
+    lastDigestSentAt: lastDigest?.sentAt || null,
+    lastError: failed[0]?.lastError || null,
+    todayDigest: todayDigest ? {
+      status: todayDigest.status,
+      sentAt: todayDigest.sentAt || null,
+      attempts: Number(todayDigest.attempts || 0),
+      lastError: todayDigest.lastError || null
+    } : null
+  };
+}
+
 function localTime(value, language = watchLanguage()) {
   if (!value) return language === "en" ? "Unknown" : "未知";
   return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "zh-CN", {
@@ -298,13 +332,12 @@ export function queueWatchTelegramEvent(db, watch, eventType, context = {}) {
   return { status: "queued", item };
 }
 
-export function queueDailyWatchDigest(db) {
+export function queueDailyWatchDigest(db, options = {}) {
   const status = telegramWatchStatus();
   if (!status.enabled || !status.dailyDigestEnabled) return { status: "disabled" };
   const boards = buildWatchBoard(db);
-  if (!boards.length) return { status: "empty" };
   db.telegramWatchOutbox ||= [];
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const date = shanghaiDate(options.now || new Date());
   const key = `watch_digest:${date}`;
   const existing = db.telegramWatchOutbox.find((item) => item.idempotencyKey === key);
   if (existing) return { status: "duplicate", item: existing };
@@ -314,18 +347,26 @@ export function queueDailyWatchDigest(db) {
     `🔭 <b>DAILY WATCHTOWER · ${boards.length} MARKETS</b>`,
     `${watchCount} active conditions · ${date}`,
     "",
-    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · Supporting ${board.secondary.length} · Updated ${localTime(board.analysisAt, language)}`),
+    ...(boards.length
+      ? boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · Supporting ${board.secondary.length} · Updated ${localTime(board.analysisAt, language)}`)
+      : ["No active watch conditions are registered today."]),
     "",
     "🧭 <b>Action</b>",
-    "Focus on each market's primary watch. Open KORDYN for the full reasoning and supporting scenarios."
+    boards.length
+      ? "Focus on each market's primary watch. Open KORDYN for the full reasoning and supporting scenarios."
+      : "No watch action is required. The next autonomous analysis may register a new condition if a decision level becomes useful."
   ].join("\n") : [
     `🔭 <b>每日观察哨 · ${boards.length} 个币种</b>`,
     `${watchCount} 个有效条件 · ${date}`,
     "",
-    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · 辅助 ${board.secondary.length} · 更新 ${localTime(board.analysisAt, language)}`),
+    ...(boards.length
+      ? boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · 辅助 ${board.secondary.length} · 更新 ${localTime(board.analysisAt, language)}`)
+      : ["今天没有已登记且仍有效的观察条件。"]),
     "",
     "🧭 <b>下一步</b>",
-    "优先关注每个币种的主观察哨；完整判断与辅助情景请在 KORDYN 中查看。"
+    boards.length
+      ? "优先关注每个币种的主观察哨；完整判断与辅助情景请在 KORDYN 中查看。"
+      : "当前无需处理观察哨；后续自主分析遇到有参考价值的决策价位时会重新登记。"
   ].join("\n");
   const item = {
     id: `tgwatch_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
@@ -370,5 +411,14 @@ export async function dispatchTelegramWatchOutbox(db, options = {}) {
       }
     }
   }
-  return { status: "ok", checked: pending.length, sent, failed: pending.filter((item) => item.status === "failed").length, skipPersist: pending.length === 0 };
+  const failed = pending.filter((item) => item.status === "failed").length;
+  const retrying = pending.filter((item) => item.status === "retry").length;
+  return {
+    status: failed ? "failed" : retrying ? "partial" : "ok",
+    checked: pending.length,
+    sent,
+    failed,
+    retrying,
+    skipPersist: pending.length === 0
+  };
 }

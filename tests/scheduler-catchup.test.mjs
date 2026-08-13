@@ -9,7 +9,7 @@ process.env.DATA_DIR = dataDir;
 
 const { overdueLongTasks } = await import("../server/scheduler.mjs");
 
-test("启动补跑只挑超期的长间隔任务:短间隔/未超期/禁用/cron 均不补", () => {
+test("启动补跑只挑超期长任务，并补跑当天错过的显式 daily cron", () => {
   const now = Date.now();
   const iso = (msAgo) => new Date(now - msAgo).toISOString();
   const db = {
@@ -28,10 +28,20 @@ test("启动补跑只挑超期的长间隔任务:短间隔/未超期/禁用/cron
       { id: "intel", enabled: true, type: "Every", schedule: "Every 20m", startupCatchup: true, lastRunAt: iso(3_600_000) },
       // 禁用任务不补
       { id: "off", enabled: false, type: "Every", schedule: "Every 6h", lastRunAt: iso(10 * 3_600_000) },
-      // cron 类型不归此机制管
+      // 未显式 startupCatchup 的 cron 不补
       { id: "cron", enabled: true, type: "Cron", schedule: "0 0 * * *", lastRunAt: iso(10 * 3_600_000) }
     ]
   };
   const ids = overdueLongTasks(db, now).map((t) => t.id);
   assert.deepEqual(ids.sort(), ["intel", "never", "research"]);
+});
+
+test("daily cron 在计划时间后重启会补跑，今天已跑或尚未到点则不补", () => {
+  const now = Date.parse("2026-08-14T02:20:00.000Z"); // Asia/Shanghai 10:20
+  const db = { tasks: [
+    { id: "digest", enabled: true, type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai", startupCatchup: true, lastRunAt: "2026-08-13T00:05:00.000Z" },
+    { id: "already", enabled: true, type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai", startupCatchup: true, lastRunAt: "2026-08-14T00:06:00.000Z" },
+    { id: "later", enabled: true, type: "Cron", schedule: "30 11 * * *", timezone: "Asia/Shanghai", startupCatchup: true, lastRunAt: "2026-08-13T03:30:00.000Z" }
+  ] };
+  assert.deepEqual(overdueLongTasks(db, now).map((task) => task.id), ["digest"]);
 });

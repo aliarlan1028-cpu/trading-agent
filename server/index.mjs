@@ -12,10 +12,9 @@ import { computeBehaviorProfile } from "./behaviorProfile.mjs";
 import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
 import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
-import { buildWatchBoard, cancelWatch, describeWatch, presentWatch, requestPendingAgentCycle, runWatchSentinel, sweepWatches, watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchSentinel.mjs";
+import { buildWatchBoard, cancelWatch, presentWatch, publishWatchSweep, requestPendingAgentCycle, runWatchSentinel, sentinelGate, sweepWatches } from "./watchSentinel.mjs";
 import { cancelArmedSetup, processArmedSetupTick, reconcileArmedSetupDefinitions, reconcileArmedSetupExecutions, recoverTriggeredSetups } from "./armedSetup.mjs";
 import { abnormalVolatilityBoard, opportunityEngineStatus, recordOpportunityTick, runBroadOpportunityScan } from "./earlyOpportunityEngine.mjs";
-import { createNotification } from "./notificationStore.mjs";
 import { closeExecution, executeApprovedPlan, pollExecutionOrders } from "./executionEngine.mjs";
 import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
@@ -44,7 +43,7 @@ import { buildDecisionCalibrationReport } from "./decisionCalibration.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
-import { dispatchTelegramWatchOutbox, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
+import { dispatchTelegramWatchOutbox, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchDeliveryHealth, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission, testEventSource } from "./eventSources.mjs";
 import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData } from "./marketIntelligence.mjs";
 import { refreshMeNewsFlash } from "./newsFlashFeed.mjs";
@@ -575,12 +574,25 @@ registerTaskHandler("event_preparation", async (database) => {
 });
 registerTaskHandler("daily_market_brief", (database) => buildDailyBrief(database));
 registerTaskHandler("onchain_refresh", (database) => refreshOnchainSignals(database));
-registerTaskHandler("telegram_watch_dispatch", (database) => dispatchTelegramWatchOutbox(database));
+registerTaskHandler("telegram_watch_dispatch", async (database) => {
+  const result = await dispatchTelegramWatchOutbox(database);
+  if (result.status === "disabled") return { ...result, status: "skipped" };
+  if (result.status === "unconfigured") {
+    return { ...result, status: "failed", error: "Telegram 观察哨已启用，但 Bot Token 或 Chat ID 未配置" };
+  }
+  return result;
+});
 registerTaskHandler("telegram_closed_trade_posters", (database) => processClosedTradeProfitPosters(database));
 registerTaskHandler("telegram_watch_digest", async (database) => {
   const queued = queueDailyWatchDigest(database);
   const dispatched = await dispatchTelegramWatchOutbox(database);
-  return { queued, dispatched, skipPersist: queued.status === "disabled" && dispatched.skipPersist === true };
+  if (["disabled"].includes(queued.status)) return { status: "skipped", queued, dispatched, skipPersist: dispatched.skipPersist === true };
+  const item = queued.item;
+  if (item?.status === "failed" || ["failed", "unconfigured"].includes(dispatched.status)) {
+    return { status: "failed", error: item?.lastError || (dispatched.status === "unconfigured" ? "Telegram 配置不可用" : "Telegram 每日摘要投递失败"), queued, dispatched };
+  }
+  if (item?.status === "sent") return { status: "ok", queued, dispatched };
+  return { status: "partial", queued, dispatched, reason: "每日摘要已入队，等待 Telegram 成功回执" };
 });
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", async (database) => {
@@ -696,7 +708,7 @@ ensureSystemTask(db, { id: "task_sys_daily_market_brief", name: "Daily Market Br
 ensureSystemTask(db, { id: "task_sys_onchain_refresh", name: "链上基础资金面刷新", handler: "onchain_refresh", schedule: "Every 6h", startupCatchup: true, startupDelayMs: 45_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_watch", name: "Telegram观察哨Outbox", handler: "telegram_watch_dispatch", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_closed_trade", name: "Telegram平仓盈利海报", handler: "telegram_closed_trade_posters", schedule: "Every 1m" }, saveDb);
-ensureSystemTask(db, { id: "task_sys_telegram_watch_digest", name: "Telegram观察哨日报", handler: "telegram_watch_digest", type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_telegram_watch_digest", name: "Telegram观察哨日报", handler: "telegram_watch_digest", type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai", startupCatchup: true, startupDelayMs: 20_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 30s" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
@@ -747,12 +759,12 @@ setMarketTickHook((database, symbol, price) => {
 
   // 普通观察哨也改为实时 tick 穿越检测；它仍只唤起 AI，不具备下单权限。
   const watchSweep = sweepWatches(database, new Map([[symbol, price]]));
-  for (const watch of watchSweep.triggered) {
-    watch.realtimeNotifiedAt = nowIso();
-    appendAudit(database, `观察哨实时触发：${describeWatch(watch)}（触发价 ${watch.triggerPrice}）`, watch.id, "MarketStream", "warning");
-    createNotification(database, { eventType: "watch_trigger", severity: "warning", title: `${watch.symbol} · ${watchDirectionLabel(watch)}观察条件命中`, body: `原判断：${watchThesis(watch)} 条件：${describeWatch(watch)}，触发价 ${watch.triggerPrice}。这代表：${watchTriggerMeaning(watch)} 已进入 AI 复核队列。` });
-  }
-  if (watchSweep.triggered.length) saveDb(database, { lightweight: true });
+  publishWatchSweep(database, watchSweep, {
+    autoAnalyze: sentinelGate(database.system).autoAnalyze,
+    actor: "MarketStream",
+    realtime: true
+  });
+  if (watchSweep.changed) saveDb(database, { lightweight: true });
 
   // 发现即唤起，不再等待下一个 1 分钟哨兵周期；任务锁与每小时限频仍由同一入口保证。
   if (opportunity.queued || watchSweep.triggered.length) {
@@ -1371,7 +1383,7 @@ registerAllRoutes(app, {
   parseMandateCommand, activateMandate, id, nowIso, appendAudit, appendTrace,
   rankEvents, scheduleTask, unscheduleTask, validateTaskDefinition, runTask,
   larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
-  telegramWatchStatus, queueWatchTelegramEvent, dispatchTelegramWatchOutbox,
+  telegramWatchStatus, telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox,
   buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
   storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl,
   listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,

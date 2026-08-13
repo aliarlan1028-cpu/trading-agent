@@ -253,7 +253,7 @@ function parseRichText(text = "") {
       bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
       continue;
     }
-    const metric = line.match(/^(白名单|总结|结论|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Whitelist|Summary|Conclusion|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
+    const metric = line.match(/^(白名单|总结|结论|巡检范围|视野外候选|能力调用|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Whitelist|Summary|Conclusion|Coverage|External Candidates|Capability Calls|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
     if (metric) {
       flushParagraph();
       flushBullets();
@@ -867,13 +867,22 @@ function MandateCard({ mandate, action }) {
   );
 }
 
-function ToolTrace({ trace = [] }) {
+export function ToolTrace({ trace = [], coverage = null }) {
   const [open, setOpen] = useState(false);
-  if (!trace.length) return null;
+  if (!trace.length && !coverage) return null;
+  const summary = coverage
+    ? [
+      `${t("能力", "Capabilities")} ${coverage.covered || 0}/${coverage.required || 0}`,
+      `${t("白名单", "Whitelist")} ${coverage.whitelist?.analyzed || 0}/${coverage.whitelist?.expected || 0}`,
+      `${t("观察哨", "Watches")} ${coverage.watches?.analyzed || 0}/${coverage.watches?.expected || 0}`,
+      coverage.marketScan?.completed ? `${t("全市场", "Market")} ${coverage.marketScan.universe || 0}` : t("全市场未完成", "Market scan incomplete"),
+      coverage.externalCandidates?.length ? `${t("视野外复核", "External review")} ${coverage.externalCandidates.filter((item) => item.analyzed).length}/${coverage.externalCandidates.length}` : null
+    ].filter(Boolean).join(" · ")
+    : `${trace.length} ${t("次工具调用", "tool calls")}`;
   return (
     <div className="toolTrace">
       <button onClick={() => setOpen((current) => !current)}>
-        <Wrench size={12} /> {trace.length} {t("次工具调用", "tool calls")} <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+        <Wrench size={12} /> <span>{summary}</span> <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && trace.map((item, index) => (
         <div key={index}><b>{item.name}</b><span>{item.summary}</span><small>{item.latencyMs}ms</small></div>
@@ -1554,7 +1563,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
               {message.planId && (
                 <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} data={data} />
               )}
-              <ToolTrace trace={message.toolTrace || []} />
+              <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} />
               <div className="agMsgFootRow">
                 <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
                 {String(message.content || "").length > 80 && (

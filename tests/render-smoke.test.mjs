@@ -49,7 +49,7 @@ esbuild.buildSync({
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
       export { resolveApiBase, apiUrl } from "./src/lib.jsx";
-      export { ChatPage, DecisionBrief, cleanPresentationText } from "./src/chat.jsx";
+      export { ChatPage, DecisionBrief, ToolTrace, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
@@ -111,6 +111,24 @@ test("AI conclusion summary uses compact text rows without large bold cards", ()
   assert.match(html, /白名单/);
   assert.match(html, /总结/);
   assert.match(html, /本轮无交易计划/);
+});
+
+test("自主巡检能力覆盖以一行紧凑摘要展示，原始工具详情保持折叠", () => {
+  const html = renderToString(React.createElement(C.ToolTrace, {
+    trace: [{ name: "scan_market_opportunities", summary: "全市场扫 431 个", latencyMs: 120 }],
+    coverage: {
+      covered: 16, required: 16,
+      whitelist: { analyzed: 4, expected: 4 },
+      watches: { analyzed: 3, expected: 3 },
+      marketScan: { completed: true, universe: 431 },
+      externalCandidates: [{ symbol: "DOGE/USDT", analyzed: true }, { symbol: "ETH/USDT", analyzed: true }]
+    }
+  }));
+  assert.match(html, /能力 16\/16/);
+  assert.match(html, /白名单 4\/4/);
+  assert.match(html, /全市场 431/);
+  assert.match(html, /视野外复核 2\/2/);
+  assert.doesNotMatch(html, /全市场扫 431 个/, "详情默认应折叠，不能重新堆满首屏");
 });
 
 test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和引用装饰", () => {

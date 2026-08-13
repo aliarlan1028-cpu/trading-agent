@@ -26,10 +26,21 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 前置巡检：同步授权交易对行情 + 刷新真实核算
   const queuedOpportunitySymbols = (db.system?.pendingOpportunitySignals || []).map((row) => row.symbol).filter(Boolean);
   const queuedNewsSymbols = (db.system?.pendingNewsSignals || []).flatMap((row) => row.symbols || []).filter(Boolean);
-  const symbols = [...new Set([...queuedOpportunitySymbols, ...queuedNewsSymbols, ...(mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"])])];
+  const activeWatchSymbols = (db.watchTriggers || [])
+    .filter((watch) => ["active", "pending_analysis", "triggered"].includes(watch.status))
+    .map((watch) => watch.symbol)
+    .filter(Boolean);
+  const symbols = [...new Set([
+    // 固定工作集必须先占满路由配额；触发候选随后追加。观察哨只能登记白名单币，
+    // 因而去重后不会挤掉授权币。旧顺序在新闻/机会较多时会把白名单尾部截掉。
+    ...(mandate?.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT"]),
+    ...activeWatchSymbols,
+    ...queuedOpportunitySymbols,
+    ...queuedNewsSymbols
+  ])].slice(0, 8);
   const syncedSymbols = [];
   const syncErrors = []; // 失败原因必须留痕:空 catch 会让"没有机会"和"系统看不到数据"混为一谈(外审 P1)
-  await Promise.all(symbols.slice(0, 3).map(async (symbol) => {
+  await Promise.all(symbols.map(async (symbol) => {
     try {
       await syncPublicMarket(db, "OKX", symbol);
       syncedSymbols.push(symbol);
@@ -141,23 +152,26 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
           "1. 先核验信息：读取情报证据与发布时间；聚合快讯不等于一手来源，必要时用搜索/官方来源交叉验证，无法核验就明确标为未确认",
           "2. 再检查市场是否已经反应：同步关联币种行情、结构、成交量和微观结构；新闻本身绝不构成开仓理由，禁止仅凭标题直接提出交易",
           "3. 对高影响日程只做多/空/中性场景树；公布后必须核验实际值及第一反应，不得把日程当结果、不得猜测数据",
-          "4. 只有新闻与可验证行情证据共同满足原有强制证据包和全部硬风控时，才可走原有计划流程；否则登记观察哨或继续观察"
+          "4. 只有新闻与可验证行情证据共同满足原有强制证据包和全部硬风控时，才可走原有计划流程；否则登记观察哨或继续观察",
+          "5. 固定覆盖白名单、有效观察哨和全市场漏斗，并复核视野外 Top 候选；不得因本轮由新闻触发而省略"
         ]
         : fastMoves.length
         ? [
           "1. 立即复核异动币种：sync_market + get_microstructure 看这波急速涨跌是否伴随放量、订单簿失衡与结构破位（识别无量假突破/急跌诱空）；并调 explain_market_move 查这波【为什么】涨/跌（消息面催化/连锁清算/情绪），把原因和技术面一起看",
           "2. 顺势评估机会：急跌可评估做空或规避、急涨可评估做多或止盈；按授权边界与盈亏比决定是否 propose_trade_plan，不达标则说明原因",
-          "3. 若判断后续还有关键触发位（如跌破某支撑加速），逐条 register_watch 登记让哨兵继续盯"
+          "3. 若判断后续还有关键触发位（如跌破某支撑加速），逐条 register_watch 登记让哨兵继续盯",
+          "4. 同时完成白名单、有效观察哨和全市场漏斗固定覆盖，复核视野外 Top 候选"
         ]
         : triggeredWatches.length
         ? [
           "1. 优先复核触发币种：用 sync_market / get_microstructure 确认触发是否伴随量能与结构（无量假突破/假跌破要识别出来）",
           "2. 确认有效则按授权边界评估是否提出交易计划；无效或不确定则说明原因，需要时重新登记观察哨",
-          "3. 顺带检查其余授权交易对与大盘环境是否有变化"
+          "3. 顺带检查其余授权交易对与大盘环境是否有变化",
+          "4. 固定执行全市场机会漏斗，并对视野外 Top 候选做结构与微观二次复核"
         ]
         : opportunitySignals.length
         ? [
-          "1. 这是启动早期信号，不是已完成的交易结论：只优先分析上述候选，不要先把时间花在全市场重复扫描",
+          "1. 这是启动早期信号，不是已完成的交易结论：优先分析上述候选；系统固定全市场漏斗仍必须完成一次，禁止跳过",
           "2. 并行复核候选微观结构与角色感知多周期结构：日内看1H/15m/5m，波段看1D/4H/1H；消息面使用已有新鲜缓存，只有明确事件策略才允许等待联网归因",
           "3. 当前条件已适合入场则 propose_trade_plan immediate；结构明确但价格尚未到位则 propose_trade_plan armed，把完整入场/止损/止盈与触发条件提前武装；结构不够则 register_watch",
           "4. 不得因为它是早期信号就跳过强制证据包或任何硬风控"

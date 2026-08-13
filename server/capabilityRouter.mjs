@@ -17,10 +17,10 @@ const ROLE_PACKS = Object.freeze({
 
 const TRIGGER_PACKS = Object.freeze({
   scheduled_patrol: ["global_market", "market_scan", "events"],
-  early_opportunity: ["short_window_momentum", "microstructure", "deterministic_structure"],
-  fast_move: ["short_window_momentum", "microstructure", "news_attribution", "deterministic_structure"],
-  watch_trigger: ["trigger_revalidation", "microstructure", "deterministic_structure"],
-  news: ["source_verification", "market_reaction", "deterministic_structure"],
+  early_opportunity: ["short_window_momentum", "microstructure", "deterministic_structure", "market_scan"],
+  fast_move: ["short_window_momentum", "microstructure", "news_attribution", "deterministic_structure", "market_scan"],
+  watch_trigger: ["trigger_revalidation", "microstructure", "deterministic_structure", "market_scan"],
+  news: ["source_verification", "market_reaction", "deterministic_structure", "market_scan"],
   manual: ["intent_specific"]
 });
 
@@ -68,14 +68,17 @@ export function requiredCapabilityCalls(plan, availableToolNames = []) {
   const calls = [];
   const allSymbols = plan.symbols.slice(0, 8);
   const focusSymbols = (plan.focusSymbols.length ? plan.focusSymbols : allSymbols).slice(0, 4);
-  const deepSymbols = plan.trigger === "scheduled_patrol" ? allSymbols : focusSymbols;
+  // 自主巡检不允许因触发币种更抢眼就省略白名单。focus 只决定哪些币额外查关键位，
+  // 结构与微观的固定覆盖始终面向本轮全部候选（runAgentCycle 会注入白名单+观察哨）。
+  const autonomous = plan.trigger !== "manual";
+  const deepSymbols = autonomous ? allSymbols : focusSymbols;
   const needsMarketAnalysis = plan.trigger !== "manual" || plan.marketAnalysis;
   if (!needsMarketAnalysis) return [];
 
-  if (["scheduled_patrol", "manual"].includes(plan.trigger)) {
+  if (autonomous || plan.trigger === "manual") {
     addCall(calls, available, "get_global_market", {}, "大盘环境");
   }
-  if (plan.trigger === "scheduled_patrol") {
+  if (autonomous) {
     addCall(calls, available, "scan_market_opportunities", { limit: 8, direction: "both", minQuoteVolUsdt: 5_000_000 }, "全市场机会漏斗");
   }
   if (plan.trigger === "news") {
@@ -93,11 +96,35 @@ export function requiredCapabilityCalls(plan, availableToolNames = []) {
       addCall(calls, available, "explain_market_move", { symbol }, "异动原因归因");
     }
   }
-  if (plan.trigger === "scheduled_patrol") {
+  if (autonomous) {
     addCall(calls, available, "funding_extremes_scanner", { symbols: allSymbols }, "白名单拥挤度横向扫描");
     addCall(calls, available, "relative_strength", { symbols: allSymbols, days: 14 }, "白名单相对强弱排序");
   }
   return calls.map(({ key: _key, ...call }) => call);
+}
+
+// 全市场漏斗只负责找候选，不能把 Top 列表直接当结论。对最靠前的白名单外候选
+// 强制补结构+微观二次复核，让“视野外候选”有可交易价值而不只是涨跌榜。
+export function marketScanDeepDiveCalls(scanResult = {}, whitelist = [], availableToolNames = [], maxCandidates = 2) {
+  const available = new Set(availableToolNames);
+  const allowed = new Set(whitelist.map(normalizeEvidenceSymbol).filter(Boolean));
+  const candidates = (scanResult.candidates || [])
+    .filter((item) => normalizeEvidenceSymbol(item.symbol) && !allowed.has(normalizeEvidenceSymbol(item.symbol)))
+    .slice(0, Math.max(0, Math.min(3, Number(maxCandidates) || 0)));
+  const calls = [];
+  for (const candidate of candidates) {
+    const symbol = normalizeEvidenceSymbol(candidate.symbol);
+    addCall(calls, available, "analyze_market_structure", { symbol }, "视野外候选确定性结构复核");
+    addCall(calls, available, "get_microstructure", { symbol, exchange: "OKX" }, "视野外候选微观结构复核");
+  }
+  return {
+    candidates: candidates.map((item) => ({
+      symbol: normalizeEvidenceSymbol(item.symbol), side: item.side || null,
+      score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
+      tag: item.tag || null
+    })),
+    calls: calls.map(({ key: _key, ...call }) => call)
+  };
 }
 
 function successfulTrace(trace = {}) {
@@ -120,6 +147,57 @@ export function auditRequiredCapabilityCoverage(requiredCalls = [], toolTrace = 
     missing,
     checkedAt: new Date().toISOString()
   };
+}
+
+function fullyAnalyzed(symbol, toolTrace = []) {
+  return ["analyze_market_structure", "get_microstructure"].every((name) => toolTrace.some((item) =>
+    item.name === name && normalizeEvidenceSymbol(item.args?.symbol) === normalizeEvidenceSymbol(symbol) && successfulTrace(item)
+  ));
+}
+
+export function buildVisibleCapabilityCoverage(input = {}) {
+  const toolTrace = input.toolTrace || [];
+  const whitelist = [...new Set((input.whitelist || []).map(normalizeEvidenceSymbol).filter(Boolean))];
+  const watchSymbols = [...new Set((input.watchSymbols || []).map(normalizeEvidenceSymbol).filter(Boolean))];
+  const deepCandidates = input.deepCandidates || [];
+  const scanTrace = [...toolTrace].reverse().find((item) => item.name === "scan_market_opportunities");
+  const audit = auditRequiredCapabilityCoverage(input.requiredCalls || [], toolTrace);
+  return {
+    version: 1,
+    ok: audit.ok,
+    required: audit.required,
+    covered: audit.covered,
+    missing: audit.missing,
+    whitelist: { expected: whitelist.length, analyzed: whitelist.filter((symbol) => fullyAnalyzed(symbol, toolTrace)).length, symbols: whitelist },
+    watches: { expected: watchSymbols.length, analyzed: watchSymbols.filter((symbol) => fullyAnalyzed(symbol, toolTrace)).length, symbols: watchSymbols },
+    marketScan: {
+      completed: Boolean(scanTrace && successfulTrace(scanTrace)),
+      universe: Number(input.scanResult?.universe || 0),
+      candidates: Number(input.scanResult?.candidates?.length || 0),
+      error: input.scanResult?.error || null
+    },
+    externalCandidates: deepCandidates.map((item) => ({ ...item, analyzed: fullyAnalyzed(item.symbol, toolTrace) })),
+    checkedAt: new Date().toISOString()
+  };
+}
+
+export function capabilityCoverageText(coverage = {}, language = "zh") {
+  const wl = coverage.whitelist || {};
+  const watches = coverage.watches || {};
+  const scan = coverage.marketScan || {};
+  const candidates = coverage.externalCandidates || [];
+  const analyzedCandidates = candidates.filter((item) => item.analyzed).length;
+  const missing = (coverage.missing || []).map((item) => `${item.name}${item.symbol ? `(${item.symbol})` : ""}`);
+  if (language === "en") return [
+    `Coverage: Whitelist ${wl.analyzed || 0}/${wl.expected || 0} | Watches ${watches.analyzed || 0}/${watches.expected || 0} | Full market ${scan.completed ? `${scan.universe || 0} instruments, Top ${scan.candidates || 0}` : `not completed${scan.error ? ` (${scan.error})` : ""}`}`,
+    `External candidates: ${candidates.length ? `${candidates.map((item) => `${item.symbol} ${item.side || "neutral"}${item.score != null ? ` ${item.score}` : ""}`).join(", ")} | reviewed ${analyzedCandidates}/${candidates.length}` : "None passed the funnel for deep review"}`,
+    `Capability calls: ${coverage.covered || 0}/${coverage.required || 0}${missing.length ? ` | Missing: ${missing.join(", ")}` : " | Complete"}`
+  ].join("\n");
+  return [
+    `巡检范围：白名单 ${wl.analyzed || 0}/${wl.expected || 0}｜观察哨 ${watches.analyzed || 0}/${watches.expected || 0}｜全市场 ${scan.completed ? `${scan.universe || 0} 个（Top ${scan.candidates || 0}）` : `未完成${scan.error ? `（${scan.error}）` : ""}`}`,
+    `视野外候选：${candidates.length ? `${candidates.map((item) => `${item.symbol} ${item.side === "short" ? "偏空" : item.side === "long" ? "偏多" : "中性"}${item.score != null ? ` ${item.score}` : ""}`).join("、")}｜深度复核 ${analyzedCandidates}/${candidates.length}` : "本轮漏斗没有需要深度复核的白名单外候选"}`,
+    `能力调用：${coverage.covered || 0}/${coverage.required || 0}${missing.length ? `｜缺失 ${missing.join("、")}` : "｜完整"}`
+  ].join("\n");
 }
 
 export function capabilityPlanForPrompt(plan) {
@@ -197,6 +275,17 @@ export function recordCapabilityResult(run, toolName, args = {}, result = {}) {
       version: result.version || null
     });
   } else if (toolName === "get_microstructure") run.capabilityEvidence.push({ ...base, capability: "microstructure" });
+  else if (toolName === "scan_market_opportunities") {
+    run.marketScanSnapshot = {
+      universe: Number(result.universe || 0),
+      scannedAt: result.scannedAt || base.recordedAt,
+      candidates: (result.candidates || []).slice(0, 8).map((item) => ({
+        symbol: normalizeEvidenceSymbol(item.symbol), side: item.side || null, score: item.score ?? null,
+        inWhitelist: item.inWhitelist === true, tag: item.tag || null
+      }))
+    };
+    run.capabilityEvidence.push({ ...base, capability: "market_scan", universe: Number(result.universe || 0) });
+  }
   else if (toolName === "sync_market") run.capabilityEvidence.push({ ...base, capability: "closed_ohlcv", timeframe: result.timeframe || args.timeframe || "1h" });
   else if (toolName === "get_daily_market_brief") run.capabilityEvidence.push({ ...base, capability: "daily_brief" });
   else if (toolName === "get_events" || toolName === "get_market_intelligence") run.capabilityEvidence.push({ ...base, capability: "events" });

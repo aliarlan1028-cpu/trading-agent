@@ -37,7 +37,7 @@ import { recordToolExecution } from "./toolUsage.mjs";
 import { evaluatePortfolioIntentConflict, tradingRolesForPrompt, validateTradingRolePlan } from "./tradingRoles.mjs";
 import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
 import { bindPlanToEnabledBlueprint, enabledStrategyBlueprints } from "./strategyStudio.mjs";
-import { auditRequiredCapabilityCoverage, buildCapabilityPlan, capabilityPlanForPrompt, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
+import { auditRequiredCapabilityCoverage, buildCapabilityPlan, buildVisibleCapabilityCoverage, capabilityCoverageText, capabilityPlanForPrompt, marketScanDeepDiveCalls, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
 import { advanceDecisionContext, createDecisionContext, decisionContextForPrompt, triggerFromPayload } from "./decisionCoordinator.mjs";
 import { assessAbnormalVolatility } from "./earlyOpportunityEngine.mjs";
 import { normalizePlanLeverage } from "./mandatePolicy.mjs";
@@ -607,7 +607,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 读取角色感知的确定性结构事实**。日内计划核对1H/15m/5m，波段计划核对1D/4H/1H；BOS/CHoCH只是带时间和价位证据的结构事实之一，不得单独垄断方向。消息面优先使用系统已有的新鲜事件/归因缓存；只有急速异动、事件驱动币或缓存缺失且消息可能改变方向时才调用 explain_market_move。联网归因限流/不可用时必须标"消息面未知"，不得编造，但普通技术结构机会不因外部消息服务故障而空等。再逐项确认——
    - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交 <2R 的低质量计划。
    - 角色周期一致：波段计划以1D/4H为方向背景、1H改善入场；日内计划以1H为背景、15m定结构、5m做确认，4H只作风险背景而非机械否决。不要仅凭单根低周期放量K线逆着角色背景开仓；结构突破必须核对收盘、ATR距离和成交量。
-   - 止损别扎在猎杀区：止损不要正好压在破位/突破那根 K 线的最高/最低点上方(下方)一点点——那里止损最密集、最容易被"扫损"；要放到结构真正失效位之外，并确保计划入场中值到止损至少有 1.25×ATR14 的正常噪声缓冲。止损变宽时必须等比例缩小仓位，保持账户风险不变；禁止为凑盈亏比把止损塞近。
+   - 止损别扎在猎杀区：止损不要正好压在破位/突破那根 K 线的最高/最低点上方(下方)一点点——那里止损最密集、最容易被"扫损"；要放到结构真正失效位之外。常态至少保留 1.25×ATR14；high_volatility、low_liquidity 或 volatility_expansion 时至少 1.5×ATR14。止损变宽时必须等比例缩小仓位，保持账户风险不变；禁止为凑盈亏比把止损塞近。
    - 方向质量：trend continuation / pullback、breakout / breakdown retest 这类方向型计划，确定性结构必须与交易方向一致且质量至少 B；NEUTRAL、反向或 C 级结构只允许继续观察，不能提交实盘计划。range rejection 与 reversal reclaim 仍按各自反转证据判断，不能借标签绕过。
    - 记住这个反例：曾对 BTC 在 15m 单根放量砸穿整数关口后立刻做空、止损压在破位高点上方、RR 仅 1.5，结果价格反向扫掉上方止损、计划失败。"低周期逆结构 + 紧止损 + 低 RR"是典型错误组合，别再犯。
 12. 合约下单口径【硬事实·禁止手算】：OKX 永续的下单量单位是「张(contract)」不是「币」。1 张 = ctVal 个币；最小下单量是 minSz 张。get_microstructure 会返回真实 contractSpec(ctVal/minSz/lotSz/最小名义)，要谈最小量/名义/保证金就用它。
@@ -1108,6 +1108,12 @@ function recordRunHistory(db, run, finalText) {
   const lines = [line, ...(existing ? existing.split("\n") : [])].slice(0, 30);
   db.agentStateFiles.HISTORY.content = lines.join("\n");
   db.agentStateFiles.HISTORY.updatedAt = stamp;
+}
+
+function appendCapabilityCoverageText(content, coverage, language = "zh") {
+  const text = String(content || "").trim();
+  if (!coverage || /^(?:巡检范围|Coverage)[:：]/m.test(text)) return text;
+  return `${text}\n\n${capabilityCoverageText(coverage, language)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2351,11 +2357,28 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       applied: []
     };
     const tools = [...TOOL_DEFS, ...enabledSkillTools(db), ...enabledMcpTools(db)];
-    const requiredCalls = requiredCapabilityCalls(capabilityPlan, tools.map((tool) => tool.name));
+    const availableToolNames = tools.map((tool) => tool.name);
+    const requiredCalls = requiredCapabilityCalls(capabilityPlan, availableToolNames);
     run.requiredCapabilityCalls = requiredCalls;
+    let scanResult = null;
+    let deepCandidates = [];
     if (requiredCalls.length) {
       const executableCalls = requiredCalls.filter((call) => call.available !== false).map(({ available: _available, ...call }) => call);
-      await runToolBatch(db, run, executableCalls, toolTrace);
+      const preflightResults = await runToolBatch(db, run, executableCalls, toolTrace);
+      const scanIndex = executableCalls.findIndex((call) => call.name === "scan_market_opportunities");
+      if (scanIndex >= 0) scanResult = preflightResults[scanIndex] || null;
+
+      if (session.id === "chat_autocycle" && scanResult && !scanResult.error) {
+        const deepDive = marketScanDeepDiveCalls(scanResult, mandate?.allowedSymbols || [], availableToolNames, 2);
+        deepCandidates = deepDive.candidates;
+        const followupCalls = deepDive.calls.filter((call) => !requiredCalls.some((existing) =>
+          existing.name === call.name
+          && normalizeEvidenceSymbol(existing.args?.symbol) === normalizeEvidenceSymbol(call.args?.symbol)
+        ));
+        requiredCalls.push(...followupCalls);
+        const executableFollowups = followupCalls.filter((call) => call.available !== false).map(({ available: _available, ...call }) => call);
+        if (executableFollowups.length) await runToolBatch(db, run, executableFollowups, toolTrace);
+      }
       const preflightCoverage = auditRequiredCapabilityCoverage(requiredCalls, toolTrace);
       run.capabilityPreflight = preflightCoverage;
       capabilityPlan.preflightCoverage = preflightCoverage;
@@ -2368,6 +2391,19 @@ export async function runAgentChat(db, payload = {}, saveDb) {
         id: id("step"), phase: "capability_preflight", title: "必需能力覆盖",
         summary: preflightCoverage.ok ? `已完成 ${preflightCoverage.covered}/${preflightCoverage.required}` : `完成 ${preflightCoverage.covered}/${preflightCoverage.required}，缺失 ${preflightCoverage.missing.map((item) => item.name).join("、")}`,
         createdAt: nowIso()
+      });
+    }
+    if (session.id === "chat_autocycle") {
+      const watchSymbols = (db.watchTriggers || [])
+        .filter((watch) => ["active", "pending_analysis", "triggered"].includes(watch.status))
+        .map((watch) => watch.symbol);
+      run.capabilityCoverage = buildVisibleCapabilityCoverage({
+        requiredCalls,
+        toolTrace,
+        whitelist: mandate?.allowedSymbols || [],
+        watchSymbols,
+        scanResult,
+        deepCandidates
       });
     }
     const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
@@ -2429,6 +2465,9 @@ export async function runAgentChat(db, payload = {}, saveDb) {
         language: db.system?.uiLang === "en" ? "en" : "zh"
       });
     }
+    if (session.id === "chat_autocycle" && run.capabilityCoverage) {
+      finalText = appendCapabilityCoverageText(finalText, run.capabilityCoverage, db.system?.uiLang === "en" ? "en" : "zh");
+    }
     recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
@@ -2481,6 +2520,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     analysisBundleId: run.analysisBundleId || null,
     evidenceBundleId: run.evidenceBundleId || null,
     presentation,
+    capabilityCoverage: run.capabilityCoverage || null,
     toolTrace,
     error: errorText || undefined,
     createdAt: nowIso()
@@ -2557,7 +2597,8 @@ async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, 
 const PARALLEL_SAFE_TOOLS = new Set([
   "sync_market", "get_microstructure", "analyze_market_structure", "get_token_profile",
   "get_global_market", "get_account", "get_events", "get_market_intelligence", "get_daily_market_brief",
-  "get_event_calendar", "get_flow_snapshot", "get_source_health", "query_knowledge"
+  "get_event_calendar", "get_flow_snapshot", "get_source_health", "query_knowledge",
+  "scan_market_opportunities", "funding_extremes_scanner", "relative_strength", "support_resistance_levels"
 ]);
 
 async function runToolBatch(db, run, calls, toolTrace) {
