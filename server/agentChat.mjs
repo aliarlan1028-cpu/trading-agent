@@ -528,7 +528,7 @@ const TOOL_DEFS = [
   },
   {
     name: "register_watch",
-    description: "登记观察哨：把'若价格发生 X 则需要重新评估'的关键条件落地成结构化价格哨。哨兵每分钟用真实行情核对，命中后唤起重新决策，绝不直接下单。同一币种同一轮分析可有多个不同情景，但必须用 priority 标出唯一主观察哨，并用 purpose 解释辅助条件的区别。新一轮分析会自动取代该币种旧一轮的观察哨。",
+    description: "登记观察哨：把'当前是什么多空判断、若价格发生 X 会改变什么、接下来复核什么'落地成结构化价格哨。哨兵实时核对，命中后唤起重新决策，绝不直接下单。必须明确 direction、thesis、triggerMeaning，让用户不需要从价格条件猜做多还是做空。同一币种同一轮分析可有多个情景，但必须用 priority 标出唯一主观察哨，并用 purpose 解释辅助条件。新一轮分析会自动取代旧一轮观察哨。",
     schema: {
       type: "object",
       properties: {
@@ -538,11 +538,14 @@ const TOOL_DEFS = [
         levelLow: { type: "number", description: "enter_zone 区间下沿" },
         levelHigh: { type: "number", description: "enter_zone 区间上沿" },
         note: { type: "string", description: "登记理由与触发后的评估要点，如'放量跌破则短期偏空，评估做空'" },
+        direction: { type: "string", enum: ["long", "short", "neutral"], description: "这条观察条件服务的交易方向：long=做多情景，short=做空情景，neutral=尚未确认方向。失效条件仍填它要否定的原判断方向" },
+        thesis: { type: "string", description: "当前原判断，必须是可独立理解的完整句，如'1H 保持 HH/HL，等待回踩后评估顺势做多'；禁止只写'等确认'" },
+        triggerMeaning: { type: "string", description: "命中代表什么以及要复核什么，如'若放量站稳，做多确认增强；重新检查 15m CVD 与盈亏比'" },
         priority: { type: "string", enum: ["primary", "secondary"], description: "同币种本轮唯一最需要用户盯住的条件填 primary；确认/失效/备选条件填 secondary" },
         purpose: { type: "string", enum: ["decision", "confirmation", "invalidation", "alternative"], description: "decision=核心决策点，confirmation=确认条件，invalidation=当前判断失效，alternative=备选情景" },
         ttlHours: { type: "number", description: "有效期小时数，默认 24，最大 48；过期自动作废" }
       },
-      required: ["symbol", "kind", "note"]
+      required: ["symbol", "kind", "note", "direction", "thesis", "triggerMeaning"]
     }
   },
   {
@@ -597,7 +600,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 10. 观察哨纪律【强制·最容易犯错】：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，**唯一正确做法是调用 register_watch 工具**把它登记。
    - 在回复正文里写"观察哨一览"表格、列出"哨兵/条件/距触发/逻辑"这类文字，**完全不算登记**——那只是空话，哨兵根本没在盯，等于欺骗主人。绝对禁止在文字里画观察哨表格或声称"已挂 N 个观察哨/全部保留"。
    - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
-   - 每一条你想盯的条件 = 一次 register_watch 工具调用。想盯 3 个条件就调用 3 次；同一币种同一轮分析必须且只能有一个 priority=primary，其余为 secondary，并用 purpose 区分确认、失效、备选情景。系统会把同币种旧分析整组取代，Telegram 只发本轮合并后的有效看板。正文最多一句"已登记 N 个观察哨盯盘"，不要展开成表。
+   - 每一条你想盯的条件 = 一次 register_watch 工具调用。每次必须明确 direction（做多/做空/中性）、thesis（当前原判断）和 triggerMeaning（命中意味着什么、接下来核对什么），禁止只写“突破后重评/等确认”这类脱离上下文就看不懂的备注。失效哨的 direction 是它要否定的原判断方向，例如“跌破支撑使做多判断失效”仍填 long。想盯 3 个条件就调用 3 次；同一币种同一轮分析必须且只能有一个 priority=primary，其余为 secondary，并用 purpose 区分确认、失效、备选情景。系统会把同币种旧分析整组取代。正文最多一句"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
    - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；但白名单外的好机会可以直接 **propose_trade_plan**——系统自动标为『白名单外·一次性授权』候选、待用户确认下单(见授权白名单区块)。正常给完整分析结论，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
 11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 读取角色感知的确定性结构事实**。日内计划核对1H/15m/5m，波段计划核对1D/4H/1H；BOS/CHoCH只是带时间和价位证据的结构事实之一，不得单独垄断方向。消息面优先使用系统已有的新鲜事件/归因缓存；只有急速异动、事件驱动币或缓存缺失且消息可能改变方向时才调用 explain_market_move。联网归因限流/不可用时必须标"消息面未知"，不得编造，但普通技术结构机会不因外部消息服务故障而空等。再逐项确认——
@@ -975,8 +978,8 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
   if (watchBoard.length) {
     const lines = watchBoard.map((group) => {
       const remainH = Math.max(0, Math.round((new Date(group.primary.expiresAt).getTime() - Date.now()) / 3_600_000));
-      const secondary = group.secondary.map((watch) => `辅助/${watch.displayRole}: ${watch.id} ${describeWatch(watch)}`).join("；");
-      return `- ${group.symbol}｜最新分析 ${group.analysisAt || "未知"}｜主观察哨: ${group.primary.id} ${describeWatch(group.primary)} · 余 ${remainH}h${group.primary.note ? ` · ${group.primary.note}` : ""}${secondary ? `｜${secondary}` : ""}`;
+      const secondary = group.secondary.map((watch) => `辅助/${watch.displayRole}/${watch.displayDirection}: ${watch.id} ${describeWatch(watch)} · 命中含义=${watch.displayTriggerMeaning}`).join("；");
+      return `- ${group.symbol}｜最新分析 ${group.analysisAt || "未知"}｜方向=${group.primary.displayDirection}｜原判断=${group.primary.displayThesis}｜主观察哨: ${group.primary.id} ${describeWatch(group.primary)}｜命中含义=${group.primary.displayTriggerMeaning}｜余 ${remainH}h${secondary ? `｜${secondary}` : ""}`;
     }).join("\n");
     sections.push(`【当前有效观察看板（每币只先盯“主观察哨”；辅助项是同一分析内的确认/失效/备选情景，不是多份相互冲突的结论）】\n${lines}`);
   }

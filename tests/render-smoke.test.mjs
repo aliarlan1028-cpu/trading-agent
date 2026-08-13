@@ -218,8 +218,8 @@ const data = {
 data.watchTriggers = [{ id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, status: "active", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }];
 data.watchBoard = [{
   symbol: "BTC/USDT", count: 2, analysisId: "run_watch", analysisAt: "2026-07-25T00:05:00Z", analysisTitle: "BTC 1H 结构等待突破确认",
-  primary: { id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, status: "active", priority: "primary", purpose: "decision", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" },
-  secondary: [{ id: "w2", symbol: "BTC/USDT", kind: "price_below", level: 59000, status: "active", priority: "secondary", purpose: "invalidation", note: "跌破则当前多头假设失效", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }]
+  primary: { id: "w1", symbol: "BTC/USDT", kind: "price_above", level: 61000, direction: "long", displayThesis: "1H 保持 HH/HL，等待突破后评估顺势做多", displayTriggerMeaning: "站稳后复核主动买盘；目前不是入场信号", status: "active", priority: "primary", purpose: "decision", note: "突破后重新评估", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" },
+  secondary: [{ id: "w2", symbol: "BTC/USDT", kind: "price_below", level: 59000, direction: "long", displayThesis: "1H 保持 HH/HL，等待突破后评估顺势做多", displayTriggerMeaning: "跌破后原做多判断失效", status: "active", priority: "secondary", purpose: "invalidation", note: "跌破则当前多头假设失效", createdAt: "2026-07-25T00:00:00Z", expiresAt: "2099-07-26T00:00:00Z" }]
 }];
 data.abnormalVolatility = [{ symbol: "BTC/USDT", status: "elevated", riskScore: 78, realizedMovePct: 2.4, caveat: "异常波动风险升高。", caveatEn: "Abnormal-move risk is elevated." }];
 data.behaviorProfile = {
@@ -258,8 +258,10 @@ test("new capital flow, review workbench, ledger, and watch page render with rea
     assert.ok(html.length > 500);
   }
   const watchHtml = render(React.createElement(C.WatchMonitorConcept, { data, action, ui }));
-  assert.match(watchHtml, /主观察哨/);
-  assert.match(watchHtml, /BTC 1H 结构等待突破确认/);
+  assert.match(watchHtml, /做多情景/);
+  assert.match(watchHtml, /当前原判断/);
+  assert.match(watchHtml, /1H 保持 HH\/HL/);
+  assert.match(watchHtml, /命中意味着/);
   assert.match(watchHtml, /失效条件/);
 });
 

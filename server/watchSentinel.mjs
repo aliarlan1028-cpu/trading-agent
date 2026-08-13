@@ -3,9 +3,9 @@ import { createNotification } from "./notificationStore.mjs";
 import { runTask } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { queueWatchTelegramEvent } from "./telegramWatchNotifier.mjs";
-import { describeWatch } from "./watchView.mjs";
+import { describeWatch, watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 
-export { buildWatchBoard, describeWatch } from "./watchView.mjs";
+export { buildWatchBoard, describeWatch, presentWatch, watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 
 // ---------------------------------------------------------------------------
 // 观察哨（Watch Sentinel）：AI 交易员把"若 X 发生则重新评估"登记成结构化价格条件，
@@ -31,6 +31,7 @@ export const WATCH_LIMITS = {
 
 const KINDS = new Set(["price_above", "price_below", "enter_zone"]);
 const PURPOSES = new Set(["decision", "confirmation", "invalidation", "alternative"]);
+const DIRECTIONS = new Set(["long", "short", "neutral"]);
 
 // 条件在 price 下是否"已经成立"（登记时用：已成立说明不该挂哨，该直接分析）
 export function conditionAlreadyTrue(watch, price) {
@@ -112,6 +113,9 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     levelLow: Number(args.levelLow),
     levelHigh: Number(args.levelHigh),
     note: String(args.note || "").slice(0, 200),
+    direction: DIRECTIONS.has(String(args.direction || "").toLowerCase()) ? String(args.direction).toLowerCase() : null,
+    thesis: String(args.thesis || "").replace(/\s+/g, " ").trim().slice(0, 220) || null,
+    triggerMeaning: String(args.triggerMeaning || "").replace(/\s+/g, " ").trim().slice(0, 220) || null,
     purpose: PURPOSES.has(String(args.purpose || "")) ? String(args.purpose) : null,
     priority: args.priority === "primary" ? "primary" : "secondary",
     analysisId: String(args.analysisId || "").slice(0, 120) || null,
@@ -154,6 +158,9 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
   if (twin) {
     twin.version = Number(twin.version || 1) + 1;
     twin.note = watch.note || twin.note;
+    twin.direction = watch.direction || twin.direction || null;
+    twin.thesis = watch.thesis || twin.thesis || null;
+    twin.triggerMeaning = watch.triggerMeaning || twin.triggerMeaning || null;
     twin.expiresAt = watch.expiresAt;
     twin.level = watch.level;
     twin.levelLow = watch.levelLow;
@@ -428,7 +435,10 @@ export async function runWatchSentinel(db, saveDb) {
   const result = sweepWatches(db, prices);
   for (const w of result.triggered) {
     appendAudit(db, `观察哨触发：${describeWatch(w)}（触发价 ${w.triggerPrice}）`, w.id, "WatchSentinel");
-    createNotification(db, { eventType: "watch_trigger", severity: "warning", title: "观察哨触发", body: `${describeWatch(w)}，触发价 ${w.triggerPrice}。${autoAnalyze ? "已请求 AI 交易员立即评估。" : "请打开 App 让 AI 评估或自行决策（自动巡检当前关闭）。"}` });
+    createNotification(db, {
+      eventType: "watch_trigger", severity: "warning", title: `${w.symbol} · ${watchDirectionLabel(w)}观察条件命中`,
+      body: `原判断：${watchThesis(w)} 条件：${describeWatch(w)}，触发价 ${w.triggerPrice}。这代表：${watchTriggerMeaning(w)} ${autoAnalyze ? "已请求 AI 交易员立即评估。" : "请打开 App 让 AI 评估或自行决策（自动巡检当前关闭）。"}`
+    });
     queueWatchTelegramEvent(db, w, "triggered", { autoAnalyze, triggerPrice: w.triggerPrice });
   }
   for (const w of result.expired) {

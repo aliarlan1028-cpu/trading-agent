@@ -54,20 +54,33 @@ test("观察哨推送语言独立于界面语言且可切回中文", () => {
 });
 
 test("观察哨触发消息明确区分触发与下单", () => {
-  const watch = { id: "trigger", version: 1, symbol: "SOL/USDT", kind: "price_above", level: 210, note: "突破后重新确认主动买盘", triggerPrice: 210.2, triggeredAt: "2026-08-12T03:00:00.000Z", priority: "primary", status: "triggered" };
+  const watch = { id: "trigger", version: 1, symbol: "SOL/USDT", kind: "price_above", level: 210, direction: "long", thesis: "1H 上升结构仍在，等待突破确认后评估顺势做多", triggerMeaning: "站上阻力只增强做多情景，仍需复核主动买盘", note: "突破后重新确认主动买盘", triggerPrice: 210.2, triggeredAt: "2026-08-12T03:00:00.000Z", priority: "primary", status: "triggered" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "en");
   assert.match(message, /watch triggered/i);
   assert.match(message, /AI re-analysis requested/);
-  assert.match(message, /do not trade from this stale condition/i);
+  assert.match(message, /Long scenario/);
+  assert.match(message, /Original view/);
+  assert.match(message, /not yet an entry signal/i);
   assert.doesNotMatch(message, /突破后重新确认主动买盘/, "英文触发消息不得夹带中文备注");
 });
 
 test("关键失效采用紧凑动作模板，不发送整块观察看板", () => {
-  const watch = { id: "invalid", symbol: "BTC/USDT", kind: "price_below", level: 62000, closeReason: "结构低点失守", priority: "primary", status: "invalidated" };
+  const watch = { id: "invalid", symbol: "BTC/USDT", kind: "price_below", level: 62000, direction: "long", thesis: "1H 保持 HH/HL，原计划等待回踩后评估做多", closeReason: "系统暂停期间价格已越过条件", priority: "primary", status: "invalidated" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "invalidated", {}, "zh");
-  assert.match(message, /原判断失效/);
-  assert.match(message, /停止沿用旧判断/);
+  assert.match(message, /做多情景观察条件已作废/);
+  assert.match(message, /关联原判断：1H 保持 HH\/HL/);
+  assert.match(message, /系统不再盯这条条件/);
   assert.doesNotMatch(message, /辅助条件|观察看板|📍|🎯|🧭/);
+});
+
+test("中文观察哨命中完整说明方向、原判断、条件含义与下一步", () => {
+  const watch = { id: "short_trigger", symbol: "SUI/USDT", kind: "enter_zone", levelLow: 0.704, levelHigh: 0.71, direction: "short", thesis: "1H 下行结构未反转，等待反弹到供应区评估做空", triggerMeaning: "价格回到供应区；检查 15m 反弹衰竭与主动卖盘后再决定是否做空", purpose: "confirmation", priority: "primary", status: "triggered", triggerPrice: 0.706, triggeredAt: "2026-08-13T06:20:00.000Z" };
+  const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "zh");
+  assert.match(message, /做空情景观察条件命中/);
+  assert.match(message, /原判断：1H 下行结构未反转/);
+  assert.match(message, /这代表：价格回到供应区/);
+  assert.match(message, /目前还不是入场信号/);
+  assert.match(message, /已唤起 AI 重新分析/);
 });
 
 test("观察哨英文 HTML 会转义动态文本，避免 Telegram 格式失效", () => {

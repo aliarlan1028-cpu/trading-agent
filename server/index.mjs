@@ -12,7 +12,7 @@ import { computeBehaviorProfile } from "./behaviorProfile.mjs";
 import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
 import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
 import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
-import { buildWatchBoard, cancelWatch, describeWatch, requestPendingAgentCycle, runWatchSentinel, sweepWatches } from "./watchSentinel.mjs";
+import { buildWatchBoard, cancelWatch, describeWatch, presentWatch, requestPendingAgentCycle, runWatchSentinel, sweepWatches, watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchSentinel.mjs";
 import { cancelArmedSetup, processArmedSetupTick, reconcileArmedSetupDefinitions, reconcileArmedSetupExecutions, recoverTriggeredSetups } from "./armedSetup.mjs";
 import { abnormalVolatilityBoard, opportunityEngineStatus, recordOpportunityTick, runBroadOpportunityScan } from "./earlyOpportunityEngine.mjs";
 import { createNotification } from "./notificationStore.mjs";
@@ -749,7 +749,7 @@ setMarketTickHook((database, symbol, price) => {
   for (const watch of watchSweep.triggered) {
     watch.realtimeNotifiedAt = nowIso();
     appendAudit(database, `观察哨实时触发：${describeWatch(watch)}（触发价 ${watch.triggerPrice}）`, watch.id, "MarketStream", "warning");
-    createNotification(database, { eventType: "watch_trigger", severity: "warning", title: "观察哨触发", body: `${describeWatch(watch)}，触发价 ${watch.triggerPrice}。已进入 AI 复核队列。` });
+    createNotification(database, { eventType: "watch_trigger", severity: "warning", title: `${watch.symbol} · ${watchDirectionLabel(watch)}观察条件命中`, body: `原判断：${watchThesis(watch)} 条件：${describeWatch(watch)}，触发价 ${watch.triggerPrice}。这代表：${watchTriggerMeaning(watch)} 已进入 AI 复核队列。` });
   }
   if (watchSweep.triggered.length) saveDb(database, { lightweight: true });
 
@@ -1023,7 +1023,7 @@ app.get("/api/overview", (req, res) => {
     behaviorNarrative: db.system?.behaviorNarrative || null,
     mandates: db.mandates,
     tradePlans: db.tradePlans,
-    watchTriggers: (db.watchTriggers || []).slice(0, 20),
+    watchTriggers: (db.watchTriggers || []).slice(0, 20).map(presentWatch),
     watchBoard: buildWatchBoard(db),
     events: db.events,
     tasks: db.tasks,

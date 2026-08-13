@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { sendTelegramText } from "./telegramNotifier.mjs";
-import { buildWatchBoard, describeWatch, watchBoardForSymbol, watchPurposeLabel } from "./watchView.mjs";
+import {
+  buildWatchBoard, describeWatch, watchBoardForSymbol, watchDirection,
+  watchDirectionLabel, watchPurposeLabel, watchThesis, watchTriggerMeaning
+} from "./watchView.mjs";
 
 function enabled(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -161,24 +164,32 @@ function triggerMessage(db, watch, context = {}, language = watchLanguage()) {
   const role = watch.wasPrimary || watch.priority === "primary"
     ? (language === "en" ? "Primary watch" : "主观察哨")
     : watchPurposeLabel(watch, language);
-  const rationale = language === "en" ? englishCopy(watch.note) : compact(watch.note);
+  const direction = watchDirection(watch);
+  const side = watchDirectionLabel(watch, language);
+  const thesis = watchThesis(watch, language);
+  const meaning = watchTriggerMeaning(watch, language);
+  const invalidatesThesis = watch.purpose === "invalidation";
   if (language === "en") {
     const lines = [
-      `<b>${escapeHtml(watch.symbol)} · watch triggered</b>`,
-      `Condition: ${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
-      `Market: ${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`
+      `<b>${escapeHtml(watch.symbol)} · ${escapeHtml(side)} ${invalidatesThesis ? "invalidation hit" : "watch triggered"}</b>`,
+      `Original view: ${escapeHtml(thesis)}`,
+      `Triggered: ${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
+      `Price / time: ${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`,
+      `What it means: ${escapeHtml(meaning)}`,
+      `Directional impact: ${invalidatesThesis ? `stop using the previous ${direction} thesis` : `re-evaluate the ${direction} scenario; this is not yet an entry signal`}.`
     ];
-    if (rationale) lines.push(`Why it matters: ${escapeHtml(rationale)}`);
-    lines.push(`Status: ${context.autoAnalyze ? "AI re-analysis requested" : "manual review required"}; do not trade from this stale condition before a fresh conclusion.`);
+    lines.push(`Next action: ${context.autoAnalyze ? "AI re-analysis requested" : "manual review required"}. Wait for the fresh conclusion before trading.`);
     return lines.join("\n");
   }
   const lines = [
-    `<b>${escapeHtml(watch.symbol)} · 观察条件命中</b>`,
-    `条件：${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
-    `现价：${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`
+    `<b>${escapeHtml(watch.symbol)} · ${escapeHtml(side)}${invalidatesThesis ? "失效条件命中" : "观察条件命中"}</b>`,
+    `原判断：${escapeHtml(thesis)}`,
+    `命中条件：${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
+    `触发价 / 时间：${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`,
+    `这代表：${escapeHtml(meaning)}`,
+    `方向影响：${invalidatesThesis ? `停止沿用原${direction === "long" ? "做多" : direction === "short" ? "做空" : "方向"}判断` : `重新评估${direction === "long" ? "做多" : direction === "short" ? "做空" : "方向"}情景，目前还不是入场信号`}。`
   ];
-  if (rationale) lines.push(`意义：${escapeHtml(rationale)}`);
-  lines.push(`状态：${context.autoAnalyze ? "已唤起 AI 重新分析" : "需要人工复核"}；新结论出来前，不依据这条旧条件下单。`);
+  lines.push(`下一步：${context.autoAnalyze ? "已唤起 AI 重新分析" : "需要人工复核"}；等待新结论后再决定是否交易。`);
   return lines.join("\n");
 }
 
@@ -186,28 +197,38 @@ function invalidationMessage(watch, context = {}, language = watchLanguage()) {
   const reason = language === "en"
     ? englishCopy(watch.closeReason || context.reason) || "The original setup is no longer valid."
     : compact(watch.closeReason || context.reason) || "原交易假设已不再成立。";
+  const side = watchDirectionLabel(watch, language);
+  const thesis = watchThesis(watch, language);
   if (language === "en") return [
-    `<b>${escapeHtml(watch.symbol)} · setup invalidated</b>`,
-    `Previous condition: ${escapeHtml(describeWatch(watch, language))}`,
-    `Reason: ${escapeHtml(reason)}`,
-    "Action: stop using the previous view and wait for a fresh analysis. No order was placed by this alert."
+    `<b>${escapeHtml(watch.symbol)} · ${escapeHtml(side)} watch retired</b>`,
+    `Original view: ${escapeHtml(thesis)}`,
+    `Retired condition: ${escapeHtml(describeWatch(watch, language))}`,
+    `Why it was retired: ${escapeHtml(reason)}`,
+    "Impact: this condition is no longer monitored and must not be used as a current trading reference.",
+    "Next action: wait for a fresh analysis and a newly registered watch. No order was placed by this alert."
   ].join("\n");
   return [
-    `<b>${escapeHtml(watch.symbol)} · 原判断失效</b>`,
-    `原条件：${escapeHtml(describeWatch(watch, language))}`,
-    `原因：${escapeHtml(reason)}`,
-    "动作：停止沿用旧判断，等待新的分析结论；本提醒不会自行下单。"
+    `<b>${escapeHtml(watch.symbol)} · ${escapeHtml(side)}观察条件已作废</b>`,
+    `关联原判断：${escapeHtml(thesis)}`,
+    `作废条件：${escapeHtml(describeWatch(watch, language))}`,
+    `作废原因：${escapeHtml(reason)}`,
+    "影响：系统不再盯这条条件，也不能把它当作当前交易依据。",
+    "下一步：等待新的分析和新登记的观察条件；本提醒不会自行下单。"
   ].join("\n");
 }
 
 function previewMessage(watch, language = watchLanguage()) {
   if (language === "en") return [
     `<b>${escapeHtml(watch.symbol)} · watch alert preview</b>`,
+    `Scenario: ${escapeHtml(watchDirectionLabel(watch, language))}`,
+    `Original view: ${escapeHtml(watchThesis(watch, language))}`,
     `Condition: ${escapeHtml(describeWatch(watch, language))}`,
     "Telegram interrupts only when a primary condition triggers or the active thesis is invalidated. Registration, edits, expiry, and cancellation stay in KORDYN."
   ].join("\n");
   return [
     `<b>${escapeHtml(watch.symbol)} · 观察条件推送预览</b>`,
+    `方向：${escapeHtml(watchDirectionLabel(watch, language))}`,
+    `原判断：${escapeHtml(watchThesis(watch, language))}`,
     `条件：${escapeHtml(describeWatch(watch, language))}`,
     "Telegram 只在主条件命中或当前判断关键失效时打扰；登记、更新、到期与撤销只保留在 KORDYN。"
   ].join("\n");
@@ -293,7 +314,7 @@ export function queueDailyWatchDigest(db) {
     `🔭 <b>DAILY WATCHTOWER · ${boards.length} MARKETS</b>`,
     `${watchCount} active conditions · ${date}`,
     "",
-    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(describeWatch(board.primary, language))}\n   Supporting ${board.secondary.length} · Updated ${localTime(board.analysisAt, language)}`),
+    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · Supporting ${board.secondary.length} · Updated ${localTime(board.analysisAt, language)}`),
     "",
     "🧭 <b>Action</b>",
     "Focus on each market's primary watch. Open KORDYN for the full reasoning and supporting scenarios."
@@ -301,7 +322,7 @@ export function queueDailyWatchDigest(db) {
     `🔭 <b>每日观察哨 · ${boards.length} 个币种</b>`,
     `${watchCount} 个有效条件 · ${date}`,
     "",
-    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(describeWatch(board.primary, language))}\n   辅助 ${board.secondary.length} · 更新 ${localTime(board.analysisAt, language)}`),
+    ...boards.map((board) => `📌 <b>${escapeHtml(board.symbol)}</b> · ${escapeHtml(watchDirectionLabel(board.primary, language))}\n   ${escapeHtml(describeWatch(board.primary, language))} · 辅助 ${board.secondary.length} · 更新 ${localTime(board.analysisAt, language)}`),
     "",
     "🧭 <b>下一步</b>",
     "优先关注每个币种的主观察哨；完整判断与辅助情景请在 KORDYN 中查看。"

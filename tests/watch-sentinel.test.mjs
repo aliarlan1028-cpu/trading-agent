@@ -71,6 +71,7 @@ test("同轮观察哨按币种归组且只有一个主哨，新分析整体取�
   const db = dbFixture();
   const first = registerWatch(db, {
     symbol: "BTC/USDT", kind: "price_above", level: 65750, note: "突破确认",
+    direction: "long", thesis: "1H 上行结构，等待突破后评估做多", triggerMeaning: "突破后复核量能与做多盈亏比",
     analysisId: "run_old", analysisAt: "2026-08-12T00:00:00.000Z", priority: "primary", purpose: "decision"
   }, 65079).watch;
   const invalidation = registerWatch(db, {
@@ -80,6 +81,10 @@ test("同轮观察哨按币种归组且只有一个主哨，新分析整体取�
   let board = buildWatchBoard(db);
   assert.equal(board.length, 1);
   assert.equal(board[0].primary.id, first.id);
+  assert.equal(board[0].primary.direction, "long");
+  assert.equal(board[0].primary.displayDirection, "做多情景");
+  assert.match(board[0].primary.displayThesis, /等待突破后评估做多/);
+  assert.match(board[0].primary.displayTriggerMeaning, /复核量能/);
   assert.equal(board[0].secondary[0].id, invalidation.id);
   assert.equal(board[0].secondary[0].displayRole, "失效条件");
 

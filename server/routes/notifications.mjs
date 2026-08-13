@@ -48,16 +48,17 @@ export function registerNotificationRoutes(app, ctx) {
   app.post("/api/notifications/telegram-watch-test", requirePermission("admin:security"), async (_req, res) => {
     const watch = {
       id: `watch_test_${Date.now()}`, version: 1, symbol: "BTC/USDT", kind: "price_above", level: 1,
-      status: "active", priority: "primary", purpose: "decision", createdAt: nowIso(), analysisAt: nowIso(),
-      analysisTitle: "BTC is testing a confirmation level; wait for the primary condition before reviewing the setup.",
-      note: "This test watch requests a fresh analysis only. It never places an order.",
+      status: "triggered", priority: "primary", purpose: "confirmation", direction: "long", createdAt: nowIso(), analysisAt: nowIso(),
+      thesis: "BTC 1H structure is constructive; the system is monitoring a long scenario, not holding a position.",
+      triggerMeaning: "The confirmation level was reached. Re-check structure and order flow before deciding whether a long entry is valid.",
+      note: "This test watch requests a fresh analysis only. It never places an order.", triggerPrice: 1, triggeredAt: nowIso(),
       expiresAt: new Date(Date.now() + 3_600_000).toISOString()
     };
     db.watchTriggers ||= [];
     db.watchTriggers.unshift(watch);
     let queued;
     try {
-      queued = queueWatchTelegramEvent(db, watch, "registered");
+      queued = queueWatchTelegramEvent(db, watch, "triggered", { autoAnalyze: true });
     } finally {
       db.watchTriggers = db.watchTriggers.filter((item) => item.id !== watch.id);
     }

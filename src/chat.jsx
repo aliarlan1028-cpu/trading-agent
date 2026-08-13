@@ -1052,13 +1052,18 @@ function AgentRail({ data, action, ui, send }) {
           const recent = all.filter((w) => w.status !== "active").slice(0, 2);
           const label = { triggered: t("已触发重新分析 · 不直接下单", "Triggered re-analysis · no direct order"), expired: t("已过期", "Expired"), cancelled: t("已撤销", "Cancelled"), invalidated: t("已作废", "Void"), superseded: t("已被最新分析取代", "Superseded") };
           const purpose = (w) => w.isPrimary || w.priority === "primary" ? t("主观察哨", "Primary") : ({ confirmation: t("确认", "Confirmation"), invalidation: t("失效", "Invalidation"), alternative: t("备选", "Alternative"), decision: t("决策", "Decision") }[w.purpose] || t("辅助", "Supporting"));
+          const direction = (w) => w.direction === "long" ? t("做多", "Long") : w.direction === "short" ? t("做空", "Short") : t("中性", "Neutral");
+          const thesis = (w) => localizeText(w.displayThesis || w.thesis || w.analysisTitle, w.displayThesisEn || w.thesis || w.analysisTitle) || t("方向尚未确认", "Direction not confirmed");
+          const meaning = (w) => localizeText(w.displayTriggerMeaning || w.triggerMeaning || w.note, w.displayTriggerMeaningEn || w.triggerMeaning || w.note) || t("命中后重新分析，不直接下单", "Re-analyze after trigger; no direct order");
           const desc = (w) => w.kind === "price_above" ? `${t("向上突破", "Breaks above")} ${displayPrice(w.level)}`
             : w.kind === "price_below" ? `${t("向下跌破", "Breaks below")} ${displayPrice(w.level)}`
               : `${t("回踩", "Pullback to")} ${displayPrice(w.levelLow)}–${displayPrice(w.levelHigh)}`;
           // 悬停显示完整信息(侧栏窄、note 被截断 → 鼠标放上去看全:条件 + 完整备注 + 状态 + 时间)。
           const fullInfo = (w) => [
-            `${w.symbol} · ${desc(w)}`,
-            w.note ? `${t("备注：", "Note: ")}${w.note}` : "",
+            `${w.symbol} · ${direction(w)} · ${purpose(w)}`,
+            `${t("原判断：", "Thesis: ")}${thesis(w)}`,
+            `${t("等待条件：", "Condition: ")}${desc(w)}`,
+            `${t("命中含义：", "If triggered: ")}${meaning(w)}`,
             w.status === "active"
               ? `${t("到期：", "Expires: ")}${new Date(w.expiresAt).toLocaleString("zh-CN")}`
               : `${label[w.status] || w.status}${w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}`,
@@ -1073,8 +1078,10 @@ function AgentRail({ data, action, ui, send }) {
                   <div className={`agWatchRow ${w.isPrimary || w.priority === "primary" ? "primary" : "supporting"}`} key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
                     <span className="agWatchDot" />
                     <div className="agWatchBody">
-                      <b className="mono">{w.symbol}</b><em className="agWatchRole">{purpose(w)}</em> {desc(w)}
-                      {w.note && <small>{w.note.length > 30 ? `${w.note.slice(0, 30)}…` : w.note}</small>}
+                      <b className="mono">{w.symbol}</b><em className={`agWatchDirection ${w.direction || "neutral"}`}>{direction(w)}</em><em className="agWatchRole">{purpose(w)}</em>
+                      <span className="agWatchCondition">{desc(w)}</span>
+                      <small>{t("原判断：", "Thesis: ")}{thesis(w)}</small>
+                      <small>{t("命中：", "If hit: ")}{meaning(w)}</small>
                       {(w.isPrimary || w.priority === "primary") && w.boardAnalysisAt && <small>{t("最新市场分析", "Latest market analysis")} · {new Date(w.boardAnalysisAt).toLocaleString("zh-CN")}</small>}
                     </div>
                     <span className="agWatchMeta mono">{t("余", "Left")} {remainH >= 1 ? `${Math.round(remainH)}h` : `${Math.max(1, Math.round(remainH * 60))}m`}</span>
@@ -1085,7 +1092,7 @@ function AgentRail({ data, action, ui, send }) {
               {recent.map((w) => (
                 <div className="agWatchRow closed" key={w.id} onMouseEnter={(e) => setWatchTip({ lines: fullInfo(w).split("\n"), rect: e.currentTarget.getBoundingClientRect() })} onMouseLeave={() => setWatchTip(null)}>
                   <span className={`agWatchDot ${w.status}`} />
-                  <div className="agWatchBody"><b className="mono">{w.symbol}</b> {desc(w)}</div>
+                  <div className="agWatchBody"><b className="mono">{w.symbol}</b><em className={`agWatchDirection ${w.direction || "neutral"}`}>{direction(w)}</em> {desc(w)}<small>{t("原判断：", "Thesis: ")}{thesis(w)}</small></div>
                   <span className="agWatchMeta mono">{label[w.status] || w.status}{w.status === "triggered" && w.triggerPrice ? ` @${displayPrice(w.triggerPrice)}` : ""}</span>
                 </div>
               ))}

@@ -6,6 +6,7 @@ import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
+import { watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { consumeOpportunitySignals, peekOpportunitySignals } from "./earlyOpportunityEngine.mjs";
 
@@ -92,7 +93,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
         ...(fastMoves.length ? [{ phase: "fast_move", summary: `快速异动但本轮未进入 LLM 决策：${fastMoves.map((e) => `${e.symbol} ${e.windowMin}分钟${e.direction === "down" ? "跌" : "涨"}${e.movePct}%`).join("；")}。` }] : []),
         ...(opportunitySignals.length ? [{ phase: "opportunity", summary: `早期机会但本轮未进入 LLM 决策：${opportunitySignals.map((e) => `${e.symbol} ${e.direction} score=${e.score}`).join("；")}。` }] : []),
         ...(newsSignals.length ? [{ phase: "news", summary: `重要信息但本轮未进入 LLM 决策：${newsSignals.map((e) => e.title).join("；")}。` }] : []),
-        ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${describeWatch(w)}(触发价 ${w.triggerPrice})`).join("；")}。` }] : []),
+        ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${w.symbol} ${watchDirectionLabel(w)}｜原判断=${watchThesis(w)}｜条件=${describeWatch(w)}｜命中含义=${watchTriggerMeaning(w)}｜触发价 ${w.triggerPrice}`).join("；")}。` }] : []),
         ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
         { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。` }
@@ -119,7 +120,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const regimeBullets = regimeSummary ? regimeSummary.split(/[;；]\s*/).filter(Boolean).map((x) => `- ${x.trim()}`).join("\n") : "";
   // 标题带批次开始时间(北京时间),用户在长会话里靠它区分每轮巡检。
   const startedHhmm = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
-  const watchBullets = triggeredWatches.map((w) => `- ${describeWatch(w)} 已触发（触发价 ${w.triggerPrice}）${w.note ? ` · 登记理由：${w.note}` : ""}`);
+  const watchBullets = triggeredWatches.map((w) => `- ${w.symbol}｜${watchDirectionLabel(w)}｜原判断：${watchThesis(w)}｜命中条件：${describeWatch(w)}（触发价 ${w.triggerPrice}）｜这代表：${watchTriggerMeaning(w)}`);
   const moveBullets = fastMoves.map((e) => `- ${e.symbol} ${e.windowMin} 分钟内${e.direction === "down" ? "快速下跌" : "快速上涨"} ${e.movePct}%（现价 ${e.price}，自${e.direction === "down" ? "高" : "低"}点 ${e.refPrice}）`);
   const opportunityBullets = opportunitySignals.map((e) => `- ${e.symbol} ${e.features?.setupType === "reversal_reclaim" ? "极值回收反转" : "早期动量启动"}${e.direction === "short" ? "偏空" : "偏多"}候选 score=${e.score} · 发现于 ${e.detectedAt || e.queuedAt}${e.features ? ` · 15s ${e.features.ret15sPct ?? "-"}% / 30s ${e.features.ret30sPct ?? "-"}% / 1m ${e.features.ret1mPct ?? "-"}%${e.features.reclaimPct != null ? ` · 极值回收 ${e.features.reclaimPct}%` : ` · 加速度 ${e.features.acceleration ?? "-"}`}` : ""}`);
   const newsBullets = newsSignals.map((e) => `- [${e.kind === "scheduled_event" ? "高影响日程" : "重要快讯"}] ${e.title} · ${e.sourceName || "来源待核"} · ${e.publishedAt || e.queuedAt}${e.symbols?.length ? ` · 关联 ${e.symbols.join("、")}` : ""}\n  ${e.summary || ""}`);

@@ -8937,12 +8937,13 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .agWatchDot { width: 7px; height: 7px; border-radius: 50%; background: #3f8f5b; animation: pulseDot 2s infinite; }
 .agWatchDot.triggered { background: #b17724; animation: none; }
 .agWatchDot.expired, .agWatchDot.cancelled, .agWatchDot.invalidated { background: #c4b8a4; animation: none; }
-.agWatchBody { min-width: 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-.agWatchBody small { color: #8a8171; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.agWatchBody { min-width: 0; display: flex; gap: 5px 6px; align-items: baseline; flex-wrap: wrap; }
+.agWatchBody small { display:block; flex-basis:100%; color: #8a8171; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .agWatchMeta { color: #8a8171; font-size: 11px; white-space: nowrap; }
 .agWatchCancel { border: 0; background: transparent; color: #c4b8a4; cursor: pointer; display: grid; place-items: center; padding: 2px; }
 .agWatchCancel:hover { color: #bc4b34; }
 .agWatchRow.primary{margin-top:3px;padding:7px 6px;border:1px solid #cfe3d6;border-radius:7px;background:#f5faf6}.agWatchRow.supporting{padding-left:7px}.agWatchRole{padding:1px 5px;border-radius:9px;background:#efe9df;color:#756b5d;font:700 8px var(--font-ui);font-style:normal;white-space:nowrap}.agWatchRow.primary .agWatchRole{background:#dfeee4;color:#286642}.agWatchDot.superseded{background:#8a8171;animation:none}
+.agWatchDirection{padding:1px 5px;border-radius:9px;background:#eeeae3;color:#736b60;font:700 8px var(--font-ui);font-style:normal;white-space:nowrap}.agWatchDirection.long{background:#e2f1e7;color:#246744}.agWatchDirection.short{background:#f8e7e3;color:#a23f31}.agWatchCondition{color:#4f493f;font-size:11px}
 .mGoalDerived{display:block;margin:7px 0 10px;color:#8a8171;font-size:11px;line-height:1.5}
 
 /* 弱网轮询失败时顶栏静默提示(替代反复弹"连接后端失败"的 toast) */
