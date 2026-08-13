@@ -745,7 +745,7 @@ function inspectAuditChainIntegrity(db) {
 function latestAuditHash() {
   try {
     ensureSqlite();
-    const row = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1").get();
+    const row = sqlite.prepare("select doc from audit_log_entries order by rowid desc limit 1").get();
     return row ? JSON.parse(row.doc).hash || null : null;
   } catch {
     return null;
@@ -755,7 +755,7 @@ function latestAuditHash() {
 // 危险运维操作：仅供显式修复命令使用。调用者必须先备份原始 SQLite 并传入确认语句。
 function resealAuditChainForExplicitRepair(db) {
   ensureSqlite();
-  const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by created_at asc, rowid asc").all();
+  const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by rowid asc").all();
   const update = sqlite.prepare("update audit_log_entries set doc = @doc, severity = @severity where rowid = @rid");
   let previous = null;
   const tx = sqlite.transaction(() => {
@@ -939,25 +939,25 @@ export function resetOperationalData(db, options = {}) {
 
 export function appendAudit(db, action, target, actor = "System", severity = "info") {
   db.meta ||= {};
-  // 用显式持久化的链尾 hash 作为 prevHash，而不是依赖 db.auditLogs[0]（内存窗口在
-  // created_at 相同的批量写入/重启边界上顺序不确定，会与校验时的 created_at asc, rowid asc
-  // 排序产生分叉，导致 prevHash 断裂）。
-  const prevHash = db.meta.auditChainTip ?? db.auditLogs?.[0]?.hash ?? null;
   const request = currentRequestContext();
-  const entry = {
-    id: id("audit"),
-    actor,
-    action,
-    target,
-    severity,
-    prevHash,
-    createdAt: nowIso(),
-    ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
-  };
-  entry.hash = auditHash(entry);
+  ensureSqlite();
+  // 审计链尾必须由 SQLite 在同一个 IMMEDIATE 写事务中串行读取和追加。此前依赖每个
+  // Node 进程各自的 db.meta.auditChainTip：主服务与临时通知/运维进程并发时会从同一旧
+  // hash 各写一个子节点，形成分叉。rowid 是数据库实际提交顺序，也是 WORM 游标口径。
+  const append = sqlite.transaction(() => {
+    const latest = sqlite.prepare("select doc from audit_log_entries order by rowid desc limit 1").get();
+    const prevHash = latest ? JSON.parse(latest.doc).hash || null : null;
+    const entry = {
+      id: id("audit"), actor, action, target, severity, prevHash, createdAt: nowIso(),
+      ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
+    };
+    entry.hash = auditHash(entry);
+    writeAuditEntry(entry);
+    return entry;
+  });
+  const entry = append.immediate();
   db.auditLogs.unshift(entry);
   db.meta.auditChainTip = entry.hash;
-  writeAuditEntry(entry);
   return entry;
 }
 
@@ -1927,7 +1927,7 @@ export function verifyAuditChainReadOnly() {
   if (!fs.existsSync(sqliteDbPath)) return { ok: false, checked: 0, breaks: [{ error: "sqlite_missing" }] };
   const reader = new Database(sqliteDbPath, { readonly: true, fileMustExist: true });
   try {
-    const logs = reader.prepare("select doc from audit_log_entries order by created_at asc, rowid asc").all().map((row) => JSON.parse(row.doc));
+    const logs = reader.prepare("select doc from audit_log_entries order by rowid asc").all().map((row) => JSON.parse(row.doc));
     return verifyAuditEntries(logs);
   } finally {
     reader.close();
@@ -1953,7 +1953,7 @@ function verifyAuditEntries(logs) {
 function auditLogsForVerification(db) {
   try {
     ensureSqlite();
-    const rows = sqlite.prepare("select doc from audit_log_entries order by created_at asc, rowid asc").all();
+    const rows = sqlite.prepare("select doc from audit_log_entries order by rowid asc").all();
     if (rows.length) return rows.map((row) => JSON.parse(row.doc));
   } catch {
     // Fall through to the in-memory window when SQLite is unavailable.

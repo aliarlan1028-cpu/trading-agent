@@ -99,6 +99,17 @@ test("WORM audit cursor advances only after explicit commit", () => {
   assert.equal(readAuditSinkBatch("test-sink").length, 0);
 });
 
+test("stale process snapshots cannot fork the SQLite audit chain", () => {
+  const processA = loadDb();
+  const processB = loadDb();
+  const first = appendAudit(processA, "process A append", "audit-a", "process-a");
+  const second = appendAudit(processB, "process B append", "audit-b", "process-b");
+  saveDb(processA);
+  saveDb(processB);
+  assert.equal(second.prevHash, first.hash);
+  assert.equal(loadDb().meta.auditChainBroken, false);
+});
+
 test("execution leases provide fencing across competing instances", () => {
   const first = acquireExecutionLease("plan:p1", "instance-a", 30_000);
   assert.equal(first.acquired, true);
