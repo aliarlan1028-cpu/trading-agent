@@ -404,7 +404,7 @@ app.use((req, res, next) => cors({
     return callback(new Error("CORS origin denied"));
   },
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Native-App"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Native-App", "X-Native-Overview"],
   credentials: true
 })(req, res, next));
 // CORS 拒绝返回干净的 403，而不是落进默认错误处理器变 500（可能带栈信息）。
@@ -1138,7 +1138,11 @@ app.get("/api/overview", (req, res) => {
   };
   // 原生端每 15 秒刷新，只下发手机真实会用到的字段。完整桌面概览保持兼容；
   // 以鉴权登录时已存在的 X-Native-App 明确区分，避免依赖可伪造/漂移的 User-Agent。
-  res.json(compactOverviewForNative(overview, req.get("X-Native-App") === "true"));
+  const nativeRequest = req.get("X-Native-App") === "true";
+  // 未声明模式的是旧原生包：默认给 startup 快照，保证已安装版本也能立刻恢复；
+  // 新包首屏完成后会显式请求 full，在后台补齐二级页面。
+  const nativeMode = nativeRequest ? (req.get("X-Native-Overview") || "startup") : false;
+  res.json(compactOverviewForNative(overview, nativeMode));
 });
 
 // market/regime · market/instruments 路由已迁至 server/routes/market.mjs

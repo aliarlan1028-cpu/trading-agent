@@ -1,5 +1,6 @@
 const ACTIVE_PLAN_STATES = new Set(["armed", "awaiting_approval", "approved", "executing", "monitoring"]);
 const ACTIVE_ORDER_STATES = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
+const ACTIVE_SETUP_STATES = new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]);
 
 function recentWithActive(rows = [], activeStates, limit) {
   const list = Array.isArray(rows) ? rows : [];
@@ -113,6 +114,68 @@ function compactAccountSnapshot(row) {
   return snapshot;
 }
 
+function compactAgentStatus(status = {}) {
+  return {
+    id: status.id,
+    name: status.name,
+    state: status.state,
+    stateLabel: status.stateLabel,
+    authorized: status.authorized,
+    riskWall: status.riskWall,
+    activeMandate: status.activeMandate,
+    nextActions: (status.nextActions || []).slice(0, 3),
+    reasonNotTrading: status.reasonNotTrading,
+    updatedAt: status.updatedAt
+  };
+}
+
+function startupOverview(overview) {
+  const relevantSymbols = new Set([
+    "BTC/USDT",
+    ...(overview.positions || []).map((row) => row.symbol),
+    ...(overview.tradePlans || []).filter((row) => ACTIVE_PLAN_STATES.has(String(row?.status || "").toLowerCase())).map((row) => row.symbol)
+  ].filter(Boolean));
+  const startupPlans = recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 12).map(compactPlan);
+  const startupOrders = recentWithActive(overview.executionOrders, ACTIVE_ORDER_STATES, 12).map(compactExecutionOrder);
+  const startupSetups = recentWithActive(overview.armedSetups, ACTIVE_SETUP_STATES, 12).map(compactArmedSetup);
+  const startupWatches = recentWithActive(overview.watchTriggers, new Set(["active"]), 12);
+  return {
+    overviewMode: "native_startup",
+    user: overview.user,
+    system: overview.system,
+    systemRelease: overview.systemRelease,
+    automationState: overview.automationState,
+    agentStatus: compactAgentStatus(overview.agentStatus),
+    portfolio: overview.portfolio,
+    performance: overview.performance,
+    mandates: overview.mandates || [],
+    positions: overview.positions || [],
+    markets: (overview.markets || []).filter((row) => relevantSymbols.has(row.symbol)).slice(0, 8),
+    activeMarket: overview.activeMarket,
+    watchlist: overview.watchlist || [],
+    tradePlans: startupPlans,
+    armedSetups: startupSetups,
+    executionOrders: startupOrders,
+    fills: (overview.fills || []).slice(0, 20),
+    pendingActions: overview.pendingActions || [],
+    watchTriggers: startupWatches,
+    watchBoard: overview.watchBoard || [],
+    agentRuns: (overview.agentRuns || []).slice(0, 2),
+    notifications: (overview.notifications || []).slice(0, 20),
+    realtimeConnections: overview.realtimeConnections || [],
+    realtimeStarted: overview.realtimeStarted,
+    exchangeAccounts: overview.exchangeAccounts || [],
+    config: overview.config || {},
+    subscriptions: overview.subscriptions || [],
+    // Keep stable empty shapes so tapping a drawer item during the background refresh never
+    // crashes. The explicit full request replaces this snapshot shortly afterwards.
+    orders: [], reviews: [], riskChecks: [], riskIncidents: [], riskRules: [], events: [], tasks: [],
+    knowledge: {}, skills: [], strategyCatalog: {}, strategyStudio: {}, newsFeed: [],
+    abnormalVolatility: [], opportunityCandidates: [], reconciliationReports: [], accountSnapshots: [],
+    traces: [], auditLogs: [], mediumTermAnalytics: {}
+  };
+}
+
 /**
  * The web dashboard uses the broad overview as a compatibility snapshot. The native app has
  * a smaller, known data surface and must not download years of candles, tick histories and
@@ -121,19 +184,20 @@ function compactAccountSnapshot(row) {
 export function compactOverviewForNative(overview = {}, native = false) {
   if (!native) return overview;
   const strategyCatalog = overview.strategyCatalog || {};
-  return {
+  const compact = {
     ...overview,
     overviewMode: "native_compact",
     markets: (overview.markets || []).map(compactMarket),
     activeMarket: compactMarket(overview.activeMarket),
-    tradePlans: recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 60).map(compactPlan),
-    armedSetups: recentWithActive(overview.armedSetups, ACTIVE_ORDER_STATES, 30).map(compactArmedSetup),
-    orders: recentWithActive(overview.orders, ACTIVE_ORDER_STATES, 60),
+    tradePlans: recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 30).map(compactPlan),
+    armedSetups: recentWithActive(overview.armedSetups, ACTIVE_SETUP_STATES, 20).map(compactArmedSetup),
+    orders: recentWithActive(overview.orders, ACTIVE_ORDER_STATES, 40),
+    fills: (overview.fills || []).slice(0, 50),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
-    riskIncidents: recentWithActive(overview.riskIncidents, new Set(["open"]), 60),
+    riskIncidents: recentWithActive(overview.riskIncidents, new Set(["open"]), 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),
     newsFeed: (overview.newsFeed || []).slice(0, 12),
-    notifications: (overview.notifications || []).slice(0, 60),
+    notifications: (overview.notifications || []).slice(0, 30),
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 3).map(compactAccountSnapshot),
     agentRuns: (overview.agentRuns || []).slice(0, 8).map(compactAgentRun),
     knowledge: compactKnowledge(overview.knowledge),
@@ -141,7 +205,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     executionOrders: (overview.executionOrders || []).map(compactExecutionOrder),
     analysisBundles: [],
     evidenceBundles: [],
-    memoryItems: (overview.memoryItems || []).slice(0, 20),
+    memoryItems: (overview.memoryItems || []).slice(0, 10),
     strategyCatalog: { ...strategyCatalog, strategies: [] },
     // Desktop research/diagnostic workbenches are not part of the native IA. Keep their
     // dedicated APIs authoritative and do not make every mobile refresh carry the snapshots.
@@ -153,6 +217,11 @@ export function compactOverviewForNative(overview = {}, native = false) {
     agentStateFiles: {},
     marketCalendarEvents: [],
     dailyMarketBrief: null,
-    toolExecutions: []
+    toolExecutions: [],
+    analysisEngine: {},
+    paperReport: {},
+    opportunityCandidates: (overview.opportunityCandidates || []).slice(0, 10),
+    agentStatus: compactAgentStatus(overview.agentStatus)
   };
+  return native === "startup" ? startupOverview(compact) : compact;
 }

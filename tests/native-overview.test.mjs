@@ -77,3 +77,24 @@ test("desktop overview remains unchanged", () => {
   const full = { markets: [{ symbol: "BTC/USDT", candles }] };
   assert.equal(compactOverviewForNative(full, false), full);
 });
+
+test("native startup overview is a tiny interactive shell", () => {
+  const full = {
+    user: { id: "u1" }, system: { autonomyEnabled: true }, portfolio: { totalEquityUsdt: 100 },
+    agentStatus: { state: "running", timeline: candles, latestAnalysis: { facts: candles }, nextActions: ["wait"] },
+    markets: [{ symbol: "BTC/USDT", price: 64000, candles }, { symbol: "SUI/USDT", price: 1, candles }],
+    activeMarket: { symbol: "BTC/USDT", price: 64000, candles }, positions: [], mandates: [],
+    tradePlans: Array.from({ length: 90 }, (_, id) => ({ id, status: id === 89 ? "armed" : "expired", symbol: "BTC/USDT" })),
+    executionOrders: [], armedSetups: [], fills: candles, watchTriggers: [], agentRuns: [{ id: "run", steps: candles }, { id: "run2", steps: candles }],
+    notifications: candles, reviews: candles, knowledge: { tradingSkills: candles }, strategyStudio: { drafts: candles }
+  };
+  const startup = compactOverviewForNative(full, "startup");
+  assert.equal(startup.overviewMode, "native_startup");
+  assert.equal(startup.tradePlans[0].id, 89);
+  assert.equal(startup.markets.length, 1);
+  assert.equal(startup.agentStatus.timeline, undefined);
+  assert.equal(startup.agentRuns.length, 2);
+  assert.deepEqual(startup.reviews, []);
+  assert.deepEqual(startup.knowledge, {});
+  assert.ok(JSON.stringify(startup).length < 60_000);
+});

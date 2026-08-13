@@ -691,6 +691,7 @@ export function useApi() {
   const [publicInfo, setPublicInfo] = useState({ registrationEnabled: false, trc20Configured: false, subscriptionPlans: [] });
   // 轮询闭包里读不到最新 data,用 ref 记录"是否已有数据"来区分首连失败与掉线重连。
   const hasDataRef = useRef(false);
+  const overviewInFlightRef = useRef(false);
 
   function setApiBase(value) {
     // The browser build is served by the API host itself and therefore always
@@ -738,8 +739,11 @@ export function useApi() {
     window.setTimeout(() => setToast(""), 3200);
   }
 
-  async function readOverview(base) {
-    const response = await fetchWithTimeout(apiUrl("/api/overview", base), { headers: headers() }, 12000);
+  async function readOverview(base, overviewMode = "") {
+    const native = isNativeApp();
+    const response = await fetchWithTimeout(apiUrl("/api/overview", base), {
+      headers: headers(native && overviewMode ? { "X-Native-Overview": overviewMode } : {})
+    }, native && overviewMode === "full" ? 60000 : 12000);
     if (response.status === 401) {
       expireSession();
       return null;
@@ -749,27 +753,33 @@ export function useApi() {
   }
 
   async function refresh(showLoading = true, baseOverride) {
+    // A full native refresh can legitimately take longer on a physical phone. Do not stack a
+    // new 15-second poll on top of an existing one; the startup snapshot remains interactive.
+    if (overviewInFlightRef.current && !showLoading) return;
     const activeBase = normalizeApiBase(baseOverride || apiBase);
+    const initialNativeLoad = isNativeApp() && !hasDataRef.current;
     try {
+      overviewInFlightRef.current = true;
       if (isNativeApp() && !activeBase) {
         setConnectionError(t("请先填写 KORDYN 后端地址。", "Please enter the KORDYN backend URL first."));
         setLoading(false);
         return;
       }
       if (showLoading) setLoading(true);
-      let json = await readOverview(activeBase);
+      let json = await readOverview(activeBase, initialNativeLoad ? "startup" : isNativeApp() ? "full" : "");
       if (!json) return;
       setData(json);
       hasDataRef.current = true;
       setAuthRequired(false);
       setConnectionError("");
+      if (initialNativeLoad) window.setTimeout(() => refresh(false, activeBase), 100);
     } catch (error) {
       const fallback = nativeApiFallback();
       if (isNativeApp() && activeBase !== fallback) {
         try {
           localStorage.setItem("agent_api_base", fallback);
           setApiBaseState(fallback);
-          const json = await readOverview(fallback);
+          const json = await readOverview(fallback, initialNativeLoad ? "startup" : isNativeApp() ? "full" : "");
           if (!json) return;
           setData(json);
           hasDataRef.current = true;
@@ -785,6 +795,7 @@ export function useApi() {
       }
       reportConnectionFailure(connectionErrorMessage(error));
     } finally {
+      overviewInFlightRef.current = false;
       if (showLoading) setLoading(false);
     }
   }
