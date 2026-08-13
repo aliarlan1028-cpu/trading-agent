@@ -15,8 +15,10 @@ import {
   ClipboardList,
   Gauge,
   Globe2,
+  Eye,
   Inbox,
   Info,
+  MoreHorizontal,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -36,10 +38,8 @@ import {
 import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
-import { SignalHubPage, TradeJournalPage } from "./relayoutPages.jsx";
 import { ConfigPanel, LiveGrayPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
-import { ExecutionLedgerConcept, ExecutionReviewConcept, WatchMonitorConcept } from "./conceptPages.jsx";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
@@ -187,6 +187,35 @@ function MobilePositions({ data, action, ui }) {
       </div>
     </div>
   );
+}
+
+function MobileExecution({ data, action, initialTab = "overview" }) {
+  const [tab, setTab] = useState(initialTab);
+  const orders = (data.executionOrders || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const fills = (data.fills || []).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const reviews = (data.reviews || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const openStates = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_filled", "protecting"]);
+  const inFlight = orders.filter((row) => openStates.has(String(row.status || "").toLowerCase())).length;
+  const closes = fills.filter((row) => row.kind === "close" && Number.isFinite(Number(row.realizedPnl)));
+  const realized = closes.reduce((sum, row) => sum + Number(row.realizedPnl), 0);
+  const wins = closes.filter((row) => Number(row.realizedPnl) > 0).length;
+  const pendingReviews = reviews.filter((row) => !/completed|reflected|closed|done/i.test(String(row.status || "pending"))).length;
+  const tabs = [["overview", t("概览", "Overview")], ["orders", t("委托", "Orders")], ["fills", t("成交", "Fills")], ["reviews", t("复盘", "Reviews")]];
+  const direction = (row) => /short|sell|空/i.test(String(row.direction || row.side || "")) ? t("做空", "Short") : t("做多", "Long");
+  return <div className="mScreen mExecutionScreen">
+    <div className="mSegmentNav">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
+    {tab === "overview" && <>
+      <div className="mMetric2x2"><div className="mMetricCell"><span>{t("已实现盈亏", "Realized PnL")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{closes.length ? `${Math.round(wins / closes.length * 100)}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
+      <section className="mNativeSection"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
+        <button className="mActionRow" onClick={() => setTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
+        <button className="mActionRow" onClick={() => setTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>
+      </section>
+      <section className="mNativeSection"><header><div><b>{t("最近成交", "Latest fills")}</b><small>{t("真实 OKX 成交流水", "Real OKX fill ledger")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("全部", "All")}</button></header>{fills.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.kind === "close" ? t("平仓", "Close") : t("开仓", "Open")}</small></div><div><b className={`mono ${Number(row.realizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{row.realizedPnl == null ? displayPrice(row.price) : `${Number(row.realizedPnl) >= 0 ? "+" : ""}${displayMoney(row.realizedPnl, 2)}`}</b><small>{formatTime(row.createdAt)}</small></div></div>)}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills yet")}</b></div>}</section>
+    </>}
+    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length} {t("笔记录", "records")}</small></div></header>{orders.map((row) => <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.quantity ?? row.size ?? "—"}</b></span></div>{openStates.has(String(row.status || "").toLowerCase()) && <button onClick={() => action(`/api/execution-orders/${row.id}/close`, { reason: "manual_mobile" })}>{t("撤单 / 平仓", "Cancel / Close")}</button>}</article>)}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
+    {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length} {t("条真实记录", "real records")}</small></div></header>{fills.map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.kind === "close" ? t("平仓", "Close") : t("开仓", "Open")} · {row.quantity ?? row.size ?? "—"}</small></div><div><b className={`mono ${row.realizedPnl != null ? (Number(row.realizedPnl) >= 0 ? "pos" : "neg") : ""}`}>{row.realizedPnl == null ? displayPrice(row.price) : `${Number(row.realizedPnl) >= 0 ? "+" : ""}${displayMoney(row.realizedPnl, 2)}`}</b><small>{formatDateTime(row.createdAt)}</small></div></div>)}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b></div>}</section>}
+    {tab === "reviews" && <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length} {t("份记录", "records")}</small></div></header>{reviews.map((row, index) => <article className="mReviewCard" key={row.id || index}><div><b>{row.symbol || t("组合复盘", "Portfolio review")}</b><StatusBadge tone={statusTone(row.status)}>{humanize(row.status || "pending")}</StatusBadge></div><p>{localizeText(row.lesson || row.summary || row.notes) || t("等待复盘结论。", "Awaiting review conclusion.")}</p><small>{formatDateTime(row.completedAt || row.createdAt)}</small></article>)}{!reviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓确认后会自动进入复盘队列。", "Confirmed closes enter the review queue automatically.")}</span></div>}</section>}
+  </div>;
 }
 
 // 屏 S5 — 系统设置：账户卡 + 交易所列表 + 系统配置分区 + 订阅卡。
@@ -877,6 +906,36 @@ function MobileChatStatus({ data, ui }) {
   );
 }
 
+function MobileWatch({ data, action }) {
+  const watches = data.watchTriggers || [];
+  const active = watches.filter((item) => item.status === "active");
+  const history = watches.filter((item) => item.status !== "active").slice(0, 8);
+  const groups = (data.watchBoard || []).length ? data.watchBoard : Object.values(active.reduce((out, item) => {
+    out[item.symbol] ||= { symbol: item.symbol, analysisAt: item.analysisAt || item.createdAt, primary: null, secondary: [] };
+    if (!out[item.symbol].primary || item.priority === "primary") {
+      if (out[item.symbol].primary) out[item.symbol].secondary.push(out[item.symbol].primary);
+      out[item.symbol].primary = item;
+    } else out[item.symbol].secondary.push(item);
+    return out;
+  }, {}));
+  const direction = (item) => item?.direction === "long" ? t("做多情景", "Long scenario") : item?.direction === "short" ? t("做空情景", "Short scenario") : t("中性观察", "Neutral watch");
+  const condition = (item) => item?.kind === "price_above" ? `${t("向上突破", "Break above")} ${displayPrice(item.level)}` : item?.kind === "price_below" ? `${t("向下跌破", "Break below")} ${displayPrice(item.level)}` : `${t("进入区间", "Enter zone")} ${displayPrice(item?.levelLow)}–${displayPrice(item?.levelHigh)}`;
+  const thesis = (item) => localizeText(item?.displayThesis || item?.thesis || item?.analysisTitle, item?.displayThesisEn || item?.thesis || item?.analysisTitle) || t("等待关键条件提供新的方向依据。", "Waiting for a key condition to provide new directional evidence.");
+  const meaning = (item) => localizeText(item?.displayTriggerMeaning || item?.triggerMeaning || item?.note, item?.displayTriggerMeaningEn || item?.triggerMeaning || item?.note) || t("命中后重新检查结构、量能与盈亏比，不直接下单。", "Re-check structure, flow and risk/reward after the trigger; do not enter automatically.");
+  return <div className="mScreen mWatchScreen">
+    <div className="mWatchSummary"><div><b className="mono">{groups.length}</b><span>{t("盯盘币种", "Symbols watched")}</span></div><div><b className="mono">{active.length}</b><span>{t("有效条件", "Active conditions")}</span></div><p>{t("命中只会唤起重新分析，不代表已经做多、做空或下单。", "A trigger starts a fresh review; it is not a long, short, or order by itself.")}</p></div>
+    <section className="mNativeSection"><header><div><b>{t("正在盯盘", "Watching now")}</b><small>{t("先看原判断，再看命中意味着什么", "Read the thesis first, then what a trigger means")}</small></div><span>{active.length}</span></header>
+      <div className="mWatchList">{groups.map((group) => { const item = group.primary; if (!item) return null; const tone = item.direction === "long" ? "long" : item.direction === "short" ? "short" : "neutral"; return <article className={`mWatchCard ${tone}`} key={group.symbol}>
+        <div className="mWatchCardHead"><div><b className="mono">{item.symbol}</b><span>{direction(item)}</span></div><button onClick={async () => { if (await uiConfirm(`${t("确认撤销", "Cancel")} ${item.symbol}？`)) action(`/api/watch-triggers/${item.id}/cancel`, {}); }}><Trash2 size={15}/></button></div>
+        <div className="mWatchThesis"><span>{t("原判断", "Original thesis")}</span><p>{thesis(item)}</p></div>
+        <div className="mWatchTrigger"><span><small>{t("等待条件", "Waiting for")}</small><b>{condition(item)}</b></span><span><small>{t("命中之后", "If triggered")}</small><p>{meaning(item)}</p></span></div>
+        {(group.secondary || []).length > 0 && <details><summary>{t("辅助条件", "Supporting conditions")} · {group.secondary.length}</summary>{group.secondary.map((row) => <div className="mWatchSecondary" key={row.id}><span><b>{condition(row)}</b><small>{meaning(row)}</small></span><button onClick={() => action(`/api/watch-triggers/${row.id}/cancel`, {})}>×</button></div>)}</details>}
+      </article>; })}{!groups.length && <div className="mNativeEmpty"><Eye size={22}/><b>{t("暂无有效观察哨", "No active watches")}</b><span>{t("AI 登记具体价位条件后会显示在这里。", "Concrete price conditions registered by the AI appear here.")}</span></div>}</div>
+    </section>
+    {history.length > 0 && <section className="mNativeSection"><header><div><b>{t("最近记录", "Recent history")}</b><small>{t("触发、失效与被替代", "Triggered, invalidated, and superseded")}</small></div></header>{history.map((item) => <div className="mNativeRow" key={item.id}><span className={`mStateDot ${item.status}`}/><span><b>{item.symbol} · {direction(item)}</b><small>{condition(item)} · {humanize(item.status)}</small></span><time>{formatTime(item.triggeredAt || item.updatedAt || item.createdAt)}</time></div>)}</section>}
+  </div>;
+}
+
 // 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
 // W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
 // 风控中心(移动版):把风控总览 + 风控设置合并到一个导航项,顶部 Tab 切换。
@@ -938,7 +997,32 @@ const mobileNav = [
   { id: "auditSystem", label: ["审计", "Audit"], code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: ["系统设置", "Settings"], code: "SETTINGS · CONFIG", icon: Settings }
 ];
+const mobilePrimaryNav = [
+  { id: "chat", label: ["交易员", "Trader"], icon: Bot },
+  { id: "watch", label: ["盯盘", "Watch"], icon: Gauge },
+  { id: "cockpit", label: ["市场", "Market"], icon: PieChart },
+  { id: "riskHub", label: ["风控", "Risk"], icon: ShieldCheck },
+  { id: "more", label: ["更多", "More"], icon: MoreHorizontal }
+];
+const mobileSecondaryNav = [
+  { id: "executionReview", label: ["交易记录", "Trading activity"], icon: ClipboardList, hint: ["委托、成交与复盘", "Orders, fills, and reviews"] },
+  { id: "knowledgeBase", label: ["知识库", "Knowledge"], icon: BookOpen, hint: ["方法、规则与图谱", "Methods, rules, and graph"] },
+  { id: "strategyLib", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
+  { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], icon: CalendarClock, hint: ["重要事件与自动任务", "Events and automation"] },
+  { id: "auditSystem", label: ["运行记录", "Activity"], icon: Activity, hint: ["系统状态与审计", "System state and audit"] },
+  { id: "systemSettings", label: ["设置", "Settings"], icon: Settings, hint: ["账户、交易所与模型", "Account, exchange, and model"] }
+];
 const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
+
+function MobileTabbar({ route, onNavigate, onMore }) {
+  return <nav className="mNativeTabbar" aria-label={t("主导航", "Primary navigation")}>
+    {mobilePrimaryNav.map((item) => {
+      const Icon = item.icon;
+      const active = item.id === "more" ? !["chat", "watch", "cockpit", "riskHub"].includes(route) : route === item.id;
+      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
+    })}
+  </nav>;
+}
 
 function MobileHeader({ route, onMenu, right, reconnecting }) {
   const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
@@ -962,10 +1046,11 @@ function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang })
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
         <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
+        <div className="mDrawerTitle"><b>{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
         <div className="mDrawerNav">
-          {mobileNav.map((n) => {
+          {mobileSecondaryNav.map((n) => {
             const Icon = n.icon;
-            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span>{mobileNavLabel(n)}</span></button>;
+            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span><b>{mobileNavLabel(n)}</b><small>{t(n.hint[0], n.hint[1])}</small></span><ChevronRight size={15}/></button>;
           })}
         </div>
         <div className="mDrawerFoot">
@@ -988,7 +1073,9 @@ function PullToRefresh({ onRefresh, className, children }) {
   const onMove = (e) => {
     if (startY.current == null) return;
     const dy = e.touches[0].clientY - startY.current;
-    if (dy > 0) { if (e.cancelable) e.preventDefault(); setPull(Math.min(dy * 0.5, 88)); }
+    // Do not prevent native scrolling until the user is clearly pulling down from the top.
+    // Capturing every small move here made normal page scrolling feel sticky.
+    if (dy > 10) { if (e.cancelable) e.preventDefault(); setPull(Math.min((dy - 10) * 0.45, 88)); }
     else setPull(0);
   };
   const onEnd = async () => {
@@ -1038,17 +1125,17 @@ export function MobileApp({ api, lang, switchLang }) {
 
   let content = null;
   if (route === "chat") {
-    content = <div className="content mChatContent"><MobileChatStatus data={data} ui={ui} /><ChatPage data={data} action={action} ui={ui} /></div>;
+    content = <div className="mChatContent"><MobileChatStatus data={data} ui={ui} /><ChatPage data={data} action={action} ui={ui} mobile /></div>;
   } else if (route === "watch") {
-    content = <div className="content mSubContent"><WatchMonitorConcept data={data} action={action} ui={ui} /></div>;
+    content = <MobileWatch data={data} action={action} />;
   } else if (route === "cockpit") {
     content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
-    content = <div className="content mSubContent"><ExecutionReviewConcept data={data} action={action} ui={ui} /></div>;
+    content = <MobileExecution data={data} action={action} initialTab="overview" />;
   } else if (route === "tradeLedger") {
-    content = <div className="content mSubContent"><ExecutionLedgerConcept data={data} action={action} ui={ui} /></div>;
+    content = <MobileExecution data={data} action={action} initialTab="orders" />;
   } else if (route === "riskHub") {
     content = <MobileRiskHub data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
@@ -1078,6 +1165,7 @@ export function MobileApp({ api, lang, switchLang }) {
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
+      <MobileTabbar route={route} onNavigate={navigate} onMore={() => setDrawer(true)} />
       <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} lang={lang} switchLang={switchLang} />
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}

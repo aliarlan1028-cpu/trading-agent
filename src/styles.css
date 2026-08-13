@@ -8978,7 +8978,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .settingsTermPage .panelForm .formGrid { gap: 12px; }
 
 /* ===== 移动端 Terminal 重设计：外壳 + 汉堡抽屉（design_handoff_ios_app）===== */
-.mShell2 { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #F4F1EB; overflow: hidden; }
+.mShell2 { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #F4F1EB; overflow: hidden; overscroll-behavior: none; }
 .mHeader2 { flex: none; display: flex; align-items: center; gap: 12px; padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 12px; background: #FBF9F5; border-bottom: 1px solid #EDE7DB; }
 .mMenuBtn { width: 38px; height: 38px; border: 0; border-radius: 10px; background: #F1EADF; color: #1E1B16; display: grid; place-items: center; flex: none; cursor: pointer; }
 .mHeaderMid { flex: 1; min-width: 0; display: grid; gap: 1px; }
@@ -9016,7 +9016,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mReconnect { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font: 700 11px "Space Grotesk"; background: #FBEFDD; color: #B17724; }
 .mReconnect .pulseDot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulseDot 1.4s infinite; }
 @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
-.mMain2 { position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(30px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+.mMain2 { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; padding-bottom: 22px; }
 /* 下拉刷新指示条(藏在容器顶部上方,靠 translateY 露出) */
 .mPtr { position: absolute; top: -44px; left: 0; right: 0; height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; color: #8a8172; font-size: 12px; pointer-events: none; transition: opacity .15s; }
 .mPtr svg { color: #D06A22; }
@@ -9027,14 +9027,57 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mSheetGrip span { width: 38px; height: 4px; border-radius: 3px; background: #D8CFBE; }
 .mSymPills button, .mSheetRow, .mIncBtn, .mSymMore { transition: transform .1s ease, background .12s ease; }
 .mSymPills button:active, .mSheetRow:active, .mIncBtn:active, .mSymMore:active, .mCard.mTap:active { transform: scale(.96); }
-.mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; flex-direction: column; }
+.mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; flex-direction: column; touch-action: pan-y; }
 .mMain2.mMainChat > .mChatContent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mChatContent > .mChatStatus { flex: none; }
-.mShell2 .chatShell { flex: 1; min-height: 0; display: block; height: auto; }
+.mShell2 .chatShell { flex: 1; min-height: 0; display: block; height: auto; margin: 0; width: 100%; }
 .mShell2 .chatShell > .chatPage { height: 100%; min-height: 0; }
 .mShell2 .agChat { height: 100%; min-height: 0; }
 .mShell2 .agInputBar { flex: none; }
 .mShell2 .agRail { display: none; }
+
+/* Native mobile IA: five stable top-level destinations, with secondary tools in More. */
+.mNativeTabbar { flex: none; z-index: 50; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 5px 8px calc(5px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom,0px))); border-top: 1px solid #DED6C8; background: rgba(255,254,251,.96); backdrop-filter: blur(18px); }
+.mNativeTabbar button { min-width: 0; height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; border-radius: 10px; background: transparent; color: #918777; font: 600 9.5px var(--font-ui); }
+.mNativeTabbar button svg { flex: none; stroke-width: 1.8; }
+.mNativeTabbar button.active { color: #B65C20; background: #FBEDDF; }
+
+/* Native chat owns exactly one scroll surface: .agMsgs. */
+.mobileChatShell,.mobileChatShell .agChat { height: 100%; min-height: 0; overflow: hidden; }
+.mobileChatShell .agChat { position: relative; padding: 0; border: 0; border-radius: 0; background: #F8F5EF; }
+.agChatMobileBar { flex: none; min-height: 45px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #E8E1D6; background: #FFFEFB; }
+.agChatMobileBar .agChatTitle { font-size: 12px; }
+.agChatMobileBar .agChatNum { display: none; }
+.agChatMobileBar .agChatHeadR { gap: 5px; }
+.agChatMobileBar .agViewToggle { margin-right: 2px; }
+.agMobileIconBtn { position: relative; width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #E3DCCE; border-radius: 8px; background: #fff; color: #6B6455; }
+.agMobileIconBtn b { position: absolute; right: -3px; top: -4px; min-width: 15px; height: 15px; padding: 0 3px; display: grid; place-items: center; border-radius: 8px; background: #D06A22; color: #fff; font: 700 8px var(--font-mono); }
+.mobileChatShell .agMsgs { flex: 1 1 0; min-height: 0; overflow-y: scroll; overflow-x: hidden; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scroll-behavior: auto; gap: 14px; padding: 12px 10px 18px; }
+.mobileChatShell .agInputBar { margin: 0; padding: 8px 9px 8px 13px; padding-bottom: calc(8px + var(--keyboard-inset-height,0px)); border: 0; border-top: 1px solid #DED6C8; border-radius: 0; background: #FFFEFB; }
+.mobileChatShell .agInputBar textarea { max-height: 96px; font-size: 14px; }
+.mobileChatShell .agMsgAiRow { gap: 7px; }
+.mobileChatShell .agAvatar { width: 27px; height: 27px; border-radius: 8px; }
+.mobileChatShell .agBubbleAi { max-width: calc(100% - 34px); padding: 10px 11px; border-radius: 4px 13px 13px 13px; font-size: 13px; line-height: 1.62; }
+.mobileChatShell .agBubbleUser { max-width: 88%; padding: 9px 11px; font-size: 13px; line-height: 1.58; }
+.mobileChatShell .agBubbleAi.decisionMessage { max-width: calc(100% - 34px); width: calc(100% - 34px); }
+.mobileChatShell .pendingActionsDock { max-height: 30vh; overflow-y: auto; border-top: 1px solid #E8E1D6; background: #FFFEFB; }
+
+.mChatHistoryOverlay { position: fixed; inset: 0; z-index: 180; display: flex; align-items: flex-end; background: rgba(30,27,22,.38); }
+.mChatHistorySheet { width: 100%; max-height: 78dvh; padding: 14px 14px calc(16px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); display: flex; flex-direction: column; gap: 10px; border-radius: 18px 18px 0 0; background: #FBF9F5; box-shadow: 0 -16px 40px rgba(30,27,22,.16); }
+.mChatHistoryHead { display: flex; align-items: center; justify-content: space-between; }
+.mChatHistoryHead > div { display: grid; gap: 2px; }
+.mChatHistoryHead b { font-size: 16px; }
+.mChatHistoryHead small { color: #8A8172; font-size: 11px; }
+.mChatHistoryHead > button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 9px; background: #F1EADF; color: #6B6455; }
+.mChatNewSession { height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 10px; background: #1E1B16; color: #F5E9DB; font-weight: 700; }
+.mChatHistoryList { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.mChatHistoryList > button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 10px; border: 0; border-bottom: 1px solid #EDE7DB; background: transparent; color: #4E473D; text-align: left; }
+.mChatHistoryList > button.active { background: #FBEDDF; color: #9F4E18; }
+.mChatHistoryList > button span { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mChatHistoryList b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.mChatHistoryList small { color: #9B917F; font: 500 10px var(--font-mono); }
+.mChatHistoryList p { padding: 28px; color: #8A8172; text-align: center; }
+.mChatClearHistory { align-self: center; display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 0; background: transparent; color: #B84B37; font-size: 11px; }
 
 /* 汉堡抽屉 */
 .mDrawerOverlay { position: fixed; inset: 0; z-index: 120; background: rgba(30,27,22,.42); backdrop-filter: blur(2px); animation: mDrawerFade .2s ease; }
@@ -9054,11 +9097,15 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mLangSeg button { flex: 1; padding: 9px 4px; border: 0; background: transparent; color: #6b6152; font: 600 13px "Space Grotesk"; cursor: pointer; }
 .mLangSeg button:first-child { border-right: 1px solid #e3dccd; }
 .mLangSeg button.on { background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; }
-.mDrawerNav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
-.mDrawerItem { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 13px; border: 0; border-radius: 10px; background: transparent; color: #4b443a; font: 600 15px "Space Grotesk"; cursor: pointer; text-align: left; }
+.mDrawerTitle { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 7px 8px; }.mDrawerTitle b { font-size: 13px; }.mDrawerTitle small { color: #A89E8A; font-size: 9px; }
+.mDrawerNav { display: flex; flex-direction: column; gap: 4px; flex: 1; overflow-y: auto; }
+.mDrawerItem { display: flex; align-items: center; gap: 11px; min-height: 52px; padding: 9px 11px; border: 0; border-radius: 10px; background: transparent; color: #4b443a; cursor: pointer; text-align: left; }
 .mDrawerItem svg { color: #8a8172; flex: none; }
+.mDrawerItem > span { flex: 1; min-width: 0; display: grid; gap: 2px; }.mDrawerItem > span b { font: 700 13px "Space Grotesk"; }.mDrawerItem > span small { color: #9A907F; font: 500 9px "Space Grotesk"; }
+.mDrawerItem > svg:last-child { color: #B3A992; }
 .mDrawerItem.active { background: #1E1B16; color: #F5E9DB; font-weight: 700; }
 .mDrawerItem.active svg { color: #F5E9DB; }
+.mDrawerItem.active > span small { color: #BDB09F; }
 .mDrawerFoot { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #EDE7DB; }
 .mDrawerStatus { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: #E6F1EA; color: #1F7A50; font: 700 12px "Space Grotesk"; }
 .mDrawerStatus span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
@@ -9084,6 +9131,66 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mChatStatCell span { font: 700 8px "Space Grotesk"; letter-spacing: .08em; text-transform: uppercase; color: #a89e8a; }
 .mChatStatCell b { font: 700 13px "IBM Plex Mono"; color: #1E1B16; }
 .mChatStatusWrap{display:flex;flex-direction:column;flex:none;background:#fbf9f5;border-bottom:1px solid #ede7db}.mChatStatusWrap .mChatStatus{border-bottom:0}.mChatShortcuts{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:7px 10px 9px}.mChatShortcuts button{display:flex;align-items:center;justify-content:center;gap:6px;height:30px;border:1px solid #e1d7c8;border-radius:8px;background:#fff;color:#5f574c;font:600 10px "Space Grotesk";cursor:pointer}.mChatShortcuts button svg{width:13px;color:#d06a22}.mChatShortcuts button b{display:grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#f3e7da;color:#b85b20;font:700 9px "IBM Plex Mono"}
+
+/* Mobile watch is a vertical decision list, not the desktop dashboard squeezed to phone width. */
+.mWatchScreen { gap: 12px; }
+.mWatchSummary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mWatchSummary > div { display: grid; gap: 2px; padding: 12px; border: 1px solid #E3DCCE; border-radius: 12px; background: #FFFEFB; }
+.mWatchSummary b { font-size: 22px; color: #1E1B16; }
+.mWatchSummary span { color: #8A8172; font-size: 10px; }
+.mWatchSummary p { grid-column: 1/-1; padding: 9px 11px; border-radius: 9px; background: #F1EADF; color: #6B6455; font-size: 10.5px; line-height: 1.5; }
+.mNativeSection { overflow: hidden; border: 1px solid #E3DCCE; border-radius: 13px; background: #FFFEFB; }
+.mNativeSection > header { min-height: 52px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #EDE7DB; }
+.mNativeSection > header > div { display: grid; gap: 2px; }
+.mNativeSection > header b { font-size: 13px; }
+.mNativeSection > header small { color: #938A7B; font-size: 9.5px; }
+.mNativeSection > header > span { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 12px; background: #FBEDDF; color: #AD561C; font: 700 10px var(--font-mono); }
+.mWatchList { display: flex; flex-direction: column; }
+.mWatchCard { position: relative; display: grid; gap: 10px; padding: 13px 12px 13px 15px; border-bottom: 1px solid #EDE7DB; }
+.mWatchCard:last-child { border-bottom: 0; }
+.mWatchCard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #928879; }
+.mWatchCard.long::before { background: #238158; } .mWatchCard.short::before { background: #B64838; }
+.mWatchCardHead { display: flex; align-items: center; justify-content: space-between; }
+.mWatchCardHead > div { display: flex; align-items: center; gap: 7px; }
+.mWatchCardHead > div > b { font-size: 14px; }
+.mWatchCardHead > div > span { padding: 3px 7px; border-radius: 6px; background: #F1EEE8; color: #6D6559; font-size: 9.5px; font-weight: 700; }
+.mWatchCard.long .mWatchCardHead span { background: #E8F4EC; color: #1F7650; }.mWatchCard.short .mWatchCardHead span { background: #FBEAE6; color: #B13E31; }
+.mWatchCardHead > button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #F7F3ED; color: #A09686; }
+.mWatchThesis,.mWatchTrigger > span { display: grid; gap: 4px; }
+.mWatchThesis > span,.mWatchTrigger small { color: #998F7E; font-size: 9px; letter-spacing: .05em; }
+.mWatchThesis p,.mWatchTrigger p { color: #514A40; font-size: 11px; line-height: 1.55; }
+.mWatchTrigger { display: grid; grid-template-columns: .8fr 1.2fr; gap: 1px; overflow: hidden; border: 1px solid #E8E1D6; border-radius: 9px; background: #E8E1D6; }
+.mWatchTrigger > span { padding: 9px; background: #FBFAF7; }
+.mWatchTrigger b { color: #302B24; font-size: 11px; }
+.mWatchCard details { border-top: 1px solid #EDE7DB; padding-top: 8px; }
+.mWatchCard summary { color: #807665; font-size: 10px; }
+.mWatchSecondary { display: flex; align-items: center; gap: 8px; padding: 8px 0 0; }
+.mWatchSecondary > span { flex: 1; min-width: 0; display: grid; gap: 2px; }.mWatchSecondary b { font-size: 10px; }.mWatchSecondary small { color: #8A8172; font-size: 9px; }
+.mWatchSecondary button { border: 0; background: transparent; color: #A89E8A; }
+.mNativeEmpty { min-height: 170px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #A09686; text-align: center; }
+.mNativeEmpty b { color: #5D554A; font-size: 12px; }.mNativeEmpty span { max-width: 240px; font-size: 10px; line-height: 1.5; }
+.mNativeRow { min-height: 54px; padding: 9px 12px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid #EDE7DB; }
+.mNativeRow:last-child { border-bottom: 0; }.mNativeRow > span:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 3px; }.mNativeRow b { font-size: 11px; }.mNativeRow small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8A8172; font-size: 9px; }.mNativeRow time { color: #A89E8A; font: 500 9px var(--font-mono); }
+.mStateDot { width: 7px; height: 7px; border-radius: 50%; background: #9D9383; }.mStateDot.triggered { background: #238158; }.mStateDot.invalidated,.mStateDot.expired { background: #B64838; }
+
+/* Execution is organized as a native segmented list instead of desktop tables. */
+.mExecutionScreen { gap: 12px; }
+.mSegmentNav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 3px; padding: 3px; border-radius: 10px; background: #EAE4D9; }
+.mSegmentNav button { height: 34px; min-width: 0; border: 0; border-radius: 8px; background: transparent; color: #756D60; font-size: 11px; font-weight: 700; }
+.mSegmentNav button.active { background: #FFFEFB; color: #1E1B16; box-shadow: 0 1px 3px rgba(30,27,22,.08); }
+.mActionRow { width: 100%; min-height: 66px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid #EDE7DB; background: transparent; color: #4E473D; text-align: left; }
+.mActionRow:last-child { border-bottom: 0; }
+.mActionRow > span { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border-radius: 9px; background: #E6F1EA; color: #1F7A50; font: 700 11px var(--font-mono); }
+.mActionRow > span.warning { background: #FBF1DE; color: #A67922; }
+.mActionRow > div { flex: 1; min-width: 0; display: grid; gap: 3px; }.mActionRow b { font-size: 11.5px; }.mActionRow small { color: #8A8172; font-size: 9.5px; }.mActionRow > svg { color: #A89E8A; }
+.mNativeSection > header > button { border: 0; background: transparent; color: #B75B20; font-size: 10px; font-weight: 700; }
+.mTradeRow { min-height: 58px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #EDE7DB; }
+.mTradeRow:last-child { border-bottom: 0; }.mTradeRow > div { min-width: 0; display: grid; gap: 3px; }.mTradeRow > div:last-child { text-align: right; }.mTradeRow b { font-size: 11.5px; }.mTradeRow small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #918777; font-size: 9px; }
+.mOrderCard { display: grid; gap: 10px; padding: 12px; border-bottom: 1px solid #EDE7DB; }.mOrderCard:last-child { border-bottom: 0; }
+.mOrderCard > header { display: flex; align-items: center; justify-content: space-between; }.mOrderCard > header > div { display: flex; align-items: center; gap: 7px; }.mOrderCard > header > div > span { padding: 2px 6px; border-radius: 5px; background: #E8F4EC; color: #1F7650; font-size: 9px; font-weight: 700; }.mOrderCard > header > div > span.short { background: #FBEAE6; color: #B13E31; }
+.mOrderCard > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: hidden; border: 1px solid #E8E1D6; border-radius: 8px; background: #E8E1D6; gap: 1px; }.mOrderCard > div > span { min-width: 0; padding: 7px; display: grid; gap: 3px; background: #FBFAF7; color: #968C7A; font-size: 8.5px; }.mOrderCard > div b { overflow: hidden; text-overflow: ellipsis; color: #4C453A; font-size: 9.5px; }
+.mOrderCard > button { height: 34px; border: 1px solid #E7C8C0; border-radius: 8px; background: #FFF8F6; color: #B64838; font-size: 10px; font-weight: 700; }
+.mReviewCard { display: grid; gap: 7px; padding: 12px; border-bottom: 1px solid #EDE7DB; }.mReviewCard:last-child { border-bottom: 0; }.mReviewCard > div { display: flex; align-items: center; justify-content: space-between; }.mReviewCard > div > b { font-size: 11.5px; }.mReviewCard p { color: #5B5449; font-size: 10.5px; line-height: 1.55; }.mReviewCard > small { color: #9B917F; font: 500 9px var(--font-mono); }
 
 /* S2 指标 2×2 + 行情 + 持仓 + 保证金 */
 .mMetric2x2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

@@ -1288,7 +1288,7 @@ function PosterModal({ content, meta, onClose }) {
   );
 }
 
-export function ChatPage({ data, action, ui, concept = false }) {
+export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
   const system = data.system || {};
   const autoOn = system.autonomyEnabled === true && !system.killSwitch;
   const [messages, setMessages] = useState([]);
@@ -1332,11 +1332,18 @@ export function ChatPage({ data, action, ui, concept = false }) {
     // 用户消息和思考态仍贴近输入框；新的 AI 长简报必须定位到卡片顶部，
     // 否则自动滚到底会直接跳过“本轮结论”和状态，用户第一眼只看到工具调用。
     if (latest && latest.role !== "user" && !pending && latestMessageRef.current) {
-      latestMessageRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      const scroller = scrollRef.current;
+      const target = latestMessageRef.current;
+      if (scroller) {
+        // Keep movement inside the message scroller. scrollIntoView also moved WebKit's outer
+        // ancestors, which made the native conversation appear to float.
+        const top = Math.max(0, scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8);
+        scroller.scrollTo({ top, behavior: mobile ? "auto" : "smooth" });
+      }
       return;
     }
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length, pending]);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: mobile ? "auto" : "smooth" });
+  }, [messages.length, pending, mobile]);
 
   // 切走页面会 unmount ChatPage,发出去的问题在后端照常处理并落库,但组件本地的"思考中"状态丢了。
   // 重新进入时:若最后一条是用户消息(还没等到 AI 回复),说明有一轮在后端进行/刚完成——
@@ -1438,11 +1445,13 @@ export function ChatPage({ data, action, ui, concept = false }) {
   function newSession() {
     setActiveSessionId("");
     setMessages([]);
+    setShowHistory(false);
   }
 
   function switchSession(sessionId) {
     setActiveSessionId(sessionId);
     loadMessages(sessionId);
+    setShowHistory(false);
   }
 
   async function deleteSession(sessionId, event) {
@@ -1473,22 +1482,36 @@ export function ChatPage({ data, action, ui, concept = false }) {
   }
 
   return (
-    <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""}`}>
+    <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""} ${mobile ? "mobileChatShell" : ""}`}>
     <div className="agChat">
-      <div className="agChatHead">
+      <div className={mobile ? "agChatMobileBar" : "agChatHead"}>
         <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? t("与 AI 交易员对话", "Chat with the AI trader") : t("情报中心", "Intel Center")}</div>
         <div className="agChatHeadR">
           <div className="agViewToggle">
             <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>
-          <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("紧急停止中", "Emergency stop active") : t("已暂停", "Paused")}</span>
-          <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>
+          {!mobile && <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("紧急停止中", "Emergency stop active") : t("已暂停", "Paused")}</span>}
+          {!mobile && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>}
+          {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
+          {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>
       </div>
 
+      {mobile && showHistory && <div className="mChatHistoryOverlay" onClick={() => setShowHistory(false)}>
+        <section className="mChatHistorySheet" onClick={(event) => event.stopPropagation()}>
+          <div className="mChatHistoryHead"><div><b>{t("对话历史", "Chat history")}</b><small>{t("选择一段对话继续", "Choose a conversation to continue")}</small></div><button onClick={() => setShowHistory(false)} aria-label={t("关闭", "Close")}><X size={18}/></button></div>
+          <button className="mChatNewSession" onClick={newSession}><Plus size={16}/>{t("新建对话", "New conversation")}</button>
+          <div className="mChatHistoryList">
+            {sessions.map((session) => <button className={session.id === activeSessionId ? "active" : ""} key={session.id} onClick={() => switchSession(session.id)}><span><b>{localizeText(session.title || t("未命名对话", "Untitled"))}</b><small>{formatTime(session.updatedAt || session.createdAt)}</small></span><ChevronRight size={16}/></button>)}
+            {!sessions.length && <p>{t("还没有历史对话", "No conversation history yet")}</p>}
+          </div>
+          {sessions.length > 0 && <button className="mChatClearHistory" onClick={resetHistory}><Trash2 size={14}/>{t("清空全部历史", "Clear all history")}</button>}
+        </section>
+      </div>}
+
       {view === "intel" ? <IntelCenter action={action} data={data} /> : (<>
-      {<div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
+      {!mobile && <div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
         <span className="agHistLabel">{t("对话历史", "History")}</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> {t("新建", "New")}</button>
         {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title={t("清空全部对话历史（含早期 AI 助手混入的问答）", "Clear all chat history (including early Q&A mixed in from the assistant)")}><Trash2 size={11} /> {t("清空", "Clear")}</button>}
