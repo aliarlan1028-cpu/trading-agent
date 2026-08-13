@@ -68,8 +68,15 @@ function buildPlan(price, direction, mandate, vol = {}) {
   const pull = DEFAULTS.pullbackAtr * stopDist;
   const entryLow = long ? price - pull : price;
   const entryHigh = long ? price : price + pull;
-  const stop = long ? price - stopDist : price + stopDist;
-  const targets = DEFAULTS.rr.map((rr) => (long ? price + stopDist * rr : price - stopDist * rr));
+  // The invalidation distance belongs to the eventual entry, not the quote seen
+  // when the plan is created. Anchoring it to `price` while moving the entry by
+  // 0.6R silently reduced a filled pullback order to only 0.4R of protection.
+  // Anchor SL/TP to the conservative edge of the band so every possible fill
+  // retains at least the requested ATR distance and advertised R multiple.
+  const stopAnchor = long ? entryLow : entryHigh;
+  const stop = long ? stopAnchor - stopDist : stopAnchor + stopDist;
+  const targetAnchor = long ? entryHigh : entryLow;
+  const targets = DEFAULTS.rr.map((rr) => (long ? targetAnchor + stopDist * rr : targetAnchor - stopDist * rr));
   const ceilingRisk = num(mandate?.maxSingleTradeRiskPct);
   const riskPct = ceilingRisk != null ? Math.min(ceilingRisk, DEFAULTS.riskPct) : DEFAULTS.riskPct;
   const maxLev = num(mandate?.max_leverage) || num(mandate?.maxLeverage) || DEFAULTS.leverageCap;

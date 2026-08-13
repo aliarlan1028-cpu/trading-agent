@@ -97,6 +97,13 @@ test("顺势回调入场:做多挂单区在现价下方(不追单)", () => {
   assert.ok(d.plan.entryLow < BULL.price, "做多入场下沿在现价下方");
 });
 
+test("回调区成交后仍保留完整 ATR 止损距离，不会被入场偏移压缩", () => {
+  const d = deterministicDecision({ market: { ...BULL, atr: 900 }, smartMoney: SMART_LONG });
+  const expectedDistance = BULL.price * d.plan.stopPct;
+  assert.ok(Math.abs((d.plan.entryLow - d.plan.stopLoss) - expectedDistance) < 1e-6);
+  assert.ok((d.plan.entryHigh - d.plan.stopLoss) >= expectedDistance);
+});
+
 // —— 扫描器反追涨杀跌打分 ——
 test("扫描器:顺势回调候选评分高于追高顶部", () => {
   const pull = scoreCandidate({ momentum: 10, rangePos: 0.42, volPct: 8 }).longScore;

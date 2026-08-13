@@ -158,40 +158,58 @@ function boardMessage(db, watch, eventType, context = {}, language = watchLangua
 }
 
 function triggerMessage(db, watch, context = {}, language = watchLanguage()) {
-  const next = watchBoardForSymbol(db, watch.symbol)?.primary;
   const role = watch.wasPrimary || watch.priority === "primary"
     ? (language === "en" ? "Primary watch" : "主观察哨")
     : watchPurposeLabel(watch, language);
+  const rationale = language === "en" ? englishCopy(watch.note) : compact(watch.note);
   if (language === "en") {
     const lines = [
-      `🚨 <b>WATCH TRIGGERED · ${escapeHtml(watch.symbol)}</b>`,
-      `Role: ${escapeHtml(role)}`,
-      "",
-      "🎯 <b>Triggered Condition</b>",
-      `<code>${escapeHtml(describeWatch(watch, language))}</code>`,
-      `Trigger price: <code>${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")}</code>`,
-      `Triggered: ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`,
-      "",
-      "🧭 <b>Action</b>",
-      context.autoAnalyze ? "Fresh AI analysis has been requested. Wait for the next market view." : "Automatic analysis is off. Open KORDYN and review the market manually.",
-      next ? `Temporary focus: ${escapeHtml(describeWatch(next, language))}` : "No active watch remains while the new analysis is pending.",
-      "<i>Do not act on the older alert. A trigger is not an order.</i>"
+      `<b>${escapeHtml(watch.symbol)} · watch triggered</b>`,
+      `Condition: ${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
+      `Market: ${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`
     ];
+    if (rationale) lines.push(`Why it matters: ${escapeHtml(rationale)}`);
+    lines.push(`Status: ${context.autoAnalyze ? "AI re-analysis requested" : "manual review required"}; do not trade from this stale condition before a fresh conclusion.`);
     return lines.join("\n");
   }
+  const lines = [
+    `<b>${escapeHtml(watch.symbol)} · 观察条件命中</b>`,
+    `条件：${escapeHtml(role)} · ${escapeHtml(describeWatch(watch, language))}`,
+    `现价：${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")} · ${localTime(watch.triggeredAt || context.at || nowIso(), language)}`
+  ];
+  if (rationale) lines.push(`意义：${escapeHtml(rationale)}`);
+  lines.push(`状态：${context.autoAnalyze ? "已唤起 AI 重新分析" : "需要人工复核"}；新结论出来前，不依据这条旧条件下单。`);
+  return lines.join("\n");
+}
+
+function invalidationMessage(watch, context = {}, language = watchLanguage()) {
+  const reason = language === "en"
+    ? englishCopy(watch.closeReason || context.reason) || "The original setup is no longer valid."
+    : compact(watch.closeReason || context.reason) || "原交易假设已不再成立。";
+  if (language === "en") return [
+    `<b>${escapeHtml(watch.symbol)} · setup invalidated</b>`,
+    `Previous condition: ${escapeHtml(describeWatch(watch, language))}`,
+    `Reason: ${escapeHtml(reason)}`,
+    "Action: stop using the previous view and wait for a fresh analysis. No order was placed by this alert."
+  ].join("\n");
   return [
-    `🚨 <b>观察哨已触发 · ${escapeHtml(watch.symbol)}</b>`,
-    `角色：${escapeHtml(role)}`,
-    "",
-    "🎯 <b>命中条件</b>",
-    `<code>${escapeHtml(describeWatch(watch, language))}</code>`,
-    `触发价：<code>${escapeHtml(watch.triggerPrice ?? context.triggerPrice ?? "—")}</code>`,
-    `触发时间：${localTime(watch.triggeredAt || context.at || nowIso(), language)}`,
-    "",
-    "🧭 <b>下一步</b>",
-    context.autoAnalyze ? "已请求 AI 立即重新分析，请等待新的市场结论。" : "自动分析未开启，请打开 KORDYN 人工查看。",
-    next ? `临时重点：${escapeHtml(describeWatch(next, language))}` : "新分析完成前，该币种暂时没有有效观察哨。",
-    "<i>不要继续按旧通知操作；观察哨触发不等于下单。</i>"
+    `<b>${escapeHtml(watch.symbol)} · 原判断失效</b>`,
+    `原条件：${escapeHtml(describeWatch(watch, language))}`,
+    `原因：${escapeHtml(reason)}`,
+    "动作：停止沿用旧判断，等待新的分析结论；本提醒不会自行下单。"
+  ].join("\n");
+}
+
+function previewMessage(watch, language = watchLanguage()) {
+  if (language === "en") return [
+    `<b>${escapeHtml(watch.symbol)} · watch alert preview</b>`,
+    `Condition: ${escapeHtml(describeWatch(watch, language))}`,
+    "Telegram interrupts only when a primary condition triggers or the active thesis is invalidated. Registration, edits, expiry, and cancellation stay in KORDYN."
+  ].join("\n");
+  return [
+    `<b>${escapeHtml(watch.symbol)} · 观察条件推送预览</b>`,
+    `条件：${escapeHtml(describeWatch(watch, language))}`,
+    "Telegram 只在主条件命中或当前判断关键失效时打扰；登记、更新、到期与撤销只保留在 KORDYN。"
   ].join("\n");
 }
 
@@ -201,15 +219,19 @@ function boardSignature(board, fallbackWatch) {
 }
 
 export function buildWatchTelegramMessage(db, watch, eventType, context = {}, language = watchLanguage()) {
-  return eventType === "triggered"
-    ? triggerMessage(db, watch, context, language)
-    : boardMessage(db, watch, eventType, { reason: watch.closeReason || context.reason }, language);
+  if (eventType === "triggered") return triggerMessage(db, watch, context, language);
+  if (eventType === "invalidated") return invalidationMessage(watch, context, language);
+  return previewMessage(watch, language);
 }
 
 export function queueWatchTelegramEvent(db, watch, eventType, context = {}) {
   const status = telegramWatchStatus();
   if (!status.enabled || !watch?.id) return { status: "disabled" };
   db.telegramWatchOutbox ||= [];
+  // Telegram is an interruption channel, not an audit log. Registration and
+  // routine board churn remain visible in KORDYN (and in the optional digest).
+  // Push only events that can change the user's immediate trading decision.
+  if (!["triggered", "invalidated"].includes(eventType)) return { status: "suppressed_low_value" };
   const terminal = ["expired", "cancelled", "invalidated"].includes(eventType);
   if (terminal && !watch.wasPrimary && watch.priority !== "primary") return { status: "suppressed" };
 

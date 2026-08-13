@@ -42,6 +42,21 @@ test("实盘绩效按交易生命周期聚合部分平仓并计算真实 USDT �
   assert.equal("maxDrawdownPct" in report, false, "不得再用模糊字段与模拟盘回撤混淆");
 });
 
+test("实盘胜负与总盈亏按记录费用后的净结果计算", () => {
+  const db = baseDb();
+  db.fills = [
+    { id: "gross-entry", kind: "entry", executionOrderId: "fee-heavy", symbol: "ADA/USDT", feeUsdt: 0.02, createdAt: "2026-08-01T00:59:00Z" },
+    { id: "gross-win-net-loss", kind: "close", executionOrderId: "fee-heavy", symbol: "ADA/USDT", realizedPnl: 0.05, feeUsdt: 0.08, createdAt: "2026-08-01T01:00:00Z" },
+    { id: "clean-entry", kind: "entry", executionOrderId: "clean", symbol: "BTC/USDT", feeUsdt: 0.05, createdAt: "2026-08-01T01:59:00Z" },
+    { id: "clean-win", kind: "close", executionOrderId: "clean", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.1, createdAt: "2026-08-01T02:00:00Z" }
+  ];
+  const report = performanceReport(db);
+  assert.equal(report.wins, 1);
+  assert.equal(report.losses, 1);
+  assert.equal(report.totalPnlUsdt, 0.8);
+  assert.equal(report.pnlBasis, "net_after_recorded_entry_and_close_fees_and_funding");
+});
+
 test("平仓确认立即进入幂等复盘队列，部分平仓合并到同一复盘", () => {
   const db = baseDb();
   const a = { id: "fa", kind: "close", executionOrderId: "exec-1", symbol: "SUI/USDT", direction: "short", realizedPnl: 0.2, createdAt: "2026-08-01T01:00:00Z" };

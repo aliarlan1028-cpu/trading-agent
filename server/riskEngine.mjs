@@ -71,6 +71,55 @@ export function evaluateTradePlan(db, plan) {
   add("杠杆下限", Number(plan.leverage) >= minLeverage, `计划 ${plan.leverage}x，下限 ${minLeverage}x`);
   add("止损存在", Boolean(plan.stopLoss ?? plan.stop_loss), "自主交易计划必须带止损");
 
+  // 新计划由确定性结构工具提供 ATR 与方向质量。把这两项落成执行硬闸，避免
+  // LLM 口头说“给足缓冲”却仍把止损塞在正常噪声区，或拿 NEUTRAL/C 结构做
+  // 趋势型真单。缺少旧版快照时保持兼容；所有新 Agent 计划都会携带这些字段。
+  {
+    const context = plan.decisionContext || {};
+    const setupType = String(context.setupType || plan.scenarioType || "").toLowerCase();
+    const structure = context.deterministicStructureRef;
+    const directionalSetups = new Set(["trend_continuation", "trend_pullback", "breakout_retest", "breakdown_retest"]);
+    if (structure && directionalSetups.has(setupType)) {
+      const expectedBias = planDirection(plan) === "short" ? "SHORT" : "LONG";
+      const actualBias = String(structure.bias || "").toUpperCase();
+      const quality = String(structure.quality || "").toUpperCase();
+      const aligned = actualBias === expectedBias && ["A", "B"].includes(quality);
+      add(
+        "确定性结构与计划方向",
+        aligned,
+        aligned
+          ? `${setupType} 与 ${actualBias}/${quality} 级结构一致`
+          : `${setupType} 要求 ${expectedBias} 且质量至少 B；当前为 ${actualBias || "未知"}/${quality || "未知"}，应继续观察而不是开仓`,
+        aligned ? "ok" : (db.system.liveTradingEnabled ? "block" : "warn")
+      );
+    }
+
+    const snapshot = context.deterministicSetupSnapshot;
+    const atr14 = Number(snapshot?.referenceLevels?.atr14);
+    const entryRange = plan.entry_range || [];
+    const entryLow = Number(entryRange[0]);
+    const entryHigh = Number(entryRange[1] ?? entryRange[0]);
+    const stop = Number(plan.stopLoss ?? plan.stop_loss);
+    if (Number.isFinite(atr14) && atr14 > 0 && Number.isFinite(entryLow) && Number.isFinite(entryHigh) && Number.isFinite(stop)) {
+      const short = planDirection(plan) === "short";
+      // 与定仓引擎保持同一口径：用计划入场中值衡量正常成交的噪声缓冲。
+      // 入场边缘可能本身就是更优的贴近失效位成交，拿“最差边缘”一刀切会过度拒单。
+      const entryMid = (entryLow + entryHigh) / 2;
+      const stopDistance = short ? stop - entryMid : entryMid - stop;
+      const stopAtr = stopDistance / atr14;
+      const minimumStopAtr = Math.max(0.5, Number(process.env.MIN_PLAN_STOP_ATR || 1.25));
+      const enough = stopDistance > 0 && stopAtr >= minimumStopAtr;
+      add(
+        "止损波动缓冲",
+        enough,
+        enough
+          ? `计划入场中值至止损 ${stopAtr.toFixed(2)}×ATR14，达到 ≥${minimumStopAtr.toFixed(2)}×`
+          : `仅 ${Math.max(0, stopAtr).toFixed(2)}×ATR14，低于 ${minimumStopAtr.toFixed(2)}×；止损应移到结构失效位外并等比例缩小仓位`,
+        enough ? "ok" : (db.system.liveTradingEnabled ? "block" : "warn")
+      );
+    }
+  }
+
   // 前端“最低盈亏比”必须是真正的硬风控，而不是只保存一个看起来生效的数字。
   // 用入场中值、止损和第一止盈确定性计算；缺失止盈同样不能通过。
   {

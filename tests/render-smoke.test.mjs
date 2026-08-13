@@ -77,7 +77,7 @@ test("AI display cleanup removes process narration without deleting trading fact
   assert.equal(C.cleanPresentationText("The plan is armed. Now I will summarize the full picture.\n\nConclusion: Wait for confirmation."), "Conclusion: Wait for confirmation.");
 });
 
-test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下一步", () => {
+test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和引用装饰", () => {
   const presentation = {
     schemaVersion: 1,
     layout: "decision_brief",
@@ -99,18 +99,12 @@ test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下�
     position: { direction: "long", size: 0.01, entryPrice: 65000, markPrice: 65500, unrealizedPnl: 5, leverage: 2 }
   };
   const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n> 等待回踩确认，不追多\n\n### 消息面\nALLO 消息面归因暂时失败（Gemini 429 rate limited），本轮不编造催化剂。\n\n### 确认清单\n- [x] 1H 结构保持 HH/HL\n- [ ] 15m CVD 转为主动买入\n\n### 指标对比\n| 周期 | OI | CVD |\n| --- | --- | --- |\n| 15m | +1.2% | 120K |" }));
-  assert.match(html, /结构化|交易计划/);
+  assert.match(html, /交易计划/);
   assert.match(html, /等待回踩确认，不追多/);
-  for (const timeframe of ["15M", "1H", "4H"]) assert.match(html, new RegExp(timeframe));
-  assert.match(html, /7\/7/);
-  assert.match(html, /真实执行进度/);
-  assert.match(html, /回复生成时仓位快照/);
-  assert.match(html, /原生止损已附加/);
   assert.match(html, /\+1 币种/);
-  assert.match(html, /展开完整分析与判断链/);
-  assert.match(html, /批准或拒绝本计划/);
   assert.match(html, /richHeading--summary/);
-  assert.match(html, /richQuote/);
+  assert.match(html, /richConclusion/);
+  assert.doesNotMatch(html, /richQuote|posterQuote|decisionTfGrid|decisionEvidenceGrid|decisionNext/);
   assert.match(html, /richNotice danger/);
   assert.match(html, /richChecklist/);
   assert.match(html, /richCheck checked/);
@@ -121,10 +115,8 @@ test("结构化决策简报固定展示结论、15m/1h/4h、证据覆盖与下�
     currentState: "closed",
     currentExecution: { ...presentation.execution, status: "closed", realizedPnl: 8.2 }
   }));
-  assert.match(liveHtml, /当前真实状态/);
-  assert.match(liveHtml, /已实现盈亏/);
-  assert.match(liveHtml, /8\.20(?:<!-- -->)? USDT/);
-  assert.match(liveHtml, /核对净收益并查看平仓复盘/);
+  assert.match(liveHtml, /生成时[\s\S]*当前/);
+  assert.match(liveHtml, /已平仓/);
 });
 
 // —— 真实形状 fixture：技能覆盖全部 11 个状态、概念含重名（触发去重）、计划/执行单覆盖典型状态 ——

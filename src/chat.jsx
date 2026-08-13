@@ -399,7 +399,9 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
   return readingLines.map((line, lineIndex) => {
     const quote = line.match(/^>\s?(.*)$/);
     if (quote) {
-      return <blockquote className={poster ? "posterQuote" : "richQuote"} key={`${blockKey}-${lineIndex}`}><Target size={14} /> <span>{renderInline(quote[1])}</span></blockquote>;
+      // 核心结论保持普通正文。旧版把 Markdown 引用同时渲染成图标、底色和
+      // 左侧竖线，叠在决策简报外框里会出现两道 quote bar，反而延迟阅读。
+      return <p className="richParagraph richConclusion" key={`${blockKey}-${lineIndex}`}>{renderInline(quote[1])}</p>;
     }
     const emphasized = poster && /^\s*\*\*[^*]{1,32}[：:]/.test(line);
     return <p className={emphasized ? "richParagraph posterEmphasisLine" : "richParagraph"} key={`${blockKey}-${lineIndex}`}>{renderInline(line)}</p>;
@@ -641,23 +643,15 @@ export function DecisionBrief({ presentation, content = "", currentState = null,
   const state = currentState || snapshotState;
   const tone = decisionTone(state, decision.direction);
   const kindPair = DECISION_KIND_LABELS[presentation.kind] || DECISION_KIND_LABELS.market_analysis;
-  const frames = presentation.timeframes || [];
-  const primaryFlow = frames.find((frame) => frame.timeframe === decision.primaryTimeframe)?.flow
-    || frames.find((frame) => frame.timeframe === "1h")?.flow
-    || frames.find((frame) => frame.flow)?.flow;
-  const coverage = presentation.evidence?.coverage || {};
-  const btcRisk = presentation.evidence?.btcRisk || {};
-  const eventStat = presentation.evidence?.eventVolatility?.[0];
   const stateChanged = currentState && currentState !== snapshotState;
   const generatedAt = presentation.generatedAt ? formatDateTime(presentation.generatedAt) : "";
   const symbols = presentation.symbols || (presentation.symbol ? [presentation.symbol] : []);
-  const execution = currentExecution ? { ...(presentation.execution || {}), ...currentExecution } : presentation.execution;
-  const hasLivePosition = currentPosition !== undefined;
-  const position = hasLivePosition ? currentPosition : presentation.position;
-  const nextAction = currentNextAction(presentation.nextAction, currentState);
+  const cleanedContent = cleanPresentationText(content);
+  const headline = String(presentation.headline || "").trim();
+  const contentAlreadyHasHeadline = headline && cleanedContent.includes(headline);
 
   return (
-    <div className={`decisionBrief ${tone}`}>
+    <div className={`decisionBrief decisionBrief--narrative ${tone}`}>
       <header className="decisionBriefHead">
         <div className="decisionBriefIdentity">
           <span className="decisionKind"><Layers3 size={12} /> {t(kindPair[0], kindPair[1])}</span>
@@ -666,80 +660,27 @@ export function DecisionBrief({ presentation, content = "", currentState = null,
           {decision.role && <span className="decisionRole">{decision.role === "day_trader" ? t("日内", "Day") : t("波段", "Swing")}</span>}
           {decision.primaryTimeframe && <span className="decisionRole mono">{decision.primaryTimeframe.toUpperCase()}</span>}
         </div>
-        <div className="decisionFreshness">
-          <Clock3 size={11} />
-          <span>{isLatest ? t("当前最新分析", "Latest analysis") : t("历史分析快照", "Historical snapshot")}</span>
-          {generatedAt && <time>{generatedAt}</time>}
+        <div className="decisionBriefMeta">
+          <div className="decisionBadges">
+            <span className={`decisionDirection ${decision.direction || "neutral"}`}>{directionLabel(decision.direction)}</span>
+            <span className={`decisionState ${tone}`}>{decisionStateLabel(state)}</span>
+          </div>
+          <div className="decisionFreshness">
+            <Clock3 size={11} />
+            <span>{isLatest ? t("最新分析", "Latest") : t("历史快照", "Snapshot")}</span>
+            {generatedAt && <time>{generatedAt}</time>}
+          </div>
         </div>
       </header>
-
-      <div className="decisionHero">
-        <div>
-          <span className="decisionEyebrow"><Target size={11} /> {t("核心判断", "Core view")}</span>
-          <blockquote>{presentation.headline || t("本轮市场分析", "Market analysis")}</blockquote>
-        </div>
-        <div className="decisionBadges">
-          <span className={`decisionDirection ${decision.direction || "neutral"}`}>{directionLabel(decision.direction)}</span>
-          <span className={`decisionState ${tone}`}>{decisionStateLabel(state)}</span>
-        </div>
-      </div>
 
       {stateChanged && (
         <div className="decisionStateChanged">
           <Activity size={13} />
-          <span>{t("这条回复生成时的状态", "State when this reply was generated")}：{decisionStateLabel(snapshotState)}；{t("当前真实状态", "current live state")}：<b>{decisionStateLabel(currentState)}</b></span>
+          <span>{t("生成时", "Generated")}：{decisionStateLabel(snapshotState)}；{t("当前", "now")}：{decisionStateLabel(currentState)}</span>
         </div>
       )}
-
-      <ExecutionSnapshot execution={execution} />
-      <PositionSnapshot position={position} live={hasLivePosition} />
-
-      <div className="decisionTfGrid">
-        {frames.map((frame) => (
-          <div className={`decisionTf ${timeframeTone(frame)}`} key={frame.timeframe}>
-            <div className="decisionTfHead"><b className="mono">{frame.timeframe.toUpperCase()}</b><span>{frame.status === "complete" ? t("证据完整", "Complete") : frame.status === "partial" ? t("部分证据", "Partial") : t("样本不足", "Insufficient")}</span></div>
-            <strong>{structureLabel(frame.structure)}</strong>
-            <div className="decisionTfFacts">
-              <span>{t("价格", "Price")} <b className="mono">{signedPct(frame.flow?.priceChangePct)}</b></span>
-              <span>OI <b className="mono">{signedPct(frame.flow?.oiChangePct)}</b></span>
-            </div>
-            {frame.flow?.divergence && frame.flow.divergence !== "none" && <small className="decisionDivergence">{t("价格/CVD 背离", "Price/CVD divergence")}</small>}
-          </div>
-        ))}
-      </div>
-
-      <div className="decisionEvidenceGrid">
-        <div><span><Database size={12} /> {t("证据覆盖", "Evidence")}</span><b className="mono">{coverage.total ? `${coverage.passed}/${coverage.total}` : "—"}</b><small>{coverage.criticalReady ? coverage.complete ? t("全部证据完整", "All evidence ready") : t("核心证据通过 · 其余项缺失", "Core ready · other evidence missing") : t("核心证据缺失", "Core evidence missing")}</small></div>
-        <div><span>Funding</span><b className="mono">{signedPct(primaryFlow?.fundingEndPct, 4)}</b><small>{primaryFlow?.leverageState ? humanize(primaryFlow.leverageState) : t("样本不足", "Insufficient")}</small></div>
-        <div><span>CVD · {decision.primaryTimeframe?.toUpperCase() || "1H"}</span><b className="mono">{compactNumber(primaryFlow?.cvd)}</b><small>{Number.isFinite(Number(primaryFlow?.flowCoveragePct)) ? `${t("覆盖", "Coverage")} ${Number(primaryFlow.flowCoveragePct).toFixed(0)}%` : t("覆盖不足", "Coverage insufficient")}</small></div>
-        <div><span>BTC Beta</span><b className="mono">{btcRisk.status === "ok" ? Number(btcRisk.beta).toFixed(2) : "—"}</b><small>{btcRisk.status === "ok" ? `${btcRisk.window} · Corr ${Number(btcRisk.correlation).toFixed(2)}` : t("样本不足", "Insufficient")}</small></div>
-        {eventStat && <div><span>{eventStat.type} · {t("事件波动", "Event vol")}</span><b className="mono">{eventStat.expansionRatio != null ? `${Number(eventStat.expansionRatio).toFixed(1)}×` : "—"}</b><small>n={eventStat.samples} · {eventStat.confidence ? humanize(eventStat.confidence) : "—"}</small></div>}
-      </div>
-
-      {presentation.watch && (
-        <div className="decisionWatchStrip">
-          <Eye size={14} />
-          <div><span>{t("主观察条件 · 命中后重新分析，不直接下单", "Primary watch · triggers re-analysis, not an order")}</span><b>{watchConditionLabel(presentation.watch)}</b>{presentation.watch.note && <small>{presentation.watch.note}</small>}</div>
-          {presentation.watch.expiresAt && <time>{t("到期", "Expires")} {formatDateTime(presentation.watch.expiresAt)}</time>}
-        </div>
-      )}
-
-      {((presentation.evidence?.supportingFactors || []).length > 0 || (presentation.evidence?.conflictingFactors || []).length > 0) && (
-        <div className="decisionFactorGrid">
-          {(presentation.evidence.supportingFactors || []).length > 0 && <div className="support"><b><CheckCircle2 size={13} /> {t("支持因素", "Supporting")}</b>{presentation.evidence.supportingFactors.map((item, index) => <span key={index}>{item}</span>)}</div>}
-          {(presentation.evidence.conflictingFactors || []).length > 0 && <div className="conflict"><b><AlertTriangle size={13} /> {t("冲突与风险", "Conflicts & risks")}</b>{presentation.evidence.conflictingFactors.map((item, index) => <span key={index}>{item}</span>)}</div>}
-        </div>
-      )}
-
-      <div className={`decisionNext ${tone}`}>
-        <Target size={15} />
-        <div><span>{t("现在应该关注什么", "What to focus on now")}</span><b>{nextActionLabel(nextAction)}</b></div>
-      </div>
-
-      <details className="decisionAnalysis">
-        <summary><BrainCircuit size={13} /><span>{t("展开完整分析与判断链", "Open full analysis and reasoning")}</span><ChevronDown size={13} /></summary>
-        <div className="decisionAnalysisBody"><RichMessage text={content} onSuggest={onSuggest} /></div>
-      </details>
+      {!contentAlreadyHasHeadline && headline && <p className="decisionFallbackHeadline">{headline}</p>}
+      <div className="decisionNarrative"><RichMessage text={cleanedContent} onSuggest={onSuggest} /></div>
     </div>
   );
 }
@@ -1098,9 +1039,10 @@ function AgentRail({ data, action, ui, send }) {
         </div>
       </div>
 
-      {/* 观察哨：AI 登记的价格触发条件，实时 tick 盯盘，命中即刻唤起巡检 */}
+      {/* 盯盘是持续服务；观察哨是其中一条结构化条件，命中才唤起新巡检。 */}
       <div className="agCard">
-        <div className="agHeadIcon"><Eye size={13} /> {t("观察哨 · 实时盯盘", "Watch · real-time")}</div>
+        <div className="agHeadIcon"><Eye size={13} /> {t("实时盯盘 · 观察条件", "Live watch · conditions")}</div>
+        <small className="agWatchExplainer">{t("盯盘持续读取行情；观察哨只定义需要重新决策的关键价位。Telegram 仅推主条件命中与关键失效。", "Live watch continuously reads the market; each watch defines a decision-changing level. Telegram sends only primary triggers and critical invalidations.")}</small>
         {(() => {
           const all = data.watchTriggers || [];
           const board = (data.watchBoard || []).length ? data.watchBoard : [];

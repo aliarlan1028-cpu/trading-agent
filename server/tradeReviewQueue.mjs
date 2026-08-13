@@ -11,6 +11,12 @@ export function tradeLifecycleKey(fill = {}) {
 export function groupClosedTradeLifecycles(fills = [], options = {}) {
   const onlyUnreflected = options.onlyUnreflected === true;
   const groups = new Map();
+  const entryFeesByKey = new Map();
+  for (const fill of fills || []) {
+    if (fill?.kind !== "entry" || !finite(fill.feeUsdt)) continue;
+    const key = tradeLifecycleKey(fill);
+    if (key) entryFeesByKey.set(key, (entryFeesByKey.get(key) || 0) + Math.abs(Number(fill.feeUsdt)));
+  }
   for (const fill of fills || []) {
     if (fill?.kind !== "close" || !finite(fill.realizedPnl)) continue;
     if (onlyUnreflected && fill.reflectedAt) continue;
@@ -40,11 +46,19 @@ export function groupClosedTradeLifecycles(fills = [], options = {}) {
   }
   return [...groups.values()].filter((group) => options.completedOnly === false || group.fills.some((fill) => fill.partial !== true)).map((group) => {
     const representative = group.fills.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || {};
+    const entryFeeUsdt = entryFeesByKey.get(group.key) || 0;
+    const netRealizedPnl = group.realizedPnl - group.feeUsdt - entryFeeUsdt + group.fundingFeeUsdt;
     return {
       ...group,
+      // realizedPnl 是交易所价格盈亏；绩效、连亏保护和复盘应按记录成本后的
+      // 实得结果判断。费用仍单列保留，避免 UI 看不到成本。
+      entryFeeUsdt: Number(entryFeeUsdt.toFixed(8)),
+      netRealizedPnl: Number(netRealizedPnl.toFixed(8)),
       representative: {
         ...representative,
         realizedPnl: Number(group.realizedPnl.toFixed(8)),
+        netRealizedPnl: Number(netRealizedPnl.toFixed(8)),
+        entryFeeUsdt: Number(entryFeeUsdt.toFixed(8)),
         feeUsdt: Number(group.feeUsdt.toFixed(8)),
         fundingFeeUsdt: Number(group.fundingFeeUsdt.toFixed(8)),
         notionalUsdt: Number(group.notionalUsdt.toFixed(8)),

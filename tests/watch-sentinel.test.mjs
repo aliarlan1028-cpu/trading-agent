@@ -106,7 +106,7 @@ test("主观察哨结束后同轮辅助条件自动提升为主哨", () => {
   assert.equal(buildWatchBoard(db)[0].primary.id, backup.id);
 });
 
-test("Agent 一轮分析完成后才合并排队一次最终 Telegram 看板", () => {
+test("Agent 一轮分析完成后更新应用内看板但不推送例行 Telegram", () => {
   const previous = process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
   process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = "true";
   const db = dbFixture();
@@ -121,11 +121,9 @@ test("Agent 一轮分析完成后才合并排队一次最终 Telegram 看板", (
   const result = finalizeWatchAnalysis(db, "run_final", { analysisAt: "2026-08-12T02:00:00.000Z", analysisTitle: "BTC 最新结论：等待关键价位" });
   assert.equal(result.finalized, 2);
   assert.deepEqual(result.symbols, ["BTC/USDT"]);
-  assert.equal(db.telegramWatchOutbox.length, 1);
+  assert.equal(db.telegramWatchOutbox.length, 0);
   assert.equal(old.status, "superseded");
   assert.equal(next.status, "active");
-  assert.match(db.telegramWatchOutbox[0].message, /WATCH UPDATED/);
-  assert.match(db.telegramWatchOutbox[0].message, /Supporting Conditions · 1/);
   if (previous === undefined) delete process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED;
   else process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = previous;
 });

@@ -1127,7 +1127,7 @@ h3 {
 .metricIcon {
   width: 46px;
   height: 46px;
-  border-radius: 13px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   color: #e07a3f;
@@ -4138,6 +4138,12 @@ button.danger:disabled,
 }
 
 .richQuote svg { margin-top: 3px; color: #2e8560; }
+.richConclusion {
+  color: #3f3930;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.7;
+}
 
 .richChecklist {
   display: grid;
@@ -7677,8 +7683,28 @@ button.danger:disabled,
   border-radius: 13px;
   background: #FFFEFB;
   color: #2D2922;
-  box-shadow: 0 12px 30px -26px rgba(39, 31, 20, .45);
+  box-shadow: none;
 }
+.decisionBrief--narrative {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.decisionBrief--narrative::before { display: none; }
+.decisionBrief--narrative .decisionBriefHead {
+  min-height: 34px;
+  padding: 5px 0 9px;
+  background: transparent;
+}
+.decisionBriefMeta { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.decisionBrief--narrative .decisionStateChanged { margin: 9px 0 0; border-radius: 5px; }
+.decisionFallbackHeadline { margin: 12px 0 0; color: #3f3930; font-size: 12.5px; font-weight: 500; line-height: 1.7; }
+.decisionNarrative { padding-top: 8px; color: #4C453A; }
+.decisionNarrative .richHeading:first-child { margin-top: 0; }
+.decisionNarrative .richHeading strong { font-weight: 600; }
+.decisionNarrative strong { font-weight: 600; }
+.agWatchExplainer { display: block; margin: -2px 0 8px; color: #8d8372; font-size: 9px; line-height: 1.5; }
 .decisionBrief::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--decision-accent); }
 .decisionBrief.long { --decision-accent: #238158; --decision-soft: #F1F8F4; }
 .decisionBrief.short { --decision-accent: #B64838; --decision-soft: #FFF4F1; }
@@ -7705,7 +7731,7 @@ button.danger:disabled,
 .decisionHero { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 16px 17px 14px; }
 .decisionHero > div:first-child { min-width: 0; }
 .decisionEyebrow { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: #958B7A; font: 700 9px "Space Grotesk"; letter-spacing: .1em; text-transform: uppercase; }
-.decisionHero blockquote { margin: 0; padding: 2px 0 2px 11px; border-left: 3px solid var(--decision-accent); color: #29251f; font-size: 14.5px; font-weight: 680; line-height: 1.58; letter-spacing: -.006em; }
+.decisionHero p { margin: 0; color: #3f3930; font-size: 12.5px; font-weight: 500; line-height: 1.65; letter-spacing: 0; }
 .decisionBadges { flex: none; justify-content: flex-end; }
 .decisionDirection,.decisionState { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border-radius: 6px; font: 700 10.5px "Space Grotesk"; white-space: nowrap; }
 .decisionDirection { color: #686052; background: #F1EEE8; }

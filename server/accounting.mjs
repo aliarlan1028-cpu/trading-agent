@@ -14,8 +14,8 @@ function todayStart() {
 
 function realizedPnlSince(db, sinceMs) {
   return (db.fills || [])
-    .filter((fill) => fill.realizedPnl !== null && fill.realizedPnl !== undefined && new Date(fill.createdAt).getTime() >= sinceMs)
-    .reduce((sum, fill) => sum + Number(fill.realizedPnl || 0), 0);
+    .filter((fill) => (fill.realizedPnl !== null && fill.realizedPnl !== undefined || Number.isFinite(Number(fill.feeUsdt))) && new Date(fill.createdAt).getTime() >= sinceMs)
+    .reduce((sum, fill) => sum + Number(fill.realizedPnl || 0) - Math.abs(Number(fill.feeUsdt || 0)) + Number(fill.fundingFeeUsdt || 0), 0);
 }
 
 // 同一真实仓位可能有两条记录(execution_engine + exchange_rest 快照)。
@@ -119,7 +119,7 @@ export function refreshAccounting(db) {
 export function performanceReport(db) {
   // 部分平仓属于同一个仓位生命周期，绩效笔数/胜率/回撤必须先聚合，不能把三次减仓算成三笔交易。
   const lifecycles = groupClosedTradeLifecycles(db.fills || []);
-  const closes = lifecycles.map((item) => item.representative);
+  const closes = lifecycles.map((item) => ({ ...item.representative, realizedPnl: item.netRealizedPnl, grossRealizedPnl: item.realizedPnl }));
   const wins = closes.filter((fill) => Number(fill.realizedPnl) > 0);
   const losses = closes.filter((fill) => Number(fill.realizedPnl) < 0);
   const totalPnl = closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0);
@@ -156,6 +156,7 @@ export function performanceReport(db) {
     losses: losses.length,
     winRatePct: closes.length ? Number(((wins.length / closes.length) * 100).toFixed(1)) : null,
     totalPnlUsdt: Number(totalPnl.toFixed(2)),
+    pnlBasis: "net_after_recorded_entry_and_close_fees_and_funding",
     avgPnlUsdt: closes.length ? Number((totalPnl / closes.length).toFixed(2)) : null,
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
     bestTrade: closes.length ? Math.max(...closes.map((fill) => Number(fill.realizedPnl))) : null,

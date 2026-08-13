@@ -21,6 +21,15 @@ const DEFAULT_TAKER_FEE_RATE = 0.0004;
 // OKX clOrdId 只接受字母+数字(≤32)——带下划线会被 51000「Parameter clOrdId error」整单拒绝
 // (曾导致所有 OKX 自动单静默失败)。统一清洗成字母数字;币安也接受字母数字,故两所通用。
 const cleanClOrdId = (seed) => String(seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+const protectionClientIds = (executionOrder = {}) => {
+  const ids = new Set((executionOrder.tpClientOrderIds || []).map(cleanClOrdId).filter(Boolean));
+  if (executionOrder.stopClientOrderId) ids.add(cleanClOrdId(executionOrder.stopClientOrderId));
+  const tpCount = (executionOrder.takeProfits || executionOrder.takeProfit || []).length;
+  for (let index = 0; index < tpCount; index += 1) {
+    ids.add(cleanClOrdId(`tp${index + 1}${String(executionOrder.id || "").slice(-10)}`));
+  }
+  return ids;
+};
 
 function asNumber(value, fallback = null) {
   const parsed = Number(value);
@@ -709,17 +718,69 @@ async function pollOne(db, executionOrder) {
   } else if (["entry_filled", "protecting"].includes(executionOrder.status)) {
     // (P0-3)入场已终态后,交易所侧 SL/TP 成交不会反映在入场单状态上——此前系统对
     // 止损打掉完全失明:持仓残留、计划卡 executing、日亏预算不扣减。
-    // 以最近的交易所持仓快照为准:快照新鲜且该 symbol 仓位已消失 → 保护单已成交,推断收口。
+    // 以最近的交易所持仓快照为准:快照新鲜且该 symbol 仓位已消失 → 再从 OKX
+    // 历史订单读取真实 TP/SL 成交。不能拿轮询时现价把整仓推断为一次止损，否则
+    // “先部分止盈、余仓止损”的盈利生命周期会被错记为整笔亏损。
     const latestSnap = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
     const snapFresh = latestSnap && (Date.now() - new Date(latestSnap.createdAt).getTime()) < Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
     const stillOnExchange = (db.positions || []).some((p) => p.source === "exchange_rest" && p.symbol === executionOrder.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
     if (snapFresh && !stillOnExchange && Number(executionOrder.filledQuantity || 0) > 0) {
+      const protection = await fetchOkxProtectionClosure(executionOrder);
+      if (protection?.complete) {
+        if (Number.isFinite(protection.entryFeeUsdt)) {
+          const entryFills = (db.fills || []).filter((fill) => fill.executionOrderId === executionOrder.id && fill.kind === "entry");
+          const totalEntryNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
+          for (const fill of entryFills) {
+            const fillNotional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
+            fill.feeUsdt = totalEntryNotional > 0 ? protection.entryFeeUsdt * fillNotional / totalEntryNotional : protection.entryFeeUsdt / Math.max(1, entryFills.length);
+            fill.estimatedFee = false;
+          }
+          executionOrder.entryFeeUsdt = protection.entryFeeUsdt;
+        }
+        const openedAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime();
+        const closedAtMs = new Date(protection.closedAt).getTime();
+        const holdingMinutes = Number.isFinite(openedAt) && Number.isFinite(closedAtMs)
+          ? Math.max(0, Math.round((closedAtMs - openedAt) / 60000)) : null;
+        recordFill(db, executionOrder, "close", protection.weightedPrice, protection.quantity, protection.realizedPnl, {
+          feeUsdt: protection.feeUsdt,
+          holdingMinutes,
+          maeUsdt: executionOrder.maeUsdt ?? 0,
+          mfeUsdt: executionOrder.mfeUsdt ?? 0,
+          exitReason: "exchange_protection_filled",
+          createdAt: protection.closedAt,
+          exchangeOrderIds: protection.exchangeOrderIds,
+          exitBreakdown: protection.breakdown,
+          inferred: false,
+          estimated: false
+        });
+        executionOrder.status = "closed";
+        executionOrder.closedAt = protection.closedAt;
+        executionOrder.realizedPnl = protection.realizedPnl;
+        executionOrder.closeFeeUsdt = protection.feeUsdt;
+        executionOrder.exitReason = "exchange_protection_filled";
+        executionOrder.events.push({ at: nowIso(), event: "exchange_protection_filled", detail: `OKX 真实保护成交 ${protection.breakdown.length} 笔，已实现 ${protection.realizedPnl.toFixed(4)} USDT，手续费 ${protection.feeUsdt.toFixed(4)} USDT` });
+        db.positions = (db.positions || []).filter((p) => !(p.source === "execution_engine" && p.symbol === executionOrder.symbol));
+        const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
+        if (plan) plan.status = "completed";
+        appendAudit(db, `保护单真实成交收口:${executionOrder.symbol} 已实现 ${protection.realizedPnl.toFixed(4)} USDT`, executionOrder.id, "ExecutionEngine");
+        appendTrace(db, "execution", `${executionOrder.symbol} 保护单真实成交`, "ok");
+        delete executionOrder.exchangePositionMissingAt;
+      } else {
+        executionOrder.exchangePositionMissingAt ||= nowIso();
+      }
+      const missingForMs = Date.now() - new Date(executionOrder.exchangePositionMissingAt || nowIso()).getTime();
+      const settlementGraceMs = Math.max(30_000, Number(process.env.OKX_PROTECTION_SETTLEMENT_GRACE_MS || 120_000));
+      if (executionOrder.status === "closed" || missingForMs < settlementGraceMs) {
+        executionOrder.lastPolledAt = nowIso();
+        executionOrder.updatedAt = executionOrder.lastPolledAt;
+        return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state, protectionSettlement: protection?.complete ? "confirmed" : "pending" };
+      }
       const market = db.markets?.find((m) => m.symbol === executionOrder.symbol);
       const exitPrice = Number(market?.price) || Number(executionOrder.stopLoss) || Number(executionOrder.filledPrice);
       const sign = executionOrder.direction === "short" ? -1 : 1;
       const qty = Number(executionOrder.filledQuantity);
       const realized = (exitPrice - Number(executionOrder.filledPrice)) * qty * sign - feeEstimate(exitPrice * qty);
-      recordFill(db, executionOrder, "close", exitPrice, qty, Number(realized.toFixed(2)), { inferred: true, estimated: true });
+      recordFill(db, executionOrder, "close", exitPrice, qty, Number(realized.toFixed(2)), { inferred: true, estimated: true, exitReason: "protection_triggered_inferred" });
       executionOrder.status = "closed";
       executionOrder.closedAt = nowIso();
       executionOrder.exitReason = "protection_triggered_inferred";
@@ -769,6 +830,71 @@ async function fetchOrderState(executionOrder) {
     avgPrice: Number(order.avgPx) || null,
     filledQuantity: Number(order.accFillSz || 0)
   };
+}
+
+export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
+  const expectedIds = protectionClientIds(executionOrder);
+  if (!expectedIds.size) return null;
+  const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+  const ctVal = Number(executionOrder.okxCtVal || 1);
+  const entryAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt || 0).getTime();
+  const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
+  const entryOrder = (orders || []).find((order) => String(order.instId || "") === instId
+    && String(order.state || "") === "filled"
+    && cleanClOrdId(order.clOrdId || "") === entryClientOrderId);
+  const seen = new Set();
+  const matched = [];
+  for (const order of orders || []) {
+    const algoId = cleanClOrdId(order.algoClOrdId || "");
+    const orderAt = Number(order.uTime || order.fillTime || order.cTime || 0);
+    if (String(order.instId || "") !== instId || String(order.state || "") !== "filled" || !expectedIds.has(algoId)) continue;
+    if (Number.isFinite(entryAt) && entryAt > 0 && orderAt > 0 && orderAt + 60_000 < entryAt) continue;
+    const uniqueId = String(order.ordId || `${algoId}:${orderAt}`);
+    if (seen.has(uniqueId)) continue;
+    seen.add(uniqueId);
+    const contracts = Number(order.accFillSz || order.fillSz || 0);
+    const price = Number(order.avgPx || order.fillPx || 0);
+    if (!(contracts > 0) || !(price > 0) || !(ctVal > 0)) continue;
+    matched.push({
+      exchangeOrderId: order.ordId || null,
+      clientOrderId: algoId,
+      quantity: contracts * ctVal,
+      price,
+      realizedPnl: Number(order.pnl || 0),
+      feeUsdt: Math.abs(Number(order.fee || 0)),
+      closedAt: orderAt > 0 ? new Date(orderAt).toISOString() : nowIso()
+    });
+  }
+  if (!matched.length) return null;
+  const quantity = matched.reduce((sum, item) => sum + item.quantity, 0);
+  const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
+  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity;
+  const notional = matched.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  return {
+    complete,
+    quantity,
+    expectedQuantity,
+    weightedPrice: quantity > 0 ? notional / quantity : null,
+    realizedPnl: matched.reduce((sum, item) => sum + item.realizedPnl, 0),
+    feeUsdt: matched.reduce((sum, item) => sum + item.feeUsdt, 0),
+    entryFeeUsdt: entryOrder && Number.isFinite(Number(entryOrder.fee)) ? Math.abs(Number(entryOrder.fee)) : null,
+    closedAt: matched.slice().sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt))[0].closedAt,
+    exchangeOrderIds: matched.map((item) => item.exchangeOrderId).filter(Boolean),
+    breakdown: matched
+  };
+}
+
+async function fetchOkxProtectionClosure(executionOrder) {
+  if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) return null;
+  try {
+    const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+    const raw = await okxSignedRequest(`/api/v5/trade/orders-history-archive?instType=SWAP&instId=${encodeURIComponent(instId)}&state=filled&limit=100`, "GET");
+    if (String(raw?.code ?? "0") !== "0") return null;
+    return summarizeOkxProtectionClosure(executionOrder, raw.data || []);
+  } catch {
+    return null;
+  }
 }
 
 async function placeTakeProfits(db, executionOrder) {
@@ -843,7 +969,7 @@ async function placeTakeProfits(db, executionOrder) {
     appendAudit(db, `止盈单未全部落地(${result.status}),降级为仅止损保护`, executionOrder.id, "ExecutionEngine", "warning");
     return;
   }
-  executionOrder.tpClientOrderIds = tpTargets.map((_, index) => `tp${index + 1}_${executionOrder.id.slice(-10)}`);
+  executionOrder.tpClientOrderIds = tpTargets.map((_, index) => cleanClOrdId(`tp${index + 1}${executionOrder.id.slice(-10)}`));
   executionOrder.status = "protecting";
   executionOrder.events.push({ at: nowIso(), event: "take_profits_placed", detail: `状态 ${result.status}` });
 }
@@ -900,10 +1026,14 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     mfeUsdt: extra.mfeUsdt,
     entryRationale: executionOrder.entryRationale || entryRationale(plan),
     exitReason: extra.exitReason,
+    inferred: Boolean(extra.inferred),
+    estimated: Boolean(extra.estimated),
+    exchangeOrderIds: extra.exchangeOrderIds,
+    exitBreakdown: extra.exitBreakdown,
     realizedPnl,
     initialRiskUsdt: executionOrder.initialRiskUsdt || plan.initialRiskUsdt || null,
     accountEquityAtEntryUsdt: executionOrder.accountEquityAtEntryUsdt || plan.accountEquityAtEntryUsdt || null,
-    createdAt: nowIso()
+    createdAt: extra.createdAt || nowIso()
   };
   db.fills.unshift(fill);
   if (kind === "close") reconcileStrategyProductHealth(db);

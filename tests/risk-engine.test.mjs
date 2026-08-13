@@ -176,3 +176,56 @@ test("陈旧计划被新鲜度检查拦截:现价越过止损/入场偏离超阈
   const freshFailed = risk2.checks.filter((c) => !c.passed).map((c) => c.name);
   assert.ok(!freshFailed.includes("现价在止损安全侧") && !freshFailed.includes("入场区间贴近现价"), `新鲜计划不应被新检查拦:${freshFailed.join(",")}`);
 });
+
+test("实盘方向型计划拒绝 NEUTRAL/C 结构，A/B 同向结构放行", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  const base = {
+    ...plan,
+    stopLoss: 97,
+    entry_range: [100, 100],
+    take_profit: [106],
+    decisionContext: {
+      setupType: "trend_pullback",
+      deterministicStructureRef: { bias: "NEUTRAL", quality: "C" },
+      deterministicSetupSnapshot: { referenceLevels: { atr14: 1 } }
+    }
+  };
+  const blocked = evaluateTradePlan(db, base);
+  assert.ok(blocked.blockers.some((item) => item.name === "确定性结构与计划方向"));
+
+  const aligned = evaluateTradePlan(db, {
+    ...base,
+    decisionContext: {
+      ...base.decisionContext,
+      deterministicStructureRef: { bias: "LONG", quality: "B" }
+    }
+  });
+  assert.equal(aligned.checks.find((item) => item.name === "确定性结构与计划方向")?.passed, true);
+});
+
+test("实盘止损必须从计划入场中值保留至少 1.25 ATR 缓冲", () => {
+  const db = fixture({ live: true });
+  db.system.remainingDailyLossUsdt = 100;
+  db.portfolio.totalEquityUsdt = 10_000;
+  db.portfolio.availableMarginUsdt = 8_000;
+  const withSnapshot = {
+    ...plan,
+    entry_range: [100, 102],
+    stopLoss: 99.8,
+    take_profit: [106],
+    decisionContext: {
+      setupType: "range_rejection",
+      deterministicSetupSnapshot: { referenceLevels: { atr14: 1 } }
+    }
+  };
+  const tight = evaluateTradePlan(db, withSnapshot);
+  const tightCheck = tight.checks.find((item) => item.name === "止损波动缓冲");
+  assert.equal(tightCheck?.passed, false);
+  assert.ok(tight.blockers.some((item) => item.name === "止损波动缓冲"));
+
+  const buffered = evaluateTradePlan(db, { ...withSnapshot, stopLoss: 99.75 });
+  assert.equal(buffered.checks.find((item) => item.name === "止损波动缓冲")?.passed, true);
+});
