@@ -301,6 +301,10 @@ function groupPosterBlocks(blocks = []) {
   return groups;
 }
 
+function isFullMarketScanHeading(title = "") {
+  return /全市场(?:机会|异动)?扫描|全市场[^\n]{0,18}候选|full[- ]?market scan|market-wide scan/i.test(String(title));
+}
+
 function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
   const isSuggestion = (t) => /[?？]\s*$/.test(String(t || "").trim());
   const cleanSuggest = (t) => String(t || "").replace(/\*\*/g, "").trim();
@@ -433,9 +437,15 @@ function RichMessage({ text = "", compact = false, onSuggest = null, poster = fa
     );
   }
 
+  const groups = groupPosterBlocks(blocks);
   return (
     <div className={compact ? "richMessage compact" : "richMessage"}>
-      {blocks.map((block, index) => <RichBlock block={block} blockKey={index} onSuggest={onSuggest} key={index} />)}
+      {groups.map((group, groupIndex) => (
+        <section className={`richMessageGroup ${group.heading && isFullMarketScanHeading(group.heading.text) ? "richMessageGroup--marketScan" : ""}`} key={groupIndex}>
+          {group.heading && <RichBlock block={group.heading} blockKey={`${groupIndex}-heading`} onSuggest={onSuggest} />}
+          {group.blocks.map((block, blockIndex) => <RichBlock block={block} blockKey={`${groupIndex}-${blockIndex}`} onSuggest={onSuggest} key={blockIndex} />)}
+        </section>
+      ))}
     </div>
   );
 }

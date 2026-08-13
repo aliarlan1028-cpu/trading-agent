@@ -119,7 +119,7 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
     execution: { status: "protecting", quantity: 0.01, notionalUsdt: 650, filledPrice: 65000, protection: { attachedAlgoStop: true } },
     position: { direction: "long", size: 0.01, entryPrice: 65000, markPrice: 65500, unrealizedPnl: 5, leverage: 2 }
   };
-  const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n> 等待回踩确认，不追多\n\n### 消息面\nALLO 消息面归因暂时失败（Gemini 429 rate limited），本轮不编造催化剂。\n\n### 确认清单\n- [x] 1H 结构保持 HH/HL\n- [ ] 15m CVD 转为主动买入\n\n### 指标对比\n| 周期 | OI | CVD |\n| --- | --- | --- |\n| 15m | +1.2% | 120K |" }));
+  const html = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "### 结论\n> 等待回踩确认，不追多\n\n### 消息面\nALLO 消息面归因暂时失败（Gemini 429 rate limited），本轮不编造催化剂。\n\n### 确认清单\n- [x] 1H 结构保持 HH/HL\n- [ ] 15m CVD 转为主动买入\n\n### 指标对比\n| 周期 | OI | CVD |\n| --- | --- | --- |\n| 15m | +1.2% | 120K |\n\n### 全市场扫描 — 无加白候选\nTop 候选均在白名单外且位置不佳，本轮不加白。" }));
   assert.match(html, /交易计划/);
   assert.match(html, /等待回踩确认，不追多/);
   assert.match(html, /\+1 币种/);
@@ -130,6 +130,8 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
   assert.match(html, /richChecklist/);
   assert.match(html, /richCheck checked/);
   assert.match(html, /richTable/);
+  assert.match(html, /richMessageGroup--marketScan/);
+  assert.match(html, /Top 候选均在白名单外/);
   const liveHtml = renderToString(React.createElement(C.DecisionBrief, {
     presentation,
     content: "### 结论\n交易已完成",

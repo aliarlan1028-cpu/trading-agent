@@ -4067,6 +4067,14 @@ button.danger:disabled,
   gap: 6px;
 }
 
+.richMessageGroup {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.richMessage.compact > .richMessageGroup { gap: 6px; }
+
 .richHeading {
   display: flex;
   align-items: center;
@@ -4102,6 +4110,38 @@ button.danger:disabled,
 .richHeading--opportunity > i { color: #297a56; background: #edf7f1; }
 .richHeading--risk > i { color: #b54a38; background: #fff0ec; }
 .richHeading--action > i { color: #a96925; background: #fff5e9; }
+
+/* 全市场扫描只是候选环境，不与白名单研判、最终结论争夺视觉权重。 */
+.agBubbleAi .richMessageGroup--marketScan {
+  gap: 6px;
+  color: #686155;
+  font-size: 11.5px;
+  line-height: 1.62;
+}
+
+.agBubbleAi .richMessageGroup--marketScan .richHeading {
+  padding: 6px 0 5px;
+  color: #70685b;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.agBubbleAi .richMessageGroup--marketScan .richHeading > i {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.agBubbleAi .richMessageGroup--marketScan .richHeading svg { width: 12px; height: 12px; }
+.agBubbleAi .richMessageGroup--marketScan .richHeading strong { font-weight: 550; }
+.agBubbleAi .richMessageGroup--marketScan .richParagraph {
+  color: #686155;
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+.agBubbleAi .richMessageGroup--marketScan .richBullet,
+.agBubbleAi .richMessageGroup--marketScan .richStep { font-size: 11px; line-height: 1.6; }
+.agBubbleAi .richMessageGroup--marketScan .richTable { font-size: 10.5px; }
 
 .richNotice {
   display: grid;
