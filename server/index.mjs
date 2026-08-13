@@ -977,6 +977,10 @@ function liveConnectorToolStatus(tools = []) {
 }
 
 app.get("/api/overview", (req, res) => {
+  // Live account data must never be reused across the startup/full native views. In particular,
+  // WKWebView can cache the first compact response because both views share this endpoint.
+  res.set("Cache-Control", "no-store");
+  res.vary("X-Native-Overview");
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
   const expiredPlans = expireStalePlans(db);
   const overviewRiskSnapshot = buildCurrentRiskSnapshot(db);

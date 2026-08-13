@@ -742,6 +742,9 @@ export function useApi() {
   async function readOverview(base, overviewMode = "") {
     const native = isNativeApp();
     const response = await fetchWithTimeout(apiUrl("/api/overview", base), {
+      // Overview is live account state. WKWebView may otherwise reuse the startup response for
+      // the same URL when the background request asks for the full native view.
+      cache: "no-store",
       headers: headers(native && overviewMode ? { "X-Native-Overview": overviewMode } : {})
     }, native && overviewMode === "full" ? 60000 : 12000);
     if (response.status === 401) {
