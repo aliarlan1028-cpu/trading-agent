@@ -12,7 +12,7 @@ test("KORDYN SVG 使用透明正方形视口，侧边栏不得裁切品牌图形
   assert.match(svg, /viewBox="0 0 884 884"/);
   assert.match(svg, /preserveAspectRatio="xMidYMid meet"/);
   assert.match(svg, /fill="url\(#green\)"/);
-  assert.match(svg, /fill="#050505"/);
+  assert.match(svg, /fill="#ffffff"/);
   assert.match(svg, /fill="url\(#red\)"/);
   assert.match(css, /\.brandMark\s*\{[^}]*overflow:\s*visible/s);
   assert.match(css, /\.brandMark \.brandLogo\s*\{[^}]*object-fit:\s*contain/s);
