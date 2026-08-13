@@ -253,7 +253,7 @@ function parseRichText(text = "") {
       bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
       continue;
     }
-    const metric = line.match(/^(结论|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Conclusion|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
+    const metric = line.match(/^(白名单|总结|结论|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Whitelist|Summary|Conclusion|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
     if (metric) {
       flushParagraph();
       flushBullets();
@@ -338,7 +338,7 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
     return (
       <div className="richMetricGrid" key={blockKey}>
         {block.items.map((item, itemIndex) => (
-          <div className={`richMetric ${item.tone}`} key={`${item.label}-${itemIndex}`}>
+          <div className={`richMetric ${item.tone} ${/^(白名单|总结|结论|Whitelist|Summary|Conclusion)$/i.test(item.label) ? "richMetric--conclusion" : ""}`} key={`${item.label}-${itemIndex}`}>
             <span>{item.label}</span>
             <b>{renderInline(item.value)}</b>
           </div>

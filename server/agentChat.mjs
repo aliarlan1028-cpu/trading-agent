@@ -30,14 +30,14 @@ import { notifyLark } from "./larkNotifier.mjs";
 import { setConfig } from "./runtimeConfig.mjs";
 import { scheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
-import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
+import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, explicitSymbolsForEvidence, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
 import { enforceEvidenceFacts } from "./evidenceFactGuard.mjs";
 import { buildOpportunitySetupSnapshot } from "./opportunitySetup.mjs";
 import { recordToolExecution } from "./toolUsage.mjs";
 import { evaluatePortfolioIntentConflict, tradingRolesForPrompt, validateTradingRolePlan } from "./tradingRoles.mjs";
 import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
 import { bindPlanToEnabledBlueprint, enabledStrategyBlueprints } from "./strategyStudio.mjs";
-import { buildCapabilityPlan, capabilityPlanForPrompt, recordCapabilityResult, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
+import { auditRequiredCapabilityCoverage, buildCapabilityPlan, capabilityPlanForPrompt, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
 import { advanceDecisionContext, createDecisionContext, decisionContextForPrompt, triggerFromPayload } from "./decisionCoordinator.mjs";
 import { assessAbnormalVolatility } from "./earlyOpportunityEngine.mjs";
 import { normalizePlanLeverage } from "./mandatePolicy.mjs";
@@ -45,6 +45,7 @@ import { buildCurrentRiskSnapshot, currentRiskSnapshotForPrompt, enforceCurrentR
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { buildReviewLearningContext, retrieveRelevantReviewMemories, reviewLearningPrompt, validateAppliedReviewLessons } from "./reviewLearning.mjs";
 import { buildChatPresentation } from "./chatPresentation.mjs";
+import { ensureAnalysisConclusionFormat } from "./analysisConclusion.mjs";
 
 // 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
@@ -624,7 +625,11 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 15. 挂单 ≠ 持仓【措辞硬纪律·别把委托单说成持仓】：限价单已提交但价格没到、没成交 = **挂单未成交**，仓位为 0，还没进场；只有真正成交、账户快照里 size≠0 才是**持仓中**。以【实时账户快照】里"持仓"和"挂单"两行为准，绝不能把一个未成交的挂单描述成"持仓中/已建仓/已进场"。要说也说"已挂单，等价格到 X 成交"。
 
 输出格式：
-- 结论先行、信息完整：先用 1-2 句普通段落给出本轮结论，再补足理解决策所需的关键事实、判断链、风险与动作。不要使用 Markdown 引用块，不要用大标题或整段粗体；小节标题短而克制。不能为了简短而省略会影响判断的证据。
+- 【行情/巡检分析的开头格式·强制】第一屏固定只用三行普通正文，不加“结论”标题、不加 Markdown 粗体、不加引用块：
+  白名单：列出当前授权白名单的币种简称，如 BTC、SUI、ADA
+  总结：浓缩本轮共同市场环境、白名单各币的关键差异与是否存在合格组合；不能只重复最终动作
+  结论：只写最终决策与动作，如“本轮无交易计划，继续观察”或“提出 BTC 做多计划”；观察哨是否沿用属于动作细节，不要拿它代替最终结论
+  这三行之后再补足理解决策所需的关键事实、判断链、风险与动作。非行情类的系统说明或普通问答不强套此格式。
 - 禁止输出工具调用或组织答案的过程旁白，例如“计划已武装。现在汇总全貌。”“工具调用完成，下面开始总结”。工具产生的真实业务状态应直接归入对应结论或动作，不要播报写作过程。
 - 面向前端可视化展示，按本轮实际内容动态选择清晰的 Markdown 小节（如结论、交易对、依据、风险、下一步）；不强制固定模板，无实质内容的小节直接省略。
 - 重要状态用"标签：内容"单独成行，例如"交易对：BTC/USDT"、"状态：等待授权"。
@@ -632,6 +637,8 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 - 只有 Funding、OI、CVD、Beta、价格、时间周期等短字段需要横向比较时才使用紧凑 Markdown 表格；长句绝不塞入表格。不要输出 HTML、JSON、代码块或 --- 分隔线，除非用户明确要求。
 - 表情符号只作为少量固定语义提示（如 ⚠ 风险、✅ 已确认、🎯 关注点），不要装饰性堆叠，也不要在每一行重复。
 - 所有时间一律使用北京时间（UTC+8）并注明，如"14:30（UTC+8）"；不要输出 UTC 裸时间。
+
+能力调用纪律：系统会在模型回答前按触发场景确定性执行一组必需能力；你必须使用【Capability Router】里列出的预执行结果完成综合判断。工具应按问题相关性调用，不得为了显得充分把目录全部跑一遍；但也不得因为结果已在上下文里就忽略它。预执行覆盖有缺失时必须明确说哪项未完成、相应判断无法确认。需要更细周期、不同参数、候选币深挖或条件变化时，再主动调用相应工具补充。
 
 ${SYSTEM_GUIDE}`;
 
@@ -2293,12 +2300,23 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   let evidenceBundle = null;
 
   try {
+    const marketAnalysisRequired = session.id === "chat_autocycle"
+      || /(行情|市场|价格|现价|K线|资金费率|OI|订单簿|交易机会|下单|开仓|做多|做空|合约|USDT|\b[A-Z0-9]{2,12}(?:USDT|\/USDT|-USDT)\b)/i.test(userText);
     const evidenceRequired = session.id === "chat_autocycle"
       || /(行情|市场|价格|现价|K线|资金费率|OI|订单簿|交易|下单|开仓|做多|做空|持仓|仓位|账户|余额|净值|保证金|盈亏|风控|合约|USDT|\b[A-Z0-9]{2,12}(?:USDT|\/USDT|-USDT)\b)/i.test(userText);
+    const explicitSymbols = explicitSymbolsForEvidence(userText, 8);
+    const mandate = activeMandate(db);
+    const requestedSymbols = [...new Set([
+      ...(payload.symbols || []),
+      ...explicitSymbols,
+      ...(session.id === "chat_autocycle" ? (mandate?.allowedSymbols || []) : [])
+    ].map(normalizeEvidenceSymbol).filter(Boolean))].slice(0, 8);
     if (evidenceRequired) {
       evidenceBundle = await buildForcedEvidenceBundle(db, {
         text: userText,
-        mandate: activeMandate(db),
+        symbols: requestedSymbols.length ? requestedSymbols : undefined,
+        maxSymbols: session.id === "chat_autocycle" ? 8 : 3,
+        mandate,
         live: db.system?.liveTradingEnabled === true,
         refresh: true
       });
@@ -2315,7 +2333,12 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       );
       run.steps.push({ id: id("step"), phase: "forced_evidence", title: "强制事实证据包", summary: evidenceBundle.criticalReady ? "关键证据齐全" : `缺失：${evidenceBundle.blockers.join("、")}`, createdAt: nowIso() });
     }
-    const capabilityPlan = buildCapabilityPlan({ trigger: decisionContext.trigger, symbols: decisionContext.symbols });
+    const capabilityPlan = buildCapabilityPlan({
+      trigger: decisionContext.trigger,
+      symbols: decisionContext.symbols,
+      focusSymbols: explicitSymbols.length ? explicitSymbols : (payload.symbols || decisionContext.symbols),
+      marketAnalysis: marketAnalysisRequired
+    });
     run.capabilityPlan = capabilityPlan;
     const reviewLearningContext = buildReviewLearningContext(db, {
       text: userText,
@@ -2327,8 +2350,27 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       retrievedCount: reviewLearningContext.retrieved.length,
       applied: []
     };
-    const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
     const tools = [...TOOL_DEFS, ...enabledSkillTools(db), ...enabledMcpTools(db)];
+    const requiredCalls = requiredCapabilityCalls(capabilityPlan, tools.map((tool) => tool.name));
+    run.requiredCapabilityCalls = requiredCalls;
+    if (requiredCalls.length) {
+      const executableCalls = requiredCalls.filter((call) => call.available !== false).map(({ available: _available, ...call }) => call);
+      await runToolBatch(db, run, executableCalls, toolTrace);
+      const preflightCoverage = auditRequiredCapabilityCoverage(requiredCalls, toolTrace);
+      run.capabilityPreflight = preflightCoverage;
+      capabilityPlan.preflightCoverage = preflightCoverage;
+      capabilityPlan.preflightSummaries = requiredCalls.map((call) => {
+        const trace = [...toolTrace].reverse().find((item) => item.name === call.name
+          && (!call.args?.symbol || normalizeEvidenceSymbol(item.args?.symbol) === normalizeEvidenceSymbol(call.args.symbol)));
+        return { name: call.name, symbol: call.args?.symbol ? normalizeEvidenceSymbol(call.args.symbol) : null, summary: call.available === false ? "能力未启用或当前不可用" : trace?.summary || "未返回结果" };
+      });
+      run.steps.push({
+        id: id("step"), phase: "capability_preflight", title: "必需能力覆盖",
+        summary: preflightCoverage.ok ? `已完成 ${preflightCoverage.covered}/${preflightCoverage.required}` : `完成 ${preflightCoverage.covered}/${preflightCoverage.required}，缺失 ${preflightCoverage.missing.map((item) => item.name).join("、")}`,
+        createdAt: nowIso()
+      });
+    }
+    const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
@@ -2376,6 +2418,16 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     if (riskFactGuard.corrected) {
       finalText = riskFactGuard.text;
       appendTrace(db, "agent_chat", `动态风险事实守卫已更正 ${riskFactGuard.violations.length} 条过期陈述`, "warning");
+    }
+    if (run.capabilityPreflight && !run.capabilityPreflight.ok) {
+      const gaps = run.capabilityPreflight.missing.map((item) => `${item.name}${item.symbol ? `（${item.symbol}）` : ""}`).join("、");
+      finalText += `\n\n能力覆盖：本轮必需能力未全部完成：${gaps}。涉及这些能力的判断按无法确认处理，不能据此提出交易计划。`;
+    }
+    if (marketAnalysisRequired) {
+      finalText = ensureAnalysisConclusionFormat(finalText, {
+        whitelist: mandate?.allowedSymbols || [],
+        language: db.system?.uiLang === "en" ? "en" : "zh"
+      });
     }
     recordRunHistory(db, run, finalText);
   } catch (error) {

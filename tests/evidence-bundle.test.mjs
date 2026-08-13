@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactEvidenceForPrompt, evaluateEvidenceReadiness, symbolsForEvidence } from "../server/evidenceBundle.mjs";
+import { compactEvidenceForPrompt, evaluateEvidenceReadiness, explicitSymbolsForEvidence, symbolsForEvidence } from "../server/evidenceBundle.mjs";
 
 test("evidence symbol routing prioritizes explicit symbols and deduplicates mandate scope", () => {
   const symbols = symbolsForEvidence("比较 BTC/USDT 和 ETH-USDT-SWAP", { allowedSymbols: ["BTC/USDT", "SOL/USDT"] }, 3);
   assert.deepEqual(symbols, ["BTC/USDT", "ETH/USDT", "SOL/USDT"]);
+});
+
+test("autonomous patrol can route the full whitelist instead of silently truncating after three", () => {
+  const text = "授权白名单：BTC/USDT、SUI/USDT、ADA/USDT、DOGE/USDT、XRP/USDT";
+  assert.deepEqual(explicitSymbolsForEvidence(text, 8), ["BTC/USDT", "SUI/USDT", "ADA/USDT", "DOGE/USDT", "XRP/USDT"]);
+  assert.deepEqual(symbolsForEvidence(text, { allowedSymbols: ["BTC/USDT", "SUI/USDT", "ADA/USDT", "DOGE/USDT", "XRP/USDT"] }, 8), [
+    "BTC/USDT", "SUI/USDT", "ADA/USDT", "DOGE/USDT", "XRP/USDT"
+  ]);
 });
 
 test("critical evidence readiness fails closed while smart money remains supplemental", () => {

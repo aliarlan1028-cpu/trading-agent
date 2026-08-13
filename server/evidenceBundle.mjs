@@ -32,7 +32,7 @@ export const normalizeEvidenceSymbol = (value) => {
   return raw.endsWith("USDT") ? `${raw.slice(0, -4)}/USDT` : raw;
 };
 
-export function symbolsForEvidence(text = "", mandate = null, maxSymbols = 3) {
+export function explicitSymbolsForEvidence(text = "", maxSymbols = 8) {
   const found = [];
   const push = (symbol) => {
     const normalized = normalizeEvidenceSymbol(symbol);
@@ -41,6 +41,16 @@ export function symbolsForEvidence(text = "", mandate = null, maxSymbols = 3) {
   };
   const source = String(text || "").toUpperCase();
   for (const match of source.matchAll(/\b([A-Z0-9]{2,15})(?:\/USDT|-USDT(?:-SWAP)?|USDT)\b/g)) push(`${match[1]}/USDT`);
+  return found.slice(0, Math.max(0, Number(maxSymbols || 0)));
+}
+
+export function symbolsForEvidence(text = "", mandate = null, maxSymbols = 3) {
+  const found = explicitSymbolsForEvidence(text, maxSymbols);
+  const push = (symbol) => {
+    const normalized = normalizeEvidenceSymbol(symbol);
+    if (!/^[A-Z0-9]{2,15}\/USDT$/.test(normalized) || found.includes(normalized)) return;
+    found.push(normalized);
+  };
   for (const symbol of mandate?.allowedSymbols || []) push(symbol);
   if (!found.length) push("BTC/USDT");
   return found.slice(0, Math.max(1, Number(maxSymbols || 3)));

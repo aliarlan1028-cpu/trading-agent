@@ -4227,6 +4227,31 @@ button.danger:disabled,
   background: #fff5f2;
 }
 
+/* AI 分析开头的白名单/总结/结论保持截图一同款的克制文本行：不做大字号、
+   不做粗体卡片，也不堆额外图标。 */
+.richMetricGrid:has(.richMetric--conclusion) {
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-top: 1px solid #e8e1d5;
+  border-bottom: 1px solid #e8e1d5;
+}
+
+.richMetric.richMetric--conclusion {
+  min-height: 0;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #eee8de;
+  border-radius: 0;
+  background: transparent;
+}
+
+.richMetric.richMetric--conclusion:last-child { border-bottom: 0; }
+.richMetric--conclusion span { font-size: 12px; font-weight: 600; color: #8a8171; }
+.richMetric--conclusion b { font-size: 13px; font-weight: 500; line-height: 1.65; color: #3f3a33; }
+
 .richBulletList,
 .richSteps {
   display: grid;

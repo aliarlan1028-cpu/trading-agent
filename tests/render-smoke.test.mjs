@@ -86,6 +86,17 @@ test("AI display cleanup removes process narration without deleting trading fact
   assert.equal(C.cleanPresentationText("The plan is armed. Now I will summarize the full picture.\n\nConclusion: Wait for confirmation."), "Conclusion: Wait for confirmation.");
 });
 
+test("AI conclusion summary uses compact text rows without large bold cards", () => {
+  const html = renderToString(React.createElement(C.DecisionBrief, {
+    presentation: { layout: "decision_brief", kind: "market_analysis", headline: "本轮无交易计划", symbols: ["BTC/USDT", "SUI/USDT"], decision: { state: "analysis_only", direction: "neutral" } },
+    content: "白名单：BTC、SUI、ADA\n总结：大盘偏弱，白名单币种多周期冲突。\n结论：本轮无交易计划，继续观察。"
+  }));
+  assert.match(html, /richMetric--conclusion/);
+  assert.match(html, /白名单/);
+  assert.match(html, /总结/);
+  assert.match(html, /本轮无交易计划/);
+});
+
 test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和引用装饰", () => {
   const presentation = {
     schemaVersion: 1,
