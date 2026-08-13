@@ -13,3 +13,15 @@ test("已平仓海报使用已实现口径并单列费用", async () => {
   assert.ok(poster.buffer.length > 1000);
   assert.match(poster.filename, /ADAUSDT-realized/);
 });
+
+test("Telegram 盈利海报使用纯英文模板", async () => {
+  const trade = {
+    exchange: "OKX", symbol: "BTC/USDT", direction: "long", filledPrice: 62000,
+    exitPrice: 64800, quantity: 0.03, leverage: 10, realizedPnl: 84,
+    realizedRoiPct: 45.2, feeUsdt: 1.24, holdingMinutes: 222,
+    exitReason: "止盈", closedAt: "2026-08-13T10:00:00.000Z", isSample: true
+  };
+  const poster = await renderClosedTradePoster(trade);
+  assert.equal(poster.type, "photo");
+  assert.ok(poster.buffer.length > 1000);
+});

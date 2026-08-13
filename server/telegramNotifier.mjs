@@ -81,8 +81,8 @@ async function sendTelegramMultipart(method, fields, fileField, file) {
   return json;
 }
 
-// 从该持仓对应的执行单/计划里取回真实的进场分析(入场推理),拼进海报文案。
-// 只用系统自己记录的 entryRationale/reasoningSummary,不编造。TG caption 上限 1024,截断到安全长度。
+// 从该持仓对应的执行单/计划里取回真实的进场分析(入场推理),拼进英文海报文案。
+// 只用系统自己记录的 entryRationale/reasoningSummary,不编造。中文推理不塞进英文 Telegram caption。
 function positionAnalysisNarrative(db, position) {
   const sym = position.symbol || position.instId;
   const eo = (db.executionOrders || []).find((o) => o.symbol === sym && (o.entryRationale || o.strategy));
@@ -90,9 +90,9 @@ function positionAnalysisNarrative(db, position) {
   const rationale = eo?.entryRationale || plan?.reasoningSummary || plan?.rationale;
   const strategy = eo?.strategy || plan?.strategy;
   const bits = [];
-  if (strategy && strategy !== "manual_review") bits.push(`策略：${strategy}`);
-  if (rationale) bits.push(String(rationale).replace(/\s+/g, " ").trim().slice(0, 480));
-  return bits.length ? `\n\n📊 我的进场分析\n${bits.join("\n")}` : "";
+  if (strategy && strategy !== "manual_review" && /^[\x00-\x7F\s]+$/.test(String(strategy))) bits.push(`Strategy: ${strategy}`);
+  if (rationale && /^[\x00-\x7F\s]+$/.test(String(rationale))) bits.push(String(rationale).replace(/\s+/g, " ").trim().slice(0, 480));
+  return bits.length ? `\n\nEntry rationale\n${bits.join("\n")}` : "";
 }
 
 export async function sendTelegramPositionPoster(db, position, options = {}) {
@@ -110,7 +110,7 @@ export async function sendTelegramPositionPoster(db, position, options = {}) {
 
   try {
     const poster = await renderPositionPoster(position);
-    const caption = options.caption || (`盈利仓位：${share.symbol} ${share.side} · PnL ${share.pnl?.toFixed?.(2) ?? "-"} USDT` + positionAnalysisNarrative(db, position));
+    const caption = options.caption || (`OPEN PROFIT · ${share.symbol} ${share.side} · PnL ${share.pnl?.toFixed?.(2) ?? "-"} USDT` + positionAnalysisNarrative(db, position));
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
     const result = poster.type === "photo"
       ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster)
@@ -136,7 +136,7 @@ export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
   const notification = addNotification(db, { severity: "success", eventType: "closed_trade_profit_poster", title: `已平仓盈利海报：${share.symbol}`, body: `${share.symbol} ${share.side} 已实现 ${share.pnl?.toFixed?.(2)} USDT` });
   try {
     const poster = await renderClosedTradePoster(trade);
-    const caption = options.caption || `已平仓盈利：${share.symbol} ${share.side} · 已实现 ${share.pnl?.toFixed?.(2)} USDT`;
+    const caption = options.caption || `REALIZED PROFIT · ${share.symbol} ${share.side} · Realized PnL ${share.pnl?.toFixed?.(2)} USDT`;
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
     const result = poster.type === "photo" ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster) : await sendTelegramMultipart("sendDocument", payload, "document", poster);
     notification.deliveryStatus = "sent"; notification.telegramMessageId = result.result?.message_id;

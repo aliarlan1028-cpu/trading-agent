@@ -45,6 +45,30 @@ function holdLabel(start, end) {
   return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}m`;
 }
 
+function englishTimestamp(value) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${date.toLocaleString("en-GB", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  })} UTC+8`;
+}
+
+function englishExitReason(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/止损|stop.?loss/i.test(raw)) return "Stop Loss";
+  if (/止盈|take.?profit|\btp\b/i.test(raw)) return "Take Profit";
+  if (/追踪|trailing/i.test(raw)) return "Trailing Stop";
+  if (/手动|manual/i.test(raw)) return "Manual Close";
+  if (/强平|liquidat/i.test(raw)) return "Liquidation";
+  if (/风控|risk/i.test(raw)) return "Risk Exit";
+  if (/超时|时间|time/i.test(raw)) return "Time Exit";
+  if (/失效|结构|signal|invalid/i.test(raw)) return "Strategy Invalidation";
+  if (/^[\x20-\x7E]+$/.test(raw)) return raw.replaceAll("_", " ");
+  return "Strategy Exit";
+}
+
 export function derivePositionShare(position = {}) {
   const side = normalizeSide(position);
   const entry = number(position.entry ?? position.entryPrice ?? position.avgPx ?? position.avgPrice);
@@ -88,14 +112,15 @@ async function qrImage(url, px) {
 
 async function buildPositionPosterSvg(position = {}) {
   const s = derivePositionShare(position);
+  const isSample = position.isSample === true || position.posterSample === true;
   const isLong = s.side === "LONG";
   const isWin = Number(s.pnl || 0) >= 0;
   const dirColor = isLong ? "#3ad6c0" : "#ffb24c";       // 方向色:多=青 / 空=橙
   const pnlColor = isWin ? "#16d191" : "#ff6b6b";        // 盈亏色:盈=绿 / 亏=红(与方向色独立)
-  const dirLabel = isLong ? "▲ 做多 LONG" : "▼ 做空 SHORT";
+  const dirLabel = isLong ? "▲ LONG" : "▼ SHORT";
   const roiText = s.roiPct === null ? "—" : `${s.roiPct >= 0 ? "+" : "−"}${Math.abs(s.roiPct).toFixed(1)}%`;
-  const updated = new Date(s.updatedAt || Date.now()).toLocaleString("zh-CN", { hour12: false });
-  const metaBits = [s.leverage ? `${compact(s.leverage, 1)}×` : null, s.notional !== null ? `名义 ${compact(s.notional)} USDT` : null, s.holdLabel ? `持仓 ${s.holdLabel}` : null].filter(Boolean).join("  ·  ");
+  const updated = englishTimestamp(s.updatedAt);
+  const metaBits = [s.leverage ? `${compact(s.leverage, 1)}× Leverage` : null, s.notional !== null ? `Notional ${compact(s.notional)} USDT` : null, s.holdLabel ? `Held ${s.holdLabel}` : null].filter(Boolean).join("  ·  ");
   const qr = await qrImage(SITE_URL, 380);
 
   // 数据格:开仓 / 现价 / 止损(红) / 止盈(绿),y 全部在页脚带之上,不再重合
@@ -122,7 +147,8 @@ async function buildPositionPosterSvg(position = {}) {
   <image x="80" y="65" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/>
   <text x="194" y="112" fill="#eaf0fb" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text>
   <text x="194" y="150" fill="#7f8ca3" font-family="${FONT}" font-size="20" letter-spacing="3">AI TRADING AGENT</text>
-  <text x="1000" y="128" text-anchor="end" fill="#7f8ca3" font-family="${FONT}" font-size="24">${escapeXml(s.exchange)} 永续</text>
+  <text x="1000" y="112" text-anchor="end" fill="#7f8ca3" font-family="${FONT}" font-size="24">${escapeXml(s.exchange)} PERPETUAL</text>
+  ${isSample ? `<text x="1000" y="153" text-anchor="end" fill="#ffcf80" font-family="${FONT}" font-size="22" font-weight="800" letter-spacing="3">SAMPLE · SIMULATED DATA</text>` : ""}
 
   <!-- 方向徽章 + 币种 + meta -->
   <rect x="80" y="214" width="${isLong ? 210 : 224}" height="58" rx="14" fill="${dirColor}" opacity="0.16"/>
@@ -132,22 +158,22 @@ async function buildPositionPosterSvg(position = {}) {
 
   <!-- Hero:ROI 大字 + 盈亏 -->
   <rect x="80" y="472" width="920" height="250" rx="28" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
-  <text x="120" y="546" fill="#8d99ad" font-family="${FONT}" font-size="28">未实现收益率 (ROI)</text>
+  <text x="120" y="546" fill="#8d99ad" font-family="${FONT}" font-size="28">UNREALIZED RETURN (ROI)</text>
   <text x="120" y="656" fill="${pnlColor}" font-family="${FONT}" font-size="120" font-weight="900">${escapeXml(roiText)}</text>
   <text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="40" font-weight="800">${escapeXml(money(s.pnl))}</text>
 
   <!-- 数据格 -->
-  ${cell(80, 772, "开仓均价", compact(s.entry))}
-  ${cell(560, 772, "当前标记价", compact(s.mark))}
-  ${cell(80, 942, "止损", s.stopLoss !== null ? compact(s.stopLoss) : "—", "#ff8a8a")}
-  ${cell(560, 942, "止盈", s.takeProfit !== null ? compact(s.takeProfit) : "—", "#7fe3b8")}
+  ${cell(80, 772, "ENTRY PRICE", compact(s.entry))}
+  ${cell(560, 772, "MARK PRICE", compact(s.mark))}
+  ${cell(80, 942, "STOP LOSS", s.stopLoss !== null ? compact(s.stopLoss) : "—", "#ff8a8a")}
+  ${cell(560, 942, "TAKE PROFIT", s.takeProfit !== null ? compact(s.takeProfit) : "—", "#7fe3b8")}
 
   <!-- 页脚带:二维码(右) + 文案(左),与数据格之间留白,不重合 -->
   <rect x="80" y="1150" width="920" height="2" fill="rgba(255,255,255,0.08)"/>
   ${qr ? `<rect x="784" y="1176" width="216" height="216" rx="20" fill="#ffffff"/><image x="797" y="1189" width="190" height="190" xlink:href="${qr}"/>` : ""}
-  <text x="80" y="1224" fill="#c7d2e6" font-family="${FONT}" font-size="30" font-weight="700">扫码体验 AI 自主交易</text>
+  <text x="80" y="1224" fill="#c7d2e6" font-family="${FONT}" font-size="30" font-weight="700">SCAN TO EXPLORE KORDYN</text>
   <text x="80" y="1272" fill="#7f8ca3" font-family="${FONT}" font-size="26">${escapeXml(SITE_URL.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</text>
-  <text x="80" y="1344" fill="#6d7994" font-family="${FONT}" font-size="24">AI 自动生成 · 非投资建议</text>
+  <text x="80" y="1344" fill="#6d7994" font-family="${FONT}" font-size="24">AI-GENERATED · NOT FINANCIAL ADVICE</text>
   <text x="80" y="1384" fill="#55627c" font-family="${FONT}" font-size="22">${escapeXml(updated)}</text>
 </svg>`;
 }
@@ -188,12 +214,14 @@ export function deriveClosedTradeShare(trade = {}) {
 
 async function buildClosedTradePosterSvg(trade = {}) {
   const s = deriveClosedTradeShare(trade), win = Number(s.pnl || 0) >= 0, long = s.side === "LONG";
+  const isSample = trade.isSample === true || trade.posterSample === true;
   const accent = long ? "#3ad6c0" : "#ffb24c", pnlColor = win ? "#16d191" : "#ff6b6b";
   const qr = await qrImage(SITE_URL, 300);
   const roi = s.roiPct === null ? "—" : `${s.roiPct >= 0 ? "+" : "−"}${Math.abs(s.roiPct).toFixed(2)}%`;
-  const meta = [s.leverage ? `${compact(s.leverage, 1)}×` : null, s.holdLabel ? `持仓 ${s.holdLabel}` : null, s.exitReason ? `退出 ${s.exitReason}` : null].filter(Boolean).join("  ·  ");
+  const exitReason = englishExitReason(s.exitReason);
+  const meta = [s.leverage ? `${compact(s.leverage, 1)}× Leverage` : null, s.holdLabel ? `Held ${s.holdLabel}` : null, exitReason ? `Exit: ${exitReason}` : null].filter(Boolean).join("  ·  ");
   const cell = (x, y, label, value, color = "#f4f8ff") => `<rect x="${x}" y="${y}" width="440" height="142" rx="22" fill="rgba(255,255,255,.04)"/><text x="${x+28}" y="${y+48}" fill="#8d99ad" font-family="${FONT}" font-size="25">${escapeXml(label)}</text><text x="${x+28}" y="${y+104}" fill="${color}" font-family="${FONT}" font-size="42" font-weight="800">${escapeXml(value)}</text>`;
-  return `<?xml version="1.0" encoding="UTF-8"?><svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><radialGradient id="closedBg" cx="15%" cy="0" r="130%"><stop offset="0" stop-color="${long ? "#18243a" : "#2d1920"}"/><stop offset="1" stop-color="#080c14"/></radialGradient></defs><rect width="1080" height="1440" fill="url(#closedBg)"/><rect width="1080" height="14" fill="${accent}"/><image x="80" y="63" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/><text x="194" y="109" fill="#f4f8ff" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text><text x="194" y="148" fill="#8896ac" font-family="${FONT}" font-size="20" letter-spacing="3">REALIZED TRADE RESULT</text><rect x="80" y="212" width="250" height="58" rx="14" fill="${accent}" opacity=".16"/><text x="205" y="251" text-anchor="middle" fill="${accent}" font-family="${FONT}" font-size="28" font-weight="800">✓ 已平仓 ${escapeXml(s.side)}</text><text x="80" y="370" fill="#fff" font-family="${FONT}" font-size="82" font-weight="900">${escapeXml(s.symbol)}</text><text x="80" y="422" fill="#9aa6bd" font-family="${FONT}" font-size="27">${escapeXml(meta || "真实成交结果")}</text><rect x="80" y="470" width="920" height="265" rx="28" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.08)"/><text x="120" y="542" fill="#8d99ad" font-family="${FONT}" font-size="28">已实现盈亏（交易系统记录）</text><text x="120" y="648" fill="${pnlColor}" font-family="${FONT}" font-size="102" font-weight="900">${escapeXml(money(s.pnl))}</text><text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="38" font-weight="800">收益率 ${escapeXml(roi)}</text>${cell(80,775,"开仓均价",compact(s.entry))}${cell(560,775,"平仓均价",compact(s.exit))}${cell(80,937,"成交数量",compact(s.quantity))}${cell(560,937,"手续费（单列）",`${s.feeUsdt ? "−" : ""}${compact(s.feeUsdt,4)} USDT`,"#ffcf80")}<text x="80" y="1138" fill="#75839a" font-family="${FONT}" font-size="23">资金费：${escapeXml(money(s.fundingFeeUsdt))} · 数据来源：${escapeXml(s.exchange)} 成交与 OMS 对账</text><rect x="80" y="1178" width="920" height="2" fill="rgba(255,255,255,.08)"/>${qr?`<rect x="800" y="1204" width="200" height="200" rx="18" fill="#fff"/><image x="812" y="1216" width="176" height="176" xlink:href="${qr}"/>`:""}<text x="80" y="1250" fill="#d3dceb" font-family="${FONT}" font-size="30" font-weight="700">KORDYN · 数字货币永续合约专属 Agent</text><text x="80" y="1300" fill="#7f8ca3" font-family="${FONT}" font-size="25">${escapeXml(SITE_URL.replace(/^https?:\/\//,"").replace(/\/$/,""))}</text><text x="80" y="1370" fill="#617088" font-family="${FONT}" font-size="22">真实成交结果 · 非投资建议 · ${escapeXml(new Date(s.closedAt).toLocaleString("zh-CN",{hour12:false}))}</text></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><radialGradient id="closedBg" cx="15%" cy="0" r="130%"><stop offset="0" stop-color="${long ? "#18243a" : "#2d1920"}"/><stop offset="1" stop-color="#080c14"/></radialGradient></defs><rect width="1080" height="1440" fill="url(#closedBg)"/><rect width="1080" height="14" fill="${accent}"/><image x="80" y="63" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/><text x="194" y="109" fill="#f4f8ff" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text><text x="194" y="148" fill="#8896ac" font-family="${FONT}" font-size="20" letter-spacing="3">REALIZED TRADE RESULT</text>${isSample ? `<text x="1000" y="112" text-anchor="end" fill="#ffcf80" font-family="${FONT}" font-size="22" font-weight="800" letter-spacing="3">SAMPLE · SIMULATED DATA</text>` : ""}<rect x="80" y="212" width="250" height="58" rx="14" fill="${accent}" opacity=".16"/><text x="205" y="251" text-anchor="middle" fill="${accent}" font-family="${FONT}" font-size="28" font-weight="800">✓ CLOSED · ${escapeXml(s.side)}</text><text x="80" y="370" fill="#fff" font-family="${FONT}" font-size="82" font-weight="900">${escapeXml(s.symbol)}</text><text x="80" y="422" fill="#9aa6bd" font-family="${FONT}" font-size="27">${escapeXml(meta || "REALIZED TRADE")}</text><rect x="80" y="470" width="920" height="265" rx="28" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.08)"/><text x="120" y="542" fill="#8d99ad" font-family="${FONT}" font-size="28">REALIZED PNL · VERIFIED BY THE TRADING SYSTEM</text><text x="120" y="648" fill="${pnlColor}" font-family="${FONT}" font-size="102" font-weight="900">${escapeXml(money(s.pnl))}</text><text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="38" font-weight="800">REALIZED ROI ${escapeXml(roi)}</text>${cell(80,775,"ENTRY PRICE",compact(s.entry))}${cell(560,775,"EXIT PRICE",compact(s.exit))}${cell(80,937,"FILLED QUANTITY",compact(s.quantity))}${cell(560,937,"TRADING FEES",`${s.feeUsdt ? "−" : ""}${compact(s.feeUsdt,4)} USDT`,"#ffcf80")}<text x="80" y="1138" fill="#75839a" font-family="${FONT}" font-size="23">FUNDING: ${escapeXml(money(s.fundingFeeUsdt))} · SOURCE: ${escapeXml(s.exchange)} FILLS + OMS RECONCILIATION</text><rect x="80" y="1178" width="920" height="2" fill="rgba(255,255,255,.08)"/>${qr?`<rect x="800" y="1204" width="200" height="200" rx="18" fill="#fff"/><image x="812" y="1216" width="176" height="176" xlink:href="${qr}"/>`:""}<text x="80" y="1250" fill="#d3dceb" font-family="${FONT}" font-size="28" font-weight="700">KORDYN · CRYPTO PERPETUALS AI AGENT</text><text x="80" y="1300" fill="#7f8ca3" font-family="${FONT}" font-size="25">${escapeXml(SITE_URL.replace(/^https?:\/\//,"").replace(/\/$/,""))}</text><text x="80" y="1357" fill="#617088" font-family="${FONT}" font-size="21">${isSample ? "SIMULATED TEMPLATE PREVIEW" : "REALIZED TRADE RESULT"} · NOT FINANCIAL ADVICE</text><text x="80" y="1392" fill="#55627c" font-family="${FONT}" font-size="21">${escapeXml(englishTimestamp(s.closedAt))}</text></svg>`;
 }
 
 export async function renderClosedTradePoster(trade = {}) {
