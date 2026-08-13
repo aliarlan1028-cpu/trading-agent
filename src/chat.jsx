@@ -440,12 +440,15 @@ function RichMessage({ text = "", compact = false, onSuggest = null, poster = fa
   const groups = groupPosterBlocks(blocks);
   return (
     <div className={compact ? "richMessage compact" : "richMessage"}>
-      {groups.map((group, groupIndex) => (
-        <section className={`richMessageGroup ${group.heading && isFullMarketScanHeading(group.heading.text) ? "richMessageGroup--marketScan" : ""}`} key={groupIndex}>
-          {group.heading && <RichBlock block={group.heading} blockKey={`${groupIndex}-heading`} onSuggest={onSuggest} />}
-          {group.blocks.map((block, blockIndex) => <RichBlock block={block} blockKey={`${groupIndex}-${blockIndex}`} onSuggest={onSuggest} key={blockIndex} />)}
-        </section>
-      ))}
+      {groups.map((group, groupIndex) => {
+        const kind = group.heading ? posterSectionKind(group.heading.text) : "intro";
+        return (
+          <section className={`richMessageGroup richMessageGroup--${kind} ${group.heading && isFullMarketScanHeading(group.heading.text) ? "richMessageGroup--marketScan" : ""}`} key={groupIndex}>
+            {group.heading && <RichBlock block={group.heading} blockKey={`${groupIndex}-heading`} onSuggest={onSuggest} />}
+            {group.blocks.map((block, blockIndex) => <RichBlock block={block} blockKey={`${groupIndex}-${blockIndex}`} onSuggest={onSuggest} key={blockIndex} />)}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -1535,7 +1538,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
           <div className="agMsgAiRow" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}>
             <span className="agAvatar"><Bot size={18} /></span>
             <div className={`agBubbleAi ${message.presentation?.layout === "decision_brief" ? "decisionMessage" : ""}`}>
-              <div className="agAiLabel"><span>{t("AI 交易员", "AI Trader")}</span>{message.presentation?.layout === "decision_brief" && <small>{t("结构化决策简报", "Structured decision brief")}</small>}</div>
+              <div className="agAiLabel"><span>{t("AI 交易员", "AI Trader")}</span></div>
               {message.presentation?.layout === "decision_brief" ? (
                 <DecisionBrief
                   presentation={message.presentation}

@@ -4060,7 +4060,7 @@ button.danger:disabled,
 
 .richMessage {
   display: grid;
-  gap: 10px;
+  gap: 13px;
 }
 
 .richMessage.compact {
@@ -4070,7 +4070,7 @@ button.danger:disabled,
 .richMessageGroup {
   min-width: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .richMessage.compact > .richMessageGroup { gap: 6px; }
@@ -4078,24 +4078,24 @@ button.danger:disabled,
 .richHeading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
   min-width: 0;
-  padding: 8px 0 7px;
+  padding: 7px 0 6px;
   border-bottom: 1px solid #e9e2d7;
   color: #4e473d;
   background: transparent;
-  font-size: 12.5px;
+  font-size: 12px;
   letter-spacing: .01em;
 }
 
 .richHeading > i {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 7px;
+  border-radius: 6px;
   color: #9b6b3e;
   background: #f6efe5;
   font-style: normal;
@@ -4104,6 +4104,7 @@ button.danger:disabled,
 .richHeading strong {
   min-width: 0;
   line-height: 1.35;
+  font-weight: 560;
 }
 
 .richHeading--summary > i,
@@ -4180,9 +4181,9 @@ button.danger:disabled,
 .richQuote svg { margin-top: 3px; color: #2e8560; }
 .richConclusion {
   color: #3f3930;
-  font-size: 12.5px;
+  font-size: 12.75px;
   font-weight: 500;
-  line-height: 1.7;
+  line-height: 1.68;
 }
 
 .richChecklist {
@@ -4290,8 +4291,8 @@ button.danger:disabled,
 }
 
 .richMetric.richMetric--conclusion:last-child { border-bottom: 0; }
-.richMetric--conclusion span { font-size: 12px; font-weight: 600; color: #8a8171; }
-.richMetric--conclusion b { font-size: 13px; font-weight: 500; line-height: 1.65; color: #3f3a33; }
+.richMetric--conclusion span { font-size: 11.5px; font-weight: 560; color: #8a8171; }
+.richMetric--conclusion b { font-size: 12.75px; font-weight: 450; line-height: 1.68; color: #3f3a33; }
 
 .richBulletList,
 .richSteps {
@@ -7721,7 +7722,7 @@ button.danger:disabled,
 .agMsgAiRow { display: flex; gap: 10px; align-items: flex-start; }
 .agAvatar { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(150deg, #E68A4E, #D06A22); display: grid; place-items: center; color: #fff; flex: none; box-shadow: 0 6px 14px -7px rgba(208, 106, 34, .8); }
 .agBubbleAi { max-width: 84%; background: #F4F1EB; border: 1px solid #E3DCCE; border-radius: 5px 15px 15px 15px; padding: 12px 15px; font-size: 14px; line-height: 1.65; color: #332c20; font-family: var(--font-body); }
-.agAiLabel { font: 700 11px "Space Grotesk"; color: #6B6455; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.agAiLabel { font: 600 10.5px "Space Grotesk"; color: #807768; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
 .agAiLabel small { color: #A19784; font: 600 9px "IBM Plex Mono"; letter-spacing: .04em; text-transform: uppercase; }
 .agMsgMeta { display: block; margin-top: 6px; font: 500 10px "IBM Plex Mono"; color: #b3a992; }
 
@@ -7760,16 +7761,16 @@ button.danger:disabled,
 .decisionBrief--narrative::before { display: none; }
 .decisionBrief--narrative .decisionBriefHead {
   min-height: 34px;
-  padding: 5px 0 9px;
+  padding: 4px 0 9px;
   background: transparent;
 }
 .decisionBriefMeta { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .decisionBrief--narrative .decisionStateChanged { margin: 9px 0 0; border-radius: 5px; }
 .decisionFallbackHeadline { margin: 12px 0 0; color: #3f3930; font-size: 12.5px; font-weight: 500; line-height: 1.7; }
-.decisionNarrative { padding-top: 8px; color: #4C453A; }
+.decisionNarrative { padding-top: 9px; color: #4C453A; border-top: 1px solid #E9E2D7; }
 .decisionNarrative .richHeading:first-child { margin-top: 0; }
-.decisionNarrative .richHeading strong { font-weight: 600; }
-.decisionNarrative strong { font-weight: 600; }
+.decisionNarrative .richHeading strong { font-weight: 560; }
+.decisionNarrative strong { font-weight: 560; }
 .agWatchExplainer { display: block; margin: -2px 0 8px; color: #8d8372; font-size: 9px; line-height: 1.5; }
 .decisionBrief::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--decision-accent); }
 .decisionBrief.long { --decision-accent: #238158; --decision-soft: #F1F8F4; }
@@ -7887,6 +7888,72 @@ button.danger:disabled,
   .decisionFactorGrid { grid-template-columns: 1fr; }
   .decisionWatchStrip { grid-template-columns: auto minmax(0,1fr); }
   .decisionWatchStrip time { grid-column: 2; }
+
+  /* 窄屏把 AI 输出当作报告正文阅读，不再把桌面卡片硬缩进聊天气泡。 */
+  .agMsgAiRow { gap: 0; }
+  .agMsgAiRow > .agAvatar { display: none; }
+  .agBubbleAi,
+  .agBubbleAi.decisionMessage {
+    width: 100%;
+    max-width: 100%;
+    padding: 0 0 15px;
+    border: 0;
+    border-bottom: 1px solid #E6DED2;
+    border-radius: 0;
+    background: transparent;
+  }
+  .agAiLabel { margin: 0 0 7px; font-size: 10px; }
+  .decisionMessage > .agAiLabel { margin: 0 0 6px; }
+  .decisionBrief--narrative .decisionBriefHead {
+    min-height: 0;
+    padding: 0 0 9px;
+    gap: 7px;
+  }
+  .decisionBriefIdentity { gap: 5px; }
+  .decisionBriefMeta { width: 100%; justify-content: space-between; gap: 7px; }
+  .decisionKind { font-size: 9.5px; letter-spacing: .04em; text-transform: none; }
+  .decisionKind svg { display: none; }
+  .decisionSymbol { font-size: 11.5px; }
+  .decisionRole,.decisionMultiSymbols { font-size: 8.5px; }
+  .decisionBadges { gap: 5px; }
+  .decisionDirection,.decisionState { min-height: 21px; padding: 2px 7px; font-size: 9.5px; font-weight: 600; }
+  .decisionFreshness { margin-left: auto; font-size: 8.5px; gap: 4px; }
+  .decisionFreshness > span { display: none; }
+  .decisionNarrative { padding-top: 10px; }
+  .decisionNarrative .richMessage { gap: 15px; }
+  .richMessageGroup { gap: 7px; }
+  .richHeading { gap: 0; padding: 6px 0; font-size: 11.5px; }
+  .richHeading > i { display: none; }
+  .richHeading strong { font-weight: 560; }
+  .richMetric.richMetric--conclusion {
+    grid-template-columns: 50px minmax(0,1fr);
+    gap: 6px;
+    padding: 9px 0;
+    align-items: start;
+  }
+  .richMetric--conclusion span { padding-top: 1px; font-size: 10.5px; font-weight: 560; }
+  .richMetric--conclusion b { font-size: 12.5px; line-height: 1.65; }
+  .richConclusion { font-size: 12.5px; line-height: 1.68; }
+  .richBullet { grid-template-columns: 11px minmax(0,1fr); gap: 5px; font-size: 11.75px; line-height: 1.62; }
+  .richBullet i { height: 19px; }
+  .richCheck { grid-template-columns: 16px minmax(0,1fr); gap: 5px; font-size: 11.75px; line-height: 1.62; }
+  .richStep { grid-template-columns: 22px minmax(0,1fr); gap: 7px; font-size: 11.75px; line-height: 1.62; }
+  .richStep b { width: 20px; height: 20px; border-radius: 6px; font-size: 9.5px; }
+  .richNotice { grid-template-columns: 15px minmax(0,1fr); gap: 6px; padding: 8px 9px; border-left-width: 2px; font-size: 11.5px; }
+  .richTableWrap { margin: 0; border-right: 0; border-left: 0; border-radius: 0; }
+  .richTable { font-size: 10.5px; }
+  .richTable th,.richTable td { padding: 6px 8px; }
+  .richTable thead th { font-size: 10px; }
+  .toolTrace { margin-top: 1px; padding-top: 7px; border-top: 1px solid #EEE7DC; }
+  .toolTrace button { width: 100%; justify-content: flex-start; padding: 0; font-size: 10px; }
+  .toolTrace button svg:first-child { display: none; }
+  .toolTrace button svg:last-child { margin-left: auto; }
+  .toolTrace > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 7px; padding: 5px 0; font-size: 10px; }
+  .toolTrace > div span { grid-column: 1 / -1; color: #8A8171; line-height: 1.45; }
+  .toolTrace > div small { grid-column: 2; grid-row: 1; }
+  .agMsgFootRow { margin-top: 7px; }
+  .agMsgFootRow .agMsgMeta { font-size: 8.5px; }
+  .agPosterBtn { padding: 2px 7px; border-radius: 6px; font-size: 10px; }
 }
 
 .agInputBar { display: flex; align-items: flex-end; gap: 9px; border: 1px solid #E3DCCE; border-radius: 12px; background: #fff; padding: 9px 10px 9px 14px; flex: none; margin-top: 4px; }
@@ -9052,14 +9119,14 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .agChatMobileBar .agViewToggle { margin-right: 2px; }
 .agMobileIconBtn { position: relative; width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #E3DCCE; border-radius: 8px; background: #fff; color: #6B6455; }
 .agMobileIconBtn b { position: absolute; right: -3px; top: -4px; min-width: 15px; height: 15px; padding: 0 3px; display: grid; place-items: center; border-radius: 8px; background: #D06A22; color: #fff; font: 700 8px var(--font-mono); }
-.mobileChatShell .agMsgs { flex: 1 1 0; min-height: 0; overflow-y: scroll; overflow-x: hidden; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scroll-behavior: auto; gap: 14px; padding: 12px 10px 18px; }
+.mobileChatShell .agMsgs { flex: 1 1 0; min-height: 0; overflow-y: scroll; overflow-x: hidden; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scroll-behavior: auto; gap: 18px; padding: 14px 14px 22px; }
 .mobileChatShell .agInputBar { margin: 0; padding: 8px 9px 8px 13px; padding-bottom: calc(8px + var(--keyboard-inset-height,0px)); border: 0; border-top: 1px solid #DED6C8; border-radius: 0; background: #FFFEFB; }
 .mobileChatShell .agInputBar textarea { max-height: 96px; font-size: 14px; }
-.mobileChatShell .agMsgAiRow { gap: 7px; }
+.mobileChatShell .agMsgAiRow { gap: 0; }
 .mobileChatShell .agAvatar { width: 27px; height: 27px; border-radius: 8px; }
-.mobileChatShell .agBubbleAi { max-width: calc(100% - 34px); padding: 10px 11px; border-radius: 4px 13px 13px 13px; font-size: 13px; line-height: 1.62; }
+.mobileChatShell .agBubbleAi { width: 100%; max-width: 100%; padding: 0 0 15px; border: 0; border-bottom: 1px solid #E6DED2; border-radius: 0; background: transparent; font-size: 12.5px; line-height: 1.65; }
 .mobileChatShell .agBubbleUser { max-width: 88%; padding: 9px 11px; font-size: 13px; line-height: 1.58; }
-.mobileChatShell .agBubbleAi.decisionMessage { max-width: calc(100% - 34px); width: calc(100% - 34px); }
+.mobileChatShell .agBubbleAi.decisionMessage { max-width: 100%; width: 100%; }
 .mobileChatShell .pendingActionsDock { max-height: 30vh; overflow-y: auto; border-top: 1px solid #E8E1D6; background: #FFFEFB; }
 
 .mChatHistoryOverlay { position: fixed; inset: 0; z-index: 180; display: flex; align-items: flex-end; background: rgba(30,27,22,.38); }
@@ -9368,12 +9435,12 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mShell2 .agMsgAiRow > .agAvatar { display: none; }
 .mShell2 .agBubbleAi { max-width: 100%; }
 .mShell2 .agBubbleAi.decisionMessage { width: 100%; }
-.mShell2 .decisionBriefHead { padding-left: 13px; padding-right: 11px; }
+.mShell2 .decisionBriefHead { padding-left: 0; padding-right: 0; }
 .mShell2 .decisionHero { padding: 13px 13px 11px; }
 .mShell2 .decisionHero blockquote { font-size: 13.5px; line-height: 1.55; }
-.mShell2 .decisionTfGrid { padding: 0 13px 10px; }
+.mShell2 .decisionTfGrid { padding: 0 0 10px; }
 .mShell2 .decisionTfGrid { grid-template-columns: 1fr; }
-.mShell2 .decisionExecution,.mShell2 .decisionPosition { margin-left: 13px; margin-right: 13px; }
+.mShell2 .decisionExecution,.mShell2 .decisionPosition { margin-left: 0; margin-right: 0; }
 .mShell2 .decisionExecutionFacts,.mShell2 .decisionPositionGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .mShell2 .decisionTimeline > div { flex-direction: column; align-items: flex-start; gap: 3px; }
 .mShell2 .decisionTimeline > div:not(:last-child)::after { left: 16px; right: 2px; }
@@ -9381,8 +9448,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mShell2 .decisionFactorGrid { grid-template-columns: 1fr; }
 .mShell2 .decisionWatchStrip { grid-template-columns: auto minmax(0,1fr); }
 .mShell2 .decisionWatchStrip time { grid-column: 2; }
-.mShell2 .decisionEvidenceGrid,.mShell2 .decisionFactorGrid,.mShell2 .decisionWatchStrip,.mShell2 .decisionNext { margin-left: 13px; margin-right: 13px; }
-.mShell2 .decisionAnalysis > summary,.mShell2 .decisionAnalysisBody { padding-left: 13px; padding-right: 13px; }
+.mShell2 .decisionEvidenceGrid,.mShell2 .decisionFactorGrid,.mShell2 .decisionWatchStrip,.mShell2 .decisionNext { margin-left: 0; margin-right: 0; }
+.mShell2 .decisionAnalysis > summary,.mShell2 .decisionAnalysisBody { padding-left: 0; padding-right: 0; }
 .mShell2 .agBubbleUser { max-width: 92%; }
 
 /* 移动端行情卡：TradingView 真实 K 线（替换自绘），给足高度 */

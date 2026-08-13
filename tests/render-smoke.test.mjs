@@ -139,13 +139,14 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
   assert.match(html, /等待回踩确认，不追多/);
   assert.match(html, /\+1 币种/);
   assert.match(html, /richHeading--summary/);
+  assert.match(html, /richMessageGroup--summary/);
+  assert.match(html, /richMessageGroup--marketScan/);
   assert.match(html, /richConclusion/);
   assert.doesNotMatch(html, /richQuote|posterQuote|decisionTfGrid|decisionEvidenceGrid|decisionNext/);
   assert.match(html, /richNotice danger/);
   assert.match(html, /richChecklist/);
   assert.match(html, /richCheck checked/);
   assert.match(html, /richTable/);
-  assert.match(html, /richMessageGroup--marketScan/);
   assert.match(html, /Top 候选均在白名单外/);
   const liveHtml = renderToString(React.createElement(C.DecisionBrief, {
     presentation,
