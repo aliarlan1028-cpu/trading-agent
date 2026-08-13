@@ -4229,6 +4229,7 @@ button.danger:disabled,
 
 /* AI 分析开头的白名单/总结/结论保持截图一同款的克制文本行：不做大字号、
    不做粗体卡片，也不堆额外图标。 */
+.richMetricGrid--conclusion,
 .richMetricGrid:has(.richMetric--conclusion) {
   grid-template-columns: 1fr;
   gap: 0;
@@ -9456,6 +9457,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .posterBody .richBullet,
 .posterBody .richStep { line-height: 1.7; }
 .posterBody .richMetricGrid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+/* 结论三行必须与对话正文一致地纵向排列。旧规则在海报作用域里把所有 metrics
+   强制重排成三列，白名单/总结/结论因此各只剩约 190px，中文呈瀑布状断行。 */
+.posterBody .richMetricGrid--conclusion {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+}
+.posterBody .richMetricGrid--conclusion .richMetric--conclusion {
+  grid-template-columns: 66px minmax(0, 1fr);
+  align-items: start;
+  padding: 11px 0;
+}
+.posterBody .richMetricGrid--conclusion .richMetric--conclusion span,
+.posterBody .richMetricGrid--conclusion .richMetric--conclusion b {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
 .posterBody .richMetric { min-height: 58px; padding: 10px 12px; }
 .posterBody .richTableWrap {
   overflow: visible;

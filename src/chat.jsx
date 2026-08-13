@@ -335,8 +335,9 @@ function RichBlock({ block, blockKey, onSuggest = null, poster = false }) {
     );
   }
   if (block.type === "metrics") {
+    const conclusionRows = block.items.some((item) => /^(白名单|总结|结论|Whitelist|Summary|Conclusion)$/i.test(item.label));
     return (
-      <div className="richMetricGrid" key={blockKey}>
+      <div className={`richMetricGrid ${conclusionRows ? "richMetricGrid--conclusion" : ""}`} key={blockKey}>
         {block.items.map((item, itemIndex) => (
           <div className={`richMetric ${item.tone} ${/^(白名单|总结|结论|Whitelist|Summary|Conclusion)$/i.test(item.label) ? "richMetric--conclusion" : ""}`} key={`${item.label}-${itemIndex}`}>
             <span>{item.label}</span>

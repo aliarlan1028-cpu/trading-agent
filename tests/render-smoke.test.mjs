@@ -92,6 +92,7 @@ test("AI conclusion summary uses compact text rows without large bold cards", ()
     content: "白名单：BTC、SUI、ADA\n总结：大盘偏弱，白名单币种多周期冲突。\n结论：本轮无交易计划，继续观察。"
   }));
   assert.match(html, /richMetric--conclusion/);
+  assert.match(html, /richMetricGrid--conclusion/);
   assert.match(html, /白名单/);
   assert.match(html, /总结/);
   assert.match(html, /本轮无交易计划/);
