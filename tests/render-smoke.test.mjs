@@ -52,6 +52,7 @@ esbuild.buildSync({
       export { ChatPage, DecisionBrief, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
+      export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp } from "./src/mobile.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
     `,
@@ -74,6 +75,20 @@ test("网页版 API 始终同源，不受浏览器残留后端地址影响", () 
   assert.equal(C.resolveApiBase({ native: false, stored: "https://old.example.com", configured: "https://api.example.com/" }), "https://api.example.com");
   assert.equal(C.resolveApiBase({ native: true, stored: "https://customer.example.com/", configured: "" }), "https://customer.example.com");
   assert.equal(C.resolveApiBase({ native: true, stored: "http://127.0.0.1:8787", configured: "" }), "https://yegidawir.xyz");
+});
+
+test("App 登录前只显示精简登录与订阅入口，不渲染 Web 营销页", () => {
+  const props = {
+    login: async () => {}, registerAccount: async () => {}, toast: "", apiBase: "https://yegidawir.xyz", setApiBase: () => {},
+    publicInfo: { registrationEnabled: true, subscriptionPlans: [{ id: "p1", name: "月度订阅", months: 1, priceUsdt: 99 }] }
+  };
+  const html = renderToString(React.createElement(C.NativeAuthPage, props));
+  assert.match(html, /nativeAuthScreen/);
+  assert.match(html, /kordyn-logo\.svg/);
+  assert.match(html, /登录/);
+  assert.match(html, /订阅/);
+  assert.match(html, /服务器设置/);
+  assert.doesNotMatch(html, /lpFrame|landing\.html|把你的交易书|landingMarketing/);
 });
 
 test("AI display cleanup removes process narration without deleting trading facts", () => {

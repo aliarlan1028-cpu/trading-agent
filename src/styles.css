@@ -9634,6 +9634,44 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .topLangCheck { color: var(--accent); font-weight: 700; }
 
 /* 营销落地页(iframe) + 登录/订阅弹窗（深色主题，匹配 landing 设计稿） */
+.nativeAuthScreen{min-height:100dvh;display:flex;align-items:flex-start;justify-content:center;padding:max(42px,calc(var(--safe-area-inset-top,env(safe-area-inset-top)) + 26px)) 22px max(28px,calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 18px));overflow-y:auto;background:#f7f3ed;color:#28241f;font-family:var(--font-ui)}
+.nativeAuthCard{width:min(100%,420px);display:grid;gap:22px}
+.nativeAuthBrand{display:flex;align-items:center;gap:13px;padding:0 2px}
+.nativeAuthBrand>img{width:48px;height:48px;object-fit:contain;display:block}
+.nativeAuthBrand>div{display:grid;gap:2px}
+.nativeAuthBrand strong{font-size:18px;line-height:1.15;letter-spacing:.08em;font-weight:650;color:#221f1a}
+.nativeAuthBrand span{font-size:11px;color:#8d8579;letter-spacing:.03em}
+.nativeAuthTabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:11px;background:#ebe5dc}
+.nativeAuthTabs button{min-height:38px;border:0;border-radius:8px;background:transparent;color:#81786b;font-size:13px;font-weight:550;cursor:pointer}
+.nativeAuthTabs button.on{background:#fff;color:#2d2923;box-shadow:0 1px 4px rgba(58,46,31,.08)}
+.nativeAuthForm{display:grid;gap:15px}
+.nativeAuthIntro{display:grid;gap:4px;margin:1px 0 3px}
+.nativeAuthIntro strong{font-size:17px;font-weight:620;color:#29251f}
+.nativeAuthIntro span{font-size:12px;color:#8b8275}
+.nativeAuthForm>label,.nativeServerSettings label{display:grid;gap:7px}
+.nativeAuthForm>label>span,.nativeServerSettings label>span{font-size:12px;color:#655e53;font-weight:520}
+.nativeAuthForm label em{font-style:normal;font-weight:400;color:#a59d91;margin-left:3px}
+.nativeAuthForm input,.nativeServerSettings input{width:100%;height:48px;border:1px solid #ddd5ca;border-radius:11px;padding:0 13px;background:#fff;color:#29251f;font:400 15px/1 var(--font-ui);outline:0;-webkit-appearance:none}
+.nativeAuthForm input:focus,.nativeServerSettings input:focus{border-color:#d67a3b;box-shadow:0 0 0 3px rgba(214,122,59,.1)}
+.nativeAuthPrimary{min-height:48px;border:0;border-radius:11px;background:#d97531;color:#fff;font-size:14px;font-weight:620;cursor:pointer;margin-top:2px}
+.nativeAuthPrimary:disabled{background:#cfc7bc;color:#f7f3ed;cursor:default}
+.nativeAuthTextButton{border:0;background:transparent;color:#a65d2d;font-size:12px;padding:2px;cursor:pointer}
+.nativePlanList{display:grid;gap:8px}
+.nativePlanList>button{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ddd5ca;border-radius:11px;padding:10px 13px;background:#fff;color:#302b24;text-align:left;cursor:pointer}
+.nativePlanList>button.on{border-color:#d97531;background:#fff9f4;box-shadow:inset 3px 0 #d97531}
+.nativePlanList>button>span{display:grid;gap:3px}.nativePlanList>button strong{font-size:13px;font-weight:600}.nativePlanList>button small{font-size:10.5px;color:#938a7d}.nativePlanList>button>b{font-size:12px;font-weight:600;color:#a65d2d;white-space:nowrap}
+.nativeConsentList{display:grid;gap:10px;padding:2px 0}
+.nativeConsentList label{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;color:#756d62;font-size:11px;line-height:1.45}
+.nativeConsentList input{width:17px;height:17px;margin:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:#d97531}
+.nativeConsentList a{color:#a65d2d;text-underline-offset:2px}
+.nativeAuthNotice,.nativeAuthToast{margin:0;color:#8d8478;font-size:11.5px;line-height:1.55;text-align:center}
+.nativeAuthToast{padding:10px 12px;border-radius:9px;background:#eee7de;color:#665d51}
+.nativeAuthSuccess{display:grid;gap:4px;padding:12px;border:1px solid #cbded2;border-radius:10px;background:#f6fbf7;color:#355943;font-size:12px}.nativeAuthSuccess span{font-family:var(--font-mono);font-size:10px;overflow-wrap:anywhere}.nativeAuthSuccess small{color:#6c8173}
+.nativeServerSettings{border-top:1px solid #e3dcd2;padding-top:14px;color:#82796d}
+.nativeServerSettings summary{width:max-content;margin:0 auto;cursor:pointer;font-size:11.5px;list-style:none}.nativeServerSettings summary::-webkit-details-marker{display:none}.nativeServerSettings summary::after{content:" ···";letter-spacing:.08em}
+.nativeServerSettings[open]{display:grid;gap:12px}.nativeServerSettings[open] summary{margin:0}.nativeServerSettings input{height:42px;font-size:12px}
+@media(max-width:380px){.nativeAuthScreen{padding-left:17px;padding-right:17px}.nativeAuthCard{gap:18px}.nativeAuthForm{gap:12px}.nativeAuthBrand>img{width:43px;height:43px}}
+
 .lpRoot{position:fixed;inset:0;z-index:1;background:#0c0a08}
 .lpFrame{position:fixed;inset:0;width:100%;height:100%;border:0}
 .lpOverlay{position:fixed;inset:0;background:rgba(6,5,4,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
