@@ -64,6 +64,55 @@ function compactPlan(row) {
   return active ? row : { ...row, lastRiskCheck: undefined };
 }
 
+function compactRiskCheck(row) {
+  if (!row || typeof row !== "object") return row;
+  return {
+    id: row.id,
+    tradePlanId: row.tradePlanId,
+    agentRunId: row.agentRunId,
+    symbol: row.symbol,
+    decision: row.decision,
+    passed: row.passed,
+    summary: row.summary,
+    blockers: (row.blockers || []).slice(0, 4),
+    warnings: (row.warnings || []).slice(0, 4),
+    createdAt: row.createdAt
+  };
+}
+
+function compactKnowledge(knowledge = {}) {
+  return {
+    ...knowledge,
+    // lifecycle is an append-only transition history. One production skill had thousands of
+    // repeated validation transitions (~93 KB); the mobile UI renders the current status only.
+    tradingSkills: (knowledge.tradingSkills || []).map(({ lifecycle: _lifecycle, validation: _validation, ...skill }) => skill)
+  };
+}
+
+function compactEvent(row) {
+  if (!row || typeof row !== "object") return row;
+  const { timeline: _timeline, intel: _intel, ...event } = row;
+  return event;
+}
+
+function compactReview(row) {
+  if (!row || typeof row !== "object") return row;
+  const { analyticsSnapshot: _analyticsSnapshot, ...review } = row;
+  return review;
+}
+
+function compactExecutionOrder(row) {
+  if (!row || typeof row !== "object") return row;
+  const { strategyInstance: _strategyInstance, reviewLearning: _reviewLearning, events: _events, ...order } = row;
+  return order;
+}
+
+function compactAccountSnapshot(row) {
+  if (!row || typeof row !== "object") return row;
+  const { balances: _balances, ...snapshot } = row;
+  return snapshot;
+}
+
 /**
  * The web dashboard uses the broad overview as a compatibility snapshot. The native app has
  * a smaller, known data surface and must not download years of candles, tick histories and
@@ -80,16 +129,30 @@ export function compactOverviewForNative(overview = {}, native = false) {
     tradePlans: recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 60).map(compactPlan),
     armedSetups: recentWithActive(overview.armedSetups, ACTIVE_ORDER_STATES, 30).map(compactArmedSetup),
     orders: recentWithActive(overview.orders, ACTIVE_ORDER_STATES, 60),
-    riskChecks: (overview.riskChecks || []).slice(0, 60),
+    riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
     riskIncidents: recentWithActive(overview.riskIncidents, new Set(["open"]), 60),
-    events: (overview.events || []).slice(0, 50),
+    events: (overview.events || []).slice(0, 30).map(compactEvent),
     newsFeed: (overview.newsFeed || []).slice(0, 12),
     notifications: (overview.notifications || []).slice(0, 60),
-    accountSnapshots: (overview.accountSnapshots || []).slice(0, 3),
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 3).map(compactAccountSnapshot),
     agentRuns: (overview.agentRuns || []).slice(0, 8).map(compactAgentRun),
+    knowledge: compactKnowledge(overview.knowledge),
+    reviews: (overview.reviews || []).map(compactReview),
+    executionOrders: (overview.executionOrders || []).map(compactExecutionOrder),
     analysisBundles: [],
     evidenceBundles: [],
     memoryItems: (overview.memoryItems || []).slice(0, 20),
-    strategyCatalog: { ...strategyCatalog, strategies: [] }
+    strategyCatalog: { ...strategyCatalog, strategies: [] },
+    // Desktop research/diagnostic workbenches are not part of the native IA. Keep their
+    // dedicated APIs authoritative and do not make every mobile refresh carry the snapshots.
+    reviewAnalytics: {},
+    professional: {},
+    backtestResearch: {},
+    strategyProfiles: [],
+    decisionCalibration: {},
+    agentStateFiles: {},
+    marketCalendarEvents: [],
+    dailyMarketBrief: null,
+    toolExecutions: []
   };
 }

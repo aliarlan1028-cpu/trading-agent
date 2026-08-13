@@ -22,16 +22,28 @@ test("native overview removes repeated histories while preserving actionable sta
     ],
     armedSetups: [{ id: "setup", status: "TRIGGERED", events: candles, strategyInstance: { history: candles }, scenario: { currentStageIndex: 1 } }],
     orders: Array.from({ length: 100 }, (_, index) => ({ id: `order-${index}`, status: index === 99 ? "entry_pending" : "closed" })),
-    riskChecks: Array.from({ length: 100 }, (_, id) => ({ id })),
+    riskChecks: Array.from({ length: 100 }, (_, id) => ({ id, checks: candles, summary: `check-${id}` })),
     riskIncidents: Array.from({ length: 100 }, (_, id) => ({ id, status: id === 99 ? "open" : "closed" })),
-    events: Array.from({ length: 100 }, (_, id) => ({ id })),
+    events: Array.from({ length: 100 }, (_, id) => ({ id, timeline: candles, title: `event-${id}` })),
     newsFeed: Array.from({ length: 80 }, (_, id) => ({ id })),
     notifications: Array.from({ length: 100 }, (_, id) => ({ id })),
-    accountSnapshots: Array.from({ length: 10 }, (_, id) => ({ id })),
+    accountSnapshots: Array.from({ length: 10 }, (_, id) => ({ id, balances: candles, totalEquityUsdt: id })),
     agentRuns: [{ id: "run", status: "completed", presentationFacts: candles, capabilityPlan: candles, steps: [{ title: "scan", phase: "observe" }] }],
     analysisBundles: [{ body: candles }],
     evidenceBundles: [{ body: candles }],
     memoryItems: Array.from({ length: 70 }, (_, id) => ({ id })),
+    knowledge: { tradingSkills: [{ id: "ks1", status: "compiled", lifecycle: candles, validation: { detail: candles } }] },
+    reviews: [{ id: "review", summary: "keep", analyticsSnapshot: candles }],
+    executionOrders: [{ id: "execution", status: "closed", strategyInstance: candles, events: candles }],
+    reviewAnalytics: { confidence: candles },
+    professional: { replayBundles: candles },
+    backtestResearch: { historical: candles },
+    strategyProfiles: candles,
+    decisionCalibration: { rows: candles },
+    agentStateFiles: { files: candles },
+    marketCalendarEvents: candles,
+    dailyMarketBrief: { facts: candles },
+    toolExecutions: candles,
     strategyCatalog: { products: [{ id: "p1" }], strategies: [{ history: candles }] }
   };
 
@@ -47,6 +59,12 @@ test("native overview removes repeated histories while preserving actionable sta
   assert.equal(compact.orders[0].id, "order-99");
   assert.equal(compact.agentRuns[0].steps[0].title, "scan");
   assert.equal(compact.agentRuns[0].presentationFacts, undefined);
+  assert.equal(compact.riskChecks[0].checks, undefined);
+  assert.equal(compact.events[0].timeline, undefined);
+  assert.equal(compact.accountSnapshots[0].balances, undefined);
+  assert.equal(compact.knowledge.tradingSkills[0].lifecycle, undefined);
+  assert.equal(compact.reviews[0].analyticsSnapshot, undefined);
+  assert.equal(compact.executionOrders[0].strategyInstance, undefined);
   assert.equal(compact.strategyCatalog.products[0].id, "p1");
   assert.deepEqual(compact.strategyCatalog.strategies, []);
   assert.deepEqual(compact.analysisBundles, []);
