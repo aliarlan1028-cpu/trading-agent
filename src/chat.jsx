@@ -1228,7 +1228,7 @@ function PosterModal({ content, meta, onClose }) {
     if (!posterRef.current) return;
     setDownloading(true);
     try {
-      const dataUrl = await toPng(posterRef.current, { pixelRatio: 2, cacheBust: true, backgroundColor: "#ffffff" });
+      const dataUrl = await toPng(posterRef.current, { pixelRatio: window.matchMedia?.("(max-width: 820px)").matches ? 3 : 2, cacheBust: true, backgroundColor: "#ffffff" });
       const link = document.createElement("a");
       link.download = `ai-trader-${lang}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.png`;
       link.href = dataUrl;

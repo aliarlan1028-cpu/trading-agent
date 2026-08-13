@@ -53,7 +53,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp } from "./src/mobile.jsx";
+      export { MobileApp, groupMobileClosedTrades } from "./src/mobile.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
@@ -347,4 +347,19 @@ test("mobile app and assistant render", () => {
   assert.ok(mobile.length > 100, "MobileApp 渲染输出过短");
   const asst = render(React.createElement(C.AssistantWidget, { data }));
   assert.ok(asst.length > 20, "AssistantWidget 渲染输出过短");
+});
+
+test("mobile closed-trade ledger excludes entries and incomplete partial closes", () => {
+  const closed = C.groupMobileClosedTrades([
+    { id: "entry-1", executionOrderId: "life-1", kind: "entry", symbol: "BTC/USDT", direction: "long", feeUsdt: 1, quantity: 1, createdAt: "2026-08-01T00:00:00Z" },
+    { id: "partial-1", executionOrderId: "life-1", kind: "close", symbol: "BTC/USDT", direction: "long", partial: true, realizedPnl: -2, feeUsdt: .2, quantity: .4, createdAt: "2026-08-01T01:00:00Z" },
+    { id: "final-1", executionOrderId: "life-1", kind: "close", symbol: "BTC/USDT", direction: "long", partial: false, realizedPnl: 8, feeUsdt: .3, quantity: .6, createdAt: "2026-08-01T02:00:00Z" },
+    { id: "entry-2", executionOrderId: "life-2", kind: "entry", symbol: "SUI/USDT", direction: "short", quantity: 5, createdAt: "2026-08-02T00:00:00Z" },
+    { id: "partial-2", executionOrderId: "life-2", kind: "close", symbol: "SUI/USDT", direction: "short", partial: true, realizedPnl: 3, quantity: 2, createdAt: "2026-08-02T01:00:00Z" }
+  ]);
+  assert.equal(closed.length, 1);
+  assert.equal(closed[0].symbol, "BTC/USDT");
+  assert.equal(closed[0].closeCount, 2);
+  assert.equal(closed[0].realizedPnl, 6);
+  assert.equal(closed[0].netRealizedPnl, 4.5);
 });
