@@ -467,16 +467,19 @@ export async function haptic(style = "light") {
   } catch { /* 无 haptics 或不支持:忽略 */ }
 }
 
+export function resolveApiBase({ native = isNativeApp(), stored = localStorage.getItem("agent_api_base") || "", configured = import.meta.env.VITE_API_BASE_URL || "" } = {}) {
+  // Web deployments must stay same-origin by default. A value saved months ago
+  // for local development (localhost, an IP, or an old port) must never override
+  // the HTTPS origin that served the current page; doing so made a healthy
+  // production service look offline after the request timed out.
+  if (!native) return normalizeApiBase(configured);
+  const fallback = normalizeApiBase(configured || "https://yegidawir.xyz");
+  const invalidStoredBase = !stored || /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):|:5173\b/.test(stored);
+  return normalizeApiBase(invalidStoredBase ? fallback : stored);
+}
+
 function defaultApiBase() {
-  const nativeFallback = nativeApiFallback();
-  const stored = localStorage.getItem("agent_api_base") || "";
-  if (isNativeApp()) {
-    const invalidNativeBase = !stored || /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):|:5173\b/.test(stored);
-    return normalizeApiBase(invalidNativeBase ? nativeFallback : stored);
-  }
-  const configured = stored || import.meta.env.VITE_API_BASE_URL || "";
-  if (configured) return normalizeApiBase(configured);
-  return "";
+  return resolveApiBase();
 }
 
 function nativeApiFallback() {
@@ -490,8 +493,8 @@ function normalizeApiBase(value = "") {
 export function apiUrl(path, baseOverride) {
   const value = String(path || "");
   if (/^https?:\/\//i.test(value)) return value;
-  let base = normalizeApiBase(baseOverride || localStorage.getItem("agent_api_base") || import.meta.env.VITE_API_BASE_URL || "");
-  if (isNativeApp() && !base) base = nativeApiFallback();
+  const native = isNativeApp();
+  const base = normalizeApiBase(baseOverride || resolveApiBase({ native }));
   if (!base) return value;
   return `${base}${value.startsWith("/") ? value : `/${value}`}`;
 }
@@ -690,6 +693,16 @@ export function useApi() {
   const hasDataRef = useRef(false);
 
   function setApiBase(value) {
+    // The browser build is served by the API host itself and therefore always
+    // reconnects through same-origin /api. Custom hosts are a native-app-only
+    // setting; ignore and remove stale browser overrides.
+    if (!isNativeApp()) {
+      localStorage.removeItem("agent_api_base");
+      const configured = normalizeApiBase(import.meta.env.VITE_API_BASE_URL || "");
+      setApiBaseState(configured);
+      setConnectionError("");
+      return configured;
+    }
     const normalized = normalizeApiBase(value);
     if (normalized) localStorage.setItem("agent_api_base", normalized);
     else localStorage.removeItem("agent_api_base");

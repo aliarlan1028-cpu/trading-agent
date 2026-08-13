@@ -48,6 +48,7 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
+      export { resolveApiBase, apiUrl } from "./src/lib.jsx";
       export { ChatPage, DecisionBrief, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
@@ -66,6 +67,14 @@ esbuild.buildSync({
   logLevel: "silent"
 });
 const C = require(outFile);
+
+test("网页版 API 始终同源，不受浏览器残留后端地址影响", () => {
+  assert.equal(C.resolveApiBase({ native: false, stored: "http://127.0.0.1:8787", configured: "" }), "");
+  assert.equal(C.resolveApiBase({ native: false, stored: "https://old.example.com", configured: "" }), "");
+  assert.equal(C.resolveApiBase({ native: false, stored: "https://old.example.com", configured: "https://api.example.com/" }), "https://api.example.com");
+  assert.equal(C.resolveApiBase({ native: true, stored: "https://customer.example.com/", configured: "" }), "https://customer.example.com");
+  assert.equal(C.resolveApiBase({ native: true, stored: "http://127.0.0.1:8787", configured: "" }), "https://yegidawir.xyz");
+});
 
 test("AI display cleanup removes process narration without deleting trading facts", () => {
   const cleaned = C.cleanPresentationText("计划已武装。现在汇总全貌。\n\n### 结论\n状态：系统正在等待入场条件，尚未向 OKX 下单。\n依据：BTC 1H 结构保持向上。");

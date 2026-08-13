@@ -412,8 +412,14 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
   const [value, setValue] = useState(apiBase || "");
   function save(event) {
     event.preventDefault();
-    const nextBase = setApiBase(value);
-    refresh(true, nextBase);
+    if (isNativeApp) {
+      const nextBase = setApiBase(value);
+      refresh(true, nextBase);
+      return;
+    }
+    // Web is always same-origin; do not let a stale/custom browser URL keep the
+    // recovery screen pointed away from the host that served this page.
+    refresh(true, "");
   }
   return (
     <div className="loginScreen">
@@ -421,9 +427,9 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
         <div className="brandMark"><BrandLogo size={36} /></div>
         <h1>{t("连接 KORDYN", "Connect to KORDYN")}</h1>
         <p>{isNativeApp ? t("填写后端地址。交易所密钥只保存在服务器，App 仅作为手机控制台。", "Enter your server URL. Exchange keys remain on the server; the app is only a mobile control surface.") : t("当前无法连接服务器，请确认服务已启动。", "The server is unavailable. Confirm that the service is running.")}</p>
-        <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />
-        <button className="primaryButton" type="submit">{t("保存并连接", "Save and connect")}</button>
-        <button className="secondaryButton" type="button" onClick={() => refresh()}>{t("重新连接", "Reconnect")}</button>
+        {isNativeApp && <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />}
+        <button className="primaryButton" type="submit">{isNativeApp ? t("保存并连接", "Save and connect") : t("重新连接", "Reconnect")}</button>
+        {isNativeApp && <button className="secondaryButton" type="button" onClick={() => refresh()}>{t("重新连接", "Reconnect")}</button>}
         {(connectionError || toast) && <small>{connectionError || toast}</small>}
       </form>
     </div>
