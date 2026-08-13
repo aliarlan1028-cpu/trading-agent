@@ -35,6 +35,7 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { strategyStudioSnapshot } from "./strategyStudio.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildBacktestResearch } from "./strategyResearchView.mjs";
+import { compactOverviewForNative } from "./overviewView.mjs";
 import { listStrategies, STRATEGIES } from "./strategies.mjs";
 import { buildStrategyCatalog } from "./strategyContracts.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
@@ -991,7 +992,7 @@ app.get("/api/overview", (req, res) => {
     const rtConnected = (db.realtimeConnections || []).some((c) => c.status === "connected");
     db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : !configured ? "待配置" : (rtStarted && !rtConnected) ? "连接异常" : "正常";
   }
-  res.json({
+  const overview = {
     // 展示当前登录用户本人(而非固定的 db.user 遗留对象):Owner 的 req.user 是 db.users 里的条目,
     // 账户资料自助(改名/头像)写在那上面;此前固定返回 db.user 两对象不同步 → 保存后前端不生效。
     // 同时用 sanitizeUserRecord 剥离密码字段(旧的裸 db.user 会外泄 passwordHash)。
@@ -1134,7 +1135,10 @@ app.get("/api/overview", (req, res) => {
       toolUsageBackfilledAt: db.meta?.toolUsageBackfilledAt || null
     },
     toolCallStats: db.toolCallStats || {}
-  });
+  };
+  // 原生端每 15 秒刷新，只下发手机真实会用到的字段。完整桌面概览保持兼容；
+  // 以鉴权登录时已存在的 X-Native-App 明确区分，避免依赖可伪造/漂移的 User-Agent。
+  res.json(compactOverviewForNative(overview, req.get("X-Native-App") === "true"));
 });
 
 // market/regime · market/instruments 路由已迁至 server/routes/market.mjs
