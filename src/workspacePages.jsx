@@ -54,11 +54,11 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
   return <CenterShell title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={TABS.trade} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
 }
 
-export function ResearchCenter({ data, action, ui, initialTab = "knowledge" }) {
+export function ResearchCenter({ data, action, ui, initialTab = "knowledge", strategyInitialTab = "catalog" }) {
   const [tab, setTab] = useState(initialTab);
   const pages = {
     knowledge: <KnowledgeConcept data={data} action={action} ui={ui}/>,
-    strategy: <StrategyLibraryConcept data={data} action={action} ui={ui}/>,
+    strategy: <StrategyLibraryConcept data={data} action={action} ui={ui} initialTab={strategyInitialTab}/>,
     capabilities: <CapabilitiesConcept data={data} action={action} ui={ui}/>
   };
   return <CenterShell title={t("研究中心","Research")} subtitle={t("知识库 · 策略库 · 能力库","Knowledge · Strategies · Capabilities")} tabs={TABS.research} active={tab} onChange={setTab}>{pages[tab] || pages.knowledge}</CenterShell>;
