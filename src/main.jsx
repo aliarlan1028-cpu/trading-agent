@@ -65,8 +65,9 @@ const navItems = [
   { id: "operationsCenter", label: "系统运营", labelEn: "Operations", icon: Activity }
 ];
 
-function BrandLogo({ size = 34 }) {
-  return <img className="brandLogo" src="/kordyn-logo.svg" alt="KORDYN" width={size} height={size} />;
+function BrandLogo({ size = 34, variant = "black" }) {
+  const src = variant === "white" ? "/kordyn-logo-white.svg" : "/kordyn-logo.svg";
+  return <img className="brandLogo" src={src} alt="KORDYN" width={size} height={size} />;
 }
 
 function Sidebar({ active, setActive }) {
@@ -424,7 +425,7 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
   return (
     <div className="loginScreen">
       <form className="loginPanel mobileConnectPanel" onSubmit={save}>
-        <div className="brandMark"><BrandLogo size={36} /></div>
+        <div className="brandMark"><BrandLogo size={36} variant={isNativeApp ? "black" : "white"} /></div>
         <h1>{t("连接 KORDYN", "Connect to KORDYN")}</h1>
         <p>{isNativeApp ? t("填写后端地址。交易所密钥只保存在服务器，App 仅作为手机控制台。", "Enter your server URL. Exchange keys remain on the server; the app is only a mobile control surface.") : t("当前无法连接服务器，请确认服务已启动。", "The server is unavailable. Confirm that the service is running.")}</p>
         {isNativeApp && <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />}
@@ -468,7 +469,7 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   return (
     <div className="landingShell">
       <div className="landingTopbar">
-        <span className="landingBrand"><span className="landingLogo"><BrandLogo size={24} /></span><strong>KORDYN</strong><em>知识驱动的 AI 交易员</em></span>
+        <span className="landingBrand"><span className="landingLogo"><BrandLogo size={24} variant={isNativeApp ? "black" : "white"} /></span><strong>KORDYN</strong><em>知识驱动的 AI 交易员</em></span>
       </div>
       <main className="landingHero split">
         <section className="landingMarketing">
