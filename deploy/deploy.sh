@@ -55,6 +55,14 @@ chown -R 1000:1000 data backups offsite-backups
 # 数据迁移前先做一致快照并验证可恢复性；失败则旧容器继续运行、部署中止。
 if docker compose ps -q "$SERVICE" </dev/null | grep -q .; then
   docker compose exec -T "$SERVICE" npm run backup </dev/null
+  # 首次启用“强制加密恢复演练”时，旧容器进程还没有读取刚写入 .env 的密钥路径。
+  # 显式注入只读挂载内的路径生成首份加密快照，避免候选镜像在正确的 fail-closed
+  # 检查处卡住；密钥内容本身从不进入命令行、日志或 .env。
+  if grep -q '^RESTORE_DRILL_REQUIRE_ENCRYPTED=true$' .env && ! find backups -maxdepth 1 -name 'trading-agent-*.sqlite.enc' -type f | grep -q .; then
+    backup_key_file="\$(awk -F= '\$1 == "BACKUP_ENCRYPTION_KEY_FILE" { print substr(\$0, index(\$0, "=") + 1); exit }' .env)"
+    [ -n "\$backup_key_file" ] || { echo "FATAL: encrypted restore drill requires BACKUP_ENCRYPTION_KEY_FILE"; exit 1; }
+    docker compose exec -T -e BACKUP_ENCRYPTION_KEY_FILE="\$backup_key_file" "$SERVICE" npm run backup </dev/null
+  fi
 else
   echo "  首次部署：无旧容器可备份，将在候选容器启动并初始化后建立首个恢复点"
 fi
