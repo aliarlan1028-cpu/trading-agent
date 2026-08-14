@@ -27,13 +27,30 @@ test("历史业务阻断从错误中修复并把未知来源显式归入历史�
     ]
   };
   const result = migrateToolUsageStats(db);
-  assert.deepEqual(result, { applied: true, reclassified: 1, sourceMigrated: 3 });
+  assert.deepEqual(result, { applied: true, reclassified: 1, sourceMigrated: 3, outcomeUnclassified: 0 });
   assert.equal(db.toolCallStats.propose_trade_plan.blocked, 1);
   assert.equal(db.toolCallStats.propose_trade_plan.error, 1);
   assert.equal(db.toolCallStats.propose_trade_plan.lastStatus, "blocked");
   assert.equal(db.toolCallStats.propose_trade_plan.sourceCalls.historical, 3);
   assert.equal(toolUsageView(db.toolCallStats.propose_trade_plan).legacyUnsplitCalls, 3);
   assert.equal(migrateToolUsageStats(db).applied, false);
+});
+
+test("没有调用明细的旧错误不再冒充已证实运行故障", () => {
+  const db = {
+    meta: { toolUsageMigrationVersion: 1 },
+    toolExecutions: [{ toolName: "propose_trade_plan", status: "success", summary: "完成", createdAt: "2026-08-09T02:00:00.000Z" }],
+    toolCallStats: {
+      propose_trade_plan: { calls: 282, success: 106, blocked: 43, error: 133, lastStatus: "success", legacyUnsplitCalls: 282, sourceCalls: { historical: 282 } }
+    }
+  };
+  const result = migrateToolUsageStats(db);
+  const view = toolUsageView(db.toolCallStats.propose_trade_plan);
+  assert.equal(result.outcomeUnclassified, 133);
+  assert.equal(view.error, 0);
+  assert.equal(view.unclassified, 133);
+  assert.equal(view.health, "healthy");
+  assert.equal(view.successRatePct, 71.1);
 });
 
 test("模型声称只调用一个工具时由服务端补充真实预检记录", () => {
@@ -57,7 +74,7 @@ test("每次工具调用写明细并只增加一次汇总", () => {
   assert.equal(db.toolCallStats.sync_market.success, 1);
   assert.equal(db.toolCallStats.sync_market.totalLatencyMs, 125);
   assert.deepEqual(toolUsageView(db.toolCallStats.sync_market), {
-    calls: 1, success: 1, blocked: 0, error: 0, successRatePct: 100,
+    calls: 1, success: 1, blocked: 0, error: 0, unclassified: 0, successRatePct: 100,
     avgLatencyMs: 125, lastStatus: "success",
     firstAt: "2026-08-09T01:00:00.125Z", lastAt: "2026-08-09T01:00:00.125Z",
     health: "healthy", legacyUnsplit: false, legacyUnsplitCalls: 0, sourceCalls: { model: 1, preflight: 0, system: 0, evaluation: 0, historical: 0 }

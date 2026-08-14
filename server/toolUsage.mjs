@@ -8,7 +8,7 @@ const BLOCKED_STATUSES = new Set([
 ]);
 
 const SOURCE_BUCKETS = Object.freeze(["model", "preflight", "system", "evaluation", "historical"]);
-const TOOL_USAGE_MIGRATION_VERSION = 1;
+const TOOL_USAGE_MIGRATION_VERSION = 2;
 
 // These are deterministic business/safety preconditions, not infrastructure or
 // implementation failures.  Older traces only retained their human summary, so
@@ -139,7 +139,7 @@ export function migrateToolUsageStats(db) {
   db.toolCallStats ||= {};
   db.toolExecutions ||= [];
   if (Number(db.meta.toolUsageMigrationVersion || 0) >= TOOL_USAGE_MIGRATION_VERSION) {
-    return { applied: false, reclassified: 0, sourceMigrated: 0 };
+    return { applied: false, reclassified: 0, sourceMigrated: 0, outcomeUnclassified: 0 };
   }
 
   let sourceMigrated = 0;
@@ -172,9 +172,29 @@ export function migrateToolUsageStats(db) {
     }
   }
 
+  // Legacy aggregates predate retained per-call evidence. Keeping every old
+  // aggregate "error" as a proven runtime failure would be just as misleading
+  // as turning all of them into blocks. Preserve errors that still have a
+  // retained detail (and all source-attributed modern calls); move only the
+  // unprovable remainder into an explicit historical-unclassified bucket.
+  let outcomeUnclassified = 0;
+  for (const [name, stat] of Object.entries(db.toolCallStats)) {
+    const legacyCalls = Math.min(Number(stat.calls || 0), Number(stat.legacyUnsplitCalls || 0));
+    if (!legacyCalls || Number(stat.error || 0) <= 0) continue;
+    const modernCalls = Math.max(0, Number(stat.calls || 0) - legacyCalls);
+    const retainedErrors = db.toolExecutions.filter((execution) => execution?.toolName === name && execution?.status === "error").length;
+    const preservedErrors = Math.min(Number(stat.error || 0), Math.max(modernCalls, retainedErrors));
+    const unclassified = Math.max(0, Number(stat.error || 0) - preservedErrors);
+    if (!unclassified) continue;
+    stat.error = preservedErrors;
+    stat.legacyUnclassifiedOutcomes = Number(stat.legacyUnclassifiedOutcomes || 0) + unclassified;
+    outcomeUnclassified += unclassified;
+    if (!stat.error && stat.lastStatus === "error") stat.lastStatus = "legacy_unclassified";
+  }
+
   db.meta.toolUsageMigrationVersion = TOOL_USAGE_MIGRATION_VERSION;
   db.meta.toolUsageMigratedAt = new Date().toISOString();
-  return { applied: true, reclassified, sourceMigrated };
+  return { applied: true, reclassified, sourceMigrated, outcomeUnclassified };
 }
 
 function historicalExecutionId(messageId, index, trace) {
@@ -259,18 +279,20 @@ export function backfillToolUsage(db, { now = new Date().toISOString(), maxExecu
 }
 
 export function toolUsageView(stat = null) {
-  if (!stat) return { calls: 0, success: 0, blocked: 0, error: 0, successRatePct: null, avgLatencyMs: null, lastAt: null, health: "untested", legacyUnsplit: false, legacyUnsplitCalls: 0, sourceCalls: Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, 0])) };
+  if (!stat) return { calls: 0, success: 0, blocked: 0, error: 0, unclassified: 0, successRatePct: null, avgLatencyMs: null, lastAt: null, health: "untested", legacyUnsplit: false, legacyUnsplitCalls: 0, sourceCalls: Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, 0])) };
   const calls = Number(stat.calls || 0);
   const success = Number(stat.success || 0);
   const error = Number(stat.error || 0);
   const blocked = Number(stat.blocked || 0);
+  const unclassified = Number(stat.legacyUnclassifiedOutcomes || 0);
+  const classifiedCalls = success + blocked + error;
   const sourceCalls = Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, Number(stat.sourceCalls?.[source] || 0)]));
   const assignedSourceCalls = SOURCE_BUCKETS.reduce((sum, source) => sum + sourceCalls[source], 0);
   const inferredHistoricalCalls = Math.max(0, calls - assignedSourceCalls);
   sourceCalls.historical += inferredHistoricalCalls;
   const legacyUnsplitCalls = Math.max(Number(stat.legacyUnsplitCalls || 0), inferredHistoricalCalls);
-  const health = !calls ? "untested"
-    : stat.lastStatus === "error" || error / calls >= 0.2 ? "degraded"
+  const health = !calls || !classifiedCalls ? "untested"
+    : stat.lastStatus === "error" || error / classifiedCalls >= 0.2 ? "degraded"
       : stat.lastStatus === "blocked" && !success ? "blocked"
         : "healthy";
   return {
@@ -278,7 +300,8 @@ export function toolUsageView(stat = null) {
     success,
     blocked,
     error,
-    successRatePct: calls ? Number((success / calls * 100).toFixed(1)) : null,
+    unclassified,
+    successRatePct: classifiedCalls ? Number((success / classifiedCalls * 100).toFixed(1)) : null,
     avgLatencyMs: Number(stat.latencySamples || 0) > 0 && Number.isFinite(Number(stat.totalLatencyMs))
       ? Math.round(Number(stat.totalLatencyMs) / Number(stat.latencySamples))
       : null,

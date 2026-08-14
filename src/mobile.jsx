@@ -1122,14 +1122,16 @@ function buildMobileCapabilities(data = {}) {
     const candidate = !enabled && !disabled && /candidate|pending|trial|paper|registered|待批准|待复核|待连接|待安全复核|候选/i.test(String(status));
     const rawKind = item.type || item.category || item.kind || "tool";
     const category = isMcp ? "mcp" : /workflow|工作流|flow/i.test(String(rawKind)) ? "workflow" : "analysis";
+    const classifiedCalls = Number(stat?.success || 0) + Number(stat?.blocked || 0) + Number(stat?.error || 0);
     const usage = item.usage || (stat ? {
       success: stat.success || 0,
       blocked: stat.blocked || 0,
       error: stat.error || 0,
+      unclassified: Number(stat.legacyUnclassifiedOutcomes || 0),
       sourceCalls: stat.sourceCalls || {},
       legacyUnsplit: Boolean(stat.legacyUnsplitCalls),
       legacyUnsplitCalls: Number(stat.legacyUnsplitCalls || 0),
-      health: !Number(stat.calls || 0) ? "untested" : stat.lastStatus === "error" || Number(stat.error || 0) / Number(stat.calls || 1) >= .2 ? "degraded" : stat.lastStatus === "blocked" && !stat.success ? "blocked" : "healthy"
+      health: !Number(stat.calls || 0) || !classifiedCalls ? "untested" : stat.lastStatus === "error" || Number(stat.error || 0) / classifiedCalls >= .2 ? "degraded" : stat.lastStatus === "blocked" && !stat.success ? "blocked" : "healthy"
     } : null);
     const health = connector ? "not_applicable" : usage?.health || (Number(calls || 0) > 0 ? "healthy" : "untested");
     return {
@@ -1234,7 +1236,7 @@ export function MobileCapabilities({ data, action, ui }) {
         <div className="mCapabilityFacts"><span>{t("来源", "Source")}<b>{selected.source || selected.packageName || t("内置", "Built-in")}</b></span><span>{t("启用状态", "Enablement")}<b>{capabilityStatusLabel(selected)}</b></span><span>{t("记录调用", "Recorded calls")}<b className="mono">{selected.connector ? "—" : selected.calls ?? 0}</b></span><span>{t("最近运行", "Last run")}<b>{selected.lastRunAt ? formatDateTime(selected.lastRunAt) : t("尚未运行", "Not observed")}</b></span></div>
         {!selected.connector && <div className="mCapabilitySources"><span><small>{t("模型主动","Model")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.model||0}</b></span><span><small>{t("系统预检","Preflight")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.preflight||0}</b></span><span><small>{t("系统直接","System")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.system||0}</b></span><span><small>{t("健康评测","Evaluation")}</small><b>{selected.usage?.sourceCalls?.evaluation||selected.evalMetrics?.calls||0}</b></span></div>}
         {selected.usage?.legacyUnsplit && <p className="mCapabilityMetricNote">{t(`升级前的 ${selected.usage.legacyUnsplitCalls||selected.calls||0} 次记录无法可靠拆分来源；后续调用会按模型、预检和系统分别记录。`,`The ${selected.usage.legacyUnsplitCalls||selected.calls||0} legacy records cannot be reliably split. New calls are source-attributed.`)}</p>}
-        {selected.usage && <div className="mCapabilityUsage"><span><b>{selected.usage.success || 0}</b>{t("成功", "Success")}</span><span><b>{selected.usage.blocked || 0}</b>{t("阻断", "Blocked")}</span><span><b>{selected.usage.error || 0}</b>{t("失败", "Errors")}</span></div>}
+        {selected.usage && <div className="mCapabilityUsage"><span><b>{selected.usage.success || 0}</b>{t("成功", "Success")}</span><span><b>{selected.usage.blocked || 0}</b>{t("阻断", "Blocked")}</span><span><b>{selected.usage.error || 0}</b>{t("失败", "Errors")}</span><span><b>{selected.usage.unclassified || 0}</b>{t("历史未分类", "Legacy unknown")}</span></div>}
         <button className="mCapabilityManage" onClick={manageSelected}>{selected.category === "mcp" || selected.connector ? t("前往系统设置", "Open Settings") : selected.native ? (selected.enabled ? t("停用能力", "Disable capability") : t("启用能力", "Enable capability")) : t("管理 Skill", "Manage Skill")}</button>
       </aside>
     </div>}

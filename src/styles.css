@@ -9512,7 +9512,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mCapabilityFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; border: 1px solid #E7E0D5; border-radius: 11px; background: #E7E0D5; }
 .mCapabilityFacts span { min-width: 0; padding: 10px; display: grid; gap: 4px; background: #FFFEFB; color: #928879; font-size: 8.5px; }
 .mCapabilityFacts b { overflow: hidden; color: #4B443A; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.mCapabilityUsage { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 9px; }
+.mCapabilityUsage { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; margin-top: 9px; }
 .mCapabilityUsage span { padding: 9px; display: grid; gap: 2px; border: 1px solid #E7E0D5; border-radius: 10px; background: #FFFEFB; color: #928879; font-size: 8.5px; text-align: center; }
 .mCapabilityUsage b { color: #403A32; font: 700 14px var(--font-mono); }
 .mCapabilitySources { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; margin-top: 9px; }
