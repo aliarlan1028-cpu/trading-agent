@@ -1237,6 +1237,9 @@ function PosterModal({ content, meta, onClose }) {
     if (!posterRef.current) return;
     setDownloading(true);
     try {
+      // html-to-image 会按当前已加载字体生成 PNG；等待 Web 字体就绪，避免
+      // Public Sans / Noto Sans SC 在导出瞬间被系统字体替代。
+      if (document.fonts?.ready) await document.fonts.ready;
       const dataUrl = await toPng(posterRef.current, { pixelRatio: window.matchMedia?.("(max-width: 820px)").matches ? 3 : 2, cacheBust: true, backgroundColor: "#ffffff" });
       const link = document.createElement("a");
       link.download = `ai-trader-${lang}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.png`;
