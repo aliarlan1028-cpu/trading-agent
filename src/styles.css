@@ -2757,6 +2757,51 @@ h3 {
   box-shadow: 0 18px 42px rgba(60, 45, 30, 0.24);
 }
 
+.releaseUpdateNotice {
+  position: fixed;
+  z-index: 6000;
+  top: max(12px, calc(env(safe-area-inset-top, 0px) + 8px));
+  left: 50%;
+  width: min(92vw, 520px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(180, 122, 39, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 252, 246, 0.97);
+  color: #26211a;
+  box-shadow: 0 12px 36px rgba(44, 31, 15, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.releaseUpdateNotice div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.releaseUpdateNotice strong { font-size: 14px; }
+.releaseUpdateNotice span { color: #746a5d; font-size: 12px; line-height: 1.45; }
+.releaseUpdateNotice button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #d85a1d;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .releaseUpdateNotice { align-items: flex-start; gap: 10px; padding: 11px 12px; }
+  .releaseUpdateNotice button { min-height: 34px; padding-inline: 11px; }
+}
+
 .busyIndicator {
   position: fixed;
   top: calc(10px + var(--safe-area-inset-top, env(safe-area-inset-top)));

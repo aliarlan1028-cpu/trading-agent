@@ -8,6 +8,14 @@ const BLOCKED_STATUSES = new Set([
 ]);
 
 const SOURCE_BUCKETS = Object.freeze(["model", "preflight", "system", "evaluation", "historical"]);
+const TOOL_USAGE_MIGRATION_VERSION = 1;
+
+// These are deterministic business/safety preconditions, not infrastructure or
+// implementation failures.  Older traces only retained their human summary, so
+// keep this matcher deliberately narrow and auditable for the one-time repair.
+function expectedBlockedSummary(summary = "") {
+  return /(?:交易证据能力未完成|强制证据包不完整|交易计划已拒绝|尚未同步.+请先调用|当前入场条件尚未成熟|等待入场条件无法可靠执行|多阶段交易场景无法可靠执行|交易角色与计划不一致|组合方向冲突|交易计划未匹配可用策略产品|工作室策略版本不能用于本计划|交易计划结构非法|Agent safety policy blocked)/i.test(String(summary || ""));
+}
 
 export function toolExecutionSourceBucket(source = "agent") {
   const value = String(source || "agent").toLowerCase();
@@ -27,8 +35,8 @@ export function classifyToolOutcome(result = {}, summary = "") {
   const status = String(result?.status || "").toLowerCase();
   const text = String(summary || "");
   if (Array.isArray(result?.violations) && result.violations.length) return "blocked";
+  if (BLOCKED_STATUSES.has(status) || result?.available === false || /^(?:阻断|拒绝)[:：]/.test(text) || expectedBlockedSummary(text) || expectedBlockedSummary(result?.error)) return "blocked";
   if (result?.error || /^失败[:：]/.test(text) || status === "error" || status === "failed") return "error";
-  if (BLOCKED_STATUSES.has(status) || result?.available === false || /^(?:阻断|拒绝)[:：]/.test(text)) return "blocked";
   return "success";
 }
 
@@ -50,11 +58,18 @@ function ensureStat(db, name, observedAt) {
   for (const key of ["calls", "success", "blocked", "error", "totalLatencyMs", "latencySamples"]) {
     stat[key] = Number(stat[key] || 0);
   }
-  if (!stat.sourceCalls) {
-    stat.legacyUnsplitCalls = Number(stat.legacyUnsplitCalls || stat.calls || 0);
-    stat.sourceCalls = {};
-  }
+  if (!stat.sourceCalls) stat.sourceCalls = {};
   for (const source of SOURCE_BUCKETS) stat.sourceCalls[source] = Number(stat.sourceCalls[source] || 0);
+  const assignedSourceCalls = SOURCE_BUCKETS.reduce((sum, source) => sum + stat.sourceCalls[source], 0);
+  const unassignedCalls = Math.max(0, stat.calls - assignedSourceCalls);
+  if (unassignedCalls > 0) {
+    // The original source cannot be reconstructed. Attribute it explicitly to
+    // the historical migration bucket instead of displaying five misleading 0s.
+    stat.sourceCalls.historical += unassignedCalls;
+    stat.legacyUnsplitCalls = Number(stat.legacyUnsplitCalls || 0) + unassignedCalls;
+  } else {
+    stat.legacyUnsplitCalls = Number(stat.legacyUnsplitCalls || 0);
+  }
   stat.firstAt ||= observedAt || null;
   return stat;
 }
@@ -116,9 +131,50 @@ export function recordToolExecution(db, {
 
 function statusFromHistoricalTrace(trace = {}) {
   const summary = String(trace.summary || "");
-  if (/^失败[:：]/.test(summary)) return "error";
-  if (/^(?:阻断|拒绝)[:：]/.test(summary)) return "blocked";
-  return "success";
+  return classifyToolOutcome({ status: trace.status }, summary);
+}
+
+export function migrateToolUsageStats(db) {
+  db.meta ||= {};
+  db.toolCallStats ||= {};
+  db.toolExecutions ||= [];
+  if (Number(db.meta.toolUsageMigrationVersion || 0) >= TOOL_USAGE_MIGRATION_VERSION) {
+    return { applied: false, reclassified: 0, sourceMigrated: 0 };
+  }
+
+  let sourceMigrated = 0;
+  for (const [name, stat] of Object.entries(db.toolCallStats)) {
+    const before = Number(stat?.sourceCalls?.historical || 0);
+    ensureStat(db, name, stat?.lastAt || stat?.firstAt || null);
+    sourceMigrated += Math.max(0, Number(stat?.sourceCalls?.historical || 0) - before);
+  }
+
+  const reclassifiedByTool = new Map();
+  for (const execution of db.toolExecutions) {
+    if (execution?.status !== "error" || !expectedBlockedSummary(execution.summary)) continue;
+    execution.status = "blocked";
+    reclassifiedByTool.set(execution.toolName, Number(reclassifiedByTool.get(execution.toolName) || 0) + 1);
+  }
+
+  let reclassified = 0;
+  for (const [name, count] of reclassifiedByTool) {
+    const stat = db.toolCallStats[name];
+    if (!stat) continue;
+    const transferable = Math.min(Number(stat.error || 0), count);
+    stat.error = Math.max(0, Number(stat.error || 0) - transferable);
+    stat.blocked = Number(stat.blocked || 0) + transferable;
+    reclassified += transferable;
+    const latest = db.toolExecutions
+      .filter((execution) => execution?.toolName === name)
+      .sort((a, b) => new Date(b.createdAt || b.finishedAt || 0) - new Date(a.createdAt || a.finishedAt || 0))[0];
+    if (latest && (!stat.lastAt || new Date(latest.createdAt || latest.finishedAt || 0) >= new Date(stat.lastAt || 0))) {
+      stat.lastStatus = latest.status;
+    }
+  }
+
+  db.meta.toolUsageMigrationVersion = TOOL_USAGE_MIGRATION_VERSION;
+  db.meta.toolUsageMigratedAt = new Date().toISOString();
+  return { applied: true, reclassified, sourceMigrated };
 }
 
 function historicalExecutionId(messageId, index, trace) {
@@ -209,6 +265,10 @@ export function toolUsageView(stat = null) {
   const error = Number(stat.error || 0);
   const blocked = Number(stat.blocked || 0);
   const sourceCalls = Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, Number(stat.sourceCalls?.[source] || 0)]));
+  const assignedSourceCalls = SOURCE_BUCKETS.reduce((sum, source) => sum + sourceCalls[source], 0);
+  const inferredHistoricalCalls = Math.max(0, calls - assignedSourceCalls);
+  sourceCalls.historical += inferredHistoricalCalls;
+  const legacyUnsplitCalls = Math.max(Number(stat.legacyUnsplitCalls || 0), inferredHistoricalCalls);
   const health = !calls ? "untested"
     : stat.lastStatus === "error" || error / calls >= 0.2 ? "degraded"
       : stat.lastStatus === "blocked" && !success ? "blocked"
@@ -226,8 +286,8 @@ export function toolUsageView(stat = null) {
     firstAt: stat.firstAt || null,
     lastAt: stat.lastAt || null,
     health,
-    legacyUnsplit: Number(stat.legacyUnsplitCalls || 0) > 0,
-    legacyUnsplitCalls: Number(stat.legacyUnsplitCalls || 0),
+    legacyUnsplit: legacyUnsplitCalls > 0,
+    legacyUnsplitCalls,
     sourceCalls
   };
 }

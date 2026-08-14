@@ -40,6 +40,12 @@ if (encryptionKeyFile) {
     const offsiteDir = path.resolve(offsiteDirValue);
     if (offsiteDir === backupDir) throw new Error("BACKUP_OFFSITE_DIR must not be the local backup directory");
     await fs.mkdir(offsiteDir, { recursive: true, mode: 0o700 });
+    if (process.env.BACKUP_OFFSITE_REQUIRE_DISTINCT_DEVICE !== "false") {
+      const [localStat, offsiteStat] = await Promise.all([fs.stat(backupDir), fs.stat(offsiteDir)]);
+      if (localStat.dev === offsiteStat.dev) {
+        throw new Error("BACKUP_OFFSITE_DIR is on the same filesystem as BACKUP_DIR; mount a separate disk, NFS, or rclone target (or explicitly set BACKUP_OFFSITE_REQUIRE_DISTINCT_DEVICE=false for development only)");
+      }
+    }
     offsiteFilePath = path.join(offsiteDir, path.basename(encryptedFilePath));
     await fs.copyFile(encryptedFilePath, offsiteFilePath);
     await fs.copyFile(`${encryptedFilePath}.sha256`, `${offsiteFilePath}.sha256`);

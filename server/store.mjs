@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import "dotenv/config";
 import { currentRequestContext } from "./requestContext.mjs";
-import { backfillToolUsage } from "./toolUsage.mjs";
+import { backfillToolUsage, migrateToolUsageStats } from "./toolUsage.mjs";
 import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
 import { applyDerivedProfitGoals } from "./profitGoals.mjs";
 
@@ -1914,6 +1914,7 @@ export function normalizeDatabase(db) {
   // 调用量旧实现只写内存，部署/重启后全部归零。首次升级时从仍保留的工具轨迹
   // 和原生 Skill 评估计数回填；之后 toolCallStats 作为正式集合持久化。
   backfillToolUsage(db);
+  migrateToolUsageStats(db);
 
   return db;
 }

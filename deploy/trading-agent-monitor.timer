@@ -1,0 +1,12 @@
+[Unit]
+Description=Run KORDYN external monitor every minute
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=1m
+Persistent=true
+AccuracySec=10s
+Unit=trading-agent-monitor.service
+
+[Install]
+WantedBy=timers.target

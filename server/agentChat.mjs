@@ -1708,6 +1708,7 @@ export async function executeTool(db, run, name, args = {}) {
     run.capabilityCoverage = capabilityCoverage;
     if (!capabilityCoverage.ok) {
       return {
+        status: "blocked",
         error: `交易证据能力未完成：${capabilityCoverage.reason}。${capabilityCoverage.instruction}`,
         reason: capabilityCoverage.reason,
         missingCapabilities: capabilityCoverage.missing,
@@ -1720,15 +1721,15 @@ export async function executeTool(db, run, name, args = {}) {
     const proposalEvidence = run?.proposalEvidenceBundle || run?.evidenceBundle;
     const evidenceReadiness = evaluateEvidenceReadiness(proposalEvidence, symbol, { live: db.system?.liveTradingEnabled === true });
     if (!evidenceReadiness.ready) {
-      return { error: `强制证据包不完整，交易计划已拒绝：${evidenceReadiness.blockers.join("、")}`, evidenceBundleId: proposalEvidence?.id || null, blockers: evidenceReadiness.blockers };
+      return { status: "blocked", error: `强制证据包不完整，交易计划已拒绝：${evidenceReadiness.blockers.join("、")}`, evidenceBundleId: proposalEvidence?.id || null, blockers: evidenceReadiness.blockers };
     }
     const symbolEvidence = proposalEvidence.symbols.find((row) => row.symbol === symbol);
     const market = db.markets?.find((item) => item.symbol === symbol);
     if (!market?.price) {
-      return { error: `尚未同步 ${symbol} 行情，请先调用 sync_market。` };
+      return { status: "blocked", error: `尚未同步 ${symbol} 行情，请先调用 sync_market。` };
     }
     if (args.entryQuality === "conditional" && args.executionMode !== "armed") {
-      return { error: "当前入场条件尚未成熟，必须登记为等待入场计划，不能以 immediate 在条件未成熟时原地追单。" };
+      return { status: "blocked", error: "当前入场条件尚未成熟，必须登记为等待入场计划，不能以 immediate 在条件未成熟时原地追单。" };
     }
     const primaryTriggerInput = Array.isArray(args.scenarioStages) && args.scenarioStages.length
       ? args.scenarioStages[0]
@@ -1745,7 +1746,7 @@ export async function executeTool(db, run, name, args = {}) {
       ? normalizeTriggerSpec(primaryTriggerInput, { direction: args.direction, timeframe: args.timeframe || "1h" })
       : null;
     if (normalizedTrigger && !normalizedTrigger.valid) {
-      return { error: `等待入场条件无法可靠执行：${normalizedTrigger.error}`, reason: normalizedTrigger.error };
+      return { status: "blocked", error: `等待入场条件无法可靠执行：${normalizedTrigger.error}`, reason: normalizedTrigger.error };
     }
     const normalizedScenario = args.executionMode === "armed" ? normalizeScenarioSpec({
       type: args.setupType,
@@ -1758,7 +1759,7 @@ export async function executeTool(db, run, name, args = {}) {
       invalidationLevelHigh: args.invalidationLevelHigh
     }, { direction: args.direction, timeframe: args.timeframe || "1h" }, normalizedTrigger?.spec) : null;
     if (normalizedScenario && !normalizedScenario.valid) {
-      return { error: `多阶段交易场景无法可靠执行：${normalizedScenario.error}`, reason: normalizedScenario.error };
+      return { status: "blocked", error: `多阶段交易场景无法可靠执行：${normalizedScenario.error}`, reason: normalizedScenario.error };
     }
     const scenarioConfirmations = normalizedScenario?.scenario?.stages?.flatMap((stage) => stage.trigger.confirmations || []) || [];
     const roleValidation = validateTradingRolePlan({
@@ -1768,7 +1769,7 @@ export async function executeTool(db, run, name, args = {}) {
       ttlHours: args.executionMode === "armed" ? args.ttlHours : undefined
     });
     if (!roleValidation.ok) {
-      return { error: `交易角色与计划不一致：${roleValidation.detail}`, reason: roleValidation.reason };
+      return { status: "blocked", error: `交易角色与计划不一致：${roleValidation.detail}`, reason: roleValidation.reason };
     }
     const mandate = activeMandate(db)
       || db.mandates.find((item) => item.id === run.mandateId)
@@ -1784,7 +1785,7 @@ export async function executeTool(db, run, name, args = {}) {
     const addPositionAuthorized = mandate?.allow_add_position === true || mandate?.allowAddPosition === true;
     const portfolioConflict = evaluatePortfolioIntentConflict(db, { symbol, direction: args.direction }, { replaceArmedSameSymbol: !addPositionAuthorized });
     if (!portfolioConflict.ok) {
-      return { error: `组合方向冲突：${portfolioConflict.detail}`, reason: portfolioConflict.reason, conflictId: portfolioConflict.conflictId };
+      return { status: "blocked", error: `组合方向冲突：${portfolioConflict.detail}`, reason: portfolioConflict.reason, conflictId: portfolioConflict.conflictId };
     }
     const bundle = run.analysisBundleId
       ? db.analysisBundles.find((item) => item.id === run.analysisBundleId)
@@ -1899,17 +1900,17 @@ export async function executeTool(db, run, name, args = {}) {
     // strategyRef 负责说明这笔计划依据哪一版策略合同，供成交与复盘永久归因。
     const strategyBinding = bindPlanToStrategyProduct(db, plan, { source: "agent_chat_proposal" });
     if (!strategyBinding.ok) {
-      return { error: `交易计划未匹配可用策略产品（${strategyBinding.error}），未提交。请改用趋势回调、突破回踩、跌破反抽、区间边缘反转或假突破回归之一，并确保方向一致。` };
+      return { status: "blocked", error: `交易计划未匹配可用策略产品（${strategyBinding.error}），未提交。请改用趋势回调、突破回踩、跌破反抽、区间边缘反转或假突破回归之一，并确保方向一致。` };
     }
     const blueprintBinding = bindPlanToEnabledBlueprint(db, plan, args.strategyBlueprintVersionId);
     if (!blueprintBinding.ok) {
-      return { error: `工作室策略版本不能用于本计划（${blueprintBinding.error}），未提交。请只选择已启用且交易对、方向、周期、基础产品完全匹配的版本。` };
+      return { status: "blocked", error: `工作室策略版本不能用于本计划（${blueprintBinding.error}），未提交。请只选择已启用且交易对、方向、周期、基础产品完全匹配的版本。` };
     }
     // Schema 硬闸:挡住结构非法的计划(方向错、止损在错误一侧、NaN、区间颠倒)——
     // 这类逻辑错误比"说错方向"更隐蔽,过去要靠风控引擎间接兜,现在写入前直接拒。
     const planCheck = validateTradePlan(plan);
     if (!planCheck.valid) {
-      return { error: `交易计划结构非法，未提交：${planCheck.errors.join("；")}。请修正后重新调用 propose_trade_plan。` };
+      return { status: "blocked", error: `交易计划结构非法，未提交：${planCheck.errors.join("；")}。请修正后重新调用 propose_trade_plan。` };
     }
     Object.assign(plan, planCheck.normalized); // 规范化双字段，保持全库一致
     if (planCheck.warnings.length) plan.schemaWarnings = planCheck.warnings;

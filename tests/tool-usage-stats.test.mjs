@@ -4,13 +4,36 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { appendToolCallDisclosure, backfillToolUsage, buildToolCallSummary, classifyToolOutcome, recordToolExecution, toolExecutionSourceBucket, toolUsageView } from "../server/toolUsage.mjs";
+import { appendToolCallDisclosure, backfillToolUsage, buildToolCallSummary, classifyToolOutcome, migrateToolUsageStats, recordToolExecution, toolExecutionSourceBucket, toolUsageView } from "../server/toolUsage.mjs";
 import { normalizeDatabase, seedDatabase } from "../server/store.mjs";
 
 test("工具结果按成功、阻断、失败确定性分类", () => {
   assert.equal(classifyToolOutcome({ status: "ok" }, "完成"), "success");
   assert.equal(classifyToolOutcome({ status: "blocked" }, "样本不足"), "blocked");
+  assert.equal(classifyToolOutcome({ status: "blocked", error: "前置能力缺失" }, "失败：前置能力缺失"), "blocked");
+  assert.equal(classifyToolOutcome({ error: "交易证据能力未完成：role_structure_capability_missing" }, "失败：交易证据能力未完成"), "blocked");
   assert.equal(classifyToolOutcome({ error: "network" }, "失败：network"), "error");
+});
+
+test("历史业务阻断从错误中修复并把未知来源显式归入历史迁移", () => {
+  const db = {
+    meta: {},
+    toolCallStats: {
+      propose_trade_plan: { calls: 3, success: 1, blocked: 0, error: 2, lastStatus: "error", lastAt: "2026-08-09T01:00:00.000Z" }
+    },
+    toolExecutions: [
+      { id: "old_1", toolName: "propose_trade_plan", status: "error", summary: "失败：交易证据能力未完成：role_structure_capability_missing", createdAt: "2026-08-09T01:00:00.000Z" },
+      { id: "old_2", toolName: "propose_trade_plan", status: "error", summary: "失败：network timeout", createdAt: "2026-08-09T00:59:00.000Z" }
+    ]
+  };
+  const result = migrateToolUsageStats(db);
+  assert.deepEqual(result, { applied: true, reclassified: 1, sourceMigrated: 3 });
+  assert.equal(db.toolCallStats.propose_trade_plan.blocked, 1);
+  assert.equal(db.toolCallStats.propose_trade_plan.error, 1);
+  assert.equal(db.toolCallStats.propose_trade_plan.lastStatus, "blocked");
+  assert.equal(db.toolCallStats.propose_trade_plan.sourceCalls.historical, 3);
+  assert.equal(toolUsageView(db.toolCallStats.propose_trade_plan).legacyUnsplitCalls, 3);
+  assert.equal(migrateToolUsageStats(db).applied, false);
 });
 
 test("模型声称只调用一个工具时由服务端补充真实预检记录", () => {

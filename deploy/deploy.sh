@@ -110,11 +110,14 @@ install -m 0644 deploy/trading-agent-restore-drill.timer /etc/systemd/system/tra
 install -m 0755 deploy/safe-docker-cleanup.sh /usr/local/sbin/trading-agent-safe-cleanup
 install -m 0644 deploy/trading-agent-cache-prune.service /etc/systemd/system/trading-agent-cache-prune.service
 install -m 0644 deploy/trading-agent-cache-prune.timer /etc/systemd/system/trading-agent-cache-prune.timer
+install -m 0644 deploy/trading-agent-monitor.service /etc/systemd/system/trading-agent-monitor.service
+install -m 0644 deploy/trading-agent-monitor.timer /etc/systemd/system/trading-agent-monitor.timer
 install -m 0755 deploy/ensure-swap.sh /usr/local/sbin/trading-agent-ensure-swap
 systemctl daemon-reload
 systemctl enable --now trading-agent-restore-drill.timer >/dev/null
 /usr/local/sbin/trading-agent-ensure-swap
 systemctl enable --now trading-agent-cache-prune.timer >/dev/null
+systemctl enable --now trading-agent-monitor.timer >/dev/null
 /usr/local/sbin/trading-agent-safe-cleanup
 exit 0
 REMOTE

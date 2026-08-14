@@ -12,6 +12,8 @@ COPY package*.json ./
 RUN npm ci
 
 FROM node:22-bookworm-slim AS build
+ARG APP_RELEASE
+ENV VITE_APP_RELEASE=${APP_RELEASE}
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

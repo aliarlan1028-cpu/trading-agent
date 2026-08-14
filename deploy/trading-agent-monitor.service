@@ -1,0 +1,14 @@
+[Unit]
+Description=KORDYN external health, frontend, backup and disk monitor
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trading-agent
+ExecStart=/opt/trading-agent/deploy/monitor-tenants.sh
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true

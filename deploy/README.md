@@ -13,11 +13,15 @@
 - [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
 - [ ] **异机加密备份**：为每个实例只读挂载独立的 `BACKUP_ENCRYPTION_KEY_FILE`，把
-      `BACKUP_OFFSITE_DIR` 指向另一块磁盘/NFS/rclone 挂载目录；系统禁止把明文快照复制到异机目录。
+      `BACKUP_OFFSITE_DIR` 指向另一块磁盘/NFS/rclone 挂载目录；系统禁止把明文快照复制到异机目录，
+      并默认校验目标必须位于不同文件系统。只有本地开发才可显式设置
+      `BACKUP_OFFSITE_REQUIRE_DISTINCT_DEVICE=false`，生产环境禁止用它把同机目录伪装成异机备份。
 - [ ] **恢复演练**：`npm run restore-drill` 在临时目录解密并执行 SQLite 完整性/核心表检查，
       不替换生产数据库。部署脚本会安装每周一自动演练的 systemd timer，并记录
       `backups/restore-drill-status.json`。
-- [ ] **宕机告警**：`cp deploy/monitor.env.example deploy/monitor.env` 填 Lark Webhook，`chmod 600`；把 `monitor-tenants.sh` 挂 cron（每 1 分钟，脚本注释即 `* * * * *`；FAIL_THRESHOLD=2 时自愈延迟约 2 分钟），实例掉线/恢复时推送。
+- [ ] **宕机告警**：可在 `deploy/monitor.env` 填独立 Lark Webhook，也可复用系统设置中的 Telegram/Lark；
+      部署脚本会启用每分钟 systemd timer，覆盖实例、前端资产、备份新鲜度和磁盘空间。运行
+      `deploy/monitor-tenants.sh --test-alert` 验证真实送达；FAIL_THRESHOLD=2 时自愈延迟约 2 分钟。
 - [ ] **脚本落到服务器**：`/opt/trading-agent/deploy/` 下（随主仓库 rsync 即可），
       `chmod +x deploy/*.sh`。
 - [ ] **当前机器容量**：`provision-tenant.sh` 会在创建前硬检查实例数、MemAvailable 和磁盘；

@@ -75,19 +75,27 @@ NODE
   fi
 fi
 
+ALERT_SENT=0
 send_alert() { # $1=title  $2=text
   local sent=0
   local text; text="$(printf '%s · %s' "$1" "$2" | sed 's/"/\\"/g')"
   if [ -n "$LARK" ]; then
-    curl -s -m 8 -X POST "$LARK" -H "Content-Type: application/json" \
+    curl -fsS -m 8 -X POST "$LARK" -H "Content-Type: application/json" \
       -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$text\"}}" >/dev/null 2>&1 && sent=1 || true
   fi
   if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
-    curl -s -m 8 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+    curl -fsS -m 8 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
       -d "chat_id=${TG_CHAT}" --data-urlencode "text=${1} · ${2}" >/dev/null 2>&1 && sent=1 || true
   fi
   [ "$sent" = "0" ] && echo "[无可用告警通道] $1 | $2"
+  ALERT_SENT="$sent"
 }
+
+if [ "${1:-}" = "--test-alert" ]; then
+  send_alert "🧪 KORDYN 外部告警测试" "主机监控、前端、磁盘和备份巡检通道已连接 · $(date '+%F %T')"
+  [ "$ALERT_SENT" = "1" ] || { echo "external alert delivery failed" >&2; exit 1; }
+  exit 0
+fi
 
 # ---------- 主实例自愈 ----------
 try_restart_main() { # $1=code
@@ -155,6 +163,36 @@ check_frontend() {
   echo "$(date '+%F %T') frontend: $now"
 }
 check_frontend
+
+check_backup_health() {
+  local statefile="$STATE_DIR/backup.state" prev="up" now="down"
+  [ -f "$statefile" ] && prev="$(cat "$statefile")"
+  local status_file="$APP_DIR/backups/backup-status.json" max_age="${BACKUP_MAX_AGE_SECONDS:-129600}" age=999999999
+  if [ -f "$status_file" ]; then age=$(( $(date +%s) - $(stat -c %Y "$status_file" 2>/dev/null || echo 0) )); fi
+  [ "$age" -le "$max_age" ] && now="up"
+  if [ "$now" != "$prev" ]; then
+    if [ "$now" = "down" ]; then send_alert "🟠 备份异常" "最近一次已验证备份超过 $((max_age / 3600)) 小时或状态文件缺失 · $(date '+%F %T')";
+    else send_alert "🟢 备份恢复" "已验证备份恢复正常 · $(date '+%F %T')"; fi
+    echo "$now" > "$statefile"
+  fi
+  echo "$(date '+%F %T') backup: $now (age=${age}s)"
+}
+
+check_disk_health() {
+  local statefile="$STATE_DIR/disk.state" prev="up" now="up" threshold="${DISK_ALERT_THRESHOLD_PCT:-85}" used
+  [ -f "$statefile" ] && prev="$(cat "$statefile")"
+  used="$(df -P / | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
+  if ! [[ "$used" =~ ^[0-9]+$ ]] || [ "$used" -ge "$threshold" ]; then now="down"; fi
+  if [ "$now" != "$prev" ]; then
+    if [ "$now" = "down" ]; then send_alert "🟠 磁盘空间告警" "根分区已使用 ${used:-未知}%（阈值 ${threshold}%） · $(date '+%F %T')";
+    else send_alert "🟢 磁盘空间恢复" "根分区已降至 ${used}% · $(date '+%F %T')"; fi
+    echo "$now" > "$statefile"
+  fi
+  echo "$(date '+%F %T') disk: $now (${used:-?}%)"
+}
+
+check_backup_health
+check_disk_health
 if [ -d "$TENANTS_DIR" ]; then
   for d in "$TENANTS_DIR"/*/; do
     [ -d "$d" ] || continue
