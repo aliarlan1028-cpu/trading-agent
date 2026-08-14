@@ -43,7 +43,7 @@ import { buildDecisionCalibrationReport } from "./decisionCalibration.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
-import { dispatchTelegramWatchOutbox, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchDeliveryHealth, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
+import { dispatchTelegramWatchOutbox, queueWatchTelegramEvent, retireTelegramWatchDigest, telegramWatchDeliveryHealth, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission, testEventSource } from "./eventSources.mjs";
 import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData } from "./marketIntelligence.mjs";
 import { refreshMeNewsFlash } from "./newsFlashFeed.mjs";
@@ -123,6 +123,13 @@ const publicDir = path.resolve(__dirname, "../dist");
 
 applyStoredConfigToEnv(db);
 installProxyFromEnv();
+{
+  const migration = retireTelegramWatchDigest(db);
+  if (migration.tasksRemoved || migration.outboxCancelled || migration.configRemoved) {
+    appendAudit(db, `下线 Telegram 每日摘要：移除任务 ${migration.tasksRemoved}，取消待发 ${migration.outboxCancelled}`, "telegram_watch_digest_retirement", "StartupMigration", "info");
+    saveDb(db);
+  }
+}
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 // 实盘三道闸以 db.system 持久化值为准（存 sqlite，重启不丢）；仅在未初始化时用 env 兜底。
@@ -583,17 +590,6 @@ registerTaskHandler("telegram_watch_dispatch", async (database) => {
   return result;
 });
 registerTaskHandler("telegram_closed_trade_posters", (database) => processClosedTradeProfitPosters(database));
-registerTaskHandler("telegram_watch_digest", async (database) => {
-  const queued = queueDailyWatchDigest(database);
-  const dispatched = await dispatchTelegramWatchOutbox(database);
-  if (["disabled"].includes(queued.status)) return { status: "skipped", queued, dispatched, skipPersist: dispatched.skipPersist === true };
-  const item = queued.item;
-  if (item?.status === "failed" || ["failed", "unconfigured"].includes(dispatched.status)) {
-    return { status: "failed", error: item?.lastError || (dispatched.status === "unconfigured" ? "Telegram 配置不可用" : "Telegram 每日摘要投递失败"), queued, dispatched };
-  }
-  if (item?.status === "sent") return { status: "ok", queued, dispatched };
-  return { status: "partial", queued, dispatched, reason: "每日摘要已入队，等待 Telegram 成功回执" };
-});
 registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
 registerTaskHandler("payment_verify", async (database) => {
   const r = await verifyTrc20Payments(database);
@@ -708,7 +704,6 @@ ensureSystemTask(db, { id: "task_sys_daily_market_brief", name: "Daily Market Br
 ensureSystemTask(db, { id: "task_sys_onchain_refresh", name: "链上基础资金面刷新", handler: "onchain_refresh", schedule: "Every 6h", startupCatchup: true, startupDelayMs: 45_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_watch", name: "Telegram观察哨Outbox", handler: "telegram_watch_dispatch", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_telegram_closed_trade", name: "Telegram平仓盈利海报", handler: "telegram_closed_trade_posters", schedule: "Every 1m" }, saveDb);
-ensureSystemTask(db, { id: "task_sys_telegram_watch_digest", name: "Telegram观察哨日报", handler: "telegram_watch_digest", type: "Cron", schedule: "5 8 * * *", timezone: "Asia/Shanghai", startupCatchup: true, startupDelayMs: 20_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 30s" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);

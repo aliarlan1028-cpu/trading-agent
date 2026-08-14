@@ -7,7 +7,7 @@ import test from "node:test";
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "telegram-watch-test-"));
 process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED = "true";
 process.env.TELEGRAM_WATCH_LANGUAGE = "en";
-const { buildWatchTelegramMessage, queueDailyWatchDigest, queueWatchTelegramEvent, telegramWatchDeliveryHealth, telegramWatchStatus } = await import("../server/telegramWatchNotifier.mjs");
+const { buildWatchTelegramMessage, dispatchTelegramWatchOutbox, queueWatchTelegramEvent, retireTelegramWatchDigest, telegramWatchDeliveryHealth, telegramWatchStatus } = await import("../server/telegramWatchNotifier.mjs");
 
 test("观察哨登记和例行更新不打扰 Telegram", () => {
   const watch = { id: "w1", version: 1, symbol: "BTC/USDT", kind: "price_below", level: 60000, note: "结构失效", priority: "primary", purpose: "invalidation", status: "active", analysisId: "run_1", analysisAt: "2026-08-12T00:00:00.000Z", expiresAt: new Date().toISOString() };
@@ -32,36 +32,57 @@ test("同轮多个条件及撤销均只保留在应用内", () => {
   assert.equal(db.telegramWatchOutbox.length, 0);
 });
 
-test("每日观察哨摘要默认关闭，不产生消息", () => {
-  const db = { telegramWatchOutbox: [], watchTriggers: [{ id: "w", status: "active" }] };
-  delete process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED;
-  assert.equal(queueDailyWatchDigest(db).status, "disabled");
-  assert.equal(db.telegramWatchOutbox.length, 0);
+test("每日摘要下线迁移会移除旧任务、配置和待发消息，并保留发送历史", () => {
+  process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED = "true";
+  const db = {
+    tasks: [
+      { id: "task_sys_telegram_watch_digest", handler: "telegram_watch_digest" },
+      { id: "task_keep", handler: "telegram_watch_dispatch" }
+    ],
+    runtimeConfig: { TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: "true", TELEGRAM_WATCH_LANGUAGE: "en" },
+    telegramWatchOutbox: [
+      { id: "pending_digest", eventType: "daily_digest", status: "pending", nextAttemptAt: "2026-08-14T00:05:00.000Z" },
+      { id: "sent_digest", eventType: "daily_digest", status: "sent", sentAt: "2026-08-13T00:05:02.000Z" },
+      { id: "watch_trigger", eventType: "triggered", status: "pending" }
+    ]
+  };
+  const retired = retireTelegramWatchDigest(db);
+  assert.deepEqual(retired, { tasksRemoved: 1, outboxCancelled: 1, configRemoved: true });
+  assert.deepEqual(db.tasks.map((item) => item.id), ["task_keep"]);
+  assert.equal(db.telegramWatchOutbox[0].status, "cancelled");
+  assert.equal(db.telegramWatchOutbox[1].status, "sent", "历史回执必须保留用于审计");
+  assert.equal(db.telegramWatchOutbox[2].status, "pending");
+  assert.equal(Object.hasOwn(db.runtimeConfig, "TELEGRAM_WATCH_DAILY_DIGEST_ENABLED"), false);
+  assert.equal(process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED, undefined);
 });
 
-test("每日摘要即使没有活跃观察哨也发送明确的零状态，且按日期幂等", () => {
-  process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED = "true";
-  const db = { telegramWatchOutbox: [], watchTriggers: [] };
-  const now = new Date("2026-08-14T00:05:00.000Z");
-  const queued = queueDailyWatchDigest(db, { now });
-  assert.equal(queued.status, "queued");
-  assert.match(queued.item.message, /0 MARKETS/);
-  assert.match(queued.item.message, /No active watch conditions/i);
-  assert.equal(queueDailyWatchDigest(db, { now }).status, "duplicate");
-  delete process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED;
+test("投递器不会发送升级前遗留的每日摘要", async () => {
+  process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  process.env.TELEGRAM_CHAT_ID = "123";
+  const db = { telegramWatchOutbox: [{
+    id: "legacy_digest", eventType: "daily_digest", status: "pending",
+    nextAttemptAt: "2026-08-14T00:05:00.000Z", message: "legacy daily digest"
+  }] };
+  const result = await dispatchTelegramWatchOutbox(db);
+  assert.equal(result.checked, 0);
+  assert.equal(result.sent, 0);
+  assert.equal(db.telegramWatchOutbox[0].status, "pending");
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_CHAT_ID;
 });
 
 test("Telegram 健康状态区分配置可用与真实回执", () => {
   process.env.TELEGRAM_BOT_TOKEN = "test-token";
   process.env.TELEGRAM_CHAT_ID = "123";
-  const db = { telegramWatchOutbox: [{
-    id: "digest", idempotencyKey: "watch_digest:2026-08-14", eventType: "daily_digest",
-    status: "sent", sentAt: "2026-08-14T00:05:02.000Z", attempts: 1
-  }] };
+  const db = { telegramWatchOutbox: [
+    { id: "digest", eventType: "daily_digest", status: "sent", sentAt: "2026-08-14T00:05:02.000Z", attempts: 1 },
+    { id: "trigger", eventType: "triggered", status: "sent", sentAt: "2026-08-14T00:06:02.000Z", attempts: 1 }
+  ] };
   const health = telegramWatchDeliveryHealth(db, Date.parse("2026-08-14T01:00:00.000Z"));
   assert.equal(health.operational, true);
-  assert.equal(health.todayDigest.status, "sent");
-  assert.equal(health.lastDigestSentAt, "2026-08-14T00:05:02.000Z");
+  assert.equal(health.lastSentAt, "2026-08-14T00:06:02.000Z");
+  assert.equal(Object.hasOwn(health, "todayDigest"), false);
+  assert.equal(Object.hasOwn(health, "lastDigestSentAt"), false);
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_CHAT_ID;
 });
@@ -83,31 +104,33 @@ test("观察哨推送语言独立于界面语言且可切回中文", () => {
 test("观察哨触发消息明确区分触发与下单", () => {
   const watch = { id: "trigger", version: 1, symbol: "SOL/USDT", kind: "price_above", level: 210, direction: "long", thesis: "1H 上升结构仍在，等待突破确认后评估顺势做多", triggerMeaning: "站上阻力只增强做多情景，仍需复核主动买盘", note: "突破后重新确认主动买盘", triggerPrice: 210.2, triggeredAt: "2026-08-12T03:00:00.000Z", priority: "primary", status: "triggered" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "en");
-  assert.match(message, /watch triggered/i);
-  assert.match(message, /AI re-analysis requested/);
+  assert.match(message, /WATCH TRIGGERED/);
+  assert.match(message, /AI re-analysis started/);
   assert.match(message, /Long scenario/);
-  assert.match(message, /Original view/);
-  assert.match(message, /not yet an entry signal/i);
+  assert.match(message, /<b>View<\/b>/);
+  assert.match(message, /No entry signal yet/);
   assert.doesNotMatch(message, /突破后重新确认主动买盘/, "英文触发消息不得夹带中文备注");
 });
 
 test("关键失效采用紧凑动作模板，不发送整块观察看板", () => {
   const watch = { id: "invalid", symbol: "BTC/USDT", kind: "price_below", level: 62000, direction: "long", thesis: "1H 保持 HH/HL，原计划等待回踩后评估做多", closeReason: "系统暂停期间价格已越过条件", priority: "primary", status: "invalidated" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "invalidated", {}, "zh");
-  assert.match(message, /做多情景观察条件已作废/);
-  assert.match(message, /关联原判断：1H 保持 HH\/HL/);
-  assert.match(message, /系统不再盯这条条件/);
+  assert.match(message, /观察哨已失效/);
+  assert.match(message, /原判断<\/b>\s+1H 保持 HH\/HL/);
+  assert.match(message, /系统不再监控该条件/);
   assert.doesNotMatch(message, /辅助条件|观察看板|📍|🎯|🧭/);
 });
 
 test("中文观察哨命中完整说明方向、原判断、条件含义与下一步", () => {
   const watch = { id: "short_trigger", symbol: "SUI/USDT", kind: "enter_zone", levelLow: 0.704, levelHigh: 0.71, direction: "short", thesis: "1H 下行结构未反转，等待反弹到供应区评估做空", triggerMeaning: "价格回到供应区；检查 15m 反弹衰竭与主动卖盘后再决定是否做空", purpose: "confirmation", priority: "primary", status: "triggered", triggerPrice: 0.706, triggeredAt: "2026-08-13T06:20:00.000Z" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "zh");
-  assert.match(message, /做空情景观察条件命中/);
-  assert.match(message, /原判断：1H 下行结构未反转/);
-  assert.match(message, /这代表：价格回到供应区/);
-  assert.match(message, /目前还不是入场信号/);
-  assert.match(message, /已唤起 AI 重新分析/);
+  assert.match(message, /观察条件命中/);
+  assert.match(message, /🔴 <b>做空情景<\/b>/);
+  assert.match(message, /确认条件 · 回踩进入 0.704-0.71 区间/);
+  assert.match(message, /原判断<\/b>\s+1H 下行结构未反转/);
+  assert.match(message, /含义<\/b>\s+价格回到供应区/);
+  assert.match(message, /尚未形成入场信号/);
+  assert.match(message, /AI 已开始重新分析/);
 });
 
 test("观察哨英文 HTML 会转义动态文本，避免 Telegram 格式失效", () => {

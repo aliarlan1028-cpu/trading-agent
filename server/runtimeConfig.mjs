@@ -32,7 +32,7 @@ export const PLAIN_KEYS = new Set([
   "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED",
   "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", "TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT",
   "TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES",
-  "TELEGRAM_WATCH_CHAT_ID", "TELEGRAM_WATCH_NOTIFIER_ENABLED", "TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", "TELEGRAM_WATCH_LANGUAGE",
+  "TELEGRAM_WATCH_CHAT_ID", "TELEGRAM_WATCH_NOTIFIER_ENABLED", "TELEGRAM_WATCH_LANGUAGE",
   "WORM_AUDIT_ENDPOINT", "WORM_AUDIT_SINK_ID",
   // 风控阈值(前端「风控设置 · 风控阈值」运行时可调,改完即生效不重部署)
   "MIN_REWARD_RISK", "PROTECT_MAX_CONSEC_LOSSES", "PROTECT_COOLDOWN_HOURS",
@@ -183,7 +183,6 @@ export function getConfigStatus(db) {
         watchUsesPrimaryChat: !process.env.TELEGRAM_WATCH_CHAT_ID,
         watchConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && (process.env.TELEGRAM_WATCH_CHAT_ID || process.env.TELEGRAM_CHAT_ID)),
         watchNotifierEnabled: process.env.TELEGRAM_WATCH_NOTIFIER_ENABLED === "true",
-        watchDailyDigestEnabled: process.env.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED === "true",
         watchLanguage: process.env.TELEGRAM_WATCH_LANGUAGE === "zh" ? "zh" : "en",
         minPnlUsdt: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT || 0),
         minRoiPct: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT || 0),

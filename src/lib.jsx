@@ -313,7 +313,6 @@ export function localizeText(value, fallback = "-") {
     ,"高影响日程分阶段准备": "High-impact event preparation"
     ,"链上基础资金面刷新": "On-chain fundamentals refresh"
     ,"Telegram观察哨Outbox": "Telegram watch outbox"
-    ,"Telegram观察哨日报": "Telegram watch daily summary"
     ,"执行订单轮询": "Execution order polling"
     ,"持仓风险监控": "Position risk monitoring"
     ,"盈亏核算刷新": "PnL accounting refresh"

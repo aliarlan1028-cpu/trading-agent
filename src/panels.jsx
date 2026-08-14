@@ -145,7 +145,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: integrations.telegram?.cooldownMinutes ?? 240,
     TELEGRAM_WATCH_CHAT_ID: integrations.telegram?.watchChatId || "",
     TELEGRAM_WATCH_NOTIFIER_ENABLED: integrations.telegram?.watchNotifierEnabled ? "true" : "false",
-    TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrations.telegram?.watchDailyDigestEnabled ? "true" : "false",
     TELEGRAM_WATCH_LANGUAGE: integrations.telegram?.watchLanguage || "en"
   });
   const [runtimeForm, setRuntimeForm] = useState({
@@ -297,7 +296,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES: String(Number(integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240)),
       TELEGRAM_WATCH_CHAT_ID: integrationForm.TELEGRAM_WATCH_CHAT_ID,
       TELEGRAM_WATCH_NOTIFIER_ENABLED: integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED,
-      TELEGRAM_WATCH_DAILY_DIGEST_ENABLED: integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED,
       TELEGRAM_WATCH_LANGUAGE: integrationForm.TELEGRAM_WATCH_LANGUAGE
     };
     for (const [keyName] of [...integrationSecretRows, ...larkSecretRows, ...telegramSecretRows]) {
@@ -516,10 +514,9 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                   </div>
                 </section>
                 <section className="cfgFormSection">
-                  <div className="cfgSectionLabel"><b>{t("观察哨", "Watch alerts")}</b><span>{t("管理关键条件、语言和每日摘要。", "Manage critical conditions, language, and the daily digest.")}</span></div>
+                  <div className="cfgSectionLabel"><b>{t("观察哨", "Watch alerts")}</b><span>{t("只推送会改变当前交易判断的关键事件。", "Deliver only events that can change the current trading decision.")}</span></div>
                   <div className="formGrid">
                     <CfgSwitch label={t("关键条件推送", "Critical condition delivery")} value={integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED} onChange={(value) => updateIntegration("TELEGRAM_WATCH_NOTIFIER_ENABLED", value)} />
-                    <CfgSwitch label={t("每日摘要", "Daily digest")} value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(value) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", value)} />
                     <label>{t("推送语言", "Alert language")}<select value={integrationForm.TELEGRAM_WATCH_LANGUAGE} onChange={(event) => updateIntegration("TELEGRAM_WATCH_LANGUAGE", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label>
                     <label>{t("单独群 ID（可选）", "Separate chat ID (optional)")}<input className="cfgMonoInput" value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用默认群", "Leave blank to use the default group")} /></label>
                   </div>
