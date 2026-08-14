@@ -54,7 +54,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, groupMobileClosedTrades } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, SettingsConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -357,24 +357,6 @@ test("config panels render for every live key", () => {
     const html = render(React.createElement(C.ConfigPanel, { panel: key, data, action, ui }));
     assert.ok(html.length > 50, `panel=${key} 渲染输出过短`);
   }
-});
-
-test("system settings keeps five real tabs and merges basic configuration without nested pages", () => {
-  const html = render(React.createElement(C.SettingsConcept, {
-    data, action, ui, activeTab: "base", onTabChange: () => {}
-  }));
-  assert.match(html, /基础配置/);
-  assert.match(html, /交易所连接/);
-  assert.match(html, /模型与密钥/);
-  assert.match(html, /Agent 配置/);
-  assert.match(html, /用户与订阅/);
-  assert.match(html, /cp2MergedSettings/);
-  assert.match(html, /环境与服务/);
-  assert.match(html, /登录与凭证安全/);
-  assert.match(html, /网络代理/);
-  assert.match(html, /数据与备份/);
-  assert.match(html, /通知渠道/);
-  assert.doesNotMatch(html, /cp2SettingsBase|cp2SideFilter/);
 });
 
 test("mobile app and assistant render", () => {

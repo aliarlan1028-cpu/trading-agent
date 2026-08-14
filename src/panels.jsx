@@ -174,23 +174,11 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     ["HTTP_PROXY", "HTTP Proxy", runtime.httpProxySet],
     ["HTTPS_PROXY", "HTTPS Proxy", runtime.httpsProxySet]
   ];
-  const sectionKind = ({ base: "base", environment: "runtime", network: "runtime", notifications: "integrations", data_backup: "data_backup", security: "runtime" })[section] || section;
+  const sectionKind = ({ environment: "runtime", network: "runtime", notifications: "integrations", data_backup: "data_backup", security: "runtime" })[section] || section;
   const [activeConfigSection, setActiveConfigSection] = useState(sectionKind || "llm");
   const [openProvider, setOpenProvider] = useState(config.llm?.activeProvider || "anthropic");
   const [openExchange, setOpenExchange] = useState("okx");
-  const collapsibleSection = ["base", "llm", "exchange", "notifications"].includes(section);
-  const sectionHeadProps = (open, setOpen, id) => (collapsibleSection ? {
-    role: "button",
-    tabIndex: 0,
-    "aria-expanded": open === id,
-    onClick: () => setOpen(open === id ? "" : id),
-    onKeyDown: (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        setOpen(open === id ? "" : id);
-      }
-    }
-  } : {});
+  const sectionHeadProps = (open, setOpen, id) => (section ? { role: "button", onClick: () => setOpen(open === id ? "" : id) } : {});
   const [activeIntegrationModule, setActiveIntegrationModule] = useState("telegram");
   const showIntegration = (id) => !section ? activeIntegrationModule === id : section === "notifications" ? ["telegram", "lark", "alerts"].includes(id) : true;
   const configSections = [
@@ -286,26 +274,11 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     const result = await action("/api/config", body);
     if (result.status) setRuntimeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, ["ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"].includes(key) ? "" : value])));
   }
-  async function saveBasicSettings(event) {
-    event.preventDefault();
-    const body = {
-      SKILL_SANDBOX_IMAGE: runtimeForm.SKILL_SANDBOX_IMAGE,
-      OKX_MARKET_TYPE: runtimeForm.OKX_MARKET_TYPE,
-      PORT: runtimeForm.PORT,
-      AUTH_REQUIRED: runtimeForm.AUTH_REQUIRED
-    };
-    for (const [keyName] of runtimeSecretRows) {
-      if (runtimeForm[keyName]) body[keyName] = runtimeForm[keyName];
-    }
-    const result = await action("/api/config", body);
-    if (result.status) setRuntimeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, ["ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"].includes(key) ? "" : value])));
-  }
   function removeSecret(keyName) {
     return action(`/api/config/secret/${encodeURIComponent(keyName)}`, {}, "DELETE");
   }
   const visibleRuntimeRows = section === "network" ? runtimeSecretRows.filter(([key]) => ["HTTP_PROXY", "HTTPS_PROXY"].includes(key))
     : section === "security" ? runtimeSecretRows.filter(([key]) => key === "ADMIN_PASSWORD")
-      : section === "base" ? runtimeSecretRows
       : section === "environment" ? [] : runtimeSecretRows;
   const runtimeHeading = section === "network"
     ? [t("网络代理", "Network Proxy"), t("仅当服务器访问 OKX、模型服务或外部数据源需要代理时填写。", "Configure a proxy only when the server needs it to reach OKX, model providers, or external data sources.")]
@@ -331,85 +304,18 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
       <div className="settingsWorkspace">
 
-        {activeConfigSection === "base" && (
-          <div className="cp2MergedSettings">
-            <form className="panelForm cp2MergedSection cp2MergedEnvironment" onSubmit={saveBasicSettings}>
-              <CfgHead icon={Settings} title={t("环境与服务", "Environment & Services")} sub={t("端口修改后重启生效", "Port changes require a restart")} status={runtime.authRequired === false ? t("免登录", "Sign-in disabled") : t("鉴权开启", "Sign-in enabled")} statusTone={runtime.authRequired === false ? "warn" : "ok"} />
-              <div className="formGrid cp2BaseEnvironmentGrid">
-                <label>{t("OKX 市场", "OKX market")}<select value={runtimeForm.OKX_MARKET_TYPE} onChange={(event) => updateRuntime("OKX_MARKET_TYPE", event.target.value)}><option value="perpetual_swap">{t("USDT 永续", "USDT perpetuals")}</option></select></label>
-                <label>{t("服务端口", "Server port")}<input type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
-                <label>{t("Skill 沙箱镜像", "Skill sandbox image")}<input value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
-              </div>
-              <div className="cp2MergedPair">
-                <div className="cp2MergedSection cp2MergedSecurity">
-                  <CfgHead icon={Lock} title={t("登录与凭证安全", "Sign-in & Credential Security")} status={runtime.authRequired === false ? t("免登录", "Sign-in disabled") : t("鉴权开启", "Sign-in enabled")} statusTone={runtime.authRequired === false ? "warn" : "ok"} />
-                  <div className="formGrid">
-                    {runtimeSecretRows.filter(([key]) => key === "ADMIN_PASSWORD").map(([keyName, label, configured]) => (
-                      <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current value") : t("待配置", "Enter value")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>
-                    ))}
-                    <label>{t("登录鉴权", "Require sign-in")}<select value={runtimeForm.AUTH_REQUIRED} onChange={(event) => updateRuntime("AUTH_REQUIRED", event.target.value)}><option value="true">{t("开启", "On")}</option><option value="false">{t("关闭", "Off")}</option></select></label>
-                  </div>
-                </div>
-                <div className="cp2MergedSection cp2MergedNetwork">
-                  <CfgHead icon={Globe2} title={t("网络代理", "Network Proxy")} status={runtime.httpProxySet || runtime.httpsProxySet ? t("已配置", "Configured") : t("直连", "Direct connection")} />
-                  <div className="formGrid">
-                    {runtimeSecretRows.filter(([key]) => ["HTTP_PROXY", "HTTPS_PROXY"].includes(key)).map(([keyName, label, configured]) => (
-                      <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current value") : t("待配置", "Enter value")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="configSaveBar"><small>{t("一次保存环境、安全与代理设置；密码及代理原文不会回显。", "Save runtime, security, and proxy settings together; secret values are never shown again.")}</small><button className="primaryButton" type="submit"><Settings size={14} /> {t("保存基础设置", "Save basic settings")}</button></div>
-            </form>
-
-            <div className="panelForm configDataBackup cp2MergedSection cp2MergedBackup">
-              <CfgHead icon={RefreshCw} title={t("数据与备份", "Data & Backup")} sub={t("SQLite 在线一致性快照，无需停机", "Consistent SQLite snapshot with no downtime")} status={t("在线备份", "Online backup")} statusTone="ok" />
-              <div className="configInfoGrid">
-                <div><b>{t("备份内容", "Included")}</b><span>{t("交易事实、记忆、知识库、策略与配置", "Trade facts, memory, knowledge, strategies, and settings")}</span></div>
-                <div><b>{t("运行影响", "Runtime impact")}</b><span>{t("系统无需停机", "No service downtime")}</span></div>
-                <div><b>{t("日志与海报", "Logs & posters")}</b><span>{t("按保留策略清理", "Managed by retention policy")}</span></div>
-              </div>
-              <div className="configSaveBar"><small>{t("备份文件保存在服务器受控目录中。", "Backups are stored in a server-managed directory.")}</small><button className="primaryButton" type="button" onClick={() => action("/api/system/backup", {})}><RefreshCw size={14} /> {t("创建备份", "Create backup")}</button></div>
-            </div>
-
-            <form className="panelForm integrationConsole cp2MergedSection cp2MergedNotifications" onSubmit={saveIntegrations}>
-              <div className="formTitleRow"><div><h3>{t("通知渠道", "Notification Channels")}</h3><span>{t("保留三条真实渠道，只展开当前配置", "Keep all three channels and expand only the current one")}</span></div><button className="primaryButton configCompactSave" type="submit"><PlugZap size={14} /> {t("保存通知设置", "Save notifications")}</button></div>
-
-              <div className="configFieldset modulePanel">
-                <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "telegram")}><strong>{t("Telegram 盈利海报与观察条件", "Telegram Profit Posters & Watch Conditions")}</strong><StatusBadge tone={integrations.telegram?.configured ? "ok" : "neutral"}>{integrations.telegram?.configured ? (integrations.telegram?.profitPosterEnabled ? t("已启用", "Enabled") : t("已配置", "Configured")) : t("未配置", "Not configured")}</StatusBadge><span className="cfgAccordionMeta">{t("10 项配置", "10 settings")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "telegram" ? "rotate(180deg)" : "none" }} /></span></div>
-                {activeIntegrationModule === "telegram" && <><div className="formGrid">
-                  {telegramSecretRows.map(([keyName, label, configured]) => <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current token") : "123456:ABC..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>)}
-                  <label>{t("Telegram 群 Chat ID", "Telegram group chat ID")}<input value={integrationForm.TELEGRAM_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_CHAT_ID", event.target.value)} placeholder="-1001234567890" /></label>
-                  <label>{t("盈利海报自动推送", "Automatic profit posters")}<select value={integrationForm.TELEGRAM_PROFIT_POSTER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("最低盈利（USDT）", "Minimum profit (USDT)")}<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", event.target.value)} /></label>
-                  <label>{t("最低 ROI（%）", "Minimum ROI (%)")}<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT", event.target.value)} /></label>
-                  <label>{t("发送间隔（分钟）", "Cooldown (minutes)")}<input type="number" min="1" value={integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES", event.target.value)} /></label>
-                  <label>{t("关键观察条件推送", "Critical watch delivery")}<select value={integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_NOTIFIER_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("观察哨推送语言", "Watch alert language")}<select value={integrationForm.TELEGRAM_WATCH_LANGUAGE} onChange={(event) => updateIntegration("TELEGRAM_WATCH_LANGUAGE", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label>
-                  <label>{t("观察哨每日摘要", "Daily watch digest")}<select value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("观察哨单独群 ID（可选）", "Separate watch chat ID (optional)")}<input value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用上面的群", "Leave blank to use the primary group")} /></label>
-                </div><div className="configTestActions">{integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> {t("发送测试海报", "Send test poster")}</button>}{integrations.telegram?.watchConfigured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-watch-test", {})}><Bell size={14} /> {t("发送观察哨测试", "Send watch alert test")}</button>}</div></>}
-              </div>
-
-              <div className="configFieldset modulePanel"><div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "lark")}><strong>{t("飞书（Lark）主动通知", "Lark Notifications")}</strong><StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "neutral"}>{integrations.lark?.hasWebhook ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge><span className="cfgAccordionMeta">{t("2 项配置", "2 settings")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "lark" ? "rotate(180deg)" : "none" }} /></span></div>{activeIntegrationModule === "lark" && <><div className="formGrid">{larkSecretRows.map(([keyName, label, configured]) => <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current value") : t("待配置", "Enter value")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>)}</div>{integrations.lark?.hasWebhook && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/lark-test", {})}><Bell size={14} /> {t("发送飞书测试消息", "Send Lark test message")}</button>}</>}</div>
-
-              <div className="configFieldset modulePanel"><div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "alerts")}><strong>{t("告警 Webhook", "Alert Webhook")}</strong><StatusBadge tone={integrations.alerts?.hasWebhook ? "ok" : "neutral"}>{integrations.alerts?.hasWebhook ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge><span className="cfgAccordionMeta">{t("1 项配置", "1 setting")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "alerts" ? "rotate(180deg)" : "none" }} /></span></div>{activeIntegrationModule === "alerts" && <div className="formGrid">{alertSecretRows.map(([keyName, label, configured]) => <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current value") : "https://..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>)}</div>}</div>
-            </form>
-            {!config.secretsMasterKeySet && <div className="emptyPanel emptyPanelAction"><strong>{t("请设置 SECRETS_MASTER_KEY", "Set SECRETS_MASTER_KEY")}</strong><span>{t("当前使用开发默认主密钥，只适合本地试用，不应长期保存真实凭证。", "The development default master key is suitable only for local testing and must not be used to store real credentials long term.")}</span></div>}
-          </div>
-        )}
-
         {activeConfigSection === "llm" && (
           <form className="panelForm" onSubmit={saveLlm}>
             <CfgHead icon={BrainCircuit} title={t("AI 模型", "AI Models")} sub={t("选择用于对话、市场分析和自主巡检的模型服务。", "Choose the model provider used for chat, market analysis, and autonomous reviews.")} status={config.llm?.activeProvider ? `${t("使用中", "Active")} · ${config.llm.activeProvider}` : t("未配置", "Not configured")} statusTone={config.llm?.activeProvider ? "ok" : ""} />
-            <div className={`providerGrid ${section === "llm" ? "providerSelector" : ""}`}>
+            <div className="providerGrid">
               {providerRows.map(([idName, label, keyName, modelName]) => {
                 const collapsed = Boolean(section) && openProvider !== idName;
                 return (
                   <div className={`configFieldset ${collapsed ? "collapsed" : ""} ${idName === config.llm?.activeProvider ? "cfgActive" : ""}`} key={idName}>
                     <div
                       className="configFieldsetHead"
-                      {...sectionHeadProps(openProvider, setOpenProvider, idName)}
+                      role={section ? "button" : undefined}
+                      onClick={section ? () => setOpenProvider(openProvider === idName ? "" : idName) : undefined}
                     >
                       <span className="cfgProvLogo" data-p={idName}>{label.charAt(0)}</span>
                       <strong>{label}</strong>
@@ -431,7 +337,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 );
               })}
             </div>
-            <div className="configSaveBar"><small>{t("只显示当前供应商的详细配置；留空的密钥保持不变。", "Only the selected provider's details are shown; blank secret fields keep their current values.")}</small><button className="primaryButton" type="submit"><KeyRound size={14} /> {t("保存模型设置", "Save model settings")}</button></div>
+            <div className="configSaveBar"><small>{t("只保存本页发生的更改；留空的密钥保持不变。", "Only changes on this page are saved; blank secret fields keep their current values.")}</small><button className="primaryButton" type="submit"><KeyRound size={14} /> {t("保存模型设置", "Save model settings")}</button></div>
           </form>
         )}
 
@@ -441,7 +347,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             <div className="exchangeColumns">
               <div className="exchangeCol">
                 <div className="exchangeColHead" {...sectionHeadProps(openExchange, setOpenExchange, "okx")}><span className="exchangeLogo okx">✣</span><strong>OKX</strong><StatusBadge tone={exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? "ok" : "neutral"}>{exchange.okx?.hasSecret && exchange.okx?.hasPassphrase ? t("连接信息完整", "Credentials complete") : exchange.okx?.hasKey ? t("缺少 Secret 或 Passphrase", "Secret or passphrase missing") : t("未配置", "Not configured")}</StatusBadge>{section && <ChevronDown size={15} style={{ transform: openExchange === "okx" ? "rotate(180deg)" : "none" }} />}</div>
-                {(!collapsibleSection || openExchange === "okx") && (
+                {(!section || openExchange === "okx") && (
                   <>
                     <label>API Key<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_KEY} onChange={(event) => updateExchange("OKX_API_KEY", event.target.value)} placeholder={exchange.okx?.hasKey ? t("留空则保留现有密钥", "Leave blank to keep the current key") : t("待配置", "Enter API key")} />{exchange.okx?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_KEY")}>{t("移除", "Remove")}</button>}</span></label>
                     <label>Secret<span className="inputWithAction"><input type="password" autoComplete="off" value={exchangeForm.OKX_API_SECRET} onChange={(event) => updateExchange("OKX_API_SECRET", event.target.value)} placeholder={exchange.okx?.hasSecret ? t("留空则保留现有密钥", "Leave blank to keep the current secret") : t("待配置", "Enter secret")} />{exchange.okx?.hasSecret && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret("OKX_API_SECRET")}>{t("移除", "Remove")}</button>}</span></label>
@@ -505,7 +411,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "telegram")}>
                   <strong>{t("Telegram 盈利海报与观察条件", "Telegram Profit Posters & Watch Conditions")}</strong>
                   <StatusBadge tone={integrations.telegram?.configured ? "ok" : "neutral"}>{integrations.telegram?.configured ? (integrations.telegram?.profitPosterEnabled ? t("已启用", "Enabled") : t("已配置", "Configured")) : t("未配置", "Not configured")}</StatusBadge>
-                  {collapsibleSection && <span className="cfgAccordionMeta">{t("10 项配置", "10 settings")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "telegram" ? "rotate(180deg)" : "none" }} /></span>}
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "telegram" ? "rotate(180deg)" : "none" }} />}
                 </div>
                 {(!section || activeIntegrationModule === "telegram") && (<>
                 {!section && <InsightNote icon={Bell} title={t("只推交易上需要立即知道的变化", "Only decision-changing interruptions")}>{t("盯盘是持续服务，观察哨是其中的结构化价位条件。Telegram 只推主条件命中或当前判断关键失效；登记、更新、到期和撤销留在应用内。", "Live watch is the continuous service; a watch is one structured price condition. Telegram sends only primary triggers or critical thesis invalidations; registration, edits, expiry, and cancellation stay in the app.")}</InsightNote>}
@@ -523,8 +429,8 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                   <label>{t("观察哨每日摘要", "Daily watch digest")}<select value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
                   <label>{t("观察哨单独群 ID（可选）", "Separate watch chat ID (optional)")}<input value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用上面的群", "Leave blank to use the primary group")} /></label>
                 </div>
-                <div className="configTestActions">{integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> {t("发送测试海报", "Send test poster")}</button>}
-                {integrations.telegram?.watchConfigured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-watch-test", {})}><Bell size={14} /> {t("发送观察哨测试", "Send watch alert test")}</button>}</div>
+                {integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> {t("发送测试海报", "Send test poster")}</button>}
+                {integrations.telegram?.watchConfigured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-watch-test", {})}><Bell size={14} /> {t("发送观察哨测试", "Send watch alert test")}</button>}
                 </>)}
               </div>
             )}
@@ -534,7 +440,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "lark")}>
                   <strong>{t("飞书（Lark）主动通知", "Lark Notifications")}</strong>
                   <StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "neutral"}>{integrations.lark?.hasWebhook ? (integrations.lark?.signed ? t("已配置并签名", "Configured and signed") : t("已配置", "Configured")) : t("未配置", "Not configured")}</StatusBadge>
-                  {collapsibleSection && <span className="cfgAccordionMeta">{t("2 项配置", "2 settings")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "lark" ? "rotate(180deg)" : "none" }} /></span>}
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "lark" ? "rotate(180deg)" : "none" }} />}
                 </div>
                 {(!section || activeIntegrationModule === "lark") && (<>
                 {!section && <InsightNote icon={PlugZap} title={t("关键事件", "Critical events")}>{t("配置飞书自定义机器人后，待确认计划、临近止损、保本移动和紧急停止等关键事件会发送到飞书。", "After you configure a Lark bot, critical events such as plans awaiting approval, near-stop alerts, break-even moves, and emergency stops are delivered to Lark.")}</InsightNote>}
@@ -572,7 +478,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "alerts")}>
                   <strong>{t("告警 Webhook", "Alert Webhook")}</strong>
                   <StatusBadge tone={integrations.alerts?.hasWebhook ? "ok" : "neutral"}>{integrations.alerts?.hasWebhook ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
-                  {collapsibleSection && <span className="cfgAccordionMeta">{t("1 项配置", "1 setting")} <ChevronDown size={15} style={{ transform: activeIntegrationModule === "alerts" ? "rotate(180deg)" : "none" }} /></span>}
+                  {section && <ChevronDown size={15} style={{ transform: activeIntegrationModule === "alerts" ? "rotate(180deg)" : "none" }} />}
                 </div>
                 {(!section || activeIntegrationModule === "alerts") && (
                 <div className="formGrid">
@@ -615,7 +521,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             </div>
             <label>{t("Skill 沙箱镜像", "Skill sandbox image")}<input value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
             </>}
-            <div className="configSaveBar"><small>{section === "network" ? t("代理设置保存后由服务端连接使用。", "Proxy settings are used by server-side connections after saving.") : section === "security" ? t("密码和登录设置会写入受保护配置；密码原文不会回显。", "Password and sign-in settings are stored in protected configuration; the password is never shown again.") : t("保存环境、安全和代理设置；端口修改需重启服务。", "Save runtime, security, and proxy settings; port changes require a restart.")}</small><button className="primaryButton" type="submit"><Settings size={14} /> {section === "network" ? t("保存代理设置", "Save proxy settings") : section === "security" ? t("保存安全设置", "Save security settings") : t("保存基础设置", "Save basic settings")}</button></div>
+            <div className="configSaveBar"><small>{section === "network" ? t("代理设置保存后由服务端连接使用。", "Proxy settings are used by server-side connections after saving.") : section === "security" ? t("密码和登录设置会写入受保护配置；密码原文不会回显。", "Password and sign-in settings are stored in protected configuration; the password is never shown again.") : t("端口和部分运行参数需要重启服务后生效。", "The port and some runtime settings require a service restart.")}</small><button className="primaryButton" type="submit"><Settings size={14} /> {section === "network" ? t("保存代理设置", "Save proxy settings") : section === "security" ? t("保存安全设置", "Save security settings") : t("保存运行设置", "Save runtime settings")}</button></div>
           </form>
         )}
 
