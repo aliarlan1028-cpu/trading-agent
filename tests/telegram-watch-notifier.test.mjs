@@ -104,11 +104,12 @@ test("观察哨推送语言独立于界面语言且可切回中文", () => {
 test("观察哨触发消息明确区分触发与下单", () => {
   const watch = { id: "trigger", version: 1, symbol: "SOL/USDT", kind: "price_above", level: 210, direction: "long", thesis: "1H 上升结构仍在，等待突破确认后评估顺势做多", triggerMeaning: "站上阻力只增强做多情景，仍需复核主动买盘", note: "突破后重新确认主动买盘", triggerPrice: 210.2, triggeredAt: "2026-08-12T03:00:00.000Z", priority: "primary", status: "triggered" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "en");
-  assert.match(message, /WATCH TRIGGERED/);
+  assert.match(message, /PRICE CONDITION REACHED/);
   assert.match(message, /AI re-analysis started/);
   assert.match(message, /Long scenario/);
   assert.match(message, /<b>View<\/b>/);
   assert.match(message, /No entry signal yet/);
+  assert.match(message, /Price only; volume, candle close, pattern and risk\/reward are still pending/);
   assert.doesNotMatch(message, /突破后重新确认主动买盘/, "英文触发消息不得夹带中文备注");
 });
 
@@ -124,12 +125,13 @@ test("关键失效采用紧凑动作模板，不发送整块观察看板", () =>
 test("中文观察哨命中完整说明方向、原判断、条件含义与下一步", () => {
   const watch = { id: "short_trigger", symbol: "SUI/USDT", kind: "enter_zone", levelLow: 0.704, levelHigh: 0.71, direction: "short", thesis: "1H 下行结构未反转，等待反弹到供应区评估做空", triggerMeaning: "价格回到供应区；检查 15m 反弹衰竭与主动卖盘后再决定是否做空", purpose: "confirmation", priority: "primary", status: "triggered", triggerPrice: 0.706, triggeredAt: "2026-08-13T06:20:00.000Z" };
   const message = buildWatchTelegramMessage({ watchTriggers: [] }, watch, "triggered", { autoAnalyze: true }, "zh");
-  assert.match(message, /观察条件命中/);
+  assert.match(message, /价格条件命中/);
   assert.match(message, /🔴 <b>做空情景<\/b>/);
   assert.match(message, /确认条件 · 回踩进入 0.704-0.71 区间/);
   assert.match(message, /原判断<\/b>\s+1H 下行结构未反转/);
   assert.match(message, /含义<\/b>\s+价格回到供应区/);
   assert.match(message, /尚未形成入场信号/);
+  assert.match(message, /仅价格到位；量能、K线收盘、形态与盈亏比仍待复核/);
   assert.match(message, /AI 已开始重新分析/);
 });
 

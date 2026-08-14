@@ -6,6 +6,7 @@ import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
+import { compactTriggeredWatch } from "./watchReviewGuard.mjs";
 import { watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { consumeOpportunitySignals, peekOpportunitySignals } from "./earlyOpportunityEngine.mjs";
@@ -131,7 +132,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const regimeBullets = regimeSummary ? regimeSummary.split(/[;；]\s*/).filter(Boolean).map((x) => `- ${x.trim()}`).join("\n") : "";
   // 标题带批次开始时间(北京时间),用户在长会话里靠它区分每轮巡检。
   const startedHhmm = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
-  const watchBullets = triggeredWatches.map((w) => `- ${w.symbol}｜${watchDirectionLabel(w)}｜原判断：${watchThesis(w)}｜命中条件：${describeWatch(w)}（触发价 ${w.triggerPrice}）｜这代表：${watchTriggerMeaning(w)}`);
+  const watchBullets = triggeredWatches.map((w) => `- watchId=${w.id}｜${w.symbol}｜${watchDirectionLabel(w)}｜原判断：${watchThesis(w)}｜价格命中条件：${describeWatch(w)}（触发价 ${w.triggerPrice}）｜待复核含义：${watchTriggerMeaning(w)}｜注意：这里只确认价格到位，不代表量能、收盘、形态或入场已确认`);
   const moveBullets = fastMoves.map((e) => `- ${e.symbol} ${e.windowMin} 分钟内${e.direction === "down" ? "快速下跌" : "快速上涨"} ${e.movePct}%（现价 ${e.price}，自${e.direction === "down" ? "高" : "低"}点 ${e.refPrice}）`);
   const opportunityBullets = opportunitySignals.map((e) => `- ${e.symbol} ${e.features?.setupType === "reversal_reclaim" ? "极值回收反转" : "早期动量启动"}${e.direction === "short" ? "偏空" : "偏多"}候选 score=${e.score} · 发现于 ${e.detectedAt || e.queuedAt}${e.features ? ` · 15s ${e.features.ret15sPct ?? "-"}% / 30s ${e.features.ret30sPct ?? "-"}% / 1m ${e.features.ret1mPct ?? "-"}%${e.features.reclaimPct != null ? ` · 极值回收 ${e.features.reclaimPct}%` : ` · 加速度 ${e.features.acceleration ?? "-"}`}` : ""}`);
   const newsBullets = newsSignals.map((e) => `- [${e.kind === "scheduled_event" ? "高影响日程" : "重要快讯"}] ${e.title} · ${e.sourceName || "来源待核"} · ${e.publishedAt || e.queuedAt}${e.symbols?.length ? ` · 关联 ${e.symbols.join("、")}` : ""}\n  ${e.summary || ""}`);
@@ -164,8 +165,8 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
         ]
         : triggeredWatches.length
         ? [
-          "1. 优先复核触发币种：用 sync_market / get_microstructure 确认触发是否伴随量能与结构（无量假突破/假跌破要识别出来）",
-          "2. 确认有效则按授权边界评估是否提出交易计划；无效或不确定则说明原因，需要时重新登记观察哨",
+          "1. 优先复核触发币种：用 sync_market / get_microstructure / analyze_market_structure 确认价格命中是否伴随闭合K线、量能、结构与微观证据（无量假突破/假跌破要识别出来）",
+          "2. 必须闭环：方向成立但仍等回踩/吞没/影线/放量/收盘确认时，propose_trade_plan 创建 armed 条件计划；确有硬阻断时，record_watch_review 引用真实 evidence ID 记录拒绝或失效。禁止仅以‘继续观察/确认不足’换价再挂同一逻辑",
           "3. 顺带检查其余授权交易对与大盘环境是否有变化",
           "4. 固定执行全市场机会漏斗，并对视野外 Top 候选做结构与微观二次复核"
         ]
@@ -199,7 +200,8 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
     message: goal,
     sessionId: "chat_autocycle",
     decisionTrigger,
-    symbols
+    symbols,
+    triggeredWatches: triggeredWatches.map(compactTriggeredWatch)
   }, saveDb);
   result.run.source = "agent_cycle";
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");

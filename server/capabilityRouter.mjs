@@ -228,16 +228,63 @@ export function recordCapabilityResult(run, toolName, args = {}, result = {}) {
   if (toolName === "analyze_market_structure") {
     run.roleSuitabilityShadow ||= {};
     run.structureFactRefs ||= {};
+    run.structureFacts ||= {};
+    const analyzedAt = result.analyzedAt || base.recordedAt;
+    const evidenceRef = result.evidenceRef || `structure:${symbol}:${analyzedAt}`;
     run.roleSuitabilityShadow[symbol] = result.roleSuitability || null;
     run.structureFactRefs[symbol] = {
       symbol,
+      evidenceRef,
       version: result.version || null,
       deterministic: result.deterministic === true,
       source: result.source || null,
-      analyzedAt: result.analyzedAt || base.recordedAt,
+      analyzedAt,
       selectedRole: result.selectedRole || null,
       bias: result.bias || null,
       quality: result.quality || null
+    };
+    run.structureFacts[symbol] = {
+      ...run.structureFactRefs[symbol],
+      alignment: result.selectedView?.alignment || null,
+      phase: result.phase || null,
+      structure4h: result.structure4h || null,
+      frames: Object.fromEntries(["1d", "4h", "1h", "15m", "5m"].map((timeframe) => {
+        const frame = result.frames?.[timeframe];
+        return [timeframe, frame?.available ? {
+          available: true,
+          timeframe,
+          lastClosedAt: frame.lastClosedAt || null,
+          lastClose: frame.lastClose ?? null,
+          trend: frame.trend || null,
+          phase: frame.phase || null,
+          regime: frame.regime ? {
+            label: frame.regime.label || null,
+            previousLabel: frame.regime.previousLabel || null,
+            transition: frame.regime.transition ? {
+              detected: frame.regime.transition.detected === true,
+              type: frame.regime.transition.type || null
+            } : null
+          } : null,
+          latestEvent: frame.latestEvent ? {
+            kind: frame.latestEvent.kind || null,
+            direction: frame.latestEvent.direction || null,
+            level: frame.latestEvent.level ?? null,
+            breakTime: frame.latestEvent.breakTime || null,
+            volumeRatio: frame.latestEvent.volumeRatio ?? null
+          } : null,
+          recentEvents: (frame.recentEvents || []).slice(0, 5).map((event) => ({
+            kind: event.kind || null,
+            direction: event.direction || null,
+            level: event.level ?? null,
+            breakTime: event.breakTime || null,
+            volumeRatio: event.volumeRatio ?? null
+          })),
+          volume: frame.volume ? {
+            state: frame.volume.state || null,
+            latestRatioTo20: frame.volume.latestRatioTo20 ?? null
+          } : null
+        } : { available: false, timeframe, reason: frame?.reason || "unavailable" }];
+      }))
     };
     // 给聊天展示层保存一份小型、确定性的多周期快照。它来自闭合 K 线计算，
     // 不从 LLM 正文反向猜状态；只保留 15m/1h/4h 所需字段，避免把完整 K 线塞进消息。
@@ -245,7 +292,7 @@ export function recordCapabilityResult(run, toolName, args = {}, result = {}) {
     run.presentationFacts.structures ||= {};
     run.presentationFacts.structures[symbol] = {
       symbol,
-      analyzedAt: result.analyzedAt || base.recordedAt,
+      analyzedAt,
       selectedRole: result.selectedRole || null,
       bias: result.bias || null,
       quality: result.quality || null,

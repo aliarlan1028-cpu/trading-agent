@@ -94,38 +94,40 @@ function triggerMessage(db, watch, context = {}, language = watchLanguage()) {
   const icon = directionIcon(watch);
   if (language === "en") {
     return [
-      invalidatesThesis ? "🛑 <b>THESIS INVALIDATED</b>" : "⚡ <b>WATCH TRIGGERED</b>",
+      invalidatesThesis ? "🛑 <b>INVALIDATION PRICE REACHED</b>" : "⚡ <b>PRICE CONDITION REACHED</b>",
       "",
       `<b>${escapeHtml(watch.symbol)}</b> · ${icon} <b>${escapeHtml(side)}</b>`,
       `<code>${escapeHtml(role)} · ${escapeHtml(condition)}</code>`,
       "",
       `<b>Price</b>  <code>${escapeHtml(price)}</code>`,
       `<b>Time</b>   ${escapeHtml(time)}`,
+      "<b>Validation</b> Price only; volume, candle close, pattern and risk/reward are still pending.",
       "",
       `<b>View</b>     ${escapeHtml(thesis)}`,
       `<b>Meaning</b>  ${escapeHtml(meaning)}`,
       `<b>Action</b>   ${context.autoAnalyze ? "AI re-analysis started; wait for the fresh conclusion." : "Manual review required; confirm a fresh conclusion before trading."}`,
       "",
       invalidatesThesis
-        ? "<i>⚠️ Previous view retired · No order placed</i>"
+        ? "<i>⚠️ Previous view paused pending review · No order placed</i>"
         : "<i>⚠️ No entry signal yet · No order placed</i>"
     ].join("\n");
   }
   return [
-    invalidatesThesis ? "🛑 <b>原判断失效</b>" : "⚡ <b>观察条件命中</b>",
+    invalidatesThesis ? "🛑 <b>失效价格条件命中</b>" : "⚡ <b>价格条件命中</b>",
     "",
     `<b>${escapeHtml(watch.symbol)}</b> · ${icon} <b>${escapeHtml(side)}</b>`,
     `<code>${escapeHtml(role)} · ${escapeHtml(condition)}</code>`,
     "",
     `<b>触发价</b>  <code>${escapeHtml(price)}</code>`,
     `<b>时间</b>    ${escapeHtml(time)}`,
+    "<b>确认状态</b> 仅价格到位；量能、K线收盘、形态与盈亏比仍待复核。",
     "",
     `<b>原判断</b>  ${escapeHtml(thesis)}`,
     `<b>含义</b>    ${escapeHtml(meaning)}`,
     `<b>动作</b>    ${context.autoAnalyze ? "AI 已开始重新分析；等待新结论。" : "请人工复核；确认新结论后再决定是否交易。"}`,
     "",
     invalidatesThesis
-      ? "<i>⚠️ 旧判断已停用 · 本通知不会下单</i>"
+      ? "<i>⚠️ 旧判断暂停沿用、等待复核 · 本通知不会下单</i>"
       : "<i>⚠️ 尚未形成入场信号 · 本通知不会下单</i>"
   ].join("\n");
 }

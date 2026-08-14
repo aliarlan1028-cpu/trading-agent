@@ -88,11 +88,11 @@ function numericRule({ field, line, pattern, expected, entry, tolerance, label, 
 
 /**
  * Validate current quantitative claims in an LLM answer against one immutable evidence bundle.
- * Default rollout hard-corrects high-impact core fields and records every other mismatch in shadow.
- * Set mode="enforce_all" after observing shadow false-positive metrics in production.
+ * Production defaults to hard-correcting every supported current field. Shadow mode remains
+ * available only as an explicit diagnostic override; it must never be the implicit safety level.
  */
 export function enforceEvidenceFacts(bundle, content = "", options = {}) {
-  const mode = options.mode || process.env.EVIDENCE_FACT_GUARD_MODE || "enforce_core";
+  const mode = options.mode || process.env.EVIDENCE_FACT_GUARD_MODE || "enforce_all";
   const violations = [];
   const output = [];
   const coreFields = new Set(["price", "account_equity", "available_margin", "position_count", "open_order_count", "today_pnl", "unrealized_pnl", "remaining_daily_loss", "daily_loss_cap", "ctVal", "minSz", "lotSz", "tickSz"]);

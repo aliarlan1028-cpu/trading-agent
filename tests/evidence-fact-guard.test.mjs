@@ -37,17 +37,17 @@ test("historical, hypothetical and planned numbers are not treated as current fa
   assert.equal(guarded.shadowViolations.length, 0);
 });
 
-test("extended fields are checked in shadow by default and can be hard-enforced", () => {
+test("extended fields are hard-enforced by default and shadow mode is explicit", () => {
   const text = "BTC/USDT 当前资金费率：0.2%，OI：999999";
-  const shadow = enforceEvidenceFacts(fixture(), text);
-  assert.equal(shadow.corrected, false);
-  assert.equal(shadow.shadowViolations.length, 2);
-  assert.equal(shadow.text, text);
-
-  const enforced = enforceEvidenceFacts(fixture(), text, { mode: "enforce_all" });
+  const enforced = enforceEvidenceFacts(fixture(), text);
   assert.equal(enforced.corrected, true);
   assert.match(enforced.text, /资金费率：0\.01%/);
   assert.match(enforced.text, /OI：123456/);
+
+  const shadow = enforceEvidenceFacts(fixture(), text, { mode: "shadow" });
+  assert.equal(shadow.corrected, false);
+  assert.equal(shadow.shadowViolations.length, 2);
+  assert.equal(shadow.text, text);
 });
 
 test("stale core evidence removes the unsupported current claim", () => {

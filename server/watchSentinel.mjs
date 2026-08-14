@@ -118,9 +118,25 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     triggerMeaning: String(args.triggerMeaning || "").replace(/\s+/g, " ").trim().slice(0, 220) || null,
     purpose: PURPOSES.has(String(args.purpose || "")) ? String(args.purpose) : null,
     priority: args.priority === "primary" ? "primary" : "secondary",
+    setupType: String(args.setupType || "").slice(0, 80) || null,
+    traderRole: String(args.traderRole || "").slice(0, 40) || null,
     analysisId: String(args.analysisId || "").slice(0, 120) || null,
     analysisAt: args.analysisAt || null,
     analysisTitle: String(args.analysisTitle || "").replace(/\s+/g, " ").slice(0, 120) || null,
+    reviewOfWatchIds: [...new Set((Array.isArray(args.reviewOfWatchIds) ? args.reviewOfWatchIds : []).map(String).filter(Boolean))].slice(0, 8),
+    parentWatchId: String(args.parentWatchId || "").slice(0, 120) || null,
+    rootWatchId: String(args.rootWatchId || "").slice(0, 120) || null,
+    reviewDepth: Number.isFinite(Number(args.reviewDepth)) ? Math.max(0, Number(args.reviewDepth)) : 0,
+    reviewReasonCode: String(args.reviewReasonCode || "").slice(0, 80) || null,
+    lineageVersion: Number.isFinite(Number(args.lineageVersion)) ? Math.max(1, Number(args.lineageVersion)) : 1,
+    lineageStartedAt: args.lineageStartedAt || null,
+    thesisFingerprint: String(args.thesisFingerprint || "").slice(0, 120) || null,
+    structureFingerprint: String(args.structureFingerprint || "").slice(0, 120) || null,
+    structureEvidenceRef: String(args.structureEvidenceRef || "").slice(0, 180) || null,
+    previousRootWatchId: String(args.previousRootWatchId || "").slice(0, 120) || null,
+    lineageResetReason: String(args.lineageResetReason || "").slice(0, 80) || null,
+    lineageResetEvidenceRef: String(args.lineageResetEvidenceRef || "").slice(0, 180) || null,
+    rearmWindowHours: Number.isFinite(Number(args.rearmWindowHours)) ? Number(args.rearmWindowHours) : null,
     status: args.deferTelegram === true ? "pending_analysis" : "active",
     version: 1,
     createdAt: nowIso(),
@@ -128,6 +144,8 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     lastPrice: price,
     priceAtCreation: price
   };
+  watch.rootWatchId ||= watch.id;
+  watch.lineageStartedAt ||= watch.createdAt;
   if (kind === "enter_zone") {
     if (!Number.isFinite(watch.levelLow) || !Number.isFinite(watch.levelHigh) || watch.levelLow <= 0 || watch.levelHigh <= watch.levelLow) {
       return { ok: false, error: "enter_zone 需要 levelLow < levelHigh 且均为正数。" };
@@ -168,6 +186,22 @@ export function registerWatch(db, args = {}, currentPrice, actor = "AI 交易员
     twin.analysisId = watch.analysisId || twin.analysisId || null;
     twin.analysisAt = watch.analysisAt || twin.analysisAt || twin.createdAt;
     twin.analysisTitle = watch.analysisTitle || twin.analysisTitle || null;
+    twin.setupType = watch.setupType || twin.setupType || null;
+    twin.traderRole = watch.traderRole || twin.traderRole || null;
+    twin.reviewOfWatchIds = watch.reviewOfWatchIds.length ? watch.reviewOfWatchIds : (twin.reviewOfWatchIds || []);
+    twin.parentWatchId = watch.parentWatchId || twin.parentWatchId || null;
+    twin.rootWatchId = watch.rootWatchId || twin.rootWatchId || twin.id;
+    twin.reviewDepth = Math.max(Number(twin.reviewDepth || 0), Number(watch.reviewDepth || 0));
+    twin.reviewReasonCode = watch.reviewReasonCode || twin.reviewReasonCode || null;
+    twin.lineageVersion = Math.max(Number(twin.lineageVersion || 1), Number(watch.lineageVersion || 1));
+    twin.lineageStartedAt = watch.lineageStartedAt || twin.lineageStartedAt || twin.createdAt;
+    twin.thesisFingerprint = watch.thesisFingerprint || twin.thesisFingerprint || null;
+    twin.structureFingerprint = watch.structureFingerprint || twin.structureFingerprint || null;
+    twin.structureEvidenceRef = watch.structureEvidenceRef || twin.structureEvidenceRef || null;
+    twin.previousRootWatchId = watch.previousRootWatchId || twin.previousRootWatchId || null;
+    twin.lineageResetReason = watch.lineageResetReason || twin.lineageResetReason || null;
+    twin.lineageResetEvidenceRef = watch.lineageResetEvidenceRef || twin.lineageResetEvidenceRef || null;
+    twin.rearmWindowHours = watch.rearmWindowHours || twin.rearmWindowHours || null;
     twin.purpose = watch.purpose || twin.purpose || (twin.priority === "primary" ? "decision" : "alternative");
     if (args.deferTelegram === true) twin.status = "pending_analysis";
     if (args.priority === "primary") {
@@ -341,12 +375,12 @@ export function publishWatchSweep(db, sweep = {}, options = {}) {
   const telegram = [];
   for (const watch of sweep.triggered || []) {
     if (realtime) watch.realtimeNotifiedAt = nowIso();
-    appendAudit(db, `观察哨${realtime ? "实时" : ""}触发：${describeWatch(watch)}（触发价 ${watch.triggerPrice}）`, watch.id, actor, "warning");
+    appendAudit(db, `观察哨${realtime ? "实时" : ""}价格条件命中：${describeWatch(watch)}（触发价 ${watch.triggerPrice}；量能/收盘/形态待复核）`, watch.id, actor, "warning");
     createNotification(db, {
       eventType: "watch_trigger",
       severity: "warning",
-      title: `${watch.symbol} · ${watchDirectionLabel(watch)}观察条件命中`,
-      body: `原判断：${watchThesis(watch)} 条件：${describeWatch(watch)}，触发价 ${watch.triggerPrice}。这代表：${watchTriggerMeaning(watch)} ${autoAnalyze ? "已进入 AI 复核队列。" : "自动复核当前关闭，请人工重新分析后再决策。"}`
+      title: `${watch.symbol} · ${watchDirectionLabel(watch)}价格条件命中`,
+      body: `确认状态：仅价格到位；量能、K线收盘、形态与盈亏比尚未确认。原判断：${watchThesis(watch)} 价格条件：${describeWatch(watch)}，触发价 ${watch.triggerPrice}。待复核含义：${watchTriggerMeaning(watch)} ${autoAnalyze ? "已进入 AI 复核队列。" : "自动复核当前关闭，请人工重新分析后再决策。"}`
     });
     telegram.push(queueWatchTelegramEvent(db, watch, "triggered", { autoAnalyze, triggerPrice: watch.triggerPrice }));
   }

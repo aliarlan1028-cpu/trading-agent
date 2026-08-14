@@ -9,6 +9,8 @@ import { deriveAutomationState } from "./ops.mjs";
 import { analyzeMarketStructure } from "./setupReview.mjs";
 import { abortWatchAnalysis, buildWatchBoard, cancelWatch, describeWatch, finalizeWatchAnalysis, registerWatch } from "./watchSentinel.mjs";
 import { correctUnbackedWatchRegistration } from "./watchClaimGuard.mjs";
+import { canRegisterWatchAfterTrigger, compactTriggeredWatch, evaluateWatchReviewClosure, rememberRegisteredWatchLineage, validateWatchReviewRecord, WATCH_REVIEW_MAX_REARMS, WATCH_REVIEW_REASON_CODES, WATCH_SETUP_TYPES, watchReviewCorrectionInstruction } from "./watchReviewGuard.mjs";
+import { appendTruthAuditText, enforceVerifiedOutput } from "./responseTruthGuard.mjs";
 import { armedSetupAutomationAllowed, armTradeSetup, normalizeScenarioSpec, normalizeTriggerSpec } from "./armedSetup.mjs";
 import { fetchGlobalMarket, fetchSmartMoney, evaluateSmartMoneyAlignment } from "./marketSignals.mjs";
 import { deterministicDecision } from "./deterministicDecision.mjs";
@@ -529,8 +531,24 @@ const TOOL_DEFS = [
     }
   },
   {
+    name: "record_watch_review",
+    description: "观察哨真实命中后，在不创建交易计划时记录可审计的拒绝/失效结论。只接受确定性结构、硬风控、流动性、证据缺失、失效位命中或无法设置有效止损等可验证硬原因，并必须引用本轮真实 evidence ID。‘继续观察/等待确认’不是拒绝理由：如果方向成立、只是等待价格或K线/量能确认，应调用 propose_trade_plan 创建 armed 条件计划。",
+    schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "本轮真实触发观察哨的交易对" },
+        outcome: { type: "string", enum: ["rejected", "invalidated"], description: "rejected=本轮有硬阻断不交易；invalidated=原判断已被真实失效条件否定" },
+        reasonCode: { type: "string", enum: WATCH_REVIEW_REASON_CODES, description: "系统可验证的硬原因" },
+        reason: { type: "string", description: "具体说明哪项证据怎样阻断交易，禁止只写继续观察或确认不足" },
+        evidenceRefs: { type: "array", items: { type: "string" }, description: "本轮工具返回或强制证据包中的真实 evidence ID" },
+        nextAction: { type: "string", enum: ["stop_monitoring", "fresh_thesis", "manual_review"], description: "停止监控、基于全新判断另挂哨、或转人工复核" }
+      },
+      required: ["symbol", "outcome", "reasonCode", "reason", "evidenceRefs", "nextAction"]
+    }
+  },
+  {
     name: "register_watch",
-    description: "登记观察哨：把'当前是什么多空判断、若价格发生 X 会改变什么、接下来复核什么'落地成结构化价格哨。哨兵实时核对，命中后唤起重新决策，绝不直接下单。必须明确 direction、thesis、triggerMeaning，让用户不需要从价格条件猜做多还是做空。同一币种同一轮分析可有多个情景，但必须用 priority 标出唯一主观察哨，并用 purpose 解释辅助条件。新一轮分析会自动取代旧一轮观察哨。",
+    description: "登记观察哨：把'当前是什么多空判断、若价格发生 X 会改变什么、接下来复核什么'落地成结构化价格哨。哨兵实时核对，命中后唤起重新决策，绝不直接下单。必须明确 direction、setupType、traderRole、thesis、triggerMeaning。系统按币种+方向+策略类型+角色+确定性结构生成不可伪造的判断指纹；改价格、改文案或随意改策略标签不会重置连续改写次数。",
     schema: {
       type: "object",
       properties: {
@@ -541,13 +559,15 @@ const TOOL_DEFS = [
         levelHigh: { type: "number", description: "enter_zone 区间上沿" },
         note: { type: "string", description: "登记理由与触发后的评估要点，如'放量跌破则短期偏空，评估做空'" },
         direction: { type: "string", enum: ["long", "short", "neutral"], description: "这条观察条件服务的交易方向：long=做多情景，short=做空情景，neutral=尚未确认方向。失效条件仍填它要否定的原判断方向" },
+        setupType: { type: "string", enum: WATCH_SETUP_TYPES, description: "观察判断所属的策略类型，必须与真实结构一致；更换标签本身不会绕过原判断链上限" },
+        traderRole: { type: "string", enum: ["day_trader", "swing_trader"], description: "观察周期角色；日内判断链窗口12小时、波段48小时。必须与本轮 analyze_market_structure 的 selectedRole 一致" },
         thesis: { type: "string", description: "当前原判断，必须是可独立理解的完整句，如'1H 保持 HH/HL，等待回踩后评估顺势做多'；禁止只写'等确认'" },
         triggerMeaning: { type: "string", description: "命中代表什么以及要复核什么，如'若放量站稳，做多确认增强；重新检查 15m CVD 与盈亏比'" },
         priority: { type: "string", enum: ["primary", "secondary"], description: "同币种本轮唯一最需要用户盯住的条件填 primary；确认/失效/备选条件填 secondary" },
         purpose: { type: "string", enum: ["decision", "confirmation", "invalidation", "alternative"], description: "decision=核心决策点，confirmation=确认条件，invalidation=当前判断失效，alternative=备选情景" },
-        ttlHours: { type: "number", description: "有效期小时数，默认 24，最大 48；过期自动作废" }
+        ttlHours: { type: "number", description: "有效期小时数；日内默认4/最长12小时，波段默认12/最长48小时；过期自动作废" }
       },
-      required: ["symbol", "kind", "note", "direction", "thesis", "triggerMeaning"]
+      required: ["symbol", "kind", "note", "direction", "setupType", "traderRole", "thesis", "triggerMeaning"]
     }
   },
   {
@@ -589,7 +609,7 @@ export function listAgentTools() {
 const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服务唯一主人。工作语言为中文。
 
 铁律：
-1. 任何价格、指标、行情结论都必须来自本轮强制证据包或 sync_market 返回的真实 OKX 数据；证据 missing/stale 就说"无法确认"并重新同步，绝不凭记忆或知识库编造当前数字。
+1. 任何价格、指标、行情结论都必须来自本轮强制证据包或工具返回的真实 OKX 数据；证据 missing/stale 就说"无法确认"并重新同步，绝不凭记忆或知识库编造当前数字。当前事实尽量就近写出真实 evidence ID；由事实推导的方向、原因和情景必须明确写成“判断/推断”，不能把推断冒充交易所事实。工具没有返回成功回执时，禁止声称已创建计划、已挂哨、已下单、已成交或已开仓。
 2. 提出交易计划必须调用 propose_trade_plan，让硬风控引擎检查；不要在文本里口头给交易参数。
 3. 用户给出交易目标/授权边界时，先调用 create_mandate_draft 固化，再继续分析。
 【自主交易分工·最重要】主人只负责设定"授权边界"：允许交易的币对、单笔风险%、日亏上限、最大杠杆、是否开启自动执行。而"做多还是做空、入场/止损/止盈价位、时机、仓位大小"全部是你从真实数据（行情/微观结构/聪明钱/事件/知识库/已验证策略画像）分析后**自己决定**的——这正是"自主交易"的意义。**绝对不能反过来问主人"你想做多还是做空/单笔想亏多少"**。当有人问"你会怎么自动交易/你的步骤是什么"时，正确回答是：①确认或请主人设定授权边界(币对/单笔风险/日亏/杠杆) → ②同步真实行情与信号、结合知识库与已验证策略形成方向判断 → ③用 propose_trade_plan 产出结构化计划(方向/入场/止损/止盈/仓位)过硬风控 → ④在授权与额度内自动执行或转人工批准 → ⑤实时监控、按止盈止损/保本/跟踪管理仓位 → ⑥平仓后复盘沉淀。方向与参数是你的活，不是问主人。没有 Mandate 时只问边界，不问方向。
@@ -602,8 +622,9 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 10. 观察哨纪律【强制·最容易犯错】：分析得出"若跌破 X / 若突破 Y / 若回踩 Z 区间则重新评估"这类关键触发条件时，**唯一正确做法是调用 register_watch 工具**把它登记。
    - 在回复正文里写"观察哨一览"表格、列出"哨兵/条件/距触发/逻辑"这类文字，**完全不算登记**——那只是空话，哨兵根本没在盯，等于欺骗主人。绝对禁止在文字里画观察哨表格或声称"已挂 N 个观察哨/全部保留"。
    - 系统会自动展示真正已登记的观察哨（见上方【当前观察哨】区块，没有该区块就说明当前一个都没有）。你不需要、也不许自己复述它。
-   - 每一条你想盯的条件 = 一次 register_watch 工具调用。每次必须明确 direction（做多/做空/中性）、thesis（当前原判断）和 triggerMeaning（命中意味着什么、接下来核对什么），禁止只写“突破后重评/等确认”这类脱离上下文就看不懂的备注。失效哨的 direction 是它要否定的原判断方向，例如“跌破支撑使做多判断失效”仍填 long。想盯 3 个条件就调用 3 次；同一币种同一轮分析必须且只能有一个 priority=primary，其余为 secondary，并用 purpose 区分确认、失效、备选情景。系统会把同币种旧分析整组取代。正文最多一句"已登记 N 个观察哨盯盘"，不要展开成表。
+   - 每一条你想盯的条件 = 一次 register_watch 工具调用。每次必须明确 direction（做多/做空/中性）、setupType（策略类型）、traderRole（日内/波段，必须与本轮确定性结构证据一致）、thesis（当前原判断）和 triggerMeaning（命中意味着什么、接下来核对什么），禁止只写“突破后重评/等确认”这类脱离上下文就看不懂的备注。失效哨的 direction 是它要否定的原判断方向，例如“跌破支撑使做多判断失效”仍填 long。想盯 3 个条件就调用 3 次；同一币种同一轮分析必须且只能有一个 priority=primary，其余为 secondary，并用 purpose 区分确认、失效、备选情景。系统会把同币种旧分析整组取代。正文最多一句"已登记 N 个观察哨盯盘"，不要展开成表。
    - 已有等价观察哨不必重复登记；条件失去意义用 cancel_watch 撤掉。
+   - 【观察哨命中后的复核闭环】价格哨命中只证明价格到位，不证明量能、K线收盘、形态、盈亏比或入场已经确认。本轮必须二选一收口：①方向成立、只是等待回踩/吞没/影线/量能/收盘等可结构化确认，调用 propose_trade_plan 建立 armed 条件计划；②确有硬阻断，调用 record_watch_review，引用本轮真实 evidence ID 记录拒绝/失效原因。禁止只说“继续观察”后把同一逻辑换个价位再挂。只有经验证地拒绝旧判断且 nextAction=fresh_thesis 时，才可登记新哨。系统按 symbol+direction+setupType+traderRole+确定性结构生成判断指纹：同一判断链最多连续改写 2 次；改价格、改文案或随意改 setupType 不会重置。日内链 12 小时、波段链 48 小时后自然重置；方向改变，或带新 evidence ID 的闭合K线结构类别/阶段/regime/结构事件发生实质变化时也会开启新链。
    - 【只对授权白名单内的币对挂哨·重要】register_watch 只对白名单内币对有效。分析白名单**外**的币(分析本身完全开放、任何币都能分析)时，**不要调用 register_watch**(必被哨兵拒、白白报错)；但白名单外的好机会可以直接 **propose_trade_plan**——系统自动标为『白名单外·一次性授权』候选、待用户确认下单(见授权白名单区块)。正常给完整分析结论，绝不要把"不在白名单/系统拒绝了"放在开头、让一次成功的分析读起来像被系统拦下。
 11. Setup 质量纪律【提计划前自检，避免真金白银的错单】：**propose_trade_plan 之前必须先调用 analyze_market_structure 读取角色感知的确定性结构事实**。日内计划核对1H/15m/5m，波段计划核对1D/4H/1H；BOS/CHoCH只是带时间和价位证据的结构事实之一，不得单独垄断方向。消息面优先使用系统已有的新鲜事件/归因缓存；只有急速异动、事件驱动币或缓存缺失且消息可能改变方向时才调用 explain_market_move。联网归因限流/不可用时必须标"消息面未知"，不得编造，但普通技术结构机会不因外部消息服务故障而空等。再逐项确认——
    - 盈亏比：入场→最近止盈 / 入场→止损 的比值必须 ≥2R。达不到就重构止盈止损或直接不提，绝不提交 <2R 的低质量计划。
@@ -1316,7 +1337,23 @@ export async function executeTool(db, run, name, args = {}) {
     };
   }
 
+  if (name === "record_watch_review") {
+    const checked = validateWatchReviewRecord(run, args);
+    if (!checked.ok) return { error: checked.error };
+    run.watchReview = checked.review;
+    run.watchReviews ||= {};
+    run.watchReviews[checked.review.symbol] = checked.review;
+    appendAudit(db, `观察哨复核闭环：${checked.review.symbol} ${checked.review.outcome}（${checked.review.reasonCode}）`, run.id, run?.role || "AI 交易员");
+    return {
+      status: "recorded",
+      verified: true,
+      review: checked.review
+    };
+  }
+
   if (name === "register_watch") {
+    const gate = canRegisterWatchAfterTrigger(run, args);
+    if (!gate.ok) return { error: gate.error };
     const symbol = String(args.symbol || "").trim().toUpperCase();
     let price = null;
     try {
@@ -1328,18 +1365,25 @@ export async function executeTool(db, run, name, args = {}) {
     }
     const result = registerWatch(db, {
       ...args,
+      ...(gate.lineage || {}),
       analysisId: run?.id || null,
       analysisAt: run?.createdAt || nowIso(),
       analysisTitle: run?.goal || "AI 市场巡检",
       deferTelegram: true
     }, price, run?.role || "AI 交易员");
     if (!result.ok) return { error: result.error };
+    rememberRegisteredWatchLineage(run, result.watch);
     return {
       status: result.updated ? "updated" : "registered",
       watchId: result.watch.id,
       watch: describeWatch(result.watch),
       priority: result.watch.priority,
       purpose: result.watch.purpose,
+      setupType: result.watch.setupType,
+      traderRole: result.watch.traderRole,
+      thesisFingerprint: result.watch.thesisFingerprint,
+      reviewDepth: result.watch.reviewDepth,
+      lineageResetReason: result.watch.lineageResetReason,
       expiresAt: result.watch.expiresAt,
       currentWatchBoard: buildWatchBoard(db).filter((group) => group.symbol === symbol)
     };
@@ -1986,6 +2030,7 @@ export async function executeTool(db, run, name, args = {}) {
       opportunityCandidate.updatedAt = nowIso();
     }
     run.tradePlanId = plan.id;
+    run.tradePlanSymbol = plan.symbol;
     run.riskCheckId = risk.id;
     let armedResult = null;
     let armedGateReason = null;
@@ -2295,6 +2340,8 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     createdAt: nowIso()
   };
   run.traceId = run.id;
+  Object.defineProperty(run, "toolReceipts", { value: [], writable: true, configurable: true, enumerable: false });
+  run.triggeredWatches = (payload.triggeredWatches || []).map(compactTriggeredWatch).filter((watch) => watch.id && watch.symbol);
   const decisionContext = payload.decisionContext || createDecisionContext({
     trigger: triggerFromPayload(payload),
     source: payload.sessionId === "chat_autocycle" ? "agent_cycle" : "agent_chat",
@@ -2418,15 +2465,24 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       });
     }
     const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
+    const finalValidator = () => watchReviewCorrectionInstruction(run, toolTrace);
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
     } else if (provider.name === "anthropic") {
-      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools, session.id);
+      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools, session.id, finalValidator);
     } else {
-      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id);
+      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id, finalValidator);
+    }
+    const watchReviewClosure = evaluateWatchReviewClosure(run, toolTrace);
+    run.watchReviewClosure = watchReviewClosure;
+    if (watchReviewClosure.applicable && !watchReviewClosure.ok) {
+      run.decisionBlocked = true;
+      abortWatchAnalysis(db, run.id, `观察哨复核闭环未通过：${watchReviewClosure.reason}`);
+      appendTrace(db, "watch_review_guard", `观察哨复核闭环阻断：${watchReviewClosure.reason}`, "blocked");
+      finalText = `${finalText}\n\n**系统真实性闸门**：本轮观察哨复核未形成真实交易计划，也没有提交可验证的拒绝/失效记录，因此系统未创建新观察哨、未创建订单、未执行交易。`;
     }
     run.status = "completed";
-    advanceDecisionContext(decisionContext, "completed", run.tradePlanId ? `计划 ${run.tradePlanId}` : "分析完成");
+    advanceDecisionContext(decisionContext, "completed", run.tradePlanId ? `计划 ${run.tradePlanId}` : run.decisionBlocked ? "复核闭环阻断" : "分析完成");
     // 诚实守卫:模型(尤其弱模型)常在正文声称"已登记 N 个观察哨/哨兵在盯"却根本没调用 register_watch。
     // 只留 trace 不够——用户会被正文误导(实锤:正文说"已登记3个",右侧观察哨面板却空)。
     // 这里同时在可见回复末尾加注更正,让聊天文字与面板口径一致。
@@ -2434,11 +2490,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     // 收窄到显式登记声明,别再命中"若跌破 X 做空"这类正常条件分析(那是行情研判不是观察哨声明,
     // 之前的宽正则会对做交易计划的正常回复误报)。
     const watchClaimGuard = correctUnbackedWatchRegistration(finalText, toolTrace);
+    run.watchClaimCorrectionCount = watchClaimGuard.corrected ? 1 : 0;
     if (watchClaimGuard.corrected) {
       appendTrace(db, "agent_chat", "⚠ 回复声称新增/更新观察哨但本轮未成功调用 register_watch——已更正,现有观察哨不受影响", "warning");
       finalText = watchClaimGuard.text;
     }
     const accountFactGuard = enforceCurrentAccountFacts(db, finalText, toolTrace);
+    run.accountFactCorrectionCount = accountFactGuard.reasons.length;
     if (accountFactGuard.corrected) {
       finalText = accountFactGuard.text;
       appendTrace(db, "agent_chat", `账户事实守卫已更正模型回复：${accountFactGuard.reasons.join("、")}`, "warning");
@@ -2462,9 +2520,20 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     }
     const riskFactGuard = enforceCurrentRiskFacts(db, finalText);
     run.currentRiskSnapshot = riskFactGuard.snapshot;
+    run.riskFactCorrectionCount = riskFactGuard.violations.length;
     if (riskFactGuard.corrected) {
       finalText = riskFactGuard.text;
       appendTrace(db, "agent_chat", `动态风险事实守卫已更正 ${riskFactGuard.violations.length} 条过期陈述`, "warning");
+    }
+    const verifiedOutput = enforceVerifiedOutput({ db, run, content: finalText });
+    finalText = verifiedOutput.text;
+    run.verifiedOutputGuard = {
+      correctedCount: verifiedOutput.violations.length,
+      violations: verifiedOutput.violations.slice(0, 20),
+      structureEvidenceRefs: verifiedOutput.structureEvidenceRefs
+    };
+    if (verifiedOutput.corrected) {
+      appendTrace(db, "agent_chat", `真实性守卫已更正 ${verifiedOutput.violations.length} 条无依据结构/计划/订单陈述`, "warning");
     }
     if (run.capabilityPreflight && !run.capabilityPreflight.ok) {
       const gaps = run.capabilityPreflight.missing.map((item) => `${item.name}${item.symbol ? `（${item.symbol}）` : ""}`).join("、");
@@ -2479,6 +2548,18 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     if (session.id === "chat_autocycle" && run.capabilityCoverage) {
       finalText = appendCapabilityCoverageText(finalText, run.capabilityCoverage, db.system?.uiLang === "en" ? "en" : "zh");
     }
+    run.truthAudit = {
+      enabled: evidenceRequired || toolTrace.length > 0 || Boolean(run.tradePlanId),
+      evidenceBundleId: run.evidenceBundleId || null,
+      structureEvidenceCount: verifiedOutput.structureEvidenceRefs.length,
+      toolReceiptCount: toolTrace.length,
+      correctionCount: Number(run.watchClaimCorrectionCount || 0)
+        + Number(run.accountFactCorrectionCount || 0)
+        + Number(run.evidenceFactGuard?.correctedCount || 0)
+        + Number(run.riskFactCorrectionCount || 0)
+        + Number(run.verifiedOutputGuard?.correctedCount || 0)
+    };
+    finalText = appendTruthAuditText(finalText, run.truthAudit, db.system?.uiLang === "en" ? "en" : "zh");
     recordRunHistory(db, run, finalText);
   } catch (error) {
     run.status = "failed";
@@ -2565,14 +2646,22 @@ function ensureChatSession(db, sessionId, firstMessage = "") {
   return session;
 }
 
-async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools, sessionId) {
+async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools, sessionId, finalValidator = null) {
   const history = buildHistoryForLlm(db, sessionId);
   const messages = [...history, { role: "user", content: userText }];
+  let correctionAttempts = 0;
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const response = await anthropicTurn(model, messages, systemPrompt, tools);
     const textParts = response.content.filter((block) => block.type === "text").map((block) => block.text);
     const toolUses = response.content.filter((block) => block.type === "tool_use");
     if (response.stop_reason !== "tool_use" || !toolUses.length) {
+      const correction = finalValidator?.();
+      if (correction && correctionAttempts < 1) {
+        messages.push({ role: "assistant", content: response.content });
+        messages.push({ role: "user", content: correction });
+        correctionAttempts += 1;
+        continue;
+      }
       return textParts.join("\n").trim() || "（模型未返回内容）";
     }
     messages.push({ role: "assistant", content: response.content });
@@ -2583,12 +2672,20 @@ async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, 
   return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
 }
 
-async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, sessionId) {
+async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, sessionId, finalValidator = null) {
   const history = buildHistoryForLlm(db, sessionId);
   const messages = [...history, { role: "user", content: userText }];
+  let correctionAttempts = 0;
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt, tools);
     if (!message.tool_calls?.length) {
+      const correction = finalValidator?.();
+      if (correction && correctionAttempts < 1) {
+        messages.push(message);
+        messages.push({ role: "user", content: correction });
+        correctionAttempts += 1;
+        continue;
+      }
       return (message.content || "").trim() || "（模型未返回内容）";
     }
     messages.push(message);
@@ -2715,6 +2812,15 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
       result = { error: error.message };
     }
   }
+  if (name === "analyze_market_structure" && !result?.error && result?.available !== false) {
+    const symbol = normalizeEvidenceSymbol(args?.symbol || result?.symbol);
+    result = {
+      ...result,
+      evidenceRef: result.evidenceRef || `structure:${symbol}:${result.analyzedAt || startedAtIso}`
+    };
+  }
+  run.toolReceipts ||= [];
+  run.toolReceipts.push({ name, args: sanitizeArgs(args), result });
   recordCapabilityResult(run, name, args, result);
   if (name === "analyze_market_structure" && !result?.error && result?.available !== false) {
     advanceDecisionContext(run.decisionContext, "deep_analysis", `${normalizeEvidenceSymbol(args.symbol)} ${result.selectedRole || "auto"} 确定性多周期结构已完成`);
@@ -2753,7 +2859,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "sync_market") return `${result.symbol} 现价 ${result.price ?? "-"}，${result.candleCount} 根 K 线（${result.timeframe}）`;
   if (name === "get_microstructure") return `资金费率 ${result.fundingRatePct ?? "-"}%，买盘占比 ${result.bookImbalancePct ?? "-"}%。${result.interpretation || ""}`;
   if (name === "get_token_profile") return result.ok === false ? `画像不可用：${result.reason || result.error || "-"}` : result.interpretation || `性格 ${result.character}，波动 ${result.volState}`;
-  if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `确定性结构 ${result.bias || "?"}（${result.selectedRole === "day_trader" ? "日内1H/15m/5m" : "波段1D/4H/1H"}，4H ${result.structure4h || "?"}），${result.phase || ""}；影子角色建议 ${result.roleSuitability?.recommendation || "-"}`;
+  if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `确定性结构 ${result.bias || "?"}（${result.selectedRole === "day_trader" ? "日内1H/15m/5m" : "波段1D/4H/1H"}，4H ${result.structure4h || "?"}），${result.phase || ""}；证据 ${result.evidenceRef || "missing"}；影子角色建议 ${result.roleSuitability?.recommendation || "-"}`;
   if (name === "get_global_market") return result.interpretation || `OKX 上涨家数 ${result.breadthPct ?? "-"}%，涨跌中位数 ${result.medianChangePct ?? "-"}%`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
   if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
@@ -2792,7 +2898,8 @@ function summarizeToolResult(name, result = {}) {
   if (name === "get_events") return `${Array.isArray(result) ? result.length : 0} 个事件`;
   if (name === "list_risk_incidents") return `${Array.isArray(result) ? result.length : 0} 个未处理风险事件`;
   if (name === "resolve_risk_incidents") return `已标记 ${result.closed || 0} 个事件为已处理，剩余 ${result.remaining ?? "-"}`;
-  if (name === "register_watch") return `${result.status === "updated" ? "更新" : "已挂"}观察哨 ${result.watchId || ""}：${result.watch || "-"}${result.activeWatches?.length ? `（当前 ${result.activeWatches.length} 个活跃）` : ""}`;
+  if (name === "register_watch") return `${result.status === "updated" ? "更新" : "已挂"}观察哨 ${result.watchId || ""}：${result.watch || "-"}｜${result.setupType || "setup未知"}·${result.traderRole || "角色未知"}｜判断链改写 ${result.reviewDepth ?? 0}/${WATCH_REVIEW_MAX_REARMS}${result.lineageResetReason ? `（新链：${result.lineageResetReason}）` : ""}${result.activeWatches?.length ? `（当前 ${result.activeWatches.length} 个活跃）` : ""}`;
+  if (name === "record_watch_review") return result.error ? `失败：${result.error}` : `已记录经证据验证的观察哨复核：${result.review?.symbol || "-"} ${result.review?.outcome || "-"}（${result.review?.reasonCode || "-"}）`;
   if (name === "cancel_watch") return `已撤销观察哨：${result.watch || "-"}`;
   if (name === "create_task") return result.status === "ok"
     ? `已建定时任务「${result.name}」：${result.schedule} · 处理器 ${result.handler}`

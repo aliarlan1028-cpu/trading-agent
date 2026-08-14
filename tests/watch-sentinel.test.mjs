@@ -68,6 +68,31 @@ test("登记校验:白名单/已成立条件/离谱价位/上限全部拒绝", (
   assert.match(registerWatch(db, { symbol: "BTC/USDT", kind: "price_above", level: 66500, note: "再一个" }, 65079).error, new RegExp(`上限 ${WATCH_LIMITS.maxPerSymbol}`));
 });
 
+test("观察哨完整持久化判断链指纹、角色窗口和重置审计", () => {
+  const db = dbFixture();
+  const result = registerWatch(db, {
+    symbol: "BTC/USDT", kind: "price_below", level: 64800, note: "回踩失败后复核空头",
+    direction: "short", setupType: "breakdown_retest", traderRole: "day_trader",
+    thesis: "15m 下破后等待回踩", triggerMeaning: "核对回踩衰竭与盈亏比",
+    lineageVersion: 2, lineageStartedAt: "2026-08-14T00:00:00.000Z",
+    thesisFingerprint: "watch-thesis-v2:test", structureFingerprint: "structure-test",
+    structureEvidenceRef: "structure:btc:2", previousRootWatchId: "watch_old_root",
+    reviewOfWatchIds: ["watch_old"], parentWatchId: "watch_old", reviewDepth: 0,
+    reviewReasonCode: "structure_conflict", lineageResetReason: "deterministic_structure_changed",
+    lineageResetEvidenceRef: "structure:btc:2", rearmWindowHours: 12, ttlHours: 4
+  }, 65079);
+  assert.equal(result.ok, true);
+  assert.equal(result.watch.rootWatchId, result.watch.id);
+  assert.equal(result.watch.lineageVersion, 2);
+  assert.equal(result.watch.setupType, "breakdown_retest");
+  assert.equal(result.watch.traderRole, "day_trader");
+  assert.equal(result.watch.thesisFingerprint, "watch-thesis-v2:test");
+  assert.equal(result.watch.structureFingerprint, "structure-test");
+  assert.equal(result.watch.previousRootWatchId, "watch_old_root");
+  assert.equal(result.watch.lineageResetReason, "deterministic_structure_changed");
+  assert.equal(result.watch.rearmWindowHours, 12);
+});
+
 test("同轮观察哨按币种归组且只有一个主哨，新分析整体取代旧分析", () => {
   const db = dbFixture();
   const first = registerWatch(db, {
@@ -197,6 +222,9 @@ test("实时行情命中与分钟哨兵共用通知链，必定写入站内通�
   const published = publishWatchSweep(db, sweep, { autoAnalyze: true, actor: "MarketStream", realtime: true });
   assert.equal(published.triggered, 1);
   assert.equal(db.notifications[0].eventType, "watch_trigger");
+  assert.match(db.notifications[0].title, /价格条件命中/);
+  assert.match(db.notifications[0].body, /仅价格到位/);
+  assert.match(db.notifications[0].body, /量能、K线收盘、形态与盈亏比尚未确认/);
   assert.match(db.notifications[0].body, /原判断/);
   assert.equal(db.telegramWatchOutbox.length, 1);
   assert.equal(db.telegramWatchOutbox[0].eventType, "triggered");
