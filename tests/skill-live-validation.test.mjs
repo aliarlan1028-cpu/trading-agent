@@ -62,6 +62,41 @@ test("真实成绩驱动:达标自动转正、不达标自动退役", () => {
   assert.equal(skill.approval?.fingerprint, skill.fingerprint, "转正应带批准指纹,便于后续 active 选用");
 });
 
+test("知识技能按完整生命周期净值晋退，费用翻转毛盈利时不得转正", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  skill.status = "live_probation";
+  skill.executable = true;
+  skill.approval = { approved: true, fingerprint: skill.fingerprint };
+  const addFeeFlip = (index) => {
+    const plan = { id: `fee-plan-${index}`, knowledgeSkills: [{ skillId: skill.id, version: skill.version, fingerprint: skill.fingerprint }] };
+    db.tradePlans.push(plan);
+    db.fills.push(
+      { id: `fee-entry-${index}`, kind: "entry", executionOrderId: `fee-exec-${index}`, tradePlanId: plan.id, feeUsdt: 0.8, createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
+      { id: `fee-close-${index}`, kind: "close", executionOrderId: `fee-exec-${index}`, tradePlanId: plan.id, realizedPnl: 1, feeUsdt: 0.4, createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
+    );
+  };
+  for (let index = 0; index < 6; index += 1) addFeeFlip(index);
+  const first = refreshKnowledgeSkillAttribution(db);
+  assert.equal(first.graduated.length, 0);
+  assert.equal(skill.status, "live_probation");
+  assert.equal(skill.liveMetrics.wins, 0);
+  assert.ok(Math.abs(skill.liveMetrics.weightedPnl + 1.2) < 1e-9);
+  const attribution = db.knowledge.skillAttributions[0];
+  assert.equal(attribution.grossRealizedPnl, 1);
+  assert.ok(Math.abs(attribution.netRealizedPnl + 0.2) < 1e-9);
+  assert.equal(attribution.financialSchemaVersion, 2);
+
+  for (let index = 6; index < 10; index += 1) addFeeFlip(index);
+  const second = refreshKnowledgeSkillAttribution(db);
+  assert.equal(second.graduated.length, 0);
+  assert.ok(second.degraded.includes(skill.id));
+  assert.equal(skill.status, "degraded");
+  assert.equal(skill.executable, false);
+  assert.equal(skill.liveMetrics.trades, 10);
+  assert.equal(skill.liveMetrics.wins, 0);
+});
+
 test("试用技能真实亏损达阈值自动退役(降级)", () => {
   const db = dbFixture();
   const skill = compileTradingMethod(db, "method-1");
@@ -77,6 +112,37 @@ test("试用技能真实亏损达阈值自动退役(降级)", () => {
   assert.ok(r.degraded.includes(skill.id));
   assert.equal(skill.status, "degraded");
   assert.equal(skill.executable, false);
+});
+
+test("已迁 v2 的孤儿实盘归因失去底层证据后清空指标并要求重新验证", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  skill.status = "active";
+  skill.executable = true;
+  skill.liveMetrics = { trades: 10, wins: 10, winRatePct: 100, weightedPnl: 10, profitFactor: null };
+  db.knowledge.skillAttributions.push({
+    id: "orphan-v2", fillKey: "missing-lifecycle", skillId: skill.id, skillVersion: skill.version,
+    grossRealizedPnl: 10, netRealizedPnl: 9, realizedPnl: 9, weightedPnl: 9,
+    financialSchemaVersion: 2, financialBasis: "completed_trade_lifecycle/net_after_recorded_entry_close_fees_and_funding"
+  });
+  const first = refreshKnowledgeSkillAttribution(db);
+  const orphan = db.knowledge.skillAttributions[0];
+  assert.equal(orphan.grossRealizedPnl, 10);
+  assert.equal(orphan.netRealizedPnl, null);
+  assert.equal(orphan.realizedPnl, null);
+  assert.equal(orphan.weightedPnl, null);
+  assert.equal(skill.liveMetrics.trades, 0);
+  assert.equal(skill.liveMetrics.wins, 0);
+  assert.equal(skill.liveMetrics.profitFactor, null);
+  assert.match(skill.liveMetrics.basis, /needs_revalidation/);
+  assert.equal(skill.needsRevalidation, true);
+  assert.equal(skill.status, "degraded");
+  assert.ok(first.degraded.includes(skill.id));
+
+  const second = refreshKnowledgeSkillAttribution(db);
+  assert.equal(second.migrated, 0, "重复迁移不得反复改写孤儿财务字段");
+  assert.equal(second.degraded.length, 0, "重复迁移不得重复降级");
+  assert.equal(skill.liveMetrics.trades, 0);
 });
 
 test("绑定到计划:试用技能信号触发即可绑定(用于真实成绩归因)", () => {

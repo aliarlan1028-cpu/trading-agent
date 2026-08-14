@@ -110,7 +110,7 @@ function groupStats(items, keyFn) {
   for (const item of items) {
     const key = keyFn(item) || "未分类";
     const bucket = groups.get(key) || { key, trades: 0, wins: 0, losses: 0, pnl: 0, grossWin: 0, grossLoss: 0 };
-    const pnl = number(item.realizedPnl, 0);
+    const pnl = number(item.netRealizedPnl, 0);
     bucket.trades += 1;
     bucket.pnl += pnl;
     if (pnl > 0) {
@@ -138,7 +138,7 @@ function average(items, key) {
 }
 
 function buildLossClusters(closes) {
-  const losses = closes.filter((fill) => number(fill.realizedPnl, 0) < 0);
+  const losses = closes.filter((fill) => number(fill.netRealizedPnl, 0) < 0);
   const clusters = [
     {
       key: "止损/风控缺失",
@@ -152,7 +152,8 @@ function buildLossClusters(closes) {
     },
     {
       key: "滑点/成本侵蚀",
-      matcher: (fill) => Math.abs(number(fill.slippageBps, 0)) >= 8 || Math.abs(number(fill.feeUsdt, 0)) > Math.abs(number(fill.realizedPnl, 0)) * 0.25,
+      matcher: (fill) => Math.abs(number(fill.slippageBps, 0)) >= 8
+        || (Math.abs(number(fill.feeUsdt, 0)) + Math.abs(number(fill.entryFeeUsdt, 0))) > Math.abs(number(fill.grossRealizedPnl, 0)) * 0.25,
       suggestion: "复核订单类型、成交深度、拆单和手续费等级。"
     },
     {
@@ -163,7 +164,7 @@ function buildLossClusters(closes) {
   ];
   return clusters.map((cluster) => {
     const items = losses.filter(cluster.matcher);
-    const pnl = items.reduce((sum, item) => sum + number(item.realizedPnl, 0), 0);
+    const pnl = items.reduce((sum, item) => sum + number(item.netRealizedPnl, 0), 0);
     return { key: cluster.key, count: items.length, pnl: Number(pnl.toFixed(2)), suggestion: cluster.suggestion };
   }).filter((item) => item.count > 0);
 }
@@ -171,7 +172,18 @@ function buildLossClusters(closes) {
 export function buildReviewAnalytics(db) {
   // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
   const closes = groupClosedTradeLifecycles(db.fills || [])
-    .map((item) => item.representative)
+    .map((lifecycle) => {
+      const representative = { ...lifecycle.representative };
+      delete representative.realizedPnl;
+      return {
+        ...representative,
+        grossRealizedPnl: number(lifecycle.realizedPnl, 0),
+        netRealizedPnl: number(lifecycle.netRealizedPnl, 0),
+        entryFeeUsdt: number(lifecycle.entryFeeUsdt, 0),
+        feeUsdt: number(lifecycle.feeUsdt, 0),
+        fundingFeeUsdt: number(lifecycle.fundingFeeUsdt, 0)
+      };
+    })
     .filter((fill) => fill.tradePlanId || fill.planId || fill.executionOrderId);
   const enriched = closes.map((fill) => {
     const plan = (db.tradePlans || []).find((item) => item.id === fill.tradePlanId || item.id === fill.planId) || {};
@@ -188,7 +200,7 @@ export function buildReviewAnalytics(db) {
       exitReason: fill.exitReason || fill.reason || "未记录"
     };
   });
-  const totalLoss = enriched.filter((fill) => number(fill.realizedPnl, 0) < 0).reduce((sum, fill) => sum + number(fill.realizedPnl, 0), 0);
+  const totalLoss = enriched.filter((fill) => number(fill.netRealizedPnl, 0) < 0).reduce((sum, fill) => sum + number(fill.netRealizedPnl, 0), 0);
   const strategy = groupStats(enriched, (fill) => fill.strategy);
   const strategyVersion = groupStats(enriched, (fill) => fill.strategyVersionKey);
   const symbol = groupStats(enriched, (fill) => fill.symbol);
@@ -198,7 +210,9 @@ export function buildReviewAnalytics(db) {
     avgMaeUsdt: average(enriched, "maeUsdt"),
     avgMfeUsdt: average(enriched, "mfeUsdt"),
     avgSlippageBps: average(enriched, "slippageBps"),
-    totalFeesUsdt: Number(enriched.reduce((sum, fill) => sum + number(fill.feeUsdt, 0), 0).toFixed(2)),
+    totalFeesUsdt: Number(enriched.reduce((sum, fill) => sum + number(fill.feeUsdt, 0) + number(fill.entryFeeUsdt, 0), 0).toFixed(2)),
+    totalEntryFeesUsdt: Number(enriched.reduce((sum, fill) => sum + number(fill.entryFeeUsdt, 0), 0).toFixed(2)),
+    totalCloseFeesUsdt: Number(enriched.reduce((sum, fill) => sum + number(fill.feeUsdt, 0), 0).toFixed(2)),
     totalFundingUsdt: Number(enriched.reduce((sum, fill) => sum + number(fill.fundingFeeUsdt, 0), 0).toFixed(2)),
     avgHoldingMinutes: average(enriched, "holdingMinutes")
   };
@@ -207,10 +221,10 @@ export function buildReviewAnalytics(db) {
     symbol: fill.symbol,
     strategy: fill.strategy,
     strategyVersionKey: fill.strategyVersionKey,
-    pnl: number(fill.realizedPnl, 0),
+    pnl: number(fill.netRealizedPnl, 0),
     entryRationale: fill.entryRationale || "未记录入场理由",
     exitReason: fill.exitReason || "未记录出场原因",
-    bias: !fill.entryRationale || fill.exitReason === "未记录" ? "缺少可验证字段" : number(fill.realizedPnl, 0) < 0 ? "需验证入场假设是否失效" : "入场假设暂时有效"
+    bias: !fill.entryRationale || fill.exitReason === "未记录" ? "缺少可验证字段" : number(fill.netRealizedPnl, 0) < 0 ? "需验证入场假设是否失效" : "入场假设暂时有效"
   }));
   const lossClusters = buildLossClusters(enriched);
   const ruleContribution = (db.riskRules || []).map((rule) => {
@@ -442,7 +456,9 @@ export async function runTradeReflection(db) {
     const fill = lifecycle.representative;
     const review = markTradeReviewProcessing(db, lifecycle);
     const plan = (db.tradePlans || []).find((p) => p.id === fill.tradePlanId || p.id === fill.planId) || {};
-    const pnl = Number(fill.realizedPnl);
+    // 复盘成败、摘要与学习必须使用完整生命周期净值（开/平仓费 + 资金费），
+    // 不能拿交易所价格毛盈亏给用户或策略学习链路下结论。
+    const pnl = Number(lifecycle.netRealizedPnl);
     const win = pnl > 0;
     const dir = fill.direction === "short" || fill.direction === "空" ? "做空" : "做多";
     const slip = Number(fill.slippageBps);

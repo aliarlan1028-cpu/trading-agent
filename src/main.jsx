@@ -325,7 +325,7 @@ function App() {
   const [active, setActive] = useState("chat");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
-  const [activeSettingsTab, setActiveSettingsTab] = useState("base");
+  const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
@@ -353,7 +353,7 @@ function App() {
     // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
     if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
     if (next === "systemSettings:exchange") { setActiveSettingsTab("exchange"); setActive("systemSettings"); return; }
-    if (next === "systemSettings") setActiveSettingsTab("base");
+    if (next === "systemSettings") setActiveSettingsTab("overview");
     setActive(next);
   }
   const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };

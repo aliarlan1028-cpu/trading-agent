@@ -1,6 +1,6 @@
 // AI 交易行为画像 · 量化引擎(确定性,不依赖 LLM)。
 // 从真实持久数据(fills/plans)算"AI 自己的交易行为指标"——比 okx-journal 强在:我们有
-// 亏损归因(策略/执行/市场)、真实杠杆(plan)、持仓时长(入场↔平仓时间差)、ROI(realizedPnl÷保证金)。
+// 亏损归因(策略/执行/市场)、真实杠杆(plan)、持仓时长(入场↔平仓时间差)、ROI(净盈亏÷保证金)。
 // LLM 叙述层单独在别处用主模型(deepseek)基于本结果 + 入场理由/复盘生成"性格+致命习惯+纪律"。
 import { id, nowIso, appendAudit } from "./store.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
@@ -15,8 +15,9 @@ export function buildClosedTrades(db) {
   const fills = db.fills || [];
   const plans = db.tradePlans || [];
   // 一次仓位生命周期可能有多次减仓；画像必须按完整交易聚合，否则胜率、杠杆习惯和样本量都会被部分平仓扭曲。
-  const closes = groupClosedTradeLifecycles(fills).map((item) => item.representative);
-  return closes.map((c) => {
+  const closes = groupClosedTradeLifecycles(fills);
+  return closes.map((lifecycle) => {
+    const c = lifecycle.representative;
     const plan = plans.find((p) => p.id === c.planId || p.id === c.tradePlanId) || {};
     const entry = fills.find((f) => f.kind === "entry" && (
       f.executionOrderId === c.executionOrderId
@@ -24,17 +25,18 @@ export function buildClosedTrades(db) {
       || f.planId === (c.planId || c.tradePlanId)
     ));
     const leverage = num(plan.leverage) ?? num(c.leverage);
-    const pnl = num(c.realizedPnl);
+    const grossPnl = num(lifecycle.realizedPnl);
+    const pnl = num(lifecycle.netRealizedPnl);
     const notional = num(c.notionalUsdt);
     const margin = notional !== null && leverage ? notional / leverage : null;
-    const roiPct = num(c.roiPct) ?? (margin ? Number(((pnl / margin) * 100).toFixed(2)) : null);
+    const roiPct = num(c.netRoiPct) ?? (margin ? Number(((pnl / margin) * 100).toFixed(2)) : null);
     let holdMinutes = num(c.holdingMinutes);
     if (holdMinutes === null && entry?.createdAt && c.createdAt) {
       const ms = new Date(c.createdAt).getTime() - new Date(entry.createdAt).getTime();
       if (Number.isFinite(ms) && ms > 0) holdMinutes = Math.round(ms / 60000);
     }
     return {
-      symbol: c.symbol, direction: dirCanon(c.direction), pnl, win: pnl > 0,
+      symbol: c.symbol, direction: dirCanon(c.direction), grossPnl, pnl, win: pnl > 0,
       leverage, roiPct, holdMinutes, regime: c.regime || "未知",
       strategy: c.strategy || null, lossAttribution: c.lossAttribution || null,
       entryPrice: num(entry?.price), exitPrice: num(c.price),
@@ -110,9 +112,11 @@ export async function generateBehaviorNarrative(db, profile) {
   if (!profile || !profile.trades) return null;
   const { llmComplete } = await import("./agentChat.mjs");
   const recent = groupClosedTradeLifecycles(db.fills || [])
-    .map((item) => item.representative)
     .slice(0, 12)
-    .map((f) => ({ symbol: f.symbol, dir: f.direction, pnl: f.realizedPnl, regime: f.regime, lossAttr: f.lossAttribution || null, rationale: String(f.entryRationale || "").slice(0, 160), deep: String(f.deepReflection || "").slice(0, 200) }));
+    .map((item) => {
+      const f = item.representative;
+      return { symbol: f.symbol, dir: f.direction, grossPnl: item.realizedPnl, netPnl: item.netRealizedPnl, regime: f.regime, lossAttr: f.lossAttribution || null, rationale: String(f.entryRationale || "").slice(0, 160), deep: String(f.deepReflection || "").slice(0, 200) };
+    });
   const sys = "你是严格的交易行为分析师 + 风控教练。只根据给定的量化画像与真实成交做归纳,绝不编造数字或习惯。输出必须具体、直指要害、可执行,禁止空话套话。样本少就在 blindSpots 里说明、不硬下结论。只输出 JSON。";
   const prompt = `给一个 AI 自主交易员做"照镜子"式行为画像。\n【量化画像】${JSON.stringify(profile)}\n【近期成交(含入场理由与深度复盘)】${JSON.stringify(recent)}\n输出纯 JSON:{"persona":"交易性格一句话(激进/赌徒/稳健/保守 + 依据)","fatalHabits":["致命习惯,每条带证据数字",最多3条],"blindSpots":"数据盲区/样本是否足够一句","disciplines":["下一步可执行纪律,具体到怎么做",正好3条]}。中文,纯 JSON。`;
   const raw = await llmComplete(prompt, sys);

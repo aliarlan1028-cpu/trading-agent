@@ -52,3 +52,21 @@ test("受信任 skill 实盘达标自动转正(与流水线同生命周期)", ()
   assert.equal(db.skills[0].trustStatus, "active");
   assert.equal(db.skills[0].trusted, true, "转正后仍受信任");
 });
+
+test("受信任 skill 的毛盈利被开平仓成本翻为净亏损时不得转正", () => {
+  const db = {
+    skills: [{ id: "sk_fee_flip", name: "成本后亏损信号", native: false, trusted: true, trustStatus: "live_probation", status: "已启用" }],
+    tradePlans: Array.from({ length: 10 }, (_, i) => ({ id: `ff${i}`, adoptedTrustedSkillIds: ["sk_fee_flip"] })),
+    fills: Array.from({ length: 10 }, (_, i) => [
+      { id: `entry-${i}`, kind: "entry", executionOrderId: `exec-${i}`, tradePlanId: `ff${i}`, feeUsdt: 0.8, createdAt: `2026-08-01T${String(i).padStart(2, "0")}:00:00Z` },
+      { id: `close-${i}`, kind: "close", executionOrderId: `exec-${i}`, tradePlanId: `ff${i}`, realizedPnl: 1, feeUsdt: 0.4, createdAt: `2026-08-02T${String(i).padStart(2, "0")}:00:00Z` }
+    ]).flat(),
+    executionOrders: [], auditLogs: [], notifications: []
+  };
+  const result = refreshTrustedSkillMetrics(db);
+  assert.equal(result.graduated.length, 0);
+  assert.ok(result.untrusted.includes("sk_fee_flip"));
+  assert.equal(db.skills[0].liveMetrics.wins, 0);
+  assert.equal(db.skills[0].liveMetrics.netRealizedPnl, -2);
+  assert.equal(db.skills[0].liveMetrics.grossRealizedPnl, 10);
+});

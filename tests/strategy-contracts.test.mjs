@@ -39,6 +39,25 @@ test("策略目录把验证依据和净记录成本后的真实归因分层展�
   assert.equal(catalog.strategies[0].lifecycle.live.basis, "closed_trade_lifecycle/recorded_costs");
 });
 
+test("策略合同以完整生命周期净值裁定，费用翻转毛盈利时阻止晋级", () => {
+  const db = {
+    strategyProfiles: [],
+    paperSessions: [{ strategyId: "trend", status: "passed", metrics: { trades: 30 }, updatedAt: "2026-08-01T00:00:00Z" }],
+    tradePlans: Array.from({ length: 10 }, (_, index) => ({ id: `fee-plan-${index}`, strategy: "trend" })),
+    executionOrders: [],
+    fills: Array.from({ length: 10 }, (_, index) => [
+      { id: `fee-entry-${index}`, kind: "entry", tradePlanId: `fee-plan-${index}`, executionOrderId: `fee-exec-${index}`, feeUsdt: 0.8, createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` },
+      { id: `fee-close-${index}`, kind: "close", tradePlanId: `fee-plan-${index}`, executionOrderId: `fee-exec-${index}`, realizedPnl: 1, feeUsdt: 0.4, createdAt: `2026-08-03T${String(index).padStart(2, "0")}:00:00Z` }
+    ]).flat()
+  };
+  const lifecycle = deriveStrategyLifecycle(db, "trend");
+  assert.equal(lifecycle.stage, "degraded");
+  assert.equal(lifecycle.live.wins, 0);
+  assert.equal(lifecycle.live.grossRealizedPnlUsdt, 10);
+  assert.equal(lifecycle.live.recordedEntryFeesUsdt, 8);
+  assert.equal(lifecycle.live.netAfterRecordedCostsUsdt, -2);
+});
+
 test("市场状态路由同时校验策略家族和方向", () => {
   assert.equal(strategyMatchesRegime({ family: "trend", direction: "long" }, "温和上行"), true);
   assert.equal(strategyMatchesRegime({ family: "trend", direction: "short" }, "温和上行"), false);

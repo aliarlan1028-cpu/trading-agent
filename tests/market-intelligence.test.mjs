@@ -47,6 +47,15 @@ test("来源健康读取不重复累加失败次数，并能判定陈旧", () =>
   assert.equal(second.health, "stale");
 });
 
+test("原始状态 ok 但成功时间过期时统一派生为 stale", () => {
+  const db = dbFixture();
+  const checkedAt = new Date(Date.now() - 3 * 3_600_000).toISOString();
+  recordSourceHealth(db, { id: "old-ok", name: "old ok", category: "news", required: true, staleAfterMs: 60_000 }, { status: "ok", checkedAt, lastDataAt: checkedAt });
+  const source = sourceHealthSummary(db).find((item) => item.sourceId === "old-ok");
+  assert.equal(source.status, "ok");
+  assert.equal(source.health, "stale");
+});
+
 test("Daily Brief 是可追溯分析上下文，不会直接成为交易信号", () => {
   const db = dbFixture();
   const now = new Date().toISOString();

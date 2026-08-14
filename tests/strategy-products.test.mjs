@@ -112,11 +112,15 @@ test("成交只按钉住的策略版本归因，未记录初始风险时不伪�
   bindPlanToStrategyProduct(state, plan);
   state.tradePlans.push(plan);
   state.executionOrders.push({ id: "e1", planId: "p1", strategyVersionId: plan.strategyVersionId });
+  state.fills.push({ id: "entry", kind: "entry", executionOrderId: "e1", tradePlanId: "p1", feeUsdt: 0.5, createdAt: "2026-08-10T00:00:00Z" });
   state.fills.push({ id: "f1", kind: "close", executionOrderId: "e1", tradePlanId: "p1", realizedPnl: 3, feeUsdt: 0.2, partial: false, createdAt: "2026-08-10T01:00:00Z" });
   state.fills.push({ id: "external", kind: "close", realizedPnl: 99, partial: false, createdAt: "2026-08-10T02:00:00Z" });
   const metrics = strategyProductMetrics(state, "trend_pullback@1.0.0");
   assert.equal(metrics.closedTrades, 1);
-  assert.equal(metrics.netPnlUsdt, 2.8);
+  assert.equal(metrics.grossPnlUsdt, 3);
+  assert.equal(metrics.recordedEntryFeesUsdt, 0.5);
+  assert.equal(metrics.recordedCloseFeesUsdt, 0.2);
+  assert.equal(metrics.netPnlUsdt, 2.3);
   assert.equal(metrics.expectancyR, null);
   assert.equal(metrics.rSampleCount, 0);
   const evidence = assessStrategyProductEvidence(STRATEGY_PRODUCTS.trend_pullback, metrics);
@@ -125,6 +129,26 @@ test("成交只按钉住的策略版本归因，未记录初始风险时不伪�
   const catalog = buildStrategyProductCatalog(state);
   assert.equal(catalog.summary.validatedActive, 0);
   assert.equal(catalog.summary.liveObservation, 5);
+});
+
+test("仅带 executionOrderId 的成交复用同一计划解析并保留 R 与回撤基准", () => {
+  const state = db();
+  syncNativeStrategyProducts(state);
+  const plan = { id: "risk-plan", direction: "long", scenarioType: "trend_pullback", initialRiskUsdt: 2, accountEquityAtEntryUsdt: 100 };
+  bindPlanToStrategyProduct(state, plan);
+  state.tradePlans.push(plan);
+  state.executionOrders.push({ id: "risk-order", planId: plan.id, strategyVersionId: plan.strategyVersionId });
+  state.fills.push(
+    { id: "risk-entry", kind: "entry", executionOrderId: "risk-order", feeUsdt: 0, createdAt: "2026-08-10T00:00:00Z" },
+    { id: "risk-close", kind: "close", executionOrderId: "risk-order", realizedPnl: -1, feeUsdt: 0, createdAt: "2026-08-10T01:00:00Z" }
+  );
+  const metrics = strategyProductMetrics(state, "trend_pullback@1.0.0");
+  assert.equal(metrics.closedTrades, 1);
+  assert.equal(metrics.rSampleCount, 1);
+  assert.equal(metrics.expectancyR, -0.5);
+  assert.equal(metrics.maxDrawdownUsdt, 1);
+  assert.equal(metrics.maxDrawdownPct, 1);
+  assert.equal(metrics.equityBasisUsdt, 100);
 });
 
 test("证据未达标时不能把策略人工改成已验证运行", () => {

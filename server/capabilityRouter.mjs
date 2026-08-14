@@ -191,12 +191,12 @@ export function capabilityCoverageText(coverage = {}, language = "zh") {
   if (language === "en") return [
     `Coverage: Whitelist ${wl.analyzed || 0}/${wl.expected || 0} | Watches ${watches.analyzed || 0}/${watches.expected || 0} | Full market ${scan.completed ? `${scan.universe || 0} instruments, Top ${scan.candidates || 0}` : `not completed${scan.error ? ` (${scan.error})` : ""}`}`,
     `External candidates: ${candidates.length ? `${candidates.map((item) => `${item.symbol} ${item.side || "neutral"}${item.score != null ? ` ${item.score}` : ""}`).join(", ")} | reviewed ${analyzedCandidates}/${candidates.length}` : "None passed the funnel for deep review"}`,
-    `Capability calls: ${coverage.covered || 0}/${coverage.required || 0}${missing.length ? ` | Missing: ${missing.join(", ")}` : " | Complete"}`
+    `Evidence checks this run: ${coverage.covered || 0}/${coverage.required || 0}${missing.length ? ` | Missing: ${missing.join(", ")}` : " complete"} | Dynamically selected for this task; not a fixed capability set`
   ].join("\n");
   return [
     `巡检范围：白名单 ${wl.analyzed || 0}/${wl.expected || 0}｜观察哨 ${watches.analyzed || 0}/${watches.expected || 0}｜全市场 ${scan.completed ? `${scan.universe || 0} 个（Top ${scan.candidates || 0}）` : `未完成${scan.error ? `（${scan.error}）` : ""}`}`,
     `视野外候选：${candidates.length ? `${candidates.map((item) => `${item.symbol} ${item.side === "short" ? "偏空" : item.side === "long" ? "偏多" : "中性"}${item.score != null ? ` ${item.score}` : ""}`).join("、")}｜深度复核 ${analyzedCandidates}/${candidates.length}` : "本轮漏斗没有需要深度复核的白名单外候选"}`,
-    `能力调用：${coverage.covered || 0}/${coverage.required || 0}${missing.length ? `｜缺失 ${missing.join("、")}` : "｜完整"}`
+    `本轮证据检查：${coverage.covered || 0}/${coverage.required || 0}${missing.length ? ` 项完成｜缺失 ${missing.join("、")}` : " 项完成"}｜按本次任务动态选择，并非固定能力数`
   ].join("\n");
 }
 

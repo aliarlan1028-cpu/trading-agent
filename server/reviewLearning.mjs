@@ -3,6 +3,7 @@ import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 6;
 const MIN_COMPARABLE_SAMPLE = 5;
+const REVIEW_CONTEXT_SCHEMA_VERSION = 2;
 
 function finite(value) {
   return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
@@ -63,20 +64,39 @@ function reviewForMemory(db, memory = {}) {
   return (db.reviews || []).find((row) => row.memoryItemId === memory.id || row.id === memory.reviewId) || {};
 }
 
+function lifecycleForMemory(db, memory = {}, fill = {}, review = {}) {
+  const keys = new Set([
+    review.tradeLifecycleKey,
+    fill.executionOrderId,
+    fill.tradePlanId,
+    fill.planId,
+    fill.positionId
+  ].filter(Boolean).map(String));
+  const fillIds = new Set([memory.fillId, ...(memory.fillIds || []), ...(review.fillIds || [])].filter(Boolean));
+  return groupClosedTradeLifecycles(db.fills || []).find((lifecycle) => (
+    keys.has(String(lifecycle.key))
+    || lifecycle.fills.some((row) => fillIds.has(row.id))
+  )) || null;
+}
+
 export function reviewMemoryMetadata(db, memory = {}) {
   const explicit = memory.reviewContext || {};
   const fill = fillForMemory(db, memory);
   const plan = planForMemory(db, memory);
   const review = reviewForMemory(db, memory);
+  const lifecycle = lifecycleForMemory(db, memory, fill, review);
   const symbol = normalizeSymbol(explicit.symbol || memory.symbol || fill.symbol || plan.symbol || review.symbol);
   const setupType = normalizeSetup(explicit.setupType || memory.setupType || plan.scenarioType || plan.decisionContext?.setupType || plan.strategyRef?.scenarioType);
   const strategyProductId = explicit.strategyProductId || memory.strategyProductId || fill.strategyProductId || plan.strategyProductId || plan.strategyRef?.productId || null;
   const timeframe = normalizeTimeframe(explicit.timeframe || memory.timeframe || fill.timeframe || plan.timeframe || plan.strategyInstance?.timeframe);
   const regime = compact(explicit.regime || memory.regime || fill.regime || plan.regime, 80);
   const direction = normalizeDirection(explicit.direction || memory.direction || fill.direction || plan.direction || review.direction);
-  const realizedPnl = finite(explicit.realizedPnl ?? memory.realizedPnl ?? review.realizedPnl ?? fill.realizedPnl)
-    ? Number(explicit.realizedPnl ?? memory.realizedPnl ?? review.realizedPnl ?? fill.realizedPnl)
-    : null;
+  const netCandidate = lifecycle?.netRealizedPnl ?? explicit.netRealizedPnl ?? review.netRealizedPnl ?? memory.netRealizedPnl;
+  const grossCandidate = lifecycle?.realizedPnl ?? explicit.grossRealizedPnl
+    ?? (explicit.schemaVersion === 1 ? explicit.realizedPnl : null)
+    ?? review.realizedPnl ?? memory.grossRealizedPnl ?? fill.realizedPnl;
+  const netRealizedPnl = finite(netCandidate) ? Number(netCandidate) : null;
+  const grossRealizedPnl = finite(grossCandidate) ? Number(grossCandidate) : null;
   return {
     symbol,
     direction,
@@ -85,32 +105,40 @@ export function reviewMemoryMetadata(db, memory = {}) {
     timeframe,
     traderRole: explicit.traderRole || memory.traderRole || plan.traderRole || null,
     regime,
-    realizedPnl,
-    outcome: realizedPnl == null ? null : realizedPnl > 0 ? "win" : realizedPnl < 0 ? "loss" : "flat",
+    grossRealizedPnl,
+    netRealizedPnl,
+    outcome: netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat",
     reviewId: explicit.reviewId || memory.reviewId || review.id || null,
     tradePlanId: explicit.tradePlanId || memory.tradePlanId || plan.id || null
   };
 }
 
 export function stampReviewMemoryContext(memory, { fill = {}, plan = {}, review = {}, lifecycle = null } = {}) {
-  const pnl = finite(lifecycle?.realizedPnl ?? review.realizedPnl ?? fill.realizedPnl)
-    ? Number(lifecycle?.realizedPnl ?? review.realizedPnl ?? fill.realizedPnl)
-    : null;
+  const previous = memory.reviewContext || {};
+  const netCandidate = lifecycle?.netRealizedPnl ?? review.netRealizedPnl ?? memory.netRealizedPnl ?? previous.netRealizedPnl;
+  const grossCandidate = lifecycle?.realizedPnl ?? review.realizedPnl ?? memory.grossRealizedPnl ?? previous.grossRealizedPnl
+    ?? (previous.schemaVersion === 1 ? previous.realizedPnl : null)
+    ?? fill.realizedPnl;
+  const netRealizedPnl = finite(netCandidate) ? Number(netCandidate) : null;
+  const grossRealizedPnl = finite(grossCandidate) ? Number(grossCandidate) : null;
   memory.reviewContext = {
-    schemaVersion: 1,
-    symbol: normalizeSymbol(fill.symbol || plan.symbol || review.symbol),
-    direction: normalizeDirection(fill.direction || plan.direction || review.direction),
-    setupType: normalizeSetup(plan.scenarioType || plan.decisionContext?.setupType || plan.strategyRef?.scenarioType),
-    strategyProductId: fill.strategyProductId || plan.strategyProductId || plan.strategyRef?.productId || null,
-    timeframe: normalizeTimeframe(fill.timeframe || plan.timeframe || plan.strategyInstance?.timeframe),
-    traderRole: plan.traderRole || null,
-    regime: compact(fill.regime || plan.regime, 80),
-    realizedPnl: pnl,
-    outcome: pnl == null ? null : pnl > 0 ? "win" : pnl < 0 ? "loss" : "flat",
-    reviewId: review.id || null,
-    tradePlanId: plan.id || fill.tradePlanId || fill.planId || null
+    schemaVersion: REVIEW_CONTEXT_SCHEMA_VERSION,
+    symbol: normalizeSymbol(fill.symbol || plan.symbol || review.symbol || previous.symbol || memory.symbol),
+    direction: normalizeDirection(fill.direction || plan.direction || review.direction || previous.direction || memory.direction),
+    setupType: normalizeSetup(plan.scenarioType || plan.decisionContext?.setupType || plan.strategyRef?.scenarioType || previous.setupType || memory.setupType),
+    strategyProductId: fill.strategyProductId || plan.strategyProductId || plan.strategyRef?.productId || previous.strategyProductId || memory.strategyProductId || null,
+    timeframe: normalizeTimeframe(fill.timeframe || plan.timeframe || plan.strategyInstance?.timeframe || previous.timeframe || memory.timeframe),
+    traderRole: plan.traderRole || previous.traderRole || memory.traderRole || null,
+    regime: compact(fill.regime || plan.regime || previous.regime || memory.regime, 80),
+    grossRealizedPnl,
+    netRealizedPnl,
+    outcome: netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat",
+    reviewId: review.id || previous.reviewId || memory.reviewId || null,
+    tradePlanId: plan.id || fill.tradePlanId || fill.planId || previous.tradePlanId || memory.tradePlanId || null
   };
   memory.symbol = memory.reviewContext.symbol || memory.symbol || null;
+  memory.grossRealizedPnl = grossRealizedPnl;
+  memory.netRealizedPnl = netRealizedPnl;
   memory.reviewId = memory.reviewContext.reviewId || memory.reviewId || null;
   memory.tradePlanId = memory.reviewContext.tradePlanId || memory.tradePlanId || null;
   return memory.reviewContext;
@@ -259,7 +287,7 @@ export function buildReviewLearningAnalytics(db) {
     return plan.id ? {
       lifecycleKey: lifecycle.key,
       closedAt: lifecycle.lastClosedAt || fill.createdAt,
-      pnl: Number(lifecycle.realizedPnl || 0),
+      pnl: Number(lifecycle.netRealizedPnl || 0),
       symbol: normalizeSymbol(fill.symbol || plan.symbol),
       setupType: normalizeSetup(plan.scenarioType || plan.decisionContext?.setupType || plan.strategyRef?.scenarioType),
       strategyProductId: fill.strategyProductId || plan.strategyProductId || plan.strategyRef?.productId || null,
@@ -325,12 +353,15 @@ export function buildReviewLearningAnalytics(db) {
 export function backfillReviewMemoryContexts(db) {
   let updated = 0;
   for (const memory of db.memoryItems || []) {
-    if (memory.source !== "auto_reflection" || memory.reviewContext?.schemaVersion === 1) continue;
+    if (memory.source !== "auto_reflection") continue;
     const fill = fillForMemory(db, memory);
     const plan = planForMemory(db, memory);
     const review = reviewForMemory(db, memory);
-    stampReviewMemoryContext(memory, { fill, plan, review });
-    updated += 1;
+    const lifecycle = lifecycleForMemory(db, memory, fill, review);
+    const before = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl });
+    stampReviewMemoryContext(memory, { fill, plan, review, lifecycle });
+    const after = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl });
+    if (before !== after) updated += 1;
   }
   return { updated };
 }

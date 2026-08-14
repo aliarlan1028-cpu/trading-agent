@@ -2,6 +2,7 @@ import { activeMandate, latestSuccessfulAccountSnapshot, nowIso } from "./store.
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 import { buildSlippageCalibration } from "./executionCostModel.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const ageMs = (value) => value ? Math.max(0, Date.now() - new Date(value).getTime()) : null;
 const pct = (n, d = 2) => Number.isFinite(Number(n)) ? Number(Number(n).toFixed(d)) : null;
@@ -73,9 +74,14 @@ export function buildExecutionQuality(db) {
 }
 
 export function buildStrategyDrift(db, { strategy } = {}) {
-  let fills = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)));
-  if (strategy) fills = fills.filter((fill) => fill.strategy === strategy);
-  const values = fills.map((fill) => Number(fill.realizedPnl));
+  let lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  if (strategy) lifecycles = lifecycles.filter((lifecycle) => {
+    const fill = lifecycle.representative;
+    const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);
+    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId || executionOrder?.planId));
+    return (fill.strategy || executionOrder?.strategy || plan?.strategy || plan?.strategy_type) === strategy;
+  });
+  const values = lifecycles.map((lifecycle) => Number(lifecycle.netRealizedPnl));
   const recent = values.slice(0, 10);
   const baseline = values.slice(10, 40);
   const mean = (rows) => rows.length ? rows.reduce((sum, value) => sum + value, 0) / rows.length : null;
@@ -93,10 +99,10 @@ export function buildStrategyDrift(db, { strategy } = {}) {
   }
   const performanceDrift = significant && recentExpectancy < baselineExpectancy;
   return {
-    status: fills.length < 20 ? "insufficient_sample" : "ok",
+    status: lifecycles.length < 20 ? "insufficient_sample" : "ok",
     diagnosis: {
       strategy: strategy || null,
-      trades: fills.length,
+      trades: lifecycles.length,
       recentExpectancy,
       baselineExpectancy,
       tStat,

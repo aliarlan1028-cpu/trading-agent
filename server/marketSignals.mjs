@@ -188,7 +188,18 @@ function interpretSmartMoney(s) {
 // 全部 OKX USDT 本位永续合约清单——授权、分析和执行使用同一市场。
 // ---------------------------------------------------------------------------
 export async function fetchPerpetualInstruments() {
-  if (instrumentsCache.list.length && Date.now() - instrumentsCache.at < 3600_000) return instrumentsCache.list;
+  return (await fetchPerpetualInstrumentCatalog()).instruments;
+}
+
+export async function fetchPerpetualInstrumentCatalog(options = {}) {
+  const cacheAgeMs = instrumentsCache.at ? Date.now() - instrumentsCache.at : null;
+  if (!options.force && instrumentsCache.list.length && cacheAgeMs < 3600_000) return {
+    instruments: instrumentsCache.list,
+    sourceStatus: "healthy",
+    asOf: new Date(instrumentsCache.at).toISOString(),
+    stale: false,
+    source: "OKX"
+  };
   const map = new Map(); // symbol -> Set(exchange)
   const add = (symbol, exchange) => {
     if (!symbol) return;
@@ -197,6 +208,7 @@ export async function fetchPerpetualInstruments() {
   };
 
   const okx = timer(10000);
+  let sourceError = null;
   try {
     const res = await getJson(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP`, okx.signal);
     for (const it of res?.data || []) {
@@ -204,8 +216,9 @@ export async function fetchPerpetualInstruments() {
         add(String(it.instId).replace("-SWAP", "").replace("-", "/"), "OKX");
       }
     }
-  } catch {
-    /* OKX 不可用则跳过 */
+    if (!map.size) throw new Error("OKX returned no live USDT perpetual instruments");
+  } catch (error) {
+    sourceError = error;
   } finally {
     okx.cancel();
   }
@@ -213,8 +226,26 @@ export async function fetchPerpetualInstruments() {
   const list = [...map.entries()]
     .map(([symbol, exchanges]) => ({ symbol, exchanges: [...exchanges].sort() }))
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
-  if (list.length) instrumentsCache = { at: Date.now(), list };
-  return list.length ? list : instrumentsCache.list;
+  if (list.length) {
+    instrumentsCache = { at: Date.now(), list };
+    return { instruments: list, sourceStatus: "healthy", asOf: new Date(instrumentsCache.at).toISOString(), stale: false, source: "OKX" };
+  }
+  if (instrumentsCache.list.length) return {
+    instruments: instrumentsCache.list,
+    sourceStatus: "stale",
+    asOf: new Date(instrumentsCache.at).toISOString(),
+    stale: true,
+    source: "OKX",
+    error: String(sourceError?.message || sourceError || "OKX instrument source unavailable")
+  };
+  return {
+    instruments: [],
+    sourceStatus: "failed",
+    asOf: null,
+    stale: false,
+    source: "OKX",
+    error: String(sourceError?.message || sourceError || "OKX instrument source unavailable")
+  };
 }
 
 // ---------------------------------------------------------------------------

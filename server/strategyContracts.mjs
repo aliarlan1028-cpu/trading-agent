@@ -1,4 +1,5 @@
 import { buildStrategyProductCatalog } from "./strategyProducts.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const CONTRACT_VERSION = "1.0.0";
 const VALID_DIRECTIONS = new Set(["long", "short", "both"]);
@@ -93,39 +94,45 @@ function latest(items = []) {
 }
 
 function liveMetrics(db, strategyId) {
-  const groups = new Map();
-  for (const fill of db.fills || []) {
-    if (fill?.kind !== "close" || !Number.isFinite(Number(fill.realizedPnl))) continue;
-    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId));
-    const attributed = fill.strategy || plan?.strategy || plan?.strategy_type;
+  const rows = [];
+  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    const fill = lifecycle.representative;
+    const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);
+    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId || executionOrder?.planId));
+    const attributed = fill.strategy || executionOrder?.strategy || plan?.strategy || plan?.strategy_type;
     if (attributed !== strategyId) continue;
-    const key = String(fill.executionOrderId || fill.tradePlanId || fill.planId || fill.positionId || fill.id);
-    const row = groups.get(key) || { pnl: 0, fees: 0, funding: 0, lastAt: null, completed: false };
-    row.pnl += Number(fill.realizedPnl);
-    row.fees += Math.abs(Number(fill.feeUsdt || 0));
-    row.funding += Number(fill.fundingFeeUsdt || 0);
-    if (fill.partial !== true) row.completed = true;
-    if (!row.lastAt || new Date(fill.createdAt || 0) > new Date(row.lastAt)) row.lastAt = fill.createdAt || null;
-    groups.set(key, row);
+    rows.push({
+      grossPnl: Number(lifecycle.realizedPnl || 0),
+      netPnl: Number(lifecycle.netRealizedPnl || 0),
+      entryFees: Number(lifecycle.entryFeeUsdt || 0),
+      closeFees: Number(lifecycle.feeUsdt || 0),
+      funding: Number(lifecycle.fundingFeeUsdt || 0),
+      lastAt: lifecycle.lastClosedAt || null
+    });
   }
-  const rows = [...groups.values()].filter((row) => row.completed).sort((a, b) => new Date(a.lastAt || 0) - new Date(b.lastAt || 0));
-  const wins = rows.filter((row) => row.pnl > 0);
-  const grossWin = wins.reduce((sum, row) => sum + row.pnl, 0);
-  const grossLoss = Math.abs(rows.filter((row) => row.pnl < 0).reduce((sum, row) => sum + row.pnl, 0));
+  rows.sort((a, b) => new Date(a.lastAt || 0) - new Date(b.lastAt || 0));
+  const wins = rows.filter((row) => row.netPnl > 0);
+  const grossWin = wins.reduce((sum, row) => sum + row.netPnl, 0);
+  const grossLoss = Math.abs(rows.filter((row) => row.netPnl < 0).reduce((sum, row) => sum + row.netPnl, 0));
   let consecutiveLosses = 0;
-  for (let index = rows.length - 1; index >= 0 && rows[index].pnl < 0; index -= 1) consecutiveLosses += 1;
-  const realizedPnlUsdt = rows.reduce((sum, row) => sum + row.pnl, 0);
-  const feesUsdt = rows.reduce((sum, row) => sum + row.fees, 0);
+  for (let index = rows.length - 1; index >= 0 && rows[index].netPnl < 0; index -= 1) consecutiveLosses += 1;
+  const grossRealizedPnlUsdt = rows.reduce((sum, row) => sum + row.grossPnl, 0);
+  const netRealizedPnlUsdt = rows.reduce((sum, row) => sum + row.netPnl, 0);
+  const entryFeesUsdt = rows.reduce((sum, row) => sum + row.entryFees, 0);
+  const closeFeesUsdt = rows.reduce((sum, row) => sum + row.closeFees, 0);
   const fundingUsdt = rows.reduce((sum, row) => sum + row.funding, 0);
   return {
     trades: rows.length,
     wins: wins.length,
     winRatePct: rows.length ? Number((wins.length / rows.length * 100).toFixed(1)) : null,
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
-    realizedPnlUsdt: Number(realizedPnlUsdt.toFixed(4)),
-    recordedFeesUsdt: Number(feesUsdt.toFixed(4)),
+    grossRealizedPnlUsdt: Number(grossRealizedPnlUsdt.toFixed(4)),
+    realizedPnlUsdt: Number(netRealizedPnlUsdt.toFixed(4)),
+    recordedEntryFeesUsdt: Number(entryFeesUsdt.toFixed(4)),
+    recordedCloseFeesUsdt: Number(closeFeesUsdt.toFixed(4)),
+    recordedFeesUsdt: Number((entryFeesUsdt + closeFeesUsdt).toFixed(4)),
     recordedFundingUsdt: Number(fundingUsdt.toFixed(4)),
-    netAfterRecordedCostsUsdt: Number((realizedPnlUsdt - feesUsdt + fundingUsdt).toFixed(4)),
+    netAfterRecordedCostsUsdt: Number(netRealizedPnlUsdt.toFixed(4)),
     consecutiveLosses,
     basis: "closed_trade_lifecycle/recorded_costs"
   };

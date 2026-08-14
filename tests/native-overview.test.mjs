@@ -44,7 +44,7 @@ test("native overview removes repeated histories while preserving actionable sta
     marketCalendarEvents: candles,
     dailyMarketBrief: { facts: candles },
     toolExecutions: candles,
-    strategyCatalog: { products: [{ id: "p1" }], strategies: [{ history: candles }] }
+    strategyCatalog: { products: [{ id: "p1" }], strategies: [{ id: "r1", name: "Research 1", history: candles, contract: { direction: "long", timeframes: ["1h"] }, lifecycle: { stage: "research", profile: { oos: { trades: 10, equityCurve: candles } } } }] }
   };
 
   const compact = compactOverviewForNative(full, true);
@@ -66,11 +66,35 @@ test("native overview removes repeated histories while preserving actionable sta
   assert.equal(compact.reviews[0].analyticsSnapshot, undefined);
   assert.equal(compact.executionOrders[0].strategyInstance, undefined);
   assert.equal(compact.strategyCatalog.products[0].id, "p1");
-  assert.deepEqual(compact.strategyCatalog.strategies, []);
+  assert.equal(compact.strategyCatalog.strategies.length, 1);
+  assert.equal(compact.strategyCatalog.strategies[0].id, "r1");
+  assert.equal(compact.strategyCatalog.strategies[0].history, undefined);
+  assert.equal(compact.strategyCatalog.strategies[0].lifecycle.profile.oos.equityCurve, undefined);
   assert.deepEqual(compact.analysisBundles, []);
   assert.deepEqual(compact.evidenceBundles, []);
   assert.ok(JSON.stringify(compact).length < JSON.stringify(full).length * 0.08);
   assert.equal(full.markets[0].candles, candles, "must not mutate the desktop overview");
+});
+
+test("native overview aggregates a complete lifecycle before truncating the fill ledger", () => {
+  const unrelated = Array.from({ length: 49 }, (_, index) => ({ id: `other-${index}`, kind: "entry", executionOrderId: `other-${index}`, createdAt: `2026-08-14T${String(index % 24).padStart(2, "0")}:00:00Z` }));
+  const fills = [
+    { id: "final", executionOrderId: "life", kind: "close", partial: false, realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-14T23:00:00Z" },
+    ...unrelated,
+    { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, createdAt: "2026-08-14T20:00:00Z" },
+    { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, createdAt: "2026-08-14T22:00:00Z" }
+  ];
+  const compact = compactOverviewForNative({ fills }, true);
+  assert.equal(compact.fills.length, 50);
+  assert.equal(compact.fills.some((fill) => fill.id === "entry"), false, "fixture must cut the lifecycle across the ledger boundary");
+  const lifecycle = compact.closedTradeLifecycles.find((row) => row.tradeLifecycleKey === "life");
+  assert.equal(lifecycle.netRealizedPnl, 8);
+  assert.deepEqual(lifecycle.fillIds.sort(), ["final", "partial"]);
+});
+
+test("native compact keeps an absent strategy profile null", () => {
+  const compact = compactOverviewForNative({ strategyCatalog: { strategies: [{ id: "no-profile", lifecycle: { stage: "research", profile: null }, contract: {} }] } }, true);
+  assert.equal(compact.strategyCatalog.strategies[0].lifecycle.profile, null);
 });
 
 test("desktop overview remains unchanged", () => {

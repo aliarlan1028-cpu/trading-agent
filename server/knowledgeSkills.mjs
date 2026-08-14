@@ -6,6 +6,7 @@ import { createPaperSession } from "./paperTrading.mjs";
 import { detectRegime, getStrategy, STRATEGIES } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints, runtimeInvalidationTriggered } from "./compiledSignals.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const TIMEFRAMES = new Set(["5m", "15m", "1h", "4h", "1d"]);
 // active=已用真实成绩转正;live_probation=小额实盘试用中(可影响真实下单,但对 LLM 如实标"未验证")。
@@ -703,62 +704,118 @@ export function validatePlanKnowledgeSkills(db, plan) {
   return { valid: violations.length === 0, violations };
 }
 
-function closeFillKey(fill) {
-  return fill.executionOrderId || fill.tradePlanId || fill.planId || fill.id;
-}
-
 export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttribution") {
   ensureCollections(db);
-  const existing = new Set(db.knowledge.skillAttributions.map((item) => item.fillKey));
   let added = 0;
-  const completedTrades = new Map();
-  for (const fill of db.fills || []) {
-    if (fill.kind !== "close" || !Number.isFinite(Number(fill.realizedPnl))) continue;
-    const key = closeFillKey(fill);
-    if (!key) continue;
-    const aggregate = completedTrades.get(key) || { ...fill, id: null, fillIds: [], realizedPnl: 0 };
-    aggregate.fillIds.push(fill.id);
-    aggregate.realizedPnl += Number(fill.realizedPnl);
-    if (new Date(fill.createdAt || 0) > new Date(aggregate.createdAt || 0)) aggregate.createdAt = fill.createdAt;
-    completedTrades.set(key, aggregate);
-  }
-  for (const [fillKey, fill] of completedTrades) {
-    if (existing.has(fillKey)) continue;
-    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId));
+  let migrated = 0;
+  const hasFiniteFinancialValue = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  const authoritativeKeys = new Set();
+  const existingByKey = new Map((db.knowledge.skillAttributions || []).map((row) => [
+    `${row.fillKey}|${row.skillId}|${row.skillVersion}`,
+    row
+  ]));
+  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    const fill = lifecycle.representative;
+    const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);
+    const planId = fill.tradePlanId || fill.planId || executionOrder?.planId;
+    const plan = (db.tradePlans || []).find((item) => item.id === planId);
     if (!plan?.knowledgeSkills?.length) continue;
     const weight = 1 / plan.knowledgeSkills.length;
     for (const ref of plan.knowledgeSkills) {
-      db.knowledge.skillAttributions.unshift({
-        id: id("kattr"),
-        fillKey,
-        fillId: fill.fillIds.length === 1 ? fill.fillIds[0] : null,
-        fillIds: fill.fillIds,
+      const attributionKey = `${lifecycle.key}|${ref.skillId}|${ref.version}`;
+      authoritativeKeys.add(attributionKey);
+      const payload = {
+        fillKey: lifecycle.key,
+        fillId: lifecycle.fills.length === 1 ? lifecycle.fills[0].id : null,
+        fillIds: lifecycle.fills.map((row) => row.id).filter(Boolean),
         tradePlanId: plan.id,
         skillId: ref.skillId,
         skillVersion: ref.version,
-        realizedPnl: Number(fill.realizedPnl),
-        weightedPnl: Number((Number(fill.realizedPnl) * weight).toFixed(8)),
+        grossRealizedPnl: Number(lifecycle.realizedPnl),
+        closeFeeUsdt: Number(lifecycle.feeUsdt),
+        entryFeeUsdt: Number(lifecycle.entryFeeUsdt),
+        fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt),
+        netRealizedPnl: Number(lifecycle.netRealizedPnl),
+        // 旧客户端若仍读取 realizedPnl，也只能得到权威净值；交易所价格毛值明确放在 grossRealizedPnl。
+        realizedPnl: Number(lifecycle.netRealizedPnl),
+        grossWeightedPnl: Number((Number(lifecycle.realizedPnl) * weight).toFixed(8)),
+        weightedPnl: Number((Number(lifecycle.netRealizedPnl) * weight).toFixed(8)),
         weight,
         attributionMethod: plan.knowledgeSkills.length === 1 ? "sole_adopted_skill" : "equal_weight_declared_adoption",
-        createdAt: fill.createdAt || nowIso()
-      });
+        financialSchemaVersion: 2,
+        financialBasis: "completed_trade_lifecycle/net_after_recorded_entry_close_fees_and_funding",
+        createdAt: lifecycle.lastClosedAt || nowIso()
+      };
+      const existing = existingByKey.get(attributionKey);
+      if (existing) {
+        const before = JSON.stringify(existing);
+        Object.assign(existing, payload);
+        if (before !== JSON.stringify(existing)) migrated += 1;
+      } else {
+        const created = { id: id("kattr"), ...payload };
+        db.knowledge.skillAttributions.unshift(created);
+        existingByKey.set(attributionKey, created);
+        added += 1;
+      }
     }
-    existing.add(fillKey);
-    added += 1;
+  }
+  // 任何 live 归因只要已失去本轮底层成交/计划的权威绑定，就不能继续参与自动晋级/退役。
+  // 即使它曾经迁到 v2，也可能在底层数据清理后变成“幽灵证据”；保留毛值供审计，净值诚实置空。
+  for (const row of db.knowledge.skillAttributions) {
+    if (row.mode === "paper") continue;
+    const attributionKey = `${row.fillKey}|${row.skillId}|${row.skillVersion}`;
+    if (authoritativeKeys.has(attributionKey)) continue;
+    const before = JSON.stringify(row);
+    const grossCandidate = row.grossRealizedPnl ?? row.realizedPnl;
+    const preservedGross = hasFiniteFinancialValue(grossCandidate) ? Number(grossCandidate) : null;
+    Object.assign(row, {
+      grossRealizedPnl: preservedGross,
+      netRealizedPnl: null,
+      realizedPnl: null,
+      weightedPnl: null,
+      financialSchemaVersion: 2,
+      financialBasis: "unreconciled_orphan_gross_excluded_from_live_metrics"
+    });
+    if (before !== JSON.stringify(row)) migrated += 1;
   }
 
   const degraded = [];
   const graduated = [];
   for (const skill of db.knowledge.tradingSkills) {
-    const rows = db.knowledge.skillAttributions.filter((row) => row.skillId === skill.id && row.skillVersion === skill.version);
-    if (!rows.length) continue;
-    const wins = rows.filter((row) => row.realizedPnl > 0);
-    const grossWin = rows.filter((row) => row.realizedPnl > 0).reduce((sum, row) => sum + row.weightedPnl, 0);
-    const grossLoss = Math.abs(rows.filter((row) => row.realizedPnl < 0).reduce((sum, row) => sum + row.weightedPnl, 0));
+    const allLiveRows = db.knowledge.skillAttributions.filter((row) => row.mode !== "paper"
+      && row.skillId === skill.id && row.skillVersion === skill.version);
+    const rows = db.knowledge.skillAttributions.filter((row) => row.skillId === skill.id
+      && row.skillVersion === skill.version && row.mode !== "paper"
+      && hasFiniteFinancialValue(row.netRealizedPnl) && hasFiniteFinancialValue(row.weightedPnl));
+    if (!rows.length) {
+      if (allLiveRows.length) {
+        const resetMetrics = {
+          trades: 0,
+          wins: 0,
+          winRatePct: null,
+          weightedPnl: null,
+          profitFactor: null,
+          consecutiveLosses: 0,
+          basis: "unreconciled_orphan_evidence/needs_revalidation"
+        };
+        const alreadyReset = Object.entries(resetMetrics).every(([key, value]) => skill.liveMetrics?.[key] === value);
+        if (!alreadyReset) skill.liveMetrics = { ...resetMetrics, updatedAt: nowIso() };
+        skill.needsRevalidation = true;
+        if (["active", "live_probation"].includes(skill.status)) {
+          transition(skill, "degraded", "authoritative_live_attribution_missing_needs_revalidation", actor);
+          degraded.push(skill.id);
+        }
+      }
+      continue;
+    }
+    skill.needsRevalidation = false;
+    const wins = rows.filter((row) => row.netRealizedPnl > 0);
+    const grossWin = rows.filter((row) => row.netRealizedPnl > 0).reduce((sum, row) => sum + row.weightedPnl, 0);
+    const grossLoss = Math.abs(rows.filter((row) => row.netRealizedPnl < 0).reduce((sum, row) => sum + row.weightedPnl, 0));
     const recent = rows.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     let consecutiveLosses = 0;
     for (const row of recent) {
-      if (row.realizedPnl < 0) consecutiveLosses += 1;
+      if (row.netRealizedPnl < 0) consecutiveLosses += 1;
       else break;
     }
     skill.liveMetrics = {
@@ -768,6 +825,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
       weightedPnl: Number(rows.reduce((sum, row) => sum + row.weightedPnl, 0).toFixed(8)),
       profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
       consecutiveLosses,
+      basis: "completed_trade_lifecycle/net_after_recorded_entry_close_fees_and_funding",
       updatedAt: nowIso()
     };
     const poor = rows.length >= MIN_LIVE_ATTRIBUTION_TRADES && (
@@ -799,7 +857,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
       }
     }
   }
-  return { added, degraded, graduated };
+  return { added, migrated, degraded, graduated };
 }
 
 // 旧版兼容入口：禁止编译结果绕过历史、前向和人工审批直接进入真实资金试用。

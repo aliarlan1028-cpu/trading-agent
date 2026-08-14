@@ -99,7 +99,7 @@ function rollingOptimizerDiagnostics(candles, trialRecords) {
 
 // 实盘表现权重：对有足够真实平仓样本的策略，按胜率/盈亏比给一个 [0.7,1.3] 的乘子，
 // 在"已通过样本外"的合格策略之间再加权（不替代样本外门槛，只影响优选谁）。
-function buildLiveStrategyWeights(db) {
+export function buildLiveStrategyWeights(db) {
   let analytics;
   try { analytics = buildReviewAnalytics(db); } catch { return {}; }
   const weights = {};

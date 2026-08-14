@@ -7,7 +7,9 @@ test("已平仓海报使用已实现口径并单列费用", async () => {
   const share = deriveClosedTradeShare(trade);
   assert.equal(share.side, "SHORT");
   assert.equal(share.exit, 0.1849);
-  assert.equal(share.pnl, 0.16);
+  assert.equal(share.grossPnl, 0.16);
+  assert.equal(Number(share.netPnl.toFixed(6)), 0.146623);
+  assert.equal(Number(share.pnl.toFixed(6)), 0.146623);
   assert.equal(Number(share.feeUsdt.toFixed(6)), 0.013377);
   const poster = await renderClosedTradePoster(trade);
   assert.ok(poster.buffer.length > 1000);
@@ -24,4 +26,13 @@ test("Telegram 盈利海报使用纯英文模板", async () => {
   const poster = await renderClosedTradePoster(trade);
   assert.equal(poster.type, "photo");
   assert.ok(poster.buffer.length > 1000);
+});
+
+test("缺少权威入场名义额或保证金时不使用平仓名义额猜测 ROI", () => {
+  const share = deriveClosedTradeShare({
+    symbol: "BTC/USDT", direction: "long", entryPrice: 100, exitPrice: 200,
+    quantity: 3, leverage: 2, notionalUsdt: 600, grossRealizedPnl: 300, netRealizedPnl: 297
+  });
+  assert.equal(share.notional, null);
+  assert.equal(share.roiPct, null);
 });

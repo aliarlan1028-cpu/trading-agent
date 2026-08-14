@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
-import { deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster } from "./positionPoster.mjs";
+import { closedTradePosterPayload, deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster, resolveClosedTradePosterBasis } from "./positionPoster.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 function number(value, fallback = 0) {
@@ -133,10 +133,10 @@ export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
   const status = telegramStatus();
   const share = deriveClosedTradeShare(trade);
   if (!status.profitPosterEnabled || !status.configured || !(Number(share.pnl) > status.minPnlUsdt)) return { status: "disabled_or_unconfigured", trade: share };
-  const notification = addNotification(db, { severity: "success", eventType: "closed_trade_profit_poster", title: `已平仓盈利海报：${share.symbol}`, body: `${share.symbol} ${share.side} 已实现 ${share.pnl?.toFixed?.(2)} USDT` });
+  const notification = addNotification(db, { severity: "success", eventType: "closed_trade_profit_poster", title: `已平仓净盈利海报：${share.symbol}`, body: `${share.symbol} ${share.side} 净实现 ${share.netPnl?.toFixed?.(2)} USDT` });
   try {
     const poster = await renderClosedTradePoster(trade);
-    const caption = options.caption || `REALIZED PROFIT · ${share.symbol} ${share.side} · Realized PnL ${share.pnl?.toFixed?.(2)} USDT`;
+    const caption = options.caption || `NET REALIZED PROFIT · ${share.symbol} ${share.side} · Gross ${share.grossPnl?.toFixed?.(2)} · Costs ${share.feeUsdt?.toFixed?.(2)} · Net ${share.netPnl?.toFixed?.(2)} USDT`;
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
     const result = poster.type === "photo" ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster) : await sendTelegramMultipart("sendDocument", payload, "document", poster);
     notification.deliveryStatus = "sent"; notification.telegramMessageId = result.result?.message_id;
@@ -165,11 +165,11 @@ export function queueClosedTradeProfitPosters(db) {
   let queued = 0;
   for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
     if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) continue;
-    if (!(Number(lifecycle.realizedPnl) > status.minPnlUsdt)) continue;
+    if (!(Number(lifecycle.netRealizedPnl) > status.minPnlUsdt)) continue;
     if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) continue;
     const key = closedTradePosterKey(lifecycle);
     if (db.telegramPosterOutbox.some((item) => item.idempotencyKey === key)) continue;
-    const trade = { ...lifecycle.representative, closedAt: lifecycle.lastClosedAt, tradeLifecycleKey: lifecycle.key };
+    const trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle));
     db.telegramPosterOutbox.unshift({
       id: `tgposter_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
       idempotencyKey: key,
@@ -194,8 +194,18 @@ export async function dispatchClosedTradePosterOutbox(db, options = {}) {
   const pending = (db.telegramPosterOutbox || []).filter((item) =>
     ["pending", "retry"].includes(item.status) && new Date(item.nextAttemptAt || 0).getTime() <= now
   ).slice(0, Math.max(1, Number(options.limit || 5)));
+  const lifecycleByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((lifecycle) => [lifecycle.key, lifecycle]));
   let sent = 0;
   for (const item of pending) {
+    const lifecycle = lifecycleByKey.get(item.tradeLifecycleKey);
+    if (!lifecycle || !(Number(lifecycle.netRealizedPnl) > status.minPnlUsdt)) {
+      item.status = "cancelled";
+      item.lastError = lifecycle ? "net_pnl_below_threshold" : "authoritative_lifecycle_missing";
+      item.updatedAt = nowIso();
+      continue;
+    }
+    item.fillIds = lifecycle.fills.map((fill) => fill.id).filter(Boolean);
+    item.trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle));
     item.attempts = Number(item.attempts || 0) + 1;
     item.updatedAt = nowIso();
     const result = await sendTelegramClosedTradePoster(db, item.trade);

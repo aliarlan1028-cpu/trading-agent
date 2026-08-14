@@ -7,7 +7,9 @@ import test from "node:test";
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "performance-review-test-"));
 
 const { performanceReport } = await import("../server/accounting.mjs");
-const { runTradeReflection } = await import("../server/reviewEngine.mjs");
+const { buildReviewAnalytics, runTradeReflection } = await import("../server/reviewEngine.mjs");
+const { backfillReviewMemoryContexts, buildReviewLearningAnalytics, reviewMemoryMetadata } = await import("../server/reviewLearning.mjs");
+const { buildLiveStrategyWeights } = await import("../server/strategyOptimizer.mjs");
 const { ensureTradeReviewQueued, syncTradeReviewQueue } = await import("../server/tradeReviewQueue.mjs");
 
 function baseDb() {
@@ -97,7 +99,7 @@ test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending
   }];
 
   const first = syncTradeReviewQueue(db);
-  assert.deepEqual(first, { queued: 1, reconciled: 1 });
+  assert.deepEqual(first, { queued: 1, reconciled: 1, financialsBackfilled: 0 });
   assert.equal(db.reviews.length, 1);
   assert.equal(db.reviews[0].status, "completed");
   assert.equal(db.reviews[0].memoryItemId, "legacy-memory");
@@ -105,6 +107,72 @@ test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending
   assert.equal(db.reviews[0].reconciledFromLegacyReflection, true);
 
   const second = syncTradeReviewQueue(db);
-  assert.deepEqual(second, { queued: 0, reconciled: 0 });
+  assert.deepEqual(second, { queued: 0, reconciled: 0, financialsBackfilled: 0 });
   assert.equal(db.reviews.length, 1, "重复启动不得重复创建或复盘");
+});
+
+test("已完成复盘会回填完整生命周期净值与开仓费", () => {
+  const db = baseDb();
+  db.fills = [
+    { id: "entry", kind: "entry", executionOrderId: "legacy-net", feeUsdt: 1, createdAt: "2026-08-02T00:00:00Z" },
+    { id: "part", kind: "close", executionOrderId: "legacy-net", partial: true, realizedPnl: 2, feeUsdt: .2, createdAt: "2026-08-02T01:00:00Z" },
+    { id: "final", kind: "close", executionOrderId: "legacy-net", realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-02T02:00:00Z" }
+  ];
+  db.reviews = [{ id: "old-review", type: "trade", tradeLifecycleKey: "legacy-net", status: "completed", realizedPnl: 8, feeUsdt: .3 }];
+  const result = syncTradeReviewQueue(db);
+  assert.equal(result.financialsBackfilled, 1);
+  assert.deepEqual({ gross: db.reviews[0].realizedPnl, closeFee: db.reviews[0].feeUsdt, entryFee: db.reviews[0].entryFeeUsdt, funding: db.reviews[0].fundingFeeUsdt, net: db.reviews[0].netRealizedPnl }, { gross: 10, closeFee: .5, entryFee: 1, funding: -.5, net: 8 });
+  assert.equal(syncTradeReviewQueue(db).financialsBackfilled, 0, "financial backfill must be idempotent");
+});
+
+test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与实盘策略权重全部按净值判定", () => {
+  const db = baseDb();
+  db.tradePlans = Array.from({ length: 10 }, (_, index) => ({
+    id: `plan-${index}`,
+    symbol: "ADA/USDT",
+    timeframe: "1h",
+    scenarioType: "breakout",
+    strategy: "fee_flip",
+    reviewLearning: { applied: index === 0 ? [{ memoryId: "mem-fee", influence: "avoided", note: "等待成本后仍为正" }] : [] }
+  }));
+  db.fills = db.tradePlans.flatMap((plan, index) => [
+    { id: `entry-${index}`, kind: "entry", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", feeUsdt: 0.8, createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
+    { id: `close-${index}`, kind: "close", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", realizedPnl: 1, feeUsdt: 0.4, entryRationale: "突破确认", exitReason: "计划退出", createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
+  ]);
+  db.reviews = [{
+    id: "review-fee", type: "trade", status: "completed", tradeLifecycleKey: "life-0", tradePlanId: "plan-0",
+    memoryItemId: "mem-fee", fillIds: ["close-0"], symbol: "ADA/USDT", realizedPnl: 1
+  }];
+  db.memoryItems = [{
+    id: "mem-fee", source: "auto_reflection", fillId: "close-0", reviewId: "review-fee", title: "旧版毛盈利记忆",
+    reviewContext: { schemaVersion: 1, symbol: "ADA/USDT", realizedPnl: 1, outcome: "win" }
+  }];
+
+  const queueMigration = syncTradeReviewQueue(db);
+  assert.equal(queueMigration.financialsBackfilled, 10, "every completed lifecycle must have review financials before rebuilding memory context");
+  const memoryMigration = backfillReviewMemoryContexts(db);
+  assert.equal(memoryMigration.updated, 1);
+  assert.equal(db.memoryItems[0].reviewContext.schemaVersion, 2);
+  assert.equal(db.memoryItems[0].reviewContext.grossRealizedPnl, 1);
+  assert.ok(Math.abs(db.memoryItems[0].reviewContext.netRealizedPnl + 0.2) < 1e-9);
+  assert.equal(db.memoryItems[0].reviewContext.outcome, "loss");
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0, "schema v2 migration must be idempotent");
+
+  const metadata = reviewMemoryMetadata(db, db.memoryItems[0]);
+  assert.equal(metadata.outcome, "loss");
+  assert.ok(Math.abs(metadata.netRealizedPnl + 0.2) < 1e-9);
+
+  const analytics = buildReviewAnalytics(db);
+  const strategy = analytics.breakdowns.strategy.find((row) => row.key === "fee_flip");
+  assert.deepEqual({ trades: strategy.trades, wins: strategy.wins, losses: strategy.losses, winRatePct: strategy.winRatePct }, { trades: 10, wins: 0, losses: 10, winRatePct: 0 });
+  assert.ok(Math.abs(strategy.pnl + 2) < 1e-9);
+  assert.ok(Math.abs(analytics.entryExitBias[0].pnl + 0.2) < 1e-9);
+  assert.ok(Math.abs(analytics.summary.totalLossUsdt + 2) < 1e-9);
+
+  const learning = buildReviewLearningAnalytics(db);
+  assert.equal(learning.used.trades, 1);
+  assert.equal(learning.used.wins, 0);
+  assert.equal(learning.used.pnlUsdt, -0.2);
+  assert.equal(learning.byMemory[0].outcomes.pnlUsdt, -0.2);
+  assert.equal(buildLiveStrategyWeights(db).fee_flip, 0.7, "net-loss live evidence must lower, never raise, the strategy weight");
 });

@@ -5,6 +5,7 @@
 // 每行给身份/生命周期/实盘战绩/回测参考/派生健康裁定。实盘与回测严格分层,展示口径=自动下线口径。
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const MIN_JUDGE_TRADES = Math.max(5, Number(process.env.KNOWLEDGE_SKILL_MIN_LIVE_TRADES || 10));
 const POOR_PF = 0.8;
@@ -102,33 +103,43 @@ function trustedRows(db) {
   });
 }
 
-// 受信任导入 skill 的实盘复盘 + 自动撤信任:按 plan.adoptedTrustedSkillIds 归因真实平仓盈亏,
+// 受信任导入 skill 的实盘复盘 + 自动撤信任:按 plan.adoptedTrustedSkillIds 归因真实完整交易净盈亏,
 // 达阈值(盈亏因子<0.8 或连亏5,样本≥N)自动撤信任并通知(用户选:自动下线+通知)。
 export function refreshTrustedSkillMetrics(db, actor = "TrustedSkillGuard") {
   const trusted = (db.skills || []).filter((s) => !s.native && s.trusted);
   if (!trusted.length) return { untrusted: [], graduated: [] };
-  const closes = (db.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
+  const lifecycles = groupClosedTradeLifecycles(db.fills || [])
+    .slice()
+    .sort((a, b) => new Date(a.lastClosedAt || 0) - new Date(b.lastClosedAt || 0));
   const untrusted = [];
   const graduated = [];
   for (const skill of trusted) {
     const rows = [];
-    for (const f of closes) {
-      const plan = (db.tradePlans || []).find((p) => p.id === (f.tradePlanId || f.planId));
-      if (plan?.adoptedTrustedSkillIds?.includes(skill.id)) rows.push(Number(f.realizedPnl));
+    for (const lifecycle of lifecycles) {
+      const f = lifecycle.representative;
+      const executionOrder = (db.executionOrders || []).find((row) => row.id === f.executionOrderId);
+      const plan = (db.tradePlans || []).find((p) => p.id === (f.tradePlanId || f.planId || executionOrder?.planId));
+      if (plan?.adoptedTrustedSkillIds?.includes(skill.id)) rows.push({
+        gross: Number(lifecycle.realizedPnl || 0),
+        net: Number(lifecycle.netRealizedPnl || 0)
+      });
     }
     if (!rows.length) { skill.liveMetrics = { trades: 0 }; continue; }
-    const wins = rows.filter((r) => r > 0);
-    const grossWin = wins.reduce((a, b) => a + b, 0);
-    const grossLoss = Math.abs(rows.filter((r) => r < 0).reduce((a, b) => a + b, 0));
+    const wins = rows.filter((r) => r.net > 0);
+    const grossWin = wins.reduce((a, b) => a + b.net, 0);
+    const grossLoss = Math.abs(rows.filter((r) => r.net < 0).reduce((a, b) => a + b.net, 0));
     let streak = 0;
-    for (let i = rows.length - 1; i >= 0; i -= 1) { if (rows[i] < 0) streak += 1; else break; }
+    for (let i = rows.length - 1; i >= 0; i -= 1) { if (rows[i].net < 0) streak += 1; else break; }
     skill.liveMetrics = {
       trades: rows.length,
       wins: wins.length,
       winRatePct: Number(((wins.length / rows.length) * 100).toFixed(1)),
-      weightedPnl: Number(rows.reduce((a, b) => a + b, 0).toFixed(4)),
+      grossRealizedPnl: Number(rows.reduce((a, b) => a + b.gross, 0).toFixed(4)),
+      netRealizedPnl: Number(rows.reduce((a, b) => a + b.net, 0).toFixed(4)),
+      weightedPnl: Number(rows.reduce((a, b) => a + b.net, 0).toFixed(4)),
       profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
       consecutiveLosses: streak,
+      basis: "completed_trade_lifecycle/net_realized_pnl",
       updatedAt: nowIso()
     };
     // 与技能流水线策略同一套生命周期:试用(live_probation)→真实成绩好则转正(active)、差则退役(degraded)

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  backfillReviewMemoryContexts,
   buildReviewLearningAnalytics,
   buildReviewLearningContext,
   retrieveRelevantReviewMemories,
@@ -87,10 +88,10 @@ test("新复盘记忆写入可检索的结构化上下文", () => {
     fill: { symbol: "SUI/USDT", direction: "short", regime: "下行趋势", realizedPnl: -1 },
     plan: { id: "p", timeframe: "15m", scenarioType: "breakdown_retest", strategyProductId: "breakdown", traderRole: "day_trader" },
     review: { id: "r" },
-    lifecycle: { realizedPnl: -1 }
+    lifecycle: { realizedPnl: -1, netRealizedPnl: -1 }
   });
   assert.deepEqual(context, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     symbol: "SUI/USDT",
     direction: "short",
     setupType: "breakdown_retest",
@@ -98,11 +99,34 @@ test("新复盘记忆写入可检索的结构化上下文", () => {
     timeframe: "15m",
     traderRole: "day_trader",
     regime: "下行趋势",
-    realizedPnl: -1,
+    grossRealizedPnl: -1,
+    netRealizedPnl: -1,
     outcome: "loss",
     reviewId: "r",
     tradePlanId: "p"
   });
+});
+
+test("schema v2 迁移保留孤儿历史记忆的结构标签，但不会把旧毛值冒充净值", () => {
+  const db = {
+    fills: [], reviews: [], tradePlans: [],
+    memoryItems: [{
+      id: "orphan", source: "auto_reflection", title: "孤儿历史复盘",
+      reviewContext: {
+        schemaVersion: 1, symbol: "BTC/USDT", direction: "long", setupType: "trend_pullback",
+        strategyProductId: "trend", timeframe: "1h", traderRole: "day_trader", regime: "uptrend",
+        realizedPnl: 1, outcome: "win", reviewId: "missing-review", tradePlanId: "missing-plan"
+      }
+    }]
+  };
+  assert.equal(backfillReviewMemoryContexts(db).updated, 1);
+  assert.deepEqual(db.memoryItems[0].reviewContext, {
+    schemaVersion: 2, symbol: "BTC/USDT", direction: "long", setupType: "trend_pullback",
+    strategyProductId: "trend", timeframe: "1h", traderRole: "day_trader", regime: "uptrend",
+    grossRealizedPnl: 1, netRealizedPnl: null, outcome: null,
+    reviewId: "missing-review", tradePlanId: "missing-plan"
+  });
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0, "orphan migration must be idempotent");
 });
 
 test("学习效果按平仓生命周期统计，样本不足时不宣称已经改善", () => {

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot, CalendarDays,
-  CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Database, Eye,
+  CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Database, Eye, Globe2,
   FileText, Filter, Gauge, GitBranch, KeyRound, Layers3, ListChecks,
   LockKeyhole, Play, Plus, RefreshCw, Search, Server, ShieldCheck,
   SlidersHorizontal, Sparkles, Target, TrendingUp, Users, WalletCards,
@@ -10,8 +10,9 @@ import {
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SymbolMultiSelect, SystemConfigPanel } from "./panels.jsx";
-import { apiUrl, authHeaders, displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, SKILL_STATE, TradingViewChart } from "./lib.jsx";
+import { apiUrl, authHeaders, countOpenExecutions, displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, SKILL_STATE, TradingViewChart } from "./lib.jsx";
 import { t } from "./i18n.js";
+import { buildCapabilityCatalogRows, buildEventRows, buildExecutionView, buildMarketRows, buildPositionView, buildStrategyCatalogRows, isCompletedTradeReview, netReviewResult, positionNotionalUsdt } from "./viewData.js";
 
 // 技能/策略生命周期状态 → 中文短标签 + Pill 颜色(cp2Pill 用 good/warn/bad/neutral)。
 // 修:此前策略详情用 humanize 直接吐英文原值(historical_rejected → "historical rejected")又长又跨行,
@@ -231,14 +232,7 @@ export function IntelligenceConcept({ data, action, ui }) {
 }
 
 function marketRows(data) {
-  return arr(data.markets).slice(0, 12).map((item, index) => ({
-    ...item,
-    id: item.symbol || index,
-    symbol: item.symbol,
-    price: item.price ?? item.last,
-    change: item.changePct ?? item.change24hPct,
-    volume: item.volume24h ?? item.quoteVolume
-  }));
+  return buildMarketRows(data).slice(0, 12).map((item) => ({ ...item, change: item.changePct, volume: item.volume24h }));
 }
 
 // 全部 OKX USDT 永续合约清单(真实拉取),供行情选币与加自选使用。
@@ -279,7 +273,7 @@ function PairPicker({ instruments, value, onPick, label = t("选择币对", "Sel
 
 export function TradingOverviewConcept({ data, action, ui }) {
   const pf = data.portfolio || {};
-  const positions = arr(data.positions); const fills = arr(data.fills); const orders = arr(data.executionOrders).length ? arr(data.executionOrders) : arr(data.orders);
+  const positions = buildPositionView(data).positions; const fills = arr(data.fills); const orders = arr(data.executionOrders).length ? arr(data.executionOrders) : buildPositionView(data).openOrders;
   const markets = marketRows(data); const activeMarket = data.activeMarket || markets[0] || {};
   const equity = pf.totalEquityUsdt; const used = num(equity) - num(pf.availableMarginUsdt);
   return <div className="cp2Stack">
@@ -292,14 +286,14 @@ export function TradingOverviewConcept({ data, action, ui }) {
     </div>
     {(() => {
       // ③ 行为约束层:日/月盈利目标进度(UTC+8 自然日/月边界)+ 达标"落袋"提示 + 亏损触发反报复冷却。
-      const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl)));
+      const closes = buildExecutionView(data).closedTrades.filter((trade) => Number.isFinite(Number(trade.netRealizedPnl)));
       const shift = (d) => new Date(new Date(d).getTime() + 8 * 3600000);
       const dk = (d) => { const s = shift(d); return `${s.getUTCFullYear()}-${s.getUTCMonth()}-${s.getUTCDate()}`; };
       const mk = (d) => { const s = shift(d); return `${s.getUTCFullYear()}-${s.getUTCMonth()}`; };
       const nowS = shift(new Date());
       const todayKey = `${nowS.getUTCFullYear()}-${nowS.getUTCMonth()}-${nowS.getUTCDate()}`, monKey = `${nowS.getUTCFullYear()}-${nowS.getUTCMonth()}`;
-      const todayPnl = closes.filter((f) => dk(f.createdAt) === todayKey).reduce((s, f) => s + Number(f.realizedPnl), 0);
-      const monthPnl = closes.filter((f) => mk(f.createdAt) === monKey).reduce((s, f) => s + Number(f.realizedPnl), 0);
+      const todayPnl = closes.filter((trade) => dk(trade.createdAt) === todayKey).reduce((sum, trade) => sum + Number(trade.netRealizedPnl), 0);
+      const monthPnl = closes.filter((trade) => mk(trade.createdAt) === monKey).reduce((sum, trade) => sum + Number(trade.netRealizedPnl), 0);
       const dailyGoal = Number(data.system?.dailyGoalUsdt) > 0 ? Number(data.system.dailyGoalUsdt) : null;
       const monthlyGoal = Number(data.system?.monthlyGoalUsdt) > 0 ? Number(data.system.monthlyGoalUsdt) : null;
       const monthlyGoalDays = Number(data.system?.monthlyGoalDays) || new Date(nowS.getUTCFullYear(), nowS.getUTCMonth() + 1, 0).getDate();
@@ -388,14 +382,14 @@ export function MarketConcept({ data, action }) {
 }
 
 export function PositionsConcept({ data }) {
-  const positions = arr(data.positions); const pf = data.portfolio || {};
-  const exposure = positions.reduce((sum, item) => sum + Math.abs(num(item.notional || item.marketValue)), 0);
-  const pnl = positions.reduce((sum, item) => sum + num(item.unrealizedPnl), 0);
-  const margin = positions.reduce((sum, item) => sum + num(item.margin || item.initialMargin), 0);
+  const positionView = buildPositionView(data); const positions = positionView.positions; const pf = data.portfolio || {};
+  const exposure = positionView.exposureUsdt;
+  const pnl = positionView.unrealizedPnlUsdt;
+  const margin = positionView.marginUsdt;
   const lev = positions.length ? positions.reduce((sum, item) => sum + num(item.leverage), 0) / positions.length : 0;
   return <div className="cp2Stack">
     <div className="cp2Metrics four"><ConceptMetric label={t("持仓市值", "Position value")} value={positions.length ? `${money(exposure)} USDT` : "—"} sub={`${positions.length} ${t("个仓位", "positions")}`}/><ConceptMetric label={t("未实现盈亏", "Unrealized PnL")} value={positions.length ? `${pnl>=0?"+":""}${money(pnl)} USDT` : "—"} sub={displayPct(pf.todayPnlPct,t("等待同步", "Awaiting sync"))} tone={pnl>=0?"good":"bad"}/><ConceptMetric label={t("保证金占用", "Margin used")} value={margin ? `${money(margin)} USDT` : "—"} sub={pf.totalEquityUsdt ? `${(margin/num(pf.totalEquityUsdt)*100).toFixed(1)}%` : t("未同步", "Not synced")}/><ConceptMetric label={t("平均杠杆", "Avg leverage")} value={lev ? `${lev.toFixed(2)}x` : "—"} sub={t("组合口径", "Portfolio basis")}/></div>
-    <div className="cp2Grid positionsTop"><ConceptCard title={t("持仓分布", "Allocation")}><div className="cp2Centered"><Donut value={pf.totalEquityUsdt ? Math.max(0,Math.min(100, margin/num(pf.totalEquityUsdt)*100)) : 0} label={positions.length ? `${money(exposure, "0")}` : t("空仓", "Flat")} sub={positions.length ? t("USDT · 保证金占比", "USDT · margin share") : "USDT"}/></div><BarRows rows={positions.slice(0,5).map((item)=>({label:item.symbol,value:num(item.notional||item.marketValue),display:`${money(item.notional||item.marketValue)} U`}))}/></ConceptCard><ConceptCard title={t("持仓明细", "Position Detail")} meta={t("AI托管仓由系统盯盘;手动/外部仓仅记录不托管", "AI-managed positions are monitored by the system; manual/external ones are recorded only")} className="span2"><ConceptTable columns={[{key:"symbol",label:t("币种", "Symbol")},{key:"source",label:t("来源", "Source"),render:r=><Pill tone={r.source==="execution_engine"?"good":"neutral"}>{r.source==="execution_engine"?t("AI托管", "AI-managed"):t("手动/外部", "Manual/External")}</Pill>},{key:"direction",label:t("方向", "Side"),render:r=><Pill tone={/short|空|卖|sell/i.test(String(r.direction))?"bad":"good"}>{humanize(r.direction)}</Pill>},{key:"quantity",label:t("持仓数量", "Size"),render:r=>r.quantity??r.size??"—"},{key:"entry",label:t("开仓均价", "Entry"),render:r=>money(r.entryPrice??r.entry)},{key:"mark",label:t("当前价格", "Mark"),render:r=>money(r.markPrice??r.mark)},{key:"pnl",label:t("未实现盈亏", "Unrealized"),render:r=><span className={num(r.unrealizedPnl)>=0?"good":"bad"}>{money(r.unrealizedPnl)}</span>},{key:"leverage",label:t("杠杆", "Lev"),render:r=>r.leverage?`${r.leverage}x`:"—"},{key:"liq",label:t("强平价", "Liq price"),render:r=>money(r.liquidationPrice)}]} rows={positions} empty={t("暂无持仓", "No positions")}/></ConceptCard></div>
+    <div className="cp2Grid positionsTop"><ConceptCard title={t("持仓分布", "Allocation")}><div className="cp2Centered"><Donut value={pf.totalEquityUsdt ? Math.max(0,Math.min(100, margin/num(pf.totalEquityUsdt)*100)) : 0} label={positions.length ? `${money(exposure, "0")}` : t("空仓", "Flat")} sub={positions.length ? t("USDT · 保证金占比", "USDT · margin share") : "USDT"}/></div><BarRows rows={positions.slice(0,5).map((item)=>{const notional=positionNotionalUsdt(item);return {label:item.symbol,value:notional,display:`${money(notional)} U`};})}/></ConceptCard><ConceptCard title={t("持仓明细", "Position Detail")} meta={t("AI托管仓由系统盯盘;手动/外部仓仅记录不托管", "AI-managed positions are monitored by the system; manual/external ones are recorded only")} className="span2"><ConceptTable columns={[{key:"symbol",label:t("币种", "Symbol")},{key:"source",label:t("来源", "Source"),render:r=><Pill tone={r.source==="execution_engine"?"good":"neutral"}>{r.source==="execution_engine"?t("AI托管", "AI-managed"):t("手动/外部", "Manual/External")}</Pill>},{key:"direction",label:t("方向", "Side"),render:r=><Pill tone={/short|空|卖|sell/i.test(String(r.direction))?"bad":"good"}>{humanize(r.direction)}</Pill>},{key:"quantity",label:t("持仓数量", "Size"),render:r=>r.quantity??r.size??"—"},{key:"entry",label:t("开仓均价", "Entry"),render:r=>money(r.entryPrice??r.entry)},{key:"mark",label:t("当前价格", "Mark"),render:r=>money(r.markPrice??r.mark)},{key:"pnl",label:t("未实现盈亏", "Unrealized"),render:r=><span className={num(r.unrealizedPnl)>=0?"good":"bad"}>{money(r.unrealizedPnl)}</span>},{key:"leverage",label:t("杠杆", "Lev"),render:r=>r.leverage?`${r.leverage}x`:"—"},{key:"liq",label:t("强平价", "Liq price"),render:r=>money(r.liquidationPrice)}]} rows={positions} empty={t("暂无持仓", "No positions")}/></ConceptCard></div>
     <div className="cp2Grid two wideLeft"><ConceptCard title={t("持仓盈亏曲线", "Equity Curve")} meta={t("账户真实快照", "Real account snapshots")}><MiniLine values={arr(data.accountSnapshots).map((item)=>item.totalEquityUsdt)} height={150}/></ConceptCard><ConceptCard title={t("保证金健康", "Margin Health")}><div className="cp2Centered"><Donut value={pf.totalEquityUsdt ? Math.max(0,100-margin/num(pf.totalEquityUsdt)*100) : 0} label={pf.totalEquityUsdt ? `${Math.round(Math.max(0,100-margin/num(pf.totalEquityUsdt)*100))}%` : "—"} sub={t("健康度", "Health")}/></div><div className="cp2Checklist"><span>{pf.totalEquityUsdt!=null?<CheckCircle2/>:<AlertTriangle/>}{t("保证金已同步", "Margin synced")}</span><span>{Number(pf.availableMarginUsdt)>0?<CheckCircle2/>:<AlertTriangle/>}{t("风险缓冲", "Risk buffer")}</span><span>{!arr(data.positions).some(p=>{const d=Number(p.liqDistancePct);return Number.isFinite(d)&&d<12;})?<ShieldCheck/>:<AlertTriangle/>}{t("强平距离安全", "Safe liq distance")}</span></div></ConceptCard></div>
   </div>;
 }
@@ -613,8 +607,8 @@ function BehaviorCompact({ data, action, showDiagnostics = true }) {
 
 // 原始委托与成交独立为可追溯台账；执行与复盘主页面只保留聚合状态、绩效、复盘、诊断和行为改进。
 export function ExecutionLedgerConcept({ data, action, ui }) {
-  const orders = arr(data.executionOrders).slice().sort((a,b)=>new Date(b.updatedAt||b.lastPolledAt||b.closedAt||b.createdAt||0)-new Date(a.updatedAt||a.lastPolledAt||a.closedAt||a.createdAt||0));
-  const fills = arr(data.fills).slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const execution = buildExecutionView(data);
+  const { orders, fills, totals } = execution;
   const plans = arr(data.tradePlans);
   const [selectedId, setSelectedId] = useState(orders[0]?.id || "");
   const [fillView, setFillView] = useState("all");
@@ -628,8 +622,7 @@ export function ExecutionLedgerConcept({ data, action, ui }) {
   const shownFills=fillView==="closed"?filteredFills.filter(item=>item.kind==="close"):filteredFills;
   const selected=filteredOrders.find(item=>item.id===selectedId)||filteredOrders[0]||{};
   const historySymbols=[...new Set([...orders,...fills].map(item=>item.symbol).filter(Boolean))].sort();
-  const openOrderStates=new Set(["pending","awaiting_approval","executing","submitted","entry_pending","entry_filled","protecting"]);
-  const inFlight=orders.filter(row=>openOrderStates.has(String(row.status||"").toLowerCase())).length;
+  const inFlight=countOpenExecutions(orders);
   const totalFees=fills.reduce((sum,row)=>sum+num(row.feeUsdt??row.fee),0);
   const feeOf=(row)=>row.feeUsdt??row.fee;
   const dirPill=(dir)=>{const short=/short|空|卖|sell/i.test(String(dir));return <Pill tone={short?"bad":"good"}>{short?t("空","Short"):t("多","Long")}</Pill>;};
@@ -641,55 +634,49 @@ export function ExecutionLedgerConcept({ data, action, ui }) {
   return <div className="cp2Stack erPage erRefined erLedgerPage">
     <header className="erPageHeader erLedgerHeader"><div><span>{t("执行记录","Execution records")}</span><h2>{t("委托与成交","Orders & Fills")}</h2><p>{t("集中核对 AI 委托、执行状态、保护链路与 OKX 真实成交；所有记录均可相互追溯。","A focused audit trail for AI orders, execution status, protection, and real OKX fills, with end-to-end traceability.")}</p></div><button type="button" className="erHeaderLink" onClick={()=>ui.setActive("tradeJournal")}>{t("返回执行与复盘","Back to Execution & Review")}<ChevronRight size={14}/></button></header>
     <div className="erControlBar erLedgerControl"><nav aria-label={t("记录章节","Record sections")}><button type="button" onClick={()=>scrollTo("orders")}><i>01</i>{t("AI 委托记录","AI orders")}</button><button type="button" onClick={()=>scrollTo("fills")}><i>02</i>{t("成交流水","Fill ledger")}</button></nav><div className="erHistoryFilters"><label>{t("时间范围","Time range")}<select value={historyRange} onChange={event=>setHistoryRange(event.target.value)}><option value="all">{t("全部时间","All time")}</option><option value="7d">{t("近 7 日","Last 7 days")}</option><option value="30d">{t("近 30 日","Last 30 days")}</option><option value="90d">{t("近 90 日","Last 90 days")}</option></select></label><label>{t("交易对","Pair")}<select value={historySymbol} onChange={event=>setHistorySymbol(event.target.value)}><option value="all">{t("全部交易对","All pairs")}</option>{historySymbols.map(symbol=><option value={symbol} key={symbol}>{symbol}</option>)}</select></label><label>{t("方向","Side")}<select value={historyDirection} onChange={event=>setHistoryDirection(event.target.value)}><option value="all">{t("多空全部","Long & short")}</option><option value="long">{t("只看做多","Long only")}</option><option value="short">{t("只看做空","Short only")}</option></select></label></div></div>
-    <div className="erExecSummary erLedgerSummary"><div><small>{t("AI 委托","AI orders")}</small><b>{data.executionOrderStatus?.total??orders.length} {t("笔","")}</b><span>{data.executionOrderStatus?.lastChangedAt?`${t("最近状态变化","Last status change")} ${formatDateTime(data.executionOrderStatus.lastChangedAt)}`:t("暂无状态变化","No status changes yet")}</span></div><div><small>{t("在途执行","In-flight")}</small><b>{inFlight} {t("笔","")}</b><span>{t("等待交易所状态推进","Awaiting exchange status updates")}</span></div><div><small>{t("真实成交","Real fills")}</small><b>{fills.length} {t("条","")}</b><span>{t("开仓、减仓与平仓成交","Entries, reductions, and closes")}</span></div><div><small>{t("累计手续费","Total fees")}</small><b>{money(totalFees)} U</b><span>{t("真实费用与估算费用明确标识","Actual and estimated fees are labelled")}</span></div></div>
+    <div className="erExecSummary erLedgerSummary"><div><small>{t("AI 委托","AI orders")}</small><b>{totals.orders} {t("笔","")}</b><span>{data.executionOrderStatus?.lastChangedAt?`${t("最近状态变化","Last status change")} ${formatDateTime(data.executionOrderStatus.lastChangedAt)}`:t("暂无状态变化","No status changes yet")}</span></div><div><small>{t("在途执行","In-flight")}</small><b>{inFlight} {t("笔","")}</b><span>{t("等待交易所状态推进","Awaiting exchange status updates")}</span></div><div><small>{t("真实成交","Real fills")}</small><b>{totals.fills} {t("条","")}</b><span>{t("开仓、减仓与平仓成交","Entries, reductions, and closes")}</span></div><div><small>{t("累计手续费","Total fees")}</small><b>{money(totalFees)} U</b><span>{t("真实费用与估算费用明确标识","Actual and estimated fees are labelled")}</span></div></div>
     <section id="el-orders" className="erZone"><div className="erZoneLabel"><span>{t("AI 委托记录","AI Order Log")}</span><small>{t("选择委托后核对完整执行路径","Select an order to inspect its full execution path")}</small></div><div className="erExecutionMaster"><ConceptCard title={t("AI 委托记录","AI Order Log")} meta={`${filteredOrders.length} ${t("笔记录", "orders")}`} className="erOrdersCard"><ConceptTable onRowClick={row=>setSelectedId(row.id)} activeId={selected.id} columns={[{key:"createdAt",label:t("时间","Time"),render:row=>formatTime(row.createdAt)},{key:"symbol",label:t("交易对","Pair")},{key:"direction",label:t("方向","Side"),render:row=>dirPill(row.direction)},{key:"quantity",label:t("数量","Qty"),render:row=>row.quantity??row.size??"—"},{key:"entryPrice",label:t("入场价","Entry"),render:row=>money(row.entryPrice??row.price)},{key:"stopLoss",label:t("止损","Stop"),render:row=>money(row.stopLoss)},{key:"tp",label:t("止盈","Target"),render:row=>money((row.takeProfits||[])[0])},{key:"status",label:t("状态","Status"),render:row=>{const [label,tone]=orderStatus(row.status);return <Pill tone={tone}>{label}</Pill>;}}]} rows={filteredOrders} empty={t("当前筛选下暂无 AI 委托","No AI orders match the current filters")}/></ConceptCard><ConceptCard title={t("委托详情","Order Detail")} action={selected.status&&<Pill tone={orderStatus(selected.status)[1]}>{orderStatus(selected.status)[0]}</Pill>} className="erOrderDetailCard"><div className="cp2Kv column">{[[t("交易对 / 方向","Pair / side"),selected.symbol?`${selected.symbol} · ${/short|空/.test(String(selected.direction))?t("空","Short"):t("多","Long")}`:"—"],[t("数量","Quantity"),selected.quantity??selected.size],[t("名义金额","Notional"),selected.notionalUsdt==null?"—":`${money(selected.notionalUsdt)} U`],[t("预计保证金","Estimated margin"),selected.projectedMargin?.incrementalMargin==null?"—":`${money(selected.projectedMargin.incrementalMargin)} U`],[t("成交后保证金使用","Post-trade margin use"),selected.projectedMargin?.projectedUtilizationPct==null?"—":`${num(selected.projectedMargin.projectedUtilizationPct).toFixed(1)}%`],[t("入场 / 止损 / 止盈","Entry / stop / target"),`${money(selected.entryPrice??selected.price)} / ${money(selected.stopLoss)} / ${money((selected.takeProfits||[])[0])}`],[t("策略","Strategy"),humanize(selected.strategy)],[t("创建时间","Created"),formatDateTime(selected.createdAt)]].map(([key,value])=><span key={key}>{key}<b>{value||"—"}</b></span>)}</div><div className="erDetailActions"><button className="cp2Secondary" onClick={()=>ui.setActive("chat")}>{t("交给 AI 修改","Ask AI to modify")}</button>{canCancelOrClose&&<button className="cp2Danger" onClick={()=>action(`/api/execution-orders/${selected.id}/close`,{reason:"manual_ui"})}>{t("撤单 / 平仓","Cancel / Close")}</button>}</div></ConceptCard></div><ConceptCard title={t("执行链路","Execution Path")} meta={t("与真实执行顺序一致","Matches the real execution order")} action={selected.id&&<Pill tone="warn">{orderStatus(selected.status)[0]}</Pill>} className="erPathCard"><div className="erPath">{[t("计划","Plan"),t("风控","Risk"),t("路由","Route"),t("订单","Order"),t("成交","Fill"),t("保护单","Protection")].map((name,index)=><div key={name} className={pathDone(index)?"done":""}><i>{pathDone(index)?"✓":index+1}</i><span><b>{name}</b><small>{index===0?humanize(plans[0]?.status,t("等待计划","Awaiting plan")):index===1?t("执行前复查","Pre-trade check"):index===2?"OKX":index===3?orderStatus(selected.status)[0]:index===4?`${fills.length} ${t("笔成交","fills")}`:t("止损 / 止盈","SL / TP")}</small></span></div>)}</div></ConceptCard></section>
-    <section id="el-fills" className="erZone"><div className="erZoneLabel"><span>{t("成交流水","Fill Ledger")}</span><small>{t("OKX 真实成交、费用和已实现盈亏","Real OKX fills, costs, and realized PnL")}</small></div><ConceptCard title={t("成交流水","Fills")} meta={<span>{shownFills.length} {t("条","")} · {t("手续费明确区分真实与估算","fees distinguish actual from estimated")}</span>} action={<div className="erToggle"><button className={fillView==="all"?"on":""} onClick={()=>setFillView("all")}>{t("全部成交","All")}</button><button className={fillView==="closed"?"on":""} onClick={()=>setFillView("closed")}>{t("仅已平仓","Closed")}</button></div>}><div className="cp2ScrollList tall"><ConceptTable compact columns={[{key:"createdAt",label:t("时间","Time"),render:row=>formatDateTime(row.createdAt)},{key:"symbol",label:t("交易对","Pair")},{key:"kind",label:t("开平","Open/Close"),render:row=><Pill tone={row.kind==="close"?"warn":"neutral"}>{row.kind==="close"?t("平仓","Close"):t("开仓","Open")}</Pill>},{key:"direction",label:t("方向","Side"),render:row=>dirPill(row.direction)},{key:"quantity",label:t("数量","Qty"),render:row=>row.quantity??row.size??"—"},{key:"price",label:t("成交价","Price"),render:row=>money(row.price)},{key:"fee",label:t("手续费","Fee"),render:row=><span>{money(feeOf(row))}{row.estimatedFee?` ${t("估","est.")}`:""}</span>},{key:"realizedPnl",label:t("已实现盈亏","Realized PnL"),render:row=>row.kind==="close"||row.realizedPnl!=null?<span className={num(row.realizedPnl)>=0?"good":"bad"}>{money(row.realizedPnl)}</span>:"—"}]} rows={shownFills} empty={t("当前筛选下暂无成交","No fills match the current filters")}/></div></ConceptCard></section>
+    <section id="el-fills" className="erZone"><div className="erZoneLabel"><span>{t("成交流水","Fill Ledger")}</span><small>{t("OKX 真实成交、费用和价格毛盈亏","Real OKX fills, costs, and gross price PnL")}</small></div><ConceptCard title={t("成交流水","Fills")} meta={<span>{shownFills.length} {t("条","")} · {t("手续费明确区分真实与估算","fees distinguish actual from estimated")}</span>} action={<div className="erToggle"><button className={fillView==="all"?"on":""} onClick={()=>setFillView("all")}>{t("全部成交","All")}</button><button className={fillView==="closed"?"on":""} onClick={()=>setFillView("closed")}>{t("仅已平仓","Closed")}</button></div>}><div className="cp2ScrollList tall"><ConceptTable compact columns={[{key:"createdAt",label:t("时间","Time"),render:row=>formatDateTime(row.createdAt)},{key:"symbol",label:t("交易对","Pair")},{key:"kind",label:t("开平","Open/Close"),render:row=><Pill tone={row.kind==="close"?"warn":"neutral"}>{row.kind==="close"?t("平仓","Close"):t("开仓","Open")}</Pill>},{key:"direction",label:t("方向","Side"),render:row=>dirPill(row.direction)},{key:"quantity",label:t("数量","Qty"),render:row=>row.quantity??row.size??"—"},{key:"price",label:t("成交价","Price"),render:row=>money(row.price)},{key:"fee",label:t("手续费","Fee"),render:row=><span>{money(feeOf(row))}{row.estimatedFee?` ${t("估","est.")}`:""}</span>},{key:"realizedPnl",label:t("价格毛盈亏","Gross price PnL"),render:row=>row.kind==="close"||row.realizedPnl!=null?<span className={num(row.realizedPnl)>=0?"good":"bad"}>{money(row.realizedPnl)}</span>:"—"}]} rows={shownFills} empty={t("当前筛选下暂无成交","No fills match the current filters")}/></div></ConceptCard></section>
   </div>;
 }
 
 export function ExecutionReviewConcept({ data, action, ui }) {
-  const orders = arr(data.executionOrders);
-  const fills = arr(data.fills); const plans = arr(data.tradePlans); const reviews = arr(data.reviews);
-  const performance = data.performance || {}; const bp = data.behaviorProfile || {};
+  const execution = buildExecutionView(data);
+  const { orders, fills, closedTrades, reviews, performance } = execution;
+  const plans = arr(data.tradePlans); const bp = data.behaviorProfile || {};
   const [historyRange,setHistoryRange]=useState("all"); const [historySymbol,setHistorySymbol]=useState("all"); const [historyDirection,setHistoryDirection]=useState("all");
-  const closes = fills.filter((f) => f.kind === "close" && Number.isFinite(num(f.realizedPnl)));
-  const closedTrades = (() => {
-    const groups = new Map();
-    for (const fill of closes) {
-      const key = fill.executionOrderId || fill.tradePlanId || fill.planId || fill.positionId || fill.id;
-      const current = groups.get(key) || { ...fill, realizedPnl: 0, completed: false };
-      current.realizedPnl += num(fill.realizedPnl);
-      current.completed ||= fill.partial !== true;
-      if (new Date(fill.createdAt || 0) > new Date(current.createdAt || 0)) current.createdAt = fill.createdAt;
-      groups.set(key, current);
-    }
-    return [...groups.values()].filter((item) => item.completed);
-  })();
-  const lifecycleCount = performance.trades != null ? num(performance.trades) : closedTrades.length;
-  const net = performance.totalPnlUsdt != null ? num(performance.totalPnlUsdt) : closes.reduce((s, f) => s + num(f.realizedPnl), 0);
+  const lifecycleCount = num(performance.trades);
+  const net = num(performance.totalPnlUsdt);
   const o = bp.overall || {};
-  const winPct = performance.winRatePct != null ? num(performance.winRatePct) : (closes.length ? Math.round(closes.filter((f) => num(f.realizedPnl) > 0).length / closes.length * 100) : 0);
+  const winPct = num(performance.winRatePct);
   const avg = performance.avgPnlUsdt != null ? num(performance.avgPnlUsdt) : num(o.expectancyUsdt);
   const pendingApproval = plans.filter((i) => i.status === "awaiting_approval").length;
-  const openOrderStates = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_filled", "protecting"]);
-  const inFlight = orders.filter((row) => openOrderStates.has(String(row.status || "").toLowerCase())).length;
-  const positions = arr(data.positions).filter((row) => num(row.size ?? row.pos ?? row.quantity) !== 0);
+  const inFlight = countOpenExecutions(orders);
+  const positions = buildPositionView(data).positions;
   const protectedPositions = positions.filter((row) => row.stopLoss != null || row.stopLossPrice != null || row.protectionVerified === true || /protected|verified|ok/i.test(String(row.protectionStatus || ""))).length;
-  const tradeReviews = reviews.filter((item) => item.type === "trade");
+  const tradeReviews = reviews;
   const [selectedReviewId,setSelectedReviewId]=useState(tradeReviews[0]?.id||"");
   const rangeDays={"7d":7,"30d":30,"90d":90}[historyRange];
   const historyMatch=(item,dateValue)=>{const symbolOk=historySymbol==="all"||item.symbol===historySymbol;const rawDirection=String(item.direction||item.side||"").toLowerCase();const direction=rawDirection.includes("short")||rawDirection.includes("空")||rawDirection.includes("sell")?"short":"long";const directionOk=historyDirection==="all"||direction===historyDirection;if(!symbolOk||!directionOk)return false;if(!rangeDays)return true;const time=new Date(dateValue||item.closedAt||item.completedAt||item.createdAt||0).getTime();return Number.isFinite(time)&&time>=Date.now()-rangeDays*86400000;};
   const diagnosticPoints=arr(bp.scatter).filter(item=>historyMatch(item,item.closedAt));
   const filteredReviews=tradeReviews.filter(item=>historyMatch(item,item.completedAt||item.createdAt));
-  const pendingReviews=filteredReviews.filter((item) => !/completed|reflected|closed|done/i.test(String(item.status || "pending")));
+  const pendingReviews=filteredReviews.filter((item) => !isCompletedTradeReview(item));
   const selectedReview=filteredReviews.find(item=>item.id===selectedReviewId)||filteredReviews[0]||{};
+  const tradeForReview=(review)=>closedTrades.find((trade)=>trade.tradeLifecycleKey===review.tradeLifecycleKey||trade.executionOrderId===review.executionOrderId||(review.fillIds||[]).some((id)=>trade.fillIds?.includes(id)));
+  const reviewNetPnl=(review)=>netReviewResult(review,tradeForReview(review));
+  const reviewHasResult=(review)=>reviewNetPnl(review)!=null;
+  const selectedTrade=tradeForReview(selectedReview);
+  const selectedReviewPnl=reviewNetPnl(selectedReview);
+  const selectedEntryFee=selectedTrade?.entryFeeUsdt??selectedReview.entryFeeUsdt;
+  const selectedCloseFee=selectedTrade?.feeUsdt??selectedReview.feeUsdt;
+  const selectedReviewFees=selectedEntryFee==null&&selectedCloseFee==null?null:Math.abs(num(selectedEntryFee))+Math.abs(num(selectedCloseFee));
   const reviewLearning=data.reviewLearningAnalytics||{};
   const selectedMemoryLearning=arr(reviewLearning.byMemory).find(item=>item.memoryId===selectedReview.memoryItemId);
   const historySymbols=[...new Set([...arr(bp.scatter),...fills,...tradeReviews].map(item=>item.symbol).filter(Boolean))].sort();
   const behaviorAlerts = arr(bp.flags).length;
   const reconciliationOk = data.reconciliationReports?.[0]?.status === "ok";
   // 累计已实现盈亏曲线(按时间正序),给首格配迷你走势。
-  const cumPnl = (() => { const seq = closedTrades.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); let s = 0; return seq.map((f) => (s += num(f.realizedPnl))); })();
+  const cumPnl = (() => { const seq = closedTrades.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); let s = 0; return seq.map((trade) => (s += num(trade.netRealizedPnl))); })();
   const monthlyRows = (() => {
     const shift = (date) => new Date(new Date(date).getTime() + 8 * 3600000);
     const dailyGoal = num(data.system?.dailyGoalUsdt, 0);
@@ -699,9 +686,9 @@ export function ExecutionReviewConcept({ data, action, ui }) {
       const month = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
       const day = `${month}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
       (months[month] ||= { net: 0, trades: 0, wins: 0, days: new Set(), goalDays: new Set() });
-      months[month].net += num(fill.realizedPnl); months[month].trades += 1;
-      if (num(fill.realizedPnl) > 0) months[month].wins += 1;
-      months[month].days.add(day); dayPnl[day] = (dayPnl[day] || 0) + num(fill.realizedPnl);
+      months[month].net += num(fill.netRealizedPnl); months[month].trades += 1;
+      if (num(fill.netRealizedPnl) > 0) months[month].wins += 1;
+      months[month].days.add(day); dayPnl[day] = (dayPnl[day] || 0) + num(fill.netRealizedPnl);
     }
     for (const [day, pnl] of Object.entries(dayPnl)) if (dailyGoal > 0 && pnl >= dailyGoal) months[day.slice(0, 7)]?.goalDays.add(day);
     return Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).map(([month, row]) => ({
@@ -747,10 +734,10 @@ export function ExecutionReviewConcept({ data, action, ui }) {
     <section id="er-reviews" className="erZone"><div className="erZoneLabel"><span>{t("交易复盘详情","Trade Review Workbench")}</span><small>{t("结果、根因、改进与事实证据","Outcome, root cause, action, and evidence")}</small></div>
       <ConceptCard title={t("交易复盘详情", "Trade Review Workbench")} meta={t("平仓确认后自动进入队列 · 保留完整复盘正文", "Confirmed closes enter automatically · full review text retained")} className="erReviewCard">
         {filteredReviews.length ? <div className="erReviewWorkbench">
-          <div className="erReviewIndex">{filteredReviews.slice(0,12).map((review,index)=><button type="button" className={selectedReview.id===review.id?"active":""} key={review.id||index} onClick={()=>setSelectedReviewId(review.id)}><span><b>{review.symbol||t("组合","Portfolio")}</b><Pill tone={toneOf(review.status)}>{humanize(review.status)}</Pill></span><strong className={num(review.realizedPnl)>=0?"good":"bad"}>{review.realizedPnl==null?"—":`${num(review.realizedPnl)>=0?"+":""}${money(review.realizedPnl)} U`}</strong><small>{formatDateTime(review.completedAt||review.createdAt)}</small><p>{review.summary||review.title||t("等待复盘结论。","Awaiting review conclusion.")}</p></button>)}</div>
+          <div className="erReviewIndex">{filteredReviews.slice(0,12).map((review,index)=>{const reviewPnl=reviewNetPnl(review);return <button type="button" className={selectedReview.id===review.id?"active":""} key={review.id||index} onClick={()=>setSelectedReviewId(review.id)}><span><b>{review.symbol||t("组合","Portfolio")}</b><Pill tone={toneOf(review.status)}>{humanize(review.status)}</Pill></span><strong className={reviewPnl==null?"":reviewPnl>=0?"good":"bad"}>{reviewHasResult(review)?`${reviewPnl>=0?"+":""}${money(reviewPnl)} U`:"—"}</strong><small>{formatDateTime(review.completedAt||review.createdAt)}</small><p>{review.summary||review.title||t("等待复盘结论。","Awaiting review conclusion.")}</p></button>;})}</div>
           <article className="erReviewDetail">
-            <header><div><span>{selectedReview.direction?/short|空/i.test(String(selectedReview.direction))?t("做空","Short"):t("做多","Long"):t("已平仓交易","Closed trade")}</span><h3>{selectedReview.title||`${selectedReview.symbol||t("交易","Trade")} ${t("复盘","review")}`}</h3><small>{formatDateTime(selectedReview.completedAt||selectedReview.createdAt)} · {selectedReview.fillIds?.length||selectedReview.partialCloseCount||1} {t("笔平仓成交","close fills")}</small></div><div className="erReviewResult"><small>{t("已实现盈亏","Realized PnL")}</small><b className={num(selectedReview.realizedPnl)>=0?"good":"bad"}>{selectedReview.realizedPnl==null?"—":`${num(selectedReview.realizedPnl)>=0?"+":""}${money(selectedReview.realizedPnl)} U`}</b></div></header>
-            <div className="erReviewFacts"><span>{t("归因","Attribution")}<b>{selectedReview.attribution||t("待归因","Pending")}</b></span><span>{t("手续费","Fees")}<b>{selectedReview.feeUsdt==null?"—":`${money(selectedReview.feeUsdt)} U`}</b></span><span>{t("资金费","Funding")}<b>{selectedReview.fundingFeeUsdt==null?"—":`${money(selectedReview.fundingFeeUsdt)} U`}</b></span><span>{t("复盘状态","Review status")}<b>{humanize(selectedReview.status)}</b></span></div>
+            <header><div><span>{selectedReview.direction?/short|空/i.test(String(selectedReview.direction))?t("做空","Short"):t("做多","Long"):t("已平仓交易","Closed trade")}</span><h3>{selectedReview.title||`${selectedReview.symbol||t("交易","Trade")} ${t("复盘","review")}`}</h3><small>{formatDateTime(selectedReview.completedAt||selectedReview.createdAt)} · {selectedReview.fillIds?.length||selectedReview.partialCloseCount||1} {t("笔平仓成交","close fills")}</small></div><div className="erReviewResult"><small>{t("净交易结果","Net trade result")}</small><b className={selectedReviewPnl>=0?"good":"bad"}>{reviewHasResult(selectedReview)?`${selectedReviewPnl>=0?"+":""}${money(selectedReviewPnl)} U`:"—"}</b></div></header>
+            <div className="erReviewFacts"><span>{t("归因","Attribution")}<b>{selectedReview.attribution||t("待归因","Pending")}</b></span><span>{t("开/平仓手续费","Entry / close fees")}<b>{selectedReviewFees==null?"—":`${money(selectedReviewFees)} U`}</b></span><span>{t("资金费","Funding")}<b>{selectedTrade?.fundingFeeUsdt==null&&selectedReview.fundingFeeUsdt==null?"—":`${money(selectedTrade?.fundingFeeUsdt??selectedReview.fundingFeeUsdt)} U`}</b></span><span>{t("复盘状态","Review status")}<b>{humanize(selectedReview.status)}</b></span></div>
             <section><i>01</i><div><b>{t("结果摘要","Outcome Summary")}</b><p>{selectedReview.summary||t("等待成交事实回补与结果汇总。","Awaiting fill facts and outcome summary.")}</p></div></section>
             <section><i>02</i><div><b>{t("深度判断与根因","Deep Analysis & Root Cause")}</b><p>{selectedReview.deepReflection||selectedReview.lesson||selectedReview.notes||t("深度复盘仍在队列中；完成后会在这里展示完整判断。","Deep review is still queued; the full analysis will appear here when complete.")}</p></div></section>
             <section><i>03</i><div><b>{t("下次如何改进","Action for Next Time")}</b><p>{selectedReview.lesson||t("等待形成可执行的改进结论。","Awaiting an actionable improvement conclusion.")}</p></div></section>
@@ -826,32 +813,15 @@ function InstallCapabilityDialog({ onClose, notify }) {
 }
 
 export function CapabilitiesConcept({ data, action, ui }) {
-  // 能力库=工具:内置工具 + 分析引擎工具 + MCP + 导入的工具类 skill;策略类(tradingSkills)归策略库,不在此。
-  const rawItems=[...arr(data.skills).filter(s=>s.kind!=="strategy"),...arr(data.analysisEngine?.tools),...arr(data.tools),...arr(data.mcpServers)];
-  // MCP 服务器记录没有 type/serverName,靠 transport 或 mcp_ 前缀 id 识别,否则会被误判成普通「工具」。
-  const isMcp=i=>Boolean(i.serverName||i.transport||/^mcp_/i.test(String(i.id||"")));
-  // 核心 Agent 工具(listAgentTools 产出)本身无 status 字段——它们是内置且始终可调,统一显示「已启用」,
-  // 避免与技能的「已启用」并列时又冒出个含义不明的「可用」。连接器/技能/MCP 各自已有真实 status,不受影响。
-  // 调用量取真实计数:后端 toolCallStats 按工具名累计(内置/技能/MCP 工具都算),
-  // 技能回退 evalMetrics.calls;MCP 服务器行汇总它旗下各工具的调用数;都没有则诚实显 0/—。
-  const tc=data.toolCallStats||{};
-  const isConnector=i=>/^tool_/i.test(String(i.id||""))||["exchange","model","data"].includes(String(i.type||i.kind||"").toLowerCase());
-  const callsOf=(item)=>{
-    if(isConnector(item)) return null;
-    const key=item.toolName||item.name;
-    if(isMcp(item)) return (item.tools||[]).reduce((n,t)=>n+(tc[t?.name||t]?.calls||0),0);
-    return tc[key]?.calls ?? item.evalMetrics?.calls ?? item.runs ?? item.runCount;
-  };
-  const lastOf=(item)=>{ const key=item.toolName||item.name; return tc[key]?.lastAt ?? item.lastCalledAt ?? item.lastRunAt ?? null; };
-  const usageOf=(item)=>{const key=item.toolName||item.name;const s=tc[key];if(item.usage)return item.usage;if(!s)return null;const calls=Number(s.calls||0),error=Number(s.error||0),blocked=Number(s.blocked||0),success=Number(s.success||0),classified=success+blocked+error;return {calls,success,blocked,error,unclassified:Number(s.legacyUnclassifiedOutcomes||0),avgLatencyMs:s.latencySamples?Math.round((s.totalLatencyMs||0)/s.latencySamples):null,sourceCalls:s.sourceCalls||{},legacyUnsplit:Boolean(s.legacyUnsplitCalls),legacyUnsplitCalls:Number(s.legacyUnsplitCalls||0),health:!calls||!classified?"untested":s.lastStatus==="error"||error/classified>=.2?"degraded":s.lastStatus==="blocked"&&!success?"blocked":"healthy"};};
-  const items = rawItems.filter((item,index)=>rawItems.findIndex(other=>(other.id||other.name)===(item.id||item.name))===index).map((item,index)=>{const usage=usageOf(item);return {...item,id:item.id||`cap-${index}`,name:item.name||item.title||item.serverName||t("未命名工具", "Unnamed tool"),kind:item.type||item.category||(isMcp(item)?"MCP":"工具"),status:item.status||"已启用",runs:callsOf(item),usage,health:isConnector(item)?"not_applicable":usage?.health||((callsOf(item)||0)>0?"healthy":"untested"),callMetric:isConnector(item)?"not_applicable":"calls",lastRunAt:lastOf(item)};});
+  // Web 与 App 共用同一目录、去重键、调用统计和健康分类。
+  const items = buildCapabilityCatalogRows(data, t);
   const healthLabel=value=>({healthy:t("运行正常","Healthy"),degraded:t("需要检查","Degraded"),blocked:t("最近阻断","Last blocked"),untested:t("未有运行证据","Untested"),not_applicable:t("配置项","Configuration")}[value]||humanize(value));
   const healthTone=value=>value==="healthy"?"good":value==="degraded"?"bad":value==="blocked"?"warn":"neutral";
   // 状态词汇跨中英混用(技能=已启用/已拉取、连接器=configured/missing_credentials、MCP=connected/registered),
   // 判定必须同时认中英,否则按钮(启用/停用)与计数会错。
-  const isEnabled=i=>["active","trusted","enabled","ready","connected","configured","available_without_key","已启用","已配置","已连接","免密钥可用"].includes(i.status)||i.enabled===true;
-  const isDisabled=i=>i.enabled===false||/disabled|retired|已停用|已禁用/i.test(String(i.status));
-  const isCandidate=i=>!isEnabled(i)&&!isDisabled(i)&&/candidate|pending|trial|paper|registered|待批准|待复核|待连接|待安全复核|候选/i.test(String(i.status));
+  const isEnabled=i=>i.enabled;
+  const isDisabled=i=>i.disabled;
+  const isCandidate=i=>i.candidate;
   const TYPES=[["全部工具",()=>true],["分析工具",i=>/分析|analy|工具|tool/i.test(String(i.kind))&&!/MCP/i.test(String(i.kind))],["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],["工具 (MCP)",i=>/MCP/i.test(String(i.kind))]];
   const STATUSES=[["全部状态",()=>true],["已启用",isEnabled],["候选中",isCandidate],["已停用",isDisabled]];
   const [typeF,setTypeF]=useState("全部工具"); const [statusF,setStatusF]=useState("全部状态"); const [detailTab,setDetailTab]=useState("概览"); const [installing,setInstalling]=useState(false); const [q,setQ]=useState("");
@@ -895,31 +865,10 @@ function StrategyCatalogConcept({ data, action, ui }) {
   // 策略产品（AI 实盘计划使用）与指标研究模型（回测信号）严格分层，避免把“能产生信号”
   // 误写成“已经有实盘证据的策略”。导入/蒸馏策略仍保留，但不会混入原生产品成绩。
   const productSummary=data.strategyCatalog?.productSummary||{};
-  const paperSessions=arr(data.paperReport?.sessions);
   const minForwardTrades=Number(data.paperReport?.minForwardTrades||30);
-  const products=arr(data.strategyCatalog?.products).map((item)=>({
-    id:`product_${item.versionId}`,recordType:"product",name:t(item.definition?.name||item.id,item.definition?.nameEn||item.id),
-    rawName:item.definition?.name,origin:"策略产品",direction:item.definition?.direction,timeframe:arr(item.definition?.timeframes).join("/"),
-    status:item.deployment?.state,entry:t(item.definition?.summary||"",item.definition?.summaryEn||""),template:item.definition?.family,
-    version:item.version,versionId:item.versionId,contentHash:item.contentHash,stages:arr(item.definition?.stages),
-    regimes:arr(item.definition?.regimes),roles:arr(item.definition?.roles),invalidations:arr(item.definition?.invalidation),exits:arr(item.definition?.exits),
-    parameterBounds:item.definition?.parameterBounds||{},metrics:item.metrics||{},evidence:item.evidence||{},
-    lifecycleReason:item.deployment?.reason,evidenceStatus:item.deployment?.evidenceStatus,immutable:item.immutable,
-    profitFactor:item.metrics?.profitFactorInfinite?"∞":item.metrics?.profitFactor,winRatePct:item.metrics?.winRatePct,liveTrades:item.metrics?.closedTrades,lastRunAt:item.metrics?.lastClosedAt
-  }));
-  const nativeCatalog=arr(data.strategyCatalog?.strategies).map((item)=>({
-    id:`native_${item.id}`,recordType:"research",name:item.name,origin:"指标研究模型",direction:item.contract?.direction,timeframe:arr(item.contract?.timeframes).join("/"),
-    status:item.lifecycle?.stage,entry:item.contract?.entryModel,template:item.contract?.family,
-    backtest:item.lifecycle?.profile?.oos||null,profitFactor:item.lifecycle?.live?.profitFactor,
-    winRatePct:item.lifecycle?.live?.winRatePct,lastRunAt:item.lifecycle?.profile?.chosenAt,
-    lifecycleReason:item.lifecycle?.reason,executionEligibility:item.lifecycle?.executionEligibility,
-    liveTrades:item.lifecycle?.live?.trades,dataRequirements:arr(item.contract?.dataRequirements).map(r=>`${r.source}:${r.dataset}`).join("、")
-  }));
-  const strategies=[...products,...nativeCatalog,...arr(data.knowledge?.tradingSkills),...arr(data.skills).filter(s=>s.kind==="strategy")].map((s,i)=>{
-    const paperSession=s.paperSession||paperSessions.find(session=>session.id===s.paperSessionId||session.knowledgeSkillId===s.id)||null;
-    const sourceText=[s.createdBy,s.source,s.sourceTitle,s.curated&&"curated"].filter(Boolean).join(" ");
-    return {...s,id:s.id||`str-${i}`,recordType:s.recordType||"external",name:s.name||s.title||t("未命名策略", "Unnamed strategy"),direction:s.direction||s.spec?.direction,timeframe:s.timeframe||s.spec?.timeframe,template:s.template||s.spec?.templateLabel||s.spec?.templateId,origin:s.origin||(s.methodId?"蒸馏":s.userAuthored||/用户|手写|精选|curated|llm|idea/i.test(sourceText)?"LLM/手写":/imported|uploaded|github|clawhub/i.test(sourceText)?"导入":"其他"),paperSession};
-  });
+  const strategyCatalog=buildStrategyCatalogRows(data,t);
+  const products=strategyCatalog.products;
+  const strategies=strategyCatalog.rows;
   const originLabel=(o)=>t(o, {"策略产品":"Strategy product","指标研究模型":"Research model","蒸馏":"Distilled","LLM/手写":"LLM/Manual","导入":"Imported","其他":"Other"}[o]||o);
   const isActive=s=>s.status==="validated_active"||/^(active|trusted|adopted)$/i.test(String(s.status));
   const isValidating=s=>s.status==="owner_live_observation"||/probation|paper|compiled|pending|trial|validating|candidate|research/i.test(String(s.status));
@@ -1292,8 +1241,7 @@ function ScheduledEventDialog({ action, onClose, notify }){
 
 export function EventsConcept({ data, action, ui }) {
   const [schedOpen,setSchedOpen]=useState(false);
-  const officialEvents=arr(data.marketCalendarEvents).map(e=>({...e,impact:e.importance==="high"?80:55,impactLabel:e.importance==="high"?t("高影响","High impact"):t("中影响","Medium impact"),source:e.sourceName,relatedSymbols:e.symbols,description:e.timePrecision==="date"?t("官方只确认日期，未公布精确时刻；不会据此触发分钟级静默窗口。","Official date only; no precise release time, so it cannot trigger a minute-level blackout."):t("官方日历确认的精确发布时间。","Exact release time confirmed by the official calendar.")}));
-  const events=[...arr(data.events),...officialEvents].filter((e,index,list)=>list.findIndex(x=>(x.title===e.title||x.shortTitle===e.title)&&(x.due||x.startAt)===(e.due||e.startAt))===index);
+  const events=buildEventRows(data,t);
   const brief=data.dailyMarketBrief||null; const [selectedId,setSelectedId]=useState(events[0]?.id||""); const selected=events.find(e=>e.id===selectedId)||events[0]||{};
   // 真实月视图:按事件真实日期落格,支持上/下月切换(monthOffset:0=本月,-1上月,+1下月)
   const [monthOffset,setMonthOffset]=useState(0); const [calView,setCalView]=useState("month");
@@ -1500,16 +1448,156 @@ function UsersSettingsConcept({ data, action, ui }) {
 }
 
 export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
-  const isOwner=data.user?.isOwner===true; const [baseSection,setBaseSection]=useState("environment");
-  const BASE_NAV=[[t("环境与服务", "Environment & Services"),"environment"],[t("网络代理", "Network Proxy"),"network"],[t("通知渠道", "Notification Channels"),"notifications"],[t("数据与备份", "Data & Backup"),"data_backup"],[t("安全", "Security"),"security"]]; const [baseNav,setBaseNav]=useState(0);
-  const tabs=[["base",t("基础配置", "Basics")],["exchange",t("交易所连接", "Exchanges")],["models",t("模型与密钥", "Models & Keys")],["agents",t("Agent 配置", "Agents")],...(isOwner?[["users",t("用户与订阅", "Users & Subscriptions")]]:[])];
-  const config=data.config||{}; const exchanges=arr(data.exchangeAccounts); const agents=arr(data.agentProfiles); const users=arr(data.users);
-  const tab=tabs.some(([id])=>id===activeTab)?activeTab:"base";
-  return <div className="cp2Settings"><header className="uxCenterHead"><div><h1>{t("系统设置", "System Settings")}</h1><span>{t("连接 · 模型 · Agent · 用户", "Connections · Models · Agents · Users")}</span></div></header><nav className="uxTabs" aria-label={t("系统设置导航", "System settings navigation")}>{tabs.map(([id,label])=><button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>onTabChange(id)}>{label}</button>)}</nav>
-    {tab==="base"&&<div className="cp2SettingsBase"><aside className="cp2SideFilter">{BASE_NAV.map(([label,sec],index)=><button className={baseNav===index?"active":""} key={index} onClick={()=>{setBaseNav(index);setBaseSection(sec);}}>{label}</button>)}</aside><main><div className="cp2Grid three"><ConceptCard title={t("环境与服务", "Environment & Services")}><div className="cp2Kv column"><span>{t("服务端地址", "Server URL")}<b>{window.location.origin}</b></span><span>{t("运行环境", "Environment")}<b>{config.runtime?.environment||t("本地", "Local")}</b></span><span>{t("时区", "Timezone")}<b>Asia/Shanghai</b></span><span>{t("数据库", "Database")}<b>SQLite</b></span><span>{t("实时传输", "Realtime")}<b>WebSocket / SSE</b></span></div></ConceptCard><ConceptCard title={t("模型与密钥", "Models & Keys")}><div className="cp2Kv column"><span>{t("当前模型", "Active model")}<b>{config.llm?.activeProvider||t("未配置", "Unconfigured")}</b></span><span>{t("嵌入模型", "Embedding model")}<b>{config.llm?.embeddingModel||t("未配置", "Unconfigured")}</b></span><span>API Key<b>{Object.values(config.llm?.providers||{}).filter(p=>p.hasKey).length} {t("个已配置", "configured")}</b></span></div></ConceptCard><ConceptCard title={t("交易所连接", "Exchanges")}><div className="cp2SecurityList">{["OKX"].map(name=><span key={name}><WalletCards/>{name}<b>{exchanges.some(e=>e.exchange===name&&e.readEnabled)?t("已接入", "Connected"):t("未配置", "Unconfigured")}</b></span>)}</div></ConceptCard></div><div className="cp2Grid settingsBottom"><ConceptCard title={t("Agent 配置", "Agents")}><ConceptTable compact columns={[{key:"name",label:"Agent",render:r=>localizeText(r.name)},{key:"model",label:t("模型", "Model")},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,t("已启用", "Enabled"))}</Pill>}]} rows={agents.slice(0,6)} empty={t("暂无 Agent", "No agents")}/></ConceptCard><ConceptCard title={t("用户与订阅", "Users & Subscriptions")}><div className="cp2Kv column"><span>{t("当前用户", "Current user")}<b>{data.user?.name||"—"}</b></span><span>{t("用户数量", "User count")}<b>{users.length}</b></span><span>{t("订阅计划", "Subscriptions")}<b>{arr(data.subscriptions).length}</b></span><span>{t("系统状态", "System status")}<b>{localizeText(data.readiness?.operatingStage?.label,"—")}</b></span></div></ConceptCard><ConceptCard title={t("备份与维护", "Backup & Maintenance")}><div className="cp2Kv column"><span>{t("最近备份", "Last backup")}<b>{t("由服务端任务管理", "Managed by server task")}</b></span><span>{t("恢复点", "Restore points")}<b>{arr(data.accountSnapshots).length} {t("个", "")}</b></span><span>{t("配置文件", "Config file")}<b>{t("已保存", "Saved")}</b></span></div></ConceptCard></div><section className="cp2SettingsPanel"><SystemConfigPanel key={baseSection} data={data} action={action} ui={ui} section={baseSection}/></section></main></div>}
-    {tab==="exchange"&&<div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="exchange"/></section></div>}
-    {tab==="models"&&<div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="llm"/></section></div>}
-    {tab==="agents"&&<AgentSettingsConcept data={data} action={action} ui={ui}/>}
-    {tab==="users"&&isOwner&&<UsersSettingsConcept data={data} action={action} ui={ui}/>}
+  const isOwner = data.user?.isOwner === true;
+  const [baseSection, setBaseSection] = useState("environment");
+  const [pendingBaseSection, setPendingBaseSection] = useState("");
+  const config = data.config || {};
+  const exchanges = arr(data.exchangeAccounts);
+  const agents = arr(data.agentProfiles);
+  const users = arr(data.users);
+  const subscriptions = arr(data.subscriptions);
+  const snapshots = arr(data.accountSnapshots);
+  const providerCount = Object.values(config.llm?.providers || {}).filter((provider) => provider.hasKey).length;
+  const connectedExchange = exchanges.some((exchange) => exchange.exchange === "OKX" && exchange.readEnabled);
+  const enabledAgents = agents.filter((agent) => agent.enabled !== false && !/disabled|停用/i.test(String(agent.status || ""))).length;
+  const readinessLabel = localizeText(data.readiness?.operatingStage?.label, t("等待状态检查", "Awaiting status check"));
+  const readinessTone = /正常|可用|ready|operational|active/i.test(readinessLabel) ? "good" : "warn";
+  const baseSections = [
+    { id: "environment", icon: Server, label: t("环境与服务", "Environment & Services"), note: t("运行环境、端口与沙箱", "Runtime, port, and sandbox") },
+    { id: "network", icon: Globe2, label: t("网络代理", "Network Proxy"), note: t("服务端外部连接", "Outbound server access") },
+    { id: "notifications", icon: Bell, label: t("通知渠道", "Notification Channels"), note: t("Telegram、飞书与告警", "Telegram, Lark, and alerts") },
+    { id: "data_backup", icon: Database, label: t("数据与备份", "Data & Backup"), note: t("一致性快照与恢复", "Snapshots and recovery") },
+    { id: "security", icon: ShieldCheck, label: t("登录与凭证安全", "Sign-in & Credential Security"), note: t("登录保护与 Owner 密码", "Sign-in protection and owner password") }
+  ];
+  const tabs = [
+    ["overview", t("系统概览", "Overview")],
+    ["base", t("基础配置", "Basics")],
+    ["exchange", t("交易所连接", "Exchanges")],
+    ["models", t("模型与密钥", "Models & Keys")],
+    ["agents", t("Agent 配置", "Agents")],
+    ...(isOwner ? [["users", t("用户与订阅", "Users & Subscriptions")]] : [])
+  ];
+  const tab = tabs.some(([id]) => id === activeTab) ? activeTab : "overview";
+
+  useEffect(() => {
+    if (tab !== "base") return undefined;
+    const sections = baseSections.map(({ id }) => document.getElementById(`settings-base-${id}`)).filter(Boolean);
+    if (!sections.length) return undefined;
+    const scroller = sections[0].closest(".content") || window;
+    const updateActiveSection = () => {
+      const isWindow = scroller === window;
+      const viewportTop = isWindow ? 0 : scroller.getBoundingClientRect().top;
+      const atBottom = isWindow
+        ? window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4
+        : scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      if (atBottom) {
+        setBaseSection(sections[sections.length - 1].dataset.settingsSection);
+        return;
+      }
+      const activationLine = viewportTop + 180;
+      const active = sections.slice().reverse().find((section) => section.getBoundingClientRect().top <= activationLine) || sections[0];
+      setBaseSection(active.dataset.settingsSection);
+    };
+    updateActiveSection();
+    scroller.addEventListener("scroll", updateActiveSection, { passive: true });
+    window.addEventListener("resize", updateActiveSection);
+    return () => {
+      scroller.removeEventListener("scroll", updateActiveSection);
+      window.removeEventListener("resize", updateActiveSection);
+    };
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "base" || !pendingBaseSection) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`settings-base-${pendingBaseSection}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setPendingBaseSection("");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab, pendingBaseSection]);
+
+  const scrollToBaseSection = (section) => {
+    setBaseSection(section);
+    document.getElementById(`settings-base-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const openBaseSection = (section) => {
+    setBaseSection(section);
+    setPendingBaseSection(section);
+    onTabChange("base");
+  };
+
+  const overviewCards = [
+    {
+      id: "environment", icon: Server, title: t("环境与服务", "Environment & Services"),
+      description: t("核心运行环境与服务通道", "Core runtime and service channels"), status: t("服务可用", "Available"), tone: "good",
+      metrics: [[t("运行环境", "Environment"), config.runtime?.environment || t("本地", "Local")], [t("数据库", "Database"), "SQLite"], [t("实时传输", "Realtime"), "WebSocket / SSE"]],
+      onOpen: () => openBaseSection("environment"), actionLabel: t("打开基础配置", "Open basics")
+    },
+    {
+      id: "models", icon: KeyRound, title: t("模型与密钥", "Models & Keys"),
+      description: t("对话、分析与嵌入模型", "Chat, analysis, and embedding models"), status: providerCount ? t("已配置", "Configured") : t("待配置", "Needs setup"), tone: providerCount ? "good" : "warn",
+      metrics: [[t("当前模型", "Active model"), config.llm?.activeProvider || t("未配置", "Unconfigured")], [t("嵌入模型", "Embedding model"), config.llm?.embeddingModel || t("未配置", "Unconfigured")], ["API Key", `${providerCount} ${t("个", "")}`]],
+      onOpen: () => onTabChange("models"), actionLabel: t("管理模型", "Manage models")
+    },
+    {
+      id: "exchange", icon: WalletCards, title: t("交易所连接", "Exchange Connection"),
+      description: t("账户读取与真实交易凭证", "Account access and trading credentials"), status: connectedExchange ? t("已接入", "Connected") : t("待配置", "Needs setup"), tone: connectedExchange ? "good" : "warn",
+      metrics: [[t("交易所", "Exchange"), "OKX"], [t("账户读取", "Account read"), connectedExchange ? t("已开启", "Enabled") : t("未连接", "Disconnected")], [t("连接数量", "Connections"), String(exchanges.length)]],
+      onOpen: () => onTabChange("exchange"), actionLabel: t("管理连接", "Manage connection")
+    },
+    {
+      id: "agents", icon: Bot, title: t("Agent 配置", "Agent Configuration"),
+      description: t("角色、模型与工具权限", "Roles, models, and tool permissions"), status: agents.length ? t("运行中", "Running") : t("暂无 Agent", "No agents"), tone: agents.length ? "good" : "warn",
+      metrics: [[t("Agent 总数", "Total agents"), String(agents.length)], [t("已启用", "Enabled"), String(enabledAgents)], [t("已停用", "Disabled"), String(Math.max(0, agents.length - enabledAgents))]],
+      onOpen: () => onTabChange("agents"), actionLabel: t("管理 Agent", "Manage agents")
+    },
+    {
+      id: "users", icon: Users, title: t("用户与订阅", "Users & Subscriptions"),
+      description: t("账户、角色与订阅状态", "Accounts, roles, and subscription status"), status: readinessLabel, tone: readinessTone,
+      metrics: [[t("当前用户", "Current user"), data.user?.name || "—"], [t("用户数量", "Users"), String(users.length || 1)], [t("订阅计划", "Subscriptions"), String(subscriptions.length)]],
+      onOpen: isOwner ? () => onTabChange("users") : null, actionLabel: t("管理用户", "Manage users")
+    },
+    {
+      id: "backup", icon: Database, title: t("备份与维护", "Backup & Maintenance"),
+      description: t("配置与交易事实恢复能力", "Recovery for settings and trade facts"), status: t("服务可用", "Available"), tone: "good",
+      metrics: [[t("恢复点", "Restore points"), String(snapshots.length)], [t("备份方式", "Backup mode"), t("在线快照", "Online snapshot")], [t("运行影响", "Runtime impact"), t("无需停机", "No downtime")]],
+      onOpen: () => openBaseSection("data_backup"), actionLabel: t("管理备份", "Manage backups")
+    }
+  ];
+
+  return <div className="cp2Settings">
+    <header className="uxCenterHead"><div><h1>{t("系统设置", "System Settings")}</h1><span>{t("状态总览 · 连接 · 模型 · Agent · 用户", "Overview · Connections · Models · Agents · Users")}</span></div></header>
+    <nav className="uxTabs cp2SettingsTabs" aria-label={t("系统设置导航", "System settings navigation")}>{tabs.map(([id, label]) => <button type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} key={id} onClick={() => onTabChange(id)}>{label}</button>)}</nav>
+
+    {tab === "overview" && <section className="cp2SettingsOverview">
+      <header className="cp2SettingsPageHead cp2OverviewHead">
+        <div><small>{t("SYSTEM OVERVIEW", "SYSTEM OVERVIEW")}</small><h2>{t("系统运行概览", "System overview")}</h2><p>{t("在一个页面检查关键服务的配置与运行状态；需要修改时再进入对应配置。", "Check the configuration and operating state of key services in one place, then open the relevant settings when changes are needed.")}</p></div>
+        <div className={`cp2OverviewHealth ${readinessTone}`}><i/><span><small>{t("当前运行状态", "Current operating state")}</small><b>{readinessLabel}</b></span></div>
+      </header>
+      <div className="cp2OverviewGrid">{overviewCards.map(({ id, icon: Icon, title, description, status, tone, metrics, onOpen, actionLabel }) => <article className="cp2OverviewCard" key={id}>
+        <header><span className={`cp2OverviewIcon ${tone}`}><Icon size={18}/></span><div><b>{title}</b><small>{description}</small></div><Pill tone={tone}>{status}</Pill></header>
+        <div className="cp2OverviewFacts">{metrics.map(([label, value]) => <span key={label}><small>{label}</small><b title={String(value)}>{value}</b></span>)}</div>
+        {onOpen && <button type="button" className="cp2OverviewOpen" onClick={onOpen}>{actionLabel}<ChevronRight size={14}/></button>}
+      </article>)}</div>
+    </section>}
+
+    {tab === "base" && <section className="cp2SettingsBasePage">
+      <header className="cp2SettingsPageHead">
+        <div><small>{t("BASIC CONFIGURATION", "BASIC CONFIGURATION")}</small><h2>{t("基础配置", "Basic configuration")}</h2><p>{t("五个基础模块集中在同一页面；左侧目录用于快速定位，每个模块独立保存。", "All five foundational modules live on one page. Use the directory to jump between them; each module saves independently.")}</p></div>
+        <div className="cp2BaseCount"><b>5</b><span>{t("个配置模块", "configuration modules")}</span></div>
+      </header>
+      <div className="cp2SettingsBase">
+        <aside className="cp2SideFilter cp2BaseDirectory" aria-label={t("基础配置页内目录", "Basic configuration page directory")}>
+          <div><small>{t("本页目录", "ON THIS PAGE")}</small><b>{t("基础配置", "Basic configuration")}</b></div>
+          {baseSections.map(({ id, icon: Icon, label, note }, index) => <button type="button" className={baseSection === id ? "active" : ""} aria-current={baseSection === id ? "location" : undefined} key={id} onClick={() => scrollToBaseSection(id)}><i><Icon size={15}/></i><span><b>{String(index + 1).padStart(2, "0")} · {label}</b><small>{note}</small></span><ChevronRight size={13}/></button>)}
+        </aside>
+        <div className="cp2BaseSections">{baseSections.map(({ id }) => <section id={`settings-base-${id}`} data-settings-section={id} className="cp2SettingsPanel cp2BaseSection" key={id}><SystemConfigPanel data={data} action={action} ui={ui} section={id}/></section>)}</div>
+      </div>
+    </section>}
+
+    {tab === "exchange" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="exchange"/></section></div>}
+    {tab === "models" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="llm"/></section></div>}
+    {tab === "agents" && <AgentSettingsConcept data={data} action={action} ui={ui}/>}
+    {tab === "users" && isOwner && <UsersSettingsConcept data={data} action={action} ui={ui}/>}
   </div>;
 }

@@ -1,3 +1,5 @@
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+
 const ACTIVE_PLAN_STATES = new Set(["armed", "awaiting_approval", "approved", "executing", "monitoring"]);
 const ACTIVE_ORDER_STATES = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
 const ACTIVE_SETUP_STATES = new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]);
@@ -96,6 +98,44 @@ function compactEvent(row) {
   return event;
 }
 
+function compactDailyBrief(brief) {
+  if (!brief || typeof brief !== "object") return null;
+  const macro = brief.macroContext || {};
+  return {
+    id: brief.id,
+    date: brief.date,
+    timeZone: brief.timeZone,
+    asOf: brief.asOf,
+    dataCutoff: brief.dataCutoff,
+    version: brief.version,
+    role: brief.role,
+    mayTriggerTradeDirectly: brief.mayTriggerTradeDirectly === true,
+    topNews: (brief.topNews || []).slice(0, 6).map((item) => ({
+      factId: item.factId,
+      title: item.title,
+      summary: item.summary,
+      symbols: (item.symbols || []).slice(0, 8),
+      publishedAt: item.publishedAt,
+      confidence: item.confidence,
+      values: item.values ? { impact: item.values.impact, important: item.values.important } : undefined
+    })),
+    upcomingEvents: (brief.upcomingEvents || []).slice(0, 8).map(compactEvent),
+    macroContext: {
+      asOf: macro.asOf,
+      economicCyclePhase: macro.economicCyclePhase,
+      cryptoRiskAppetite: macro.cryptoRiskAppetite,
+      confidence: macro.confidence,
+      unknowns: (macro.unknowns || []).slice(0, 4),
+      scenarios: (macro.scenarios || []).slice(0, 4)
+    },
+    constraints: (brief.constraints || []).slice(0, 6),
+    dataQuality: brief.dataQuality || {},
+    evidenceFactIds: (brief.evidenceFactIds || []).slice(0, 24),
+    updatedAt: brief.updatedAt,
+    createdAt: brief.createdAt
+  };
+}
+
 function compactReview(row) {
   if (!row || typeof row !== "object") return row;
   const { analyticsSnapshot: _analyticsSnapshot, ...review } = row;
@@ -153,6 +193,70 @@ function compactBacktestResearch(research = {}) {
   };
 }
 
+function compactStrategyCatalog(catalog = {}) {
+  return {
+    ...catalog,
+    // Research contracts are small and are part of the strategy catalog's
+    // factual identity. The old native payload replaced them with [], causing
+    // App/Web counts and rows to diverge. Keep the contract/lifecycle facts,
+    // while removing any accidentally attached long histories or curves.
+    strategies: (catalog.strategies || []).map((row) => {
+      const contract = row?.contract || {};
+      const lifecycle = row?.lifecycle || {};
+      const hasProfile = lifecycle.profile != null;
+      const profile = lifecycle.profile || {};
+      const oos = profile.oos || {};
+      const { equityCurve: _equityCurve, drawdownCurve: _drawdownCurve, folds: _folds, ...oosMetrics } = oos;
+      return {
+        id: row?.id,
+        name: row?.name,
+        contractValid: row?.contractValid,
+        contractErrors: row?.contractErrors || [],
+        contract: {
+          direction: contract.direction,
+          timeframes: contract.timeframes || [],
+          entryModel: contract.entryModel,
+          family: contract.family,
+          dataRequirements: contract.dataRequirements || []
+        },
+        lifecycle: {
+          stage: lifecycle.stage,
+          reason: lifecycle.reason,
+          executionEligibility: lifecycle.executionEligibility,
+          live: lifecycle.live || null,
+          profile: hasProfile ? { chosenAt: profile.chosenAt, oos: oosMetrics } : null
+        }
+      };
+    })
+  };
+}
+
+function compactPaperReport(report = {}) {
+  return {
+    minForwardTrades: report.minForwardTrades,
+    sessions: (report.sessions || []).map(({ trades: _trades, equityCurve: _equityCurve, ...session }) => session)
+  };
+}
+
+function compactClosedTradeLifecycle(lifecycle = {}) {
+  const row = lifecycle.representative || {};
+  return {
+    ...row,
+    id: `closed:${lifecycle.key}`,
+    tradeLifecycleKey: lifecycle.key,
+    fillIds: (lifecycle.fills || []).map((fill) => fill.id).filter(Boolean),
+    closeCount: (lifecycle.fills || []).length,
+    quantity: Number(lifecycle.quantity || row.quantity || 0),
+    notionalUsdt: Number(lifecycle.notionalUsdt || row.notionalUsdt || 0),
+    realizedPnl: Number(lifecycle.realizedPnl || 0),
+    feeUsdt: Number(lifecycle.feeUsdt || 0),
+    entryFeeUsdt: Number(lifecycle.entryFeeUsdt || 0),
+    fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt || 0),
+    netRealizedPnl: Number(lifecycle.netRealizedPnl || 0),
+    createdAt: lifecycle.lastClosedAt || row.createdAt
+  };
+}
+
 function startupOverview(overview) {
   const relevantSymbols = new Set([
     "BTC/USDT",
@@ -181,6 +285,7 @@ function startupOverview(overview) {
     armedSetups: startupSetups,
     executionOrders: startupOrders,
     fills: (overview.fills || []).slice(0, 20),
+    closedTradeLifecycles: [],
     pendingActions: overview.pendingActions || [],
     watchTriggers: startupWatches,
     watchBoard: overview.watchBoard || [],
@@ -194,7 +299,7 @@ function startupOverview(overview) {
     // Keep stable empty shapes so tapping a drawer item during the background refresh never
     // crashes. The explicit full request replaces this snapshot shortly afterwards.
     orders: [], reviews: [], riskChecks: [], riskIncidents: [], riskRules: [], events: [], tasks: [],
-    knowledge: {}, skills: [], tools: [], mcpServers: [], analysisEngine: {}, strategyCatalog: {}, strategyStudio: {}, backtestResearch: {}, newsFeed: [],
+    knowledge: {}, skills: [], tools: [], mcpServers: [], analysisEngine: {}, strategyCatalog: {}, strategyStudio: {}, backtestResearch: {}, newsFeed: [], dailyMarketBrief: null, marketIntelligenceSourceHealth: [], marketCalendarEvents: [],
     abnormalVolatility: [], opportunityCandidates: [], reconciliationReports: [], accountSnapshots: [],
     traces: [], auditLogs: [], mediumTermAnalytics: {}
   };
@@ -217,10 +322,13 @@ export function compactOverviewForNative(overview = {}, native = false) {
     armedSetups: recentWithActive(overview.armedSetups, ACTIVE_SETUP_STATES, 20).map(compactArmedSetup),
     orders: recentWithActive(overview.orders, ACTIVE_ORDER_STATES, 40),
     fills: (overview.fills || []).slice(0, 50),
+    // The ledger may be bounded, but lifecycle accounting may never be. Aggregate
+    // from the complete server-side fill set before slicing the recent lifecycle rows.
+    closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 50).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
     riskIncidents: recentWithActive(overview.riskIncidents, new Set(["open"]), 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),
-    newsFeed: (overview.newsFeed || []).slice(0, 12),
+    newsFeed: (overview.newsFeed || []).slice(0, 24),
     notifications: (overview.notifications || []).slice(0, 30),
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 3).map(compactAccountSnapshot),
     agentRuns: (overview.agentRuns || []).slice(0, 8).map(compactAgentRun),
@@ -230,7 +338,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     analysisBundles: [],
     evidenceBundles: [],
     memoryItems: (overview.memoryItems || []).slice(0, 10),
-    strategyCatalog: { ...strategyCatalog, strategies: [] },
+    strategyCatalog: compactStrategyCatalog(strategyCatalog),
     // Keep desktop-only diagnostics out of the native snapshot. The App research page receives
     // a bounded evidence list with sampled curves instead of the full workbench payload.
     reviewAnalytics: {},
@@ -239,15 +347,15 @@ export function compactOverviewForNative(overview = {}, native = false) {
     strategyProfiles: [],
     decisionCalibration: {},
     agentStateFiles: {},
-    marketCalendarEvents: [],
-    dailyMarketBrief: null,
+    marketCalendarEvents: (overview.marketCalendarEvents || []).map(compactEvent),
+    dailyMarketBrief: compactDailyBrief(overview.dailyMarketBrief),
     toolExecutions: [],
     analysisEngine: {
       tools: (overview.analysisEngine?.tools || []).slice(0, 80),
       toolUsageStatsSince: overview.analysisEngine?.toolUsageStatsSince || null,
       toolUsageBackfilledAt: overview.analysisEngine?.toolUsageBackfilledAt || null
     },
-    paperReport: {},
+    paperReport: compactPaperReport(overview.paperReport),
     opportunityCandidates: (overview.opportunityCandidates || []).slice(0, 10),
     agentStatus: compactAgentStatus(overview.agentStatus)
   };

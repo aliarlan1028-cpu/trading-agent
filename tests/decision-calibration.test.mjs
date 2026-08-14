@@ -50,3 +50,16 @@ test("小样本只能继续收集，不能改变实盘权重", () => {
   assert.equal(report.segments[0].shadowMultiplier, 1);
   assert.equal(report.segments[0].appliedToLiveDecision, false);
 });
+
+test("校准报告按净值识别费用翻转，不把毛盈利报告为100%胜率", () => {
+  const db = fixture(10);
+  for (let index = 0; index < 10; index += 1) {
+    db.fills[index].realizedPnl = 1;
+    db.fills[index].feeUsdt = 1.2;
+    db.fills.push({ id: `entry-${index}`, kind: "entry", tradePlanId: `plan-${index}`, executionOrderId: `exec-${index}`, feeUsdt: 0.8, createdAt: `2026-07-31T${String(index).padStart(2, "0")}:00:00Z` });
+  }
+  const segment = buildDecisionCalibrationReport(db, { minTrades: 10 }).segments[0];
+  assert.equal(segment.winRatePct, 0);
+  assert.equal(segment.pnlUsdt, -10);
+  assert.ok(segment.shadowMultiplier < 1);
+});

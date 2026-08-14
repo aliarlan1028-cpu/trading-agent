@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { readFileSync } from "node:fs";
 import { nowIso } from "./store.mjs";
+import { tradeLifecycleKey } from "./tradeReviewQueue.mjs";
 
 const WIDTH = 1080;
 const HEIGHT = 1440;
@@ -15,6 +16,7 @@ function escapeXml(value) {
     .replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
 function number(value, fallback = null) {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -101,6 +103,82 @@ export function derivePositionShare(position = {}) {
     holdLabel: holdLabel(position.openedAt || position.createdAt, position.updatedAt || position.monitoredAt || nowIso()),
     createdAt: position.createdAt,
     updatedAt: position.updatedAt || position.monitoredAt || nowIso()
+  };
+}
+
+export function resolveClosedTradePosterBasis(db = {}, lifecycle = {}, executionOverride = null) {
+  const representative = lifecycle.representative || {};
+  const lifecycleKey = String(lifecycle.key || "");
+  const executionId = representative.executionOrderId || null;
+  const execution = executionOverride || (db.executionOrders || []).find((row) => (
+    (executionId && row.id === executionId)
+    || (lifecycleKey && row.id === lifecycleKey)
+  )) || null;
+  const entryFills = (db.fills || []).filter((fill) => (
+    fill?.kind === "entry" && lifecycleKey && tradeLifecycleKey(fill) === lifecycleKey
+  ));
+  const weightedEntries = entryFills.map((fill) => ({
+    price: number(fill.price ?? fill.filledPrice),
+    quantity: number(fill.quantity ?? fill.size)
+  })).filter((row) => row.price !== null && row.quantity !== null && Math.abs(row.quantity) > 0);
+  const entryQuantity = weightedEntries.reduce((sum, row) => sum + Math.abs(row.quantity), 0);
+  const weightedEntryPrice = entryQuantity > 0
+    ? weightedEntries.reduce((sum, row) => sum + row.price * Math.abs(row.quantity), 0) / entryQuantity
+    : null;
+  // 只有所有入场成交都带有名义额时才汇总，避免把残缺明细冒充完整入场成本。
+  const entryFillNotionals = entryFills.map((fill) => number(fill.notionalUsdt));
+  const completeEntryNotional = entryFillNotionals.length > 0
+    && entryFillNotionals.every((value) => value !== null && value > 0)
+    ? entryFillNotionals.reduce((sum, value) => sum + Math.abs(value), 0)
+    : null;
+  const executionNotional = number(execution?.entryNotionalUsdt ?? execution?.notionalUsdt);
+  const entryNotionalUsdt = completeEntryNotional ?? (executionNotional !== null && executionNotional > 0 ? Math.abs(executionNotional) : null);
+  const leverage = number(execution?.leverage ?? representative.leverage);
+  const explicitMargin = number(execution?.marginUsdt ?? execution?.initialMarginUsdt ?? representative.marginUsdt);
+  const marginUsdt = explicitMargin !== null && explicitMargin > 0
+    ? explicitMargin
+    : (entryNotionalUsdt !== null && leverage !== null && leverage > 0 ? entryNotionalUsdt / leverage : null);
+  const entryPrice = weightedEntryPrice
+    ?? number(execution?.filledPrice ?? execution?.entryPrice ?? representative.entryPrice ?? representative.entry);
+
+  return {
+    ...(execution || {}),
+    entryPrice,
+    filledPrice: entryPrice,
+    entryNotionalUsdt,
+    // 兼容海报已有字段，但明确它是入场名义额；绝不写入 lifecycle 的平仓名义额。
+    notionalUsdt: entryNotionalUsdt,
+    notionalBasis: entryNotionalUsdt === null ? null : (completeEntryNotional !== null ? "entry_fills" : "execution_order"),
+    leverage,
+    marginUsdt,
+    marginBasis: marginUsdt === null ? null : (explicitMargin !== null && explicitMargin > 0 ? "recorded_margin" : "entry_notional_over_leverage")
+  };
+}
+
+export function closedTradePosterPayload(lifecycle = {}, base = {}) {
+  const representative = lifecycle.representative || {};
+  const entryNotionalUsdt = number(base.entryNotionalUsdt)
+    ?? (base.notionalBasis === "entry" || base.notionalBasis === "entry_fills" || base.notionalBasis === "execution_order"
+      ? number(base.notionalUsdt)
+      : null);
+  return {
+    ...base,
+    ...representative,
+    entryPrice: base.entryPrice ?? base.filledPrice ?? representative.entryPrice ?? representative.entry ?? null,
+    exitPrice: representative.exitPrice ?? representative.price ?? base.exitPrice ?? null,
+    quantity: number(lifecycle.quantity ?? representative.quantity, 0),
+    entryNotionalUsdt,
+    notionalUsdt: entryNotionalUsdt,
+    marginUsdt: number(base.marginUsdt),
+    grossRealizedPnl: Number(lifecycle.realizedPnl),
+    realizedPnl: Number(lifecycle.realizedPnl),
+    netRealizedPnl: Number(lifecycle.netRealizedPnl),
+    entryFeeUsdt: Number(lifecycle.entryFeeUsdt),
+    closeFeeUsdt: Number(lifecycle.feeUsdt),
+    fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt),
+    closedAt: lifecycle.lastClosedAt || representative.closedAt || representative.createdAt || null,
+    tradeLifecycleKey: lifecycle.key || null,
+    financialBasis: "completed_trade_lifecycle/net_after_recorded_entry_close_fees_and_funding"
   };
 }
 
@@ -195,16 +273,23 @@ export function deriveClosedTradeShare(trade = {}) {
   const side = normalizeSide(trade);
   const entry = number(trade.filledPrice ?? trade.entryPrice ?? trade.entry);
   const exit = number(trade.exitPrice ?? trade.price ?? trade.mark);
-  const pnl = number(trade.realizedPnl);
-  const feeUsdt = Math.abs(number(trade.feeUsdt, 0)) + Math.abs(number(trade.entryFeeUsdt, 0)) + Math.abs(number(trade.closeFeeUsdt, 0));
+  const grossPnl = number(trade.grossRealizedPnl ?? trade.realizedPnl);
+  const entryFeeUsdt = Math.abs(number(trade.entryFeeUsdt, 0));
+  const closeFeeUsdt = Math.abs(number(trade.closeFeeUsdt ?? trade.feeUsdt, 0));
+  const feeUsdt = entryFeeUsdt + closeFeeUsdt;
   const fundingFeeUsdt = number(trade.fundingFeeUsdt, 0);
+  const netPnl = number(trade.netRealizedPnl) ?? (grossPnl === null ? null : grossPnl - feeUsdt + fundingFeeUsdt);
   const leverage = number(trade.leverage);
   const quantity = number(trade.quantity ?? trade.size);
-  const notional = number(trade.notionalUsdt ?? trade.entryNotionalUsdt) ?? (entry !== null && quantity !== null ? Math.abs(entry * quantity) : null);
+  const notional = number(trade.entryNotionalUsdt)
+    ?? (trade.notionalBasis === "entry" || trade.notionalBasis === "entry_fills" || trade.notionalBasis === "execution_order"
+      ? number(trade.notionalUsdt)
+      : null);
+  // ROI 只接受已记录保证金或明确的入场名义额。平仓名义额、价格×合约张数都不是可靠成本基础。
   const margin = number(trade.marginUsdt) ?? (notional !== null && leverage ? notional / leverage : null);
-  const roiPct = number(trade.realizedRoiPct) ?? (pnl !== null && margin ? pnl / margin * 100 : null);
+  const roiPct = number(trade.netRoiPct) ?? (netPnl !== null && margin ? netPnl / margin * 100 : null);
   return {
-    symbol: trade.symbol || trade.instId || "UNKNOWN", side, entry, exit, pnl, feeUsdt, fundingFeeUsdt,
+    symbol: trade.symbol || trade.instId || "UNKNOWN", side, entry, exit, pnl: netPnl, netPnl, grossPnl, feeUsdt, entryFeeUsdt, closeFeeUsdt, fundingFeeUsdt,
     leverage, notional, roiPct, quantity,
     holdLabel: trade.holdingMinutes != null ? `${Math.floor(Number(trade.holdingMinutes) / 60)}h${String(Number(trade.holdingMinutes) % 60).padStart(2, "0")}m` : holdLabel(trade.openedAt || trade.entryFilledAt || trade.createdAt, trade.closedAt),
     exchange: String(trade.exchange || "OKX").toUpperCase(), closedAt: trade.closedAt || trade.createdAt || nowIso(),
@@ -221,7 +306,7 @@ async function buildClosedTradePosterSvg(trade = {}) {
   const exitReason = englishExitReason(s.exitReason);
   const meta = [s.leverage ? `${compact(s.leverage, 1)}× Leverage` : null, s.holdLabel ? `Held ${s.holdLabel}` : null, exitReason ? `Exit: ${exitReason}` : null].filter(Boolean).join("  ·  ");
   const cell = (x, y, label, value, color = "#f4f8ff") => `<rect x="${x}" y="${y}" width="440" height="142" rx="22" fill="rgba(255,255,255,.04)"/><text x="${x+28}" y="${y+48}" fill="#8d99ad" font-family="${FONT}" font-size="25">${escapeXml(label)}</text><text x="${x+28}" y="${y+104}" fill="${color}" font-family="${FONT}" font-size="42" font-weight="800">${escapeXml(value)}</text>`;
-  return `<?xml version="1.0" encoding="UTF-8"?><svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><radialGradient id="closedBg" cx="15%" cy="0" r="130%"><stop offset="0" stop-color="${long ? "#18243a" : "#2d1920"}"/><stop offset="1" stop-color="#080c14"/></radialGradient></defs><rect width="1080" height="1440" fill="url(#closedBg)"/><rect width="1080" height="14" fill="${accent}"/><image x="80" y="63" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/><text x="194" y="109" fill="#f4f8ff" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text><text x="194" y="148" fill="#8896ac" font-family="${FONT}" font-size="20" letter-spacing="3">REALIZED TRADE RESULT</text>${isSample ? `<text x="1000" y="112" text-anchor="end" fill="#ffcf80" font-family="${FONT}" font-size="22" font-weight="800" letter-spacing="3">SAMPLE · SIMULATED DATA</text>` : ""}<rect x="80" y="212" width="250" height="58" rx="14" fill="${accent}" opacity=".16"/><text x="205" y="251" text-anchor="middle" fill="${accent}" font-family="${FONT}" font-size="28" font-weight="800">✓ CLOSED · ${escapeXml(s.side)}</text><text x="80" y="370" fill="#fff" font-family="${FONT}" font-size="82" font-weight="900">${escapeXml(s.symbol)}</text><text x="80" y="422" fill="#9aa6bd" font-family="${FONT}" font-size="27">${escapeXml(meta || "REALIZED TRADE")}</text><rect x="80" y="470" width="920" height="265" rx="28" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.08)"/><text x="120" y="542" fill="#8d99ad" font-family="${FONT}" font-size="28">REALIZED PNL · VERIFIED BY THE TRADING SYSTEM</text><text x="120" y="648" fill="${pnlColor}" font-family="${FONT}" font-size="102" font-weight="900">${escapeXml(money(s.pnl))}</text><text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="38" font-weight="800">REALIZED ROI ${escapeXml(roi)}</text>${cell(80,775,"ENTRY PRICE",compact(s.entry))}${cell(560,775,"EXIT PRICE",compact(s.exit))}${cell(80,937,"FILLED QUANTITY",compact(s.quantity))}${cell(560,937,"TRADING FEES",`${s.feeUsdt ? "−" : ""}${compact(s.feeUsdt,4)} USDT`,"#ffcf80")}<text x="80" y="1138" fill="#75839a" font-family="${FONT}" font-size="23">FUNDING: ${escapeXml(money(s.fundingFeeUsdt))} · SOURCE: ${escapeXml(s.exchange)} FILLS + OMS RECONCILIATION</text><rect x="80" y="1178" width="920" height="2" fill="rgba(255,255,255,.08)"/>${qr?`<rect x="800" y="1204" width="200" height="200" rx="18" fill="#fff"/><image x="812" y="1216" width="176" height="176" xlink:href="${qr}"/>`:""}<text x="80" y="1250" fill="#d3dceb" font-family="${FONT}" font-size="28" font-weight="700">KORDYN · CRYPTO PERPETUALS AI AGENT</text><text x="80" y="1300" fill="#7f8ca3" font-family="${FONT}" font-size="25">${escapeXml(SITE_URL.replace(/^https?:\/\//,"").replace(/\/$/,""))}</text><text x="80" y="1357" fill="#617088" font-family="${FONT}" font-size="21">${isSample ? "SIMULATED TEMPLATE PREVIEW" : "REALIZED TRADE RESULT"} · NOT FINANCIAL ADVICE</text><text x="80" y="1392" fill="#55627c" font-family="${FONT}" font-size="21">${escapeXml(englishTimestamp(s.closedAt))}</text></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><radialGradient id="closedBg" cx="15%" cy="0" r="130%"><stop offset="0" stop-color="${long ? "#18243a" : "#2d1920"}"/><stop offset="1" stop-color="#080c14"/></radialGradient></defs><rect width="1080" height="1440" fill="url(#closedBg)"/><rect width="1080" height="14" fill="${accent}"/><image x="80" y="63" width="92" height="98" preserveAspectRatio="xMidYMid meet" xlink:href="${KORDYN_LOGO_DATA_URL}"/><text x="194" y="109" fill="#f4f8ff" font-family="${FONT}" font-size="38" font-weight="800" letter-spacing="3">KORDYN</text><text x="194" y="148" fill="#8896ac" font-family="${FONT}" font-size="20" letter-spacing="3">REALIZED TRADE RESULT</text>${isSample ? `<text x="1000" y="112" text-anchor="end" fill="#ffcf80" font-family="${FONT}" font-size="22" font-weight="800" letter-spacing="3">SAMPLE · SIMULATED DATA</text>` : ""}<rect x="80" y="212" width="250" height="58" rx="14" fill="${accent}" opacity=".16"/><text x="205" y="251" text-anchor="middle" fill="${accent}" font-family="${FONT}" font-size="28" font-weight="800">✓ CLOSED · ${escapeXml(s.side)}</text><text x="80" y="370" fill="#fff" font-family="${FONT}" font-size="82" font-weight="900">${escapeXml(s.symbol)}</text><text x="80" y="422" fill="#9aa6bd" font-family="${FONT}" font-size="27">${escapeXml(meta || "REALIZED TRADE")}</text><rect x="80" y="470" width="920" height="265" rx="28" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.08)"/><text x="120" y="542" fill="#8d99ad" font-family="${FONT}" font-size="28">NET REALIZED PNL · AFTER RECORDED COSTS</text><text x="120" y="648" fill="${pnlColor}" font-family="${FONT}" font-size="102" font-weight="900">${escapeXml(money(s.netPnl))}</text><text x="120" y="700" fill="${pnlColor}" font-family="${FONT}" font-size="38" font-weight="800">NET REALIZED ROI ${escapeXml(roi)}</text>${cell(80,775,"ENTRY PRICE",compact(s.entry))}${cell(560,775,"EXIT PRICE",compact(s.exit))}${cell(80,937,"GROSS REALIZED PNL",money(s.grossPnl))}${cell(560,937,"ENTRY + CLOSE FEES",`${s.feeUsdt ? "−" : ""}${compact(s.feeUsdt,4)} USDT`,"#ffcf80")}<text x="80" y="1138" fill="#75839a" font-family="${FONT}" font-size="23">FUNDING: ${escapeXml(money(s.fundingFeeUsdt))} · NET: ${escapeXml(money(s.netPnl))} · SOURCE: ${escapeXml(s.exchange)} FILLS</text><rect x="80" y="1178" width="920" height="2" fill="rgba(255,255,255,.08)"/>${qr?`<rect x="800" y="1204" width="200" height="200" rx="18" fill="#fff"/><image x="812" y="1216" width="176" height="176" xlink:href="${qr}"/>`:""}<text x="80" y="1250" fill="#d3dceb" font-family="${FONT}" font-size="28" font-weight="700">KORDYN · CRYPTO PERPETUALS AI AGENT</text><text x="80" y="1300" fill="#7f8ca3" font-family="${FONT}" font-size="25">${escapeXml(SITE_URL.replace(/^https?:\/\//,"").replace(/\/$/,""))}</text><text x="80" y="1357" fill="#617088" font-family="${FONT}" font-size="21">${isSample ? "SIMULATED TEMPLATE PREVIEW" : "REALIZED TRADE RESULT"} · NOT FINANCIAL ADVICE</text><text x="80" y="1392" fill="#55627c" font-family="${FONT}" font-size="21">${escapeXml(englishTimestamp(s.closedAt))}</text></svg>`;
 }
 
 export async function renderClosedTradePoster(trade = {}) {

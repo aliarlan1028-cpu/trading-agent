@@ -47,6 +47,25 @@ test("同一交易的多次部分平仓只算一个连亏生命周期", () => {
   assert.equal(result.active, false);
 });
 
+test("毛盈利被开平仓费翻为净亏损时仍触发连亏冷却和回撤锁仓", () => {
+  const fills = [];
+  for (let index = 0; index < 3; index += 1) {
+    const executionOrderId = `fee-flip-${index}`;
+    fills.push(
+      { id: `entry-${index}`, kind: "entry", executionOrderId, feeUsdt: 0.8, createdAt: new Date(Date.now() - (index + 2) * HOUR).toISOString() },
+      { id: `close-${index}`, kind: "close", executionOrderId, realizedPnl: 1, feeUsdt: 1.2, createdAt: new Date(Date.now() - (2 - index) * 30 * 60_000).toISOString() }
+    );
+  }
+  const db = { portfolio: { totalEquityUsdt: 10 }, fills };
+  const cooldown = consecutiveLossCooldown(db);
+  assert.equal(cooldown.streak, 3);
+  assert.equal(cooldown.active, true, "three net losses must not be hidden by positive exchange-price PnL");
+  const drawdown = drawdownLockout(db);
+  assert.equal(drawdown.active, true);
+  assert.equal(drawdown.drawdownUsdt, 3);
+  assert.equal(drawdown.drawdownPct, 30);
+});
+
 test("连亏冷却:阈值可用 env 覆盖", () => {
   const prev = process.env.PROTECT_MAX_CONSEC_LOSSES;
   process.env.PROTECT_MAX_CONSEC_LOSSES = "2";

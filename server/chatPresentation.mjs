@@ -1,4 +1,5 @@
 import { normalizePositionsForUi } from "./positionView.mjs";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 const PRESENTATION_SCHEMA_VERSION = 1;
 const DISPLAY_TIMEFRAMES = ["15m", "1h", "4h"];
@@ -198,10 +199,13 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
   const entryQuantity = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0);
   const entryNotional = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.price || 0) * Number(row.quantity || 0)), 0);
   const actualEntryPrice = entryQuantity > 0 ? entryNotional / entryQuantity : numberOrNull(order?.filledPrice);
-  const closePnlRows = closeFills.filter((row) => finite(row.realizedPnl));
-  const realizedPnl = closePnlRows.length
-    ? closePnlRows.reduce((sum, row) => sum + Number(row.realizedPnl), 0)
-    : numberOrNull(order?.realizedPnl);
+  const closedLifecycles = groupClosedTradeLifecycles(orderFills);
+  const grossRealizedPnl = closedLifecycles.length
+    ? closedLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.realizedPnl), 0)
+    : null;
+  const netRealizedPnl = closedLifecycles.length
+    ? closedLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.netRealizedPnl), 0)
+    : null;
   const position = symbol ? normalizePositionsForUi(db.positions || []).find((row) => row.symbol === symbol && Number(row.quantity ?? row.size ?? row.pos ?? 0) !== 0) || null : null;
   const kind = classifyKind({ plan, order, watch, position, content, errorText, trigger: run.decisionContext?.trigger });
   const state = decisionStateFor(plan, order, watch, errorText);
@@ -281,7 +285,10 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
       notionalUsdt: numberOrNull(order.notionalUsdt),
       filledPrice: actualEntryPrice,
       plannedEntryPrice: numberOrNull(order.entryPrice),
-      realizedPnl,
+      grossRealizedPnl,
+      netRealizedPnl,
+      // 兼容旧展示字段，但其语义统一为完整交易生命周期净值。
+      realizedPnl: netRealizedPnl,
       protection: order.protection || null,
       updatedAt: order.updatedAt || order.completedAt || order.createdAt || null
     } : null

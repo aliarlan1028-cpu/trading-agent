@@ -109,6 +109,23 @@ test("执行快照使用真实成交加权均价和已平仓记录，不把计�
   assert.equal(result.execution.filledPrice, 62300);
   assert.equal(result.execution.plannedEntryPrice, 62000);
   assert.ok(Math.abs(result.execution.realizedPnl - 2.8) < 1e-9);
+  assert.ok(Math.abs(result.execution.netRealizedPnl - 2.8) < 1e-9);
+  assert.ok(Math.abs(result.execution.grossRealizedPnl - 2.8) < 1e-9);
+});
+
+test("execution presentation labels lifecycle gross separately and exposes net after entry/close fees", () => {
+  const db = {
+    tradePlans: [{ id: "plan-fee", symbol: "BTC/USDT" }],
+    executionOrders: [{ id: "eo-fee", planId: "plan-fee", status: "closed" }],
+    fills: [
+      { id: "entry-fee", executionOrderId: "eo-fee", kind: "entry", feeUsdt: 0.8 },
+      { id: "close-fee", executionOrderId: "eo-fee", kind: "close", realizedPnl: 1, feeUsdt: 0.4 }
+    ], positions: []
+  };
+  const result = buildChatPresentation({ db, run: { tradePlanId: "plan-fee" }, content: "完成" });
+  assert.equal(result.execution.grossRealizedPnl, 1);
+  assert.ok(Math.abs(result.execution.netRealizedPnl + 0.2) < 1e-9);
+  assert.ok(Math.abs(result.execution.realizedPnl + 0.2) < 1e-9);
 });
 
 test("多币种分析缺少主币结构时保持样本不足，不借用其他币种结构", () => {

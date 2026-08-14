@@ -1,7 +1,7 @@
 // 行情路由组（大盘/聪明钱 regime、合约清单、公有 K 线带缓存、币种画像）——
 // 从 index.mjs 按 registrar 范式迁出。公开数据、免鉴权。klineCache 移入本模块。依赖经 ctx 注入。
 export function registerMarketRoutes(app, ctx) {
-  const { db, persist, activeMandate, fetchMarketRegime, nowIso, fetchPerpetualInstruments, normalizeSymbol, getHistoricalKlines, fetchTokenProfile } = ctx;
+  const { db, persist, activeMandate, fetchMarketRegime, nowIso, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, normalizeSymbol, getHistoricalKlines, fetchTokenProfile } = ctx;
   const klineCache = new Map(); // key -> { at, payload }（10s 内存缓存，移动端重复请求即时返回）
 
   app.get("/api/market/regime", async (_req, res) => {
@@ -23,10 +23,15 @@ export function registerMarketRoutes(app, ctx) {
 
   app.get("/api/market/instruments", async (_req, res) => {
     try {
-      const instruments = await fetchPerpetualInstruments();
-      res.json({ instruments, count: instruments.length });
+      const catalog = fetchPerpetualInstrumentCatalog
+        ? await fetchPerpetualInstrumentCatalog()
+        : { instruments: await fetchPerpetualInstruments(), sourceStatus: "healthy", asOf: nowIso(), stale: false, source: "OKX" };
+      if (catalog.sourceStatus === "failed" || !catalog.instruments?.length) {
+        return res.status(503).json({ ...catalog, instruments: [], count: 0, error: `合约清单获取失败：${catalog.error || "OKX 未返回可交易合约"}` });
+      }
+      res.json({ ...catalog, count: catalog.instruments.length });
     } catch (error) {
-      res.status(500).json({ error: `合约清单获取失败：${error.message}`, instruments: [] });
+      res.status(503).json({ error: `合约清单获取失败：${error.message}`, instruments: [], count: 0, sourceStatus: "failed", asOf: null, stale: false, source: "OKX" });
     }
   });
 

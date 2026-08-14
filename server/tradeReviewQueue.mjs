@@ -115,7 +115,13 @@ export function syncTradeReviewQueue(db) {
     if (review && (db.reviews?.length || 0) > before) queued += 1;
   }
   const reconciled = reconcileReflectedTradeReviews(db);
-  return { queued, reconciled };
+  let financialsBackfilled = 0;
+  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  for (const lifecycle of lifecycles) {
+    const review = (db.reviews || []).find((item) => item.type === "trade" && item.tradeLifecycleKey === lifecycle.key);
+    if (review && stampTradeReviewFinancials(review, lifecycle)) financialsBackfilled += 1;
+  }
+  return { queued, reconciled, financialsBackfilled };
 }
 
 function reflectionMemoryForLifecycle(db, review, lifecycle) {
@@ -138,7 +144,7 @@ export function reconcileReflectedTradeReviews(db) {
     if (!review || review.status === "completed") continue;
     const fill = lifecycle.representative;
     const memory = reflectionMemoryForLifecycle(db, review, lifecycle);
-    const pnl = Number(lifecycle.realizedPnl || 0);
+    const pnl = Number(lifecycle.netRealizedPnl || 0);
     const direction = fill.direction === "short" || fill.direction === "空" ? "做空" : "做多";
     const fallbackLesson = `该交易生命周期已在旧版本完成自动复盘；已根据 ${lifecycle.fills.length} 条真实平仓成交恢复队列状态，未重复调用 LLM。`;
     completeTradeReview(review, lifecycle, {
@@ -169,9 +175,7 @@ export function markTradeReviewProcessing(db, lifecycle) {
 export function completeTradeReview(review, lifecycle, payload = {}) {
   if (!review) return null;
   review.status = "completed";
-  review.realizedPnl = Number(lifecycle?.realizedPnl ?? payload.realizedPnl ?? 0);
-  review.feeUsdt = Number(lifecycle?.feeUsdt || 0);
-  review.fundingFeeUsdt = Number(lifecycle?.fundingFeeUsdt || 0);
+  stampTradeReviewFinancials(review, lifecycle || payload);
   review.partialCloseCount = lifecycle?.fills?.length || 1;
   review.summary = payload.summary || review.summary;
   review.lesson = payload.lesson || null;
@@ -182,6 +186,19 @@ export function completeTradeReview(review, lifecycle, payload = {}) {
   review.updatedAt = review.completedAt;
   delete review.error;
   return review;
+}
+
+export function stampTradeReviewFinancials(review, lifecycle = {}) {
+  if (!review) return false;
+  const fields = ["realizedPnl", "feeUsdt", "entryFeeUsdt", "fundingFeeUsdt", "netRealizedPnl"];
+  let changed = false;
+  for (const field of fields) {
+    if (!finite(lifecycle[field])) continue;
+    const value = Number(Number(lifecycle[field]).toFixed(8));
+    if (!finite(review[field]) || Number(review[field]) !== value) { review[field] = value; changed = true; }
+  }
+  if (changed) review.updatedAt = nowIso();
+  return changed;
 }
 
 export function failTradeReview(review, error) {

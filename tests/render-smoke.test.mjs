@@ -49,12 +49,13 @@ esbuild.buildSync({
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
       export { resolveApiBase, apiUrl } from "./src/lib.jsx";
-      export { ChatPage, DecisionBrief, ToolTrace, cleanPresentationText } from "./src/chat.jsx";
+      export { setLang } from "./src/i18n.js";
+      export { ChatPage, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, MobileCapabilities, MobileBacktestResearch, MobileStrategy, groupMobileClosedTrades } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
+      export { MobileApp, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -101,6 +102,51 @@ test("AI display cleanup removes process narration without deleting trading fact
   assert.equal(C.cleanPresentationText("The plan is armed. Now I will summarize the full picture.\n\nConclusion: Wait for confirmation."), "Conclusion: Wait for confirmation.");
 });
 
+test("AI display cleanup hides evidence IDs, humanizes enums, and preserves correction time", () => {
+  const original = "4h 标记 leverage_build_up，现价 123[fresh·ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z]，[fresh/passed·ev:structure:BTC/USDT:2026-08-14T13:59:09.221Z]，4H LH/LL · BOS down @63280，short_covering，bullish_price_cvd。事实守卫（ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z，2026/8/14 21:59:04 UTC+8）。〔已按 ev:ticker:BTC/USDT:2026-08-14T13:59:59.261Z 更正；2026/8/14 21:59:59（UTC+8）〕";
+  const audit = { content: original, violations: [{ evidenceId: "ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z" }] };
+  const cleaned = C.cleanPresentationText(audit.content);
+  assert.doesNotMatch(cleaned, /ev:|evb_|leverage_build_up|short_covering|bullish_price_cvd|LH\/LL|BOS down/);
+  assert.match(cleaned, /杠杆堆积但价格尚未确认/);
+  assert.match(cleaned, /数据为最新/);
+  assert.match(cleaned, /数据新鲜度与校验均通过/);
+  assert.match(cleaned, /跌破结构位 63280/);
+  assert.match(cleaned, /校正于 2026\/8\/14 21:59:59（UTC\+8）/);
+  assert.equal(audit.content, original, "presentation cleanup must not mutate stored content");
+  assert.equal(audit.violations[0].evidenceId, "ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z", "audit violations must remain intact");
+});
+
+test("AI display cleanup humanizes unavailable evidence states without empty evidence punctuation", () => {
+  const original = "**事实守卫**：OKX 当前价格无法确认（证据 ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z，状态 stale/failed）。\n现价不可用[stale/failed·ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z]；深度数据状态 missing，接口状态 error。";
+  const cleaned = C.cleanPresentationText(original);
+  assert.doesNotMatch(cleaned, /ev:|stale|failed|missing|error|证据\s*[，,]/i);
+  assert.match(cleaned, /事实校验/);
+  assert.match(cleaned, /状态 数据陈旧且获取失败/);
+  assert.match(cleaned, /现价不可用（数据陈旧且获取失败）/);
+  assert.match(cleaned, /数据缺失/);
+  assert.match(cleaned, /获取出错/);
+  assert.equal(original.includes("ev:ticker"), true, "stored input remains untouched");
+});
+
+test("AI display cleanup does not translate ordinary English trading prose", () => {
+  const prose = "The breakout failed because momentum was missing; wait for a fresh setup after the error is resolved.";
+  assert.equal(C.cleanPresentationText(prose), prose);
+});
+
+test("AI display cleanup uses English labels in English mode", () => {
+  C.setLang("en");
+  try {
+    const cleaned = C.cleanPresentationText("4H LH/LL · BOS down @63280, leverage_build_up [fresh·ev:ticker:BTC/USDT:2026-08-14T13:59:04.538Z]");
+    assert.match(cleaned, /lower highs and lower lows/);
+    assert.match(cleaned, /bearish structure break at 63280/);
+    assert.match(cleaned, /leverage is building without price confirmation/);
+    assert.match(cleaned, /data is fresh/);
+    assert.doesNotMatch(cleaned, /[\u3400-\u9fff]/);
+  } finally {
+    C.setLang("zh");
+  }
+});
+
 test("AI conclusion summary uses compact text rows without large bold cards", () => {
   const html = renderToString(React.createElement(C.DecisionBrief, {
     presentation: { layout: "decision_brief", kind: "market_analysis", headline: "本轮无交易计划", symbols: ["BTC/USDT", "SUI/USDT"], decision: { state: "analysis_only", direction: "neutral" } },
@@ -128,7 +174,7 @@ test("自主巡检能力覆盖以一行紧凑摘要展示，原始工具详情�
       externalCandidates: [{ symbol: "DOGE/USDT", analyzed: true }, { symbol: "ETH/USDT", analyzed: true }]
     }
   }));
-  assert.match(html, /能力 16\/16/);
+  assert.match(html, /本轮证据检查 16\/16/);
   assert.match(html, /模型主动 1/);
   assert.match(html, /系统预检 1/);
   assert.match(html, /白名单 4\/4/);
@@ -172,6 +218,7 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
   assert.match(html, /richCheck checked/);
   assert.match(html, /richTable/);
   assert.match(html, /Top 候选均在白名单外/);
+  assert.match(html, /回复生成时仓位快照/, "undefined live override must fall back to the saved presentation position snapshot");
   const liveHtml = renderToString(React.createElement(C.DecisionBrief, {
     presentation,
     content: "### 结论\n交易已完成",
@@ -180,6 +227,54 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
   }));
   assert.match(liveHtml, /生成时[\s\S]*当前/);
   assert.match(liveHtml, /已平仓/);
+
+  const feeFlipData = {
+    executionOrders: [{ id: "eo-fee", planId: "plan-fee", status: "closed", realizedPnl: 1, quantity: 1, notionalUsdt: 100 }],
+    fills: [
+      { id: "entry-fee", executionOrderId: "eo-fee", tradePlanId: "plan-fee", kind: "entry", price: 100, quantity: 1, feeUsdt: 0.8 },
+      { id: "close-fee", executionOrderId: "eo-fee", tradePlanId: "plan-fee", kind: "close", realizedPnl: 1, feeUsdt: 0.4 }
+    ]
+  };
+  const currentExecution = C.buildCurrentExecutionSnapshot(feeFlipData, { executionOrderId: "eo-fee", planId: "plan-fee" });
+  assert.equal(currentExecution.grossRealizedPnl, 1);
+  assert.ok(Math.abs(currentExecution.netRealizedPnl + 0.2) < 1e-9);
+  assert.ok(Math.abs(currentExecution.realizedPnl + 0.2) < 1e-9);
+  const dynamicHtml = renderToString(React.createElement(C.DecisionBrief, {
+    presentation: { ...presentation, linked: { executionOrderId: "eo-fee", planId: "plan-fee" } },
+    content: "### 结论\n交易已完成",
+    currentState: "closed",
+    currentExecution,
+    currentPosition: null
+  }));
+  assert.match(dynamicHtml, /净已实现盈亏/);
+  assert.match(dynamicHtml, /-0\.20/);
+  assert.match(dynamicHtml, /class="mono negative"/);
+  assert.doesNotMatch(dynamicHtml, /当前真实仓位|回复生成时仓位快照/, "an explicit null live position must hide a position that no longer exists");
+
+  const planHtml = renderToString(React.createElement(C.PlanCard, {
+    plan: { id: "plan-fee", symbol: "BTC/USDT", direction: "long", status: "completed", lastRiskCheck: { checks: [] } },
+    executionOrder: feeFlipData.executionOrders[0], data: { ...feeFlipData, armedSetups: [], system: {} },
+    action, ui, markets: []
+  }));
+  assert.match(planHtml, /净盈亏/);
+  assert.match(planHtml, /-0\.20/);
+  assert.doesNotMatch(planHtml, /价格毛盈亏[\s\S]*1\.00/);
+
+  const boundedSnapshot = C.buildCurrentExecutionSnapshot({ ...feeFlipData, closedTradeLifecycles: [] }, { executionOrderId: "eo-fee", planId: "plan-fee" });
+  assert.equal(boundedSnapshot.netRealizedPnl, null, "an explicit server lifecycle array must disable reconstruction from bounded fills");
+  assert.equal(boundedSnapshot.grossRealizedPnl, 1);
+  assert.equal(boundedSnapshot.financialBasis, "gross_only_costs_unreconciled");
+  const boundedHtml = renderToString(React.createElement(C.DecisionBrief, { presentation, content: "交易已完成", currentState: "closed", currentExecution: boundedSnapshot, currentPosition: null }));
+  assert.match(boundedHtml, /价格毛盈亏/);
+  assert.match(boundedHtml, /成本待对账/);
+  assert.doesNotMatch(boundedHtml, /净已实现盈亏/);
+
+  const serverSnapshot = C.buildCurrentExecutionSnapshot({
+    ...feeFlipData,
+    closedTradeLifecycles: [{ tradeLifecycleKey: "eo-fee", executionOrderId: "eo-fee", realizedPnl: 4, netRealizedPnl: -2, entryFeeUsdt: 3, feeUsdt: 3 }]
+  }, { executionOrderId: "eo-fee", planId: "plan-fee" });
+  assert.equal(serverSnapshot.grossRealizedPnl, 4);
+  assert.equal(serverSnapshot.netRealizedPnl, -2, "a matching server lifecycle must override bounded fill reconstruction");
 });
 
 // —— 真实形状 fixture：技能覆盖全部 11 个状态、概念含重名（触发去重）、计划/执行单覆盖典型状态 ——
@@ -335,6 +430,8 @@ test("orders and fills render together on the dedicated ledger subpage", () => {
   assert.ok(html.includes("id=\"el-fills\""));
   assert.ok(html.includes("AI 委托记录"));
   assert.ok(html.includes("成交流水"));
+  assert.match(html, /价格毛盈亏/);
+  assert.doesNotMatch(html, /已实现盈亏/);
 });
 
 test("knowledge page renders every tab (methods/skills/rules/graph/ext)", () => {
@@ -438,4 +535,232 @@ test("mobile closed-trade ledger excludes entries and incomplete partial closes"
   assert.equal(closed[0].closeCount, 2);
   assert.equal(closed[0].realizedPnl, 6);
   assert.equal(closed[0].netRealizedPnl, 4.5);
+});
+
+test("mobile strategy catalog and execution ledger use the same factual rows as desktop", () => {
+  const strategyHtml = render(React.createElement(C.MobileStrategy, {
+    data: {
+      strategyStudio: { drafts: [], backtests: [], marketplace: { listings: [], summary: {} } },
+      strategyCatalog: {
+        products: [{ id: "p", versionId: "v1", definition: { name: "产品策略", direction: "long", timeframes: ["1h"] }, deployment: { state: "owner_live_observation" } }],
+        strategies: [{ id: "rsi", name: "RSI 研究模型", contract: { direction: "both", timeframes: ["15m"] }, lifecycle: { stage: "research" } }]
+      },
+      knowledge: { tradingSkills: [] }, skills: []
+    }, action, initialTab: "catalog"
+  }));
+  assert.match(strategyHtml, /产品策略/);
+  assert.match(strategyHtml, /RSI 研究模型/);
+  assert.match(strategyHtml, /研究模型/);
+
+  const executionData = {
+    executionOrders: [{ id: "eo", symbol: "BTC\/USDT", status: "entry_partial", createdAt: "2026-08-01T00:00:00Z" }],
+    executionOrderStatus: { total: 8 },
+    fills: [
+      { id: "entry", executionOrderId: "eo", kind: "entry", symbol: "BTC/USDT", price: 60000, feeUsdt: 1, createdAt: "2026-08-01T00:00:00Z" },
+      { id: "partial", executionOrderId: "eo", kind: "close", partial: true, symbol: "BTC/USDT", price: 60500, realizedPnl: 3, feeUsdt: .2, createdAt: "2026-08-01T01:00:00Z" },
+      { id: "final", executionOrderId: "eo", kind: "close", partial: false, symbol: "BTC/USDT", price: 61000, realizedPnl: 7, feeUsdt: .3, createdAt: "2026-08-01T02:00:00Z" }
+    ],
+    tradeDataStatus: { fillTotal: 12, tradeReviewTotal: 1 },
+    performance: { trades: 4, totalPnlUsdt: 42.25, winRatePct: 75 },
+    reviews: [{ id: "review", type: "trade", tradeLifecycleKey: "eo", status: "completed" }, { id: "other", type: "analysis", executionOrderId: "eo" }]
+  };
+  const overviewHtml = render(React.createElement(C.MobileExecution, { data: executionData, action, initialTab: "overview" }));
+  assert.match(overviewHtml, /42\.25/);
+  assert.match(overviewHtml, /75%/);
+  const fillsHtml = render(React.createElement(C.MobileExecution, { data: executionData, action, initialTab: "fills" }));
+  assert.match(fillsHtml, /最近 3 \/ 12/);
+  assert.match(fillsHtml, /开仓/);
+  assert.match(fillsHtml, /平仓/);
+  assert.match(fillsHtml, /价格毛盈亏/);
+  C.setLang("en");
+  try {
+    const englishFillsHtml = render(React.createElement(C.MobileExecution, { data: executionData, action, initialTab: "fills" }));
+    assert.match(englishFillsHtml, /Gross price PnL/);
+    assert.doesNotMatch(englishFillsHtml, /Realized PnL/);
+  } finally {
+    C.setLang("zh");
+  }
+});
+
+test("mobile review never labels gross or missing financials as a net result", () => {
+  const html = render(React.createElement(C.MobileExecution, {
+    data: {
+      executionOrders: [], fills: [], closedTradeLifecycles: [], performance: {},
+      reviews: [{ id: "legacy", type: "trade", symbol: "ADA/USDT", status: "completed", realizedPnl: 5, feeUsdt: 1, summary: "旧复盘" }],
+      tradeDataStatus: { fillTotal: 0, tradeReviewTotal: 1 }
+    }, action, initialTab: "reviews"
+  }));
+  assert.match(html, /mReviewRowTop[\s\S]*?>—<\/b>/);
+  assert.doesNotMatch(html, /\+4\.00|\+5\.00|\+0\.00/);
+});
+
+test("mobile event calendar keeps date-only events untimed and month selection aligned", () => {
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const html = render(React.createElement(C.MobileTasks, {
+    data: { marketCalendarEvents: [{ id: "fomc", title: "FOMC", due: `${date}T00:00:00.000Z`, startAt: `${date}T00:00:00.000Z`, timePrecision: "date", importance: "high", sourceName: "Federal Reserve" }], tasks: [], riskRules: [] },
+    action
+  }));
+  assert.match(html, /mEventCalendar/);
+  assert.match(html, /全天 · 时间待定/);
+  assert.doesNotMatch(html, />08:00</, "a UTC placeholder for a date-only event must not be rendered as an exact local time");
+
+  const shifted = C.shiftMobileCalendarSelection(new Date(2026, 0, 1), "2026-01-31", 1);
+  assert.equal(shifted.monthAnchor.getMonth(), 1);
+  assert.equal(shifted.selectedDate, "2026-02-28", "selected day must clamp into and stay within the target month");
+});
+
+test("mobile risk payload preserves heterogeneous pair caps across unrelated edits", () => {
+  const mandate = {
+    id: "m1", name: "异构杠杆授权", allowedSymbols: ["BTC/USDT", "ETH/USDT"],
+    maxLeverageBySymbol: { "BTC/USDT": 2, "ETH/USDT": 5 }, max_leverage: 5, min_leverage: 1,
+    strategies: ["breakout"]
+  };
+  const form = {
+    symbols: ["BTC/USDT", "ETH/USDT"], minLeverage: 1, newSymbolMaxLeverage: 1,
+    maxLeverageBySymbol: { "BTC/USDT": 2, "ETH/USDT": 5 }, positionPct: 30, singleRisk: 1,
+    dailyLoss: 0.5, weeklyLoss: 5, maxOrderNotional: 50, maxSymbolNotional: 100,
+    maxPortfolioNotional: 150, maxConcurrentPositions: 2, maxMarginUtilizationPct: 50, validDays: 7
+  };
+  const unchanged = C.buildMobileRiskPermissionPayload(mandate, { ...form, dailyLoss: 0.8 }, { nowMs: 0 });
+  assert.deepEqual(unchanged.maxLeverageBySymbol, { "BTC/USDT": 2, "ETH/USDT": 5 });
+  assert.equal(unchanged.max_leverage, 5);
+
+  const removed = C.buildMobileRiskPermissionPayload(mandate, { ...form, symbols: ["BTC/USDT"] }, { nowMs: 0 });
+  assert.deepEqual(removed.maxLeverageBySymbol, { "BTC/USDT": 2 }, "removed pairs must also be removed from the authorization map");
+  assert.equal(removed.max_leverage, 2);
+
+  const added = C.buildMobileRiskPermissionPayload(mandate, { ...form, symbols: [...form.symbols, "SOL/USDT"], newSymbolMaxLeverage: 3 }, { nowMs: 0 });
+  assert.deepEqual(added.maxLeverageBySymbol, { "BTC/USDT": 2, "ETH/USDT": 5, "SOL/USDT": 3 });
+  assert.ok(added.maxLeverageBySymbol["SOL/USDT"] <= 3, "a new pair cannot exceed the explicitly authorized new-pair cap");
+});
+
+test("mobile risk edits preserve paused/revoked state and failed saves keep the editor open", async () => {
+  const form = { symbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 }, minLeverage: 1, newSymbolMaxLeverage: 1, validDays: 7 };
+  assert.equal(C.buildMobileRiskPermissionPayload({ id: "paused", status: "paused", allowedSymbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 } }, form, { nowMs: 0 }).status, "paused");
+  assert.equal(C.buildMobileRiskPermissionPayload({ id: "revoked", status: "revoked", allowedSymbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 } }, form, { nowMs: 0 }).status, "revoked");
+  assert.equal(C.buildMobileRiskPermissionPayload({}, form, { nowMs: 0 }).status, "active", "only a newly created mandate defaults active");
+  for (const endpoint of ["/api/mandates/m1", "/api/config/live-trading", "/api/system/goals"]) {
+    assert.equal(await C.submitMobileRiskChange(async () => ({ ok: false, error: "400" }), endpoint, {}), false);
+    assert.equal(await C.submitMobileRiskChange(async () => ({ ok: true }), endpoint, {}), true);
+  }
+  const source = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
+  assert.match(source, /const ok = await submitMobileRiskChange\(action, mandate\.id/);
+  assert.match(source, /submitMobileRiskChange\(action, "\/api\/config\/live-trading"/);
+  assert.match(source, /submitMobileRiskChange\(action, "\/api\/system\/goals"/);
+  assert.equal((source.match(/if \(ok\) onDone\(\);/g) || []).length, 3);
+  for (const status of ["paused", "revoked"]) {
+    const html = render(React.createElement(C.MobileRiskPermissionEditor, {
+      data: { mandates: [{ id: status, status, allowedSymbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 } }] },
+      action, ui, onDone: () => {}
+    }));
+    assert.match(html, /保存设置/);
+    assert.doesNotMatch(html, /保存并立即生效/);
+  }
+  C.setLang("en");
+  try {
+    const html = render(React.createElement(C.MobileRiskPermissionEditor, {
+      data: { mandates: [{ id: "paused-en", status: "paused", allowedSymbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 } }] },
+      action, ui, onDone: () => {}
+    }));
+    assert.match(html, /Save settings/);
+    assert.doesNotMatch(html, /Save and apply/);
+  } finally {
+    C.setLang("zh");
+  }
+});
+
+test("mobile refresh controls invoke the intelligence and calendar refresh chains they display", async () => {
+  const intelligenceCalls = [];
+  await C.refreshMobileIntelligence(async (endpoint, body) => { intelligenceCalls.push([endpoint, body]); return { ok: true }; });
+  assert.deepEqual(intelligenceCalls, [["/api/market-intelligence/refresh", {}]], "intelligence refresh must use the full intelligence pipeline");
+
+  const calendarCalls = [];
+  await C.refreshMobileEventCalendar(async (endpoint, body) => { calendarCalls.push([endpoint, body]); return { ok: true, endpoint }; });
+  assert.deepEqual(calendarCalls, [
+    ["/api/event-sources/refresh", {}],
+    ["/api/market-intelligence/refresh", {}]
+  ], "calendar refresh must update RSS events before rebuilding official calendar and intelligence-derived rows");
+
+  const mobileSource = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
+  const tasksSource = mobileSource.slice(mobileSource.indexOf("export function MobileTasks"), mobileSource.indexOf("function mobileIntelHealth"));
+  const intelligenceSource = mobileSource.slice(mobileSource.indexOf("export function MobileIntelligence"), mobileSource.indexOf("function MobileAccountHealth"));
+  assert.match(tasksSource, /onClick=\{\(\) => refreshMobileEventCalendar\(action\)\}/, "MobileTasks refresh button must stay bound to the calendar refresh chain");
+  assert.match(intelligenceSource, /onClick=\{\(\) => refreshMobileIntelligence\(action\)\}/, "MobileIntelligence refresh button must stay bound to the intelligence refresh chain");
+  assert.doesNotMatch(intelligenceSource, /event-sources\/refresh/, "the intelligence component must not regress to the RSS-only endpoint");
+});
+
+test("mobile intelligence uses derived stale source health and separates brief from audit-heavy details", () => {
+  const html = render(React.createElement(C.MobileIntelligence, {
+    data: {
+      dailyMarketBrief: { version: 2, asOf: "2026-08-14T12:00:00Z", macroContext: { economicCyclePhase: "insufficient_verified_macro_data", cryptoRiskAppetite: "分化" }, evidenceFactIds: [], constraints: [] },
+      marketIntelligenceSourceHealth: [{ sourceId: "old-ok", name: "Old feed", status: "ok", health: "stale", lastSuccessAt: "2026-08-01T00:00:00Z" }],
+      newsFeed: [], marketCalendarEvents: [], events: []
+    }, action, ui
+  }));
+  assert.match(html, /情报中心|只作为分析背景/);
+  assert.match(html, /0(?:<!-- -->)?\/(?:<!-- -->)?1/);
+  assert.match(html, /1 个情报来源已陈旧/);
+  assert.match(html, /可验证宏观数据不足，不下结论/);
+});
+
+test("mobile pair sheet pins the selected pair above the search field", () => {
+  const html = render(React.createElement(C.MobilePairSheet, { instruments: ["BTC/USDT", "ETH/USDT"], current: "BTC/USDT", onClose: () => {}, onPick: () => {} }));
+  assert.match(html, /mSheetSelection/);
+  assert.match(html, /当前币对/);
+  assert.match(html, /搜索全部 USDT 永续/);
+});
+
+test("mobile instrument loader exposes rejected and non-2xx failures instead of loading forever", async () => {
+  await assert.rejects(() => C.loadMobileInstrumentList(async () => { throw new Error("offline"); }, "/api/market/instruments"), /offline/);
+  await assert.rejects(() => C.loadMobileInstrumentList(async () => ({ ok: false, status: 503 }), "/api/market/instruments"), /503/);
+  const html = render(React.createElement(C.MobilePairSheet, { instruments: [], current: "BTC/USDT", error: "offline", onRetry: () => {}, onClose: () => {}, onPick: () => {} }));
+  assert.match(html, /完整合约清单加载失败/);
+  assert.match(html, /仅保留当前已选项，不代表完整可交易范围/);
+  assert.match(html, /重试/);
+});
+
+test("mobile instrument loader rejects 200-empty and discloses stale cached lists", async () => {
+  await assert.rejects(() => C.loadMobileInstrumentList(async () => ({ ok: true, json: async () => ({ instruments: [], sourceStatus: "healthy" }) }), "/api/market/instruments"), /无法确认|Unable to confirm/);
+  const stale = await C.loadMobileInstrumentList(async () => ({ ok: true, json: async () => ({ instruments: [{ symbol: "BTC/USDT" }], sourceStatus: "stale", stale: true, asOf: "2026-08-14T00:00:00Z" }) }), "/api/market/instruments");
+  assert.deepEqual(stale, { instruments: ["BTC/USDT"], sourceStatus: "stale", stale: true, asOf: "2026-08-14T00:00:00Z" });
+  const html = render(React.createElement(C.MobilePairSheet, { instruments: ["BTC/USDT"], current: "BTC/USDT", stale: true, asOf: "2026-08-14T00:00:00Z", onRetry: () => {}, onClose: () => {}, onPick: () => {} }));
+  assert.match(html, /当前使用缓存合约清单|Using a cached contract list/);
+  const source = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
+  const permissionSource = source.slice(source.indexOf("function MobileRiskPermissionEditor"), source.indexOf("function MobileRiskLiveEditor"));
+  assert.match(permissionSource, /instrumentsStale=\{instrumentState\.stale\}/);
+  assert.match(permissionSource, /instrumentsAsOf=\{instrumentState\.asOf\}/);
+});
+
+test("web orphan review uses persisted lifecycle net and includes entry plus close fees", () => {
+  const html = render(React.createElement(C.ExecutionReviewConcept, {
+    data: {
+      executionOrders: [], fills: [], closedTradeLifecycles: [], performance: {}, positions: [], tradePlans: [],
+      reviews: [{ id: "orphan", type: "trade", status: "completed", symbol: "ADA/USDT", realizedPnl: 5, netRealizedPnl: 3.5, entryFeeUsdt: 1, feeUsdt: 0.5, completedAt: "2026-08-14T00:00:00Z" }],
+      behaviorProfile: {}, reviewLearningAnalytics: {}, reconciliationReports: []
+    }, action, ui
+  }));
+  assert.match(html, /\+3\.50 U/);
+  assert.match(html, /1\.50 U/);
+  assert.doesNotMatch(html, /\+4\.50 U/);
+});
+
+test("desktop goal guardrails use lifecycle net PnL and allocation uses shared notional semantics", () => {
+  const now = new Date().toISOString();
+  const overview = render(React.createElement(C.TradingOverviewConcept, {
+    data: {
+      system: { dailyGoalUsdt: 8, monthlyGoalUsdt: 240, monthlyGoalDays: 30 }, portfolio: {},
+      fills: [
+        { id: "entry", kind: "entry", executionOrderId: "goal-life", feeUsdt: 1, createdAt: now },
+        { id: "part", kind: "close", executionOrderId: "goal-life", partial: true, realizedPnl: 4, feeUsdt: 1, createdAt: now },
+        { id: "final", kind: "close", executionOrderId: "goal-life", realizedPnl: 6, feeUsdt: 1, createdAt: now }
+      ],
+      positions: [], orders: [], executionOrders: [], markets: [], riskRules: [], accountSnapshots: [], mediumTermAnalytics: {}
+    }, action, ui
+  }));
+  assert.doesNotMatch(overview, /已达今日盈利目标/, "gross 10 must not trip an 8 USDT goal when lifecycle net is 7");
+  assert.match(overview, />7\.00(?:<!-- -->)? \/ (?:<!-- -->)?8\.00</);
+
+  const positions = render(React.createElement(C.PositionsConcept, { data: { positions: [{ symbol: "ADA/USDT", quantity: 100, markPrice: 1.25, notionalUsdt: 125 }], portfolio: { totalEquityUsdt: 1000 }, accountSnapshots: [] } }));
+  assert.match(positions, /125\.00 U/);
 });

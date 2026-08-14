@@ -25,7 +25,7 @@ import { canConfirmPendingAction, userHasPermission } from "./actionAuthorizatio
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, syncPublicMarketQuiet } from "./exchangeConnector.mjs";
-import { fetchMarketRegime, fetchPerpetualInstruments, fetchSmartMoney } from "./marketSignals.mjs";
+import { fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, fetchSmartMoney } from "./marketSignals.mjs";
 import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection, recordMediumTermSample } from "./mediumTermAnalytics.mjs";
 import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
@@ -45,7 +45,7 @@ import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { dispatchTelegramWatchOutbox, queueWatchTelegramEvent, retireTelegramWatchDigest, telegramWatchDeliveryHealth, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
 import { ensureDefaultEventSources, rankEvents, refreshEventSources, refreshOnchainSignals, runAgentMission, testEventSource } from "./eventSources.mjs";
-import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData } from "./marketIntelligence.mjs";
+import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData, sourceHealthSummary } from "./marketIntelligence.mjs";
 import { refreshMeNewsFlash } from "./newsFlashFeed.mjs";
 import { prepareScheduledEventMilestones } from "./scheduledEvents.mjs";
 import { toolUsageView } from "./toolUsage.mjs";
@@ -73,7 +73,7 @@ import { buildReadinessReport, createSystemBackup, deriveAutomationState } from 
 import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
-import { syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
+import { groupClosedTradeLifecycles, syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
 import { reviewMissedOpportunities } from "./missedOpportunity.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
@@ -142,13 +142,6 @@ if (traderRole) traderRole.permissions = TRADER_PERMISSIONS;
 refreshApiKeyMetadata(db);
 seedSkillTools(db);
 {
-  const migration = backfillReviewMemoryContexts(db);
-  if (migration.updated) {
-    appendAudit(db, `复盘学习上下文迁移：补全 ${migration.updated} 条历史真实复盘`, "review_learning_context_migration", "StartupMigration", "info");
-    saveDb(db);
-  }
-}
-{
   const migration = migrateLegacyWeeklyLossMandates(db);
   if (migration.migrated) {
     appendAudit(db, `周亏损字段语义迁移：${migration.migrated} 条授权恢复为 5%，旧计划版本自动失效`, migration.mandates.join(","), "StartupMigration", "warning");
@@ -169,8 +162,17 @@ seedSkillTools(db);
 // 只恢复展示/审计状态，不重复调用 LLM，也不修改成交事实。
 {
   const migration = syncTradeReviewQueue(db);
-  if (migration.queued || migration.reconciled) {
-    appendAudit(db, `复盘队列迁移：新增 ${migration.queued}，对账完成 ${migration.reconciled}`, "trade_review_queue_migration", "StartupMigration", "info");
+  if (migration.queued || migration.reconciled || migration.financialsBackfilled) {
+    appendAudit(db, `复盘队列迁移：新增 ${migration.queued}，对账完成 ${migration.reconciled}，净值回填 ${migration.financialsBackfilled || 0}`, "trade_review_queue_migration", "StartupMigration", "info");
+    saveDb(db);
+  }
+}
+// 记忆中的 outcome 必须在复盘队列完成生命周期净值回填后重建。
+// schema v2 会把旧版按毛盈亏写入的 win/loss 幂等迁移为净值口径。
+{
+  const migration = backfillReviewMemoryContexts(db);
+  if (migration.updated) {
+    appendAudit(db, `复盘学习上下文迁移：按净值重建 ${migration.updated} 条历史真实复盘`, "review_learning_context_migration", "StartupMigration", "info");
     saveDb(db);
   }
 }
@@ -538,7 +540,7 @@ registerTaskHandler("trade_reflection", (database) => runTradeReflection(databas
 registerTaskHandler("missed_opportunity_review", (database) => reviewMissedOpportunities(database));
 // ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
 registerTaskHandler("strategy_improvement", (database) => {
-  const closes = (database.fills || []).filter((f) => f.kind === "close" && Number.isFinite(Number(f.realizedPnl))).length;
+  const closes = groupClosedTradeLifecycles(database.fills || []).length;
   const last = Number(database.system.lastImprovementCloses || 0);
   const need = Number(process.env.IMPROVEMENT_MIN_NEW_CLOSES || 10);
   if (closes - last < need) return { status: "skipped", reason: `新增平仓 ${closes - last}/${need} 未达触发线` };
@@ -1056,6 +1058,12 @@ app.get("/api/overview", (req, res) => {
     accountSnapshots: db.accountSnapshots?.slice(0, 10) || [],
     orders: db.orders,
     fills: db.fills,
+    tradeDataStatus: {
+      source: "OMS + exchange-confirmed fills + trade review queue",
+      fillTotal: (db.fills || []).length,
+      tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length,
+      generatedAt: new Date().toISOString()
+    },
     riskRules: db.riskRules,
     riskChecks: db.riskChecks,
     riskIncidents: db.riskIncidents,
@@ -1104,7 +1112,9 @@ app.get("/api/overview", (req, res) => {
     eventSources: db.eventSources || [],
     marketCalendarEvents: (db.marketCalendarEvents || []).slice(0, 100),
     dailyMarketBrief: (db.dailyBriefs || [])[0] || null,
-    marketIntelligenceSourceHealth: Object.values(db.marketIntelligenceSourceHealth || {}),
+    // 与 Agent 内部情报判断共用同一健康派生：原始 status=ok 但已超过 staleAfterMs 的源
+    // 必须下发 health=stale，不能让 App 仍显示“正常”。
+    marketIntelligenceSourceHealth: sourceHealthSummary(db),
     newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)).slice(0, 80),
     skillRuns: db.skillRuns?.slice(0, 10) || [],
@@ -1392,7 +1402,7 @@ registerAllRoutes(app, {
   runExpertAnalysis, bindKnowledgeSkillsToPlan, executeApprovedPlan, describeGuardReason, executeTradePlan,
   cancelArmedSetup,
   fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox,
-  fetchMarketRegime, fetchPerpetualInstruments, getHistoricalKlines, fetchTokenProfile,
+  fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, getHistoricalKlines, fetchTokenProfile,
   listStrategies, buildPortfolioRisk, runBacktest, performanceReport, refreshAccounting,
   realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate,
   handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks,

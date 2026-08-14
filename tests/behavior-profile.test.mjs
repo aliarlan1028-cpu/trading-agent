@@ -73,3 +73,19 @@ test("部分平仓按一个交易生命周期进入行为画像", () => {
   assert.equal(trades[0].pnl, 2);
   assert.equal(computeBehaviorProfile(partialDb).overall.winRatePct, 100);
 });
+
+test("行为画像使用成本后净值，毛盈利被费用翻转时归为亏损", () => {
+  const feeFlip = {
+    tradePlans: [{ id: "fee-plan", leverage: 2 }],
+    fills: [
+      { id: "fee-entry", kind: "entry", executionOrderId: "fee-exec", tradePlanId: "fee-plan", feeUsdt: 0.8, createdAt: "2026-08-01T00:00:00Z" },
+      { id: "fee-close", kind: "close", executionOrderId: "fee-exec", tradePlanId: "fee-plan", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.4, notionalUsdt: 100, createdAt: "2026-08-01T01:00:00Z" }
+    ]
+  };
+  const [trade] = buildClosedTrades(feeFlip);
+  assert.equal(trade.grossPnl, 1);
+  assert.ok(Math.abs(trade.pnl + 0.2) < 1e-9);
+  assert.equal(trade.win, false);
+  assert.ok(trade.roiPct < 0);
+  assert.equal(computeBehaviorProfile(feeFlip).overall.winRatePct, 0);
+});

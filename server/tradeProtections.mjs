@@ -1,5 +1,5 @@
 // freqtrade 式交易保护:连亏冷却 + 回撤锁仓。
-// 都从已平仓成交(db.fills, kind="close" + realizedPnl)【无状态】计算,自动到期解除——
+// 都从完整平仓生命周期的净结果（开/平仓费 + 资金费）【无状态】计算,自动到期解除——
 // 不引入需持久化的锁状态,避免运行时抢写/漂移。只拦"新开仓",不影响平仓/减仓。
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
@@ -18,8 +18,7 @@ function closedTrades(db) {
       : { ...fill, id: `legacy_unkeyed_close_${index}` }
   ));
   return groupClosedTradeLifecycles(normalized)
-    .map((lifecycle) => lifecycle.representative)
-    .map((f) => ({ pnl: Number(f.realizedPnl), at: new Date(f.createdAt || f.closedAt || 0).getTime() }))
+    .map((lifecycle) => ({ pnl: Number(lifecycle.netRealizedPnl), at: new Date(lifecycle.lastClosedAt || 0).getTime() }))
     .filter((t) => Number.isFinite(t.at) && t.at > 0)
     .sort((a, b) => a.at - b.at);
 }

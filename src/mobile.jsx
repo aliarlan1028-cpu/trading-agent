@@ -43,6 +43,18 @@ import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
+import {
+  buildCapabilityCatalogRows,
+  buildEventRows,
+  buildExecutionView,
+  buildMarketRows,
+  buildPositionView,
+  buildStrategyCatalogRows,
+  groupClosedTradeLifecyclesForView,
+  hasFiniteNumber,
+  isCompletedTradeReview,
+  netReviewResult
+} from "./viewData.js";
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
@@ -76,16 +88,17 @@ const positionSegments = ["持仓", "在途委托", "执行单"];
 
 function MobilePositions({ data, action, ui }) {
   const [segment, setSegment] = useState("持仓");
-  const positions = data.positions || [];
-  const orders = data.orders || [];
+  const positionView = buildPositionView(data);
+  const positions = positionView.positions;
+  const orders = positionView.openOrders;
   const executions = data.executionOrders || [];
   const reduceOnly = Boolean(data.system?.reduceOnlyMode);
   const activeExec = OPEN_EXECUTION_STATES; // 单一来源(lib),与后端对齐
   const activeExecutions = executions.filter((order) => activeExec.includes(String(order.status || "").toLowerCase())).length;
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((account) => account.readEnabled);
-  const exposure = positions.reduce((sum, position) => sum + Math.abs(Number(position.size || 0) * Number(position.mark || position.entry || 0)), 0);
-  const totalPnl = positions.reduce((sum, position) => sum + Number(position.pnl || 0), 0);
+  const exposure = positionView.exposureUsdt;
+  const totalPnl = positionView.unrealizedPnlUsdt;
   const availableMargin = portfolio.availableMarginUsdt ?? portfolio.availableMargin ?? null;
   const marginRate = configured ? marginUsage(portfolio).marginRatePct : null;
   return (
@@ -111,18 +124,18 @@ function MobilePositions({ data, action, ui }) {
         <>
           {!positions.length && <p className="mInboxEmpty">{t("暂无真实持仓。配置只读 API 并完成同步后展示。", "No live positions. Configure read-only API and sync to display.")}</p>}
           {positions.map((position) => {
-            const pnl = Number(position.pnl || 0);
+            const pnl = Number(position.unrealizedPnl ?? position.pnl ?? position.upl ?? 0);
             return (
               <div className="mPosCard" key={position.id || position.symbol}>
                 <header>
                   <strong>{position.symbol}</strong>
                   <StatusBadge tone={position.direction === "short" ? "danger" : "ok"}>{position.direction === "short" ? t("空", "Short") : t("多", "Long")}</StatusBadge>
                 </header>
-                <div className={`mPosPnl ${pnl >= 0 ? "positive" : "negative"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(position.pnl, 2, "--")} <small>{t("未实现盈亏", "Unrealized PnL")}</small></div>
+                <div className={`mPosPnl ${pnl >= 0 ? "positive" : "negative"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2, "--")} <small>{t("未实现盈亏", "Unrealized PnL")}</small></div>
                 <div className="mPosMeta">
-                  <span>{t("数量", "Size")}<b>{position.size ?? "-"}</b></span>
-                  <span>{t("开仓均价", "Entry price")}<b>{position.entry ? displayMoney(position.entry) : "-"}</b></span>
-                  <span>{t("标记价格", "Mark price")}<b>{position.mark ? displayMoney(position.mark) : "-"}</b></span>
+                  <span>{t("数量", "Size")}<b>{position.quantity ?? position.size ?? position.pos ?? "-"}</b></span>
+                  <span>{t("开仓均价", "Entry price")}<b>{hasFiniteNumber(position.entryPrice ?? position.entry) ? displayPrice(position.entryPrice ?? position.entry) : "-"}</b></span>
+                  <span>{t("标记价格", "Mark price")}<b>{hasFiniteNumber(position.markPrice ?? position.mark) ? displayPrice(position.markPrice ?? position.mark) : "-"}</b></span>
                 </div>
               </div>
             );
@@ -192,61 +205,16 @@ function MobilePositions({ data, action, ui }) {
   );
 }
 
-function mobileTradeLifecycleKey(fill = {}) {
-  return String(fill.executionOrderId || fill.tradeLifecycleKey || fill.tradePlanId || fill.planId || fill.positionId || fill.id || "");
-}
-
-export function groupMobileClosedTrades(fills = []) {
-  const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
-  const entryFees = new Map();
-  const groups = new Map();
-  for (const fill of fills) {
-    if (fill?.kind !== "entry" || !finite(fill.feeUsdt)) continue;
-    const key = mobileTradeLifecycleKey(fill);
-    if (key) entryFees.set(key, (entryFees.get(key) || 0) + Math.abs(Number(fill.feeUsdt)));
-  }
-  for (const fill of fills) {
-    if (fill?.kind !== "close" || !finite(fill.realizedPnl)) continue;
-    const key = mobileTradeLifecycleKey(fill);
-    if (!key) continue;
-    const group = groups.get(key) || { key, fills: [], realizedPnl: 0, feeUsdt: 0, fundingFeeUsdt: 0, quantity: 0, createdAt: null };
-    group.fills.push(fill);
-    group.realizedPnl += Number(fill.realizedPnl);
-    if (finite(fill.feeUsdt)) group.feeUsdt += Math.abs(Number(fill.feeUsdt));
-    if (finite(fill.fundingFeeUsdt)) group.fundingFeeUsdt += Number(fill.fundingFeeUsdt);
-    if (finite(fill.quantity ?? fill.size)) group.quantity += Number(fill.quantity ?? fill.size);
-    const at = fill.createdAt || fill.closedAt || null;
-    if (at && (!group.createdAt || new Date(at) > new Date(group.createdAt))) group.createdAt = at;
-    groups.set(key, group);
-  }
-  return [...groups.values()]
-    .filter((group) => group.fills.some((fill) => fill.partial !== true))
-    .map((group) => {
-      const representative = group.fills.slice().sort((a, b) => new Date(b.createdAt || b.closedAt || 0) - new Date(a.createdAt || a.closedAt || 0))[0] || {};
-      const entryFeeUsdt = entryFees.get(group.key) || 0;
-      return {
-        ...representative,
-        id: `closed:${group.key}`,
-        tradeLifecycleKey: group.key,
-        fillIds: group.fills.map((fill) => fill.id).filter(Boolean),
-        closeCount: group.fills.length,
-        quantity: Number(group.quantity.toFixed(8)),
-        realizedPnl: Number(group.realizedPnl.toFixed(8)),
-        feeUsdt: Number(group.feeUsdt.toFixed(8)),
-        entryFeeUsdt: Number(entryFeeUsdt.toFixed(8)),
-        fundingFeeUsdt: Number(group.fundingFeeUsdt.toFixed(8)),
-        netRealizedPnl: Number((group.realizedPnl - group.feeUsdt - entryFeeUsdt + group.fundingFeeUsdt).toFixed(8)),
-        createdAt: group.createdAt || representative.createdAt
-      };
-    })
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-}
+// Backward-compatible export for focused lifecycle tests and any older imports.
+export const groupMobileClosedTrades = groupClosedTradeLifecyclesForView;
 
 function MobileReviewSheet({ review, trade, onClose }) {
   if (!review) return null;
-  const pnl = Number.isFinite(Number(review.realizedPnl)) ? Number(review.realizedPnl) : Number(trade?.realizedPnl || 0);
-  const fee = Number.isFinite(Number(review.feeUsdt)) ? Number(review.feeUsdt) : Number(trade?.feeUsdt || 0) + Number(trade?.entryFeeUsdt || 0);
-  const completed = /completed|reflected|closed|done/i.test(String(review.status || ""));
+  const pnl = netReviewResult(review, trade);
+  const closeFee = hasFiniteNumber(review.feeUsdt) ? Math.abs(Number(review.feeUsdt)) : hasFiniteNumber(trade?.feeUsdt) ? Math.abs(Number(trade.feeUsdt)) : null;
+  const entryFee = hasFiniteNumber(review.entryFeeUsdt) ? Math.abs(Number(review.entryFeeUsdt)) : hasFiniteNumber(trade?.entryFeeUsdt) ? Math.abs(Number(trade.entryFeeUsdt)) : null;
+  const fee = closeFee != null && entryFee != null ? closeFee + entryFee : null;
+  const completed = isCompletedTradeReview(review);
   const sections = [
     [t("本次结论", "Outcome"), review.summary],
     [t("下次动作", "Next action"), review.lesson],
@@ -256,48 +224,46 @@ function MobileReviewSheet({ review, trade, onClose }) {
     <aside className="mReviewSheet" onClick={(event) => event.stopPropagation()}>
       <button type="button" className="mSheetGrip" onClick={onClose} aria-label={t("关闭", "Close")}><i /></button>
       <header className="mReviewSheetHead"><div><small>{t("交易复盘", "Trade review")}</small><b className="mono">{review.symbol || trade?.symbol || "—"} · {/short|sell|空/i.test(String(review.direction || trade?.direction || "")) ? t("做空", "Short") : t("做多", "Long")}</b></div><StatusBadge tone={statusTone(review.status)}>{humanize(review.status || "pending")}</StatusBadge></header>
-      <div className={`mReviewResult ${pnl >= 0 ? "win" : "loss"}`}><span>{t("已实现盈亏", "Realized PnL")}</span><b className="mono">{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b><small>{fee ? `${t("手续费", "Fees")} ${displayMoney(fee, 2)}` : t("以交易所确认的平仓结果为准", "Based on the exchange-confirmed close")}</small></div>
+      <div className={`mReviewResult ${pnl == null ? "unknown" : pnl >= 0 ? "win" : "loss"}`}><span>{t("净交易结果", "Net trade result")}</span><b className="mono">{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b><small>{pnl == null ? t("缺少完整生命周期净值，等待成交与费用回补", "Awaiting complete lifecycle PnL and fee reconciliation") : fee != null ? `${t("已计入记录的开/平仓手续费", "Includes recorded entry/close fees")} ${displayMoney(fee, 2)}` : t("净值来自已持久化的完整交易生命周期", "Net result comes from the persisted full lifecycle")}</small></div>
       <div className="mReviewFacts"><span>{t("完成时间", "Completed")}<b>{formatDateTime(review.completedAt || review.updatedAt || trade?.createdAt)}</b></span><span>{t("归因", "Attribution")}<b>{localizeText(review.attribution) || t("待归因", "Pending")}</b></span><span>{t("平仓成交", "Close fills")}<b>{review.partialCloseCount || trade?.closeCount || review.fillIds?.length || 1} {t("笔", "fills")}</b></span></div>
       <div className="mReviewSheetBody">{sections.map(([title, text]) => <section key={title}><b>{title}</b><p>{localizeText(text)}</p></section>)}{!completed && <section className="pending"><b>{t("正在复盘", "Review in progress")}</b><p>{t("系统正在回补成交事实、费用与持仓轨迹，完成后会给出明确归因和下一次动作。", "The system is reconciling fills, costs, and the position path before producing attribution and a concrete next action.")}</p></section>}</div>
     </aside>
   </div>;
 }
 
-function MobileExecution({ data, action, initialTab = "overview" }) {
+export function MobileExecution({ data, action, initialTab = "overview" }) {
   const [tab, setTab] = useState(initialTab);
   const [reviewFilter, setReviewFilter] = useState("all");
   const [selectedReview, setSelectedReview] = useState(null);
-  const orders = (data.executionOrders || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-  const fills = (data.fills || []).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const closes = groupMobileClosedTrades(fills);
-  const reviews = (data.reviews || []).filter((row) => row.type === "trade" || row.tradeLifecycleKey || row.executionOrderId || (row.fillIds || []).length).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-  const openStates = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_filled", "protecting"]);
-  const inFlight = orders.filter((row) => openStates.has(String(row.status || "").toLowerCase())).length;
-  const realized = closes.reduce((sum, row) => sum + Number(row.realizedPnl), 0);
-  const wins = closes.filter((row) => Number(row.realizedPnl) > 0).length;
-  const pendingReviews = reviews.filter((row) => !/completed|reflected|closed|done/i.test(String(row.status || "pending"))).length;
+  const execution = buildExecutionView(data);
+  const { orders, fills, closedTrades: closes, reviews, performance, totals } = execution;
+  const inFlight = countOpenExecutions(orders);
+  const realized = Number(performance.totalPnlUsdt || 0);
+  const pendingReviews = reviews.filter((row) => !isCompletedTradeReview(row)).length;
   const completedReviews = reviews.length - pendingReviews;
-  const lossReviews = reviews.filter((row) => Number(row.realizedPnl) < 0).length;
-  const filteredReviews = reviews.filter((row) => reviewFilter === "loss" ? Number(row.realizedPnl) < 0 : reviewFilter === "pending" ? !/completed|reflected|closed|done/i.test(String(row.status || "pending")) : true);
   const tradeForReview = (review) => closes.find((trade) => trade.tradeLifecycleKey === review.tradeLifecycleKey || trade.executionOrderId === review.executionOrderId || (review.fillIds || []).some((id) => trade.fillIds?.includes(id)));
+  const reviewPnl = (review) => netReviewResult(review, tradeForReview(review));
+  const lossReviews = reviews.filter((row) => reviewPnl(row) != null && reviewPnl(row) < 0).length;
+  const filteredReviews = reviews.filter((row) => reviewFilter === "loss" ? reviewPnl(row) != null && reviewPnl(row) < 0 : reviewFilter === "pending" ? !isCompletedTradeReview(row) : true);
   const tabs = [["overview", t("概览", "Overview")], ["orders", t("委托", "Orders")], ["fills", t("成交", "Fills")], ["reviews", t("复盘", "Reviews")]];
   const direction = (row) => /short|sell|空/i.test(String(row.direction || row.side || "")) ? t("做空", "Short") : t("做多", "Long");
+  const fillKind = (row) => row.kind === "entry" ? t("开仓", "Entry") : row.kind === "close" ? (row.partial === true ? t("减仓", "Reduction") : t("平仓", "Close")) : humanize(row.kind || row.side || t("成交", "Fill"));
   return <div className="mScreen mExecutionScreen">
     <div className="mSegmentNav">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
     {tab === "overview" && <>
-      <div className="mMetric2x2"><div className="mMetricCell"><span>{t("已实现盈亏", "Realized PnL")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{closes.length ? `${Math.round(wins / closes.length * 100)}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
+      <div className="mMetric2x2"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
       <section className="mNativeSection"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
         <button className="mActionRow" onClick={() => setTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
         <button className="mActionRow" onClick={() => setTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>
       </section>
-      <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("只显示已完整平仓的交易", "Completed trade lifecycles only")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("全部", "All")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.realizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.realizedPnl) >= 0 ? "+" : ""}{displayMoney(row.realizedPnl, 2)}</b><small>{formatTime(row.createdAt)}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
+      <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
     </>}
-    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length} {t("笔记录", "records")}</small></div></header>{orders.map((row) => <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.quantity ?? row.size ?? "—"}</b></span></div>{openStates.has(String(row.status || "").toLowerCase()) && <button onClick={() => action(`/api/execution-orders/${row.id}/close`, { reason: "manual_mobile" })}>{t("撤单 / 平仓", "Cancel / Close")}</button>}</article>)}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
-    {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("已平仓交易", "Closed trades")}</b><small>{closes.length} {t("笔完整生命周期", "completed lifecycles")}</small></div><span>{t("仅平仓", "Closed")}</span></header>{closes.map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.quantity || "—"} · {row.closeCount > 1 ? t(`${row.closeCount} 笔合并`, `${row.closeCount} fills`) : t("完整平仓", "Fully closed")}</small></div><div><b className={`mono ${Number(row.realizedPnl) >= 0 ? "pos" : "neg"}`}>{Number(row.realizedPnl) >= 0 ? "+" : ""}{displayMoney(row.realizedPnl, 2)}</b><small>{formatDateTime(row.createdAt)}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades")}</b><span>{t("开仓成交和进行中仓位不会出现在这里。", "Entry fills and open positions are intentionally excluded.")}</span></div>}</section>}
+    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.quantity ?? row.size ?? "—"}</b></span></div>{OPEN_EXECUTION_STATES.includes(String(row.status || "").toLowerCase()) && <button onClick={() => action(`/api/execution-orders/${row.id}/close`, { reason: "manual_mobile" })}>{t("撤单 / 平仓", "Cancel / Close")}</button>}</article>)}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
+    {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length === totals.fills ? `${totals.fills} ${t("笔成交", "fills")}` : `${t("最近", "Latest")} ${fills.length} / ${totals.fills}`}</small></div><span>{t("开仓 / 减仓 / 平仓", "Entries / reductions / closes")}</span></header>{fills.map((row, index) => { const isClose = row.kind === "close" && hasFiniteNumber(row.realizedPnl); const pnl = Number(row.realizedPnl || 0); return <div className="mTradeRow" key={row.id || index}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {fillKind(row)} · {row.quantity ?? row.size ?? "—"} @ {displayPrice(row.price)}</small></div><div><b className={`mono ${isClose ? (pnl >= 0 ? "pos" : "neg") : ""}`}>{isClose ? `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}` : displayPrice(row.price)}</b><small>{isClose ? `${t("价格毛盈亏", "Gross price PnL")} · ` : ""}{formatDateTime(row.createdAt)}{hasFiniteNumber(row.feeUsdt ?? row.fee) ? ` · ${t("费", "fee")} ${displayMoney(row.feeUsdt ?? row.fee, 2)}` : ""}</small></div></div>; })}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b><span>{t("交易所确认的开仓、减仓和平仓成交都会显示在这里。", "Exchange-confirmed entries, reductions, and closes appear here.")}</span></div>}</section>}
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
       <div className="mReviewFilters">{[["all", t("全部", "All")], ["loss", t("只看亏损", "Losses")], ["pending", t("待处理", "Pending")]].map(([id, label]) => <button type="button" className={reviewFilter === id ? "active" : ""} key={id} onClick={() => setReviewFilter(id)}>{label}</button>)}</div>
-      <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action")}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = Number.isFinite(Number(row.realizedPnl)) ? Number(row.realizedPnl) : Number(trade?.realizedPnl || 0); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl >= 0 ? "pos" : "neg"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${/completed|reflected|closed|done/i.test(String(row.status || "")) ? "done" : "pending"}`}>{/completed|reflected|closed|done/i.test(String(row.status || "")) ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
+      <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
     </>}
     {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => setSelectedReview(null)} />}
   </div>;
@@ -371,14 +337,93 @@ function MobileRiskField({ label, hint, suffix, children }) {
   return <label className="mRiskField"><span><b>{label}</b>{hint && <small>{hint}</small>}</span><div>{children}{suffix && <i>{suffix}</i>}</div></label>;
 }
 
-function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
+function pairLabel(symbol = "") {
+  return String(symbol).replace(/-SWAP$/i, "").replace("-", "/").toUpperCase();
+}
+
+function MobilePairMultiPicker({ value = [], onChange, instruments = [], instrumentsLoading = false, instrumentsError = "", instrumentsStale = false, instrumentsAsOf = null, onRetry, allowEmpty = false, fallbackHint = "" }) {
+  const [open, setOpen] = useState(false);
+  const selected = [...new Set((value || []).map(pairLabel).filter(Boolean))];
+  const options = [...new Set([...selected, ...(instruments || []).map(pairLabel)].filter(Boolean))];
+  return <div className="mRiskPairPicker">
+    <button type="button" className="mRiskPairTrigger" onClick={() => setOpen(true)}>
+      <span>
+        <b>{selected.length ? t(`已选 ${selected.length} 个`, `${selected.length} selected`) : t("沿用交易权限", "Use trading permissions")}</b>
+        <small>{selected.length ? selected.map((symbol) => symbol.replace("/USDT", "")).join(" · ") : fallbackHint}</small>
+      </span>
+      <ChevronRight size={16}/>
+    </button>
+    {open && <MobilePairSheet
+      instruments={options}
+      selected={selected}
+      multiple
+      allowEmpty={allowEmpty}
+      loading={instrumentsLoading}
+      error={instrumentsError}
+      stale={instrumentsStale}
+      asOf={instrumentsAsOf}
+      onRetry={onRetry}
+      title={t("选择交易币种", "Select trading pairs")}
+      onApply={(next) => onChange(next)}
+      onClose={() => setOpen(false)}
+    />}
+  </div>;
+}
+
+function leverageCap(value, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(20, parsed)) : fallback;
+}
+
+export function buildMobileRiskPermissionPayload(mandate = {}, form = {}, options = {}) {
+  const symbols = [...new Set((form.symbols || []).map(pairLabel).filter(Boolean))];
+  const existing = mandate.maxLeverageBySymbol || {};
+  const draft = form.maxLeverageBySymbol || {};
+  const inheritedCap = leverageCap(mandate.max_leverage ?? mandate.maxLeverage, 1);
+  const newSymbolCap = leverageCap(form.newSymbolMaxLeverage, leverageCap(form.minLeverage, 1));
+  const maxLeverageBySymbol = Object.fromEntries(symbols.map((symbol) => {
+    const wasAuthorized = Object.prototype.hasOwnProperty.call(existing, symbol)
+      || (mandate.allowedSymbols || []).map(pairLabel).includes(symbol);
+    const previousCap = leverageCap(existing[symbol], inheritedCap);
+    const requestedCap = leverageCap(draft[symbol], wasAuthorized ? previousCap : newSymbolCap);
+    return [symbol, requestedCap];
+  }));
+  const caps = Object.values(maxLeverageBySymbol);
+  const maxLeverage = caps.length ? Math.max(...caps) : newSymbolCap;
+  const requestedMinLeverage = leverageCap(form.minLeverage, 1);
+  const minLeverage = caps.length ? Math.min(requestedMinLeverage, ...caps) : requestedMinLeverage;
+  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now();
+  return {
+    name: mandate.name || options.defaultName || "主账户交易权限", status: mandate.id ? (mandate.status || "active") : "active", exchanges: ["OKX"], marketTypes: ["perpetual_usdt"], allowedSymbols: symbols,
+    strategies: mandate.strategies?.length ? mandate.strategies : ["trend_following", "mean_reversion", "momentum", "breakout"],
+    maxLeverageBySymbol, max_leverage: maxLeverage, maxLeverage, min_leverage: minLeverage, minLeverage,
+    sizingMode: "balance_pct", positionPct: Math.max(1, Math.min(100, Number(form.positionPct || 30))), maxSingleTradeRiskPct: Number(form.singleRisk || 0),
+    maxDailyLossPct: Number(form.dailyLoss || 0), maxWeeklyLossPct: Number(form.weeklyLoss || 0), maxOrderNotionalUsdt: Number(form.maxOrderNotional || 0),
+    maxSymbolNotionalUsdt: Number(form.maxSymbolNotional || 0), maxPortfolioNotionalUsdt: Number(form.maxPortfolioNotional || 0), maxConcurrentPositions: Number(form.maxConcurrentPositions || 1),
+    maxMarginUtilizationPct: Number(form.maxMarginUtilizationPct || 70), allowAddPosition: form.allowAddPosition === true, allow_add_position: form.allowAddPosition === true,
+    validUntil: new Date(nowMs + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 86400000).toISOString()
+  };
+}
+
+export async function submitMobileRiskChange(action, endpoint, body, method) {
+  const result = await action(endpoint, body, method);
+  return result?.ok !== false;
+}
+
+export function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
   const mandate = data.agentStatus?.activeMandate || (data.mandates || []).find((row) => ["active", "running"].includes(row.status)) || data.mandates?.[0] || {};
   const activeGray = (data.grayReleasePolicies || []).find((item) => item.enabled);
   const orderNotional = mandate.maxOrderNotionalUsdt ?? mandate.max_notional_usdt ?? activeGray?.maxNotionalUsdt ?? 50;
-  const buildForm = () => ({
-    symbols: (mandate.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT"]).join(", "),
-    minLeverage: mandate.min_leverage ?? mandate.minLeverage ?? 1,
-    maxLeverage: mandate.max_leverage || 1,
+  const instrumentState = useMobileInstruments();
+  const buildForm = () => {
+    const symbols = (mandate.allowedSymbols?.length ? mandate.allowedSymbols : ["BTC/USDT", "ETH/USDT"]).map(pairLabel);
+    const inheritedCap = leverageCap(mandate.max_leverage ?? mandate.maxLeverage, 1);
+    const minLeverage = leverageCap(mandate.min_leverage ?? mandate.minLeverage, 1);
+    return {
+    symbols,
+    minLeverage,
+    newSymbolMaxLeverage: minLeverage,
+    maxLeverageBySymbol: Object.fromEntries(symbols.map((symbol) => [symbol, leverageCap(mandate.maxLeverageBySymbol?.[symbol], inheritedCap)])),
     positionPct: mandate.positionPct ?? mandate.equityPct ?? 30,
     singleRisk: mandate.maxSingleTradeRiskPct || 2,
     dailyLoss: mandate.maxDailyLossPct || 1,
@@ -390,42 +435,50 @@ function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
     maxMarginUtilizationPct: mandate.maxMarginUtilizationPct ?? mandate.max_margin_utilization_pct ?? 70,
     allowAddPosition: mandate.allowAddPosition === true || mandate.allow_add_position === true,
     validDays: mandate.validUntil ? Math.max(1, Math.ceil((new Date(mandate.validUntil) - Date.now()) / 86400000)) : 7
-  });
+  }; };
   const [form, setForm] = useState(buildForm);
   const [saving, setSaving] = useState(false);
   useEffect(() => setForm(buildForm()), [mandate.id, mandate.version]);
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  async function save() {
-    const symbols = [...new Set(String(form.symbols || "").split(/[,，\s]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean).map((symbol) => symbol.includes("/") ? symbol : `${symbol}/USDT`))];
-    if (!symbols.length) return ui.notify?.(t("至少保留一个允许交易的币种", "Keep at least one allowed pair"));
-    const maxLeverage = Math.max(1, Number(form.maxLeverage || 1));
-    const minLeverage = Math.max(1, Math.min(maxLeverage, Number(form.minLeverage || 1)));
-    const body = {
-      name: mandate.name || t("主账户交易权限", "Primary account trading permissions"), status: "active", exchanges: ["OKX"], marketTypes: ["perpetual_usdt"], allowedSymbols: symbols,
-      strategies: mandate.strategies?.length ? mandate.strategies : ["trend_following", "mean_reversion", "momentum", "breakout"],
-      maxLeverageBySymbol: Object.fromEntries(symbols.map((symbol) => [symbol, maxLeverage])), max_leverage: maxLeverage, min_leverage: minLeverage, minLeverage,
-      sizingMode: "balance_pct", positionPct: Math.max(1, Math.min(100, Number(form.positionPct || 30))), maxSingleTradeRiskPct: Number(form.singleRisk || 0),
-      maxDailyLossPct: Number(form.dailyLoss || 0), maxWeeklyLossPct: Number(form.weeklyLoss || 0), maxOrderNotionalUsdt: Number(form.maxOrderNotional || 0),
-      maxSymbolNotionalUsdt: Number(form.maxSymbolNotional || 0), maxPortfolioNotionalUsdt: Number(form.maxPortfolioNotional || 0), maxConcurrentPositions: Number(form.maxConcurrentPositions || 1),
-      maxMarginUtilizationPct: Number(form.maxMarginUtilizationPct || 70), allowAddPosition: form.allowAddPosition === true, allow_add_position: form.allowAddPosition === true,
-      validUntil: new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 86400000).toISOString()
+  const updateSymbols = (nextSymbols) => setForm((current) => {
+    const symbols = [...new Set((nextSymbols || []).map(pairLabel).filter(Boolean))];
+    const previous = current.maxLeverageBySymbol || {};
+    const authorized = mandate.maxLeverageBySymbol || {};
+    const inheritedCap = leverageCap(mandate.max_leverage ?? mandate.maxLeverage, 1);
+    const newSymbolCap = leverageCap(current.newSymbolMaxLeverage, leverageCap(current.minLeverage, 1));
+    return {
+      ...current,
+      symbols,
+      maxLeverageBySymbol: Object.fromEntries(symbols.map((symbol) => [
+        symbol,
+        leverageCap(previous[symbol], leverageCap(authorized[symbol], (mandate.allowedSymbols || []).map(pairLabel).includes(symbol) ? inheritedCap : newSymbolCap))
+      ]))
     };
+  });
+  async function save() {
+    const symbols = [...new Set((form.symbols || []).map(pairLabel).filter(Boolean))];
+    if (!symbols.length) return ui.notify?.(t("至少保留一个允许交易的币种", "Keep at least one allowed pair"));
+    const body = buildMobileRiskPermissionPayload(mandate, form, { defaultName: t("主账户交易权限", "Primary account trading permissions") });
     setSaving(true);
-    try { await action(mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST"); onDone(); } finally { setSaving(false); }
+    try {
+      const ok = await submitMobileRiskChange(action, mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST");
+      if (ok) onDone();
+    } finally { setSaving(false); }
   }
   return <div className="mScreen mRiskDetail">
-    <section className="mNativeSection"><header><div><b>{t("允许交易的范围", "Allowed scope")}</b><small>{t("逗号分隔；省略 /USDT 会自动补全", "Comma separated; /USDT is added when omitted")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("交易币种", "Pairs")}><input value={form.symbols} onChange={(event) => update("symbols", event.target.value)} autoCapitalize="characters" /></MobileRiskField><div className="mRiskFieldGrid"><MobileRiskField label={t("最低杠杆", "Min leverage")} suffix="x"><input type="number" min="1" inputMode="decimal" value={form.minLeverage} onChange={(event) => update("minLeverage", event.target.value)} /></MobileRiskField><MobileRiskField label={t("最高杠杆", "Max leverage")} suffix="x"><input type="number" min="1" inputMode="decimal" value={form.maxLeverage} onChange={(event) => update("maxLeverage", event.target.value)} /></MobileRiskField></div></div></section>
+    <section className="mNativeSection"><header><div><b>{t("允许交易的范围", "Allowed scope")}</b><small>{t("从 OKX 当前可交易的 USDT 永续合约中选择；每个币种独立保留授权上限", "Choose tradable OKX USDT perpetuals; each pair keeps its own authorized cap")}</small></div></header><div className="mRiskFieldStack"><MobilePairMultiPicker value={form.symbols} onChange={updateSymbols} instruments={instrumentState.instruments} instrumentsLoading={instrumentState.loading} instrumentsError={instrumentState.error} instrumentsStale={instrumentState.stale} instrumentsAsOf={instrumentState.asOf} onRetry={instrumentState.retry} fallbackHint={t("至少选择一个交易币种", "Select at least one pair")} /><div className="mRiskFieldGrid"><MobileRiskField label={t("最低杠杆", "Min leverage")} suffix="x"><input type="number" min="1" inputMode="decimal" value={form.minLeverage} onChange={(event) => update("minLeverage", event.target.value)} /></MobileRiskField><MobileRiskField label={t("新增币种默认上限", "Default cap for new pairs")} hint={t("默认等于最低杠杆；只用于之后新加入的币种", "Defaults to the minimum; applies only to pairs added later")} suffix="x"><input type="number" min="1" max="20" inputMode="decimal" value={form.newSymbolMaxLeverage} onChange={(event) => update("newSymbolMaxLeverage", event.target.value)} /></MobileRiskField></div><div className="mRiskLeverageList">{(form.symbols || []).map((symbol) => <MobileRiskField key={symbol} label={symbol} hint={t("该币种独立授权上限", "Independent authorized cap for this pair")} suffix="x"><input type="number" min="1" max="20" inputMode="decimal" value={form.maxLeverageBySymbol?.[symbol] ?? 1} onChange={(event) => setForm((current) => ({ ...current, maxLeverageBySymbol: { ...(current.maxLeverageBySymbol || {}), [symbol]: event.target.value } }))} /></MobileRiskField>)}</div></div></section>
     <section className="mNativeSection"><header><div><b>{t("止损预算", "Loss budget")}</b><small>{t("触达任一上限即阻止新开仓", "Any breached limit blocks new entries")}</small></div></header><div className="mRiskFieldStack"><div className="mRiskFieldGrid"><MobileRiskField label={t("单笔最多亏损", "Per trade")} suffix="%"><input type="number" min="0" step="0.1" inputMode="decimal" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /></MobileRiskField><MobileRiskField label={t("单日最多亏损", "Daily")} suffix="%"><input type="number" min="0" step="0.1" inputMode="decimal" value={form.dailyLoss} onChange={(event) => update("dailyLoss", event.target.value)} /></MobileRiskField><MobileRiskField label={t("近 7 日最多亏损", "Rolling 7d")} suffix="%"><input type="number" min="0.1" max="20" step="0.1" inputMode="decimal" value={form.weeklyLoss} onChange={(event) => update("weeklyLoss", event.target.value)} /></MobileRiskField><MobileRiskField label={t("每单保证金占比", "Margin / order")} suffix="%"><input type="number" min="1" max="100" inputMode="decimal" value={form.positionPct} onChange={(event) => update("positionPct", event.target.value)} /></MobileRiskField></div></div></section>
     <section className="mNativeSection"><header><div><b>{t("敞口上限", "Exposure limits")}</b><small>{t("每次下单前按真实账户重新计算", "Recalculated from the live account before every order")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("单笔名义金额", "Per order")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxOrderNotional} onChange={(event) => update("maxOrderNotional", event.target.value)} /></MobileRiskField><MobileRiskField label={t("单币名义金额", "Per pair")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxSymbolNotional} onChange={(event) => update("maxSymbolNotional", event.target.value)} /></MobileRiskField><MobileRiskField label={t("组合名义金额", "Portfolio")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxPortfolioNotional} onChange={(event) => update("maxPortfolioNotional", event.target.value)} /></MobileRiskField><div className="mRiskFieldGrid"><MobileRiskField label={t("同时持仓", "Open positions")}><input type="number" min="1" max="20" inputMode="numeric" value={form.maxConcurrentPositions} onChange={(event) => update("maxConcurrentPositions", event.target.value)} /></MobileRiskField><MobileRiskField label={t("保证金使用率", "Margin use")} suffix="%"><input type="number" min="1" max="100" inputMode="decimal" value={form.maxMarginUtilizationPct} onChange={(event) => update("maxMarginUtilizationPct", event.target.value)} /></MobileRiskField></div></div></section>
     <section className="mNativeSection"><label className="mNativeToggle"><span><b>{t("允许同币种追加仓位", "Allow adding to a pair")}</b><small>{t("关闭时，同币种只允许一个仓位或在途入场", "When off, only one position or pending entry is allowed per pair")}</small></span><input type="checkbox" checked={form.allowAddPosition} onChange={(event) => update("allowAddPosition", event.target.checked)} /></label><MobileRiskField label={t("权限有效期", "Valid for")} suffix={t("天", "days")}><input type="number" min="1" max="365" inputMode="numeric" value={form.validDays} onChange={(event) => update("validDays", event.target.value)} /></MobileRiskField></section>
-    <div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存并立即生效", "Save and apply")}</button></div>
+    <div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存设置", "Save settings")}</button></div>
   </div>;
 }
 
 function MobileRiskLiveEditor({ data, action, ui, onDone }) {
   const live = data.config?.liveTrading || {};
   const requested = data.system?.requestedOperatingMode || (!live.liveTradingEnabled ? "observe" : live.grayRequiresApproval === false ? "full_auto" : "semi_auto");
-  const buildForm = () => ({ mode: requested, acknowledged: Boolean(live.acknowledged), symbols: (live.grayAllowedSymbols || []).join(", "), maxNotionalUsdt: live.maxNotionalUsdt || 50 });
+  const instrumentState = useMobileInstruments();
+  const buildForm = () => ({ mode: requested, acknowledged: Boolean(live.acknowledged), symbols: (live.grayAllowedSymbols || []).map(pairLabel), maxNotionalUsdt: live.maxNotionalUsdt || 50 });
   const [form, setForm] = useState(buildForm);
   const [saving, setSaving] = useState(false);
   useEffect(() => setForm(buildForm()), [requested, live.acknowledged, live.maxNotionalUsdt, JSON.stringify(live.grayAllowedSymbols || [])]);
@@ -440,13 +493,16 @@ function MobileRiskLiveEditor({ data, action, ui, onDone }) {
   ];
   async function save() {
     if (form.mode !== "observe" && !form.acknowledged) return ui.notify?.(t("开启真实交易前必须确认资金风险", "Acknowledge real-money risk before enabling live trading"));
-    const allowedSymbols = [...new Set(String(form.symbols || "").split(/[,，\s]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean).map((symbol) => symbol.includes("/") ? symbol : `${symbol}/USDT`))];
+    const allowedSymbols = [...new Set((form.symbols || []).map(pairLabel).filter(Boolean))];
     setSaving(true);
-    try { await action("/api/config/live-trading", { requestedMode: form.mode, acknowledged: form.acknowledged, allowedSymbols, maxNotionalUsdt: Number(form.maxNotionalUsdt || 50) }); onDone(); } finally { setSaving(false); }
+    try {
+      const ok = await submitMobileRiskChange(action, "/api/config/live-trading", { requestedMode: form.mode, acknowledged: form.acknowledged, allowedSymbols, maxNotionalUsdt: Number(form.maxNotionalUsdt || 50) });
+      if (ok) onDone();
+    } finally { setSaving(false); }
   }
   return <div className="mScreen mRiskDetail">
     <section className="mNativeSection"><header><div><b>{t("执行方式", "Execution mode")}</b><small>{t("选择系统可以走到哪一步", "Choose how far the system may execute")}</small></div></header><div className="mModePicker">{[["observe", t("观察", "Observe"), t("只分析，不向交易所发单", "Analyze only; never submit")], ["semi_auto", t("半自动", "Semi-auto"), t("每笔真实交易由你确认", "You approve every live trade")], ["full_auto", t("全自动", "Full auto"), t("额度内自动执行", "Auto-execute within limits")]].map(([id, title, desc]) => <button type="button" className={form.mode === id ? `active ${id}` : id} key={id} onClick={() => setForm((current) => ({ ...current, mode: id }))}><span><b>{title}</b><small>{desc}</small></span><i /></button>)}</div></section>
-    <section className="mNativeSection"><header><div><b>{t("小额验证范围", "Small-size validation")}</b><small>{t("留空表示沿用交易权限白名单", "Leave blank to use the permission allowlist")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("验证币种", "Validation pairs")}><input value={form.symbols} onChange={(event) => setForm((current) => ({ ...current, symbols: event.target.value }))} placeholder="BTC, ETH" autoCapitalize="characters" /></MobileRiskField><MobileRiskField label={t("单笔最高金额", "Max per trade")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxNotionalUsdt} onChange={(event) => setForm((current) => ({ ...current, maxNotionalUsdt: event.target.value }))} /></MobileRiskField></div></section>
+    <section className="mNativeSection"><header><div><b>{t("小额验证范围", "Small-size validation")}</b><small>{t("从可交易合约中点选；不选则沿用交易权限", "Tap tradable contracts; select none to use trading permissions")}</small></div></header><div className="mRiskFieldStack"><MobilePairMultiPicker value={form.symbols} onChange={(symbols) => setForm((current) => ({ ...current, symbols }))} instruments={instrumentState.instruments} instrumentsLoading={instrumentState.loading} instrumentsError={instrumentState.error} instrumentsStale={instrumentState.stale} instrumentsAsOf={instrumentState.asOf} onRetry={instrumentState.retry} allowEmpty fallbackHint={t("当前未单独限制验证币种", "No separate validation-pair limit")} /><MobileRiskField label={t("单笔最高金额", "Max per trade")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxNotionalUsdt} onChange={(event) => setForm((current) => ({ ...current, maxNotionalUsdt: event.target.value }))} /></MobileRiskField></div></section>
     <section className="mNativeSection"><header><div><b>{t("上线检查", "Launch checks")}</b><small>{gates.filter(([, ok]) => ok).length}/{gates.length} {t("项通过", "passed")}</small></div></header><div className="mGateList">{gates.map(([label, ok]) => <div key={label}><span className={ok ? "ok" : "bad"}>{ok ? "✓" : "!"}</span><b>{label}</b><small>{ok ? t("已通过", "Ready") : t("待完成", "Needs attention")}</small></div>)}</div><label className="mNativeToggle mRiskAck"><span><b>{t("我已了解真实资金交易风险", "I understand the risks of live trading")}</b><small>{t("真实订单可能造成资金损失", "Live orders can result in financial loss")}</small></span><input type="checkbox" checked={form.acknowledged} onChange={(event) => setForm((current) => ({ ...current, acknowledged: event.target.checked }))} /></label></section>
     <div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存执行设置", "Save execution settings")}</button></div>
   </div>;
@@ -461,7 +517,10 @@ function MobileRiskGoalEditor({ data, action, ui, onDone }) {
     const amount = Number(dailyGoal);
     if (enabled && (!Number.isFinite(amount) || amount <= 0)) return ui.notify?.(t("先填写大于 0 的每日盈利目标", "Enter a daily profit goal greater than zero"));
     setSaving(true);
-    try { await action("/api/system/goals", { dailyGoalUsdt: Number.isFinite(amount) && amount > 0 ? amount : null, dailyGoalBreakevenEnabled: enabled }); onDone(); } finally { setSaving(false); }
+    try {
+      const ok = await submitMobileRiskChange(action, "/api/system/goals", { dailyGoalUsdt: Number.isFinite(amount) && amount > 0 ? amount : null, dailyGoalBreakevenEnabled: enabled });
+      if (ok) onDone();
+    } finally { setSaving(false); }
   }
   return <div className="mScreen mRiskDetail"><section className="mNativeSection"><header><div><b>{t("盈利目标", "Profit goal")}</b><small>{t("目标不会参与开仓决策", "The goal never influences entry decisions")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("每日盈利目标", "Daily profit goal")} hint={t(`月度目标按当月 ${sys.monthlyGoalDays || 30} 天自动派生`, `Monthly goal is derived using ${sys.monthlyGoalDays || 30} days`)} suffix="USDT"><input type="number" min="0.01" step="0.01" inputMode="decimal" value={dailyGoal} onChange={(event) => setDailyGoal(event.target.value)} /></MobileRiskField></div><label className="mNativeToggle mGoalNative"><span><b>{t("达到目标后保护到开仓价", "Protect at entry after reaching the goal")}</b><small>{t("只收紧 AI 仓位的止损；不会放宽止损，也不改变止盈", "Only tightens stops on AI positions; never loosens stops or changes take-profit")}</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /></label></section><div className="mRiskNote"><ShieldCheck size={17}/><p>{t("这是持仓后的降风险动作，不会为了完成目标而追单。", "This is a post-entry risk reduction; the AI will never chase trades to hit the goal.")}</p></div><div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存盈利保护", "Save profit protection")}</button></div></div>;
 }
@@ -653,7 +712,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
 
       {seg === "技能" && (
         <div className="mSectionCard">
-          <header><span>{t("技能流水线（", "Skill pipeline (")}{skills.length}{t("）", ")")}</span><span style={{ display: "flex", gap: 8 }}>{(async () => { const n = skills.filter(async (k) => ["compiled", "historical_rejected"].includes(k.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`${t("批量历史验证", "Batch historical validation for")} ${n} ${t("个技能?", "skills?")}`)) action("/api/knowledge/skills/validate-all", {}); }}>{t("一键验证", "Validate all")}({n})</button>; })()}<button className="textButton" onClick={async () => action("/api/knowledge/skills/sync", {})}>{t("同步", "Sync")}</button></span></header>
+          <header><span>{t("技能流水线（", "Skill pipeline (")}{skills.length}{t("）", ")")}</span><span style={{ display: "flex", gap: 8 }}>{(() => { const n = skills.filter((skill) => ["compiled", "historical_rejected"].includes(skill.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`${t("批量历史验证", "Batch historical validation for")} ${n} ${t("个技能?", "skills?")}`)) action("/api/knowledge/skills/validate-all", {}); }}>{t("一键验证", "Validate all")}({n})</button>; })()}<button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>{t("同步", "Sync")}</button></span></header>
           <div className="mKLegend">
             <button className="mKLegendHead" onClick={() => setLegendOpen((v) => !v)}><Info size={13} /> {t("这些状态是什么意思？", "What do these statuses mean?")}<ChevronDown size={13} className={legendOpen ? "flip" : ""} /></button>
             {legendOpen && SKILL_STATE_HELP.map(([label, tone, desc]) => (
@@ -736,15 +795,74 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
 
 const taskSegments = ["重要事件", "定时任务", "创建任务"];
 
-function MobileTasks({ data, action }) {
+function mobileDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value || 0);
+  if (!Number.isFinite(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function mobileEventDateKey(event = {}) {
+  const value = event.due || event.startAt;
+  if (event.timePrecision === "date" && /^\d{4}-\d{2}-\d{2}/.test(String(value || ""))) return String(value).slice(0, 10);
+  return mobileDateKey(value);
+}
+
+function mobileEventTimeLabel(event = {}) {
+  return event.timePrecision === "date" ? t("全天 · 时间待定", "All day · time TBD") : formatTime(event.due || event.startAt, t("时间待定", "Time TBD"));
+}
+
+export function shiftMobileCalendarSelection(monthAnchor, selectedDate, offset) {
+  const current = new Date(monthAnchor);
+  const target = new Date(current.getFullYear(), current.getMonth() + offset, 1);
+  const selectedDay = Math.max(1, Math.min(Number(String(selectedDate || "").slice(8, 10)) || 1, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()));
+  const nextSelectedDate = mobileDateKey(new Date(target.getFullYear(), target.getMonth(), selectedDay));
+  return { monthAnchor: target, selectedDate: nextSelectedDate };
+}
+
+export async function refreshMobileEventCalendar(action) {
+  const eventSources = await action("/api/event-sources/refresh", {});
+  const marketIntelligence = await action("/api/market-intelligence/refresh", {});
+  return { eventSources, marketIntelligence };
+}
+
+export function refreshMobileIntelligence(action) {
+  return action("/api/market-intelligence/refresh", {});
+}
+
+export function MobileTasks({ data, action }) {
   const [segment, setSegment] = useState("重要事件");
-  const events = (data.events || []).slice(0, 10);
+  const now = new Date();
+  const [monthAnchor, setMonthAnchor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(() => mobileDateKey(now));
+  const allEvents = buildEventRows(data, t).slice().sort((a, b) => new Date(a.due || a.startAt || 8640000000000000) - new Date(b.due || b.startAt || 8640000000000000));
   const tasks = data.tasks || [];
   const activeTasks = tasks.filter((task) => task.enabled !== false);
-  const todayEvents = (data.events || []).filter((event) => {
-    if (!event.due) return false;
-    return new Date(event.due).toDateString() === new Date().toDateString();
+  const todayEvents = allEvents.filter((event) => mobileEventDateKey(event) === mobileDateKey(now));
+  const selectedEvents = allEvents.filter((event) => mobileEventDateKey(event) === selectedDate);
+  const upcoming = allEvents.filter((event) => new Date(event.due || event.startAt).getTime() >= new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()).slice(0, 5);
+  const year = monthAnchor.getFullYear();
+  const month = monthAnchor.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = t(`${year} 年 ${month + 1} 月`, `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][month]} ${year}`);
+  const eventCountByDate = allEvents.reduce((map, event) => {
+    const key = mobileEventDateKey(event);
+    if (key) (map[key] ||= []).push(event);
+    return map;
+  }, {});
+  const calendarDays = Array.from({ length: 42 }, (_, index) => {
+    const day = index - firstWeekday + 1;
+    const date = new Date(year, month, day);
+    const inMonth = day >= 1 && day <= daysInMonth;
+    const key = mobileDateKey(date);
+    return { date, key, day: date.getDate(), inMonth, events: inMonth ? (eventCountByDate[key] || []) : [] };
   });
+  const moveMonth = (offset) => {
+    const next = shiftMobileCalendarSelection(monthAnchor, selectedDate, offset);
+    setMonthAnchor(next.monthAnchor);
+    setSelectedDate(next.selectedDate);
+  };
+  const backToday = () => { const current = new Date(); setMonthAnchor(new Date(current.getFullYear(), current.getMonth(), 1)); setSelectedDate(mobileDateKey(current)); };
   return (
     <div className="mSubPage">
       <div className="mPageStats">
@@ -755,25 +873,27 @@ function MobileTasks({ data, action }) {
 
       <div className="mChips">
         {taskSegments.map((name) => (
-          <button key={name} className={segment === name ? "active" : ""} onClick={() => setSegment(name)}>{name}</button>
+          <button key={name} className={segment === name ? "active" : ""} onClick={() => setSegment(name)}>{t(name, { "重要事件": "Calendar", "定时任务": "Tasks", "创建任务": "Create" }[name])}</button>
         ))}
       </div>
 
       {segment === "重要事件" && (
-        <div className="mSectionCard">
-          <header>
-            <span>{t("重要事件", "Key events")}</span>
-            <button className="textButton" onClick={() => action("/api/event-sources/refresh", {})}><RefreshCw size={12} /> {t("刷新", "Refresh")}</button>
-          </header>
-          {!events.length && <p className="mInboxEmpty">{t("暂无事件。点击刷新拉取事件源。", "No events. Tap refresh to pull event sources.")}</p>}
-          {events.map((event) => (
-            <div className="mRowItem" key={event.id} title={event.rawTitle || event.title}>
-              <span>{formatDateTime(event.due, t("待定", "TBD"))}</span>
-              <b>{event.shortTitle || event.title}</b>
-              <StatusBadge tone={event.impact >= 80 ? "danger" : event.impact >= 50 ? "warning" : "neutral"}>{event.impactLabel || t("待评估", "Pending")}</StatusBadge>
-            </div>
-          ))}
-        </div>
+        <>
+          <section className="mEventCalendar">
+            <header><button type="button" onClick={() => moveMonth(-1)} aria-label={t("上个月", "Previous month")}><ChevronLeft size={17}/></button><b>{monthLabel}</b><button type="button" onClick={() => moveMonth(1)} aria-label={t("下个月", "Next month")}><ChevronRight size={17}/></button><button type="button" className="today" onClick={backToday}>{t("今天", "Today")}</button></header>
+            <div className="mEventWeek">{[t("日", "S"), t("一", "M"), t("二", "T"), t("三", "W"), t("四", "T"), t("五", "F"), t("六", "S")].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
+            <div className="mEventDays">{calendarDays.map((day) => <button type="button" key={day.key} disabled={!day.inMonth} className={`${day.inMonth ? "" : "out"} ${day.key === selectedDate ? "selected" : ""} ${day.key === mobileDateKey(now) ? "today" : ""}`} onClick={() => setSelectedDate(day.key)}><b>{day.day}</b><span>{day.events.slice(0, 3).map((event, index) => <i key={`${event.id || event.title}-${index}`} className={Number(event.impact) >= 80 ? "high" : Number(event.impact) >= 50 ? "medium" : "low"}/>)}</span></button>)}</div>
+            <footer><span>{t("圆点表示当天有事件，颜色表示影响等级", "Dots mark events; color shows impact")}</span><button className="textButton" onClick={() => refreshMobileEventCalendar(action)}><RefreshCw size={12}/> {t("刷新事件", "Refresh")}</button></footer>
+          </section>
+          <section className="mEventAgenda">
+            <header><div><b>{selectedDate === mobileDateKey(now) ? t("今天的议程", "Today's agenda") : formatDate(selectedDate)}</b><small>{selectedEvents.length ? t(`${selectedEvents.length} 个已确认事件`, `${selectedEvents.length} confirmed events`) : t("当天没有已确认事件", "No confirmed events that day")}</small></div></header>
+            {selectedEvents.map((event) => <article key={event.id || `${event.title}-${event.due || event.startAt}`}>
+              <time>{mobileEventTimeLabel(event)}</time><span className={Number(event.impact) >= 80 ? "high" : Number(event.impact) >= 50 ? "medium" : "low"}/><div><b>{localizeText(event.shortTitle || event.title)}</b><small>{localizeText(event.source || event.category || t("事件日历", "Event calendar"))} · {event.impactLabel || t("影响待评估", "Impact pending")}</small>{(event.description || event.summary) && <p>{localizeText(event.description || event.summary)}</p>}</div>
+            </article>)}
+            {!selectedEvents.length && <div className="mNativeEmpty compact"><CalendarClock size={20}/><b>{t("可以安心查看其他日期", "Choose another date")}</b><span>{t("没有精确事件就保持空白，不推测发生时间。", "The calendar stays empty when no exact event is verified.")}</span></div>}
+          </section>
+          {upcoming.length > 0 && <section className="mSectionCard mUpcomingEvents"><header><span>{t("接下来", "Up next")}</span></header>{upcoming.map((event) => <button type="button" className="mRowItem" key={`up-${event.id || event.title}`} onClick={() => { const key = mobileEventDateKey(event); const [eventYear, eventMonth] = key.split("-").map(Number); setSelectedDate(key); setMonthAnchor(new Date(eventYear, eventMonth - 1, 1)); }}><span>{event.timePrecision === "date" ? t("日期待定时", "Date only") : formatDate(event.due || event.startAt)}</span><b>{localizeText(event.shortTitle || event.title)}</b><ChevronRight size={14}/></button>)}</section>}
+        </>
       )}
 
       {segment === "定时任务" && (
@@ -802,6 +922,62 @@ function MobileTasks({ data, action }) {
       )}
     </div>
   );
+}
+
+function mobileIntelHealth(source = {}) {
+  const value = String(source.health || source.status || "unknown").toLowerCase();
+  if (value === "healthy" || value === "ok") return { label: t("正常", "Healthy"), tone: "ok" };
+  if (value === "degraded" || value === "partial") return { label: t("部分可用", "Degraded"), tone: "warning" };
+  if (value === "stale") return { label: t("已陈旧", "Stale"), tone: "warning" };
+  if (value === "failed") return { label: t("失败", "Failed"), tone: "danger" };
+  if (value === "unconfigured") return { label: t("未配置", "Not configured"), tone: "neutral" };
+  return { label: t("待检查", "Unchecked"), tone: "neutral" };
+}
+
+function mobileMacroLabel(value) {
+  if (value === "insufficient_verified_macro_data") return t("可验证宏观数据不足，不下结论", "Insufficient verified macro data; no conclusion");
+  if (value === "requires_model_synthesis") return t("事实已就绪，等待综合判断", "Facts ready for synthesis");
+  return localizeText(value) || t("待生成", "Pending");
+}
+
+// 情报不是第五个交易主 Tab：它是判断上下文，放在“更多”第一组更符合使用频率与风险边界。
+// 页面只给摘要→快讯→来源三层渐进信息，不照搬 Web 的三栏工作台。
+export function MobileIntelligence({ data, action, ui }) {
+  const [segment, setSegment] = useState("brief");
+  const brief = data.dailyMarketBrief || null;
+  const news = (data.newsFeed || []).slice().sort((a, b) => new Date(b.publishedAt || b.observedAt || 0) - new Date(a.publishedAt || a.observedAt || 0));
+  const sources = data.marketIntelligenceSourceHealth || [];
+  const healthy = sources.filter((source) => ["healthy", "ok"].includes(String(source.health || source.status).toLowerCase())).length;
+  const staleSources = sources.filter((source) => String(source.health || "").toLowerCase() === "stale");
+  const important = news.filter((item) => item.values?.important === true || Number(item.values?.impact || item.impact || 0) >= 80);
+  const intelligenceEvents = buildEventRows(data, t);
+  const next24h = intelligenceEvents.filter((event) => { const due = new Date(event.due || event.startAt).getTime(); return event.timePrecision !== "date" && Number.isFinite(due) && due >= Date.now() && due <= Date.now() + 86400000; });
+  const todayKey = mobileDateKey(new Date());
+  const tomorrowKey = mobileDateKey(new Date(Date.now() + 86400000));
+  const dateOnlySoon = intelligenceEvents.filter((event) => event.timePrecision === "date" && [todayKey, tomorrowKey].includes(mobileEventDateKey(event)));
+  const updatedAt = brief?.asOf || news[0]?.observedAt || news[0]?.publishedAt || sources.map((source) => source.checkedAt).filter(Boolean).sort().at(-1);
+  const segments = [
+    ["brief", t("今日摘要", "Brief")],
+    ["feed", t("实时快讯", "Flash")],
+    ["sources", t("来源状态", "Sources")]
+  ];
+  return <div className="mSubPage mIntelPage">
+    <section className="mIntelHero"><div><span><Sparkles size={13}/>{t("只作为分析背景", "Analysis context only")}</span><b>{t("先看结论，再按需展开证据", "Read the brief, then expand evidence")}</b><small>{updatedAt ? `${t("更新于", "Updated")} ${formatDateTime(updatedAt)}` : t("等待首次情报刷新", "Waiting for the first intelligence refresh")}</small></div><button type="button" onClick={() => refreshMobileIntelligence(action)} aria-label={t("刷新情报", "Refresh intelligence")}><RefreshCw size={16}/></button></section>
+    <div className="mPageStats"><div><span>{t("重要快讯", "Important")}</span><strong>{important.length}</strong></div><div><span>{t("来源正常", "Healthy sources")}</span><strong>{healthy}/{sources.length}</strong></div><div><span>{t("近期事件", "Upcoming")}</span><strong>{next24h.length + dateOnlySoon.length}</strong></div></div>
+    <div className="mChips">{segments.map(([id, label]) => <button type="button" key={id} className={segment === id ? "active" : ""} onClick={() => setSegment(id)}>{label}</button>)}</div>
+
+    {segment === "brief" && <div className="mIntelStack">
+      <section className="mSectionCard mIntelBrief"><header><span>{t("Daily 市场摘要", "Daily market brief")}</span>{brief && <StatusBadge tone="neutral">v{brief.version || 1}</StatusBadge>}</header>
+        {brief ? <><div className="mIntelBriefRows"><span><small>{t("加密风险偏好", "Crypto risk appetite")}</small><b>{localizeText(brief.macroContext?.cryptoRiskAppetite) || t("未知", "Unknown")}</b></span><span><small>{t("宏观周期", "Macro cycle")}</small><b>{mobileMacroLabel(brief.macroContext?.economicCyclePhase)}</b></span><span><small>{t("证据事实", "Evidence facts")}</small><b>{(brief.evidenceFactIds || []).length}</b></span></div>{staleSources.length > 0 && <div className="mIntelConstraint high"><Globe2 size={14}/><p>{t(`${staleSources.length} 个情报来源已陈旧，不会作为当前催化剂`, `${staleSources.length} intelligence sources are stale and excluded as current catalysts`)}</p></div>}{(brief.constraints || []).slice(0, 4).map((constraint, index) => <div className={`mIntelConstraint ${constraint.severity || "medium"}`} key={`${constraint.type || "constraint"}-${index}`}><Shield size={14}/><p>{localizeText(constraint.reason)}</p></div>)}</> : <div className="mNativeEmpty compact"><Sparkles size={21}/><b>{t("日报尚未生成", "Brief not generated")}</b><span>{t("情报刷新任务完成后会自动生成；不会用旧数据补写。", "It is generated after a refresh; stale data is never used to fill gaps.")}</span></div>}
+      </section>
+      <section className="mSectionCard mIntelTop"><header><span>{t("需要先知道的事", "What matters now")}</span><button className="textButton" type="button" onClick={() => setSegment("feed")}>{t("全部快讯", "All flashes")}<ChevronRight size={13}/></button></header>{(brief?.topNews || news).slice(0, 4).map((item, index) => <article key={item.factId || item.id || index}><span className={Number(item.values?.impact || item.impact || 0) >= 80 ? "high" : "normal"}/><div><b>{localizeText(item.title)}</b><small>{item.summary ? localizeText(item.summary) : `${item.sourceName || item.source || t("情报源", "Intel source")} · ${formatDateTime(item.publishedAt)}`}</small></div></article>)}{!(brief?.topNews || news).length && <p className="mInboxEmpty">{t("暂无已验证快讯。", "No verified flashes yet.")}</p>}</section>
+      {(next24h.length > 0 || dateOnlySoon.length > 0) && <button type="button" className="mIntelEventLink" onClick={() => ui?.setActive("eventsTasks")}><CalendarClock size={18}/><span><b>{next24h.length ? t(`未来 24 小时有 ${next24h.length} 个精确时间事件`, `${next24h.length} precisely timed events within 24h`) : t("近期有日期级事件提醒", "Upcoming date-only event reminders")}</b><small>{[...next24h.slice(0, 2).map((event) => `${mobileEventTimeLabel(event)} ${localizeText(event.shortTitle || event.title)}`), ...dateOnlySoon.slice(0, 2).map((event) => `${t("全天/时间待定", "All day/time TBD")} ${localizeText(event.shortTitle || event.title)}`)].join(" · ")}</small></span><ChevronRight size={16}/></button>}
+    </div>}
+
+    {segment === "feed" && <section className="mIntelFeed">{news.map((item, index) => { const impact = Number(item.values?.impact || item.impact || 0); return <article key={item.id || index}><header><span className={impact >= 80 ? "important" : "flash"}>{impact >= 80 || item.values?.important ? t("重要", "Important") : t("快讯", "Flash")}</span><time>{formatDateTime(item.publishedAt || item.observedAt)}</time></header><b>{localizeText(item.title)}</b>{(item.summary || item.content) && <p>{localizeText(item.summary || item.content)}</p>}<footer><span>{item.sourceName || item.source || "ME News"}</span><span>{(item.symbols || []).join(" · ") || t("全市场", "Market-wide")}</span></footer></article>; })}{!news.length && <div className="mNativeEmpty"><Bell size={22}/><b>{t("暂无实时快讯", "No live flashes")}</b><span>{t("刷新后只展示带真实来源与时间的内容。", "Only timestamped, sourced items appear after refresh.")}</span></div>}</section>}
+
+    {segment === "sources" && <section className="mSectionCard mIntelSources"><header><span>{t("情报来源", "Intelligence sources")}</span><small>{healthy}/{sources.length} {t("正常", "healthy")}</small></header>{sources.map((source) => { const state = mobileIntelHealth(source); return <article key={source.sourceId || source.id || source.name}><span className={`mIntelSourceIcon ${state.tone}`}><Globe2 size={15}/></span><div><b>{localizeText(source.name || source.sourceId)}</b><small>{humanize(source.category, t("补充来源", "Supplemental"))} · {source.lastSuccessAt ? `${t("最近成功", "Last success")} ${formatDateTime(source.lastSuccessAt)}` : t("尚无成功记录", "No successful run yet")}</small>{source.lastError && <p>{localizeText(source.lastError)}</p>}</div><StatusBadge tone={state.tone}>{state.label}</StatusBadge></article>; })}{!sources.length && <div className="mNativeEmpty compact"><Globe2 size={20}/><b>{t("暂无来源状态", "No source status")}</b><span>{t("情报任务运行后会记录真实健康状态。", "Real health status appears after intelligence jobs run.")}</span></div>}</section>}
+  </div>;
 }
 
 function MobileAccountHealth({ data, action }) {
@@ -844,26 +1020,41 @@ function MobileAccountHealth({ data, action }) {
 }
 
 // 全部 OKX USDT 永续合约清单(真实拉取),供移动版行情搜索选币用。
-function useMobileInstruments() {
-  const [list, setList] = useState([]);
-  useEffect(() => {
-    let alive = true;
-    fetch(apiUrl("/api/market/instruments"), { headers: authHeaders() })
-      .then((r) => (r.ok ? r.json() : { instruments: [] }))
-      .then((d) => { if (alive) setList((d.instruments || []).map((i) => i.symbol || i).filter(Boolean)); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  return list;
+export async function loadMobileInstrumentList(fetchImpl = fetch, endpoint = null) {
+  const response = await fetchImpl(endpoint || apiUrl("/api/market/instruments"), { headers: authHeaders() });
+  if (!response?.ok) throw new Error(`${t("合约清单请求失败", "Contract list request failed")} (${response?.status || "network"})`);
+  const payload = await response.json();
+  const instruments = [...new Set((payload.instruments || []).map((item) => pairLabel(item.symbol || item)).filter(Boolean))];
+  if (payload.sourceStatus === "failed" || !instruments.length) throw new Error(payload.error || t("无法确认当前可交易合约，请重试", "Unable to confirm the current tradable contracts. Try again."));
+  return { instruments, sourceStatus: payload.sourceStatus || "healthy", stale: payload.stale === true || payload.sourceStatus === "stale", asOf: payload.asOf || null };
 }
 
-// 移动版底部弹层选币器:搜索全部永续合约、点选切换、可加自选。替代原来只有 4 个硬编码的 pill。
-function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) {
+function useMobileInstruments() {
+  const [state, setState] = useState({ instruments: [], loading: true, error: "", stale: false, asOf: null });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    loadMobileInstrumentList()
+      .then((catalog) => { if (alive) setState({ ...catalog, loading: false, error: "" }); })
+      .catch((error) => { if (alive) setState((current) => ({ ...current, loading: false, error: String(error?.message || error || t("加载失败", "Load failed")) })); });
+    return () => { alive = false; };
+  }, [attempt]);
+  return { ...state, retry: () => setAttempt((current) => current + 1) };
+}
+
+// 移动版底部弹层选币器：已选状态与搜索输入分层展示，避免 iOS 键盘/长币对把选择结果盖住。
+// 单选用于行情切换，多选用于风控白名单；两者共享同一份真实合约清单，但保持各自的 App 交互。
+export function MobilePairSheet({ instruments, current, selected = [], multiple = false, allowEmpty = false, loading = false, error = "", stale = false, asOf = null, onRetry, title, onPick, onApply, onClose, onAddWatch }) {
   const [q, setQ] = useState("");
+  const [draft, setDraft] = useState(() => [...new Set((selected || []).map(pairLabel).filter(Boolean))]);
   const [drag, setDrag] = useState(0);
   const startY = useRef(null);
   const qU = q.trim().toUpperCase();
-  const list = (instruments || []).filter((s) => !qU || s.includes(qU)).slice(0, 200);
+  const normalizedCurrent = pairLabel(current);
+  const active = multiple ? draft : (normalizedCurrent ? [normalizedCurrent] : []);
+  const list = [...new Set([...active, ...(instruments || []).map(pairLabel)].filter(Boolean))].filter((s) => !qU || s.includes(qU)).slice(0, 200);
+  const toggle = (symbol) => setDraft((currentDraft) => currentDraft.includes(symbol) ? currentDraft.filter((item) => item !== symbol) : [...currentDraft, symbol]);
   // 下滑关闭手势:拖住把手往下拉超过阈值即关闭。
   const dStart = (e) => { startY.current = e.touches[0].clientY; };
   const dMove = (e) => { if (startY.current == null) return; const dy = e.touches[0].clientY - startY.current; if (dy > 0) setDrag(dy); };
@@ -872,17 +1063,23 @@ function MobilePairSheet({ instruments, current, onPick, onClose, onAddWatch }) 
     <div className="mSheetOverlay" onClick={onClose}>
       <div className="mSheet" onClick={(e) => e.stopPropagation()} style={{ transform: drag ? `translateY(${drag}px)` : "", transition: startY.current == null ? "transform .22s ease-out" : "none" }}>
         <div className="mSheetGrip" onTouchStart={dStart} onTouchMove={dMove} onTouchEnd={dEnd}><span /></div>
-        <div className="mSheetHead"><b>{t("选择币对", "Select pair")}</b><button className="mSheetClose" onClick={onClose} aria-label={t("关闭", "Close")}><ChevronDown size={20} /></button></div>
-        <div className="mSheetSearch"><Search size={15} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("输入币种，如 BTC / SOL", "Enter a symbol, e.g. BTC / SOL")} /></div>
-        <div className="mSheetList">
-          {list.map((s) => (
-            <button key={s} className={`mSheetRow ${s === current ? "on" : ""}`} onClick={() => { onPick(s); onClose(); }}>
-              <span>{s}</span>
-              {onAddWatch && <span className="mSheetAdd" role="button" onClick={(e) => { e.stopPropagation(); onAddWatch(s); }}><Plus size={15} /></span>}
-            </button>
-          ))}
-          {!list.length && <div className="mEmpty">{instruments && instruments.length ? t("无匹配币对", "No matching pairs") : t("合约清单加载中…", "Loading contract list…")}</div>}
+        <div className="mSheetHead"><div><b>{title || t("选择币对", "Select pair")}</b><small>{multiple ? t("可多选，完成后一次应用", "Select multiple, then apply") : t("点选后立即切换行情", "Tap once to switch market")}</small></div><button className="mSheetClose" onClick={onClose} aria-label={t("关闭", "Close")}><ChevronDown size={20} /></button></div>
+        <div className="mSheetSelection">
+          <span>{multiple ? t("已选择", "Selected") : t("当前币对", "Current pair")}</span>
+          <div>{active.length ? active.map((symbol) => <button type="button" key={symbol} onClick={() => multiple && toggle(symbol)}>{symbol.replace("/USDT", "")}{multiple && <i>×</i>}</button>) : <em>{t("未单独选择", "No separate selection")}</em>}</div>
         </div>
+        <div className="mSheetSearch"><Search size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("搜索全部 USDT 永续，如 BTC / SOL", "Search all USDT perpetuals, e.g. BTC / SOL")} />{q && <button type="button" onClick={() => setQ("")} aria-label={t("清空搜索", "Clear search")}>×</button>}</div>
+        {error && <div className="mSheetLoadError"><Info size={15}/><span><b>{t("完整合约清单加载失败", "Full contract list failed to load")}</b><small>{active.length ? t("下方仅保留当前已选项，不代表完整可交易范围。", "Only current selections are retained below; this is not the full tradable universe.") : t("无法确认当前可交易范围，请重试。", "The current tradable universe cannot be confirmed. Try again.")}</small></span><button type="button" onClick={onRetry}>{t("重试", "Retry")}</button></div>}
+        {!error && stale && <div className="mSheetLoadError stale"><Info size={15}/><span><b>{t("当前使用缓存合约清单", "Using a cached contract list")}</b><small>{asOf ? `${t("清单时间", "List as of")} ${formatDateTime(asOf)}` : t("OKX 当前清单暂不可用，请谨慎确认。", "The current OKX list is unavailable; verify cautiously.")}</small></span><button type="button" onClick={onRetry}>{t("刷新", "Refresh")}</button></div>}
+        <div className="mSheetList">
+          {list.map((s) => { const chosen = active.includes(s); return <div key={s} className={`mSheetRow ${chosen ? "on" : ""}`}>
+            <button type="button" className="mSheetRowMain" onClick={() => { if (multiple) toggle(s); else { onPick?.(s); onClose(); } }}>
+              <span className="mSheetCoin">{s.charAt(0)}</span><span><b>{s.replace("/USDT", "")}</b><small>USDT · {t("永续", "Perpetual")}</small></span>{chosen && <CheckCircle2 size={18}/>}</button>
+            {onAddWatch && <button type="button" className="mSheetAdd" aria-label={`${t("加入自选", "Add to watchlist")} ${s}`} onClick={() => onAddWatch(s)}><Plus size={15} /></button>}
+          </div>; })}
+          {!list.length && <div className="mEmpty">{qU && instruments?.length ? t("无匹配币对", "No matching pairs") : error ? t("没有可显示的已选币对", "No retained selections to show") : loading ? t("合约清单加载中…", "Loading contract list…") : t("暂无可交易合约", "No tradable contracts")}</div>}
+        </div>
+        {multiple && <div className="mSheetApply"><button type="button" className="ghost" disabled={!draft.length && !allowEmpty} onClick={() => setDraft([])}>{t("清空", "Clear")}</button><button type="button" className="primary" disabled={!draft.length && !allowEmpty} onClick={() => { onApply?.(draft); onClose(); }}>{t(`应用 ${draft.length} 个币种`, `Apply ${draft.length} pairs`)}</button></div>}
       </div>
     </div>
   );
@@ -892,13 +1089,13 @@ function MobileMarket({ data, action, ui }) {
   const [tf, setTf] = useState("1H");
   const [sym, setSym] = useState(null);
   const [sheet, setSheet] = useState(false);
-  const instruments = useMobileInstruments();
+  const instrumentState = useMobileInstruments();
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((a) => a.readEnabled);
-  const markets = (data.markets || []).filter((m) => m && m.symbol);
+  const markets = buildMarketRows(data);
   // 选中的币对可能不在已同步的 markets 里(从全量清单选的),用最小对象兜底让图表/标题正常切换。
   const market = markets.find((m) => m.symbol === sym) || (sym ? { symbol: sym, candles: [] } : markets[0]) || { symbol: "BTC/USDT", candles: [] };
-  const positions = data.positions || [];
+  const positions = buildPositionView(data).positions;
   const equity = portfolio.totalEquityUsdt;
   const avail = portfolio.availableMarginUsdt;
   // 保证金口径统一走 lib.marginUsage(含冻结保证金;缺数据=null,不造假)。
@@ -974,7 +1171,7 @@ function MobileMarket({ data, action, ui }) {
         </svg>
         <div className="mMarginInfo"><b>{t("保证金率", "Margin ratio")}</b><small>{marginRate != null ? `${t("已用保证金", "Used margin")} ${marginRate.toFixed(1)}%` : t("连接账户后显示", "Shown after connecting an account")}</small></div>
       </div>
-      {sheet && <MobilePairSheet instruments={instruments} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
+      {sheet && <MobilePairSheet instruments={instrumentState.instruments} loading={instrumentState.loading} error={instrumentState.error} stale={instrumentState.stale} asOf={instrumentState.asOf} onRetry={instrumentState.retry} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
     </div>
   );
 }
@@ -1095,64 +1292,6 @@ function MobileRiskHub({ data, action, ui }) {
   );
 }
 
-const capabilityEnabledStates = new Set(["active", "trusted", "enabled", "ready", "connected", "configured", "available_without_key", "已启用", "已配置", "已连接", "免密钥可用"]);
-
-function buildMobileCapabilities(data = {}) {
-  const rawItems = [
-    ...(data.skills || []).filter((item) => item.kind !== "strategy"),
-    ...(data.analysisEngine?.tools || []),
-    ...(data.tools || []),
-    ...(data.mcpServers || [])
-  ];
-  const stats = data.toolCallStats || {};
-  const identity = (item) => item.serverName || item.name || item.title || item.id;
-  const unique = rawItems.filter((item, index) => rawItems.findIndex((other) => identity(other) === identity(item)) === index);
-  return unique.map((item, index) => {
-    const id = item.id || `cap-${index}`;
-    const isMcp = Boolean(item.serverName || item.transport || /^mcp_/i.test(String(id)));
-    const connector = /^tool_/i.test(String(id)) || ["exchange", "model", "data"].includes(String(item.type || item.kind || "").toLowerCase());
-    const toolName = item.toolName || item.name;
-    const stat = stats[toolName] || null;
-    const mcpCalls = isMcp ? (item.tools || []).reduce((sum, tool) => sum + Number(stats[tool?.name || tool]?.calls || 0), 0) : null;
-    const calls = connector ? null : mcpCalls ?? stats[toolName]?.calls ?? item.evalMetrics?.calls ?? item.runs ?? item.runCount ?? 0;
-    const status = item.status || (item.enabled === false ? "disabled" : "enabled");
-    const normalized = String(status).toLowerCase();
-    const enabled = item.enabled === true || capabilityEnabledStates.has(normalized) || capabilityEnabledStates.has(String(status));
-    const disabled = item.enabled === false || /disabled|retired|已停用|已禁用/i.test(String(status));
-    const candidate = !enabled && !disabled && /candidate|pending|trial|paper|registered|待批准|待复核|待连接|待安全复核|候选/i.test(String(status));
-    const rawKind = item.type || item.category || item.kind || "tool";
-    const category = isMcp ? "mcp" : /workflow|工作流|flow/i.test(String(rawKind)) ? "workflow" : "analysis";
-    const classifiedCalls = Number(stat?.success || 0) + Number(stat?.blocked || 0) + Number(stat?.error || 0);
-    const usage = item.usage || (stat ? {
-      success: stat.success || 0,
-      blocked: stat.blocked || 0,
-      error: stat.error || 0,
-      unclassified: Number(stat.legacyUnclassifiedOutcomes || 0),
-      sourceCalls: stat.sourceCalls || {},
-      legacyUnsplit: Boolean(stat.legacyUnsplitCalls),
-      legacyUnsplitCalls: Number(stat.legacyUnsplitCalls || 0),
-      health: !Number(stat.calls || 0) || !classifiedCalls ? "untested" : stat.lastStatus === "error" || Number(stat.error || 0) / classifiedCalls >= .2 ? "degraded" : stat.lastStatus === "blocked" && !stat.success ? "blocked" : "healthy"
-    } : null);
-    const health = connector ? "not_applicable" : usage?.health || (Number(calls || 0) > 0 ? "healthy" : "untested");
-    return {
-      ...item,
-      id,
-      name: item.name || item.title || item.serverName || t("未命名工具", "Unnamed tool"),
-      kind: isMcp ? "MCP" : rawKind,
-      category,
-      status,
-      enabled,
-      disabled,
-      candidate,
-      connector,
-      calls,
-      health,
-      lastRunAt: stats[toolName]?.lastAt || item.lastCalledAt || item.lastRunAt || null,
-      usage
-    };
-  });
-}
-
 function capabilityStatusLabel(item) {
   if (item.enabled) return t("已启用", "Enabled");
   if (item.disabled) return t("已停用", "Disabled");
@@ -1172,7 +1311,7 @@ function capabilityHealthTone(value) {
 }
 
 export function MobileCapabilities({ data, action, ui }) {
-  const items = buildMobileCapabilities(data);
+  const items = buildCapabilityCatalogRows(data, t);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState("");
@@ -1330,9 +1469,9 @@ export function MobileBacktestResearch({ data, action }) {
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
 export function MobileStrategy({ data, action, initialTab = "catalog" }) {
   const studio = data.strategyStudio || {};
-  const products = (data.strategyCatalog?.products || []).map((row) => ({ id: row.versionId, name: t(row.definition?.name || row.id, row.definition?.nameEn || row.id), status: row.deployment?.state, origin: t("策略产品", "Product"), timeframe: (row.definition?.timeframes || []).join("/") }));
-  const strategies = [...products, ...(data.knowledge?.tradingSkills || []), ...((data.skills || []).filter((s) => s.kind === "strategy"))]
-    .map((s, i) => ({ ...s, id: s.id || `str-${i}`, name: s.name || s.title || t("未命名策略", "Untitled strategy"), origin: s.origin || (s.methodId ? t("蒸馏", "Distilled") : s.userAuthored ? t("LLM/手写", "LLM/Manual") : /imported|uploaded|github|clawhub/i.test(String(s.source || "")) ? t("导入", "Imported") : t("内置", "Built-in")) }));
+  const strategyCatalog = buildStrategyCatalogRows(data, t);
+  const { products } = strategyCatalog;
+  const strategies = strategyCatalog.rows;
   const [tab, setTab] = useState(initialTab);
   const [prompt, setPrompt] = useState("");
   const drafts = studio.drafts || [];
@@ -1346,10 +1485,11 @@ export function MobileStrategy({ data, action, initialTab = "catalog" }) {
     if (result?.draft?.id) { setSelectedId(result.draft.id); setPrompt(""); if (result.suite?.status === "passed") await action(`/api/strategy/studio/drafts/${result.draft.id}/backtest`, {}, "POST"); }
   };
   const statusLabel = (value) => ({ owner_live_observation:t("实盘观察（未验证）","Live observation"), validated_active:t("证据达标","Evidence-qualified"), tests_passed:t("自动测试通过","Tests passed"), backtest_passed:t("样本外通过","OOS passed"), backtest_failed:t("样本外未通过","OOS failed"), published:t("已发布","Published") }[value] || humanize(value, "—"));
+  const originLabel = (value) => t(value, ({ "策略产品":"Strategy product", "指标研究模型":"Research model", "蒸馏":"Distilled", "LLM/手写":"LLM/Manual", "导入":"Imported", "其他":"Other" })[value] || value);
   return (
     <div className="mScreen">
       <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => setTab("studio")}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>{t("市场", "Market")}</button><button className={tab === "research" ? "active" : ""} onClick={() => setTab("research")}>{t("回测研究", "Backtest")}</button></div>
-      {tab === "catalog" && <><div className="mMetric2x2"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div><div className="mMetricCell"><span>{t("市场发布", "Published")}</span><b className="mono">{studio.marketplace?.summary?.studio || 0}</b></div></div><div className="mCard">{strategies.length ? strategies.map((s) => <div className="mIncRow" key={s.id}><div className="mIncL"><b>{localizeText(s.name)}</b><span className="mIncX">{s.origin}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge></div>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</div></>}
+      {tab === "catalog" && <><div className="mMetric2x2"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><div className="mCard">{strategies.length ? strategies.map((s) => <div className="mIncRow" key={s.id}><div className="mIncL"><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge></div>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</div></>}
         {tab === "studio" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("自然语言创建策略", "Create from natural language")}</b><p className="mStrategyHelp">{t("只编译到确定性白名单规则；创建草稿不会下单。", "Compiles only to deterministic allowlisted rules. Drafts never place orders.")}</p><textarea className="mStrategyPrompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("例：ADA/USDT 1小时，RSI 14 从30下方站回时做多，止损2%，止盈2.5R", "Example: Long ADA/USDT on 1h when RSI(14) crosses back above 30; 2% stop, 2.5R target")}/><button className="mStrategyPrimary" disabled={prompt.trim().length < 12} onClick={createDraft}><Sparkles size={14}/>{t("生成、测试并自动回测", "Generate, test, and backtest")}</button></div>
         {drafts.length ? <div className="mCard"><b className="mSectionTitle">{t("策略草稿", "Strategy drafts")}</b><div className="mStrategyDrafts">{drafts.slice(0,20).map((row) => <button key={row.id} className={row.id === selected.id ? "active" : ""} onClick={() => setSelectedId(row.id)}><span><b>{localizeText(row.blueprint?.name)}</b><small>{row.authoring?.channel === "agent_chat" ? t("AI 对话创建", "Created in AI chat") : t("工作室创建", "Created in Studio")} · {row.blueprint?.symbols?.join("/")} · {row.blueprint?.timeframe} · {humanize(row.blueprint?.direction)}</small></span><StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge></button>)}</div></div> : null}
         {selected.id && <><div className="mCard"><b className="mSectionTitle">{t("系统理解的规则", "Compiled rules")}</b><div className="mStrategyFacts"><span>{t("信号", "Signal")}<b>{t(selected.blueprint?.templateName || "—", selected.blueprint?.templateNameEn || selected.blueprint?.templateName || "—")}</b></span><span>{t("止损 / 止盈", "Stop / target")}<b>{selected.blueprint?.exitPolicy?.stopLossPct}% · {selected.blueprint?.exitPolicy?.takeProfitR}R</b></span><span>{t("参数", "Parameters")}<b className="mono">{JSON.stringify(selected.blueprint?.params || {})}</b></span></div></div><div className="mCard"><b className="mSectionTitle">{t("自动测试", "Generated tests")} · {selected.generatedTests?.passed || 0}/{selected.generatedTests?.total || 0}</b>{(selected.generatedTests?.tests || []).map((test) => <div className="mStrategyTest" key={test.id}>{test.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{t(test.name, test.nameEn || test.name)}</b><small>{t(test.detail, test.detailEn || test.detail)}</small></span></div>)}</div><div className="mCard"><b className="mSectionTitle">{t("样本外证据", "Out-of-sample evidence")}</b>{latestBt ? <div className="mStrategyFacts"><span>{t("交易 / 期望", "Trades / expectancy")}<b>{latestBt.oos?.trades || 0} · {latestBt.oos?.expectancyR ?? "—"}R</b></span><span>PF / {t("回撤", "drawdown")}<b>{latestBt.oos?.profitFactor ?? "—"} · {latestBt.oos?.maxDrawdownPct ?? "—"}%</b></span><span>{t("正向分段", "Positive folds")}<b>{latestBt.positiveFolds}/{latestBt.activeFolds}</b></span></div> : <p className="mStrategyHelp">{t("尚未运行 OKX 历史样本外回测。", "OKX historical OOS backtest has not run.")}</p>}<div className="mStrategyActions"><button disabled={selected.generatedTests?.status !== "passed"} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/backtest`, {}, "POST")}>{t("运行回测", "Run backtest")}</button><button disabled={!latestBt?.passed || Boolean(selected.publishVersionId)} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/publish`, {}, "POST")}>{selected.publishVersionId ? t("已发布", "Published") : t("发布到市场", "Publish")}</button></div></div></>}
@@ -1370,6 +1510,7 @@ const mobileNav = [
   { id: "knowledgeBase", label: ["知识库", "Knowledge"], code: "KNOWLEDGE", icon: BookOpen },
   { id: "capabilityLib", label: ["能力库", "Capabilities"], code: "CAPABILITY · LIB", icon: Wrench },
   { id: "strategyLib", label: ["策略库", "Strategy"], code: "STRATEGY · LIB", icon: Rocket },
+  { id: "intelligence", label: ["情报中心", "Intelligence"], code: "INTEL · BRIEF", icon: Globe2 },
   { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], code: "EVENTS · TASKS", icon: CalendarClock },
   { id: "auditSystem", label: ["审计", "Audit"], code: "AUDIT · SYSTEM", icon: Activity },
   { id: "systemSettings", label: ["系统设置", "Settings"], code: "SETTINGS · CONFIG", icon: Settings }
@@ -1386,6 +1527,7 @@ const mobileSecondaryNav = [
   { id: "knowledgeBase", label: ["知识库", "Knowledge"], icon: BookOpen, hint: ["方法、规则与图谱", "Methods, rules, and graph"] },
   { id: "capabilityLib", label: ["能力库", "Capabilities"], icon: Wrench, hint: ["工具、工作流与 MCP", "Tools, workflows, and MCP"] },
   { id: "strategyLib", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
+  { id: "intelligence", label: ["情报中心", "Intelligence"], icon: Globe2, hint: ["今日摘要、快讯与来源", "Brief, flashes, and sources"] },
   { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], icon: CalendarClock, hint: ["重要事件与自动任务", "Events and automation"] },
   { id: "auditSystem", label: ["运行记录", "Activity"], icon: Activity, hint: ["系统状态与审计", "System state and audit"] },
   { id: "systemSettings", label: ["设置", "Settings"], icon: Settings, hint: ["账户、交易所与模型", "Account, exchange, and model"] }
@@ -1517,6 +1659,8 @@ export function MobileApp({ api, lang, switchLang }) {
     content = <MobileExecution data={data} action={action} initialTab="orders" />;
   } else if (route === "riskHub") {
     content = <MobileRiskHub data={data} action={action} ui={ui} />;
+  } else if (route === "intelligence") {
+    content = <MobileIntelligence data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
     content = <MobileTasks data={data} action={action} ui={ui} />;
   } else if (route === "knowledgeBase") {

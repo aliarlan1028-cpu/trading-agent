@@ -40,6 +40,7 @@ import {
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
+import { groupClosedTradeLifecyclesForView, hasFiniteNumber } from "./viewData.js";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -61,8 +62,74 @@ const PROCESS_NARRATION_PATTERNS = [
   /^(?:now|next|below),?\s*(?:i(?:'ll|\s+will)\s+)?(?:summari[sz]e|present|recap)(?:\s+(?:the\s+)?(?:full\s+picture|analysis|results?))?[.!]?$/i
 ];
 
+// 用户正文保留事实含义，但不暴露审计 ID、枚举值和量化缩写。原始 content 从未被修改，
+// 证据 ID、模型原文与工具轨迹仍保存在消息/审计层，需要时可在技术明细中核对。
+function humanizeEvidenceStatus(value = "") {
+  return String(value)
+    .replace(/fresh\s*\/\s*passed/gi, t("数据新鲜度与校验均通过", "data is fresh and validation passed"))
+    .replace(/stale\s*\/\s*failed/gi, t("数据陈旧且获取失败", "data is stale and retrieval failed"))
+    .replace(/missing\s*\/\s*failed/gi, t("数据缺失且获取失败", "data is missing and retrieval failed"))
+    .replace(/\bstale\b/gi, t("数据已陈旧", "data is stale"))
+    .replace(/\bmissing\b/gi, t("数据缺失", "data is missing"))
+    .replace(/\bfailed\b/gi, t("获取失败", "retrieval failed"))
+    .replace(/\berror\b/gi, t("获取出错", "retrieval error"))
+    .replace(/\bfresh\b/gi, t("数据为最新", "data is fresh"))
+    .replace(/\bpassed\b/gi, t("校验通过", "validation passed"));
+}
+
+function humanizeAnalysisPresentation(text = "") {
+  let value = String(text)
+    .replace(/\\_/g, "_")
+    .replace(/〔已按\s+ev:[^〕]*?更正；\s*([^〕]+)〕/gi, t("（已按最新市场事实校正；校正于 $1）", "(corrected using the latest market fact at $1)"))
+    .replace(/\[(fresh\s*\/\s*passed)\s*[·,，]?\s*ev:[^\]]+\]/gi, t("（数据新鲜度与校验均通过）", "(data is fresh and validation passed)"))
+    .replace(/\[(fresh)\s*[·,，]?\s*ev:[^\]]+\]/gi, t("（数据为最新）", "(data is fresh)"))
+    .replace(/事实守卫[（(]\s*ev:[^，,）)]+[，,]\s*([^）)]+)[）)]/gi, t("事实校验（校验于 $1）", "fact validation (checked at $1)"))
+    .replace(/事实守卫[（(]\s*ev:[^）)]+[）)]/gi, t("事实校验", "fact validation"))
+    .replace(/\[([^\]]*?)[·,，]?\s*ev:[^\]]+\]/gi, (_match, prefix) => prefix?.trim() ? t(`（${humanizeEvidenceStatus(prefix.trim())}）`, `(${humanizeEvidenceStatus(prefix.trim())})`) : "")
+    .replace(/\[ev:[^\]]+\]/gi, "")
+    .replace(/\bev:[a-z_]+:[^，,；;\s）)\]]+/gi, "")
+    .replace(/\bevb_[a-z0-9_-]+\b/gi, "")
+    .replace(/\bLH\s*\/\s*LL\b/gi, t("高点和低点持续下移", "lower highs and lower lows"))
+    .replace(/\bHH\s*\/\s*HL\b/gi, t("高点和低点持续上移", "higher highs and higher lows"))
+    .replace(/\bBOS\s+down\s*@\s*([0-9.]+)/gi, t("跌破结构位 $1", "bearish structure break at $1"))
+    .replace(/\bBOS\s+up\s*@\s*([0-9.]+)/gi, t("突破结构位 $1", "bullish structure break at $1"))
+    .replace(/\bCHoCH\s+down\b/gi, t("结构转弱", "structure turned weaker"))
+    .replace(/\bCHoCH\s+up\b/gi, t("结构转强", "structure turned stronger"));
+  const terms = [
+    [/\blong_build_crowded\b/gi, t("多头增仓且较拥挤", "crowded long build-up")],
+    [/\bshort_build_crowded\b/gi, t("空头增仓且较拥挤", "crowded short build-up")],
+    [/\bleverage_build_up\b/gi, t("杠杆堆积但价格尚未确认", "leverage is building without price confirmation")],
+    [/\bprice_move_without_oi_confirmation\b/gi, t("价格移动但未获持仓量确认", "price move lacks open-interest confirmation")],
+    [/\bdeleveraging_without_direction\b/gi, t("去杠杆但方向不明确", "deleveraging without a clear direction")],
+    [/\blong_deleveraging\b/gi, t("多头去杠杆", "long deleveraging")],
+    [/\bshort_covering\b/gi, t("空头回补反弹", "short-covering rebound")],
+    [/\blong_build\b/gi, t("多头增仓", "long build-up")],
+    [/\bshort_build\b/gi, t("空头增仓", "short build-up")],
+    [/\bstable_or_mixed\b/gi, t("状态稳定或信号混合", "stable or mixed signals")],
+    [/\bbullish_price_cvd\b/gi, t("价格与主动买盘同步转强", "price and aggressive buying are strengthening together")],
+    [/\bbearish_price_cvd\b/gi, t("价格上涨但主动卖盘偏强", "price is rising while aggressive selling remains stronger")],
+    [/\bcontinuation\b/gi, t("延续结构", "continuation structure")],
+    [/\bpullback\b/gi, t("回调阶段", "pullback phase")],
+    [/\bNEUTRAL\b/g, t("方向未确认", "direction unconfirmed")],
+    [/\bS5\s*极低流动性/gi, t("极低流动性", "extremely low liquidity")],
+    [/\bS5\b/g, t("极低流动性等级", "extremely low-liquidity tier")]
+  ];
+  for (const [pattern, label] of terms) value = value.replace(pattern, label);
+  value = value
+    .replace(/((?:证据)?状态\s*[:：]?\s*)(fresh\s*\/\s*passed|stale\s*\/\s*failed|missing\s*\/\s*failed|stale|missing|failed|error|fresh|passed)\b/gi, (_match, label, status) => `${label}${humanizeEvidenceStatus(status)}`)
+    .replace(/事实守卫/g, t("事实校验", "fact validation"));
+  return value
+    .replace(/证据\s*[，,](?=\s*状态|\s*[。；;）)])/g, "")
+    .replace(/证据\s*(?=状态)/g, "")
+    .replace(/（\s*[,，、;；·]*\s*）/g, "")
+    .replace(/（([^）]*?)[,，、;；·]\s*）/g, "（$1）")
+    .replace(/[，,]\s*[，,]/g, "，")
+    .replace(/\s+([，。、；：）】])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ");
+}
+
 export function cleanPresentationText(text = "") {
-  const cleaned = String(text)
+  const cleaned = humanizeAnalysisPresentation(text)
     .split("\n")
     .filter((line) => {
       const candidate = line.trim().replace(/^\*\*(.+)\*\*$/, "$1").trim();
@@ -253,7 +320,7 @@ function parseRichText(text = "") {
       bullets.push({ text: bullet[1], tone: visualTone(bullet[1]) });
       continue;
     }
-    const metric = line.match(/^(白名单|总结|结论|巡检范围|视野外候选|能力调用|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Whitelist|Summary|Conclusion|Coverage|External Candidates|Capability Calls|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
+    const metric = line.match(/^(白名单|总结|结论|巡检范围|视野外候选|能力调用|本轮证据检查|方向|交易对|现价|价格|成本|浮盈|浮亏|PnL|区间位|结构|周期|入场|触发条件|失效条件|止损|止盈|风险|仓位|杠杆|置信度|状态|账户|持仓|事件|建议|动作|下一步|依据|Whitelist|Summary|Conclusion|Coverage|External Candidates|Capability Calls|Evidence checks this run|Direction|Pair|Price|Entry|Trigger|Invalidation|Stop(?: Loss)?|Take Profit|Risk|Position|Leverage|Confidence|Status|Account|Event|Action|Next Step|Evidence)[:：]\s*(.+)$/i);
     if (metric) {
       flushParagraph();
       flushBullets();
@@ -608,6 +675,12 @@ function protectionLabel(protection, status) {
 
 function ExecutionSnapshot({ execution }) {
   if (!execution) return null;
+  const confirmedNetPnl = hasFiniteNumber(execution.netRealizedPnl)
+    ? Number(execution.netRealizedPnl)
+    : /net/i.test(String(execution.financialBasis || "")) && hasFiniteNumber(execution.realizedPnl) ? Number(execution.realizedPnl) : null;
+  const displayGrossPnl = hasFiniteNumber(execution.grossRealizedPnl)
+    ? Number(execution.grossRealizedPnl)
+    : confirmedNetPnl == null && hasFiniteNumber(execution.realizedPnl) ? Number(execution.realizedPnl) : null;
   const stages = [
     ["plan", t("计划", "Plan")],
     ["entry", t("入场", "Entry")],
@@ -628,7 +701,7 @@ function ExecutionSnapshot({ execution }) {
         <span><small>{t("名义价值", "Notional")}</small><b className="mono">{execution.notionalUsdt != null ? `${displayMoney(execution.notionalUsdt)} USDT` : "—"}</b></span>
         <span><small>{execution.filledPrice != null ? t("实际成交均价", "Average fill") : t("计划入场参考", "Planned entry")}</small><b className="mono">{displayPrice(execution.filledPrice ?? execution.plannedEntryPrice)}</b></span>
         <span><small>{t("保护状态", "Protection")}</small><b>{protectionLabel(execution.protection, execution.status)}</b></span>
-        {execution.realizedPnl != null && <span><small>{t("已实现盈亏", "Realized PnL")}</small><b className={`mono ${Number(execution.realizedPnl) >= 0 ? "positive" : "negative"}`}>{displayMoney(execution.realizedPnl)} USDT</b></span>}
+        {confirmedNetPnl != null ? <span><small>{t("净已实现盈亏", "Net realized PnL")}</small><b className={`mono ${confirmedNetPnl >= 0 ? "positive" : "negative"}`}>{displayMoney(confirmedNetPnl)} USDT</b></span> : displayGrossPnl != null ? <span><small>{t("价格毛盈亏", "Gross price PnL")}</small><b className="mono">{displayMoney(displayGrossPnl)} USDT · {t("成本待对账", "costs pending")}</b></span> : null}
       </div>
     </section>
   );
@@ -663,6 +736,8 @@ export function DecisionBrief({ presentation, content = "", currentState = null,
   const cleanedContent = cleanPresentationText(content);
   const headline = String(presentation.headline || "").trim();
   const contentAlreadyHasHeadline = headline && cleanedContent.includes(headline);
+  const execution = currentExecution === undefined ? presentation.execution : currentExecution;
+  const position = currentPosition === undefined ? presentation.position : currentPosition;
 
   return (
     <div className={`decisionBrief decisionBrief--narrative ${tone}`}>
@@ -695,6 +770,8 @@ export function DecisionBrief({ presentation, content = "", currentState = null,
       )}
       {!contentAlreadyHasHeadline && headline && <p className="decisionFallbackHeadline">{headline}</p>}
       <div className="decisionNarrative"><RichMessage text={cleanedContent} onSuggest={onSuggest} /></div>
+      {execution && <ExecutionSnapshot execution={execution} />}
+      {position && <PositionSnapshot position={position} live={currentPosition !== undefined} />}
     </div>
   );
 }
@@ -716,7 +793,43 @@ function executionLabel(status) {
   return map[status] || status;
 }
 
-function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
+export function buildCurrentExecutionSnapshot(data = {}, linked = {}) {
+  if (!linked.executionOrderId && !linked.planId) return undefined;
+  const order = (data.executionOrders || []).find((item) => item.id === linked.executionOrderId || item.planId === linked.planId);
+  if (!order) return undefined;
+  const fills = (data.fills || []).filter((item) => item.executionOrderId === order.id || (!item.executionOrderId && item.tradePlanId === linked.planId));
+  const entries = fills.filter((item) => item.kind === "entry" && hasFiniteNumber(item.price) && hasFiniteNumber(item.quantity));
+  const entryQty = entries.reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
+  const entryNotional = entries.reduce((sum, item) => sum + Math.abs(Number(item.price) * Number(item.quantity)), 0);
+  const hasAuthoritativeLifecycles = Array.isArray(data.closedTradeLifecycles);
+  const suppliedLifecycle = (hasAuthoritativeLifecycles ? data.closedTradeLifecycles : []).find((item) => item.tradeLifecycleKey === order.id
+    || item.key === order.id
+    || item.executionOrderId === order.id
+    || (linked.planId && (item.tradePlanId === linked.planId || item.planId === linked.planId)));
+  const lifecycles = suppliedLifecycle ? [suppliedLifecycle] : hasAuthoritativeLifecycles ? [] : groupClosedTradeLifecyclesForView(fills);
+  const grossRealizedPnl = lifecycles.length && lifecycles.every((lifecycle) => hasFiniteNumber(lifecycle.realizedPnl))
+    ? lifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.realizedPnl), 0)
+    : hasFiniteNumber(order.realizedPnl) ? Number(order.realizedPnl) : null;
+  const netRealizedPnl = lifecycles.length && lifecycles.every((lifecycle) => hasFiniteNumber(lifecycle.netRealizedPnl))
+    ? lifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.netRealizedPnl), 0)
+    : null;
+  return {
+    status: order.status || null,
+    quantity: order.quantity ?? null,
+    notionalUsdt: order.notionalUsdt ?? null,
+    filledPrice: entryQty > 0 ? entryNotional / entryQty : order.filledPrice ?? null,
+    plannedEntryPrice: order.entryPrice ?? null,
+    grossRealizedPnl,
+    netRealizedPnl,
+    // 旧卡片读取 realizedPnl；只有完整生命周期净值可写入，禁止用执行单毛值冒充。
+    realizedPnl: netRealizedPnl,
+    financialBasis: netRealizedPnl == null && grossRealizedPnl != null ? "gross_only_costs_unreconciled" : lifecycles.length ? "completed_trade_lifecycle/net_recorded_costs" : null,
+    protection: order.protection || null,
+    updatedAt: order.updatedAt || order.completedAt || order.createdAt || null
+  };
+}
+
+export function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
   if (!plan) return null;
   const risk = plan.lastRiskCheck || {};
   const checks = risk.checks || [];
@@ -743,6 +856,7 @@ function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
         ? t("价格已进入目标区，等待K线确认（尚未提交订单）", "Price reached the target zone; waiting for candle confirmation (no order submitted yet)")
         : t("系统正在等待价格条件（尚未向 OKX 下单）", "Waiting for the price condition (no OKX order placed)");
   const currentProtection = data?.system?.tradeProtections;
+  const executionSnapshot = executionOrder ? buildCurrentExecutionSnapshot(data, { executionOrderId: executionOrder.id, planId: plan.id }) : null;
   return (
     <div className={`chatPlanCard ${risk.passed ? "" : "rejected"}`}>
       <header>
@@ -837,7 +951,7 @@ function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
             {Number.isFinite(Number(executionOrder.projectedMargin?.incrementalMargin)) ? ` · ${t("预计保证金", "Est. margin")} ${displayMoney(executionOrder.projectedMargin.incrementalMargin)} USDT` : ""}
             {Number.isFinite(Number(executionOrder.projectedMargin?.projectedUtilizationPct)) ? ` · ${t("成交后使用率", "Post-trade use")} ${Number(executionOrder.projectedMargin.projectedUtilizationPct).toFixed(1)}%` : ""}
             {executionOrder.filledPrice ? ` · ${t("成交", "Filled")} ${displayMoney(executionOrder.filledPrice)}` : ""}
-            {Number.isFinite(Number(executionOrder.realizedPnl)) ? ` · ${t("盈亏", "PnL")} ${displayMoney(executionOrder.realizedPnl)}` : ""}
+            {executionSnapshot?.netRealizedPnl != null ? ` · ${t("净盈亏", "Net PnL")} ${displayMoney(executionSnapshot.netRealizedPnl)}` : executionSnapshot?.grossRealizedPnl != null ? ` · ${t("价格毛盈亏", "Gross price PnL")} ${displayMoney(executionSnapshot.grossRealizedPnl)} · ${t("成本待对账", "costs pending")}` : ""}
             {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · ${t("原因：", "Reason: ")}${executionOrder.setupReview.reason}` : ""}
           </small>
           {["entry_pending", "entry_filled", "protecting"].includes(executionOrder.status) && (
@@ -889,7 +1003,7 @@ export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
   };
   const coverageBits = coverage
     ? [
-      `${t("能力", "Capabilities")} ${coverage.covered || 0}/${coverage.required || 0}`,
+      `${t("本轮证据检查", "Evidence checks")} ${coverage.covered || 0}/${coverage.required || 0}`,
       `${t("白名单", "Whitelist")} ${coverage.whitelist?.analyzed || 0}/${coverage.whitelist?.expected || 0}`,
       `${t("观察哨", "Watches")} ${coverage.watches?.analyzed || 0}/${coverage.watches?.expected || 0}`,
       coverage.marketScan?.completed ? `${t("全市场", "Market")} ${coverage.marketScan.universe || 0}` : t("全市场未完成", "Market scan incomplete"),
@@ -907,6 +1021,7 @@ export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
       <button onClick={() => setOpen((current) => !current)}>
         <Wrench size={12} /> <span>{summary}</span> <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
+      {open && coverage && <p className="toolTraceHint">{t("检查项由本次问题、币种与交易场景动态选择，不是固定调用一组能力。", "Checks are selected dynamically for this question, symbols, and trading scenario; the set is not fixed.")}</p>}
       {open && trace.map((item, index) => (
         <div key={index}><b>{item.name}</b><span>{item.summary}</span><small>{item.origin === "system_preflight" ? t("预检", "preflight") : t("模型", "model")} · {item.latencyMs}ms</small></div>
       ))}
@@ -1444,24 +1559,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   }
   function currentExecutionForMessage(message) {
     const linked = message.presentation?.linked;
-    if (!linked?.executionOrderId && !linked?.planId) return undefined;
-    const order = (data.executionOrders || []).find((item) => item.id === linked.executionOrderId || item.planId === linked.planId);
-    if (!order) return undefined;
-    const fills = (data.fills || []).filter((item) => item.executionOrderId === order.id || (!item.executionOrderId && item.tradePlanId === linked.planId));
-    const entries = fills.filter((item) => item.kind === "entry" && Number.isFinite(Number(item.price)) && Number.isFinite(Number(item.quantity)));
-    const entryQty = entries.reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
-    const entryNotional = entries.reduce((sum, item) => sum + Math.abs(Number(item.price) * Number(item.quantity)), 0);
-    const closes = fills.filter((item) => item.kind === "close" && Number.isFinite(Number(item.realizedPnl)));
-    return {
-      status: order.status || null,
-      quantity: order.quantity ?? null,
-      notionalUsdt: order.notionalUsdt ?? null,
-      filledPrice: entryQty > 0 ? entryNotional / entryQty : order.filledPrice ?? null,
-      plannedEntryPrice: order.entryPrice ?? null,
-      realizedPnl: closes.length ? closes.reduce((sum, item) => sum + Number(item.realizedPnl), 0) : order.realizedPnl ?? null,
-      protection: order.protection || null,
-      updatedAt: order.updatedAt || order.completedAt || order.createdAt || null
-    };
+    return buildCurrentExecutionSnapshot(data, linked || {});
   }
   function currentPositionForMessage(message) {
     const symbol = message.presentation?.symbol;

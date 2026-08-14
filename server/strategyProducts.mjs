@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 
 // AI 交易策略产品与指标回测模型是两种不同对象：
 // - 策略产品规定「何时交易、允许 AI 在哪些参数边界内实例化、如何失效和退出」；
@@ -400,35 +401,37 @@ export function strategyProductExecutionGate(db, plan) {
   };
 }
 
-function attributedVersion(db, fill) {
-  if (fill?.strategyRef?.versionId) return fill.strategyRef.versionId;
-  if (fill?.strategyVersionId) return fill.strategyVersionId;
-  const plan = (db.tradePlans || []).find((row) => row.id === (fill?.tradePlanId || fill?.planId));
-  return plan?.strategyRef?.versionId || plan?.strategyVersionId || null;
+function attributedTradeContext(db, fill) {
+  const executionOrder = (db.executionOrders || []).find((row) => row.id === fill?.executionOrderId);
+  const plan = (db.tradePlans || []).find((row) => row.id === (fill?.tradePlanId || fill?.planId || executionOrder?.planId));
+  const versionId = fill?.strategyRef?.versionId || fill?.strategyVersionId
+    || executionOrder?.strategyRef?.versionId || executionOrder?.strategyVersionId
+    || plan?.strategyRef?.versionId || plan?.strategyVersionId || null;
+  return { executionOrder, plan, versionId };
 }
 
 export function strategyProductMetrics(db, versionKey) {
   const plans = (db.tradePlans || []).filter((row) => (row.strategyRef?.versionId || row.strategyVersionId) === versionKey);
   const orders = (db.executionOrders || []).filter((row) => (row.strategyRef?.versionId || row.strategyVersionId) === versionKey);
-  const groups = new Map();
-  for (const fill of db.fills || []) {
-    if (fill?.kind !== "close" || attributedVersion(db, fill) !== versionKey || !Number.isFinite(Number(fill.realizedPnl))) continue;
-    const key = String(fill.executionOrderId || fill.tradePlanId || fill.planId || fill.positionId || fill.id);
-    const row = groups.get(key) || { pnl: 0, fees: 0, funding: 0, completed: false, riskUsdt: null, accountEquityUsdt: null, at: null };
-    row.pnl += Number(fill.realizedPnl);
-    row.fees += Math.abs(Number(fill.feeUsdt || 0));
-    row.funding += Number(fill.fundingFeeUsdt || 0);
-    if (fill.partial !== true) row.completed = true;
-    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId));
+  const trades = [];
+  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    const fill = lifecycle.representative;
+    const { plan, versionId: attributed } = attributedTradeContext(db, fill);
+    if (attributed !== versionKey) continue;
     const riskUsdt = Number(fill.initialRiskUsdt ?? plan?.initialRiskUsdt ?? plan?.sizing?.riskAmountUsdt);
-    if (Number.isFinite(riskUsdt) && riskUsdt > 0) row.riskUsdt = riskUsdt;
     const accountEquityUsdt = Number(fill.accountEquityAtEntryUsdt ?? plan?.accountEquityAtEntryUsdt);
-    if (Number.isFinite(accountEquityUsdt) && accountEquityUsdt > 0) row.accountEquityUsdt = accountEquityUsdt;
-    if (!row.at || new Date(fill.createdAt || 0) > new Date(row.at)) row.at = fill.createdAt || null;
-    groups.set(key, row);
+    trades.push({
+      gross: Number(lifecycle.realizedPnl || 0),
+      entryFees: Number(lifecycle.entryFeeUsdt || 0),
+      closeFees: Number(lifecycle.feeUsdt || 0),
+      funding: Number(lifecycle.fundingFeeUsdt || 0),
+      net: Number(lifecycle.netRealizedPnl || 0),
+      riskUsdt: Number.isFinite(riskUsdt) && riskUsdt > 0 ? riskUsdt : null,
+      accountEquityUsdt: Number.isFinite(accountEquityUsdt) && accountEquityUsdt > 0 ? accountEquityUsdt : null,
+      at: lifecycle.lastClosedAt || null
+    });
   }
-  const trades = [...groups.values()].filter((row) => row.completed).sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
-  const netRows = trades.map((row) => ({ ...row, net: row.pnl - row.fees + row.funding }));
+  const netRows = trades.sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
   const wins = netRows.filter((row) => row.net > 0);
   const grossWin = wins.reduce((sum, row) => sum + row.net, 0);
   const grossLoss = Math.abs(netRows.filter((row) => row.net < 0).reduce((sum, row) => sum + row.net, 0));
@@ -442,6 +445,9 @@ export function strategyProductMetrics(db, versionKey) {
     maxDrawdownUsdt = Math.max(maxDrawdownUsdt, peak - equity);
   }
   const netPnlUsdt = netRows.reduce((sum, row) => sum + row.net, 0);
+  const grossPnlUsdt = netRows.reduce((sum, row) => sum + row.gross, 0);
+  const recordedEntryFeesUsdt = netRows.reduce((sum, row) => sum + row.entryFees, 0);
+  const recordedCloseFeesUsdt = netRows.reduce((sum, row) => sum + row.closeFees, 0);
   const equityBasisUsdt = netRows.find((row) => row.accountEquityUsdt)?.accountEquityUsdt || null;
   return {
     plans: plans.length,
@@ -451,6 +457,9 @@ export function strategyProductMetrics(db, versionKey) {
     winRatePct: netRows.length ? Number((wins.length / netRows.length * 100).toFixed(1)) : null,
     profitFactor: grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : null,
     profitFactorInfinite: grossLoss === 0 && grossWin > 0,
+    grossPnlUsdt: Number(grossPnlUsdt.toFixed(4)),
+    recordedEntryFeesUsdt: Number(recordedEntryFeesUsdt.toFixed(4)),
+    recordedCloseFeesUsdt: Number(recordedCloseFeesUsdt.toFixed(4)),
     netPnlUsdt: Number(netPnlUsdt.toFixed(4)),
     expectancyR: rRows.length === netRows.length && rRows.length ? Number((rRows.reduce((a, b) => a + b, 0) / rRows.length).toFixed(3)) : null,
     rSampleCount: rRows.length,

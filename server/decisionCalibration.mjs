@@ -40,7 +40,7 @@ export function buildDecisionCalibrationReport(db, options = {}) {
       regime: context.deterministicSetupSnapshot?.marketRegime?.label || fill.regime || "unknown",
       setupType: context.setupType,
       direction: plan.direction || fill.direction || "unknown",
-      pnl: Number(lifecycle.realizedPnl),
+      pnl: Number(lifecycle.netRealizedPnl),
       closedAt: lifecycle.lastClosedAt,
       supportingFactors: context.supportingFactors || [],
       conflictingFactors: context.conflictingFactors || []

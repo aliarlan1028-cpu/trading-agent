@@ -64,6 +64,8 @@ test("market scan top off-whitelist candidates are deterministically deep-review
   assert.equal(coverage.externalCandidates.every((item) => item.analyzed), true);
   assert.match(capabilityCoverageText(coverage), /全市场 431 个/);
   assert.match(capabilityCoverageText(coverage), /DOGE\/USDT 偏空/);
+  assert.match(capabilityCoverageText(coverage), /本轮证据检查/);
+  assert.match(capabilityCoverageText(coverage), /并非固定能力数/);
 });
 
 test("capability preflight audit exposes omissions instead of silently accepting them", () => {
