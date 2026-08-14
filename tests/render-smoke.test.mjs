@@ -53,7 +53,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, groupMobileClosedTrades } from "./src/mobile.jsx";
+      export { MobileApp, MobileCapabilities, MobileBacktestResearch, MobileStrategy, groupMobileClosedTrades } from "./src/mobile.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
@@ -115,7 +115,11 @@ test("AI conclusion summary uses compact text rows without large bold cards", ()
 
 test("自主巡检能力覆盖以一行紧凑摘要展示，原始工具详情保持折叠", () => {
   const html = renderToString(React.createElement(C.ToolTrace, {
-    trace: [{ name: "scan_market_opportunities", summary: "全市场扫 431 个", latencyMs: 120 }],
+    trace: [
+      { name: "scan_market_opportunities", summary: "全市场扫 431 个", latencyMs: 120, origin: "model" },
+      { name: "analyze_market_structure", summary: "预检 BTC", latencyMs: 80, origin: "system_preflight" }
+    ],
+    callSummary: { totalCalls: 2, modelCalls: 1, preflightCalls: 1 },
     coverage: {
       covered: 16, required: 16,
       whitelist: { analyzed: 4, expected: 4 },
@@ -125,6 +129,8 @@ test("自主巡检能力覆盖以一行紧凑摘要展示，原始工具详情�
     }
   }));
   assert.match(html, /能力 16\/16/);
+  assert.match(html, /模型主动 1/);
+  assert.match(html, /系统预检 1/);
   assert.match(html, /白名单 4\/4/);
   assert.match(html, /全市场 431/);
   assert.match(html, /视野外复核 2\/2/);
@@ -365,6 +371,58 @@ test("mobile app and assistant render", () => {
   assert.ok(mobile.length > 100, "MobileApp 渲染输出过短");
   const asst = render(React.createElement(C.AssistantWidget, { data }));
   assert.ok(asst.length > 20, "AssistantWidget 渲染输出过短");
+});
+
+test("mobile capability library and backtest research render as native lists", () => {
+  const ui = { setActive: () => {}, notify: () => {}, openPanel: () => {} };
+  const capabilityData = {
+    skills: [{ id: "tool-skill", name: "结构扫描", kind: "tool", status: "enabled" }, { id: "strategy", name: "突破策略", kind: "strategy", status: "active" }],
+    toolCallStats: { 结构扫描: { calls: 0, success: 0, blocked: 0, error: 0, sourceCalls: {} } },
+    tools: [{ id: "tool_market", name: "行情连接", type: "data", status: "configured" }],
+    mcpServers: [{ id: "mcp_news", serverName: "新闻 MCP", transport: "stdio", status: "registered" }, { id: "mcp_news_duplicate", serverName: "新闻 MCP", transport: "stdio", status: "registered" }]
+  };
+  const capabilityHtml = render(React.createElement(C.MobileCapabilities, { data: capabilityData, action, ui }));
+  assert.match(capabilityHtml, /AI 可调用的能力/);
+  assert.match(capabilityHtml, /结构扫描/);
+  assert.match(capabilityHtml, /未有运行证据/);
+  assert.doesNotMatch(capabilityHtml, /突破策略/);
+  assert.equal((capabilityHtml.match(/新闻 MCP/g) || []).length, 1, "duplicate MCP registrations should collapse to one capability");
+  assert.doesNotMatch(capabilityHtml, /cp2CapabilitiesLayout|cp2SideFilter/);
+
+  const researchHtml = render(React.createElement(C.MobileBacktestResearch, {
+    data: { backtestResearch: { summary: { totalHistoricalEvidence: 1, optimizerOos: 1, studioOos: 0 }, historical: [{ id: "bt1", name: "BTC 唐奇安", evidenceType: "optimizer_oos", status: "oos_ok", symbol: "BTC/USDT", timeframe: "1h", trades: 18, expectancyR: 0.2, profitFactor: 1.35, maxDrawdownPct: 4.2, equityCurve: [100, 101, 103] }], forward: [] } },
+    action
+  }));
+  assert.match(researchHtml, /研究记录/);
+  assert.match(researchHtml, /BTC 唐奇安/);
+  assert.match(researchHtml, /纯前向模拟/);
+  assert.doesNotMatch(researchHtml, /cp2StrategyLayout|ConceptTable/);
+});
+
+test("mobile strategy studio identifies AI-chat drafts as the same authoring pipeline", () => {
+  const html = render(React.createElement(C.MobileStrategy, {
+    data: {
+      strategyStudio: {
+        drafts: [{
+          id: "studio-agent-draft",
+          status: "tests_passed",
+          authoring: { channel: "agent_chat", toolName: "create_skill_from_idea" },
+          blueprint: { name: "BTC 回踩策略", symbols: ["BTC/USDT"], timeframe: "1h", direction: "long", exitPolicy: { stopLossPct: 2, takeProfitR: 2.5 }, params: {} },
+          generatedTests: { status: "passed", passed: 1, total: 1, tests: [] }
+        }],
+        backtests: [],
+        marketplace: { listings: [], summary: {} }
+      },
+      strategyCatalog: { products: [] },
+      knowledge: { tradingSkills: [] },
+      skills: []
+    },
+    action,
+    initialTab: "studio"
+  }));
+  assert.match(html, /自然语言创建策略/);
+  assert.match(html, /AI 对话创建/);
+  assert.match(html, /草稿不会下单/);
 });
 
 test("mobile closed-trade ledger excludes entries and incomplete partial closes", () => {

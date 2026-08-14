@@ -72,6 +72,42 @@ export function buildExecutionQuality(db) {
   return { fills: fills.length, avgSlippageBps: slips.length ? pct(slips.reduce((a, b) => a + b, 0) / slips.length) : null, p95SlippageBps: quantile(slips, .95), partialFillRatePct: orders.length ? pct(partial / orders.length * 100) : null, calibrationBySymbol };
 }
 
+export function buildStrategyDrift(db, { strategy } = {}) {
+  let fills = (db.fills || []).filter((fill) => fill.kind === "close" && Number.isFinite(Number(fill.realizedPnl)));
+  if (strategy) fills = fills.filter((fill) => fill.strategy === strategy);
+  const values = fills.map((fill) => Number(fill.realizedPnl));
+  const recent = values.slice(0, 10);
+  const baseline = values.slice(10, 40);
+  const mean = (rows) => rows.length ? rows.reduce((sum, value) => sum + value, 0) / rows.length : null;
+  const variance = (rows, average) => rows.length > 1 ? rows.reduce((sum, value) => sum + (value - average) ** 2, 0) / (rows.length - 1) : null;
+  const recentExpectancy = mean(recent);
+  const baselineExpectancy = mean(baseline);
+  let tStat = null;
+  let significant = false;
+  if (recent.length >= 5 && baseline.length >= 5 && recentExpectancy !== null && baselineExpectancy !== null) {
+    const recentVariance = variance(recent, recentExpectancy);
+    const baselineVariance = variance(baseline, baselineExpectancy);
+    const standardError = Math.sqrt((recentVariance / recent.length) + (baselineVariance / baseline.length));
+    tStat = standardError > 0 ? Number(((recentExpectancy - baselineExpectancy) / standardError).toFixed(2)) : null;
+    significant = tStat !== null && Math.abs(tStat) >= 2;
+  }
+  const performanceDrift = significant && recentExpectancy < baselineExpectancy;
+  return {
+    status: fills.length < 20 ? "insufficient_sample" : "ok",
+    diagnosis: {
+      strategy: strategy || null,
+      trades: fills.length,
+      recentExpectancy,
+      baselineExpectancy,
+      tStat,
+      significant,
+      performanceDrift,
+      note: !significant ? "近期与基线差异不显著,可能只是正常波动" : performanceDrift ? "近期显著弱于基线,存在表现漂移" : "近期显著强于基线",
+      executionQuality: buildExecutionQuality(db)
+    }
+  };
+}
+
 export function buildReplayBundles(db, limit = 20) {
   return (db.agentRuns || []).slice(0, limit).map((run) => {
     const plan = (db.tradePlans || []).find((p) => p.id === run.tradePlanId);

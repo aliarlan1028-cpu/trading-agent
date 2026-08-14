@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEval.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
-import { bindKnowledgeSkillsToPlan, createSkillFromIdea, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
+import { bindKnowledgeSkillsToPlan, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { fetchTickerQuiet, okxContractSpec, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
 import { deriveAutomationState } from "./ops.mjs";
@@ -33,10 +33,11 @@ import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSna
 import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, explicitSymbolsForEvidence, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
 import { enforceEvidenceFacts } from "./evidenceFactGuard.mjs";
 import { buildOpportunitySetupSnapshot } from "./opportunitySetup.mjs";
-import { recordToolExecution } from "./toolUsage.mjs";
+import { appendToolCallDisclosure, buildToolCallSummary, recordToolExecution } from "./toolUsage.mjs";
+import { classifyAgentChatIntent } from "./agentIntent.mjs";
 import { evaluatePortfolioIntentConflict, tradingRolesForPrompt, validateTradingRolePlan } from "./tradingRoles.mjs";
 import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
-import { bindPlanToEnabledBlueprint, enabledStrategyBlueprints } from "./strategyStudio.mjs";
+import { bindPlanToEnabledBlueprint, createStrategyDraftFromIdea, enabledStrategyBlueprints, runDraftGeneratedTests } from "./strategyStudio.mjs";
 import { auditRequiredCapabilityCoverage, buildCapabilityPlan, buildVisibleCapabilityCoverage, capabilityCoverageText, capabilityPlanForPrompt, marketScanDeepDiveCalls, recordCapabilityResult, requiredCapabilityCalls, validateProposalCapabilityCoverage } from "./capabilityRouter.mjs";
 import { advanceDecisionContext, createDecisionContext, decisionContextForPrompt, triggerFromPayload } from "./decisionCoordinator.mjs";
 import { assessAbnormalVolatility } from "./earlyOpportunityEngine.mjs";
@@ -509,7 +510,7 @@ const TOOL_DEFS = [
   },
   {
     name: "create_skill_from_idea",
-    description: "把主人在对话里口述的交易策略想法保存成知识技能草案。当主人说“帮我建一个策略/把这个想法存成技能”时调用。技能必须依次通过历史样本外验证、纯前向模拟和人工批准，之后才进入小额实盘试用；真实成绩达标方可转正。策略逻辑必须落到受支持模板，且有明确入场与止损；不要虚构主人没说的参数。",
+    description: "把主人在对话里口述的交易策略想法保存为策略工作室草稿。当主人说“帮我建一个策略/把这个想法存成策略”时调用。该兼容工具与策略工作室使用同一个草稿、自动测试、样本外回测和版本发布链路；创建草稿不会下单。策略逻辑必须落到受支持模板，且有明确入场与止损；不要虚构主人没说的参数。",
     schema: {
       type: "object",
       properties: {
@@ -1102,7 +1103,9 @@ function recordRunHistory(db, run, finalText) {
     ? `提出交易计划 ${run.tradePlanId}`
     : run.mandateId
       ? `生成授权草案 ${run.mandateId}`
-      : "仅分析/观察";
+      : run.strategyDraftId
+        ? `创建策略工作室草稿 ${run.strategyDraftId}`
+        : "仅分析/观察";
   const line = `- ${stamp} · 目标：${clip(run.goal, 80)} · 结果：${outcome} · 结论：${clip(finalText, 160)}`;
   const existing = String(db.agentStateFiles.HISTORY.content || "").replace(/^暂无真实运行历史。?$/, "").trim();
   const lines = [line, ...(existing ? existing.split("\n") : [])].slice(0, 30);
@@ -1291,21 +1294,25 @@ export async function executeTool(db, run, name, args = {}) {
   }
 
   if (name === "create_skill_from_idea") {
-    const result = createSkillFromIdea(db, args, run?.role === "AI 交易员" ? "用户(经 AI)" : "用户");
-    if (!result.ok) return { error: result.error, status: result.status || "invalid" };
-    const s = result.skill;
+    const actor = run?.role === "AI 交易员" ? "用户(经 AI)" : "用户";
+    const draft = createStrategyDraftFromIdea(db, {
+      ...args,
+      symbols: args.symbol ? [args.symbol] : (activeMandate(db)?.allowedSymbols || []).slice(0, 8)
+    }, actor);
+    const { suite } = runDraftGeneratedTests(db, draft.id, actor);
+    run.strategyDraftId = draft.id;
     return {
-      status: result.status,
-      skillId: s.id,
-      name: s.name,
-      template: s.spec.templateLabel,
-      direction: s.spec.direction,
-      timeframe: s.spec.timeframe,
-      stop: s.spec.stopDescription,
-      takeProfit: s.spec.takeProfitDescription,
-      note: result.status === "live_probation"
-        ? "已保存为你的技能并上岗小额试用(未验证);它会参与决策并用真实成交成绩复盘,达标自动转正、不达标自动退役。"
-        : "已保存为你的技能(待验证)。"
+      status: draft.status,
+      strategyDraftId: draft.id,
+      name: draft.blueprint.name,
+      template: draft.blueprint.templateName,
+      direction: draft.blueprint.direction,
+      timeframe: draft.blueprint.timeframe,
+      symbols: draft.blueprint.symbols,
+      stop: `${draft.blueprint.exitPolicy.stopLossPct}%`,
+      takeProfit: `${draft.blueprint.exitPolicy.takeProfitR}R`,
+      generatedTests: { passed: suite.passed, total: suite.total, status: suite.status },
+      note: `已创建同一策略工作室草稿并完成自动测试 ${suite.passed}/${suite.total}；草稿不会下单，可在策略工作室继续回测和发布。`
     };
   }
 
@@ -2306,10 +2313,13 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   let evidenceBundle = null;
 
   try {
-    const marketAnalysisRequired = session.id === "chat_autocycle"
-      || /(行情|市场|价格|现价|K线|资金费率|OI|订单簿|交易机会|下单|开仓|做多|做空|合约|USDT|\b[A-Z0-9]{2,12}(?:USDT|\/USDT|-USDT)\b)/i.test(userText);
-    const evidenceRequired = session.id === "chat_autocycle"
-      || /(行情|市场|价格|现价|K线|资金费率|OI|订单簿|交易|下单|开仓|做多|做空|持仓|仓位|账户|余额|净值|保证金|盈亏|风控|合约|USDT|\b[A-Z0-9]{2,12}(?:USDT|\/USDT|-USDT)\b)/i.test(userText);
+    const intent = classifyAgentChatIntent(userText, { autonomous: session.id === "chat_autocycle" });
+    const { marketAnalysisRequired, evidenceRequired } = intent;
+    run.intent = {
+      marketAnalysisRequired,
+      evidenceRequired,
+      negationAdjusted: intent.actionableText !== intent.originalText
+    };
     const explicitSymbols = explicitSymbolsForEvidence(userText, 8);
     const mandate = activeMandate(db);
     const requestedSymbols = [...new Set([
@@ -2364,7 +2374,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     let deepCandidates = [];
     if (requiredCalls.length) {
       const executableCalls = requiredCalls.filter((call) => call.available !== false).map(({ available: _available, ...call }) => call);
-      const preflightResults = await runToolBatch(db, run, executableCalls, toolTrace);
+      const preflightResults = await runToolBatch(db, run, executableCalls, toolTrace, "system_preflight");
       const scanIndex = executableCalls.findIndex((call) => call.name === "scan_market_opportunities");
       if (scanIndex >= 0) scanResult = preflightResults[scanIndex] || null;
 
@@ -2377,7 +2387,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
         ));
         requiredCalls.push(...followupCalls);
         const executableFollowups = followupCalls.filter((call) => call.available !== false).map(({ available: _available, ...call }) => call);
-        if (executableFollowups.length) await runToolBatch(db, run, executableFollowups, toolTrace);
+        if (executableFollowups.length) await runToolBatch(db, run, executableFollowups, toolTrace, "system_preflight");
       }
       const preflightCoverage = auditRequiredCapabilityCoverage(requiredCalls, toolTrace);
       run.capabilityPreflight = preflightCoverage;
@@ -2490,6 +2500,8 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     const linkedPlan = (db.tradePlans || []).find((item) => item.id === run.tradePlanId);
     if (linkedPlan?.reviewLearning) run.reviewLearning.applied = linkedPlan.reviewLearning.applied || [];
   }
+  run.toolCallSummary = buildToolCallSummary(toolTrace, run.capabilityPreflight || null);
+  finalText = appendToolCallDisclosure(finalText, run.toolCallSummary, db.system?.uiLang === "en" ? "en" : "zh");
   // 主对话 agent 的运行上报 LangSmith（配 key 则推云端，否则本地记录）；失败不影响对话。
   try {
     run.langSmith = await recordLangSmithRun(db, {
@@ -2517,10 +2529,12 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     agentRunId: run.id,
     planId: run.tradePlanId || null,
     mandateId: run.mandateId || null,
+    strategyDraftId: run.strategyDraftId || null,
     analysisBundleId: run.analysisBundleId || null,
     evidenceBundleId: run.evidenceBundleId || null,
     presentation,
     capabilityCoverage: run.capabilityCoverage || null,
+    toolCallSummary: run.toolCallSummary,
     toolTrace,
     error: errorText || undefined,
     createdAt: nowIso()
@@ -2601,12 +2615,12 @@ const PARALLEL_SAFE_TOOLS = new Set([
   "scan_market_opportunities", "funding_extremes_scanner", "relative_strength", "support_resistance_levels"
 ]);
 
-async function runToolBatch(db, run, calls, toolTrace) {
+async function runToolBatch(db, run, calls, toolTrace, origin = "model") {
   const output = new Array(calls.length);
   for (let index = 0; index < calls.length;) {
     const call = calls[index];
     if (!PARALLEL_SAFE_TOOLS.has(call.name)) {
-      output[index] = await runToolTracked(db, run, call.name, call.args, toolTrace);
+      output[index] = await runToolTracked(db, run, call.name, call.args, toolTrace, run.steps, origin);
       index += 1;
       continue;
     }
@@ -2615,7 +2629,7 @@ async function runToolBatch(db, run, calls, toolTrace) {
     const localTraces = calls.slice(index, end).map(() => []);
     const localSteps = calls.slice(index, end).map(() => []);
     const values = await Promise.all(calls.slice(index, end).map((item, offset) =>
-      runToolTracked(db, run, item.name, item.args, localTraces[offset], localSteps[offset])
+      runToolTracked(db, run, item.name, item.args, localTraces[offset], localSteps[offset], origin)
     ));
     for (let offset = 0; offset < values.length; offset += 1) {
       output[index + offset] = values[offset];
@@ -2657,7 +2671,7 @@ function buildSafetyContext(db, name, args, evidenceBundle = null) {
   };
 }
 
-async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.steps) {
+async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.steps, origin = "model") {
   const startedAt = Date.now();
   const startedAtIso = nowIso();
   let result;
@@ -2711,7 +2725,8 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
     name,
     args: sanitizeArgs(args),
     summary: summarizeToolResult(name, result),
-    latencyMs: Date.now() - startedAt
+    latencyMs: Date.now() - startedAt,
+    origin
   };
   recordToolExecution(db, {
     runId: run?.id || null,
@@ -2723,7 +2738,7 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
     latencyMs: trace.latencyMs,
     startedAt: startedAtIso,
     finishedAt: nowIso(),
-    source: "agent_tool_call"
+    source: origin === "system_preflight" ? "system_preflight" : origin === "local_fallback" ? "local_fallback" : "model_tool_call"
   });
   toolTrace.push(trace);
   stepSink.push({ id: id("step"), phase: name, title: `工具 ${name}`, summary: trace.summary, createdAt: nowIso() });
@@ -2768,7 +2783,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "query_review_lessons") return result.count
     ? `检索到 ${result.count} 条同类真实复盘：${result.lessons.map((item) => `${item.id} ${item.title}`).join("、")}`
     : "没有匹配的真实交易复盘";
-  if (name === "create_skill_from_idea") return `技能「${result.name}」已保存（${result.status === "live_probation" ? "上岗试用" : result.status}）：${result.direction}·${result.timeframe}·${result.template || "-"}`;
+  if (name === "create_skill_from_idea") return `策略工作室草稿「${result.name}」已创建并测试 ${result.generatedTests?.passed || 0}/${result.generatedTests?.total || 0}：${result.direction}·${result.timeframe}·${result.template || "-"}`;
   if (name === "create_mandate_draft") return `授权草案 ${result.mandateId} 待确认`;
   if (name === "remember") return result.note || `已写入记忆（${result.scope}）`;
   if (name === "query_knowledge") return String(result.summary || "").slice(0, 120);
@@ -2832,7 +2847,7 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
   ];
   if (symbolMatch) {
     const symbol = `${symbolMatch[1].toUpperCase()}/USDT`;
-    const market = await runToolTracked(db, run, "sync_market", { symbol }, toolTrace);
+    const market = await runToolTracked(db, run, "sync_market", { symbol }, toolTrace, run.steps, "local_fallback");
     if (!market.error && market.status === "fresh") {
       lines.push("### 市场快照", `交易对：${symbol}`, `现价：${market.price} USDT`, `- 24h 涨跌 ${market.change24hPct ?? "-"}%`, `- 近 48 根 K 线区间 ${market.recentLow} ~ ${market.recentHigh}`);
       // 确定性决策兜底：即使没有 LLM，也用真实多源信号给一个透明、可解释、非编造的方向读数。
@@ -2866,7 +2881,7 @@ async function fallbackWithoutLlm(db, run, userText, toolTrace) {
       lines.push(`${symbol} 的 OKX 关键行情证据不完整，本轮不做方向判断：${(market.errors || [market.error]).filter(Boolean).join("；") || "ticker 或闭合 K 线不可用"}。`);
     }
   }
-  const account = await runToolTracked(db, run, "get_account", {}, toolTrace);
+  const account = await runToolTracked(db, run, "get_account", {}, toolTrace, run.steps, "local_fallback");
   if (!account.exchangeAccounts?.some((item) => item.readEnabled)) {
     lines.push("", "### 数据边界", "⚠ 交易所 API 未配置：当前读不到你的账户与持仓，只能使用公开行情。");
   }

@@ -4618,6 +4618,27 @@ button.danger:disabled,
   font-size: 11.5px;
 }
 
+.chatStrategyDraftCard {
+  border: 1px solid #ead7bd;
+  border-left: 3px solid #c96824;
+  border-radius: 12px;
+  background: #fffaf3;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chatStrategyDraftCard header { display: flex; align-items: center; gap: 8px; }
+.chatStrategyDraftCard header > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.chatStrategyDraftCard header small,.chatStrategyDraftCard footer small { color: #8a8171; font-size: 10.5px; }
+.chatStrategyDraftFacts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.chatStrategyDraftFacts span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.chatStrategyDraftFacts small { color: #9b8b76; font-size: 10px; }
+.chatStrategyDraftFacts b { overflow-wrap: anywhere; color: #4e4234; font-size: 11.5px; }
+.chatStrategyDraftCard footer { display: flex; align-items: center; gap: 10px; }
+.chatStrategyDraftCard footer button { border: 1px solid #dfb98e; border-radius: 8px; background: #fff; color: #ad541b; min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 650; }
+.chatStrategyDraftCard footer small { flex: 1; line-height: 1.45; }
+
 /* 工具调用痕迹 */
 .toolTrace button {
   display: flex;
@@ -7881,7 +7902,7 @@ button.danger:disabled,
 .decisionAnalysis[open] > summary svg:last-child { transform: rotate(180deg); }
 .decisionAnalysisBody { padding: 3px 17px 16px; color: #4C453A; }
 .decisionAnalysisBody .richHeading:first-child { margin-top: 2px; }
-.decisionMessage > .chatPlanCard,.decisionMessage > .chatMandateCard { margin: 0; }
+.decisionMessage > .chatPlanCard,.decisionMessage > .chatMandateCard,.decisionMessage > .chatStrategyDraftCard { margin: 0; }
 .decisionMessage .toolTrace { padding: 1px 3px; }
 
 @media (max-width: 760px) {
@@ -7957,6 +7978,10 @@ button.danger:disabled,
   .toolTrace > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 7px; padding: 5px 0; font-size: 10px; }
   .toolTrace > div span { grid-column: 1 / -1; color: #8A8171; line-height: 1.45; }
   .toolTrace > div small { grid-column: 2; grid-row: 1; }
+  .chatStrategyDraftCard { padding: 10px 11px; border-radius: 10px; }
+  .chatStrategyDraftFacts { grid-template-columns: 1fr; gap: 6px; }
+  .chatStrategyDraftCard footer { align-items: stretch; flex-direction: column; }
+  .chatStrategyDraftCard footer button { justify-content: center; }
   .agMsgFootRow { margin-top: 7px; }
   .agMsgFootRow .agMsgMeta { font-size: 8.5px; }
   .agPosterBtn { padding: 2px 7px; border-radius: 6px; font-size: 10px; }
@@ -9391,6 +9416,20 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRiskAck,.mGoalNative { border-top: 1px solid #EDE7DB; border-bottom: 0; background: #FAF8F4; }.mRiskNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px; border-radius: 11px; background: #EDF5EF; color: #347558; }.mRiskNote svg { flex: none; }.mRiskNote p { font-size: 9.5px; line-height: 1.5; }
 .mRiskSaveBar { position: fixed; z-index: 7; left: 0; right: 0; bottom: calc(57px + env(safe-area-inset-bottom)); padding: 8px 14px; border-top: 1px solid rgba(220,211,198,.86); background: rgba(251,249,245,.94); backdrop-filter: blur(12px); }.mRiskSaveBar button { width: 100%; height: 43px; border: 0; border-radius: 11px; background: #26211B; color: #fff; font-size: 12px; font-weight: 750; }.mRiskSaveBar button:disabled { opacity: .55; }
 .mStrategyTabs{padding:0 0 10px}.mStrategyTabs button{min-width:0;padding:0 5px;font-size:12px}.mStrategyStack{display:grid;gap:10px}.mSectionTitle{display:block;font:700 13px "Space Grotesk";color:#1e1b16;margin-bottom:8px}.mStrategyHelp{font:400 11px/1.55 "Space Grotesk";color:#8a8172;margin:5px 0 10px}.mStrategyPrompt{width:100%;min-height:112px;resize:vertical;border:1px solid #e3dcce;border-radius:9px;background:#fbfaf7;color:#302b24;padding:10px;font:12px/1.55 "Space Grotesk";outline:0}.mStrategyPrompt:focus{border-color:#d99462;box-shadow:0 0 0 3px rgba(224,119,47,.08)}.mStrategyPrimary,.mStrategyDisabled,.mStrategyActions button{width:100%;min-height:38px;border:0;border-radius:8px;margin-top:9px;background:#1e1b16;color:#f5e9db;font:700 12px "Space Grotesk";display:flex;align-items:center;justify-content:center;gap:6px}.mStrategyPrimary:disabled,.mStrategyDisabled,.mStrategyActions button:disabled{background:#eee8de;color:#9b9285}.mStrategyDrafts{display:grid;gap:6px}.mStrategyDrafts>button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;border:1px solid #ede7db;border-radius:8px;background:#fff;padding:9px}.mStrategyDrafts>button.active{border-color:#dc9e70;background:#fff8f2}.mStrategyDrafts>button>span:first-child{min-width:0}.mStrategyDrafts b,.mStrategyDrafts small{display:block}.mStrategyDrafts b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mStrategyDrafts small{font-size:9px;color:#8a8172;margin-top:3px}.mStrategyFacts{display:grid;gap:0}.mStrategyFacts>span{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #ede7db;font-size:10.5px;color:#8a8172}.mStrategyFacts>span:last-child{border-bottom:0}.mStrategyFacts>span b{max-width:65%;color:#302b24;text-align:right;overflow-wrap:anywhere}.mStrategyTest{display:flex;gap:7px;padding:7px 0;border-bottom:1px solid #ede7db}.mStrategyTest:last-child{border-bottom:0}.mStrategyTest>svg{flex:none;color:#2f8a5a}.mStrategyTest b,.mStrategyTest small{display:block}.mStrategyTest b{font-size:10.5px}.mStrategyTest small{font-size:9px;line-height:1.4;color:#8a8172;margin-top:2px}.mStrategyActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.mStrategyMarketHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.mStrategyMarketHead>b{font-size:12px;line-height:1.35}.mStrategyDisabled{margin-top:9px}
+/* Grid items default to min-width:auto; long strategy names/JSON would otherwise
+   push the native screen wider than a 390px viewport and clip the status badge. */
+.mStrategyStack,
+.mStrategyStack > *,
+.mStrategyDrafts,
+.mStrategyDrafts > button,
+.mStrategyFacts,
+.mStrategyFacts > span,
+.mStrategyTest > span { min-width: 0; }
+.mStrategyStack { width: 100%; }
+.mStrategyStack > .mCard { width: 100%; overflow: hidden; }
+.mStrategyDrafts > button > span:first-child { flex: 1; overflow: hidden; }
+.mStrategyDrafts > button > .statusBadge { flex: none; }
+.mStrategyFacts > span > b { min-width: 0; }
 /* 能力库：App 原生的汇总、筛选列表与底部详情，不复用 Web 三栏表格。 */
 .mCapabilityIntro { display: flex; align-items: center; gap: 12px; padding: 2px 1px 3px; }
 .mCapabilityIntro > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
@@ -9431,6 +9470,11 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mCapabilityUsage { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 9px; }
 .mCapabilityUsage span { padding: 9px; display: grid; gap: 2px; border: 1px solid #E7E0D5; border-radius: 10px; background: #FFFEFB; color: #928879; font-size: 8.5px; text-align: center; }
 .mCapabilityUsage b { color: #403A32; font: 700 14px var(--font-mono); }
+.mCapabilitySources { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; margin-top: 9px; }
+.mCapabilitySources span { min-width: 0; padding: 8px 4px; display: grid; gap: 3px; border: 1px solid #E7E0D5; border-radius: 9px; background: #FFFEFB; text-align: center; }
+.mCapabilitySources small { overflow: hidden; color: #928879; font-size: 7.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mCapabilitySources b { color: #403A32; font: 700 12px var(--font-mono); }
+.mCapabilityMetricNote { margin: 8px 0 0; padding: 8px 9px; border-radius: 8px; background: #F7F3EC; color: #776D5E; font-size: 8.5px; line-height: 1.5; }
 .mCapabilityManage { width: 100%; height: 43px; margin-top: 12px; border: 0; border-radius: 11px; background: #26211B; color: #FFF; font-size: 12px; font-weight: 750; }
 
 /* 策略库 · 回测研究：摘要、纵向证据卡和可下钻底部详情。 */

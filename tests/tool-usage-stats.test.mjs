@@ -4,13 +4,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { backfillToolUsage, classifyToolOutcome, recordToolExecution, toolUsageView } from "../server/toolUsage.mjs";
+import { appendToolCallDisclosure, backfillToolUsage, buildToolCallSummary, classifyToolOutcome, recordToolExecution, toolExecutionSourceBucket, toolUsageView } from "../server/toolUsage.mjs";
 import { normalizeDatabase, seedDatabase } from "../server/store.mjs";
 
 test("工具结果按成功、阻断、失败确定性分类", () => {
   assert.equal(classifyToolOutcome({ status: "ok" }, "完成"), "success");
   assert.equal(classifyToolOutcome({ status: "blocked" }, "样本不足"), "blocked");
   assert.equal(classifyToolOutcome({ error: "network" }, "失败：network"), "error");
+});
+
+test("模型声称只调用一个工具时由服务端补充真实预检记录", () => {
+  const text = appendToolCallDisclosure("本次仅调用了 explain_system 工具。", {
+    modelCalls: 1, preflightCalls: 16, totalCalls: 17
+  });
+  assert.match(text, /系统调用记录：模型主动调用 1 项，确定性预检 16 项，合计 17 项/);
+  assert.equal(appendToolCallDisclosure("正常回答", { modelCalls: 1, preflightCalls: 0, totalCalls: 1 }), "正常回答");
 });
 
 test("每次工具调用写明细并只增加一次汇总", () => {
@@ -28,7 +36,25 @@ test("每次工具调用写明细并只增加一次汇总", () => {
   assert.deepEqual(toolUsageView(db.toolCallStats.sync_market), {
     calls: 1, success: 1, blocked: 0, error: 0, successRatePct: 100,
     avgLatencyMs: 125, lastStatus: "success",
-    firstAt: "2026-08-09T01:00:00.125Z", lastAt: "2026-08-09T01:00:00.125Z"
+    firstAt: "2026-08-09T01:00:00.125Z", lastAt: "2026-08-09T01:00:00.125Z",
+    health: "healthy", legacyUnsplit: false, legacyUnsplitCalls: 0, sourceCalls: { model: 1, preflight: 0, system: 0, evaluation: 0, historical: 0 }
+  });
+});
+
+test("调用来源拆分模型、预检、系统与评测，不再与本轮覆盖率混为一谈", () => {
+  assert.equal(toolExecutionSourceBucket("model_tool_call"), "model");
+  assert.equal(toolExecutionSourceBucket("system_preflight"), "preflight");
+  assert.equal(toolExecutionSourceBucket("system_post_trade"), "system");
+  assert.equal(toolExecutionSourceBucket("skill_health_check"), "evaluation");
+  const db = { meta: {}, toolExecutions: [], toolCallStats: {} };
+  recordToolExecution(db, { name: "execution_quality", source: "system_post_trade", result: { status: "ok" } });
+  assert.equal(toolUsageView(db.toolCallStats.execution_quality).sourceCalls.system, 1);
+  assert.deepEqual(buildToolCallSummary([
+    { name: "get_global_market", origin: "system_preflight" },
+    { name: "explain_system", origin: "model" }
+  ], { required: 1, covered: 1, ok: true }), {
+    totalCalls: 2, modelCalls: 1, preflightCalls: 1, fallbackCalls: 0,
+    required: 1, covered: 1, complete: true
   });
 });
 

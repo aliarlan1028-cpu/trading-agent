@@ -1,7 +1,7 @@
 import { getHistoricalKlines, syncMicrostructure, fetchFundingPercentile } from "./exchangeConnector.mjs";
 import { activeMandate, nowIso } from "./store.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
-import { buildExecutionQuality, buildSloReport } from "./professionalAnalytics.mjs";
+import { buildExecutionQuality, buildSloReport, buildStrategyDrift } from "./professionalAnalytics.mjs";
 import { estimateExecutionCost, maxNotionalForImpact } from "./executionCostModel.mjs";
 import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
 
@@ -254,16 +254,7 @@ export const SKILL_TOOLS = [
     skillId:"skill_native_drift",name:"交易复盘与漂移检测",toolName:"strategy_drift",version:"1.0.0",permissions:["account.read"],freshnessMs:3600000,failClosed:false,
     description:"比较近期与历史成交表现，区分策略表现漂移和执行恶化。",schema:{type:"object",properties:{strategy:{type:"string"}}},outputSchema:{type:"object",required:["status","diagnosis"]},async handler(db,args){
       // v1.1:漂移判定加 Welch t 检验——只在近期与基线期望差异"统计显著(|t|≥2≈p<0.05)"且近期更弱时才标漂移,避免小样本波动误报。
-      let f=(db.fills||[]).filter(x=>x.kind==="close"&&Number.isFinite(Number(x.realizedPnl)));
-      if(args.strategy)f=f.filter(x=>x.strategy===args.strategy);
-      const vals=f.map(x=>Number(x.realizedPnl)),recent=vals.slice(0,10),base=vals.slice(10,40);
-      const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
-      const variance=(a,m)=>a.length>1?a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1):null;
-      const rm=mean(recent),bm=mean(base);
-      let tStat=null,significant=false;
-      if(recent.length>=5&&base.length>=5&&rm!==null&&bm!==null){const vr=variance(recent,rm),vb=variance(base,bm);const se=Math.sqrt((vr/recent.length)+(vb/base.length));tStat=se>0?Number(((rm-bm)/se).toFixed(2)):null;significant=tStat!==null&&Math.abs(tStat)>=2;}
-      const performanceDrift=significant&&rm<bm;
-      return {status:f.length<20?"insufficient_sample":"ok",diagnosis:{trades:f.length,recentExpectancy:rm,baselineExpectancy:bm,tStat,significant,performanceDrift,note:!significant?"近期与基线差异不显著,可能只是正常波动":performanceDrift?"近期显著弱于基线,存在表现漂移":"近期显著强于基线",executionQuality:buildExecutionQuality(db)}};}
+      return buildStrategyDrift(db,args);}
   },
   {
     skillId:"skill_native_exchange_degrade",name:"交易所故障降级",toolName:"exchange_degradation",version:"1.0.0",permissions:["market.read","account.read"],freshnessMs:15000,failClosed:true,

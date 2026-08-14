@@ -230,11 +230,21 @@ export async function createStrategyDraft(db, prompt, options = {}, actor = "Str
     } catch { /* 确定性编译器仍可继续，不把模型故障变成工作室不可用 */ }
   }
   const compiled = compileStrategyPrompt(prompt, candidate);
+  return persistStrategyDraft(db, compiled, {
+    compiler,
+    actor,
+    authoring: { channel: "strategy_studio", toolName: null }
+  });
+}
+
+function persistStrategyDraft(db, compiled, { compiler, actor, authoring } = {}) {
+  ensureCollections(db);
   const draft = {
     id: id("strategy_draft"),
     status: "compiled",
     revision: 1,
-    compiler,
+    compiler: compiler || "deterministic_fallback",
+    authoring: authoring || { channel: "strategy_studio", toolName: null },
     blueprint: compiled.blueprint,
     contentHash: compiled.contentHash,
     generatedTests: null,
@@ -249,6 +259,53 @@ export async function createStrategyDraft(db, prompt, options = {}, actor = "Str
   appendAudit(db, `自然语言策略已编译：${draft.blueprint.name}`, draft.id, actor);
   appendTrace(db, "strategy_studio_compile", `${draft.blueprint.templateId}:${draft.blueprint.timeframe}`, "ok");
   return draft;
+}
+
+function strategyIdeaPrompt(idea = {}) {
+  const symbols = (idea.symbols || (idea.symbol ? [idea.symbol] : [])).map((symbol) => String(symbol).toUpperCase());
+  const parts = [
+    idea.name,
+    symbols.length ? `交易对 ${symbols.join("、")}` : null,
+    idea.timeframe ? `周期 ${idea.timeframe}` : null,
+    idea.direction ? `方向 ${idea.direction === "short" ? "做空" : "做多"}` : null,
+    idea.entry ? `入场 ${idea.entry}` : null,
+    idea.confirmation ? `确认 ${idea.confirmation}` : null,
+    idea.stop ? `止损 ${idea.stop}` : null,
+    idea.takeProfit ? `止盈 ${idea.takeProfit}` : null,
+    idea.marketRegime ? `适用市场 ${idea.marketRegime}` : null
+  ].filter(Boolean);
+  return parts.join("；");
+}
+
+// 对话里的 create_skill_from_idea 保留为兼容工具名，但不再创建第二套知识技能。
+// DeepSeek 已经把自然语言整理成结构化参数，这里直接进入与策略工作室相同的
+// 蓝图、自动测试、样本外回测和版本发布链路。
+export function createStrategyDraftFromIdea(db, idea = {}, actor = "AgentChat") {
+  const prompt = strategyIdeaPrompt(idea);
+  if (!String(idea.name || "").trim()) throw new Error("策略需要一个名字");
+  if (!String(idea.entry || "").trim()) throw new Error("策略必须说明入场条件");
+  if (!String(idea.stop || "").trim()) throw new Error("策略必须说明止损");
+  const symbols = (idea.symbols || (idea.symbol ? [idea.symbol] : ["BTC/USDT"]))
+    .map((symbol) => String(symbol).toUpperCase());
+  const candidate = {
+    name: cleanText(idea.name, 120),
+    description: cleanText([idea.entry, idea.confirmation].filter(Boolean).join("；"), 500),
+    templateId: idea.templateId,
+    direction: idea.direction,
+    timeframe: idea.timeframe,
+    symbols,
+    params: idea.params
+  };
+  const compiled = compileStrategyPrompt(prompt, candidate);
+  return persistStrategyDraft(db, compiled, {
+    compiler: "agent_structured_tool",
+    actor,
+    authoring: {
+      channel: "agent_chat",
+      toolName: "create_skill_from_idea",
+      requestedUniversalScope: !idea.symbol && !(idea.symbols || []).length
+    }
+  });
 }
 
 function validateBlueprint(blueprint = {}) {

@@ -6,6 +6,7 @@ import {
   buildStrategyMarketplace,
   compileStrategyPrompt,
   createStrategyDraft,
+  createStrategyDraftFromIdea,
   generateStrategyTests,
   publishStrategyDraft,
   runDraftGeneratedTests,
@@ -68,6 +69,29 @@ test("generated tests enforce schema, determinism, no-lookahead, costs and hard 
   const unsafe = structuredClone(blueprint);
   unsafe.executionPolicy.llmMayBypass = true;
   assert.equal(generateStrategyTests(unsafe).status, "failed");
+});
+
+test("聊天创建策略复用策略工作室草稿与同一自动测试链", () => {
+  const db = state();
+  const draft = createStrategyDraftFromIdea(db, {
+    name: "ADA RSI 回升",
+    symbol: "ADA/USDT",
+    direction: "long",
+    timeframe: "1h",
+    entry: "RSI 14 从 30 下方重新站上 30",
+    stop: "入场价下方 2%",
+    takeProfit: "2.5R",
+    templateId: "meanrev"
+  }, "用户(经 AI)");
+  assert.equal(db.strategyStudioDrafts.length, 1);
+  assert.equal(draft.authoring.channel, "agent_chat");
+  assert.equal(draft.authoring.toolName, "create_skill_from_idea");
+  assert.equal(draft.compiler, "agent_structured_tool");
+  assert.deepEqual(draft.blueprint.symbols, ["ADA/USDT"]);
+  assert.equal(draft.blueprint.exitPolicy.stopLossPct, 2);
+  assert.equal(draft.blueprint.exitPolicy.takeProfitR, 2.5);
+  assert.equal(runDraftGeneratedTests(db, draft.id).suite.status, "passed");
+  assert.equal(db.knowledge?.tradingSkills?.length || 0, 0, "不得再生成第二套知识技能对象");
 });
 
 test("studio lifecycle requires tests and OOS evidence before internal publication and AI use", async () => {

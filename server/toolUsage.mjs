@@ -7,6 +7,17 @@ const BLOCKED_STATUSES = new Set([
   "insufficient_sample", "auto_blocked"
 ]);
 
+const SOURCE_BUCKETS = Object.freeze(["model", "preflight", "system", "evaluation", "historical"]);
+
+export function toolExecutionSourceBucket(source = "agent") {
+  const value = String(source || "agent").toLowerCase();
+  if (/preflight/.test(value)) return "preflight";
+  if (/evaluation|eval|health_check/.test(value)) return "evaluation";
+  if (/historical|backfill|legacy/.test(value)) return "historical";
+  if (/system|scheduler|post_trade|direct_api|ui_action/.test(value)) return "system";
+  return "model";
+}
+
 function iso(value, fallback = null) {
   const time = new Date(value || 0).getTime();
   return Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : fallback;
@@ -32,20 +43,28 @@ function ensureStat(db, name, observedAt) {
     latencySamples: 0,
     lastLatencyMs: null,
     lastStatus: null,
+    sourceCalls: Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, 0])),
     firstAt: observedAt || null,
     lastAt: null
   };
   for (const key of ["calls", "success", "blocked", "error", "totalLatencyMs", "latencySamples"]) {
     stat[key] = Number(stat[key] || 0);
   }
+  if (!stat.sourceCalls) {
+    stat.legacyUnsplitCalls = Number(stat.legacyUnsplitCalls || stat.calls || 0);
+    stat.sourceCalls = {};
+  }
+  for (const source of SOURCE_BUCKETS) stat.sourceCalls[source] = Number(stat.sourceCalls[source] || 0);
   stat.firstAt ||= observedAt || null;
   return stat;
 }
 
-function addToStat(db, { name, status, latencyMs, observedAt }) {
+function addToStat(db, { name, status, latencyMs, observedAt, source = "agent" }) {
   const stat = ensureStat(db, name, observedAt);
   stat.calls += 1;
   stat[status] = Number(stat[status] || 0) + 1;
+  const bucket = toolExecutionSourceBucket(source);
+  stat.sourceCalls[bucket] = Number(stat.sourceCalls[bucket] || 0) + 1;
   if (Number.isFinite(Number(latencyMs))) {
     const latency = Math.max(0, Number(latencyMs));
     stat.totalLatencyMs += latency;
@@ -89,7 +108,7 @@ export function recordToolExecution(db, {
   };
   db.toolExecutions ||= [];
   db.toolExecutions.unshift(record);
-  addToStat(db, { name: record.toolName, status, latencyMs: record.latencyMs, observedAt: completedAt });
+  addToStat(db, { name: record.toolName, status, latencyMs: record.latencyMs, observedAt: completedAt, source });
   db.meta ||= {};
   db.meta.toolUsageStatsSince ||= beganAt;
   return record;
@@ -130,7 +149,7 @@ export function backfillToolUsage(db, { now = new Date().toISOString(), maxExecu
       const name = String(trace?.name || "").trim();
       if (!name) continue;
       const status = statusFromHistoricalTrace(trace);
-      addToStat(db, { name, status, latencyMs: trace.latencyMs, observedAt });
+      addToStat(db, { name, status, latencyMs: trace.latencyMs, observedAt, source: "historical_chat_trace" });
       calls += 1;
       since = !since || observedAt < since ? observedAt : since;
       const recordId = historicalExecutionId(message.id || observedAt, index, trace);
@@ -160,6 +179,7 @@ export function backfillToolUsage(db, { now = new Date().toISOString(), maxExecu
     const evaluatedCalls = Number(skill.evalMetrics?.calls || 0);
     if (!name || evaluatedCalls <= 0) continue;
     const stat = ensureStat(db, name, iso(skill.lastCalledAt, now));
+    stat.sourceCalls.evaluation = Math.max(Number(stat.sourceCalls.evaluation || 0), evaluatedCalls);
     if (evaluatedCalls > stat.calls) {
       const delta = evaluatedCalls - stat.calls;
       stat.calls = evaluatedCalls;
@@ -183,20 +203,60 @@ export function backfillToolUsage(db, { now = new Date().toISOString(), maxExecu
 }
 
 export function toolUsageView(stat = null) {
-  if (!stat) return { calls: 0, success: 0, blocked: 0, error: 0, successRatePct: null, avgLatencyMs: null, lastAt: null };
+  if (!stat) return { calls: 0, success: 0, blocked: 0, error: 0, successRatePct: null, avgLatencyMs: null, lastAt: null, health: "untested", legacyUnsplit: false, legacyUnsplitCalls: 0, sourceCalls: Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, 0])) };
   const calls = Number(stat.calls || 0);
   const success = Number(stat.success || 0);
+  const error = Number(stat.error || 0);
+  const blocked = Number(stat.blocked || 0);
+  const sourceCalls = Object.fromEntries(SOURCE_BUCKETS.map((source) => [source, Number(stat.sourceCalls?.[source] || 0)]));
+  const health = !calls ? "untested"
+    : stat.lastStatus === "error" || error / calls >= 0.2 ? "degraded"
+      : stat.lastStatus === "blocked" && !success ? "blocked"
+        : "healthy";
   return {
     calls,
     success,
-    blocked: Number(stat.blocked || 0),
-    error: Number(stat.error || 0),
+    blocked,
+    error,
     successRatePct: calls ? Number((success / calls * 100).toFixed(1)) : null,
     avgLatencyMs: Number(stat.latencySamples || 0) > 0 && Number.isFinite(Number(stat.totalLatencyMs))
       ? Math.round(Number(stat.totalLatencyMs) / Number(stat.latencySamples))
       : null,
     lastStatus: stat.lastStatus || null,
     firstAt: stat.firstAt || null,
-    lastAt: stat.lastAt || null
+    lastAt: stat.lastAt || null,
+    health,
+    legacyUnsplit: Number(stat.legacyUnsplitCalls || 0) > 0,
+    legacyUnsplitCalls: Number(stat.legacyUnsplitCalls || 0),
+    sourceCalls
   };
+}
+
+export function buildToolCallSummary(toolTrace = [], coverage = null) {
+  const traces = Array.isArray(toolTrace) ? toolTrace : [];
+  const count = (origin) => traces.filter((item) => item.origin === origin).length;
+  const preflightCalls = count("system_preflight");
+  const fallbackCalls = count("local_fallback");
+  const modelCalls = traces.filter((item) => !["system_preflight", "local_fallback"].includes(item.origin)).length;
+  return {
+    totalCalls: traces.length,
+    modelCalls,
+    preflightCalls,
+    fallbackCalls,
+    required: Number(coverage?.required || 0),
+    covered: Number(coverage?.covered || 0),
+    complete: coverage ? coverage.ok === true : null
+  };
+}
+
+export function appendToolCallDisclosure(content = "", summary = null, language = "zh") {
+  const text = String(content || "").trim();
+  if (!summary || Number(summary.preflightCalls || 0) <= 0) return text;
+  const claimsOnlyOnePath = /(?:本次|本轮)?(?:仅|只)(?:调用|使用)(?:了)?[^。.!！\n]{0,100}(?:工具|能力|[a-z][a-z0-9_]+)/i.test(text)
+    || /(?:only|just)\s+(?:called|used|invoked)[^.!\n]{0,100}(?:tool|capabilit|[a-z][a-z0-9_]+)/i.test(text);
+  if (!claimsOnlyOnePath || /系统调用记录[:：]/.test(text)) return text;
+  const disclosure = language === "en"
+    ? `System call record: ${summary.modelCalls} model-selected, ${summary.preflightCalls} deterministic preflight, ${summary.totalCalls} total.`
+    : `系统调用记录：模型主动调用 ${summary.modelCalls} 项，确定性预检 ${summary.preflightCalls} 项，合计 ${summary.totalCalls} 项。`;
+  return `${text}\n\n${disclosure}`;
 }

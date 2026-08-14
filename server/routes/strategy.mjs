@@ -4,6 +4,7 @@ import {
   backtestStrategyDraft, createStrategyDraft, publishStrategyDraft,
   runDraftGeneratedTests, setStrategyAssignment, strategyStudioSnapshot
 } from "../strategyStudio.mjs";
+import { recordToolExecution } from "../toolUsage.mjs";
 
 export function registerStrategyRoutes(app, ctx) {
   const { db, persist, requirePermission, activeStrategyProfiles, runStrategyResearch, buildStrategyBoard, buildStrategyCatalog, STRATEGIES, appendAudit, llmComplete, activeProvider } = ctx;
@@ -11,10 +12,13 @@ export function registerStrategyRoutes(app, ctx) {
   app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
 
   app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
+    const startedAt = new Date().toISOString();
     try {
       const result = await runStrategyResearch(db, req.body || {});
+      recordToolExecution(db, { name: "research_strategy", args: req.body || {}, result, summary: `页面策略研究完成：${result?.profiles?.length || result?.selected?.length || 0} 个结果`, startedAt, source: "direct_api" });
       persist(res, result);
     } catch (error) {
+      recordToolExecution(db, { name: "research_strategy", args: req.body || {}, result: { error: error.message }, summary: `失败：${error.message}`, startedAt, source: "direct_api" });
       res.status(500).json({ error: `策略研究失败：${error.message}` });
     }
   });
@@ -42,8 +46,16 @@ export function registerStrategyRoutes(app, ctx) {
     catch (error) { res.status(error.status || 400).json({ error: error.message }); }
   });
   app.post("/api/strategy/studio/drafts/:id/backtest", requirePermission("write:review"), async (req, res) => {
-    try { persist(res, await backtestStrategyDraft(db, req.params.id, req.body || {}, req.user?.name || db.user?.name || "Owner")); }
-    catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await backtestStrategyDraft(db, req.params.id, req.body || {}, req.user?.name || db.user?.name || "Owner");
+      recordToolExecution(db, { name: "run_backtest", args: { strategyDraftId: req.params.id, ...(req.body || {}) }, result, summary: `策略工作室样本外回测：${result?.backtest?.oos?.trades || result?.oos?.trades || 0} 笔`, startedAt, source: "direct_api" });
+      persist(res, result);
+    }
+    catch (error) {
+      recordToolExecution(db, { name: "run_backtest", args: { strategyDraftId: req.params.id }, result: { error: error.message }, summary: `失败：${error.message}`, startedAt, source: "direct_api" });
+      res.status(error.status || 400).json({ error: error.message });
+    }
   });
   app.post("/api/strategy/studio/drafts/:id/publish", requirePermission("write:review"), (req, res) => {
     try { persist(res, { ...publishStrategyDraft(db, req.params.id, req.body || {}, req.user?.name || db.user?.name || "Owner"), message: db.system?.uiLang === "en" ? "Published to the internal strategy market" : "已发布到内部策略市场", messageZh: "已发布到内部策略市场", messageEn: "Published to the internal strategy market" }); }

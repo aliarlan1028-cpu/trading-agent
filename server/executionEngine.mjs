@@ -10,6 +10,7 @@ import { evaluatePortfolioIntentConflict, evaluateSameSymbolEntryConflict } from
 import { accountMarginCapacity, projectedMarginUsage } from "./tradingCapacity.mjs";
 import { ensurePlanStrategyBinding, reconcileStrategyProductHealth, strategyProductExecutionGate } from "./strategyProducts.mjs";
 import { validatePlanBlueprintGate } from "./strategyStudio.mjs";
+import { recordPostTradeCapabilities } from "./postTradeCapabilities.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -1039,6 +1040,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   if (kind === "close") reconcileStrategyProductHealth(db);
   // 平仓确认即进入真实复盘队列；30 分钟复盘任务只负责深度处理与失败重试。
   ensureTradeReviewQueued(db, fill);
+  if (kind === "close") recordPostTradeCapabilities(db, fill);
   return fill;
 }
 

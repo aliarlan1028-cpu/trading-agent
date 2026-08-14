@@ -129,6 +129,30 @@ function compactAgentStatus(status = {}) {
   };
 }
 
+function sampleSeries(values = [], limit = 48) {
+  const list = Array.isArray(values) ? values : [];
+  if (list.length <= limit) return list;
+  return Array.from({ length: limit }, (_, index) => list[Math.round((index / (limit - 1)) * (list.length - 1))]);
+}
+
+function compactBacktestResearch(research = {}) {
+  return {
+    summary: research.summary || {},
+    historical: (research.historical || []).slice(0, 24).map((row, index) => {
+      const { diagnostics: _diagnostics, ...record } = row || {};
+      return {
+        ...record,
+        id: record.id || `research-${index}`,
+        equityCurve: sampleSeries(record.equityCurve),
+        drawdownCurve: sampleSeries(record.drawdownCurve),
+        folds: (record.folds || []).slice(0, 6),
+        parameters: Object.fromEntries(Object.entries(record.parameters || {}).slice(0, 12))
+      };
+    }),
+    forward: (research.forward || []).slice(0, 20)
+  };
+}
+
 function startupOverview(overview) {
   const relevantSymbols = new Set([
     "BTC/USDT",
@@ -170,7 +194,7 @@ function startupOverview(overview) {
     // Keep stable empty shapes so tapping a drawer item during the background refresh never
     // crashes. The explicit full request replaces this snapshot shortly afterwards.
     orders: [], reviews: [], riskChecks: [], riskIncidents: [], riskRules: [], events: [], tasks: [],
-    knowledge: {}, skills: [], strategyCatalog: {}, strategyStudio: {}, newsFeed: [],
+    knowledge: {}, skills: [], tools: [], mcpServers: [], analysisEngine: {}, strategyCatalog: {}, strategyStudio: {}, backtestResearch: {}, newsFeed: [],
     abnormalVolatility: [], opportunityCandidates: [], reconciliationReports: [], accountSnapshots: [],
     traces: [], auditLogs: [], mediumTermAnalytics: {}
   };
@@ -207,18 +231,22 @@ export function compactOverviewForNative(overview = {}, native = false) {
     evidenceBundles: [],
     memoryItems: (overview.memoryItems || []).slice(0, 10),
     strategyCatalog: { ...strategyCatalog, strategies: [] },
-    // Desktop research/diagnostic workbenches are not part of the native IA. Keep their
-    // dedicated APIs authoritative and do not make every mobile refresh carry the snapshots.
+    // Keep desktop-only diagnostics out of the native snapshot. The App research page receives
+    // a bounded evidence list with sampled curves instead of the full workbench payload.
     reviewAnalytics: {},
     professional: {},
-    backtestResearch: {},
+    backtestResearch: compactBacktestResearch(overview.backtestResearch),
     strategyProfiles: [],
     decisionCalibration: {},
     agentStateFiles: {},
     marketCalendarEvents: [],
     dailyMarketBrief: null,
     toolExecutions: [],
-    analysisEngine: {},
+    analysisEngine: {
+      tools: (overview.analysisEngine?.tools || []).slice(0, 80),
+      toolUsageStatsSince: overview.analysisEngine?.toolUsageStatsSince || null,
+      toolUsageBackfilledAt: overview.analysisEngine?.toolUsageBackfilledAt || null
+    },
     paperReport: {},
     opportunityCandidates: (overview.opportunityCandidates || []).slice(0, 10),
     agentStatus: compactAgentStatus(overview.agentStatus)

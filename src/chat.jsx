@@ -867,25 +867,48 @@ function MandateCard({ mandate, action }) {
   );
 }
 
-export function ToolTrace({ trace = [], coverage = null }) {
+function StrategyDraftCard({ draft, ui, mobile = false }) {
+  if (!draft?.id) return null;
+  const blueprint = draft.blueprint || {};
+  const tests = draft.generatedTests || {};
+  const statusLabel = tests.status === "passed" ? t("自动测试通过", "Tests passed") : tests.status === "failed" ? t("自动测试未通过", "Tests failed") : t("草稿", "Draft");
+  return <div className="chatStrategyDraftCard">
+    <header><Rocket size={15}/><span><b>{t("策略工作室草稿", "Strategy Studio draft")}</b><small>{t("与策略库使用同一版本链", "Uses the same version pipeline as the Strategy Library")}</small></span><StatusBadge tone={tests.status === "passed" ? "ok" : "warning"}>{statusLabel}</StatusBadge></header>
+    <div className="chatStrategyDraftFacts"><span><small>{t("策略", "Strategy")}</small><b>{localizeText(blueprint.name) || "—"}</b></span><span><small>{t("交易对 · 周期", "Symbol · timeframe")}</small><b>{(blueprint.symbols || []).join("、") || "—"} · {blueprint.timeframe || "—"}</b></span><span><small>{t("止损 · 止盈", "Stop · target")}</small><b>{blueprint.exitPolicy?.stopLossPct ?? "—"}% · {blueprint.exitPolicy?.takeProfitR ?? "—"}R</b></span><span><small>{t("自动测试", "Generated tests")}</small><b>{tests.passed ?? 0}/{tests.total ?? 0}</b></span></div>
+    <footer><button type="button" onClick={() => ui.setActive(mobile ? "strategyLib:studio" : "strategyStudio")}>{t("打开策略工作室", "Open Strategy Studio")}<ChevronRight size={14}/></button><small>{t("草稿不会下单；回测通过后仍需人工发布。", "Drafts never place orders; publication remains manual after OOS validation.")}</small></footer>
+  </div>;
+}
+
+export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
   const [open, setOpen] = useState(false);
   if (!trace.length && !coverage) return null;
-  const summary = coverage
+  const verified = callSummary || {
+    totalCalls: trace.length,
+    modelCalls: trace.filter((item) => item.origin !== "system_preflight").length,
+    preflightCalls: trace.filter((item) => item.origin === "system_preflight").length
+  };
+  const coverageBits = coverage
     ? [
       `${t("能力", "Capabilities")} ${coverage.covered || 0}/${coverage.required || 0}`,
       `${t("白名单", "Whitelist")} ${coverage.whitelist?.analyzed || 0}/${coverage.whitelist?.expected || 0}`,
       `${t("观察哨", "Watches")} ${coverage.watches?.analyzed || 0}/${coverage.watches?.expected || 0}`,
       coverage.marketScan?.completed ? `${t("全市场", "Market")} ${coverage.marketScan.universe || 0}` : t("全市场未完成", "Market scan incomplete"),
       coverage.externalCandidates?.length ? `${t("视野外复核", "External review")} ${coverage.externalCandidates.filter((item) => item.analyzed).length}/${coverage.externalCandidates.length}` : null
-    ].filter(Boolean).join(" · ")
-    : `${trace.length} ${t("次工具调用", "tool calls")}`;
+    ].filter(Boolean)
+    : [];
+  const sourceBits = [
+    verified.modelCalls ? `${t("模型主动", "Model")} ${verified.modelCalls}` : null,
+    verified.preflightCalls ? `${t("系统预检", "Preflight")} ${verified.preflightCalls}` : null,
+    !verified.modelCalls && !verified.preflightCalls ? `${verified.totalCalls || trace.length} ${t("次工具调用", "tool calls")}` : null
+  ].filter(Boolean);
+  const summary = [...sourceBits, ...coverageBits].join(" · ");
   return (
     <div className="toolTrace">
       <button onClick={() => setOpen((current) => !current)}>
         <Wrench size={12} /> <span>{summary}</span> <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && trace.map((item, index) => (
-        <div key={index}><b>{item.name}</b><span>{item.summary}</span><small>{item.latencyMs}ms</small></div>
+        <div key={index}><b>{item.name}</b><span>{item.summary}</span><small>{item.origin === "system_preflight" ? t("预检", "preflight") : t("模型", "model")} · {item.latencyMs}ms</small></div>
       ))}
     </div>
   );
@@ -1404,6 +1427,9 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   function findMandate(mandateId) {
     return (data.mandates || []).find((mandate) => mandate.id === mandateId);
   }
+  function findStrategyDraft(draftId) {
+    return (data.strategyStudio?.drafts || []).find((draft) => draft.id === draftId);
+  }
   function currentStateForMessage(message) {
     const presentation = message.presentation;
     if (!presentation?.linked) return null;
@@ -1563,10 +1589,11 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
                 />
               ) : <RichMessage text={message.content} onSuggest={!pending ? (value) => send(value) : null} />}
               {message.mandateId && <MandateCard mandate={findMandate(message.mandateId)} action={action} />}
+              {message.strategyDraftId && <StrategyDraftCard draft={findStrategyDraft(message.strategyDraftId)} ui={ui} mobile={mobile} />}
               {message.planId && (
                 <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} data={data} />
               )}
-              <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} />
+              <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} callSummary={message.toolCallSummary} />
               <div className="agMsgFootRow">
                 <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
                 {String(message.content || "").length > 80 && (

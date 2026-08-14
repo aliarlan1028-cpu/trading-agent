@@ -78,6 +78,26 @@ test("desktop overview remains unchanged", () => {
   assert.equal(compactOverviewForNative(full, false), full);
 });
 
+test("native research payload keeps recent evidence with sampled curves", () => {
+  const curve = Array.from({ length: 240 }, (_, index) => 100 + index / 10);
+  const full = {
+    backtestResearch: {
+      summary: { totalHistoricalEvidence: 30 },
+      historical: Array.from({ length: 30 }, (_, index) => ({ id: `bt-${index}`, equityCurve: curve, drawdownCurve: curve, folds: Array.from({ length: 10 }, () => ({ trades: 3 })), parameters: Object.fromEntries(Array.from({ length: 20 }, (_, key) => [`p${key}`, key])) })),
+      forward: Array.from({ length: 30 }, (_, index) => ({ id: `paper-${index}` }))
+    },
+    analysisEngine: { tools: Array.from({ length: 100 }, (_, index) => ({ id: `tool-${index}` })) }
+  };
+  const compact = compactOverviewForNative(full, true);
+  assert.equal(compact.backtestResearch.historical.length, 24);
+  assert.equal(compact.backtestResearch.historical[0].equityCurve.length, 48);
+  assert.equal(compact.backtestResearch.historical[0].folds.length, 6);
+  assert.equal(Object.keys(compact.backtestResearch.historical[0].parameters).length, 12);
+  assert.equal(compact.backtestResearch.forward.length, 20);
+  assert.equal(compact.analysisEngine.tools.length, 80);
+  assert.equal(full.backtestResearch.historical[0].equityCurve.length, 240, "must not mutate the desktop research payload");
+});
+
 test("native startup overview is a tiny interactive shell", () => {
   const full = {
     user: { id: "u1" }, system: { autonomyEnabled: true }, portfolio: { totalEquityUsdt: 100 },

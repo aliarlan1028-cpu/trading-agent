@@ -323,6 +323,7 @@ function App() {
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
+  const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("base");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
@@ -341,7 +342,8 @@ function App() {
     if (next === "tradeLedger") { setActiveWorkspaceTab("ledger"); setActive("cockpit"); return; }
     if (next === "knowledgeBase") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
-    if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
+    if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveStrategyTab("catalog"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
+    if (next === "strategyStudio") { setActiveStrategyTab("studio"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
     if (next === "riskOverview") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
     if (next === "riskSettings") { setActiveWorkspaceTab("rules"); setActive("riskCenter"); return; }
     if (next === "eventsTasks" || next === "eventsTasks:events") { setActiveWorkspaceTab("events"); setActive("operationsCenter"); return; }
@@ -358,12 +360,12 @@ function App() {
     if (!data) return null;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
     if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, activeWorkspaceTab, data, action, lang]);
+  }, [active, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
 
   if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
