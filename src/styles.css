@@ -9050,6 +9050,47 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 /* 运行参数字段网格更整齐 */
 .settingsTermPage .panelForm .formGrid { gap: 12px; }
 
+/* Settings refinement: compact controls, semantic switches and quieter surfaces. */
+.cfgFormSection { display: grid; gap: 12px; padding-top: 18px; border-top: 1px solid #e7e9ed; }
+.cfgFormSection:first-of-type { padding-top: 2px; border-top: 0; }
+.cfgSectionLabel { display: grid; gap: 2px; }
+.cfgSectionLabel b { color: #25272b; font-size: 13px; line-height: 1.5; }
+.cfgSectionLabel span { color: #7b8491; font-size: 11px; line-height: 1.5; font-weight: 450; }
+.cfgSwitchField { min-width: 0; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 12px; border: 1px solid #e2e5e9; border-radius: 8px; background: #fff; }
+.cfgSwitchField > span { min-width: 0; display: grid; gap: 1px; color: #25272b; font-size: 12px; font-weight: 600; }
+.cfgSwitchField > span b { font: inherit; color: inherit; }
+.cfgSwitchField > span small { color: #8b93a0; font-size: 10.5px; line-height: 1.35; font-weight: 450; }
+.cfgSwitch { flex: none; min-width: 82px; height: 30px; display: flex; align-items: center; gap: 7px; padding: 3px 9px 3px 4px; border: 0; border-radius: 999px; background: #eef0f2; color: #667085; cursor: pointer; transition: background .16s ease, color .16s ease; }
+.cfgSwitch i { width: 22px; height: 22px; flex: none; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(16,24,40,.16); }
+.cfgSwitch em { font: 650 11px var(--font-ui); font-style: normal; }
+.cfgSwitch.on { background: #dff2e6; color: #18794e; }
+.cfgSwitch:focus-visible { outline: 3px solid rgba(224,122,63,.18); outline-offset: 2px; }
+.cfgInputUnit { position: relative; display: block; }
+.panelForm label .cfgInputUnit input { padding-right: 64px; }
+.panelForm label .cfgInputUnit em { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #89919d; font: 600 10.5px var(--font-ui); font-style: normal; pointer-events: none; }
+.cfgLabelRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: inherit!important; font: inherit!important; }
+.cfgLabelRow em { padding: 2px 7px; border-radius: 999px; background: #fff3df; color: #98651c; font: 650 9.5px var(--font-ui); font-style: normal; }
+.cfgMonoInput { font-family: var(--font-mono)!important; font-variant-numeric: tabular-nums; }
+.cfgTestActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cfgTestActions .secondaryButton { min-height: 36px; background: #fff; border-color: #dfe3e8; color: #4b5563; }
+.cfgClearSecret { justify-self: start; width: fit-content; }
+.configSaveBar small.hasChanges { color: #b65c20; font-weight: 650; }
+.configFieldsetHead .statusBadge { margin-left: auto; }
+.configFieldsetHead[role="button"]:focus-visible { outline: 3px solid rgba(224,122,63,.16); outline-offset: 5px; border-radius: 5px; }
+.configFieldset.collapsed .configFieldsetHead { margin-bottom: 0!important; padding-bottom: 0!important; border-bottom: 0!important; }
+.configDataBackup .configInfoGrid > div { border: 0; border-radius: 9px; background: #f7f8fa; }
+.runtimePanel-security > .formGrid { grid-template-columns: minmax(0,640px); }
+.runtimePanel-network .cfgHeadStatus { background: #f0f1f3; color: #667085; }
+.spin { animation: cfgSpin .8s linear infinite; }
+@keyframes cfgSpin { to { transform: rotate(360deg); } }
+
+@media (max-width: 720px) {
+  .cfgSwitchField { min-height: 52px; }
+  .cfgTestActions { display: grid; grid-template-columns: 1fr; }
+  .cfgTestActions .secondaryButton { width: 100%; }
+  .runtimePanel-security > .formGrid { grid-template-columns: 1fr; }
+}
+
 /* ===== 移动端 Terminal 重设计：外壳 + 汉堡抽屉（design_handoff_ios_app）===== */
 .mShell2 { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #F4F1EB; overflow: hidden; overscroll-behavior: none; }
 .mHeader2 { flex: none; display: flex; align-items: center; gap: 12px; padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 12px; background: #FBF9F5; border-bottom: 1px solid #EDE7DB; }
@@ -9203,7 +9244,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mChatStatCell:last-child { border-right: 0; }
 .mChatStatCell span { font: 700 8px "Space Grotesk"; letter-spacing: .08em; text-transform: uppercase; color: #a89e8a; }
 .mChatStatCell b { font: 700 13px "IBM Plex Mono"; color: #1E1B16; }
-.mChatStatusWrap{display:flex;flex-direction:column;flex:none;background:#fbf9f5;border-bottom:1px solid #ede7db}.mChatStatusWrap .mChatStatus{border-bottom:0}.mChatShortcuts{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:7px 10px 9px}.mChatShortcuts button{display:flex;align-items:center;justify-content:center;gap:6px;height:30px;border:1px solid #e1d7c8;border-radius:8px;background:#fff;color:#5f574c;font:600 10px "Space Grotesk";cursor:pointer}.mChatShortcuts button svg{width:13px;color:#d06a22}.mChatShortcuts button b{display:grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#f3e7da;color:#b85b20;font:700 9px "IBM Plex Mono"}
 
 /* Mobile watch is a vertical decision list, not the desktop dashboard squeezed to phone width. */
 .mWatchScreen { gap: 12px; }
@@ -9351,6 +9391,115 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRiskAck,.mGoalNative { border-top: 1px solid #EDE7DB; border-bottom: 0; background: #FAF8F4; }.mRiskNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px; border-radius: 11px; background: #EDF5EF; color: #347558; }.mRiskNote svg { flex: none; }.mRiskNote p { font-size: 9.5px; line-height: 1.5; }
 .mRiskSaveBar { position: fixed; z-index: 7; left: 0; right: 0; bottom: calc(57px + env(safe-area-inset-bottom)); padding: 8px 14px; border-top: 1px solid rgba(220,211,198,.86); background: rgba(251,249,245,.94); backdrop-filter: blur(12px); }.mRiskSaveBar button { width: 100%; height: 43px; border: 0; border-radius: 11px; background: #26211B; color: #fff; font-size: 12px; font-weight: 750; }.mRiskSaveBar button:disabled { opacity: .55; }
 .mStrategyTabs{padding:0 0 10px}.mStrategyTabs button{min-width:0;padding:0 5px;font-size:12px}.mStrategyStack{display:grid;gap:10px}.mSectionTitle{display:block;font:700 13px "Space Grotesk";color:#1e1b16;margin-bottom:8px}.mStrategyHelp{font:400 11px/1.55 "Space Grotesk";color:#8a8172;margin:5px 0 10px}.mStrategyPrompt{width:100%;min-height:112px;resize:vertical;border:1px solid #e3dcce;border-radius:9px;background:#fbfaf7;color:#302b24;padding:10px;font:12px/1.55 "Space Grotesk";outline:0}.mStrategyPrompt:focus{border-color:#d99462;box-shadow:0 0 0 3px rgba(224,119,47,.08)}.mStrategyPrimary,.mStrategyDisabled,.mStrategyActions button{width:100%;min-height:38px;border:0;border-radius:8px;margin-top:9px;background:#1e1b16;color:#f5e9db;font:700 12px "Space Grotesk";display:flex;align-items:center;justify-content:center;gap:6px}.mStrategyPrimary:disabled,.mStrategyDisabled,.mStrategyActions button:disabled{background:#eee8de;color:#9b9285}.mStrategyDrafts{display:grid;gap:6px}.mStrategyDrafts>button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;border:1px solid #ede7db;border-radius:8px;background:#fff;padding:9px}.mStrategyDrafts>button.active{border-color:#dc9e70;background:#fff8f2}.mStrategyDrafts>button>span:first-child{min-width:0}.mStrategyDrafts b,.mStrategyDrafts small{display:block}.mStrategyDrafts b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mStrategyDrafts small{font-size:9px;color:#8a8172;margin-top:3px}.mStrategyFacts{display:grid;gap:0}.mStrategyFacts>span{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #ede7db;font-size:10.5px;color:#8a8172}.mStrategyFacts>span:last-child{border-bottom:0}.mStrategyFacts>span b{max-width:65%;color:#302b24;text-align:right;overflow-wrap:anywhere}.mStrategyTest{display:flex;gap:7px;padding:7px 0;border-bottom:1px solid #ede7db}.mStrategyTest:last-child{border-bottom:0}.mStrategyTest>svg{flex:none;color:#2f8a5a}.mStrategyTest b,.mStrategyTest small{display:block}.mStrategyTest b{font-size:10.5px}.mStrategyTest small{font-size:9px;line-height:1.4;color:#8a8172;margin-top:2px}.mStrategyActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.mStrategyMarketHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.mStrategyMarketHead>b{font-size:12px;line-height:1.35}.mStrategyDisabled{margin-top:9px}
+/* 能力库：App 原生的汇总、筛选列表与底部详情，不复用 Web 三栏表格。 */
+.mCapabilityIntro { display: flex; align-items: center; gap: 12px; padding: 2px 1px 3px; }
+.mCapabilityIntro > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.mCapabilityIntro > div b { color: #28231D; font-size: 16px; }
+.mCapabilityIntro > div span { color: #8A8172; font-size: 10.5px; line-height: 1.45; }
+.mCapabilityIntro > button { flex: none; height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 9px; background: #1E1B16; color: #F5E9DB; font-size: 11px; font-weight: 700; }
+.mCapabilitySearch { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #E3DCCE; border-radius: 11px; background: #FFFEFB; color: #9A907F; }
+.mCapabilitySearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #29251F; font-size: 13px; }
+.mCapabilitySearch > button { width: 24px; height: 24px; border: 0; border-radius: 50%; background: #F1EADF; color: #817768; }
+.mCapabilityFilters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.mCapabilityFilters::-webkit-scrollbar { display: none; }
+.mCapabilityFilters button { flex: none; height: 31px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid #E3DCCE; border-radius: 16px; background: #FFFEFB; color: #746B5F; font-size: 10.5px; font-weight: 650; }
+.mCapabilityFilters button b { min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px; border-radius: 9px; background: #F1EADF; color: #8A8172; font: 650 8.5px var(--font-mono); }
+.mCapabilityFilters button.active { border-color: #1E1B16; background: #1E1B16; color: #F5E9DB; }
+.mCapabilityFilters button.active b { background: #4A4339; color: #F5E9DB; }
+.mCapabilityList { overflow: hidden; border: 1px solid #E3DCCE; border-radius: 13px; background: #FFFEFB; }
+.mCapabilityRow { width: 100%; min-height: 62px; display: flex; align-items: center; gap: 10px; padding: 10px 11px; border: 0; border-bottom: 1px solid #EDE7DB; background: transparent; color: inherit; text-align: left; }
+.mCapabilityRow:last-child { border-bottom: 0; }
+.mCapabilityRow:active { background: #F8F4ED; }
+.mCapabilityIcon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: #E9F0FB; color: #2F69B4; }
+.mCapabilityIcon.workflow { background: #F2EAF8; color: #7750A5; }
+.mCapabilityIcon.mcp { background: #E8F3EC; color: #277650; }
+.mCapabilityRowText { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mCapabilityRowText b { overflow: hidden; color: #302B24; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mCapabilityRowText small { overflow: hidden; color: #918777; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.mCapabilityRow > .statusBadge { flex: none; }
+.mCapabilityRow > svg { flex: none; color: #B2A895; }
+.mCapabilitySheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); backdrop-filter: blur(3px); }
+.mCapabilitySheet { width: 100%; max-height: 84dvh; overflow-y: auto; padding: 0 14px calc(22px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: #FAF8F4; box-shadow: 0 -12px 42px rgba(35,27,18,.2); animation: mSheetUp .2s ease-out; }
+.mCapabilitySheet > header { display: flex; align-items: center; gap: 10px; padding: 2px 1px 13px; }
+.mCapabilitySheet > header > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mCapabilitySheet > header small { color: #958B7C; font-size: 9px; }
+.mCapabilitySheet > header b { overflow: hidden; color: #2F2922; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.mCapabilitySheet > p { margin-bottom: 10px; padding: 12px; border-radius: 11px; background: #FFFEFB; color: #5A5247; font-size: 11px; line-height: 1.6; }
+.mCapabilityFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; border: 1px solid #E7E0D5; border-radius: 11px; background: #E7E0D5; }
+.mCapabilityFacts span { min-width: 0; padding: 10px; display: grid; gap: 4px; background: #FFFEFB; color: #928879; font-size: 8.5px; }
+.mCapabilityFacts b { overflow: hidden; color: #4B443A; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.mCapabilityUsage { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 9px; }
+.mCapabilityUsage span { padding: 9px; display: grid; gap: 2px; border: 1px solid #E7E0D5; border-radius: 10px; background: #FFFEFB; color: #928879; font-size: 8.5px; text-align: center; }
+.mCapabilityUsage b { color: #403A32; font: 700 14px var(--font-mono); }
+.mCapabilityManage { width: 100%; height: 43px; margin-top: 12px; border: 0; border-radius: 11px; background: #26211B; color: #FFF; font-size: 12px; font-weight: 750; }
+
+/* 策略库 · 回测研究：摘要、纵向证据卡和可下钻底部详情。 */
+.mStrategyTabs { gap: 5px; }
+.mStrategyTabs button { font-size: 10.5px; }
+.mResearchSummary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid #E3DCCE; border-radius: 12px; background: #E3DCCE; }
+.mResearchSummary span { min-width: 0; padding: 10px 8px; display: grid; gap: 4px; background: #FBF9F5; }
+.mResearchSummary small { overflow: hidden; color: #8A8172; font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mResearchSummary b { color: #28231D; font: 700 18px var(--font-mono); }
+.mResearchRunCard { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #D9E7DD; border-radius: 12px; background: #F1F7F3; }
+.mResearchRunCard > span { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mResearchRunCard b { color: #315E47; font-size: 11px; }
+.mResearchRunCard small { color: #66806F; font-size: 8.8px; line-height: 1.45; }
+.mResearchRunCard button { flex: none; height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 9px; background: #246B47; color: #FFF; font-size: 10px; font-weight: 700; }
+.mResearchListCard { padding-bottom: 4px; }
+.mResearchList { display: grid; }
+.mResearchList > button { position: relative; width: 100%; padding: 11px 19px 12px 0; display: grid; gap: 5px; border: 0; border-bottom: 1px solid #EDE7DB; background: transparent; color: inherit; text-align: left; }
+.mResearchList > button:last-child { border-bottom: 0; }
+.mResearchList > button:active { background: #F8F4ED; }
+.mResearchList > button > svg { position: absolute; right: 0; top: 50%; color: #B2A895; transform: translateY(-50%); }
+.mResearchRecordHead { display: flex; align-items: flex-start; gap: 8px; }
+.mResearchRecordHead > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mResearchRecordHead small { color: #A76537; font-size: 8px; font-weight: 650; }
+.mResearchRecordHead b { overflow: hidden; color: #302B24; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mResearchList > button > p { color: #918777; font-size: 8.8px; }
+.mResearchList > button > div:nth-of-type(2) { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; }
+.mResearchList > button > div:nth-of-type(2) span { display: grid; gap: 2px; color: #9A907F; font-size: 7.5px; }
+.mResearchList > button > div:nth-of-type(2) b { overflow: hidden; color: #4A433A; font: 650 9.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mForwardCard .mCardHead { margin-bottom: 3px; }
+.mForwardRow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #EDE7DB; }
+.mForwardRow:last-of-type { border-bottom: 0; }
+.mForwardRow > div { min-width: 0; display: grid; gap: 3px; }
+.mForwardRow > div b { overflow: hidden; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mForwardRow > div small { color: #918777; font-size: 8.5px; }
+.mForwardRow > span { font: 650 9px var(--font-mono); color: #6F675C; }
+.mForwardRow progress { width: 100%; height: 5px; accent-color: #2F8056; }
+.mForwardRow .statusBadge { justify-self: end; }
+.mResearchEmptyLine { padding: 14px 4px 9px; color: #918777; font-size: 10px; line-height: 1.5; text-align: center; }
+.mResearchSheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); backdrop-filter: blur(3px); }
+.mResearchSheet { width: 100%; max-height: 88dvh; overflow-y: auto; padding: 0 14px calc(24px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: #FAF8F4; box-shadow: 0 -12px 42px rgba(35,27,18,.2); animation: mSheetUp .2s ease-out; }
+.mResearchSheet > header { display: flex; align-items: flex-start; gap: 10px; padding: 2px 1px 13px; }
+.mResearchSheet > header > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mResearchSheet > header small { color: #A76537; font-size: 8.5px; font-weight: 650; }
+.mResearchSheet > header b { overflow: hidden; color: #2F2922; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.mResearchSheet > header span { color: #928879; font-size: 8.5px; }
+.mResearchSheet > section,.mResearchParams { margin-top: 9px; padding: 11px; border: 1px solid #E7E0D5; border-radius: 11px; background: #FFFEFB; }
+.mResearchSheetMetrics { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; border: 1px solid #E7E0D5; border-radius: 11px; background: #E7E0D5; }
+.mResearchSheetMetrics span { min-width: 0; padding: 10px; display: grid; gap: 3px; background: #FFFEFB; }
+.mResearchSheetMetrics small { color: #928879; font-size: 8px; }
+.mResearchSheetMetrics b { color: #3D3730; font: 700 13px var(--font-mono); }
+.mResearchSheetMetrics b.pos { color: #24744E; }.mResearchSheetMetrics b.neg { color: #B54838; }
+.mResearchSectionHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.mResearchSectionHead b { color: #443D34; font-size: 10.5px; }
+.mResearchSectionHead span { color: #918777; font-size: 8.5px; }
+.mResearchSpark { width: 100%; height: 68px; overflow: visible; }
+.mResearchSpark polyline { fill: none; stroke: #2C8055; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.mResearchSpark.orange polyline { stroke: #D06A22; }
+.mResearchChartEmpty { height: 58px; display: grid; place-items: center; color: #A1988A; font-size: 9px; }
+.mResearchDetailRows { display: grid; gap: 0; }
+.mResearchDetailRows > span,.mResearchParams > div > span { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #EEE8DE; color: #918777; font-size: 9px; }
+.mResearchDetailRows > span:last-child,.mResearchParams > div > span:last-child { border-bottom: 0; }
+.mResearchDetailRows b,.mResearchParams b { max-width: 67%; color: #453F36; font-size: 9.5px; line-height: 1.45; text-align: right; overflow-wrap: anywhere; }
+.mResearchFoldList { display: grid; }
+.mResearchFoldList > div { display: grid; grid-template-columns: 1fr repeat(3,auto); gap: 8px; padding: 7px 0; border-bottom: 1px solid #EEE8DE; color: #71695E; font-size: 8.5px; }
+.mResearchFoldList > div:last-child { border-bottom: 0; }
+.mResearchFoldList b { color: #453F36; font-size: 9px; }
+.mResearchParams summary { display: flex; align-items: center; justify-content: space-between; color: #5B5348; font-size: 10px; font-weight: 700; list-style: none; }
+.mResearchParams[open] summary { margin-bottom: 6px; }
+
 /* 实盘写入与灰度:移动端压紧 + 修跨行(单笔额度与保存按钮竖排,胶囊/开关/就绪条缩小) */
 .mCard .liveGrayForm .lgReadyHead { flex-wrap: wrap; gap: 4px 8px; }
 .mCard .liveGrayForm .lgReadyHead span { font-size: 11px; line-height: 1.4; }

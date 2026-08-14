@@ -77,6 +77,26 @@ function CfgHead({ icon: Icon, title, sub, status, statusTone = "" }) {
   );
 }
 
+function CfgSwitch({ label, value, onChange, hint }) {
+  const checked = value === "true";
+  return (
+    <div className="cfgSwitchField">
+      <span><b>{label}</b>{hint && <small>{hint}</small>}</span>
+      <button
+        type="button"
+        className={`cfgSwitch ${checked ? "on" : ""}`}
+        role="switch"
+        aria-checked={checked}
+        aria-label={`${label} · ${checked ? t("开启", "On") : t("关闭", "Off")}`}
+        onClick={() => onChange(checked ? "false" : "true")}
+      >
+        <i aria-hidden="true" />
+        <em>{checked ? t("开启", "On") : t("关闭", "Off")}</em>
+      </button>
+    </div>
+  );
+}
+
 export function SystemConfigPanel({ data, action, ui, section }) {
   const config = data.config || {};
   const providers = config.llm?.providers || {};
@@ -137,12 +157,24 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     HTTPS_PROXY: "",
     PORT: runtime.port || "8787"
   });
+  const llmBaselineRef = useRef(null);
+  const integrationBaselineRef = useRef(null);
+  const runtimeBaselineRef = useRef(null);
+  if (llmBaselineRef.current === null) llmBaselineRef.current = { ...llmForm };
+  if (integrationBaselineRef.current === null) integrationBaselineRef.current = { ...integrationForm };
+  if (runtimeBaselineRef.current === null) runtimeBaselineRef.current = { ...runtimeForm };
+  const formChanged = (form, baseline) => Object.keys(form).some((key) => form[key] !== baseline.current[key]);
+  const llmDirty = formChanged(llmForm, llmBaselineRef);
+  const integrationDirty = formChanged(integrationForm, integrationBaselineRef);
+  const runtimeDirty = formChanged(runtimeForm, runtimeBaselineRef);
+  const [backupBusy, setBackupBusy] = useState(false);
   const providerRows = [
     ["anthropic", "Anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
     ["openai", "OpenAI", "OPENAI_API_KEY", "OPENAI_MODEL"],
     ["deepseek", "DeepSeek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
     ["gemini", t("Gemini（备用）", "Gemini (optional)"), "GEMINI_API_KEY", "GEMINI_MODEL"]
   ];
+  const activeProviderLabel = providerRows.find(([idName]) => idName === config.llm?.activeProvider)?.[1] || config.llm?.activeProvider;
   // 各家常见模型下拉建议(datalist:可点选也可手输自定义,新模型出了直接打进去也行)。
   const PROVIDER_MODELS = {
     anthropic: ["claude-opus-4-8", "claude-sonnet-4-5", "claude-haiku-4-5"],
@@ -178,7 +210,21 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   const [activeConfigSection, setActiveConfigSection] = useState(sectionKind || "llm");
   const [openProvider, setOpenProvider] = useState(config.llm?.activeProvider || "anthropic");
   const [openExchange, setOpenExchange] = useState("okx");
-  const sectionHeadProps = (open, setOpen, id) => (section ? { role: "button", onClick: () => setOpen(open === id ? "" : id) } : {});
+  const sectionHeadProps = (open, setOpen, id) => {
+    if (!section) return {};
+    const toggle = () => setOpen(open === id ? "" : id);
+    return {
+      role: "button",
+      tabIndex: 0,
+      onClick: toggle,
+      onKeyDown: (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      }
+    };
+  };
   const [activeIntegrationModule, setActiveIntegrationModule] = useState("telegram");
   const showIntegration = (id) => !section ? activeIntegrationModule === id : section === "notifications" ? ["telegram", "lark", "alerts"].includes(id) : true;
   const configSections = [
@@ -218,7 +264,11 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       body[modelName] = llmForm[modelName];
     }
     const result = await action("/api/config", body);
-    if (result.status) setLlmForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_API_KEY") ? "" : value])));
+    if (result.status) setLlmForm((current) => {
+      const next = Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_API_KEY") ? "" : value]));
+      llmBaselineRef.current = { ...next };
+      return next;
+    });
   }
   async function saveExchange(event) {
     event.preventDefault();
@@ -254,7 +304,11 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       if (integrationForm[keyName]) body[keyName] = integrationForm[keyName];
     }
     const result = await action("/api/config", body);
-    if (result.status) setIntegrationForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" || key.startsWith("LARK_") || key === "TELEGRAM_BOT_TOKEN" ? "" : value])));
+    if (result.status) setIntegrationForm((current) => {
+      const next = Object.fromEntries(Object.entries(current).map(([key, value]) => [key, key.endsWith("_KEY") || key === "ALERT_WEBHOOK_URL" || key.startsWith("LARK_") || key === "TELEGRAM_BOT_TOKEN" ? "" : value]));
+      integrationBaselineRef.current = { ...next };
+      return next;
+    });
   }
   async function saveRuntime(event) {
     event.preventDefault();
@@ -272,10 +326,32 @@ export function SystemConfigPanel({ data, action, ui, section }) {
       if (runtimeForm[keyName]) body[keyName] = runtimeForm[keyName];
     }
     const result = await action("/api/config", body);
-    if (result.status) setRuntimeForm((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, ["ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"].includes(key) ? "" : value])));
+    if (result.status) setRuntimeForm((current) => {
+      const next = Object.fromEntries(Object.entries(current).map(([key, value]) => [key, ["ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"].includes(key) ? "" : value]));
+      runtimeBaselineRef.current = { ...next };
+      return next;
+    });
   }
-  function removeSecret(keyName) {
+  async function removeSecret(keyName, label = keyName) {
+    const confirmed = await uiConfirm(t(`确认清除 ${label}？保存的凭证将立即失效。`, `Clear ${label}? The saved credential will stop working immediately.`));
+    if (!confirmed) return null;
     return action(`/api/config/secret/${encodeURIComponent(keyName)}`, {}, "DELETE");
+  }
+  async function updateAuthRequired(value) {
+    if (value === "false" && runtimeForm.AUTH_REQUIRED !== "false") {
+      const confirmed = await uiConfirm(t("关闭登录鉴权后，任何能访问服务的人都可能进入系统。确认继续？", "Turning off sign-in allows anyone who can reach the service to enter. Continue?"));
+      if (!confirmed) return;
+    }
+    updateRuntime("AUTH_REQUIRED", value);
+  }
+  async function createBackup() {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      await action("/api/system/backup", {});
+    } finally {
+      setBackupBusy(false);
+    }
   }
   const visibleRuntimeRows = section === "network" ? runtimeSecretRows.filter(([key]) => ["HTTP_PROXY", "HTTPS_PROXY"].includes(key))
     : section === "security" ? runtimeSecretRows.filter(([key]) => key === "ADMIN_PASSWORD")
@@ -285,6 +361,13 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     : section === "security"
       ? [t("登录与凭证安全", "Sign-in & Credential Security"), t("管理登录保护和 Owner 密码。密钥原文不会显示在前端或日志中。", "Manage sign-in protection and the Owner password. Secret values are never exposed in the UI or ordinary logs.")]
       : [t("环境与服务", "Environment & Services"), t("管理 OKX 市场类型、服务端口和 Skill 沙箱运行环境。", "Manage the OKX market type, server port, and Skill sandbox runtime.")];
+  const runtimeStatus = section === "network"
+    ? (runtime.httpProxySet || runtime.httpsProxySet ? t("代理已配置", "Proxy configured") : t("未配置 · 当前直连", "Not configured · Direct"))
+    : section === "security"
+      ? (runtime.authRequired === false ? t("免登录", "Sign-in disabled") : t("鉴权已开启", "Sign-in enabled"))
+      : section === "environment" ? null
+        : runtime.authRequired === false ? t("免登录", "Sign-in disabled") : t("鉴权已开启", "Sign-in enabled");
+  const runtimeStatusTone = section === "security" || !section ? (runtime.authRequired === false ? "warn" : "ok") : "";
   return (
     <div className="settingsConsole">
       {!section && (
@@ -306,7 +389,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "llm" && (
           <form className="panelForm" onSubmit={saveLlm}>
-            <CfgHead icon={BrainCircuit} title={t("AI 模型", "AI Models")} sub={t("选择用于对话、市场分析和自主巡检的模型服务。", "Choose the model provider used for chat, market analysis, and autonomous reviews.")} status={config.llm?.activeProvider ? `${t("使用中", "Active")} · ${config.llm.activeProvider}` : t("未配置", "Not configured")} statusTone={config.llm?.activeProvider ? "ok" : ""} />
+            <CfgHead icon={BrainCircuit} title={t("AI 模型", "AI Models")} sub={t("选择用于对话、市场分析和自主巡检的模型服务。", "Choose the model provider used for chat, market analysis, and autonomous reviews.")} status={config.llm?.activeProvider ? `${t("主模型", "Primary")} · ${activeProviderLabel}` : t("未配置", "Not configured")} statusTone={config.llm?.activeProvider ? "ok" : ""} />
             <div className="providerGrid">
               {providerRows.map(([idName, label, keyName, modelName]) => {
                 const collapsed = Boolean(section) && openProvider !== idName;
@@ -319,7 +402,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                     >
                       <span className="cfgProvLogo" data-p={idName}>{label.charAt(0)}</span>
                       <strong>{label}</strong>
-                      {idName === config.llm?.activeProvider && <span className="cfgUsing">{t("使用中", "Active")}</span>}
+                      {idName === config.llm?.activeProvider && <span className="cfgUsing">{t("主模型", "Primary")}</span>}
                       <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "neutral"}>{providers[idName]?.hasKey ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
                       {section && <ChevronDown size={15} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />}
                     </div>
@@ -330,14 +413,14 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                           <datalist id={`models-${idName}`}>{(PROVIDER_MODELS[idName] || []).map((m) => <option key={m} value={m} />)}</datalist>
                           {idName === "gemini" && <small className="cfgHint">{t("Gemini 仅用于联网搜索归因。建议使用 Flash；Pro 免费额度较小，容易触发限流。", "Gemini is used only for web-search attribution. Flash is recommended; the Pro free tier is more likely to be rate-limited.")}</small>}
                         </label>
-                        {providers[idName]?.hasKey && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")} {label} Key</button>}
+                        {providers[idName]?.hasKey && <button className="secondaryButton dangerText cfgClearSecret" type="button" onClick={() => removeSecret(keyName, `${label} Key`)}>{t("清除已保存密钥", "Clear saved key")}</button>}
                       </>
                     )}
                   </div>
                 );
               })}
             </div>
-            <div className="configSaveBar"><small>{t("只保存本页发生的更改；留空的密钥保持不变。", "Only changes on this page are saved; blank secret fields keep their current values.")}</small><button className="primaryButton" type="submit"><KeyRound size={14} /> {t("保存模型设置", "Save model settings")}</button></div>
+            <div className="configSaveBar"><small className={llmDirty ? "hasChanges" : ""}>{llmDirty ? t("有未保存的模型更改", "Unsaved model changes") : t("当前设置已保存；留空的密钥保持不变。", "Settings are saved; blank secret fields keep their current values.")}</small><button className="primaryButton" type="submit" disabled={!llmDirty}><KeyRound size={14} /> {t("保存模型设置", "Save model settings")}</button></div>
           </form>
         )}
 
@@ -388,7 +471,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 <h3>{t("外部服务与通知", "Integrations & Notifications")}</h3>
                 {!section && <span>{t("按模块管理第三方服务、数据源和通知渠道。", "Manage third-party services, data sources, and notification channels by module.")}</span>}
               </div>
-              <button className="primaryButton configCompactSave" type="submit"><PlugZap size={14} /> {section === "notifications" ? t("保存通知设置", "Save notification settings") : t("保存本模块", "Save module")}</button>
             </div>
             {!section && (
               <div className="integrationModuleGrid">
@@ -407,7 +489,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             )}
 
             {showIntegration("telegram") && (
-              <div className="configFieldset modulePanel">
+              <div className={`configFieldset modulePanel ${section && activeIntegrationModule !== "telegram" ? "collapsed" : ""}`}>
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "telegram")}>
                   <strong>{t("Telegram 盈利海报与观察条件", "Telegram Profit Posters & Watch Conditions")}</strong>
                   <StatusBadge tone={integrations.telegram?.configured ? "ok" : "neutral"}>{integrations.telegram?.configured ? (integrations.telegram?.profitPosterEnabled ? t("已启用", "Enabled") : t("已配置", "Configured")) : t("未配置", "Not configured")}</StatusBadge>
@@ -415,28 +497,43 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 </div>
                 {(!section || activeIntegrationModule === "telegram") && (<>
                 {!section && <InsightNote icon={Bell} title={t("只推交易上需要立即知道的变化", "Only decision-changing interruptions")}>{t("盯盘是持续服务，观察哨是其中的结构化价位条件。Telegram 只推主条件命中或当前判断关键失效；登记、更新、到期和撤销留在应用内。", "Live watch is the continuous service; a watch is one structured price condition. Telegram sends only primary triggers or critical thesis invalidations; registration, edits, expiry, and cancellation stay in the app.")}</InsightNote>}
-                <div className="formGrid">
-                  {telegramSecretRows.map(([keyName, label, configured]) => (
-                    <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current token") : "123456:ABC..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>
-                  ))}
-                  <label>{t("Telegram 群 Chat ID", "Telegram group chat ID")}<input value={integrationForm.TELEGRAM_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_CHAT_ID", event.target.value)} placeholder="-1001234567890" /></label>
-                  <label>{t("盈利海报自动推送", "Automatic profit posters")}<select value={integrationForm.TELEGRAM_PROFIT_POSTER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("最低盈利（USDT）", "Minimum profit (USDT)")}<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", event.target.value)} /></label>
-                  <label>{t("最低 ROI（%）", "Minimum ROI (%)")}<input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT", event.target.value)} /></label>
-                  <label>{t("发送间隔（分钟）", "Cooldown (minutes)")}<input type="number" min="1" value={integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES", event.target.value)} /></label>
-                  <label>{t("关键观察条件推送", "Critical watch delivery")}<select value={integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_NOTIFIER_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("观察哨推送语言", "Watch alert language")}<select value={integrationForm.TELEGRAM_WATCH_LANGUAGE} onChange={(event) => updateIntegration("TELEGRAM_WATCH_LANGUAGE", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label>
-                  <label>{t("观察哨每日摘要", "Daily watch digest")}<select value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(event) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", event.target.value)}><option value="false">{t("关闭", "Off")}</option><option value="true">{t("开启", "On")}</option></select></label>
-                  <label>{t("观察哨单独群 ID（可选）", "Separate watch chat ID (optional)")}<input value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用上面的群", "Leave blank to use the primary group")} /></label>
-                </div>
-                {integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> {t("发送测试海报", "Send test poster")}</button>}
-                {integrations.telegram?.watchConfigured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-watch-test", {})}><Bell size={14} /> {t("发送观察哨测试", "Send watch alert test")}</button>}
+                <section className="cfgFormSection">
+                  <div className="cfgSectionLabel"><b>{t("连接配置", "Connection")}</b><span>{t("配置机器人凭证和默认接收群。", "Set the bot credential and default destination.")}</span></div>
+                  <div className="formGrid">
+                    {telegramSecretRows.map(([keyName, label, configured]) => (
+                      <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={integrationForm[keyName]} onChange={(event) => updateIntegration(keyName, event.target.value)} placeholder={configured ? t("已配置；留空则保持不变", "Configured; leave blank to keep it") : "123456:ABC..."} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName, label)}>{t("清除", "Clear")}</button>}</span></label>
+                    ))}
+                    <label>{t("Telegram 群 Chat ID", "Telegram group chat ID")}<input className="cfgMonoInput" value={integrationForm.TELEGRAM_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_CHAT_ID", event.target.value)} placeholder="-1001234567890" /></label>
+                  </div>
+                </section>
+                <section className="cfgFormSection">
+                  <div className="cfgSectionLabel"><b>{t("盈利海报", "Profit posters")}</b><span>{t("满足阈值后自动推送，并按间隔限制重复通知。", "Deliver automatically after thresholds are met, with cooldown protection.")}</span></div>
+                  <div className="formGrid">
+                    <CfgSwitch label={t("自动推送", "Automatic delivery")} value={integrationForm.TELEGRAM_PROFIT_POSTER_ENABLED} onChange={(value) => updateIntegration("TELEGRAM_PROFIT_POSTER_ENABLED", value)} />
+                    <label>{t("最低盈利", "Minimum profit")}<span className="cfgInputUnit"><input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", event.target.value)} /><em>USDT</em></span></label>
+                    <label>{t("最低 ROI", "Minimum ROI")}<span className="cfgInputUnit"><input type="number" min="0" step="0.01" value={integrationForm.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT", event.target.value)} /><em>%</em></span></label>
+                    <label>{t("发送间隔", "Cooldown")}<span className="cfgInputUnit"><input type="number" min="1" value={integrationForm.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES} onChange={(event) => updateIntegration("TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES", event.target.value)} /><em>{t("分钟", "min")}</em></span></label>
+                  </div>
+                </section>
+                <section className="cfgFormSection">
+                  <div className="cfgSectionLabel"><b>{t("观察哨", "Watch alerts")}</b><span>{t("管理关键条件、语言和每日摘要。", "Manage critical conditions, language, and the daily digest.")}</span></div>
+                  <div className="formGrid">
+                    <CfgSwitch label={t("关键条件推送", "Critical condition delivery")} value={integrationForm.TELEGRAM_WATCH_NOTIFIER_ENABLED} onChange={(value) => updateIntegration("TELEGRAM_WATCH_NOTIFIER_ENABLED", value)} />
+                    <CfgSwitch label={t("每日摘要", "Daily digest")} value={integrationForm.TELEGRAM_WATCH_DAILY_DIGEST_ENABLED} onChange={(value) => updateIntegration("TELEGRAM_WATCH_DAILY_DIGEST_ENABLED", value)} />
+                    <label>{t("推送语言", "Alert language")}<select value={integrationForm.TELEGRAM_WATCH_LANGUAGE} onChange={(event) => updateIntegration("TELEGRAM_WATCH_LANGUAGE", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label>
+                    <label>{t("单独群 ID（可选）", "Separate chat ID (optional)")}<input className="cfgMonoInput" value={integrationForm.TELEGRAM_WATCH_CHAT_ID} onChange={(event) => updateIntegration("TELEGRAM_WATCH_CHAT_ID", event.target.value)} placeholder={t("留空则使用默认群", "Leave blank to use the default group")} /></label>
+                  </div>
+                </section>
+                {(integrations.telegram?.configured || integrations.telegram?.watchConfigured) && <div className="cfgTestActions">
+                  {integrations.telegram?.configured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-test", {})}><Bell size={14} /> {t("发送测试海报", "Send test poster")}</button>}
+                  {integrations.telegram?.watchConfigured && <button className="secondaryButton" type="button" onClick={() => action("/api/notifications/telegram-watch-test", {})}><Bell size={14} /> {t("测试观察哨通知", "Test watch alert")}</button>}
+                </div>}
                 </>)}
               </div>
             )}
 
             {showIntegration("lark") && (
-              <div className="configFieldset modulePanel">
+              <div className={`configFieldset modulePanel ${section && activeIntegrationModule !== "lark" ? "collapsed" : ""}`}>
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "lark")}>
                   <strong>{t("飞书（Lark）主动通知", "Lark Notifications")}</strong>
                   <StatusBadge tone={integrations.lark?.hasWebhook ? "ok" : "neutral"}>{integrations.lark?.hasWebhook ? (integrations.lark?.signed ? t("已配置并签名", "Configured and signed") : t("已配置", "Configured")) : t("未配置", "Not configured")}</StatusBadge>
@@ -455,7 +552,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             )}
 
             {showIntegration("langsmith") && (
-              <div className="configFieldset modulePanel">
+              <div className={`configFieldset modulePanel ${section && activeIntegrationModule !== "langsmith" ? "collapsed" : ""}`}>
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "langsmith")}>
                   <strong>LangSmith Trace</strong>
                   <StatusBadge tone={integrations.langsmith?.hasKey ? "ok" : "neutral"}>{integrations.langsmith?.hasKey ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
@@ -474,7 +571,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
             )}
 
             {showIntegration("alerts") && (
-              <div className="configFieldset modulePanel">
+              <div className={`configFieldset modulePanel ${section && activeIntegrationModule !== "alerts" ? "collapsed" : ""}`}>
                 <div className="configFieldsetHead" {...sectionHeadProps(activeIntegrationModule, setActiveIntegrationModule, "alerts")}>
                   <strong>{t("告警 Webhook", "Alert Webhook")}</strong>
                   <StatusBadge tone={integrations.alerts?.hasWebhook ? "ok" : "neutral"}>{integrations.alerts?.hasWebhook ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
@@ -489,39 +586,40 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                 )}
               </div>
             )}
+            <div className="configSaveBar"><small className={integrationDirty ? "hasChanges" : ""}>{integrationDirty ? t("有未保存的通知更改", "Unsaved notification changes") : t("通知设置已保存；留空的凭证保持不变。", "Notification settings are saved; blank credentials stay unchanged.")}</small><button className="primaryButton" type="submit" disabled={!integrationDirty}><PlugZap size={14} /> {section === "notifications" ? t("保存通知设置", "Save notification settings") : t("保存本模块", "Save module")}</button></div>
           </form>
         )}
 
         {activeConfigSection === "data_backup" && (
           <div className="panelForm configDataBackup">
-            <CfgHead icon={RefreshCw} title={t("数据与备份", "Data & Backup")} sub={t("创建 SQLite 一致性快照，不中断行情同步、分析、记忆或交易执行。", "Create a consistent SQLite snapshot without interrupting market sync, analysis, memory, or trade execution.")} status={t("在线备份", "Online backup")} statusTone="ok" />
+            <CfgHead icon={RefreshCw} title={t("数据与备份", "Data & Backup")} sub={t("创建 SQLite 一致性快照，不中断行情同步、分析、记忆或交易执行。", "Create a consistent SQLite snapshot without interrupting market sync, analysis, memory, or trade execution.")} status={t("服务可用", "Service available")} statusTone="ok" />
             <div className="configInfoGrid">
               <div><b>{t("备份内容", "Included")}</b><span>{t("交易事实、三层记忆、知识库、策略、配置和审计索引", "Trade facts, all memory layers, knowledge, strategies, settings, and audit indexes")}</span></div>
               <div><b>{t("运行影响", "Runtime impact")}</b><span>{t("使用 SQLite 在线备份接口，系统无需停机", "Uses SQLite online backup; no service downtime required")}</span></div>
               <div><b>{t("日志与海报", "Logs & posters")}</b><span>{t("运行日志和可重新生成的海报不属于决策记忆，可按保留策略清理", "Runtime logs and reproducible posters are not decision memory and may follow their retention policy")}</span></div>
             </div>
-            <div className="configSaveBar"><small>{t("备份文件保存在服务器受控备份目录中。", "The backup is stored in the server-managed backup directory.")}</small><button className="primaryButton" type="button" onClick={() => action("/api/system/backup", {})}><RefreshCw size={14} /> {t("立即创建备份", "Create backup now")}</button></div>
+            <div className="configSaveBar"><small>{t("备份文件保存在服务器受控备份目录中。", "The backup is stored in the server-managed backup directory.")}</small><button className="primaryButton" type="button" disabled={backupBusy} onClick={createBackup}><RefreshCw className={backupBusy ? "spin" : ""} size={14} /> {backupBusy ? t("正在创建…", "Creating…") : t("立即创建备份", "Create backup now")}</button></div>
           </div>
         )}
 
         {activeConfigSection === "runtime" && (
-          <form className="panelForm" onSubmit={saveRuntime}>
-            <CfgHead icon={section === "network" ? Globe2 : section === "security" ? Lock : Settings} title={runtimeHeading[0]} sub={runtimeHeading[1]} status={section === "network" ? (runtime.httpProxySet || runtime.httpsProxySet ? t("已配置", "Configured") : t("直连", "Direct connection")) : runtime.authRequired === false ? t("免登录", "Sign-in disabled") : t("鉴权开启", "Sign-in enabled")} statusTone={section === "network" ? "" : runtime.authRequired === false ? "warn" : "ok"} />
-            {visibleRuntimeRows.length > 0 && <div className="formGrid">
+          <form className={`panelForm runtimePanel ${section ? `runtimePanel-${section}` : ""}`} onSubmit={saveRuntime}>
+            <CfgHead icon={section === "network" ? Globe2 : section === "security" ? Lock : Settings} title={runtimeHeading[0]} sub={runtimeHeading[1]} status={runtimeStatus} statusTone={runtimeStatusTone} />
+            {visibleRuntimeRows.length > 0 && <div className={`formGrid ${section === "security" ? "securityFields" : ""}`}>
               {visibleRuntimeRows.map(([keyName, label, configured]) => (
-                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? t("留空则保留现有配置", "Leave blank to keep the current value") : t("待配置", "Enter value")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName)}>{t("移除", "Remove")}</button>}</span></label>
+                <label key={keyName}>{label}<span className="inputWithAction"><input type="password" autoComplete="off" value={runtimeForm[keyName]} onChange={(event) => updateRuntime(keyName, event.target.value)} placeholder={configured ? t("已配置；留空则保持不变", "Configured; leave blank to keep it") : keyName.includes("PROXY") ? "http://user:password@127.0.0.1:7890" : t("设置新的管理员密码", "Set a new owner password")} />{configured && <button className="secondaryButton dangerText" type="button" onClick={() => removeSecret(keyName, label)}>{t("清除", "Clear")}</button>}</span>{keyName.includes("PROXY") && <small className="cfgHint">{t("支持带账号凭证的 http:// 或 https:// 代理地址。", "Supports http:// or https:// proxy URLs with credentials.")}</small>}</label>
               ))}
             </div>}
             {(!section || section === "security") && <div className="formGrid">
-              <label>{t("登录鉴权", "Require sign-in")}<select value={runtimeForm.AUTH_REQUIRED} onChange={(event) => updateRuntime("AUTH_REQUIRED", event.target.value)}><option value="true">{t("开启", "On")}</option><option value="false">{t("关闭", "Off")}</option></select></label>
+              <CfgSwitch label={t("登录鉴权", "Require sign-in")} hint={t("关闭后，能访问服务的人无需密码即可进入。", "When off, anyone who can reach the service can enter without a password.")} value={runtimeForm.AUTH_REQUIRED} onChange={updateAuthRequired} />
             </div>}
             {(!section || section === "environment") && <><div className="formGrid">
               <label>{t("OKX 市场", "OKX market")}<select value={runtimeForm.OKX_MARKET_TYPE} onChange={(event) => updateRuntime("OKX_MARKET_TYPE", event.target.value)}><option value="perpetual_swap">{t("USDT 永续", "USDT perpetuals")}</option></select></label>
-              <label>{t("服务端口（重启生效）", "Server port (restart required)")}<input type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
+              <label><span className="cfgLabelRow">{t("服务端口", "Server port")}<em>{t("重启后生效", "Restart required")}</em></span><input className="cfgMonoInput" type="number" min="1" max="65535" value={runtimeForm.PORT} onChange={(event) => updateRuntime("PORT", event.target.value)} /></label>
             </div>
-            <label>{t("Skill 沙箱镜像", "Skill sandbox image")}<input value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
+            <label>{t("Skill 沙箱镜像", "Skill sandbox image")}<input className="cfgMonoInput" value={runtimeForm.SKILL_SANDBOX_IMAGE} onChange={(event) => updateRuntime("SKILL_SANDBOX_IMAGE", event.target.value)} placeholder="node:20-alpine" /></label>
             </>}
-            <div className="configSaveBar"><small>{section === "network" ? t("代理设置保存后由服务端连接使用。", "Proxy settings are used by server-side connections after saving.") : section === "security" ? t("密码和登录设置会写入受保护配置；密码原文不会回显。", "Password and sign-in settings are stored in protected configuration; the password is never shown again.") : t("端口和部分运行参数需要重启服务后生效。", "The port and some runtime settings require a service restart.")}</small><button className="primaryButton" type="submit"><Settings size={14} /> {section === "network" ? t("保存代理设置", "Save proxy settings") : section === "security" ? t("保存安全设置", "Save security settings") : t("保存运行设置", "Save runtime settings")}</button></div>
+            <div className="configSaveBar"><small className={runtimeDirty ? "hasChanges" : ""}>{runtimeDirty ? t("有未保存的设置更改", "Unsaved settings changes") : section === "network" ? t("代理设置已保存，并由服务端连接使用。", "Proxy settings are saved and used by server-side connections.") : section === "security" ? t("安全设置已保存；密码原文不会回显。", "Security settings are saved; the password is never shown again.") : t("运行设置已保存；端口变更需要重启服务。", "Runtime settings are saved; port changes require a restart.")}</small><button className="primaryButton" type="submit" disabled={!runtimeDirty}><Settings size={14} /> {section === "network" ? t("保存代理设置", "Save proxy settings") : section === "security" ? t("保存安全设置", "Save security settings") : t("保存运行设置", "Save runtime settings")}</button></div>
           </form>
         )}
 
