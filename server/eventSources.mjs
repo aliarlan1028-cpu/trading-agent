@@ -9,11 +9,11 @@ const rssParser = new Parser();
 // 精选、可靠、无需密钥的事件源。交易所公告页是 JS 动态渲染、抓不到，
 // 用币圈新闻 RSS（会覆盖上下架/安全/监管）+ 美联储宏观来替代。
 const DEFAULT_EVENT_SOURCES = [
-  { id: "src_fed_press", name: "Federal Reserve Press Releases", type: "rss", url: "https://www.federalreserve.gov/feeds/press_all.xml", category: "宏观", enabled: true, trustScore: 92 },
-  { id: "src_coindesk", name: "CoinDesk", type: "rss", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", category: "币圈", enabled: true, trustScore: 80 },
-  { id: "src_cointelegraph", name: "Cointelegraph", type: "rss", url: "https://cointelegraph.com/rss", category: "币圈", enabled: true, trustScore: 76 },
-  { id: "src_theblock", name: "The Block", type: "rss", url: "https://www.theblock.co/rss.xml", category: "币圈", enabled: true, trustScore: 80 },
-  { id: "src_decrypt", name: "Decrypt", type: "rss", url: "https://decrypt.co/feed", category: "币圈", enabled: true, trustScore: 72 }
+  { id: "src_fed_press", name: "Federal Reserve Press Releases", type: "rss", url: "https://www.federalreserve.gov/feeds/press_all.xml", category: "宏观", enabled: true, trustScore: 95, trustTier: "verified_official", verifiedOrigin: true, systemManaged: true },
+  { id: "src_coindesk", name: "CoinDesk", type: "rss", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", category: "币圈", enabled: true, trustScore: 72, trustTier: "verified_publisher", verifiedOrigin: true, systemManaged: true },
+  { id: "src_cointelegraph", name: "Cointelegraph", type: "rss", url: "https://cointelegraph.com/rss", category: "币圈", enabled: true, trustScore: 68, trustTier: "verified_publisher", verifiedOrigin: true, systemManaged: true },
+  { id: "src_theblock", name: "The Block", type: "rss", url: "https://www.theblock.co/rss.xml", category: "币圈", enabled: true, trustScore: 72, trustTier: "verified_publisher", verifiedOrigin: true, systemManaged: true },
+  { id: "src_decrypt", name: "Decrypt", type: "rss", url: "https://decrypt.co/feed", category: "币圈", enabled: true, trustScore: 65, trustTier: "verified_publisher", verifiedOrigin: true, systemManaged: true }
 ];
 
 export function ensureDefaultEventSources(db) {
@@ -27,6 +27,21 @@ export function ensureDefaultEventSources(db) {
     const have = new Set((db.eventSources || []).map((s) => s.id));
     for (const src of DEFAULT_EVENT_SOURCES) if (!have.has(src.id)) db.eventSources.push({ ...src, createdAt: nowIso() });
     db.meta.defaultSourcesRestored = true;
+  }
+  // 升级旧内置源的服务端信任元数据；名称永远不是信任依据，URL 必须与内置定义完全同源。
+  for (const source of db.eventSources) {
+    const builtin = DEFAULT_EVENT_SOURCES.find((candidate) => candidate.id === source.id && candidate.url === source.url);
+    if (builtin) Object.assign(source, {
+      trustScore: builtin.trustScore,
+      trustTier: builtin.trustTier,
+      verifiedOrigin: true,
+      systemManaged: true
+    });
+    else if (!source.systemManaged) Object.assign(source, {
+      trustScore: Math.min(25, Number(source.trustScore || 20)),
+      trustTier: "unverified_custom",
+      verifiedOrigin: false
+    });
   }
   return db.eventSources;
 }
@@ -72,6 +87,10 @@ export async function refreshEventSources(db, { force = false } = {}) {
       source.lastFetchedAt = nowIso();
       source.lastSuccessAt = source.lastFetchedAt;
       source.lastItemCount = (result.items || []).length;
+      source.lastFetchedFinalUrl = result.fetchProvenance?.finalUrl || source.url;
+      source.lastFetchedOrigin = result.fetchProvenance?.finalOrigin || null;
+      source.lastFetchVerifiedOrigin = result.fetchProvenance?.verifiedOrigin === true;
+      source.lastRedirectCrossOrigin = result.fetchProvenance?.crossOrigin === true;
       source.lastError = null;
       source.consecutiveFailures = 0;
       source.nextRetryAt = null;
@@ -206,27 +225,68 @@ export async function refreshOnchainSignals(db) {
   return { status: "ok", signals };
 }
 
+export function sourceFetchProvenance(source = {}, finalUrl = source.url) {
+  let configured;
+  let final;
+  try {
+    configured = new URL(String(source.url || ""));
+    final = new URL(String(finalUrl || source.url || ""));
+  } catch {
+    return { configuredUrl: source.url || null, finalUrl: finalUrl || null, configuredOrigin: null, finalOrigin: null, crossOrigin: true, verifiedOrigin: false, trustTier: "unverified_fetch" };
+  }
+  const allowed = new Set((source.redirectOriginAllowlist || []).map((value) => {
+    try { return new URL(String(value)).origin; } catch { return null; }
+  }).filter(Boolean));
+  const crossOrigin = configured.origin !== final.origin;
+  const redirectAllowed = !crossOrigin || allowed.has(final.origin);
+  const verifiedOrigin = source.systemManaged === true && source.verifiedOrigin === true && redirectAllowed;
+  return {
+    configuredUrl: configured.toString(),
+    finalUrl: final.toString(),
+    configuredOrigin: configured.origin,
+    finalOrigin: final.origin,
+    crossOrigin,
+    redirectAllowed,
+    verifiedOrigin,
+    trustTier: verifiedOrigin ? source.trustTier || "verified_publisher" : "unverified_fetch"
+  };
+}
+
+export function safeExternalItemLink(value, baseUrl) {
+  try {
+    const url = new URL(String(value || ""), String(baseUrl || ""));
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function parseRssSource(source) {
-  const { text } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
+  const { text, finalUrl } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
+  const fetchProvenance = sourceFetchProvenance(source, finalUrl);
   const feed = await rssParser.parseString(text);
   return {
     sourceId: source.id,
     status: "ok",
-    items: (feed.items || []).map((item) => ({ title: item.title, link: item.link, summary: item.contentSnippet || item.content || "", publishedAt: item.isoDate || item.pubDate }))
+    fetchProvenance,
+    items: (feed.items || []).map((item) => ({ title: item.title, link: safeExternalItemLink(item.link, finalUrl), summary: item.contentSnippet || item.content || "", publishedAt: item.isoDate || item.pubDate, fetchProvenance }))
   };
 }
 
 async function parseHtmlSource(source) {
-  const { response, text: html } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
+  const { response, text: html, finalUrl } = await fetchExternalText(source.url, { timeoutMs: 12_000, maxBytes: 2 * 1024 * 1024 });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const fetchProvenance = sourceFetchProvenance(source, finalUrl);
   const $ = cheerio.load(html);
   const items = [];
   $("a").each((_idx, el) => {
     const title = $(el).text().replace(/\s+/g, " ").trim();
     const href = $(el).attr("href");
-    if (title.length > 12 && href) items.push({ title, link: new URL(href, source.url).toString(), summary: title });
+    const link = safeExternalItemLink(href, finalUrl);
+    if (title.length > 12 && link) items.push({ title, link, summary: title, fetchProvenance });
   });
-  return { sourceId: source.id, status: "ok", items: dedupe(items).slice(0, 20) };
+  return { sourceId: source.id, status: "ok", fetchProvenance, items: dedupe(items).slice(0, 20) };
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +367,8 @@ function upsertEventFromItem(db, source, item) {
   const impact = estimateImpact(item.title);
   const at = item.publishedAt || nowIso();
   const update = { at, title: localized, source: source.name, link: item.link };
+  const fetchedTrust = item.fetchProvenance || sourceFetchProvenance(source, source.lastFetchedFinalUrl || source.url);
+  const verifiedFetch = fetchedTrust.verifiedOrigin === true;
 
   const topicKey = tags.length ? topicKeyOf(tags) : "";
   const existing = topicKey ? findTopicEvent(db, tags, topicKey) : null;
@@ -324,6 +386,14 @@ function upsertEventFromItem(db, source, item) {
     existing.title = existing.topicTags.length ? existing.topicTags.slice(0, 3).join(" · ") + " 专题" : existing.title;
     existing.shortTitle = shortTitle(existing.title);
     existing.action = buildAssessment(existing);
+    if (!verifiedFetch) {
+      existing.autoTradingEligible = false;
+      existing.provenance = { ...(existing.provenance || {}), hasUnverifiedFetch: true, lastFetchedFinalUrl: fetchedTrust.finalUrl, lastFetchedOrigin: fetchedTrust.finalOrigin };
+      if (existing.intel) {
+        existing.intel.verifiedOrigin = false;
+        existing.intel.fakeRisk = "high";
+      }
+    }
     return;
   }
 
@@ -340,7 +410,19 @@ function upsertEventFromItem(db, source, item) {
     topicTags: tags,
     category: source.category === "宏观" || source.name.includes("Fed") ? "宏观事件" : source.category === "币圈" ? "币圈事件" : "交易所事件",
     status: "跟进中",
-    confidence: source.trustScore || 70,
+    confidence: verifiedFetch ? Number(source.trustScore || 60) : Math.min(25, Number(source.trustScore || 20)),
+    provenance: {
+      sourceId: source.id,
+      trustTier: verifiedFetch ? source.trustTier || "verified_publisher" : fetchedTrust.trustTier || "unverified_fetch",
+      verifiedOrigin: verifiedFetch,
+      configuredUrl: fetchedTrust.configuredUrl,
+      fetchedFinalUrl: fetchedTrust.finalUrl,
+      configuredOrigin: fetchedTrust.configuredOrigin,
+      fetchedFinalOrigin: fetchedTrust.finalOrigin,
+      crossOriginRedirect: fetchedTrust.crossOrigin === true,
+      untrustedContent: true
+    },
+    autoTradingEligible: verifiedFetch,
     impact,
     impactLabel: impact >= 80 ? "高影响" : impact >= 50 ? "中影响" : "低影响",
     due: at,

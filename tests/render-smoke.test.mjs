@@ -645,10 +645,11 @@ test("mobile risk edits preserve paused/revoked state and failed saves keep the 
     assert.equal(await C.submitMobileRiskChange(async () => ({ ok: true }), endpoint, {}), true);
   }
   const source = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
-  assert.match(source, /const ok = await submitMobileRiskChange\(action, mandate\.id/);
+  assert.match(source, /const saved = await action\(mandate\.id \? `\/api\/mandates\/\$\{mandate\.id\}` : "\/api\/mandates"/);
+  assert.match(source, /if \(saved\?\.ok === false\) return;/);
   assert.match(source, /submitMobileRiskChange\(action, "\/api\/config\/live-trading"/);
   assert.match(source, /submitMobileRiskChange\(action, "\/api\/system\/goals"/);
-  assert.equal((source.match(/if \(ok\) onDone\(\);/g) || []).length, 3);
+  assert.equal((source.match(/if \(ok\) onDone\(\);/g) || []).length, 2);
   for (const status of ["paused", "revoked"]) {
     const html = render(React.createElement(C.MobileRiskPermissionEditor, {
       data: { mandates: [{ id: status, status, allowedSymbols: ["BTC/USDT"], maxLeverageBySymbol: { "BTC/USDT": 2 } }] },

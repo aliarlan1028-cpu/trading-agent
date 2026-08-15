@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { scrubSecrets } from "./secretRedaction.mjs";
 
 const MAX_SUMMARY = 500;
 const BLOCKED_STATUSES = new Set([
@@ -106,7 +107,10 @@ export function recordToolExecution(db, {
   if (!name) return null;
   const completedAt = iso(finishedAt, new Date().toISOString());
   const beganAt = iso(startedAt, completedAt);
-  const status = classifyToolOutcome(result, summary);
+  const safeArgs = scrubSecrets(args);
+  const safeResult = scrubSecrets(result);
+  const safeSummary = scrubSecrets(String(summary || "")).slice(0, MAX_SUMMARY);
+  const status = classifyToolOutcome(safeResult, safeSummary);
   const record = {
     id: `toolx_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`,
     toolName: String(name),
@@ -114,8 +118,8 @@ export function recordToolExecution(db, {
     sessionId,
     source,
     status,
-    args,
-    summary: String(summary || "").slice(0, MAX_SUMMARY),
+    args: safeArgs,
+    summary: safeSummary,
     latencyMs: Number.isFinite(Number(latencyMs)) ? Math.max(0, Number(latencyMs)) : null,
     startedAt: beganAt,
     finishedAt: completedAt,

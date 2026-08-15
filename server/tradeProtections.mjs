@@ -18,6 +18,7 @@ function closedTrades(db) {
       : { ...fill, id: `legacy_unkeyed_close_${index}` }
   ));
   return groupClosedTradeLifecycles(normalized)
+    .filter((lifecycle) => lifecycle.netRealizedPnl !== null && lifecycle.netRealizedPnl !== undefined && lifecycle.netRealizedPnl !== "" && Number.isFinite(Number(lifecycle.netRealizedPnl)))
     .map((lifecycle) => ({ pnl: Number(lifecycle.netRealizedPnl), at: new Date(lifecycle.lastClosedAt || 0).getTime() }))
     .filter((t) => Number.isFinite(t.at) && t.at > 0)
     .sort((a, b) => a.at - b.at);

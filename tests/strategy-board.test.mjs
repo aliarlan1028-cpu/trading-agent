@@ -6,6 +6,7 @@ import test from "node:test";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "strategy-board-"));
 const { buildStrategyBoard, healthVerdict, refreshTrustedSkillMetrics } = await import("../server/strategyBoard.mjs");
+const { financiallyReconciledFills } = await import("./financial-fixtures.mjs");
 
 test("健康裁定:样本不足不误判,阈值=自动下线口径", () => {
   assert.equal(healthVerdict({ trades: 4, profitFactor: 0.1 }).key, "insufficient", "4笔样本不足,即便PF差也不判下线");
@@ -31,7 +32,7 @@ test("受信任 skill 实盘不达标自动撤信任+通知", () => {
   const db = {
     skills: [{ id: "sk_bad", name: "烂信号", native: false, trusted: true, status: "已启用" }],
     tradePlans: Array.from({ length: 10 }, (_, i) => ({ id: `p${i}`, adoptedTrustedSkillIds: ["sk_bad"] })),
-    fills: Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `p${i}`, realizedPnl: -2 })),
+    fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `p${i}`, executionOrderId: `pe${i}`, realizedPnl: -2 }))),
     auditLogs: [], notifications: []
   };
   const r = refreshTrustedSkillMetrics(db);
@@ -44,7 +45,7 @@ test("受信任 skill 实盘达标自动转正(与流水线同生命周期)", ()
   const db = {
     skills: [{ id: "sk_good", name: "好信号", native: false, trusted: true, trustStatus: "live_probation", status: "已启用" }],
     tradePlans: Array.from({ length: 10 }, (_, i) => ({ id: `g${i}`, adoptedTrustedSkillIds: ["sk_good"] })),
-    fills: Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `g${i}`, realizedPnl: 3 })),
+    fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `g${i}`, executionOrderId: `ge${i}`, realizedPnl: 3 }))),
     auditLogs: [], notifications: []
   };
   const r = refreshTrustedSkillMetrics(db);
@@ -57,10 +58,10 @@ test("受信任 skill 的毛盈利被开平仓成本翻为净亏损时不得转�
   const db = {
     skills: [{ id: "sk_fee_flip", name: "成本后亏损信号", native: false, trusted: true, trustStatus: "live_probation", status: "已启用" }],
     tradePlans: Array.from({ length: 10 }, (_, i) => ({ id: `ff${i}`, adoptedTrustedSkillIds: ["sk_fee_flip"] })),
-    fills: Array.from({ length: 10 }, (_, i) => [
+    fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, i) => [
       { id: `entry-${i}`, kind: "entry", executionOrderId: `exec-${i}`, tradePlanId: `ff${i}`, feeUsdt: 0.8, createdAt: `2026-08-01T${String(i).padStart(2, "0")}:00:00Z` },
       { id: `close-${i}`, kind: "close", executionOrderId: `exec-${i}`, tradePlanId: `ff${i}`, realizedPnl: 1, feeUsdt: 0.4, createdAt: `2026-08-02T${String(i).padStart(2, "0")}:00:00Z` }
-    ]).flat(),
+    ]).flat()),
     executionOrders: [], auditLogs: [], notifications: []
   };
   const result = refreshTrustedSkillMetrics(db);

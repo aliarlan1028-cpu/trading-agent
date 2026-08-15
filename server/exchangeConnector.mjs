@@ -1,13 +1,58 @@
 import crypto from "node:crypto";
 import { appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
+import { canonicalPositionDirection } from "./positionIdentity.mjs";
 import { enforceOhlcvQuality } from "./ohlcvQuality.mjs";
+import { okxEnvironmentConfig, okxRestUrl } from "./okxEnvironment.mjs";
+import { scrubSecrets } from "./secretRedaction.mjs";
+import { applyTickerObservation, timestampEvidence } from "./marketObservation.mjs";
 
 const BINANCE_SPOT_BASE = process.env.BINANCE_SPOT_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binance.vision" : "https://api.binance.com");
 const BINANCE_USDM_BASE = process.env.BINANCE_USDM_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binancefuture.com" : "https://fapi.binance.com");
-const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
-const OKX_TICKER_URL = `${OKX_BASE}/api/v5/market/ticker`;
+const okxTickerUrl = () => okxRestUrl("/api/v5/market/ticker");
+
+export function currentOkxCredentialFingerprint() {
+  const apiKey = process.env.OKX_API_KEY || "";
+  return apiKey ? crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null;
+}
+
+export function enabledOkxAccounts(db = {}) {
+  return (db.exchangeAccounts || []).filter((account) => account.exchange === "OKX" && (account.readEnabled || account.tradeEnabled));
+}
+
+export function readableOkxAccounts(db = {}) {
+  return (db.exchangeAccounts || []).filter((account) => account.exchange === "OKX" && account.readEnabled === true);
+}
+
+export function tradableOkxAccounts(db = {}) {
+  return (db.exchangeAccounts || []).filter((account) => account.exchange === "OKX" && account.tradeEnabled === true);
+}
+
+export function validateOkxCredentialBinding(db = {}, options = {}) {
+  const currentFingerprint = currentOkxCredentialFingerprint();
+  const enabled = enabledOkxAccounts(db);
+  if (!currentFingerprint) return { ok: false, reason: "okx_credential_fingerprint_unavailable" };
+  if (enabled.length !== 1) return { ok: false, reason: "single_okx_account_required", enabledAccountIds: enabled.map((row) => row.id) };
+  const account = enabled[0];
+  const capability = options.requiredCapability || "read";
+  if (capability === "read" && account.readEnabled !== true) return { ok: false, reason: "okx_account_read_disabled", accountId: account.id };
+  if (capability === "trade" && account.tradeEnabled !== true) return { ok: false, reason: "okx_account_trade_disabled", accountId: account.id };
+  if (capability === "emergency_reduce" && account.tradeEnabled !== true && account.readEnabled !== true) {
+    return { ok: false, reason: "okx_account_emergency_write_not_authorized", accountId: account.id };
+  }
+  if (options.accountId && options.accountId !== account.id) return { ok: false, reason: "okx_account_binding_mismatch", accountId: account.id };
+  if (!account.apiKeyFingerprint || account.apiKeyFingerprint !== currentFingerprint) {
+    return { ok: false, reason: "okx_account_credential_fingerprint_mismatch", accountId: account.id };
+  }
+  if (options.snapshot && options.snapshot.apiKeyFingerprint !== currentFingerprint) {
+    return { ok: false, reason: "okx_snapshot_credential_fingerprint_mismatch", snapshotId: options.snapshot.id || null };
+  }
+  if (options.executionFingerprint && options.executionFingerprint !== currentFingerprint) {
+    return { ok: false, reason: "okx_execution_credential_fingerprint_mismatch" };
+  }
+  return { ok: true, account, currentFingerprint };
+}
 
 export function toBinanceSymbol(symbol) {
   return String(symbol || "BTC/USDT").replace("/", "").replace("-", "").toUpperCase();
@@ -42,7 +87,8 @@ export function refreshApiKeyMetadata(db) {
       item.hasApiKey = Boolean(process.env.OKX_API_KEY);
       item.hasSecret = Boolean(process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
     }
-    const fingerprint = apiKey ? crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null;
+    const fingerprint = item.exchange === "OKX" ? currentOkxCredentialFingerprint()
+      : apiKey ? crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null;
     item.apiKeyFingerprint = fingerprint;
     if (!fingerprint || previousFingerprint !== fingerprint) {
       item.withdrawPermission = false;
@@ -61,10 +107,26 @@ export function refreshApiKeyMetadata(db) {
   }
   for (const account of db.exchangeAccounts || []) {
     const metadata = db.apiKeyMetadata.find((key) => key.accountId === account.id);
-    account.readEnabled = Boolean(metadata?.hasApiKey && metadata?.hasSecret);
-    account.tradeEnabled = Boolean(metadata?.hasApiKey && metadata?.hasSecret);
+    const previousFingerprint = account.apiKeyFingerprint || null;
+    const nextFingerprint = metadata?.apiKeyFingerprint || null;
+    // 凭证是否存在与管理员是否授权是两个独立事实。这里只刷新凭证状态，
+    // 绝不能因为一次 GET/启动刷新而把用户明确关闭的读写权限重新打开。
+    account.credentialPresent = Boolean(metadata?.hasApiKey && metadata?.hasSecret);
+    account.apiKeyFingerprint = nextFingerprint;
+    if (previousFingerprint && nextFingerprint && previousFingerprint !== nextFingerprint) {
+      account.readEnabled = false;
+      account.tradeEnabled = false;
+      account.authorizationResetReason = "credential_fingerprint_changed";
+      account.authorizationResetAt = nowIso();
+    }
+    if (!account.credentialPresent) {
+      account.readEnabled = false;
+      account.tradeEnabled = false;
+    }
     account.withdrawEnabled = false;
-    account.status = account.readEnabled ? "configured" : "missing_credentials";
+    account.status = account.credentialPresent
+      ? (account.readEnabled || account.tradeEnabled ? "configured" : "authorization_disabled")
+      : "missing_credentials";
   }
   return db.apiKeyMetadata;
 }
@@ -73,7 +135,7 @@ async function fetchPublicTicker(exchange, symbol) {
   const timer = timeoutSignal();
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
-    const response = await fetch(`${OKX_TICKER_URL}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
+    const response = await fetch(`${okxTickerUrl()}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
     if (!response.ok) throw new Error(`OKX ticker HTTP ${response.status}`);
     const payload = await response.json();
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX ticker API ${payload?.code}: ${payload?.msg || "unknown error"}`);
@@ -111,15 +173,10 @@ export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
   if (!market) { market = { symbol: displaySymbol, candles: [], status: "not_synced" }; db.markets.push(market); }
-  market.price = ticker.price;
-  market.high24h = ticker.high24h;
-  market.low24h = ticker.low24h;
-  if (Number.isFinite(ticker.changePct)) market.changePct = ticker.changePct;
+  const applied = applyTickerObservation(market, { ...ticker, source: "OKX_REST", sourceAt: ticker.rawTime });
+  if (!applied.applied) throw new Error(`ticker_observation_rejected:${applied.reason}`);
   market.lastSyncedExchange = ticker.exchange;
-  market.lastSyncedAt = nowIso();
-  market.tickerSyncedAt = market.lastSyncedAt;
-  market.tickerSourceAt = Number.isFinite(Number(ticker.rawTime)) ? new Date(Number(ticker.rawTime)).toISOString() : null;
-  market.status = "synced";
+  market.lastSyncedAt = market.tickerReceivedAt;
   return ticker;
 }
 
@@ -128,7 +185,7 @@ export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
 export async function fetchFundingPercentile(symbol, pct = 85) {
   try {
     const instId = toOkxSymbol(symbol, "swap"); // 资金费率是永续专属,必须用 -SWAP instId(现货无资金费率)
-    const res = await fetch(`${OKX_BASE}/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`, { signal: globalThis.AbortSignal.timeout(8000) });
+    const res = await fetch(okxRestUrl(`/api/v5/public/funding-rate-history?instId=${encodeURIComponent(instId)}&limit=100`), { signal: globalThis.AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const j = await res.json();
     const vals = (j?.data || []).map((d) => Math.abs(Number(d.fundingRate) * 100)).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
@@ -148,16 +205,10 @@ export async function syncPublicMarket(db, exchange = "OKX", symbol = "BTC/USDT"
     db.markets.push(market);
   }
   if (market) {
-    market.price = ticker.price || market.price;
-    market.high24h = ticker.high24h || market.high24h;
-    market.low24h = ticker.low24h || market.low24h;
-    market.changePct = Number.isFinite(ticker.changePct) ? ticker.changePct : market.changePct;
-    market.volume24h = ticker.volume24h ? compactNumber(ticker.volume24h) : market.volume24h;
+    const applied = applyTickerObservation(market, { ...ticker, source: "OKX_REST", sourceAt: ticker.rawTime }, { formatVolume: compactNumber });
+    if (!applied.applied) throw new Error(`ticker_observation_rejected:${applied.reason}`);
     market.lastSyncedExchange = ticker.exchange;
-    market.lastSyncedAt = nowIso();
-    market.tickerSyncedAt = market.lastSyncedAt;
-    market.tickerSourceAt = Number.isFinite(Number(ticker.rawTime)) ? new Date(Number(ticker.rawTime)).toISOString() : null;
-    market.status = "synced";
+    market.lastSyncedAt = market.tickerReceivedAt;
   }
   appendAudit(db, "同步公开行情", `${exchange}:${symbol}`, "ExchangeConnector");
   appendTrace(db, "exchange_market", `同步 ${exchange} ${symbol}`);
@@ -170,7 +221,7 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
   const tf = OKX_BARS[timeframe] ? timeframe : "1h";
   const timer = timeoutSignal(8000);
   try {
-    const url = `${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`;
+    const url = okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`);
     const response = await fetch(url, { signal: timer.signal });
     if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
     const payload = await response.json();
@@ -207,9 +258,9 @@ async function fetchMicrostructureRaw(exchange, symbol) {
       return payload;
     };
     const [funding, oi, books] = await Promise.all([
-      getOkx(`${OKX_BASE}/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`, "funding-rate"),
-      getOkx(`${OKX_BASE}/api/v5/public/open-interest?instId=${encodeURIComponent(instId)}`, "open-interest"),
-      getOkx(`${OKX_BASE}/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=20`, "books")
+      getOkx(okxRestUrl(`/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`), "funding-rate"),
+      getOkx(okxRestUrl(`/api/v5/public/open-interest?instId=${encodeURIComponent(instId)}`), "open-interest"),
+      getOkx(okxRestUrl(`/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=20`), "books")
     ]);
     const book = books.data?.[0] || {};
     const result = {
@@ -267,6 +318,13 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
     market = { symbol: displaySymbol, candles: [], status: "not_synced" };
     db.markets.push(market);
   }
+  const receivedAt = nowIso();
+  const maxFutureSkewMs = Number(process.env.MAX_MARKET_FUTURE_SKEW_MS || 30_000);
+  const sourceFacts = Object.fromEntries(Object.entries(result.sourceTimestamps || {}).map(([name, value]) => [name, timestampEvidence(value, { maxAgeMs: Infinity, maxFutureSkewMs })]));
+  const invalidSource = Object.entries(sourceFacts).find(([, fact]) => !fact.ok);
+  if (invalidSource) throw new Error(`microstructure_${invalidSource[0]}_source_${invalidSource[1].reason}`);
+  const priorBookMs = new Date(market.bookSourceAt || market.microSourceTimestamps?.book || 0).getTime();
+  if (Number.isFinite(priorBookMs) && priorBookMs > new Date(sourceFacts.book.observedAt).getTime()) throw new Error("microstructure_out_of_order");
   market.fundingRate = result.fundingRatePct;
   market.openInterest = result.openInterest;
   market.bookImbalancePct = result.bookImbalancePct;
@@ -274,8 +332,19 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
   market.askVolume = result.askVolume;
   market.depthUsdt = result.depthUsdt;
   market.spreadBps = result.spreadBps;
-  market.microSyncedAt = nowIso();
-  market.microSourceTimestamps = result.sourceTimestamps;
+  market.microSyncedAt = receivedAt;
+  market.microReceivedAt = receivedAt;
+  market.fundingSourceAt = sourceFacts.funding.observedAt;
+  market.fundingReceivedAt = receivedAt;
+  market.openInterestSourceAt = sourceFacts.openInterest.observedAt;
+  market.openInterestReceivedAt = receivedAt;
+  market.bookSourceAt = sourceFacts.book.observedAt;
+  market.bookReceivedAt = receivedAt;
+  market.microSourceTimestamps = {
+    funding: sourceFacts.funding.observedAt,
+    openInterest: sourceFacts.openInterest.observedAt,
+    book: sourceFacts.book.observedAt
+  };
   if (options.quiet !== true) appendTrace(db, "exchange_micro", `微观结构 ${usedExchange} ${symbol}`);
   const funding = result.fundingRatePct;
   const interpretation = [];
@@ -298,7 +367,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
   const raw = [];
   const recentTimer = timeoutSignal(8000);
   try {
-    const response = await fetch(`${OKX_BASE}/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`, { signal: recentTimer.signal });
+    const response = await fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal });
     if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
     const payload = await response.json();
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX candles API ${payload?.code}: ${payload?.msg || "unknown error"}`);
@@ -314,7 +383,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     const pageTimer = timeoutSignal(8000);
     let batch = [];
     try {
-      const response = await fetch(`${OKX_BASE}/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`, { signal: pageTimer.signal });
+      const response = await fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal });
       if (!response.ok) break;
       const payload = await response.json();
       if (String(payload?.code ?? "0") !== "0") break;
@@ -487,21 +556,36 @@ export async function syncPrivateReadOnly(db, accountId) {
   const account = db.exchangeAccounts.find((item) => item.id === accountId);
   if (!account) return { status: "missing_account", accountId };
   const exchange = String(account.exchange).toUpperCase();
+  const enabled = enabledOkxAccounts(db);
+  if (exchange === "OKX" && (enabled.length !== 1 || enabled[0].id !== account.id)) {
+    return { status: "account_configuration_conflict", accountId, enabledAccountIds: enabled.map((row) => row.id), error: "当前单凭证架构只允许一个启用的 OKX 账户" };
+  }
+  const apiKeyFingerprint = exchange === "OKX" ? currentOkxCredentialFingerprint() : null;
+  if (exchange === "OKX" && (!apiKeyFingerprint || account.apiKeyFingerprint !== apiKeyFingerprint)) {
+    return { status: "credential_fingerprint_mismatch", accountId, error: "当前 OKX Key 与账户元数据指纹不一致；请先重新核验 Key 后再同步" };
+  }
   const result = exchange === "OKX"
     ? await syncOkxReadOnly()
     : { status: "unsupported_exchange", exchange, error: "Autonomous trading supports OKX only" };
 
+  const normalizedPositions = exchange === "OKX"
+    ? await normalizeOkxSnapshotPositions(result.positions || [])
+    : (result.positions || []);
   const snapshot = {
     id: id("snap"),
     accountId: account.id,
     exchange,
     status: result.status,
     balances: result.balances || [],
-    positions: result.positions || [],
+    positions: normalizedPositions,
     openOrders: result.openOrders || [],
     algoOrders: result.algoOrders || [],
+    openOrdersComplete: result.openOrdersComplete === true,
+    algoOrdersComplete: result.algoOrdersComplete === true,
     fundingRates: result.fundingRates || [],
     apiPermissions: result.apiPermissions,
+    apiKeyFingerprint,
+    environment: exchange === "OKX" ? okxEnvironmentConfig().name : null,
     error: result.error,
     createdAt: nowIso()
   };
@@ -509,9 +593,40 @@ export async function syncPrivateReadOnly(db, accountId) {
   if (snapshot.status === "ok") await applyPrivateSnapshotToState(db, snapshot);
   account.lastReadSyncAt = snapshot.createdAt;
   account.readSyncStatus = snapshot.status;
+  account.apiKeyFingerprint = apiKeyFingerprint;
   appendAudit(db, `私有只读同步：${snapshot.status}`, account.id, "ExchangeConnector", snapshot.status === "ok" ? "info" : "warning");
   appendTrace(db, "exchange_private_read", `${exchange} 私有只读同步`, snapshot.status === "ok" ? "ok" : "warning");
   return snapshot;
+}
+
+export async function normalizeOkxSnapshotPositions(rows = [], options = {}) {
+  const resolveContractValue = options.resolveContractValue || okxContractValue;
+  return Promise.all((rows || []).map(async (row) => {
+    const rawPosition = row?.pos !== null && row?.pos !== undefined && row?.pos !== "" && Number.isFinite(Number(row.pos))
+      ? Number(row.pos)
+      : null;
+    const contractSize = rawPosition === null ? null : Math.abs(rawPosition);
+    const suppliedCtVal = row?.ctVal ?? row?.contractMultiplier;
+    const suppliedFinite = suppliedCtVal !== null && suppliedCtVal !== undefined && suppliedCtVal !== ""
+      && Number.isFinite(Number(suppliedCtVal)) && Number(suppliedCtVal) > 0;
+    const lookedUp = suppliedFinite ? Number(suppliedCtVal) : await resolveContractValue(row.instId);
+    const ctVal = Number.isFinite(Number(lookedUp)) && Number(lookedUp) > 0 ? Number(lookedUp) : null;
+    const direction = rawPosition === null ? null : canonicalPositionDirection(row, rawPosition);
+    return {
+      ...row,
+      symbol: normalizeOkxDisplaySymbol(row.instId || row.symbol),
+      canonicalDirection: direction,
+      rawSignedPosition: rawPosition,
+      contractSize,
+      contractSizeUnit: "contracts",
+      ctVal,
+      contractMultiplier: ctVal,
+      coinSize: contractSize !== null && ctVal !== null ? contractSize * ctVal : null,
+      quantityUnit: "coin",
+      positionQuantityComplete: contractSize === 0 || ctVal !== null,
+      positionQuantityBasis: ctVal !== null ? "okx_contracts_times_ctVal" : "contract_spec_unavailable"
+    };
+  }));
 }
 
 async function syncBinanceReadOnly() {
@@ -605,7 +720,7 @@ function pruneExchangePositions(db, exchange, seenKeys) {
   });
 }
 
-function upsertOpenOrders(db, exchange, orders = []) {
+function upsertOpenOrders(db, exchange, orders = [], options = {}) {
   const seen = new Set();
   for (const payload of orders || []) {
     const exchangeOrderId = String(payload.orderId || payload.ordId || "");
@@ -618,10 +733,12 @@ function upsertOpenOrders(db, exchange, orders = []) {
     Object.assign(order, normalizeOpenOrder(exchange, payload), { updatedAt: nowIso() });
     if (!existing) db.orders.unshift(order);
   }
-  db.orders = (db.orders || []).filter((order) => {
-    if (order.source !== "exchange_rest" || order.exchange !== exchange) return true;
-    return seen.has(order.exchangeOrderKey);
-  });
+  if (options.complete !== false) {
+    db.orders = (db.orders || []).filter((order) => {
+      if (order.source !== "exchange_rest" || order.exchange !== exchange) return true;
+      return seen.has(order.exchangeOrderKey);
+    });
+  }
 }
 
 function normalizeOpenOrder(exchange, payload = {}) {
@@ -663,7 +780,7 @@ export async function okxContractSpec(instId) {
   if (cached && Date.now() - cached.at < 3_600_000) return cached.spec;
   const timer = timeoutSignal();
   try {
-    const response = await fetch(`${OKX_BASE}/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
+    const response = await fetch(okxRestUrl(`/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(instId)}`), { signal: timer.signal });
     if (!response.ok) throw new Error(`OKX instruments HTTP ${response.status}`);
     const raw = await response.json();
     if (String(raw?.code ?? "0") !== "0") throw new Error(`OKX instruments API ${raw?.code}`);
@@ -712,15 +829,24 @@ export async function binanceSymbolFilters(symbol, futures = true) {
 
 // OKX 持仓模式:long_short_mode(双向/对冲)下每单必须带 posSide;net_mode(单向)下不能带。
 // 不知道模式就瞎带/不带都会被 51000「Parameter posSide error」拒。缓存 10 分钟(模式极少变)。
-let okxPosModeCache = { mode: null, at: 0 };
-export async function okxPositionMode() {
-  if (okxPosModeCache.mode && Date.now() - okxPosModeCache.at < 600000) return okxPosModeCache.mode;
+const okxPosModeCache = new Map();
+export function invalidateOkxCredentialCaches() {
+  okxPosModeCache.clear();
+  okxCtValCache.clear();
+  okxSpecCache.clear();
+}
+export async function okxPositionMode(accountId = null) {
+  const fingerprint = currentOkxCredentialFingerprint();
+  if (!fingerprint) return null;
+  const cacheKey = `${fingerprint}:${accountId || "single"}`;
+  const cached = okxPosModeCache.get(cacheKey);
+  if (cached?.mode && Date.now() - cached.at < 600000) return cached.mode;
   try {
     const raw = await okxSignedRequest("/api/v5/account/config", "GET");
     const mode = raw?.data?.[0]?.posMode || null;
-    if (mode) okxPosModeCache = { mode, at: Date.now() };
+    if (mode) okxPosModeCache.set(cacheKey, { mode, at: Date.now() });
     return mode;
-  } catch { return okxPosModeCache.mode; }
+  } catch { return null; }
 }
 
 export async function applyOkxSnapshot(db, snapshot) {
@@ -729,29 +855,38 @@ export async function applyOkxSnapshot(db, snapshot) {
     const size = Number(payload.pos || 0);
     if (!Number.isFinite(size) || size === 0) continue;
     const symbol = normalizeOkxDisplaySymbol(payload.instId);
-    const posSide = payload.posSide || (size < 0 ? "short" : "long");
-    const key = `OKX:${symbol}:${posSide}`;
+    const rawPosSide = String(payload.posSide || "").toLowerCase();
+    const direction = canonicalPositionDirection({ posSide: rawPosSide, pos: size });
+    if (!direction) continue;
+    const key = `OKX:${symbol}:${direction}`;
     seen.add(key);
-    const ctVal = await okxContractValue(payload.instId);
+    const payloadCtVal = payload.ctVal ?? payload.contractMultiplier;
+    const ctVal = payloadCtVal !== null && payloadCtVal !== undefined && payloadCtVal !== ""
+      && Number.isFinite(Number(payloadCtVal)) && Number(payloadCtVal) > 0
+      ? Number(payloadCtVal)
+      : await okxContractValue(payload.instId);
     upsertExchangePosition(db, key, {
       exchange: "OKX",
       symbol,
-      posSide,
-      direction: posSide === "short" ? "short" : "long",
+      posSide: direction,
+      direction,
+      positionMode: rawPosSide === "net" ? "net_mode" : "long_short_mode",
+      rawPosSide: rawPosSide || null,
+      rawPos: size,
       size: Math.abs(size),                          // 合约张数（OKX 原始口径）
       contractMultiplier: ctVal,                     // 面值：币数量 = 张数 × ctVal
       coinSize: ctVal ? Math.abs(size) * ctVal : null, // 币数量（展示用，真实换算）
-      entry: Number(payload.avgPx || 0),
-      mark: Number(payload.markPx || 0),             // 标记价（交易所强平/浮盈基准）
-      liqPx: Number(payload.liqPx) || null,          // 真实预估强平价
-      pnl: Number(payload.upl || 0),                 // 交易所权威浮盈，不用本地公式冒充
-      leverage: Number(payload.lever || 0),
+      entry: payload.avgPx !== null && payload.avgPx !== undefined && payload.avgPx !== "" && Number.isFinite(Number(payload.avgPx)) ? Number(payload.avgPx) : null,
+      mark: payload.markPx !== null && payload.markPx !== undefined && payload.markPx !== "" && Number.isFinite(Number(payload.markPx)) ? Number(payload.markPx) : null,
+      liqPx: payload.liqPx !== null && payload.liqPx !== undefined && payload.liqPx !== "" && Number.isFinite(Number(payload.liqPx)) ? Number(payload.liqPx) : null,
+      pnl: payload.upl !== null && payload.upl !== undefined && payload.upl !== "" && Number.isFinite(Number(payload.upl)) ? Number(payload.upl) : null,
+      leverage: payload.lever !== null && payload.lever !== undefined && payload.lever !== "" && Number.isFinite(Number(payload.lever)) ? Number(payload.lever) : null,
       marginMode: payload.mgnMode,
       rawSyncedAt: snapshot.createdAt
     });
   }
   pruneExchangePositions(db, "OKX", seen);
-  upsertOpenOrders(db, "OKX", snapshot.openOrders);
+  upsertOpenOrders(db, "OKX", snapshot.openOrders, { complete: snapshot.openOrdersComplete === true });
   const account = snapshot.balances?.[0] || {};
   const totalEq = Number(account.totalEq);
   if (Number.isFinite(totalEq) && totalEq > 0) {
@@ -826,25 +961,49 @@ async function syncOkxReadOnly() {
     const [balance, positions, openOrders, algoOrders] = await Promise.all([
       okxSignedRequest("/api/v5/account/balance"),
       okxSignedRequest("/api/v5/account/positions"),
-      okxSignedRequest("/api/v5/trade/orders-pending"),
+      fetchOkxPendingPages("/api/v5/trade/orders-pending", { idField: "ordId" }),
       // 附加止损在主单完全成交后成为 conditional algo order；必须从交易所核验，
       // 不能只凭本地 stopLoss 字段假定仓位仍受保护。
-      okxSignedRequest("/api/v5/trade/orders-algo-pending?ordType=conditional")
+      fetchOkxPendingPages("/api/v5/trade/orders-algo-pending", { idField: "algoId", query: { ordType: "conditional" } })
     ]);
-    for (const [label, response] of [["balance", balance], ["positions", positions], ["orders", openOrders], ["algo_orders", algoOrders]]) {
+    for (const [label, response] of [["balance", balance], ["positions", positions]]) {
       if (String(response?.code) !== "0") throw new Error(`OKX ${label} rejected: ${response?.code || "unknown"} ${response?.msg || ""}`.trim());
     }
     return {
       status: "ok",
       balances: balance.data || [],
       positions: positions.data || [],
-      openOrders: (openOrders.data || []).map(maskOrder).slice(0, 50),
-      algoOrders: (algoOrders.data || []).map(maskOrder).slice(0, 100),
+      openOrders: (openOrders.rows || []).map(maskOrder),
+      algoOrders: (algoOrders.rows || []).map(maskOrder),
+      openOrdersComplete: openOrders.complete === true,
+      algoOrdersComplete: algoOrders.complete === true,
       fundingRates: []
     };
   } catch (error) {
     return { status: "request_failed", error: error.message };
   }
+}
+
+export async function fetchOkxPendingPages(path, options = {}) {
+  const request = options.request || okxSignedRequest;
+  const idField = options.idField || "ordId";
+  const limit = Math.max(1, Math.min(100, Number(options.limit || 100)));
+  const maxPages = Math.max(1, Number(options.maxPages || 20));
+  const rows = [];
+  let after = null;
+  for (let page = 0; page < maxPages; page += 1) {
+    const query = new URLSearchParams({ ...(options.query || {}), limit: String(limit) });
+    if (after) query.set("after", after);
+    const raw = await request(`${path}?${query.toString()}`, "GET");
+    if (String(raw?.code) !== "0") return { rows, complete: false, reason: "okx_pending_query_rejected", code: raw?.code || null };
+    const pageRows = Array.isArray(raw.data) ? raw.data : [];
+    rows.push(...pageRows);
+    if (pageRows.length < limit) return { rows, complete: true, pages: page + 1 };
+    const next = String(pageRows.at(-1)?.[idField] || "");
+    if (!next || next === after) return { rows, complete: false, reason: "okx_pending_pagination_unstable", pages: page + 1 };
+    after = next;
+  }
+  return { rows, complete: false, reason: "okx_pending_pagination_limit", pages: maxPages };
 }
 
 async function binancePublicRequest(url) {
@@ -879,20 +1038,26 @@ export async function binanceSignedRequest(pathname, params = {}, options = {}) 
   }
 }
 
-export async function okxSignedRequest(pathname, method = "GET", body = "") {
+export async function okxSignedRequest(pathname, method = "GET", body = "", options = {}) {
+  const credentials = options.credentials || {
+    apiKey: process.env.OKX_API_KEY,
+    apiSecret: process.env.OKX_API_SECRET,
+    passphrase: process.env.OKX_API_PASSPHRASE
+  };
+  if (!credentials.apiKey || !credentials.apiSecret || !credentials.passphrase) throw new Error("OKX credentials incomplete");
   const timestamp = new Date().toISOString();
   const prehash = `${timestamp}${method}${pathname}${body}`;
-  const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET).update(prehash).digest("base64");
+  const sign = crypto.createHmac("sha256", credentials.apiSecret).update(prehash).digest("base64");
   const timer = timeoutSignal();
   try {
-    const response = await fetch(`${OKX_BASE}${pathname}`, {
+    const response = await fetch(okxRestUrl(pathname), {
       method,
       signal: timer.signal,
       headers: {
-        "OK-ACCESS-KEY": process.env.OKX_API_KEY,
+        "OK-ACCESS-KEY": credentials.apiKey,
         "OK-ACCESS-SIGN": sign,
         "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": process.env.OKX_API_PASSPHRASE,
+        "OK-ACCESS-PASSPHRASE": credentials.passphrase,
         "Content-Type": "application/json",
         ...(process.env.OKX_DEMO_TRADING === "true" ? { "x-simulated-trading": "1" } : {})
       },
@@ -902,6 +1067,26 @@ export async function okxSignedRequest(pathname, method = "GET", body = "") {
     return response.json();
   } finally {
     timer.cancel();
+  }
+}
+
+export async function validateOkxCredentialCandidate(credentials = {}) {
+  const apiKey = String(credentials.apiKey || "");
+  const apiSecret = String(credentials.apiSecret || "");
+  const passphrase = String(credentials.passphrase || "");
+  if (!apiKey || !apiSecret || !passphrase) return { ok: false, status: "incomplete_credentials" };
+  try {
+    const raw = await okxSignedRequest("/api/v5/account/config", "GET", "", { credentials: { apiKey, apiSecret, passphrase } });
+    if (String(raw?.code ?? "0") !== "0" || !raw?.data?.[0]) return { ok: false, status: "credential_validation_failed", code: raw?.code || null };
+    const config = raw.data[0];
+    return {
+      ok: true,
+      status: "validated",
+      posMode: config.posMode || null,
+      permissions: String(config.perm || config.permissions || "").split(",").map((item) => item.trim()).filter(Boolean)
+    };
+  } catch (error) {
+    return { ok: false, status: "credential_validation_failed", error: String(error.message || error).slice(0, 160) };
   }
 }
 
@@ -944,10 +1129,5 @@ function compactNumber(value) {
 }
 
 function summarizePayload(payload) {
-  const safe = { ...payload };
-  delete safe.apiSecret;
-  delete safe.secret;
-  delete safe.passphrase;
-  delete safe.password;
-  return safe;
+  return scrubSecrets(payload);
 }

@@ -1,3 +1,5 @@
+import { storedTaskAuthorization, taskHandlerPolicy, userHasCapabilities } from "../capabilityPolicy.mjs";
+
 // 定时任务路由组（含 job-runs 只读）—— 从 index.mjs 按 registrar 范式迁出。依赖经 ctx 注入。
 export function registerTaskRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, scheduleTask, unscheduleTask, runTask, validateTaskDefinition, userHasPermission } = ctx;
@@ -13,6 +15,14 @@ export function registerTaskRoutes(app, ctx) {
     if (!systemManaged(task) || !req.user || userHasPermission(db, req.user, "admin:system")) return false;
     res.status(403).json({ error: "系统托管任务只能由管理员暂停、恢复或手动运行" });
     return true;
+  };
+  const authorizeUserHandler = (handler, req, res) => {
+    const policy = taskHandlerPolicy(handler);
+    if (!policy?.userSchedulable || !userHasCapabilities(db, req.user, policy.permissions)) {
+      res.status(403).json({ error: "task_handler_not_authorized", handler, requiredPermissions: policy?.permissions || [] });
+      return null;
+    }
+    return policy;
   };
 
   function buildUserTask(body = {}, existing = null) {
@@ -32,11 +42,20 @@ export function registerTaskRoutes(app, ctx) {
     };
   }
 
-  app.get("/api/tasks", (_req, res) => res.json(db.tasks));
-  app.get("/api/job-runs", (_req, res) => res.json(db.jobRuns));
+  app.get("/api/tasks", requirePermission("write:task"), (_req, res) => res.json(db.tasks));
+  app.get("/api/job-runs", requirePermission("admin:system"), (_req, res) => res.json(db.jobRuns));
 
   app.post("/api/tasks", requirePermission("write:task"), (req, res) => {
-    const task = { id: id("task"), status: "等待", allowlist: [], createdAt: nowIso(), ...buildUserTask(req.body) };
+    const definition = buildUserTask(req.body);
+    const policy = authorizeUserHandler(definition.handler, req, res);
+    if (!policy) return;
+    const task = {
+      id: id("task"), status: "等待", allowlist: [], createdAt: nowIso(), ...definition,
+      creatorUserId: req.user.id,
+      tenantId: req.tenantId || req.user.tenantId || "tenant_owner",
+      creatorSecurityVersion: Number(req.user.securityVersion || 0),
+      requiredPermissions: [...policy.permissions]
+    };
     const validation = validateTaskDefinition(task);
     if (!validation.valid) return res.status(400).json({ error: `任务配置无效：${validation.errors.join("；")}`, errors: validation.errors });
     db.tasks.unshift(task);
@@ -54,11 +73,15 @@ export function registerTaskRoutes(app, ctx) {
     const task = findTask(req.params.id);
     if (!task) return notFound(res);
     if (forbidSystemDefinitionMutation(task, res)) return;
+    const existingAuthorization = storedTaskAuthorization(db, task);
+    if (!existingAuthorization.allowed) return res.status(403).json({ error: existingAuthorization.reason });
     const next = buildUserTask(req.body, task);
+    const policy = authorizeUserHandler(next.handler, req, res);
+    if (!policy) return;
     const validation = validateTaskDefinition(next);
     if (!validation.valid) return res.status(400).json({ error: `任务配置无效：${validation.errors.join("；")}`, errors: validation.errors });
     const previous = { ...task };
-    Object.assign(task, next, { updatedAt: nowIso() });
+    Object.assign(task, next, { updatedAt: nowIso(), requiredPermissions: [...policy.permissions] });
     try {
       if (task.enabled) scheduleTask(db, task, saveDb);
       else unscheduleTask(task.id);
@@ -77,6 +100,8 @@ export function registerTaskRoutes(app, ctx) {
     const index = db.tasks.findIndex((item) => item.id === req.params.id);
     if (index === -1) return notFound(res);
     if (forbidSystemDefinitionMutation(db.tasks[index], res)) return;
+    const existingAuthorization = storedTaskAuthorization(db, db.tasks[index]);
+    if (!existingAuthorization.allowed) return res.status(403).json({ error: existingAuthorization.reason });
     const [task] = db.tasks.splice(index, 1);
     unscheduleTask(task.id);
     // 运行历史是审计证据，删除定义后保留并标记，而不是一并抹掉。
@@ -103,6 +128,10 @@ export function registerTaskRoutes(app, ctx) {
     const task = findTask(req.params.id);
     if (!task) return notFound(res);
     if (forbidSystemLifecycleWithoutAdmin(task, req, res)) return;
+    if (!systemManaged(task)) {
+      const authorization = storedTaskAuthorization(db, task);
+      if (!authorization.allowed) return res.status(403).json({ error: authorization.reason });
+    }
     const validation = validateTaskDefinition({ ...task, enabled: true }, { allowSystemHandlers: systemManaged(task) });
     if (!validation.valid) return res.status(400).json({ error: `任务不能恢复：${validation.errors.join("；")}` });
     task.enabled = true;
@@ -118,6 +147,10 @@ export function registerTaskRoutes(app, ctx) {
     const task = findTask(req.params.id);
     if (!task) return notFound(res);
     if (forbidSystemLifecycleWithoutAdmin(task, req, res)) return;
+    if (!systemManaged(task)) {
+      const authorization = storedTaskAuthorization(db, task);
+      if (!authorization.allowed) return res.status(403).json({ error: authorization.reason });
+    }
     if (task.enabled === false) return res.status(409).json({ error: "任务当前已暂停，恢复后才能运行" });
     const result = await runTask(db, req.params.id, saveDb, "manual");
     res.json(result);

@@ -45,7 +45,8 @@ test("OMS reserves idempotency keys and rejects payload conflicts", () => {
     planId: "p1",
     payload: { symbol: "BTC/USDT", quantity: 1 }
   });
-  assert.equal(replay.status, "replay");
+  assert.equal(replay.status, "unknown", "SUBMITTING 不是交易所真实 ACK，重复请求必须进入查询/对账而非假重放");
+  assert.equal(replay.order.state, "SUBMITTING");
 
   const conflict = reserveOmsOrder({
     tenantId: "t1",

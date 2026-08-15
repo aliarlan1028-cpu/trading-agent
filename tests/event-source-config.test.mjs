@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { safeExternalItemLink, sourceFetchProvenance } from "../server/eventSources.mjs";
+import { newsSourcePolicy } from "../server/newsIntelligence.mjs";
 import { registerEventSourceRoutes } from "../server/routes/eventSources.mjs";
 
 function harness(initial = []) {
@@ -48,13 +50,15 @@ test("事件源创建拒绝空 URL、非法可信度和重复 URL", async () => 
   assert.equal(db.eventSources.length, 1);
 });
 
-test("合法事件源会以规范化 URL 落库", async () => {
+test("自定义事件源会以规范化 URL 落库且客户端可信度不能提权", async () => {
   const { db, routes } = harness();
   const res = response();
   await routes.get("POST /api/event-sources")({ body: { name: "Feed", type: "rss", url: "https://example.com/feed#fragment", trustScore: 88 } }, res);
   assert.equal(res.statusCode, 200);
   assert.equal(db.eventSources[0].url, "https://example.com/feed");
-  assert.equal(db.eventSources[0].trustScore, 88);
+  assert.equal(db.eventSources[0].trustScore, 20);
+  assert.equal(db.eventSources[0].trustTier, "unverified_custom");
+  assert.equal(db.eventSources[0].verifiedOrigin, false);
 });
 
 test("事件源在保存时执行 SSRF 安全校验", async () => {
@@ -72,4 +76,30 @@ test("事件源在保存时执行 SSRF 安全校验", async () => {
   await routeMap.get("POST /api/event-sources")({ body: { name: "Local", type: "rss", url: "http://127.0.0.1/feed", trustScore: 80 } }, res);
   assert.equal(res.statusCode, 400);
   assert.match(res.payload.error, /安全校验失败/);
+});
+
+test("trusted source cross-origin redirects are downgraded and item links are safe", () => {
+  const trusted = {
+    id: "src_fed_press",
+    url: "https://www.federalreserve.gov/feeds/press_all.xml",
+    systemManaged: true,
+    verifiedOrigin: true,
+    trustTier: "verified_official"
+  };
+  const redirected = sourceFetchProvenance(trusted, "https://attacker.example/feed.xml");
+  assert.equal(redirected.crossOrigin, true);
+  assert.equal(redirected.verifiedOrigin, false);
+  assert.equal(redirected.trustTier, "unverified_fetch");
+
+  const policy = newsSourcePolicy({
+    ...trusted,
+    lastFetchedFinalUrl: redirected.finalUrl,
+    lastFetchVerifiedOrigin: redirected.verifiedOrigin
+  });
+  assert.equal(policy.verified, false);
+  assert.equal(policy.credibility, 0.2);
+
+  assert.equal(safeExternalItemLink("javascript:alert(1)", redirected.finalUrl), null);
+  assert.equal(safeExternalItemLink("https://user:pass@example.com/story", redirected.finalUrl), null);
+  assert.equal(safeExternalItemLink("/story", redirected.finalUrl), "https://attacker.example/story");
 });

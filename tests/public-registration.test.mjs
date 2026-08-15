@@ -8,6 +8,7 @@ import {
   normalizeRegistrationMode,
   publicRegistrationInfo,
   publicRegistrationStatus,
+  issueApplicantAccessToken,
   submitRegistrationApplication,
   updateRegistrationApplication,
   verifyRegistrationEmail
@@ -76,8 +77,11 @@ test("public application never creates a user, tenant, subscription or session",
   assert.equal(JSON.stringify(database.registrationApplications).includes("must-not-be-stored"), false);
 
   const verified = verifyRegistrationEmail(database, result.verificationToken);
-  assert.equal(verified.status, "waitlisted");
-  assert.ok(verified.emailVerifiedAt);
+  assert.equal(verified.application.status, "waitlisted");
+  assert.ok(verified.application.emailVerifiedAt);
+  assert.ok(verified.applicantAccessToken);
+  assert.throws(() => publicRegistrationStatus(database, result.verificationToken), /Application not found/);
+  assert.equal(publicRegistrationStatus(database, verified.applicantAccessToken).application.status, "waitlisted");
 });
 
 test("duplicate application returns the existing record without revealing a new token", async () => {
@@ -108,15 +112,37 @@ test("approval is fail-closed on email verification and capacity", async () => {
   const result = await submitRegistrationApplication(database, validPayload(), { ip: "203.0.113.14" });
   assert.throws(() => updateRegistrationApplication(database, result.application.id, { status: "approved" }), /Invalid registration transition|Email must be verified/);
   manuallyVerifyRegistrationEmail(database, result.application.id);
+  const accessToken = issueApplicantAccessToken(database, result.application.id);
   const approved = updateRegistrationApplication(database, result.application.id, { status: "approved", provisionSlug: "alice-01" });
   assert.equal(approved.status, "approved");
   assert.equal(publicRegistrationInfo(database).capacity.available, 0);
   updateRegistrationApplication(database, result.application.id, { status: "payment_pending" });
   const paid = markRegistrationPaymentConfirmed(database, result.application.id, "pay_01");
   assert.equal(paid.status, "paid");
-  const status = publicRegistrationStatus(database, result.verificationToken);
+  const status = publicRegistrationStatus(database, accessToken);
   assert.equal(status.application.status, "paid");
   assert.equal(status.application.applicantAccessTokenHash, undefined);
+  assert.equal(status.application.email, undefined);
+  assert.equal(status.application.provisionUrl, undefined);
+});
+
+test("applicant access tokens expire, revoke on terminal state and rotate", async () => {
+  process.env.PUBLIC_REGISTRATION_MODE = "waitlist";
+  process.env.PUBLIC_MAX_TENANTS = "2";
+  const database = db();
+  const submitted = await submitRegistrationApplication(database, validPayload(), { ip: "203.0.113.22" });
+  const verified = verifyRegistrationEmail(database, submitted.verificationToken);
+  const first = verified.applicantAccessToken;
+  assert.equal(publicRegistrationStatus(database, first).application.status, "waitlisted");
+  const second = issueApplicantAccessToken(database, submitted.application.id);
+  assert.throws(() => publicRegistrationStatus(database, first), /Application not found/);
+  assert.equal(publicRegistrationStatus(database, second).application.status, "waitlisted");
+  database.registrationApplications[0].applicantAccessTokenExpiresAt = new Date(Date.now() - 1).toISOString();
+  assert.throws(() => publicRegistrationStatus(database, second), /Application not found/);
+
+  const third = issueApplicantAccessToken(database, submitted.application.id);
+  updateRegistrationApplication(database, submitted.application.id, { status: "rejected" });
+  assert.throws(() => publicRegistrationStatus(database, third), /Application not found/);
 });
 
 test("legal consent is mandatory", async () => {

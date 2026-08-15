@@ -5,23 +5,33 @@ export function registerNotificationRoutes(app, ctx) {
     telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox
   } = ctx;
 
-  app.get("/api/notifications", (_req, res) => res.json((db.notifications || []).slice(0, 50)));
+  const visibleNotifications = (req) => (db.notifications || [])
+    .filter((item) => !item.tenantId || item.tenantId === (req.tenantId || "tenant_owner"))
+    .filter((item) => !item.recipientUserId || item.recipientUserId === req.user?.id);
+
+  app.get("/api/notifications", requirePermission("account.read"), (req, res) => {
+    res.json(visibleNotifications(req).slice(0, 50).map((item) => ({
+      ...item,
+      read: (item.readByUserIds || []).includes(req.user?.id)
+    })));
+  });
 
   // 标记已读:传 id 只标那一条(通知详情「标记已读」);不传 id 标全部(打开通知中心/「全部已读」清徽章)。
-  app.post("/api/notifications/read", (req, res) => {
+  app.post("/api/notifications/read", requirePermission("account.read"), (req, res) => {
     const id = req.body?.id;
     let marked = 0;
-    for (const item of db.notifications || []) {
+    for (const item of visibleNotifications(req)) {
       if (id && item.id !== id) continue;
-      if (!item.read) { item.read = true; marked++; }
+      item.readByUserIds ||= [];
+      if (req.user?.id && !item.readByUserIds.includes(req.user.id)) { item.readByUserIds.push(req.user.id); marked++; }
     }
     if (marked) saveDb(db);
     res.json({ ok: true, marked });
   });
 
-  app.get("/api/notifications/lark-status", (_req, res) => res.json(larkStatus()));
-  app.get("/api/notifications/telegram-status", (_req, res) => res.json(telegramStatus()));
-  app.get("/api/notifications/telegram-watch-status", (_req, res) => res.json(telegramWatchDeliveryHealth(db)));
+  app.get("/api/notifications/lark-status", requirePermission("admin:security"), (_req, res) => res.json(larkStatus()));
+  app.get("/api/notifications/telegram-status", requirePermission("admin:security"), (_req, res) => res.json(telegramStatus()));
+  app.get("/api/notifications/telegram-watch-status", requirePermission("admin:security"), (_req, res) => res.json(telegramWatchDeliveryHealth(db)));
 
   app.post("/api/notifications/lark-test", requirePermission("admin:security"), async (_req, res) => {
     const result = await notifyLark(db, {

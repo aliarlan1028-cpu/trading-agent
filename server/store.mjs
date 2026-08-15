@@ -8,6 +8,8 @@ import { currentRequestContext } from "./requestContext.mjs";
 import { backfillToolUsage, migrateToolUsageStats } from "./toolUsage.mjs";
 import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
 import { applyDerivedProfitGoals } from "./profitGoals.mjs";
+import { clearReduceOnlyReason, setReduceOnlyReason } from "./reduceOnlyState.mjs";
+import { scrubSecrets } from "./secretRedaction.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -26,6 +28,7 @@ export const ALL_PERMISSIONS = [
 // 也不能直接跨过“批准者/执行者”职责边界。Owner 仍通过管理员角色拥有全部权限。
 export const TRADER_PERMISSIONS = [
   "market.read", "account.read", "risk.check", "knowledge.read", "knowledge.write",
+  "assistant.use",
   "write:mandate", "write:trade_plan", "write:risk_thresholds", "write:knowledge",
   "write:event", "write:review", "write:task"
 ];
@@ -43,6 +46,7 @@ const collectionNames = [
   "permissions",
   "subscriptionPlans",
   "subscriptions",
+  "subscriptionTerms",
   "paymentRequests",
   "paymentWebhooks",
   "registrationApplications",
@@ -467,10 +471,11 @@ function cleanSeedDatabase(createdAt) {
       "write:event", "write:exchange", "write:realtime", "write:review", "write:mcp", "write:task",
       "admin:security", "admin:system", "critical:trade_execution", "critical:kill_switch",
       "approve:knowledge_skill",
-      "knowledge.read", "knowledge.write", "skill.install", "mcp.register", "audit.export"
+      "knowledge.read", "knowledge.write", "assistant.use", "skill.install", "mcp.register", "audit.export"
     ],
     subscriptionPlans: defaultSubscriptionPlans(createdAt),
     subscriptions: [{ id: "sub_owner", tenantId: "tenant_owner", userId: "user_local_admin", planId: "owner", status: "active", source: "owner_grant", startedAt: createdAt, currentPeriodEnd: null }],
+    subscriptionTerms: [],
     paymentRequests: [],
     paymentWebhooks: [],
     registrationApplications: [],
@@ -641,6 +646,7 @@ export function loadDb() {
   const normalized = sqliteState
     ? normalizeDatabase(sqliteState)
     : normalizeDatabase(fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase());
+  Object.defineProperty(normalized, "__sqliteBacked", { value: true, enumerable: false, configurable: false });
   // 必须先只读校验审计链，再做任何常规保存。发现断裂只标记故障并进入只减仓，
   // 绝不通过重算历史 hash 让异常“看起来恢复正常”。
   inspectAuditChainIntegrity(normalized);
@@ -717,6 +723,7 @@ function inspectAuditChainIntegrity(db) {
         }
       }
     }
+    clearReduceOnlyReason(db, "audit_chain_integrity", { resolvedBy: "AuditIntegrityCheck", resolution: "audit_chain_verified" });
     return result;
   }
   db.meta.auditChainBroken = true;
@@ -728,6 +735,7 @@ function inspectAuditChainIntegrity(db) {
   db.system ||= {};
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyBy = "audit_chain_integrity";
+  setReduceOnlyReason(db, "audit_chain_integrity", { sticky: true, sourceId: "AuditIntegrityCheck" });
   db.system.riskStatus = "审计链异常·只减仓";
   db.system.latestAction = `审计链校验失败（${result.breaks.length} 处），已保留原始证据并禁止新开仓`;
   db.riskIncidents ||= [];
@@ -802,6 +810,7 @@ const LOG_CAPS = {
   chatMessages: 400, chatSessions: 100, memoryItems: 500, analysisBundles: 200, evidenceBundles: 50,
   tradeIntents: 500, backtests: 100, strategyExperiments: 200, orders: 3000, fills: 5000, traces: 1000,
   watchTriggers: 100, armedSetups: 200, opportunityCandidates: 200, opportunityEvents: 1000,
+  reviews: 2000,
   missedOpportunities: 100,
   marketIntelligenceFacts: 2000, marketCalendarEvents: 500, dailyBriefs: 90,
   telegramWatchOutbox: 500, telegramPosterOutbox: 500
@@ -948,7 +957,7 @@ export function appendAudit(db, action, target, actor = "System", severity = "in
     const latest = sqlite.prepare("select doc from audit_log_entries order by rowid desc limit 1").get();
     const prevHash = latest ? JSON.parse(latest.doc).hash || null : null;
     const entry = {
-      id: id("audit"), actor, action, target, severity, prevHash, createdAt: nowIso(),
+      id: id("audit"), actor: scrubSecrets(actor), action: scrubSecrets(action), target: scrubSecrets(target), severity, prevHash, createdAt: nowIso(),
       ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
     };
     entry.hash = auditHash(entry);
@@ -963,7 +972,7 @@ export function appendAudit(db, action, target, actor = "System", severity = "in
 
 // latencyMs 只接受真实测量值；不传就是 null（此前默认随机数 80-980ms，会被前端当真实延迟画进 P95 图）。
 export function appendTrace(db, type, title, status = "ok", latencyMs = null) {
-  const entry = { id: id("trace"), type, title, status, latencyMs, createdAt: nowIso() };
+  const entry = { id: id("trace"), type: scrubSecrets(type), title: scrubSecrets(title), status, latencyMs, createdAt: nowIso() };
   db.traces.unshift(entry);
   writeTraceEntry(entry);
   return entry;
@@ -1031,8 +1040,9 @@ export async function backupSqlite(destination) {
 
 function ensureSqlite() {
   if (sqlite) return sqlite;
-  sqlite = new Database(sqliteDbPath);
+  sqlite = new Database(sqliteDbPath, { timeout: 5000 });
   sqlite.pragma("journal_mode = WAL");
+  sqlite.pragma("busy_timeout = 5000");
   sqlite.pragma("foreign_keys = ON");
   sqlite.exec(`
     create table if not exists migrations (
@@ -1124,6 +1134,13 @@ function ensureSqlite() {
       fencing_token integer not null,
       expires_at text not null,
       updated_at text not null
+    );
+    create table if not exists payment_tx_claims (
+      txid text primary key,
+      payment_id text not null unique,
+      tenant_id text,
+      evidence_doc text not null,
+      claimed_at text not null
     );
     create table if not exists audit_sink_offsets (
       sink_id text primary key,
@@ -1314,12 +1331,45 @@ export function releaseExecutionLease(resource, ownerId, fencingToken) {
   return result.changes === 1;
 }
 
+export function renewExecutionLease(resource, ownerId, fencingToken, ttlMs = 30_000) {
+  ensureSqlite();
+  const expiresAt = new Date(Date.now() + Math.max(5_000, Number(ttlMs) || 30_000)).toISOString();
+  const result = sqlite.prepare(`
+    update execution_leases set expires_at = ?, updated_at = ?
+    where resource = ? and owner_id = ? and fencing_token = ? and expires_at > ?
+  `).run(expiresAt, nowIso(), resource, ownerId, fencingToken, nowIso());
+  return { renewed: result.changes === 1, expiresAt };
+}
+
+export function claimPaymentTransaction({ txid, paymentId, tenantId = null, evidence = {} }) {
+  ensureSqlite();
+  const claimedAt = nowIso();
+  const claim = sqlite.transaction(() => {
+    const existing = sqlite.prepare("select txid, payment_id, tenant_id, claimed_at from payment_tx_claims where txid = ? or payment_id = ? limit 1").get(txid, paymentId);
+    if (existing) return {
+      claimed: existing.txid === txid && existing.payment_id === paymentId,
+      txid: existing.txid,
+      paymentId: existing.payment_id,
+      tenantId: existing.tenant_id,
+      claimedAt: existing.claimed_at,
+      replay: existing.txid === txid && existing.payment_id === paymentId
+    };
+    sqlite.prepare(`
+      insert into payment_tx_claims (txid, payment_id, tenant_id, evidence_doc, claimed_at)
+      values (?, ?, ?, ?, ?)
+    `).run(txid, paymentId, tenantId, JSON.stringify(evidence), claimedAt);
+    return { claimed: true, txid, paymentId, tenantId, claimedAt, replay: false };
+  });
+  return claim();
+}
+
 function stablePayloadHash(payload = {}) {
-  const normalized = {};
-  for (const key of Object.keys(payload).sort()) {
-    if (["apiSecret", "secret", "passphrase", "manualApproval"].includes(key)) continue;
-    normalized[key] = payload[key];
-  }
+  const sortDeep = (value) => {
+    if (Array.isArray(value)) return value.map(sortDeep);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortDeep(value[key])]));
+  };
+  const normalized = sortDeep(sanitizeStoredPayload(payload));
   return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
 }
 
@@ -1333,8 +1383,30 @@ export function reserveOmsOrder({ tenantId = "tenant_owner", exchange, clientOrd
   `).get(tenantId, exchange, clientOrderId);
   const payloadHash = stablePayloadHash(payload);
   if (existing) {
+    if (existing.payload_hash !== payloadHash) return { status: "conflict", order: deserializeOmsOrder(existing) };
+    const state = String(existing.state || "").toUpperCase();
+    if (["SUBMITTING", "UNKNOWN"].includes(state)) {
+      return { status: "unknown", order: deserializeOmsOrder(existing) };
+    }
+    if (state === "REJECTED") {
+      const updatedAt = nowIso();
+      const tx = sqlite.transaction(() => {
+        const changed = sqlite.prepare(`
+          update oms_orders set state = 'SUBMITTING', response_doc = null, version = version + 1, updated_at = ?
+          where id = ? and version = ?
+        `).run(updatedAt, existing.id, existing.version);
+        if (changed.changes !== 1) return false;
+        sqlite.prepare(`
+          insert into oms_order_events (order_id, from_state, to_state, event_type, doc, created_at)
+          values (?, 'REJECTED', 'SUBMITTING', 'explicit_retry_after_rejection', ?, ?)
+        `).run(existing.id, JSON.stringify({ action, planId }), updatedAt);
+        return true;
+      });
+      if (!tx()) return { status: "unknown", order: getOmsOrder(existing.id) };
+      return { status: "retry", order: getOmsOrder(existing.id) };
+    }
     return {
-      status: existing.payload_hash === payloadHash ? "replay" : "conflict",
+      status: "replay",
       order: deserializeOmsOrder(existing)
     };
   }
@@ -1360,7 +1432,7 @@ export function transitionOmsOrder(orderId, toState, details = {}) {
   const current = sqlite.prepare("select * from oms_orders where id = ?").get(orderId);
   if (!current) return null;
   const updatedAt = nowIso();
-  const responseDoc = details.response === undefined ? current.response_doc : JSON.stringify(details.response);
+  const responseDoc = details.response === undefined ? current.response_doc : JSON.stringify(scrubSecrets(details.response));
   const exchangeOrderId = details.exchangeOrderId ?? current.exchange_order_id;
   const outboxId = id("outbox");
   const tx = sqlite.transaction(() => {
@@ -1373,7 +1445,7 @@ export function transitionOmsOrder(orderId, toState, details = {}) {
     sqlite.prepare(`
       insert into oms_order_events (order_id, from_state, to_state, event_type, doc, created_at)
       values (?, ?, ?, ?, ?, ?)
-    `).run(orderId, current.state, toState, details.eventType || "state_changed", JSON.stringify(details), updatedAt);
+    `).run(orderId, current.state, toState, details.eventType || "state_changed", JSON.stringify(scrubSecrets(details)), updatedAt);
     sqlite.prepare(`
       insert into outbox_events
         (id, tenant_id, aggregate_type, aggregate_id, event_type, payload_doc, status, available_at, created_at)
@@ -1413,6 +1485,25 @@ export function listOmsOrdersForPlan(planId, limit = 20) {
     select * from oms_orders where tenant_id = ? and plan_id = ?
     order by updated_at desc limit ?
   `).all("tenant_owner", String(planId), Math.max(1, Math.min(Number(limit) || 20, 100))).map(deserializeOmsOrder);
+}
+
+export function findPendingOmsAmend({ reqId = null, exchangeOrderId = null, clientOrderId = null } = {}) {
+  ensureSqlite();
+  const rows = sqlite.prepare(`
+    select * from oms_orders
+    where action = 'amend_order' and state in ('SUBMITTING', 'UNKNOWN', 'ACKNOWLEDGED')
+    order by updated_at desc limit 200
+  `).all().map(deserializeOmsOrder);
+  return rows.find((order) => {
+    const request = order.request || {};
+    const response = order.response || {};
+    const storedReqId = response.reqId || request.amendRequestId || request.actionAttemptId || null;
+    const storedOrderId = request.authoritativeOrderId || request.orderId || order.exchangeOrderId || null;
+    const storedClientOrderId = request.clientOrderId || null;
+    if (reqId && storedReqId && String(reqId) === String(storedReqId)) return true;
+    if (exchangeOrderId && storedOrderId && String(exchangeOrderId) === String(storedOrderId)) return true;
+    return Boolean(clientOrderId && storedClientOrderId && String(clientOrderId) === String(storedClientOrderId));
+  }) || null;
 }
 
 export function pendingOutboxEvents(limit = 100) {
@@ -1472,9 +1563,7 @@ function deserializeOmsOrder(row) {
 }
 
 function sanitizeStoredPayload(payload = {}) {
-  const safe = { ...payload };
-  for (const key of ["apiSecret", "secret", "passphrase", "password", "apiKey"]) delete safe[key];
-  return safe;
+  return scrubSecrets(payload);
 }
 
 function loadFromSqlite() {
@@ -1691,9 +1780,9 @@ export function normalizeDatabase(db) {
   }
   const riskApproverRole = db.roles.find((role) => role.id === "role_risk_approver");
   if (riskApproverRole) riskApproverRole.permissions = [...new Set([...(riskApproverRole.permissions || []), "approve:knowledge_skill"])];
-  // 迁移:交易用户可确认下单(扫描候选→确认→直接下单)。给存量库补交易执行权限(幂等)。
+  // 交易员只能研究/建计划，不能在迁移时被静默提升为审批者或执行者。
   const traderRole = db.roles.find((role) => role.id === "role_trader");
-  if (traderRole) traderRole.permissions = [...new Set([...(traderRole.permissions || []), "approve:trade_plan", "critical:trade_execution", "risk.check"])];
+  if (traderRole) traderRole.permissions = [...TRADER_PERMISSIONS];
   db.permissions ||= [
     "market.read",
     "account.read",
@@ -1759,6 +1848,7 @@ export function normalizeDatabase(db) {
   }
   db.subscriptionPlans ||= defaultSubscriptionPlans(nowIso());
   db.subscriptions ||= [];
+  db.subscriptionTerms ||= [];
   const ownerSubscription = db.subscriptions.find((subscription) => subscription.id === "sub_owner")
     || db.subscriptions.find((subscription) => subscription.tenantId === "tenant_owner" || subscription.userId === ownerUser?.id);
   const ownerSubscriptionPayload = {

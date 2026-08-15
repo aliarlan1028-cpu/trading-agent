@@ -5,54 +5,113 @@
 // 而真实字段是 liqPx/(无)/(无)。这里在下发前:①按 symbol+方向合并两行 ②补齐派生字段 ③统一口径。
 // 只影响展示;db 两条保留供 reconcileAccount 逐仓对账,互不影响。
 
+import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
+
 const isOpen = (p) => !p.status || p.status === "open";
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const num = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 // 方向归一化:多/long/buy → "多";空/short/sell → "空"(UI 为中文,统一成中文,含 tone 可判)。
 export function canonDirection(d) {
-  const s = String(d ?? "").toLowerCase();
-  if (s.includes("short") || s.includes("空") || s === "sell") return "空";
-  return "多";
+  const direction = canonicalPositionDirection(d);
+  return direction === "short" ? "空" : direction === "long" ? "多" : null;
+}
+
+function newest(rows = []) {
+  return rows.slice().sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0] || null;
+}
+
+export function positionFactObservedMs(position = {}) {
+  const value = position.exchangeObservedAt || position.rawSyncedAt || position.updatedAt || position.createdAt || null;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
+export function positionMirrorKey(position = {}) {
+  const account = position.accountId || position.exchangeAccountId || position.connectionAccountId || "unbound";
+  const exchange = String(position.exchange || "OKX").toUpperCase();
+  const symbol = canonicalSymbol(position.symbol || position.instId);
+  const direction = canonicalPositionDirection(position);
+  if (!symbol || !direction) return null;
+  return `${account}|${exchange}|${symbol}|${direction}|${position.mgnMode || ""}|${position.ccy || ""}`;
+}
+
+export function groupPositionMirrors(positions = []) {
+  const groups = new Map();
+  for (const position of positions) {
+    const key = positionMirrorKey(position);
+    if (!key) continue;
+    const rows = groups.get(key) || [];
+    rows.push(position);
+    groups.set(key, rows);
+  }
+  return groups;
+}
+
+export function newestAuthoritativePosition(rows = [], options = {}) {
+  const now = Number(options.now ?? Date.now());
+  const maxAgeMs = Number(options.maxAgeMs ?? process.env.MAX_POSITION_FACT_AGE_MS ?? 120_000);
+  const maxFutureSkewMs = Number(options.maxFutureSkewMs ?? 30_000);
+  const exchangeRows = rows.filter((row) => ["exchange_rest", "exchange_ws"].includes(row.source));
+  const row = newest(exchangeRows);
+  if (!row) return { row: null, fresh: false, reason: "exchange_position_unavailable", observedAt: null, ageMs: Infinity };
+  const observedAtMs = positionFactObservedMs(row);
+  const ageMs = now - observedAtMs;
+  if (!Number.isFinite(observedAtMs)) return { row, fresh: false, reason: "position_timestamp_missing", observedAt: null, ageMs: Infinity };
+  if (ageMs < -maxFutureSkewMs) return { row, fresh: false, reason: "position_timestamp_future", observedAt: new Date(observedAtMs).toISOString(), ageMs };
+  if (ageMs > maxAgeMs) return { row, fresh: false, reason: "position_snapshot_stale", observedAt: new Date(observedAtMs).toISOString(), ageMs };
+  return { row, fresh: true, reason: null, observedAt: new Date(observedAtMs).toISOString(), ageMs: Math.max(0, ageMs) };
 }
 
 export function normalizePositionsForUi(positions = []) {
   const groups = new Map();
   for (const p of positions.filter(isOpen)) {
-    const key = `${String(p.symbol || "").toUpperCase()}::${canonDirection(p.direction ?? p.posSide)}`;
-    const g = groups.get(key) || {};
-    if (p.source === "execution_engine") g.engine = p; else g.exchange = p;
+    const key = `${canonicalSymbol(p.symbol || p.instId)}::${canonDirection(p) || "unknown"}`;
+    const g = groups.get(key) || { engines: [], rests: [], websockets: [], others: [] };
+    if (p.source === "execution_engine") g.engines.push(p);
+    else if (p.source === "exchange_rest") g.rests.push(p);
+    else if (p.source === "exchange_ws") g.websockets.push(p);
+    else g.others.push(p);
     groups.set(key, g);
   }
   const rows = [];
   for (const [, g] of groups) {
-    const base = g.engine || g.exchange; // 引擎行作身份(AI托管/入场理由);无引擎则纯手动/外部仓
-    const ex = g.exchange || {};
-    const eng = g.engine || {};
-    const mark = num(base.mark) ?? num(ex.mark) ?? num(eng.mark);
-    const coinQty = num(ex.coinSize) ?? num(eng.size) ?? num(base.size); // 交易所 coinSize 权威;引擎 size 即币量
-    const leverage = num(ex.leverage) ?? num(eng.leverage);
-    const liqPx = num(ex.liqPx) ?? num(eng.liqPx);
-    const unrealizedPnl = num(eng.unrealizedPnl) ?? num(ex.unrealizedPnl) ?? num(base.pnl);
+    const eng = newest(g.engines) || {};
+    const rest = newest(g.rests) || {};
+    const ws = newest(g.websockets) || {};
+    const other = newest(g.others) || {};
+    const hasEngine = Boolean(eng.id || g.engines.length);
+    const base = hasEngine ? eng : (rest.id ? rest : ws.id ? ws : other); // 引擎行只提供托管身份与解释字段
+    const mark = num(rest.mark ?? rest.markPx) ?? num(ws.mark ?? ws.markPx) ?? num(eng.mark) ?? num(other.mark);
+    // 交易所 size 是合约张数，只有 coinSize 才是币量；缺 coinSize 时只能回退到同仓的引擎币量。
+    const coinQty = num(rest.coinSize) ?? num(ws.coinSize) ?? (hasEngine ? num(eng.quantity ?? eng.size) : null);
+    const leverage = num(rest.leverage) ?? num(ws.leverage) ?? num(eng.leverage) ?? num(other.leverage);
+    // 有交易所快照时，强平价只能以交易所字段为准；显式未知不能被引擎估算值覆盖。
+    const liqPx = num(rest.liqPx ?? rest.liquidationPrice) ?? num(ws.liqPx ?? ws.liquidationPrice) ?? (!g.rests.length && !g.websockets.length ? num(eng.liqPx ?? eng.liquidationPrice) : null);
+    const unrealizedPnl = num(rest.pnl ?? rest.unrealizedPnl) ?? num(ws.pnl ?? ws.unrealizedPnl) ?? num(eng.unrealizedPnl ?? eng.pnl) ?? num(other.unrealizedPnl ?? other.pnl);
     const notional = coinQty !== null && mark !== null ? Math.abs(coinQty * mark) : null;
     const margin = notional !== null && leverage ? notional / leverage : null;
     const liqDistancePct = liqPx !== null && mark ? Math.abs((mark - liqPx) / mark) * 100 : null;
     rows.push({
       ...base,
-      source: g.engine ? "execution_engine" : (ex.source || base.source),
-      symbol: base.symbol,
-      direction: canonDirection(base.direction ?? ex.direction),
-      entry: num(base.entry) ?? num(ex.entry),
+      source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
+      symbol: base.symbol || rest.symbol || ws.symbol,
+      direction: canonDirection(base),
+      entry: num(rest.entry ?? rest.avgPx) ?? num(ws.entry ?? ws.avgPx) ?? num(eng.entry) ?? num(other.entry),
       mark,
       quantity: coinQty,            // 统一为币量(不再混合约张数/币量)
       leverage,
       unrealizedPnl,
       pnl: unrealizedPnl,
-      roiPct: num(ex.roiPct) ?? num(eng.roiPct) ?? base.roiPct, // 交易所杠杆化 ROI 优先
+      roiPct: num(rest.roiPct) ?? num(ws.roiPct) ?? num(eng.roiPct) ?? num(other.roiPct), // 交易所杠杆化 ROI 优先
       notional,                     // = 币量 × 标记价(此前前端读 notional 恒缺 → 敞口/分布恒 0)
       margin,                       // = 名义 / 杠杆(此前前端读 margin 恒缺 → 保证金占用恒 —)
       liquidationPrice: liqPx,      // 对齐前端读的字段名(此前读 liquidationPrice、真名 liqPx → 恒 —)
       liqDistancePct,               // 补上(此前缺 → 强平距离恒判"安全")
-      exchangePositionKey: ex.exchangePositionKey || base.exchangePositionKey || null
+      exchangePositionKey: rest.exchangePositionKey || ws.exchangePositionKey || base.exchangePositionKey || null
     });
   }
   return rows;

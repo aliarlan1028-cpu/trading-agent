@@ -9,6 +9,9 @@ export function hasFiniteNumber(value) {
 }
 
 const numberOr = (value, fallback = 0) => hasFiniteNumber(value) ? Number(value) : fallback;
+const feeCost = (row = {}) => hasFiniteNumber(row.feeCostUsdt)
+  ? Number(row.feeCostUsdt)
+  : hasFiniteNumber(row.feeUsdt) ? Number(row.feeUsdt) : null;
 const recentTime = (row = {}) => new Date(row.updatedAt || row.completedAt || row.closedAt || row.createdAt || 0).getTime() || 0;
 
 export function sortRecent(rows = []) {
@@ -25,9 +28,9 @@ export function groupClosedTradeLifecyclesForView(fills = []) {
   const entryFees = new Map();
   const groups = new Map();
   for (const fill of list(fills)) {
-    if (fill?.kind !== "entry" || !hasFiniteNumber(fill.feeUsdt)) continue;
+    if (fill?.kind !== "entry" || feeCost(fill) === null) continue;
     const key = tradeLifecycleKey(fill);
-    if (key) entryFees.set(key, (entryFees.get(key) || 0) + Math.abs(Number(fill.feeUsdt)));
+    if (key) entryFees.set(key, (entryFees.get(key) || 0) + feeCost(fill));
   }
   for (const fill of list(fills)) {
     if (fill?.kind !== "close" || !hasFiniteNumber(fill.realizedPnl)) continue;
@@ -39,7 +42,8 @@ export function groupClosedTradeLifecyclesForView(fills = []) {
     };
     group.fills.push(fill);
     group.realizedPnl += Number(fill.realizedPnl);
-    if (hasFiniteNumber(fill.feeUsdt)) group.feeUsdt += Math.abs(Number(fill.feeUsdt));
+    const closeFeeCost = feeCost(fill);
+    if (closeFeeCost !== null) group.feeUsdt += closeFeeCost;
     if (hasFiniteNumber(fill.fundingFeeUsdt)) group.fundingFeeUsdt += Number(fill.fundingFeeUsdt);
     if (hasFiniteNumber(fill.notionalUsdt)) group.notionalUsdt += Math.abs(Number(fill.notionalUsdt));
     if (hasFiniteNumber(fill.quantity ?? fill.size)) group.quantity += Number(fill.quantity ?? fill.size);

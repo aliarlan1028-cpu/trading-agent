@@ -1,11 +1,12 @@
 import { dedupePositions } from "./accounting.mjs";
 import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
-import { isEventRiskActive } from "./eventRisk.mjs";
+import { isAuthoritativeRiskEvent, isEventRiskActive } from "./eventRisk.mjs";
 import { evaluateProfessionalPlanRisks } from "./professionalRiskGate.mjs";
 import { evaluateProtections } from "./tradeProtections.mjs";
 import { DEFAULT_WEEKLY_LOSS_PCT } from "./mandatePolicy.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
+import { marketFactFreshness } from "./marketFreshness.mjs";
 
 function firstTakeProfit(plan = {}) {
   const source = plan.takeProfits ?? plan.take_profits ?? plan.takeProfit ?? plan.take_profit;
@@ -225,19 +226,25 @@ export function evaluateTradePlan(db, plan) {
 
   const blackoutMinutes = currentRiskThresholds().eventBlackoutMinutes;
   const highImpactEvent = db.events.find((event) => {
-    if (!isEventRiskActive(event) || Number(event.impact) < 90) return false;
+    if (!isAuthoritativeRiskEvent(event) || !isEventRiskActive(event) || Number(event.impact) < 90) return false;
     const related = !Array.isArray(event.relatedSymbols) || !event.relatedSymbols.length || event.relatedSymbols.includes(plan.symbol);
     const due = new Date(event.due || event.publishedAt).getTime();
     const delta = due - Date.now();
     const precision = String(event.timePrecision || event.time_precision || event.precision || "").toLowerCase();
     const exactTime = !["date", "day", "unknown"].includes(precision);
-    return related && exactTime && Number.isFinite(delta) && delta >= 0 && delta <= blackoutMinutes * 60_000;
+    // isEventRiskActive owns the post-release window (default 6h). The
+    // configurable blackout threshold narrows only the pre-release side.
+    return related && exactTime && Number.isFinite(delta) && delta <= blackoutMinutes * 60_000;
   });
   if (highImpactEvent) {
+    const dueMs = new Date(highImpactEvent.due || highImpactEvent.publishedAt).getTime();
+    const released = Number.isFinite(dueMs) && dueMs <= Date.now();
     add(
       "重大事件静默窗口",
       false,
-      `${highImpactEvent.title} 将在 ${blackoutMinutes} 分钟静默窗口内公布，暂停所有新开仓；事件落地并刷新事实后重新评估`,
+      released
+        ? `${highImpactEvent.title} 已公布但仍处事件后风险窗口，暂停所有新开仓；仅在权威事件状态已解决或后置窗口结束后重新评估`
+        : `${highImpactEvent.title} 将在 ${blackoutMinutes} 分钟静默窗口内公布，暂停所有新开仓；事件落地并刷新事实后重新评估`,
       db.system.liveTradingEnabled ? "block" : "warn"
     );
   } else {
@@ -258,7 +265,7 @@ export function evaluateTradePlan(db, plan) {
   );
 
   const market = (db.markets || []).find((item) => item.symbol === plan.symbol);
-  const funding = Number(market?.fundingRate);
+  const funding = strictFiniteFact(market?.fundingRate);
   const maxFundingRatePct = Number(mandate.maxAbsFundingRatePct || 0.1);
   add(
     "资金费率拥挤",
@@ -266,7 +273,7 @@ export function evaluateTradePlan(db, plan) {
     Number.isFinite(funding) ? `当前 ${funding.toFixed(4)}%，绝对值上限 ${maxFundingRatePct}%` : "资金费率未同步",
     db.system.liveTradingEnabled ? "block" : "warn"
   );
-  const spreadBps = Number(market?.spreadBps);
+  const spreadBps = strictFiniteFact(market?.spreadBps);
   const maxSpreadBps = Number(mandate.maxSpreadBps || 12);
   add(
     "盘口点差",
@@ -274,12 +281,19 @@ export function evaluateTradePlan(db, plan) {
     Number.isFinite(spreadBps) ? `当前 ${spreadBps.toFixed(2)} bps，上限 ${maxSpreadBps} bps` : "盘口点差未同步",
     db.system.liveTradingEnabled ? "block" : "warn"
   );
-  const microAgeMs = market?.microSyncedAt ? Date.now() - new Date(market.microSyncedAt).getTime() : Infinity;
+  const marketFreshness = marketFactFreshness(market || {});
+  add(
+    "Ticker 价格新鲜度",
+    marketFreshness.ticker.ok,
+    marketFreshness.ticker.reason === "future_timestamp" ? "Ticker 时间戳异常超前" : marketFreshness.ticker.ok ? `价格事实约 ${Math.round(marketFreshness.ticker.ageMs / 1000)} 秒前` : "价格事实缺失或过期",
+    db.system.liveTradingEnabled ? "block" : "warn"
+  );
+  const microAgeMs = marketFreshness.micro.ageMs;
   const maxMicroAgeMs = Number(process.env.MAX_MICROSTRUCTURE_AGE_MS || 3 * 60_000);
   add(
     "微观结构新鲜度",
-    Number.isFinite(microAgeMs) && microAgeMs <= maxMicroAgeMs,
-    Number.isFinite(microAgeMs) ? `数据约 ${Math.round(microAgeMs / 1000)} 秒前` : "尚未同步微观结构",
+    marketFreshness.micro.ok && Number.isFinite(microAgeMs) && microAgeMs <= maxMicroAgeMs,
+    marketFreshness.micro.reason === "future_timestamp" ? "微观结构时间戳异常超前" : Number.isFinite(microAgeMs) ? `数据约 ${Math.round(microAgeMs / 1000)} 秒前` : "尚未同步微观结构",
     db.system.liveTradingEnabled ? "block" : "warn"
   );
 
@@ -388,3 +402,4 @@ function summarize(checks) {
     summary: blockers.length > 0 ? `拒绝：${blockers.map((item) => item.detail || item.name).join("；")}` : warnings.length > 0 ? `通过但需关注：${warnings.map((item) => item.detail || item.name).join("；")}` : "全部风控检查通过"
   };
 }
+import { strictFiniteFact } from "./factValues.mjs";

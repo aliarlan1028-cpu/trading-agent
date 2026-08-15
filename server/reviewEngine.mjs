@@ -3,8 +3,11 @@ import { fetchTradeWindowNews } from "./marketScan.mjs";
 import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import {
   completeTradeReview,
+  findTradeEntryFill,
   groupClosedTradeLifecycles,
+  isFinanciallyReconciledLifecycle,
   markTradeReviewProcessing,
+  resolveTradeContext,
   syncTradeReviewQueue
 } from "./tradeReviewQueue.mjs";
 import { stampReviewMemoryContext } from "./reviewLearning.mjs";
@@ -14,12 +17,8 @@ import { stampReviewMemoryContext } from "./reviewLearning.mjs";
 // 只用真实 K 线(交易所历史),LLM 复盘据此判断"离场太早/太晚、止盈太贪、方向读反"。取数失败返回 null,不阻断复盘。
 async function computeTradeTrajectory(db, fill, plan) {
   try {
-    const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (
-      f.executionOrderId === fill.executionOrderId
-      || f.tradePlanId === (fill.tradePlanId || fill.planId)
-      || f.planId === (fill.planId || fill.tradePlanId)
-    ));
-    const eo = (db.executionOrders || []).find((o) => o.id === fill.executionOrderId) || {};
+    const entryFill = findTradeEntryFill(db.fills || [], fill);
+    const eo = resolveTradeContext(db, fill).executionOrder || {};
     const entry = number(entryFill?.price ?? plan.entry ?? eo.entry);
     const exit = number(fill.price ?? eo.lastMark);
     const openMs = new Date(entryFill?.createdAt || plan.createdAt || fill.openedAt || fill.createdAt).getTime();
@@ -80,6 +79,7 @@ async function computeTradeTrajectory(db, fill, plan) {
 }
 
 function number(value, fallback = null) {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -171,14 +171,16 @@ function buildLossClusters(closes) {
 
 export function buildReviewAnalytics(db) {
   // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
-  const closes = groupClosedTradeLifecycles(db.fills || [])
+  const allLifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const pendingFinancialReconciliation = allLifecycles.filter((row) => !isFinanciallyReconciledLifecycle(row)).length;
+  const closes = allLifecycles.filter(isFinanciallyReconciledLifecycle)
     .map((lifecycle) => {
       const representative = { ...lifecycle.representative };
       delete representative.realizedPnl;
       return {
         ...representative,
         grossRealizedPnl: number(lifecycle.realizedPnl, 0),
-        netRealizedPnl: number(lifecycle.netRealizedPnl, 0),
+        netRealizedPnl: number(lifecycle.netRealizedPnl),
         entryFeeUsdt: number(lifecycle.entryFeeUsdt, 0),
         feeUsdt: number(lifecycle.feeUsdt, 0),
         fundingFeeUsdt: number(lifecycle.fundingFeeUsdt, 0)
@@ -186,7 +188,7 @@ export function buildReviewAnalytics(db) {
     })
     .filter((fill) => fill.tradePlanId || fill.planId || fill.executionOrderId);
   const enriched = closes.map((fill) => {
-    const plan = (db.tradePlans || []).find((item) => item.id === fill.tradePlanId || item.id === fill.planId) || {};
+    const plan = resolveTradeContext(db, fill).plan || {};
     const market = (db.markets || []).find((item) => item.symbol === (fill.symbol || plan.symbol));
     return {
       ...fill,
@@ -260,6 +262,8 @@ export function buildReviewAnalytics(db) {
     memoryWritten: Boolean((db.memoryItems || []).some((item) => item.sourceRunId === run.id || item.agentRunId === run.id))
   }));
   return {
+    pendingFinancialReconciliation,
+    financiallyReconciledTrades: enriched.length,
     generatedAt: nowIso(),
     sampleSize: enriched.length,
     breakdowns: { strategy, strategyVersion, symbol, session, regime },
@@ -304,8 +308,14 @@ export function backfillReviewFields(db) {
     }
   }
   for (const fill of db.fills || []) {
-    const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId || item.planId === fill.planId);
-    const plan = plans.find((item) => item.id === fill.tradePlanId || item.id === fill.planId || item.id === executionOrder?.planId) || {};
+    let { executionOrder, plan } = resolveTradeContext(db, fill);
+    // 没有 executionOrderId 的旧 fill 才允许按明确的计划 ID 找执行单。
+    const fillPlanId = fill.tradePlanId || fill.planId || null;
+    if (!executionOrder && !fill.executionOrderId && fillPlanId) {
+      executionOrder = (db.executionOrders || []).find((item) => item.planId === fillPlanId) || null;
+      plan ||= executionOrder?.planId ? plans.find((item) => item.id === executionOrder.planId) || null : null;
+    }
+    plan ||= {};
     const market = (db.markets || []).find((item) => item.symbol === (fill.symbol || executionOrder?.symbol || plan.symbol));
     if (!fill.tradePlanId && (fill.planId || executionOrder?.planId)) {
       fill.tradePlanId = fill.planId || executionOrder.planId;
@@ -332,8 +342,25 @@ export function backfillReviewFields(db) {
     }
     if (fill.feeUsdt === undefined) {
       const parsedFee = parseFeeUsdt(fill);
-      fill.feeUsdt = parsedFee ?? Number((Math.abs(number(fill.notionalUsdt, number(fill.price, 0) * number(fill.quantity || fill.size, 0))) * 0.0004).toFixed(6));
-      fill.estimatedFee = parsedFee === null;
+      const recordedNotional = number(fill.notionalUsdt);
+      const price = number(fill.price);
+      const quantity = number(fill.quantity ?? fill.size);
+      const estimatedNotional = recordedNotional !== null
+        ? Math.abs(recordedNotional)
+        : (price !== null && quantity !== null ? Math.abs(price * quantity) : null);
+      if (parsedFee !== null) {
+        fill.feeUsdt = parsedFee;
+        fill.estimatedFee = false;
+        fill.feeBasis = "recorded";
+      } else if (estimatedNotional !== null) {
+        fill.feeUsdt = Number((estimatedNotional * 0.0004).toFixed(6));
+        fill.estimatedFee = true;
+        fill.feeBasis = recordedNotional !== null ? "estimated_from_notional" : "estimated_from_price_quantity";
+      } else {
+        fill.feeUsdt = null;
+        fill.estimatedFee = false;
+        fill.feeBasis = "unknown";
+      }
       updated += 1;
     }
     if (fill.kind === "entry" && fill.slippageBps === undefined && executionOrder?.entryPrice) {
@@ -441,7 +468,7 @@ async function llmDeepReflection(fill, ctx) {
 export async function runTradeReflection(db) {
   // 先把所有真实平仓补入页面可见队列；部分平仓按执行单/计划聚合为一个交易生命周期。
   syncTradeReviewQueue(db);
-  const pendingLifecycles = groupClosedTradeLifecycles(db.fills || [], { onlyUnreflected: true });
+  const pendingLifecycles = groupClosedTradeLifecycles(db.fills || [], { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
   const allByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((item) => [item.key, item]));
   const lifecycles = pendingLifecycles.map((item) => allByKey.get(item.key) || item);
   if (!lifecycles.length) return { reflected: 0, memorized: 0, lessons: [] };
@@ -453,9 +480,10 @@ export async function runTradeReflection(db) {
   let trajBudget = Number(process.env.REFLECTION_TRAJ_MAX_PER_RUN || 6); // #4 每轮轨迹回补上限(K线请求,控网络)
   const minMemo = Number(process.env.REFLECTION_MIN_MEMO_USDT || 1);
   for (const lifecycle of lifecycles.slice(0, 15)) {
+    if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     const fill = lifecycle.representative;
     const review = markTradeReviewProcessing(db, lifecycle);
-    const plan = (db.tradePlans || []).find((p) => p.id === fill.tradePlanId || p.id === fill.planId) || {};
+    const plan = resolveTradeContext(db, lifecycle).plan || {};
     // 复盘成败、摘要与学习必须使用完整生命周期净值（开/平仓费 + 资金费），
     // 不能拿交易所价格毛盈亏给用户或策略学习链路下结论。
     const pnl = Number(lifecycle.netRealizedPnl);
@@ -491,11 +519,7 @@ export async function runTradeReflection(db) {
         // 让"对错/根因"不只看K线,也看"世界当时发生了什么"。gemini 未配/限流则 null,不影响复盘。
         let newsContext = null;
         if (newsBudget > 0) {
-          const entryFill = (db.fills || []).find((f) => f.kind === "entry" && (
-            f.executionOrderId === fill.executionOrderId
-            || f.tradePlanId === (fill.tradePlanId || fill.planId)
-            || f.planId === (fill.planId || fill.tradePlanId)
-          ));
+          const entryFill = findTradeEntryFill(db.fills || [], fill);
           const openTime = entryFill?.createdAt || plan.createdAt || fill.openedAt;
           try { newsContext = await fetchTradeWindowNews(fill.symbol, openTime, fill.createdAt); } catch { newsContext = null; }
           if (newsContext) { newsBudget -= 1; fill.newsContext = newsContext; }

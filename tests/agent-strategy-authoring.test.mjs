@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { executeTool } from "../server/agentChat.mjs";
+import { agentInvocationPolicy, userAgentInvocation } from "../server/agentInvocation.mjs";
 import { seedDatabase } from "../server/store.mjs";
 
 test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技能", async () => {
@@ -9,7 +10,13 @@ test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技�
   db.strategyStudioDrafts = [];
   db.knowledge.tradingSkills = [];
   db.knowledge.tradingMethods = [];
-  const run = { id: "run-authoring", sessionId: "chat-authoring", role: "AI 交易员", steps: [] };
+  const run = {
+    id: "run-authoring",
+    sessionId: "chat-authoring",
+    role: "AI 交易员",
+    steps: [],
+    invocation: agentInvocationPolicy(userAgentInvocation({ permissions: ["write:review"] }))
+  };
   const result = await executeTool(db, run, "create_skill_from_idea", {
     name: "BTC 突破策略",
     symbol: "BTC/USDT",

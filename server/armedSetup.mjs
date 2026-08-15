@@ -6,6 +6,7 @@ import { conditionAlreadyTrue, crossed } from "./watchSentinel.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { TIMEFRAME_MS } from "./ohlcvQuality.mjs";
 import { ensurePlanStrategyBinding, strategyProductExecutionGate } from "./strategyProducts.mjs";
+import { setReduceOnlyReason } from "./reduceOnlyState.mjs";
 
 const ACTIVE = new Set(["ARMED", "TRIGGERED", "FAST_VALIDATING"]);
 const processing = new Set();
@@ -1041,6 +1042,7 @@ export async function recoverTriggeredSetups(db, options = {}) {
       if (!db.system.reduceOnlyMode) {
         db.system.reduceOnlyMode = true;
         db.system.reduceOnlyBy = "armed_setup_recovery";
+        setReduceOnlyReason(db, "armed_setup_recovery", { sticky: false, sourceId: omsEntry.id });
         setup.recoveryAppliedReduceOnly = true;
       } else {
         setup.recoveryAppliedReduceOnly = false;

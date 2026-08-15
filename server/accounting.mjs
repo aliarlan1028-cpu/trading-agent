@@ -1,84 +1,254 @@
 import { currentEquityUsdt } from "./executionEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
+import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from "./businessTime.mjs";
+import { recordedFeeCost } from "./financialValues.mjs";
+import { groupPositionMirrors, newestAuthoritativePosition, positionFactObservedMs, positionMirrorKey } from "./positionView.mjs";
+import { marketFactFreshness } from "./marketFreshness.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
 // 预算耗尽时自动暂停自主推进并记录风险事件。
 // ---------------------------------------------------------------------------
 
-function todayStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+export function todayStart(at = Date.now(), timeZone = DEFAULT_BUSINESS_TIME_ZONE) {
+  return businessDayStartMs(at, timeZone);
 }
 
-function realizedPnlSince(db, sinceMs) {
-  return (db.fills || [])
-    .filter((fill) => (fill.realizedPnl !== null && fill.realizedPnl !== undefined || Number.isFinite(Number(fill.feeUsdt))) && new Date(fill.createdAt).getTime() >= sinceMs)
-    .reduce((sum, fill) => sum + Number(fill.realizedPnl || 0) - Math.abs(Number(fill.feeUsdt || 0)) + Number(fill.fundingFeeUsdt || 0), 0);
+function realizedPnlSince(db, sinceMs, untilMs = Date.now()) {
+  let knownTotal = 0;
+  let knownFacts = 0;
+  let pending = 0;
+  let total = 0;
+  for (const fill of db.fills || []) {
+    if (!['entry', 'close'].includes(fill?.kind)) continue;
+    const at = new Date(fill.exchangeFilledAt || fill.createdAt || fill.closedAt || 0).getTime();
+    if (!Number.isFinite(at) || at < sinceMs || at > untilMs) continue;
+    total += 1;
+    const fee = recordedFeeCost(fill);
+    const feeKnown = fee !== null && fill.estimatedFee !== true;
+    if (fill.kind === 'entry') {
+      if (feeKnown) { knownTotal -= fee; knownFacts += 1; }
+      else pending += 1;
+      continue;
+    }
+    const grossKnown = fill.realizedPnl !== null && fill.realizedPnl !== undefined && fill.realizedPnl !== '' && Number.isFinite(Number(fill.realizedPnl));
+    if (grossKnown) { knownTotal += Number(fill.realizedPnl); knownFacts += 1; }
+    else pending += 1;
+    if (feeKnown) { knownTotal -= fee; knownFacts += 1; }
+    else pending += 1;
+    if (fill.fundingReconciled === true && fill.fundingFeeUsdt !== null && fill.fundingFeeUsdt !== undefined && fill.fundingFeeUsdt !== '' && Number.isFinite(Number(fill.fundingFeeUsdt))) {
+      knownTotal += Number(fill.fundingFeeUsdt);
+      knownFacts += 1;
+    } else {
+      pending += 1;
+    }
+  }
+  return { value: knownTotal, knownTotal, reconciled: knownFacts, pending, total };
 }
 
 // 同一真实仓位可能有两条记录(execution_engine + exchange_rest 快照)。
 // 核算按 symbol+direction 去重,优先交易所快照(权威 upl/张数)。
 export function dedupePositions(positions = []) {
-  const byKey = new Map();
-  for (const p of positions) {
-    const key = `${p.symbol}|${String(p.direction || "long").toLowerCase().replace("空", "short").replace("多", "long")}`;
-    const prev = byKey.get(key);
-    if (!prev || (p.source === "exchange_rest" && prev.source !== "exchange_rest")) byKey.set(key, p);
+  const selected = [];
+  for (const rows of groupPositionMirrors(positions).values()) {
+    const exchangeRows = rows.filter((row) => ["exchange_rest", "exchange_ws"].includes(row.source));
+    const candidates = exchangeRows.length ? exchangeRows : rows;
+    selected.push(candidates.slice().sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0]);
   }
-  return [...byKey.values()];
+  return selected;
 }
 
-function unrealizedPnl(db) {
-  let total = 0;
-  for (const position of dedupePositions(db.positions)) {
+export function unrealizedPnl(db, options = {}) {
+  let knownTotal = 0;
+  const pendingPositions = [];
+  const now = Number(options.now ?? Date.now());
+  for (const [identity, rows] of groupPositionMirrors(db.positions).entries()) {
+    const authority = newestAuthoritativePosition(rows, { now, maxAgeMs: options.maxAgeMs });
+    const engine = rows.filter((row) => row.source === "execution_engine")
+      .sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0] || null;
+    const position = authority.row || engine || rows[0];
+    const rawSize = position.coinSize ?? position.quantity ?? position.size;
+    const hasOpenSize = rawSize !== null && rawSize !== undefined && rawSize !== '' && Number.isFinite(Number(rawSize)) && Math.abs(Number(rawSize)) > 0;
+    if (!hasOpenSize) continue;
+    if (authority.row && !authority.fresh) {
+      pendingPositions.push({ identity, reason: authority.reason, positionId: position.id || null });
+      continue;
+    }
+    const authoritativePnl = position.pnl ?? position.unrealizedPnl;
+    if (authoritativePnl !== null && authoritativePnl !== undefined && authoritativePnl !== '' && Number.isFinite(Number(authoritativePnl))) {
+      knownTotal += Number(authoritativePnl);
+      continue;
+    }
     const market = db.markets?.find((item) => item.symbol === position.symbol);
-    const mark = Number(market?.price || position.mark);
-    const entry = Number(position.entry);
-    const size = Number(position.size);
-    if (!Number.isFinite(mark) || !Number.isFinite(entry) || !Number.isFinite(size)) continue;
+    const marketFacts = marketFactFreshness(market || {}, { now });
+    const markValue = market?.price ?? position.mark;
+    const mark = markValue !== null && markValue !== undefined && markValue !== '' ? Number(markValue) : null;
+    const entry = position.entry !== null && position.entry !== undefined && position.entry !== '' ? Number(position.entry) : null;
     // OKX SWAP 的 size 是"张数"，必须乘合约面值 ctVal 才是币数量；面值未知时不做本地重算，
     // 保留交易所快照给的权威 upl（此前无乘数硬算会把 BTC 浮盈放大 100 倍）。
-    const multiplier = position.contractMultiplier != null ? Number(position.contractMultiplier) : (position.exchange === "OKX" ? null : 1);
+    const coinSize = position.coinSize !== null && position.coinSize !== undefined && position.coinSize !== '' && Number.isFinite(Number(position.coinSize))
+      ? Math.abs(Number(position.coinSize))
+      : position.source === 'execution_engine' && Number.isFinite(Number(position.quantity ?? position.size)) ? Math.abs(Number(position.quantity ?? position.size)) : null;
     const sign = position.direction === "空" || position.direction === "short" ? -1 : 1;
-    if (multiplier == null) { total += Number(position.pnl || 0); continue; }
-    const pnl = (mark - entry) * size * multiplier * sign;
+    if (!marketFacts.ticker.ok || !(Number.isFinite(mark) && mark > 0 && Number.isFinite(entry) && entry > 0 && coinSize !== null)) {
+      pendingPositions.push({ identity: positionMirrorKey(position) || identity, reason: !marketFacts.ticker.ok ? `ticker_${marketFacts.ticker.reason}` : "position_pnl_inputs_incomplete", positionId: position.id || null });
+      continue;
+    }
+    const pnl = (mark - entry) * coinSize * sign;
     position.mark = mark;
     position.pnl = Number(pnl.toFixed(2));
-    total += pnl;
+    knownTotal += pnl;
   }
-  return total;
+  return { knownTotal, pendingPositions, complete: pendingPositions.length === 0 };
 }
 
-export function refreshAccounting(db) {
+function strictNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function snapshotEquity(snapshot) {
+  return strictNumber(snapshot?.totalEquityUsdt ?? snapshot?.balances?.[0]?.totalEq);
+}
+
+function snapshotUnrealized(snapshot) {
+  let total = 0;
+  for (const position of snapshot?.positions || []) {
+    const size = strictNumber(position.coinSize ?? position.pos ?? position.size ?? position.quantity);
+    if (size === null || Math.abs(size) === 0) continue;
+    const pnl = strictNumber(position.pnl ?? position.upl ?? position.unrealizedPnl);
+    if (pnl === null) return { complete: false, value: null, reason: "baseline_position_upl_missing" };
+    total += pnl;
+  }
+  return { complete: true, value: total, reason: null };
+}
+
+function baselineSnapshot(db, boundaryMs, accountId, options = {}) {
+  const maxGapMs = Number(options.maxGapMs ?? process.env.MAX_ACCOUNTING_BASELINE_GAP_MS ?? 15 * 60_000);
+  return (db.accountSnapshots || []).filter((snapshot) => {
+    if (snapshot?.status !== "ok") return false;
+    if (snapshot.exchange && snapshot.exchange !== "OKX") return false;
+    if (accountId && snapshot.accountId && snapshot.accountId !== accountId) return false;
+    const at = new Date(snapshot.createdAt || 0).getTime();
+    return Number.isFinite(at) && at <= boundaryMs && boundaryMs - at <= maxGapMs;
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+}
+
+function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
+  db.portfolio ||= {};
+  db.portfolio.accountingBaselines ||= {};
+  const currentSnapshot = (db.accountSnapshots || []).filter((snapshot) => snapshot?.status === "ok")
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  const accountId = currentSnapshot?.accountId || null;
+  const fingerprint = currentSnapshot?.apiKeyFingerprint || null;
+  const boundaryAt = new Date(boundaryMs).toISOString();
+  const existing = db.portfolio.accountingBaselines[kind];
+  if (existing?.boundaryAt === boundaryAt
+    && (!accountId || existing.accountId === accountId)
+    && (!fingerprint || existing.apiKeyFingerprint === fingerprint)
+    && strictNumber(existing.equityUsdt) > 0
+    && strictNumber(existing.unrealizedPnlUsdt) !== null) return { ok: true, baseline: existing };
+
+  const snapshot = baselineSnapshot(db, boundaryMs, accountId, options);
+  const equity = snapshotEquity(snapshot);
+  const upl = snapshotUnrealized(snapshot);
+  if (!snapshot || !(equity > 0) || !upl.complete) {
+    return { ok: false, reason: !snapshot ? "period_start_snapshot_missing" : !(equity > 0) ? "period_start_equity_missing" : upl.reason };
+  }
+  const baseline = {
+    kind,
+    boundaryAt,
+    snapshotId: snapshot.id || null,
+    observedAt: snapshot.createdAt,
+    accountId: snapshot.accountId || null,
+    apiKeyFingerprint: snapshot.apiKeyFingerprint || null,
+    environment: snapshot.environment || null,
+    equityUsdt: equity,
+    unrealizedPnlUsdt: upl.value,
+    netExternalCashFlowUsdt: 0,
+    pnlMethod: "reconciled_fills_plus_upl_change",
+    createdAt: nowIso()
+  };
+  db.portfolio.accountingBaselines[kind] = baseline;
+  return { ok: true, baseline };
+}
+
+export function refreshAccounting(db, options = {}) {
+  const nowMs = Number(options.nowMs ?? Date.now());
+  const timeZone = db.system?.businessTimeZone || DEFAULT_BUSINESS_TIME_ZONE;
   const equity = currentEquityUsdt(db);
-  const realizedToday = realizedPnlSince(db, todayStart());
-  const unrealized = unrealizedPnl(db);
-  const todayPnl = realizedToday + unrealized;
+  const dayStartMs = todayStart(nowMs, timeZone);
+  const realizedTodayState = realizedPnlSince(db, dayStartMs, nowMs);
+  const realizedToday = realizedTodayState.value;
+  const unrealizedState = unrealizedPnl(db, { now: nowMs });
+  const unrealized = unrealizedState.knownTotal;
+  const dailyBaseline = resolveAccountingBaseline(db, "daily", dayStartMs, options);
+  const todayPnl = realizedTodayState.pending || !unrealizedState.complete || !dailyBaseline.ok
+    ? null
+    : realizedToday + unrealized - Number(dailyBaseline.baseline.unrealizedPnlUsdt);
 
   db.portfolio ||= {};
   if (equity) db.portfolio.totalEquityUsdt = equity;
-  db.portfolio.todayPnl = Number(todayPnl.toFixed(2));
-  db.portfolio.todayPnlPct = equity ? Number(((todayPnl / equity) * 100).toFixed(2)) : null;
-  db.portfolio.realizedPnlToday = Number(realizedToday.toFixed(2));
-  db.portfolio.unrealizedPnl = Number(unrealized.toFixed(2));
+  db.portfolio.todayPnl = todayPnl === null ? null : Number(todayPnl.toFixed(2));
+  db.portfolio.todayPnlPct = equity && todayPnl !== null ? Number(((todayPnl / equity) * 100).toFixed(2)) : null;
+  db.portfolio.realizedPnlToday = realizedTodayState.pending ? null : Number(realizedToday.toFixed(2));
+  db.portfolio.knownReconciledRealizedPnlToday = Number(realizedToday.toFixed(2));
+  db.portfolio.pendingFinancialReconciliationToday = realizedTodayState.pending + unrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1);
+  db.portfolio.unrealizedPnl = unrealizedState.complete ? Number(unrealized.toFixed(2)) : null;
+  db.portfolio.knownUnrealizedPnl = Number(unrealized.toFixed(2));
+  db.portfolio.pendingUnrealizedPositions = unrealizedState.pendingPositions;
   // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
   // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
-  const weekEndMs = Date.now();
+  const weekEndMs = nowMs;
   const weekStartMs = weekEndMs - 7 * 24 * 60 * 60_000;
-  const realizedWeek = realizedPnlSince(db, weekStartMs);
-  const weekPnl = realizedWeek + unrealized;
-  db.portfolio.weekPnl = Number(weekPnl.toFixed(2));
-  db.portfolio.weekPnlPct = equity ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
+  const realizedWeekState = realizedPnlSince(db, weekStartMs, weekEndMs);
+  const realizedWeek = realizedWeekState.value;
+  const weeklyBaseline = resolveAccountingBaseline(db, "rolling_168h", weekStartMs, options);
+  const weekPnl = realizedWeekState.pending || !unrealizedState.complete || !weeklyBaseline.ok
+    ? null
+    : realizedWeek + unrealized - Number(weeklyBaseline.baseline.unrealizedPnlUsdt);
+  db.portfolio.weekPnl = weekPnl === null ? null : Number(weekPnl.toFixed(2));
+  db.portfolio.weekPnlPct = equity && weekPnl !== null ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
+  db.portfolio.knownReconciledRealizedPnlWeek = Number(realizedWeek.toFixed(2));
+  db.portfolio.pendingFinancialReconciliationWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length + (weeklyBaseline.ok ? 0 : 1);
   db.portfolio.weekWindowStartAt = new Date(weekStartMs).toISOString();
   db.portfolio.weekWindowEndAt = new Date(weekEndMs).toISOString();
   db.portfolio.weekWindowSemantics = "rolling_168_hours";
+  db.portfolio.dailyWindowStartAt = new Date(dayStartMs).toISOString();
+  db.portfolio.dailyWindowTimeZone = timeZone;
+  db.portfolio.dailyStartEquityUsdt = dailyBaseline.ok ? Number(dailyBaseline.baseline.equityUsdt) : null;
+  db.portfolio.dailyStartUnrealizedPnlUsdt = dailyBaseline.ok ? Number(dailyBaseline.baseline.unrealizedPnlUsdt) : null;
+  db.portfolio.dailyBaselineStatus = dailyBaseline.ok ? "reconciled" : dailyBaseline.reason;
+  db.portfolio.weekBaselineStatus = weeklyBaseline.ok ? "reconciled" : weeklyBaseline.reason;
   db.portfolio.accountingUpdatedAt = nowIso();
 
   const mandate = activeMandate(db);
   if (mandate && equity) {
-    const dailyLossCap = equity * (Number(mandate.maxDailyLossPct || 1) / 100);
+    const dailyRiskEquity = dailyBaseline.ok ? Number(dailyBaseline.baseline.equityUsdt) : null;
+    const dailyLossCap = dailyRiskEquity ? dailyRiskEquity * (Number(mandate.maxDailyLossPct || 1) / 100) : null;
+    if (todayPnl === null) {
+      db.system.remainingDailyLossUsdt = null;
+      db.system.dailyLossCapUsdt = dailyLossCap === null ? null : Number(dailyLossCap.toFixed(2));
+      db.system.dailyLossBudgetStatus = "pending_financial_reconciliation";
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "financial_reconciliation_pending";
+      syncReduceOnlyState(db);
+      return {
+        equity,
+        todayPnl: null,
+        realizedToday: null,
+        unrealized: db.portfolio.unrealizedPnl,
+        remainingDailyLossUsdt: null,
+        pendingFinancialReconciliation: realizedTodayState.pending + unrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1),
+        knownRealizedToday: Number(realizedToday.toFixed(2)),
+        pendingUnrealizedPositions: unrealizedState.pendingPositions.length
+      };
+    }
+    db.system.dailyLossBudgetStatus = "reconciled";
     const lossSoFar = Math.max(0, -todayPnl);
     const remaining = Math.max(0, dailyLossCap - lossSoFar);
     db.system.remainingDailyLossUsdt = Number(remaining.toFixed(2));
@@ -104,6 +274,8 @@ export function refreshAccounting(db) {
     db.system.dailyLossCapUsdt = null;
   }
 
+  syncReduceOnlyState(db);
+
   return {
     equity,
     todayPnl: db.portfolio.todayPnl,
@@ -119,7 +291,8 @@ export function refreshAccounting(db) {
 export function performanceReport(db) {
   // 部分平仓属于同一个仓位生命周期，绩效笔数/胜率/回撤必须先聚合，不能把三次减仓算成三笔交易。
   const lifecycles = groupClosedTradeLifecycles(db.fills || []);
-  const closes = lifecycles.map((item) => ({ ...item.representative, realizedPnl: item.netRealizedPnl, grossRealizedPnl: item.realizedPnl }));
+  const reconciled = lifecycles.filter((item) => item.netRealizedPnl !== null && item.netRealizedPnl !== undefined && item.netRealizedPnl !== "" && Number.isFinite(Number(item.netRealizedPnl)));
+  const closes = reconciled.map((item) => ({ ...item.representative, realizedPnl: item.netRealizedPnl, grossRealizedPnl: item.realizedPnl }));
   const wins = closes.filter((fill) => Number(fill.realizedPnl) > 0);
   const losses = closes.filter((fill) => Number(fill.realizedPnl) < 0);
   const totalPnl = closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0);
@@ -128,7 +301,7 @@ export function performanceReport(db) {
 
   const daily = new Map();
   for (const fill of closes) {
-    const day = String(fill.createdAt).slice(0, 10);
+    const day = businessDateKey(fill.createdAt, db.system?.businessTimeZone || DEFAULT_BUSINESS_TIME_ZONE);
     daily.set(day, (daily.get(day) || 0) + Number(fill.realizedPnl));
   }
   const dailySeries = [...daily.entries()]
@@ -152,6 +325,9 @@ export function performanceReport(db) {
 
   return {
     trades: closes.length,
+    financiallyReconciledTrades: closes.length,
+    pendingFinancialReconciliation: lifecycles.length - closes.length,
+    grossClosedTradeLifecycles: lifecycles.length,
     wins: wins.length,
     losses: losses.length,
     winRatePct: closes.length ? Number(((wins.length / closes.length) * 100).toFixed(1)) : null,
@@ -167,7 +343,7 @@ export function performanceReport(db) {
     partialCloseFills: lifecycles.reduce((sum, item) => sum + Math.max(0, item.fills.length - 1), 0),
     dailySeries,
     // 与执行引擎的权威在途集合一致（此前漏 entry_partial/submitted，会少计部分成交的在途单）。
-    openExecutions: (db.executionOrders || []).filter((item) => ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status)).length,
+    openExecutions: (db.executionOrders || []).filter((item) => OPEN_EXECUTION_STATES.has(String(item.status || "").toLowerCase())).length,
     generatedAt: nowIso()
   };
 }

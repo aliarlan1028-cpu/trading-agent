@@ -541,7 +541,7 @@ export function authHeaders(extra = {}) {
 }
 
 // 在途执行单状态（与后端 executionEngine OPEN_EXECUTION_STATES 对齐；曾有 3 份复制、1 份写错）。
-export const OPEN_EXECUTION_STATES = ["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"];
+export const OPEN_EXECUTION_STATES = ["submitted", "entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending", "entry_filled", "protecting", "protecting_degraded", "close_pending", "close_unknown_pending", "close_reconciliation_pending", "group_close_pending"];
 export function countOpenExecutions(orders = []) {
   return orders.filter((o) => OPEN_EXECUTION_STATES.includes(String(o.status || "").toLowerCase())).length;
 }
@@ -832,6 +832,10 @@ export function useApi() {
         requestError.blockers = json.blockers;
         throw requestError;
       }
+      if (json.sessionRotated === true && json.token && isNativeApp()) {
+        localStorage.setItem("agent_token", json.token);
+        setToken(json.token);
+      }
       if (json.logoutRequired) {
         expireSession(json.message || t("请重新登录", "Please sign in again"));
         return json;
@@ -951,13 +955,14 @@ export function useApi() {
     let source;
     let pending = {};
     let timer = null;
+    let reconnectTimer = null;
     let disposed = false;
     const openStream = (url) => {
       if (disposed) return;
       try { source = new EventSource(url); } catch { source = null; return; }
       wireStream();
     };
-    (async () => {
+    const connect = async () => {
       let url = apiUrl("/api/stream", apiBase);
       if (token) {
         try {
@@ -969,7 +974,8 @@ export function useApi() {
         } catch { /* 领票失败退回匿名流 */ }
       }
       openStream(url);
-    })();
+    };
+    connect();
     const patch = (market, ups) => {
       const u = ups[market.symbol];
       if (!u) return market;
@@ -1021,8 +1027,14 @@ export function useApi() {
           if (!timer) timer = setTimeout(flush, 250);
         } catch { /* 忽略解析失败 */ }
       };
+      source.onerror = () => {
+        if (disposed) return;
+        try { source.close(); } catch { /* noop */ }
+        source = null;
+        if (!reconnectTimer) reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1500);
+      };
     }
-    return () => { disposed = true; if (source) source.close(); if (timer) clearTimeout(timer); };
+    return () => { disposed = true; if (source) source.close(); if (timer) clearTimeout(timer); if (reconnectTimer) clearTimeout(reconnectTimer); };
   }, [token, apiBase]);
 
   // App 端兜底：Capacitor WKWebView 对 SSE(EventSource) 支持不稳定（常缓冲、onmessage 不实时），

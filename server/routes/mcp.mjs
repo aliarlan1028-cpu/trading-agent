@@ -5,15 +5,39 @@ export function registerMcpRoutes(app, ctx) {
   const findServer = (idv) => db.mcpServers.find((item) => item.id === idv);
   const notFound = (res) => res.status(404).json({ error: "MCP server not found" });
 
-  app.get("/api/mcp", (_req, res) => res.json((db.mcpServers || []).map(({ apiKey, apiKeySecretName, headers, ...server }) => ({
+  app.get("/api/mcp", requirePermission("admin:security"), (_req, res) => res.json((db.mcpServers || []).map(({ apiKey, apiKeySecretName, headers, ...server }) => ({
     ...server,
     hasApiKey: Boolean(apiKeySecretName || apiKey)
   }))));
 
   app.post("/api/mcp", requirePermission("write:mcp"), (req, res) => {
+    const reserved = ["id", "status", "enabled", "permissions", "allowedTools", "tools", "source", "autoAllowAll", "agentPolicyApproved", "agentToolPolicies", "sessionId", "builtInRegistryKey"];
+    const injected = reserved.filter((key) => Object.hasOwn(req.body || {}, key));
+    if (injected.length) return res.status(400).json({ error: "mcp_reserved_fields_not_allowed", fields: injected });
     const serverId = id("mcp");
-    const { apiKey, headers: _headers, ...safeBody } = req.body || {};
-    const server = { id: serverId, status: "registered", toolCount: 0, tools: [], enabled: true, permissions: [], allowedTools: [], ...safeBody };
+    const apiKey = req.body?.apiKey;
+    const name = String(req.body?.name || "").trim();
+    const url = String(req.body?.url || "").trim();
+    if (!name || !url) return res.status(400).json({ error: "mcp_name_and_url_required" });
+    const server = {
+      id: serverId,
+      name: name.slice(0, 120),
+      url,
+      transport: req.body?.transport === "sse" ? "sse" : "streamable_http",
+      description: String(req.body?.description || "").slice(0, 500),
+      apiKeySecretName: null,
+      status: "registered",
+      toolCount: 0,
+      tools: [],
+      enabled: true,
+      source: "custom_unverified",
+      autoAllowAll: false,
+      permissions: [],
+      allowedTools: [],
+      agentPolicyApproved: false,
+      agentToolPolicies: [],
+      createdAt: nowIso()
+    };
     if (apiKey) {
       const secretName = `MCP_${serverId}_API_KEY`;
       storeSecret(db, secretName, apiKey, "mcp");
@@ -43,6 +67,25 @@ export function registerMcpRoutes(app, ctx) {
     const server = findServer(req.params.id);
     if (!server) return notFound(res);
     server.permissions = req.body.permissions || server.permissions || [];
+    if (req.body.agentToolPolicies !== undefined) {
+      const discovered = new Set((server.tools || []).map((tool) => tool.name));
+      const next = {};
+      for (const [toolName, value] of Object.entries(req.body.agentToolPolicies || {})) {
+        if (!discovered.has(toolName) || !value || typeof value !== "object") continue;
+        const effect = value.effect === "read" ? "read" : value.effect === "write" ? "write" : null;
+        const requiredPermissions = [...new Set((value.requiredPermissions || []).map(String).filter(Boolean))];
+        if (!effect || !requiredPermissions.length) continue;
+        next[toolName] = { approved: value.approved === true, effect, requiredPermissions };
+      }
+      server.agentToolPolicies = next;
+      server.agentPolicyApproved = true;
+      server.agentPolicyApprovedAt = nowIso();
+      server.agentPolicyApprovedBy = req.user?.id || null;
+      server.allowedTools = [...new Set([
+        ...(server.allowedTools || []),
+        ...Object.entries(next).filter(([, policy]) => policy.approved).map(([toolName]) => toolName)
+      ])];
+    }
     server.updatedAt = nowIso();
     appendAudit(db, "更新 MCP 权限", server.id, db.user.name);
     persist(res, server);

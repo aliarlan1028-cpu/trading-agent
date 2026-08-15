@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { computeBehaviorProfile, buildClosedTrades } from "../server/behaviorProfile.mjs";
+import { financiallyReconciledFills, reconciledFill } from "./financial-fixtures.mjs";
 
 // 合成:盈利单=低杠杆短持仓,亏损单=高杠杆长持仓 → 应触发"越亏越加杠杆"+"拿不住盈利单"。
 const T = (id, dir, pnl, lev, entryIso, closeIso, lossAttr) => ({
-  entry: { kind: "entry", planId: id, executionOrderId: id, createdAt: entryIso },
-  close: { kind: "close", planId: id, executionOrderId: id, symbol: "BTC/USDT", direction: dir, realizedPnl: pnl, notionalUsdt: 100, regime: dir === "long" ? "趋势" : "震荡", lossAttribution: lossAttr || null, createdAt: closeIso },
+  entry: reconciledFill({ kind: "entry", planId: id, executionOrderId: id, notionalUsdt: 100, createdAt: entryIso }),
+  close: reconciledFill({ kind: "close", planId: id, executionOrderId: id, symbol: "BTC/USDT", direction: dir, realizedPnl: pnl, notionalUsdt: 100, regime: dir === "long" ? "趋势" : "震荡", lossAttribution: lossAttr || null, createdAt: closeIso }),
   plan: { id, leverage: lev }
 });
 const rows = [
@@ -62,11 +63,11 @@ test("亏损归因分布 + 空数据不崩", () => {
 test("部分平仓按一个交易生命周期进入行为画像", () => {
   const partialDb = {
     tradePlans: [{ id: "p1", leverage: 5 }],
-    fills: [
+    fills: financiallyReconciledFills([
       { id: "in", kind: "entry", executionOrderId: "e1", tradePlanId: "p1", createdAt: "2026-08-01T00:00:00Z" },
       { id: "p", kind: "close", executionOrderId: "e1", tradePlanId: "p1", partial: true, symbol: "BTC/USDT", direction: "long", realizedPnl: 3, notionalUsdt: 40, createdAt: "2026-08-01T01:00:00Z" },
       { id: "f", kind: "close", executionOrderId: "e1", tradePlanId: "p1", symbol: "BTC/USDT", direction: "long", realizedPnl: -1, notionalUsdt: 60, createdAt: "2026-08-01T02:00:00Z" }
-    ]
+    ])
   };
   const trades = buildClosedTrades(partialDb);
   assert.equal(trades.length, 1);
@@ -77,10 +78,10 @@ test("部分平仓按一个交易生命周期进入行为画像", () => {
 test("行为画像使用成本后净值，毛盈利被费用翻转时归为亏损", () => {
   const feeFlip = {
     tradePlans: [{ id: "fee-plan", leverage: 2 }],
-    fills: [
-      { id: "fee-entry", kind: "entry", executionOrderId: "fee-exec", tradePlanId: "fee-plan", feeUsdt: 0.8, createdAt: "2026-08-01T00:00:00Z" },
+    fills: financiallyReconciledFills([
+      { id: "fee-entry", kind: "entry", executionOrderId: "fee-exec", tradePlanId: "fee-plan", feeUsdt: 0.8, notionalUsdt: 100, createdAt: "2026-08-01T00:00:00Z" },
       { id: "fee-close", kind: "close", executionOrderId: "fee-exec", tradePlanId: "fee-plan", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.4, notionalUsdt: 100, createdAt: "2026-08-01T01:00:00Z" }
-    ]
+    ])
   };
   const [trade] = buildClosedTrades(feeFlip);
   assert.equal(trade.grossPnl, 1);

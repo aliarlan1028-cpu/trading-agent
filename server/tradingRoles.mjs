@@ -1,4 +1,5 @@
 const ROLE_IDS = new Set(["day_trader", "swing_trader"]);
+import { IN_FLIGHT_ENTRY_STATES, SAME_SYMBOL_EXPOSURE_STATES } from "./executionStates.mjs";
 
 export const TRADING_ROLE_PROFILES = Object.freeze({
   day_trader: Object.freeze({
@@ -78,8 +79,8 @@ function positionOpen(position = {}) {
 }
 
 const ACTIVE_PLAN_STATUSES = new Set(["armed", "awaiting_approval", "approved", "executing", "entry_pending", "entry_filled", "protecting"]);
-const IN_FLIGHT_ENTRY_ORDER_STATUSES = new Set(["created", "submitted", "entry_pending", "entry_partial", "executing"]);
-const SAME_SYMBOL_EXPOSURE_STATUSES = new Set([...IN_FLIGHT_ENTRY_ORDER_STATUSES, "entry_filled", "protecting"]);
+const IN_FLIGHT_ENTRY_ORDER_STATUSES = IN_FLIGHT_ENTRY_STATES;
+const SAME_SYMBOL_EXPOSURE_STATUSES = SAME_SYMBOL_EXPOSURE_STATES;
 
 function planStillActive(db, plan, now = Date.now()) {
   if (!ACTIVE_PLAN_STATUSES.has(String(plan?.status || "").toLowerCase())) return false;
@@ -137,11 +138,13 @@ export function evaluateSameSymbolEntryConflict(db, candidate = {}, mandate = {}
   const livePosition = (db.positions || []).find((position) =>
     normalizeSymbol(position.symbol || position.instId) === symbol && positionOpen(position)
   );
-  if (livePosition && !addPositionAuthorized) {
+  if (livePosition) {
     return {
       ok: false,
-      reason: "same_symbol_position_add_not_authorized",
-      detail: `${symbol} 已有未平仓仓位；当前交易权限未允许追加同币种仓位`,
+      reason: addPositionAuthorized ? "same_symbol_position_add_unsupported" : "same_symbol_position_add_not_authorized",
+      detail: addPositionAuthorized
+        ? `${symbol} 已有未平仓仓位；当前执行账本尚不支持按执行批次安全归属加仓，已拒绝追加敞口`
+        : `${symbol} 已有未平仓仓位；当前交易权限未允许追加同币种仓位`,
       conflictId: livePosition.id || livePosition.instId || symbol
     };
   }
@@ -169,7 +172,7 @@ export function evaluateSameSymbolEntryConflict(db, candidate = {}, mandate = {}
     return authoritativeOpenOrder
       && normalizeSymbol(order.symbol) === symbol
       && order.reduceOnly !== true
-      && !["filled", "canceled", "cancelled", "rejected", "expired", "closed"].includes(status);
+      && !["filled", "canceled", "cancelled", "mmp_canceled", "rejected", "expired", "closed"].includes(status);
   });
   if (exchangeOrder) {
     return {

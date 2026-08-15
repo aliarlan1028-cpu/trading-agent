@@ -5,6 +5,7 @@
 import { id, nowIso, appendAudit, appendTrace } from "./store.mjs";
 import { llmComplete, activeProvider } from "./agentChat.mjs";
 import { createSkillFromIdea } from "./knowledgeSkills.mjs";
+import { approvePromptArtifact, markPromptArtifactDraft, normalizePromptPolicy } from "./knowledgePromptPolicy.mjs";
 
 const TEMPLATES = "trend/meanrev/breakout/macd/bollinger/death_cross/rsi_short/breakdown/supertrend/vol_breakout/squeeze/rsi_bull_div/rsi_bear_div";
 const CONVERT_SYSTEM = "你是把交易/金融/心理知识转成【可执行产物】的引擎。读给定的书籍知识,产出三类候选:\n1) strategy 交易策略——必须映射到受支持模板之一,给出方向/周期/入场/止损/止盈,能直接回测与下单;\n2) lens 分析提示词——一条决策时提醒 AI 的纪律/视角(如行为金融偏差守卫、心理面纪律),只塑造分析不下单;\n3) workflow 工作流——一串有序的分析步骤。\n只从给定知识里提炼,不得编造;每个候选必须带来源引用(章节或页)。只输出纯 JSON,不要解释。";
@@ -23,7 +24,7 @@ export async function generateCandidates(db, sourceId, { max = 6 } = {}) {
     concepts.length ? `关键概念:${concepts.map((c) => c.term || c.name).filter(Boolean).slice(0, 12).join("、")}` : "",
     chunks.length ? `原文摘录:\n${chunks.map((c) => String(c.text || "").slice(0, 280)).join("\n———\n")}` : ""
   ].filter(Boolean).join("\n\n");
-  const prompt = `${brief}\n\n受支持模板:${TEMPLATES}\n\n从上面知识里产出最多 ${max} 个候选(尽量三类都覆盖),只返回纯 JSON:\n{"candidates":[{"type":"strategy","name":"","summary":"一句话逻辑","templateId":"上面模板之一","direction":"long|short","timeframe":"15m|1h|4h|1d","entry":"入场条件","stop":"止损描述(如 2%/2ATR)","takeProfit":"2R","sourceRef":"章节或页"},{"type":"lens","name":"","summary":"","promptText":"决策时提醒 AI 的一句纪律","trigger":"何时适用","sourceRef":""},{"type":"workflow","name":"","summary":"","steps":["步骤1","步骤2"],"sourceRef":""}]}`;
+  const prompt = `${brief}\n\n受支持模板:${TEMPLATES}\n透镜 policyCode 只允许:require_deterministic_structure|require_fresh_evidence|enforce_stop_invalidation|avoid_chasing_extremes|reduce_size_on_conflict|respect_event_blackout|preserve_rr|require_oos_validation。\n工作流 stepCodes 只允许:sync_facts|assess_regime|analyze_structure|inspect_microstructure|check_event_risk|validate_rr|risk_gate|propose_plan。\n\n从上面知识里产出最多 ${max} 个候选(尽量三类都覆盖),只返回纯 JSON:\n{"candidates":[{"type":"strategy","name":"","summary":"一句话逻辑","templateId":"上面模板之一","direction":"long|short","timeframe":"15m|1h|4h|1d","entry":"入场条件","stop":"止损描述(如 2%/2ATR)","takeProfit":"2R","sourceRef":"章节或页"},{"type":"lens","name":"","summary":"仅供UI","policyCode":"上面枚举之一","sourceRef":""},{"type":"workflow","name":"","summary":"仅供UI","stepCodes":["上面枚举"],"sourceRef":""}]}`;
   let parsed;
   try {
     const raw = await llmComplete(prompt, CONVERT_SYSTEM);
@@ -47,8 +48,8 @@ export async function generateCandidates(db, sourceId, { max = 6 } = {}) {
       payload: c.type === "strategy"
         ? { templateId: c.templateId, direction: c.direction === "short" ? "short" : "long", timeframe: c.timeframe, entry: c.entry, stop: c.stop, takeProfit: c.takeProfit || "2R" }
         : c.type === "lens"
-          ? { promptText: String(c.promptText || c.summary || "").slice(0, 400), trigger: String(c.trigger || "").slice(0, 120) }
-          : { steps: (Array.isArray(c.steps) ? c.steps : []).map((s) => String(s).slice(0, 120)).slice(0, 8) },
+          ? { promptText: String(c.promptText || c.summary || "").slice(0, 400), trigger: String(c.trigger || "").slice(0, 120), policyCode: c.policyCode }
+          : { steps: (Array.isArray(c.steps) ? c.steps : []).map((s) => String(s).slice(0, 120)).slice(0, 8), stepCodes: c.stepCodes },
       status: "candidate",
       createdAt: nowIso()
     };
@@ -78,21 +79,36 @@ export function adoptCandidate(db, candidateId, actor = "用户") {
     cand.adoptedKind = "skill";
   } else if (cand.type === "lens") {
     db.knowledge.lenses ||= [];
-    const lens = { id: id("lens"), name: cand.name, summary: cand.summary, promptText: cand.payload?.promptText || cand.summary, trigger: cand.payload?.trigger || "", sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, active: true, provenance: "knowledge_adopted", createdAt: nowIso() };
+    const lens = markPromptArtifactDraft("lens", { id: id("lens"), name: cand.name, summary: cand.summary, promptText: cand.payload?.promptText || cand.summary, trigger: cand.payload?.trigger || "", structuredPolicy: normalizePromptPolicy("lens", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
     db.knowledge.lenses.unshift(lens);
     cand.adoptedArtifactId = lens.id;
     cand.adoptedKind = "lens";
   } else if (cand.type === "workflow") {
     db.knowledge.workflows ||= [];
-    const wf = { id: id("wf"), name: cand.name, summary: cand.summary, steps: cand.payload?.steps || [], sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, active: true, provenance: "knowledge_adopted", createdAt: nowIso() };
+    const wf = markPromptArtifactDraft("workflow", { id: id("wf"), name: cand.name, summary: cand.summary, steps: cand.payload?.steps || [], structuredPolicy: normalizePromptPolicy("workflow", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
     db.knowledge.workflows.unshift(wf);
     cand.adoptedArtifactId = wf.id;
     cand.adoptedKind = "workflow";
   }
   cand.status = "adopted";
   cand.adoptedAt = nowIso();
-  appendAudit(db, `采纳知识候选「${cand.name}」(${cand.type}，采纳即用)`, cand.id, actor);
+  appendAudit(db, `采纳知识候选「${cand.name}」(${cand.type}${cand.type === "strategy" ? "，进入策略验证" : "，等待独立提示词审批"})`, cand.id, actor);
   return { ok: true, candidate: cand };
+}
+
+export function approveCandidateArtifact(db, candidateId, actor = "KnowledgeApprover") {
+  const cand = (db.knowledge?.candidates || []).find((item) => item.id === candidateId);
+  if (!cand || cand.status !== "adopted" || !["lens", "workflow"].includes(cand.type)) return { ok: false, error: "没有可审批的已采纳透镜/工作流" };
+  const collection = cand.type === "lens" ? db.knowledge?.lenses : db.knowledge?.workflows;
+  const artifact = (collection || []).find((item) => item.id === cand.adoptedArtifactId);
+  if (!artifact) return { ok: false, error: "已采纳产物不存在" };
+  try { approvePromptArtifact(cand.type, artifact, actor); }
+  catch (error) { return { ok: false, error: error.message }; }
+  cand.promptApprovalStatus = "approved";
+  cand.promptApprovedAt = artifact.promptApproval.approvedAt;
+  cand.promptApprovedBy = actor;
+  appendAudit(db, `批准知识提示产物「${cand.name}」(${cand.type})`, artifact.id, actor);
+  return { ok: true, candidate: cand, artifact };
 }
 
 export function ignoreCandidate(db, candidateId) {

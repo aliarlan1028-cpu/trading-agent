@@ -1,5 +1,5 @@
 import { appendAudit, appendTrace, nowIso } from "./store.mjs";
-import { assertSafeExternalUrl, createSafeExternalDispatcher } from "./externalInputSafety.mjs";
+import { withSafeExternalResponse } from "./externalInputSafety.mjs";
 import { readSecret } from "./securityOps.mjs";
 
 // ---------------------------------------------------------------------------
@@ -55,14 +55,12 @@ async function parseRpcResponse(response, requestId) {
 }
 
 async function mcpRpc(db, server, method, params = {}, options = {}) {
-  await assertSafeExternalUrl(server.url);
   const isNotification = options.notification === true;
   const id = isNotification ? undefined : (rpcId += 1);
   const body = { jsonrpc: "2.0", method, ...(isNotification ? {} : { id }), params };
   const timer = timeout(options.timeoutMs || 15000);
-  const dispatcher = createSafeExternalDispatcher();
   try {
-    const response = await fetch(server.url, {
+    return await withSafeExternalResponse(server.url, {
       method: "POST",
       signal: timer.signal,
       headers: {
@@ -72,17 +70,22 @@ async function mcpRpc(db, server, method, params = {}, options = {}) {
         ...authHeaders(db, server)
       },
       body: JSON.stringify(body),
-      dispatcher
+      timeoutMs: options.timeoutMs || 15000,
+      maxRedirects: 3
+    }, async (response) => {
+      const sessionId = response.headers.get("mcp-session-id") || server.sessionId;
+      if (isNotification) {
+        // 即使 notification 无响应体，也消费/取消 body，确保连接资源可回收。
+        await readRpcText(response).catch(() => "");
+        return { sessionId };
+      }
+      if (!response.ok) throw new Error(`MCP HTTP ${response.status}: ${(await readRpcText(response)).slice(0, 200)}`);
+      const message = await parseRpcResponse(response, id);
+      if (message.error) throw new Error(`MCP ${method} error: ${message.error.message || JSON.stringify(message.error)}`);
+      return { result: message.result, sessionId };
     });
-    const sessionId = response.headers.get("mcp-session-id") || server.sessionId;
-    if (isNotification) return { sessionId };
-    if (!response.ok) throw new Error(`MCP HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
-    const message = await parseRpcResponse(response, id);
-    if (message.error) throw new Error(`MCP ${method} error: ${message.error.message || JSON.stringify(message.error)}`);
-    return { result: message.result, sessionId };
   } finally {
     timer.cancel();
-    await dispatcher.close().catch(() => {});
   }
 }
 
@@ -104,11 +107,23 @@ export async function connectMcpServer(db, serverId) {
     server.sessionId = init.sessionId;
     await mcpRpc(db, server, "notifications/initialized", {}, { notification: true }).catch(() => {});
     const list = await mcpRpc(db, server, "tools/list", {});
-    const tools = (list.result?.tools || []).map((t) => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} } }));
+    const previousFingerprints = new Map((server.tools || []).map((tool) => [tool.name, tool.agentDefinitionFingerprint]));
+    const tools = (list.result?.tools || []).map((t) => {
+      const inputSchema = t.inputSchema || { type: "object", properties: {} };
+      const agentDefinitionFingerprint = JSON.stringify({ name: t.name, description: t.description || "", inputSchema });
+      return { name: t.name, description: t.description || "", inputSchema, agentDefinitionFingerprint };
+    });
     server.tools = tools;
     server.toolCount = tools.length;
-    // 官方只读数据源(如 CoinGecko)自动放行全部工具,免去逐个勾选;第三方仍需手动授权。
-    if (server.autoAllowAll) server.allowedTools = tools.map((t) => t.name);
+    const discovered = new Set(tools.map((tool) => tool.name));
+    server.allowedTools = (server.allowedTools || []).filter((toolName) => discovered.has(toolName));
+    const retainedPolicies = {};
+    for (const [toolName, policy] of Object.entries(server.agentToolPolicies || {})) {
+      const tool = tools.find((item) => item.name === toolName);
+      if (tool && previousFingerprints.get(toolName) === tool.agentDefinitionFingerprint) retainedPolicies[toolName] = policy;
+    }
+    server.agentToolPolicies = retainedPolicies;
+    server.agentPolicyApproved = Object.keys(retainedPolicies).length > 0;
     server.status = "connected";
     server.enabled = server.enabled !== false;
     server.connectedAt = nowIso();
@@ -135,6 +150,28 @@ export function mcpToolAllowed(server, toolName) {
   return allowedTools.includes(toolName) || permissions.includes(`tool:${toolName}`);
 }
 
+function parsedMcpToolName(name) {
+  const parts = String(name || "").split("__");
+  return { serverId: parts[1] || "", toolName: parts.slice(2).join("__") };
+}
+
+// MCP 的“允许调用”与“可由哪个 Agent 主体调用”是两层权限。
+// 第三方工具默认不进入 Agent；只有管理员批准且声明 RBAC 能力的逐工具策略可用。
+// 即使是仓库内置的官方连接，也不按可写数据库字段获得豁免；工具发现或定义变化后
+// 必须重新经过管理员逐工具批准。
+export function resolveMcpAgentToolPolicy(db, name) {
+  const { serverId, toolName } = parsedMcpToolName(name);
+  const server = (db.mcpServers || []).find((item) => item.id === serverId);
+  if (!server || server.status !== "connected" || server.enabled === false || !mcpToolAllowed(server, toolName)) return null;
+  const policy = server.agentToolPolicies?.[toolName];
+  if (server.agentPolicyApproved !== true || !policy || policy.approved !== true) return null;
+  const effect = policy.effect === "read" ? "read" : policy.effect === "write" ? "write" : null;
+  const declared = [...new Set((policy.requiredPermissions || []).map(String).filter(Boolean))];
+  if (!effect || !declared.length) return null;
+  if (effect === "write" && !declared.some((permission) => /^(write:|approve:|critical:|admin:|trade\.write_guarded$)/.test(permission))) return null;
+  return { allowed: true, effect, requiredPermissions: declared, serverId, toolName };
+}
+
 // 已连接且启用的 MCP server 的工具，以 mcp__<serverId>__<tool> 前缀暴露给 LLM。
 export function enabledMcpTools(db) {
   const out = [];
@@ -145,7 +182,8 @@ export function enabledMcpTools(db) {
       out.push({
         name: `mcp__${server.id}__${tool.name}`,
         description: `[MCP:${server.name}] ${tool.description}`.slice(0, 400),
-        schema: tool.inputSchema || { type: "object", properties: {} }
+        schema: tool.inputSchema || { type: "object", properties: {} },
+        agentPolicy: resolveMcpAgentToolPolicy(db, `mcp__${server.id}__${tool.name}`)
       });
     }
   }
@@ -194,9 +232,10 @@ export function ensureCoingeckoMcp(db) {
     url: "https://mcp.api.coingecko.com/mcp",
     transport: "streamable_http",
     source: "official",
+    builtInRegistryKey: "coingecko_market_data",
     status: "registered",
     enabled: true,
-    autoAllowAll: true, // 官方只读源,连接后自动放行全部工具
+    autoAllowAll: false,
     permissions: [],
     allowedTools: [],
     tools: [],

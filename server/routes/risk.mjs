@@ -1,5 +1,10 @@
 import { riskGateDecision } from "../riskEngine.mjs";
-import { executeTradeAction } from "../tradeActions.mjs";
+import { canonicalPositionDirection, canonicalPositionKey } from "../positionIdentity.mjs";
+import { latestSuccessfulAccountSnapshot } from "../store.mjs";
+import { validateOkxCredentialBinding } from "../exchangeConnector.mjs";
+import { clearReduceOnlyReason, setReduceOnlyReason, syncReduceOnlyState } from "../reduceOnlyState.mjs";
+import { resolvePermissions } from "../auth.mjs";
+import { applyKillSwitch, cancelAuthoritativeOrphanOrders } from "../riskControlService.mjs";
 // 风控路由组（计划风控校验/一键熔断/状态/规则 CRUD/灰度策略/只减仓/一键平仓/风险事件收尾）——
 // 从 index.mjs 按 registrar 范式迁出。熔断/只减仓/事件收尾为高危控制面，处理器逐字保留原实现：
 // 熔断即撤单+暂停自主+建 incident+飞书告警；解除熔断不强制重开自主。依赖经 ctx 注入。
@@ -23,41 +28,108 @@ export function registerRiskRoutes(app, ctx) {
   // 一键平仓:市价平掉所有持仓 + 切只减仓(禁新开仓)。高危,与熔断并列。减风险动作,不受实盘写入闸限制。
   app.post("/api/risk/emergency-flatten", requirePermission("risk.kill_switch"), async (req, res) => {
     const emergencyActionId = id("emergency");
+    const entryExitResults = [];
+    const preprocessedEntryIds = new Set();
+    for (const row of (db.executionOrders || []).filter((execution) => ["entry_unknown_pending", "entry_pending", "entry_partial"].includes(execution.status))) {
+      preprocessedEntryIds.add(row.id);
+      const result = await closeExecution(db, row.id, "operator_emergency_flatten_cancel_entry", {
+        intent: "emergency_close_if_filled", expectedStatus: row.status, internal: true, emergencyActionId
+      });
+      entryExitResults.push({ executionOrderId: row.id, status: result.status });
+    }
+    const orphanCancellations = await cancelAuthoritativeOrphanOrders(db, "operator_emergency_flatten", emergencyActionId);
     // 同一真实仓可能同时存在 execution_engine 与 exchange_rest/ws 行；按 OKX+symbol+方向去重，
     // 优先交易所快照，避免一键平仓对同一仓位重复发送 close-position。
     const byPosition = new Map();
     for (const position of db.positions || []) {
       const size = Math.abs(Number(position.size ?? position.pos ?? position.positionAmt ?? 0));
       if (!size || String(position.exchange || "OKX").toUpperCase() !== "OKX") continue;
-      const side = String(position.posSide || position.direction || "net").toLowerCase();
-      const key = `${position.symbol}|${side}`;
+      const side = canonicalPositionDirection(position);
+      const key = canonicalPositionKey(position);
+      if (!key || !side) continue;
       const current = byPosition.get(key);
       const authoritative = ["exchange_rest", "exchange_ws"].includes(position.source);
       if (!current || authoritative) byPosition.set(key, { ...position, size });
     }
     const positions = [...byPosition.values()];
-    const closed = [], errors = [];
+    const submitted = [], errors = [];
     for (const p of positions) {
       try {
-        const r = await executeTradeAction(db, "close_position", {
-          exchange: "OKX",
-          marketType: "perpetual_usdt",
-          symbol: p.symbol,
-          positionSide: p.posSide || p.direction,
-          quantity: p.size,
-          reduceOnly: true,
-          emergencyActionId,
-          emergencyReason: String(req.body?.reason || "operator_emergency_flatten").slice(0, 200)
-        });
-        if (["ok", "submitted", "idempotent_replay"].includes(r.status)) closed.push(p.symbol); else errors.push(`${p.symbol}: ${r.reason || r.status}`);
+        const direction = canonicalPositionDirection(p);
+        const affected = (db.executionOrders || []).filter((row) => row.symbol === p.symbol && canonicalPositionDirection(row) === direction
+          && ["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending", "entry_filled", "protecting", "protecting_degraded", "close_pending", "close_unknown_pending", "close_reconciliation_pending"].includes(row.status));
+        const entryInFlight = affected.filter((row) => ["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(row.status));
+        const entryToCancel = entryInFlight.filter((row) => ["entry_unknown_pending", "entry_pending", "entry_partial"].includes(row.status));
+        for (const row of entryToCancel.filter((candidate) => !preprocessedEntryIds.has(candidate.id))) {
+          await closeExecution(db, row.id, "operator_emergency_flatten_cancel_entry", { intent: "emergency_close_if_filled", expectedStatus: row.status, internal: true, emergencyActionId });
+        }
+        const groupKey = `flatten:${p.accountId || "unbound"}:${p.symbol}:${direction}`;
+        const existingGroup = (db.executionOrders || []).find((row) => row.syntheticEmergency === true && row.groupCloseKey === groupKey
+          && !["closed", "group_closed", "cancelled"].includes(row.status));
+        const existingMemberIds = new Set(existingGroup?.affectedExecutionOrderIds || []);
+        const positionAffected = affected.filter((row) => ["entry_filled", "protecting", "protecting_degraded"].includes(row.status))
+          .concat((db.executionOrders || []).filter((row) => existingMemberIds.has(row.id) && row.status === "group_close_pending"));
+        let execution = entryInFlight.length === 0 && positionAffected.length === 1 ? positionAffected[0] : null;
+        if (existingGroup) execution = existingGroup;
+        if (!execution) {
+          const priorStatuses = Object.fromEntries(positionAffected.map((row) => [row.id, row.status]));
+          execution = {
+            id: id("exec_emergency"),
+            exchange: "OKX",
+            accountId: p.accountId || null,
+            symbol: p.symbol,
+            direction,
+            quantity: p.coinSize ?? p.size,
+            filledQuantity: p.coinSize ?? null,
+            okxCtVal: p.contractMultiplier ?? null,
+            status: "entry_filled",
+            syntheticEmergency: true,
+            groupCloseKey: groupKey,
+            groupCloseIntent: { status: "preparing", priorStatuses, createdAt: nowIso() },
+            events: [{ at: nowIso(), event: "emergency_group_created", detail: emergencyActionId }],
+            // 只有已经形成当前物理净仓的执行参与 group close 财务收口；入场在途继续
+            // 保持自己的撤单/成交竞态状态机，不能被 synthetic 状态吞掉。
+            affectedExecutionOrderIds: positionAffected.map((row) => row.id),
+            linkedEntryExecutionOrderIds: entryInFlight.map((row) => row.id),
+            createdAt: nowIso()
+          };
+          db.executionOrders.unshift(execution);
+          for (const row of entryInFlight) row.groupCloseExecutionId = execution.id;
+          for (const row of positionAffected) {
+            row.status = "group_close_pending";
+            row.groupCloseExecutionId = execution.id;
+          }
+        }
+        const currentStatus = execution.status;
+        const intent = ["entry_unknown_pending", "entry_pending", "entry_partial"].includes(currentStatus) ? "emergency_close_if_filled" : "close_position";
+        const r = await closeExecution(db, execution.id, "operator_emergency_flatten", { intent, expectedStatus: currentStatus, internal: true, emergencyActionId });
+        execution.groupCloseIntent ||= { priorStatuses: {} };
+        execution.groupCloseIntent.lastStatus = r.status;
+        execution.groupCloseIntent.updatedAt = nowIso();
+        if (/pending/.test(String(r.status))) {
+          execution.groupCloseIntent.status = "pending";
+          submitted.push({ symbol: p.symbol, direction, executionOrderId: execution.id, status: r.status });
+        } else {
+          execution.groupCloseIntent.status = "retryable_failure";
+          for (const [rowId, priorStatus] of Object.entries(execution.groupCloseIntent.priorStatuses || {})) {
+            const row = (db.executionOrders || []).find((candidate) => candidate.id === rowId);
+            if (row?.status === "group_close_pending" && row.groupCloseExecutionId === execution.id) {
+              row.status = priorStatus;
+              delete row.groupCloseExecutionId;
+            }
+          }
+          errors.push(`${p.symbol}: ${r.status}`);
+        }
       } catch (error) { errors.push(`${p.symbol}: ${error.message}`); }
     }
     db.system.reduceOnlyMode = true;
     db.system.reduceOnlyBy = "emergency_flatten";
-    appendAudit(db, `一键平仓：平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓`, emergencyActionId, db.user.name, "critical");
-    appendTrace(db, "risk", `一键平仓 ${closed.length} 仓`, errors.length ? "warning" : "ok");
-    try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓已触发", body: `已平 **${closed.length}** 个持仓${errors.length ? `，${errors.length} 个失败` : ""}，系统已切「只减仓」禁新开仓。` }); } catch { /* noop */ }
-    persist(res, { emergencyActionId, closed, errors, reduceOnly: true, message: `已平 ${closed.length} 仓${errors.length ? `，${errors.length} 失败` : ""}，已切只减仓` });
+    setReduceOnlyReason(db, "emergency_flatten", { sticky: true, sourceId: emergencyActionId });
+    appendAudit(db, `一键平仓：已提交 ${submitted.length} 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}；等待交易所快照与成交核算，保持只减仓`, emergencyActionId, db.user.name, "critical");
+    appendTrace(db, "risk", `一键平仓提交 ${submitted.length} 个退出动作`, errors.length ? "warning" : "pending");
+    try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓请求已提交", body: `已提交 **${submitted.length}** 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}。ACK 不代表成交完成；系统保持只减仓，等待账户快照与真实 fills 对账。` }); } catch { /* noop */ }
+    res.status(202);
+    persist(res, { emergencyActionId, submitted, entryExitResults, orphanCancellations, errors, reduceOnly: true, message: `已提交 ${submitted.length} 个平仓请求及 ${entryExitResults.length + orphanCancellations.requested.length} 个撤单请求，等待交易所事实对账` });
   });
 
   app.post("/api/risk/kill-switch", async (req, res) => {
@@ -65,84 +137,78 @@ export function registerRiskRoutes(app, ctx) {
     if (!userHasPermission(db, req.user, requiredPermission)) {
       return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
     }
-    db.system.killSwitch = Boolean(req.body.enabled);
-    // (P1-6)开启熔断时暂停自主;解除熔断不强制重开(此前会覆盖用户手动暂停/日亏自动暂停)。
-    if (db.system.killSwitch) db.system.autonomyEnabled = false;
-    db.system.riskStatus = db.system.killSwitch ? "熔断停机" : "正常";
-    if (db.system.killSwitch) {
-      const cancellationResults = [];
-      for (const executionOrder of db.executionOrders || []) {
-        if (!["entry_pending", "entry_partial", "entry_filled", "protecting"].includes(executionOrder.status)) continue;
-        const result = await closeExecution(db, executionOrder.id, "kill_switch");
-        cancellationResults.push({
-          executionOrderId: executionOrder.id,
-          status: result.status,
-          detail: result.result?.reason || result.result?.status || null
-        });
-      }
-      const cancelRequested = [];
-      for (const order of db.orders || []) {
-        const open = ["open", "new", "partially_filled", "submitted"].includes(String(order.status || "").toLowerCase());
-        if (open && !order.reduceOnly) {
-          order.status = "cancel_requested";
-          order.cancelReason = "kill_switch";
-          order.updatedAt = nowIso();
-          cancelRequested.push(order.id);
-        }
-      }
-      if (cancelRequested.length || cancellationResults.length) {
-        db.riskIncidents.unshift({
-          id: id("incident"),
-          severity: "critical",
-          status: "open",
-          title: "一键熔断触发撤单请求",
-          source: "risk.kill_switch",
-          affectedOrders: cancelRequested,
-          cancellationResults,
-          unconfirmed: cancellationResults.filter((item) => !["cancelled", "closed"].includes(item.status)),
-          createdAt: nowIso()
-        });
-      }
-      db.system.lastKillSwitchCancellation = {
-        requested: cancellationResults.length,
-        confirmed: cancellationResults.filter((item) => ["cancelled", "closed"].includes(item.status)).length,
-        unconfirmed: cancellationResults.filter((item) => !["cancelled", "closed"].includes(item.status)).length,
-        results: cancellationResults,
-        checkedAt: nowIso()
-      };
-    }
     const killReason = String(req.body.reason || "").trim();
-    appendAudit(db, `${db.system.killSwitch ? "启用一键熔断" : "解除一键熔断"}${killReason ? `：${killReason}` : ""}`, "risk.kill_switch", req.user?.name || db.user.name, db.system.killSwitch ? "critical" : "info");
-    appendTrace(db, "risk", db.system.killSwitch ? "一键熔断开启" : "一键熔断解除", db.system.killSwitch ? "blocked" : "ok");
-    await notifyLark(db, {
-      severity: db.system.killSwitch ? "critical" : "info",
-      title: db.system.killSwitch ? "🛑 一键熔断已触发" : "🟢 熔断已解除",
-      body: `${db.system.killSwitch
-        ? `所有新开仓已被阻断；风险降低动作确认 ${db.system.lastKillSwitchCancellation?.confirmed || 0} 笔，未确认 ${db.system.lastKillSwitchCancellation?.unconfirmed || 0} 笔。未确认项必须人工检查交易所。`
-        : "熔断解除，系统恢复正常风控运行。"}${killReason ? `\n原因：${killReason}` : ""}`
+    await applyKillSwitch(db, {
+      enabled: Boolean(req.body.enabled),
+      reason: killReason,
+      actor: req.user?.name || db.user.name
+    }, {
+      closeExecution,
+      notifyLark,
+      appendAudit,
+      appendTrace,
+      id,
+      nowIso
     });
     persist(res, db.system);
   });
 
-  app.get("/api/risk/status", (_req, res) => {
+  app.post("/api/risk/emergency-flatten/resolve", requirePermission("risk.kill_switch"), (req, res) => {
+    const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+    const binding = validateOkxCredentialBinding(db, { accountId: snapshot?.accountId, snapshot });
+    const fresh = snapshot && Date.now() - new Date(snapshot.createdAt || 0).getTime() <= Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
+    const noPositions = Array.isArray(snapshot?.positions) && !snapshot.positions.some((row) => Math.abs(Number(row.pos ?? row.size ?? 0)) > 0);
+    const noOrders = snapshot?.openOrdersComplete === true && Array.isArray(snapshot.openOrders) && snapshot.openOrders.length === 0;
+    const noAlgos = snapshot?.algoOrdersComplete === true && Array.isArray(snapshot.algoOrders) && snapshot.algoOrders.length === 0;
+    if (!binding.ok || !fresh || !noPositions || !noOrders || !noAlgos) {
+      return res.status(409).json({
+        error: "emergency_flatten_not_authoritatively_clear",
+        message: "仍无法用新鲜完整的 OKX 快照证明仓位、普通挂单和算法单均为空，不能解除一键平仓只减仓锁。",
+        checks: { binding: binding.ok, fresh: Boolean(fresh), noPositions, noOrders, noAlgos }
+      });
+    }
+    clearReduceOnlyReason(db, "emergency_flatten", { resolvedBy: req.user?.name || db.user.name, resolution: "operator_ack_after_authoritative_empty_snapshot" });
+    syncReduceOnlyState(db);
+    appendAudit(db, "管理员在权威空仓/无挂单快照后确认解除一键平仓锁", snapshot.id, req.user?.name || db.user.name, "warning");
+    persist(res, { ok: true, reduceOnly: db.system.reduceOnlyMode, remainingReasons: db.system.reduceOnlyReasons || [] });
+  });
+
+  app.get("/api/risk/status", requirePermission("risk.check"), (_req, res) => {
     res.json({ system: db.system, rules: db.riskRules, incidents: db.riskIncidents, checks: db.riskChecks.slice(0, 20) });
   });
 
-  app.post("/api/risk/thresholds", requirePermission("write:risk_thresholds"), async (req, res) => {
+  app.post("/api/risk/thresholds", requirePermission("risk.check"), async (req, res) => {
     try {
-      const { applyRiskThresholds } = await import("../riskThresholds.mjs");
+      const { applyRiskThresholds, classifyRiskThresholdChanges, currentRiskThresholds } = await import("../riskThresholds.mjs");
       const { applyProtections } = await import("../tradeProtections.mjs");
       const { setConfig } = await import("../runtimeConfig.mjs");
+      const before = currentRiskThresholds();
+      const changes = classifyRiskThresholdChanges(req.body || {}, before);
+      const loosening = changes.filter((change) => change.classification === "loosen");
+      const permissions = new Set(resolvePermissions(db, req.user));
+      const canLoosen = permissions.has("*") || permissions.has("approve:live_config") || permissions.has("admin:system");
+      const canTighten = canLoosen || permissions.has("write:risk_thresholds");
+      if (!canTighten) return res.status(403).json({ ok: false, error: "risk_threshold_update_not_permitted", changes });
+      const reauthenticatedAt = new Date(req.session?.reauthenticatedAt || 0).getTime();
+      const recentStepUp = Number.isFinite(reauthenticatedAt) && Date.now() - reauthenticatedAt <= 10 * 60_000
+        && (!req.user?.mfaEnabled || req.session?.authLevel === "password+mfa");
+      if (loosening.length && (!canLoosen || !recentStepUp)) {
+        return res.status(403).json({
+          ok: false,
+          error: canLoosen ? "recent_step_up_required_for_risk_loosening" : "risk_loosening_requires_live_config_approval",
+          changes
+        });
+      }
       const result = applyRiskThresholds(db, req.body || {}, setConfig);
       const currentProtection = applyProtections(db, req.user?.name || db.user.name);
-      if (result.applied.length) appendAudit(db, `更新风控阈值:${result.applied.join("、")}`, "risk_thresholds", req.user?.name || db.user.name, "warning");
-      persist(res, { ok: true, ...result, currentProtection, message: result.applied.length ? "风控阈值已更新，并已重新计算当前保护状态" : "无变更" });
+      if (result.applied.length) appendAudit(db, `更新风控阈值:${changes.map((change) => `${change.key}:${change.before}→${change.after}(${change.classification})`).join("、")}`, "risk_thresholds", req.user?.name || db.user.name, loosening.length ? "critical" : "warning");
+      persist(res, { ok: true, ...result, changes, currentProtection, message: result.applied.length ? "风控阈值已更新，并已重新计算当前保护状态" : "无变更" });
     } catch (error) {
       res.status(500).json({ ok: false, error: error.message });
     }
   });
 
-  app.get("/api/risk/rules", (_req, res) => res.json(db.riskRules));
+  app.get("/api/risk/rules", requirePermission("risk.check"), (_req, res) => res.json(db.riskRules));
 
   app.post("/api/risk/rules", requirePermission("write:risk"), (req, res) => {
     const name = String(req.body.name || "").trim();
@@ -209,17 +275,18 @@ export function registerRiskRoutes(app, ctx) {
   });
 
   app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (req, res) => {
-    db.system.reduceOnlyMode = req.body.enabled !== false;
+    db.system.manualReduceOnly = req.body.enabled !== false;
+    syncReduceOnlyState(db);
     db.system.autonomyEnabled = false;
     db.system.riskStatus = db.system.reduceOnlyMode ? "只减仓" : "人工暂停";
-    db.system.latestAction = db.system.reduceOnlyMode ? "启用只减仓模式" : "关闭只减仓模式";
+    db.system.latestAction = db.system.manualReduceOnly ? "启用手工只减仓模式" : db.system.reduceOnlyMode ? "已关闭手工只减仓；系统仍有未决安全原因" : "关闭只减仓模式";
     db.system.updatedAt = nowIso();
     appendAudit(db, db.system.latestAction, "system.reduce_only", db.user.name, "warning");
     appendTrace(db, "risk", db.system.latestAction, db.system.reduceOnlyMode ? "warning" : "paused");
     persist(res, { message: db.system.latestAction, system: db.system });
   });
 
-  app.get("/api/risk/incidents", (_req, res) => res.json(db.riskIncidents));
+  app.get("/api/risk/incidents", requirePermission("risk.check"), (_req, res) => res.json(db.riskIncidents));
 
   // 关闭单个风险事件（标记已处理/已读）。
   app.post("/api/risk/incidents/:id/close", requirePermission("write:risk"), (req, res) => {

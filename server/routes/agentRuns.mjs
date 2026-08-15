@@ -1,21 +1,32 @@
 // Agent 运行/状态/画像/记忆 路由组（state-files、status、profiles、memory、agent-runs 列表与
 // pause/resume/stop、触发一次巡检）—— 从 index.mjs 按 registrar 范式迁出。依赖经 ctx 注入。
+import { resolvePermissions } from "../auth.mjs";
+import { userAgentInvocation } from "../agentInvocation.mjs";
+
 export function registerAgentRunRoutes(app, ctx) {
-  const { db, persist, saveDb, requirePermission, nowIso, appendAudit, updateStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle } = ctx;
+  const { db, persist, saveDb, requirePermission, nowIso, appendAudit, updateStateFile, approveStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle } = ctx;
   const runNotFound = (res) => res.status(404).json({ error: "AgentRun not found" });
 
-  app.get("/api/agent/state-files", (_req, res) => res.json(db.agentStateFiles));
+  app.get("/api/agent/state-files", requirePermission("knowledge.read"), (_req, res) => res.json(db.agentStateFiles));
   app.patch("/api/agent/state-files/:name", requirePermission("admin:system"), (req, res) => {
     try {
-      persist(res, updateStateFile(db, req.params.name, req.body.content || ""));
+      persist(res, updateStateFile(db, req.params.name, req.body.content || "", { actor: req.user?.name || "Admin", userId: req.user?.id || null }));
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.get("/api/agent/status", (_req, res) => res.json(getAgentStatus(db)));
+  app.post("/api/agent/state-files/:name/approve", requirePermission("approve:knowledge_skill"), (req, res) => {
+    try {
+      persist(res, approveStateFile(db, req.params.name, { actor: req.user?.name || "KnowledgeApprover", userId: req.user?.id || null }));
+    } catch (error) {
+      res.status(409).json({ error: error.message });
+    }
+  });
 
-  app.get("/api/agent/profiles", (_req, res) => {
+  app.get("/api/agent/status", requirePermission("account.read"), (_req, res) => res.json(getAgentStatus(db)));
+
+  app.get("/api/agent/profiles", requirePermission("knowledge.read"), (_req, res) => {
     res.json((db.agentProfiles || []).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
   });
 
@@ -31,14 +42,14 @@ export function registerAgentRunRoutes(app, ctx) {
     persist(res, profile);
   });
 
-  app.get("/api/agent/memory", (_req, res) => res.json(db.memoryItems));
+  app.get("/api/agent/memory", requirePermission("knowledge.read"), (_req, res) => res.json(db.memoryItems));
   app.post("/api/agent/memory", requirePermission("write:knowledge"), (req, res) => {
     persist(res, addMemoryItem(db, req.body));
   });
 
-  app.get("/api/agent-runs", (_req, res) => res.json(db.agentRuns));
-  app.get("/api/agent/runs", (_req, res) => res.json(db.agentRuns));
-  app.get("/api/agent/runs/:id", (req, res) => {
+  app.get("/api/agent-runs", requirePermission("account.read"), (_req, res) => res.json(db.agentRuns));
+  app.get("/api/agent/runs", requirePermission("account.read"), (_req, res) => res.json(db.agentRuns));
+  app.get("/api/agent/runs/:id", requirePermission("account.read"), (req, res) => {
     const run = db.agentRuns.find((item) => item.id === req.params.id);
     if (!run) return runNotFound(res);
     res.json(run);
@@ -60,7 +71,14 @@ export function registerAgentRunRoutes(app, ctx) {
   });
   app.post("/api/agent-runs", requirePermission("write:mandate"), async (req, res) => {
     try {
-      persist(res, await runAgentCycle(db, req.body, saveDb));
+      persist(res, await runAgentCycle(db, {
+        ...(req.body || {}),
+        invocationContext: userAgentInvocation({
+          userId: req.user?.id,
+          userName: req.user?.name,
+          permissions: resolvePermissions(db, req.user)
+        })
+      }, saveDb));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

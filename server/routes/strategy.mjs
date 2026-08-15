@@ -9,7 +9,7 @@ import { recordToolExecution } from "../toolUsage.mjs";
 export function registerStrategyRoutes(app, ctx) {
   const { db, persist, requirePermission, activeStrategyProfiles, runStrategyResearch, buildStrategyBoard, buildStrategyCatalog, STRATEGIES, appendAudit, llmComplete, activeProvider } = ctx;
 
-  app.get("/api/strategy/profiles", (_req, res) => res.json(activeStrategyProfiles(db)));
+  app.get("/api/strategy/profiles", requirePermission("knowledge.read"), (_req, res) => res.json(activeStrategyProfiles(db)));
 
   app.post("/api/strategy/research", requirePermission("write:review"), async (req, res) => {
     const startedAt = new Date().toISOString();
@@ -23,10 +23,10 @@ export function registerStrategyRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/strategy-board", (_req, res) => res.json(buildStrategyBoard(db)));
-  app.get("/api/strategy/catalog", (_req, res) => res.json(buildStrategyCatalog(db, Object.values(STRATEGIES))));
-  app.get("/api/strategy/products", (_req, res) => res.json(buildStrategyProductCatalog(db)));
-  app.get("/api/strategy/studio", (_req, res) => res.json(strategyStudioSnapshot(db)));
+  app.get("/api/strategy-board", requirePermission("account.read"), (_req, res) => res.json(buildStrategyBoard(db)));
+  app.get("/api/strategy/catalog", requirePermission("knowledge.read"), (_req, res) => res.json(buildStrategyCatalog(db, Object.values(STRATEGIES))));
+  app.get("/api/strategy/products", requirePermission("account.read"), (_req, res) => res.json(buildStrategyProductCatalog(db)));
+  app.get("/api/strategy/studio", requirePermission("knowledge.read"), (_req, res) => res.json(strategyStudioSnapshot(db)));
   app.post("/api/strategy/studio/drafts", requirePermission("write:review"), async (req, res) => {
     try {
       const draft = await createStrategyDraft(db, req.body?.prompt, {
@@ -69,7 +69,7 @@ export function registerStrategyRoutes(app, ctx) {
     try { persist(res, { ...setStrategyAssignment(db, req.params.versionId, false, req.user?.name || db.user?.name || "Owner"), message: db.system?.uiLang === "en" ? "Strategy removed from the AI eligible set" : "策略已从 AI 可选策略集中移除", messageZh: "策略已从 AI 可选策略集中移除", messageEn: "Strategy removed from the AI eligible set" }); }
     catch (error) { res.status(error.status || 400).json({ error: error.message }); }
   });
-  app.get("/api/strategy/products/:id", (req, res) => {
+  app.get("/api/strategy/products/:id", requirePermission("account.read"), (req, res) => {
     const product = buildStrategyProductCatalog(db).products.find((row) => row.id === req.params.id);
     if (!product) return res.status(404).json({ error: "Strategy product not found" });
     res.json({ ...product, events: (db.strategyVersionEvents || []).filter((row) => row.productId === product.id && row.version === product.version) });

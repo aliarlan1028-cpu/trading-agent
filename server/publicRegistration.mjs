@@ -5,6 +5,7 @@ export const REGISTRATION_TERMS_VERSION = "2026-08-09";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
+const APPLICANT_ACCESS_TTL_MS = 7 * DAY_MS;
 
 export function normalizeRegistrationMode(value, legacyEnabled = false) {
   const mode = String(value || "").trim().toLowerCase();
@@ -99,7 +100,6 @@ export async function submitRegistrationApplication(db, payload = {}, context = 
     status: "pending_email_verification",
     capacityStatus: capacity.canProvision ? "capacity_available" : "waitlisted_for_capacity",
     emailVerificationTokenHash: tokenHash(verificationToken),
-    applicantAccessTokenHash: tokenHash(verificationToken),
     emailVerificationExpiresAt: new Date(now.getTime() + DAY_MS).toISOString(),
     termsVersion,
     termsAcceptedAt: now.toISOString(),
@@ -126,7 +126,8 @@ export function verifyRegistrationEmail(db, rawToken) {
   application.updatedAt = new Date().toISOString();
   delete application.emailVerificationTokenHash;
   delete application.emailVerificationExpiresAt;
-  return sanitizeRegistrationApplication(application);
+  const applicantAccessToken = issueApplicantAccessToken(db, application.id);
+  return { application: sanitizeRegistrationApplication(application), applicantAccessToken };
 }
 
 export function createRegistrationInvite(db, options = {}) {
@@ -173,6 +174,7 @@ export function updateRegistrationApplication(db, id, patch = {}) {
     if (nextStatus === "approved" && application.status !== "payment_pending" && !registrationCapacity(db).canProvision) throw httpError(409, "No provisioning capacity is available");
     application.status = nextStatus;
     application[`${camelStatus(nextStatus)}At`] = new Date().toISOString();
+    if (["rejected", "archived"].includes(nextStatus)) revokeApplicantAccess(application, `status_${nextStatus}`);
   }
   if (patch.provisionSlug !== undefined) application.provisionSlug = normalizeSlug(patch.provisionSlug);
   if (patch.provisionUrl !== undefined) application.provisionUrl = String(patch.provisionUrl || "").trim().slice(0, 300) || null;
@@ -202,7 +204,10 @@ export function sanitizeRegistrationApplication(application = {}) {
 export function publicRegistrationStatus(db, rawToken) {
   const hash = tokenHash(rawToken);
   const application = (db.registrationApplications || []).find((item) => item.applicantAccessTokenHash === hash);
-  if (!application) throw httpError(404, "Application not found");
+  if (!application || application.applicantAccessTokenRevokedAt
+    || !application.applicantAccessTokenExpiresAt
+    || new Date(application.applicantAccessTokenExpiresAt).getTime() <= Date.now()
+    || ["rejected", "archived"].includes(application.status)) throw httpError(404, "Application not found");
   const payment = (db.paymentRequests || []).find((item) => item.registrationApplicationId === application.id);
   return {
     application: publicApplicantView(application),
@@ -222,13 +227,10 @@ export function publicRegistrationStatus(db, rawToken) {
 function publicApplicantView(application = {}) {
   return {
     id: application.id,
-    name: application.name,
-    email: application.email,
     planId: application.planId,
     status: application.status,
     capacityStatus: application.capacityStatus,
     emailVerifiedAt: application.emailVerifiedAt || null,
-    provisionUrl: application.status === "active" ? application.provisionUrl || null : null,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt
   };
@@ -251,16 +253,29 @@ export function issueApplicantAccessToken(db, applicationId) {
   if (!application) throw httpError(404, "Registration application not found");
   const token = crypto.randomBytes(32).toString("base64url");
   application.applicantAccessTokenHash = tokenHash(token);
-  application.accessTokenRotatedAt = new Date().toISOString();
+  application.applicantAccessTokenVersion = Number(application.applicantAccessTokenVersion || 0) + 1;
+  application.applicantAccessTokenIssuedAt = new Date().toISOString();
+  application.applicantAccessTokenExpiresAt = new Date(Date.now() + APPLICANT_ACCESS_TTL_MS).toISOString();
+  delete application.applicantAccessTokenRevokedAt;
+  delete application.applicantAccessTokenRevocationReason;
+  application.accessTokenRotatedAt = application.applicantAccessTokenIssuedAt;
   application.updatedAt = application.accessTokenRotatedAt;
   return token;
+}
+
+function revokeApplicantAccess(application, reason) {
+  delete application.applicantAccessTokenHash;
+  application.applicantAccessTokenRevokedAt = new Date().toISOString();
+  application.applicantAccessTokenRevocationReason = reason;
 }
 
 export async function sendRegistrationLifecycleEmail(application, event, details = {}, accessToken = "") {
   const endpoint = process.env.REGISTRATION_EMAIL_WEBHOOK_URL;
   const publicBase = String(process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
   if (!endpoint || !publicBase) return { sent: false, reason: "email_provider_unconfigured" };
-  const statusUrl = accessToken ? `${publicBase}/api/public/registration/status?token=${encodeURIComponent(accessToken)}` : "";
+  // bearer 放 fragment，不进入 HTTP 请求行、代理日志或 Referer；前端只可通过 POST exchange
+  // 换取 HttpOnly 状态 cookie。服务端 status GET 不再接受 query token。
+  const statusUrl = accessToken ? `${publicBase}/registration/status#access_token=${encodeURIComponent(accessToken)}` : "";
   const headers = { "Content-Type": "application/json" };
   if (process.env.REGISTRATION_EMAIL_WEBHOOK_TOKEN) headers.Authorization = `Bearer ${process.env.REGISTRATION_EMAIL_WEBHOOK_TOKEN}`;
   const subjects = {

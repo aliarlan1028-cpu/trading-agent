@@ -1,14 +1,8 @@
 import { latestSuccessfulAccountSnapshot } from "./store.mjs";
+import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
+import { SAME_SYMBOL_EXPOSURE_STATES } from "./executionStates.mjs";
 
-const OPEN_ENTRY_STATES = new Set([
-  "created",
-  "submitted",
-  "entry_pending",
-  "entry_partial",
-  "entry_filled",
-  "protecting",
-  "executing"
-]);
+const OPEN_ENTRY_STATES = SAME_SYMBOL_EXPOSURE_STATES;
 
 function finite(value) {
   const parsed = Number(value);
@@ -73,7 +67,13 @@ export function accountSnapshotFreshness(snapshot, options = {}) {
 // as separate limits; the smaller remaining capacity wins.
 export function accountMarginCapacity(db, options = {}) {
   const live = options.live ?? db.system?.liveTradingEnabled === true;
-  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: String(options.exchange || "OKX").toUpperCase() });
+  const exchange = String(options.exchange || "OKX").toUpperCase();
+  const accountId = options.accountId || null;
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange, accountId });
+  if (live && exchange === "OKX") {
+    const binding = validateOkxCredentialBinding(db, { accountId: accountId || snapshot?.accountId, snapshot });
+    if (!binding.ok) return { ok: false, error: binding.reason, source: "credential_binding", snapshotId: snapshot?.id || null };
+  }
   const freshness = accountSnapshotFreshness(snapshot, options);
   const { snapshotAt, ageMs, maxAgeMs } = freshness;
   const snapshotFacts = snapshotAccountFacts(snapshot);

@@ -26,12 +26,17 @@ function fixture() {
   return {
     meta: {}, auditLogs: [], traces: [], notifications: [], riskIncidents: [], fills: [],
     system: { dailyGoalUsdt: 150, dailyGoalBreakevenEnabled: true },
-    portfolio: {}, markets: [{ symbol: "BTC/USDT", price: 99, fundingRate: 0 }],
+    portfolio: {}, markets: [{
+      symbol: "BTC/USDT", price: 99, fundingRate: 0,
+      tickerSourceAt: snapshotAt, tickerReceivedAt: snapshotAt,
+      lastRealtimeAt: snapshotAt, microSyncedAt: snapshotAt
+    }],
     positions: [managed, exchange],
     executionOrders: [{ id: "exec-1", exchange: "OKX", stopClientOrderId: "stop-exec-1" }],
     accountSnapshots: [{
       id: "snap-1", exchange: "OKX", status: "ok", createdAt: snapshotAt,
-      algoOrders: [{ instId: "BTC-USDT-SWAP", algoClOrdId: "stop-exec-1", slTriggerPx: "105" }]
+      algoOrders: [{ instId: "BTC-USDT-SWAP", algoClOrdId: "stop-exec-1", slTriggerPx: "105" }],
+      algoOrdersComplete: true
     }]
   };
 }

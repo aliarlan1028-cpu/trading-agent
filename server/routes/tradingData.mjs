@@ -3,15 +3,15 @@
 export function registerTradingDataRoutes(app, ctx) {
   const { db, persist, requirePermission, activeMandate, listStrategies, buildPortfolioRisk, runBacktest, performanceReport, refreshAccounting } = ctx;
 
-  app.get("/api/markets", (_req, res) => res.json(db.markets));
-  app.get("/api/positions", (_req, res) => res.json(db.positions));
-  app.get("/api/orders", (_req, res) => res.json(db.orders));
-  app.get("/api/fills", (_req, res) => res.json(db.fills));
+  app.get("/api/markets", requirePermission("market.read"), (_req, res) => res.json(db.markets));
+  app.get("/api/positions", requirePermission("account.read"), (_req, res) => res.json(db.positions));
+  app.get("/api/orders", requirePermission("account.read"), (_req, res) => res.json(db.orders));
+  app.get("/api/fills", requirePermission("account.read"), (_req, res) => res.json(db.fills));
 
-  app.get("/api/backtests", (_req, res) => res.json(db.backtests || []));
-  app.get("/api/strategies", (_req, res) => res.json(listStrategies()));
+  app.get("/api/backtests", requirePermission("knowledge.read"), (_req, res) => res.json(db.backtests || []));
+  app.get("/api/strategies", requirePermission("knowledge.read"), (_req, res) => res.json(listStrategies()));
 
-  app.get("/api/portfolio/risk", (_req, res) => {
+  app.get("/api/portfolio/risk", requirePermission("account.read"), (_req, res) => {
     res.json(buildPortfolioRisk(db, activeMandate(db)));
   });
 
@@ -23,7 +23,7 @@ export function registerTradingDataRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/performance", (_req, res) => res.json(performanceReport(db)));
+  app.get("/api/performance", requirePermission("account.read"), (_req, res) => res.json(performanceReport(db)));
 
   app.post("/api/accounting/refresh", requirePermission("risk.check"), (_req, res) => {
     persist(res, refreshAccounting(db));

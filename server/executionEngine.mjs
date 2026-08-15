@@ -1,23 +1,28 @@
 import { executeTradeAction, mandateNotionalCapacity } from "./tradeActions.mjs";
-import { okxSignedRequest, toOkxSymbol } from "./exchangeConnector.mjs";
+import { currentOkxCredentialFingerprint, enabledOkxAccounts, fetchOkxPendingPages, okxContractSpec, okxSignedRequest, toOkxSymbol, validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyOperationalDegradation, professionalNotionalCap } from "./professionalRiskGate.mjs";
-import { ensureTradeReviewQueued } from "./tradeReviewQueue.mjs";
+import { ensureTradeReviewQueued, groupClosedTradeLifecycles, sameTradeLifecycle, syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
 import { estimateExecutionCost } from "./executionCostModel.mjs";
-import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, releaseExecutionLease, transitionOmsOrder } from "./store.mjs";
+import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, releaseExecutionLease, renewExecutionLease, saveDb, transitionOmsOrder } from "./store.mjs";
 import { evaluatePortfolioIntentConflict, evaluateSameSymbolEntryConflict } from "./tradingRoles.mjs";
 import { accountMarginCapacity, projectedMarginUsage } from "./tradingCapacity.mjs";
 import { ensurePlanStrategyBinding, reconcileStrategyProductHealth, strategyProductExecutionGate } from "./strategyProducts.mjs";
 import { validatePlanBlueprintGate } from "./strategyStudio.mjs";
 import { recordPostTradeCapabilities } from "./postTradeCapabilities.mjs";
+import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+import { clearReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
+import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
+import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
+import { assertActiveLease, isLeaseLostError } from "./leaseSafety.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
 // 唯一合法执行入口；直接调用 tradeActions 的路径仍受其七层安全闸约束。
 // ---------------------------------------------------------------------------
 
-const OPEN_EXECUTION_STATES = new Set(["submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
 const DEFAULT_TAKER_FEE_RATE = 0.0004;
 // OKX clOrdId 只接受字母+数字(≤32)——带下划线会被 51000「Parameter clOrdId error」整单拒绝
 // (曾导致所有 OKX 自动单静默失败)。统一清洗成字母数字;币安也接受字母数字,故两所通用。
@@ -33,6 +38,7 @@ const protectionClientIds = (executionOrder = {}) => {
 };
 
 function asNumber(value, fallback = null) {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -251,10 +257,19 @@ export function allocateProtectionQuantities(totalQuantity, targetCount, price) 
 // 保护失败统一收口：尽力撤入场单（撤单本身也可能抛异常，必须捕获——否则会跳过熔断），
 // 并把计划置为终态 protection_failed（executeApprovedPlan 只执行 approved 计划，
 // 防止同一计划被自动路径反复执行产生多个裸仓；人工重新批准可显式解锁）。
-async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, causeDetail) {
+async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, causeDetail, options = {}) {
+  executionOrder.cancelAttemptedAt ||= nowIso();
+  executionOrder.cancelSubmittedAt ||= executionOrder.cancelAttemptedAt;
+  executionOrder.cancelDisposition = "emergency_close_if_filled";
+  executionOrder.cancelReason = causeDetail;
+  executionOrder.cancelClientActionId ||= cleanClOrdId(`cancel${String(executionOrder.id || "").slice(-20)}`);
+  executionOrder.status = "protection_failure_cancel_pending";
+  const cancelRequestToken = executionOrder.cancelRequestToken = id("cancel_request");
+  saveDb(db);
   let cancelResult;
   try {
-    cancelResult = await executeTradeAction(db, "cancel_order", {
+    assertActiveLease(options);
+    cancelResult = await (options.executeTradeAction || executeTradeAction)(db, "cancel_order", {
       exchange: plan.exchange,
       marketType: plan.marketType || "perpetual_usdt",
       symbol: plan.symbol,
@@ -269,17 +284,23 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
       manualApproval: true
     });
   } catch (error) {
+    if (isLeaseLostError(error)) throw error;
     cancelResult = { status: "error", error: String(error.message || error).slice(0, 200) };
   }
-  executionOrder.status = "protection_failed";
-  executionOrder.events.push({ at: nowIso(), event: "protection_failed", detail: `${causeDetail}；入场单撤销状态 ${cancelResult.status}` });
-  plan.status = "protection_failed";
+  if (executionOrder.cancelRequestToken !== cancelRequestToken || executionOrder.status !== "protection_failure_cancel_pending") {
+    executionOrder.events ||= [];
+    executionOrder.events.push({ at: nowIso(), event: "stale_cancel_response_ignored", detail: String(cancelResult.status || "unknown") });
+    return { status: executionOrder.status, idempotent: true, staleResponseIgnored: true, cancelResult, executionOrder };
+  }
+  const acknowledged = ["ok", "submitted", "idempotent_replay"].includes(cancelResult.status);
+  executionOrder.status = "protection_failure_cancel_pending";
+  executionOrder.events.push({ at: nowIso(), event: "protection_failed", detail: `${causeDetail}；撤单仅收到 ${cancelResult.status}，等待交易所订单终态` });
+  plan.status = "recovery_pending_reconciliation";
   plan.executionOrderId = executionOrder.id;
-  // "订单不存在"类响应 = 交易所确认从未收到/已终态该单 → 无裸仓风险,不必熔断
-  // (此前小账户被拒单后撤"不存在的单"失败 → 每次尝试都误拉全站熔断,审计 P1-4)。
-  const cancelRawText = JSON.stringify(cancelResult.raw || cancelResult || {});
-  const confirmedAbsent = /unknown order|order does not exist|-2011|"51603"|"51000"/i.test(cancelRawText);
-  if (!["ok", "submitted"].includes(cancelResult.status) && !confirmedAbsent) {
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyBy = "protection_failure_reconciliation";
+  db.system.riskStatus = "只减仓";
+  if (!acknowledged) {
     db.system.killSwitch = true;
     db.riskIncidents.unshift({
       id: id("incident"),
@@ -291,19 +312,124 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
     });
   }
   appendAudit(db, `${causeDetail}，已阻断入场并尝试撤单`, executionOrder.id, "ExecutionEngine", "critical");
-  return { status: "protection_failed", cancelResult, executionOrder };
+  return { status: acknowledged ? executionOrder.status : "cancel_unconfirmed", cancelResult, executionOrder };
 }
 
 export async function executeApprovedPlan(db, planId, options = {}) {
-  const instanceId = process.env.INSTANCE_ID || `pid-${process.pid}`;
-  const lease = acquireExecutionLease(`trade-plan:${planId}`, instanceId, 60_000);
-  if (!lease.acquired) return { status: "execution_lease_held", lease };
+  const instanceId = `${process.env.INSTANCE_ID || `pid-${process.pid}`}:${id("entryowner")}`;
+  const leaseResource = `trade-plan:${planId}`;
+  const leaseTtlMs = Number(options.leaseTtlMs || 60_000);
+  const lease = acquireExecutionLease(leaseResource, instanceId, leaseTtlMs);
+  if (!lease.acquired) return settlePlanExecutionOutcome(db, planId, { status: "execution_lease_held", lease });
+  let localLeaseLost = false;
+  const assertPlanLease = () => {
+    assertActiveLease(options);
+    if (localLeaseLost) throw new Error("scheduler_lease_lost");
+    const renewed = renewExecutionLease(leaseResource, instanceId, lease.fencingToken, leaseTtlMs);
+    if (!renewed?.renewed) {
+      localLeaseLost = true;
+      throw new Error("scheduler_lease_lost");
+    }
+    return true;
+  };
+  const heartbeat = setInterval(() => {
+    try {
+      const renewed = renewExecutionLease(leaseResource, instanceId, lease.fencingToken, leaseTtlMs);
+      if (!renewed?.renewed) localLeaseLost = true;
+    } catch { localLeaseLost = true; }
+  }, Math.max(1_000, Math.floor(leaseTtlMs / 3)));
+  heartbeat.unref?.();
   try {
-    return await executeApprovedPlanLeased(db, planId, options);
+    const result = await executeApprovedPlanLeased(db, planId, { ...options, assertLease: assertPlanLease });
+    assertPlanLease();
+    return settlePlanExecutionOutcome(db, planId, result);
+  } catch (error) {
+    if (isLeaseLostError(error)) throw error;
+    const plan = (db.tradePlans || []).find((item) => item.id === planId);
+    const executionOrder = (db.executionOrders || []).find((item) => item.planId === planId
+      && (item.status === "created" || OPEN_EXECUTION_STATES.has(item.status)));
+    const remoteIntentPersisted = Boolean(executionOrder && (
+      executionOrder.entryAttemptedAt || executionOrder.closeAttemptedAt || executionOrder.cancelAttemptedAt
+      || executionOrder.exchangeOrderId || executionOrder.omsOrderId
+    ));
+    const result = settlePlanExecutionOutcome(db, planId, {
+      status: remoteIntentPersisted ? "execution_effect_unknown" : "execution_preflight_exception",
+      reason: String(error?.message || error).slice(0, 200),
+      executionOrder
+    });
+    appendAudit(db, remoteIntentPersisted
+      ? "执行异常且远端效果未知，已进入权威对账"
+      : "执行前异常，未产生交易所副作用，批准已失效",
+    executionOrder?.id || plan?.id || planId, "ExecutionEngine", remoteIntentPersisted ? "critical" : "warning");
+    return result;
   } finally {
+    clearInterval(heartbeat);
     // 任何路径（含异常/early return）都归还租约；释放失败由 60s TTL 兜底。
-    try { releaseExecutionLease(`trade-plan:${planId}`, instanceId, lease.fencingToken); } catch { /* TTL 兜底 */ }
+    try { releaseExecutionLease(leaseResource, instanceId, lease.fencingToken); } catch { /* TTL 兜底 */ }
   }
+}
+
+const SUBMITTED_EXECUTION_RESULTS = new Set([
+  "submitted", "entry_pending", "entry_partial", "entry_filled", "protecting", "protecting_degraded"
+]);
+const REMOTE_EFFECT_PENDING_RESULTS = new Set([
+  "entry_unknown_pending", "execution_effect_unknown", "cancel_pending", "cancel_unknown_pending",
+  "protection_failure_cancel_pending", "close_pending", "close_unknown_pending",
+  "close_reconciliation_pending", "group_close_pending", "recovery_pending_reconciliation"
+]);
+const LOCAL_REAPPROVAL_RESULTS = new Set([
+  "execution_lease_held", "execution_preflight_exception", "strategy_version_drift", "strategy_product_required",
+  "strategy_product_blocked", "strategy_blueprint_blocked", "operational_degraded_reduce_only",
+  "risk_recheck_failed", "mandate_not_active", "mandate_version_stale", "portfolio_intent_conflict",
+  "same_symbol_entry_conflict", "account_configuration_conflict", "sizing_failed", "market_facts_rejected",
+  "slippage_rejected", "instrument_spec_unavailable", "submitted_size_below_exchange_minimum", "blocked"
+]);
+
+// 批准是一项授权事实，不等于交易所已收到订单。所有调用方都从这里取得唯一的
+// “执行结果 -> 计划状态”口径，避免 approved 在任何 early-return/异常后成为僵尸状态。
+export function settlePlanExecutionOutcome(db, planId, result = {}) {
+  const plan = (db.tradePlans || []).find((item) => item.id === planId);
+  if (!plan) return { ...result, planDisposition: "missing_plan", executionSubmitted: false };
+  const status = String(result.status || "unknown");
+  const executionOrder = result.executionOrder
+    || (result.executionOrderId ? (db.executionOrders || []).find((item) => item.id === result.executionOrderId) : null);
+  const at = nowIso();
+  if (SUBMITTED_EXECUTION_RESULTS.has(status)) {
+    if (!["executing", "completed"].includes(plan.status)) plan.status = "executing";
+    plan.executionOrderId = executionOrder?.id || result.executionOrderId || plan.executionOrderId;
+    plan.updatedAt = at;
+    return { ...result, planDisposition: "remote_submitted", approvalGranted: true, executionSubmitted: true };
+  }
+  if (REMOTE_EFFECT_PENDING_RESULTS.has(status) || (executionOrder && OPEN_EXECUTION_STATES.has(executionOrder.status))) {
+    if (!["executing", "recovery_pending_reconciliation"].includes(plan.status)) plan.status = "recovery_pending_reconciliation";
+    plan.executionOrderId = executionOrder?.id || result.executionOrderId || plan.executionOrderId;
+    plan.executionBlock = { reason: status, detail: result.reason || "交易所效果尚未完成权威对账", at };
+    plan.updatedAt = at;
+    return { ...result, planDisposition: "remote_effect_unresolved", approvalGranted: true, executionSubmitted: null };
+  }
+  if (status === "already_executing") {
+    plan.status = "executing";
+    plan.executionOrderId = result.executionOrderId || plan.executionOrderId;
+    plan.updatedAt = at;
+    return { ...result, planDisposition: "existing_remote_execution", approvalGranted: true, executionSubmitted: true };
+  }
+  if (status === "dry_run") {
+    plan.status = "dry_run";
+    plan.executionOrderId = executionOrder?.id || plan.executionOrderId;
+    plan.updatedAt = at;
+    return { ...result, planDisposition: "dry_run", approvalGranted: true, executionSubmitted: false };
+  }
+  if (LOCAL_REAPPROVAL_RESULTS.has(status) || !["failed", "rejected", "cancelled"].includes(status)) {
+    plan.status = "execution_blocked";
+    plan.executionBlock = { reason: status, detail: result.reason || result.detail || null, at };
+    plan.approvalConsumedAt = at;
+    plan.updatedAt = at;
+    return { ...result, planDisposition: "no_remote_effect", approvalGranted: true, executionSubmitted: false };
+  }
+  plan.status = "failed";
+  plan.failedReason ||= result.reason || status;
+  plan.updatedAt = at;
+  return { ...result, planDisposition: "terminal_rejection", approvalGranted: true, executionSubmitted: false };
 }
 
 async function executeApprovedPlanLeased(db, planId, options = {}) {
@@ -363,13 +489,28 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     appendAudit(db, `组合裁决拒绝新增相反敞口：${portfolioIntent.detail}`, plan.id, "PortfolioArbiter", "warning");
     return { status: "portfolio_intent_conflict", ...portfolioIntent };
   }
-  const existing = (db.executionOrders || []).find((item) => item.planId === plan.id && OPEN_EXECUTION_STATES.has(item.status));
+  const existing = (db.executionOrders || []).find((item) => item.planId === plan.id
+    && (item.status === "created" || OPEN_EXECUTION_STATES.has(item.status)));
   if (existing) return { status: "already_executing", executionOrderId: existing.id };
   const sameSymbolEntry = evaluateSameSymbolEntryConflict(db, plan, mandate);
   if (!sameSymbolEntry.ok) {
     plan.executionBlock = { reason: sameSymbolEntry.reason, detail: sameSymbolEntry.detail, at: nowIso() };
     appendAudit(db, `重复敞口保护拒绝执行：${sameSymbolEntry.detail}`, plan.id, "ExecutionEngine", "warning");
     return { status: "same_symbol_entry_conflict", ...sameSymbolEntry };
+  }
+
+  if (db.system.liveTradingEnabled) {
+    const preflightSnapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: plan.accountId || plan.exchangeAccountId || undefined });
+    const preflightBinding = validateOkxCredentialBinding(db, {
+      accountId: plan.accountId || plan.exchangeAccountId || preflightSnapshot?.accountId,
+      snapshot: preflightSnapshot
+    });
+    if (!preflightBinding.ok) {
+      plan.executionBlock = { reason: preflightBinding.reason, detail: "OKX 账户、Key 指纹与快照未形成同一权威绑定", at: nowIso() };
+      return { status: "account_configuration_conflict", reason: preflightBinding.reason };
+    }
+    plan.accountId = preflightBinding.account.id;
+    plan.apiKeyFingerprint = preflightBinding.currentFingerprint;
   }
 
   const sizing = computePositionSize(db, plan);
@@ -415,6 +556,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     analysisBundleId: plan.analysisBundleId,
     evidenceBundleId: plan.evidenceBundleId,
     exchange: plan.exchange,
+    accountId: plan.accountId || plan.exchangeAccountId || latestSuccessfulAccountSnapshot(db, { exchange: String(plan.exchange || "OKX").toUpperCase() })?.accountId || null,
+    apiKeyFingerprint: currentOkxCredentialFingerprint(),
     symbol: plan.symbol,
     direction: plan.direction,
     leverage: Number(plan.leverage || 1),
@@ -465,11 +608,42 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     return { status: "dry_run", executionOrder };
   }
 
+  const enabledAccounts = enabledOkxAccounts(db);
+  const credentialBinding = validateOkxCredentialBinding(db, { accountId: executionOrder.accountId || enabledAccounts[0]?.id });
+  if (!credentialBinding.ok) {
+    executionOrder.status = "account_configuration_conflict";
+    plan.status = "failed";
+    plan.executionOrderId = executionOrder.id;
+    plan.failedReason = "当前单凭证架构要求唯一启用且与执行绑定一致的 OKX 账户";
+    saveDb(db);
+    return { status: "account_configuration_conflict", reason: credentialBinding.reason, enabledAccountIds: enabledAccounts.map((row) => row.id), executionOrder };
+  }
+  executionOrder.accountId = credentialBinding.account.id;
+  executionOrder.apiKeyFingerprint = credentialBinding.currentFingerprint;
+
   // 执行时滑点保护:下单前用最新真实价核对,现价偏离入场中值超阈值即拒——防在急动/闪崩里以坏价成交
   // (plan 时的"入场贴近现价 ≤8%"是提计划口径,这里是执行口径,阈值更紧,默认 1%)。
   {
+    const market = (db.markets || []).find((mk) => mk.symbol === plan.symbol) || {};
+    const freshness = marketFactFreshness(market);
+    const bundle = (db.evidenceBundles || []).find((row) => row.id === plan.evidenceBundleId);
+    const evidence = currentEvidenceReadiness(bundle, plan.symbol);
+    if (!freshness.ticker.ok || !freshness.micro.ok || !evidence.ok) {
+      const reason = !freshness.ticker.ok
+        ? (freshness.ticker.reason === "future_timestamp" ? "ticker_time_invalid" : "ticker_stale")
+        : !freshness.micro.ok
+          ? (freshness.micro.reason === "future_timestamp" ? "micro_time_invalid" : "micro_stale")
+          : "evidence_readiness_expired";
+      executionOrder.status = "market_facts_rejected";
+      executionOrder.events.push({ at: nowIso(), event: "market_facts_rejected", detail: reason });
+      plan.status = "failed";
+      plan.executionOrderId = executionOrder.id;
+      plan.failedReason = `执行前市场事实校验失败：${reason}`;
+      appendAudit(db, `执行前市场事实校验失败：${reason}`, executionOrder.id, "ExecutionEngine", "warning");
+      return { status: "market_facts_rejected", reason, freshness, evidence, executionOrder };
+    }
     const maxSlipPct = Number(process.env.MAX_ENTRY_SLIPPAGE_PCT || 1.0);
-    const livePx = Number((db.markets || []).find((mk) => mk.symbol === plan.symbol)?.price);
+    const livePx = freshness.price;
     if (Number.isFinite(livePx) && livePx > 0 && Number.isFinite(sizing.entryMid) && sizing.entryMid > 0) {
       const devPct = Math.abs(livePx - sizing.entryMid) / sizing.entryMid * 100;
       if (devPct > maxSlipPct) {
@@ -488,9 +662,50 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const side = plan.direction === "short" ? "SELL" : "BUY";
   const entryClientOrderId = cleanClOrdId(`exec${executionOrder.id.slice(-12)}`);
   const stopClientOrderId = cleanClOrdId(`stop${executionOrder.id.slice(-12)}`);
+  // 先保存请求身份；即使 HTTP 结果 UNKNOWN 或原生止损缺失，恢复轮询也必须能用
+  // 同一个 clOrdId 查询真实订单，不能进入永远无法核验的 pending。
+  executionOrder.clientOrderId = entryClientOrderId;
+  executionOrder.stopClientOrderId = stopClientOrderId;
+  executionOrder.requestedQuantity = sizing.quantity;
+  if (String(plan.exchange || "OKX").toUpperCase() === "OKX" && String(plan.marketType || "perpetual_usdt").includes("perpetual")) {
+    const instId = toOkxSymbol(plan.symbol, "perpetual");
+    const spec = await (options.okxContractSpec || okxContractSpec)(instId);
+    if (!spec?.ctVal || !spec?.lotSz || !spec?.minSz) {
+      executionOrder.status = "instrument_spec_unavailable";
+      plan.status = "failed";
+      plan.executionOrderId = executionOrder.id;
+      plan.failedReason = "OKX 合约规格不可用，未向交易所提交入场单";
+      saveDb(db);
+      return { status: "instrument_spec_unavailable", executionOrder };
+    }
+    const contracts = Math.floor((Number(sizing.quantity) / Number(spec.ctVal)) / Number(spec.lotSz) + 1e-9) * Number(spec.lotSz);
+    if (!Number.isFinite(contracts) || contracts < Number(spec.minSz)) {
+      executionOrder.status = "submitted_size_below_exchange_minimum";
+      plan.status = "failed";
+      plan.executionOrderId = executionOrder.id;
+      plan.failedReason = "风险定仓向下对齐后低于 OKX 最小张数，未提交";
+      saveDb(db);
+      return { status: "submitted_size_below_exchange_minimum", executionOrder };
+    }
+    executionOrder.okxCtVal = Number(spec.ctVal);
+    executionOrder.okxLotSz = Number(spec.lotSz);
+    executionOrder.okxMinSz = Number(spec.minSz);
+    executionOrder.okxTickSz = Number(spec.tickSz);
+    executionOrder.submittedContracts = contracts;
+    executionOrder.submittedCoinQuantity = Number((contracts * Number(spec.ctVal)).toFixed(12));
+    executionOrder.quantity = executionOrder.submittedCoinQuantity;
+    executionOrder.notionalUsdt = Number(executionOrder.quantity) * Number(executionOrder.entryPrice);
+  } else {
+    executionOrder.submittedCoinQuantity = sizing.quantity;
+  }
+  executionOrder.status = "entry_unknown_pending";
+  executionOrder.entryAttemptedAt ||= nowIso();
+  executionOrder.protection = "requested_unconfirmed";
+  saveDb(db);
   let result;
   try {
-    result = await executeTradeAction(db, "place_order", {
+    assertActiveLease(options);
+    result = await (options.executeTradeAction || executeTradeAction)(db, "place_order", {
       exchange: plan.exchange,
       marketType: plan.marketType || "perpetual_usdt",
       symbol: plan.symbol,
@@ -500,7 +715,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
 
       type: "LIMIT",
       price: sizing.entryMid,
-      quantity: sizing.quantity,
+      quantity: executionOrder.submittedCoinQuantity,
       stopLoss: executionOrder.stopLoss,
       stopClientOrderId,
       leverage: plan.leverage,
@@ -521,6 +736,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
       manualApproval: options.manualApproval === true
     });
   } catch (error) {
+    if (isLeaseLostError(error)) throw error;
     // 入场调用抛异常（如止损附单被交易所拒绝后 HTTP 非 2xx 直接 throw）：
     // 入场是否已在交易所存活【未知】（OMS 已置 UNKNOWN，恢复任务会对账）。
     // 绝不允许可能存在的裸仓静默存活：按保护失败流程尽力撤单，撤不掉即熔断。
@@ -528,7 +744,7 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     return await failProtectionAndCancelEntry(db, plan, executionOrder, {
       exchangeOrderId: null,
       clientOrderId: entryClientOrderId
-    }, `入场调用异常：${String(error.message || error).slice(0, 120)}`);
+    }, `入场调用异常：${String(error.message || error).slice(0, 120)}`, options);
   }
 
   if (result.status === "blocked") {
@@ -536,6 +752,16 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     executionOrder.events.push({ at: nowIso(), event: "blocked", detail: result.reason });
     appendAudit(db, `执行被安全闸拦截：${result.reason}`, executionOrder.id, "ExecutionEngine", "warning");
     return { status: "blocked", reason: result.reason, executionOrder };
+  }
+  if (result.status === "unknown_pending") {
+    executionOrder.status = "entry_unknown_pending";
+    executionOrder.omsOrderId = result.omsOrderId || result.actionId || executionOrder.omsOrderId || null;
+    executionOrder.events.push({ at: nowIso(), event: "entry_response_unknown", detail: "OMS 请求状态未知，持续按 clOrdId 查询交易所终态" });
+    db.system ||= {};
+    db.system.reduceOnlyMode = true;
+    db.system.reduceOnlyBy ||= "entry_reconciliation_pending";
+    saveDb(db);
+    return { status: "entry_unknown_pending", result, executionOrder };
   }
   if (!["ok", "submitted", "idempotent_replay"].includes(result.status)) {
     executionOrder.status = "failed";
@@ -549,20 +775,25 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     appendAudit(db, "执行提交失败", executionOrder.id, "ExecutionEngine", "warning");
     return { status: "failed", result, executionOrder };
   }
-  // 新仓绝不允许以“保护单稍后再说”的状态进入市场。若交易所没有确认原生止损，
-  // 立即撤进入场单；撤单失败则熔断并产生最高级事故，交由人工处置。
+  executionOrder.exchangeOrderId = result.exchangeOrderId || executionOrder.exchangeOrderId || null;
+  executionOrder.omsOrderId = result.omsOrderId || executionOrder.omsOrderId || null;
+  executionOrder.clientOrderId = result.clientOrderId || executionOrder.clientOrderId;
+  executionOrder.okxCtVal = result.okxCtVal || executionOrder.okxCtVal || null;
+  executionOrder.submittedContracts = asNumber(result.okxContracts) ?? executionOrder.submittedContracts;
+  executionOrder.submittedCoinQuantity = Number.isFinite(Number(result.okxContracts)) && Number(result.okxCtVal) > 0
+    ? Number(result.okxContracts) * Number(result.okxCtVal)
+    : executionOrder.submittedCoinQuantity;
+  executionOrder.quantity = executionOrder.submittedCoinQuantity;
+  executionOrder.notionalUsdt = Number(executionOrder.quantity) * Number(executionOrder.entryPrice);
+  // result.protection 只证明入场请求携带了 attachAlgoOrds，不证明止损已在交易所
+  // 成为可执行算法单。真实成交前保持 unconfirmed，成交时再按精确 stop ID 核验。
   if (!result.protection) {
-    return await failProtectionAndCancelEntry(db, plan, executionOrder, result, "原生止损未确认");
+    return await failProtectionAndCancelEntry(db, plan, executionOrder, result, "原生止损未确认", options);
   }
 
   executionOrder.status = "entry_pending";
   executionOrder.entryPendingAt = nowIso(); // 挂单起始时刻:给"久未成交超时撤单"用
-  executionOrder.exchangeOrderId = result.exchangeOrderId;
-  executionOrder.omsOrderId = result.omsOrderId || null;
-  executionOrder.clientOrderId = result.clientOrderId || entryClientOrderId;
-  executionOrder.stopClientOrderId = stopClientOrderId;
-  executionOrder.okxCtVal = result.okxCtVal || null; // OKX 张数→币数量换算面值(轮询回填用)
-  executionOrder.protection = "attached";
+  executionOrder.protection = "requested_unconfirmed";
   executionOrder.events.push({ at: nowIso(), event: "entry_submitted", detail: `交易所订单 ${result.exchangeOrderId || "?"}` });
   plan.status = "executing";
   plan.executionOrderId = executionOrder.id;
@@ -612,87 +843,286 @@ export function staleEntryDecision(eo, price, cfg = {}) {
 
 // 久未成交/已失效的入场挂单:主动撤单(真向交易所撤),置计划终态 + 落审计 + 通知。
 // followUp 的(错过进场):把该 symbol 推进快速异动队列,下一轮巡检立刻优先重评估→可追这波趋势(#2)。
-async function manageStalePendingEntries(db) {
+async function manageStalePendingEntries(db, options = {}) {
   const ttlMin = Number(process.env.ENTRY_ORDER_TTL_MINUTES || db.runtimeConfig?.ENTRY_ORDER_TTL_MINUTES || 90);
   const devPct = Number(process.env.ENTRY_STALE_DEVIATION_PCT || db.runtimeConfig?.ENTRY_STALE_DEVIATION_PCT || 8);
   const pendings = (db.executionOrders || []).filter((o) => ["entry_pending", "entry_partial"].includes(o.status));
   const cancelled = [];
   for (const eo of pendings) {
-    if (Number(eo.filledQuantity || 0) > 0) continue; // 已部分成交=有仓位,交给成交/保护逻辑,不在此撤
+    if (new Date(eo.staleCancelRetryAfter || 0).getTime() > Date.now()) continue;
     const market = (db.markets || []).find((m) => m.symbol === eo.symbol);
     const { reason, followUp } = staleEntryDecision(eo, market?.price, { ttlMin, devPct });
     if (!reason) continue;
     const isShort = String(eo.direction).toLowerCase() === "short";
     try {
-      const result = await closeExecution(db, eo.id, reason);
-      if (["cancelled", "cancel_unconfirmed"].includes(result.status)) {
-        const plan = (db.tradePlans || []).find((p) => p.id === eo.planId);
-        if (plan && !["completed", "cancelled"].includes(plan.status)) plan.status = "cancelled";
-        appendAudit(db, `挂单主动撤销：${eo.symbol} — ${reason}`, eo.id, "EntryTTL", "warning");
-        appendTrace(db, "execution", `${eo.symbol} 挂单撤销（${reason.slice(0, 20)}）`, "ok");
-        // 错过进场→触发重评估追趋势:推入 pendingFastMoves,agent 巡检开头会优先评估该 symbol。
-        if (followUp) {
-          db.system ||= {};
-          db.system.pendingFastMoves ||= [];
-          if (!db.system.pendingFastMoves.some((m) => m.symbol === eo.symbol && m.source === "missed_entry_reeval")) {
-            db.system.pendingFastMoves.push({ symbol: eo.symbol, windowMin: 0, direction: isShort ? "down" : "up", movePct: 0, source: "missed_entry_reeval", note: "挂单错过进场,重评估是否追这波趋势" });
-          }
-        }
+      assertActiveLease(options);
+      eo.staleCancelReason = reason;
+      eo.staleFollowUp = followUp;
+      const intent = "emergency_close_if_filled";
+      const result = await closeExecution(db, eo.id, reason, {
+        intent, expectedStatus: eo.status, internal: true,
+        executeTradeAction: options.executeTradeAction,
+        assertLease: options.assertLease,
+        signal: options.signal
+      });
+      if (result.status === "cancel_pending") {
+        appendAudit(db, `挂单撤单请求已提交，等待交易所终态：${eo.symbol} — ${reason}`, eo.id, "EntryTTL", "warning");
+        appendTrace(db, "execution", `${eo.symbol} 撤单确认中（${reason.slice(0, 20)}）`, "pending");
         try {
+          assertActiveLease(options);
           const { notifyLark } = await import("./larkNotifier.mjs");
-          await notifyLark(db, { severity: "warning", title: "🗑 未成交挂单已撤销", body: `**${eo.symbol}** ${isShort ? "做空" : "做多"} 挂单已撤：${reason}${followUp ? "\n已排入重评估队列，将判断是否追踪这波趋势。" : ""}` });
-        } catch { /* 通知失败不阻断 */ }
+          assertActiveLease(options);
+          await notifyLark(db, { severity: "warning", title: "⏳ 挂单撤销请求已提交", body: `**${eo.symbol}** ${isShort ? "做空" : "做多"} 正等待交易所确认撤单：${reason}` });
+        } catch (error) { if (isLeaseLostError(error)) throw error; /* 通知失败不阻断 */ }
         cancelled.push({ id: eo.id, symbol: eo.symbol, reason, followUp });
+      } else if (result.status === "cancel_unconfirmed") {
+        eo.staleCancelRetryAfter = new Date(Date.now() + 60_000).toISOString();
+        eo.events.push({ at: nowIso(), event: "stale_cancel_rejected", detail: result.result?.reason || result.result?.status || "unknown" });
       }
     } catch (error) {
+      if (isLeaseLostError(error)) throw error;
       eo.events.push({ at: nowIso(), event: "stale_cancel_error", detail: String(error.message || error).slice(0, 160) });
     }
   }
   return cancelled;
 }
 
-export async function pollExecutionOrders(db) {
+export async function pollExecutionOrders(db, options = {}) {
+  options.assertLease?.();
   // 先处理久挂/失效的入场单(超时撤/反转撤),再正常轮询成交状态。
-  const staleCancelled = await manageStalePendingEntries(db);
-  const open = (db.executionOrders || []).filter((item) => ["entry_pending", "entry_partial", "entry_filled", "protecting"].includes(item.status));
+  const staleCancelled = await manageStalePendingEntries(db, options);
+  const open = (db.executionOrders || []).filter((item) => OPEN_EXECUTION_STATES.has(item.status));
   const results = [];
   for (const executionOrder of open) {
     try {
-      results.push(await pollOne(db, executionOrder));
+      options.assertLease?.();
+      results.push(await pollOne(db, executionOrder, options));
     } catch (error) {
+      if (isLeaseLostError(error)) throw error;
       executionOrder.events.push({ at: nowIso(), event: "poll_error", detail: error.message });
       results.push({ id: executionOrder.id, status: "poll_error", error: error.message });
     }
   }
-  return { checked: open.length, staleCancelled: staleCancelled.length, results };
+  options.assertLease?.();
+  const financialReconciliation = await reconcilePendingTradeFinancials(db, options);
+  options.assertLease?.();
+  syncReduceOnlyState(db);
+  return { checked: open.length, staleCancelled: staleCancelled.length, results, financialReconciliation };
 }
 
-async function pollOne(db, executionOrder) {
-  const orderState = await fetchOrderState(executionOrder);
-  if (!orderState) return { id: executionOrder.id, status: executionOrder.status, note: "no_state" };
+function pendingAgeMs(value, nowMs) {
+  const at = new Date(value || 0).getTime();
+  return Number.isFinite(at) && at > 0 ? Math.max(0, nowMs - at) : Infinity;
+}
+
+function raisePendingProgressIncident(db, executionOrder, kind, title, detail) {
+  db.riskIncidents ||= [];
+  let incident = db.riskIncidents.find((row) => row.status === "open" && row.kind === kind && row.source === executionOrder.id);
+  if (!incident) {
+    incident = { id: id("incident"), kind, severity: "critical", status: "open", title, source: executionOrder.id, createdAt: nowIso() };
+    db.riskIncidents.unshift(incident);
+  }
+  incident.updatedAt = nowIso();
+  incident.detail = detail;
+  db.system ||= {};
+  db.system.killSwitch = true;
+  db.system.reduceOnlyMode = true;
+  db.system.riskStatus = "只减仓";
+  return incident;
+}
+
+async function handleCancelPendingWatchdog(db, executionOrder, options = {}, reason = "order_still_open") {
+  const nowMs = Number(options.nowMs ?? Date.now());
+  const slaMs = Number(options.cancelProgressSlaMs ?? process.env.CANCEL_PROGRESS_SLA_MS ?? 30_000);
+  if (pendingAgeMs(executionOrder.cancelAttemptedAt || executionOrder.cancelSubmittedAt, nowMs) < slaMs) return { status: "within_sla" };
+  const retryCount = Number(executionOrder.cancelRetryCount || 0);
+  const maxRetries = Number(options.maxCancelRetries ?? process.env.MAX_CANCEL_RETRIES ?? 3);
+  const nextAt = new Date(executionOrder.cancelNextAttemptAt || 0).getTime();
+  raisePendingProgressIncident(db, executionOrder, "cancel_progress_timeout", `${executionOrder.symbol} 撤单长时间未取得终态`, `${reason}；重试 ${retryCount}/${maxRetries}`);
+  if (retryCount >= maxRetries || (Number.isFinite(nextAt) && nextAt > nowMs)) return { status: "manual_attention_required", retryCount };
+  const attempt = retryCount + 1;
+  executionOrder.cancelRetryCount = attempt;
+  executionOrder.cancelLastAttemptAt = new Date(nowMs).toISOString();
+  executionOrder.cancelNextAttemptAt = new Date(nowMs + Math.min(300_000, slaMs * (2 ** attempt))).toISOString();
+  saveDb(db);
+  assertActiveLease(options);
+  const result = await (options.executeTradeAction || executeTradeAction)(db, "cancel_order", {
+    exchange: executionOrder.exchange || "OKX",
+    marketType: "perpetual_usdt",
+    symbol: executionOrder.symbol,
+    orderId: executionOrder.exchangeOrderId,
+    clientOrderId: executionOrder.clientOrderId,
+    actionAttemptId: `cancelretry${String(executionOrder.id).replace(/[^a-zA-Z0-9]/g, "").slice(-16)}${attempt}`,
+    emergencyActionId: `emergency_cancel_watchdog_${String(executionOrder.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(-20)}`,
+    executionOrderId: executionOrder.id,
+    tradePlanId: executionOrder.planId,
+    accountId: executionOrder.accountId,
+    apiKeyFingerprint: executionOrder.apiKeyFingerprint,
+    exitIntent: executionOrder.cancelDisposition,
+    manualApproval: true,
+  });
+  executionOrder.events ||= [];
+  executionOrder.events.push({ at: nowIso(), event: "cancel_watchdog_retry", detail: `${attempt}:${result.status}` });
+  return { status: result.status, retryCount: attempt };
+}
+
+async function handleClosePendingWatchdog(db, executionOrder, options = {}) {
+  const nowMs = Number(options.nowMs ?? Date.now());
+  const slaMs = Number(options.closeProgressSlaMs ?? process.env.CLOSE_PROGRESS_SLA_MS ?? 45_000);
+  if (pendingAgeMs(executionOrder.closeAttemptedAt || executionOrder.closeSubmittedAt, nowMs) < slaMs) return { status: "within_sla" };
+  const retryCount = Number(executionOrder.closeRetryCount || 0);
+  const maxRetries = Number(options.maxCloseRetries ?? process.env.MAX_CLOSE_RETRIES ?? 3);
+  const nextAt = new Date(executionOrder.closeNextAttemptAt || 0).getTime();
+  raisePendingProgressIncident(db, executionOrder, "close_progress_timeout", `${executionOrder.symbol} 平仓长时间未消除敞口`, `position_still_open；重试 ${retryCount}/${maxRetries}`);
+  if (retryCount >= maxRetries || (Number.isFinite(nextAt) && nextAt > nowMs)) return { status: "manual_attention_required", retryCount };
+  const attempt = retryCount + 1;
+  executionOrder.closeRetryCount = attempt;
+  executionOrder.closeLastAttemptAt = new Date(nowMs).toISOString();
+  executionOrder.closeNextAttemptAt = new Date(nowMs + Math.min(300_000, slaMs * (2 ** attempt))).toISOString();
+  saveDb(db);
+  assertActiveLease(options);
+  const result = await (options.executeTradeAction || executeTradeAction)(db, "close_position", {
+    exchange: executionOrder.exchange || "OKX",
+    marketType: "perpetual_usdt",
+    symbol: executionOrder.symbol,
+    closePosition: true,
+    positionSide: canonicalPositionDirection(executionOrder),
+    clientOrderId: executionOrder.closeClientOrderId,
+    actionAttemptId: `closeretry${String(executionOrder.id).replace(/[^a-zA-Z0-9]/g, "").slice(-16)}${attempt}`,
+    emergencyActionId: `emergency_close_watchdog_${String(executionOrder.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(-20)}`,
+    executionOrderId: executionOrder.id,
+    tradePlanId: executionOrder.planId,
+    accountId: executionOrder.accountId,
+    apiKeyFingerprint: executionOrder.apiKeyFingerprint,
+    exitIntent: "close_position",
+    manualApproval: true,
+  });
+  executionOrder.events ||= [];
+  executionOrder.events.push({ at: nowIso(), event: "close_watchdog_retry", detail: `${attempt}:${result.status}` });
+  return { status: result.status, retryCount: attempt };
+}
+
+async function pollOne(db, executionOrder, options = {}) {
+  if (executionOrder.status === "group_close_pending") {
+    const owner = (db.executionOrders || []).find((row) => row.id === executionOrder.groupCloseExecutionId);
+    const prior = owner?.groupCloseIntent?.priorStatuses?.[executionOrder.id] || "entry_filled";
+    if (!owner || owner.groupCloseIntent?.status === "retryable_failure") {
+      executionOrder.status = prior;
+      delete executionOrder.groupCloseExecutionId;
+      return { id: executionOrder.id, status: executionOrder.status, groupOwnerStatus: owner?.status || "missing" };
+    }
+    if (["closed", "group_closed"].includes(owner.status)) {
+      executionOrder.status = "group_closed";
+      executionOrder.closedAt ||= owner.closedAt || nowIso();
+      return { id: executionOrder.id, status: executionOrder.status, groupOwnerStatus: owner.status };
+    }
+    return { id: executionOrder.id, status: executionOrder.status, groupCloseExecutionId: executionOrder.groupCloseExecutionId, groupOwnerStatus: owner.status };
+  }
+  if (["close_pending", "close_unknown_pending", "close_reconciliation_pending"].includes(executionOrder.status)) {
+    const closeBinding = validateOkxCredentialBinding(db, {
+      accountId: executionOrder.accountId,
+      executionFingerprint: executionOrder.apiKeyFingerprint
+    });
+    if (!closeBinding.ok) return { id: executionOrder.id, status: executionOrder.status, settlement: closeBinding.reason };
+    const snapshot = options.snapshot || (executionOrder.accountId
+      ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId })
+      : null);
+    if (snapshotPositionOpen(snapshot, executionOrder)) await handleClosePendingWatchdog(db, executionOrder, options);
+    const closureResolver = executionOrder.closeReconciliationSource === "protection_orders"
+      ? (options.fetchProtectionClosure || fetchOkxProtectionClosure)
+      : (options.fetchManualClosure || fetchOkxManualClosure);
+    return reconcilePendingClose(db, executionOrder, {
+      snapshot,
+      closure: options.closure === undefined ? await closureResolver(executionOrder) : options.closure
+    });
+  }
+  const orderBinding = validateOkxCredentialBinding(db, {
+    accountId: executionOrder.accountId,
+    executionFingerprint: executionOrder.apiKeyFingerprint
+  });
+  if (String(executionOrder.exchange || "OKX").toUpperCase() === "OKX" && !orderBinding.ok) {
+    return { id: executionOrder.id, status: executionOrder.status, note: orderBinding.reason };
+  }
+  const orderState = await (options.fetchOrderState || fetchOrderState)(executionOrder);
+  if (!orderState) {
+    if (["cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status)) {
+      await handleCancelPendingWatchdog(db, executionOrder, options, "order_state_unavailable");
+    }
+    return { id: executionOrder.id, status: executionOrder.status, note: "no_state" };
+  }
   // OKX 返回的 accFillSz 是张数,统一换算回币数量(引擎全程币本位)。
-  if (executionOrder.okxCtVal && orderState.filledQuantity != null) {
-    orderState.filledQuantity = Number(orderState.filledQuantity) * Number(executionOrder.okxCtVal);
+  const okxOrderStateHasContracts = orderState.filledContracts !== null && orderState.filledContracts !== undefined;
+  if (String(executionOrder.exchange || "OKX").toUpperCase() === "OKX" && okxOrderStateHasContracts && !(Number(executionOrder.okxCtVal) > 0)) {
+    const spec = await (options.okxContractSpec || okxContractSpec)(toOkxSymbol(executionOrder.symbol, "perpetual"));
+    if (spec?.ctVal > 0) {
+      executionOrder.okxCtVal = Number(spec.ctVal);
+      executionOrder.okxLotSz = Number(spec.lotSz) || executionOrder.okxLotSz || null;
+    } else {
+      executionOrder.events ||= [];
+      executionOrder.events.push({ at: nowIso(), event: "entry_quantity_conversion_pending", detail: "OKX ctVal 不可用，未把张数冒充币数量" });
+      db.system ||= {};
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "entry_reconciliation_pending";
+      return { id: executionOrder.id, status: executionOrder.status, note: "contract_spec_required" };
+    }
+  }
+  if (okxOrderStateHasContracts) {
+    orderState.filledQuantity = Number(orderState.filledContracts) * Number(executionOrder.okxCtVal);
+    orderState.filledCoinQuantity = orderState.filledQuantity;
   }
 
-  if (["entry_pending", "entry_partial"].includes(executionOrder.status) && orderState.state === "partial") {
-    const filledQuantity = Number(orderState.filledQuantity || 0);
-    const previousFilled = Number(executionOrder.filledQuantity || 0);
-    const delta = Math.max(0, filledQuantity - previousFilled);
-    executionOrder.status = "entry_partial";
-    executionOrder.filledQuantity = filledQuantity;
-    executionOrder.filledPrice = orderState.avgPrice || executionOrder.filledPrice || executionOrder.entryPrice;
-    executionOrder.events.push({ at: nowIso(), event: "entry_partial", detail: `累计成交 ${filledQuantity}/${executionOrder.quantity}` });
-    if (delta > 0) recordFill(db, executionOrder, "entry", executionOrder.filledPrice, delta, null, { partial: true });
-    upsertPosition(db, executionOrder, filledQuantity);
+  if (["cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status)
+    && orderState.state === "open") {
+    await handleCancelPendingWatchdog(db, executionOrder, options, "order_still_open");
+  }
+
+  if (executionOrder.protection === "requested_unconfirmed" && ["partial", "filled"].includes(orderState.state)) {
+    const protection = await (options.verifyEntryProtection || fetchOkxEntryProtection)(executionOrder);
+    if (!protection?.confirmed) {
+      const final = orderState.state === "filled";
+      applyCumulativeEntryOrderState(db, executionOrder, orderState, { final });
+      executionOrder.status = final ? "entry_filled" : "entry_partial";
+      executionOrder.entryFilledAt ||= nowIso();
+      executionOrder.protection = "reconciliation_failed";
+      executionOrder.events ||= [];
+      executionOrder.events.push({ at: nowIso(), event: "entry_stop_unconfirmed", detail: protection?.reason || "attached_stop_not_found" });
+      db.system ||= {};
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "protection_failure_reconciliation";
+      db.riskIncidents ||= [];
+      if (!db.riskIncidents.some((row) => row.status === "open" && row.source === executionOrder.id && row.kind === "entry_stop_unconfirmed")) {
+        db.riskIncidents.unshift({ id: id("incident"), kind: "entry_stop_unconfirmed", severity: "critical", status: "open", title: `${executionOrder.symbol} 入场已成交但原生止损未获权威确认`, source: executionOrder.id, createdAt: nowIso() });
+      }
+      const intent = final ? "close_position" : "emergency_close_if_filled";
+      assertActiveLease(options);
+      return closeExecution(db, executionOrder.id, "entry_stop_unconfirmed", {
+        intent, expectedStatus: executionOrder.status, internal: true,
+        executeTradeAction: options.executeTradeAction,
+        assertLease: options.assertLease,
+        signal: options.signal
+      });
+    }
+    executionOrder.protection = "attached";
+    executionOrder.protectionVerifiedAt = nowIso();
+    executionOrder.stopAlgoId ||= protection.algoId || null;
+  }
+
+  if (["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status) && orderState.state === "partial") {
+    applyCumulativeEntryOrderState(db, executionOrder, orderState, { final: false });
+    const cancellationPending = ["cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status);
+    executionOrder.status = cancellationPending ? executionOrder.status : "entry_partial";
+    executionOrder.events.push({ at: nowIso(), event: "entry_partial", detail: `累计成交 ${executionOrder.filledQuantity}/${executionOrder.quantity}${cancellationPending ? "（撤单确认中）" : ""}` });
     if (executionOrder.omsOrderId) {
       transitionOmsOrder(executionOrder.omsOrderId, "PARTIAL", {
         eventType: "entry_partial",
         exchangeOrderId: executionOrder.exchangeOrderId,
-        response: { avgPrice: executionOrder.filledPrice, filledQuantity }
+        response: { avgPrice: executionOrder.filledPrice, filledQuantity: executionOrder.filledQuantity }
       });
     }
-  } else if (["entry_pending", "entry_partial"].includes(executionOrder.status) && orderState.state === "filled") {
+  } else if (["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status) && orderState.state === "filled") {
+    const wasCancelPending = ["cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status);
+    const wasProtectionFailure = executionOrder.status === "protection_failure_cancel_pending";
+    applyCumulativeEntryOrderState(db, executionOrder, orderState, { final: true });
     executionOrder.status = "entry_filled";
     if (executionOrder.omsOrderId) {
       transitionOmsOrder(executionOrder.omsOrderId, "FILLED", {
@@ -701,30 +1131,38 @@ async function pollOne(db, executionOrder) {
         response: { avgPrice: orderState.avgPrice || executionOrder.entryPrice }
       });
     }
-    executionOrder.filledPrice = orderState.avgPrice || executionOrder.entryPrice;
     executionOrder.entryFilledAt = nowIso();
     executionOrder.entrySlippageBps = slippageBps(executionOrder.filledPrice, executionOrder.entryPrice, executionOrder.direction);
-    executionOrder.entryFeeUsdt = feeEstimate(Number(executionOrder.filledPrice) * Number(executionOrder.quantity));
     executionOrder.maeUsdt = 0;
     executionOrder.mfeUsdt = 0;
     executionOrder.events.push({ at: nowIso(), event: "entry_filled", detail: `均价 ${executionOrder.filledPrice}` });
-    const previousFilled = Number(executionOrder.filledQuantity || 0);
-    const remainingFill = Math.max(0, Number(executionOrder.quantity) - previousFilled);
-    executionOrder.filledQuantity = Number(executionOrder.quantity);
-    if (remainingFill > 0) recordFill(db, executionOrder, "entry", executionOrder.filledPrice, remainingFill);
-    upsertPosition(db, executionOrder, executionOrder.filledQuantity);
-    await placeTakeProfits(db, executionOrder);
+    if (wasCancelPending) {
+      executionOrder.events.push({ at: nowIso(), event: "cancel_fill_race", detail: "撤单请求后订单已全部成交，保留真实仓位并要求按当前状态重新确认退出。" });
+    }
+    if (wasProtectionFailure || ["cancel_remainder_and_close_filled", "emergency_close_if_filled"].includes(executionOrder.cancelDisposition)) {
+      executionOrder.events.push({ at: nowIso(), event: "cancel_fill_requires_close", detail: "撤单竞态中订单已成交，按已持久化退出意图提交平仓并等待交易所对账。" });
+      assertActiveLease(options);
+      return submitClosePosition(db, executionOrder, executionOrder.cancelReason || "protection_failure_fill_race", {
+        executeTradeAction: options.executeTradeAction,
+        assertLease: options.assertLease,
+        signal: options.signal
+      });
+    }
+    assertActiveLease(options);
+    await (options.placeTakeProfits || placeTakeProfits)(db, executionOrder, options);
     appendAudit(db, `入场成交：${executionOrder.symbol} @ ${executionOrder.filledPrice}`, executionOrder.id, "ExecutionEngine");
     appendTrace(db, "execution", `${executionOrder.symbol} 入场成交`, "ok");
-  } else if (["entry_filled", "protecting"].includes(executionOrder.status)) {
+  } else if (["entry_filled", "protecting", "protecting_degraded"].includes(executionOrder.status)) {
     // (P0-3)入场已终态后,交易所侧 SL/TP 成交不会反映在入场单状态上——此前系统对
     // 止损打掉完全失明:持仓残留、计划卡 executing、日亏预算不扣减。
     // 以最近的交易所持仓快照为准:快照新鲜且该 symbol 仓位已消失 → 再从 OKX
     // 历史订单读取真实 TP/SL 成交。不能拿轮询时现价把整仓推断为一次止损，否则
     // “先部分止盈、余仓止损”的盈利生命周期会被错记为整笔亏损。
-    const latestSnap = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+    const latestSnap = executionOrder.accountId
+      ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId })
+      : null;
     const snapFresh = latestSnap && (Date.now() - new Date(latestSnap.createdAt).getTime()) < Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
-    const stillOnExchange = (db.positions || []).some((p) => p.source === "exchange_rest" && p.symbol === executionOrder.symbol && Number(p.size ?? p.pos ?? 0) !== 0);
+    const stillOnExchange = latestSnap ? snapshotPositionOpen(latestSnap, executionOrder) : null;
     if (snapFresh && !stillOnExchange && Number(executionOrder.filledQuantity || 0) > 0) {
       const protection = await fetchOkxProtectionClosure(executionOrder);
       if (protection?.complete) {
@@ -734,6 +1172,9 @@ async function pollOne(db, executionOrder) {
           for (const fill of entryFills) {
             const fillNotional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
             fill.feeUsdt = totalEntryNotional > 0 ? protection.entryFeeUsdt * fillNotional / totalEntryNotional : protection.entryFeeUsdt / Math.max(1, entryFills.length);
+            fill.feeCostUsdt = fill.feeUsdt;
+            fill.feeSchemaVersion = 2;
+            fill.feeSource = "okx_raw_order_history";
             fill.estimatedFee = false;
           }
           executionOrder.entryFeeUsdt = protection.entryFeeUsdt;
@@ -744,6 +1185,9 @@ async function pollOne(db, executionOrder) {
           ? Math.max(0, Math.round((closedAtMs - openedAt) / 60000)) : null;
         recordFill(db, executionOrder, "close", protection.weightedPrice, protection.quantity, protection.realizedPnl, {
           feeUsdt: protection.feeUsdt,
+          feeCostUsdt: protection.feeUsdt,
+          feeSchemaVersion: 2,
+          feeSource: "okx_raw_order_history",
           holdingMinutes,
           maeUsdt: executionOrder.maeUsdt ?? 0,
           mfeUsdt: executionOrder.mfeUsdt ?? 0,
@@ -752,7 +1196,10 @@ async function pollOne(db, executionOrder) {
           exchangeOrderIds: protection.exchangeOrderIds,
           exitBreakdown: protection.breakdown,
           inferred: false,
-          estimated: false
+          estimated: false,
+          fundingFeeUsdt: null,
+          fundingReconciled: false,
+          financialBasis: "exchange_protection_fills_confirmed_funding_unreconciled"
         });
         executionOrder.status = "closed";
         executionOrder.closedAt = protection.closedAt;
@@ -769,53 +1216,133 @@ async function pollOne(db, executionOrder) {
       } else {
         executionOrder.exchangePositionMissingAt ||= nowIso();
       }
-      const missingForMs = Date.now() - new Date(executionOrder.exchangePositionMissingAt || nowIso()).getTime();
-      const settlementGraceMs = Math.max(30_000, Number(process.env.OKX_PROTECTION_SETTLEMENT_GRACE_MS || 120_000));
-      if (executionOrder.status === "closed" || missingForMs < settlementGraceMs) {
+      if (executionOrder.status === "closed") {
         executionOrder.lastPolledAt = nowIso();
         executionOrder.updatedAt = executionOrder.lastPolledAt;
-        return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state, protectionSettlement: protection?.complete ? "confirmed" : "pending" };
+        return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state, protectionSettlement: "confirmed" };
       }
-      const market = db.markets?.find((m) => m.symbol === executionOrder.symbol);
-      const exitPrice = Number(market?.price) || Number(executionOrder.stopLoss) || Number(executionOrder.filledPrice);
-      const sign = executionOrder.direction === "short" ? -1 : 1;
-      const qty = Number(executionOrder.filledQuantity);
-      const realized = (exitPrice - Number(executionOrder.filledPrice)) * qty * sign - feeEstimate(exitPrice * qty);
-      recordFill(db, executionOrder, "close", exitPrice, qty, Number(realized.toFixed(2)), { inferred: true, estimated: true, exitReason: "protection_triggered_inferred" });
-      executionOrder.status = "closed";
-      executionOrder.closedAt = nowIso();
-      executionOrder.exitReason = "protection_triggered_inferred";
-      executionOrder.events.push({ at: nowIso(), event: "protection_triggered_inferred", detail: `交易所仓位已消失,按现价 ${exitPrice} 推断保护单成交,已实现 ${realized.toFixed(2)} USDT(估算)` });
-      db.positions = (db.positions || []).filter((p) => !(p.source === "execution_engine" && p.symbol === executionOrder.symbol));
-      const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
-      if (plan) plan.status = "completed";
-      appendAudit(db, `保护单触发推断收口:${executionOrder.symbol} 已实现 ${realized.toFixed(2)} USDT(按现价估算)`, executionOrder.id, "ExecutionEngine", "warning");
-      appendTrace(db, "execution", `${executionOrder.symbol} 保护单成交(推断)`, "ok");
+      executionOrder.status = "close_reconciliation_pending";
+      executionOrder.closeReconciliationSource = "protection_orders";
+      executionOrder.closeReconciliationReason = "exchange_position_absent_fill_evidence_incomplete";
+      executionOrder.events.push({ at: nowIso(), event: "close_evidence_incomplete", detail: "交易所仓位已消失，但真实成交数量、均价或手续费尚未完整取得；未生成估算成交。" });
+      db.system ||= {};
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "close_reconciliation_pending";
+      if (!(db.riskIncidents || []).some((row) => row.status === "open" && row.source === executionOrder.id && row.kind === "close_reconciliation")) {
+        db.riskIncidents ||= [];
+        db.riskIncidents.unshift({ id: id("incident"), kind: "close_reconciliation", severity: "critical", status: "open", title: `${executionOrder.symbol} 平仓结果待交易所核算`, source: executionOrder.id, createdAt: nowIso() });
+      }
+      return { id: executionOrder.id, status: executionOrder.status, protectionSettlement: "evidence_incomplete" };
     }
-  } else if (orderState.state === "canceled") {
+  } else if (["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status) && orderState.state === "canceled") {
     // 部分成交后剩余被撤:已有真实仓位,绝不能标"已取消"把它变成无人管的孤儿仓(审计 state-F5)。
     // 有成交量 → 当作 entry_filled 收口(按已成交量挂止盈、纳入管理);零成交才是真取消。
+    applyCumulativeEntryOrderState(db, executionOrder, orderState, { final: false });
+    const protectionFailure = executionOrder.status === "protection_failure_cancel_pending";
     const filled = Number(executionOrder.filledQuantity || 0);
     if (filled > 0) {
       executionOrder.quantity = filled;
       executionOrder.status = "entry_filled";
-      executionOrder.events.push({ at: nowIso(), event: "entry_partial_cancel_settled", detail: `剩余被交易所取消,已成交 ${filled} 转入持仓管理(挂止盈)` });
-      try { await placeTakeProfits(db, executionOrder); } catch (error) { executionOrder.events.push({ at: nowIso(), event: "tp_error", detail: String(error.message || error).slice(0, 150) }); }
+      executionOrder.events.push({ at: nowIso(), event: "entry_partial_cancel_settled", detail: `剩余被交易所取消,已成交 ${filled}，按持久化退出意图与止损证据分流` });
       const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
       if (plan) plan.status = "executing";
+      if (["cancel_remainder_and_close_filled", "emergency_close_if_filled"].includes(executionOrder.cancelDisposition)) {
+        assertActiveLease(options);
+        return submitClosePosition(db, executionOrder, executionOrder.cancelReason || "cancelled_remainder_close_filled", {
+          executeTradeAction: options.executeTradeAction,
+          assertLease: options.assertLease,
+          signal: options.signal
+        });
+      }
+      // 部分成交后余量 canceled 时，原 attachAlgo 止损通常不会生成。没有权威确认的
+      // 独立止损就不允许保留仓位，更不能先挂 TP；直接走稳定的真实平仓对账。
+      const protection = await (options.verifyEntryProtection || fetchOkxEntryProtection)(executionOrder);
+      if (!protection?.confirmed) {
+        executionOrder.protection = "reconciliation_failed";
+        executionOrder.events.push({ at: nowIso(), event: "partial_entry_stop_unconfirmed", detail: protection?.reason || "attached_stop_not_found" });
+        assertActiveLease(options);
+        return submitClosePosition(db, executionOrder, "partial_entry_without_confirmed_stop", {
+          executeTradeAction: options.executeTradeAction,
+          assertLease: options.assertLease,
+          signal: options.signal
+        });
+      }
+      executionOrder.protection = "attached";
+      executionOrder.protectionVerifiedAt = nowIso();
+      executionOrder.stopAlgoId ||= protection.algoId || null;
+      try {
+        assertActiveLease(options);
+        await (options.placeTakeProfits || placeTakeProfits)(db, executionOrder, options);
+      } catch (error) {
+        if (isLeaseLostError(error)) throw error;
+        executionOrder.events.push({ at: nowIso(), event: "tp_error", detail: String(error.message || error).slice(0, 150) });
+      }
     } else {
-      executionOrder.status = "cancelled";
+      executionOrder.status = protectionFailure ? "protection_failed" : "cancelled";
       if (executionOrder.omsOrderId) {
         transitionOmsOrder(executionOrder.omsOrderId, "CANCELLED", { eventType: "entry_cancelled" });
       }
       executionOrder.events.push({ at: nowIso(), event: "entry_cancelled", detail: "交易所侧订单已取消(零成交)" });
       const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
-      if (plan) plan.status = "cancelled";
+      if (plan) plan.status = protectionFailure ? "protection_failed" : "cancelled";
+      if (executionOrder.staleCancelReason) {
+        appendAudit(db, `挂单已由交易所确认撤销：${executionOrder.symbol} — ${executionOrder.staleCancelReason}`, executionOrder.id, "EntryTTL", "warning");
+        if (executionOrder.staleFollowUp) {
+          db.system ||= {};
+          db.system.pendingFastMoves ||= [];
+          if (!db.system.pendingFastMoves.some((row) => row.symbol === executionOrder.symbol && row.source === "missed_entry_reeval")) {
+            db.system.pendingFastMoves.push({ symbol: executionOrder.symbol, windowMin: 0, direction: executionOrder.direction === "short" ? "down" : "up", movePct: 0, source: "missed_entry_reeval", note: "挂单已确认撤销，重新评估是否追踪趋势" });
+          }
+        }
+        try {
+          assertActiveLease(options);
+          const { notifyLark } = await import("./larkNotifier.mjs");
+          assertActiveLease(options);
+          await notifyLark(db, { severity: "warning", title: "🗑 挂单已确认撤销", body: `**${executionOrder.symbol}** 已由交易所确认 canceled：${executionOrder.staleCancelReason}` });
+        } catch (error) { if (isLeaseLostError(error)) throw error; /* 通知失败不阻断 */ }
+      }
     }
   }
   executionOrder.lastPolledAt = nowIso();
   executionOrder.updatedAt = executionOrder.lastPolledAt;
   return { id: executionOrder.id, status: executionOrder.status, exchangeState: orderState.state };
+}
+
+// OMS 崩溃恢复只负责把权威订单状态重新送回同一执行状态机；禁止在恢复模块里另写一套
+// 撤单/平仓逻辑。测试也可用它注入交易所终态而不触网。
+export async function reconcileExecutionOrderState(db, executionOrderId, orderState, options = {}) {
+  const executionOrder = (db.executionOrders || []).find((row) => row.id === executionOrderId);
+  if (!executionOrder) return { id: executionOrderId, status: "missing_execution_order" };
+  return pollOne(db, executionOrder, {
+    ...options,
+    fetchOrderState: async () => ({ ...orderState })
+  });
+}
+
+export function applyCumulativeEntryOrderState(db, executionOrder, orderState = {}, options = {}) {
+  const filledQuantity = Math.max(0, Number(orderState.filledQuantity || 0));
+  const avgPrice = Number(orderState.avgPrice || executionOrder.filledPrice || executionOrder.entryPrice);
+  const previousFilled = Math.max(0, Number(executionOrder.filledQuantity || 0));
+  const previousNotional = Math.max(0, Number(executionOrder.entryCumulativeNotionalUsdt || 0));
+  const cumulativeNotional = Number.isFinite(avgPrice) ? filledQuantity * avgPrice : previousNotional;
+  const delta = Math.max(0, filledQuantity - previousFilled);
+  const deltaNotional = Math.max(0, cumulativeNotional - previousNotional);
+  const deltaPrice = delta > 0 && deltaNotional > 0 ? deltaNotional / delta : avgPrice;
+  if (delta > 0 && Number.isFinite(deltaPrice) && deltaPrice > 0) {
+    recordFill(db, executionOrder, "entry", deltaPrice, delta, null, {
+      partial: options.final !== true,
+      feeUsdt: feeEstimate(deltaNotional),
+      estimatedFee: true,
+      feeBasis: "estimated_from_cumulative_notional_delta"
+    });
+  }
+  executionOrder.filledQuantity = filledQuantity;
+  executionOrder.filledPrice = filledQuantity > 0 && Number.isFinite(avgPrice) ? avgPrice : executionOrder.filledPrice;
+  executionOrder.entryCumulativeNotionalUsdt = cumulativeNotional;
+  executionOrder.entryFeeUsdt = (db.fills || []).filter((fill) => fill.executionOrderId === executionOrder.id && fill.kind === "entry")
+    .reduce((sum, fill) => sum + Number(fill.feeCostUsdt ?? fill.feeUsdt ?? 0), 0);
+  if (filledQuantity > 0) upsertPosition(db, executionOrder, filledQuantity);
+  return { filledQuantity, avgPrice, delta, deltaPrice, deltaNotional, cumulativeNotional };
 }
 
 async function fetchOrderState(executionOrder) {
@@ -825,23 +1352,42 @@ async function fetchOrderState(executionOrder) {
   const raw = await okxSignedRequest(`/api/v5/trade/order?instId=${instId}&clOrdId=${executionOrder.clientOrderId}`, "GET");
   const order = raw.data?.[0];
   if (!order) return null;
-  const stateMap = { live: "open", partially_filled: "partial", filled: "filled", canceled: "canceled" };
+  const stateMap = { live: "open", partially_filled: "partial", filled: "filled", canceled: "canceled", mmp_canceled: "canceled" };
   return {
     state: stateMap[order.state] || order.state,
+    rawExchangeState: order.state || null,
+    cancelSource: order.state === "mmp_canceled" ? "market_maker_protection" : null,
     avgPrice: Number(order.avgPx) || null,
-    filledQuantity: Number(order.accFillSz || 0)
+    filledContracts: Number(order.accFillSz || 0)
   };
+}
+
+async function fetchOkxEntryProtection(executionOrder) {
+  if (!executionOrder.stopClientOrderId || !process.env.OKX_API_KEY) return { confirmed: false, reason: "stop_identity_or_credentials_unavailable" };
+  try {
+    const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+    const page = await fetchOkxPendingPages("/api/v5/trade/orders-algo-pending", { idField: "algoId", query: { ordType: "conditional", instId } });
+    if (!page.complete) return { confirmed: false, reason: "algo_query_incomplete" };
+    const expected = cleanClOrdId(executionOrder.stopClientOrderId);
+    const match = (page.rows || []).find((row) => cleanClOrdId(row.algoClOrdId || row.attachAlgoClOrdId || "") === expected
+      && Number(row.slTriggerPx || row.triggerPx || 0) > 0);
+    return match ? { confirmed: true, algoId: match.algoId || null, stopClientOrderId: expected }
+      : { confirmed: false, reason: "attached_stop_not_found" };
+  } catch (error) {
+    return { confirmed: false, reason: "algo_query_failed", error: String(error.message || error).slice(0, 160) };
+  }
 }
 
 export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
   const expectedIds = protectionClientIds(executionOrder);
   if (!expectedIds.size) return null;
   const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
-  const ctVal = Number(executionOrder.okxCtVal || 1);
+  const ctVal = Number(executionOrder.okxCtVal);
+  if (!(ctVal > 0)) return null;
   const entryAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt || 0).getTime();
   const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
   const entryOrder = (orders || []).find((order) => String(order.instId || "") === instId
-    && String(order.state || "") === "filled"
+    && ["filled", "canceled"].includes(String(order.state || ""))
     && cleanClOrdId(order.clOrdId || "") === entryClientOrderId);
   const seen = new Set();
   const matched = [];
@@ -855,22 +1401,34 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
     seen.add(uniqueId);
     const contracts = Number(order.accFillSz || order.fillSz || 0);
     const price = Number(order.avgPx || order.fillPx || 0);
-    if (!(contracts > 0) || !(price > 0) || !(ctVal > 0)) continue;
+    const realizedPnl = finiteFinancialNumber(order.pnl) ? Number(order.pnl) : null;
+    const feeCostUsdt = okxFeeCost(order.fee);
+    const closedAt = orderAt > 0 && Number.isFinite(new Date(orderAt).getTime()) ? new Date(orderAt).toISOString() : null;
+    if (!(contracts > 0) || !(price > 0) || realizedPnl === null || feeCostUsdt === null || !closedAt) {
+      return { complete: false, reason: "protection_fill_financial_evidence_incomplete", expectedQuantity: Number(executionOrder.filledQuantity || executionOrder.quantity || 0) };
+    }
     matched.push({
       exchangeOrderId: order.ordId || null,
       clientOrderId: algoId,
       quantity: contracts * ctVal,
       price,
-      realizedPnl: Number(order.pnl || 0),
-      feeUsdt: Math.abs(Number(order.fee || 0)),
-      closedAt: orderAt > 0 ? new Date(orderAt).toISOString() : nowIso()
+      realizedPnl,
+      feeUsdt: feeCostUsdt,
+      feeCostUsdt,
+      rawFee: Number(order.fee),
+      rawFeeCcy: order.feeCcy || null,
+      feeSource: "okx_raw_order_history",
+      feeSchemaVersion: 2,
+      closedAt,
     });
   }
   if (!matched.length) return null;
   const quantity = matched.reduce((sum, item) => sum + item.quantity, 0);
   const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
   const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
-  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity;
+  const entryFeeUsdt = entryOrder ? okxFeeCost(entryOrder.fee) : null;
+  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance
+    && entryFeeUsdt !== null;
   const notional = matched.reduce((sum, item) => sum + item.price * item.quantity, 0);
   return {
     complete,
@@ -879,7 +1437,7 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
     weightedPrice: quantity > 0 ? notional / quantity : null,
     realizedPnl: matched.reduce((sum, item) => sum + item.realizedPnl, 0),
     feeUsdt: matched.reduce((sum, item) => sum + item.feeUsdt, 0),
-    entryFeeUsdt: entryOrder && Number.isFinite(Number(entryOrder.fee)) ? Math.abs(Number(entryOrder.fee)) : null,
+    entryFeeUsdt,
     closedAt: matched.slice().sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt))[0].closedAt,
     exchangeOrderIds: matched.map((item) => item.exchangeOrderId).filter(Boolean),
     breakdown: matched
@@ -890,15 +1448,378 @@ async function fetchOkxProtectionClosure(executionOrder) {
   if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) return null;
   try {
     const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
-    const raw = await okxSignedRequest(`/api/v5/trade/orders-history-archive?instType=SWAP&instId=${encodeURIComponent(instId)}&state=filled&limit=100`, "GET");
-    if (String(raw?.code ?? "0") !== "0") return null;
-    return summarizeOkxProtectionClosure(executionOrder, raw.data || []);
+    const begin = new Date(executionOrder.entryAttemptedAt || executionOrder.createdAt || 0).getTime();
+    const rows = [];
+    let after = null;
+    let exhausted = false;
+    for (let page = 0; page < 20; page += 1) {
+      const query = new URLSearchParams({ instType: "SWAP", instId, state: "filled", limit: "100" });
+      if (Number.isFinite(begin) && begin > 0) query.set("begin", String(begin));
+      if (after) query.set("after", after);
+      const raw = await okxSignedRequest(`/api/v5/trade/orders-history-archive?${query.toString()}`, "GET");
+      if (String(raw?.code ?? "") !== "0") return null;
+      const pageRows = Array.isArray(raw.data) ? raw.data : [];
+      rows.push(...pageRows);
+      if (pageRows.length < 100) { exhausted = true; break; }
+      const lastId = pageRows.at(-1)?.ordId;
+      if (!lastId || lastId === after) return null;
+      after = lastId;
+    }
+    if (!exhausted) return null;
+    return summarizeOkxProtectionClosure(executionOrder, rows);
   } catch {
     return null;
   }
 }
 
-async function placeTakeProfits(db, executionOrder) {
+export function summarizeOkxManualClosure(executionOrder, fills = []) {
+  const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+  const closeClientOrderId = cleanClOrdId(executionOrder.closeClientOrderId || "");
+  if (!closeClientOrderId) return null;
+  const submittedAt = new Date(executionOrder.closeSubmittedAt || 0).getTime();
+  const ctVal = Number(executionOrder.okxCtVal);
+  if (!(ctVal > 0)) return null;
+  const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const closingSide = executionOrder.direction === "short" ? "buy" : "sell";
+  const seen = new Set();
+  const matched = [];
+  const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
+  const entryRows = (fills || []).filter((row) => String(row.instId || "") === instId
+    && ((entryClientOrderId && cleanClOrdId(row.clOrdId || "") === entryClientOrderId)
+      || (executionOrder.exchangeOrderId && String(row.ordId || "") === String(executionOrder.exchangeOrderId))));
+  for (const row of fills || []) {
+    const at = Number(row.ts || row.fillTime || row.cTime || 0);
+    const identityMatches = cleanClOrdId(row.clOrdId || "") === closeClientOrderId
+      || (executionOrder.closeExchangeOrderId && String(row.ordId || "") === String(executionOrder.closeExchangeOrderId));
+    if (!identityMatches || String(row.instId || "") !== instId || String(row.side || "").toLowerCase() !== closingSide) continue;
+    if (Number.isFinite(submittedAt) && submittedAt > 0 && at > 0 && at + 1_000 < submittedAt) continue;
+    const unique = String(row.tradeId || `${row.ordId || ""}:${at}:${row.fillPx}:${row.fillSz}`);
+    if (seen.has(unique)) continue;
+    seen.add(unique);
+    const contracts = Number(row.fillSz || row.sz || 0);
+    const price = Number(row.fillPx || row.avgPx || 0);
+    if (!(contracts > 0) || !(price > 0) || !(ctVal > 0)) continue;
+    const realizedRaw = row.fillPnl ?? row.pnl;
+    const feeRaw = row.fee;
+    const realizedPnl = realizedRaw === null || realizedRaw === undefined || realizedRaw === "" ? null : Number(realizedRaw);
+    const feeUsdt = okxFeeCost(feeRaw);
+    matched.push({
+      tradeId: row.tradeId || null,
+      exchangeOrderId: row.ordId || null,
+      quantity: contracts * ctVal,
+      price,
+      realizedPnl: Number.isFinite(realizedPnl) ? realizedPnl : null,
+      feeUsdt: Number.isFinite(feeUsdt) ? feeUsdt : null,
+      feeCostUsdt: Number.isFinite(feeUsdt) ? feeUsdt : null,
+      rawFee: finiteFinancialNumber(feeRaw) ? Number(feeRaw) : null,
+      rawFeeCcy: row.feeCcy || null,
+      feeSource: "okx_raw_fill_history",
+      feeSchemaVersion: 2,
+      closedAt: at > 0 ? new Date(at).toISOString() : null
+    });
+  }
+  if (!matched.length || matched.some((row) => !Number.isFinite(row.realizedPnl) || !Number.isFinite(row.feeUsdt) || !row.closedAt)) return null;
+  const quantity = matched.reduce((sum, row) => sum + row.quantity, 0);
+  const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
+  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance;
+  const notional = matched.reduce((sum, row) => sum + row.price * row.quantity, 0);
+  const entryFeeValues = entryRows.map((row) => okxFeeCost(row.fee));
+  const entryFeeUsdt = entryRows.length && entryFeeValues.every((value) => value !== null)
+    ? entryFeeValues.reduce((sum, value) => sum + value, 0) : null;
+  return {
+    complete,
+    quantity,
+    expectedQuantity,
+    weightedPrice: quantity > 0 ? notional / quantity : null,
+    realizedPnl: matched.reduce((sum, row) => sum + row.realizedPnl, 0),
+    feeUsdt: matched.reduce((sum, row) => sum + row.feeUsdt, 0),
+    entryFeeUsdt,
+    closedAt: matched.slice().sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt))[0].closedAt,
+    exchangeOrderIds: [...new Set(matched.map((row) => row.exchangeOrderId).filter(Boolean))],
+    breakdown: matched
+  };
+}
+
+async function fetchOkxManualClosure(executionOrder) {
+  if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) return null;
+  try {
+    const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+    const begin = new Date(executionOrder.entryAttemptedAt || executionOrder.createdAt || 0).getTime();
+    const rows = [];
+    let after = null;
+    let exhausted = false;
+    for (let page = 0; page < 20; page += 1) {
+      const query = new URLSearchParams({ instType: "SWAP", instId, limit: "100" });
+      if (Number.isFinite(begin) && begin > 0) query.set("begin", String(begin));
+      if (after) query.set("after", after);
+      const raw = await okxSignedRequest(`/api/v5/trade/fills-history?${query.toString()}`, "GET");
+      if (String(raw?.code ?? "") !== "0") return null;
+      const pageRows = Array.isArray(raw.data) ? raw.data : [];
+      rows.push(...pageRows);
+      if (pageRows.length < 100) { exhausted = true; break; }
+      const lastId = pageRows.at(-1)?.tradeId;
+      if (!lastId || lastId === after) return null;
+      after = lastId;
+    }
+    if (!exhausted) return null;
+    return summarizeOkxManualClosure(executionOrder, rows);
+  } catch {
+    return null;
+  }
+}
+
+function finiteFinancialValue(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+}
+
+export function summarizeOkxFundingBills(executionOrder, rows = [], window = {}) {
+  const startAt = Number(window.startAt);
+  const endAt = Number(window.endAt);
+  const instId = toOkxSymbol(executionOrder.symbol, "perpetual").toUpperCase();
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt) || endAt < startAt) return { complete: false, reason: "invalid_holding_window" };
+  const seen = new Set();
+  const matched = [];
+  for (const row of rows || []) {
+    const rowInstId = String(row.instId || "").toUpperCase();
+    const at = Number(row.ts || row.createdAt || 0);
+    const isFunding = String(row.type || "") === "8" || ["173", "174"].includes(String(row.subType || ""));
+    if (!isFunding || rowInstId !== instId || !Number.isFinite(at) || at < startAt || at > endAt) continue;
+    const billId = String(row.billId || `${rowInstId}:${at}:${row.subType || row.type || "funding"}`);
+    if (seen.has(billId)) continue;
+    seen.add(billId);
+    if (!finiteFinancialValue(row.pnl)) return { complete: false, reason: "funding_bill_amount_unavailable", billId };
+    matched.push({ billId, at, pnl: Number(row.pnl), subType: row.subType || null });
+  }
+  return {
+    complete: true,
+    fundingFeeUsdt: Number(matched.reduce((sum, row) => sum + row.pnl, 0).toFixed(8)),
+    billIds: matched.map((row) => row.billId),
+    rows: matched
+  };
+}
+
+async function fetchOkxFundingBills(executionOrder, window = {}) {
+  if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) {
+    return { complete: false, reason: "okx_read_credentials_unavailable" };
+  }
+  try {
+    const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+    const collected = [];
+    let after = null;
+    let exhausted = false;
+    for (let page = 0; page < 20; page += 1) {
+      const query = new URLSearchParams({ instType: "SWAP", instId, type: "8", begin: String(window.startAt), end: String(window.endAt), limit: "100" });
+      if (after) query.set("after", after);
+      const raw = await okxSignedRequest(`/api/v5/account/bills-archive?${query.toString()}`, "GET");
+      if (String(raw?.code ?? "") !== "0") return { complete: false, reason: "okx_bills_rejected", code: raw?.code || null };
+      const pageRows = Array.isArray(raw.data) ? raw.data : [];
+      collected.push(...pageRows);
+      if (pageRows.length < 100) {
+        exhausted = true;
+        break;
+      }
+      const lastId = pageRows.at(-1)?.billId;
+      if (!lastId || lastId === after) return { complete: false, reason: "okx_bills_pagination_unstable" };
+      after = lastId;
+    }
+    if (!exhausted) return { complete: false, reason: "okx_bills_pagination_incomplete" };
+    return summarizeOkxFundingBills(executionOrder, collected, window);
+  } catch (error) {
+    return { complete: false, reason: "okx_bills_query_failed", error: String(error.message || error).slice(0, 180) };
+  }
+}
+
+// 平仓成交确认与资金费到账是两个独立事实。这里持续收敛后者；只有费用字段齐全、
+// 账户绑定正确、持仓窗口可证且 OKX bills 查询完整成功时，生命周期才进入净绩效链。
+export async function reconcilePendingTradeFinancials(db, options = {}) {
+  const nowMs = Number(options.nowMs ?? Date.now());
+  const graceMs = Number(options.fundingReconciliationGraceMs ?? process.env.FUNDING_RECONCILIATION_GRACE_MS ?? 300_000);
+  const fetchBills = options.fetchFundingBills || fetchOkxFundingBills;
+  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const results = [];
+  let reconciled = 0;
+  for (const lifecycle of lifecycles) {
+    if (!lifecycle.financialBasisIssues?.includes("funding_unreconciled")) continue;
+    const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && sameTradeLifecycle(fill, lifecycle.representative));
+    const closeFills = lifecycle.fills || [];
+    if (!entryFills.length || entryFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)
+      || closeFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)) {
+      results.push({ key: lifecycle.key, status: "fee_evidence_incomplete" });
+      continue;
+    }
+    const executionOrder = (db.executionOrders || []).find((row) => row.id === lifecycle.representative.executionOrderId)
+      || (db.executionOrders || []).find((row) => row.planId && row.planId === (lifecycle.representative.tradePlanId || lifecycle.representative.planId));
+    if (!executionOrder?.accountId) {
+      results.push({ key: lifecycle.key, status: "bound_account_required" });
+      continue;
+    }
+    const startAt = Math.min(...entryFills.map((fill) => new Date(fill.createdAt || 0).getTime()).filter(Number.isFinite));
+    const endAt = Math.max(...closeFills.map((fill) => new Date(fill.createdAt || fill.closedAt || 0).getTime()).filter(Number.isFinite));
+    if (!Number.isFinite(startAt) || !Number.isFinite(endAt) || endAt < startAt) {
+      results.push({ key: lifecycle.key, status: "holding_window_unavailable" });
+      continue;
+    }
+    if (!Number.isFinite(nowMs) || nowMs < endAt + Math.max(0, graceMs)) {
+      results.push({ key: lifecycle.key, status: "funding_bills_settlement_wait" });
+      continue;
+    }
+    const exactSnapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId });
+    if (!exactSnapshot || new Date(exactSnapshot.createdAt || 0).getTime() < endAt) {
+      results.push({ key: lifecycle.key, status: "authoritative_account_snapshot_pending" });
+      continue;
+    }
+    const credentialBinding = validateOkxCredentialBinding(db, {
+      accountId: executionOrder.accountId,
+      snapshot: exactSnapshot,
+      executionFingerprint: executionOrder.apiKeyFingerprint
+    });
+    if (!credentialBinding.ok) {
+      results.push({ key: lifecycle.key, status: credentialBinding.reason });
+      continue;
+    }
+    const overlapping = lifecycles.some((other) => {
+      if (other.key === lifecycle.key || canonicalSymbol(other.representative.symbol) !== canonicalSymbol(lifecycle.representative.symbol)) return false;
+      const otherEntries = (db.fills || []).filter((fill) => fill.kind === "entry" && sameTradeLifecycle(fill, other.representative));
+      const otherStart = Math.min(...otherEntries.map((fill) => new Date(fill.createdAt || 0).getTime()).filter(Number.isFinite));
+      const otherEnd = new Date(other.lastClosedAt || 0).getTime();
+      return Number.isFinite(otherStart) && Number.isFinite(otherEnd) && otherStart <= endAt && otherEnd >= startAt;
+    });
+    if (overlapping) {
+      results.push({ key: lifecycle.key, status: "funding_attribution_overlap" });
+      continue;
+    }
+    const funding = await fetchBills(executionOrder, { startAt, endAt, accountId: executionOrder.accountId });
+    if (!funding?.complete || !finiteFinancialValue(funding.fundingFeeUsdt)) {
+      results.push({ key: lifecycle.key, status: funding?.reason || "funding_bills_incomplete" });
+      continue;
+    }
+    const finalFill = closeFills.find((fill) => fill.partial !== true) || closeFills.at(-1);
+    for (const fill of closeFills) {
+      fill.fundingFeeUsdt = fill === finalFill ? Number(funding.fundingFeeUsdt) : 0;
+      fill.fundingReconciled = true;
+      fill.fundingReconciledAt = nowIso();
+      fill.fundingBillIds = funding.billIds || [];
+      fill.financialBasis = "exchange_fills_and_okx_funding_bills_reconciled";
+    }
+    executionOrder.fundingFeeUsdt = Number(funding.fundingFeeUsdt);
+    executionOrder.fundingReconciledAt = nowIso();
+    reconciled += 1;
+    results.push({ key: lifecycle.key, status: "reconciled", fundingFeeUsdt: Number(funding.fundingFeeUsdt), billCount: (funding.billIds || []).length });
+  }
+  if (reconciled) {
+    for (const review of db.reviews || []) {
+      if (review.status === "pending_financial_reconciliation") review.status = "pending";
+    }
+    syncTradeReviewQueue(db);
+  }
+  return { checked: results.length, reconciled, results };
+}
+
+function snapshotPositionOpen(snapshot, executionOrder) {
+  if (!snapshot || snapshot.status !== "ok") return null;
+  const direction = canonicalPositionDirection(executionOrder);
+  return (snapshot.positions || []).some((row) => canonicalSymbol(row.instId || row.symbol) === canonicalSymbol(executionOrder.symbol)
+    && canonicalPositionDirection(row) === direction
+    && Math.abs(Number(row.pos ?? row.positionAmt ?? row.size ?? 0)) > 0);
+}
+
+export function reconcilePendingClose(db, executionOrder, { snapshot = null, closure = null } = {}) {
+  const credentialBinding = validateOkxCredentialBinding(db, {
+    accountId: executionOrder.accountId,
+    snapshot,
+    executionFingerprint: executionOrder.apiKeyFingerprint
+  });
+  if (!credentialBinding.ok) return { id: executionOrder.id, status: executionOrder.status, settlement: credentialBinding.reason };
+  if (!executionOrder.accountId || snapshot?.accountId !== executionOrder.accountId) {
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "bound_account_snapshot_pending" };
+  }
+  const submittedAt = new Date(executionOrder.closeSubmittedAt || 0).getTime();
+  const snapshotAt = new Date(snapshot?.createdAt || 0).getTime();
+  if (!snapshot || snapshot.status !== "ok" || !Number.isFinite(snapshotAt) || snapshotAt < submittedAt) {
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "authoritative_snapshot_pending" };
+  }
+  if (snapshotPositionOpen(snapshot, executionOrder)) {
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "position_still_open" };
+  }
+  if (!closure?.complete) {
+    executionOrder.status = "close_reconciliation_pending";
+    executionOrder.closeReconciliationReason = "position_absent_fill_evidence_incomplete";
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_incomplete" };
+  }
+  if (finiteFinancialValue(closure.entryFeeUsdt)) {
+    const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
+    const totalNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
+    for (const fill of entryFills) {
+      const notional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
+      fill.feeUsdt = totalNotional > 0 ? Number(closure.entryFeeUsdt) * notional / totalNotional : Number(closure.entryFeeUsdt) / Math.max(1, entryFills.length);
+      fill.feeCostUsdt = fill.feeUsdt;
+      fill.feeSchemaVersion = 2;
+      fill.feeSource = "okx_raw_fill_history";
+      fill.estimatedFee = false;
+      fill.feeBasis = "okx_entry_fills";
+    }
+    executionOrder.entryFeeUsdt = Number(closure.entryFeeUsdt);
+  }
+  recordFill(db, executionOrder, "close", closure.weightedPrice, closure.quantity, closure.realizedPnl, {
+    feeUsdt: closure.feeUsdt,
+    feeCostUsdt: closure.feeUsdt,
+    feeSchemaVersion: 2,
+    feeSource: "okx_raw_fill_history",
+    holdingMinutes: Number.isFinite(new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime())
+      ? Math.max(0, Math.round((new Date(closure.closedAt).getTime() - new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime()) / 60000)) : null,
+    maeUsdt: executionOrder.maeUsdt ?? null,
+    mfeUsdt: executionOrder.mfeUsdt ?? null,
+    exitReason: executionOrder.closeReason || "manual_close",
+    createdAt: closure.closedAt,
+    exchangeOrderIds: closure.exchangeOrderIds,
+    exitBreakdown: closure.breakdown,
+    inferred: false,
+    estimated: false,
+    fundingFeeUsdt: null,
+    fundingReconciled: false,
+    financialBasis: "exchange_fills_confirmed_funding_unreconciled"
+  });
+  executionOrder.status = "closed";
+  executionOrder.closedAt = closure.closedAt;
+  executionOrder.updatedAt = closure.closedAt;
+  executionOrder.realizedPnl = closure.realizedPnl;
+  executionOrder.closeFeeUsdt = closure.feeUsdt;
+  executionOrder.exitReason = executionOrder.closeReason || "manual_close";
+  executionOrder.events ||= [];
+  executionOrder.events.push({ at: nowIso(), event: "close_reconciled", detail: `交易所真实成交 ${closure.quantity} @ ${closure.weightedPrice}` });
+  db.positions = (db.positions || []).filter((row) => !(row.source === "execution_engine" && row.executionOrderId === executionOrder.id));
+  const plan = (db.tradePlans || []).find((row) => row.id === executionOrder.planId);
+  if (plan) plan.status = "completed";
+  if (executionOrder.affectedExecutionOrderIds?.length) {
+    const affected = new Set(executionOrder.affectedExecutionOrderIds);
+    for (const row of db.executionOrders || []) {
+      if (!affected.has(row.id)) continue;
+      row.status = "group_closed";
+      row.groupCloseExecutionId = executionOrder.id;
+      row.groupCloseLifecycleKey = executionOrder.id;
+      row.closedAt = closure.closedAt;
+      row.realizedPnl = null;
+      row.financialBasis = "physical_group_close_unallocated";
+      row.events ||= [];
+      row.events.push({ at: nowIso(), event: "group_close_reconciled", detail: executionOrder.id });
+      const affectedPlan = (db.tradePlans || []).find((candidate) => candidate.id === row.planId);
+      if (affectedPlan) {
+        affectedPlan.status = "completed";
+        affectedPlan.financialBasis = "physical_group_close_unallocated";
+      }
+    }
+    db.positions = (db.positions || []).filter((row) => !(row.source === "execution_engine" && affected.has(row.executionOrderId)));
+  }
+  db.riskIncidents = (db.riskIncidents || []).map((row) => row.source === executionOrder.id && row.kind === "close_reconciliation" && row.status === "open"
+    ? { ...row, status: "resolved", resolvedAt: nowIso(), resolution: "exchange_fill_reconciled" }
+    : row);
+  clearReduceOnlyReason(db, "protection_emergency", { sourceId: executionOrder.id, resolvedBy: "ExecutionEngine", resolution: "authoritative_close_reconciled" });
+  clearReduceOnlyReason(db, "liquidation_emergency", { sourceId: executionOrder.id, resolvedBy: "ExecutionEngine", resolution: "authoritative_close_reconciled" });
+  syncReduceOnlyState(db);
+  return { id: executionOrder.id, status: "closed", settlement: "confirmed", closure };
+}
+
+async function placeTakeProfits(db, executionOrder, options = {}) {
   if (!executionOrder.takeProfits?.length) {
     executionOrder.status = "protecting";
     return;
@@ -920,20 +1841,30 @@ async function placeTakeProfits(db, executionOrder) {
     appendAudit(db, "止盈分配失败,降级为仅止损保护", executionOrder.id, "ExecutionEngine", "warning");
     return;
   }
+  const targets = tpTargets.map((price, index) => ({
+    price,
+    stopPrice: price,
+    quantity: quantities[index],
+    clientOrderId: cleanClOrdId(`tp${index + 1}${executionOrder.id.slice(-10)}`)
+  }));
+  executionOrder.tpClientOrderIds = targets.map((target) => target.clientOrderId);
+  executionOrder.tpPlacementIntent = {
+    status: "submitting",
+    clientOrderIds: executionOrder.tpClientOrderIds.slice(),
+    targets: targets.map((target) => ({ ...target })),
+    attemptedAt: executionOrder.tpPlacementIntent?.attemptedAt || nowIso()
+  };
+  saveDb(db);
   let result;
   try {
-    result = await executeTradeAction(db, "take_profit", {
+    assertActiveLease(options);
+    result = await (options.executeTradeAction || executeTradeAction)(db, "take_profit", {
       exchange: executionOrder.exchange,
       marketType: "perpetual_usdt",
       symbol: executionOrder.symbol,
       side: closeSide,
       quantity: Math.max(...quantities),
-      targets: tpTargets.map((price, index) => ({
-        price,
-        stopPrice: price,
-        quantity: quantities[index],
-        clientOrderId: cleanClOrdId(`tp${index + 1}${executionOrder.id.slice(-10)}`)
-      })),
+      targets,
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
       evidenceBundleId: executionOrder.evidenceBundleId,
@@ -943,12 +1874,16 @@ async function placeTakeProfits(db, executionOrder) {
       manualApproval: true
     });
   } catch (error) {
+    if (isLeaseLostError(error)) throw error;
     // 止盈下单异常：仓位已成交在场、原生止损仍在（入场时已确认），但止盈缺失。
     // 标记保护降级 + 熔断新开仓 + 事故，交由人工处置；不静默吞掉。
-    executionOrder.status = "protection_failed";
+    executionOrder.status = "protecting_degraded";
+    executionOrder.protection = "stop_only_tp_unconfirmed";
+    executionOrder.tpPlacementIntent.status = "unknown";
+    executionOrder.tpPlacementIntent.error = String(error.message || error).slice(0, 200);
     executionOrder.events.push({ at: nowIso(), event: "take_profit_exception", detail: String(error.message || error).slice(0, 200) });
     const tpPlan = db.tradePlans?.find((item) => item.id === executionOrder.planId);
-    if (tpPlan) tpPlan.status = "protection_failed";
+    if (tpPlan) tpPlan.status = "executing";
     db.system.killSwitch = true;
     db.riskIncidents.unshift({
       id: id("incident"),
@@ -962,15 +1897,22 @@ async function placeTakeProfits(db, executionOrder) {
     return;
   }
   // (P1-1)检查真实结果:批量路径此前恒 ok,交易所逐单拒绝会被静默吞掉。
-  if (!["ok", "submitted"].includes(result.status)) {
+  executionOrder.tpPlacementIntent.results = Array.isArray(result.orders) ? result.orders.map((row) => ({
+    clientOrderId: row.clientOrderId || null,
+    algoId: row.algoId || null,
+    status: row.status || "unknown"
+  })) : [];
+  if (!["ok", "submitted", "idempotent_replay"].includes(result.status)) {
     executionOrder.status = "protecting";
     executionOrder.protection = "stop_only";
+    executionOrder.tpPlacementIntent.status = result.status === "partial_failure" ? "partial_failure_tracked" : "rejected";
     executionOrder.events.push({ at: nowIso(), event: "take_profit_rejected", detail: `止盈单未全部落地(${result.status},失败 ${result.failedCount ?? "?"}),保留原生止损` });
     db.riskIncidents.unshift({ id: id("incident"), severity: "medium", status: "open", title: `止盈单被拒(${result.status}):${executionOrder.symbol} 仅止损保护`, source: executionOrder.id, createdAt: nowIso() });
     appendAudit(db, `止盈单未全部落地(${result.status}),降级为仅止损保护`, executionOrder.id, "ExecutionEngine", "warning");
     return;
   }
-  executionOrder.tpClientOrderIds = tpTargets.map((_, index) => cleanClOrdId(`tp${index + 1}${executionOrder.id.slice(-10)}`));
+  executionOrder.tpPlacementIntent.status = "acknowledged";
+  executionOrder.tpAlgoIds = executionOrder.tpPlacementIntent.results.map((row) => row.algoId).filter(Boolean);
   executionOrder.status = "protecting";
   executionOrder.events.push({ at: nowIso(), event: "take_profits_placed", detail: `状态 ${result.status}` });
 }
@@ -979,7 +1921,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   db.fills ||= [];
   const notional = Number(price) * Number(quantity);
   const plan = (db.tradePlans || []).find((item) => item.id === executionOrder.planId) || {};
-  const feeUsdt = extra.feeUsdt ?? (kind === "entry" ? executionOrder.entryFeeUsdt : feeEstimate(notional));
+  const feeUsdt = extra.feeCostUsdt ?? extra.feeUsdt ?? (kind === "entry" ? executionOrder.entryFeeUsdt : feeEstimate(notional));
   const fill = {
     id: id("fill"),
     executionOrderId: executionOrder.id,
@@ -1019,9 +1961,17 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
       ? Number((Number(executionOrder.entrySlippageBps) - Number(executionOrder.executionCostEstimate.expectedImpactBps)).toFixed(3))
       : null,
     feeUsdt,
-    estimatedFee: extra.feeUsdt === undefined,
+    feeCostUsdt: feeUsdt,
+    feeSchemaVersion: extra.feeSchemaVersion ?? 2,
+    feeSource: extra.feeSource || (extra.feeUsdt === undefined && extra.feeCostUsdt === undefined ? "estimated" : "recorded"),
+    rawFee: extra.rawFee ?? null,
+    rawFeeCcy: extra.rawFeeCcy ?? null,
+    estimatedFee: extra.estimatedFee ?? (extra.feeUsdt === undefined),
+    feeBasis: extra.feeBasis || (extra.feeUsdt === undefined ? "estimated_from_notional" : "recorded"),
     fundingRate: extra.fundingRate,
     fundingFeeUsdt: extra.fundingFeeUsdt,
+    fundingReconciled: extra.fundingReconciled,
+    financialBasis: extra.financialBasis,
     holdingMinutes: extra.holdingMinutes,
     maeUsdt: extra.maeUsdt,
     mfeUsdt: extra.mfeUsdt,
@@ -1046,7 +1996,12 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
 
 function upsertPosition(db, executionOrder, filledSize = executionOrder.quantity) {
   db.positions ||= [];
-  let position = db.positions.find((item) => item.symbol === executionOrder.symbol && item.source === "execution_engine");
+  let position = db.positions.find((item) => item.executionOrderId === executionOrder.id && item.source === "execution_engine");
+  const conflicting = db.positions.find((item) => item.symbol === executionOrder.symbol
+    && item.source === "execution_engine" && item.executionOrderId && item.executionOrderId !== executionOrder.id
+    && Math.abs(Number(item.size || 0)) > 0);
+  if (!position && conflicting) throw new Error("same_symbol_position_add_unsupported");
+  if (!position) position = db.positions.find((item) => item.symbol === executionOrder.symbol && item.source === "execution_engine" && !item.executionOrderId);
   if (!position) {
     position = { id: id("pos"), symbol: executionOrder.symbol, source: "execution_engine" };
     db.positions.unshift(position);
@@ -1068,17 +2023,190 @@ function upsertPosition(db, executionOrder, filledSize = executionOrder.quantity
   });
 }
 
-// 手动关闭一个执行中的订单/持仓（用户或风控触发）。
-export async function closeExecution(db, executionOrderId, reason = "manual") {
+export function executionExitIntentForStatus(status) {
+  if (["entry_unknown_pending", "entry_pending"].includes(status)) return "cancel_entry";
+  if (status === "entry_partial") return "cancel_remainder_and_close_filled";
+  if (["entry_filled", "protecting", "protecting_degraded"].includes(status)) return "close_position";
+  return null;
+}
+
+async function submitClosePosition(db, executionOrder, reason, options = {}) {
+  if (["close_pending", "close_unknown_pending", "close_reconciliation_pending"].includes(executionOrder.status)) {
+    return { status: executionOrder.status, idempotent: true, closeClientOrderId: executionOrder.closeClientOrderId };
+  }
+  const direction = canonicalPositionDirection(executionOrder);
+  const competing = (db.executionOrders || []).filter((row) => row.id !== executionOrder.id
+    && canonicalSymbol(row.symbol) === canonicalSymbol(executionOrder.symbol)
+    && canonicalPositionDirection(row) === direction
+    && ["entry_partial", "entry_filled", "protecting", "close_pending", "close_reconciliation_pending"].includes(row.status));
+  if (competing.length) {
+    return { status: "shared_position_close_requires_coordination", conflictingExecutionOrderIds: competing.map((row) => row.id) };
+  }
+  if (!executionOrder.accountId) {
+    const now = Date.now();
+    const enabled = new Set((db.exchangeAccounts || []).filter((row) => row.exchange === "OKX" && row.readEnabled).map((row) => row.id));
+    const candidates = new Map();
+    for (const snapshot of db.accountSnapshots || []) {
+      const at = new Date(snapshot?.createdAt || 0).getTime();
+      if (snapshot?.exchange !== "OKX" || snapshot?.status !== "ok" || !snapshot.accountId || !enabled.has(snapshot.accountId)
+        || !Number.isFinite(at) || now - at > Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000)) continue;
+      if (!candidates.has(snapshot.accountId)) candidates.set(snapshot.accountId, snapshot);
+    }
+    if (candidates.size !== 1) return { status: "account_binding_required", candidateAccountIds: [...candidates.keys()] };
+    executionOrder.accountId = [...candidates.keys()][0];
+    executionOrder.events ||= [];
+    executionOrder.events.push({ at: nowIso(), event: "legacy_account_bound", detail: executionOrder.accountId });
+    appendAudit(db, `旧执行单在唯一新鲜 OKX 账户下完成绑定：${executionOrder.accountId}`, executionOrder.id, "ExecutionEngine", "warning");
+  }
+  const boundAccount = (db.exchangeAccounts || []).find((row) => row.id === executionOrder.accountId);
+  const closeCredentialBinding = validateOkxCredentialBinding(db, {
+    accountId: executionOrder.accountId,
+    executionFingerprint: executionOrder.apiKeyFingerprint || boundAccount?.apiKeyFingerprint
+  });
+  if (!closeCredentialBinding.ok) return { status: "account_binding_required", reason: closeCredentialBinding.reason };
+  executionOrder.apiKeyFingerprint = closeCredentialBinding.currentFingerprint;
+  executionOrder.closeClientOrderId ||= cleanClOrdId(`close${String(executionOrder.id || "").slice(-20)}`);
+  const priorStatus = executionOrder.status;
+  executionOrder.closeAttemptedAt ||= nowIso();
+  executionOrder.closeSubmittedAt ||= executionOrder.closeAttemptedAt;
+  executionOrder.closeReconciliationSource = "manual_close";
+  executionOrder.status = "close_unknown_pending";
+  const closeRequestToken = executionOrder.closeRequestToken = id("close_request");
+  saveDb(db);
+  const submittedAt = executionOrder.closeAttemptedAt;
+  const executeAction = options.executeTradeAction || executeTradeAction;
+  let result;
+  try {
+    // durable close intent 已先落盘；真正外呼必须在最后一刻重新核验 fencing。
+    assertActiveLease(options);
+    result = await executeAction(db, "close_position", {
+    exchange: executionOrder.exchange,
+    marketType: "perpetual_usdt",
+    symbol: executionOrder.symbol,
+    quantity: executionOrder.filledQuantity || executionOrder.quantity,
+    positionSide: direction,
+    accountId: executionOrder.accountId,
+    clientOrderId: executionOrder.closeClientOrderId,
+    closePosition: true,
+    emergencyActionId: options.emergencyActionId,
+    agentRunId: executionOrder.agentRunId,
+    analysisBundleId: executionOrder.analysisBundleId,
+    evidenceBundleId: executionOrder.evidenceBundleId,
+    tradePlanId: executionOrder.planId,
+    riskCheckId: executionOrder.riskCheckId,
+      mandateId: executionOrder.mandateId,
+    executionOrderId: executionOrder.id,
+    expectedStatus: priorStatus,
+    exitIntent: "close_position",
+    manualApproval: true
+    });
+  } catch (error) {
+    if (isLeaseLostError(error)) throw error;
+    if (executionOrder.closeRequestToken !== closeRequestToken || executionOrder.status !== "close_unknown_pending") {
+      executionOrder.events ||= [];
+      executionOrder.events.push({ at: nowIso(), event: "stale_close_response_ignored", detail: String(error.message || error).slice(0, 180) });
+      return { status: executionOrder.status, idempotent: true, staleResponseIgnored: true };
+    }
+    executionOrder.status = "close_unknown_pending";
+    executionOrder.closeReconciliationSource = "manual_close";
+    executionOrder.closeReason = reason;
+    executionOrder.events ||= [];
+    executionOrder.events.push({ at: nowIso(), event: "close_response_unknown", detail: String(error.message || error).slice(0, 180) });
+    db.system ||= {};
+    db.system.reduceOnlyMode = true;
+    db.system.reduceOnlyBy = "close_reconciliation_pending";
+    saveDb(db);
+    return { status: "close_unknown_pending", error: String(error.message || error) };
+  }
+  // 外呼期间后台轮询可能已推进到更晚状态。旧响应不得覆盖新事实。
+  if (executionOrder.closeRequestToken !== closeRequestToken || executionOrder.status !== "close_unknown_pending") {
+    return { status: executionOrder.status, idempotent: true, staleResponseIgnored: true, result };
+  }
+  if (result.status === "unknown_pending") {
+    db.system ||= {};
+    db.system.reduceOnlyMode = true;
+    db.system.reduceOnlyBy = "close_reconciliation_pending";
+    saveDb(db);
+    return { status: "close_unknown_pending", result };
+  }
+  if (!["ok", "submitted", "idempotent_replay"].includes(result.status)) {
+    executionOrder.status = priorStatus;
+    executionOrder.events ||= [];
+    executionOrder.events.push({ at: nowIso(), event: "close_unconfirmed", detail: result.reason || result.status || "unknown" });
+    saveDb(db);
+    return { status: "close_unconfirmed", result };
+  }
+  executionOrder.status = "close_pending";
+  executionOrder.closeReconciliationSource = "manual_close";
+  executionOrder.closeSubmittedAt ||= submittedAt;
+  executionOrder.closeReason = reason;
+  executionOrder.closeActionId = result.actionId || executionOrder.closeActionId || null;
+  executionOrder.closeOmsOrderId = result.omsOrderId || executionOrder.closeOmsOrderId || null;
+  executionOrder.closeExchangeOrderId = result.exchangeOrderId || executionOrder.closeExchangeOrderId || null;
+  executionOrder.events ||= [];
+  executionOrder.events.push({ at: submittedAt, event: "close_acknowledged", detail: `${reason}；等待新账户快照与真实成交明细核算` });
+  return { status: "close_pending", result, closeClientOrderId: executionOrder.closeClientOrderId };
+}
+
+// 手动关闭一个执行中的订单/持仓（用户或风控触发）。用户请求必须带 intent + expectedStatus，
+// 防止“点击时想撤单、请求到达时已成交”被静默升级成真实市价平仓。
+export async function closeExecution(db, executionOrderId, reason = "manual", options = {}) {
   const executionOrder = (db.executionOrders || []).find((item) => item.id === executionOrderId);
   if (!executionOrder) return { status: "missing_execution_order" };
-  if (["entry_pending", "entry_partial"].includes(executionOrder.status)) {
+  const requiredIntent = executionExitIntentForStatus(executionOrder.status);
+  if (["cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending", "close_pending", "close_unknown_pending", "close_reconciliation_pending"].includes(executionOrder.status)) {
+    return { status: executionOrder.status, idempotent: true, currentStatus: executionOrder.status };
+  }
+  const requestedIntent = options.intent || requiredIntent;
+  const internalPartialIntent = options.internal === true && executionOrder.status === "entry_partial"
+    && ["cancel_remainder_keep_filled", "emergency_close_if_filled"].includes(options.intent);
+  const internalPendingIntent = options.internal === true && ["entry_unknown_pending", "entry_pending"].includes(executionOrder.status)
+    && options.intent === "emergency_close_if_filled";
+  if ((options.expectedStatus && options.expectedStatus !== executionOrder.status)
+    || (options.intent && options.intent !== requiredIntent && !internalPartialIntent && !internalPendingIntent)) {
+    return {
+      status: "status_conflict",
+      expectedStatus: options.expectedStatus || null,
+      currentStatus: executionOrder.status,
+      requestedIntent: options.intent || null,
+      requiredIntent,
+      message: "执行状态已变化，请刷新后按当前状态重新确认。"
+    };
+  }
+  if (["entry_unknown_pending", "entry_pending", "entry_partial"].includes(executionOrder.status)) {
+    const priorStatus = executionOrder.status;
     const wasPartial = executionOrder.status === "entry_partial";
-    const result = await executeTradeAction(db, "cancel_order", {
+    const allowedPartialIntents = options.internal
+      ? ["cancel_remainder_and_close_filled", "cancel_remainder_keep_filled", "emergency_close_if_filled"]
+      : ["cancel_remainder_and_close_filled"];
+    if (wasPartial && !allowedPartialIntents.includes(requestedIntent)) {
+      return { status: "status_conflict", currentStatus: executionOrder.status, requestedIntent, requiredIntent, message: "部分成交必须明确确认撤销余量并平掉已成交仓位。" };
+    }
+    executionOrder.cancelAttemptedAt ||= nowIso();
+    executionOrder.cancelSubmittedAt ||= executionOrder.cancelAttemptedAt;
+    executionOrder.cancelDisposition = wasPartial || internalPendingIntent ? requestedIntent : "cancel_entry";
+    executionOrder.cancelReason = reason;
+    executionOrder.cancelClientActionId ||= cleanClOrdId(`cancel${String(executionOrder.id || "").slice(-20)}`);
+    const pendingBeforeCall = options.protectionFailure ? "protection_failure_cancel_pending" : "cancel_unknown_pending";
+    executionOrder.status = pendingBeforeCall;
+    const cancelRequestToken = executionOrder.cancelRequestToken = id("cancel_request");
+    saveDb(db);
+    const executeAction = options.executeTradeAction || executeTradeAction;
+    let result;
+    try {
+      // durable cancel intent 已先落盘；失租时保持 unknown pending，旧 owner 不得发单。
+      assertActiveLease(options);
+      result = await executeAction(db, "cancel_order", {
       exchange: executionOrder.exchange,
       marketType: "perpetual_usdt",
       symbol: executionOrder.symbol,
       clientOrderId: executionOrder.clientOrderId,
+      exitIntent: requestedIntent,
+      cancelDisposition: executionOrder.cancelDisposition,
+      cancelReason: reason,
+      executionOrderId: executionOrder.id,
+      expectedStatus: priorStatus,
+      accountId: executionOrder.accountId,
       agentRunId: executionOrder.agentRunId,
       analysisBundleId: executionOrder.analysisBundleId,
       evidenceBundleId: executionOrder.evidenceBundleId,
@@ -1086,76 +2214,46 @@ export async function closeExecution(db, executionOrderId, reason = "manual") {
       riskCheckId: executionOrder.riskCheckId,
       mandateId: executionOrder.mandateId,
       manualApproval: true
-    });
-    const confirmed = ["ok", "submitted", "idempotent_replay"].includes(result.status);
-    executionOrder.status = confirmed ? "cancelled" : executionOrder.status;
-    executionOrder.events.push({ at: nowIso(), event: "cancel_requested", detail: reason });
-    if (!confirmed) executionOrder.events.push({ at: nowIso(), event: "cancel_unconfirmed", detail: result.reason || result.status || "unknown" });
-    if (!confirmed) return { status: "cancel_unconfirmed", result };
-    if (wasPartial && Number(executionOrder.filledQuantity || 0) > 0) {
-      executionOrder.status = "entry_filled";
-      executionOrder.quantity = Number(executionOrder.filledQuantity);
-      executionOrder.events.push({ at: nowIso(), event: "partial_remainder_cancelled", detail: `剩余委托已撤，继续平掉已成交 ${executionOrder.quantity}` });
-      return closeExecution(db, executionOrder.id, reason);
-    }
-    return { status: "cancelled", result };
-  }
-  if (["entry_filled", "protecting"].includes(executionOrder.status)) {
-    const result = await executeTradeAction(db, "close_position", {
-      exchange: executionOrder.exchange,
-      marketType: "perpetual_usdt",
-      symbol: executionOrder.symbol,
-      quantity: executionOrder.quantity,
-      positionSide: executionOrder.direction,
-      agentRunId: executionOrder.agentRunId,
-      analysisBundleId: executionOrder.analysisBundleId,
-      evidenceBundleId: executionOrder.evidenceBundleId,
-      tradePlanId: executionOrder.planId,
-      riskCheckId: executionOrder.riskCheckId,
-      mandateId: executionOrder.mandateId,
-      manualApproval: true
-    });
-    const confirmed = ["ok", "submitted", "idempotent_replay"].includes(result.status);
-    if (confirmed) {
-      const market = db.markets.find((item) => item.symbol === executionOrder.symbol);
-      const exitPrice = Number(market?.price || executionOrder.filledPrice || executionOrder.entryPrice);
-      const entry = Number(executionOrder.filledPrice || executionOrder.entryPrice);
-      const sign = executionOrder.direction === "short" ? -1 : 1;
-      const pnl = (exitPrice - entry) * executionOrder.quantity * sign;
-      const openedAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime();
-      const holdingMinutes = Number.isFinite(openedAt) ? Math.max(0, Math.round((Date.now() - openedAt) / 60000)) : null;
-      const notional = exitPrice * executionOrder.quantity;
-      const fundingRate = currentFundingRate(db, executionOrder.symbol);
-      const fundingFeeUsdt = holdingMinutes === null ? null : Number((notional * (fundingRate / 100) * (holdingMinutes / 480)).toFixed(6));
-      const closeFeeUsdt = feeEstimate(notional);
-      recordFill(db, executionOrder, "close", exitPrice, executionOrder.quantity, pnl, {
-        feeUsdt: closeFeeUsdt,
-        fundingRate,
-        fundingFeeUsdt,
-        holdingMinutes,
-        maeUsdt: executionOrder.maeUsdt ?? 0,
-        mfeUsdt: executionOrder.mfeUsdt ?? 0,
-        slippageBps: slippageBps(exitPrice, executionOrder.lastMark || exitPrice, executionOrder.direction),
-        expectedPrice: executionOrder.lastMark || exitPrice,
-        exitReason: reason
       });
-      executionOrder.status = "closed";
-      executionOrder.realizedPnl = pnl;
-      executionOrder.exitReason = reason;
-      executionOrder.closedAt = nowIso();
-      executionOrder.updatedAt = executionOrder.closedAt;
-      executionOrder.holdingMinutes = holdingMinutes;
-      executionOrder.closeFeeUsdt = closeFeeUsdt;
-      executionOrder.fundingFeeUsdt = fundingFeeUsdt;
-      executionOrder.events.push({ at: nowIso(), event: "closed", detail: `${reason}，盈亏 ${pnl.toFixed(2)} USDT` });
-      db.positions = (db.positions || []).filter((item) => item.executionOrderId !== executionOrder.id);
-      const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
-      if (plan) plan.status = "completed";
-      appendAudit(db, `平仓完成：${executionOrder.symbol}，盈亏 ${pnl.toFixed(2)} USDT`, executionOrder.id, "ExecutionEngine", pnl >= 0 ? "info" : "warning");
+    } catch (error) {
+      if (isLeaseLostError(error)) throw error;
+      if (executionOrder.cancelRequestToken !== cancelRequestToken || executionOrder.status !== pendingBeforeCall) {
+        executionOrder.events ||= [];
+        executionOrder.events.push({ at: nowIso(), event: "stale_cancel_response_ignored", detail: String(error.message || error).slice(0, 180) });
+        return { status: executionOrder.status, idempotent: true, staleResponseIgnored: true };
+      }
+      executionOrder.status = options.protectionFailure ? "protection_failure_cancel_pending" : "cancel_unknown_pending";
+      executionOrder.events.push({ at: nowIso(), event: "cancel_response_unknown", detail: String(error.message || error).slice(0, 180) });
+      db.system ||= {};
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "cancel_reconciliation_pending";
+      saveDb(db);
+      return { status: executionOrder.status, error: String(error.message || error) };
+    }
+    if (executionOrder.cancelRequestToken !== cancelRequestToken || executionOrder.status !== pendingBeforeCall) {
+      return { status: executionOrder.status, idempotent: true, staleResponseIgnored: true, result };
+    }
+    if (result.status === "unknown_pending") {
+      db.system ||= {};
+      db.system.reduceOnlyMode = true;
+      db.system.reduceOnlyBy ||= "cancel_reconciliation_pending";
+      saveDb(db);
       return { status: executionOrder.status, result };
     }
-    executionOrder.events.push({ at: nowIso(), event: "close_unconfirmed", detail: result.reason || result.status || "unknown" });
-    return { status: "close_unconfirmed", result };
+    const acknowledged = ["ok", "submitted", "idempotent_replay"].includes(result.status);
+    executionOrder.events.push({ at: nowIso(), event: "cancel_requested", detail: reason });
+    if (!acknowledged) {
+      executionOrder.status = executionOrder.status === "protection_failure_cancel_pending" ? executionOrder.status : priorStatus;
+      executionOrder.events.push({ at: nowIso(), event: "cancel_unconfirmed", detail: result.reason || result.status || "unknown" });
+      saveDb(db);
+      return { status: "cancel_unconfirmed", result };
+    }
+    executionOrder.status = options.protectionFailure ? "protection_failure_cancel_pending" : "cancel_pending";
+    executionOrder.cancelActionId = result.actionId || executionOrder.cancelActionId || null;
+    return { status: executionOrder.status, result };
+  }
+  if (["entry_filled", "protecting", "protecting_degraded"].includes(executionOrder.status)) {
+    return submitClosePosition(db, executionOrder, reason, options);
   }
   return { status: "not_closable", currentStatus: executionOrder.status };
 }

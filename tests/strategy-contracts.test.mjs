@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { STRATEGIES, listStrategies, strategyMatchesRegime } from "../server/strategies.mjs";
 import { buildNativeStrategyContract, buildStrategyCatalog, deriveStrategyLifecycle, validateStrategyContract } from "../server/strategyContracts.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 test("所有内置策略都有合法、OKX 单一口径且不可绕过风控的策略合同", () => {
   const listed = listStrategies();
@@ -22,7 +23,7 @@ test("策略生命周期按样本外、纯前向、真实样本逐级晋级且�
     strategyProfiles: [{ strategyId: "trend", confidence: "validated", oosScore: 0.25, chosenAt: "2026-08-01T00:00:00Z" }],
     paperSessions: [{ strategyId: "trend", status: "passed", metrics: { trades: 25 }, updatedAt: "2026-08-02T00:00:00Z" }],
     tradePlans: Array.from({ length: 3 }, (_, index) => ({ id: `p${index}`, strategy: "trend" })),
-    fills: Array.from({ length: 3 }, (_, index) => ({ id: `f${index}`, kind: "close", tradePlanId: `p${index}`, realizedPnl: 1, createdAt: `2026-08-03T0${index}:00:00Z` }))
+    fills: financiallyReconciledFills(Array.from({ length: 3 }, (_, index) => ({ id: `f${index}`, kind: "close", executionOrderId: `e${index}`, tradePlanId: `p${index}`, realizedPnl: 1, createdAt: `2026-08-03T0${index}:00:00Z` })))
   };
   const lifecycle = deriveStrategyLifecycle(db, "trend");
   assert.equal(lifecycle.stage, "live_probation");
@@ -45,10 +46,10 @@ test("策略合同以完整生命周期净值裁定，费用翻转毛盈利时�
     paperSessions: [{ strategyId: "trend", status: "passed", metrics: { trades: 30 }, updatedAt: "2026-08-01T00:00:00Z" }],
     tradePlans: Array.from({ length: 10 }, (_, index) => ({ id: `fee-plan-${index}`, strategy: "trend" })),
     executionOrders: [],
-    fills: Array.from({ length: 10 }, (_, index) => [
+    fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, index) => [
       { id: `fee-entry-${index}`, kind: "entry", tradePlanId: `fee-plan-${index}`, executionOrderId: `fee-exec-${index}`, feeUsdt: 0.8, createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` },
       { id: `fee-close-${index}`, kind: "close", tradePlanId: `fee-plan-${index}`, executionOrderId: `fee-exec-${index}`, realizedPnl: 1, feeUsdt: 0.4, createdAt: `2026-08-03T${String(index).padStart(2, "0")}:00:00Z` }
-    ]).flat()
+    ]).flat())
   };
   const lifecycle = deriveStrategyLifecycle(db, "trend");
   assert.equal(lifecycle.stage, "degraded");

@@ -16,11 +16,11 @@ export function registerEventSourceRoutes(app, ctx) {
     const name = String(body.name ?? existing?.name ?? "").trim();
     const type = String(body.type ?? existing?.type ?? "").trim();
     const url = normalizedUrl(body.url ?? existing?.url);
-    const trustScore = Number(body.trustScore ?? existing?.trustScore ?? 70);
+    const requestedTrustScore = Number(body.trustScore ?? existing?.trustScore ?? 20);
     if (!name || name.length > 80) throw new Error("事件源名称必须为 1–80 个字符");
     if (!["rss", "html"].includes(type)) throw new Error("事件源类型只允许 rss/html");
-    if (!Number.isFinite(trustScore) || trustScore < 1 || trustScore > 100) throw new Error("可信度必须是 1–100 的数字");
-    return { name, type, url, trustScore, category: String(body.category ?? existing?.category ?? "自定义").trim().slice(0, 40) || "自定义" };
+    if (!Number.isFinite(requestedTrustScore) || requestedTrustScore < 1 || requestedTrustScore > 100) throw new Error("可信度必须是 1–100 的数字");
+    return { name, type, url, category: String(body.category ?? existing?.category ?? "自定义").trim().slice(0, 40) || "自定义" };
   }
 
   const duplicateUrl = (url, excludeId = null) => (db.eventSources || []).find((source) => {
@@ -41,6 +41,10 @@ export function registerEventSourceRoutes(app, ctx) {
     const source = {
       id: id("event_source"),
       ...input,
+      trustScore: 20,
+      trustTier: "unverified_custom",
+      verifiedOrigin: false,
+      systemManaged: false,
       enabled: req.body.enabled !== false,
       createdAt: nowIso()
     };
@@ -64,7 +68,14 @@ export function registerEventSourceRoutes(app, ctx) {
     }
     const duplicate = duplicateUrl(input.url, source.id);
     if (duplicate) return res.status(409).json({ error: `该 URL 已配置为「${duplicate.name}」`, existingId: duplicate.id });
+    const originChanged = input.url !== normalizedUrl(source.url);
     Object.assign(source, input);
+    if (originChanged) Object.assign(source, {
+      trustScore: 20,
+      trustTier: "unverified_custom",
+      verifiedOrigin: false,
+      systemManaged: false
+    });
     if (req.body.enabled !== undefined) source.enabled = req.body.enabled !== false;
     source.updatedAt = nowIso();
     appendAudit(db, `更新事件源：${source.name}${req.body.enabled === false ? "(停用)" : req.body.enabled === true ? "(启用)" : ""}`, source.id, db.user.name);
@@ -110,5 +121,5 @@ export function registerEventSourceRoutes(app, ctx) {
     persist(res, await refreshOnchainSignals(db));
   });
 
-  app.get("/api/event-sources", (_req, res) => res.json(db.eventSources || []));
+  app.get("/api/event-sources", requirePermission("market.read"), (_req, res) => res.json(db.eventSources || []));
 }

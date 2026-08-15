@@ -3,8 +3,10 @@ import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { closedTradePosterPayload, deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster, resolveClosedTradePosterBasis } from "./positionPoster.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { canonicalPositionKey } from "./positionIdentity.mjs";
 
 function number(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -131,8 +133,9 @@ export async function sendTelegramPositionPoster(db, position, options = {}) {
 
 export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
   const status = telegramStatus();
-  const share = deriveClosedTradeShare(trade);
-  if (!status.profitPosterEnabled || !status.configured || !(Number(share.pnl) > status.minPnlUsdt)) return { status: "disabled_or_unconfigured", trade: share };
+  const decision = closedTradePosterEligibility(trade, status);
+  const share = decision.share;
+  if (!decision.ok) return { status: decision.reason, trade: share };
   const notification = addNotification(db, { severity: "success", eventType: "closed_trade_profit_poster", title: `已平仓净盈利海报：${share.symbol}`, body: `${share.symbol} ${share.side} 净实现 ${share.netPnl?.toFixed?.(2)} USDT` });
   try {
     const poster = await renderClosedTradePoster(trade);
@@ -152,6 +155,19 @@ function closedTradePosterKey(lifecycle) {
   return `closed_trade:${lifecycle.key}`;
 }
 
+export function closedTradePosterEligibility(trade, status = telegramStatus()) {
+  const share = deriveClosedTradeShare(trade || {});
+  if (!status.profitPosterEnabled || !status.configured) return { ok: false, reason: "disabled_or_unconfigured", share };
+  const pnl = share.netPnl === null || share.netPnl === undefined || share.netPnl === "" ? null : Number(share.netPnl);
+  if (!Number.isFinite(pnl) || pnl <= status.minPnlUsdt) return { ok: false, reason: "net_pnl_below_threshold", share };
+  if (status.minRoiPct > 0) {
+    const roiPct = share.roiPct === null || share.roiPct === undefined || share.roiPct === "" ? null : Number(share.roiPct);
+    if (!Number.isFinite(roiPct)) return { ok: false, reason: "roi_basis_unavailable", share };
+    if (roiPct < status.minRoiPct) return { ok: false, reason: "roi_below_threshold", share };
+  }
+  return { ok: true, reason: null, share };
+}
+
 export function queueClosedTradeProfitPosters(db) {
   const status = telegramStatus();
   if (!status.profitPosterEnabled || !status.configured) return { status: "disabled_or_unconfigured", queued: 0 };
@@ -165,11 +181,11 @@ export function queueClosedTradeProfitPosters(db) {
   let queued = 0;
   for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
     if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) continue;
-    if (!(Number(lifecycle.netRealizedPnl) > status.minPnlUsdt)) continue;
     if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) continue;
     const key = closedTradePosterKey(lifecycle);
     if (db.telegramPosterOutbox.some((item) => item.idempotencyKey === key)) continue;
     const trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle));
+    if (!closedTradePosterEligibility(trade, status).ok) continue;
     db.telegramPosterOutbox.unshift({
       id: `tgposter_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
       idempotencyKey: key,
@@ -198,14 +214,21 @@ export async function dispatchClosedTradePosterOutbox(db, options = {}) {
   let sent = 0;
   for (const item of pending) {
     const lifecycle = lifecycleByKey.get(item.tradeLifecycleKey);
-    if (!lifecycle || !(Number(lifecycle.netRealizedPnl) > status.minPnlUsdt)) {
+    if (!lifecycle) {
       item.status = "cancelled";
-      item.lastError = lifecycle ? "net_pnl_below_threshold" : "authoritative_lifecycle_missing";
+      item.lastError = "authoritative_lifecycle_missing";
       item.updatedAt = nowIso();
       continue;
     }
     item.fillIds = lifecycle.fills.map((fill) => fill.id).filter(Boolean);
     item.trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle));
+    const decision = closedTradePosterEligibility(item.trade, status);
+    if (!decision.ok) {
+      item.status = "cancelled";
+      item.lastError = decision.reason;
+      item.updatedAt = nowIso();
+      continue;
+    }
     item.attempts = Number(item.attempts || 0) + 1;
     item.updatedAt = nowIso();
     const result = await sendTelegramClosedTradePoster(db, item.trade);
@@ -239,7 +262,7 @@ export async function processClosedTradeProfitPosters(db, options = {}) {
 }
 
 function positionKey(position, share) {
-  return position.id || `${share.exchange}:${share.symbol}:${share.side}`;
+  return canonicalPositionKey(position) || `${share.exchange}:${share.symbol}:${share.side}`;
 }
 
 function shouldPublish(position, share, status, now) {
@@ -247,7 +270,8 @@ function shouldPublish(position, share, status, now) {
   const pnl = Number(share.pnl);
   const roiPct = share.roiPct === null ? null : Number(share.roiPct);
   if (!Number.isFinite(pnl) || pnl <= status.minPnlUsdt) return { ok: false, reason: "pnl_below_threshold" };
-  if (roiPct !== null && Number.isFinite(roiPct) && roiPct < status.minRoiPct) return { ok: false, reason: "roi_below_threshold" };
+  if (status.minRoiPct > 0 && !Number.isFinite(roiPct)) return { ok: false, reason: "roi_basis_unavailable" };
+  if (status.minRoiPct > 0 && roiPct < status.minRoiPct) return { ok: false, reason: "roi_below_threshold" };
   const lastAt = position.telegramShare?.lastSentAt ? new Date(position.telegramShare.lastSentAt).getTime() : 0;
   const cooldownMs = Math.max(1, status.cooldownMinutes) * 60 * 1000;
   if (lastAt && now - lastAt < cooldownMs) return { ok: false, reason: "cooldown" };
@@ -258,7 +282,19 @@ export async function publishProfitablePositionPosters(db) {
   const status = telegramStatus();
   const actions = [];
   const now = Date.now();
-  for (const position of db.positions || []) {
+  const grouped = new Map();
+  for (const row of db.positions || []) {
+    const key = canonicalPositionKey(row);
+    if (!key) continue;
+    const group = grouped.get(key) || {};
+    if (row.source === "execution_engine") group.engine = row;
+    else if (["exchange_rest", "exchange_ws"].includes(row.source)) {
+      if (!group.exchange || row.source === "exchange_rest") group.exchange = row;
+    }
+    grouped.set(key, group);
+  }
+  for (const [key, group] of grouped) {
+    const position = { ...(group.engine || {}), ...(group.exchange || {}), id: key, telegramShare: group.exchange?.telegramShare || group.engine?.telegramShare };
     const share = derivePositionShare(position);
     const decision = shouldPublish(position, share, status, now);
     if (!decision.ok) continue;
@@ -271,7 +307,8 @@ export async function publishProfitablePositionPosters(db) {
       lastRoiPct: share.roiPct,
       notificationId: result.notification?.id
     };
+    for (const row of [group.engine, group.exchange].filter(Boolean)) row.telegramShare = position.telegramShare;
     actions.push({ symbol: share.symbol, action: "telegram_profit_poster", status: result.status, pnl: share.pnl, roiPct: share.roiPct });
   }
-  return { checked: (db.positions || []).length, actions };
+  return { checked: grouped.size, actions };
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDecisionCalibrationReport } from "../server/decisionCalibration.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function fixture(count) {
   const fills = [];
@@ -30,7 +31,7 @@ function fixture(count) {
       createdAt: new Date(Date.UTC(2026, 7, 1, 0, index)).toISOString()
     });
   }
-  return { fills, tradePlans };
+  return { fills: financiallyReconciledFills(fills), tradePlans };
 }
 
 test("决策校准按品种×周期×regime×setup归因，但只生成影子乘数", () => {
@@ -54,9 +55,11 @@ test("小样本只能继续收集，不能改变实盘权重", () => {
 test("校准报告按净值识别费用翻转，不把毛盈利报告为100%胜率", () => {
   const db = fixture(10);
   for (let index = 0; index < 10; index += 1) {
-    db.fills[index].realizedPnl = 1;
-    db.fills[index].feeUsdt = 1.2;
-    db.fills.push({ id: `entry-${index}`, kind: "entry", tradePlanId: `plan-${index}`, executionOrderId: `exec-${index}`, feeUsdt: 0.8, createdAt: `2026-07-31T${String(index).padStart(2, "0")}:00:00Z` });
+    const close = db.fills.find((fill) => fill.kind === "close" && fill.executionOrderId === `exec-${index}`);
+    const entry = db.fills.find((fill) => fill.kind === "entry" && fill.executionOrderId === `exec-${index}`);
+    close.realizedPnl = 1;
+    close.feeUsdt = 1.2;
+    entry.feeUsdt = 0.8;
   }
   const segment = buildDecisionCalibrationReport(db, { minTrades: 10 }).segments[0];
   assert.equal(segment.winRatePct, 0);

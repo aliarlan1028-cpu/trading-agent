@@ -5,27 +5,39 @@ import { spawn } from "node:child_process";
 import simpleGit from "simple-git";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { assertSafeGitHubRepositoryUrl, fetchExternalText } from "./externalInputSafety.mjs";
+import { containsLikelySecret } from "./secretRedaction.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const skillsDir = path.join(rootDir, "data", "skills");
+const SANDBOX_ALLOWED_COMMANDS = new Set(["sh", "node", "python3"]);
+const SANDBOX_TIMEOUT_MS = 30_000;
+const SANDBOX_OUTPUT_BYTES = 1024 * 1024;
+const SANDBOX_MAX_CONCURRENCY = 2;
+let activeSandboxRuns = 0;
 
 export async function fetchSkillPackage(db, payload = {}) {
   await fs.mkdir(skillsDir, { recursive: true });
   const skillId = id("skill");
   const target = path.join(skillsDir, skillId);
-  if (payload.sourceUrl?.includes("github.com")) {
-    await assertSafeGitHubRepositoryUrl(payload.sourceUrl);
-    await simpleGit().clone(payload.sourceUrl, target, ["--depth", "1"]);
-  } else {
-    await fs.mkdir(target, { recursive: true });
-    let skillMd = payload.skillMd;
-    if (!skillMd && payload.sourceUrl) {
-      const { response, text } = await fetchExternalText(payload.sourceUrl, { maxBytes: 1024 * 1024, timeoutMs: 15_000 });
-      if (!response.ok) throw new Error(`Skill URL fetch failed ${response.status}`);
-      skillMd = text;
+  try {
+    if (payload.sourceUrl?.includes("github.com")) {
+      await assertSafeGitHubRepositoryUrl(payload.sourceUrl);
+      await simpleGit().clone(payload.sourceUrl, target, ["--depth", "1"]);
+    } else {
+      await fs.mkdir(target, { recursive: true });
+      let skillMd = payload.skillMd;
+      if (!skillMd && payload.sourceUrl) {
+        const { response, text } = await fetchExternalText(payload.sourceUrl, { maxBytes: 1024 * 1024, timeoutMs: 15_000 });
+        if (!response.ok) throw new Error(`Skill URL fetch failed ${response.status}`);
+        skillMd = text;
+      }
+      await fs.writeFile(path.join(target, "SKILL.md"), skillMd || "# Imported Skill\n\nNo instructions.", { encoding: "utf8", mode: 0o600 });
     }
-    await fs.writeFile(path.join(target, "SKILL.md"), skillMd || "# Imported Skill\n\nNo instructions.", "utf8");
+    await validateSkillPackageTree(target);
+  } catch (error) {
+    await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+    throw error;
   }
   const manifest = await readSkillManifest(target);
   const skill = {
@@ -63,17 +75,58 @@ export async function runSkillSandbox(db, skillId, args = {}) {
   const command = args.command || "sh";
   const commandArgs = args.commandArgs || ["-lc", "ls -la && test -f SKILL.md && sed -n '1,80p' SKILL.md"];
   const result = await runInContainer(skill.localPath, command, commandArgs);
-  const run = { id: id("skillrun"), skillId, status: result.code === 0 ? "ok" : "failed", output: result.output.slice(0, 4000), createdAt: nowIso() };
+  const runStatus = result.busy ? "busy"
+    : result.timedOut ? "timeout"
+    : result.outputLimited ? "output_limit"
+    : result.code === 0 ? "ok" : "failed";
+  const run = { id: id("skillrun"), skillId, status: runStatus, output: result.output.slice(0, 4000), createdAt: nowIso() };
   db.skillRuns.unshift(run);
   appendAudit(db, "沙箱运行 Skill", run.id, "SkillSandbox", run.status === "ok" ? "info" : "warning");
   appendTrace(db, "skill_sandbox", skill.name, run.status);
   return run;
 }
 
+async function assertContainedRegularFile(root, candidate) {
+  const rootReal = await fs.realpath(root);
+  const stat = await fs.lstat(candidate);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1) throw new Error("Skill package contains a linked or non-regular entry file");
+  const real = await fs.realpath(candidate);
+  if (real !== rootReal && !real.startsWith(`${rootReal}${path.sep}`)) throw new Error("Skill entry escapes package root");
+  return real;
+}
+
+export async function validateSkillPackageTree(root) {
+  const rootReal = await fs.realpath(root);
+  let fileCount = 0;
+  async function walk(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      const full = path.join(dir, entry.name);
+      const stat = await fs.lstat(full);
+      if (stat.isSymbolicLink()) throw new Error(`Skill package rejects links: ${path.relative(rootReal, full)}`);
+      if (stat.isDirectory()) {
+        const real = await fs.realpath(full);
+        if (!real.startsWith(`${rootReal}${path.sep}`)) throw new Error("Skill directory escapes package root");
+        await walk(full);
+      } else if (stat.isFile()) {
+        if (stat.nlink > 1) throw new Error(`Skill package rejects hard links: ${path.relative(rootReal, full)}`);
+        fileCount += 1;
+      } else {
+        throw new Error(`Skill package rejects special files: ${path.relative(rootReal, full)}`);
+      }
+    }
+  }
+  await walk(rootReal);
+  if (!fileCount) throw new Error("Skill package contains no regular files");
+  return { rootReal, fileCount };
+}
+
 async function readSkillManifest(dir) {
   try {
     const entryPath = await findSkillEntry(dir);
-    const text = await fs.readFile(entryPath, "utf8");
+    const safeEntry = await assertContainedRegularFile(dir, entryPath);
+    const text = await fs.readFile(safeEntry, "utf8");
     const origin = await readJsonIfExists(path.join(path.dirname(entryPath), ".clawhub", "origin.json"));
     const lock = await readJsonIfExists(path.join(path.dirname(entryPath), ".clawhub", "lock.json"));
     const name = text.match(/^#\s+(.+)$/m)?.[1];
@@ -103,6 +156,8 @@ async function readSkillManifest(dir) {
 
 async function readJsonIfExists(filePath) {
   try {
+    const stat = await fs.lstat(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1) return null;
     return JSON.parse(await fs.readFile(filePath, "utf8"));
   } catch {
     return null;
@@ -114,7 +169,8 @@ async function findSkillEntry(dir, depth = 0) {
   for (const name of names) {
     const filePath = path.join(dir, name);
     try {
-      await fs.access(filePath);
+      const stat = await fs.lstat(filePath);
+      if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink > 1) throw new Error("Skill entry must be an unlinked regular file");
       return filePath;
     } catch {}
   }
@@ -129,7 +185,18 @@ async function findSkillEntry(dir, depth = 0) {
   throw new Error("Skill entry file not found");
 }
 
-function runInContainer(workdir, command, commandArgs) {
+export function runInContainer(workdir, command, commandArgs, options = {}) {
+  if (!SANDBOX_ALLOWED_COMMANDS.has(String(command || ""))) {
+    return Promise.resolve({ code: 126, output: "Sandbox command is not allowed", rejected: true });
+  }
+  if (!Array.isArray(commandArgs) || commandArgs.length > 32 || commandArgs.some((arg) => typeof arg !== "string" || arg.length > 4096)) {
+    return Promise.resolve({ code: 126, output: "Sandbox command arguments are invalid", rejected: true });
+  }
+  const maxConcurrency = Number(options.maxConcurrency || SANDBOX_MAX_CONCURRENCY);
+  if (activeSandboxRuns >= maxConcurrency) {
+    return Promise.resolve({ code: 75, output: "Sandbox concurrency limit reached", busy: true });
+  }
+  activeSandboxRuns += 1;
   return new Promise((resolve) => {
     const image = process.env.SKILL_SANDBOX_IMAGE || "node:20-alpine";
     const dockerArgs = [
@@ -138,27 +205,78 @@ function runInContainer(workdir, command, commandArgs) {
       "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m",
       "-v", `${workdir}:/skill:ro`, "-w", "/skill", image, command, ...commandArgs
     ];
-    const child = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
+    const spawnImpl = options.spawnImpl || spawn;
+    const child = spawnImpl("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
-    child.stdout.on("data", (data) => { output += data.toString(); });
-    child.stderr.on("data", (data) => { output += data.toString(); });
-    child.on("error", (error) => resolve({ code: 127, output: `Docker sandbox unavailable: ${error.message}` }));
-    child.on("close", (code) => resolve({ code, output }));
+    let outputBytes = 0;
+    let settled = false;
+    let timedOut = false;
+    let outputLimited = false;
+    const timeoutMs = Number(options.timeoutMs || SANDBOX_TIMEOUT_MS);
+    const maxOutputBytes = Number(options.maxOutputBytes || SANDBOX_OUTPUT_BYTES);
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      activeSandboxRuns = Math.max(0, activeSandboxRuns - 1);
+      resolve({ ...result, output, timedOut, outputLimited });
+    };
+    const stop = () => {
+      try { child.kill("SIGKILL"); } catch {}
+    };
+    const append = (data) => {
+      if (settled || outputLimited) return;
+      const chunk = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+      const remaining = Math.max(0, maxOutputBytes - outputBytes);
+      if (remaining) output += chunk.subarray(0, remaining).toString("utf8");
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) {
+        outputLimited = true;
+        output += "\n[output truncated: sandbox output limit exceeded]";
+        stop();
+      }
+    };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    child.once("error", (error) => finish({ code: 127, output: `${output}\nDocker sandbox unavailable: ${error.message}`.trim() }));
+    child.once("close", (code) => finish({ code: timedOut ? 124 : outputLimited ? 137 : code }));
+    const timer = setTimeout(() => {
+      timedOut = true;
+      output += "\n[sandbox terminated: wall-clock timeout exceeded]";
+      stop();
+      // Broken/mocked child processes are not allowed to hold the HTTP request forever.
+      setTimeout(() => finish({ code: 124 }), 250).unref?.();
+    }, timeoutMs);
+    timer.unref?.();
   });
 }
 
 // 读取 skill 的 SKILL.md 方法论正文(供"信任后注入 AI 提示词"用,不依赖 Docker 沙箱)。
 export async function readSkillInstructions(skill, maxChars = 4000) {
   if (!skill?.localPath) return "";
+  try {
+    await validateSkillPackageTree(skill.localPath);
+  } catch {
+    return "";
+  }
   const candidate = skill.entryFile && skill.entryFile !== "native"
     ? path.join(skill.localPath, skill.entryFile)
     : path.join(skill.localPath, "SKILL.md");
   try {
-    return String(await fs.readFile(candidate, "utf8")).slice(0, maxChars);
+    const safeCandidate = await assertContainedRegularFile(skill.localPath, candidate);
+    const text = String(await fs.readFile(safeCandidate, "utf8")).slice(0, maxChars);
+    if (containsLikelySecret(text)) throw new Error("Skill instructions contain secret material and cannot be trusted");
+    return text;
   } catch {
     try {
+      // The tree was already validated above. The fallback only locates a
+      // differently named manifest; it must not turn a safety failure into a
+      // successful read.
       const entry = await findSkillEntry(skill.localPath);
-      return String(await fs.readFile(entry, "utf8")).slice(0, maxChars);
+      const safeEntry = await assertContainedRegularFile(skill.localPath, entry);
+      const text = String(await fs.readFile(safeEntry, "utf8")).slice(0, maxChars);
+      if (containsLikelySecret(text)) throw new Error("Skill instructions contain secret material and cannot be trusted");
+      return text;
     } catch {
       return "";
     }

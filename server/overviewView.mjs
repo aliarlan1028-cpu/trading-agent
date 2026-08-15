@@ -1,8 +1,12 @@
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { OPEN_EXECUTION_STATUS_LIST } from "./executionStates.mjs";
 
 const ACTIVE_PLAN_STATES = new Set(["armed", "awaiting_approval", "approved", "executing", "monitoring"]);
-const ACTIVE_ORDER_STATES = new Set(["pending", "awaiting_approval", "executing", "submitted", "entry_pending", "entry_partial", "entry_filled", "protecting"]);
+const ACTIVE_ORDER_STATES = new Set(["pending", "awaiting_approval", "executing", ...OPEN_EXECUTION_STATUS_LIST]);
 const ACTIVE_SETUP_STATES = new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]);
+const REVIEW_ATTENTION_STATES = new Set(["pending", "processing", "failed", "error", "retry", "awaiting_approval"]);
+const NATIVE_ATTENTION_REVIEW_LIMIT = 60;
+const NATIVE_RECENT_REVIEW_LIMIT = 40;
 
 function recentWithActive(rows = [], activeStates, limit) {
   const list = Array.isArray(rows) ? rows : [];
@@ -142,6 +146,15 @@ function compactReview(row) {
   return review;
 }
 
+function compactNativeReviews(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const attention = list.filter((row) => REVIEW_ATTENTION_STATES.has(String(row?.status || "").toLowerCase())).slice(0, NATIVE_ATTENTION_REVIEW_LIMIT);
+  const attentionKeys = new Set(attention.map((row) => row?.id || row));
+  const recentCompleted = list.filter((row) => !attentionKeys.has(row?.id || row)).slice(0, NATIVE_RECENT_REVIEW_LIMIT);
+  // 轮询快照有总硬上限；完整异常/历史通过分页 API 获取，总量与分状态计数由 tradeDataStatus 提供。
+  return [...attention, ...recentCompleted].map(compactReview);
+}
+
 function compactExecutionOrder(row) {
   if (!row || typeof row !== "object") return row;
   const { strategyInstance: _strategyInstance, reviewLearning: _reviewLearning, events: _events, ...order } = row;
@@ -252,7 +265,8 @@ function compactClosedTradeLifecycle(lifecycle = {}) {
     feeUsdt: Number(lifecycle.feeUsdt || 0),
     entryFeeUsdt: Number(lifecycle.entryFeeUsdt || 0),
     fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt || 0),
-    netRealizedPnl: Number(lifecycle.netRealizedPnl || 0),
+    netRealizedPnl: lifecycle.netRealizedPnl === null || lifecycle.netRealizedPnl === undefined || lifecycle.netRealizedPnl === "" ? null : Number(lifecycle.netRealizedPnl),
+    financialBasis: lifecycle.financialBasis || null,
     createdAt: lifecycle.lastClosedAt || row.createdAt
   };
 }
@@ -333,7 +347,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 3).map(compactAccountSnapshot),
     agentRuns: (overview.agentRuns || []).slice(0, 8).map(compactAgentRun),
     knowledge: compactKnowledge(overview.knowledge),
-    reviews: (overview.reviews || []).map(compactReview),
+    reviews: compactNativeReviews(overview.reviews),
     executionOrders: (overview.executionOrders || []).map(compactExecutionOrder),
     analysisBundles: [],
     evidenceBundles: [],

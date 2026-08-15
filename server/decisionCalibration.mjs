@@ -1,4 +1,4 @@
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
 
 function finite(value) {
   return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
@@ -29,8 +29,9 @@ export function buildDecisionCalibrationReport(db, options = {}) {
   const minTrades = Math.max(10, Number(options.minTrades || process.env.DECISION_CALIBRATION_MIN_TRADES || 20));
   const rows = [];
   for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    if (!finite(lifecycle.netRealizedPnl)) continue;
     const fill = lifecycle.representative;
-    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId) || item.id === fill.executionOrderId);
+    const { plan } = resolveTradeContext(db, lifecycle);
     const context = plan?.decisionContext;
     if (!context?.setupType) continue;
     rows.push({

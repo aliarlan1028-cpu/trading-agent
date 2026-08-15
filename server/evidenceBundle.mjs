@@ -3,6 +3,7 @@ import { fetchGlobalMarket, fetchSmartMoney } from "./marketSignals.mjs";
 import { latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { refreshAccounting } from "./accounting.mjs";
 import { buildMediumTermAnalytics } from "./mediumTermAnalytics.mjs";
+import { marketFactFreshness } from "./marketFreshness.mjs";
 
 export const EVIDENCE_TTL_MS = Object.freeze({
   ticker: 10_000,
@@ -116,11 +117,22 @@ function compactSymbolEvidence(db, symbol, spec, smartMoney, now, analytics = nu
   const market = (db.markets || []).find((row) => row.symbol === symbol) || {};
   const candleSlot = market.candlesByTf?.["1h"] || {};
   const candleQuality = market.candleQualityByTf?.["1h"] || (market.candleQuality?.timeframe === "1h" ? market.candleQuality : null);
-  const tickerFetchedAt = newestTimestamp(market.lastRealtimeAt, market.tickerSyncedAt, market.lastSyncedAt);
-  const streamIsNewest = tickerFetchedAt && market.lastRealtimeAt === tickerFetchedAt;
-  const tickerFresh = freshness(tickerFetchedAt, EVIDENCE_TTL_MS.ticker, now);
+  const tickerFetchedAt = market.tickerReceivedAt || newestTimestamp(market.lastRealtimeAt, market.tickerSyncedAt, market.lastSyncedAt);
+  const streamIsNewest = market.lastRealtimeSource === "OKX_WS";
+  const marketFacts = marketFactFreshness(market, {
+    now,
+    tickerMaxAgeMs: EVIDENCE_TTL_MS.ticker,
+    microMaxAgeMs: EVIDENCE_TTL_MS.microstructure
+  });
+  const tickerFresh = {
+    ...freshness(tickerFetchedAt, EVIDENCE_TTL_MS.ticker, now),
+    status: marketFacts.ticker.ok ? "fresh" : marketFacts.ticker.reason || "stale"
+  };
   const candleFresh = freshness(candleSlot.syncedAt || market.candlesSyncedAt, EVIDENCE_TTL_MS.candles, now);
-  const microFresh = freshness(market.microSyncedAt, EVIDENCE_TTL_MS.microstructure, now);
+  const microFresh = {
+    ...freshness(market.microReceivedAt || market.microSyncedAt, EVIDENCE_TTL_MS.microstructure, now),
+    status: marketFacts.micro.ok ? "fresh" : marketFacts.micro.reason || "stale"
+  };
   const smartFresh = freshness(smartMoney?.fetchedAt, EVIDENCE_TTL_MS.smartMoney, now);
   const specFresh = freshness(spec?.fetchedAt, EVIDENCE_TTL_MS.contractSpec, now);
   const lastCandle = (candleSlot.candles || market.candles || []).at(-1);
@@ -133,8 +145,9 @@ function compactSymbolEvidence(db, symbol, spec, smartMoney, now, analytics = nu
     symbol,
     ticker: {
       evidenceId: evidenceId("ticker", symbol, tickerFresh.fetchedAt), source: streamIsNewest ? "OKX_PUBLIC_STREAM" : "OKX_PUBLIC_API", endpoint: streamIsNewest ? "tickers channel" : "/api/v5/market/ticker",
-      ...tickerFresh, quality: finite(market.price) && Number(market.price) > 0 ? "passed" : "failed",
-      data: finite(market.price) ? { price: Number(market.price), high24h: finite(market.high24h) ? Number(market.high24h) : null, low24h: finite(market.low24h) ? Number(market.low24h) : null, change24hPct: finite(market.changePct) ? Number(market.changePct) : null, sourceAt: streamIsNewest ? null : market.tickerSourceAt || null } : null
+      ...tickerFresh, sourceAt: market.tickerSourceAt || null, receivedAt: tickerFetchedAt || null,
+      quality: finite(market.price) && Number(market.price) > 0 && marketFacts.ticker.ok ? "passed" : "failed",
+      data: finite(market.price) ? { price: Number(market.price), high24h: finite(market.high24h) ? Number(market.high24h) : null, low24h: finite(market.low24h) ? Number(market.low24h) : null, change24hPct: finite(market.changePct) ? Number(market.changePct) : null, sourceAt: market.tickerSourceAt || null, receivedAt: tickerFetchedAt || null } : null
     },
     candles: {
       evidenceId: evidenceId("candles", symbol, candleFresh.fetchedAt), source: "OKX_PUBLIC_API", endpoint: "/api/v5/market/candles",
@@ -143,7 +156,7 @@ function compactSymbolEvidence(db, symbol, spec, smartMoney, now, analytics = nu
     },
     microstructure: {
       evidenceId: evidenceId("micro", symbol, microFresh.fetchedAt), source: "OKX_PUBLIC_API", endpoint: "funding-rate+open-interest+books",
-      ...microFresh, quality: finite(market.spreadBps) && Number(market.spreadBps) >= 0 && finite(market.depthUsdt) && Number(market.depthUsdt) > 0 && finite(market.fundingRate) && finite(market.openInterest) ? "passed" : "failed",
+      ...microFresh, quality: marketFacts.micro.ok && finite(market.spreadBps) && Number(market.spreadBps) >= 0 && finite(market.depthUsdt) && Number(market.depthUsdt) > 0 && finite(market.fundingRate) && finite(market.openInterest) ? "passed" : "failed",
       data: { fundingRatePct: finite(market.fundingRate) ? Number(market.fundingRate) : null, openInterest: finite(market.openInterest) ? Number(market.openInterest) : null, spreadBps: finite(market.spreadBps) ? Number(market.spreadBps) : null, depthUsdt: finite(market.depthUsdt) ? Number(market.depthUsdt) : null, bookImbalancePct: finite(market.bookImbalancePct) ? Number(market.bookImbalancePct) : null, sourceTimestamps: market.microSourceTimestamps || null }
     },
     contractSpec: {
@@ -190,7 +203,8 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
 
   for (const symbol of symbols) {
     const market = (db.markets || []).find((row) => row.symbol === symbol) || {};
-    if (shouldRefresh && (expired(newestTimestamp(market.lastRealtimeAt, market.tickerSyncedAt, market.lastSyncedAt), EVIDENCE_TTL_MS.ticker, now) || !finite(market.price) || Number(market.price) <= 0)) {
+    const facts = marketFactFreshness(market, { now, tickerMaxAgeMs: EVIDENCE_TTL_MS.ticker, microMaxAgeMs: EVIDENCE_TTL_MS.microstructure });
+    if (shouldRefresh && (!facts.ticker.ok || !finite(market.price) || Number(market.price) <= 0)) {
       jobs.push(syncPublicMarket(db, "OKX", symbol).catch((error) => refreshErrors.push({ scope: symbol, kind: "ticker", error: error.message })));
     }
     const candleAt = market.candlesByTf?.["1h"]?.syncedAt || market.candlesSyncedAt;
@@ -198,7 +212,7 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
     if (shouldRefresh && (expired(candleAt, EVIDENCE_TTL_MS.candles, now) || oneHourQuality?.status !== "passed")) {
       jobs.push(syncPublicKlines(db, "OKX", symbol, "1h").catch((error) => refreshErrors.push({ scope: symbol, kind: "candles", error: error.message })));
     }
-    if (shouldRefresh && (expired(market.microSyncedAt, EVIDENCE_TTL_MS.microstructure, now) || !finite(market.spreadBps))) {
+    if (shouldRefresh && (!facts.micro.ok || !finite(market.spreadBps))) {
       jobs.push(syncMicrostructure(db, "OKX", symbol).catch((error) => refreshErrors.push({ scope: symbol, kind: "microstructure", error: error.message })));
     }
     const previous = baseBundle?.symbols?.find((row) => row.symbol === symbol);

@@ -108,10 +108,9 @@ export async function refreshMeNewsFlash(db, options = {}) {
       for (const fact of urgent) {
         if (known.has(fact.id)) continue;
         pending.push({
-          kind: "breaking_news", factId: fact.id, title: fact.title, summary: fact.summary,
-          sourceName: fact.sourceName, sourceUrl: fact.sourceUrl, symbols: fact.symbols,
+          kind: "breaking_news", factId: fact.id, sourceId: fact.sourceId, symbols: fact.symbols,
           impact: fact.values?.impact, publishedAt: fact.publishedAt, queuedAt: observedAt,
-          analysisContextOnly: true, mayTriggerTradeDirectly: false
+          analysisContextOnly: true, mayTriggerTradeDirectly: false, untrustedContentExcluded: true
         });
         createNotification(db, {
           eventType: "important_news", severity: "warning", title: "重要快讯进入 AI 复核",

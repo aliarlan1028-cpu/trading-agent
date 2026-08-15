@@ -742,7 +742,6 @@ export function MandatePanel({ data, action }) {
     const minLeverage = Math.max(1, Math.min(maxLeverage, Number(form.minLeverage || 1)));
     const body = {
       name: form.name,
-      status: "active",
       exchanges: ["OKX"],
       marketTypes: ["perpetual_usdt"],
       allowedSymbols: symbols,
@@ -767,7 +766,8 @@ export function MandatePanel({ data, action }) {
       allow_add_position: form.allowAddPosition === true,
       validUntil: new Date(Date.now() + Math.max(1, Math.min(365, Number(form.validDays || 7))) * 24 * 60 * 60 * 1000).toISOString()
     };
-    await action(mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST");
+    const saved = await action(mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST");
+    if (!mandate.id && saved?.ok !== false && saved?.id) await action(`/api/mandates/${saved.id}/activate`, {});
   }
   return (
     <form className="panelForm" onSubmit={submit}>

@@ -2,11 +2,11 @@
 // 从 index.mjs 按 registrar 范式迁出。信任=把 SKILL.md 方法论注入 AI 决策(需扫描通过+二次确认,
 // 进小额试用生命周期)的语义逐字保留。依赖经 ctx 注入。
 export function registerSkillRoutes(app, ctx) {
-  const { db, persist, requirePermission, id, nowIso, appendAudit, fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox } = ctx;
+  const { db, persist, requirePermission, id, nowIso, appendAudit, fetchSkillPackage, scanSkill, installSkill, verifySkillPackageIntegrity, readSkillInstructions, runSkillSandbox } = ctx;
   const findSkill = (idv) => db.skills.find((item) => item.id === idv);
   const notFound = (res) => res.status(404).json({ error: "Skill not found" });
 
-  app.get("/api/skills", (_req, res) => res.json(db.skills));
+  app.get("/api/skills", requirePermission("knowledge.read"), (_req, res) => res.json(db.skills));
 
   app.post("/api/skills/import", requirePermission("write:skills"), (req, res) => {
     const skill = {
@@ -89,6 +89,8 @@ export function registerSkillRoutes(app, ctx) {
     if (!skill) return notFound(res);
     if (skill.native) return res.status(400).json({ error: "内置技能无需信任,直接启用即可" });
     if (!["通过", "需复核"].includes(skill.scan)) return res.status(400).json({ error: "必须先安全扫描通过才能信任" });
+    const integrity = verifySkillPackageIntegrity?.(skill);
+    if (!integrity?.ok) return res.status(409).json({ error: `Skill 在扫描后发生变化，必须重新扫描：${integrity?.reason || "integrity_unavailable"}` });
     const instructions = await readSkillInstructions(skill).catch(() => "");
     if (!instructions.trim()) return res.status(400).json({ error: "读不到该 skill 的方法论正文(SKILL.md),无法注入决策——请确认导入内容非空" });
     skill.instructions = instructions;

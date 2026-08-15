@@ -1,7 +1,14 @@
 import crypto from "node:crypto";
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { appendAudit, appendTrace, findPendingOmsAmend, id, nowIso } from "./store.mjs";
+import { canonicalPositionDirection } from "./positionIdentity.mjs";
+import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
+import { applyTickerObservation } from "./marketObservation.mjs";
+import { reconcileAmendOmsOrder } from "./omsRecovery.mjs";
+
+const financialNumber = (value) => finiteFinancialNumber(value) ? Number(value) : null;
 
 // ws 库不走 undici 的全局代理；若环境配了代理（如本机 Clash），WS 需显式带 agent，否则直连被重置。
 function wsOptions() {
@@ -12,35 +19,144 @@ function wsOptions() {
 const BINANCE_PUBLIC_BASE = "wss://stream.binance.com:9443/stream";
 const BINANCE_USER_BASE = "wss://stream.binance.com:9443/ws";
 const BINANCE_REST_BASE = "https://api.binance.com";
-const OKX_PUBLIC_WS = "wss://ws.okx.com:8443/ws/v5/public";
-const OKX_PRIVATE_WS = "wss://ws.okx.com:8443/ws/v5/private";
 const runtime = {
   started: false,
+  generation: 0,
   sockets: new Map(),
-  reconnectTimers: new Map()
+  reconnectTimers: new Map(),
+  socketTimers: new Map()
 };
 let lastMsgSaveAt = 0; // 行情/私有 WS 消息触发的落盘全局节流时间戳（避免每条 tick 全库序列化）
 
+function socketTimerState(connectionId) {
+  let state = runtime.socketTimers.get(connectionId);
+  if (!state) {
+    state = { heartbeat: null, deadline: null, auth: null, subscribe: null, lastActivityAt: Date.now(), awaitingPong: false };
+    runtime.socketTimers.set(connectionId, state);
+  }
+  return state;
+}
+
+function clearSocketTimers(connectionId) {
+  const state = runtime.socketTimers.get(connectionId);
+  if (!state) return;
+  for (const timer of [state.heartbeat, state.deadline, state.auth, state.subscribe]) if (timer) clearTimeout(timer);
+  runtime.socketTimers.delete(connectionId);
+}
+
+function closeProtocolSocket(connection, socket, generation, reason) {
+  if (generation !== runtime.generation || runtime.sockets.get(connection.id) !== socket) return;
+  connection.status = "error";
+  connection.error = reason;
+  try { socket.terminate?.(); } catch { try { socket.close?.(4000, reason); } catch { /* noop */ } }
+}
+
+function startHeartbeat(connection, socket, generation) {
+  const state = socketTimerState(connection.id);
+  state.lastActivityAt = Date.now();
+  const intervalMs = Number(process.env.OKX_WS_HEARTBEAT_CHECK_MS || 5_000);
+  const idleMs = Number(process.env.OKX_WS_PING_IDLE_MS || 22_000);
+  const pongTimeoutMs = Number(process.env.OKX_WS_PONG_TIMEOUT_MS || 8_000);
+  const tick = () => {
+    if (generation !== runtime.generation || runtime.sockets.get(connection.id) !== socket || !runtime.started) return;
+    const current = socketTimerState(connection.id);
+    if (!current.awaitingPong && Date.now() - current.lastActivityAt >= idleMs) {
+      try {
+        socket.send("ping");
+        current.awaitingPong = true;
+        current.deadline = setTimeout(() => closeProtocolSocket(connection, socket, generation, "pong_timeout"), pongTimeoutMs);
+      } catch {
+        closeProtocolSocket(connection, socket, generation, "ping_send_failed");
+        return;
+      }
+    }
+    current.heartbeat = setTimeout(tick, intervalMs);
+  };
+  state.heartbeat = setTimeout(tick, intervalMs);
+}
+
+function noteSocketActivity(connectionId) {
+  const state = socketTimerState(connectionId);
+  state.lastActivityAt = Date.now();
+  state.awaitingPong = false;
+  if (state.deadline) clearTimeout(state.deadline);
+  state.deadline = null;
+}
+
 export function startRealtimeManager(db, saveDb, options = {}) {
   if (runtime.started && !options.force) return realtimeStatus(db);
+  if (options.force) resetRealtimeGeneration(db, "credentials_changed");
+  else if (!runtime.started) runtime.generation += 1;
   runtime.started = true;
   const okxKeys = process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE;
   // 自主交易统一使用 OKX。移除 Binance 连接，避免共享 symbol 行情被另一交易所覆盖。
   connectPublicMarket(db, saveDb, "OKX");
   removeConnection(db, "BINANCE", "public_market");
-  if (okxKeys) connectPrivateUser(db, saveDb, "OKX"); else removeConnection(db, "OKX", "private_user");
+  const binding = okxPrivateStreamBinding(db);
+  if (okxKeys && binding.ok) connectPrivateUser(db, saveDb, "OKX");
+  else {
+    removeConnection(db, "OKX", "private_user");
+    if (okxKeys && !binding.ok) {
+      const connection = ensureConnection(db, "OKX", "private_user");
+      connection.status = binding.reason;
+      connection.accountId = null;
+    }
+  }
   removeConnection(db, "BINANCE", "private_user");
   return realtimeStatus(db);
 }
 
+export function okxPrivateStreamBinding(db, expected = {}) {
+  const apiKey = process.env.OKX_API_KEY || "";
+  const fingerprint = apiKey ? crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null;
+  const accounts = (db.exchangeAccounts || []).filter((row) => row.exchange === "OKX" && row.readEnabled === true);
+  if (!fingerprint) return { ok: false, reason: "missing_credentials" };
+  if (accounts.length !== 1) return { ok: false, reason: "private_ws_account_binding_required", accountIds: accounts.map((row) => row.id) };
+  const account = accounts[0];
+  if (account.apiKeyFingerprint !== fingerprint) return { ok: false, reason: "private_ws_credential_mismatch", accountId: account.id };
+  const environment = okxEnvironmentConfig().name;
+  if (expected.accountId && expected.accountId !== account.id) return { ok: false, reason: "private_ws_account_binding_changed", accountId: account.id };
+  if (expected.fingerprint && expected.fingerprint !== fingerprint) return { ok: false, reason: "private_ws_credential_mismatch", accountId: account.id };
+  if (expected.environment && expected.environment !== environment) return { ok: false, reason: "private_ws_environment_mismatch", accountId: account.id };
+  return { ok: true, account, fingerprint, environment };
+}
+
 // 去掉不适用的连接记录（未配置的交易所），避免显示成失败连接。
 function removeConnection(db, exchange, streamType) {
+  for (const connection of db.realtimeConnections || []) {
+    if (connection.exchange !== exchange || connection.streamType !== streamType) continue;
+    const timer = runtime.reconnectTimers.get(connection.id);
+    if (timer) clearTimeout(timer);
+    runtime.reconnectTimers.delete(connection.id);
+    const socket = runtime.sockets.get(connection.id);
+    clearSocketTimers(connection.id);
+    runtime.sockets.delete(connection.id);
+    try { socket?.close(1000, "connection_removed"); } catch { /* noop */ }
+  }
   db.realtimeConnections = (db.realtimeConnections || []).filter((item) => !(item.exchange === exchange && item.streamType === streamType));
+}
+
+function resetRealtimeGeneration(db, reason) {
+  runtime.generation += 1;
+  for (const timer of runtime.reconnectTimers.values()) clearTimeout(timer);
+  runtime.reconnectTimers.clear();
+  for (const connectionId of runtime.socketTimers.keys()) clearSocketTimers(connectionId);
+  const sockets = [...runtime.sockets.values()];
+  runtime.sockets.clear();
+  for (const socket of sockets) {
+    try { socket.close(1000, reason); } catch { /* noop */ }
+  }
+  for (const connection of db.realtimeConnections || []) {
+    connection.status = "restarting";
+    connection.generation = runtime.generation;
+    delete connection.authenticatedCredentialFingerprint;
+  }
 }
 
 export function stopRealtimeManager(db, reason = "manual_stop") {
   for (const timer of runtime.reconnectTimers.values()) clearTimeout(timer);
   runtime.reconnectTimers.clear();
+  for (const connectionId of runtime.socketTimers.keys()) clearSocketTimers(connectionId);
   for (const socket of runtime.sockets.values()) {
     try {
       socket.close(1000, reason);
@@ -50,6 +166,7 @@ export function stopRealtimeManager(db, reason = "manual_stop") {
   }
   runtime.sockets.clear();
   runtime.started = false;
+  runtime.generation += 1;
   markAllStopped(db, reason);
   return realtimeStatus(db);
 }
@@ -114,25 +231,75 @@ function connectOkxPrivate(db, saveDb, connection) {
     connection.status = "missing_credentials";
     return connection;
   }
+  const binding = okxPrivateStreamBinding(db);
+  if (!binding.ok) {
+    connection.status = binding.reason;
+    connection.accountId = null;
+    return connection;
+  }
   connection.status = "connecting";
-  connection.url = OKX_PRIVATE_WS;
-  const socket = new WebSocket(OKX_PRIVATE_WS, wsOptions());
+  const generation = runtime.generation;
+  const apiKey = process.env.OKX_API_KEY;
+  const apiSecret = process.env.OKX_API_SECRET;
+  const passphrase = process.env.OKX_API_PASSPHRASE;
+  const credentialFingerprint = binding.fingerprint;
+  const environment = okxEnvironmentConfig();
+  connection.generation = generation;
+  connection.url = environment.privateWs;
+  connection.environment = environment.name;
+  const socket = new WebSocket(environment.privateWs, wsOptions());
   runtime.sockets.set(connection.id, socket);
+  connection.accountId = binding.account.id;
   socket.on("open", () => {
+    if (generation !== runtime.generation) return;
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET).update(`${timestamp}GET/users/self/verify`).digest("base64");
-    socket.send(JSON.stringify({ op: "login", args: [{ apiKey: process.env.OKX_API_KEY, passphrase: process.env.OKX_API_PASSPHRASE, timestamp, sign }] }));
+    const sign = crypto.createHmac("sha256", apiSecret).update(`${timestamp}GET/users/self/verify`).digest("base64");
+    socket.send(JSON.stringify({ op: "login", args: [{ apiKey, passphrase, timestamp, sign }] }));
+    const timers = socketTimerState(connection.id);
+    timers.auth = setTimeout(() => closeProtocolSocket(connection, socket, generation, "login_timeout"), Number(process.env.OKX_WS_AUTH_TIMEOUT_MS || 10_000));
   });
   wireSocket(db, saveDb, connection, socket, (message) => {
+    const currentBinding = okxPrivateStreamBinding(db, {
+      accountId: connection.accountId,
+      fingerprint: credentialFingerprint,
+      environment: environment.name
+    });
+    if (!currentBinding.ok) {
+      closeProtocolSocket(connection, socket, generation, currentBinding.reason);
+      return;
+    }
     const payload = JSON.parse(message.toString());
     if (payload.event === "login" && payload.code === "0") {
+      const timers = socketTimerState(connection.id);
+      if (timers.auth) clearTimeout(timers.auth);
+      timers.auth = null;
       socket.send(JSON.stringify({ op: "subscribe", args: [{ channel: "orders", instType: "ANY" }, { channel: "positions", instType: "ANY" }, { channel: "account" }] }));
       connection.authenticatedAt = nowIso();
+      connection.status = "subscribing";
+      connection.pendingSubscriptions = ["orders", "positions", "account"];
+      timers.subscribe = setTimeout(() => closeProtocolSocket(connection, socket, generation, "subscribe_timeout"), Number(process.env.OKX_WS_SUBSCRIBE_TIMEOUT_MS || 10_000));
+      return;
     }
-    if (payload.arg?.channel === "orders") for (const order of payload.data || []) upsertOkxOrder(db, order);
-    if (payload.arg?.channel === "positions") updateOkxPositions(db, payload.data || []);
+    if (payload.event === "login" && payload.code !== "0") return closeProtocolSocket(connection, socket, generation, `login_failed:${payload.code || "unknown"}`);
+    if (payload.event === "error") return closeProtocolSocket(connection, socket, generation, `subscribe_failed:${payload.code || payload.msg || "unknown"}`);
+    if (payload.event === "notice" && String(payload.code) === "64008") return closeProtocolSocket(connection, socket, generation, "service_upgrade_reconnect");
+    if (payload.event === "subscribe") {
+      const channel = payload.arg?.channel;
+      connection.pendingSubscriptions = (connection.pendingSubscriptions || []).filter((item) => item !== channel);
+      if (!connection.pendingSubscriptions.length) {
+        const timers = socketTimerState(connection.id);
+        if (timers.subscribe) clearTimeout(timers.subscribe);
+        timers.subscribe = null;
+        connection.subscribedAt = nowIso();
+        connection.authenticatedCredentialFingerprint = credentialFingerprint;
+        connection.status = "connected";
+      }
+      return;
+    }
+    if (payload.arg?.channel === "orders") for (const order of payload.data || []) upsertOkxOrder(db, order, { accountId: connection.accountId, apiKeyFingerprint: credentialFingerprint, environment: environment.name });
+    if (payload.arg?.channel === "positions") updateOkxPositions(db, payload.data || [], { accountId: connection.accountId, connectionId: connection.id, apiKeyFingerprint: credentialFingerprint, environment: environment.name });
     if (payload.arg?.channel === "account") connection.lastAccountUpdateAt = nowIso();
-  });
+  }, { generation, authenticatedRequired: true });
   return connection;
 }
 
@@ -153,16 +320,19 @@ function connectBinancePublic(db, saveDb, connection) {
       low24h: Number(ticker.l),
       changePct: Number(ticker.P),
       volume24h: ticker.q,
-      source: "BINANCE_WS"
+      source: "BINANCE_WS",
+      sourceAt: ticker.E || ticker.C
     });
   });
   return connection;
 }
 
 function connectOkxPublic(db, saveDb, connection) {
+  const environment = okxEnvironmentConfig();
   connection.status = "connecting";
-  connection.url = OKX_PUBLIC_WS;
-  const socket = new WebSocket(OKX_PUBLIC_WS, wsOptions());
+  connection.url = environment.publicWs;
+  connection.environment = environment.name;
+  const socket = new WebSocket(environment.publicWs, wsOptions());
   runtime.sockets.set(connection.id, socket);
   socket.on("open", () => {
     socket.send(JSON.stringify({
@@ -180,26 +350,34 @@ function connectOkxPublic(db, saveDb, connection) {
       low24h: Number(ticker.low24h),
       // OKX volCcy24h 是币本位流式值，不能覆盖 REST 的 USDT quoteVolume 口径。
       streamVolume24h: Number(ticker.volCcy24h),
-      source: "OKX_WS"
+      source: "OKX_WS",
+      sourceAt: ticker.ts
     });
   });
   return connection;
 }
 
-function wireSocket(db, saveDb, connection, socket, onMessage) {
+function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
+  const generation = options.generation ?? runtime.generation;
   socket.on("open", () => {
-    connection.status = "connected";
+    if (generation !== runtime.generation) return;
+    connection.status = options.authenticatedRequired ? "authenticating" : "connected";
     connection.connectedAt = nowIso();
     connection.error = null;
     appendAudit(db, "实时 WebSocket 已连接", connection.id, "RealtimeManager");
     appendTrace(db, "realtime_ws", `${connection.exchange} ${connection.streamType} connected`);
+    startHeartbeat(connection, socket, generation);
     if (saveDb) saveDb(db);
   });
   socket.on("message", (message) => {
+    if (generation !== runtime.generation) return;
+    const raw = message.toString();
+    noteSocketActivity(connection.id);
+    if (raw === "pong") return;
     try {
       onMessage(message);
       connection.lastMessageAt = nowIso();
-      connection.status = "connected";
+      if (!options.authenticatedRequired || connection.authenticatedCredentialFingerprint) connection.status = "connected";
       // 关键：公有行情 WS 每秒推 10-40 条，绝不能每条都 saveDb（每次都全库序列化落盘→100% CPU）。
       // 逐条更新只留在内存（API 从内存读），落盘全局节流到最多每 8s 一次，足够重启后恢复连接状态/私有仓位。
       const now = Date.now();
@@ -209,13 +387,17 @@ function wireSocket(db, saveDb, connection, socket, onMessage) {
     }
   });
   socket.on("error", (error) => {
+    if (generation !== runtime.generation) return;
     connection.status = "error";
     connection.error = error.message;
     appendAudit(db, "实时 WebSocket 错误", connection.id, "RealtimeManager", "warning");
     appendTrace(db, "realtime_ws", `${connection.exchange} ${connection.streamType} error`, "error");
     if (saveDb) saveDb(db);
+    try { socket.close(4001, "socket_error"); } catch { /* noop */ }
   });
   socket.on("close", () => {
+    if (generation !== runtime.generation) return;
+    clearSocketTimers(connection.id);
     runtime.sockets.delete(connection.id);
     if (!runtime.started) return;
     connection.status = "reconnecting";
@@ -241,18 +423,15 @@ function ensureConnection(db, exchange, streamType) {
   return connection;
 }
 
-function updateMarketFromTicker(db, rawSymbol, ticker) {
+export function updateMarketFromTicker(db, rawSymbol, ticker, options = {}) {
   const symbol = normalizeDisplaySymbol(rawSymbol);
   const market = db.markets.find((item) => item.symbol === symbol);
-  if (!market) return;
-  if (Number.isFinite(ticker.price)) market.price = ticker.price;
-  if (Number.isFinite(ticker.high24h)) market.high24h = ticker.high24h;
-  if (Number.isFinite(ticker.low24h)) market.low24h = ticker.low24h;
-  if (Number.isFinite(ticker.changePct)) market.changePct = ticker.changePct;
-  if (ticker.volume24h) market.volume24h = compactNumber(ticker.volume24h);
-  if (Number.isFinite(ticker.streamVolume24h)) market.streamVolume24h = ticker.streamVolume24h;
-  market.lastRealtimeSource = ticker.source;
-  market.lastRealtimeAt = nowIso();
+  if (!market) return { applied: false, reason: "market_not_found" };
+  return applyTickerObservation(market, ticker, {
+    ...options,
+    realtime: true,
+    formatVolume: compactNumber
+  });
 }
 
 function markAllStopped(db, status) {
@@ -291,7 +470,7 @@ function redactUrl(url) {
 function buildOkxLoginPreview() {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET || "").update(`${timestamp}GET/users/self/verify`).digest("base64");
-  return { op: "login", args: [{ apiKey: "***", passphrase: "***", timestamp, sign: sign ? "***" : "" }], ws: OKX_PRIVATE_WS };
+  return { op: "login", args: [{ apiKey: "***", passphrase: "***", timestamp, sign: sign ? "***" : "" }], ws: okxEnvironmentConfig().privateWs };
 }
 
 function upsertBinanceExecution(db, payload) {
@@ -312,7 +491,7 @@ function upsertBinanceExecution(db, payload) {
       exchange: "BINANCE",
       price: Number(payload.L),
       quantity: Number(payload.l),
-      feeUsdt: parseFee(payload.n, payload.N),
+      feeUsdt: String(payload.N || "USDT").toUpperCase() === "USDT" ? financialNumber(payload.n) : null,
       side: order.side
     });
     // 同 OKX:映射到本引擎执行单的成交由引擎权威落账,WS 只补记外部/手动单,避免重复记账。
@@ -320,31 +499,144 @@ function upsertBinanceExecution(db, payload) {
   }
 }
 
-function upsertOkxOrder(db, payload) {
+function cachedOkxCtVal(db, instId, executionOrder = null) {
+  if (finiteFinancialNumber(executionOrder?.okxCtVal) > 0) return Number(executionOrder.okxCtVal);
+  const symbol = okxDisplaySymbol(instId);
+  const mirror = (db.positions || []).find((row) => row.exchange === "OKX" && row.symbol === symbol
+    && finiteFinancialNumber(row.contractMultiplier) > 0);
+  if (mirror) return Number(mirror.contractMultiplier);
+  const evidence = (db.evidenceBundles || []).flatMap((bundle) => bundle.symbols || [])
+    .find((row) => row.symbol === symbol && finiteFinancialNumber(row.contractSpec?.data?.ctVal) > 0);
+  return evidence ? Number(evidence.contractSpec.data.ctVal) : null;
+}
+
+export function upsertOkxOrder(db, payload, context = {}) {
   const existing = db.orders.find((order) => order.exchangeOrderId === payload.ordId || order.clientOrderId === payload.clOrdId);
   const order = existing || { id: id("ord"), exchange: "OKX", exchangeOrderId: payload.ordId, clientOrderId: payload.clOrdId, createdAt: nowIso() };
   // 与 REST/执行引擎同口径(去 -SWAP),否则 WS 订单/成交显示 "BTC/USDT-SWAP"、引擎显示 "BTC/USDT",
   // 同一永续被当成两个符号,用户误以为多了个"现货 BTC/USDT"(实锤截图)。
   if (payload.instId) order.symbol = okxDisplaySymbol(payload.instId);
   order.side = payload.side;
+  order.posSide = payload.posSide || null;
+  order.reduceOnly = payload.reduceOnly;
   order.type = payload.ordType;
   order.status = payload.state;
-  order.price = Number(payload.px || 0);
+  order.price = financialNumber(payload.px);
   order.quantity = payload.sz;
-  order.updatedAt = nowIso();
+  order.tradeId = payload.tradeId || null;
+  order.fillPnl = financialNumber(payload.fillPnl);
+  order.fillTime = payload.fillTime || null;
+  order.accountId = context.accountId || order.accountId || null;
+  order.apiKeyFingerprint = context.apiKeyFingerprint || order.apiKeyFingerprint || null;
+  order.environment = context.environment || order.environment || null;
+  order.updatedAt = payload.uTime && Number.isFinite(Number(payload.uTime)) ? new Date(Number(payload.uTime)).toISOString() : nowIso();
   if (!existing) db.orders.unshift(order);
+  if (payload.reqId && payload.amendResult !== undefined && payload.amendResult !== "") {
+    const pendingAmend = findPendingOmsAmend({ reqId: payload.reqId, exchangeOrderId: payload.ordId, clientOrderId: payload.clOrdId });
+    if (pendingAmend) reconcileAmendOmsOrder(db, pendingAmend, {
+      exchangeOrderId: payload.ordId || null,
+      contracts: financialNumber(payload.sz),
+      price: financialNumber(payload.px),
+      reqId: payload.reqId,
+      amendResult: payload.amendResult,
+      updatedAt: order.updatedAt
+    });
+  }
   // 成交去重(单一权威源):本引擎下的单都带 clOrdId,其入场/平仓成交由执行引擎轮询权威落账
   // (真实币量 + 已实现盈亏 + planId 归因)。WS 只为"无 clOrdId 的外部/手动单"补记,
   // 否则同一笔被 WS 与引擎各记一次(实锤:1 入 1 平的真实成交被记成 4 行,污染笔数/胜率/盈亏)。
-  if (payload.fillSz && Number(payload.fillSz) > 0 && !payload.clOrdId) {
-    db.fills.unshift(enrichRealtimeFill(db, order, {
+  const executionOrder = (db.executionOrders || []).find((item) => item.exchangeOrderId === payload.ordId
+    || (payload.clOrdId && item.clientOrderId === payload.clOrdId));
+  const fillContracts = financialNumber(payload.fillSz);
+  const tradeId = String(payload.tradeId || "");
+  const duplicate = tradeId && (db.fills || []).some((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
+    && fill.symbol === order.symbol);
+  // clOrdId 非空不代表本系统订单；只有真正匹配 executionOrder 才由引擎权威落账。
+  if (fillContracts > 0 && !executionOrder && !duplicate) {
+    const ctVal = String(payload.instType || "SWAP").toUpperCase() === "SPOT" ? 1 : cachedOkxCtVal(db, payload.instId, executionOrder);
+    const coinQuantity = finiteFinancialNumber(ctVal) > 0 ? Number(fillContracts) * Number(ctVal) : null;
+    const fee = parseOkxFee(payload.fee, payload.feeCcy);
+    const fillPayload = {
       exchange: "OKX",
-      price: Number(payload.fillPx || 0),
-      quantity: Number(payload.fillSz),
-      feeUsdt: parseFee(payload.fee, payload.feeCcy),
-      side: order.side
-    }));
+      price: financialNumber(payload.fillPx),
+      quantity: coinQuantity,
+      rawContracts: fillContracts,
+      ctVal,
+      feeCostUsdt: fee.cost,
+      rawFee: fee.raw,
+      feeCurrency: payload.feeCcy || null,
+      side: order.side,
+      posSide: payload.posSide,
+      reduceOnly: payload.reduceOnly,
+      realizedPnl: financialNumber(payload.fillPnl),
+      exchangeTradeId: tradeId || null,
+      exchangeFilledAt: validExchangeTime(payload.fillTime || payload.uTime)
+    };
+    if (String(payload.posSide || "").toLowerCase() === "net") {
+      const before = authoritativeNetPositionBeforeFill(db, order, context, ctVal);
+      const components = classifyOkxNetFill({
+        side: order.side,
+        quantity: coinQuantity,
+        realizedPnl: fillPayload.realizedPnl,
+        positionDirection: before?.direction,
+        positionQuantity: before?.quantity
+      });
+      for (const component of components.reverse()) {
+        const ratio = coinQuantity > 0 ? component.quantity / coinQuantity : 1;
+        db.fills.unshift(enrichRealtimeFill(db, order, {
+          ...fillPayload,
+          kindHint: component.kind,
+          quantity: component.quantity,
+          rawContracts: fillContracts * ratio,
+          feeCostUsdt: fillPayload.feeCostUsdt === null ? null : fillPayload.feeCostUsdt * ratio,
+          rawFee: fillPayload.rawFee === null ? null : fillPayload.rawFee * ratio,
+          realizedPnl: component.kind === "close" ? fillPayload.realizedPnl : null,
+          reportedRealizedPnl: fillPayload.realizedPnl,
+          netFillComponent: component.component
+        }));
+      }
+    } else {
+      db.fills.unshift(enrichRealtimeFill(db, order, fillPayload));
+    }
   }
+}
+
+function authoritativeNetPositionBeforeFill(db, order, context = {}, ctVal = null) {
+  const candidates = (db.positions || []).filter((position) => position.exchange === "OKX"
+    && position.symbol === order.symbol
+    && (!context.accountId || position.accountId === context.accountId)
+    && (position.positionMode === "net_mode" || position.rawPosSide === "net")
+    && canonicalPositionDirection(position));
+  const position = candidates.sort((a, b) => new Date(b.exchangeObservedAt || b.rawSyncedAt || b.updatedAt || 0)
+    - new Date(a.exchangeObservedAt || a.rawSyncedAt || a.updatedAt || 0))[0];
+  if (!position) return null;
+  const coinSize = finiteFinancialNumber(position.coinSize) > 0 ? Number(position.coinSize)
+    : finiteFinancialNumber(position.size) > 0 && finiteFinancialNumber(position.contractMultiplier ?? ctVal) > 0
+      ? Number(position.size) * Number(position.contractMultiplier ?? ctVal)
+      : null;
+  return coinSize ? { direction: canonicalPositionDirection(position), quantity: coinSize } : null;
+}
+
+export function classifyOkxNetFill({ side, quantity, realizedPnl, positionDirection, positionQuantity } = {}) {
+  const amount = financialNumber(quantity);
+  if (!(amount > 0)) return [{ kind: "unknown", quantity: amount, component: "quantity_unavailable" }];
+  const direction = String(positionDirection || "").toLowerCase();
+  const closingShape = (direction === "long" && String(side).toLowerCase() === "sell")
+    || (direction === "short" && String(side).toLowerCase() === "buy");
+  const available = financialNumber(positionQuantity);
+  if (!closingShape || !(available > 0)) {
+    // Non-zero fillPnl is direct evidence that at least this fill closed exposure.
+    // Zero is not evidence: a profitable/lossless close and an entry are both possible.
+    if (finiteFinancialNumber(realizedPnl) && Number(realizedPnl) !== 0) {
+      return [{ kind: "close", quantity: amount, component: "exchange_fill_pnl_close" }];
+    }
+    return [{ kind: "unknown", quantity: amount, component: "net_lifecycle_reconciliation_pending" }];
+  }
+  const closeQuantity = Math.min(amount, available);
+  const entryQuantity = Math.max(0, amount - closeQuantity);
+  const components = [{ kind: "close", quantity: closeQuantity, component: entryQuantity > 0 ? "reversal_close" : "position_reduction" }];
+  if (entryQuantity > 1e-12) components.push({ kind: "entry", quantity: entryQuantity, component: "reversal_entry" });
+  return components;
 }
 
 function enrichRealtimeFill(db, order, payload = {}) {
@@ -354,12 +646,16 @@ function enrichRealtimeFill(db, order, payload = {}) {
     item.planId === order.planId
   );
   const plan = (db.tradePlans || []).find((item) => item.id === executionOrder?.planId || item.id === order.planId) || {};
-  const price = Number(payload.price || 0);
-  const quantity = Number(payload.quantity || 0);
-  const notional = price * quantity;
+  const price = financialNumber(payload.price);
+  const quantity = financialNumber(payload.quantity);
+  const notional = price !== null && price > 0 && quantity !== null && quantity > 0 ? price * quantity : null;
   const expectedPrice = executionOrder?.entryPrice || order.price;
   const slippageBps = expectedPrice ? Number((((price - Number(expectedPrice)) / Number(expectedPrice)) * 10000).toFixed(2)) : null;
-  const feeUsdt = payload.feeUsdt ?? Number((Math.abs(notional) * 0.0004).toFixed(6));
+  const feeCostUsdt = financialNumber(payload.feeCostUsdt ?? payload.feeUsdt);
+  const closeByShape = trueLike(payload.reduceOnly) || (String(payload.posSide).toLowerCase() === "long" && String(payload.side).toLowerCase() === "sell")
+    || (String(payload.posSide).toLowerCase() === "short" && String(payload.side).toLowerCase() === "buy");
+  const kind = payload.kindHint || (closeByShape || executionOrder?.status === "protecting" ? "close" : "entry");
+  const exchangeFilledAt = payload.exchangeFilledAt || null;
   return {
     id: id("fill"),
     orderId: order.id,
@@ -370,6 +666,8 @@ function enrichRealtimeFill(db, order, payload = {}) {
     riskCheckId: executionOrder?.riskCheckId,
     mandateId: executionOrder?.mandateId,
     symbol: order.symbol,
+    exchange: payload.exchange || order.exchange,
+    exchangeTradeId: payload.exchangeTradeId || null,
     side: payload.side,
     direction: executionOrder?.direction,
     strategy: executionOrder?.strategy || plan.strategy || plan.strategy_type || "manual_review",
@@ -379,32 +677,56 @@ function enrichRealtimeFill(db, order, payload = {}) {
     strategyVersion: executionOrder?.strategyVersion || plan.strategyVersion || null,
     strategyVersionId: executionOrder?.strategyVersionId || plan.strategyVersionId || null,
     strategyInstance: executionOrder?.strategyInstance ? structuredClone(executionOrder.strategyInstance) : (plan.strategyInstance ? structuredClone(plan.strategyInstance) : null),
-    kind: order.reduceOnly || /sell|buy/i.test(String(payload.side || "")) && executionOrder?.status === "protecting" ? "close" : "entry",
+    kind,
     price,
     size: quantity,
     quantity,
     notionalUsdt: notional,
+    rawContracts: financialNumber(payload.rawContracts),
+    okxCtVal: financialNumber(payload.ctVal),
     expectedPrice,
     slippageBps,
-    feeUsdt,
+    realizedPnl: kind === "close" ? financialNumber(payload.realizedPnl) : null,
+    reportedRealizedPnl: financialNumber(payload.reportedRealizedPnl),
+    netFillComponent: payload.netFillComponent || null,
+    feeUsdt: feeCostUsdt,
+    feeCostUsdt,
+    rawFee: financialNumber(payload.rawFee),
+    feeCurrency: payload.feeCurrency || null,
+    feeSource: payload.exchange === "OKX" ? "okx_private_ws" : "exchange_ws",
+    feeSchemaVersion: 2,
     initialRiskUsdt: executionOrder?.initialRiskUsdt || plan.initialRiskUsdt || null,
     accountEquityAtEntryUsdt: executionOrder?.accountEquityAtEntryUsdt || plan.accountEquityAtEntryUsdt || null,
-    fee: feeUsdt === null ? undefined : `${feeUsdt} USDT`,
-    estimatedFee: payload.feeUsdt === undefined,
+    fee: feeCostUsdt === null ? undefined : `${feeCostUsdt} USDT`,
+    estimatedFee: false,
+    fundingReconciled: kind === "close" ? false : undefined,
+    financialBasisComplete: false,
+    financialBasis: kind === "unknown" ? "net_lifecycle_reconciliation_pending" : "ws_signal_pending_rest_reconciliation",
     // 同 executionEngine.entryRationale:plan 的推理在 reasoningSummary。executionOrder 已存的占位符
     // "未记录入场理由"不算真值,别让它短路掉 plan 的真实理由。
     entryRationale: (executionOrder?.entryRationale && executionOrder.entryRationale !== "未记录入场理由")
       ? executionOrder.entryRationale
       : (plan.reasoningSummary || plan.rationale || plan.analysis || "未记录入场理由"),
-    createdAt: nowIso()
+    exchangeFilledAt,
+    createdAt: exchangeFilledAt || nowIso()
   };
 }
 
-function parseFee(value, currency) {
-  const amount = Math.abs(Number(value));
-  if (!Number.isFinite(amount)) return null;
-  if (!currency || String(currency).toUpperCase() === "USDT") return amount;
-  return null;
+function parseOkxFee(value, currency) {
+  const raw = financialNumber(value);
+  if (raw === null || !currency || String(currency).toUpperCase() !== "USDT") return { raw, cost: null };
+  return { raw, cost: okxFeeCost(raw) };
+}
+
+function trueLike(value) {
+  return value === true || String(value).toLowerCase() === "true";
+}
+
+function validExchangeTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  const time = Number.isFinite(numeric) ? new Date(numeric).getTime() : new Date(value).getTime();
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
 // OKX 展示符号:与 exchangeConnector.normalizeOkxDisplaySymbol 同口径(去 -SWAP、首个 - 换 /)。
@@ -413,29 +735,59 @@ function okxDisplaySymbol(instId) {
   return String(instId || "").replace(/-SWAP$/i, "").replace("-", "/").toUpperCase();
 }
 
-function updateOkxPositions(db, positions) {
+export function updateOkxPositions(db, positions, context = {}) {
   for (const payload of positions) {
     if (!payload.instId) continue;
     const symbol = okxDisplaySymbol(payload.instId);
-    const posSide = payload.posSide;
-    const size = Number(payload.pos || 0);
-    const idx = db.positions.findIndex((position) => position.exchange === "OKX" && position.symbol === symbol && position.posSide === posSide);
+    const rawPosSide = String(payload.posSide || "").toLowerCase();
+    const size = financialNumber(payload.pos);
+    const direction = canonicalPositionDirection({ posSide: rawPosSide, pos: size });
+    const positionMode = rawPosSide === "net" ? "net_mode" : "long_short_mode";
+    const accountId = context.accountId || payload.accountId || null;
+    const slotKey = `${accountId || context.connectionId || "unknown"}|${payload.instId}|${positionMode === "net_mode" ? "net" : direction || rawPosSide}`;
+    db.realtimePositionWatermarks ||= {};
+    const slotMatch = (position) => position.exchange === "OKX" && position.source === "exchange_ws"
+      && position.symbol === symbol && (position.accountId || null) === accountId
+      && (position.positionMode || (position.rawPosSide === "net" ? "net_mode" : "long_short_mode")) === positionMode
+      && (positionMode === "net_mode" || canonicalPositionDirection(position) === direction);
+    const existingRows = db.positions.filter(slotMatch);
+    const observedAt = validExchangeTime(payload.uTime) || nowIso();
+    const newestExistingAt = Math.max(...existingRows.map((row) => new Date(row.exchangeObservedAt || row.updatedAt || 0).getTime()), 0);
+    const watermarkAt = new Date(db.realtimePositionWatermarks[slotKey] || 0).getTime();
+    if (new Date(observedAt).getTime() < Math.max(newestExistingAt, watermarkAt)) continue;
+    db.realtimePositionWatermarks[slotKey] = observedAt;
     // 仓位归零(平仓或双向持仓的空槽)→ 移除,别把 pos:"0" 当一条"持仓"留在面板
     // (实锤:BTC 幽灵持仓,size/entry/mark 全 0 却显示"持仓(1)")。
-    if (!Number.isFinite(size) || size === 0) {
-      if (idx >= 0) db.positions.splice(idx, 1);
+    if (size === null || size === 0) {
+      db.positions = db.positions.filter((position) => !slotMatch(position));
       continue;
     }
-    const position = idx >= 0 ? db.positions[idx] : { id: id("pos"), exchange: "OKX", symbol, source: "exchange_ws", createdAt: nowIso() };
-    position.posSide = posSide;
-    position.direction = posSide === "short" ? "short" : "long"; // 前端 SIDE 读 direction,漏设会误显"做多"
+    // net_mode 是单一净仓槽；翻向时更新同一槽并清掉旧方向镜像。
+    let position = existingRows[0] || { id: id("pos"), exchange: "OKX", symbol, source: "exchange_ws", createdAt: nowIso() };
+    if (positionMode === "net_mode") db.positions = db.positions.filter((row) => !slotMatch(row) || row.id === position.id);
+    const alreadyStored = db.positions.includes(position);
+    position.accountId = accountId;
+    position.connectionId = context.connectionId || null;
+    position.apiKeyFingerprint = context.apiKeyFingerprint || null;
+    position.environment = context.environment || null;
+    position.posSide = direction;
+    position.direction = direction;
+    position.rawPosSide = rawPosSide || null;
+    position.rawSignedPosition = size;
+    position.positionMode = positionMode;
     position.size = Math.abs(size);
-    position.entry = Number(payload.avgPx || 0);
-    position.mark = Number(payload.markPx || 0);
-    position.liqPx = Number(payload.liqPx) || null;
-    position.pnl = Number(payload.upl || 0);
-    position.leverage = Number(payload.lever || 0);
+    const restMirror = db.positions.find((row) => row.exchange === "OKX" && row.source === "exchange_rest"
+      && row.symbol === symbol && canonicalPositionDirection(row) === direction);
+    const multiplier = Number(position.contractMultiplier ?? restMirror?.contractMultiplier);
+    position.contractMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : null;
+    position.coinSize = position.contractMultiplier ? Math.abs(size) * position.contractMultiplier : null;
+    position.entry = financialNumber(payload.avgPx);
+    position.mark = financialNumber(payload.markPx);
+    position.liqPx = financialNumber(payload.liqPx);
+    position.pnl = financialNumber(payload.upl);
+    position.leverage = financialNumber(payload.lever);
+    position.exchangeObservedAt = observedAt;
     position.updatedAt = nowIso();
-    if (idx < 0) db.positions.unshift(position);
+    if (!alreadyStored) db.positions.unshift(position);
   }
 }

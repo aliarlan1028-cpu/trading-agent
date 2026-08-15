@@ -31,5 +31,11 @@ test("高影响日程在 T-24/T-90/T+2 分阶段且幂等准备", () => {
   const post = prepareScheduledEventMilestones(db, due + 3 * 60_000);
   assert.deepEqual(post.reached.map((item) => item.stage), ["POST2"]);
   assert.equal(db.system.pendingNewsSignals.length, 2);
-  assert.match(post.wakeSignals[0].summary, /核验实际结果/);
+  assert.equal(post.wakeSignals[0].eventId, "event_fomc");
+  assert.equal(post.wakeSignals[0].stage, "POST2");
+  assert.equal(post.wakeSignals[0].analysisContextOnly, true);
+  assert.equal(post.wakeSignals[0].mayTriggerTradeDirectly, false);
+  assert.equal(post.wakeSignals[0].untrustedContentExcluded, true);
+  assert.equal("title" in post.wakeSignals[0], false);
+  assert.equal("summary" in post.wakeSignals[0], false);
 });

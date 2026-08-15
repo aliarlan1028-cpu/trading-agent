@@ -63,7 +63,9 @@ export function buildMacroRegimeContext(db, options = {}) {
       scenarios.push({
         type: "scheduled_event_risk",
         eventId: event.id,
-        title: event.title,
+        category: event.sourceId === "official_bls_calendar" ? "us_macro_release"
+          : event.sourceId === "official_fomc_calendar" ? "central_bank_meeting"
+            : "scheduled_high_impact_event",
         due: event.due,
         implication: "公布前降低对单一路径的确信；公布后必须用新行情与实际值重新判断。"
       });
@@ -96,7 +98,7 @@ export function macroRegimeForPrompt(context) {
     ...context.facts.filter((item) => item.dimension !== "crypto_risk_appetite").slice(0, 4).map((item) => `- 事实[${item.factId || item.source}] ${item.dimension}：${JSON.stringify(item.values).slice(0, 260)}（${item.asOf}）`),
     ...context.inferences.map((item) => `- 推断：${item.dimension}=${item.label}（依据：${item.basis}）`),
     ...context.unknowns.slice(0, 4).map((item) => `- 未知：${item}`),
-    ...context.scenarios.slice(0, 3).map((item) => `- 事件情景：${item.title} ${item.due}；${item.implication}`),
+    ...context.scenarios.slice(0, 3).map((item) => `- 事件情景：eventId=${item.eventId}；category=${item.category}；due=${item.due}；${item.implication}`),
     `- 边界：${context.guardrail}`
   ];
   return lines.join("\n");

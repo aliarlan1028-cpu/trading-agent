@@ -1,5 +1,5 @@
 // W4:知识库转换引擎 路由组——生成候选(书→策略/透镜/工作流)、逐条采纳(采纳即用)、忽略。
-import { generateCandidates, adoptCandidate, ignoreCandidate } from "../knowledgeConverter.mjs";
+import { generateCandidates, adoptCandidate, approveCandidateArtifact, ignoreCandidate } from "../knowledgeConverter.mjs";
 
 export function registerKnowledgeConvertRoutes(app, ctx) {
   const { db, persist, requirePermission } = ctx;
@@ -25,7 +25,13 @@ export function registerKnowledgeConvertRoutes(app, ctx) {
   app.post("/api/knowledge/candidates/:id/adopt", requirePermission("write:knowledge"), (req, res) => {
     const r = adoptCandidate(db, req.params.id, req.user?.name || db.user.name);
     if (!r.ok) return res.status(400).json({ error: r.error });
-    persist(res, { candidate: r.candidate, message: `已采纳「${r.candidate.name}」，即刻生效。` });
+    persist(res, { candidate: r.candidate, message: r.candidate.type === "strategy" ? `已采纳「${r.candidate.name}」，进入标准策略验证。` : `已采纳「${r.candidate.name}」为草稿，需独立审批后才会进入 AI 系统上下文。` });
+  });
+
+  app.post("/api/knowledge/candidates/:id/approve-prompt", requirePermission("approve:knowledge_skill"), (req, res) => {
+    const r = approveCandidateArtifact(db, req.params.id, req.user?.name || db.user.name);
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    persist(res, { candidate: r.candidate, artifact: r.artifact, message: `已批准「${r.candidate.name}」的当前指纹版本。内容变化后会自动失效。` });
   });
 
   app.post("/api/knowledge/candidates/:id/ignore", requirePermission("write:knowledge"), (req, res) => {

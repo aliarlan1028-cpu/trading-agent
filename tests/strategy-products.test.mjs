@@ -15,6 +15,7 @@ import {
   validateStrategyProduct
 } from "../server/strategyProducts.mjs";
 import { resetOperationalData, seedDatabase } from "../server/store.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function db() {
   return {
@@ -115,6 +116,7 @@ test("成交只按钉住的策略版本归因，未记录初始风险时不伪�
   state.fills.push({ id: "entry", kind: "entry", executionOrderId: "e1", tradePlanId: "p1", feeUsdt: 0.5, createdAt: "2026-08-10T00:00:00Z" });
   state.fills.push({ id: "f1", kind: "close", executionOrderId: "e1", tradePlanId: "p1", realizedPnl: 3, feeUsdt: 0.2, partial: false, createdAt: "2026-08-10T01:00:00Z" });
   state.fills.push({ id: "external", kind: "close", realizedPnl: 99, partial: false, createdAt: "2026-08-10T02:00:00Z" });
+  state.fills = financiallyReconciledFills(state.fills);
   const metrics = strategyProductMetrics(state, "trend_pullback@1.0.0");
   assert.equal(metrics.closedTrades, 1);
   assert.equal(metrics.grossPnlUsdt, 3);
@@ -142,6 +144,7 @@ test("仅带 executionOrderId 的成交复用同一计划解析并保留 R 与�
     { id: "risk-entry", kind: "entry", executionOrderId: "risk-order", feeUsdt: 0, createdAt: "2026-08-10T00:00:00Z" },
     { id: "risk-close", kind: "close", executionOrderId: "risk-order", realizedPnl: -1, feeUsdt: 0, createdAt: "2026-08-10T01:00:00Z" }
   );
+  state.fills = financiallyReconciledFills(state.fills);
   const metrics = strategyProductMetrics(state, "trend_pullback@1.0.0");
   assert.equal(metrics.closedTrades, 1);
   assert.equal(metrics.rSampleCount, 1);
@@ -183,6 +186,7 @@ test("已验证策略真实表现恶化后自动降级，不把验证当永久�
     state.tradePlans.push(plan);
     state.fills.push({ id: `f${index}`, kind: "close", executionOrderId: `e${index}`, tradePlanId: plan.id, strategyVersionId: plan.strategyVersionId, realizedPnl: -1, initialRiskUsdt: 2, partial: false, createdAt: `2026-08-10T${String(index).padStart(2,"0")}:00:00Z` });
   }
+  state.fills = financiallyReconciledFills(state.fills);
   const result = reconcileStrategyProductHealth(state, "Test");
   assert.equal(result.degraded.length, 1);
   assert.equal(deployment.state, "degraded");

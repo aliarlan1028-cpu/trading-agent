@@ -5,10 +5,10 @@ import { applyDerivedProfitGoals } from "../profitGoals.mjs";
 export function registerSystemRoutes(app, ctx) {
   const { db, persist, requirePermission, nowIso, appendAudit, appendTrace, buildReadinessReport, createSystemBackup, resetOperationalData, getStorageInfo, userHasPermission } = ctx;
 
-  app.get("/api/system/readiness", (_req, res) => res.json(buildReadinessReport(db)));
+  app.get("/api/system/readiness", requirePermission("admin:system"), (_req, res) => res.json(buildReadinessReport(db)));
 
   // 界面/AI 语言偏好:前端切换语言时调,存 db.system.uiLang,AI 提示词据此决定输出语言。
-  app.post("/api/system/language", (req, res) => {
+  app.post("/api/system/language", requirePermission("write:mandate"), (req, res) => {
     const lang = req.body?.lang === "en" ? "en" : "zh";
     db.system.uiLang = lang;
     persist(res, { message: lang === "en" ? "UI/AI language set to English" : "界面/AI 语言已设为中文", uiLang: lang });
@@ -27,7 +27,7 @@ export function registerSystemRoutes(app, ctx) {
     persist(res, { message: "已清空工作数据，保留用户、密钥、配置、风控规则与订阅设置。", storage: getStorageInfo() });
   });
 
-  app.post("/api/system/autonomy", (req, res) => {
+  app.post("/api/system/autonomy", requirePermission("approve:live_config"), (req, res) => {
     const requiredPermission = req.body.enabled === false ? "write:mandate" : "approve:live_config";
     if (!userHasPermission(db, req.user, requiredPermission)) {
       return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
@@ -45,11 +45,7 @@ export function registerSystemRoutes(app, ctx) {
 
   // 盈利目标仍绝不注入开仓决策，避免“为凑目标而追单”。可选的保本规则只在仓位
   // 已经产生足额浮盈后管理止损，属于确定性降风险动作，不改变方向/入场/止盈。
-  app.post("/api/system/goals", (req, res) => {
-    if (req.body?.dailyGoalBreakevenEnabled !== undefined
-      && !userHasPermission(db, req.user, "approve:live_config")) {
-      return res.status(403).json({ error: "Missing permission: approve:live_config" });
-    }
+  app.post("/api/system/goals", requirePermission("approve:live_config"), (req, res) => {
     const dn = Number(req.body?.dailyGoalUsdt);
     const nextDailyGoal = req.body?.dailyGoalUsdt !== undefined
       ? (Number.isFinite(dn) && dn > 0 ? dn : null)

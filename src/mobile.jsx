@@ -43,6 +43,7 @@ import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
+import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import {
   buildCapabilityCatalogRows,
   buildEventRows,
@@ -86,7 +87,21 @@ const settingsSections = [
 
 const positionSegments = ["持仓", "在途委托", "执行单"];
 
-function MobilePositions({ data, action, ui }) {
+export function mobileDirectionKind(value) {
+  const raw = String(value ?? "").trim();
+  if (/short|sell|空/i.test(raw)) return "short";
+  if (/long|buy|多/i.test(raw)) return "long";
+  return "unknown";
+}
+
+function mobileDirectionLabel(value, verb = false) {
+  const kind = mobileDirectionKind(value);
+  if (kind === "short") return verb ? t("做空", "Short") : t("空", "Short");
+  if (kind === "long") return verb ? t("做多", "Long") : t("多", "Long");
+  return "—";
+}
+
+export function MobilePositions({ data, action, ui }) {
   const [segment, setSegment] = useState("持仓");
   const positionView = buildPositionView(data);
   const positions = positionView.positions;
@@ -125,11 +140,12 @@ function MobilePositions({ data, action, ui }) {
           {!positions.length && <p className="mInboxEmpty">{t("暂无真实持仓。配置只读 API 并完成同步后展示。", "No live positions. Configure read-only API and sync to display.")}</p>}
           {positions.map((position) => {
             const pnl = Number(position.unrealizedPnl ?? position.pnl ?? position.upl ?? 0);
+            const direction = mobileDirectionKind(position.direction ?? position.side ?? position.posSide);
             return (
               <div className="mPosCard" key={position.id || position.symbol}>
                 <header>
                   <strong>{position.symbol}</strong>
-                  <StatusBadge tone={position.direction === "short" ? "danger" : "ok"}>{position.direction === "short" ? t("空", "Short") : t("多", "Long")}</StatusBadge>
+                  <StatusBadge tone={direction === "short" ? "danger" : direction === "long" ? "ok" : "neutral"}>{mobileDirectionLabel(position.direction ?? position.side ?? position.posSide)}</StatusBadge>
                 </header>
                 <div className={`mPosPnl ${pnl >= 0 ? "positive" : "negative"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2, "--")} <small>{t("未实现盈亏", "Unrealized PnL")}</small></div>
                 <div className="mPosMeta">
@@ -153,7 +169,7 @@ function MobilePositions({ data, action, ui }) {
                 <StatusBadge tone={statusTone(order.status)}>{humanize(order.status)}</StatusBadge>
               </header>
               <div className="mPosMeta">
-                <span>{t("方向", "Side")}<b>{order.side || order.direction || "-"}</b></span>
+                <span>{t("方向", "Side")}<b>{mobileDirectionLabel(order.side ?? order.direction, true)}</b></span>
                 <span>{t("价格", "Price")}<b>{order.price ? displayMoney(order.price) : t("市价", "Market")}</b></span>
                 <span>{t("数量", "Size")}<b>{order.quantity ?? order.size ?? "-"}</b></span>
               </div>
@@ -172,13 +188,13 @@ function MobilePositions({ data, action, ui }) {
                 <StatusBadge tone={statusTone(order.status)}>{humanize(order.status)}</StatusBadge>
               </header>
               <div className="mPosMeta">
-                <span>{t("方向", "Side")}<b>{order.direction || "-"}</b></span>
+                <span>{t("方向", "Side")}<b>{mobileDirectionLabel(order.direction ?? order.side, true)}</b></span>
                 <span>{t("入场", "Entry")}<b>{order.entryPrice ? displayMoney(order.entryPrice) : "-"}</b></span>
                 <span>{t("止损", "Stop-loss")}<b>{order.stopLoss ? displayMoney(order.stopLoss) : "-"}</b></span>
               </div>
               {activeExec.includes(String(order.status || "").toLowerCase()) && (
                 <div className="mInboxActions">
-                  <button onClick={() => action(`/api/execution-orders/${order.id}/close`, { reason: "manual_mobile" })}>{t("市价平仓", "Close at market")}</button>
+                  {executionExitAction(order) && <button onClick={() => requestExecutionExit(action, order, "manual_mobile")}>{executionExitAction(order).label}</button>}
                 </div>
               )}
             </div>
@@ -211,8 +227,8 @@ export const groupMobileClosedTrades = groupClosedTradeLifecyclesForView;
 function MobileReviewSheet({ review, trade, onClose }) {
   if (!review) return null;
   const pnl = netReviewResult(review, trade);
-  const closeFee = hasFiniteNumber(review.feeUsdt) ? Math.abs(Number(review.feeUsdt)) : hasFiniteNumber(trade?.feeUsdt) ? Math.abs(Number(trade.feeUsdt)) : null;
-  const entryFee = hasFiniteNumber(review.entryFeeUsdt) ? Math.abs(Number(review.entryFeeUsdt)) : hasFiniteNumber(trade?.entryFeeUsdt) ? Math.abs(Number(trade.entryFeeUsdt)) : null;
+  const closeFee = hasFiniteNumber(review.feeUsdt) ? Number(review.feeUsdt) : hasFiniteNumber(trade?.feeUsdt) ? Number(trade.feeUsdt) : null;
+  const entryFee = hasFiniteNumber(review.entryFeeUsdt) ? Number(review.entryFeeUsdt) : hasFiniteNumber(trade?.entryFeeUsdt) ? Number(trade.entryFeeUsdt) : null;
   const fee = closeFee != null && entryFee != null ? closeFee + entryFee : null;
   const completed = isCompletedTradeReview(review);
   const sections = [
@@ -224,7 +240,7 @@ function MobileReviewSheet({ review, trade, onClose }) {
     <aside className="mReviewSheet" onClick={(event) => event.stopPropagation()}>
       <button type="button" className="mSheetGrip" onClick={onClose} aria-label={t("关闭", "Close")}><i /></button>
       <header className="mReviewSheetHead"><div><small>{t("交易复盘", "Trade review")}</small><b className="mono">{review.symbol || trade?.symbol || "—"} · {/short|sell|空/i.test(String(review.direction || trade?.direction || "")) ? t("做空", "Short") : t("做多", "Long")}</b></div><StatusBadge tone={statusTone(review.status)}>{humanize(review.status || "pending")}</StatusBadge></header>
-      <div className={`mReviewResult ${pnl == null ? "unknown" : pnl >= 0 ? "win" : "loss"}`}><span>{t("净交易结果", "Net trade result")}</span><b className="mono">{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b><small>{pnl == null ? t("缺少完整生命周期净值，等待成交与费用回补", "Awaiting complete lifecycle PnL and fee reconciliation") : fee != null ? `${t("已计入记录的开/平仓手续费", "Includes recorded entry/close fees")} ${displayMoney(fee, 2)}` : t("净值来自已持久化的完整交易生命周期", "Net result comes from the persisted full lifecycle")}</small></div>
+      <div className={`mReviewResult ${pnl == null ? "unknown" : pnl >= 0 ? "win" : "loss"}`}><span>{t("净交易结果", "Net trade result")}</span><b className="mono">{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b><small>{pnl == null ? t("缺少完整生命周期净值，等待成交与费用回补", "Awaiting complete lifecycle PnL and fee reconciliation") : fee != null ? `${fee < 0 ? t("已计入交易所净返佣", "Includes net exchange rebate") : t("已计入记录的开/平仓净费用", "Includes recorded net entry/close costs")} ${displayMoney(fee, 2)}` : t("净值来自已持久化的完整交易生命周期", "Net result comes from the persisted full lifecycle")}</small></div>
       <div className="mReviewFacts"><span>{t("完成时间", "Completed")}<b>{formatDateTime(review.completedAt || review.updatedAt || trade?.createdAt)}</b></span><span>{t("归因", "Attribution")}<b>{localizeText(review.attribution) || t("待归因", "Pending")}</b></span><span>{t("平仓成交", "Close fills")}<b>{review.partialCloseCount || trade?.closeCount || review.fillIds?.length || 1} {t("笔", "fills")}</b></span></div>
       <div className="mReviewSheetBody">{sections.map(([title, text]) => <section key={title}><b>{title}</b><p>{localizeText(text)}</p></section>)}{!completed && <section className="pending"><b>{t("正在复盘", "Review in progress")}</b><p>{t("系统正在回补成交事实、费用与持仓轨迹，完成后会给出明确归因和下一次动作。", "The system is reconciling fills, costs, and the position path before producing attribution and a concrete next action.")}</p></section>}</div>
     </aside>
@@ -258,7 +274,7 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
       </section>
       <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
     </>}
-    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.quantity ?? row.size ?? "—"}</b></span></div>{OPEN_EXECUTION_STATES.includes(String(row.status || "").toLowerCase()) && <button onClick={() => action(`/api/execution-orders/${row.id}/close`, { reason: "manual_mobile" })}>{t("撤单 / 平仓", "Cancel / Close")}</button>}</article>)}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
+    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => { const exit = executionExitAction(row); return <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.filledQuantity ?? row.quantity ?? row.size ?? "—"}</b></span></div>{exit && <button onClick={() => requestExecutionExit(action, row, "manual_mobile")}>{exit.label}</button>}</article>; })}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
     {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length === totals.fills ? `${totals.fills} ${t("笔成交", "fills")}` : `${t("最近", "Latest")} ${fills.length} / ${totals.fills}`}</small></div><span>{t("开仓 / 减仓 / 平仓", "Entries / reductions / closes")}</span></header>{fills.map((row, index) => { const isClose = row.kind === "close" && hasFiniteNumber(row.realizedPnl); const pnl = Number(row.realizedPnl || 0); return <div className="mTradeRow" key={row.id || index}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {fillKind(row)} · {row.quantity ?? row.size ?? "—"} @ {displayPrice(row.price)}</small></div><div><b className={`mono ${isClose ? (pnl >= 0 ? "pos" : "neg") : ""}`}>{isClose ? `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}` : displayPrice(row.price)}</b><small>{isClose ? `${t("价格毛盈亏", "Gross price PnL")} · ` : ""}{formatDateTime(row.createdAt)}{hasFiniteNumber(row.feeUsdt ?? row.fee) ? ` · ${t("费", "fee")} ${displayMoney(row.feeUsdt ?? row.fee, 2)}` : ""}</small></div></div>; })}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b><span>{t("交易所确认的开仓、减仓和平仓成交都会显示在这里。", "Exchange-confirmed entries, reductions, and closes appear here.")}</span></div>}</section>}
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
@@ -459,10 +475,18 @@ export function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
     const symbols = [...new Set((form.symbols || []).map(pairLabel).filter(Boolean))];
     if (!symbols.length) return ui.notify?.(t("至少保留一个允许交易的币种", "Keep at least one allowed pair"));
     const body = buildMobileRiskPermissionPayload(mandate, form, { defaultName: t("主账户交易权限", "Primary account trading permissions") });
+    const writableBody = { ...body };
+    delete writableBody.status;
     setSaving(true);
     try {
-      const ok = await submitMobileRiskChange(action, mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", body, mandate.id ? "PATCH" : "POST");
-      if (ok) onDone();
+      const saved = await action(mandate.id ? `/api/mandates/${mandate.id}` : "/api/mandates", writableBody, mandate.id ? "PATCH" : "POST");
+      if (saved?.ok === false) return;
+      if (!mandate.id) {
+        if (!saved?.id) return;
+        const activated = await action(`/api/mandates/${saved.id}/activate`, {});
+        if (activated?.ok === false) return;
+      }
+      onDone();
     } finally { setSaving(false); }
   }
   return <div className="mScreen mRiskDetail">
@@ -1085,7 +1109,7 @@ export function MobilePairSheet({ instruments, current, selected = [], multiple 
   );
 }
 
-function MobileMarket({ data, action, ui }) {
+export function MobileMarket({ data, action, ui }) {
   const [tf, setTf] = useState("1H");
   const [sym, setSym] = useState(null);
   const [sheet, setSheet] = useState(false);
@@ -1153,12 +1177,12 @@ function MobileMarket({ data, action, ui }) {
       <div className="mCard">
         <div className="mCardHead"><b>{t("持仓", "Positions")}</b><button className="mLink" onClick={() => ui.setActive("positions")}>{t("全部", "All")} ›</button></div>
         {positions.length ? positions.slice(0, 3).map((p, i) => {
-          const short = String(p.direction || p.side || p.posSide || "").toLowerCase().includes("short");
+          const short = mobileDirectionKind(p.direction ?? p.side ?? p.posSide) === "short";
           const pnl = Number(p.pnl ?? p.upl ?? p.unrealizedPnl ?? 0);
           return (
             <div className="mPosRow" key={i}>
               <div className="mPosL"><b className="mono">{p.symbol || p.instId}</b><span className={`mPosDir ${short ? "short" : "long"}`}>{short ? t("做空", "Short") : t("做多", "Long")}</span></div>
-              <div className="mPosR"><b className={`mono ${pnl >= 0 ? "pos" : "neg"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b><small className="mono">{displayMoney(p.size ?? p.qty ?? p.pos ?? 0, 2)} · {displayPct(p.roiPct ?? p.uplRatioPct)}</small></div>
+              <div className="mPosR"><b className={`mono ${pnl >= 0 ? "pos" : "neg"}`}>{pnl >= 0 ? "+" : ""}{displayMoney(pnl, 2)}</b><small className="mono">{displayMoney(p.quantity ?? p.size ?? p.qty ?? p.pos ?? 0, 2)} · {displayPct(p.roiPct ?? p.uplRatioPct)}</small></div>
             </div>
           );
         }) : <div className="mEmpty">{t("连接交易所后显示真实持仓", "Live positions appear after connecting an exchange")}</div>}

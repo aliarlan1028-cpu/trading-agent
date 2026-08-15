@@ -13,6 +13,7 @@ import {
 } from "../server/scheduler.mjs";
 
 function dbWith(task) {
+  task.systemManaged = true;
   return { tasks: [task], jobLocks: [], jobRuns: [], auditLogs: [], traces: [], meta: {} };
 }
 
@@ -26,6 +27,7 @@ test("Every 表达式严格校验，不再把拼错表达式静默当 5 分钟",
 
 test("普通任务只允许白名单处理器且 At 必须在未来", () => {
   assert.equal(validateTaskDefinition({ name: "x", type: "Every", schedule: "Every 5m", handler: "execution_poll" }).valid, false);
+  assert.equal(validateTaskDefinition({ name: "x", type: "Every", schedule: "Every 5m", handler: "reconcile" }).valid, false);
   assert.equal(validateTaskDefinition({ name: "x", type: "At", schedule: new Date(Date.now() - 1000).toISOString(), handler: "reminder" }).valid, false);
   assert.equal(validateTaskDefinition({ name: "x", type: "At", schedule: new Date(Date.now() + 60_000).toISOString(), handler: "reminder" }).valid, true);
 });

@@ -1,6 +1,28 @@
 const ACTIONS = new Set(["open", "cancel", "amend", "close", "move_stop", "take_profit"]);
 export const DEFAULT_WEEKLY_LOSS_PCT = 5;
 
+const MANDATE_WRITE_FIELDS = new Set([
+  "name", "exchanges", "marketTypes", "allowedSymbols", "symbol_whitelist", "deniedSymbols",
+  "strategies", "allowedActions", "maxLeverageBySymbol", "maxLeverage", "max_leverage",
+  "minLeverage", "min_leverage", "sizingMode", "positionPct", "equityPct",
+  "maxSingleTradeRiskPct", "max_single_trade_risk_pct", "maxDailyLossPct", "max_daily_loss_pct",
+  "maxWeeklyLossPct", "max_weekly_loss_pct", "maxOrderNotionalUsdt", "max_notional_usdt",
+  "maxSymbolNotionalUsdt", "maxPortfolioNotionalUsdt", "maxConcurrentPositions",
+  "maxMarginUtilizationPct", "max_margin_utilization_pct", "allowAddPosition", "allow_add_position",
+  "validFrom", "valid_from", "validUntil", "valid_until", "humanApprovalNotionalUsdt",
+  "manual_approval_threshold_usdt", "maxAbsFundingRatePct", "maxSpreadBps", "maintenanceMarginFraction"
+]);
+const MANDATE_SERVER_FIELDS = new Set([
+  "id", "version", "status", "createdAt", "updatedAt", "activatedAt", "pausedAt", "revokedAt",
+  "supersededAt", "supersededByMandateId", "weeklyLossSemanticMigration"
+]);
+
+export function sanitizeMandatePayload(input = {}) {
+  const rejected = Object.keys(input).filter((key) => MANDATE_SERVER_FIELDS.has(key) || !MANDATE_WRITE_FIELDS.has(key));
+  if (rejected.length) return { ok: false, error: "mandate_fields_not_writable", fields: rejected };
+  return { ok: true, value: Object.fromEntries(Object.entries(input).filter(([key]) => MANDATE_WRITE_FIELDS.has(key))) };
+}
+
 const finitePositive = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
 
 export function leverageBoundsForMandate(mandate = {}, symbol = "") {

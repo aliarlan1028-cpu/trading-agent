@@ -1,16 +1,10 @@
 // 知识技能流水线 路由组（列表/编译/历史验证/模拟盘/批量验证/同步/批准/退役/清理归档/假设回测）——
 // 从 index.mjs 按 registrar 范式迁出（与逻辑模块 server/knowledgeSkills.mjs 不冲突,本文件在 routes/ 下）。
-// GET 列表内部会做生命周期同步并落盘;假设回测硬闸(正期望+样本≥20+盈亏比>1 才 executable)逐字保留。
+// GET 只返回快照；生命周期同步由显式写路由或后台任务执行。
 export function registerKnowledgeSkillRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, syncKnowledgeSkillLifecycle, approveKnowledgeSkill, retireKnowledgeSkill, runBacktest } = ctx;
 
-  app.get("/api/knowledge/skills", (_req, res) => {
-    // knowledgeSkillSummary 内部会做生命周期同步（paper_validated/degraded 转移+归因），
-    // 这些状态变更必须落盘——否则重启即丢，且与 POST 路由一律 persist 的约定不一致。
-    const summary = knowledgeSkillSummary(db);
-    saveDb(db);
-    res.json(summary);
-  });
+  app.get("/api/knowledge/skills", requirePermission("knowledge.read"), (_req, res) => res.json(knowledgeSkillSummary(db, { sync: false })));
 
   app.post("/api/knowledge/methods/:id/compile", requirePermission("write:knowledge"), (req, res) => {
     try {

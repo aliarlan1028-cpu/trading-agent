@@ -364,7 +364,13 @@ export function buildDailyBrief(db, options = {}) {
   const staleRequired = health.filter((source) => source.required && source.health !== "healthy").map((source) => source.sourceId);
   const exactEventSoon = calendar.find((event) => event.timePrecision === "minute" && new Date(event.due).getTime() - asOfMs <= 90 * 60_000);
   const constraints = [];
-  if (exactEventSoon) constraints.push({ type: "event_blackout_attention", severity: "high", reason: `${exactEventSoon.title} 将在 90 分钟内发布；由现有硬风控决定是否禁止开仓。` });
+  if (exactEventSoon) constraints.push({
+    type: "event_blackout_attention",
+    severity: "high",
+    eventId: exactEventSoon.id,
+    due: exactEventSoon.due,
+    reasonCode: "official_minute_event_within_90m"
+  });
   if (calendar.some((event) => event.timePrecision === "date" && new Date(event.due).getTime() - asOfMs <= 24 * HOUR)) {
     constraints.push({ type: "date_only_event_attention", severity: "medium", reason: "未来 24 小时存在仅确认日期、未确认精确时刻的官方事件；不得据此伪造分钟级静默窗口。" });
   }
@@ -383,7 +389,26 @@ export function buildDailyBrief(db, options = {}) {
     flow,
     market: {
       regime: db.marketRegime ? { fetchedAt: db.marketRegime.fetchedAt || db.marketRegime.updatedAt, global: db.marketRegime.global || null, smartMoney: db.marketRegime.smartMoney || null } : null,
-      movers: (db.marketMovers?.movers || []).slice(0, 8),
+      // Daily Brief can be returned as an Agent tool result. Keep only
+      // deterministic market facts and normalized attribution fields here;
+      // search/web prose stays in the UI-only marketMovers store.
+      movers: (db.marketMovers?.movers || []).slice(0, 8).map((mover) => ({
+        symbol: mover.symbol,
+        changePct: mover.changePct,
+        quoteVolUsdt: mover.quoteVolUsdt,
+        high24h: mover.high24h,
+        low24h: mover.low24h,
+        attribution: mover.narrative ? {
+          evidenceId: mover.narrative.evidenceId,
+          sourceType: mover.narrative.sourceType,
+          trust: "untrusted_external_data",
+          mayTriggerTradeDirectly: false,
+          category: mover.narrative.category,
+          sentiment: mover.narrative.sentiment,
+          confidence: mover.narrative.confidence,
+          attributedAt: mover.narrative.attributedAt
+        } : null
+      })),
       moversAsOf: db.marketMovers?.scannedAt || null
     },
     riskContext: {
@@ -423,10 +448,15 @@ export function dailyBriefForPrompt(db) {
   if (!Number.isFinite(ageMs) || ageMs > 2 * HOUR) return `今日情报简报已过期（截至 ${brief.asOf || "未知"}），不得当作当前事实；请调用 get_daily_market_brief/refresh_events。`;
   const lines = [
     `截至 ${brief.asOf}；用途=分析背景，禁止直接作为下单信号；版本 ${brief.version}`,
-    ...brief.topNews.slice(0, 5).map((item) => `- 新闻[${item.factId}] ${item.title}（${item.publishedAt}，可信 ${Math.round(Number(item.confidence || 0) * 100)}%）`),
-    ...brief.upcomingEvents.slice(0, 5).map((event) => `- 日程 ${event.title}：${event.due}（精度=${event.timePrecision}，来源=${event.sourceName}）`),
+    ...brief.topNews.slice(0, 5).map((item) => `- 新闻事实ID=${item.factId}（${item.publishedAt}，可信 ${Math.round(Number(item.confidence || 0) * 100)}%；原始自由文本未进入系统提示）`),
+    ...brief.upcomingEvents.slice(0, 5).map((event) => `- 日程ID=${event.eventId || event.factId || "unknown"}：${event.due}（精度=${event.timePrecision}；原始标题未进入系统提示）`),
     ...(brief.macroContext ? [`- 宏观环境：${macroRegimeForPrompt(brief.macroContext).replace(/\n/g, "；")}`] : []),
-    ...brief.constraints.map((item) => `- 约束提示：${item.reason}`)
+    ...brief.constraints.map((item) => {
+      if (item.type === "event_blackout_attention") return `- 约束提示：官方分钟级高影响事件 eventId=${item.eventId || "unknown"} 将在 90 分钟内发布；由硬风控决定是否禁止开仓。`;
+      if (item.type === "date_only_event_attention") return "- 约束提示：未来 24 小时存在仅确认日期的官方事件；不得伪造分钟级静默窗口。";
+      if (item.type === "stale_information") return "- 约束提示：至少一项必要信息源陈旧或失败；不得把旧内容当作当前催化剂。";
+      return `- 约束提示：type=${String(item.type || "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 48)}`;
+    })
   ];
   if (brief.flow.unavailable?.length) lines.push(`- 未配置/无新鲜数据：${brief.flow.unavailable.join("、")}；禁止猜测数值。`);
   return lines.join("\n");

@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import { notifyLark } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso, verifyAuditChain } from "./store.mjs";
-import { getMasterKeyMaterial } from "./keyProvider.mjs";
+import { getMasterKeyMaterial, getMasterKeyring } from "./keyProvider.mjs";
 import { fetchExternalText } from "./externalInputSafety.mjs";
 
 export function storeSecret(db, name, value, scope = "exchange") {
   assertSecretStorageConfigured();
-  const encrypted = encrypt(value);
+  const encrypted = encryptVaultValue(value, { name, scope });
   const item = { id: id("vault"), name, scope, encrypted, createdAt: nowIso(), updatedAt: nowIso() };
   db.vaultItems = (db.vaultItems || []).filter((existing) => existing.name !== name);
   db.vaultItems.unshift(item);
@@ -21,7 +21,7 @@ export function listVaultItems(db) {
 export function readSecret(db, name) {
   const item = (db.vaultItems || []).find((entry) => entry.name === name);
   if (!item?.encrypted) return null;
-  return decrypt(item.encrypted);
+  return decryptVaultItem(item);
 }
 
 export async function sendAlert(db, payload = {}) {
@@ -77,21 +77,54 @@ function assertSecretStorageConfigured() {
   }
 }
 
-function encrypt(value) {
-  const key = crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return { algorithm: "aes-256-gcm", iv: iv.toString("base64"), tag: tag.toString("base64"), ciphertext: ciphertext.toString("base64") };
+function derivedKey(keyId) {
+  return crypto.createHash("sha256").update(getMasterKeyMaterial(keyId)).digest();
 }
 
-function decrypt(encrypted) {
-  const key = crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "base64"));
-  decipher.setAuthTag(Buffer.from(encrypted.tag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encrypted.ciphertext, "base64")),
-    decipher.final()
-  ]).toString("utf8");
+function vaultAad(name, scope) {
+  return Buffer.from(JSON.stringify({ schemaVersion: 2, name: String(name), scope: String(scope) }), "utf8");
+}
+
+export function encryptVaultValue(value, { name, scope, keyId = null } = {}) {
+  const ring = getMasterKeyring();
+  const selectedKeyId = keyId || ring.activeKeyId;
+  const key = derivedKey(selectedKeyId);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(vaultAad(name, scope));
+  const ciphertext = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { schemaVersion: 2, algorithm: "aes-256-gcm", keyId: selectedKeyId, iv: iv.toString("base64"), tag: tag.toString("base64"), ciphertext: ciphertext.toString("base64") };
+}
+
+export function decryptVaultItem(item) {
+  const encrypted = item?.encrypted || item;
+  if (!encrypted?.ciphertext) throw new Error("Vault ciphertext is missing");
+  const ring = getMasterKeyring();
+  const candidateIds = encrypted.keyId ? [encrypted.keyId] : [...ring.keys.keys()];
+  let lastError = null;
+  for (const candidateId of candidateIds) {
+    try {
+      const decipher = crypto.createDecipheriv("aes-256-gcm", derivedKey(candidateId), Buffer.from(encrypted.iv, "base64"));
+      if (Number(encrypted.schemaVersion || 1) >= 2) decipher.setAAD(vaultAad(item?.name, item?.scope));
+      decipher.setAuthTag(Buffer.from(encrypted.tag, "base64"));
+      return Buffer.concat([decipher.update(Buffer.from(encrypted.ciphertext, "base64")), decipher.final()]).toString("utf8");
+    } catch (error) { lastError = error; }
+  }
+  throw new Error(`Vault decryption failed${encrypted.keyId ? ` for ${encrypted.keyId}` : ""}: ${lastError?.message || "unknown error"}`);
+}
+
+export function rotateVaultEncryption(db) {
+  const ring = getMasterKeyring();
+  const plaintext = (db.vaultItems || []).map((item) => ({ item, value: decryptVaultItem(item) }));
+  const rotatedAt = nowIso();
+  const replacements = plaintext.map(({ item, value }) => ({
+    ...item,
+    encrypted: encryptVaultValue(value, { name: item.name, scope: item.scope, keyId: ring.activeKeyId }),
+    keyRotatedAt: rotatedAt,
+    updatedAt: rotatedAt
+  }));
+  db.vaultItems = replacements;
+  appendAudit(db, `金库密钥轮换完成：${replacements.length} 项`, "vault_rotation", "SecurityOps", "warning");
+  return { rotated: replacements.length, activeKeyId: ring.activeKeyId, rotatedAt };
 }

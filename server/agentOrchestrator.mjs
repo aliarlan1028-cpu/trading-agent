@@ -3,6 +3,7 @@ import { evaluateTradePlan } from "./riskEngine.mjs";
 import { bindKnowledgeSkillsToPlan, evaluateKnowledgeSkillSignal, selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
+import { transitionMandate } from "./mandateLifecycle.mjs";
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
 
@@ -213,21 +214,7 @@ export function runAgentCommand(db, payload = {}) {
 }
 
 export function activateMandate(db, mandateId) {
-  const mandate = db.mandates.find((item) => item.id === mandateId);
-  if (!mandate) return null;
-  // 单一激活不变量:激活新授权时,其它 active/running 一律置 superseded。
-  // 否则多条 active 并存,计划会绑到旧版本被风控永久拒绝。
-  for (const other of db.mandates) {
-    if (other.id !== mandate.id && ["active", "running"].includes(other.status)) {
-      other.status = "superseded";
-      other.supersededAt = nowIso();
-      appendAudit(db, `旧授权被新激活取代:${other.id}`, other.id, "AgentOrchestrator");
-    }
-  }
-  mandate.status = "active";
-  mandate.activatedAt = nowIso();
-  appendAudit(db, "激活授权委托", mandate.id, "AgentOrchestrator");
-  return mandate;
+  return transitionMandate(db, mandateId, "activate", { actor: "AgentOrchestrator" }).mandate || null;
 }
 
 export function changeAgentRunStatus(db, runId, status) {

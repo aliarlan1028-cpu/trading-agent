@@ -9,6 +9,9 @@ import {
   submitRegistrationApplication,
   verifyRegistrationEmail
 } from "./publicRegistration.mjs";
+import { invalidateStreamTickets } from "./streamTickets.mjs";
+import { tenantWorkspaceAccess } from "./tenantIsolation.mjs";
+import { requestEntitlementPolicy } from "./entitlements.mjs";
 
 const sessions = new Map();
 const SESSION_DAYS = Math.max(1 / 24, Math.min(7, Number(process.env.AUTH_SESSION_DAYS || 1)));
@@ -20,6 +23,17 @@ const authJson = express.json({ limit: "64kb" });
 export function authRequired() {
   if (process.env.AUTH_REQUIRED === "false") return false;
   return true;
+}
+
+export function authenticatedSessionPolicy(user = {}, session = {}, path = "") {
+  if (Number(session.securityVersion || 0) !== Number(user.securityVersion || 0)) {
+    return { ok: false, status: 401, error: "session_security_version_mismatch" };
+  }
+  if (user.mustChangePassword === true
+    && !["/api/users/me", "/api/auth/logout", "/api/auth/change-password"].includes(path)) {
+    return { ok: false, status: 403, error: "password_change_required" };
+  }
+  return { ok: true };
 }
 
 let warnedNoPassword = false;
@@ -86,13 +100,28 @@ export function installAuth(app, db) {
   app.post("/api/auth/register", authJson, handleRegistrationApplication);
   app.post("/api/public/registration/apply", authJson, handleRegistrationApplication);
   app.get("/api/public/registration/verify", (req, res) => {
-    const application = verifyRegistrationEmail(db, req.query?.token);
-    appendAudit(db, `公开开通申请邮箱已验证：${application.id}`, application.id, "PublicRegistration", "info");
+    const verified = verifyRegistrationEmail(db, req.query?.token);
+    setRegistrationAccessCookie(res, verified.applicantAccessToken);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    appendAudit(db, `公开开通申请邮箱已验证：${verified.application.id}`, verified.application.id, "PublicRegistration", "info");
     saveDb(db);
-    res.json({ ok: true, application, statusUrl: `/api/public/registration/status?token=${encodeURIComponent(req.query?.token || "")}`, message: "Email verified. Your application is now in the onboarding queue." });
+    res.json({ ok: true, application: verified.application, statusUrl: "/api/public/registration/status", message: "Email verified. Your application is now in the onboarding queue." });
+  });
+  app.post("/api/public/registration/access", authJson, (req, res) => {
+    const token = String(req.body?.token || "");
+    const status = publicRegistrationStatus(db, token);
+    setRegistrationAccessCookie(res, token);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.json(status);
   });
   app.get("/api/public/registration/status", (req, res) => {
-    res.json(publicRegistrationStatus(db, req.query?.token));
+    if (req.query?.token) return res.status(400).json({ error: "query_bearer_not_supported" });
+    const token = getCookie(req, "registration_access") || getBearerToken(req);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.json(publicRegistrationStatus(db, token));
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -119,14 +148,49 @@ export function installAuth(app, db) {
 	      return res.status(503).json({ error: "ADMIN_PASSWORD is not configured; protected API is locked" });
 	    }
 	    const token = getAuthToken(req);
-	    const session = token ? findSession(db, token) : null;
-	    if (!session) return res.status(401).json({ error: "Authentication required" });
-    req.user = (db.users || []).find((user) => user.id === session.userId) || db.user;
+    const session = token ? findSession(db, token) : null;
+    if (!session) return res.status(401).json({ error: "Authentication required" });
+    const sessionUser = (db.users || []).find((user) => user.id === session.userId);
+    if (!sessionUser || sessionUser.status === "disabled") {
+      if (token) deleteSession(db, token);
+      invalidateStreamTickets({ userId: session.userId, sessionId: session.id });
+      saveDb(db);
+      return res.status(401).json({ error: "Session user is unavailable or disabled" });
+    }
+    req.user = sessionUser;
     req.session = session;
     req.tenantId = session.tenantId || req.user?.tenantId || "tenant_owner";
-    if (req.tenantId !== "tenant_owner" && process.env.TENANT_ISOLATION_V2 !== "true") {
-      return res.status(403).json({ error: "Tenant trading workspace is unavailable until isolated storage is enabled" });
+    const sessionPolicy = authenticatedSessionPolicy(sessionUser, session, req.path);
+    if (!sessionPolicy.ok && sessionPolicy.status === 401) {
+      if (token) deleteSession(db, token);
+      invalidateStreamTickets({ userId: session.userId, sessionId: session.id });
+      saveDb(db);
+      return res.status(401).json({ error: "Session security version is no longer valid" });
     }
+    if (!sessionPolicy.ok) {
+      return res.status(403).json({ error: "password_change_required", mustChangePassword: true });
+    }
+    const tenantAccess = tenantWorkspaceAccess(req.tenantId);
+    if (!tenantAccess.allowed) {
+      return res.status(403).json({
+        error: tenantAccess.reason,
+        message: "Tenant trading workspaces remain disabled until resource-level isolation is complete; use one isolated instance per customer."
+      });
+    }
+    const entitlementPolicy = requestEntitlementPolicy(db, {
+      user: req.user,
+      tenantId: req.tenantId,
+      path: req.path,
+      method: req.method
+    });
+    req.entitlement = entitlementPolicy.entitlement;
+    if (!entitlementPolicy.allowed) {
+      return res.status(402).json({
+        error: entitlementPolicy.entitlement.reason,
+        message: "Subscription or trial access has expired. Renew the workspace subscription to continue."
+      });
+    }
+    req.entitlementRecoveryOnly = entitlementPolicy.recoveryOnly;
     next();
   });
 
@@ -138,10 +202,14 @@ export function installAuth(app, db) {
     const user = req.user;
     if (!user) return res.status(401).json({ error: "Authentication required" });
     if (user.mfaEnabled) return res.status(409).json({ error: "MFA is already enabled" });
+    if (!verifyCurrentPassword(user, req.body?.currentPassword)) return res.status(401).json({ error: "Current password reauthentication required" });
+    res.setHeader("Cache-Control", "no-store");
+    if (user.mfaPendingSecretName) db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== user.mfaPendingSecretName);
     const secret = generateTotpSecret();
-    const secretName = `MFA_TOTP_${user.id}`;
+    const secretName = `MFA_TOTP_PENDING_${user.id}_${crypto.randomBytes(6).toString("hex")}`;
     storeSecret(db, secretName, secret, "authentication");
     user.mfaPendingSecretName = secretName;
+    user.mfaPendingExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
     user.updatedAt = nowIso();
     appendAudit(db, "开始配置双因素认证", user.id, user.name || user.email, "warning");
     saveDb(db);
@@ -158,30 +226,48 @@ export function installAuth(app, db) {
     const secretName = user?.mfaPendingSecretName;
     const secret = secretName ? readSecret(db, secretName) : null;
     if (!user || !secret) return res.status(400).json({ error: "No pending MFA enrollment" });
+    res.setHeader("Cache-Control", "no-store");
+    if (!verifyCurrentPassword(user, req.body?.currentPassword)) return res.status(401).json({ error: "Current password reauthentication required" });
+    if (!user.mfaPendingExpiresAt || new Date(user.mfaPendingExpiresAt).getTime() <= Date.now()) {
+      db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== secretName);
+      delete user.mfaPendingSecretName;
+      delete user.mfaPendingExpiresAt;
+      saveDb(db);
+      return res.status(410).json({ error: "Pending MFA enrollment expired" });
+    }
     if (!verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Invalid verification code" });
     user.mfaSecretName = secretName;
     user.mfaEnabled = true;
     delete user.mfaPendingSecretName;
+    delete user.mfaPendingExpiresAt;
+    user.mfaVersion = Number(user.mfaVersion || 0) + 1;
+    user.securityVersion = Number(user.securityVersion || 0) + 1;
     user.mfaEnabledAt = nowIso();
     user.updatedAt = user.mfaEnabledAt;
+    invalidateUserSessions(db, user.id, { persist: false });
     appendAudit(db, "启用双因素认证", user.id, user.name || user.email, "warning");
     saveDb(db);
-    res.json({ ok: true, mfaEnabled: true });
+    return createSession(req, res, db, user, { ok: true, mfaEnabled: true, sessionRotated: true });
   });
 
   app.delete("/api/account/mfa", authJson, (req, res) => {
     const user = req.user;
     const secret = user?.mfaSecretName ? readSecret(db, user.mfaSecretName) : null;
     if (!user?.mfaEnabled || !secret) return res.status(400).json({ error: "MFA is not enabled" });
+    res.setHeader("Cache-Control", "no-store");
+    if (!verifyCurrentPassword(user, req.body?.currentPassword)) return res.status(401).json({ error: "Current password reauthentication required" });
     if (!verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Invalid verification code" });
     db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== user.mfaSecretName);
     delete user.mfaSecretName;
     user.mfaEnabled = false;
+    user.mfaVersion = Number(user.mfaVersion || 0) + 1;
+    user.securityVersion = Number(user.securityVersion || 0) + 1;
     user.mfaDisabledAt = nowIso();
     user.updatedAt = user.mfaDisabledAt;
+    invalidateUserSessions(db, user.id, { persist: false });
     appendAudit(db, "停用双因素认证", user.id, user.name || user.email, "critical");
     saveDb(db);
-    res.json({ ok: true, mfaEnabled: false });
+    return createSession(req, res, db, user, { ok: true, mfaEnabled: false, sessionRotated: true });
   });
 }
 
@@ -199,7 +285,14 @@ function completePasswordLogin(req, res, db, user, clientKey) {
     }
   }
   loginAttempts.delete(clientKey);
-  return createSession(req, res, db, user);
+  return createSession(req, res, db, user, { mustChangePassword: user.mustChangePassword === true });
+}
+
+function verifyCurrentPassword(user, value) {
+  const password = String(value || "");
+  if (!password) return false;
+  if (user?.isOwner) return Boolean(process.env.ADMIN_PASSWORD) && safeEqual(password, process.env.ADMIN_PASSWORD);
+  return Boolean(user?.passwordHash) && verifyPassword(password, user.passwordHash);
 }
 
 function recordLoginFailure(key) {
@@ -228,10 +321,20 @@ export function requirePermission(permission) {
 
 export function invalidateSessions(db) {
   sessions.clear();
+  invalidateStreamTickets();
   if (db) {
     db.authSessions = [];
     saveDb(db);
   }
+}
+
+export function invalidateUserSessions(db, userId, options = {}) {
+  const removedIds = new Set((db.authSessions || []).filter((session) => session.userId === userId && session.id !== options.exceptSessionId).map((session) => session.id));
+  db.authSessions = (db.authSessions || []).filter((session) => !removedIds.has(session.id));
+  for (const [token, session] of sessions) if (removedIds.has(session.id)) sessions.delete(token);
+  invalidateStreamTickets({ userId });
+  if (options.persist !== false) saveDb(db);
+  return removedIds.size;
 }
 
 export function resolvePermissions(db, user = {}) {
@@ -241,7 +344,7 @@ export function resolvePermissions(db, user = {}) {
   const isOwner = db.user && (user === db.user || (user.id && user.id === db.user.id));
   const roleName = user.role || (isOwner ? "管理员" : null);
   if (!roleName && !user.roleId) return [];
-  const role = (db.roles || []).find((item) => item.name === roleName || item.id === user.roleId);
+  const role = (db.roles || []).find((item) => item.name === roleName || (user.roleId && item.id === user.roleId));
   return role?.permissions || [];
 }
 
@@ -255,6 +358,10 @@ function createSession(req, res, db, user, extra = {}) {
     userId: user.id,
     tenantId: user.tenantId || "tenant_owner",
     role: user.role || "管理员",
+    securityVersion: Number(user.securityVersion || 0),
+    mfaVersion: Number(user.mfaVersion || 0),
+    authLevel: user.mfaEnabled ? "password+mfa" : "password",
+    reauthenticatedAt: now,
     createdAt: now,
     lastSeenAt: now,
     expiresAt
@@ -294,9 +401,12 @@ function findSession(db, token) {
 }
 
 function deleteSession(db, token) {
+  const memory = sessions.get(token);
   sessions.delete(token);
   const tokenHash = hashToken(token);
+  const persisted = (db.authSessions || []).find((item) => item.tokenHash === tokenHash);
   db.authSessions = (db.authSessions || []).filter((item) => item.tokenHash !== tokenHash);
+  invalidateStreamTickets({ sessionId: memory?.id || persisted?.id || null });
 }
 
 function getBearerToken(req) {
@@ -333,6 +443,11 @@ function setSessionCookie(res, token, expiresAt) {
 function clearSessionCookie(res) {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   res.setHeader("Set-Cookie", `agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`);
+}
+
+function setRegistrationAccessCookie(res, token) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `registration_access=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/api/public/registration; Max-Age=${7 * 24 * 3600}${secure}`);
 }
 
 function safeEqual(left, right) {

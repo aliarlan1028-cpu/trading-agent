@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { issueApplicantAccessToken, sendRegistrationLifecycleEmail, updateRegistrationApplication } from "../publicRegistration.mjs";
+import { allocateUniquePaymentAmount } from "../trc20Payments.mjs";
 
 // TRC20 USDT 支付路由组（请求/链上核验/回调）—— 从 index.mjs 按 registrar 范式迁出。
 // 安全语义保留：回调仅在配置了 PAYMENT_WEBHOOK_SECRET 且签名匹配时才开通订阅，否则只记录。
@@ -9,6 +10,11 @@ export function registerPaymentRoutes(app, ctx) {
   app.post("/api/payments/trc20/request", requirePermission("write:mandate"), (req, res) => {
     const plan = (db.subscriptionPlans || []).find((item) => item.id === req.body.planId && item.enabled !== false);
     if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const existingSubscription = (db.subscriptions || []).find((item) => item.tenantId === (req.tenantId || req.user?.tenantId || "tenant_owner"));
+    if (existingSubscription?.planId && existingSubscription.planId !== plan.id
+      && new Date(existingSubscription.currentPeriodEnd).getTime() > Date.now()) {
+      return res.status(409).json({ error: "subscription_plan_change_requires_proration", message: "当前套餐仍在有效期内；更换套餐需要明确的折算策略，不能按普通续期静默覆盖。" });
+    }
     const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
     if (!address) return res.status(503).json({ error: "TRC20_USDT_RECEIVE_ADDRESS is not configured" });
     const payment = {
@@ -18,7 +24,10 @@ export function registerPaymentRoutes(app, ctx) {
       planId: plan.id,
       network: "TRON",
       asset: "USDT",
-      amount: Number(plan.priceUsdt || 0),
+      baseAmount: Number(plan.priceUsdt || 0),
+      amount: allocateUniquePaymentAmount(db, Number(plan.priceUsdt || 0)),
+      exactAmount: true,
+      amountIntentVersion: 1,
       address,
       status: "pending",
       expiresAt: addMonthsIso(0, 30),
@@ -54,8 +63,9 @@ export function registerPaymentRoutes(app, ctx) {
         network: "TRON",
         asset: "USDT",
         baseAmount: Number(plan.priceUsdt),
-        amount: uniqueRegistrationAmount(db, Number(plan.priceUsdt)),
+        amount: allocateUniquePaymentAmount(db, Number(plan.priceUsdt)),
         exactAmount: true,
+        amountIntentVersion: 1,
         address,
         status: "pending",
         source: "public_onboarding",
@@ -102,17 +112,6 @@ export function registerPaymentRoutes(app, ctx) {
     saveDb(db);
     res.json({ ok: true, activated });
   });
-}
-
-function uniqueRegistrationAmount(db, baseAmount) {
-  const activeAmounts = new Set((db.paymentRequests || []).filter((item) => item.status === "pending").map((item) => Number(item.amount).toFixed(3)));
-  for (let suffix = 1; suffix <= 999; suffix++) {
-    const amount = Number((baseAmount + suffix / 1000).toFixed(3));
-    if (!activeAmounts.has(amount.toFixed(3))) return amount;
-  }
-  const error = new Error("No unique payment amount is available; expire old payment requests first");
-  error.status = 409;
-  throw error;
 }
 
 function safeEqual(left, right) {

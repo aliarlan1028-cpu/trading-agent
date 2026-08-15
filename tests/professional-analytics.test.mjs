@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildProfessionalSnapshot, buildStrategyDrift, buildTradingPermissionEvidence } from "../server/professionalAnalytics.mjs";
 import { SKILL_TOOLS } from "../server/skillTools.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function fixture() {
   const now = new Date().toISOString();
@@ -40,11 +41,11 @@ test("八个专业原生 Skill 都声明输入输出、新鲜度和失败策略"
 test("策略漂移按完整生命周期净值计数，部分平仓不重复且计入开仓费", () => {
   const db = fixture();
   db.tradePlans = [{ id: "p1", strategy: "trend" }];
-  db.fills = [
+  db.fills = financiallyReconciledFills([
     { id: "entry", kind: "entry", executionOrderId: "e1", tradePlanId: "p1", feeUsdt: 0.8, createdAt: "2026-08-01T00:00:00Z" },
     { id: "partial", kind: "close", partial: true, executionOrderId: "e1", tradePlanId: "p1", realizedPnl: 0.6, feeUsdt: 0.2, createdAt: "2026-08-01T01:00:00Z" },
     { id: "final", kind: "close", executionOrderId: "e1", tradePlanId: "p1", realizedPnl: 0.4, feeUsdt: 0.4, createdAt: "2026-08-01T02:00:00Z" }
-  ];
+  ]);
   const report = buildStrategyDrift(db, { strategy: "trend" });
   assert.equal(report.diagnosis.trades, 1);
   assert.ok(Math.abs(report.diagnosis.recentExpectancy + 0.4) < 1e-9);

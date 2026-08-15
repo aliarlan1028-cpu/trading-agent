@@ -65,9 +65,11 @@ test("旧授权默认禁止同币种隐性加仓，也禁止另一条在途入�
     positions: [], executionOrders: [], orders: [{ id: "history", source: "trade_action_history", symbol: "BTC/USDT", status: "ok", reduceOnly: false }]
   }, base, {});
   assert.equal(result.ok, true, "历史写操作记录不能永久冒充交易所当前挂单");
-  assert.equal(evaluateSameSymbolEntryConflict({ positions: [{ symbol: "BTC/USDT", size: 1 }] }, base, { allowAddPosition: true }).ok, true);
+  result = evaluateSameSymbolEntryConflict({ positions: [{ symbol: "BTC/USDT", direction: "long", size: 1 }] }, base, { allowAddPosition: true });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "same_symbol_position_add_unsupported", "授权允许加仓也不能绕过当前无法按执行批次安全归属的硬限制");
   assert.equal(evaluateSameSymbolEntryConflict({ positions: [], executionOrders: [{ symbol: "BTC/USDT", planId: "other", status: "entry_pending" }] }, base, { allowAddPosition: true }).reason, "same_symbol_order_in_flight", "允许加仓也不能重复提交在途入场单");
-  assert.equal(evaluateSameSymbolEntryConflict({ positions: [{ symbol: "BTC/USDT", size: 1 }], executionOrders: [{ symbol: "BTC/USDT", planId: "other", status: "protecting" }] }, base, { allowAddPosition: true }).ok, true, "明确允许加仓后，已成交且受保护的旧仓不能继续冒充在途入场单");
+  assert.equal(evaluateSameSymbolEntryConflict({ positions: [{ symbol: "BTC/USDT", direction: "long", size: 1 }], executionOrders: [{ symbol: "BTC/USDT", planId: "other", status: "protecting" }] }, base, { allowAddPosition: true }).reason, "same_symbol_position_add_unsupported", "存在物理持仓时必须拒绝无法安全归属的追加敞口");
 });
 
 test("未授权加仓时允许新的相反方向分析替换旧 armed 计划，但不能绕过真实仓位", () => {

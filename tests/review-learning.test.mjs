@@ -10,9 +10,10 @@ import {
   stampReviewMemoryContext,
   validateAppliedReviewLessons
 } from "../server/reviewLearning.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function dbFixture() {
-  return {
+  const db = {
     markets: [
       { symbol: "BTC/USDT", regime: "上行趋势" },
       { symbol: "ADA/USDT", regime: "震荡低波动" }
@@ -35,6 +36,8 @@ function dbFixture() {
       { id: "mem-btc", source: "auto_reflection", fillId: "close-btc", title: "复盘 BTC", content: "趋势回调必须等待支撑确认，不能直接追高。", createdAt: "2026-08-01T02:00:00Z" }
     ]
   };
+  db.fills = financiallyReconciledFills(db.fills);
+  return db;
 }
 
 test("复盘检索按交易对隔离，并结合策略、周期和 regime 排序", () => {
@@ -102,6 +105,7 @@ test("新复盘记忆写入可检索的结构化上下文", () => {
     grossRealizedPnl: -1,
     netRealizedPnl: -1,
     outcome: "loss",
+    financialBasis: "completed_trade_lifecycle/net_after_recorded_costs",
     reviewId: "r",
     tradePlanId: "p"
   });
@@ -124,6 +128,7 @@ test("schema v2 迁移保留孤儿历史记忆的结构标签，但不会把旧�
     schemaVersion: 2, symbol: "BTC/USDT", direction: "long", setupType: "trend_pullback",
     strategyProductId: "trend", timeframe: "1h", traderRole: "day_trader", regime: "uptrend",
     grossRealizedPnl: 1, netRealizedPnl: null, outcome: null,
+    financialBasis: "unreconciled",
     reviewId: "missing-review", tradePlanId: "missing-plan"
   });
   assert.equal(backfillReviewMemoryContexts(db).updated, 0, "orphan migration must be idempotent");
@@ -140,6 +145,7 @@ test("学习效果按平仓生命周期统计，样本不足时不宣称已经�
     { id: "used-final", kind: "close", executionOrderId: "exec-used", tradePlanId: "used", symbol: "BTC/USDT", realizedPnl: 2, createdAt: "2026-08-02T02:00:00Z" },
     { id: "control-final", kind: "close", executionOrderId: "exec-control", tradePlanId: "control", symbol: "BTC/USDT", realizedPnl: -1, createdAt: "2026-08-02T03:00:00Z" }
   );
+  db.fills = financiallyReconciledFills(db.fills);
   const report = buildReviewLearningAnalytics(db);
   assert.equal(report.used.trades, 1, "部分平仓必须聚合为一个交易生命周期");
   assert.equal(report.used.pnlUsdt, 3);

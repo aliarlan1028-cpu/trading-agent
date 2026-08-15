@@ -3,7 +3,7 @@
 export function registerRealtimeRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, realtimeStatus, startRealtimeManager, stopRealtimeManager } = ctx;
 
-  app.get("/api/realtime/status", (_req, res) => res.json(realtimeStatus(db)));
+  app.get("/api/realtime/status", requirePermission("account.read"), (_req, res) => res.json(realtimeStatus(db)));
 
   app.post("/api/realtime/start", requirePermission("write:realtime"), (req, res) => {
     persist(res, startRealtimeManager(db, saveDb, { force: true }));

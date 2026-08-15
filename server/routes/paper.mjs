@@ -2,7 +2,7 @@
 export function registerPaperRoutes(app, ctx) {
   const { db, persist, requirePermission, buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle } = ctx;
 
-  app.get("/api/paper/sessions", (_req, res) => res.json(buildPaperReport(db)));
+  app.get("/api/paper/sessions", requirePermission("account.read"), (_req, res) => res.json(buildPaperReport(db)));
 
   app.post("/api/paper/start", requirePermission("write:review"), async (req, res) => {
     try {

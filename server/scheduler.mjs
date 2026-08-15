@@ -1,12 +1,16 @@
 import cron from "node-cron";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { acquireExecutionLease, appendAudit, appendTrace, id, nowIso, releaseExecutionLease, renewExecutionLease } from "./store.mjs";
+import { isLeaseLostError, LeaseLostError } from "./leaseSafety.mjs";
+import { storedTaskAuthorization, taskHandlerPolicy } from "./capabilityPolicy.mjs";
 
 const runtime = {
   started: false,
   saveDb: null,
   cronJobs: new Map(),
   intervalJobs: new Map(),
-  timeoutJobs: new Map()
+  timeoutJobs: new Map(),
+  activeRuns: new Map(),
+  ownerId: `scheduler_${process.pid}_${Math.random().toString(36).slice(2)}`
 };
 
 // 真实任务处理器注册表：任务只有命中已注册处理器才算执行成功。
@@ -18,8 +22,6 @@ const taskHandlers = new Map();
 export const USER_TASK_HANDLERS = Object.freeze([
   "reminder",
   "agent_mission",
-  "accounting_refresh",
-  "reconcile",
   "event_refresh",
   "market_signal_refresh",
   "strategy_research",
@@ -29,6 +31,29 @@ export const USER_TASK_HANDLERS = Object.freeze([
 ]);
 const USER_TASK_HANDLER_SET = new Set(USER_TASK_HANDLERS);
 const MAX_TIMEOUT_MS = 2_147_000_000;
+
+function localLeaseApi(db) {
+  return {
+    acquire(resource, ownerId, ttlMs) {
+      const now = Date.now();
+      const current = (db.jobLocks || []).find((row) => row.leaseResource === resource && row.locked && new Date(row.expiresAt).getTime() > now);
+      if (current) return { acquired: false, ownerId: current.ownerId, fencingToken: current.fencingToken, expiresAt: current.expiresAt };
+      return { acquired: true, ownerId, fencingToken: Number(current?.fencingToken || 0) + 1, expiresAt: new Date(now + ttlMs).toISOString() };
+    },
+    renew(resource, ownerId, fencingToken, ttlMs) {
+      const current = (db.jobLocks || []).find((row) => row.leaseResource === resource && row.ownerId === ownerId && row.fencingToken === fencingToken && row.locked);
+      if (!current) return { renewed: false, expiresAt: null };
+      current.expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      return { renewed: true, expiresAt: current.expiresAt };
+    },
+    release(resource, ownerId, fencingToken) {
+      const current = (db.jobLocks || []).find((row) => row.leaseResource === resource && row.ownerId === ownerId && row.fencingToken === fencingToken && row.locked);
+      if (!current) return false;
+      current.locked = false;
+      return true;
+    }
+  };
+}
 
 export function registerTaskHandler(name, fn) {
   taskHandlers.set(name, fn);
@@ -99,14 +124,7 @@ export function startScheduler(db, saveDb) {
   // 后续由 API/Agent 动态新增的任务只会调用 scheduleTask(db, task)，也必须继承
   // 启动时的持久化回调；否则定时器确实会跑，但运行历史/通知要等其他任务碰巧落盘。
   runtime.saveDb = saveDb || null;
-  // 新进程启动时不可能有运行中的任务：释放所有遗留并发锁
-  for (const lock of db.jobLocks || []) {
-    if (lock.locked) {
-      lock.locked = false;
-      lock.releasedAt = nowIso();
-      lock.expired = true;
-    }
-  }
+  // 不再在启动时释放共享锁：蓝绿部署/双实例下，旧进程可能仍在合法运行。
   // 同理，重启后遗留的“运行中”只是旧进程最后一次写下的展示状态，不代表当前
   // 进程仍在执行。先归一为等待；本轮真正完成/失败后 recordRun 会写准确终态。
   for (const task of db.tasks || []) {
@@ -237,26 +255,72 @@ export function schedulerStatus(db) {
   };
 }
 
-export async function runTask(db, taskId, saveDb, trigger = "manual") {
+export async function runTask(db, taskId, saveDb, trigger = "manual", options = {}) {
   const task = db.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing_task", taskId };
   if (task.enabled === false) return { status: "skipped_disabled", taskId, trigger };
-
-  const LOCK_TTL_MS = 10 * 60_000;
-  const lock = db.jobLocks.find((item) => item.concurrencyKey === (task.concurrencyKey || task.id) && item.locked);
-  if (lock) {
-    const age = Date.now() - new Date(lock.createdAt).getTime();
-    if (age < LOCK_TTL_MS) {
-      return recordRun(db, task, "skipped_locked", "任务并发锁未释放", trigger, saveDb);
-    }
-    // 进程崩溃遗留的陈旧锁：强制释放并继续
-    lock.locked = false;
-    lock.releasedAt = nowIso();
-    lock.expired = true;
+  const currentAuthorization = storedTaskAuthorization(db, task);
+  if (!currentAuthorization.allowed) {
+    task.enabled = false;
+    task.status = "暂停";
+    task.lastError = currentAuthorization.reason;
+    appendAudit(db, `任务创建者权限已失效，任务已暂停：${currentAuthorization.reason}`, task.id, "Scheduler", "critical");
+    return recordRun(db, task, "unauthorized", currentAuthorization.reason, trigger, saveDb);
   }
 
-  const lockEntry = { id: id("lock"), concurrencyKey: task.concurrencyKey || task.id, locked: true, taskId, createdAt: nowIso() };
+  const concurrencyKey = task.concurrencyKey || task.id;
+  if (runtime.activeRuns.has(concurrencyKey)) {
+    return recordRun(db, task, "skipped_locked", "任务在本进程中仍运行", trigger, saveDb);
+  }
+  const leaseApi = options.leaseApi || (db.__sqliteBacked
+    ? { acquire: acquireExecutionLease, renew: renewExecutionLease, release: releaseExecutionLease }
+    : localLeaseApi(db));
+  const leaseTtlMs = Math.max(5_000, Number(options.leaseTtlMs || 60_000));
+  const leaseResource = `scheduler:${concurrencyKey}`;
+  const ownerId = `${runtime.ownerId}:${id("jobowner")}`;
+  const lease = leaseApi.acquire(leaseResource, ownerId, leaseTtlMs);
+  if (!lease?.acquired) return recordRun(db, task, "skipped_locked", "任务共享租约由另一运行实例持有", trigger, saveDb);
+  const abortController = new AbortController();
+  const executionContext = {
+    signal: abortController.signal,
+    ownerId,
+    fencingToken: lease.fencingToken,
+    assertLease() {
+      if (abortController.signal.aborted) throw new LeaseLostError();
+      const renewed = leaseApi.renew(leaseResource, ownerId, lease.fencingToken, leaseTtlMs);
+      if (!renewed?.renewed) {
+        abortController.abort(new LeaseLostError());
+        throw new LeaseLostError();
+      }
+      lockEntry.heartbeatAt = nowIso();
+      lockEntry.expiresAt = renewed.expiresAt;
+      return true;
+    }
+  };
+  runtime.activeRuns.set(concurrencyKey, executionContext);
+  const lockEntry = {
+    id: id("lock"), concurrencyKey, leaseResource, locked: true, taskId, ownerId,
+    fencingToken: lease.fencingToken, createdAt: nowIso(), expiresAt: lease.expiresAt
+  };
   db.jobLocks.unshift(lockEntry);
+  const heartbeat = setInterval(() => {
+    try {
+      const renewed = leaseApi.renew(leaseResource, ownerId, lease.fencingToken, leaseTtlMs);
+      if (!renewed?.renewed) {
+        abortController.abort(new LeaseLostError());
+        lockEntry.locked = false;
+        lockEntry.leaseLostAt = nowIso();
+      } else {
+        lockEntry.heartbeatAt = nowIso();
+        lockEntry.expiresAt = renewed.expiresAt;
+      }
+    } catch {
+      abortController.abort(new LeaseLostError("scheduler_lease_renewal_failed"));
+      lockEntry.locked = false;
+      lockEntry.leaseLostAt = nowIso();
+    }
+  }, Math.max(1_000, Math.floor(leaseTtlMs / 3)));
+  heartbeat.unref?.();
   try {
     if (task.forceFailure) throw new Error("任务被配置为强制失败，用于测试重试机制。");
     if (!task.handler || !taskHandlers.has(task.handler)) {
@@ -264,7 +328,8 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
     }
     let output;
     if (task.handler && taskHandlers.has(task.handler)) {
-      const result = await taskHandlers.get(task.handler)(db, task);
+      const result = await taskHandlers.get(task.handler)(db, task, executionContext);
+      executionContext.assertLease();
       const resultStatus = result && typeof result === "object" ? String(result.status || "").toLowerCase() : "";
       if (["failed", "error"].includes(resultStatus)) {
         throw new Error(result.error || result.reason || `${task.handler} 返回失败状态`);
@@ -278,12 +343,19 @@ export async function runTask(db, taskId, saveDb, trigger = "manual") {
       return run;
     }
   } catch (error) {
+    if (isLeaseLostError(error)) {
+      task.lastError = "scheduler_lease_lost";
+      return recordRun(db, task, "lease_lost", "任务失去 fencing 租约，已停止后续副作用", trigger, saveDb);
+    }
     task.failureCount = Number(task.failureCount || 0) + 1;
     task.lastError = error.message;
     const run = recordRun(db, task, "failed", error.message, trigger, saveDb);
     scheduleRetryIfNeeded(db, task, saveDb, run.run);
     return run;
   } finally {
+    clearInterval(heartbeat);
+    runtime.activeRuns.delete(concurrencyKey);
+    leaseApi.release(leaseResource, ownerId, lease.fencingToken);
     lockEntry.locked = false;
     lockEntry.releasedAt = nowIso();
     // 落盘统一由 recordRun 负责(skipPersist 语义才能生效);此前 finally 无条件再全量
@@ -415,6 +487,7 @@ export function validateTaskDefinition(task = {}, { allowSystemHandlers = false,
   if (!["Every", "Cron", "At"].includes(type)) errors.push("任务类型必须是 Every / Cron / At");
   if (!handler) errors.push("任务必须选择可执行处理器");
   else if (!allowSystemHandlers && !USER_TASK_HANDLER_SET.has(handler)) errors.push(`不允许使用任务处理器：${handler}`);
+  else if (!allowSystemHandlers && taskHandlerPolicy(handler)?.userSchedulable !== true) errors.push(`任务处理器不允许由用户调度：${handler}`);
   else if (allowSystemHandlers && !taskHandlers.has(handler)) errors.push(`系统任务处理器未注册：${handler}`);
   if (type === "Every") {
     const intervalMs = parseEveryMs(task.schedule);

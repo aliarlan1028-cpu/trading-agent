@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
+import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import {
   AlertTriangle,
   Activity,
@@ -954,8 +955,8 @@ export function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
             {executionSnapshot?.netRealizedPnl != null ? ` · ${t("净盈亏", "Net PnL")} ${displayMoney(executionSnapshot.netRealizedPnl)}` : executionSnapshot?.grossRealizedPnl != null ? ` · ${t("价格毛盈亏", "Gross price PnL")} ${displayMoney(executionSnapshot.grossRealizedPnl)} · ${t("成本待对账", "costs pending")}` : ""}
             {executionOrder.status === "setup_rejected" && executionOrder.setupReview?.reason ? ` · ${t("原因：", "Reason: ")}${executionOrder.setupReview.reason}` : ""}
           </small>
-          {["entry_pending", "entry_filled", "protecting"].includes(executionOrder.status) && (
-            <button onClick={() => action(`/api/execution-orders/${executionOrder.id}/close`, { reason: "manual_ui" })}>{t("撤单/平仓", "Cancel/Close")}</button>
+          {executionExitAction(executionOrder) && (
+            <button onClick={() => requestExecutionExit(action, executionOrder, "manual_ui")}>{executionExitAction(executionOrder).label}</button>
           )}
         </div>
       )}

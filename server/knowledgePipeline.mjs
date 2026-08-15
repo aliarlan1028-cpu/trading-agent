@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import mammoth from "mammoth";
-import simpleGit from "simple-git";
 import { assertSafeExternalUrl, assertSafeGitHubRepositoryUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
 import { activeProvider, llmComplete } from "./agentChat.mjs";
@@ -49,9 +50,22 @@ const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 const rootDir = path.resolve(__dirname, "..");
 const importsDir = path.join(rootDir, "data", "knowledge-imports");
+const execFileAsync = promisify(execFile);
+const MAX_PARSED_TEXT_CHARS = 2_000_000;
+const EPUB_DEFAULT_LIMITS = Object.freeze({
+  maxEntries: 400,
+  maxEntryBytes: 4 * 1024 * 1024,
+  maxTotalBytes: 32 * 1024 * 1024,
+  maxCompressionRatio: 100,
+  maxTextChars: MAX_PARSED_TEXT_CHARS
+});
+const KNOWLEDGE_PARSE_GLOBAL_LIMIT = 2;
+const KNOWLEDGE_PARSE_TENANT_LIMIT = 1;
+let activeKnowledgeParses = 0;
+const activeKnowledgeParsesByTenant = new Map();
 
 export async function importKnowledge(db, payload = {}) {
-  await fs.mkdir(importsDir, { recursive: true });
+  await fs.mkdir(importsDir, { recursive: true, mode: 0o700 });
   const prepared = await preparePayload(payload);
   const source = {
     id: id("src"),
@@ -69,6 +83,7 @@ export async function importKnowledge(db, payload = {}) {
     author: payload.author || undefined,
     bookFocus: payload.bookFocus || undefined,
     synthetic: payload.type === "book_title",
+    tenantId: payload.tenantId || "tenant_owner",
     crawlDepth: payload.crawlDepth != null ? clampInt(payload.crawlDepth, 0, 3, 1) : undefined,
     crawlMaxPages: payload.crawlMaxPages != null ? clampInt(payload.crawlMaxPages, 1, 40, 12) : undefined,
     importedAt: nowIso()
@@ -81,11 +96,38 @@ export async function importKnowledge(db, payload = {}) {
 export async function parseKnowledgeSource(db, sourceId) {
   const source = db.knowledge.sources.find((item) => item.id === sourceId);
   if (!source) return { status: "missing_source" };
+  const tenantId = String(source.tenantId || "tenant_owner");
+  const tenantActive = activeKnowledgeParsesByTenant.get(tenantId) || 0;
+  if (activeKnowledgeParses >= KNOWLEDGE_PARSE_GLOBAL_LIMIT || tenantActive >= KNOWLEDGE_PARSE_TENANT_LIMIT) {
+    const error = new Error("Knowledge parsing concurrency limit reached; retry later");
+    error.code = "KNOWLEDGE_PARSE_BUSY";
+    throw error;
+  }
+  activeKnowledgeParses += 1;
+  activeKnowledgeParsesByTenant.set(tenantId, tenantActive + 1);
+  try {
+    return await parseKnowledgeSourceWithPermit(db, sourceId);
+  } finally {
+    activeKnowledgeParses = Math.max(0, activeKnowledgeParses - 1);
+    const next = Math.max(0, (activeKnowledgeParsesByTenant.get(tenantId) || 1) - 1);
+    if (next) activeKnowledgeParsesByTenant.set(tenantId, next);
+    else activeKnowledgeParsesByTenant.delete(tenantId);
+  }
+}
+
+async function parseKnowledgeSourceWithPermit(db, sourceId) {
+  const source = db.knowledge.sources.find((item) => item.id === sourceId);
+  if (!source) return { status: "missing_source" };
   let text = "";
   if (source.type === "book_title") text = await generateBookSynthesis(source);
   else if (source.url) text = await extractFromUrl(source.url, { maxDepth: source.crawlDepth, maxPages: source.crawlMaxPages });
   else if (source.filePath) text = await extractFromFile(source.filePath);
   else text = `${source.title}\n${source.summary || ""}`;
+  if (String(text || "").length > MAX_PARSED_TEXT_CHARS) {
+    const error = new Error(`Knowledge text exceeds ${MAX_PARSED_TEXT_CHARS} character safety limit`);
+    error.code = "KNOWLEDGE_TEXT_TOO_LARGE";
+    throw error;
+  }
   if (source.type === "book_title" && !text) {
     source.status = "failed";
     source.error = source.error || "未配置 LLM，无法按书名蒸馏知识";
@@ -437,45 +479,60 @@ function githubDocPriority(rel) {
   return 5;
 }
 
-export async function importGithubKnowledge(db, repoUrl, subPath = "") {
-  await fs.mkdir(importsDir, { recursive: true });
+export async function importGithubKnowledge(db, repoUrl, subPath = "", options = {}) {
+  await fs.mkdir(importsDir, { recursive: true, mode: 0o700 });
   await assertSafeGitHubRepositoryUrl(repoUrl);
   const target = path.join(importsDir, id("repo"));
-  await simpleGit().clone(repoUrl, target, ["--depth", "1", "--single-branch"]);
-  const base = resolveContainedPath(target, subPath);
-  const allFiles = await listTextFiles(base);
-  // 附上相对路径/大小/优先级,按优先级+路径排序;超大文件先剔除
-  const ranked = [];
-  for (const full of allFiles) {
-    let stat;
-    try { stat = await fs.stat(full); } catch { continue; }
-    if (stat.size > GITHUB_MAX_FILE_BYTES) continue;
-    const rel = path.relative(base, full);
-    ranked.push({ full, rel, pr: githubDocPriority(rel) });
+  try {
+    await cloneGithubRepositoryBounded(repoUrl, target);
+    const base = resolveContainedPath(target, subPath);
+    const scan = await listTextFilesBounded(base);
+    const ranked = [];
+    for (const full of scan.files) {
+      let stat;
+      try { stat = await fs.stat(full); } catch { continue; }
+      if (stat.size > GITHUB_MAX_FILE_BYTES) continue;
+      const rel = path.relative(base, full);
+      ranked.push({ full, rel, pr: githubDocPriority(rel) });
+    }
+    ranked.sort((a, b) => a.pr - b.pr || a.rel.localeCompare(b.rel));
+    const combined = [];
+    let used = 0, totalChars = 0;
+    for (const f of ranked) {
+      if (used >= GITHUB_MAX_FILES || totalChars >= GITHUB_MAX_TOTAL_CHARS) break;
+      let content;
+      try { content = await fs.readFile(f.full, "utf8"); } catch { continue; }
+      const block = `\n# ${f.rel}\n${content}`;
+      if (totalChars + block.length > GITHUB_MAX_TOTAL_CHARS) break;
+      combined.push(block);
+      used += 1;
+      totalChars += block.length;
+    }
+    const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill", tenantId: options.tenantId });
+    const syntheticPath = path.join(importsDir, `${source.id}.md`);
+    await fs.writeFile(syntheticPath, combined.join("\n"), { encoding: "utf8", mode: 0o600 });
+    source.filePath = syntheticPath;
+    source.githubStats = { totalFound: scan.files.length, visitedNodes: scan.visitedNodes, eligible: ranked.length, included: used, traversalTruncated: scan.truncated };
+    const result = await parseKnowledgeSource(db, source.id);
+    const note = scan.truncated || ranked.length > used
+      ? `（仓库内容已触及安全上限，按 README/docs 优先纳入 ${used} 个文件）`
+      : `（纳入 ${used} 个文本文件）`;
+    return { ...result, githubStats: source.githubStats, message: `${result.message || "已导入 GitHub 知识"}${note}` };
+  } finally {
+    await fs.rm(target, { recursive: true, force: true }).catch(() => {});
   }
-  ranked.sort((a, b) => a.pr - b.pr || a.rel.localeCompare(b.rel));
-  const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill" });
-  const combined = [];
-  let used = 0, totalChars = 0;
-  for (const f of ranked) {
-    if (used >= GITHUB_MAX_FILES || totalChars >= GITHUB_MAX_TOTAL_CHARS) break;
-    let content;
-    try { content = await fs.readFile(f.full, "utf8"); } catch { continue; }
-    const block = `\n# ${f.rel}\n${content}`;
-    combined.push(block);
-    used += 1;
-    totalChars += block.length;
-  }
-  const syntheticPath = path.join(importsDir, `${source.id}.md`);
-  await fs.writeFile(syntheticPath, combined.join("\n"), "utf8");
-  source.filePath = syntheticPath;
-  source.githubStats = { totalFound: allFiles.length, eligible: ranked.length, included: used };
-  const result = await parseKnowledgeSource(db, source.id);
-  // 诚实汇报截断:纪律要求「不静默截断」
-  const note = ranked.length > used
-    ? `（仓库共 ${allFiles.length} 个文本文件，按 README/docs 优先纳入 ${used} 个，其余因文件数/体量上限未纳入）`
-    : `（纳入 ${used} 个文本文件）`;
-  return { ...result, githubStats: source.githubStats, message: `${result.message || "已导入 GitHub 知识"}${note}` };
+}
+
+async function cloneGithubRepositoryBounded(repoUrl, target, options = {}) {
+  await execFileAsync("git", [
+    "-c", "core.askPass=", "-c", "credential.helper=", "clone", "--depth", "1", "--single-branch",
+    "--filter=blob:limit=262144", "--no-tags", repoUrl, target
+  ], {
+    timeout: Number(options.timeoutMs || 30_000),
+    maxBuffer: Number(options.maxOutputBytes || 1024 * 1024),
+    killSignal: "SIGKILL",
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" }
+  });
 }
 
 // 抓取时跳过的二进制/资源后缀(避免把图片/压缩包当页面抓)
@@ -560,22 +617,48 @@ async function extractFromFile(filePath) {
   return fs.readFile(filePath, "utf8");
 }
 
-// EPUB = zip 里一堆 XHTML。解压后按 spine 顺序（拿不到就按文件名）抽正文文本。
-async function extractFromEpub(filePath) {
+// EPUB = zip 里一堆 XHTML。解压前先用 central directory 做硬预算，解压时再次按实际字节计数。
+export async function extractFromEpub(filePath, limitOverrides = {}) {
   const JSZip = (await import("jszip")).default;
   const buf = await fs.readFile(filePath);
   const zip = await JSZip.loadAsync(buf);
+  const limits = { ...EPUB_DEFAULT_LIMITS, ...limitOverrides };
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+  if (entries.length > limits.maxEntries) throw new Error(`EPUB contains too many entries (${entries.length})`);
+  let declaredTotal = 0;
+  for (const entry of entries) {
+    const name = String(entry.unsafeOriginalName || entry.name || "");
+    if (!name || path.posix.isAbsolute(name) || name.split("/").includes("..")) throw new Error("EPUB contains an unsafe path");
+    const uncompressed = Number(entry?._data?.uncompressedSize);
+    const compressed = Number(entry?._data?.compressedSize);
+    if (!Number.isFinite(uncompressed) || uncompressed < 0) throw new Error(`EPUB entry size is unavailable: ${name}`);
+    if (uncompressed > limits.maxEntryBytes) throw new Error(`EPUB entry exceeds size limit: ${name}`);
+    declaredTotal += uncompressed;
+    if (declaredTotal > limits.maxTotalBytes) throw new Error("EPUB total uncompressed size exceeds safety limit");
+    if (uncompressed > 4096 && (!Number.isFinite(compressed) || compressed <= 0 || uncompressed / compressed > limits.maxCompressionRatio)) {
+      throw new Error(`EPUB compression ratio exceeds safety limit: ${name}`);
+    }
+  }
+  const extraction = { bytes: 0, names: new Set() };
+  const readEntryText = async (entry) => {
+    if (!entry || extraction.names.has(entry.name)) return "";
+    extraction.names.add(entry.name);
+    const bytes = await entry.async("uint8array");
+    extraction.bytes += bytes.byteLength;
+    if (bytes.byteLength > limits.maxEntryBytes || extraction.bytes > limits.maxTotalBytes) throw new Error("EPUB exceeded extraction byte limit");
+    return Buffer.from(bytes).toString("utf8");
+  };
   // 尝试从 OPF spine 拿阅读顺序
   let ordered = [];
   try {
     const containerFile = zip.file("META-INF/container.xml");
     if (containerFile) {
-      const container = await containerFile.async("string");
+      const container = await readEntryText(containerFile);
       const opfPath = cheerio.load(container, { xmlMode: true })("rootfile").attr("full-path");
       const opfFile = opfPath && zip.file(opfPath);
       if (opfFile) {
         const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
-        const $opf = cheerio.load(await opfFile.async("string"), { xmlMode: true });
+        const $opf = cheerio.load(await readEntryText(opfFile), { xmlMode: true });
         const manifest = {};
         $opf("manifest > item").each((_, el) => { manifest[$opf(el).attr("id")] = $opf(el).attr("href"); });
         $opf("spine > itemref").each((_, el) => {
@@ -589,16 +672,24 @@ async function extractFromEpub(filePath) {
     ordered = Object.keys(zip.files).filter((name) => /\.(xhtml|html?|htm)$/i.test(name)).sort();
   }
   const parts = [];
-  for (const name of ordered.slice(0, 400)) {
+  let parsedChars = 0;
+  for (const name of ordered.slice(0, limits.maxEntries)) {
     const entry = zip.file(name);
     if (!entry) continue;
     try {
-      const html = await entry.async("string");
+      const html = await readEntryText(entry);
       const $ = cheerio.load(html);
       $("script,style,nav,head").remove();
       const text = $("body").text().replace(/\s+/g, " ").trim();
-      if (text) parts.push(text);
-    } catch { /* 跳过坏章节 */ }
+      if (text) {
+        parsedChars += text.length;
+        if (parsedChars > limits.maxTextChars) throw new Error("EPUB parsed text exceeds safety limit");
+        parts.push(text);
+      }
+    } catch (error) {
+      if (/safety limit|size limit|too many|unsafe path/i.test(error.message)) throw error;
+      /* 跳过单个格式损坏章节 */
+    }
   }
   return parts.join("\n\n");
 }
@@ -608,13 +699,13 @@ async function preparePayload(payload = {}) {
     const originalFileName = safeFileName(payload.fileName || "uploaded-knowledge.bin");
     const target = path.join(importsDir, `${id("upload")}_${originalFileName}`);
     const base64 = String(payload.fileBase64).replace(/^data:[^;]+;base64,/, "");
-    await fs.writeFile(target, Buffer.from(base64, "base64"));
+    await fs.writeFile(target, Buffer.from(base64, "base64"), { mode: 0o600 });
     return { filePath: target, originalFileName };
   }
   if (payload.content) {
     const originalFileName = safeFileName(payload.fileName || `${payload.title || "pasted-note"}.md`);
     const target = path.join(importsDir, `${id("note")}_${originalFileName}`);
-    await fs.writeFile(target, String(payload.content), "utf8");
+    await fs.writeFile(target, String(payload.content), { encoding: "utf8", mode: 0o600 });
     return { filePath: target, originalFileName };
   }
   if (payload.filePath) {
@@ -671,18 +762,49 @@ const GITHUB_SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "out"
 const GITHUB_TEXT_EXT = /\.(md|mdx|markdown|rst|adoc|txt|json|ya?ml|toml|ini|js|jsx|ts|tsx|py|go|rs|java|kt|c|cpp|h|hpp|cs|rb|php|sol|sh|ipynb)$/i;
 const GITHUB_SKIP_FILE = /(\.min\.(js|css)$|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|go\.sum|Cargo\.lock|composer\.lock)$)/i;
 
-async function listTextFiles(dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
+export async function listTextFilesBounded(dir, options = {}) {
+  const limits = {
+    maxNodes: Number(options.maxNodes || 5_000),
+    maxFiles: Number(options.maxFiles || 1_500),
+    maxObservedBytes: Number(options.maxObservedBytes || 64 * 1024 * 1024)
+  };
   const files = [];
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (!GITHUB_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) files.push(...await listTextFiles(full));
-    } else if (entry.isFile() && GITHUB_TEXT_EXT.test(entry.name) && !GITHUB_SKIP_FILE.test(entry.name)) {
-      files.push(full);
+  let visitedNodes = 0;
+  let observedBytes = 0;
+  let truncated = false;
+  const queue = [dir];
+  while (queue.length && !truncated) {
+    const current = queue.shift();
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      visitedNodes += 1;
+      if (visitedNodes > limits.maxNodes) { truncated = true; break; }
+      const full = path.join(current, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (!GITHUB_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) queue.push(full);
+      } else if (entry.isFile()) {
+        let stat;
+        try { stat = await fs.stat(full); } catch { continue; }
+        observedBytes += Number(stat.size || 0);
+        if (observedBytes > limits.maxObservedBytes) { truncated = true; break; }
+        if (GITHUB_TEXT_EXT.test(entry.name) && !GITHUB_SKIP_FILE.test(entry.name)) files.push(full);
+        if (files.length >= limits.maxFiles) { truncated = true; break; }
+      }
     }
   }
-  return files;
+  return { files, visitedNodes, observedBytes, truncated };
+}
+
+export async function removeManagedKnowledgeFile(source) {
+  if (!source?.filePath) return false;
+  const absolute = path.resolve(source.filePath);
+  const root = path.resolve(importsDir);
+  if (absolute === root || !absolute.startsWith(`${root}${path.sep}`)) return false;
+  await fs.rm(absolute, { recursive: true, force: true });
+  source.filePath = null;
+  source.fileRemovedAt = nowIso();
+  return true;
 }
 
 function inferType(payload) {

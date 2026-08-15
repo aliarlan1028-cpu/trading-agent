@@ -2,6 +2,13 @@
 // 从 index.mjs 按 registrar 范式迁出（agent/actions 确认路由与 executePendingAction 仍留 index.mjs）。
 // 批准前风控复查、终态计划禁止重复执行(P1-7)、直接执行接口硬拒 等语义逐字保留。依赖经 ctx 注入。
 import { bindPlanToStrategyProduct } from "../strategyProducts.mjs";
+import {
+  approveTradePlan,
+  assertUniquePlanId,
+  constructTradePlan,
+  requestPlanApprovalTransition,
+  validateLocalPlanCancel
+} from "../tradePlanLifecycle.mjs";
 
 export function registerTradePlanRoutes(app, ctx) {
   const { db, persist, requirePermission, id, nowIso, appendAudit, appendTrace, runExpertAnalysis, bindKnowledgeSkillsToPlan, evaluateTradePlan, executeApprovedPlan, describeGuardReason, executeTradePlan, cancelArmedSetup } = ctx;
@@ -12,17 +19,17 @@ export function registerTradePlanRoutes(app, ctx) {
     const selectedMandate = req.body.mandateId
       ? db.mandates.find((item) => item.id === req.body.mandateId)
       : db.mandates[0];
-    const plan = {
-      id: id("plan"),
+    const generatedId = id("plan");
+    if (!assertUniquePlanId(db, generatedId)) return res.status(409).json({ error: "duplicate_trade_plan_id" });
+    const created = constructTradePlan(req.body || {}, {
+      id: generatedId,
       mandateId: selectedMandate?.id,
-      exchange: "OKX",
-      marketType: "perpetual_usdt",
       strategy: selectedMandate?.strategies?.[0] || "trend_following",
-      status: "draft",
-      ...req.body,
       mandateVersion: Number(selectedMandate?.version || 1),
       createdAt: nowIso()
-    };
+    });
+    if (!created.ok) return res.status(created.status).json({ error: created.error, fields: created.fields });
+    const plan = created.plan;
     const bundle = runExpertAnalysis(db, {
       trigger_type: "autonomous_trade_precheck",
       question: `${plan.symbol} ${plan.direction} 计划前置审查`,
@@ -41,8 +48,8 @@ export function registerTradePlanRoutes(app, ctx) {
     persist(res, { plan, analysisBundle: bundle });
   });
 
-  app.get("/api/trade-plans", (_req, res) => res.json(db.tradePlans));
-  app.get("/api/trade-plans/:id", (req, res) => {
+  app.get("/api/trade-plans", requirePermission("account.read"), (_req, res) => res.json(db.tradePlans));
+  app.get("/api/trade-plans/:id", requirePermission("account.read"), (req, res) => {
     const plan = findPlan(req.params.id);
     if (!plan) return notFound(res);
     res.json(plan);
@@ -65,8 +72,8 @@ export function registerTradePlanRoutes(app, ctx) {
   app.post("/api/trade-plans/:id/request-approval", requirePermission("write:trade_plan"), (req, res) => {
     const plan = findPlan(req.params.id);
     if (!plan) return notFound(res);
-    plan.status = "awaiting_approval";
-    plan.approvalRequestedAt = nowIso();
+    const transition = requestPlanApprovalTransition(plan, nowIso());
+    if (!transition.ok) return res.status(transition.status).json({ error: transition.error, currentStatus: transition.currentStatus });
     appendAudit(db, "交易计划请求人工确认", plan.id, "AgentOrchestrator");
     persist(res, plan);
   });
@@ -74,50 +81,51 @@ export function registerTradePlanRoutes(app, ctx) {
   app.post("/api/trade-plans/:id/approve", requirePermission("approve:trade_plan"), async (req, res) => {
     const plan = findPlan(req.params.id);
     if (!plan) return notFound(res);
-    // (P1-7)状态守卫:completed/cancelled 的计划此前可被再次批准并再次真实下单(幂等键随新执行单失效)。
-    const APPROVABLE = new Set(["awaiting_approval", "risk_checked", "draft", "approved"]);
-    const retryUnlock = plan.status === "protection_failed" && req.body?.retry === true;
-    if (!APPROVABLE.has(plan.status) && !retryUnlock) {
-      return res.status(400).json({ error: `计划状态 ${plan.status} 不可批准(终态计划禁止重复执行;protection_failed 需显式 retry)` });
+    const actor = req.user?.name || db.user.name;
+    const result = await approveTradePlan(db, plan, {
+      evaluateTradePlan, executeApprovedPlan, describeGuardReason, appendAudit, nowIso
+    }, { actor });
+    if (!result.ok) {
+      const message = result.error === "risk_check_required" ? "计划尚未通过风控检查，先运行 risk-check"
+        : result.error === "risk_blocked" ? `批准前风控复查失败：${result.summary || "风控未通过"}`
+          : result.error === "execution_not_submitted" ? `计划批准已消费，但没有向交易所提交订单：${result.execution?.reason || result.execution?.status || "执行前安全闸阻断"}。请修复原因后重新请求批准，或取消该计划。`
+          : `计划状态 ${plan.status} 不可批准`;
+      return res.status(result.status || 409).json({ ...result, error: message, message });
     }
-    if (!plan.lastRiskCheck) return res.status(400).json({ error: "计划尚未通过风控检查，先运行 risk-check" });
-    if (!plan.lastRiskCheck.passed) return res.status(400).json({ error: `风控未通过，禁止批准：${plan.lastRiskCheck.summary}` });
-    const freshRisk = evaluateTradePlan(db, plan);
-    freshRisk.tradePlanId = plan.id;
-    freshRisk.createdAt = nowIso();
-    db.riskChecks.unshift(freshRisk);
-    plan.lastRiskCheck = freshRisk;
-    plan.riskCheckId = freshRisk.id;
-    if (!freshRisk.passed) {
-      appendAudit(db, `批准前风控复查失败：${freshRisk.summary}`, plan.id, "RiskEngine", "warning");
-      persist(res.status(400), { error: `批准前风控复查失败：${freshRisk.summary}`, riskCheck: freshRisk });
-      return;
-    }
-    plan.status = "approved";
-    plan.approvedAt = nowIso();
-    plan.approvedBy = req.user?.name || db.user.name;
-    appendAudit(db, "人工批准交易计划", plan.id, req.user?.name || db.user.name, "warning");
-    // 批准即进入执行引擎：实盘开启则真实下单，关闭则记录干跑结果。
-    const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
-    const guard = describeGuardReason(execution.reason);
+    const { execution, guard } = result;
     const messages = {
       dry_run: "计划已批准。实盘写入关闭，执行引擎完成了数量与价格计算（干跑），未向交易所提交。",
       submitted: "计划已批准，入场单已提交到交易所。",
       blocked: guard ? `计划已批准，但执行被安全闸拦截：${guard.label}。${guard.fix ? "开启方式：" + guard.fix : ""}` : "计划已批准，但执行被安全闸拦截。",
       already_executing: "该计划已有在途执行单。"
     };
-    persist(res, { plan, execution, guard, message: messages[execution.status] || `执行状态：${execution.status}` });
+    const payload = { plan, execution, guard, approvalGranted: true, executionSubmitted: result.executionSubmitted, message: messages[execution.status] || `执行状态：${execution.status}` };
+    if (result.status === 202) return res.status(202).json(payload);
+    persist(res, payload);
   });
 
   app.post("/api/trade-plans/:id/cancel", requirePermission("write:trade_plan"), (req, res) => {
     const plan = findPlan(req.params.id);
     if (!plan) return notFound(res);
+    const cancelCheck = validateLocalPlanCancel(db, plan);
+    if (!cancelCheck.ok) {
+      return res.status(cancelCheck.status).json({
+        error: cancelCheck.error,
+        currentStatus: cancelCheck.currentStatus,
+        executionOrders: cancelCheck.executionOrders,
+        message: cancelCheck.error === "plan_has_remote_execution"
+          ? "该计划已有远端在途订单或持仓。请在执行单中按当前状态明确选择撤单或平仓。"
+          : "当前计划状态不能作为本地决策记录取消。"
+      });
+    }
+    if (cancelCheck.idempotent) return res.json({ ...plan, idempotent: true });
     if (plan.armedSetupId && typeof cancelArmedSetup === "function") {
       cancelArmedSetup(db, plan.armedSetupId, req.user?.name || db.user.name, req.body.reason || "user_cancelled");
     }
     plan.status = "cancelled";
     plan.cancelledAt = nowIso();
     plan.cancelReason = req.body.reason || "user_cancelled";
+    plan.updatedAt = plan.cancelledAt;
     appendAudit(db, "取消交易计划", plan.id, db.user.name);
     persist(res, plan);
   });

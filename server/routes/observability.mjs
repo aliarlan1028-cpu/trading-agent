@@ -9,6 +9,7 @@ export function registerObservabilityRoutes(app, ctx) {
     schedulerStatus, startScheduler
   } = ctx;
   const DEFAULT_WATCH = ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+  const [runReconcilePermission] = pendingActionCapabilities("run_reconcile");
 
   // —— 自选列表 ——
   app.post("/api/watchlist", requirePermission("write:realtime"), (req, res) => {
@@ -27,14 +28,14 @@ export function registerObservabilityRoutes(app, ctx) {
   });
 
   // —— 对账 ——
-  app.post("/api/reconciler/run", requirePermission("write:exchange"), (req, res) => {
+  app.post("/api/reconciler/run", requirePermission(runReconcilePermission), (req, res) => {
     const report = runReconciler(db, req.body || {});
     persist(res, report);
   });
-  app.get("/api/reconciler/reports", (_req, res) => res.json(db.reconciliationReports || []));
+  app.get("/api/reconciler/reports", requirePermission("account.read"), (_req, res) => res.json(db.reconciliationReports || []));
 
   // —— 调度器 ——
-  app.get("/api/scheduler/status", (_req, res) => res.json(schedulerStatus(db)));
+  app.get("/api/scheduler/status", requirePermission("admin:system"), (_req, res) => res.json(schedulerStatus(db)));
   app.post("/api/scheduler/recover", requirePermission("write:task"), (_req, res) => {
     persist(res, startScheduler(db, saveDb));
   });
@@ -51,3 +52,4 @@ export function registerObservabilityRoutes(app, ctx) {
     res.type(format === "csv" ? "text/csv" : "application/json").send(exportTraces(db, format));
   });
 }
+import { pendingActionCapabilities } from "../capabilityPolicy.mjs";

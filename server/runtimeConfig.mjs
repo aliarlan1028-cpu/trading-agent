@@ -1,21 +1,10 @@
-import crypto from "node:crypto";
-import { storeSecret } from "./securityOps.mjs";
+import { readSecret, storeSecret } from "./securityOps.mjs";
 import { appendAudit, nowIso } from "./store.mjs";
-import { getMasterKeyMaterial, keyProviderStatus } from "./keyProvider.mjs";
+import { keyProviderStatus } from "./keyProvider.mjs";
+import { SECRET_KEYS } from "./secretRegistry.mjs";
+export { SECRET_KEYS } from "./secretRegistry.mjs";
 
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
-export const SECRET_KEYS = new Set([
-  "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
-  "OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE",
-  "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "SERPAPI_API_KEY",
-  "ALERT_WEBHOOK_URL", "ETHERSCAN_API_KEY", "LANGSMITH_API_KEY",
-  "LARK_WEBHOOK_URL", "LARK_WEBHOOK_SECRET",
-  "TELEGRAM_BOT_TOKEN",
-  "WORM_AUDIT_TOKEN",
-  "TURNSTILE_SECRET_KEY", "REGISTRATION_EMAIL_WEBHOOK_URL", "REGISTRATION_EMAIL_WEBHOOK_TOKEN", "REGISTRATION_RATE_LIMIT_SALT",
-  "ADMIN_PASSWORD", "HTTP_PROXY", "HTTPS_PROXY"
-]);
-
 // 非敏感项：明文存 runtimeConfig，可回传前端显示。
 export const PLAIN_KEYS = new Set([
   "ANTHROPIC_MODEL", "OPENAI_MODEL", "DEEPSEEK_MODEL", "GEMINI_MODEL",
@@ -40,18 +29,6 @@ export const PLAIN_KEYS = new Set([
   "TRAIL_ACTIVATE_PCT", "TRAIL_PCT", "EVENT_BLACKOUT_MINUTES", "ENTRY_ORDER_TTL_MINUTES", "ENTRY_STALE_DEVIATION_PCT"
 ]);
 
-function masterKey() {
-  return crypto.createHash("sha256").update(getMasterKeyMaterial()).digest();
-}
-
-function decrypt(enc) {
-  const key = masterKey();
-  const iv = Buffer.from(enc.iv, "base64");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(Buffer.from(enc.tag, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(enc.ciphertext, "base64")), decipher.final()]).toString("utf8");
-}
-
 function scopeFor(key) {
   if (key.startsWith("OKX")) return "exchange";
   if (key.endsWith("_API_KEY") || key.endsWith("_KEY")) return "llm";
@@ -61,8 +38,10 @@ function scopeFor(key) {
 }
 
 function recomputeLive(db) {
-  db.system.liveTradingEnabled =
-    process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
+  const okxVaultFailure = (db.system?.secretDecryptionFailures || []).some((failure) => failure.name.startsWith("OKX_"));
+  db.system.liveTradingEnabled = !okxVaultFailure
+    && process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
+  if (okxVaultFailure) db.system.orderWriteEnabled = false;
 }
 
 // 启动时把已持久化的配置回填到 process.env，实现跨重启生效。
@@ -70,13 +49,15 @@ export function applyStoredConfigToEnv(db) {
   for (const key of db.clearedRuntimeSecrets || []) delete process.env[key];
   for (const item of db.vaultItems || []) {
     if (item.encrypted && SECRET_KEYS.has(item.name)) {
+      // 只要金库声明拥有这个 secret，部署环境中的同名值就不再是合法 fallback。
+      // 解密失败必须锁住该能力，不能把旧 .env bootstrap 凭证静默复活。
+      delete process.env[item.name];
       try {
-        // 金库是通过前端保存后的持久化运行配置，环境变量只是首次部署/灾难恢复的
-        // bootstrap 值。此前仅在 env 为空时回填，导致前端改过的 ADMIN_PASSWORD/API
-        // 密钥在每次重启后又被旧 .env 覆盖，看似“保存成功但没改”。解密成功时应以
-        // 金库为准；解密失败则保留部署环境变量，避免主密钥异常把服务直接锁死。
-        process.env[item.name] = decrypt(item.encrypted);
-      } catch { /* 主密钥变更导致解密失败时保留部署环境变量 */ }
+        process.env[item.name] = readSecret(db, item.name);
+        clearVaultFailure(db, item.name);
+      } catch (error) {
+        recordVaultFailure(db, item, error);
+      }
     }
   }
   db.runtimeConfig ||= {};
@@ -85,6 +66,61 @@ export function applyStoredConfigToEnv(db) {
     if (value !== undefined && value !== null) process.env[key] = String(value);
   }
   recomputeLive(db);
+}
+
+function clearVaultFailure(db, name) {
+  db.system ||= {};
+  db.system.secretDecryptionFailures = (db.system.secretDecryptionFailures || []).filter((failure) => failure.name !== name);
+  const incident = (db.riskIncidents || []).find((row) => row.source === `vault:${name}` && row.status === "open");
+  if (incident) {
+    incident.status = "resolved";
+    incident.resolvedAt = nowIso();
+    incident.resolution = "vault_secret_decryption_restored";
+  }
+  if (!(db.system.secretDecryptionFailures || []).length) db.system.vaultStatus = "healthy";
+  if (name === "ADMIN_PASSWORD") db.system.authLockedByVaultFailure = false;
+}
+
+function recordVaultFailure(db, item, error) {
+  db.system ||= {};
+  db.riskIncidents ||= [];
+  const failure = {
+    name: item.name,
+    scope: item.scope || "system",
+    keyId: item.encrypted?.keyId || "legacy_unversioned",
+    code: "vault_decryption_failed",
+    observedAt: nowIso()
+  };
+  db.system.secretDecryptionFailures ||= [];
+  const existing = db.system.secretDecryptionFailures.find((row) => row.name === item.name);
+  if (existing) Object.assign(existing, failure);
+  else db.system.secretDecryptionFailures.push(failure);
+  db.system.vaultStatus = "critical_decryption_failure";
+  if (item.name.startsWith("OKX_")) {
+    for (const account of db.exchangeAccounts || []) if (account.exchange === "OKX") {
+      account.readEnabled = false;
+      account.tradeEnabled = false;
+      account.status = "credential_decryption_failed";
+    }
+    db.system.liveTradingEnabled = false;
+    db.system.orderWriteEnabled = false;
+    db.system.reduceOnlyMode = true;
+    db.system.reduceOnlyBy ||= "credential_decryption_failed";
+  }
+  if (item.name === "ADMIN_PASSWORD") db.system.authLockedByVaultFailure = true;
+  if (!db.riskIncidents.some((row) => row.source === `vault:${item.name}` && row.status === "open")) {
+    db.riskIncidents.unshift({
+      id: `incident_vault_${String(item.name).toLowerCase()}`,
+      severity: "critical",
+      status: "open",
+      title: `加密金库项目无法解密：${item.name}`,
+      source: `vault:${item.name}`,
+      createdAt: nowIso()
+    });
+    appendAudit(db, `加密金库解密失败，已禁用相关能力：${item.name}`, item.id || item.name, "ConfigManager", "critical");
+  }
+  // 仅保留非敏感错误类型，绝不把密文/主密钥材料写入状态。
+  failure.errorType = error?.name || "Error";
 }
 
 // 通用配置写入：敏感项加密入库，非敏感项存 runtimeConfig，均即时写入 process.env（无需重启）。

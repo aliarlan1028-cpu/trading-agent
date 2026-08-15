@@ -4,6 +4,13 @@ import { notifyLarkThrottled } from "./larkNotifier.mjs";
 import { publishProfitablePositionPosters } from "./telegramNotifier.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
+import { canonicalPositionDirection } from "./positionIdentity.mjs";
+import { closeExecution } from "./executionEngine.mjs";
+import { acquireExecutionLease, releaseExecutionLease, renewExecutionLease, saveDb } from "./store.mjs";
+import { clearReduceOnlyReason, setReduceOnlyReason } from "./reduceOnlyState.mjs";
+import { marketFactFreshness } from "./marketFreshness.mjs";
+import { strictFiniteFact } from "./factValues.mjs";
+import { assertActiveLease, isLeaseLostError, LeaseLostError } from "./leaseSafety.mjs";
 
 // 调用时读(而非加载时),这样「风控设置」运行时改 TRAIL_* 立即生效、不用重启。
 const trailPct = () => Math.max(0.001, Number(process.env.TRAIL_PCT || 0.012));            // 跟踪止损距离(小数,默认 0.012=1.2%)
@@ -25,7 +32,7 @@ export function exchangeStopEvidence(db, position, exchangePosition, at = Date.n
   const openedAt = new Date(position.openedAt || 0).getTime();
   const snapshotAfterOpen = latestOkxSnapshot && snapshotAt >= openedAt && at - snapshotAt <= 2 * 60_000;
   const snapshotOwnsMirror = snapshotAfterOpen && exchangePosition?.rawSyncedAt === latestOkxSnapshot.createdAt;
-  if (!snapshotOwnsMirror || !Array.isArray(latestOkxSnapshot.algoOrders)) {
+  if (!snapshotOwnsMirror || !Array.isArray(latestOkxSnapshot.algoOrders) || latestOkxSnapshot.algoOrdersComplete !== true) {
     return { verified: false, present: null, reason: "exchange_stop_snapshot_unverified", stopPrice: null };
   }
   const baseInstId = String(position.symbol).replace("/", "-").toUpperCase();
@@ -76,6 +83,7 @@ async function moveStopTo(db, position, newStop, label, executeAction = executeT
     symbol: position.symbol,
     stopPrice: newStop,
     stopClientOrderId: executionOrder?.stopClientOrderId,
+    requestId: `movestop${String(executionOrder?.id || position.id || "position").replace(/[^a-zA-Z0-9]/g, "").slice(-16)}${String(label || "risk").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8)}`,
     quantity: position.size,
     reduceOnly: true,
     agentRunId: executionOrder?.agentRunId,
@@ -94,30 +102,73 @@ async function moveStopTo(db, position, newStop, label, executeAction = executeT
 // ---------------------------------------------------------------------------
 
 export async function monitorPositions(db, options = {}) {
+  const ownerId = options.monitorOwnerId || `${process.env.INSTANCE_ID || `pid-${process.pid}`}:position-monitor:${id("owner")}`;
+  const leaseTtlMs = Number(options.leaseTtlMs || 30_000);
+  const lease = acquireExecutionLease("position-monitor", ownerId, leaseTtlMs);
+  if (!lease.acquired) return { monitored: 0, actions: [], status: "monitor_lease_held", lease };
+  let localLeaseLost = false;
+  const assertMonitorLease = () => {
+    assertActiveLease(options);
+    if (localLeaseLost) throw new LeaseLostError();
+    const renewed = renewExecutionLease("position-monitor", ownerId, lease.fencingToken, leaseTtlMs);
+    if (!renewed?.renewed) {
+      localLeaseLost = true;
+      throw new LeaseLostError();
+    }
+    return true;
+  };
+  const heartbeat = setInterval(() => {
+    try {
+      const renewed = renewExecutionLease("position-monitor", ownerId, lease.fencingToken, leaseTtlMs);
+      if (!renewed?.renewed) localLeaseLost = true;
+    } catch { localLeaseLost = true; }
+  }, Math.max(1_000, Math.floor(leaseTtlMs / 3)));
+  heartbeat.unref?.();
+  try {
+    assertMonitorLease();
+    return await monitorPositionsLeased(db, { ...options, assertLease: assertMonitorLease });
+  } finally {
+    clearInterval(heartbeat);
+    // 只有仍持有 fencing token 的 owner 才可把本轮内存状态落盘。
+    try { assertMonitorLease(); (options.saveDb || saveDb)(db); } catch { /* 失租时禁止旧 owner 落盘 */ }
+    try { releaseExecutionLease("position-monitor", ownerId, lease.fencingToken); } catch { /* TTL 兜底 */ }
+  }
+}
+
+async function monitorPositionsLeased(db, options = {}) {
   const managed = (db.positions || []).filter((position) => position.source === "execution_engine");
   const actions = [];
   const stopAction = options.executeTradeAction || executeTradeAction;
 
   for (const position of managed) {
     try {
+      options.assertLease?.();
       // 优先用实时 WS 价（marketStream 持续更新 db.markets）；无实时价时才回退 REST。
       let market = db.markets?.find((item) => item.symbol === position.symbol);
-      let mark = Number(market?.price);
-      if (!Number.isFinite(mark)) {
+      let tickerFacts = marketFactFreshness(market || {});
+      if (!tickerFacts.ticker.ok) {
         await syncPublicMarket(db, "OKX", position.symbol).catch(() => {});
+        assertActiveLease(options);
         market = db.markets?.find((item) => item.symbol === position.symbol);
-        mark = Number(market?.price);
+        tickerFacts = marketFactFreshness(market || {});
       }
-      if (!Number.isFinite(mark)) continue;
+      const mark = tickerFacts.ticker.ok ? tickerFacts.price : null;
+      if (!Number.isFinite(mark) || mark <= 0) {
+        setReduceOnlyReason(db, "position_price_fact_unavailable", { sourceId: position.executionOrderId || position.id, sticky: false });
+        raiseIncident(db, position, "high", `${position.symbol} 实时价格事实缺失或过期，持仓监控进入只减仓`);
+        continue;
+      }
+      clearReduceOnlyReason(db, "position_price_fact_unavailable", { sourceId: position.executionOrderId || position.id, resolvedBy: "PositionManager", resolution: "fresh_ticker_restored" });
       position.mark = mark;
-      const direction = position.direction === "空" || position.direction === "short" ? "short" : "long";
+      const direction = canonicalPositionDirection(position);
       const exchangePosition = (db.positions || []).find((item) => item.source === "exchange_rest"
         && item.exchange === "OKX" && item.symbol === position.symbol
-        && String(item.posSide || item.direction || "long").toLowerCase().replace("空", "short").replace("多", "long") === direction);
+        && canonicalPositionDirection(item) === direction);
       if (exchangePosition) {
-        if (Number.isFinite(Number(exchangePosition.mark))) position.mark = mark = Number(exchangePosition.mark);
-        if (Number.isFinite(Number(exchangePosition.liqPx)) && Number(exchangePosition.liqPx) > 0) position.liqPx = Number(exchangePosition.liqPx);
-        if (Number.isFinite(Number(exchangePosition.leverage))) position.leverage = Number(exchangePosition.leverage);
+        const liq = strictFiniteFact(exchangePosition.liqPx);
+        if (Number.isFinite(liq) && liq > 0) position.liqPx = liq;
+        const leverage = strictFiniteFact(exchangePosition.leverage);
+        if (Number.isFinite(leverage) && leverage > 0) position.leverage = leverage;
       }
       updateExcursion(db, position, mark);
 
@@ -125,24 +176,35 @@ export async function monitorPositions(db, options = {}) {
       // 只有新于开仓、且同时包含该真实持仓和策略委托的 REST 快照，才作为缺失证据；
       // 一旦确认保护单消失，系统自主整仓退出，绝不把裸仓留给人工发现。
       const executionOrder = (db.executionOrders || []).find((item) => item.id === position.executionOrderId);
-      const missingProtectionReason = stopProtectionFailureReason(db, position, exchangePosition);
+      const stopEvidence = exchangeStopEvidence(db, position, exchangePosition);
+      const missingProtectionReason = stopEvidence.verified && !stopEvidence.present ? stopEvidence.reason : null;
+      if (stopEvidence.verified && stopEvidence.present && executionOrder) {
+        clearReduceOnlyReason(db, "protection_emergency", { sourceId: executionOrder.id, resolvedBy: "PositionManager", resolution: "authoritative_stop_restored" });
+      }
+      if (!stopEvidence.verified) {
+        position.stopEvidenceUnavailableAt ||= nowIso();
+        appendTrace(db, "position_manager", `${position.symbol} 止损证据快照不可验证，保持既有保护状态`, "warning");
+      } else {
+        position.stopEvidenceUnavailableAt = null;
+      }
       if (missingProtectionReason && !position.protectionEmergencySubmittedAt) {
-        const emergencyActionId = id("emergency");
-        const result = await executeTradeAction(db, "close_position", {
-          exchange: "OKX",
-          marketType: "perpetual_usdt",
-          symbol: position.symbol,
-          closePosition: true,
-          posSide: direction,
-          positionSide: direction,
+        const emergencyActionId = `emergency_protection_${String(position.executionOrderId || position.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(-28)}`;
+        const emergencyExecution = ensureEmergencyExecution(db, position, executionOrder, direction, emergencyActionId);
+        assertActiveLease(options);
+        const result = await (options.closeExecution || closeExecution)(db, emergencyExecution.id, missingProtectionReason, {
+          intent: "close_position",
+          expectedStatus: emergencyExecution.status,
+          internal: true,
           emergencyActionId,
-          reason: missingProtectionReason
+          executeTradeAction: options.executeTradeAction,
+          assertLease: options.assertLease,
+          signal: options.signal
         });
-        if (["ok", "submitted", "idempotent_replay"].includes(result.status)) {
+        if (/pending/.test(String(result.status))) {
           position.protectionEmergencySubmittedAt = nowIso();
-          if (executionOrder) executionOrder.status = "emergency_close_pending";
           db.system.reduceOnlyMode = true;
           db.system.reduceOnlyBy = "protection_emergency";
+          setReduceOnlyReason(db, "protection_emergency", { sticky: true, sourceId: emergencyExecution.id });
           db.system.riskStatus = "只减仓";
           raiseIncident(db, position, "critical", `${position.symbol} 的 OKX 止损保护缺失，已自主提交整仓退出`);
           appendAudit(db, `止损保护核验失败(${missingProtectionReason})，已自主提交整仓退出`, position.id, "PositionManager", "critical");
@@ -152,6 +214,7 @@ export async function monitorPositions(db, options = {}) {
           db.system.killSwitch = true;
           db.system.reduceOnlyMode = true;
           db.system.reduceOnlyBy = "protection_emergency";
+          setReduceOnlyReason(db, "protection_emergency", { sticky: true, sourceId: emergencyExecution.id });
           raiseIncident(db, position, "critical", `${position.symbol} 止损保护缺失且紧急退出失败(${result.status})，已熔断`);
           actions.push({ symbol: position.symbol, action: "missing_protection_emergency_failed", status: result.status });
         }
@@ -176,6 +239,7 @@ export async function monitorPositions(db, options = {}) {
         const lastAttemptAt = new Date(position.dailyGoalBreakevenAttemptAt || 0).getTime();
         if (!Number.isFinite(lastAttemptAt) || Date.now() - lastAttemptAt >= 60_000) {
           position.dailyGoalBreakevenAttemptAt = nowIso();
+          assertActiveLease(options);
           const result = await moveStopTo(db, position, goalProtection.entryPrice, "daily_goal_breakeven", stopAction);
           if (moveStopSucceeded(result)) {
             const confirmedStop = Number(result.stopPrice || goalProtection.entryPrice);
@@ -194,6 +258,7 @@ export async function monitorPositions(db, options = {}) {
             };
             appendAudit(db, `${position.symbol} 单笔浮盈 ${goalProtection.unrealizedPnlUsdt.toFixed(2)}U 达到每日目标 ${goalProtection.targetUsdt}U，OKX 止损已确认保护到开仓价 ${position.stopLoss}`, position.id, "PositionManager", "warning");
             appendTrace(db, "position_manager", `${position.symbol} 每日目标保本已由 OKX 确认`, "ok");
+            assertActiveLease(options);
             await notifyLarkThrottled(db, `daily_goal_breakeven:${position.id}`, 60 * 60 * 1000, {
               severity: "success",
               title: "✅ 单笔达标，止损已保护到开仓价",
@@ -213,6 +278,7 @@ export async function monitorPositions(db, options = {}) {
               at: nowIso()
             };
             appendAudit(db, `${position.symbol} 已达到每日盈利目标，但 OKX 止损未能移动到开仓价（${result.status || "unknown"}）；原止损保持不变`, position.id, "PositionManager", "warning");
+            assertActiveLease(options);
             await notifyLarkThrottled(db, `daily_goal_breakeven_fail:${position.id}`, 15 * 60 * 1000, {
               severity: "warning",
               title: "⚠ 达标保本改单未成功",
@@ -225,39 +291,56 @@ export async function monitorPositions(db, options = {}) {
       }
 
       // 强平距离盯盘(交易员命门):杠杆永续在两次巡检之间就可能触及强平。逼近 → 严重告警 + 建议减仓/加保证金。
-      const liqPx = Number(position.liqPx ?? position.liquidationPrice);
-      if (Number.isFinite(liqPx) && liqPx > 0) {
-        const liqDistPct = Math.abs(mark - liqPx) / mark * 100;
+      const markTtlMs = Number(process.env.MAX_LIQUIDATION_MARK_AGE_MS || 15_000);
+      const futureSkewMs = Number(process.env.MAX_MARKET_FUTURE_SKEW_MS || 30_000);
+      const markMirrors = (db.positions || []).filter((item) => ["exchange_ws", "exchange_rest"].includes(item.source)
+        && item.exchange === "OKX" && item.symbol === position.symbol && canonicalPositionDirection(item) === direction)
+        .map((item) => ({ row: item, value: strictFiniteFact(item.mark), at: new Date(item.exchangeObservedAt || item.rawSyncedAt || item.updatedAt || 0).getTime(), priority: item.source === "exchange_ws" ? 2 : 1 }))
+        .filter((item) => Number.isFinite(item.value) && item.value > 0 && Number.isFinite(item.at)
+          && Date.now() - item.at <= markTtlMs && Date.now() - item.at >= -futureSkewMs)
+        .sort((a, b) => b.priority - a.priority || b.at - a.at);
+      const liquidationMark = markMirrors[0]?.value ?? null;
+      const liqPx = strictFiniteFact(position.liqPx ?? position.liquidationPrice);
+      const liqDirectionValid = Number.isFinite(liqPx) && liqPx > 0 && Number.isFinite(liquidationMark)
+        && (direction === "short" ? liqPx > liquidationMark : liqPx < liquidationMark);
+      if (!liqDirectionValid) {
+        setReduceOnlyReason(db, "liquidation_fact_unavailable", { sourceId: position.executionOrderId || position.id, sticky: false });
+        raiseIncident(db, position, "high", `${position.symbol} 强平价或新鲜标记价不可验证，禁止以未知强平距离继续开仓`);
+      } else {
+        clearReduceOnlyReason(db, "liquidation_fact_unavailable", { sourceId: position.executionOrderId || position.id, resolvedBy: "PositionManager", resolution: "fresh_liquidation_facts_restored" });
+        const liqDistPct = Math.abs(liquidationMark - liqPx) / liquidationMark * 100;
         const liqThreshold = Number(process.env.LIQ_DISTANCE_ALERT_PCT || 8);
         position.liqDistancePct = Number(liqDistPct.toFixed(2));
         if (liqDistPct < liqThreshold) {
           raiseIncident(db, position, "critical", `${position.symbol} 逼近强平：现价 ${mark} 距强平 ${liqPx} 仅 ${liqDistPct.toFixed(1)}%（<${liqThreshold}%），建议立即减仓或加保证金`);
+          assertActiveLease(options);
           await notifyLarkThrottled(db, `liq_near:${position.id}`, 10 * 60 * 1000, {
             severity: "critical",
             title: "🚨 持仓逼近强平",
             body: `**${position.symbol}** ${position.direction || ""} 现价距强平仅 **${liqDistPct.toFixed(1)}%**，请立即减仓或加保证金。`,
-            fields: [{ label: "标记价", value: String(mark) }, { label: "强平价", value: String(liqPx) }]
+              fields: [{ label: "标记价", value: String(liquidationMark) }, { label: "强平价", value: String(liqPx) }]
           });
           actions.push({ symbol: position.symbol, action: "near_liquidation_alert", liqDistancePct: position.liqDistancePct });
         }
         const autoCloseThreshold = Math.min(liqThreshold, Number(process.env.LIQ_DISTANCE_AUTO_CLOSE_PCT || 4));
         if (liqDistPct < autoCloseThreshold && !position.liquidationEmergencySubmittedAt) {
-          const emergencyActionId = id("emergency");
-          const result = await executeTradeAction(db, "close_position", {
-            exchange: "OKX",
-            marketType: "perpetual_usdt",
-            symbol: position.symbol,
-            closePosition: true,
-            posSide: direction,
-            positionSide: direction,
+          const emergencyActionId = `emergency_liquidation_${String(position.executionOrderId || position.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(-28)}`;
+          const emergencyExecution = ensureEmergencyExecution(db, position, executionOrder, direction, emergencyActionId);
+          assertActiveLease(options);
+          const result = await (options.closeExecution || closeExecution)(db, emergencyExecution.id, "liquidation_distance_critical", {
+            intent: "close_position",
+            expectedStatus: emergencyExecution.status,
+            internal: true,
             emergencyActionId,
-            reason: "liquidation_distance_critical"
+            executeTradeAction: options.executeTradeAction,
+            assertLease: options.assertLease,
+            signal: options.signal
           });
-          if (["ok", "submitted", "idempotent_replay"].includes(result.status)) {
+          if (/pending/.test(String(result.status))) {
             position.liquidationEmergencySubmittedAt = nowIso();
-            if (executionOrder) executionOrder.status = "emergency_close_pending";
             db.system.reduceOnlyMode = true;
             db.system.reduceOnlyBy = "liquidation_emergency";
+            setReduceOnlyReason(db, "liquidation_emergency", { sticky: true, sourceId: emergencyExecution.id });
             db.system.riskStatus = "只减仓";
             appendAudit(db, `强平距离仅 ${liqDistPct.toFixed(2)}%，已自主提交整仓退出`, position.id, "PositionManager", "critical");
             actions.push({ symbol: position.symbol, action: "liquidation_emergency_close", emergencyActionId, status: result.status });
@@ -265,6 +348,7 @@ export async function monitorPositions(db, options = {}) {
             db.system.killSwitch = true;
             db.system.reduceOnlyMode = true;
             db.system.reduceOnlyBy = "liquidation_emergency";
+            setReduceOnlyReason(db, "liquidation_emergency", { sticky: true, sourceId: emergencyExecution.id });
             raiseIncident(db, position, "critical", `${position.symbol} 强平紧急退出失败(${result.status})，已熔断`);
             actions.push({ symbol: position.symbol, action: "liquidation_emergency_failed", status: result.status });
           }
@@ -289,6 +373,7 @@ export async function monitorPositions(db, options = {}) {
           position.thesisFlaggedAt = nowIso();
           const why = [fundingAgainst ? `资金费 ${funding}% 强烈不利于当前方向(拥挤/反向挤压)` : "", news ? `反向新闻：${news.intel.oneLine || news.title}` : ""].filter(Boolean).join("；");
           raiseIncident(db, position, "high", `${position.symbol} 开仓论点可能已变化，建议复核/减仓：${why}`);
+          assertActiveLease(options);
           await notifyLarkThrottled(db, `thesis:${position.id}`, 30 * 60 * 1000, { severity: "warning", title: "🔎 持仓论点复核", body: `**${position.symbol}** ${position.direction || ""} 开仓逻辑出现反向信号，建议复核是否减仓。\n${why}` });
           actions.push({ symbol: position.symbol, action: "thesis_review", why });
         }
@@ -297,6 +382,7 @@ export async function monitorPositions(db, options = {}) {
 
       if (!position.stopLoss) {
         raiseIncident(db, position, "critical", `${position.symbol} 持仓缺少止损，必须立即补挂`);
+        assertActiveLease(options);
         await notifyLarkThrottled(db, `missing_stop:${position.id}`, 30 * 60 * 1000, {
           severity: "critical",
           title: "⚠️ 持仓缺少止损",
@@ -316,12 +402,14 @@ export async function monitorPositions(db, options = {}) {
       const tp1Reached = Number.isFinite(tp1) && (isShort ? mark <= tp1 : mark >= tp1);
       const stopBelowBreakeven = isShort ? stop > entry : stop < entry;
       if (tp1Reached && stopBelowBreakeven && !position.breakevenMoved) {
+        assertActiveLease(options);
         const result = await moveStopTo(db, position, entry, "breakeven", stopAction);
         if (moveStopSucceeded(result)) {
           position.stopLoss = entry;
           position.breakevenMoved = true;
           appendAudit(db, `TP1 触达，止损已移动到保本 ${entry}`, position.id, "PositionManager");
           appendTrace(db, "position_manager", `${position.symbol} 止损移动到保本`, "ok");
+          assertActiveLease(options);
           await notifyLarkThrottled(db, `breakeven:${position.id}`, 60 * 60 * 1000, {
             severity: "success",
             title: "✅ 已移动止损到保本",
@@ -336,6 +424,7 @@ export async function monitorPositions(db, options = {}) {
           if (!blocked) {
             // 交易所侧确实没移动止损(如 OKX 附加止损不支持改单),用户可能误以为已保本 → 明确告警 + 建单,提示手动处理。
             raiseIncident(db, position, "high", `${position.symbol} TP1 触达但止损无法移动到保本(${result.status})，交易所侧保护未更新，需手动处理`);
+            assertActiveLease(options);
             await notifyLarkThrottled(db, `breakeven_fail:${position.id}`, 60 * 60 * 1000, {
               severity: "warning",
               title: "⚠ 止损未能自动移到保本(需手动)",
@@ -357,6 +446,7 @@ export async function monitorPositions(db, options = {}) {
         const stillProfitable = isShort ? trailStop < entry : trailStop > entry;
         if (improves && stillProfitable) {
           const rounded = Number(trailStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
+          assertActiveLease(options);
           const result = await moveStopTo(db, position, rounded, "trailing", stopAction);
           if (moveStopSucceeded(result)) {
             position.stopLoss = rounded;
@@ -388,12 +478,14 @@ export async function monitorPositions(db, options = {}) {
           const stillProfitable = isShort ? lockStop < entry : lockStop > entry;
           if (improves && stillProfitable) {
             const rounded = Number(lockStop.toFixed(mark > 1000 ? 1 : mark > 1 ? 3 : 5));
+            assertActiveLease(options);
             const result = await moveStopTo(db, position, rounded, "near_tp_protect", stopAction);
             if (moveStopSucceeded(result)) {
               position.stopLoss = rounded;
               position.trailingActive = true;
               appendAudit(db, `临近止盈回吐(峰值进度 ${(position.peakTpProgress * 100).toFixed(0)}% → 当前 ${(tpProgress * 100).toFixed(0)}%),止损上移锁利到 ${rounded}`, position.id, "PositionManager");
               appendTrace(db, "position_manager", `${position.symbol} 临近止盈锁利 止损→${rounded}`, "ok");
+              assertActiveLease(options);
               await notifyLarkThrottled(db, `near_tp:${position.id}`, 30 * 60 * 1000, {
                 severity: "success",
                 title: "🎯 临近止盈回吐 · 已收紧止损锁利",
@@ -415,6 +507,7 @@ export async function monitorPositions(db, options = {}) {
       if (stopDistancePct < 0.3 && !position.nearStopAlerted) {
         position.nearStopAlerted = true;
         raiseIncident(db, position, "high", `${position.symbol} 价格距止损仅 ${stopDistancePct.toFixed(2)}%，可能即将触发`);
+        assertActiveLease(options);
         await notifyLarkThrottled(db, `near_stop:${position.id}`, 20 * 60 * 1000, {
           severity: "warning",
           title: "🔔 价格逼近止损",
@@ -427,17 +520,47 @@ export async function monitorPositions(db, options = {}) {
 
       position.monitoredAt = nowIso();
     } catch (error) {
+      if (isLeaseLostError(error)) throw error;
       actions.push({ symbol: position.symbol, action: "monitor_error", error: error.message });
     }
   }
 
+  assertActiveLease(options);
   const posterResult = await publishProfitablePositionPosters(db);
+  assertActiveLease(options);
   actions.push(...posterResult.actions);
 
   // 仓位退出后自动关闭该仓位曾触发的动态风险事件，避免历史告警继续污染 AI 判断。
   reconcileRiskIncidentLifecycle(db);
 
   return { monitored: managed.length, actions };
+}
+
+function ensureEmergencyExecution(db, position, existing, direction, emergencyActionId) {
+  if (existing) return existing;
+  const stableId = `exec_${String(emergencyActionId).replace(/[^a-zA-Z0-9]/g, "").slice(-28)}`;
+  const found = (db.executionOrders || []).find((row) => row.id === stableId);
+  if (found) return found;
+  const quantity = Number(position.coinSize ?? position.quantity ?? position.size);
+  const execution = {
+    id: stableId,
+    exchange: "OKX",
+    accountId: position.accountId || null,
+    apiKeyFingerprint: position.apiKeyFingerprint || null,
+    symbol: position.symbol,
+    direction,
+    quantity: Number.isFinite(quantity) ? quantity : null,
+    filledQuantity: Number.isFinite(quantity) ? quantity : null,
+    okxCtVal: position.contractMultiplier || null,
+    status: "entry_filled",
+    syntheticEmergency: true,
+    events: [{ at: nowIso(), event: "synthetic_emergency_execution_created", detail: emergencyActionId }],
+    createdAt: nowIso()
+  };
+  db.executionOrders ||= [];
+  db.executionOrders.unshift(execution);
+  position.executionOrderId = execution.id;
+  return execution;
 }
 
 function updateExcursion(db, position, mark) {

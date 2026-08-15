@@ -5,13 +5,13 @@ import { latestSuccessfulAccountSnapshot } from "../store.mjs";
 import { buildSupportDiagnostics, searchSupportArticles, supportCatalogSummary } from "../supportKnowledge.mjs";
 
 export function registerAssistantRoutes(app, ctx) {
-  const { db, refreshAccounting, llmComplete, ragQuery, appendTrace, saveDb, id, nowIso } = ctx;
+  const { db, refreshAccounting, llmComplete, ragQuery, appendTrace, saveDb, id, nowIso, requirePermission } = ctx;
 
-  app.get("/api/assistant/capabilities", (req, res) => {
+  app.get("/api/assistant/capabilities", requirePermission("assistant.use"), (req, res) => {
     res.json({ ...supportCatalogSummary(), mode: "read_only_customer_support", canTrade: false, canChangeSettings: false });
   });
 
-  app.post("/api/assistant/summarize", async (req, res) => {
+  app.post("/api/assistant/summarize", requirePermission("assistant.use"), async (req, res) => {
     refreshAccounting(db);
     const pf = db.portfolio || {};
     const positions = db.positions || [];
@@ -51,7 +51,7 @@ export function registerAssistantRoutes(app, ctx) {
 
   // 悬浮 AI 助手（只读 copilot）：只读账户/行情/知识回答问题，绝不下单/改配置/生成计划，
   // 也不写入「AI 交易员」的会话历史（不建 chatMessage/agentRun）——与交易员职责彻底分开。
-  app.post("/api/assistant/chat", async (req, res) => {
+  app.post("/api/assistant/chat", requirePermission("assistant.use"), async (req, res) => {
     const question = String(req.body?.message || "").trim();
     if (!question) return res.status(400).json({ error: "问题不能为空" });
     try {

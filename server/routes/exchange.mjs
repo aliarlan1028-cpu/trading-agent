@@ -7,10 +7,10 @@ export function registerExchangeRoutes(app, ctx) {
   const {
     db, persist, saveDb, requirePermission, id, nowIso, appendAudit, appendTrace,
     syncPublicKlines, syncMicrostructure, refreshApiKeyMetadata, reconcileAccount,
-    syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction
+    syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction, startRealtimeManager
   } = ctx;
 
-  app.get("/api/exchange/:exchange/klines", async (req, res) => {
+  app.get("/api/exchange/:exchange/klines", requirePermission("market.read"), async (req, res) => {
     try {
       if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "行情仅允许 OKX" });
       const result = await syncPublicKlines(db, "OKX", req.query.symbol || "BTC/USDT", req.query.timeframe || "1h");
@@ -22,7 +22,7 @@ export function registerExchangeRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/exchange/:exchange/microstructure", async (req, res) => {
+  app.get("/api/exchange/:exchange/microstructure", requirePermission("market.read"), async (req, res) => {
     try {
       if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "微观结构仅允许 OKX" });
       const result = await syncMicrostructure(db, "OKX", req.query.symbol || "BTC/USDT");
@@ -32,7 +32,7 @@ export function registerExchangeRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/exchange/accounts", (_req, res) => {
+  app.get("/api/exchange/accounts", requirePermission("admin:security"), (_req, res) => {
     refreshApiKeyMetadata(db);
     res.json((db.exchangeAccounts || []).filter((item) => item.exchange === "OKX"));
   });
@@ -56,19 +56,35 @@ export function registerExchangeRoutes(app, ctx) {
   });
 
   app.patch("/api/exchange/accounts/:id", requirePermission("admin:security"), (req, res) => {
+    refreshApiKeyMetadata(db);
     const account = db.exchangeAccounts.find((item) => item.id === req.params.id);
     if (!account) return res.status(404).json({ error: "Exchange account not found" });
+    const enabling = req.body.readEnabled === true || req.body.tradeEnabled === true;
+    if (enabling && !account.credentialPresent) {
+      return res.status(422).json({ error: "okx_credentials_unavailable", message: "当前没有完整可用的 OKX 凭证，不能开启账户权限。" });
+    }
+    const otherEnabled = (db.exchangeAccounts || []).filter((item) => item.exchange === "OKX" && item.id !== account.id && (item.readEnabled || item.tradeEnabled));
+    if (enabling && otherEnabled.length) {
+      return res.status(409).json({ error: "single_okx_credential_account_only", message: "当前只配置了一组 OKX 凭证，不能同时启用多个账户元数据。", conflictingAccountIds: otherEnabled.map((item) => item.id) });
+    }
+    const authorizationBefore = `${account.readEnabled === true}:${account.tradeEnabled === true}`;
     const allowed = ["label", "accountType", "readEnabled", "tradeEnabled", "ipWhitelist", "status"];
     for (const key of allowed) {
       if (req.body[key] !== undefined) account[key] = req.body[key];
     }
+    if (account.tradeEnabled) account.readEnabled = true;
+    account.status = account.readEnabled || account.tradeEnabled ? "configured" : (account.credentialPresent ? "authorization_disabled" : "missing_credentials");
+    delete account.authorizationResetReason;
+    delete account.authorizationResetAt;
     account.withdrawEnabled = false;
     account.updatedAt = nowIso();
     appendAudit(db, "更新交易所账户安全配置", account.id, db.user.name, "warning");
+    const authorizationAfter = `${account.readEnabled === true}:${account.tradeEnabled === true}`;
+    if (authorizationBefore !== authorizationAfter) startRealtimeManager(db, saveDb, { force: true });
     persist(res, { message: `${account.exchange} 账户配置已更新`, account });
   });
 
-  app.get("/api/exchange/api-key-metadata", (_req, res) => {
+  app.get("/api/exchange/api-key-metadata", requirePermission("admin:security"), (_req, res) => {
     persist(res, refreshApiKeyMetadata(db));
   });
 
@@ -98,7 +114,7 @@ export function registerExchangeRoutes(app, ctx) {
     persist(res, await syncPrivateReadOnly(db, req.params.accountId));
   });
 
-  app.get("/api/exchange/:exchange/ticker", async (req, res) => {
+  app.get("/api/exchange/:exchange/ticker", requirePermission("market.read"), async (req, res) => {
     const symbol = req.query.symbol || "BTC/USDT";
     try {
       if (String(req.params.exchange).toUpperCase() !== "OKX") return res.status(400).json({ error: "行情仅允许 OKX" });

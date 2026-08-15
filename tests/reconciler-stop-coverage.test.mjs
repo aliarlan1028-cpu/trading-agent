@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { checkStopLossCoverage, runReconciler } from "../server/reconciler.mjs";
+
+process.env.OKX_API_KEY = "reconciler-stop-test-key";
+const apiKeyFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
 
 function fixture(algoOrders) {
   const db = {
@@ -56,8 +60,8 @@ test("armed OMS 恢复在对账确认无差异后自动退出只减仓并收口�
     tradePlans: [{ id: "plan-armed", status: "recovery_pending_reconciliation" }],
     armedSetups: [{ id: "armed-1", planId: "plan-armed", omsOrderId: "oms-1", status: "RECOVERY_PENDING_RECONCILIATION", events: [] }],
     opportunityCandidates: [{ id: "opp-1", planId: "plan-armed", status: "RECOVERY_PENDING_RECONCILIATION" }],
-    accountSnapshots: [{ id: "snap-1", accountId: "okx", exchange: "OKX", status: "ok", positions: [], openOrders: [], algoOrders: [], createdAt: now }],
-    exchangeAccounts: [{ id: "okx", exchange: "OKX", readEnabled: true }],
+    accountSnapshots: [{ id: "snap-1", accountId: "okx", apiKeyFingerprint, exchange: "OKX", status: "ok", positions: [], openOrders: [], algoOrders: [], openOrdersComplete: true, algoOrdersComplete: true, createdAt: now }],
+    exchangeAccounts: [{ id: "okx", exchange: "OKX", readEnabled: true, apiKeyFingerprint }],
     realtimeConnections: [{ id: "rt", exchange: "OKX", streamType: "public_market", status: "connected", lastMessageAt: now }],
     reconciliationReports: [], riskIncidents: [{ id: "inc-1", source: "oms-1", status: "open" }], auditLogs: [], traces: []
   };
@@ -85,13 +89,20 @@ test("成功对账会立即复评并解除专业风险闸留下的陈旧只减�
     },
     realtimeStarted: true,
     positions: [], orders: [], executionOrders: [], tradePlans: [], armedSetups: [], opportunityCandidates: [],
-    accountSnapshots: [{ id: "snap-live", accountId: "okx", exchange: "OKX", status: "ok", positions: [], openOrders: [], algoOrders: [], createdAt: now }],
-    exchangeAccounts: [{ id: "okx", exchange: "OKX", readEnabled: true }],
+    accountSnapshots: [{ id: "snap-live", accountId: "okx", apiKeyFingerprint, exchange: "OKX", status: "ok", positions: [], openOrders: [], algoOrders: [], openOrdersComplete: true, algoOrdersComplete: true, createdAt: now }],
+    exchangeAccounts: [{ id: "okx", exchange: "OKX", readEnabled: true, apiKeyFingerprint }],
     realtimeConnections: [
       { id: "public", exchange: "OKX", streamType: "public_market", status: "connected", lastMessageAt: now },
-      { id: "private", exchange: "OKX", streamType: "private_user", status: "connected", lastMessageAt: now }
+      { id: "private", exchange: "OKX", streamType: "private_user", status: "connected", lastMessageAt: now, authenticatedCredentialFingerprint: apiKeyFingerprint }
     ],
-    markets: [{ symbol: "BTC/USDT", updatedAt: now, microSyncedAt: now }],
+    markets: [{
+      symbol: "BTC/USDT", price: 100,
+      tickerSourceAt: now, tickerReceivedAt: now,
+      bookSourceAt: now, bookReceivedAt: now,
+      openInterestSourceAt: now, openInterestReceivedAt: now,
+      fundingSourceAt: now, fundingReceivedAt: now,
+      updatedAt: now, microSyncedAt: now
+    }],
     mandates: [{ id: "mandate", status: "active", allowedSymbols: ["BTC/USDT"] }],
     grayReleasePolicies: [{ enabled: true, requiresManualApproval: false }],
     reconciliationReports: [], riskIncidents: [], auditLogs: [], traces: []

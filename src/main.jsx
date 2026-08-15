@@ -198,6 +198,7 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
   const [confirm, setConfirm] = useState("");
   const [mfaEnrollment, setMfaEnrollment] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaPassword, setMfaPassword] = useState("");
   const fileRef = useRef(null);
   const profileDirty = name.trim() !== (user.name || "") || avatar !== (user.avatar || "");
 
@@ -242,18 +243,19 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
   }
 
   async function startMfaEnrollment() {
-    const result = await action("/api/account/mfa/enroll", {});
+    if (!mfaPassword) return notify(t("请输入当前登录密码后再配置双因素认证", "Enter your current password before setting up 2FA"));
+    const result = await action("/api/account/mfa/enroll", { currentPassword: mfaPassword });
     if (result?.secret) { setMfaEnrollment(result); setMfaCode(""); }
   }
 
   async function confirmMfa() {
-    const result = await action("/api/account/mfa/confirm", { code: mfaCode });
-    if (result?.ok) { notify(t("双因素认证已启用", "Two-factor authentication enabled")); setMfaEnrollment(null); setMfaCode(""); }
+    const result = await action("/api/account/mfa/confirm", { code: mfaCode, currentPassword: mfaPassword });
+    if (result?.ok) { notify(t("双因素认证已启用，其他登录已退出", "Two-factor authentication enabled; other sessions were signed out")); setMfaEnrollment(null); setMfaCode(""); setMfaPassword(""); }
   }
 
   async function disableMfa() {
-    const result = await action("/api/account/mfa", { code: mfaCode }, "DELETE");
-    if (result?.ok) { notify(t("双因素认证已停用", "Two-factor authentication disabled")); setMfaCode(""); }
+    const result = await action("/api/account/mfa", { code: mfaCode, currentPassword: mfaPassword }, "DELETE");
+    if (result?.ok) { notify(t("双因素认证已停用，其他登录已退出", "Two-factor authentication disabled; other sessions were signed out")); setMfaCode(""); setMfaPassword(""); }
   }
 
   return (
@@ -288,6 +290,7 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
         <div className="acctPwBlock">
           <h4>{t("双因素认证（TOTP）", "Two-Factor Authentication (TOTP)")}</h4>
           <p className="acctPwNote">{user.mfaEnabled ? t("已启用。登录时还需输入认证器生成的 6 位验证码。", "Enabled. Sign-in also requires a six-digit code from your authenticator.") : t("建议 Owner 启用。密钥加密保存在本机，不会发送给第三方。", "Recommended for the Owner account. The secret is encrypted locally and never sent to a third party.")}</p>
+          <label>{t("当前登录密码", "Current password")}<input type="password" autoComplete="current-password" value={mfaPassword} onChange={(event) => setMfaPassword(event.target.value)} /></label>
           {!user.mfaEnabled && !mfaEnrollment && <button className="secondaryButton" onClick={startMfaEnrollment}>{t("开始配置", "Set up 2FA")}</button>}
           {mfaEnrollment && <>
             <label>{t("认证器密钥", "Authenticator secret")}<input type="text" readOnly value={mfaEnrollment.secret} /></label>

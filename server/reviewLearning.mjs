@@ -1,4 +1,4 @@
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
 
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 6;
@@ -52,7 +52,7 @@ function planForMemory(db, memory = {}) {
   if (memory.tradePlanId) return (db.tradePlans || []).find((row) => row.id === memory.tradePlanId) || {};
   const fillIds = new Set([memory.fillId, ...(memory.fillIds || [])].filter(Boolean));
   const fill = (db.fills || []).find((row) => fillIds.has(row.id)) || {};
-  return (db.tradePlans || []).find((row) => row.id === (fill.tradePlanId || fill.planId)) || {};
+  return resolveTradeContext(db, fill).plan || {};
 }
 
 function fillForMemory(db, memory = {}) {
@@ -91,7 +91,10 @@ export function reviewMemoryMetadata(db, memory = {}) {
   const timeframe = normalizeTimeframe(explicit.timeframe || memory.timeframe || fill.timeframe || plan.timeframe || plan.strategyInstance?.timeframe);
   const regime = compact(explicit.regime || memory.regime || fill.regime || plan.regime, 80);
   const direction = normalizeDirection(explicit.direction || memory.direction || fill.direction || plan.direction || review.direction);
-  const netCandidate = lifecycle?.netRealizedPnl ?? explicit.netRealizedPnl ?? review.netRealizedPnl ?? memory.netRealizedPnl;
+  const lifecycleHasNet = finite(lifecycle?.netRealizedPnl);
+  const reviewHasNet = finite(review?.netRealizedPnl);
+  // 净值只能来自仍可核验的生命周期或复盘记录；不能由 memory/context 自我循环恢复旧结果。
+  const netCandidate = lifecycleHasNet ? lifecycle.netRealizedPnl : reviewHasNet ? review.netRealizedPnl : null;
   const grossCandidate = lifecycle?.realizedPnl ?? explicit.grossRealizedPnl
     ?? (explicit.schemaVersion === 1 ? explicit.realizedPnl : null)
     ?? review.realizedPnl ?? memory.grossRealizedPnl ?? fill.realizedPnl;
@@ -108,6 +111,9 @@ export function reviewMemoryMetadata(db, memory = {}) {
     grossRealizedPnl,
     netRealizedPnl,
     outcome: netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat",
+    financialBasis: lifecycleHasNet
+      ? "completed_trade_lifecycle/net_after_recorded_costs"
+      : reviewHasNet ? "completed_trade_review/net_after_recorded_costs" : "unreconciled",
     reviewId: explicit.reviewId || memory.reviewId || review.id || null,
     tradePlanId: explicit.tradePlanId || memory.tradePlanId || plan.id || null
   };
@@ -115,7 +121,9 @@ export function reviewMemoryMetadata(db, memory = {}) {
 
 export function stampReviewMemoryContext(memory, { fill = {}, plan = {}, review = {}, lifecycle = null } = {}) {
   const previous = memory.reviewContext || {};
-  const netCandidate = lifecycle?.netRealizedPnl ?? review.netRealizedPnl ?? memory.netRealizedPnl ?? previous.netRealizedPnl;
+  const lifecycleHasNet = finite(lifecycle?.netRealizedPnl);
+  const reviewHasNet = finite(review?.netRealizedPnl);
+  const netCandidate = lifecycleHasNet ? lifecycle.netRealizedPnl : reviewHasNet ? review.netRealizedPnl : null;
   const grossCandidate = lifecycle?.realizedPnl ?? review.realizedPnl ?? memory.grossRealizedPnl ?? previous.grossRealizedPnl
     ?? (previous.schemaVersion === 1 ? previous.realizedPnl : null)
     ?? fill.realizedPnl;
@@ -133,12 +141,16 @@ export function stampReviewMemoryContext(memory, { fill = {}, plan = {}, review 
     grossRealizedPnl,
     netRealizedPnl,
     outcome: netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat",
+    financialBasis: lifecycleHasNet
+      ? "completed_trade_lifecycle/net_after_recorded_costs"
+      : reviewHasNet ? "completed_trade_review/net_after_recorded_costs" : "unreconciled",
     reviewId: review.id || previous.reviewId || memory.reviewId || null,
     tradePlanId: plan.id || fill.tradePlanId || fill.planId || previous.tradePlanId || memory.tradePlanId || null
   };
   memory.symbol = memory.reviewContext.symbol || memory.symbol || null;
   memory.grossRealizedPnl = grossRealizedPnl;
   memory.netRealizedPnl = netRealizedPnl;
+  memory.financialBasis = memory.reviewContext.financialBasis;
   memory.reviewId = memory.reviewContext.reviewId || memory.reviewId || null;
   memory.tradePlanId = memory.reviewContext.tradePlanId || memory.tradePlanId || null;
   return memory.reviewContext;
@@ -178,6 +190,8 @@ export function retrieveRelevantReviewMemories(db, options = {}) {
   for (const memory of db.memoryItems || []) {
     if (memory.source !== "auto_reflection") continue;
     const metadata = reviewMemoryMetadata(db, memory);
+    // 失去底层生命周期和复盘的历史内容保留给人工审计，但不得作为结果型证据注入新决策。
+    if (metadata.financialBasis === "unreconciled") continue;
     const ranked = memoryScore(metadata, query, memory.updatedAt || memory.createdAt);
     // 有明确交易对时必须同币；策略级查询可跨币，但必须同策略产品/形态。
     if (query.symbols.length && !query.symbols.includes(metadata.symbol)) continue;
@@ -280,9 +294,9 @@ function comparableKey(row) {
 }
 
 export function buildReviewLearningAnalytics(db) {
-  const rows = groupClosedTradeLifecycles(db.fills || []).map((lifecycle) => {
+  const rows = groupClosedTradeLifecycles(db.fills || []).filter((lifecycle) => finite(lifecycle.netRealizedPnl)).map((lifecycle) => {
     const fill = lifecycle.representative;
-    const plan = (db.tradePlans || []).find((item) => item.id === (fill.tradePlanId || fill.planId)) || {};
+    const plan = resolveTradeContext(db, lifecycle).plan || {};
     const applied = plan.reviewLearning?.applied || plan.appliedReviewLessons || [];
     return plan.id ? {
       lifecycleKey: lifecycle.key,
@@ -358,9 +372,9 @@ export function backfillReviewMemoryContexts(db) {
     const plan = planForMemory(db, memory);
     const review = reviewForMemory(db, memory);
     const lifecycle = lifecycleForMemory(db, memory, fill, review);
-    const before = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl });
+    const before = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
     stampReviewMemoryContext(memory, { fill, plan, review, lifecycle });
-    const after = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl });
+    const after = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
     if (before !== after) updated += 1;
   }
   return { updated };

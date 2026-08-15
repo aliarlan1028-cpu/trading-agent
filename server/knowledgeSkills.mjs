@@ -6,7 +6,7 @@ import { createPaperSession } from "./paperTrading.mjs";
 import { detectRegime, getStrategy, STRATEGIES } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints, runtimeInvalidationTriggered } from "./compiledSignals.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
 
 const TIMEFRAMES = new Set(["5m", "15m", "1h", "4h", "1d"]);
 // active=已用真实成绩转正;live_probation=小额实盘试用中(可影响真实下单,但对 LLM 如实标"未验证")。
@@ -715,6 +715,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
     row
   ]));
   for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+    if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     const fill = lifecycle.representative;
     const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);
     const planId = fill.tradePlanId || fill.planId || executionOrder?.planId;
@@ -868,18 +869,22 @@ export function promoteCompiledToProbation(db, actor = "LiveValidation") {
   return { promoted: 0, blocked: true, reason: "historical_paper_and_human_approval_required", actor };
 }
 
-export function knowledgeSkillSummary(db) {
-  ensureCollections(db);
-  syncKnowledgeSkillLifecycle(db);
+export function knowledgeSkillSummary(db, options = {}) {
+  if (options.sync !== false) {
+    ensureCollections(db);
+    syncKnowledgeSkillLifecycle(db);
+  }
+  const knowledge = db.knowledge || {};
+  const skills = knowledge.tradingSkills || [];
   const counts = {};
-  for (const skill of db.knowledge.tradingSkills) counts[skill.status] = (counts[skill.status] || 0) + 1;
+  for (const skill of skills) counts[skill.status] = (counts[skill.status] || 0) + 1;
   return {
     counts,
     active: counts.active || 0,
-    total: db.knowledge.tradingSkills.length,
-    skills: db.knowledge.tradingSkills,
-    recentInvocations: db.knowledge.skillInvocations.slice(0, 50),
-    recentAttributions: db.knowledge.skillAttributions.slice(0, 100)
+    total: skills.length,
+    skills,
+    recentInvocations: (knowledge.skillInvocations || []).slice(0, 50),
+    recentAttributions: (knowledge.skillAttributions || []).slice(0, 100)
   };
 }
 

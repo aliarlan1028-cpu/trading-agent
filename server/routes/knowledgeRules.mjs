@@ -1,6 +1,8 @@
 // 知识概念/框架/规则 路由组（概念卡/理论框架/规则草案 CRUD/批准入风控/去重/运行时专家分析）——
 // 从 index.mjs 按 registrar 范式迁出。规则批准=编译成结构化条件则硬拦截,否则仅注入提示词(显式告警);
 // 去重先立即响应后台执行。依赖经 ctx 注入。
+import { resolvePermissions } from "../auth.mjs";
+
 export function registerKnowledgeRuleRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, appendTrace, compileNaturalRiskCondition, validateConditionSpec, validateDynamicRiskAction, consolidateRuleProposals, broadcastRaw, runExpertAnalysis } = ctx;
 
@@ -12,6 +14,7 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
       indicators: req.body.indicators || [],
       tradingMeaning: req.body.tradingMeaning || "待补充交易含义。",
       sourceRefs: req.body.sourceRefs || [],
+      createdByUserId: req.user?.id || null,
       createdAt: nowIso()
     };
     db.knowledge.conceptCards.unshift(card);
@@ -78,12 +81,31 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
     persist(res, { ...rule, enforcementWarning });
   });
 
-  app.delete("/api/knowledge/rules/:id", requirePermission("write:knowledge"), (req, res) => {
-    const before = (db.knowledge.ruleProposals || []).length;
-    db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((r) => r.id !== req.params.id);
-    if ((db.knowledge.ruleProposals || []).length === before) return res.status(404).json({ error: "Rule not found" });
-    db.riskRules = (db.riskRules || []).filter((r) => r.id !== `risk_from_${req.params.id}`);
-    appendAudit(db, "删除知识规则草案", req.params.id, db.user.name);
+  app.delete("/api/knowledge/rules/:id", requirePermission("knowledge.read"), (req, res) => {
+    const rule = (db.knowledge.ruleProposals || []).find((item) => item.id === req.params.id);
+    if (!rule) return res.status(404).json({ error: "Rule not found" });
+    const permissions = new Set(resolvePermissions(db, req.user));
+    const canWriteDraft = permissions.has("*") || permissions.has("write:knowledge");
+    const canApprove = permissions.has("*") || permissions.has("approve:knowledge_skill") || permissions.has("admin:system");
+    if (rule.status === "已批准") {
+      if (!canApprove) return res.status(403).json({ error: "approved_rule_retirement_requires_independent_approval" });
+      rule.status = "已退役";
+      rule.retiredAt = nowIso();
+      rule.retiredBy = req.user?.name || db.user.name;
+      const compiled = (db.riskRules || []).find((item) => item.id === `risk_from_${rule.id}`);
+      if (compiled) {
+        compiled.enabled = false;
+        compiled.retiredAt = rule.retiredAt;
+        compiled.retiredBy = rule.retiredBy;
+      }
+      appendAudit(db, "退役已批准知识规则", rule.id, rule.retiredBy, "warning");
+      return persist(res, { retired: 1, rule });
+    }
+    if (!canWriteDraft || (rule.createdByUserId && rule.createdByUserId !== req.user?.id && !canApprove)) {
+      return res.status(403).json({ error: "draft_owner_or_approver_required" });
+    }
+    db.knowledge.ruleProposals = (db.knowledge.ruleProposals || []).filter((item) => item.id !== rule.id);
+    appendAudit(db, "删除未审批知识规则草案", rule.id, req.user?.name || db.user.name);
     persist(res, { removed: 1 });
   });
 

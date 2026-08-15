@@ -1,12 +1,27 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "exec-sizing-"));
+process.env.OKX_API_KEY = "execution-sizing-test-key";
 const { computePositionSize } = await import("../server/executionEngine.mjs");
 const { accountMarginCapacity } = await import("../server/tradingCapacity.mjs");
+
+const apiKeyFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
+
+function bindLiveAccount(state) {
+  state.exchangeAccounts = [{
+    id: "okx-main", exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint
+  }];
+  for (const snapshot of state.accountSnapshots || []) {
+    snapshot.accountId = "okx-main";
+    snapshot.apiKeyFingerprint = apiKeyFingerprint;
+  }
+  return state;
+}
 
 function db(equity, ceilingPct) {
   return {
@@ -81,6 +96,7 @@ test("实盘定仓受真实可用保证金和成交后保证金使用率硬约�
     id: "snap-live", exchange: "OKX", status: "ok", createdAt: new Date().toISOString(),
     balances: [{ totalEq: "34", details: [{ ccy: "USDT", availEq: "12" }] }]
   }];
+  bindLiveAccount(state);
   state.mandates[0] = {
     ...state.mandates[0], allowedSymbols: ["SUI/USDT"], positionPct: 50,
     maxOrderNotionalUsdt: 50, maxSymbolNotionalUsdt: 100, maxPortfolioNotionalUsdt: 200,
@@ -102,6 +118,7 @@ test("实盘账户快照过期时拒绝定仓，不回退到本地余额猜测",
     id: "snap-stale", exchange: "OKX", status: "ok", createdAt: new Date(Date.now() - 20 * 60_000).toISOString(),
     balances: [{ totalEq: "34", details: [{ ccy: "USDT", availEq: "34" }] }]
   }];
+  bindLiveAccount(state);
   state.mandates[0].allowedSymbols = ["SUI/USDT"];
   const r = computePositionSize(state, { symbol: "SUI/USDT", leverage: 5, entry_range: [1, 1], stop_loss: 0.9, mandateId: "m1" });
   assert.equal(r.error, "account_snapshot_stale");
@@ -114,6 +131,7 @@ test("实盘拒绝明显来自未来的账户快照，避免服务器时钟异�
     id: "snap-future", exchange: "OKX", status: "ok", createdAt: new Date(Date.now() + 5 * 60_000).toISOString(),
     balances: [{ totalEq: "34", details: [{ ccy: "USDT", availEq: "34" }] }]
   }];
+  bindLiveAccount(state);
   state.mandates[0].allowedSymbols = ["SUI/USDT"];
   const r = computePositionSize(state, { symbol: "SUI/USDT", leverage: 5, entry_range: [1, 1], stop_loss: 0.9, mandateId: "m1" });
   assert.equal(r.error, "account_snapshot_time_invalid");
@@ -126,6 +144,7 @@ test("旧在途单缺少创建时间或名义字段时仍保守预留保证金",
     id: "snap-current", exchange: "OKX", status: "ok", createdAt: new Date().toISOString(),
     balances: [{ totalEq: "100", details: [{ ccy: "USDT", availEq: "100" }] }]
   }];
+  bindLiveAccount(state);
   state.executionOrders = [{ id: "legacy-pending", status: "entry_pending", symbol: "ADA/USDT", quantity: 10, entryPrice: 2, leverage: 2 }];
   const capacity = accountMarginCapacity(state, { mandate: { maxMarginUtilizationPct: 70 }, leverage: 2, live: true });
   assert.equal(capacity.ok, true);

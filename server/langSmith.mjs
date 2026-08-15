@@ -1,4 +1,5 @@
 import { appendTrace, id, nowIso } from "./store.mjs";
+import { scrubSecrets } from "./secretRedaction.mjs";
 
 export async function recordLangSmithRun(db, run) {
   const trace = appendTrace(db, "langsmith", run.name || "Agent Run", "local_recorded");
@@ -7,8 +8,8 @@ export async function recordLangSmithRun(db, run) {
     traceId: trace.id,
     name: run.name,
     run_type: run.runType || "chain",
-    inputs: run.inputs || {},
-    outputs: run.outputs || {},
+    inputs: scrubSecrets(run.inputs || {}),
+    outputs: scrubSecrets(run.outputs || {}),
     start_time: run.startTime || nowIso(),
     end_time: nowIso(),
     project_name: process.env.LANGSMITH_PROJECT || "ai-trading-agent"

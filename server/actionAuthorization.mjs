@@ -1,25 +1,19 @@
-const ACTION_PERMISSIONS = Object.freeze({
-  run_reconcile: "write:risk",
-  kill_switch: "risk.kill_switch",
-  set_live_gate: "approve:live_config",
-  mandate: "write:mandate",
-  approve_plan: "approve:trade_plan"
-});
+import { pendingActionCapabilities } from "./capabilityPolicy.mjs";
 
 export function pendingActionRequiredPermission(record = {}) {
-  if (record.type === "kill_switch") return record.args?.enabled === false ? "risk.kill_switch" : "risk.check";
-  if (record.type === "set_live_gate" && record.args?.enabled === false) return "write:mandate";
-  return ACTION_PERMISSIONS[record.type] || null;
+  return pendingActionCapabilities(record.type, record.args)[0] || null;
 }
 
 export function canConfirmPendingAction(db, user, record) {
-  const required = pendingActionRequiredPermission(record);
-  if (!required) return { allowed: false, reason: "unknown_action_type", requiredPermission: null };
-  const allowed = userHasPermission(db, user, required);
+  const requiredPermissions = pendingActionCapabilities(record.type, record.args);
+  const required = requiredPermissions[0] || null;
+  if (!required) return { allowed: false, reason: "unknown_action_type", requiredPermission: null, requiredPermissions: [] };
+  const allowed = requiredPermissions.every((permission) => userHasPermission(db, user, permission));
   return {
     allowed,
     reason: allowed ? null : "missing_action_permission",
-    requiredPermission: required
+    requiredPermission: required,
+    requiredPermissions
   };
 }
 

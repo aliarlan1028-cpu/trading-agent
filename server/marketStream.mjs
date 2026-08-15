@@ -10,6 +10,8 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
 import { activeMandate, nowIso } from "./store.mjs";
 import { markOkxLiquidationStreamConnected, recordOkxLiquidationMessage } from "./okxLiquidationStream.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
+import { applyScalarMarketObservation, applyTickerObservation } from "./marketObservation.mjs";
 
 // ws 库不走 undici 全局代理；有代理环境（如本机 Clash）需显式带 agent，否则实时行情 WS 直连被重置。
 function wsOptions() {
@@ -17,7 +19,6 @@ function wsOptions() {
   return proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : undefined;
 }
 
-const OKX_WS = "wss://ws.okx.com:8443/ws/v5/public";
 const listeners = new Set();
 let tickHook = null;
 // 注册"每个价格 tick"回调（index.mjs 用它实时重算浮盈亏/组合并推前端 + 实时止盈止损）。
@@ -62,7 +63,7 @@ export function startMarketStream(db) {
 
 function connect() {
   try {
-    ws = new WebSocket(OKX_WS, wsOptions());
+    ws = new WebSocket(okxEnvironmentConfig().publicWs, wsOptions());
   } catch {
     scheduleReconnect();
     return;
@@ -130,7 +131,7 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 3000);
 }
 
-function handleMessage(raw) {
+export function handleMarketStreamMessage(raw, options = {}) {
   const text = raw.toString();
   if (text === "pong") return;
   let msg;
@@ -148,35 +149,40 @@ function handleMessage(raw) {
   const d = msg.data && msg.data[0];
   if (!channel || !d) return;
   const symbol = instToSymbol(msg.arg.instId);
-  const market = ensureMarket(dbRef, symbol);
+  const targetDb = options.db || dbRef;
+  if (!targetDb) return;
+  const market = ensureMarket(targetDb, symbol);
   const update = { symbol };
   if (channel === "tickers") {
     const last = Number(d.last);
     const open = Number(d.open24h);
-    if (Number.isFinite(last)) { market.price = last; update.price = last; }
-    if (open > 0 && Number.isFinite(last)) { market.changePct = Number((((last - open) / open) * 100).toFixed(3)); update.changePct = market.changePct; }
-    if (d.high24h) { market.high24h = Number(d.high24h); update.high24h = market.high24h; }
-    if (d.low24h) { market.low24h = Number(d.low24h); update.low24h = market.low24h; }
-    // 成交量单位口径以 REST(quoteVolume, USDT) 为准，不用 WS 的 volCcy24h(单位不同)覆盖，避免数值不一致。
-    // 但保留独立的流式原始值给早期机会引擎计算短窗口变化，不污染界面/风控使用的 REST 口径。
-    if (d.volCcy24h !== undefined && Number.isFinite(Number(d.volCcy24h))) {
-      market.streamVolume24h = Number(d.volCcy24h);
-      update.streamVolume24h = market.streamVolume24h;
-    }
-    market.lastRealtimeAt = nowIso();
-    market.lastRealtimeSource = "OKX_WS";
-    market.status = "synced";
+    const result = applyTickerObservation(market, {
+      price: last,
+      changePct: open > 0 && Number.isFinite(last) ? Number((((last - open) / open) * 100).toFixed(3)) : null,
+      high24h: d.high24h,
+      low24h: d.low24h,
+      streamVolume24h: d.volCcy24h,
+      source: "OKX_WS",
+      sourceAt: d.ts
+    }, { realtime: true, receivedAt: options.receivedAt, now: options.now });
+    if (!result.applied) return result;
+    Object.assign(update, { price: market.price, changePct: market.changePct, high24h: market.high24h, low24h: market.low24h, streamVolume24h: market.streamVolume24h, sourceAt: market.tickerSourceAt, receivedAt: market.tickerReceivedAt });
     // 每个价格 tick 触发实时浮盈亏/组合重算 + 实时止盈止损检查（交易所条件单之外的安全网）。
-    if (tickHook && Number.isFinite(last)) { try { tickHook(dbRef, symbol, last); } catch { /* noop */ } }
+    if (tickHook && Number.isFinite(last)) { try { tickHook(targetDb, symbol, last); } catch { /* noop */ } }
   } else if (channel === "funding-rate") {
-    market.fundingRate = Number(d.fundingRate) * 100;
+    const result = applyScalarMarketObservation(market, "fundingRate", Number(d.fundingRate) * 100, { prefix: "funding", sourceAt: d.ts, receivedAt: options.receivedAt, now: options.now });
+    if (!result.applied) return result;
     update.fundingRate = market.fundingRate;
   } else if (channel === "open-interest") {
-    market.openInterest = Number(d.oiCcy || d.oi);
+    const result = applyScalarMarketObservation(market, "openInterest", Number(d.oiCcy || d.oi), { prefix: "openInterest", sourceAt: d.ts, receivedAt: options.receivedAt, now: options.now });
+    if (!result.applied) return result;
     update.openInterest = market.openInterest;
   }
-  broadcast(update);
+  if (options.broadcast !== false) broadcast(update);
+  return { applied: true, update };
 }
+
+function handleMessage(raw) { return handleMarketStreamMessage(raw); }
 
 function broadcast(update) {
   for (const fn of listeners) {

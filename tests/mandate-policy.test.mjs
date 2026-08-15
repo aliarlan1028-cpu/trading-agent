@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 import { mergeMandatePatch, migrateLegacyWeeklyLossMandates, normalizeAndValidateMandate, normalizePlanLeverage } from "../server/mandatePolicy.mjs";
 import { effectiveOpeningNotionalLimits, validateWriteGuard } from "../server/tradeActions.mjs";
 
 process.env.REQUIRE_AUDIT_CHAIN_OK = "false";
+process.env.OKX_API_KEY = "mandate-policy-test-key";
+const apiKeyFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
 
 const future = () => new Date(Date.now() + 86_400_000).toISOString();
 function mandate(overrides = {}) {
@@ -22,9 +25,10 @@ function dbFixture() {
     system: { liveTradingEnabled: true, realTradingAck: true, orderWriteEnabled: true, killSwitch: false },
     mandates: [mandate()], positions: [], markets: [{ symbol: "BTC/USDT", price: 100 }, { symbol: "ETH/USDT", price: 100 }],
     apiKeyMetadata: [{ exchange: "OKX", withdrawPermission: false, permissionVerifiedAt: new Date().toISOString() }],
-    accountSnapshots: [{ exchange: "OKX", status: "ok", createdAt: new Date().toISOString(), balances: [{ totalEq: "1000", details: [{ ccy: "USDT", availEq: "1000" }] }] }],
+    accountSnapshots: [{ id: "okx-snapshot", accountId: "okx-main", apiKeyFingerprint, exchange: "OKX", status: "ok", createdAt: new Date().toISOString(), balances: [{ totalEq: "1000", details: [{ ccy: "USDT", availEq: "1000" }] }] }],
     grayReleasePolicies: [{ id: "g1", enabled: true, requiresManualApproval: true, maxNotionalUsdt: 500 }],
-    auditLogs: [], executionOrders: [], reconciliationReports: [], exchangeAccounts: [], realtimeConnections: []
+    auditLogs: [], executionOrders: [], reconciliationReports: [],
+    exchangeAccounts: [{ id: "okx-main", exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint }], realtimeConnections: []
   };
 }
 
@@ -189,15 +193,14 @@ test("高于默认的既有风险值只在生产显式声明同等政策上限�
 
 test("执行闸同时约束单笔、单币种与组合总敞口", () => {
   const db = dbFixture();
-  db.mandates[0].allowAddPosition = true;
   let guard = validateWriteGuard(db, "place_order", entry({ quantity: 1.01 }));
   assert.equal(guard.reason, "order_notional_exceeds_mandate");
 
-  db.positions.push({ id: "pos1", source: "exchange_rest", exchange: "OKX", symbol: "BTC/USDT", direction: "long", size: 10, contractMultiplier: 0.1, mark: 100 });
-  guard = validateWriteGuard(db, "place_order", entry({ quantity: 0.6 }));
+  db.mandates[0].maxOrderNotionalUsdt = 200;
+  guard = validateWriteGuard(db, "place_order", entry({ quantity: 1.51 }));
   assert.equal(guard.reason, "symbol_notional_exceeds_mandate");
 
-  db.positions[0] = { id: "pos2", source: "execution_engine", symbol: "ETH/USDT", direction: "long", size: 1.4, mark: 100 };
+  db.positions = [{ id: "pos2", source: "execution_engine", symbol: "ETH/USDT", direction: "long", size: 1.4, mark: 100 }];
   guard = validateWriteGuard(db, "place_order", entry({ quantity: 0.5 }));
   assert.equal(guard.reason, "portfolio_notional_exceeds_mandate");
 });

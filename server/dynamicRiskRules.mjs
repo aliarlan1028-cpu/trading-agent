@@ -1,5 +1,6 @@
 import { isEventRiskActive } from "./eventRisk.mjs";
 import { appendAudit, id, nowIso } from "./store.mjs";
+import { strictFiniteFact } from "./factValues.mjs";
 
 const ALLOWED_FIELDS = new Set([
   "plan.leverage",
@@ -93,19 +94,19 @@ export function evaluateDynamicRiskRules(db, plan) {
   const metadata = (db.apiKeyMetadata || []).find((item) => String(item.exchange || "").toUpperCase() === String(plan.exchange || "OKX").toUpperCase()) || {};
   const facts = {
     plan: {
-      leverage: Number(plan.leverage),
-      riskPercent: Number(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? plan.max_loss_pct),
+      leverage: strictFiniteFact(plan.leverage),
+      riskPercent: strictFiniteFact(plan.entry?.riskPercent ?? plan.entry?.risk_percent ?? plan.max_loss_pct),
       stopLoss: plan.stopLoss ?? plan.stop_loss
     },
     market: {
-      fundingRate: Number(market.fundingRate),
-      spreadBps: Number(market.spreadBps)
+      fundingRate: strictFiniteFact(market.fundingRate),
+      spreadBps: strictFiniteFact(market.spreadBps)
     },
     event: {
       maxImpact: relatedEvents.reduce((max, event) => Math.max(max, Number(event.impact || 0)), 0)
     },
     account: {
-      remainingDailyLossUsdt: Number(db.system?.remainingDailyLossUsdt ?? db.portfolio?.remainingDailyLossUsdt),
+      remainingDailyLossUsdt: strictFiniteFact(db.system?.remainingDailyLossUsdt ?? db.portfolio?.remainingDailyLossUsdt),
       withdrawPermission: metadata.withdrawPermission === true
     }
   };

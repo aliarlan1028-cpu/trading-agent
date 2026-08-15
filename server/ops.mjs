@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
-import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeMandate, appendAudit, backupSqlite, latestSuccessfulAccountSnapshot, nowIso, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, latestSuccessfulAccountSnapshot, nowIso, verifyAuditChain } from "./store.mjs";
+import { createVerifiedBackup } from "./backupService.mjs";
 import { keyProviderStatus } from "./keyProvider.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
@@ -161,26 +161,15 @@ function buildOperatingStage(db, checks) {
 }
 
 export async function createSystemBackup(db) {
-  await fs.mkdir(backupDir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filePath = path.join(backupDir, `trading-agent-backup-${stamp}.sqlite`);
-  await backupSqlite(filePath);
-  const sha256 = crypto.createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
-  await fs.writeFile(`${filePath}.sha256`, `${sha256}  ${path.basename(filePath)}\n`, "utf8");
-  const manifestPath = path.join(backupDir, `trading-agent-backup-${stamp}.json`);
-  const payload = {
-    exportedAt: nowIso(),
-    auditChain: verifyAuditChain(db),
-    sqliteFile: path.basename(filePath),
-    sha256,
-    // 清单只放非敏感计数，不复制用户、订单正文或金库密文；完整数据只存在 SQLite 快照。
-    collectionCounts: Object.fromEntries(Object.entries(db)
-      .filter(([, value]) => Array.isArray(value))
-      .map(([key, value]) => [key, value.length]))
+  const result = await createVerifiedBackup({ backupDir });
+  const auditChain = verifyAuditChain(db);
+  appendAudit(db, "创建并验证系统备份", result.sqliteFile, "OpsManager");
+  return {
+    status: result.status, verified: result.verified, integrity: result.integrity,
+    sqliteFile: result.sqliteFile, encryptedFile: result.encryptedFile,
+    offsiteFile: result.offsiteFile, bytes: result.bytes, sha256: result.sha256,
+    retention: result.retention, auditChain
   };
-  await fs.writeFile(manifestPath, JSON.stringify(payload, null, 2), "utf8");
-  appendAudit(db, "创建系统备份", filePath, "OpsManager");
-  return { status: "ok", filePath, manifestPath, sha256, auditChain: payload.auditChain };
 }
 
 function check(key, label, implemented, configured, note) {

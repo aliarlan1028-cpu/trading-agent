@@ -38,6 +38,7 @@ export function normalizeExchangeOrderState(exchange, state) {
     FILLED: "FILLED",
     CANCELED: "CANCELLED",
     CANCELLED: "CANCELLED",
+    MMP_CANCELED: "CANCELLED",
     EXPIRED: "CANCELLED",
     REJECTED: "REJECTED"
   };

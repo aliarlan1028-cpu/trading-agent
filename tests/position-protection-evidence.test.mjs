@@ -16,7 +16,7 @@ function fixture(algoOrders = []) {
   const exchangePosition = { source: "exchange_rest", exchange: "OKX", symbol: "BTC/USDT", rawSyncedAt: snapshotAt };
   const db = {
     executionOrders: [{ id: "execution1", stopClientOrderId: "stopExecution1" }],
-    accountSnapshots: [{ exchange: "OKX", status: "ok", createdAt: snapshotAt, algoOrders }]
+    accountSnapshots: [{ exchange: "OKX", status: "ok", createdAt: snapshotAt, algoOrders, algoOrdersComplete: true }]
   };
   return { db, position, exchangePosition };
 }

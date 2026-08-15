@@ -5,6 +5,11 @@ import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
 import { externalAlertConfigured, recentExternalAlertSucceeded } from "./alertHealth.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
+import { clearReduceOnlyReason, setReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
+import { currentOkxCredentialFingerprint } from "./exchangeConnector.mjs";
+import { marketFactFreshness } from "./marketFreshness.mjs";
+import { canonicalPositionDirection, canonicalPositionKey } from "./positionIdentity.mjs";
+import { newestAuthoritativePosition } from "./positionView.mjs";
 
 const ageMs = (value) => value ? Date.now() - new Date(value).getTime() : Infinity;
 const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
@@ -30,10 +35,12 @@ export function assessOperationalDegradation(db) {
   const mandate = activeMandate(db);
   const symbols = mandate?.allowedSymbols || [];
   const relevantMarkets = (db.markets || []).filter((m) => !symbols.length || symbols.includes(m.symbol));
-  if (live && relevantMarkets.length && relevantMarkets.every((m) => ageMs(m.lastRealtimeAt || m.updatedAt || m.syncedAt || m.microSyncedAt || m.lastSyncedAt) > marketMaxAge)) reasons.push("market_data_stale");
+  if (live && relevantMarkets.length && relevantMarkets.every((m) => !marketFactFreshness(m, { tickerMaxAgeMs: marketMaxAge }).ticker.ok)) reasons.push("market_data_stale");
+  if (live && relevantMarkets.length && relevantMarkets.every((m) => !marketFactFreshness(m).micro.ok)) reasons.push("microstructure_data_stale");
   const hasPrivateAccount = (db.exchangeAccounts || []).some((a) => a.exchange === "OKX" && a.readEnabled);
   const okxPrivate = (db.realtimeConnections || []).find((c) => c.exchange === "OKX" && c.streamType === "private_user");
   if (live && hasPrivateAccount && (!okxPrivate || okxPrivate.status !== "connected")) reasons.push("private_ws_disconnected");
+  if (live && hasPrivateAccount && okxPrivate?.authenticatedCredentialFingerprint !== currentOkxCredentialFingerprint()) reasons.push("private_ws_credential_mismatch");
   if ((db.executionOrders || []).some((o) => String(o.status).toUpperCase() === "UNKNOWN")) reasons.push("unknown_order_state");
   const reconcile = db.reconciliationReports?.[0];
   const reconcileMaxAge = Number(process.env.SLO_RECONCILIATION_FRESHNESS_MS || 1800000);
@@ -66,6 +73,7 @@ export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") 
     const newlyActivated = db.system.reduceOnlyMode !== true;
     db.system.reduceOnlyMode = true;
     db.system.reduceOnlyBy = "professional_risk_gate";
+    setReduceOnlyReason(db, "professional_risk_gate", { sticky: false, sourceId: actor });
     db.system.riskStatus = "只减仓";
     db.system.latestAction = `专业风险闸自动切换只减仓：${assessment.reasons.join("、")}`;
     db.system.updatedAt = nowIso();
@@ -75,24 +83,18 @@ export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") 
       appendAudit(db, db.system.latestAction, "system.reduce_only", actor, "critical");
       appendTrace(db, "professional_risk", db.system.latestAction, "blocked");
     }
-  } else if (!assessment.degraded && db.system.reduceOnlyMode === true && db.system.reduceOnlyBy === "professional_risk_gate") {
+  } else if (!assessment.degraded) {
     // 自愈:降级条件消失且只减仓是本闸设的 → 自动解除(不影响用户手动设的只减仓)。
-    db.system.reduceOnlyMode = false;
-    db.system.reduceOnlyBy = null;
-    db.system.riskStatus = "正常";
-    db.system.latestAction = "专业风险闸:运行链路恢复正常,已解除只减仓";
-    db.system.updatedAt = nowIso();
-    appendTrace(db, "professional_risk", db.system.latestAction, "ok");
-  } else if (!assessment.degraded && db.system.reduceOnlyMode !== true && db.system.riskStatus === "只减仓") {
-    // 兼容旧版本已清执行标记、但未同步展示字段的状态，避免界面继续误报只减仓。
-    db.system.riskStatus = "正常";
-    db.system.latestAction = "专业风险闸:运行状态一致性已恢复正常";
-    db.system.updatedAt = nowIso();
-    appendTrace(db, "professional_risk", db.system.latestAction, "ok");
+    if (clearReduceOnlyReason(db, "professional_risk_gate", { resolvedBy: actor, resolution: "operational_health_restored" })) {
+      db.system.latestAction = "专业风险闸:运行链路恢复正常,已解除本闸只减仓原因";
+      db.system.updatedAt = nowIso();
+      appendTrace(db, "professional_risk", db.system.latestAction, "ok");
+    }
   }
   // 风险闸是可恢复状态。运行链路恢复后，旧的 open 事件也必须同步闭环，
   // 否则 LLM/前端会继续把历史故障当成当前事实。
   reconcileRiskIncidentLifecycle(db, { degradation: assessment });
+  syncReduceOnlyState(db);
   return assessment;
 }
 
@@ -108,9 +110,11 @@ export function evaluateProfessionalPlanRisks(db, plan, mandate = activeMandate(
   const degradation = assessOperationalDegradation(db);
   push("运行降级状态", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? `建议只减仓：${degradation.reasons.join("、")}` : db.system?.reduceOnlyMode ? "系统处于只减仓模式" : "运行链路正常");
 
-  const marketAge = ageMs(market.lastRealtimeAt || market.updatedAt || market.syncedAt || market.microSyncedAt || market.lastSyncedAt);
   const marketMaxAge = Number(process.env.SLO_MARKET_FRESHNESS_MS || 180000);
-  push("行情新鲜度 SLO", marketAge <= marketMaxAge, marketAge === Infinity ? "缺少行情时间戳" : `行情 ${Math.round(marketAge / 1000)} 秒前，目标 ≤${Math.round(marketMaxAge / 1000)} 秒`, marketAge <= marketMaxAge ? "ok" : enforce ? "block" : "warn");
+  const facts = marketFactFreshness(market, { tickerMaxAgeMs: marketMaxAge });
+  const tickerAge = facts.ticker.ageMs;
+  push("Ticker 新鲜度 SLO", facts.ticker.ok, tickerAge === Infinity ? "缺少独立 ticker 时间戳" : facts.ticker.reason === "future_timestamp" ? "ticker 时间戳超前" : `ticker ${Math.round(tickerAge / 1000)} 秒前，目标 ≤${Math.round(marketMaxAge / 1000)} 秒`, facts.ticker.ok ? "ok" : enforce ? "block" : "warn");
+  push("微观结构新鲜度 SLO", facts.micro.ok, facts.micro.ageMs === Infinity ? "缺少独立微观结构时间戳" : facts.micro.reason === "future_timestamp" ? "微观结构时间戳超前" : `微观结构 ${Math.round(facts.micro.ageMs / 1000)} 秒前`, facts.micro.ok ? "ok" : enforce ? "block" : "warn");
 
   const regimeRows = market?.candlesByTf?.[plan.timeframe || "1h"]?.candles || market.candles || [];
   const regime = analyzeMarketRegime(regimeRows, { spreadBps: market.spreadBps });
@@ -135,11 +139,41 @@ export function evaluateProfessionalPlanRisks(db, plan, mandate = activeMandate(
   push("流动性与冲击成本", impact === null || impact <= maxImpactBps, impact === null ? "缺少可验证的盘口点差或深度（未校验）" : `预计冲击 ${impact.toFixed(2)} bps，上限 ${maxImpactBps} bps`, impact === null ? "warn" : impact <= maxImpactBps ? "ok" : enforce ? "block" : "warn");
 
   const minLiquidationDistancePct = Number(mandate?.minLiquidationDistancePct || 12);
-  const threatened = (db.positions || []).filter((p) => {
-    const mark = Number(p.mark || p.markPrice), liq = Number(p.liquidationPrice || p.liqPx);
-    return finite(mark) && mark > 0 && finite(liq) && liq > 0 && Math.abs(mark - liq) / mark * 100 < minLiquidationDistancePct;
-  });
-  push("现有持仓强平距离", threatened.length === 0, threatened.length ? `${threatened.map((p) => p.symbol).join("、")} 强平距离低于 ${minLiquidationDistancePct}%` : `所有可计算持仓强平距离 ≥${minLiquidationDistancePct}%`);
+  const liqFactMaxAgeMs = Number(process.env.MAX_LIQUIDATION_FACT_AGE_MS || 120_000);
+  const groupedPositions = new Map();
+  for (const position of db.positions || []) {
+    const key = canonicalPositionKey(position);
+    if (!key) continue;
+    const quantity = finite(position.coinSize) ? Math.abs(Number(position.coinSize))
+      : position.source === "execution_engine" && finite(position.quantity ?? position.size) ? Math.abs(Number(position.quantity ?? position.size)) : null;
+    if (!(quantity > 0)) continue;
+    const group = groupedPositions.get(key) || [];
+    group.push(position);
+    groupedPositions.set(key, group);
+  }
+  const safePositions = [], threatened = [], unknownLiquidation = [];
+  for (const [key, rows] of groupedPositions) {
+    const authorityFact = newestAuthoritativePosition(rows, { maxAgeMs: liqFactMaxAgeMs });
+    const authority = authorityFact.row;
+    const fresh = authorityFact.fresh;
+    const mark = finite(authority?.mark ?? authority?.markPrice) ? Number(authority.mark ?? authority.markPrice) : null;
+    const liq = finite(authority?.liquidationPrice ?? authority?.liqPx) ? Number(authority.liquidationPrice ?? authority.liqPx) : null;
+    const direction = canonicalPositionDirection(authority || rows[0]);
+    const relationValid = mark > 0 && liq > 0 && (direction === "short" ? liq > mark : direction === "long" ? liq < mark : false);
+    if (!authority || !fresh || !relationValid) {
+      unknownLiquidation.push({ key, symbol: rows[0].symbol, reason: !authority ? "exchange_position_unavailable" : !fresh ? authorityFact.reason : "liquidation_fact_invalid" });
+      continue;
+    }
+    const distancePct = Math.abs(mark - liq) / mark * 100;
+    (distancePct < minLiquidationDistancePct ? threatened : safePositions).push({ key, symbol: rows[0].symbol, distancePct });
+  }
+  const liquidationPassed = threatened.length === 0 && unknownLiquidation.length === 0;
+  const liquidationDetail = threatened.length
+    ? `${threatened.map((p) => p.symbol).join("、")} 强平距离低于 ${minLiquidationDistancePct}%`
+    : unknownLiquidation.length
+      ? `${unknownLiquidation.map((p) => p.symbol).join("、")} 强平价/标记价或快照不可验证`
+      : safePositions.length ? `全部 ${safePositions.length} 个权威持仓强平距离 ≥${minLiquidationDistancePct}%` : "当前无开放持仓";
+  push("现有持仓强平距离", liquidationPassed, liquidationDetail, liquidationPassed ? "ok" : enforce ? "block" : "warn");
 
   return { checks, portfolio, degradation, regime, liquidity: { spreadBps: finite(spread) ? spread : null, depthUsdt: finite(depth) ? depth : null, expectedImpactBps: impact, maxImpactBps, model: costEstimate.ok ? costEstimate.model : null, calibration: costEstimate.ok ? costEstimate.calibration : null } };
 }

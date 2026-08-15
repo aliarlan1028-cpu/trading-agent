@@ -4,10 +4,10 @@ import { closedTradePosterPayload, renderClosedTradePoster as defaultRenderClose
 import { groupClosedTradeLifecycles } from "../tradeReviewQueue.mjs";
 
 export function registerPosterRoutes(app, ctx) {
-  const { llmComplete, appendTrace, db } = ctx;
+  const { llmComplete, appendTrace, db, requirePermission } = ctx;
   const renderClosedTradePoster = ctx.renderClosedTradePoster || defaultRenderClosedTradePoster;
 
-  app.get("/api/posters/trades/:id", async (req, res) => {
+  app.get("/api/posters/trades/:id", requirePermission("account.read"), async (req, res) => {
     const execution = (db.executionOrders || []).find((row) => row.id === req.params.id);
     if (!execution || execution.status !== "closed") return res.status(404).json({ error: "未找到已平仓交易" });
     const lifecycle = groupClosedTradeLifecycles(db.fills || []).find((row) => row.key === execution.id
@@ -19,7 +19,7 @@ export function registerPosterRoutes(app, ctx) {
   });
 
   // 把一段中文交易分析翻译成英文,尽量保留 Markdown 结构与交易术语。
-  app.post("/api/posters/translate", async (req, res) => {
+  app.post("/api/posters/translate", requirePermission("assistant.use"), async (req, res) => {
     const text = String(req.body?.text || "").trim();
     if (!text) return res.status(400).json({ error: "text 不能为空" });
     if (text.length > 8000) return res.status(400).json({ error: "内容过长(上限 8000 字)" });

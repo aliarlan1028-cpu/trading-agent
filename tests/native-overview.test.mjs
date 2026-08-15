@@ -79,10 +79,10 @@ test("native overview removes repeated histories while preserving actionable sta
 test("native overview aggregates a complete lifecycle before truncating the fill ledger", () => {
   const unrelated = Array.from({ length: 49 }, (_, index) => ({ id: `other-${index}`, kind: "entry", executionOrderId: `other-${index}`, createdAt: `2026-08-14T${String(index % 24).padStart(2, "0")}:00:00Z` }));
   const fills = [
-    { id: "final", executionOrderId: "life", kind: "close", partial: false, realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-14T23:00:00Z" },
+    { id: "final", executionOrderId: "life", kind: "close", partial: false, realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, fundingReconciled: true, estimatedFee: false, createdAt: "2026-08-14T23:00:00Z" },
     ...unrelated,
-    { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, createdAt: "2026-08-14T20:00:00Z" },
-    { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, createdAt: "2026-08-14T22:00:00Z" }
+    { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, estimatedFee: false, createdAt: "2026-08-14T20:00:00Z" },
+    { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, fundingFeeUsdt: 0, fundingReconciled: true, estimatedFee: false, createdAt: "2026-08-14T22:00:00Z" }
   ];
   const compact = compactOverviewForNative({ fills }, true);
   assert.equal(compact.fills.length, 50);

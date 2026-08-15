@@ -11,3 +11,11 @@ export function isEventRiskActive(event, now = Date.now()) {
   const delta = timestamp - now;
   return delta >= -pastWindowMs && delta <= futureWindowMs;
 }
+
+export function isAuthoritativeRiskEvent(event) {
+  if (!event || event.kind === "unverified_manual" || event.autoTradingEligible === false) return false;
+  return event.verified === true
+    || event.provenance?.verifiedOrigin === true
+    || event.autoTradingEligible === true
+    || String(event.sourceId || "").startsWith("official_");
+}

@@ -3,17 +3,30 @@ import assert from "node:assert/strict";
 import { evaluateTradePlan, minimumStopAtrForPlan } from "../server/riskEngine.mjs";
 
 function fixture({ live = false } = {}) {
+  const observedAt = new Date().toISOString();
   return {
     system: { liveTradingEnabled: live, killSwitch: false, remainingDailyLossUsdt: null },
     portfolio: { totalEquityUsdt: null, availableMarginUsdt: null, weekPnl: 0 },
     fills: [],
     markets: [{
       symbol: "BTC/USDT",
+      price: 100000,
       fundingRate: 0.01,
       spreadBps: 2,
       depthUsdt: 1_000_000,
-      updatedAt: new Date().toISOString(),
-      microSyncedAt: new Date().toISOString()
+      updatedAt: observedAt,
+      tickerSyncedAt: observedAt,
+      lastRealtimeAt: observedAt,
+      tickerSourceAt: observedAt,
+      tickerReceivedAt: observedAt,
+      microSyncedAt: observedAt,
+      microReceivedAt: observedAt,
+      bookSourceAt: observedAt,
+      bookReceivedAt: observedAt,
+      openInterestSourceAt: observedAt,
+      openInterestReceivedAt: observedAt,
+      fundingSourceAt: observedAt,
+      fundingReceivedAt: observedAt
     }],
     events: [],
     positions: [],
@@ -54,6 +67,43 @@ test("paper-mode risk check exposes missing account data as warnings", () => {
   const result = evaluateTradePlan(fixture({ live: false }), plan);
   assert.equal(result.passed, true);
   assert.equal(result.decision, "allowed_with_warnings");
+});
+
+test("high-impact event remains blocked after release while manual unverified events never drive the hard gate", () => {
+  const due = new Date(Date.now() - 60_000).toISOString();
+  const db = fixture({ live: false });
+  db.events = [{
+    id: "cpi",
+    sourceId: "official_bls_calendar",
+    verified: true,
+    autoTradingEligible: true,
+    title: "CPI",
+    due,
+    timePrecision: "minute",
+    impact: 100,
+    relatedSymbols: ["BTC/USDT"],
+    status: "跟进中"
+  }];
+  let result = evaluateTradePlan(db, plan);
+  assert.equal(result.checks.find((item) => item.name === "重大事件静默窗口")?.passed, false);
+
+  db.events[0].status = "resolved";
+  result = evaluateTradePlan(db, plan);
+  assert.equal(result.checks.find((item) => item.name === "重大事件静默窗口")?.passed, true);
+
+  db.events = [{
+    id: "manual",
+    kind: "unverified_manual",
+    autoTradingEligible: false,
+    title: "User supplied market-wide event",
+    due: new Date(Date.now() + 60_000).toISOString(),
+    timePrecision: "minute",
+    impact: 100,
+    relatedSymbols: [],
+    status: "待确认"
+  }];
+  result = evaluateTradePlan(db, plan);
+  assert.equal(result.checks.find((item) => item.name === "重大事件静默窗口")?.passed, true);
 });
 
 test("complete account risk basis permits an otherwise valid live plan", () => {

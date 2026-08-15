@@ -1,4 +1,6 @@
 // ---------------------------------------------------------------------------
+
+import { containsLikelySecret } from "./secretRedaction.mjs";
 // 语义向量 embedding：把知识片段与查询映射到稠密向量空间，
 // 让"意思相近但用词不同"也能被检索到（远强于词频匹配）。
 // 自动探测可用的 embedding 服务；都没有时返回 null，由调用方回退到词频检索。
@@ -46,6 +48,11 @@ async function geminiEmbed(model, inputs) {
 export async function embedBatch(texts) {
   const provider = embeddingProvider();
   if (!provider) return null;
+  if ((texts || []).some((text) => containsLikelySecret(text))) {
+    const error = new Error("检测到疑似安全凭证，已阻止发送到外部 embedding 服务");
+    error.code = "external_embedding_secret_blocked";
+    throw error;
+  }
   const cleaned = texts.map((text) => String(text || "").slice(0, 8000) || " ");
   const batchSize = provider.name === "openai" ? 96 : 32;
   const out = [];

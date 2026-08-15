@@ -34,6 +34,7 @@ function fixture({ direction = "short", entry = 100, stop = 105, pnl = 150, enab
       exchange: "OKX",
       status: "ok",
       createdAt: snapshotAt,
+      algoOrdersComplete: true,
       algoOrders: [{ instId: "BTC-USDT-SWAP", algoClOrdId: "stop-exec-1", slTriggerPx: String(stop) }]
     }]
   };

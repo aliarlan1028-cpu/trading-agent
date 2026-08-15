@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "performance-review-test-"));
 
@@ -29,11 +30,11 @@ function baseDb() {
 
 test("实盘绩效按交易生命周期聚合部分平仓并计算真实 USDT 峰谷回撤", () => {
   const db = baseDb();
-  db.fills = [
+  db.fills = financiallyReconciledFills([
     { id: "loss-b", kind: "close", executionOrderId: "e2", symbol: "ADA/USDT", realizedPnl: -4, createdAt: "2026-08-01T03:00:00Z" },
     { id: "loss-a", kind: "close", executionOrderId: "e2", symbol: "ADA/USDT", realizedPnl: -6, partial: true, createdAt: "2026-08-01T02:00:00Z" },
     { id: "win", kind: "close", executionOrderId: "e1", symbol: "BTC/USDT", realizedPnl: 10, createdAt: "2026-08-01T01:00:00Z" }
-  ];
+  ]);
   const report = performanceReport(db);
   assert.equal(report.trades, 2, "两次部分平仓必须聚合为一个交易生命周期");
   assert.equal(report.partialCloseFills, 1);
@@ -46,12 +47,12 @@ test("实盘绩效按交易生命周期聚合部分平仓并计算真实 USDT �
 
 test("实盘胜负与总盈亏按记录费用后的净结果计算", () => {
   const db = baseDb();
-  db.fills = [
+  db.fills = financiallyReconciledFills([
     { id: "gross-entry", kind: "entry", executionOrderId: "fee-heavy", symbol: "ADA/USDT", feeUsdt: 0.02, createdAt: "2026-08-01T00:59:00Z" },
     { id: "gross-win-net-loss", kind: "close", executionOrderId: "fee-heavy", symbol: "ADA/USDT", realizedPnl: 0.05, feeUsdt: 0.08, createdAt: "2026-08-01T01:00:00Z" },
     { id: "clean-entry", kind: "entry", executionOrderId: "clean", symbol: "BTC/USDT", feeUsdt: 0.05, createdAt: "2026-08-01T01:59:00Z" },
     { id: "clean-win", kind: "close", executionOrderId: "clean", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.1, createdAt: "2026-08-01T02:00:00Z" }
-  ];
+  ]);
   const report = performanceReport(db);
   assert.equal(report.wins, 1);
   assert.equal(report.losses, 1);
@@ -72,27 +73,27 @@ test("平仓确认立即进入幂等复盘队列，部分平仓合并到同一�
 
 test("自动复盘完成后更新页面队列而不是只写隐藏记忆", async () => {
   const db = baseDb();
-  db.fills = [{
+  db.fills = financiallyReconciledFills([{
     id: "close-small", kind: "close", executionOrderId: "exec-small", planId: "plan-small",
     symbol: "BTC/USDT", direction: "long", strategy: "manual_review", realizedPnl: 0.5,
     entryRationale: "结构回踩确认", createdAt: "2026-08-01T01:30:00Z"
-  }];
+  }]);
   db.tradePlans = [{ id: "plan-small", rationale: "结构回踩确认" }];
   const result = await runTradeReflection(db);
   assert.equal(result.reflected, 1);
   assert.equal(db.reviews.length, 1);
   assert.equal(db.reviews[0].status, "completed");
   assert.match(db.reviews[0].lesson, /盈利复盘/);
-  assert.ok(db.fills[0].reflectedAt);
+  assert.ok(db.fills.find((fill) => fill.id === "close-small").reflectedAt);
 });
 
 test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending", () => {
   const db = baseDb();
-  db.fills = [{
+  db.fills = financiallyReconciledFills([{
     id: "legacy-close", kind: "close", executionOrderId: "legacy-exec",
     symbol: "ADA/USDT", direction: "short", realizedPnl: -1.25,
     reflectedAt: "2026-08-02T02:00:00Z", createdAt: "2026-08-02T01:00:00Z"
-  }];
+  }]);
   db.memoryItems = [{
     id: "legacy-memory", source: "auto_reflection", fillId: "legacy-close",
     content: "旧版本真实复盘结论", createdAt: "2026-08-02T02:00:00Z"
@@ -113,11 +114,11 @@ test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending
 
 test("已完成复盘会回填完整生命周期净值与开仓费", () => {
   const db = baseDb();
-  db.fills = [
+  db.fills = financiallyReconciledFills([
     { id: "entry", kind: "entry", executionOrderId: "legacy-net", feeUsdt: 1, createdAt: "2026-08-02T00:00:00Z" },
     { id: "part", kind: "close", executionOrderId: "legacy-net", partial: true, realizedPnl: 2, feeUsdt: .2, createdAt: "2026-08-02T01:00:00Z" },
     { id: "final", kind: "close", executionOrderId: "legacy-net", realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-02T02:00:00Z" }
-  ];
+  ]);
   db.reviews = [{ id: "old-review", type: "trade", tradeLifecycleKey: "legacy-net", status: "completed", realizedPnl: 8, feeUsdt: .3 }];
   const result = syncTradeReviewQueue(db);
   assert.equal(result.financialsBackfilled, 1);
@@ -135,10 +136,10 @@ test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与�
     strategy: "fee_flip",
     reviewLearning: { applied: index === 0 ? [{ memoryId: "mem-fee", influence: "avoided", note: "等待成本后仍为正" }] : [] }
   }));
-  db.fills = db.tradePlans.flatMap((plan, index) => [
+  db.fills = financiallyReconciledFills(db.tradePlans.flatMap((plan, index) => [
     { id: `entry-${index}`, kind: "entry", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", feeUsdt: 0.8, createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
     { id: `close-${index}`, kind: "close", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", realizedPnl: 1, feeUsdt: 0.4, entryRationale: "突破确认", exitReason: "计划退出", createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
-  ]);
+  ]));
   db.reviews = [{
     id: "review-fee", type: "trade", status: "completed", tradeLifecycleKey: "life-0", tradePlanId: "plan-0",
     memoryItemId: "mem-fee", fillIds: ["close-0"], symbol: "ADA/USDT", realizedPnl: 1

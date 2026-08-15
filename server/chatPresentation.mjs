@@ -1,5 +1,5 @@
 import { normalizePositionsForUi } from "./positionView.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
 
 const PRESENTATION_SCHEMA_VERSION = 1;
 const DISPLAY_TIMEFRAMES = ["15m", "1h", "4h"];
@@ -203,8 +203,9 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
   const grossRealizedPnl = closedLifecycles.length
     ? closedLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.realizedPnl), 0)
     : null;
-  const netRealizedPnl = closedLifecycles.length
-    ? closedLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.netRealizedPnl), 0)
+  const reconciledLifecycles = closedLifecycles.filter(isFinanciallyReconciledLifecycle);
+  const netRealizedPnl = reconciledLifecycles.length === closedLifecycles.length && closedLifecycles.length
+    ? reconciledLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.netRealizedPnl), 0)
     : null;
   const position = symbol ? normalizePositionsForUi(db.positions || []).find((row) => row.symbol === symbol && Number(row.quantity ?? row.size ?? row.pos ?? 0) !== 0) || null : null;
   const kind = classifyKind({ plan, order, watch, position, content, errorText, trigger: run.decisionContext?.trigger });

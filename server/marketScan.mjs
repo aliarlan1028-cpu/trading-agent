@@ -1,10 +1,83 @@
 // 全市场异动扫描 + Gemini 消息面归因（借鉴 okx-ai-trading-journal 的 pump-gainers / pump-analysis）。
 // 定位：给巡检提供"市场今天在发生什么"的环境感知（不是追涨信号），并给重大异动补上消息面归因，
 // 补齐系统"消息面浅"的短板。全部真实数据；无 LLM 时只给行情异动、不编叙事。
-import { llmComplete, activeProvider } from "./agentChat.mjs";
-import { appendTrace, nowIso } from "./store.mjs";
+import { activeProvider } from "./agentChat.mjs";
+import { appendTrace, id, nowIso } from "./store.mjs";
+import { containsLikelySecret, scrubSecrets } from "./secretRedaction.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
+const ATTRIBUTION_CATEGORIES = new Map([
+  ["宏观政策", "macro_policy"], ["macro_policy", "macro_policy"],
+  ["监管合规", "regulation"], ["regulation", "regulation"],
+  ["项目动态", "project_update"], ["project_update", "project_update"],
+  ["资金动向", "capital_flow"], ["capital_flow", "capital_flow"],
+  ["安全事件", "security_incident"], ["security_incident", "security_incident"],
+  ["市场情绪", "market_sentiment"], ["market_sentiment", "market_sentiment"]
+]);
+const ATTRIBUTION_CONFIDENCE = new Set(["high", "medium", "low"]);
+
+function boundedUntrustedText(value, maxChars) {
+  const text = String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxChars);
+  return text && !containsLikelySecret(text) ? scrubSecrets(text) : null;
+}
+
+function parseSearchJson(raw) {
+  const text = String(raw || "");
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("search attribution returned no JSON object");
+  const parsed = JSON.parse(text.slice(start, end + 1));
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("search attribution must be an object");
+  return parsed;
+}
+
+// Search-grounded model output remains tainted even when it is valid JSON. Only
+// enums/numbers/IDs may enter Agent context; prose is retained solely for UI.
+export function normalizeSearchAttribution(input = {}, options = {}) {
+  const category = ATTRIBUTION_CATEGORIES.get(String(input.category || "").trim()) || "unknown";
+  const sentimentValue = input.sentimentScore ?? input.sentiment;
+  const sentiment = sentimentValue !== null && sentimentValue !== undefined && sentimentValue !== ""
+    && Number.isFinite(Number(sentimentValue))
+    ? Math.max(0, Math.min(100, Number(sentimentValue)))
+    : null;
+  const confidence = ATTRIBUTION_CONFIDENCE.has(String(input.confidence || "").toLowerCase())
+    ? String(input.confidence).toLowerCase()
+    : "low";
+  return {
+    evidenceId: options.evidenceId || id("moverev"),
+    sourceType: "untrusted_web_search_attribution",
+    trust: "untrusted_external_data",
+    mayTriggerTradeDirectly: false,
+    category,
+    sentiment,
+    confidence,
+    attributedAt: options.attributedAt || nowIso(),
+    untrustedDisplay: {
+      narrative: boundedUntrustedText(input.narrative, 500),
+      risk: boundedUntrustedText(input.risk, 300)
+    }
+  };
+}
+
+export function marketMoversForAgent(db) {
+  return (db.marketMovers?.movers || []).slice(0, 8).map((mover) => ({
+    symbol: String(mover.symbol || ""),
+    changePct: Number.isFinite(Number(mover.changePct)) ? Number(mover.changePct) : null,
+    quoteVolUsdt: Number.isFinite(Number(mover.quoteVolUsdt)) ? Number(mover.quoteVolUsdt) : null,
+    high24h: Number.isFinite(Number(mover.high24h)) ? Number(mover.high24h) : null,
+    low24h: Number.isFinite(Number(mover.low24h)) ? Number(mover.low24h) : null,
+    attribution: mover.narrative ? {
+      evidenceId: mover.narrative.evidenceId,
+      sourceType: mover.narrative.sourceType,
+      trust: mover.narrative.trust,
+      mayTriggerTradeDirectly: false,
+      category: mover.narrative.category,
+      sentiment: mover.narrative.sentiment,
+      confidence: mover.narrative.confidence,
+      attributedAt: mover.narrative.attributedAt
+    } : null
+  }));
+}
 
 // 全量 SWAP tickers → 按当日(UTC0)涨幅 + 成交额门槛筛异动币。一个请求，确定性。
 async function scanMarketMovers(options = {}) {
@@ -43,8 +116,7 @@ async function attributeMoverNarrative(mover) {
   const prompt = `请查询并归因 ${mover.symbol}（OKX 永续）今天的异动。当前价 $${mover.last}，24h 涨跌 ${mover.changePct}%，成交额约 $${(mover.quoteVolUsdt / 1e6).toFixed(1)}M。\n用内置搜索查最新突发新闻/催化剂，只输出 JSON：{"narrative":"推动异动的核心叙事或催化剂(没查到就写'未见明确催化，疑似情绪/资金驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件","sentiment":0到100的情绪分,"risk":"主要风险一句话"}。中文，纯 JSON。`;
   try {
     const raw = await geminiSearchComplete(prompt);
-    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
-    return { ...parsed, attributedAt: nowIso() };
+    return normalizeSearchAttribution(parseSearchJson(raw));
   } catch {
     return null;
   }
@@ -164,21 +236,38 @@ export async function explainMarketMove(db, symbol) {
   const cached = db.marketNarratives[sym];
   const narrativeTtlMs = Number(process.env.MARKET_NARRATIVE_CACHE_MS || 15 * 60_000);
   if (cached?.attributedAt && Date.now() - new Date(cached.attributedAt).getTime() <= narrativeTtlMs) {
-    return { ...cached, symbol: sym, source: "gemini_cache", technical, cacheHit: true };
+    return attributionForAgent(cached, { symbol: sym, source: "gemini_cache", technical, cacheHit: true });
   }
   if (!process.env.GEMINI_API_KEY) {
-    return { symbol: sym, source: "quote_only", narrative: "未配置联网搜索（GEMINI_API_KEY），无法查消息面催化——只能给纯行情推演，不编造原因。", technical, note: "配置 Gemini 后即可查'为什么'的真实催化剂。" };
+    return { symbol: sym, source: "quote_only", attribution: null, technical, mayTriggerTradeDirectly: false, status: "search_not_configured" };
   }
   const prompt = `请归因 ${sym}（加密永续）当前这波行情【为什么会这样涨/跌】。现价 $${last}，24h ${chg >= 0 ? "+" : ""}${chg}%${shortWin ? `，近15分钟${shortWin.dir === "down" ? "急跌" : "急涨"}${shortWin.pct}%` : ""}${rangePos != null ? `，处于24h区间${rangePos}%位` : ""}，24h成交额约 $${(vol / 1e6).toFixed(0)}M。用内置搜索查最近的突发新闻/催化剂/宏观事件/连锁清算/市场情绪，解释这波涨跌的原因。只输出 JSON：{"narrative":"核心原因或催化剂,一到两句(确实查不到就写'未见明确催化,疑似情绪/资金/杠杆连锁清算驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件|市场情绪","sentiment":0到100的情绪分,"risk":"主要风险一句话","confidence":"high|medium|low"}。中文，纯 JSON。`;
   try {
     const raw = await geminiSearchComplete(prompt);
-    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
-    const result = { symbol: sym, source: "gemini", ...parsed, technical, attributedAt: nowIso(), cacheHit: false };
+    const attribution = normalizeSearchAttribution(parseSearchJson(raw));
+    const result = { symbol: sym, source: "gemini", ...attribution, technical, cacheHit: false };
     db.marketNarratives[sym] = result;
-    return result;
+    return attributionForAgent(result, { symbol: sym, source: "gemini", technical, cacheHit: false });
   } catch (error) {
-    return { symbol: sym, source: "gemini_failed", narrative: `消息面归因暂时失败（${error.message}）——技术面见 technical 字段。`, technical };
+    return { symbol: sym, source: "gemini_failed", attribution: null, technical, mayTriggerTradeDirectly: false, status: "search_failed" };
   }
+}
+
+function attributionForAgent(stored = {}, overrides = {}) {
+  return {
+    ...overrides,
+    attribution: {
+      evidenceId: stored.evidenceId,
+      sourceType: stored.sourceType,
+      trust: "untrusted_external_data",
+      mayTriggerTradeDirectly: false,
+      category: ATTRIBUTION_CATEGORIES.has(stored.category) ? stored.category : "unknown",
+      sentiment: stored.sentiment !== null && Number.isFinite(Number(stored.sentiment)) ? Number(stored.sentiment) : null,
+      confidence: ATTRIBUTION_CONFIDENCE.has(stored.confidence) ? stored.confidence : "low",
+      attributedAt: stored.attributedAt || null
+    },
+    mayTriggerTradeDirectly: false
+  };
 }
 
 // 复盘用:查某币在【开仓→平仓时间窗内】的真实消息面(新闻/催化剂/宏观),强制反幻觉。
@@ -190,8 +279,19 @@ export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
   const prompt = `用内置搜索查加密货币 ${sym} 在这个时间窗内【${win}】是否发生过重大新闻/催化剂/宏观事件/交易所动态/连锁清算,用来复盘一笔在此期间的交易。\n【硬性要求·反幻觉】只报你真的检索到、且时间确实落在该窗内的事件;确实没有就直接回"该窗内未见明确催化,疑似情绪/资金/杠杆驱动",绝对不要编造或假设新闻,不要把窗外的旧闻算进来。\n只输出 JSON:{"news":"一到两句话概括窗内真实消息面或明确写无","sentiment":"利多|利空|中性|无","confidence":"high|medium|low"}。中文,纯 JSON。`;
   try {
     const raw = await geminiSearchComplete(prompt);
-    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
-    return { ...parsed, window: win, at: nowIso() };
+    const parsed = parseSearchJson(raw);
+    const sentiment = ["利多", "利空", "中性", "无"].includes(parsed.sentiment) ? parsed.sentiment : "无";
+    const confidence = ATTRIBUTION_CONFIDENCE.has(String(parsed.confidence || "").toLowerCase()) ? String(parsed.confidence).toLowerCase() : "low";
+    return {
+      evidenceId: id("tradewinev"),
+      sourceType: "untrusted_web_search_attribution",
+      trust: "untrusted_external_data",
+      mayTriggerTradeDirectly: false,
+      sentiment,
+      confidence,
+      window: win,
+      at: nowIso()
+    };
   } catch { return null; }
 }
 
@@ -224,19 +324,37 @@ export async function escortPositions(db) {
   const prompt = `你是持仓护航哨兵。用内置搜索查这些币/加密市场最新突发新闻，对每个持仓给【15分钟级】防守/进攻短评与消息面影响；风险高就明确建议减仓或平仓。当前持仓：\n${JSON.stringify(payload)}\n只输出 JSON：{"overall":"整体一句话","alerts":[{"symbol":"","level":"info|warn|danger","advice":"具体建议","newsImpact":"相关消息面影响或'无'"}]}。中文，纯 JSON。`;
   try {
     const raw = await geminiSearchComplete(prompt);
-    const parsed = JSON.parse(String(raw || "").slice(String(raw).indexOf("{"), String(raw).lastIndexOf("}") + 1));
-    db.positionEscort = { positions: payload, ...parsed, source: "gemini", at: nowIso() };
+    const parsed = parseSearchJson(raw);
+    const knownSymbols = new Set(payload.map((item) => item.symbol));
+    const alerts = (Array.isArray(parsed.alerts) ? parsed.alerts : []).slice(0, payload.length * 2).map((item) => ({
+      symbol: knownSymbols.has(String(item?.symbol || "")) ? String(item.symbol) : null,
+      level: ["info", "warn", "danger"].includes(item?.level) ? item.level : "info",
+      advice: boundedUntrustedText(item?.advice, 300),
+      newsImpact: boundedUntrustedText(item?.newsImpact, 300),
+      trust: "untrusted_external_data",
+      mayTriggerTradeDirectly: false
+    })).filter((item) => item.symbol);
+    db.positionEscort = {
+      positions: payload,
+      overall: boundedUntrustedText(parsed.overall, 400),
+      alerts,
+      source: "gemini",
+      trust: "untrusted_external_data",
+      mayTriggerTradeDirectly: false,
+      at: nowIso()
+    };
     // 高危告警落成风险事件（走既有告警链，仍不自动下单）。
-    for (const a of (parsed.alerts || []).filter((x) => x.level === "danger")) {
+    for (const a of alerts.filter((x) => x.level === "danger")) {
       db.riskIncidents ||= [];
       // 同 symbol 的 open 护航告警合并滚动更新(此前每 2 分钟无脑 unshift,30 条/小时挤爆事件列表)
       const existing = db.riskIncidents.find((i) => i.status === "open" && i.source === "position_escort" && i.symbol === a.symbol);
       if (existing) {
-        existing.title = `持仓护航告警 ${a.symbol}：${a.advice}`;
+        existing.title = `持仓护航外部风险信号 ${a.symbol}（需确定性复核）`;
+        existing.untrustedDisplay = { advice: a.advice, newsImpact: a.newsImpact };
         existing.count = Number(existing.count || 1) + 1;
         existing.updatedAt = nowIso();
       } else {
-        db.riskIncidents.unshift({ id: `escort_${Date.now()}_${a.symbol}`, symbol: a.symbol, severity: "high", status: "open", title: `持仓护航告警 ${a.symbol}：${a.advice}`, source: "position_escort", count: 1, createdAt: nowIso() });
+        db.riskIncidents.unshift({ id: `escort_${Date.now()}_${a.symbol}`, symbol: a.symbol, severity: "high", status: "open", title: `持仓护航外部风险信号 ${a.symbol}（需确定性复核）`, source: "position_escort", trust: "untrusted_external_data", mayTriggerTradeDirectly: false, untrustedDisplay: { advice: a.advice, newsImpact: a.newsImpact }, count: 1, createdAt: nowIso() });
       }
     }
     appendTrace(db, "position_escort", `持仓护航(消息面) ${positions.length} 仓`, "ok", 0);

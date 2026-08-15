@@ -2,7 +2,7 @@
 // 追踪距离 1.2%(人类单位)必须转成 env 的 0.012(小数);算错会让追踪止损跟错距离 → 直接影响盈亏。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { currentRiskThresholds, applyRiskThresholds, RISK_THRESHOLD_DEFS } from "../server/riskThresholds.mjs";
+import { currentRiskThresholds, applyRiskThresholds, classifyRiskThresholdChanges, RISK_THRESHOLD_DEFS } from "../server/riskThresholds.mjs";
 
 // 清掉相关 env,保证从默认起测(避免其它测试污染)
 function clearEnv() { for (const d of RISK_THRESHOLD_DEFS) delete process.env[d.env]; }
@@ -56,4 +56,21 @@ test("非数值/空输入被忽略(不写脏值)", () => {
   const r = applyRiskThresholds({}, { minRewardRisk: "abc", protectCooldownHours: "" }, fakeSetConfig);
   assert.equal(r.applied.length, 0);
   assert.equal(process.env.MIN_REWARD_RISK, undefined);
+});
+
+test("阈值变更明确区分收紧与放宽", () => {
+  const current = { ...Object.fromEntries(RISK_THRESHOLD_DEFS.map((def) => [def.key, def.def])) };
+  const changes = classifyRiskThresholdChanges({
+    eventBlackoutMinutes: 0,
+    protectMaxConsecLosses: 100,
+    protectMaxDrawdownPct: 50,
+    minRewardRisk: 3,
+    protectCooldownHours: 8
+  }, current);
+  const byKey = new Map(changes.map((change) => [change.key, change.classification]));
+  assert.equal(byKey.get("eventBlackoutMinutes"), "loosen");
+  assert.equal(byKey.get("protectMaxConsecLosses"), "loosen");
+  assert.equal(byKey.get("protectMaxDrawdownPct"), "loosen");
+  assert.equal(byKey.get("minRewardRisk"), "tighten");
+  assert.equal(byKey.get("protectCooldownHours"), "tighten");
 });

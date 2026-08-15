@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertSafeExternalUrl, assertSafeGitHubRepositoryUrl, isPrivateIp, resolveContainedPath } from "../server/externalInputSafety.mjs";
+import { assertSafeExternalUrl, assertSafeGitHubRepositoryUrl, isPrivateIp, redirectHeaders, resolveContainedPath } from "../server/externalInputSafety.mjs";
 import { mcpToolAllowed } from "../server/mcpClient.mjs";
 
 test("external URL policy blocks loopback, metadata, and credential-bearing URLs", async () => {
@@ -23,6 +23,43 @@ test("IPv4-mapped IPv6 and reserved ranges cannot bypass the private-IP filter",
   assert.equal(isPrivateIp("not-an-ip"), true);           // 非法输入 fail-closed
   assert.equal(isPrivateIp("8.8.8.8"), false);            // 公网仍放行
   assert.equal(isPrivateIp("2606:4700::1111"), false);    // 公网 IPv6 仍放行
+});
+
+test("the entire IPv6 link-local CIDR is blocked without overblocking the preceding range", async () => {
+  assert.equal(isPrivateIp("fe7f::1"), false);
+  for (const address of ["fe80::1", "fe8f::1", "fe90::1", "fea0::1", "febf::1", "fec0::1"]) {
+    assert.equal(isPrivateIp(address), true, address);
+  }
+  await assert.rejects(
+    () => assertSafeExternalUrl("https://link-local.example/path", {
+      lookup: async () => [{ address: "fe90::1", family: 6 }]
+    }),
+    /私有|保留/
+  );
+  await assert.rejects(
+    () => assertSafeExternalUrl("https://mixed.example/path", {
+      lookup: async () => [{ address: "2606:4700::1111", family: 6 }, { address: "10.0.0.1", family: 4 }]
+    }),
+    /私有|保留/
+  );
+});
+
+test("cross-origin redirects strip credentials while same-origin redirects retain them", () => {
+  const original = {
+    Authorization: "Bearer secret",
+    Cookie: "sid=secret",
+    "X-Worm-Token": "secret",
+    "Content-Type": "application/json",
+    "X-Request-Id": "safe"
+  };
+  const crossOrigin = redirectHeaders(original, "https://audit.example/start", "https://attacker.example/next");
+  assert.equal(crossOrigin.has("authorization"), false);
+  assert.equal(crossOrigin.has("cookie"), false);
+  assert.equal(crossOrigin.has("x-worm-token"), false);
+  assert.equal(crossOrigin.get("content-type"), "application/json");
+  assert.equal(crossOrigin.get("x-request-id"), "safe");
+  const sameOrigin = redirectHeaders(original, "https://audit.example/start", "https://audit.example/next");
+  assert.equal(sameOrigin.get("authorization"), "Bearer secret");
 });
 
 test("knowledge Git imports accept only canonical HTTPS GitHub repositories", async () => {

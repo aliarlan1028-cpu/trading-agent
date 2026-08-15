@@ -11,7 +11,7 @@ import { normalizePositionsForUi } from "./positionView.mjs";
 import { computeBehaviorProfile } from "./behaviorProfile.mjs";
 import { activeProvider, runAgentChat, llmComplete, listAgentTools } from "./agentChat.mjs";
 import { WEIGHTS as DECISION_WEIGHTS, THRESHOLDS as DECISION_THRESHOLDS, DEFAULTS as DECISION_DEFAULTS } from "./deterministicDecision.mjs";
-import { addMemoryItem, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
+import { addMemoryItem, approveStateFile, recheckActivePlanRisk, runAgentCycle, updateStateFile } from "./agentRuntime.mjs";
 import { buildWatchBoard, cancelWatch, presentWatch, publishWatchSweep, requestPendingAgentCycle, runWatchSentinel, sentinelGate, sweepWatches } from "./watchSentinel.mjs";
 import { cancelArmedSetup, processArmedSetupTick, reconcileArmedSetupDefinitions, reconcileArmedSetupExecutions, recoverTriggeredSetups } from "./armedSetup.mjs";
 import { abnormalVolatilityBoard, opportunityEngineStatus, recordOpportunityTick, runBroadOpportunityScan } from "./earlyOpportunityEngine.mjs";
@@ -20,11 +20,15 @@ import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerAllRoutes } from "./routes/index.mjs";
-import { authRequired, hashPassword, installAuth, invalidateSessions, requirePermission, verifyPassword } from "./auth.mjs";
+import { authRequired, hashPassword, installAuth, invalidateSessions, invalidateUserSessions, requirePermission, resolvePermissions, verifyPassword } from "./auth.mjs";
+import { consumeStreamTicket, issueStreamTicket, STREAM_TICKET_TTL_MS } from "./streamTickets.mjs";
+import { resolveTenantEntitlement } from "./entitlements.mjs";
 import { canConfirmPendingAction, userHasPermission } from "./actionAuthorization.mjs";
+import { approveTradePlan, validateApprovalSnapshot } from "./tradePlanLifecycle.mjs";
+import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { getHistoricalKlines, guardedPrivateExchangeAction, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, syncPublicMarketQuiet } from "./exchangeConnector.mjs";
+import { getHistoricalKlines, guardedPrivateExchangeAction, invalidateOkxCredentialCaches, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, syncPublicMarketQuiet, validateOkxCredentialCandidate } from "./exchangeConnector.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, fetchSmartMoney } from "./marketSignals.mjs";
 import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection, recordMediumTermSample } from "./mediumTermAnalytics.mjs";
 import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
@@ -49,7 +53,7 @@ import { buildDailyBrief, refreshMarketIntelligence, removeLegacyPaidFlowData, s
 import { refreshMeNewsFlash } from "./newsFlashFeed.mjs";
 import { prepareScheduledEventMilestones } from "./scheduledEvents.mjs";
 import { toolUsageView } from "./toolUsage.mjs";
-import { consolidateRuleProposals, embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks } from "./knowledgePipeline.mjs";
+import { consolidateRuleProposals, embeddingStatus, importGithubKnowledge, importKnowledge as importKnowledgeReal, parseKnowledgeSource as parseKnowledgeRealSource, ragQuery, reembedAllChunks, removeManagedKnowledgeFile } from "./knowledgePipeline.mjs";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import {
   approveKnowledgeSkill,
@@ -86,21 +90,28 @@ import { backfillReviewMemoryContexts, buildReviewLearningAnalytics } from "./re
 import { compileNaturalRiskCondition, validateConditionSpec, validateDynamicRiskAction } from "./dynamicRiskRules.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler, unscheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
-import { installSkill, scanSkill } from "./skillManager.mjs";
+import { installSkill, scanSkill, verifySkillPackageIntegrity } from "./skillManager.mjs";
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
-import { activeMandate, appendAudit, appendTrace, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
-import { describeGuardReason, effectiveOpeningNotionalLimits, executeTradeAction } from "./tradeActions.mjs";
+import { activeMandate, appendAudit, appendTrace, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { describeGuardReason, effectiveOpeningNotionalLimits } from "./tradeActions.mjs";
 import { accountMarginCapacity } from "./tradingCapacity.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
 import { dispatchOutbox } from "./outboxDispatcher.mjs";
+import { isLeaseLostError } from "./leaseSafety.mjs";
 import { shipAuditToWorm } from "./auditSink.mjs";
 import { recoverUncertainOrders } from "./omsRecovery.mjs";
 import { requestContextMiddleware } from "./requestContext.mjs";
 import { migrateLegacyWeeklyLossMandates } from "./mandatePolicy.mjs";
 import { markRegistrationPaymentConfirmed, publicRegistrationInfo, sanitizeRegistrationApplication, updateRegistrationApplication } from "./publicRegistration.mjs";
 import { assertSafeExternalUrl } from "./externalInputSafety.mjs";
+import { applyKillSwitch } from "./riskControlService.mjs";
+import { applyLiveTradingConfiguration, liveGateInput } from "./liveModeService.mjs";
+import { transitionMandate } from "./mandateLifecycle.mjs";
+import { tenantIsolationReadiness } from "./tenantIsolation.mjs";
+import { verifyTrc20PaymentIntents } from "./trc20Payments.mjs";
+import { extendSubscriptionTerm } from "./subscriptionLifecycle.mjs";
 
 dotenv.config();
 installProxyFromEnv();
@@ -108,8 +119,11 @@ installProxyFromEnv();
 // TENANT_ISOLATION_V2 fail-closed:该开关承诺的按租户数据隔离尚未在 chat/plans/notifications
 // 等读路径实现(审计发现)。开着它对外注册等于把 owner 全量数据暴露给任意租户——拒绝启动。
 if (process.env.TENANT_ISOLATION_V2 === "true") {
-  console.error("TENANT_ISOLATION_V2=true 但按租户隔离尚未实现(chat/plans/notifications 等读路径未过滤)。请保持 false 并用一客户一实例(Path A)交付。");
-  process.exit(1);
+  const readiness = tenantIsolationReadiness();
+  if (!readiness.ready) {
+    console.error(`TENANT_ISOLATION_V2=true 但资源层隔离尚未完成(schema v${readiness.schemaVersion})。请保持 false 并用一客户一实例(Path A)交付。`);
+    process.exit(1);
+  }
 }
 
 const app = express();
@@ -463,27 +477,33 @@ app.use((req, res, next) => {
 app.use(requestContextMiddleware);
 
 // 注册真实任务处理器并确保系统任务存在（执行轮询/持仓监控/核算/自主巡检/对账）
-registerTaskHandler("execution_poll", async (database) => {
-  const result = await pollExecutionOrders(database);
+registerTaskHandler("execution_poll", async (database, _task, lease) => {
+  lease.assertLease();
+  const result = await pollExecutionOrders(database, { assertLease: lease.assertLease, signal: lease.signal });
+  lease.assertLease();
   result.armedSetupsReconciled = reconcileArmedSetupExecutions(database).length;
   return result;
 });
-registerTaskHandler("position_monitor", async (database) => {
-  const r = await monitorPositions(database);
+registerTaskHandler("position_monitor", async (database, _task, lease) => {
+  lease.assertLease();
+  const r = await monitorPositions(database, { assertLease: lease.assertLease, signal: lease.signal });
   // 带消息面的持仓护航（有持仓才跑，节省 LLM 额度）：只产建议/告警，不自动下单。
   try {
     const due = Date.now() - new Date(database.meta?.lastPositionEscortAt || 0).getTime() >= 2 * 60_000;
     if (due && (database.positions || []).some((p) => Number(p.size ?? p.pos ?? 0) !== 0)) {
+      lease.assertLease();
       await escortPositions(database);
+      lease.assertLease();
       database.meta.lastPositionEscortAt = nowIso();
     }
-  } catch { /* 护航失败不阻断监控 */ }
+  } catch (error) { if (isLeaseLostError(error)) throw error; /* 护航失败不阻断监控 */ }
   // freqtrade 式交易保护:每轮刷新连亏冷却/回撤锁仓状态,新触发时抬风险事件(到期自动解除)。
   try { applyProtections(database); } catch { /* 保护评估失败不阻断监控 */ }
   return r;
 });
-registerTaskHandler("accounting_refresh", (database) => refreshAccounting(database));
-registerTaskHandler("reminder", (database, task) => {
+registerTaskHandler("accounting_refresh", (database, _task, lease) => { lease.assertLease(); return refreshAccounting(database); });
+registerTaskHandler("reminder", (database, task, lease) => {
+  lease.assertLease();
   database.notifications ||= [];
   database.notifications.unshift({
     id: id("notif"),
@@ -497,19 +517,23 @@ registerTaskHandler("reminder", (database, task) => {
   });
   return { status: "notified", notification: task.name };
 });
-registerTaskHandler("agent_cycle", async (database) => {
-  const run = await runAgentCycle(database, {}, saveDb);
+registerTaskHandler("agent_cycle", async (database, _task, lease) => {
+  lease.assertLease();
+  const run = await runAgentCycle(database, { invocationContext: systemAgentInvocation("scheduler:agent_cycle"), signal: lease.signal, schedulerLease: lease }, saveDb);
+  lease.assertLease();
   recheckActivePlanRisk(database);
   // runAgentChat 会把模型/API 错误转成可见的 failed AgentRun，避免进程崩溃；但调度器
   // 仍必须收到失败信号，否则任务面板会谎报“完成”且不会执行既有重试策略。
   if (run?.status === "failed") throw new Error(run.error || "Agent decision cycle failed");
   return run;
 });
-registerTaskHandler("reconcile", (database) => runReconciler(database, { mode: "scheduled" }));
+registerTaskHandler("reconcile", (database, _task, lease) => { lease.assertLease(); return runReconciler(database, { mode: "scheduled", assertLease: lease.assertLease }); });
 // 观察哨哨兵:每分钟机械核对已登记的价格条件,命中即通过 agent_cycle 任务(同锁同风控)触发完整巡检。
-registerTaskHandler("watch_sentinel", (database) => runWatchSentinel(database, saveDb));
-registerTaskHandler("opportunity_scan", async (database) => {
+registerTaskHandler("watch_sentinel", (database, _task, lease) => { lease.assertLease(); return runWatchSentinel(database, saveDb); });
+registerTaskHandler("opportunity_scan", async (database, _task, lease) => {
+  lease.assertLease();
   const result = await runBroadOpportunityScan(database, { limit: 20 });
+  lease.assertLease();
   if (result.queued?.length) {
     // 让当前扫描任务先由 scheduler 完成落盘，再异步唤起独立 agent_cycle，避免嵌套任务长时间占锁。
     setTimeout(() => {
@@ -519,9 +543,11 @@ registerTaskHandler("opportunity_scan", async (database) => {
   }
   return result;
 });
-registerTaskHandler("strategy_research", (database) => runStrategyResearch(database, {}));
-registerTaskHandler("paper_forward", async (database) => {
+registerTaskHandler("strategy_research", (database, _task, lease) => { lease.assertLease(); return runStrategyResearch(database, { signal: lease.signal, schedulerLease: lease }); });
+registerTaskHandler("paper_forward", async (database, _task, lease) => {
+  lease.assertLease();
   const paper = await runPaperForward(database);
+  lease.assertLease();
   // 模拟前向为主:把 compiled 技能推过历史 OOS → 起纯前向模拟盘;runPaperForward 步进、
   // syncKnowledgeSkillLifecycle 判 passed/failed → paper_validated/paper_rejected。
   if (database.system.skillPaperForwardMode !== false) {
@@ -535,11 +561,12 @@ registerTaskHandler("paper_forward", async (database) => {
   return { ...paper, knowledgeSkills: skills, trustedSkills: trusted };
 });
 // ② 平仓自动复盘：逐笔沉淀教训入记忆（含 LLM 深度复盘）。
-registerTaskHandler("trade_reflection", (database) => runTradeReflection(database));
+registerTaskHandler("trade_reflection", (database, _task, lease) => { lease.assertLease(); return runTradeReflection(database, { signal: lease.signal, schedulerLease: lease }); });
 // ②b 错过机会复盘：大波动却没交易的复盘沉淀（#5）。
-registerTaskHandler("missed_opportunity_review", (database) => reviewMissedOpportunities(database));
+registerTaskHandler("missed_opportunity_review", (database, _task, lease) => { lease.assertLease(); return reviewMissedOpportunities(database, { signal: lease.signal }); });
 // ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
-registerTaskHandler("strategy_improvement", (database) => {
+registerTaskHandler("strategy_improvement", (database, _task, lease) => {
+  lease.assertLease();
   const closes = groupClosedTradeLifecycles(database.fills || []).length;
   const last = Number(database.system.lastImprovementCloses || 0);
   const need = Number(process.env.IMPROVEMENT_MIN_NEW_CLOSES || 10);
@@ -548,20 +575,26 @@ registerTaskHandler("strategy_improvement", (database) => {
   database.system.lastImprovementCloses = closes;
   return { status: "ok", experimentId: cycle.experiment?.id, hypothesis: cycle.experiment?.hypothesis };
 });
-registerTaskHandler("event_source_refresh", async (database) => {
+registerTaskHandler("event_source_refresh", async (database, _task, lease) => {
+  lease.assertLease();
   const r = await refreshEventSources(database);
+  lease.assertLease();
   try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(database); } catch { /* 日程生成失败不阻断新闻刷新 */ }
   return r;
 });
-registerTaskHandler("event_refresh", async (database) => {
+registerTaskHandler("event_refresh", async (database, _task, lease) => {
+  lease.assertLease();
   let intelligence;
   try { intelligence = await refreshMarketIntelligence(database); }
   catch (error) { intelligence = { status: "failed", error: String(error.message || error).slice(0, 180) }; }
+  lease.assertLease();
   try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(database); } catch { /* 官方日历落风险事件失败不阻断 */ }
   return { status: intelligence.status, intelligence };
 });
-registerTaskHandler("news_flash_refresh", async (database) => {
+registerTaskHandler("news_flash_refresh", async (database, _task, lease) => {
+  lease.assertLease();
   const result = await refreshMeNewsFlash(database);
+  lease.assertLease();
   if (result.urgent?.length) {
     setTimeout(() => {
       requestPendingAgentCycle(database, saveDb, "important_news")
@@ -570,7 +603,8 @@ registerTaskHandler("news_flash_refresh", async (database) => {
   }
   return { ...result, urgent: result.urgent?.length || 0, skipPersist: result.status === "ok" && result.added === 0 };
 });
-registerTaskHandler("event_preparation", async (database) => {
+registerTaskHandler("event_preparation", async (database, _task, lease) => {
+  lease.assertLease();
   const result = prepareScheduledEventMilestones(database);
   if (result.reached.some((item) => item.stage === "T24")) buildDailyBrief(database);
   if (result.wakeSignals.length) {
@@ -581,43 +615,49 @@ registerTaskHandler("event_preparation", async (database) => {
   }
   return { ...result, skipPersist: result.reached.length === 0 };
 });
-registerTaskHandler("daily_market_brief", (database) => buildDailyBrief(database));
-registerTaskHandler("onchain_refresh", (database) => refreshOnchainSignals(database));
-registerTaskHandler("telegram_watch_dispatch", async (database) => {
+registerTaskHandler("daily_market_brief", (database, _task, lease) => { lease.assertLease(); return buildDailyBrief(database); });
+registerTaskHandler("onchain_refresh", (database, _task, lease) => { lease.assertLease(); return refreshOnchainSignals(database); });
+registerTaskHandler("telegram_watch_dispatch", async (database, _task, lease) => {
+  lease.assertLease();
   const result = await dispatchTelegramWatchOutbox(database);
+  lease.assertLease();
   if (result.status === "disabled") return { ...result, status: "skipped" };
   if (result.status === "unconfigured") {
     return { ...result, status: "failed", error: "Telegram 观察哨已启用，但 Bot Token 或 Chat ID 未配置" };
   }
   return result;
 });
-registerTaskHandler("telegram_closed_trade_posters", (database) => processClosedTradeProfitPosters(database));
-registerTaskHandler("agent_mission", (database, task) => runAgentMission(database, task));
-registerTaskHandler("payment_verify", async (database) => {
-  const r = await verifyTrc20Payments(database);
+registerTaskHandler("telegram_closed_trade_posters", (database, _task, lease) => { lease.assertLease(); return processClosedTradeProfitPosters(database); });
+registerTaskHandler("agent_mission", (database, task, lease) => { lease.assertLease(); return runAgentMission(database, task, { signal: lease.signal, schedulerLease: lease }); });
+registerTaskHandler("payment_verify", async (database, _task, lease) => {
+  lease.assertLease();
+  const r = await verifyTrc20Payments(database, { signal: lease.signal, assertLease: lease.assertLease });
   return { ...r, skipPersist: r.status === "skipped" || (r.status === "ok" && !r.checked) };
 });
-registerTaskHandler("outbox_dispatch", (database) => dispatchOutbox(database));
-registerTaskHandler("audit_worm_ship", async (database) => {
+registerTaskHandler("outbox_dispatch", (database, _task, lease) => dispatchOutbox(database, { signal: lease.signal, assertLease: lease.assertLease }));
+registerTaskHandler("audit_worm_ship", async (database, _task, lease) => {
+  lease.assertLease();
   const r = await shipAuditToWorm(database);
+  lease.assertLease();
   return { ...r, skipPersist: ["not_configured", "up_to_date"].includes(r.status) };
 });
-registerTaskHandler("oms_recovery", async (database) => {
-  const r = await recoverUncertainOrders(database);
+registerTaskHandler("oms_recovery", async (database, _task, lease) => {
+  const r = await recoverUncertainOrders(database, { signal: lease.signal, assertLease: lease.assertLease });
   return { ...r, skipPersist: !r.checked };
 });
-registerTaskHandler("okx_readonly_sync", async (database) => {
+registerTaskHandler("okx_readonly_sync", async (database, _task, lease) => {
   const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
   if (!accounts.length) return { status: "skipped", reason: "no_read_account", skipPersist: true };
   let synced = 0; const errors = [];
   for (const account of accounts) {
-    try { await syncPrivateReadOnly(database, account.id); synced += 1; }
+    try { lease.assertLease(); await syncPrivateReadOnly(database, account.id); lease.assertLease(); synced += 1; }
     catch (error) { errors.push({ accountId: account.id, error: String(error?.message || error).slice(0, 160) }); }
   }
   return { status: synced === 0 ? "failed" : synced < accounts.length ? "partial" : "ok", attempted: accounts.length, synced, errors };
 });
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
-registerTaskHandler("market_signal_refresh", async (database) => {
+registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
+  lease.assertLease();
   const mandate = activeMandate(database);
   // 刷 BTC/ETH（默认展示）+ 授权交易对 + 自选列表——此前不含自选，自选里非授权币的
   // 买盘占比/微观结构永远"未同步"。
@@ -627,6 +667,7 @@ registerTaskHandler("market_signal_refresh", async (database) => {
   database.meta ||= {};
   database.meta.mediumTermPriceBackfill ||= {};
   for (const symbol of symbols) {
+    lease.assertLease();
     const state = database.meta.mediumTermPriceBackfill[symbol] || {};
     const lastAttempt = new Date(state.attemptedAt || 0).getTime();
     // “完成”与7d Beta使用同一覆盖口径：跨满7天且至少80% 15m时点。
@@ -646,9 +687,11 @@ registerTaskHandler("market_signal_refresh", async (database) => {
   let synced = 0; const syncErrors = [];
   for (const symbol of symbols) {
     try {
+      lease.assertLease();
       // 三个公开源独立降级：micro 或 Rubik 短暂失败时，仍保住 ticker 价格序列，
       // 避免 Beta/事件波动因无关接口抖动断档。各指标自己的覆盖门负责拒绝残缺结论。
       const ticker = await syncPublicMarketQuiet(database, symbol);
+      lease.assertLease();
       const micro = await syncMicrostructure(database, "OKX", symbol, { quiet: true }).catch(() => null);
       const smart = await fetchSmartMoney(symbol).catch(() => ({}));
       const priceSourceAt = Number.isFinite(Number(ticker.rawTime)) ? Number(ticker.rawTime) : null;
@@ -857,71 +900,35 @@ function activateSubscriptionFromPayment(payment) {
   }
   const plan = (db.subscriptionPlans || []).find((item) => item.id === payment.planId);
   const months = Number(plan?.months || 1);
-  db.subscriptions ||= [];
-  const existing = db.subscriptions.find((item) => item.tenantId === payment.tenantId);
-  const payload = {
+  extendSubscriptionTerm(db, {
     tenantId: payment.tenantId,
     userId: payment.userId,
     planId: payment.planId,
-    status: "active",
     source: "trc20_usdt",
     paymentId: payment.id,
-    startedAt: nowIso(),
-    currentPeriodEnd: addMonthsIso(months)
-  };
-  if (existing) Object.assign(existing, payload, { updatedAt: nowIso() });
-  else db.subscriptions.unshift({ id: id("sub"), ...payload });
-  const tenant = (db.tenants || []).find((item) => item.id === payment.tenantId);
-  if (tenant) Object.assign(tenant, { planId: payment.planId, status: "active", updatedAt: nowIso() });
+    months
+  }, { id, now: nowIso() });
 }
 
-// 真·链上验证：查 TronGrid 上收款地址的 USDT(TRC20) 转入，金额匹配的待支付单自动确认。
-// 无 TRC20 地址则跳过；无 TRONGRID_API_KEY 也能查（有 key 更稳、限流更高）。
-const USDT_TRC20_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
-async function verifyTrc20Payments(db) {
+async function verifyTrc20Payments(db, options = {}) {
   const address = process.env.TRC20_USDT_RECEIVE_ADDRESS || db.runtimeConfig?.TRC20_USDT_RECEIVE_ADDRESS;
-  let expired = 0;
-  for (const payment of db.paymentRequests || []) {
-    if (payment.status !== "pending" || !payment.expiresAt || new Date(payment.expiresAt).getTime() > Date.now()) continue;
-    payment.status = "expired";
-    payment.expiredAt = nowIso();
-    if (payment.registrationApplicationId) {
-      try { updateRegistrationApplication(db, payment.registrationApplicationId, { status: "approved" }); } catch { /* 人工状态已变化时不反向覆盖 */ }
+  return verifyTrc20PaymentIntents(db, {
+    ...options,
+    address,
+    apiKey: process.env.TRONGRID_API_KEY,
+    nowIso,
+    saveDb,
+    claimTransaction: claimPaymentTransaction,
+    onExpired(payment) {
+      if (!payment.registrationApplicationId) return;
+      try { updateRegistrationApplication(db, payment.registrationApplicationId, { status: "approved" }); }
+      catch { /* 人工状态已变化时不反向覆盖 */ }
+    },
+    onConfirmed(payment, evidence) {
+      activateSubscriptionFromPayment(payment);
+      appendAudit(db, `TRC20 链上确认订阅：${evidence.txid}`, payment.id, "PaymentVerifier");
     }
-    expired++;
-  }
-  if (expired) saveDb(db);
-  const pending = (db.paymentRequests || []).filter((item) => item.status === "pending");
-  if (!address) return { status: "skipped", reason: "no_receive_address" };
-  if (!pending.length) return { status: "ok", checked: 0, confirmed: 0 };
-  const apiKey = process.env.TRONGRID_API_KEY;
-  const url = `https://api.trongrid.io/v1/accounts/${address}/transactions/trc20?only_to=true&limit=50&contract_address=${USDT_TRC20_CONTRACT}`;
-  try {
-    const response = await fetch(url, { headers: apiKey ? { "TRON-PRO-API-KEY": apiKey } : {} });
-    if (!response.ok) return { status: "failed", error: `TronGrid HTTP ${response.status}` };
-    const json = await response.json();
-    const txs = (json.data || []).map((tx) => ({ txid: tx.transaction_id, value: Number(tx.value) / 1e6, from: tx.from, at: tx.block_timestamp }));
-    const usedTx = new Set((db.paymentRequests || []).map((item) => item.txid).filter(Boolean));
-    let confirmed = 0;
-    for (const payment of pending) {
-      const tolerance = payment.exactAmount ? 0.000001 : 0.01;
-      const match = txs.find((tx) => !usedTx.has(tx.txid) && Math.abs(tx.value - Number(payment.amount || 0)) < tolerance);
-      if (match) {
-        payment.status = "confirmed";
-        payment.txid = match.txid;
-        payment.confirmedAt = nowIso();
-        payment.verifiedOnChain = true;
-        usedTx.add(match.txid);
-        activateSubscriptionFromPayment(payment);
-        appendAudit(db, `TRC20 链上确认订阅：${match.txid}`, payment.id, "PaymentVerifier");
-        confirmed++;
-      }
-    }
-    if (confirmed) saveDb(db);
-    return { status: "ok", checked: txs.length, confirmed };
-  } catch (error) {
-    return { status: "failed", error: error.message };
-  }
+  });
 }
 
 async function importAndMaybeParseKnowledge(payload = {}) {
@@ -935,7 +942,7 @@ async function importAndMaybeParseKnowledge(payload = {}) {
 // 避免请求超时把已创建的来源“丢掉”，失败也会以 status/error 显式呈现在知识库。
 async function handleKnowledgeImport(req, res) {
   try {
-    const source = await importKnowledgeReal(db, req.body);
+    const source = await importKnowledgeReal(db, { ...req.body, tenantId: req.tenantId || req.user?.tenantId || "tenant_owner" });
     if (req.body.autoParse === false) { persist(res, { message: "知识来源已导入，尚未解析", source }); return; }
     source.status = "processing";
     saveDb(db);
@@ -963,7 +970,7 @@ app.get("/api/public/bootstrap", (_req, res) => {
   res.json(publicBootstrap());
 });
 
-app.get("/api/storage", (_req, res) => {
+app.get("/api/storage", requirePermission("admin:system"), (_req, res) => {
   res.json(getStorageInfo());
 });
 
@@ -985,7 +992,7 @@ function liveConnectorToolStatus(tools = []) {
   });
 }
 
-app.get("/api/overview", (req, res) => {
+app.get("/api/overview", requirePermission("account.read"), (req, res) => {
   // Live account data must never be reused across the startup/full native views. In particular,
   // WKWebView can cache the first compact response because both views share this endpoint.
   res.set("Cache-Control", "no-store");
@@ -1062,6 +1069,8 @@ app.get("/api/overview", (req, res) => {
       source: "OMS + exchange-confirmed fills + trade review queue",
       fillTotal: (db.fills || []).length,
       tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length,
+      tradeReviewPending: (db.reviews || []).filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
+      tradeReviewFailed: (db.reviews || []).filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
       generatedAt: new Date().toISOString()
     },
     riskRules: db.riskRules,
@@ -1187,34 +1196,67 @@ function normalizeSymbol(raw) {
 // 鉴权流票据：EventSource 无法携带 Authorization 头。登录后先领短票，再以 ?ticket= 连流。
 // 票据只授权“读取实时流”（不是会话令牌，泄漏面远小于 token）；有效期内可复用，
 // 浏览器断线自动重连沿用同一 URL 也能续上。匿名连接仍只收公开行情白名单字段。
-const streamTickets = new Map(); // ticket -> { userId, expiresAt }
-const STREAM_TICKET_TTL_MS = 12 * 3600 * 1000;
-app.post("/api/stream/ticket", (req, res) => {
+app.post("/api/stream/ticket", requirePermission("account.read"), (req, res) => {
   if (authRequired() && !req.user) return res.status(401).json({ error: "Authentication required" });
-  for (const [t, info] of streamTickets) if (info.expiresAt <= Date.now()) streamTickets.delete(t); // 顺带清理过期票
-  const ticket = crypto.randomBytes(24).toString("hex");
-  streamTickets.set(ticket, { userId: req.user?.id || db.user?.id || "owner", expiresAt: Date.now() + STREAM_TICKET_TTL_MS });
-  res.json({ ticket, expiresInMs: STREAM_TICKET_TTL_MS });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.json(issueStreamTicket({
+    userId: req.user?.id || db.user?.id || "owner",
+    sessionId: req.session?.id || null,
+    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
+    securityVersion: Number(req.user?.securityVersion || 0),
+    scopes: resolvePermissions(db, req.user || db.user),
+    ttlMs: STREAM_TICKET_TTL_MS
+  }));
 });
 
 app.get("/api/stream", (req, res) => {
-  const ticketInfo = req.query.ticket ? streamTickets.get(String(req.query.ticket)) : null;
-  const authenticated = !authRequired() || Boolean(ticketInfo && ticketInfo.expiresAt > Date.now());
+  const ticketInfo = req.query.ticket ? consumeStreamTicket(String(req.query.ticket)) : null;
+  if (req.query.ticket && !ticketInfo) return res.status(401).json({ error: "Stream ticket is invalid, expired, or already used" });
+  const initiallyAuthenticated = !authRequired() || Boolean(ticketInfo);
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
-    "X-Accel-Buffering": "no"
+    "X-Accel-Buffering": "no",
+    "Referrer-Policy": "no-referrer"
   });
   res.write("retry: 3000\n\n");
+  let closed = false;
+  const stillAuthorized = () => {
+    if (!authRequired()) return true;
+    if (!initiallyAuthenticated || !ticketInfo || ticketInfo.expiresAt <= Date.now()) return false;
+    const user = (db.users || []).find((row) => row.id === ticketInfo.userId);
+    const session = (db.authSessions || []).find((row) => row.id === ticketInfo.sessionId && row.userId === ticketInfo.userId
+      && (!row.expiresAt || new Date(row.expiresAt).getTime() > Date.now()));
+    if (!user || user.status === "disabled" || !session) return false;
+    if (Number(user.securityVersion || 0) !== Number(ticketInfo.securityVersion || 0)) return false;
+    if (String(session.tenantId || user.tenantId || "tenant_owner") !== String(ticketInfo.tenantId || "")) return false;
+    const currentScopes = new Set(resolvePermissions(db, user));
+    const ticketScopes = new Set(ticketInfo.scopes || []);
+    const accountRead = (currentScopes.has("*") || currentScopes.has("account.read"))
+      && (ticketScopes.has("*") || ticketScopes.has("account.read"));
+    if (!accountRead) return false;
+    return resolveTenantEntitlement(db, { user, tenantId: ticketInfo.tenantId }).allowed;
+  };
+  const closeStream = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(keepAlive);
+    removeStreamListener(send);
+    try { res.end(); } catch { /* noop */ }
+  };
   const send = (update) => {
+    if (!stillAuthorized() && !isPublicMarketStreamUpdate(update)) return closeStream();
     // 匿名连接只放行公开行情；持有效票据的连接可收 portfolio/knowledge_updated 等本人数据。
-    if (!authenticated && !isPublicMarketStreamUpdate(update)) return;
+    if (!initiallyAuthenticated && !isPublicMarketStreamUpdate(update)) return;
     try { res.write(`data: ${JSON.stringify(update)}\n\n`); } catch { /* noop */ }
   };
   addStreamListener(send);
-  const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* noop */ } }, 25000);
-  req.on("close", () => { clearInterval(keepAlive); removeStreamListener(send); });
+  const keepAlive = setInterval(() => {
+    if (!stillAuthorized() && initiallyAuthenticated) return closeStream();
+    try { res.write(": ping\n\n"); } catch { closeStream(); }
+  }, 15000);
+  req.on("close", closeStream);
 });
 
 // markets/positions/orders/fills 路由已迁至 server/routes/tradingData.mjs
@@ -1262,14 +1304,14 @@ app.post("/api/armed-setups/:id/cancel", requirePermission("write:trade_plan"), 
 // exchange accounts/api-key/reconcile/sync/ticker/private-action 路由已迁至 server/routes/exchange.mjs
 
 app.post("/api/trade-actions/:action", requirePermission("critical:trade_execution"), async (req, res) => {
-  try {
-    const result = await executeTradeAction(db, req.params.action, req.body || {});
-    persist(res, result);
-  } catch (error) {
-    appendAudit(db, "交易写操作异常", req.params.action, "TradeExecutor", "critical");
-    saveDb(db);
-    res.status(500).json({ error: error.message });
-  }
+  // 原始 payload 不能成为“审批能力”。真实交易必须从 plan approval -> ExecutionEngine，
+  // 撤单/平仓必须从 execution-order intent 状态机进入；该通用网关不再对外执行任何动作。
+  appendAudit(db, "拒绝外部原始交易动作入口", req.params.action, req.user?.name || "TradeExecutor", "warning");
+  saveDb(db);
+  res.status(410).json({
+    error: "raw_trade_action_endpoint_disabled",
+    message: "请通过交易计划批准或执行单撤销/平仓接口操作；客户端布尔值不能代替服务端授权。"
+  });
 });
 
 // realtime status/start/stop 路由已迁至 server/routes/realtime.mjs
@@ -1280,55 +1322,44 @@ app.post("/api/trade-actions/:action", requirePermission("critical:trade_executi
 // executePendingAction 因与对话确认强耦合，仍留在本文件）
 
 // AI 交易员代操作：待确认操作的执行（点确认后）。真钱/授权动作仍受各自的硬闸约束（防御纵深）。
-async function executePendingAction(db, record, actor = "Owner") {
+async function executePendingAction(db, record, context = {}) {
+  const actor = context.actor || "Owner";
   const a = record.args || {};
   if (record.type === "run_reconcile") {
     return { ok: true, result: runReconciler(db, { mode: "agent_confirm" }) };
   }
   if (record.type === "kill_switch") {
-    db.system.killSwitch = a.enabled !== false;
-    appendAudit(db, db.system.killSwitch ? "对话确认：开启熔断" : "对话确认：解除熔断", "kill_switch", actor, "warning");
-    return { ok: true, killSwitch: db.system.killSwitch };
+    return applyKillSwitch(db, {
+      enabled: a.enabled !== false,
+      reason: "对话确认",
+      actor
+    }, { closeExecution, notifyLark, appendAudit, appendTrace, id, nowIso });
   }
   if (record.type === "set_live_gate") {
-    const entries = {};
-    if (a.gate === "live") { entries.LIVE_TRADING_ENABLED = a.enabled !== false ? "true" : "false"; entries.I_UNDERSTAND_REAL_TRADING = a.enabled !== false ? "true" : "false"; }
-    if (a.gate === "order_write") entries.REAL_ORDER_WRITE_ENABLED = a.enabled !== false ? "true" : "false";
-    if (Object.keys(entries).length) await setConfig(db, entries);
-    db.system.liveTradingEnabled = process.env.LIVE_TRADING_ENABLED === "true" && process.env.I_UNDERSTAND_REAL_TRADING === "true";
-    if (a.gate === "gray") {
-      db.grayReleasePolicies ||= [];
-      let policy = db.grayReleasePolicies[0];
-      if (!policy) { policy = { id: id("gray"), maxNotionalUsdt: Number(process.env.MAX_LIVE_NOTIONAL_USDT || 50), allowedSymbols: [] }; db.grayReleasePolicies.unshift(policy); }
-      policy.enabled = a.enabled !== false;
-    }
-    appendAudit(db, `对话确认：设置实盘闸 ${a.gate}=${a.enabled !== false}`, "live_gate", actor, "warning");
-    return { ok: true, liveTradingEnabled: db.system.liveTradingEnabled };
+    const input = liveGateInput(db, a);
+    if (!input) return { ok: false, status: 400, error: "invalid_live_gate" };
+    if (a.enabled !== false && !a.liveConfigFingerprint) return { ok: false, status: 409, error: "missing_live_config_confirmation_snapshot" };
+    return applyLiveTradingConfiguration(db, input, {
+      user: context.user,
+      actor,
+      setConfig,
+      appendAudit,
+      nowIso,
+      expectedFingerprint: a.liveConfigFingerprint || undefined
+    });
   }
   if (record.type === "mandate") {
     const m = (db.mandates || []).find((x) => x.id === (a.resolvedTargetId || a.mandateId)) || db.mandates?.[0];
     if (!m) return { ok: false, error: "mandate_not_found" };
-    // 激活必须走 activateMandate(单一激活不变量):此前直接赋值 status="active",
-    // 旧 active 不被废弃 → 多 active 并存的老故障在对话确认路径复活。
-    if (a.op === "activate") activateMandate(db, m.id);
-    else if (a.op === "pause") m.status = "paused";
-    else if (a.op === "revoke") m.status = "revoked";
-    m.updatedAt = nowIso();
-    appendAudit(db, `对话确认：${a.op} Mandate ${m.id}`, m.id, actor, "warning");
-    return { ok: true, mandate: { id: m.id, status: m.status } };
+    const result = transitionMandate(db, m.id, a.op, { actor, nowIso, appendAudit });
+    if (!result.ok) return result;
+    return { ok: true, mandate: { id: result.mandate.id, status: result.mandate.status, version: result.mandate.version } };
   }
   if (record.type === "approve_plan") {
-    const plan = (db.tradePlans || []).find((p) => p.id === (a.resolvedTargetId || a.planId))
-      || (db.tradePlans || []).find((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
-    if (!plan) return { ok: false, error: "plan_not_found" };
-    const fresh = evaluateTradePlan(db, plan);
-    fresh.tradePlanId = plan.id; fresh.createdAt = nowIso();
-    db.riskChecks.unshift(fresh); plan.lastRiskCheck = fresh; plan.riskCheckId = fresh.id;
-    if (!fresh.passed) return { ok: false, error: "risk_blocked", summary: fresh.summary };
-    plan.status = "approved"; plan.approvedAt = nowIso(); plan.approvedBy = actor;
-    appendAudit(db, "对话确认：批准交易计划", plan.id, actor, "warning");
-    const execution = await executeApprovedPlan(db, plan.id, { manualApproval: true });
-    return { ok: true, execution, guard: describeGuardReason(execution.reason) };
+    const plan = (db.tradePlans || []).find((p) => p.id === (a.resolvedTargetId || a.planId));
+    return approveTradePlan(db, plan, {
+      evaluateTradePlan, executeApprovedPlan, describeGuardReason, appendAudit, nowIso
+    }, { actor, auditLabel: "对话确认：批准交易计划", snapshot: a });
   }
   return { ok: false, error: "unknown_action_type" };
 }
@@ -1336,7 +1367,7 @@ async function executePendingAction(db, record, actor = "Owner") {
 app.post("/api/agent/actions/:id/confirm", async (req, res) => {
   const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
   if (!record) return res.status(404).json({ error: "待确认操作不存在" });
-  if (record.status !== "awaiting_confirmation") return res.status(400).json({ error: "该操作已处理" });
+  if (record.status !== "awaiting_confirmation") return res.status(409).json({ error: "该操作已处理或正在执行" });
   if (record.tenantId && record.tenantId !== (req.tenantId || "tenant_owner")) {
     return res.status(404).json({ error: "待确认操作不存在" });
   }
@@ -1344,21 +1375,45 @@ app.post("/api/agent/actions/:id/confirm", async (req, res) => {
   if (!authorization.allowed) {
     return res.status(403).json({ error: `Missing permission: ${authorization.requiredPermission || "unknown_action"}` });
   }
+  if (!record.expiresAt || new Date(record.expiresAt).getTime() <= Date.now()) {
+    record.status = "expired";
+    record.resolvedAt = nowIso();
+    saveDb(db);
+    return res.status(409).json({ error: "pending_action_expired" });
+  }
   const actor = req.user?.name || "Unknown user";
-  const result = await executePendingAction(db, record, actor);
+  if (record.type === "approve_plan") {
+    const plan = (db.tradePlans || []).find((item) => item.id === (record.args?.resolvedTargetId || record.args?.planId));
+    const validation = validateApprovalSnapshot(plan, record.args || {});
+    if (!validation.ok) return res.status(validation.status || 409).json({ error: validation.error, currentStatus: validation.currentStatus });
+  }
+  // 单进程事件循环内先同步 claim，再在任何 await/交易动作前持久化；并发 confirm/cancel
+  // 只有一个请求能从 awaiting_confirmation 取得处理权。
+  record.status = "processing";
+  record.claimedAt = nowIso();
+  record.claimedByUserId = req.user?.id || null;
+  record.claimToken = id("claim");
+  saveDb(db);
+  let result;
+  try {
+    result = await executePendingAction(db, record, { actor, user: req.user });
+  } catch (error) {
+    result = { ok: false, status: 500, error: error.message };
+  }
   record.status = result.ok ? "executed" : "failed";
   record.result = result;
   record.resolvedByUserId = req.user?.id || null;
   record.resolvedBy = actor;
   record.resolvedAt = nowIso();
-  persist(res, { action: record, result });
+  const httpStatus = result.ok ? 200 : Number(result.status || 422);
+  persist(res.status(httpStatus), { action: record, result });
 });
 
 app.post("/api/agent/actions/:id/cancel", requirePermission("write:mandate"), (req, res) => {
   const record = (db.pendingActions || []).find((item) => item.id === req.params.id);
   if (!record) return res.status(404).json({ error: "待确认操作不存在" });
   if (record.tenantId && record.tenantId !== (req.tenantId || "tenant_owner")) return res.status(404).json({ error: "待确认操作不存在" });
-  if (record.status !== "awaiting_confirmation") return res.status(400).json({ error: "该操作已处理" });
+  if (record.status !== "awaiting_confirmation") return res.status(409).json({ error: "该操作已处理或正在执行" });
   record.status = "cancelled";
   record.resolvedByUserId = req.user?.id || null;
   record.resolvedBy = req.user?.name || "Unknown user";
@@ -1391,24 +1446,24 @@ registerAllRoutes(app, {
   telegramWatchStatus, telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox,
   buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
   storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl,
-  listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager,
+  listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager, validateOkxCredentialCandidate, invalidateOkxCredentialCaches,
   getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain,
   addMonthsIso, verifyTrc20Payments, activateSubscriptionFromPayment,
   activeStrategyProfiles, runStrategyResearch, buildStrategyBoard, buildStrategyCatalog, STRATEGIES,
   buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle,
-  hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions,
+  hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions, invalidateUserSessions,
   syncPublicKlines, syncMicrostructure, reconcileAccount, syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction,
   evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec, validateDynamicRiskAction,
   runExpertAnalysis, bindKnowledgeSkillsToPlan, executeApprovedPlan, describeGuardReason, executeTradePlan,
   cancelArmedSetup,
-  fetchSkillPackage, scanSkill, installSkill, readSkillInstructions, runSkillSandbox,
+  fetchSkillPackage, scanSkill, installSkill, verifySkillPackageIntegrity, readSkillInstructions, runSkillSandbox,
   fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, getHistoricalKlines, fetchTokenProfile,
   listStrategies, buildPortfolioRisk, runBacktest, performanceReport, refreshAccounting,
   realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate,
-  handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks,
+  handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks, removeManagedKnowledgeFile,
   knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, approveKnowledgeSkill, retireKnowledgeSkill,
   compileNaturalRiskCondition, validateDynamicRiskAction, consolidateRuleProposals, broadcastRaw,
-  activeProvider, runAgentChat, runAgentCommand, updateStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle,
+  activeProvider, runAgentChat, runAgentCommand, updateStateFile, approveStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle,
   buildReadinessReport, createSystemBackup, resetOperationalData, getStorageInfo, userHasPermission, llmComplete
 });
 

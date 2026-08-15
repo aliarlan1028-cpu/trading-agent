@@ -1,13 +1,13 @@
 // 知识导入 + RAG/向量 路由组 —— 从 index.mjs 按 registrar 范式迁出。
 // 删除来源时:已批准纪律(注入提示词的硬闸)不静默撤、多来源规则只摘引用；同源技能一并退役。依赖经 ctx 注入。
 export function registerKnowledgeImportRoutes(app, ctx) {
-  const { db, persist, requirePermission, appendAudit, appendTrace, handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks } = ctx;
+  const { db, persist, requirePermission, appendAudit, appendTrace, handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks, removeManagedKnowledgeFile } = ctx;
 
   app.post("/api/knowledge/import-real", requirePermission("write:knowledge"), handleKnowledgeImport);
 
   app.post("/api/knowledge/github-import", requirePermission("write:knowledge"), async (req, res) => {
     try {
-      const result = await importGithubKnowledge(db, req.body.repoUrl, req.body.subPath || "");
+      const result = await importGithubKnowledge(db, req.body.repoUrl, req.body.subPath || "", { tenantId: req.tenantId || req.user?.tenantId || "tenant_owner" });
       persist(res, { ...result, message: result.message || `已导入 GitHub 知识：${req.body.repoUrl}` });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -22,10 +22,11 @@ export function registerKnowledgeImportRoutes(app, ctx) {
     }
   });
 
-  app.delete("/api/knowledge/sources/:id", requirePermission("write:knowledge"), (req, res) => {
+  app.delete("/api/knowledge/sources/:id", requirePermission("write:knowledge"), async (req, res) => {
     const source = db.knowledge.sources.find((item) => item.id === req.params.id);
     if (!source) return res.status(404).json({ error: "Knowledge source not found" });
     const sid = source.id;
+    await removeManagedKnowledgeFile?.(source);
     const retiredSkills = retireSkillsForSource(db, sid, db.user.name, "knowledge_source_deleted");
     db.knowledge.sources = db.knowledge.sources.filter((item) => item.id !== sid);
     db.knowledge.documentNodes = (db.knowledge.documentNodes || []).filter((node) => node.sourceId !== sid);
@@ -44,12 +45,12 @@ export function registerKnowledgeImportRoutes(app, ctx) {
     persist(res, { removed: sid, retiredSkills });
   });
 
-  app.post("/api/knowledge/rag-query", async (req, res) => {
+  app.post("/api/knowledge/rag-query", requirePermission("knowledge.read"), requirePermission("assistant.use"), async (req, res) => {
     const result = await ragQuery(db, req.body.query || req.body.question || "", req.body);
     persist(res, result);
   });
 
-  app.get("/api/knowledge/embedding-status", (_req, res) => res.json(embeddingStatus(db)));
+  app.get("/api/knowledge/embedding-status", requirePermission("knowledge.read"), (_req, res) => res.json(embeddingStatus(db)));
 
   app.post("/api/knowledge/reembed", requirePermission("write:knowledge"), async (_req, res) => {
     try {

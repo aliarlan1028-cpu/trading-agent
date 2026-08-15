@@ -10,12 +10,27 @@ import { compactTriggeredWatch } from "./watchReviewGuard.mjs";
 import { watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { consumeOpportunitySignals, peekOpportunitySignals } from "./earlyOpportunityEngine.mjs";
+import { systemAgentInvocation } from "./agentInvocation.mjs";
+import { approveStateFilePromptArtifact, markStateFilePromptDraft } from "./knowledgePromptPolicy.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
 // LLM 已配置且授权激活时 → 走真实 LLM 决策循环（与对话共用一套工具与风控）；
 // 否则做真实数据巡检（行情同步 + 核算 + 风控复查），不产生编造内容。
 // ---------------------------------------------------------------------------
+
+export function newsSignalDescriptor(signal = {}) {
+  const kind = signal.kind === "scheduled_event" ? "scheduled_event" : "breaking_news";
+  const evidenceId = String(signal.eventId || signal.factId || "unknown").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120) || "unknown";
+  const trustTier = ["verified_official", "verified_publisher", "verified_official_calendar", "unverified_manual", "unverified_aggregator"]
+    .includes(signal.trustTier) ? signal.trustTier : "unverified_aggregator";
+  const symbols = [...new Set((signal.symbols || []).map((value) => String(value).toUpperCase()).filter((value) => /^[A-Z0-9]{2,15}\/USDT$/.test(value)))].slice(0, 12);
+  const impact = Number(signal.impact);
+  const publishedAt = Number.isFinite(new Date(signal.publishedAt || signal.queuedAt || 0).getTime())
+    ? new Date(signal.publishedAt || signal.queuedAt).toISOString()
+    : "unknown";
+  return `kind=${kind} · evidenceId=${evidenceId} · trustTier=${trustTier} · verifiedOrigin=${signal.verifiedOrigin === true} · publishedAt=${publishedAt}${Number.isFinite(impact) ? ` · impact=${impact}` : ""}${symbols.length ? ` · symbols=${symbols.join(",")}` : ""}`;
+}
 
 export async function runAgentCycle(db, payload = {}, saveDb) {
   const mandate = activeMandate(db);
@@ -104,7 +119,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
         { phase: "observe", summary: syncedSymbols.length ? `已同步 ${syncedSymbols.join("、")} 真实行情。` : "行情同步失败或无授权交易对。" },
         ...(fastMoves.length ? [{ phase: "fast_move", summary: `快速异动但本轮未进入 LLM 决策：${fastMoves.map((e) => `${e.symbol} ${e.windowMin}分钟${e.direction === "down" ? "跌" : "涨"}${e.movePct}%`).join("；")}。` }] : []),
         ...(opportunitySignals.length ? [{ phase: "opportunity", summary: `早期机会但本轮未进入 LLM 决策：${opportunitySignals.map((e) => `${e.symbol} ${e.direction} score=${e.score}`).join("；")}。` }] : []),
-        ...(newsSignals.length ? [{ phase: "news", summary: `重要信息但本轮未进入 LLM 决策：${newsSignals.map((e) => e.title).join("；")}。` }] : []),
+        ...(newsSignals.length ? [{ phase: "news", summary: `有 ${newsSignals.length} 条重要信息等待结构化复核（原始自由文本未进入任务指令）。` }] : []),
         ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${w.symbol} ${watchDirectionLabel(w)}｜原判断=${watchThesis(w)}｜条件=${describeWatch(w)}｜命中含义=${watchTriggerMeaning(w)}｜触发价 ${w.triggerPrice}`).join("；")}。` }] : []),
         ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
@@ -135,7 +150,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const watchBullets = triggeredWatches.map((w) => `- watchId=${w.id}｜${w.symbol}｜${watchDirectionLabel(w)}｜原判断：${watchThesis(w)}｜价格命中条件：${describeWatch(w)}（触发价 ${w.triggerPrice}）｜待复核含义：${watchTriggerMeaning(w)}｜注意：这里只确认价格到位，不代表量能、收盘、形态或入场已确认`);
   const moveBullets = fastMoves.map((e) => `- ${e.symbol} ${e.windowMin} 分钟内${e.direction === "down" ? "快速下跌" : "快速上涨"} ${e.movePct}%（现价 ${e.price}，自${e.direction === "down" ? "高" : "低"}点 ${e.refPrice}）`);
   const opportunityBullets = opportunitySignals.map((e) => `- ${e.symbol} ${e.features?.setupType === "reversal_reclaim" ? "极值回收反转" : "早期动量启动"}${e.direction === "short" ? "偏空" : "偏多"}候选 score=${e.score} · 发现于 ${e.detectedAt || e.queuedAt}${e.features ? ` · 15s ${e.features.ret15sPct ?? "-"}% / 30s ${e.features.ret30sPct ?? "-"}% / 1m ${e.features.ret1mPct ?? "-"}%${e.features.reclaimPct != null ? ` · 极值回收 ${e.features.reclaimPct}%` : ` · 加速度 ${e.features.acceleration ?? "-"}`}` : ""}`);
-  const newsBullets = newsSignals.map((e) => `- [${e.kind === "scheduled_event" ? "高影响日程" : "重要快讯"}] ${e.title} · ${e.sourceName || "来源待核"} · ${e.publishedAt || e.queuedAt}${e.symbols?.length ? ` · 关联 ${e.symbols.join("、")}` : ""}\n  ${e.summary || ""}`);
+  const newsBullets = newsSignals.map((signal) => `- ${newsSignalDescriptor(signal)}`);
   const goal = payload.goal
     || [
       fastMoves.length ? `【⚠ 快速异动 · ${startedHhmm}】` : triggeredWatches.length ? `【⚠ 观察哨触发 · ${startedHhmm}】` : newsSignals.length ? `【📰 重要信息复核 · ${startedHhmm}】` : opportunitySignals.length ? `【⚡ 早期机会 · ${startedHhmm}】` : `【定时巡检 · ${startedHhmm}】`,
@@ -201,7 +216,8 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
     sessionId: "chat_autocycle",
     decisionTrigger,
     symbols,
-    triggeredWatches: triggeredWatches.map(compactTriggeredWatch)
+    triggeredWatches: triggeredWatches.map(compactTriggeredWatch),
+    invocationContext: payload.invocationContext || systemAgentInvocation("agent_cycle_internal")
   }, saveDb);
   result.run.source = "agent_cycle";
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");
@@ -252,7 +268,7 @@ export function recheckActivePlanRisk(db) {
   return risk;
 }
 
-export function updateStateFile(db, name, content) {
+export function updateStateFile(db, name, content, options = {}) {
   const key = String(name || "").toUpperCase();
   if (!["USER", "AGENT", "HISTORY"].includes(key)) {
     throw new Error("Unknown state file");
@@ -260,9 +276,21 @@ export function updateStateFile(db, name, content) {
   db.agentStateFiles[key] ||= { id: `state_${key.toLowerCase()}`, title: `${key}.md`, content: "", updatedAt: nowIso() };
   db.agentStateFiles[key].content = content;
   db.agentStateFiles[key].updatedAt = nowIso();
+  if (["USER", "AGENT"].includes(key)) markStateFilePromptDraft(key, db.agentStateFiles[key], options);
   appendAudit(db, `更新状态文件 ${key}.md`, db.agentStateFiles[key].id, "Memory Agent");
   appendTrace(db, "state_file", `更新 ${key}.md`);
   return db.agentStateFiles[key];
+}
+
+export function approveStateFile(db, name, options = {}) {
+  const key = String(name || "").toUpperCase();
+  const file = db.agentStateFiles?.[key];
+  if (!file) throw new Error("State file not found");
+  approveStateFilePromptArtifact(key, file, options);
+  file.updatedAt = nowIso();
+  appendAudit(db, `批准状态文件 ${key}.md 进入系统提示`, file.id, options.actor || "KnowledgeApprover", "warning");
+  appendTrace(db, "state_file", `批准 ${key}.md 的哈希封印`, "ok");
+  return file;
 }
 
 export function addMemoryItem(db, payload = {}) {
@@ -273,6 +301,15 @@ export function addMemoryItem(db, payload = {}) {
     content: payload.content || "",
     tags: payload.tags || [],
     source: payload.source || "manual",
+    promptTrust: "untrusted_user_data",
+    mayEnterSystemPrompt: false,
+    tenantId: payload.tenantId || "tenant_owner",
+    createdByUserId: payload.createdByUserId || null,
+    provenance: {
+      origin: payload.provenance?.origin || "manual_or_api_memory",
+      sourceId: payload.provenance?.sourceId || null,
+      promotableToPromptAuthority: false
+    },
     createdAt: nowIso()
   };
   db.memoryItems.unshift(item);

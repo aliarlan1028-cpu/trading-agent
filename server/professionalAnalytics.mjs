@@ -74,7 +74,7 @@ export function buildExecutionQuality(db) {
 }
 
 export function buildStrategyDrift(db, { strategy } = {}) {
-  let lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  let lifecycles = groupClosedTradeLifecycles(db.fills || []).filter((row) => row.netRealizedPnl !== null && row.netRealizedPnl !== undefined && row.netRealizedPnl !== "" && Number.isFinite(Number(row.netRealizedPnl)));
   if (strategy) lifecycles = lifecycles.filter((lifecycle) => {
     const fill = lifecycle.representative;
     const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);

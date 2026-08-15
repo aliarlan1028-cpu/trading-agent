@@ -13,7 +13,14 @@ function harness(rules = []) {
   for (const method of ["get", "post", "patch", "delete"]) {
     app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers.at(-1));
   }
-  const db = { user: { name: "Owner" }, system: {}, riskRules: rules, riskChecks: [], riskIncidents: [], positions: [], executionOrders: [], auditLogs: [], traces: [] };
+  const db = {
+    user: { id: "owner", name: "Owner", role: "管理员" },
+    roles: [
+      { id: "role_admin", name: "管理员", permissions: ["*"] },
+      { id: "role_trader", name: "交易用户", permissions: ["risk.check", "write:risk_thresholds"] }
+    ],
+    system: {}, portfolio: {}, fills: [], riskRules: rules, riskChecks: [], riskIncidents: [], positions: [], executionOrders: [], auditLogs: [], traces: []
+  };
   registerRiskRoutes(app, {
     db,
     persist(res, payload) { res.payload = payload; },
@@ -48,4 +55,28 @@ test("系统内置风控规则不能从规则面板修改或停用", () => {
   routes.get("PATCH /api/risk/rules/:id")({ params: { id: systemRule.id }, body: { enabled: false } }, res);
   assert.equal(res.statusCode, 403);
   assert.equal(systemRule.enabled, true);
+});
+
+test("交易用户只能收紧阈值，不能放宽全局硬风控", async () => {
+  delete process.env.EVENT_BLACKOUT_MINUTES;
+  const { routes } = harness();
+  const update = routes.get("POST /api/risk/thresholds");
+  let res = response();
+  await update({
+    user: { id: "trader", name: "Trader", role: "交易用户", status: "active" },
+    session: { reauthenticatedAt: new Date().toISOString(), authLevel: "password" },
+    body: { eventBlackoutMinutes: 0 }
+  }, res);
+  assert.equal(res.statusCode, 403);
+  assert.equal(process.env.EVENT_BLACKOUT_MINUTES, undefined);
+
+  res = response();
+  await update({
+    user: { id: "trader", name: "Trader", role: "交易用户", status: "active" },
+    session: { reauthenticatedAt: new Date().toISOString(), authLevel: "password" },
+    body: { eventBlackoutMinutes: 60 }
+  }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(process.env.EVENT_BLACKOUT_MINUTES, "60");
+  delete process.env.EVENT_BLACKOUT_MINUTES;
 });

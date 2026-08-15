@@ -102,7 +102,7 @@ function moversBroadcast(data) {
   const rows = list.slice(0, 8).map((t) => {
     const dir = t.changePct >= 0 ? "+" : "";
     const vol = t.quoteVolUsdt >= 1e8 ? `${(t.quoteVolUsdt / 1e8).toFixed(1)}亿U` : `${Math.round(t.quoteVolUsdt / 1e6)}百万U`;
-    const narr = t.narrative?.narrative ? ` — ${t.narrative.narrative}` : "";
+    const narr = t.narrative?.untrustedDisplay?.narrative ? ` — ${t.narrative.untrustedDisplay.narrative}` : "";
     return `- **${t.symbol}** ${dir}${t.changePct}% · 成交 ${vol}${narr}`;
   }).join("\n");
   return `**全市场异动**（截至 ${hhmmCn(mv.scannedAt)}，仅供理解大盘情绪与轮动，不是追涨信号）\n\n${rows}\n\n> 只在你的授权白名单内交易；异动仅作环境感知。`;

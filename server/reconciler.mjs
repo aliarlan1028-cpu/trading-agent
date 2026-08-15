@@ -1,5 +1,9 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
+import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
+import { activeReduceOnlyReasonCodes, clearReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+import { currentOkxCredentialFingerprint } from "./exchangeConnector.mjs";
 
 export function runReconciler(db, options = {}) {
   const mode = options.mode || "full";
@@ -46,9 +50,26 @@ export function runReconciler(db, options = {}) {
   }
   appendAudit(db, `执行对账：${report.status}`, report.id, "Reconciler", report.status === "ok" ? "info" : "warning");
   appendTrace(db, "reconciler", `对账 ${mode}`, report.status);
-  if (report.status === "ok" && ["oms_recovery", "armed_setup_recovery", "liquidation_emergency", "protection_emergency"].includes(db.system?.reduceOnlyBy)
+  const successfulOkxSnapshots = [...latestSnapshotsByAccount.values()].filter((item) => item.exchange === "OKX" && item.status === "ok");
+  const unresolvedRecovery = (db.executionOrders || []).some((item) => OPEN_EXECUTION_STATES.has(item.status)
+    || ["recovery_pending_reconciliation", "emergency_close_pending"].includes(item.status));
+  const recoveryReasons = activeReduceOnlyReasonCodes(db).filter((code) => ["oms_recovery", "armed_setup_recovery"].includes(code));
+  const recoveryOpenedAt = [
+    ...(db.executionOrders || []).filter((item) => ["recovery_pending_reconciliation", "entry_unknown_pending", "cancel_unknown_pending", "close_unknown_pending"].includes(item.status))
+      .map((item) => item.recoveryAttemptedAt || item.entryAttemptedAt || item.cancelAttemptedAt || item.closeAttemptedAt || item.updatedAt || item.createdAt),
+    ...(db.armedSetups || []).filter((item) => item.status === "RECOVERY_PENDING_RECONCILIATION")
+      .map((item) => item.recoveryStartedAt || item.updatedAt || item.createdAt)
+  ].map((value) => new Date(value || 0).getTime()).filter(Number.isFinite);
+  const currentFingerprint = currentOkxCredentialFingerprint();
+  const recoverySnapshotsComplete = successfulOkxSnapshots.length > 0
+    && successfulOkxSnapshots.every((snapshot) => snapshot.openOrdersComplete === true && snapshot.algoOrdersComplete === true
+      && Boolean(currentFingerprint) && snapshot.apiKeyFingerprint === currentFingerprint
+      && (!recoveryOpenedAt.length || new Date(snapshot.createdAt).getTime() >= Math.max(...recoveryOpenedAt)));
+  if (report.status === "ok" && successfulOkxSnapshots.length > 0 && !unresolvedRecovery
+    && recoverySnapshotsComplete
+    && recoveryReasons.length > 0
     && !(db.executionOrders || []).some((item) => String(item.status).toUpperCase() === "UNKNOWN")) {
-    const recoverySource = db.system.reduceOnlyBy;
+    const recoverySource = recoveryReasons[0];
     for (const execution of (db.executionOrders || []).filter((item) => item.status === "recovery_pending_reconciliation")) {
       execution.status = "recovered_compensated";
       execution.events ||= [];
@@ -75,9 +96,7 @@ export function runReconciler(db, options = {}) {
         ? { ...incident, status: "resolved", resolvedAt: nowIso(), resolution: report.id }
         : incident
     );
-    db.system.reduceOnlyMode = false;
-    db.system.reduceOnlyBy = null;
-    db.system.riskStatus = "正常";
+    clearReduceOnlyReason(db, recoverySource, { resolvedBy: "Reconciler", resolution: report.id });
     db.system.latestAction = recoverySource === "armed_setup_recovery"
       ? "条件交易重启恢复已通过 OKX 账户对账，确认无未决差异并恢复自主开仓"
       : "UNKNOWN 订单自动补偿已通过 OKX 账户对账，恢复自主开仓";
@@ -87,26 +106,39 @@ export function runReconciler(db, options = {}) {
   // 对账报告本身是运行降级闸的关键输入。每次生成新报告后立刻复评，
   // 让连接/对账恢复可自动解除本闸设置的只减仓，避免等待下一次 AI 巡检。
   applyOperationalDegradation(db, "Reconciler");
+  syncReduceOnlyState(db);
   return report;
 }
 
 function resolveEmergencyClosures(db, latestByAccount) {
-  const snapshot = [...latestByAccount.values()].find((item) => item.exchange === "OKX" && item.status === "ok");
-  if (!snapshot) return;
-  const remoteSymbols = new Set((snapshot.positions || [])
-    .filter((position) => Number(position.pos || 0) !== 0)
-    .map((position) => String(position.instId || "").replace("-SWAP", "").replace("-", "/")));
   const pending = (db.executionOrders || []).filter((item) => ["recovery_pending_reconciliation", "emergency_close_pending"].includes(item.status));
   for (const execution of pending) {
-    const submittedAt = execution.events?.at(-1)?.at || execution.updatedAt || execution.createdAt;
+    if (!execution.accountId) continue;
+    const snapshot = latestByAccount.get(execution.accountId);
+    if (!snapshot || snapshot.exchange !== "OKX" || snapshot.status !== "ok") continue;
+    const submittedAt = execution.closeAttemptedAt || execution.closeSubmittedAt || execution.events?.at(-1)?.at || execution.updatedAt || execution.createdAt;
     if (new Date(snapshot.createdAt).getTime() < new Date(submittedAt).getTime()) continue;
-    if (remoteSymbols.has(execution.symbol)) continue;
-    db.positions = (db.positions || []).filter((position) => !(position.source === "execution_engine" && position.executionOrderId === execution.id));
-    execution.status = execution.status === "emergency_close_pending" ? "emergency_closed" : "recovered_compensated";
+    const direction = canonicalPositionDirection(execution);
+    const stillOpen = (snapshot.positions || []).some((position) => canonicalSymbol(position.instId || position.symbol) === canonicalSymbol(execution.symbol)
+      && canonicalPositionDirection(position) === direction
+      && Math.abs(Number(position.pos ?? position.positionAmt ?? position.size ?? 0)) > 0);
+    if (stillOpen) continue;
+    // 仓位消失只证明敞口为零，不证明成交价、手续费、资金费或盈亏。保留账本对象并转入
+    // 财务对账状态，由执行引擎按稳定退出身份查询真实 fills/bills 后再终结。
+    for (const position of db.positions || []) {
+      if (position.source === "execution_engine" && position.executionOrderId === execution.id) {
+        position.status = "close_reconciliation_pending";
+        position.exposureConfirmedAbsentAt = snapshot.createdAt;
+      }
+    }
+    execution.status = "close_reconciliation_pending";
+    execution.closeReconciliationSource ||= execution.closeClientOrderId ? "manual_close" : "emergency";
+    execution.closeSubmittedAt ||= submittedAt;
+    execution.closeReconciliationReason = "exposure_absent_financial_evidence_pending";
     execution.events ||= [];
-    execution.events.push({ at: nowIso(), event: "exchange_position_absent", detail: snapshot.id });
+    execution.events.push({ at: nowIso(), event: "exchange_position_absent_financial_pending", detail: snapshot.id });
     const plan = (db.tradePlans || []).find((item) => item.id === execution.planId);
-    if (plan) plan.status = "failed";
+    if (plan) plan.status = "recovery_pending_reconciliation";
   }
 }
 
@@ -148,6 +180,10 @@ export function checkStopLossCoverage(db, latestByAccount = latestSnapshots(db))
 
 function checkSnapshotFreshness(db, latestByAccount) {
   const differences = [];
+  const pendingRecovery = (db.executionOrders || []).filter((item) => ["recovery_pending_reconciliation", "emergency_close_pending", "close_unknown_pending", "close_pending", "close_reconciliation_pending"].includes(item.status));
+  if (pendingRecovery.length && !(db.exchangeAccounts || []).some((account) => account.exchange === "OKX" && account.readEnabled)) {
+    differences.push({ type: "recovery_authoritative_account_unavailable", severity: "critical", count: pendingRecovery.length, message: "存在待恢复执行，但没有启用的 OKX 只读账户，禁止解除只减仓。" });
+  }
   for (const account of db.exchangeAccounts || []) {
     // 未配置只读凭证的交易所不纳入对账：它只是"没接入"（在交易所同步卡里已如实显示），
     // 不是"缺快照"的异常——否则会让整体对账永远停在"降级运行"的噪音上。
@@ -161,8 +197,19 @@ function checkSnapshotFreshness(db, latestByAccount) {
     if (ageMs > 5 * 60_000) {
       differences.push({ type: "stale_account_snapshot", severity: "medium", accountId: account.id, ageSeconds: Math.round(ageMs / 1000), message: `${account.exchange} 账户快照超过 5 分钟未更新。` });
     }
-    if (snapshot.status && snapshot.status !== "ok" && snapshot.status !== "missing_credentials") {
-      differences.push({ type: "snapshot_sync_error", severity: "medium", accountId: account.id, status: snapshot.status, message: `${account.exchange} 私有只读同步状态异常。` });
+    if (snapshot.status && snapshot.status !== "ok") {
+      const recoveryBlocked = pendingRecovery.some((item) => !item.accountId || item.accountId === account.id);
+      differences.push({ type: "snapshot_sync_error", severity: recoveryBlocked ? "critical" : "medium", accountId: account.id, status: snapshot.status, message: `${account.exchange} 私有只读同步状态异常，${recoveryBlocked ? "无法核验待恢复动作，继续保持只减仓。" : "请检查连接。"}` });
+    }
+    if (account.exchange === "OKX" && (snapshot.openOrdersComplete !== true || snapshot.algoOrdersComplete !== true)) {
+      differences.push({
+        type: "incomplete_authoritative_order_snapshot",
+        severity: "high",
+        accountId: account.id,
+        openOrdersComplete: snapshot.openOrdersComplete === true,
+        algoOrdersComplete: snapshot.algoOrdersComplete === true,
+        message: "OKX 普通/算法挂单快照未完整穷尽，不能宣称无未决订单或解除恢复锁。"
+      });
     }
   }
   return differences;
@@ -266,8 +313,8 @@ function checkLocalVsExchange(db, latestByAccount) {
 
 function latestSnapshots(db) {
   const map = new Map();
-  for (const snapshot of db.accountSnapshots || []) {
-    if (!map.has(snapshot.accountId)) map.set(snapshot.accountId, snapshot);
+  for (const snapshot of (db.accountSnapshots || []).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))) {
+    if (snapshot.accountId && !map.has(snapshot.accountId)) map.set(snapshot.accountId, snapshot);
   }
   return map;
 }

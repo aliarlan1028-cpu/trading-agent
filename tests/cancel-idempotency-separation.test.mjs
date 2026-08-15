@@ -1,18 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "cancel-idem-"));
-delete process.env.OKX_API_KEY;
+process.env.OKX_API_KEY = "cancel-idempotency-test-key";
 delete process.env.OKX_API_SECRET;
 delete process.env.OKX_API_PASSPHRASE;
+const apiKeyFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
 
 const { executeTradeAction } = await import("../server/tradeActions.mjs");
 const { reserveOmsOrder } = await import("../server/store.mjs");
 
-function dbFixture() {
+function dbFixture(entryClientOrderId = null) {
   return {
     system: { liveTradingEnabled: true, realTradingAck: true, orderWriteEnabled: true, killSwitch: false },
     orders: [],
@@ -20,13 +22,28 @@ function dbFixture() {
     riskIncidents: [],
     auditLogs: [],
     traces: [],
+    executionOrders: entryClientOrderId ? [{
+      id: "exec-entry", status: "entry_pending", exchange: "OKX", symbol: "BTC/USDT",
+      exchangeOrderId: "77001", clientOrderId: entryClientOrderId
+    }] : [],
+    exchangeAccounts: [{
+      id: "okx-main", exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint
+    }],
+    accountSnapshots: [{
+      id: "snapshot-current", accountId: "okx-main", apiKeyFingerprint,
+      exchange: "OKX", status: "ok", createdAt: new Date().toISOString(),
+      positions: [], openOrdersComplete: true, algoOrdersComplete: true, algoOrders: [],
+      openOrders: entryClientOrderId ? [{
+        ordId: "77001", clOrdId: entryClientOrderId, instId: "BTC-USDT-SWAP", reduceOnly: false, state: "live"
+      }] : []
+    }],
     meta: {}
   };
 }
 
 test("cancel_order must not collide with the entry order's idempotency reservation", async () => {
-  const db = dbFixture();
   const entryCoid = "execregress0001";
+  const db = dbFixture(entryCoid);
   // 模拟入场单已占用该 clientOrderId 的 OMS 预留（与实际执行路径一致）
   const entry = reserveOmsOrder({
     exchange: "OKX",
@@ -56,7 +73,7 @@ test("cancel_order must not collide with the entry order's idempotency reservati
   // 无凭证环境下应走到交易所调用层并如实返回 missing_credentials（而不是被幂等闸拦截）
   assert.equal(cancel.status, "missing_credentials");
 
-  // 同一撤单重试仍应幂等（派生键 cancel_order:<coid> 命中 replay，不产生第二次预留）
+  // 明确拒绝（缺凭证）后重试必须真实重试并再次如实失败，不能包装成假 ACK。
   const retry = await executeTradeAction(db, "cancel_order", {
     exchange: "OKX",
     marketType: "perpetual_usdt",
@@ -70,7 +87,8 @@ test("cancel_order must not collide with the entry order's idempotency reservati
     mandateId: "m1",
     manualApproval: true
   });
-  assert.equal(retry.status, "idempotent_replay");
+  assert.equal(retry.status, "missing_credentials");
+  assert.notEqual(retry.status, "idempotent_replay");
 });
 
 test("protection_failed plans are locked out of auto re-execution", async () => {

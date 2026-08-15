@@ -18,7 +18,13 @@ function harness({ tasks = [], runs = [], admin = false } = {}) {
     app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers.at(-1));
   }
   const calls = { scheduled: [], unscheduled: [] };
-  const db = { user: { name: "Owner" }, tasks, jobRuns: runs, auditLogs: [], traces: [], meta: {} };
+  const routeUser = { id: "user_member", name: "member", roleId: "role_member", tenantId: "tenant_owner", status: "active", securityVersion: 1 };
+  const db = {
+    user: { name: "Owner" }, users: [routeUser], roles: [{ id: "role_member", permissions: ["*"] }],
+    tenants: [{ id: "tenant_owner", status: "owner" }],
+    subscriptions: [{ id: "sub_owner", tenantId: "tenant_owner", planId: "owner", status: "active", source: "owner_grant", currentPeriodEnd: null }],
+    tasks, jobRuns: runs, auditLogs: [], traces: [], meta: {}
+  };
   registerTaskRoutes(app, {
     db,
     persist(res, payload) { res.payload = payload; },
@@ -33,25 +39,25 @@ function harness({ tasks = [], runs = [], admin = false } = {}) {
     validateTaskDefinition,
     userHasPermission: () => admin
   });
-  return { routes, db, calls };
+  return { routes, db, calls, routeUser };
 }
 
 test("普通任务不能伪装系统任务或选择高权限处理器", () => {
-  const { routes, db } = harness();
+  const { routes, db, routeUser } = harness();
   const res = response();
   routes.get("POST /api/tasks")({
-    user: { name: "member" },
+    user: routeUser,
     body: { name: "poll orders", type: "Every", schedule: "Every 5m", handler: "execution_poll", systemManaged: true }
   }, res);
-  assert.equal(res.statusCode, 400);
+  assert.equal(res.statusCode, 403);
   assert.equal(db.tasks.length, 0);
 });
 
 test("情报任务强制绑定证据化 mission 处理器", () => {
-  const { routes, db, calls } = harness();
+  const { routes, db, calls, routeUser } = harness();
   const res = response();
   routes.get("POST /api/tasks")({
-    user: { name: "member" },
+    user: routeUser,
     body: { name: "ETF follow", mission: "跟踪 BTC ETF 进展", type: "Every", schedule: "Every 1h", handler: "reconcile" }
   }, res);
   assert.equal(res.statusCode, 200);
@@ -61,11 +67,14 @@ test("情报任务强制绑定证据化 mission 处理器", () => {
 });
 
 test("删除普通任务保留历史运行证据", () => {
-  const task = { id: "user_task", name: "user task", type: "Every", schedule: "Every 5m", handler: "reminder", enabled: true };
+  const task = {
+    id: "user_task", name: "user task", type: "Every", schedule: "Every 5m", handler: "reminder", enabled: true,
+    creatorUserId: "user_member", tenantId: "tenant_owner", creatorSecurityVersion: 1, requiredPermissions: ["write:task"]
+  };
   const run = { id: "run_1", taskId: task.id, status: "ok" };
-  const { routes, db, calls } = harness({ tasks: [task], runs: [run] });
+  const { routes, db, calls, routeUser } = harness({ tasks: [task], runs: [run] });
   const res = response();
-  routes.get("DELETE /api/tasks/:id")({ params: { id: task.id }, user: { name: "member" } }, res);
+  routes.get("DELETE /api/tasks/:id")({ params: { id: task.id }, user: routeUser }, res);
   assert.equal(res.statusCode, 200);
   assert.equal(db.tasks.length, 0);
   assert.equal(db.jobRuns[0].taskDeletedAt, "2026-08-13T00:00:00.000Z");

@@ -2,6 +2,16 @@
 export function registerReviewRoutes(app, ctx) {
   const { db, persist, requirePermission, id, nowIso, appendAudit, buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle, runStrategyResearch } = ctx;
 
+  app.get("/api/reviews", requirePermission("account.read"), (req, res) => {
+    const limit = Math.min(100, Math.max(1, Number(req.query?.limit || 50)));
+    const offset = Math.max(0, Number(req.query?.offset || 0));
+    const type = String(req.query?.type || "").trim();
+    const status = String(req.query?.status || "").trim().toLowerCase();
+    const filtered = (db.reviews || []).filter((row) => (!type || row.type === type) && (!status || String(row.status || "").toLowerCase() === status));
+    const items = filtered.slice(offset, offset + limit).map(({ analyticsSnapshot: _analyticsSnapshot, ...row }) => row);
+    res.json({ items, total: filtered.length, offset, limit, hasMore: offset + items.length < filtered.length });
+  });
+
   app.post("/api/reviews", requirePermission("write:review"), (req, res) => {
     const review = { id: id("review"), title: req.body.title || "交易复盘", summary: req.body.summary || "", tags: req.body.tags || [], tradePlanId: req.body.tradePlanId, createdAt: nowIso() };
     db.reviews.unshift(review);
@@ -9,7 +19,7 @@ export function registerReviewRoutes(app, ctx) {
     persist(res, review);
   });
 
-  app.get("/api/review/analytics", (_req, res) => res.json(buildReviewAnalytics(db)));
+  app.get("/api/review/analytics", requirePermission("account.read"), (_req, res) => res.json(buildReviewAnalytics(db)));
 
   app.post("/api/review/backfill-fields", requirePermission("write:review"), (_req, res) => {
     const result = backfillReviewFields(db);

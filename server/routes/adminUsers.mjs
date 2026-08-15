@@ -7,11 +7,12 @@ import {
   sanitizeRegistrationApplication,
   updateRegistrationApplication
 } from "../publicRegistration.mjs";
+import { extendSubscriptionTerm } from "../subscriptionLifecycle.mjs";
 
 // 管理台：用户/订阅/密码 路由组 —— 从 index.mjs 按 registrar 范式迁出。全部 admin:system/security
 // 高危面，含用户自助改密(/api/auth/change-password)。处理器逐字保留原实现，密钥/密码不回显。
 export function registerAdminUserRoutes(app, ctx) {
-  const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions, setConfig, getConfigStatus, addMonthsIso } = ctx;
+  const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions, invalidateUserSessions, setConfig, getConfigStatus, addMonthsIso } = ctx;
   const findUser = (idv) => (db.users || []).find((item) => item.id === idv);
   const userNotFound = (res) => res.status(404).json({ error: "User not found" });
 
@@ -37,7 +38,7 @@ export function registerAdminUserRoutes(app, ctx) {
     const userId = id("user");
     const tenantId = id("tenant");
     const tenant = { id: tenantId, name: `${name} 的工作区`, ownerUserId: userId, planId: freeMonths > 0 ? "owner_free" : "trial", status: freeMonths > 0 ? "active" : "trial", createdAt };
-    const user = { id: userId, tenantId, name, email, role, status: "active", passwordHash: hashPassword(password), createdAt };
+    const user = { id: userId, tenantId, name, email, role, status: "active", passwordHash: hashPassword(password), mustChangePassword: true, securityVersion: 0, createdAt };
     db.tenants ||= [];
     db.subscriptions ||= [];
     db.tenants.push(tenant);
@@ -64,6 +65,7 @@ export function registerAdminUserRoutes(app, ctx) {
       if (req.body[key] !== undefined) user[key] = req.body[key];
     }
     user.updatedAt = nowIso();
+    if (user.status === "disabled") invalidateUserSessions(db, user.id, { persist: false });
     appendAudit(db, `更新用户：${user.email || user.id}`, user.id, req.user?.name || db.user.name);
     persist(res, { user: sanitizeUserRecord(user) });
   });
@@ -79,9 +81,11 @@ export function registerAdminUserRoutes(app, ctx) {
     if (newPassword.length < 10) return res.status(400).json({ error: "新密码至少 10 位" });
     user.passwordHash = hashPassword(newPassword);
     user.mustChangePassword = false;
+    user.securityVersion = Number(user.securityVersion || 0) + 1;
     user.updatedAt = nowIso();
+    invalidateUserSessions(db, user.id, { persist: false });
     appendAudit(db, "用户自助修改密码", user.id, user.name || user.email);
-    persist(res, { ok: true });
+    persist(res, { ok: true, logoutRequired: true, message: "密码已更新，请使用新密码重新登录。" });
   });
 
   // 账户自助资料：任何登录用户（含 Owner）都能改自己的显示名与头像。
@@ -123,7 +127,9 @@ export function registerAdminUserRoutes(app, ctx) {
     if (password.length < 10) return res.status(400).json({ error: "临时密码至少 10 位" });
     user.passwordHash = hashPassword(password);
     user.mustChangePassword = true;
+    user.securityVersion = Number(user.securityVersion || 0) + 1;
     user.updatedAt = nowIso();
+    invalidateUserSessions(db, user.id, { persist: false });
     appendAudit(db, `重置用户密码：${user.email || user.id}`, user.id, req.user?.name || db.user.name, "warning");
     persist(res, { ok: true });
   });
@@ -133,24 +139,17 @@ export function registerAdminUserRoutes(app, ctx) {
     if (!user) return userNotFound(res);
     const months = Math.max(1, Number(req.body.months || 1));
     const planId = String(req.body.planId || "owner_free");
-    db.subscriptions ||= [];
-    const existing = db.subscriptions.find((item) => item.tenantId === user.tenantId);
-    const subscription = {
+    const { subscription } = extendSubscriptionTerm(db, {
       tenantId: user.tenantId,
       userId: user.id,
       planId,
-      status: "active",
       source: "owner_grant",
       grantedBy: req.user?.id || db.user.id,
-      startedAt: nowIso(),
-      currentPeriodEnd: addMonthsIso(months)
-    };
-    if (existing) Object.assign(existing, subscription, { updatedAt: nowIso() });
-    else db.subscriptions.unshift({ id: id("sub"), ...subscription });
-    const tenant = (db.tenants || []).find((item) => item.id === user.tenantId);
-    if (tenant) Object.assign(tenant, { status: "active", planId, updatedAt: nowIso() });
+      months,
+      allowPlanChange: true
+    }, { id, now: nowIso() });
     appendAudit(db, `Owner 赠送免费授权：${user.email || user.name} ${months} 个月`, user.id, req.user?.name || db.user.name);
-    persist(res, { message: `已赠送 ${months} 个月免费授权`, user: sanitizeUserRecord(user), subscription: existing || db.subscriptions[0] });
+    persist(res, { message: `已赠送 ${months} 个月免费授权`, user: sanitizeUserRecord(user), subscription });
   });
 
   app.post("/api/admin/password", requirePermission("admin:security"), (req, res) => {

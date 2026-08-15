@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildChatPresentation } from "../server/chatPresentation.mjs";
+import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function evidenceBundle() {
   const windows = Object.fromEntries(["15m", "1h", "4h"].map((timeframe, index) => [timeframe, {
@@ -97,12 +98,12 @@ test("执行快照使用真实成交加权均价和已平仓记录，不把计�
   const db = {
     tradePlans: [{ id: "plan_1", symbol: "BTC/USDT", direction: "long", status: "closed" }],
     executionOrders: [{ id: "eo_1", planId: "plan_1", status: "closed", entryPrice: 62000, quantity: 0.03 }],
-    fills: [
+    fills: financiallyReconciledFills([
       { executionOrderId: "eo_1", kind: "entry", price: 62100, quantity: 0.01 },
       { executionOrderId: "eo_1", kind: "entry", price: 62400, quantity: 0.02 },
       { executionOrderId: "eo_1", kind: "close", realizedPnl: 3.2 },
       { executionOrderId: "eo_1", kind: "close", realizedPnl: -0.4 }
-    ],
+    ]),
     positions: [], watchTriggers: []
   };
   const result = buildChatPresentation({ db, run: { id: "run_1", tradePlanId: "plan_1" }, evidenceBundle: evidenceBundle(), content: "交易已平仓。" });
@@ -117,10 +118,10 @@ test("execution presentation labels lifecycle gross separately and exposes net a
   const db = {
     tradePlans: [{ id: "plan-fee", symbol: "BTC/USDT" }],
     executionOrders: [{ id: "eo-fee", planId: "plan-fee", status: "closed" }],
-    fills: [
+    fills: financiallyReconciledFills([
       { id: "entry-fee", executionOrderId: "eo-fee", kind: "entry", feeUsdt: 0.8 },
       { id: "close-fee", executionOrderId: "eo-fee", kind: "close", realizedPnl: 1, feeUsdt: 0.4 }
-    ], positions: []
+    ]), positions: []
   };
   const result = buildChatPresentation({ db, run: { tradePlanId: "plan-fee" }, content: "完成" });
   assert.equal(result.execution.grossRealizedPnl, 1);

@@ -3,9 +3,14 @@
 // 亏损归因(策略/执行/市场)、真实杠杆(plan)、持仓时长(入场↔平仓时间差)、ROI(净盈亏÷保证金)。
 // LLM 叙述层单独在别处用主模型(deepseek)基于本结果 + 入场理由/复盘生成"性格+致命习惯+纪律"。
 import { id, nowIso, appendAudit } from "./store.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { resolveClosedTradePosterBasis } from "./positionPoster.mjs";
+import { findTradeEntryFill, groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
 
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const num = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
 const dirCanon = (d) => { const s = String(d ?? "").toLowerCase(); return (s.includes("short") || s.includes("空") || s === "sell") ? "short" : "long"; };
 export const fmtMin = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)}m` : `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, "0")}m`);
@@ -13,38 +18,37 @@ export const fmtMin = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)}m` :
 // 抽出"每笔已平仓交易":join 入场fill(取持仓时长)、plan(取杠杆)、算 ROI。
 export function buildClosedTrades(db) {
   const fills = db.fills || [];
-  const plans = db.tradePlans || [];
   // 一次仓位生命周期可能有多次减仓；画像必须按完整交易聚合，否则胜率、杠杆习惯和样本量都会被部分平仓扭曲。
   const closes = groupClosedTradeLifecycles(fills);
   return closes.map((lifecycle) => {
     const c = lifecycle.representative;
-    const plan = plans.find((p) => p.id === c.planId || p.id === c.tradePlanId) || {};
-    const entry = fills.find((f) => f.kind === "entry" && (
-      f.executionOrderId === c.executionOrderId
-      || f.tradePlanId === (c.tradePlanId || c.planId)
-      || f.planId === (c.planId || c.tradePlanId)
-    ));
-    const leverage = num(plan.leverage) ?? num(c.leverage);
+    const { plan = {}, executionOrder = {} } = resolveTradeContext(db, lifecycle);
+    const entry = findTradeEntryFill(fills, c);
+    const costBasis = resolveClosedTradePosterBasis(db, lifecycle);
+    const leverage = num(executionOrder?.leverage) ?? num(plan?.leverage) ?? num(c.leverage);
     const grossPnl = num(lifecycle.realizedPnl);
     const pnl = num(lifecycle.netRealizedPnl);
-    const notional = num(c.notionalUsdt);
-    const margin = notional !== null && leverage ? notional / leverage : null;
-    const roiPct = num(c.netRoiPct) ?? (margin ? Number(((pnl / margin) * 100).toFixed(2)) : null);
+    const entryNotional = num(costBasis.entryNotionalUsdt);
+    // ROI 分母只接受已记录保证金或完整入场名义额；平仓名义额随退出价变化，不能代表成本基础。
+    const margin = num(costBasis.marginUsdt)
+      ?? (entryNotional !== null && leverage !== null && leverage > 0 ? entryNotional / leverage : null);
+    const roiPct = num(c.netRoiPct) ?? (pnl !== null && margin !== null && margin > 0 ? Number(((pnl / margin) * 100).toFixed(2)) : null);
     let holdMinutes = num(c.holdingMinutes);
     if (holdMinutes === null && entry?.createdAt && c.createdAt) {
       const ms = new Date(c.createdAt).getTime() - new Date(entry.createdAt).getTime();
       if (Number.isFinite(ms) && ms > 0) holdMinutes = Math.round(ms / 60000);
     }
+    if (pnl === null) return null;
     return {
       symbol: c.symbol, direction: dirCanon(c.direction), grossPnl, pnl, win: pnl > 0,
       leverage, roiPct, holdMinutes, regime: c.regime || "未知",
       strategy: c.strategy || null, lossAttribution: c.lossAttribution || null,
-      entryPrice: num(entry?.price), exitPrice: num(c.price),
+      entryPrice: num(costBasis.entryPrice) ?? num(entry?.price), exitPrice: num(c.price),
       slippageBps: num(c.slippageBps),
       hasRationale: Boolean(c.entryRationale && c.entryRationale !== "未记录入场理由"),
       closedAt: c.createdAt
     };
-  });
+  }).filter(Boolean);
 }
 
 export function computeBehaviorProfile(db) {

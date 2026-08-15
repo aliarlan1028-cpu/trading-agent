@@ -4,13 +4,25 @@ import { applyOperationalDegradation, assessOperationalDegradation, evaluateProf
 
 const now = () => new Date().toISOString();
 function dbFixture({ live = true } = {}) {
+  const observedAt=now();
   return {
     meta:{}, auditLogs:[], traces:[], riskIncidents:[],
     system:{ liveTradingEnabled:live, autonomyEnabled:true, killSwitch:false, professionalRiskMode:true },
     portfolio:{ totalEquityUsdt:10000 }, positions:[], executionOrders:[], exchangeAccounts:[], reconciliationReports:[], realtimeConnections:[],
-    markets:[{ symbol:"BTC/USDT", price:100, spreadBps:2, depthUsdt:100000, updatedAt:now(), microSyncedAt:now(), candles:[] }],
+    markets:[{ symbol:"BTC/USDT", price:100, spreadBps:2, depthUsdt:100000, updatedAt:observedAt,
+      tickerSourceAt:observedAt,tickerReceivedAt:observedAt,lastRealtimeAt:observedAt,
+      microSyncedAt:observedAt,microReceivedAt:observedAt,bookSourceAt:observedAt,bookReceivedAt:observedAt,
+      openInterestSourceAt:observedAt,openInterestReceivedAt:observedAt,fundingSourceAt:observedAt,fundingReceivedAt:observedAt,candles:[] }],
     mandates:[{ id:"m1", status:"active", allowedSymbols:["BTC/USDT"], maxImpactBps:15 }], grayReleasePolicies:[{enabled:true,maxNotionalUsdt:50}]
   };
+}
+function staleMarket(market) {
+  const old="2000-01-01T00:00:00.000Z";
+  for (const field of ["updatedAt","tickerSourceAt","tickerReceivedAt","lastRealtimeAt","microSyncedAt","microReceivedAt","bookSourceAt","bookReceivedAt","openInterestSourceAt","openInterestReceivedAt","fundingSourceAt","fundingReceivedAt"]) market[field]=old;
+}
+function refreshMarket(market) {
+  const fresh=now();
+  for (const field of ["updatedAt","tickerSourceAt","tickerReceivedAt","lastRealtimeAt","microSyncedAt","microReceivedAt","bookSourceAt","bookReceivedAt","openInterestSourceAt","openInterestReceivedAt","fundingSourceAt","fundingReceivedAt"]) market[field]=fresh;
 }
 const plan = { mandateId:"m1", symbol:"BTC/USDT", direction:"long", entry_range:[100,100], stopLoss:95 };
 
@@ -25,16 +37,16 @@ test("风险闸使用 OKX 实时消息时间与实际私有连接状态，不依
   const db=dbFixture();
   delete db.markets[0].updatedAt;
   delete db.markets[0].microSyncedAt;
-  db.markets[0].lastRealtimeAt=now();
+  refreshMarket(db.markets[0]);
   db.exchangeAccounts=[{exchange:"OKX",readEnabled:true}];
-  db.realtimeConnections=[{exchange:"OKX",streamType:"private_user",status:"connected"}];
+  db.realtimeConnections=[{exchange:"OKX",streamType:"private_user",status:"connected",authenticatedCredentialFingerprint:null}];
   db.reconciliationReports=[{status:"ok",createdAt:now()}];
   assert.equal(db.realtimeStarted,undefined);
   assert.equal(assessOperationalDegradation(db).degraded,false);
 });
 
 test("陈旧行情自动切只减仓并只创建一次风险事件", () => {
-  const db=dbFixture(); db.markets[0].updatedAt="2000-01-01T00:00:00.000Z"; db.markets[0].microSyncedAt=db.markets[0].updatedAt;
+  const db=dbFixture(); staleMarket(db.markets[0]);
   const first=applyOperationalDegradation(db);
   assert.equal(first.degraded,true); assert.equal(db.system.reduceOnlyMode,true); assert.equal(db.system.autonomyEnabled,true); assert.equal(db.riskIncidents.length,1);
   applyOperationalDegradation(db); assert.equal(db.riskIncidents.length,1);
@@ -86,19 +98,19 @@ test("盘口容量限制名义金额，极端组合利用率继续压仓", () =>
 
 test("默认关(professionalRiskMode 关):降级只记录不只减仓、检查降级为 warn 不 block", () => {
   const db=dbFixture(); db.system.professionalRiskMode=false;
-  db.markets[0].updatedAt="2000-01-01T00:00:00.000Z"; db.markets[0].microSyncedAt=db.markets[0].updatedAt;
+  staleMarket(db.markets[0]);
   applyOperationalDegradation(db);
-  assert.equal(db.system.reduceOnlyMode,undefined); // 未被自动置只减仓
+  assert.equal(db.system.reduceOnlyMode,false); // 未被自动置只减仓
   assert.equal(db.system.autonomyEnabled,true);
   const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
-  assert.equal(risk.checks.find(c=>c.name==="行情新鲜度 SLO").severity,"warn"); // 只警告不硬拦
+  assert.equal(risk.checks.find(c=>c.name==="Ticker 新鲜度 SLO").severity,"warn"); // 只警告不硬拦
 });
 
 test("自愈:降级消失且只减仓是本闸设的 → 自动解除", () => {
   const db=dbFixture();
-  db.markets[0].updatedAt="2000-01-01T00:00:00.000Z"; db.markets[0].microSyncedAt=db.markets[0].updatedAt;
+  staleMarket(db.markets[0]);
   applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,true);
-  db.markets[0].updatedAt=now(); db.markets[0].microSyncedAt=now();
+  refreshMarket(db.markets[0]);
   applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,false); // 条件恢复自动解除
   assert.equal(db.system.riskStatus,"正常");
 });
@@ -114,7 +126,7 @@ test("旧版本只残留只减仓展示文案时自动归一为正常", () => {
 });
 
 test("强平距离不足阻断新增仓位", () => {
-  const db=dbFixture(); db.positions=[{symbol:"ETH/USDT",size:1,mark:100,liquidationPrice:92}];
+  const db=dbFixture(); db.positions=[{source:"exchange_rest",exchange:"OKX",accountId:"account-a",symbol:"ETH/USDT",direction:"long",coinSize:1,mark:100,liquidationPrice:92,rawSyncedAt:now()}];
   const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
   const check=risk.checks.find(c=>c.name==="现有持仓强平距离");
   assert.equal(check.passed,false); assert.equal(check.severity,"block");
