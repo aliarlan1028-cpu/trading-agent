@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import { LiveGrayPanel } from "./panels.jsx";
+import { ConceptGraph } from "./conceptGraph.jsx";
 import {
   Activity,
   AlertTriangle,
@@ -45,6 +46,8 @@ import {
   Zap
 } from "lucide-react";
 import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, marginUsage, smartMoneyBias, SKILL_STATE, SKILL_STATE_HELP, EV_TONE, OPEN_EXECUTION_STATES, countOpenExecutions, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
+
+export { ConceptGraph } from "./conceptGraph.jsx";
 
 // 驾驶舱：仪表盘（总览）+ 复盘 合并为一个导航页，用子标签切换，共享同一页头。
 function TermHead({ title, code, sub, right }) {
@@ -769,115 +772,6 @@ export function latestAnalysisRows(data) {
     source: bundle.id || "本次运行"
   }));
   return [...views, ...citations].slice(0, 6);
-}
-
-const CONCEPT_COLORS = { 技术: "#2A6FDB", 风控: "#C43F28", 心理: "#7A4FD0", 宏观: "#D06A22", 结构: "#1F7A50", 资金: "#B08900", 其他: "#8a8172" };
-
-// 概念图谱 v2：力导向布局——相关概念自动聚簇、节点按连接数变大、曲线连边、柔光晕。
-// 布局确定性：按类别分簇的种子位置 + 固定迭代的力松弛（无随机，避免每次渲染乱跳）。
-function conceptLayout(nodes, edges, W, H) {
-  const cats = [...new Set(nodes.map((c) => c.category || "其他"))];
-  const P = nodes.map((c, i) => {
-    const g = cats.indexOf(c.category || "其他");
-    const ga = (g / Math.max(1, cats.length)) * 2 * Math.PI;
-    const cx = W / 2 + 120 * Math.cos(ga), cy = H / 2 + 80 * Math.sin(ga);
-    const a = i * 2.399; // 黄金角散布，避免同簇初始重叠
-    return { x: cx + 34 * Math.cos(a), y: cy + 34 * Math.sin(a) };
-  });
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  for (let it = 0; it < 240; it += 1) {
-    const F = P.map(() => ({ x: 0, y: 0 }));
-    for (let i = 0; i < P.length; i += 1) {
-      for (let j = i + 1; j < P.length; j += 1) {
-        const dx = P[i].x - P[j].x, dy = P[i].y - P[j].y; const d = Math.hypot(dx, dy) || 0.01;
-        const f = 1700 / (d * d); F[i].x += dx / d * f; F[i].y += dy / d * f; F[j].x -= dx / d * f; F[j].y -= dy / d * f;
-      }
-    }
-    edges.forEach(([a, b]) => {
-      const dx = P[b].x - P[a].x, dy = P[b].y - P[a].y; const d = Math.hypot(dx, dy) || 0.01;
-      const f = (d - 66) * 0.02; F[a].x += dx / d * f; F[a].y += dy / d * f; F[b].x -= dx / d * f; F[b].y -= dy / d * f;
-    });
-    P.forEach((p, i) => {
-      F[i].x += (W / 2 - p.x) * 0.008; F[i].y += (H / 2 - p.y) * 0.008;
-      p.x = clamp(p.x + clamp(F[i].x, -6, 6), 34, W - 34);
-      p.y = clamp(p.y + clamp(F[i].y, -6, 6), 28, H - 28);
-    });
-  }
-  return P;
-}
-
-export function ConceptGraph({ concepts = [] }) {
-  const [sel, setSel] = useState(null);
-  const [hover, setHover] = useState(null);
-  const W = 520, H = 360;
-  const { nodes, pos, edges, deg } = useMemo(() => {
-    // 去重：同名概念（被不同书重复蒸馏）合并为一个节点、关系取并集——否则重名节点各自孤立，
-    // 连线只会连到 nameIdx 里最后覆盖的那一个，其余同名节点变成"没有连线的孤点"。
-    const byName = new Map();
-    (concepts || []).forEach((c) => {
-      const key = String(c.name || "").trim();
-      if (!key) return;
-      const rel = (c.relatedTo || []).map((r) => String(r).trim()).filter(Boolean);
-      const ex = byName.get(key);
-      if (ex) {
-        ex.relatedTo = [...new Set([...ex.relatedTo, ...rel])];
-        if (!ex.tradingMeaning) ex.tradingMeaning = c.tradingMeaning || c.meaning || ex.tradingMeaning;
-      } else {
-        byName.set(key, { ...c, name: key, relatedTo: [...new Set(rel)] });
-      }
-    });
-    const nodes = [...byName.values()].slice(0, 20);
-    const nameIdx = {};
-    nodes.forEach((c, i) => { nameIdx[c.name] = i; });
-    const edges = [];
-    nodes.forEach((c, i) => (c.relatedTo || []).forEach((rn) => { const j = nameIdx[String(rn).trim()]; if (j != null && j > i) edges.push([i, j]); }));
-    const deg = nodes.map(() => 0);
-    edges.forEach(([a, b]) => { deg[a] += 1; deg[b] += 1; });
-    const pos = nodes.length ? conceptLayout(nodes, edges, W, H) : [];
-    return { nodes, pos, edges, deg };
-  }, [concepts]);
-  if (!nodes.length) return <div className="emptyPanel" style={{ minHeight: 180 }}>导入资料后自动抽取概念与关系图谱</div>;
-
-  const focus = sel != null ? sel : hover;
-  const radius = (i) => 5 + Math.min(7, deg[i] * 1.4);
-  const connected = (i) => focus == null || i === focus || edges.some(([a, b]) => (a === focus && b === i) || (b === focus && a === i));
-  const cats = [...new Set(nodes.map((c) => c.category || "其他"))];
-  const shown = focus != null ? nodes[focus] : null;
-  return (
-    <div className="conceptGraph">
-      <div className="cgWrap">
-        <svg viewBox={`0 0 ${W} ${H}`} className="cgSvg" preserveAspectRatio="xMidYMid meet">
-          {edges.map(([a, b], k) => {
-            const hot = focus != null && (a === focus || b === focus);
-            const cold = focus != null && !hot;
-            const mx = (pos[a].x + pos[b].x) / 2;
-            const my = (pos[a].y + pos[b].y) / 2 - Math.hypot(pos[a].x - pos[b].x, pos[a].y - pos[b].y) * 0.12;
-            return <path key={k} className={`cgEdge ${hot ? "hot" : cold ? "cold" : ""}`} d={`M${pos[a].x} ${pos[a].y} Q${mx} ${my} ${pos[b].x} ${pos[b].y}`} />;
-          })}
-          {nodes.map((c, i) => {
-            const col = CONCEPT_COLORS[c.category] || CONCEPT_COLORS.其他;
-            const rr = radius(i);
-            const foc = i === focus;
-            const w = (c.name || "").length * 11 + 8;
-            return (
-              <g key={c.id || i} className={`cgNode ${focus != null && !connected(i) ? "dim" : ""}`}
-                onClick={() => setSel(sel === i ? null : i)}
-                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-                <circle className="cgHalo" cx={pos[i].x} cy={pos[i].y} r={rr + 7} fill={col} opacity={foc ? 0.24 : 0.12} />
-                <circle className="cgDot" cx={pos[i].x} cy={pos[i].y} r={foc ? rr + 1.5 : rr} fill={col} />
-                <rect className="cgLabelBg" x={pos[i].x - w / 2} y={pos[i].y - rr - 16} width={w} height="14" rx="4" />
-                <text className="cgLabel" x={pos[i].x} y={pos[i].y - rr - 9} textAnchor="middle" fill={col}>{c.name}</text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      <div className="cgLegend">{cats.map((cat) => <span key={cat}><i style={{ background: CONCEPT_COLORS[cat] || CONCEPT_COLORS.其他 }} />{cat}</span>)}</div>
-      {shown
-        ? <div className="cgDetail"><b style={{ color: CONCEPT_COLORS[shown.category] || CONCEPT_COLORS.其他 }}>{shown.name}</b><span className="cgCat">{shown.category || "其他"}</span><p>{shown.tradingMeaning || shown.meaning || "—"}</p></div>
-        : <div className="cgHint">点击概念看含义与关联 · 节点越大关联越多 · {nodes.length} 概念 / {edges.length} 关系</div>}
-    </div>
-  );
 }
 
 // SKILL_STATE / SKILL_STATE_HELP 已收敛到 lib.jsx（桌面/移动共用单一来源）。

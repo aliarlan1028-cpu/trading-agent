@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
-import { ConceptGraph } from "./pages.jsx";
+import { ConceptGraph } from "./conceptGraph.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";

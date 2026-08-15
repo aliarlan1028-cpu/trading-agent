@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SymbolMultiSelect, SystemConfigPanel } from "./panels.jsx";
+import { ConceptGraph } from "./conceptGraph.jsx";
 import { apiUrl, authHeaders, countOpenExecutions, displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, SKILL_STATE, TradingViewChart } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
@@ -754,15 +755,16 @@ export function ExecutionReviewConcept({ data, action, ui }) {
 }
 
 // 生效中的条令:列出已直接注入 Agent 决策的透镜(active)与铁律(已批准),点开看全文。
-function ActiveDoctrineCard({ data }){
+function ActiveDoctrineCard({ data, compact = false }){
   const k=data.knowledge||{};
   const lenses=arr(k.lenses).filter(l=>l.active);
   const rules=arr(k.ruleProposals).filter(r=>r.status==="已批准"||r.status==="approved");
   const [open,setOpen]=useState(null);
-  if(!lenses.length && !rules.length) return null;
   const rowText=r=>r.description||r.rule||r.detail||r.condition||t("（无正文）", "(no content)");
-  return <ConceptCard title={t("生效中的条令", "Active Doctrine")} meta={`${t("透镜", "Lenses")} ${lenses.length} · ${t("铁律", "Iron rules")} ${rules.length}`}>
-    <p className="cp2Intro">{t("这些已", "These are ")}<b>{t("直接注入 Agent 每次决策", "injected directly into every agent decision")}</b>{t("——透镜塑造分析、铁律不可违，无需\"生成候选\"。点条目看全文。", " — lenses shape analysis, iron rules cannot be broken, no \"generate candidate\" needed. Click an item for the full text.")}</p>
+  return <ConceptCard title={t("生效中的条令", "Active Doctrine")} meta={`${lenses.length+rules.length} ${t("项", "active")}`} className={`cp2DoctrineCard ${compact?"compact":""}`}>
+    <div className="cp2DoctrineStats"><span><i className="lens">{lenses.length}</i>{t("分析透镜", "Analysis lenses")}</span><span><i className="iron">{rules.length}</i>{t("风控铁律", "Risk rules")}</span></div>
+    {!compact&&<p className="cp2Intro">{t("这些已", "These are ")}<b>{t("直接注入 Agent 每次决策", "injected directly into every agent decision")}</b>{t("——透镜塑造分析、铁律不可违，无需\"生成候选\"。点条目看全文。", " — lenses shape analysis, iron rules cannot be broken, no \"generate candidate\" needed. Click an item for the full text.")}</p>}
+    {!lenses.length&&!rules.length&&<div className="cp2DoctrineEmpty"><ShieldCheck size={18}/><span>{t("尚无已批准条令", "No approved doctrine yet")}</span><small>{t("候选透镜和规则需独立审批后才会生效", "Candidate lenses and rules require independent approval")}</small></div>}
     <div className="cp2DoctrineList">
       {lenses.map(l=><div key={l.id} className={`cp2DoctrineRow ${open===l.id?"on":""}`}>
         <button onClick={()=>setOpen(open===l.id?null:l.id)}><span className="cp2DocTag lens">{t("透镜", "Lens")}</span><b>{localizeText(l.name)}</b><ChevronDown size={13}/></button>
@@ -773,19 +775,55 @@ function ActiveDoctrineCard({ data }){
         {open===r.id&&<p>{rowText(r)}</p>}
       </div>)}
     </div>
+    {compact&&(lenses.length>0||rules.length>0)&&<p className="cp2DoctrineFoot">{t("仅展示已批准并正在生效的条令；点击条目查看正文。", "Only approved, active doctrine is shown. Select an item for details.")}</p>}
   </ConceptCard>;
 }
 
 export function KnowledgeConcept({ data, action, ui }) {
   const k=data.knowledge||{}; const sources=arr(k.sources); const methods=arr(k.tradingMethods); const candidates=arr(k.candidates).filter(item=>item.status==="candidate"); const skills=[...arr(k.tradingSkills),...arr(data.skills)]; const rules=[...arr(k.ruleProposals),...arr(data.riskRules)]; const memory=arr(data.memoryItems);
+  const concepts=arr(k.conceptCards);
+  const [conceptSource,setConceptSource]=useState("all");
+  const [conceptCategory,setConceptCategory]=useState("all");
+  const conceptSourceIds=useMemo(()=>new Set(concepts.flatMap(item=>arr(item.sourceRefs).concat(item.sourceId||[])).filter(Boolean)),[concepts]);
+  const graphSources=useMemo(()=>sources.filter(source=>conceptSourceIds.has(source.id)),[sources,conceptSourceIds]);
+  const sourceFilteredConcepts=useMemo(()=>concepts.filter(item=>{
+    const refs=arr(item.sourceRefs).concat(item.sourceId||[]);
+    return conceptSource==="all"||refs.includes(conceptSource);
+  }),[concepts,conceptSource]);
+  const conceptCategories=useMemo(()=>[...new Set(sourceFilteredConcepts.map(item=>item.category||t("其他", "Other")))],[sourceFilteredConcepts]);
+  const visibleConcepts=useMemo(()=>sourceFilteredConcepts.filter(item=>conceptCategory==="all"||(item.category||t("其他", "Other"))===conceptCategory),[sourceFilteredConcepts,conceptCategory]);
+  const visibleNames=useMemo(()=>new Set(visibleConcepts.map(item=>String(item.name||item.title||"").trim()).filter(Boolean)),[visibleConcepts]);
+  const relationCount=useMemo(()=>{
+    const links=new Set();
+    visibleConcepts.forEach(item=>arr(item.relatedTo).forEach(target=>{
+      const from=String(item.name||item.title||"").trim(); const to=String(target||"").trim();
+      if(from&&to&&visibleNames.has(to)) links.add([from,to].sort().join("→"));
+    }));
+    return links.size;
+  },[visibleConcepts,visibleNames]);
+  const sourceCountForConcepts=useMemo(()=>new Set(visibleConcepts.flatMap(item=>arr(item.sourceRefs).concat(item.sourceId||[])).filter(Boolean)).size,[visibleConcepts]);
   const convert=async (source) =>{if(await uiConfirm(`${t("从《", "Generate candidate capabilities from 《")}${source.title||source.name}${t("》生成候选能力？", "》?")}`))action("/api/knowledge/convert",{sourceId:source.id});};
   return <div className="cp2Stack"><div className="cp2Workflow">{[[t("知识源", "Sources"),sources.length],[t("方法与记录", "Methods & notes"),methods.length+memory.length],[t("候选能力", "Candidates"),candidates.length],[t("回测验证", "Backtest"),arr(data.backtests).length],[t("长期采用", "Adopted"),skills.filter(s=>["active","trusted"].includes(s.status)).length]].map(([name,count],index)=><React.Fragment key={index}><div><i>{index+1}</i><span><b>{name}</b><small>{count} {t("项", "")}</small></span></div>{index<4&&<ChevronRight/>}</React.Fragment>)}</div>
     <div className="cp2KnowledgeGrid"><ConceptCard title={t("知识源", "Knowledge Sources")} meta={`${sources.length} ${t("个", "")}`} action={<button className="cp2Link" onClick={()=>ui.openPanel("knowledgeImport")}>{t("导入知识", "Import")}</button>}><ConceptTable compact columns={[{key:"title",label:t("名称", "Name"),render:r=>localizeText(r.title||r.name||r.source)},{key:"type",label:t("类型", "Type"),render:r=>humanize(r.type)},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,t("已索引", "Indexed"))}</Pill>},{key:"action",label:"",render:r=>["doctrine","manual_curated"].includes(r.type)?<span className="cp2LiveTag" title={t("已直接注入 Agent 决策，无需生成候选", "Injected directly into agent decisions, no candidate needed")}><CheckCircle2 size={12}/> {t("已生效", "Active")}</span>:<button className="cp2Link" onClick={()=>convert(r)}>{t("生成候选", "Gen candidate")}</button>}]} rows={sources.slice(0,8)} empty={t("暂无知识源", "No sources")}/></ConceptCard>
       <ConceptCard title={t("候选能力", "Candidate Capabilities")} meta={`${candidates.length} ${t("个", "")}`} action={<button className="cp2Link" onClick={()=>ui.openPanel("skillImport")}>{t("导入 Skill", "Import Skill")}</button>}><ConceptTable compact columns={[{key:"name",label:t("能力", "Capability")},{key:"type",label:t("类型", "Type"),render:r=>humanize(r.type)},{key:"status",label:t("操作", "Action"),render:r=><span className="cp2FormActions"><button className="cp2Link" onClick={()=>action(`/api/knowledge/candidates/${r.id}/ignore`,{})}>{t("忽略", "Ignore")}</button><button className="cp2Link" onClick={()=>action(`/api/knowledge/candidates/${r.id}/adopt`,{})}>{t("采纳", "Adopt")}</button></span>}]} rows={candidates.slice(0,8)} empty={t("暂无候选能力", "No candidates")}/></ConceptCard>
       <ConceptCard title={t("验证漏斗", "Validation Funnel")}><div className="cp2Funnel">{[[t("候选总量", "Candidates"),candidates.length],[t("静态验证", "Static check"),skills.filter(s=>s.scanStatus==="passed").length],[t("回测通过", "Backtest passed"),skills.filter(s=>s.backtestStatus==="passed").length],[t("实盘采用", "Live adopted"),skills.filter(s=>["active","trusted"].includes(s.status)).length]].map(([name,value],index)=><div style={{width:`${Math.max(8,value/Math.max(1,candidates.length)*100)}%`}} key={index}><span>{name}</span><b>{value}</b></div>)}</div><div className="cp2Kv"><span>{t("规则总数", "Rules")}<b>{rules.length}</b></span><span>{t("交易方法", "Methods")}<b>{methods.length}</b></span><span>{t("记忆条目", "Memory items")}<b>{memory.length}</b></span><span>{t("知识来源", "Sources")}<b>{sources.length}</b></span></div></ConceptCard>
     </div>
-    <ActiveDoctrineCard data={data}/>
-    <div className="cp2Grid two"><ConceptCard title={t("概念与知识网络", "Concept & Knowledge Network")}>{arr(k.conceptCards).length?<div className="cp2ConceptMap"><span className="center">{t("交易知识", "Trading knowledge")}</span>{arr(k.conceptCards).slice(0,6).map((item,index)=><span key={item.id||index} style={{"--i":index}}>{localizeText(item.name||item.title||t("概念", "Concept"))}</span>)}</div>:<div className="cp2Empty"><Database size={19}/><b>{t("暂无概念图谱", "No concept map")}</b><span>{t("从书籍/文章蒸馏出概念后，会在此按关系成网。", "Once concepts are distilled from books/articles, they form a network here.")}</span></div>}</ConceptCard><ConceptCard title={t("已沉淀的方法", "Captured Methods")}><ConceptTable compact columns={[{key:"name",label:t("方法", "Method"),render:r=>localizeText(r.name||r.title)},{key:"category",label:t("类型", "Type"),render:r=>humanize(r.category||r.type)},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,t("已记录", "Recorded"))}</Pill>}]} rows={[...methods,...memory].slice(0,8)} empty={t("暂无方法记录", "No methods")}/></ConceptCard></div></div>;
+    <div className="cp2KnowledgeAtlas">
+      <ConceptCard title={t("概念与知识网络", "Concept & Knowledge Network")} meta={`${visibleConcepts.length}/${concepts.length} ${t("个概念", "concepts")}`} icon={GitBranch} className="cp2KnowledgeGraphCard" action={graphSources.length>0?<select className="cp2InlineSelect cp2GraphSourceSelect" value={conceptSource} onChange={event=>{setConceptSource(event.target.value);setConceptCategory("all");}} aria-label={t("按知识来源筛选概念", "Filter concepts by source")}><option value="all">{t("全部知识源", "All sources")}</option>{graphSources.map(source=><option key={source.id} value={source.id}>{localizeText(source.title||source.name)}</option>)}</select>:null}>
+        <div className="cp2GraphLead"><span>{t("节点越大，关联越多；点击节点查看交易含义。", "Larger nodes have more connections; select one to inspect its trading meaning.")}</span>{visibleConcepts.length>40&&<small>{t("图谱显示前 40 个节点；按知识源筛选可逐本核对主要概念。", "The graph shows the first 40 nodes; filter by source to review each book's main concepts.")}</small>}</div>
+        <ConceptGraph concepts={visibleConcepts} maxNodes={40}/>
+      </ConceptCard>
+      <aside className="cp2KnowledgeAtlasRail">
+        <ConceptCard title={t("知识网络概览", "Knowledge Network Overview")} meta={t("当前筛选", "Current filter")} className="cp2NetworkOverviewCard">
+          <div className="cp2NetworkStats"><span><b>{visibleConcepts.length}</b><small>{t("概念", "Concepts")}</small></span><span><b>{relationCount}</b><small>{t("关系", "Links")}</small></span><span><b>{sourceCountForConcepts}</b><small>{t("来源", "Sources")}</small></span></div>
+          <div className="cp2NetworkCategories"><button className={conceptCategory==="all"?"active":""} onClick={()=>setConceptCategory("all")}>{t("全部", "All")} <b>{sourceFilteredConcepts.length}</b></button>{conceptCategories.map(category=>{const count=sourceFilteredConcepts.filter(item=>(item.category||t("其他", "Other"))===category).length;return <button key={category} className={conceptCategory===category?"active":""} onClick={()=>setConceptCategory(category)}>{localizeText(category)} <b>{count}</b></button>;})}</div>
+          <p className="cp2NetworkNote">{t("新导入的书籍不会覆盖旧概念。来源与类别筛选共同作用，便于逐本核对蒸馏结果。", "New imports do not replace older concepts. Combine source and category filters to inspect distilled results book by book.")}</p>
+        </ConceptCard>
+        <ActiveDoctrineCard data={data} compact/>
+      </aside>
+    </div>
+    <ConceptCard title={t("已沉淀的方法", "Captured Methods")} meta={`${methods.length+memory.length} ${t("项", "items")}`} className="cp2KnowledgeMethods"><ConceptTable compact columns={[{key:"name",label:t("方法", "Method"),render:r=>localizeText(r.name||r.title)},{key:"category",label:t("类型", "Type"),render:r=>humanize(r.category||r.type)},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,t("已记录", "Recorded"))}</Pill>}]} rows={[...methods,...memory].slice(0,8)} empty={t("暂无方法记录", "No methods")}/></ConceptCard>
+  </div>;
 }
 
 function InstallCapabilityDialog({ onClose, notify }) {

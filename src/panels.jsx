@@ -19,6 +19,7 @@ import {
   WalletCards,
   Zap
 } from "lucide-react";
+import { buildProviderModelOptions } from "./modelOptions.js";
 import { apiUrl, formatMoney, displayMoney, displayPct, asArray, readFileAsDataUrl, formatDateTime, humanize, localizeText, statusTone, exchangeState, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
 import { t } from "./i18n.js";
 
@@ -176,10 +177,10 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     ["deepseek", t("DeepSeek · 独立审查", "DeepSeek · Independent critic"), "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]
   ];
   const activeProviderLabel = providerRows.find(([idName]) => idName === config.llm?.activeProvider)?.[1] || config.llm?.activeProvider;
-  // 各家常见模型下拉建议(datalist:可点选也可手输自定义,新模型出了直接打进去也行)。
+  // 用真正的 select 展示完整目录；datalist 会按当前值过滤，容易让用户误以为只支持匹配到的两个型号。
   const PROVIDER_MODELS = {
-    gemini: llmModelCatalog.gemini.length ? llmModelCatalog.gemini.map((model) => model.id) : ["google/gemini-3.1-pro-preview", "google/gemini-3.7-flash", "google/gemini-3.6-flash"],
-    deepseek: llmModelCatalog.deepseek.length ? llmModelCatalog.deepseek.map((model) => model.id) : ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"]
+    gemini: buildProviderModelOptions("gemini", llmModelCatalog.gemini, llmForm.GEMINI_MODEL),
+    deepseek: buildProviderModelOptions("deepseek", llmModelCatalog.deepseek, llmForm.DEEPSEEK_MODEL)
   };
   const secretRows = [
     ["OKX_API_KEY", "OKX API Key", exchange.okx?.hasKey],
@@ -406,9 +407,10 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                     {!collapsed && (
                       <>
                         <label>{idName === "gemini" ? "OpenRouter API Key" : "DeepSeek API Key"}<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? t("留空则保留现有密钥", "Leave blank to keep the current key") : t("粘贴 API Key", "Paste API key")} /></label>
-                        <label>{t("模型", "Model")}<input list={`models-${idName}`} value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} placeholder={t("选择或输入模型名", "Choose or enter a model name")} />
-                          <datalist id={`models-${idName}`}>{(PROVIDER_MODELS[idName] || []).map((m) => <option key={m} value={m} />)}</datalist>
-                          {idName === "gemini" && <small className="cfgHint">{t("模型列表来自 OpenRouter 实时目录，仅显示支持工具调用的 Gemini 文本模型。生产建议固定 stable 型号。", "The list is loaded from OpenRouter and only includes Gemini text models with tool calling. Pin a stable model for production.")}</small>}
+                        <label>{t("模型", "Model")}<select value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} aria-label={`${label} ${t("模型", "model")}`}>
+                          {(PROVIDER_MODELS[idName] || []).map((model) => <option key={model.id} value={model.id}>{model.id}{model.recommended ? (idName === "gemini" ? t(" · 推荐主分析", " · Recommended primary") : t(" · 推荐审查", " · Recommended critic")) : ""}</option>)}
+                        </select>
+                          {idName === "gemini" && <small className="cfgHint">{t(`当前列出 ${PROVIDER_MODELS.gemini.length} 个兼容型号：来自 OpenRouter 实时目录，并保留推荐型号；仅包含支持工具调用的 Gemini 文本模型。`, `${PROVIDER_MODELS.gemini.length} compatible models are listed from OpenRouter's live catalog, with recommended models retained; only Gemini text models with tool calling are included.`)}</small>}
                           {idName === "deepseek" && <small className="cfgHint">{t("DeepSeek 只做独立风险审查，不会在 Gemini 故障时接管主模型并直接下单。", "DeepSeek is critic-only and never takes over live execution when Gemini fails.")}</small>}
                         </label>
                         {providers[idName]?.hasKey && <button className="secondaryButton dangerText cfgClearSecret" type="button" onClick={() => removeSecret(keyName, `${label} Key`)}>{t("清除已保存密钥", "Clear saved key")}</button>}

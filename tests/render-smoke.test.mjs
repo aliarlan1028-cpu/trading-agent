@@ -55,7 +55,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, MandateConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -323,10 +323,10 @@ const data = {
       { id: "r3", name: "重要数据公布前暂停交易", category: "事件", status: "待审批", description: "重大数据前暂停", action: "pause_opening", level: "L3" }
     ],
     conceptCards: [
-      { id: "cc1", name: "趋势", category: "技术", relatedTo: ["突破"], tradingMeaning: "顺势" },
-      { id: "cc2", name: "突破", category: "技术", relatedTo: [], tradingMeaning: "越过关键位" },
-      { id: "cc3", name: "趋势", category: "技术", relatedTo: ["止损"], tradingMeaning: "" }, // 重名 → 去重合并
-      { id: "cc4", name: "止损", category: "风控", relatedTo: [], tradingMeaning: "预设离场" }
+      { id: "cc1", name: "趋势", category: "技术", relatedTo: ["突破"], tradingMeaning: "顺势", sourceRefs: ["s1"] },
+      { id: "cc2", name: "突破", category: "技术", relatedTo: [], tradingMeaning: "越过关键位", sourceRefs: ["s1"] },
+      { id: "cc3", name: "趋势", category: "技术", relatedTo: ["止损"], tradingMeaning: "", sourceRefs: ["s2"] }, // 重名 → 去重合并
+      { id: "cc4", name: "止损", category: "风控", relatedTo: [], tradingMeaning: "预设离场", sourceRefs: ["s2"] }
     ],
     skillInvocations: [], skillAttributions: []
   },
@@ -452,6 +452,18 @@ test("concept graph dedupes duplicate names and renders", () => {
   const count = (html.match(/趋势/g) || []).length;
   assert.ok(count >= 1, "概念图谱应包含趋势节点");
   assert.ok(html.includes("止损"), "合并后关系并集应保留 止损 节点");
+});
+
+test("desktop knowledge page exposes the full concept graph workspace and source filters", () => {
+  const html = render(React.createElement(C.KnowledgeConcept, { data, action, ui }));
+  assert.match(html, /概念与知识网络/);
+  assert.match(html, /知识网络概览/);
+  assert.match(html, /按知识来源筛选概念/);
+  assert.match(html, /海龟交易法则/);
+  assert.match(html, /以交易为生/);
+  assert.match(html, /生效中的条令/);
+  assert.match(html, /趋势/);
+  assert.match(html, /止损/);
 });
 
 test("config panels render for every live key", () => {
