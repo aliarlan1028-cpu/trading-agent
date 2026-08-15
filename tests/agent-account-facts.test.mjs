@@ -1,18 +1,50 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { enforceCurrentAccountFacts, sanitizeHistoricalAccountClaims } from "../server/agentChat.mjs";
+
+const originalOkxApiKey = process.env.OKX_API_KEY;
+const originalOkxDemo = process.env.OKX_DEMO_TRADING;
+const testOkxApiKey = "agent-account-facts-test-key";
+const apiKeyFingerprint = crypto.createHash("sha256").update(testOkxApiKey).digest("hex").slice(0, 16);
+process.env.OKX_API_KEY = testOkxApiKey;
+process.env.OKX_DEMO_TRADING = "false";
+
+test.after(() => {
+  if (originalOkxApiKey === undefined) delete process.env.OKX_API_KEY;
+  else process.env.OKX_API_KEY = originalOkxApiKey;
+  if (originalOkxDemo === undefined) delete process.env.OKX_DEMO_TRADING;
+  else process.env.OKX_DEMO_TRADING = originalOkxDemo;
+});
+
+function normalizedPosition(row) {
+  const contracts = Math.abs(Number(row.pos ?? row.contractSize ?? 0));
+  const direction = row.canonicalDirection || (String(row.posSide || "").toLowerCase() === "net"
+    ? (Number(row.pos) < 0 ? "short" : "long")
+    : row.posSide);
+  return {
+    ...row,
+    canonicalDirection: direction,
+    contractSize: contracts,
+    ctVal: 0.01,
+    coinSize: contracts * 0.01,
+    positionQuantityComplete: true
+  };
+}
 
 function dbWithOkxSnapshot(positions = []) {
   const createdAt = "2026-08-08T05:00:00.000Z";
   return {
-    system: { remainingDailyLossUsdt: 6.81, dailyLossCapUsdt: 6.81 },
+    system: { remainingDailyLossUsdt: 6.81, dailyLossCapUsdt: 6.81, dailyLossBudgetStatus: "reconciled" },
     portfolio: { totalEquityUsdt: 34.0558, availableMarginUsdt: 34.0558 },
+    exchangeAccounts: [{ id: "acc_okx", exchange: "OKX", readEnabled: true, tradeEnabled: false, apiKeyFingerprint }],
     positions: [{
       exchange: "OKX", source: "exchange_rest", rawSyncedAt: "2026-08-07T05:00:00.000Z",
       symbol: "ADA/USDT", direction: "short", size: 1000, entry: 0.1864, pnl: -100.62
     }],
     accountSnapshots: [{
-      exchange: "OKX", status: "ok", createdAt, positions,
+      exchange: "OKX", accountId: "acc_okx", apiKeyFingerprint, environment: "production", status: "ok", createdAt,
+      positions: positions.map(normalizedPosition), openOrders: [], algoOrders: [], openOrdersComplete: true, algoOrdersComplete: true,
       balances: [{ totalEq: "34.0558", details: [{ ccy: "USDT", availEq: "34.0558" }] }]
     }]
   };
@@ -44,7 +76,7 @@ test("SQLite 重载顺序混乱时仍按 createdAt 选择最新成功快照", ()
   const newerEmpty = { ...db.accountSnapshots[0], id: "snap_new", createdAt: "2026-08-08T06:00:00.000Z", positions: [] };
   const olderAda = {
     ...db.accountSnapshots[0], id: "snap_old", createdAt: "2026-08-07T06:00:00.000Z",
-    positions: [{ instId: "ADA-USDT-SWAP", pos: "1000", posSide: "short", avgPx: "0.1864", upl: "-100.62" }]
+    positions: [normalizedPosition({ instId: "ADA-USDT-SWAP", pos: "1000", posSide: "short", avgPx: "0.1864", upl: "-100.62" })]
   };
   // 模拟 trading_entities 按 resource_id 而非 createdAt 重载：旧快照故意排第一。
   db.accountSnapshots = [olderAda, newerEmpty];
@@ -82,4 +114,16 @@ test("明确标注为历史复盘的仓位描述不会被输出守卫误改", ()
   const guarded = enforceCurrentAccountFacts(db, response);
   assert.equal(guarded.corrected, false);
   assert.equal(guarded.text, response);
+});
+
+test("账户摘要截断时明确声明未展开仓位仍然存在", () => {
+  const positions = Array.from({ length: 9 }, (_, index) => ({
+    instId: `COIN${index}-USDT-SWAP`, pos: "1", posSide: "long", avgPx: "10", upl: "0"
+  }));
+  const guarded = enforceCurrentAccountFacts(
+    dbWithOkxSnapshot(positions),
+    "当前持仓：COIN0/USDT long，开仓价 1，浮盈 1 USDT。",
+  );
+  assert.match(guarded.text, /另有 1 个仓位未在摘要展开/);
+  assert.match(guarded.text, /不能据此视为不存在/);
 });

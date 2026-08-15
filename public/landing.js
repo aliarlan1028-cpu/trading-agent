@@ -1,300 +1,319 @@
-// 营销页脚本(外置满足 CSP script-src 'self')。中英双语 + 实时行情 ticker + 揭示/计数/倒计时 + 按钮接真实登录/订阅/联系。
 (function () {
-  var GRAD = 'background: linear-gradient(120deg,#ffbe8a,#ff7a2f); -webkit-background-clip: text; background-clip: text; color: transparent;';
+  "use strict";
 
-  // ---------- i18n 字典 ----------
   var I18N = {
+    "nav.problem": ["问题", "Problem"],
+    "nav.system": ["系统", "System"],
     "nav.capabilities": ["能力", "Capabilities"],
-    "nav.lifecycle": ["闭环", "Lifecycle"],
-    "nav.guardrails": ["风控", "Guardrails"],
-    "nav.knowledge": ["知识库", "Knowledge"],
-    "nav.contact": ["联系我们", "Contact"],
-    "cta.login": ["登录驾驶舱", "Open dashboard"],
-    "cta.loginArrow": ["登录驾驶舱 →", "Open dashboard →"],
-    "cta.subscribe": ["申请开通", "Request access"],
-    "ticker.loading": ["加载实时行情…", "Loading live prices…"],
+    "nav.compare": ["对比", "Compare"],
+    "nav.guardrails": ["安全边界", "Guardrails"],
+    "nav.contact": ["联系", "Contact"],
+    "cta.dashboard": ["进入驾驶舱", "Open cockpit"],
+    "cta.launch": ["启动驾驶舱", "Launch cockpit"],
+    "cta.flightplan": ["查看飞行计划", "See the flight plan"],
+    "cta.request": ["申请开通", "Request access"],
+    "ticker.label": ["OKX 实时信号", "OKX LIVE SIGNAL"],
+    "ticker.loading": ["正在接入实时行情…", "Connecting to live market data…"],
+    "ticker.unavailable": ["实时行情暂不可用 · 正在自动重试", "LIVE FEED UNAVAILABLE · RETRYING"],
+    "hero.kicker": ["有边界的自主智能", "BOUND AUTONOMOUS INTELLIGENCE"],
+    "hero.statement": ["不是靠冲动起飞。<br>让 AI 把每一步变成有证据的航线。", "Not a launch on impulse.<br>AI turns every step into an evidenced flight path."],
+    "hero.description": ["KORDYN 把交易所实时事实、专业知识、结构化计划、硬风控、受控执行与复盘连接起来，在你设定的资金与权限边界内持续工作。", "KORDYN connects live exchange facts, expert knowledge, structured plans, hard risk controls, controlled execution, and review—continuously operating within the capital and authority limits you define."],
+    "hero.boundary1": ["默认只读", "Read-only by default"],
+    "hero.boundary2": ["提现权限关闭", "Withdrawals disabled"],
+    "hero.boundary3": ["每笔动作可追踪", "Every action traceable"],
+    "hero.noteLabel": ["TO THE MOON", "TO THE MOON"],
+    "hero.note": ["是对系统工程标准的要求，不是收益承诺。", "describes our engineering ambition—not a promise of returns."],
+    "telemetry.market": ["市场事实已绑定", "Market facts bound"],
+    "telemetry.risk": ["硬风控在线", "Hard risk online"],
+    "console.title": ["决策证据链", "Decision evidence chain"],
+    "console.fact1": ["账户绑定", "Account binding"],
+    "console.fact2": ["市场事实", "Market facts"],
+    "console.fact3": ["执行状态", "Execution state"],
+    "console.bound": ["已验证", "VERIFIED"],
+    "console.fresh": ["双时钟", "DUAL CLOCK"],
+    "console.reconcile": ["持续对账", "RECONCILING"],
+    "console.footer": ["模型负责判断，系统负责边界。", "The model reasons. The system enforces."],
+    "lunar.captionTitle": ["可验证的智能", "Verifiable intelligence"],
+    "lunar.captionText": ["API 事实先归一、校验、绑定证据，再进入模型。", "API facts are normalized, validated, and evidence-bound before the model sees them."],
+    "proof.phases": ["个连续决策阶段", "connected decision phases"],
+    "proof.clocks": ["交易所源时间 + 接收时间", "exchange source + receive time"],
+    "proof.authority": ["套明确交易权限", "explicit authority envelope"],
+    "proof.monitor": ["市场与仓位持续监控", "continuous market & position watch"],
 
-    "hero.badge": ["数字货币自主交易 Agent", "Autonomous crypto trading"],
-    "hero.h1": [
-      '持续理解市场，<br><span style="' + GRAD + '">在你的策略与边界中行动。</span>',
-      'Always reading the market,<br><span style="' + GRAD + '">guided by your strategy and limits.</span>'
-    ],
-    "hero.sub": ["自主感知、判断与执行，也始终尊重你的交易方式。", "Autonomous in sensing, deciding, and acting—always guided by the way you trade."],
-    "hero.desc": [
-      "学习你的交易体系，持续感知市场与事件，在你设定的范围内完成分析、执行、仓位管理与复盘，让自主交易始终清晰、可控。",
-      "It learns your trading approach, follows markets and events, and handles analysis, execution, position management, and review within the scope you define—keeping autonomous trading clear and controlled."
-    ],
-    "hero.trust": ["默认只读 · 提现权限永不开放", "READ-ONLY DEFAULT · WITHDRAW DISABLED"],
+    "problem.title": ["市场没有下班，人的注意力会。", "Markets never clock out. Human attention does."],
+    "problem.lead": ["问题不是缺少信息，而是信息、判断、风险与执行彼此断开。交易者在多块屏幕间追赶，普通机器人只会重复规则，通用 Agent 又缺少真实交易状态。", "The problem is not a lack of information. Facts, judgment, risk, and execution are disconnected. Traders chase screens, fixed bots repeat rules, and general agents lack real trading state."],
+    "problem.oneTitle": ["事实碎片化", "Fragmented facts"],
+    "problem.oneText": ["行情、盘口、资金费率、OI、事件、账户与挂单散落在不同接口，单位和时间口径也不一致。", "Price, order book, funding, OI, events, accounts, and orders live across different interfaces with different units and clocks."],
+    "problem.twoTitle": ["纪律难以持续", "Discipline decays"],
+    "problem.twoText": ["人会疲劳、追涨、忽略事件窗口；固定机器人又无法理解新的市场语境和你的专业知识。", "People tire, chase moves, and miss event windows. Fixed bots cannot understand new context or apply your evolving expertise."],
+    "problem.threeTitle": ["执行不等于闭环", "Execution is not closure"],
+    "problem.threeText": ["下单只是开始。部分成交、止损、撤单、响应未知、费用和资金费都需要持续对账与恢复。", "Placing an order is only the start. Partial fills, stops, cancellations, unknown responses, fees, and funding all require reconciliation and recovery."],
+    "problem.answerLabel": ["KORDYN 的回答", "KORDYN'S ANSWER"],
+    "problem.answer": ["让 AI 负责持续理解，让确定性系统负责权限、风险和执行真相。", "Let AI sustain understanding—while deterministic systems own authority, risk, and execution truth."],
 
-    "cockpit.title": ["COCKPIT · 驾驶舱", "COCKPIT"],
-    "cockpit.pnl": ["今日盈亏 · TODAY PNL", "TODAY PNL"],
-    "cockpit.equity": ["净值 · EQUITY", "EQUITY"],
-    "cockpit.win": ["胜率 WIN", "WIN RATE"],
-    "cockpit.dd": ["回撤 MAX DD", "MAX DD"],
-    "cockpit.risk": ["风险 RISK", "RISK"],
-    "cockpit.normal": ["NORMAL", "NORMAL"],
-    "cockpit.view": ["AI 当前判断 · CURRENT VIEW", "AI CURRENT VIEW"],
-    "cockpit.viewText": [
-      "BTC 结构偏多,资金费率中性;FOMC 窗口临近,已收紧单笔风险至 0.8%,止损强制生效。",
-      "BTC structure leans long, funding neutral; FOMC window approaching — per-trade risk tightened to 0.8%, stop-loss enforced."
-    ],
-    "cockpit.demoNote": ["示意界面 · 数据为演示", "Illustrative UI · demo data"],
+    "system.title": ["一条航线，连接感知、判断与行动。", "One flight path connects sensing, judgment, and action."],
+    "system.lead": ["这不是“让模型直接下单”。每个阶段都有输入、证据、状态与明确后继；远端结果未知时进入恢复，而不是假装成功。", "This is not “let the model place orders.” Every phase has inputs, evidence, state, and a defined successor. Unknown remote outcomes enter recovery instead of being called success."],
+    "system.sense": ["感知真实市场", "Sense the real market"],
+    "system.senseText": ["OKX 行情、盘口、资金费率、OI、账户、持仓与订单，经单位和源时间校验。", "OKX prices, book, funding, OI, account, positions, and orders are validated for units and source time."],
+    "system.recall": ["召回专业知识", "Recall expert knowledge"],
+    "system.recallText": ["书籍、研究、规则、复盘与反方观点按当前问题组成证据包。", "Books, research, rules, reviews, and counter-views form an evidence bundle for the decision at hand."],
+    "system.plan": ["生成结构化计划", "Build a structured plan"],
+    "system.planText": ["方向、入场、止损、目标、仓位、失效条件与依据完整绑定。", "Direction, entry, stop, target, sizing, invalidation, and evidence are bound together."],
+    "system.guard": ["通过硬风控闸", "Pass hard risk gates"],
+    "system.guardText": ["权限、日亏损、杠杆、流动性、事件窗和同向风险在模型之外校验。", "Authority, daily loss, leverage, liquidity, event windows, and correlated exposure are checked outside the model."],
+    "system.execute": ["受控执行与对账", "Execute and reconcile"],
+    "system.executeText": ["稳定订单身份、幂等提交、状态轮询、保护确认和异常恢复共用一套状态机。", "Stable order identity, idempotent submission, polling, protection confirmation, and recovery share one state machine."],
+    "system.monitor": ["持续管理仓位", "Continuously manage risk"],
+    "system.monitorText": ["跟踪止损止盈、强平距离、移动保护与事件变化，只在证据充分时行动。", "Stops, targets, liquidation distance, trailing protection, and events are monitored; actions require sufficient evidence."],
+    "system.review": ["财务对账与复盘", "Reconcile and review"],
+    "system.reviewText": ["真实成交、手续费、返佣与资金费完成后，才进入净绩效与知识反馈。", "Only reconciled fills, fees, rebates, and funding enter net performance and the knowledge feedback loop."],
 
-    "metric.agents": ["专业 Agent 角色", "Specialist AI roles"],
-    "metric.layers": ["层级硬风控", "Hard risk layers"],
-    "metric.audit": ["可追踪 · 可审计", "Traceable by design"],
-    "metric.always": ["全天候感知执行", "Always monitoring"],
+    "cap.title": ["不是一个聊天框，是一套交易操作系统。", "Not a chat box. A trading operating system."],
+    "cap.lead": ["模型只是其中的判断层。真正让自主交易可用的，是事实、知识、风险、执行和审计共同工作。", "The model is only the reasoning layer. Useful autonomy comes from facts, knowledge, risk, execution, and audit working together."],
+    "cap.evidenceTitle": ["交易所事实，先校验再进入 AI。", "Exchange facts are validated before AI sees them."],
+    "cap.evidenceText": ["API Key 指纹、账户、实盘/模拟环境、分页完整性、张数与币量、交易所源时间全部绑定。缺失就是不可确认，不会被编成 0。", "API key fingerprint, account, production/demo environment, pagination completeness, contracts versus coins, and exchange source time are all bound. Missing means unknown—not zero."],
+    "cap.knowledgeTitle": ["让知识在需要时出现。", "Knowledge appears when it matters."],
+    "cap.knowledgeText": ["书籍和复盘沉淀为概念、方法、规则候选与关系图谱；未审批自由文本不会晋升为系统指令。", "Books and reviews become concepts, methods, candidate rules, and a relationship graph. Unapproved free text never becomes a system instruction."],
+    "cap.riskTitle": ["AI 可以建议，不能越权。", "AI can advise. It cannot overrule authority."],
+    "cap.riskText": ["单笔风险、杠杆、日亏损、事件静默期、市场新鲜度、保护单与账户权限由确定性代码把关。", "Per-trade risk, leverage, daily loss, event blackouts, market freshness, protection orders, and account permissions are enforced by deterministic code."],
+    "cap.executionTitle": ["对响应未知保持诚实。", "Honest about unknown outcomes."],
+    "cap.executionText": ["下单、撤单、平仓和保护动作拥有稳定身份与持久意图；进程重启后继续恢复，旧响应不能覆盖更新事实。", "Orders, cancellations, closes, and protection actions carry stable identity and durable intent. Recovery continues after restart; stale responses cannot overwrite newer truth."],
+    "cap.auditTitle": ["结果不完整，就不写成精确收益。", "Incomplete results never become precise performance."],
+    "cap.auditText": ["成交、真实手续费、返佣与资金费对账完成后才形成净结果；动作、依据与权限变更保留可追踪记录。", "Net results require reconciled fills, actual fees, rebates, and funding. Actions, evidence, and authority changes remain traceable."],
 
-    "mandate.tag": ["交易权限", "TRADING PERMISSIONS"],
-    "mandate.h2": ["范围由你设定，<br>判断与执行交给 Agent。", "You set the scope.<br>The agent handles decisions and execution."],
-    "mandate.desc": [
-      "你可以按交易所、币种、策略、单笔风险、杠杆、日亏损与有效期设定范围。Agent 只在其中工作，遇到范围外的机会会保持观望。",
-      "Set the scope by exchange, markets, strategies, risk per trade, leverage, daily loss limit, and expiry. The agent works within it and stays on the sidelines when an opportunity falls outside."
-    ],
-    "mandate.active": ["权限已生效", "PERMISSIONS ACTIVE"],
-    "mandate.riskPerTrade": ["单笔风险 · RISK / TRADE", "RISK / TRADE"],
-    "mandate.maxLev": ["杠杆上限 · MAX LEVERAGE", "MAX LEVERAGE"],
-    "mandate.dailyStop": ["单日亏损上限 · DAILY LOSS LIMIT", "DAILY LOSS LIMIT"],
-    "mandate.symbols": ["允许的交易对 · ALLOWED PAIRS", "ALLOWED PAIRS"],
-    "mandate.expires": ["有效期 · EXPIRES", "EXPIRES"],
+    "compare.title": ["AI Agent 很多，交易闭环很少。", "AI agents are everywhere. Closed trading loops are not."],
+    "compare.lead": ["差别不在会不会聊天，而在它能否读懂真实账户、遵守确定性边界、处理执行异常，并解释最终结果。", "The difference is not conversation. It is whether the system understands real account state, obeys deterministic limits, survives execution anomalies, and explains final results."],
+    "compare.dimension": ["关键能力", "CORE CAPABILITY"],
+    "compare.manual": ["人工交易", "MANUAL TRADING"],
+    "compare.bot": ["固定策略机器人", "RULE BOT"],
+    "compare.general": ["通用 AI Agent", "GENERAL AI AGENT"],
+    "compare.row1": ["理解实时市场语境", "Understands live market context"],
+    "compare.row2": ["调用你的专业知识", "Applies your expertise"],
+    "compare.row3": ["模型之外的硬风控", "Hard risk outside the model"],
+    "compare.row4": ["远端结果未知与崩溃恢复", "Unknown outcomes & crash recovery"],
+    "compare.row5": ["真实净绩效与审计", "True net performance & audit"],
+    "compare.humanLimited": ["受精力限制", "Attention-limited"],
+    "compare.ruleOnly": ["仅固定条件", "Fixed conditions only"],
+    "compare.contextNoState": ["有语境，缺真实状态", "Context, but no real state"],
+    "compare.factBound": ["交易所事实绑定", "Exchange-fact bound"],
+    "compare.memory": ["依赖记忆", "Relies on memory"],
+    "compare.hardcoded": ["需手工编码", "Must be hard-coded"],
+    "compare.genericRag": ["泛化检索", "Generic retrieval"],
+    "compare.graphRecall": ["知识图谱 + 审批规则", "Knowledge graph + approved rules"],
+    "compare.selfDiscipline": ["靠自律", "Self-discipline"],
+    "compare.basicLimits": ["基础阈值", "Basic thresholds"],
+    "compare.promptRules": ["常依赖提示词", "Often prompt-based"],
+    "compare.codeGuard": ["确定性代码闸门", "Deterministic code gates"],
+    "compare.manualCheck": ["人工检查", "Manual checking"],
+    "compare.varies": ["实现不一", "Varies"],
+    "compare.noOms": ["通常无 OMS", "Usually no OMS"],
+    "compare.durable": ["持久意图 + 对账恢复", "Durable intent + reconciliation"],
+    "compare.manualJournal": ["手工复盘", "Manual journal"],
+    "compare.tradeLog": ["交易日志", "Trade log"],
+    "compare.narrative": ["多为文字总结", "Mostly narrative"],
+    "compare.financial": ["费用/资金费对账 + 证据链", "Fee/funding reconciliation + evidence"],
+    "compare.note": ["比较基于系统设计目标，不代表任何收益优劣；交易风险始终存在。", "Comparison describes system design goals, not return superiority. Trading risk always remains."],
 
-    "cap.tag": ["自主交易能力 · CAPABILITIES", "AUTONOMOUS CAPABILITIES"],
-    "cap.h2": ["四个专业角色协同，让市场理解与交易执行自然衔接", "Four specialist roles connect market understanding with trade execution"],
-    "cap.desc": [
-      "AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。",
-      "The AI trader, risk officer, knowledge system, and events analyst work together across research, decisions, execution, and review."
-    ],
-    "cap.trader": ["AI 交易员", "AI Trader"],
-    "cap.traderDesc": [
-      "生成交易假设与结构化交易计划,绑定 analysis bundle、风控检查与 trace,从入场理由到失效条件全部可解释。",
-      "Turns market evidence into structured trade plans with clear entry logic, sizing, stops, targets, and invalidation conditions."
-    ],
-    "cap.risk": ["风控官", "Risk Officer"],
-    "cap.riskDesc": [
-      "在授权、风险、事件、执行与 Skill 五个层级校验每笔交易;超范围、无止损、超杠杆或高风险事件一律拦截。",
-      "Checks every trade against permissions, risk limits, event risk, execution conditions, and strategy rules. Missing stops, excess leverage, and out-of-scope trades are blocked."
-    ],
-    "cap.knowledge": ["专家知识库", "Expert Knowledge"],
-    "cap.knowledgeDesc": [
-      "把书籍、研报、链上数据与你的复盘蒸馏成概念、框架与规则;每个交易计划都会召回相关证据。",
-      "Turns books, research, on-chain data, and your own reviews into reusable concepts, frameworks, and rules that can support future decisions."
-    ],
-    "cap.events": ["事件分析员", "Event Analyst"],
-    "cap.eventsDesc": [
-      "跟踪 CPI、FOMC、ETF、交易所维护、链上异常与解锁,评估影响并实时传递给交易与风控。",
-      "Tracks CPI, FOMC decisions, ETF flows, exchange maintenance, on-chain anomalies, and token unlocks, then feeds their potential impact into trading and risk decisions."
-    ],
-
-    "loop.tag": ["交易闭环 · LIFECYCLE", "TRADING LIFECYCLE"],
-    "loop.h2": ["从发现机会到回看结果，每一步都清晰衔接", "From opportunity to review, every step stays connected"],
-    "loop.1t": ["市场与事件感知", "Sense markets & events"],
-    "loop.1d": ["行情、盘口、资金费率、OI 与事件雷达持续输入。", "Prices, order book, funding, OI and an event radar stream in continuously."],
-    "loop.2t": ["知识召回", "Knowledge recall"],
-    "loop.2d": ["专家知识库生成证据包，作为决策依据。", "The knowledge system gathers relevant evidence for the decision."],
-    "loop.3t": ["结构化交易计划", "Structured trade plan"],
-    "loop.3d": ["AI 交易员产出带止损、仓位与失效条件的计划。", "The AI trader outputs a plan with stop-loss, sizing and invalidation."],
-    "loop.4t": ["交易权限校验", "Permission check"],
-    "loop.4d": ["系统核对交易所、币种、策略与有效期是否在你的授权范围内。", "The system verifies that the exchange, market, strategy, and time window are within your permissions."],
-    "loop.5t": ["风控引擎校验", "Risk engine check"],
-    "loop.5d": ["单笔风险、单日亏损上限、杠杆、滑点与事件风险逐项检查。", "Per-trade risk, daily loss limits, leverage, slippage, and event risk are checked before execution."],
-    "loop.6t": ["受控执行", "Controlled execution"],
-    "loop.6d": ["执行器通过统一连接器下单，并防止重复下单、持续核对成交状态。", "Orders go through a single execution path with duplicate-order protection and continuous reconciliation."],
-    "loop.7t": ["仓位监控", "Position monitoring"],
-    "loop.7d": ["监控成交、止损止盈、资金费率与失效条件，必要时紧急停止新交易。", "Monitors fills, stops, targets, funding, and invalidation conditions, and can stop new trading in an emergency."],
-    "loop.8t": ["复盘进化", "Review & evolve"],
-    "loop.8d": ["复盘盈亏归因与偏差,写回记忆与知识库候选规则。", "Reviews PnL attribution and drift, writing back to memory and candidate rules."],
-
-    "guard.tag": ["权限与风控 · GUARDRAILS", "AUTHORITY & GUARDRAILS"],
-    "guard.h2": ["让每一次交易，<br>都在清晰的规则中进行。", "Every trade,<br>guided by clear rules."],
-    "guard.desc": [
-      "交易权限、密钥隔离与紧急停止被落实在系统中，让 Agent 可以自主行动，也始终保持在你设定的范围内。",
-      "Trading permissions, secret isolation, and emergency stops are built into the system, giving the agent room to act while keeping it within the scope you set."
-    ],
-    "guard.kill": ["紧急停止", "EMERGENCY STOP"],
-    "guard.denyT": ["禁止提现权限", "Withdrawals disabled"],
-    "guard.denyD": ["交易权限仅在授权后启用，提现权限始终关闭。", "Trading is enabled only after authorization. Withdrawal access is never granted."],
-    "guard.isoT": ["API Secret 隔离", "API secret isolation"],
-    "guard.isoD": ["不进入模型上下文、前端与普通日志。", "Never enters model context, the frontend or ordinary logs."],
-    "guard.blockT": ["无止损即拒绝", "No stop, no trade"],
-    "guard.blockD": ["无止损、超杠杆、超单笔风险的计划直接驳回。", "Plans without a stop, over leverage or over per-trade risk are rejected outright."],
-    "guard.freezeT": ["高影响事件禁新仓", "Freeze on high-impact events"],
-    "guard.freezeD": ["对账异常或高风险事件时仅允许降风险动作。", "On reconciliation anomalies or high-risk events, only risk-reducing actions are allowed."],
-    "guard.sandT": ["第三方 Skill 不可直连", "Third-party skills are isolated"],
-    "guard.sandD": ["扫描、沙箱验证和权限声明全部通过后才能启用，第三方 Skill 不得直接下单。", "Third-party skills must pass scanning, sandbox validation, and permission review. They can never place orders directly."],
-    "guard.auditT": ["全程 append-only 审计", "End-to-end append-only audit"],
-    "guard.auditD": ["交易、授权、风控与密钥变更不可被删除。", "Trades, authorizations, risk actions and key changes cannot be deleted."],
-
-    "know.tag": ["交易知识库 · KNOWLEDGE", "TRADING KNOWLEDGE"],
-    "know.h2": ["研究、策略与真实复盘，持续沉淀为下一次判断的依据", "Research, strategy, and real reviews become context for the next decision"],
-    "know.desc": [
-      "书籍、研报、网页、GitHub 与真实复盘会被整理成概念、框架、规则与反方观点，在需要判断时回到上下文中。",
-      "Books, research, web pages, GitHub, and real reviews are organized into concepts, frameworks, rules, and counter-views, then brought back into context when a decision is needed."
-    ],
-    "know.sources": ["来源", "SOURCES"],
-    "know.s1": ["金融书籍 / 研报", "Books / research"],
-    "know.s2": ["网页 / RSS 订阅", "Web pages / RSS"],
-    "know.s3": ["链上数据 / GitHub", "On-chain data / GitHub"],
-    "know.s4": ["个人笔记 / 复盘", "Personal notes / reviews"],
-    "know.distill": ["蒸馏", "DISTILL"],
-    "know.d1": ["概念卡 · Concept", "Concept card"],
-    "know.d2": ["理论框架卡 · Framework", "Framework card"],
-    "know.d3": ["交易规则草案 · Rule", "Trade rule draft"],
-    "know.d4": ["反方观点 · Counter", "Counter-view"],
-    "know.runtime": ["运行时召回", "RUNTIME RECALL"],
-    "know.runtimeDesc": [
-      "每个自主交易计划都会调用知识库并生成 evidence bundle——知识不可用时自动降级为保守模式或禁止交易。",
-      "Every autonomous plan calls the knowledge base and produces an evidence bundle — if knowledge is unavailable it downgrades to conservative mode or blocks trading."
-    ],
-
-    "ctaBand.h2": ["让 AI 在你的规则内运行交易体系", "Put your trading process to work—within your rules"],
-    "ctaBand.desc": ["登录驾驶舱、申请开通，或联系我们了解专属部署。", "Open the dashboard, request access, or contact us about a dedicated deployment."],
-
-    "footer.disclaimer": [
-      "免责声明：本系统不构成投资建议、收益承诺或法律意见。数字货币与自动化交易风险极高，生产上线前须完成安全、合规、交易所权限、风控与紧急停止演练评审。",
-      "Disclaimer: This system does not provide investment advice, legal advice, or any guarantee of returns. Crypto assets and automated trading involve substantial risk. Review security, compliance, exchange permissions, risk limits, and emergency controls before live use."
-    ]
+    "guard.title": ["飞得更远之前，先知道哪里不能去。", "Before going farther, define where not to go."],
+    "guard.lead": ["自主不等于无限授权。你定义市场、资金、杠杆、日亏损和有效期；系统只在边界内工作，异常时优先降风险。", "Autonomy is not unlimited authority. You define markets, capital, leverage, daily loss, and expiry. The system operates inside those limits and prioritizes risk reduction when facts deteriorate."],
+    "guard.oneTitle": ["密钥不进入模型", "Secrets never enter the model"],
+    "guard.oneText": ["API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。", "API secrets, passphrases, and sensitive tokens are isolated from model context, the frontend, and ordinary logs."],
+    "guard.twoTitle": ["权限由你定义", "You define authority"],
+    "guard.twoText": ["交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。", "Exchange, symbols, strategies, per-trade risk, leverage, daily loss, and expiry all have explicit limits."],
+    "guard.threeTitle": ["保护无法证明则降级", "Unproven protection means degraded mode"],
+    "guard.threeText": ["止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。", "When stops, orders, positions, or financial facts cannot be proven, the system does not keep opening risk because things merely look normal."],
+    "guard.fourTitle": ["一键停止与只减仓", "Emergency stop and reduce-only"],
+    "guard.fourText": ["异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。", "Anomalies, event windows, or an operator command can freeze new risk while cancellations and exits remain tracked."],
+    "closing.title": ["TO THE MOON.<br><em>WITH A FLIGHT PLAN.</em>", "TO THE MOON.<br><em>WITH A FLIGHT PLAN.</em>"],
+    "closing.text": ["让 AI 持续理解，让系统守住边界，让每一次行动都留下证据。", "Let AI sustain understanding, let the system hold the boundaries, and let every action leave evidence."],
+    "footer.tagline": ["有边界的 AI 自主交易系统", "Bounded autonomous AI trading"],
+    "footer.disclaimer": ["免责声明：KORDYN 不构成投资建议或收益承诺。数字资产与自动化交易风险极高，可能损失全部本金；实盘前必须完成安全、权限、风控和紧急停止演练。", "Disclaimer: KORDYN is not investment advice and makes no promise of returns. Digital assets and automated trading carry extreme risk, including total loss. Complete security, authority, risk, and emergency-stop reviews before live use."]
   };
 
   var lang = "zh";
+  var tickerPayload = null;
+  var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   try {
-    var requestedLang = new URLSearchParams(window.location.search).get("lang");
-    lang = (requestedLang === "en" || requestedLang === "zh")
-      ? requestedLang
-      : (localStorage.getItem("ui_lang") || "zh");
-  } catch (e) {}
+    var requested = new URLSearchParams(window.location.search).get("lang");
+    lang = requested === "en" || requested === "zh" ? requested : (localStorage.getItem("ui_lang") || "zh");
+  } catch (_error) { lang = "zh"; }
   if (lang !== "en" && lang !== "zh") lang = "zh";
 
-  function applyLang(l) {
-    lang = l;
-    var i = l === "en" ? 1 : 0;
-    document.documentElement.setAttribute("lang", l);
-    document.querySelectorAll("[data-i18n]").forEach(function (el) {
-      var v = I18N[el.getAttribute("data-i18n")];
-      if (v) el.textContent = v[i];
-    });
-    document.querySelectorAll("[data-i18n-html]").forEach(function (el) {
-      var v = I18N[el.getAttribute("data-i18n-html")];
-      if (v) el.innerHTML = v[i];
-    });
-    var btn = document.querySelector('[data-action="lang"]');
-    if (btn) btn.textContent = l === "en" ? "中文" : "EN";
-    try { localStorage.setItem("ui_lang", l); } catch (e) {}
-    renderTicker(); // 重渲染 ticker 里的本地化提示
+  function textFor(key) {
+    var value = I18N[key];
+    return value ? value[lang === "en" ? 1 : 0] : key;
   }
 
-  // ---------- 实时行情 ticker ----------
-  var lastTicker = null;
-  function fmtPrice(p) {
-    if (!isFinite(p)) return "—";
-    if (p >= 1000) return Math.round(p).toLocaleString("en-US");
-    if (p >= 1) return p.toFixed(2);
-    if (p >= 0.01) return p.toFixed(4);
-    return p.toFixed(6);
+  function applyLang(nextLang) {
+    lang = nextLang;
+    document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+    document.querySelectorAll("[data-i18n]").forEach(function (node) {
+      var value = I18N[node.getAttribute("data-i18n")];
+      if (value) node.textContent = value[lang === "en" ? 1 : 0];
+    });
+    document.querySelectorAll("[data-i18n-html]").forEach(function (node) {
+      var value = I18N[node.getAttribute("data-i18n-html")];
+      if (value) node.innerHTML = value[lang === "en" ? 1 : 0];
+    });
+    document.querySelectorAll('[data-action="lang"]').forEach(function (button) {
+      button.textContent = lang === "en" ? "中文" : "EN";
+    });
+    try { localStorage.setItem("ui_lang", lang); } catch (_error) { /* local storage may be unavailable */ }
+    renderTicker();
   }
-  function tickerItem(label, valueHtml) {
-    return '<span style="color:#a89a83; margin:0 17px; white-space:nowrap;">' + label + ' ' + valueHtml + '</span>';
+
+  function formatPrice(value) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+    if (number >= 1000) return number.toLocaleString("en-US", { maximumFractionDigits: 0 });
+    if (number >= 1) return number.toFixed(2);
+    if (number >= .01) return number.toFixed(4);
+    return number.toFixed(6);
   }
+
+  function createTickerGroup() {
+    var group = document.createElement("div");
+    group.className = "ticker-group";
+    (tickerPayload.items || []).forEach(function (item) {
+      var row = document.createElement("span");
+      row.className = "ticker-item";
+      row.append(document.createTextNode(item.symbol));
+      var value = document.createElement("b");
+      var change = Number(item.changePct);
+      value.className = change >= 0 ? "up" : "down";
+      value.textContent = formatPrice(item.last) + " " + (change >= 0 ? "↗ +" : "↘ ") + change.toFixed(2) + "%";
+      row.append(value);
+      group.append(row);
+    });
+    if (tickerPayload.fundingPct !== null && tickerPayload.fundingPct !== undefined) {
+      var funding = document.createElement("span");
+      funding.className = "ticker-item";
+      funding.append(document.createTextNode("BTC FUNDING"));
+      var fundingValue = document.createElement("b");
+      var fundingNumber = Number(tickerPayload.fundingPct);
+      fundingValue.className = fundingNumber >= 0 ? "up" : "down";
+      fundingValue.textContent = (fundingNumber >= 0 ? "+" : "") + fundingNumber.toFixed(4) + "%";
+      funding.append(fundingValue);
+      group.append(funding);
+    }
+    if (Number.isFinite(Number(tickerPayload.btcOi))) {
+      var oi = document.createElement("span");
+      oi.className = "ticker-item";
+      oi.append(document.createTextNode("BTC OI"));
+      var oiValue = document.createElement("b");
+      oiValue.textContent = Number(tickerPayload.btcOi).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " BTC";
+      oi.append(oiValue);
+      group.append(oi);
+    }
+    return group;
+  }
+
   function renderTicker() {
     var track = document.getElementById("taTicker");
     if (!track) return;
-    if (!lastTicker || !lastTicker.items || !lastTicker.items.length) {
-      var loading = I18N["ticker.loading"][lang === "en" ? 1 : 0];
-      track.style.animation = "none";
-      track.innerHTML = '<div style="display:flex; gap:34px; padding:0 17px; color:#8f836e;">' + loading + '</div>';
+    var tickerShell = track.closest(".ticker");
+    track.replaceChildren();
+    if (!tickerPayload || !Array.isArray(tickerPayload.items) || !tickerPayload.items.length) {
+      track.classList.add("is-static");
+      if (tickerShell) tickerShell.classList.toggle("is-unavailable", Boolean(tickerPayload));
+      track.textContent = tickerPayload ? textFor("ticker.unavailable") : textFor("ticker.loading");
       return;
     }
-    var parts = [];
-    lastTicker.items.forEach(function (it) {
-      var up = Number(it.changePct) >= 0;
-      var col = up ? "#4fd08a" : "#ef6b52";
-      var arrow = up ? "▲" : "▼";
-      var chg = Math.abs(Number(it.changePct)).toFixed(2);
-      parts.push(tickerItem(it.symbol, '<span style="color:' + col + '">' + fmtPrice(it.last) + ' ' + arrow + chg + '%</span>'));
-    });
-    if (lastTicker.fundingPct !== null && lastTicker.fundingPct !== undefined) {
-      var f = Number(lastTicker.fundingPct);
-      var fcol = f >= 0 ? "#4fd08a" : "#ef6b52";
-      parts.push(tickerItem("BTC FUNDING", '<span style="color:' + fcol + '">' + (f >= 0 ? "+" : "") + f.toFixed(4) + '%</span>'));
-    }
-    if (lastTicker.btcOi) {
-      var oi = Number(lastTicker.btcOi);
-      var oiStr = oi >= 1e6 ? (oi / 1e6).toFixed(2) + "M" : oi >= 1e3 ? (oi / 1e3).toFixed(1) + "K" : String(Math.round(oi));
-      parts.push(tickerItem("BTC OI", '<span style="color:#f2ead9">' + oiStr + " BTC</span>"));
-    }
-    var inner = '<div style="display:flex; align-items:center; padding:0 8px;">' + parts.join("") + "</div>";
-    track.style.animation = ""; // 恢复 CSS marquee
-    track.innerHTML = inner + inner; // 两份并排 → -50% 无缝循环
+    if (tickerShell) tickerShell.classList.remove("is-unavailable");
+    track.classList.remove("is-static");
+    var first = createTickerGroup();
+    track.append(first, first.cloneNode(true));
+    var time = document.getElementById("tickerTime");
+    var stamp = new Date(tickerPayload.at || Date.now());
+    if (time && Number.isFinite(stamp.getTime())) time.textContent = stamp.toLocaleTimeString(lang === "en" ? "en-GB" : "zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
+
   function fetchTicker() {
     fetch("/api/public/ticker-bar", { headers: { Accept: "application/json" } })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && Array.isArray(d.items)) { lastTicker = d; renderTicker(); } })
-      .catch(function () { /* 拉取失败保持上一次 */ });
+      .then(function (response) { if (!response.ok) throw new Error("ticker_http_" + response.status); return response.json(); })
+      .then(function (payload) {
+        if (payload && Array.isArray(payload.items) && payload.items.length) tickerPayload = payload;
+        else if (!tickerPayload) tickerPayload = { items: [], error: payload?.error || "ticker_unavailable", at: payload?.at || new Date().toISOString() };
+        renderTicker();
+      })
+      .catch(function () {
+        if (!tickerPayload) tickerPayload = { items: [], error: "ticker_unavailable", at: new Date().toISOString() };
+        renderTicker();
+      });
   }
 
-  // ---------- 揭示 / 计数 / 进度条 / 倒计时 ----------
-  function initAnimations() {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("ta-in"); io.unobserve(e.target); } });
-    }, { threshold: 0.12 });
-    document.querySelectorAll(".ta-reveal").forEach(function (el) { io.observe(el); });
-
-    function animCount(el) {
-      var target = parseFloat(el.getAttribute("data-count"));
-      var isInt = el.getAttribute("data-int");
-      var suf = el.getAttribute("data-suffix") || "";
-      var pre = el.getAttribute("data-prefix") || "";
-      var dur = 1400, t0 = performance.now();
-      function tick(now) {
-        var p = Math.min(1, (now - t0) / dur);
-        var ease = 1 - Math.pow(1 - p, 3);
-        var v = target * ease;
-        el.textContent = pre + (isInt ? Math.round(v) : v.toFixed(2)) + suf;
-        if (p < 1) requestAnimationFrame(tick);
-      }
-      requestAnimationFrame(tick);
+  function initReveal() {
+    var nodes = Array.prototype.slice.call(document.querySelectorAll(".ta-reveal"));
+    if (reducedMotion || !("IntersectionObserver" in window)) {
+      nodes.forEach(function (node) { node.classList.add("ta-in"); });
+      return;
     }
-    var cio = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { animCount(e.target); cio.unobserve(e.target); } });
-    }, { threshold: 0.6 });
-    document.querySelectorAll("[data-count]").forEach(function (el) { cio.observe(el); });
-
-    var bio = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { e.target.style.width = e.target.getAttribute("data-w"); bio.unobserve(e.target); } });
-    }, { threshold: 0.5 });
-    document.querySelectorAll(".ta-bar").forEach(function (el) { bio.observe(el); });
-
-    var cd = document.querySelector("[data-countdown]");
-    if (cd) {
-      var end = Date.now() + (14 * 86400 + 6 * 3600 + 12 * 60 + 44) * 1000;
-      var pad = function (n) { return String(n).padStart(2, "0"); };
-      setInterval(function () {
-        var s = Math.max(0, Math.floor((end - Date.now()) / 1000));
-        var d = Math.floor(s / 86400); s %= 86400;
-        var h = Math.floor(s / 3600); s %= 3600;
-        var m = Math.floor(s / 60), sec = s % 60;
-        cd.textContent = d + "D " + pad(h) + ":" + pad(m) + ":" + pad(sec);
-      }, 1000);
-    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("ta-in");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: .12, rootMargin: "0px 0px -6%" });
+    nodes.forEach(function (node) { observer.observe(node); });
   }
 
-  // ---------- 按钮事件委托 ----------
+  function initFlightAnimation() {
+    if (reducedMotion) return;
+    var steps = Array.prototype.slice.call(document.querySelectorAll(".flight-step"));
+    var consoleSteps = Array.prototype.slice.call(document.querySelectorAll(".console-route span"));
+    var progress = document.querySelector(".flight-line span");
+    var index = 0;
+    window.setInterval(function () {
+      index = (index + 1) % steps.length;
+      steps.forEach(function (step, stepIndex) { step.classList.toggle("is-active", stepIndex === index); });
+      if (progress) progress.style.width = ((index + 1) / steps.length * 100) + "%";
+      consoleSteps.forEach(function (step, stepIndex) { step.classList.toggle("is-active", stepIndex === index % consoleSteps.length); });
+    }, 1800);
+  }
+
+  function initScrollState() {
+    var nav = document.getElementById("siteNav");
+    var progress = document.getElementById("scrollProgress");
+    var queued = false;
+    function update() {
+      queued = false;
+      var top = window.scrollY || document.documentElement.scrollTop || 0;
+      if (nav) nav.classList.toggle("is-scrolled", top > 16);
+      var max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      if (progress) progress.style.width = Math.min(100, top / max * 100) + "%";
+    }
+    window.addEventListener("scroll", function () {
+      if (!queued) { queued = true; window.requestAnimationFrame(update); }
+    }, { passive: true });
+    update();
+  }
+
   function startAuth(mode) {
-    try { window.parent.postMessage({ type: "lp-start", mode: mode }, "*"); } catch (e) {}
+    try { window.parent.postMessage({ type: "lp-start", mode: mode }, window.location.origin); } catch (_error) { /* parent may be unavailable */ }
   }
-  document.addEventListener("click", function (e) {
-    var el = e.target.closest("[data-action]");
-    if (!el) return;
-    var action = el.getAttribute("data-action");
-    if (action === "login") { e.preventDefault(); startAuth("login"); }
-    else if (action === "subscribe") { e.preventDefault(); startAuth("subscribe"); }
-    else if (action === "contact") { e.preventDefault(); window.open("https://t.me/e2ptradingclub", "_blank", "noopener"); }
-    else if (action === "lang") { e.preventDefault(); applyLang(lang === "en" ? "zh" : "en"); }
+
+  document.addEventListener("click", function (event) {
+    var target = event.target.closest("[data-action]");
+    if (!target) return;
+    var action = target.getAttribute("data-action");
+    if (action === "login" || action === "subscribe") {
+      event.preventDefault();
+      startAuth(action === "subscribe" ? "subscribe" : "login");
+    } else if (action === "contact") {
+      event.preventDefault();
+      window.open("https://t.me/e2ptradingclub", "_blank", "noopener,noreferrer");
+    } else if (action === "lang") {
+      event.preventDefault();
+      applyLang(lang === "en" ? "zh" : "en");
+    }
   });
 
-  // ---------- 启动 ----------
   applyLang(lang);
-  initAnimations();
+  initReveal();
+  initFlightAnimation();
+  initScrollState();
   fetchTicker();
-  setInterval(fetchTicker, 20000);
+  window.setInterval(fetchTicker, 20000);
 })();

@@ -1,9 +1,10 @@
-import { okxContractSpec, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket } from "./exchangeConnector.mjs";
+import { okxContractSpec, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { fetchGlobalMarket, fetchSmartMoney } from "./marketSignals.mjs";
 import { latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { refreshAccounting } from "./accounting.mjs";
 import { buildMediumTermAnalytics } from "./mediumTermAnalytics.mjs";
 import { marketFactFreshness } from "./marketFreshness.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 
 export const EVIDENCE_TTL_MS = Object.freeze({
   ticker: 10_000,
@@ -66,14 +67,63 @@ function evidenceId(kind, symbol, fetchedAt) {
   return `ev:${kind}:${symbol || "account"}:${fetchedAt || "missing"}`;
 }
 
-function compactAccount(db, snapshot, now) {
+export function selectBoundOkxSnapshot(db) {
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  if (!snapshot) return { snapshot: null, reason: "account_snapshot_missing", binding: null };
+  const binding = validateOkxCredentialBinding(db, {
+    requiredCapability: "read",
+    accountId: snapshot.accountId,
+    snapshot
+  });
+  if (!binding.ok) return { snapshot: null, reason: binding.reason || "account_binding_invalid", binding };
+  const environment = okxEnvironmentConfig().name;
+  if (!snapshot.environment || snapshot.environment !== environment) {
+    return { snapshot: null, reason: "account_snapshot_environment_mismatch", binding, expectedEnvironment: environment };
+  }
+  return { snapshot, reason: null, binding, expectedEnvironment: environment };
+}
+
+function compactAccountOrder(row = {}, kind = "normal") {
+  const contracts = finite(row.sz ?? row.quantity) ? Math.abs(Number(row.sz ?? row.quantity)) : null;
+  return {
+    kind,
+    symbol: normalizeEvidenceSymbol(row.instId || row.symbol),
+    side: row.side || null,
+    positionSide: row.posSide || null,
+    orderType: row.ordType || row.type || null,
+    state: row.state || row.status || "open",
+    reduceOnly: row.reduceOnly === true || row.reduceOnly === "true",
+    contracts,
+    price: finite(row.px ?? row.price) ? Number(row.px ?? row.price) : null,
+    triggerPrice: finite(row.triggerPx ?? row.slTriggerPx ?? row.tpTriggerPx) ? Number(row.triggerPx ?? row.slTriggerPx ?? row.tpTriggerPx) : null,
+    clientOrderId: row.clOrdId || row.algoClOrdId || row.clientOrderId || null,
+    exchangeOrderId: row.ordId || row.algoId || row.exchangeOrderId || null
+  };
+}
+
+export function compactAccountEvidence(db, snapshot, now) {
   const fresh = freshness(snapshot?.createdAt, EVIDENCE_TTL_MS.account, now);
   const balance = snapshot?.balances?.[0] || {};
   const usdt = (balance.details || []).find((row) => row.ccy === "USDT") || {};
   const positions = (snapshot?.positions || []).filter((row) => Number(row.pos ?? row.size ?? 0) !== 0);
   const totalEquityUsdt = finite(snapshot?.totalEquityUsdt ?? balance.totalEq) ? Number(snapshot?.totalEquityUsdt ?? balance.totalEq) : null;
   const availableMarginUsdt = finite(usdt.availEq ?? usdt.availBal) ? Number(usdt.availEq ?? usdt.availBal) : null;
-  const valid = snapshot?.status === "ok" && totalEquityUsdt != null && availableMarginUsdt != null;
+  const binding = snapshot ? validateOkxCredentialBinding(db, { requiredCapability: "read", accountId: snapshot.accountId, snapshot }) : { ok: false, reason: "account_snapshot_missing" };
+  const environment = okxEnvironmentConfig().name;
+  const environmentMatches = Boolean(snapshot?.environment) && snapshot.environment === environment;
+  const openOrdersComplete = snapshot?.openOrdersComplete === true;
+  const algoOrdersComplete = snapshot?.algoOrdersComplete === true;
+  const positionUnitsComplete = positions.every((row) => row.positionQuantityComplete === true
+    && finite(row.contractSize ?? row.pos ?? row.size)
+    && finite(row.coinSize));
+  const valid = snapshot?.status === "ok"
+    && totalEquityUsdt != null
+    && availableMarginUsdt != null
+    && binding.ok
+    && environmentMatches
+    && openOrdersComplete
+    && algoOrdersComplete
+    && positionUnitsComplete;
   return {
     evidenceId: evidenceId("account", "OKX", snapshot?.createdAt),
     source: "OKX_PRIVATE_API",
@@ -81,34 +131,64 @@ function compactAccount(db, snapshot, now) {
     ...fresh,
     quality: valid ? "passed" : "failed",
     data: snapshot?.status === "ok" ? {
+      accountId: snapshot.accountId || null,
+      environment: snapshot.environment || null,
+      credentialBound: binding.ok === true,
+      bindingReason: binding.ok ? null : binding.reason || "account_binding_invalid",
+      openOrdersComplete,
+      algoOrdersComplete,
+      positionUnitsComplete,
       totalEquityUsdt,
       availableMarginUsdt,
       positionCount: positions.length,
       openOrderCount: (snapshot.openOrders || []).length,
+      algoOrderCount: (snapshot.algoOrders || []).length,
+      projectedPositionCount: Math.min(positions.length, 8),
+      projectedOpenOrderCount: Math.min((snapshot.openOrders || []).length, 12),
+      projectedAlgoOrderCount: Math.min((snapshot.algoOrders || []).length, 12),
       positions: positions.slice(0, 8).map((row) => ({
         symbol: normalizeEvidenceSymbol(row.instId || row.symbol),
-        direction: row.posSide || (Number(row.pos) < 0 ? "short" : "long"),
-        contracts: Math.abs(Number(row.pos ?? row.size ?? 0)),
+        direction: row.canonicalDirection || row.direction || (String(row.posSide || "").toLowerCase() === "net" ? (Number(row.rawSignedPosition ?? row.pos) < 0 ? "short" : "long") : row.posSide),
+        contracts: finite(row.contractSize ?? row.pos ?? row.size) ? Math.abs(Number(row.contractSize ?? row.pos ?? row.size)) : null,
+        coinQuantity: finite(row.coinSize) ? Math.abs(Number(row.coinSize)) : null,
+        ctVal: finite(row.ctVal ?? row.contractMultiplier) ? Number(row.ctVal ?? row.contractMultiplier) : null,
+        quantityComplete: row.positionQuantityComplete === true,
         entryPrice: finite(row.avgPx ?? row.entryPrice) ? Number(row.avgPx ?? row.entryPrice) : null,
-        unrealizedPnl: finite(row.upl ?? row.unrealizedPnl) ? Number(row.upl ?? row.unrealizedPnl) : null
-      }))
+        markPrice: finite(row.markPx ?? row.mark) ? Number(row.markPx ?? row.mark) : null,
+        liquidationPrice: finite(row.liqPx) ? Number(row.liqPx) : null,
+        unrealizedPnl: finite(row.upl ?? row.unrealizedPnl ?? row.pnl) ? Number(row.upl ?? row.unrealizedPnl ?? row.pnl) : null,
+        leverage: finite(row.lever ?? row.leverage) ? Number(row.lever ?? row.leverage) : null,
+        marginMode: row.mgnMode || row.marginMode || null
+      })),
+      openOrders: (snapshot.openOrders || []).slice(0, 12).map((row) => compactAccountOrder(row, "normal")),
+      algoOrders: (snapshot.algoOrders || []).slice(0, 12).map((row) => compactAccountOrder(row, "algo"))
     } : null
   };
 }
 
 function compactAccounting(db, snapshot, now) {
   const fresh = freshness(snapshot?.createdAt, EVIDENCE_TTL_MS.account, now);
+  const pending = db.system?.dailyLossBudgetStatus === "pending_financial_reconciliation"
+    || Number(db.portfolio?.pendingFinancialReconciliationToday || 0) > 0
+    || Number(db.portfolio?.pendingUnrealizedPositions?.length || 0) > 0;
+  const complete = snapshot?.status === "ok" && !pending
+    && finite(db.portfolio?.todayPnl)
+    && finite(db.portfolio?.unrealizedPnl)
+    && finite(db.system?.remainingDailyLossUsdt)
+    && finite(db.system?.dailyLossCapUsdt);
   return {
     evidenceId: evidenceId("accounting", "OKX", snapshot?.createdAt),
     source: "SYSTEM_ACCOUNTING_DERIVED_FROM_OKX",
     endpoint: "refreshAccounting(latest OKX private snapshot+fills)",
     ...fresh,
-    quality: snapshot?.status === "ok" ? "passed" : "failed",
+    quality: complete ? "passed" : "failed",
     data: snapshot?.status === "ok" ? {
       todayPnlUsdt: finite(db.portfolio?.todayPnl) ? Number(db.portfolio.todayPnl) : null,
       unrealizedPnlUsdt: finite(db.portfolio?.unrealizedPnl) ? Number(db.portfolio.unrealizedPnl) : null,
       remainingDailyLossUsdt: finite(db.system?.remainingDailyLossUsdt) ? Number(db.system.remainingDailyLossUsdt) : null,
-      dailyLossCapUsdt: finite(db.system?.dailyLossCapUsdt) ? Number(db.system.dailyLossCapUsdt) : null
+      dailyLossCapUsdt: finite(db.system?.dailyLossCapUsdt) ? Number(db.system.dailyLossCapUsdt) : null,
+      financiallyComplete: complete,
+      pendingFinancialReconciliation: pending
     } : null
   };
 }
@@ -185,7 +265,13 @@ export function evaluateEvidenceReadiness(bundle, symbol, { live = true } = {}) 
   if (!row || row.candles.status !== "fresh" || row.candles.quality !== "passed") blockers.push("closed_candles_not_fresh_or_invalid");
   if (!row || row.microstructure.status !== "fresh" || row.microstructure.quality !== "passed") blockers.push("microstructure_not_fresh");
   if (!row || row.contractSpec.status !== "fresh" || row.contractSpec.quality !== "passed") blockers.push("contract_spec_unavailable");
-  if (live && (!bundle.account || bundle.account.status !== "fresh" || bundle.account.quality !== "passed")) blockers.push("account_snapshot_not_fresh");
+  if (live && (!bundle.account || bundle.account.status !== "fresh" || bundle.account.quality !== "passed")) {
+    blockers.push("account_snapshot_not_fresh_or_incomplete");
+    if (bundle.account?.data?.credentialBound !== true) blockers.push("account_credential_binding_invalid");
+    if (bundle.account?.data?.openOrdersComplete !== true) blockers.push("account_open_orders_incomplete");
+    if (bundle.account?.data?.algoOrdersComplete !== true) blockers.push("account_algo_orders_incomplete");
+    if (bundle.account?.data?.positionUnitsComplete !== true) blockers.push("account_position_units_incomplete");
+  }
   return { ready: blockers.length === 0, blockers };
 }
 
@@ -237,7 +323,7 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
   const live = options.live ?? db.system?.liveTradingEnabled === true;
   const accountRequired = live || options.requireAccount === true || /(账户|余额|净值|保证金|持仓|仓位|盈亏)/i.test(String(options.text || ""));
   const account = (db.exchangeAccounts || []).find((row) => row.exchange === "OKX" && row.readEnabled);
-  const currentSnapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  const currentSnapshot = selectBoundOkxSnapshot(db).snapshot;
   if (shouldRefresh && accountRequired && account && expired(currentSnapshot?.createdAt, EVIDENCE_TTL_MS.account, now)) {
     jobs.push(syncPrivateReadOnly(db, account.id).catch((error) => refreshErrors.push({ scope: "account", kind: "private_snapshot", error: error.message })));
   }
@@ -245,7 +331,8 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
   await Promise.all(jobs);
   try { refreshAccounting(db); } catch { /* Evidence still records missing accounting fields honestly. */ }
   const generatedAt = nowIso();
-  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  const snapshotSelection = selectBoundOkxSnapshot(db);
+  const snapshot = snapshotSelection.snapshot;
   const mediumTermAnalytics = buildMediumTermAnalytics(db);
   const bundle = {
     id: `evb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -259,7 +346,7 @@ export async function buildForcedEvidenceBundle(db, options = {}) {
       const priorSmart = previous?.smartMoney?.data ? { ...previous.smartMoney.data, fetchedAt: previous.smartMoney.fetchedAt, ok: previous.smartMoney.quality === "passed" } : null;
       return compactSymbolEvidence(db, symbol, specResults.get(symbol) || priorSpec, smartResults.get(symbol) || priorSmart, Date.now(), mediumTermAnalytics);
     }),
-    account: compactAccount(db, snapshot, Date.now()),
+    account: compactAccountEvidence(db, snapshot, Date.now()),
     accounting: compactAccounting(db, snapshot, Date.now()),
     global: db.marketRegime?.global ? {
       evidenceId: evidenceId("global", "OKX", db.marketRegime.global.fetchedAt), source: "OKX_PUBLIC_API", endpoint: "/api/v5/market/tickers?instType=SWAP",
@@ -289,6 +376,7 @@ export function snapshotEvidenceFromState(db, baseBundle) {
   if (!baseBundle) return null;
   const generatedAt = nowIso();
   const mediumTermAnalytics = buildMediumTermAnalytics(db);
+  const boundSnapshot = selectBoundOkxSnapshot(db).snapshot;
   const symbols = (baseBundle.symbols || []).map((previous) => {
     const spec = previous.contractSpec?.data ? { ...previous.contractSpec.data, fetchedAt: previous.contractSpec.fetchedAt } : null;
     const smart = previous.smartMoney?.data ? { ...previous.smartMoney.data, fetchedAt: previous.smartMoney.fetchedAt, ok: previous.smartMoney.quality === "passed" } : null;
@@ -298,8 +386,8 @@ export function snapshotEvidenceFromState(db, baseBundle) {
     ...baseBundle,
     generatedAt,
     symbols,
-    account: compactAccount(db, latestSuccessfulAccountSnapshot(db, { exchange: "OKX" }), Date.now()),
-    accounting: compactAccounting(db, latestSuccessfulAccountSnapshot(db, { exchange: "OKX" }), Date.now()),
+    account: compactAccountEvidence(db, boundSnapshot, Date.now()),
+    accounting: compactAccounting(db, boundSnapshot, Date.now()),
     mediumTermEventVolatility: mediumTermAnalytics.eventVolatility,
     mediumTermPortfolioBtcRisk: mediumTermAnalytics.portfolioBtcRisk,
     global: db.marketRegime?.global ? {
@@ -324,7 +412,15 @@ export function compactEvidenceForPrompt(bundle) {
   if (!bundle) return "证据包不可用。";
   const lines = [`证据包 ${bundle.id}｜生成 ${bundle.generatedAt}｜关键证据 ${bundle.criticalReady ? "齐全" : `不齐全(${bundle.blockers.join(",")})`}`];
   for (const row of bundle.symbols || []) {
-    lines.push(`- ${row.symbol}：现价 ${row.ticker.data?.price ?? "不可用"}[${row.ticker.status}·${row.ticker.evidenceId}]；1H闭合K线 ${row.candles.data?.closedBars ?? "不可用"}${row.candles.data?.closedBars == null ? "" : " 根"}[${row.candles.status}/${row.candles.quality}·${row.candles.evidenceId}]；点差 ${row.microstructure.data?.spreadBps ?? "不可用"}${row.microstructure.data?.spreadBps == null ? "" : "bps"}/深度 ${row.microstructure.data?.depthUsdt ?? "不可用"}[${row.microstructure.status}·${row.microstructure.evidenceId}]；合约规格 ${row.contractSpec.quality}[${row.contractSpec.evidenceId}]；聪明钱 ${row.smartMoney.quality}[${row.smartMoney.evidenceId}]`);
+    const ticker = row.ticker.data || {};
+    const micro = row.microstructure.data || {};
+    const spec = row.contractSpec.data || {};
+    const smart = row.smartMoney.data || {};
+    lines.push(`- ${row.symbol} 行情[${row.ticker.status}/${row.ticker.quality}·${row.ticker.evidenceId}]：现价 ${ticker.price ?? "不可用"}；24h 高/低 ${ticker.high24h ?? "不可用"}/${ticker.low24h ?? "不可用"}；24h 涨跌 ${ticker.change24hPct ?? "不可用"}%；交易所时间 ${row.ticker.sourceAt || ticker.sourceAt || "不可用"}；接收时间 ${row.ticker.receivedAt || ticker.receivedAt || "不可用"}`);
+    lines.push(`  1H闭合K线[${row.candles.status}/${row.candles.quality}·${row.candles.evidenceId}]：${row.candles.data?.closedBars ?? "不可用"}${row.candles.data?.closedBars == null ? "" : " 根"}；最新闭合 ${row.candles.data?.lastClosedAt ?? "不可用"}；收盘 ${row.candles.data?.lastClosedPrice ?? "不可用"}`);
+    lines.push(`  微观结构[${row.microstructure.status}/${row.microstructure.quality}·${row.microstructure.evidenceId}]：资金费率 ${micro.fundingRatePct ?? "不可用"}%；OI ${micro.openInterest ?? "不可用"}；点差 ${micro.spreadBps ?? "不可用"}${micro.spreadBps == null ? "" : "bps"}；深度 ${micro.depthUsdt ?? "不可用"} USDT；买盘占比 ${micro.bookImbalancePct ?? "不可用"}%；源时间 ${JSON.stringify(micro.sourceTimestamps || {})}`);
+    lines.push(`  合约规格[${row.contractSpec.status}/${row.contractSpec.quality}·${row.contractSpec.evidenceId}]：ctVal ${spec.ctVal ?? "不可用"} 币/张；minSz ${spec.minSz ?? "不可用"} 张；lotSz ${spec.lotSz ?? "不可用"} 张；tickSz ${spec.tickSz ?? "不可用"}`);
+    lines.push(`  交易者/主动流[${row.smartMoney.status}/${row.smartMoney.quality}·${row.smartMoney.evidenceId}]：大户多空比 ${smart.topTraderLongShortRatio ?? "不可用"}；散户多空比 ${smart.retailLongShortRatio ?? "不可用"}；主动买卖比 ${smart.takerBuySellRatio ?? "不可用"}`);
     const mt = row.mediumTerm?.data;
     if (mt) {
       const parts = ["15m", "1h", "4h"].map((tf) => {
@@ -350,9 +446,21 @@ export function compactEvidenceForPrompt(bundle) {
     lines.push(`- 组合BTC Beta敞口[${portfolioBtcRisk.status}]：净等效 ${portfolioBtcRisk.netBtcEquivalentUsdt} USDT，毛等效 ${portfolioBtcRisk.grossBtcBetaExposureUsdt} USDT，对冲抵消 ${portfolioBtcRisk.hedgeOffsetPct ?? "不可用"}%`);
   }
   const account = bundle.account;
-  lines.push(`- 账户：${account.status}/${account.quality}[${account.evidenceId}]，净值 ${account.data?.totalEquityUsdt ?? "不可用"}，可用保证金 ${account.data?.availableMarginUsdt ?? "不可用"}，持仓 ${account.data?.positionCount ?? "不可确认"}`);
+  lines.push(`- 账户[${account.status}/${account.quality}·${account.evidenceId}]：账户 ${account.data?.accountId ?? "不可确认"}；环境 ${account.data?.environment ?? "不可确认"}；凭证绑定 ${account.data?.credentialBound === true ? "通过" : `失败(${account.data?.bindingReason || "unknown"})`}；净值 ${account.data?.totalEquityUsdt ?? "不可用"} USDT；可用保证金 ${account.data?.availableMarginUsdt ?? "不可用"} USDT；持仓 ${account.data?.positionCount ?? "不可确认"}；普通挂单 ${account.data?.openOrderCount ?? "不可确认"}；策略单 ${account.data?.algoOrderCount ?? "不可确认"}`);
+  lines.push(`  私有快照完整性：普通挂单 ${account.data?.openOrdersComplete === true ? "完整" : "不完整"}；策略单 ${account.data?.algoOrdersComplete === true ? "完整" : "不完整"}；仓位单位 ${account.data?.positionUnitsComplete === true ? "完整" : "不完整"}`);
+  if (account.data) lines.push(`  提示词明细投影：持仓 ${account.data.projectedPositionCount ?? account.data.positions?.length ?? 0}/${account.data.positionCount ?? 0}；普通挂单 ${account.data.projectedOpenOrderCount ?? account.data.openOrders?.length ?? 0}/${account.data.openOrderCount ?? 0}；策略单 ${account.data.projectedAlgoOrderCount ?? account.data.algoOrders?.length ?? 0}/${account.data.algoOrderCount ?? 0}。总数来自完整快照；未展示行不能被解释为不存在。`);
+  for (const position of account.data?.positions || []) {
+    lines.push(`  持仓：${position.symbol} ${position.direction || "方向未知"}；${position.coinQuantity ?? "币量不可用"} 币 / ${position.contracts ?? "张数不可用"} 张；ctVal ${position.ctVal ?? "不可用"}；开仓 ${position.entryPrice ?? "不可用"}；标记 ${position.markPrice ?? "不可用"}；强平 ${position.liquidationPrice ?? "不可用"}；杠杆 ${position.leverage ?? "不可用"}x；未实现盈亏 ${position.unrealizedPnl ?? "不可用"} USDT；保证金模式 ${position.marginMode || "不可用"}`);
+  }
+  for (const order of account.data?.openOrders || []) {
+    lines.push(`  普通挂单：${order.symbol} ${order.side || "方向未知"}/${order.positionSide || "仓位方向未知"} ${order.orderType || "类型未知"}；${order.contracts ?? "数量不可用"} 张 @ ${order.price ?? "市价/不可用"}；reduceOnly=${order.reduceOnly}；state=${order.state}`);
+  }
+  for (const order of account.data?.algoOrders || []) {
+    lines.push(`  策略单：${order.symbol} ${order.side || "方向未知"}/${order.positionSide || "仓位方向未知"} ${order.orderType || "类型未知"}；触发 ${order.triggerPrice ?? "不可用"}；${order.contracts ?? "数量不可用"} 张；reduceOnly=${order.reduceOnly}；state=${order.state}`);
+  }
   const accounting = bundle.accounting;
-  if (accounting) lines.push(`- 账户派生核算：${accounting.status}/${accounting.quality}[${accounting.evidenceId}]，今日盈亏 ${accounting.data?.todayPnlUsdt ?? "不可用"}，未实现盈亏 ${accounting.data?.unrealizedPnlUsdt ?? "不可用"}，剩余日亏容忍额 ${accounting.data?.remainingDailyLossUsdt ?? "不可用"}`);
+  if (accounting) lines.push(`- 账户派生核算[${accounting.status}/${accounting.quality}·${accounting.evidenceId}]：今日盈亏 ${accounting.data?.todayPnlUsdt ?? "不可用"} USDT；未实现盈亏 ${accounting.data?.unrealizedPnlUsdt ?? "不可用"} USDT；剩余日亏容忍额 ${accounting.data?.remainingDailyLossUsdt ?? "不可用"} USDT；日亏上限 ${accounting.data?.dailyLossCapUsdt ?? "不可用"} USDT；财务完整=${accounting.data?.financiallyComplete === true}`);
+  if (bundle.global) lines.push(`- OKX 永续全市场[${bundle.global.status}/${bundle.global.quality}·${bundle.global.evidenceId}]：上涨广度 ${bundle.global.data?.breadthPct ?? "不可用"}%；24h 涨跌中位 ${bundle.global.data?.medianChangePct ?? "不可用"}%；BTC 24h ${bundle.global.data?.btcChangePct ?? "不可用"}%`);
   lines.push("纪律：方括号内为事实证据 ID。只能把 fresh/passed 数据写成当前事实；stale/missing/error 必须写不可确认。方向、因果、支撑阻力属于推断，必须明确标为判断而不是 API 事实。");
   return lines.join("\n");
 }

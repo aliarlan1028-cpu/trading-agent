@@ -30,7 +30,7 @@ import { recordLangSmithRun } from "./langSmith.mjs";
 import { notifyLark } from "./larkNotifier.mjs";
 import { scheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
-import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, explicitSymbolsForEvidence, normalizeEvidenceSymbol, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
+import { buildForcedEvidenceBundle, compactEvidenceForPrompt, evaluateEvidenceReadiness, explicitSymbolsForEvidence, normalizeEvidenceSymbol, selectBoundOkxSnapshot, snapshotEvidenceFromState } from "./evidenceBundle.mjs";
 import { enforceEvidenceFacts } from "./evidenceFactGuard.mjs";
 import { buildOpportunitySetupSnapshot } from "./opportunitySetup.mjs";
 import { appendToolCallDisclosure, buildToolCallSummary, recordToolExecution } from "./toolUsage.mjs";
@@ -735,60 +735,71 @@ function optionalNumber(value) {
 }
 
 function authoritativeAccountFacts(db) {
-  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
-  let positions;
+  const selection = selectBoundOkxSnapshot(db);
+  const snapshot = selection.snapshot;
+  let positions = [];
   if (snapshot) {
     const synced = (db.positions || []).filter((item) => item.exchange === "OKX"
       && item.source === "exchange_rest"
       && item.rawSyncedAt === snapshot.createdAt
       && Number(item.size ?? item.pos ?? item.contracts ?? 0) !== 0);
-    positions = synced.length ? synced : (snapshot.positions || [])
+    const sourceRows = synced.length ? synced : (snapshot.positions || []);
+    positions = sourceRows
       .filter((item) => Number(item.pos ?? item.size ?? 0) !== 0)
       .map((item) => ({
         exchange: "OKX",
         symbol: normalizeOkxSymbol(item.instId || item.symbol),
-        direction: item.posSide || (Number(item.pos) < 0 ? "short" : "long"),
-        size: Math.abs(Number(item.pos ?? item.size ?? 0)),
-        entry: Number(item.avgPx ?? item.entryPrice ?? 0),
-        pnl: Number(item.upl ?? item.unrealizedPnl ?? 0)
+        direction: item.canonicalDirection || item.direction || (String(item.posSide || "").toLowerCase() === "net" ? (Number(item.rawSignedPosition ?? item.pos) < 0 ? "short" : "long") : item.posSide),
+        size: optionalNumber(item.coinSize),
+        contracts: optionalNumber(item.contractSize ?? item.pos ?? item.size),
+        ctVal: optionalNumber(item.ctVal ?? item.contractMultiplier),
+        entry: optionalNumber(item.avgPx ?? item.entryPrice),
+        mark: optionalNumber(item.markPx ?? item.mark),
+        liqPx: optionalNumber(item.liqPx),
+        pnl: optionalNumber(item.upl ?? item.unrealizedPnl ?? item.pnl),
+        leverage: optionalNumber(item.lever ?? item.leverage),
+        marginMode: item.mgnMode || item.marginMode || null,
+        quantityComplete: item.positionQuantityComplete === true
       }));
-  } else {
-    positions = (db.positions || []).filter((item) => Number(item.size ?? item.pos ?? item.contracts ?? 0) !== 0);
   }
 
   const account = snapshot?.balances?.[0] || {};
   const usdt = (account.details || []).find((item) => item.ccy === "USDT") || {};
   const snapshotEquity = optionalNumber(snapshot?.totalEquityUsdt ?? account.totalEq);
   const snapshotAvailable = optionalNumber(usdt.availEq ?? usdt.availBal);
-  const portfolioEquity = optionalNumber(db.portfolio?.totalEquityUsdt);
-  const portfolioAvailable = optionalNumber(db.portfolio?.availableMarginUsdt);
   return {
     snapshot,
+    unavailableReason: selection.reason,
     positions,
-    equity: snapshotEquity != null && snapshotEquity > 0
-      ? snapshotEquity
-      : portfolioEquity,
+    equity: snapshotEquity != null && snapshotEquity > 0 ? snapshotEquity : null,
     availableMargin: snapshotAvailable != null
       ? (snapshotEquity != null && snapshotEquity > 0 ? Math.min(snapshotAvailable, snapshotEquity) : snapshotAvailable)
-      : portfolioAvailable,
-    remainingDailyLoss: optionalNumber(db.system?.remainingDailyLossUsdt),
-    dailyLossCap: optionalNumber(db.system?.dailyLossCapUsdt)
+      : null,
+    remainingDailyLoss: db.system?.dailyLossBudgetStatus === "reconciled" ? optionalNumber(db.system?.remainingDailyLossUsdt) : null,
+    dailyLossCap: db.system?.dailyLossBudgetStatus === "reconciled" ? optionalNumber(db.system?.dailyLossCapUsdt) : null,
+    openOrdersComplete: snapshot?.openOrdersComplete === true,
+    algoOrdersComplete: snapshot?.algoOrdersComplete === true,
+    openOrders: snapshot?.openOrders || [],
+    algoOrders: snapshot?.algoOrders || [],
+    positionCount: positions.length
   };
 }
 
 function formatAuthoritativePositions(facts) {
   const snapshotAt = facts.snapshot?.createdAt ? `，快照 ${facts.snapshot.createdAt}` : "";
-  if (!facts.snapshot) return "**当前持仓：无法确认（尚无成功的 OKX 私有账户快照，必须先同步账户）。**";
+  if (!facts.snapshot) return `**当前持仓：无法确认（OKX 私有账户事实不可用：${facts.unavailableReason || "missing_snapshot"}，必须先重新同步账户）。**`;
   if (!facts.positions.length) return `**当前持仓：无（以最近一次成功的 OKX 私有账户快照为准${snapshotAt}）。**`;
   const positions = facts.positions.slice(0, 8).map((position) => {
     const symbol = position.symbol || normalizeOkxSymbol(position.instId) || "?";
     const direction = /short|空/i.test(String(position.direction || position.posSide || "")) ? "short" : "long";
-    const size = optionalNumber(position.size ?? position.pos);
+    const size = optionalNumber(position.size ?? position.coinSize);
+    const contracts = optionalNumber(position.contracts ?? position.contractSize ?? position.pos);
     const entry = optionalNumber(position.entry ?? position.entryPrice ?? position.avgPx);
     const pnl = optionalNumber(position.pnl ?? position.upl ?? position.unrealizedPnl);
-    return `${symbol} ${direction}，数量 ${size ?? "-"}，开仓价 ${entry ?? "-"}，浮动盈亏 ${pnl ?? "-"} USDT`;
+    return `${symbol} ${direction}，币数量 ${size ?? "不可用"}，张数 ${contracts ?? "不可用"}，开仓价 ${entry ?? "-"}，浮动盈亏 ${pnl ?? "-"} USDT`;
   });
-  return `**当前持仓（OKX 快照${snapshotAt}）**：${positions.join("；")}。`;
+  const omitted = facts.positionCount > positions.length ? `；另有 ${facts.positionCount - positions.length} 个仓位未在摘要展开，不能据此视为不存在` : "";
+  return `**当前持仓（OKX 快照${snapshotAt}）**：${positions.join("；")}${omitted}。`;
 }
 
 function isCurrentPositionClaim(line) {
@@ -942,14 +953,17 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
     const dir = String(p.direction || p.side || p.posSide || "").trim();
     const entry = p.entry ?? p.entryPrice ?? p.avgPx ?? p.avgPrice;
     const upl = p.pnl ?? p.upl ?? p.unrealizedPnl;
-    return `${sym}${dir ? " " + dir : ""} 开仓 ${entry ?? "-"} 浮盈亏 ${upl ?? "-"}`;
+    return `${sym}${dir ? " " + dir : ""} ${p.size ?? "币量不可用"}币/${p.contracts ?? "张数不可用"}张 开仓 ${entry ?? "-"} 标记 ${p.mark ?? "-"} 强平 ${p.liqPx ?? "-"} 浮盈亏 ${upl ?? "-"}`;
   }).join("；");
-  // 已提交但未成交的入场单(限价单价格没到)——是挂单,不是持仓,必须分开告知,否则模型会把挂单说成"持仓中"。
-  const openOrders = (db.executionOrders || []).filter((o) => o.status === "entry_pending");
+  // 当前挂单必须来自同一份权威 OKX 快照。不能只看本地 executionOrders，否则会漏掉
+  // 手工/外部挂单，或在分页不完整时错误宣称“无挂单”。
+  const openOrders = accountFacts.openOrdersComplete ? accountFacts.openOrders : [];
   const orderText = openOrders.slice(0, 8).map((o) => {
-    const dir = String(o.direction || "").toLowerCase() === "short" ? "空" : "多";
-    return `${o.symbol} ${dir} 挂单@${o.entryPrice ?? "-"}（未成交）`;
+    const symbol = normalizeOkxSymbol(o.instId || o.symbol || "?");
+    return `${symbol} ${o.side || "?"}/${o.posSide || "?"} ${o.ordType || o.type || "?"} ${o.sz ?? o.quantity ?? "?"}张 @${o.px ?? o.price ?? "-"}${o.reduceOnly === true || o.reduceOnly === "true" ? " reduce-only" : ""}`;
   }).join("；");
+  const algoOrders = accountFacts.algoOrdersComplete ? accountFacts.algoOrders : [];
+  const algoText = algoOrders.slice(0, 8).map((o) => `${normalizeOkxSymbol(o.instId || o.symbol || "?")} ${o.ordType || o.type || "策略单"} 触发@${o.triggerPx ?? o.slTriggerPx ?? o.tpTriggerPx ?? "-"} ${o.sz ?? o.quantity ?? "?"}张`).join("；");
   const lastSync = snap?.createdAt;
   const staleMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
   let accountAuthoritySection;
@@ -957,7 +971,12 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
     const body = [
       acctBits.length ? acctBits.join(" ｜ ") : "账户未同步或暂无数据",
       openPositions.length ? `持仓（已成交、仓位≠0）：${posText}` : "当前无持仓",
-      openOrders.length ? `挂单（限价单已提交但价格未到、尚未成交、仓位仍为0，不是持仓）：${orderText}` : null,
+      accountFacts.openOrdersComplete
+        ? (openOrders.length ? `普通挂单（未成交，不是持仓，展示 ${openOrders.length}/${accountFacts.openOrders.length}）：${orderText}${accountFacts.openOrders.length > openOrders.length ? "；其余未展开，不能视为不存在" : ""}` : "普通挂单：无（分页已完整）")
+        : "普通挂单：无法确认（权威分页不完整）",
+      accountFacts.algoOrdersComplete
+        ? (algoOrders.length ? `止损/止盈策略单（展示 ${algoOrders.length}/${accountFacts.algoOrders.length}）：${algoText}${accountFacts.algoOrders.length > algoOrders.length ? "；其余未展开，不能视为不存在" : ""}` : "止损/止盈策略单：无（分页已完整）")
+        : "止损/止盈策略单：无法确认（权威分页不完整）",
       lastSync
         ? `最后同步：${lastSync}（约 ${staleMin} 分钟前）${staleMin != null && staleMin > 5 ? " —— 已过期" : ""}`
         : "尚未同步过私有账户"

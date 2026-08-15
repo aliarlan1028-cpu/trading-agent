@@ -1,421 +1,265 @@
-<!doctype html><html lang="zh"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KORDYN · AI 数字货币自主交易 Agent | Autonomous AI Crypto Trading Agent</title>
-<link rel="icon" href="/kordyn-logo-white.svg" type="image/svg+xml" sizes="any">
-<link rel="manifest" href="/site.webmanifest">
-<meta name="description" content="KORDYN 是数字货币自主交易 Agent：持续感知市场，在你定义的交易权限与风险边界内完成决策、执行、仓位管理和复盘。默认只读，提现权限永不开放。 | KORDYN is an autonomous crypto trading agent that decides, executes, manages positions, and reviews outcomes within your trading authority and risk limits. Read-only by default; withdrawals disabled.">
-<meta name="application-name" content="KORDYN">
-<meta name="apple-mobile-web-app-title" content="KORDYN">
-<meta name="robots" content="index,follow,max-image-preview:large">
-<meta property="og:type" content="website">
-<meta property="og:title" content="KORDYN · 数字货币自主交易 Agent | Autonomous Crypto Trading Agent">
-<meta property="og:description" content="持续理解市场，在你设定的交易权限与风险范围内完成分析、执行、仓位管理和复盘。 | An autonomous crypto trading agent that works within the trading authority and risk scope you define.">
-<meta property="og:image" content="https://yegidawir.xyz/kordyn-share.png">
-<meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="KORDYN autonomous crypto trading agent">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="KORDYN · AI Crypto Trading Agent">
-<meta name="twitter:image" content="https://yegidawir.xyz/kordyn-share.png">
-<meta property="og:locale" content="zh_CN">
-<meta property="og:locale:alternate" content="en_US">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; background: #0c0a08; }
-  a { color: #ff8a45; text-decoration: none; }
-  a:hover { color: #ffa76e; }
-  ::selection { background: #ff7a2f; color: #0c0a08; }
-  @keyframes taBlink { 0%,55% { opacity: 1; } 78%,100% { opacity: .2; } }
-  @keyframes taRise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
-  @keyframes taDraw { to { stroke-dashoffset: 0; } }
-  @keyframes taMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-  @keyframes taGridPan { from { background-position: 0 0; } to { background-position: 44px 44px; } }
-  @keyframes taDash { to { stroke-dashoffset: -1000; } }
-  @keyframes taGlow { 0%,100% { opacity: .35; } 50% { opacity: .8; } }
-  .ta-reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
-  .ta-reveal.ta-in { opacity: 1; transform: none; }
-  .ta-cap { transition: transform .3s ease, border-color .3s ease; }
-  .ta-cap:hover { transform: translateY(-4px); border-color: #4a3d2c !important; }
-  .taBtn { cursor: pointer; border: none; font-family: 'Space Grotesk',sans-serif; }
-  .taLink { cursor: pointer; }
-  .taTickerViewport { overflow: hidden; }
-  .taTickerTrack { display: flex; width: max-content; animation: taMarquee 40s linear infinite; font-family: 'IBM Plex Mono',monospace; font-size: 12.5px; padding: 9px 0; }
-  .taTickerTrack:hover { animation-play-state: paused; }
-  .taLangBtn { cursor: pointer; font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #a89a83; background: rgba(255,255,255,0.03); border: 1px solid #33291c; border-radius: 999px; padding: 6px 12px; }
-  .taLangBtn:hover { border-color: #4a3d2c; color: #f2ead9; }
-  .taHeroProduct { font-family: 'Space Grotesk',sans-serif !important; font-size: 38px !important; font-weight: 700; letter-spacing: -0.02em !important; color: #f2ead9 !important; background: none !important; border: 0 !important; border-radius: 0 !important; margin: 0 !important; padding: 0 !important; text-transform: none !important; }
-  .taHeroStatement { max-width: 570px; font-size: 28px !important; font-weight: 500 !important; line-height: 1.3 !important; letter-spacing: -0.015em !important; color: #c8bda9; }
-  .taSectionTitle { display: flex; align-items: baseline; gap: 12px; }
-  .taSectionIndex { flex: 0 0 auto; font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.12em; color: #ffb178; }
-  .taSectionName { font-family: 'Space Grotesk',sans-serif; font-size: 30px; font-weight: 650; letter-spacing: -0.015em; color: #f2ead9; margin: 0; }
-  .taMandateTitle { font-family: 'Space Grotesk',sans-serif !important; font-size: 30px !important; font-weight: 650; letter-spacing: -0.015em !important; color: #f2ead9 !important; margin: 0 !important; }
-  .taSectionSupport { max-width: 720px; font-size: 19px !important; font-weight: 500 !important; line-height: 1.45 !important; letter-spacing: -0.006em !important; color: #bdb29e !important; text-wrap: pretty; }
-  .taMandateSupport { font-size: 19px !important; font-weight: 500 !important; line-height: 1.48 !important; color: #bdb29e; }
-  @media (max-width: 1000px) {
-    .taNavLinks { display: none !important; }
-    .taHero { grid-template-columns: 1fr !important; gap: 40px !important; padding-top: 48px !important; }
-    .taHeroStatement { font-size: 27px !important; }
-    .taMetrics { grid-template-columns: 1fr 1fr !important; }
-    .taMetrics > div { border-right: none !important; border-bottom: 1px solid #221b12; }
-    .taMandate { grid-template-columns: 1fr !important; }
-    .taMandate > div:first-child { border-right: none !important; border-bottom: 1px solid #241c13; }
-    .taCapHead { flex-direction: column; align-items: flex-start !important; }
-    .taCapGrid { grid-template-columns: 1fr !important; }
-    .taLoopGrid { grid-template-columns: 1fr 1fr !important; }
-    .taGuardGrid { grid-template-columns: 1fr !important; gap: 32px !important; }
-    .taGuardCards { grid-template-columns: 1fr !important; }
-    .taKnowGrid { grid-template-columns: 1fr !important; }
-    .taKnowArrow { display: none !important; }
-  }
-  @media (max-width: 560px) {
-    .taHeroProduct { font-size: 28px !important; }
-    .taHeroStatement { font-size: 22px !important; line-height: 1.42 !important; }
-    .taSectionTitle { gap: 9px; align-items: flex-start; }
-    .taSectionName { font-size: 22px; line-height: 1.3; }
-    .taMandateTitle { font-size: 26px !important; }
-    .taSectionSupport, .taMandateSupport { font-size: 17px !important; }
-    .taLoopGrid { grid-template-columns: 1fr !important; }
-    .taMetrics { grid-template-columns: 1fr !important; }
-  }
-</style>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KORDYN · To the Moon, with a Flight Plan | AI 自主交易系统</title>
+  <meta name="description" content="KORDYN 把交易所实时事实、专业知识、硬风控、受控执行与复盘连接成一套 AI 自主交易系统。不是收益承诺，而是一条可验证、可约束、可追踪的交易航线。">
+  <meta name="theme-color" content="#060713">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://yegidawir.xyz/">
+  <link rel="icon" href="/kordyn-logo-white.svg" type="image/svg+xml" sizes="any">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="KORDYN">
+  <meta property="og:title" content="KORDYN · To the Moon, with a Flight Plan">
+  <meta property="og:description" content="AI 自主交易，不靠黑箱冲动。让实时事实、专业知识、硬风控与执行对账沿同一条航线工作。">
+  <meta property="og:image" content="https://yegidawir.xyz/kordyn-share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="KORDYN · To the Moon, with a Flight Plan">
+  <meta name="twitter:description" content="Bounded AI autonomy for digital-asset trading.">
+  <meta name="twitter:image" content="https://yegidawir.xyz/kordyn-share.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/landing.css">
 </head>
 <body>
-<div style="font-family: 'Public Sans','Noto Sans SC',sans-serif; color: #f2ead9; background: radial-gradient(1200px 700px at 72% -10%, #1c150d 0%, #0c0a08 55%); -webkit-font-smoothing: antialiased; overflow-x: hidden; position: relative;">
+  <div class="scroll-progress" aria-hidden="true"><span id="scrollProgress"></span></div>
+  <div class="site-shell">
+    <div class="space-noise" aria-hidden="true"></div>
+    <div class="space-stars space-stars--near" aria-hidden="true"></div>
+    <div class="space-stars space-stars--far" aria-hidden="true"></div>
 
-  <!-- ambient grid + glow -->
-  <div style="position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(#ffffff08 1px, transparent 1px), linear-gradient(90deg, #ffffff08 1px, transparent 1px); background-size: 44px 44px; animation: taGridPan 18s linear infinite; mask-image: linear-gradient(#000 0%, transparent 70%);"></div>
-  <div style="position: absolute; top: -160px; right: -120px; width: 520px; height: 520px; border-radius: 999px; background: radial-gradient(circle, rgba(255,122,47,0.22), transparent 65%); filter: blur(30px); pointer-events: none; animation: taGlow 7s ease-in-out infinite;"></div>
+    <header class="site-nav" id="siteNav">
+      <nav class="nav-inner" aria-label="主导航">
+        <a class="brand" href="#top" aria-label="KORDYN 首页">
+          <img src="/kordyn-logo-white.svg" alt="">
+          <span>KORDYN</span>
+        </a>
+        <div class="nav-links">
+          <a href="#problem" data-i18n="nav.problem">问题</a>
+          <a href="#system" data-i18n="nav.system">系统</a>
+          <a href="#capabilities" data-i18n="nav.capabilities">能力</a>
+          <a href="#compare" data-i18n="nav.compare">对比</a>
+          <a href="#guardrails" data-i18n="nav.guardrails">安全边界</a>
+        </div>
+        <div class="nav-actions">
+          <button class="lang-button" type="button" data-action="lang" aria-label="切换语言">EN</button>
+          <button class="button button--quiet nav-contact" type="button" data-action="contact" data-i18n="nav.contact">联系</button>
+          <button class="button button--light" type="button" data-action="login" data-i18n="cta.dashboard">进入驾驶舱</button>
+        </div>
+      </nav>
+    </header>
 
-  <!-- NAV -->
-  <header style="position: sticky; top: 0; z-index: 60; background: rgba(12,10,8,0.7); backdrop-filter: blur(16px); border-bottom: 1px solid #221b12;">
-    <nav style="max-width: 1220px; margin: 0 auto; padding: 15px 32px; display: flex; align-items: center; gap: 28px;">
-      <a href="#top" style="display: flex; align-items: center; gap: 11px; color: #f2ead9;">
-        <img src="/kordyn-logo-white.svg" alt="KORDYN" style="width: 34px; height: 34px; object-fit: contain; display: block;">
-        <span style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 17px; letter-spacing: 0.08em;">KORDYN</span>
-      </a>
-      <div class="taNavLinks" style="display: flex; gap: 26px; margin-left: 20px; font-family: 'IBM Plex Mono',monospace; font-size: 12.5px; letter-spacing: 0.02em;">
-        <a href="#capabilities" style="color: #a89a83;" data-i18n="nav.capabilities">能力</a>
-        <a href="#lifecycle" style="color: #a89a83;" data-i18n="nav.lifecycle">闭环</a>
-        <a href="#guardrails" style="color: #a89a83;" data-i18n="nav.guardrails">风控</a>
-        <a href="#knowledge" style="color: #a89a83;" data-i18n="nav.knowledge">知识库</a>
-      </div>
-      <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
-        <button class="taLangBtn" data-action="lang">EN</button>
-        <span class="taLink" style="font-family: 'IBM Plex Mono',monospace; font-size: 12.5px; color: #a89a83;" data-action="contact" data-i18n="nav.contact">联系我们</span>
-        <button class="taBtn" data-action="login" style="font-weight: 600; font-size: 13.5px; color: #0c0a08; background: linear-gradient(120deg,#ffa259,#ff7a2f); padding: 9px 18px; border-radius: 999px; box-shadow: 0 6px 18px -6px rgba(255,122,47,.7);" data-i18n="cta.login">登录驾驶舱</button>
-      </div>
-    </nav>
-  </header>
+    <aside class="ticker" aria-label="OKX 实时市场数据">
+      <div class="ticker-label"><i></i><span data-i18n="ticker.label">OKX 实时信号</span></div>
+      <div class="ticker-window"><div class="ticker-track" id="taTicker"><span data-i18n="ticker.loading">正在接入实时行情…</span></div></div>
+      <div class="ticker-time" id="tickerTime">—</div>
+    </aside>
 
-  <!-- LIVE TICKER (real-time, filled by landing.js) -->
-  <div style="position: relative; z-index: 5; border-bottom: 1px solid #221b12; background: rgba(18,14,10,0.6);" class="taTickerViewport">
-    <div class="taTickerTrack" id="taTicker">
-      <div style="display:flex; gap:34px; padding:0 17px; color:#8f836e;" data-i18n="ticker.loading">加载实时行情…</div>
-    </div>
+    <main>
+      <section class="hero" id="top">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="hero-grid">
+          <div class="hero-copy ta-reveal">
+            <div class="hero-kicker"><span>AI AUTONOMOUS TRADING</span><i></i><span data-i18n="hero.kicker">有边界的自主智能</span></div>
+            <h1 class="taHeroProduct">TO THE <span>MOON.</span></h1>
+            <h2 class="taHeroStatement" data-i18n-html="hero.statement">不是靠冲动起飞。<br>让 AI 把每一步变成有证据的航线。</h2>
+            <p class="hero-description" data-i18n="hero.description">KORDYN 把交易所实时事实、专业知识、结构化计划、硬风控、受控执行与复盘连接起来，在你设定的资金与权限边界内持续工作。</p>
+            <div class="hero-actions">
+              <button class="button button--primary" type="button" data-action="login"><span data-i18n="cta.launch">启动驾驶舱</span><b aria-hidden="true">↗</b></button>
+              <a class="button button--outline" href="#system"><span data-i18n="cta.flightplan">查看飞行计划</span><b aria-hidden="true">↓</b></a>
+            </div>
+            <div class="hero-boundaries">
+              <span><i class="status-dot"></i><b data-i18n="hero.boundary1">默认只读</b></span>
+              <span><i class="status-dot"></i><b data-i18n="hero.boundary2">提现权限关闭</b></span>
+              <span><i class="status-dot"></i><b data-i18n="hero.boundary3">每笔动作可追踪</b></span>
+            </div>
+            <p class="promise-note"><strong data-i18n="hero.noteLabel">TO THE MOON</strong><span data-i18n="hero.note">是对系统工程标准的要求，不是收益承诺。</span></p>
+          </div>
+
+          <div class="lunar-stage ta-reveal" id="lunarStage" aria-label="KORDYN AI 任务控制示意">
+            <div class="orbit orbit--outer" aria-hidden="true"><span></span></div>
+            <div class="orbit orbit--middle" aria-hidden="true"><span></span></div>
+            <div class="orbit orbit--inner" aria-hidden="true"></div>
+            <div class="moon" aria-hidden="true">
+              <i class="crater crater--one"></i><i class="crater crater--two"></i><i class="crater crater--three"></i><i class="crater crater--four"></i>
+              <div class="moon-glow"></div>
+            </div>
+            <div class="telemetry telemetry--market">
+              <span>01 · SENSE</span><strong data-i18n="telemetry.market">市场事实已绑定</strong><small>TICKER · BOOK · OI · FUNDING</small>
+            </div>
+            <div class="telemetry telemetry--risk">
+              <span>04 · RISK</span><strong data-i18n="telemetry.risk">硬风控在线</strong><small>LIMITS · EVENTS · LIQUIDITY</small>
+            </div>
+            <div class="mission-console">
+              <header><span><i></i>MISSION CONTROL</span><b>LIVE</b></header>
+              <div class="console-title"><small>KORDYN CORE</small><strong data-i18n="console.title">决策证据链</strong></div>
+              <div class="console-route" aria-hidden="true">
+                <span class="is-active">SENSE</span><i></i><span>RECALL</span><i></i><span>PLAN</span><i></i><span>RISK</span><i></i><span>EXECUTE</span>
+              </div>
+              <div class="console-facts">
+                <div><span data-i18n="console.fact1">账户绑定</span><b data-i18n="console.bound">已验证</b></div>
+                <div><span data-i18n="console.fact2">市场事实</span><b data-i18n="console.fresh">双时钟</b></div>
+                <div><span data-i18n="console.fact3">执行状态</span><b data-i18n="console.reconcile">持续对账</b></div>
+              </div>
+              <footer><span>AI ≠ AUTHORITY</span><strong data-i18n="console.footer">模型负责判断，系统负责边界。</strong></footer>
+            </div>
+            <div class="lunar-caption"><span>01</span><p><b data-i18n="lunar.captionTitle">可验证的智能</b><small data-i18n="lunar.captionText">API 事实先归一、校验、绑定证据，再进入模型。</small></p></div>
+          </div>
+        </div>
+
+        <div class="hero-proof ta-reveal">
+          <div><strong>7</strong><span data-i18n="proof.phases">个连续决策阶段</span><small>ONE CONTROL LOOP</small></div>
+          <div><strong>2×</strong><span data-i18n="proof.clocks">交易所源时间 + 接收时间</span><small>NO STALE FACTS</small></div>
+          <div><strong>1</strong><span data-i18n="proof.authority">套明确交易权限</span><small>YOUR LIMITS FIRST</small></div>
+          <div><strong>24/7</strong><span data-i18n="proof.monitor">市场与仓位持续监控</span><small>ALWAYS WATCHING</small></div>
+        </div>
+      </section>
+
+      <section class="problem-section" id="problem">
+        <div class="section-wrap">
+          <div class="section-heading section-heading--dark ta-reveal">
+            <div><span class="section-index">01 / WHY</span><h2 class="taSectionName" data-i18n="problem.title">市场没有下班，人的注意力会。</h2></div>
+            <p class="taSectionSupport" data-i18n="problem.lead">问题不是缺少信息，而是信息、判断、风险与执行彼此断开。交易者在多块屏幕间追赶，普通机器人只会重复规则，通用 Agent 又缺少真实交易状态。</p>
+          </div>
+          <div class="problem-grid ta-reveal">
+            <article><span>01</span><div class="problem-icon">⌁</div><h3 data-i18n="problem.oneTitle">事实碎片化</h3><p data-i18n="problem.oneText">行情、盘口、资金费率、OI、事件、账户与挂单散落在不同接口，单位和时间口径也不一致。</p></article>
+            <article><span>02</span><div class="problem-icon">◌</div><h3 data-i18n="problem.twoTitle">纪律难以持续</h3><p data-i18n="problem.twoText">人会疲劳、追涨、忽略事件窗口；固定机器人又无法理解新的市场语境和你的专业知识。</p></article>
+            <article><span>03</span><div class="problem-icon">⌁</div><h3 data-i18n="problem.threeTitle">执行不等于闭环</h3><p data-i18n="problem.threeText">下单只是开始。部分成交、止损、撤单、响应未知、费用和资金费都需要持续对账与恢复。</p></article>
+          </div>
+          <div class="problem-answer ta-reveal">
+            <span data-i18n="problem.answerLabel">KORDYN 的回答</span>
+            <p data-i18n="problem.answer">让 AI 负责持续理解，让确定性系统负责权限、风险和执行真相。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="system-section" id="system">
+        <div class="section-wrap">
+          <div class="section-heading ta-reveal">
+            <div><span class="section-index">02 / FLIGHT PLAN</span><h2 class="taSectionName" data-i18n="system.title">一条航线，连接感知、判断与行动。</h2></div>
+            <p class="taSectionSupport" data-i18n="system.lead">这不是“让模型直接下单”。每个阶段都有输入、证据、状态与明确后继；远端结果未知时进入恢复，而不是假装成功。</p>
+          </div>
+          <div class="flight-plan ta-reveal" id="flightPlan">
+            <div class="flight-line" aria-hidden="true"><span></span></div>
+            <article class="flight-step is-active" data-step="0"><b>01</b><i>SENSE</i><h3 data-i18n="system.sense">感知真实市场</h3><p data-i18n="system.senseText">OKX 行情、盘口、资金费率、OI、账户、持仓与订单，经单位和源时间校验。</p></article>
+            <article class="flight-step" data-step="1"><b>02</b><i>RECALL</i><h3 data-i18n="system.recall">召回专业知识</h3><p data-i18n="system.recallText">书籍、研究、规则、复盘与反方观点按当前问题组成证据包。</p></article>
+            <article class="flight-step" data-step="2"><b>03</b><i>PLAN</i><h3 data-i18n="system.plan">生成结构化计划</h3><p data-i18n="system.planText">方向、入场、止损、目标、仓位、失效条件与依据完整绑定。</p></article>
+            <article class="flight-step" data-step="3"><b>04</b><i>GUARD</i><h3 data-i18n="system.guard">通过硬风控闸</h3><p data-i18n="system.guardText">权限、日亏损、杠杆、流动性、事件窗和同向风险在模型之外校验。</p></article>
+            <article class="flight-step" data-step="4"><b>05</b><i>EXECUTE</i><h3 data-i18n="system.execute">受控执行与对账</h3><p data-i18n="system.executeText">稳定订单身份、幂等提交、状态轮询、保护确认和异常恢复共用一套状态机。</p></article>
+            <article class="flight-step" data-step="5"><b>06</b><i>MONITOR</i><h3 data-i18n="system.monitor">持续管理仓位</h3><p data-i18n="system.monitorText">跟踪止损止盈、强平距离、移动保护与事件变化，只在证据充分时行动。</p></article>
+            <article class="flight-step" data-step="6"><b>07</b><i>REVIEW</i><h3 data-i18n="system.review">财务对账与复盘</h3><p data-i18n="system.reviewText">真实成交、手续费、返佣与资金费完成后，才进入净绩效与知识反馈。</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="capabilities-section" id="capabilities">
+        <div class="section-wrap">
+          <div class="section-heading ta-reveal">
+            <div><span class="section-index">03 / SYSTEM</span><h2 class="taSectionName" data-i18n="cap.title">不是一个聊天框，是一套交易操作系统。</h2></div>
+            <p class="taSectionSupport" data-i18n="cap.lead">模型只是其中的判断层。真正让自主交易可用的，是事实、知识、风险、执行和审计共同工作。</p>
+          </div>
+          <div class="capability-bento">
+            <article class="bento-card bento-card--wide bento-card--evidence ta-reveal">
+              <div class="card-top"><span>REAL-TIME EVIDENCE</span><i>01</i></div>
+              <h3 data-i18n="cap.evidenceTitle">交易所事实，先校验再进入 AI。</h3>
+              <p data-i18n="cap.evidenceText">API Key 指纹、账户、实盘/模拟环境、分页完整性、张数与币量、交易所源时间全部绑定。缺失就是不可确认，不会被编成 0。</p>
+              <div class="evidence-visual" aria-hidden="true">
+                <div class="evidence-orb"><span>FACT</span><b>OKX</b></div>
+                <ul><li><i></i>TICKER · SOURCE TS</li><li><i></i>BOOK · FUNDING · OI</li><li><i></i>POSITIONS · ORDERS</li><li><i></i>CONTRACT SPEC</li></ul>
+              </div>
+            </article>
+            <article class="bento-card bento-card--knowledge ta-reveal">
+              <div class="card-top"><span>KNOWLEDGE GRAPH</span><i>02</i></div>
+              <h3 data-i18n="cap.knowledgeTitle">让知识在需要时出现。</h3>
+              <p data-i18n="cap.knowledgeText">书籍和复盘沉淀为概念、方法、规则候选与关系图谱；未审批自由文本不会晋升为系统指令。</p>
+              <div class="mini-graph" aria-hidden="true"><span class="node node--a">RISK</span><span class="node node--b">EXEC</span><span class="node node--c">REGIME</span><i></i><i></i><i></i></div>
+            </article>
+            <article class="bento-card bento-card--risk ta-reveal">
+              <div class="card-top"><span>DETERMINISTIC RISK</span><i>03</i></div>
+              <h3 data-i18n="cap.riskTitle">AI 可以建议，不能越权。</h3>
+              <p data-i18n="cap.riskText">单笔风险、杠杆、日亏损、事件静默期、市场新鲜度、保护单与账户权限由确定性代码把关。</p>
+              <div class="shield-rings" aria-hidden="true"><span>BOUND</span><i></i><i></i><i></i></div>
+            </article>
+            <article class="bento-card bento-card--execution ta-reveal">
+              <div class="card-top"><span>DURABLE EXECUTION</span><i>04</i></div>
+              <h3 data-i18n="cap.executionTitle">对响应未知保持诚实。</h3>
+              <p data-i18n="cap.executionText">下单、撤单、平仓和保护动作拥有稳定身份与持久意图；进程重启后继续恢复，旧响应不能覆盖更新事实。</p>
+              <div class="state-rail" aria-hidden="true"><span>INTENT</span><i></i><span>ACK?</span><i></i><span>RECONCILE</span><i></i><span>FINAL</span></div>
+            </article>
+            <article class="bento-card bento-card--audit ta-reveal">
+              <div class="card-top"><span>FINANCIAL TRUTH</span><i>05</i></div>
+              <h3 data-i18n="cap.auditTitle">结果不完整，就不写成精确收益。</h3>
+              <p data-i18n="cap.auditText">成交、真实手续费、返佣与资金费对账完成后才形成净结果；动作、依据与权限变更保留可追踪记录。</p>
+              <div class="audit-list" aria-hidden="true"><span><i></i>FILLS VERIFIED</span><span><i></i>FEE SIGNED</span><span><i></i>FUNDING LINKED</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="comparison-section" id="compare">
+        <div class="section-wrap">
+          <div class="section-heading ta-reveal">
+            <div><span class="section-index">04 / DIFFERENCE</span><h2 class="taSectionName" data-i18n="compare.title">AI Agent 很多，交易闭环很少。</h2></div>
+            <p class="taSectionSupport" data-i18n="compare.lead">差别不在会不会聊天，而在它能否读懂真实账户、遵守确定性边界、处理执行异常，并解释最终结果。</p>
+          </div>
+          <div class="comparison-wrap ta-reveal">
+            <table>
+              <thead><tr><th data-i18n="compare.dimension">关键能力</th><th data-i18n="compare.manual">人工交易</th><th data-i18n="compare.bot">固定策略机器人</th><th data-i18n="compare.general">通用 AI Agent</th><th class="is-kordyn"><span>KORDYN</span><small>MISSION CONTROL</small></th></tr></thead>
+              <tbody>
+                <tr><th data-i18n="compare.row1">理解实时市场语境</th><td><i class="mark mark--partial">△</i><span data-i18n="compare.humanLimited">受精力限制</span></td><td><i class="mark mark--no">×</i><span data-i18n="compare.ruleOnly">仅固定条件</span></td><td><i class="mark mark--partial">△</i><span data-i18n="compare.contextNoState">有语境，缺真实状态</span></td><td class="is-kordyn"><i class="mark mark--yes">✓</i><span data-i18n="compare.factBound">交易所事实绑定</span></td></tr>
+                <tr><th data-i18n="compare.row2">调用你的专业知识</th><td><i class="mark mark--partial">△</i><span data-i18n="compare.memory">依赖记忆</span></td><td><i class="mark mark--no">×</i><span data-i18n="compare.hardcoded">需手工编码</span></td><td><i class="mark mark--partial">△</i><span data-i18n="compare.genericRag">泛化检索</span></td><td class="is-kordyn"><i class="mark mark--yes">✓</i><span data-i18n="compare.graphRecall">知识图谱 + 审批规则</span></td></tr>
+                <tr><th data-i18n="compare.row3">模型之外的硬风控</th><td><i class="mark mark--partial">△</i><span data-i18n="compare.selfDiscipline">靠自律</span></td><td><i class="mark mark--partial">△</i><span data-i18n="compare.basicLimits">基础阈值</span></td><td><i class="mark mark--no">×</i><span data-i18n="compare.promptRules">常依赖提示词</span></td><td class="is-kordyn"><i class="mark mark--yes">✓</i><span data-i18n="compare.codeGuard">确定性代码闸门</span></td></tr>
+                <tr><th data-i18n="compare.row4">远端结果未知与崩溃恢复</th><td><i class="mark mark--no">×</i><span data-i18n="compare.manualCheck">人工检查</span></td><td><i class="mark mark--partial">△</i><span data-i18n="compare.varies">实现不一</span></td><td><i class="mark mark--no">×</i><span data-i18n="compare.noOms">通常无 OMS</span></td><td class="is-kordyn"><i class="mark mark--yes">✓</i><span data-i18n="compare.durable">持久意图 + 对账恢复</span></td></tr>
+                <tr><th data-i18n="compare.row5">真实净绩效与审计</th><td><i class="mark mark--partial">△</i><span data-i18n="compare.manualJournal">手工复盘</span></td><td><i class="mark mark--partial">△</i><span data-i18n="compare.tradeLog">交易日志</span></td><td><i class="mark mark--no">×</i><span data-i18n="compare.narrative">多为文字总结</span></td><td class="is-kordyn"><i class="mark mark--yes">✓</i><span data-i18n="compare.financial">费用/资金费对账 + 证据链</span></td></tr>
+              </tbody>
+            </table>
+            <p class="comparison-note" data-i18n="compare.note">比较基于系统设计目标，不代表任何收益优劣；交易风险始终存在。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="guardrails-section" id="guardrails">
+        <div class="guardrails-orb" aria-hidden="true"></div>
+        <div class="section-wrap guardrails-grid">
+          <div class="guardrail-copy ta-reveal">
+            <span class="section-index">05 / BOUNDARIES</span>
+            <h2 class="taSectionName" data-i18n="guard.title">飞得更远之前，先知道哪里不能去。</h2>
+            <p class="taSectionSupport" data-i18n="guard.lead">自主不等于无限授权。你定义市场、资金、杠杆、日亏损和有效期；系统只在边界内工作，异常时优先降风险。</p>
+            <button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button>
+          </div>
+          <div class="guardrail-list ta-reveal">
+            <article><b>01</b><div><h3 data-i18n="guard.oneTitle">密钥不进入模型</h3><p data-i18n="guard.oneText">API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。</p></div><span>SEALED</span></article>
+            <article><b>02</b><div><h3 data-i18n="guard.twoTitle">权限由你定义</h3><p data-i18n="guard.twoText">交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。</p></div><span>BOUND</span></article>
+            <article><b>03</b><div><h3 data-i18n="guard.threeTitle">保护无法证明则降级</h3><p data-i18n="guard.threeText">止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。</p></div><span>FAIL CLOSED</span></article>
+            <article><b>04</b><div><h3 data-i18n="guard.fourTitle">一键停止与只减仓</h3><p data-i18n="guard.fourText">异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。</p></div><span>REDUCE ONLY</span></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing-section">
+        <div class="closing-moon" aria-hidden="true"></div>
+        <div class="closing-content ta-reveal">
+          <span>KORDYN · AI TRADING MISSION CONTROL</span>
+          <h2 data-i18n-html="closing.title">TO THE MOON.<br><em>WITH A FLIGHT PLAN.</em></h2>
+          <p data-i18n="closing.text">让 AI 持续理解，让系统守住边界，让每一次行动都留下证据。</p>
+          <div><button class="button button--light" type="button" data-action="login" data-i18n="cta.dashboard">进入驾驶舱</button><button class="button button--outline" type="button" data-action="contact" data-i18n="nav.contact">联系</button></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div><a class="brand" href="#top"><img src="/kordyn-logo-white.svg" alt=""><span>KORDYN</span></a><p data-i18n="footer.tagline">有边界的 AI 自主交易系统</p></div>
+      <p class="footer-disclaimer" data-i18n="footer.disclaimer">免责声明：KORDYN 不构成投资建议或收益承诺。数字资产与自动化交易风险极高，可能损失全部本金；实盘前必须完成安全、权限、风控和紧急停止演练。</p>
+      <div class="footer-links"><button type="button" data-action="contact" data-i18n="nav.contact">联系</button><button type="button" data-action="lang">EN</button><span>© 2026 KORDYN</span></div>
+    </footer>
   </div>
-
-  <!-- HERO -->
-  <section id="top" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 76px 32px 64px; display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 54px; align-items: center;" class="taHero">
-    <div style="animation: taRise .7s ease both;">
-      <h1 class="taHeroProduct" style="display: inline-flex; align-items: center; gap: 9px; font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; letter-spacing: 0.12em; color: #ffb178; background: rgba(255,122,47,0.1); border: 1px solid #40301f; padding: 6px 13px; border-radius: 999px; text-transform: uppercase;">
-        <span style="width: 7px; height: 7px; border-radius: 999px; background: #ff7a2f; animation: taBlink 1.6s infinite;"></span>
-        <span data-i18n="hero.badge">数字货币自主交易 Agent</span>
-      </h1>
-      <h2 class="taHeroStatement" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 60px; line-height: 1.02; letter-spacing: -0.03em; margin: 22px 0 0; text-wrap: balance;" data-i18n-html="hero.h1">持续理解市场，<br><span style="background: linear-gradient(120deg,#ffbe8a,#ff7a2f); -webkit-background-clip: text; background-clip: text; color: transparent;">在你的策略与边界中行动。</span></h2>
-      <p style="font-family: 'IBM Plex Mono',monospace; font-size: 14px; letter-spacing: 0.02em; color: #8f836e; margin: 16px 0 0;" data-i18n="hero.sub">自主感知、判断与执行，也始终尊重你的交易方式。</p>
-      <p style="font-size: 17px; line-height: 1.65; color: #c3b8a3; max-width: 510px; margin: 22px 0 0; text-wrap: pretty;" data-i18n="hero.desc">学习你的交易体系，持续感知市场与事件，在你设定的范围内完成分析、执行、仓位管理与复盘，让自主交易始终清晰、可控。</p>
-      <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px;">
-        <button class="taBtn" data-action="login" style="font-weight: 600; font-size: 15px; color: #0c0a08; background: linear-gradient(120deg,#ffa259,#ff7a2f); padding: 14px 26px; border-radius: 999px; box-shadow: 0 10px 26px -8px rgba(255,122,47,.8);" data-i18n="cta.loginArrow">登录驾驶舱 →</button>
-        <button class="taBtn" data-action="subscribe" style="font-weight: 600; font-size: 15px; color: #f2ead9; background: rgba(255,255,255,0.03); border: 1px solid #33291c; padding: 14px 26px; border-radius: 999px;" data-i18n="cta.subscribe">申请开通</button>
-      </div>
-      <div style="display: flex; align-items: center; gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #221b12; font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; letter-spacing: 0.06em; color: #8f836e; flex-wrap: wrap;">
-        <span style="color: #c3b8a3; font-weight: 600;">OKX MARKET DATA</span>
-        <span style="width: 4px; height: 4px; border-radius: 999px; background: #40301f;"></span>
-        <span style="color: #c3b8a3; font-weight: 600;">OKX EXECUTION</span>
-        <span style="width: 4px; height: 4px; border-radius: 999px; background: #40301f;"></span>
-        <span data-i18n="hero.trust">默认只读 · 提现权限永不开放</span>
-      </div>
-    </div>
-
-    <!-- COCKPIT with self-drawing equity curve -->
-    <div style="animation: taRise .9s ease both; position: relative;">
-      <div style="position: absolute; inset: -14px; border-radius: 22px; background: radial-gradient(circle at 60% 0%, rgba(255,122,47,0.18), transparent 60%); filter: blur(20px);"></div>
-      <div style="position: relative; background: linear-gradient(180deg,#15110c,#100d0a); border: 1px solid #2c2318; border-radius: 18px; box-shadow: 0 28px 60px -20px rgba(0,0,0,.7); overflow: hidden;">
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid #241c13;">
-          <div style="display: flex; align-items: center; gap: 8px; font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.08em; color: #8f836e;">
-            <span style="width: 7px; height: 7px; border-radius: 999px; background: #4fd08a; box-shadow: 0 0 10px #4fd08a; animation: taBlink 1.6s infinite;"></span>
-            <span data-i18n="cockpit.title">COCKPIT · 驾驶舱</span>
-          </div>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6b6152;">DEMO</span>
-        </div>
-        <div style="padding: 20px;">
-          <div style="display: flex; align-items: baseline; justify-content: space-between;">
-            <div>
-              <div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.06em; color: #8f836e;" data-i18n="cockpit.pnl">今日盈亏 · TODAY PNL</div>
-              <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 42px; letter-spacing: -0.01em; color: #4fd08a; line-height: 1.1; margin-top: 4px;" data-count="2.34" data-suffix="%" data-prefix="+">+0.00%</div>
-            </div>
-            <div style="text-align: right;">
-              <div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #8f836e;" data-i18n="cockpit.equity">净值 · EQUITY</div>
-              <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 20px; margin-top: 4px; color:#f2ead9;">$184,920</div>
-            </div>
-          </div>
-          <svg viewBox="0 0 340 118" style="width: 100%; height: 118px; margin: 14px 0 4px; display: block;">
-            <defs>
-              <linearGradient id="eqFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7a2f" stop-opacity="0.28"/><stop offset="1" stop-color="#ff7a2f" stop-opacity="0"/></linearGradient>
-              <linearGradient id="eqLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffbe8a"/><stop offset="1" stop-color="#ff7a2f"/></linearGradient>
-            </defs>
-            <path d="M0,96 L26,88 52,92 78,74 104,80 130,60 156,66 182,44 208,52 234,32 260,40 286,22 312,28 340,10 L340,118 L0,118 Z" fill="url(#eqFill)" opacity="0.9"/>
-            <path d="M0,96 L26,88 52,92 78,74 104,80 130,60 156,66 182,44 208,52 234,32 260,40 286,22 312,28 340,10" fill="none" stroke="url(#eqLine)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="900" stroke-dashoffset="900" style="animation: taDraw 2.2s cubic-bezier(.4,.9,.3,1) .3s forwards;"/>
-            <circle r="4.5" fill="#ffbe8a" stroke="#0c0a08" stroke-width="2"><animateMotion dur="2.2s" begin="0.3s" fill="freeze" path="M0,96 L26,88 52,92 78,74 104,80 130,60 156,66 182,44 208,52 234,32 260,40 286,22 312,28 340,10"/></circle>
-          </svg>
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; margin-top: 14px;">
-            <div style="background: #17120c; border: 1px solid #241c13; border-radius: 9px; padding: 11px 12px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 0.05em; color: #8f836e;" data-i18n="cockpit.win">胜率 WIN</div><div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 16px; margin-top: 3px; color:#f2ead9;" data-count="61" data-suffix="%">0%</div></div>
-            <div style="background: #17120c; border: 1px solid #241c13; border-radius: 9px; padding: 11px 12px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 0.05em; color: #8f836e;" data-i18n="cockpit.dd">回撤 MAX DD</div><div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 16px; margin-top: 3px; color: #ef6b52;">-4.1%</div></div>
-            <div style="background: #17120c; border: 1px solid #241c13; border-radius: 9px; padding: 11px 12px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 0.05em; color: #8f836e;" data-i18n="cockpit.risk">风险 RISK</div><div style="display:inline-flex; align-items:center; gap:5px; font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; margin-top: 5px; color: #4fd08a;"><span style="width:6px;height:6px;border-radius:999px;background:#4fd08a;"></span><span data-i18n="cockpit.normal">NORMAL</span></div></div>
-          </div>
-          <div style="margin-top: 11px; background: linear-gradient(120deg,#1d1610,#181209); border: 1px solid #2c2318; border-radius: 11px; padding: 13px 15px;">
-            <div style="font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 0.08em; color: #ffb178;" data-i18n="cockpit.view">AI 当前判断 · CURRENT VIEW</div>
-            <div style="color: #d8cdb6; font-size: 13px; line-height: 1.55; margin-top: 6px;" data-i18n="cockpit.viewText">BTC 结构偏多,资金费率中性;FOMC 窗口临近,已收紧单笔风险至 0.8%,止损强制生效。</div>
-          </div>
-          <div style="font-family: 'IBM Plex Mono',monospace; font-size: 9.5px; color: #4a4236; margin-top: 10px; text-align:center;" data-i18n="cockpit.demoNote">示意界面 · 数据为演示</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- METRIC STRIP with counters -->
-  <section style="position: relative; z-index: 5; border-top: 1px solid #221b12; border-bottom: 1px solid #221b12; background: rgba(18,14,10,0.5);">
-    <div class="taMetrics" style="max-width: 1220px; margin: 0 auto; padding: 0 32px; display: grid; grid-template-columns: repeat(4, 1fr);">
-      <div style="padding: 30px 24px; border-right: 1px solid #221b12;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 34px; letter-spacing: -0.01em; color: #ff8a45;" data-count="4" data-int="1">0</div>
-        <div style="font-size: 13px; color: #c3b8a3; margin-top: 6px;"><span data-i18n="metric.agents">专业 Agent 角色</span><br><span style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6b6152;">SPECIALIZED AGENTS</span></div>
-      </div>
-      <div style="padding: 30px 24px; border-right: 1px solid #221b12;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 34px; letter-spacing: -0.01em; color: #ff8a45;" data-count="5" data-int="1">0</div>
-        <div style="font-size: 13px; color: #c3b8a3; margin-top: 6px;"><span data-i18n="metric.layers">层级硬风控</span><br><span style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6b6152;">RISK CONTROL LAYERS</span></div>
-      </div>
-      <div style="padding: 30px 24px; border-right: 1px solid #221b12;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 34px; letter-spacing: -0.01em; color: #ff8a45;" data-count="100" data-int="1" data-suffix="%">0%</div>
-        <div style="font-size: 13px; color: #c3b8a3; margin-top: 6px;"><span data-i18n="metric.audit">可追踪 · 可审计</span><br><span style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6b6152;">TRACEABLE &amp; AUDITED</span></div>
-      </div>
-      <div style="padding: 30px 24px;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 34px; letter-spacing: -0.01em; color: #ff8a45;">24/7</div>
-        <div style="font-size: 13px; color: #c3b8a3; margin-top: 6px;"><span data-i18n="metric.always">全天候感知执行</span><br><span style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6b6152;">ALWAYS-ON</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- MANDATE VISUAL -->
-  <section class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 92px 32px 0;">
-    <div class="taMandate" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 18px; overflow: hidden; display: grid; grid-template-columns: 0.85fr 1.15fr;">
-      <div style="padding: 42px; border-right: 1px solid #241c13;">
-        <h2 class="taMandateTitle" style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;"><span data-i18n="mandate.tag">交易权限</span></h2>
-        <p class="taMandateSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 32px; letter-spacing: -0.02em; margin: 14px 0 0; line-height: 1.1;" data-i18n-html="mandate.h2">范围由你设定，<br>判断与执行交给 Agent。</p>
-        <p style="font-size: 14.5px; line-height: 1.65; color: #b3a891; margin: 16px 0 0;" data-i18n="mandate.desc">你可以按交易所、币种、策略、单笔风险、杠杆、日亏损与有效期设定范围。Agent 只在其中工作，遇到范围外的机会会保持观望。</p>
-        <div style="margin-top: 24px; display: inline-flex; align-items: center; gap: 9px; background: rgba(79,208,138,0.1); border: 1px solid #244a37; border-radius: 999px; padding: 8px 14px;">
-          <span style="width: 7px; height: 7px; border-radius: 999px; background: #4fd08a; box-shadow:0 0 8px #4fd08a; animation: taBlink 1.6s infinite;"></span>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #4fd08a;"><span data-i18n="mandate.active">权限已生效</span></span>
-        </div>
-      </div>
-      <div style="padding: 42px;">
-        <div style="display: grid; gap: 20px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #8f836e;" data-i18n="mandate.riskPerTrade">单笔风险 · RISK / TRADE</span><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 14px; color:#f2ead9;">0.8% <span style="color: #6b6152;">/ 2.0%</span></span></div>
-            <div style="height: 7px; background: #241c13; border-radius: 999px; margin-top: 8px; overflow: hidden;"><div class="ta-bar" data-w="40%" style="width: 0; height: 100%; background: linear-gradient(90deg,#ffbe8a,#ff7a2f); border-radius: 999px; transition: width 1.1s cubic-bezier(.3,.9,.3,1);"></div></div>
-          </div>
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #8f836e;" data-i18n="mandate.maxLev">杠杆上限 · MAX LEVERAGE</span><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 14px; color:#f2ead9;">3x <span style="color: #6b6152;">/ 10x</span></span></div>
-            <div style="height: 7px; background: #241c13; border-radius: 999px; margin-top: 8px; overflow: hidden;"><div class="ta-bar" data-w="30%" style="width: 0; height: 100%; background: linear-gradient(90deg,#ffbe8a,#ff7a2f); border-radius: 999px; transition: width 1.1s cubic-bezier(.3,.9,.3,1) .1s;"></div></div>
-          </div>
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #8f836e;" data-i18n="mandate.dailyStop">单日亏损上限 · DAILY LOSS LIMIT</span><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 14px; color: #ef6b52;">-1.2% <span style="color: #6b6152;">/ -3.0%</span></span></div>
-            <div style="height: 7px; background: #241c13; border-radius: 999px; margin-top: 8px; overflow: hidden;"><div class="ta-bar" data-w="40%" style="width: 0; height: 100%; background: linear-gradient(90deg,#f2a48a,#ef6b52); border-radius: 999px; transition: width 1.1s cubic-bezier(.3,.9,.3,1) .2s;"></div></div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
-            <div style="background: #17120c; border: 1px solid #241c13; border-radius: 9px; padding: 12px 14px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; color: #8f836e; letter-spacing: 0.06em;" data-i18n="mandate.symbols">币种白名单 · SYMBOLS</div><div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 13px; margin-top: 5px; color:#f2ead9;">BTC · ETH · SOL</div></div>
-            <div style="background: #17120c; border: 1px solid #241c13; border-radius: 9px; padding: 12px 14px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; color: #8f836e; letter-spacing: 0.06em;" data-i18n="mandate.expires">有效期 · EXPIRES</div><div style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 13px; margin-top: 5px; color:#ffb178;" data-countdown="1">14D 06:12:44</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CAPABILITIES -->
-  <section id="capabilities" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 96px 32px 40px;">
-    <div class="taCapHead" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 40px;">
-      <div>
-        <div class="taSectionTitle"><span class="taSectionIndex">01 /</span><h2 class="taSectionName" data-i18n="cap.tag">自主交易能力 · CAPABILITIES</h2></div>
-        <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="cap.h2">四个专业角色协同，让市场理解与交易执行自然衔接</p>
-      </div>
-      <p style="font-size: 15px; line-height: 1.6; color: #b3a891; max-width: 360px; margin: 0;" data-i18n="cap.desc">AI 交易员、风控官、专家知识库与事件分析员协同运转,把感知、决策、执行与复盘连成闭环。</p>
-    </div>
-    <div class="taCapGrid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-      <div class="ta-cap" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 15px; padding: 28px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #6b6152;">01</span>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #ffb178; background: rgba(255,122,47,0.1); padding: 4px 10px; border-radius: 999px;">TRADER</span>
-        </div>
-        <h3 style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 22px; margin: 16px 0 4px;" data-i18n="cap.trader">AI 交易员</h3>
-        <p style="font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; color: #8f836e; margin: 0;">STRUCTURED TRADE PLANS</p>
-        <p style="font-size: 14.5px; line-height: 1.6; color: #b3a891; margin: 14px 0 16px;" data-i18n="cap.traderDesc">生成交易假设与结构化交易计划,绑定 analysis bundle、风控检查与 trace,从入场理由到失效条件全部可解释。</p>
-        <svg viewBox="0 0 260 40" style="width:100%; height:40px;"><polyline points="0,30 20,26 40,28 60,18 80,22 100,12 120,16 140,8 160,14 180,6 200,10 220,4 240,8 260,2" fill="none" stroke="#ff8a45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="600" stroke-dashoffset="600" style="animation: taDraw 1.8s ease forwards;"/></svg>
-      </div>
-      <div class="ta-cap" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 15px; padding: 28px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #6b6152;">02</span>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #4fd08a; background: rgba(79,208,138,0.1); padding: 4px 10px; border-radius: 999px;">RISK</span>
-        </div>
-        <h3 style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 22px; margin: 16px 0 4px;" data-i18n="cap.risk">风控官</h3>
-        <p style="font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; color: #8f836e; margin: 0;">HARD GUARDRAILS</p>
-        <p style="font-size: 14.5px; line-height: 1.6; color: #b3a891; margin: 14px 0 16px;" data-i18n="cap.riskDesc">在授权、风险、事件、执行与 Skill 五个层级校验每笔交易;超范围、无止损、超杠杆或高风险事件一律拦截。</p>
-        <div style="display:flex; gap:6px; align-items:flex-end; height:40px;"><div style="flex:1;height:60%;background:#244a37;border-radius:2px;"></div><div style="flex:1;height:90%;background:#4fd08a;border-radius:2px;"></div><div style="flex:1;height:45%;background:#244a37;border-radius:2px;"></div><div style="flex:1;height:100%;background:#4fd08a;border-radius:2px;"></div><div style="flex:1;height:70%;background:#244a37;border-radius:2px;"></div><div style="flex:1;height:35%;background:#ef6b52;border-radius:2px;"></div><div style="flex:1;height:80%;background:#4fd08a;border-radius:2px;"></div><div style="flex:1;height:55%;background:#244a37;border-radius:2px;"></div></div>
-      </div>
-      <div class="ta-cap" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 15px; padding: 28px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #6b6152;">03</span>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #b58cff; background: rgba(140,110,255,0.1); padding: 4px 10px; border-radius: 999px;">KNOWLEDGE</span>
-        </div>
-        <h3 style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 22px; margin: 16px 0 4px;" data-i18n="cap.knowledge">专家知识库</h3>
-        <p style="font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; color: #8f836e; margin: 0;">LONG-TERM PROFESSIONAL BRAIN</p>
-        <p style="font-size: 14.5px; line-height: 1.6; color: #b3a891; margin: 14px 0 16px;" data-i18n="cap.knowledgeDesc">把书籍、研报、链上数据与你的复盘蒸馏成概念、框架与规则;每个交易计划都会召回相关证据。</p>
-        <svg viewBox="0 0 260 40" style="width:100%; height:40px;"><g stroke="#b58cff" stroke-width="1.4" opacity="0.9"><line x1="30" y1="20" x2="90" y2="8"/><line x1="30" y1="20" x2="90" y2="32"/><line x1="90" y1="8" x2="170" y2="20"/><line x1="90" y1="32" x2="170" y2="20"/><line x1="170" y1="20" x2="230" y2="10"/><line x1="170" y1="20" x2="230" y2="30"/></g><g fill="#b58cff"><circle cx="30" cy="20" r="4"/><circle cx="90" cy="8" r="4"/><circle cx="90" cy="32" r="4"/><circle cx="170" cy="20" r="5"/><circle cx="230" cy="10" r="4"/><circle cx="230" cy="30" r="4"/></g></svg>
-      </div>
-      <div class="ta-cap" style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 15px; padding: 28px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #6b6152;">04</span>
-          <span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6ba9ff; background: rgba(80,140,255,0.1); padding: 4px 10px; border-radius: 999px;">EVENTS</span>
-        </div>
-        <h3 style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 22px; margin: 16px 0 4px;" data-i18n="cap.events">事件分析员</h3>
-        <p style="font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; color: #8f836e; margin: 0;">REAL-TIME EVENT TRACKING</p>
-        <p style="font-size: 14.5px; line-height: 1.6; color: #b3a891; margin: 14px 0 16px;" data-i18n="cap.eventsDesc">跟踪 CPI、FOMC、ETF、交易所维护、链上异常与解锁,评估影响并实时传递给交易与风控。</p>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6ba9ff;background:rgba(80,140,255,0.1);border:1px solid #22344f;padding:4px 9px;border-radius:6px;">FOMC T-6H</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e0a94a;background:rgba(224,169,74,0.1);border:1px solid #4a3d22;padding:4px 9px;border-radius:6px;">CPI T-2D</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8f836e;background:#17120c;border:1px solid #241c13;padding:4px 9px;border-radius:6px;">UNLOCK T-5D</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- LIFECYCLE with animated connector -->
-  <section id="lifecycle" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 72px 32px 40px;">
-    <div style="margin-bottom: 44px;">
-      <div class="taSectionTitle"><span class="taSectionIndex">02 /</span><h2 class="taSectionName" data-i18n="loop.tag">交易闭环 · LIFECYCLE</h2></div>
-      <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="loop.h2">从发现机会到回看结果，每一步都清晰衔接</p>
-    </div>
-    <div style="position: relative; background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 18px; padding: 40px 34px;">
-      <svg viewBox="0 0 1000 4" preserveAspectRatio="none" style="position:absolute; left:34px; right:34px; width:calc(100% - 68px); top:78px; height:4px;"><line x1="0" y1="2" x2="1000" y2="2" stroke="#2c2318" stroke-width="3"/><line x1="0" y1="2" x2="1000" y2="2" stroke="#ff7a2f" stroke-width="3" stroke-dasharray="14 1000" stroke-dashoffset="0" style="animation: taDash 6s linear infinite;"/></svg>
-      <div class="taLoopGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 30px 22px; position: relative;">
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">01</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">SENSE</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.1t">市场与事件感知</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.1d">行情、盘口、资金费率、OI 与事件雷达持续输入。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">02</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">RECALL</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.2t">知识召回</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.2d">专家知识库生成 analysis bundle 作为决策依据。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">03</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">PLAN</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.3t">结构化交易计划</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.3d">AI 交易员产出带止损、仓位与失效条件的计划。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">04</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">PERMISSIONS</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.4t">交易权限校验</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.4d">系统核对交易所、币种、策略与有效期是否在你的权限范围内。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">05</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">RISK</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.5t">风控引擎校验</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.5d">单笔风险、日亏损、杠杆、滑点与事件风险逐项检查。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">06</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">EXECUTE</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.6t">受控执行</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.6d">Executor 经统一连接器下单,幂等键 + 双通道对账。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #ff8a45; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">07</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">MONITOR</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.7t">仓位监控</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.7d">监控成交、止损止盈、资金费率与失效条件，必要时紧急停止新交易。</p></div>
-        <div class="ta-step"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono',monospace; font-weight: 600; font-size: 12px; color: #0c0a08; background: #4fd08a; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;">08</span><span style="font-family: 'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing: 0.06em; color: #8f836e;">REVIEW</span></div><div style="font-family: 'Space Grotesk',sans-serif; font-weight: 600; font-size: 16px; margin: 12px 0 4px;" data-i18n="loop.8t">复盘进化</div><p style="font-size: 13px; line-height: 1.55; color: #b3a891; margin: 0;" data-i18n="loop.8d">复盘盈亏归因与偏差,写回记忆与知识库候选规则。</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- GUARDRAILS -->
-  <section id="guardrails" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 72px auto 0; padding: 0 32px;">
-    <div style="background: linear-gradient(180deg,#12100c,#0d0b09); border: 1px solid #2c2318; border-radius: 20px; padding: 66px 48px; position: relative; overflow: hidden;">
-      <div style="position:absolute; top:-80px; left:-60px; width:340px; height:340px; border-radius:999px; background:radial-gradient(circle,rgba(239,107,82,0.14),transparent 65%); filter:blur(20px);"></div>
-      <div class="taGuardGrid" style="display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; position: relative;">
-        <div>
-          <div class="taSectionTitle"><span class="taSectionIndex">03 /</span><h2 class="taSectionName" data-i18n="guard.tag">权限与风控 · GUARDRAILS</h2></div>
-          <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0; color: #f2ead9; line-height: 1.08;" data-i18n-html="guard.h2">让每一次交易，<br>都在清晰的规则中进行。</p>
-          <p style="font-size: 15.5px; line-height: 1.7; color: #b3a891; margin: 20px 0 0; max-width: 400px;" data-i18n="guard.desc">交易权限、密钥隔离与紧急停止被落实在系统中，让 Agent 可以自主行动，也始终保持在你设定的范围内。</p>
-          <div style="margin-top: 28px; display: inline-flex; align-items: center; gap: 10px; background: rgba(239,107,82,0.1); border: 1px solid #4a2820; border-radius: 999px; padding: 9px 16px;">
-            <span style="width: 8px; height: 8px; border-radius: 999px; background: #ef6b52; box-shadow:0 0 8px #ef6b52;"></span>
-            <span style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.04em; color: #f2ead9;"><span data-i18n="guard.kill">紧急停止</span> · EMERGENCY CONTROL READY</span>
-          </div>
-        </div>
-        <div class="taGuardCards" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #ef6b52; letter-spacing: 0.06em;">DENY</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.denyT">禁止提现权限</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.denyD">Trade 权限仅授权后启用,Withdraw 永不开放。</p></div>
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #ef6b52; letter-spacing: 0.06em;">ISOLATE</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.isoT">API Secret 隔离</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.isoD">不进入模型上下文、前端与普通日志。</p></div>
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #e0a94a; letter-spacing: 0.06em;">BLOCK</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.blockT">无止损即拒绝</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.blockD">无止损、超杠杆、超单笔风险的计划直接驳回。</p></div>
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #e0a94a; letter-spacing: 0.06em;">FREEZE</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.freezeT">高影响事件禁新仓</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.freezeD">对账异常或高风险事件时仅允许降风险动作。</p></div>
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #6ba9ff; letter-spacing: 0.06em;">SANDBOX</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.sandT">第三方 Skill 不可直连</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.sandD">扫描、沙箱、权限声明后才能启用,不得直接下单。</p></div>
-          <div style="background: #17120c; border: 1px solid #2c2318; border-radius: 12px; padding: 20px;"><div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #4fd08a; letter-spacing: 0.06em;">AUDIT</div><div style="color: #f2ead9; font-size: 15px; font-weight: 600; margin: 8px 0 4px;" data-i18n="guard.auditT">全程 append-only 审计</div><p style="font-size: 12.5px; line-height: 1.5; color: #a89a83; margin: 0;" data-i18n="guard.auditD">交易、授权、风控与密钥变更不可被删除。</p></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- KNOWLEDGE with flowing pipeline -->
-  <section id="knowledge" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 0 auto; padding: 96px 32px 40px;">
-    <div style="margin-bottom: 44px; max-width: 640px;">
-      <div class="taSectionTitle"><span class="taSectionIndex">04 /</span><h2 class="taSectionName" data-i18n="know.tag">交易知识库 · KNOWLEDGE</h2></div>
-      <p class="taSectionSupport" style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.02em; margin: 14px 0 0;" data-i18n="know.h2">研究、策略与真实复盘，持续沉淀为下一次判断的依据</p>
-      <p style="font-size: 15.5px; line-height: 1.65; color: #b3a891; margin: 18px 0 0;" data-i18n="know.desc">书籍、研报、网页、GitHub 与真实复盘会被整理成概念、框架、规则与反方观点，在需要判断时回到上下文中。</p>
-    </div>
-    <div class="taKnowGrid" style="display: grid; grid-template-columns: 1fr 60px 1fr 60px 1fr; gap: 12px; align-items: stretch;">
-      <div style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 14px; padding: 24px;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.08em; color: #8f836e;">SOURCES · <span data-i18n="know.sources">来源</span></div>
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
-          <span style="font-size: 14px; color: #d8cdb6; background: #17120c; border: 1px solid #241c13; border-radius: 8px; padding: 9px 12px;" data-i18n="know.s1">金融书籍 / 研报</span>
-          <span style="font-size: 14px; color: #d8cdb6; background: #17120c; border: 1px solid #241c13; border-radius: 8px; padding: 9px 12px;" data-i18n="know.s2">网页 / RSS 订阅</span>
-          <span style="font-size: 14px; color: #d8cdb6; background: #17120c; border: 1px solid #241c13; border-radius: 8px; padding: 9px 12px;" data-i18n="know.s3">链上数据 / GitHub</span>
-          <span style="font-size: 14px; color: #d8cdb6; background: #17120c; border: 1px solid #241c13; border-radius: 8px; padding: 9px 12px;" data-i18n="know.s4">个人笔记 / 复盘</span>
-        </div>
-      </div>
-      <svg class="taKnowArrow" viewBox="0 0 60 40" preserveAspectRatio="none" style="width:60px; height:100%;"><line x1="4" y1="20" x2="56" y2="20" stroke="#2c2318" stroke-width="2"/><line x1="4" y1="20" x2="56" y2="20" stroke="#ff7a2f" stroke-width="2" stroke-dasharray="6 40" style="animation: taDash 2.5s linear infinite;"/><path d="M50,15 L58,20 50,25" fill="none" stroke="#ff7a2f" stroke-width="2"/></svg>
-      <div style="background: linear-gradient(180deg,#1c150d,#140f09); border: 1px solid #40301f; border-radius: 14px; padding: 24px; color: #f2ead9; box-shadow: 0 0 30px -12px rgba(255,122,47,0.5);">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.08em; color: #ffb178;">DISTILL · <span data-i18n="know.distill">蒸馏</span></div>
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
-          <span style="font-size: 14px; background: #17120c; border: 1px solid #40301f; border-radius: 8px; padding: 9px 12px;" data-i18n="know.d1">概念卡 · Concept</span>
-          <span style="font-size: 14px; background: #17120c; border: 1px solid #40301f; border-radius: 8px; padding: 9px 12px;" data-i18n="know.d2">理论框架卡 · Framework</span>
-          <span style="font-size: 14px; background: #17120c; border: 1px solid #40301f; border-radius: 8px; padding: 9px 12px;" data-i18n="know.d3">交易规则草案 · Rule</span>
-          <span style="font-size: 14px; background: #17120c; border: 1px solid #40301f; border-radius: 8px; padding: 9px 12px;" data-i18n="know.d4">反方观点 · Counter</span>
-        </div>
-      </div>
-      <svg class="taKnowArrow" viewBox="0 0 60 40" preserveAspectRatio="none" style="width:60px; height:100%;"><line x1="4" y1="20" x2="56" y2="20" stroke="#2c2318" stroke-width="2"/><line x1="4" y1="20" x2="56" y2="20" stroke="#ff7a2f" stroke-width="2" stroke-dasharray="6 40" style="animation: taDash 2.5s linear infinite;"/><path d="M50,15 L58,20 50,25" fill="none" stroke="#ff7a2f" stroke-width="2"/></svg>
-      <div style="background: linear-gradient(180deg,#15110c,#110d09); border: 1px solid #2c2318; border-radius: 14px; padding: 24px;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: 0.08em; color: #ffb178;">RUNTIME · <span data-i18n="know.runtime">运行时召回</span></div>
-        <p style="font-size: 14.5px; line-height: 1.6; color: #b3a891; margin: 14px 0 16px;" data-i18n="know.runtimeDesc">每个自主交易计划都会调用知识库并生成 evidence bundle——知识不可用时自动降级为保守模式或禁止交易。</p>
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #4fd08a; background: #17120c; border: 1px solid #244a37; border-radius: 8px; padding: 10px 12px;">analysis_bundle_id ✓</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CONTACT / CTA -->
-  <section id="contact" class="ta-reveal" style="position: relative; z-index: 5; max-width: 1220px; margin: 88px auto 0; padding: 0 32px;">
-    <div style="position: relative; background: linear-gradient(135deg,#1d150d,#120e09); border: 1px solid #40301f; border-radius: 22px; padding: 68px 56px; text-align: center; overflow: hidden;">
-      <div style="position:absolute; inset:0; background:radial-gradient(500px 300px at 50% -20%, rgba(255,122,47,0.22), transparent 60%); pointer-events:none;"></div>
-      <div style="position: relative;">
-        <div style="font-family: 'IBM Plex Mono',monospace; font-size: 12px; letter-spacing: 0.14em; color: #ffb178;">GET STARTED</div>
-        <h2 style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 46px; letter-spacing: -0.025em; margin: 16px auto 0; max-width: 660px; text-wrap: balance;" data-i18n="ctaBand.h2">把交易体系交给一个有边界的 Agent</h2>
-        <p style="font-size: 16px; line-height: 1.6; color: #b3a891; margin: 18px auto 0; max-width: 500px;" data-i18n="ctaBand.desc">登录驾驶舱、申请独立实例,或直接联系我们了解专属部署。</p>
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 32px;">
-          <button class="taBtn" data-action="login" style="font-weight: 600; font-size: 15px; color: #0c0a08; background: linear-gradient(120deg,#ffa259,#ff7a2f); padding: 14px 28px; border-radius: 999px; box-shadow: 0 10px 26px -8px rgba(255,122,47,.8);" data-i18n="cta.login">登录驾驶舱</button>
-          <button class="taBtn" data-action="subscribe" style="font-weight: 600; font-size: 15px; color: #f2ead9; background: rgba(255,255,255,0.04); border: 1px solid #40301f; padding: 14px 28px; border-radius: 999px;" data-i18n="cta.subscribe">申请开通</button>
-          <button class="taBtn" data-action="contact" style="font-weight: 600; font-size: 15px; color: #f2ead9; background: rgba(255,255,255,0.04); border: 1px solid #40301f; padding: 14px 28px; border-radius: 999px;" data-i18n="nav.contact">联系我们</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER -->
-  <footer style="position: relative; z-index: 5; max-width: 1220px; margin: 56px auto 0; padding: 32px; border-top: 1px solid #221b12;">
-    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;">
-      <div style="display: flex; align-items: center; gap: 11px;">
-        <img src="/kordyn-logo-white.svg" alt="KORDYN" style="width: 30px; height: 30px; object-fit: contain;">
-        <span style="font-family: 'Space Grotesk',sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.08em;">KORDYN</span>
-      </div>
-      <div style="display: flex; gap: 24px; font-family: 'IBM Plex Mono',monospace; font-size: 12px; color: #8f836e;">
-        <a href="#capabilities" style="color: #8f836e;" data-i18n="nav.capabilities">能力</a>
-        <a href="#lifecycle" style="color: #8f836e;" data-i18n="nav.lifecycle">闭环</a>
-        <a href="#guardrails" style="color: #8f836e;" data-i18n="nav.guardrails">风控</a>
-        <a href="#knowledge" style="color: #8f836e;" data-i18n="nav.knowledge">知识库</a>
-      </div>
-    </div>
-    <p style="font-size: 12px; line-height: 1.6; color: #6b6152; margin: 24px 0 0; max-width: 760px;" data-i18n="footer.disclaimer">免责声明:本系统不构成投资建议、收益承诺或法律意见。数字货币与自动化交易风险极高,生产上线前须完成安全、合规、交易所权限、风控与熔断演练评审。</p>
-    <p style="font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: #4a4236; margin: 14px 0 0;">© 2026 KORDYN · OKX · READ-ONLY DEFAULT</p>
-  </footer>
-</div>
-<script src="/landing.js"></script>
-</body></html>
+  <script src="/landing.js" defer></script>
+</body>
+</html>
