@@ -25,7 +25,13 @@ if (selected.endsWith(".enc")) {
   encryptedVerified = true;
 }
 
-const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "trading-agent-restore-drill-"));
+// Production containers intentionally keep /tmp small. A real database backup can
+// exceed that tmpfs, so place the short-lived restored copy on the protected
+// backup volume by default. The file remains mode 0600 and is removed in finally.
+const restoreTempRoot = path.resolve(process.env.RESTORE_DRILL_TMP_DIR || backupDir || os.tmpdir());
+await fs.mkdir(restoreTempRoot, { recursive: true, mode: 0o700 });
+await fs.chmod(restoreTempRoot, 0o700);
+const tempDir = await fs.mkdtemp(path.join(restoreTempRoot, ".trading-agent-restore-drill-"));
 const restoredPath = path.join(tempDir, "restored.sqlite");
 try {
   await fs.writeFile(restoredPath, sqliteBytes, { mode: 0o600 });
