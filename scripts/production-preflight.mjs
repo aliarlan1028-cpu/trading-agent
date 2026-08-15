@@ -6,6 +6,7 @@ import { productionSecurityProfile, requiresExternalSecurityInfrastructure } fro
 import { externalAlertConfigured } from "../server/alertHealth.mjs";
 import { loadDbReadOnlySnapshot, verifyAuditChainReadOnly } from "../server/store.mjs";
 import { currentRegistrationMode } from "../server/publicRegistration.mjs";
+import { evaluateAutonomousProfilePreflight } from "../server/productionPreflightPolicy.mjs";
 
 const db = loadDbReadOnlySnapshot();
 // Match the real server startup path: UI-managed runtime settings and encrypted
@@ -70,10 +71,13 @@ const enabledGray = (db.grayReleasePolicies || []).find((item) => item.enabled);
 requireTrue(Boolean(enabledGray), "An enabled bounded-notional policy is required");
 requireTrue(Number.isFinite(Number(enabledGray?.maxNotionalUsdt)) && Number(enabledGray?.maxNotionalUsdt) > 0, "Enabled live policy must have a finite positive notional cap");
 const autonomousProfile = enabledGray?.requiresManualApproval === false;
-if (autonomousProfile) {
-  requireTrue(db.system?.professionalRiskMode === true, "Autonomous live trading requires professionalRiskMode");
-  requireTrue(db.system?.autonomyEnabled === true, "Autonomous live trading requires autonomyEnabled");
-}
+const autonomousProfilePreflight = evaluateAutonomousProfilePreflight({
+  autonomousProfile,
+  professionalRiskMode: db.system?.professionalRiskMode,
+  autonomyEnabled: db.system?.autonomyEnabled,
+});
+failures.push(...autonomousProfilePreflight.failures);
+warnings.push(...autonomousProfilePreflight.warnings);
 const okxMetadata = (db.apiKeyMetadata || []).find((item) => item.exchange === "OKX");
 requireTrue(Boolean(okxMetadata?.hasApiKey && okxMetadata?.hasSecret && okxMetadata?.withdrawPermission === false && okxMetadata?.permissionVerifiedAt), "OKX API key must be verified without withdrawal permission");
 const activeMandates = (db.mandates || []).filter((item) => ["active", "running"].includes(item.status));
