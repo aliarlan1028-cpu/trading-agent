@@ -29,6 +29,7 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  Target,
   UserCog,
   WalletCards,
   Wrench,
@@ -38,7 +39,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
+import { apiUrl, authHeaders, automationPresentation, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./conceptGraph.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -76,6 +77,36 @@ export function KillConfirmDialog({ enable, action, onClose }) {
       </div>
     </div>
   );
+}
+
+function MobileSafetySheet({ data, action, onClose, onKill }) {
+  const runtime = automationPresentation(data);
+  const autonomyPaused = data.system?.autonomyEnabled === false;
+  const reduceOnly = data.system?.reduceOnlyMode === true;
+  const stopped = data.system?.killSwitch === true;
+  const toggleReduceOnly = async () => {
+    const confirmed = await uiConfirm(reduceOnly
+      ? t("退出只减仓模式？系统会重新检查安全条件。", "Exit reduce-only mode? Safety conditions will be rechecked.")
+      : t("进入只减仓模式？将禁止新开仓，只允许撤单、减仓和平仓。", "Enter reduce-only mode? New entries will be blocked; only cancel, reduce, and close actions remain available."));
+    if (confirmed) { await action("/api/risk/reduce-only", { enabled: !reduceOnly }); onClose(); }
+  };
+  const flattenAll = async () => {
+    if (await uiConfirm(t("确认按市价平掉全部持仓并进入只减仓模式？该操作不可自动撤销。", "Close every position at market and enter reduce-only mode? This action cannot be automatically undone."))) {
+      await action("/api/risk/emergency-flatten", {}); onClose();
+    }
+  };
+  return <div className="mSafetyOverlay" onClick={onClose}><section className="mSafetySheet" onClick={event=>event.stopPropagation()}>
+    <i className="mSafetyHandle"/>
+    <header><div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b><p>{runtime.detail}</p></div><StatusBadge tone={runtime.tone==="ok"?"ok":runtime.tone==="danger"?"danger":runtime.tone==="warning"?"warning":"neutral"}>{runtime.entryPolicy}</StatusBadge></header>
+    <div className="mSafetyTarget"><span>{t("长期目标", "Saved target")}</span><b>{runtime.targetLabel}</b></div>
+    <div className="mSafetyActions">
+      <button className={autonomyPaused?"active":""} onClick={async()=>{await action("/api/system/autonomy",{enabled:autonomyPaused});onClose();}}><Activity/><span><b>{autonomyPaused?t("恢复自主", "Resume autonomy"):t("暂停自主", "Pause autonomy")}</b><small>{autonomyPaused?t("恢复 AI 自主规划", "Resume autonomous planning"):t("停止生成和推进新计划", "Stop creating and advancing plans")}</small></span></button>
+      <button className={reduceOnly?"active":""} onClick={toggleReduceOnly}><RefreshCw/><span><b>{reduceOnly?t("退出只减仓", "Exit reduce-only"):t("只减仓", "Reduce-only")}</b><small>{t("仅允许降低现有风险", "Allow only risk-reducing actions")}</small></span></button>
+      <button className="danger" onClick={flattenAll}><Target/><span><b>{t("全部平仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button>
+      <button className={`danger ${stopped?"active":""}`} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>
+    </div>
+    <button className="mSafetyClose" onClick={onClose}>{t("关闭", "Close")}</button>
+  </section></div>;
 }
 
 const settingsSections = [
@@ -562,11 +593,10 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
   const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
   const killed = sys.killSwitch;
   const active = ["running", "active"].includes(mandate.status);
+  const runtime = automationPresentation(data);
   // 授权≠低风险：有真实风险等级就用它，否则显示"已授权·风险待评估"，不写死"低风险"。
   const rLabel = /高|中|低/.test(portfolio.riskLabel || "") ? portfolio.riskLabel : null;
-  const wall = killed ? { label: t("紧急停止中 · 已阻止新开仓", "Emergency stop active · new entries blocked"), tone: "critical" }
-    : active ? { label: rLabel ? `${rLabel} · ${t("运行中", "Running")}` : t("已授权 · 风险待评估", "Authorized · risk pending"), tone: rLabel === "高风险" ? "critical" : rLabel === "中风险" ? "warning" : rLabel ? "ok" : "warning" }
-    : { label: t("未授权 · 观察模式", "Not authorized · observe mode"), tone: "warning" };
+  const wall = { label: runtime.label, tone: runtime.tone === "danger" ? "critical" : runtime.tone === "ok" ? "ok" : "warning" };
   const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
   // scope 真实取值是英文(trade/account/event/knowledge),此前中文 includes 恒 0 → 永远"无规则"(审计 M3)
   const scopeOf = (r) => { const t = String(r.scope || r.category || r.name || "").toLowerCase(); if (/account|portfolio|loss|margin|equity|账户/.test(t)) return "账户"; if (/event|事件/.test(t)) return "事件"; if (/system|knowledge|kill|api|系统/.test(t)) return "系统"; return "交易"; };
@@ -575,7 +605,7 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
     <div className="mScreen">
       {showOverview && <div className={`mRiskWall ${wall.tone}`}>
         <ShieldCheck size={22} />
-        <div><b>{wall.label}</b><small>{active ? t("交易权限与硬风控生效中", "Trading permissions and hard risk controls are active") : t("先配置交易权限，再开启自主交易", "Configure trading permissions before enabling autonomous trading")}</small></div>
+        <div><b>{wall.label}</b><small>{runtime.entryPolicy} · {runtime.targetLabel}</small></div>
       </div>}
       {showOverview && <div className="mCard mBudgetCard">
         <div className="mBudgetTop"><span>{t("剩余亏损预算", "Remaining loss budget")}</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : t("未授权", "Not authorized")}</b></div>
@@ -598,15 +628,10 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
           {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>{t("全部标记已处理", "Mark all resolved")} ›</button>}
         </div>;
       })()}
-      {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("按交易权限、执行方式和盈利保护分别设置；修改后立即进入硬风控。", "Configure permissions, execution, and profit protection separately; saved changes enter hard risk control immediately.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("执行方式与实盘验证", "Execution & live validation")}</b><small>{localizeText(data.automationState?.label) || (data.config?.liveTrading?.effective ? t("实盘已开启", "Live on") : t("只分析，不下单", "Analyze only"))} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? t("实盘", "Live") : t("观察", "Observe")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
+      {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("这里保存长期交易权限、执行目标和盈利保护；只减仓、暂停与紧急停止统一从顶部“当前状态”进入。", "This page saves long-term permissions, execution targets, and profit protection. Open the header runtime status for reduce-only, pause, and emergency stop.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("执行方式与实盘验证", "Execution & live validation")}</b><small>{runtime.targetLabel} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={runtime.targetMode==="observe" ? "neutral" : "danger"}>{runtime.targetMode==="observe" ? t("观察", "Observe") : t("实盘目标", "Live target")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
       {showOverview && <div className="mCard">
         <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
         <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); const label = { "账户": t("账户", "Account"), "交易": t("交易", "Trading"), "事件": t("事件", "Events"), "系统": t("系统", "System") }[name] || name; return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{label}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
-      </div>}
-      {showOverview && <div className="mRiskBtns">
-        <button className="mRbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>{t("暂停自主", "Pause autonomy")}</button>
-        <button className="mRbReduce" onClick={async () => { const on = Boolean(data.system?.reduceOnlyMode); if (await uiConfirm(on ? t("关闭只减仓模式?", "Turn off reduce-only mode?") : t("开启只减仓模式?将禁止新开仓,仅允许减仓/平仓/撤单。", "Turn on reduce-only mode? New positions will be blocked; only reduce/close/cancel allowed."))) action("/api/risk/reduce-only", { enabled: !on }); }}>{data.system?.reduceOnlyMode ? t("退出只减仓", "Exit reduce-only") : t("只减仓", "Reduce-only")}</button> {/* 此前只是打开规则面板,不减仓(审计 M2) */}
-        <button className="mRbKill" onClick={() => action("/api/risk/kill-switch", { enabled: !killed, reason: "" })}>{killed ? t("恢复新交易", "Resume trading") : t("紧急停止", "Emergency stop")}</button>
       </div>}
     </div>
   );
@@ -1248,13 +1273,13 @@ function MobileAudit({ data, ui }) {
 function MobileChatStatus({ data }) {
   const sys = data.system || {};
   const pf = data.portfolio || {};
-  const autoOn = sys.autonomyEnabled === true && !sys.killSwitch;
+  const runtime = automationPresentation(data);
   const smMob = data.marketRegime?.smartMoney || {};
   // 与桌面端共用 smartMoneyBias（1.05/0.95 三档），不再用 >=1 二分导致两端结论矛盾。
   const bias = smMob.ok ? smartMoneyBias(smMob.topTraderLongShortRatio).label : t("待同步", "Pending sync");
   const mandate = data.mandates?.find((m) => ["active", "running"].includes(m.status));
   const cells = [
-    [t("状态", "Status"), autoOn ? t("运行中", "Running") : t("已暂停", "Paused"), autoOn ? "pos" : ""],
+    [t("状态", "Status"), runtime.label, runtime.tone === "ok" ? "pos" : runtime.tone === "danger" ? "neg" : ""],
     [t("判断", "Read"), bias, bias === "偏多" ? "pos" : bias === "偏空" ? "neg" : ""],
     [t("今日", "Today"), pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
     [t("目标", "Target"), mandate?.maxDailyLossPct ? `${t("亏≤", "Loss ≤")}${mandate.maxDailyLossPct}${t("%/日", "%/day")}` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
@@ -1645,6 +1670,7 @@ export function MobileApp({ api, lang, switchLang }) {
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
+  const [safetyOpen, setSafetyOpen] = useState(false);
   // 打开审计/动态即把未读通知标为已读
   useEffect(() => {
     if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
@@ -1671,7 +1697,7 @@ export function MobileApp({ api, lang, switchLang }) {
   }
 
   const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
-  const autoOn = data.system?.autonomyEnabled === true && !data.system?.killSwitch;
+  const runtime = automationPresentation(data);
   const settingsSection = subPage.startsWith("settings:") ? subPage.slice(9) : "";
 
   let content = null;
@@ -1710,9 +1736,7 @@ export function MobileApp({ api, lang, switchLang }) {
 
   const headerRight = subPage
     ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
-    : route === "chat"
-      ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? t("运行中", "Running") : t("已暂停", "Paused")}</span>
-      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("恢复交易", "Resume") : t("紧急停止", "Emergency stop")}</button>;
+    : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
 
   return (
     <div className="mShell2">
@@ -1722,6 +1746,7 @@ export function MobileApp({ api, lang, switchLang }) {
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
       <MobileTabbar route={route} onNavigate={navigate} onMore={() => setDrawer(true)} />
       <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
+      {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}

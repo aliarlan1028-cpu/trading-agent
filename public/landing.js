@@ -263,13 +263,18 @@
     if (reducedMotion) return;
     var steps = Array.prototype.slice.call(document.querySelectorAll(".flight-step"));
     var consoleSteps = Array.prototype.slice.call(document.querySelectorAll(".console-route span"));
-    var progress = document.querySelector(".flight-line span");
+    var systemModules = Array.prototype.slice.call(document.querySelectorAll(".os-module"));
+    var boundaryBeacons = Array.prototype.slice.call(document.querySelectorAll(".boundary-beacon"));
     var index = 0;
     window.setInterval(function () {
       index = (index + 1) % steps.length;
-      steps.forEach(function (step, stepIndex) { step.classList.toggle("is-active", stepIndex === index); });
-      if (progress) progress.style.width = ((index + 1) / steps.length * 100) + "%";
+      steps.forEach(function (step, stepIndex) {
+        step.classList.toggle("is-active", stepIndex === index);
+        step.classList.toggle("is-complete", stepIndex < index);
+      });
       consoleSteps.forEach(function (step, stepIndex) { step.classList.toggle("is-active", stepIndex === index % consoleSteps.length); });
+      systemModules.forEach(function (module, moduleIndex) { module.classList.toggle("is-active", moduleIndex === index % systemModules.length); });
+      boundaryBeacons.forEach(function (beacon, beaconIndex) { beacon.classList.toggle("is-active", beaconIndex === index % boundaryBeacons.length); });
     }, 1800);
   }
 

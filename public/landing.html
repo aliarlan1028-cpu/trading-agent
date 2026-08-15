@@ -67,7 +67,7 @@
         <div class="hero-glow" aria-hidden="true"></div>
         <div class="hero-grid">
           <div class="hero-copy ta-reveal">
-            <div class="hero-kicker"><span>AI AUTONOMOUS TRADING</span><i></i><span data-i18n="hero.kicker">有边界的自主智能</span></div>
+            <div class="hero-kicker"><span>KORDYN · AI AUTONOMOUS TRADING</span><i></i><span data-i18n="hero.kicker">有边界的自主智能</span></div>
             <h1 class="taHeroProduct">TO THE <span>MOON.</span></h1>
             <h2 class="taHeroStatement" data-i18n-html="hero.statement">不是靠冲动起飞。<br>让 AI 把每一步变成有证据的航线。</h2>
             <p class="hero-description" data-i18n="hero.description">KORDYN 把交易所实时事实、专业知识、结构化计划、硬风控、受控执行与复盘连接起来，在你设定的资金与权限边界内持续工作。</p>
@@ -147,14 +147,30 @@
             <p class="taSectionSupport" data-i18n="system.lead">这不是“让模型直接下单”。每个阶段都有输入、证据、状态与明确后继；远端结果未知时进入恢复，而不是假装成功。</p>
           </div>
           <div class="flight-plan ta-reveal" id="flightPlan">
-            <div class="flight-line" aria-hidden="true"><span></span></div>
-            <article class="flight-step is-active" data-step="0"><b>01</b><i>SENSE</i><h3 data-i18n="system.sense">感知真实市场</h3><p data-i18n="system.senseText">OKX 行情、盘口、资金费率、OI、账户、持仓与订单，经单位和源时间校验。</p></article>
-            <article class="flight-step" data-step="1"><b>02</b><i>RECALL</i><h3 data-i18n="system.recall">召回专业知识</h3><p data-i18n="system.recallText">书籍、研究、规则、复盘与反方观点按当前问题组成证据包。</p></article>
-            <article class="flight-step" data-step="2"><b>03</b><i>PLAN</i><h3 data-i18n="system.plan">生成结构化计划</h3><p data-i18n="system.planText">方向、入场、止损、目标、仓位、失效条件与依据完整绑定。</p></article>
-            <article class="flight-step" data-step="3"><b>04</b><i>GUARD</i><h3 data-i18n="system.guard">通过硬风控闸</h3><p data-i18n="system.guardText">权限、日亏损、杠杆、流动性、事件窗和同向风险在模型之外校验。</p></article>
-            <article class="flight-step" data-step="4"><b>05</b><i>EXECUTE</i><h3 data-i18n="system.execute">受控执行与对账</h3><p data-i18n="system.executeText">稳定订单身份、幂等提交、状态轮询、保护确认和异常恢复共用一套状态机。</p></article>
-            <article class="flight-step" data-step="5"><b>06</b><i>MONITOR</i><h3 data-i18n="system.monitor">持续管理仓位</h3><p data-i18n="system.monitorText">跟踪止损止盈、强平距离、移动保护与事件变化，只在证据充分时行动。</p></article>
-            <article class="flight-step" data-step="6"><b>07</b><i>REVIEW</i><h3 data-i18n="system.review">财务对账与复盘</h3><p data-i18n="system.reviewText">真实成交、手续费、返佣与资金费完成后，才进入净绩效与知识反馈。</p></article>
+            <svg class="flight-map" viewBox="0 0 1200 690" role="img" aria-label="从市场感知出发，经过知识、计划、风控、执行、监控和复盘抵达月球的任务航线">
+              <defs>
+                <linearGradient id="flightGradient" x1="0" x2="1"><stop stop-color="#ff9b5f"/><stop offset=".5" stop-color="#a78bfa"/><stop offset="1" stop-color="#e9e2ff"/></linearGradient>
+                <filter id="flightGlow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <path class="flight-orbit flight-orbit--ghost" d="M82 615 C195 500 275 465 382 355 S595 215 736 247 S958 245 1120 88"/>
+              <path class="flight-orbit flight-orbit--signal" d="M82 615 C195 500 275 465 382 355 S595 215 736 247 S958 245 1120 88"/>
+              <g class="flight-vehicle" filter="url(#flightGlow)">
+                <path d="M0 -12 C9 -8 14 -2 16 0 C14 2 9 8 0 12 L4 3 L-10 3 L-16 0 L-10 -3 L4 -3 Z" fill="#fff4e8"/>
+                <path d="M-15 0 L-27 5 L-22 0 L-27 -5 Z" fill="#ff7a32"/>
+                <circle cx="5" cy="0" r="3" fill="#a78bfa"/>
+                <animateMotion dur="16s" repeatCount="indefinite" rotate="auto" path="M82 615 C195 500 275 465 382 355 S595 215 736 247 S958 245 1120 88"/>
+              </g>
+            </svg>
+            <div class="flight-earth" aria-hidden="true"><i></i><span>LAUNCH</span></div>
+            <div class="flight-moon" aria-hidden="true"><i></i><i></i><span>MOON / REVIEW</span></div>
+            <div class="flight-legend" aria-hidden="true"><span><i></i>MISSION PATH</span><b>EARTH → MOON</b></div>
+            <article class="flight-step flight-step--1 is-active" data-step="0"><b>01</b><i>SENSE</i><h3 data-i18n="system.sense">感知真实市场</h3><p data-i18n="system.senseText">OKX 行情、盘口、资金费率、OI、账户、持仓与订单，经单位和源时间校验。</p></article>
+            <article class="flight-step flight-step--2" data-step="1"><b>02</b><i>RECALL</i><h3 data-i18n="system.recall">召回专业知识</h3><p data-i18n="system.recallText">书籍、研究、规则、复盘与反方观点按当前问题组成证据包。</p></article>
+            <article class="flight-step flight-step--3" data-step="2"><b>03</b><i>PLAN</i><h3 data-i18n="system.plan">生成结构化计划</h3><p data-i18n="system.planText">方向、入场、止损、目标、仓位、失效条件与依据完整绑定。</p></article>
+            <article class="flight-step flight-step--4" data-step="3"><b>04</b><i>GUARD</i><h3 data-i18n="system.guard">通过硬风控闸</h3><p data-i18n="system.guardText">权限、日亏损、杠杆、流动性、事件窗和同向风险在模型之外校验。</p></article>
+            <article class="flight-step flight-step--5" data-step="4"><b>05</b><i>EXECUTE</i><h3 data-i18n="system.execute">受控执行与对账</h3><p data-i18n="system.executeText">稳定订单身份、幂等提交、状态轮询、保护确认和异常恢复共用一套状态机。</p></article>
+            <article class="flight-step flight-step--6" data-step="5"><b>06</b><i>MONITOR</i><h3 data-i18n="system.monitor">持续管理仓位</h3><p data-i18n="system.monitorText">跟踪止损止盈、强平距离、移动保护与事件变化，只在证据充分时行动。</p></article>
+            <article class="flight-step flight-step--7" data-step="6"><b>07</b><i>REVIEW</i><h3 data-i18n="system.review">财务对账与复盘</h3><p data-i18n="system.reviewText">真实成交、手续费、返佣与资金费完成后，才进入净绩效与知识反馈。</p></article>
           </div>
         </div>
       </section>
@@ -165,39 +181,32 @@
             <div><span class="section-index">03 / SYSTEM</span><h2 class="taSectionName" data-i18n="cap.title">不是一个聊天框，是一套交易操作系统。</h2></div>
             <p class="taSectionSupport" data-i18n="cap.lead">模型只是其中的判断层。真正让自主交易可用的，是事实、知识、风险、执行和审计共同工作。</p>
           </div>
-          <div class="capability-bento">
-            <article class="bento-card bento-card--wide bento-card--evidence ta-reveal">
-              <div class="card-top"><span>REAL-TIME EVIDENCE</span><i>01</i></div>
-              <h3 data-i18n="cap.evidenceTitle">交易所事实，先校验再进入 AI。</h3>
-              <p data-i18n="cap.evidenceText">API Key 指纹、账户、实盘/模拟环境、分页完整性、张数与币量、交易所源时间全部绑定。缺失就是不可确认，不会被编成 0。</p>
-              <div class="evidence-visual" aria-hidden="true">
-                <div class="evidence-orb"><span>FACT</span><b>OKX</b></div>
-                <ul><li><i></i>TICKER · SOURCE TS</li><li><i></i>BOOK · FUNDING · OI</li><li><i></i>POSITIONS · ORDERS</li><li><i></i>CONTRACT SPEC</li></ul>
-              </div>
+          <div class="operating-system ta-reveal" id="operatingSystem">
+            <svg class="os-network" viewBox="0 0 1200 780" aria-hidden="true">
+              <defs><linearGradient id="osGradient"><stop stop-color="#ff7a32"/><stop offset=".5" stop-color="#a78bfa"/><stop offset="1" stop-color="#7de4b1"/></linearGradient></defs>
+              <path d="M600 390 L190 165 M600 390 L1010 165 M600 390 L120 590 M600 390 L1080 590 M600 390 L600 720"/>
+              <circle cx="600" cy="390" r="245"/><circle cx="600" cy="390" r="175"/><circle cx="600" cy="390" r="305"/>
+            </svg>
+            <div class="os-core" aria-hidden="true">
+              <div class="os-core__halo"></div><div class="os-core__ring"></div>
+              <span>KORDYN</span><strong>AI CORE</strong><small>BOUNDED AUTONOMY</small>
+              <i class="os-pulse os-pulse--one"></i><i class="os-pulse os-pulse--two"></i>
+            </div>
+            <div class="os-status" aria-hidden="true"><i></i>ALL SUBSYSTEMS LINKED <b>05 / 05</b></div>
+            <article class="os-module os-module--evidence">
+              <div><b>01</b><span>REAL-TIME EVIDENCE</span></div><h3 data-i18n="cap.evidenceTitle">交易所事实，先校验再进入 AI。</h3><p data-i18n="cap.evidenceText">API Key 指纹、账户、实盘/模拟环境、分页完整性、张数与币量、交易所源时间全部绑定。缺失就是不可确认，不会被编成 0。</p><small><i></i>OKX FACT BUS</small>
             </article>
-            <article class="bento-card bento-card--knowledge ta-reveal">
-              <div class="card-top"><span>KNOWLEDGE GRAPH</span><i>02</i></div>
-              <h3 data-i18n="cap.knowledgeTitle">让知识在需要时出现。</h3>
-              <p data-i18n="cap.knowledgeText">书籍和复盘沉淀为概念、方法、规则候选与关系图谱；未审批自由文本不会晋升为系统指令。</p>
-              <div class="mini-graph" aria-hidden="true"><span class="node node--a">RISK</span><span class="node node--b">EXEC</span><span class="node node--c">REGIME</span><i></i><i></i><i></i></div>
+            <article class="os-module os-module--knowledge">
+              <div><b>02</b><span>KNOWLEDGE GRAPH</span></div><h3 data-i18n="cap.knowledgeTitle">让知识在需要时出现。</h3><p data-i18n="cap.knowledgeText">书籍和复盘沉淀为概念、方法、规则候选与关系图谱；未审批自由文本不会晋升为系统指令。</p><small><i></i>GRAPH ONLINE</small>
             </article>
-            <article class="bento-card bento-card--risk ta-reveal">
-              <div class="card-top"><span>DETERMINISTIC RISK</span><i>03</i></div>
-              <h3 data-i18n="cap.riskTitle">AI 可以建议，不能越权。</h3>
-              <p data-i18n="cap.riskText">单笔风险、杠杆、日亏损、事件静默期、市场新鲜度、保护单与账户权限由确定性代码把关。</p>
-              <div class="shield-rings" aria-hidden="true"><span>BOUND</span><i></i><i></i><i></i></div>
+            <article class="os-module os-module--risk">
+              <div><b>03</b><span>DETERMINISTIC RISK</span></div><h3 data-i18n="cap.riskTitle">AI 可以建议，不能越权。</h3><p data-i18n="cap.riskText">单笔风险、杠杆、日亏损、事件静默期、市场新鲜度、保护单与账户权限由确定性代码把关。</p><small><i></i>GUARD ACTIVE</small>
             </article>
-            <article class="bento-card bento-card--execution ta-reveal">
-              <div class="card-top"><span>DURABLE EXECUTION</span><i>04</i></div>
-              <h3 data-i18n="cap.executionTitle">对响应未知保持诚实。</h3>
-              <p data-i18n="cap.executionText">下单、撤单、平仓和保护动作拥有稳定身份与持久意图；进程重启后继续恢复，旧响应不能覆盖更新事实。</p>
-              <div class="state-rail" aria-hidden="true"><span>INTENT</span><i></i><span>ACK?</span><i></i><span>RECONCILE</span><i></i><span>FINAL</span></div>
+            <article class="os-module os-module--execution">
+              <div><b>04</b><span>DURABLE EXECUTION</span></div><h3 data-i18n="cap.executionTitle">对响应未知保持诚实。</h3><p data-i18n="cap.executionText">下单、撤单、平仓和保护动作拥有稳定身份与持久意图；进程重启后继续恢复，旧响应不能覆盖更新事实。</p><small><i></i>OMS RECONCILING</small>
             </article>
-            <article class="bento-card bento-card--audit ta-reveal">
-              <div class="card-top"><span>FINANCIAL TRUTH</span><i>05</i></div>
-              <h3 data-i18n="cap.auditTitle">结果不完整，就不写成精确收益。</h3>
-              <p data-i18n="cap.auditText">成交、真实手续费、返佣与资金费对账完成后才形成净结果；动作、依据与权限变更保留可追踪记录。</p>
-              <div class="audit-list" aria-hidden="true"><span><i></i>FILLS VERIFIED</span><span><i></i>FEE SIGNED</span><span><i></i>FUNDING LINKED</span></div>
+            <article class="os-module os-module--audit">
+              <div><b>05</b><span>FINANCIAL TRUTH</span></div><h3 data-i18n="cap.auditTitle">结果不完整，就不写成精确收益。</h3><p data-i18n="cap.auditText">成交、真实手续费、返佣与资金费对账完成后才形成净结果；动作、依据与权限变更保留可追踪记录。</p><small><i></i>LEDGER VERIFIED</small>
             </article>
           </div>
         </div>
@@ -227,6 +236,7 @@
 
       <section class="guardrails-section" id="guardrails">
         <div class="guardrails-orb" aria-hidden="true"></div>
+        <div class="guardrail-stars" aria-hidden="true"></div>
         <div class="section-wrap guardrails-grid">
           <div class="guardrail-copy ta-reveal">
             <span class="section-index">05 / BOUNDARIES</span>
@@ -234,11 +244,13 @@
             <p class="taSectionSupport" data-i18n="guard.lead">自主不等于无限授权。你定义市场、资金、杠杆、日亏损和有效期；系统只在边界内工作，异常时优先降风险。</p>
             <button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button>
           </div>
-          <div class="guardrail-list ta-reveal">
-            <article><b>01</b><div><h3 data-i18n="guard.oneTitle">密钥不进入模型</h3><p data-i18n="guard.oneText">API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。</p></div><span>SEALED</span></article>
-            <article><b>02</b><div><h3 data-i18n="guard.twoTitle">权限由你定义</h3><p data-i18n="guard.twoText">交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。</p></div><span>BOUND</span></article>
-            <article><b>03</b><div><h3 data-i18n="guard.threeTitle">保护无法证明则降级</h3><p data-i18n="guard.threeText">止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。</p></div><span>FAIL CLOSED</span></article>
-            <article><b>04</b><div><h3 data-i18n="guard.fourTitle">一键停止与只减仓</h3><p data-i18n="guard.fourText">异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。</p></div><span>REDUCE ONLY</span></article>
+          <div class="boundary-radar ta-reveal">
+            <div class="radar-core" aria-hidden="true"><div class="radar-sweep"></div><i></i><i></i><i></i><span>SAFE<br>VECTOR</span></div>
+            <div class="radar-status" aria-hidden="true"><i></i>BOUNDARY SCAN ACTIVE <b>04 ZONES</b></div>
+            <article class="boundary-beacon boundary-beacon--one"><b>01</b><div><h3 data-i18n="guard.oneTitle">密钥不进入模型</h3><p data-i18n="guard.oneText">API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。</p></div><span>SEALED</span></article>
+            <article class="boundary-beacon boundary-beacon--two"><b>02</b><div><h3 data-i18n="guard.twoTitle">权限由你定义</h3><p data-i18n="guard.twoText">交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。</p></div><span>BOUND</span></article>
+            <article class="boundary-beacon boundary-beacon--three"><b>03</b><div><h3 data-i18n="guard.threeTitle">保护无法证明则降级</h3><p data-i18n="guard.threeText">止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。</p></div><span>FAIL CLOSED</span></article>
+            <article class="boundary-beacon boundary-beacon--four"><b>04</b><div><h3 data-i18n="guard.fourTitle">一键停止与只减仓</h3><p data-i18n="guard.fourText">异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。</p></div><span>REDUCE ONLY</span></article>
           </div>
         </div>
       </section>

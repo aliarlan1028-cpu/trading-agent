@@ -294,9 +294,9 @@ h3 {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 9px;
   min-width: 0;
-  padding: 11px 24px;
+  padding: 9px 18px;
   background: rgba(244, 241, 235, 0.9);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(12px);
@@ -304,9 +304,10 @@ h3 {
 
 /* 顶栏搜索框 */
 .topSearch {
-  flex: 1 1 340px;
-  max-width: 340px;
-  height: 34px;
+  flex: 1 1 250px;
+  max-width: 300px;
+  min-width: 150px;
+  height: 36px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -377,7 +378,7 @@ h3 {
 .acctPwNote { margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .modalHint { flex: 1; color: var(--text-muted); font-size: 12px; align-self: center; }
 
-.appTopbar .topbarActions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.appTopbar .topbarActions { margin-left: auto; display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
 
 .globalSearch {
   width: min(420px, 42vw);
@@ -3892,32 +3893,6 @@ button.danger:disabled,
   border-color: #eecfc3;
 }
 
-.autoPausedPill {
-  appearance: none;
-  display: grid;
-  gap: 1px;
-  text-align: left;
-  cursor: pointer;
-  font-family: var(--font-ui);
-}
-
-.autoPausedPill span {
-  color: #9a5142;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: .03em;
-}
-
-.autoPausedPill b {
-  color: #a42f21;
-  font-size: 10.5px;
-  font-weight: 750;
-}
-
-.autoPausedPill:hover {
-  background: #f7ddd6;
-}
-
 .killButton {
   white-space: nowrap;
   display: flex;
@@ -3934,6 +3909,90 @@ button.danger:disabled,
 
 .killButton:hover {
   background: #fbeae5;
+}
+
+/* 顶部只展示一个“当前实际状态”，旁边集中四个运行时安全动作。长期执行目标仍在
+   资金与交易边界中配置，避免把配置意图和临时风控状态混成多个互相矛盾的徽章。 */
+.appTopbar .exchangePill {
+  height: 36px;
+  padding: 0 10px;
+  gap: 6px;
+  border-radius: 8px;
+}
+.appTopbar .bellButton { width: 36px; height: 36px; min-height: 36px; padding: 0; }
+
+.runtimeStatePill {
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 7px;
+  align-items: center;
+  min-width: 130px;
+  height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.runtimeStatePill>span { grid-row: 1 / 3; width: 7px; height: 7px; border-radius: 50%; background: #8b8173; }
+.runtimeStatePill small { color: var(--text-4); font: 650 7.5px var(--font-mono); letter-spacing: .08em; line-height: 1; }
+.runtimeStatePill b { max-width: 145px; overflow: hidden; color: var(--text); font-size: 10.5px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.runtimeStatePill.ok { border-color: #c9dfd0; background: #f7fbf8; }
+.runtimeStatePill.ok>span { background: var(--pos); box-shadow: 0 0 0 3px rgba(31,122,80,.1); }
+.runtimeStatePill.warning { border-color: #ead7b3; background: #fffaf0; }
+.runtimeStatePill.warning>span { background: #c68a20; box-shadow: 0 0 0 3px rgba(198,138,32,.1); }
+.runtimeStatePill.danger { border-color: #edc9c0; background: #fff7f5; }
+.runtimeStatePill.danger>span { background: var(--neg); box-shadow: 0 0 0 3px rgba(196,63,40,.1); }
+.runtimeStatePill:hover { box-shadow: 0 3px 10px rgba(51,42,31,.06); }
+
+.topEmergencyActions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(74px, 1fr));
+  gap: 4px;
+  min-width: 316px;
+  padding: 3px;
+  border: 1px solid #ddd5c8;
+  border-radius: 9px;
+  background: rgba(255,255,255,.72);
+}
+.topEmergencyActions button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px !important;
+  min-height: 28px !important;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 650 9.5px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.topEmergencyActions button svg { width: 13px; height: 13px; flex: none; color: var(--accent); }
+.topEmergencyActions button:hover { border-color: var(--border); background: #fff; }
+.topEmergencyActions button.active { border-color: #e4bd94; background: #fff3e6; color: var(--accent-ink); }
+.topEmergencyActions button.danger svg { color: var(--neg); }
+.topEmergencyActions button.danger:hover { border-color: #edc9c0; background: #fff6f3; color: #a93421; }
+.topEmergencyActions button.danger.active { border-color: #d96d58; background: #fbe6e1; color: #a93421; }
+
+@media (max-width: 1280px) and (min-width: 901px) {
+  .appTopbar { padding-inline: 12px; }
+  .topSearch { max-width: 190px; }
+  .topEmergencyActions { grid-template-columns: repeat(4, 34px); min-width: auto; }
+  .topEmergencyActions button { width: 34px; padding: 0; }
+  .topEmergencyActions button span { display: none; }
+  .runtimeStatePill { min-width: 112px; }
+  .appTopbar .exchangePill small { display: none; }
 }
 
 .chatShell {
@@ -9238,6 +9297,15 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mHeaderMid strong { font: 700 17px "Space Grotesk"; color: #1E1B16; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mHeaderMid small { font: 500 11px "IBM Plex Mono"; color: #8a8172; }
 .mHeaderRight { flex: none; display: flex; align-items: center; gap: 8px; }
+.mRuntimeButton { display: grid; grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;max-width:156px;min-height:36px;padding:5px 8px;border:1px solid #ddd5c8;border-radius:10px;background:#fff;color:#443d34;text-align:left;font-family:var(--font-ui)}
+.mRuntimeButton>span{width:7px;height:7px;border-radius:50%;background:#8b8173}.mRuntimeButton>div{min-width:0;display:grid;gap:1px}.mRuntimeButton small{color:#9a917f;font:650 7px var(--font-mono);letter-spacing:.07em}.mRuntimeButton b{overflow:hidden;font-size:10px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}.mRuntimeButton>svg{width:12px;color:#9a917f}.mRuntimeButton.ok{border-color:#cde0d2;background:#f7fbf8}.mRuntimeButton.ok>span{background:#1f7a50}.mRuntimeButton.warning{border-color:#ead6b0;background:#fffaf0}.mRuntimeButton.warning>span{background:#c68a20}.mRuntimeButton.danger{border-color:#eac5bc;background:#fff6f3}.mRuntimeButton.danger>span{background:#c43f28}
+
+.mSafetyOverlay{position:fixed;inset:0;z-index:96;display:flex;align-items:flex-end;background:rgba(30,25,20,.45);backdrop-filter:blur(3px)}
+.mSafetySheet{width:100%;box-sizing:border-box;padding:7px 14px calc(18px + env(safe-area-inset-bottom));border-radius:20px 20px 0 0;background:#faf8f4;box-shadow:0 -14px 42px rgba(36,28,20,.22);animation:mSheetUp .2s ease-out}.mSafetyHandle{display:block;width:38px;height:4px;margin:0 auto 13px;border-radius:3px;background:#d6cec2}
+.mSafetySheet>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:0 2px 12px}.mSafetySheet>header>div{min-width:0}.mSafetySheet>header small,.mSafetySheet>header b{display:block}.mSafetySheet>header>div>small{color:#a76537;font:700 8px var(--font-mono);letter-spacing:.08em}.mSafetySheet>header>div>b{margin-top:4px;color:#2f2922;font-size:17px}.mSafetySheet>header p{margin:5px 0 0;color:#847b6e;font-size:10px;line-height:1.5}.mSafetySheet>header>.statusBadge{flex:none;margin-top:2px;white-space:normal;text-align:center}
+.mSafetyTarget{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding:9px 11px;border:1px solid #e7e0d5;border-radius:10px;background:#fff}.mSafetyTarget span{color:#918777;font-size:10px}.mSafetyTarget b{font-size:11px;color:#3f3830;text-align:right}
+.mSafetyActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mSafetyActions button{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px;min-height:72px!important;padding:10px!important;border:1px solid #e3dacf!important;border-radius:12px!important;background:#fff!important;color:#4a4239!important;text-align:left!important;font-family:var(--font-ui)!important}.mSafetyActions button>svg{width:19px;color:#d06a22}.mSafetyActions button span{min-width:0}.mSafetyActions button b,.mSafetyActions button small{display:block}.mSafetyActions button b{font-size:11px}.mSafetyActions button small{margin-top:4px;color:#948a7c;font-size:8.5px;line-height:1.4}.mSafetyActions button.active{border-color:#e0ad81!important;background:#fff3e8!important}.mSafetyActions button.danger>svg{color:#c43f28}.mSafetyActions button.danger.active{border-color:#dd8776!important;background:#fbe8e4!important}
+.mSafetyClose{width:100%;height:40px;margin-top:10px;border:0;border-radius:10px;background:#2b2722;color:#fff;font:700 12px var(--font-ui)}
 .mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
 .mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }
 .mRunBadge .pulseDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulseDot 2s infinite; }
@@ -9745,10 +9813,6 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mRuleCard2 b { display: block; font: 700 13px "Space Grotesk"; }
 .mRuleCard2 small { font-size: 10.5px; color: #6B6455; }
 .mRuleCard2 i { position: absolute; top: 12px; right: 12px; width: 7px; height: 7px; border-radius: 50%; }
-.mRiskBtns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.mRiskBtns button { height: 42px; border: 0; border-radius: 11px; font: 700 13px "Space Grotesk"; cursor: pointer; }
-.mRbPause { background: #EAF0FB; color: #2A6FDB; } .mRbReduce { background: #FBEDDF; color: #C9631F; } .mRbKill { background: #C43F28; color: #fff; }
-
 /* S4 审计链 */
 .mChainRow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EDE7DB; }
 .mChainRow:last-child { border-bottom: 0; }

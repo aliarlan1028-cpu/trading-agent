@@ -34,13 +34,21 @@ test("页面提供月球任务控制、证据链、飞行路线、Bento 与对�
     "mission-console",
     "console-route",
     "flight-plan",
-    "capability-bento",
+    "flight-map",
+    "flight-vehicle",
+    "operating-system",
+    "os-core",
+    "os-module",
     "comparison-wrap",
-    "guardrail-list",
+    "boundary-radar",
+    "radar-sweep",
+    "boundary-beacon",
     "closing-moon"
   ]) assert.match(html, new RegExp(`class=["'][^"']*${className}`));
   assert.match(styles, /@keyframes moonBreath/);
   assert.match(styles, /@keyframes satellite/);
+  assert.match(styles, /@keyframes flightSignal/);
+  assert.match(styles, /@keyframes radarSweep/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(styles, /@media \(max-width: 580px\)/);
 });
@@ -67,6 +75,7 @@ test("每个 HTML i18n key 都有中英文文案", () => {
 test("关键页面层级和品牌色存在，且不是旧营销稿的内联样式堆叠", () => {
   assert.match(html, /<h1 class="taHeroProduct">TO THE/);
   assert.match(html, /<h2 class="taHeroStatement"/);
+  assert.match(html, /KORDYN · AI AUTONOMOUS TRADING/);
   assert.match(styles, /--violet:\s*#a78bfa/);
   assert.match(styles, /--orange:\s*#ff7a32/);
   assert.match(styles, /\.taHeroProduct\s*\{[^}]*clamp\(/s);

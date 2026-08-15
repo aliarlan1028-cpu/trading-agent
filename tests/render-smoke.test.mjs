@@ -48,7 +48,7 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
-      export { resolveApiBase, apiUrl } from "./src/lib.jsx";
+      export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
       export { ChatPage, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
@@ -427,6 +427,25 @@ test("risk overview renders authoritative event windows instead of generic risk 
   assert.match(html, /公布前静默/);
   assert.match(html, /1 个正在阻断/);
   assert.doesNotMatch(html, /账户对账异常/);
+  assert.doesNotMatch(html, /应急操作/);
+  assert.doesNotMatch(html, /密钥安全/);
+});
+
+test("unified automation presentation separates the saved target from the effective safety state", () => {
+  const view = C.automationPresentation({
+    automationState: {
+      mode: "reduce_only",
+      label: "只减仓",
+      requestedMode: "full_auto",
+      blockerDetails: [{ code: "financial_reconciliation_pending", label: "费用或资金费对账中" }]
+    },
+    system: { autonomyEnabled: false, reduceOnlyMode: true }
+  });
+  assert.equal(view.label, "只减仓");
+  assert.equal(view.targetLabel, "符合限制时自动下单");
+  assert.equal(view.entryPolicy, "禁止新开仓");
+  assert.equal(view.targetIsEffective, false);
+  assert.deepEqual(view.blockers, ["费用或资金费对账中"]);
 });
 
 test("capital settings distinguish configured auto mode from the current safety state", () => {
@@ -442,12 +461,15 @@ test("capital settings distinguish configured auto mode from the current safety 
     },
     action, ui
   }));
-  assert.match(html, /目标配置/);
+  assert.match(html, /长期目标配置/);
   assert.match(html, /符合限制时自动下单/);
-  assert.match(html, /当前有效状态/);
+  assert.match(html, /当前实际状态/);
   assert.match(html, /只减仓/);
-  assert.match(html, /自动交易配置仍然保留/);
+  assert.match(html, /目标没有被改写/);
   assert.match(html, /费用或资金费对账中/);
+  assert.match(html, /临时运行控制统一位于系统顶部/);
+  assert.doesNotMatch(html, /为什么最终是这个金额/);
+  assert.doesNotMatch(html, /1 · 选择执行方式/);
 });
 
 test("execution and review renders every workflow zone on one page", () => {
@@ -492,6 +514,9 @@ test("concept graph dedupes duplicate names and renders", () => {
 
 test("desktop knowledge page exposes the full concept graph workspace and source filters", () => {
   const html = render(React.createElement(C.KnowledgeConcept, { data, action, ui }));
+  assert.match(html, /系统建议/);
+  assert.match(html, /下一步：处理未通过的技能版本/);
+  assert.match(html, /它们目前只提供研究素材，不会进入真实交易/);
   assert.match(html, /概念与知识网络/);
   assert.match(html, /知识网络概览/);
   assert.match(html, /按知识来源筛选概念/);

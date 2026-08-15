@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Target,
   Globe,
   Shield,
   ShieldCheck,
@@ -24,11 +25,11 @@ import {
   Send,
   Zap
 } from "lucide-react";
-import { displayMoney, exchangeState, localizeText, systemStatus, TurnstileWidget, useApi } from "./lib.jsx";
+import { automationPresentation, displayMoney, exchangeState, localizeText, TurnstileWidget, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
 import { isNativeApp } from "./lib.jsx";
-import { ConfirmHost } from "./confirm.jsx";
+import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
@@ -132,23 +133,22 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   const accounts = data.exchangeAccounts || [];
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
   const unread = (data.notifications || []).filter((item) => !item.read).length;
-  const currentStatus = systemStatus(data);
-  const operatingStage = data.readiness?.operatingStage;
-  const live = data.system?.liveTradingEnabled;
+  const runtime = automationPresentation(data);
+  const autonomyPaused = data.system?.autonomyEnabled === false;
+  const reduceOnly = data.system?.reduceOnlyMode === true;
+  const stopped = data.system?.killSwitch === true;
   const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
-  // 用后端唯一真相 automationState.mode 判"全自动",别再自己拿 2 个开关猜(否则实盘写入没开/
-  // 熔断/只减仓时照样喊 AUTO ON,与状态卡、AI 口径各说各话)。
-  const autoOn = data.automationState?.mode === "full_auto_small";
-  const autoRequested = data.automationState?.requestedMode === "full_auto";
-  const autoEffectiveLabel = ({
-    halted: t("已熔断", "Emergency stop"),
-    reduce_only: t("只减仓", "Reduce-only"),
-    paused: t("自主推进已暂停", "Autonomy paused"),
-    blocked: t("自主决策被拦", "Decision blocked"),
-    live_blocked: t("安全条件未满足", "Safety checks pending"),
-    semi_auto: t("逐笔确认", "Per-trade approval"),
-    observe: t("只分析", "Analyze only")
-  })[data.automationState?.mode] || localizeText(data.automationState?.label,t("等待安全条件", "Waiting for safety checks"));
+  const toggleReduceOnly = async () => {
+    const confirmed = await uiConfirm(reduceOnly
+      ? t("退出只减仓模式？系统会重新检查全部安全条件，再决定是否允许新开仓。", "Exit reduce-only mode? The system will recheck every safety condition before allowing new entries.")
+      : t("进入只减仓模式？系统将禁止新开仓，只允许撤单、减仓和平仓。", "Enter reduce-only mode? New entries will be blocked; only cancel, reduce, and close actions remain available."));
+    if (confirmed) action("/api/risk/reduce-only", { enabled: !reduceOnly });
+  };
+  const flattenAll = async () => {
+    if (await uiConfirm(t("确认按市价平掉全部持仓并进入只减仓模式？该操作不可自动撤销。", "Close every position at market and enter reduce-only mode? This action cannot be automatically undone."))) {
+      action("/api/risk/emergency-flatten", {});
+    }
+  };
   return (
     <header className="appTopbar">
       <div className="topSearch">
@@ -157,20 +157,19 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
       </div>
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
-        {autoOn
-          ? <span className="autoOnPill" title={t("自动执行已开启", "Automated execution is on")}><span className="autoDot" /> AUTO ON</span>
-          : autoRequested
-            ? <button type="button" className="livePill on autoPausedPill" onClick={()=>setActive("riskMandate")} title={localizeText(data.automationState?.detail,t("自动交易已设置，但当前安全条件暂未满足","Automatic trading is configured but temporarily blocked by safety checks"))}><span>{t("自动交易已配置", "AUTO CONFIGURED")}</span><b>{t("当前：", "Now: ")}{autoEffectiveLabel}</b></button>
-          : live && <span className="livePill on" title={t("实盘交易已开启", "Live trading is enabled")}>{t("实盘交易", "LIVE")}</span>}
+        <button type="button" className={`runtimeStatePill ${runtime.tone}`} onClick={()=>setActive("riskMandate")} title={`${runtime.detail} ${t("目标配置：", "Target: ")}${runtime.targetLabel}`}>
+          <span />
+          <small>{t("当前运行", "RUNTIME")}</small>
+          <b>{runtime.label}</b>
+        </button>
+      </div>
+      <div className="topEmergencyActions" aria-label={t("运行控制", "Runtime controls")}>
+        <button type="button" className={autonomyPaused ? "active" : ""} onClick={() => action("/api/system/autonomy", { enabled: autonomyPaused })} title={autonomyPaused?t("恢复 AI 自主生成与推进计划", "Resume autonomous planning"):t("暂停 AI 生成和推进新计划", "Pause autonomous planning")}><Activity/><span>{autonomyPaused?t("恢复自主", "Resume"):t("暂停自主", "Pause")}</span></button>
+        <button type="button" className={reduceOnly ? "active" : ""} onClick={toggleReduceOnly} title={t("只允许撤单、减仓和平仓", "Allow only cancel, reduce, and close actions")}><RefreshCw/><span>{reduceOnly?t("退出只减", "Exit reduce"):t("只减仓", "Reduce only")}</span></button>
+        <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
+        <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>
       <div className="topbarActions">
-        <button className={`autonomyPill ${currentStatus.tone}`} title={currentStatus.label} onClick={() => setActive("riskSettings")}>
-          <span />
-          {currentStatus.label}
-        </button>
-        <button className="killButton" title={t("紧急停止：立即阻止所有新交易", "Emergency stop: block all new trades immediately")} onClick={() => setKillConfirm(true)}>
-          <Zap size={15} /> {t("紧急停止", "STOP")}
-        </button>
         <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
@@ -191,7 +190,7 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
           {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : displayUserName.slice(0, 1).toUpperCase()}
         </button>
       </div>
-      {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
+      {killConfirm && <KillConfirmDialog enable={!stopped} action={action} onClose={() => setKillConfirm(false)} />}
       {showPassword && <AccountDialog user={data.user || {}} action={action} notify={notify} onClose={() => setShowPassword(false)} />}
     </header>
   );

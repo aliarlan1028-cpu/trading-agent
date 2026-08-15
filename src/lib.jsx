@@ -446,6 +446,108 @@ export function systemStatus(data) {
   return { label, tone };
 }
 
+// 交易运行状态的唯一展示模型。automationState 是后端按真实执行闸顺序派生的
+// 权威结论；system 里的开关只用于兼容旧数据和极短暂的刷新间隙，不能在各页面
+// 再各自拼出一套“看起来像状态”的标签。
+export function automationPresentation(data = {}) {
+  const automation = data.automationState || {};
+  const system = data.system || {};
+  const fallbackMode = system.killSwitch
+    ? "halted"
+    : system.reduceOnlyMode
+      ? "reduce_only"
+      : system.autonomyEnabled === false
+        ? "paused"
+        : system.liveTradingEnabled
+          ? "semi_auto"
+          : "observe";
+  const mode = automation.mode || fallbackMode;
+  const targetMode = automation.requestedMode
+    || system.requestedOperatingMode
+    || (mode === "full_auto_small" ? "full_auto" : mode === "semi_auto" ? "semi_auto" : "observe");
+  const targetLabel = localizeText(automation.requestedLabel, ({
+    full_auto: t("符合限制时自动下单", "Automatic within limits"),
+    semi_auto: t("逐笔确认后下单", "Approve each trade"),
+    observe: t("只分析，不下单", "Analyze only")
+  })[targetMode] || t("只分析，不下单", "Analyze only"));
+  const definitions = {
+    halted: {
+      label: t("紧急停止中", "Emergency stop active"),
+      tone: "danger",
+      detail: t("所有新交易均已阻止，仅允许撤单、平仓等降风险动作。", "All new trades are blocked; only cancel, close, and other risk-reducing actions are allowed."),
+      entryPolicy: t("禁止新开仓", "New entries blocked")
+    },
+    reduce_only: {
+      label: t("只减仓", "Reduce-only"),
+      tone: "warning",
+      detail: t("当前只允许撤单、减仓和平仓；原因解除后按已保存的执行方式重新计算。", "Only cancel, reduce, and close actions are allowed. The saved execution target is reassessed after the cause clears."),
+      entryPolicy: t("禁止新开仓", "New entries blocked")
+    },
+    paused: {
+      label: t("自主运行已暂停", "Autonomy paused"),
+      tone: "warning",
+      detail: t("AI 不再自主生成或推进新计划；恢复后仍沿用已保存的执行方式。", "The AI will not autonomously create or advance new plans. The saved execution target remains unchanged."),
+      entryPolicy: t("暂停自主开仓", "Autonomous entries paused")
+    },
+    blocked: {
+      label: t("自主决策被拦", "Autonomous decisions blocked"),
+      tone: "warning",
+      detail: t("基础授权或运行条件尚未满足，当前不会产生可执行的新计划。", "Required permissions or operating conditions are missing, so no executable new plan will be created."),
+      entryPolicy: t("禁止新开仓", "New entries blocked")
+    },
+    live_blocked: {
+      label: t("实盘开仓被拦", "Live entries blocked"),
+      tone: "warning",
+      detail: t("执行目标已保存，但实盘安全条件尚未全部满足。", "The execution target is saved, but live-trading safety conditions are not all satisfied."),
+      entryPolicy: t("禁止实盘开仓", "Live entries blocked")
+    },
+    full_auto_small: {
+      label: t("自动交易运行中", "Automated trading running"),
+      tone: "ok",
+      detail: t("仅在交易权限、账户事实和硬风控全部通过时自动下单。", "Orders are submitted automatically only after permissions, account facts, and hard-risk checks all pass."),
+      entryPolicy: t("可按限制自动开仓", "Automatic entries within limits")
+    },
+    semi_auto: {
+      label: t("逐笔确认", "Per-trade approval"),
+      tone: "ok",
+      detail: t("AI 可以生成计划，但每笔真实订单都需要你的确认。", "The AI can create plans, but every live order requires your approval."),
+      entryPolicy: t("确认后可开仓", "Entries after approval")
+    },
+    observe: {
+      label: t("只分析", "Analyze only"),
+      tone: "neutral",
+      detail: t("系统会分析并生成计划，但不会向交易所提交真实订单。", "The system analyzes and builds plans without submitting live orders to the exchange."),
+      entryPolicy: t("不提交真实订单", "No live orders")
+    }
+  };
+  const definition = definitions[mode] || {
+    label: t("等待状态检查", "Awaiting status check"),
+    tone: "neutral",
+    detail: t("系统正在读取当前执行条件。", "The system is reading the current execution conditions."),
+    entryPolicy: t("暂不执行新交易", "No new trades yet")
+  };
+  const blockerDetails = Array.isArray(automation.blockerDetails) && automation.blockerDetails.length
+    ? automation.blockerDetails
+    : (Array.isArray(automation.blockers) ? automation.blockers : []).map((label) => ({ code: null, label }));
+  const authoritativeLabel = localizeText(automation.label, definition.label);
+  const authoritativeDetail = localizeText(automation.detail, definition.detail);
+  return {
+    mode,
+    targetMode,
+    targetLabel,
+    label: authoritativeLabel,
+    shortLabel: definition.label,
+    tone: definition.tone,
+    detail: authoritativeDetail,
+    entryPolicy: definition.entryPolicy,
+    blockerDetails,
+    blockers: blockerDetails.map((item) => localizeText(item?.label || item)).filter(Boolean),
+    targetIsEffective: (targetMode === "full_auto" && mode === "full_auto_small")
+      || (targetMode === "semi_auto" && mode === "semi_auto")
+      || (targetMode === "observe" && mode === "observe")
+  };
+}
+
 export function exchangeState(account = {}) {
   if (account.readEnabled && account.tradeEnabled) return { label: t("交易可用", "Trading enabled"), tone: "on" };
   if (account.readEnabled) return { label: t("只读", "Read-only"), tone: "warn" };
