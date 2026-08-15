@@ -140,6 +140,15 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   // 熔断/只减仓时照样喊 AUTO ON,与状态卡、AI 口径各说各话)。
   const autoOn = data.automationState?.mode === "full_auto_small";
   const autoRequested = data.automationState?.requestedMode === "full_auto";
+  const autoEffectiveLabel = ({
+    halted: t("已熔断", "Emergency stop"),
+    reduce_only: t("只减仓", "Reduce-only"),
+    paused: t("自主推进已暂停", "Autonomy paused"),
+    blocked: t("自主决策被拦", "Decision blocked"),
+    live_blocked: t("安全条件未满足", "Safety checks pending"),
+    semi_auto: t("逐笔确认", "Per-trade approval"),
+    observe: t("只分析", "Analyze only")
+  })[data.automationState?.mode] || localizeText(data.automationState?.label,t("等待安全条件", "Waiting for safety checks"));
   return (
     <header className="appTopbar">
       <div className="topSearch">
@@ -151,7 +160,7 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
         {autoOn
           ? <span className="autoOnPill" title={t("自动执行已开启", "Automated execution is on")}><span className="autoDot" /> AUTO ON</span>
           : autoRequested
-            ? <span className="livePill on" title={localizeText(data.automationState?.detail,t("自动交易已设置，但当前安全条件暂未满足","Automatic trading is configured but temporarily blocked by safety checks"))}>{t("自动交易暂缓","AUTO PAUSED")}</span>
+            ? <button type="button" className="livePill on autoPausedPill" onClick={()=>setActive("riskMandate")} title={localizeText(data.automationState?.detail,t("自动交易已设置，但当前安全条件暂未满足","Automatic trading is configured but temporarily blocked by safety checks"))}><span>{t("自动交易已配置", "AUTO CONFIGURED")}</span><b>{t("当前：", "Now: ")}{autoEffectiveLabel}</b></button>
           : live && <span className="livePill on" title={t("实盘交易已开启", "Live trading is enabled")}>{t("实盘交易", "LIVE")}</span>}
       </div>
       <div className="topbarActions">

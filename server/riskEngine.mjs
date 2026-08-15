@@ -1,7 +1,7 @@
 import { dedupePositions } from "./accounting.mjs";
 import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
-import { isAuthoritativeRiskEvent, isEventRiskActive } from "./eventRisk.mjs";
+import { deriveEventRiskWindows } from "./eventRisk.mjs";
 import { evaluateProfessionalPlanRisks } from "./professionalRiskGate.mjs";
 import { evaluateProtections } from "./tradeProtections.mjs";
 import { DEFAULT_WEEKLY_LOSS_PCT } from "./mandatePolicy.mjs";
@@ -225,19 +225,10 @@ export function evaluateTradePlan(db, plan) {
   }
 
   const blackoutMinutes = currentRiskThresholds().eventBlackoutMinutes;
-  const highImpactEvent = db.events.find((event) => {
-    if (!isAuthoritativeRiskEvent(event) || !isEventRiskActive(event) || Number(event.impact) < 90) return false;
-    const related = !Array.isArray(event.relatedSymbols) || !event.relatedSymbols.length || event.relatedSymbols.includes(plan.symbol);
-    const due = new Date(event.due || event.publishedAt).getTime();
-    const delta = due - Date.now();
-    const precision = String(event.timePrecision || event.time_precision || event.precision || "").toLowerCase();
-    const exactTime = !["date", "day", "unknown"].includes(precision);
-    // isEventRiskActive owns the post-release window (default 6h). The
-    // configurable blackout threshold narrows only the pre-release side.
-    return related && exactTime && Number.isFinite(delta) && delta <= blackoutMinutes * 60_000;
-  });
+  const highImpactEvent = deriveEventRiskWindows(db.events, { blackoutMinutes, symbol: plan.symbol })
+    .find((event) => event.blocking);
   if (highImpactEvent) {
-    const dueMs = new Date(highImpactEvent.due || highImpactEvent.publishedAt).getTime();
+    const dueMs = new Date(highImpactEvent.dueAt).getTime();
     const released = Number.isFinite(dueMs) && dueMs <= Date.now();
     add(
       "重大事件静默窗口",

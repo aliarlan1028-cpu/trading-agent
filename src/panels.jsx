@@ -1040,12 +1040,19 @@ export function KnowledgeListPanel({ data, action, ui }) {
       )}
       {sources.map((source) => {
         const chunkCount = (knowledge.chunks || []).filter((chunk) => chunk.sourceId === source.id).length;
+        const methodCount = (knowledge.tradingMethods || []).filter((method) => method.source?.id === source.id || method.sourceId === source.id).length;
+        const skillCount = (knowledge.tradingSkills || []).filter((skill) => skill.sourceId === source.id && !["retired", "superseded"].includes(skill.status)).length;
+        const ruleCount = (knowledge.ruleProposals || []).filter((rule) => rule.sourceRefs?.includes(source.id)).length;
+        const conceptCount = (knowledge.conceptCards || []).filter((concept) => concept.sourceRefs?.includes(source.id) || concept.sourceId === source.id).length;
         return (
           <div className="panelItem" key={source.id}>
-            <div><strong>{localizeText(source.title)}</strong><small>{localizeText(source.domain || source.type)} · {chunkCount} {t("个片段", "chunks")} · {formatDateTime(source.importedAt, t("未记录", "Not recorded"))}</small></div>
+            <div><strong>{localizeText(source.title)}</strong><small>{localizeText(source.domain || source.type)} · {chunkCount} {t("片段", "chunks")} · {methodCount} {t("方法", "methods")} · {skillCount} {t("技能草案", "skill drafts")} · {ruleCount} {t("规则", "rules")} · {conceptCount} {t("概念", "concepts")}</small><small>{formatDateTime(source.importedAt, t("未记录导入时间", "Import time unavailable"))}</small></div>
             <StatusBadge tone={source.status === "parsed" ? "ok" : "warning"}>{humanize(source.status)}</StatusBadge>
-            <button className="secondaryButton" onClick={() => action(`/api/knowledge/sources/${source.id}/parse-real`, {})}>{source.status === "parsed" ? t("重新解析", "Parse again") : t("解析", "Parse")}</button>
-            <button className="dangerTextButton" title={t("删除该知识来源及其片段", "Delete this source and its chunks")} onClick={async () => { if (await uiConfirm(t(`确定删除「${source.title}」？其片段、概念卡与规则将一并移除。`, `Delete “${source.title}”? Its chunks, concept cards, and rules will also be removed.`))) action(`/api/knowledge/sources/${source.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
+            <div className="panelActions knowledgeSourceActions">
+              <button className="secondaryButton" onClick={() => action(`/api/knowledge/sources/${source.id}/parse-real`, {})}>{source.status === "parsed" ? t("重新解析", "Parse again") : t("解析", "Parse")}</button>
+              {!['doctrine','manual_curated'].includes(source.type) && <button className="secondaryButton" onClick={async()=>{if(await uiConfirm(t(`从「${source.title}」生成可选扩展候选？方法和技能草案不依赖此操作。`,`Generate optional extension candidates from “${source.title}”? Methods and skill drafts do not depend on this action.`))) action("/api/knowledge/convert",{sourceId:source.id});}}>{t("生成候选", "Candidates")}</button>}
+              <button className="dangerTextButton" title={t("删除该知识来源并安全处理衍生物", "Delete this source and safely reconcile derived artifacts")} onClick={async () => { if (await uiConfirm(t(`确定删除「${source.title}」？片段和未批准衍生物会移除，关联技能会退役；已批准规则不会被静默撤销。`, `Delete “${source.title}”? Chunks and unapproved derivatives are removed, linked skills are retired, and approved rules are not silently revoked.`))) action(`/api/knowledge/sources/${source.id}`, {}, "DELETE"); }}><Trash2 size={15} /></button>
+            </div>
           </div>
         );
       })}
@@ -1086,20 +1093,21 @@ function clusterRules(rules, threshold = 0.5) {
 
 export function RuleLibraryPanel({ data, action, ui }) {
   const knowledge = data.knowledge || {};
-  const [newRule, setNewRule] = useState({ name: "", description: "", level: "L2", action: "notify" });
+  const [newRule, setNewRule] = useState({ name: "", category: "风控", condition: "", description: "", level: "L2", action: "notify" });
   const [guideOpen, setGuideOpen] = useState(true);
   const rules = knowledge.ruleProposals || [];
   const sourceMap = useMemo(() => Object.fromEntries((knowledge.sources || []).map((s) => [s.id, s.title])), [knowledge.sources]);
-  const pending = rules.filter((r) => r.status !== "已批准" && r.status !== "已拒绝").length;
+  const isPending = (rule) => !rule.status || rule.status === "待审批" || rule.status === "candidate";
+  const pending = rules.filter(isPending).length;
   const approvedCount = rules.filter((r) => r.status === "已批准").length;
   const activeSkills = (knowledge.tradingSkills || []).filter((s) => s.status === "active").length;
-  const clusters = useMemo(() => clusterRules(rules.filter((r) => r.status !== "已拒绝")), [rules]);
+  const clusters = useMemo(() => clusterRules(rules.filter(isPending)), [rules]);
   const dupExtra = clusters.reduce((n, g) => n + g.length - 1, 0);
 
   async function createRule(event) {
     event.preventDefault();
     await action("/api/knowledge/rules/proposals", newRule);
-    setNewRule({ name: "", description: "", level: "L2", action: "notify" });
+    setNewRule({ name: "", category: "风控", condition: "", description: "", level: "L2", action: "notify" });
   }
   async function mergeCluster(group) {
     const [, ...rest] = group;
@@ -1112,9 +1120,9 @@ export function RuleLibraryPanel({ data, action, ui }) {
     <div className="panelStack">
       <div className="ruleLibNote">
         <strong>{t("规则库 = 从书里蒸馏出的「纪律/风控」约束", "Rule library = discipline and risk constraints distilled from sources")}</strong>
-        <small>{t(`每条都标注了来源书籍与依据。批准后写入风控引擎、并注入 AI 提示词；可预测方向的「策略」不在这里，而是走「策略假设」必须先回测。共 ${rules.length} 条 · ${approvedCount} 已批准 · ${pending} 待审批。`, `Every rule cites its source and rationale. Approved rules enter the risk engine and AI context. Directional strategies belong in strategy hypotheses and must be backtested first. ${rules.length} total · ${approvedCount} approved · ${pending} pending.`)}</small>
+        <small>{t(`每条都标注来源与依据。批准后一定进入 Agent 纪律提示；只有触发条件成功编译为结构化事实的规则才进入确定性风控，不能编译的会明确标成「仅提示」。方向策略不在这里，必须走技能验证。共 ${rules.length} 条 · ${approvedCount} 已批准 · ${pending} 待审批。`, `Every rule carries provenance and rationale. Approval always adds Agent guidance; only conditions compiled into structured facts enter deterministic risk control, while uncompiled rules are explicitly advisory. Directional strategies use the skill validation pipeline. ${rules.length} total · ${approvedCount} approved · ${pending} pending.`)}</small>
         <div className="ruleLibActions">
-          <button className="secondaryButton" disabled={rules.length < 2} onClick={async () => { if (await uiConfirm(t("用 AI 语义合并近义规则（无 AI 时退回按 类别+名称+依据 精确去重；已批准的保留），确定去重？", "Merge semantically similar rules with AI? Without AI, exact category/name/rationale matching is used. Approved rules are preserved."))) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> {t("语义去重", "Semantic dedupe")}</button>
+          <button className="secondaryButton" disabled={pending < 2} onClick={async () => { if (await uiConfirm(t("只对待审批草案做语义合并；已批准、已拒绝和已退役记录保持不变。无 AI 时按类别、名称和依据精确去重。确定继续？", "Semantically merge pending drafts only. Approved, rejected, and retired records remain unchanged. Without AI, exact category/name/rationale dedupe is used. Continue?"))) action("/api/knowledge/rules/dedup", {}); }}><Layers size={14} /> {t("语义去重", "Semantic dedupe")}</button>
         </div>
       </div>
 
@@ -1171,6 +1179,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
               <span className="ruleTag act">{t("动作", "Action")}: {ruleActionLabel(rule.action)}</span>
               {rule.level && <span className="ruleTag lv">{rule.level}</span>}
               {src && <span className="ruleTag src">《{src}》</span>}
+              {approved && <span className={`ruleTag enforce ${rule.enforcementStatus === "entry_enforced" ? "hard" : rule.enforcementStatus === "notification_enforced" ? "notify" : "advisory"}`}>{rule.enforcementStatus === "entry_enforced" ? t("确定性硬拦截", "Deterministic block") : rule.enforcementStatus === "notification_enforced" ? t("确定性通知", "Deterministic notify") : t("仅 Agent 提示", "Agent guidance only")}</span>}
             </div>
             {rule.condition && <div className="ruleItemLine"><i>{t("触发条件", "Trigger")}</i>{localizeText(rule.condition)}</div>}
             <div className="ruleItemLine"><i>{t("依据 / 为什么", "Rationale")}</i>{localizeText(rule.description || t("基于专家知识库生成", "Generated from the expert knowledge base"))}</div>
@@ -1178,7 +1187,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
               {!approved && <button className="primaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: true })}>{t("批准", "Approve")}</button>}
               {!approved && rule.status !== "已拒绝" && <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: false })}>{t("拒绝", "Reject")}</button>}
               {approved && <button className="secondaryButton sm" onClick={() => ui.openPanel("riskRules")}>{t("查看风险规则", "View risk rules")}</button>}
-              <button className="dangerTextButton sm" title={t("删除该规则草案", "Delete this rule draft")} onClick={async () => { if (await uiConfirm(t(`删除规则「${rule.name}」？`, `Delete rule “${rule.name}”?`))) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> {t("删除", "Delete")}</button>
+              <button className="dangerTextButton sm" title={approved?t("退役后停止其风控与提示作用并保留审计记录", "Retire to stop enforcement and guidance while preserving audit history"):t("删除该规则草案", "Delete this rule draft")} onClick={async () => { if (await uiConfirm(approved?t(`退役已批准规则「${rule.name}」？它将停止生效，但保留审计记录。`,`Retire approved rule “${rule.name}”? It will stop applying while its audit history remains.`):t(`删除规则草案「${rule.name}」？`, `Delete rule draft “${rule.name}”?`))) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> {approved?t("退役", "Retire"):t("删除", "Delete")}</button>
             </div>
           </div>
         );
@@ -1186,6 +1195,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
       <form className="panelForm compact" onSubmit={createRule}>
         <h3>{t("新增规则草案", "New rule draft")}</h3>
         <label>{t("名称", "Name")}<input value={newRule.name} onChange={(event) => setNewRule((current) => ({ ...current, name: event.target.value }))} placeholder={t("例如：重大事件前禁止高杠杆", "Example: block high leverage before major events")} /></label>
+        <div className="formGrid"><label>{t("类别", "Category")}<select value={newRule.category} onChange={(event) => setNewRule((current) => ({ ...current, category: event.target.value }))}><option value="风控">{t("风控", "Risk")}</option><option value="仓位">{t("仓位", "Position sizing")}</option><option value="杠杆">{t("杠杆", "Leverage")}</option><option value="执行">{t("执行", "Execution")}</option><option value="心理">{t("心理", "Psychology")}</option></select></label><label>{t("触发条件", "Trigger condition")}<input value={newRule.condition} onChange={(event) => setNewRule((current) => ({ ...current, condition: event.target.value }))} placeholder={t("例如：资金费率绝对值 > 0.01", "Example: absolute funding rate > 0.01")} /></label></div>
         <label>{t("说明", "Description")}<textarea value={newRule.description} onChange={(event) => setNewRule((current) => ({ ...current, description: event.target.value }))} /></label>
         <div className="formGrid">
           <label>{t("等级", "Level")}<select value={newRule.level} onChange={(event) => setNewRule((current) => ({ ...current, level: event.target.value }))}><option>L2</option><option>L3</option><option>L4</option><option>L5</option></select></label>

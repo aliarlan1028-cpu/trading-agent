@@ -354,8 +354,8 @@ async function mergeCategoryRules(category, list) {
 
 export async function consolidateRuleProposals(db) {
   const rules = db.knowledge.ruleProposals || [];
-  const approved = rules.filter((r) => r.status === "已批准");
-  const pending = rules.filter((r) => r.status !== "已批准");
+  const pending = rules.filter((r) => !r.status || r.status === "待审批" || r.status === "candidate");
+  const untouched = rules.filter((r) => !pending.includes(r));
   if (pending.length < 2) return { removed: 0, remaining: rules.length, method: "none" };
   const byCat = {};
   for (const r of pending) (byCat[r.category || "其他"] ||= []).push(r);
@@ -366,7 +366,8 @@ export async function consolidateRuleProposals(db) {
     const merged = await mergeCategoryRules(cat, list).catch(() => null);
     if (merged && merged.length) { out.push(...merged); usedLlm = true; } else out.push(...list);
   }
-  db.knowledge.ruleProposals = [...out, ...approved];
+  // 已批准、已拒绝、已退役都是有审计意义的状态，绝不能被语义去重重新生成成待审批草案。
+  db.knowledge.ruleProposals = [...out, ...untouched];
   const removed = Math.max(0, pending.length - out.length);
   appendAudit(db, `规则库智能去重：待审批 ${pending.length} → ${out.length} 条`, "rule_dedup", "KnowledgePipeline");
   return { removed, remaining: db.knowledge.ruleProposals.length, method: usedLlm ? "llm" : "keep" };

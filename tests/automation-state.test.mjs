@@ -95,6 +95,19 @@ test("已保存执行方式与当前有效状态分离", () => {
   assert.equal(state.mode, "reduce_only");
   assert.equal(state.requestedMode, "full_auto");
   assert.equal(state.requestedLabel, "符合限制时自动下单");
+  assert.equal(state.blockerDetails[0].code, "reduce_only");
+  assert.match(state.detail, /所有原因解除后会按已保存模式自动恢复/);
+});
+
+test("只减仓状态公开每个持久原因的人类说明", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "full_auto";
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyReasons = ["financial_reconciliation_pending", "execution:close_unknown_pending"];
+  const state = deriveAutomationState(db, { hasProvider: true });
+  assert.deepEqual(state.blockerDetails.map((item) => item.code), ["financial_reconciliation_pending", "execution:close_unknown_pending"]);
+  assert.ok(state.blockers.includes("费用或资金费对账中"));
+  assert.ok(state.blockers.includes("平仓结果未知"));
 });
 
 test("自动交易保存只拒绝结构性缺项，临时运行故障保留为等待恢复", () => {

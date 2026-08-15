@@ -3892,6 +3892,32 @@ button.danger:disabled,
   border-color: #eecfc3;
 }
 
+.autoPausedPill {
+  appearance: none;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+.autoPausedPill span {
+  color: #9a5142;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .03em;
+}
+
+.autoPausedPill b {
+  color: #a42f21;
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+.autoPausedPill:hover {
+  background: #f7ddd6;
+}
+
 .killButton {
   white-space: nowrap;
   display: flex;
@@ -8219,6 +8245,9 @@ button.danger:disabled,
 .ruleTag.cat { background: #E6F1EA; color: #1F7A50; }
 .ruleTag.act { background: #FBEDDF; color: #C0631B; }
 .ruleTag.src { background: #EAF0FB; color: #2A6FDB; }
+.ruleTag.enforce.hard { background: #FCE4E0; color: #A33A2A; }
+.ruleTag.enforce.notify { background: #FFF0D5; color: #916218; }
+.ruleTag.enforce.advisory { background: #EEEAE3; color: #6E6558; }
 .ruleItemLine { font-size: 11.5px; color: #4a4437; line-height: 1.5; margin-top: 4px; }
 .ruleItemLine i { display: inline-block; min-width: 66px; font-style: normal; font: 600 9.5px "Space Grotesk"; letter-spacing: 0.04em; text-transform: uppercase; color: #b3a992; margin-right: 6px; }
 .ruleItemBtns { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
@@ -9330,11 +9359,9 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mDrawerItem.active { background: #1E1B16; color: #F5E9DB; font-weight: 700; }
 .mDrawerItem.active svg { color: #F5E9DB; }
 .mDrawerItem.active > span small { color: #BDB09F; }
-.mDrawerFoot { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #EDE7DB; }
-.mDrawerStatus { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: #E6F1EA; color: #1F7A50; font: 700 12px "Space Grotesk"; }
-.mDrawerStatus span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.mDrawerStatus.warning { background: #FBF1DE; color: #9a7420; } .mDrawerStatus.critical, .mDrawerStatus.danger { background: #F7E6E2; color: #C43F28; }
-.mDrawerClose { border: 1px solid #E3DCCE; background: #fff; border-radius: 10px; padding: 11px; font: 700 13px "Space Grotesk"; color: #6B6455; cursor: pointer; }
+.mDrawerFoot { display: grid; padding-top: 12px; border-top: 1px solid #EDE7DB; background:#FBF9F5; }
+.mDrawerSettings { display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:10px 11px;border:1px solid #E3DCCE;border-radius:10px;background:#fff;color:#4b443a;text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(52,43,31,.04); }
+.mDrawerSettings>svg{flex:none;color:#8a8172}.mDrawerSettings>span{display:grid;gap:2px;min-width:0;flex:1}.mDrawerSettings b{font:700 13px "Space Grotesk"}.mDrawerSettings small{color:#9A907F;font:500 9px "Space Grotesk"}.mDrawerSettings>svg:last-child{color:#B3A992}.mDrawerSettings.active{border-color:#1E1B16;background:#1E1B16;color:#F5E9DB}.mDrawerSettings.active svg{color:#F5E9DB}.mDrawerSettings.active small{color:#BDB09F}
 
 /* ===== 移动端各屏 S1-S5（design_handoff_ios_app）===== */
 .mScreen { display: flex; flex-direction: column; gap: 10px; padding: 14px; }

@@ -52,3 +52,30 @@ test("an independent approver retires rather than deletes the approved rule", ()
   assert.equal(db.riskRules[0].enabled, false);
   assert.equal(db.riskRules[0].retiredBy, "Approver");
 });
+
+test("approving the same knowledge rule twice upserts one compiled risk rule", () => {
+  const { db, routes } = harness();
+  const rule = db.knowledge.ruleProposals[0];
+  rule.status = "待审批";
+  rule.condition = "重大事件前暂停开仓";
+  db.riskRules = [];
+  const handler = routes.get("POST /api/knowledge/rules/:id/approve");
+  const req = { params: { id: rule.id }, body: { approved: true }, user: { id: "approver", name: "Approver", role: "风控审批员", status: "active" } };
+  handler(req, response());
+  handler(req, response());
+  assert.equal(db.riskRules.length, 1);
+  assert.equal(db.riskRules[0].id, "risk_from_rule_1");
+  assert.equal(rule.compiledRiskRuleId, "risk_from_rule_1");
+  assert.equal(rule.enforcementStatus, "advisory_uncompiled");
+  assert.match(rule.enforcementWarning, /仅注入 AI 提示词/);
+});
+
+test("rejecting a previously approved knowledge rule disables its compiled effect", () => {
+  const { db, routes } = harness();
+  const handler = routes.get("POST /api/knowledge/rules/:id/approve");
+  const res = response();
+  handler({ params: { id: "rule_1" }, body: { approved: false }, user: { id: "approver", name: "Approver", role: "风控审批员", status: "active" } }, res);
+  assert.equal(db.knowledge.ruleProposals[0].status, "已拒绝");
+  assert.equal(db.knowledge.ruleProposals[0].enforcementStatus, "not_active");
+  assert.equal(db.riskRules[0].enabled, false);
+});

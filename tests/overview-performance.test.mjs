@@ -68,6 +68,16 @@ test("workspace projection bounds heavy history and preserves every active execu
   assert.ok(bytes < 500_000, `chat payload exceeded 500 KB: ${bytes}`);
 });
 
+test("risk workspace receives authoritative event windows separately from generic incidents", () => {
+  const eventRiskWindows = [{ id: "cpi", eventId: "cpi", title: "CPI", phase: "pre_release_blackout", blocking: true }];
+  const risk = projectOverviewSection({
+    eventRiskWindows,
+    riskIncidents: [{ id: "recon", title: "账户对账异常", status: "open" }]
+  }, "riskCenter");
+  assert.deepEqual(risk.eventRiskWindows, eventRiskWindows);
+  assert.equal(risk.riskIncidents[0].id, "recon");
+});
+
 test("UI revisions are strictly monotonic", () => {
   const before = currentUiRevision();
   const first = uiSyncEvent("core_invalidated");

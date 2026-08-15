@@ -40,6 +40,8 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
       status: "待审批",
       action: validateDynamicRiskAction(req.body.action || "notify") ? (req.body.action || "notify") : "notify",
       sourceRefs: req.body.sourceRefs || [],
+      createdByUserId: req.user?.id || null,
+      tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
       createdAt: nowIso()
     };
     db.knowledge.ruleProposals.unshift(rule);
@@ -64,7 +66,7 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
         enforcementWarning = "该规则的自然语言条件无法编译为结构化拦截条件，批准后仅注入 AI 提示词作纪律提醒，不会被风控引擎硬性拦截；如需硬拦截请在规则库补充结构化条件（conditionSpec）。";
         appendAudit(db, `知识规则「${rule.name}」批准为仅提示（条件不可编译，无硬拦截）`, rule.id, "RiskCompiler", "warning");
       }
-      db.riskRules.unshift({
+      const compiledRule = {
         id: `risk_from_${rule.id}`,
         name: rule.name,
         scope: "knowledge",
@@ -75,7 +77,19 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
         conditionSpec: conditionValidation.valid ? conditionSpec : null,
         enforcementStatus: conditionValidation.valid ? (action === "notify" ? "notification_enforced" : "entry_enforced") : "advisory_uncompiled",
         description: `来自专家知识库规则 ${rule.id}${conditionValidation.valid ? "" : "；自然语言条件尚未编译，当前仅作提示"}`
-      });
+      };
+      const existingIndex = (db.riskRules || []).findIndex((item) => item.id === compiledRule.id);
+      if (existingIndex >= 0) db.riskRules[existingIndex] = { ...db.riskRules[existingIndex], ...compiledRule };
+      else db.riskRules.unshift(compiledRule);
+      rule.compiledRiskRuleId = compiledRule.id;
+      rule.enforcementStatus = compiledRule.enforcementStatus;
+      rule.conditionSpec = compiledRule.conditionSpec;
+      rule.enforcementWarning = enforcementWarning;
+    } else {
+      const compiled = (db.riskRules || []).find((item) => item.id === `risk_from_${rule.id}`);
+      if (compiled) compiled.enabled = false;
+      rule.enforcementStatus = "not_active";
+      rule.enforcementWarning = null;
     }
     appendAudit(db, `${rule.status}知识规则`, rule.id, req.user?.name || db.user.name);
     persist(res, { ...rule, enforcementWarning });
@@ -113,17 +127,19 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
   // 阈值冲突取更严格；已批准的一律保留。LLM 调用较慢（数十秒），先立即响应、后台执行，
   // 前端 15s 轮询会自动刷新结果。无 LLM 时退回按名称精确去重。
   app.post("/api/knowledge/rules/dedup", requirePermission("write:knowledge"), (_req, res) => {
-    const pendingCount = (db.knowledge.ruleProposals || []).filter((r) => r.status !== "已批准").length;
+    const isPending = (rule) => !rule.status || rule.status === "待审批" || rule.status === "candidate";
+    const pendingCount = (db.knowledge.ruleProposals || []).filter(isPending).length;
     res.json({ message: "规则库去重进行中，稍后自动刷新", status: "processing", pending: pendingCount });
     consolidateRuleProposals(db)
       .then((r) => {
         if (r.method !== "llm") {
           // 无 LLM：退回按 类别+名称+依据 精确去重
           const norm = (s) => String(s || "").toLowerCase().replace(/[\s\p{P}]/gu, "");
-          const seen = new Set(); const kept = []; const removedIds = [];
+          const seen = new Set(); const kept = [];
           for (const rule of db.knowledge.ruleProposals || []) {
+            if (!isPending(rule)) { kept.push(rule); continue; }
             const key = `${norm(rule.category)}|${norm(rule.name)}|${norm(rule.description).slice(0, 40)}`;
-            if (rule.status === "已批准" || !seen.has(key)) { seen.add(key); kept.push(rule); } else removedIds.push(rule.id);
+            if (!seen.has(key)) { seen.add(key); kept.push(rule); }
           }
           db.knowledge.ruleProposals = kept;
         }

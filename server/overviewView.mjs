@@ -371,6 +371,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     riskRules: overview.riskRules || [],
     riskChecks: (overview.riskChecks || []).slice(0, 100).map(compactRiskCheck),
     riskIncidents: activePlusRecent(overview.riskIncidents, new Set(["open"]), 60),
+    eventRiskWindows: (overview.eventRiskWindows || []).slice(0, 60),
     currentRiskSnapshot: overview.currentRiskSnapshot || null,
     grayReleasePolicies: overview.grayReleasePolicies || [],
     notionalLimits: overview.notionalLimits || null,

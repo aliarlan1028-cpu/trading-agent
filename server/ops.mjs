@@ -26,6 +26,55 @@ export const OPERATING_MODE_LABELS = {
   full_auto: "符合限制时自动下单"
 };
 
+const REDUCE_ONLY_REASON_LABELS = {
+  manual_reduce_only: "人工只减仓锁",
+  kill_switch: "紧急停止已开启",
+  emergency_flatten: "一键平仓安全锁待确认",
+  liquidation_emergency: "强平风险处置待收口",
+  protection_emergency: "止损保护异常待收口",
+  audit_chain_integrity: "审计链完整性异常",
+  oms_recovery: "订单状态恢复对账中",
+  armed_setup_recovery: "条件交易恢复对账中",
+  financial_reconciliation_pending: "费用或资金费对账中",
+  professional_risk_gate: "专业运行风险闸降级",
+  entry_reconciliation_pending: "入场订单对账中",
+  cancel_reconciliation_pending: "撤单结果对账中",
+  close_reconciliation_pending: "平仓结果对账中",
+  protection_failure_reconciliation: "保护失败处置对账中",
+  orphan_order_cancel_pending: "交易所孤儿挂单撤单中",
+  credential_decryption_failed: "凭证解密失败"
+};
+
+function reduceOnlyReasonLabel(code = "") {
+  if (REDUCE_ONLY_REASON_LABELS[code]) return REDUCE_ONLY_REASON_LABELS[code];
+  if (code.startsWith("execution:")) {
+    const status = code.slice("execution:".length);
+    const statusLabels = {
+      entry_unknown_pending: "入场订单结果未知",
+      entry_partial: "入场部分成交待处置",
+      cancel_pending: "撤单确认中",
+      cancel_unknown_pending: "撤单结果未知",
+      protection_failure_cancel_pending: "保护失败撤单中",
+      close_pending: "平仓确认中",
+      close_unknown_pending: "平仓结果未知",
+      close_reconciliation_pending: "平仓成交对账中",
+      group_close_pending: "组合平仓确认中",
+      recovery_pending_reconciliation: "远端效果恢复对账中",
+      emergency_close_pending: "紧急平仓确认中"
+    };
+    return statusLabels[status] || `执行状态待收口：${status}`;
+  }
+  return code ? `安全原因待解除：${code}` : "只减仓模式";
+}
+
+function reduceOnlyBlockers(system = {}) {
+  const raw = Array.isArray(system.reduceOnlyReasons) && system.reduceOnlyReasons.length
+    ? system.reduceOnlyReasons
+    : system.reduceOnlyBy ? [system.reduceOnlyBy] : [];
+  const details = [...new Set(raw.filter(Boolean))].map((code) => ({ code, label: reduceOnlyReasonLabel(code) }));
+  return details.length ? details : [{ code: "reduce_only", label: "只减仓模式" }];
+}
+
 // 用户选择的运行方式是持久化意图；行情、对账、WS 等运行时故障只能让“当前执行”
 // 暂停，不能反过来把用户配置伪装成“只分析”。旧库没有该字段时，从原有三闸和
 // 灰度人工确认设置推断一次，保持升级兼容。
@@ -44,11 +93,26 @@ export function deriveAutomationState(db, options = {}) {
   const sys = db.system || {};
   const requestedMode = requestedOperatingMode(db);
   const requestedLabel = OPERATING_MODE_LABELS[requestedMode];
-  const result = (state) => ({ ...state, requestedMode, requestedLabel });
-  if (sys.killSwitch) return result({ mode: "halted", label: "已熔断", detail: "解除熔断前只允许平仓/撤单等降风险动作", tone: "danger", blockers: [] });
+  const result = (state) => ({
+    ...state,
+    blockerDetails: state.blockerDetails || (state.blockers || []).map((label) => ({ code: null, label })),
+    requestedMode,
+    requestedLabel
+  });
+  if (sys.killSwitch) return result({ mode: "halted", label: "已熔断", detail: "解除熔断前只允许平仓/撤单等降风险动作", tone: "danger", blockers: ["紧急停止已开启"], blockerDetails: [{ code: "kill_switch", label: "紧急停止已开启" }] });
   // 只减仓也纳入唯一真相源:否则状态卡会显示"全自动"而每笔新开仓其实被只减仓拦(口径裂缝)。
-  if (sys.reduceOnlyMode) return result({ mode: "reduce_only", label: "只减仓", detail: sys.latestAction || "仅允许平仓/撤单等降风险动作，禁止新开仓", tone: "warning", blockers: ["只减仓模式"] });
-  if (!sys.autonomyEnabled) return result({ mode: "paused", label: "自主推进已暂停", detail: "恢复后按定时巡检 + 观察哨自主决策", tone: "warning", blockers: [] });
+  if (sys.reduceOnlyMode) {
+    const blockerDetails = reduceOnlyBlockers(sys);
+    return result({
+      mode: "reduce_only",
+      label: "只减仓",
+      detail: `${blockerDetails.map((item) => item.label).join("、")}；当前仅允许平仓、撤销入场单等降风险动作，所有原因解除后会按已保存模式自动恢复`,
+      tone: "warning",
+      blockers: blockerDetails.map((item) => item.label),
+      blockerDetails
+    });
+  }
+  if (!sys.autonomyEnabled) return result({ mode: "paused", label: "自主推进已暂停", detail: "恢复后按定时巡检 + 观察哨自主决策", tone: "warning", blockers: ["自主推进已暂停"], blockerDetails: [{ code: "autonomy_paused", label: "自主推进已暂停" }] });
   const blockers = [];
   if (!activeMandate(db)) blockers.push("无激活授权");
   if (!options.hasProvider) blockers.push("未配置 LLM");

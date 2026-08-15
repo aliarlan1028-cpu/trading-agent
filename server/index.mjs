@@ -86,6 +86,7 @@ import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./rea
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
+import { deriveEventRiskWindows } from "./eventRisk.mjs";
 import { profitGoalSnapshot } from "./profitGoals.mjs";
 import { buildCurrentRiskSnapshot } from "./currentRiskSnapshot.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
@@ -1121,6 +1122,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     riskRules: db.riskRules,
     riskChecks: db.riskChecks,
     riskIncidents: db.riskIncidents,
+    eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }),
     currentRiskSnapshot: overviewRiskSnapshot,
     realtimeConnections: db.realtimeConnections,
     marketRegime: db.marketRegime || null,

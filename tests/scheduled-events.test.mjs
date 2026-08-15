@@ -20,15 +20,19 @@ test("不再生成近似非农；官方 minute 精度宏观事件才进入高影
   ensureScheduledEvents(db);
   assert.equal(db.events.some((e) => String(e.scheduledKey || "").startsWith("sched_nfp_")), false);
   db.marketCalendarEvents = [{
-    id: "bls_nfp_exact", sourceName: "BLS", sourceUrl: "https://www.bls.gov/example",
+    id: "bls_nfp_exact", sourceId: "official_bls_calendar", sourceName: "BLS", sourceUrl: "https://www.bls.gov/example",
     title: "Employment Situation", due: new Date(Date.now() + 86_400_000).toISOString(),
     timePrecision: "minute", importance: "high"
   }];
   ensureScheduledEvents(db);
   const nfp = db.events.find((e) => e.scheduledKey === "official_bls_nfp_exact");
   const exp = db.events.find((e) => /季度交割/.test(e.shortTitle || ""));
-  assert.ok(nfp && nfp.impact >= 70 && nfp.category === "宏观");
+  assert.ok(nfp && nfp.impact >= 90 && nfp.category === "宏观");
   assert.equal(nfp.timePrecision, "minute");
+  assert.equal(nfp.verified, true);
+  assert.equal(nfp.autoTradingEligible, true);
+  assert.equal(nfp.provenance?.verifiedOrigin, true);
+  assert.equal(nfp.sourceId, "official_bls_calendar");
   assert.ok(exp && exp.category === "衍生品");
 });
 

@@ -38,7 +38,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
+import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./conceptGraph.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -1553,8 +1553,7 @@ const mobileSecondaryNav = [
   { id: "strategyLib", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
   { id: "intelligence", label: ["情报中心", "Intelligence"], icon: Globe2, hint: ["今日摘要、快讯与来源", "Brief, flashes, and sources"] },
   { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], icon: CalendarClock, hint: ["重要事件与自动任务", "Events and automation"] },
-  { id: "auditSystem", label: ["运行记录", "Activity"], icon: Activity, hint: ["系统状态与审计", "System state and audit"] },
-  { id: "systemSettings", label: ["设置", "Settings"], icon: Settings, hint: ["账户、交易所与模型", "Account, exchange, and model"] }
+  { id: "auditSystem", label: ["运行记录", "Activity"], icon: Activity, hint: ["系统状态与审计", "System state and audit"] }
 ];
 const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
 
@@ -1582,9 +1581,8 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
   );
 }
 
-function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang }) {
+export function NavDrawer({ open, route, onNavigate, onClose, lang, switchLang }) {
   if (!open) return null;
-  const status = systemStatus(data);
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
@@ -1598,8 +1596,7 @@ function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang })
           })}
         </div>
         <div className="mDrawerFoot">
-          <div className={`mDrawerStatus ${status.tone}`}><span />{status.label}</div>
-          <button className="mDrawerClose" onClick={onClose}>{t("关闭菜单", "Close menu")}</button>
+          <button className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate("systemSettings")}><Settings size={19}/><span><b>{t("设置", "Settings")}</b><small>{t("账户、交易所与模型", "Account, exchange, and model")}</small></span><ChevronRight size={15}/></button>
         </div>
       </aside>
     </div>
@@ -1724,7 +1721,7 @@ export function MobileApp({ api, lang, switchLang }) {
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
       <MobileTabbar route={route} onNavigate={navigate} onMore={() => setDrawer(true)} />
-      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} lang={lang} switchLang={switchLang} />
+      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}

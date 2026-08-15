@@ -16,7 +16,11 @@ export async function generateCandidates(db, sourceId, { max = 6 } = {}) {
   const source = (db.knowledge.sources || []).find((s) => s.id === sourceId);
   if (!source) return { ok: false, error: "知识源不存在" };
   const methods = (db.knowledge.tradingMethods || []).filter((m) => m.source?.id === sourceId).slice(0, 8);
-  const concepts = (db.knowledge.conceptCards || []).filter((c) => c.source?.id === sourceId || c.sourceId === sourceId).slice(0, 12);
+  const concepts = (db.knowledge.conceptCards || []).filter((c) =>
+    c.source?.id === sourceId
+    || c.sourceId === sourceId
+    || (Array.isArray(c.sourceRefs) && c.sourceRefs.includes(sourceId))
+  ).slice(0, 12);
   const chunks = (db.knowledge.chunks || []).filter((c) => c.sourceId === sourceId).slice(0, 6);
   const brief = [
     `书名:${source.title}`,

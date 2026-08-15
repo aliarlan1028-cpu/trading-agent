@@ -54,8 +54,8 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -414,6 +414,42 @@ test("new capital flow, review workbench, ledger, and watch page render with rea
   assert.match(watchHtml, /失效条件/);
 });
 
+test("risk overview renders authoritative event windows instead of generic risk incidents", () => {
+  const riskData = {
+    ...data,
+    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto", blockers: ["费用或资金费对账中"] },
+    eventRiskWindows: [{ id: "cpi", title: "CPI 公布", sourceName: "U.S. BLS", dueAt: "2026-08-16T12:30:00Z", deltaMs: 600000, phase: "pre_release_blackout", blocking: true, impact: 100, marketWide: true }],
+    riskIncidents: [{ id: "recon", title: "账户对账异常", status: "open", severity: "high" }]
+  };
+  const html = render(React.createElement(C.RiskPostureConcept, { data: riskData, action, ui }));
+  assert.match(html, /事件风险窗口/);
+  assert.match(html, /CPI 公布/);
+  assert.match(html, /公布前静默/);
+  assert.match(html, /1 个正在阻断/);
+  assert.doesNotMatch(html, /账户对账异常/);
+});
+
+test("capital settings distinguish configured auto mode from the current safety state", () => {
+  const html = render(React.createElement(C.MandateConcept, {
+    data: {
+      ...data,
+      automationState: {
+        mode: "reduce_only", label: "只减仓", requestedMode: "full_auto",
+        detail: "费用或资金费对账中；当前仅允许降风险动作",
+        blockerDetails: [{ code: "financial_reconciliation_pending", label: "费用或资金费对账中" }]
+      },
+      system: { ...data.system, reduceOnlyMode: true }
+    },
+    action, ui
+  }));
+  assert.match(html, /目标配置/);
+  assert.match(html, /符合限制时自动下单/);
+  assert.match(html, /当前有效状态/);
+  assert.match(html, /只减仓/);
+  assert.match(html, /自动交易配置仍然保留/);
+  assert.match(html, /费用或资金费对账中/);
+});
+
 test("execution and review renders every workflow zone on one page", () => {
   const html = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
   for (const id of ["attention", "performance", "reviews", "diagnostics", "behavior"]) assert.ok(html.includes(`id="er-${id}"`), `missing single-page zone ${id}`);
@@ -462,8 +498,28 @@ test("desktop knowledge page exposes the full concept graph workspace and source
   assert.match(html, /海龟交易法则/);
   assert.match(html, /以交易为生/);
   assert.match(html, /生效中的条令/);
+  assert.match(html, /交易方法 ≠ 已上岗策略/);
+  assert.match(html, /管理来源/);
+  assert.match(html, /扩展候选（可选）/);
+  assert.match(html, /规则库与实际作用/);
+  assert.match(html, /查看技能流水线/);
   assert.match(html, /趋势/);
   assert.match(html, /止损/);
+});
+
+test("mobile drawer keeps settings visible without duplicate status and close footer", () => {
+  const html = render(React.createElement(C.NavDrawer, {
+    open: true,
+    route: "knowledgeBase",
+    onNavigate: () => {},
+    onClose: () => {},
+    lang: "zh",
+    switchLang: () => {}
+  }));
+  assert.match(html, /设置/);
+  assert.doesNotMatch(html, /关闭菜单/);
+  assert.doesNotMatch(html, /只减仓/);
+  assert.match(html, /mDrawerSettings/);
 });
 
 test("config panels render for every live key", () => {
