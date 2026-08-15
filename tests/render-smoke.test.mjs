@@ -78,7 +78,7 @@ test("网页版 API 始终同源，不受浏览器残留后端地址影响", () 
   assert.equal(C.resolveApiBase({ native: true, stored: "http://127.0.0.1:8787", configured: "" }), "https://yegidawir.xyz");
 });
 
-test("App 登录前只显示精简登录与订阅入口，不渲染 Web 营销页", () => {
+test("App 登录前只显示精简登录与注册入口，不渲染 Web 营销页", () => {
   const props = {
     login: async () => {}, registerAccount: async () => {}, toast: "", apiBase: "https://yegidawir.xyz", setApiBase: () => {},
     publicInfo: { registrationEnabled: true, subscriptionPlans: [{ id: "p1", name: "月度订阅", months: 1, priceUsdt: 99 }] }
@@ -87,7 +87,7 @@ test("App 登录前只显示精简登录与订阅入口，不渲染 Web 营销�
   assert.match(html, /nativeAuthScreen/);
   assert.match(html, /kordyn-logo\.svg/);
   assert.match(html, /登录/);
-  assert.match(html, /订阅/);
+  assert.match(html, /注册/);
   assert.match(html, /服务器设置/);
   assert.doesNotMatch(html, /lpFrame|landing\.html|把你的交易书|landingMarketing/);
 });

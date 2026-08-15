@@ -6,6 +6,8 @@ import test from "node:test";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "live-mode-save-test-"));
 process.env.PRODUCTION_SECURITY_PROFILE = "bitlaunch_single_server";
+process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
 delete process.env.REQUIRE_MFA_FOR_LIVE;
 
 const { registerSecurityConfigRoutes } = await import("../server/routes/securityConfig.mjs");

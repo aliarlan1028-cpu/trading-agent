@@ -64,7 +64,9 @@ function profileRecord(profile) {
   const positiveFolds = activeFolds.filter((fold) => Number(fold?.expectancyR) > 0);
   return {
     ...record,
-    passed: profile.strategyId ? ["validated", "oos_ok"].includes(profile.confidence) : false,
+    // oos_ok is a research candidate, not a validated strategy. Only the full
+    // optimizer validation gate may be shown as passed in research views.
+    passed: profile.strategyId ? profile.confidence === "validated" && profile.rollingValidation?.passed === true : false,
     activeFolds: activeFolds.length,
     positiveFolds: positiveFolds.length,
     rollingValidation: profile.rollingValidation || null,

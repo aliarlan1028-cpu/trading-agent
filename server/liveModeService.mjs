@@ -15,6 +15,8 @@ export function autonomousProductionBlockers(db, options = {}) {
     else if (!recentExternalAlertSucceeded(db)) blockers.push("外部告警通道未在 24 小时内验证");
   }
   if (!activeMandate(db)) blockers.push("没有当前有效的 OKX Mandate");
+  if (!process.env.OPENROUTER_API_KEY) blockers.push("Gemini 主模型的 OpenRouter API Key 未配置");
+  if (process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false" && !process.env.DEEPSEEK_API_KEY) blockers.push("DeepSeek 官网独立审查 API Key 未配置");
   const metadata = (db.apiKeyMetadata || []).find((item) => item.exchange === "OKX");
   if (!metadata?.hasApiKey || !metadata?.hasSecret || metadata.withdrawPermission !== false || !metadata.permissionVerifiedAt) blockers.push("OKX API Key 未完成无提现权限核验");
   const account = (db.exchangeAccounts || []).find((item) => item.exchange === "OKX" && item.readEnabled);

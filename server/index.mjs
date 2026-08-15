@@ -38,7 +38,10 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { strategyStudioSnapshot } from "./strategyStudio.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildBacktestResearch } from "./strategyResearchView.mjs";
-import { compactOverviewForNative } from "./overviewView.mjs";
+import { compactOverviewForNative, projectOverviewSection } from "./overviewView.mjs";
+import { buildCoreOverview } from "./coreOverview.mjs";
+import { httpPerformanceSnapshot, recordHttpPerformance, recordStartupPhase, recordStartupReady } from "./performanceMetrics.mjs";
+import { currentUiRevision, uiSyncEvent } from "./uiSync.mjs";
 import { listStrategies, STRATEGIES } from "./strategies.mjs";
 import { buildStrategyCatalog } from "./strategyContracts.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
@@ -94,7 +97,7 @@ import { installSkill, scanSkill, verifySkillPackageIntegrity } from "./skillMan
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
-import { activeMandate, appendAudit, appendTrace, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, setSaveDbObserver, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, effectiveOpeningNotionalLimits } from "./tradeActions.mjs";
 import { accountMarginCapacity } from "./tradingCapacity.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
@@ -112,6 +115,7 @@ import { transitionMandate } from "./mandateLifecycle.mjs";
 import { tenantIsolationReadiness } from "./tenantIsolation.mjs";
 import { verifyTrc20PaymentIntents } from "./trc20Payments.mjs";
 import { extendSubscriptionTerm } from "./subscriptionLifecycle.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 
 dotenv.config();
 installProxyFromEnv();
@@ -127,11 +131,18 @@ if (process.env.TENANT_ISOLATION_V2 === "true") {
 }
 
 const app = express();
+app.use(recordHttpPerformance);
 // 生产只接受本机 Caddy 注入的 X-Forwarded-For；应用端口本身仅绑定 127.0.0.1。
 // 这样注册/登录限流能拿到真实访客 IP，又不会信任公网客户端伪造的转发头。
 app.set("trust proxy", "loopback");
+const databaseLoadStartedAt = performance.now();
 const db = loadDb();
+recordStartupPhase("database_load", databaseLoadStartedAt);
+const postDatabaseStartupAt = performance.now();
 app.locals.db = db;
+setSaveDbObserver(({ updatedAt }) => {
+  broadcastRaw(uiSyncEvent("core_invalidated", { updatedAt }));
+});
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../dist");
 
@@ -841,8 +852,7 @@ setMarketTickHook((database, symbol, price) => {
     __lastPnlBroadcast = now;
     try {
       refreshAccounting(database);
-      broadcastRaw({
-        type: "portfolio",
+      broadcastRaw(uiSyncEvent("portfolio", {
         portfolio: {
           unrealizedPnl: database.portfolio?.unrealizedPnl ?? null,
           todayPnl: database.portfolio?.todayPnl ?? null,
@@ -850,7 +860,7 @@ setMarketTickHook((database, symbol, price) => {
           totalEquityUsdt: database.portfolio?.totalEquityUsdt ?? null
         },
         positions: (database.positions || []).map((p) => ({ id: p.id, symbol: p.symbol, mark: p.mark, pnl: p.pnl, unrealizedPnl: p.unrealizedPnl, roiPct: p.roiPct }))
-      });
+      }));
     } catch { /* noop */ }
   }
   // 实时止盈止损安全网：最多每 3s 跑一次（用实时价），避免重入。
@@ -948,13 +958,13 @@ async function handleKnowledgeImport(req, res) {
     saveDb(db);
     res.json({ message: "知识来源已导入，正在后台蒸馏，稍后自动出现在知识库", source, parsed: { status: "processing" } });
     parseKnowledgeRealSource(db, source.id)
-      .then(() => { saveDb(db); try { broadcastRaw({ type: "knowledge_updated", sourceId: source.id, status: source.status }); } catch { /* SSE 可选 */ } })
+      .then(() => { saveDb(db); try { broadcastRaw(uiSyncEvent("knowledge_updated", { sourceId: source.id, status: source.status })); } catch { /* SSE 可选 */ } })
       .catch((err) => {
         source.status = "failed";
         source.error = err.message;
         appendAudit(db, `知识后台蒸馏失败：${err.message}`, source.id, "KnowledgePipeline", "warning");
         saveDb(db);
-        try { broadcastRaw({ type: "knowledge_updated", sourceId: source.id, status: "failed" }); } catch { /* SSE 可选 */ }
+        try { broadcastRaw(uiSyncEvent("knowledge_updated", { sourceId: source.id, status: "failed" })); } catch { /* SSE 可选 */ }
       });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -974,6 +984,32 @@ app.get("/api/storage", requirePermission("admin:system"), (_req, res) => {
   res.json(getStorageInfo());
 });
 
+function sendMeasuredJson(res, payload, metricName) {
+  const serialized = JSON.stringify(payload);
+  const bytes = Buffer.byteLength(serialized);
+  res.set("Cache-Control", "no-store");
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.set("X-Kordyn-Payload-Bytes", String(bytes));
+  if (metricName) res.set("Server-Timing", `${metricName};desc=\"${bytes} bytes\"`);
+  res.send(serialized);
+}
+
+app.get("/api/bootstrap/core", requirePermission("account.read"), (req, res) => {
+  const payload = buildCoreOverview(db, {
+    revision: currentUiRevision(),
+    user: sanitizeUserRecord(req.user || db.user),
+    systemRelease: process.env.APP_RELEASE || "dev",
+    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
+    config: getConfigStatus(db)
+  });
+  sendMeasuredJson(res, payload, "core_overview");
+});
+
+app.get("/api/system/performance-metrics", requirePermission("admin:system"), (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(httpPerformanceSnapshot());
+});
+
 // system 路由组(readiness/backup/reset-operational-data/autonomy)已迁至 server/routes/system.mjs
 // admin 用户/订阅/密码 + auth/change-password 路由组已迁至 server/routes/adminUsers.mjs
 // payments(TRC20) 路由组已迁至 server/routes/payments.mjs
@@ -984,12 +1020,21 @@ app.get("/api/storage", requirePermission("admin:system"), (_req, res) => {
 function liveConnectorToolStatus(tools = []) {
   const has = (k) => Boolean(process.env[k]);
   const okxOk = has("OKX_API_KEY") && has("OKX_API_SECRET") && has("OKX_API_PASSPHRASE");
-  const llmOk = has("ANTHROPIC_API_KEY") || has("OPENAI_API_KEY") || has("DEEPSEEK_API_KEY") || has("GEMINI_API_KEY");
+  const llmOk = has("OPENROUTER_API_KEY") && has("DEEPSEEK_API_KEY");
   return (tools || []).map((t) => {
     if (t.id === "tool_okx") return { ...t, status: okxOk ? "configured" : "missing_credentials" };
     if (t.id === "tool_llm") return { ...t, status: llmOk ? "configured" : "missing_credentials" };
     return t;
   });
+}
+
+function overviewActivePlusRecent(rows = [], activeStates, recentLimit) {
+  const ordered = (rows || []).slice().sort((a, b) =>
+    new Date(b.updatedAt || b.lastPolledAt || b.closedAt || b.createdAt || 0) - new Date(a.updatedAt || a.lastPolledAt || a.closedAt || a.createdAt || 0)
+  );
+  const active = ordered.filter((row) => activeStates.has(String(row?.status || "").toLowerCase()));
+  const activeIds = new Set(active.map((row) => row?.id || row));
+  return [...active, ...ordered.filter((row) => !activeIds.has(row?.id || row)).slice(0, recentLimit)];
 }
 
 app.get("/api/overview", requirePermission("account.read"), (req, res) => {
@@ -1087,7 +1132,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     opportunityEngine: opportunityEngineStatus(db),
     abnormalVolatility: abnormalVolatilityBoard(db).slice(0, 20),
     opportunityCandidates: (db.opportunityCandidates || []).slice(0, 30),
-    armedSetups: (db.armedSetups || []).slice(0, 30),
+    armedSetups: overviewActivePlusRecent(db.armedSetups, new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]), 30),
     pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
@@ -1106,9 +1151,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     })(),
     llmRuns: db.llmRuns?.slice(0, 10) || [],
     tradeIntents: db.tradeIntents?.slice(0, 20) || [],
-    executionOrders: (db.executionOrders || []).slice().sort((a, b) =>
-      new Date(b.updatedAt || b.lastPolledAt || b.closedAt || b.createdAt || 0) - new Date(a.updatedAt || a.lastPolledAt || a.closedAt || a.createdAt || 0)
-    ).slice(0, 50),
+    executionOrders: overviewActivePlusRecent(db.executionOrders, OPEN_EXECUTION_STATES, 50),
     executionOrderStatus: (() => {
       const rows = db.executionOrders || [];
       const last = rows.map((row) => row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt).filter(Boolean)
@@ -1153,7 +1196,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
       weights: DECISION_WEIGHTS,
       thresholds: DECISION_THRESHOLDS,
       defaults: DECISION_DEFAULTS,
-      llmModel: process.env.DEEPSEEK_MODEL || db.runtimeConfig?.DEEPSEEK_MODEL || null,
+      llmModel: process.env.GEMINI_MODEL || db.runtimeConfig?.GEMINI_MODEL || null,
       // 内置工具附真实调用量(来自 toolCallStats 计数中枢),前端「调用量」列直接读。
       tools: listAgentTools().map((t) => ({
         ...t,
@@ -1166,13 +1209,19 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     },
     toolCallStats: db.toolCallStats || {}
   };
+  if (req.query.view === "section") {
+    const section = String(req.query.section || "chat");
+    const allowed = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
+    if (!allowed.has(section)) return res.status(400).json({ error: "unknown_overview_section" });
+    return sendMeasuredJson(res, { ...projectOverviewSection(overview, section), revision: currentUiRevision() }, `overview_${section}`);
+  }
   // 原生端每 15 秒刷新，只下发手机真实会用到的字段。完整桌面概览保持兼容；
   // 以鉴权登录时已存在的 X-Native-App 明确区分，避免依赖可伪造/漂移的 User-Agent。
   const nativeRequest = req.get("X-Native-App") === "true";
   // 未声明模式的是旧原生包：默认给 startup 快照，保证已安装版本也能立刻恢复；
   // 新包首屏完成后会显式请求 full，在后台补齐二级页面。
   const nativeMode = nativeRequest ? (req.get("X-Native-Overview") || "startup") : false;
-  res.json(compactOverviewForNative(overview, nativeMode));
+  sendMeasuredJson(res, { ...compactOverviewForNative(overview, nativeMode), revision: currentUiRevision() }, "overview_legacy");
 });
 
 // market/regime · market/instruments 路由已迁至 server/routes/market.mjs
@@ -1479,5 +1528,7 @@ app.use((error, req, res, _next) => {
 });
 
 app.listen(port, host, () => {
+  recordStartupPhase("post_database_initialization", postDatabaseStartupAt);
+  recordStartupReady();
   console.log(`KORDYN API listening on http://${host}:${port}`);
 });

@@ -106,15 +106,19 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   const runtime = config.runtime || {};
   const readiness = data.readiness || {};
   const [llmForm, setLlmForm] = useState({
-    ANTHROPIC_API_KEY: "",
-    ANTHROPIC_MODEL: providers.anthropic?.model || "claude-sonnet-4-5",
-    OPENAI_API_KEY: "",
-    OPENAI_MODEL: providers.openai?.model || "gpt-5.2",
+    OPENROUTER_API_KEY: "",
+    GEMINI_MODEL: providers.gemini?.model || "google/gemini-3.1-pro-preview",
     DEEPSEEK_API_KEY: "",
-    DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-v4-flash",
-    GEMINI_API_KEY: "",
-    GEMINI_MODEL: providers.gemini?.model || "gemini-2.5-flash"
+    DEEPSEEK_MODEL: providers.deepseek?.model || "deepseek-v4-pro"
   });
+  const [llmModelCatalog, setLlmModelCatalog] = useState({ gemini: [], deepseek: [] });
+  useEffect(() => {
+    let active = true;
+    action("/api/config/llm-models", {}, "GET").then((result) => {
+      if (active && result) setLlmModelCatalog({ gemini: result.gemini || [], deepseek: result.deepseek || [] });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [exchangeForm, setExchangeForm] = useState({
     OKX_API_KEY: "",
     OKX_API_SECRET: "",
@@ -168,19 +172,14 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   const runtimeDirty = formChanged(runtimeForm, runtimeBaselineRef);
   const [backupBusy, setBackupBusy] = useState(false);
   const providerRows = [
-    ["anthropic", "Anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
-    ["openai", "OpenAI", "OPENAI_API_KEY", "OPENAI_MODEL"],
-    ["deepseek", "DeepSeek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
-    ["gemini", t("Gemini（备用）", "Gemini (optional)"), "GEMINI_API_KEY", "GEMINI_MODEL"]
+    ["gemini", t("Gemini · 主分析", "Gemini · Primary"), "OPENROUTER_API_KEY", "GEMINI_MODEL"],
+    ["deepseek", t("DeepSeek · 独立审查", "DeepSeek · Independent critic"), "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]
   ];
   const activeProviderLabel = providerRows.find(([idName]) => idName === config.llm?.activeProvider)?.[1] || config.llm?.activeProvider;
   // 各家常见模型下拉建议(datalist:可点选也可手输自定义,新模型出了直接打进去也行)。
   const PROVIDER_MODELS = {
-    anthropic: ["claude-opus-4-8", "claude-sonnet-4-5", "claude-haiku-4-5"],
-    openai: ["gpt-5.2", "gpt-5", "gpt-4.1", "o4-mini"],
-    deepseek: ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
-    // flash 放首位:免费额度大十几倍,咱们用 Gemini 只做联网搜索归因,flash 够用;pro 免费档极小易 429。
-    gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+    gemini: llmModelCatalog.gemini.length ? llmModelCatalog.gemini.map((model) => model.id) : ["google/gemini-3.1-pro-preview", "google/gemini-3.7-flash", "google/gemini-3.6-flash"],
+    deepseek: llmModelCatalog.deepseek.length ? llmModelCatalog.deepseek.map((model) => model.id) : ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"]
   };
   const secretRows = [
     ["OKX_API_KEY", "OKX API Key", exchange.okx?.hasKey],
@@ -207,7 +206,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
   ];
   const sectionKind = ({ environment: "runtime", network: "runtime", notifications: "integrations", data_backup: "data_backup", security: "runtime" })[section] || section;
   const [activeConfigSection, setActiveConfigSection] = useState(sectionKind || "llm");
-  const [openProvider, setOpenProvider] = useState(config.llm?.activeProvider || "anthropic");
+  const [openProvider, setOpenProvider] = useState(config.llm?.activeProvider || "gemini");
   const [openExchange, setOpenExchange] = useState("okx");
   const sectionHeadProps = (open, setOpen, id) => {
     if (!section) return {};
@@ -387,7 +386,7 @@ export function SystemConfigPanel({ data, action, ui, section }) {
 
         {activeConfigSection === "llm" && (
           <form className="panelForm" onSubmit={saveLlm}>
-            <CfgHead icon={BrainCircuit} title={t("AI 模型", "AI Models")} sub={t("选择用于对话、市场分析和自主巡检的模型服务。", "Choose the model provider used for chat, market analysis, and autonomous reviews.")} status={config.llm?.activeProvider ? `${t("主模型", "Primary")} · ${activeProviderLabel}` : t("未配置", "Not configured")} statusTone={config.llm?.activeProvider ? "ok" : ""} />
+            <CfgHead icon={BrainCircuit} title={t("AI 模型", "AI Models")} sub={t("Gemini 经 OpenRouter 负责主分析，DeepSeek 官网 API 负责独立审查；实盘不允许跨模型静默降级。", "Gemini via OpenRouter is the primary; DeepSeek Direct is the independent critic. Live trading never silently falls back across models.")} status={config.llm?.liveReady ? t("双模型就绪", "Dual-model ready") : t("配置未完整", "Configuration incomplete")} statusTone={config.llm?.liveReady ? "ok" : "warn"} />
             <div className="providerGrid">
               {providerRows.map(([idName, label, keyName, modelName]) => {
                 const collapsed = Boolean(section) && openProvider !== idName;
@@ -400,16 +399,17 @@ export function SystemConfigPanel({ data, action, ui, section }) {
                     >
                       <span className="cfgProvLogo" data-p={idName}>{label.charAt(0)}</span>
                       <strong>{label}</strong>
-                      {idName === config.llm?.activeProvider && <span className="cfgUsing">{t("主模型", "Primary")}</span>}
+                      <span className="cfgUsing">{idName === "gemini" ? t("主模型", "Primary") : t("审查模型", "Critic")}</span>
                       <StatusBadge tone={providers[idName]?.hasKey ? "ok" : "neutral"}>{providers[idName]?.hasKey ? t("已配置", "Configured") : t("未配置", "Not configured")}</StatusBadge>
                       {section && <ChevronDown size={15} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />}
                     </div>
                     {!collapsed && (
                       <>
-                        <label>API Key<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? t("留空则保留现有密钥", "Leave blank to keep the current key") : t("粘贴 API Key", "Paste API key")} /></label>
+                        <label>{idName === "gemini" ? "OpenRouter API Key" : "DeepSeek API Key"}<input type="password" autoComplete="off" value={llmForm[keyName]} onChange={(event) => updateLlm(keyName, event.target.value)} placeholder={providers[idName]?.hasKey ? t("留空则保留现有密钥", "Leave blank to keep the current key") : t("粘贴 API Key", "Paste API key")} /></label>
                         <label>{t("模型", "Model")}<input list={`models-${idName}`} value={llmForm[modelName]} onChange={(event) => updateLlm(modelName, event.target.value)} placeholder={t("选择或输入模型名", "Choose or enter a model name")} />
                           <datalist id={`models-${idName}`}>{(PROVIDER_MODELS[idName] || []).map((m) => <option key={m} value={m} />)}</datalist>
-                          {idName === "gemini" && <small className="cfgHint">{t("Gemini 仅用于联网搜索归因。建议使用 Flash；Pro 免费额度较小，容易触发限流。", "Gemini is used only for web-search attribution. Flash is recommended; the Pro free tier is more likely to be rate-limited.")}</small>}
+                          {idName === "gemini" && <small className="cfgHint">{t("模型列表来自 OpenRouter 实时目录，仅显示支持工具调用的 Gemini 文本模型。生产建议固定 stable 型号。", "The list is loaded from OpenRouter and only includes Gemini text models with tool calling. Pin a stable model for production.")}</small>}
+                          {idName === "deepseek" && <small className="cfgHint">{t("DeepSeek 只做独立风险审查，不会在 Gemini 故障时接管主模型并直接下单。", "DeepSeek is critic-only and never takes over live execution when Gemini fails.")}</small>}
                         </label>
                         {providers[idName]?.hasKey && <button className="secondaryButton dangerText cfgClearSecret" type="button" onClick={() => removeSecret(keyName, `${label} Key`)}>{t("清除已保存密钥", "Clear saved key")}</button>}
                       </>

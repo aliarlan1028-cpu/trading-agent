@@ -10,7 +10,7 @@
       （Caddy 会为每个 `<slug>.yegidawir.xyz` 用 HTTP-01 自动签发证书，需能解析到本机。）
 - [ ] **镜像**：主实例 `docker compose build` 后本机已有 `trading-agent-trading-agent:latest`；
       新客户实例直接复用该镜像，不必每次重建。
-- [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入你的 Anthropic/OpenAI key，`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。不配则该实例 AI 只做数据巡检、不推理。
+- [ ] **统一 LLM key**：`cp deploy/vendor.env.example deploy/vendor.env`，填入 OpenRouter Key（Gemini 主分析）和 DeepSeek 官网 Key（独立审查），`chmod 600`。开通时会自动注入每个客户实例（客户登录后仍可在密钥库改成自己的）。实盘必须两者同时就绪，任一缺失都会禁止新增计划。
 - [ ] **备份 cron**：把 `backup-tenants.sh` 挂到每日 cron（见脚本头注释）。
 - [ ] **异机加密备份**：为每个实例只读挂载独立的 `BACKUP_ENCRYPTION_KEY_FILE`，把
       `BACKUP_OFFSITE_DIR` 指向另一块磁盘/NFS/rclone 挂载目录；系统禁止把明文快照复制到异机目录，

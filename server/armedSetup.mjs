@@ -848,7 +848,7 @@ export async function validateAndExecuteTriggeredSetup(db, setup, options = {}) 
     plan.riskCheckId = risk.id;
     if (!risk.passed) return finalize(db, setup, "RISK_REJECTED", risk.summary, { riskCheckId: risk.id });
 
-    const hasProvider = options.hasProvider ?? Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY);
+    const hasProvider = options.hasProvider ?? Boolean(process.env.OPENROUTER_API_KEY);
     const derive = options.deriveAutomationState || deriveAutomationState;
     const automation = derive(db, { hasProvider });
     const allowedMode = armedSetupAutomationAllowed(automation, db.system?.liveTradingEnabled === true);

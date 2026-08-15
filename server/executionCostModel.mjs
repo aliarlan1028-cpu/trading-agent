@@ -79,3 +79,69 @@ export function maxNotionalForImpact(db, input = {}) {
   if (remainingBps <= 0) return 0;
   return Number((depthUsdt * (remainingBps / impactCoefficientBps) ** 2).toFixed(2));
 }
+
+export function estimateNetRewardRisk(input = {}) {
+  const direction = String(input.direction || "long").toLowerCase() === "short" ? "short" : "long";
+  const entry = Number(input.entryPrice);
+  const stop = Number(input.stopPrice);
+  const target = Number(input.targetPrice);
+  const quantity = Math.abs(Number(input.quantity));
+  if (![entry, stop, target, quantity].every(Number.isFinite) || entry <= 0 || stop <= 0 || target <= 0 || quantity <= 0) {
+    return { ok: false, reason: "invalid_net_rr_inputs" };
+  }
+  const expectedImpactBps = Math.max(0, Number(input.expectedImpactBps) || 0);
+  const entrySlippageBps = Math.max(expectedImpactBps, Math.max(0, Number(input.maxEntrySlippageBps) || 0));
+  const targetSlippageBps = Math.max(expectedImpactBps, Math.max(0, Number(input.targetSlippageBps) || 0));
+  const stopSlippageBps = Math.max(entrySlippageBps * 1.5, Math.max(0, Number(input.stopSlippageBps) || 12));
+  const feeRate = Math.max(0, Number(input.takerFeeRate) || 0.0005);
+  const fundingRatePct = Math.abs(Number(input.fundingRatePct) || 0);
+  const fundingPeriods = Math.max(0, Number(input.fundingPeriods) || 0);
+  const entrySlip = entrySlippageBps / 10_000;
+  const targetSlip = targetSlippageBps / 10_000;
+  const stopSlip = stopSlippageBps / 10_000;
+  const worstEntry = direction === "short" ? entry * (1 - entrySlip) : entry * (1 + entrySlip);
+  const worstTarget = direction === "short" ? target * (1 + targetSlip) : target * (1 - targetSlip);
+  const worstStop = direction === "short" ? stop * (1 + stopSlip) : stop * (1 - stopSlip);
+  const grossRewardUsdt = (direction === "short" ? worstEntry - worstTarget : worstTarget - worstEntry) * quantity;
+  const grossRiskUsdt = (direction === "short" ? worstStop - worstEntry : worstEntry - worstStop) * quantity;
+  if (!(grossRewardUsdt > 0) || !(grossRiskUsdt > 0)) return { ok: false, reason: "non_positive_cost_adjusted_distance" };
+  const entryFeeUsdt = worstEntry * quantity * feeRate;
+  const targetExitFeeUsdt = worstTarget * quantity * feeRate;
+  const stopExitFeeUsdt = worstStop * quantity * feeRate;
+  // Funding credits are deliberately ignored. The pre-trade gate budgets the
+  // absolute published rate for the expected holding periods as an adverse cost.
+  const fundingCostUsdt = worstEntry * quantity * (fundingRatePct / 100) * fundingPeriods;
+  const netRewardUsdt = grossRewardUsdt - entryFeeUsdt - targetExitFeeUsdt - fundingCostUsdt;
+  const netRiskUsdt = grossRiskUsdt + entryFeeUsdt + stopExitFeeUsdt + fundingCostUsdt;
+  const netRewardRisk = netRiskUsdt > 0 ? netRewardUsdt / netRiskUsdt : null;
+  return {
+    ok: Number.isFinite(netRewardRisk),
+    model: "worst_acceptable_fill_plus_fees_slippage_funding_v1",
+    direction,
+    prices: { plannedEntry: entry, worstEntry, plannedStop: stop, worstStop, plannedTarget: target, worstTarget },
+    quantity,
+    assumptions: { expectedImpactBps, entrySlippageBps, targetSlippageBps, stopSlippageBps, takerFeeRate: feeRate, fundingRatePct, fundingPeriods },
+    costs: { entryFeeUsdt, targetExitFeeUsdt, stopExitFeeUsdt, fundingCostUsdt },
+    grossRewardUsdt,
+    grossRiskUsdt,
+    netRewardUsdt,
+    netRiskUsdt,
+    grossRewardRisk: grossRiskUsdt > 0 ? grossRewardUsdt / grossRiskUsdt : null,
+    netRewardRisk
+  };
+}
+
+export function netRewardRiskGate(estimate, minimum, options = {}) {
+  if (options.live !== true) return { allowed: true, reason: "not_live" };
+  const threshold = Number(minimum);
+  if (!estimate?.ok || !Number.isFinite(Number(estimate.netRewardRisk))) {
+    return { allowed: false, reason: "net_reward_risk_unverifiable" };
+  }
+  if (!(Number.isFinite(threshold) && threshold > 0)) {
+    return { allowed: false, reason: "net_reward_risk_threshold_invalid" };
+  }
+  if (Number(estimate.netRewardRisk) < threshold) {
+    return { allowed: false, reason: "net_reward_risk_below_minimum", actual: Number(estimate.netRewardRisk), minimum: threshold };
+  }
+  return { allowed: true, reason: "net_reward_risk_passed", actual: Number(estimate.netRewardRisk), minimum: threshold };
+}

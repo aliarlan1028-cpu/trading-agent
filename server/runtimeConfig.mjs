@@ -7,7 +7,8 @@ export { SECRET_KEYS } from "./secretRegistry.mjs";
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
 // 非敏感项：明文存 runtimeConfig，可回传前端显示。
 export const PLAIN_KEYS = new Set([
-  "ANTHROPIC_MODEL", "OPENAI_MODEL", "DEEPSEEK_MODEL", "GEMINI_MODEL",
+  "DEEPSEEK_MODEL", "GEMINI_MODEL",
+  "OPENROUTER_ZDR", "OPENROUTER_DATA_COLLECTION", "OPENROUTER_ALLOW_PROVIDER_FALLBACKS", "LLM_CRITIC_REQUIRED_FOR_LIVE",
   "LIVE_TRADING_ENABLED", "I_UNDERSTAND_REAL_TRADING", "REAL_ORDER_WRITE_ENABLED",
   "MAX_LIVE_NOTIONAL_USDT", "OKX_MARGIN_MODE", "OKX_POSITION_MODE",
   "AUTH_REQUIRED", "PUBLIC_REGISTRATION_ENABLED", "PUBLIC_REGISTRATION_MODE", "PUBLIC_MAX_TENANTS", "PUBLIC_BASE_URL",
@@ -162,10 +163,7 @@ export function clearSecret(db, key) {
 }
 
 function activeLlmProvider() {
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
-  if (process.env.GEMINI_API_KEY) return "gemini";
+  if (process.env.OPENROUTER_API_KEY) return "gemini";
   return null;
 }
 
@@ -176,11 +174,18 @@ export function getConfigStatus(db) {
   return {
     llm: {
       activeProvider: activeLlmProvider(),
+      architecture: "gemini_primary_deepseek_critic",
+      liveReady: has("OPENROUTER_API_KEY") && has("DEEPSEEK_API_KEY"),
       providers: {
-        anthropic: { hasKey: has("ANTHROPIC_API_KEY"), model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" },
-        openai: { hasKey: has("OPENAI_API_KEY"), model: process.env.OPENAI_MODEL || "gpt-5.2" },
-        deepseek: { hasKey: has("DEEPSEEK_API_KEY"), model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" },
-        gemini: { hasKey: has("GEMINI_API_KEY"), model: process.env.GEMINI_MODEL || "gemini-2.5-flash" }
+        gemini: { hasKey: has("OPENROUTER_API_KEY"), gateway: "OpenRouter", role: "primary", model: process.env.GEMINI_MODEL?.startsWith("google/") ? process.env.GEMINI_MODEL : `google/${process.env.GEMINI_MODEL || "gemini-3.1-pro-preview"}` },
+        deepseek: { hasKey: has("DEEPSEEK_API_KEY"), gateway: "DeepSeek Direct", role: "critic", model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" }
+      },
+      policy: {
+        criticRequiredForLive: process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false",
+        openRouterZdr: process.env.OPENROUTER_ZDR !== "false",
+        dataCollection: process.env.OPENROUTER_DATA_COLLECTION === "allow" ? "allow" : "deny",
+        sameModelProviderFallbacks: process.env.OPENROUTER_ALLOW_PROVIDER_FALLBACKS !== "false",
+        crossModelFallback: false
       }
     },
     exchange: {

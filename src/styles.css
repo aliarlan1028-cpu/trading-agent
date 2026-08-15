@@ -10168,44 +10168,105 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .topLangMenu button.on { color: var(--accent-ink); }
 .topLangCheck { color: var(--accent); font-weight: 700; }
 
-/* 营销落地页(iframe) + 登录/订阅弹窗（深色主题，匹配 landing 设计稿） */
-.nativeAuthScreen{min-height:100dvh;display:flex;align-items:flex-start;justify-content:center;padding:max(42px,calc(var(--safe-area-inset-top,env(safe-area-inset-top)) + 26px)) 22px max(28px,calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 18px));overflow-y:auto;background:#f7f3ed;color:#28241f;font-family:var(--font-ui)}
-.nativeAuthCard{width:min(100%,420px);display:grid;gap:22px}
-.nativeAuthBrand{display:flex;align-items:center;gap:13px;padding:0 2px}
-.nativeAuthBrand>img{width:48px;height:48px;object-fit:contain;display:block}
-.nativeAuthBrand>div{display:grid;gap:2px}
-.nativeAuthBrand strong{font-size:18px;line-height:1.15;letter-spacing:.08em;font-weight:650;color:#221f1a}
-.nativeAuthBrand span{font-size:11px;color:#8d8579;letter-spacing:.03em}
-.nativeAuthTabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:11px;background:#ebe5dc}
-.nativeAuthTabs button{min-height:38px;border:0;border-radius:8px;background:transparent;color:#81786b;font-size:13px;font-weight:550;cursor:pointer}
-.nativeAuthTabs button.on{background:#fff;color:#2d2923;box-shadow:0 1px 4px rgba(58,46,31,.08)}
-.nativeAuthForm{display:grid;gap:15px}
-.nativeAuthIntro{display:grid;gap:4px;margin:1px 0 3px}
-.nativeAuthIntro strong{font-size:17px;font-weight:620;color:#29251f}
-.nativeAuthIntro span{font-size:12px;color:#8b8275}
+/* App 登录 / 注册：轻量 3D 舞台 + KORDYN 自有行情动效，不依赖远程素材。 */
+.nativeAuthScreen{min-height:100dvh;position:relative;isolation:isolate;display:grid;place-items:center;padding:max(18px,calc(var(--safe-area-inset-top,env(safe-area-inset-top)) + 10px)) 18px max(18px,calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 10px));overflow-x:hidden;overflow-y:auto;background:#f6edde;color:#171512;font-family:var(--font-ui)}
+.nativeAuthScreen::before{content:"";position:fixed;z-index:-3;inset:0;background:radial-gradient(circle at 50% 44%,rgba(232,188,111,.23),transparent 29%),radial-gradient(circle at 32% 72%,rgba(209,157,84,.12),transparent 27%),linear-gradient(145deg,#f8f0e4 0%,#f4e9d8 100%)}
+.nativeAuthScreen::after{content:"";position:fixed;z-index:-2;width:min(82vw,760px);aspect-ratio:1;left:50%;top:50%;translate:-50% -47%;border-radius:50%;background:rgba(255,252,246,.36);filter:blur(8px);box-shadow:0 40px 100px rgba(119,83,38,.16)}
+.nativeAuthAmbient{position:fixed;z-index:-1;border-radius:999px;filter:blur(2px);opacity:.62;pointer-events:none;animation:nativeAmbientFloat 9s ease-in-out infinite alternate}
+.nativeAuthAmbient--one{width:210px;height:210px;left:8vw;top:12vh;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.8),rgba(232,183,100,.12) 58%,transparent 72%)}
+.nativeAuthAmbient--two{width:260px;height:260px;right:5vw;bottom:7vh;background:radial-gradient(circle at 55% 45%,rgba(255,255,255,.68),rgba(196,166,120,.13) 58%,transparent 72%);animation-delay:-4s}
+.nativeAuthCard{position:relative;z-index:1;width:min(100%,450px);min-height:min(790px,calc(100dvh - 36px));max-height:calc(100dvh - 36px);display:flex;flex-direction:column;padding:24px 42px 17px;overflow-x:hidden;overflow-y:auto;border:1px solid rgba(255,255,255,.82);border-radius:48px;background:linear-gradient(160deg,rgba(255,255,255,.97),rgba(255,255,255,.9));box-shadow:0 34px 72px rgba(93,64,29,.18),inset 0 1px 0 #fff;scrollbar-width:none;animation:nativeAuthCardIn .78s cubic-bezier(.2,.8,.2,1) both}
+.nativeAuthCard::-webkit-scrollbar{display:none}
+.nativeAuthProgress{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;height:3px;margin:4px 0 0}
+.nativeAuthProgress i{position:relative;display:block;overflow:hidden;border-radius:999px;background:#d9d5cd}
+.nativeAuthProgress i:first-child{background:#171512}
+.nativeAuthProgress i:nth-child(2)::after{content:"";position:absolute;inset:0;background:#171512;transform-origin:left;animation:nativeAuthProgress 4.8s ease-in-out infinite}
+.nativeAuthBrand{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 0 25px}
+.nativeAuthBrand>img{width:35px;height:35px;object-fit:contain;display:block;filter:drop-shadow(0 7px 12px rgba(189,113,35,.2))}
+.nativeAuthBrand>div{display:grid;gap:1px}
+.nativeAuthBrand strong{font-size:14px;line-height:1.15;letter-spacing:.12em;font-weight:760;color:#171512}
+.nativeAuthBrand span{font-size:9px;color:#8d867e;letter-spacing:.045em}
+.nativeAuthForm{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0;animation:nativeAuthFormIn .42s cubic-bezier(.2,.75,.25,1) both}
+.nativeAuthIntro{display:grid;gap:7px;margin:0 0 8px;text-align:center}
+.nativeAuthIntro strong{max-width:340px;margin:auto;font-size:clamp(25px,7vw,33px);line-height:1.05;letter-spacing:-.038em;font-weight:690;color:#11100e}
+.nativeAuthIntro span{font-size:12px;color:#8b857d;letter-spacing:.01em}
 .nativeAuthForm>label,.nativeServerSettings label{display:grid;gap:7px}
-.nativeAuthForm>label>span,.nativeServerSettings label>span{font-size:12px;color:#655e53;font-weight:520}
-.nativeAuthForm label em{font-style:normal;font-weight:400;color:#a59d91;margin-left:3px}
-.nativeAuthForm input,.nativeServerSettings input{width:100%;height:48px;border:1px solid #ddd5ca;border-radius:11px;padding:0 13px;background:#fff;color:#29251f;font:400 15px/1 var(--font-ui);outline:0;-webkit-appearance:none}
-.nativeAuthForm input:focus,.nativeServerSettings input:focus{border-color:#d67a3b;box-shadow:0 0 0 3px rgba(214,122,59,.1)}
-.nativeAuthPrimary{min-height:48px;border:0;border-radius:11px;background:#d97531;color:#fff;font-size:14px;font-weight:620;cursor:pointer;margin-top:2px}
-.nativeAuthPrimary:disabled{background:#cfc7bc;color:#f7f3ed;cursor:default}
-.nativeAuthTextButton{border:0;background:transparent;color:#a65d2d;font-size:12px;padding:2px;cursor:pointer}
-.nativePlanList{display:grid;gap:8px}
-.nativePlanList>button{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ddd5ca;border-radius:11px;padding:10px 13px;background:#fff;color:#302b24;text-align:left;cursor:pointer}
-.nativePlanList>button.on{border-color:#d97531;background:#fff9f4;box-shadow:inset 3px 0 #d97531}
-.nativePlanList>button>span{display:grid;gap:3px}.nativePlanList>button strong{font-size:13px;font-weight:600}.nativePlanList>button small{font-size:10.5px;color:#938a7d}.nativePlanList>button>b{font-size:12px;font-weight:600;color:#a65d2d;white-space:nowrap}
-.nativeConsentList{display:grid;gap:10px;padding:2px 0}
-.nativeConsentList label{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;color:#756d62;font-size:11px;line-height:1.45}
-.nativeConsentList input{width:17px;height:17px;margin:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:#d97531}
-.nativeConsentList a{color:#a65d2d;text-underline-offset:2px}
-.nativeAuthNotice,.nativeAuthToast{margin:0;color:#8d8478;font-size:11.5px;line-height:1.55;text-align:center}
-.nativeAuthToast{padding:10px 12px;border-radius:9px;background:#eee7de;color:#665d51}
-.nativeAuthSuccess{display:grid;gap:4px;padding:12px;border:1px solid #cbded2;border-radius:10px;background:#f6fbf7;color:#355943;font-size:12px}.nativeAuthSuccess span{font-family:var(--font-mono);font-size:10px;overflow-wrap:anywhere}.nativeAuthSuccess small{color:#6c8173}
-.nativeServerSettings{border-top:1px solid #e3dcd2;padding-top:14px;color:#82796d}
-.nativeServerSettings summary{width:max-content;margin:0 auto;cursor:pointer;font-size:11.5px;list-style:none}.nativeServerSettings summary::-webkit-details-marker{display:none}.nativeServerSettings summary::after{content:" ···";letter-spacing:.08em}
-.nativeServerSettings[open]{display:grid;gap:12px}.nativeServerSettings[open] summary{margin:0}.nativeServerSettings input{height:42px;font-size:12px}
-@media(max-width:380px){.nativeAuthScreen{padding-left:17px;padding-right:17px}.nativeAuthCard{gap:18px}.nativeAuthForm{gap:12px}.nativeAuthBrand>img{width:43px;height:43px}}
+.nativeAuthForm>label>span:not(.nativeAuthPassword),.nativeServerSettings label>span{font-size:12px;color:#8b857d;font-weight:500;padding-left:12px}
+.nativeAuthForm input,.nativeServerSettings input{width:100%;height:54px;border:1px solid #dfd7ca;border-radius:999px;padding:0 17px;background:rgba(255,255,255,.64);color:#1b1916;font:450 14px/1 var(--font-ui);outline:0;-webkit-appearance:none;transition:border-color .2s,box-shadow .2s,background .2s}
+.nativeAuthForm input::placeholder,.nativeServerSettings input::placeholder{color:#b3aca2}
+.nativeAuthForm input:focus,.nativeServerSettings input:focus{border-color:#b8a995;background:#fff;box-shadow:0 0 0 4px rgba(202,174,133,.14)}
+.nativeAuthPassword{position:relative;display:block;padding:0!important}
+.nativeAuthPassword input{padding-right:50px}
+.nativeAuthPassword button{position:absolute;top:50%;right:15px;translate:0 -50%;width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#6f6961;cursor:pointer}
+.nativeAuthPassword button:hover{background:#f4eee5;color:#171512}
+.nativeAuthTotp{animation:nativeAuthFormIn .28s ease both}
+.nativeAuthFormTools{min-height:22px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 5px;color:#9c958b;font-size:11px}
+.nativeAuthFormTools>span{display:flex;align-items:center;gap:5px}
+.nativeAuthFormTools button{border:0;background:transparent;color:#5e5952;font:600 11px/1 var(--font-ui);cursor:pointer;padding:5px;text-decoration:underline;text-underline-offset:4px;text-decoration-color:#c8beb0}
+.nativeAuthPrimary{width:100%;min-height:58px;display:flex;align-items:center;justify-content:center;gap:14px;border:0;border-radius:999px;padding:0 22px;background:#0e0e0d;color:#fff;font-size:15px;font-weight:650;letter-spacing:.01em;cursor:pointer;box-shadow:0 14px 30px rgba(20,17,13,.17);transition:transform .2s,box-shadow .2s,background .2s}
+.nativeAuthPrimary b{font-size:19px;font-weight:400;transition:transform .2s}
+.nativeAuthPrimary:hover{background:#26231f;box-shadow:0 17px 34px rgba(20,17,13,.22);transform:translateY(-1px)}
+.nativeAuthPrimary:hover b{transform:translateX(3px)}
+.nativeAuthPrimary:active{transform:translateY(1px)}
+.nativeAuthPrimary:disabled{background:#ccc4b8;color:#f8f5ef;cursor:default;box-shadow:none;transform:none}
+.nativeAuthMotion{position:relative;flex:1;min-height:152px;margin:3px -42px 0;overflow:hidden}
+.nativeAuthMotionGlow{position:absolute;width:250px;height:110px;left:50%;bottom:5px;translate:-50% 0;border-radius:50%;background:radial-gradient(ellipse,rgba(244,203,99,.3),rgba(232,188,111,.13) 42%,transparent 72%);filter:blur(7px);animation:nativeAuthGlow 3.4s ease-in-out infinite}
+.nativeAuthMotionRail{position:absolute;left:50%;bottom:7px;width:590px;display:flex;align-items:flex-end;justify-content:center;gap:12px;transform:translateX(-50%);animation:nativeAuthRail 8s ease-in-out infinite alternate}
+.nativeAuthMotionTile{width:90px;height:112px;flex:0 0 auto;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:12px 11px;border-radius:21px;overflow:hidden;color:#1d1a17;box-shadow:0 12px 20px rgba(58,43,27,.12),inset 0 1px 0 rgba(255,255,255,.72);transform:rotate(-6deg);animation:nativeAuthTileFloat 4.6s ease-in-out infinite}
+.nativeAuthMotionTile:nth-child(2){transform:translateY(-7px) rotate(4deg);animation-delay:-1.3s}
+.nativeAuthMotionTile:nth-child(3){width:108px;height:136px;transform:translateY(-10px);animation-delay:-2.5s}
+.nativeAuthMotionTile:nth-child(4){transform:translateY(-7px) rotate(-4deg);animation-delay:-3.1s}
+.nativeAuthMotionTile:nth-child(5){transform:rotate(7deg);animation-delay:-4s}
+.nativeAuthMotionTile--amber{background:linear-gradient(155deg,#f6c76d,#f1a951)}
+.nativeAuthMotionTile--sky{background:linear-gradient(155deg,#cedee4,#a9c2cb)}
+.nativeAuthMotionTile--agent{align-items:center;justify-content:center;gap:4px;background:linear-gradient(160deg,#d7d9d4,#9ca49f);text-align:center}
+.nativeAuthMotionTile--sage{background:linear-gradient(155deg,#d6dfcb,#aebca3)}
+.nativeAuthMotionTile--violet{background:linear-gradient(155deg,#ddd6eb,#b7acd2)}
+.nativeAuthMotionLabel{font-size:9px;font-weight:750;letter-spacing:.1em;opacity:.67}
+.nativeAuthMotionTile svg{width:100%;height:46px;overflow:visible}
+.nativeAuthMotionTile svg path{fill:none;stroke:#1c1a17;stroke-width:2.3;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;vector-effect:non-scaling-stroke;animation:nativeAuthDraw 3.6s ease-in-out infinite alternate}
+.nativeAuthMotionTile>strong{font-size:13px;font-weight:760;letter-spacing:-.02em}
+.nativeAuthAgentOrb{position:relative;width:55px;height:55px;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 38% 30%,#fff 0 9%,#f6a443 11%,#d46d22 35%,#191816 70%);box-shadow:0 10px 22px rgba(27,23,17,.22);animation:nativeAuthOrb 3.2s ease-in-out infinite}
+.nativeAuthAgentOrb::before,.nativeAuthAgentOrb::after{content:"";position:absolute;border:1px solid rgba(27,24,20,.28);border-radius:50%;animation:nativeAuthOrbit 6s linear infinite}
+.nativeAuthAgentOrb::before{inset:-9px 7px;rotate:32deg}.nativeAuthAgentOrb::after{inset:5px -10px;rotate:-20deg;animation-direction:reverse;animation-duration:4.5s}
+.nativeAuthAgentOrb span{position:absolute;width:7px;height:7px;right:0;top:6px;border-radius:50%;background:#171512;box-shadow:0 0 0 3px rgba(255,255,255,.46)}
+.nativeAuthAgentOrb img{position:relative;width:32px;height:32px;object-fit:contain;filter:brightness(0) invert(1)}
+.nativeAuthMotionTile--agent>strong{font-size:10px;letter-spacing:.12em}.nativeAuthMotionTile--agent>small{font-size:7px;letter-spacing:.16em;color:rgba(29,26,23,.6)}
+.nativeAuthSwitch{margin:0;text-align:center;color:#777169;font-size:12px;line-height:1.4}
+.nativeAuthSwitch button{border:0;background:transparent;color:#171512;font:650 12px/1 var(--font-ui);padding:4px 2px;cursor:pointer;text-decoration:underline;text-underline-offset:4px;text-decoration-color:#aaa197}
+.nativeAuthForm--subscribe{flex:none;gap:12px}
+.nativeAuthForm--subscribe .nativeAuthIntro{margin-bottom:4px}
+.nativeAuthForm--subscribe .nativeAuthIntro strong{font-size:27px}
+.nativePlanList{display:flex;gap:8px;margin:0 -2px;padding:2px;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none}
+.nativePlanList::-webkit-scrollbar{display:none}
+.nativePlanList>button{min-width:148px;min-height:68px;scroll-snap-align:start;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e0d8cc;border-radius:18px;padding:11px 12px;background:#faf8f4;color:#302b24;text-align:left;cursor:pointer;transition:border-color .2s,background .2s,transform .2s}
+.nativePlanList>button.on{border-color:#1a1815;background:#fff;box-shadow:0 7px 17px rgba(50,39,26,.08)}
+.nativePlanList>button:active{transform:scale(.985)}
+.nativePlanList>button>span{display:grid;gap:3px}.nativePlanList>button strong{font-size:12px;font-weight:650}.nativePlanList>button small{font-size:9px;color:#938a7d}.nativePlanList>button>b{font-size:10px;font-weight:680;color:#a65d2d;white-space:nowrap}
+.nativeConsentList{display:grid;gap:8px;padding:2px 4px}
+.nativeConsentList label{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;color:#756d62;font-size:10px;line-height:1.45}
+.nativeConsentList input{width:16px;height:16px;margin:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:#171512}
+.nativeConsentList a{color:#6f4b2e;text-underline-offset:2px}
+.nativeAuthNotice,.nativeAuthToast{margin:0;color:#8d8478;font-size:11px;line-height:1.55;text-align:center}
+.nativeAuthToast{position:sticky;z-index:3;bottom:0;margin-top:10px;padding:10px 12px;border:1px solid rgba(222,211,195,.78);border-radius:14px;background:rgba(247,241,232,.94);color:#665d51;box-shadow:0 8px 20px rgba(49,38,25,.08);backdrop-filter:blur(10px)}
+.nativeAuthSuccess{display:grid;gap:4px;padding:12px;border:1px solid #cbded2;border-radius:14px;background:#f6fbf7;color:#355943;font-size:11px}.nativeAuthSuccess span{font-family:var(--font-mono);font-size:9px;overflow-wrap:anywhere}.nativeAuthSuccess small{color:#6c8173}
+.nativeServerSettings{margin-top:10px;padding-top:8px;color:#968f85}
+.nativeServerSettings summary{width:max-content;margin:0 auto;cursor:pointer;font-size:10px;list-style:none}.nativeServerSettings summary::-webkit-details-marker{display:none}.nativeServerSettings summary::after{content:" ···";letter-spacing:.08em}
+.nativeServerSettings[open]{display:grid;gap:10px;width:100%;padding-top:12px}.nativeServerSettings[open] summary{margin:0}.nativeServerSettings input{height:44px;font-size:11px;background:#faf8f4}
+@keyframes nativeAuthCardIn{from{opacity:0;transform:translateY(24px) scale(.975) rotateX(4deg)}to{opacity:1;transform:none}}
+@keyframes nativeAuthFormIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes nativeAuthProgress{0%,8%{transform:scaleX(0)}55%,100%{transform:scaleX(1)}}
+@keyframes nativeAmbientFloat{from{transform:translate3d(-10px,-8px,0) scale(.96)}to{transform:translate3d(14px,12px,0) scale(1.04)}}
+@keyframes nativeAuthRail{from{transform:translateX(-53%)}to{transform:translateX(-47%)}}
+@keyframes nativeAuthTileFloat{0%,100%{margin-bottom:0}50%{margin-bottom:8px}}
+@keyframes nativeAuthGlow{0%,100%{opacity:.48;transform:scale(.92)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes nativeAuthDraw{0%,12%{stroke-dashoffset:1}75%,100%{stroke-dashoffset:0}}
+@keyframes nativeAuthOrb{0%,100%{transform:translateY(1px) rotate(-2deg)}50%{transform:translateY(-5px) rotate(3deg)}}
+@keyframes nativeAuthOrbit{to{transform:rotate(360deg)}}
+@media(max-width:520px){.nativeAuthScreen{place-items:start center;padding:max(10px,calc(var(--safe-area-inset-top,env(safe-area-inset-top)) + 6px)) 10px max(10px,calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 6px))}.nativeAuthCard{width:100%;min-height:calc(100dvh - max(20px,calc(var(--safe-area-inset-top,env(safe-area-inset-top)) + var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 12px)));max-height:none;padding:20px 28px 15px;border-radius:36px}.nativeAuthMotion{margin-left:-28px;margin-right:-28px}.nativeAuthBrand{margin:15px 0 22px}}
+@media(max-width:370px){.nativeAuthCard{padding-left:22px;padding-right:22px}.nativeAuthMotion{margin-left:-22px;margin-right:-22px}.nativeAuthIntro strong{font-size:25px}.nativeAuthForm{gap:12px}.nativeAuthForm input{height:50px}.nativeAuthPrimary{min-height:53px}}
+@media(max-height:720px) and (min-width:371px){.nativeAuthCard{min-height:calc(100dvh - 20px);padding-top:18px;padding-bottom:12px}.nativeAuthBrand{margin:12px 0 16px}.nativeAuthIntro{margin-bottom:2px}.nativeAuthIntro strong{font-size:25px}.nativeAuthForm{gap:10px}.nativeAuthForm input{height:49px}.nativeAuthPrimary{min-height:52px}.nativeAuthMotion{min-height:118px}.nativeAuthMotionRail{bottom:-8px;transform:translateX(-50%) scale(.86)}.nativeAuthSwitch{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.nativeAuthCard,.nativeAuthForm,.nativeAuthAmbient,.nativeAuthProgress i::after,.nativeAuthMotionRail,.nativeAuthMotionTile,.nativeAuthMotionGlow,.nativeAuthMotionTile svg path,.nativeAuthAgentOrb,.nativeAuthAgentOrb::before,.nativeAuthAgentOrb::after{animation:none!important}.nativeAuthMotionRail{transform:translateX(-50%)}}
 
 .lpRoot{position:fixed;inset:0;z-index:1;background:#0c0a08}
 .lpFrame{position:fixed;inset:0;width:100%;height:100%;border:0}

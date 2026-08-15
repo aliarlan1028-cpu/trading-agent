@@ -89,3 +89,19 @@ test("persisted daily baseline survives restart and is not replaced by current e
   assert.equal(db.portfolio.dailyStartEquityUsdt, 1_000);
   assert.equal(db.system.dailyLossCapUsdt, 50);
 });
+
+test("compact accounting anchors keep a moving rolling-168h boundary reachable after full snapshots are capped", () => {
+  const now = Date.UTC(2026, 7, 15, 1, 0, 0);
+  const db = fixture(now, { baselineEquity: 1_000, currentEquity: 1_000, baselineUpl: 0, currentUpl: 0 });
+  refreshAccounting(db, { nowMs: now });
+  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
+  assert.ok(db.accountingAnchors.length >= 3);
+
+  // Simulate the production 500-snapshot retention window: only the current
+  // full snapshot remains, while the compact seven-day anchor survives.
+  db.accountSnapshots = db.accountSnapshots.filter((row) => row.id === "current");
+  refreshAccounting(db, { nowMs: now + 60_000 });
+  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
+  assert.equal(db.portfolio.weekPnl, 0);
+  assert.equal(db.portfolio.accountingBaselines.rolling_168h.observedAt, iso(now - 7 * 24 * 60 * 60_000));
+});

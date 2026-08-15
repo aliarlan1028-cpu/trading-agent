@@ -116,6 +116,8 @@ function snapshotEquity(snapshot) {
 }
 
 function snapshotUnrealized(snapshot) {
+  const compactValue = strictNumber(snapshot?.unrealizedPnlUsdt);
+  if (compactValue !== null) return { complete: true, value: compactValue, reason: null };
   let total = 0;
   for (const position of snapshot?.positions || []) {
     const size = strictNumber(position.coinSize ?? position.pos ?? position.size ?? position.quantity);
@@ -127,9 +129,49 @@ function snapshotUnrealized(snapshot) {
   return { complete: true, value: total, reason: null };
 }
 
+const ACCOUNTING_ANCHOR_BUCKET_MS = 5 * 60_000;
+const ACCOUNTING_ANCHOR_MAX = 2600;
+
+function accountingAnchorFromSnapshot(snapshot) {
+  const equity = snapshotEquity(snapshot);
+  const upl = snapshotUnrealized(snapshot);
+  const observedMs = new Date(snapshot?.createdAt || 0).getTime();
+  if (snapshot?.status !== "ok" || !(equity > 0) || !upl.complete || !Number.isFinite(observedMs)) return null;
+  return {
+    id: `accounting_anchor_${snapshot.accountId || "okx"}_${Math.floor(observedMs / ACCOUNTING_ANCHOR_BUCKET_MS)}`,
+    status: "ok",
+    exchange: snapshot.exchange || "OKX",
+    accountId: snapshot.accountId || null,
+    apiKeyFingerprint: snapshot.apiKeyFingerprint || null,
+    environment: snapshot.environment || null,
+    sourceSnapshotId: snapshot.id || null,
+    createdAt: new Date(observedMs).toISOString(),
+    totalEquityUsdt: equity,
+    unrealizedPnlUsdt: upl.value
+  };
+}
+
+export function retainAccountingAnchors(db) {
+  db.accountingAnchors ||= [];
+  const existing = new Set(db.accountingAnchors.map((anchor) => anchor.id));
+  // Seed all still-retained full snapshots on first migration, then add only one
+  // compact immutable observation per five-minute bucket.
+  const snapshots = (db.accountSnapshots || []).slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  for (const snapshot of snapshots) {
+    const anchor = accountingAnchorFromSnapshot(snapshot);
+    if (!anchor || existing.has(anchor.id)) continue;
+    db.accountingAnchors.push(anchor);
+    existing.add(anchor.id);
+  }
+  db.accountingAnchors = db.accountingAnchors
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, ACCOUNTING_ANCHOR_MAX);
+  return db.accountingAnchors;
+}
+
 function baselineSnapshot(db, boundaryMs, accountId, options = {}) {
   const maxGapMs = Number(options.maxGapMs ?? process.env.MAX_ACCOUNTING_BASELINE_GAP_MS ?? 15 * 60_000);
-  return (db.accountSnapshots || []).filter((snapshot) => {
+  return [...(db.accountSnapshots || []), ...(db.accountingAnchors || [])].filter((snapshot) => {
     if (snapshot?.status !== "ok") return false;
     if (snapshot.exchange && snapshot.exchange !== "OKX") return false;
     if (accountId && snapshot.accountId && snapshot.accountId !== accountId) return false;
@@ -179,6 +221,7 @@ function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
 
 export function refreshAccounting(db, options = {}) {
   const nowMs = Number(options.nowMs ?? Date.now());
+  retainAccountingAnchors(db);
   const timeZone = db.system?.businessTimeZone || DEFAULT_BUSINESS_TIME_ZONE;
   const equity = currentEquityUsdt(db);
   const dayStartMs = todayStart(nowMs, timeZone);

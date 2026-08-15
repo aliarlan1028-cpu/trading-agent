@@ -25,6 +25,14 @@ function recentWithActive(rows = [], activeStates, limit) {
   return selected.slice(0, limit);
 }
 
+function activePlusRecent(rows = [], activeStates, recentLimit) {
+  const list = Array.isArray(rows) ? rows : [];
+  const active = list.filter((row) => activeStates.has(String(row?.status || "").toLowerCase()));
+  const activeKeys = new Set(active.map((row) => row?.id || row));
+  const recent = list.filter((row) => !activeKeys.has(row?.id || row)).slice(0, recentLimit);
+  return [...active, ...recent];
+}
+
 function compactMarket(row) {
   if (!row || typeof row !== "object") return row;
   // 手机行情图直接从 TradingView/实时价格流取数据，overview 不需要重复携带
@@ -43,21 +51,22 @@ function compactArmedSetup(row) {
 
 function compactAgentRun(row) {
   if (!row || typeof row !== "object") return row;
+  const text = (value, limit = 240) => value == null ? value : String(value).slice(0, limit);
   return {
     id: row.id,
     traceId: row.traceId,
     sessionId: row.sessionId,
-    source: row.source,
-    role: row.role,
-    status: row.status,
-    model: row.model,
+    source: text(row.source, 80),
+    role: text(row.role, 80),
+    status: text(row.status, 80),
+    model: text(row.model, 120),
     createdAt: row.createdAt,
     completedAt: row.completedAt,
     steps: (row.steps || []).slice(0, 8).map((step) => ({
       id: step.id,
-      phase: step.phase,
-      title: step.title,
-      status: step.status,
+      phase: text(step.phase, 80),
+      title: text(step.title),
+      status: text(step.status, 80),
       createdAt: step.createdAt,
       completedAt: step.completedAt
     }))
@@ -248,6 +257,171 @@ function compactPaperReport(report = {}) {
   return {
     minForwardTrades: report.minForwardTrades,
     sessions: (report.sessions || []).map(({ trades: _trades, equityCurve: _equityCurve, ...session }) => session)
+  };
+}
+
+const OVERVIEW_SECTIONS = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
+
+function sharedSectionFields(overview) {
+  return {
+    user: overview.user,
+    system: overview.system,
+    systemRelease: overview.systemRelease,
+    automationState: overview.automationState,
+    agentStatus: compactAgentStatus(overview.agentStatus),
+    portfolio: overview.portfolio,
+    performance: overview.performance,
+    positions: overview.positions || [],
+    markets: (overview.markets || []).map(compactMarket),
+    activeMarket: compactMarket(overview.activeMarket),
+    marketRegime: overview.marketRegime || null,
+    watchlist: overview.watchlist || [],
+    mandates: overview.mandates || [],
+    notifications: (overview.notifications || []).slice(0, 30),
+    realtimeConnections: overview.realtimeConnections || [],
+    realtimeStarted: overview.realtimeStarted,
+    exchangeAccounts: overview.exchangeAccounts || [],
+    subscriptions: overview.subscriptions || [],
+    config: overview.config || {},
+    readiness: overview.readiness || null
+  };
+}
+
+/**
+ * Returns one bounded desktop/mobile workspace payload. Non-terminal rows are never discarded:
+ * limits apply only to historical rows, while the lightweight core remains the source of truth
+ * during navigation and reconnects.
+ */
+export function projectOverviewSection(overview = {}, section = "chat") {
+  const selectedSection = OVERVIEW_SECTIONS.has(section) ? section : "chat";
+  const base = {
+    overviewMode: "section_v1",
+    section: selectedSection,
+    loadedSections: [selectedSection],
+    resourceState: { [selectedSection]: "loaded" },
+    ...sharedSectionFields(overview)
+  };
+  const tradePlans = activePlusRecent(overview.tradePlans, ACTIVE_PLAN_STATES, 30).map(compactPlan);
+  const executionOrders = activePlusRecent(overview.executionOrders, ACTIVE_ORDER_STATES, 50).map(compactExecutionOrder);
+  const armedSetups = activePlusRecent(overview.armedSetups, ACTIVE_SETUP_STATES, 30).map(compactArmedSetup);
+
+  if (selectedSection === "chat") return {
+    ...base,
+    tradePlans,
+    executionOrders,
+    armedSetups,
+    fills: (overview.fills || []).slice(0, 60),
+    pendingActions: (overview.pendingActions || []).slice(0, 20),
+    watchTriggers: activePlusRecent(overview.watchTriggers, new Set(["active"]), 20),
+    watchBoard: overview.watchBoard || [],
+    agentRuns: (overview.agentRuns || []).slice(0, 10).map(compactAgentRun),
+    tasks: (overview.tasks || []).slice(0, 40),
+    events: (overview.events || []).slice(0, 30).map(compactEvent),
+    newsFeed: (overview.newsFeed || []).slice(0, 30),
+    missedOpportunities: (overview.missedOpportunities || []).slice(0, 20),
+    opportunityCandidates: (overview.opportunityCandidates || []).slice(0, 20),
+    strategyStudio: overview.strategyStudio || {}
+  };
+
+  if (selectedSection === "cockpit") return {
+    ...base,
+    tradePlans,
+    executionOrders,
+    armedSetups,
+    orders: activePlusRecent(overview.orders, ACTIVE_ORDER_STATES, 100),
+    fills: (overview.fills || []).slice(0, 150),
+    closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 100).map(compactClosedTradeLifecycle),
+    riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
+    reviews: compactNativeReviews(overview.reviews),
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 12).map(compactAccountSnapshot),
+    mediumTermAnalytics: overview.mediumTermAnalytics || {},
+    marketMovers: overview.marketMovers || null,
+    abnormalVolatility: (overview.abnormalVolatility || []).slice(0, 30),
+    portfolioRisk: overview.portfolioRisk || null,
+    professional: overview.professional || null,
+    paperReport: compactPaperReport(overview.paperReport)
+  };
+
+  if (selectedSection === "researchCenter") return {
+    ...base,
+    knowledge: compactKnowledge(overview.knowledge),
+    skills: overview.skills || [],
+    tools: overview.tools || [],
+    mcpServers: overview.mcpServers || [],
+    strategyBoard: overview.strategyBoard || null,
+    strategyCatalog: compactStrategyCatalog(overview.strategyCatalog),
+    strategyStudio: overview.strategyStudio || {},
+    backtestResearch: compactBacktestResearch(overview.backtestResearch),
+    backtests: (overview.backtests || []).slice(0, 20),
+    strategyProfiles: (overview.strategyProfiles || []).slice(0, 40),
+    memoryItems: (overview.memoryItems || []).slice(0, 30),
+    agentProfiles: overview.agentProfiles || [],
+    analysisEngine: overview.analysisEngine || {},
+    reviewAnalytics: overview.reviewAnalytics || {},
+    reviewLearningAnalytics: overview.reviewLearningAnalytics || {},
+    decisionCalibration: overview.decisionCalibration || {},
+    embeddingStatus: overview.embeddingStatus || null
+  };
+
+  if (selectedSection === "riskCenter") return {
+    ...base,
+    tradePlans,
+    executionOrders,
+    riskThresholds: overview.riskThresholds || {},
+    riskRules: overview.riskRules || [],
+    riskChecks: (overview.riskChecks || []).slice(0, 100).map(compactRiskCheck),
+    riskIncidents: activePlusRecent(overview.riskIncidents, new Set(["open"]), 60),
+    currentRiskSnapshot: overview.currentRiskSnapshot || null,
+    grayReleasePolicies: overview.grayReleasePolicies || [],
+    notionalLimits: overview.notionalLimits || null,
+    tradingCapacity: overview.tradingCapacity || null,
+    portfolioRisk: overview.portfolioRisk || null,
+    professional: overview.professional || null,
+    apiKeyMetadata: overview.apiKeyMetadata || [],
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot)
+  };
+
+  if (selectedSection === "operationsCenter") return {
+    ...base,
+    executionOrders,
+    events: (overview.events || []).slice(0, 100).map(compactEvent),
+    tasks: overview.tasks || [],
+    jobRuns: (overview.jobRuns || []).slice(0, 50),
+    riskIncidents: activePlusRecent(overview.riskIncidents, new Set(["open"]), 60),
+    reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
+    auditLogs: (overview.auditLogs || []).slice(0, 80),
+    traces: (overview.traces || []).slice(0, 40),
+    alerts: (overview.alerts || []).slice(0, 40),
+    drillRuns: (overview.drillRuns || []).slice(0, 20),
+    eventSources: overview.eventSources || [],
+    marketCalendarEvents: (overview.marketCalendarEvents || []).slice(0, 120).map(compactEvent),
+    dailyMarketBrief: compactDailyBrief(overview.dailyMarketBrief),
+    marketIntelligenceSourceHealth: overview.marketIntelligenceSourceHealth || [],
+    newsFeed: (overview.newsFeed || []).slice(0, 60),
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot),
+    marketStream: overview.marketStream || null,
+    opportunityEngine: overview.opportunityEngine || null
+  };
+
+  return {
+    ...base,
+    users: overview.users || [],
+    tenants: overview.tenants || [],
+    subscriptionPlans: overview.subscriptionPlans || [],
+    paymentRequests: (overview.paymentRequests || []).slice(0, 20),
+    publicRegistrationEnabled: overview.publicRegistrationEnabled,
+    registrationMode: overview.registrationMode,
+    registrationCapacity: overview.registrationCapacity,
+    registrationApplications: overview.registrationApplications || [],
+    runtimeConfig: overview.runtimeConfig || {},
+    apiKeyMetadata: overview.apiKeyMetadata || [],
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot),
+    tools: overview.tools || [],
+    mcpServers: overview.mcpServers || [],
+    eventSources: overview.eventSources || [],
+    larkConfigured: overview.larkConfigured,
+    telegramConfigured: overview.telegramConfigured,
+    mcpStatus: overview.mcpStatus || null
   };
 }
 

@@ -4,7 +4,7 @@ import { portfolioCapNotional } from "./portfolioRisk.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyOperationalDegradation, professionalNotionalCap } from "./professionalRiskGate.mjs";
 import { ensureTradeReviewQueued, groupClosedTradeLifecycles, sameTradeLifecycle, syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
-import { estimateExecutionCost } from "./executionCostModel.mjs";
+import { estimateExecutionCost, estimateNetRewardRisk, netRewardRiskGate } from "./executionCostModel.mjs";
 import { activeMandate, acquireExecutionLease, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, releaseExecutionLease, renewExecutionLease, saveDb, transitionOmsOrder } from "./store.mjs";
 import { evaluatePortfolioIntentConflict, evaluateSameSymbolEntryConflict } from "./tradingRoles.mjs";
 import { accountMarginCapacity, projectedMarginUsage } from "./tradingCapacity.mjs";
@@ -17,6 +17,7 @@ import { clearReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mj
 import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
 import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
 import { assertActiveLease, isLeaseLostError } from "./leaseSafety.mjs";
+import { currentRiskThresholds } from "./riskThresholds.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -60,6 +61,31 @@ function currentFundingRate(db, symbol) {
 
 function feeEstimate(notional) {
   return Number((Math.abs(Number(notional || 0)) * DEFAULT_TAKER_FEE_RATE).toFixed(6));
+}
+
+export function validateLiveDecisionProvenance(provenance, options = {}) {
+  const criticRequired = options.criticRequired ?? process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false";
+  const primaryValid = provenance?.primary?.gateway === "openrouter"
+    && String(provenance?.primary?.requestedModel || "").startsWith("google/gemini-")
+    && String(provenance?.primary?.actualModel || "").startsWith("google/gemini-")
+    && Boolean(String(provenance?.primary?.actualProvider || "").trim())
+    && provenance?.primary?.reasoningEffort === "high"
+    && provenance?.routingPolicy?.crossModelFallback === false
+    && Boolean(provenance?.prompt?.version && provenance?.prompt?.hash)
+    && Boolean(provenance?.toolSchema?.version && provenance?.toolSchema?.hash)
+    && Boolean(provenance?.evidence?.bundleId && provenance?.evidence?.hash)
+    && Boolean(provenance?.cohort?.id);
+  const criticValid = !criticRequired || (
+    provenance?.critic?.approved === true
+    && Boolean(provenance?.critic?.reviewId)
+    && provenance?.critic?.gateway === "direct"
+    && provenance?.critic?.actualProvider === "deepseek_direct"
+    && String(provenance?.critic?.requestedModel || "").startsWith("deepseek")
+    && String(provenance?.critic?.actualModel || "").startsWith("deepseek")
+    && provenance?.critic?.thinking === "enabled"
+    && provenance?.critic?.reasoningEffort === "max"
+  );
+  return { ok: primaryValid && criticValid, primaryValid, criticValid, criticRequired };
 }
 
 function slippageBps(actual, expected, direction = "long") {
@@ -500,6 +526,14 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   }
 
   if (db.system.liveTradingEnabled) {
+    if (plan.source === "agent_chat") {
+      const provenanceCheck = validateLiveDecisionProvenance(plan.decisionProvenance);
+      if (!provenanceCheck.ok) {
+        plan.executionBlock = { reason: "decision_provenance_incomplete", detail: "Gemini 主提案/DeepSeek 审查/提示词与证据哈希未形成完整不可变归因", at: nowIso() };
+        appendAudit(db, "执行拒绝：Agent 计划缺少完整双模型决策归因", plan.id, "ExecutionEngine", "warning");
+        return { status: "decision_provenance_incomplete", ...provenanceCheck };
+      }
+    }
     const preflightSnapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: plan.accountId || plan.exchangeAccountId || undefined });
     const preflightBinding = validateOkxCredentialBinding(db, {
       accountId: plan.accountId || plan.exchangeAccountId || preflightSnapshot?.accountId,
@@ -546,6 +580,41 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     depthUsdt: marketForCost.depthUsdt || marketForCost.orderBookDepthUsdt || marketForCost.depth5Usdt,
     notionalUsdt: sizing.notional
   });
+  if (db.system.liveTradingEnabled && !executionCostEstimate.ok) {
+    plan.executionBlock = { reason: "execution_cost_evidence_missing", detail: "缺少有效盘口深度/点差，无法计算净成本盈亏比", at: nowIso() };
+    appendAudit(db, "执行前净成本 RR 无法计算：盘口成本证据缺失", plan.id, "ExecutionEngine", "warning");
+    return { status: "execution_cost_evidence_missing", reason: executionCostEstimate.reason };
+  }
+  const firstTarget = (plan.takeProfit || plan.take_profit || [])[0];
+  const fundingPeriods = plan.traderRole === "swing_trader"
+    ? Math.max(1, Number(process.env.NET_RR_SWING_FUNDING_PERIODS || 3))
+    : Math.max(1, Number(process.env.NET_RR_DAY_FUNDING_PERIODS || 1));
+  const netRewardRisk = estimateNetRewardRisk({
+    direction: plan.direction,
+    entryPrice: sizing.entryMid,
+    stopPrice: plan.stopLoss ?? plan.stop_loss,
+    targetPrice: firstTarget,
+    quantity: sizing.quantity,
+    expectedImpactBps: executionCostEstimate.expectedImpactBps,
+    maxEntrySlippageBps: Number(plan.max_slippage_pct ?? 0.08) * 100,
+    stopSlippageBps: Number(process.env.NET_RR_STOP_SLIPPAGE_BPS || 12),
+    targetSlippageBps: Number(process.env.NET_RR_TARGET_SLIPPAGE_BPS || executionCostEstimate.expectedImpactBps || 0),
+    takerFeeRate: Number(process.env.OKX_TAKER_FEE_RATE || 0.0005),
+    fundingRatePct: marketForCost.fundingRate,
+    fundingPeriods
+  });
+  const minimumNetRewardRisk = currentRiskThresholds().minRewardRisk;
+  plan.netRewardRisk = netRewardRisk.ok ? structuredClone(netRewardRisk) : null;
+  plan.minimumNetRewardRisk = minimumNetRewardRisk;
+  const netRewardRiskDecision = netRewardRiskGate(netRewardRisk, minimumNetRewardRisk, { live: db.system.liveTradingEnabled });
+  if (!netRewardRiskDecision.allowed) {
+    const detail = !netRewardRisk.ok
+      ? `净成本 RR 无法验证（${netRewardRisk.reason}）`
+      : `净成本后仅 ${netRewardRisk.netRewardRisk.toFixed(2)}R，低于硬门槛 ${minimumNetRewardRisk}R`;
+    plan.executionBlock = { reason: "net_reward_risk_rejected", detail, at: nowIso() };
+    appendAudit(db, `执行前净成本 RR 拒绝：${detail}`, plan.id, "ExecutionEngine", "warning");
+    return { status: "net_reward_risk_rejected", detail, netRewardRisk, minimumNetRewardRisk, decision: netRewardRiskDecision };
+  }
 
   const executionOrder = {
     id: id("exec"),
@@ -555,6 +624,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     riskCheckId: plan.riskCheckId,
     analysisBundleId: plan.analysisBundleId,
     evidenceBundleId: plan.evidenceBundleId,
+    decisionProvenance: plan.decisionProvenance ? structuredClone(plan.decisionProvenance) : null,
+    criticReviewId: plan.criticReviewId || plan.decisionProvenance?.critic?.reviewId || null,
     exchange: plan.exchange,
     accountId: plan.accountId || plan.exchangeAccountId || latestSuccessfulAccountSnapshot(db, { exchange: String(plan.exchange || "OKX").toUpperCase() })?.accountId || null,
     apiKeyFingerprint: currentOkxCredentialFingerprint(),
@@ -585,6 +656,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
     accountCapacity: sizing.marginCapacity,
     projectedMargin: sizing.projectedMargin,
     executionCostEstimate: executionCostEstimate.ok ? executionCostEstimate : null,
+    netRewardRisk: netRewardRisk.ok ? structuredClone(netRewardRisk) : null,
+    minimumNetRewardRisk,
     status: "created",
     events: [{ at: nowIso(), event: "created", detail: sizing.projectedMargin.unavailable
       ? `数量 ${sizing.quantity}，名义 ${sizing.notional.toFixed(2)} USDT（非实盘，账户保证金数据不可用；${sizing.sizedBy}）`
@@ -593,9 +666,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   };
   db.executionOrders.unshift(executionOrder);
 
-  // SRTL 结构审核作为"执行前硬闸"已移除(它一味拒单、把交易焊死)。SMC 方法学(4H BOS/供需区/
-  // 流动性扫荡/CHoCH/RR)改为分析阶段的工具 analyze_market_structure——AI 分析时主动调用、用来
-  // 指导方向与入场,而不是事后否决。RR≥2 等纪律仍在 BASE_RULES 与风控警告里,不再硬拦执行。
+  // 结构方法学仍由分析层产生事实；执行层不主观判断 SMC。但净成本 RR 是确定性财务硬闸，
+  // 已在上方按最差可接受成交、双边费用、退出滑点与预计资金费完成校验。
 
   if (!db.system.liveTradingEnabled) {
     executionOrder.status = "dry_run";
@@ -1444,29 +1516,137 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
   };
 }
 
-async function fetchOkxProtectionClosure(executionOrder) {
+export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoRows = [], fills = []) {
+  const expectedClientIds = protectionClientIds(executionOrder);
+  const expectedAlgoIds = new Set([
+    executionOrder.stopAlgoId,
+    ...(executionOrder.tpAlgoIds || [])
+  ].map(String).filter(Boolean));
+  if (!expectedClientIds.size && !expectedAlgoIds.size) return null;
+  const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
+  const ctVal = Number(executionOrder.okxCtVal);
+  if (!(ctVal > 0)) return null;
+  const entryAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt || 0).getTime();
+  const triggered = (algoRows || []).filter((row) => {
+    if (String(row.instId || "") !== instId) return false;
+    const clientId = cleanClOrdId(row.algoClOrdId || row.attachAlgoClOrdId || "");
+    return expectedClientIds.has(clientId) || expectedAlgoIds.has(String(row.algoId || ""));
+  });
+  const triggeredOrderIds = new Set(triggered.flatMap((row) => {
+    const raw = row.ordId ?? row.orderId ?? row.ordIds;
+    return Array.isArray(raw) ? raw : String(raw || "").split(",");
+  }).map((value) => String(value || "").trim()).filter(Boolean));
+  if (!triggeredOrderIds.size) return null;
+
+  const closingSide = executionOrder.direction === "short" ? "buy" : "sell";
+  const seenTrades = new Set();
+  const matched = [];
+  for (const row of fills || []) {
+    const at = Number(row.ts || row.fillTime || row.cTime || 0);
+    if (!triggeredOrderIds.has(String(row.ordId || "")) || String(row.instId || "") !== instId || String(row.side || "").toLowerCase() !== closingSide) continue;
+    if (Number.isFinite(entryAt) && entryAt > 0 && at > 0 && at + 60_000 < entryAt) continue;
+    const tradeId = String(row.tradeId || `${row.ordId || ""}:${at}:${row.fillPx}:${row.fillSz}`);
+    if (seenTrades.has(tradeId)) continue;
+    seenTrades.add(tradeId);
+    const contracts = Number(row.fillSz || row.sz || 0);
+    const price = Number(row.fillPx || row.avgPx || 0);
+    const realizedPnl = finiteFinancialNumber(row.fillPnl ?? row.pnl) ? Number(row.fillPnl ?? row.pnl) : null;
+    const feeUsdt = okxFeeCost(row.fee);
+    const closedAt = at > 0 && Number.isFinite(new Date(at).getTime()) ? new Date(at).toISOString() : null;
+    if (!(contracts > 0) || !(price > 0) || realizedPnl === null || feeUsdt === null || !closedAt) {
+      return { complete: false, reason: "protection_fill_financial_evidence_incomplete", expectedQuantity: Number(executionOrder.filledQuantity || executionOrder.quantity || 0) };
+    }
+    const algo = triggered.find((candidate) => String(candidate.ordId || candidate.orderId || "").split(",").includes(String(row.ordId || "")));
+    matched.push({
+      algoId: algo?.algoId || null,
+      algoClientOrderId: cleanClOrdId(algo?.algoClOrdId || algo?.attachAlgoClOrdId || "") || null,
+      tradeId,
+      exchangeOrderId: row.ordId || null,
+      quantity: contracts * ctVal,
+      price,
+      realizedPnl,
+      feeUsdt,
+      feeCostUsdt: feeUsdt,
+      rawFee: Number(row.fee),
+      rawFeeCcy: row.feeCcy || null,
+      feeSource: "okx_algo_history_to_raw_fill_history",
+      feeSchemaVersion: 2,
+      closedAt
+    });
+  }
+  if (!matched.length) return null;
+  const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
+  const entryRows = (fills || []).filter((row) => String(row.instId || "") === instId
+    && ((entryClientOrderId && cleanClOrdId(row.clOrdId || "") === entryClientOrderId)
+      || (executionOrder.exchangeOrderId && String(row.ordId || "") === String(executionOrder.exchangeOrderId))));
+  const entryFees = entryRows.map((row) => okxFeeCost(row.fee));
+  const entryFeeUsdt = entryRows.length && entryFees.every((value) => value !== null)
+    ? entryFees.reduce((sum, value) => sum + value, 0) : null;
+  const quantity = matched.reduce((sum, row) => sum + row.quantity, 0);
+  const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
+  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance && entryFeeUsdt !== null;
+  const notional = matched.reduce((sum, row) => sum + row.price * row.quantity, 0);
+  return {
+    complete,
+    evidencePath: "orders-algo-history->ordId->fills-history:tradeId",
+    quantity,
+    expectedQuantity,
+    weightedPrice: quantity > 0 ? notional / quantity : null,
+    realizedPnl: matched.reduce((sum, row) => sum + row.realizedPnl, 0),
+    feeUsdt: matched.reduce((sum, row) => sum + row.feeUsdt, 0),
+    entryFeeUsdt,
+    closedAt: matched.slice().sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt))[0].closedAt,
+    algoIds: [...new Set(matched.map((row) => row.algoId).filter(Boolean))],
+    exchangeOrderIds: [...new Set(matched.map((row) => row.exchangeOrderId).filter(Boolean))],
+    tradeIds: [...new Set(matched.map((row) => row.tradeId).filter(Boolean))],
+    breakdown: matched
+  };
+}
+
+export async function fetchOkxProtectionClosure(executionOrder, options = {}) {
   if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) return null;
   try {
+    const signedRequest = options.signedRequest || okxSignedRequest;
     const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
     const begin = new Date(executionOrder.entryAttemptedAt || executionOrder.createdAt || 0).getTime();
-    const rows = [];
+    const algoRows = [];
+    for (const state of ["effective", "canceled", "order_failed"]) {
+      let after = null;
+      let exhausted = false;
+      for (let page = 0; page < 20; page += 1) {
+        const query = new URLSearchParams({ ordType: "conditional", state, instId, limit: "100" });
+        if (Number.isFinite(begin) && begin > 0) query.set("begin", String(begin));
+        if (after) query.set("after", after);
+        const raw = await signedRequest(`/api/v5/trade/orders-algo-history?${query.toString()}`, "GET");
+        if (String(raw?.code ?? "") !== "0") return null;
+        const pageRows = Array.isArray(raw.data) ? raw.data : [];
+        algoRows.push(...pageRows);
+        if (pageRows.length < 100) { exhausted = true; break; }
+        const lastId = pageRows.at(-1)?.algoId;
+        if (!lastId || lastId === after) return null;
+        after = lastId;
+      }
+      if (!exhausted) return null;
+    }
+    const fills = [];
     let after = null;
     let exhausted = false;
     for (let page = 0; page < 20; page += 1) {
-      const query = new URLSearchParams({ instType: "SWAP", instId, state: "filled", limit: "100" });
+      const query = new URLSearchParams({ instType: "SWAP", instId, limit: "100" });
       if (Number.isFinite(begin) && begin > 0) query.set("begin", String(begin));
       if (after) query.set("after", after);
-      const raw = await okxSignedRequest(`/api/v5/trade/orders-history-archive?${query.toString()}`, "GET");
+      const raw = await signedRequest(`/api/v5/trade/fills-history?${query.toString()}`, "GET");
       if (String(raw?.code ?? "") !== "0") return null;
       const pageRows = Array.isArray(raw.data) ? raw.data : [];
-      rows.push(...pageRows);
+      fills.push(...pageRows);
       if (pageRows.length < 100) { exhausted = true; break; }
-      const lastId = pageRows.at(-1)?.ordId;
+      const lastId = pageRows.at(-1)?.tradeId;
       if (!lastId || lastId === after) return null;
       after = lastId;
     }
     if (!exhausted) return null;
-    return summarizeOkxProtectionClosure(executionOrder, rows);
+    return summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoRows, fills);
   } catch {
     return null;
   }
@@ -1772,6 +1952,9 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
     exitReason: executionOrder.closeReason || "manual_close",
     createdAt: closure.closedAt,
     exchangeOrderIds: closure.exchangeOrderIds,
+    exchangeTradeIds: closure.tradeIds || [],
+    exchangeAlgoIds: closure.algoIds || [],
+    closureEvidencePath: closure.evidencePath || "fills-history",
     exitBreakdown: closure.breakdown,
     inferred: false,
     estimated: false,
@@ -1784,6 +1967,9 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   executionOrder.updatedAt = closure.closedAt;
   executionOrder.realizedPnl = closure.realizedPnl;
   executionOrder.closeFeeUsdt = closure.feeUsdt;
+  executionOrder.closeEvidencePath = closure.evidencePath || "fills-history";
+  executionOrder.closeTradeIds = closure.tradeIds || [];
+  executionOrder.closeAlgoIds = closure.algoIds || [];
   executionOrder.exitReason = executionOrder.closeReason || "manual_close";
   executionOrder.events ||= [];
   executionOrder.events.push({ at: nowIso(), event: "close_reconciled", detail: `交易所真实成交 ${closure.quantity} @ ${closure.weightedPrice}` });
@@ -1930,6 +2116,8 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     agentRunId: executionOrder.agentRunId,
     analysisBundleId: executionOrder.analysisBundleId,
     evidenceBundleId: executionOrder.evidenceBundleId,
+    decisionProvenance: executionOrder.decisionProvenance ? structuredClone(executionOrder.decisionProvenance) : (plan.decisionProvenance ? structuredClone(plan.decisionProvenance) : null),
+    criticReviewId: executionOrder.criticReviewId || plan.criticReviewId || null,
     riskCheckId: executionOrder.riskCheckId,
     mandateId: executionOrder.mandateId,
     symbol: executionOrder.symbol,
@@ -1980,6 +2168,9 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     inferred: Boolean(extra.inferred),
     estimated: Boolean(extra.estimated),
     exchangeOrderIds: extra.exchangeOrderIds,
+    exchangeTradeIds: extra.exchangeTradeIds,
+    exchangeAlgoIds: extra.exchangeAlgoIds,
+    closureEvidencePath: extra.closureEvidencePath,
     exitBreakdown: extra.exitBreakdown,
     realizedPnl,
     initialRiskUsdt: executionOrder.initialRiskUsdt || plan.initialRiskUsdt || null,

@@ -331,7 +331,10 @@ function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
-  const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
+  const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
+  useEffect(() => {
+    if (data) ensureSection(active);
+  }, [active, Boolean(data)]);
   function navigate(next) {
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
     if (next === "chat") { setActiveWorkspaceTab("dialog"); setActive("chat"); return; }
@@ -359,7 +362,7 @@ function App() {
     if (next === "systemSettings") setActiveSettingsTab("overview");
     setActive(next);
   }
-  const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
+  const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
@@ -377,7 +380,7 @@ function App() {
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
-    return <MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, connectionError }} />;
+    return <MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} />;
   }
 
   return (

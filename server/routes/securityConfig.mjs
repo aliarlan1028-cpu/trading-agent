@@ -1,5 +1,6 @@
 import { verifyAuditChain } from "../store.mjs";
 import { applyLiveTradingConfiguration, partitionAutonomousBlockers, autonomousProductionBlockers } from "../liveModeService.mjs";
+import { listConfiguredModelCatalog, llmCircuitStatus } from "../llmGateway.mjs";
 
 // 安全与运行配置路由组（vault/交易所凭证/LLM 配置/实盘开关/密钥删除/告警/演练/审计链）——
 // 从 index.mjs 按 registrar 范式迁出。全部 admin:security 高危面，处理器逐字保留原实现，
@@ -73,6 +74,11 @@ export function registerSecurityConfigRoutes(app, ctx) {
   });
 
   app.get("/api/config", requirePermission("admin:security"), (_req, res) => res.json(getConfigStatus(db)));
+  app.get("/api/config/llm-models", requirePermission("admin:security"), async (_req, res) => {
+    const catalog = await listConfiguredModelCatalog();
+    res.set("Cache-Control", "private, max-age=300");
+    res.json({ ...catalog, circuits: llmCircuitStatus() });
+  });
 
   // 通用配置写入：LLM 密钥/模型、非敏感开关。敏感项加密入库，不回传明文。
   app.post("/api/config", requirePermission("admin:security"), async (req, res) => {

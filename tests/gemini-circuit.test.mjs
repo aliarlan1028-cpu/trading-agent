@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-process.env.GEMINI_API_KEY = "test-key";
+process.env.OPENROUTER_API_KEY = "test-key";
+process.env.GEMINI_MODEL = "google/gemini-3.7-flash";
 process.env.GEMINI_RETRY_MAX = "1";
 process.env.GEMINI_CIRCUIT_429_MS = "300000";
 

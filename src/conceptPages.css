@@ -422,3 +422,8 @@ body:has(.cp2Settings) .asstFab{display:none}
 @media(max-width:1180px){.cp2OverviewGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.cp2SettingsBase{grid-template-columns:1fr}.cp2Settings .cp2BaseDirectory{position:static;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}.cp2BaseDirectory>div{grid-column:1/-1}.cp2Settings .cp2BaseDirectory>button{grid-template-columns:auto minmax(0,1fr);min-height:54px}.cp2BaseDirectory>button>svg{display:none}.cp2BaseDirectory>button b{white-space:normal;line-height:1.35}.cp2BaseDirectory>button small{display:none}}
 @media(max-width:720px){.cp2SettingsTabs{margin-bottom:16px}.cp2SettingsPageHead{align-items:flex-start;flex-direction:column;gap:16px;padding:18px}.cp2SettingsPageHead h2{font-size:19px}.cp2OverviewHealth{width:100%;box-sizing:border-box}.cp2OverviewGrid{grid-template-columns:1fr}.cp2OverviewCard{min-height:218px}.cp2BaseCount{width:100%;box-sizing:border-box;justify-content:flex-start;border-left:0;border-top:1px solid #e2e4e7;padding:13px 0 0}.cp2BaseCount span{max-width:none}.cp2Settings .cp2BaseDirectory{display:flex;flex-direction:row;overflow-x:auto;padding:7px}.cp2BaseDirectory>div{display:none}.cp2Settings .cp2BaseDirectory>button{min-width:166px;min-height:50px}.cp2BaseSections{gap:14px}.cp2OverviewFacts{margin-top:15px}}
+
+/* 事件月历必须始终保留 7 列。长事件标题不能用 min-content 宽度撑开轨道并把周四至周六裁掉。 */
+.cp2Calendar .week,.cp2Calendar .days{grid-template-columns:repeat(7,minmax(0,1fr))}
+.cp2Calendar .week b,.cp2Calendar .days>div,.cp2Calendar .days button{min-width:0}
+.cp2Calendar .days>div{overflow:hidden}

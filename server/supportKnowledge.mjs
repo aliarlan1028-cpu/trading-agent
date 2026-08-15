@@ -78,8 +78,8 @@ const ARTICLES = [
   },
   {
     id: "settings.models", title: "模型与密钥", page: "systemSettings:models",
-    keywords: ["模型与密钥", "模型", "openai", "anthropic", "deepseek", "gemini", "provider"],
-    body: "模型设置用于配置推理提供商、模型名称和访问密钥。留空密钥表示保留已有值；移除是单独操作。客服不能查看密钥原文，也不能代替用户保存敏感凭证。"
+    keywords: ["模型与密钥", "模型", "deepseek", "gemini", "openrouter", "provider"],
+    body: "模型设置固定为双模型架构：OpenRouter 的 Gemini 负责主分析和提出候选计划，DeepSeek 官网 API 负责独立审查；任何模型都不能绕过确定性风控和执行闸。两者之间不做跨模型静默降级。留空密钥表示保留已有值；移除是单独操作。客服不能查看密钥原文，也不能代替用户保存敏感凭证。"
   },
   {
     id: "settings.exchange", title: "OKX 连接", page: "systemSettings:exchange",
@@ -130,7 +130,7 @@ const ENGLISH = {
   "risk.keys": { title: "Exchange key security", keywords: ["api key", "secret", "passphrase", "withdrawal", "ip allowlist", "key security"], body: "The OKX API key must have withdrawals disabled and should be restricted to the server IP. Secrets are never placed in model context or returned to the frontend. Incomplete credentials, unverified permissions, or reconciliation problems block live entries." },
   "operations.center": { title: "Operations, tasks, and audit", keywords: ["operations", "tasks", "events", "notifications", "audit", "logs"], body: "Operations shows scheduled tasks, the event calendar, notifications, agent orchestration, and audit records. Scheduler state explains task execution; audit records explain system changes, but neither is a substitute for verified exchange positions." },
   "settings.environment": { title: "Environment and Services", keywords: ["environment", "server", "port", "timezone", "database", "realtime"], body: "Environment and Services shows the server address, runtime, timezone, database, and real-time channels. Ports and some low-level values require a service restart; the UI distinguishes immediate changes from restart-required changes." },
-  "settings.models": { title: "Models and Keys", keywords: ["models", "openai", "anthropic", "deepseek", "gemini", "provider", "model key"], body: "Models and Keys configures inference providers, model names, and access keys. Leaving a secret blank preserves the existing value; removing it is a separate action. Product Support cannot read or save secret values for the user." },
+  "settings.models": { title: "Models and Keys", keywords: ["models", "deepseek", "gemini", "openrouter", "provider", "model key"], body: "The model layer is fixed to two roles: Gemini through OpenRouter performs primary analysis and proposes candidates; DeepSeek through its official API independently reviews them. Neither model can bypass deterministic risk and execution gates, and there is no silent cross-model fallback. Leaving a secret blank preserves the existing value; removing it is a separate action. Product Support cannot read or save secret values for the user." },
   "settings.exchange": { title: "OKX connection", keywords: ["okx connection", "exchange", "margin mode", "position mode", "permission check"], body: "The OKX connection page configures the API key, secret, passphrase, IP allowlist, margin mode, and position mode. A successful connection confirms credentials only; live trading still depends on trading permissions, live switches, and every safety check." },
   "settings.network": { title: "Network Proxy", keywords: ["network proxy", "http proxy", "https proxy", "network"], body: "Configure a proxy only when the server needs it to reach external APIs. An incorrect proxy can break model, news, or exchange connections; run connection checks after changing it." },
   "settings.notifications": { title: "Notification Channels", keywords: ["notification", "telegram", "lark", "webhook", "push"], body: "Telegram is reserved for configured profit posters and watch-condition group updates. Lark carries important trading, risk, and system alerts. Test each channel independently; an unconfigured channel does not change core analysis or trading logic." },

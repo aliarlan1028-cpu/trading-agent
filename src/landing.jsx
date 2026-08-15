@@ -1,10 +1,48 @@
 import React, { useEffect, useState } from "react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
+
+function AuthMarketMotion() {
+  const tiles = [
+    { key: "btc", label: "BTC", value: "+2.8%", tone: "amber", path: "M3 38 C14 35 18 18 28 23 S43 34 50 20 S63 8 77 13" },
+    { key: "signal", label: t("信号", "SIGNAL"), value: t("偏多", "LONG"), tone: "sky", path: "M3 34 C14 30 18 35 27 26 S43 13 51 18 S64 12 77 6" },
+    { key: "agent", label: "KORDYN", value: "AI AGENT", tone: "agent" },
+    { key: "risk", label: t("风险", "RISK"), value: "0.7%", tone: "sage", path: "M3 17 C14 19 19 31 29 27 S44 14 52 20 S65 28 77 22" },
+    { key: "eth", label: "ETH", value: "+1.6%", tone: "violet", path: "M3 39 C13 34 20 37 28 28 S43 25 52 16 S66 20 77 9" }
+  ];
+
+  return (
+    <div className="nativeAuthMotion" aria-hidden="true">
+      <div className="nativeAuthMotionGlow" />
+      <div className="nativeAuthMotionRail">
+        {tiles.map((tile) => (
+          <div className={`nativeAuthMotionTile nativeAuthMotionTile--${tile.tone}`} key={tile.key}>
+            {tile.tone === "agent" ? (
+              <>
+                <div className="nativeAuthAgentOrb"><span /><img src="/kordyn-logo.svg" alt="" /></div>
+                <strong>{tile.label}</strong>
+                <small>{tile.value}</small>
+              </>
+            ) : (
+              <>
+                <span className="nativeAuthMotionLabel">{tile.label}</span>
+                <svg viewBox="0 0 80 46" preserveAspectRatio="none"><path d={tile.path} /></svg>
+                <strong>{tile.value}</strong>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiBase, publicInfo }) {
   const plans = publicInfo?.subscriptionPlans || [];
   const [mode, setMode] = useState("login");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showTotp, setShowTotp] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState(plans[0]?.id || "");
   const [serverUrl, setServerUrl] = useState(apiBase || "https://yegidawir.xyz");
   const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
@@ -27,30 +65,30 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
   }
 
   return (
-    <main className="nativeAuthScreen">
-      <section className="nativeAuthCard" aria-label={t("登录或订阅 KORDYN", "Sign in or subscribe to KORDYN")}>
+    <main className={`nativeAuthScreen nativeAuthScreen--${mode}`}>
+      <div className="nativeAuthAmbient nativeAuthAmbient--one" aria-hidden="true" />
+      <div className="nativeAuthAmbient nativeAuthAmbient--two" aria-hidden="true" />
+      <section className="nativeAuthCard" aria-label={t("登录或注册 KORDYN", "Sign in or sign up for KORDYN")}>
+        <div className="nativeAuthProgress" aria-hidden="true"><i /><i /><i /></div>
         <header className="nativeAuthBrand">
           <img src="/kordyn-logo.svg" alt="KORDYN" />
-          <div><strong>KORDYN</strong><span>{t("AI 数字资产交易员", "AI digital asset trader")}</span></div>
+          <div><strong>KORDYN</strong><span>{t("有边界的自主交易智能体", "Autonomy, within your limits")}</span></div>
         </header>
-
-        <div className="nativeAuthTabs" role="tablist" aria-label={t("账户入口", "Account access")}>
-          <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>{t("登录", "Sign in")}</button>
-          <button type="button" role="tab" aria-selected={mode === "subscribe"} className={mode === "subscribe" ? "on" : ""} onClick={() => setMode("subscribe")}>{t("订阅", "Subscribe")}</button>
-        </div>
 
         {mode === "login" ? (
           <form className="nativeAuthForm" onSubmit={submitLogin}>
-            <div className="nativeAuthIntro"><strong>{t("欢迎回来", "Welcome back")}</strong><span>{t("登录后进入交易控制台", "Sign in to open your trading console")}</span></div>
-            <label><span>{t("邮箱", "Email")}</span><input type="email" autoComplete="email" value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
-            <label><span>{t("密码", "Password")}</span><input type="password" autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder={t("登录密码", "Password")} /></label>
-            <label><span>{t("动态验证码", "Authenticator code")} <em>{t("可选", "Optional")}</em></span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder={t("启用双重验证后填写", "Enter if two-factor authentication is enabled")} /></label>
-            <button className="nativeAuthPrimary" type="submit">{t("登录", "Sign in")}</button>
-            <button className="nativeAuthTextButton" type="button" onClick={() => setMode("subscribe")}>{t("还没有订阅？查看订阅方案", "No subscription yet? View plans")}</button>
+            <div className="nativeAuthIntro"><strong>{t("欢迎回到 KORDYN", "Welcome back to KORDYN")}</strong><span>{t("登录，继续你的交易任务", "Sign in to continue your trading mission")}</span></div>
+            <label><span>{t("邮箱", "E-mail")}</span><input type="email" autoComplete="email" value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
+            <label><span>{t("密码", "Password")}</span><span className="nativeAuthPassword"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder={t("输入登录密码", "Enter your password")} /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t("隐藏密码", "Hide password") : t("显示密码", "Show password")}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></span></label>
+            {showTotp && <label className="nativeAuthTotp"><span>{t("动态验证码", "Authenticator code")}</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder={t("输入 6 位验证码", "Enter the 6-digit code")} /></label>}
+            <div className="nativeAuthFormTools"><span><ShieldCheck size={14} />{t("加密会话", "Encrypted session")}</span><button type="button" onClick={() => setShowTotp((current) => !current)}>{showTotp ? t("收起 2FA", "Hide 2FA") : t("使用 2FA", "Use 2FA")}</button></div>
+            <button className="nativeAuthPrimary" type="submit"><span>{t("登录", "Log in")}</span><b aria-hidden="true">→</b></button>
+            <AuthMarketMotion />
+            <p className="nativeAuthSwitch">{t("第一次使用 KORDYN？", "New to KORDYN?")} <button type="button" onClick={() => setMode("subscribe")}>{t("注册", "Sign up")}</button></p>
           </form>
         ) : (
           <form className="nativeAuthForm nativeAuthForm--subscribe" onSubmit={submitRegister}>
-            <div className="nativeAuthIntro"><strong>{t("选择订阅", "Choose a subscription")}</strong><span>{t("提交后等待账号开通", "Submit your details to request access")}</span></div>
+            <div className="nativeAuthIntro"><strong>{t("创建你的 KORDYN 访问权限", "Create your KORDYN access")}</strong><span>{t("选择订阅方案并提交开通申请", "Choose a plan and submit your access request")}</span></div>
             <div className="nativePlanList">
               {plans.map((plan) => (
                 <button type="button" className={selectedPlan?.id === plan.id ? "on" : ""} key={plan.id} onClick={() => setSelectedPlanId(plan.id)}>
@@ -69,9 +107,10 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
               <label><input type="checkbox" checked={registerForm.acknowledgeRisk} onChange={(event) => setRegisterForm({ ...registerForm, acknowledgeRisk: event.target.checked })} /><span>{t("我理解数字资产交易可能损失全部本金", "I understand digital asset trading can result in total loss")}</span></label>
             </div>
             <TurnstileWidget siteKey={publicInfo?.turnstileSiteKey} onToken={(turnstileToken) => setRegisterForm((current) => ({ ...current, turnstileToken }))} />
-            <button className="nativeAuthPrimary" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}>{t("提交订阅申请", "Submit subscription request")}</button>
+            <button className="nativeAuthPrimary" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}><span>{t("提交注册申请", "Submit sign-up request")}</span><b aria-hidden="true">→</b></button>
             {!publicInfo?.registrationEnabled && <p className="nativeAuthNotice">{t("当前未开放线上申请，请联系管理员。", "Online requests are currently closed. Contact the administrator.")}</p>}
             {application && <div className="nativeAuthSuccess"><strong>{t("申请已提交", "Request submitted")}</strong><span>{application.id}</span><small>{t("请查收邮件或等待审核。", "Check your email or wait for review.")}</small></div>}
+            <p className="nativeAuthSwitch">{t("已经有账号？", "Already have access?")} <button type="button" onClick={() => setMode("login")}>{t("登录", "Log in")}</button></p>
           </form>
         )}
 

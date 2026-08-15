@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { runExpertAnalysis } from "./knowledgeEngine.mjs";
 import { classifyUntrustedContent, evaluateAgentProposal } from "./agentSafetyEval.mjs";
 import { retrieveChunksSemantic } from "./knowledgePipeline.mjs";
@@ -23,7 +22,7 @@ import { runBacktest } from "./backtestEngine.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { executeApprovedPlan } from "./executionEngine.mjs";
-import { paperValidationSummary } from "./paperTrading.mjs";
+import { hasPassedPaper, paperValidationSummary } from "./paperTrading.mjs";
 import { refreshAccounting } from "./accounting.mjs";
 import { enabledSkillTools, isSkillTool, runSkillTool, trustedSkillMethodologies } from "./skillTools.mjs";
 import { enabledMcpTools, isMcpTool, runMcpTool } from "./mcpClient.mjs";
@@ -55,6 +54,8 @@ import { agentInvocationPolicy } from "./agentInvocation.mjs";
 import { authorizeAgentTool, filterAgentToolsForInvocation } from "./agentToolAuthorization.mjs";
 import { liveConfigurationFingerprint } from "./liveModeService.mjs";
 import { taskHandlerPolicy, userHasCapabilities } from "./capabilityPolicy.mjs";
+import { completePrimaryChat, criticModelRoute, openRouterProviderPolicy, primaryModelRoute, reviewTradeProposal } from "./llmGateway.mjs";
+import { currentRiskThresholds } from "./riskThresholds.mjs";
 
 // 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
@@ -858,6 +859,13 @@ function hhmmCn(iso) {
   return !iso || Number.isNaN(d.getTime()) ? "?" : d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
 }
 
+export function validatedStrategyProfilesForPrompt(db) {
+  return (db.strategyProfiles || []).filter((profile) => profile.strategyId
+    && profile.confidence === "validated"
+    && profile.rollingValidation?.passed === true
+    && hasPassedPaper(db, { symbol: profile.symbol, timeframe: profile.timeframe, strategyId: profile.strategyId }));
+}
+
 export async function buildSystemPrompt(db, userText = "", evidenceBundle = null, decisionContext = null, capabilityPlan = null, reviewLearningContext = null) {
   const sections = [BASE_RULES];
   const coordinatorText = decisionContextForPrompt(decisionContext);
@@ -888,7 +896,7 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
   const reviewLearningText = reviewLearningPrompt(reviewLearningContext || {});
   if (reviewLearningText) sections.push(reviewLearningText);
 
-  const profiles = (db.strategyProfiles || []).filter((p) => p.strategyId).slice(0, 5);
+  const profiles = validatedStrategyProfilesForPrompt(db).slice(0, 5);
   if (profiles.length) {
     const text = profiles
       .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 胜率 ${p.oos?.winRatePct ?? "-"}%（${p.oosFolds || "-"}），置信度 ${p.confidence}，regime ${p.regime}`)
@@ -1873,6 +1881,8 @@ export async function executeTool(db, run, name, args = {}) {
       id: id("plan"),
       agentRunId: run.id,
       agent_run_id: run.id,
+      decisionProvenance: decisionProvenanceForRun(run),
+      criticReviewId: run.lastCriticReview?.id || null,
       mandateId: mandate?.id,
       mandate_id: mandate?.id,
       // 计划必须钉住授权版本(P0):此前从不写入,风控按默认 v1 对比当前版本必拒。
@@ -2253,18 +2263,7 @@ export async function executeTool(db, run, name, args = {}) {
 // LLM Provider 适配
 // ---------------------------------------------------------------------------
 export function activeProvider() {
-  if (process.env.ANTHROPIC_API_KEY) return { name: "anthropic", model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" };
-  if (process.env.OPENAI_API_KEY) return { name: "openai", model: process.env.OPENAI_MODEL || "gpt-5.2" };
-  if (process.env.DEEPSEEK_API_KEY) return { name: "deepseek", model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" };
-  if (process.env.GEMINI_API_KEY) return { name: "gemini", model: process.env.GEMINI_MODEL || "gemini-2.5-flash" };
-  return null;
-}
-
-// OpenAI 兼容客户端：DeepSeek / Gemini 走各自 baseURL，其余走 OpenAI。
-function openAiCompatClient(providerName) {
-  if (providerName === "deepseek") return new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" });
-  if (providerName === "gemini") return new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/" });
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return primaryModelRoute();
 }
 
 // LLM 网关边界净化：数据库中的导入知识、Skill 说明或历史消息可能包含代码示例里的
@@ -2311,65 +2310,95 @@ export async function llmComplete(userText, systemPrompt = "") {
   if (!provider) return null;
   assertExternalModelInputSafe({ userText, systemPrompt }, "LLM");
   try {
-    if (provider.name === "anthropic") {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: provider.model, max_tokens: 2048, system: systemPrompt || "你是专业的金融知识蒸馏助手。", messages: [{ role: "user", content: String(userText).slice(0, 24000) }] })
-      });
-      if (!res.ok) throw new Error(`Anthropic ${res.status}`);
-      const json = await res.json();
-      return (json.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
-    }
-    const client = openAiCompatClient(provider.name);
-    const res = await client.chat.completions.create({
-      model: provider.model,
+    const res = await completePrimaryChat({
       messages: sanitizeOpenAiMessages([
         { role: "system", content: systemPrompt || "你是专业的金融知识蒸馏助手。" },
         { role: "user", content: String(userText).slice(0, 24000) }
       ]),
       temperature: 0.2
     });
-    return res.choices?.[0]?.message?.content || null;
+    return res.message?.content || null;
   } catch {
     return null;
   }
 }
 
-async function anthropicTurn(model, messages, systemPrompt, tools) {
-  assertExternalModelInputSafe({ messages, systemPrompt }, "Anthropic");
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2048,
-      system: systemPrompt || BASE_RULES,
-      messages,
-      tools: (tools || TOOL_DEFS).map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.schema }))
-    })
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Anthropic API ${response.status}: ${body.slice(0, 300)}`);
-  }
-  return response.json();
-}
-
-async function openaiCompatTurn(providerName, model, messages, systemPrompt, tools) {
-  assertExternalModelInputSafe({ messages, systemPrompt }, providerName || "OpenAI-compatible LLM");
-  const client = openAiCompatClient(providerName);
-  const response = await client.chat.completions.create({
-    model,
+async function geminiTurn(messages, systemPrompt, tools) {
+  assertExternalModelInputSafe({ messages, systemPrompt }, "OpenRouter Gemini");
+  return completePrimaryChat({
     messages: sanitizeOpenAiMessages([{ role: "system", content: systemPrompt || BASE_RULES }, ...messages]),
     tools: (tools || TOOL_DEFS).map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
     temperature: 0.2
   });
-  return response.choices[0].message;
+}
+
+function decisionProvenanceForRun(run, overrides = {}) {
+  const critic = overrides.criticReview || run.lastCriticReview || null;
+  const latestPrimary = [...(run.modelCalls || [])].reverse().find((call) => call.role === "primary") || null;
+  const cohortDescriptor = {
+    primaryModel: run.primaryModel?.model || null,
+    primaryReasoningEffort: "high",
+    criticModel: run.criticModel?.model || null,
+    criticReasoningEffort: "max",
+    promptVersion: run.promptVersion || null,
+    toolSchemaVersion: run.toolSchemaVersion || null
+  };
+  return {
+    schemaVersion: 1,
+    primary: {
+      gateway: "openrouter",
+      requestedModel: run.primaryModel?.model || null,
+      actualModel: latestPrimary?.actualModel || null,
+      actualProvider: latestPrimary?.actualProvider || null,
+      systemFingerprint: latestPrimary?.systemFingerprint || null,
+      responseId: latestPrimary?.responseId || null,
+      reasoningEffort: latestPrimary?.reasoningEffort || null
+    },
+    critic: critic ? {
+      reviewId: critic.id,
+      gateway: critic.metadata?.gateway || "direct",
+      requestedModel: critic.metadata?.requestedModel || run.criticModel?.model || null,
+      actualModel: critic.metadata?.actualModel || null,
+      actualProvider: critic.metadata?.actualProvider || null,
+      systemFingerprint: critic.metadata?.systemFingerprint || null,
+      thinking: critic.metadata?.thinking || null,
+      reasoningEffort: critic.metadata?.reasoningEffort || null,
+      verdict: critic.verdict,
+      approved: critic.approved === true,
+      confidence: critic.confidence,
+      objections: critic.objections || [],
+      requiredChecks: critic.requiredChecks || []
+    } : null,
+    prompt: { version: run.promptVersion, hash: run.promptHash || null },
+    toolSchema: { version: run.toolSchemaVersion, hash: run.toolSchemaHash || null },
+    evidence: { bundleId: run.proposalEvidenceBundleId || run.evidenceBundleId || null, hash: run.proposalEvidenceHash || run.evidenceHash || null },
+    cohort: { id: promptFingerprint(JSON.stringify(cohortDescriptor)), ...cohortDescriptor },
+    routingPolicy: { ...openRouterProviderPolicy(), crossModelFallback: false },
+    agentRunId: run.id,
+    recordedAt: nowIso()
+  };
+}
+
+async function independentlyReviewProposal(db, run, args, evidenceBundle) {
+  const route = criticModelRoute();
+  if (!route) throw Object.assign(new Error("实盘提案要求 DeepSeek 官网独立审查，但尚未配置 DEEPSEEK_API_KEY"), { code: "critic_model_not_configured" });
+  const review = await reviewTradeProposal({
+    proposal: args,
+    evidence: compactEvidenceForPrompt(evidenceBundle),
+    deterministicContext: {
+      liveTrading: db.system?.liveTradingEnabled === true,
+      evidenceReady: evidenceBundle?.criticalReady === true,
+      evidenceBlockers: evidenceBundle?.blockers || [],
+      mandateId: activeMandate(db)?.id || null,
+      minimumNetRewardRisk: currentRiskThresholds().minRewardRisk
+    }
+  });
+  const record = { id: id("critic"), ...review, createdAt: nowIso() };
+  run.criticReviews ||= [];
+  run.criticReviews.push(record);
+  run.lastCriticReview = record;
+  run.criticApproved = record.approved === true;
+  return record;
 }
 
 // ---------------------------------------------------------------------------
@@ -2417,8 +2446,14 @@ export async function runAgentChat(db, payload = {}, saveDb) {
 
   const provider = activeProvider();
   run.model = provider ? `${provider.name}/${provider.model}` : "local-fallback";
-  run.promptVersion = "agent-chat-v1";
-  run.toolSchemaVersion = "agent-tools-v1";
+  run.primaryModel = provider ? { role: "primary", gateway: provider.gateway, family: provider.family, model: provider.model } : null;
+  const critic = criticModelRoute();
+  run.criticModel = critic ? { role: "critic", gateway: critic.gateway, family: critic.family, model: critic.model } : null;
+  run.modelArchitecture = "gemini_primary_deepseek_critic";
+  run.promptVersion = "agent-chat-v2-dual-model";
+  run.toolSchemaVersion = "agent-tools-v2-dual-model";
+  run.toolSchemaHash = promptFingerprint(JSON.stringify(TOOL_DEFS));
+  run.modelCalls = [];
   const toolTrace = [];
   let finalText = "";
   let errorText = "";
@@ -2533,6 +2568,9 @@ export async function runAgentChat(db, payload = {}, saveDb) {
       });
     }
     const systemPrompt = await buildSystemPrompt(db, userText, evidenceBundle, decisionContext, capabilityPlan, reviewLearningContext);
+    run.promptHash = promptFingerprint(systemPrompt);
+    run.evidenceHash = evidenceBundle ? promptFingerprint(JSON.stringify(evidenceBundle)) : null;
+    run.decisionProvenance = decisionProvenanceForRun(run);
     const { newsContextForAgent } = await import("./newsIntelligence.mjs");
     run.newsContext = newsContextForAgent(db, { max: 5 });
     const externalContextMessages = run.newsContext.length ? [{
@@ -2542,10 +2580,8 @@ export async function runAgentChat(db, payload = {}, saveDb) {
     const finalValidator = () => watchReviewCorrectionInstruction(run, toolTrace);
     if (!provider) {
       finalText = await fallbackWithoutLlm(db, run, userText, toolTrace);
-    } else if (provider.name === "anthropic") {
-      finalText = await anthropicLoop(db, run, provider.model, userText, toolTrace, systemPrompt, tools, session.id, finalValidator, externalContextMessages);
     } else {
-      finalText = await openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, session.id, finalValidator, externalContextMessages);
+      finalText = await geminiLoop(db, run, userText, toolTrace, systemPrompt, tools, session.id, finalValidator, externalContextMessages);
     }
     const watchReviewClosure = evaluateWatchReviewClosure(run, toolTrace);
     run.watchReviewClosure = watchReviewClosure;
@@ -2726,38 +2762,17 @@ function ensureChatSession(db, sessionId, firstMessage = "", ownership = {}) {
   return session;
 }
 
-async function anthropicLoop(db, run, model, userText, toolTrace, systemPrompt, tools, sessionId, finalValidator = null, externalContextMessages = []) {
+async function geminiLoop(db, run, userText, toolTrace, systemPrompt, tools, sessionId, finalValidator = null, externalContextMessages = []) {
   const history = buildHistoryForLlm(db, sessionId);
   const messages = [...history, ...externalContextMessages, { role: "user", content: userText }];
   let correctionAttempts = 0;
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const response = await anthropicTurn(model, messages, systemPrompt, tools);
-    const textParts = response.content.filter((block) => block.type === "text").map((block) => block.text);
-    const toolUses = response.content.filter((block) => block.type === "tool_use");
-    if (response.stop_reason !== "tool_use" || !toolUses.length) {
-      const correction = finalValidator?.();
-      if (correction && correctionAttempts < 1) {
-        messages.push({ role: "assistant", content: response.content });
-        messages.push({ role: "user", content: correction });
-        correctionAttempts += 1;
-        continue;
-      }
-      return textParts.join("\n").trim() || "（模型未返回内容）";
-    }
-    messages.push({ role: "assistant", content: response.content });
-    const toolResults = await runToolBatch(db, run, toolUses.map((toolUse) => ({ name: toolUse.name, args: toolUse.input })), toolTrace);
-    const results = toolUses.map((toolUse, index) => ({ type: "tool_result", tool_use_id: toolUse.id, content: JSON.stringify(toolResults[index]).slice(0, 6000) }));
-    messages.push({ role: "user", content: results });
-  }
-  return "已达到单轮最大工具调用步数，以上是当前掌握的信息。";
-}
-
-async function openaiLoop(db, run, provider, userText, toolTrace, systemPrompt, tools, sessionId, finalValidator = null, externalContextMessages = []) {
-  const history = buildHistoryForLlm(db, sessionId);
-  const messages = [...history, ...externalContextMessages, { role: "user", content: userText }];
-  let correctionAttempts = 0;
-  for (let step = 0; step < MAX_STEPS; step += 1) {
-    const message = await openaiCompatTurn(provider.name, provider.model, messages, systemPrompt, tools);
+    const turn = await geminiTurn(messages, systemPrompt, tools);
+    const message = turn.message;
+    if (!message) throw new Error("Gemini/OpenRouter 未返回 assistant message");
+    run.modelCalls ||= [];
+    run.modelCalls.push({ ...turn.metadata, at: nowIso() });
+    run.decisionProvenance = decisionProvenanceForRun(run);
     if (!message.tool_calls?.length) {
       const correction = finalValidator?.();
       if (correction && correctionAttempts < 1) {
@@ -2886,8 +2901,35 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
     result = { error: "Agent safety policy blocked this tool call", violations: safety.violations };
     appendAudit(db, `Agent 工具调用被安全策略阻断：${name}`, run.id, "AgentSafety", "warning");
   } else {
+    const criticRequired = name === "propose_trade_plan"
+      && db.system?.liveTradingEnabled === true
+      && process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false";
+    if (criticRequired) {
+      try {
+        run.proposalEvidenceHash = callEvidence ? promptFingerprint(JSON.stringify(callEvidence)) : null;
+        const criticReview = await independentlyReviewProposal(db, run, safetyPayload, callEvidence);
+        if (!criticReview.approved) {
+          result = {
+            status: "blocked",
+            error: `DeepSeek 独立审查未通过：${criticReview.summary || criticReview.verdict}`,
+            reason: "critic_rejected",
+            criticReview: { id: criticReview.id, verdict: criticReview.verdict, confidence: criticReview.confidence, objections: criticReview.objections, requiredChecks: criticReview.requiredChecks }
+          };
+          appendAudit(db, `DeepSeek 独立审查阻断实盘提案：${criticReview.verdict}`, run.id, "ModelCritic", "warning");
+        } else {
+          appendAudit(db, "DeepSeek 独立审查通过；继续进入确定性计划与风控链", run.id, "ModelCritic", "info");
+        }
+      } catch (error) {
+        result = {
+          status: "blocked",
+          error: `DeepSeek 独立审查不可用，已禁止实盘提案：${error.message}`,
+          reason: error.code || "critic_unavailable"
+        };
+        appendAudit(db, `DeepSeek 独立审查不可用，实盘提案已阻断：${error.code || error.message}`, run.id, "ModelCritic", "warning");
+      }
+    }
     try {
-      result = await executeTool(db, run, name, args);
+      if (result === undefined) result = await executeTool(db, run, name, args);
     } catch (error) {
       result = { error: error.message };
     }

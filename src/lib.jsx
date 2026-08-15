@@ -691,6 +691,12 @@ export function useApi() {
   // 轮询闭包里读不到最新 data,用 ref 记录"是否已有数据"来区分首连失败与掉线重连。
   const hasDataRef = useRef(false);
   const overviewInFlightRef = useRef(false);
+  const sectionInFlightRef = useRef(new Map());
+  const loadedSectionsRef = useRef(new Set());
+  const activeSectionRef = useRef("chat");
+  const revisionRef = useRef(0);
+  const lastCoreSyncRef = useRef(0);
+  const lastSectionSyncRef = useRef(0);
 
   function setApiBase(value) {
     // The browser build is served by the API host itself and therefore always
@@ -730,7 +736,7 @@ export function useApi() {
     notify(message, 4200);
   }
 
-  // 已有数据时轮询失败只静默标记(顶部显示"重连中"),避免 App 弱网下每 15 秒弹一次"连接后端失败"。
+  // 已有数据时同步失败只静默标记(顶部显示"重连中"),避免 App 弱网下重复弹错。
   function reportConnectionFailure(message) {
     setConnectionError(message);
     if (hasDataRef.current) return;
@@ -738,14 +744,11 @@ export function useApi() {
     window.setTimeout(() => setToast(""), 3200);
   }
 
-  async function readOverview(base, overviewMode = "") {
-    const native = isNativeApp();
-    const response = await fetchWithTimeout(apiUrl("/api/overview", base), {
-      // Overview is live account state. WKWebView may otherwise reuse the startup response for
-      // the same URL when the background request asks for the full native view.
+  async function readCore(base) {
+    const response = await fetchWithTimeout(apiUrl("/api/bootstrap/core", base), {
       cache: "no-store",
-      headers: headers(native && overviewMode ? { "X-Native-Overview": overviewMode } : {})
-    }, native && overviewMode === "full" ? 60000 : 12000);
+      headers: headers()
+    }, 12000);
     if (response.status === 401) {
       expireSession();
       return null;
@@ -754,12 +757,90 @@ export function useApi() {
     return response.json();
   }
 
+  function mergeSnapshot(current, incoming, mode = "section") {
+    if (!current) return incoming;
+    const mergeRows = (fresh, existing, keyOf) => {
+      const rows = [];
+      const seen = new Set();
+      for (const row of [...(fresh || []), ...(existing || [])]) {
+        const key = keyOf(row);
+        if (key == null || seen.has(key)) continue;
+        seen.add(key);
+        rows.push(row);
+      }
+      return rows;
+    };
+    const incomingSections = incoming.loadedSections || [];
+    for (const section of incomingSections) loadedSectionsRef.current.add(section);
+    const resourceState = mode === "core"
+      ? { ...(incoming.resourceState || {}), ...(current.resourceState || {}) }
+      : { ...(current.resourceState || {}), ...(incoming.resourceState || {}) };
+    const merged = {
+      ...current,
+      ...incoming,
+      resourceState,
+      loadedSections: [...new Set([...(current.loadedSections || []), ...incomingSections])]
+    };
+    if (mode === "core") {
+      // Core refreshes must update live rows without shrinking a workspace's already-loaded
+      // history back to the tiny bootstrap limits.
+      const byId = (row) => row?.id || row?.clientOrderId || row?.tradeId;
+      for (const field of ["tradePlans", "executionOrders", "armedSetups", "fills", "watchTriggers", "riskIncidents", "notifications"]) {
+        merged[field] = mergeRows(incoming[field], current[field], byId);
+      }
+      merged.markets = mergeRows(incoming.markets, current.markets, (row) => row?.symbol);
+    }
+    return merged;
+  }
+
+  async function ensureSection(section = "chat", options = {}) {
+    const selected = String(section || "chat");
+    activeSectionRef.current = selected;
+    if (!options.force && loadedSectionsRef.current.has(selected)) return null;
+    if (sectionInFlightRef.current.has(selected)) return sectionInFlightRef.current.get(selected);
+    const request = (async () => {
+      setData((current) => current ? {
+        ...current,
+        resourceState: { ...(current.resourceState || {}), [selected]: "loading" }
+      } : current);
+      try {
+        const response = await fetchWithTimeout(apiUrl(`/api/overview?view=section&section=${encodeURIComponent(selected)}`, apiBase), {
+          cache: "no-store",
+          headers: headers()
+        }, isNativeApp() ? 30000 : 20000);
+        if (response.status === 401) {
+          expireSession();
+          return null;
+        }
+        if (!response.ok) throw new Error(`API ${response.status}`);
+        const json = await response.json();
+        revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
+        lastSectionSyncRef.current = Date.now();
+        loadedSectionsRef.current.add(selected);
+        setData((current) => mergeSnapshot(current, json, "section"));
+        setConnectionError("");
+        return json;
+      } catch (error) {
+        setData((current) => current ? {
+          ...current,
+          resourceState: { ...(current.resourceState || {}), [selected]: "error" }
+        } : current);
+        reportConnectionFailure(connectionErrorMessage(error));
+        return null;
+      } finally {
+        sectionInFlightRef.current.delete(selected);
+      }
+    })();
+    sectionInFlightRef.current.set(selected, request);
+    return request;
+  }
+
   async function refresh(showLoading = true, baseOverride) {
-    // A full native refresh can legitimately take longer on a physical phone. Do not stack a
-    // new 15-second poll on top of an existing one; the startup snapshot remains interactive.
+    // The lightweight core is shared by web and native. Never stack background refreshes: the
+    // previous snapshot remains interactive while a reconnect is in progress.
     if (overviewInFlightRef.current && !showLoading) return;
     const activeBase = normalizeApiBase(baseOverride || apiBase);
-    const initialNativeLoad = isNativeApp() && !hasDataRef.current;
+      const firstLoad = !hasDataRef.current;
     try {
       overviewInFlightRef.current = true;
       if (isNativeApp() && !activeBase) {
@@ -768,22 +849,30 @@ export function useApi() {
         return;
       }
       if (showLoading) setLoading(true);
-      let json = await readOverview(activeBase, initialNativeLoad ? "startup" : isNativeApp() ? "full" : "");
+      if (firstLoad && typeof performance !== "undefined") performance.mark("kordyn:bootstrap:start");
+      let json = await readCore(activeBase);
       if (!json) return;
-      setData(json);
+      revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
+      lastCoreSyncRef.current = Date.now();
+      setData((current) => mergeSnapshot(current, json, "core"));
       hasDataRef.current = true;
       setAuthRequired(false);
       setConnectionError("");
-      if (initialNativeLoad) window.setTimeout(() => refresh(false, activeBase), 100);
+      if (firstLoad && typeof performance !== "undefined") {
+        performance.mark("kordyn:bootstrap:end");
+        performance.measure("kordyn:bootstrap", "kordyn:bootstrap:start", "kordyn:bootstrap:end");
+      }
     } catch (error) {
       const fallback = nativeApiFallback();
       if (isNativeApp() && activeBase !== fallback) {
         try {
           localStorage.setItem("agent_api_base", fallback);
           setApiBaseState(fallback);
-          const json = await readOverview(fallback, initialNativeLoad ? "startup" : isNativeApp() ? "full" : "");
+          const json = await readCore(fallback);
           if (!json) return;
-          setData(json);
+          revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
+          lastCoreSyncRef.current = Date.now();
+          setData((current) => mergeSnapshot(current, json, "core"));
           hasDataRef.current = true;
           setAuthRequired(false);
           setConnectionError("");
@@ -845,6 +934,7 @@ export function useApi() {
         : (json.message || json.summary || json.output || json.error || t("操作已完成", "Done"));
       setToast(localizedMessage);
       await refresh(false);
+      await ensureSection(activeSectionRef.current, { force: true });
       window.setTimeout(() => setToast(""), 4200);
       return json;
     } catch (error) {
@@ -942,10 +1032,25 @@ export function useApi() {
   useEffect(() => {
     refreshPublicInfo();
     refresh();
-    // 定时静默轮询，让资产/持仓/风控近实时更新。
-    // 后台时浏览器/WKWebView 会自动降频或暂停 setInterval，无需手动判可见性。
-    const interval = setInterval(() => refresh(false), 15000);
-    return () => clearInterval(interval);
+    // SSE is the primary invalidation channel. This five-minute timer is only a recovery net for
+    // proxies/WebViews that silently buffer EventSource; it no longer downloads the monolithic
+    // overview every 15 seconds.
+    const fallback = setInterval(() => {
+      refresh(false);
+      ensureSection(activeSectionRef.current, { force: true });
+    }, 300000);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastCoreSyncRef.current > 60000) refresh(false);
+      if (Date.now() - lastSectionSyncRef.current > 180000) ensureSection(activeSectionRef.current, { force: true });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearInterval(fallback);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [token, apiBase]);
 
   // 真·实时行情：SSE 逐笔推送，合并进 data.markets/activeMarket（节流 1s，避免过度重渲染）。
@@ -956,7 +1061,19 @@ export function useApi() {
     let pending = {};
     let timer = null;
     let reconnectTimer = null;
+    let invalidationTimer = null;
     let disposed = false;
+    const scheduleInvalidationSync = (forceSection = false) => {
+      if (invalidationTimer) clearTimeout(invalidationTimer);
+      const coreDelay = Math.max(1000, 15000 - (Date.now() - lastCoreSyncRef.current));
+      invalidationTimer = setTimeout(() => {
+        invalidationTimer = null;
+        refresh(false);
+        if (forceSection || Date.now() - lastSectionSyncRef.current > 60000) {
+          ensureSection(activeSectionRef.current, { force: true });
+        }
+      }, coreDelay);
+    };
     const openStream = (url) => {
       if (disposed) return;
       try { source = new EventSource(url); } catch { source = null; return; }
@@ -1018,6 +1135,13 @@ export function useApi() {
       source.onmessage = (event) => {
         try {
           const u = JSON.parse(event.data);
+          if (u?.revision) {
+            const revision = Number(u.revision);
+            if (Number.isFinite(revision) && revision <= revisionRef.current && u.type === "core_invalidated") return;
+            if (Number.isFinite(revision)) revisionRef.current = Math.max(revisionRef.current, revision);
+          }
+          if (u?.type === "core_invalidated") { scheduleInvalidationSync(false); return; }
+          if (u?.type === "knowledge_updated") { scheduleInvalidationSync(activeSectionRef.current === "researchCenter"); return; }
           if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 300); return; }
           if (!u || !u.symbol) return;
           // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
@@ -1034,7 +1158,7 @@ export function useApi() {
         if (!reconnectTimer) reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1500);
       };
     }
-    return () => { disposed = true; if (source) source.close(); if (timer) clearTimeout(timer); if (reconnectTimer) clearTimeout(reconnectTimer); };
+    return () => { disposed = true; if (source) source.close(); if (timer) clearTimeout(timer); if (reconnectTimer) clearTimeout(reconnectTimer); if (invalidationTimer) clearTimeout(invalidationTimer); };
   }, [token, apiBase]);
 
   // App 端兜底：Capacitor WKWebView 对 SSE(EventSource) 支持不稳定（常缓冲、onmessage 不实时），
@@ -1073,7 +1197,7 @@ export function useApi() {
     return () => { stop = true; if (t) clearTimeout(t); };
   }, [token, apiBase]);
 
-  return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
+  return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 
 export function Card({ className = "", children, ...props }) {

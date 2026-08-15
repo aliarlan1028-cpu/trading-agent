@@ -101,7 +101,7 @@ export function buildReadinessReport(db) {
     check("okx_keys", "OKX API", true, Boolean(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE), "需要你配置 Key/Secret/Passphrase 并实盘小额验证。"),
     check("private_rest_positions", "私有 REST 持仓同步", true, accountSnapshot.fresh, `执行前账户快照必须在 ${Math.round(accountSnapshot.maxAgeMs / 60_000)} 分钟内；系统会同步净值、挂单和真实持仓。`),
     check("private_ws", "OKX 私有 WebSocket", true, true, "OKX login/subscription 已实现，凭证配置后可连接。"),
-    check("llm_agent", "真实 LLM Agent", true, Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY), "无 Key 时走本地规则降级；配置后调用真实模型。"),
+    check("llm_agent", "Gemini 主模型 + DeepSeek 独立审查", true, Boolean(process.env.OPENROUTER_API_KEY && process.env.DEEPSEEK_API_KEY), "实盘提案要求 OpenRouter Gemini 与 DeepSeek 官网 API 同时可用。"),
     check("langsmith", "LangSmith Trace", true, Boolean(process.env.LANGSMITH_API_KEY), "配置后记录外部可观测链路。"),
     check("knowledge_pipeline", "真实知识库解析", true, true, "PDF/DOCX/网页/GitHub 导入、切片、RAG、图谱已实现。"),
     check("event_sources", "真实事件源", true, true, "RSS/HTML/公告/链上信号管线已实现。"),

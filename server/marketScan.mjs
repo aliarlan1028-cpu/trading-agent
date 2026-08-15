@@ -4,6 +4,7 @@
 import { activeProvider } from "./agentChat.mjs";
 import { appendTrace, id, nowIso } from "./store.mjs";
 import { containsLikelySecret, scrubSecrets } from "./secretRedaction.mjs";
+import { completeGeminiWebSearch } from "./llmGateway.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const ATTRIBUTION_CATEGORIES = new Map([
@@ -112,7 +113,7 @@ async function scanMarketMovers(options = {}) {
 // Gemini + Google 搜索给某标的的异动做消息面归因（叙事/催化剂）。无 Gemini 则返回 null（不编）。
 // 只用 Gemini（联网搜索能力），其它 provider 无搜索工具时退回纯行情推演。
 async function attributeMoverNarrative(mover) {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   const prompt = `请查询并归因 ${mover.symbol}（OKX 永续）今天的异动。当前价 $${mover.last}，24h 涨跌 ${mover.changePct}%，成交额约 $${(mover.quoteVolUsdt / 1e6).toFixed(1)}M。\n用内置搜索查最新突发新闻/催化剂，只输出 JSON：{"narrative":"推动异动的核心叙事或催化剂(没查到就写'未见明确催化，疑似情绪/资金驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件","sentiment":0到100的情绪分,"risk":"主要风险一句话"}。中文，纯 JSON。`;
   try {
     const raw = await geminiSearchComplete(prompt);
@@ -122,8 +123,8 @@ async function attributeMoverNarrative(mover) {
   }
 }
 
-// 直连 Gemini 的 generateContent（带 googleSearch 工具）——llmComplete 不带搜索能力，这里单独走。
-// 搜索归因是辅助事实源，不应因免费额度 429 把整轮交易决策拖慢几十秒。
+// Gemini 经 OpenRouter 的 server-side web search 做辅助归因。它仍是不可信外部数据，
+// 不得直接触发交易；余额/限流/网络错误立即熔断，不在交易关键路径 sleep 重试。
 const geminiCircuit = {
   openUntil: 0,
   consecutiveFailures: 0,
@@ -158,61 +159,25 @@ export async function geminiSearchComplete(prompt) {
   if (geminiCircuit.openUntil > Date.now()) {
     throw new Error(`Gemini circuit open until ${new Date(geminiCircuit.openUntil).toISOString()}`);
   }
-  // 搜索归因用 Gemini 模型:由设置里的 GEMINI_MODEL 字段控制(默认 flash——pro 免费档仅 5RPM/~50次每天
-  // 会 429,flash ~1500/天够用)。GEMINI_SEARCH_MODEL 是可选的高级单独覆盖。
-  const model = process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  // 默认只试一次。429 立即熔断，后台下一轮再试；不在交易关键路径内 sleep 重试。
-  const MAX_TRIES = Math.max(1, Math.min(2, Number(process.env.GEMINI_RETRY_MAX || 1)));
-  for (let attempt = 1; attempt <= MAX_TRIES; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] })
-      });
-      if (res.status === 429) {
-        const body = await res.text().catch(() => "");
-        const suggested = Number((body.match(/retry in ([\d.]+)s/i) || [])[1]);
-        const configured = Number(process.env.GEMINI_CIRCUIT_429_MS || 5 * 60_000);
-        const duration = Math.max(configured, Number.isFinite(suggested) ? Math.ceil(suggested * 1000) : 0);
-        const error = new Error("Gemini 429 rate limited");
-        openGeminiCircuit(error, duration);
-        throw error;
-      }
-      if (!res.ok) {
-        const error = new Error(`Gemini ${res.status}`);
-        if (attempt < MAX_TRIES) continue;
-        throw error;
-      }
-      const json = await res.json();
-      geminiCircuit.openUntil = 0;
-      geminiCircuit.consecutiveFailures = 0;
-      geminiCircuit.lastError = null;
-      geminiCircuit.lastSuccessAt = nowIso();
-      return (json.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("");
-    } catch (error) {
-      if (!String(error.message || error).includes("429") && !String(error.message || error).includes("circuit open")) {
-        geminiCircuit.consecutiveFailures += 1;
-        geminiCircuit.lastError = String(error.message || error).slice(0, 160);
-        geminiCircuit.lastFailureAt = nowIso();
-        if (geminiCircuit.consecutiveFailures >= 3) {
-          geminiCircuit.openUntil = Math.max(geminiCircuit.openUntil, Date.now() + Number(process.env.GEMINI_CIRCUIT_ERROR_MS || 60_000));
-        }
-      }
-      if (attempt >= MAX_TRIES || geminiCircuit.openUntil > Date.now()) throw error;
-    } finally {
-      clearTimeout(timer);
-    }
+  try {
+    const result = await completeGeminiWebSearch(prompt);
+    geminiCircuit.openUntil = 0;
+    geminiCircuit.consecutiveFailures = 0;
+    geminiCircuit.lastError = null;
+    geminiCircuit.lastSuccessAt = nowIso();
+    return result.content;
+  } catch (error) {
+    const duration = error?.code === "insufficient_balance" ? 30 * 60_000
+      : error?.code === "rate_limited" ? Number(process.env.GEMINI_CIRCUIT_429_MS || 5 * 60_000)
+        : Number(process.env.GEMINI_CIRCUIT_ERROR_MS || 60_000);
+    openGeminiCircuit(error, duration);
+    throw error;
   }
-  throw new Error("Gemini search unavailable");
 }
 
 // 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
 // 结合 24h 涨跌 + 近15分钟短窗口动幅 + 区间位 + 成交额,用 Gemini+Google 搜索查催化剂。
-// 无 GEMINI_API_KEY 则诚实返回"纯行情推演"(不编消息面)。
+// 无 OPENROUTER_API_KEY 则诚实返回"纯行情推演"(不编消息面)。
 export async function explainMarketMove(db, symbol) {
   const sym = String(symbol || "").includes("/") ? symbol : String(symbol || "").replace(/USDT$/i, "/USDT");
   const market = (db.markets || []).find((m) => m.symbol === sym)
@@ -238,7 +203,7 @@ export async function explainMarketMove(db, symbol) {
   if (cached?.attributedAt && Date.now() - new Date(cached.attributedAt).getTime() <= narrativeTtlMs) {
     return attributionForAgent(cached, { symbol: sym, source: "gemini_cache", technical, cacheHit: true });
   }
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return { symbol: sym, source: "quote_only", attribution: null, technical, mayTriggerTradeDirectly: false, status: "search_not_configured" };
   }
   const prompt = `请归因 ${sym}（加密永续）当前这波行情【为什么会这样涨/跌】。现价 $${last}，24h ${chg >= 0 ? "+" : ""}${chg}%${shortWin ? `，近15分钟${shortWin.dir === "down" ? "急跌" : "急涨"}${shortWin.pct}%` : ""}${rangePos != null ? `，处于24h区间${rangePos}%位` : ""}，24h成交额约 $${(vol / 1e6).toFixed(0)}M。用内置搜索查最近的突发新闻/催化剂/宏观事件/连锁清算/市场情绪，解释这波涨跌的原因。只输出 JSON：{"narrative":"核心原因或催化剂,一到两句(确实查不到就写'未见明确催化,疑似情绪/资金/杠杆连锁清算驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件|市场情绪","sentiment":0到100的情绪分,"risk":"主要风险一句话","confidence":"high|medium|low"}。中文，纯 JSON。`;
@@ -273,7 +238,7 @@ function attributionForAgent(stored = {}, overrides = {}) {
 // 复盘用:查某币在【开仓→平仓时间窗内】的真实消息面(新闻/催化剂/宏观),强制反幻觉。
 // 借鉴 okx-journal 单笔诊断:用"世界当时发生了什么"给盈亏归因,而非只看K线。无 Gemini 则返回 null。
 export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   const sym = String(symbol || "").includes("/") ? symbol : String(symbol || "").replace(/USDT$/i, "/USDT");
   const win = `${String(fromIso || "").slice(0, 16)} → ${String(toIso || "").slice(0, 16)} (UTC)`;
   const prompt = `用内置搜索查加密货币 ${sym} 在这个时间窗内【${win}】是否发生过重大新闻/催化剂/宏观事件/交易所动态/连锁清算,用来复盘一笔在此期间的交易。\n【硬性要求·反幻觉】只报你真的检索到、且时间确实落在该窗内的事件;确实没有就直接回"该窗内未见明确催化,疑似情绪/资金/杠杆驱动",绝对不要编造或假设新闻,不要把窗外的旧闻算进来。\n只输出 JSON:{"news":"一到两句话概括窗内真实消息面或明确写无","sentiment":"利多|利空|中性|无","confidence":"high|medium|low"}。中文,纯 JSON。`;
@@ -314,7 +279,7 @@ export async function escortPositions(db) {
   const positions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? 0) !== 0);
   if (!positions.length) { db.positionEscort = { note: "当前无持仓，护航休眠", positions: [], at: nowIso() }; return db.positionEscort; }
   const payload = positions.map((p) => ({ symbol: p.symbol, dir: p.direction, size: p.size ?? p.pos, entry: p.entry ?? p.avgPx, mark: p.mark, upl: p.pnl ?? p.upl, roiPct: p.roiPct, lev: p.leverage }));
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     // 无 Gemini：给纯行情级护航（浮亏超阈值提示），不编消息面。
     const alerts = payload.filter((p) => Number(p.roiPct) <= -8).map((p) => ({ symbol: p.symbol, level: "warn", advice: `${p.symbol} 浮亏 ${p.roiPct}%，关注止损纪律` }));
     db.positionEscort = { positions: payload, alerts, source: "quote_only", at: nowIso() };

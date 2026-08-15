@@ -91,6 +91,7 @@ const collectionNames = [
   "exchangeAccounts",
   "apiKeyMetadata",
   "accountSnapshots",
+  "accountingAnchors",
   "realtimeConnections",
   "reconciliationReports",
   "vaultItems",
@@ -546,7 +547,7 @@ function cleanSeedDatabase(createdAt) {
     skills: [],
     tools: [
       { id: "tool_okx", name: "OKX Connector", type: "exchange", status: hasOkx ? "configured" : "missing_credentials", permissions: ["market.read", "account.read", "trade.write_guarded"] },
-      { id: "tool_llm", name: "LLM Agent", type: "model", status: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY ? "configured" : "missing_credentials", permissions: ["agent.reasoning"] },
+      { id: "tool_llm", name: "Gemini + DeepSeek Agent", type: "model", status: process.env.OPENROUTER_API_KEY && process.env.DEEPSEEK_API_KEY ? "configured" : "missing_credentials", permissions: ["agent.reasoning", "agent.critic"] },
       { id: "tool_public_market", name: "Public Market Data", type: "data", status: "available_without_key", permissions: ["market.read"] }
     ],
     mcpServers: [],
@@ -568,6 +569,7 @@ function cleanSeedDatabase(createdAt) {
       { id: "key_okx", exchange: "OKX", accountId: "ex_okx_main", hasApiKey: hasOkx, hasSecret: hasOkxSecret, withdrawPermission: false, secretInLogs: false, updatedAt: createdAt }
     ],
     accountSnapshots: [],
+    accountingAnchors: [],
     realtimeConnections: [
       { id: "rt_okx_public", exchange: "OKX", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
       { id: "rt_okx_private", exchange: "OKX", streamType: "private_user", status: hasOkx ? "stopped" : "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 }
@@ -803,6 +805,7 @@ export async function repairAuditChainExplicit(db, { acknowledgement, backupPath
 // / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
 const LOG_CAPS = {
   accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300,
+  accountingAnchors: 2600,
   agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
   eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500,
@@ -853,11 +856,18 @@ export function activeMandate(db) {
   )[0];
 }
 
+let saveDbObserver = null;
+
+export function setSaveDbObserver(observer) {
+  saveDbObserver = typeof observer === "function" ? observer : null;
+}
+
 export function saveDb(db, options = {}) {
   db.meta.updatedAt = nowIso();
   capLogCollections(db);
   ensureSqlite();
   saveToSqlite(db, options);
+  try { saveDbObserver?.({ updatedAt: db.meta.updatedAt, reason: options.reason || null }); } catch { /* UI invalidation must never fail persistence */ }
 }
 
 export function resetOperationalData(db, options = {}) {
@@ -1888,6 +1898,7 @@ export function normalizeDatabase(db) {
     { id: "key_okx", exchange: "OKX", accountId: "ex_okx_main", hasApiKey: Boolean(process.env.OKX_API_KEY), hasSecret: Boolean(process.env.OKX_API_SECRET), withdrawPermission: false, secretInLogs: false, updatedAt: nowIso() }
   ];
   db.accountSnapshots ||= [];
+  db.accountingAnchors ||= [];
   db.realtimeConnections ||= [
     { id: "rt_okx_public", exchange: "OKX", streamType: "public_market", status: "stopped", symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"], lastMessageAt: null, reconnects: 0 },
     { id: "rt_okx_private", exchange: "OKX", streamType: "private_user", status: "missing_credentials", symbols: [], lastMessageAt: null, reconnects: 0 }

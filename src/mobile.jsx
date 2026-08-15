@@ -1642,7 +1642,7 @@ function PullToRefresh({ onRefresh, className, children }) {
 }
 
 export function MobileApp({ api, lang, switchLang }) {
-  const { data, action, toast, busy, notify, download, refresh, connectionError } = api;
+  const { data, action, toast, busy, notify, download, refresh, ensureSection, connectionError } = api;
   const [route, setRoute] = useState("chat");
   const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
@@ -1651,6 +1651,15 @@ export function MobileApp({ api, lang, switchLang }) {
   // 打开审计/动态即把未读通知标为已读
   useEffect(() => {
     if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
+  }, [route]);
+  useEffect(() => {
+    const section = route === "chat" || route === "watch" ? "chat"
+      : ["cockpit", "executionReview", "tradeLedger"].includes(route) ? "cockpit"
+        : ["knowledgeBase", "capabilityLib", "strategyLib"].includes(route) ? "researchCenter"
+          : route === "riskHub" ? "riskCenter"
+            : ["intelligence", "eventsTasks", "auditSystem"].includes(route) ? "operationsCenter"
+              : route === "systemSettings" ? "systemSettings" : "cockpit";
+    ensureSection?.(section);
   }, [route]);
 
   function navigate(next) {
@@ -1664,7 +1673,7 @@ export function MobileApp({ api, lang, switchLang }) {
     setRoute("cockpit"); setSubPage(""); setDrawer(false);
   }
 
-  const ui = { setActive: navigate, notify, download, refresh, openPanel: setPanel, closePanel: () => setPanel("") };
+  const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const autoOn = data.system?.autonomyEnabled === true && !data.system?.killSwitch;
   const settingsSection = subPage.startsWith("settings:") ? subPage.slice(9) : "";
 

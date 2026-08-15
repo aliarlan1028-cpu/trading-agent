@@ -29,8 +29,8 @@ function decrypt(enc) {
   d.setAuthTag(Buffer.from(enc.tag, "base64"));
   return Buffer.concat([d.update(Buffer.from(enc.ciphertext, "base64")), d.final()]).toString("utf8");
 }
-const KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"];
-const MODEL = { ANTHROPIC_API_KEY: "ANTHROPIC_MODEL", OPENAI_API_KEY: "OPENAI_MODEL", DEEPSEEK_API_KEY: "DEEPSEEK_MODEL", GEMINI_API_KEY: "GEMINI_MODEL" };
+const KEYS = ["OPENROUTER_API_KEY", "DEEPSEEK_API_KEY"];
+const MODEL = { OPENROUTER_API_KEY: "GEMINI_MODEL", DEEPSEEK_API_KEY: "DEEPSEEK_MODEL" };
 let out = "# 由 sync-vendor-llm.sh 从主实例金库自动同步 —— 含密钥，勿提交\n";
 const synced = [];
 for (const k of KEYS) {
@@ -45,6 +45,10 @@ for (const k of KEYS) {
     synced.push(k);
   } catch { /* 解密失败跳过 */ }
 }
+out += `OPENROUTER_ZDR=${rc.OPENROUTER_ZDR || "true"}\n`;
+out += `OPENROUTER_DATA_COLLECTION=${rc.OPENROUTER_DATA_COLLECTION || "deny"}\n`;
+out += `OPENROUTER_ALLOW_PROVIDER_FALLBACKS=${rc.OPENROUTER_ALLOW_PROVIDER_FALLBACKS || "true"}\n`;
+out += `LLM_CRITIC_REQUIRED_FOR_LIVE=${rc.LLM_CRITIC_REQUIRED_FOR_LIVE || "true"}\n`;
 fs.writeFileSync(dir + "/.vendor-llm.env.tmp", out, { mode: 0o600 });
 console.log("SYNCED " + synced.length + ": " + (synced.join(", ") || "（金库无 LLM key）"));
 NODE

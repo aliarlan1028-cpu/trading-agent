@@ -83,8 +83,11 @@ export function deriveReduceOnlyReasons(db = {}) {
     reasons.add("armed_setup_recovery");
   }
   if ((db.orders || []).some((order) => ["cancel_pending", "cancel_unknown_pending"].includes(String(order.status || "")))) reasons.add("orphan_order_cancel_pending");
+  // 只让当前风险窗口内的权威核算缺口触发只减仓。历史复盘可继续等待费用/资金费回补，
+  // 但不能因为一个永久 pending 的旧 review 把系统无限期锁死；日/滚动 168h 缺口由
+  // accounting 直接从 fills、持仓与基线计算，仍会 fail closed。
   if (Number(db.portfolio?.pendingFinancialReconciliationToday || 0) > 0
-    || (db.reviews || []).some((review) => review.status === "pending_financial_reconciliation")) reasons.add("financial_reconciliation_pending");
+    || Number(db.portfolio?.pendingFinancialReconciliationWeek || 0) > 0) reasons.add("financial_reconciliation_pending");
   if (db.system?.operationalDegradation?.enforced && db.system.operationalDegradation.degraded) reasons.add("professional_risk_gate");
   return [...reasons].sort();
 }
