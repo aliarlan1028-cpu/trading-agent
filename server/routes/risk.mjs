@@ -276,14 +276,26 @@ export function registerRiskRoutes(app, ctx) {
 
   app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (req, res) => {
     db.system.manualReduceOnly = req.body.enabled !== false;
+    if (!db.system.manualReduceOnly) {
+      clearReduceOnlyReason(db, "manual_reduce_only", { resolvedAt: nowIso(), resolvedBy: req.user?.name || db.user.name, resolution: "manual_control_cleared" });
+    }
     syncReduceOnlyState(db);
-    db.system.autonomyEnabled = false;
-    db.system.riskStatus = db.system.reduceOnlyMode ? "只减仓" : "人工暂停";
     db.system.latestAction = db.system.manualReduceOnly ? "启用手工只减仓模式" : db.system.reduceOnlyMode ? "已关闭手工只减仓；系统仍有未决安全原因" : "关闭只减仓模式";
     db.system.updatedAt = nowIso();
     appendAudit(db, db.system.latestAction, "system.reduce_only", db.user.name, "warning");
-    appendTrace(db, "risk", db.system.latestAction, db.system.reduceOnlyMode ? "warning" : "paused");
-    persist(res, { message: db.system.latestAction, system: db.system });
+    appendTrace(db, "risk", db.system.latestAction, db.system.reduceOnlyMode ? "warning" : db.system.autonomyEnabled ? "ok" : "paused");
+    const message = db.system.manualReduceOnly
+      ? "已开启手动只减仓"
+      : db.system.reduceOnlyMode
+        ? "手动只减仓已解除；系统安全条件仍在维持只减仓，请查看当前限制原因"
+        : "手动只减仓已解除";
+    persist(res, {
+      message,
+      manualReduceOnly: db.system.manualReduceOnly,
+      reduceOnlyMode: db.system.reduceOnlyMode,
+      remainingReasons: db.system.reduceOnlyReasons || [],
+      system: db.system
+    });
   });
 
   app.get("/api/risk/incidents", requirePermission("risk.check"), (_req, res) => res.json(db.riskIncidents));

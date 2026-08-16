@@ -529,6 +529,21 @@ export function automationPresentation(data = {}) {
   const blockerDetails = Array.isArray(automation.blockerDetails) && automation.blockerDetails.length
     ? automation.blockerDetails
     : (Array.isArray(automation.blockers) ? automation.blockers : []).map((label) => ({ code: null, label }));
+  const manualReduceOnly = system.manualReduceOnly === true;
+  const reduceOnlyEffective = system.reduceOnlyMode === true || mode === "reduce_only";
+  const systemReduceOnly = reduceOnlyEffective && !manualReduceOnly;
+  const firstBlocker = blockerDetails.map((item) => localizeText(item?.label || item)).find(Boolean);
+  const reduceOnlyControlState = manualReduceOnly ? "manual" : systemReduceOnly ? "system" : "off";
+  const reduceOnlyControlLabel = manualReduceOnly
+    ? t("退出手动只减仓", "Exit manual reduce-only")
+    : systemReduceOnly
+      ? t("系统只减仓", "System reduce-only")
+      : t("开启只减仓", "Enable reduce-only");
+  const reduceOnlyControlDetail = manualReduceOnly
+    ? t("这是你手动开启的临时限制；退出后系统仍会重新检查全部安全条件。", "This temporary restriction was enabled manually. All safety conditions are rechecked after it is cleared.")
+    : systemReduceOnly
+      ? (firstBlocker || t("安全条件正在强制维持只减仓；请先解除原因，不能从这里强行退出。", "A safety condition is enforcing reduce-only. Resolve the cause first; it cannot be overridden here."))
+      : t("开启后禁止新开仓，只允许撤单、减仓和平仓。", "Blocks new entries while allowing cancel, reduce, and close actions.");
   const authoritativeLabel = localizeText(automation.label, definition.label);
   const authoritativeDetail = localizeText(automation.detail, definition.detail);
   return {
@@ -542,6 +557,13 @@ export function automationPresentation(data = {}) {
     entryPolicy: definition.entryPolicy,
     blockerDetails,
     blockers: blockerDetails.map((item) => localizeText(item?.label || item)).filter(Boolean),
+    manualReduceOnly,
+    reduceOnlyEffective,
+    systemReduceOnly,
+    reduceOnlyControlState,
+    reduceOnlyControlLabel,
+    reduceOnlyControlDetail,
+    reduceOnlyControlActionable: !systemReduceOnly,
     targetIsEffective: (targetMode === "full_auto" && mode === "full_auto_small")
       || (targetMode === "semi_auto" && mode === "semi_auto")
       || (targetMode === "observe" && mode === "observe")

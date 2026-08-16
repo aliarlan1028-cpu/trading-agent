@@ -1,4 +1,5 @@
 import { applyDerivedProfitGoals } from "../profitGoals.mjs";
+import { syncReduceOnlyState } from "../reduceOnlyState.mjs";
 
 // 系统管理路由组（就绪度/数据备份/清空工作数据/自主开关）—— 从 index.mjs 按 registrar 范式迁出。
 // autonomy 按开/关走不同权限；reset 保留用户/密钥/配置/风控规则/订阅。依赖经 ctx 注入。
@@ -33,13 +34,13 @@ export function registerSystemRoutes(app, ctx) {
       return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
     }
     db.system.autonomyEnabled = req.body.enabled !== false;
-    db.system.riskStatus = db.system.killSwitch ? "熔断停机" : db.system.autonomyEnabled ? "正常" : "人工暂停";
+    syncReduceOnlyState(db);
     db.system.latestAction = db.system.autonomyEnabled
       ? db.system.killSwitch ? "AI 交易员保持熔断，仅恢复非交易观察" : "恢复 AI 交易员观察与计划"
       : "暂停 AI 交易员自动推进";
     db.system.updatedAt = nowIso();
     appendAudit(db, db.system.autonomyEnabled ? "恢复自动交易推进" : "暂停自动交易推进", "system.autonomy", req.user?.name || db.user.name, db.system.autonomyEnabled ? "info" : "warning");
-    appendTrace(db, "system", db.system.latestAction, db.system.autonomyEnabled ? "ok" : "paused");
+    appendTrace(db, "system", db.system.latestAction, db.system.killSwitch ? "danger" : db.system.reduceOnlyMode ? "warning" : db.system.autonomyEnabled ? "ok" : "paused");
     persist(res, db.system);
   });
 

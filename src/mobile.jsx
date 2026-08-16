@@ -82,13 +82,13 @@ export function KillConfirmDialog({ enable, action, onClose }) {
 function MobileSafetySheet({ data, action, onClose, onKill }) {
   const runtime = automationPresentation(data);
   const autonomyPaused = data.system?.autonomyEnabled === false;
-  const reduceOnly = data.system?.reduceOnlyMode === true;
   const stopped = data.system?.killSwitch === true;
   const toggleReduceOnly = async () => {
-    const confirmed = await uiConfirm(reduceOnly
-      ? t("退出只减仓模式？系统会重新检查安全条件。", "Exit reduce-only mode? Safety conditions will be rechecked.")
+    if (runtime.systemReduceOnly) return;
+    const confirmed = await uiConfirm(runtime.manualReduceOnly
+      ? t("退出手动只减仓？如果其他安全原因仍未解除，实际状态会继续保持只减仓。", "Exit manual reduce-only? The effective state will remain reduce-only while another safety cause is active.")
       : t("进入只减仓模式？将禁止新开仓，只允许撤单、减仓和平仓。", "Enter reduce-only mode? New entries will be blocked; only cancel, reduce, and close actions remain available."));
-    if (confirmed) { await action("/api/risk/reduce-only", { enabled: !reduceOnly }); onClose(); }
+    if (confirmed) { await action("/api/risk/reduce-only", { enabled: !runtime.manualReduceOnly }); onClose(); }
   };
   const flattenAll = async () => {
     if (await uiConfirm(t("确认按市价平掉全部持仓并进入只减仓模式？该操作不可自动撤销。", "Close every position at market and enter reduce-only mode? This action cannot be automatically undone."))) {
@@ -101,7 +101,7 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
     <div className="mSafetyTarget"><span>{t("长期目标", "Saved target")}</span><b>{runtime.targetLabel}</b></div>
     <div className="mSafetyActions">
       <button className={autonomyPaused?"active":""} onClick={async()=>{await action("/api/system/autonomy",{enabled:autonomyPaused});onClose();}}><Activity/><span><b>{autonomyPaused?t("恢复自主", "Resume autonomy"):t("暂停自主", "Pause autonomy")}</b><small>{autonomyPaused?t("恢复 AI 自主规划", "Resume autonomous planning"):t("停止生成和推进新计划", "Stop creating and advancing plans")}</small></span></button>
-      <button className={reduceOnly?"active":""} onClick={toggleReduceOnly}><RefreshCw/><span><b>{reduceOnly?t("退出只减仓", "Exit reduce-only"):t("只减仓", "Reduce-only")}</b><small>{t("仅允许降低现有风险", "Allow only risk-reducing actions")}</small></span></button>
+      <button className={`${runtime.reduceOnlyEffective?"active":""} ${runtime.systemReduceOnly?"locked":""}`} onClick={toggleReduceOnly} aria-disabled={runtime.systemReduceOnly}><RefreshCw/><span><b>{runtime.reduceOnlyControlLabel}</b><small>{runtime.reduceOnlyControlDetail}</small></span></button>
       <button className="danger" onClick={flattenAll}><Target/><span><b>{t("全部平仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button>
       <button className={`danger ${stopped?"active":""}`} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>
     </div>
@@ -232,14 +232,6 @@ export function MobilePositions({ data, action, ui }) {
           ))}
         </>
       )}
-
-      <button className={`mToggleRow ${reduceOnly ? "on" : ""}`} onClick={() => action("/api/risk/reduce-only", { enabled: !reduceOnly })}>
-        <span>
-          <strong>{t("只减仓模式", "Reduce-only mode")}</strong>
-          <small>{reduceOnly ? t("已开启：禁止新开仓，仅允许减仓", "On: no new positions, reduce only") : t("关闭中：开启后 Agent 只能减仓", "Off: when on, the Agent can only reduce")}</small>
-        </span>
-        <i className={reduceOnly ? "on" : ""} />
-      </button>
 
       <div className="mList">
         <button onClick={() => ui.setActive("marketAccount")}>

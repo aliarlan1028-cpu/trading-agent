@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Bot, Send, Radar, ShieldCheck, ListChecks, ClipboardList, Gauge, RefreshCw, AlertTriangle, ChevronRight } from "lucide-react";
-import { apiUrl, authHeaders, displayMoney, hhmmCn } from "./lib.jsx";
+import { apiUrl, authHeaders, automationPresentation, displayMoney, hhmmCn } from "./lib.jsx";
 import { getLang, t } from "./i18n.js";
 
 /* ————— 轻量 Markdown 渲染（自包含，无第三方依赖）—————
@@ -179,13 +179,12 @@ export function AssistantWidget({ data, ui, currentPage = "" }) {
   const idRef = useRef(0);
 
   const pf = data.portfolio || {};
-  const sys = data.system || {};
   const positions = data.positions || [];
   const awaiting = (data.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status)).length;
   const pending = (data.pendingActions || []).filter((a) => !a.status || a.status === "pending" || a.status === "awaiting_confirmation").length;
   const incidents = (data.riskIncidents || []).filter((i) => i.status === "open").length;
   const todoTotal = awaiting + pending + incidents;
-  const autonomyLabel = sys.killSwitch ? t("紧急停止中", "Emergency stop active") : sys.autonomyEnabled ? t("自主运行中", "Autonomous") : t("已暂停", "Paused");
+  const runtime = automationPresentation(data);
   // 主动提醒:未处理的高危/严重风险事件(逼近强平/缺止损/对账不符等)。按标题折叠去重,避免同类刷屏。
   const criticalIncidents = (data.riskIncidents || []).filter((i) => i.status === "open" && ["critical", "high"].includes(String(i.severity || "").toLowerCase()));
   const criticalGroups = [];
@@ -198,7 +197,8 @@ export function AssistantWidget({ data, ui, currentPage = "" }) {
   const digestRows = [
     [t("账户", "Account"), pf.totalEquityUsdt != null ? `${displayMoney(pf.totalEquityUsdt, 0)} U · ${t("持仓", "Pos")} ${positions.length}` : t("未同步", "Not synced"), () => go("cockpit")],
     [t("今日盈亏", "Today PnL"), pf.todayPnl != null ? `${pf.todayPnl >= 0 ? "+" : ""}${displayMoney(pf.todayPnl, 2)} U` : t("未同步", "Not synced"), null],
-    [t("自主", "Autonomy"), `${autonomyLabel} · ${t("实盘", "Live")}${sys.liveTradingEnabled ? t("开", " on") : t("关", " off")}`, () => go("riskCenter")],
+    [t("当前运行", "Runtime"), `${runtime.label} · ${runtime.entryPolicy}`, () => go("riskCenter")],
+    [t("长期目标", "Saved target"), runtime.targetLabel, () => go("riskMandate")],
     [t("待办", "To-do"), `${t("批准", "Approve")} ${awaiting} · ${t("确认", "Confirm")} ${pending} · ${t("告警", "Alerts")} ${incidents}`, todoTotal ? () => go("cockpit") : null]
   ];
 

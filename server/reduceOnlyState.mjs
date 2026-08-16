@@ -96,6 +96,14 @@ export function activeReduceOnlyReasonCodes(db = {}) {
   return deriveReduceOnlyReasons(db);
 }
 
+export function effectiveRiskStatus(system = {}) {
+  if (system.killSwitch === true) return "熔断停机";
+  if (system.reduceOnlyMode === true) return "只减仓";
+  if (system.autonomyEnabled === false) return "人工暂停";
+  const current = String(system.riskStatus || "");
+  return !current || ["正常", "熔断停机", "只减仓", "人工暂停"].includes(current) ? "正常" : current;
+}
+
 export function syncReduceOnlyState(db = {}) {
   db.system ||= {};
   const reasons = deriveReduceOnlyReasons(db);
@@ -103,7 +111,6 @@ export function syncReduceOnlyState(db = {}) {
   db.system.reduceOnlyMode = reasons.length > 0;
   // 仅为旧 UI 保留主原因；业务控制流读取 reasons/records。
   db.system.reduceOnlyBy = reasons[0] || null;
-  if (reasons.length) db.system.riskStatus = db.system.killSwitch ? "熔断停机" : "只减仓";
-  else if (db.system.riskStatus === "只减仓") db.system.riskStatus = "正常";
+  db.system.riskStatus = effectiveRiskStatus(db.system);
   return { reduceOnlyMode: db.system.reduceOnlyMode, reasons };
 }

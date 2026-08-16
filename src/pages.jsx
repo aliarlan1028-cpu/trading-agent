@@ -1469,7 +1469,6 @@ export function RiskAuthPage({ data, action, ui, embedded = false, view = "all" 
             <div className="rwLimitsHead"><b>当前生效限制</b><button className="agLink" onClick={() => ui.openPanel("riskRules")}>查看全部 ›</button></div>
             {limitRows.map(([k, v]) => <div className="rwLimitRow" key={k}><span>{k}</span><b className="mono">{v}</b></div>)}
           </div>
-          <div className="riskBtns"><button className="rbPause" onClick={() => action("/api/system/autonomy", { enabled: false })}>暂停自主</button><button className="rbReduce" onClick={() => action("/api/risk/reduce-only", { enabled: true })}>只减仓</button><button className="rbKill" onClick={() => action("/api/risk/kill-switch", { enabled: true })}>紧急停止</button></div>
         </div>}
       </div>
 

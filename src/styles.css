@@ -3868,6 +3868,7 @@ button.danger:disabled,
 }
 
 .topbarStatusGroup {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3950,6 +3951,53 @@ button.danger:disabled,
 .runtimeStatePill.danger>span { background: var(--neg); box-shadow: 0 0 0 3px rgba(196,63,40,.1); }
 .runtimeStatePill:hover { box-shadow: 0 3px 10px rgba(51,42,31,.06); }
 
+.runtimeStatusBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: transparent;
+}
+.runtimeStatusPopover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(380px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #ddd4c6;
+  border-radius: 13px;
+  background: rgba(255,254,251,.98);
+  box-shadow: 0 18px 46px rgba(48,38,27,.18);
+  color: var(--text);
+}
+.runtimeStatusPopover::before { content:""; position:absolute; top:-6px; left:116px; width:10px; height:10px; transform:rotate(45deg); border-left:1px solid #ddd4c6; border-top:1px solid #ddd4c6; background:#fffefb; }
+.runtimeStatusPopover>header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.runtimeStatusPopover>header>div { display:grid; gap:3px; }
+.runtimeStatusPopover>header small,
+.runtimeStatusReasons>small { color:var(--text-4); font:700 8px var(--font-mono); letter-spacing:.08em; }
+.runtimeStatusPopover>header b { font-size:17px; }
+.runtimeStatusPopover>p { margin:0; color:var(--text-3); font-size:11px; line-height:1.65; }
+.runtimeStatusTone { flex:none; max-width:130px; padding:4px 8px; border-radius:7px; background:#efebe4; color:#6e665a; font-size:9px; font-weight:700; text-align:center; }
+.runtimeStatusTone.ok { background:#e6f1ea; color:#1f7a50; }
+.runtimeStatusTone.warning { background:#fbefdd; color:#9a641c; }
+.runtimeStatusTone.danger { background:#f9e6e1; color:#a43a28; }
+.runtimeStatusTarget { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:9px 11px; border:1px solid var(--border); border-radius:9px; background:#f8f5ef; }
+.runtimeStatusTarget span { color:var(--text-3); font-size:10px; }
+.runtimeStatusTarget b { font-size:11px; text-align:right; }
+.runtimeReduceSummary { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:9px; padding:10px 11px; border:1px solid #e3dacf; border-radius:9px; background:#fff; }
+.runtimeReduceSummary>svg { width:16px; height:16px; color:var(--accent); }
+.runtimeReduceSummary>span { display:grid; gap:3px; min-width:0; }
+.runtimeReduceSummary b { font-size:11px; }
+.runtimeReduceSummary small { color:var(--text-3); font-size:9.5px; line-height:1.5; }
+.runtimeReduceSummary.system { border-color:#ead7b3; background:#fffaf0; }
+.runtimeStatusReasons { display:grid; gap:7px; }
+.runtimeStatusReasons>div { display:flex; flex-wrap:wrap; gap:5px; }
+.runtimeStatusReasons span { padding:4px 7px; border-radius:999px; background:#fbefdd; color:#8c5d1c; font-size:9px; line-height:1.3; }
+.runtimeStatusLink { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text-2); font:650 10px var(--font-ui); cursor:pointer; }
+.runtimeStatusLink:hover { border-color:#d5a47d; color:var(--accent-ink); }
+
 .topEmergencyActions {
   display: grid;
   grid-template-columns: repeat(4, minmax(74px, 1fr));
@@ -3981,17 +4029,20 @@ button.danger:disabled,
 .topEmergencyActions button svg { width: 13px; height: 13px; flex: none; color: var(--accent); }
 .topEmergencyActions button:hover { border-color: var(--border); background: #fff; }
 .topEmergencyActions button.active { border-color: #e4bd94; background: #fff3e6; color: var(--accent-ink); }
+.topEmergencyActions button.locked { border-color:#e6d2ad; background:#fffaf0; color:#8d6b36; cursor:help; }
+.topEmergencyActions button.locked svg { color:#b8842f; }
 .topEmergencyActions button.danger svg { color: var(--neg); }
 .topEmergencyActions button.danger:hover { border-color: #edc9c0; background: #fff6f3; color: #a93421; }
 .topEmergencyActions button.danger.active { border-color: #d96d58; background: #fbe6e1; color: #a93421; }
 
 @media (max-width: 1280px) and (min-width: 901px) {
   .appTopbar { padding-inline: 12px; }
-  .topSearch { max-width: 190px; }
-  .topEmergencyActions { grid-template-columns: repeat(4, 34px); min-width: auto; }
-  .topEmergencyActions button { width: 34px; padding: 0; }
-  .topEmergencyActions button span { display: none; }
-  .runtimeStatePill { min-width: 112px; }
+  .topSearch { flex:0 0 36px; width:36px; min-width:36px; max-width:36px; justify-content:center; padding:0; }
+  .topSearch input { display:none; }
+  .topEmergencyActions { grid-template-columns:repeat(4,minmax(52px,1fr)); min-width:220px; }
+  .topEmergencyActions button { width:auto; padding:0 3px; gap:3px; font-size:8.5px; }
+  .topEmergencyActions button svg { width:11px; height:11px; }
+  .runtimeStatePill { min-width:104px; }
   .appTopbar .exchangePill small { display: none; }
 }
 
@@ -7902,6 +7953,10 @@ button.danger:disabled,
 .agRunBadge span { width: 7px; height: 7px; border-radius: 50%; }
 .agRunBadge.on { background: #E6F1EA; color: #1F7A50; } .agRunBadge.on span { background: #1F7A50; }
 .agRunBadge.off { background: #F1EADF; color: #8a8172; } .agRunBadge.off span { background: #8a8172; }
+.agRunBadge.ok { background:#e6f1ea; color:#1f7a50; } .agRunBadge.ok span { background:#1f7a50; }
+.agRunBadge.warning { background:#fbefdd; color:#9a641c; } .agRunBadge.warning span { background:#c68a20; }
+.agRunBadge.danger { background:#f9e6e1; color:#a43a28; } .agRunBadge.danger span { background:#c43f28; }
+.agRunBadge.neutral { background:#f1eadf; color:#8a8172; } .agRunBadge.neutral span { background:#8a8172; }
 .agLaunchBtn { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px; border: none; border-radius: 8px; background: linear-gradient(150deg, #E68A4E, #D06A22); color: #fff; font: 700 12px "Space Grotesk"; cursor: pointer; box-shadow: 0 6px 14px -8px rgba(208, 106, 34, .9); white-space: nowrap; }
 
 .agHistBar { display: flex; align-items: center; gap: 7px; padding: 10px 0 4px; flex: none; overflow-x: auto; }
@@ -8432,12 +8487,6 @@ button.danger:disabled,
 .riskBanner.warn .riskBannerScore b { color: #C79A3A; }
 .riskBanner.neg .riskBannerScore b { color: #C43F28; }
 .riskBannerScore span { font: 500 11px "IBM Plex Mono"; color: #8a8172; }
-.riskBtns { display: flex; gap: 6px; }
-.riskBtns button { flex: 1; height: 34px; border-radius: 7px; font: 700 11px "Space Grotesk"; cursor: pointer; }
-.rbPause { border: 1px solid #E3DCCE; background: #EAF0FB; color: #2A6FDB; }
-.rbReduce { border: 1px solid #F0DCC5; background: #FBEDDF; color: #C9631F; }
-.rbKill { border: none; background: #C43F28; color: #fff; }
-
 /* 风控与授权 —— 严格照设计稿 .dc.html */
 .riskPage .termCard { border-radius: 11px; padding: 13px 15px; }
 /* 顶部分段：风控与授权 / 审计 */
@@ -9305,6 +9354,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mSafetySheet>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:0 2px 12px}.mSafetySheet>header>div{min-width:0}.mSafetySheet>header small,.mSafetySheet>header b{display:block}.mSafetySheet>header>div>small{color:#a76537;font:700 8px var(--font-mono);letter-spacing:.08em}.mSafetySheet>header>div>b{margin-top:4px;color:#2f2922;font-size:17px}.mSafetySheet>header p{margin:5px 0 0;color:#847b6e;font-size:10px;line-height:1.5}.mSafetySheet>header>.statusBadge{flex:none;margin-top:2px;white-space:normal;text-align:center}
 .mSafetyTarget{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding:9px 11px;border:1px solid #e7e0d5;border-radius:10px;background:#fff}.mSafetyTarget span{color:#918777;font-size:10px}.mSafetyTarget b{font-size:11px;color:#3f3830;text-align:right}
 .mSafetyActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mSafetyActions button{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px;min-height:72px!important;padding:10px!important;border:1px solid #e3dacf!important;border-radius:12px!important;background:#fff!important;color:#4a4239!important;text-align:left!important;font-family:var(--font-ui)!important}.mSafetyActions button>svg{width:19px;color:#d06a22}.mSafetyActions button span{min-width:0}.mSafetyActions button b,.mSafetyActions button small{display:block}.mSafetyActions button b{font-size:11px}.mSafetyActions button small{margin-top:4px;color:#948a7c;font-size:8.5px;line-height:1.4}.mSafetyActions button.active{border-color:#e0ad81!important;background:#fff3e8!important}.mSafetyActions button.danger>svg{color:#c43f28}.mSafetyActions button.danger.active{border-color:#dd8776!important;background:#fbe8e4!important}
+.mSafetyActions button.locked{border-color:#e6d2ad!important;background:#fffaf0!important;cursor:default}.mSafetyActions button.locked>svg{color:#b8842f}.mSafetyActions button.locked small{color:#8d6b36}
 .mSafetyClose{width:100%;height:40px;margin-top:10px;border:0;border-radius:10px;background:#2b2722;color:#fff;font:700 12px var(--font-ui)}
 .mRunBadge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
 .mRunBadge.on { background: #E6F1EA; color: #1F7A50; } .mRunBadge.off { background: #F1EADF; color: #8a8172; }

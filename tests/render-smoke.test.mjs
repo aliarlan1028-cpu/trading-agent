@@ -55,7 +55,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -429,6 +429,7 @@ test("risk overview renders authoritative event windows instead of generic risk 
   assert.doesNotMatch(html, /账户对账异常/);
   assert.doesNotMatch(html, /应急操作/);
   assert.doesNotMatch(html, /密钥安全/);
+  assert.doesNotMatch(html, /账户安全|打开 OKX 配置/);
 });
 
 test("unified automation presentation separates the saved target from the effective safety state", () => {
@@ -446,6 +447,36 @@ test("unified automation presentation separates the saved target from the effect
   assert.equal(view.entryPolicy, "禁止新开仓");
   assert.equal(view.targetIsEffective, false);
   assert.deepEqual(view.blockers, ["费用或资金费对账中"]);
+  assert.equal(view.reduceOnlyControlState, "system");
+  assert.equal(view.reduceOnlyControlActionable, false);
+  assert.equal(view.reduceOnlyControlLabel, "系统只减仓");
+
+  const manual = C.automationPresentation({ system: { autonomyEnabled: true, reduceOnlyMode: true, manualReduceOnly: true } });
+  assert.equal(manual.reduceOnlyControlState, "manual");
+  assert.equal(manual.reduceOnlyControlActionable, true);
+  assert.equal(manual.reduceOnlyControlLabel, "退出手动只减仓");
+
+  const off = C.automationPresentation({ system: { autonomyEnabled: true, reduceOnlyMode: false, manualReduceOnly: false } });
+  assert.equal(off.reduceOnlyControlState, "off");
+  assert.equal(off.reduceOnlyControlLabel, "开启只减仓");
+});
+
+test("chat and trading overview show the effective reduce-only state instead of a generic running label", () => {
+  const runtimeData = {
+    ...data,
+    system: { ...data.system, autonomyEnabled: true, reduceOnlyMode: true, manualReduceOnly: false },
+    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto", detail: "费用或资金费对账中" }
+  };
+  const chat = render(React.createElement(C.ChatPage, { data: runtimeData, action, ui }));
+  assert.match(chat, /agRunBadge warning/);
+  assert.match(chat, />只减仓</);
+  assert.match(chat, /暂停自主/);
+  assert.doesNotMatch(chat, /启动自主交易/);
+
+  const overview = render(React.createElement(C.TradingOverviewConcept, { data: runtimeData, action, ui }));
+  assert.match(overview, /当前运行/);
+  assert.match(overview, /只减仓/);
+  assert.match(overview, /禁止新开仓/);
 });
 
 test("capital settings distinguish configured auto mode from the current safety state", () => {
@@ -528,8 +559,52 @@ test("desktop knowledge page exposes the full concept graph workspace and source
   assert.match(html, /扩展候选（可选）/);
   assert.match(html, /规则库与实际作用/);
   assert.match(html, /查看技能流水线/);
+  assert.match(html, /逐份知识当前阶段与实际作用/);
+  assert.match(html, /阶段 5\/5/);
+  assert.match(html, /阶段 2\/5/);
+  assert.match(html, /只有信号匹配且全部硬风控通过时/);
+  assert.match(html, /尚未编译成技能，不会自动执行/);
   assert.match(html, /趋势/);
   assert.match(html, /止损/);
+});
+
+test("knowledge source cards treat empty imports as incomplete rather than parsed", () => {
+  const html = render(React.createElement(C.KnowledgeConcept, {
+    data: { ...data, knowledge: { ...data.knowledge, sources: [{ id: "empty-source", title: "空白书籍", type: "pdf", status: "无可用文本" }], tradingMethods: [], tradingSkills: [] } },
+    action,
+    ui
+  }));
+  assert.match(html, /空白书籍/);
+  assert.match(html, /导入未完成/);
+  assert.match(html, /当前不会影响分析或交易/);
+});
+
+test("system settings gives OKX and notifications one explicit home without leaking runtime state into subscriptions", () => {
+  const settingsData = {
+    ...data,
+    system: { ...data.system, reduceOnlyMode: true, manualReduceOnly: false },
+    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto" },
+    config: { ...data.config, integrations: { telegram: { configured: true }, lark: { hasWebhook: false }, alerts: { hasWebhook: true } } }
+  };
+  const overview = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  assert.match(overview, /OKX 配置/);
+  assert.match(overview, /通知渠道/);
+  assert.match(overview, /Owner 工作区/);
+  assert.doesNotMatch(overview, /用户与订阅<\/b>[\s\S]{0,300}只减仓/);
+
+  const notifications = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "notifications", onTabChange: () => {} }));
+  assert.match(notifications, /保存通知设置|飞书通知|Telegram/);
+
+  const basics = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "base", onTabChange: () => {} }));
+  assert.match(basics, /四个基础模块/);
+  assert.doesNotMatch(basics, /五个基础模块/);
+});
+
+test("desktop runtime controls keep all four text labels at intermediate widths", () => {
+  const css = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+  const desktopMedia = css.match(/@media \(max-width: 1280px\) and \(min-width: 901px\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(desktopMedia, /topEmergencyActions button span\s*\{\s*display:\s*none/);
+  assert.match(desktopMedia, /repeat\(4,minmax\(52px,1fr\)\)/);
 });
 
 test("mobile drawer keeps settings visible without duplicate status and close footer", () => {

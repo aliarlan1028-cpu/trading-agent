@@ -38,7 +38,7 @@ import {
   Image as ImageIcon,
   X
 } from "lucide-react";
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, automationPresentation, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 import { groupClosedTradeLifecyclesForView, hasFiniteNumber } from "./viewData.js";
@@ -1063,7 +1063,8 @@ function AgentRail({ data, action, ui, send }) {
   const todayPnl = Number(portfolio.todayPnl || 0);
   // 累计盈亏 = performanceReport 全时段真实合计；不再回退 weekPnl（后端从未写入的死字段）。
   const cumPnl = Number(perf.totalPnlUsdt ?? 0);
-  const autoOn = system.autonomyEnabled === true && !system.killSwitch;
+  const runtime = automationPresentation(data);
+  const autonomyPaused = system.autonomyEnabled === false;
   const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
   const ratio = sm.topTraderLongShortRatio;
   // 全端统一的偏向判定（smartMoneyBias，阈值一处定义）；语义用"偏多/偏空"不再冒充"趋势"。
@@ -1124,7 +1125,7 @@ function AgentRail({ data, action, ui, send }) {
         {/* 概念图对齐:当前 Agent 状态改为 label:value 行(映射真实字段),不再用四宫格 */}
         <div className="agStatusRows">
           {[
-            { k: t("策略模式", "Strategy mode"), v: plan?.strategy ? humanize(plan.strategy) : localizeText(data.automationState?.label, autoOn ? t("自主运行", "Autonomous") : t("待命", "Standby")), tone: data.automationState?.mode === "full_auto_small" ? "pos" : "" },
+            { k: t("当前运行", "Runtime"), v: runtime.label, tone: runtime.tone === "ok" ? "pos" : runtime.tone === "danger" ? "neg" : "" },
             { k: t("市场环境", "Market regime"), v: judge, tone: judgePos ? "pos" : judgeNeg ? "neg" : "" },
             { k: t("当前任务", "Current task"), v: latestRun.steps?.[0]?.title || (plan ? `${plan.symbol} ${t("策略评估", "strategy review")}` : t("等待巡检机会", "Waiting for a scan opportunity")) },
             { k: t("交易限制", "Trading limits"), v: hasMandate && mandate.maxSingleTradeRiskPct != null ? `${mandate.maxSingleTradeRiskPct}%/${t("笔", "trade")} · ${t("日亏≤", "daily loss ≤")}${mandate.maxDailyLossPct ?? "-"}% · ${t("近7日≤", "7-day loss ≤")}${mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? 5}%` : t("未设置", "Not configured") },
@@ -1274,7 +1275,7 @@ function AgentRail({ data, action, ui, send }) {
           <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
         </div>
         <div className="agWallBtns">
-          <button className="agBtnGhost" onClick={toggleAutonomy}>{autoOn ? t("暂停", "Pause") : t("恢复", "Resume")}</button>
+          <button className="agBtnGhost" onClick={toggleAutonomy}>{autonomyPaused ? t("恢复自主", "Resume autonomy") : t("暂停自主", "Pause autonomy")}</button>
           <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? t("恢复新交易", "Resume trading") : t("紧急停止", "Emergency stop")}</button>
         </div>
       </div>
@@ -1444,7 +1445,8 @@ function PosterModal({ content, meta, onClose }) {
 
 export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
   const system = data.system || {};
-  const autoOn = system.autonomyEnabled === true && !system.killSwitch;
+  const runtime = automationPresentation(data);
+  const autonomyPaused = system.autonomyEnabled === false;
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);
@@ -1631,8 +1633,8 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
             <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>
-          {!mobile && <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("紧急停止中", "Emergency stop active") : t("已暂停", "Paused")}</span>}
-          {!mobile && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>}
+          {!mobile && <span className={`agRunBadge ${runtime.tone}`} title={runtime.detail}><span />{runtime.label}</span>}
+          {!mobile && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: autonomyPaused })}><Rocket size={14} /> {autonomyPaused ? t("恢复自主", "Resume autonomy") : t("暂停自主", "Pause autonomy")}</button>}
           {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
           {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>
