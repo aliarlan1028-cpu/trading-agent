@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { uiConfirm, uiPrompt } from "./confirm.jsx";
+import { useEffect, useRef, useState } from "react";
+import { uiConfirm } from "./confirm.jsx";
 import {
   Activity,
   BarChart3,
@@ -17,10 +17,8 @@ import {
   Gauge,
   Globe2,
   Eye,
-  Inbox,
   Info,
   MoreHorizontal,
-  MessageSquare,
   Plus,
   Play,
   RefreshCw,
@@ -28,10 +26,7 @@ import {
   Search,
   Settings,
   Shield,
-  SlidersHorizontal,
   Target,
-  UserCog,
-  WalletCards,
   Wrench,
   Zap,
   CheckCircle2,
@@ -39,7 +34,7 @@ import {
   Sparkles,
   Trash2
 } from "lucide-react";
-import { apiUrl, authHeaders, automationPresentation, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
+import { apiUrl, authHeaders, automationPresentation, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./conceptGraph.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
@@ -137,7 +132,6 @@ export function MobilePositions({ data, action, ui }) {
   const positions = positionView.positions;
   const orders = positionView.openOrders;
   const executions = data.executionOrders || [];
-  const reduceOnly = Boolean(data.system?.reduceOnlyMode);
   const activeExec = OPEN_EXECUTION_STATES; // 单一来源(lib),与后端对齐
   const activeExecutions = executions.filter((order) => activeExec.includes(String(order.status || "").toLowerCase())).length;
   const portfolio = data.portfolio || {};
@@ -575,17 +569,13 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
   const showSettings = view === "all" || view === "settings";
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const sys = data.system || {};
-  const portfolio = data.portfolio || {};
   const rules = data.riskRules || [];
   const maxLeverage = mandate.max_leverage || (mandate.maxLeverageBySymbol ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : null);
   const budgetRemain = sys.remainingDailyLossUsdt;
   const budgetCap = sys.dailyLossCapUsdt;
   const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
-  const killed = sys.killSwitch;
   const active = ["running", "active"].includes(mandate.status);
   const runtime = automationPresentation(data);
-  // 授权≠低风险：有真实风险等级就用它，否则显示"已授权·风险待评估"，不写死"低风险"。
-  const rLabel = /高|中|低/.test(portfolio.riskLabel || "") ? portfolio.riskLabel : null;
   const wall = { label: runtime.label, tone: runtime.tone === "danger" ? "critical" : runtime.tone === "ok" ? "ok" : "warning" };
   const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
   // scope 真实取值是英文(trade/account/event/knowledge),此前中文 includes 恒 0 → 永远"无规则"(审计 M3)
@@ -1138,14 +1128,13 @@ export function MobileMarket({ data, action, ui }) {
   const equity = portfolio.totalEquityUsdt;
   const avail = portfolio.availableMarginUsdt;
   // 保证金口径统一走 lib.marginUsage(含冻结保证金;缺数据=null,不造假)。
-  const { usedMarginUsdt: used, marginRatePct: marginRate } = marginUsage(portfolio);
+  const { marginRatePct: marginRate } = marginUsage(portfolio);
   const metrics = [
     [t("总资产", "Total equity"), configured && equity != null ? displayMoney(equity, 2) : t("未同步", "Not synced"), null],
     [t("今日盈亏", "Today's PnL"), configured && portfolio.todayPnl != null ? `${portfolio.todayPnl >= 0 ? "+" : ""}${displayMoney(portfolio.todayPnl, 2)}` : t("未同步", "Not synced"), configured ? portfolio.todayPnl : null],
     [t("可用保证金", "Available margin"), configured && avail != null ? displayMoney(avail, 2) : t("未同步", "Not synced"), null],
     [t("未实现盈亏", "Unrealized PnL"), configured && portfolio.unrealizedPnl != null ? `${portfolio.unrealizedPnl >= 0 ? "+" : ""}${displayMoney(portfolio.unrealizedPnl, 2)}` : t("未同步", "Not synced"), configured ? portfolio.unrealizedPnl : null]
   ];
-  const chgPos = Number(market.changePct || 0) >= 0;
   const mediumTerm = data.mediumTermAnalytics || {};
   const mediumSymbol = (mediumTerm.symbols || []).find((row) => row.symbol === market.symbol);
   const leverageLabel = (value) => ({ leverage_build_up:t("杠杆堆积","Leverage build-up"), long_build:t("多头增仓","Long build"), long_build_crowded:t("多头拥挤","Crowded long build"), short_build:t("空头增仓","Short build"), short_build_crowded:t("空头拥挤","Crowded short build"), short_covering:t("空头回补","Short covering"), long_deleveraging:t("多头去杠杆","Long deleveraging"), price_move_without_oi_confirmation:t("价格缺OI确认","Price lacks OI confirmation"), deleveraging_without_direction:t("无方向去杠杆","Directionless deleveraging"), stable_or_mixed:t("稳定/混合","Stable/mixed") }[value] || humanize(value));
@@ -1261,7 +1250,6 @@ function MobileAudit({ data, ui }) {
 
 // 屏 S1 — AI 交易员：顶栏下 4 等分状态条。
 function MobileChatStatus({ data }) {
-  const sys = data.system || {};
   const pf = data.portfolio || {};
   const runtime = automationPresentation(data);
   const smMob = data.marketRegime?.smartMoney || {};
@@ -1716,7 +1704,7 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "auditSystem") {
     content = <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
-    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>
+    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} section={settingsSection} /></div></div>
         : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
     content = <MobileMarket data={data} action={action} ui={ui} />;

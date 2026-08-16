@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
-  Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot, CalendarDays,
+  Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Database, Eye, Globe2,
-  FileText, Filter, Gauge, GitBranch, Info, KeyRound, Layers3, ListChecks,
-  LockKeyhole, Play, Plus, RefreshCw, Search, Server, ShieldCheck,
+  FileText, Gauge, GitBranch, Info, KeyRound,
+  Play, Plus, RefreshCw, Search, Server, ShieldCheck,
   SlidersHorizontal, Sparkles, Target, TrendingUp, Users, WalletCards,
-  Wrench, XCircle, Zap
+  Wrench, XCircle
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
 import { LiveGrayPanel, SymbolMultiSelect, SystemConfigPanel } from "./panels.jsx";
@@ -506,7 +506,7 @@ export function JournalConcept({ data }) {
         ]} rows={rows} empty={t("暂无月度数据", "No monthly data")} />
       </ConceptCard>;
     })()}
-    <div className="cp2Grid journalMain"><ConceptCard title={t("已平仓交易", "Closed Trades")} meta={t("超 20 条容器内滚动", "Scrolls past 20")} className="span2"><div className="cp2ScrollList tall"><ConceptTable columns={[{key:"createdAt",label:t("时间", "Time"),render:r=>formatDateTime(r.createdAt)},{key:"symbol",label:t("交易对", "Pair")},{key:"side",label:t("方向", "Side"),render:r=>humanize(r.side||r.kind)},{key:"quantity",label:t("数量", "Qty"),render:r=>r.quantity??r.size??"—"},{key:"price",label:t("成交价", "Fill price"),render:r=>money(r.price)},{key:"realizedPnl",label:t("已实现盈亏", "Realized PnL"),render:r=><span className={num(r.realizedPnl)>=0?"good":"bad"}>{money(r.realizedPnl)}</span>},{key:"status",label:t("状态", "Status"),render:r=><Pill tone="good">{t("已成交", "Filled")}</Pill>}]} rows={fills} empty={t("暂无已平仓交易", "No closed trades")}/></div></ConceptCard><ConceptCard title={t("业绩拆解", "Performance Breakdown")}><div className="cp2Centered"><Donut value={fills.length?wins.length/fills.length*100:0} label={fills.length?`${(wins.length/fills.length*100).toFixed(0)}%`:"—"} sub={t("胜率", "Win rate")}/></div><BarRows rows={[{label:t("盈利交易", "Winners"),value:wins.length,display:`${wins.length} ${t("笔", "")}`},{label:t("亏损交易", "Losers"),value:losses.length,display:`${losses.length} ${t("笔", "")}`},{label:t("复盘完成", "Reviews done"),value:reviews.length,display:`${reviews.length} ${t("份", "")}`}]} /></ConceptCard></div>
+    <div className="cp2Grid journalMain"><ConceptCard title={t("已平仓交易", "Closed Trades")} meta={t("超 20 条容器内滚动", "Scrolls past 20")} className="span2"><div className="cp2ScrollList tall"><ConceptTable columns={[{key:"createdAt",label:t("时间", "Time"),render:r=>formatDateTime(r.createdAt)},{key:"symbol",label:t("交易对", "Pair")},{key:"side",label:t("方向", "Side"),render:r=>humanize(r.side||r.kind)},{key:"quantity",label:t("数量", "Qty"),render:r=>r.quantity??r.size??"—"},{key:"price",label:t("成交价", "Fill price"),render:r=>money(r.price)},{key:"realizedPnl",label:t("已实现盈亏", "Realized PnL"),render:r=><span className={num(r.realizedPnl)>=0?"good":"bad"}>{money(r.realizedPnl)}</span>},{key:"status",label:t("状态", "Status"),render:()=><Pill tone="good">{t("已成交", "Filled")}</Pill>}]} rows={fills} empty={t("暂无已平仓交易", "No closed trades")}/></div></ConceptCard><ConceptCard title={t("业绩拆解", "Performance Breakdown")}><div className="cp2Centered"><Donut value={fills.length?wins.length/fills.length*100:0} label={fills.length?`${(wins.length/fills.length*100).toFixed(0)}%`:"—"} sub={t("胜率", "Win rate")}/></div><BarRows rows={[{label:t("盈利交易", "Winners"),value:wins.length,display:`${wins.length} ${t("笔", "")}`},{label:t("亏损交易", "Losers"),value:losses.length,display:`${losses.length} ${t("笔", "")}`},{label:t("复盘完成", "Reviews done"),value:reviews.length,display:`${reviews.length} ${t("份", "")}`}]} /></ConceptCard></div>
     <div className="cp2Grid two wideLeft"><ConceptCard title={t("交易复盘详情", "Trade Reviews")}><div className="cp2ReviewGrid">{reviews.slice(0,3).map((review,index)=><article key={review.id||index}><small>{review.symbol||t("组合", "Portfolio")} · {formatDateTime(review.createdAt)}</small><b>{review.title||review.summary||t("交易复盘", "Trade review")}</b><p>{review.lesson||review.notes||t("等待复盘结论。", "Awaiting review conclusion.")}</p></article>)}{!reviews.length&&<div className="cp2Empty"><BookOpen/><b>{t("暂无复盘", "No reviews")}</b><span>{t("平仓后会自动进入复盘队列。", "Closed trades auto-enter the review queue.")}</span></div>}</div></ConceptCard><ConceptCard title={t("纪律检查", "Discipline Check")}><div className="cp2Checklist vertical"><span><CheckCircle2/>{t("风险预算执行", "Risk budget enforced")}</span><span><CheckCircle2/>{t("止损保护覆盖", "Stop-loss coverage")}</span><span><AlertTriangle/>{t("复盘样本仍需积累", "Review sample still building")}</span></div></ConceptCard></div></div>;
 }
 
@@ -1124,7 +1124,7 @@ export function StrategyConcept({ data, action }) {
   </div>;
 }
 
-export function RiskPostureConcept({ data, action, ui }) {
+export function RiskPostureConcept({ data, ui }) {
   const pf=data.portfolio||{}; const pr=data.portfolioRisk||{}; const mandate=data.agentStatus?.activeMandate||arr(data.mandates)[0]||{}; const rules=arr(data.riskRules); const incidents=arr(data.riskIncidents); const openIncidents=incidents.filter(i=>i.status==="open"); const eventWindows=arr(data.eventRiskWindows); const blockingWindows=eventWindows.filter(item=>item.blocking);
   const runtime=automationPresentation(data);
   const eventPhase=(row)=>row.phase==="pre_release_blackout"?t("公布前静默", "Pre-release blackout"):row.phase==="post_release"?t("公布后观察", "Post-release window"):row.phase==="time_unconfirmed"?t("时间待确认", "Time unconfirmed"):t("提前监控", "Monitoring");
@@ -1686,13 +1686,13 @@ export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
           <div><small>{t("本页目录", "ON THIS PAGE")}</small><b>{t("基础配置", "Basic configuration")}</b></div>
           {baseSections.map(({ id, icon: Icon, label, note }, index) => <button type="button" className={baseSection === id ? "active" : ""} aria-current={baseSection === id ? "location" : undefined} key={id} onClick={() => scrollToBaseSection(id)}><i><Icon size={15}/></i><span><b>{String(index + 1).padStart(2, "0")} · {label}</b><small>{note}</small></span><ChevronRight size={13}/></button>)}
         </aside>
-        <div className="cp2BaseSections">{baseSections.map(({ id }) => <section id={`settings-base-${id}`} data-settings-section={id} className="cp2SettingsPanel cp2BaseSection" key={id}><SystemConfigPanel data={data} action={action} ui={ui} section={id}/></section>)}</div>
+        <div className="cp2BaseSections">{baseSections.map(({ id }) => <section id={`settings-base-${id}`} data-settings-section={id} className="cp2SettingsPanel cp2BaseSection" key={id}><SystemConfigPanel data={data} action={action} section={id}/></section>)}</div>
       </div>
     </section>}
 
-    {tab === "exchange" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="exchange"/></section></div>}
-    {tab === "notifications" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="notifications"/></section></div>}
-    {tab === "models" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="llm"/></section></div>}
+    {tab === "exchange" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} section="exchange"/></section></div>}
+    {tab === "notifications" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} section="notifications"/></section></div>}
+    {tab === "models" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} section="llm"/></section></div>}
     {tab === "agents" && <AgentSettingsConcept data={data} action={action} ui={ui}/>}
     {tab === "users" && isOwner && <UsersSettingsConcept data={data} action={action} ui={ui}/>}
   </div>;

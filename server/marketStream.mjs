@@ -8,7 +8,7 @@
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
-import { activeMandate, nowIso } from "./store.mjs";
+import { activeMandate } from "./store.mjs";
 import { markOkxLiquidationStreamConnected, recordOkxLiquidationMessage } from "./okxLiquidationStream.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyScalarMarketObservation, applyTickerObservation } from "./marketObservation.mjs";

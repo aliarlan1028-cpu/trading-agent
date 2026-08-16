@@ -79,11 +79,6 @@ function inferMarketRegime(db, symbol) {
   return change >= 0 ? "上行趋势" : "下行趋势";
 }
 
-function currentFundingRate(db, symbol) {
-  const market = (db.markets || []).find((item) => item.symbol === symbol) || {};
-  return asNumber(String(market.fundingRate || "").replace("%", ""), 0);
-}
-
 function feeEstimate(notional) {
   return Number((Math.abs(Number(notional || 0)) * DEFAULT_TAKER_FEE_RATE).toFixed(6));
 }

@@ -9,7 +9,6 @@ import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.
 import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
-import { TERMINAL_EXCHANGE_ORDER_STATES } from "./orderStates.mjs";
 
 // OKX clOrdId 只允许字母+数字(≤32)。下单/撤单/改单必须用同一个清洗函数,否则发出去清洗过、
 // 撤单用原值(带下划线)→ OKX 找不到单 → 撤不掉的孤儿单(审计 exch-F2)。全链路统一走它。
@@ -52,8 +51,6 @@ const ACTION_TO_MANDATE = {
   move_stop: "move_stop",
   take_profit: "take_profit"
 };
-const TERMINAL_ORDER_STATES = TERMINAL_EXCHANGE_ORDER_STATES;
-
 // 把内部拦截原因码翻成人话 + 指向对应开关位置，供前端/批准接口/Agent 使用。
 const GUARD_REASON_DETAIL = {
   live_trading_disabled: { label: "实盘写入总开关未开启", fix: "系统设置 → 实盘灰度 → 勾选「LIVE_TRADING_ENABLED」并同时勾选「风险确认」" },

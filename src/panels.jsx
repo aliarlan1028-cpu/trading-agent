@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { uiConfirm, uiPrompt } from "./confirm.jsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { uiConfirm } from "./confirm.jsx";
 import {
   Trash2,
   AlertTriangle,
@@ -20,7 +20,7 @@ import {
   Zap
 } from "lucide-react";
 import { buildProviderModelOptions } from "./modelOptions.js";
-import { apiUrl, formatMoney, displayMoney, displayPct, asArray, readFileAsDataUrl, formatDateTime, humanize, localizeText, statusTone, exchangeState, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
+import { apiUrl, asArray, readFileAsDataUrl, formatDateTime, humanize, localizeText, statusTone, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
 import { t } from "./i18n.js";
 
 export function ConfigPanel({ panel, data, action, ui }) {
@@ -57,7 +57,7 @@ export function ConfigPanel({ panel, data, action, ui }) {
         {panel === "knowledgeList" && <KnowledgeListPanel data={data} action={action} ui={ui} />}
         {panel === "ruleLibrary" && <RuleLibraryPanel data={data} action={action} ui={ui} />}
         {panel === "riskIncidents" && <RiskIncidentsPanel data={data} action={action} ui={ui} />}
-        {panel === "skillImport" && <SkillImportPanel data={data} action={action} ui={ui} />}
+        {panel === "skillImport" && <SkillImportPanel action={action} ui={ui} />}
         {panel === "taskManager" && <TaskManagerPanel data={data} action={action} />}
         {panel === "eventSources" && <EventSourcesPanel data={data} action={action} ui={ui} />}
         {panel === "auditChain" && <AuditChainPanel data={data} />}
@@ -98,14 +98,12 @@ function CfgSwitch({ label, value, onChange, hint }) {
   );
 }
 
-export function SystemConfigPanel({ data, action, ui, section }) {
+export function SystemConfigPanel({ data, action, section }) {
   const config = data.config || {};
   const providers = config.llm?.providers || {};
   const exchange = config.exchange || {};
-  const live = config.liveTrading || {};
   const integrations = config.integrations || {};
   const runtime = config.runtime || {};
-  const readiness = data.readiness || {};
   const [llmForm, setLlmForm] = useState({
     OPENROUTER_API_KEY: "",
     GEMINI_MODEL: providers.gemini?.model || "google/gemini-3.1-pro-preview",
@@ -176,7 +174,6 @@ export function SystemConfigPanel({ data, action, ui, section }) {
     ["gemini", t("Gemini · 主分析", "Gemini · Primary"), "OPENROUTER_API_KEY", "GEMINI_MODEL"],
     ["deepseek", t("DeepSeek · 独立审查", "DeepSeek · Independent critic"), "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]
   ];
-  const activeProviderLabel = providerRows.find(([idName]) => idName === config.llm?.activeProvider)?.[1] || config.llm?.activeProvider;
   // 用真正的 select 展示完整目录；datalist 会按当前值过滤，容易让用户误以为只支持匹配到的两个型号。
   const PROVIDER_MODELS = {
     gemini: buildProviderModelOptions("gemini", llmModelCatalog.gemini, llmForm.GEMINI_MODEL),
@@ -1250,7 +1247,7 @@ function SEVERITY_RANK(s) { return { critical: 4, high: 3, medium: 2, low: 1 }[S
 function SEVERITY_TONE(s) { const r = SEVERITY_RANK(s); return r >= 3 ? "bad" : r === 2 ? "warn" : "good"; }
 function humanizeSeverity(s) { return ({ critical: t("严重", "Critical"), high: t("高", "High"), medium: t("中", "Medium"), low: t("低", "Low") }[String(s || "").toLowerCase()] || t("提示", "Notice")); }
 
-export function SkillImportPanel({ data, action, ui }) {
+export function SkillImportPanel({ action, ui }) {
   const [form, setForm] = useState({ name: "", sourceUrl: "", skillMd: "", kind: "auto" });
   async function submit(event) {
     event.preventDefault();

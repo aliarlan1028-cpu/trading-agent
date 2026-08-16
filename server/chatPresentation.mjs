@@ -195,7 +195,6 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
   const order = plan ? (db.executionOrders || []).find((row) => row.planId === plan.id) || null : null;
   const orderFills = order ? (db.fills || []).filter((row) => row.executionOrderId === order.id || (!row.executionOrderId && row.tradePlanId === plan?.id)) : [];
   const entryFills = orderFills.filter((row) => row.kind === "entry");
-  const closeFills = orderFills.filter((row) => row.kind === "close");
   const entryQuantity = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0);
   const entryNotional = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.price || 0) * Number(row.quantity || 0)), 0);
   const actualEntryPrice = entryQuantity > 0 ? entryNotional / entryQuantity : numberOrNull(order?.filledPrice);

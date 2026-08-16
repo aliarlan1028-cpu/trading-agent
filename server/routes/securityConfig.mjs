@@ -1,5 +1,4 @@
-import { verifyAuditChain } from "../store.mjs";
-import { applyLiveTradingConfiguration, partitionAutonomousBlockers, autonomousProductionBlockers } from "../liveModeService.mjs";
+import { applyLiveTradingConfiguration } from "../liveModeService.mjs";
 import { listConfiguredModelCatalog, llmCircuitStatus } from "../llmGateway.mjs";
 
 // 安全与运行配置路由组（vault/交易所凭证/LLM 配置/实盘开关/密钥删除/告警/演练/审计链）——

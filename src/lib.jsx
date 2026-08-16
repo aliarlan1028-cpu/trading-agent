@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getLang, t } from "./i18n.js";
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";

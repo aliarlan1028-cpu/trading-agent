@@ -1,5 +1,3 @@
-import { normalizeEvidenceSymbol } from "./evidenceBundle.mjs";
-
 const NON_CURRENT = /^\s*(?:[-*>#\d.]+\s*)?(?:历史|曾经|当时|复盘|假设|如果|若|计划在|预计|预测|可能|候选|等待.+后)/i;
 
 function symbolForLine(line, facts = {}, activeSymbol = null) {

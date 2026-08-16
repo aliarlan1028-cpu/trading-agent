@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getLang, setLang, t } from "./i18n.js";
 import {
@@ -6,11 +6,7 @@ import {
   Bell,
   BookOpen,
   Bot,
-  BrainCircuit,
-  CalendarClock,
-  CheckCircle2,
   ChevronRight,
-  ClipboardList,
   PieChart,
   RefreshCw,
   Search,
@@ -18,15 +14,10 @@ import {
   Target,
   Globe,
   Info,
-  Shield,
   ShieldCheck,
-  FlaskConical,
-  UserPlus,
-  WalletCards,
-  Send,
   Zap
 } from "lucide-react";
-import { automationPresentation, displayMoney, exchangeState, localizeText, TurnstileWidget, useApi } from "./lib.jsx";
+import { automationPresentation, exchangeState, localizeText, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
 import { isNativeApp } from "./lib.jsx";
@@ -433,23 +424,6 @@ function App() {
   );
 }
 
-function BackendField({ apiBase, setApiBase, isNativeApp }) {
-  const [value, setValue] = useState(apiBase || "");
-  if (!isNativeApp) return null;
-  return (
-    <label className="backendField">
-      <span>{t("后端地址", "Server URL")}</span>
-      <input
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onBlur={() => setApiBase(value)}
-        placeholder={t("例如 https://yegidawir.xyz", "Example: https://yegidawir.xyz")}
-        inputMode="url"
-      />
-    </label>
-  );
-}
-
 function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError, isNativeApp }) {
   const [value, setValue] = useState(apiBase || "");
   function save(event) {
@@ -474,124 +448,6 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
         {isNativeApp && <button className="secondaryButton" type="button" onClick={() => refresh()}>{t("重新连接", "Reconnect")}</button>}
         {(connectionError || toast) && <small>{connectionError || toast}</small>}
       </form>
-    </div>
-  );
-}
-
-function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNativeApp, publicInfo }) {
-  const plans = publicInfo?.subscriptionPlans || [];
-  const defaultPlanId = plans[0]?.id || "";
-  const [mode, setMode] = useState("login");
-  const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
-  const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
-  const [application, setApplication] = useState(null);
-  const [mfaStep, setMfaStep] = useState(false);
-  useEffect(() => {
-    if (!selectedPlanId && defaultPlanId) setSelectedPlanId(defaultPlanId);
-  }, [defaultPlanId, selectedPlanId]);
-  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
-  async function submitLogin(event) {
-    event.preventDefault();
-    const email = loginForm.email.trim();
-    const result = await login({ email, password: loginForm.password, totp: loginForm.totp });
-    if (result?.mfaRequired) setMfaStep(true);
-  }
-  async function submitRegister(event) {
-    event.preventDefault();
-    const result = await registerAccount({ ...registerForm, planId: selectedPlan?.id });
-    if (result?.application) setApplication(result.application);
-  }
-  const flow = [["喂知识", BookOpen], ["读懂转成能力", BrainCircuit], ["采纳即用", CheckCircle2], ["下单前硬风控", ShieldCheck], ["自动执行", Zap], ["在用复盘·留退", RefreshCw]];
-  const features = [
-    [BookOpen, "知识闭环", "导入你信任的交易书籍与文章，系统读懂后转成可直接用的策略、分析提示词与风控纪律，每一条都带来源引用。"],
-    [ShieldCheck, "执行前风控", "每笔计划在下单前都会重跑硬风控，触及杠杆、单日亏损或授权边界即被拦截。"],
-    [Shield, "授权边界", "交易所、杠杆、单日最大亏损由你设定，Agent 不得越权；API 密钥只留在后端且无提币权限。"],
-    [RefreshCw, "复盘进化", "每次平仓自动复盘；实盘表现持续变差的策略会被自动降级、退役。"]
-  ];
-  return (
-    <div className="landingShell">
-      <div className="landingTopbar">
-        <span className="landingBrand"><span className="landingLogo"><BrandLogo size={24} variant={isNativeApp ? "black" : "white"} /></span><strong>KORDYN</strong><em>知识驱动的 AI 交易员</em></span>
-      </div>
-      <main className="landingHero split">
-        <section className="landingMarketing">
-          <span className="landingEyebrow">AI 交易员 · 知识驱动</span>
-          <h2 className="landingTitle">把你的交易书，<br />变成一个<span className="landingHl">守纪律</span>的 AI 交易员</h2>
-          <p className="landingSub">导入你信任的交易书籍与文章，系统读懂后转成可直接使用的策略、分析提示词与风控纪律。每一笔真实下单前都重跑硬风控、受你设定的授权边界与额度约束；用真实表现持续复盘，好的留下、差的自动退役——全程可复盘、可追溯。</p>
-          <div className="landingStats">
-            {[["书→能力", "策略/提示词/工作流"], ["在用验证", "真实表现留/退"], ["每一笔", "下单前重跑风控"], ["0", "提币权限"]].map(([n, l]) => (
-              <div className="landingStat" key={l}><b>{n}</b><span>{l}</span></div>
-            ))}
-          </div>
-          <div className="landingFlow">
-            {flow.map(([label, Icon], i) => (
-              <React.Fragment key={label}>
-                {i > 0 && <span className="landingFlowArrow">›</span>}
-                <span className="landingFlowStep"><Icon size={14} /> {label}</span>
-              </React.Fragment>
-            ))}
-          </div>
-          <div className="landingFeatures">
-            {features.map(([Icon, title, desc]) => (
-              <div className="landingFeature" key={title}>
-                <span className="landingFeatureIcon"><Icon size={16} /></span>
-                <b>{title}</b>
-                <p>{desc}</p>
-              </div>
-            ))}
-          </div>
-          <div className="landingChecks">
-            {["实盘写入默认关闭", "交易所密钥只在后端", "API 无提币权限", "计划必过执行前风控"].map((item) => <span key={item}><CheckCircle2 size={14} /> {item}</span>)}
-          </div>
-          <p className="landingDisclaimer">风险提示：加密货币交易风险极高，可能损失全部本金。历史回测与模拟盘验证不代表未来收益；本系统提供纪律执行与工具，不构成任何投资建议。</p>
-        </section>
-        <aside className="landingPanel">
-          <div className="landingModeTabs">
-            <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>登录</button>
-            <button className={mode === "subscribe" ? "active" : ""} onClick={() => setMode("subscribe")}>订阅</button>
-          </div>
-          <BackendField apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} />
-          {mode === "login" ? (
-            <form className="landingForm" onSubmit={submitLogin}>
-              <label><span>邮箱</span><input value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
-              <label><span>密码</span><input type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="登录密码" /></label>
-              {mfaStep && <label><span>动态验证码</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6 位验证码" autoFocus /></label>}
-              <button className="primaryButton" type="submit">{mfaStep ? "验证并继续" : "进入交易驾驶舱"}</button>
-              <button className="textButton centered" type="button" onClick={() => setMode("subscribe")}>还没有订阅？先开通账号 <ChevronRight size={14} /></button>
-            </form>
-          ) : (
-            <form className="landingForm" onSubmit={submitRegister}>
-              <div className="planSelector">
-                {plans.map((plan) => (
-                  <button type="button" className={selectedPlan?.id === plan.id ? "active" : ""} key={plan.id} onClick={() => setSelectedPlanId(plan.id)}>
-                    <span>{plan.name}</span><b>{displayMoney(plan.priceUsdt, 0, "0")} USDT</b><small>{plan.months || 1} 个月</small>
-                  </button>
-                ))}
-                {!plans.length && <div className="emptyPanel">Owner 还没有启用订阅套餐。</div>}
-              </div>
-              <label><span>姓名</span><input value={registerForm.name} onChange={(event) => setRegisterForm({ ...registerForm, name: event.target.value })} placeholder="你的名字" /></label>
-              <label><span>邮箱</span><input value={registerForm.email} onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })} placeholder="you@example.com" /></label>
-              {publicInfo?.inviteRequired && <label><span>邀请码</span><input value={registerForm.inviteCode} onChange={(event) => setRegisterForm({ ...registerForm, inviteCode: event.target.value })} placeholder="INV-..." /></label>}
-              <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptTerms} onChange={(event) => setRegisterForm({ ...registerForm, acceptTerms: event.target.checked })} /><span>我同意<a href={publicInfo?.termsUrl || "#"} target="_blank" rel="noreferrer">服务条款</a>（版本 {publicInfo?.termsVersion || "当前"}）</span></label>
-              <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptPrivacy} onChange={(event) => setRegisterForm({ ...registerForm, acceptPrivacy: event.target.checked })} /><span>我同意<a href={publicInfo?.privacyUrl || "#"} target="_blank" rel="noreferrer">隐私政策</a></span></label>
-              <label className="lpConsent"><input type="checkbox" checked={registerForm.acknowledgeRisk} onChange={(event) => setRegisterForm({ ...registerForm, acknowledgeRisk: event.target.checked })} /><span>我理解加密货币交易可能损失全部本金</span></label>
-              <TurnstileWidget siteKey={publicInfo?.turnstileSiteKey} onToken={(turnstileToken) => setRegisterForm((current) => ({ ...current, turnstileToken }))} />
-              <button className="primaryButton" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}><UserPlus size={16} /> 提交独立实例开通申请</button>
-              {!publicInfo?.registrationEnabled && <small>当前未开放客户实例申请，请联系 Owner。</small>}
-              {publicInfo?.registrationEnabled && !publicInfo?.capacity?.canProvision && <small>申请入口开放，但当前容量已满，新申请将进入候补队列。</small>}
-              {application && <div className="paymentBox"><strong>申请已收到</strong><span>{application.id}</span><small>状态：{application.status}。请查收验证邮件或等待人工审核；系统尚未创建交易账号。</small></div>}
-            </form>
-          )}
-          <div className="landingChecks">
-            {["实盘写入默认关闭", "交易所密钥只在后端", "计划必须经过风控"].map((item) => <span key={item}><CheckCircle2 size={14} /> {item}</span>)}
-          </div>
-          {toast && <small className="landingToast">{toast}</small>}
-        </aside>
-      </main>
-      <a className="contactFab" href="https://t.me/e2ptradingclub" target="_blank" rel="noopener noreferrer" title="Telegram 联系我们">
-        <Send size={18} /> 联系我们
-      </a>
     </div>
   );
 }

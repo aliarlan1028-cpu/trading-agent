@@ -180,9 +180,7 @@ export function buildSupportDiagnostics(db, question, pageContext = {}) {
   const evidence = ["support_tool:system_status", "support_tool:account_snapshot"];
 
   if (/等待入场|条件计划|条件已武装|armed|委托|挂单|下单|持仓/.test(q)) {
-    const planById = new Map((db.tradePlans || []).map((row) => [row.id, row]));
     facts.push(armed.length ? `等待入场明细：${armed.slice(0, 8).map((setup) => {
-      const plan = planById.get(setup.planId) || {};
       const trigger = setup.trigger || {};
       const condition = trigger.kind === "enter_zone" ? `${trigger.levelLow}-${trigger.levelHigh}` : `${trigger.kind}@${trigger.level}`;
       return `${setup.symbol} ${setup.direction}，条件 ${condition}，确认规则 ${(trigger.confirmations || []).map((row) => `${row.timeframe}:${row.kind}`).join("+") || "仅价格"}，到期 ${setup.expiresAt}`;

@@ -131,7 +131,7 @@ export function refreshApiKeyMetadata(db) {
   return db.apiKeyMetadata;
 }
 
-async function fetchPublicTicker(exchange, symbol) {
+async function fetchPublicTicker(symbol) {
   const timer = timeoutSignal();
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
@@ -163,12 +163,12 @@ async function fetchPublicTicker(exchange, symbol) {
 
 // 高频只读场景（观察哨每分钟核对）用：拉一次 ticker，不写审计/trace，不动 db。
 export async function fetchTickerQuiet(symbol, exchange = "OKX") {
-  return fetchPublicTicker("OKX", symbol);
+  return fetchPublicTicker(symbol);
 }
 
 // 中频采样专用：复用公开 ticker 但不写审计/trace，避免每2分钟每币制造运维噪声。
 export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
-  const ticker = await fetchPublicTicker("OKX", symbol);
+  const ticker = await fetchPublicTicker(symbol);
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -196,7 +196,7 @@ export async function fetchFundingPercentile(symbol, pct = 85) {
 
 export async function syncPublicMarket(db, exchange = "OKX", symbol = "BTC/USDT") {
   exchange = "OKX";
-  const ticker = await fetchPublicTicker("OKX", symbol);
+  const ticker = await fetchPublicTicker(symbol);
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -308,7 +308,6 @@ function bookImbalance(bids = [], asks = []) {
 
 // 同步微观结构并缓存到 market 对象，返回带解读的摘要。
 export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT", options = {}) {
-  exchange = "OKX";
   const result = await fetchMicrostructureRaw("OKX", symbol);
   const usedExchange = "OKX";
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
@@ -412,7 +411,6 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
 // 回测用：只拉 OKX 历史 K 线，不允许用另一交易所数据替代执行市场。
 // limit>300 时对 OKX 走分页，凑足样本（专业回测需要足够 bar）。
 export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX") {
-  exchange = "OKX";
   if (limit > 300) {
     try {
       const paged = await fetchOkxKlinesPaged(symbol, timeframe, limit);
@@ -425,7 +423,6 @@ export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300,
 }
 
 export async function syncPublicKlines(db, exchange = "OKX", symbol = "BTC/USDT", timeframe = "1h", options = {}) {
-  exchange = "OKX";
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -627,36 +624,6 @@ export async function normalizeOkxSnapshotPositions(rows = [], options = {}) {
       positionQuantityBasis: ctVal !== null ? "okx_contracts_times_ctVal" : "contract_spec_unavailable"
     };
   }));
-}
-
-async function syncBinanceReadOnly() {
-  if (!process.env.BINANCE_API_KEY || !process.env.BINANCE_API_SECRET) {
-    return { status: "missing_credentials", error: "BINANCE_API_KEY or BINANCE_API_SECRET is missing" };
-  }
-  try {
-    const [accountResult, positionResult, openOrdersResult, fundingResult, permissionResult] = await Promise.allSettled([
-      binanceSignedRequest("/api/v3/account"),
-      binanceSignedRequest("/fapi/v3/positionRisk"),
-      binanceSignedRequest("/fapi/v1/openOrders"),
-      binancePublicRequest(`${BINANCE_USDM_BASE}/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1`),
-      binanceSignedRequest("/sapi/v1/account/apiRestrictions")
-    ]);
-    const account = accountResult.status === "fulfilled" ? accountResult.value : {};
-    const positions = positionResult.status === "fulfilled" ? positionResult.value : [];
-    const openOrders = openOrdersResult.status === "fulfilled" ? openOrdersResult.value : [];
-    const funding = fundingResult.status === "fulfilled" ? fundingResult.value : [];
-    const apiPermissions = permissionResult.status === "fulfilled" ? permissionResult.value : { status: "unavailable", error: permissionResult.reason?.message };
-    return {
-      status: "ok",
-      balances: (account.balances || []).filter((item) => Number(item.free) || Number(item.locked)).slice(0, 50),
-      positions: Array.isArray(positions) ? positions.filter((item) => Number(item.positionAmt || 0) !== 0) : [],
-      openOrders: Array.isArray(openOrders) ? openOrders.map(maskOrder).slice(0, 50) : [],
-      fundingRates: Array.isArray(funding) ? funding.slice(0, 5) : [],
-      apiPermissions
-    };
-  } catch (error) {
-    return { status: "request_failed", error: error.message };
-  }
 }
 
 async function applyPrivateSnapshotToState(db, snapshot) {
@@ -1004,17 +971,6 @@ export async function fetchOkxPendingPages(path, options = {}) {
     after = next;
   }
   return { rows, complete: false, reason: "okx_pending_pagination_limit", pages: maxPages };
-}
-
-async function binancePublicRequest(url) {
-  const timer = timeoutSignal();
-  try {
-    const response = await fetch(url, { signal: timer.signal });
-    if (!response.ok) throw new Error(`Binance public HTTP ${response.status}`);
-    return response.json();
-  } finally {
-    timer.cancel();
-  }
 }
 
 export async function binanceSignedRequest(pathname, params = {}, options = {}) {

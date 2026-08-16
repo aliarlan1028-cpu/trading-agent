@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const CONCEPT_COLORS = { 技术: "#2A6FDB", 风控: "#C43F28", 心理: "#7A4FD0", 宏观: "#D06A22", 结构: "#1F7A50", 资金: "#B08900", 其他: "#8a8172" };
 

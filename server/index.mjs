@@ -1,5 +1,4 @@
 import cors from "cors";
-import crypto from "node:crypto";
 import dotenv from "dotenv";
 import "express-async-errors";
 import express from "express";
@@ -314,7 +313,7 @@ for (const server of db.mcpServers || []) {
   }
   if (!stale.size) return;
   let redone = 0;
-  for (const [key, skill] of stale) {
+  for (const skill of stale.values()) {
     const method = (db.knowledge?.tradingMethods || []).find((m) => m.id === skill.sourceMethodId);
     if (!method) continue;
     try {
@@ -951,13 +950,6 @@ async function verifyTrc20Payments(db, options = {}) {
       appendAudit(db, `TRC20 链上确认订阅：${evidence.txid}`, payment.id, "PaymentVerifier");
     }
   });
-}
-
-async function importAndMaybeParseKnowledge(payload = {}) {
-  const source = await importKnowledgeReal(db, payload);
-  if (payload.autoParse === false) return { message: "知识来源已导入，尚未解析", source };
-  const parsed = await parseKnowledgeRealSource(db, source.id);
-  return { message: parsed.message || "知识来源已导入并解析", source: parsed.source || source, parsed };
 }
 
 // 先把来源落库并立即响应，再在后台做可能长耗时（LLM 按书名蒸馏 / 抓取网页）的解析——

@@ -31,7 +31,7 @@ function momentumScore(changePct) {
   // 每 1% 涨跌 ≈ 6 分，封顶 ±30；温和线性、可解释。
   return { score: clamp(50 + c * 6), note: null };
 }
-function fundingScore(fundingRate, changePct) {
+function fundingScore(fundingRate) {
   const f = num(fundingRate);
   if (f === null) return { score: 50, note: "缺资金费率，微观中性" };
   // 极端资金费率=多空拥挤，给反向修正（正费率过高→偏空修正，反之）。
@@ -105,7 +105,7 @@ export function deterministicDecision({ market = {}, smartMoney = null, mandate 
     return { direction: "observe", confidence: 0, scores: {}, plan: null, reasons: ["缺实时价格，无法决策"], deterministic: true };
   }
   const m = momentumScore(market.changePct); if (m.note) reasons.push(m.note);
-  const f = fundingScore(market.fundingRate, market.changePct); if (f.note) reasons.push(f.note);
+  const f = fundingScore(market.fundingRate); if (f.note) reasons.push(f.note);
   const b = bookScore(market.bookImbalancePct); if (b.note) reasons.push(b.note);
   const s = smartMoneyScore(smartMoney?.topTraderLongShortRatio); if (s.note) reasons.push(s.note);
   const scores = { momentum: m.score, funding: f.score, book: b.score, smartMoney: s.score };

@@ -3139,10 +3139,6 @@ function summarizeToolResult(name, result = {}) {
   return JSON.stringify(result).slice(0, 120);
 }
 
-function sanitizeArgs(args = {}) {
-  return scrubSecrets(args);
-}
-
 function buildHistoryForLlm(db, sessionId) {
   return (db.chatMessages || []).filter((message) => (!sessionId || message.sessionId === sessionId) && !containsLikelySecret(message.content)).slice(-12, -1).map((message) => ({
     role: message.role === "agent" ? "assistant" : "user",

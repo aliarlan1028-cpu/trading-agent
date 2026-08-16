@@ -84,10 +84,6 @@ function number(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function pct(value) {
-  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "暂无数据";
-}
-
 function hourBucket(value) {
   const date = new Date(value || Date.now());
   if (Number.isNaN(date.getTime())) return "未知";

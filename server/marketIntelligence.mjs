@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import * as cheerio from "cheerio";
 import { fetchExternalText } from "./externalInputSafety.mjs";
 import { createNotification } from "./notificationStore.mjs";
-import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { appendAudit, appendTrace, nowIso } from "./store.mjs";
 import { getOfficialCalendar, refreshOfficialCalendar } from "./officialCalendar.mjs";
 import { buildMacroRegimeContext, macroRegimeForPrompt } from "./macroRegime.mjs";
 

@@ -2,7 +2,7 @@
 // 从 index.mjs 按 registrar 范式迁出（与逻辑模块 server/knowledgeSkills.mjs 不冲突,本文件在 routes/ 下）。
 // GET 只返回快照；生命周期同步由显式写路由或后台任务执行。
 export function registerKnowledgeSkillRoutes(app, ctx) {
-  const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, syncKnowledgeSkillLifecycle, approveKnowledgeSkill, retireKnowledgeSkill, runBacktest } = ctx;
+  const { db, persist, saveDb, requirePermission, nowIso, appendAudit, knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, syncKnowledgeSkillLifecycle, approveKnowledgeSkill, retireKnowledgeSkill, runBacktest } = ctx;
 
   app.get("/api/knowledge/skills", requirePermission("knowledge.read"), (_req, res) => res.json(knowledgeSkillSummary(db, { sync: false })));
 

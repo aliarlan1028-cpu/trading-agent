@@ -62,7 +62,6 @@ test("自定义事件源会以规范化 URL 落库且客户端可信度不能提
 });
 
 test("事件源在保存时执行 SSRF 安全校验", async () => {
-  const { routes } = harness();
   const res = response();
   // 覆盖默认 mock，让本机/内网类目标在落库前被拒绝。
   // registrar 捕获的是 ctx 中的函数，因此另建最小 harness。

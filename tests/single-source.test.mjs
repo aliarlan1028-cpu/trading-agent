@@ -19,7 +19,7 @@ test("SKILL_STATE 只定义在 lib.jsx，桌面/移动都从 lib 导入", () => 
     else assert.equal(defs, 0, `${f} 不得自带 SKILL_STATE 副本`);
     assert.ok(!/const MSKILL\s*=/.test(s), `${f} 不得存在旧的 MSKILL 副本`);
   }
-  for (const f of ["pages.jsx", "mobile.jsx"]) {
+  for (const f of ["conceptPages.jsx", "mobile.jsx"]) {
     assert.match(read(f), /import\s*\{[^}]*\bSKILL_STATE\b[^}]*\}\s*from\s*"\.\/lib\.jsx"/, `${f} 应从 lib 导入 SKILL_STATE`);
   }
 });

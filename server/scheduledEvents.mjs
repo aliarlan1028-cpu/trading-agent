@@ -28,7 +28,6 @@ function generateDeterministic(now = Date.now()) {
   const out = [];
   const base = new Date(now);
   const y0 = base.getUTCFullYear();
-  const m0 = base.getUTCMonth();
   // 季度交割:向后 5 个季度扫季末月
   for (let q = 0; q < 6; q += 1) {
     const y = y0, m = 2 + q * 3; // Mar(2)/Jun(5)/Sep(8)/Dec(11)/next Mar...

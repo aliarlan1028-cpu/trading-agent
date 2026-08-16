@@ -467,12 +467,6 @@ function redactUrl(url) {
   return url.replace(/listenKey=[^&]+/i, "listenKey=***");
 }
 
-function buildOkxLoginPreview() {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET || "").update(`${timestamp}GET/users/self/verify`).digest("base64");
-  return { op: "login", args: [{ apiKey: "***", passphrase: "***", timestamp, sign: sign ? "***" : "" }], ws: okxEnvironmentConfig().privateWs };
-}
-
 function upsertBinanceExecution(db, payload) {
   const orderId = String(payload.i || payload.c || id("ord"));
   const existing = db.orders.find((order) => order.exchangeOrderId === orderId || order.clientOrderId === payload.c);

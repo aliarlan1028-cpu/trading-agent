@@ -1,10 +1,9 @@
 // 渲染冒烟测试：esbuild 打包前端组件 + renderToString 逐页/逐 tab/逐面板渲染。
-// 背景：vite build 抓不到未导入的 JSX 标识符（曾因 pages.jsx 缺 Trash2 导致全站白屏，commit 3ebbf9c）。
+// 背景：vite build 抓不到未导入的 JSX 标识符；这里直接打包并渲染当前真实工作区组件。
 // 本测试用真实形状的 fixture 数据把桌面页、移动端、面板全部渲染一遍，ReferenceError/数据形状崩溃在 CI 即暴露。
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -29,13 +28,6 @@ const React = require("react");
 const { renderToString } = require("react-dom/server");
 
 // 打字机等基于 setInterval 的 hook 在 SSR 下不运行，无需 stub timer 细节。
-// KnowledgeSkillsPage 的 tab 初始值是 useState("methods")——为逐 tab 渲染，把该初始值替换为目标 tab。
-const origUseState = React.useState;
-let TAB_OVERRIDE = null;
-React.useState = function (init) {
-  if (TAB_OVERRIDE && init === "methods") return origUseState.call(this, TAB_OVERRIDE);
-  return origUseState.call(this, init);
-};
 
 // —— esbuild 打包（react 外置，保证与本测试同一实例）——
 const esbuild = require("esbuild");
@@ -47,7 +39,8 @@ process.on("exit", () => { try { fs.rmSync(outFile, { force: true }); } catch { 
 esbuild.buildSync({
   stdin: {
     contents: `
-      export { MarketAccountPage, EventsTasksPage, KnowledgeSkillsPage, RiskAuthPage, AuditSystemPage, AgentProfilesPanel, AdminPage, ConceptGraph } from "./src/pages.jsx";
+      export { ConceptGraph } from "./src/conceptGraph.jsx";
+      export { AiTraderCenter, TradingCenter, ResearchCenter, RiskCenter, OperationsCenter } from "./src/workspacePages.jsx";
       export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
       export { ChatPage, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
@@ -389,12 +382,11 @@ const render = (el) => renderToString(el);
 
 test("desktop pages render with realistic data (all statuses)", () => {
   const pages = {
-    MarketAccountPage: C.MarketAccountPage,
-    EventsTasksPage: C.EventsTasksPage,
-    RiskAuthPage: C.RiskAuthPage,
-    AuditSystemPage: C.AuditSystemPage,
-    AgentProfilesPanel: C.AgentProfilesPanel,
-    ChatPage: C.ChatPage
+    AiTraderCenter: C.AiTraderCenter,
+    TradingCenter: C.TradingCenter,
+    ResearchCenter: C.ResearchCenter,
+    RiskCenter: C.RiskCenter,
+    OperationsCenter: C.OperationsCenter
   };
   for (const [name, Comp] of Object.entries(pages)) {
     const html = render(React.createElement(Comp, { data, action, ui }));
@@ -522,18 +514,6 @@ test("orders and fills render together on the dedicated ledger subpage", () => {
   assert.ok(html.includes("成交流水"));
   assert.match(html, /价格毛盈亏/);
   assert.doesNotMatch(html, /已实现盈亏/);
-});
-
-test("knowledge page renders every tab (methods/skills/rules/graph/ext)", () => {
-  for (const tab of ["methods", "skills", "rules", "graph", "ext"]) {
-    TAB_OVERRIDE = tab;
-    try {
-      const html = render(React.createElement(C.KnowledgeSkillsPage, { data, action, ui }));
-      assert.ok(html.length > 100, `knowledge tab=${tab} 渲染输出过短`);
-    } finally {
-      TAB_OVERRIDE = null;
-    }
-  }
 });
 
 test("concept graph dedupes duplicate names and renders", () => {

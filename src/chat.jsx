@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { uiConfirm, uiPrompt } from "./confirm.jsx";
+import { uiConfirm } from "./confirm.jsx";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import {
   AlertTriangle,
@@ -20,7 +20,6 @@ import {
   Radar,
   RefreshCw,
   Rocket,
-  Search,
   Trash2,
   ListChecks,
   Plus,
@@ -32,7 +31,6 @@ import {
   XCircle,
   Zap,
   Download,
-  Database,
   Layers3,
   Clock3,
   Image as ImageIcon,
@@ -577,72 +575,12 @@ function directionLabel(direction = "neutral") {
   return t("中性", "Neutral");
 }
 
-function structureLabel(structure) {
-  if (!structure) return t("结构样本不足", "Structure unavailable");
-  const direction = structure.direction === "long" ? t("上行", "Up") : structure.direction === "short" ? t("下行", "Down") : t("震荡", "Range");
-  const phase = {
-    pullback: t("回调", "Pullback"), rebound: t("反弹", "Rebound"),
-    continuation: t("延续", "Continuation"), range: t("区间", "Range")
-  }[structure.phase] || humanize(structure.phase, "");
-  return [direction, structure.sequence, phase].filter(Boolean).join(" · ");
-}
-
-function timeframeTone(frame) {
-  const direction = frame?.structure?.direction;
-  if (frame?.status === "insufficient") return "muted";
-  if (frame?.flow?.divergence && frame.flow.divergence !== "none") return "warning";
-  if (direction === "long") return "long";
-  if (direction === "short") return "short";
-  return "neutral";
-}
-
-function signedPct(value, digits = 2) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "—";
-  return `${number > 0 ? "+" : ""}${number.toFixed(digits)}%`;
-}
-
 function compactNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
   return Math.abs(number) >= 1_000_000 ? `${(number / 1_000_000).toFixed(1)}M`
     : Math.abs(number) >= 1_000 ? `${(number / 1_000).toFixed(1)}K`
       : number.toFixed(Math.abs(number) < 10 ? 2 : 0);
-}
-
-function nextActionLabel(action = {}) {
-  const labels = {
-    analysis_only: ["当前仅为分析结论；未建立计划或订单", "Analysis only; no plan or order exists"],
-    watch_primary_condition: ["先盯主观察条件；命中后重新分析，不会直接下单", "Watch the primary condition; a hit triggers re-analysis, not an order"],
-    approve_or_reject: ["检查计划与风控后，批准或拒绝本计划", "Review the plan and risk checks, then approve or reject"],
-    wait_for_trigger: ["等待价格与结构确认；触发前不会向 OKX 下单", "Wait for price and structure confirmation; no OKX order before the trigger"],
-    wait_for_fill: ["入场单已提交，等待成交或撤单", "Entry order submitted; waiting for fill or cancellation"],
-    monitor_position: ["关注保护单、失效条件与持仓风险", "Monitor protection orders, invalidation, and position risk"],
-    review_closed_trade: ["核对净收益并查看平仓复盘", "Review net PnL and the closed-trade review"],
-    rebuild_plan: ["不要绕过风控；修正结构或参数后重新生成计划", "Do not bypass risk controls; rebuild the plan with corrected structure or parameters"],
-    inspect_execution_block: ["查看执行阻断原因并按恢复条件处理", "Inspect the execution block and follow its recovery condition"],
-    review_error: ["检查本轮错误；没有产生可执行结论", "Review the error; no executable decision was produced"]
-  };
-  const pair = labels[action.code] || ["查看完整分析后决定下一步", "Open the full analysis before deciding the next step"];
-  return `${t(pair[0], pair[1])}${action.detail ? ` · ${action.detail}` : ""}`;
-}
-
-function currentNextAction(snapshotAction, state) {
-  if (!state) return snapshotAction;
-  if (state === "awaiting_approval") return { code: "approve_or_reject" };
-  if (state === "armed") return { code: "wait_for_trigger" };
-  if (state === "entry_pending") return { code: "wait_for_fill" };
-  if (["entry_filled", "protecting"].includes(state)) return { code: "monitor_position" };
-  if (state === "closed") return { code: "review_closed_trade" };
-  if (["risk_rejected", "blocked", "setup_rejected", "protection_failed", "failed"].includes(state)) return { code: "inspect_execution_block", detail: snapshotAction?.detail };
-  return snapshotAction;
-}
-
-function watchConditionLabel(watch) {
-  if (!watch) return null;
-  if (watch.kind === "price_above") return `${t("向上突破", "Break above")} ${displayPrice(watch.level)}`;
-  if (watch.kind === "price_below") return `${t("向下跌破", "Break below")} ${displayPrice(watch.level)}`;
-  return `${t("进入区间", "Enter zone")} ${displayPrice(watch.levelLow)}–${displayPrice(watch.levelHigh)}`;
 }
 
 function executionStageState(status, stage) {
@@ -1029,12 +967,11 @@ export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
   );
 }
 
-function AgentRail({ data, action, ui, send }) {
+function AgentRail({ data, action, ui }) {
   const system = data.system || {};
   const agentStatus = data.agentStatus || {};
   const riskWall = agentStatus.riskWall || {};
   const portfolio = data.portfolio || {};
-  const perf = data.performance || {};
   const mandate = (data.mandates || []).find((m) => ["active", "running"].includes(m.status)) || {};
   const hasMandate = Boolean(mandate.id);
   // 多仓/多计划:全部取出,卡片可切换逐个看(此前只 find 出一个,多仓时看不到其余)。
@@ -1054,14 +991,8 @@ function AgentRail({ data, action, ui, send }) {
     const rr = Math.abs(tp - entry) / Math.abs(entry - stop);
     return Number.isFinite(rr) && rr > 0 ? rr.toFixed(2) : null;
   })();
-  const positions = data.positions || [];
-  const gm = data.marketRegime?.global || {};
   const sm = data.marketRegime?.smartMoney || {};
-  const btc = (data.markets || []).find((m) => /BTC/i.test(m.symbol || ""));
   const latestRun = (data.agentRuns || [])[0] || {};
-  const todayPnl = Number(portfolio.todayPnl || 0);
-  // 累计盈亏 = performanceReport 全时段真实合计；不再回退 weekPnl（后端从未写入的死字段）。
-  const cumPnl = Number(perf.totalPnlUsdt ?? 0);
   const runtime = automationPresentation(data);
   const autonomyPaused = system.autonomyEnabled === false;
   const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
@@ -1077,9 +1008,6 @@ function AgentRail({ data, action, ui, send }) {
   const remaining = system.remainingDailyLossUsdt;
   const cap = mandate.maxDailyLossPct && portfolio.totalEquityUsdt ? (Number(mandate.maxDailyLossPct) / 100) * Number(portfolio.totalEquityUsdt) : null;
   const budgetPct = cap && remaining != null ? Math.max(0, Math.min(100, (Number(remaining) / cap) * 100)) : null;
-  // 只认真实同步的可用保证金；缺失就是 null——旧回退 totalEquity 会假装"持仓风险 0.0%"。
-  const marginRate = marginUsage(portfolio).marginRatePct;
-
   const mandateRows = hasMandate ? [
     { k: t("允许的市场", "Allowed market"), v: humanize(mandate.marketTypes?.[0] || "perpetual_usdt", "永续") },
     { k: t("交易所", "Exchange"), v: (mandate.exchanges || []).join("·") || "—" },
@@ -1099,14 +1027,6 @@ function AgentRail({ data, action, ui, send }) {
     t: (s.title || humanize(s.phase, "步骤")).slice(0, 6),
     time: s.createdAt ? formatTime(s.createdAt) : "—"
   }));
-
-  const kpis = [
-    { k: t("总资产", "Equity"), v: displayMoney(portfolio.totalEquityUsdt, 0, "—"), d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: Number(portfolio.todayPnl || 0) >= 0 },
-    { k: t("持仓风险", "Position risk"), v: marginRate == null ? "—" : `${marginRate.toFixed(1)}%`, d: `${positions.length} ${t("仓", "pos")}`, plain: true },
-    { k: t("今日盈亏", "Today PnL"), v: `${todayPnl >= 0 ? "+" : ""}${displayMoney(todayPnl, 0, "0")}`, d: portfolio.todayPnlPct != null ? displayPct(portfolio.todayPnlPct) : "", pos: todayPnl >= 0, colorVal: true },
-    { k: t("累计盈亏", "Cumulative PnL"), v: `${cumPnl >= 0 ? "+" : ""}${displayMoney(cumPnl, 0, "0")}`, d: perf.trades ? `${perf.trades} ${t("笔", "trades")}` : "", pos: cumPnl >= 0, colorVal: true },
-    { k: "BTC/USDT", v: btc ? displayMoney(btc.price, 0, "—") : "—", d: btc?.changePct != null ? displayPct(btc.changePct) : "", pos: Number(btc?.changePct || 0) >= 0 }
-  ];
 
   async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
   async function fireKill() { if (await uiConfirm(system.killSwitch ? t("确认恢复新交易？", "Resume new trading?") : t("确认紧急停止？系统会立即阻止所有新开仓。", "Activate the emergency stop? This immediately blocks all new position opens."))) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
@@ -1452,7 +1372,6 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   const [activeSessionId, setActiveSessionId] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [view, setView] = useState("chat");
-  const [llmConfigured, setLlmConfigured] = useState(true);
   const [provider, setProvider] = useState(null);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -1476,7 +1395,6 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
       setMessages(json.messages || []);
       setSessions(json.sessions || []);
       setActiveSessionId(json.activeSessionId || json.sessions?.[0]?.id || "");
-      setLlmConfigured(Boolean(json.llmConfigured));
       setProvider(json.provider);
     } catch {}
   }
@@ -1651,7 +1569,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
         </section>
       </div>}
 
-      {view === "intel" ? <IntelCenter action={action} data={data} /> : (<>
+      {view === "intel" ? <IntelCenter data={data} /> : (<>
       {!mobile && <div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
         <span className="agHistLabel">{t("对话历史", "History")}</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> {t("新建", "New")}</button>
@@ -1742,13 +1660,13 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
       </div>
       </>)}
     </div>
-    {view === "chat" && <AgentRail data={data} action={action} ui={ui} send={send} />}
+    {view === "chat" && <AgentRail data={data} action={action} ui={ui} />}
     </div>
   );
 }
 
 // 情报中心：把新闻聚合成的"事件专题"按热点排序展示，每个专题可展开看持续跟进的时间线。
-function IntelCenter({ action, data = {} }) {
+function IntelCenter({ data = {} }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

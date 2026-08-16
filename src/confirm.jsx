@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 // 全站统一的应用内确认弹窗,替代原生 window.confirm/prompt(浏览器灰框很丑)。
 // 用法:uiConfirm("要删除吗?").then(ok => { if (ok) ... })  或  if (await uiConfirm("...")) ...

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   AiDialogConcept, AuditConcept, CapabilitiesConcept, EventsConcept,
   ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept,
@@ -67,7 +67,7 @@ export function ResearchCenter({ data, action, ui, initialTab = "knowledge", str
 export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
   const [tab, setTab] = useState(initialTab);
   const pages = {
-    posture: <RiskPostureConcept data={data} action={action} ui={ui}/>,
+    posture: <RiskPostureConcept data={data} ui={ui}/>,
     mandate: <MandateConcept data={data} action={action} ui={ui}/>,
     rules: <RulesConcept data={data} action={action} ui={ui}/>
   };

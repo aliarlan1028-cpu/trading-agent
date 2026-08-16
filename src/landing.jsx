@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
