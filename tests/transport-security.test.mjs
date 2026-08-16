@@ -1,12 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { transportSecurityPolicy } from "../server/transportSecurity.mjs";
+import { transportSecurityPolicy, TRUSTED_REVERSE_PROXY_RANGES } from "../server/transportSecurity.mjs";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "../src/connectionSecurity.js";
 
 test("production API transport rejects HTTP and permits HTTPS", () => {
   assert.equal(transportSecurityPolicy({ secure: false, protocol: "http", path: "/api/auth/login", ip: "203.0.113.4" }, { NODE_ENV: "production" }).allowed, false);
   assert.equal(transportSecurityPolicy({ secure: true, protocol: "https", path: "/api/auth/login" }, { NODE_ENV: "production" }).allowed, true);
   assert.equal(transportSecurityPolicy({ secure: false, protocol: "http", path: "/api/health", ip: "127.0.0.1" }, { NODE_ENV: "production" }).label, "local_health_exception");
+});
+
+test("Docker bridge health probe is local-only while other HTTP routes remain closed", () => {
+  const dockerBridgeRequest = {
+    secure: false,
+    protocol: "http",
+    ip: "::ffff:172.18.0.1",
+    headers: { host: "127.0.0.1:8787" },
+  };
+  assert.equal(
+    transportSecurityPolicy({ ...dockerBridgeRequest, path: "/api/health" }, { NODE_ENV: "production" }).label,
+    "local_health_exception",
+  );
+  assert.deepEqual(
+    transportSecurityPolicy({ ...dockerBridgeRequest, path: "/api/auth/login" }, { NODE_ENV: "production" }),
+    { allowed: false, secure: false, status: 426, error: "https_required" },
+  );
+  assert.equal(
+    transportSecurityPolicy({ ...dockerBridgeRequest, path: "/api/health", headers: { host: "example.com" } }, { NODE_ENV: "production" }).allowed,
+    false,
+  );
+});
+
+test("reverse proxy trust is restricted to local and private network ranges", () => {
+  assert.deepEqual(TRUSTED_REVERSE_PROXY_RANGES, ["loopback", "linklocal", "uniquelocal"]);
 });
 
 test("client labels actual transport and only allows explicit local development HTTP", () => {

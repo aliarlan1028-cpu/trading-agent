@@ -20,7 +20,7 @@ import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerAllRoutes } from "./routes/index.mjs";
-import { transportSecurityPolicy } from "./transportSecurity.mjs";
+import { transportSecurityPolicy, TRUSTED_REVERSE_PROXY_RANGES } from "./transportSecurity.mjs";
 import { compareOverviewShadowFacts, overviewShadowFacts } from "./overviewShadow.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, invalidateUserSessions, requirePermission, resolvePermissions, verifyPassword } from "./auth.mjs";
 import { consumeStreamTicket, issueStreamTicket, STREAM_TICKET_TTL_MS } from "./streamTickets.mjs";
@@ -137,7 +137,10 @@ const app = express();
 app.use(recordHttpPerformance);
 // 生产只接受本机 Caddy 注入的 X-Forwarded-For；应用端口本身仅绑定 127.0.0.1。
 // 这样注册/登录限流能拿到真实访客 IP，又不会信任公网客户端伪造的转发头。
-app.set("trust proxy", "loopback");
+// Caddy runs on the host while the app runs on Docker's private bridge. Trust
+// only loopback/link-local/private proxy hops so req.secure reflects Caddy's
+// X-Forwarded-Proto=https without trusting arbitrary public sources.
+app.set("trust proxy", TRUSTED_REVERSE_PROXY_RANGES);
 const databaseLoadStartedAt = performance.now();
 const db = loadDb();
 recordStartupPhase("database_load", databaseLoadStartedAt);
