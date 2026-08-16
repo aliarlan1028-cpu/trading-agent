@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getLang, t } from "./i18n.js";
+import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
+import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
 
 export function TurnstileWidget({ siteKey, onToken }) {
   const hostRef = useRef(null);
@@ -590,7 +592,7 @@ export async function haptic(style = "light") {
   } catch { /* 无 haptics 或不支持:忽略 */ }
 }
 
-export function resolveApiBase({ native = isNativeApp(), stored = localStorage.getItem("agent_api_base") || "", configured = import.meta.env.VITE_API_BASE_URL || "" } = {}) {
+export function resolveApiBase({ native = isNativeApp(), stored = localStorage.getItem("agent_api_base") || "", configured = import.meta.env?.VITE_API_BASE_URL || "" } = {}) {
   // Web deployments must stay same-origin by default. A value saved months ago
   // for local development (localhost, an IP, or an old port) must never override
   // the HTTPS origin that served the current page; doing so made a healthy
@@ -606,7 +608,7 @@ function defaultApiBase() {
 }
 
 function nativeApiFallback() {
-  return normalizeApiBase(import.meta.env.VITE_API_BASE_URL || "https://yegidawir.xyz");
+  return normalizeApiBase(import.meta.env?.VITE_API_BASE_URL || "https://yegidawir.xyz");
 }
 
 function normalizeApiBase(value = "") {
@@ -624,6 +626,10 @@ export function apiUrl(path, baseOverride) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   const controller = new AbortController();
+  const externalSignal = options.signal;
+  const abortFromExternal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else externalSignal?.addEventListener?.("abort", abortFromExternal, { once: true });
   const timer = window.setTimeout(() => {
     const timeoutError = new Error("Request timed out");
     timeoutError.name = "TimeoutError";
@@ -633,6 +639,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
     return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
   } finally {
     window.clearTimeout(timer);
+    externalSignal?.removeEventListener?.("abort", abortFromExternal);
   }
 }
 
@@ -665,7 +672,7 @@ export function authHeaders(extra = {}) {
 }
 
 // 在途执行单状态（与后端 executionEngine OPEN_EXECUTION_STATES 对齐；曾有 3 份复制、1 份写错）。
-export const OPEN_EXECUTION_STATES = ["submitted", "entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending", "entry_filled", "protecting", "protecting_degraded", "close_pending", "close_unknown_pending", "close_reconciliation_pending", "group_close_pending"];
+export const OPEN_EXECUTION_STATES = ["created", "submitted", "entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending", "entry_filled", "protecting", "protecting_degraded", "close_pending", "close_unknown_pending", "close_reconciliation_pending", "group_close_pending", "recovery_pending_reconciliation", "emergency_close_pending"];
 export function countOpenExecutions(orders = []) {
   return orders.filter((o) => OPEN_EXECUTION_STATES.includes(String(o.status || "").toLowerCase())).length;
 }
@@ -818,9 +825,56 @@ export function useApi() {
   const sectionInFlightRef = useRef(new Map());
   const loadedSectionsRef = useRef(new Set());
   const activeSectionRef = useRef("chat");
-  const revisionRef = useRef(0);
   const lastCoreSyncRef = useRef(0);
   const lastSectionSyncRef = useRef(0);
+  const snapshotStoreRef = useRef(createSnapshotStore());
+  const requestGenerationRef = useRef(1);
+  const requestControllersRef = useRef(new Set());
+  const tokenRef = useRef(token);
+  const apiBaseRef = useRef(apiBase);
+
+  function publishSnapshot(section = activeSectionRef.current) {
+    setData(projectSnapshotStore(snapshotStoreRef.current, section));
+  }
+
+  function resetSnapshotIdentity({ clearData = true } = {}) {
+    requestGenerationRef.current += 1;
+    for (const controller of requestControllersRef.current) {
+      const error = new Error("Request identity changed");
+      error.name = "AbortError";
+      controller.abort(error);
+    }
+    requestControllersRef.current.clear();
+    clearSnapshotStore(snapshotStoreRef.current);
+    loadedSectionsRef.current.clear();
+    sectionInFlightRef.current.clear();
+    overviewInFlightRef.current = false;
+    hasDataRef.current = false;
+    if (clearData) setData(null);
+  }
+
+  function requestContext(base = apiBaseRef.current) {
+    const controller = new AbortController();
+    requestControllersRef.current.add(controller);
+    return {
+      controller,
+      generation: requestGenerationRef.current,
+      apiBase: normalizeApiBase(base),
+      token: tokenRef.current,
+      minimumRevision: 0
+    };
+  }
+
+  function isCurrentRequest(context) {
+    return context.generation === requestGenerationRef.current
+      && context.apiBase === normalizeApiBase(apiBaseRef.current)
+      && context.token === tokenRef.current
+      && !context.controller.signal.aborted;
+  }
+
+  function finishRequest(context) {
+    requestControllersRef.current.delete(context.controller);
+  }
 
   function setApiBase(value) {
     // The browser build is served by the API host itself and therefore always
@@ -828,21 +882,34 @@ export function useApi() {
     // setting; ignore and remove stale browser overrides.
     if (!isNativeApp()) {
       localStorage.removeItem("agent_api_base");
-      const configured = normalizeApiBase(import.meta.env.VITE_API_BASE_URL || "");
+      const configured = normalizeApiBase(import.meta.env?.VITE_API_BASE_URL || "");
+      if (configured !== apiBaseRef.current) resetSnapshotIdentity();
+      apiBaseRef.current = configured;
       setApiBaseState(configured);
       setConnectionError("");
       return configured;
     }
     const normalized = normalizeApiBase(value);
+    const security = connectionSecurityStatus(normalized, {
+      production: import.meta.env?.PROD,
+      allowLocalDevelopment: import.meta.env?.DEV || import.meta.env?.VITE_ALLOW_INSECURE_LOCAL_BACKEND === "true"
+    });
+    if (normalized && !security.allowed) {
+      setConnectionError(t("生产连接必须使用 HTTPS，当前地址已被拒绝。", "Production backends must use HTTPS. This address was rejected."));
+      return apiBaseRef.current;
+    }
     if (normalized) localStorage.setItem("agent_api_base", normalized);
     else localStorage.removeItem("agent_api_base");
+    if (normalized !== apiBaseRef.current) resetSnapshotIdentity();
+    apiBaseRef.current = normalized;
     setApiBaseState(normalized);
     setConnectionError("");
     return normalized;
   }
 
   function headers(extra = {}) {
-    return { ...extra, ...(token ? { Authorization: `Bearer ${token}`, "X-Native-App": "true" } : {}) };
+    const currentToken = tokenRef.current;
+    return { ...extra, ...(currentToken ? { Authorization: `Bearer ${currentToken}`, "X-Native-App": "true" } : {}) };
   }
 
   function notify(message, timeout = 2400) {
@@ -852,9 +919,9 @@ export function useApi() {
 
   function expireSession(message = t("登录已过期，请重新登录", "Session expired — please sign in again")) {
     localStorage.removeItem("agent_token");
+    tokenRef.current = "";
     setToken("");
-    setData(null);
-    hasDataRef.current = false;
+    resetSnapshotIdentity();
     setAuthRequired(true);
     setConnectionError("");
     notify(message, 4200);
@@ -868,12 +935,13 @@ export function useApi() {
     window.setTimeout(() => setToast(""), 3200);
   }
 
-  async function readCore(base) {
-    const response = await fetchWithTimeout(apiUrl("/api/bootstrap/core", base), {
+  async function readCore(context) {
+    const response = await fetchWithTimeout(apiUrl("/api/bootstrap/core", context.apiBase), {
       cache: "no-store",
-      headers: headers()
+      headers: { ...(context.token ? { Authorization: `Bearer ${context.token}`, "X-Native-App": "true" } : {}) },
+      signal: context.controller.signal
     }, 12000);
-    if (response.status === 401) {
+    if (response.status === 401 && isCurrentRequest(context)) {
       expireSession();
       return null;
     }
@@ -881,92 +949,71 @@ export function useApi() {
     return response.json();
   }
 
-  function mergeSnapshot(current, incoming, mode = "section") {
-    if (!current) return incoming;
-    const mergeRows = (fresh, existing, keyOf) => {
-      const rows = [];
-      const seen = new Set();
-      for (const row of [...(fresh || []), ...(existing || [])]) {
-        const key = keyOf(row);
-        if (key == null || seen.has(key)) continue;
-        seen.add(key);
-        rows.push(row);
-      }
-      return rows;
-    };
-    const incomingSections = incoming.loadedSections || [];
-    for (const section of incomingSections) loadedSectionsRef.current.add(section);
-    const resourceState = mode === "core"
-      ? { ...(incoming.resourceState || {}), ...(current.resourceState || {}) }
-      : { ...(current.resourceState || {}), ...(incoming.resourceState || {}) };
-    const merged = {
-      ...current,
-      ...incoming,
-      resourceState,
-      loadedSections: [...new Set([...(current.loadedSections || []), ...incomingSections])]
-    };
-    if (mode === "core") {
-      // Core refreshes must update live rows without shrinking a workspace's already-loaded
-      // history back to the tiny bootstrap limits.
-      const byId = (row) => row?.id || row?.clientOrderId || row?.tradeId;
-      for (const field of ["tradePlans", "executionOrders", "armedSetups", "fills", "watchTriggers", "riskIncidents", "notifications"]) {
-        merged[field] = mergeRows(incoming[field], current[field], byId);
-      }
-      merged.markets = mergeRows(incoming.markets, current.markets, (row) => row?.symbol);
-    }
-    return merged;
-  }
-
   async function ensureSection(section = "chat", options = {}) {
     const selected = String(section || "chat");
     activeSectionRef.current = selected;
-    if (!options.force && loadedSectionsRef.current.has(selected)) return null;
+    publishSnapshot(selected);
+    if (!options.force && loadedSectionsRef.current.has(selected)) return snapshotStoreRef.current.sections.get(selected) || null;
     if (sectionInFlightRef.current.has(selected)) return sectionInFlightRef.current.get(selected);
+    const context = requestContext();
     const request = (async () => {
-      setData((current) => current ? {
-        ...current,
-        resourceState: { ...(current.resourceState || {}), [selected]: "loading" }
-      } : current);
+      if (!snapshotStoreRef.current.sections.has(selected)) {
+        markSnapshotResource(snapshotStoreRef.current, selected, "loading");
+        publishSnapshot(selected);
+      }
       try {
-        const response = await fetchWithTimeout(apiUrl(`/api/overview?view=section&section=${encodeURIComponent(selected)}`, apiBase), {
+        const response = await fetchWithTimeout(apiUrl(`/api/overview?view=section&section=${encodeURIComponent(selected)}`, context.apiBase), {
           cache: "no-store",
-          headers: headers()
+          headers: { ...(context.token ? { Authorization: `Bearer ${context.token}`, "X-Native-App": "true" } : {}) },
+          signal: context.controller.signal
         }, isNativeApp() ? 30000 : 20000);
+        if (!isCurrentRequest(context)) return null;
         if (response.status === 401) {
           expireSession();
           return null;
         }
         if (!response.ok) throw new Error(`API ${response.status}`);
         const json = await response.json();
-        revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
+        if (!isCurrentRequest(context)) return null;
+        if (!acceptSectionSnapshot(snapshotStoreRef.current, selected, json, context.minimumRevision)) {
+          markSnapshotResource(snapshotStoreRef.current, selected, "not_loaded");
+          publishSnapshot(selected);
+          if (shouldRetryStaleSnapshot(options)) {
+            window.setTimeout(() => {
+              if (isCurrentRequest(context) && activeSectionRef.current === selected) ensureSection(selected, { force: true, staleRetry: true });
+            }, 250);
+          }
+          return null;
+        }
         lastSectionSyncRef.current = Date.now();
         loadedSectionsRef.current.add(selected);
-        setData((current) => mergeSnapshot(current, json, "section"));
+        if (activeSectionRef.current === selected) publishSnapshot(selected);
         setConnectionError("");
         return json;
       } catch (error) {
-        setData((current) => current ? {
-          ...current,
-          resourceState: { ...(current.resourceState || {}), [selected]: "error" }
-        } : current);
+        if (!isCurrentRequest(context) || error?.name === "AbortError") return null;
+        if (!snapshotStoreRef.current.sections.has(selected)) markSnapshotResource(snapshotStoreRef.current, selected, "error");
+        if (activeSectionRef.current === selected) publishSnapshot(selected);
         reportConnectionFailure(connectionErrorMessage(error));
         return null;
       } finally {
-        sectionInFlightRef.current.delete(selected);
+        finishRequest(context);
+        if (sectionInFlightRef.current.get(selected) === request) sectionInFlightRef.current.delete(selected);
       }
     })();
     sectionInFlightRef.current.set(selected, request);
     return request;
   }
 
-  async function refresh(showLoading = true, baseOverride) {
+  async function refresh(showLoading = true, baseOverride, options = {}) {
     // The lightweight core is shared by web and native. Never stack background refreshes: the
     // previous snapshot remains interactive while a reconnect is in progress.
-    if (overviewInFlightRef.current && !showLoading) return;
-    const activeBase = normalizeApiBase(baseOverride || apiBase);
-      const firstLoad = !hasDataRef.current;
+    if (overviewInFlightRef.current && !showLoading) return null;
+    const activeBase = normalizeApiBase(baseOverride || apiBaseRef.current);
+    const context = requestContext(activeBase);
+    const firstLoad = !hasDataRef.current;
     try {
-      overviewInFlightRef.current = true;
+      overviewInFlightRef.current = context;
       if (isNativeApp() && !activeBase) {
         setConnectionError(t("请先填写 KORDYN 后端地址。", "Please enter the KORDYN backend URL first."));
         setLoading(false);
@@ -974,11 +1021,17 @@ export function useApi() {
       }
       if (showLoading) setLoading(true);
       if (firstLoad && typeof performance !== "undefined") performance.mark("kordyn:bootstrap:start");
-      let json = await readCore(activeBase);
+      const json = await readCore(context);
       if (!json) return;
-      revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
+      if (!isCurrentRequest(context)) return null;
+      if (!acceptCoreSnapshot(snapshotStoreRef.current, json, context.minimumRevision)) {
+        if (shouldRetryStaleSnapshot(options)) {
+          window.setTimeout(() => { if (isCurrentRequest(context)) refresh(false, context.apiBase, { staleRetry: true }); }, 250);
+        }
+        return null;
+      }
       lastCoreSyncRef.current = Date.now();
-      setData((current) => mergeSnapshot(current, json, "core"));
+      publishSnapshot();
       hasDataRef.current = true;
       setAuthRequired(false);
       setConnectionError("");
@@ -987,35 +1040,25 @@ export function useApi() {
         performance.measure("kordyn:bootstrap", "kordyn:bootstrap:start", "kordyn:bootstrap:end");
       }
     } catch (error) {
+      const current = isCurrentRequest(context);
+      if (!current || error?.name === "AbortError") return null;
       const fallback = nativeApiFallback();
-      if (isNativeApp() && activeBase !== fallback) {
-        try {
-          localStorage.setItem("agent_api_base", fallback);
-          setApiBaseState(fallback);
-          const json = await readCore(fallback);
-          if (!json) return;
-          revisionRef.current = Math.max(revisionRef.current, Number(json.revision || 0));
-          lastCoreSyncRef.current = Date.now();
-          setData((current) => mergeSnapshot(current, json, "core"));
-          hasDataRef.current = true;
-          setAuthRequired(false);
-          setConnectionError("");
-          setToast(t("已自动切换到默认后端", "Switched to the default backend automatically"));
-          window.setTimeout(() => setToast(""), 2200);
-          return;
-        } catch (fallbackError) {
-          reportConnectionFailure(connectionErrorMessage(fallbackError));
-          return;
-        }
+      if (shouldAttemptNativeFallback({ current, error, native: isNativeApp(), activeBase, fallbackBase: fallback })) {
+        const fallbackBase = setApiBase(fallback);
+        setToast(t("正在切换到默认后端", "Switching to the default backend"));
+        window.setTimeout(() => refresh(showLoading, fallbackBase), 0);
+        return null;
       }
       reportConnectionFailure(connectionErrorMessage(error));
     } finally {
-      overviewInFlightRef.current = false;
-      if (showLoading) setLoading(false);
+      finishRequest(context);
+      if (overviewInFlightRef.current === context) overviewInFlightRef.current = false;
+      if (showLoading && isCurrentRequest(context)) setLoading(false);
     }
   }
 
   async function action(url, body = {}, method = "POST") {
+    const context = requestContext();
     setBusyCount((count) => count + 1);
     try {
       setToast(method.toUpperCase() === "GET" ? t("正在同步数据...", "Syncing data…") : t("操作处理中...", "Processing…"));
@@ -1024,7 +1067,9 @@ export function useApi() {
         headers: headers({ "Content-Type": "application/json" })
       };
       if (method.toUpperCase() !== "GET") request.body = JSON.stringify(body);
-      const response = await fetchWithTimeout(apiUrl(url, apiBase), request, actionTimeoutMs(url));
+      request.signal = context.controller.signal;
+      const response = await fetchWithTimeout(apiUrl(url, context.apiBase), request, actionTimeoutMs(url));
+      if (!isCurrentRequest(context)) return { ok: false, error: "request_identity_changed" };
       if (response.status === 401) {
         // 业务型 401(如原密码不正确)不是会话过期,不得把用户整体登出(审计 H5)。
         if (url.includes("/api/auth/change-password")) {
@@ -1037,6 +1082,7 @@ export function useApi() {
         return {};
       }
       const text = await response.text();
+      if (!isCurrentRequest(context)) return { ok: false, error: "request_identity_changed" };
       const json = text ? JSON.parse(text) : {};
       if (!response.ok) {
         const requestError = new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
@@ -1047,6 +1093,8 @@ export function useApi() {
       }
       if (json.sessionRotated === true && json.token && isNativeApp()) {
         localStorage.setItem("agent_token", json.token);
+        resetSnapshotIdentity();
+        tokenRef.current = json.token;
         setToken(json.token);
       }
       if (json.logoutRequired) {
@@ -1062,6 +1110,7 @@ export function useApi() {
       window.setTimeout(() => setToast(""), 4200);
       return json;
     } catch (error) {
+      if (!isCurrentRequest(context) || error?.name === "AbortError") return { ok: false, error: "request_cancelled" };
       const errorMessage = (error?.name === "AbortError" || error?.name === "TimeoutError" || /aborted|timed out/i.test(String(error?.message || "")))
         ? t("操作超时；研究任务可能仍在后台运行，请稍后刷新查看结果", "The operation timed out. Research may still be running; refresh shortly to check results.")
         : (error.message || t("操作失败", "Action failed"));
@@ -1071,6 +1120,7 @@ export function useApi() {
       // 只能再覆盖成笼统的“保存失败”，把后端给出的安全阻断原因全部吃掉。
       return { ok: false, error: errorMessage, httpStatus: error.status, details: error.details, blockers: error.blockers };
     } finally {
+      finishRequest(context);
       setBusyCount((count) => count - 1);
     }
   }
@@ -1107,19 +1157,23 @@ export function useApi() {
     const json = await response.json();
     if (!response.ok) {
       setToast(json.error || t("登录失败", "Sign-in failed"));
-      return false;
+      return { ok: false, mfaRequired: json.mfaRequired === true, mfaRetry: json.mfaRetry || null, error: json.error || "login_failed" };
     }
     if (isNativeApp()) {
       localStorage.setItem("agent_token", json.token);
+      resetSnapshotIdentity();
+      tokenRef.current = json.token;
       setToken(json.token);
     } else {
       localStorage.removeItem("agent_token");
+      resetSnapshotIdentity();
+      tokenRef.current = "";
       setToken("");
     }
     setAuthRequired(false);
     setToast(t("登录成功", "Signed in"));
     window.setTimeout(() => setToast(""), 1800);
-    return true;
+    return { ok: true };
   }
 
   async function registerAccount(payload) {
@@ -1187,9 +1241,9 @@ export function useApi() {
     let reconnectTimer = null;
     let invalidationTimer = null;
     let disposed = false;
-    const scheduleInvalidationSync = (forceSection = false) => {
+    const scheduleInvalidationSync = (forceSection = false, immediate = false) => {
       if (invalidationTimer) clearTimeout(invalidationTimer);
-      const coreDelay = Math.max(1000, 15000 - (Date.now() - lastCoreSyncRef.current));
+      const coreDelay = immediate ? 0 : Math.max(1000, 15000 - (Date.now() - lastCoreSyncRef.current));
       invalidationTimer = setTimeout(() => {
         invalidationTimer = null;
         refresh(false);
@@ -1238,34 +1292,38 @@ export function useApi() {
       pending = {};
       const pf = pendingPortfolio;
       pendingPortfolio = null;
-      setData((prev) => {
-        if (!prev) return prev;
-        const markets = (prev.markets || []).map((m) => patch(m, ups));
-        const activeMarket = prev.activeMarket && ups[prev.activeMarket.symbol] ? patch(prev.activeMarket, ups) : prev.activeMarket;
-        const next = { ...prev, markets, activeMarket };
+      const core = snapshotStoreRef.current.core;
+      if (core) {
+        const markets = (core.markets || []).map((m) => patch(m, ups));
+        const activeMarket = core.activeMarket && ups[core.activeMarket.symbol] ? patch(core.activeMarket, ups) : core.activeMarket;
+        const next = { ...core, markets, activeMarket };
         if (pf) {
           // 实时组合浮盈亏 + 逐仓 PnL 合并（不等 15s 轮询）。
-          next.portfolio = { ...prev.portfolio, ...pf.portfolio };
-          if (pf.positions?.length && prev.positions?.length) {
+          next.portfolio = { ...core.portfolio, ...pf.portfolio };
+          if (pf.positions?.length && core.positions?.length) {
             const byId = Object.fromEntries(pf.positions.map((p) => [p.id, p]));
-            next.positions = prev.positions.map((p) => (byId[p.id] ? { ...p, ...byId[p.id] } : p));
+            next.positions = core.positions.map((p) => (byId[p.id] ? { ...p, ...byId[p.id] } : p));
           }
         }
-        return next;
-      });
+        snapshotStoreRef.current.core = next;
+        publishSnapshot();
+      }
     };
     function wireStream() {
       if (!source) return;
       source.onmessage = (event) => {
         try {
           const u = JSON.parse(event.data);
-          if (u?.revision) {
-            const revision = Number(u.revision);
-            if (Number.isFinite(revision) && revision <= revisionRef.current && u.type === "core_invalidated") return;
-            if (Number.isFinite(revision)) revisionRef.current = Math.max(revisionRef.current, revision);
+          if (u?.type === "core_invalidated") {
+            if (!observeSnapshotInvalidation(snapshotStoreRef.current, u)) return;
+            scheduleInvalidationSync(false);
+            return;
           }
-          if (u?.type === "core_invalidated") { scheduleInvalidationSync(false); return; }
-          if (u?.type === "knowledge_updated") { scheduleInvalidationSync(activeSectionRef.current === "researchCenter"); return; }
+          if (u?.type === "knowledge_updated") {
+            if (!observeSnapshotInvalidation(snapshotStoreRef.current, u)) return;
+            scheduleInvalidationSync(activeSectionRef.current === "researchCenter");
+            return;
+          }
           if (u && u.type === "portfolio") { pendingPortfolio = u; if (!timer) timer = setTimeout(flush, 300); return; }
           if (!u || !u.symbol) return;
           // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
@@ -1310,7 +1368,11 @@ export function useApi() {
                 if (!u) return mk;
                 return { ...mk, price: u.price, changePct: u.changePct, high24h: u.high24h, low24h: u.low24h, fundingRate: u.fundingRate ?? mk.fundingRate, openInterest: u.openInterest ?? mk.openInterest, volume24h: u.volume24h ?? mk.volume24h, lastRealtimeAt: new Date().toISOString() };
               };
-              setData((prev) => prev ? { ...prev, markets: (prev.markets || []).map(merge), activeMarket: prev.activeMarket ? merge(prev.activeMarket) : prev.activeMarket } : prev);
+              const core = snapshotStoreRef.current.core;
+              if (core) {
+                snapshotStoreRef.current.core = { ...core, markets: (core.markets || []).map(merge), activeMarket: core.activeMarket ? merge(core.activeMarket) : core.activeMarket };
+                publishSnapshot();
+              }
             }
           }
         } catch { /* 网络抖动，下次再拉 */ }
@@ -1541,17 +1603,17 @@ export function ProgressBar({ value = 50, tone = "green" }) {
   return <div className={`progressBar ${tone}`}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
 }
 
-export function DataTable({ columns, rows }) {
+export function DataTable({ columns, rows, emptyText = "暂无真实记录" }) {
   const gridTemplateColumns = columns.map((col) => col.width || "1fr").join(" ");
   return (
     <div className="dataTable">
       <div className="dataHead" style={{ gridTemplateColumns }}>
         {columns.map((col) => <span key={col.key}>{col.label}</span>)}
       </div>
-      {!rows.length && <div className="emptyTable">暂无真实记录</div>}
+      {!rows.length && <div className="emptyTable">{emptyText}</div>}
       {rows.map((row, index) => (
         <div className="dataRow" key={row.id || index} style={{ gridTemplateColumns }}>
-          {columns.map((col) => <span key={col.key} data-label={col.label}>{row[col.key] ?? "-"}</span>)}
+          {columns.map((col) => <span key={col.key} data-label={col.label}>{col.render ? col.render(row) : (row[col.key] ?? "-")}</span>)}
         </div>
       ))}
     </div>

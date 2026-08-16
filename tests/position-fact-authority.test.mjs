@@ -1,24 +1,28 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 import { dedupePositions, refreshAccounting, unrealizedPnl } from "../server/accounting.mjs";
 import { evaluateProfessionalPlanRisks } from "../server/professionalRiskGate.mjs";
 import { businessDayStartMs } from "../server/businessTime.mjs";
 
 const at = (ms) => new Date(ms).toISOString();
+process.env.OKX_API_KEY = "position-fact-key";
+const positionFactFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
 
 function dbFixture(now) {
   const observedAt = at(now - 1_000);
   const dayStart = businessDayStartMs(now, "Asia/Shanghai");
   const weekStart = now - 7 * 24 * 60 * 60_000;
+  const binding = { accountId: "account-a", apiKeyFingerprint: positionFactFingerprint, environment: "production" };
   return {
-    meta: {}, auditLogs: [], traces: [], riskIncidents: [], fills: [], executionOrders: [], exchangeAccounts: [], reconciliationReports: [], realtimeConnections: [],
+    meta: {}, auditLogs: [], traces: [], riskIncidents: [], fills: [], executionOrders: [], exchangeAccounts: [{ id: binding.accountId, exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint: binding.apiKeyFingerprint }], reconciliationReports: [], realtimeConnections: [],
     system: { liveTradingEnabled: true, autonomyEnabled: true, killSwitch: false, professionalRiskMode: true, businessTimeZone: "Asia/Shanghai" },
     portfolio: { totalEquityUsdt: 1_000 },
     positions: [],
     accountSnapshots: [
-      { id: "current", status: "ok", exchange: "OKX", accountId: "account-a", createdAt: observedAt, totalEquityUsdt: 1_000, positions: [] },
-      { id: "day-base", status: "ok", exchange: "OKX", accountId: "account-a", createdAt: at(dayStart), totalEquityUsdt: 1_000, positions: [] },
-      { id: "week-base", status: "ok", exchange: "OKX", accountId: "account-a", createdAt: at(weekStart), totalEquityUsdt: 1_000, positions: [] }
+      { id: "current", status: "ok", exchange: "OKX", ...binding, createdAt: observedAt, totalEquityUsdt: 1_000, positions: [] },
+      { id: "day-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(dayStart), totalEquityUsdt: 1_000, positions: [] },
+      { id: "week-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(weekStart), totalEquityUsdt: 1_000, positions: [] }
     ],
     markets: [{
       symbol: "BTC/USDT", price: 59_000, spreadBps: 2, depthUsdt: 100_000,

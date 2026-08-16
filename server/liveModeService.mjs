@@ -2,6 +2,48 @@ import crypto from "node:crypto";
 import { activeMandate, verifyAuditChain } from "./store.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
 import { externalAlertConfigured, recentExternalAlertSucceeded } from "./alertHealth.mjs";
+import { criticModelRoute, normalizeGeminiModel, openRouterProviderPolicy } from "./llmGateway.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
+
+function secretFingerprint(value) {
+  return value ? crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 16) : null;
+}
+
+export function livePolicySnapshot() {
+  const critic = criticModelRoute();
+  return {
+    schemaVersion: 2,
+    primaryModel: normalizeGeminiModel(process.env.GEMINI_MODEL),
+    criticModel: critic?.model || String(process.env.DEEPSEEK_MODEL || "deepseek-v4-pro"),
+    criticRequiredForLive: true,
+    configuredCriticRequired: process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false",
+    openRouter: openRouterProviderPolicy(),
+    allowedGeminiProviders: String(process.env.OPENROUTER_ALLOWED_GEMINI_PROVIDERS || "google,google ai studio,google vertex,vertex ai")
+      .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean).sort(),
+    criticMinimumConfidence: Number(process.env.LLM_CRITIC_MIN_CONFIDENCE || 0.75),
+    openRouterKeyFingerprint: secretFingerprint(process.env.OPENROUTER_API_KEY),
+    deepSeekKeyFingerprint: secretFingerprint(process.env.DEEPSEEK_API_KEY),
+    okxKeyFingerprint: secretFingerprint(process.env.OKX_API_KEY),
+    okxEnvironment: okxEnvironmentConfig().name,
+    promptPolicyVersion: "agent-chat-v2-dual-model",
+    toolPolicyVersion: "agent-tools-v2-dual-model"
+  };
+}
+
+export function livePolicyFingerprint() {
+  return crypto.createHash("sha256").update(JSON.stringify(livePolicySnapshot())).digest("hex");
+}
+
+export function liveConfirmationStatus(db) {
+  const currentFingerprint = livePolicyFingerprint();
+  const confirmedFingerprint = db.system?.liveConfirmationPolicyFingerprint || null;
+  if (process.env.LLM_CRITIC_REQUIRED_FOR_LIVE === "false") {
+    return { ok: false, reason: "live_critic_cannot_be_disabled", currentFingerprint, confirmedFingerprint };
+  }
+  if (!confirmedFingerprint) return { ok: false, reason: "live_policy_confirmation_missing", currentFingerprint, confirmedFingerprint };
+  if (confirmedFingerprint !== currentFingerprint) return { ok: false, reason: "live_policy_changed_since_confirmation", currentFingerprint, confirmedFingerprint };
+  return { ok: true, currentFingerprint, confirmedFingerprint };
+}
 
 export function autonomousProductionBlockers(db, options = {}) {
   const blockers = [];
@@ -16,7 +58,8 @@ export function autonomousProductionBlockers(db, options = {}) {
   }
   if (!activeMandate(db)) blockers.push("没有当前有效的 OKX Mandate");
   if (!process.env.OPENROUTER_API_KEY) blockers.push("Gemini 主模型的 OpenRouter API Key 未配置");
-  if (process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false" && !process.env.DEEPSEEK_API_KEY) blockers.push("DeepSeek 官网独立审查 API Key 未配置");
+  if (!process.env.DEEPSEEK_API_KEY) blockers.push("DeepSeek 官网独立审查 API Key 未配置");
+  if (process.env.LLM_CRITIC_REQUIRED_FOR_LIVE === "false") blockers.push("实盘禁止关闭 DeepSeek 独立审查");
   const metadata = (db.apiKeyMetadata || []).find((item) => item.exchange === "OKX");
   if (!metadata?.hasApiKey || !metadata?.hasSecret || metadata.withdrawPermission !== false || !metadata.permissionVerifiedAt) blockers.push("OKX API Key 未完成无提现权限核验");
   const account = (db.exchangeAccounts || []).find((item) => item.exchange === "OKX" && item.readEnabled);
@@ -42,7 +85,8 @@ export function partitionAutonomousBlockers(blockers = []) {
 }
 
 export function liveConfigurationFingerprint(db) {
-  const gray = (db.grayReleasePolicies || []).find((item) => item.id === "gray_live_small_notional") || null;
+  db.grayReleasePolicies ||= [];
+  const gray = db.grayReleasePolicies.find((item) => item.id === "gray_live_small_notional") || null;
   const facts = {
     version: Number(db.system?.liveConfigVersion || 0),
     liveTradingEnabled: db.system?.liveTradingEnabled === true,
@@ -51,6 +95,7 @@ export function liveConfigurationFingerprint(db) {
     requestedOperatingMode: db.system?.requestedOperatingMode || "observe",
     killSwitch: db.system?.killSwitch === true,
     professionalRiskMode: db.system?.professionalRiskMode === true,
+    livePolicyFingerprint: livePolicyFingerprint(),
     gray: gray ? {
       enabled: gray.enabled === true,
       requiresManualApproval: gray.requiresManualApproval !== false,
@@ -92,13 +137,27 @@ export function applyLiveTradingConfiguration(db, requested = {}, context = {}) 
     input.orderWriteEnabled = requestedMode !== "observe";
     input.grayEnabled = requestedMode !== "observe";
     input.grayRequiresApproval = requestedMode === "semi_auto";
+    if (requestedMode === "observe") input.acknowledged = false;
   }
   if (input.maxNotionalUsdt !== undefined) {
     const value = Number(input.maxNotionalUsdt);
     if (!Number.isFinite(value) || value <= 0) return serviceError(400, "invalid_live_notional_limit");
   }
 
-  const gray = (db.grayReleasePolicies || []).find((item) => item.id === "gray_live_small_notional") || null;
+  db.grayReleasePolicies ||= [];
+  let gray = db.grayReleasePolicies.find((item) => item.id === "gray_live_small_notional") || null;
+  if (!gray && requestedMode) {
+    gray = {
+      id: "gray_live_small_notional",
+      name: "小额灰度",
+      enabled: false,
+      requiresManualApproval: true,
+      maxNotionalUsdt: Number(process.env.MAX_LIVE_NOTIONAL_USDT || 50),
+      allowedSymbols: [],
+      createdAt: context.nowIso?.() || new Date().toISOString()
+    };
+    db.grayReleasePolicies.push(gray);
+  }
   const nextLiveRequested = input.liveTradingEnabled === undefined ? db.system.liveTradingEnabled === true : input.liveTradingEnabled === true;
   const nextAck = input.acknowledged === undefined ? db.system.realTradingAck === true : input.acknowledged === true;
   const nextLive = nextLiveRequested && nextAck;
@@ -132,6 +191,13 @@ export function applyLiveTradingConfiguration(db, requested = {}, context = {}) 
   db.system.realTradingAck = nextAck;
   db.system.liveTradingEnabled = nextLive;
   db.system.orderWriteEnabled = nextOrderWrite;
+  if ((nextLive || nextOrderWrite) && nextAck) {
+    db.system.liveConfirmationPolicyFingerprint = livePolicyFingerprint();
+    db.system.liveConfirmedAt = context.nowIso?.() || new Date().toISOString();
+  } else if (!nextAck) {
+    delete db.system.liveConfirmationPolicyFingerprint;
+    delete db.system.liveConfirmedAt;
+  }
   if (requestedMode) {
     db.system.autonomyEnabled = true;
     if (requestedMode === "full_auto") db.system.professionalRiskMode = true;

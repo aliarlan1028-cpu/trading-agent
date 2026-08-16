@@ -1,29 +1,36 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 import { refreshAccounting } from "../server/accounting.mjs";
 import { businessDayStartMs } from "../server/businessTime.mjs";
 
 const iso = (value) => new Date(value).toISOString();
+const originalOkxApiKey = process.env.OKX_API_KEY;
+process.env.OKX_API_KEY = "accounting-period-key-a";
+const fingerprintFor = (value) => crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 
 function fixture(now, { baselineUpl = 0, currentUpl = 0, baselineEquity = 1_000, currentEquity = baselineEquity } = {}) {
   const dayStart = businessDayStartMs(now, "Asia/Shanghai");
   const weekStart = now - 7 * 24 * 60 * 60_000;
   const accountId = "account-a";
+  const apiKeyFingerprint = fingerprintFor(process.env.OKX_API_KEY);
+  const environment = "production";
   const basePosition = baselineUpl === 0 ? [] : [{ instId: "BTC-USDT-SWAP", pos: "1", coinSize: 0.01, upl: String(baselineUpl) }];
   return {
     meta: {}, auditLogs: [], traces: [], riskIncidents: [], fills: [], executionOrders: [],
     system: { businessTimeZone: "Asia/Shanghai", autonomyEnabled: true },
     portfolio: { totalEquityUsdt: currentEquity },
     mandates: [{ id: "m1", status: "active", validUntil: "2099-01-01T00:00:00.000Z", maxDailyLossPct: 5 }],
+    exchangeAccounts: [{ id: accountId, exchange: "OKX", readEnabled: true, tradeEnabled: false, apiKeyFingerprint }],
     positions: currentUpl === null ? [] : [{
       id: "position", source: "exchange_rest", exchange: "OKX", accountId, symbol: "BTC/USDT", instId: "BTC-USDT-SWAP",
       direction: "long", coinSize: 0.01, entry: 60_000, mark: 59_000, pnl: currentUpl, rawSyncedAt: iso(now - 1_000)
     }],
     markets: [],
     accountSnapshots: [
-      { id: "current", status: "ok", exchange: "OKX", accountId, createdAt: iso(now - 1_000), totalEquityUsdt: currentEquity, positions: currentUpl === null ? [] : [{ instId: "BTC-USDT-SWAP", pos: "1", coinSize: 0.01, upl: String(currentUpl) }] },
-      { id: "day-base", status: "ok", exchange: "OKX", accountId, createdAt: iso(dayStart), totalEquityUsdt: baselineEquity, positions: basePosition },
-      { id: "week-base", status: "ok", exchange: "OKX", accountId, createdAt: iso(weekStart), totalEquityUsdt: baselineEquity, positions: basePosition }
+      { id: "current", status: "ok", exchange: "OKX", accountId, apiKeyFingerprint, environment, createdAt: iso(now - 1_000), totalEquityUsdt: currentEquity, positions: currentUpl === null ? [] : [{ instId: "BTC-USDT-SWAP", pos: "1", coinSize: 0.01, upl: String(currentUpl) }] },
+      { id: "day-base", status: "ok", exchange: "OKX", accountId, apiKeyFingerprint, environment, createdAt: iso(dayStart), totalEquityUsdt: baselineEquity, positions: basePosition },
+      { id: "week-base", status: "ok", exchange: "OKX", accountId, apiKeyFingerprint, environment, createdAt: iso(weekStart), totalEquityUsdt: baselineEquity, positions: basePosition }
     ]
   };
 }
@@ -90,6 +97,63 @@ test("persisted daily baseline survives restart and is not replaced by current e
   assert.equal(db.system.dailyLossCapUsdt, 50);
 });
 
+test("accounting baseline is invalidated after API key rotation until a newly bound snapshot arrives", () => {
+  const now = Date.UTC(2026, 7, 15, 1, 0, 0);
+  const db = fixture(now, { baselineUpl: -10, currentUpl: -11 });
+  refreshAccounting(db, { nowMs: now });
+  process.env.OKX_API_KEY = "accounting-period-key-b";
+  const nextFingerprint = fingerprintFor(process.env.OKX_API_KEY);
+  const blocked = refreshAccounting(db, { nowMs: now + 1_000 });
+  assert.equal(blocked.todayPnl, null);
+  assert.equal(db.portfolio.dailyBaselineStatus, "okx_account_credential_fingerprint_mismatch");
+  assert.equal(db.system.reduceOnlyMode, true);
+
+  db.exchangeAccounts[0].apiKeyFingerprint = nextFingerprint;
+  db.accountSnapshots.unshift({
+    ...db.accountSnapshots[0], id: "current-new-key", apiKeyFingerprint: nextFingerprint, createdAt: iso(now + 2_000)
+  });
+  const recovered = refreshAccounting(db, { nowMs: now + 3_000 });
+  assert.equal(recovered.todayPnl, null, "old period baseline must not be reused for the rotated key");
+  assert.equal(db.portfolio.dailyBaselineStatus, "period_start_snapshot_missing");
+  process.env.OKX_API_KEY = "accounting-period-key-a";
+});
+
+test("missing runtime OKX credential fails closed even if account metadata and old snapshots still match", () => {
+  const now = Date.UTC(2026, 7, 15, 1, 0, 0);
+  const db = fixture(now);
+  delete process.env.OKX_API_KEY;
+  try {
+    const result = refreshAccounting(db, { nowMs: now });
+    assert.equal(result.todayPnl, null);
+    assert.equal(db.portfolio.dailyBaselineStatus, "okx_credential_fingerprint_unavailable");
+    assert.equal(db.system.reduceOnlyMode, true);
+  } finally {
+    process.env.OKX_API_KEY = "accounting-period-key-a";
+  }
+});
+
+test("accounting baseline fails closed when account, fingerprint, or environment is missing or changes", () => {
+  const now = Date.UTC(2026, 7, 15, 1, 0, 0);
+  for (const field of ["accountId", "apiKeyFingerprint", "environment"]) {
+    const db = fixture(now);
+    delete db.accountSnapshots[0][field];
+    const result = refreshAccounting(db, { nowMs: now });
+    assert.equal(result.todayPnl, null, `${field} must be required`);
+  }
+
+  const prior = process.env.OKX_DEMO_TRADING;
+  process.env.OKX_DEMO_TRADING = "true";
+  try {
+    const db = fixture(now);
+    const result = refreshAccounting(db, { nowMs: now });
+    assert.equal(result.todayPnl, null);
+    assert.equal(db.portfolio.dailyBaselineStatus, "current_account_snapshot_binding_mismatch");
+  } finally {
+    if (prior === undefined) delete process.env.OKX_DEMO_TRADING;
+    else process.env.OKX_DEMO_TRADING = prior;
+  }
+});
+
 test("compact accounting anchors keep a moving rolling-168h boundary reachable after full snapshots are capped", () => {
   const now = Date.UTC(2026, 7, 15, 1, 0, 0);
   const db = fixture(now, { baselineEquity: 1_000, currentEquity: 1_000, baselineUpl: 0, currentUpl: 0 });
@@ -104,4 +168,9 @@ test("compact accounting anchors keep a moving rolling-168h boundary reachable a
   assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
   assert.equal(db.portfolio.weekPnl, 0);
   assert.equal(db.portfolio.accountingBaselines.rolling_168h.observedAt, iso(now - 7 * 24 * 60 * 60_000));
+});
+
+test.after(() => {
+  if (originalOkxApiKey === undefined) delete process.env.OKX_API_KEY;
+  else process.env.OKX_API_KEY = originalOkxApiKey;
 });

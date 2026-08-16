@@ -18,6 +18,9 @@ import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
 import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
 import { assertActiveLease, isLeaseLostError } from "./leaseSafety.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
+import { isAllowedGeminiProvider } from "./llmGateway.mjs";
+import { liveConfirmationStatus } from "./liveModeService.mjs";
+import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -28,6 +31,28 @@ const DEFAULT_TAKER_FEE_RATE = 0.0004;
 // OKX clOrdId 只接受字母+数字(≤32)——带下划线会被 51000「Parameter clOrdId error」整单拒绝
 // (曾导致所有 OKX 自动单静默失败)。统一清洗成字母数字;币安也接受字母数字,故两所通用。
 const cleanClOrdId = (seed) => String(seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+export function okxFillIdentity(row = {}) {
+  const tradeId = String(row.tradeId || "").trim();
+  if (tradeId) return `trade:${tradeId}`;
+  // Historical WS and REST payloads do not always expose tradeId. Keep the
+  // fallback deterministic and transport-stable. Optional WS/REST-only fields
+  // are merged afterwards and therefore do not split one economic fill.
+  return [
+    "fill", row.instId, row.ordId || row.clOrdId, row.side, row.posSide,
+    row.ts ?? row.fillTime ?? row.cTime, row.fillPx ?? row.avgPx, row.fillSz ?? row.sz
+  ].map((value) => String(value ?? "")).join(":");
+}
+
+export function dedupeOkxFills(rows = []) {
+  const merged = new Map();
+  for (const row of rows || []) {
+    const key = okxFillIdentity(row);
+    const present = Object.fromEntries(Object.entries(row || {}).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    merged.set(key, { ...(merged.get(key) || {}), ...present });
+  }
+  return [...merged.values()];
+}
+
 const protectionClientIds = (executionOrder = {}) => {
   const ids = new Set((executionOrder.tpClientOrderIds || []).map(cleanClOrdId).filter(Boolean));
   if (executionOrder.stopClientOrderId) ids.add(cleanClOrdId(executionOrder.stopClientOrderId));
@@ -64,11 +89,12 @@ function feeEstimate(notional) {
 }
 
 export function validateLiveDecisionProvenance(provenance, options = {}) {
-  const criticRequired = options.criticRequired ?? process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false";
+  const criticRequired = true;
   const primaryValid = provenance?.primary?.gateway === "openrouter"
     && String(provenance?.primary?.requestedModel || "").startsWith("google/gemini-")
     && String(provenance?.primary?.actualModel || "").startsWith("google/gemini-")
-    && Boolean(String(provenance?.primary?.actualProvider || "").trim())
+    && isAllowedGeminiProvider(provenance?.primary?.actualProvider)
+    && provenance?.primary?.providerAttributionVerified === true
     && provenance?.primary?.reasoningEffort === "high"
     && provenance?.routingPolicy?.crossModelFallback === false
     && Boolean(provenance?.prompt?.version && provenance?.prompt?.hash)
@@ -77,6 +103,7 @@ export function validateLiveDecisionProvenance(provenance, options = {}) {
     && Boolean(provenance?.cohort?.id);
   const criticValid = !criticRequired || (
     provenance?.critic?.approved === true
+    && provenance?.critic?.schemaValid === true
     && Boolean(provenance?.critic?.reviewId)
     && provenance?.critic?.gateway === "direct"
     && provenance?.critic?.actualProvider === "deepseek_direct"
@@ -84,8 +111,39 @@ export function validateLiveDecisionProvenance(provenance, options = {}) {
     && String(provenance?.critic?.actualModel || "").startsWith("deepseek")
     && provenance?.critic?.thinking === "enabled"
     && provenance?.critic?.reasoningEffort === "max"
+    && Number(provenance?.critic?.confidence) >= Number(process.env.LLM_CRITIC_MIN_CONFIDENCE || 0.75)
+    && !["high", "critical"].includes(String(provenance?.critic?.severity || ""))
+    && Array.isArray(provenance?.critic?.objections) && provenance.critic.objections.length === 0
+    && Array.isArray(provenance?.critic?.requiredChecks) && provenance.critic.requiredChecks.length === 0
   );
-  return { ok: primaryValid && criticValid, primaryValid, criticValid, criticRequired };
+  const auditRecord = options.auditRecord || null;
+  let auditVerification;
+  let attributionVerification;
+  try {
+    auditVerification = verifyDecisionAuditRecord(
+      auditRecord,
+      provenance?.auditChain?.rootHash,
+      options.plan ? normalizedPlanForDecisionAudit(options.plan) : null
+    );
+    attributionVerification = auditVerification.ok
+      ? verifyDecisionAuditExecutionAttribution(auditRecord, provenance)
+      : { ok: false, reason: auditVerification.reason };
+  } catch {
+    auditVerification = { ok: false, reason: "decision_audit_validation_error" };
+    attributionVerification = auditVerification;
+  }
+  const auditValid = Boolean(provenance?.auditChain?.recordId
+    && provenance.auditChain.recordId === auditRecord?.id
+    && auditVerification.ok
+    && attributionVerification.ok);
+  return {
+    ok: primaryValid && criticValid && auditValid,
+    primaryValid,
+    criticValid,
+    auditValid,
+    auditReason: attributionVerification.reason || auditVerification.reason || null,
+    criticRequired
+  };
 }
 
 function slippageBps(actual, expected, direction = "long") {
@@ -526,8 +584,15 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   }
 
   if (db.system.liveTradingEnabled) {
+    const liveConfirmation = liveConfirmationStatus(db);
+    if (!liveConfirmation.ok) {
+      plan.executionBlock = { reason: liveConfirmation.reason, detail: "实盘模型、审查、数据或 Provider 策略已在确认后发生变化", at: nowIso() };
+      appendAudit(db, `执行拒绝：${liveConfirmation.reason}`, plan.id, "ExecutionEngine", "critical");
+      return { status: "live_policy_confirmation_invalid", ...liveConfirmation };
+    }
     if (plan.source === "agent_chat") {
-      const provenanceCheck = validateLiveDecisionProvenance(plan.decisionProvenance);
+      const auditRecord = (db.decisionAuditRecords || []).find((record) => record.id === plan.decisionProvenance?.auditChain?.recordId) || null;
+      const provenanceCheck = validateLiveDecisionProvenance(plan.decisionProvenance, { auditRecord, plan });
       if (!provenanceCheck.ok) {
         plan.executionBlock = { reason: "decision_provenance_incomplete", detail: "Gemini 主提案/DeepSeek 审查/提示词与证据哈希未形成完整不可变归因", at: nowIso() };
         appendAudit(db, "执行拒绝：Agent 计划缺少完整双模型决策归因", plan.id, "ExecutionEngine", "warning");
@@ -1517,6 +1582,7 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
 }
 
 export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoRows = [], fills = []) {
+  const uniqueFills = dedupeOkxFills(fills);
   const expectedClientIds = protectionClientIds(executionOrder);
   const expectedAlgoIds = new Set([
     executionOrder.stopAlgoId,
@@ -1532,16 +1598,13 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
     const clientId = cleanClOrdId(row.algoClOrdId || row.attachAlgoClOrdId || "");
     return expectedClientIds.has(clientId) || expectedAlgoIds.has(String(row.algoId || ""));
   });
-  const triggeredOrderIds = new Set(triggered.flatMap((row) => {
-    const raw = row.ordId ?? row.orderId ?? row.ordIds;
-    return Array.isArray(raw) ? raw : String(raw || "").split(",");
-  }).map((value) => String(value || "").trim()).filter(Boolean));
+  const triggeredOrderIds = new Set(triggered.flatMap(extractOkxAlgoChildOrderIds));
   if (!triggeredOrderIds.size) return null;
 
   const closingSide = executionOrder.direction === "short" ? "buy" : "sell";
   const seenTrades = new Set();
   const matched = [];
-  for (const row of fills || []) {
+  for (const row of uniqueFills) {
     const at = Number(row.ts || row.fillTime || row.cTime || 0);
     if (!triggeredOrderIds.has(String(row.ordId || "")) || String(row.instId || "") !== instId || String(row.side || "").toLowerCase() !== closingSide) continue;
     if (Number.isFinite(entryAt) && entryAt > 0 && at > 0 && at + 60_000 < entryAt) continue;
@@ -1556,7 +1619,7 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
     if (!(contracts > 0) || !(price > 0) || realizedPnl === null || feeUsdt === null || !closedAt) {
       return { complete: false, reason: "protection_fill_financial_evidence_incomplete", expectedQuantity: Number(executionOrder.filledQuantity || executionOrder.quantity || 0) };
     }
-    const algo = triggered.find((candidate) => String(candidate.ordId || candidate.orderId || "").split(",").includes(String(row.ordId || "")));
+    const algo = triggered.find((candidate) => extractOkxAlgoChildOrderIds(candidate).includes(String(row.ordId || "")));
     matched.push({
       algoId: algo?.algoId || null,
       algoClientOrderId: cleanClOrdId(algo?.algoClOrdId || algo?.attachAlgoClOrdId || "") || null,
@@ -1574,18 +1637,23 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
       closedAt
     });
   }
-  if (!matched.length) return null;
+  if (!matched.length) {
+    return { complete: false, reason: "protection_child_fills_missing", expectedChildOrderIds: [...triggeredOrderIds], matchedChildOrderIds: [] };
+  }
   const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
-  const entryRows = (fills || []).filter((row) => String(row.instId || "") === instId
+  const entryRows = uniqueFills.filter((row) => String(row.instId || "") === instId
     && ((entryClientOrderId && cleanClOrdId(row.clOrdId || "") === entryClientOrderId)
       || (executionOrder.exchangeOrderId && String(row.ordId || "") === String(executionOrder.exchangeOrderId))));
   const entryFees = entryRows.map((row) => okxFeeCost(row.fee));
   const entryFeeUsdt = entryRows.length && entryFees.every((value) => value !== null)
     ? entryFees.reduce((sum, value) => sum + value, 0) : null;
   const quantity = matched.reduce((sum, row) => sum + row.quantity, 0);
+  const matchedChildOrderIds = new Set(matched.map((row) => String(row.exchangeOrderId || "")).filter(Boolean));
+  const unmatchedChildOrderIds = [...triggeredOrderIds].filter((orderId) => !matchedChildOrderIds.has(orderId));
   const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
   const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
-  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance && entryFeeUsdt !== null;
+  const complete = unmatchedChildOrderIds.length === 0
+    && expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance && entryFeeUsdt !== null;
   const notional = matched.reduce((sum, row) => sum + row.price * row.quantity, 0);
   return {
     complete,
@@ -1600,8 +1668,37 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
     algoIds: [...new Set(matched.map((row) => row.algoId).filter(Boolean))],
     exchangeOrderIds: [...new Set(matched.map((row) => row.exchangeOrderId).filter(Boolean))],
     tradeIds: [...new Set(matched.map((row) => row.tradeId).filter(Boolean))],
+    expectedChildOrderIds: [...triggeredOrderIds],
+    unmatchedChildOrderIds,
     breakdown: matched
   };
+}
+
+export function extractOkxAlgoChildOrderIds(row = {}) {
+  const ids = new Set();
+  const add = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) add(item);
+      return;
+    }
+    if (value && typeof value === "object") {
+      add(value.ordId ?? value.orderId ?? value.id);
+      return;
+    }
+    const raw = String(value || "").trim();
+    if (raw.startsWith("[") && raw.endsWith("]")) {
+      try { add(JSON.parse(raw)); return; } catch { /* fall through to CSV compatibility */ }
+    }
+    for (const item of raw.split(",")) {
+      const normalized = item.trim();
+      if (normalized) ids.add(normalized);
+    }
+  };
+  add(row.ordId);
+  add(row.orderId);
+  add(row.ordIdList);
+  add(row.ordIds);
+  return [...ids];
 }
 
 export async function fetchOkxProtectionClosure(executionOrder, options = {}) {
@@ -1611,21 +1708,31 @@ export async function fetchOkxProtectionClosure(executionOrder, options = {}) {
     const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
     const begin = new Date(executionOrder.entryAttemptedAt || executionOrder.createdAt || 0).getTime();
     const algoRows = [];
+    const seenAlgoRows = new Set();
     for (const state of ["effective", "canceled", "order_failed"]) {
       let after = null;
       let exhausted = false;
+      const seenCursors = new Set();
       for (let page = 0; page < 20; page += 1) {
         const query = new URLSearchParams({ ordType: "conditional", state, instId, limit: "100" });
-        if (Number.isFinite(begin) && begin > 0) query.set("begin", String(begin));
         if (after) query.set("after", after);
         const raw = await signedRequest(`/api/v5/trade/orders-algo-history?${query.toString()}`, "GET");
         if (String(raw?.code ?? "") !== "0") return null;
         const pageRows = Array.isArray(raw.data) ? raw.data : [];
-        algoRows.push(...pageRows);
+        for (const row of pageRows) {
+          const rowKey = `${row.algoId || ""}:${row.state || state}:${extractOkxAlgoChildOrderIds(row).join(",")}:${row.cTime || ""}`;
+          if (seenAlgoRows.has(rowKey)) continue;
+          seenAlgoRows.add(rowKey);
+          const createdAt = Number(row.cTime || 0);
+          if (!Number.isFinite(begin) || begin <= 0 || (Number.isFinite(createdAt) && createdAt >= begin)) algoRows.push(row);
+        }
         if (pageRows.length < 100) { exhausted = true; break; }
         const lastId = pageRows.at(-1)?.algoId;
-        if (!lastId || lastId === after) return null;
+        if (!lastId || seenCursors.has(String(lastId))) return null;
+        seenCursors.add(String(lastId));
         after = lastId;
+        const pageTimes = pageRows.map((row) => Number(row.cTime || 0)).filter((value) => Number.isFinite(value) && value > 0);
+        if (Number.isFinite(begin) && begin > 0 && pageTimes.length && Math.max(...pageTimes) < begin) { exhausted = true; break; }
       }
       if (!exhausted) return null;
     }
@@ -1653,6 +1760,7 @@ export async function fetchOkxProtectionClosure(executionOrder, options = {}) {
 }
 
 export function summarizeOkxManualClosure(executionOrder, fills = []) {
+  const uniqueFills = dedupeOkxFills(fills);
   const instId = toOkxSymbol(executionOrder.symbol, "perpetual");
   const closeClientOrderId = cleanClOrdId(executionOrder.closeClientOrderId || "");
   if (!closeClientOrderId) return null;
@@ -1664,10 +1772,10 @@ export function summarizeOkxManualClosure(executionOrder, fills = []) {
   const seen = new Set();
   const matched = [];
   const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
-  const entryRows = (fills || []).filter((row) => String(row.instId || "") === instId
+  const entryRows = uniqueFills.filter((row) => String(row.instId || "") === instId
     && ((entryClientOrderId && cleanClOrdId(row.clOrdId || "") === entryClientOrderId)
       || (executionOrder.exchangeOrderId && String(row.ordId || "") === String(executionOrder.exchangeOrderId))));
-  for (const row of fills || []) {
+  for (const row of uniqueFills) {
     const at = Number(row.ts || row.fillTime || row.cTime || 0);
     const identityMatches = cleanClOrdId(row.clOrdId || "") === closeClientOrderId
       || (executionOrder.closeExchangeOrderId && String(row.ordId || "") === String(executionOrder.closeExchangeOrderId));

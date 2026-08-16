@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
+import { connectionSecurityStatus } from "./connectionSecurity.js";
 
 function AuthMarketMotion() {
   const tiles = [
@@ -49,13 +50,15 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
   const [application, setApplication] = useState(null);
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
+  const transport = connectionSecurityStatus(apiBase, { production: import.meta.env?.PROD, allowLocalDevelopment: import.meta.env?.DEV });
 
   useEffect(() => { if (!selectedPlanId && plans[0]?.id) setSelectedPlanId(plans[0].id); }, [plans, selectedPlanId]);
   useEffect(() => { setServerUrl(apiBase || "https://yegidawir.xyz"); }, [apiBase]);
 
   async function submitLogin(event) {
     event.preventDefault();
-    await login({ email: loginForm.email.trim(), password: loginForm.password, totp: loginForm.totp });
+    const result = await login({ email: loginForm.email.trim(), password: loginForm.password, totp: loginForm.totp });
+    if (result?.mfaRequired) setShowTotp(true);
   }
 
   async function submitRegister(event) {
@@ -81,7 +84,7 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
             <label><span>{t("邮箱", "E-mail")}</span><input type="email" autoComplete="email" value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
             <label><span>{t("密码", "Password")}</span><span className="nativeAuthPassword"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder={t("输入登录密码", "Enter your password")} /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t("隐藏密码", "Hide password") : t("显示密码", "Show password")}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></span></label>
             {showTotp && <label className="nativeAuthTotp"><span>{t("动态验证码", "Authenticator code")}</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder={t("输入 6 位验证码", "Enter the 6-digit code")} /></label>}
-            <div className="nativeAuthFormTools"><span><ShieldCheck size={14} />{t("加密会话", "Encrypted session")}</span><button type="button" onClick={() => setShowTotp((current) => !current)}>{showTotp ? t("收起 2FA", "Hide 2FA") : t("使用 2FA", "Use 2FA")}</button></div>
+            <div className="nativeAuthFormTools"><span><ShieldCheck size={14} />{transport.secure ? t("HTTPS 加密会话", "HTTPS encrypted session") : t("不安全连接", "Insecure connection")}</span><button type="button" onClick={() => setShowTotp((current) => !current)}>{showTotp ? t("收起 2FA", "Hide 2FA") : t("使用 2FA", "Use 2FA")}</button></div>
             <button className="nativeAuthPrimary" type="submit"><span>{t("登录", "Log in")}</span><b aria-hidden="true">→</b></button>
             <AuthMarketMotion />
             <p className="nativeAuthSwitch">{t("第一次使用 KORDYN？", "New to KORDYN?")} <button type="button" onClick={() => setMode("subscribe")}>{t("注册", "Sign up")}</button></p>
@@ -139,6 +142,7 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
   const [application, setApplication] = useState(null);
+  const [mfaStep, setMfaStep] = useState(false);
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
   // 套餐名在 DB 里是中文(月度订阅…),英文站按 interval/months 派生英文名,不改生产配置。
   const planLabel = (p) => {
@@ -155,7 +159,11 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   }, []);
   useEffect(() => { if (!selectedPlanId && plans[0]?.id) setSelectedPlanId(plans[0].id); }, [plans, selectedPlanId]);
 
-  async function submitLogin(e) { e.preventDefault(); await login({ email: loginForm.email.trim(), password: loginForm.password, totp: loginForm.totp }); }
+  async function submitLogin(e) {
+    e.preventDefault();
+    const result = await login({ email: loginForm.email.trim(), password: loginForm.password, totp: loginForm.totp });
+    if (result?.mfaRequired) setMfaStep(true);
+  }
   async function submitRegister(e) { e.preventDefault(); const r = await registerAccount({ ...registerForm, planId: selectedPlan?.id }); if (r?.application) setApplication(r.application); }
 
   return (
@@ -176,8 +184,8 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
               <form onSubmit={submitLogin}>
                 <input className="lpInput" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="you@example.com" autoFocus />
                 <input className="lpInput" type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Password" />
-                <input className="lpInput" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(e) => setLoginForm({ ...loginForm, totp: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="Authenticator code (if enabled)" />
-                <button className="lpBtn" type="submit">Enter the cockpit →</button>
+                {mfaStep && <input className="lpInput" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(e) => setLoginForm({ ...loginForm, totp: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="Six-digit authenticator code" autoFocus />}
+                <button className="lpBtn" type="submit">{mfaStep ? "Verify and continue →" : "Enter the cockpit →"}</button>
               </form>
             ) : (
               <form onSubmit={submitRegister}>

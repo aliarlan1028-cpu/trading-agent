@@ -149,57 +149,27 @@ export function registerSecurityConfigRoutes(app, ctx) {
     const mode = String(req.body?.mode || "");
     const MODE_CN = { observe: "观察", semi_auto: "半自动", full_auto: "全自动" };
     if (!MODE_CN[mode]) return res.status(400).json({ error: "mode 必须是 observe / semi_auto / full_auto" });
-    if (db.system.killSwitch) return res.status(409).json({ error: "已熔断，请先解除熔断再切换模式" });
     const wantsLive = mode !== "observe";
-    if (wantsLive && process.env.REQUIRE_MFA_FOR_LIVE === "true" && req.user?.mfaEnabled !== true) {
-      return res.status(412).json({ error: "切到半自动/全自动前必须先启用 TOTP 双因素认证", needMfa: true });
-    }
-    if (wantsLive && req.body?.acknowledged !== true && db.system.realTradingAck !== true) {
-      return res.status(412).json({ error: "切到半自动/全自动前必须确认：这会用真实资金下单", needAck: true });
-    }
-    if (mode === "full_auto") {
-      const blockers = autonomousProductionBlockers(db, { allowModeToEnableSafety: true });
-      const { hard, transient } = partitionAutonomousBlockers(blockers);
-      if (hard.length) return res.status(412).json({ error: "不能启用全自动：生产安全配置未完成", blockers: hard });
-      req.pendingRuntimeBlockers = transient;
-    }
-    db.system.requestedOperatingMode = mode;
-    if (mode === "observe") {
-      // 观察:自主开(照常分析/提计划),实盘写入关 → 只干跑,绝不真下单。
-      db.system.autonomyEnabled = true;
-      db.system.liveTradingEnabled = false;
-      setConfig(db, { LIVE_TRADING_ENABLED: "false" });
-    } else {
-      // 半自动/全自动:开齐实盘三闸 + 灰度;差别只在灰度是否"保留人工确认"。
-      if (req.body?.acknowledged === true) { db.system.realTradingAck = true; setConfig(db, { I_UNDERSTAND_REAL_TRADING: "true" }); }
-      db.system.autonomyEnabled = true;
-      db.system.orderWriteEnabled = true;
-      db.system.liveTradingEnabled = db.system.realTradingAck === true;
-      setConfig(db, { LIVE_TRADING_ENABLED: "true", REAL_ORDER_WRITE_ENABLED: "true" });
-      db.grayReleasePolicies ||= [];
-      let gray = db.grayReleasePolicies.find((g) => g.id === "gray_live_small_notional") || db.grayReleasePolicies.find((g) => g.enabled) || db.grayReleasePolicies[0];
-      if (!gray) { gray = { id: "gray_live_small_notional", name: "小额灰度", maxNotionalUsdt: 50, createdAt: nowIso() }; db.grayReleasePolicies.unshift(gray); }
-      gray.enabled = true;
-      gray.requiresManualApproval = mode === "semi_auto";
-      gray.updatedAt = nowIso();
-      if (mode === "full_auto") {
-        // 全自主去掉的是逐单人审，不是运行状态和专业风险闸。
-        db.system.professionalRiskMode = true;
-      }
-    }
+    const result = applyLiveTradingConfiguration(db, {
+      requestedMode: mode,
+      acknowledged: wantsLive ? req.body?.acknowledged === true : false
+    }, {
+      user: req.user,
+      actor: req.user?.name || db.user.name,
+      setConfig,
+      appendAudit,
+      nowIso
+    });
+    if (!result.ok) return res.status(result.status || 422).json(result);
     if (!db.system.reduceOnlyMode) db.system.riskStatus = "正常";
     db.system.latestAction = `运行模式切换为「${MODE_CN[mode]}」`;
-    db.system.updatedAt = nowIso();
-    appendAudit(db, `切换运行模式 → ${MODE_CN[mode]}`, "system.operating_mode", db.user.name, mode === "full_auto" ? "critical" : "warning");
     appendTrace(db, "system", `运行模式:${MODE_CN[mode]}`, "ok");
     saveDb(db);
-    const pendingBlockers = req.pendingRuntimeBlockers || [];
     res.json({
-      message: pendingBlockers.length
-        ? `已保存「${MODE_CN[mode]}」；当前暂缓新开仓，恢复后会自动运行：${pendingBlockers.join("、")}`
+      ...result,
+      message: result.pendingBlockers.length
+        ? `已保存「${MODE_CN[mode]}」；当前暂缓新开仓，恢复后会自动运行：${result.pendingBlockers.join("、")}`
         : `已切换到「${MODE_CN[mode]}」`,
-      requestedMode: mode,
-      pendingBlockers,
       status: getConfigStatus(db)
     });
   });

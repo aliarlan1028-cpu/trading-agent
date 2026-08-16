@@ -1,14 +1,14 @@
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
-import { OPEN_EXECUTION_STATUS_LIST } from "./executionStates.mjs";
+import { isTerminalExecution } from "./executionStates.mjs";
+import { isTerminalExchangeOrder } from "./orderStates.mjs";
+import { isTerminalArmedSetup } from "./armedSetupStates.mjs";
+import { isTerminalTradePlan } from "./tradePlanLifecycle.mjs";
 
-const ACTIVE_PLAN_STATES = new Set(["armed", "awaiting_approval", "approved", "executing", "monitoring"]);
-const ACTIVE_ORDER_STATES = new Set(["pending", "awaiting_approval", "executing", ...OPEN_EXECUTION_STATUS_LIST]);
-const ACTIVE_SETUP_STATES = new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]);
 const REVIEW_ATTENTION_STATES = new Set(["pending", "processing", "failed", "error", "retry", "awaiting_approval"]);
 const NATIVE_ATTENTION_REVIEW_LIMIT = 60;
 const NATIVE_RECENT_REVIEW_LIMIT = 40;
 
-function recentWithActive(rows = [], activeStates, limit) {
+function recentWithNonTerminal(rows = [], isTerminal, limit) {
   const list = Array.isArray(rows) ? rows : [];
   const selected = [];
   const seen = new Set();
@@ -17,20 +17,23 @@ function recentWithActive(rows = [], activeStates, limit) {
     seen.add(row.id || row);
     selected.push(row);
   };
-  for (const row of list) if (activeStates.has(String(row?.status || "").toLowerCase())) add(row);
+  for (const row of list) if (!isTerminal(row)) add(row);
+  let recentAdded = 0;
   for (const row of list) {
-    if (selected.length >= limit) break;
+    if (!isTerminal(row)) continue;
+    if (recentAdded >= limit) break;
     add(row);
+    recentAdded += 1;
   }
-  return selected.slice(0, limit);
+  return selected;
 }
 
-function activePlusRecent(rows = [], activeStates, recentLimit) {
+function nonTerminalPlusRecent(rows = [], isTerminal, recentLimit) {
   const list = Array.isArray(rows) ? rows : [];
-  const active = list.filter((row) => activeStates.has(String(row?.status || "").toLowerCase()));
-  const activeKeys = new Set(active.map((row) => row?.id || row));
-  const recent = list.filter((row) => !activeKeys.has(row?.id || row)).slice(0, recentLimit);
-  return [...active, ...recent];
+  const nonTerminal = list.filter((row) => !isTerminal(row));
+  const nonTerminalKeys = new Set(nonTerminal.map((row) => row?.id || row));
+  const recent = list.filter((row) => !nonTerminalKeys.has(row?.id || row)).slice(0, recentLimit);
+  return [...nonTerminal, ...recent];
 }
 
 function compactMarket(row) {
@@ -75,7 +78,7 @@ function compactAgentRun(row) {
 
 function compactPlan(row) {
   if (!row || typeof row !== "object") return row;
-  const active = ACTIVE_PLAN_STATES.has(String(row.status || "").toLowerCase());
+  const active = !isTerminalTradePlan(row);
   // 历史计划的完整风控检查会重复保存大量事实；只有活跃/待批准计划的卡片需要展开它。
   return active ? row : { ...row, lastRiskCheck: undefined };
 }
@@ -301,9 +304,9 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     resourceState: { [selectedSection]: "loaded" },
     ...sharedSectionFields(overview)
   };
-  const tradePlans = activePlusRecent(overview.tradePlans, ACTIVE_PLAN_STATES, 30).map(compactPlan);
-  const executionOrders = activePlusRecent(overview.executionOrders, ACTIVE_ORDER_STATES, 50).map(compactExecutionOrder);
-  const armedSetups = activePlusRecent(overview.armedSetups, ACTIVE_SETUP_STATES, 30).map(compactArmedSetup);
+  const tradePlans = nonTerminalPlusRecent(overview.tradePlans, isTerminalTradePlan, 30).map(compactPlan);
+  const executionOrders = nonTerminalPlusRecent(overview.executionOrders, isTerminalExecution, 50).map(compactExecutionOrder);
+  const armedSetups = nonTerminalPlusRecent(overview.armedSetups, isTerminalArmedSetup, 30).map(compactArmedSetup);
 
   if (selectedSection === "chat") return {
     ...base,
@@ -312,7 +315,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     armedSetups,
     fills: (overview.fills || []).slice(0, 60),
     pendingActions: (overview.pendingActions || []).slice(0, 20),
-    watchTriggers: activePlusRecent(overview.watchTriggers, new Set(["active"]), 20),
+    watchTriggers: nonTerminalPlusRecent(overview.watchTriggers, (row) => String(row?.status || "").toLowerCase() !== "active", 20),
     watchBoard: overview.watchBoard || [],
     agentRuns: (overview.agentRuns || []).slice(0, 10).map(compactAgentRun),
     tasks: (overview.tasks || []).slice(0, 40),
@@ -328,7 +331,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     tradePlans,
     executionOrders,
     armedSetups,
-    orders: activePlusRecent(overview.orders, ACTIVE_ORDER_STATES, 100),
+    orders: nonTerminalPlusRecent(overview.orders, isTerminalExchangeOrder, 100),
     fills: (overview.fills || []).slice(0, 150),
     closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 100).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
@@ -370,7 +373,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     riskThresholds: overview.riskThresholds || {},
     riskRules: overview.riskRules || [],
     riskChecks: (overview.riskChecks || []).slice(0, 100).map(compactRiskCheck),
-    riskIncidents: activePlusRecent(overview.riskIncidents, new Set(["open"]), 60),
+    riskIncidents: nonTerminalPlusRecent(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 60),
     eventRiskWindows: (overview.eventRiskWindows || []).slice(0, 60),
     currentRiskSnapshot: overview.currentRiskSnapshot || null,
     grayReleasePolicies: overview.grayReleasePolicies || [],
@@ -388,7 +391,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     events: (overview.events || []).slice(0, 100).map(compactEvent),
     tasks: overview.tasks || [],
     jobRuns: (overview.jobRuns || []).slice(0, 50),
-    riskIncidents: activePlusRecent(overview.riskIncidents, new Set(["open"]), 60),
+    riskIncidents: nonTerminalPlusRecent(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 60),
     reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
     auditLogs: (overview.auditLogs || []).slice(0, 80),
     traces: (overview.traces || []).slice(0, 40),
@@ -450,12 +453,12 @@ function startupOverview(overview) {
   const relevantSymbols = new Set([
     "BTC/USDT",
     ...(overview.positions || []).map((row) => row.symbol),
-    ...(overview.tradePlans || []).filter((row) => ACTIVE_PLAN_STATES.has(String(row?.status || "").toLowerCase())).map((row) => row.symbol)
+    ...(overview.tradePlans || []).filter((row) => !isTerminalTradePlan(row)).map((row) => row.symbol)
   ].filter(Boolean));
-  const startupPlans = recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 12).map(compactPlan);
-  const startupOrders = recentWithActive(overview.executionOrders, ACTIVE_ORDER_STATES, 12).map(compactExecutionOrder);
-  const startupSetups = recentWithActive(overview.armedSetups, ACTIVE_SETUP_STATES, 12).map(compactArmedSetup);
-  const startupWatches = recentWithActive(overview.watchTriggers, new Set(["active"]), 12);
+  const startupPlans = recentWithNonTerminal(overview.tradePlans, isTerminalTradePlan, 12).map(compactPlan);
+  const startupOrders = recentWithNonTerminal(overview.executionOrders, isTerminalExecution, 12).map(compactExecutionOrder);
+  const startupSetups = recentWithNonTerminal(overview.armedSetups, isTerminalArmedSetup, 12).map(compactArmedSetup);
+  const startupWatches = recentWithNonTerminal(overview.watchTriggers, (row) => String(row?.status || "").toLowerCase() !== "active", 12);
   return {
     overviewMode: "native_startup",
     user: overview.user,
@@ -507,15 +510,15 @@ export function compactOverviewForNative(overview = {}, native = false) {
     overviewMode: "native_compact",
     markets: (overview.markets || []).map(compactMarket),
     activeMarket: compactMarket(overview.activeMarket),
-    tradePlans: recentWithActive(overview.tradePlans, ACTIVE_PLAN_STATES, 30).map(compactPlan),
-    armedSetups: recentWithActive(overview.armedSetups, ACTIVE_SETUP_STATES, 20).map(compactArmedSetup),
-    orders: recentWithActive(overview.orders, ACTIVE_ORDER_STATES, 40),
+    tradePlans: recentWithNonTerminal(overview.tradePlans, isTerminalTradePlan, 30).map(compactPlan),
+    armedSetups: recentWithNonTerminal(overview.armedSetups, isTerminalArmedSetup, 20).map(compactArmedSetup),
+    orders: recentWithNonTerminal(overview.orders, isTerminalExchangeOrder, 40),
     fills: (overview.fills || []).slice(0, 50),
     // The ledger may be bounded, but lifecycle accounting may never be. Aggregate
     // from the complete server-side fill set before slicing the recent lifecycle rows.
     closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 50).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
-    riskIncidents: recentWithActive(overview.riskIncidents, new Set(["open"]), 30),
+    riskIncidents: recentWithNonTerminal(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),
     newsFeed: (overview.newsFeed || []).slice(0, 24),
     notifications: (overview.notifications || []).slice(0, 30),
@@ -523,7 +526,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     agentRuns: (overview.agentRuns || []).slice(0, 8).map(compactAgentRun),
     knowledge: compactKnowledge(overview.knowledge),
     reviews: compactNativeReviews(overview.reviews),
-    executionOrders: (overview.executionOrders || []).map(compactExecutionOrder),
+    executionOrders: recentWithNonTerminal(overview.executionOrders, isTerminalExecution, 50).map(compactExecutionOrder),
     analysisBundles: [],
     evidenceBundles: [],
     memoryItems: (overview.memoryItems || []).slice(0, 10),

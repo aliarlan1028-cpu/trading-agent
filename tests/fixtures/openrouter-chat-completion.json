@@ -1,0 +1,22 @@
+{
+  "id": "gen-1730000000-demo",
+  "model": "google/gemini-3.1-pro-preview",
+  "choices": [{ "index": 0, "message": { "role": "assistant", "content": "{}" }, "finish_reason": "stop" }],
+  "usage": { "prompt_tokens": 120, "completion_tokens": 4, "total_tokens": 124 },
+  "openrouter_metadata": {
+    "requested": "google/gemini-3.1-pro-preview",
+    "strategy": "direct",
+    "region": "iad",
+    "summary": "available=2, selected=Google AI Studio",
+    "attempt": 1,
+    "is_byok": false,
+    "endpoints": {
+      "total": 2,
+      "available": [
+        { "provider": "Google Vertex", "model": "google/gemini-3.1-pro-preview", "selected": false },
+        { "provider": "Google AI Studio", "model": "google/gemini-3.1-pro-preview", "selected": true }
+      ]
+    },
+    "attempts": [{ "provider": "Google AI Studio", "model": "google/gemini-3.1-pro-preview", "status": 200 }]
+  }
+}

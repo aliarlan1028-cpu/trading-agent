@@ -45,8 +45,8 @@
           <a href="#problem" data-i18n="nav.problem">问题</a>
           <a href="#system" data-i18n="nav.system">系统</a>
           <a href="#capabilities" data-i18n="nav.capabilities">能力</a>
-          <a href="#compare" data-i18n="nav.compare">对比</a>
           <a href="#guardrails" data-i18n="nav.guardrails">安全边界</a>
+          <a href="#compare" data-i18n="nav.compare">对比</a>
         </div>
         <div class="nav-actions">
           <button class="lang-button" type="button" data-action="lang" aria-label="切换语言">EN</button>
@@ -178,36 +178,121 @@
       <section class="capabilities-section" id="capabilities">
         <div class="section-wrap">
           <div class="section-heading ta-reveal">
-            <div><span class="section-index">03 / SYSTEM</span><h2 class="taSectionName" data-i18n="cap.title">不是一个聊天框，是一套交易操作系统。</h2></div>
-            <p class="taSectionSupport" data-i18n="cap.lead">模型只是其中的判断层。真正让自主交易可用的，是事实、知识、风险、执行和审计共同工作。</p>
+            <div><span class="section-index">03 / PRODUCT SYSTEM</span><h2 class="taSectionName" data-i18n="cap.title">不是一个聊天框，是一套交易操作系统。</h2></div>
+            <p class="taSectionSupport" data-i18n="cap.lead">从情报、知识和策略，到事件任务与资金边界：这里展示的是 KORDYN App 正在工作的真实产品界面。</p>
           </div>
-          <div class="operating-system ta-reveal" id="operatingSystem">
-            <svg class="os-network" viewBox="0 0 1200 780" aria-hidden="true">
-              <defs><linearGradient id="osGradient"><stop stop-color="#ff7a32"/><stop offset=".5" stop-color="#a78bfa"/><stop offset="1" stop-color="#7de4b1"/></linearGradient></defs>
-              <path d="M600 390 L190 165 M600 390 L1010 165 M600 390 L120 590 M600 390 L1080 590 M600 390 L600 720"/>
-              <circle cx="600" cy="390" r="245"/><circle cx="600" cy="390" r="175"/><circle cx="600" cy="390" r="305"/>
-            </svg>
-            <div class="os-core" aria-hidden="true">
-              <div class="os-core__halo"></div><div class="os-core__ring"></div>
-              <span>KORDYN</span><strong>AI CORE</strong><small>BOUNDED AUTONOMY</small>
-              <i class="os-pulse os-pulse--one"></i><i class="os-pulse os-pulse--two"></i>
+          <div class="product-proof ta-reveal" id="productProof">
+            <header class="product-proof__head">
+              <span><i></i>KORDYN APP · <b data-i18n="app.realUi">真实产品界面</b></span>
+              <div><strong>OKX · PRODUCTION</strong><em data-i18n="app.demoData">示例数据 · 事实同步于 12 秒前</em></div>
+            </header>
+
+            <div class="app-showcase">
+              <aside class="app-showcase__nav">
+                <div class="app-mini-brand"><img src="/kordyn-logo-white.svg" alt=""><span><b>KORDYN</b><small>MISSION CONTROL</small></span></div>
+                <p data-i18n="app.workspace">产品工作区</p>
+                <button class="is-active" type="button" data-product-tab="intel" aria-controls="product-panel-intel" aria-selected="true"><i>◎</i><span><b data-i18n="app.intel">情报中心</b><small>AI TRADER</small></span><em>18</em></button>
+                <button type="button" data-product-tab="knowledge" aria-controls="product-panel-knowledge" aria-selected="false"><i>⌘</i><span><b data-i18n="app.knowledge">知识库</b><small>RESEARCH</small></span></button>
+                <button type="button" data-product-tab="strategy" aria-controls="product-panel-strategy" aria-selected="false"><i>◇</i><span><b data-i18n="app.strategy">策略库</b><small>STRATEGIES</small></span><em>3</em></button>
+                <button type="button" data-product-tab="operations" aria-controls="product-panel-operations" aria-selected="false"><i>▦</i><span><b data-i18n="app.operations">事件与任务</b><small>OPERATIONS</small></span><em>24</em></button>
+                <button type="button" data-product-tab="risk" aria-controls="product-panel-risk" aria-selected="false"><i>⛉</i><span><b data-i18n="app.risk">资金与边界</b><small>RISK CENTER</small></span></button>
+                <div class="app-nav-state"><span><i></i><b data-i18n="app.guardOnline">硬风控在线</b></span><small data-i18n="app.sevenGates">7 / 7 安全闸可用</small></div>
+              </aside>
+
+              <div class="app-showcase__main">
+                <div class="app-topbar">
+                  <div><span class="app-crumb" data-i18n="app.crumb">工作台 / 实盘主账户</span><b>BTC-USDT-SWAP <i>+2.46%</i></b></div>
+                  <div class="app-runtime"><span><i></i><b data-i18n="app.autonomous">自主运行中</b></span><button type="button" data-product-tab="risk" data-i18n="app.reduceOnly">只减仓</button><button type="button" data-product-tab="risk" data-i18n="app.pause">暂停自主</button></div>
+                </div>
+                <div class="app-market-strip" aria-label="示例账户与市场遥测">
+                  <article><span><i class="asset-dot btc"></i>BTC / USDT</span><b>118,420.6</b><em class="good">+2.46%</em><div class="mini-bars up"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+                  <article><span><i class="asset-dot eth"></i>ETH / USDT</span><b>4,312.8</b><em class="good">+1.18%</em><div class="mini-bars up alt"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+                  <article><span data-i18n="app.accountEquity">账户权益</span><b>12,486.30 <small>USDT</small></b><em data-i18n="app.factsVerified">账户事实已验证</em></article>
+                  <article><span data-i18n="app.marginUsed">保证金使用</span><b>18.4%</b><div class="micro-meter"><i class="meter-18"></i></div><em data-i18n="app.marginHealthy">健康 · 可用 9,742 USDT</em></article>
+                  <article><span data-i18n="app.riskBudget">风险预算</span><b>38 / 100</b><div class="micro-meter accent"><i class="meter-38"></i></div><em data-i18n="app.withinLimits">所有限制以内</em></article>
+                  <article class="heartbeat"><span data-i18n="app.dataHeartbeat">数据心跳</span><b><i></i> 120 ms</b><em>MARKET · ACCOUNT · ORDER</em></article>
+                </div>
+
+                <section class="product-panel is-active" id="product-panel-intel" data-product-panel="intel">
+                  <div class="ui-workspace-head"><div><span>AI TRADER</span><h3 data-i18n="intel.title">AI 交易员</h3></div><nav><b data-i18n="intel.dialog">对话</b><b class="active" data-i18n="intel.tab">情报</b><b data-i18n="intel.watch">盯盘</b></nav><button data-i18n="intel.refresh">刷新情报</button></div>
+                  <div class="ui-intel-grid">
+                    <aside class="ui-filter"><strong data-i18n="intel.categories">情报分类</strong><span class="active"><b data-i18n="common.all">全部</b><em>18</em></span><span><b data-i18n="intel.flash">快讯</b><em>9</em></span><span><b data-i18n="intel.macro">宏观</b><em>3</em></span><span><b data-i18n="intel.market">市场</b><em>4</em></span><span><b data-i18n="intel.knowledge">知识</b><em>2</em></span><small data-i18n="intel.confidence">置信度 ≥ 70%</small></aside>
+                    <div class="ui-intel-feed">
+                      <div class="ui-metrics">
+                        <article><small data-i18n="intel.liveFlashes">实时快讯</small><b>18</b><em data-i18n="intel.fastLane">30 秒快车道</em></article>
+                        <article><small data-i18n="intel.marketState">市场状态</small><b data-i18n="intel.regime">趋势扩张</b><em data-i18n="intel.structure">结构判断</em></article>
+                        <article><small data-i18n="intel.anomalies">异常波动</small><b>3</b><em data-i18n="intel.liveScan">实时扫描</em></article>
+                        <article><small data-i18n="intel.sentiment">多源倾向</small><b>68 / 100</b><em class="good" data-i18n="intel.bullish">温和偏多</em></article>
+                      </div>
+                      <div class="ui-autobar"><i></i><b data-i18n="intel.flowing">分层新闻流运行中</b><span>FLASH 30s · RSS 5m · SYNTHESIS 15m</span></div>
+                      <article class="ui-card ui-feed-card">
+                        <header><b data-i18n="intel.feed">情报动态</b><small>18 <span data-i18n="common.items">条</span></small></header>
+                        <div class="ui-feed-row active"><i class="bad">!</i><div><b data-i18n="intel.news1">美国核心通胀低于预期，风险资产快速上行</b><small>ME NEWS · 09:42:18 · <em data-i18n="intel.justUpdated">刚更新</em></small><p data-i18n="intel.news1Text">BTC 与 ETH 同步放量，仍等待利率路径与盘口深度交叉确认。</p></div><span class="ui-pill bad" data-i18n="common.high">高</span></div>
+                        <div class="ui-feed-row"><i class="warn">↗</i><div><b data-i18n="intel.news2">BTC 永续合约未平仓量 15 分钟上升 4.8%</b><small>OKX · 09:39:02</small><p data-i18n="intel.news2Text">价格与 OI 同向上升，资金费率仍处于中性区间。</p></div><span class="ui-pill warn" data-i18n="common.medium">中</span></div>
+                        <div class="ui-feed-row"><i>◇</i><div><b data-i18n="intel.news3">策略库命中：突破回踩确认</b><small>KNOWLEDGE · 09:36:44</small><p data-i18n="intel.news3Text">只作为候选上下文，尚未形成交易计划。</p></div><span class="ui-pill" data-i18n="common.low">低</span></div>
+                        <div class="ui-feed-row"><i class="warn">≋</i><div><b data-i18n="intel.news4">买一至买五深度较 1 小时均值增加 22%</b><small>ORDER BOOK · 09:35:12</small><p data-i18n="intel.news4Text">主动买单占比 57%，盘口支撑增强但尚未触发入场条件。</p></div><span class="ui-pill warn" data-i18n="common.medium">中</span></div>
+                        <div class="ui-feed-row"><i>◌</i><div><b data-i18n="intel.news5">未来 4 小时暂无一级宏观事件</b><small>EVENT ENGINE · 09:34:08</small><p data-i18n="intel.news5Text">事件静默窗未启用，系统维持正常观察频率。</p></div><span class="ui-pill" data-i18n="common.low">低</span></div>
+                      </article>
+                    </div>
+                    <aside class="ui-card ui-impact-card"><header><b data-i18n="intel.impact">影响评估</b><span class="ui-pill bad" data-i18n="common.high">高</span></header><small data-i18n="intel.relatedAssets">关联资产</small><h4>BTC-USDT · ETH-USDT</h4><div class="ui-impact-score"><span><b>82</b><small>/ 100</small></span></div><dl><div><dt data-i18n="intel.direction">方向影响</dt><dd data-i18n="intel.positive">偏多</dd></div><div><dt data-i18n="intel.sources">交叉来源</dt><dd>4</dd></div><div><dt data-i18n="intel.freshness">事实新鲜度</dt><dd>12s</dd></div></dl><div class="ui-signal-mix"><b data-i18n="intel.signalMix">证据一致度</b><span><small data-i18n="intel.orderbook">盘口结构</small><i><em class="score-88"></em></i><strong>88%</strong></span><span><small data-i18n="intel.derivatives">衍生品</small><i><em class="score-76"></em></i><strong>76%</strong></span><span><small data-i18n="intel.macroData">宏观数据</small><i><em class="score-72"></em></i><strong>72%</strong></span></div><p data-i18n="intel.contextOnly">当前情报只进入分析上下文，不会直接触发下单。</p></aside>
+                  </div>
+                </section>
+
+                <section class="product-panel" id="product-panel-knowledge" data-product-panel="knowledge" hidden>
+                  <div class="ui-workspace-head"><div><span>RESEARCH</span><h3 data-i18n="knowledge.title">研究中心</h3></div><nav><b class="active" data-i18n="app.knowledge">知识库</b><b data-i18n="app.strategy">策略库</b><b data-i18n="knowledge.capabilities">能力库</b></nav><button data-i18n="knowledge.import">导入知识</button></div>
+                  <div class="ui-pipeline"><span class="done"><i>1</i><b data-i18n="knowledge.parse">解析来源</b><small>12</small></span><em>→</em><span class="done"><i>2</i><b data-i18n="knowledge.distill">蒸馏方法</b><small>28</small></span><em>→</em><span class="active"><i>3</i><b data-i18n="knowledge.compile">编译技能</b><small>9</small></span><em>→</em><span><i>4</i><b data-i18n="knowledge.validate">验证批准</b><small>3</small></span><em>→</em><span><i>5</i><b data-i18n="knowledge.liveUse">实盘采用</b><small>2</small></span></div>
+                  <div class="ui-knowledge-stats"><article><span data-i18n="knowledge.indexHealth">索引健康度</span><b>98.7%</b><em class="good">12 / 12 ONLINE</em></article><article><span data-i18n="knowledge.citations">可追溯引用</span><b>184</b><em data-i18n="knowledge.sourceAnchors">页码与来源锚点</em></article><article><span data-i18n="knowledge.readySkills">候选技能</span><b>9</b><em>3 <i data-i18n="knowledge.awaitingApproval">项等待批准</i></em></article><article><span data-i18n="knowledge.lastCompile">最近编译</span><b>09:41</b><em data-i18n="knowledge.compileSuccess">无冲突 · 通过</em></article></div>
+                  <div class="ui-knowledge-grid">
+                    <article class="ui-card ui-source-card"><header><b data-i18n="knowledge.sources">知识源</b><small>12 <span data-i18n="common.items">项</span></small></header><table><thead><tr><th data-i18n="common.name">名称</th><th data-i18n="common.type">类型</th><th data-i18n="common.status">状态</th><th data-i18n="knowledge.effect">实际作用</th></tr></thead><tbody><tr><td data-i18n="knowledge.source1">专业交易系统与方法</td><td>PDF</td><td><span class="ui-pill good" data-i18n="knowledge.indexed">已索引</span></td><td data-i18n="knowledge.methods8">8 条方法</td></tr><tr><td data-i18n="knowledge.source2">BTC 突破交易复盘</td><td data-i18n="knowledge.review">复盘</td><td><span class="ui-pill good" data-i18n="knowledge.active">已生效</span></td><td data-i18n="knowledge.lessons4">4 条经验</td></tr><tr><td data-i18n="knowledge.source3">风险管理条令</td><td data-i18n="knowledge.doctrine">条令</td><td><span class="ui-pill warn" data-i18n="knowledge.pending">待审批</span></td><td data-i18n="knowledge.rules3">3 条规则</td></tr><tr><td data-i18n="knowledge.source4">订单簿微观结构笔记</td><td>NOTE</td><td><span class="ui-pill good" data-i18n="knowledge.indexed">已索引</span></td><td data-i18n="knowledge.signals6">6 条信号</td></tr><tr><td data-i18n="knowledge.source5">宏观事件反应手册</td><td data-i18n="knowledge.playbook">手册</td><td><span class="ui-pill good" data-i18n="knowledge.active">已生效</span></td><td data-i18n="knowledge.scenarios7">7 个情景</td></tr></tbody></table></article>
+                    <article class="ui-card ui-graph-card"><header><b data-i18n="knowledge.network">概念与知识网络</b><small>36 <span data-i18n="knowledge.concepts">个概念</span></small></header><div class="ui-knowledge-graph" aria-label="交易知识概念关系"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><span class="core" data-i18n="knowledge.breakout">突破交易</span><span class="node n1" data-i18n="knowledge.volume">成交量确认</span><span class="node n2" data-i18n="knowledge.falseBreak">假突破</span><span class="node n3" data-i18n="knowledge.liquidity">流动性</span><span class="node n4" data-i18n="knowledge.stop">结构止损</span><span class="node n5" data-i18n="knowledge.volatility">波动率</span><span class="node n6" data-i18n="knowledge.openInterest">未平仓量</span><span class="node n7" data-i18n="knowledge.eventWindow">事件窗口</span><div class="graph-legend"><span><i></i><b data-i18n="knowledge.approvedRelation">已批准关系</b></span><span><i></i><b data-i18n="knowledge.pendingRelation">待验证关系</b></span></div></div></article>
+                    <article class="ui-card ui-doctrine-card"><header><b data-i18n="knowledge.doctrineLive">生效中的条令</b><small>5 ACTIVE</small></header><div><span><i class="green">2</i><b data-i18n="knowledge.lenses">分析透镜</b></span><span><i class="red">3</i><b data-i18n="knowledge.ironRules">风控铁律</b></span></div><p><b data-i18n="knowledge.rule1">不在数据过期时新开仓</b><small data-i18n="knowledge.hardBlock">确定性硬拦截</small></p><p><b data-i18n="knowledge.rule2">突破必须得到成交量确认</b><small data-i18n="knowledge.agentLens">Agent 分析透镜</small></p></article>
+                  </div>
+                  <div class="ui-truth-note"><i>!</i><p><b data-i18n="knowledge.truthTitle">交易方法 ≠ 已上岗策略。</b><span data-i18n="knowledge.truthText">只有完成历史验证、前向验证和人工批准的技能，才可能按匹配信号进入交易计划。</span></p></div>
+                </section>
+
+                <section class="product-panel" id="product-panel-strategy" data-product-panel="strategy" hidden>
+                  <div class="ui-workspace-head"><div><span>RESEARCH</span><h3 data-i18n="strategy.title">策略库</h3></div><nav><b class="active" data-i18n="strategy.catalog">策略目录</b><b data-i18n="strategy.studio">策略工作室</b><b data-i18n="strategy.marketplace">市场</b></nav><button data-i18n="strategy.import">导入研究策略</button></div>
+                  <div class="ui-strategy-metrics"><article><small data-i18n="strategy.total">策略版本</small><b>12</b><em>+2 <i data-i18n="strategy.thisMonth">本月</i></em></article><article><small data-i18n="strategy.validated">历史已验证</small><b>5</b><em>2,184 <i data-i18n="strategy.samples">个样本</i></em></article><article><small data-i18n="strategy.forward">前向验证中</small><b>3</b><em>42 <i data-i18n="strategy.paperDays">个前向交易日</i></em></article><article><small data-i18n="strategy.live">实盘小额试用</small><b>2</b><em>0.5% <i data-i18n="strategy.riskCap">风险上限</i></em></article></div>
+                  <div class="ui-strategy-grid">
+                    <article class="ui-card ui-strategy-list"><header><b data-i18n="strategy.catalog">策略目录</b><small data-i18n="strategy.versioned">版本化产品</small></header><table><thead><tr><th data-i18n="strategy.name">策略</th><th data-i18n="strategy.market">市场</th><th data-i18n="strategy.stage">阶段</th><th data-i18n="strategy.oos">样本外</th><th data-i18n="common.status">状态</th></tr></thead><tbody><tr class="selected"><td><b>Breakout Retest</b><small>v1.4 · STR-014</small></td><td>BTC · 1H</td><td data-i18n="strategy.probation">小额试用</td><td class="good">+8.4%</td><td><span class="ui-pill good" data-i18n="strategy.active">生效</span></td></tr><tr><td><b>Funding Divergence</b><small>v0.9 · STR-021</small></td><td>BTC · 4H</td><td data-i18n="strategy.forward">前向验证中</td><td>+3.1%</td><td><span class="ui-pill warn" data-i18n="strategy.validating">验证中</span></td></tr><tr><td><b>Range Reversion</b><small>v1.1 · STR-008</small></td><td>ETH · 15M</td><td data-i18n="strategy.history">历史验证</td><td class="bad">−1.7%</td><td><span class="ui-pill bad" data-i18n="strategy.rejected">未通过</span></td></tr><tr><td><b>Volatility Compression</b><small>v0.7 · STR-026</small></td><td>SOL · 1H</td><td data-i18n="strategy.forward">前向验证中</td><td>+2.2%</td><td><span class="ui-pill warn" data-i18n="strategy.validating">验证中</span></td></tr><tr><td><b>Trend Pullback</b><small>v1.2 · STR-011</small></td><td>ETH · 4H</td><td data-i18n="strategy.probation">小额试用</td><td class="good">+5.7%</td><td><span class="ui-pill good" data-i18n="strategy.active">生效</span></td></tr></tbody></table></article>
+                    <aside class="ui-card ui-strategy-detail"><header><b>Breakout Retest v1.4</b><span class="ui-pill good" data-i18n="strategy.active">生效</span></header><p data-i18n="strategy.description">突破关键结构后等待回踩与成交量确认，只在趋势扩张环境中寻找顺势机会。</p><div class="ui-performance-snapshot"><div><span><small data-i18n="strategy.oosReturn">样本外结果</small><b>+8.4%</b></span><span><small data-i18n="strategy.testTrades">验证交易</small><b>86</b></span><span><small data-i18n="strategy.riskAdjusted">风险调整得分</small><b>74</b></span></div><div class="equity-bars" aria-label="样本外权益变化示意"><i class="h24"></i><i class="h31"></i><i class="h28"></i><i class="h42"></i><i class="h48"></i><i class="h44"></i><i class="h57"></i><i class="h63"></i><i class="h59"></i><i class="h72"></i><i class="h79"></i><i class="h88"></i></div><small data-i18n="strategy.illustrative">示例验证数据 · 不代表未来表现</small></div><dl><div><dt data-i18n="strategy.direction">方向</dt><dd data-i18n="strategy.longShort">双向</dd></div><div><dt data-i18n="strategy.timeframe">周期</dt><dd>1H</dd></div><div><dt data-i18n="strategy.maxRisk">最大单笔风险</dt><dd>0.50%</dd></div><div><dt data-i18n="strategy.approver">批准人</dt><dd>OWNER</dd></div></dl><div class="ui-stage-track"><span class="done" data-i18n="strategy.compiled">已编译</span><span class="done" data-i18n="strategy.backtested">历史通过</span><span class="done" data-i18n="strategy.paperPassed">前向通过</span><span class="active" data-i18n="strategy.probation">小额试用</span></div><div class="ui-bound-note"><i>⛉</i><p><b data-i18n="strategy.boundTitle">未批准版本不会进入实盘</b><span data-i18n="strategy.boundText">每次计划同时记录策略 ID、版本和验证证据。</span></p></div></aside>
+                  </div>
+                </section>
+
+                <section class="product-panel" id="product-panel-operations" data-product-panel="operations" hidden>
+                  <div class="ui-workspace-head"><div><span>OPERATIONS</span><h3 data-i18n="operations.title">系统运营</h3></div><nav><b data-i18n="operations.overview">总览</b><b class="active" data-i18n="operations.events">事件日历</b><b data-i18n="operations.tasks">任务调度</b><b data-i18n="operations.audit">审计</b></nav><button data-i18n="operations.add">添加日程</button></div>
+                  <div class="ui-scheduler-status"><i></i><b data-i18n="operations.healthy">调度健康</b><span><small data-i18n="operations.totalTasks">任务总数</small><strong>24</strong></span><span><small data-i18n="operations.success">成功率</small><strong>99.7%</strong></span><span><small data-i18n="operations.running">执行中</small><strong>2</strong></span><span><small data-i18n="operations.queued">等待队列</small><strong>4</strong></span><em>LIVE · 120ms</em></div>
+                  <div class="ui-operations-grid">
+                    <article class="ui-card ui-calendar"><header><b data-i18n="operations.upcoming">即将发生的事件</b><small>AUGUST 2026 · UTC+8</small></header><div class="ui-calendar-week"><b>MON</b><b>TUE</b><b>WED</b><b>THU</b><b>FRI</b></div><div class="ui-calendar-days"><span><small>17</small><i data-i18n="operations.event1">美联储讲话</i><i class="low">FUNDING 16:00</i></span><span><small>18</small><i class="low" data-i18n="operations.chainUpgrade">链上升级</i></span><span class="today"><small>19</small><i class="high">CPI 20:30</i><i>BTC OI REVIEW</i></span><span><small>20</small><i data-i18n="operations.event2">BTC 期权到期</i></span><span><small>21</small><i class="low" data-i18n="operations.weeklyReview">周度风险复盘</i></span></div><div class="ui-event-row"><span><i class="bad"></i><b>CPI · 20:30</b></span><em data-i18n="operations.silence">事件静默窗：前后 30 分钟</em><strong data-i18n="common.high">高</strong></div><div class="ui-event-row"><span><i class="warn"></i><b data-i18n="operations.btcExpiry">BTC 期权到期</b></span><em data-i18n="operations.monitorOnly">仅监控，不直接触发交易</em><strong data-i18n="common.medium">中</strong></div><div class="ui-event-row"><span><i></i><b data-i18n="operations.fundingSettle">资金费率结算</b></span><em data-i18n="operations.reconcileFunding">结算后自动核对净费用</em><strong data-i18n="common.low">低</strong></div></article>
+                    <aside class="ui-card ui-task-chain"><header><b data-i18n="operations.mainChain">自主主链路</b><small>6 / 6 ONLINE</small></header><div><span class="done"><i>1</i><b data-i18n="operations.sync">同步市场与账户</b><small>8s · 12 FACTS</small></span><em>↓</em><span class="done"><i>2</i><b data-i18n="operations.scan">巡检与决策</b><small>41s · 4 SOURCES</small></span><em>↓</em><span class="active"><i>3</i><b data-i18n="operations.monitor">观察哨监控</b><small>LIVE · 6 SYMBOLS</small></span><em>↓</em><span><i>4</i><b data-i18n="operations.guardCheck">重跑硬风控</b><small>ON SIGNAL</small></span><em>↓</em><span><i>5</i><b data-i18n="operations.reconcile">执行与对账</b><small>WAITING</small></span><em>↓</em><span><i>6</i><b data-i18n="operations.reviewLoop">财务复盘回流</b><small>AFTER CLOSE</small></span></div></aside>
+                    <article class="ui-card ui-runs"><header><b data-i18n="operations.recentRuns">近期运行</b><small>LAST 15 MIN · 0 ERRORS</small></header><table><tbody><tr><td>09:44:02</td><td data-i18n="operations.marketRefresh">市场事实刷新</td><td>842 ms</td><td><span class="ui-pill good">OK</span></td></tr><tr><td>09:43:30</td><td data-i18n="operations.eventRefresh">事件源刷新</td><td>1.4 s</td><td><span class="ui-pill good">OK</span></td></tr><tr><td>09:42:00</td><td data-i18n="operations.agentCycle">Agent 决策循环</td><td>41.2 s</td><td><span class="ui-pill good" data-i18n="operations.noTrade">无交易</span></td></tr><tr><td>09:40:18</td><td data-i18n="operations.riskSnapshot">风险快照固化</td><td>316 ms</td><td><span class="ui-pill good">SIGNED</span></td></tr><tr><td>09:39:01</td><td data-i18n="operations.orderReconcile">订单状态对账</td><td>1.1 s</td><td><span class="ui-pill good">MATCHED</span></td></tr></tbody></table></article>
+                  </div>
+                </section>
+
+                <section class="product-panel" id="product-panel-risk" data-product-panel="risk" hidden>
+                  <div class="ui-workspace-head"><div><span>RISK CENTER</span><h3 data-i18n="risk.title">资金与交易控制</h3></div><nav><b data-i18n="risk.overview">风险总览</b><b class="active" data-i18n="risk.limits">资金与交易边界</b><b data-i18n="risk.rules">风控规则</b></nav><button class="danger" data-i18n="risk.emergency">紧急停止</button></div>
+                  <div class="ui-effective-limits"><article class="primary"><small data-i18n="risk.orderLimit">当前有效单笔上限</small><b>250 USDT</b><div class="limit-meter"><i class="meter-32"></i></div><em data-i18n="risk.liveCapacity">已计入实时账户容量</em></article><article><small data-i18n="risk.pairLimit">单交易对累计上限</small><b>800 USDT</b><div class="limit-meter"><i class="meter-27"></i></div><em>216 / 800 USDT</em></article><article><small data-i18n="risk.portfolioLimit">全部持仓累计上限</small><b>2,000 USDT</b><div class="limit-meter"><i class="meter-18"></i></div><em>364 / 2,000 USDT</em></article><article><small data-i18n="risk.leverage">允许杠杆</small><b>1× – 3×</b><div class="limit-meter"><i class="meter-50"></i></div><em>1.5× <span data-i18n="risk.current">当前</span></em></article></div>
+                  <div class="ui-risk-telemetry"><article><span data-i18n="risk.accountEquity">账户权益</span><b>12,486.30 USDT</b><em class="good" data-i18n="risk.fresh">12 秒前验证</em></article><article><span data-i18n="risk.availableBalance">可用余额</span><b>9,742.18 USDT</b><em>78.0%</em></article><article><span data-i18n="risk.riskBudgetUsed">风险预算使用</span><b>38%</b><div><i class="meter-38"></i></div></article><article><span data-i18n="risk.dailyBudgetUsed">日亏损预算使用</span><b>0.42 / 2.00%</b><div class="warn"><i class="meter-21"></i></div></article><article><span data-i18n="risk.liquidationBuffer">强平安全距离</span><b>42.8%</b><em class="good" data-i18n="risk.safe">安全</em></article></div>
+                  <div class="ui-risk-grid">
+                    <article class="ui-card ui-mode-card"><header><b data-i18n="risk.mode">执行方式</b><span class="ui-pill warn" data-i18n="risk.approvalMode">逐笔确认</span></header><button><i></i><span><b data-i18n="risk.observe">只分析，不下单</b><small data-i18n="risk.observeText">继续发现机会，不向 OKX 提交订单</small></span></button><button class="active"><i></i><span><b data-i18n="risk.approveEach">逐笔确认后下单</b><small data-i18n="risk.approveEachText">每笔计划由你批准后才使用真实资金</small></span></button><button><i></i><span><b data-i18n="risk.autoWithin">符合限制时自动下单</b><small data-i18n="risk.autoWithinText">全部事实、权限与硬风控通过后执行</small></span></button></article>
+                    <article class="ui-card ui-limit-card"><header><b data-i18n="risk.lossLimits">杠杆与亏损边界</b><small>PERMISSION v4</small></header><dl><div><dt data-i18n="risk.tradeLoss">单笔最多亏损</dt><dd>0.50%</dd></div><div><dt data-i18n="risk.dailyLoss">单日亏损上限</dt><dd>2.00%</dd></div><div><dt data-i18n="risk.weeklyLoss">近 7 日亏损上限</dt><dd>5.00%</dd></div><div><dt data-i18n="risk.positions">最多同时持仓</dt><dd>3</dd></div></dl><p><i>⛉</i><span><b data-i18n="risk.secrets">密钥不进入模型</b><small data-i18n="risk.secretsText">Secret 与 Passphrase 隔离于模型上下文和普通日志。</small></span></p></article>
+                    <aside class="ui-card ui-gate-card"><header><b data-i18n="risk.liveChecks">实盘交易检查</b><strong>7/7 <span data-i18n="risk.passed">通过</span></strong></header><ul><li><i>✓</i><span data-i18n="risk.check1">API Key 已确认禁止提现</span></li><li><i>✓</i><span data-i18n="risk.check2">账户事实新鲜且环境一致</span></li><li><i>✓</i><span data-i18n="risk.check3">策略版本已批准</span></li><li><i>✓</i><span data-i18n="risk.check4">保护单能力可验证</span></li><li><i>✓</i><span data-i18n="risk.check5">审计链完整</span></li><li><i>✓</i><span data-i18n="risk.check6">当前不在高风险事件静默窗</span></li><li><i>✓</i><span data-i18n="risk.check7">亏损与同向敞口预算充足</span></li></ul><div><button data-i18n="app.reduceOnly">只减仓</button><button data-i18n="app.pause">暂停自主</button></div></aside>
+                  </div>
+                </section>
+              </div>
             </div>
-            <div class="os-status" aria-hidden="true"><i></i>ALL SUBSYSTEMS LINKED <b>05 / 05</b></div>
-            <article class="os-module os-module--evidence">
-              <div><b>01</b><span>REAL-TIME EVIDENCE</span></div><h3 data-i18n="cap.evidenceTitle">交易所事实，先校验再进入 AI。</h3><p data-i18n="cap.evidenceText">API Key 指纹、账户、实盘/模拟环境、分页完整性、张数与币量、交易所源时间全部绑定。缺失就是不可确认，不会被编成 0。</p><small><i></i>OKX FACT BUS</small>
-            </article>
-            <article class="os-module os-module--knowledge">
-              <div><b>02</b><span>KNOWLEDGE GRAPH</span></div><h3 data-i18n="cap.knowledgeTitle">让知识在需要时出现。</h3><p data-i18n="cap.knowledgeText">书籍和复盘沉淀为概念、方法、规则候选与关系图谱；未审批自由文本不会晋升为系统指令。</p><small><i></i>GRAPH ONLINE</small>
-            </article>
-            <article class="os-module os-module--risk">
-              <div><b>03</b><span>DETERMINISTIC RISK</span></div><h3 data-i18n="cap.riskTitle">AI 可以建议，不能越权。</h3><p data-i18n="cap.riskText">单笔风险、杠杆、日亏损、事件静默期、市场新鲜度、保护单与账户权限由确定性代码把关。</p><small><i></i>GUARD ACTIVE</small>
-            </article>
-            <article class="os-module os-module--execution">
-              <div><b>04</b><span>DURABLE EXECUTION</span></div><h3 data-i18n="cap.executionTitle">对响应未知保持诚实。</h3><p data-i18n="cap.executionText">下单、撤单、平仓和保护动作拥有稳定身份与持久意图；进程重启后继续恢复，旧响应不能覆盖更新事实。</p><small><i></i>OMS RECONCILING</small>
-            </article>
-            <article class="os-module os-module--audit">
-              <div><b>05</b><span>FINANCIAL TRUTH</span></div><h3 data-i18n="cap.auditTitle">结果不完整，就不写成精确收益。</h3><p data-i18n="cap.auditText">成交、真实手续费、返佣与资金费对账完成后才形成净结果；动作、依据与权限变更保留可追踪记录。</p><small><i></i>LEDGER VERIFIED</small>
-            </article>
+
+            <div class="cap-boundary-strip" id="guardrails">
+              <div class="cap-boundary-copy"><span class="section-index">CAPABILITY × BOUNDARY</span><h3 data-i18n="guard.title">飞得更远之前，先知道哪里不能去。</h3><div><p data-i18n="guard.lead">每一项能力旁边，都有一个不能被模型绕过的边界。点击下面的环节，在真实 App 界面中查看它们如何同时工作。</p><button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button></div></div>
+              <div class="cap-boundary-list">
+                <button class="is-active" type="button" data-product-tab="intel"><span>01</span><b data-i18n="cap.intelTitle">汇总实时情报</b><small data-i18n="cap.intelBoundary">数据过期或来源不足，不形成确定结论</small></button>
+                <button type="button" data-product-tab="knowledge"><span>02</span><b data-i18n="cap.knowledgeTitle">调用专业知识</b><small data-i18n="cap.knowledgeBoundary">未经审批的自由文本不会成为系统指令</small></button>
+                <button type="button" data-product-tab="strategy"><span>03</span><b data-i18n="cap.strategyTitle">采用版本化策略</b><small data-i18n="cap.strategyBoundary">未验证、未批准的版本不能进入实盘</small></button>
+                <button type="button" data-product-tab="operations"><span>04</span><b data-i18n="cap.operationsTitle">持续监控事件与任务</b><small data-i18n="cap.operationsBoundary">任务只能唤醒判断，不能绕过风控下单</small></button>
+                <button type="button" data-product-tab="risk"><span>05</span><b data-i18n="cap.riskTitle">在授权范围内执行</b><small data-i18n="cap.riskBoundary">额度、杠杆、亏损与紧急停止由代码控制</small></button>
+              </div>
+              <div class="boundary-foundation"><span><i>01</i><b data-i18n="guard.oneTitle">密钥不进入模型</b></span><span><i>02</i><b data-i18n="guard.twoTitle">权限由你定义</b></span><span><i>03</i><b data-i18n="guard.threeTitle">无法证明则降级</b></span><span><i>04</i><b data-i18n="guard.fourTitle">一键停止与只减仓</b></span></div>
+            </div>
           </div>
         </div>
       </section>
@@ -230,27 +315,6 @@
               </tbody>
             </table>
             <p class="comparison-note" data-i18n="compare.note">比较基于系统设计目标，不代表任何收益优劣；交易风险始终存在。</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="guardrails-section" id="guardrails">
-        <div class="guardrails-orb" aria-hidden="true"></div>
-        <div class="guardrail-stars" aria-hidden="true"></div>
-        <div class="section-wrap guardrails-grid">
-          <div class="guardrail-copy ta-reveal">
-            <span class="section-index">05 / BOUNDARIES</span>
-            <h2 class="taSectionName" data-i18n="guard.title">飞得更远之前，先知道哪里不能去。</h2>
-            <p class="taSectionSupport" data-i18n="guard.lead">自主不等于无限授权。你定义市场、资金、杠杆、日亏损和有效期；系统只在边界内工作，异常时优先降风险。</p>
-            <button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button>
-          </div>
-          <div class="boundary-radar ta-reveal">
-            <div class="radar-core" aria-hidden="true"><div class="radar-sweep"></div><i></i><i></i><i></i><span>SAFE<br>VECTOR</span></div>
-            <div class="radar-status" aria-hidden="true"><i></i>BOUNDARY SCAN ACTIVE <b>04 ZONES</b></div>
-            <article class="boundary-beacon boundary-beacon--one"><b>01</b><div><h3 data-i18n="guard.oneTitle">密钥不进入模型</h3><p data-i18n="guard.oneText">API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。</p></div><span>SEALED</span></article>
-            <article class="boundary-beacon boundary-beacon--two"><b>02</b><div><h3 data-i18n="guard.twoTitle">权限由你定义</h3><p data-i18n="guard.twoText">交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。</p></div><span>BOUND</span></article>
-            <article class="boundary-beacon boundary-beacon--three"><b>03</b><div><h3 data-i18n="guard.threeTitle">保护无法证明则降级</h3><p data-i18n="guard.threeText">止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。</p></div><span>FAIL CLOSED</span></article>
-            <article class="boundary-beacon boundary-beacon--four"><b>04</b><div><h3 data-i18n="guard.fourTitle">一键停止与只减仓</h3><p data-i18n="guard.fourText">异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。</p></div><span>REDUCE ONLY</span></article>
           </div>
         </div>
       </section>

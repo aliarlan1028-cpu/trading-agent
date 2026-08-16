@@ -9,6 +9,7 @@ export { SECRET_KEYS } from "./secretRegistry.mjs";
 export const PLAIN_KEYS = new Set([
   "DEEPSEEK_MODEL", "GEMINI_MODEL",
   "OPENROUTER_ZDR", "OPENROUTER_DATA_COLLECTION", "OPENROUTER_ALLOW_PROVIDER_FALLBACKS", "LLM_CRITIC_REQUIRED_FOR_LIVE",
+  "OPENROUTER_ALLOWED_GEMINI_PROVIDERS", "LLM_CRITIC_MIN_CONFIDENCE",
   "LIVE_TRADING_ENABLED", "I_UNDERSTAND_REAL_TRADING", "REAL_ORDER_WRITE_ENABLED",
   "MAX_LIVE_NOTIONAL_USDT", "OKX_MARGIN_MODE", "OKX_POSITION_MODE",
   "AUTH_REQUIRED", "PUBLIC_REGISTRATION_ENABLED", "PUBLIC_REGISTRATION_MODE", "PUBLIC_MAX_TENANTS", "PUBLIC_BASE_URL",
@@ -17,7 +18,7 @@ export const PLAIN_KEYS = new Set([
   "REQUIRE_MFA_FOR_LIVE",
   "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT", "SKILL_SANDBOX_IMAGE",
   "PRODUCTION_SECURITY_PROFILE", "MANDATE_POLICY_MAX_SINGLE_RISK_PCT", "MANDATE_POLICY_MAX_DAILY_LOSS_PCT", "MANDATE_POLICY_MAX_WEEKLY_LOSS_PCT",
-  "OKX_MARKET_TYPE", "PORT", "HOST",
+  "OKX_MARKET_TYPE", "OKX_DEMO_TRADING", "OKX_BASE_URL", "PORT", "HOST",
   "EMBEDDING_PROVIDER", "EMBEDDING_MODEL",
   "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED",
   "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT", "TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT",
@@ -129,22 +130,50 @@ export function setConfig(db, entries = {}) {
   db.runtimeConfig ||= {};
   const applied = [];
   const risky = [];
+  const livePolicySensitive = new Set([
+    "GEMINI_MODEL", "DEEPSEEK_MODEL", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY",
+    "OPENROUTER_ZDR", "OPENROUTER_DATA_COLLECTION", "OPENROUTER_ALLOW_PROVIDER_FALLBACKS",
+    "OPENROUTER_ALLOWED_GEMINI_PROVIDERS", "LLM_CRITIC_REQUIRED_FOR_LIVE", "LLM_CRITIC_MIN_CONFIDENCE",
+    "OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE", "OKX_DEMO_TRADING", "OKX_BASE_URL"
+  ]);
+  let livePolicyChanged = false;
   for (const [key, rawValue] of Object.entries(entries)) {
     const value = rawValue === undefined || rawValue === null ? "" : String(rawValue);
+    const previousValue = process.env[key] ?? "";
     if (SECRET_KEYS.has(key)) {
       if (value === "") continue; // 空值不覆盖已有密钥
       storeSecret(db, key, value, scopeFor(key));
       db.clearedRuntimeSecrets = (db.clearedRuntimeSecrets || []).filter((item) => item !== key);
       process.env[key] = value;
       applied.push(key);
+      if (livePolicySensitive.has(key) && previousValue !== value) livePolicyChanged = true;
     } else if (PLAIN_KEYS.has(key)) {
       process.env[key] = value;
       db.runtimeConfig[key] = value;
       applied.push(key);
+      if (livePolicySensitive.has(key) && previousValue !== value) livePolicyChanged = true;
       if (/LIVE_TRADING|REAL_ORDER|UNDERSTAND/.test(key)) risky.push(key);
     }
   }
   recomputeLive(db);
+  if (livePolicyChanged) {
+    db.system ||= {};
+    db.system.realTradingAck = false;
+    db.system.liveTradingEnabled = false;
+    db.system.orderWriteEnabled = false;
+    db.system.liveConfigVersion = Number(db.system.liveConfigVersion || 0) + 1;
+    db.system.liveConfirmationInvalidatedAt = nowIso();
+    db.system.liveConfirmationInvalidationReason = "live_policy_changed";
+    delete db.system.liveConfirmationPolicyFingerprint;
+    delete db.system.liveConfirmedAt;
+    process.env.I_UNDERSTAND_REAL_TRADING = "false";
+    process.env.LIVE_TRADING_ENABLED = "false";
+    process.env.REAL_ORDER_WRITE_ENABLED = "false";
+    db.runtimeConfig.I_UNDERSTAND_REAL_TRADING = "false";
+    db.runtimeConfig.LIVE_TRADING_ENABLED = "false";
+    db.runtimeConfig.REAL_ORDER_WRITE_ENABLED = "false";
+    appendAudit(db, "实盘模型/Provider/凭证策略发生变化，旧实盘确认已失效", "live_policy", "ConfigManager", "critical");
+  }
   if (applied.length) {
     appendAudit(db, `更新运行配置：${applied.join("、")}`, "runtime_config", "ConfigManager", risky.length ? "warning" : "info");
   }
@@ -158,6 +187,20 @@ export function clearSecret(db, key) {
   db.vaultItems = (db.vaultItems || []).filter((item) => item.name !== key);
   db.clearedRuntimeSecrets ||= [];
   if (!db.clearedRuntimeSecrets.includes(key)) db.clearedRuntimeSecrets.push(key);
+  if (["OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE"].includes(key)) {
+    db.system ||= {};
+    db.system.realTradingAck = false;
+    db.system.liveTradingEnabled = false;
+    db.system.orderWriteEnabled = false;
+    db.system.liveConfigVersion = Number(db.system.liveConfigVersion || 0) + 1;
+    db.system.liveConfirmationInvalidatedAt = nowIso();
+    db.system.liveConfirmationInvalidationReason = "live_policy_secret_removed";
+    delete db.system.liveConfirmationPolicyFingerprint;
+    delete db.system.liveConfirmedAt;
+    process.env.I_UNDERSTAND_REAL_TRADING = "false";
+    process.env.LIVE_TRADING_ENABLED = "false";
+    process.env.REAL_ORDER_WRITE_ENABLED = "false";
+  }
   appendAudit(db, `移除密钥：${key}`, "runtime_config", "ConfigManager", "warning");
   return true;
 }
@@ -181,7 +224,8 @@ export function getConfigStatus(db) {
         deepseek: { hasKey: has("DEEPSEEK_API_KEY"), gateway: "DeepSeek Direct", role: "critic", model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" }
       },
       policy: {
-        criticRequiredForLive: process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false",
+        criticRequiredForLive: true,
+        criticRequirementConfiguredSafely: process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false",
         openRouterZdr: process.env.OPENROUTER_ZDR !== "false",
         dataCollection: process.env.OPENROUTER_DATA_COLLECTION === "allow" ? "allow" : "deny",
         sameModelProviderFallbacks: process.env.OPENROUTER_ALLOW_PROVIDER_FALLBACKS !== "false",

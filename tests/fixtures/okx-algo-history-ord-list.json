@@ -1,0 +1,15 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [{
+    "instType": "SWAP",
+    "instId": "BTC-USDT-SWAP",
+    "algoId": "681022401234567890",
+    "algoClOrdId": "stopabcdef123456",
+    "ordType": "conditional",
+    "state": "effective",
+    "ordIdList": ["681022409876543210", "681022409876543211"],
+    "cTime": "1785902460000",
+    "uTime": "1785902520000"
+  }]
+}

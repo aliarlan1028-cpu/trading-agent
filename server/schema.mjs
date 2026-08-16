@@ -89,6 +89,9 @@ export function validateRuntimeConfig(entries = {}) {
       if (!["true", "false", ""].includes(v)) errors.push(`${key} 只能为 true/false，收到「${v}」`);
     }
     if (key === "OPENROUTER_DATA_COLLECTION" && !["allow", "deny"].includes(String(value))) errors.push("OPENROUTER_DATA_COLLECTION 只能为 allow/deny");
+    if (key === "LLM_CRITIC_REQUIRED_FOR_LIVE" && String(value) === "false") errors.push("实盘安全策略禁止关闭 DeepSeek 独立审查");
+    if (key === "LLM_CRITIC_MIN_CONFIDENCE" && (!isNum(value) || n(value) < 0.5 || n(value) > 1)) errors.push("LLM_CRITIC_MIN_CONFIDENCE 必须在 0.5 到 1 之间");
+    if (key === "OKX_DEMO_TRADING" && !["true", "false"].includes(String(value))) errors.push("OKX_DEMO_TRADING 只能为 true/false");
   }
   return { valid: errors.length === 0, errors, warnings, normalized: entries };
 }

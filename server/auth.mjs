@@ -275,17 +275,31 @@ function completePasswordLogin(req, res, db, user, clientKey) {
   if (user.mfaEnabled) {
     let secret = null;
     try { secret = user.mfaSecretName ? readSecret(db, user.mfaSecretName) : null; } catch { secret = null; }
-    if (!secret) {
+    const mfa = evaluateMfaLogin(secret, req.body?.totp);
+    if (mfa.state === "unavailable") {
       recordLoginFailure(clientKey);
       return res.status(503).json({ error: "MFA is enabled but its secret is unavailable; contact the instance owner" });
     }
-    if (!verifyTotp(secret, req.body?.totp)) {
+    if (mfa.state === "required") {
+      // Correct password + absent second factor starts step two. It is not a
+      // password failure and must not consume the IP login-attempt budget.
+      return res.status(401).json({ error: "Two-factor verification required", mfaRequired: true, mfaRetry: "required" });
+    }
+    if (mfa.state === "invalid") {
       recordLoginFailure(clientKey);
-      return res.status(401).json({ error: "Two-factor verification required", mfaRequired: true });
+      return res.status(401).json({ error: "Invalid two-factor verification code", mfaRequired: true, mfaRetry: "invalid" });
     }
   }
   loginAttempts.delete(clientKey);
   return createSession(req, res, db, user, { mustChangePassword: user.mustChangePassword === true });
+}
+
+export function evaluateMfaLogin(secret, value) {
+  if (!secret) return { state: "unavailable", countFailure: true };
+  const code = String(value || "").trim();
+  if (!code) return { state: "required", countFailure: false };
+  if (!verifyTotp(secret, code)) return { state: "invalid", countFailure: true };
+  return { state: "verified", countFailure: false };
 }
 
 function verifyCurrentPassword(user, value) {

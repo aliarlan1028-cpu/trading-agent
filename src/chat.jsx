@@ -41,7 +41,7 @@ import {
 import { apiUrl, automationPresentation, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
-import { groupClosedTradeLifecyclesForView, hasFiniteNumber } from "./viewData.js";
+import { hasFiniteNumber } from "./viewData.js";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -802,12 +802,11 @@ export function buildCurrentExecutionSnapshot(data = {}, linked = {}) {
   const entries = fills.filter((item) => item.kind === "entry" && hasFiniteNumber(item.price) && hasFiniteNumber(item.quantity));
   const entryQty = entries.reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
   const entryNotional = entries.reduce((sum, item) => sum + Math.abs(Number(item.price) * Number(item.quantity)), 0);
-  const hasAuthoritativeLifecycles = Array.isArray(data.closedTradeLifecycles);
-  const suppliedLifecycle = (hasAuthoritativeLifecycles ? data.closedTradeLifecycles : []).find((item) => item.tradeLifecycleKey === order.id
+  const suppliedLifecycle = (Array.isArray(data.closedTradeLifecycles) ? data.closedTradeLifecycles : []).find((item) => item.tradeLifecycleKey === order.id
     || item.key === order.id
     || item.executionOrderId === order.id
     || (linked.planId && (item.tradePlanId === linked.planId || item.planId === linked.planId)));
-  const lifecycles = suppliedLifecycle ? [suppliedLifecycle] : hasAuthoritativeLifecycles ? [] : groupClosedTradeLifecyclesForView(fills);
+  const lifecycles = suppliedLifecycle ? [suppliedLifecycle] : [];
   const grossRealizedPnl = lifecycles.length && lifecycles.every((lifecycle) => hasFiniteNumber(lifecycle.realizedPnl))
     ? lifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.realizedPnl), 0)
     : hasFiniteNumber(order.realizedPnl) ? Number(order.realizedPnl) : null;

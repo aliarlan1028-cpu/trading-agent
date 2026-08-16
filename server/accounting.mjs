@@ -7,6 +7,8 @@ import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from 
 import { recordedFeeCost } from "./financialValues.mjs";
 import { groupPositionMirrors, newestAuthoritativePosition, positionFactObservedMs, positionMirrorKey } from "./positionView.mjs";
 import { marketFactFreshness } from "./marketFreshness.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
+import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -138,7 +140,7 @@ function accountingAnchorFromSnapshot(snapshot) {
   const observedMs = new Date(snapshot?.createdAt || 0).getTime();
   if (snapshot?.status !== "ok" || !(equity > 0) || !upl.complete || !Number.isFinite(observedMs)) return null;
   return {
-    id: `accounting_anchor_${snapshot.accountId || "okx"}_${Math.floor(observedMs / ACCOUNTING_ANCHOR_BUCKET_MS)}`,
+    id: `accounting_anchor_${snapshot.accountId || "okx"}_${snapshot.apiKeyFingerprint || "missing"}_${snapshot.environment || "missing"}_${Math.floor(observedMs / ACCOUNTING_ANCHOR_BUCKET_MS)}`,
     status: "ok",
     exchange: snapshot.exchange || "OKX",
     accountId: snapshot.accountId || null,
@@ -169,12 +171,48 @@ export function retainAccountingAnchors(db) {
   return db.accountingAnchors;
 }
 
-function baselineSnapshot(db, boundaryMs, accountId, options = {}) {
+function sameAccountingBinding(row, binding) {
+  return Boolean(row && binding
+    && row.accountId === binding.accountId
+    && row.apiKeyFingerprint === binding.apiKeyFingerprint
+    && row.environment === binding.environment);
+}
+
+function resolveCurrentAccountingBinding(db) {
+  const currentSnapshot = (db.accountSnapshots || [])
+    .filter((snapshot) => snapshot?.status === "ok" && (!snapshot.exchange || snapshot.exchange === "OKX"))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  if (!currentSnapshot) return { ok: false, reason: "current_account_snapshot_missing" };
+
+  const credentialBinding = validateOkxCredentialBinding(db, {
+    accountId: currentSnapshot.accountId,
+    snapshot: currentSnapshot,
+    requiredCapability: "read"
+  });
+  if (!credentialBinding.ok) {
+    return { ok: false, reason: credentialBinding.reason || "current_account_binding_unavailable", credentialBinding };
+  }
+  const account = credentialBinding.account;
+  const binding = {
+    accountId: account.id,
+    apiKeyFingerprint: credentialBinding.currentFingerprint,
+    environment: okxEnvironmentConfig().name
+  };
+  if (!binding.accountId || !binding.apiKeyFingerprint || !binding.environment) {
+    return { ok: false, reason: "current_account_binding_incomplete", binding };
+  }
+  if (!sameAccountingBinding(currentSnapshot, binding)) {
+    return { ok: false, reason: "current_account_snapshot_binding_mismatch", binding, snapshotId: currentSnapshot.id || null };
+  }
+  return { ok: true, binding, currentSnapshot };
+}
+
+function baselineSnapshot(db, boundaryMs, binding, options = {}) {
   const maxGapMs = Number(options.maxGapMs ?? process.env.MAX_ACCOUNTING_BASELINE_GAP_MS ?? 15 * 60_000);
   return [...(db.accountSnapshots || []), ...(db.accountingAnchors || [])].filter((snapshot) => {
     if (snapshot?.status !== "ok") return false;
     if (snapshot.exchange && snapshot.exchange !== "OKX") return false;
-    if (accountId && snapshot.accountId && snapshot.accountId !== accountId) return false;
+    if (!sameAccountingBinding(snapshot, binding)) return false;
     const at = new Date(snapshot.createdAt || 0).getTime();
     return Number.isFinite(at) && at <= boundaryMs && boundaryMs - at <= maxGapMs;
   }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
@@ -183,19 +221,17 @@ function baselineSnapshot(db, boundaryMs, accountId, options = {}) {
 function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
   db.portfolio ||= {};
   db.portfolio.accountingBaselines ||= {};
-  const currentSnapshot = (db.accountSnapshots || []).filter((snapshot) => snapshot?.status === "ok")
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
-  const accountId = currentSnapshot?.accountId || null;
-  const fingerprint = currentSnapshot?.apiKeyFingerprint || null;
+  const current = resolveCurrentAccountingBinding(db);
+  if (!current.ok) return current;
+  const binding = current.binding;
   const boundaryAt = new Date(boundaryMs).toISOString();
   const existing = db.portfolio.accountingBaselines[kind];
   if (existing?.boundaryAt === boundaryAt
-    && (!accountId || existing.accountId === accountId)
-    && (!fingerprint || existing.apiKeyFingerprint === fingerprint)
+    && sameAccountingBinding(existing, binding)
     && strictNumber(existing.equityUsdt) > 0
     && strictNumber(existing.unrealizedPnlUsdt) !== null) return { ok: true, baseline: existing };
 
-  const snapshot = baselineSnapshot(db, boundaryMs, accountId, options);
+  const snapshot = baselineSnapshot(db, boundaryMs, binding, options);
   const equity = snapshotEquity(snapshot);
   const upl = snapshotUnrealized(snapshot);
   if (!snapshot || !(equity > 0) || !upl.complete) {

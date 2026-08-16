@@ -131,6 +131,7 @@ const collectionNames = [
   "chatSessions",
   "chatMessages",
   "agentRuns",
+  "decisionAuditRecords",
   "reviews",
   "pendingActions"
 ];
@@ -631,6 +632,7 @@ function cleanSeedDatabase(createdAt) {
     },
     memoryItems: [],
     agentRuns: [],
+    decisionAuditRecords: [],
     reviews: [],
     auditLogs: [],
     traces: []
@@ -804,7 +806,7 @@ export async function repairAuditChainExplicit(db, { acknowledgement, backupPath
 // 日志型集合上限：防止长期累积把 saveDb 的全库序列化拖垮（曾累积到 accountSnapshots 22K / jobRuns 95K
 // / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
 const LOG_CAPS = {
-  accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300,
+  accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300, decisionAuditRecords: 200,
   accountingAnchors: 2600,
   agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,

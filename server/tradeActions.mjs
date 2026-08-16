@@ -8,6 +8,8 @@ import { leverageBoundsForMandate } from "./mandatePolicy.mjs";
 import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
 import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
+import { liveConfirmationStatus } from "./liveModeService.mjs";
+import { TERMINAL_EXCHANGE_ORDER_STATES } from "./orderStates.mjs";
 
 // OKX clOrdId 只允许字母+数字(≤32)。下单/撤单/改单必须用同一个清洗函数,否则发出去清洗过、
 // 撤单用原值(带下划线)→ OKX 找不到单 → 撤不掉的孤儿单(审计 exch-F2)。全链路统一走它。
@@ -50,7 +52,7 @@ const ACTION_TO_MANDATE = {
   move_stop: "move_stop",
   take_profit: "take_profit"
 };
-const TERMINAL_ORDER_STATES = new Set(["filled", "canceled", "cancelled", "mmp_canceled", "rejected", "expired", "closed"]);
+const TERMINAL_ORDER_STATES = TERMINAL_EXCHANGE_ORDER_STATES;
 
 // 把内部拦截原因码翻成人话 + 指向对应开关位置，供前端/批准接口/Agent 使用。
 const GUARD_REASON_DETAIL = {
@@ -312,6 +314,11 @@ export function validateWriteGuard(db, action, payload) {
   }
   if (notional > maxNotional) return { allowed: false, reason: "notional_exceeds_gray_limit", notional, maxNotional };
   if (policy.requiresManualApproval && payload.manualApproval !== true) return { allowed: false, reason: "manual_approval_required" };
+  // 实盘确认是写入交易所前的最后一道配置完整性闸。放在来源、Mandate、事实、
+  // 账户与灰度额度校验之后，既保证配置变化一定阻断真实写入，也不掩盖更具体、
+  // 更可操作的上游拒绝原因（例如非法 EmergencyAction 或杠杆越界）。
+  const liveConfirmation = liveConfirmationStatus(db);
+  if (!liveConfirmation.ok) return { allowed: false, reason: liveConfirmation.reason, liveConfirmation };
   return { allowed: true, notional, maxNotional, policyId: policy.id, mandateId: mandateGuard.mandateId };
 }
 

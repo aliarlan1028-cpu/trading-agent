@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-deepseek-demo",
+  "model": "deepseek-v4-pro",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "{\"verdict\":\"approve\",\"severity\":\"low\",\"confidence\":0.91,\"objections\":[],\"requiredChecks\":[],\"summary\":\"All required evidence and risk checks are present.\"}"
+    },
+    "finish_reason": "stop"
+  }],
+  "usage": { "prompt_tokens": 320, "completion_tokens": 42, "total_tokens": 362 }
+}

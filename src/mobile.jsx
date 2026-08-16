@@ -52,7 +52,6 @@ import {
   buildMarketRows,
   buildPositionView,
   buildStrategyCatalogRows,
-  groupClosedTradeLifecyclesForView,
   hasFiniteNumber,
   isCompletedTradeReview,
   netReviewResult
@@ -245,7 +244,6 @@ export function MobilePositions({ data, action, ui }) {
 }
 
 // Backward-compatible export for focused lifecycle tests and any older imports.
-export const groupMobileClosedTrades = groupClosedTradeLifecyclesForView;
 
 function MobileReviewSheet({ review, trade, onClose }) {
   if (!review) return null;
@@ -1667,15 +1665,13 @@ export function MobileApp({ api, lang, switchLang }) {
   useEffect(() => {
     if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
   }, [route]);
-  useEffect(() => {
-    const section = route === "chat" || route === "watch" ? "chat"
-      : ["cockpit", "executionReview", "tradeLedger"].includes(route) ? "cockpit"
-        : ["knowledgeBase", "capabilityLib", "strategyLib"].includes(route) ? "researchCenter"
-          : route === "riskHub" ? "riskCenter"
-            : ["intelligence", "eventsTasks", "auditSystem"].includes(route) ? "operationsCenter"
-              : route === "systemSettings" ? "systemSettings" : "cockpit";
-    ensureSection?.(section);
-  }, [route]);
+  const activeSection = route === "chat" || route === "watch" ? "chat"
+    : ["cockpit", "executionReview", "tradeLedger"].includes(route) ? "cockpit"
+      : ["knowledgeBase", "capabilityLib", "strategyLib"].includes(route) ? "researchCenter"
+        : route === "riskHub" ? "riskCenter"
+          : ["intelligence", "eventsTasks", "auditSystem"].includes(route) ? "operationsCenter"
+            : route === "systemSettings" ? "systemSettings" : "cockpit";
+  useEffect(() => { ensureSection?.(activeSection); }, [route]);
 
   function navigate(next) {
     haptic("light");
@@ -1724,6 +1720,13 @@ export function MobileApp({ api, lang, switchLang }) {
         : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
     content = <MobileMarket data={data} action={action} ui={ui} />;
+  }
+
+  const resourceState = data.resourceState?.[activeSection] || "not_loaded";
+  if (resourceState !== "loaded") {
+    content = resourceState === "error"
+      ? <div className="mEmptyState" role="alert"><Info size={22}/><b>{t("页面数据加载失败", "Workspace failed to load")}</b><small>{t("空白不代表数据为零。", "Blank values do not mean zero.")}</small><button type="button" onClick={() => ensureSection?.(activeSection, { force: true })}>{t("重新加载", "Retry")}</button></div>
+      : <div className="pageSkeleton" aria-busy="true"><div className="skRow skHead"/><div className="skGrid"><div className="skCard"/><div className="skCard"/></div><div className="skRow skWide"/></div>;
   }
 
   const headerRight = subPage

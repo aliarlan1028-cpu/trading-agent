@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import { LiveGrayPanel } from "./panels.jsx";
 import { ConceptGraph } from "./conceptGraph.jsx";
@@ -46,6 +46,7 @@ import {
   Zap
 } from "lucide-react";
 import { formatMoney, displayMoney, displayPrice, displayPct, safeList, formatDateTime, formatDate, formatTime, formatDuration, humanize, humanizeList, shortId, marginUsage, smartMoneyBias, SKILL_STATE, SKILL_STATE_HELP, EV_TONE, OPEN_EXECUTION_STATES, countOpenExecutions, statusTone, systemStatus, Card, SectionTitle, MetricCard, MiniSparkline, TradingViewChart, LivePrice, StatusBadge, ProgressBar, DataTable, RiskLine, MiniChart, InsightNote, FlagTip } from "./lib.jsx";
+import { nextResourceRequest, resourceRequestIsCurrent } from "./requestIdentity.js";
 
 export { ConceptGraph } from "./conceptGraph.jsx";
 
@@ -1632,6 +1633,16 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
   const jobRuns = data.jobRuns || [];
   const [traceTypeFilter, setTraceTypeFilter] = useState("全部");
   const [traceWindow, setTraceWindow] = useState("24h");
+  const [historyResource, setHistoryResource] = useState("fills");
+  const [historyRows, setHistoryRows] = useState([]);
+  const [historyCursor, setHistoryCursor] = useState(null);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [historySummary, setHistorySummary] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyRequestRef = useRef({ resource: "fills", generation: 0 });
+  useEffect(() => () => {
+    historyRequestRef.current = nextResourceRequest(historyRequestRef.current, "unmounted");
+  }, []);
   const latestPlan = data.tradePlans?.[0] || {};
   const latestRisk = data.riskChecks?.[0] || latestPlan.lastRiskCheck || {};
   const latestOrder = data.orders?.[0] || data.executionOrders?.[0] || {};
@@ -1658,6 +1669,43 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
     ["结算对账", data.reconciliationReports?.[0]?.id, humanize(data.reconciliationReports?.[0]?.status, "未对账"), RefreshCw, "RECONCILE"],
     ["复盘审查", data.reviews?.[0]?.id, data.reviews?.[0]?.id ? "已记录" : "未生成", Search, "REVIEW"]
   ];
+  const historyResources = [
+    ["fills", "成交"], ["executions", "执行"], ["plans", "计划"], ["reviews", "复盘"],
+    ["tasks", "任务"], ["job-runs", "运行日志"], ["audit", "审计日志"], ["decision-audits", "模型决策链"]
+  ];
+  const resetHistoryResource = (resource) => {
+    historyRequestRef.current = nextResourceRequest(historyRequestRef.current, resource);
+    setHistoryResource(resource);
+    setHistoryRows([]);
+    setHistoryCursor(null);
+    setHistoryHasMore(true);
+    setHistorySummary(null);
+    setHistoryLoading(false);
+  };
+  const loadHistory = async () => {
+    if (historyLoading || !historyHasMore) return;
+    const requestIdentity = nextResourceRequest(historyRequestRef.current, historyResource);
+    historyRequestRef.current = requestIdentity;
+    const requestedCursor = historyCursor;
+    setHistoryLoading(true);
+    try {
+      const cursor = requestedCursor ? `&cursor=${encodeURIComponent(requestedCursor)}` : "";
+      const page = await action(`/api/history/${requestIdentity.resource}?limit=50${cursor}`, {}, "GET");
+      if (!resourceRequestIsCurrent(historyRequestRef.current, requestIdentity)) return;
+      if (!Array.isArray(page?.items)) return;
+      setHistoryRows((current) => {
+        const seen = new Set(current.map((row) => row?.id));
+        return [...current, ...page.items.filter((row) => !seen.has(row?.id))];
+      });
+      setHistoryCursor(page.nextCursor || null);
+      setHistoryHasMore(page.hasMore === true);
+      setHistorySummary(page.summary || null);
+    } finally {
+      if (resourceRequestIsCurrent(historyRequestRef.current, requestIdentity)) setHistoryLoading(false);
+    }
+  };
+  const historyTitle = (row = {}) => row.title || row.name || row.action || row.summary || row.symbol || row.tradePlanId || row.agentRunId || row.id;
+  const historyStatus = (row = {}) => row.status || row.verdict || row.type || (row.rootHash ? "hash_verified_record" : "recorded");
   return (
     <div className="pageStack termPage">
       {!embedded && <TermHead title="审计" code="AUDIT" sub="全链路审计、决策/工具调用日志与系统可观测性" />}
@@ -1758,6 +1806,26 @@ export function AuditSystemPage({ data, action, ui, embedded = false }) {
             {!incidents.length && <div className="emptyPanel">暂无真实告警。</div>}
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="历史记录浏览器" action={<span className="mono">{historySummary ? `${historySummary.terminalTotal}/${historySummary.total}` : "limit + cursor"}</span>} />
+        <div className="filterRow">
+          <label>记录类型
+            <select value={historyResource} onChange={(event) => resetHistoryResource(event.target.value)}>
+              {historyResources.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+          </label>
+          <button className="secondaryButton" type="button" onClick={loadHistory} disabled={historyLoading || !historyHasMore}>
+            {historyLoading ? "加载中…" : historyRows.length ? (historyHasMore ? "加载更早记录" : "已加载全部") : "读取历史"}
+          </button>
+        </div>
+        <DataTable columns={[
+          { key: "createdAt", label: "时间", render: (row) => formatDateTime(row.updatedAt || row.completedAt || row.closedAt || row.createdAt) },
+          { key: "record", label: "记录", render: (row) => <span title={String(historyTitle(row) || "")}>{String(historyTitle(row) || "—").slice(0, 80)}</span> },
+          { key: "status", label: "状态", render: (row) => <StatusBadge tone={statusTone(historyStatus(row))}>{humanize(historyStatus(row), "已记录")}</StatusBadge> },
+          { key: "id", label: "ID", render: (row) => <span className="mono">{shortId(row.id) || "—"}</span> }
+        ]} rows={historyRows} emptyText="选择记录类型并点击“读取历史”；未加载不代表历史为空。" />
       </Card>
     </div>
   );

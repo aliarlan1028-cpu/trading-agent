@@ -17,8 +17,15 @@ function history(prefix, count, status) {
 test("core overview remains bounded without dropping old non-terminal risk state", () => {
   const db = seedDatabase();
   const oldOpen = { id: "execution-old-open", status: "close_unknown_pending", symbol: "BTC/USDT", createdAt: "2020-01-01T00:00:00.000Z" };
-  db.executionOrders = [...history("closed", 1400, "closed"), oldOpen];
-  const oldPlan = { id: "plan-old-executing", status: "executing", symbol: "BTC/USDT", createdAt: "2020-01-01T00:00:00.000Z" };
+  const recovering = { id: "execution-old-recovery", status: "recovery_pending_reconciliation", symbol: "ETH/USDT", createdAt: "2019-01-01T00:00:00.000Z" };
+  const emergency = { id: "execution-old-emergency", status: "emergency_close_pending", symbol: "SOL/USDT", createdAt: "2018-01-01T00:00:00.000Z" };
+  db.executionOrders = [
+    ...history("closed", 1400, "closed"),
+    { ...oldOpen, exchangeResponse: "x".repeat(800_000), events: [{ output: "y".repeat(800_000) }] },
+    recovering,
+    emergency
+  ];
+  const oldPlan = { id: "plan-old-executing", status: "executing", symbol: "BTC/USDT", reasoningSummary: "r".repeat(800_000), createdAt: "2020-01-01T00:00:00.000Z" };
   db.tradePlans = [...history("completed-plan", 800, "completed"), oldPlan];
   db.agentRuns = Array.from({ length: 300 }, (_, index) => ({
     id: `run-${index}`,
@@ -26,16 +33,22 @@ test("core overview remains bounded without dropping old non-terminal risk state
     steps: [{ id: `step-${index}`, output: "x".repeat(20000) }],
     toolTrace: [{ payload: "y".repeat(20000) }]
   }));
+  db.analysisBundles = [{ id: "analysis-large", summary: "a".repeat(800_000), toolTrace: [{ body: "b".repeat(800_000) }] }];
 
   const core = buildCoreOverview(db, { revision: 7 });
   const bytes = Buffer.byteLength(JSON.stringify(core));
 
   assert.equal(core.revision, 7);
   assert.ok(core.executionOrders.some((row) => row.id === oldOpen.id));
+  assert.ok(core.executionOrders.some((row) => row.id === recovering.id));
+  assert.ok(core.executionOrders.some((row) => row.id === emergency.id));
+  assert.equal(core.executionOrders.find((row) => row.id === oldOpen.id).exchangeResponse, undefined);
   assert.ok(core.tradePlans.some((row) => row.id === oldPlan.id));
   assert.equal("agentRuns" in core, false);
-  assert.ok(core.executionOrders.length <= 9, `expected open rows plus 8 history rows, got ${core.executionOrders.length}`);
-  assert.ok(bytes < 300_000, `core payload exceeded 300 KB: ${bytes}`);
+  assert.ok(core.executionOrders.length <= 11, `expected non-terminal rows plus 8 history rows, got ${core.executionOrders.length}`);
+  assert.ok(bytes < 250_000, `core payload exceeded 250 KB: ${bytes}`);
+  assert.equal(core.agentStatus.currentPlan, undefined);
+  assert.ok(core.agentStatus.timeline.length <= 5);
   assert.equal(core.resourceState.cockpit, "not_loaded");
 });
 
@@ -66,6 +79,40 @@ test("workspace projection bounds heavy history and preserves every active execu
   assert.equal(chat.agentRuns.length, 10);
   assert.ok(chat.agentRuns.every((row) => !Object.hasOwn(row, "toolTrace")));
   assert.ok(bytes < 500_000, `chat payload exceeded 500 KB: ${bytes}`);
+});
+
+test("core publishes authoritative lifecycle finance from the complete fill ledger", () => {
+  const db = seedDatabase();
+  db.fills = [
+    { id: "final", executionOrderId: "life", kind: "close", partial: false, realizedPnl: 8, feeUsdt: .3, estimatedFee: false, fundingFeeUsdt: -.5, fundingReconciled: true, createdAt: "2026-01-01T02:00:00Z" },
+    ...history("unrelated", 50, "recorded").map((row) => ({ ...row, kind: "entry" })),
+    { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, estimatedFee: false, createdAt: "2026-01-01T00:00:00Z" },
+    { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, estimatedFee: false, fundingFeeUsdt: 0, fundingReconciled: true, createdAt: "2026-01-01T01:00:00Z" }
+  ];
+  const core = buildCoreOverview(db, { revision: 12 });
+  assert.equal(core.fills.some((fill) => fill.id === "entry"), false, "bounded ledger fixture must omit the old entry");
+  const lifecycle = core.closedTradeLifecycles.find((row) => row.tradeLifecycleKey === "life");
+  assert.equal(lifecycle.netRealizedPnl, 8);
+  assert.equal(lifecycle.financialBasisComplete, true);
+  assert.equal(core.tradeDataStatus.closedLifecycleTotal, 1);
+});
+
+test("cockpit preserves old live and partially-filled exchange orders beyond the history limit", () => {
+  const live = { id: "exchange-live", source: "exchange_rest", state: "live" };
+  const partial = { id: "exchange-partial", source: "exchange_ws", status: "partially_filled" };
+  const recoveryPlan = { id: "plan-recovery", status: "recovery_pending_reconciliation" };
+  const cockpit = projectOverviewSection({
+    orders: [...history("filled-order", 500, "filled"), live, partial],
+    tradePlans: [...history("completed-plan", 500, "completed"), recoveryPlan],
+    executionOrders: [],
+    armedSetups: [],
+    fills: []
+  }, "cockpit");
+
+  assert.ok(cockpit.orders.some((row) => row.id === live.id));
+  assert.ok(cockpit.orders.some((row) => row.id === partial.id));
+  assert.ok(cockpit.tradePlans.some((row) => row.id === recoveryPlan.id));
+  assert.equal(cockpit.orders.filter((row) => row.status === "filled").length, 100);
 });
 
 test("risk workspace receives authoritative event windows separately from generic incidents", () => {

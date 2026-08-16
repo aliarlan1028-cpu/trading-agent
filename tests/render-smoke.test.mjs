@@ -54,7 +54,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection, groupMobileClosedTrades } from "./src/mobile.jsx";
+      export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
@@ -230,6 +230,7 @@ test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和�
 
   const feeFlipData = {
     executionOrders: [{ id: "eo-fee", planId: "plan-fee", status: "closed", realizedPnl: 1, quantity: 1, notionalUsdt: 100 }],
+    closedTradeLifecycles: [{ tradeLifecycleKey: "eo-fee", executionOrderId: "eo-fee", realizedPnl: 1, netRealizedPnl: -0.2, entryFeeUsdt: 0.8, feeUsdt: 0.4 }],
     fills: [
       { id: "entry-fee", executionOrderId: "eo-fee", tradePlanId: "plan-fee", kind: "entry", price: 100, quantity: 1, feeUsdt: 0.8 },
       { id: "close-fee", executionOrderId: "eo-fee", tradePlanId: "plan-fee", kind: "close", realizedPnl: 1, feeUsdt: 0.4 }
@@ -690,21 +691,6 @@ test("mobile strategy studio identifies AI-chat drafts as the same authoring pip
   assert.match(html, /草稿不会下单/);
 });
 
-test("mobile closed-trade ledger excludes entries and incomplete partial closes", () => {
-  const closed = C.groupMobileClosedTrades([
-    { id: "entry-1", executionOrderId: "life-1", kind: "entry", symbol: "BTC/USDT", direction: "long", feeUsdt: 1, quantity: 1, createdAt: "2026-08-01T00:00:00Z" },
-    { id: "partial-1", executionOrderId: "life-1", kind: "close", symbol: "BTC/USDT", direction: "long", partial: true, realizedPnl: -2, feeUsdt: .2, quantity: .4, createdAt: "2026-08-01T01:00:00Z" },
-    { id: "final-1", executionOrderId: "life-1", kind: "close", symbol: "BTC/USDT", direction: "long", partial: false, realizedPnl: 8, feeUsdt: .3, quantity: .6, createdAt: "2026-08-01T02:00:00Z" },
-    { id: "entry-2", executionOrderId: "life-2", kind: "entry", symbol: "SUI/USDT", direction: "short", quantity: 5, createdAt: "2026-08-02T00:00:00Z" },
-    { id: "partial-2", executionOrderId: "life-2", kind: "close", symbol: "SUI/USDT", direction: "short", partial: true, realizedPnl: 3, quantity: 2, createdAt: "2026-08-02T01:00:00Z" }
-  ]);
-  assert.equal(closed.length, 1);
-  assert.equal(closed[0].symbol, "BTC/USDT");
-  assert.equal(closed[0].closeCount, 2);
-  assert.equal(closed[0].realizedPnl, 6);
-  assert.equal(closed[0].netRealizedPnl, 4.5);
-});
-
 test("mobile strategy catalog and execution ledger use the same factual rows as desktop", () => {
   const strategyHtml = render(React.createElement(C.MobileStrategy, {
     data: {
@@ -924,6 +910,7 @@ test("desktop goal guardrails use lifecycle net PnL and allocation uses shared n
         { id: "part", kind: "close", executionOrderId: "goal-life", partial: true, realizedPnl: 4, feeUsdt: 1, createdAt: now },
         { id: "final", kind: "close", executionOrderId: "goal-life", realizedPnl: 6, feeUsdt: 1, createdAt: now }
       ],
+      closedTradeLifecycles: [{ id: "closed:goal-life", tradeLifecycleKey: "goal-life", netRealizedPnl: 7, createdAt: now }],
       positions: [], orders: [], executionOrders: [], markets: [], riskRules: [], accountSnapshots: [], mediumTermAnalytics: {}
     }, action, ui
   }));

@@ -707,3 +707,10 @@ export function strategyStudioSnapshot(db, options = {}) {
     marketplace: buildStrategyMarketplace(db)
   };
 }
+
+export function strategyDraftsReferencedByChat(db) {
+  ensureCollections(db);
+  const referenced = new Set((db.chatMessages || []).map((message) => message?.strategyDraftId).filter(Boolean));
+  if (!referenced.size) return [];
+  return db.strategyStudioDrafts.filter((draft) => referenced.has(draft?.id));
+}

@@ -20,6 +20,8 @@ import { monitorPositions } from "./positionManager.mjs";
 import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus, parseMandateCommand, runAgentCommand } from "./agentOrchestrator.mjs";
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerAllRoutes } from "./routes/index.mjs";
+import { transportSecurityPolicy } from "./transportSecurity.mjs";
+import { compareOverviewShadowFacts, overviewShadowFacts } from "./overviewShadow.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, invalidateUserSessions, requirePermission, resolvePermissions, verifyPassword } from "./auth.mjs";
 import { consumeStreamTicket, issueStreamTicket, STREAM_TICKET_TTL_MS } from "./streamTickets.mjs";
 import { resolveTenantEntitlement } from "./entitlements.mjs";
@@ -35,7 +37,7 @@ import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
-import { strategyStudioSnapshot } from "./strategyStudio.mjs";
+import { strategyDraftsReferencedByChat, strategyStudioSnapshot } from "./strategyStudio.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
 import { buildBacktestResearch } from "./strategyResearchView.mjs";
 import { compactOverviewForNative, projectOverviewSection } from "./overviewView.mjs";
@@ -458,6 +460,12 @@ app.use((_req, res, next) => {
   // 营销页(landing.html)用 Google Fonts(Space Grotesk / IBM Plex Mono / Public Sans / Noto Sans SC),
   // 故 style-src/font-src 放行 fonts.googleapis.com / fonts.gstatic.com;脚本仍严格 'self'(landing.js 外置)。
   res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; frame-src 'self'; frame-ancestors 'self'");
+  next();
+});
+app.use((req, res, next) => {
+  const policy = transportSecurityPolicy(req);
+  res.setHeader("X-Kordyn-Transport-Security", policy.label || "unknown");
+  if (!policy.allowed) return res.status(policy.status || 426).json({ error: policy.error, message: "Production API access requires HTTPS." });
   next();
 });
 app.use(express.static(publicDir, {
@@ -1038,15 +1046,189 @@ function overviewActivePlusRecent(rows = [], activeStates, recentLimit) {
   return [...active, ...ordered.filter((row) => !activeIds.has(row?.id || row)).slice(0, recentLimit)];
 }
 
+// Section v2 is deliberately built before the legacy overview. Each branch owns
+// its expensive derived facts, so opening Settings cannot accidentally run
+// backtests/review analytics and opening Chat cannot build the risk workbench.
+function buildOverviewSectionSource(section, req, options = {}) {
+  const common = {
+    user: sanitizeUserRecord(req.user || db.user),
+    system: profitGoalSnapshot(db.system),
+    systemRelease: process.env.APP_RELEASE || "dev",
+    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
+    agentStatus: getAgentStatus(db),
+    portfolio: db.portfolio,
+    performance: performanceReport(db),
+    positions: normalizePositionsForUi(db.positions),
+    markets: db.markets,
+    activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
+    marketRegime: db.marketRegime || null,
+    watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    mandates: db.mandates,
+    notifications: db.notifications,
+    realtimeConnections: db.realtimeConnections,
+    realtimeStarted: realtimeStatus(db).started,
+    exchangeAccounts: db.exchangeAccounts,
+    subscriptions: db.subscriptions,
+    config: getConfigStatus(db)
+  };
+
+  if (section === "chat") return {
+    ...common,
+    tradePlans: db.tradePlans,
+    executionOrders: db.executionOrders,
+    armedSetups: db.armedSetups,
+    fills: db.fills,
+    pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation"),
+    watchTriggers: db.watchTriggers,
+    watchBoard: buildWatchBoard(db),
+    agentRuns: db.agentRuns,
+    tasks: db.tasks,
+    events: db.events,
+    newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
+      .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)),
+    missedOpportunities: db.missedOpportunities,
+    opportunityCandidates: db.opportunityCandidates,
+    strategyStudio: { drafts: strategyDraftsReferencedByChat(db) }
+  };
+
+  if (section === "cockpit") return {
+    ...common,
+    tradePlans: db.tradePlans,
+    executionOrders: db.executionOrders,
+    armedSetups: db.armedSetups,
+    orders: db.orders,
+    fills: db.fills,
+    riskChecks: db.riskChecks,
+    reviews: db.reviews,
+    accountSnapshots: db.accountSnapshots,
+    mediumTermAnalytics: buildMediumTermAnalytics(db),
+    marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
+    abnormalVolatility: abnormalVolatilityBoard(db),
+    portfolioRisk: buildPortfolioRisk(db, activeMandate(db)),
+    professional: buildProfessionalSnapshot(db),
+    paperReport: buildPaperReport(db)
+  };
+
+  if (section === "researchCenter") return {
+    ...common,
+    knowledge: { ...db.knowledge, chunks: (db.knowledge.chunks || []).map((chunk) => ({ id: chunk.id, sourceId: chunk.sourceId })) },
+    skills: db.skills,
+    tools: liveConnectorToolStatus(db.tools),
+    mcpServers: db.mcpServers,
+    strategyBoard: buildStrategyBoard(db),
+    strategyCatalog: buildStrategyCatalog(db, Object.values(STRATEGIES)),
+    strategyStudio: strategyStudioSnapshot(db, { compact: true }),
+    backtestResearch: buildBacktestResearch(db),
+    backtests: db.backtests,
+    strategyProfiles: db.strategyProfiles,
+    memoryItems: db.memoryItems,
+    agentProfiles: db.agentProfiles,
+    analysisEngine: {
+      weights: DECISION_WEIGHTS,
+      thresholds: DECISION_THRESHOLDS,
+      defaults: DECISION_DEFAULTS,
+      llmModel: process.env.GEMINI_MODEL || db.runtimeConfig?.GEMINI_MODEL || null,
+      tools: listAgentTools().map((tool) => ({
+        ...tool,
+        runs: db.toolCallStats?.[tool.name]?.calls ?? 0,
+        lastRunAt: db.toolCallStats?.[tool.name]?.lastAt ?? null,
+        usage: toolUsageView(db.toolCallStats?.[tool.name])
+      })),
+      toolUsageStatsSince: db.meta?.toolUsageStatsSince || null,
+      toolUsageBackfilledAt: db.meta?.toolUsageBackfilledAt || null
+    },
+    reviewAnalytics: buildReviewAnalytics(db),
+    reviewLearningAnalytics: buildReviewLearningAnalytics(db),
+    decisionCalibration: buildDecisionCalibrationReport(db),
+    embeddingStatus: embeddingStatus(db)
+  };
+
+  if (section === "riskCenter") {
+    const mandate = activeMandate(db);
+    const bySymbol = Object.values(mandate?.maxLeverageBySymbol || {}).map(Number).filter(Number.isFinite);
+    const leverage = Number(mandate?.maxLeverage ?? mandate?.max_leverage ?? (bySymbol.length ? Math.max(...bySymbol) : 1));
+    const capacity = accountMarginCapacity(db, { mandate, leverage, live: false });
+    return {
+      ...common,
+      tradePlans: db.tradePlans,
+      executionOrders: db.executionOrders,
+      riskThresholds: currentRiskThresholds(),
+      riskRules: db.riskRules,
+      riskChecks: db.riskChecks,
+      riskIncidents: db.riskIncidents,
+      eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }),
+      currentRiskSnapshot: options.riskSnapshot || buildCurrentRiskSnapshot(db),
+      grayReleasePolicies: db.grayReleasePolicies,
+      notionalLimits: effectiveOpeningNotionalLimits(db),
+      tradingCapacity: { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) },
+      portfolioRisk: buildPortfolioRisk(db, mandate),
+      apiKeyMetadata: db.apiKeyMetadata,
+      accountSnapshots: db.accountSnapshots
+    };
+  }
+
+  if (section === "operationsCenter") return {
+    ...common,
+    executionOrders: db.executionOrders,
+    events: db.events,
+    tasks: db.tasks,
+    jobRuns: db.jobRuns,
+    riskIncidents: db.riskIncidents,
+    reconciliationReports: db.reconciliationReports,
+    auditLogs: db.auditLogs,
+    traces: db.traces,
+    alerts: db.alerts,
+    drillRuns: db.drillRuns,
+    eventSources: db.eventSources,
+    marketCalendarEvents: db.marketCalendarEvents,
+    dailyMarketBrief: (db.dailyBriefs || [])[0] || null,
+    marketIntelligenceSourceHealth: sourceHealthSummary(db),
+    newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
+      .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)),
+    accountSnapshots: db.accountSnapshots,
+    marketStream: marketStreamStatus(),
+    opportunityEngine: opportunityEngineStatus(db)
+  };
+
+  return {
+    ...common,
+    users: (db.users || []).map(sanitizeUserRecord),
+    tenants: db.tenants,
+    subscriptionPlans: db.subscriptionPlans,
+    paymentRequests: db.paymentRequests,
+    publicRegistrationEnabled: publicRegistrationInfo(db).registrationEnabled,
+    registrationMode: publicRegistrationInfo(db).registrationMode,
+    registrationCapacity: publicRegistrationInfo(db).capacity,
+    registrationApplications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
+    runtimeConfig: db.runtimeConfig,
+    apiKeyMetadata: db.apiKeyMetadata,
+    accountSnapshots: db.accountSnapshots,
+    tools: liveConnectorToolStatus(db.tools),
+    mcpServers: db.mcpServers,
+    eventSources: db.eventSources,
+    larkConfigured: larkStatus().configured,
+    telegramConfigured: telegramStatus().configured,
+    mcpStatus: mcpStatus(db),
+    readiness: buildReadinessReport(db)
+  };
+}
+
 app.get("/api/overview", requirePermission("account.read"), (req, res) => {
   // Live account data must never be reused across the startup/full native views. In particular,
   // WKWebView can cache the first compact response because both views share this endpoint.
   res.set("Cache-Control", "no-store");
   res.vary("X-Native-Overview");
+  const requestedSection = req.query.view === "section" ? String(req.query.section || "chat") : null;
+  const allowedSections = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
+  if (requestedSection && !allowedSections.has(requestedSection)) return res.status(400).json({ error: "unknown_overview_section" });
+  const sectionBuilderV2 = process.env.OVERVIEW_SECTION_BUILDER_V2 !== "false";
+  const needs = (...sections) => !requestedSection || !sectionBuilderV2 || sections.includes(requestedSection);
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
   const expiredPlans = expireStalePlans(db);
-  const overviewRiskSnapshot = buildCurrentRiskSnapshot(db);
-  const resolvedIncidents = reconcileRiskIncidentLifecycle(db, { degradation: overviewRiskSnapshot.operationalDegradation, snapshot: overviewRiskSnapshot });
+  const overviewRiskSnapshot = (!requestedSection || !sectionBuilderV2 || requestedSection === "riskCenter")
+    ? buildCurrentRiskSnapshot(db) : null;
+  const resolvedIncidents = overviewRiskSnapshot
+    ? reconcileRiskIncidentLifecycle(db, { degradation: overviewRiskSnapshot.operationalDegradation, snapshot: overviewRiskSnapshot }) : [];
   if (expiredPlans.length || resolvedIncidents.length) saveDb(db);
   // 实时计算 API 健康度（原来是固定种子值 "待配置"，配置后也不变，属显示 bug）。
   {
@@ -1057,6 +1239,23 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     const rtStarted = Boolean(db.realtimeStarted) || (db.realtimeConnections || []).length > 0;
     const rtConnected = (db.realtimeConnections || []).some((c) => c.status === "connected");
     db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : !configured ? "待配置" : (rtStarted && !rtConnected) ? "连接异常" : "正常";
+  }
+  if (requestedSection && sectionBuilderV2) {
+    const source = buildOverviewSectionSource(requestedSection, req, { riskSnapshot: overviewRiskSnapshot });
+    const projected = { ...projectOverviewSection(source, requestedSection), revision: currentUiRevision() };
+    res.set("X-Kordyn-Overview-Builder", "section_v2");
+    if (process.env.OVERVIEW_SHADOW_COMPARE === "true" && requestedSection === "cockpit") {
+      const authoritative = overviewShadowFacts({
+        positions: normalizePositionsForUi(db.positions),
+        orders: db.orders,
+        system: profitGoalSnapshot(db.system),
+        portfolio: db.portfolio,
+        performance: performanceReport(db)
+      });
+      const comparison = compareOverviewShadowFacts(authoritative, overviewShadowFacts(projected));
+      res.set("X-Kordyn-Overview-Shadow", comparison.match ? "match" : `mismatch:${comparison.mismatches.join(",")}`);
+    }
+    return sendMeasuredJson(res, projected, `overview_${requestedSection}`);
   }
   const overview = {
     // 展示当前登录用户本人(而非固定的 db.user 遗留对象):Owner 的 req.user 是 db.users 里的条目,
@@ -1076,9 +1275,11 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     registrationApplications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
     riskThresholds: currentRiskThresholds(),
     automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
-    strategyBoard: buildStrategyBoard(db),
-    strategyCatalog: buildStrategyCatalog(db, Object.values(STRATEGIES)),
-    strategyStudio: strategyStudioSnapshot(db, { compact: true }),
+    ...(needs("researchCenter") ? {
+      strategyBoard: buildStrategyBoard(db),
+      strategyCatalog: buildStrategyCatalog(db, Object.values(STRATEGIES)),
+      strategyStudio: strategyStudioSnapshot(db, { compact: true })
+    } : {}),
     agentStatus: getAgentStatus(db),
     agentProfiles: db.agentProfiles || [],
     portfolio: db.portfolio,
@@ -1086,12 +1287,11 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     positions: normalizePositionsForUi(db.positions),
-    behaviorProfile: computeBehaviorProfile(db),
-    behaviorNarrative: db.system?.behaviorNarrative || null,
+    ...(needs("cockpit") ? { behaviorProfile: computeBehaviorProfile(db), behaviorNarrative: db.system?.behaviorNarrative || null } : {}),
     mandates: db.mandates,
     tradePlans: db.tradePlans,
     watchTriggers: (db.watchTriggers || []).slice(0, 20).map(presentWatch),
-    watchBoard: buildWatchBoard(db),
+    ...(needs("chat") ? { watchBoard: buildWatchBoard(db) } : {}),
     events: db.events,
     tasks: db.tasks,
     // 蒸馏出的 chunk 正文/词频向量（导入 11 本书后达 ~1.4MB）客户端并不渲染，只用到条数；
@@ -1122,12 +1322,14 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     riskRules: db.riskRules,
     riskChecks: db.riskChecks,
     riskIncidents: db.riskIncidents,
-    eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }),
+    ...(needs("riskCenter") ? { eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }) } : {}),
     currentRiskSnapshot: overviewRiskSnapshot,
     realtimeConnections: db.realtimeConnections,
     marketRegime: db.marketRegime || null,
-    mediumTermAnalytics: buildMediumTermAnalytics(db),
-    marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
+    ...(needs("cockpit") ? {
+      mediumTermAnalytics: buildMediumTermAnalytics(db),
+      marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null
+    } : {}),
     positionEscort: db.positionEscort || null,
     realtimeStarted: realtimeStatus(db).started,
     marketStream: marketStreamStatus(),
@@ -1144,13 +1346,13 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     drillRuns: db.drillRuns?.slice(0, 10) || [],
     grayReleasePolicies: db.grayReleasePolicies || [],
     notionalLimits: effectiveOpeningNotionalLimits(db),
-    tradingCapacity: (() => {
+    ...(needs("riskCenter") ? { tradingCapacity: (() => {
       const mandate = activeMandate(db);
       const bySymbol = Object.values(mandate?.maxLeverageBySymbol || {}).map(Number).filter(Number.isFinite);
       const leverage = Number(mandate?.maxLeverage ?? mandate?.max_leverage ?? (bySymbol.length ? Math.max(...bySymbol) : 1));
       const capacity = accountMarginCapacity(db, { mandate, leverage, live: false });
       return { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) };
-    })(),
+    })() } : {}),
     llmRuns: db.llmRuns?.slice(0, 10) || [],
     tradeIntents: db.tradeIntents?.slice(0, 20) || [],
     executionOrders: overviewActivePlusRecent(db.executionOrders, OPEN_EXECUTION_STATES, 50),
@@ -1168,7 +1370,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     dailyMarketBrief: (db.dailyBriefs || [])[0] || null,
     // 与 Agent 内部情报判断共用同一健康派生：原始 status=ok 但已超过 staleAfterMs 的源
     // 必须下发 health=stale，不能让 App 仍显示“正常”。
-    marketIntelligenceSourceHealth: sourceHealthSummary(db),
+    ...(needs("operationsCenter") ? { marketIntelligenceSourceHealth: sourceHealthSummary(db) } : {}),
     newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)).slice(0, 80),
     skillRuns: db.skillRuns?.slice(0, 10) || [],
@@ -1177,24 +1379,30 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     agentRuns: db.agentRuns,
     performance: performanceReport(db),
     backtests: db.backtests?.slice(0, 10) || [],
-    backtestResearch: buildBacktestResearch(db),
-    strategyProfiles: db.strategyProfiles || [],
-    paperReport: buildPaperReport(db),
-    portfolioRisk: buildPortfolioRisk(db, activeMandate(db)),
-    professional: buildProfessionalSnapshot(db),
-    larkConfigured: larkStatus().configured,
-    telegramConfigured: telegramStatus().configured,
-    mcpStatus: mcpStatus(db),
-    embeddingStatus: embeddingStatus(db),
-    reviewAnalytics: buildReviewAnalytics(db),
-    reviewLearningAnalytics: buildReviewLearningAnalytics(db),
-    decisionCalibration: buildDecisionCalibrationReport(db),
+    ...(needs("researchCenter") ? {
+      backtestResearch: buildBacktestResearch(db),
+      strategyProfiles: db.strategyProfiles || [],
+      embeddingStatus: embeddingStatus(db),
+      reviewAnalytics: buildReviewAnalytics(db),
+      reviewLearningAnalytics: buildReviewLearningAnalytics(db),
+      decisionCalibration: buildDecisionCalibrationReport(db)
+    } : {}),
+    ...(needs("cockpit") ? {
+      paperReport: buildPaperReport(db),
+      professional: buildProfessionalSnapshot(db)
+    } : {}),
+    ...(needs("cockpit", "riskCenter") ? { portfolioRisk: buildPortfolioRisk(db, activeMandate(db)) } : {}),
+    ...(needs("systemSettings") ? {
+      larkConfigured: larkStatus().configured,
+      telegramConfigured: telegramStatus().configured,
+      mcpStatus: mcpStatus(db)
+    } : {}),
     runtimeConfig: db.runtimeConfig || {},
     config: getConfigStatus(db),
-    readiness: buildReadinessReport(db),
+    ...(needs("systemSettings") ? { readiness: buildReadinessReport(db) } : {}),
     // 分析透明度:如实汇总"当前真正在决策里起作用"的引擎配置(权重/阈值/兜底默认/LLM/工具目录)。
     // 动态信号(regime/聪明钱/异动/技能)前端直接用上面已有字段,这里只补静态但真实的引擎常量。
-    analysisEngine: {
+    ...(needs("researchCenter") ? { analysisEngine: {
       weights: DECISION_WEIGHTS,
       thresholds: DECISION_THRESHOLDS,
       defaults: DECISION_DEFAULTS,
@@ -1208,14 +1416,24 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
       })),
       toolUsageStatsSince: db.meta?.toolUsageStatsSince || null,
       toolUsageBackfilledAt: db.meta?.toolUsageBackfilledAt || null
-    },
+    } } : {}),
     toolCallStats: db.toolCallStats || {}
   };
-  if (req.query.view === "section") {
-    const section = String(req.query.section || "chat");
-    const allowed = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
-    if (!allowed.has(section)) return res.status(400).json({ error: "unknown_overview_section" });
-    return sendMeasuredJson(res, { ...projectOverviewSection(overview, section), revision: currentUiRevision() }, `overview_${section}`);
+  if (requestedSection) {
+    const projected = { ...projectOverviewSection(overview, requestedSection), revision: currentUiRevision() };
+    res.set("X-Kordyn-Overview-Builder", "legacy_full_v1");
+    if (process.env.OVERVIEW_SHADOW_COMPARE === "true" && requestedSection === "cockpit") {
+      const authoritative = overviewShadowFacts({
+        positions: normalizePositionsForUi(db.positions),
+        orders: db.orders,
+        system: profitGoalSnapshot(db.system),
+        portfolio: db.portfolio,
+        performance: performanceReport(db)
+      });
+      const comparison = compareOverviewShadowFacts(authoritative, overviewShadowFacts(projected));
+      res.set("X-Kordyn-Overview-Shadow", comparison.match ? "match" : `mismatch:${comparison.mismatches.join(",")}`);
+    }
+    return sendMeasuredJson(res, projected, `overview_${requestedSection}`);
   }
   // 原生端每 15 秒刷新，只下发手机真实会用到的字段。完整桌面概览保持兼容；
   // 以鉴权登录时已存在的 X-Native-App 明确区分，避免依赖可伪造/漂移的 User-Agent。

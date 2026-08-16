@@ -3,7 +3,19 @@ import crypto from "node:crypto";
 export const APPROVABLE_PLAN_STATUSES = new Set(["draft", "risk_checked", "awaiting_approval"]);
 export const APPROVAL_REQUESTABLE_PLAN_STATUSES = new Set(["draft", "risk_checked", "execution_blocked"]);
 export const LOCALLY_CANCELLABLE_PLAN_STATUSES = new Set(["draft", "risk_checked", "awaiting_approval", "armed", "execution_blocked"]);
-export const TERMINAL_PLAN_STATUSES = new Set(["completed", "cancelled", "expired", "failed", "rejected"]);
+export const TERMINAL_PLAN_STATUSES = new Set([
+  "completed", "cancelled", "canceled", "expired", "failed", "rejected",
+  "dry_run", "risk_rejected", "auto_blocked", "protection_failed"
+]);
+
+export function isTerminalTradePlan(rowOrStatus) {
+  const status = typeof rowOrStatus === "object" ? rowOrStatus?.status : rowOrStatus;
+  return TERMINAL_PLAN_STATUSES.has(String(status || "").toLowerCase());
+}
+
+export function isNonTerminalTradePlan(rowOrStatus) {
+  return !isTerminalTradePlan(rowOrStatus);
+}
 
 const RESERVED_CREATE_FIELDS = new Set([
   "id", "status", "exchange", "marketType", "createdAt", "updatedAt", "mandateVersion",

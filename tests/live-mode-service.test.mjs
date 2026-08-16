@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applyLiveTradingConfiguration, liveConfigurationFingerprint } from "../server/liveModeService.mjs";
+import { applyLiveTradingConfiguration, liveConfigurationFingerprint, liveConfirmationStatus, livePolicyFingerprint } from "../server/liveModeService.mjs";
 
 function fixture() {
   const now = new Date().toISOString();
@@ -76,6 +76,8 @@ test("successful live configuration keeps runtime and persisted gates consistent
   assert.equal(db.system.realTradingAck, true);
   assert.equal(db.runtimeConfig.LIVE_TRADING_ENABLED, "true");
   assert.equal(db.runtimeConfig.I_UNDERSTAND_REAL_TRADING, "true");
+  assert.equal(db.system.liveConfirmationPolicyFingerprint, livePolicyFingerprint());
+  assert.equal(liveConfirmationStatus(db).ok, true);
 
   const disabled = applyLiveTradingConfiguration(db, {
     liveTradingEnabled: false,
@@ -87,6 +89,35 @@ test("successful live configuration keeps runtime and persisted gates consistent
   assert.equal(db.system.realTradingAck, false);
   assert.equal(db.system.orderWriteEnabled, false);
   assert.equal(db.runtimeConfig.LIVE_TRADING_ENABLED, "false");
+});
+
+test("model or provider policy changes invalidate an earlier live confirmation", () => {
+  const previous = process.env.GEMINI_MODEL;
+  try {
+    process.env.GEMINI_MODEL = "google/gemini-3.1-pro-preview";
+    const db = fixture();
+    const result = applyLiveTradingConfiguration(db, { liveTradingEnabled: true, acknowledged: true }, context());
+    assert.equal(result.ok, true);
+    process.env.GEMINI_MODEL = "google/gemini-3.2-pro";
+    assert.equal(liveConfirmationStatus(db).ok, false);
+    assert.equal(liveConfirmationStatus(db).reason, "live_policy_changed_since_confirmation");
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = previous;
+  }
+});
+
+test("live critic cannot be disabled by configuration", () => {
+  const previous = process.env.LLM_CRITIC_REQUIRED_FOR_LIVE;
+  process.env.LLM_CRITIC_REQUIRED_FOR_LIVE = "false";
+  try {
+    const db = fixture();
+    db.system.liveConfirmationPolicyFingerprint = livePolicyFingerprint();
+    assert.equal(liveConfirmationStatus(db).reason, "live_critic_cannot_be_disabled");
+  } finally {
+    if (previous === undefined) delete process.env.LLM_CRITIC_REQUIRED_FOR_LIVE;
+    else process.env.LLM_CRITIC_REQUIRED_FOR_LIVE = previous;
+  }
 });
 
 test("a confirmation snapshot cannot be replayed after live safety state changes", () => {

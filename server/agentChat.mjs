@@ -48,6 +48,7 @@ import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { buildReviewLearningContext, retrieveRelevantReviewMemories, reviewLearningPrompt, validateAppliedReviewLessons } from "./reviewLearning.mjs";
 import { buildChatPresentation } from "./chatPresentation.mjs";
 import { ensureAnalysisConclusionFormat } from "./analysisConclusion.mjs";
+import { createDecisionAuditRecord, normalizedPlanForDecisionAudit } from "./decisionAudit.mjs";
 import { containsLikelySecret, promptFingerprint, scrubSecrets } from "./secretRedaction.mjs";
 import { approvalSnapshot, selectApprovablePlan } from "./tradePlanLifecycle.mjs";
 import { agentInvocationPolicy } from "./agentInvocation.mjs";
@@ -2064,6 +2065,9 @@ export async function executeTool(db, run, name, args = {}) {
     plan.riskCheckId = risk.id;
     plan.status = risk.passed ? "awaiting_approval" : "risk_rejected";
     db.tradePlans.unshift(plan);
+    // Freeze the exact model/tool/critic/provider/plan facts before any automatic
+    // approval can reach the execution engine. Execution replays this chain.
+    persistPlanDecisionAudit(db, run, plan);
     if (leveragePolicy.adjusted) {
       appendAudit(
         db,
@@ -2344,11 +2348,14 @@ export async function llmComplete(userText, systemPrompt = "") {
 
 async function geminiTurn(messages, systemPrompt, tools) {
   assertExternalModelInputSafe({ messages, systemPrompt }, "OpenRouter Gemini");
-  return completePrimaryChat({
-    messages: sanitizeOpenAiMessages([{ role: "system", content: systemPrompt || BASE_RULES }, ...messages]),
-    tools: (tools || TOOL_DEFS).map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } })),
+  const sentMessages = sanitizeOpenAiMessages([{ role: "system", content: systemPrompt || BASE_RULES }, ...messages]);
+  const sentTools = (tools || TOOL_DEFS).map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema } }));
+  const response = await completePrimaryChat({
+    messages: sentMessages,
+    tools: sentTools,
     temperature: 0.2
   });
+  return { ...response, audit: { messages: sentMessages, tools: sentTools } };
 }
 
 function decisionProvenanceForRun(run, overrides = {}) {
@@ -2369,6 +2376,8 @@ function decisionProvenanceForRun(run, overrides = {}) {
       requestedModel: run.primaryModel?.model || null,
       actualModel: latestPrimary?.actualModel || null,
       actualProvider: latestPrimary?.actualProvider || null,
+      actualEndpoint: latestPrimary?.actualEndpoint || null,
+      providerAttributionVerified: latestPrimary?.providerAttributionVerified === true,
       systemFingerprint: latestPrimary?.systemFingerprint || null,
       responseId: latestPrimary?.responseId || null,
       reasoningEffort: latestPrimary?.reasoningEffort || null
@@ -2384,7 +2393,10 @@ function decisionProvenanceForRun(run, overrides = {}) {
       reasoningEffort: critic.metadata?.reasoningEffort || null,
       verdict: critic.verdict,
       approved: critic.approved === true,
+      schemaValid: critic.schemaValid === true,
+      severity: critic.severity,
       confidence: critic.confidence,
+      summary: critic.summary || null,
       objections: critic.objections || [],
       requiredChecks: critic.requiredChecks || []
     } : null,
@@ -2392,6 +2404,11 @@ function decisionProvenanceForRun(run, overrides = {}) {
     toolSchema: { version: run.toolSchemaVersion, hash: run.toolSchemaHash || null },
     evidence: { bundleId: run.proposalEvidenceBundleId || run.evidenceBundleId || null, hash: run.proposalEvidenceHash || run.evidenceHash || null },
     cohort: { id: promptFingerprint(JSON.stringify(cohortDescriptor)), ...cohortDescriptor },
+    auditChain: run.decisionAuditRecord ? {
+      schemaVersion: run.decisionAuditRecord.schemaVersion,
+      recordId: run.decisionAuditRecord.id,
+      rootHash: run.decisionAuditRecord.rootHash
+    } : null,
     routingPolicy: { ...openRouterProviderPolicy(), crossModelFallback: false },
     agentRunId: run.id,
     recordedAt: nowIso()
@@ -2412,11 +2429,71 @@ async function independentlyReviewProposal(db, run, args, evidenceBundle) {
       minimumNetRewardRisk: currentRiskThresholds().minRewardRisk
     }
   });
-  const record = { id: id("critic"), ...review, createdAt: nowIso() };
+  const { audit, ...reviewFields } = review;
+  const record = { id: id("critic"), ...reviewFields, createdAt: nowIso() };
+  Object.defineProperty(record, "audit", { value: audit || null, writable: true, configurable: true, enumerable: false });
   run.criticReviews ||= [];
   run.criticReviews.push(record);
   run.lastCriticReview = record;
   run.criticApproved = record.approved === true;
+  return record;
+}
+
+function persistPlanDecisionAudit(db, run, plan) {
+  const primaryCalls = run.modelAuditCalls || [];
+  const critic = run.lastCriticReview || null;
+  const modelMessages = primaryCalls.map((call) => call.messages);
+  const dynamicTools = primaryCalls.map((call) => call.tools);
+  const auditedSystemPrompts = modelMessages.map((messages) => Array.isArray(messages)
+    ? messages.find((message) => message?.role === "system")?.content
+    : null);
+  const promptHashes = new Set(auditedSystemPrompts.filter((prompt) => typeof prompt === "string").map(promptFingerprint));
+  // The execution fingerprint must describe the exact sanitized prompt and the
+  // exact dynamic tool array sent to Gemini, not the larger static tool catalog.
+  run.promptHash = promptHashes.size === 1 ? [...promptHashes][0] : null;
+  run.toolSchemaHash = dynamicTools.length ? promptFingerprint(JSON.stringify(dynamicTools)) : null;
+  const attribution = decisionProvenanceForRun(run, { criticReview: critic });
+  const record = createDecisionAuditRecord({
+    id: id("decision_audit"),
+    agentRunId: run.id,
+    tradePlanId: plan.id,
+    modelMessages,
+    dynamicTools,
+    geminiOutputs: primaryCalls.map((call) => call.output),
+    criticInput: critic?.audit?.messages || [],
+    criticOutput: critic ? { raw: critic.audit?.rawOutput || null, normalized: {
+      reviewId: critic.id,
+      verdict: critic.verdict,
+      approved: critic.approved,
+      schemaValid: critic.schemaValid,
+      severity: critic.severity,
+      confidence: critic.confidence,
+      objections: critic.objections,
+      requiredChecks: critic.requiredChecks,
+      summary: critic.summary
+    } } : null,
+    providerMetadata: {
+      primary: primaryCalls.map((call) => call.metadata),
+      critic: critic?.metadata || null
+    },
+    decisionContext: {
+      prompt: attribution.prompt,
+      toolSchema: attribution.toolSchema,
+      cohort: attribution.cohort,
+      routingPolicy: attribution.routingPolicy
+    },
+    evidence: {
+      bundleId: run.proposalEvidenceBundleId || run.evidenceBundleId || null,
+      hash: run.proposalEvidenceHash || run.evidenceHash || null
+    },
+    normalizedPlan: normalizedPlanForDecisionAudit(plan),
+    createdAt: nowIso()
+  });
+  db.decisionAuditRecords ||= [];
+  db.decisionAuditRecords.unshift(record);
+  Object.defineProperty(run, "decisionAuditRecord", { value: record, writable: true, configurable: true, enumerable: false });
+  run.decisionAudit = { recordId: record.id, rootHash: record.rootHash, schemaVersion: record.schemaVersion };
+  plan.decisionProvenance = decisionProvenanceForRun(run);
   return record;
 }
 
@@ -2453,6 +2530,7 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   run.effectivePrincipal = run.invocation.effectivePrincipal;
   run.traceId = run.id;
   Object.defineProperty(run, "toolReceipts", { value: [], writable: true, configurable: true, enumerable: false });
+  Object.defineProperty(run, "modelAuditCalls", { value: [], writable: true, configurable: true, enumerable: false });
   run.triggeredWatches = (payload.triggeredWatches || []).map(compactTriggeredWatch).filter((watch) => watch.id && watch.symbol);
   const decisionContext = payload.decisionContext || createDecisionContext({
     trigger: triggerFromPayload(payload),
@@ -2791,6 +2869,12 @@ async function geminiLoop(db, run, userText, toolTrace, systemPrompt, tools, ses
     if (!message) throw new Error("Gemini/OpenRouter 未返回 assistant message");
     run.modelCalls ||= [];
     run.modelCalls.push({ ...turn.metadata, at: nowIso() });
+    run.modelAuditCalls.push({
+      messages: turn.audit?.messages || [],
+      tools: turn.audit?.tools || [],
+      output: message,
+      metadata: turn.metadata || {}
+    });
     run.decisionProvenance = decisionProvenanceForRun(run);
     if (!message.tool_calls?.length) {
       const correction = finalValidator?.();
@@ -2921,8 +3005,7 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
     appendAudit(db, `Agent 工具调用被安全策略阻断：${name}`, run.id, "AgentSafety", "warning");
   } else {
     const criticRequired = name === "propose_trade_plan"
-      && db.system?.liveTradingEnabled === true
-      && process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false";
+      && db.system?.liveTradingEnabled === true;
     if (criticRequired) {
       try {
         run.proposalEvidenceHash = callEvidence ? promptFingerprint(JSON.stringify(callEvidence)) : null;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { authenticatedSessionPolicy } from "../server/auth.mjs";
+import { authenticatedSessionPolicy, evaluateMfaLogin } from "../server/auth.mjs";
+import { totpAt } from "../server/totp.mjs";
 
 test("temporary-password sessions are restricted to password recovery endpoints", () => {
   const user = { mustChangePassword: true, securityVersion: 4 };
@@ -21,4 +22,11 @@ test("security version changes revoke every old session", () => {
   const old = authenticatedSessionPolicy({ securityVersion: 3 }, { securityVersion: 2 }, "/api/overview");
   assert.equal(old.ok, false);
   assert.equal(old.status, 401);
+});
+
+test("missing MFA starts step two without consuming a password failure", () => {
+  const secret = "JBSWY3DPEHPK3PXP";
+  assert.deepEqual(evaluateMfaLogin(secret, ""), { state: "required", countFailure: false });
+  assert.deepEqual(evaluateMfaLogin(secret, "not-code"), { state: "invalid", countFailure: true });
+  assert.deepEqual(evaluateMfaLogin(secret, totpAt(secret)), { state: "verified", countFailure: false });
 });

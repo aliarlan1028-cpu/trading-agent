@@ -4,6 +4,7 @@ import test from "node:test";
 import { executeTool } from "../server/agentChat.mjs";
 import { agentInvocationPolicy, userAgentInvocation } from "../server/agentInvocation.mjs";
 import { seedDatabase } from "../server/store.mjs";
+import { strategyDraftsReferencedByChat } from "../server/strategyStudio.mjs";
 
 test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技能", async () => {
   const db = seedDatabase();
@@ -33,4 +34,15 @@ test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技�
   assert.equal(db.strategyStudioDrafts[0].authoring.channel, "agent_chat");
   assert.equal(db.knowledge.tradingSkills.length, 0);
   assert.equal(db.knowledge.tradingMethods.length, 0);
+});
+
+test("Chat section only receives strategy drafts referenced by chat messages", () => {
+  const db = seedDatabase();
+  db.strategyStudioDrafts = [{ id: "draft-visible" }, { id: "draft-private" }];
+  db.chatMessages = [
+    { id: "msg-1", strategyDraftId: "draft-visible" },
+    { id: "msg-2", strategyDraftId: "draft-missing" },
+    { id: "msg-3", strategyDraftId: "draft-visible" }
+  ];
+  assert.deepEqual(strategyDraftsReferencedByChat(db).map((draft) => draft.id), ["draft-visible"]);
 });

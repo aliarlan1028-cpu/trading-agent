@@ -28,21 +28,25 @@ test("shared strategy catalog includes products, research models, distilled and 
   assert.equal(catalog.research.length, 1);
 });
 
-test("execution headline uses authoritative net performance while lifecycle fallback is fee-aware", () => {
+test("execution headline uses authoritative performance and never rebuilds lifecycles from bounded fills", () => {
   const fills = [
     { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, createdAt: "2026-08-01T00:00:00Z" },
     { id: "part", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, createdAt: "2026-08-01T01:00:00Z" },
     { id: "final", executionOrderId: "life", kind: "close", partial: false, realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-01T02:00:00Z" }
   ];
-  const authoritative = buildExecutionView({ fills, performance: { trades: 7, totalPnlUsdt: 42.25, winRatePct: 57.1, avgPnlUsdt: 6.04 } });
+  const authoritative = buildExecutionView({
+    fills,
+    closedTradeLifecycles: [{ id: "closed:life", tradeLifecycleKey: "life", netRealizedPnl: 8 }],
+    performance: { trades: 7, totalPnlUsdt: 42.25, winRatePct: 57.1, avgPnlUsdt: 6.04 }
+  });
   assert.equal(authoritative.performance.trades, 7);
   assert.equal(authoritative.performance.totalPnlUsdt, 42.25);
   assert.equal(authoritative.closedTrades[0].netRealizedPnl, 8);
 
-  const fallback = buildExecutionView({ fills });
-  assert.equal(fallback.performance.trades, 1);
-  assert.equal(fallback.performance.totalPnlUsdt, 8);
-  assert.equal(fallback.performance.winRatePct, 100);
+  const notLoaded = buildExecutionView({ fills });
+  assert.equal(notLoaded.lifecycleState, "not_loaded");
+  assert.deepEqual(notLoaded.closedTrades, []);
+  assert.equal(notLoaded.performance.trades, 0);
 });
 
 test("execution view excludes non-trade reviews and reports server totals for bounded native lists", () => {

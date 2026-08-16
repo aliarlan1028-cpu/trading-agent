@@ -17,6 +17,7 @@ import {
   Settings,
   Target,
   Globe,
+  Info,
   Shield,
   ShieldCheck,
   FlaskConical,
@@ -394,6 +395,8 @@ function App() {
   const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
+    const resourceState = data.resourceState?.[active] || "not_loaded";
+    if (resourceState !== "loaded") return <WorkspaceLoadState state={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
@@ -483,6 +486,7 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
   const [application, setApplication] = useState(null);
+  const [mfaStep, setMfaStep] = useState(false);
   useEffect(() => {
     if (!selectedPlanId && defaultPlanId) setSelectedPlanId(defaultPlanId);
   }, [defaultPlanId, selectedPlanId]);
@@ -490,7 +494,8 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
   async function submitLogin(event) {
     event.preventDefault();
     const email = loginForm.email.trim();
-    await login({ email, password: loginForm.password, totp: loginForm.totp });
+    const result = await login({ email, password: loginForm.password, totp: loginForm.totp });
+    if (result?.mfaRequired) setMfaStep(true);
   }
   async function submitRegister(event) {
     event.preventDefault();
@@ -551,8 +556,8 @@ function LoginScreen({ login, registerAccount, toast, apiBase, setApiBase, isNat
             <form className="landingForm" onSubmit={submitLogin}>
               <label><span>邮箱</span><input value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@example.com" autoFocus /></label>
               <label><span>密码</span><input type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="登录密码" /></label>
-              <label><span>动态验证码（启用后必填）</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6 位验证码" /></label>
-              <button className="primaryButton" type="submit">进入交易驾驶舱</button>
+              {mfaStep && <label><span>动态验证码</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6 位验证码" autoFocus /></label>}
+              <button className="primaryButton" type="submit">{mfaStep ? "验证并继续" : "进入交易驾驶舱"}</button>
               <button className="textButton centered" type="button" onClick={() => setMode("subscribe")}>还没有订阅？先开通账号 <ChevronRight size={14} /></button>
             </form>
           ) : (
@@ -603,7 +608,19 @@ function PageSkeleton() {
   );
 }
 
-const CLIENT_RELEASE = normalizeRelease(import.meta.env.VITE_APP_RELEASE);
+function WorkspaceLoadState({ state, onRetry }) {
+  if (state !== "error") return <PageSkeleton />;
+  return (
+    <div className="pageSkeleton workspaceLoadError" role="alert">
+      <Info size={22} />
+      <strong>{t("该页面数据加载失败", "This workspace could not be loaded")}</strong>
+      <span>{t("当前空白不代表数据为零，请重试同步。", "Blank values are not authoritative. Retry the sync.")}</span>
+      <button className="secondary" type="button" onClick={onRetry}>{t("重新加载", "Retry")}</button>
+    </div>
+  );
+}
+
+const CLIENT_RELEASE = normalizeRelease(import.meta.env?.VITE_APP_RELEASE);
 
 function ReleaseUpdateNotice() {
   const [serverRelease, setServerRelease] = useState(null);

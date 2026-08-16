@@ -9,75 +9,10 @@ export function hasFiniteNumber(value) {
 }
 
 const numberOr = (value, fallback = 0) => hasFiniteNumber(value) ? Number(value) : fallback;
-const feeCost = (row = {}) => hasFiniteNumber(row.feeCostUsdt)
-  ? Number(row.feeCostUsdt)
-  : hasFiniteNumber(row.feeUsdt) ? Number(row.feeUsdt) : null;
 const recentTime = (row = {}) => new Date(row.updatedAt || row.completedAt || row.closedAt || row.createdAt || 0).getTime() || 0;
 
 export function sortRecent(rows = []) {
   return list(rows).slice().sort((a, b) => recentTime(b) - recentTime(a));
-}
-
-// Must match server/tradeReviewQueue.mjs. A lifecycle is an execution/plan/
-// position, never an individual partial-close fill when a stronger key exists.
-export function tradeLifecycleKey(fill = {}) {
-  return String(fill.executionOrderId || fill.tradePlanId || fill.planId || fill.positionId || fill.id || "");
-}
-
-export function groupClosedTradeLifecyclesForView(fills = []) {
-  const entryFees = new Map();
-  const groups = new Map();
-  for (const fill of list(fills)) {
-    if (fill?.kind !== "entry" || feeCost(fill) === null) continue;
-    const key = tradeLifecycleKey(fill);
-    if (key) entryFees.set(key, (entryFees.get(key) || 0) + feeCost(fill));
-  }
-  for (const fill of list(fills)) {
-    if (fill?.kind !== "close" || !hasFiniteNumber(fill.realizedPnl)) continue;
-    const key = tradeLifecycleKey(fill);
-    if (!key) continue;
-    const group = groups.get(key) || {
-      key, fills: [], realizedPnl: 0, feeUsdt: 0, fundingFeeUsdt: 0,
-      notionalUsdt: 0, quantity: 0, firstClosedAt: null, lastClosedAt: null
-    };
-    group.fills.push(fill);
-    group.realizedPnl += Number(fill.realizedPnl);
-    const closeFeeCost = feeCost(fill);
-    if (closeFeeCost !== null) group.feeUsdt += closeFeeCost;
-    if (hasFiniteNumber(fill.fundingFeeUsdt)) group.fundingFeeUsdt += Number(fill.fundingFeeUsdt);
-    if (hasFiniteNumber(fill.notionalUsdt)) group.notionalUsdt += Math.abs(Number(fill.notionalUsdt));
-    if (hasFiniteNumber(fill.quantity ?? fill.size)) group.quantity += Number(fill.quantity ?? fill.size);
-    const at = fill.createdAt || fill.closedAt || null;
-    if (at && (!group.firstClosedAt || new Date(at) < new Date(group.firstClosedAt))) group.firstClosedAt = at;
-    if (at && (!group.lastClosedAt || new Date(at) > new Date(group.lastClosedAt))) group.lastClosedAt = at;
-    groups.set(key, group);
-  }
-  return [...groups.values()]
-    .filter((group) => group.fills.some((fill) => fill.partial !== true))
-    .map((group) => {
-      const representative = sortRecent(group.fills)[0] || {};
-      const entryFeeUsdt = entryFees.get(group.key) || 0;
-      const realizedPnl = Number(group.realizedPnl.toFixed(8));
-      const feeUsdt = Number(group.feeUsdt.toFixed(8));
-      const fundingFeeUsdt = Number(group.fundingFeeUsdt.toFixed(8));
-      const netRealizedPnl = Number((realizedPnl - feeUsdt - entryFeeUsdt + fundingFeeUsdt).toFixed(8));
-      return {
-        ...representative,
-        id: `closed:${group.key}`,
-        tradeLifecycleKey: group.key,
-        fillIds: group.fills.map((fill) => fill.id).filter(Boolean),
-        closeCount: group.fills.length,
-        quantity: Number(group.quantity.toFixed(8)),
-        notionalUsdt: Number(group.notionalUsdt.toFixed(8)),
-        realizedPnl,
-        feeUsdt,
-        entryFeeUsdt: Number(entryFeeUsdt.toFixed(8)),
-        fundingFeeUsdt,
-        netRealizedPnl,
-        createdAt: group.lastClosedAt || representative.createdAt
-      };
-    })
-    .sort((a, b) => recentTime(b) - recentTime(a));
 }
 
 export function isCompletedTradeReview(review = {}) {
@@ -93,11 +28,11 @@ export function netReviewResult(review = {}, trade = null) {
 export function buildExecutionView(data = {}) {
   const orders = sortRecent(data.executionOrders);
   const fills = sortRecent(data.fills);
-  // Native payload supplies server-aggregated lifecycles from the complete fill set.
-  // An explicit [] means there are none; never rebuild from the bounded ledger slice.
+  // Only server-aggregated lifecycles are authoritative. A missing field is
+  // "not loaded", never permission to rebuild finance from a bounded fill slice.
   const closedTrades = Array.isArray(data.closedTradeLifecycles)
     ? sortRecent(data.closedTradeLifecycles)
-    : groupClosedTradeLifecyclesForView(fills);
+    : [];
   // The queue writer guarantees type=trade. Do not let unrelated analytical
   // reviews leak into App-only counts merely because they carry an order id.
   const reviews = sortRecent(list(data.reviews).filter((review) => review?.type === "trade"));
@@ -118,6 +53,7 @@ export function buildExecutionView(data = {}) {
     closedTrades,
     reviews,
     performance: { ...performance, trades, totalPnlUsdt, winRatePct, avgPnlUsdt },
+    lifecycleState: Array.isArray(data.closedTradeLifecycles) ? "loaded" : "not_loaded",
     totals: {
       orders: Number(data.executionOrderStatus?.total ?? orders.length),
       fills: Number(data.tradeDataStatus?.fillTotal ?? fills.length),

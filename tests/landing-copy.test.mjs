@@ -27,7 +27,7 @@ test("To the Moon 明确是工程主题而不是收益承诺", () => {
   assert.doesNotMatch(html, /今日盈亏|胜率 WIN|MAX DD|data-count=/);
 });
 
-test("页面提供月球任务控制、证据链、飞行路线、Bento 与对比表等原生视觉结构", () => {
+test("页面提供月球任务控制、飞行路线、真实产品工作台与对比表等原生视觉结构", () => {
   for (const className of [
     "lunar-stage",
     "moon",
@@ -36,21 +36,46 @@ test("页面提供月球任务控制、证据链、飞行路线、Bento 与对�
     "flight-plan",
     "flight-map",
     "flight-vehicle",
-    "operating-system",
-    "os-core",
-    "os-module",
+    "product-proof",
+    "app-showcase",
+    "app-showcase__nav",
+    "app-market-strip",
+    "product-panel",
+    "ui-intel-grid",
+    "ui-signal-mix",
+    "ui-knowledge-grid",
+    "ui-knowledge-stats",
+    "ui-strategy-grid",
+    "ui-performance-snapshot",
+    "ui-operations-grid",
+    "ui-risk-grid",
+    "ui-risk-telemetry",
+    "cap-boundary-strip",
+    "cap-boundary-list",
     "comparison-wrap",
-    "boundary-radar",
-    "radar-sweep",
-    "boundary-beacon",
     "closing-moon"
   ]) assert.match(html, new RegExp(`class=["'][^"']*${className}`));
   assert.match(styles, /@keyframes moonBreath/);
   assert.match(styles, /@keyframes satellite/);
   assert.match(styles, /@keyframes flightSignal/);
-  assert.match(styles, /@keyframes radarSweep/);
+  assert.match(styles, /@keyframes panelEnter/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(styles, /@media \(max-width: 580px\)/);
+  for (const panel of ["intel", "knowledge", "strategy", "operations", "risk"]) {
+    assert.match(html, new RegExp(`data-product-panel=["']${panel}["']`));
+    assert.match(html, new RegExp(`data-product-tab=["']${panel}["']`));
+  }
+  assert.match(script, /function initProductShowcase\(/);
+  assert.ok(html.indexOf('id="guardrails"') < html.indexOf('id="compare"'), "能力与安全边界应位于对比板块之前");
+});
+
+test("产品工作台使用明确标注的丰富示例数据，而不是伪装成客户实绩", () => {
+  assert.match(html, /data-i18n="app\.demoData"/);
+  assert.match(html, /12,486\.30/);
+  assert.match(html, /2,184/);
+  assert.match(html, /7\/7/);
+  assert.match(html, /示例验证数据 · 不代表未来表现/);
+  assert.match(styles, /@keyframes dataPulse/);
 });
 
 test("营销页保留真实行情、登录、订阅、联系与中英切换入口", () => {
