@@ -12,6 +12,7 @@ process.env.WORM_AUDIT_ENDPOINT = "https://audit.example.com/append";
 process.env.ALERT_WEBHOOK_URL = "https://alerts.example.com/hook";
 
 const { deriveAutomationState } = await import("../server/ops.mjs");
+const { normalizeDatabase } = await import("../server/store.mjs");
 const { partitionAutonomousBlockers } = await import("../server/routes/securityConfig.mjs");
 const { ensureCuratedSkills } = await import("../server/knowledgeSkills.mjs");
 
@@ -39,10 +40,38 @@ test("派生状态机:按执行链顺序给出单一结论", () => {
   db.system.autonomyEnabled = true;
   // 无 LLM → 自主决策被拦
   const noLlm = deriveAutomationState(db, { hasProvider: false });
-  assert.equal(noLlm.mode, "blocked");
+  assert.equal(noLlm.mode, "analysis_blocked");
+  assert.equal(noLlm.runtimeStatus, "analysis_unavailable");
   assert.ok(noLlm.blockers.includes("未配置 LLM"));
   // 实盘写入关闭 → 观察模式(干跑),这正是"自主运行中≠会自动下单"的诚实表述
   assert.equal(deriveAutomationState(db, { hasProvider: true }).mode, "observe");
+});
+
+test("只分析模式不被交易授权和账户额度伪装成故障", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "observe";
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyReasons = ["financial_reconciliation_pending"];
+  db.system.remainingDailyLossUsdt = 0;
+  db.mandates = [];
+  db.accountSnapshots = [];
+  const state = deriveAutomationState(db, { hasProvider: true });
+  assert.equal(state.mode, "observe");
+  assert.equal(state.selectedMode, "observe");
+  assert.equal(state.selectedModeLabel, "只分析");
+  assert.equal(state.runtimeStatus, "normal");
+  assert.deepEqual(state.blockers, []);
+});
+
+test("旧的独立自主暂停迁移为三模式真相，紧急停止仍保持停机", () => {
+  const legacy = normalizeDatabase({ meta: {}, system: { autonomyEnabled: false, liveTradingEnabled: false, killSwitch: false } });
+  assert.equal(legacy.system.requestedOperatingMode, "observe");
+  assert.equal(legacy.system.autonomyEnabled, true);
+  assert.equal(legacy.system.operatingModeSchemaVersion, 2);
+
+  const stopped = normalizeDatabase({ meta: {}, system: { autonomyEnabled: false, liveTradingEnabled: false, killSwitch: true } });
+  assert.equal(stopped.system.autonomyEnabled, false);
+  assert.equal(stopped.system.operatingModeSchemaVersion, 2);
 });
 
 test("实盘链:Key 未核验/灰度未启用逐项点名,全通且免批则为全自动小额", () => {
@@ -94,19 +123,23 @@ test("已保存执行方式与当前有效状态分离", () => {
   const state = deriveAutomationState(db, { hasProvider: true });
   assert.equal(state.mode, "reduce_only");
   assert.equal(state.requestedMode, "full_auto");
-  assert.equal(state.requestedLabel, "符合限制时自动下单");
-  assert.equal(state.blockerDetails[0].code, "reduce_only");
-  assert.match(state.detail, /所有原因解除后会按已保存模式自动恢复/);
+  assert.equal(state.requestedLabel, "自动交易");
+  assert.equal(state.selectedMode, "full_auto");
+  assert.equal(state.runtimeStatus, "opening_paused");
+  assert.equal(state.runtimeLabel, "暂停新开仓");
+  assert.equal(state.resumesAutomatically, true);
+  assert.equal(state.blockerDetails[0].code, "opening_paused");
+  assert.match(state.detail, /原因解除后自动恢复/);
 });
 
-test("只减仓状态公开每个持久原因的人类说明", () => {
+test("暂停新开仓状态公开每个持久安全原因", () => {
   const db = dbFixture();
   db.system.requestedOperatingMode = "full_auto";
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyReasons = ["financial_reconciliation_pending", "execution:close_unknown_pending"];
   const state = deriveAutomationState(db, { hasProvider: true });
   assert.deepEqual(state.blockerDetails.map((item) => item.code), ["financial_reconciliation_pending", "execution:close_unknown_pending"]);
-  assert.ok(state.blockers.includes("费用或资金费对账中"));
+  assert.ok(state.blockers.includes("账户核算基线或费用对账未完成"));
   assert.ok(state.blockers.includes("平仓结果未知"));
 });
 

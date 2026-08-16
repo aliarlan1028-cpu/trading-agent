@@ -202,7 +202,7 @@
               <div class="app-showcase__main">
                 <div class="app-topbar">
                   <div><span class="app-crumb" data-i18n="app.crumb">工作台 / 实盘主账户</span><b>BTC-USDT-SWAP <i>+2.46%</i></b></div>
-                  <div class="app-runtime"><span><i></i><b data-i18n="app.autonomous">自主运行中</b></span><button type="button" data-product-tab="risk" data-i18n="app.reduceOnly">只减仓</button><button type="button" data-product-tab="risk" data-i18n="app.pause">暂停自主</button></div>
+                  <div class="app-runtime"><span><i></i><b data-i18n="app.autonomous">自动交易</b></span><button type="button" data-product-tab="risk" data-i18n="app.reduceOnly">只分析</button><button type="button" data-product-tab="risk" data-i18n="app.pause">逐笔确认</button></div>
                 </div>
                 <div class="app-market-strip" aria-label="示例账户与市场遥测">
                   <article><span><i class="asset-dot btc"></i>BTC / USDT</span><b>118,420.6</b><em class="good">+2.46%</em><div class="mini-bars up"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
@@ -276,7 +276,7 @@
                   <div class="ui-risk-grid">
                     <article class="ui-card ui-mode-card"><header><b data-i18n="risk.mode">执行方式</b><span class="ui-pill warn" data-i18n="risk.approvalMode">逐笔确认</span></header><button><i></i><span><b data-i18n="risk.observe">只分析，不下单</b><small data-i18n="risk.observeText">继续发现机会，不向 OKX 提交订单</small></span></button><button class="active"><i></i><span><b data-i18n="risk.approveEach">逐笔确认后下单</b><small data-i18n="risk.approveEachText">每笔计划由你批准后才使用真实资金</small></span></button><button><i></i><span><b data-i18n="risk.autoWithin">符合限制时自动下单</b><small data-i18n="risk.autoWithinText">全部事实、权限与硬风控通过后执行</small></span></button></article>
                     <article class="ui-card ui-limit-card"><header><b data-i18n="risk.lossLimits">杠杆与亏损边界</b><small>PERMISSION v4</small></header><dl><div><dt data-i18n="risk.tradeLoss">单笔最多亏损</dt><dd>0.50%</dd></div><div><dt data-i18n="risk.dailyLoss">单日亏损上限</dt><dd>2.00%</dd></div><div><dt data-i18n="risk.weeklyLoss">近 7 日亏损上限</dt><dd>5.00%</dd></div><div><dt data-i18n="risk.positions">最多同时持仓</dt><dd>3</dd></div></dl><p><i>⛉</i><span><b data-i18n="risk.secrets">密钥不进入模型</b><small data-i18n="risk.secretsText">Secret 与 Passphrase 隔离于模型上下文和普通日志。</small></span></p></article>
-                    <aside class="ui-card ui-gate-card"><header><b data-i18n="risk.liveChecks">实盘交易检查</b><strong>7/7 <span data-i18n="risk.passed">通过</span></strong></header><ul><li><i>✓</i><span data-i18n="risk.check1">API Key 已确认禁止提现</span></li><li><i>✓</i><span data-i18n="risk.check2">账户事实新鲜且环境一致</span></li><li><i>✓</i><span data-i18n="risk.check3">策略版本已批准</span></li><li><i>✓</i><span data-i18n="risk.check4">保护单能力可验证</span></li><li><i>✓</i><span data-i18n="risk.check5">审计链完整</span></li><li><i>✓</i><span data-i18n="risk.check6">当前不在高风险事件静默窗</span></li><li><i>✓</i><span data-i18n="risk.check7">亏损与同向敞口预算充足</span></li></ul><div><button data-i18n="app.reduceOnly">只减仓</button><button data-i18n="app.pause">暂停自主</button></div></aside>
+                    <aside class="ui-card ui-gate-card"><header><b data-i18n="risk.liveChecks">实盘交易检查</b><strong>7/7 <span data-i18n="risk.passed">通过</span></strong></header><ul><li><i>✓</i><span data-i18n="risk.check1">API Key 已确认禁止提现</span></li><li><i>✓</i><span data-i18n="risk.check2">账户事实新鲜且环境一致</span></li><li><i>✓</i><span data-i18n="risk.check3">策略版本已批准</span></li><li><i>✓</i><span data-i18n="risk.check4">保护单能力可验证</span></li><li><i>✓</i><span data-i18n="risk.check5">审计链完整</span></li><li><i>✓</i><span data-i18n="risk.check6">当前不在高风险事件静默窗</span></li><li><i>✓</i><span data-i18n="risk.check7">亏损与同向敞口预算充足</span></li></ul><div><button data-i18n="app.reduceOnly">只分析</button><button data-i18n="app.pause">逐笔确认</button></div></aside>
                   </div>
                 </section>
               </div>
@@ -291,7 +291,7 @@
                 <button type="button" data-product-tab="operations"><span>04</span><b data-i18n="cap.operationsTitle">持续监控事件与任务</b><small data-i18n="cap.operationsBoundary">任务只能唤醒判断，不能绕过风控下单</small></button>
                 <button type="button" data-product-tab="risk"><span>05</span><b data-i18n="cap.riskTitle">在授权范围内执行</b><small data-i18n="cap.riskBoundary">额度、杠杆、亏损与紧急停止由代码控制</small></button>
               </div>
-              <div class="boundary-foundation"><span><i>01</i><b data-i18n="guard.oneTitle">密钥不进入模型</b></span><span><i>02</i><b data-i18n="guard.twoTitle">权限由你定义</b></span><span><i>03</i><b data-i18n="guard.threeTitle">无法证明则降级</b></span><span><i>04</i><b data-i18n="guard.fourTitle">一键停止与只减仓</b></span></div>
+              <div class="boundary-foundation"><span><i>01</i><b data-i18n="guard.oneTitle">密钥不进入模型</b></span><span><i>02</i><b data-i18n="guard.twoTitle">权限由你定义</b></span><span><i>03</i><b data-i18n="guard.threeTitle">无法证明则降级</b></span><span><i>04</i><b data-i18n="guard.fourTitle">紧急停止与自动暂停新开仓</b></span></div>
             </div>
           </div>
         </div>

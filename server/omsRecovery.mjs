@@ -245,7 +245,7 @@ async function compensateRecoveredEntry(db, order, remote, state, options = {}) 
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyBy = "oms_recovery";
   setReduceOnlyReason(db, "oms_recovery", { sticky: false, sourceId: order.id });
-  db.system.riskStatus = "只减仓";
+  db.system.riskStatus = "暂停新开仓";
   appendAudit(db, "UNKNOWN 入场已交由标准退出状态机处理，等待真实终态", order.id, "OmsRecovery", "critical");
   return { status: exit.status, exit };
 }

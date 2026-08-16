@@ -60,3 +60,21 @@ test("disabling the shared kill switch never re-enables autonomy or submits exch
   assert.equal(db.system.autonomyEnabled, false);
   assert.equal(calls, 0);
 });
+
+test("clearing an emergency stop resumes the saved mode but keeps unresolved OMS safety pauses", async () => {
+  const db = fixture();
+  db.system.killSwitch = true;
+  db.system.autonomyEnabled = false;
+  db.system.requestedOperatingMode = "full_auto";
+  const result = await applyKillSwitch(db, { enabled: false, actor: "Owner" }, {
+    closeExecution: async () => { throw new Error("must not submit on clear"); },
+    cancelOrphans: async () => { throw new Error("must not cancel on clear"); }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(db.system.killSwitch, false);
+  assert.equal(db.system.autonomyEnabled, true, "the saved automatic mode resumes");
+  assert.equal(db.system.requestedOperatingMode, "full_auto");
+  assert.equal(db.system.openingPaused, true, "unresolved entry facts still block new entries");
+  assert.ok(db.system.openingPauseReasons.includes("execution:entry_unknown_pending"));
+  assert.equal(db.system.riskStatus, "暂停新开仓");
+});

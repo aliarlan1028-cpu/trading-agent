@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -410,7 +410,7 @@ test("new capital flow, review workbench, ledger, and watch page render with rea
 test("risk overview renders authoritative event windows instead of generic risk incidents", () => {
   const riskData = {
     ...data,
-    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto", blockers: ["费用或资金费对账中"] },
+    automationState: { mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", blockers: ["账户核算基线或费用对账未完成"] },
     eventRiskWindows: [{ id: "cpi", title: "CPI 公布", sourceName: "U.S. BLS", dueAt: "2026-08-16T12:30:00Z", deltaMs: 600000, phase: "pre_release_blackout", blocking: true, impact: 100, marketWide: true }],
     riskIncidents: [{ id: "recon", title: "账户对账异常", status: "open", severity: "high" }]
   };
@@ -429,47 +429,109 @@ test("unified automation presentation separates the saved target from the effect
   const view = C.automationPresentation({
     automationState: {
       mode: "reduce_only",
-      label: "只减仓",
+      label: "暂停新开仓",
       requestedMode: "full_auto",
-      blockerDetails: [{ code: "financial_reconciliation_pending", label: "费用或资金费对账中" }]
+      runtimeStatus: "opening_paused",
+      resumesAutomatically: true,
+      blockerDetails: [{ code: "financial_reconciliation_pending", label: "账户核算基线或费用对账未完成" }]
     },
     system: { autonomyEnabled: false, reduceOnlyMode: true }
   });
-  assert.equal(view.label, "只减仓");
-  assert.equal(view.targetLabel, "符合限制时自动下单");
+  assert.equal(view.label, "暂停新开仓");
+  assert.equal(view.targetLabel, "自动交易");
   assert.equal(view.entryPolicy, "禁止新开仓");
   assert.equal(view.targetIsEffective, false);
-  assert.deepEqual(view.blockers, ["费用或资金费对账中"]);
-  assert.equal(view.reduceOnlyControlState, "system");
-  assert.equal(view.reduceOnlyControlActionable, false);
-  assert.equal(view.reduceOnlyControlLabel, "系统只减仓");
-
-  const manual = C.automationPresentation({ system: { autonomyEnabled: true, reduceOnlyMode: true, manualReduceOnly: true } });
-  assert.equal(manual.reduceOnlyControlState, "manual");
-  assert.equal(manual.reduceOnlyControlActionable, true);
-  assert.equal(manual.reduceOnlyControlLabel, "退出手动只减仓");
-
-  const off = C.automationPresentation({ system: { autonomyEnabled: true, reduceOnlyMode: false, manualReduceOnly: false } });
-  assert.equal(off.reduceOnlyControlState, "off");
-  assert.equal(off.reduceOnlyControlLabel, "开启只减仓");
+  assert.deepEqual(view.blockers, ["账户核算基线或费用对账未完成"]);
+  assert.equal(view.runtimeStatus, "opening_paused");
+  assert.equal(view.openingPaused, true);
+  assert.equal(view.resumesAutomatically, true);
+  assert.equal(view.recoveryLabel, "原因解除后自动恢复");
+  assert.equal(view.primaryBlocker, "账户核算基线或费用对账未完成");
+  assert.equal("reduceOnlyControlState" in view, false, "产品层不再暴露第四种手工模式");
 });
 
-test("chat and trading overview show the effective reduce-only state instead of a generic running label", () => {
+test("analysis-only setup failures are not presented as a trading safety pause", () => {
+  const view = C.automationPresentation({
+    automationState: {
+      mode: "analysis_blocked",
+      label: "分析暂不可用",
+      requestedMode: "observe",
+      runtimeStatus: "analysis_unavailable",
+      blockers: ["未配置 LLM"]
+    },
+    system: { requestedOperatingMode: "observe", autonomyEnabled: true }
+  });
+  assert.equal(view.targetLabel, "只分析");
+  assert.equal(view.entryPolicy, "只分析 · 不下单");
+  assert.equal(view.openingPaused, false);
+  assert.equal(view.recoveryLabel, "配置模型后恢复分析");
+});
+
+test("chat and trading overview show the effective opening pause instead of a fourth operating mode", () => {
   const runtimeData = {
     ...data,
     system: { ...data.system, autonomyEnabled: true, reduceOnlyMode: true, manualReduceOnly: false },
-    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto", detail: "费用或资金费对账中" }
+    automationState: { mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", runtimeStatus: "opening_paused", detail: "账户核算基线或费用对账未完成" }
   };
   const chat = render(React.createElement(C.ChatPage, { data: runtimeData, action, ui }));
   assert.match(chat, /agRunBadge warning/);
-  assert.match(chat, />只减仓</);
-  assert.match(chat, /暂停自主/);
-  assert.doesNotMatch(chat, /启动自主交易/);
+  assert.match(chat, />自动交易</);
+  assert.match(chat, /调整运行模式/);
+  assert.doesNotMatch(chat, /暂停自主|启动自主交易|只减仓/);
 
   const overview = render(React.createElement(C.TradingOverviewConcept, { data: runtimeData, action, ui }));
   assert.match(overview, /当前运行/);
-  assert.match(overview, /只减仓/);
+  assert.match(overview, /暂停新开仓/);
   assert.match(overview, /禁止新开仓/);
+  assert.doesNotMatch(overview, /只减仓/);
+});
+
+test("Agent rail explains the Gemini, evidence, DeepSeek, and hard-risk chain from real facts", () => {
+  const decisionData = {
+    ...data,
+    agentRuns: [{
+      id: "run-decision", modelArchitecture: "gemini_primary_deepseek_critic",
+      primaryAttribution: { actualModel: "google/gemini-3.1-pro-preview", actualProvider: "Google AI Studio", providerAttributionVerified: true },
+      criticReview: { verdict: "approve", approved: true, confidence: .92, objections: [] },
+      evidenceBundleId: "ev-bundle", decisionAudit: { recordId: "audit", rootHash: "a".repeat(64), schemaVersion: 2 }, steps: []
+    }],
+    tradePlans: [{
+      id: "plan-chain", symbol: "BTC/USDT", status: "awaiting_approval", evidenceIds: ["ticker", "candles"], knowledgeSkillIds: ["skill-1"],
+      decisionProvenance: {
+        primary: { actualModel: "google/gemini-3.1-pro-preview", actualProvider: "Google AI Studio", providerAttributionVerified: true },
+        critic: { verdict: "approve", approved: true, confidence: .92, objections: [] },
+        evidence: { bundleId: "ev-bundle" }, auditChain: { recordId: "audit", rootHash: "a".repeat(64), schemaVersion: 2 }
+      },
+      lastRiskCheck: { passed: true, summary: "全部硬闸通过" }
+    }]
+  };
+  const html = render(React.createElement(C.ChatPage, { data: decisionData, action, ui }));
+  assert.match(html, /一次决策是怎样形成的/);
+  assert.match(html, /Gemini 负责收集与综合/);
+  assert.match(html, /Google AI Studio/);
+  assert.match(html, /实时证据 2 · 知识技能 1/);
+  assert.match(html, /独立反驳与风险审查/);
+  assert.match(html, /账户事实、授权与硬风控裁决/);
+  assert.match(html, /可重算审计链/);
+});
+
+test("intelligence workspace exposes Gemini grounding links without treating them as trade authority", () => {
+  const intelData = {
+    ...data,
+    marketMovers: { scannedAt: "2026-08-17T00:00:00Z", movers: [{
+      symbol: "BTC/USDT", changePct: 8.2, quoteVolUsdt: 10_000_000,
+      narrative: {
+        evidenceId: "mover-evidence", confidence: "high", searchProvider: "Google AI Studio", providerAttributionVerified: true, attributedAt: "2026-08-17T00:00:00Z",
+        untrustedDisplay: { narrative: "ETF flows accelerated", risk: "headline may reverse" },
+        citations: [{ url: "https://example.com/btc", title: "BTC source", source: "example.com" }]
+      }
+    }] }
+  };
+  const html = render(React.createElement(C.IntelligenceConcept, { data: intelData, action, ui }));
+  assert.match(html, /Gemini 搜索证据/);
+  assert.match(html, /Google AI Studio · 提供商已归因/);
+  assert.match(html, /BTC source/);
+  assert.match(html, /外部网页内容永远不直接下单/);
 });
 
 test("capital settings distinguish configured auto mode from the current safety state", () => {
@@ -477,21 +539,23 @@ test("capital settings distinguish configured auto mode from the current safety 
     data: {
       ...data,
       automationState: {
-        mode: "reduce_only", label: "只减仓", requestedMode: "full_auto",
-        detail: "费用或资金费对账中；当前仅允许降风险动作",
-        blockerDetails: [{ code: "financial_reconciliation_pending", label: "费用或资金费对账中" }]
+        mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", runtimeStatus: "opening_paused", resumesAutomatically: true,
+        detail: "账户核算基线或费用对账未完成；当前仅允许降风险动作",
+        blockerDetails: [{ code: "financial_reconciliation_pending", label: "账户核算基线或费用对账未完成" }]
       },
       system: { ...data.system, reduceOnlyMode: true }
     },
     action, ui
   }));
-  assert.match(html, /长期目标配置/);
-  assert.match(html, /符合限制时自动下单/);
+  assert.match(html, /资金与交易控制/);
+  assert.match(html, /自动交易/);
   assert.match(html, /当前实际状态/);
-  assert.match(html, /只减仓/);
-  assert.match(html, /目标没有被改写/);
-  assert.match(html, /费用或资金费对账中/);
-  assert.match(html, /临时运行控制统一位于系统顶部/);
+  assert.match(html, /暂停新开仓/);
+  assert.match(html, /原因解除后自动恢复/);
+  assert.doesNotMatch(html, /只减仓/);
+  assert.match(html, /你选择的模式/);
+  assert.match(html, /账户核算基线或费用对账未完成/);
+  assert.match(html, /系统异常会自动暂停新开仓/);
   assert.doesNotMatch(html, /为什么最终是这个金额/);
   assert.doesNotMatch(html, /1 · 选择执行方式/);
 });
@@ -540,11 +604,11 @@ test("desktop knowledge page exposes the full concept graph workspace and source
   assert.match(html, /扩展候选（可选）/);
   assert.match(html, /规则库与实际作用/);
   assert.match(html, /查看技能流水线/);
-  assert.match(html, /逐份知识当前阶段与实际作用/);
-  assert.match(html, /阶段 5\/5/);
-  assert.match(html, /阶段 2\/5/);
-  assert.match(html, /只有信号匹配且全部硬风控通过时/);
-  assert.match(html, /尚未编译成技能，不会自动执行/);
+  assert.match(html, /每本书现在能做什么，下一步会解锁什么/);
+  assert.match(html, /阶段 8\/8/);
+  assert.match(html, /阶段 3\/8/);
+  assert.match(html, /只有市场、方向和周期匹配且全部硬风控通过时/);
+  assert.match(html, /它们还不是可执行技能/);
   assert.match(html, /趋势/);
   assert.match(html, /止损/);
 });
@@ -564,7 +628,7 @@ test("system settings gives OKX and notifications one explicit home without leak
   const settingsData = {
     ...data,
     system: { ...data.system, reduceOnlyMode: true, manualReduceOnly: false },
-    automationState: { mode: "reduce_only", label: "只减仓", requestedMode: "full_auto" },
+    automationState: { mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto" },
     config: { ...data.config, integrations: { telegram: { configured: true }, lark: { hasWebhook: false }, alerts: { hasWebhook: true } } }
   };
   const overview = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "overview", onTabChange: () => {} }));
@@ -581,11 +645,22 @@ test("system settings gives OKX and notifications one explicit home without leak
   assert.doesNotMatch(basics, /五个基础模块/);
 });
 
-test("desktop runtime controls keep all four text labels at intermediate widths", () => {
+test("desktop runtime controls fit the two true emergency actions without empty columns", () => {
   const css = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
   const desktopMedia = css.match(/@media \(max-width: 1280px\) and \(min-width: 901px\) \{([\s\S]*?)\n\}/)?.[1] || "";
   assert.doesNotMatch(desktopMedia, /topEmergencyActions button span\s*\{\s*display:\s*none/);
-  assert.match(desktopMedia, /repeat\(4,minmax\(52px,1fr\)\)/);
+  assert.match(desktopMedia, /repeat\(2,minmax\(64px,1fr\)\)/);
+});
+
+test("public product preview teaches the same three modes as the real cockpit", () => {
+  const html = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
+  const script = fs.readFileSync(path.join(rootDir, "public/landing.js"), "utf8");
+  const preview = `${html}\n${script}`;
+  assert.match(preview, /自动交易/);
+  assert.match(preview, /只分析/);
+  assert.match(preview, /逐笔确认/);
+  assert.match(preview, /紧急停止与自动暂停新开仓/);
+  assert.doesNotMatch(preview, /只减仓|暂停自主/);
 });
 
 test("mobile drawer keeps settings visible without duplicate status and close footer", () => {

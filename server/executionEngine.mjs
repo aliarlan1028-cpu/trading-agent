@@ -378,7 +378,7 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
   plan.executionOrderId = executionOrder.id;
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyBy = "protection_failure_reconciliation";
-  db.system.riskStatus = "只减仓";
+  db.system.riskStatus = "暂停新开仓";
   if (!acknowledged) {
     db.system.killSwitch = true;
     db.riskIncidents.unshift({
@@ -1059,7 +1059,7 @@ function raisePendingProgressIncident(db, executionOrder, kind, title, detail) {
   db.system ||= {};
   db.system.killSwitch = true;
   db.system.reduceOnlyMode = true;
-  db.system.riskStatus = "只减仓";
+  db.system.riskStatus = "暂停新开仓";
   return incident;
 }
 

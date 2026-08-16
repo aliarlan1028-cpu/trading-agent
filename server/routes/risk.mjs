@@ -5,7 +5,7 @@ import { validateOkxCredentialBinding } from "../exchangeConnector.mjs";
 import { clearReduceOnlyReason, setReduceOnlyReason, syncReduceOnlyState } from "../reduceOnlyState.mjs";
 import { resolvePermissions } from "../auth.mjs";
 import { applyKillSwitch, cancelAuthoritativeOrphanOrders } from "../riskControlService.mjs";
-// 风控路由组（计划风控校验/一键熔断/状态/规则 CRUD/灰度策略/只减仓/一键平仓/风险事件收尾）——
+// 风控路由组（计划风控校验/一键熔断/状态/规则 CRUD/灰度策略/一键平仓/风险事件收尾）——
 // 从 index.mjs 按 registrar 范式迁出。熔断/只减仓/事件收尾为高危控制面，处理器逐字保留原实现：
 // 熔断即撤单+暂停自主+建 incident+飞书告警；解除熔断不强制重开自主。依赖经 ctx 注入。
 export function registerRiskRoutes(app, ctx) {
@@ -125,9 +125,9 @@ export function registerRiskRoutes(app, ctx) {
     db.system.reduceOnlyMode = true;
     db.system.reduceOnlyBy = "emergency_flatten";
     setReduceOnlyReason(db, "emergency_flatten", { sticky: true, sourceId: emergencyActionId });
-    appendAudit(db, `一键平仓：已提交 ${submitted.length} 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}；等待交易所快照与成交核算，保持只减仓`, emergencyActionId, db.user.name, "critical");
+    appendAudit(db, `一键平仓：已提交 ${submitted.length} 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}；等待交易所快照与成交核算，暂停新开仓`, emergencyActionId, db.user.name, "critical");
     appendTrace(db, "risk", `一键平仓提交 ${submitted.length} 个退出动作`, errors.length ? "warning" : "pending");
-    try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓请求已提交", body: `已提交 **${submitted.length}** 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}。ACK 不代表成交完成；系统保持只减仓，等待账户快照与真实 fills 对账。` }); } catch { /* noop */ }
+    try { notifyLark(db, { severity: "critical", title: "🚨 一键平仓请求已提交", body: `已提交 **${submitted.length}** 个退出动作${errors.length ? `，${errors.length} 个未提交` : ""}。ACK 不代表成交完成；系统暂停新开仓，等待账户快照与真实 fills 对账。` }); } catch { /* noop */ }
     res.status(202);
     persist(res, { emergencyActionId, submitted, entryExitResults, orphanCancellations, errors, reduceOnly: true, message: `已提交 ${submitted.length} 个平仓请求及 ${entryExitResults.length + orphanCancellations.requested.length} 个撤单请求，等待交易所事实对账` });
   });
@@ -163,7 +163,7 @@ export function registerRiskRoutes(app, ctx) {
     if (!binding.ok || !fresh || !noPositions || !noOrders || !noAlgos) {
       return res.status(409).json({
         error: "emergency_flatten_not_authoritatively_clear",
-        message: "仍无法用新鲜完整的 OKX 快照证明仓位、普通挂单和算法单均为空，不能解除一键平仓只减仓锁。",
+        message: "仍无法用新鲜完整的 OKX 快照证明仓位、普通挂单和算法单均为空，不能恢复新开仓。",
         checks: { binding: binding.ok, fresh: Boolean(fresh), noPositions, noOrders, noAlgos }
       });
     }
@@ -274,27 +274,10 @@ export function registerRiskRoutes(app, ctx) {
     res.status(410).json({ error: "该接口已停用，请使用 /api/config/live-trading 更新实盘验证设置" });
   });
 
-  app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (req, res) => {
-    db.system.manualReduceOnly = req.body.enabled !== false;
-    if (!db.system.manualReduceOnly) {
-      clearReduceOnlyReason(db, "manual_reduce_only", { resolvedAt: nowIso(), resolvedBy: req.user?.name || db.user.name, resolution: "manual_control_cleared" });
-    }
-    syncReduceOnlyState(db);
-    db.system.latestAction = db.system.manualReduceOnly ? "启用手工只减仓模式" : db.system.reduceOnlyMode ? "已关闭手工只减仓；系统仍有未决安全原因" : "关闭只减仓模式";
-    db.system.updatedAt = nowIso();
-    appendAudit(db, db.system.latestAction, "system.reduce_only", db.user.name, "warning");
-    appendTrace(db, "risk", db.system.latestAction, db.system.reduceOnlyMode ? "warning" : db.system.autonomyEnabled ? "ok" : "paused");
-    const message = db.system.manualReduceOnly
-      ? "已开启手动只减仓"
-      : db.system.reduceOnlyMode
-        ? "手动只减仓已解除；系统安全条件仍在维持只减仓，请查看当前限制原因"
-        : "手动只减仓已解除";
-    persist(res, {
-      message,
-      manualReduceOnly: db.system.manualReduceOnly,
-      reduceOnlyMode: db.system.reduceOnlyMode,
-      remainingReasons: db.system.reduceOnlyReasons || [],
-      system: db.system
+  app.post("/api/risk/reduce-only", requirePermission("risk.kill_switch"), (_req, res) => {
+    res.status(410).json({
+      error: "旧的手工开仓限制接口已停用。请选择只分析、逐笔确认或自动交易；系统异常会自动暂停新开仓并显示原因。",
+      replacement: "/api/system/operating-mode"
     });
   });
 

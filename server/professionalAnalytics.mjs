@@ -57,7 +57,7 @@ export function buildTradingPermissionEvidence(db) {
     ["reconcile", "最近对账正常", latestReconcile?.status === "ok" && ageMs(latestReconcile.createdAt) <= 300000, latestReconcile ? `${latestReconcile.status} · ${Math.round(ageMs(latestReconcile.createdAt) / 1000)}秒前` : "未对账"],
     ["loss_budget", "日亏损预算未耗尽", db.system?.remainingDailyLossUsdt == null || Number(db.system.remainingDailyLossUsdt) > 0, db.system?.remainingDailyLossUsdt == null ? "未配置/未知" : `${db.system.remainingDailyLossUsdt} USDT`],
     ["audit", "审计链正常", auditHealthy, auditHealthy ? "正常" : "异常"]
-    ,["operational", "交易运行链路正常", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? degradation.reasons.join("、") : db.system?.reduceOnlyMode ? "当前只减仓" : "正常"]
+    ,["operational", "交易运行链路正常", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? degradation.reasons.join("、") : db.system?.reduceOnlyMode ? "当前暂停新开仓" : "正常"]
   ].map(([key, label, passed, evidence]) => ({ key, label, passed, evidence }));
   const blocking = checks.filter((c) => !c.passed);
   return { generatedAt: nowIso(), decision: blocking.length ? "blocked" : "allowed", summary: blocking.length ? `当前禁止新开仓：${blocking.map((c) => c.label).join("、")}` : "当前满足新开仓前置条件；具体计划仍需逐单风控", checks };

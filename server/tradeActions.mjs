@@ -53,15 +53,15 @@ const ACTION_TO_MANDATE = {
 };
 // 把内部拦截原因码翻成人话 + 指向对应开关位置，供前端/批准接口/Agent 使用。
 const GUARD_REASON_DETAIL = {
-  live_trading_disabled: { label: "实盘写入总开关未开启", fix: "系统设置 → 实盘灰度 → 勾选「LIVE_TRADING_ENABLED」并同时勾选「风险确认」" },
-  real_trading_ack_missing: { label: "尚未确认理解真实交易风险", fix: "系统设置 → 实盘灰度 → 勾选「风险确认」" },
-  real_order_write_disabled: { label: "真实下单写入未开启", fix: "系统设置 → 实盘灰度 → 勾选「真实下单写入」" },
-  gray_policy_not_enabled: { label: "未启用小额灰度策略", fix: "系统设置 → 实盘灰度 → 勾选「启用小额灰度」并设置额度/币种" },
-  symbol_not_allowed_by_gray_policy: { label: "该交易对不在灰度白名单内", fix: "系统设置 → 实盘灰度 → 把该交易对加入灰度允许列表" },
-  notional_exceeds_gray_limit: { label: "下单名义额超过灰度上限", fix: "系统设置 → 实盘灰度 → 调高「单笔灰度额度」或减小下单量" },
-  manual_approval_required: { label: "灰度策略要求人工确认", fix: "在批准时确认，或在实盘灰度里关闭「保留人工确认」" },
+  live_trading_disabled: { label: "当前运行方式不允许直接下单", fix: "交易控制 → 运行方式 → 选择「逐笔确认」或「自动交易」" },
+  real_trading_ack_missing: { label: "尚未确认真实交易风险", fix: "交易控制 → 运行方式 → 完成一次风险确认" },
+  real_order_write_disabled: { label: "运行方式配置尚未完整生效", fix: "交易控制 → 重新保存当前运行方式；仍失败时检查 OKX 配置" },
+  gray_policy_not_enabled: { label: "自动交易边界尚未初始化", fix: "交易控制 → 保存运行方式与单笔金额上限" },
+  symbol_not_allowed_by_gray_policy: { label: "该交易对不在允许交易范围内", fix: "交易控制 → 交易范围 → 添加该交易对" },
+  notional_exceeds_gray_limit: { label: "下单金额超过你配置的单笔上限", fix: "交易控制 → 调整单笔金额上限，或减小本笔下单量" },
+  manual_approval_required: { label: "当前运行方式为逐笔确认", fix: "确认本笔交易，或在交易控制中切换为「自动交易」" },
   kill_switch_enabled: { label: "一键熔断已开启，禁止新交易", fix: "顶部「熔断」按钮解除，或在风控里关闭熔断" },
-  audit_chain_invalid: { label: "审计链校验未通过", fix: "联系管理员核对审计链；异常清除后才允许实盘写入" },
+  audit_chain_invalid: { label: "审计链校验未通过", fix: "联系管理员核对审计链；异常清除后系统才能恢复下单" },
   api_key_metadata_missing: { label: "缺少该交易所的 API Key 元数据", fix: "系统设置 → 交易所 → 添加只读/交易 API Key" },
   api_key_withdraw_permission_enabled: { label: "该 API Key 带提现权限（禁止）", fix: "去交易所把该 Key 的提现权限关闭后重新配置" },
   api_key_permission_unverified: { label: "API Key 权限尚未审计确认", fix: "系统设置 → 交易所 → 确认该 Key 无提现权限" },

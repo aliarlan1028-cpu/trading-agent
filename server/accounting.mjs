@@ -327,26 +327,32 @@ export function refreshAccounting(db, options = {}) {
         pendingUnrealizedPositions: unrealizedState.pendingPositions.length
       };
     }
+    const budgetWasExhausted = db.system.dailyLossBudgetStatus === "exhausted";
     db.system.dailyLossBudgetStatus = "reconciled";
     const lossSoFar = Math.max(0, -todayPnl);
     const remaining = Math.max(0, dailyLossCap - lossSoFar);
     db.system.remainingDailyLossUsdt = Number(remaining.toFixed(2));
     db.system.dailyLossCapUsdt = Number(dailyLossCap.toFixed(2));
 
-    if (remaining <= 0 && db.system.autonomyEnabled) {
-      db.system.autonomyEnabled = false;
-      db.system.riskStatus = "风控暂停";
-      db.system.latestAction = "日亏损预算耗尽，自动暂停自主交易";
-      db.riskIncidents.unshift({
-        id: id("incident"),
-        severity: "critical",
-        status: "open",
-        title: `日亏损预算耗尽（上限 ${dailyLossCap.toFixed(2)} USDT），已自动暂停自主交易`,
-        source: "accounting",
-        createdAt: nowIso()
-      });
-      appendAudit(db, "日亏损预算耗尽，自动暂停自主交易", "accounting", "Accounting", "critical");
-      appendTrace(db, "risk_check", "日亏损预算耗尽", "blocked");
+    if (remaining <= 0) {
+      // Exhausting a loss budget blocks new entries but must not disable the AI
+      // analysis loop or overwrite the saved operating mode. The next business
+      // window can therefore recover automatically after authoritative accounting.
+      db.system.dailyLossBudgetStatus = "exhausted";
+      db.system.riskStatus = "暂停新开仓";
+      db.system.latestAction = "日亏损预算耗尽，暂停新开仓";
+      if (!budgetWasExhausted) {
+        db.riskIncidents.unshift({
+          id: id("incident"),
+          severity: "critical",
+          status: "open",
+          title: `日亏损预算耗尽（上限 ${dailyLossCap.toFixed(2)} USDT），已暂停新开仓`,
+          source: "accounting",
+          createdAt: nowIso()
+        });
+        appendAudit(db, "日亏损预算耗尽，暂停新开仓", "accounting", "Accounting", "critical");
+        appendTrace(db, "risk_check", "日亏损预算耗尽", "blocked");
+      }
     }
   } else if (!mandate) {
     db.system.remainingDailyLossUsdt = null;

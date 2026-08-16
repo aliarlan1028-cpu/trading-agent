@@ -6,7 +6,7 @@ const EXECUTION_BLOCKING_STATES = new Set([
 ]);
 
 const STICKY_REASON_CODES = new Set([
-  "manual_reduce_only", "emergency_flatten", "liquidation_emergency", "protection_emergency",
+  "emergency_flatten", "liquidation_emergency", "protection_emergency",
   "audit_chain_integrity", "unknown_legacy_reduce_only"
 ]);
 
@@ -51,16 +51,40 @@ export function clearReduceOnlyReason(db, code, options = {}) {
 }
 
 function migrateLegacyScalar(db) {
-  if (Number(db.system?.reduceOnlyReasonsSchemaVersion || 0) >= 2) return;
+  const schemaVersion = Number(db.system?.reduceOnlyReasonsSchemaVersion || 0);
+  // v3 removes the old operator-selectable "manual reduce-only" mode. It was a
+  // fourth operating mode layered on top of analyze/approval/automatic and was
+  // the main source of contradictory UI state. Runtime safety reasons remain
+  // fail-closed; only this obsolete manual latch is retired.
+  if (schemaVersion < 3) {
+    const resolvedAt = new Date().toISOString();
+    for (const [key, row] of Object.entries(records(db))) {
+      if (!row || row.code !== "manual_reduce_only" || row.resolvedAt) continue;
+      records(db)[key] = {
+        ...row,
+        resolvedAt,
+        resolvedBy: "runtime_state_v3_migration",
+        resolution: "manual_opening_pause_retired"
+      };
+    }
+    delete db.system.manualReduceOnly;
+  }
+  if (schemaVersion >= 2) {
+    db.system.reduceOnlyReasonsSchemaVersion = 3;
+    return;
+  }
   const legacy = String(db.system?.reduceOnlyBy || "").trim();
-  db.system.reduceOnlyReasonsSchemaVersion = 2;
+  db.system.reduceOnlyReasonsSchemaVersion = 3;
   if (!db.system?.reduceOnlyMode || !legacy || legacy.startsWith("execution:")) return;
   const known = new Set([
-    "manual_reduce_only", "kill_switch", "emergency_flatten", "liquidation_emergency", "protection_emergency",
+    "kill_switch", "emergency_flatten", "liquidation_emergency", "protection_emergency",
     "audit_chain_integrity", "oms_recovery", "armed_setup_recovery", "financial_reconciliation_pending",
     "professional_risk_gate", "entry_reconciliation_pending", "cancel_reconciliation_pending",
     "close_reconciliation_pending", "protection_failure_reconciliation"
   ]);
+  // A legacy manual latch is deliberately not migrated into a sticky runtime
+  // blocker. The user's saved operating mode remains authoritative.
+  if (legacy === "manual_reduce_only") return;
   const persistentLegacy = STICKY_REASON_CODES.has(legacy) || ["oms_recovery", "armed_setup_recovery"].includes(legacy) || !known.has(legacy);
   if (!persistentLegacy) return;
   const code = known.has(legacy) ? legacy : `unknown_legacy_reduce_only:${legacy}`;
@@ -72,9 +96,8 @@ export function deriveReduceOnlyReasons(db = {}) {
   migrateLegacyScalar(db);
   const reasons = new Set();
   for (const row of Object.values(records(db))) {
-    if (row && !row.resolvedAt) reasons.add(row.code);
+    if (row && !row.resolvedAt && row.code !== "manual_reduce_only") reasons.add(row.code);
   }
-  if (db.system.manualReduceOnly === true) reasons.add("manual_reduce_only");
   if (db.system.killSwitch === true) reasons.add("kill_switch");
   for (const execution of db.executionOrders || []) {
     if (EXECUTION_BLOCKING_STATES.has(String(execution.status || ""))) reasons.add(`execution:${execution.status}`);
@@ -98,10 +121,10 @@ export function activeReduceOnlyReasonCodes(db = {}) {
 
 export function effectiveRiskStatus(system = {}) {
   if (system.killSwitch === true) return "熔断停机";
-  if (system.reduceOnlyMode === true) return "只减仓";
-  if (system.autonomyEnabled === false) return "人工暂停";
+  if (system.reduceOnlyMode === true) return "暂停新开仓";
+  if (system.autonomyEnabled === false) return "运行已暂停";
   const current = String(system.riskStatus || "");
-  return !current || ["正常", "熔断停机", "只减仓", "人工暂停"].includes(current) ? "正常" : current;
+  return !current || ["正常", "熔断停机", "只减仓", "暂停新开仓", "人工暂停", "运行已暂停"].includes(current) ? "正常" : current;
 }
 
 export function syncReduceOnlyState(db = {}) {
@@ -109,8 +132,10 @@ export function syncReduceOnlyState(db = {}) {
   const reasons = deriveReduceOnlyReasons(db);
   db.system.reduceOnlyReasons = reasons;
   db.system.reduceOnlyMode = reasons.length > 0;
-  // 仅为旧 UI 保留主原因；业务控制流读取 reasons/records。
+  // 仅为旧数据与执行控制流保留内部字段；产品层统一展示为“暂停新开仓”。
   db.system.reduceOnlyBy = reasons[0] || null;
+  db.system.openingPaused = reasons.length > 0;
+  db.system.openingPauseReasons = reasons;
   db.system.riskStatus = effectiveRiskStatus(db.system);
   return { reduceOnlyMode: db.system.reduceOnlyMode, reasons };
 }

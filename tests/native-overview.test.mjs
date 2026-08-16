@@ -28,7 +28,15 @@ test("native overview removes repeated histories while preserving actionable sta
     newsFeed: Array.from({ length: 80 }, (_, id) => ({ id })),
     notifications: Array.from({ length: 100 }, (_, id) => ({ id })),
     accountSnapshots: Array.from({ length: 10 }, (_, id) => ({ id, balances: candles, totalEquityUsdt: id })),
-    agentRuns: [{ id: "run", status: "completed", presentationFacts: candles, capabilityPlan: candles, steps: [{ title: "scan", phase: "observe" }] }],
+    agentRuns: [{
+      id: "run", status: "completed", modelArchitecture: "gemini_primary_deepseek_critic",
+      primaryModel: { gateway: "openrouter", model: "google/gemini-3.1-pro-preview" },
+      modelCalls: [{ role: "primary", actualModel: "google/gemini-3.1-pro-preview", actualProvider: "Google AI Studio", providerAttributionVerified: true, reasoningEffort: "high", raw: candles }],
+      criticModel: { gateway: "direct", model: "deepseek-reasoner" },
+      lastCriticReview: { id: "critic-1", verdict: "approve", approved: true, schemaValid: true, confidence: .91, summary: "risk contract complete", objections: ["watch liquidity"], raw: candles },
+      evidenceBundleId: "evidence-1", decisionAudit: { recordId: "audit-1", rootHash: "a".repeat(64), schemaVersion: 2 },
+      presentationFacts: candles, capabilityPlan: candles, steps: [{ title: "scan", phase: "observe" }]
+    }],
     analysisBundles: [{ body: candles }],
     evidenceBundles: [{ body: candles }],
     memoryItems: Array.from({ length: 70 }, (_, id) => ({ id })),
@@ -59,6 +67,12 @@ test("native overview removes repeated histories while preserving actionable sta
   assert.equal(compact.orders[0].id, "order-99");
   assert.equal(compact.agentRuns[0].steps[0].title, "scan");
   assert.equal(compact.agentRuns[0].presentationFacts, undefined);
+  assert.equal(compact.agentRuns[0].primaryAttribution.actualProvider, "Google AI Studio");
+  assert.equal(compact.agentRuns[0].primaryAttribution.providerAttributionVerified, true);
+  assert.equal(compact.agentRuns[0].criticReview.approved, true);
+  assert.deepEqual(compact.agentRuns[0].criticReview.objections, ["watch liquidity"]);
+  assert.equal(compact.agentRuns[0].criticReview.raw, undefined);
+  assert.equal(compact.agentRuns[0].decisionAudit.rootHash.length, 64);
   assert.equal(compact.riskChecks[0].checks, undefined);
   assert.equal(compact.events[0].timeline, undefined);
   assert.equal(compact.accountSnapshots[0].balances, undefined);

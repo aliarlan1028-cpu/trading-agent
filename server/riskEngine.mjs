@@ -368,7 +368,7 @@ function evaluateConcentration(db, plan, mandate) {
 // 供 Agent 播报、执行判定与前端统一口径使用。行为与既有闸一致,只是统一了返回。
 export function riskGateDecision(db, plan) {
   if (db.system?.killSwitch) return { state: "EMERGENCY_STOP", reason: "已一键熔断，禁止一切开仓" };
-  if (db.system?.reduceOnlyMode) return { state: "CLOSE_ONLY", reason: "只减仓模式，仅允许平仓/减仓/撤单" };
+  if (db.system?.reduceOnlyMode) return { state: "CLOSE_ONLY", reason: "系统已暂停新开仓，仅允许持仓管理、平仓和撤单" };
   const risk = evaluateTradePlan(db, plan);
   if (!risk.passed) return { state: "REJECT", reason: risk.summary, risk };
   const gray = (db.grayReleasePolicies || []).find((g) => g.enabled);

@@ -38,8 +38,8 @@ const ARTICLES = [
   },
   {
     id: "risk.posture", title: "风险总览", page: "riskCenter:posture",
-    keywords: ["风险姿态", "风险评分", "预算", "敞口", "回撤", "熔断", "只减仓"],
-    body: "风险总览汇总当前账户风险、交易权限、就绪状态和未处理风险事件。紧急停止会阻止新增交易；只减仓只允许降低现有风险。"
+    keywords: ["风险姿态", "风险评分", "预算", "敞口", "回撤", "熔断", "暂停新开仓"],
+    body: "风险总览汇总当前账户风险、交易权限、就绪状态和未处理风险事件。紧急停止会阻止全部新增交易；普通安全限制只暂停新开仓，仍会管理已有仓位，并在原因解除后自动恢复。"
   },
   {
     id: "risk.mandate", title: "交易权限与风险限制", page: "riskCenter:mandate",
@@ -58,7 +58,7 @@ const ARTICLES = [
   },
   {
     id: "risk.live", title: "实盘设置与小额验证", page: "riskCenter:mandate",
-    keywords: ["实盘", "灰度", "真实下单", "写入", "自动开仓", "只减仓"],
+    keywords: ["实盘", "真实下单", "自动开仓", "运行模式", "暂停新开仓"],
     body: "发送真实订单需要 OKX 权限、有效交易权限、风控检查、真实订单开关和运行健康同时满足。小额验证只是限制订单规模，不会绕过任何风险检查；任一必要检查失败都会阻止新增仓位。"
   },
   {
@@ -174,7 +174,7 @@ export function buildSupportDiagnostics(db, question, pageContext = {}) {
   const facts = [
     `当前页面：${pageContext.page || "未知"}；界面语言：${pageContext.language || sys.uiLang || "zh"}；版本：${RELEASE}`,
     `账户：权益 ${portfolio.totalEquityUsdt ?? "未同步"} USDT；真实持仓 ${positions.length}；账户事实时间 ${latestSnapshot?.createdAt || "未同步"}`,
-    `交易运行：自主${sys.autonomyEnabled ? "开启" : "暂停"}；实盘写入${sys.liveTradingEnabled ? "开启" : "关闭"}；熔断${sys.killSwitch ? "开启" : "关闭"}；只减仓${sys.reduceOnlyMode ? "开启" : "关闭"}`,
+    `交易运行：已选模式 ${sys.requestedOperatingMode || (sys.liveTradingEnabled ? "真实交易" : "只分析")}；紧急停止${sys.killSwitch ? "开启" : "关闭"}；暂停新开仓${sys.reduceOnlyMode ? "是" : "否"}`,
     `待处理：等待入场条件 ${armed.length}；在途执行 ${orders.length}；未处理风险事件 ${incidents.length}`
   ];
   const evidence = ["support_tool:system_status", "support_tool:account_snapshot"];

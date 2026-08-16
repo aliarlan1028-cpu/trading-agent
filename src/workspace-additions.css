@@ -60,6 +60,22 @@
 }
 .agStatusFoot svg { color: var(--accent); }
 
+.agDecisionIntro { color: var(--text-4); font-size: 9.5px; line-height: 1.5; }
+.agDecisionSteps { display: grid; gap: 5px; }
+.agDecisionSteps article { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px; border: 1px solid var(--hairline); border-radius: 7px; background: #fff; }
+.agDecisionSteps article > i { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; background: #f0ece5; color: var(--text-4); }
+.agDecisionSteps article.pass > i { background: var(--pos-weak); color: var(--pos); }
+.agDecisionSteps article.stop > i { background: var(--neg-weak); color: var(--neg); }
+.agDecisionSteps article > span { display: grid; gap: 2px; min-width: 0; }
+.agDecisionSteps article small { color: var(--text-4); font: 700 7px var(--font-mono); letter-spacing: .07em; }
+.agDecisionSteps article b { overflow: hidden; color: var(--text); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.agDecisionSteps article em { overflow: hidden; color: var(--text-4); font-size: 8.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.agDecisionSteps article > strong { color: #8b8172; font-size: 8px; white-space: nowrap; }
+.agDecisionSteps article.pass > strong { color: var(--pos); }
+.agDecisionSteps article.stop > strong { color: var(--neg); }
+.agDecisionChain > footer { display: flex; align-items: flex-start; gap: 5px; padding-top: 7px; border-top: 1px solid var(--hairline); color: var(--text-4); font-size: 8.5px; line-height: 1.45; }
+.agDecisionChain > footer.pass svg { color: var(--pos); }
+
 /* AI 交易员顶部横向 KPI 条(填补标题区右侧空白) */
 .chatKpiStrip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .chatKpi { background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 11px 14px; min-width: 0; }

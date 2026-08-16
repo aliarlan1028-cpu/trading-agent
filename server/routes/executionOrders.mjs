@@ -38,7 +38,7 @@ export function registerExecutionOrderRoutes(app, ctx) {
       }
       if (["cancel_unknown_pending", "close_unknown_pending"].includes(status)) {
         res.status(202);
-        result.message = "交易所响应未知，系统已保持只减仓并进入权威对账；请勿重复提交。";
+        result.message = "交易所响应未知，系统已暂停新开仓并进入权威对账；请勿重复提交。";
       } else if (["cancel_pending", "protection_failure_cancel_pending", "close_pending"].includes(status)) {
         res.status(202);
         result.message = status === "close_pending" ? "平仓请求已被交易所接收，等待真实成交与账户快照核算。" : "撤单请求已被交易所接收，等待订单终态确认。";

@@ -32,6 +32,7 @@ import {
   Zap,
   Download,
   Layers3,
+  Sparkles,
   Clock3,
   Image as ImageIcon,
   X
@@ -878,8 +879,8 @@ export function PlanCard({ plan, executionOrder, action, ui, markets, data }) {
         </div>
       )}
       {awaiting && invalidForApproval && <small className="planHint danger">{t("现价", "Now")} {displayPrice(nowPrice)} {t("已越过止损", "has crossed the stop")} {displayPrice(stopVal)}{t("——计划已失效，批准会一开仓即触发止损，请作废后等 AI 重新提计划。", " — the plan is void; approving would trigger the stop right on entry. Discard it and wait for the AI to re-propose.")}</small>}
-      {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">{t("批准后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；实盘写入关闭时只做干跑计算。", "On approval it enters the execution engine immediately: it sizes from equity and stop distance, submits the entry order with a protective stop attached; when live writes are off it only runs a dry-run calculation.")}</small>}
-      {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol}{t(" 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」即一次性授权本笔交易并立即进入执行引擎（实盘写入关闭时只做干跑）；仅授权这一笔，不加入常驻白名单，自主巡检以后也不会自动碰它。", " is not on the whitelist — this opportunity came from a full-market scan. Tapping Confirm order authorizes just this single trade and enters the execution engine immediately (dry-run only when live writes are off); it authorizes this one trade only, is not added to the standing whitelist, and autonomous scans will never touch it on their own later.")}</small>}
+      {awaiting && !invalidForApproval && !plan.outOfWhitelist && <small className="planHint">{t("确认后立即进入执行引擎：按净值与止损距离计算数量、提交入场单并附带保护性止损；若当前是只分析，则只完成计算而不提交订单。", "After confirmation it enters the execution engine immediately: it sizes from equity and stop distance, submits the entry order with a protective stop attached; in analysis-only mode it calculates without submitting an order.")}</small>}
+      {awaiting && !invalidForApproval && plan.outOfWhitelist && <small className="planHint">{plan.symbol}{t(" 不在授权白名单——这是全市场扫描发现的机会。点「确认下单」只授权本笔交易；它不会加入常驻交易范围，之后的自动分析也不会自行交易它。若当前是只分析，则只完成计算而不提交订单。", " is outside the authorized list — this opportunity came from a full-market scan. Confirming authorizes this trade only; it is not added to the standing scope and future automatic analysis will not trade it. In analysis-only mode it calculates without submitting an order.")}</small>}
       {executionOrder && (
         <div className="executionStrip">
           <span className={`execDot ${["entry_filled", "protecting"].includes(executionOrder.status) ? "on" : executionOrder.status === "closed" ? "done" : ""}`} />
@@ -993,8 +994,16 @@ function AgentRail({ data, action, ui }) {
   })();
   const sm = data.marketRegime?.smartMoney || {};
   const latestRun = (data.agentRuns || [])[0] || {};
+  const decisionPlan = plan || (data.tradePlans || [])[0] || null;
+  const decisionProvenance = decisionPlan?.decisionProvenance || {};
+  const primaryAttribution = decisionProvenance.primary || latestRun.primaryAttribution || null;
+  const criticReview = decisionProvenance.critic || latestRun.criticReview || null;
+  const decisionRisk = decisionPlan?.lastRiskCheck || (data.riskChecks || []).find((row) => row.tradePlanId === decisionPlan?.id) || null;
+  const decisionAudit = decisionProvenance.auditChain || latestRun.decisionAudit || null;
+  const evidenceCount = new Set((decisionPlan?.evidenceIds || []).filter(Boolean)).size;
+  const knowledgeCount = new Set([...(decisionPlan?.knowledgeSkillIds || []), ...(decisionPlan?.adoptedTrustedSkillIds || [])].filter(Boolean)).size;
+  const showDecisionChain = Boolean(decisionPlan || latestRun.modelArchitecture || primaryAttribution || criticReview);
   const runtime = automationPresentation(data);
-  const autonomyPaused = system.autonomyEnabled === false;
   const canOpen = system.killSwitch ? false : riskWall.allowOpen === true;
   const ratio = sm.topTraderLongShortRatio;
   // 全端统一的偏向判定（smartMoneyBias，阈值一处定义）；语义用"偏多/偏空"不再冒充"趋势"。
@@ -1028,7 +1037,6 @@ function AgentRail({ data, action, ui }) {
     time: s.createdAt ? formatTime(s.createdAt) : "—"
   }));
 
-  async function toggleAutonomy() { await action("/api/system/autonomy", { enabled: !system.autonomyEnabled }); }
   async function fireKill() { if (await uiConfirm(system.killSwitch ? t("确认恢复新交易？", "Resume new trading?") : t("确认紧急停止？系统会立即阻止所有新开仓。", "Activate the emergency stop? This immediately blocks all new position opens."))) await action("/api/risk/kill-switch", { enabled: !system.killSwitch, reason: "" }); }
 
   return (
@@ -1121,6 +1129,26 @@ function AgentRail({ data, action, ui }) {
         </div>
       </div>
 
+      {showDecisionChain && <div className="agCard agDecisionChain">
+        <div className="agHeadIcon"><Sparkles size={13}/> {t("一次决策是怎样形成的", "How a decision is formed")}</div>
+        <small className="agDecisionIntro">{t("Gemini 负责收集与综合，DeepSeek 独立找漏洞；两者都不能绕过最后的确定性硬风控。", "Gemini gathers and synthesizes evidence, DeepSeek independently challenges it, and neither can bypass deterministic hard-risk controls.")}</small>
+        <div className="agDecisionSteps">
+          <article className={primaryAttribution?.providerAttributionVerified ? "pass" : "wait"}>
+            <i><Sparkles size={13}/></i><span><small>1 · GEMINI</small><b>{t("检索、读图与形成候选判断", "Research, multimodal analysis, and candidate judgment")}</b><em title={primaryAttribution?.actualModel || latestRun.primaryModel?.model || ""}>{primaryAttribution?.actualProvider || (latestRun.primaryModel?.model ? t("等待提供商归因", "Awaiting provider attribution") : t("本轮尚未调用", "Not called in this run"))}</em></span><strong>{primaryAttribution?.providerAttributionVerified ? t("已归因", "Attributed") : t("待核验", "Unverified")}</strong>
+          </article>
+          <article className={evidenceCount || knowledgeCount ? "pass" : "wait"}>
+            <i><Layers3 size={13}/></i><span><small>2 · EVIDENCE</small><b>{t("事实、情报、知识与策略汇合", "Facts, intel, knowledge, and strategies converge")}</b><em>{t(`实时证据 ${evidenceCount} · 知识技能 ${knowledgeCount}`, `${evidenceCount} live evidence · ${knowledgeCount} knowledge skills`)}</em></span><strong>{decisionProvenance.evidence?.bundleId || latestRun.evidenceBundleId ? t("已封存", "Sealed") : t("待生成", "Pending")}</strong>
+          </article>
+          <article className={criticReview ? (criticReview.approved ? "pass" : "stop") : "wait"}>
+            <i><BrainCircuit size={13}/></i><span><small>3 · DEEPSEEK</small><b>{t("独立反驳与风险审查", "Independent challenge and risk review")}</b><em title={criticReview?.summary || ""}>{criticReview ? `${humanize(criticReview.verdict, criticReview.approved ? t("批准", "Approved") : t("拒绝", "Rejected"))}${criticReview.confidence != null ? ` · ${Math.round(Number(criticReview.confidence) * (Number(criticReview.confidence) <= 1 ? 100 : 1))}%` : ""}${criticReview.objections?.length ? ` · ${criticReview.objections.length} ${t("项异议", "objections")}` : ""}` : t("只有形成交易提案后才触发", "Runs only after a trade proposal exists")}</em></span><strong>{criticReview ? (criticReview.approved ? t("通过", "Pass") : t("拒绝", "Reject")) : t("未触发", "Not run")}</strong>
+          </article>
+          <article className={decisionRisk ? (decisionRisk.passed ? "pass" : "stop") : "wait"}>
+            <i><ShieldCheck size={13}/></i><span><small>4 · HARD RISK</small><b>{t("账户事实、授权与硬风控裁决", "Account facts, permissions, and hard-risk decision")}</b><em title={decisionRisk?.summary || ""}>{decisionRisk ? localizeText(decisionRisk.summary || decisionRisk.decision || (decisionRisk.passed ? t("全部硬闸通过", "All hard gates passed") : t("存在阻断项", "Blocking checks exist"))) : t("没有计划时不会虚构风控结果", "No risk result is fabricated without a plan")}</em></span><strong>{decisionRisk ? (decisionRisk.passed ? t("允许推进", "Cleared") : t("已阻断", "Blocked")) : t("待计划", "Await plan")}</strong>
+          </article>
+        </div>
+        <footer className={decisionAudit?.rootHash ? "pass" : "wait"}><Shield size={11}/><span>{decisionAudit?.rootHash ? t("提示词、工具、证据、模型输出和最终计划已进入可重算审计链", "Prompt, tools, evidence, model output, and the final plan are sealed in a reproducible audit chain") : t("只有形成交易计划后才封存完整决策审计链", "The full decision audit chain is sealed only after a trade plan is formed")}</span></footer>
+      </div>}
+
       {/* 盯盘是持续服务；观察哨是其中一条结构化条件，命中才唤起新巡检。 */}
       <div className="agCard">
         <div className="agHeadIcon"><Eye size={13} /> {t("实时盯盘 · 观察条件", "Live watch · conditions")}</div>
@@ -1194,7 +1222,7 @@ function AgentRail({ data, action, ui }) {
           <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
         </div>
         <div className="agWallBtns">
-          <button className="agBtnGhost" onClick={toggleAutonomy}>{autonomyPaused ? t("恢复自主", "Resume autonomy") : t("暂停自主", "Pause autonomy")}</button>
+          <button className="agBtnGhost" onClick={()=>ui.setActive("riskMandate")}>{t("调整运行模式", "Change operating mode")}</button>
           <button className="agBtnKill" onClick={fireKill}><Zap size={12} /> {system.killSwitch ? t("恢复新交易", "Resume trading") : t("紧急停止", "Emergency stop")}</button>
         </div>
       </div>
@@ -1203,7 +1231,7 @@ function AgentRail({ data, action, ui }) {
       <div className="agCard">
         <div className="agTrajHead"><span className="agSecLabel"><i />{t("Agent 运行轨迹 · 最新循环", "Run trace · latest loop")}</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>{t("完整 ›", "Full ›")}</button></div>
         <div className="agTrajGrid">
-          {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>{t("暂无运行记录；开启自主巡检后显示真实步骤轨迹", "No run records yet; enable autonomous scanning to see the real step trace")}</div>}
+          {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>{t("暂无运行记录；自动分析开始后会显示真实步骤轨迹", "No run records yet; the real step trace appears after automatic analysis starts")}</div>}
           {trajSteps.map(({ Icon, t, time }, i) => (
             <div className="agTrajCell" key={`${t}-${i}`}><span className="agTrajIcon"><Icon size={12} /></span><b>{t}</b><div className="agTrajTime mono">{time}</div></div>
           ))}
@@ -1365,7 +1393,6 @@ function PosterModal({ content, meta, onClose }) {
 export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
   const system = data.system || {};
   const runtime = automationPresentation(data);
-  const autonomyPaused = system.autonomyEnabled === false;
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);
@@ -1551,7 +1578,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>
           {!mobile && <span className={`agRunBadge ${runtime.tone}`} title={runtime.detail}><span />{runtime.label}</span>}
-          {!mobile && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: autonomyPaused })}><Rocket size={14} /> {autonomyPaused ? t("恢复自主", "Resume autonomy") : t("暂停自主", "Pause autonomy")}</button>}
+          {!mobile && <button className="agLaunchBtn" onClick={() => ui.setActive("riskMandate")}><Rocket size={14} /> {runtime.targetLabel}</button>}
           {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
           {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>

@@ -55,6 +55,8 @@ function compactArmedSetup(row) {
 function compactAgentRun(row) {
   if (!row || typeof row !== "object") return row;
   const text = (value, limit = 240) => value == null ? value : String(value).slice(0, limit);
+  const primary = [...(row.modelCalls || [])].reverse().find((call) => call?.role === "primary") || null;
+  const critic = row.lastCriticReview || null;
   return {
     id: row.id,
     traceId: row.traceId,
@@ -63,6 +65,27 @@ function compactAgentRun(row) {
     role: text(row.role, 80),
     status: text(row.status, 80),
     model: text(row.model, 120),
+    modelArchitecture: text(row.modelArchitecture, 80),
+    primaryModel: row.primaryModel ? { gateway: text(row.primaryModel.gateway, 40), model: text(row.primaryModel.model, 120) } : null,
+    primaryAttribution: primary ? {
+      actualModel: text(primary.actualModel, 120),
+      actualProvider: text(primary.actualProvider, 120),
+      providerAttributionVerified: primary.providerAttributionVerified === true,
+      reasoningEffort: text(primary.reasoningEffort, 24)
+    } : null,
+    criticModel: row.criticModel ? { gateway: text(row.criticModel.gateway, 40), model: text(row.criticModel.model, 120) } : null,
+    criticReview: critic ? {
+      id: critic.id,
+      verdict: text(critic.verdict, 40),
+      approved: critic.approved === true,
+      schemaValid: critic.schemaValid === true,
+      severity: text(critic.severity, 40),
+      confidence: Number.isFinite(Number(critic.confidence)) ? Number(critic.confidence) : null,
+      summary: text(critic.summary, 280),
+      objections: (critic.objections || []).slice(0, 5).map((item) => text(item, 180))
+    } : null,
+    evidenceBundleId: text(row.proposalEvidenceBundleId || row.evidenceBundleId, 120),
+    decisionAudit: row.decisionAudit ? { recordId: row.decisionAudit.recordId, rootHash: text(row.decisionAudit.rootHash, 80), schemaVersion: row.decisionAudit.schemaVersion } : null,
     createdAt: row.createdAt,
     completedAt: row.completedAt,
     steps: (row.steps || []).slice(0, 8).map((step) => ({

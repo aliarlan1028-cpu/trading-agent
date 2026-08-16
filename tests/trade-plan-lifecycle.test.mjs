@@ -38,6 +38,19 @@ test("approve action cards only bind approvable plans and capture an expiring re
   assert.ok(new Date(args.expiresAt).getTime() > Date.now());
 });
 
+test("Agent exposes one three-mode action instead of individual live safety switches", () => {
+  const db = { system: { requestedOperatingMode: "observe" }, grayReleasePolicies: [] };
+  const created = createPendingAction(db, { type: "set_execution_mode", mode: "full_auto" }, { requestedByUserId: "u1" });
+  assert.equal(created.status, "awaiting_confirmation");
+  assert.equal(db.pendingActions[0].title, "切换为自动交易");
+  assert.equal(db.pendingActions[0].args.mode, "full_auto");
+  assert.match(db.pendingActions[0].args.liveConfigFingerprint, /^[a-f0-9]{64}$/);
+
+  const rejected = createPendingAction(db, { type: "set_execution_mode", mode: "manual_reduce_only" }, {});
+  assert.equal(rejected.status, "blocked");
+  assert.equal(db.pendingActions.length, 1);
+});
+
 test("stale, terminal and expired approval snapshots cannot execute", async () => {
   for (const terminal of ["cancelled", "completed", "expired", "executing", "protection_failed"]) {
     const target = plan("awaiting_approval");

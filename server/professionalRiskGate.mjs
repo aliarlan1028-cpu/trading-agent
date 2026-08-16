@@ -47,7 +47,7 @@ export function assessOperationalDegradation(db) {
   if (live && hasPrivateAccount && (!reconcile || reconcile.status !== "ok" || ageMs(reconcile.createdAt) > reconcileMaxAge)) reasons.push("reconciliation_unhealthy");
   if (db.meta?.auditChainBroken === true) reasons.push("audit_chain_invalid");
   // 全自主运行不能只在“切换模式那一刻”检查外部控制面；每次开仓前都要确认
-  // WORM 审计与告警仍存活。失联即进入只减仓，恢复后由同一闸自动解锁。
+  // WORM 审计与告警仍存活。失联即暂停新开仓，恢复后由同一闸自动解锁。
   if (fullAutoActive) {
     if (requiresExternalSecurityInfrastructure()) {
       const wormAge = ageMs(db.system?.wormAuditLastSuccessAt);
@@ -62,8 +62,8 @@ export function assessOperationalDegradation(db) {
   return { degraded: reasons.length > 0, mode: reasons.length ? "reduce_only" : "normal", reasons, assessedAt: nowIso(), enforced: fullAutoSafetyEnforced(db) };
 }
 
-// 只在 professionalRiskMode 开启时才真正"只减仓";且做成可恢复的——条件消失自动解除,不再永久缴械。
-// 绝不再自动关 autonomy(只减仓已拦新开仓,还要保留观察/管理持仓)。默认(flag 关)仅记录,不改状态。
+// 只在 professionalRiskMode 开启时才真正暂停新开仓；条件消失自动解除，不再永久缴械。
+// 绝不再自动关 autonomy（开仓闸已拦截，还要保留观察与持仓管理）。默认仅记录，不改状态。
 export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") {
   const assessment = assessOperationalDegradation(db);
   db.system ||= {};
@@ -74,19 +74,19 @@ export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") 
     db.system.reduceOnlyMode = true;
     db.system.reduceOnlyBy = "professional_risk_gate";
     setReduceOnlyReason(db, "professional_risk_gate", { sticky: false, sourceId: actor });
-    db.system.riskStatus = "只减仓";
-    db.system.latestAction = `专业风险闸自动切换只减仓：${assessment.reasons.join("、")}`;
+    db.system.riskStatus = "暂停新开仓";
+    db.system.latestAction = `专业风险闸已暂停新开仓：${assessment.reasons.join("、")}`;
     db.system.updatedAt = nowIso();
     if (newlyActivated) {
       db.riskIncidents ||= [];
-      db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "系统自动进入只减仓模式", source: "professional_risk_gate", reasons: assessment.reasons, createdAt: nowIso() });
+      db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "系统已自动暂停新开仓", source: "professional_risk_gate", reasons: assessment.reasons, createdAt: nowIso() });
       appendAudit(db, db.system.latestAction, "system.reduce_only", actor, "critical");
       appendTrace(db, "professional_risk", db.system.latestAction, "blocked");
     }
   } else if (!assessment.degraded) {
-    // 自愈:降级条件消失且只减仓是本闸设的 → 自动解除(不影响用户手动设的只减仓)。
+    // 自愈：降级条件消失且限制由本闸设置 → 自动解除。
     if (clearReduceOnlyReason(db, "professional_risk_gate", { resolvedBy: actor, resolution: "operational_health_restored" })) {
-      db.system.latestAction = "专业风险闸:运行链路恢复正常,已解除本闸只减仓原因";
+      db.system.latestAction = "专业风险闸：运行链路恢复正常，已恢复新开仓评估";
       db.system.updatedAt = nowIso();
       appendTrace(db, "professional_risk", db.system.latestAction, "ok");
     }
@@ -108,7 +108,7 @@ export function evaluateProfessionalPlanRisks(db, plan, mandate = activeMandate(
   const push = (name, passed, detail, severity = passed ? "ok" : enforce ? "block" : "warn") => checks.push({ name, passed, detail, severity });
 
   const degradation = assessOperationalDegradation(db);
-  push("运行降级状态", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? `建议只减仓：${degradation.reasons.join("、")}` : db.system?.reduceOnlyMode ? "系统处于只减仓模式" : "运行链路正常");
+  push("运行降级状态", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? `暂停新开仓：${degradation.reasons.join("、")}` : db.system?.reduceOnlyMode ? "系统已暂停新开仓" : "运行链路正常");
 
   const marketMaxAge = Number(process.env.SLO_MARKET_FRESHNESS_MS || 180000);
   const facts = marketFactFreshness(market, { tickerMaxAgeMs: marketMaxAge });

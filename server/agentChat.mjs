@@ -66,7 +66,7 @@ const SYSTEM_GUIDE = `【本系统内置说明】
 - AI交易员：对话入口，可读取行情、账户、事件、知识、授权和风控状态；能创建授权草案、交易计划、定时任务，并触发事件刷新/账户同步等系统动作。
 - 仪表盘：展示真实账户资产、今日盈亏、对账健康和收益质量；只有交易所私有只读同步成功后才显示真实资产。
 - 系统设置 / 交易所：系统只使用 OKX。OKX 需要 Key+Secret+Passphrase 才能做账户只读同步，且任何提现权限都不应开启。
-- 实盘灰度：真实交易的有界额度机制。半自动模式保留逐单批准；全自动模式取消逐单批准，但仍强制 Mandate、专业风险闸、名义额上限、实盘小额验证与归因、审计、告警和账实对账；不把 OKX 模拟环境作为切换实盘的前置硬闸。
+- 运行方式只有三种：只分析（不下单）、逐笔确认（每笔由主人确认）、自动交易（系统在主人配置的交易范围和单笔上限内执行）。内部仍强制 Mandate、硬风控、模型审查、审计、告警和账实对账，但不要把这些内部安全闸描述成额外的用户模式。
 - 风控与授权：授权委托限定交易所、交易对、杠杆、单笔风险、日亏上限和人工审批阈值；交易计划必须经过硬风控。
 - 策略产品：新交易计划必须归属于趋势回调、向上突破回踩、向下跌破反抽、区间边缘反转、假突破回归五类版本化策略之一；多阶段场景是执行实例，不等于策略本身。当前策略处于所有者授权的实盘观察期，证据不足时不得称为“已验证”。
 - 事件与任务：事件源负责同步宏观/交易所事件；定时任务负责执行轮询、持仓监控、账户对账、策略研究、模拟盘推进等。
@@ -304,7 +304,7 @@ const TOOL_DEFS = [
   },
   {
     name: "explain_system",
-    description: "解释本交易系统的内置概念、页面和工作流。用户问实盘灰度、授权、风控、任务、API、Admin、审计等系统问题时优先调用。",
+    description: "解释本交易系统的内置概念、页面和工作流。用户问三种运行方式、授权、风控、任务、API、Admin、审计等系统问题时优先调用。",
     schema: {
       type: "object",
       properties: {
@@ -490,14 +490,14 @@ const TOOL_DEFS = [
   },
   {
     name: "request_action",
-    description: "当主人明确要求你代为执行平台内部高敏操作时调用：批准交易计划、激活/暂停/撤销授权 Mandate、开关实盘闸（实盘写入/真实下单/小额灰度）、开启或解除一键熔断、运行账户对账。除对账外，都会先生成一张“待确认操作卡”，由主人在对话里点“确认”后才真正执行——你绝不能声称已执行，只说“已生成待确认操作，请确认”。一次只请求一个操作。",
+    description: "当主人明确要求你代为执行平台内部高敏操作时调用：切换只分析/逐笔确认/自动交易、批准交易计划、激活/暂停/撤销授权 Mandate、开启或解除一键熔断、运行账户对账。除对账外，都会先生成一张“待确认操作卡”，由主人在对话里点“确认”后才真正执行——你绝不能声称已执行，只说“已生成待确认操作，请确认”。一次只请求一个操作。",
     schema: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["approve_plan", "set_live_gate", "mandate", "kill_switch", "run_reconcile"] },
+        type: { type: "string", enum: ["approve_plan", "set_execution_mode", "mandate", "kill_switch", "run_reconcile"] },
         planId: { type: "string", description: "approve_plan 时的交易计划 id，缺省用最近待批准计划" },
-        gate: { type: "string", enum: ["live", "order_write", "gray"], description: "set_live_gate 时开哪道闸：live=实盘写入总开关+风险确认，order_write=真实下单写入，gray=小额灰度策略" },
-        enabled: { type: "boolean", description: "set_live_gate/kill_switch 的开(true)/关(false)" },
+        mode: { type: "string", enum: ["observe", "semi_auto", "full_auto"], description: "set_execution_mode 时选择：observe=只分析，semi_auto=逐笔确认，full_auto=自动交易" },
+        enabled: { type: "boolean", description: "kill_switch 的开(true)/关(false)" },
         op: { type: "string", enum: ["activate", "pause", "revoke"], description: "mandate 操作" },
         mandateId: { type: "string", description: "mandate 操作的目标 id，缺省用最近一个 Mandate" }
       },
@@ -632,7 +632,7 @@ const BASE_RULES = `你是一名专业的数字货币自主交易员 Agent，服
 13. 计划结果播报【必须照 propose_trade_plan 的返回字段如实说，禁止想当然】：
    - 执行前的闸只有一道:**硬风控**(evaluateTradePlan，管授权/仓位/止损/杠杆/盈亏比等，返回如 36/36)。结构质量靠你在提计划前用 analyze_market_structure 自己把关(不再有事后否决的 SRTL 硬闸)。硬风控通过后:自主全开则自动下单,否则进待批准。
    - 按返回的 status 字段播报，**不许自己脑补**：orderPlaced 或 autoExecuted 为 true → 才是真的下单了；status 为 armed → 只能说"系统正在等待入场条件，尚未向 OKX 下单"；status 为 awaiting_approval → 才说"等待人工批准"；被硬风控拒 → 说风控原因,别说成等待批准。
-   - 自主已开(autonomy+实盘写入+灰度「无需人工批准」全开)时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
+   - 当前选择「自动交易」且运行状态正常时，计划会**自动送执行**、不经人工批准；这时更不能说"等你批准"。以 autoGateReason 字段解释为什么没下单。
 14. 极值处不追单 · 换位置换确认【关键·最容易犯:大跌后在低点追空】：单边大跌/大涨已充分展开、价格到极值附近时，【不禁止】该方向，但【禁止在原地"追"】——必须换更好的位置或更强的确认，别在恐慌的最后一根里追进去。
    - 大跌贴近 24h 低点(rangePosition24h 很低)想做空时：不要因为"已经跌很多/还会跌"就在低点直接追空(原地追，反弹会被扫、真续跌也是烂价位)。**正确做法二选一**：①等反弹回上方阻力/供需区，在衰竭确认处做空(高抛，最佳)；②若判断是延续破位，用 register_watch 登记"跌破 24h 低点 X 后回踩确认"的观察哨，做【破位回踩】，而不是在破位前的低点追。
    - 一句话：做空要么"反弹到阻力高抛"、要么"破位回踩确认"，绝不"在刚砸下来的低点追"。大涨追多同理(等回踩支撑做多，或破位向上回踩确认)。
@@ -698,7 +698,7 @@ export function truncateUtf16Safely(value = "", max = 0, ellipsis = false) {
 }
 
 const HISTORICAL_ACCOUNT_FACT = /(当前|目前|现有|账户仅|账户余额|余额|净值|总资产|可用保证金|持仓|仓位|浮盈|浮亏|日亏预算|剩余.{0,8}(?:日亏|亏损)|开仓空间)/i;
-const HISTORICAL_DYNAMIC_RISK_FACT = /(周亏|近\s*7\s*日|连续亏损|连亏|回撤锁仓|只减仓|运行降级|WS\s*断|对账异常|审计异常|风控暂停)/i;
+const HISTORICAL_DYNAMIC_RISK_FACT = /(周亏|近\s*7\s*日|连续亏损|连亏|回撤锁仓|只减仓|暂停新开仓|运行降级|WS\s*断|对账异常|审计异常|风控暂停)/i;
 
 // 历史回复和长期记忆只用于保留推理经验，不能继续向模型提供已经失效的余额、持仓和盈亏数字。
 // 用户原话不经过这里，避免把用户正在纠正的问题本身删掉。
@@ -716,7 +716,7 @@ export function sanitizeHistoricalAccountClaims(content = "") {
       continue;
     }
     if (HISTORICAL_DYNAMIC_RISK_FACT.test(line) && /(?:\d|开启|关闭|触发|熔断|暂停|异常|断连|正常)/i.test(line)) {
-      if (!riskRedacted) safe.push("[历史动态风控状态已省略；周亏损、连续亏损、只减仓和运行降级必须以本轮实时风险快照为准]");
+      if (!riskRedacted) safe.push("[历史动态风控状态已省略；周亏损、连续亏损、暂停新开仓和运行降级必须以本轮实时风险快照为准]");
       riskRedacted = true;
       continue;
     }
@@ -1131,7 +1131,7 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
   }
   sections.push(accountAuthoritySection);
   const currentRisk = buildCurrentRiskSnapshot(db);
-  sections.push(`【最终风险事实 · 本提示词中的最高时效权威】\n${currentRiskSnapshotForPrompt(currentRisk)}\n纪律：周亏损、连续亏损、回撤保护、只减仓与运行降级均为动态状态，历史回复、记忆和未闭环事件不得覆盖本快照。需要解释风险拒绝时，必须引用当前快照和本轮 riskChecks，不得复述旧阈值。`);
+  sections.push(`【最终风险事实 · 本提示词中的最高时效权威】\n${currentRiskSnapshotForPrompt(currentRisk)}\n纪律：周亏损、连续亏损、回撤保护、暂停新开仓与运行降级均为动态状态，历史回复、记忆和未闭环事件不得覆盖本快照。需要解释风险拒绝时，必须引用当前快照和本轮 riskChecks，不得复述旧阈值。`);
   return sections.join("\n\n");
 }
 
@@ -1182,6 +1182,19 @@ function summarizePendingAction(db, args = {}) {
       const map = { live: "实盘写入总开关 + 风险确认", order_write: "真实下单写入", gray: "小额灰度策略" };
       return { title: `${args.enabled === false ? "关闭" : "开启"} ${map[args.gate] || args.gate}`, detail: "改变实盘下单能力，属于高敏操作", danger: args.enabled !== false };
     }
+    case "set_execution_mode": {
+      const label = { observe: "只分析", semi_auto: "逐笔确认", full_auto: "自动交易" }[args.mode];
+      if (!label) return { error: "invalid_execution_mode", title: "运行方式无效", detail: "只能选择只分析、逐笔确认或自动交易。", danger: true };
+      return {
+        title: `切换为${label}`,
+        detail: args.mode === "observe"
+          ? "停止新交易下单，Agent 继续分析行情"
+          : args.mode === "semi_auto"
+            ? "每笔计划仍需你确认；确认此操作同时确认真实交易风险"
+            : "在已配置的交易范围、单笔上限和硬风控内自动执行；确认此操作同时确认真实交易风险",
+        danger: args.mode !== "observe"
+      };
+    }
     case "mandate": {
       const m = args.mandateId ? (db.mandates || []).find((x) => x.id === args.mandateId) : db.mandates?.[0];
       const opLabel = { activate: "激活", pause: "暂停", revoke: "撤销" }[args.op] || args.op;
@@ -1207,7 +1220,7 @@ export function createPendingAction(db, args = {}, run = {}) {
       ...args,
       resolvedTargetId: info.targetId || null,
       ...(info.snapshot || {}),
-      ...(args.type === "set_live_gate" ? { liveConfigFingerprint: liveConfigurationFingerprint(db) } : {})
+      ...(["set_execution_mode", "set_live_gate"].includes(args.type) ? { liveConfigFingerprint: liveConfigurationFingerprint(db) } : {})
     },
     title: info.title,
     detail: info.detail,
@@ -2152,7 +2165,7 @@ export async function executeTool(db, run, name, args = {}) {
           await notifyLark(db, {
             severity: "critical",
             title: "🤖 AI 已自动执行交易",
-            body: `对 **${symbol}** ${plan.direction === "short" ? "做空" : "做多"}，已在授权与灰度上限内自动${autoExecution.status === "submitted" ? "提交交易所" : "干跑（实盘写入未开）"}。`,
+            body: `对 **${symbol}** ${plan.direction === "short" ? "做空" : "做多"}，已在授权范围与单笔上限内自动${autoExecution.status === "submitted" ? "提交交易所" : "完成只分析计算（未下单）"}。`,
             fields: [{ label: "入场", value: `${args.entryLow} - ${args.entryHigh}` }, { label: "止损", value: String(args.stopLoss) }]
           });
         } else {
@@ -2233,7 +2246,7 @@ export async function executeTool(db, run, name, args = {}) {
     }
     let autoGateReason = null;
     if (simulated) {
-      autoGateReason = "干跑：实盘写入未开，已完成数量/价格计算但未向交易所提交(未真下单)";
+      autoGateReason = "当前运行方式为只分析：已完成数量和价格计算，但没有向交易所下单";
     } else if (autoExecution && !placed) {
       // 已自动送执行但没真正下单(被下单闸拦、入场被拒、部分成交撤单等)——如实报状态,不脑补。
       autoGateReason = `自动执行未成交（${autoExecution.reason || autoExecution.status}）`;
@@ -2245,7 +2258,7 @@ export async function executeTool(db, run, name, args = {}) {
       // 停在待批准、但自主已开——用同一个 deriveAutomationState 说清缺哪道闸(与状态卡口径一致,不再各算各的)。
       const auto = deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) });
       autoGateReason = auto.mode === "semi_auto"
-        ? "当前为半自动:灰度策略仍要求「人工批准」(取消勾选即全自动)"
+        ? "当前运行方式为逐笔确认：需要你在计划卡确认本笔交易"
         : (auto.blockers?.length ? auto.blockers.join("、") : auto.detail);
     }
     return {
@@ -2268,9 +2281,9 @@ export async function executeTool(db, run, name, args = {}) {
         : armed
         ? `待入场计划已登记（${armedResult.setup.id}）：系统正在监控价格与结构化确认条件；满足后会刷新易变事实、重跑硬风控并进入 OMS，触发前不会向 OKX 下单。`
         : placed
-        ? `已在授权与灰度上限内自动执行并下单（${autoExecution.status}）。`
+        ? `已在授权范围与单笔上限内自动执行并下单（${autoExecution.status}）。`
         : simulated
-          ? `干跑完成（实盘写入未开）：已算好数量/价格但未向交易所提交，未真下单。要真实下单请开启「实盘写入」。`
+          ? `只分析完成：已算好数量和价格，但未向交易所提交订单。若要交易，请把运行方式切换为「逐笔确认」或「自动交易」。`
           : autoExecution
           ? `计划已自动送执行，但${autoGateReason}。未产生真实订单——这【不是】"等待人工批准"，需重提更优 setup 或调整参数。`
           : (risk.passed

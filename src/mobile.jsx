@@ -75,17 +75,9 @@ export function KillConfirmDialog({ enable, action, onClose }) {
 
 function MobileSafetySheet({ data, action, onClose, onKill }) {
   const runtime = automationPresentation(data);
-  const autonomyPaused = data.system?.autonomyEnabled === false;
   const stopped = data.system?.killSwitch === true;
-  const toggleReduceOnly = async () => {
-    if (runtime.systemReduceOnly) return;
-    const confirmed = await uiConfirm(runtime.manualReduceOnly
-      ? t("退出手动只减仓？如果其他安全原因仍未解除，实际状态会继续保持只减仓。", "Exit manual reduce-only? The effective state will remain reduce-only while another safety cause is active.")
-      : t("进入只减仓模式？将禁止新开仓，只允许撤单、减仓和平仓。", "Enter reduce-only mode? New entries will be blocked; only cancel, reduce, and close actions remain available."));
-    if (confirmed) { await action("/api/risk/reduce-only", { enabled: !runtime.manualReduceOnly }); onClose(); }
-  };
   const flattenAll = async () => {
-    if (await uiConfirm(t("确认按市价平掉全部持仓并进入只减仓模式？该操作不可自动撤销。", "Close every position at market and enter reduce-only mode? This action cannot be automatically undone."))) {
+    if (await uiConfirm(t("确认按市价平掉全部持仓？系统会暂停新开仓，直到 OKX 对账完成。", "Close every position at market? New entries will pause until OKX reconciliation completes."))) {
       await action("/api/risk/emergency-flatten", {}); onClose();
     }
   };
@@ -93,9 +85,8 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
     <i className="mSafetyHandle"/>
     <header><div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b><p>{runtime.detail}</p></div><StatusBadge tone={runtime.tone==="ok"?"ok":runtime.tone==="danger"?"danger":runtime.tone==="warning"?"warning":"neutral"}>{runtime.entryPolicy}</StatusBadge></header>
     <div className="mSafetyTarget"><span>{t("长期目标", "Saved target")}</span><b>{runtime.targetLabel}</b></div>
+    {runtime.runtimeStatus !== "normal" && <div className="mSafetyTarget"><span>{t("恢复方式", "Recovery")}</span><b>{runtime.recoveryLabel}</b></div>}
     <div className="mSafetyActions">
-      <button className={autonomyPaused?"active":""} onClick={async()=>{await action("/api/system/autonomy",{enabled:autonomyPaused});onClose();}}><Activity/><span><b>{autonomyPaused?t("恢复自主", "Resume autonomy"):t("暂停自主", "Pause autonomy")}</b><small>{autonomyPaused?t("恢复 AI 自主规划", "Resume autonomous planning"):t("停止生成和推进新计划", "Stop creating and advancing plans")}</small></span></button>
-      <button className={`${runtime.reduceOnlyEffective?"active":""} ${runtime.systemReduceOnly?"locked":""}`} onClick={toggleReduceOnly} aria-disabled={runtime.systemReduceOnly}><RefreshCw/><span><b>{runtime.reduceOnlyControlLabel}</b><small>{runtime.reduceOnlyControlDetail}</small></span></button>
       <button className="danger" onClick={flattenAll}><Target/><span><b>{t("全部平仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button>
       <button className={`danger ${stopped?"active":""}`} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>
     </div>
@@ -516,11 +507,10 @@ export function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
 function MobileRiskLiveEditor({ data, action, ui, onDone }) {
   const live = data.config?.liveTrading || {};
   const requested = data.system?.requestedOperatingMode || (!live.liveTradingEnabled ? "observe" : live.grayRequiresApproval === false ? "full_auto" : "semi_auto");
-  const instrumentState = useMobileInstruments();
-  const buildForm = () => ({ mode: requested, acknowledged: Boolean(live.acknowledged), symbols: (live.grayAllowedSymbols || []).map(pairLabel), maxNotionalUsdt: live.maxNotionalUsdt || 50 });
+  const buildForm = () => ({ mode: requested, acknowledged: Boolean(live.acknowledged), maxNotionalUsdt: live.maxNotionalUsdt || 50 });
   const [form, setForm] = useState(buildForm);
   const [saving, setSaving] = useState(false);
-  useEffect(() => setForm(buildForm()), [requested, live.acknowledged, live.maxNotionalUsdt, JSON.stringify(live.grayAllowedSymbols || [])]);
+  useEffect(() => setForm(buildForm()), [requested, live.acknowledged, live.maxNotionalUsdt]);
   const readiness = data.readiness?.checks || [];
   const check = (key) => readiness.find((row) => row.key === key)?.configured === true;
   const gates = [
@@ -532,18 +522,17 @@ function MobileRiskLiveEditor({ data, action, ui, onDone }) {
   ];
   async function save() {
     if (form.mode !== "observe" && !form.acknowledged) return ui.notify?.(t("开启真实交易前必须确认资金风险", "Acknowledge real-money risk before enabling live trading"));
-    const allowedSymbols = [...new Set((form.symbols || []).map(pairLabel).filter(Boolean))];
     setSaving(true);
     try {
-      const ok = await submitMobileRiskChange(action, "/api/config/live-trading", { requestedMode: form.mode, acknowledged: form.acknowledged, allowedSymbols, maxNotionalUsdt: Number(form.maxNotionalUsdt || 50) });
+      const ok = await submitMobileRiskChange(action, "/api/config/live-trading", { requestedMode: form.mode, acknowledged: form.acknowledged, allowedSymbols: [], maxNotionalUsdt: Number(form.maxNotionalUsdt || 50) });
       if (ok) onDone();
     } finally { setSaving(false); }
   }
   return <div className="mScreen mRiskDetail">
-    <section className="mNativeSection"><header><div><b>{t("执行方式", "Execution mode")}</b><small>{t("选择系统可以走到哪一步", "Choose how far the system may execute")}</small></div></header><div className="mModePicker">{[["observe", t("观察", "Observe"), t("只分析，不向交易所发单", "Analyze only; never submit")], ["semi_auto", t("半自动", "Semi-auto"), t("每笔真实交易由你确认", "You approve every live trade")], ["full_auto", t("全自动", "Full auto"), t("额度内自动执行", "Auto-execute within limits")]].map(([id, title, desc]) => <button type="button" className={form.mode === id ? `active ${id}` : id} key={id} onClick={() => setForm((current) => ({ ...current, mode: id }))}><span><b>{title}</b><small>{desc}</small></span><i /></button>)}</div></section>
-    <section className="mNativeSection"><header><div><b>{t("小额验证范围", "Small-size validation")}</b><small>{t("从可交易合约中点选；不选则沿用交易权限", "Tap tradable contracts; select none to use trading permissions")}</small></div></header><div className="mRiskFieldStack"><MobilePairMultiPicker value={form.symbols} onChange={(symbols) => setForm((current) => ({ ...current, symbols }))} instruments={instrumentState.instruments} instrumentsLoading={instrumentState.loading} instrumentsError={instrumentState.error} instrumentsStale={instrumentState.stale} instrumentsAsOf={instrumentState.asOf} onRetry={instrumentState.retry} allowEmpty fallbackHint={t("当前未单独限制验证币种", "No separate validation-pair limit")} /><MobileRiskField label={t("单笔最高金额", "Max per trade")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxNotionalUsdt} onChange={(event) => setForm((current) => ({ ...current, maxNotionalUsdt: event.target.value }))} /></MobileRiskField></div></section>
-    <section className="mNativeSection"><header><div><b>{t("上线检查", "Launch checks")}</b><small>{gates.filter(([, ok]) => ok).length}/{gates.length} {t("项通过", "passed")}</small></div></header><div className="mGateList">{gates.map(([label, ok]) => <div key={label}><span className={ok ? "ok" : "bad"}>{ok ? "✓" : "!"}</span><b>{label}</b><small>{ok ? t("已通过", "Ready") : t("待完成", "Needs attention")}</small></div>)}</div><label className="mNativeToggle mRiskAck"><span><b>{t("我已了解真实资金交易风险", "I understand the risks of live trading")}</b><small>{t("真实订单可能造成资金损失", "Live orders can result in financial loss")}</small></span><input type="checkbox" checked={form.acknowledged} onChange={(event) => setForm((current) => ({ ...current, acknowledged: event.target.checked }))} /></label></section>
-    <div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存执行设置", "Save execution settings")}</button></div>
+    <section className="mNativeSection"><header><div><b>{t("运行模式", "Operating mode")}</b><small>{t("系统异常只会临时暂停新开仓，不会改变你的选择", "Runtime issues only pause new entries temporarily and never change your choice")}</small></div></header><div className="mModePicker">{[["observe", t("只分析", "Analyze only"), t("持续分析，不向 OKX 发单", "Keep analyzing; never submit to OKX")], ["semi_auto", t("逐笔确认", "Approve each trade"), t("每笔真实交易都由你确认", "You approve every live trade")], ["full_auto", t("自动交易", "Automatic trading"), t("通过审查和硬风控后自动执行", "Auto-execute after review and hard-risk checks")]].map(([id, title, desc]) => <button type="button" className={form.mode === id ? `active ${id}` : id} key={id} onClick={() => setForm((current) => ({ ...current, mode: id }))}><span><b>{title}</b><small>{desc}</small></span><i /></button>)}</div></section>
+    {form.mode!=="observe"&&<section className="mNativeSection"><header><div><b>{t("真实订单边界", "Live-order boundary")}</b><small>{t("交易币种沿用交易权限中的清单", "Pairs follow the trading-permission list")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("真实订单单笔上限", "Maximum per live order")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxNotionalUsdt} onChange={(event) => setForm((current) => ({ ...current, maxNotionalUsdt: event.target.value }))} /></MobileRiskField><label className="mNativeToggle mRiskAck"><span><b>{t("我已了解真实资金交易风险", "I understand the risks of live trading")}</b><small>{t("首次进入真实交易模式时确认", "Confirm before entering a live-trading mode")}</small></span><input type="checkbox" checked={form.acknowledged} onChange={(event) => setForm((current) => ({ ...current, acknowledged: event.target.checked }))} /></label></div></section>}
+    {form.mode!=="observe"&&<section className="mNativeSection"><header><div><b>{t("实盘准备", "Live readiness")}</b><small>{gates.filter(([, ok]) => ok).length}/{gates.length} {t("项通过", "passed")}</small></div></header><div className="mGateList">{gates.map(([label, ok]) => <div key={label}><span className={ok ? "ok" : "bad"}>{ok ? "✓" : "!"}</span><b>{label}</b><small>{ok ? t("已通过", "Ready") : t("待完成", "Needs attention")}</small></div>)}</div></section>}
+    <div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存运行模式", "Save operating mode")}</button></div>
   </div>;
 }
 
@@ -608,7 +597,7 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
           {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>{t("全部标记已处理", "Mark all resolved")} ›</button>}
         </div>;
       })()}
-      {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("这里保存长期交易权限、执行目标和盈利保护；只减仓、暂停与紧急停止统一从顶部“当前状态”进入。", "This page saves long-term permissions, execution targets, and profit protection. Open the header runtime status for reduce-only, pause, and emergency stop.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("执行方式与实盘验证", "Execution & live validation")}</b><small>{runtime.targetLabel} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={runtime.targetMode==="observe" ? "neutral" : "danger"}>{runtime.targetMode==="observe" ? t("观察", "Observe") : t("实盘目标", "Live target")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
+      {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("这里只保存运行模式、交易范围和风险限制；系统异常会自动暂停新开仓并说明恢复方式。", "This area stores the operating mode, trading scope, and risk limits. Runtime issues pause new entries automatically and explain recovery.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("运行模式", "Operating mode")}</b><small>{runtime.targetLabel} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={runtime.targetMode==="observe" ? "neutral" : "danger"}>{runtime.targetMode==="observe" ? t("只分析", "Analyze") : t("真实交易", "Live")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
       {showOverview && <div className="mCard">
         <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
         <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); const label = { "账户": t("账户", "Account"), "交易": t("交易", "Trading"), "事件": t("事件", "Events"), "系统": t("系统", "System") }[name] || name; return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{label}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
@@ -618,6 +607,38 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
 }
 
 const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则", "图谱"];
+
+function knowledgeSourceProgress(source, methods, skills) {
+  const sourceMethods = methods.filter((method) => (method.source?.id || method.sourceId) === source.id);
+  const methodIds = new Set(sourceMethods.map((method) => method.id));
+  const sourceSkills = skills.filter((skill) => skill.sourceId === source.id || methodIds.has(skill.sourceMethodId));
+  const failedSource = /fail|error|reject|失败|错误|无可用|empty|unsupported/i.test(String(source.status || ""));
+  const has = (statuses) => sourceSkills.some((skill) => statuses.includes(skill.status));
+  const active = has(["active"]);
+  const probation = has(["live_probation"]);
+  const paperPassed = has(["paper_validated"]);
+  const forward = has(["historical_validated", "paper_validating", "paper_rejected", "paper_validated"]);
+  const compiled = has(["compiled", "historical_rejected", "degraded", "historical_validated", "paper_validating", "paper_rejected", "paper_validated"]);
+  const failedSkill = has(["compile_failed", "historical_rejected", "paper_rejected"]);
+  const processing = String(source.status || "").toLowerCase() === "processing";
+  let row = {
+    stage: processing ? 1 : 2,
+    tone: processing ? "neutral" : "info",
+    current: processing ? t("正在读取并建立索引", "Reading and indexing") : t("已可搜索和引用", "Searchable and citable"),
+    effect: processing ? t("解析完成前不会影响分析或交易。", "It cannot affect analysis or trading until parsing finishes.") : t("Gemini 可以检索本书回答问题，但它仍只是研究资料，不会直接下单。", "Gemini can retrieve this source to answer questions, but it remains research material and cannot place orders."),
+    next: processing ? t("等待解析完成", "Wait for parsing") : t("提取可测试的方法", "Extract testable methods"),
+    action: processing ? null : "reparse"
+  };
+  if (failedSource) row = { stage: 0, tone: "danger", current: t("导入未完成", "Import incomplete"), effect: t("内容暂时不可检索，也不会参与分析或交易。", "The content is not searchable and cannot participate in analysis or trading."), next: t("重新解析", "Parse again"), action: "reparse" };
+  else if (active) row = { stage: 8, tone: "ok", current: t("已转正", "Active"), effect: t("真实成绩已达标；只有行情、方向、周期和硬风控全部匹配时才会被采用。", "Live results passed. It is used only when market, direction, timeframe, and hard-risk checks all match."), next: t("查看采用与真实成绩", "Review usage and live results"), action: "capabilities" };
+  else if (probation) row = { stage: 7, tone: "info", current: t("小额实盘试用", "Limited live probation"), effect: t("正在受限额度内积累真实结果，达标转正，不达标会降级。", "It is collecting live evidence under limited size and will graduate or degrade based on results."), next: t("查看试用成绩", "Review probation results"), action: "capabilities" };
+  else if (paperPassed) row = { stage: 6, tone: "warning", current: t("前向模拟已通过", "Forward validation passed"), effect: t("未来行情模拟已达标，但仍需 Owner 批准后才能小额试用。", "Forward simulation passed, but Owner approval is still required before limited live use."), next: t("审核并批准试用", "Review and approve probation"), action: "capabilities" };
+  else if (forward) row = { stage: 5, tone: failedSkill ? "danger" : "warning", current: failedSkill ? t("前向模拟未通过", "Forward validation needs attention") : t("前向模拟中", "Forward validation running"), effect: t("历史样本外证据已完成；通过未来行情逐笔验证前不会进入真实交易。", "Historical out-of-sample evidence is complete. It cannot enter live trading before forward validation finishes."), next: t("查看前向验证", "Review forward validation"), action: "capabilities" };
+  else if (compiled) row = { stage: 4, tone: failedSkill ? "danger" : "warning", current: failedSkill ? t("历史验证未通过", "Historical validation needs attention") : t("已变成可测试规则", "Machine-testable rules"), effect: t("入场、退出和风险规则已经结构化，但还没有足够证据参与真实交易。", "Entry, exit, and risk rules are structured, but there is not enough evidence for live trading."), next: t("运行历史验证", "Run historical validation"), action: "capabilities" };
+  else if (sourceMethods.length) row = { stage: 3, tone: "warning", current: t("已提取交易方法", "Trading methods extracted"), effect: t("Gemini 可以用这些方法解释行情；它们尚未变成可执行技能。", "Gemini can use these methods to explain markets, but they are not executable skills yet."), next: t("转成可验证规则", "Convert to testable rules"), action: "methods" };
+  return { ...row, source, methodCount: sourceMethods.length, skillCount: sourceSkills.length };
+}
+
 function MobileKnowledge({ data, action, ui, view = "all" }) {
   // 与桌面对齐:知识库(view=knowledge)只留 上手/方法/规则/图谱;能力与工具(view=capabilities)只留 技能。
   const segs = view === "capabilities" ? ["技能"] : view === "knowledge" ? ["上手", "方法", "规则", "图谱"] : KNOW_SEGMENTS;
@@ -635,13 +656,15 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
   const rules = knowledge.ruleProposals || [];
   const compiledIds = new Set(skills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
   const active = skills.filter((s) => s.status === "active").length;
-  const inPipe = skills.filter((s) => !["retired", "superseded", "compile_failed", "active"].includes(s.status)).length;
-  // 当前该做哪一步：没知识源→喂料；有草案没进流水线→编译验证；进了流水线没上岗→批准；已上岗→完成。
-  const step = sources.length === 0 ? 1 : (active === 0 && inPipe === 0) ? 2 : active === 0 ? 3 : 4;
+  const sourceProgress = sources.filter((source) => !["doctrine", "manual_curated"].includes(source.type)).map((source) => knowledgeSourceProgress(source, methods, skills));
+  const earliestStage = sourceProgress.length ? Math.min(...sourceProgress.map((row) => row.stage)) : 0;
+  // 四个小白能理解的里程碑概括八个真实阶段；每本书的卡片仍显示精确 1–8 阶段。
+  const step = !sourceProgress.length || earliestStage <= 1 ? 1 : earliestStage <= 3 ? 2 : earliestStage <= 5 ? 3 : 4;
   const guide = [
-    { n: 1, Icon: BookOpen, title: t("喂知识", "Feed knowledge"), desc: t("导入交易书籍或文章，自动蒸馏出方法与风控纪律。", "Import trading books or articles; methods and risk discipline are distilled automatically."), cta: t("导入知识源", "Import source"), on: () => ui.openPanel("knowledgeImport") },
-    { n: 2, Icon: Rocket, title: t("编译 + 验证", "Compile + validate"), desc: t("把方法编译成技能，跑历史回测 + 纯前向模拟盘。", "Compile methods into skills, run historical backtest + pure forward paper trading."), cta: t("去方法", "Go to methods"), on: () => setSeg("方法") },
-    { n: 3, Icon: ShieldCheck, title: t("人工批准上岗", "Manual approval"), desc: t("只有你亲自批准的技能才进入实盘决策。", "Only skills you personally approve enter live decision-making."), cta: t("去技能", "Go to skills"), on: () => setSeg("技能") }
+    { n: 1, Icon: BookOpen, title: t("导入并变成可检索资料", "Import and make it searchable"), desc: t("系统读取书籍、建立索引。完成后 Gemini 才能搜索、引用和回答书中内容。", "The system reads and indexes the source. Gemini can search, cite, and answer from it after parsing."), cta: t("导入知识源", "Import source"), on: () => ui.openPanel("knowledgeImport") },
+    { n: 2, Icon: Rocket, title: t("提取方法并转成明确规则", "Extract methods and explicit rules"), desc: t("先提炼入场、退出和止损方法，再转成机器可以测试的规则；这时仍不会真实下单。", "Entry, exit, and stop methods are extracted and converted into machine-testable rules. They still cannot place live orders."), cta: t("查看提取的方法", "Review extracted methods"), on: () => setSeg("方法") },
+    { n: 3, Icon: Gauge, title: t("用历史和未来行情验证", "Validate on historical and future data"), desc: t("先跑样本外历史验证，再用之后真实发生的行情做纯前向模拟，避免只会解释过去。", "Run out-of-sample history first, then pure-forward simulation on future market data to avoid overfitting the past."), cta: t("查看验证流水线", "Open validation pipeline"), on: () => ui.setActive("capabilityLib") },
+    { n: 4, Icon: ShieldCheck, title: t("批准小额试用并用真实成绩转正", "Approve probation and graduate on live results"), desc: t("只有 Owner 批准后才可受限试用；真实成绩达标才转正，不达标会自动降级。", "Only Owner approval permits limited probation. The skill graduates on qualifying live results and degrades when results miss the standard."), cta: t("查看能力与成绩", "Review capabilities and results"), on: () => ui.setActive("capabilityLib") }
   ];
 
   async function search() {
@@ -661,7 +684,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
       {seg === "上手" && (
         <>
           <div className="mKGuide">
-            <div className="mKGuideTitle"><Sparkles size={14} /> {t("知识库怎么用？三步让 AI 交易员变强", "How to use the knowledge base? Three steps to sharpen your AI trader")}</div>
+            <div className="mKGuideTitle"><Sparkles size={14} /> {t("知识不会导入后立刻交易：它要逐级毕业", "Imported knowledge does not trade immediately; it graduates in stages")}</div>
             {guide.map((s) => {
               const state = s.n < step ? "done" : s.n === step ? "active" : "todo";
               const Icon = state === "done" ? CheckCircle2 : s.Icon;
@@ -697,14 +720,14 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
           )}
 
           <div className="mSectionCard">
-            <header><span>{t("知识源（", "Sources (")}{sources.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>{t("全部", "All")} <ChevronRight size={12} /></button></header>
+            <header><span>{t("每本书现在能做什么（", "What each source can do now (")}{sourceProgress.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>{t("管理", "Manage")} <ChevronRight size={12} /></button></header>
             {!sources.length && <p className="mInboxEmpty">{t("还没有导入知识。点下方「导入知识」开始。", "No knowledge imported yet. Tap \"Import knowledge\" below to start.")}</p>}
-            {sources.slice(0, 8).map((source) => (
-              <div className="mRowItem" key={source.id || source.title}>
-                <b>{source.title || source.name || t("未命名", "Untitled")}</b>
-                <StatusBadge tone={statusTone(source.status)}>{humanize(source.status, t("已导入", "Imported"))}</StatusBadge>
-              </div>
-            ))}
+            {sourceProgress.slice(0, 8).map((row) => <article className={`mKSourceProgress ${row.tone}`} key={row.source.id || row.source.title}>
+              <header><b>{row.source.title || row.source.name || t("未命名", "Untitled")}</b><StatusBadge tone={row.tone}>{row.stage === 0 ? t("需处理", "Needs attention") : t(`阶段 ${row.stage}/8`, `Stage ${row.stage}/8`)}</StatusBadge></header>
+              <div className="mKStageTrack" aria-label={t(`当前第 ${row.stage} 阶段`, `Current stage ${row.stage}`)}>{[1,2,3,4,5,6,7,8].map((stageNo) => <i className={stageNo <= row.stage ? "done" : ""} key={stageNo}/>)}</div>
+              <p><small>{t("现在", "NOW")}</small><b>{row.current}</b><span>{row.effect}</span></p>
+              <footer><span>{t("下一步：", "Next: ")}<b>{row.next}</b></span>{row.action && <button onClick={() => row.action === "reparse" ? action(`/api/knowledge/sources/${row.source.id}/parse-real`, {}) : row.action === "methods" ? setSeg("方法") : ui.setActive("capabilityLib")}>{row.next} <ChevronRight size={12}/></button>}</footer>
+            </article>)}
           </div>
           <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> {t("导入知识", "Import knowledge")}</button>
         </>
@@ -1016,11 +1039,12 @@ function MobileAccountHealth({ data, action }) {
   const totalAccounts = data.exchangeAccounts?.length || 0;
   const openExecutions = countOpenExecutions(data.executionOrders);
   const blockedChecks = (data.riskChecks || []).filter((item) => ["blocked", "rejected", "risk_rejected"].includes(String(item.decision || item.result || item.status || "").toLowerCase())).length;
+  const runtime = automationPresentation(data);
   const rows = [
     [t("交易所账户", "Exchange accounts"), `${configuredAccounts} / ${totalAccounts}`, configuredAccounts ? "ok" : "neutral"],
     [t("私有账户快照", "Account snapshot"), latestSnapshot ? formatDateTime(latestSnapshot.createdAt) : t("未同步", "Not synced"), latestSnapshot ? "ok" : "neutral"],
     [t("对账状态", "Reconciliation"), configuredAccounts ? humanize(latestReconcile?.status, t("未对账", "Not reconciled")) : t("待配置", "Not configured"), latestReconcile?.status === "ok" ? "ok" : "neutral"],
-    [t("实盘写入", "Live trading"), data.system?.liveTradingEnabled ? t("已开启", "On") : t("关闭", "Off"), data.system?.liveTradingEnabled ? "warning" : "neutral"], // 主动授权开关≠故障,与桌面口径一致用提醒色
+    [t("运行模式", "Operating mode"), runtime.targetLabel, runtime.targetMode === "observe" ? "neutral" : "warning"],
     [t("在途执行", "In-flight executions"), `${openExecutions}${t(" 个", "")}`, openExecutions ? "warning" : "ok"],
     [t("近期风控阻断", "Recent risk blocks"), `${blockedChecks}${t(" 次", "")}`, blockedChecks ? "warning" : "ok"]
   ];

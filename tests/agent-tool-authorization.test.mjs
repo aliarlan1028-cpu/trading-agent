@@ -54,6 +54,7 @@ test("request_action authorization is checked against the requested operation", 
   const db = seedDatabase();
   const invocation = runWith(["write:mandate"]).invocation;
   assert.equal(authorizeAgentTool(db, invocation, "request_action", { type: "mandate" }).allowed, true);
+  assert.equal(authorizeAgentTool(db, invocation, "request_action", { type: "set_execution_mode" }).allowed, false);
   assert.equal(authorizeAgentTool(db, invocation, "request_action", { type: "set_live_gate" }).allowed, false);
   assert.equal(authorizeAgentTool(db, invocation, "request_action", { type: "approve_plan" }).allowed, false);
 });

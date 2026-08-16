@@ -778,7 +778,7 @@ export function MandatePanel({ data, action }) {
         <label>{t("最高杠杆", "Maximum leverage")}<input type="number" min="1" value={form.maxLeverage} onChange={(event) => update("maxLeverage", event.target.value)} /><small className="fieldHint">{t("如需固定杠杆，请与最低杠杆设为相同", "Set equal to the minimum to use fixed leverage")}</small></label>
         <label>{t("单日亏损上限 %", "Daily loss limit %")}<input type="number" step="0.1" min="0" value={form.dailyLoss} onChange={(event) => update("dailyLoss", event.target.value)} /></label>
         <label>{t("近 7 日亏损上限 %", "Rolling 7-day loss limit %")}<input type="number" step="0.1" min="0.1" max="20" value={form.weeklyLoss} onChange={(event) => update("weeklyLoss", event.target.value)} /><small className="fieldHint">{t("达到上限后停止新开仓；默认 5%", "New entries stop at the limit; default 5%")}</small></label>
-        <label>{t("交易权限单笔上限 USDT", "Trading-permission order limit (USDT)")}<input type="number" min="1" value={form.maxOrderNotional} onChange={(event) => update("maxOrderNotional", event.target.value)} /><small className="fieldHint">{t(`独立于实盘灰度额度；实际下单取两者较小值。当前灰度 ${activeGray?.maxNotionalUsdt ?? "—"} USDT。`, `Independent of the live-validation limit; execution uses the lower value. Current live-validation limit: ${activeGray?.maxNotionalUsdt ?? "—"} USDT.`)}</small></label>
+        <label>{t("交易权限单笔上限 USDT", "Trading-permission order limit (USDT)")}<input type="number" min="1" value={form.maxOrderNotional} onChange={(event) => update("maxOrderNotional", event.target.value)} /><small className="fieldHint">{t(`实际下单还会与运行模式中的真实订单单笔上限取较小值。当前为 ${activeGray?.maxNotionalUsdt ?? "—"} USDT。`, `Execution also applies the live-order limit from the operating-mode settings. Current value: ${activeGray?.maxNotionalUsdt ?? "—"} USDT.`)}</small></label>
       </div>
       <div className="formGrid">
         <label>{t("每单保证金占余额 %", "Margin per order (% of equity)")}<input type="number" step="1" min="1" max="100" value={form.positionPct} onChange={(event) => update("positionPct", event.target.value)} /><small className="fieldHint">{t("名义金额 = 保证金 × 杠杆，例如 30% × 8x", "Notional = margin × leverage, for example 30% × 8x")}</small></label>
@@ -1454,113 +1454,5 @@ export function ExecutionDetailPanel({ data }) {
       </div>
       {!latestOrder.id && !latestPlan.id && <div className="emptyPanel emptyPanelAction"><strong>{t("暂无执行对象", "No execution item")}</strong><span>{t("生成交易计划并通过风控后，这里会展示订单、风险校验和对账详情。", "After a trade plan passes risk checks, its order, risk, and reconciliation details appear here.")}</span></div>}
     </div>
-  );
-}
-
-// 实盘写入与灰度发布(独立组件):按用户要求从「系统设置」整体迁到「风控与授权」页——
-// 灰度的每一项(额度/人工确认/安全闸)本质都是风控边界,放风控页更合理。
-export function LiveGrayPanel({ data, action, ui }) {
-  const live = data.config?.liveTrading || {};
-  const buildLiveForm = () => ({
-    liveTradingEnabled: Boolean(live.liveTradingEnabled),
-    acknowledged: Boolean(live.acknowledged),
-    orderWriteEnabled: Boolean(live.orderWriteEnabled),
-    grayEnabled: Boolean(live.grayEnabled),
-    grayRequiresApproval: live.grayRequiresApproval !== false,
-    allowedSymbols: Array.isArray(live.grayAllowedSymbols) ? live.grayAllowedSymbols : [],
-    maxNotionalUsdt: live.maxNotionalUsdt || 50
-  });
-  const [liveForm, setLiveForm] = useState(buildLiveForm);
-  useEffect(() => { setLiveForm(buildLiveForm()); }, [live.liveTradingEnabled, live.acknowledged, live.orderWriteEnabled, live.grayEnabled, live.grayRequiresApproval, live.maxNotionalUsdt, JSON.stringify(live.grayAllowedSymbols || [])]);
-  function updateLive(key, value) {
-    setLiveForm((current) => ({ ...current, [key]: value }));
-  }
-  async function saveLive(event) {
-    event.preventDefault();
-    if (liveForm.liveTradingEnabled && !liveForm.acknowledged) {
-      ui?.notify?.(t("开启实盘前必须勾选风险确认", "Acknowledge the live-trading risk before enabling live trading"));
-      return;
-    }
-    await action("/api/config/live-trading", {
-      ...liveForm,
-      maxNotionalUsdt: Number(liveForm.maxNotionalUsdt || 50)
-    });
-  }
-  const snapshotOk = data.readiness?.checks?.find((c) => c.key === "private_rest_positions")?.configured ?? false;
-  const mandateOk = Boolean(data.agentStatus?.activeMandate);
-  const withdrawOk = data.readiness?.checks?.find((c) => c.key === "withdraw_permission_detection")?.configured ?? false;
-  // 安全门缺数据时默认"未通过"(false),不再 ?? true 把未知当已通过。
-  const auditOk = data.readiness?.checks?.find((c) => c.key === "audit_chain")?.configured ?? false;
-  const gates = [
-    { ok: Boolean(live.liveTradingEnabled), label: t("实盘交易总开关", "Live trading enabled"), short: t("实盘交易", "Live trading"), hint: t("开启“实盘交易”", "Enable Live trading") },
-    { ok: Boolean(live.acknowledged), label: t("已确认真实资金风险", "Real-money risk acknowledged"), short: t("风险确认", "Risk acknowledged"), hint: t("确认真实资金交易风险", "Acknowledge real-money trading risk") },
-    { ok: Boolean(live.orderWriteEnabled), label: t("允许发送真实订单", "Real order submission enabled"), short: t("真实订单", "Order submission"), hint: t("开启“允许发送真实订单”", "Enable real order submission") },
-    { ok: Boolean(live.grayEnabled), label: t("小额实盘验证", "Small-size live validation"), short: t("小额验证", "Small-size validation"), hint: t("开启小额实盘验证并设置额度和币种", "Enable small-size validation and set its amount and pairs") },
-    { ok: mandateOk, label: t("有效交易权限", "Active trading permissions"), short: t("交易权限", "Permissions"), hint: t("先创建并启用交易权限", "Create and activate trading permissions") },
-    { ok: snapshotOk, label: t("账户已同步", "Account synced"), short: t("账户同步", "Account sync"), hint: t("配置 OKX 后同步账户", "Configure OKX and sync the account") },
-    { ok: withdrawOk, label: t("已确认禁止提现", "Withdrawals confirmed disabled"), short: t("禁止提现", "No withdrawals"), hint: t("在交易所连接中确认 API Key 无提现权限", "Confirm that the OKX API key cannot withdraw") },
-    { ok: !data.system?.killSwitch, label: t("未触发紧急停止", "Emergency stop is clear"), short: t("可运行", "Not stopped"), hint: t("解除顶部“紧急停止”", "Clear the emergency stop") },
-    { ok: auditOk, label: t("审计链正常", "Audit chain healthy"), short: t("审计链", "Audit chain"), hint: t("先修复审计链异常", "Resolve the audit-chain issue") }
-  ];
-  const pass = gates.filter((g) => g.ok).length;
-  const failing = gates.filter((g) => !g.ok);
-  const marks = "①②③④⑤⑥⑦⑧⑨";
-  const hintLine = failing.length
-    ? `${t("还差", "Still needed:")} ${failing.length} ${t("项", "items")} → ` + failing.map((g, i) => `${marks[i] || "·"}${g.hint}`).join(t("；", "; "))
-    : t("全部就绪，系统可以按当前执行方式发送真实订单。", "All checks passed. The system can submit live orders under the selected execution mode.");
-  return (
-          <form className="panelForm liveGrayForm" onSubmit={saveLive}>
-            {/* 就绪清单：9 项压成一排彩色胶囊 + 一句"还差什么" */}
-            <div className="lgReady">
-              <div className="lgReadyHead">
-                <span>{t("实盘交易检查 · 全部通过后才会发送真实订单", "Live trading checks · real orders require every check to pass")}</span>
-                <b className={pass === gates.length ? "ok" : "warn"}>{pass}/{gates.length} {t("通过", "passed")}</b>
-              </div>
-              <div className="lgGates">
-                {gates.map((g) => (
-                  <span key={g.label} className={`lgGate ${g.ok ? "ok" : "bad"}`} title={g.ok ? g.label : g.hint}>
-                    {g.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{g.short}
-                  </span>
-                ))}
-              </div>
-              <p className={`lgHint ${failing.length ? "" : "ok"}`}>{hintLine}</p>
-            </div>
-            {/* 两组开关并排成两列，压缩高度使本卡与 MANDATE 卡齐平 */}
-            <div className="lgGroups">
-              <div className="lgGroup">
-                <div className="lgGroupHead"><span className="dot" /> {t("真实订单权限 · 三项必须全部开启", "Live-order permissions · all three are required")}</div>
-                <div className="lgSwitches">
-                  <label className="lgSw"><input type="checkbox" checked={liveForm.liveTradingEnabled} onChange={(event) => updateLive("liveTradingEnabled", event.target.checked)} /><span>{t("开启实盘交易", "Enable live trading")}<span className="sub">{t("允许系统进入真实资金交易流程", "Allow the system to enter the real-money workflow")}</span></span></label>
-                  <label className="lgSw"><input type="checkbox" checked={liveForm.acknowledged} onChange={(event) => updateLive("acknowledged", event.target.checked)} /><span>{t("确认真实资金风险", "Acknowledge real-money risk")}<span className="sub">{t("我了解真实订单可能造成资金损失", "I understand that live orders can lose money")}</span></span></label>
-                  <label className="lgSw"><input type="checkbox" checked={liveForm.orderWriteEnabled} onChange={(event) => updateLive("orderWriteEnabled", event.target.checked)} /><span>{t("允许发送真实订单", "Allow real order submission")}<span className="sub">{t("关闭时仅记录决策，不向 OKX 发单", "When off, decisions are recorded but no order is sent to OKX")}</span></span></label>
-                </div>
-              </div>
-              <div className="lgGroup">
-                <div className="lgGroupHead"><span className="dot" /> {t("小额验证与确认方式", "Small-size validation & approvals")}</div>
-                <div className="lgSwitches">
-                  <label className="lgSw"><input type="checkbox" checked={liveForm.grayEnabled} onChange={(event) => updateLive("grayEnabled", event.target.checked)} /><span>{t("启用小额实盘验证", "Enable small-size live validation")}<span className="sub">{t("先用较小额度验证真实执行链路", "Validate the live execution path with smaller orders first")}</span></span></label>
-                  <label className="lgSw"><input type="checkbox" checked={liveForm.grayRequiresApproval} onChange={(event) => updateLive("grayRequiresApproval", event.target.checked)} /><span>{t("每笔交易需要确认", "Require approval for each trade")}<span className="sub">{t("关闭后，额度内计划可自动执行", "When off, eligible plans within the limit may execute automatically")}</span></span></label>
-                </div>
-                <label className="symbolLabel lgSymbols">{t("小额验证交易对", "Pairs allowed for small-size validation")}<SymbolMultiSelect value={liveForm.allowedSymbols} onChange={(next) => updateLive("allowedSymbols", next)} /></label>
-                <div className="lgHint">{liveForm.allowedSymbols?.length
-                  ? t(`只允许这 ${liveForm.allowedSymbols.length} 个交易对进行小额实盘验证；其他交易对会被阻止。`, `Only these ${liveForm.allowedSymbols.length} pairs may enter small-size live validation; all others are blocked.`)
-                  : t("留空表示不增加额外币种限制，仍受交易权限和单笔额度约束。", "Leave blank to add no extra pair restriction; trading permissions and the per-trade amount still apply.")}</div>
-              </div>
-            </div>
-            {/* 用后端唯一真相 automationState.mode 判定,别再自己拿 2 个开关猜(审计 gating:
-                旧横幅只看 live+gray,实盘写入没开/自主暂停/熔断照样喊"已开启")。*/}
-            {data.automationState?.mode === "full_auto_small" ? (
-              <div className="autoTradeBanner on">🤖 {t("自动执行已开启：符合交易权限和风险限制的计划可在单笔额度内自动下单，超出额度仍需确认。", "Automatic execution is on. Eligible plans may trade within the per-trade limit; larger trades still require approval.")}</div>
-            ) : (
-              <div className="autoTradeBanner off">{t("当前执行方式：", "Current mode: ")}{localizeText(data.automationState?.label,t("逐笔确认", "Per-trade approval"))}{t("。", ". ")}{data.automationState?.blockers?.length ? `${t("仍需完成", "Still required")}: ${data.automationState.blockers.map(localizeText).join(t("、", ", "))}` : t("AI 提出计划后，由你确认再下单。", "The AI proposes a plan and waits for your approval before ordering.")}</div>
-            )}
-            <div className="lgFoot">
-              <label className="lgAmt">{t("单笔最高金额", "Max amount per trade")}<input type="number" min="1" value={liveForm.maxNotionalUsdt} onChange={(event) => updateLive("maxNotionalUsdt", event.target.value)} /> USDT</label>
-              <button className="primaryButton" type="submit"><Zap size={14} /> {t("保存实盘设置", "Save live trading settings")}</button>
-            </div>
-            <div className="lgHint">{data.notionalLimits?.effectiveOrderMax != null
-              ? t(`当前最终有效单笔上限 ${data.notionalLimits.effectiveOrderMax} USDT = 灰度 ${data.notionalLimits.grayOrderMax ?? "—"} 与交易权限 ${data.notionalLimits.mandateOrderMax ?? "—"} 取较小值。`, `Current effective order limit is ${data.notionalLimits.effectiveOrderMax} USDT: the lower of live validation ${data.notionalLimits.grayOrderMax ?? "—"} and trading permissions ${data.notionalLimits.mandateOrderMax ?? "—"}.`)
-              : t("最终有效额度将在实盘灰度和交易权限都配置后显示。", "The effective limit appears after both live validation and trading permissions are configured.")}</div>
-          </form>
   );
 }

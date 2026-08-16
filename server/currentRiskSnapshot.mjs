@@ -59,13 +59,13 @@ export function currentRiskSnapshotForPrompt(snapshot) {
     `严格滚动168小时 ${rolling.windowStartAt} → ${rolling.windowEndAt}：盈亏 ${rolling.pnlUsdt ?? "未同步"} USDT，亏损率 ${rolling.lossPct ?? "未同步"}%，上限 ${rolling.limitPct ?? "未设置"}%`,
     `连续亏损 ${losses.count}/${losses.limit}，${losses.active ? `冷却中至 ${losses.until}` : "未触发"}`,
     `近期成交回撤 ${drawdown.pct ?? "样本不足"}% / 上限 ${drawdown.limitPct}%，${drawdown.active ? `锁仓至 ${drawdown.until}` : "未触发"}`,
-    `紧急停止 ${snapshot.controls.killSwitch ? "开启" : "关闭"}；只减仓 ${snapshot.controls.reduceOnly ? "开启" : "关闭"}`,
+    `紧急停止 ${snapshot.controls.killSwitch ? "开启" : "关闭"}；暂停新开仓 ${snapshot.controls.reduceOnly ? "是" : "否"}`,
     `运行降级 ${degradation.degraded ? `开启（${degradation.reasons.join("、") || "原因未知"}）` : "无"}`
   ].join("\n");
 }
 
 const HISTORICAL = /^\s*(?:[-*>#\d.]+\s*)?(?:历史|曾经|当时|复盘|假设|如果|若|计划|目标|预测|预计|可能)/i;
-const DYNAMIC_RISK = /(近\s*7\s*日|周亏|连续亏损|连亏|回撤锁仓|只减仓|运行降级|WS\s*断|对账异常|审计异常)/i;
+const DYNAMIC_RISK = /(近\s*7\s*日|周亏|连续亏损|连亏|回撤锁仓|只减仓|暂停新开仓|运行降级|WS\s*断|对账异常|审计异常)/i;
 
 export function enforceCurrentRiskFacts(db, content = "") {
   const snapshot = buildCurrentRiskSnapshot(db), violations = [], kept = [];
@@ -80,7 +80,7 @@ export function enforceCurrentRiskFacts(db, content = "") {
     if (streak && Number(streak[1]) !== snapshot.consecutiveLosses.count) stale = true;
     const streakLimit = streak ? line.match(/(?:上限|超过|超)[^\d]{0,5}(\d+)\s*笔/i) : null;
     if (streakLimit && Number(streakLimit[1]) !== snapshot.consecutiveLosses.limit) stale = true;
-    if (/(?:处于|进入|当前).{0,8}只减仓/i.test(line) && !snapshot.controls.reduceOnly) stale = true;
+    if (/(?:处于|进入|当前|已经|已).{0,8}(?:只减仓|暂停新开仓)/i.test(line) && !snapshot.controls.reduceOnly) stale = true;
     if (/(WS\s*断|对账异常|审计异常|运行降级)/i.test(line) && !snapshot.operationalDegradation.degraded) stale = true;
     if (stale) { violations.push(line.slice(0, 260)); continue; }
     kept.push(line);

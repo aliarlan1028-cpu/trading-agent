@@ -20,13 +20,12 @@ function freshAccountSnapshot(db) {
 }
 
 export const OPERATING_MODE_LABELS = {
-  observe: "只分析，不下单",
-  semi_auto: "逐笔确认后下单",
-  full_auto: "符合限制时自动下单"
+  observe: "只分析",
+  semi_auto: "逐笔确认",
+  full_auto: "自动交易"
 };
 
 const REDUCE_ONLY_REASON_LABELS = {
-  manual_reduce_only: "人工只减仓锁",
   kill_switch: "紧急停止已开启",
   emergency_flatten: "一键平仓安全锁待确认",
   liquidation_emergency: "强平风险处置待收口",
@@ -34,7 +33,7 @@ const REDUCE_ONLY_REASON_LABELS = {
   audit_chain_integrity: "审计链完整性异常",
   oms_recovery: "订单状态恢复对账中",
   armed_setup_recovery: "条件交易恢复对账中",
-  financial_reconciliation_pending: "费用或资金费对账中",
+  financial_reconciliation_pending: "账户核算基线或费用对账未完成",
   professional_risk_gate: "专业运行风险闸降级",
   entry_reconciliation_pending: "入场订单对账中",
   cancel_reconciliation_pending: "撤单结果对账中",
@@ -63,7 +62,7 @@ function reduceOnlyReasonLabel(code = "") {
     };
     return statusLabels[status] || `执行状态待收口：${status}`;
   }
-  return code ? `安全原因待解除：${code}` : "只减仓模式";
+  return code ? `安全原因待解除：${code}` : "新开仓安全检查未完成";
 }
 
 function reduceOnlyBlockers(system = {}) {
@@ -71,7 +70,7 @@ function reduceOnlyBlockers(system = {}) {
     ? system.reduceOnlyReasons
     : system.reduceOnlyBy ? [system.reduceOnlyBy] : [];
   const details = [...new Set(raw.filter(Boolean))].map((code) => ({ code, label: reduceOnlyReasonLabel(code) }));
-  return details.length ? details : [{ code: "reduce_only", label: "只减仓模式" }];
+  return details.length ? details : [{ code: "opening_paused", label: "新开仓安全检查未完成" }];
 }
 
 // 用户选择的运行方式是持久化意图；行情、对账、WS 等运行时故障只能让“当前执行”
@@ -92,41 +91,73 @@ export function deriveAutomationState(db, options = {}) {
   const sys = db.system || {};
   const requestedMode = requestedOperatingMode(db);
   const requestedLabel = OPERATING_MODE_LABELS[requestedMode];
-  const result = (state) => ({
-    ...state,
+  const result = (state) => {
+    const runtimeStatus = state.runtimeStatus || (
+      state.mode === "halted" ? "emergency_stopped"
+        : ["reduce_only", "paused", "blocked", "live_blocked"].includes(state.mode) ? "opening_paused"
+          : "normal"
+    );
+    const runtimeLabel = state.runtimeLabel || ({
+      emergency_stopped: "紧急停止",
+      opening_paused: "暂停新开仓",
+      normal: "正常运行"
+    })[runtimeStatus];
+    return {
+      ...state,
+      selectedMode: requestedMode,
+      selectedModeLabel: requestedLabel,
+      runtimeStatus,
+      runtimeLabel,
+      resumesAutomatically: runtimeStatus === "opening_paused" && state.mode !== "paused",
     blockerDetails: state.blockerDetails || (state.blockers || []).map((label) => ({ code: null, label })),
     requestedMode,
     requestedLabel
-  });
+    };
+  };
   if (sys.killSwitch) return result({ mode: "halted", label: "已熔断", detail: "解除熔断前只允许平仓/撤单等降风险动作", tone: "danger", blockers: ["紧急停止已开启"], blockerDetails: [{ code: "kill_switch", label: "紧急停止已开启" }] });
-  // 只减仓也纳入唯一真相源:否则状态卡会显示"全自动"而每笔新开仓其实被只减仓拦(口径裂缝)。
+  if (!sys.autonomyEnabled) return result({ mode: "paused", label: "运行已暂停", detail: `AI 暂不自主分析或推进计划；重新选择「${requestedLabel}」后恢复`, tone: "warning", blockers: ["AI 自主运行已暂停"], blockerDetails: [{ code: "autonomy_paused", label: "AI 自主运行已暂停" }], resumesAutomatically: false });
+  const blockers = [];
+  if (!options.hasProvider) blockers.push("未配置 LLM");
+  // 只分析本来就不会开仓，因此内部的账户/费用/OMS 开仓闸不能把它伪装成
+  // “暂停新开仓”。这些原因继续保留在服务端，切换到交易模式时再如实展示。
+  if (requestedMode === "observe") {
+    if (blockers.length) return result({
+      mode: "analysis_blocked",
+      label: "分析暂不可用",
+      detail: `${blockers.join("、")}；配置完成后恢复行情分析，期间始终不会下单`,
+      tone: "warning",
+      blockers,
+      runtimeStatus: "analysis_unavailable",
+      runtimeLabel: "分析暂不可用",
+      resumesAutomatically: false
+    });
+    return result({ mode: "observe", label: "只分析", detail: "Gemini 会持续分析并生成判断，但不会向 OKX 提交真实订单", tone: "neutral", blockers: [] });
+  }
+  // 开仓安全限制也纳入唯一真相源：否则状态卡显示“自动交易”，每笔新开仓却被内部闸拦截。
   if (sys.reduceOnlyMode) {
     const blockerDetails = reduceOnlyBlockers(sys);
     return result({
       mode: "reduce_only",
-      label: "只减仓",
-      detail: `${blockerDetails.map((item) => item.label).join("、")}；当前仅允许平仓、撤销入场单等降风险动作，所有原因解除后会按已保存模式自动恢复`,
+      label: "暂停新开仓",
+      detail: `${blockerDetails.map((item) => item.label).join("、")}；当前仍会管理已有仓位并允许撤单、平仓，原因解除后自动恢复「${requestedLabel}」`,
       tone: "warning",
       blockers: blockerDetails.map((item) => item.label),
       blockerDetails
     });
   }
-  if (!sys.autonomyEnabled) return result({ mode: "paused", label: "自主推进已暂停", detail: "恢复后按定时巡检 + 观察哨自主决策", tone: "warning", blockers: ["自主推进已暂停"], blockerDetails: [{ code: "autonomy_paused", label: "自主推进已暂停" }] });
-  const blockers = [];
-  if (!activeMandate(db)) blockers.push("无激活授权");
-  if (!options.hasProvider) blockers.push("未配置 LLM");
+  if (!activeMandate(db)) blockers.push("无激活交易权限");
   if (sys.remainingDailyLossUsdt !== null && sys.remainingDailyLossUsdt !== undefined && sys.remainingDailyLossUsdt <= 0) blockers.push("日亏预算耗尽");
-  if (blockers.length) return result({ mode: "blocked", label: "自主决策被拦", detail: blockers.join("、"), tone: "warning", blockers });
-  if (!sys.liveTradingEnabled) return result({ mode: "observe", label: "观察模式·干跑", detail: "计划走完整风控流程但不提交真实订单", tone: "neutral", blockers: [] });
+  if (blockers.length) return result({ mode: "blocked", label: "暂停新开仓", detail: `${blockers.join("、")}；分析仍可继续，条件恢复后重新评估新计划`, tone: "warning", blockers });
+  if (!sys.liveTradingEnabled) return result({ mode: "live_blocked", label: "暂停新开仓", detail: `已选择「${requestedLabel}」，但实盘通道尚未完成启用`, tone: "warning", blockers: ["实盘通道未启用"] });
   if (!(sys.realTradingAck === true || process.env.I_UNDERSTAND_REAL_TRADING === "true")) blockers.push("实盘风险确认未勾选");
   if (!(sys.orderWriteEnabled === true || process.env.REAL_ORDER_WRITE_ENABLED === "true")) blockers.push("真实下单写入未开启");
   if (!apiPermissionsVerified(db)) blockers.push("API Key 权限未核验");
   if (!freshAccountSnapshot(db).fresh) blockers.push("账户快照缺失或已过期");
   const gray = (db.grayReleasePolicies || []).find((item) => item.enabled);
   if (!gray) blockers.push("灰度策略未启用");
-  if (blockers.length) return result({ mode: "live_blocked", label: "实盘开仓被拦", detail: blockers.join("、"), tone: "warning", blockers });
+  if (blockers.length) return result({ mode: "live_blocked", label: "暂停新开仓", detail: `${blockers.join("、")}；分析和持仓管理仍会继续`, tone: "warning", blockers });
   if (gray.requiresManualApproval) {
-    return result({ mode: "semi_auto", label: "半自动", detail: `计划自动生成,真实下单前需你批准 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] });
+    return result({ mode: "semi_auto", label: "逐笔确认", detail: `计划通过审查和硬风控后等待你确认 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] });
   }
   if (sys.professionalRiskMode !== true) blockers.push("专业运行风险闸未开启");
   if (requiresExternalSecurityInfrastructure()) {
@@ -140,8 +171,8 @@ export function deriveAutomationState(db, options = {}) {
   if ((db.executionOrders || []).some((item) => String(item.status).toUpperCase() === "UNKNOWN")) blockers.push("存在 UNKNOWN 订单");
   const degradation = assessOperationalDegradation(db);
   if (degradation.degraded) blockers.push(...degradation.reasons.map((reason) => `运行降级:${reason}`));
-  if (blockers.length) return result({ mode: "live_blocked", label: "全自动安全条件未满足", detail: blockers.join("、"), tone: "danger", blockers });
-  return result({ mode: "full_auto_small", label: "全自动·小额实盘", detail: `通过硬风控即自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "danger", blockers: [] });
+  if (blockers.length) return result({ mode: "live_blocked", label: "暂停新开仓", detail: `${blockers.join("、")}；条件恢复后自动继续「${requestedLabel}」`, tone: "warning", blockers });
+  return result({ mode: "full_auto_small", label: "自动交易", detail: `通过 Gemini 决策、DeepSeek 审查和硬风控后自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] });
 }
 
 export function buildReadinessReport(db) {
@@ -210,7 +241,7 @@ function buildOperatingStage(db, checks) {
   const hasAccountSnapshot = freshAccountSnapshot(db).fresh;
   const hasMandate = Boolean(activeMandate(db));
   if (db.system?.killSwitch) return { id: "kill_switch", label: "熔断停机", tone: "danger", next: "解除熔断前只允许降风险动作。" };
-  if (db.system?.reduceOnlyMode) return { id: "reduce_only", label: "只减仓模式", tone: "warning", next: "仅处理撤单、平仓、移动止损等降风险动作。" };
+  if (db.system?.reduceOnlyMode && requestedOperatingMode(db) !== "observe") return { id: "reduce_only", label: "暂停新开仓", tone: "warning", next: "继续管理已有仓位；原因解除后自动恢复所选运行模式。" };
   if (configured.trade_write_config && configured.gray_release && configured.withdraw_permission_detection && hasMandate) {
     return { id: "small_live_ready", label: "小额实盘可用", tone: "danger", next: "仅按灰度额度、授权范围和执行前风控提交真实订单。" };
   }

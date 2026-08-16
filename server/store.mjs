@@ -485,9 +485,13 @@ function cleanSeedDatabase(createdAt) {
     registrationRateLimits: [],
     authSessions: [],
     system: {
-      autonomyEnabled: false,
+      // Every product mode runs the analysis loop. Whether orders are submitted
+      // is decided exclusively by requestedOperatingMode, not a second pause
+      // switch layered on top of it.
+      autonomyEnabled: true,
       liveTradingEnabled: false,
       requestedOperatingMode: "observe",
+      operatingModeSchemaVersion: 2,
       dailyGoalUsdt: null,
       monthlyGoalUsdt: null,
       dailyGoalBreakevenEnabled: false,
@@ -718,7 +722,7 @@ function inspectAuditChainIntegrity(db) {
       db.system.reduceOnlyMode = false;
       db.system.reduceOnlyBy = null;
       db.system.riskStatus = "正常";
-      db.system.latestAction = "审计链完整性已由可信状态恢复，解除审计链只减仓";
+      db.system.latestAction = "审计链完整性已由可信状态恢复，恢复新开仓评估";
       for (const incident of db.riskIncidents || []) {
         if (incident.status === "open" && incident.source === "audit_chain_integrity") {
           incident.status = "resolved";
@@ -740,7 +744,7 @@ function inspectAuditChainIntegrity(db) {
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyBy = "audit_chain_integrity";
   setReduceOnlyReason(db, "audit_chain_integrity", { sticky: true, sourceId: "AuditIntegrityCheck" });
-  db.system.riskStatus = "审计链异常·只减仓";
+  db.system.riskStatus = "审计链异常·暂停新开仓";
   db.system.latestAction = `审计链校验失败（${result.breaks.length} 处），已保留原始证据并禁止新开仓`;
   db.riskIncidents ||= [];
   if (!db.riskIncidents.some((item) => item.status === "open" && item.source === "audit_chain_integrity")) {
@@ -876,7 +880,9 @@ export function resetOperationalData(db, options = {}) {
   const seed = seedDatabase();
   const keepAudit = options.keepAudit !== false;
   Object.assign(db.portfolio, seed.portfolio);
-  db.system.autonomyEnabled = false;
+  db.system.autonomyEnabled = true;
+  db.system.requestedOperatingMode = "observe";
+  db.system.operatingModeSchemaVersion = 2;
   db.system.killSwitch = false;
   db.system.riskStatus = "等待配置";
   db.system.latestAction = "已清空工作数据，等待真实配置与授权";
@@ -1726,6 +1732,20 @@ export function normalizeDatabase(db) {
   db.meta.schemaVersion = 5;
   db.user ||= seed.user;
   db.system ||= seed.system;
+  // v2 retires the independent autonomy pause. It made “只分析” appear selected
+  // while the analysis loop was actually stopped, and there is no longer a UI
+  // control capable of resuming that hidden fourth state. Preserve emergency
+  // stop, but otherwise make the selected three-mode intent authoritative.
+  if (Number(db.system.operatingModeSchemaVersion || 0) < 2) {
+    if (!Object.hasOwn({ observe: true, semi_auto: true, full_auto: true }, db.system.requestedOperatingMode)) {
+      const enabledGray = (db.grayReleasePolicies || []).find((item) => item.enabled);
+      db.system.requestedOperatingMode = db.system.liveTradingEnabled !== true
+        ? "observe"
+        : enabledGray?.requiresManualApproval === false ? "full_auto" : "semi_auto";
+    }
+    db.system.autonomyEnabled = db.system.killSwitch !== true;
+    db.system.operatingModeSchemaVersion = 2;
+  }
   applyDerivedProfitGoals(db.system);
   db.portfolio ||= seed.portfolio;
   db.markets ||= seed.markets;

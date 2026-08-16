@@ -127,21 +127,10 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
   const unread = (data.notifications || []).filter((item) => !item.read).length;
   const runtime = automationPresentation(data);
-  const autonomyPaused = data.system?.autonomyEnabled === false;
   const stopped = data.system?.killSwitch === true;
   const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
-  const toggleReduceOnly = async () => {
-    if (runtime.systemReduceOnly) {
-      setRuntimeOpen(true);
-      return;
-    }
-    const confirmed = await uiConfirm(runtime.manualReduceOnly
-      ? t("退出手动只减仓？系统会重新检查全部安全条件；若仍有安全原因，实际状态将继续保持只减仓。", "Exit manual reduce-only? The system will recheck every safety condition and remain reduce-only if another safety cause is still active.")
-      : t("进入只减仓模式？系统将禁止新开仓，只允许撤单、减仓和平仓。", "Enter reduce-only mode? New entries will be blocked; only cancel, reduce, and close actions remain available."));
-    if (confirmed) action("/api/risk/reduce-only", { enabled: !runtime.manualReduceOnly });
-  };
   const flattenAll = async () => {
-    if (await uiConfirm(t("确认按市价平掉全部持仓并进入只减仓模式？该操作不可自动撤销。", "Close every position at market and enter reduce-only mode? This action cannot be automatically undone."))) {
+    if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries will pause until OKX reconciliation confirms completion."))) {
       action("/api/risk/emergency-flatten", {});
     }
   };
@@ -167,9 +156,9 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
             </header>
             <p>{runtime.detail}</p>
             <div className="runtimeStatusTarget"><span>{t("安全条件解除后的长期目标", "Saved target after safety causes clear")}</span><b>{runtime.targetLabel}</b></div>
-            <div className={`runtimeReduceSummary ${runtime.reduceOnlyControlState}`}>
+            <div className={`runtimeReduceSummary ${runtime.runtimeStatus}`}>
               <RefreshCw />
-              <span><b>{runtime.reduceOnlyControlLabel}</b><small>{runtime.reduceOnlyControlDetail}</small></span>
+              <span><b>{runtime.recoveryLabel}</b><small>{runtime.primaryBlocker || t("当前没有阻止新开仓的系统原因。", "No system reason is blocking new entries.")}</small></span>
             </div>
             {runtime.blockers.length > 0 && <div className="runtimeStatusReasons"><small>{t("当前限制原因", "CURRENT BLOCKERS")}</small><div>{runtime.blockers.map((label, index)=><span key={`${label}-${index}`}>{label}</span>)}</div></div>}
             <button type="button" className="runtimeStatusLink" onClick={()=>{setRuntimeOpen(false);setActive("riskMandate");}}>{t("查看长期执行目标与权限", "View saved execution target and permissions")}<ChevronRight size={14}/></button>
@@ -177,8 +166,6 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
         </>}
       </div>
       <div className="topEmergencyActions" aria-label={t("运行控制", "Runtime controls")}>
-        <button type="button" className={autonomyPaused ? "active" : ""} onClick={() => action("/api/system/autonomy", { enabled: autonomyPaused })} title={autonomyPaused?t("恢复 AI 自主生成与推进计划", "Resume autonomous planning"):t("暂停 AI 生成和推进新计划", "Pause autonomous planning")}><Activity/><span>{autonomyPaused?t("恢复自主", "Resume"):t("暂停自主", "Pause")}</span></button>
-        <button type="button" className={`${runtime.reduceOnlyEffective ? "active" : ""} ${runtime.systemReduceOnly ? "locked" : ""}`} onClick={toggleReduceOnly} aria-disabled={runtime.systemReduceOnly} title={runtime.reduceOnlyControlDetail}><RefreshCw/><span>{runtime.systemReduceOnly?t("系统只减", "System reduce"):runtime.manualReduceOnly?t("退出手动", "Exit manual"):t("只减仓", "Reduce only")}</span></button>
         <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
         <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>

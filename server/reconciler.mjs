@@ -182,7 +182,7 @@ function checkSnapshotFreshness(db, latestByAccount) {
   const differences = [];
   const pendingRecovery = (db.executionOrders || []).filter((item) => ["recovery_pending_reconciliation", "emergency_close_pending", "close_unknown_pending", "close_pending", "close_reconciliation_pending"].includes(item.status));
   if (pendingRecovery.length && !(db.exchangeAccounts || []).some((account) => account.exchange === "OKX" && account.readEnabled)) {
-    differences.push({ type: "recovery_authoritative_account_unavailable", severity: "critical", count: pendingRecovery.length, message: "存在待恢复执行，但没有启用的 OKX 只读账户，禁止解除只减仓。" });
+    differences.push({ type: "recovery_authoritative_account_unavailable", severity: "critical", count: pendingRecovery.length, message: "存在待恢复执行，但没有启用的 OKX 只读账户，继续暂停新开仓。" });
   }
   for (const account of db.exchangeAccounts || []) {
     // 未配置只读凭证的交易所不纳入对账：它只是"没接入"（在交易所同步卡里已如实显示），
@@ -199,7 +199,7 @@ function checkSnapshotFreshness(db, latestByAccount) {
     }
     if (snapshot.status && snapshot.status !== "ok") {
       const recoveryBlocked = pendingRecovery.some((item) => !item.accountId || item.accountId === account.id);
-      differences.push({ type: "snapshot_sync_error", severity: recoveryBlocked ? "critical" : "medium", accountId: account.id, status: snapshot.status, message: `${account.exchange} 私有只读同步状态异常，${recoveryBlocked ? "无法核验待恢复动作，继续保持只减仓。" : "请检查连接。"}` });
+      differences.push({ type: "snapshot_sync_error", severity: recoveryBlocked ? "critical" : "medium", accountId: account.id, status: snapshot.status, message: `${account.exchange} 私有只读同步状态异常，${recoveryBlocked ? "无法核验待恢复动作，继续暂停新开仓。" : "请检查连接。"}` });
     }
     if (account.exchange === "OKX" && (snapshot.openOrdersComplete !== true || snapshot.algoOrdersComplete !== true)) {
       differences.push({

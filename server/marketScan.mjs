@@ -32,6 +32,47 @@ function parseSearchJson(raw) {
   return parsed;
 }
 
+// OpenRouter exposes Gemini web-grounding sources as URL annotations. Persist a
+// deliberately small, display-only projection: URLs/titles are useful for the
+// owner to verify a claim, while snippets remain excluded from Agent context to
+// avoid turning untrusted web prose into executable instructions.
+export function normalizeWebSearchCitations(annotations = []) {
+  const seen = new Set();
+  const rows = [];
+  for (const annotation of Array.isArray(annotations) ? annotations : []) {
+    const raw = annotation?.url_citation || annotation?.urlCitation || annotation;
+    const value = raw?.url || raw?.uri;
+    if (!value) continue;
+    try {
+      const url = new URL(String(value));
+      if (!["http:", "https:"].includes(url.protocol)) continue;
+      url.username = "";
+      url.password = "";
+      url.hash = "";
+      const href = url.toString();
+      if (seen.has(href)) continue;
+      seen.add(href);
+      rows.push({
+        url: href,
+        title: boundedUntrustedText(raw?.title, 160) || url.hostname,
+        source: url.hostname.replace(/^www\./, "")
+      });
+      if (rows.length >= 8) break;
+    } catch { /* malformed search annotation */ }
+  }
+  return rows;
+}
+
+function searchEvidenceProjection(result = {}) {
+  return {
+    citations: normalizeWebSearchCitations(result.annotations),
+    searchModel: result.metadata?.actualModel || result.metadata?.requestedModel || null,
+    searchProvider: result.metadata?.actualProvider || null,
+    providerAttributionVerified: result.metadata?.providerAttributionVerified === true,
+    searchResponseId: result.metadata?.responseId || null
+  };
+}
+
 // Search-grounded model output remains tainted even when it is valid JSON. Only
 // enums/numbers/IDs may enter Agent context; prose is retained solely for UI.
 export function normalizeSearchAttribution(input = {}, options = {}) {
@@ -75,6 +116,8 @@ export function marketMoversForAgent(db) {
       category: mover.narrative.category,
       sentiment: mover.narrative.sentiment,
       confidence: mover.narrative.confidence,
+      citationCount: Array.isArray(mover.narrative.citations) ? mover.narrative.citations.length : 0,
+      providerAttributionVerified: mover.narrative.providerAttributionVerified === true,
       attributedAt: mover.narrative.attributedAt
     } : null
   }));
@@ -116,8 +159,8 @@ async function attributeMoverNarrative(mover) {
   if (!process.env.OPENROUTER_API_KEY) return null;
   const prompt = `请查询并归因 ${mover.symbol}（OKX 永续）今天的异动。当前价 $${mover.last}，24h 涨跌 ${mover.changePct}%，成交额约 $${(mover.quoteVolUsdt / 1e6).toFixed(1)}M。\n用内置搜索查最新突发新闻/催化剂，只输出 JSON：{"narrative":"推动异动的核心叙事或催化剂(没查到就写'未见明确催化，疑似情绪/资金驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件","sentiment":0到100的情绪分,"risk":"主要风险一句话"}。中文，纯 JSON。`;
   try {
-    const raw = await geminiSearchComplete(prompt);
-    return normalizeSearchAttribution(parseSearchJson(raw));
+    const result = await geminiSearchWithEvidence(prompt);
+    return { ...normalizeSearchAttribution(parseSearchJson(result.content)), ...searchEvidenceProjection(result) };
   } catch {
     return null;
   }
@@ -155,24 +198,32 @@ export function resetGeminiSearchCircuit() {
   Object.assign(geminiCircuit, { openUntil: 0, consecutiveFailures: 0, lastError: null, lastFailureAt: null, lastSuccessAt: null });
 }
 
-export async function geminiSearchComplete(prompt) {
+export async function geminiSearchWithEvidence(prompt, options = {}) {
   if (geminiCircuit.openUntil > Date.now()) {
     throw new Error(`Gemini circuit open until ${new Date(geminiCircuit.openUntil).toISOString()}`);
   }
   try {
-    const result = await completeGeminiWebSearch(prompt);
+    const result = await completeGeminiWebSearch(prompt, options);
     geminiCircuit.openUntil = 0;
     geminiCircuit.consecutiveFailures = 0;
     geminiCircuit.lastError = null;
     geminiCircuit.lastSuccessAt = nowIso();
-    return result.content;
+    return result;
   } catch (error) {
+    // A caller navigating away or cancelling an obsolete request is not a
+    // provider failure. The gateway already distinguishes this from its own
+    // timeout; preserve that distinction in this outer search circuit too.
+    if (error?.code === "request_aborted" || error?.name === "AbortError") throw error;
     const duration = error?.code === "insufficient_balance" ? 30 * 60_000
       : error?.code === "rate_limited" ? Number(process.env.GEMINI_CIRCUIT_429_MS || 5 * 60_000)
         : Number(process.env.GEMINI_CIRCUIT_ERROR_MS || 60_000);
     openGeminiCircuit(error, duration);
     throw error;
   }
+}
+
+export async function geminiSearchComplete(prompt, options = {}) {
+  return (await geminiSearchWithEvidence(prompt, options)).content;
 }
 
 // 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
@@ -208,8 +259,8 @@ export async function explainMarketMove(db, symbol) {
   }
   const prompt = `请归因 ${sym}（加密永续）当前这波行情【为什么会这样涨/跌】。现价 $${last}，24h ${chg >= 0 ? "+" : ""}${chg}%${shortWin ? `，近15分钟${shortWin.dir === "down" ? "急跌" : "急涨"}${shortWin.pct}%` : ""}${rangePos != null ? `，处于24h区间${rangePos}%位` : ""}，24h成交额约 $${(vol / 1e6).toFixed(0)}M。用内置搜索查最近的突发新闻/催化剂/宏观事件/连锁清算/市场情绪，解释这波涨跌的原因。只输出 JSON：{"narrative":"核心原因或催化剂,一到两句(确实查不到就写'未见明确催化,疑似情绪/资金/杠杆连锁清算驱动')","category":"宏观政策|监管合规|项目动态|资金动向|安全事件|市场情绪","sentiment":0到100的情绪分,"risk":"主要风险一句话","confidence":"high|medium|low"}。中文，纯 JSON。`;
   try {
-    const raw = await geminiSearchComplete(prompt);
-    const attribution = normalizeSearchAttribution(parseSearchJson(raw));
+    const search = await geminiSearchWithEvidence(prompt);
+    const attribution = { ...normalizeSearchAttribution(parseSearchJson(search.content)), ...searchEvidenceProjection(search) };
     const result = { symbol: sym, source: "gemini", ...attribution, technical, cacheHit: false };
     db.marketNarratives[sym] = result;
     return attributionForAgent(result, { symbol: sym, source: "gemini", technical, cacheHit: false });
@@ -229,6 +280,8 @@ function attributionForAgent(stored = {}, overrides = {}) {
       category: ATTRIBUTION_CATEGORIES.has(stored.category) ? stored.category : "unknown",
       sentiment: stored.sentiment !== null && Number.isFinite(Number(stored.sentiment)) ? Number(stored.sentiment) : null,
       confidence: ATTRIBUTION_CONFIDENCE.has(stored.confidence) ? stored.confidence : "low",
+      citationCount: Array.isArray(stored.citations) ? stored.citations.length : 0,
+      providerAttributionVerified: stored.providerAttributionVerified === true,
       attributedAt: stored.attributedAt || null
     },
     mayTriggerTradeDirectly: false
@@ -243,8 +296,8 @@ export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
   const win = `${String(fromIso || "").slice(0, 16)} → ${String(toIso || "").slice(0, 16)} (UTC)`;
   const prompt = `用内置搜索查加密货币 ${sym} 在这个时间窗内【${win}】是否发生过重大新闻/催化剂/宏观事件/交易所动态/连锁清算,用来复盘一笔在此期间的交易。\n【硬性要求·反幻觉】只报你真的检索到、且时间确实落在该窗内的事件;确实没有就直接回"该窗内未见明确催化,疑似情绪/资金/杠杆驱动",绝对不要编造或假设新闻,不要把窗外的旧闻算进来。\n只输出 JSON:{"news":"一到两句话概括窗内真实消息面或明确写无","sentiment":"利多|利空|中性|无","confidence":"high|medium|low"}。中文,纯 JSON。`;
   try {
-    const raw = await geminiSearchComplete(prompt);
-    const parsed = parseSearchJson(raw);
+    const search = await geminiSearchWithEvidence(prompt);
+    const parsed = parseSearchJson(search.content);
     const sentiment = ["利多", "利空", "中性", "无"].includes(parsed.sentiment) ? parsed.sentiment : "无";
     const confidence = ATTRIBUTION_CONFIDENCE.has(String(parsed.confidence || "").toLowerCase()) ? String(parsed.confidence).toLowerCase() : "low";
     return {
@@ -254,6 +307,7 @@ export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
       mayTriggerTradeDirectly: false,
       sentiment,
       confidence,
+      ...searchEvidenceProjection(search),
       window: win,
       at: nowIso()
     };
@@ -288,8 +342,8 @@ export async function escortPositions(db) {
   }
   const prompt = `你是持仓护航哨兵。用内置搜索查这些币/加密市场最新突发新闻，对每个持仓给【15分钟级】防守/进攻短评与消息面影响；风险高就明确建议减仓或平仓。当前持仓：\n${JSON.stringify(payload)}\n只输出 JSON：{"overall":"整体一句话","alerts":[{"symbol":"","level":"info|warn|danger","advice":"具体建议","newsImpact":"相关消息面影响或'无'"}]}。中文，纯 JSON。`;
   try {
-    const raw = await geminiSearchComplete(prompt);
-    const parsed = parseSearchJson(raw);
+    const search = await geminiSearchWithEvidence(prompt);
+    const parsed = parseSearchJson(search.content);
     const knownSymbols = new Set(payload.map((item) => item.symbol));
     const alerts = (Array.isArray(parsed.alerts) ? parsed.alerts : []).slice(0, payload.length * 2).map((item) => ({
       symbol: knownSymbols.has(String(item?.symbol || "")) ? String(item.symbol) : null,
@@ -304,6 +358,7 @@ export async function escortPositions(db) {
       overall: boundedUntrustedText(parsed.overall, 400),
       alerts,
       source: "gemini",
+      ...searchEvidenceProjection(search),
       trust: "untrusted_external_data",
       mayTriggerTradeDirectly: false,
       at: nowIso()

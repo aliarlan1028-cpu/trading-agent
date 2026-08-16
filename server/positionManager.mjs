@@ -155,7 +155,7 @@ async function monitorPositionsLeased(db, options = {}) {
       const mark = tickerFacts.ticker.ok ? tickerFacts.price : null;
       if (!Number.isFinite(mark) || mark <= 0) {
         setReduceOnlyReason(db, "position_price_fact_unavailable", { sourceId: position.executionOrderId || position.id, sticky: false });
-        raiseIncident(db, position, "high", `${position.symbol} 实时价格事实缺失或过期，持仓监控进入只减仓`);
+        raiseIncident(db, position, "high", `${position.symbol} 实时价格事实缺失或过期，系统已暂停新开仓`);
         continue;
       }
       clearReduceOnlyReason(db, "position_price_fact_unavailable", { sourceId: position.executionOrderId || position.id, resolvedBy: "PositionManager", resolution: "fresh_ticker_restored" });
@@ -205,7 +205,7 @@ async function monitorPositionsLeased(db, options = {}) {
           db.system.reduceOnlyMode = true;
           db.system.reduceOnlyBy = "protection_emergency";
           setReduceOnlyReason(db, "protection_emergency", { sticky: true, sourceId: emergencyExecution.id });
-          db.system.riskStatus = "只减仓";
+          db.system.riskStatus = "暂停新开仓";
           raiseIncident(db, position, "critical", `${position.symbol} 的 OKX 止损保护缺失，已自主提交整仓退出`);
           appendAudit(db, `止损保护核验失败(${missingProtectionReason})，已自主提交整仓退出`, position.id, "PositionManager", "critical");
           actions.push({ symbol: position.symbol, action: "missing_protection_emergency_close", emergencyActionId, status: result.status });
@@ -341,7 +341,7 @@ async function monitorPositionsLeased(db, options = {}) {
             db.system.reduceOnlyMode = true;
             db.system.reduceOnlyBy = "liquidation_emergency";
             setReduceOnlyReason(db, "liquidation_emergency", { sticky: true, sourceId: emergencyExecution.id });
-            db.system.riskStatus = "只减仓";
+            db.system.riskStatus = "暂停新开仓";
             appendAudit(db, `强平距离仅 ${liqDistPct.toFixed(2)}%，已自主提交整仓退出`, position.id, "PositionManager", "critical");
             actions.push({ symbol: position.symbol, action: "liquidation_emergency_close", emergencyActionId, status: result.status });
           } else {

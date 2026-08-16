@@ -4,6 +4,20 @@
 import { latestSuccessfulAccountSnapshot } from "../store.mjs";
 import { buildSupportDiagnostics, searchSupportArticles, supportCatalogSummary } from "../supportKnowledge.mjs";
 
+function operatingModeStatus(db) {
+  const sys = db.system || {};
+  const selected = ["observe", "semi_auto", "full_auto"].includes(sys.requestedOperatingMode)
+    ? sys.requestedOperatingMode
+    : sys.liveTradingEnabled !== true
+      ? "observe"
+      : (db.grayReleasePolicies || []).some((item) => item.enabled && item.requiresManualApproval === false) ? "full_auto" : "semi_auto";
+  const selectedLabel = { observe: "只分析", semi_auto: "逐笔确认", full_auto: "自动交易" }[selected];
+  const runtimeLabel = sys.killSwitch === true ? "紧急停止"
+    : sys.reduceOnlyMode === true ? "暂停新开仓"
+      : sys.autonomyEnabled === false ? "运行已暂停" : "正常运行";
+  return { selected, selectedLabel, runtimeLabel };
+}
+
 export function registerAssistantRoutes(app, ctx) {
   const { db, refreshAccounting, llmComplete, ragQuery, appendTrace, saveDb, id, nowIso, requirePermission } = ctx;
 
@@ -23,6 +37,7 @@ export function registerAssistantRoutes(app, ctx) {
     const runsToday = (db.agentRuns || []).filter((r) => new Date(r.createdAt) >= dayStart).length;
     const auditsToday = (db.auditLogs || []).filter((a) => new Date(a.createdAt) >= dayStart).length;
     const lastSnap = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+    const operatingMode = operatingModeStatus(db);
     const digest = {
       account: {
         totalEquityUsdt: pf.totalEquityUsdt ?? null,
@@ -31,14 +46,14 @@ export function registerAssistantRoutes(app, ctx) {
         positions: positions.length,
         lastSyncAt: lastSnap?.createdAt || null
       },
-      autonomy: { enabled: sys.autonomyEnabled === true, killSwitch: sys.killSwitch === true, liveTrading: sys.liveTradingEnabled === true },
+      autonomy: { enabled: sys.autonomyEnabled === true, killSwitch: sys.killSwitch === true, liveTrading: sys.liveTradingEnabled === true, ...operatingMode },
       todayActivity: { agentRuns: runsToday, auditEvents: auditsToday },
       todos: { plansAwaitingApproval: awaitingPlans.length, pendingActions: pendingActions.length },
       risk: { openIncidents: openIncidents.length, topIncident: openIncidents[0]?.title || null }
     };
     const facts = [
       `账户：总资产 ${digest.account.totalEquityUsdt ?? "未同步"} USDT，今日盈亏 ${digest.account.todayPnl ?? "未同步"} USDT，未实现 ${digest.account.unrealizedPnl ?? "未同步"} USDT，持仓 ${digest.account.positions} 个，最后同步 ${digest.account.lastSyncAt || "从未"}`,
-      `自主：${digest.autonomy.killSwitch ? "已熔断" : digest.autonomy.enabled ? "自主运行中" : "已暂停"}，实盘写入 ${digest.autonomy.liveTrading ? "开启" : "关闭"}`,
+      `运行方式：${digest.autonomy.selectedLabel}；当前状态：${digest.autonomy.runtimeLabel}`,
       `今日活动：自主巡检 ${digest.todayActivity.agentRuns} 次，审计事件 ${digest.todayActivity.auditEvents} 条`,
       `待办：待批准计划 ${digest.todos.plansAwaitingApproval} 个，待确认操作 ${digest.todos.pendingActions} 个`,
       `风险：未处理告警 ${digest.risk.openIncidents} 条${digest.risk.topIncident ? `（最新：${digest.risk.topIncident}）` : ""}`
@@ -62,6 +77,7 @@ export function registerAssistantRoutes(app, ctx) {
       refreshAccounting(db);
       const pf = db.portfolio || {};
       const sys = db.system || {};
+      const operatingMode = operatingModeStatus(db);
       const positions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? 0) !== 0);
       const awaitingPlans = (db.tradePlans || []).filter((p) => ["awaiting_approval", "risk_checked", "draft"].includes(p.status));
       const awaiting = awaitingPlans.length;
@@ -79,7 +95,7 @@ export function registerAssistantRoutes(app, ctx) {
         `账户：总资产 ${pf.totalEquityUsdt ?? "未同步"} USDT，今日盈亏 ${pf.todayPnl ?? "未同步"}，未实现 ${pf.unrealizedPnl ?? "未同步"}，持仓 ${positions.length} 个`,
         positions.length ? `持仓明细：${positions.map((p) => `${p.symbol} ${p.direction || ""} 浮盈 ${p.pnl ?? p.upl ?? "?"} ROI ${p.roiPct ?? "?"}%`).join("；")}` : "当前无持仓",
         sys.remainingDailyLossUsdt != null ? `今日剩余风险预算：${sys.remainingDailyLossUsdt} USDT` : "",
-        `自主：${sys.killSwitch ? "已熔断" : sys.autonomyEnabled ? "自主运行中" : "已暂停"}，实盘写入 ${sys.liveTradingEnabled ? "开启" : "关闭"}`,
+        `运行方式：${operatingMode.selectedLabel}；当前状态：${operatingMode.runtimeLabel}`,
         `待办：待批准计划 ${awaiting}，待确认操作 ${pending}；未处理风险告警 ${incidents.length}${incidents[0] ? `（最新：${incidents[0].title || ""}）` : ""}`,
         planDetail ? `待批准计划详情：${planDetail}` : "",
         reconTxt ? `最近账户对账：${reconTxt}${acct.reconcileSnapshotAt ? `（快照 ${acct.reconcileSnapshotAt}）` : ""}` : "",

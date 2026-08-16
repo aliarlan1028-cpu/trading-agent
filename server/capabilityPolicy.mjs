@@ -1,6 +1,7 @@
 export const PENDING_ACTION_CAPABILITIES = Object.freeze({
   run_reconcile: Object.freeze(["write:exchange"]),
   kill_switch: Object.freeze(["risk.kill_switch"]),
+  set_execution_mode: Object.freeze(["approve:live_config"]),
   set_live_gate: Object.freeze(["approve:live_config"]),
   mandate: Object.freeze(["write:mandate"]),
   approve_plan: Object.freeze(["approve:trade_plan"])

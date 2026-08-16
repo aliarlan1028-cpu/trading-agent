@@ -12,7 +12,7 @@ const db = {
 
 test("pending Agent actions preserve separation of duties", () => {
   const trader = { id: "u1", role: "交易用户", status: "active" };
-  for (const type of ["approve_plan", "set_live_gate"]) {
+  for (const type of ["approve_plan", "set_execution_mode", "set_live_gate"]) {
     assert.equal(canConfirmPendingAction(db, trader, { type }).allowed, false, type);
   }
   assert.equal(canConfirmPendingAction(db, trader, { type: "kill_switch", args: { enabled: true } }).allowed, true);
@@ -27,5 +27,6 @@ test("pending Agent actions use action-specific permissions and reject unknown t
   const approver = { id: "u2", role: "风控审批员", status: "active" };
   assert.equal(pendingActionRequiredPermission({ type: "approve_plan" }), "approve:trade_plan");
   assert.equal(canConfirmPendingAction(db, approver, { type: "approve_plan" }).allowed, true);
+  assert.equal(canConfirmPendingAction(db, approver, { type: "set_execution_mode", args: { mode: "full_auto" } }).allowed, true);
   assert.equal(canConfirmPendingAction(db, approver, { type: "unknown" }).allowed, false);
 });

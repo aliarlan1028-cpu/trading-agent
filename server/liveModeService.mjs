@@ -137,7 +137,6 @@ export function applyLiveTradingConfiguration(db, requested = {}, context = {}) 
     input.orderWriteEnabled = requestedMode !== "observe";
     input.grayEnabled = requestedMode !== "observe";
     input.grayRequiresApproval = requestedMode === "semi_auto";
-    if (requestedMode === "observe") input.acknowledged = false;
   }
   if (input.maxNotionalUsdt !== undefined) {
     const value = Number(input.maxNotionalUsdt);

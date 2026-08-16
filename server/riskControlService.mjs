@@ -1,6 +1,7 @@
 import { executeTradeAction } from "./tradeActions.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { latestSuccessfulAccountSnapshot } from "./store.mjs";
+import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
 
 export async function cancelAuthoritativeOrphanOrders(db, reason, emergencyActionId) {
   const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
@@ -66,6 +67,11 @@ export async function applyKillSwitch(db, input = {}, deps = {}) {
   db.system ||= {};
   db.system.killSwitch = enabled;
   if (enabled) db.system.autonomyEnabled = false;
+  else if (["observe", "semi_auto", "full_auto"].includes(db.system.requestedOperatingMode)) {
+    // Clearing an explicit emergency stop resumes the user's saved mode. Any
+    // unresolved exchange/OMS safety reason still independently pauses entries.
+    db.system.autonomyEnabled = true;
+  }
   db.system.riskStatus = enabled ? "熔断停机" : "正常";
 
   let cancellationResults = [];
@@ -113,6 +119,10 @@ export async function applyKillSwitch(db, input = {}, deps = {}) {
       checkedAt: nowIso()
     };
   }
+
+  // 紧急停止只是最高优先级原因。解除后立即重新派生其余 OMS、对账和保护原因，
+  // 避免界面短暂显示“正常”，也避免把用户保存的三种运行模式与安全限制混在一起。
+  syncReduceOnlyState(db);
 
   appendAudit(db, `${enabled ? "启用一键熔断" : "解除一键熔断"}${reason ? `：${reason}` : ""}`, "risk.kill_switch", actor, enabled ? "critical" : "info");
   appendTrace(db, "risk", enabled ? "一键熔断开启" : "一键熔断解除", enabled ? "blocked" : "ok");

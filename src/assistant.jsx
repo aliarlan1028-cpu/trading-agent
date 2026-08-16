@@ -139,7 +139,7 @@ function reviewBroadcast(data) {
   lines.push("### 收益质量");
   lines.push(perf.trades
     ? `- 已平仓 **${perf.trades}** 笔 · 胜率 **${perf.winRatePct}%** · 盈亏比 **${perf.profitFactor ?? "未计算"}**`
-    : "- 暂无已平仓交易,先完成最小交易闭环(模拟盘或小额灰度)");
+    : "- 暂无已平仓交易，可先使用只分析或逐笔确认完成最小交易闭环");
   if (perf.openExecutions) lines.push(`- 在途执行 ${perf.openExecutions} 个`);
   const sessions = paper.sessions || [];
   if (sessions.length) lines.push(`- 模拟盘会话 ${sessions.length} 个(纯前向,技能上岗的必经关卡)`);

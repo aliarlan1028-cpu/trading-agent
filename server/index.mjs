@@ -1612,6 +1612,20 @@ async function executePendingAction(db, record, context = {}) {
       expectedFingerprint: a.liveConfigFingerprint || undefined
     });
   }
+  if (record.type === "set_execution_mode") {
+    if (!a.liveConfigFingerprint) return { ok: false, status: 409, error: "missing_live_config_confirmation_snapshot" };
+    return applyLiveTradingConfiguration(db, {
+      requestedMode: a.mode,
+      ...(a.mode === "observe" ? {} : { acknowledged: true })
+    }, {
+      user: context.user,
+      actor,
+      setConfig,
+      appendAudit,
+      nowIso,
+      expectedFingerprint: a.liveConfigFingerprint
+    });
+  }
   if (record.type === "mandate") {
     const m = (db.mandates || []).find((x) => x.id === (a.resolvedTargetId || a.mandateId)) || db.mandates?.[0];
     if (!m) return { ok: false, error: "mandate_not_found" };

@@ -439,7 +439,7 @@ export function statusTone(status) {
 export function systemStatus(data) {
   if (data?.system?.killSwitch) return { label: t("紧急停止中", "Emergency stop active"), tone: "danger" };
   if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: t("待配置", "Setup required"), tone: "warning" };
-  if (!data?.system?.autonomyEnabled) return { label: t("自主运行已暂停", "Autonomy paused"), tone: "warning" };
+  if (!data?.system?.autonomyEnabled) return { label: t("运行已暂停", "Runtime paused"), tone: "warning" };
   if (data?.agentStatus?.state === "risk_paused") return { label: t("风控暂停", "Paused by risk controls"), tone: "warning" };
   // tone 跟随文案：非"正常/运行"类状态（如种子值"等待配置"、"风控暂停"）不能带绿色 ok 渲染。
   const raw = data?.system?.riskStatus || "正常";
@@ -468,10 +468,10 @@ export function automationPresentation(data = {}) {
     || system.requestedOperatingMode
     || (mode === "full_auto_small" ? "full_auto" : mode === "semi_auto" ? "semi_auto" : "observe");
   const targetLabel = localizeText(automation.requestedLabel, ({
-    full_auto: t("符合限制时自动下单", "Automatic within limits"),
-    semi_auto: t("逐笔确认后下单", "Approve each trade"),
-    observe: t("只分析，不下单", "Analyze only")
-  })[targetMode] || t("只分析，不下单", "Analyze only"));
+    full_auto: t("自动交易", "Automatic trading"),
+    semi_auto: t("逐笔确认", "Approve each trade"),
+    observe: t("只分析", "Analyze only")
+  })[targetMode] || t("只分析", "Analyze only"));
   const definitions = {
     halted: {
       label: t("紧急停止中", "Emergency stop active"),
@@ -480,27 +480,33 @@ export function automationPresentation(data = {}) {
       entryPolicy: t("禁止新开仓", "New entries blocked")
     },
     reduce_only: {
-      label: t("只减仓", "Reduce-only"),
+      label: t("暂停新开仓", "New entries paused"),
       tone: "warning",
-      detail: t("当前只允许撤单、减仓和平仓；原因解除后按已保存的执行方式重新计算。", "Only cancel, reduce, and close actions are allowed. The saved execution target is reassessed after the cause clears."),
+      detail: t("系统仍会管理已有仓位，并允许撤单和平仓；原因解除后自动恢复已保存的运行模式。", "Existing positions remain managed, and cancel/close actions stay available. The saved operating mode resumes automatically after the cause clears."),
       entryPolicy: t("禁止新开仓", "New entries blocked")
     },
     paused: {
-      label: t("自主运行已暂停", "Autonomy paused"),
+      label: t("运行已暂停", "Runtime paused"),
       tone: "warning",
-      detail: t("AI 不再自主生成或推进新计划；恢复后仍沿用已保存的执行方式。", "The AI will not autonomously create or advance new plans. The saved execution target remains unchanged."),
-      entryPolicy: t("暂停自主开仓", "Autonomous entries paused")
+      detail: t("AI 暂不自主分析或推进计划；重新选择运行模式即可恢复。", "The AI is not autonomously analyzing or advancing plans. Select an operating mode again to resume."),
+      entryPolicy: t("AI 运行暂停", "AI runtime paused")
+    },
+    analysis_blocked: {
+      label: t("分析暂不可用", "Analysis unavailable"),
+      tone: "warning",
+      detail: t("模型尚未配置或暂时不可用；恢复后继续分析，当前不会提交任何订单。", "The model is not configured or is temporarily unavailable. Analysis resumes after recovery, and no orders are submitted."),
+      entryPolicy: t("只分析 · 不下单", "Analysis only · no orders")
     },
     blocked: {
-      label: t("自主决策被拦", "Autonomous decisions blocked"),
+      label: t("暂停新开仓", "New entries paused"),
       tone: "warning",
-      detail: t("基础授权或运行条件尚未满足，当前不会产生可执行的新计划。", "Required permissions or operating conditions are missing, so no executable new plan will be created."),
+      detail: t("交易授权或运行条件尚未满足；分析可以继续，但不会新增真实仓位。", "Trading permissions or runtime conditions are incomplete. Analysis may continue, but no new live position will be opened."),
       entryPolicy: t("禁止新开仓", "New entries blocked")
     },
     live_blocked: {
-      label: t("实盘开仓被拦", "Live entries blocked"),
+      label: t("暂停新开仓", "New entries paused"),
       tone: "warning",
-      detail: t("执行目标已保存，但实盘安全条件尚未全部满足。", "The execution target is saved, but live-trading safety conditions are not all satisfied."),
+      detail: t("运行模式已经保存，但实盘安全条件尚未全部满足；分析和持仓管理仍会继续。", "The operating mode is saved, but live-trading safety conditions are incomplete. Analysis and position management continue."),
       entryPolicy: t("禁止实盘开仓", "Live entries blocked")
     },
     full_auto_small: {
@@ -531,21 +537,24 @@ export function automationPresentation(data = {}) {
   const blockerDetails = Array.isArray(automation.blockerDetails) && automation.blockerDetails.length
     ? automation.blockerDetails
     : (Array.isArray(automation.blockers) ? automation.blockers : []).map((label) => ({ code: null, label }));
-  const manualReduceOnly = system.manualReduceOnly === true;
-  const reduceOnlyEffective = system.reduceOnlyMode === true || mode === "reduce_only";
-  const systemReduceOnly = reduceOnlyEffective && !manualReduceOnly;
   const firstBlocker = blockerDetails.map((item) => localizeText(item?.label || item)).find(Boolean);
-  const reduceOnlyControlState = manualReduceOnly ? "manual" : systemReduceOnly ? "system" : "off";
-  const reduceOnlyControlLabel = manualReduceOnly
-    ? t("退出手动只减仓", "Exit manual reduce-only")
-    : systemReduceOnly
-      ? t("系统只减仓", "System reduce-only")
-      : t("开启只减仓", "Enable reduce-only");
-  const reduceOnlyControlDetail = manualReduceOnly
-    ? t("这是你手动开启的临时限制；退出后系统仍会重新检查全部安全条件。", "This temporary restriction was enabled manually. All safety conditions are rechecked after it is cleared.")
-    : systemReduceOnly
-      ? (firstBlocker || t("安全条件正在强制维持只减仓；请先解除原因，不能从这里强行退出。", "A safety condition is enforcing reduce-only. Resolve the cause first; it cannot be overridden here."))
-      : t("开启后禁止新开仓，只允许撤单、减仓和平仓。", "Blocks new entries while allowing cancel, reduce, and close actions.");
+  const runtimeStatus = automation.runtimeStatus || (
+    mode === "halted" ? "emergency_stopped"
+      : mode === "analysis_blocked" ? "analysis_unavailable"
+      : ["reduce_only", "paused", "blocked", "live_blocked"].includes(mode) ? "opening_paused"
+        : "normal"
+  );
+  const openingPaused = runtimeStatus === "opening_paused";
+  const resumesAutomatically = automation.resumesAutomatically ?? (openingPaused && mode !== "paused");
+  const recoveryLabel = runtimeStatus === "emergency_stopped"
+    ? t("需要你解除紧急停止", "Clear the emergency stop to resume")
+    : runtimeStatus === "analysis_unavailable"
+      ? t("配置模型后恢复分析", "Configure the model to restore analysis")
+    : openingPaused
+      ? resumesAutomatically
+        ? t("原因解除后自动恢复", "Resumes automatically after recovery")
+        : t("重新选择运行模式即可恢复", "Select an operating mode again to resume")
+      : t("无需处理", "No action needed");
   const authoritativeLabel = localizeText(automation.label, definition.label);
   const authoritativeDetail = localizeText(automation.detail, definition.detail);
   return {
@@ -559,13 +568,11 @@ export function automationPresentation(data = {}) {
     entryPolicy: definition.entryPolicy,
     blockerDetails,
     blockers: blockerDetails.map((item) => localizeText(item?.label || item)).filter(Boolean),
-    manualReduceOnly,
-    reduceOnlyEffective,
-    systemReduceOnly,
-    reduceOnlyControlState,
-    reduceOnlyControlLabel,
-    reduceOnlyControlDetail,
-    reduceOnlyControlActionable: !systemReduceOnly,
+    runtimeStatus,
+    openingPaused,
+    resumesAutomatically,
+    recoveryLabel,
+    primaryBlocker: firstBlocker || null,
     targetIsEffective: (targetMode === "full_auto" && mode === "full_auto_small")
       || (targetMode === "semi_auto" && mode === "semi_auto")
       || (targetMode === "observe" && mode === "observe")

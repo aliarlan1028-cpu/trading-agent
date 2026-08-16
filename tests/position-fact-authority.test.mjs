@@ -57,7 +57,8 @@ test("newest bound WS position beats a stale REST mirror for accounting", () => 
   assert.equal(result.unrealized, -10);
   assert.equal(result.todayPnl, -10);
   assert.equal(result.remainingDailyLossUsdt, 0);
-  assert.equal(db.system.autonomyEnabled, false);
+  assert.equal(db.system.autonomyEnabled, true, "额度耗尽只暂停新开仓，不应篡改用户保存的运行模式");
+  assert.equal(db.system.dailyLossBudgetStatus, "exhausted");
 });
 
 test("newer fresh REST position beats an older WS mirror", () => {

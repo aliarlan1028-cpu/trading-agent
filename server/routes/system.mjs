@@ -1,10 +1,9 @@
 import { applyDerivedProfitGoals } from "../profitGoals.mjs";
-import { syncReduceOnlyState } from "../reduceOnlyState.mjs";
 
-// 系统管理路由组（就绪度/数据备份/清空工作数据/自主开关）—— 从 index.mjs 按 registrar 范式迁出。
-// autonomy 按开/关走不同权限；reset 保留用户/密钥/配置/风控规则/订阅。依赖经 ctx 注入。
+// 系统管理路由组（就绪度/数据备份/清空工作数据/盈利目标）—— 从 index.mjs 按 registrar 范式迁出。
+// 旧 autonomy 写入口只返回迁移说明；reset 保留用户/密钥/配置/风控规则/订阅。依赖经 ctx 注入。
 export function registerSystemRoutes(app, ctx) {
-  const { db, persist, requirePermission, nowIso, appendAudit, appendTrace, buildReadinessReport, createSystemBackup, resetOperationalData, getStorageInfo, userHasPermission } = ctx;
+  const { db, persist, requirePermission, nowIso, appendAudit, buildReadinessReport, createSystemBackup, resetOperationalData, getStorageInfo } = ctx;
 
   app.get("/api/system/readiness", requirePermission("admin:system"), (_req, res) => res.json(buildReadinessReport(db)));
 
@@ -28,20 +27,11 @@ export function registerSystemRoutes(app, ctx) {
     persist(res, { message: "已清空工作数据，保留用户、密钥、配置、风控规则与订阅设置。", storage: getStorageInfo() });
   });
 
-  app.post("/api/system/autonomy", requirePermission("approve:live_config"), (req, res) => {
-    const requiredPermission = req.body.enabled === false ? "write:mandate" : "approve:live_config";
-    if (!userHasPermission(db, req.user, requiredPermission)) {
-      return res.status(403).json({ error: `Missing permission: ${requiredPermission}` });
-    }
-    db.system.autonomyEnabled = req.body.enabled !== false;
-    syncReduceOnlyState(db);
-    db.system.latestAction = db.system.autonomyEnabled
-      ? db.system.killSwitch ? "AI 交易员保持熔断，仅恢复非交易观察" : "恢复 AI 交易员观察与计划"
-      : "暂停 AI 交易员自动推进";
-    db.system.updatedAt = nowIso();
-    appendAudit(db, db.system.autonomyEnabled ? "恢复自动交易推进" : "暂停自动交易推进", "system.autonomy", req.user?.name || db.user.name, db.system.autonomyEnabled ? "info" : "warning");
-    appendTrace(db, "system", db.system.latestAction, db.system.killSwitch ? "danger" : db.system.reduceOnlyMode ? "warning" : db.system.autonomyEnabled ? "ok" : "paused");
-    persist(res, db.system);
+  app.post("/api/system/autonomy", requirePermission("approve:live_config"), (_req, res) => {
+    res.status(410).json({
+      error: "independent_autonomy_toggle_retired",
+      message: "独立的自主暂停开关已下线。请在交易控制中选择：只分析、逐笔确认或自动交易。"
+    });
   });
 
   // 盈利目标仍绝不注入开仓决策，避免“为凑目标而追单”。可选的保本规则只在仓位
