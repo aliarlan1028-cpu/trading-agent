@@ -8,6 +8,7 @@ const DEFAULT_PRIMARY_MAX_OUTPUT_TOKENS = 16_384;
 const MAX_PRIMARY_MAX_OUTPUT_TOKENS = 32_768;
 const MIN_CREDIT_RETRY_OUTPUT_TOKENS = 4_096;
 const DEFAULT_SEARCH_MAX_OUTPUT_TOKENS = 4_096;
+const DEFAULT_CLASSIFIER_MAX_OUTPUT_TOKENS = 2_048;
 
 export const CRITIC_REVIEW_SCHEMA = Object.freeze({
   type: "object",
@@ -74,6 +75,10 @@ export function openRouterProviderPolicy() {
 
 export function primaryInferencePolicy() {
   return { reasoning: { effort: "high" } };
+}
+
+export function classifierInferencePolicy() {
+  return { reasoning: { effort: "low" } };
 }
 
 function boundedInteger(value, fallback, minimum, maximum) {
@@ -309,6 +314,57 @@ export async function completePrimaryChat(request = {}) {
         reasoningEffort: "high",
         maxOutputTokens: appliedMaxOutputTokens,
         outputBudgetAdjustedForCredits,
+        routingPolicy: openRouterProviderPolicy()
+      }
+    };
+  });
+}
+
+// Semantic classification is a bounded preprocessing task, not the final trade
+// decision. It uses an independent circuit, a small completion budget and low
+// reasoning. Deployments may point it at a cheaper Gemini model without changing
+// the high-reasoning model sealed into live decision provenance.
+export async function completePrimaryClassification(request = {}) {
+  const route = primaryModelRoute();
+  if (!route) {
+    const error = new Error("Gemini 分类模型未配置：需要 OPENROUTER_API_KEY");
+    error.code = "primary_model_not_configured";
+    throw error;
+  }
+  const model = normalizeGeminiModel(process.env.GEMINI_CLASSIFIER_MODEL || route.model);
+  return guardedCall("openrouter:gemini_classifier", async () => {
+    const client = openRouterClient();
+    const { max_tokens: requestedMaxTokens, max_completion_tokens: requestedMaxCompletionTokens, ...safeRequest } = request;
+    const maxOutputTokens = boundedInteger(
+      requestedMaxTokens ?? requestedMaxCompletionTokens,
+      DEFAULT_CLASSIFIER_MAX_OUTPUT_TOKENS,
+      128,
+      4_096
+    );
+    const response = await client.chat.completions.create({
+      ...safeRequest,
+      ...classifierInferencePolicy(),
+      model,
+      provider: openRouterProviderPolicy(),
+      max_tokens: maxOutputTokens
+    });
+    const attribution = extractOpenRouterAttribution(response);
+    return {
+      message: response.choices?.[0]?.message || null,
+      metadata: {
+        role: "classifier",
+        gateway: route.gateway,
+        requestedModel: model,
+        actualModel: response.model || model,
+        actualProvider: attribution.provider,
+        actualEndpoint: attribution.endpoint,
+        providerAttributionVerified: attribution.verified,
+        providerAttribution: attribution,
+        systemFingerprint: response.system_fingerprint || null,
+        responseId: response.id || null,
+        usage: response.usage || null,
+        reasoningEffort: "low",
+        maxOutputTokens,
         routingPolicy: openRouterProviderPolicy()
       }
     };

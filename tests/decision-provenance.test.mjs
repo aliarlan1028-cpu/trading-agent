@@ -119,6 +119,22 @@ test("decision audit chain rejects any changed message, provider, critic output 
   }
 });
 
+test("news classification hashes and provider metadata are sealed into live supplemental provenance", () => {
+  const { provenance, auditInput } = validDecision();
+  const supplemental = {
+    news: { version: 1, records: [{ evidenceId: "fact_1", inputHash: "a".repeat(64), outputHash: "b".repeat(64), model: "google/gemini-classifier", provider: "Google AI Studio", providerAttributionVerified: true, reasoningEffort: "low" }] }
+  };
+  auditInput.supplementalContext = structuredClone(supplemental);
+  provenance.supplementalContext = structuredClone(supplemental);
+  const auditRecord = sealAudit(provenance, auditInput);
+  assert.equal(validateLiveDecisionProvenance(provenance, { auditRecord }).ok, true);
+
+  provenance.supplementalContext.news.records[0].outputHash = "c".repeat(64);
+  const changed = validateLiveDecisionProvenance(provenance, { auditRecord });
+  assert.equal(changed.ok, false);
+  assert.equal(changed.auditReason, "decision_audit_supplemental_context_mismatch");
+});
+
 test("sealed audit rejection or unknown provider cannot be bypassed with an approved provenance projection", () => {
   for (const mutation of [
     (input) => {

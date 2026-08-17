@@ -5,14 +5,15 @@ import { syncPublicMarket } from "./exchangeConnector.mjs";
 import { fetchMarketRegime } from "./marketSignals.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
-import { consumeTriggeredWatches, describeWatch } from "./watchSentinel.mjs";
+import { describeWatch } from "./watchSentinel.mjs";
 import { compactTriggeredWatch } from "./watchReviewGuard.mjs";
 import { watchDirectionLabel, watchThesis, watchTriggerMeaning } from "./watchView.mjs";
 import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { consumeOpportunitySignals, peekOpportunitySignals } from "./earlyOpportunityEngine.mjs";
 import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { approveStateFilePromptArtifact, markStateFilePromptDraft } from "./knowledgePromptPolicy.mjs";
-import { verifyNewsSignal } from "./marketScan.mjs";
+import { analyzeQueuedNewsForDecision, newsDecisionAnalysisEvidence } from "./newsDecisionAnalysis.mjs";
+import { evaluateAgentDecisionWake, recordAgentDecisionWake } from "./decisionWakePolicy.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -20,18 +21,33 @@ import { verifyNewsSignal } from "./marketScan.mjs";
 // 否则做真实数据巡检（行情同步 + 核算 + 风控复查），不产生编造内容。
 // ---------------------------------------------------------------------------
 
+export function newsSignalSymbols(signal = {}) {
+  return [...new Set([...(signal.affectedSymbols || []), ...(signal.symbols || [])]
+    .map((value) => String(value).toUpperCase())
+    .filter((value) => /^[A-Z0-9]{2,15}\/USDT$/.test(value)))].slice(0, 12);
+}
+
+function safeDescriptorToken(value, fallback = "unknown") {
+  const token = String(value || "").trim();
+  return token && /^[a-zA-Z0-9._:/ -]{1,120}$/.test(token) ? token : fallback;
+}
+
 export function newsSignalDescriptor(signal = {}) {
   const kind = signal.kind === "scheduled_event" ? "scheduled_event" : "breaking_news";
   const evidenceId = String(signal.eventId || signal.factId || "unknown").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120) || "unknown";
-  const trustTier = ["verified_official", "verified_publisher", "verified_official_calendar", "unverified_manual", "unverified_aggregator"]
-    .includes(signal.trustTier) ? signal.trustTier : "unverified_aggregator";
-  const symbols = [...new Set((signal.symbols || []).map((value) => String(value).toUpperCase()).filter((value) => /^[A-Z0-9]{2,15}\/USDT$/.test(value)))].slice(0, 12);
+  const trustTier = ["verified_official", "verified_publisher", "verified_official_calendar", "unverified_manual", "unverified_aggregator", "unverified_custom", "unverified_fetch", "source_supplied"]
+    .includes(signal.trustTier) ? signal.trustTier : "unknown_source";
+  const symbols = newsSignalSymbols(signal);
   const impact = Number(signal.impact);
-  const publishedAt = Number.isFinite(new Date(signal.publishedAt || signal.queuedAt || 0).getTime())
-    ? new Date(signal.publishedAt || signal.queuedAt).toISOString()
+  const timestamp = signal.publishedAt || signal.queuedAt || null;
+  const timestampMs = timestamp ? new Date(timestamp).getTime() : NaN;
+  const publishedAt = Number.isFinite(timestampMs)
+    ? new Date(timestampMs).toISOString()
     : "unknown";
-  const verificationStatus = ["corroborated", "single_source", "conflicting", "not_found", "search_unavailable", "search_not_configured", "fact_missing"]
+  const verificationStatus = ["corroborated", "single_source", "conflicting", "not_found", "search_unavailable", "search_not_configured", "fact_missing", "not_searched_by_policy"]
     .includes(signal.verificationStatus) ? signal.verificationStatus : "not_verified";
+  const analysisStatus = ["api_analyzed", "source_metadata_only", "fact_missing"].includes(signal.analysisStatus)
+    ? signal.analysisStatus : "source_metadata_only";
   const category = /^[a-z_]{2,40}$/.test(String(signal.category || "")) ? signal.category : "unknown";
   const confidence = ["high", "medium", "low"].includes(signal.confidence) ? signal.confidence : "low";
   const materiality = ["high", "medium", "low", "none"].includes(signal.materiality) ? signal.materiality : "none";
@@ -41,7 +57,91 @@ export function newsSignalDescriptor(signal = {}) {
   const announcementStatus = /^[a-z_]{2,40}$/.test(String(signal.announcementStatus || "")) ? signal.announcementStatus : "unknown";
   const sentiment = Number.isFinite(Number(signal.sentiment)) ? Math.max(0, Math.min(100, Number(signal.sentiment))) : null;
   const citationCount = Math.max(0, Math.min(8, Number(signal.citationCount || 0)));
-  return `kind=${kind} · evidenceId=${evidenceId} · trustTier=${trustTier} · verifiedOrigin=${signal.verifiedOrigin === true} · verificationStatus=${verificationStatus} · category=${category} · eventType=${eventType} · impactChannels=${impactChannels.length ? impactChannels.join(",") : "none"} · scope=${scope} · announcementStatus=${announcementStatus} · sentiment=${sentiment ?? "unknown"} · confidence=${confidence} · materiality=${materiality} · citationCount=${citationCount} · providerAttributionVerified=${signal.providerAttributionVerified === true} · publishedAt=${publishedAt}${Number.isFinite(impact) ? ` · impact=${impact}` : ""}${symbols.length ? ` · symbols=${symbols.join(",")}` : ""}`;
+  const inputHash = /^[a-f0-9]{64}$/.test(String(signal.analysisContentHash || "")) ? signal.analysisContentHash : "none";
+  const outputHash = /^[a-f0-9]{64}$/.test(String(signal.analysisOutputHash || "")) ? signal.analysisOutputHash : "none";
+  return `kind=${kind} · evidenceId=${evidenceId} · trustTier=${trustTier} · verifiedOrigin=${signal.verifiedOrigin === true} · analysisStatus=${analysisStatus} · verificationStatus=${verificationStatus} · analysisSource=${safeDescriptorToken(signal.analysisSource, "source_metadata_only")} · category=${category} · eventType=${eventType} · impactChannels=${impactChannels.length ? impactChannels.join(",") : "none"} · scope=${scope} · announcementStatus=${announcementStatus} · sentiment=${sentiment ?? "unknown"} · confidence=${confidence} · materiality=${materiality} · citationCount=${citationCount} · analysisModel=${safeDescriptorToken(signal.analysisModel)} · analysisProvider=${safeDescriptorToken(signal.analysisProvider)} · analysisInputHash=${inputHash} · analysisOutputHash=${outputHash} · providerAttributionVerified=${signal.providerAttributionVerified === true} · publishedAt=${publishedAt}${Number.isFinite(impact) ? ` · impact=${impact}` : ""}${symbols.length ? ` · symbols=${symbols.join(",")}` : ""}`;
+}
+
+const MAX_EVENT_FOCUS_SYMBOLS = 4;
+const MAX_FAST_MOVE_BATCH = 4;
+const MAX_NEWS_BATCH = 3;
+
+function fastMoveQueueKey(row = {}) {
+  if (row.id) return `id:${row.id}`;
+  return [row.symbol, row.direction, row.at || row.detectedAt || row.queuedAt || "", row.movePct ?? "", row.source || ""].join("|");
+}
+
+function newsQueueKey(row = {}) {
+  const identity = row.factId || row.eventId || row.id;
+  if (identity) return `id:${identity}`;
+  return [row.kind, row.sourceId, row.publishedAt || row.queuedAt || "", (row.symbols || []).join(",")].join("|");
+}
+
+function removeAcknowledgedRows(queue = [], acknowledged = [], keyFor) {
+  const remainingCounts = new Map();
+  for (const row of acknowledged) {
+    const key = keyFor(row);
+    remainingCounts.set(key, Number(remainingCounts.get(key) || 0) + 1);
+  }
+  return queue.filter((row) => {
+    const key = keyFor(row);
+    const count = Number(remainingCounts.get(key) || 0);
+    if (!count) return true;
+    remainingCounts.set(key, count - 1);
+    return false;
+  });
+}
+
+// A decision batch is a read-only lease. Pending facts remain durable until the
+// Agent has both returned successfully and completed the trigger's business
+// closure. Applying the symbol cap before the call prevents the fifth event from
+// being acknowledged even though only four symbols received deterministic proof.
+export function selectAgentDecisionBatch(input = {}) {
+  const trigger = String(input.trigger || "scheduled_patrol");
+  const triggeredWatches = input.triggeredWatches || [];
+  const selectedWatchSymbols = new Set();
+  for (const watch of triggeredWatches) {
+    if (!watch?.symbol || selectedWatchSymbols.has(watch.symbol)) continue;
+    if (selectedWatchSymbols.size >= MAX_EVENT_FOCUS_SYMBOLS) break;
+    selectedWatchSymbols.add(watch.symbol);
+  }
+  return {
+    trigger,
+    fastMoves: trigger === "fast_move" ? (input.fastMoves || []).slice(0, MAX_FAST_MOVE_BATCH) : [],
+    triggeredWatches: trigger === "watch_trigger"
+      ? triggeredWatches.filter((watch) => selectedWatchSymbols.has(watch.symbol))
+      : [],
+    newsSignals: trigger === "news" ? (input.newsSignals || []).slice(0, MAX_NEWS_BATCH) : []
+  };
+}
+
+export function agentDecisionRunSucceeded(run = {}) {
+  return run.status === "completed" && run.decisionBlocked !== true
+    && (!run.watchReviewClosure?.applicable || run.watchReviewClosure.ok === true);
+}
+
+export function settleAgentDecisionBatch(db, batch = {}, run = {}) {
+  if (!agentDecisionRunSucceeded(run)) return { acknowledged: false, fastMoves: 0, watches: 0, news: 0 };
+  db.system ||= {};
+  let fastMoves = 0, watches = 0, news = 0;
+  if (batch.trigger === "fast_move" && batch.fastMoves?.length) {
+    db.system.pendingFastMoves = removeAcknowledgedRows(db.system.pendingFastMoves || [], batch.fastMoves, fastMoveQueueKey);
+    fastMoves = batch.fastMoves.length;
+  }
+  if (batch.trigger === "watch_trigger" && batch.triggeredWatches?.length) {
+    const ids = new Set(batch.triggeredWatches.map((watch) => watch.id).filter(Boolean));
+    for (const watch of db.watchTriggers || []) {
+      if (ids.has(watch.id)) {
+        watch.triggerHandled = true;
+        watches += 1;
+      }
+    }
+  }
+  if (batch.trigger === "news" && batch.newsSignals?.length) {
+    db.system.pendingNewsSignals = removeAcknowledgedRows(db.system.pendingNewsSignals || [], batch.newsSignals, newsQueueKey);
+    news = batch.newsSignals.length;
+  }
+  return { acknowledged: true, fastMoves, watches, news };
 }
 
 export async function runAgentCycle(db, payload = {}, saveDb) {
@@ -109,6 +209,24 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // LLM 决策循环后才消费，锁冲突/无模型/熔断时不能静默丢失。
   let newsSignals = (db.system?.pendingNewsSignals || []).slice(0, 3);
 
+  const decisionTrigger = fastMoves.length ? "fast_move"
+    : triggeredWatches.length ? "watch_trigger"
+    : newsSignals.length ? "news"
+    : opportunitySignals.length ? "early_opportunity"
+    : "scheduled_patrol";
+  const decisionBatch = selectAgentDecisionBatch({
+    trigger: decisionTrigger,
+    fastMoves,
+    triggeredWatches,
+    newsSignals
+  });
+  const wakeEvaluation = evaluateAgentDecisionWake(db, {
+    trigger: decisionTrigger,
+    symbols,
+    force: payload.forceDecision === true || Boolean(payload.goal),
+    now: payload.now
+  });
+
   const skipReasons = [];
   if (!db.system.autonomyEnabled) skipReasons.push("自主推进已暂停");
   if (db.system.killSwitch) skipReasons.push("熔断开启");
@@ -117,6 +235,11 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   if (awaitingPlan) skipReasons.push(`已有待批准计划 ${awaitingPlan.id}，避免重复生成`);
   if (accounting.remainingDailyLossUsdt !== null && accounting.remainingDailyLossUsdt !== undefined && accounting.remainingDailyLossUsdt <= 0) {
     skipReasons.push("日亏损预算耗尽");
+  }
+  if (!skipReasons.length && !wakeEvaluation.shouldWake) {
+    skipReasons.push(wakeEvaluation.reason === "material_change_cooling_down"
+      ? "决策环境已有变化，但仍在合并冷却窗口；继续由代码监控，下一批次再统一分析"
+      : "决策环境没有发生需要重新推理的变化；本轮仅完成数据巡检");
   }
 
   if (skipReasons.length) {
@@ -135,8 +258,14 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
         ...(triggeredWatches.length ? [{ phase: "watch", summary: `观察哨触发但本轮未进入 LLM 决策：${triggeredWatches.map((w) => `${w.symbol} ${watchDirectionLabel(w)}｜原判断=${watchThesis(w)}｜条件=${describeWatch(w)}｜命中含义=${watchTriggerMeaning(w)}｜触发价 ${w.triggerPrice}`).join("；")}。` }] : []),
         ...(regimeSummary ? [{ phase: "regime", summary: `大盘/聪明钱：${regimeSummary}。` }] : []),
         { phase: "accounting", summary: `今日盈亏 ${accounting.todayPnl ?? "未知"} USDT，剩余亏损预算 ${accounting.remainingDailyLossUsdt ?? "未授权"}。` },
-        { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。` }
+        { phase: "decision", summary: `本轮不进入 LLM 决策：${skipReasons.join("；")}。`, reason: wakeEvaluation.reason }
       ],
+      decisionWake: {
+        shouldWake: wakeEvaluation.shouldWake,
+        reason: wakeEvaluation.reason,
+        materialChanged: wakeEvaluation.materialChanged,
+        ageMs: wakeEvaluation.ageMs
+      },
       createdAt: nowIso()
     };
     run.traceId = run.id;
@@ -148,17 +277,18 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
 
   // 只有确定进入真实 LLM 决策后才消费 pending；被熔断、待批准计划、预算耗尽等原因跳过时
   // 必须保留触发事实，避免“巡检跑过了但机会被静默吃掉”。
-  triggeredWatches = consumeTriggeredWatches(db);
-  fastMoves = db.system.pendingFastMoves || [];
-  db.system.pendingFastMoves = [];
-  opportunitySignals = consumeOpportunitySignals(db, 2);
-  newsSignals = (db.system.pendingNewsSignals || []).slice(0, 3);
-  const verifyQueuedNews = payload.verifyNewsSignal || verifyNewsSignal;
-  newsSignals = await Promise.all(newsSignals.map(async (signal) => {
-    try { return await verifyQueuedNews(db, signal); }
-    catch { return { ...signal, verificationStatus: "search_unavailable", mayTriggerTradeDirectly: false }; }
-  }));
-  db.system.pendingNewsSignals = (db.system.pendingNewsSignals || []).slice(newsSignals.length);
+  // 同一时刻可能同时积累异动、观察哨、新闻和早期机会。每轮只消费最高优先级的一类，
+  // 其它事实留在队列供下一次哨兵 tick 立即唤起；否则 goal、focusSymbols 与实际消费内容会错位，
+  // 还会在一次昂贵调用里把互不相关的事件混在一起。
+  triggeredWatches = decisionBatch.triggeredWatches;
+  fastMoves = decisionBatch.fastMoves;
+  opportunitySignals = decisionTrigger === "early_opportunity" ? consumeOpportunitySignals(db, 2) : [];
+  newsSignals = decisionBatch.newsSignals;
+  const analyzeNews = payload.analyzeQueuedNewsForDecision || analyzeQueuedNewsForDecision;
+  const newsAnalysis = await analyzeNews(db, newsSignals, { allowedSymbols: symbols });
+  newsSignals = newsAnalysis.signals || newsSignals;
+  if (newsAnalysis.error) appendTrace(db, "news_decision_analysis", `API 新闻直接影响分析未完成：${newsAnalysis.error}（使用来源元数据降级）`, "warning");
+  else if (newsAnalysis.requested) appendTrace(db, "news_decision_analysis", `直接分析 API 新闻 ${newsAnalysis.analyzed}/${newsAnalysis.requested} 条；未联网搜索`, "ok");
 
   // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
   const regimeBullets = regimeSummary ? regimeSummary.split(/[;；]\s*/).filter(Boolean).map((x) => `- ${x.trim()}`).join("\n") : "";
@@ -182,37 +312,36 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       "【本轮任务】",
       ...(newsSignals.length
         ? [
-          "1. 先核验信息：读取情报证据与发布时间。verificationStatus=corroborated 表示 Gemini 搜索已找到至少两个引用且 Provider 归因可验证，可作为经过交叉核验的背景事实；single_source/conflicting/not_found/search_unavailable 均不得描述成已证实",
+          "1. 直接分析系统已通过 API/RSS 获取的事件影响：analysisStatus=api_analyzed 表示已用无联网模型做受控语义分类；本轮禁止再为这条事件联网搜索。trustTier 与 verifiedOrigin 仍决定来源可信度，语义分类不等于来源核验",
           "2. 再检查市场是否已经反应：同步关联币种行情、结构、成交量和微观结构；新闻本身绝不构成开仓理由，禁止仅凭标题直接提出交易",
           "3. 对高影响日程只做多/空/中性场景树；公布后必须核验实际值及第一反应，不得把日程当结果、不得猜测数据",
           "4. 只有新闻与可验证行情证据共同满足原有强制证据包和全部硬风控时，才可走原有计划流程；否则登记观察哨或继续观察",
-          "5. 固定覆盖白名单、有效观察哨和全市场漏斗，并复核视野外 Top 候选；不得因本轮由新闻触发而省略"
+          "5. 本轮只分析事件关联币种与现有持仓，不重复执行无关的全市场漏斗；开放世界背景使用系统低频批量研究缓存"
         ]
         : fastMoves.length
         ? [
-          "1. 立即复核异动币种：sync_market + get_microstructure 看这波急速涨跌是否伴随放量、订单簿失衡与结构破位（识别无量假突破/急跌诱空）；并调 explain_market_move 查这波【为什么】涨/跌（消息面催化/连锁清算/情绪），把原因和技术面一起看",
+          "1. 读取系统预执行的 sync_market、get_microstructure 与结构结果，复核这波急速涨跌是否伴随放量、订单簿失衡与结构破位（覆盖缺失时才重试对应工具）；消息面只读取系统低频批量研究缓存，不为本次异动临时联网搜索",
           "2. 顺势评估机会：急跌可评估做空或规避、急涨可评估做多或止盈；按授权边界与盈亏比决定是否 propose_trade_plan，不达标则说明原因",
           "3. 若判断后续还有关键触发位（如跌破某支撑加速），逐条 register_watch 登记让哨兵继续盯",
-          "4. 同时完成白名单、有效观察哨和全市场漏斗固定覆盖，复核视野外 Top 候选"
+          "4. 全市场漏斗由代码预筛；只对本轮异动币和漏斗最强候选做深度复核"
         ]
         : triggeredWatches.length
         ? [
-          "1. 优先复核触发币种：用 sync_market / get_microstructure / analyze_market_structure 确认价格命中是否伴随闭合K线、量能、结构与微观证据（无量假突破/假跌破要识别出来）",
+          "1. 优先复核触发币种：使用系统预执行的 sync_market / get_microstructure / analyze_market_structure 结果确认价格命中是否伴随闭合K线、量能、结构与微观证据；只有覆盖缺失时才重试对应工具",
           "2. 必须闭环：方向成立但仍等回踩/吞没/影线/放量/收盘确认时，propose_trade_plan 创建 armed 条件计划；确有硬阻断时，record_watch_review 引用真实 evidence ID 记录拒绝或失效。禁止仅以‘继续观察/确认不足’换价再挂同一逻辑",
-          "3. 顺带检查其余授权交易对与大盘环境是否有变化",
-          "4. 固定执行全市场机会漏斗，并对视野外 Top 候选做结构与微观二次复核"
+          "3. 同时检查大盘环境和现有持仓冲突；不为一次观察哨触发重跑无关币种的完整分析"
         ]
         : opportunitySignals.length
         ? [
-          "1. 这是启动早期信号，不是已完成的交易结论：优先分析上述候选；系统固定全市场漏斗仍必须完成一次，禁止跳过",
+          "1. 这是代码全市场漏斗筛出的启动早期信号，不是已完成的交易结论：优先分析上述候选，不重复扫描整个市场",
           "2. 并行复核候选微观结构与角色感知多周期结构：日内看1H/15m/5m，波段看1D/4H/1H；消息面使用已有新鲜缓存，只有明确事件策略才允许等待联网归因",
           "3. 当前条件已适合入场则 propose_trade_plan immediate；结构明确但价格尚未到位则 propose_trade_plan armed，把完整入场/止损/止盈与触发条件提前武装；结构不够则 register_watch",
           "4. 不得因为它是早期信号就跳过强制证据包或任何硬风控"
         ]
         : [
           "1. 先判大盘：全局方向与情绪、大户/散户多空结构",
-          "2. 再看个币：逐一检查授权交易对的行情、持仓与事件；对认真评估、可能提计划的币，调 explain_market_move 查它最新消息面（利空/利好/催化剂）——事件源未必覆盖到它，别只看 K 线，把消息面纳入方向判断",
-          "3. 扩大视野找机会：调用 scan_market_opportunities 扫全市场永续（漏斗打分排 Top 候选，含白名单外的币），对排前候选用 sync_market/get_microstructure/analyze_market_structure 深分析；白名单内的达标就走第 4 步，白名单外若确属优质机会则在汇总里明确建议加白（附方向、理由与建议授权参数）",
+          "2. 再看个币：逐一检查授权交易对的行情、持仓与事件；消息面读取 API 情报与系统低频批量联网研究缓存，禁止逐币临时搜索",
+          "3. 扩大视野找机会：读取系统预执行的 scan_market_opportunities 全市场漏斗及 Top 候选结构/微观复核；只有覆盖缺失时才重试对应工具。白名单内达标就走第 4 步，白名单外若确属优质机会则在汇总里明确建议加白（附方向、理由与建议授权参数）",
           "4. 只有出现明确符合授权边界、且不与大盘/聪明钱明显背离的机会才提出交易计划；否则简要说明为什么继续观察",
           "5. 关键触发条件（若跌破/若突破/若回踩）必须逐条调用 register_watch 工具登记（想盯 3 个就调 3 次），绝不能只在回复里画“观察哨一览”表格——写表不等于登记，哨兵不会盯，等于骗自己。登记完文字里一句“已登记 N 个观察哨”即可，不要展开。"
         ])
@@ -223,20 +352,40 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   if (!db.chatSessions.some((c) => c.id === "chat_autocycle")) {
     db.chatSessions.unshift({ id: "chat_autocycle", title: "自主巡检 · 自动汇总", status: "active", system: true, createdAt: nowIso(), updatedAt: nowIso() });
   }
-  const decisionTrigger = fastMoves.length ? "fast_move"
-    : triggeredWatches.length ? "watch_trigger"
-    : newsSignals.length ? "news"
-    : opportunitySignals.length ? "early_opportunity"
-    : "scheduled_patrol";
+  const focusSymbols = [...new Set((fastMoves.length ? fastMoves.map((row) => row.symbol)
+    : triggeredWatches.length ? triggeredWatches.map((row) => row.symbol)
+    : newsSignals.length ? newsSignals.flatMap(newsSignalSymbols)
+    : opportunitySignals.length ? opportunitySignals.map((row) => row.symbol)
+    : symbols).filter(Boolean))].slice(0, 4);
   const result = await runAgentChat(db, {
     message: goal,
     sessionId: "chat_autocycle",
     decisionTrigger,
     symbols,
+    focusSymbols,
     triggeredWatches: triggeredWatches.map(compactTriggeredWatch),
+    supplementalContextEvidence: newsSignals.length ? { news: newsDecisionAnalysisEvidence(newsSignals) } : null,
     invocationContext: payload.invocationContext || systemAgentInvocation("agent_cycle_internal")
   }, saveDb);
   result.run.source = "agent_cycle";
+  if (agentDecisionRunSucceeded(result.run)) {
+    recordAgentDecisionWake(db, wakeEvaluation, result.run);
+    result.run.decisionBatchSettlement = settleAgentDecisionBatch(db, decisionBatch, result.run);
+  } else {
+    // LLM 402/超时/熔断不是“事件已经分析”。把本轮提前消费的确定性队列恢复，下一次
+    // 周期仍可继续处理；这也防止成本保护本身变成漏报器。
+    if (opportunitySignals.length) {
+      const current = db.system.pendingOpportunitySignals || [];
+      const known = new Set(current.map((row) => row.candidateId));
+      db.system.pendingOpportunitySignals = [...opportunitySignals.filter((row) => !known.has(row.candidateId)), ...current];
+      for (const signal of opportunitySignals) {
+        const candidate = (db.opportunityCandidates || []).find((row) => row.id === signal.candidateId);
+        if (candidate?.status === "ANALYZING" && !candidate.planId) candidate.status = "DISCOVERED";
+      }
+    }
+  }
+  // runAgentChat 在返回前保存的是模型结果；队列确认/恢复与 wake 指纹发生在其后，必须再落盘一次。
+  if (saveDb) saveDb(db);
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");
   return result.run;
 }

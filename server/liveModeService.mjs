@@ -14,6 +14,7 @@ export function livePolicySnapshot() {
   return {
     schemaVersion: 2,
     primaryModel: normalizeGeminiModel(process.env.GEMINI_MODEL),
+    classifierModel: normalizeGeminiModel(process.env.GEMINI_CLASSIFIER_MODEL || process.env.GEMINI_MODEL),
     criticModel: critic?.model || String(process.env.DEEPSEEK_MODEL || "deepseek-v4-pro"),
     criticRequiredForLive: true,
     configuredCriticRequired: process.env.LLM_CRITIC_REQUIRED_FOR_LIVE !== "false",

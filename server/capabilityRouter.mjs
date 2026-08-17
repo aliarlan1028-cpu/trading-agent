@@ -18,9 +18,9 @@ const ROLE_PACKS = Object.freeze({
 const TRIGGER_PACKS = Object.freeze({
   scheduled_patrol: ["global_market", "market_scan", "events"],
   early_opportunity: ["short_window_momentum", "microstructure", "deterministic_structure", "market_scan"],
-  fast_move: ["short_window_momentum", "microstructure", "news_attribution", "deterministic_structure", "market_scan"],
-  watch_trigger: ["trigger_revalidation", "microstructure", "deterministic_structure", "market_scan"],
-  news: ["source_verification", "market_reaction", "deterministic_structure", "market_scan"],
+  fast_move: ["short_window_momentum", "microstructure", "cached_market_context", "deterministic_structure", "market_scan"],
+  watch_trigger: ["trigger_revalidation", "microstructure", "deterministic_structure"],
+  news: ["api_event_impact", "market_reaction", "deterministic_structure"],
   manual: ["intent_specific"]
 });
 
@@ -49,7 +49,9 @@ export function buildCapabilityPlan(input = {}) {
       parallelizeReadOnly: true,
       reuseFreshEvidence: true,
       llmMaySkipRequiredCapabilities: false,
-      roleSuitabilityControlsExecution: false
+      roleSuitabilityControlsExecution: false,
+      coverageScope: trigger === "scheduled_patrol" ? "portfolio" : "trigger_focus",
+      webSearchPolicy: "cached_batch_context_only"
     },
     createdAt: new Date().toISOString()
   };
@@ -68,17 +70,19 @@ export function requiredCapabilityCalls(plan, availableToolNames = []) {
   const calls = [];
   const allSymbols = plan.symbols.slice(0, 8);
   const focusSymbols = (plan.focusSymbols.length ? plan.focusSymbols : allSymbols).slice(0, 4);
-  // 自主巡检不允许因触发币种更抢眼就省略白名单。focus 只决定哪些币额外查关键位，
-  // 结构与微观的固定覆盖始终面向本轮全部候选（runAgentCycle 会注入白名单+观察哨）。
   const autonomous = plan.trigger !== "manual";
-  const deepSymbols = autonomous ? allSymbols : focusSymbols;
+  // 周期组合复核覆盖完整白名单；事件/观察哨/早期机会只深挖触发候选。
+  // 全市场发现由独立的代码漏斗持续运行，不能因为一次局部事件又重算所有币。
+  const portfolioSweep = plan.trigger === "scheduled_patrol";
+  const deepSymbols = portfolioSweep ? allSymbols : focusSymbols;
+  const marketScanRequired = ["scheduled_patrol", "early_opportunity", "fast_move"].includes(plan.trigger);
   const needsMarketAnalysis = plan.trigger !== "manual" || plan.marketAnalysis;
   if (!needsMarketAnalysis) return [];
 
   if (autonomous || plan.trigger === "manual") {
     addCall(calls, available, "get_global_market", {}, "大盘环境");
   }
-  if (autonomous) {
+  if (marketScanRequired) {
     addCall(calls, available, "scan_market_opportunities", { limit: 8, direction: "both", minQuoteVolUsdt: 5_000_000 }, "全市场机会漏斗");
   }
   if (plan.trigger === "news") {
@@ -93,10 +97,9 @@ export function requiredCapabilityCalls(plan, availableToolNames = []) {
     }
     if (plan.trigger === "fast_move") {
       addCall(calls, available, "assess_abnormal_volatility", { symbol, thresholdPct: 5 }, "异常波动确认");
-      addCall(calls, available, "explain_market_move", { symbol }, "异动原因归因");
     }
   }
-  if (autonomous) {
+  if (portfolioSweep) {
     addCall(calls, available, "funding_extremes_scanner", { symbols: allSymbols }, "白名单拥挤度横向扫描");
     addCall(calls, available, "relative_strength", { symbols: allSymbols, days: 14 }, "白名单相对强弱排序");
   }

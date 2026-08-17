@@ -174,10 +174,22 @@ export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
   let market = db.markets.find((item) => item.symbol === displaySymbol);
   if (!market) { market = { symbol: displaySymbol, candles: [], status: "not_synced" }; db.markets.push(market); }
   const applied = applyTickerObservation(market, { ...ticker, source: "OKX_REST", sourceAt: ticker.rawTime });
+  // 公有 WS 与 REST 同时更新 ticker 时，REST 响应很容易比刚收到的 WS tick 更旧。
+  // 这是正常的防乱序 no-op，不是行情刷新失败；若在这里抛错，调用方会跳过同一币种
+  // 后续独立的订单簿/OI/资金费率刷新，最终把微观结构饿死并触发全局暂停新开仓。
+  if (!applied.applied && applied.reason === "out_of_order") {
+    return {
+      ...ticker,
+      price: market.price,
+      rawTime: market.tickerSourceAt,
+      observationApplied: false,
+      observationReason: applied.reason
+    };
+  }
   if (!applied.applied) throw new Error(`ticker_observation_rejected:${applied.reason}`);
   market.lastSyncedExchange = ticker.exchange;
   market.lastSyncedAt = market.tickerReceivedAt;
-  return ticker;
+  return { ...ticker, observationApplied: true, observationReason: null };
 }
 
 // 拉 OKX 资金费率历史，返回 |资金费率%| 的第 pct 百分位——给"资金费率极端"做该币自适应阈值

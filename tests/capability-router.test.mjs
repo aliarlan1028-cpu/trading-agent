@@ -31,14 +31,21 @@ test("scheduled patrol deterministically preflights relevant built-in capabiliti
   assert.equal(calls.some((item) => item.name === "strategy_drift"), false, "无关能力不应为了凑调用量而执行");
 });
 
-test("every autonomous trigger keeps whitelist coverage and full-market scan", () => {
+test("event-driven triggers deep-review only their focus while market discovery stays in code", () => {
   const available = ["get_global_market", "scan_market_opportunities", "analyze_market_structure", "get_microstructure", "support_resistance_levels", "funding_extremes_scanner", "relative_strength"];
-  for (const trigger of ["watch_trigger", "news", "fast_move", "early_opportunity"]) {
+  for (const trigger of ["watch_trigger", "news"]) {
     const plan = buildCapabilityPlan({ trigger, symbols: ["SUI/USDT", "BTC/USDT", "ADA/USDT"], focusSymbols: ["SUI/USDT"], marketAnalysis: true });
     const calls = requiredCapabilityCalls(plan, available);
-    assert.equal(calls.filter((item) => item.name === "analyze_market_structure").length, 3, `${trigger} 不得省略其余白名单`);
-    assert.equal(calls.filter((item) => item.name === "get_microstructure").length, 3, `${trigger} 不得省略其余白名单微观结构`);
-    assert.ok(calls.some((item) => item.name === "scan_market_opportunities"), `${trigger} 必须执行全市场漏斗`);
+    assert.equal(calls.filter((item) => item.name === "analyze_market_structure").length, 1, `${trigger} 只深挖触发币`);
+    assert.equal(calls.filter((item) => item.name === "get_microstructure").length, 1, `${trigger} 只复核触发币微观结构`);
+    assert.equal(calls.some((item) => item.name === "scan_market_opportunities"), false, `${trigger} 不重复全市场漏斗`);
+  }
+  for (const trigger of ["fast_move", "early_opportunity"]) {
+    const plan = buildCapabilityPlan({ trigger, symbols: ["SUI/USDT", "BTC/USDT", "ADA/USDT"], focusSymbols: ["SUI/USDT"], marketAnalysis: true });
+    const calls = requiredCapabilityCalls(plan, [...available, "assess_abnormal_volatility", "explain_market_move"]);
+    assert.equal(calls.filter((item) => item.name === "analyze_market_structure").length, 1);
+    assert.ok(calls.some((item) => item.name === "scan_market_opportunities"), `${trigger} 使用代码漏斗`);
+    assert.equal(calls.some((item) => item.name === "explain_market_move"), false, "快速异动不得临时联网归因");
   }
 });
 

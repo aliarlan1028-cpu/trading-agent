@@ -53,5 +53,7 @@ test("运行配置：空模型名拒绝、含空白拒绝、flash 警告", () =>
   assert.match(flash.warnings.join(""), /flash/);
   assert.equal(validateRuntimeConfig({ GEMINI_MODEL: "gemini-3.7-flash" }).valid, false);
   assert.equal(validateRuntimeConfig({ GEMINI_MODEL: "google/gemini-3.7-flash" }).valid, true);
+  assert.equal(validateRuntimeConfig({ GEMINI_CLASSIFIER_MODEL: "gemini-flash" }).valid, false);
+  assert.equal(validateRuntimeConfig({ GEMINI_CLASSIFIER_MODEL: "google/gemini-3.7-flash" }).valid, true);
   assert.equal(validateRuntimeConfig({ LIVE_TRADING_ENABLED: "yes" }).valid, false);
 });

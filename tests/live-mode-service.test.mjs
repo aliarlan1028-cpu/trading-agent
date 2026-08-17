@@ -93,17 +93,26 @@ test("successful live configuration keeps runtime and persisted gates consistent
 
 test("model or provider policy changes invalidate an earlier live confirmation", () => {
   const previous = process.env.GEMINI_MODEL;
+  const previousClassifier = process.env.GEMINI_CLASSIFIER_MODEL;
   try {
     process.env.GEMINI_MODEL = "google/gemini-3.1-pro-preview";
+    process.env.GEMINI_CLASSIFIER_MODEL = "google/gemini-3.1-flash";
     const db = fixture();
     const result = applyLiveTradingConfiguration(db, { liveTradingEnabled: true, acknowledged: true }, context());
     assert.equal(result.ok, true);
     process.env.GEMINI_MODEL = "google/gemini-3.2-pro";
     assert.equal(liveConfirmationStatus(db).ok, false);
     assert.equal(liveConfirmationStatus(db).reason, "live_policy_changed_since_confirmation");
+
+    process.env.GEMINI_MODEL = "google/gemini-3.1-pro-preview";
+    db.system.liveConfirmationPolicyFingerprint = livePolicyFingerprint();
+    process.env.GEMINI_CLASSIFIER_MODEL = "google/gemini-3.2-flash";
+    assert.equal(liveConfirmationStatus(db).reason, "live_policy_changed_since_confirmation");
   } finally {
     if (previous === undefined) delete process.env.GEMINI_MODEL;
     else process.env.GEMINI_MODEL = previous;
+    if (previousClassifier === undefined) delete process.env.GEMINI_CLASSIFIER_MODEL;
+    else process.env.GEMINI_CLASSIFIER_MODEL = previousClassifier;
   }
 });
 

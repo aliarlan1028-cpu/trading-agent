@@ -109,3 +109,20 @@ test("REST ticker with an old exchange source time remains stale despite a new H
   assert.equal(facts.ticker.source.reason, "stale");
   assert.ok(new Date(db.markets[0].tickerReceivedAt).getTime() > new Date(db.markets[0].tickerSourceAt).getTime());
 });
+
+test("an older REST ticker is a harmless no-op when a newer WS ticker is already stored", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const now = Date.now();
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ code: "0", data: [{ instId: "BTC-USDT-SWAP", last: "59000", open24h: "58000", high24h: "60000", low24h: "57000", volCcy24h: "1", ts: String(now - 2_000) }] })
+  });
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const db = { markets: [{ symbol: "BTC/USDT", price: 61_000, tickerSourceAt: ISO(now - 1_000), tickerReceivedAt: ISO(now - 500) }] };
+  const result = await syncPublicMarketQuiet(db, "BTC/USDT");
+  assert.equal(result.observationApplied, false);
+  assert.equal(result.observationReason, "out_of_order");
+  assert.equal(result.price, 61_000);
+  assert.equal(result.rawTime, ISO(now - 1_000));
+  assert.equal(db.markets[0].price, 61_000);
+});

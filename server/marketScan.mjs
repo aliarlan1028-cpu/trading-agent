@@ -1,7 +1,5 @@
-// 全市场异动扫描 + Gemini 消息面归因（借鉴 okx-ai-trading-journal 的 pump-gainers / pump-analysis）。
-// 定位：给巡检提供"市场今天在发生什么"的环境感知（不是追涨信号），并给重大异动补上消息面归因，
-// 补齐系统"消息面浅"的短板。全部真实数据；无 LLM 时只给行情异动、不编叙事。
-import { activeProvider } from "./agentChat.mjs";
+// 全市场异动扫描：高频路径只使用 OKX 确定性行情；消息面来自独立的低频批量研究缓存。
+// 显式人工研究仍保留兼容入口，但自动巡检、异动与持仓监控绝不逐币联网。
 import { appendTrace, id, nowIso } from "./store.mjs";
 import { containsLikelySecret, scrubSecrets } from "./secretRedaction.mjs";
 import { completeGeminiWebSearch } from "./llmGateway.mjs";
@@ -361,10 +359,9 @@ export async function geminiSearchComplete(prompt, options = {}) {
   return (await geminiSearchWithEvidence(prompt, options)).content;
 }
 
-// 按需归因【某个币这波为什么涨/跌】——给 agent 的 explain_market_move 工具用,也给急动评估用。
-// 结合 24h 涨跌 + 近15分钟短窗口动幅 + 区间位 + 成交额,用 Gemini+Google 搜索查催化剂。
-// 无 OPENROUTER_API_KEY 则诚实返回"纯行情推演"(不编消息面)。
-export async function explainMarketMove(db, symbol) {
+// 按需读取【某个币这波为什么涨/跌】的低频批量研究缓存。自动路径不会临时联网；
+// 只有显式人工研究传 allowSearch=true 时才调用兼容的 Gemini 搜索入口。
+export async function explainMarketMove(db, symbol, options = {}) {
   const sym = String(symbol || "").includes("/") ? symbol : String(symbol || "").replace(/USDT$/i, "/USDT");
   const market = (db.markets || []).find((m) => m.symbol === sym)
     || (db.markets || []).find((m) => String(m.symbol).split("/")[0] === String(sym).split("/")[0]);
@@ -388,6 +385,38 @@ export async function explainMarketMove(db, symbol) {
   const narrativeTtlMs = Number(process.env.MARKET_NARRATIVE_CACHE_MS || 15 * 60_000);
   if (cached?.attributedAt && Date.now() - new Date(cached.attributedAt).getTime() <= narrativeTtlMs) {
     return attributionForAgent(cached, { symbol: sym, source: "gemini_cache", technical, cacheHit: true });
+  }
+  const research = db.marketResearchContext;
+  const researchAsset = (research?.assets || []).find((row) => row.symbol === sym);
+  const researchFresh = research?.expiresAt && Date.now() <= new Date(research.expiresAt).getTime();
+  if (researchAsset && researchFresh) {
+    return {
+      symbol: sym,
+      source: "market_context_cache",
+      attribution: {
+        evidenceId: `${research.id}:${sym}`,
+        sourceType: "batched_web_research_cache",
+        trust: "untrusted_external_data",
+        mayTriggerTradeDirectly: false,
+        category: researchAsset.driverTypes?.[0] || "unknown",
+        sentiment: researchAsset.sentiment ?? null,
+        confidence: researchAsset.confidence || "low",
+        materiality: researchAsset.materiality || "none",
+        eventTypes: researchAsset.eventTypes || [],
+        impactChannels: researchAsset.impactChannels || [],
+        citationCount: Number(research.citationCount || 0),
+        providerAttributionVerified: research.provider?.attributionVerified === true,
+        attributedAt: research.researchedAt || null
+      },
+      technical,
+      cacheHit: true,
+      mayTriggerTradeDirectly: false
+    };
+  }
+  // 自动决策和持仓监控不得在这里按币临时联网。只有明确的人工研究入口传
+  // allowSearch=true 才保留兼容能力；日常决策读取独立的批量研究缓存。
+  if (options.allowSearch !== true) {
+    return { symbol: sym, source: "quote_only", attribution: null, technical, mayTriggerTradeDirectly: false, status: research ? "research_cache_stale_or_symbol_missing" : "research_cache_missing" };
   }
   if (!process.env.OPENROUTER_API_KEY) {
     return { symbol: sym, source: "quote_only", attribution: null, technical, mayTriggerTradeDirectly: false, status: "search_not_configured" };
@@ -452,7 +481,9 @@ export async function fetchTradeWindowNews(symbol, fromIso, toIso) {
 // 巡检用：扫异动 + 给最猛的前 N 个补归因，写入 db.marketMovers 供决策上下文与事件引擎引用。
 export async function refreshMarketMovers(db, options = {}) {
   const scan = await scanMarketMovers(options);
-  const attributeTop = Math.max(0, Math.min(3, Number(options.attributeTop ?? (activeProvider() ? 2 : 0))));
+  // 高频刷新只做一个 OKX API 确定性扫描。联网研究已拆到低频批量任务，
+  // 默认绝不能再对 Top N 逐币搜索；显式人工调用可传 attributeTop。
+  const attributeTop = Math.max(0, Math.min(3, Number(options.attributeTop ?? 0)));
   for (let i = 0; i < Math.min(attributeTop, scan.movers.length); i += 1) {
     const narr = await attributeMoverNarrative(scan.movers[i]);
     if (narr) scan.movers[i].narrative = narr;
@@ -462,60 +493,63 @@ export async function refreshMarketMovers(db, options = {}) {
   return db.marketMovers;
 }
 
-// 带消息面的持仓护航（借鉴"提线木偶护航哨兵"）：对当前持仓做"实时新闻 + 防守/进攻"复检。
-// 关键区别：只产出【建议/告警】，绝不自动裸下单——减仓/平仓仍走风控与人工/授权流程。
+// 持仓护航只消费低频批量研究缓存与实时账户事实，绝不自行联网搜索。
+// 止损/保护单仍由确定性 positionManager 管理；这里仅生成需要下一次 Agent 复核的提示。
 export async function escortPositions(db) {
   const positions = (db.positions || []).filter((p) => Number(p.size ?? p.pos ?? 0) !== 0);
   if (!positions.length) { db.positionEscort = { note: "当前无持仓，护航休眠", positions: [], at: nowIso() }; return db.positionEscort; }
   const payload = positions.map((p) => ({ symbol: p.symbol, dir: p.direction, size: p.size ?? p.pos, entry: p.entry ?? p.avgPx, mark: p.mark, upl: p.pnl ?? p.upl, roiPct: p.roiPct, lev: p.leverage }));
-  if (!process.env.OPENROUTER_API_KEY) {
-    // 无 Gemini：给纯行情级护航（浮亏超阈值提示），不编消息面。
-    const alerts = payload.filter((p) => Number(p.roiPct) <= -8).map((p) => ({ symbol: p.symbol, level: "warn", advice: `${p.symbol} 浮亏 ${p.roiPct}%，关注止损纪律` }));
-    db.positionEscort = { positions: payload, alerts, source: "quote_only", at: nowIso() };
-    appendTrace(db, "position_escort", `持仓护航(纯行情) ${positions.length} 仓`, "ok", 0);
-    return db.positionEscort;
-  }
-  const prompt = `你是持仓护航哨兵。用内置搜索查这些币/加密市场最新突发新闻，对每个持仓给【15分钟级】防守/进攻短评与消息面影响；风险高就明确建议减仓或平仓。当前持仓：\n${JSON.stringify(payload)}\n只输出 JSON：{"overall":"整体一句话","alerts":[{"symbol":"","level":"info|warn|danger","advice":"具体建议","newsImpact":"相关消息面影响或'无'"}]}。中文，纯 JSON。`;
-  try {
-    const search = await geminiSearchWithEvidence(prompt);
-    const parsed = parseSearchJson(search.content);
-    const knownSymbols = new Set(payload.map((item) => item.symbol));
-    const alerts = (Array.isArray(parsed.alerts) ? parsed.alerts : []).slice(0, payload.length * 2).map((item) => ({
-      symbol: knownSymbols.has(String(item?.symbol || "")) ? String(item.symbol) : null,
-      level: ["info", "warn", "danger"].includes(item?.level) ? item.level : "info",
-      advice: boundedUntrustedText(item?.advice, 300),
-      newsImpact: boundedUntrustedText(item?.newsImpact, 300),
-      trust: "untrusted_external_data",
-      mayTriggerTradeDirectly: false
-    })).filter((item) => item.symbol);
-    db.positionEscort = {
-      positions: payload,
-      overall: boundedUntrustedText(parsed.overall, 400),
-      alerts,
-      source: "gemini",
-      ...searchEvidenceProjection(search),
-      trust: "untrusted_external_data",
-      mayTriggerTradeDirectly: false,
-      at: nowIso()
-    };
-    // 高危告警落成风险事件（走既有告警链，仍不自动下单）。
-    for (const a of alerts.filter((x) => x.level === "danger")) {
-      db.riskIncidents ||= [];
-      // 同 symbol 的 open 护航告警合并滚动更新(此前每 2 分钟无脑 unshift,30 条/小时挤爆事件列表)
-      const existing = db.riskIncidents.find((i) => i.status === "open" && i.source === "position_escort" && i.symbol === a.symbol);
-      if (existing) {
-        existing.title = `持仓护航外部风险信号 ${a.symbol}（需确定性复核）`;
-        existing.untrustedDisplay = { advice: a.advice, newsImpact: a.newsImpact };
-        existing.count = Number(existing.count || 1) + 1;
-        existing.updatedAt = nowIso();
-      } else {
-        db.riskIncidents.unshift({ id: `escort_${Date.now()}_${a.symbol}`, symbol: a.symbol, severity: "high", status: "open", title: `持仓护航外部风险信号 ${a.symbol}（需确定性复核）`, source: "position_escort", trust: "untrusted_external_data", mayTriggerTradeDirectly: false, untrustedDisplay: { advice: a.advice, newsImpact: a.newsImpact }, count: 1, createdAt: nowIso() });
-      }
+  const research = db.marketResearchContext;
+  const researchFresh = research?.expiresAt && Date.now() <= new Date(research.expiresAt).getTime();
+  const alerts = [];
+  for (const position of payload) {
+    if (Number(position.roiPct) <= -8) {
+      alerts.push({ symbol: position.symbol, level: "warn", reasonCode: "position_loss_threshold", roiPct: Number(position.roiPct), mayTriggerTradeDirectly: false });
     }
-    appendTrace(db, "position_escort", `持仓护航(消息面) ${positions.length} 仓`, "ok", 0);
-    return db.positionEscort;
-  } catch (error) {
-    db.positionEscort = { positions: payload, error: error.message, at: nowIso() };
-    return db.positionEscort;
+    const asset = researchFresh ? (research.assets || []).find((row) => row.symbol === position.symbol) : null;
+    if (!asset || !["high", "medium"].includes(asset.materiality)) continue;
+    const sentiment = Number(asset.sentiment);
+    const direction = String(position.dir || "").toLowerCase();
+    const conflicts = (direction === "long" && Number.isFinite(sentiment) && sentiment <= 35)
+      || (direction === "short" && Number.isFinite(sentiment) && sentiment >= 65);
+    if (!conflicts) continue;
+    alerts.push({
+      symbol: position.symbol,
+      level: asset.materiality === "high" && asset.confidence === "high" ? "danger" : "warn",
+      reasonCode: "cached_external_context_conflicts_with_position",
+      evidenceId: `${research.id}:${position.symbol}`,
+      sentiment,
+      confidence: asset.confidence,
+      materiality: asset.materiality,
+      impactChannels: asset.impactChannels || [],
+      mayTriggerTradeDirectly: false
+    });
   }
+  db.positionEscort = {
+    positions: payload,
+    alerts,
+    source: researchFresh ? "market_context_cache" : "quote_only",
+    researchContextId: researchFresh ? research.id : null,
+    researchStatus: researchFresh ? "fresh" : research ? "stale" : "missing",
+    mayTriggerTradeDirectly: false,
+    at: nowIso()
+  };
+  // 高重要性反向背景只创建“待确定性复核”事件，绝不自动减仓或平仓。
+  for (const alert of alerts.filter((row) => row.level === "danger")) {
+    db.riskIncidents ||= [];
+    const existing = db.riskIncidents.find((row) => row.status === "open" && row.source === "position_escort" && row.symbol === alert.symbol);
+    if (existing) {
+      existing.count = Number(existing.count || 1) + 1;
+      existing.lastSeenAt = nowIso();
+      existing.evidenceId = alert.evidenceId;
+    } else {
+      db.riskIncidents.unshift({
+        id: `escort_${Date.now()}_${alert.symbol}`, symbol: alert.symbol, severity: "high", status: "open",
+        title: `持仓外部背景与方向冲突 ${alert.symbol}（待确定性复核）`, source: "position_escort",
+        evidenceId: alert.evidenceId, mayTriggerTradeDirectly: false, count: 1, createdAt: nowIso(), lastSeenAt: nowIso()
+      });
+    }
+  }
+  appendTrace(db, "position_escort", `持仓护航(无联网) ${positions.length} 仓 · 提示 ${alerts.length}`, "ok", 0);
+  return db.positionEscort;
 }

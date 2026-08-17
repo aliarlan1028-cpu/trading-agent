@@ -72,7 +72,7 @@ export function validateOrder(order = {}) {
 }
 
 // —— 运行配置：挡住把关键项写成空/错值（如模型名写错导致全线抽风）—— //
-const KNOWN_MODEL_KEYS = new Set(["DEEPSEEK_MODEL", "GEMINI_MODEL"]);
+const KNOWN_MODEL_KEYS = new Set(["DEEPSEEK_MODEL", "GEMINI_MODEL", "GEMINI_CLASSIFIER_MODEL"]);
 export function validateRuntimeConfig(entries = {}) {
   const errors = [];
   const warnings = [];
@@ -82,7 +82,7 @@ export function validateRuntimeConfig(entries = {}) {
       if (!v) { errors.push(`${key} 不能为空`); continue; }
       if (/\s/.test(v)) errors.push(`${key} 含空白字符：「${v}」`);
       if (key === "DEEPSEEK_MODEL" && /flash/i.test(v)) warnings.push("DEEPSEEK_MODEL 使用 flash 弱模型：易出现「声称调用工具却没真做」，建议 v4-pro");
-      if (key === "GEMINI_MODEL" && !/^google\/gemini-/i.test(v)) errors.push("GEMINI_MODEL 必须使用 OpenRouter 的完整模型 ID（google/gemini-*）");
+      if (["GEMINI_MODEL", "GEMINI_CLASSIFIER_MODEL"].includes(key) && !/^google\/gemini-/i.test(v)) errors.push(`${key} 必须使用 OpenRouter 的完整模型 ID（google/gemini-*）`);
     }
     if (/^(LIVE_TRADING_ENABLED|REAL_ORDER_WRITE_ENABLED|I_UNDERSTAND_REAL_TRADING|OPENROUTER_ZDR|OPENROUTER_ALLOW_PROVIDER_FALLBACKS|LLM_CRITIC_REQUIRED_FOR_LIVE)$/.test(key)) {
       const v = String(value);

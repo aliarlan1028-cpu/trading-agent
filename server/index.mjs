@@ -29,9 +29,10 @@ import { approveTradePlan, validateApprovalSnapshot } from "./tradePlanLifecycle
 import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
-import { getHistoricalKlines, guardedPrivateExchangeAction, invalidateOkxCredentialCaches, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, syncPublicMarketQuiet, validateOkxCredentialCandidate } from "./exchangeConnector.mjs";
-import { fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, fetchSmartMoney } from "./marketSignals.mjs";
-import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection, recordMediumTermSample } from "./mediumTermAnalytics.mjs";
+import { getHistoricalKlines, guardedPrivateExchangeAction, invalidateOkxCredentialCaches, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, validateOkxCredentialCandidate } from "./exchangeConnector.mjs";
+import { fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog } from "./marketSignals.mjs";
+import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection } from "./mediumTermAnalytics.mjs";
+import { refreshMarketSignalSymbol } from "./marketSignalRefresh.mjs";
 import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
 import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
@@ -46,6 +47,8 @@ import { currentUiRevision, uiSyncEvent } from "./uiSync.mjs";
 import { listStrategies, STRATEGIES } from "./strategies.mjs";
 import { buildStrategyCatalog } from "./strategyContracts.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
+import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
+import { refreshMarketContextResearch } from "./marketContextResearch.mjs";
 import { buildProfessionalSnapshot } from "./professionalAnalytics.mjs";
 import { buildDecisionCalibrationReport } from "./decisionCalibration.mjs";
 import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
@@ -714,29 +717,11 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
   }
   let synced = 0; const syncErrors = [];
   for (const symbol of symbols) {
-    try {
-      lease.assertLease();
-      // 三个公开源独立降级：micro 或 Rubik 短暂失败时，仍保住 ticker 价格序列，
-      // 避免 Beta/事件波动因无关接口抖动断档。各指标自己的覆盖门负责拒绝残缺结论。
-      const ticker = await syncPublicMarketQuiet(database, symbol);
-      lease.assertLease();
-      const micro = await syncMicrostructure(database, "OKX", symbol, { quiet: true }).catch(() => null);
-      const smart = await fetchSmartMoney(symbol).catch(() => ({}));
-      const priceSourceAt = Number.isFinite(Number(ticker.rawTime)) ? Number(ticker.rawTime) : null;
-      recordMediumTermSample(database, {
-        // 存储桶与价格事实同源，避免本机时钟或网络延迟把行情错放到相邻5分钟桶。
-        symbol, at: priceSourceAt ?? nowIso(), price: ticker.price,
-        priceObservedAt: priceSourceAt ? new Date(priceSourceAt).toISOString() : null,
-        openInterest: micro?.openInterest, fundingRatePct: micro?.fundingRatePct,
-        spreadBps: micro?.spreadBps, depthUsdt: micro?.depthUsdt,
-        oiObservedAt: micro?.sourceTimestamps?.openInterest,
-        // fundingTime 是结算时点，不是“当前费率被我们观察到”的时点；当前费率按本次 API 成功时间记账。
-        fundingObservedAt: micro?.observedAt,
-        takerBuyVolume: smart.takerBuyVolume, takerSellVolume: smart.takerSellVolume, flowAt: smart.takerSourceAt, flowScope: smart.takerScope,
-        sourceAt: { ticker: ticker.rawTime || null, micro: micro?.sourceTimestamps || null, taker: smart.takerSourceAt || null }
-      });
-      synced += 1;
-    } catch (error) { syncErrors.push({ symbol, error: String(error?.message || error).slice(0, 160) }); }
+    lease.assertLease();
+    const result = await refreshMarketSignalSymbol(database, symbol);
+    lease.assertLease();
+    if (result.complete) synced += 1;
+    syncErrors.push(...result.errors.map((item) => ({ symbol, source: item.source, error: item.error })));
   }
   try {
     const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
@@ -750,7 +735,7 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
     };
   } catch { /* 大盘拉取失败不阻断 */ }
   // 全市场异动扫描 + 重大异动消息面归因（环境感知，注入决策上下文）。
-  try { await refreshMarketMovers(database, {}); } catch { /* 异动扫描失败不阻断 */ }
+  try { await refreshMarketMovers(database, { attributeTop: 0 }); } catch { /* 异动扫描失败不阻断 */ }
   // T+4h 数据完整后固化事件观察；即使 events 后续按保留策略清理，统计样本仍可长期积累。
   captureEventVolatilityObservations(database);
   // 知识技能声明的非默认周期（4h/1d 等）也要有 K 线，否则技能信号永远无法评估。
@@ -765,10 +750,29 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
       }
     }
   } catch { /* 技能周期补拉失败不阻断 */ }
-  return { status: synced === 0 ? "failed" : synced < symbols.length ? "partial" : "ok", attempted: symbols.length, synced, errors: syncErrors };
+  // 行情恢复后立即重算并解除由本闸设置的暂停，不必再等待下一轮 10 分钟对账
+  // 或 15 分钟 Agent 周期；若所有关键行情源仍失败，则保持 fail-closed。
+  applyOperationalDegradation(database, "MarketSignalRefresh");
+  const status = synced === 0 ? "failed" : synced < symbols.length ? "partial" : "ok";
+  const reason = status === "failed"
+    ? syncErrors.slice(0, 4).map((item) => `${item.symbol}/${item.source}: ${item.error}`).join("；") || "关键行情源未完成刷新"
+    : null;
+  return { status, reason, attempted: symbols.length, synced, errors: syncErrors };
+});
+registerTaskHandler("market_context_research", async (database, _task, lease) => {
+  lease.assertLease();
+  const result = await refreshMarketContextResearch(database, { signal: lease.signal });
+  lease.assertLease();
+  if (result.status === "skipped") return { ...result, status: "skipped", skipPersist: true };
+  if (result.status === "cached") return { ...result, status: "ok", cached: true, skipPersist: true };
+  appendTrace(database, "market_context_research", result.status === "ok"
+    ? `批量联网研究完成：全局 + ${(result.context?.assets || []).length} 个币，一次搜索复用`
+    : `批量联网研究失败：${result.error || "unknown"}`, result.status === "ok" ? "ok" : "warning");
+  return result;
 });
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_market_context_research", name: "Gemini 市场背景批量研究", handler: "market_context_research", schedule: "Every 1h", startupCatchup: true, startupDelayMs: 60_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_news_flash", name: "ME News 重要快讯快车道", handler: "news_flash_refresh", schedule: "Every 30s" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_event_source_refresh", name: "RSS 新闻源刷新", handler: "event_source_refresh", schedule: "Every 5m", startupCatchup: true, startupDelayMs: 10_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_event_refresh", name: "市场情报深层整合", handler: "event_refresh", schedule: "Every 20m", startupCatchup: true, startupDelayMs: 15_000 }, saveDb);

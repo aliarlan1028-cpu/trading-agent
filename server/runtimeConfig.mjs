@@ -7,7 +7,7 @@ export { SECRET_KEYS } from "./secretRegistry.mjs";
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
 // 非敏感项：明文存 runtimeConfig，可回传前端显示。
 export const PLAIN_KEYS = new Set([
-  "DEEPSEEK_MODEL", "GEMINI_MODEL",
+  "DEEPSEEK_MODEL", "GEMINI_MODEL", "GEMINI_CLASSIFIER_MODEL",
   "OPENROUTER_ZDR", "OPENROUTER_DATA_COLLECTION", "OPENROUTER_ALLOW_PROVIDER_FALLBACKS", "LLM_CRITIC_REQUIRED_FOR_LIVE",
   "OPENROUTER_ALLOWED_GEMINI_PROVIDERS", "LLM_CRITIC_MIN_CONFIDENCE",
   "LIVE_TRADING_ENABLED", "I_UNDERSTAND_REAL_TRADING", "REAL_ORDER_WRITE_ENABLED",
@@ -131,7 +131,7 @@ export function setConfig(db, entries = {}) {
   const applied = [];
   const risky = [];
   const livePolicySensitive = new Set([
-    "GEMINI_MODEL", "DEEPSEEK_MODEL", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY",
+    "GEMINI_MODEL", "GEMINI_CLASSIFIER_MODEL", "DEEPSEEK_MODEL", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY",
     "OPENROUTER_ZDR", "OPENROUTER_DATA_COLLECTION", "OPENROUTER_ALLOW_PROVIDER_FALLBACKS",
     "OPENROUTER_ALLOWED_GEMINI_PROVIDERS", "LLM_CRITIC_REQUIRED_FOR_LIVE", "LLM_CRITIC_MIN_CONFIDENCE",
     "OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE", "OKX_DEMO_TRADING", "OKX_BASE_URL"
@@ -221,6 +221,7 @@ export function getConfigStatus(db) {
       liveReady: has("OPENROUTER_API_KEY") && has("DEEPSEEK_API_KEY"),
       providers: {
         gemini: { hasKey: has("OPENROUTER_API_KEY"), gateway: "OpenRouter", role: "primary", model: process.env.GEMINI_MODEL?.startsWith("google/") ? process.env.GEMINI_MODEL : `google/${process.env.GEMINI_MODEL || "gemini-3.1-pro-preview"}` },
+        classifier: { hasKey: has("OPENROUTER_API_KEY"), gateway: "OpenRouter", role: "classifier", model: process.env.GEMINI_CLASSIFIER_MODEL || process.env.GEMINI_MODEL || "google/gemini-3.1-pro-preview", reasoningEffort: "low" },
         deepseek: { hasKey: has("DEEPSEEK_API_KEY"), gateway: "DeepSeek Direct", role: "critic", model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro" }
       },
       policy: {

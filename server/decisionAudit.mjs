@@ -45,6 +45,7 @@ export function createDecisionAuditRecord(input = {}) {
     ["provider_metadata", input.providerMetadata || {}],
     ["decision_context", input.decisionContext || {}],
     ["evidence", input.evidence || null],
+    ["supplemental_context", input.supplementalContext || null],
     ["normalized_plan", input.normalizedPlan || {}]
   ];
   let previousHash = "GENESIS";
@@ -144,6 +145,7 @@ export function verifyDecisionAuditExecutionAttribution(record, provenance) {
   const providerMetadata = stageValue(record, "provider_metadata");
   const decisionContext = stageValue(record, "decision_context");
   const evidence = stageValue(record, "evidence");
+  const supplementalContext = stageValue(record, "supplemental_context");
   if (!Array.isArray(modelMessages) || !modelMessages.length) return { ok: false, reason: "decision_audit_model_messages_missing" };
   if (!Array.isArray(dynamicTools) || !dynamicTools.length) return { ok: false, reason: "decision_audit_tool_definitions_missing" };
   if (!Array.isArray(geminiOutputs) || !geminiOutputs.length) return { ok: false, reason: "decision_audit_gemini_outputs_missing" };
@@ -195,6 +197,9 @@ export function verifyDecisionAuditExecutionAttribution(record, provenance) {
     return { ok: false, reason: "decision_audit_tool_schema_mismatch" };
   }
   if (!sameValue(evidence, provenance?.evidence)) return { ok: false, reason: "decision_audit_evidence_mismatch" };
+  if (supplementalContext != null && !sameValue(supplementalContext, provenance?.supplementalContext)) {
+    return { ok: false, reason: "decision_audit_supplemental_context_mismatch" };
+  }
   if (!sameValue(decisionContext.cohort, provenance?.cohort)) return { ok: false, reason: "decision_audit_cohort_mismatch" };
   if (!sameValue(decisionContext.routingPolicy, provenance?.routingPolicy)) return { ok: false, reason: "decision_audit_routing_policy_mismatch" };
   return {
@@ -205,6 +210,7 @@ export function verifyDecisionAuditExecutionAttribution(record, provenance) {
       prompt: decisionContext.prompt,
       toolSchema: decisionContext.toolSchema,
       evidence,
+      supplementalContext: supplementalContext ?? null,
       cohort: decisionContext.cohort,
       routingPolicy: decisionContext.routingPolicy
     }
