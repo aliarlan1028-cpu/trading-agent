@@ -4,7 +4,7 @@ import "express-async-errors";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { performanceReport, refreshAccounting } from "./accounting.mjs";
+import { performanceReport, refreshAccounting, refreshAccountingAuthoritatively } from "./accounting.mjs";
 import { applyStoredConfigToEnv, clearSecret, getConfigStatus, setConfig } from "./runtimeConfig.mjs";
 import { normalizePositionsForUi } from "./positionView.mjs";
 import { computeBehaviorProfile } from "./behaviorProfile.mjs";
@@ -524,7 +524,12 @@ registerTaskHandler("position_monitor", async (database, _task, lease) => {
   try { applyProtections(database); } catch { /* 保护评估失败不阻断监控 */ }
   return r;
 });
-registerTaskHandler("accounting_refresh", (database, _task, lease) => { lease.assertLease(); return refreshAccounting(database); });
+registerTaskHandler("accounting_refresh", async (database, _task, lease) => {
+  lease.assertLease();
+  const result = await refreshAccountingAuthoritatively(database, { assertLease: lease.assertLease, signal: lease.signal });
+  lease.assertLease();
+  return result;
+});
 registerTaskHandler("reminder", (database, task, lease) => {
   lease.assertLease();
   database.notifications ||= [];
@@ -774,7 +779,10 @@ ensureSystemTask(db, { id: "task_sys_telegram_watch", name: "Telegram观察哨Ou
 ensureSystemTask(db, { id: "task_sys_telegram_closed_trade", name: "Telegram平仓盈利海报", handler: "telegram_closed_trade_posters", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_execution_poll", name: "执行订单轮询", handler: "execution_poll", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_position_monitor", name: "持仓风险监控", handler: "position_monitor", schedule: "Every 30s" }, saveDb);
-ensureSystemTask(db, { id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m" }, saveDb);
+ensureSystemTask(db, {
+  id: "task_sys_accounting", name: "盈亏核算刷新", handler: "accounting_refresh", schedule: "Every 5m",
+  startupCatchup: true, startupDelayMs: 20_000
+}, saveDb);
 ensureSystemTask(db, { id: "task_sys_agent_cycle", name: "自主巡检决策", handler: "agent_cycle", schedule: "Every 15m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_watch_sentinel", name: "观察哨哨兵", handler: "watch_sentinel", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_opportunity_scan", name: "全市场早期机会快扫", handler: "opportunity_scan", schedule: "Every 30s" }, saveDb);

@@ -143,6 +143,33 @@ test("暂停新开仓状态公开每个持久安全原因", () => {
   assert.ok(state.blockers.includes("平仓结果未知"));
 });
 
+test("只有滚动窗口基线缺失时不再误报为成交费用未对账", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "full_auto";
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyReasons = ["financial_reconciliation_pending"];
+  db.portfolio = {
+    pendingFinancialReconciliationToday: 0,
+    pendingFinancialReconciliationWeek: 1,
+    pendingTradeFinancialFactsToday: 0,
+    pendingTradeFinancialFactsWeek: 0,
+    dailyBaselineStatus: "reconciled",
+    weekBaselineStatus: "period_start_snapshot_missing",
+    accountingHistoryBackfill: {
+      status: "failed",
+      reason: "local_exchange_realized_pnl_mismatch",
+      progressPct: 28.5,
+      naturalReadyAt: "2026-08-22T13:15:00.000Z"
+    }
+  };
+  const state = deriveAutomationState(db, { hasProvider: true });
+  assert.equal(state.blockerDetails[0].label, "近 7 日风险窗口尚未建立");
+  assert.match(state.blockerDetails[0].detail, /成交费用：已完成/);
+  assert.match(state.blockerDetails[0].detail, /本地成交与 OKX 账单不一致/);
+  assert.match(state.blockerDetails[0].recovery, /预计最晚 8(?:月|\/)22(?:日)? 21:15 自动成熟/);
+  assert.equal(state.blockerDetails[0].accounting.historyBackfillReason, "local_exchange_realized_pnl_mismatch");
+});
+
 test("自动交易保存只拒绝结构性缺项，临时运行故障保留为等待恢复", () => {
   const result = partitionAutonomousBlockers([
     "OKX 私有 WebSocket 未连接",

@@ -573,7 +573,12 @@ test("capital settings distinguish configured auto mode from the current safety 
       automationState: {
         mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", runtimeStatus: "opening_paused", resumesAutomatically: true,
         detail: "账户核算基线或费用对账未完成；当前仅允许降风险动作",
-        blockerDetails: [{ code: "financial_reconciliation_pending", label: "账户核算基线或费用对账未完成" }]
+        blockerDetails: [{
+          code: "financial_reconciliation_pending",
+          label: "近 7 日风险窗口尚未建立",
+          detail: "成交费用：已完成；今日基线：已完成；近 7 日窗口：正在读取并核验 OKX 历史。",
+          recovery: "系统会优先用 OKX 权威账单、仓位历史和窗口起点标记价格自动重建。"
+        }]
       },
       system: { ...data.system, reduceOnlyMode: true }
     },
@@ -586,7 +591,9 @@ test("capital settings distinguish configured auto mode from the current safety 
   assert.match(html, /原因解除后自动恢复/);
   assert.doesNotMatch(html, /只减仓/);
   assert.match(html, /你选择的模式/);
-  assert.match(html, /账户核算基线或费用对账未完成/);
+  assert.match(html, /近 7 日风险窗口尚未建立/);
+  assert.match(html, /成交费用：已完成/);
+  assert.match(html, /系统会优先用 OKX 权威账单/);
   assert.match(html, /系统异常会自动暂停新开仓/);
   assert.doesNotMatch(html, /为什么最终是这个金额/);
   assert.doesNotMatch(html, /1 · 选择执行方式/);

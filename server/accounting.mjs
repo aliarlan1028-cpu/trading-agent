@@ -9,6 +9,7 @@ import { groupPositionMirrors, newestAuthoritativePosition, positionFactObserved
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
+import { backfillOkxRollingAccountingBaseline, rollingAccountingBoundary } from "./accountingHistory.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -19,7 +20,7 @@ export function todayStart(at = Date.now(), timeZone = DEFAULT_BUSINESS_TIME_ZON
   return businessDayStartMs(at, timeZone);
 }
 
-function realizedPnlSince(db, sinceMs, untilMs = Date.now()) {
+export function realizedPnlSince(db, sinceMs, untilMs = Date.now()) {
   let knownTotal = 0;
   let knownFacts = 0;
   let pending = 0;
@@ -132,7 +133,8 @@ function snapshotUnrealized(snapshot) {
 }
 
 const ACCOUNTING_ANCHOR_BUCKET_MS = 5 * 60_000;
-const ACCOUNTING_ANCHOR_MAX = 2600;
+// 14 天缓冲覆盖滚动 7 日风控窗口、短期停机和部署恢复；5 分钟一条约 4032 条。
+const ACCOUNTING_ANCHOR_MAX = 4500;
 
 function accountingAnchorFromSnapshot(snapshot) {
   const equity = snapshotEquity(snapshot);
@@ -205,6 +207,23 @@ function resolveCurrentAccountingBinding(db) {
     return { ok: false, reason: "current_account_snapshot_binding_mismatch", binding, snapshotId: currentSnapshot.id || null };
   }
   return { ok: true, binding, currentSnapshot };
+}
+
+function accountingEvidenceProgress(db, binding, nowMs = Date.now()) {
+  const matching = [...(db.accountSnapshots || []), ...(db.accountingAnchors || [])].filter((row) => (
+    row?.status === "ok" && sameAccountingBinding(row, binding)
+    && Number.isFinite(new Date(row.createdAt || 0).getTime())
+  )).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  const oldestAt = matching[0]?.createdAt || null;
+  const oldestMs = oldestAt ? new Date(oldestAt).getTime() : null;
+  const accumulatedMs = Number.isFinite(oldestMs) ? Math.max(0, nowMs - oldestMs) : 0;
+  const naturalReadyMs = Number.isFinite(oldestMs) ? oldestMs + 7 * 24 * 60 * 60_000 : null;
+  return {
+    oldestEvidenceAt: oldestAt,
+    accumulatedHours: Number((accumulatedMs / 3_600_000).toFixed(1)),
+    progressPct: Number(Math.min(100, (accumulatedMs / (7 * 24 * 60 * 60_000)) * 100).toFixed(1)),
+    naturalReadyAt: Number.isFinite(naturalReadyMs) ? new Date(naturalReadyMs).toISOString() : null
+  };
 }
 
 function baselineSnapshot(db, boundaryMs, binding, options = {}) {
@@ -283,7 +302,9 @@ export function refreshAccounting(db, options = {}) {
   // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
   // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
   const weekEndMs = nowMs;
-  const weekStartMs = weekEndMs - 7 * 24 * 60 * 60_000;
+  // 风险窗口起点按五分钟桶对齐，与不可变会计锚点的采样粒度一致。
+  // 这样基线不会每毫秒失效，同时窗口只会比 168h 多 0~5 分钟，偏保守而不会漏算亏损。
+  const weekStartMs = rollingAccountingBoundary(weekEndMs);
   const realizedWeekState = realizedPnlSince(db, weekStartMs, weekEndMs);
   const realizedWeek = realizedWeekState.value;
   const weeklyBaseline = resolveAccountingBaseline(db, "rolling_168h", weekStartMs, options);
@@ -294,6 +315,10 @@ export function refreshAccounting(db, options = {}) {
   db.portfolio.weekPnlPct = equity && weekPnl !== null ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.knownReconciledRealizedPnlWeek = Number(realizedWeek.toFixed(2));
   db.portfolio.pendingFinancialReconciliationWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length + (weeklyBaseline.ok ? 0 : 1);
+  db.portfolio.pendingTradeFinancialFactsToday = realizedTodayState.pending + unrealizedState.pendingPositions.length;
+  db.portfolio.pendingTradeFinancialFactsWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length;
+  db.portfolio.pendingDailyBaseline = dailyBaseline.ok ? 0 : 1;
+  db.portfolio.pendingWeekBaseline = weeklyBaseline.ok ? 0 : 1;
   db.portfolio.weekWindowStartAt = new Date(weekStartMs).toISOString();
   db.portfolio.weekWindowEndAt = new Date(weekEndMs).toISOString();
   db.portfolio.weekWindowSemantics = "rolling_168_hours";
@@ -368,6 +393,126 @@ export function refreshAccounting(db, options = {}) {
     unrealized: db.portfolio.unrealizedPnl,
     remainingDailyLossUsdt: db.system.remainingDailyLossUsdt
   };
+}
+
+// 核算任务的权威入口：先按本地不可变快照计算；仅当唯一缺口是滚动 168h
+// 起点快照时，才尝试用当前 Key 读取的 OKX 账单、仓位历史与边界标记价格重建。
+// 回补失败保留原 fail-closed 状态，绝不写 0、复用旧 Key 基线或清除暂停原因。
+export async function refreshAccountingAuthoritatively(db, options = {}) {
+  options.assertLease?.();
+  const nowMs = Number(options.nowMs ?? Date.now());
+  let result = refreshAccounting(db, { ...options, nowMs });
+  const boundaryMs = rollingAccountingBoundary(nowMs);
+  if (db.portfolio?.weekBaselineStatus !== "period_start_snapshot_missing") {
+    if (db.portfolio?.accountingHistoryBackfill?.status === "reconciled") {
+      db.portfolio.accountingHistoryBackfill = {
+        ...db.portfolio.accountingHistoryBackfill,
+        status: "not_required",
+        reason: "immutable_period_start_anchor_available",
+        updatedAt: nowIso()
+      };
+    }
+    return result;
+  }
+
+  const current = resolveCurrentAccountingBinding(db);
+  if (!current.ok) {
+    db.portfolio.accountingHistoryBackfill = {
+      status: "blocked",
+      reason: current.reason || "current_account_binding_unavailable",
+      boundaryAt: new Date(boundaryMs).toISOString(),
+      attemptedAt: nowIso()
+    };
+    return result;
+  }
+  const localFactsComplete = Number(db.portfolio?.pendingTradeFinancialFactsToday || 0) === 0
+    && Number(db.portfolio?.pendingTradeFinancialFactsWeek || 0) === 0
+    && db.portfolio?.dailyBaselineStatus === "reconciled";
+  if (!localFactsComplete) {
+    db.portfolio.accountingHistoryBackfill = {
+      ...db.portfolio.accountingHistoryBackfill,
+      status: "waiting",
+      reason: "local_financial_facts_incomplete",
+      boundaryAt: new Date(boundaryMs).toISOString(),
+      attemptedAt: nowIso()
+    };
+    return result;
+  }
+  const progress = accountingEvidenceProgress(db, current.binding, nowMs);
+  const snapshotAtMs = new Date(current.currentSnapshot?.createdAt || 0).getTime();
+  const snapshotMaxAgeMs = Number(options.snapshotMaxAgeMs ?? process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS ?? 10 * 60_000);
+  if (!Number.isFinite(snapshotAtMs) || snapshotAtMs < boundaryMs || nowMs - snapshotAtMs > snapshotMaxAgeMs || snapshotAtMs > nowMs + 30_000) {
+    db.portfolio.accountingHistoryBackfill = {
+      status: "waiting",
+      reason: "fresh_authoritative_account_snapshot_required",
+      boundaryAt: new Date(boundaryMs).toISOString(),
+      attemptedAt: nowIso(),
+      ...progress
+    };
+    return result;
+  }
+
+  const previous = db.portfolio.accountingHistoryBackfill || {};
+  const retryMs = Number(options.historyBackfillRetryMs ?? process.env.ACCOUNTING_HISTORY_BACKFILL_RETRY_MS ?? 5 * 60_000);
+  const previousAttemptMs = new Date(previous.attemptedAt || 0).getTime();
+  if (options.forceHistoryBackfill !== true && previous.status === "failed"
+    && previous.boundaryAt === new Date(boundaryMs).toISOString()
+    && Number.isFinite(previousAttemptMs) && nowMs - previousAttemptMs < retryMs) return result;
+
+  db.portfolio.accountingHistoryBackfill = {
+    status: "running",
+    reason: null,
+    boundaryAt: new Date(boundaryMs).toISOString(),
+    attemptedAt: nowIso(),
+    ...progress
+  };
+  const localRealizedState = realizedPnlSince(db, boundaryMs, snapshotAtMs);
+  options.assertLease?.();
+  const backfill = await backfillOkxRollingAccountingBaseline({
+    boundaryMs,
+    endMs: snapshotAtMs,
+    currentEquity: snapshotEquity(current.currentSnapshot),
+    currentSnapshot: current.currentSnapshot,
+    binding: current.binding,
+    localRealizedState
+  }, options);
+  options.assertLease?.();
+  if (!backfill.ok) {
+    db.portfolio.accountingHistoryBackfill = {
+      lastSuccessfulAt: previous.lastSuccessfulAt || null,
+      status: "failed",
+      reason: backfill.reason || "okx_history_evidence_incomplete",
+      boundaryAt: new Date(boundaryMs).toISOString(),
+      attemptedAt: nowIso(),
+      error: backfill.error || null,
+      ...progress
+    };
+    appendTrace(db, "accounting_backfill", `近 7 日核算历史回补未完成：${backfill.reason || "unknown"}`, "blocked");
+    return result;
+  }
+
+  db.portfolio.accountingBaselines ||= {};
+  db.portfolio.accountingBaselines.rolling_168h = backfill.baseline;
+  const firstRecovery = !previous.lastSuccessfulAt;
+  db.portfolio.accountingHistoryBackfill = {
+    status: "reconciled",
+    reason: null,
+    boundaryAt: backfill.baseline.boundaryAt,
+    verifiedThroughAt: backfill.baseline.verifiedThroughAt,
+    attemptedAt: nowIso(),
+    lastSuccessfulAt: nowIso(),
+    evidenceHash: backfill.baseline.evidenceHash,
+    billCount: backfill.summary.billCount,
+    spanningPositionCount: backfill.summary.spanningPositionCount,
+    reconstructedWeekPnlUsdt: backfill.summary.reconstructedWeekPnlUsdt,
+    ...progress
+  };
+  if (firstRecovery) {
+    appendAudit(db, `用 OKX 权威历史重建近 7 日核算基线：账单 ${backfill.summary.billCount} 条，跨期仓位 ${backfill.summary.spanningPositionCount} 个`, "rolling_168h_accounting_baseline", "Accounting", "info");
+  }
+  appendTrace(db, "accounting_backfill", "近 7 日核算历史回补完成", "ok");
+  result = refreshAccounting(db, { ...options, nowMs });
+  return { ...result, historyBackfill: db.portfolio.accountingHistoryBackfill };
 }
 
 // ---------------------------------------------------------------------------

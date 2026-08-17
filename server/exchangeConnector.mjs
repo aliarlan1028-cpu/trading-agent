@@ -753,7 +753,16 @@ export async function okxContractSpec(instId) {
     if (String(raw?.code ?? "0") !== "0") throw new Error(`OKX instruments API ${raw?.code}`);
     const row = raw.data?.[0];
     // tickSz=价格最小变动(px/止损/止盈价必须是它的整数倍),lotSz=张数步长,minSz=最小张数,ctVal=每张面值。
-    const spec = row ? { ctVal: Number(row.ctVal), lotSz: Number(row.lotSz), minSz: Number(row.minSz), tickSz: Number(row.tickSz), fetchedAt: nowIso() } : null;
+    const spec = row ? {
+      ctVal: Number(row.ctVal),
+      lotSz: Number(row.lotSz),
+      minSz: Number(row.minSz),
+      tickSz: Number(row.tickSz),
+      ctType: row.ctType || null,
+      ctValCcy: row.ctValCcy || null,
+      settleCcy: row.settleCcy || null,
+      fetchedAt: nowIso()
+    } : null;
     const valid = spec && [spec.ctVal, spec.lotSz, spec.minSz, spec.tickSz].every((value) => Number.isFinite(value) && value > 0);
     if (valid) { okxSpecCache.set(instId, { spec, at: Date.now() }); okxCtValCache.set(instId, spec.ctVal); return spec; }
   } catch { /* 拿不到规格返回 null,下单侧 fail-closed */ }
@@ -1004,11 +1013,14 @@ export async function okxSignedRequest(pathname, method = "GET", body = "", opti
   const timestamp = new Date().toISOString();
   const prehash = `${timestamp}${method}${pathname}${body}`;
   const sign = crypto.createHmac("sha256", credentials.apiSecret).update(prehash).digest("base64");
-  const timer = timeoutSignal();
+  const timer = timeoutSignal(Number(options.timeoutMs || 6000));
+  const signal = options.signal && typeof globalThis.AbortSignal.any === "function"
+    ? globalThis.AbortSignal.any([options.signal, timer.signal])
+    : options.signal || timer.signal;
   try {
     const response = await fetch(okxRestUrl(pathname), {
       method,
-      signal: timer.signal,
+      signal,
       headers: {
         "OK-ACCESS-KEY": credentials.apiKey,
         "OK-ACCESS-SIGN": sign,

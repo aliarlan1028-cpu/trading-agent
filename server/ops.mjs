@@ -65,6 +65,44 @@ function reduceOnlyReasonLabel(code = "") {
   return code ? `安全原因待解除：${code}` : "新开仓安全检查未完成";
 }
 
+const ACCOUNTING_BACKFILL_REASON_LABELS = {
+  fresh_authoritative_account_snapshot_required: "等待最新 OKX 账户快照",
+  okx_bills_query_failed: "OKX 账单查询失败",
+  okx_bills_query_rejected: "OKX 拒绝账单查询",
+  okx_bills_response_malformed: "OKX 账单响应格式异常",
+  okx_bills_pagination_unstable: "OKX 账单分页不稳定",
+  okx_bills_pagination_incomplete: "OKX 账单没有完整翻页",
+  okx_position_history_query_failed: "OKX 仓位历史查询失败",
+  okx_position_history_rejected: "OKX 拒绝仓位历史查询",
+  okx_position_history_response_malformed: "OKX 仓位历史响应格式异常",
+  okx_position_history_pagination_unstable: "OKX 仓位历史分页不稳定",
+  okx_position_history_pagination_incomplete: "OKX 仓位历史没有完整翻页",
+  local_financial_facts_incomplete: "本地成交费用仍有缺口",
+  local_exchange_realized_pnl_mismatch: "本地成交与 OKX 账单不一致",
+  unsupported_balance_changing_bill: "存在尚未支持归类的账户变动",
+  unsupported_trade_currency_or_instrument: "存在非 USDT 永续交易记录",
+  unsupported_transfer_currency: "存在非 USDT 资金划转",
+  spanning_position_not_reconstructed: "跨越窗口起点的仓位无法完整重建",
+  boundary_position_history_missing: "窗口起点仓位历史不完整",
+  current_position_reconstruction_mismatch: "历史重建结果与当前仓位不一致",
+  boundary_valuation_evidence_missing: "缺少窗口起点标记价格或合约规格",
+  okx_boundary_mark_missing: "缺少窗口起点标记价格",
+  current_unrealized_pnl_incomplete: "当前浮动盈亏证据不完整",
+  current_snapshot_binding_mismatch: "当前账户快照与 API Key 或环境不一致"
+};
+
+function accountingBackfillReason(reason = "") {
+  return ACCOUNTING_BACKFILL_REASON_LABELS[reason] || (reason ? `历史回补待核验：${reason}` : "等待历史回补");
+}
+
+function formatShanghaiTime(value) {
+  const at = value ? new Date(value) : null;
+  if (!at || !Number.isFinite(at.getTime())) return null;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).format(at);
+}
+
 const DEGRADATION_REASON_LABELS = {
   market_data_stale: "实时价格超过新鲜度要求",
   microstructure_data_stale: "盘口与微观结构数据已过期",
@@ -88,16 +126,39 @@ function reduceOnlyBlockers(db = {}) {
       const portfolio = db.portfolio || {};
       const today = Number(portfolio.pendingFinancialReconciliationToday || 0);
       const week = Number(portfolio.pendingFinancialReconciliationWeek || 0);
+      const tradeFactsToday = Number(portfolio.pendingTradeFinancialFactsToday ?? today);
+      const tradeFactsWeek = Number(portfolio.pendingTradeFinancialFactsWeek ?? week);
       const dailyStatus = portfolio.dailyBaselineStatus || "unknown";
       const weekStatus = portfolio.weekBaselineStatus || "unknown";
       const pending = [today > 0 ? `今日 ${today} 项` : null, week > 0 ? `近 7 日 ${week} 项` : null].filter(Boolean).join("、") || "状态待重新核验";
+      const backfill = portfolio.accountingHistoryBackfill || {};
+      const baselineOnly = tradeFactsToday === 0 && tradeFactsWeek === 0
+        && dailyStatus === "reconciled" && weekStatus === "period_start_snapshot_missing";
+      const progress = Number.isFinite(Number(backfill.progressPct)) ? `${Number(backfill.progressPct).toFixed(1)}%` : null;
+      const readyAt = formatShanghaiTime(backfill.naturalReadyAt);
+      const backfillState = backfill.status === "reconciled" ? "OKX 历史证据已回补"
+        : backfill.status === "running" ? "正在读取并核验 OKX 历史"
+          : backfill.status === "failed" || backfill.status === "blocked" ? accountingBackfillReason(backfill.reason)
+            : backfill.status === "waiting" ? accountingBackfillReason(backfill.reason) : "等待 OKX 历史回补";
       return {
         ...base,
-        label: base.label,
-        detail: `待完成：${pending}。今日基线：${dailyStatus}；近 7 日基线：${weekStatus}。绩效只统计已完整归集开仓费、平仓费与资金费的交易。`,
-        recovery: weekStatus === "period_start_snapshot_missing"
-          ? "系统会继续回补成交费用并积累权威账户快照；形成可验证的周期起点且待处理项归零后自动恢复。"
-          : "系统会持续回补成交、手续费、资金费和账户快照；待处理项归零后自动恢复。"
+        label: baselineOnly ? "近 7 日风险窗口尚未建立" : base.label,
+        detail: baselineOnly
+          ? `成交费用：已完成；今日基线：已完成；近 7 日窗口：${backfillState}${progress ? `（自然快照进度 ${progress}）` : ""}。`
+          : `待完成：${pending}。成交事实缺口：今日 ${tradeFactsToday} 项、近 7 日 ${tradeFactsWeek} 项；今日基线：${dailyStatus}；近 7 日基线：${weekStatus}。`,
+        recovery: baselineOnly
+          ? `系统会优先用 OKX 权威账单、仓位历史和窗口起点标记价格自动重建；若交易所证据仍不完整，将继续积累不可变快照${readyAt ? `，预计最晚 ${readyAt} 自动成熟` : ""}。`
+          : "系统会持续回补成交、手续费、资金费和账户快照；所有事实完整后自动恢复原先选择的运行模式。",
+        accounting: {
+          tradeFactsPendingToday: tradeFactsToday,
+          tradeFactsPendingWeek: tradeFactsWeek,
+          dailyBaselineStatus: dailyStatus,
+          weekBaselineStatus: weekStatus,
+          historyBackfillStatus: backfill.status || "not_started",
+          historyBackfillReason: backfill.reason || null,
+          progressPct: backfill.progressPct ?? null,
+          naturalReadyAt: backfill.naturalReadyAt || null
+        }
       };
     }
     if (code === "professional_risk_gate") {

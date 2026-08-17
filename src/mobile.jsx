@@ -75,6 +75,7 @@ export function KillConfirmDialog({ enable, action, onClose }) {
 
 function MobileSafetySheet({ data, action, onClose, onKill }) {
   const runtime = automationPresentation(data);
+  const primaryBlocker = runtime.blockerDetails[0] || null;
   const stopped = data.system?.killSwitch === true;
   const flattenAll = async () => {
     if (await uiConfirm(t("确认按市价平掉全部持仓？系统会暂停新开仓，直到 OKX 对账完成。", "Close every position at market? New entries will pause until OKX reconciliation completes."))) {
@@ -86,6 +87,7 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
     <header><div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b><p>{runtime.detail}</p></div><StatusBadge tone={runtime.tone==="ok"?"ok":runtime.tone==="danger"?"danger":runtime.tone==="warning"?"warning":"neutral"}>{runtime.entryPolicy}</StatusBadge></header>
     <div className="mSafetyTarget"><span>{t("长期目标", "Saved target")}</span><b>{runtime.targetLabel}</b></div>
     {runtime.runtimeStatus !== "normal" && <div className="mSafetyTarget"><span>{t("恢复方式", "Recovery")}</span><b>{runtime.recoveryLabel}</b></div>}
+    {primaryBlocker && <div className="mSafetyReason"><b>{localizeText(primaryBlocker.label || primaryBlocker)}</b>{primaryBlocker.detail && <p>{localizeText(primaryBlocker.detail)}</p>}{primaryBlocker.recovery && <small><RefreshCw/>{localizeText(primaryBlocker.recovery)}</small>}</div>}
     <div className="mSafetyActions">
       <button className="danger" onClick={flattenAll}><Target/><span><b>{t("全部平仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button>
       <button className={`danger ${stopped?"active":""}`} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>

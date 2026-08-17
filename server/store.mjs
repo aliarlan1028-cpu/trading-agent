@@ -811,7 +811,7 @@ export async function repairAuditChainExplicit(db, { acknowledgement, backupPath
 // / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
 const LOG_CAPS = {
   accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300, decisionAuditRecords: 200,
-  accountingAnchors: 2600,
+  accountingAnchors: 4500,
   agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
   eventImpacts: 500, reviewReports: 300, notifications: 500, riskChecks: 800, riskIncidents: 500,
