@@ -95,6 +95,28 @@ function dedupeEvidenceRows(rows = [], idField) {
   return { ok: true, rows: [...byId.values()] };
 }
 
+// OKX 的 posId 标识账户里的仓位槽位，而不是一次独立平仓生命周期；同一多/空
+// 槽位会在多次部分平仓、清仓乃至后续重新开仓时重复出现。uTime 才是该历史事件
+// 的分页时间，必须与 posId、事件类型共同组成事件键，不能仅按 posId 判冲突。
+function dedupePositionHistoryEvents(rows = []) {
+  const byEvent = new Map();
+  for (const row of rows) {
+    const posId = String(row?.posId || "");
+    const updatedAt = String(row?.uTime || "");
+    const type = String(row?.type || "");
+    if (!posId) return { ok: false, reason: "posId_missing" };
+    if (!updatedAt) return { ok: false, reason: "position_history_uTime_missing" };
+    if (!type) return { ok: false, reason: "position_history_type_missing" };
+    const eventKey = `${posId}:${updatedAt}:${type}`;
+    const current = byEvent.get(eventKey);
+    if (current && jsonHash(current) !== jsonHash(row)) {
+      return { ok: false, reason: "position_history_event_conflict", eventKey };
+    }
+    byEvent.set(eventKey, row);
+  }
+  return { ok: true, rows: [...byEvent.values()] };
+}
+
 export function rollingAccountingBoundary(nowMs = Date.now()) {
   const bucketEnd = Math.floor(Number(nowMs) / ACCOUNTING_BOUNDARY_BUCKET_MS) * ACCOUNTING_BOUNDARY_BUCKET_MS;
   return bucketEnd - ROLLING_ACCOUNTING_WINDOW_MS;
@@ -170,7 +192,7 @@ export async function fetchOkxPositionHistoryForAccounting(options = {}) {
     const pageTimes = pageRows.map((row) => timestamp(row.uTime)).filter((value) => value !== null);
     const reachedBoundary = pageTimes.length > 0 && Math.min(...pageTimes) <= boundaryMs;
     if (pageRows.length < limit || reachedBoundary) {
-      const deduped = dedupeEvidenceRows(rows, "posId");
+      const deduped = dedupePositionHistoryEvents(rows);
       if (!deduped.ok) return { complete: false, reason: deduped.reason, rows: deduped.rows || rows };
       return { complete: true, rows: deduped.rows, pages: page + 1 };
     }

@@ -197,8 +197,8 @@ test("position history paginates with uTime and stops only after covering the re
     request: async (path) => {
       calls.push(path);
       return calls.length === 1
-        ? { code: "0", data: [{ posId: "p3", uTime: "300" }, { posId: "p2", uTime: "200" }] }
-        : { code: "0", data: [{ posId: "p1", uTime: "90" }, { posId: "p0", uTime: "80" }] };
+        ? { code: "0", data: [{ posId: "p3", uTime: "300", type: "2" }, { posId: "p2", uTime: "200", type: "2" }] }
+        : { code: "0", data: [{ posId: "p1", uTime: "90", type: "2" }, { posId: "p0", uTime: "80", type: "2" }] };
     }
   });
   assert.equal(result.complete, true);
@@ -210,6 +210,25 @@ test("position history paginates with uTime and stops only after covering the re
   });
   assert.equal(malformed.complete, false);
   assert.equal(malformed.reason, "okx_position_history_response_malformed");
+});
+
+test("OKX may reuse one posId across distinct position-history events", async () => {
+  const rows = [
+    { posId: "slot-long", uTime: "300", type: "2", instId: "ADA-USDT-SWAP", direction: "long", realizedPnl: "1" },
+    { posId: "slot-long", uTime: "200", type: "2", instId: "ADA-USDT-SWAP", direction: "long", realizedPnl: "-1" }
+  ];
+  const accepted = await fetchOkxPositionHistoryForAccounting({
+    boundaryMs: 250, limit: 100, request: async () => ({ code: "0", data: rows })
+  });
+  assert.equal(accepted.complete, true);
+  assert.equal(accepted.rows.length, 2);
+
+  const conflict = await fetchOkxPositionHistoryForAccounting({
+    boundaryMs: 250, limit: 100,
+    request: async () => ({ code: "0", data: [rows[0], { ...rows[0], realizedPnl: "999" }] })
+  });
+  assert.equal(conflict.complete, false);
+  assert.equal(conflict.reason, "position_history_event_conflict");
 });
 
 test("task cancellation aborts pagination instead of persisting a partial history", async () => {
