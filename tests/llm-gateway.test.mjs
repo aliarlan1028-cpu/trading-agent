@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { completeGeminiWebSearch, criticInferencePolicy, extractOpenRouterAttribution, extractOpenRouterProvider, isAllowedGeminiProvider, llmCircuitStatus, normalizeCriticVerdict, normalizeGeminiModel, openRouterProviderPolicy, primaryInferencePolicy, resetLlmCircuits } from "../server/llmGateway.mjs";
+import { affordableOutputTokensFromError, completeGeminiWebSearch, completePrimaryChat, criticInferencePolicy, extractOpenRouterAttribution, extractOpenRouterProvider, isAllowedGeminiProvider, llmCircuitStatus, normalizeCriticVerdict, normalizeGeminiModel, openRouterProviderPolicy, primaryInferencePolicy, primaryMaxOutputTokens, resetLlmCircuits } from "../server/llmGateway.mjs";
 
 test("Gemini model IDs are normalized to the OpenRouter namespace", () => {
   assert.equal(normalizeGeminiModel(), "google/gemini-3.1-pro-preview");
@@ -128,4 +128,100 @@ test("DeepSeek critic always uses thinking mode at maximum effort", () => {
 
 test("Gemini primary always uses high reasoning effort", () => {
   assert.deepEqual(primaryInferencePolicy(), { reasoning: { effort: "high" } });
+});
+
+test("Gemini completion budget never defaults to the model's 65,536-token maximum", () => {
+  const prior = process.env.GEMINI_MAX_OUTPUT_TOKENS;
+  try {
+    delete process.env.GEMINI_MAX_OUTPUT_TOKENS;
+    assert.equal(primaryMaxOutputTokens(), 16_384);
+    assert.equal(primaryMaxOutputTokens(65_536), 16_384);
+    process.env.GEMINI_MAX_OUTPUT_TOKENS = "65536";
+    assert.equal(primaryMaxOutputTokens(), 32_768, "configuration cannot restore the unaffordable model maximum");
+    process.env.GEMINI_MAX_OUTPUT_TOKENS = "8192";
+    assert.equal(primaryMaxOutputTokens(4096), 4096, "a smaller caller budget remains allowed");
+  } finally {
+    if (prior === undefined) delete process.env.GEMINI_MAX_OUTPUT_TOKENS;
+    else process.env.GEMINI_MAX_OUTPUT_TOKENS = prior;
+  }
+});
+
+test("OpenRouter affordability errors are parsed only from structured 402 failures", () => {
+  assert.equal(affordableOutputTokensFromError({ status: 402, message: "requested 65536, but can only afford 58,224 tokens" }), 58_224);
+  assert.equal(affordableOutputTokensFromError({ status: 429, message: "can only afford 58224 tokens" }), null);
+  assert.equal(affordableOutputTokensFromError({ status: 402, message: "insufficient credits" }), null);
+});
+
+test("primary chat sends a bounded max_tokens and retries one affordable 402 response", async () => {
+  const oldKey = process.env.OPENROUTER_API_KEY;
+  const oldBudget = process.env.GEMINI_MAX_OUTPUT_TOKENS;
+  const oldFetch = globalThis.fetch;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  process.env.GEMINI_MAX_OUTPUT_TOKENS = "16384";
+  resetLlmCircuits();
+  const budgets = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options = {}) => {
+    calls += 1;
+    const body = JSON.parse(String(options.body || "{}"));
+    budgets.push(body.max_tokens);
+    if (calls === 1) {
+      return new Response(JSON.stringify({ error: { message: "This request requires more credits. You can only afford 6000 tokens." } }), {
+        status: 402,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "response-1",
+      model: "google/gemini-3.1-pro-preview",
+      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+      openrouter_metadata: {
+        endpoints: { available: [{ selected: true, provider: "Google AI Studio", model: "google/gemini-3.1-pro-preview" }] }
+      }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const result = await completePrimaryChat({
+      messages: [{ role: "user", content: "test" }],
+      max_tokens: 65_536
+    });
+    assert.deepEqual(budgets, [16_384, 5_400]);
+    assert.equal(result.message.content, "ok");
+    assert.equal(result.metadata.maxOutputTokens, 5_400);
+    assert.equal(result.metadata.outputBudgetAdjustedForCredits, true);
+    assert.equal(llmCircuitStatus()["openrouter:gemini"].state, "closed");
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = oldKey;
+    if (oldBudget === undefined) delete process.env.GEMINI_MAX_OUTPUT_TOKENS; else process.env.GEMINI_MAX_OUTPUT_TOKENS = oldBudget;
+    resetLlmCircuits();
+  }
+});
+
+test("Gemini web search also sends a bounded completion budget", async () => {
+  const oldKey = process.env.OPENROUTER_API_KEY;
+  const oldFetch = globalThis.fetch;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  resetLlmCircuits();
+  let sentBody = null;
+  globalThis.fetch = async (_url, options = {}) => {
+    sentBody = JSON.parse(String(options.body || "{}"));
+    return new Response(JSON.stringify({
+      id: "search-1",
+      model: "google/gemini-3.1-pro-preview",
+      choices: [{ message: { role: "assistant", content: "{}" } }],
+      openrouter_metadata: {
+        endpoints: { available: [{ selected: true, provider: "Google AI Studio", model: "google/gemini-3.1-pro-preview" }] }
+      }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    await completeGeminiWebSearch("test");
+    assert.equal(sentBody.max_tokens, 4_096);
+    assert.deepEqual(sentBody.reasoning, { effort: "high" });
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = oldKey;
+    resetLlmCircuits();
+  }
 });

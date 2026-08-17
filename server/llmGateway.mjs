@@ -4,6 +4,10 @@ const DEFAULT_GEMINI_MODEL = "google/gemini-3.1-pro-preview";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const MODEL_CACHE_MS = 10 * 60_000;
 const DEFAULT_CRITIC_MIN_CONFIDENCE = 0.75;
+const DEFAULT_PRIMARY_MAX_OUTPUT_TOKENS = 16_384;
+const MAX_PRIMARY_MAX_OUTPUT_TOKENS = 32_768;
+const MIN_CREDIT_RETRY_OUTPUT_TOKENS = 4_096;
+const DEFAULT_SEARCH_MAX_OUTPUT_TOKENS = 4_096;
 
 export const CRITIC_REVIEW_SCHEMA = Object.freeze({
   type: "object",
@@ -70,6 +74,36 @@ export function openRouterProviderPolicy() {
 
 export function primaryInferencePolicy() {
   return { reasoning: { effort: "high" } };
+}
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(minimum, Math.min(maximum, Math.floor(parsed)));
+}
+
+// OpenRouter uses the model's maximum completion length when this field is
+// omitted. Gemini 3.1 Pro currently advertises 65,536, so a normal decision
+// could be rejected up front when the account cannot reserve that theoretical
+// maximum even though the actual answer would be far smaller.
+export function primaryMaxOutputTokens(requested = null) {
+  const configured = boundedInteger(
+    process.env.GEMINI_MAX_OUTPUT_TOKENS,
+    DEFAULT_PRIMARY_MAX_OUTPUT_TOKENS,
+    MIN_CREDIT_RETRY_OUTPUT_TOKENS,
+    MAX_PRIMARY_MAX_OUTPUT_TOKENS
+  );
+  if (requested === null || requested === undefined || requested === "") return configured;
+  return Math.min(configured, boundedInteger(requested, configured, 16, MAX_PRIMARY_MAX_OUTPUT_TOKENS));
+}
+
+export function affordableOutputTokensFromError(error) {
+  if (Number(error?.status || error?.statusCode || 0) !== 402) return null;
+  const text = String(error?.message || error || "");
+  const match = text.match(/can only afford\s+([\d,]+)(?:\s+tokens?)?/i);
+  if (!match) return null;
+  const parsed = Number(match[1].replaceAll(",", ""));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
 function circuitFor(key) {
@@ -230,12 +264,33 @@ export async function completePrimaryChat(request = {}) {
     throw error;
   }
   return guardedCall("openrouter:gemini", async () => {
-    const response = await openRouterClient().chat.completions.create({
-      ...request,
+    const client = openRouterClient();
+    const {
+      max_tokens: requestedMaxTokens,
+      max_completion_tokens: requestedMaxCompletionTokens,
+      ...safeRequest
+    } = request;
+    const maxOutputTokens = primaryMaxOutputTokens(requestedMaxTokens ?? requestedMaxCompletionTokens);
+    const payload = {
+      ...safeRequest,
       ...primaryInferencePolicy(),
       model: route.model,
-      provider: openRouterProviderPolicy()
-    });
+      provider: openRouterProviderPolicy(),
+      max_tokens: maxOutputTokens
+    };
+    let appliedMaxOutputTokens = maxOutputTokens;
+    let outputBudgetAdjustedForCredits = false;
+    let response;
+    try {
+      response = await client.chat.completions.create(payload);
+    } catch (error) {
+      const affordable = affordableOutputTokensFromError(error);
+      const retryMax = affordable === null ? null : Math.floor(affordable * 0.9);
+      if (!(retryMax >= MIN_CREDIT_RETRY_OUTPUT_TOKENS && retryMax < maxOutputTokens)) throw error;
+      appliedMaxOutputTokens = retryMax;
+      outputBudgetAdjustedForCredits = true;
+      response = await client.chat.completions.create({ ...payload, max_tokens: retryMax });
+    }
     const attribution = extractOpenRouterAttribution(response);
     return {
       message: response.choices?.[0]?.message || null,
@@ -252,6 +307,8 @@ export async function completePrimaryChat(request = {}) {
         responseId: response.id || null,
         usage: response.usage || null,
         reasoningEffort: "high",
+        maxOutputTokens: appliedMaxOutputTokens,
+        outputBudgetAdjustedForCredits,
         routingPolicy: openRouterProviderPolicy()
       }
     };
@@ -408,6 +465,7 @@ export async function completeGeminiWebSearch(prompt, options = {}) {
           tools: [{ type: "openrouter:web_search" }],
           response_format: { type: "json_object" },
           temperature: 0.1,
+          max_tokens: DEFAULT_SEARCH_MAX_OUTPUT_TOKENS,
           ...primaryInferencePolicy(),
           provider: openRouterProviderPolicy()
         })
