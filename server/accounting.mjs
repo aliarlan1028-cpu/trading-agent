@@ -9,7 +9,7 @@ import { groupPositionMirrors, newestAuthoritativePosition, positionFactObserved
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
-import { backfillOkxRollingAccountingBaseline, rollingAccountingBoundary } from "./accountingHistory.mjs";
+import { ACCOUNTING_BOUNDARY_BUCKET_MS, backfillOkxRollingAccountingBaseline, rollingAccountingBoundary } from "./accountingHistory.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -245,10 +245,31 @@ function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
   const binding = current.binding;
   const boundaryAt = new Date(boundaryMs).toISOString();
   const existing = db.portfolio.accountingBaselines[kind];
-  if (existing?.boundaryAt === boundaryAt
-    && sameAccountingBinding(existing, binding)
-    && strictNumber(existing.equityUsdt) > 0
-    && strictNumber(existing.unrealizedPnlUsdt) !== null) return { ok: true, baseline: existing };
+  const existingBoundaryMs = new Date(existing?.boundaryAt || 0).getTime();
+  const existingValid = sameAccountingBinding(existing, binding)
+    && strictNumber(existing?.equityUsdt) > 0
+    && strictNumber(existing?.unrealizedPnlUsdt) !== null;
+  if (existingValid && existing?.boundaryAt === boundaryAt) {
+    return { ok: true, baseline: existing, effectiveBoundaryMs: boundaryMs, needsRefresh: false };
+  }
+  // The rolling boundary advances every five minutes, while the authoritative
+  // OKX backfill task can run a few seconds/minutes after that boundary. Keep
+  // the immediately preceding verified baseline for at most one bucket. Its
+  // PnL window starts at the older boundary below, so this is conservative
+  // (slightly longer than 168h) and never omits the rollover interval. The
+  // authoritative entry point sees needsRefresh and replaces it in background.
+  const rolloverGraceMs = Number(options.accountingBaselineRolloverGraceMs ?? ACCOUNTING_BOUNDARY_BUCKET_MS);
+  if (kind === "rolling_168h" && existingValid
+    && Number.isFinite(existingBoundaryMs)
+    && existingBoundaryMs <= boundaryMs
+    && boundaryMs - existingBoundaryMs <= rolloverGraceMs) {
+    return {
+      ok: true,
+      baseline: existing,
+      effectiveBoundaryMs: existingBoundaryMs,
+      needsRefresh: existingBoundaryMs !== boundaryMs
+    };
+  }
 
   const snapshot = baselineSnapshot(db, boundaryMs, binding, options);
   const equity = snapshotEquity(snapshot);
@@ -271,7 +292,7 @@ function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
     createdAt: nowIso()
   };
   db.portfolio.accountingBaselines[kind] = baseline;
-  return { ok: true, baseline };
+  return { ok: true, baseline, effectiveBoundaryMs: boundaryMs, needsRefresh: false };
 }
 
 export function refreshAccounting(db, options = {}) {
@@ -305,9 +326,12 @@ export function refreshAccounting(db, options = {}) {
   // 风险窗口起点按五分钟桶对齐，与不可变会计锚点的采样粒度一致。
   // 这样基线不会每毫秒失效，同时窗口只会比 168h 多 0~5 分钟，偏保守而不会漏算亏损。
   const weekStartMs = rollingAccountingBoundary(weekEndMs);
-  const realizedWeekState = realizedPnlSince(db, weekStartMs, weekEndMs);
-  const realizedWeek = realizedWeekState.value;
   const weeklyBaseline = resolveAccountingBaseline(db, "rolling_168h", weekStartMs, options);
+  const effectiveWeekStartMs = weeklyBaseline.ok
+    ? Number(weeklyBaseline.effectiveBoundaryMs ?? new Date(weeklyBaseline.baseline.boundaryAt).getTime())
+    : weekStartMs;
+  const realizedWeekState = realizedPnlSince(db, effectiveWeekStartMs, weekEndMs);
+  const realizedWeek = realizedWeekState.value;
   const weekPnl = realizedWeekState.pending || !unrealizedState.complete || !weeklyBaseline.ok
     ? null
     : realizedWeek + unrealized - Number(weeklyBaseline.baseline.unrealizedPnlUsdt);
@@ -319,7 +343,10 @@ export function refreshAccounting(db, options = {}) {
   db.portfolio.pendingTradeFinancialFactsWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length;
   db.portfolio.pendingDailyBaseline = dailyBaseline.ok ? 0 : 1;
   db.portfolio.pendingWeekBaseline = weeklyBaseline.ok ? 0 : 1;
-  db.portfolio.weekWindowStartAt = new Date(weekStartMs).toISOString();
+  db.portfolio.weekWindowStartAt = new Date(effectiveWeekStartMs).toISOString();
+  db.portfolio.weekWindowRequestedStartAt = new Date(weekStartMs).toISOString();
+  db.portfolio.weekBaselineLagMs = Math.max(0, weekStartMs - effectiveWeekStartMs);
+  db.portfolio.weekBaselineNeedsRefresh = weeklyBaseline.ok && weeklyBaseline.needsRefresh === true;
   db.portfolio.weekWindowEndAt = new Date(weekEndMs).toISOString();
   db.portfolio.weekWindowSemantics = "rolling_168_hours";
   db.portfolio.dailyWindowStartAt = new Date(dayStartMs).toISOString();
@@ -397,13 +424,16 @@ export function refreshAccounting(db, options = {}) {
 
 // 核算任务的权威入口：先按本地不可变快照计算；仅当唯一缺口是滚动 168h
 // 起点快照时，才尝试用当前 Key 读取的 OKX 账单、仓位历史与边界标记价格重建。
-// 回补失败保留原 fail-closed 状态，绝不写 0、复用旧 Key 基线或清除暂停原因。
+// 缺少可验证基线时回补失败继续 fail-closed；边界刚切换时可保守沿用上一桶
+// （完整纳入较长窗口的成交）最多五分钟，后台回补失败也不会制造周期性瞬时暂停。
 export async function refreshAccountingAuthoritatively(db, options = {}) {
   options.assertLease?.();
   const nowMs = Number(options.nowMs ?? Date.now());
   let result = refreshAccounting(db, { ...options, nowMs });
   const boundaryMs = rollingAccountingBoundary(nowMs);
-  if (db.portfolio?.weekBaselineStatus !== "period_start_snapshot_missing") {
+  const weekBaselineMissing = db.portfolio?.weekBaselineStatus === "period_start_snapshot_missing";
+  const weekBaselineNeedsRefresh = db.portfolio?.weekBaselineNeedsRefresh === true;
+  if (!weekBaselineMissing && !weekBaselineNeedsRefresh) {
     if (db.portfolio?.accountingHistoryBackfill?.status === "reconciled") {
       db.portfolio.accountingHistoryBackfill = {
         ...db.portfolio.accountingHistoryBackfill,

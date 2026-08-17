@@ -1675,6 +1675,13 @@ function persistTradingEntities(db, updatedAt) {
     for (const item of rows) {
       const tenantId = item.tenantId || "tenant_owner";
       const createdAt = item.createdAt || item.startedAt || updatedAt;
+      // Reconciliation reports are immutable chronological facts. Using the
+      // enclosing save timestamp for every row made all 200 rows tie on each
+      // save; a read-only reload then fell back to resource_id order and could
+      // expose a day-old report as the latest one. Preserve their fact time.
+      const entityUpdatedAt = resourceType === "reconciliationReports"
+        ? createdAt
+        : item.updatedAt || updatedAt;
       const doc = { ...item, tenantId };
       upsert.run({
         tenant_id: tenantId,
@@ -1683,7 +1690,7 @@ function persistTradingEntities(db, updatedAt) {
         status: item.status || null,
         symbol: item.symbol || null,
         created_at: createdAt,
-        updated_at: item.updatedAt || updatedAt,
+        updated_at: entityUpdatedAt,
         doc: JSON.stringify(doc)
       });
     }

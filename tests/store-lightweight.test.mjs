@@ -61,3 +61,16 @@ test("中频事实使用独立行表持久化，历史回填不会塞进巨大co
   const snapshot = loadDbReadOnlySnapshot();
   assert.ok(snapshot.mediumTermSamples.some((item) => item.symbol === "BTC/USDT" && item.bucketAt === bucketAt));
 });
+
+test("read-only reload keeps the newest reconciliation report first", () => {
+  const db = loadDb();
+  db.reconciliationReports = [
+    { id: "aaa-old-report", status: "needs_attention", createdAt: "2026-08-16T03:32:55.000Z", differences: [{ type: "stale" }] },
+    { id: "zzz-new-report", status: "ok", createdAt: "2026-08-17T13:34:54.000Z", differences: [] }
+  ];
+  saveDb(db);
+
+  const snapshot = loadDbReadOnlySnapshot();
+  assert.equal(snapshot.reconciliationReports[0].id, "zzz-new-report");
+  assert.equal(snapshot.reconciliationReports[0].status, "ok");
+});

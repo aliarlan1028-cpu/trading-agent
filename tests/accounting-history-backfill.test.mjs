@@ -8,7 +8,7 @@ import {
   ACCOUNTING_BOUNDARY_BUCKET_MS,
   rollingAccountingBoundary
 } from "../server/accountingHistory.mjs";
-import { refreshAccountingAuthoritatively } from "../server/accounting.mjs";
+import { refreshAccounting, refreshAccountingAuthoritatively } from "../server/accounting.mjs";
 import { businessDayStartMs } from "../server/businessTime.mjs";
 
 const originalKey = process.env.OKX_API_KEY;
@@ -292,6 +292,112 @@ test("authoritative accounting task writes the audited baseline and automaticall
   assert.deepEqual(db.system.reduceOnlyReasons, []);
   assert.equal(result.historyBackfill.status, "reconciled");
   assert.equal(db.auditLogs.filter((row) => row.target === "rolling_168h_accounting_baseline").length, 1);
+});
+
+test("rolling boundary rollover keeps the previous verified bucket without omitting interval fills", async () => {
+  const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
+  const boundaryMs = rollingAccountingBoundary(nowMs);
+  const db = integrationDb(nowMs);
+  const bills = [
+    bill({ billId: "1", ts: String(boundaryMs - 1000), subType: "3", px: "100", pnl: "0", fee: "-1" }),
+    bill({ billId: "2", ts: String(boundaryMs + 1000), type: "8", subType: "173", px: "95", pnl: "-1", fee: "0", balChg: "-1" }),
+    bill({ billId: "3", ts: String(boundaryMs + 2000), subType: "5", px: "90", pnl: "-20", fee: "-1", balChg: "-21" })
+  ];
+  const request = async (path) => path.startsWith("/api/v5/account/positions-history")
+    ? { code: "0", data: [{ posId: "position-1", instId: "ADA-USDT-SWAP", direction: "long", cTime: String(boundaryMs - 1000), uTime: String(boundaryMs + 2000), type: "2" }] }
+    : { code: "0", data: bills };
+  await refreshAccountingAuthoritatively(db, {
+    nowMs, forceHistoryBackfill: true, request,
+    fetchBoundaryMarkPrice: async () => ({ complete: true, price: 95, observedAt: new Date(boundaryMs).toISOString() }),
+    fetchContractSpec: async () => ({ ctVal: 1, ctType: "linear", settleCcy: "USDT" })
+  });
+
+  const oldBoundaryAt = db.portfolio.accountingBaselines.rolling_168h.boundaryAt;
+  const rolloverMs = nowMs + ACCOUNTING_BOUNDARY_BUCKET_MS;
+  refreshAccounting(db, { nowMs: rolloverMs });
+
+  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
+  assert.equal(db.portfolio.weekBaselineNeedsRefresh, true);
+  assert.equal(db.portfolio.weekBaselineLagMs, ACCOUNTING_BOUNDARY_BUCKET_MS);
+  assert.equal(db.portfolio.weekWindowStartAt, oldBoundaryAt);
+  assert.equal(db.portfolio.knownReconciledRealizedPnlWeek, -22, "the close inside the rollover interval must remain counted");
+  assert.equal(db.portfolio.weekPnl, -12);
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
+  assert.equal(db.system.reduceOnlyMode, false);
+});
+
+test("authoritative rollover replaces the grace baseline with the exact new boundary", async () => {
+  const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
+  const boundaryMs = rollingAccountingBoundary(nowMs);
+  const db = integrationDb(nowMs);
+  const firstBills = [
+    bill({ billId: "1", ts: String(boundaryMs - 1000), subType: "3", px: "100", pnl: "0", fee: "-1" }),
+    bill({ billId: "2", ts: String(boundaryMs + 1000), type: "8", subType: "173", px: "95", pnl: "-1", fee: "0", balChg: "-1" }),
+    bill({ billId: "3", ts: String(boundaryMs + 2000), subType: "5", px: "90", pnl: "-20", fee: "-1", balChg: "-21" })
+  ];
+  await refreshAccountingAuthoritatively(db, {
+    nowMs, forceHistoryBackfill: true,
+    request: async (path) => path.startsWith("/api/v5/account/positions-history")
+      ? { code: "0", data: [{ posId: "position-1", instId: "ADA-USDT-SWAP", direction: "long", cTime: String(boundaryMs - 1000), uTime: String(boundaryMs + 2000), type: "2" }] }
+      : { code: "0", data: firstBills },
+    fetchBoundaryMarkPrice: async () => ({ complete: true, price: 95, observedAt: new Date(boundaryMs).toISOString() }),
+    fetchContractSpec: async () => ({ ctVal: 1, ctType: "linear", settleCcy: "USDT" })
+  });
+
+  const rolloverMs = nowMs + ACCOUNTING_BOUNDARY_BUCKET_MS;
+  const nextBoundaryMs = rollingAccountingBoundary(rolloverMs);
+  db.accountSnapshots.find((row) => row.id === "current").createdAt = new Date(rolloverMs - 1000).toISOString();
+  await refreshAccountingAuthoritatively(db, {
+    nowMs: rolloverMs,
+    forceHistoryBackfill: true,
+    request: async () => ({ code: "0", data: [] })
+  });
+
+  assert.equal(db.portfolio.accountingBaselines.rolling_168h.boundaryAt, new Date(nextBoundaryMs).toISOString());
+  assert.equal(db.portfolio.weekWindowStartAt, new Date(nextBoundaryMs).toISOString());
+  assert.equal(db.portfolio.weekBaselineNeedsRefresh, false);
+  assert.equal(db.portfolio.weekBaselineLagMs, 0);
+  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
+  assert.equal(db.system.reduceOnlyMode, false);
+});
+
+test("a failed rollover refresh stays conservative only for one bucket, then fails closed", async () => {
+  const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
+  const boundaryMs = rollingAccountingBoundary(nowMs);
+  const db = integrationDb(nowMs);
+  const bills = [
+    bill({ billId: "1", ts: String(boundaryMs - 1000), subType: "3", px: "100", pnl: "0", fee: "-1" }),
+    bill({ billId: "2", ts: String(boundaryMs + 1000), type: "8", subType: "173", px: "95", pnl: "-1", fee: "0", balChg: "-1" }),
+    bill({ billId: "3", ts: String(boundaryMs + 2000), subType: "5", px: "90", pnl: "-20", fee: "-1", balChg: "-21" })
+  ];
+  await refreshAccountingAuthoritatively(db, {
+    nowMs, forceHistoryBackfill: true,
+    request: async (path) => path.startsWith("/api/v5/account/positions-history")
+      ? { code: "0", data: [{ posId: "position-1", instId: "ADA-USDT-SWAP", direction: "long", cTime: String(boundaryMs - 1000), uTime: String(boundaryMs + 2000), type: "2" }] }
+      : { code: "0", data: bills },
+    fetchBoundaryMarkPrice: async () => ({ complete: true, price: 95, observedAt: new Date(boundaryMs).toISOString() }),
+    fetchContractSpec: async () => ({ ctVal: 1, ctType: "linear", settleCcy: "USDT" })
+  });
+
+  const rolloverMs = nowMs + ACCOUNTING_BOUNDARY_BUCKET_MS;
+  db.accountSnapshots.find((row) => row.id === "current").createdAt = new Date(rolloverMs - 1000).toISOString();
+  await refreshAccountingAuthoritatively(db, {
+    nowMs: rolloverMs,
+    forceHistoryBackfill: true,
+    request: async () => ({ code: "51000", data: [] })
+  });
+  assert.equal(db.portfolio.accountingHistoryBackfill.status, "failed");
+  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
+  assert.equal(db.system.reduceOnlyMode, false);
+
+  refreshAccounting(db, { nowMs: nowMs + 2 * ACCOUNTING_BOUNDARY_BUCKET_MS });
+  assert.equal(db.portfolio.weekBaselineStatus, "period_start_snapshot_missing");
+  assert.equal(db.portfolio.weekPnl, null);
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
+  assert.equal(db.system.reduceOnlyMode, true);
+  assert.ok(db.system.reduceOnlyReasons.includes("financial_reconciliation_pending"));
 });
 
 test("failed historical verification leaves both weekPnl and the opening pause fail-closed", async () => {
