@@ -359,7 +359,13 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 100).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
     reviews: compactNativeReviews(overview.reviews),
+    reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 12).map(compactAccountSnapshot),
+    behaviorProfile: overview.behaviorProfile || {},
+    behaviorNarrative: overview.behaviorNarrative || null,
+    reviewLearningAnalytics: overview.reviewLearningAnalytics || {},
+    tradeDataStatus: overview.tradeDataStatus || null,
+    executionOrderStatus: overview.executionOrderStatus || null,
     mediumTermAnalytics: overview.mediumTermAnalytics || {},
     marketMovers: overview.marketMovers || null,
     abnormalVolatility: (overview.abnormalVolatility || []).slice(0, 30),
@@ -405,7 +411,8 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     portfolioRisk: overview.portfolioRisk || null,
     professional: overview.professional || null,
     apiKeyMetadata: overview.apiKeyMetadata || [],
-    accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot)
+    accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot),
+    readiness: overview.readiness || null
   };
 
   if (selectedSection === "operationsCenter") return {
@@ -441,6 +448,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     registrationCapacity: overview.registrationCapacity,
     registrationApplications: overview.registrationApplications || [],
     runtimeConfig: overview.runtimeConfig || {},
+    agentProfiles: overview.agentProfiles || [],
     apiKeyMetadata: overview.apiKeyMetadata || [],
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot),
     tools: overview.tools || [],

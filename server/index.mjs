@@ -1045,6 +1045,7 @@ function overviewActivePlusRecent(rows = [], activeStates, recentLimit) {
 // its expensive derived facts, so opening Settings cannot accidentally run
 // backtests/review analytics and opening Chat cannot build the risk workbench.
 function buildOverviewSectionSource(section, req, options = {}) {
+  const performance = performanceReport(db);
   const common = {
     user: sanitizeUserRecord(req.user || db.user),
     system: profitGoalSnapshot(db.system),
@@ -1052,7 +1053,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
     agentStatus: getAgentStatus(db),
     portfolio: db.portfolio,
-    performance: performanceReport(db),
+    performance,
     positions: normalizePositionsForUi(db.positions),
     markets: db.markets,
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
@@ -1095,7 +1096,28 @@ function buildOverviewSectionSource(section, req, options = {}) {
     fills: db.fills,
     riskChecks: db.riskChecks,
     reviews: db.reviews,
+    reconciliationReports: db.reconciliationReports,
     accountSnapshots: db.accountSnapshots,
+    behaviorProfile: computeBehaviorProfile(db),
+    behaviorNarrative: db.system?.behaviorNarrative || null,
+    reviewLearningAnalytics: buildReviewLearningAnalytics(db),
+    tradeDataStatus: {
+      source: "server_complete_lifecycle_aggregation",
+      fillTotal: (db.fills || []).length,
+      closedLifecycleTotal: performance.grossClosedTradeLifecycles,
+      financiallyReconciledTrades: performance.financiallyReconciledTrades,
+      pendingFinancialReconciliation: performance.pendingFinancialReconciliation,
+      tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length,
+      tradeReviewPending: (db.reviews || []).filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
+      tradeReviewFailed: (db.reviews || []).filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
+      generatedAt: new Date().toISOString()
+    },
+    executionOrderStatus: (() => {
+      const rows = db.executionOrders || [];
+      const last = rows.map((row) => row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt).filter(Boolean)
+        .sort((a, b) => new Date(b) - new Date(a))[0] || null;
+      return { source: "OMS + OKX reconciliation", total: rows.length, lastChangedAt: last };
+    })(),
     mediumTermAnalytics: buildMediumTermAnalytics(db),
     marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
     abnormalVolatility: abnormalVolatilityBoard(db),
@@ -1158,7 +1180,8 @@ function buildOverviewSectionSource(section, req, options = {}) {
       tradingCapacity: { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) },
       portfolioRisk: buildPortfolioRisk(db, mandate),
       apiKeyMetadata: db.apiKeyMetadata,
-      accountSnapshots: db.accountSnapshots
+      accountSnapshots: db.accountSnapshots,
+      readiness: buildReadinessReport(db)
     };
   }
 
@@ -1196,6 +1219,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     registrationCapacity: publicRegistrationInfo(db).capacity,
     registrationApplications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
     runtimeConfig: db.runtimeConfig,
+    agentProfiles: db.agentProfiles,
     apiKeyMetadata: db.apiKeyMetadata,
     accountSnapshots: db.accountSnapshots,
     tools: liveConnectorToolStatus(db.tools),

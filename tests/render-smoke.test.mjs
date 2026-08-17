@@ -474,9 +474,8 @@ test("chat and trading overview show the effective opening pause instead of a fo
     automationState: { mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", runtimeStatus: "opening_paused", detail: "账户核算基线或费用对账未完成" }
   };
   const chat = render(React.createElement(C.ChatPage, { data: runtimeData, action, ui }));
-  assert.match(chat, /agRunBadge warning/);
-  assert.match(chat, />自动交易</);
-  assert.match(chat, /调整运行模式/);
+  assert.doesNotMatch(chat, /agRunBadge/, "AI 交易员内部不应重复顶部的全局运行状态");
+  assert.doesNotMatch(chat, /调整运行模式/, "运行方式只在全局顶部和资金边界页管理");
   assert.doesNotMatch(chat, /暂停自主|启动自主交易|只减仓/);
 
   const overview = render(React.createElement(C.TradingOverviewConcept, { data: runtimeData, action, ui }));
@@ -570,6 +569,24 @@ test("execution and review renders every workflow zone on one page", () => {
   assert.ok(!html.includes("role=\"tablist\""), "single-page workbench must not hide sections behind tabs");
 });
 
+test("execution review distinguishes not-run reconciliation and never renders unknown costs as zero performance", () => {
+  const html = render(React.createElement(C.ExecutionReviewConcept, {
+    data: {
+      ...data,
+      reconciliationReports: [],
+      tradeDataStatus: { fillTotal: 4, closedLifecycleTotal: 2, financiallyReconciledTrades: 0, pendingFinancialReconciliation: 2 }
+    },
+    action,
+    ui
+  }));
+  assert.match(html, /尚未运行/);
+  assert.match(html, /不能把它显示成‘对账失败’/);
+  assert.match(html, /已平仓 2 笔，其中 0 笔已完成费用核算/);
+  assert.match(html, /已核算净盈亏/);
+  assert.match(html, /等待费用核算/);
+  assert.match(html, /已有真实平仓，但费用核算尚未完整；完成前不显示假 0 曲线/);
+});
+
 test("orders and fills render together on the dedicated ledger subpage", () => {
   const html = render(React.createElement(C.ExecutionLedgerConcept, { data, action, ui }));
   assert.ok(html.includes("id=\"el-orders\""));
@@ -590,25 +607,24 @@ test("concept graph dedupes duplicate names and renders", () => {
 
 test("desktop knowledge page exposes the full concept graph workspace and source filters", () => {
   const html = render(React.createElement(C.KnowledgeConcept, { data, action, ui }));
-  assert.match(html, /系统建议/);
-  assert.match(html, /下一步：处理未通过的技能版本/);
-  assert.match(html, /它们目前只提供研究素材，不会进入真实交易/);
+  assert.match(html, /知识库下一步/);
+  assert.match(html, /资料已导入/);
+  assert.match(html, /可检索/);
+  assert.match(html, /已形成知识网络/);
   assert.match(html, /概念与知识网络/);
   assert.match(html, /知识网络概览/);
   assert.match(html, /按知识来源筛选概念/);
   assert.match(html, /海龟交易法则/);
   assert.match(html, /以交易为生/);
   assert.match(html, /生效中的条令/);
-  assert.match(html, /交易方法 ≠ 已上岗策略/);
+  assert.match(html, /知识库只负责让内容可检索、可引用、可关联/);
   assert.match(html, /管理来源/);
   assert.match(html, /扩展候选（可选）/);
   assert.match(html, /规则库与实际作用/);
-  assert.match(html, /查看技能流水线/);
-  assert.match(html, /每本书现在能做什么，下一步会解锁什么/);
-  assert.match(html, /阶段 8\/8/);
-  assert.match(html, /阶段 3\/8/);
-  assert.match(html, /只有市场、方向和周期匹配且全部硬风控通过时/);
-  assert.match(html, /它们还不是可执行技能/);
+  assert.match(html, /每份知识现在能做什么/);
+  assert.match(html, /策略库承接/);
+  assert.match(html, /能力库承接/);
+  assert.doesNotMatch(html, /打开技能流水线|查看技能流水线|阶段 8\/8/);
   assert.match(html, /趋势/);
   assert.match(html, /止损/);
 });
@@ -645,6 +661,19 @@ test("system settings gives OKX and notifications one explicit home without leak
   assert.doesNotMatch(basics, /五个基础模块/);
 });
 
+test("Agent settings renders real profiles and an explicit loading state instead of a blank editor", () => {
+  const profile = { id: "agent-owner", order: 1, name: "Owner Agent", role: "主交易 Agent", mission: "综合事实", enabled: true };
+  const populated = render(React.createElement(C.SettingsConcept, { data: { ...data, agentProfiles: [profile] }, action, ui, activeTab: "agents", onTabChange: () => {} }));
+  assert.match(populated, /Agent 列表/);
+  assert.match(populated, /Owner Agent/);
+  assert.match(populated, /主交易 Agent/);
+
+  const empty = render(React.createElement(C.SettingsConcept, { data: { ...data, agentProfiles: [], resourceState: { systemSettings: "loading" } }, action, ui, activeTab: "agents", onTabChange: () => {} }));
+  assert.match(empty, /Agent 配置尚未加载/);
+  assert.match(empty, /不会显示空白编辑器/);
+  assert.match(empty, /重新加载/);
+});
+
 test("desktop runtime controls fit the two true emergency actions without empty columns", () => {
   const css = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
   const desktopMedia = css.match(/@media \(max-width: 1280px\) and \(min-width: 901px\) \{([\s\S]*?)\n\}/)?.[1] || "";
@@ -659,7 +688,10 @@ test("public product preview teaches the same three modes as the real cockpit", 
   assert.match(preview, /自动交易/);
   assert.match(preview, /只分析/);
   assert.match(preview, /逐笔确认/);
-  assert.match(preview, /紧急停止与自动暂停新开仓/);
+  assert.match(preview, /AI 交易员/);
+  assert.match(preview, /产品演示数据/);
+  assert.match(preview, /紧急停止可随时接管/);
+  assert.match(preview, /归因、对账与审计/);
   assert.doesNotMatch(preview, /只减仓|暂停自主/);
 });
 

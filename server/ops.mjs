@@ -65,11 +65,54 @@ function reduceOnlyReasonLabel(code = "") {
   return code ? `安全原因待解除：${code}` : "新开仓安全检查未完成";
 }
 
-function reduceOnlyBlockers(system = {}) {
+const DEGRADATION_REASON_LABELS = {
+  market_data_stale: "实时价格超过新鲜度要求",
+  microstructure_data_stale: "盘口与微观结构数据已过期",
+  private_ws_disconnected: "OKX 私有实时连接已断开",
+  private_ws_credential_mismatch: "OKX 私有连接与当前 API Key 不一致",
+  unknown_order_state: "存在结果未知的交易所订单",
+  reconciliation_unhealthy: "OMS 与 OKX 对账已过期或异常",
+  audit_chain_invalid: "审计记录链校验失败",
+  worm_audit_unhealthy: "外部不可篡改审计通道不可用",
+  external_alert_unhealthy: "外部告警通道不可用"
+};
+
+function reduceOnlyBlockers(db = {}) {
+  const system = db.system || {};
   const raw = Array.isArray(system.reduceOnlyReasons) && system.reduceOnlyReasons.length
     ? system.reduceOnlyReasons
     : system.reduceOnlyBy ? [system.reduceOnlyBy] : [];
-  const details = [...new Set(raw.filter(Boolean))].map((code) => ({ code, label: reduceOnlyReasonLabel(code) }));
+  const details = [...new Set(raw.filter(Boolean))].map((code) => {
+    const base = { code, label: reduceOnlyReasonLabel(code), updatedAt: system.updatedAt || null };
+    if (code === "financial_reconciliation_pending") {
+      const portfolio = db.portfolio || {};
+      const today = Number(portfolio.pendingFinancialReconciliationToday || 0);
+      const week = Number(portfolio.pendingFinancialReconciliationWeek || 0);
+      const dailyStatus = portfolio.dailyBaselineStatus || "unknown";
+      const weekStatus = portfolio.weekBaselineStatus || "unknown";
+      const pending = [today > 0 ? `今日 ${today} 项` : null, week > 0 ? `近 7 日 ${week} 项` : null].filter(Boolean).join("、") || "状态待重新核验";
+      return {
+        ...base,
+        label: base.label,
+        detail: `待完成：${pending}。今日基线：${dailyStatus}；近 7 日基线：${weekStatus}。绩效只统计已完整归集开仓费、平仓费与资金费的交易。`,
+        recovery: weekStatus === "period_start_snapshot_missing"
+          ? "系统会继续回补成交费用并积累权威账户快照；形成可验证的周期起点且待处理项归零后自动恢复。"
+          : "系统会持续回补成交、手续费、资金费和账户快照；待处理项归零后自动恢复。"
+      };
+    }
+    if (code === "professional_risk_gate") {
+      const assessment = assessOperationalDegradation(db);
+      const reasons = assessment.reasons.map((reason) => DEGRADATION_REASON_LABELS[reason] || reason);
+      return {
+        ...base,
+        label: reasons.length ? `运行数据暂不满足开仓要求（${reasons.join("、")}）` : base.label,
+        detail: reasons.length ? `当前检测到：${reasons.join("、")}。这不会停止行情分析、撤单、平仓或已有仓位保护。` : "专业运行风险闸正在等待下一次健康检查。",
+        recovery: "行情、连接或对账恢复后，系统会在下一次健康检查中自动解除，不需要重新选择自动交易。",
+        updatedAt: assessment.assessedAt || base.updatedAt
+      };
+    }
+    return { ...base, recovery: "对应的权威状态确认完成后，系统会自动重新评估是否恢复新开仓。" };
+  });
   return details.length ? details : [{ code: "opening_paused", label: "新开仓安全检查未完成" }];
 }
 
@@ -135,7 +178,7 @@ export function deriveAutomationState(db, options = {}) {
   }
   // 开仓安全限制也纳入唯一真相源：否则状态卡显示“自动交易”，每笔新开仓却被内部闸拦截。
   if (sys.reduceOnlyMode) {
-    const blockerDetails = reduceOnlyBlockers(sys);
+    const blockerDetails = reduceOnlyBlockers(db);
     return result({
       mode: "reduce_only",
       label: "暂停新开仓",

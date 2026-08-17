@@ -69,17 +69,19 @@
     "system.reviewText": ["真实成交、手续费、返佣与资金费完成后，才进入净绩效与知识反馈。", "Only reconciled fills, fees, rebates, and funding enter net performance and the knowledge feedback loop."],
 
     "cap.title": ["不是一个聊天框，是一套交易操作系统。", "Not a chat box. A trading operating system."],
-    "cap.lead": ["从情报、知识和策略，到事件任务与资金边界：这里展示的是 KORDYN App 正在工作的真实产品界面。", "From intelligence, knowledge, and strategies to events, tasks, and capital limits—this is the real KORDYN App at work."],
-    "cap.intelTitle": ["汇总实时情报", "Unify live intelligence"],
-    "cap.intelBoundary": ["数据过期或来源不足，不形成确定结论", "Stale or weakly sourced data cannot become a firm conclusion"],
-    "cap.knowledgeTitle": ["调用专业知识", "Apply expert knowledge"],
-    "cap.knowledgeBoundary": ["未经审批的自由文本不会成为系统指令", "Unapproved free text never becomes a system instruction"],
+    "cap.lead": ["从 AI 交易员的判断界面进入情报、知识、策略、任务与资金边界：演示数据对应真实产品能力，不代表真实账户或交易结果。", "Move from the AI Trader decision surface into intelligence, knowledge, strategies, tasks, and capital boundaries. Demo data maps to real product capabilities, not a real account or trading result."],
+    "cap.intelTitle": ["AI 综合市场事实", "AI synthesizes market facts"],
+    "cap.intelBoundary": ["行情、情报、账户或微观结构过期时，只能观察，不能把猜测升级成订单", "When market, intelligence, account, or microstructure data is stale, the system may observe but cannot promote a guess into an order"],
+    "cap.knowledgeTitle": ["调用可追溯知识", "Recall traceable knowledge"],
+    "cap.knowledgeBoundary": ["知识必须保留来源与引用；书籍自由文本不会直接成为交易指令", "Knowledge must retain sources and citations; free text from books never becomes a trading instruction directly"],
     "cap.strategyTitle": ["采用版本化策略", "Use versioned strategies"],
-    "cap.strategyBoundary": ["未验证、未批准的版本不能进入实盘", "Unvalidated or unapproved versions cannot enter live trading"],
-    "cap.operationsTitle": ["持续监控事件与任务", "Monitor events and tasks continuously"],
-    "cap.operationsBoundary": ["任务只能唤醒判断，不能绕过风控下单", "Tasks may wake a decision, never bypass risk controls"],
-    "cap.riskTitle": ["在授权范围内执行", "Execute inside explicit authority"],
-    "cap.riskBoundary": ["额度、杠杆、亏损与紧急停止由代码控制", "Limits, leverage, loss, and emergency stops are code-enforced"],
+    "cap.strategyBoundary": ["未完成历史、前向验证和批准的版本，只能研究，不能进入实盘计划", "Versions without historical validation, forward validation, and approval remain research-only and cannot enter live plans"],
+    "cap.operationsTitle": ["事件与任务唤醒判断", "Events and tasks wake decisions"],
+    "cap.operationsBoundary": ["调度只负责何时分析，不能跳过模型审查、权限或硬风控直接下单", "Scheduling decides when to analyze; it cannot skip model review, authority, or hard risk checks to place an order"],
+    "cap.riskTitle": ["在账户授权内执行", "Execute inside account authority"],
+    "cap.riskBoundary": ["账户、Key、环境、额度、杠杆、亏损、保护单和紧急停止均由代码校验", "Account, key, environment, limits, leverage, loss, protection, and emergency-stop facts are all code-verified"],
+    "cap.auditTitle": ["归因、对账与审计", "Attribution, reconciliation, and audit"],
+    "cap.auditBoundary": ["Provider、审查结果、成交费用或订单终态无法证明时，阻断新风险并等待权威事实恢复", "When provider, critic result, trade costs, or order finality cannot be proven, new risk is blocked until authoritative facts recover"],
 
     "common.all": ["全部", "All"],
     "common.items": ["条", "items"],
@@ -90,19 +92,25 @@
     "common.medium": ["中", "Medium"],
     "common.low": ["低", "Low"],
 
-    "app.realUi": ["真实产品界面", "REAL PRODUCT UI"],
+    "app.realUi": ["基于真实功能的界面演示", "REAL-CAPABILITY UI DEMO"],
     "app.synced": ["事实同步于 12 秒前", "Facts synced 12 seconds ago"],
-    "app.demoData": ["示例数据 · 事实同步于 12 秒前", "DEMO DATA · Facts synced 12 seconds ago"],
+    "app.demoData": ["产品演示数据 · 非真实账户 · 事实同步演示", "PRODUCT DEMO DATA · NOT A REAL ACCOUNT · FACT-SYNC DEMO"],
+    "app.demoBadge": ["产品演示", "PRODUCT DEMO"],
     "app.workspace": ["产品工作区", "WORKSPACES"],
+    "app.aiTrader": ["AI 交易员", "AI Trader"],
     "app.intel": ["情报中心", "Intelligence"],
     "app.knowledge": ["知识库", "Knowledge"],
     "app.strategy": ["策略库", "Strategies"],
     "app.operations": ["事件与任务", "Events & Tasks"],
     "app.risk": ["资金与边界", "Capital & Limits"],
     "app.guardOnline": ["硬风控在线", "Hard risk online"],
-    "app.sevenGates": ["7 / 7 安全闸可用", "7 / 7 safety gates available"],
+    "app.sevenGates": ["演示：7 / 7 安全闸可用", "DEMO: 7 / 7 safety gates available"],
     "app.crumb": ["工作台 / 实盘主账户", "Workspace / Primary live account"],
     "app.autonomous": ["自动交易", "Automatic trading"],
+    "app.savedMode": ["执行方式", "Saved mode"],
+    "app.actualState": ["当前状态", "Current state"],
+    "app.runningNormally": ["正常运行", "Running normally"],
+    "app.viewLimits": ["查看边界", "View boundaries"],
     "app.reduceOnly": ["只分析", "Analysis only"],
     "app.pause": ["逐笔确认", "Confirm each trade"],
     "app.accountEquity": ["账户权益", "Account equity"],
@@ -158,16 +166,46 @@
     "intel.macroData": ["宏观数据", "Macro data"],
     "intel.contextOnly": ["当前情报只进入分析上下文，不会直接触发下单。", "This intelligence enters analysis context only and never triggers an order directly."],
 
+    "ai.sessionTitle": ["自主巡检 · BTC / USDT", "Autonomous scan · BTC / USDT"],
+    "ai.sessionMeta": ["自动汇总 · 4 个事实域 · 09:42:31", "Automatic synthesis · 4 fact domains · 09:42:31"],
+    "ai.noOrder": ["本轮未下单", "NO ORDER THIS RUN"],
+    "ai.userPrompt": ["结合最新行情、情报、我的知识库和已批准策略，判断 BTC 现在是否存在可执行机会。", "Use the latest market data, intelligence, my knowledge base, and approved strategies to decide whether BTC has an executable opportunity now."],
+    "ai.answerTitle": ["结论：继续观察，暂不新开仓", "Conclusion: keep watching; do not open a position"],
+    "ai.answerText": ["价格与未平仓量同向上升，宏观情报偏正面；但盘口深度确认尚未持续到策略要求的时间窗。当前没有满足全部入场条件，自动交易不会为了“看起来不错”而提交订单。", "Price and open interest rose together and macro intelligence is constructive, but order-book depth has not held for the strategy's required window. Entry conditions are incomplete, so automatic trading will not submit an order merely because the setup looks promising."],
+    "ai.structuredDecision": ["结构化决策", "STRUCTURED DECISION"],
+    "ai.observeDecision": ["观察 · 不下单", "OBSERVE · NO ORDER"],
+    "ai.entryCondition": ["等待条件", "WAITING FOR"],
+    "ai.entryValue": ["5 分钟盘口深度连续确认", "5-minute sustained depth confirmation"],
+    "ai.invalidation": ["失效条件", "INVALIDATION"],
+    "ai.nextReview": ["下次复核", "NEXT REVIEW"],
+    "ai.chainTitle": ["决策与执行链", "Decision & execution chain"],
+    "ai.primaryModel": ["Gemini 主分析", "Gemini primary analysis"],
+    "ai.primaryMeta": ["实际 Provider 已归因 · 高推理", "Actual provider attributed · high reasoning"],
+    "ai.criticModel": ["DeepSeek 独立审查", "DeepSeek independent critic"],
+    "ai.criticMeta": ["发现 1 项未满足条件 · 拒绝入场", "Found one unmet condition · entry rejected"],
+    "ai.riskGate": ["确定性硬风控", "Deterministic hard risk"],
+    "ai.riskMeta": ["账户、额度、事件窗与保护能力已校验", "Account, limits, event window, and protection verified"],
+    "ai.outcome": ["最终动作", "Final action"],
+    "ai.outcomeMeta": ["保持观察 · 未创建订单意图", "Keep observing · no order intent created"],
+    "ai.auditReady": ["审计证据可重算", "Audit evidence is recomputable"],
+    "ai.auditMeta": ["Prompt · 工具 · 模型输出 · Provider · 最终计划", "Prompt · tools · model outputs · provider · final plan"],
+
     "knowledge.title": ["研究中心", "Research"],
     "knowledge.capabilities": ["能力库", "Capabilities"],
     "knowledge.import": ["导入知识", "Import knowledge"],
     "knowledge.parse": ["解析来源", "Parse sources"],
+    "knowledge.searchable": ["建立检索索引", "Build retrieval index"],
+    "knowledge.networkReady": ["连接知识网络", "Connect knowledge graph"],
     "knowledge.distill": ["蒸馏方法", "Distill methods"],
     "knowledge.compile": ["编译技能", "Compile skills"],
     "knowledge.validate": ["验证批准", "Validate & approve"],
     "knowledge.liveUse": ["实盘采用", "Live use"],
     "knowledge.indexHealth": ["索引健康度", "Index health"],
     "knowledge.citations": ["可追溯引用", "Traceable citations"],
+    "knowledge.graphRelations": ["知识网络关系", "Knowledge graph relations"],
+    "knowledge.concepts36": ["36 个概念已连接", "36 connected concepts"],
+    "knowledge.activeRules": ["生效条令", "Active doctrine"],
+    "knowledge.rulesBoundary": ["只影响分析与硬边界", "Affects analysis and hard boundaries only"],
     "knowledge.sourceAnchors": ["页码与来源锚点", "Page and source anchors"],
     "knowledge.readySkills": ["候选技能", "Candidate skills"],
     "knowledge.awaitingApproval": ["项等待批准", "awaiting approval"],
@@ -210,8 +248,8 @@
     "knowledge.hardBlock": ["确定性硬拦截", "Deterministic hard block"],
     "knowledge.rule2": ["突破必须得到成交量确认", "Breakouts require volume confirmation"],
     "knowledge.agentLens": ["Agent 分析透镜", "Agent analysis lens"],
-    "knowledge.truthTitle": ["交易方法 ≠ 已上岗策略。", "A trading method is not a live strategy."],
-    "knowledge.truthText": ["只有完成历史验证、前向验证和人工批准的技能，才可能按匹配信号进入交易计划。", "Only skills that complete historical validation, forward validation, and human approval may enter a trade plan on matching signals."],
+    "knowledge.truthTitle": ["知识可被检索、引用和连接，但不会直接下单。", "Knowledge can be retrieved, cited, and connected, but cannot place an order directly."],
+    "knowledge.truthText": ["从书籍提取的交易方法会交给策略库继续做版本化、历史验证、前向验证和审批；可调用工具与运行权限由能力库管理。", "Methods extracted from books move to the strategy library for versioning, historical validation, forward validation, and approval; callable tools and runtime permissions belong to the capability library."],
 
     "strategy.title": ["策略库", "Strategy Library"],
     "strategy.catalog": ["策略目录", "Strategy Catalog"],
@@ -365,15 +403,19 @@
     "compare.note": ["比较基于系统设计目标，不代表任何收益优劣；交易风险始终存在。", "Comparison describes system design goals, not return superiority. Trading risk always remains."],
 
     "guard.title": ["飞得更远之前，先知道哪里不能去。", "Before going farther, define where not to go."],
-    "guard.lead": ["每一项能力旁边，都有一个不能被模型绕过的边界。点击下面的环节，在真实 App 界面中查看它们如何同时工作。", "Every capability has a boundary the model cannot bypass. Select a stage below to see both working together in the real App interface."],
+    "guard.lead": ["模型负责理解和提出计划，代码负责权限、风险与执行事实。任何关键证据缺失时，系统都不会把“不确定”伪装成“可以交易”。点击下方能力可查看对应产品界面。", "Models understand and propose; code owns authority, risk, and execution facts. Missing critical evidence is never disguised as permission to trade. Select a capability below to inspect its product surface."],
     "guard.oneTitle": ["密钥不进入模型", "Secrets never enter the model"],
     "guard.oneText": ["API Secret、Passphrase 与敏感令牌隔离于模型上下文、前端和普通日志。", "API secrets, passphrases, and sensitive tokens are isolated from model context, the frontend, and ordinary logs."],
     "guard.twoTitle": ["权限由你定义", "You define authority"],
     "guard.twoText": ["交易所、币种、策略、单笔风险、杠杆、日亏损和有效期都有明确上限。", "Exchange, symbols, strategies, per-trade risk, leverage, daily loss, and expiry all have explicit limits."],
-    "guard.threeTitle": ["保护无法证明则降级", "Unproven protection means degraded mode"],
+    "guard.threeTitle": ["无法证明则暂停新风险", "Unproven facts pause new risk"],
     "guard.threeText": ["止损、订单、持仓或财务事实不可确认时，不会以“看起来正常”继续开仓。", "When stops, orders, positions, or financial facts cannot be proven, the system does not keep opening risk because things merely look normal."],
-    "guard.fourTitle": ["紧急停止与自动暂停新开仓", "Emergency stop and automatic entry pause"],
+    "guard.fourTitle": ["紧急停止可随时接管", "Emergency stop can take over anytime"],
     "guard.fourText": ["异常、事件窗口或操作员指令可暂停新仓，并持续跟踪撤单与退出结果。", "Anomalies, event windows, or an operator command can freeze new risk while cancellations and exits remain tracked."],
+    "guard.oneShort": ["Secret 与 Passphrase 隔离", "Secrets and passphrases isolated"],
+    "guard.twoShort": ["交易范围与资金上限明确", "Explicit scope and capital limits"],
+    "guard.threeShort": ["继续管理已有仓位并自动恢复", "Existing positions stay managed; recovery is automatic"],
+    "guard.fourShort": ["撤单、平仓与结果持续跟踪", "Cancellations, exits, and outcomes remain tracked"],
     "closing.title": ["TO THE MOON.<br><em>WITH A FLIGHT PLAN.</em>", "TO THE MOON.<br><em>WITH A FLIGHT PLAN.</em>"],
     "closing.text": ["让 AI 持续理解，让系统守住边界，让每一次行动都留下证据。", "Let AI sustain understanding, let the system hold the boundaries, and let every action leave evidence."],
     "footer.tagline": ["有边界的 AI 自主交易系统", "Bounded autonomous AI trading"],
@@ -529,6 +571,16 @@
     if (!proof) return;
     var controls = Array.prototype.slice.call(proof.querySelectorAll("[data-product-tab]"));
     var panels = Array.prototype.slice.call(proof.querySelectorAll("[data-product-panel]"));
+    var aiControls = Array.prototype.slice.call(proof.querySelectorAll("[data-ai-view]"));
+    var aiPanels = Array.prototype.slice.call(proof.querySelectorAll("[data-ai-view-panel]"));
+    function activateAiView(id) {
+      aiControls.forEach(function (control) {
+        control.classList.toggle("active", control.getAttribute("data-ai-view") === id);
+      });
+      aiPanels.forEach(function (panel) {
+        panel.hidden = panel.getAttribute("data-ai-view-panel") !== id;
+      });
+    }
     function activate(id, scrollToPanel) {
       controls.forEach(function (control) {
         var active = control.getAttribute("data-product-tab") === id;
@@ -551,6 +603,10 @@
         activate(control.getAttribute("data-product-tab"), fromBoundary);
       });
     });
+    aiControls.forEach(function (control) {
+      control.addEventListener("click", function () { activateAiView(control.getAttribute("data-ai-view")); });
+    });
+    activateAiView("dialog");
     activate("intel", false);
   }
 

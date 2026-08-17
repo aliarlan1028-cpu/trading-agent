@@ -183,15 +183,15 @@
           </div>
           <div class="product-proof ta-reveal" id="productProof">
             <header class="product-proof__head">
-              <span><i></i>KORDYN APP · <b data-i18n="app.realUi">真实产品界面</b></span>
-              <div><strong>OKX · PRODUCTION</strong><em data-i18n="app.demoData">示例数据 · 事实同步于 12 秒前</em></div>
+              <span><i></i>KORDYN APP · <b data-i18n="app.realUi">基于真实功能的界面演示</b></span>
+              <div><strong>OKX · PRODUCT DEMO</strong><em data-i18n="app.demoData">产品演示数据 · 非真实账户 · 事实同步演示</em></div>
             </header>
 
             <div class="app-showcase">
               <aside class="app-showcase__nav">
                 <div class="app-mini-brand"><img src="/kordyn-logo-white.svg" alt=""><span><b>KORDYN</b><small>MISSION CONTROL</small></span></div>
                 <p data-i18n="app.workspace">产品工作区</p>
-                <button class="is-active" type="button" data-product-tab="intel" aria-controls="product-panel-intel" aria-selected="true"><i>◎</i><span><b data-i18n="app.intel">情报中心</b><small>AI TRADER</small></span><em>18</em></button>
+                <button class="is-active" type="button" data-product-tab="intel" aria-controls="product-panel-intel" aria-selected="true"><i>◎</i><span><b data-i18n="app.aiTrader">AI 交易员</b><small>AI TRADER</small></span><em>LIVE</em></button>
                 <button type="button" data-product-tab="knowledge" aria-controls="product-panel-knowledge" aria-selected="false"><i>⌘</i><span><b data-i18n="app.knowledge">知识库</b><small>RESEARCH</small></span></button>
                 <button type="button" data-product-tab="strategy" aria-controls="product-panel-strategy" aria-selected="false"><i>◇</i><span><b data-i18n="app.strategy">策略库</b><small>STRATEGIES</small></span><em>3</em></button>
                 <button type="button" data-product-tab="operations" aria-controls="product-panel-operations" aria-selected="false"><i>▦</i><span><b data-i18n="app.operations">事件与任务</b><small>OPERATIONS</small></span><em>24</em></button>
@@ -202,7 +202,7 @@
               <div class="app-showcase__main">
                 <div class="app-topbar">
                   <div><span class="app-crumb" data-i18n="app.crumb">工作台 / 实盘主账户</span><b>BTC-USDT-SWAP <i>+2.46%</i></b></div>
-                  <div class="app-runtime"><span><i></i><b data-i18n="app.autonomous">自动交易</b></span><button type="button" data-product-tab="risk" data-i18n="app.reduceOnly">只分析</button><button type="button" data-product-tab="risk" data-i18n="app.pause">逐笔确认</button></div>
+                  <div class="app-runtime"><span><small data-i18n="app.savedMode">执行方式</small><b data-i18n="app.autonomous">自动交易</b></span><span class="app-runtime__actual"><small data-i18n="app.actualState">当前状态</small><b data-i18n="app.runningNormally">正常运行</b></span><button type="button" data-product-tab="risk" data-i18n="app.viewLimits">查看边界</button></div>
                 </div>
                 <div class="app-market-strip" aria-label="示例账户与市场遥测">
                   <article><span><i class="asset-dot btc"></i>BTC / USDT</span><b>118,420.6</b><em class="good">+2.46%</em><div class="mini-bars up"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
@@ -214,8 +214,17 @@
                 </div>
 
                 <section class="product-panel is-active" id="product-panel-intel" data-product-panel="intel">
-                  <div class="ui-workspace-head"><div><span>AI TRADER</span><h3 data-i18n="intel.title">AI 交易员</h3></div><nav><b data-i18n="intel.dialog">对话</b><b class="active" data-i18n="intel.tab">情报</b><b data-i18n="intel.watch">盯盘</b></nav><button data-i18n="intel.refresh">刷新情报</button></div>
-                  <div class="ui-intel-grid">
+                  <div class="ui-workspace-head"><div><span>AI TRADER</span><h3 data-i18n="intel.title">AI 交易员</h3></div><nav class="ui-ai-tabs"><button class="active" type="button" data-ai-view="dialog" data-i18n="intel.dialog">对话</button><button type="button" data-ai-view="intel" data-i18n="intel.tab">情报</button><b data-i18n="intel.watch">盯盘</b></nav><button type="button" data-product-tab="risk" data-i18n="app.viewLimits">查看边界</button></div>
+                  <div class="ui-ai-dialog" data-ai-view-panel="dialog">
+                    <article class="ui-card ui-ai-thread">
+                      <header><div><i></i><span><b data-i18n="ai.sessionTitle">自主巡检 · BTC / USDT</b><small data-i18n="ai.sessionMeta">自动汇总 · 4 个事实域 · 09:42:31</small></span></div><em data-i18n="ai.noOrder">本轮未下单</em></header>
+                      <div class="ui-chat-message ui-chat-message--user"><span>YOU</span><p data-i18n="ai.userPrompt">结合最新行情、情报、我的知识库和已批准策略，判断 BTC 现在是否存在可执行机会。</p></div>
+                      <div class="ui-chat-message ui-chat-message--agent"><span>AI</span><div><b data-i18n="ai.answerTitle">结论：继续观察，暂不新开仓</b><p data-i18n="ai.answerText">价格与未平仓量同向上升，宏观情报偏正面；但盘口深度确认尚未持续到策略要求的时间窗。当前没有满足全部入场条件，自动交易不会为了“看起来不错”而提交订单。</p><div class="ui-evidence-chips"><i>OKX · 12s</i><i>GEMINI · 4 SOURCES</i><i>KNOWLEDGE · 3 CITES</i><i>STRATEGY v1.4</i><i>CALENDAR · CLEAR</i></div></div></div>
+                      <div class="ui-decision-plan"><header><span><small data-i18n="ai.structuredDecision">结构化决策</small><b data-i18n="ai.observeDecision">观察 · 不下单</b></span><em>CONFIDENCE 74%</em></header><div><span><small data-i18n="ai.entryCondition">等待条件</small><b data-i18n="ai.entryValue">5 分钟盘口深度连续确认</b></span><span><small data-i18n="ai.invalidation">失效条件</small><b>BTC &lt; 117,820</b></span><span><small data-i18n="ai.nextReview">下次复核</small><b>09:47</b></span></div></div>
+                    </article>
+                    <aside class="ui-card ui-decision-chain"><header><b data-i18n="ai.chainTitle">决策与执行链</b><small>TRACE A-2841</small></header><div><span class="done"><i>1</i><p><b data-i18n="ai.primaryModel">Gemini 主分析</b><small data-i18n="ai.primaryMeta">实际 Provider 已归因 · 高推理</small></p></span><span class="done"><i>2</i><p><b data-i18n="ai.criticModel">DeepSeek 独立审查</b><small data-i18n="ai.criticMeta">发现 1 项未满足条件 · 拒绝入场</small></p></span><span class="done"><i>3</i><p><b data-i18n="ai.riskGate">确定性硬风控</b><small data-i18n="ai.riskMeta">账户、额度、事件窗与保护能力已校验</small></p></span><span class="active"><i>4</i><p><b data-i18n="ai.outcome">最终动作</b><small data-i18n="ai.outcomeMeta">保持观察 · 未创建订单意图</small></p></span></div><footer><i>✓</i><span><b data-i18n="ai.auditReady">审计证据可重算</b><small data-i18n="ai.auditMeta">Prompt · 工具 · 模型输出 · Provider · 最终计划</small></span></footer></aside>
+                  </div>
+                  <div class="ui-intel-grid" data-ai-view-panel="intel" hidden>
                     <aside class="ui-filter"><strong data-i18n="intel.categories">情报分类</strong><span class="active"><b data-i18n="common.all">全部</b><em>18</em></span><span><b data-i18n="intel.flash">快讯</b><em>9</em></span><span><b data-i18n="intel.macro">宏观</b><em>3</em></span><span><b data-i18n="intel.market">市场</b><em>4</em></span><span><b data-i18n="intel.knowledge">知识</b><em>2</em></span><small data-i18n="intel.confidence">置信度 ≥ 70%</small></aside>
                     <div class="ui-intel-feed">
                       <div class="ui-metrics">
@@ -240,14 +249,14 @@
 
                 <section class="product-panel" id="product-panel-knowledge" data-product-panel="knowledge" hidden>
                   <div class="ui-workspace-head"><div><span>RESEARCH</span><h3 data-i18n="knowledge.title">研究中心</h3></div><nav><b class="active" data-i18n="app.knowledge">知识库</b><b data-i18n="app.strategy">策略库</b><b data-i18n="knowledge.capabilities">能力库</b></nav><button data-i18n="knowledge.import">导入知识</button></div>
-                  <div class="ui-pipeline"><span class="done"><i>1</i><b data-i18n="knowledge.parse">解析来源</b><small>12</small></span><em>→</em><span class="done"><i>2</i><b data-i18n="knowledge.distill">蒸馏方法</b><small>28</small></span><em>→</em><span class="active"><i>3</i><b data-i18n="knowledge.compile">编译技能</b><small>9</small></span><em>→</em><span><i>4</i><b data-i18n="knowledge.validate">验证批准</b><small>3</small></span><em>→</em><span><i>5</i><b data-i18n="knowledge.liveUse">实盘采用</b><small>2</small></span></div>
-                  <div class="ui-knowledge-stats"><article><span data-i18n="knowledge.indexHealth">索引健康度</span><b>98.7%</b><em class="good">12 / 12 ONLINE</em></article><article><span data-i18n="knowledge.citations">可追溯引用</span><b>184</b><em data-i18n="knowledge.sourceAnchors">页码与来源锚点</em></article><article><span data-i18n="knowledge.readySkills">候选技能</span><b>9</b><em>3 <i data-i18n="knowledge.awaitingApproval">项等待批准</i></em></article><article><span data-i18n="knowledge.lastCompile">最近编译</span><b>09:41</b><em data-i18n="knowledge.compileSuccess">无冲突 · 通过</em></article></div>
+                  <div class="ui-pipeline ui-pipeline--knowledge"><span class="done"><i>1</i><b data-i18n="knowledge.parse">解析来源</b><small>12</small></span><em>→</em><span class="done"><i>2</i><b data-i18n="knowledge.searchable">建立检索索引</b><small>184</small></span><em>→</em><span class="active"><i>3</i><b data-i18n="knowledge.networkReady">连接知识网络</b><small>36</small></span></div>
+                  <div class="ui-knowledge-stats"><article><span data-i18n="knowledge.indexHealth">索引健康度</span><b>98.7%</b><em class="good">12 / 12 ONLINE</em></article><article><span data-i18n="knowledge.citations">可追溯引用</span><b>184</b><em data-i18n="knowledge.sourceAnchors">页码与来源锚点</em></article><article><span data-i18n="knowledge.graphRelations">知识网络关系</span><b>62</b><em data-i18n="knowledge.concepts36">36 个概念已连接</em></article><article><span data-i18n="knowledge.activeRules">生效条令</span><b>5</b><em data-i18n="knowledge.rulesBoundary">只影响分析与硬边界</em></article></div>
                   <div class="ui-knowledge-grid">
                     <article class="ui-card ui-source-card"><header><b data-i18n="knowledge.sources">知识源</b><small>12 <span data-i18n="common.items">项</span></small></header><table><thead><tr><th data-i18n="common.name">名称</th><th data-i18n="common.type">类型</th><th data-i18n="common.status">状态</th><th data-i18n="knowledge.effect">实际作用</th></tr></thead><tbody><tr><td data-i18n="knowledge.source1">专业交易系统与方法</td><td>PDF</td><td><span class="ui-pill good" data-i18n="knowledge.indexed">已索引</span></td><td data-i18n="knowledge.methods8">8 条方法</td></tr><tr><td data-i18n="knowledge.source2">BTC 突破交易复盘</td><td data-i18n="knowledge.review">复盘</td><td><span class="ui-pill good" data-i18n="knowledge.active">已生效</span></td><td data-i18n="knowledge.lessons4">4 条经验</td></tr><tr><td data-i18n="knowledge.source3">风险管理条令</td><td data-i18n="knowledge.doctrine">条令</td><td><span class="ui-pill warn" data-i18n="knowledge.pending">待审批</span></td><td data-i18n="knowledge.rules3">3 条规则</td></tr><tr><td data-i18n="knowledge.source4">订单簿微观结构笔记</td><td>NOTE</td><td><span class="ui-pill good" data-i18n="knowledge.indexed">已索引</span></td><td data-i18n="knowledge.signals6">6 条信号</td></tr><tr><td data-i18n="knowledge.source5">宏观事件反应手册</td><td data-i18n="knowledge.playbook">手册</td><td><span class="ui-pill good" data-i18n="knowledge.active">已生效</span></td><td data-i18n="knowledge.scenarios7">7 个情景</td></tr></tbody></table></article>
                     <article class="ui-card ui-graph-card"><header><b data-i18n="knowledge.network">概念与知识网络</b><small>36 <span data-i18n="knowledge.concepts">个概念</span></small></header><div class="ui-knowledge-graph" aria-label="交易知识概念关系"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><span class="core" data-i18n="knowledge.breakout">突破交易</span><span class="node n1" data-i18n="knowledge.volume">成交量确认</span><span class="node n2" data-i18n="knowledge.falseBreak">假突破</span><span class="node n3" data-i18n="knowledge.liquidity">流动性</span><span class="node n4" data-i18n="knowledge.stop">结构止损</span><span class="node n5" data-i18n="knowledge.volatility">波动率</span><span class="node n6" data-i18n="knowledge.openInterest">未平仓量</span><span class="node n7" data-i18n="knowledge.eventWindow">事件窗口</span><div class="graph-legend"><span><i></i><b data-i18n="knowledge.approvedRelation">已批准关系</b></span><span><i></i><b data-i18n="knowledge.pendingRelation">待验证关系</b></span></div></div></article>
                     <article class="ui-card ui-doctrine-card"><header><b data-i18n="knowledge.doctrineLive">生效中的条令</b><small>5 ACTIVE</small></header><div><span><i class="green">2</i><b data-i18n="knowledge.lenses">分析透镜</b></span><span><i class="red">3</i><b data-i18n="knowledge.ironRules">风控铁律</b></span></div><p><b data-i18n="knowledge.rule1">不在数据过期时新开仓</b><small data-i18n="knowledge.hardBlock">确定性硬拦截</small></p><p><b data-i18n="knowledge.rule2">突破必须得到成交量确认</b><small data-i18n="knowledge.agentLens">Agent 分析透镜</small></p></article>
                   </div>
-                  <div class="ui-truth-note"><i>!</i><p><b data-i18n="knowledge.truthTitle">交易方法 ≠ 已上岗策略。</b><span data-i18n="knowledge.truthText">只有完成历史验证、前向验证和人工批准的技能，才可能按匹配信号进入交易计划。</span></p></div>
+                  <div class="ui-truth-note"><i>!</i><p><b data-i18n="knowledge.truthTitle">知识可被检索、引用和连接，但不会直接下单。</b><span data-i18n="knowledge.truthText">从书籍提取的交易方法会交给策略库继续做版本化、历史验证、前向验证和审批；可调用工具与运行权限由能力库管理。</span></p></div>
                 </section>
 
                 <section class="product-panel" id="product-panel-strategy" data-product-panel="strategy" hidden>
@@ -283,15 +292,16 @@
             </div>
 
             <div class="cap-boundary-strip" id="guardrails">
-              <div class="cap-boundary-copy"><span class="section-index">CAPABILITY × BOUNDARY</span><h3 data-i18n="guard.title">飞得更远之前，先知道哪里不能去。</h3><div><p data-i18n="guard.lead">每一项能力旁边，都有一个不能被模型绕过的边界。点击下面的环节，在真实 App 界面中查看它们如何同时工作。</p><button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button></div></div>
+              <div class="cap-boundary-copy"><span class="section-index">CAPABILITY × BOUNDARY · <b data-i18n="app.demoBadge">产品演示</b></span><h3 data-i18n="guard.title">飞得更远之前，先知道哪里不能去。</h3><div><p data-i18n="guard.lead">模型负责理解和提出计划，代码负责权限、风险与执行事实。任何关键证据缺失时，系统都不会把“不确定”伪装成“可以交易”。点击下方能力可查看对应产品界面。</p><button class="button button--primary" type="button" data-action="subscribe"><span data-i18n="cta.request">申请开通</span><b>↗</b></button></div></div>
               <div class="cap-boundary-list">
-                <button class="is-active" type="button" data-product-tab="intel"><span>01</span><b data-i18n="cap.intelTitle">汇总实时情报</b><small data-i18n="cap.intelBoundary">数据过期或来源不足，不形成确定结论</small></button>
-                <button type="button" data-product-tab="knowledge"><span>02</span><b data-i18n="cap.knowledgeTitle">调用专业知识</b><small data-i18n="cap.knowledgeBoundary">未经审批的自由文本不会成为系统指令</small></button>
-                <button type="button" data-product-tab="strategy"><span>03</span><b data-i18n="cap.strategyTitle">采用版本化策略</b><small data-i18n="cap.strategyBoundary">未验证、未批准的版本不能进入实盘</small></button>
-                <button type="button" data-product-tab="operations"><span>04</span><b data-i18n="cap.operationsTitle">持续监控事件与任务</b><small data-i18n="cap.operationsBoundary">任务只能唤醒判断，不能绕过风控下单</small></button>
-                <button type="button" data-product-tab="risk"><span>05</span><b data-i18n="cap.riskTitle">在授权范围内执行</b><small data-i18n="cap.riskBoundary">额度、杠杆、亏损与紧急停止由代码控制</small></button>
+                <button class="is-active" type="button" data-product-tab="intel"><span>01 · UNDERSTAND</span><b data-i18n="cap.intelTitle">AI 综合市场事实</b><small data-i18n="cap.intelBoundary">行情、情报、账户或微观结构过期时，只能观察，不能把猜测升级成订单</small></button>
+                <button type="button" data-product-tab="knowledge"><span>02 · RECALL</span><b data-i18n="cap.knowledgeTitle">调用可追溯知识</b><small data-i18n="cap.knowledgeBoundary">知识必须保留来源与引用；书籍自由文本不会直接成为交易指令</small></button>
+                <button type="button" data-product-tab="strategy"><span>03 · VALIDATE</span><b data-i18n="cap.strategyTitle">采用版本化策略</b><small data-i18n="cap.strategyBoundary">未完成历史、前向验证和批准的版本，只能研究，不能进入实盘计划</small></button>
+                <button type="button" data-product-tab="operations"><span>04 · WAKE</span><b data-i18n="cap.operationsTitle">事件与任务唤醒判断</b><small data-i18n="cap.operationsBoundary">调度只负责何时分析，不能跳过模型审查、权限或硬风控直接下单</small></button>
+                <button type="button" data-product-tab="risk"><span>05 · EXECUTE</span><b data-i18n="cap.riskTitle">在账户授权内执行</b><small data-i18n="cap.riskBoundary">账户、Key、环境、额度、杠杆、亏损、保护单和紧急停止均由代码校验</small></button>
+                <button type="button" data-product-tab="risk"><span>06 · PROVE</span><b data-i18n="cap.auditTitle">归因、对账与审计</b><small data-i18n="cap.auditBoundary">Provider、审查结果、成交费用或订单终态无法证明时，阻断新风险并等待权威事实恢复</small></button>
               </div>
-              <div class="boundary-foundation"><span><i>01</i><b data-i18n="guard.oneTitle">密钥不进入模型</b></span><span><i>02</i><b data-i18n="guard.twoTitle">权限由你定义</b></span><span><i>03</i><b data-i18n="guard.threeTitle">无法证明则降级</b></span><span><i>04</i><b data-i18n="guard.fourTitle">紧急停止与自动暂停新开仓</b></span></div>
+              <div class="boundary-foundation"><span><i>01</i><p><b data-i18n="guard.oneTitle">密钥不进入模型</b><small data-i18n="guard.oneShort">Secret 与 Passphrase 隔离</small></p></span><span><i>02</i><p><b data-i18n="guard.twoTitle">权限由你定义</b><small data-i18n="guard.twoShort">交易范围与资金上限明确</small></p></span><span><i>03</i><p><b data-i18n="guard.threeTitle">无法证明则暂停新风险</b><small data-i18n="guard.threeShort">继续管理已有仓位并自动恢复</small></p></span><span><i>04</i><p><b data-i18n="guard.fourTitle">紧急停止可随时接管</b><small data-i18n="guard.fourShort">撤单、平仓与结果持续跟踪</small></p></span></div>
             </div>
           </div>
         </div>

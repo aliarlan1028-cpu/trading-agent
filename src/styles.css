@@ -533,6 +533,7 @@ h3 {
   min-height: 0;
   margin: 0 auto;
   padding: 20px 24px 32px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -3625,8 +3626,8 @@ button.danger:disabled,
   background: #fbeae5;
 }
 
-/* 顶部只展示一个“当前实际状态”，旁边集中四个运行时安全动作。长期执行目标仍在
-   资金与交易边界中配置，避免把配置意图和临时风控状态混成多个互相矛盾的徽章。 */
+/* 顶部用一个事实卡同时展示“用户选择”和“当前实际状态”。页面内部不再重复状态，
+   从而避免把自动交易目标和临时暂停误读成互相冲突的两个开关。 */
 .appTopbar .exchangePill {
   height: 36px;
   padding: 0 10px;
@@ -3638,11 +3639,10 @@ button.danger:disabled,
 .runtimeStatePill {
   appearance: none;
   display: grid;
-  grid-template-columns: auto auto;
-  grid-template-rows: auto auto;
-  column-gap: 7px;
+  grid-template-columns: auto minmax(58px, auto) 1px minmax(70px, auto);
+  column-gap: 8px;
   align-items: center;
-  min-width: 130px;
+  min-width: 190px;
   height: 36px;
   padding: 4px 10px;
   border: 1px solid var(--border);
@@ -3653,9 +3653,11 @@ button.danger:disabled,
   text-align: left;
   cursor: pointer;
 }
-.runtimeStatePill>span { grid-row: 1 / 3; width: 7px; height: 7px; border-radius: 50%; background: #8b8173; }
-.runtimeStatePill small { color: var(--text-4); font: 650 7.5px var(--font-mono); letter-spacing: .08em; line-height: 1; }
-.runtimeStatePill b { max-width: 145px; overflow: hidden; color: var(--text); font-size: 10.5px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.runtimeStatePill>span { width: 7px; height: 7px; border-radius: 50%; background: #8b8173; }
+.runtimeStatePill>div { display:grid; gap:2px; min-width:0; }
+.runtimeStatePill>i { width:1px; height:20px; background:var(--hairline); }
+.runtimeStatePill small { color: var(--text-4); font: 650 7px var(--font-mono); letter-spacing: .08em; line-height: 1; }
+.runtimeStatePill b { max-width: 112px; overflow: hidden; color: var(--text); font-size: 10px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
 .runtimeStatePill.ok { border-color: #c9dfd0; background: #f7fbf8; }
 .runtimeStatePill.ok>span { background: var(--pos); box-shadow: 0 0 0 3px rgba(31,122,80,.1); }
 .runtimeStatePill.warning { border-color: #ead7b3; background: #fffaf0; }
@@ -3706,8 +3708,12 @@ button.danger:disabled,
 .runtimeReduceSummary small { color:var(--text-3); font-size:9.5px; line-height:1.5; }
 .runtimeReduceSummary.system { border-color:#ead7b3; background:#fffaf0; }
 .runtimeStatusReasons { display:grid; gap:7px; }
-.runtimeStatusReasons>div { display:flex; flex-wrap:wrap; gap:5px; }
-.runtimeStatusReasons span { padding:4px 7px; border-radius:999px; background:#fbefdd; color:#8c5d1c; font-size:9px; line-height:1.3; }
+.runtimeStatusReasons>div { display:grid; gap:6px; }
+.runtimeStatusReasons article { display:grid; gap:4px; padding:8px 9px; border:1px solid #ead7b3; border-radius:8px; background:#fffaf0; }
+.runtimeStatusReasons article>b { color:#8c5d1c; font-size:10px; line-height:1.4; }
+.runtimeStatusReasons article>p { margin:0; color:var(--text-3); font-size:9px; line-height:1.5; }
+.runtimeStatusReasons article>small { display:flex; align-items:flex-start; gap:5px; color:#6f685e; font-size:8.5px; line-height:1.5; }
+.runtimeStatusReasons article>small svg { flex:none; width:11px; height:11px; margin-top:1px; color:var(--accent); }
 .runtimeStatusLink { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text-2); font:650 10px var(--font-ui); cursor:pointer; }
 .runtimeStatusLink:hover { border-color:#d5a47d; color:var(--accent-ink); }
 
@@ -3755,7 +3761,7 @@ button.danger:disabled,
   .topEmergencyActions { grid-template-columns:repeat(2,minmax(64px,1fr)); min-width:140px; }
   .topEmergencyActions button { width:auto; padding:0 3px; gap:3px; font-size:8.5px; }
   .topEmergencyActions button svg { width:11px; height:11px; }
-  .runtimeStatePill { min-width:104px; }
+  .runtimeStatePill { min-width:172px; grid-template-columns:auto minmax(48px,auto) 1px minmax(58px,auto); column-gap:6px; }
   .appTopbar .exchangePill small { display: none; }
 }
 
@@ -7531,9 +7537,10 @@ button.danger:disabled,
 /* ============================================================
    Terminal「AI 交易员」右栏 —— 严格照设计稿 .dc.html
    ============================================================ */
-.chatShell { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; align-items: stretch; width: 100%; }
+.chatShell { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(280px, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; align-items: stretch; width: 100%; max-width:100%; min-width:0; overflow:hidden; }
 .chatShell .chatPage { max-width: none; margin: 0; min-width: 0; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.agRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; height: 100%; overflow-y: auto; padding-bottom: 8px; }
+.agRail { position:sticky; top:0; display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width:100%; height: 100%; overflow-x:hidden; overflow-y: auto; padding-bottom: 8px; }
+.agRail .agCard,.agRail .agCard *{min-width:0}.agRail p,.agRail small,.agRail b{overflow-wrap:anywhere}
 
 .agCard { background: #FBF9F5; border: 1px solid #E3DCCE; border-radius: 10px; padding: 11px 13px; display: flex; flex-direction: column; gap: 8px; }
 .agHeadNum { display: flex; align-items: center; gap: 6px; font: 700 10.5px "Space Grotesk"; color: #1E1B16; }

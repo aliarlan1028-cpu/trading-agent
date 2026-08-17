@@ -144,8 +144,9 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
         <button type="button" className={`runtimeStatePill ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
           <span />
-          <small>{t("当前运行", "RUNTIME")}</small>
-          <b>{runtime.label}</b>
+          <div><small>{t("执行方式", "MODE")}</small><b>{runtime.targetLabel}</b></div>
+          <i />
+          <div><small>{t("当前状态", "NOW")}</small><b>{runtime.label}</b></div>
         </button>
         {runtimeOpen && <>
           <div className="runtimeStatusBackdrop" onClick={()=>setRuntimeOpen(false)} />
@@ -160,7 +161,7 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
               <RefreshCw />
               <span><b>{runtime.recoveryLabel}</b><small>{runtime.primaryBlocker || t("当前没有阻止新开仓的系统原因。", "No system reason is blocking new entries.")}</small></span>
             </div>
-            {runtime.blockers.length > 0 && <div className="runtimeStatusReasons"><small>{t("当前限制原因", "CURRENT BLOCKERS")}</small><div>{runtime.blockers.map((label, index)=><span key={`${label}-${index}`}>{label}</span>)}</div></div>}
+            {runtime.blockerDetails.length > 0 && <div className="runtimeStatusReasons"><small>{t("当前限制原因与恢复方式", "BLOCKERS & RECOVERY")}</small><div>{runtime.blockerDetails.map((item, index)=><article key={item.code || `${item.label}-${index}`}><b>{localizeText(item.label || item)}</b>{item.detail && <p>{localizeText(item.detail)}</p>}{item.recovery && <small><RefreshCw/>{localizeText(item.recovery)}</small>}</article>)}</div></div>}
             <button type="button" className="runtimeStatusLink" onClick={()=>{setRuntimeOpen(false);setActive("riskMandate");}}>{t("查看长期执行目标与权限", "View saved execution target and permissions")}<ChevronRight size={14}/></button>
           </section>
         </>}
@@ -355,8 +356,9 @@ function App() {
     if (next === "signalHub") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
     if (next === "tradeJournal") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
     if (next === "tradeLedger") { setActiveWorkspaceTab("ledger"); setActive("cockpit"); return; }
-    if (next === "knowledgeBase") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
-    if (next === "capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
+    if (next === "knowledgeBase" || next === "researchCenter:knowledge") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
+    if (next === "capabilities" || next === "researchCenter:capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
+    if (next === "researchCenter:strategy") { setActiveStrategyTab("catalog"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
     if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveStrategyTab("catalog"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
     if (next === "strategyStudio") { setActiveStrategyTab("studio"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
     if (next === "riskOverview") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }

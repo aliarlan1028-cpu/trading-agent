@@ -125,6 +125,32 @@ test("risk workspace receives authoritative event windows separately from generi
   assert.equal(risk.riskIncidents[0].id, "recon");
 });
 
+test("workspace projections retain the facts required by review, readiness, and Agent settings", () => {
+  const cockpit = projectOverviewSection({
+    fills: [],
+    reconciliationReports: [{ id: "recon-1", status: "passed" }],
+    behaviorProfile: { totalTrades: 7 },
+    behaviorNarrative: { summary: "disciplined" },
+    reviewLearningAnalytics: { queued: 2 },
+    tradeDataStatus: { closedLifecycleTotal: 4, financiallyReconciledTrades: 3, pendingFinancialReconciliation: 1 },
+    executionOrderStatus: { total: 6, lastChangedAt: "2026-01-01T00:00:00.000Z" }
+  }, "cockpit");
+  assert.equal(cockpit.reconciliationReports[0].id, "recon-1");
+  assert.equal(cockpit.behaviorProfile.totalTrades, 7);
+  assert.equal(cockpit.behaviorNarrative.summary, "disciplined");
+  assert.equal(cockpit.reviewLearningAnalytics.queued, 2);
+  assert.equal(cockpit.tradeDataStatus.pendingFinancialReconciliation, 1);
+  assert.equal(cockpit.executionOrderStatus.total, 6);
+
+  const readiness = { operatingStage: { id: "small_live_ready" }, checks: [{ key: "okx", configured: true }] };
+  const risk = projectOverviewSection({ readiness }, "riskCenter");
+  assert.deepEqual(risk.readiness, readiness);
+
+  const profiles = [{ id: "agent-owner", name: "Owner Agent" }];
+  const settings = projectOverviewSection({ agentProfiles: profiles }, "systemSettings");
+  assert.deepEqual(settings.agentProfiles, profiles);
+});
+
 test("UI revisions are strictly monotonic", () => {
   const before = currentUiRevision();
   const first = uiSyncEvent("core_invalidated");
