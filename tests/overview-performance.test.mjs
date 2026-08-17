@@ -145,6 +145,8 @@ test("workspace projections retain the facts required by review, readiness, and 
   const readiness = { operatingStage: { id: "small_live_ready" }, checks: [{ key: "okx", configured: true }] };
   const risk = projectOverviewSection({ readiness }, "riskCenter");
   assert.deepEqual(risk.readiness, readiness);
+  const operations = projectOverviewSection({ readiness }, "operationsCenter");
+  assert.deepEqual(operations.readiness, readiness);
 
   const profiles = [{ id: "agent-owner", name: "Owner Agent" }];
   const settings = projectOverviewSection({ agentProfiles: profiles }, "systemSettings");
@@ -157,4 +159,12 @@ test("UI revisions are strictly monotonic", () => {
   const second = uiSyncEvent("portfolio");
   assert.ok(first.revision > before);
   assert.ok(second.revision > first.revision);
+});
+
+test("core uses the authenticated user's projected notification read state", () => {
+  const db = seedDatabase();
+  db.notifications = [{ id: "notice", read: false, readByUserIds: ["owner"] }];
+  const projected = [{ ...db.notifications[0], read: true }];
+  const core = buildCoreOverview(db, { revision: 20, notifications: projected });
+  assert.equal(core.notifications[0].read, true);
 });

@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept, MandateConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -448,6 +448,39 @@ test("unified automation presentation separates the saved target from the effect
   assert.equal(view.recoveryLabel, "原因解除后自动恢复");
   assert.equal(view.primaryBlocker, "账户核算基线或费用对账未完成");
   assert.equal("reduceOnlyControlState" in view, false, "产品层不再暴露第四种手工模式");
+});
+
+test("current runtime card does not repeat the same opening pause as a second badge", () => {
+  const runtimeData = {
+    ...data,
+    automationState: {
+      mode: "reduce_only", label: "暂停新开仓", requestedMode: "full_auto", runtimeStatus: "opening_paused",
+      blockerDetails: [{ code: "financial_reconciliation_pending", label: "账户核算基线或费用对账未完成" }]
+    }
+  };
+  const html = render(React.createElement(C.MandateConcept, { data: runtimeData, action, ui }));
+  assert.match(html, /当前运行状态/);
+  assert.match(html, /暂停新开仓/);
+  assert.doesNotMatch(html, /禁止新开仓/);
+});
+
+test("operations overview receives audit readiness and labels it as the hash chain", () => {
+  const html = render(React.createElement(C.OperationsOverviewConcept, {
+    data: {
+      ...data,
+      system: { ...data.system, apiHealth: "正常" },
+      realtimeStarted: true,
+      markets: [{ symbol: "BTC/USDT", updatedAt: new Date().toISOString() }],
+      accountSnapshots: [{ id: "snap", status: "ok" }],
+      readiness: { checks: [{ key: "audit_chain", configured: true }] }
+    },
+    action,
+    ui
+  }));
+  assert.match(html, /审计链校验/);
+  assert.match(html, /哈希链/);
+  assert.doesNotMatch(html, /前后端契约/);
+  assert.doesNotMatch(html, /待同步/);
 });
 
 test("analysis-only setup failures are not presented as a trading safety pause", () => {

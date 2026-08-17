@@ -1,19 +1,18 @@
 // 通知中心路由组（读/标已读 + 飞书/Telegram 状态与测试）—— 从 index.mjs 按 registrar 范式迁出。
+import { notificationVisibleToUser, visibleNotificationsForUser } from "../notificationStore.mjs";
+
 export function registerNotificationRoutes(app, ctx) {
   const {
     db, saveDb, requirePermission, nowIso, larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
     telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox
   } = ctx;
 
+  const viewer = (req) => ({ tenantId: req.tenantId || req.user?.tenantId || "tenant_owner", userId: req.user?.id || null });
   const visibleNotifications = (req) => (db.notifications || [])
-    .filter((item) => !item.tenantId || item.tenantId === (req.tenantId || "tenant_owner"))
-    .filter((item) => !item.recipientUserId || item.recipientUserId === req.user?.id);
+    .filter((item) => notificationVisibleToUser(item, viewer(req)));
 
   app.get("/api/notifications", requirePermission("account.read"), (req, res) => {
-    res.json(visibleNotifications(req).slice(0, 50).map((item) => ({
-      ...item,
-      read: (item.readByUserIds || []).includes(req.user?.id)
-    })));
+    res.json(visibleNotificationsForUser(db, viewer(req), { limit: 50 }));
   });
 
   // 标记已读:传 id 只标那一条(通知详情「标记已读」);不传 id 标全部(打开通知中心/「全部已读」清徽章)。

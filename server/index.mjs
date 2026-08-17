@@ -78,6 +78,7 @@ import {
 } from "./knowledgeSkills.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
 import { buildReadinessReport, createSystemBackup, deriveAutomationState } from "./ops.mjs";
+import { visibleNotificationsForUser } from "./notificationStore.mjs";
 import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
@@ -999,12 +1000,17 @@ function sendMeasuredJson(res, payload, metricName) {
 }
 
 app.get("/api/bootstrap/core", requirePermission("account.read"), (req, res) => {
+  const notifications = visibleNotificationsForUser(db, {
+    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
+    userId: req.user?.id || null
+  });
   const payload = buildCoreOverview(db, {
     revision: currentUiRevision(),
     user: sanitizeUserRecord(req.user || db.user),
     systemRelease: process.env.APP_RELEASE || "dev",
     automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
-    config: getConfigStatus(db)
+    config: getConfigStatus(db),
+    notifications
   });
   sendMeasuredJson(res, payload, "core_overview");
 });
@@ -1046,6 +1052,10 @@ function overviewActivePlusRecent(rows = [], activeStates, recentLimit) {
 // backtests/review analytics and opening Chat cannot build the risk workbench.
 function buildOverviewSectionSource(section, req, options = {}) {
   const performance = performanceReport(db);
+  const overviewNotifications = visibleNotificationsForUser(db, {
+    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
+    userId: req.user?.id || null
+  });
   const common = {
     user: sanitizeUserRecord(req.user || db.user),
     system: profitGoalSnapshot(db.system),
@@ -1060,7 +1070,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     marketRegime: db.marketRegime || null,
     watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     mandates: db.mandates,
-    notifications: db.notifications,
+    notifications: overviewNotifications,
     realtimeConnections: db.realtimeConnections,
     realtimeStarted: realtimeStatus(db).started,
     exchangeAccounts: db.exchangeAccounts,
@@ -1205,7 +1215,8 @@ function buildOverviewSectionSource(section, req, options = {}) {
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)),
     accountSnapshots: db.accountSnapshots,
     marketStream: marketStreamStatus(),
-    opportunityEngine: opportunityEngineStatus(db)
+    opportunityEngine: opportunityEngineStatus(db),
+    readiness: buildReadinessReport(db)
   };
 
   return {
@@ -1238,6 +1249,10 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
   res.set("Cache-Control", "no-store");
   res.vary("X-Native-Overview");
   const requestedSection = req.query.view === "section" ? String(req.query.section || "chat") : null;
+  const overviewNotifications = visibleNotificationsForUser(db, {
+    tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
+    userId: req.user?.id || null
+  });
   const allowedSections = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
   if (requestedSection && !allowedSections.has(requestedSection)) return res.status(400).json({ error: "unknown_overview_section" });
   const sectionBuilderV2 = process.env.OVERVIEW_SECTION_BUILDER_V2 !== "false";
@@ -1359,7 +1374,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
     reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
     jobRuns: db.jobRuns.slice(0, 20),
-    notifications: db.notifications,
+    notifications: overviewNotifications,
     missedOpportunities: (db.missedOpportunities || []).slice(0, 20),
     alerts: db.alerts?.slice(0, 20) || [],
     drillRuns: db.drillRuns?.slice(0, 10) || [],
@@ -1418,7 +1433,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     } : {}),
     runtimeConfig: db.runtimeConfig || {},
     config: getConfigStatus(db),
-    ...(needs("systemSettings") ? { readiness: buildReadinessReport(db) } : {}),
+    ...(needs("systemSettings", "operationsCenter") ? { readiness: buildReadinessReport(db) } : {}),
     // 分析透明度:如实汇总"当前真正在决策里起作用"的引擎配置(权重/阈值/兜底默认/LLM/工具目录)。
     // 动态信号(regime/聪明钱/异动/技能)前端直接用上面已有字段,这里只补静态但真实的引擎常量。
     ...(needs("researchCenter") ? { analysisEngine: {

@@ -1518,9 +1518,9 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
   if (!(ctVal > 0)) return null;
   const entryAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt || 0).getTime();
   const entryClientOrderId = cleanClOrdId(executionOrder.clientOrderId || "");
-  const entryOrder = (orders || []).find((order) => String(order.instId || "") === instId
+  const entryOrder = entryClientOrderId ? (orders || []).find((order) => String(order.instId || "") === instId
     && ["filled", "canceled"].includes(String(order.state || ""))
-    && cleanClOrdId(order.clOrdId || "") === entryClientOrderId);
+    && cleanClOrdId(order.clOrdId || "") === entryClientOrderId) : null;
   const seen = new Set();
   const matched = [];
   for (const order of orders || []) {
@@ -1556,7 +1556,10 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
   }
   if (!matched.length) return null;
   const quantity = matched.reduce((sum, item) => sum + item.quantity, 0);
-  const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const recordedExpectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const entryContracts = Number(entryOrder?.accFillSz || entryOrder?.fillSz || 0);
+  const entryQuantity = entryContracts > 0 ? entryContracts * ctVal : null;
+  const expectedQuantity = entryQuantity || recordedExpectedQuantity;
   const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
   const entryFeeUsdt = entryOrder ? okxFeeCost(entryOrder.fee) : null;
   const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance
@@ -1566,6 +1569,8 @@ export function summarizeOkxProtectionClosure(executionOrder, orders = []) {
     complete,
     quantity,
     expectedQuantity,
+    recordedExpectedQuantity,
+    entryQuantity,
     weightedPrice: quantity > 0 ? notional / quantity : null,
     realizedPnl: matched.reduce((sum, item) => sum + item.realizedPnl, 0),
     feeUsdt: matched.reduce((sum, item) => sum + item.feeUsdt, 0),
@@ -1642,10 +1647,13 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
   const entryFees = entryRows.map((row) => okxFeeCost(row.fee));
   const entryFeeUsdt = entryRows.length && entryFees.every((value) => value !== null)
     ? entryFees.reduce((sum, value) => sum + value, 0) : null;
+  const entryContracts = entryRows.reduce((sum, row) => sum + Number(row.fillSz || row.sz || 0), 0);
+  const entryQuantity = entryRows.length && entryContracts > 0 ? entryContracts * ctVal : null;
   const quantity = matched.reduce((sum, row) => sum + row.quantity, 0);
   const matchedChildOrderIds = new Set(matched.map((row) => String(row.exchangeOrderId || "")).filter(Boolean));
   const unmatchedChildOrderIds = [...triggeredOrderIds].filter((orderId) => !matchedChildOrderIds.has(orderId));
-  const expectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const recordedExpectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const expectedQuantity = entryQuantity || recordedExpectedQuantity;
   const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
   const complete = unmatchedChildOrderIds.length === 0
     && expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance && entryFeeUsdt !== null;
@@ -1655,6 +1663,8 @@ export function summarizeOkxProtectionClosureFromAlgoFills(executionOrder, algoR
     evidencePath: "orders-algo-history->ordId->fills-history:tradeId",
     quantity,
     expectedQuantity,
+    recordedExpectedQuantity,
+    entryQuantity,
     weightedPrice: quantity > 0 ? notional / quantity : null,
     realizedPnl: matched.reduce((sum, row) => sum + row.realizedPnl, 0),
     feeUsdt: matched.reduce((sum, row) => sum + row.feeUsdt, 0),
@@ -1803,8 +1813,12 @@ export function summarizeOkxManualClosure(executionOrder, fills = []) {
   }
   if (!matched.length || matched.some((row) => !Number.isFinite(row.realizedPnl) || !Number.isFinite(row.feeUsdt) || !row.closedAt)) return null;
   const quantity = matched.reduce((sum, row) => sum + row.quantity, 0);
-  const tolerance = Math.max(1e-10, expectedQuantity * 0.005, ctVal * 0.0001);
-  const complete = expectedQuantity > 0 && quantity + tolerance >= expectedQuantity && quantity <= expectedQuantity + tolerance;
+  const entryContracts = entryRows.reduce((sum, row) => sum + Number(row.fillSz || row.sz || 0), 0);
+  const entryQuantity = entryRows.length && entryContracts > 0 ? entryContracts * ctVal : null;
+  const recordedExpectedQuantity = expectedQuantity;
+  const authoritativeExpectedQuantity = entryQuantity || recordedExpectedQuantity;
+  const tolerance = Math.max(1e-10, authoritativeExpectedQuantity * 0.005, ctVal * 0.0001);
+  const complete = authoritativeExpectedQuantity > 0 && quantity + tolerance >= authoritativeExpectedQuantity && quantity <= authoritativeExpectedQuantity + tolerance;
   const notional = matched.reduce((sum, row) => sum + row.price * row.quantity, 0);
   const entryFeeValues = entryRows.map((row) => okxFeeCost(row.fee));
   const entryFeeUsdt = entryRows.length && entryFeeValues.every((value) => value !== null)
@@ -1812,7 +1826,9 @@ export function summarizeOkxManualClosure(executionOrder, fills = []) {
   return {
     complete,
     quantity,
-    expectedQuantity,
+    expectedQuantity: authoritativeExpectedQuantity,
+    recordedExpectedQuantity,
+    entryQuantity,
     weightedPrice: quantity > 0 ? notional / quantity : null,
     realizedPnl: matched.reduce((sum, row) => sum + row.realizedPnl, 0),
     feeUsdt: matched.reduce((sum, row) => sum + row.feeUsdt, 0),
@@ -1912,12 +1928,93 @@ async function fetchOkxFundingBills(executionOrder, window = {}) {
   }
 }
 
+export function applyOkxLifecycleFinancialEvidence(db, executionOrder, closure = {}) {
+  if (!executionOrder || closure.complete !== true || !finiteFinancialValue(closure.entryFeeUsdt)
+    || !finiteFinancialValue(closure.feeUsdt) || !finiteFinancialValue(closure.realizedPnl)) {
+    return { applied: false, reason: "authoritative_fee_evidence_incomplete" };
+  }
+  const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
+  const closeFills = (db.fills || []).filter((fill) => fill.kind === "close" && fill.executionOrderId === executionOrder.id);
+  if (!entryFills.length || !closeFills.length) return { applied: false, reason: "lifecycle_fill_rows_missing" };
+  const recordedExpectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
+  const expectedQuantity = Number(closure.entryQuantity || closure.expectedQuantity || recordedExpectedQuantity);
+  const authorityQuantity = Number(closure.quantity || 0);
+  const tolerance = Math.max(1e-10, expectedQuantity * 0.005, Number(executionOrder.okxCtVal || 0) * 0.0001);
+  if (!(expectedQuantity > 0) || Math.abs(authorityQuantity - expectedQuantity) > tolerance) {
+    return { applied: false, reason: "authoritative_close_quantity_mismatch", expectedQuantity, authorityQuantity, recordedExpectedQuantity };
+  }
+
+  const entryNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
+  const entryQuantityBefore = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.quantity || 0)), 0);
+  for (const fill of entryFills) {
+    const notional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
+    const weight = entryNotional > 0 ? notional / entryNotional : 1 / entryFills.length;
+    fill.quantity = expectedQuantity * weight;
+    fill.notionalUsdt = Math.abs(Number(fill.price || 0) * fill.quantity);
+    fill.feeUsdt = Number(closure.entryFeeUsdt) * weight;
+    fill.feeCostUsdt = fill.feeUsdt;
+    fill.feeSchemaVersion = 2;
+    fill.feeSource = "okx_raw_fill_history_backfill";
+    fill.feeBasis = "okx_entry_order_identity";
+    fill.estimatedFee = false;
+  }
+
+  const closeQuantity = closeFills.reduce((sum, fill) => sum + Math.abs(Number(fill.quantity || 0)), 0);
+  const finalFill = closeFills.find((fill) => fill.partial !== true) || closeFills.at(-1);
+  for (const fill of closeFills) {
+    const weight = closeQuantity > 0 ? Math.abs(Number(fill.quantity || 0)) / closeQuantity : 1 / closeFills.length;
+    fill.quantity = authorityQuantity * weight;
+    fill.notionalUsdt = Math.abs(Number(fill.price || 0) * fill.quantity);
+    fill.feeUsdt = Number(closure.feeUsdt) * weight;
+    fill.feeCostUsdt = fill.feeUsdt;
+    fill.realizedPnl = Number(closure.realizedPnl) * weight;
+    fill.feeSchemaVersion = 2;
+    fill.feeSource = "okx_raw_fill_history_backfill";
+    fill.estimatedFee = false;
+    fill.estimated = false;
+    fill.inferred = false;
+    fill.financialBasis = "exchange_fills_confirmed_funding_unreconciled";
+    if (fill === finalFill) {
+      fill.price = Number(closure.weightedPrice || fill.price);
+      fill.notionalUsdt = Math.abs(Number(fill.price || 0) * Number(fill.quantity || 0));
+      fill.createdAt = closure.closedAt || fill.createdAt;
+      fill.exchangeOrderIds = closure.exchangeOrderIds || [];
+      fill.exchangeTradeIds = closure.tradeIds || [];
+      fill.exchangeAlgoIds = closure.algoIds || [];
+      fill.closureEvidencePath = closure.evidencePath || "fills-history";
+      fill.exitBreakdown = closure.breakdown || [];
+    }
+  }
+  executionOrder.entryFeeUsdt = Number(closure.entryFeeUsdt);
+  executionOrder.filledQuantity = expectedQuantity;
+  executionOrder.closeFeeUsdt = Number(closure.feeUsdt);
+  executionOrder.realizedPnl = Number(closure.realizedPnl);
+  executionOrder.closedAt = closure.closedAt || executionOrder.closedAt;
+  executionOrder.closeEvidencePath = closure.evidencePath || "fills-history";
+  executionOrder.closeTradeIds = closure.tradeIds || [];
+  executionOrder.closeAlgoIds = closure.algoIds || [];
+  executionOrder.events ||= [];
+  if (!executionOrder.events.some((event) => event.event === "financial_fills_backfilled")) {
+    executionOrder.events.push({ at: nowIso(), event: "financial_fills_backfilled", detail: "历史估算费用已由 OKX 原始成交证据替换。" });
+  }
+  return {
+    applied: true,
+    entryFillCount: entryFills.length,
+    closeFillCount: closeFills.length,
+    quantityCorrected: Math.abs(entryQuantityBefore - expectedQuantity) > tolerance,
+    recordedExpectedQuantity,
+    authoritativeQuantity: expectedQuantity
+  };
+}
+
 // 平仓成交确认与资金费到账是两个独立事实。这里持续收敛后者；只有费用字段齐全、
 // 账户绑定正确、持仓窗口可证且 OKX bills 查询完整成功时，生命周期才进入净绩效链。
 export async function reconcilePendingTradeFinancials(db, options = {}) {
   const nowMs = Number(options.nowMs ?? Date.now());
   const graceMs = Number(options.fundingReconciliationGraceMs ?? process.env.FUNDING_RECONCILIATION_GRACE_MS ?? 300_000);
   const fetchBills = options.fetchFundingBills || fetchOkxFundingBills;
+  const fetchLifecycleClosure = options.fetchLifecycleClosure || fetchOkxProtectionClosure;
+  const retryMs = Number(options.feeEvidenceRetryMs ?? process.env.FEE_EVIDENCE_RETRY_MS ?? 15 * 60_000);
   const lifecycles = groupClosedTradeLifecycles(db.fills || []);
   const results = [];
   let reconciled = 0;
@@ -1925,13 +2022,54 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
     if (!lifecycle.financialBasisIssues?.includes("funding_unreconciled")) continue;
     const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && sameTradeLifecycle(fill, lifecycle.representative));
     const closeFills = lifecycle.fills || [];
-    if (!entryFills.length || entryFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)
-      || closeFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)) {
-      results.push({ key: lifecycle.key, status: "fee_evidence_incomplete" });
-      continue;
-    }
     const executionOrder = (db.executionOrders || []).find((row) => row.id === lifecycle.representative.executionOrderId)
       || (db.executionOrders || []).find((row) => row.planId && row.planId === (lifecycle.representative.tradePlanId || lifecycle.representative.planId));
+    if (!executionOrder) {
+      results.push({ key: lifecycle.key, status: "execution_order_evidence_missing" });
+      continue;
+    }
+    if (!entryFills.length || entryFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)
+      || closeFills.some((fill) => !finiteFinancialValue(fill.feeUsdt) || fill.estimatedFee === true)) {
+      const lastAttemptMs = new Date(executionOrder.financialEvidenceLastAttemptAt || 0).getTime();
+      if (!options.fetchLifecycleClosure && Number.isFinite(lastAttemptMs) && lastAttemptMs > 0 && nowMs - lastAttemptMs < retryMs) {
+        results.push({ key: lifecycle.key, status: "fee_evidence_retry_wait" });
+        continue;
+      }
+      const accountId = executionOrder.accountId || enabledOkxAccounts(db)[0]?.id;
+      const bindingSnapshot = accountId ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId }) : null;
+      const credentialBinding = validateOkxCredentialBinding(db, {
+        accountId,
+        snapshot: bindingSnapshot,
+        executionFingerprint: executionOrder.apiKeyFingerprint || undefined
+      });
+      if (!credentialBinding.ok) {
+        results.push({ key: lifecycle.key, status: credentialBinding.reason || "fee_evidence_credential_binding_invalid" });
+        continue;
+      }
+      const executionEnvironment = executionOrder.environment || null;
+      const snapshotEnvironment = bindingSnapshot?.environment || null;
+      if (executionEnvironment && snapshotEnvironment && executionEnvironment !== snapshotEnvironment) {
+        results.push({ key: lifecycle.key, status: "execution_environment_mismatch" });
+        continue;
+      }
+      // 只对真正发往 OKX 的历史查询做退避。账户、Key 或环境绑定错误修正后，
+      // 下一轮应立即重试，不能被一次未出网的校验失败额外卡住 15 分钟。
+      executionOrder.financialEvidenceLastAttemptAt = nowIso();
+      const closure = await fetchLifecycleClosure(executionOrder);
+      if (!closure?.complete) {
+        results.push({ key: lifecycle.key, status: closure?.reason || "fee_evidence_incomplete" });
+        continue;
+      }
+      const applied = applyOkxLifecycleFinancialEvidence(db, executionOrder, closure);
+      if (!applied.applied) {
+        results.push({ key: lifecycle.key, status: applied.reason });
+        continue;
+      }
+      executionOrder.accountId = credentialBinding.account.id;
+      executionOrder.apiKeyFingerprint = credentialBinding.currentFingerprint;
+      if (snapshotEnvironment) executionOrder.environment = snapshotEnvironment;
+      executionOrder.financialEvidenceBackfilledAt = nowIso();
+    }
     if (!executionOrder?.accountId) {
       results.push({ key: lifecycle.key, status: "bound_account_required" });
       continue;

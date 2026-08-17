@@ -12,6 +12,7 @@ import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { consumeOpportunitySignals, peekOpportunitySignals } from "./earlyOpportunityEngine.mjs";
 import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { approveStateFilePromptArtifact, markStateFilePromptDraft } from "./knowledgePromptPolicy.mjs";
+import { verifyNewsSignal } from "./marketScan.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -29,7 +30,18 @@ export function newsSignalDescriptor(signal = {}) {
   const publishedAt = Number.isFinite(new Date(signal.publishedAt || signal.queuedAt || 0).getTime())
     ? new Date(signal.publishedAt || signal.queuedAt).toISOString()
     : "unknown";
-  return `kind=${kind} · evidenceId=${evidenceId} · trustTier=${trustTier} · verifiedOrigin=${signal.verifiedOrigin === true} · publishedAt=${publishedAt}${Number.isFinite(impact) ? ` · impact=${impact}` : ""}${symbols.length ? ` · symbols=${symbols.join(",")}` : ""}`;
+  const verificationStatus = ["corroborated", "single_source", "conflicting", "not_found", "search_unavailable", "search_not_configured", "fact_missing"]
+    .includes(signal.verificationStatus) ? signal.verificationStatus : "not_verified";
+  const category = /^[a-z_]{2,40}$/.test(String(signal.category || "")) ? signal.category : "unknown";
+  const confidence = ["high", "medium", "low"].includes(signal.confidence) ? signal.confidence : "low";
+  const materiality = ["high", "medium", "low", "none"].includes(signal.materiality) ? signal.materiality : "none";
+  const eventType = /^[a-z_]{2,40}$/.test(String(signal.eventType || "")) ? signal.eventType : "other";
+  const impactChannels = [...new Set((signal.impactChannels || []).filter((value) => /^[a-z_]{2,40}$/.test(String(value))))].slice(0, 4);
+  const scope = /^[a-z_]{2,40}$/.test(String(signal.scope || "")) ? signal.scope : "unknown";
+  const announcementStatus = /^[a-z_]{2,40}$/.test(String(signal.announcementStatus || "")) ? signal.announcementStatus : "unknown";
+  const sentiment = Number.isFinite(Number(signal.sentiment)) ? Math.max(0, Math.min(100, Number(signal.sentiment))) : null;
+  const citationCount = Math.max(0, Math.min(8, Number(signal.citationCount || 0)));
+  return `kind=${kind} · evidenceId=${evidenceId} · trustTier=${trustTier} · verifiedOrigin=${signal.verifiedOrigin === true} · verificationStatus=${verificationStatus} · category=${category} · eventType=${eventType} · impactChannels=${impactChannels.length ? impactChannels.join(",") : "none"} · scope=${scope} · announcementStatus=${announcementStatus} · sentiment=${sentiment ?? "unknown"} · confidence=${confidence} · materiality=${materiality} · citationCount=${citationCount} · providerAttributionVerified=${signal.providerAttributionVerified === true} · publishedAt=${publishedAt}${Number.isFinite(impact) ? ` · impact=${impact}` : ""}${symbols.length ? ` · symbols=${symbols.join(",")}` : ""}`;
 }
 
 export async function runAgentCycle(db, payload = {}, saveDb) {
@@ -141,6 +153,11 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   db.system.pendingFastMoves = [];
   opportunitySignals = consumeOpportunitySignals(db, 2);
   newsSignals = (db.system.pendingNewsSignals || []).slice(0, 3);
+  const verifyQueuedNews = payload.verifyNewsSignal || verifyNewsSignal;
+  newsSignals = await Promise.all(newsSignals.map(async (signal) => {
+    try { return await verifyQueuedNews(db, signal); }
+    catch { return { ...signal, verificationStatus: "search_unavailable", mayTriggerTradeDirectly: false }; }
+  }));
   db.system.pendingNewsSignals = (db.system.pendingNewsSignals || []).slice(newsSignals.length);
 
   // 完整决策循环：与对话入口共用 runAgentChat（工具、风控、审计全一致）
@@ -165,7 +182,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       "【本轮任务】",
       ...(newsSignals.length
         ? [
-          "1. 先核验信息：读取情报证据与发布时间；聚合快讯不等于一手来源，必要时用搜索/官方来源交叉验证，无法核验就明确标为未确认",
+          "1. 先核验信息：读取情报证据与发布时间。verificationStatus=corroborated 表示 Gemini 搜索已找到至少两个引用且 Provider 归因可验证，可作为经过交叉核验的背景事实；single_source/conflicting/not_found/search_unavailable 均不得描述成已证实",
           "2. 再检查市场是否已经反应：同步关联币种行情、结构、成交量和微观结构；新闻本身绝不构成开仓理由，禁止仅凭标题直接提出交易",
           "3. 对高影响日程只做多/空/中性场景树；公布后必须核验实际值及第一反应，不得把日程当结果、不得猜测数据",
           "4. 只有新闻与可验证行情证据共同满足原有强制证据包和全部硬风控时，才可走原有计划流程；否则登记观察哨或继续观察",

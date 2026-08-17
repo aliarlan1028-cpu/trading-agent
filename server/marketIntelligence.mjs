@@ -337,6 +337,87 @@ export function getMarketIntelligence(db, { symbols = [], horizonHours = 48, cat
   }).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)).slice(0, Math.min(100, Math.max(1, Number(limit || 30))));
 }
 
+const AGENT_FACT_VALUE_KEYS = new Set([
+  "impact", "important", "marketRelevant", "categoryId", "receivedLatencyMs", "aggregator",
+  "analysisContextOnly", "mayTriggerTradeDirectly", "sentiment", "pricedIn", "fakeRisk",
+  "value", "supplementalOnly", "dailyNetUsd", "weeklyNetUsd", "timePrecision", "units",
+  "publicHtmlSource", "scope", "metric", "totalCount", "longLiquidationCount",
+  "shortLiquidationCount", "dominantSide", "windowMs", "coverageMs", "completeWindow",
+  "sourceTransport", "usdNotional", "globalMarketTotal"
+]);
+
+function safeFactScalar(value) {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value || "");
+  if (/^[a-z0-9_.:+/-]{1,64}$/i.test(text)) return text;
+  if (["利多", "利空", "中性", "无", "多", "空", "平衡"].includes(text)) return text;
+  return undefined;
+}
+
+function safeFactId(value, fallback = "") {
+  const text = String(value || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120);
+  return text || fallback;
+}
+
+function safeIsoTimestamp(value) {
+  if (!value) return null;
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
+}
+
+function safeSourceIds(values = []) {
+  return (Array.isArray(values) ? values : []).map((value) => safeFactId(value)).filter(Boolean).slice(0, 40);
+}
+
+function factValuesForAgent(values = {}) {
+  const projected = {};
+  for (const [key, value] of Object.entries(values || {})) {
+    if (!AGENT_FACT_VALUE_KEYS.has(key)) continue;
+    const safe = safeFactScalar(value);
+    if (safe !== undefined) projected[key] = safe;
+  }
+  const verification = values?.newsVerification;
+  if (verification && typeof verification === "object") {
+    projected.newsVerification = {
+      verificationStatus: safeFactScalar(verification.verificationStatus) || "search_unavailable",
+      category: safeFactScalar(verification.category) || "unknown",
+      sentiment: Number.isFinite(Number(verification.sentiment)) ? Number(verification.sentiment) : null,
+      confidence: safeFactScalar(verification.confidence) || "low",
+      materiality: safeFactScalar(verification.materiality) || "none",
+      eventType: safeFactScalar(verification.eventType) || "other",
+      impactChannels: (verification.impactChannels || []).map(safeFactScalar).filter(Boolean).slice(0, 4),
+      scope: safeFactScalar(verification.scope) || "unknown",
+      announcementStatus: safeFactScalar(verification.announcementStatus) || "unknown",
+      citationCount: Number.isFinite(Number(verification.citationCount)) ? Number(verification.citationCount) : 0,
+      providerAttributionVerified: verification.providerAttributionVerified === true,
+      evidenceId: safeFactScalar(verification.evidenceId) || null,
+      verifiedAt: verification.verifiedAt || null,
+      mayTriggerTradeDirectly: false
+    };
+  }
+  return projected;
+}
+
+export function marketIntelligenceFactForAgent(fact = {}) {
+  return {
+    factId: safeFactId(fact.id || fact.factId),
+    type: safeFactScalar(fact.type) || "unknown",
+    category: safeFactScalar(fact.category) || "unknown",
+    sourceId: safeFactId(fact.sourceId, "unknown"),
+    symbols: [...new Set((fact.symbols || []).map((symbol) => String(symbol).toUpperCase()).filter((symbol) => /^[A-Z0-9]{2,15}\/USDT$/.test(symbol)))].slice(0, 12),
+    confidence: Number.isFinite(Number(fact.confidence)) ? Math.max(0, Math.min(1, Number(fact.confidence))) : null,
+    status: safeFactScalar(fact.status) || "unknown",
+    publishedAt: safeIsoTimestamp(fact.publishedAt),
+    validUntil: safeIsoTimestamp(fact.validUntil),
+    values: factValuesForAgent(fact.values)
+  };
+}
+
+export function getMarketIntelligenceForAgent(db, options = {}) {
+  return getMarketIntelligence(db, options).map(marketIntelligenceFactForAgent);
+}
+
 export function getFlowSnapshot(db) {
   const facts = getMarketIntelligence(db, { categories: ["okx_liquidation_activity", "etf_flow", "sentiment"], horizonHours: 120, limit: 20 });
   return {
@@ -349,6 +430,30 @@ export function getFlowSnapshot(db) {
       !facts.some((fact) => fact.category === "okx_liquidation_activity") ? "okx_liquidation_activity" : null,
       !facts.some((fact) => fact.category === "etf_flow") ? "etf_flow" : null
     ].filter(Boolean)
+  };
+}
+
+export function getFlowSnapshotForAgent(db) {
+  const flow = getFlowSnapshot(db);
+  return {
+    asOf: flow.asOf,
+    okxLiquidationActivity: flow.okxLiquidationActivity ? marketIntelligenceFactForAgent(flow.okxLiquidationActivity) : null,
+    btcEtf: flow.btcEtf ? marketIntelligenceFactForAgent(flow.btcEtf) : null,
+    ethEtf: flow.ethEtf ? marketIntelligenceFactForAgent(flow.ethEtf) : null,
+    sentiment: flow.sentiment ? marketIntelligenceFactForAgent(flow.sentiment) : null,
+    unavailable: flow.unavailable
+  };
+}
+
+export function officialCalendarEventForAgent(event = {}) {
+  return {
+    eventId: safeFactId(event.id || event.eventId),
+    category: safeFactScalar(event.category) || "unknown",
+    due: safeIsoTimestamp(event.due || event.startAt),
+    timePrecision: ["minute", "date"].includes(event.timePrecision) ? event.timePrecision : "unknown",
+    importance: Number.isFinite(Number(event.importance ?? event.impact)) ? Number(event.importance ?? event.impact) : null,
+    verifiedOrigin: event.verifiedOrigin === true,
+    mayTriggerTradeDirectly: false
   };
 }
 
@@ -439,6 +544,75 @@ export function buildDailyBrief(db, options = {}) {
 
 export function getDailyBrief(db, date = cnDateKey()) {
   return (db.dailyBriefs || []).find((brief) => brief.date === date) || null;
+}
+
+export function getDailyBriefForAgent(db, date = cnDateKey()) {
+  const brief = getDailyBrief(db, date);
+  if (!brief) return null;
+  return {
+    id: safeFactId(brief.id),
+    date: brief.date,
+    timeZone: brief.timeZone,
+    asOf: safeIsoTimestamp(brief.asOf),
+    role: "analysis_context_only",
+    mayTriggerTradeDirectly: false,
+    topNews: (brief.topNews || []).map((fact) => marketIntelligenceFactForAgent({
+      ...fact,
+      id: fact.factId,
+      type: "news",
+      category: fact.category || "news"
+    })),
+    upcomingEvents: (brief.upcomingEvents || []).map(officialCalendarEventForAgent),
+    flow: getFlowSnapshotForAgent(db),
+    market: brief.market ? {
+      movers: (brief.market.movers || []).slice(0, 8).map((mover) => ({
+        symbol: /^[A-Z0-9]{2,15}\/USDT$/.test(String(mover.symbol || "").toUpperCase()) ? String(mover.symbol).toUpperCase() : null,
+        changePct: Number.isFinite(Number(mover.changePct)) ? Number(mover.changePct) : null,
+        quoteVolUsdt: Number.isFinite(Number(mover.quoteVolUsdt)) ? Number(mover.quoteVolUsdt) : null,
+        high24h: Number.isFinite(Number(mover.high24h)) ? Number(mover.high24h) : null,
+        low24h: Number.isFinite(Number(mover.low24h)) ? Number(mover.low24h) : null,
+        attribution: mover.attribution ? {
+          evidenceId: safeFactId(mover.attribution.evidenceId),
+          category: safeFactScalar(mover.attribution.category) || "unknown",
+          sentiment: Number.isFinite(Number(mover.attribution.sentiment)) ? Number(mover.attribution.sentiment) : null,
+          confidence: safeFactScalar(mover.attribution.confidence) || "low",
+          mayTriggerTradeDirectly: false
+        } : null
+      })),
+      moversAsOf: safeIsoTimestamp(brief.market.moversAsOf)
+    } : null,
+    riskContext: brief.riskContext ? {
+      activePositions: (brief.riskContext.activePositions || []).slice(0, 20).map((position) => ({
+        symbol: /^[A-Z0-9]{2,15}\/USDT$/.test(String(position.symbol || "").toUpperCase()) ? String(position.symbol).toUpperCase() : null,
+        side: ["long", "short"].includes(String(position.side || "").toLowerCase()) ? String(position.side).toLowerCase() : "unknown",
+        updatedAt: safeIsoTimestamp(position.updatedAt)
+      })),
+      activeWatches: (brief.riskContext.activeWatches || []).slice(0, 40).map((watch) => ({
+        id: safeFactId(watch.id),
+        symbol: /^[A-Z0-9]{2,15}\/USDT$/.test(String(watch.symbol || "").toUpperCase()) ? String(watch.symbol).toUpperCase() : null,
+        kind: safeFactScalar(watch.kind) || "unknown",
+        level: Number.isFinite(Number(watch.level)) ? Number(watch.level) : null,
+        levelLow: Number.isFinite(Number(watch.levelLow)) ? Number(watch.levelLow) : null,
+        levelHigh: Number.isFinite(Number(watch.levelHigh)) ? Number(watch.levelHigh) : null,
+        expiresAt: safeIsoTimestamp(watch.expiresAt)
+      })),
+      riskStatus: safeFactScalar(brief.riskContext.riskStatus) || "unknown",
+      killSwitch: brief.riskContext.killSwitch === true
+    } : null,
+    constraints: (brief.constraints || []).map((row) => ({
+      type: safeFactScalar(row.type) || "unknown",
+      severity: safeFactScalar(row.severity) || "unknown",
+      eventId: safeFactScalar(row.eventId) || null,
+      due: safeIsoTimestamp(row.due),
+      reasonCode: safeFactScalar(row.reasonCode) || null
+    })),
+    dataQuality: brief.dataQuality ? {
+      staleRequiredSources: safeSourceIds(brief.dataQuality.staleRequiredSources),
+      healthySources: safeSourceIds(brief.dataQuality.healthySources),
+      unconfiguredSources: safeSourceIds(brief.dataQuality.unconfiguredSources)
+    } : null,
+    evidenceFactIds: safeSourceIds(brief.evidenceFactIds)
+  };
 }
 
 export function dailyBriefForPrompt(db) {

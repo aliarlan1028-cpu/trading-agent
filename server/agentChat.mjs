@@ -62,6 +62,38 @@ import { currentRiskThresholds } from "./riskThresholds.mjs";
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
 const MAX_STEPS = 12;
 
+export function projectRefreshEventsForAgent(result = {}, marketIntelligence = {}, latest = []) {
+  const status = ["ok", "partial", "failed", "skipped"].includes(result.status) ? result.status : "unknown";
+  const safeCount = (value) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  return {
+    status,
+    attempted: safeCount(result.attempted),
+    succeeded: safeCount(result.succeeded),
+    failed: safeCount(result.failed),
+    ingested: safeCount(result.ingested),
+    marketIntelligence: marketIntelligence ? {
+      status: ["ok", "failed"].includes(marketIntelligence.status) ? marketIntelligence.status : "unknown",
+      facts: safeCount(marketIntelligence.facts),
+      calendarEvents: safeCount(marketIntelligence.calendarEvents),
+      dailyBrief: marketIntelligence.dailyBrief ? {
+        id: String(marketIntelligence.dailyBrief.id || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120),
+        version: safeCount(marketIntelligence.dailyBrief.version),
+        asOf: Number.isFinite(new Date(marketIntelligence.dailyBrief.asOf || 0).getTime())
+          ? new Date(marketIntelligence.dailyBrief.asOf).toISOString() : null
+      } : null
+    } : null,
+    eventCount: safeCount(result.eventCount),
+    latest: (Array.isArray(latest) ? latest : []).slice(0, 5).map((event) => ({
+      eventId: String(event.eventId || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120),
+      sourceId: String(event.sourceId || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 120),
+      trustTier: /^[a-z_]{2,40}$/.test(String(event.trustTier || "")) ? event.trustTier : "unknown",
+      sentiment: ["利多", "利空", "中性"].includes(event.sentiment) ? event.sentiment : "中性",
+      affectedSymbols: (event.affectedSymbols || []).filter((symbol) => /^[A-Z0-9]{2,15}$/.test(String(symbol))).slice(0, 12),
+      publishedAt: Number.isFinite(new Date(event.publishedAt || 0).getTime()) ? new Date(event.publishedAt).toISOString() : null
+    }))
+  };
+}
+
 const SYSTEM_GUIDE = `【本系统内置说明】
 - AI交易员：对话入口，可读取行情、账户、事件、知识、授权和风控状态；能创建授权草案、交易计划、定时任务，并触发事件刷新/账户同步等系统动作。
 - 仪表盘：展示真实账户资产、今日盈亏、对账健康和收益质量；只有交易所私有只读同步成功后才显示真实资产。
@@ -1487,9 +1519,9 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (["get_market_intelligence", "get_daily_market_brief", "get_event_calendar", "get_flow_snapshot", "get_source_health"].includes(name)) {
     const intelligence = await import("./marketIntelligence.mjs");
-    if (name === "get_market_intelligence") return intelligence.getMarketIntelligence(db, args);
+    if (name === "get_market_intelligence") return intelligence.getMarketIntelligenceForAgent(db, args);
     if (name === "get_daily_market_brief") {
-      const brief = intelligence.getDailyBrief(db, args.date);
+      const brief = intelligence.getDailyBriefForAgent(db, args.date);
       return brief || { status: "missing", date: args.date || "today", note: "今日简报尚未生成，请调用 refresh_events。" };
     }
     if (name === "get_event_calendar") {
@@ -1498,9 +1530,9 @@ export async function executeTool(db, run, name, args = {}) {
         from: args.from ? new Date(args.from).getTime() : Date.now(),
         to: args.to ? new Date(args.to).getTime() : Date.now() + 7 * 86_400_000,
         importance: args.importance
-      });
+      }).map(intelligence.officialCalendarEventForAgent);
     }
-    if (name === "get_flow_snapshot") return intelligence.getFlowSnapshot(db);
+    if (name === "get_flow_snapshot") return intelligence.getFlowSnapshotForAgent(db);
     return intelligence.sourceHealthSummary(db);
   }
 
@@ -1754,7 +1786,12 @@ export async function executeTool(db, run, name, args = {}) {
     } catch (error) {
       marketIntelligence = { status: "failed", error: String(error.message || error).slice(0, 180) };
     }
-    return { ...result, marketIntelligence, eventCount: db.events?.length || 0, latest: (db.events || []).slice(0, 5).map((event) => ({ title: event.title, due: event.due, category: event.category })) };
+    const { newsContextForAgent } = await import("./newsIntelligence.mjs");
+    return projectRefreshEventsForAgent(
+      { ...result, eventCount: db.events?.length || 0 },
+      marketIntelligence,
+      newsContextForAgent(db, { max: 5 })
+    );
   }
 
   if (name === "sync_exchange_account") {
@@ -3091,7 +3128,7 @@ async function runToolTracked(db, run, name, args, toolTrace, stepSink = run.ste
   return result;
 }
 
-function summarizeToolResult(name, result = {}) {
+export function summarizeToolResult(name, result = {}) {
   if (result.error) return `失败：${result.error}`;
   if (isSkillTool(name)) return String(result.note || JSON.stringify(result)).slice(0, 160);
   if (isMcpTool(name)) return `MCP ${result.server || ""}：${String(result.content || result.error || "").slice(0, 140)}`;
@@ -3143,7 +3180,7 @@ function summarizeToolResult(name, result = {}) {
   if (name === "create_task") return result.status === "ok"
     ? `已建定时任务「${result.name}」：${result.schedule} · 处理器 ${result.handler}`
     : `任务未创建：${result.error || result.status}`;
-  if (name === "refresh_events") return `已刷新事件源，当前 ${result.eventCount ?? 0} 个事件${result.latest?.length ? `，最新：${result.latest.map((e) => e.title).slice(0, 3).join("、")}` : ""}`;
+  if (name === "refresh_events") return `已刷新事件源，当前 ${result.eventCount ?? 0} 个事件${result.latest?.length ? `，已核验背景 ${result.latest.map((event) => `${event.eventId || "unknown"}/${event.trustTier || "unknown"}`).slice(0, 3).join("、")}` : ""}`;
   if (name === "explain_system") return String(result.guide || result.note || "").slice(0, 160);
   if (name === "request_action") return result.message || `已生成待确认操作：${result.pendingAction?.title || "-"}（需你点确认才执行）`;
   if (name === "sync_exchange_account") return result.status === "ok"

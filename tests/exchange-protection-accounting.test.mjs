@@ -1,8 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 
-const { extractOkxAlgoChildOrderIds, fetchOkxProtectionClosure, summarizeOkxManualClosure, summarizeOkxProtectionClosure, summarizeOkxProtectionClosureFromAlgoFills } = await import("../server/executionEngine.mjs");
+const { applyOkxLifecycleFinancialEvidence, extractOkxAlgoChildOrderIds, fetchOkxProtectionClosure, reconcilePendingTradeFinancials, summarizeOkxManualClosure, summarizeOkxProtectionClosure, summarizeOkxProtectionClosureFromAlgoFills } = await import("../server/executionEngine.mjs");
+
+function legacyFinancialFixture(apiKey) {
+  const fingerprint = crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+  const entryAt = "2026-08-15T00:00:00.000Z";
+  const closeAt = "2026-08-15T01:00:00.000Z";
+  return {
+    system: {}, positions: [], tradePlans: [], memoryItems: [],
+    exchangeAccounts: [{ id: "account_okx", exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint: fingerprint }],
+    accountSnapshots: [{ id: "snapshot_okx", exchange: "OKX", accountId: "account_okx", status: "ok", apiKeyFingerprint: fingerprint, environment: "production", createdAt: "2026-08-15T02:00:00.000Z" }],
+    executionOrders: [{
+      id: "exec_legacy", exchange: "OKX", symbol: "BTC/USDT", direction: "long", status: "closed",
+      filledQuantity: 0.01, quantity: 0.01, okxCtVal: 0.01, exchangeOrderId: "entry-order",
+      clientOrderId: "entry-client", stopClientOrderId: "stop-client", entryFilledAt: entryAt, closedAt: closeAt,
+      events: []
+    }],
+    fills: [
+      { id: "entry", executionOrderId: "exec_legacy", kind: "entry", symbol: "BTC/USDT", direction: "long", quantity: 0.01, price: 100, notionalUsdt: 1, feeUsdt: 0.001, estimatedFee: true, createdAt: entryAt },
+      { id: "close", executionOrderId: "exec_legacy", kind: "close", symbol: "BTC/USDT", direction: "long", quantity: 0.01, price: 109, notionalUsdt: 1.09, realizedPnl: 0.09, feeUsdt: 0.001, estimatedFee: true, fundingReconciled: false, fundingFeeUsdt: null, partial: false, createdAt: closeAt }
+    ],
+    reviews: [{ id: "review", type: "trade", tradeLifecycleKey: "exec_legacy", executionOrderId: "exec_legacy", status: "pending_financial_reconciliation", fillIds: ["close"] }]
+  };
+}
 
 test("OKX 部分止盈加余仓止损按真实成交聚合，不把整笔误记为止损", () => {
   const execution = {
@@ -148,6 +171,26 @@ test("ordIdList 中任一子订单缺少成交时保持 pending", () => {
   assert.deepEqual(result.unmatchedChildOrderIds, ["child-missing"]);
 });
 
+test("旧执行记录把请求数量当成交数量时，以同一入场订单的原始 fill 数量纠正", () => {
+  const execution = {
+    id: "exec_legacy_rounding", symbol: "ADA/USDT", direction: "long",
+    filledQuantity: 159, quantity: 159, okxCtVal: 100,
+    clientOrderId: "entry-client", exchangeOrderId: "entry-order",
+    stopClientOrderId: "stop-client", entryFilledAt: "2026-08-15T00:00:00.000Z"
+  };
+  const result = summarizeOkxProtectionClosureFromAlgoFills(execution, [
+    { instId: "ADA-USDT-SWAP", algoClOrdId: "stop-client", ordId: "close-order" }
+  ], [
+    { instId: "ADA-USDT-SWAP", ordId: "entry-order", clOrdId: "entry-client", tradeId: "entry-fill", side: "buy", fillSz: "1.5", fillPx: "0.192", fillPnl: "0", fee: "-0.00576", ts: String(Date.parse("2026-08-15T00:00:00.000Z")) },
+    { instId: "ADA-USDT-SWAP", ordId: "close-order", tradeId: "close-fill", side: "sell", fillSz: "1.5", fillPx: "0.1888", fillPnl: "-0.48", fee: "-0.01416", ts: String(Date.parse("2026-08-15T01:00:00.000Z")) }
+  ]);
+  assert.equal(result.complete, true);
+  assert.equal(result.recordedExpectedQuantity, 159);
+  assert.equal(result.entryQuantity, 150);
+  assert.equal(result.expectedQuantity, 150);
+  assert.equal(result.quantity, 150);
+});
+
 test("保护退出网络收口先查询三类 algo history，再按 child ordId 读取 fills", async (t) => {
   const priorKey = process.env.OKX_API_KEY;
   process.env.OKX_API_KEY = "test-read-key";
@@ -214,4 +257,86 @@ test("Algo History 使用 after 多页读取并在客户端按 cTime 边界过�
   const secondPage = paths.find((path) => path.includes("orders-algo-history") && path.includes("after="));
   assert.ok(secondPage);
   assert.equal(new URL(`https://okx.test${secondPage}`).searchParams.has("begin"), false);
+});
+
+test("旧版估算费用必须先由精确 OKX 成交证据回填，再进入资金费对账", async (t) => {
+  const previousKey = process.env.OKX_API_KEY;
+  process.env.OKX_API_KEY = "legacy-read-key";
+  t.after(() => { if (previousKey === undefined) delete process.env.OKX_API_KEY; else process.env.OKX_API_KEY = previousKey; });
+  const db = legacyFinancialFixture(process.env.OKX_API_KEY);
+  const closure = {
+    complete: true, evidencePath: "orders-algo-history->ordId->fills-history:tradeId",
+    quantity: 0.01, expectedQuantity: 0.01, weightedPrice: 110, realizedPnl: 0.1,
+    entryFeeUsdt: 0.002, feeUsdt: 0.003, closedAt: "2026-08-15T01:00:00.000Z",
+    exchangeOrderIds: ["close-order"], tradeIds: ["close-trade"], algoIds: ["algo-stop"],
+    breakdown: [{ exchangeOrderId: "close-order", tradeId: "close-trade", quantity: 0.01, price: 110 }]
+  };
+  const report = await reconcilePendingTradeFinancials(db, {
+    nowMs: Date.parse("2026-08-15T03:00:00.000Z"),
+    fundingReconciliationGraceMs: 0,
+    fetchLifecycleClosure: async () => closure,
+    fetchFundingBills: async () => ({ complete: true, fundingFeeUsdt: -0.004, billIds: ["bill-1"] })
+  });
+  assert.equal(report.reconciled, 1);
+  assert.equal(report.results[0].status, "reconciled");
+  assert.equal(db.fills[0].estimatedFee, false);
+  assert.equal(db.fills[0].feeUsdt, 0.002);
+  assert.equal(db.fills[1].estimatedFee, false);
+  assert.equal(db.fills[1].feeUsdt, 0.003);
+  assert.equal(db.fills[1].realizedPnl, 0.1);
+  assert.equal(db.fills[1].fundingFeeUsdt, -0.004);
+  assert.equal(db.fills[1].fundingReconciled, true);
+  assert.deepEqual(db.fills[1].exchangeTradeIds, ["close-trade"]);
+  assert.equal(db.executionOrders[0].accountId, "account_okx");
+  assert.equal(db.executionOrders[0].environment, "production");
+  assert.equal(db.reviews[0].status, "pending");
+});
+
+test("OKX 子订单数量不完整时不得把旧估算费用伪装成已核算", async (t) => {
+  const previousKey = process.env.OKX_API_KEY;
+  process.env.OKX_API_KEY = "legacy-incomplete-key";
+  t.after(() => { if (previousKey === undefined) delete process.env.OKX_API_KEY; else process.env.OKX_API_KEY = previousKey; });
+  const db = legacyFinancialFixture(process.env.OKX_API_KEY);
+  let billsCalled = false;
+  const report = await reconcilePendingTradeFinancials(db, {
+    nowMs: Date.parse("2026-08-15T03:00:00.000Z"),
+    feeEvidenceRetryMs: 0,
+    fetchLifecycleClosure: async () => ({ complete: false, reason: "protection_child_fills_missing", quantity: 0.009, expectedQuantity: 0.01 }),
+    fetchFundingBills: async () => { billsCalled = true; return { complete: true, fundingFeeUsdt: 0, billIds: [] }; }
+  });
+  assert.equal(report.reconciled, 0);
+  assert.equal(report.results[0].status, "protection_child_fills_missing");
+  assert.equal(billsCalled, false);
+  assert.equal(db.fills[0].estimatedFee, true);
+  assert.equal(db.fills[1].estimatedFee, true);
+  assert.equal(db.reviews[0].status, "pending_financial_reconciliation");
+});
+
+test("生命周期费用回填拒绝与执行数量不一致的聚合证据", () => {
+  const db = legacyFinancialFixture("quantity-key");
+  const result = applyOkxLifecycleFinancialEvidence(db, db.executionOrders[0], {
+    complete: true, quantity: 0.02, weightedPrice: 110, realizedPnl: 0.1, entryFeeUsdt: 0.002, feeUsdt: 0.003
+  });
+  assert.equal(result.applied, false);
+  assert.equal(result.reason, "authoritative_close_quantity_mismatch");
+  assert.equal(db.fills[0].estimatedFee, true);
+  assert.equal(db.fills[1].estimatedFee, true);
+});
+
+test("权威入场 fill 可以原子纠正旧生命周期的合约舍入数量", () => {
+  const db = legacyFinancialFixture("rounding-key");
+  db.executionOrders[0].filledQuantity = 0.011;
+  db.executionOrders[0].quantity = 0.011;
+  db.fills[0].quantity = 0.011;
+  db.fills[1].quantity = 0.011;
+  const result = applyOkxLifecycleFinancialEvidence(db, db.executionOrders[0], {
+    complete: true, entryQuantity: 0.01, expectedQuantity: 0.01, recordedExpectedQuantity: 0.011,
+    quantity: 0.01, weightedPrice: 110, realizedPnl: 0.1, entryFeeUsdt: 0.002, feeUsdt: 0.003,
+    closedAt: "2026-08-15T01:00:00.000Z", exchangeOrderIds: ["close-order"], tradeIds: ["trade-close"]
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.quantityCorrected, true);
+  assert.equal(db.executionOrders[0].filledQuantity, 0.01);
+  assert.equal(db.fills[0].quantity, 0.01);
+  assert.equal(db.fills[1].quantity, 0.01);
 });

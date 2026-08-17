@@ -208,7 +208,7 @@ export function buildCoreOverview(db, options = {}) {
     pendingActions: (db.pendingActions || []).filter((row) => row.status === "awaiting_confirmation").slice(0, 10),
     watchTriggers: nonTerminalAndRecent(db.watchTriggers, (row) => String(row?.status || "").toLowerCase() !== "active", 6),
     riskIncidents: nonTerminalAndRecent(db.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 8),
-    notifications: (db.notifications || []).slice(0, 20),
+    notifications: (options.notifications || db.notifications || []).slice(0, 20),
     realtimeConnections: db.realtimeConnections || [],
     realtimeStarted: realtimeStatus(db).started,
     exchangeAccounts: db.exchangeAccounts || [],
