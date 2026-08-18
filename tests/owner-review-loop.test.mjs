@@ -242,6 +242,67 @@ test("candidate lessons are excluded until Owner approval and retired lessons st
   assert.deepEqual({ ok: invalid.ok, error: invalid.error, current: invalid.current }, { ok: false, error: "invalid_lesson_transition", current: "retired" });
 });
 
+test("Owner lesson snapshot separates LLM advice, structured facts, scope, and legacy uncertainty", () => {
+  const db = baseDb();
+  db.memoryItems.push({
+    id: "modern-lesson", source: "auto_reflection", learningStatus: "candidate", title: "BTC 回踩确认",
+    content: "亏损复盘正文。\n\n【深度复盘】下次等待 15m 收盘确认后再进场。",
+    createdAt: "2026-08-18T02:00:00.000Z",
+    reviewContext: {
+      schemaVersion: 2, symbol: "BTC/USDT", direction: "long", timeframe: "15m", setupType: "pullback",
+      strategyProductId: "trend-pullback", regime: "uptrend", netRealizedPnl: -2,
+      financialBasis: "completed_trade_review/net_after_recorded_costs", reviewId: "modern-review"
+    }
+  }, {
+    id: "legacy-lesson", source: "auto_reflection", title: "旧版 ADA 复盘",
+    content: "旧版正文。\n\n【深度复盘】无法验证来源的旧建议。", createdAt: "2026-08-17T02:00:00.000Z",
+    reviewContext: { symbol: "ADA/USDT", direction: "short", timeframe: "1h", reviewId: "legacy-review" }
+  });
+  db.reviews.push({
+    id: "modern-review", type: "trade", status: "completed", memoryItemId: "modern-lesson", summary: "BTC 做多净亏损 2.00 U",
+    deepReflection: "下次等待 15m 收盘确认后再进场。",
+    structuredAssessment: {
+      outcome: "loss", processScore: 64, evidenceQuality: "adequate", matrix: { label: "过程有缺口，结果亏损" },
+      financial: { complete: true, netRealizedPnl: -2 },
+      rootCauses: [{ code: "entry_timing", label: "入场时机或确认不足", confidence: 0.82, evidence: "开仓后先逆行" }]
+    }
+  }, { id: "legacy-review", type: "trade", status: "completed", memoryItemId: "legacy-lesson", deepReflection: "无法验证来源的旧建议。" });
+
+  const snapshot = buildOwnerReviewLoopSnapshot(db);
+  const modern = snapshot.lessons.find((row) => row.id === "modern-lesson");
+  assert.deepEqual({ origin: modern.origin, hasLlmAdvice: modern.hasLlmAdvice, advice: modern.llmAdvice }, {
+    origin: "llm_deep_review", hasLlmAdvice: true, advice: "下次等待 15m 收盘确认后再进场。"
+  });
+  assert.equal(modern.factSummary, "BTC 做多净亏损 2.00 U");
+  assert.equal(modern.diagnosis.code, "entry_timing");
+  assert.deepEqual(modern.applicability, {
+    symbol: "BTC/USDT", direction: "long", timeframe: "15m", setupType: "pullback",
+    strategyProductId: "trend-pullback", regime: "uptrend"
+  });
+  const legacy = snapshot.lessons.find((row) => row.id === "legacy-lesson");
+  assert.equal(legacy.origin, "legacy_unreviewed");
+  assert.equal(legacy.hasLlmAdvice, false);
+  assert.equal(legacy.llmAdvice, null, "an old marker must not be presented as current verified LLM advice");
+  assert.match(legacy.legacyCaveat, /升级前/);
+});
+
+test("continue observing keeps a lesson out of Agent decisions until explicit approval", () => {
+  const db = baseDb();
+  const memory = {
+    id: "observe-lesson", source: "auto_reflection", learningStatus: "candidate", title: "观察回踩样本", content: "继续积累。",
+    tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-18T02:00:00.000Z",
+    reviewContext: { schemaVersion: 2, symbol: "BTC/USDT", timeframe: "15m", direction: "long", financialBasis: "completed_trade_review/net_after_recorded_costs", reviewId: "observe-review" }
+  };
+  db.memoryItems.push(memory);
+  db.reviews.push({ id: "observe-review", type: "trade", status: "completed", tenantId: "tenant_owner", ownerUserId: "owner-1", memoryItemId: memory.id, netRealizedPnl: -1 });
+  const observed = transitionReviewLesson(db, memory.id, "observe", "Owner");
+  assert.equal(observed.ok, true);
+  assert.equal(observed.memory.learningStatus, "observing");
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }), []);
+  assert.equal(transitionReviewLesson(db, memory.id, "approve", "Owner").ok, true);
+  assert.equal(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }).length, 1);
+});
+
 function completedReview(idValue, rootCode = "entry_timing", outcome = "loss") {
   const meta = {
     entry_timing: { label: "入场时机或确认不足", destination: "strategy", severity: "medium" },

@@ -616,13 +616,24 @@ test("Owner review loop renders candidate lessons and routed improvements withou
       ...data,
       ownerReviewLoop: {
         summary: { structuredReviews: 4, candidateLessons: 1, pendingOwner: 1, validating: 0 },
-        lessons: [{ id: "lesson-1", status: "candidate", title: "等待回踩确认", content: "候选教训正文", symbol: "BTC/USDT", createdAt: new Date().toISOString() }],
+        lessons: [{
+          id: "lesson-1", reviewId: "r1", status: "candidate", title: "等待回踩确认", content: "候选教训正文", symbol: "BTC/USDT", createdAt: new Date().toISOString(),
+          origin: "llm_deep_review", hasLlmAdvice: true, factSummary: "BTC 做多净亏损 2.00 U", lessonText: "入场确认不足。",
+          llmAdvice: "下次等待 15m 回踩确认后再入场。", diagnosis: { label: "入场时机或确认不足", confidence: 0.82, evidence: "开仓后先逆行" },
+          assessment: { matrixLabel: "过程有缺口，结果亏损", processScore: 64, evidenceQuality: "adequate", outcome: "loss", netRealizedPnl: -2 },
+          applicability: { symbol: "BTC/USDT", direction: "long", timeframe: "15m", setupType: "pullback", strategyProductId: "trend", regime: "uptrend" }
+        }],
         improvements: [{ id: "improvement-1", state: "pending_owner", destination: "strategy", title: "入场时机或确认不足", problem: "3 笔复盘重复出现", proposal: "创建版本化对照实验", evidenceCount: 3, successCriteria: ["历史样本外验证通过"] }]
       }
     }, action, ui
   }));
   assert.match(html, /Owner 优化清单/);
-  assert.match(html, /Owner 批准前不参与交易决策/);
+  assert.match(html, /先看依据和建议，再决定是否用于相似行情/);
+  assert.match(html, /LLM 深度复盘/);
+  assert.match(html, /LLM 给出的复盘建议/);
+  assert.match(html, /下次等待 15m 回踩确认后再入场/);
+  assert.match(html, /批准后只在以下场景参考/);
+  assert.match(html, /确认用于相似行情/);
   assert.match(html, /入场时机或确认不足/);
   assert.match(html, /策略库/);
   assert.match(html, /接受建议/);

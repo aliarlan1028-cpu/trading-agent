@@ -489,6 +489,7 @@ export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
   const current = lessonStatus(memory);
   const transitions = {
     approve: { from: ["candidate", "candidate_legacy", "observing"], to: "active" },
+    observe: { from: ["candidate", "candidate_legacy"], to: "observing" },
     reject: { from: ["candidate", "candidate_legacy", "observing"], to: "rejected" },
     retire: { from: ["active"], to: "retired" },
     reactivate: { from: ["retired"], to: "active" }
@@ -500,6 +501,72 @@ export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
   memory.updatedAt = memory.learningDecision.at;
   appendAudit(db, `Owner ${action} 复盘教训「${memory.title || memory.id}」`, memory.id, actor, "info");
   return { ok: true, memory };
+}
+
+function lessonDisplayModel(db, memory) {
+  const reviewId = memory.reviewId || memory.reviewContext?.reviewId || null;
+  const review = (db.reviews || []).find((row) => row.id === reviewId || row.memoryItemId === memory.id) || null;
+  const assessment = review?.structuredAssessment || null;
+  const context = memory.reviewContext || {};
+  const content = String(memory.content || "").trim();
+  const deepMarker = "【深度复盘】";
+  const markerIndex = content.indexOf(deepMarker);
+  const embeddedDeepReflection = markerIndex >= 0 ? content.slice(markerIndex + deepMarker.length).trim() : "";
+  const extractedLlmAdvice = compact(review?.deepReflection || embeddedDeepReflection, 700) || null;
+  const lessonText = compact(markerIndex >= 0 ? content.slice(0, markerIndex) : content, 620) || null;
+  const root = assessment?.rootCauses?.[0] || null;
+  const legacy = lessonStatus(memory) === "candidate_legacy";
+  // Legacy rows may contain prose or even the old marker, but without the new
+  // lifecycle state we cannot claim that current LLM/evidence safeguards ran.
+  const llmAdvice = legacy ? null : extractedLlmAdvice;
+  const origin = legacy
+    ? "legacy_unreviewed"
+    : llmAdvice ? "llm_deep_review"
+      : assessment ? "structured_review" : "deterministic_review";
+  const netRealizedPnl = finite(assessment?.financial?.netRealizedPnl)
+    ? Number(assessment.financial.netRealizedPnl)
+    : finite(context.netRealizedPnl) ? Number(context.netRealizedPnl) : null;
+  return {
+    reviewId: review?.id || reviewId,
+    origin,
+    hasLlmAdvice: Boolean(llmAdvice),
+    factSummary: compact(review?.summary, 420) || null,
+    lessonText,
+    llmAdvice,
+    systemSuggestion: !legacy && root ? proposalForRoot(root.code) : null,
+    diagnosis: root ? {
+      code: root.code || null,
+      label: root.label || null,
+      confidence: finite(root.confidence) ? Number(root.confidence) : null,
+      evidence: compact(root.evidence, 420) || null
+    } : null,
+    assessment: assessment ? {
+      matrixLabel: assessment.matrix?.label || null,
+      processScore: finite(assessment.processScore) ? Number(assessment.processScore) : null,
+      evidenceQuality: assessment.evidenceQuality || null,
+      financialComplete: assessment.financial?.complete === true,
+      outcome: assessment.outcome || context.outcome || null,
+      netRealizedPnl
+    } : {
+      matrixLabel: null,
+      processScore: null,
+      evidenceQuality: "legacy_unknown",
+      financialComplete: context.financialBasis && context.financialBasis !== "unreconciled",
+      outcome: context.outcome || (netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat"),
+      netRealizedPnl
+    },
+    applicability: {
+      symbol: memory.symbol || context.symbol || review?.symbol || null,
+      direction: context.direction || review?.direction || null,
+      timeframe: context.timeframe || null,
+      setupType: context.setupType || null,
+      strategyProductId: context.strategyProductId || null,
+      regime: context.regime || null
+    },
+    legacyCaveat: legacy
+      ? "该记录来自升级前，无法证明当时是否经过当前版本的结构化事实校验与 LLM 深度复盘。"
+      : null
+  };
 }
 
 function proposalForRoot(code) {
@@ -922,17 +989,21 @@ export function buildOwnerReviewLoopSnapshot(db) {
   migrateLegacyOwnerReviewProvenance(db);
   refreshOwnerImprovementRegistry(db);
   const memories = (db.memoryItems || []).filter((row) => row.source === "auto_reflection" && isOwnerReviewRow(db, row));
-  const lessons = memories.map((memory) => ({
-    id: memory.id,
-    reviewId: memory.reviewId || memory.reviewContext?.reviewId || null,
-    title: memory.title,
-    content: compact(memory.content, 520),
-    symbol: memory.symbol || memory.reviewContext?.symbol || null,
-    status: lessonStatus(memory),
-    patternKey: memory.patternKey || null,
-    createdAt: memory.createdAt,
-    updatedAt: memory.updatedAt
-  })).sort((a, b) => {
+  const lessons = memories.map((memory) => {
+    const display = lessonDisplayModel(db, memory);
+    return {
+      id: memory.id,
+      reviewId: display.reviewId,
+      title: memory.title,
+      content: compact(memory.content, 520),
+      symbol: display.applicability.symbol,
+      status: lessonStatus(memory),
+      patternKey: memory.patternKey || null,
+      createdAt: memory.createdAt,
+      updatedAt: memory.updatedAt,
+      ...display
+    };
+  }).sort((a, b) => {
     const stateRank = { candidate: 0, candidate_legacy: 1, observing: 2, active: 3, retired: 4, rejected: 5 };
     return (stateRank[a.status] ?? 9) - (stateRank[b.status] ?? 9) || new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
   });
