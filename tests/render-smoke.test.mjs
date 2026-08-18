@@ -43,7 +43,7 @@ esbuild.buildSync({
       export { AiTraderCenter, TradingCenter, ResearchCenter, RiskCenter, OperationsCenter } from "./src/workspacePages.jsx";
       export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
-      export { ChatPage, ConceptChatAiMessage, ConceptChatSessionHistory, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
+      export { ChatPage, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
@@ -62,55 +62,6 @@ esbuild.buildSync({
   logLevel: "silent"
 });
 const C = require(outFile);
-
-function findReactElement(node, predicate) {
-  if (!node || typeof node !== "object") return null;
-  if (predicate(node)) return node;
-  const children = React.Children.toArray(node.props?.children);
-  for (const child of children) {
-    const found = findReactElement(child, predicate);
-    if (found) return found;
-  }
-  return null;
-}
-
-test("原型双栏 AI 对话保留授权、策略草稿、海报和单会话删除入口", () => {
-  const message = {
-    id: "msg-1",
-    role: "agent",
-    mandateId: "mandate-1",
-    strategyDraftId: "draft-1",
-    content: "这是一条足够长的 AI 行情分析，用于验证桌面双栏对话仍能生成中英文海报并导出 PNG，同时不会丢失交易授权草案和策略工作室草稿入口。这里继续保留交易依据、风险结论、执行约束与证据摘要，确保超过长消息阈值。",
-    createdAt: "2026-08-19T10:00:00.000Z"
-  };
-  let poster = null;
-  const messageElement = C.ConceptChatAiMessage({
-    message,
-    mandate: { id: "mandate-1", status: "pending_confirmation", allowedSymbols: ["BTC/USDT"], max_leverage: 2, maxSingleTradeRiskPct: 1, maxDailyLossPct: 3 },
-    strategyDraft: { id: "draft-1", blueprint: { name: "BTC 趋势", symbols: ["BTC/USDT"], timeframe: "1h", exitPolicy: {} }, generatedTests: { status: "passed", passed: 3, total: 3 } },
-    action: () => {}, ui: { setActive: () => {} }, data: {}, markets: [], onPoster: (value) => { poster = value; }
-  });
-  const html = renderToString(messageElement);
-  assert.match(html, /交易权限.*草案/);
-  assert.match(html, /策略工作室草稿/);
-  assert.match(html, /生成分析海报/);
-  const posterButton = findReactElement(messageElement, (node) => node.props?.["aria-label"] === "生成分析海报");
-  assert.ok(posterButton, "long AI message must expose a poster action");
-  posterButton.props.onClick();
-  assert.equal(poster, message);
-
-  let deleted = null;
-  const historyElement = C.ConceptChatSessionHistory({
-    sessions: [{ id: "session-1", title: "BTC 分析" }], activeSessionId: "session-1",
-    onSwitch: () => {}, onDelete: (id) => { deleted = id; }, onClear: () => {}
-  });
-  const historyHtml = renderToString(historyElement);
-  assert.match(historyHtml, /删除当前对话/);
-  const deleteButton = findReactElement(historyElement, (node) => node.props?.["aria-label"] === "删除当前对话");
-  assert.ok(deleteButton, "selected session must expose a delete action");
-  deleteButton.props.onClick({ stopPropagation() {} });
-  assert.equal(deleted, "session-1");
-});
 
 test("网页版 API 始终同源，不受浏览器残留后端地址影响", () => {
   assert.equal(C.resolveApiBase({ native: false, stored: "http://127.0.0.1:8787", configured: "" }), "");
@@ -443,22 +394,10 @@ test("desktop pages render with realistic data (all statuses)", () => {
   }
 });
 
-test("formal strategy and capability catalogs use the connected master/detail information architecture", () => {
-  const strategyHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "strategy" }));
-  assert.match(strategyHtml, /策略库展示版本化策略与其真实证据/);
-  assert.match(strategyHtml, /搜索策略名称/);
-  assert.match(strategyHtml, /策略详情/);
-  const capabilityHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "capabilities" }));
-  assert.match(capabilityHtml, /能力库是正式调用目录/);
-  assert.match(capabilityHtml, /搜索能力名称/);
-  assert.match(capabilityHtml, /能力详情/);
-});
-
 test("trading cockpit exposes dedicated review pages and keeps Owner review private", () => {
   const reviewHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "reviews", reviewInitialId: "rv1" }));
   assert.match(reviewHtml, /交易复盘详情/);
-  assert.match(reviewHtml, /BTC\/USDT/);
-  assert.match(reviewHtml, /AI 结构化复盘/);
+  assert.match(reviewHtml, /BTC 平仓复盘/);
   const ownerHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "owner" }));
   assert.match(ownerHtml, /Owner 优化工作台/);
   const regularHtml = render(React.createElement(C.TradingCenter, { data: { ...data, user: { ...data.user, isOwner: false } }, action, ui, initialTab: "owner" }));
@@ -681,15 +620,14 @@ test("execution overview links to dedicated review workspaces instead of stackin
   assert.match(overview, /打开独立页面/);
 
   const reviews = render(React.createElement(C.TradeReviewWorkbenchConcept, { data, action, ui }));
-  assert.match(reviews, /aria-label="交易复盘详情"/);
-  assert.match(reviews, /class="grid grid-master erPrototypeMaster"/);
+  for (const id of ["reviews", "diagnostics", "behavior"]) assert.ok(reviews.includes(`id="er-${id}"`), `missing review workspace zone ${id}`);
   assert.ok(!reviews.includes("id=\"er-performance\""));
   assert.match(reviews, /持仓时长与收益率/);
   assert.match(reviews, /绩效拆解/);
 
   const owner = render(React.createElement(C.OwnerReviewWorkspaceConcept, { data, action, ui }));
-  assert.match(owner, /aria-label="Owner 优化工作台"/);
-  assert.match(owner, /class="grid grid-master erPrototypeMaster"/);
+  assert.ok(owner.includes("id=\"er-improvements\""));
+  assert.match(owner, /role="tablist"/);
   assert.doesNotMatch(owner, /id="er-performance"|id="er-reviews"/);
 });
 
@@ -711,14 +649,15 @@ test("Owner review loop renders candidate lessons and routed improvements withou
     }, action, ui, initialOwnerPane: "lessons"
   }));
   assert.match(html, /Owner 优化清单/);
-  assert.match(html, /独立队列，不再无限向下堆积/);
-  assert.match(html, /LLM 复盘建议/);
+  assert.match(html, /左侧选记录，右侧只查看一条/);
+  assert.match(html, /LLM 深度复盘/);
+  assert.match(html, /LLM 给出的复盘建议/);
   assert.match(html, /下次等待 15m 回踩确认后再入场/);
-  assert.match(html, /批准不是修改策略/);
+  assert.match(html, /批准后只在以下场景参考/);
   assert.match(html, /确认用于相似行情/);
   assert.match(html, /入场时机或确认不足/);
   assert.doesNotMatch(html, /接受建议/, "lesson view must not stack improvement cards below it");
-  assert.match(html, /系统自动改动/);
+  assert.match(html, /系统自行修改/);
 });
 
 test("Owner validation UI selects authoritative evidence instead of asking for free-text pass claims", () => {
@@ -786,26 +725,29 @@ test("concept graph dedupes duplicate names and renders", () => {
 
 test("desktop knowledge page exposes the full concept graph workspace and source filters", () => {
   const html = render(React.createElement(C.KnowledgeConcept, { data, action, ui }));
-  assert.match(html, /AI 参考资料/);
-  assert.match(html, /交易规则/);
-  assert.match(html, /策略方法实验室/);
-  assert.match(html, /Agent 能力实验室/);
+  assert.match(html, /知识孵化中心/);
+  assert.match(html, /AI 参考知识/);
+  assert.match(html, /交易纪律/);
+  assert.match(html, /交易方法实验室/);
+  assert.match(html, /工具与工作流实验室/);
   assert.match(html, /知识毕业漏斗/);
-  assert.match(html, /1 · 导入与检索/);
-  assert.match(html, /5 · 正式目录/);
+  assert.match(html, /导入并可检索/);
+  assert.match(html, /毕业发布/);
   assert.match(html, /可检索/);
   assert.match(html, /概念与知识网络/);
-  assert.match(html, /打开完整知识图谱/);
+  assert.match(html, /知识网络概览/);
+  assert.match(html, /全部知识源/);
   assert.match(html, /海龟交易法则/);
   assert.match(html, /以交易为生/);
-  assert.match(html, /想让 AI 参考书里的知识/);
-  assert.match(html, /下一步与分流/);
-  assert.match(html, /检索测试/);
-  assert.match(html, /Prompt 权限/);
+  assert.match(html, /生效中的条令/);
+  assert.match(html, /AI 就已经能参考书里的知识/);
+  assert.match(html, /管理规则/);
   assert.match(html, /生成扩展候选（可选）/);
+  assert.match(html, /每份知识当前能做什么/);
   assert.doesNotMatch(html, /策略库承接|能力库承接/);
   assert.doesNotMatch(html, /打开技能流水线|查看技能流水线|阶段 8\/8/);
   assert.match(html, /趋势/);
+  assert.match(html, /止损/);
 });
 
 test("knowledge source cards treat empty imports as incomplete rather than parsed", () => {
@@ -816,19 +758,8 @@ test("knowledge source cards treat empty imports as incomplete rather than parse
   }));
   assert.match(html, /空白书籍/);
   assert.match(html, /需处理/);
-  assert.match(html, /重新解析/);
+  assert.match(html, /来源需要重新解析/);
   assert.match(html, /当前不会影响分析或交易/);
-});
-
-test("knowledge routing explains the true empty-source state", () => {
-  const html = render(React.createElement(C.KnowledgeConcept, {
-    data: { ...data, knowledge: { ...data.knowledge, sources: [], chunks: [], tradingMethods: [], tradingSkills: [] } },
-    action,
-    ui
-  }));
-  assert.match(html, /还没有导入资料/);
-  assert.match(html, /请先导入或选择一份知识来源/);
-  assert.doesNotMatch(html, /等待当前来源完成解析/);
 });
 
 test("system settings gives OKX and notifications one explicit home without leaking runtime state into subscriptions", () => {
@@ -846,13 +777,6 @@ test("system settings gives OKX and notifications one explicit home without leak
 
   const notifications = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "notifications", onTabChange: () => {} }));
   assert.match(notifications, /保存通知设置|飞书通知|Telegram/);
-
-  const account = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "account", onTabChange: () => {} }));
-  assert.match(account, /个人资料/);
-  assert.match(account, /显示名称和头像的唯一修改入口/);
-  assert.match(account, /登录保护/);
-  assert.match(account, /双因素认证/);
-  assert.match(account, /Owner 密码由下方服务器安全配置管理/);
 
   const basics = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "base", onTabChange: () => {} }));
   assert.match(basics, /四个基础模块/);

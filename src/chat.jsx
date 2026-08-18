@@ -36,7 +36,7 @@ import {
   Image as ImageIcon,
   X
 } from "lucide-react";
-import { apiUrl, automationPresentation, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 import { hasFiniteNumber } from "./viewData.js";
@@ -931,56 +931,6 @@ function StrategyDraftCard({ draft, ui, mobile = false }) {
   </div>;
 }
 
-// The prototype desktop shell changes the information layout, not the available
-// chat capabilities. Keep the linked artifacts and message actions in one
-// render unit so visual rewrites cannot silently drop them again.
-export function ConceptChatSessionHistory({ sessions = [], activeSessionId = "", onSwitch, onDelete, onClear }) {
-  if (!sessions.length) return null;
-  return <div className="concept-session-bar">
-    <span>{t("对话历史", "History")}</span>
-    <select className="text-input" value={activeSessionId} onChange={(event) => onSwitch?.(event.target.value)} aria-label={t("选择历史对话", "Select conversation")}>
-      {sessions.map((session) => <option key={session.id} value={session.id}>{localizeText(session.title || t("未命名对话", "Untitled"))}</option>)}
-    </select>
-    <button className="btn concept-delete-session" type="button" disabled={!activeSessionId} onClick={(event) => onDelete?.(activeSessionId, event)} aria-label={t("删除当前对话", "Delete current conversation")} title={t("删除当前对话", "Delete current conversation")}><Trash2 size={13}/>{t("删除当前", "Delete current")}</button>
-    <button className="btn" type="button" onClick={onClear}>{t("清空全部", "Clear all")}</button>
-  </div>;
-}
-
-export function ConceptChatAiMessage({
-  message,
-  innerRef,
-  presentation,
-  currentState,
-  currentExecution,
-  currentPosition,
-  isLatest = false,
-  onSuggest,
-  mandate,
-  strategyDraft,
-  plan,
-  executionOrder,
-  action,
-  ui,
-  markets,
-  data,
-  onPoster
-}) {
-  return <div className="message ai" ref={innerRef}>
-    {presentation?.layout === "decision_brief"
-      ? <DecisionBrief presentation={presentation} content={message.content} currentState={currentState} currentExecution={currentExecution} currentPosition={currentPosition} isLatest={isLatest} onSuggest={onSuggest}/>
-      : <RichMessage text={message.content} onSuggest={onSuggest}/>
-    }
-    {message.mandateId && <MandateCard mandate={mandate} action={action}/>}
-    {message.strategyDraftId && <StrategyDraftCard draft={strategyDraft} ui={ui}/>}
-    {message.planId && <PlanCard plan={plan} executionOrder={executionOrder} action={action} ui={ui} markets={markets} data={data}/>}
-    <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} callSummary={message.toolCallSummary}/>
-    <div className="concept-message-foot">
-      <small>{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
-      {String(message.content || "").length > 80 && <button type="button" className="btn concept-poster-button" onClick={() => onPoster?.(message)} title={t("把这条分析做成海报（中/英，可导出）", "Turn this analysis into a poster (ZH/EN, exportable)")} aria-label={t("生成分析海报", "Create analysis poster")}><ImageIcon size={13}/>{t("海报", "Poster")}</button>}
-    </div>
-  </div>;
-}
-
 export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
   const [open, setOpen] = useState(false);
   if (!trace.length && !coverage) return null;
@@ -1435,7 +1385,7 @@ function PosterModal({ content, meta, onClose }) {
   );
 }
 
-export function ChatPage({ data, action, ui, concept = false, mobile = false, resetToken = 0 }) {
+export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
   const system = data.system || {};
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
@@ -1578,10 +1528,6 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, re
     setShowHistory(false);
   }
 
-  useEffect(() => {
-    if (concept && resetToken > 0) newSession();
-  }, [concept, resetToken]);
-
   function switchSession(sessionId) {
     setActiveSessionId(sessionId);
     loadMessages(sessionId);
@@ -1589,7 +1535,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, re
   }
 
   async function deleteSession(sessionId, event) {
-    event?.stopPropagation?.();
+    event.stopPropagation();
     try {
       const response = await fetch(apiUrl(`/api/agent/chat/sessions/${sessionId}`), { method: "DELETE", headers: authHeaders() });
       const json = await response.json();
@@ -1613,55 +1559,6 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, re
     } catch (error) {
       ui.notify?.(error.message || t("清空失败", "Clear failed"));
     }
-  }
-
-  if (concept && !mobile) {
-    const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status)) || {};
-    const whitelist = (mandate.allowedSymbols || data.watchlist || []).map((item) => typeof item === "string" ? item : item.symbol).filter(Boolean);
-    const verifiedFacts = (data.marketIntelligenceFacts || []).filter((item) => item.verified !== false);
-    const knowledgeSkills = data.knowledge?.tradingSkills || data.knowledgeSkills || [];
-    const publishedStrategies = (data.strategyStudio?.versions || data.skills || []).filter((item) => /published|enabled|active|validated/i.test(String(item.status || item.state)));
-    const activeLessons = (data.reviewMemories || data.reviewLearningMemories || []).filter((item) => /active|approved/i.test(String(item.learningStatus || item.status)));
-    const plans = (data.tradePlans || []).filter((item) => !/closed|cancelled|rejected|failed/i.test(String(item.status))).slice(0, 2);
-    const eventWindow = (data.eventRiskWindows || []).find((item) => item.blocking) || (data.eventRiskWindows || [])[0];
-    return <div className="chat-layout concept-chat-layout">
-      <section className="card chat-card">
-        <header className="card-head"><div><h3>{t("与 AI 交易员对话", "Chat with the AI trader")}</h3><p>{t("市场问题使用当前事实；账户、风险和执行状态由服务端守卫校正", "Market questions use current facts; server guards correct account, risk, and execution state")}</p></div><span className="tag orange">{automationPresentation(data).targetLabel}</span></header>
-        <ConceptChatSessionHistory sessions={sessions} activeSessionId={activeSessionId} onSwitch={switchSession} onDelete={deleteSession} onClear={resetHistory}/>
-        <div className="messages" ref={scrollRef}>
-          {!messages.length && <div className="concept-chat-empty"><i>✦</i><b>{t("从一个市场问题开始", "Start with a market question")}</b><p>{t("AI 会调用当前账户可见的行情、情报、知识、策略和风险事实，不会把缺失数据猜成结论。", "The AI uses visible market, intel, knowledge, strategy, and risk facts without guessing missing data.")}</p></div>}
-          {messages.map((message, messageIndex) => message.role === "user" ? <div className="message user" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}><RichMessage text={message.content} compact/><small>{formatTime(message.createdAt)}</small></div> : <ConceptChatAiMessage
-            key={message.id}
-            message={message}
-            innerRef={messageIndex === messages.length - 1 ? latestMessageRef : null}
-            presentation={message.presentation}
-            currentState={currentStateForMessage(message)}
-            currentExecution={currentExecutionForMessage(message)}
-            currentPosition={message.id === latestAgentMessageId ? currentPositionForMessage(message) : undefined}
-            isLatest={message.id === latestAgentMessageId}
-            onSuggest={!pending ? (value) => send(value) : null}
-            mandate={findMandate(message.mandateId)}
-            strategyDraft={findStrategyDraft(message.strategyDraftId)}
-            plan={findPlan(message.planId)}
-            executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)}
-            action={action}
-            ui={ui}
-            markets={data.markets}
-            data={data}
-            onPoster={setPosterMsg}
-          />)}
-          {(pending || awaitingReply) && <div className="message ai"><div className="thinkingDots"><span/><span/><span/></div><small>{t("正在综合本轮事实…", "Synthesizing current facts…")}</small></div>}
-        </div>
-        <div className="quick-prompts">{[t("分析 BTC 当前是否有机会", "Analyze BTC"),t("解释为什么没有开仓", "Why no entry?"),t("检查当前账户风险", "Check account risk"),t("总结今天发生的高影响事件", "Summarize events")].map((value)=><button key={value} type="button" disabled={pending} onClick={()=>send(value)}>{value}</button>)}</div>
-        {(data.pendingActions || []).length > 0 && <div className="concept-pending-actions">{(data.pendingActions || []).map((item)=><div key={item.id}><span><b>{item.title}</b><small>{item.detail}</small></span><button className="btn" onClick={()=>action(`/api/agent/actions/${item.id}/cancel`,{})}>{t("取消", "Cancel")}</button><button className={`btn ${item.danger?"danger":"primary"}`} onClick={()=>action(`/api/agent/actions/${item.id}/confirm`,{})}>{t("确认执行", "Confirm")}</button></div>)}</div>}
-        <div className="composer"><textarea ref={inputRef} value={input} rows={1} placeholder={t("问行情、账户、风险，或让 AI 解释当前计划…", "Ask about markets, account, risk, or the current plan…")} onChange={(event)=>setInput(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();send();}}}/><button className="btn primary" disabled={pending||!input.trim()} onClick={()=>send()}>{pending?t("分析中…","Analyzing…"):t("发送","Send")}</button></div>
-        {posterMsg && <PosterModal content={stripCitationMarkers(posterMsg.content)} meta={posterMsg} onClose={()=>setPosterMsg(null)}/>}
-      </section>
-      <div className="stack concept-analysis-rail">
-        <section className="card"><header className="card-head"><div><h3>{t("本轮分析材料", "Current analysis inputs")}</h3><p>{t("确定性代码先取数，LLM 负责综合判断", "Deterministic code gathers facts; the LLM synthesizes")}</p></div><span className={`tag ${verifiedFacts.length?"good":"warn"}`}>{verifiedFacts.length?t("证据就绪","Evidence ready"):t("等待证据","Awaiting evidence")}</span></header><div className="card-body"><div className="kv" style={{"--kv":2}}>{[[t("白名单","Whitelist"),whitelist.length?whitelist.map((item)=>String(item).replace("/USDT","")).join(" · "):t("未设置","Not set")],[t("行情结构","Market structure"),(data.markets||[]).length?`OKX · ${(data.markets||[]).length} ${t("个市场","markets")}`:t("待同步","Pending")],[t("近期事件","Recent events"),`${verifiedFacts.length} ${t("条已验证事实","verified facts")}`],[t("知识引用","Knowledge"),`${knowledgeSkills.length} ${t("条可用","available")}`],[t("策略候选","Strategies"),`${publishedStrategies.length} ${t("个已发布版本","published versions")}`],[t("复盘教训","Review lessons"),`${activeLessons.length} ${t("条当前可用","currently active")}`]].map(([label,value])=><span key={label}><small>{label}</small><b>{value}</b></span>)}</div><div className="section-title">{t("调用原则","Invocation principle")}</div><div className="note good"><strong>{t("能用 API 和代码完成的工作不调用 LLM。","Do not call an LLM for work handled by APIs and code.")}</strong><br/>{t("价格、市场扫描、指标、账户与订单事实由确定性工具提供；Gemini 只在需要跨证据综合判断和生成计划时介入。","Prices, scans, indicators, account, and order facts come from deterministic tools; Gemini intervenes only for cross-evidence judgment and planning.")}</div></div></section>
-        <section className="card"><header className="card-head"><div><h3>{t("当前计划与运行状态", "Current plans and runtime")}</h3><p>{t("只展示摘要，权威事实仍在对应工作台", "Summary only; authoritative facts remain in their workspaces")}</p></div></header><div className="card-body">{plans.map((plan,index)=><div className="incident" key={plan.id}><i>{index+1}</i><span><b>{plan.symbol} · {humanize(plan.status)}</b><small>{plan.entry?.range || (plan.entry_range||[]).join("–") || localizeText(plan.summary||plan.reason||t("查看执行计划","Open execution plan"))}</small></span></div>)}{eventWindow&&<div className="incident"><i>!</i><span><b>{localizeText(eventWindow.title||t("事件风险窗口","Event risk window"))}</b><small>{formatDateTime(eventWindow.startAt||eventWindow.dueAt)} · {humanize(eventWindow.phase||eventWindow.status)}</small></span></div>}{!plans.length&&!eventWindow&&<div className="note">{t("当前没有在途计划或生效中的事件风险窗口。系统仍会继续巡检。","There are no active plans or event-risk windows. Scanning continues.")}</div>}<div className="actions"><button className="btn primary" onClick={()=>ui.setActive("signalHub")}>{t("打开执行中心","Open execution center")}</button><button className="btn" onClick={()=>ui.setActive("eventsTasks:events")}>{t("打开事件日历","Open calendar")}</button></div></div></section>
-      </div>
-    </div>;
   }
 
   return (
