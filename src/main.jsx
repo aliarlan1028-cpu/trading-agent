@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getLang, setLang, t } from "./i18n.js";
 import {
@@ -24,6 +24,8 @@ import { LandingPage } from "./landing.jsx";
 import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
+import { shellStatusTone } from "./shellStatus.js";
+import { applyTradingModeOnce, buildTradingModePayload } from "./tradingModeSubmission.js";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./app.css";
 
@@ -53,11 +55,12 @@ if (isNativeApp()) {
 // 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
 // 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
 const navItems = [
-  { id: "chat", group: "trade", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
-  { id: "cockpit", group: "trade", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
-  { id: "researchCenter", group: "research", label: "研究中心", labelEn: "Research", icon: BookOpen },
-  { id: "riskCenter", group: "research", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
-  { id: "operationsCenter", group: "ops", label: "系统运营", labelEn: "Operations", icon: Activity }
+  { id: "chat", group: "trade", label: "AI 交易员", labelEn: "AI Trader", icon: "✦" },
+  { id: "cockpit", group: "trade", label: "交易驾驶舱", labelEn: "Cockpit", icon: "◫" },
+  { id: "researchCenter", group: "research", label: "研究中心", labelEn: "Research", icon: "◇" },
+  { id: "riskCenter", group: "research", label: "风控中心", labelEn: "Risk", icon: "⬡" },
+  { id: "operationsCenter", group: "ops", label: "系统运营", labelEn: "Operations", icon: "◎" },
+  { id: "systemSettings", group: "ops", label: "系统设置", labelEn: "Settings", icon: "⚙" }
 ];
 
 const navGroups = [
@@ -77,40 +80,29 @@ function Sidebar({ active, setActive, data }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brandMark"><BrandLogo size={32} variant="white" /></div>
-        <div className="brandText">
-          <strong>KORDYN</strong>
-          <span className="brandSub">AI · DIGITAL ASSET</span>
-        </div>
+        <div className="brand-mark">K</div>
+        <div><b>KORDYN</b><small>AI TRADING OS</small></div>
       </div>
-      <nav className="nav navGrouped">
-        {navGroups.map((group) => <section className="navSection" key={group.id}>
-          <span className="navGroupLabel">{t(group.label, group.labelEn)}</span>
+      <nav className="nav-scroll">
+        {navGroups.map((group) => <section className="nav-group" key={group.id}>
+          <span className="nav-label">{t(group.label, group.labelEn)}</span>
           {navItems.filter((item) => item.group === group.id).map((item) => {
-            const Icon = item.icon;
             const on = active === item.id;
             const label = t(item.label, item.labelEn);
             const badge = item.id === "operationsCenter" ? unread : 0;
             return (
-                <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
-                  <Icon size={16} />
-                  <span className="navLabelFull">{label}</span>
-                  <span className="navLabelShort">{label}</span>
-                  {badge > 0 && <span className="navItemBadge">{badge}</span>}
+                <button key={item.id} className={`nav-item ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
+                  <i className="ico">{item.icon}</i>{label}
+                  {badge > 0 && <span className="nav-badge">{badge}</span>}
                 </button>
             );
           })}
         </section>)}
       </nav>
-      <div className="sidebarFoot">
-        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
-          <Settings size={15} /> {t("系统设置", "Settings")}
-        </button>
-        <div className="navWorkspaceCard">
-          <span>{t("系统版本", "System release")}<strong>{normalizeRelease(import.meta.env?.VITE_APP_RELEASE) || "LOCAL"}</strong></span>
-          <b>{workspaceLabel}</b>
-          <small>{t("实时状态来自服务端权威快照", "Live state comes from authoritative server snapshots")}</small>
-        </div>
+      <div className="nav-foot">
+        <span>{t("系统版本", "System release")}<strong>{normalizeRelease(import.meta.env?.VITE_APP_RELEASE) || "LOCAL"}</strong></span>
+        <b>{workspaceLabel}</b>
+        <small>{t("所有页面共享同一权威状态", "All pages share one authoritative state")}</small>
       </div>
     </aside>
   );
@@ -121,14 +113,12 @@ function useIsMobileViewport() {
   useEffect(() => {
     const query = window.matchMedia("(max-width: 900px)");
     const sync = () => setMobile(query.matches);
-    // 首帧布局尚未稳定时（WebView / 迟到的 resize），initial state 可能读到错误宽度；
-    // 用 rAF 在首次绘制后再同步一次，避免需要手动刷新才切到正确的桌面/移动壳。
-    const raf = requestAnimationFrame(sync);
+    const raf = window.requestAnimationFrame(sync);
     query.addEventListener("change", sync);
     window.addEventListener("resize", sync);
     window.addEventListener("orientationchange", sync);
     return () => {
-      cancelAnimationFrame(raf);
+      window.cancelAnimationFrame(raf);
       query.removeEventListener("change", sync);
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
@@ -140,15 +130,20 @@ function useIsMobileViewport() {
 function AppTopbar({ data, setActive, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
-  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const accounts = data.exchangeAccounts || [];
-  const okx = accounts.find((item) => item.exchange === "OKX") || {};
-  const unread = (data.notifications || []).filter((item) => !item.read).length;
+  const [modeOpen, setModeOpen] = useState(false);
+  const [modeSaving, setModeSaving] = useState(false);
+  const modeRequestLock = useRef(false);
   const runtime = automationPresentation(data);
+  const runtimeTone = shellStatusTone(runtime.tone, runtime.runtimeStatus, runtime.mode);
   const stopped = data.system?.killSwitch === true;
-  const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
+  const okx = (data.exchangeAccounts || []).find((item) => item.exchange === "OKX") || {};
+  const unread = (data.notifications || []).filter((item) => !item.read).length;
+  const displayUserName = localizeText(data.user?.name || data.user?.email || t("账户", "Account"));
+  const savedMode = data.automationState?.selectedMode || data.automationState?.requestedMode || runtime.targetMode || "observe";
+  const [selectedMode, setSelectedMode] = useState(savedMode);
+  useEffect(() => setSelectedMode(savedMode), [savedMode]);
   const searchItems = [
     ["chat", t("AI 交易员", "AI Trader"), t("对话、情报与盯盘", "Dialog, intel, and watch")],
     ["cockpit", t("交易驾驶舱", "Trading Cockpit"), t("行情、执行、复盘与 Owner 优化", "Market, execution, and review")],
@@ -163,94 +158,57 @@ function AppTopbar({ data, setActive, action, lang, switchLang }) {
   const searchResults = searchItems.filter(([, label, hint]) => !normalizedSearch || `${label} ${hint}`.toLowerCase().includes(normalizedSearch)).slice(0, 10);
   useEffect(() => {
     const onKeyDown = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-      if (event.key === "Escape") setSearchOpen(false);
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); }
+      if (event.key === "Escape") { setSearchOpen(false); setModeOpen(false); setLangOpen(false); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   const flattenAll = async () => {
-    if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries will pause until OKX reconciliation confirms completion."))) {
-      action("/api/risk/emergency-flatten", {});
-    }
+    if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries pause until reconciliation completes."))) action("/api/risk/emergency-flatten", {});
   };
-  return (
-    <header className="appTopbar">
-      <button type="button" className="topSearch topSearchCommand" onClick={() => setSearchOpen(true)} aria-haspopup="dialog">
-        <Search size={15} />
-        <span>{t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")}</span>
-        <kbd>⌘ K</kbd>
+  const applyMode = async () => {
+    if (modeRequestLock.current) return;
+    const live = data.config?.liveTrading || {};
+    if (selectedMode !== "observe" && !live.acknowledged) { setModeOpen(false); setActive("riskMandate"); return; }
+    const ok = selectedMode === "observe" || await uiConfirm(selectedMode === "full_auto" ? t("确认切换到自动交易？", "Switch to automatic trading?") : t("确认切换到逐笔确认？", "Switch to approval-required trading?"));
+    if (!ok) return;
+    setModeSaving(true);
+    await applyTradingModeOnce({
+      lock: modeRequestLock,
+      payload: buildTradingModePayload(selectedMode, live),
+      request: (payload) => action("/api/config/live-trading", payload),
+      onSuccess: () => setModeOpen(false)
+    });
+    setModeSaving(false);
+  };
+  return <header className="appTopbar global-bar">
+    <button type="button" className="search-button" onClick={() => setSearchOpen(true)}><span aria-hidden="true">⌕</span><span className="search-copy">{t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")}</span><kbd>⌘ K</kbd></button>
+    <div className="bar-spacer" />
+    <ExchangePill name="OKX" account={okx} onClick={() => setActive("systemSettings:exchange")} />
+    <button type="button" className="global-chip clickable mode" onClick={() => { setSelectedMode(savedMode); setModeOpen(true); }}><i className="dot"/><span><small>{t("选择的模式", "SAVED MODE")}</small><b>{runtime.targetLabel}</b></span></button>
+    <button type="button" className={`global-chip clickable status-${runtimeTone}`} onClick={() => setActive("riskCenter")}><i className="dot"/><span><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b></span></button>
+    <div className="global-actions"><button type="button" onClick={flattenAll}>{t("全部平仓", "Flatten")}</button><button type="button" className="danger" onClick={() => setKillConfirm(true)}>⚡ {stopped ? t("解除停止", "Clear stop") : t("紧急停止", "Emergency stop")}</button></div>
+    <div className="global-utilities" aria-label={t("账户与通知", "Account and notifications")}>
+      <button type="button" className="global-notifications" title={t("通知中心", "Notification center")} aria-label={t("通知", "Notifications")} onClick={() => setActive("operationsCenter:notifications")}>
+        <Bell size={16}/>{unread > 0 && <b>{unread > 99 ? "99+" : unread}</b>}
       </button>
-      {searchOpen && <div className="commandPaletteBackdrop" role="presentation" onMouseDown={() => setSearchOpen(false)}><section className="commandPalette" role="dialog" aria-modal="true" aria-label={t("全局搜索", "Global search")} onMouseDown={(event) => event.stopPropagation()}><header><div><h2>{t("全局搜索", "Global Search")}</h2><p>{t("搜索页面、交易对、执行计划、知识和任务；结果会进入唯一权威页面。", "Search pages, pairs, plans, knowledge, and tasks; results open their authoritative workspace.")}</p></div><button type="button" onClick={() => setSearchOpen(false)} aria-label={t("关闭搜索", "Close search")}><X size={17}/></button></header><label className="commandPaletteInput"><Search size={16}/><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("例如：BTC、复盘、OKX、知识", "For example: BTC, reviews, OKX, knowledge")}/><kbd>ESC</kbd></label><div className="topSearchResults" role="listbox">{searchResults.map(([route, label, hint], index) => <button type="button" key={`${route}-${label}-${index}`} onClick={() => { setActive(route); setSearchOpen(false); setSearchQuery(""); }}><span><b>{label}</b><small>{hint}</small></span><em>{index < 6 ? t("页面", "Page") : t("实体", "Item")}</em></button>)}{!searchResults.length && <p>{t("没有匹配结果，请尝试交易对、页面名称或任务名称。", "No matching results. Try a pair, page name, or task name.")}</p>}</div></section></div>}
-      <div className="topbarStatusGroup">
-        <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
-        <button type="button" className="topStateChip savedMode" onClick={()=>setActive("riskMandate")} title={t("修改运行模式与交易限制", "Change operating mode and trading limits")}>
-          <span /><div><small>{t("选择的模式", "SAVED MODE")}</small><b>{runtime.targetLabel}</b></div>
-        </button>
-        <button type="button" className={`topStateChip effective ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
-          <span /><div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b></div>
-        </button>
-        {runtimeOpen && <>
-          <div className="runtimeStatusBackdrop" onClick={()=>setRuntimeOpen(false)} />
-          <section className="runtimeStatusPopover" role="dialog" aria-label={t("当前运行状态", "Current runtime status")}>
-            <header>
-              <div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b></div>
-              <span className={`runtimeStatusTone ${runtime.tone}`}>{runtime.entryPolicy}</span>
-            </header>
-            <p>{runtime.detail}</p>
-            <div className="runtimeStatusTarget"><span>{t("安全条件解除后的长期目标", "Saved target after safety causes clear")}</span><b>{runtime.targetLabel}</b></div>
-            <div className={`runtimeReduceSummary ${runtime.runtimeStatus}`}>
-              <RefreshCw />
-              <span><b>{runtime.recoveryLabel}</b><small>{runtime.primaryBlocker || t("当前没有阻止新开仓的系统原因。", "No system reason is blocking new entries.")}</small></span>
-            </div>
-            {runtime.blockerDetails.length > 0 && <div className="runtimeStatusReasons"><small>{t("当前限制原因与恢复方式", "BLOCKERS & RECOVERY")}</small><div>{runtime.blockerDetails.map((item, index)=><article key={item.code || `${item.label}-${index}`}><b>{localizeText(item.label || item)}</b>{item.detail && <p>{localizeText(item.detail)}</p>}{item.recovery && <small><RefreshCw/>{localizeText(item.recovery)}</small>}</article>)}</div></div>}
-            <button type="button" className="runtimeStatusLink" onClick={()=>{setRuntimeOpen(false);setActive("riskMandate");}}>{t("查看长期执行目标与权限", "View saved execution target and permissions")}<ChevronRight size={14}/></button>
-          </section>
-        </>}
+      <div className="global-language">
+        <button type="button" title={t("切换语言", "Switch language")} aria-label={t("切换语言", "Switch language")} aria-haspopup="menu" aria-expanded={langOpen} onClick={() => setLangOpen((open) => !open)}><Globe size={16}/></button>
+        {langOpen && <><button type="button" className="global-language-backdrop" aria-label={t("关闭语言菜单", "Close language menu")} onClick={() => setLangOpen(false)}/><div className="global-language-menu" role="menu"><button role="menuitemradio" aria-checked={lang === "zh"} className={lang === "zh" ? "active" : ""} onClick={() => { switchLang("zh"); setLangOpen(false); }}>中文<span>{lang === "zh" ? "✓" : ""}</span></button><button role="menuitemradio" aria-checked={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => { switchLang("en"); setLangOpen(false); }}>English<span>{lang === "en" ? "✓" : ""}</span></button></div></>}
       </div>
-      <div className="topEmergencyActions" aria-label={t("运行控制", "Runtime controls")}>
-        <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
-        <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
-      </div>
-      <div className="topbarActions">
-        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => setActive("operationsCenter:notifications")}>
-          <Bell size={18} />
-          {unread > 0 && <b>{unread}</b>}
-        </button>
-        <div className="topLang">
-          <button className={`topLangBtn ${langOpen ? "on" : ""}`} title={t("切换语言 / Switch language", "切换语言 / Switch language")} aria-label={t("切换语言", "Switch language")} aria-haspopup="menu" aria-expanded={langOpen} onClick={() => setLangOpen((o) => !o)}>
-            <Globe size={18} />
-          </button>
-          {langOpen && <>
-            <div className="topLangBackdrop" onClick={() => setLangOpen(false)} />
-            <div className="topLangMenu" role="menu">
-              <button role="menuitemradio" aria-checked={lang === "zh"} className={lang === "zh" ? "on" : ""} onClick={() => { switchLang("zh"); setLangOpen(false); }}>中文{lang === "zh" && <span className="topLangCheck">✓</span>}</button>
-              <button role="menuitemradio" aria-checked={lang === "en"} className={lang === "en" ? "on" : ""} onClick={() => { switchLang("en"); setLangOpen(false); }}>English{lang === "en" && <span className="topLangCheck">✓</span>}</button>
-            </div>
-          </>}
-        </div>
-        <button className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setActive("systemSettings")} aria-label={t("账户设置", "Account settings")}>
-          {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : displayUserName.slice(0, 1).toUpperCase()}
-        </button>
-      </div>
-      {killConfirm && <KillConfirmDialog enable={!stopped} action={action} onClose={() => setKillConfirm(false)} />}
-    </header>
-  );
+      <button type="button" className="global-account" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} aria-label={t("账户设置", "Account settings")} onClick={() => setActive("systemSettings")}>{data.user?.avatar ? <img src={data.user.avatar} alt=""/> : String(displayUserName || "K").slice(0, 1).toUpperCase()}</button>
+    </div>
+    {searchOpen && <div className="modal-backdrop" onMouseDown={() => setSearchOpen(false)}><section className="modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="modal-head"><div><h2>{t("全局搜索", "Global Search")}</h2><p>{t("搜索页面、交易对、计划、知识和任务；结果会进入唯一权威页面。", "Search pages, pairs, plans, knowledge, and tasks.")}</p></div><button className="modal-close" onClick={() => setSearchOpen(false)}>×</button></header><div className="modal-body"><input id="global-search-input" className="text-input" autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("例如：BTC、复盘、OKX、知识", "For example: BTC, reviews, OKX, knowledge")}/><div className="command-list">{searchResults.map(([route,label,hint],index)=><button className="command" key={`${route}-${label}-${index}`} onClick={()=>{setActive(route);setSearchOpen(false);setSearchQuery("");}}><span><b>{label}</b><small>{hint}</small></span><em>{index<6?t("页面","Page"):t("实体","Item")}</em></button>)}{!searchResults.length&&<div className="empty"><div><b>{t("没有匹配结果","No matches")}</b><p>{t("尝试交易对、页面名称或任务名称。","Try a pair, page name, or task name.")}</p></div></div>}</div></div></section></div>}
+    {modeOpen && <div className="modal-backdrop" onMouseDown={()=>{if(!modeSaving)setModeOpen(false);}}><section className="modal" role="dialog" aria-modal="true" aria-busy={modeSaving} onMouseDown={(event)=>event.stopPropagation()}><header className="modal-head"><div><h2>{t("切换交易模式","Switch trading mode")}</h2><p>{t("这是唯一的运行模式选择；“暂停新开仓”只是异常状态，不是第四种模式。","This is the only operating-mode selector; an entry pause is a temporary runtime state.")}</p></div><button className="modal-close" disabled={modeSaving} onClick={()=>setModeOpen(false)}>×</button></header><div className="modal-body"><div className="mode-options">{[["observe",t("只分析","Analyze only"),t("持续分析、生成判断，不向 OKX 提交订单","Analyze continuously without sending orders"),"◎"],["semi_auto",t("逐笔确认","Approve each trade"),t("计划通过模型审查与硬风控后，等待 Owner 确认","Wait for Owner approval after all checks"),"✓"],["full_auto",t("自动交易","Automatic trading"),t("计划通过全部检查后自动执行；异常只会临时暂停新开仓","Execute after all checks; incidents only pause new entries"),"⚡"]].map(([id,label,desc,icon])=><button key={id} disabled={modeSaving} className={`mode-option ${selectedMode===id?"active":""}`} onClick={()=>setSelectedMode(id)}><i>{icon}</i><span><b>{label}</b><p>{desc}</p></span></button>)}</div><div className="note owner">{t("切换模式不会强平已有仓位；已有仓位始终由原计划和保护合同继续管理。","Changing mode never force-closes existing positions; their original protection remains active.")}</div></div><footer className="modal-foot"><button className="btn" disabled={modeSaving} onClick={()=>setModeOpen(false)}>{t("取消","Cancel")}</button><button className="btn primary" disabled={modeSaving} onClick={applyMode}>{modeSaving?t("正在应用…","Applying…"):t("应用模式","Apply mode")}</button></footer></section></div>}
+    {killConfirm && <KillConfirmDialog enable={!stopped} action={action} onClose={() => setKillConfirm(false)} />}
+  </header>;
 }
 
-function ExchangePill({ name, tone, account = {}, onClick }) {
+function ExchangePill({ name, account = {}, onClick }) {
   const state = exchangeState(account);
-  return (
-    <button className={`exchangePill ${state.tone}`} title={`${name}：${state.label}`} onClick={onClick}>
-      <span className={`exchangeLogo ${tone}`}>{name === "OKX" ? "✣" : "◆"}</span>
-      <b>{name}</b>
-      <small>{state.label}</small>
-      <i />
-    </button>
-  );
+  const tone = shellStatusTone(state.tone, account.status, account.connectionStatus, state.label);
+  return <button className={`global-chip clickable status-${tone}`} title={`${name}：${state.label}`} onClick={onClick}><i className="dot"/><span><small>{name}</small><b>{state.label}</b></span></button>;
 }
 
 function App() {
@@ -328,12 +286,12 @@ function App() {
   }
 
   return (
-    <div className="appShell" key={lang}>
+    <div className="appShell app-shell" key={lang}>
       <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
-      <main className="mainArea">
+      <main className="mainArea main-shell">
         <AppTopbar data={data} setActive={navigate} action={action} lang={lang} switchLang={switchLang} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
-        <div className={active === "chat" ? "content contentChat" : "content"}>
+        <div className={active === "chat" ? "content workspace contentChat" : "content workspace"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
         </div>
       </main>

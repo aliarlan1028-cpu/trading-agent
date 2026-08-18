@@ -80,7 +80,19 @@ export function registerKnowledgeImportRoutes(app, ctx) {
   app.post("/api/knowledge/rag-query", requirePermission("knowledge.read"), requirePermission("assistant.use"), async (req, res) => {
     ensureKnowledgeOwnership(db);
     const scoped = projectKnowledgeForPrincipal(db, principal(req));
-    const result = await ragQuery(db, req.body.query || req.body.question || "", { ...(req.body || {}), principal: principal(req), chunks: scoped.chunks });
+    const requestedSourceId = String(req.body?.sourceId || "").trim();
+    if (requestedSourceId && !(scoped.sources || []).some((source) => String(source.id) === requestedSourceId)) {
+      return res.status(404).json({ error: "Knowledge source not found" });
+    }
+    const searchableChunks = requestedSourceId
+      ? (scoped.chunks || []).filter((chunk) => String(chunk.sourceId || chunk.source?.id || "") === requestedSourceId)
+      : scoped.chunks;
+    const result = await ragQuery(db, req.body.query || req.body.question || "", {
+      ...(req.body || {}),
+      sourceId: requestedSourceId || undefined,
+      principal: principal(req),
+      chunks: searchableChunks
+    });
     persist(res, result);
   });
 

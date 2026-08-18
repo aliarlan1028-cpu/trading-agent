@@ -8,8 +8,6 @@ import {
   RiskIncidentsConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
   TasksConcept, TradingOverviewConcept
 } from "./conceptPages.jsx";
-import { ChatKpiStrip } from "./chat.jsx";
-import { Eye, ShieldCheck } from "lucide-react";
 import { t } from "./i18n.js";
 
 const TABS = {
@@ -28,22 +26,21 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
     "风控中心": "RISK · CONNECTED WORKSPACE", "Risk Center": "RISK · CONNECTED WORKSPACE",
     "系统运营": "OPERATIONS · CONNECTED WORKSPACE", "Operations": "OPERATIONS · CONNECTED WORKSPACE"
   })[title] || "KORDYN · CONNECTED WORKSPACE";
-  const tabNav = <nav className="uxTabs" aria-label={`${title} ${t("子页面", "sections")}`}>{tabs.map(([id, label, labelEn]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{t(label, labelEn)}</button>)}</nav>;
+  const tabNav = <nav className="uxTabs tabs" aria-label={`${title} ${t("子页面", "sections")}`}>{tabs.map(([id, label, labelEn]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{t(label, labelEn)}</button>)}</nav>;
   return (
-    <div className="uxCenter">
-      <header className="uxCenterHead"><div className="uxHeadLeft"><small className="uxEyebrow">{eyebrow}</small><h1>{title}</h1>{subtitle && <span>{subtitle}</span>}</div><div className="uxHeadRight">{tabsExtra}<em>{t("功能不变 · 信息归位 · 共享真实状态", "Same capabilities · one source of truth")}</em></div></header>
+    <div className="uxCenter prototype-page">
+      <header className="uxCenterHead page-head"><div className="uxHeadLeft"><div className="uxEyebrow eyebrow">{eyebrow}</div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="uxHeadRight page-actions">{tabsExtra}<span className="context-note">{t("功能不变 · 信息归位 · 共享真实状态", "Same capabilities · one source of truth")}</span></div></header>
       {tabNav}
-      <div className={`uxCenterBody uxSection-${active}`}>{children}</div>
+      <div className={`uxCenterBody page-body uxSection-${active}`}>{children}</div>
     </div>
   );
 }
 
 export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const [tab, setTab] = useState(initialTab);
-  const activeWatches = (data.watchTriggers || []).filter((item) => item.status === "active").length;
-  const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
-  const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>setTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
-  const page = tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : <WatchMonitorConcept data={data} action={action} ui={ui}/>;
+  const [newChatToken, setNewChatToken] = useState(0);
+  const extra = tab === "dialog" ? <button type="button" className="btn" onClick={() => setNewChatToken((value) => value + 1)}>{t("新建对话", "New conversation")}</button> : null;
+  const page = tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui} resetToken={newChatToken}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : <WatchMonitorConcept data={data} action={action} ui={ui}/>;
   return <CenterShell title={t("AI 交易员","AI Trader")} subtitle={t("对话、情报和盯盘使用同一轮市场事实。","Dialog, intel, and watch share one market-fact cycle.")} tabs={TABS.ai} active={tab} onChange={setTab} tabsExtra={extra}>{page}</CenterShell>;
 }
 
