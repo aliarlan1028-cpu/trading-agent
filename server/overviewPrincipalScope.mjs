@@ -25,7 +25,17 @@ export function buildOverviewPrincipalScope(db, principalInput = {}) {
   const visiblePrivateRow = (row) => {
     if (!row || typeof row !== "object") return false;
     if (belongsToPrincipal(row, principal)) return true;
-    return configuredOwner && !row.tenantId && !principalUserId(row);
+    if (!configuredOwner || principalUserId(row)) return false;
+    // The original single-owner production database started writing tenantId
+    // before per-user ownership was introduced. Those rows are neither truly
+    // unowned nor attributable to another user: they belong to the configured
+    // Owner's own tenant, but have no ownerUserId yet. Keep this compatibility
+    // at the read projection boundary instead of mutating historical fills,
+    // audit entries, or hash-bound facts during an overview GET.
+    //
+    // This exception is deliberately unavailable to a regular user, another
+    // user in the Owner tenant, or an Owner from another tenant.
+    return !row.tenantId || row.tenantId === principal.tenantId;
   };
   const scoped = { ...db };
   for (const key of OVERVIEW_PRIVATE_COLLECTIONS) scoped[key] = (db[key] || []).filter(visiblePrivateRow);

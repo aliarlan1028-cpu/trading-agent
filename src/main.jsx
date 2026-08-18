@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getLang, setLang, t } from "./i18n.js";
 import {
@@ -15,6 +15,7 @@ import {
   Globe,
   Info,
   ShieldCheck,
+  X,
   Zap
 } from "lucide-react";
 import { automationPresentation, exchangeState, localizeText, useApi } from "./lib.jsx";
@@ -24,7 +25,7 @@ import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { SafeArea } from "@capacitor-community/safe-area";
-import "./styles.css";
+import "./app.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
@@ -52,11 +53,17 @@ if (isNativeApp()) {
 // 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
 // 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
 const navItems = [
-  { id: "chat", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
-  { id: "cockpit", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
-  { id: "researchCenter", label: "研究中心", labelEn: "Research", icon: BookOpen },
-  { id: "riskCenter", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
-  { id: "operationsCenter", label: "系统运营", labelEn: "Operations", icon: Activity }
+  { id: "chat", group: "trade", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
+  { id: "cockpit", group: "trade", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
+  { id: "researchCenter", group: "research", label: "研究中心", labelEn: "Research", icon: BookOpen },
+  { id: "riskCenter", group: "research", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
+  { id: "operationsCenter", group: "ops", label: "系统运营", labelEn: "Operations", icon: Activity }
+];
+
+const navGroups = [
+  { id: "trade", label: "交易工作区", labelEn: "TRADING" },
+  { id: "research", label: "研究与安全", labelEn: "RESEARCH & SAFETY" },
+  { id: "ops", label: "运营与配置", labelEn: "OPERATIONS" }
 ];
 
 function BrandLogo({ size = 34, variant = "black" }) {
@@ -64,34 +71,46 @@ function BrandLogo({ size = 34, variant = "black" }) {
   return <img className="brandLogo" src={src} alt="KORDYN" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive }) {
+function Sidebar({ active, setActive, data }) {
+  const unread = (data?.notifications || []).filter((item) => !item.read).length;
+  const workspaceLabel = data?.user?.isOwner === true ? t("Owner 工作区", "Owner workspace") : t("个人工作区", "Personal workspace");
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brandMark"><BrandLogo size={32} /></div>
+        <div className="brandMark"><BrandLogo size={32} variant="white" /></div>
         <div className="brandText">
           <strong>KORDYN</strong>
           <span className="brandSub">AI · DIGITAL ASSET</span>
         </div>
       </div>
-      <nav className="nav">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const on = active === item.id;
-          const label = t(item.label, item.labelEn);
-          return (
-              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
-                <Icon size={16} />
-                <span className="navLabelFull">{label}</span>
-                <span className="navLabelShort">{label}</span>
-              </button>
-          );
-        })}
+      <nav className="nav navGrouped">
+        {navGroups.map((group) => <section className="navSection" key={group.id}>
+          <span className="navGroupLabel">{t(group.label, group.labelEn)}</span>
+          {navItems.filter((item) => item.group === group.id).map((item) => {
+            const Icon = item.icon;
+            const on = active === item.id;
+            const label = t(item.label, item.labelEn);
+            const badge = item.id === "operationsCenter" ? unread : 0;
+            return (
+                <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
+                  <Icon size={16} />
+                  <span className="navLabelFull">{label}</span>
+                  <span className="navLabelShort">{label}</span>
+                  {badge > 0 && <span className="navItemBadge">{badge}</span>}
+                </button>
+            );
+          })}
+        </section>)}
       </nav>
       <div className="sidebarFoot">
         <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
           <Settings size={15} /> {t("系统设置", "Settings")}
         </button>
+        <div className="navWorkspaceCard">
+          <span>{t("系统版本", "System release")}<strong>{normalizeRelease(import.meta.env?.VITE_APP_RELEASE) || "LOCAL"}</strong></span>
+          <b>{workspaceLabel}</b>
+          <small>{t("实时状态来自服务端权威快照", "Live state comes from authoritative server snapshots")}</small>
+        </div>
       </div>
     </aside>
   );
@@ -118,17 +137,41 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
+function AppTopbar({ data, setActive, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [runtimeOpen, setRuntimeOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const accounts = data.exchangeAccounts || [];
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
   const unread = (data.notifications || []).filter((item) => !item.read).length;
   const runtime = automationPresentation(data);
   const stopped = data.system?.killSwitch === true;
   const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
+  const searchItems = [
+    ["chat", t("AI 交易员", "AI Trader"), t("对话、情报与盯盘", "Dialog, intel, and watch")],
+    ["cockpit", t("交易驾驶舱", "Trading Cockpit"), t("行情、执行、复盘与 Owner 优化", "Market, execution, and review")],
+    ["researchCenter", t("研究中心", "Research Center"), t("知识、策略与能力", "Knowledge, strategies, and capabilities")],
+    ["riskCenter", t("风控中心", "Risk Center"), t("当前状态、授权与保护规则", "Posture, mandate, and protection")],
+    ["operationsCenter", t("系统运营", "Operations"), t("运行、日历、任务、审计与通知", "Runtime, calendar, tasks, audit, and notifications")],
+    ["systemSettings", t("系统设置", "System Settings"), t("账户、OKX、模型与集成", "Account, OKX, models, and integrations")],
+    ...((data.tradePlans || []).slice(0, 8).map((item) => ["signalHub", `${item.symbol || "—"} · ${localizeText(item.name || item.strategy || t("交易计划", "Trade plan"))}`, item.id || ""])),
+    ...((data.tasks || []).slice(0, 8).map((item) => ["eventsTasks:tasks", localizeText(item.name || item.title || t("任务", "Task")), item.id || ""]))
+  ];
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const searchResults = searchItems.filter(([, label, hint]) => !normalizedSearch || `${label} ${hint}`.toLowerCase().includes(normalizedSearch)).slice(0, 10);
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if (event.key === "Escape") setSearchOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const flattenAll = async () => {
     if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries will pause until OKX reconciliation confirms completion."))) {
       action("/api/risk/emergency-flatten", {});
@@ -136,17 +179,19 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   };
   return (
     <header className="appTopbar">
-      <div className="topSearch">
+      <button type="button" className="topSearch topSearchCommand" onClick={() => setSearchOpen(true)} aria-haspopup="dialog">
         <Search size={15} />
-        <input placeholder={t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")} aria-label={t("搜索", "Search")} />
-      </div>
+        <span>{t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")}</span>
+        <kbd>⌘ K</kbd>
+      </button>
+      {searchOpen && <div className="commandPaletteBackdrop" role="presentation" onMouseDown={() => setSearchOpen(false)}><section className="commandPalette" role="dialog" aria-modal="true" aria-label={t("全局搜索", "Global search")} onMouseDown={(event) => event.stopPropagation()}><header><div><h2>{t("全局搜索", "Global Search")}</h2><p>{t("搜索页面、交易对、执行计划、知识和任务；结果会进入唯一权威页面。", "Search pages, pairs, plans, knowledge, and tasks; results open their authoritative workspace.")}</p></div><button type="button" onClick={() => setSearchOpen(false)} aria-label={t("关闭搜索", "Close search")}><X size={17}/></button></header><label className="commandPaletteInput"><Search size={16}/><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("例如：BTC、复盘、OKX、知识", "For example: BTC, reviews, OKX, knowledge")}/><kbd>ESC</kbd></label><div className="topSearchResults" role="listbox">{searchResults.map(([route, label, hint], index) => <button type="button" key={`${route}-${label}-${index}`} onClick={() => { setActive(route); setSearchOpen(false); setSearchQuery(""); }}><span><b>{label}</b><small>{hint}</small></span><em>{index < 6 ? t("页面", "Page") : t("实体", "Item")}</em></button>)}{!searchResults.length && <p>{t("没有匹配结果，请尝试交易对、页面名称或任务名称。", "No matching results. Try a pair, page name, or task name.")}</p>}</div></section></div>}
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
-        <button type="button" className={`runtimeStatePill ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
-          <span />
-          <div><small>{t("执行方式", "MODE")}</small><b>{runtime.targetLabel}</b></div>
-          <i />
-          <div><small>{t("当前状态", "NOW")}</small><b>{runtime.label}</b></div>
+        <button type="button" className="topStateChip savedMode" onClick={()=>setActive("riskMandate")} title={t("修改运行模式与交易限制", "Change operating mode and trading limits")}>
+          <span /><div><small>{t("选择的模式", "SAVED MODE")}</small><b>{runtime.targetLabel}</b></div>
+        </button>
+        <button type="button" className={`topStateChip effective ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
+          <span /><div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b></div>
         </button>
         {runtimeOpen && <>
           <div className="runtimeStatusBackdrop" onClick={()=>setRuntimeOpen(false)} />
@@ -171,7 +216,7 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
         <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>
       <div className="topbarActions">
-        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
+        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => setActive("operationsCenter:notifications")}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
@@ -187,135 +232,12 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
             </div>
           </>}
         </div>
-        <button className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setShowPassword(true)} aria-label={t("账户设置", "Account settings")}>
+        <button className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setActive("systemSettings")} aria-label={t("账户设置", "Account settings")}>
           {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : displayUserName.slice(0, 1).toUpperCase()}
         </button>
       </div>
       {killConfirm && <KillConfirmDialog enable={!stopped} action={action} onClose={() => setKillConfirm(false)} />}
-      {showPassword && <AccountDialog user={data.user || {}} action={action} notify={notify} onClose={() => setShowPassword(false)} />}
     </header>
-  );
-}
-
-// 账户设置：任何用户（含 Owner）都能改显示名 + 上传头像；非 Owner 还能自助改密码。
-function AccountDialog({ user = {}, action, notify, onClose }) {
-  const [name, setName] = useState(user.name || "");
-  const [avatar, setAvatar] = useState(user.avatar || "");
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [mfaEnrollment, setMfaEnrollment] = useState(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [mfaPassword, setMfaPassword] = useState("");
-  const fileRef = useRef(null);
-  const profileDirty = name.trim() !== (user.name || "") || avatar !== (user.avatar || "");
-
-  // 客户端压缩：任何尺寸图片 → 128×128 居中裁剪 → JPEG data URL，控制在几十 KB。
-  function pickAvatar(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!/^image\//.test(file.type)) return notify(t("请选择图片文件", "Please choose an image file"));
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new globalThis.Image();
-      img.onload = () => {
-        const size = 128;
-        const canvas = document.createElement("canvas");
-        canvas.width = size; canvas.height = size;
-        const scale = Math.max(size / img.width, size / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-        setAvatar(canvas.toDataURL("image/jpeg", 0.85));
-      };
-      img.onerror = () => notify(t("图片无法读取", "Unable to read this image"));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function saveProfile() {
-    const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 40) return notify(t("名称需 1–40 个字符", "Name must be 1–40 characters"));
-    setSavingProfile(true);
-    const result = await action("/api/account/profile", { name: trimmed, avatar }, "PATCH");
-    setSavingProfile(false);
-    if (result?.ok === true) notify(t("资料已更新", "Profile updated"));
-  }
-
-  async function changePassword() {
-    if (newPassword.length < 10) return notify(t("新密码至少 10 位", "New password must be at least 10 characters"));
-    if (newPassword !== confirm) return notify(t("两次输入的新密码不一致", "New passwords do not match"));
-    const result = await action("/api/auth/change-password", { oldPassword, newPassword });
-    if (result?.ok === true) { notify(t("密码已修改", "Password updated")); setOldPassword(""); setNewPassword(""); setConfirm(""); }
-  }
-
-  async function startMfaEnrollment() {
-    if (!mfaPassword) return notify(t("请输入当前登录密码后再配置双因素认证", "Enter your current password before setting up 2FA"));
-    const result = await action("/api/account/mfa/enroll", { currentPassword: mfaPassword });
-    if (result?.secret) { setMfaEnrollment(result); setMfaCode(""); }
-  }
-
-  async function confirmMfa() {
-    const result = await action("/api/account/mfa/confirm", { code: mfaCode, currentPassword: mfaPassword });
-    if (result?.ok) { notify(t("双因素认证已启用，其他登录已退出", "Two-factor authentication enabled; other sessions were signed out")); setMfaEnrollment(null); setMfaCode(""); setMfaPassword(""); }
-  }
-
-  async function disableMfa() {
-    const result = await action("/api/account/mfa", { code: mfaCode, currentPassword: mfaPassword }, "DELETE");
-    if (result?.ok) { notify(t("双因素认证已停用，其他登录已退出", "Two-factor authentication disabled; other sessions were signed out")); setMfaCode(""); setMfaPassword(""); }
-  }
-
-  return (
-    <div className="modalOverlay" onClick={onClose}>
-      <div className="modalCard" onClick={(event) => event.stopPropagation()}>
-        <h3>{t("账户设置", "Account Settings")}</h3>
-        <div className="acctAvatarRow">
-          <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt={t("头像", "Avatar")} /> : (name || "A").slice(0, 1).toUpperCase()}</div>
-          <div className="acctAvatarActions">
-            <button type="button" className="secondaryButton" onClick={() => fileRef.current?.click()}>{t("上传头像", "Upload avatar")}</button>
-            {avatar && <button type="button" className="linkButton" onClick={() => setAvatar("")}>{t("移除", "Remove")}</button>}
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickAvatar} />
-            <small>{t("自动压缩为 128×128", "Automatically resized to 128×128")}</small>
-          </div>
-        </div>
-        <label>{t("显示名称", "Display name")}<input type="text" maxLength={40} value={name} placeholder={t("输入显示名称", "Enter a display name")} onChange={(event) => setName(event.target.value)} /></label>
-        <div className="modalActions">
-          <span className="modalHint">{user.email || ""}</span>
-          <button className="primaryButton" disabled={!profileDirty || savingProfile} onClick={saveProfile}>{savingProfile ? t("保存中…", "Saving…") : t("保存资料", "Save profile")}</button>
-        </div>
-        {user.isOwner
-          ? <p className="acctPwNote">{t("Owner 登录密码由服务端 ADMIN_PASSWORD 管理。如需修改，请前往“系统设置 > 安全”。", "The Owner password is managed by the server ADMIN_PASSWORD setting. To change it, go to System Settings > Security.")}</p>
-          : <div className="acctPwBlock">
-              <h4>{t("修改密码", "Change Password")}</h4>
-              <label>{t("当前密码", "Current password")}<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} /></label>
-              <label>{t("新密码（至少 10 位）", "New password (10+ characters)")}<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
-              <label>{t("确认新密码", "Confirm new password")}<input type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
-              <div className="modalActions">
-                <button className="secondaryButton" onClick={changePassword}>{t("修改密码", "Update password")}</button>
-              </div>
-            </div>}
-        <div className="acctPwBlock">
-          <h4>{t("双因素认证（TOTP）", "Two-Factor Authentication (TOTP)")}</h4>
-          <p className="acctPwNote">{user.mfaEnabled ? t("已启用。登录时还需输入认证器生成的 6 位验证码。", "Enabled. Sign-in also requires a six-digit code from your authenticator.") : t("建议 Owner 启用。密钥加密保存在本机，不会发送给第三方。", "Recommended for the Owner account. The secret is encrypted locally and never sent to a third party.")}</p>
-          <label>{t("当前登录密码", "Current password")}<input type="password" autoComplete="current-password" value={mfaPassword} onChange={(event) => setMfaPassword(event.target.value)} /></label>
-          {!user.mfaEnabled && !mfaEnrollment && <button className="secondaryButton" onClick={startMfaEnrollment}>{t("开始配置", "Set up 2FA")}</button>}
-          {mfaEnrollment && <>
-            <label>{t("认证器密钥", "Authenticator secret")}<input type="text" readOnly value={mfaEnrollment.secret} /></label>
-            <small>{t("将密钥添加到 Google Authenticator、1Password 或其他 TOTP 认证器，再输入当前验证码。此密钥仅显示一次。", "Add this secret to Google Authenticator, 1Password, or another TOTP app, then enter the current code. The secret is shown only once.")}</small>
-          </>}
-          {(user.mfaEnabled || mfaEnrollment) && <label>{t("6 位动态验证码", "Six-digit verification code")}<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>}
-          <div className="modalActions">
-            {mfaEnrollment && <button className="primaryButton" disabled={mfaCode.length !== 6} onClick={confirmMfa}>{t("确认启用", "Enable 2FA")}</button>}
-            {user.mfaEnabled && <button className="secondaryButton dangerText" disabled={mfaCode.length !== 6} onClick={disableMfa}>{t("验证并停用", "Verify and disable")}</button>}
-          </div>
-        </div>
-        <div className="modalActions">
-          <button className="secondaryButton" onClick={onClose}>{t("关闭", "Close")}</button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -338,7 +260,7 @@ function App() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeReviewId, setActiveReviewId] = useState("");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
-  const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
+  const [activeSettingsTab, setActiveSettingsTab] = useState("account");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
@@ -348,6 +270,8 @@ function App() {
   function navigate(next) {
     // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
     if (next === "chat") { setActiveWorkspaceTab("dialog"); setActive("chat"); return; }
+    if (next === "chat:intel") { setActiveWorkspaceTab("intel"); setActive("chat"); return; }
+    if (next === "chat:watch") { setActiveWorkspaceTab("watch"); setActive("chat"); return; }
     if (next === "cockpit") { setActiveWorkspaceTab("overview"); setActive("cockpit"); return; }
     if (next === "researchCenter") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "riskCenter") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
@@ -366,13 +290,18 @@ function App() {
     if (next === "strategyStudio") { setActiveStrategyTab("studio"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
     if (next === "riskOverview") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
     if (next === "riskSettings") { setActiveWorkspaceTab("rules"); setActive("riskCenter"); return; }
+    if (next === "riskIncidents" || next === "riskCenter:incidents") { setActiveWorkspaceTab("incidents"); setActive("riskCenter"); return; }
     if (next === "eventsTasks" || next === "eventsTasks:events") { setActiveWorkspaceTab("events"); setActive("operationsCenter"); return; }
     if (next === "eventsTasks:tasks") { setActiveWorkspaceTab("tasks"); setActive("operationsCenter"); return; }
     if (next === "auditSystem") { setActiveWorkspaceTab("audit"); setActive("operationsCenter"); return; }
+    if (next === "operationsCenter:notifications" || next === "notificationsCenter") { setActiveWorkspaceTab("notifications"); setActive("operationsCenter"); return; }
     // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
     if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
     if (next === "systemSettings:exchange") { setActiveSettingsTab("exchange"); setActive("systemSettings"); return; }
-    if (next === "systemSettings") setActiveSettingsTab("overview");
+    if (next === "systemSettings:notifications") { setActiveSettingsTab("notifications"); setActive("systemSettings"); return; }
+    if (next === "systemSettings:models") { setActiveSettingsTab("models"); setActive("systemSettings"); return; }
+    if (next === "systemSettings:data") { setActiveSettingsTab("data"); setActive("systemSettings"); return; }
+    if (next === "systemSettings") setActiveSettingsTab("account");
     setActive(next);
   }
   const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
@@ -402,7 +331,7 @@ function App() {
     <div className="appShell" key={lang}>
       <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
       <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} lang={lang} switchLang={switchLang} />
+        <AppTopbar data={data} setActive={navigate} action={action} lang={lang} switchLang={switchLang} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
         <div className={active === "chat" ? "content contentChat" : "content"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>

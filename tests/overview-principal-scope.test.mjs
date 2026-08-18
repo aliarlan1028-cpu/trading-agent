@@ -11,8 +11,10 @@ function fixture() {
   const foreign = { tenantId: "tenant-foreign", ownerUserId: "foreign-owner" };
   const rows = (prefix) => [
     { id: `${prefix}-owner`, ...owner },
+    { id: `${prefix}-configured-owner-tenant-only`, tenantId: "tenant-owner" },
     { id: `${prefix}-same-tenant-other`, ...sameTenantOther },
     { id: `${prefix}-foreign`, ...foreign },
+    { id: `${prefix}-foreign-tenant-only`, tenantId: "tenant-foreign" },
     { id: `${prefix}-legacy` }
   ];
   return {
@@ -34,7 +36,10 @@ function fixture() {
       { id: "incident-foreign", ...foreign, status: "open", protectionKey: "cooldown" },
       { id: "incident-legacy", status: "open", protectionKey: "cooldown" }
     ],
-    mandates: [{ id: "mandate-owner", ...owner, status: "active", maxWeeklyLossPct: 5 }],
+    mandates: [
+      { id: "mandate-owner-tenant-only", tenantId: "tenant-owner", status: "active", maxWeeklyLossPct: 5 },
+      { id: "mandate-foreign-tenant-only", tenantId: "tenant-foreign", status: "active", maxWeeklyLossPct: 5 }
+    ],
     portfolio: { id: "portfolio-owner", ...owner, totalEquityUsdt: 900, weekPnl: -100, accountingUpdatedAt: "2026-08-18T00:00:00.000Z" },
     agentStateFiles: { USER: { content: "Owner private profile" } },
     agentStateFilesByPrincipal: {
@@ -57,7 +62,12 @@ test("Core, section-v2, and legacy overview share exact-principal private projec
   assert.equal(trader.scoped.agentStateFiles.USER.content, "Trader profile");
 
   const owner = buildOverviewPrincipalScope(db, { tenantId: "tenant-owner", userId: "owner-1", isOwner: true });
-  assert.deepEqual(owner.scoped.positions.map((row) => row.id), ["position-owner", "position-legacy"]);
+  assert.deepEqual(owner.scoped.positions.map((row) => row.id), [
+    "position-owner",
+    "position-configured-owner-tenant-only",
+    "position-legacy"
+  ]);
+  assert.deepEqual(owner.scoped.mandates.map((row) => row.id), ["mandate-owner-tenant-only"]);
   assert.equal(owner.scoped.system.reduceOnlyMode, true);
   assert.equal(owner.scoped.agentStateFiles.USER.content, "Owner private profile");
   const persistedHealth = db.system.apiHealth;
@@ -72,6 +82,29 @@ test("an Owner in another tenant cannot inherit configured-Owner legacy records"
   assert.deepEqual(foreign.scoped.accountSnapshots.map((row) => row.id), ["account-foreign"]);
   assert.deepEqual(foreign.scoped.system, {});
   assert.equal(foreign.scoped.agentStateFiles.USER.content, "Foreign profile");
+});
+
+test("configured Owner keeps production tenant-only mandates, trades, reviews, and tasks without exposing them to another user", () => {
+  const db = fixture();
+  db.tradePlans.push({ id: "production-plan", tenantId: "tenant-owner", status: "approved" });
+  db.executionOrders = [{ id: "production-execution", tenantId: "tenant-owner", status: "closed" }];
+  db.tasks = [{ id: "production-task", tenantId: "tenant-owner", status: "running" }];
+
+  const owner = buildOverviewPrincipalScope(db, { tenantId: "tenant-owner", userId: "owner-1", isOwner: true });
+  assert.equal(owner.scoped.mandates.some((row) => row.id === "mandate-owner-tenant-only"), true);
+  assert.equal(owner.scoped.tradePlans.some((row) => row.id === "production-plan"), true);
+  assert.equal(owner.scoped.executionOrders.some((row) => row.id === "production-execution"), true);
+  assert.equal(owner.scoped.tasks.some((row) => row.id === "production-task"), true);
+  assert.equal(owner.scoped.fills.some((row) => row.id === "fill-configured-owner-tenant-only"), true);
+  assert.equal(owner.scoped.reviews.some((row) => row.id === "review-configured-owner-tenant-only"), true);
+
+  const sameTenantTrader = buildOverviewPrincipalScope(db, { tenantId: "tenant-owner", userId: "trader-2", isOwner: false });
+  assert.equal(sameTenantTrader.scoped.mandates.some((row) => row.id === "mandate-owner-tenant-only"), false);
+  assert.equal(sameTenantTrader.scoped.tradePlans.some((row) => row.id === "production-plan"), false);
+  assert.equal(sameTenantTrader.scoped.executionOrders.some((row) => row.id === "production-execution"), false);
+  assert.equal(sameTenantTrader.scoped.tasks.some((row) => row.id === "production-task"), false);
+  assert.equal(sameTenantTrader.scoped.fills.some((row) => row.id === "fill-configured-owner-tenant-only"), false);
+  assert.equal(sameTenantTrader.scoped.reviews.some((row) => row.id === "review-configured-owner-tenant-only"), false);
 });
 
 test("reading a foreign risk overview exposes no Owner balance or pause reason and cannot resolve Owner incidents", () => {

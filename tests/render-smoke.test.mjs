@@ -394,6 +394,17 @@ test("desktop pages render with realistic data (all statuses)", () => {
   }
 });
 
+test("formal strategy and capability catalogs use the connected master/detail information architecture", () => {
+  const strategyHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "strategy" }));
+  assert.match(strategyHtml, /策略库展示版本化策略与其真实证据/);
+  assert.match(strategyHtml, /搜索策略名称/);
+  assert.match(strategyHtml, /策略详情/);
+  const capabilityHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "capabilities" }));
+  assert.match(capabilityHtml, /能力库是正式调用目录/);
+  assert.match(capabilityHtml, /搜索能力名称/);
+  assert.match(capabilityHtml, /能力详情/);
+});
+
 test("trading cockpit exposes dedicated review pages and keeps Owner review private", () => {
   const reviewHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "reviews", reviewInitialId: "rv1" }));
   assert.match(reviewHtml, /交易复盘详情/);
@@ -777,6 +788,13 @@ test("system settings gives OKX and notifications one explicit home without leak
 
   const notifications = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "notifications", onTabChange: () => {} }));
   assert.match(notifications, /保存通知设置|飞书通知|Telegram/);
+
+  const account = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "account", onTabChange: () => {} }));
+  assert.match(account, /个人资料/);
+  assert.match(account, /显示名称和头像的唯一修改入口/);
+  assert.match(account, /登录保护/);
+  assert.match(account, /双因素认证/);
+  assert.match(account, /Owner 密码由下方服务器安全配置管理/);
 
   const basics = render(React.createElement(C.SettingsConcept, { data: settingsData, action, ui, activeTab: "base", onTabChange: () => {} }));
   assert.match(basics, /四个基础模块/);
