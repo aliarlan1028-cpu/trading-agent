@@ -3,6 +3,7 @@ import {
   AiDialogConcept, AuditConcept, CapabilitiesConcept, EventsConcept,
   ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept,
   MandateConcept, MarketConcept, NotificationsConcept, WatchMonitorConcept,
+  OwnerReviewWorkspaceConcept, TradeReviewWorkbenchConcept,
   OperationsOverviewConcept, PositionsConcept,
   RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
   TasksConcept, TradingOverviewConcept
@@ -15,7 +16,7 @@ import "./workspace-additions.css";
 
 const TABS = {
   ai: [["dialog", "对话", "Dialog"], ["intel", "情报", "Intel"], ["watch", "盯盘", "Watch"]],
-  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"], ["ledger", "委托与成交", "Orders & Fills"]],
+  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"], ["reviews", "交易复盘", "Trade Reviews"], ["owner", "Owner 优化", "Owner Review"], ["ledger", "委托与成交", "Orders & Fills"]],
   research: [["knowledge", "知识库", "Knowledge"], ["strategy", "策略库", "Strategies"], ["capabilities", "能力库", "Capabilities"]],
   risk: [["posture", "风险总览", "Overview"], ["mandate", "资金与交易边界", "Capital & Trading Limits"], ["rules", "风控规则", "Risk Rules"]],
   ops: [["overview", "运行总览", "Overview"], ["events", "事件日历", "Events"], ["tasks", "任务调度", "Tasks"], ["audit", "审计记录", "Audit"], ["notifications", "通知中心", "Notifications"]]
@@ -42,16 +43,20 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
-export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
+export function TradingCenter({ data, action, ui, initialTab = "overview", reviewInitialId = "" }) {
   const [tab, setTab] = useState(initialTab);
+  const tabs = data.user?.isOwner === true ? TABS.trade : TABS.trade.filter(([id]) => id !== "owner");
   const pages = {
     overview: <TradingOverviewConcept data={data} action={action} ui={ui}/>,
     market: <MarketConcept data={data} action={action} ui={ui}/>,
     positions: <PositionsConcept data={data} action={action} ui={ui}/>,
     execution: <ExecutionReviewConcept data={data} action={action} ui={ui}/>,
+    reviews: <TradeReviewWorkbenchConcept data={data} action={action} ui={ui} initialReviewId={reviewInitialId}/>,
+    owner: data.user?.isOwner === true ? <OwnerReviewWorkspaceConcept data={data} action={action} ui={ui}/> : null,
     ledger: <ExecutionLedgerConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={TABS.trade} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
+  const safeTab = tabs.some(([id]) => id === tab) ? tab : "overview";
+  return <CenterShell title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.overview}</CenterShell>;
 }
 
 export function ResearchCenter({ data, action, ui, initialTab = "knowledge", strategyInitialTab = "catalog" }) {

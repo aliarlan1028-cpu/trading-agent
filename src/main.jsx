@@ -336,6 +336,7 @@ function App() {
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
+  const [activeReviewId, setActiveReviewId] = useState("");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
   const [panel, setPanel] = useState("");
@@ -355,6 +356,8 @@ function App() {
     if (next === "marketAccount" || next === "market") { setActiveWorkspaceTab("market"); setActive("cockpit"); return; }
     if (next === "signalHub") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
     if (next === "tradeJournal") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
+    if (String(next).startsWith("tradeReviewDetail")) { setActiveReviewId(String(next).split(":").slice(1).join(":")); setActiveWorkspaceTab("reviews"); setActive("cockpit"); return; }
+    if (next === "ownerReviewWorkspace") { setActiveWorkspaceTab("owner"); setActive("cockpit"); return; }
     if (next === "tradeLedger") { setActiveWorkspaceTab("ledger"); setActive("cockpit"); return; }
     if (next === "knowledgeBase" || next === "researchCenter:knowledge") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
     if (next === "capabilities" || next === "researchCenter:capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
@@ -378,13 +381,13 @@ function App() {
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded") return <WorkspaceLoadState state={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} reviewInitialId={activeReviewId} />;
     if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
     if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
+  }, [active, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
 
   if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;

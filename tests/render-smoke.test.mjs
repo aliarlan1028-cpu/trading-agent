@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -394,8 +394,19 @@ test("desktop pages render with realistic data (all statuses)", () => {
   }
 });
 
-test("new capital flow, review workbench, ledger, and watch page render with realistic data", () => {
-  for (const Comp of [C.MandateConcept, C.ExecutionReviewConcept, C.ExecutionLedgerConcept, C.WatchMonitorConcept]) {
+test("trading cockpit exposes dedicated review pages and keeps Owner review private", () => {
+  const reviewHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "reviews", reviewInitialId: "rv1" }));
+  assert.match(reviewHtml, /交易复盘详情/);
+  assert.match(reviewHtml, /BTC 平仓复盘/);
+  const ownerHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "owner" }));
+  assert.match(ownerHtml, /Owner 优化工作台/);
+  const regularHtml = render(React.createElement(C.TradingCenter, { data: { ...data, user: { ...data.user, isOwner: false } }, action, ui, initialTab: "owner" }));
+  assert.doesNotMatch(regularHtml, /Owner 优化/);
+  assert.match(regularHtml, /交易驾驶舱/);
+});
+
+test("new capital flow, split review workspaces, ledger, and watch page render with realistic data", () => {
+  for (const Comp of [C.MandateConcept, C.ExecutionReviewConcept, C.TradeReviewWorkbenchConcept, C.OwnerReviewWorkspaceConcept, C.ExecutionLedgerConcept, C.WatchMonitorConcept]) {
     const html = render(React.createElement(Comp, { data, action, ui }));
     assert.ok(html.length > 500);
   }
@@ -600,18 +611,28 @@ test("capital settings distinguish configured auto mode from the current safety 
   assert.doesNotMatch(html, /1 · 选择执行方式/);
 });
 
-test("execution and review renders every workflow zone on one page", () => {
-  const html = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
-  for (const id of ["attention", "performance", "reviews", "diagnostics", "improvements", "behavior"]) assert.ok(html.includes(`id="er-${id}"`), `missing single-page zone ${id}`);
-  assert.ok(!html.includes("id=\"er-fills\""), "raw fill ledger belongs on its own subpage");
-  assert.ok(!html.includes("AI 委托记录"), "raw AI order records belong on their own subpage");
-  assert.ok(html.includes("持仓时长与收益率"));
-  assert.ok(html.includes("绩效拆解"));
-  assert.ok(!html.includes("role=\"tablist\""), "single-page workbench must not hide sections behind tabs");
+test("execution overview links to dedicated review workspaces instead of stacking every workflow", () => {
+  const overview = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
+  for (const id of ["attention", "performance"]) assert.ok(overview.includes(`id="er-${id}"`), `missing overview zone ${id}`);
+  for (const id of ["reviews", "diagnostics", "improvements", "behavior"]) assert.ok(!overview.includes(`id="er-${id}"`), `overview must not stack dedicated zone ${id}`);
+  assert.match(overview, /交易复盘详情/);
+  assert.match(overview, /Owner 优化清单/);
+  assert.match(overview, /打开独立页面/);
+
+  const reviews = render(React.createElement(C.TradeReviewWorkbenchConcept, { data, action, ui }));
+  for (const id of ["reviews", "diagnostics", "behavior"]) assert.ok(reviews.includes(`id="er-${id}"`), `missing review workspace zone ${id}`);
+  assert.ok(!reviews.includes("id=\"er-performance\""));
+  assert.match(reviews, /持仓时长与收益率/);
+  assert.match(reviews, /绩效拆解/);
+
+  const owner = render(React.createElement(C.OwnerReviewWorkspaceConcept, { data, action, ui }));
+  assert.ok(owner.includes("id=\"er-improvements\""));
+  assert.match(owner, /role="tablist"/);
+  assert.doesNotMatch(owner, /id="er-performance"|id="er-reviews"/);
 });
 
 test("Owner review loop renders candidate lessons and routed improvements without claiming automatic changes", () => {
-  const html = render(React.createElement(C.ExecutionReviewConcept, {
+  const html = render(React.createElement(C.OwnerReviewWorkspaceConcept, {
     data: {
       ...data,
       ownerReviewLoop: {
@@ -625,24 +646,23 @@ test("Owner review loop renders candidate lessons and routed improvements withou
         }],
         improvements: [{ id: "improvement-1", state: "pending_owner", destination: "strategy", title: "入场时机或确认不足", problem: "3 笔复盘重复出现", proposal: "创建版本化对照实验", evidenceCount: 3, successCriteria: ["历史样本外验证通过"] }]
       }
-    }, action, ui
+    }, action, ui, initialOwnerPane: "lessons"
   }));
   assert.match(html, /Owner 优化清单/);
-  assert.match(html, /先看依据和建议，再决定是否用于相似行情/);
+  assert.match(html, /左侧选记录，右侧只查看一条/);
   assert.match(html, /LLM 深度复盘/);
   assert.match(html, /LLM 给出的复盘建议/);
   assert.match(html, /下次等待 15m 回踩确认后再入场/);
   assert.match(html, /批准后只在以下场景参考/);
   assert.match(html, /确认用于相似行情/);
   assert.match(html, /入场时机或确认不足/);
-  assert.match(html, /策略库/);
-  assert.match(html, /接受建议/);
+  assert.doesNotMatch(html, /接受建议/, "lesson view must not stack improvement cards below it");
   assert.match(html, /系统自行修改/);
 });
 
 test("Owner validation UI selects authoritative evidence instead of asking for free-text pass claims", () => {
   const now = new Date().toISOString();
-  const html = render(React.createElement(C.ExecutionReviewConcept, {
+  const html = render(React.createElement(C.OwnerReviewWorkspaceConcept, {
     data: {
       ...data,
       ownerReviewLoop: {
@@ -664,7 +684,6 @@ test("Owner validation UI selects authoritative evidence instead of asking for f
   assert.match(html, /candidate-v2/);
   assert.match(html, /系统会自动核对版本 Hash 与其权威样本外回测/);
   assert.match(html, /核验并记录通过/);
-  assert.match(html, /旧版待审核/);
   assert.doesNotMatch(html, /请输入本次回测对应的候选策略版本 ID/);
 });
 
@@ -1074,7 +1093,7 @@ test("mobile instrument loader rejects 200-empty and discloses stale cached list
 });
 
 test("web orphan review uses persisted lifecycle net and includes entry plus close fees", () => {
-  const html = render(React.createElement(C.ExecutionReviewConcept, {
+  const html = render(React.createElement(C.TradeReviewWorkbenchConcept, {
     data: {
       executionOrders: [], fills: [], closedTradeLifecycles: [], performance: {}, positions: [], tradePlans: [],
       reviews: [{ id: "orphan", type: "trade", status: "completed", symbol: "ADA/USDT", realizedPnl: 5, netRealizedPnl: 3.5, entryFeeUsdt: 1, feeUsdt: 0.5, completedAt: "2026-08-14T00:00:00Z" }],
