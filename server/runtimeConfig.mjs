@@ -2,6 +2,7 @@ import { readSecret, storeSecret } from "./securityOps.mjs";
 import { appendAudit, nowIso } from "./store.mjs";
 import { keyProviderStatus } from "./keyProvider.mjs";
 import { SECRET_KEYS } from "./secretRegistry.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 export { SECRET_KEYS } from "./secretRegistry.mjs";
 
 // 敏感项：加密存入金库，前端只返回是否已配置，绝不回传明文。
@@ -117,8 +118,11 @@ function recordVaultFailure(db, item, error) {
       status: "open",
       title: `加密金库项目无法解密：${item.name}`,
       source: `vault:${item.name}`,
+      tenantId: db.user?.tenantId || "tenant_owner",
+      ownerUserId: db.user?.id || null,
       createdAt: nowIso()
     });
+    refreshOwnerImprovementRegistry(db);
     appendAudit(db, `加密金库解密失败，已禁用相关能力：${item.name}`, item.id || item.name, "ConfigManager", "critical");
   }
   // 仅保留非敏感错误类型，绝不把密文/主密钥材料写入状态。

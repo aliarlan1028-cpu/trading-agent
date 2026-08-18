@@ -241,6 +241,8 @@ function persistStrategyDraft(db, compiled, { compiler, actor, authoring } = {})
   ensureCollections(db);
   const draft = {
     id: id("strategy_draft"),
+    tenantId: db.user?.tenantId || "tenant_owner",
+    ownerUserId: db.user?.id || null,
     status: "compiled",
     revision: 1,
     compiler: compiler || "deterministic_fallback",
@@ -494,6 +496,8 @@ export function publishStrategyDraft(db, draftId, options = {}, actor = "Strateg
   const definition = { ...draft.blueprint, sourceDraftId: draft.id, publishedBy: actor };
   const version = {
     id: `${productKey}@${versionNumber}`,
+    tenantId: draft.tenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: draft.ownerUserId || db.user?.id || null,
     productKey,
     version: versionNumber,
     contentHash: hash(definition),

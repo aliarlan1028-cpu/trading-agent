@@ -2,6 +2,7 @@
 // 从 index.mjs 按 registrar 范式迁出（agent/actions 确认路由与 executePendingAction 仍留 index.mjs）。
 // 批准前风控复查、终态计划禁止重复执行(P1-7)、直接执行接口硬拒 等语义逐字保留。依赖经 ctx 注入。
 import { bindPlanToStrategyProduct } from "../strategyProducts.mjs";
+import { ensureDecisionFactSnapshot } from "../ownerReviewLoop.mjs";
 import {
   approveTradePlan,
   assertUniquePlanId,
@@ -30,6 +31,8 @@ export function registerTradePlanRoutes(app, ctx) {
     });
     if (!created.ok) return res.status(created.status).json({ error: created.error, fields: created.fields });
     const plan = created.plan;
+    plan.tenantId = req.user?.tenantId || db.user?.tenantId || "tenant_owner";
+    plan.ownerUserId = req.user?.id || db.user?.id || null;
     const bundle = runExpertAnalysis(db, {
       trigger_type: "autonomous_trade_precheck",
       question: `${plan.symbol} ${plan.direction} 计划前置审查`,
@@ -44,6 +47,10 @@ export function registerTradePlanRoutes(app, ctx) {
     // 未归类计划会明确标成 legacy_unclassified，不会混入任何策略产品的成绩。
     bindPlanToStrategyProduct(db, plan, { source: "trade_plan_api" });
     db.tradePlans.unshift(plan);
+    ensureDecisionFactSnapshot(db, plan, {
+      captureMode: "manual_api_pre_approval",
+      capturedBeforeExecution: true
+    });
     appendAudit(db, "创建交易计划", plan.id, "AI 交易员");
     persist(res, { plan, analysisBundle: bundle });
   });
@@ -60,6 +67,8 @@ export function registerTradePlanRoutes(app, ctx) {
     if (!plan) return notFound(res);
     const result = evaluateTradePlan(db, { ...plan, ...req.body });
     result.tradePlanId = plan.id;
+    result.tenantId = plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner";
+    result.ownerUserId = plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null;
     result.createdAt = nowIso();
     db.riskChecks.unshift(result);
     plan.lastRiskCheck = result;

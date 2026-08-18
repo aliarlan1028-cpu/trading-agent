@@ -146,6 +146,8 @@ export async function approveTradePlan(db, plan, deps, options = {}) {
   if (!plan.lastRiskCheck.passed) return { ok: false, status: 400, error: "risk_blocked", summary: plan.lastRiskCheck.summary };
   const fresh = deps.evaluateTradePlan(db, plan);
   fresh.tradePlanId = plan.id;
+  fresh.tenantId = plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner";
+  fresh.ownerUserId = plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null;
   fresh.createdAt = deps.nowIso();
   db.riskChecks ||= [];
   db.riskChecks.unshift(fresh);

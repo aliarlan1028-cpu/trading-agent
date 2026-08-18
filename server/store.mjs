@@ -132,6 +132,8 @@ const collectionNames = [
   "chatMessages",
   "agentRuns",
   "decisionAuditRecords",
+  "decisionFactSnapshots",
+  "ownerImprovementItems",
   "reviews",
   "pendingActions"
 ];
@@ -141,7 +143,7 @@ const collectionNames = [
 const entityCollectionNames = [
   "mandates", "positions", "orders", "fills", "tradePlans", "events", "tasks",
   "riskChecks", "riskIncidents", "executionOrders", "accountSnapshots",
-  "reconciliationReports", "reviews", "agentRuns", "paperSessions", "strategyProfiles",
+  "reconciliationReports", "reviews", "agentRuns", "decisionFactSnapshots", "ownerImprovementItems", "paperSessions", "strategyProfiles",
   "armedSetups", "strategyVersions", "strategyDeployments", "strategyVersionEvents",
   "strategyStudioDrafts", "strategyBlueprintVersions", "strategyStudioBacktests",
   "strategyMarketplaceListings", "strategyAssignments"
@@ -637,6 +639,8 @@ function cleanSeedDatabase(createdAt) {
     memoryItems: [],
     agentRuns: [],
     decisionAuditRecords: [],
+    decisionFactSnapshots: [],
+    ownerImprovementItems: [],
     reviews: [],
     auditLogs: [],
     traces: []
@@ -811,6 +815,7 @@ export async function repairAuditChainExplicit(db, { acknowledgement, backupPath
 // / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
 const LOG_CAPS = {
   accountSnapshots: 500, jobRuns: 1000, reconciliationReports: 200, agentRuns: 300, decisionAuditRecords: 200,
+  decisionFactSnapshots: 2000, ownerImprovementItems: 500,
   accountingAnchors: 4500,
   agentSteps: 800, agentToolCalls: 800, llmRuns: 500, toolExecutions: 500,
   executionOrders: 1000, exchangeOrders: 1000, skillRuns: 300, drillRuns: 200,
@@ -954,6 +959,8 @@ export function resetOperationalData(db, options = {}) {
   db.notifications = [];
   db.memoryItems = [];
   db.agentRuns = [];
+  db.decisionFactSnapshots = [];
+  db.ownerImprovementItems = [];
   db.reviews = [];
   db.agentStateFiles = seed.agentStateFiles;
   if (!keepAudit) {
@@ -1790,6 +1797,8 @@ export function normalizeDatabase(db) {
   db.traces ||= seed.traces;
   db.auditLogs ||= seed.auditLogs;
   db.reviews ||= seed.reviews;
+  db.decisionFactSnapshots ||= seed.decisionFactSnapshots || [];
+  db.ownerImprovementItems ||= seed.ownerImprovementItems || [];
   db.strategyVersions ||= seed.strategyVersions;
   db.strategyDeployments ||= seed.strategyDeployments;
   db.strategyVersionEvents ||= seed.strategyVersionEvents;

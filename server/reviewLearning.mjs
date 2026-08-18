@@ -1,4 +1,5 @@
 import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { isActiveReviewLesson, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
 
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 6;
@@ -171,6 +172,7 @@ function memoryScore(metadata, query, createdAt) {
 }
 
 export function retrieveRelevantReviewMemories(db, options = {}) {
+  migrateLegacyOwnerReviewProvenance(db);
   const symbols = [...new Set([
     ...(options.symbols || []).map(normalizeSymbol),
     ...parseSymbols(options.text)
@@ -188,13 +190,23 @@ export function retrieveRelevantReviewMemories(db, options = {}) {
   if (!query.symbols.length && !query.setupType && !query.strategyProductId) return [];
   const rows = [];
   for (const memory of db.memoryItems || []) {
-    if (memory.source !== "auto_reflection") continue;
+    // 新复盘先进入候选区，只有 Owner 批准的 active 教训才允许进入下一轮交易决策。
+    // 升级前没有 learningStatus 的历史记忆明确隔离为 legacy_unreviewed，不能兼容性放行。
+    if (!isActiveReviewLesson(memory) || !isOwnerReviewRow(db, memory)) continue;
     const metadata = reviewMemoryMetadata(db, memory);
     // 失去底层生命周期和复盘的历史内容保留给人工审计，但不得作为结果型证据注入新决策。
     if (metadata.financialBasis === "unreconciled") continue;
     const ranked = memoryScore(metadata, query, memory.updatedAt || memory.createdAt);
     // 有明确交易对时必须同币；策略级查询可跨币，但必须同策略产品/形态。
     if (query.symbols.length && !query.symbols.includes(metadata.symbol)) continue;
+    // A symbol match is only the outer partition. Once the caller specifies a
+    // scenario dimension, contradictory or unknown memories must not leak into
+    // the prompt as if they were comparable evidence.
+    if (query.setupType && metadata.setupType !== query.setupType) continue;
+    if (query.strategyProductId && metadata.strategyProductId !== query.strategyProductId) continue;
+    if (query.timeframe && metadata.timeframe !== query.timeframe) continue;
+    if (query.direction && metadata.direction !== query.direction) continue;
+    if (query.regime && metadata.regime !== query.regime) continue;
     if (!query.symbols.length && ranked.score < 8) continue;
     rows.push({
       id: memory.id,
@@ -223,15 +235,17 @@ export function retrieveRelevantReviewMemories(db, options = {}) {
 export function buildReviewLearningContext(db, options = {}) {
   const symbols = [...new Set([...(options.symbols || []), ...parseSymbols(options.text)].map(normalizeSymbol).filter(Boolean))];
   const regimes = symbols.map((symbol) => (db.markets || []).find((row) => normalizeSymbol(row.symbol) === symbol)?.regime).filter(Boolean);
-  const retrieved = retrieveRelevantReviewMemories(db, {
+  const timeframe = normalizeTimeframe(options.timeframe || parseTimeframe(options.text));
+  const hasScenario = Boolean(timeframe || normalizeDirection(options.direction) || normalizeSetup(options.setupType) || options.strategyProductId);
+  const retrieved = hasScenario ? retrieveRelevantReviewMemories(db, {
     ...options,
     symbols,
     regime: options.regime || (regimes.length === 1 ? regimes[0] : "")
-  });
+  }) : [];
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    query: { symbols, timeframe: normalizeTimeframe(options.timeframe || parseTimeframe(options.text)), regime: options.regime || (regimes.length === 1 ? regimes[0] : "") },
+    query: { symbols, timeframe, regime: options.regime || (regimes.length === 1 ? regimes[0] : "") },
     retrieved
   };
 }
@@ -318,7 +332,7 @@ export function buildReviewLearningAnalytics(db) {
   const baseline = cohortMetrics(comparableUnused);
   const comparable = overallUsed.trades >= MIN_COMPARABLE_SAMPLE && baseline.trades >= MIN_COMPARABLE_SAMPLE;
   const byMemory = [];
-  for (const memory of (db.memoryItems || []).filter((item) => item.source === "auto_reflection")) {
+  for (const memory of (db.memoryItems || []).filter((item) => isActiveReviewLesson(item) && isOwnerReviewRow(db, item))) {
     const outcomes = rows.filter((row) => row.applied.some((item) => item.memoryId === memory.id));
     if (!outcomes.length) continue;
     const meta = reviewMemoryMetadata(db, memory);

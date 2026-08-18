@@ -21,6 +21,7 @@ import { currentRiskThresholds } from "./riskThresholds.mjs";
 import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
+import { ensureDecisionFactSnapshot, isOwnerReviewRow, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -31,6 +32,16 @@ const DEFAULT_TAKER_FEE_RATE = 0.0004;
 // OKX clOrdId 只接受字母+数字(≤32)——带下划线会被 51000「Parameter clOrdId error」整单拒绝
 // (曾导致所有 OKX 自动单静默失败)。统一清洗成字母数字;币安也接受字母数字,故两所通用。
 const cleanClOrdId = (seed) => String(seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+function surfaceOwnerExecutionSafetyIssue(db, executionOrder) {
+  const tenantId = executionOrder?.tenantId || db.user?.tenantId || "tenant_owner";
+  const ownerUserId = executionOrder?.ownerUserId || db.user?.id || null;
+  for (const incident of db.riskIncidents || []) {
+    if (incident.source !== executionOrder?.id || !["critical", "high"].includes(String(incident.severity || "").toLowerCase())) continue;
+    incident.tenantId ||= tenantId;
+    incident.ownerUserId ||= ownerUserId;
+  }
+  refreshOwnerImprovementRegistry(db);
+}
 export function okxFillIdentity(row = {}) {
   const tradeId = String(row.tradeId || "").trim();
   if (tradeId) return `trade:${tradeId}`;
@@ -390,6 +401,7 @@ async function failProtectionAndCancelEntry(db, plan, executionOrder, entry, cau
       createdAt: nowIso()
     });
   }
+  surfaceOwnerExecutionSafetyIssue(db, executionOrder);
   appendAudit(db, `${causeDetail}，已阻断入场并尝试撤单`, executionOrder.id, "ExecutionEngine", "critical");
   return { status: acknowledged ? executionOrder.status : "cancel_unconfirmed", cancelResult, executionOrder };
 }
@@ -515,6 +527,14 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const plan = db.tradePlans.find((item) => item.id === planId);
   if (!plan) return { status: "missing_plan", planId };
   if (plan.status !== "approved") return { status: "plan_not_approved", planStatus: plan.status };
+  const decisionFacts = ensureDecisionFactSnapshot(db, plan, {
+    captureMode: "execution_preflight_legacy",
+    capturedBeforeExecution: true
+  });
+  if (!decisionFacts.ok) {
+    appendAudit(db, `交易前决策事实包校验失败：${decisionFacts.reason}`, plan.id, "ExecutionEngine", "critical");
+    return { status: "decision_fact_snapshot_invalid", reason: decisionFacts.reason };
+  }
   const strategyBinding = ensurePlanStrategyBinding(db, plan, { source: "execution_preflight" });
   if (!strategyBinding.ok && plan.strategyRef?.classification === "version_drift") {
     appendAudit(db, "策略版本内容与已钉住哈希不一致，已拒绝执行", plan.id, "ExecutionEngine", "critical");
@@ -548,6 +568,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   // 下面的 fresh 复查才是唯一裁判。
   const freshRisk = evaluateTradePlan(db, plan);
   freshRisk.tradePlanId = plan.id;
+  freshRisk.tenantId = plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner";
+  freshRisk.ownerUserId = plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null;
   freshRisk.createdAt = nowIso();
   db.riskChecks.unshift(freshRisk);
   plan.lastRiskCheck = freshRisk;
@@ -679,6 +701,8 @@ async function executeApprovedPlanLeased(db, planId, options = {}) {
   const executionOrder = {
     id: id("exec"),
     planId: plan.id,
+    tenantId: plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null,
     agentRunId: plan.agentRunId,
     mandateId: plan.mandateId,
     riskCheckId: plan.riskCheckId,
@@ -1051,7 +1075,12 @@ function raisePendingProgressIncident(db, executionOrder, kind, title, detail) {
   db.riskIncidents ||= [];
   let incident = db.riskIncidents.find((row) => row.status === "open" && row.kind === kind && row.source === executionOrder.id);
   if (!incident) {
-    incident = { id: id("incident"), kind, severity: "critical", status: "open", title, source: executionOrder.id, createdAt: nowIso() };
+    incident = {
+      id: id("incident"), kind, severity: "critical", status: "open", title, source: executionOrder.id,
+      tenantId: executionOrder.tenantId || db.user?.tenantId || "tenant_owner",
+      ownerUserId: executionOrder.ownerUserId || db.user?.id || null,
+      createdAt: nowIso()
+    };
     db.riskIncidents.unshift(incident);
   }
   incident.updatedAt = nowIso();
@@ -1060,6 +1089,7 @@ function raisePendingProgressIncident(db, executionOrder, kind, title, detail) {
   db.system.killSwitch = true;
   db.system.reduceOnlyMode = true;
   db.system.riskStatus = "暂停新开仓";
+  refreshOwnerImprovementRegistry(db);
   return incident;
 }
 
@@ -1225,6 +1255,7 @@ async function pollOne(db, executionOrder, options = {}) {
       if (!db.riskIncidents.some((row) => row.status === "open" && row.source === executionOrder.id && row.kind === "entry_stop_unconfirmed")) {
         db.riskIncidents.unshift({ id: id("incident"), kind: "entry_stop_unconfirmed", severity: "critical", status: "open", title: `${executionOrder.symbol} 入场已成交但原生止损未获权威确认`, source: executionOrder.id, createdAt: nowIso() });
       }
+      surfaceOwnerExecutionSafetyIssue(db, executionOrder);
       const intent = final ? "close_position" : "emergency_close_if_filled";
       assertActiveLease(options);
       return closeExecution(db, executionOrder.id, "entry_stop_unconfirmed", {
@@ -1364,6 +1395,7 @@ async function pollOne(db, executionOrder, options = {}) {
         db.riskIncidents ||= [];
         db.riskIncidents.unshift({ id: id("incident"), kind: "close_reconciliation", severity: "critical", status: "open", title: `${executionOrder.symbol} 平仓结果待交易所核算`, source: executionOrder.id, createdAt: nowIso() });
       }
+      surfaceOwnerExecutionSafetyIssue(db, executionOrder);
       return { id: executionOrder.id, status: executionOrder.status, protectionSettlement: "evidence_incomplete" };
     }
   } else if (["entry_unknown_pending", "entry_pending", "entry_partial", "cancel_pending", "cancel_unknown_pending", "protection_failure_cancel_pending"].includes(executionOrder.status) && orderState.state === "canceled") {
@@ -2131,7 +2163,7 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
     for (const review of db.reviews || []) {
       if (review.status === "pending_financial_reconciliation") review.status = "pending";
     }
-    syncTradeReviewQueue(db);
+    syncTradeReviewQueue(db, { fillFilter: (fill) => isOwnerReviewRow(db, fill) });
   }
   return { checked: results.length, reconciled, results };
 }
@@ -2320,6 +2352,7 @@ async function placeTakeProfits(db, executionOrder, options = {}) {
       source: executionOrder.id,
       createdAt: nowIso()
     });
+    surfaceOwnerExecutionSafetyIssue(db, executionOrder);
     appendAudit(db, "止盈单布置异常，已熔断并转人工", executionOrder.id, "ExecutionEngine", "critical");
     return;
   }
@@ -2352,6 +2385,8 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   const fill = {
     id: id("fill"),
     executionOrderId: executionOrder.id,
+    tenantId: executionOrder.tenantId || plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: executionOrder.ownerUserId || plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null,
     planId: executionOrder.planId,
     tradePlanId: executionOrder.planId,
     agentRunId: executionOrder.agentRunId,

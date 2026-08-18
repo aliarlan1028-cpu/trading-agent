@@ -2,9 +2,35 @@
 // 这里补上:拿全市场异动扫描(db.marketMovers)里的大波动当候选,凡是我们【近窗口内没交易】的,
 // 就算一次潜在错过——尤其白名单内或我们分析过却放弃的,更值得学。对优先项调 LLM 复盘"该不该做、
 // 错过了什么信号、下次怎么抓",沉淀进长期记忆让 agent 学会别老错过。纯真实数据,不编造行情。
-import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, nowIso } from "./store.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const fillTime = (f) => new Date(f.at || f.closedAt || f.filledAt || f.openedAt || f.createdAt || 0).getTime();
+
+function qualifyMissedOpportunity(mover = {}, { inWhitelist, analyzed, scannedAt } = {}) {
+  const evidence = mover.counterfactualEvidence || null;
+  const observedAt = new Date(evidence?.observedAt || 0).getTime();
+  const scanTime = new Date(scannedAt || 0).getTime();
+  const checks = {
+    inWhitelist: inWhitelist === true,
+    analyzed: analyzed === true,
+    deterministicSource: evidence?.source === "deterministic_market_replay",
+    evidencePredatesScan: Number.isFinite(observedAt) && observedAt > 0 && (!Number.isFinite(scanTime) || observedAt <= scanTime),
+    entryObserved: evidence?.entryObserved === true,
+    setupReady: evidence?.setupReady === true,
+    liquidityPassed: evidence?.liquidityPassed === true,
+    riskRewardPassed: Number(evidence?.netRewardRisk) >= Number(process.env.MISSED_OPP_MIN_NET_RR || 1.5),
+    notInvalidated: evidence?.invalidated !== true
+  };
+  const failed = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  return {
+    qualified: failed.length === 0,
+    source: evidence?.source || "move_only_observation",
+    evidenceId: evidence?.id || null,
+    checks,
+    failed
+  };
+}
 
 async function llmMissedLesson(mover, ctx) {
   try {
@@ -30,7 +56,11 @@ export async function reviewMissedOpportunities(db) {
   if (!movers.length) return { reviewed: 0, missed: 0, items: [] };
   const minMove = Number(process.env.MISSED_OPP_MIN_MOVE_PCT || 10);
   const windowMs = Number(process.env.MISSED_OPP_WINDOW_MS || 24 * 3600 * 1000);
-  let llmBudget = Number(process.env.MISSED_OPP_LLM_MAX_PER_RUN || 4);
+  // 默认只用 API/代码事实识别错过机会。深度文案是可选的 Owner 复盘辅助，
+  // 不再为每个行情异动自动消耗 LLM，也不把模型文案直接写成生效记忆。
+  let llmBudget = process.env.MISSED_OPP_LLM_ENABLED === "true"
+    ? Number(process.env.MISSED_OPP_LLM_MAX_PER_RUN || 2)
+    : 0;
   const now = Date.now();
   const mandate = activeMandate(db);
   const whitelist = new Set((mandate?.allowedSymbols || []).map((s) => String(s).toUpperCase()));
@@ -56,6 +86,7 @@ export async function reviewMissedOpportunities(db) {
     // 是否分析过它(近窗口的巡检/对话里提到过)
     const analyzed = (db.agentRuns || []).some((r) => now - new Date(r.createdAt || 0).getTime() < windowMs && JSON.stringify(r.steps || "").includes(m.symbol));
     const inWhitelist = whitelist.has(sym);
+    const qualification = qualifyMissedOpportunity(m, { inWhitelist, analyzed, scannedAt: db.marketMovers?.scannedAt });
     const entry = {
       key,
       symbol: m.symbol,
@@ -63,6 +94,7 @@ export async function reviewMissedOpportunities(db) {
       quoteVolUsdtM: Number((Number(m.quoteVolUsdt || 0) / 1e6).toFixed(1)),
       inWhitelist,
       analyzed,
+      qualification,
       attribution: m.narrative ? {
         evidenceId: m.narrative.evidenceId || null,
         category: m.narrative.category || "unknown",
@@ -71,24 +103,18 @@ export async function reviewMissedOpportunities(db) {
         mayTriggerTradeDirectly: false
       } : null,
       lesson: null,
+      reviewSubjectType: "missed_opportunity",
+      reviewStatus: "evidence_accumulating",
+      ownerReviewRoute: !inWhitelist ? "authorization_scope_observation" : analyzed ? "agent_reasoning" : "opportunity_detection",
+      tenantId: db.user?.tenantId || "tenant_owner",
+      ownerUserId: db.user?.id || null,
       createdAt: nowIso()
     };
     // 优先给"白名单内"或"分析过却放弃"的调 LLM 深度复盘(这些最该学),其余只记录不调 LLM。
     if (llmBudget > 0 && (inWhitelist || analyzed)) {
+      llmBudget -= 1;
       const lesson = await llmMissedLesson(m, { inWhitelist, analyzed });
-      if (lesson) {
-        entry.lesson = lesson;
-        llmBudget -= 1;
-        db.memoryItems.unshift({
-          id: id("mem"),
-          layer: "episodic",
-          title: `错过复盘 ${m.symbol} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%`,
-          content: `错过机会复盘：${m.symbol} 近24h ${m.changePct >= 0 ? "+" : ""}${m.changePct}%${inWhitelist ? "（白名单内）" : ""}${analyzed ? "（分析过却没做）" : ""}。\n\n【复盘】${lesson}`,
-          tags: ["missed_opportunity", inWhitelist ? "in_whitelist" : "off_whitelist", analyzed ? "analyzed" : "unseen"],
-          source: "missed_opportunity_review",
-          createdAt: nowIso()
-        });
-      }
+      if (lesson) entry.lesson = lesson;
     }
     db.missedOpportunities.unshift(entry);
     items.push(entry);
@@ -107,10 +133,11 @@ export async function reviewMissedOpportunities(db) {
         await notifyLark(db, {
           severity: "info",
           title: "🎯 错过机会复盘",
-          body: `白名单内有 ${wlMissed.length} 个大波动本可交易但未做：${wlMissed.map((i) => `${i.symbol} ${i.changePct >= 0 ? "+" : ""}${i.changePct}%`).join("、")}。已沉淀复盘进记忆。`
+          body: `白名单内有 ${wlMissed.length} 个大波动未交易：${wlMissed.map((i) => `${i.symbol} ${i.changePct >= 0 ? "+" : ""}${i.changePct}%`).join("、")}。已进入 Owner 复盘证据，不会自动改变策略或扩大授权。`
         });
       } catch { /* 通知失败不阻断 */ }
     }
   }
-  return { reviewed: movers.length, missed: items.length, items };
+  const improvementRegistry = refreshOwnerImprovementRegistry(db);
+  return { reviewed: movers.length, missed: items.length, items, improvementRegistry };
 }

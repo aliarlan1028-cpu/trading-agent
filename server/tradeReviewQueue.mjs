@@ -46,6 +46,80 @@ export function resolveTradeContext(db = {}, source = {}) {
   return { fill, executionOrder, plan, executionOrderId, planId };
 }
 
+// A review may only claim a Studio strategy version when the same immutable
+// version/hash/product binding can be reconstructed from persisted trade facts.
+// Conflicting refs fail closed instead of silently preferring whichever object
+// happened to be read first.
+export function resolveAuthoritativeTradeStrategyRef(db = {}, source = {}) {
+  const { fill, executionOrder, plan } = resolveTradeContext(db, source);
+  const refs = [
+    fill?.strategyBlueprintRef,
+    executionOrder?.strategyBlueprintRef,
+    plan?.strategyBlueprintRef
+  ].filter(Boolean);
+  if (!refs.length) return { ok: false, error: "strategy_blueprint_ref_missing", ref: null };
+  const normalized = refs.map((ref) => ({
+    versionId: String(ref.versionId || ""),
+    contentHash: String(ref.contentHash || ref.definitionHash || ""),
+    productId: String(ref.baseProductId || ref.productId || "")
+  }));
+  if (normalized.some((ref) => !ref.versionId || !ref.contentHash)) {
+    return { ok: false, error: "strategy_blueprint_ref_incomplete", ref: null };
+  }
+  const first = normalized[0];
+  if (normalized.some((ref) => ref.versionId !== first.versionId || ref.contentHash !== first.contentHash
+    || (ref.productId && first.productId && ref.productId !== first.productId))) {
+    return { ok: false, error: "strategy_blueprint_ref_conflict", ref: null };
+  }
+  const version = (db.strategyBlueprintVersions || []).find((row) => String(row.id || "") === first.versionId);
+  if (!version || String(version.contentHash || "") !== first.contentHash) {
+    return { ok: false, error: "strategy_blueprint_version_unverified", ref: null };
+  }
+  const productId = String(version.definition?.baseProductId || version.productId || first.productId || "");
+  if (!productId || (first.productId && first.productId !== productId)) {
+    return { ok: false, error: "strategy_blueprint_product_mismatch", ref: null };
+  }
+  return {
+    ok: true,
+    ref: {
+      schema: "trading.strategy.blueprint.review-ref",
+      schemaVersion: 1,
+      versionId: version.id,
+      contentHash: version.contentHash,
+      productId
+    }
+  };
+}
+
+function stampTradeReviewStrategyRef(db, review, source) {
+  const resolved = resolveAuthoritativeTradeStrategyRef(db, source);
+  if (!resolved.ok) {
+    review.strategyBlueprintAttribution = { verified: false, error: resolved.error };
+    return false;
+  }
+  if (review.strategyBlueprintRef
+    && (review.strategyBlueprintRef.versionId !== resolved.ref.versionId
+      || review.strategyBlueprintRef.contentHash !== resolved.ref.contentHash
+      || review.strategyBlueprintRef.productId !== resolved.ref.productId)) {
+    review.strategyBlueprintAttribution = { verified: false, error: "review_strategy_blueprint_ref_conflict" };
+    delete review.strategyBlueprintRef;
+    delete review.strategyVersionId;
+    return false;
+  }
+  review.strategyBlueprintRef = resolved.ref;
+  review.strategyVersionId = resolved.ref.versionId;
+  review.strategyBlueprintAttribution = { verified: true };
+  const { plan } = resolveTradeContext(db, source);
+  review.improvementScope = {
+    ...(review.improvementScope || {}),
+    strategyProductId: resolved.ref.productId,
+    strategyVersionId: resolved.ref.versionId,
+    strategyDefinitionHash: resolved.ref.contentHash,
+    strategyProductVersionId: plan?.strategyRef?.versionId || plan?.strategyVersionId || review.improvementScope?.strategyProductVersionId || null
+  };
+  return true;
+}
+
 export function groupClosedTradeLifecycles(fills = [], options = {}) {
   const onlyUnreflected = options.onlyUnreflected === true;
   const groups = new Map();
@@ -165,6 +239,8 @@ export function ensureTradeReviewQueued(db, fill) {
       fillIds: [],
       symbol: fill.symbol || null,
       direction: fill.direction || null,
+      tenantId: fill.tenantId || fill.ownerTenantId || null,
+      ownerUserId: fill.ownerUserId || fill.createdByUserId || fill.userId || null,
       title: `${fill.symbol || "交易"} 平仓复盘`,
       summary: "已进入自动复盘队列，等待事实回补与归因。",
       status: "pending",
@@ -178,6 +254,9 @@ export function ensureTradeReviewQueued(db, fill) {
   if (fill.id && !review.fillIds.includes(fill.id)) review.fillIds.push(fill.id);
   review.symbol ||= fill.symbol || null;
   review.direction ||= fill.direction || null;
+  review.tenantId ||= fill.tenantId || fill.ownerTenantId || null;
+  review.ownerUserId ||= fill.ownerUserId || fill.createdByUserId || fill.userId || null;
+  stampTradeReviewStrategyRef(db, review, fill);
   review.updatedAt = nowIso();
   if (fill.fundingReconciled === false) {
     review.status = "pending_financial_reconciliation";
@@ -186,9 +265,10 @@ export function ensureTradeReviewQueued(db, fill) {
   return review;
 }
 
-export function syncTradeReviewQueue(db) {
+export function syncTradeReviewQueue(db, options = {}) {
   let queued = 0;
-  const closes = (db.fills || []).filter((fill) => fill?.kind === "close" && finite(fill.realizedPnl));
+  const fillFilter = typeof options.fillFilter === "function" ? options.fillFilter : () => true;
+  const closes = (db.fills || []).filter((fill) => fill?.kind === "close" && finite(fill.realizedPnl) && fillFilter(fill));
   // 先用最终平仓创建生命周期，再把更早的部分平仓 fillId 补进同一条复盘，避免依赖数组顺序。
   const ordered = [...closes.filter((fill) => fill.partial !== true), ...closes.filter((fill) => fill.partial === true)];
   for (const fill of ordered) {
@@ -201,6 +281,7 @@ export function syncTradeReviewQueue(db) {
   const lifecycles = groupClosedTradeLifecycles(db.fills || []);
   for (const lifecycle of lifecycles) {
     const review = (db.reviews || []).find((item) => item.type === "trade" && item.tradeLifecycleKey === lifecycle.key);
+    if (review) stampTradeReviewStrategyRef(db, review, lifecycle);
     if (review && !isFinanciallyReconciledLifecycle(lifecycle)) {
       review.status = "pending_financial_reconciliation";
       review.netRealizedPnl = null;

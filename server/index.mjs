@@ -96,6 +96,7 @@ import { profitGoalSnapshot } from "./profitGoals.mjs";
 import { buildCurrentRiskSnapshot } from "./currentRiskSnapshot.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { backfillReviewMemoryContexts, buildReviewLearningAnalytics } from "./reviewLearning.mjs";
+import { backfillStructuredTradeReviews, buildOwnerReviewLoopSnapshot, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 import { compileNaturalRiskCondition, validateConditionSpec, validateDynamicRiskAction } from "./dynamicRiskRules.mjs";
 import { ensureSystemTask, registerTaskHandler, runTask, scheduleTask, schedulerStatus, startScheduler, unscheduleTask, validateTaskDefinition } from "./scheduler.mjs";
 import { listVaultItems, runSafetyDrill, sendAlert, storeSecret } from "./securityOps.mjs";
@@ -195,7 +196,8 @@ seedSkillTools(db);
 // 启动迁移：把旧版本已 reflected 的真实平仓与新复盘队列对齐。
 // 只恢复展示/审计状态，不重复调用 LLM，也不修改成交事实。
 {
-  const migration = syncTradeReviewQueue(db);
+  migrateLegacyOwnerReviewProvenance(db);
+  const migration = syncTradeReviewQueue(db, { fillFilter: (fill) => isOwnerReviewRow(db, fill) });
   if (migration.queued || migration.reconciled || migration.financialsBackfilled) {
     appendAudit(db, `复盘队列迁移：新增 ${migration.queued}，对账完成 ${migration.reconciled}，净值回填 ${migration.financialsBackfilled || 0}`, "trade_review_queue_migration", "StartupMigration", "info");
     saveDb(db);
@@ -207,6 +209,16 @@ seedSkillTools(db);
   const migration = backfillReviewMemoryContexts(db);
   if (migration.updated) {
     appendAudit(db, `复盘学习上下文迁移：按净值重建 ${migration.updated} 条历史真实复盘`, "review_learning_context_migration", "StartupMigration", "info");
+    saveDb(db);
+  }
+}
+// Owner 复盘闭环迁移：只从已完整核算的历史成交重建确定性过程/结果评分，
+// 不补写模型故事、不激活新教训，也不自动创建策略实验。
+{
+  const structured = backfillStructuredTradeReviews(db);
+  const registry = refreshOwnerImprovementRegistry(db);
+  if (structured.updated || registry.created || registry.updated) {
+    appendAudit(db, `Owner 复盘闭环迁移：结构化复盘 ${structured.updated}，新增优化项 ${registry.created}，更新 ${registry.updated}`, "owner_review_loop_migration", "StartupMigration", "info");
     saveDb(db);
   }
 }
@@ -595,16 +607,18 @@ registerTaskHandler("paper_forward", async (database, _task, lease) => {
 registerTaskHandler("trade_reflection", (database, _task, lease) => { lease.assertLease(); return runTradeReflection(database, { signal: lease.signal, schedulerLease: lease }); });
 // ②b 错过机会复盘：大波动却没交易的复盘沉淀（#5）。
 registerTaskHandler("missed_opportunity_review", (database, _task, lease) => { lease.assertLease(); return reviewMissedOpportunities(database, { signal: lease.signal }); });
-// ① 策略改进闭环：每积累 N 笔平仓自动跑一次（找亏损簇→提假设→三段验证）。
+// Owner 复盘闭环：后台只聚合重复问题并形成候选优化项；不再自动创建策略实验。
+// 只有 Owner 在复盘页接受策略类建议后，才会创建版本化验证草案。
 registerTaskHandler("strategy_improvement", (database, _task, lease) => {
   lease.assertLease();
-  const closes = groupClosedTradeLifecycles(database.fills || []).length;
-  const last = Number(database.system.lastImprovementCloses || 0);
-  const need = Number(process.env.IMPROVEMENT_MIN_NEW_CLOSES || 10);
-  if (closes - last < need) return { status: "skipped", reason: `新增平仓 ${closes - last}/${need} 未达触发线` };
-  const cycle = createStrategyImprovementCycle(database);
-  database.system.lastImprovementCloses = closes;
-  return { status: "ok", experimentId: cycle.experiment?.id, hypothesis: cycle.experiment?.hypothesis };
+  const registry = refreshOwnerImprovementRegistry(database);
+  database.system.lastOwnerImprovementScanAt = nowIso();
+  return {
+    status: "ok",
+    ...registry,
+    pendingOwner: (database.ownerImprovementItems || []).filter((item) => item.state === "pending_owner").length,
+    note: "仅生成 Owner 候选优化项，未自动修改策略、Prompt、风控或代码"
+  };
 });
 registerTaskHandler("event_source_refresh", async (database, _task, lease) => {
   lease.assertLease();
@@ -795,7 +809,7 @@ ensureSystemTask(db, { id: "task_sys_strategy_research", name: "自适应策略�
 ensureSystemTask(db, { id: "task_sys_paper_forward", name: "模拟盘前向验证", handler: "paper_forward", schedule: "Every 30m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_trade_reflection", name: "平仓自动复盘", handler: "trade_reflection", schedule: "Every 30m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_missed_opportunity", name: "错过机会复盘", handler: "missed_opportunity_review", schedule: "Every 6h" }, saveDb);
-ensureSystemTask(db, { id: "task_sys_strategy_improvement", name: "策略改进闭环", handler: "strategy_improvement", schedule: "Every 6h" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_strategy_improvement", name: "Owner 复盘问题聚合", handler: "strategy_improvement", schedule: "Every 6h" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_payment_verify", name: "TRC20 支付链上核验", handler: "payment_verify", schedule: "Every 2m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_outbox", name: "交易事件 Outbox 派发", handler: "outbox_dispatch", schedule: "Every 1m" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_audit_worm", name: "审计日志 WORM 外送", handler: "audit_worm_ship", schedule: "Every 1m" }, saveDb);
@@ -1123,6 +1137,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     behaviorProfile: computeBehaviorProfile(db),
     behaviorNarrative: db.system?.behaviorNarrative || null,
     reviewLearningAnalytics: buildReviewLearningAnalytics(db),
+    ...((req.user || db.user)?.isOwner === true ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {}),
     tradeDataStatus: {
       source: "server_complete_lifecycle_aggregation",
       fillTotal: (db.fills || []).length,
@@ -1333,7 +1348,11 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     positions: normalizePositionsForUi(db.positions),
-    ...(needs("cockpit") ? { behaviorProfile: computeBehaviorProfile(db), behaviorNarrative: db.system?.behaviorNarrative || null } : {}),
+    ...(needs("cockpit") ? {
+      behaviorProfile: computeBehaviorProfile(db),
+      behaviorNarrative: db.system?.behaviorNarrative || null,
+      ...((req.user || db.user)?.isOwner === true ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {})
+    } : {}),
     mandates: db.mandates,
     tradePlans: db.tradePlans,
     watchTriggers: (db.watchTriggers || []).slice(0, 20).map(presentWatch),

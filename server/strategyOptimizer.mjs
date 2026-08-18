@@ -101,7 +101,7 @@ function rollingOptimizerDiagnostics(candles, trialRecords) {
 // 在"已通过样本外"的合格策略之间再加权（不替代样本外门槛，只影响优选谁）。
 export function buildLiveStrategyWeights(db) {
   let analytics;
-  try { analytics = buildReviewAnalytics(db); } catch { return {}; }
+  try { analytics = buildReviewAnalytics(db, { ownerOnly: true }); } catch { return {}; }
   const weights = {};
   const min = Number(process.env.LIVE_WEIGHT_MIN_TRADES || 10);
   for (const s of analytics.breakdowns?.strategy || []) {
@@ -203,7 +203,7 @@ export function optimizeSymbol(candles, timeframe = "1h", liveWeights = {}) {
   };
 }
 
-function profileFrom(symbol, timeframe, opt) {
+function profileFrom(symbol, timeframe, opt, ownership = {}) {
   const best = opt.best;
   return {
     id: id("sp"),
@@ -227,44 +227,15 @@ function profileFrom(symbol, timeframe, opt) {
     regimeMatch: opt.regimeMatch,
     family: best?.family || null,
     confidence: best ? opt.confidence : "none",
+    tenantId: ownership.tenantId || "tenant_owner",
+    ownerUserId: ownership.ownerUserId || null,
+    ownerApproval: { status: "pending", requestedAt: nowIso() },
     chosenAt: nowIso()
   };
 }
 
-function writeProfileToMemory(db, profiles) {
-  db.agentStateFiles ||= {};
-  const file = db.agentStateFiles.AGENT ||= { id: "state_agent", title: "AGENT.md", content: "", updatedAt: nowIso() };
-  const lines = profiles
-    .filter((p) => p.strategyId)
-    .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 盈亏比 ${p.oos?.profitFactor ?? "-"}（${p.oosFolds || "-"}），置信度 ${p.confidence}，当前 regime ${p.regime}${p.regimeMatch ? "（策略与 regime 匹配）" : "（注意：与当前 regime 不完全匹配，谨慎）"}。`);
-  if (!lines.length) return;
-  const marker = "## 已验证策略画像（自动更新）";
-  const base = String(file.content || "").split(marker)[0].trim();
-  file.content = `${base ? `${base}\n\n` : ""}${marker}\n更新于 ${nowIso()}\n${lines.join("\n")}`.slice(0, 6000);
-  file.updatedAt = nowIso();
-}
-
-function mineReviewLessons(db) {
-  const analytics = buildReviewAnalytics(db);
-  const clusters = analytics.lossClusters || [];
-  if (!clusters.length) return;
-  db.memoryItems ||= [];
-  const top = clusters[0];
-  const title = `亏损聚类：${top.key}`;
-  if (db.memoryItems.some((m) => m.title === title && m.source === "learning_loop")) return;
-  db.memoryItems.unshift({
-    id: id("mem"),
-    layer: "semantic",
-    title,
-    content: `复盘发现亏损集中在「${top.key}」（${top.count} 笔，合计 ${top.pnl} USDT）。${top.suggestion || "复盘该场景的入场与止损。"}`,
-    tags: ["learning_loop", "loss_cluster"],
-    source: "learning_loop",
-    createdAt: nowIso()
-  });
-  if (db.memoryItems.length > 200) db.memoryItems = db.memoryItems.slice(0, 200);
-}
-
-// 自主学习闭环主入口：优化授权交易对 → 存画像 → 回灌记忆 → 挖复盘教训。
+// 策略研究只产出结构化画像与模拟盘候选。它不改写 AGENT.md、不写入生效记忆；
+// 真实交易暴露出的改进问题统一进入 Owner 复盘闭环。
 const RESEARCH_TIMEFRAMES = ["15m", "1h", "4h"];
 
 export async function runStrategyResearch(db, options = {}) {
@@ -300,7 +271,10 @@ export async function runStrategyResearch(db, options = {}) {
       skipped.push({ symbol: sym, reason: "各周期取数失败或 K 线不足" });
       continue;
     }
-    const profile = profileFrom(sym, winner.timeframe, winner.opt);
+    const profile = profileFrom(sym, winner.timeframe, winner.opt, {
+      tenantId: db.user?.tenantId || "tenant_owner",
+      ownerUserId: db.user?.id || null
+    });
     db.strategyProfiles = db.strategyProfiles.filter((p) => p.symbol !== profile.symbol);
     db.strategyProfiles.unshift(profile);
     updated.push(profile);
@@ -308,8 +282,6 @@ export async function runStrategyResearch(db, options = {}) {
   const timeframe = timeframes.join("/");
 
   if (db.strategyProfiles.length > 40) db.strategyProfiles = db.strategyProfiles.slice(0, 40);
-  writeProfileToMemory(db, updated);
-  mineReviewLessons(db);
   // 已验证的策略自动进入模拟盘前向验证（纯前向，随时间累积）。
   const paperSpawned = await ensurePaperSessionsFromProfiles(db, { lookbackBars: Number(options.paperLookbackBars || 0) });
   appendAudit(db, `策略研究完成：更新 ${updated.length} 个画像，跳过 ${skipped.length} 个，开模拟盘 ${paperSpawned.length} 个`, "strategy_research", "LearningLoop");

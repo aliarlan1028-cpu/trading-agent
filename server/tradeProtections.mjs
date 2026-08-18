@@ -4,6 +4,7 @@
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const HOUR_MS = 3600000;
 const envNum = (key, def) => { const n = Number(process.env[key]); return Number.isFinite(n) ? n : def; };
@@ -80,7 +81,8 @@ export function applyProtections(db, actor = "TradeProtections") {
     const openExists = (db.riskIncidents || []).some((i) => i.status === "open" && i.protectionKey === key);
     if (openExists) return;
     db.riskIncidents ||= [];
-    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title, protectionKey: key, source: "trade_protections", createdAt: nowIso() });
+    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title, protectionKey: key, source: "trade_protections", tenantId: db.user?.tenantId || "tenant_owner", ownerUserId: db.user?.id || null, createdAt: nowIso() });
+    refreshOwnerImprovementRegistry(db);
     appendAudit(db, title, "trade_protections", actor, "warning");
     appendTrace(db, "trade_protections", title, "blocked");
   };

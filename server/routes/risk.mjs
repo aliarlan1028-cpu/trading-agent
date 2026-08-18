@@ -20,6 +20,8 @@ export function registerRiskRoutes(app, ctx) {
     result.gateState = gate.state;
     result.gateReason = gate.reason;
     result.tradePlanId = plan.id;
+    result.tenantId = plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner";
+    result.ownerUserId = plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null;
     result.createdAt = nowIso();
     db.riskChecks.unshift(result);
     persist(res, result);

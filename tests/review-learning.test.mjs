@@ -14,6 +14,8 @@ import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
 function dbFixture() {
   const db = {
+    system: { ownerReviewProvenanceMigrationVersion: 1 },
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
     markets: [
       { symbol: "BTC/USDT", regime: "上行趋势" },
       { symbol: "ADA/USDT", regime: "震荡低波动" }
@@ -31,12 +33,18 @@ function dbFixture() {
       { id: "review-ada", type: "trade", tradeLifecycleKey: "exec-ada", tradePlanId: "old-ada", memoryItemId: "mem-ada", symbol: "ADA/USDT", realizedPnl: 3 }
     ],
     memoryItems: [
-      { id: "mem-ada", source: "auto_reflection", fillId: "close-ada", title: "复盘 ADA", content: "跌破后等待反抽确认，避免在区间下沿追空。", createdAt: "2026-08-01T03:00:00Z" },
+      { id: "mem-ada", source: "auto_reflection", learningStatus: "active", fillId: "close-ada", title: "复盘 ADA", content: "跌破后等待反抽确认，避免在区间下沿追空。", createdAt: "2026-08-01T03:00:00Z" },
       { id: "generic", source: "learning_loop", title: "通用纪律", content: "严格止损", createdAt: "2026-08-01T03:00:00Z" },
-      { id: "mem-btc", source: "auto_reflection", fillId: "close-btc", title: "复盘 BTC", content: "趋势回调必须等待支撑确认，不能直接追高。", createdAt: "2026-08-01T02:00:00Z" }
+      { id: "mem-btc", source: "auto_reflection", learningStatus: "active", fillId: "close-btc", title: "复盘 BTC", content: "趋势回调必须等待支撑确认，不能直接追高。", createdAt: "2026-08-01T02:00:00Z" }
     ]
   };
   db.fills = financiallyReconciledFills(db.fills);
+  for (const collection of ["tradePlans", "fills", "reviews", "memoryItems"]) {
+    for (const row of db[collection]) {
+      row.tenantId = "tenant_owner";
+      row.ownerUserId = "owner-1";
+    }
+  }
   return db;
 }
 

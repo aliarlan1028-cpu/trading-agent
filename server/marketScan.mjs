@@ -3,6 +3,7 @@
 import { appendTrace, id, nowIso } from "./store.mjs";
 import { containsLikelySecret, scrubSecrets } from "./secretRedaction.mjs";
 import { completeGeminiWebSearch } from "./llmGateway.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const ATTRIBUTION_CATEGORIES = new Map([
@@ -546,8 +547,10 @@ export async function escortPositions(db) {
       db.riskIncidents.unshift({
         id: `escort_${Date.now()}_${alert.symbol}`, symbol: alert.symbol, severity: "high", status: "open",
         title: `持仓外部背景与方向冲突 ${alert.symbol}（待确定性复核）`, source: "position_escort",
+        tenantId: db.user?.tenantId || "tenant_owner", ownerUserId: db.user?.id || null,
         evidenceId: alert.evidenceId, mayTriggerTradeDirectly: false, count: 1, createdAt: nowIso(), lastSeenAt: nowIso()
       });
+      refreshOwnerImprovementRegistry(db);
     }
   }
   appendTrace(db, "position_escort", `持仓护航(无联网) ${positions.length} 仓 · 提示 ${alerts.length}`, "ok", 0);

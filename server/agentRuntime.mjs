@@ -14,6 +14,7 @@ import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { approveStateFilePromptArtifact, markStateFilePromptDraft } from "./knowledgePromptPolicy.mjs";
 import { analyzeQueuedNewsForDecision, newsDecisionAnalysisEvidence } from "./newsDecisionAnalysis.mjs";
 import { evaluateAgentDecisionWake, recordAgentDecisionWake } from "./decisionWakePolicy.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -425,10 +426,13 @@ export function recheckActivePlanRisk(db) {
         status: "open",
         title: `计划 ${plan.symbol} 风控复查失败：${risk.summary}`,
         source: plan.id,
+        tenantId: plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner",
+        ownerUserId: plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null,
         count: 1,
         createdAt: nowIso(),
         lastSeenAt: nowIso()
       });
+      refreshOwnerImprovementRegistry(db);
     }
   }
   return risk;

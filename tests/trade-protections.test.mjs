@@ -2,7 +2,7 @@
 // 这些直接决定"要不要暂停开仓"——算错就是过度交易或误锁。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consecutiveLossCooldown, drawdownLockout, evaluateProtections } from "../server/tradeProtections.mjs";
+import { applyProtections, consecutiveLossCooldown, drawdownLockout, evaluateProtections } from "../server/tradeProtections.mjs";
 import { financiallyReconciledFills, reconciledFill } from "./financial-fixtures.mjs";
 
 const HOUR = 3600000;
@@ -17,6 +17,17 @@ test("连亏冷却:尾部连续3笔亏损且在冷却窗内 → 触发", () => {
   assert.equal(r.active, true);
   assert.equal(r.streak, 3);
   assert.ok(r.until); // 有解除时间
+});
+
+test("高危保护事件在生产时立即进入 Owner 队列而不是等待聚合任务", () => {
+  const db = completeDb([fill(-20, 3), fill(-15, 2), fill(-25, 1)], {
+    system: { protectionsEnabled: true, ownerReviewProvenanceMigrationVersion: 1 },
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
+    riskIncidents: [], ownerImprovementItems: [], reviews: [], memoryItems: [], auditLogs: [], traces: []
+  });
+  applyProtections(db);
+  assert.equal(db.riskIncidents[0].ownerUserId, "owner-1");
+  assert.equal(db.ownerImprovementItems.some((row) => row.rootCauseCode === "system_control_failure" && row.state === "pending_owner"), true);
 });
 
 test("连亏冷却:连亏但已过冷却窗(默认4h)→ 自动解除", () => {

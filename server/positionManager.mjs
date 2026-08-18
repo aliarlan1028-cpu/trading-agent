@@ -11,6 +11,7 @@ import { clearReduceOnlyReason, setReduceOnlyReason } from "./reduceOnlyState.mj
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { strictFiniteFact } from "./factValues.mjs";
 import { assertActiveLease, isLeaseLostError, LeaseLostError } from "./leaseSafety.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 // 调用时读(而非加载时),这样「风控设置」运行时改 TRAIL_* 立即生效、不用重启。
 const trailPct = () => Math.max(0.001, Number(process.env.TRAIL_PCT || 0.012));            // 跟踪止损距离(小数,默认 0.012=1.2%)
@@ -602,7 +603,10 @@ function raiseIncident(db, position, severity, title) {
     status: "open",
     title,
     source: position.id,
+    tenantId: position.tenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: position.ownerUserId || db.user?.id || null,
     createdAt: nowIso()
   });
+  refreshOwnerImprovementRegistry(db);
   appendAudit(db, title, position.id, "PositionManager", severity === "critical" ? "critical" : "warning");
 }

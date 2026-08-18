@@ -548,12 +548,13 @@ test("Agent rail explains the Gemini, evidence, DeepSeek, and hard-risk chain fr
 });
 
 test("intelligence workspace exposes Gemini grounding links without treating them as trade authority", () => {
+  const currentAt = new Date().toISOString();
   const intelData = {
     ...data,
-    marketMovers: { scannedAt: "2026-08-17T00:00:00Z", movers: [{
+    marketMovers: { scannedAt: currentAt, movers: [{
       symbol: "BTC/USDT", changePct: 8.2, quoteVolUsdt: 10_000_000,
       narrative: {
-        evidenceId: "mover-evidence", confidence: "high", searchProvider: "Google AI Studio", providerAttributionVerified: true, attributedAt: "2026-08-17T00:00:00Z",
+        evidenceId: "mover-evidence", confidence: "high", searchProvider: "Google AI Studio", providerAttributionVerified: true, attributedAt: currentAt,
         untrustedDisplay: { narrative: "ETF flows accelerated", risk: "headline may reverse" },
         citations: [{ url: "https://example.com/btc", title: "BTC source", source: "example.com" }]
       }
@@ -601,12 +602,59 @@ test("capital settings distinguish configured auto mode from the current safety 
 
 test("execution and review renders every workflow zone on one page", () => {
   const html = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
-  for (const id of ["attention", "performance", "reviews", "diagnostics", "behavior"]) assert.ok(html.includes(`id="er-${id}"`), `missing single-page zone ${id}`);
+  for (const id of ["attention", "performance", "reviews", "diagnostics", "improvements", "behavior"]) assert.ok(html.includes(`id="er-${id}"`), `missing single-page zone ${id}`);
   assert.ok(!html.includes("id=\"er-fills\""), "raw fill ledger belongs on its own subpage");
   assert.ok(!html.includes("AI 委托记录"), "raw AI order records belong on their own subpage");
   assert.ok(html.includes("持仓时长与收益率"));
   assert.ok(html.includes("绩效拆解"));
   assert.ok(!html.includes("role=\"tablist\""), "single-page workbench must not hide sections behind tabs");
+});
+
+test("Owner review loop renders candidate lessons and routed improvements without claiming automatic changes", () => {
+  const html = render(React.createElement(C.ExecutionReviewConcept, {
+    data: {
+      ...data,
+      ownerReviewLoop: {
+        summary: { structuredReviews: 4, candidateLessons: 1, pendingOwner: 1, validating: 0 },
+        lessons: [{ id: "lesson-1", status: "candidate", title: "等待回踩确认", content: "候选教训正文", symbol: "BTC/USDT", createdAt: new Date().toISOString() }],
+        improvements: [{ id: "improvement-1", state: "pending_owner", destination: "strategy", title: "入场时机或确认不足", problem: "3 笔复盘重复出现", proposal: "创建版本化对照实验", evidenceCount: 3, successCriteria: ["历史样本外验证通过"] }]
+      }
+    }, action, ui
+  }));
+  assert.match(html, /Owner 优化清单/);
+  assert.match(html, /Owner 批准前不参与交易决策/);
+  assert.match(html, /入场时机或确认不足/);
+  assert.match(html, /策略库/);
+  assert.match(html, /接受建议/);
+  assert.match(html, /系统自行修改/);
+});
+
+test("Owner validation UI selects authoritative evidence instead of asking for free-text pass claims", () => {
+  const now = new Date().toISOString();
+  const html = render(React.createElement(C.ExecutionReviewConcept, {
+    data: {
+      ...data,
+      ownerReviewLoop: {
+        summary: { structuredReviews: 3, candidateLessons: 1, pendingOwner: 0, validating: 1 },
+        lessons: [{ id: "legacy-lesson", status: "candidate_legacy", title: "旧版待审核", content: "尚未获批", symbol: "BTC/USDT", createdAt: now }],
+        improvements: [{
+          id: "validation-1", state: "validating", destination: "strategy", title: "策略候选验证", problem: "需要权威证据", proposal: "按三阶段验证", evidenceCount: 3,
+          validation: {
+            stages: [{ name: "backtest", label: "回测", status: "pending" }, { name: "paper", label: "模拟盘", status: "pending" }, { name: "small_live", label: "小额实盘", status: "pending" }],
+            readyForOwnerVerification: false,
+            availableEvidence: { candidateVersions: [{ id: "candidate-v2", label: "候选 V2", definitionHash: "hash-v2", backtestId: "bt-v2" }], paperSessions: [], liveReviews: [] }
+          }
+        }]
+      }
+    }, action, ui
+  }));
+  assert.match(html, /候选策略版本（来自策略库）/);
+  assert.match(html, /候选 V2/);
+  assert.match(html, /candidate-v2/);
+  assert.match(html, /系统会自动核对版本 Hash 与其权威样本外回测/);
+  assert.match(html, /核验并记录通过/);
+  assert.match(html, /旧版待审核/);
+  assert.doesNotMatch(html, /请输入本次回测对应的候选策略版本 ID/);
 });
 
 test("execution review distinguishes not-run reconciliation and never renders unknown costs as zero performance", () => {

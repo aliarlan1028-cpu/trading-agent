@@ -2,6 +2,7 @@ import { executeTradeAction } from "./tradeActions.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { latestSuccessfulAccountSnapshot } from "./store.mjs";
 import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 export async function cancelAuthoritativeOrphanOrders(db, reason, emergencyActionId) {
   const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
@@ -103,12 +104,15 @@ export async function applyKillSwitch(db, input = {}, deps = {}) {
         status: "open",
         title: "一键熔断触发撤单请求",
         source: "risk.kill_switch",
+        tenantId: db.user?.tenantId || "tenant_owner",
+        ownerUserId: db.user?.id || null,
         affectedOrders: cancelRequested,
         orphanCancellations,
         cancellationResults,
         unconfirmed: cancellationResults.filter((item) => !["cancelled", "closed"].includes(item.status)),
         createdAt: nowIso()
       });
+      refreshOwnerImprovementRegistry(db);
     }
     const orphanResults = [...orphanCancellations.requested, ...orphanCancellations.unknown, ...orphanCancellations.failed];
     db.system.lastKillSwitchCancellation = {

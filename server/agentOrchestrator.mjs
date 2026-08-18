@@ -4,6 +4,7 @@ import { bindKnowledgeSkillsToPlan, evaluateKnowledgeSkillSignal, selectActiveKn
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { bindPlanToStrategyProduct } from "./strategyProducts.mjs";
 import { transitionMandate } from "./mandateLifecycle.mjs";
+import { ensureDecisionFactSnapshot } from "./ownerReviewLoop.mjs";
 
 const DEFAULT_COMMAND = "请先配置交易所 API 与 LLM API，并写下交易目标、交易对、最大杠杆和风险边界。";
 
@@ -170,6 +171,8 @@ export function runAgentCommand(db, payload = {}) {
 
   const intent = createTradeIntent(db, run, mandateDraft, bundle);
   const plan = createTradePlanFromIntent(db, intent, mandateDraft, bundle);
+  plan.tenantId = run.tenantId || db.user?.tenantId || "tenant_owner";
+  plan.ownerUserId = run.ownerUserId || db.user?.id || null;
   bindKnowledgeSkillsToPlan(db, plan, {
     // 不按周期过滤(审计 #15):time_horizon 恒 intraday 使 4h/1d 技能永远选不到;
     // 技能信号本就按各自 spec.timeframe 在 candlesByTf 上评估,跨周期绑定是安全的。
@@ -180,6 +183,8 @@ export function runAgentCommand(db, payload = {}) {
   }, "AgentOrchestrator");
   const risk = evaluateTradePlan(db, plan);
   risk.tradePlanId = plan.id;
+  risk.tenantId = plan.tenantId;
+  risk.ownerUserId = plan.ownerUserId;
   risk.agentRunId = run.id;
   risk.result = mapRiskResult(risk);
   // 评分从真实检查内容派生（此前是 82/56/38 三个魔数冒充精确评分）：
@@ -331,6 +336,10 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
   plan.trade_plan_id = plan.id;
   bindPlanToStrategyProduct(db, plan, { source: "legacy_command_orchestrator" });
   db.tradePlans.unshift(plan);
+  ensureDecisionFactSnapshot(db, plan, {
+    captureMode: "legacy_orchestrator_pre_approval",
+    capturedBeforeExecution: true
+  });
   return plan;
 }
 

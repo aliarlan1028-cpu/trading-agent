@@ -10,6 +10,7 @@ import { marketFactFreshness } from "./marketFreshness.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { ACCOUNTING_BOUNDARY_BUCKET_MS, backfillOkxRollingAccountingBaseline, rollingAccountingBoundary } from "./accountingHistory.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -400,8 +401,11 @@ export function refreshAccounting(db, options = {}) {
           status: "open",
           title: `日亏损预算耗尽（上限 ${dailyLossCap.toFixed(2)} USDT），已暂停新开仓`,
           source: "accounting",
+          tenantId: db.user?.tenantId || "tenant_owner",
+          ownerUserId: db.user?.id || null,
           createdAt: nowIso()
         });
+        refreshOwnerImprovementRegistry(db);
         appendAudit(db, "日亏损预算耗尽，暂停新开仓", "accounting", "Accounting", "critical");
         appendTrace(db, "risk_check", "日亏损预算耗尽", "blocked");
       }

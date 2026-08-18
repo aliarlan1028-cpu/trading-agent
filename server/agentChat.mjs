@@ -56,6 +56,7 @@ import { authorizeAgentTool, filterAgentToolsForInvocation } from "./agentToolAu
 import { liveConfigurationFingerprint } from "./liveModeService.mjs";
 import { taskHandlerPolicy, userHasCapabilities } from "./capabilityPolicy.mjs";
 import { completePrimaryChat, criticModelRoute, openRouterProviderPolicy, primaryModelRoute, reviewTradeProposal } from "./llmGateway.mjs";
+import { ensureDecisionFactSnapshot } from "./ownerReviewLoop.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
 import { marketContextForPrompt, marketResearchAuditEvidence } from "./marketContextResearch.mjs";
 
@@ -244,7 +245,7 @@ const TOOL_DEFS = [
   },
   {
     name: "research_strategy",
-    description: "对某交易对做自主策略研究：在 13 套多空策略上做 train/val/test 三窗样本外寻优（计入手续费/滑点/资金费率，多周期趋势确认，ATR 自适应止损）。不传 timeframe 时自动扫描 15m/1h/4h 选样本外最优周期；只有 val 与 test 双窗都合格才采纳。想知道'这个币现在用什么策略、什么周期、该做多还是做空'时用它，结果写入长期记忆。",
+    description: "对某交易对生成研究候选：在多空策略上做 train/val/test 样本外寻优。结果只进入 Owner 研究队列，未批准前不会进入交易 Prompt、不会成为提计划依据，也不会改变当前实盘行为。",
     schema: {
       type: "object",
       properties: {
@@ -966,6 +967,9 @@ function hhmmCn(iso) {
 
 export function validatedStrategyProfilesForPrompt(db) {
   return (db.strategyProfiles || []).filter((profile) => profile.strategyId
+    && profile.ownerApproval?.status === "approved"
+    && profile.tenantId === (db.user?.tenantId || "tenant_owner")
+    && (!db.user?.id || profile.ownerUserId === db.user.id)
     && profile.confidence === "validated"
     && profile.rollingValidation?.passed === true
     && hasPassedPaper(db, { symbol: profile.symbol, timeframe: profile.timeframe, strategyId: profile.strategyId }));
@@ -1016,7 +1020,7 @@ export async function buildSystemPrompt(db, userText = "", evidenceBundle = null
     const text = profiles
       .map((p) => `- ${p.symbol}(${p.timeframe})：优选「${p.label}」${p.direction === "short" ? "做空" : "做多"} 参数 ${JSON.stringify(p.params)}，合并样本外期望 ${p.oosScore ?? "-"}R / 胜率 ${p.oos?.winRatePct ?? "-"}%（${p.oosFolds || "-"}），置信度 ${p.confidence}，regime ${p.regime}`)
       .join("\n");
-    sections.push(`【已验证策略画像（自主学习闭环产出，提计划时优先采用与之一致的方向/策略；无合格策略的交易对要更保守）】\n${text}`);
+    sections.push(`【Owner 已批准的策略画像（研究结果经人工批准后才可参与计划；无合格策略的交易对要更保守）】\n${text}`);
   } else if (marketPrompt) {
     // 诚实纪律:画像为空时明确告知,防止模型把策略模板/知识方法名冒充"已验证策略"
     // (用户实锤:巡检里把唐奇安/布林挤压/Supertrend 三个做多模板说成"已验证策略"逐币匹配,
@@ -1676,9 +1680,20 @@ export async function executeTool(db, run, name, args = {}) {
     try {
       // 不传 timeframe → 自动多周期扫描（15m/1h/4h）选样本外最优；传了则只跑该周期。
       const result = await runStrategyResearch(db, { symbols: [args.symbol], timeframe: args.timeframe });
-      const profile = activeStrategyProfiles(db, args.symbol)[0];
+      const profile = activeStrategyProfiles(db, args.symbol).find((row) => row.tenantId === (db.user?.tenantId || "tenant_owner")
+        && (!db.user?.id || row.ownerUserId === db.user.id)) || null;
       run.strategyProfileId = profile?.id;
-      return { profile, skipped: result.skipped };
+      const approvedProfile = profile && validatedStrategyProfilesForPrompt(db).find((row) => row.id === profile.id);
+      if (!approvedProfile) {
+        return {
+          status: profile ? "research_candidate_pending_owner" : "no_qualified_candidate",
+          researchCandidateId: profile?.id || null,
+          eligibleForTradeDecision: false,
+          skipped: result.skipped,
+          note: "研究结果尚未由 Owner 批准，已与本轮交易决策隔离"
+        };
+      }
+      return { profile: approvedProfile, eligibleForTradeDecision: true, skipped: result.skipped };
     } catch (error) {
       return { error: `策略研究失败：${error.message}` };
     }
@@ -2114,6 +2129,8 @@ export async function executeTool(db, run, name, args = {}) {
       // 落库计划周期：执行层要用它做技能模拟盘的周期一致性校验（此前从未写入，校验被静默跳过）。
       timeframe: args.timeframe || "1h",
       source: "agent_chat",
+      tenantId: run.tenantId || db.user?.tenantId || "tenant_owner",
+      ownerUserId: run.ownerUserId || db.user?.id || null,
       createdAt: nowIso()
     };
     const availableNews = new Map((run.newsContext || []).map((item) => [item.eventId, item]));
@@ -2182,6 +2199,8 @@ export async function executeTool(db, run, name, args = {}) {
     }
     const risk = evaluateTradePlan(db, plan);
     risk.tradePlanId = plan.id;
+    risk.tenantId = plan.tenantId;
+    risk.ownerUserId = plan.ownerUserId;
     risk.agentRunId = run.id;
     risk.evidenceBundleId = proposalEvidence.id;
     risk.evidenceIds = plan.evidenceIds;
@@ -2203,6 +2222,11 @@ export async function executeTool(db, run, name, args = {}) {
     // Freeze the exact model/tool/critic/provider/plan facts before any automatic
     // approval can reach the execution engine. Execution replays this chain.
     persistPlanDecisionAudit(db, run, plan);
+    ensureDecisionFactSnapshot(db, plan, {
+      captureMode: "agent_decision_pre_approval",
+      agentRunId: run.id,
+      capturedBeforeExecution: true
+    });
     if (leveragePolicy.adjusted) {
       appendAudit(
         db,
@@ -3268,7 +3292,9 @@ export function summarizeToolResult(name, result = {}) {
   if (name === "analyze_market_structure") return result.available === false ? `结构分析不可用：${result.reason || "-"}` : `确定性结构 ${result.bias || "?"}（${result.selectedRole === "day_trader" ? "日内1H/15m/5m" : "波段1D/4H/1H"}，4H ${result.structure4h || "?"}），${result.phase || ""}；证据 ${result.evidenceRef || "missing"}；影子角色建议 ${result.roleSuitability?.recommendation || "-"}`;
   if (name === "get_global_market") return result.interpretation || `OKX 上涨家数 ${result.breadthPct ?? "-"}%，涨跌中位数 ${result.medianChangePct ?? "-"}%`;
   if (name === "run_backtest") return result.status === "ok" ? `回测 ${result.trades} 笔，胜率 ${result.winRatePct}%，盈亏比 ${result.profitFactor ?? "-"}，期望 ${result.expectancyR}R，最大回撤 ${result.maxDrawdownPct}%` : `回测未完成：${result.status}`;
-  if (name === "research_strategy") return result.profile?.strategyId ? `优选「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}），双样本外期望 ${result.profile.oosScore ?? "-"}R，置信度 ${result.profile.confidence}` : "未找到合格策略（多周期样本外均不达标）";
+  if (name === "research_strategy") return result.eligibleForTradeDecision && result.profile?.strategyId
+    ? `Owner 已批准研究画像「${result.profile.label}」（${result.profile.direction === "short" ? "做空" : "做多"}·${result.profile.timeframe}）`
+    : result.status === "research_candidate_pending_owner" ? "已生成研究候选并送 Owner 审核；本轮不得把它用于交易计划" : "未找到合格策略候选";
   if (name === "explain_market_move") return result.attribution
     ? `${result.symbol} 外部归因数据：类别 ${result.attribution.category} · 情绪 ${result.attribution.sentiment ?? "未知"} · 置信 ${result.attribution.confidence} · 证据 ${result.attribution.evidenceId}（不含网页自由文本，不可单独触发交易）`
     : `${result.symbol} 联网归因不可用（${result.status || result.source}），未编造原因`;

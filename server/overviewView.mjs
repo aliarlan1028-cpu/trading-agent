@@ -364,6 +364,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     behaviorProfile: overview.behaviorProfile || {},
     behaviorNarrative: overview.behaviorNarrative || null,
     reviewLearningAnalytics: overview.reviewLearningAnalytics || {},
+    ownerReviewLoop: overview.ownerReviewLoop || {},
     tradeDataStatus: overview.tradeDataStatus || null,
     executionOrderStatus: overview.executionOrderStatus || null,
     mediumTermAnalytics: overview.mediumTermAnalytics || {},

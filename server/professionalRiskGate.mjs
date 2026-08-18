@@ -10,6 +10,7 @@ import { currentOkxCredentialFingerprint } from "./exchangeConnector.mjs";
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { canonicalPositionDirection, canonicalPositionKey } from "./positionIdentity.mjs";
 import { newestAuthoritativePosition } from "./positionView.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const ageMs = (value) => value ? Date.now() - new Date(value).getTime() : Infinity;
 const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
@@ -79,7 +80,8 @@ export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") 
     db.system.updatedAt = nowIso();
     if (newlyActivated) {
       db.riskIncidents ||= [];
-      db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "系统已自动暂停新开仓", source: "professional_risk_gate", reasons: assessment.reasons, createdAt: nowIso() });
+      db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "系统已自动暂停新开仓", source: "professional_risk_gate", reasons: assessment.reasons, tenantId: db.user?.tenantId || "tenant_owner", ownerUserId: db.user?.id || null, createdAt: nowIso() });
+      refreshOwnerImprovementRegistry(db);
       appendAudit(db, db.system.latestAction, "system.reduce_only", actor, "critical");
       appendTrace(db, "professional_risk", db.system.latestAction, "blocked");
     }

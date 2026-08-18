@@ -87,6 +87,24 @@ test("自动复盘完成后更新页面队列而不是只写隐藏记忆", async
   assert.ok(db.fills.find((fill) => fill.id === "close-small").reflectedAt);
 });
 
+test("净盈亏为零的交易明确归类 flat，绝不写成亏损候选教训", async () => {
+  const db = baseDb();
+  db.fills = financiallyReconciledFills([{
+    id: "close-flat", kind: "close", executionOrderId: "exec-flat", planId: "plan-flat",
+    symbol: "BTC/USDT", direction: "long", strategy: "manual_review", realizedPnl: 0,
+    entryRationale: "结构确认后入场", createdAt: "2026-08-01T01:30:00Z"
+  }]);
+  db.tradePlans = [{ id: "plan-flat", rationale: "结构确认后入场" }];
+  const result = await runTradeReflection(db);
+  assert.equal(result.lessons[0].outcome, "flat");
+  assert.equal(result.lessons[0].win, null);
+  assert.equal(result.memorized, 0);
+  assert.equal(db.memoryItems.length, 0);
+  assert.match(db.reviews[0].lesson, /持平复盘/);
+  assert.doesNotMatch(db.reviews[0].lesson, /亏损复盘/);
+  assert.equal(db.reviews[0].structuredAssessment.outcome, "flat");
+});
+
 test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending", () => {
   const db = baseDb();
   db.fills = financiallyReconciledFills([{
@@ -157,6 +175,7 @@ test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与�
   assert.equal(db.memoryItems[0].reviewContext.grossRealizedPnl, 1);
   assert.ok(Math.abs(db.memoryItems[0].reviewContext.netRealizedPnl + 0.2) < 1e-9);
   assert.equal(db.memoryItems[0].reviewContext.outcome, "loss");
+  db.memoryItems[0].learningStatus = "active"; // 本测试聚焦净值口径；显式模拟 Owner 已批准该历史教训。
   assert.equal(backfillReviewMemoryContexts(db).updated, 0, "schema v2 migration must be idempotent");
 
   const metadata = reviewMemoryMetadata(db, db.memoryItems[0]);

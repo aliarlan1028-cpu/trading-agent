@@ -4,6 +4,7 @@ import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.
 import { activeReduceOnlyReasonCodes, clearReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { currentOkxCredentialFingerprint } from "./exchangeConnector.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 export function runReconciler(db, options = {}) {
   const mode = options.mode || "full";
@@ -45,8 +46,11 @@ export function runReconciler(db, options = {}) {
       title: "实时/账户对账发现差异",
       source: report.id,
       details: differences,
+      tenantId: db.user?.tenantId || "tenant_owner",
+      ownerUserId: db.user?.id || null,
       createdAt: nowIso()
     });
+    refreshOwnerImprovementRegistry(db);
   }
   appendAudit(db, `执行对账：${report.status}`, report.id, "Reconciler", report.status === "ok" ? "info" : "warning");
   appendTrace(db, "reconciler", `对账 ${mode}`, report.status);

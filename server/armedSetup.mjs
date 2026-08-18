@@ -7,6 +7,7 @@ import { createNotification } from "./notificationStore.mjs";
 import { TIMEFRAME_MS } from "./ohlcvQuality.mjs";
 import { ensurePlanStrategyBinding, strategyProductExecutionGate } from "./strategyProducts.mjs";
 import { setReduceOnlyReason } from "./reduceOnlyState.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const ACTIVE = new Set(["ARMED", "TRIGGERED", "FAST_VALIDATING"]);
 const processing = new Set();
@@ -841,6 +842,8 @@ export async function validateAndExecuteTriggeredSetup(db, setup, options = {}) 
     const evaluate = options.evaluateTradePlan || evaluateTradePlan;
     const risk = evaluate(db, plan);
     risk.tradePlanId = plan.id;
+    risk.tenantId = plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner";
+    risk.ownerUserId = plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null;
     risk.createdAt = nowIso();
     db.riskChecks ||= [];
     db.riskChecks.unshift(risk);
@@ -1049,7 +1052,8 @@ export async function recoverTriggeredSetups(db, options = {}) {
       }
       db.riskIncidents ||= [];
       if (!db.riskIncidents.some((row) => row.status === "open" && row.source === omsEntry.id)) {
-        db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "条件交易重启恢复发现 OMS 在途单，已禁止重复下单并暂停新开仓", source: omsEntry.id, createdAt: nowIso() });
+        db.riskIncidents.unshift({ id: id("incident"), severity: "critical", status: "open", title: "条件交易重启恢复发现 OMS 在途单，已禁止重复下单并暂停新开仓", source: omsEntry.id, tenantId: omsEntry.tenantId || db.user?.tenantId || "tenant_owner", ownerUserId: omsEntry.ownerUserId || db.user?.id || null, createdAt: nowIso() });
+        refreshOwnerImprovementRegistry(db);
       }
       appendAudit(db, `条件交易恢复发现 OMS ${omsEntry.state}，禁止重复执行并等待对账`, setup.id, "ArmedSetupRecovery", "critical");
       results.push({ status: "recovery_pending_reconciliation", setupId: setup.id, omsOrderId: omsEntry.id, omsState: omsEntry.state });

@@ -59,6 +59,10 @@ test("sensitive trading, configuration and paid-model routes declare explicit RB
     ["POST /api/behavior-profile/narrative", "assistant.use"], ["POST /api/behavior-profile/adopt-discipline", "write:knowledge"],
     ["POST /api/assistant/summarize", "assistant.use"], ["POST /api/assistant/chat", "assistant.use"]
     , ["GET /api/reviews", "account.read"], ["GET /api/review/analytics", "account.read"],
+    ["GET /api/review/owner-loop", "admin:system"],
+    ["POST /api/review/lessons/:id/action", "admin:system"],
+    ["POST /api/review/improvements/:id/action", "admin:system"],
+    ["POST /api/review/strategy-improvement", "admin:system"],
     ["GET /api/paper/sessions", "account.read"], ["GET /api/posters/trades/:id", "account.read"],
     ["POST /api/posters/translate", "assistant.use"], ["GET /api/strategy/profiles", "knowledge.read"],
     ["GET /api/strategy-board", "account.read"], ["GET /api/strategy/catalog", "knowledge.read"],
@@ -98,4 +102,80 @@ test("the default auditor role cannot read accounts/config or invoke paid assist
     if (oldAuth === undefined) delete process.env.AUTH_REQUIRED; else process.env.AUTH_REQUIRED = oldAuth;
     if (oldPassword === undefined) delete process.env.ADMIN_PASSWORD; else process.env.ADMIN_PASSWORD = oldPassword;
   }
+});
+
+test("Owner review loop rejects a non-Owner even when the account has admin permission", () => {
+  const routes = new Map();
+  const app = {};
+  for (const method of ["get", "post", "patch", "delete"]) {
+    app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers);
+  }
+  const requirePermission = () => (_req, _res, next) => next();
+  registerReviewRoutes(app, {
+    db: { user: { id: "owner", name: "Owner", isOwner: true }, reviews: [], memoryItems: [], ownerImprovementItems: [] },
+    requirePermission,
+    persist() {}, id: () => "id", nowIso: () => new Date().toISOString(), appendAudit() {},
+    buildReviewAnalytics: () => ({}), backfillReviewFields: () => ({}), createStrategyImprovementCycle: () => ({}), runStrategyResearch: async () => ({})
+  });
+  const handlers = routes.get("GET /api/review/owner-loop");
+  const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  handlers[0]({ user: { id: "admin", role: "管理员", isOwner: false } }, response, () => handlers[1]({ user: { id: "admin", role: "管理员", isOwner: false } }, response));
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.error, "owner_only_review_loop");
+});
+
+test("review API returns only explicitly attributed Owner rows and quarantines unknown producers", () => {
+  const routes = new Map();
+  const app = {};
+  for (const method of ["get", "post", "patch", "delete"]) app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers);
+  const requirePermission = () => (_req, _res, next) => next();
+  const db = {
+    system: { ownerReviewProvenanceMigrationVersion: 1 },
+    user: { id: "owner", tenantId: "tenant_owner", name: "Owner", isOwner: true },
+    reviews: [
+      { id: "owner-review", tenantId: "tenant_owner", ownerUserId: "owner" },
+      { id: "foreign-review", tenantId: "tenant_other", ownerUserId: "other" },
+      { id: "unknown-review" }
+    ], memoryItems: [], ownerImprovementItems: []
+  };
+  registerReviewRoutes(app, {
+    db, requirePermission,
+    persist() {}, id: () => "id", nowIso: () => new Date().toISOString(), appendAudit() {},
+    buildReviewAnalytics: () => ({}), backfillReviewFields: () => ({}), createStrategyImprovementCycle: () => ({})
+  });
+  const handlers = routes.get("GET /api/reviews");
+  const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  handlers[0]({ user: db.user, query: {} }, response, () => handlers[1]({ user: db.user, query: {} }, response));
+  assert.deepEqual(response.body.items.map((row) => row.id), ["owner-review"]);
+  assert.equal(response.body.total, 1);
+});
+
+test("Owner strategy accept rolls back atomically when a versioned validation cycle cannot be created", async () => {
+  const routes = new Map();
+  const app = {};
+  for (const method of ["get", "post", "patch", "delete"]) app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers);
+  const requirePermission = () => (_req, _res, next) => next();
+  const item = {
+    id: "strategy-item", tenantId: "tenant_owner", ownerUserId: "owner", destination: "strategy",
+    state: "pending_owner", title: "Strategy proposal", severity: "medium", evidenceReviewIds: []
+  };
+  const db = {
+    system: { ownerReviewProvenanceMigrationVersion: 1 },
+    user: { id: "owner", tenantId: "tenant_owner", name: "Owner", isOwner: true },
+    reviews: [], memoryItems: [], ownerImprovementItems: [item], strategyExperiments: [], auditLogs: []
+  };
+  registerReviewRoutes(app, {
+    db, requirePermission,
+    persist() {}, id: () => "id", nowIso: () => new Date().toISOString(), appendAudit() {},
+    buildReviewAnalytics: () => ({}), backfillReviewFields: () => ({}),
+    createStrategyImprovementCycle: () => { throw Object.assign(new Error("strategy_baseline_version_not_found"), { status: 409, code: "strategy_baseline_version_not_found" }); }
+  });
+  const handlers = routes.get("POST /api/review/improvements/:id/action");
+  const req = { params: { id: item.id }, body: { action: "accept" }, user: db.user };
+  const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  await new Promise((resolve, reject) => handlers[0](req, response, () => Promise.resolve(handlers[1](req, response)).then(resolve, reject)));
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.body.error, "strategy_baseline_version_not_found");
+  assert.equal(item.state, "pending_owner");
+  assert.deepEqual(db.strategyExperiments, []);
 });

@@ -145,7 +145,16 @@ function ingestEventFacts(db) {
       symbols: event.intel?.affectedSymbols?.map((symbol) => `${symbol}/USDT`) || event.relatedSymbols || [],
       confidence: event.intel?.credibility ?? Number(event.confidence || 60) / 100,
       publishedAt, observedAt: event.lastUpdatedAt || event.createdAt, ttlMs: 36 * HOUR,
-      values: { impact: event.impact, sentiment: event.intel?.sentiment, pricedIn: event.intel?.pricedIn, fakeRisk: event.intel?.fakeRisk }
+      values: {
+        impact: event.impact,
+        sentiment: event.intel?.sentiment,
+        pricedIn: event.intel?.pricedIn,
+        fakeRisk: event.intel?.fakeRisk,
+        // 复盘只能消费服务端已验证的来源身份；不能把“没有 verified 字段”误当作已验证。
+        trustTier: event.intel?.trustTier || event.provenance?.trustTier || "unknown",
+        verifiedOrigin: event.intel?.verifiedOrigin === true && event.provenance?.verifiedOrigin !== false,
+        autoTradingEligible: event.autoTradingEligible === true
+      }
     });
     count += 1;
   }

@@ -653,6 +653,8 @@ function enrichRealtimeFill(db, order, payload = {}) {
   return {
     id: id("fill"),
     orderId: order.id,
+    tenantId: executionOrder?.tenantId || plan.tenantId || plan.ownerTenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: executionOrder?.ownerUserId || plan.ownerUserId || plan.createdByUserId || plan.userId || db.user?.id || null,
     executionOrderId: executionOrder?.id,
     planId: executionOrder?.planId || order.planId,
     tradePlanId: executionOrder?.planId || order.planId,

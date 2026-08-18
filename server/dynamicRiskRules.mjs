@@ -1,6 +1,7 @@
 import { isEventRiskActive } from "./eventRisk.mjs";
 import { appendAudit, id, nowIso } from "./store.mjs";
 import { strictFiniteFact } from "./factValues.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const ALLOWED_FIELDS = new Set([
   "plan.leverage",
@@ -171,8 +172,10 @@ function applyDynamicRiskRuleEffects(db, plan, results) {
     if (blocking && !db.riskIncidents.some((item) => item.status === "open" && item.ruleId === result.id && item.symbol === symbol)) {
       db.riskIncidents.unshift({
         id: id("incident"), severity: "high", status: "open", title: `动态风控阻断 ${symbol}：${result.name}`,
-        source: "dynamic_risk_rule", ruleId: result.id, symbol, action: result.action, createdAt: nowIso()
+        source: "dynamic_risk_rule", ruleId: result.id, symbol, action: result.action,
+        tenantId: db.user?.tenantId || "tenant_owner", ownerUserId: db.user?.id || null, createdAt: nowIso()
       });
+      refreshOwnerImprovementRegistry(db);
     }
     const key = `${result.id}:${symbol}`;
     const lastAt = new Date(db.meta.dynamicRiskAlertAt[key] || 0).getTime();

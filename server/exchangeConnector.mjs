@@ -5,6 +5,7 @@ import { enforceOhlcvQuality } from "./ohlcvQuality.mjs";
 import { okxEnvironmentConfig, okxRestUrl } from "./okxEnvironment.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
 import { applyTickerObservation, timestampEvidence } from "./marketObservation.mjs";
+import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 const BINANCE_SPOT_BASE = process.env.BINANCE_SPOT_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binance.vision" : "https://api.binance.com");
@@ -554,7 +555,8 @@ export function reconcileAccount(db, accountId) {
   account.reconcileStatus = hasHigh ? "needs_attention" : (differences.length ? "info" : "ok");
   const result = { id: id("reconcile"), accountId: account.id, status: account.reconcileStatus, differences, snapshotAt: snap?.createdAt || null, createdAt: nowIso() };
   if (hasHigh) {
-    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title: "账户对账发现账实不符", source: account.id, details: differences.filter((d) => d.severity === "high"), createdAt: nowIso() });
+    db.riskIncidents.unshift({ id: id("incident"), severity: "high", status: "open", title: "账户对账发现账实不符", source: account.id, details: differences.filter((d) => d.severity === "high"), tenantId: db.user?.tenantId || "tenant_owner", ownerUserId: db.user?.id || null, createdAt: nowIso() });
+    refreshOwnerImprovementRegistry(db);
   }
   appendAudit(db, `账户与持仓对账:${differences.length ? differences.length + " 项差异" : "账实一致"}`, account.id, "ExchangeConnector", hasHigh ? "warning" : "info");
   appendTrace(db, "reconcile", `${account.exchange} 对账${snap ? "" : "(无快照)"}`, hasHigh ? "warning" : "ok");
@@ -669,8 +671,11 @@ function updateApiPermissionMetadata(db, snapshot) {
         status: "open",
         title: "Binance API Key 检测到提现权限，已触发熔断",
         source: item.id,
+        tenantId: db.user?.tenantId || "tenant_owner",
+        ownerUserId: db.user?.id || null,
         createdAt: nowIso()
       });
+      refreshOwnerImprovementRegistry(db);
       appendAudit(db, "检测到 Binance API Key 提现权限，触发熔断", item.id, "ExchangeConnector", "critical");
     }
   }
