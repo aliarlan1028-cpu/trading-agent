@@ -11,9 +11,10 @@ export function registerAgentChatRoutes(app, ctx) {
   const canAccessSession = (req, session) => Boolean(session)
     && (!session.tenantId || session.tenantId === (req.tenantId || "tenant_owner"))
     && (isAdmin(req) || (!session.ownerUserId ? req.user?.id === db.user?.id : session.ownerUserId === req.user?.id));
+  const accessibleSessions = (req) => chatSessionsSorted().filter((session) => canAccessSession(req, session));
 
   app.get("/api/agent/chat", requirePermission("account.read"), (req, res) => {
-    const sessions = chatSessionsSorted().filter((session) => canAccessSession(req, session));
+    const sessions = accessibleSessions(req);
     const requested = sessions.find((session) => session.id === req.query.sessionId);
     const activeSessionId = requested?.id || sessions[0]?.id || null;
     res.json({
@@ -30,7 +31,7 @@ export function registerAgentChatRoutes(app, ctx) {
     const session = { id: id("chat"), title, status: "active", tenantId: req.tenantId || "tenant_owner", ownerUserId: req.user?.id || null, createdAt: nowIso(), updatedAt: nowIso() };
     db.chatSessions ||= [];
     db.chatSessions.unshift(session);
-    persist(res, { session, sessions: chatSessionsSorted() });
+    persist(res, { session, sessions: accessibleSessions(req) });
   });
 
   app.patch("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
@@ -40,7 +41,7 @@ export function registerAgentChatRoutes(app, ctx) {
     if (req.body.title !== undefined) session.title = String(req.body.title || "未命名对话").trim().slice(0, 32);
     if (req.body.status !== undefined) session.status = String(req.body.status);
     session.updatedAt = nowIso();
-    persist(res, { session, sessions: chatSessionsSorted() });
+    persist(res, { session, sessions: accessibleSessions(req) });
   });
 
   app.delete("/api/agent/chat/sessions/:id", requirePermission("write:mandate"), (req, res) => {
@@ -51,7 +52,7 @@ export function registerAgentChatRoutes(app, ctx) {
     db.chatSessions = (db.chatSessions || []).filter((item) => item.id !== req.params.id);
     db.chatMessages = (db.chatMessages || []).filter((message) => message.sessionId !== req.params.id);
     appendAudit(db, "删除对话会话", req.params.id, req.user?.name || "Owner");
-    persist(res, { ok: true, sessions: chatSessionsSorted() });
+    persist(res, { ok: true, sessions: accessibleSessions(req) });
   });
 
   // 一次性清空聊天历史：早期悬浮助手复用 /api/agent/chat 时把只读问答混进了交易员历史，
@@ -79,6 +80,7 @@ export function registerAgentChatRoutes(app, ctx) {
         tenantId: req.tenantId,
         userId: req.user?.id,
         userName: req.user?.name,
+        isOwner: req.user?.isOwner === true,
         invocationContext: userAgentInvocation({
           userId: req.user?.id,
           userName: req.user?.name,
@@ -92,6 +94,9 @@ export function registerAgentChatRoutes(app, ctx) {
   });
 
   app.post("/api/agent/command", requirePermission("write:mandate"), (req, res) => {
-    persist(res, runAgentCommand(db, req.body || {}));
+    persist(res, runAgentCommand(db, {
+      ...(req.body || {}), tenantId: req.tenantId, userId: req.user?.id,
+      userName: req.user?.name, isOwner: req.user?.isOwner === true
+    }));
   });
 }

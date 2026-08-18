@@ -15,6 +15,7 @@ import { approveStateFilePromptArtifact, markStateFilePromptDraft } from "./know
 import { analyzeQueuedNewsForDecision, newsDecisionAnalysisEvidence } from "./newsDecisionAnalysis.mjs";
 import { evaluateAgentDecisionWake, recordAgentDecisionWake } from "./decisionWakePolicy.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { principalKey } from "./principalScope.mjs";
 
 // ---------------------------------------------------------------------------
 // 自主巡检循环：由调度器周期触发。
@@ -244,8 +245,16 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   }
 
   if (skipReasons.length) {
+    const ownerPrincipal = {
+      tenantId: db.user?.tenantId || "tenant_owner",
+      userId: db.user?.id || null,
+      isOwner: db.user?.isOwner === true
+    };
     const run = {
       id: id("run"),
+      tenantId: ownerPrincipal.tenantId,
+      requestedByUserId: ownerPrincipal.userId,
+      principal: ownerPrincipal,
       traceId: null,
       role: "AI 交易员",
       goal: payload.goal || "周期巡检",
@@ -351,7 +360,11 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 交易计划另有一等公民承载(待批准卡片/计划卡/审计链),用户手动对话保持独立会话。
   db.chatSessions ||= [];
   if (!db.chatSessions.some((c) => c.id === "chat_autocycle")) {
-    db.chatSessions.unshift({ id: "chat_autocycle", title: "自主巡检 · 自动汇总", status: "active", system: true, createdAt: nowIso(), updatedAt: nowIso() });
+    db.chatSessions.unshift({
+      id: "chat_autocycle", title: "自主巡检 · 自动汇总", status: "active", system: true,
+      tenantId: db.user?.tenantId || null, ownerUserId: db.user?.id || null,
+      createdAt: nowIso(), updatedAt: nowIso()
+    });
   }
   const focusSymbols = [...new Set((fastMoves.length ? fastMoves.map((row) => row.symbol)
     : triggeredWatches.length ? triggeredWatches.map((row) => row.symbol)
@@ -361,6 +374,10 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const result = await runAgentChat(db, {
     message: goal,
     sessionId: "chat_autocycle",
+    tenantId: db.user?.tenantId || null,
+    userId: db.user?.id || null,
+    userName: db.user?.name || "Owner",
+    isOwner: db.user?.isOwner === true,
     decisionTrigger,
     symbols,
     focusSymbols,
@@ -438,23 +455,45 @@ export function recheckActivePlanRisk(db) {
   return risk;
 }
 
+function stateFilesForEditor(db, options = {}, create = false) {
+  const userId = options.userId || null;
+  const tenantId = options.tenantId
+    || (db.users || []).find((user) => user.id === userId)?.tenantId
+    || (db.user?.id === userId ? db.user?.tenantId : null);
+  const key = principalKey({ tenantId, userId });
+  if (!key) throw new Error("state_file_explicit_principal_required");
+  if (db.user?.id === userId && db.user?.tenantId === tenantId) {
+    if (create) db.agentStateFiles ||= {};
+    return db.agentStateFiles || {};
+  }
+  if (create) {
+    db.agentStateFilesByPrincipal ||= {};
+    db.agentStateFilesByPrincipal[key] ||= {};
+  }
+  return db.agentStateFilesByPrincipal?.[key] || {};
+}
+
 export function updateStateFile(db, name, content, options = {}) {
   const key = String(name || "").toUpperCase();
   if (!["USER", "AGENT", "HISTORY"].includes(key)) {
     throw new Error("Unknown state file");
   }
-  db.agentStateFiles[key] ||= { id: `state_${key.toLowerCase()}`, title: `${key}.md`, content: "", updatedAt: nowIso() };
-  db.agentStateFiles[key].content = content;
-  db.agentStateFiles[key].updatedAt = nowIso();
-  if (["USER", "AGENT"].includes(key)) markStateFilePromptDraft(key, db.agentStateFiles[key], options);
-  appendAudit(db, `更新状态文件 ${key}.md`, db.agentStateFiles[key].id, "Memory Agent");
+  const files = stateFilesForEditor(db, options, true);
+  const tenantId = options.tenantId || (db.users || []).find((user) => user.id === options.userId)?.tenantId || db.user?.tenantId;
+  files[key] ||= { id: `state_${key.toLowerCase()}_${options.userId}`, title: `${key}.md`, content: "", tenantId, ownerUserId: options.userId, updatedAt: nowIso() };
+  files[key].tenantId = tenantId;
+  files[key].ownerUserId = options.userId;
+  files[key].content = content;
+  files[key].updatedAt = nowIso();
+  if (["USER", "AGENT"].includes(key)) markStateFilePromptDraft(key, files[key], options);
+  appendAudit(db, `更新状态文件 ${key}.md`, files[key].id, "Memory Agent");
   appendTrace(db, "state_file", `更新 ${key}.md`);
-  return db.agentStateFiles[key];
+  return files[key];
 }
 
 export function approveStateFile(db, name, options = {}) {
   const key = String(name || "").toUpperCase();
-  const file = db.agentStateFiles?.[key];
+  const file = stateFilesForEditor(db, options)[key];
   if (!file) throw new Error("State file not found");
   approveStateFilePromptArtifact(key, file, options);
   file.updatedAt = nowIso();

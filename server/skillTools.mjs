@@ -4,6 +4,7 @@ import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { buildExecutionQuality, buildSloReport, buildStrategyDrift } from "./professionalAnalytics.mjs";
 import { estimateExecutionCost, maxNotionalForImpact } from "./executionCostModel.mjs";
 import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
+import { canAccessSkill, normalizePrincipal } from "./principalScope.mjs";
 
 // ---------------------------------------------------------------------------
 // 原生交易 Skill：把技能接进 Agent 的工具循环。
@@ -320,9 +321,11 @@ export function enabledSkillTools(db) {
 }
 
 // 受信任导入 skill 的方法论:注入 AI 决策提示词。转正/试用如实分层标注。
-export function trustedSkillMethodologies(db) {
+export function trustedSkillMethodologies(db, principalInput = {}) {
+  const principal = normalizePrincipal(principalInput);
+  if (!principal.tenantId || !principal.userId) return [];
   return (db.skills || [])
-    .filter((s) => !s.native && s.trusted && s.instructions)
+    .filter((s) => !s.native && canAccessSkill(s, principal) && s.trusted && s.instructions)
     .map((s) => ({ id: s.id, name: s.name, graduated: s.trustStatus === "active", instructions: String(s.instructions).slice(0, 3000) }));
 }
 

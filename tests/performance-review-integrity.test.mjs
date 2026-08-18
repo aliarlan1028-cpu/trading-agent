@@ -15,6 +15,7 @@ const { ensureTradeReviewQueued, syncTradeReviewQueue } = await import("../serve
 
 function baseDb() {
   return {
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
     portfolio: { totalEquityUsdt: 100 },
     fills: [],
     reviews: [],
@@ -155,15 +156,17 @@ test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与�
     reviewLearning: { applied: index === 0 ? [{ memoryId: "mem-fee", influence: "avoided", note: "等待成本后仍为正" }] : [] }
   }));
   db.fills = financiallyReconciledFills(db.tradePlans.flatMap((plan, index) => [
-    { id: `entry-${index}`, kind: "entry", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", feeUsdt: 0.8, createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
-    { id: `close-${index}`, kind: "close", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", realizedPnl: 1, feeUsdt: 0.4, entryRationale: "突破确认", exitReason: "计划退出", createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
+    { id: `entry-${index}`, kind: "entry", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", feeUsdt: 0.8, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
+    { id: `close-${index}`, kind: "close", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", realizedPnl: 1, feeUsdt: 0.4, entryRationale: "突破确认", exitReason: "计划退出", tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
   ]));
   db.reviews = [{
     id: "review-fee", type: "trade", status: "completed", tradeLifecycleKey: "life-0", tradePlanId: "plan-0",
-    memoryItemId: "mem-fee", fillIds: ["close-0"], symbol: "ADA/USDT", realizedPnl: 1
+    memoryItemId: "mem-fee", fillIds: ["close-0"], symbol: "ADA/USDT", realizedPnl: 1,
+    tenantId: "tenant_owner", ownerUserId: "owner-1"
   }];
   db.memoryItems = [{
     id: "mem-fee", source: "auto_reflection", fillId: "close-0", reviewId: "review-fee", title: "旧版毛盈利记忆",
+    tenantId: "tenant_owner", ownerUserId: "owner-1",
     reviewContext: { schemaVersion: 1, symbol: "ADA/USDT", realizedPnl: 1, outcome: "win" }
   }];
 
@@ -182,14 +185,15 @@ test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与�
   assert.equal(metadata.outcome, "loss");
   assert.ok(Math.abs(metadata.netRealizedPnl + 0.2) < 1e-9);
 
-  const analytics = buildReviewAnalytics(db);
+  for (const plan of db.tradePlans) Object.assign(plan, { tenantId: "tenant_owner", ownerUserId: "owner-1" });
+  const analytics = buildReviewAnalytics(db, { principal: { tenantId: "tenant_owner", userId: "owner-1", isOwner: true } });
   const strategy = analytics.breakdowns.strategy.find((row) => row.key === "fee_flip");
   assert.deepEqual({ trades: strategy.trades, wins: strategy.wins, losses: strategy.losses, winRatePct: strategy.winRatePct }, { trades: 10, wins: 0, losses: 10, winRatePct: 0 });
   assert.ok(Math.abs(strategy.pnl + 2) < 1e-9);
   assert.ok(Math.abs(analytics.entryExitBias[0].pnl + 0.2) < 1e-9);
   assert.ok(Math.abs(analytics.summary.totalLossUsdt + 2) < 1e-9);
 
-  const learning = buildReviewLearningAnalytics(db);
+  const learning = buildReviewLearningAnalytics(db, { principal: { tenantId: "tenant_owner", userId: "owner-1", isOwner: true } });
   assert.equal(learning.used.trades, 1);
   assert.equal(learning.used.wins, 0);
   assert.equal(learning.used.pnlUsdt, -0.2);

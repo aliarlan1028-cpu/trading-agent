@@ -51,7 +51,7 @@ import { applyOperationalDegradation } from "./professionalRiskGate.mjs";
 import { refreshMarketContextResearch } from "./marketContextResearch.mjs";
 import { buildProfessionalSnapshot } from "./professionalAnalytics.mjs";
 import { buildDecisionCalibrationReport } from "./decisionCalibration.mjs";
-import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward } from "./paperTrading.mjs";
+import { buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, startOwnerCandidatePaperSession } from "./paperTrading.mjs";
 import { larkStatus, notifyLark } from "./larkNotifier.mjs";
 import { processClosedTradeProfitPosters, sendTelegramPositionPoster, telegramStatus } from "./telegramNotifier.mjs";
 import { dispatchTelegramWatchOutbox, queueWatchTelegramEvent, retireTelegramWatchDigest, telegramWatchDeliveryHealth, telegramWatchStatus } from "./telegramWatchNotifier.mjs";
@@ -84,7 +84,7 @@ import { buildReadinessReport, createSystemBackup, deriveAutomationState } from 
 import { visibleNotificationsForUser } from "./notificationStore.mjs";
 import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
-import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection } from "./reviewEngine.mjs";
+import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection, validateStrategyImprovementCycle } from "./reviewEngine.mjs";
 import { groupClosedTradeLifecycles, syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
 import { reviewMissedOpportunities } from "./missedOpportunity.mjs";
 import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
@@ -115,6 +115,10 @@ import { recoverUncertainOrders } from "./omsRecovery.mjs";
 import { requestContextMiddleware } from "./requestContext.mjs";
 import { migrateLegacyWeeklyLossMandates } from "./mandatePolicy.mjs";
 import { markRegistrationPaymentConfirmed, publicRegistrationInfo, sanitizeRegistrationApplication, updateRegistrationApplication } from "./publicRegistration.mjs";
+import { projectKnowledgeRuntimeApproval } from "./knowledgePromptPolicy.mjs";
+import { projectKnowledgeForPrincipal } from "./knowledgeScope.mjs";
+import { projectSkillsForPrincipal } from "./principalScope.mjs";
+import { buildOverviewPrincipalScope, deriveOverviewApiHealth } from "./overviewPrincipalScope.mjs";
 import { assertSafeExternalUrl } from "./externalInputSafety.mjs";
 import { applyKillSwitch } from "./riskControlService.mjs";
 import { applyLiveTradingConfiguration, liveGateInput } from "./liveModeService.mjs";
@@ -197,7 +201,7 @@ seedSkillTools(db);
 // 只恢复展示/审计状态，不重复调用 LLM，也不修改成交事实。
 {
   migrateLegacyOwnerReviewProvenance(db);
-  const migration = syncTradeReviewQueue(db, { fillFilter: (fill) => isOwnerReviewRow(db, fill) });
+  const migration = syncTradeReviewQueue(db);
   if (migration.queued || migration.reconciled || migration.financialsBackfilled) {
     appendAudit(db, `复盘队列迁移：新增 ${migration.queued}，对账完成 ${migration.reconciled}，净值回填 ${migration.financialsBackfilled || 0}`, "trade_review_queue_migration", "StartupMigration", "info");
     saveDb(db);
@@ -983,7 +987,7 @@ async function verifyTrc20Payments(db, options = {}) {
 // 避免请求超时把已创建的来源“丢掉”，失败也会以 status/error 显式呈现在知识库。
 async function handleKnowledgeImport(req, res) {
   try {
-    const source = await importKnowledgeReal(db, { ...req.body, tenantId: req.tenantId || req.user?.tenantId || "tenant_owner" });
+    const source = await importKnowledgeReal(db, { ...req.body, tenantId: req.tenantId || req.user?.tenantId || "tenant_owner", ownerUserId: req.user?.id || null });
     if (req.body.autoParse === false) { persist(res, { message: "知识来源已导入，尚未解析", source }); return; }
     source.status = "processing";
     saveDb(db);
@@ -1026,15 +1030,16 @@ function sendMeasuredJson(res, payload, metricName) {
 }
 
 app.get("/api/bootstrap/core", requirePermission("account.read"), (req, res) => {
+  const { scoped: scopedDb } = overviewPrincipalScope(req);
   const notifications = visibleNotificationsForUser(db, {
     tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
     userId: req.user?.id || null
   });
-  const payload = buildCoreOverview(db, {
+  const payload = buildCoreOverview(scopedDb, {
     revision: currentUiRevision(),
     user: sanitizeUserRecord(req.user || db.user),
     systemRelease: process.env.APP_RELEASE || "dev",
-    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
     config: getConfigStatus(db),
     notifications
   });
@@ -1073,109 +1078,121 @@ function overviewActivePlusRecent(rows = [], activeStates, recentLimit) {
   return [...active, ...ordered.filter((row) => !activeIds.has(row?.id || row)).slice(0, recentLimit)];
 }
 
+function overviewPrincipalScope(req) {
+  return buildOverviewPrincipalScope(db, {
+    tenantId: req.tenantId || req.user?.tenantId || "",
+    userId: req.user?.id || "",
+    isOwner: req.user?.isOwner === true
+  });
+}
+
 // Section v2 is deliberately built before the legacy overview. Each branch owns
 // its expensive derived facts, so opening Settings cannot accidentally run
 // backtests/review analytics and opening Chat cannot build the risk workbench.
 function buildOverviewSectionSource(section, req, options = {}) {
-  const performance = performanceReport(db);
+  const { principal: requestPrincipal, scoped: privateDb, configuredOwner } = overviewPrincipalScope(req);
+  const scopedKnowledge = projectKnowledgeForPrincipal(db, requestPrincipal);
+  const scopedSkills = projectSkillsForPrincipal(db.skills, requestPrincipal);
+  const scopedDb = { ...privateDb, system: options.system || privateDb.system, knowledge: scopedKnowledge, skills: scopedSkills };
+  const performance = performanceReport(scopedDb);
   const overviewNotifications = visibleNotificationsForUser(db, {
     tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
     userId: req.user?.id || null
   });
   const common = {
     user: sanitizeUserRecord(req.user || db.user),
-    system: profitGoalSnapshot(db.system),
+    system: profitGoalSnapshot(scopedDb.system),
     systemRelease: process.env.APP_RELEASE || "dev",
-    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
-    agentStatus: getAgentStatus(db),
-    portfolio: db.portfolio,
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
+    agentStatus: getAgentStatus(scopedDb),
+    portfolio: scopedDb.portfolio,
     performance,
-    positions: normalizePositionsForUi(db.positions),
+    positions: normalizePositionsForUi(scopedDb.positions),
     markets: db.markets,
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     marketRegime: db.marketRegime || null,
-    watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    mandates: db.mandates,
+    watchlist: configuredOwner && db.watchlist?.length ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    mandates: scopedDb.mandates,
     notifications: overviewNotifications,
-    realtimeConnections: db.realtimeConnections,
-    realtimeStarted: realtimeStatus(db).started,
-    exchangeAccounts: db.exchangeAccounts,
-    subscriptions: db.subscriptions,
+    realtimeConnections: scopedDb.realtimeConnections,
+    realtimeStarted: realtimeStatus(scopedDb).started,
+    exchangeAccounts: scopedDb.exchangeAccounts,
+    subscriptions: scopedDb.subscriptions,
     config: getConfigStatus(db)
   };
 
   if (section === "chat") return {
     ...common,
-    tradePlans: db.tradePlans,
-    executionOrders: db.executionOrders,
-    armedSetups: db.armedSetups,
-    fills: db.fills,
-    pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation"),
-    watchTriggers: db.watchTriggers,
-    watchBoard: buildWatchBoard(db),
-    agentRuns: db.agentRuns,
-    tasks: db.tasks,
+    tradePlans: scopedDb.tradePlans,
+    executionOrders: scopedDb.executionOrders,
+    armedSetups: scopedDb.armedSetups,
+    fills: scopedDb.fills,
+    pendingActions: scopedDb.pendingActions.filter((item) => item.status === "awaiting_confirmation"),
+    watchTriggers: scopedDb.watchTriggers,
+    watchBoard: buildWatchBoard(scopedDb),
+    agentRuns: scopedDb.agentRuns,
+    tasks: scopedDb.tasks,
     events: db.events,
     newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)),
-    missedOpportunities: db.missedOpportunities,
-    opportunityCandidates: db.opportunityCandidates,
-    strategyStudio: { drafts: strategyDraftsReferencedByChat(db) }
+    missedOpportunities: scopedDb.missedOpportunities,
+    opportunityCandidates: scopedDb.opportunityCandidates,
+    strategyStudio: { drafts: strategyDraftsReferencedByChat(db, { principal: requestPrincipal }) }
   };
 
   if (section === "cockpit") return {
     ...common,
-    tradePlans: db.tradePlans,
-    executionOrders: db.executionOrders,
-    armedSetups: db.armedSetups,
-    orders: db.orders,
-    fills: db.fills,
-    riskChecks: db.riskChecks,
-    reviews: db.reviews,
-    reconciliationReports: db.reconciliationReports,
-    accountSnapshots: db.accountSnapshots,
-    behaviorProfile: computeBehaviorProfile(db),
-    behaviorNarrative: db.system?.behaviorNarrative || null,
-    reviewLearningAnalytics: buildReviewLearningAnalytics(db),
-    ...((req.user || db.user)?.isOwner === true ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {}),
+    tradePlans: scopedDb.tradePlans,
+    executionOrders: scopedDb.executionOrders,
+    armedSetups: scopedDb.armedSetups,
+    orders: scopedDb.orders,
+    fills: scopedDb.fills,
+    riskChecks: scopedDb.riskChecks,
+    reviews: scopedDb.reviews,
+    reconciliationReports: scopedDb.reconciliationReports,
+    accountSnapshots: scopedDb.accountSnapshots,
+    behaviorProfile: computeBehaviorProfile(scopedDb),
+    behaviorNarrative: configuredOwner ? db.system?.behaviorNarrative || null : null,
+    reviewLearningAnalytics: buildReviewLearningAnalytics(db, { principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+    ...(configuredOwner ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {}),
     tradeDataStatus: {
       source: "server_complete_lifecycle_aggregation",
-      fillTotal: (db.fills || []).length,
+      fillTotal: scopedDb.fills.length,
       closedLifecycleTotal: performance.grossClosedTradeLifecycles,
       financiallyReconciledTrades: performance.financiallyReconciledTrades,
       pendingFinancialReconciliation: performance.pendingFinancialReconciliation,
-      tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length,
-      tradeReviewPending: (db.reviews || []).filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
-      tradeReviewFailed: (db.reviews || []).filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
+      tradeReviewTotal: scopedDb.reviews.filter((review) => review?.type === "trade").length,
+      tradeReviewPending: scopedDb.reviews.filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
+      tradeReviewFailed: scopedDb.reviews.filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
       generatedAt: new Date().toISOString()
     },
     executionOrderStatus: (() => {
-      const rows = db.executionOrders || [];
+      const rows = scopedDb.executionOrders;
       const last = rows.map((row) => row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt).filter(Boolean)
         .sort((a, b) => new Date(b) - new Date(a))[0] || null;
       return { source: "OMS + OKX reconciliation", total: rows.length, lastChangedAt: last };
     })(),
-    mediumTermAnalytics: buildMediumTermAnalytics(db),
+    mediumTermAnalytics: buildMediumTermAnalytics(scopedDb),
     marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
     abnormalVolatility: abnormalVolatilityBoard(db),
-    portfolioRisk: buildPortfolioRisk(db, activeMandate(db)),
-    professional: buildProfessionalSnapshot(db),
-    paperReport: buildPaperReport(db)
+    portfolioRisk: buildPortfolioRisk(scopedDb, activeMandate(scopedDb)),
+    professional: buildProfessionalSnapshot(scopedDb),
+    paperReport: buildPaperReport(scopedDb)
   };
 
   if (section === "researchCenter") return {
     ...common,
-    knowledge: { ...db.knowledge, chunks: (db.knowledge.chunks || []).map((chunk) => ({ id: chunk.id, sourceId: chunk.sourceId })) },
-    skills: db.skills,
+    knowledge: { ...projectKnowledgeRuntimeApproval(scopedKnowledge), chunks: (scopedKnowledge.chunks || []).map((chunk) => ({ id: chunk.id, sourceId: chunk.sourceId })) },
+    skills: scopedSkills,
     tools: liveConnectorToolStatus(db.tools),
-    mcpServers: db.mcpServers,
-    strategyBoard: buildStrategyBoard(db),
-    strategyCatalog: buildStrategyCatalog(db, Object.values(STRATEGIES)),
-    strategyStudio: strategyStudioSnapshot(db, { compact: true }),
-    backtestResearch: buildBacktestResearch(db),
-    backtests: db.backtests,
-    strategyProfiles: db.strategyProfiles,
-    memoryItems: db.memoryItems,
+    mcpServers: configuredOwner ? db.mcpServers : [],
+    strategyBoard: buildStrategyBoard(scopedDb),
+    strategyCatalog: buildStrategyCatalog(scopedDb, Object.values(STRATEGIES)),
+    strategyStudio: strategyStudioSnapshot(db, { compact: true, principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+    backtestResearch: buildBacktestResearch(scopedDb),
+    backtests: scopedDb.backtests,
+    strategyProfiles: scopedDb.strategyProfiles,
+    memoryItems: scopedDb.memoryItems,
     agentProfiles: db.agentProfiles,
     analysisEngine: {
       weights: DECISION_WEIGHTS,
@@ -1184,89 +1201,89 @@ function buildOverviewSectionSource(section, req, options = {}) {
       llmModel: process.env.GEMINI_MODEL || db.runtimeConfig?.GEMINI_MODEL || null,
       tools: listAgentTools().map((tool) => ({
         ...tool,
-        runs: db.toolCallStats?.[tool.name]?.calls ?? 0,
-        lastRunAt: db.toolCallStats?.[tool.name]?.lastAt ?? null,
-        usage: toolUsageView(db.toolCallStats?.[tool.name])
+      runs: configuredOwner ? db.toolCallStats?.[tool.name]?.calls ?? 0 : 0,
+      lastRunAt: configuredOwner ? db.toolCallStats?.[tool.name]?.lastAt ?? null : null,
+      usage: configuredOwner ? toolUsageView(db.toolCallStats?.[tool.name]) : null
       })),
       toolUsageStatsSince: db.meta?.toolUsageStatsSince || null,
       toolUsageBackfilledAt: db.meta?.toolUsageBackfilledAt || null
     },
-    reviewAnalytics: buildReviewAnalytics(db),
-    reviewLearningAnalytics: buildReviewLearningAnalytics(db),
-    decisionCalibration: buildDecisionCalibrationReport(db),
-    embeddingStatus: embeddingStatus(db)
+    reviewAnalytics: buildReviewAnalytics(db, { principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+    reviewLearningAnalytics: buildReviewLearningAnalytics(db, { principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+    decisionCalibration: buildDecisionCalibrationReport(scopedDb),
+    embeddingStatus: embeddingStatus(db, { chunks: scopedKnowledge.chunks })
   };
 
   if (section === "riskCenter") {
-    const mandate = activeMandate(db);
+    const mandate = activeMandate(scopedDb);
     const bySymbol = Object.values(mandate?.maxLeverageBySymbol || {}).map(Number).filter(Number.isFinite);
     const leverage = Number(mandate?.maxLeverage ?? mandate?.max_leverage ?? (bySymbol.length ? Math.max(...bySymbol) : 1));
-    const capacity = accountMarginCapacity(db, { mandate, leverage, live: false });
+    const capacity = accountMarginCapacity(scopedDb, { mandate, leverage, live: false });
     return {
       ...common,
-      tradePlans: db.tradePlans,
-      executionOrders: db.executionOrders,
+      tradePlans: scopedDb.tradePlans,
+      executionOrders: scopedDb.executionOrders,
       riskThresholds: currentRiskThresholds(),
-      riskRules: db.riskRules,
-      riskChecks: db.riskChecks,
-      riskIncidents: db.riskIncidents,
+      riskRules: scopedDb.riskRules,
+      riskChecks: scopedDb.riskChecks,
+      riskIncidents: scopedDb.riskIncidents,
       eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }),
-      currentRiskSnapshot: options.riskSnapshot || buildCurrentRiskSnapshot(db),
-      grayReleasePolicies: db.grayReleasePolicies,
-      notionalLimits: effectiveOpeningNotionalLimits(db),
+      currentRiskSnapshot: options.riskSnapshot || buildCurrentRiskSnapshot(scopedDb),
+      grayReleasePolicies: scopedDb.grayReleasePolicies,
+      notionalLimits: effectiveOpeningNotionalLimits(scopedDb),
       tradingCapacity: { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) },
-      portfolioRisk: buildPortfolioRisk(db, mandate),
-      apiKeyMetadata: db.apiKeyMetadata,
-      accountSnapshots: db.accountSnapshots,
-      readiness: buildReadinessReport(db)
+      portfolioRisk: buildPortfolioRisk(scopedDb, mandate),
+      apiKeyMetadata: scopedDb.apiKeyMetadata,
+      accountSnapshots: scopedDb.accountSnapshots,
+      readiness: buildReadinessReport(scopedDb)
     };
   }
 
   if (section === "operationsCenter") return {
     ...common,
-    executionOrders: db.executionOrders,
+    executionOrders: scopedDb.executionOrders,
     events: db.events,
-    tasks: db.tasks,
-    jobRuns: db.jobRuns,
-    riskIncidents: db.riskIncidents,
-    reconciliationReports: db.reconciliationReports,
-    auditLogs: db.auditLogs,
-    traces: db.traces,
-    alerts: db.alerts,
-    drillRuns: db.drillRuns,
+    tasks: scopedDb.tasks,
+    jobRuns: scopedDb.jobRuns,
+    riskIncidents: scopedDb.riskIncidents,
+    reconciliationReports: scopedDb.reconciliationReports,
+    auditLogs: scopedDb.auditLogs,
+    traces: scopedDb.traces,
+    alerts: scopedDb.alerts,
+    drillRuns: scopedDb.drillRuns,
     eventSources: db.eventSources,
     marketCalendarEvents: db.marketCalendarEvents,
     dailyMarketBrief: (db.dailyBriefs || [])[0] || null,
     marketIntelligenceSourceHealth: sourceHealthSummary(db),
     newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)),
-    accountSnapshots: db.accountSnapshots,
+    accountSnapshots: scopedDb.accountSnapshots,
     marketStream: marketStreamStatus(),
     opportunityEngine: opportunityEngineStatus(db),
-    readiness: buildReadinessReport(db)
+    readiness: buildReadinessReport(scopedDb)
   };
 
   return {
     ...common,
-    users: (db.users || []).map(sanitizeUserRecord),
-    tenants: db.tenants,
+    users: configuredOwner ? (db.users || []).map(sanitizeUserRecord) : (db.users || []).filter((user) => user.id === requestPrincipal.userId).map(sanitizeUserRecord),
+    tenants: configuredOwner ? db.tenants : (db.tenants || []).filter((tenant) => tenant.id === requestPrincipal.tenantId),
     subscriptionPlans: db.subscriptionPlans,
-    paymentRequests: db.paymentRequests,
+    paymentRequests: configuredOwner ? db.paymentRequests : [],
     publicRegistrationEnabled: publicRegistrationInfo(db).registrationEnabled,
     registrationMode: publicRegistrationInfo(db).registrationMode,
     registrationCapacity: publicRegistrationInfo(db).capacity,
-    registrationApplications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
-    runtimeConfig: db.runtimeConfig,
+    registrationApplications: configuredOwner ? (db.registrationApplications || []).map(sanitizeRegistrationApplication) : [],
+    runtimeConfig: configuredOwner ? db.runtimeConfig : {},
     agentProfiles: db.agentProfiles,
-    apiKeyMetadata: db.apiKeyMetadata,
-    accountSnapshots: db.accountSnapshots,
+    apiKeyMetadata: scopedDb.apiKeyMetadata,
+    accountSnapshots: scopedDb.accountSnapshots,
     tools: liveConnectorToolStatus(db.tools),
-    mcpServers: db.mcpServers,
+    mcpServers: configuredOwner ? db.mcpServers : [],
     eventSources: db.eventSources,
     larkConfigured: larkStatus().configured,
     telegramConfigured: telegramStatus().configured,
     mcpStatus: mcpStatus(db),
-    readiness: buildReadinessReport(db)
+    readiness: buildReadinessReport(scopedDb)
   };
 }
 
@@ -1280,29 +1297,28 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
     userId: req.user?.id || null
   });
+  const { principal: requestPrincipal, scoped: privateDb, configuredOwner } = overviewPrincipalScope(req);
+  const scopedKnowledge = projectKnowledgeForPrincipal(db, requestPrincipal);
+  const scopedSkills = projectSkillsForPrincipal(db.skills, requestPrincipal);
+  const scopedDb = { ...privateDb, knowledge: scopedKnowledge, skills: scopedSkills };
+  const configStatus = configuredOwner ? getConfigStatus(db) : null;
+  scopedDb.system.apiHealth = deriveOverviewApiHealth(scopedDb, {
+    configuredOwner,
+    hasStoredOkxCredentials: configStatus?.exchange?.okx?.hasKey === true
+  });
   const allowedSections = new Set(["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]);
   if (requestedSection && !allowedSections.has(requestedSection)) return res.status(400).json({ error: "unknown_overview_section" });
   const sectionBuilderV2 = process.env.OVERVIEW_SECTION_BUILDER_V2 !== "false";
   const needs = (...sections) => !requestedSection || !sectionBuilderV2 || sections.includes(requestedSection);
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
-  const expiredPlans = expireStalePlans(db);
+  const expiredPlans = expireStalePlans(scopedDb);
   const overviewRiskSnapshot = (!requestedSection || !sectionBuilderV2 || requestedSection === "riskCenter")
-    ? buildCurrentRiskSnapshot(db) : null;
+    ? buildCurrentRiskSnapshot(scopedDb) : null;
   const resolvedIncidents = overviewRiskSnapshot
-    ? reconcileRiskIncidentLifecycle(db, { degradation: overviewRiskSnapshot.operationalDegradation, snapshot: overviewRiskSnapshot }) : [];
+    ? reconcileRiskIncidentLifecycle(scopedDb, { degradation: overviewRiskSnapshot.operationalDegradation, snapshot: overviewRiskSnapshot }) : [];
   if (expiredPlans.length || resolvedIncidents.length) saveDb(db);
-  // 实时计算 API 健康度（原来是固定种子值 "待配置"，配置后也不变，属显示 bug）。
-  {
-    const cfgStatus = getConfigStatus(db);
-    const configured = (db.exchangeAccounts || []).some((a) => a.exchange === "OKX" && a.readEnabled) || cfgStatus?.exchange?.okx?.hasKey;
-    // API 健康只反映系统/交易所连通性，不受风控告警影响——被风控挡下的计划是风控在正常工作，不是 API 故障。
-    // 仅当实时连接已启动却全部断开时判为「连接异常」；风控事件在「风控状态」单独呈现。
-    const rtStarted = Boolean(db.realtimeStarted) || (db.realtimeConnections || []).length > 0;
-    const rtConnected = (db.realtimeConnections || []).some((c) => c.status === "connected");
-    db.system.apiHealth = db.system?.killSwitch ? "熔断停机" : !configured ? "待配置" : (rtStarted && !rtConnected) ? "连接异常" : "正常";
-  }
   if (requestedSection && sectionBuilderV2) {
-    const source = buildOverviewSectionSource(requestedSection, req, { riskSnapshot: overviewRiskSnapshot });
+    const source = buildOverviewSectionSource(requestedSection, req, { riskSnapshot: overviewRiskSnapshot, system: scopedDb.system });
     const projected = { ...projectOverviewSection(source, requestedSection), revision: currentUiRevision() };
     res.set("X-Kordyn-Overview-Builder", "section_v2");
     if (process.env.OVERVIEW_SHADOW_COMPARE === "true" && requestedSection === "cockpit") {
@@ -1323,113 +1339,113 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     // 账户资料自助(改名/头像)写在那上面;此前固定返回 db.user 两对象不同步 → 保存后前端不生效。
     // 同时用 sanitizeUserRecord 剥离密码字段(旧的裸 db.user 会外泄 passwordHash)。
     user: sanitizeUserRecord(req.user || db.user),
-    users: (db.users || []).map(sanitizeUserRecord),
-    tenants: db.tenants || [],
+    users: configuredOwner ? (db.users || []).map(sanitizeUserRecord) : [sanitizeUserRecord(req.user)],
+    tenants: configuredOwner ? (db.tenants || []) : (db.tenants || []).filter((tenant) => tenant.id === requestPrincipal.tenantId),
     subscriptionPlans: db.subscriptionPlans || [],
-    subscriptions: db.subscriptions || [],
-    paymentRequests: db.paymentRequests?.slice(0, 20) || [],
-    system: profitGoalSnapshot(db.system),
+    subscriptions: scopedDb.subscriptions,
+    paymentRequests: configuredOwner ? db.paymentRequests?.slice(0, 20) || [] : [],
+    system: profitGoalSnapshot(scopedDb.system),
     systemRelease: process.env.APP_RELEASE || "dev",
     publicRegistrationEnabled: publicRegistrationInfo(db).registrationEnabled,
     registrationMode: publicRegistrationInfo(db).registrationMode,
     registrationCapacity: publicRegistrationInfo(db).capacity,
-    registrationApplications: (db.registrationApplications || []).map(sanitizeRegistrationApplication),
+    registrationApplications: configuredOwner ? (db.registrationApplications || []).map(sanitizeRegistrationApplication) : [],
     riskThresholds: currentRiskThresholds(),
-    automationState: deriveAutomationState(db, { hasProvider: Boolean(activeProvider()) }),
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
     ...(needs("researchCenter") ? {
-      strategyBoard: buildStrategyBoard(db),
-      strategyCatalog: buildStrategyCatalog(db, Object.values(STRATEGIES)),
-      strategyStudio: strategyStudioSnapshot(db, { compact: true })
+      strategyBoard: buildStrategyBoard(scopedDb),
+      strategyCatalog: buildStrategyCatalog(scopedDb, Object.values(STRATEGIES)),
+      strategyStudio: strategyStudioSnapshot(db, { compact: true, principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } })
     } : {}),
-    agentStatus: getAgentStatus(db),
+    agentStatus: getAgentStatus(scopedDb),
     agentProfiles: db.agentProfiles || [],
-    portfolio: db.portfolio,
+    portfolio: scopedDb.portfolio,
     markets: db.markets,
-    watchlist: (db.watchlist && db.watchlist.length) ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    watchlist: configuredOwner && db.watchlist?.length ? db.watchlist : ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
-    positions: normalizePositionsForUi(db.positions),
+    positions: normalizePositionsForUi(scopedDb.positions),
     ...(needs("cockpit") ? {
-      behaviorProfile: computeBehaviorProfile(db),
-      behaviorNarrative: db.system?.behaviorNarrative || null,
-      ...((req.user || db.user)?.isOwner === true ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {})
+      behaviorProfile: computeBehaviorProfile(scopedDb),
+      behaviorNarrative: configuredOwner ? db.system?.behaviorNarrative || null : null,
+      ...(configuredOwner ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {})
     } : {}),
-    mandates: db.mandates,
-    tradePlans: db.tradePlans,
-    watchTriggers: (db.watchTriggers || []).slice(0, 20).map(presentWatch),
-    ...(needs("chat") ? { watchBoard: buildWatchBoard(db) } : {}),
+    mandates: scopedDb.mandates,
+    tradePlans: scopedDb.tradePlans,
+    watchTriggers: scopedDb.watchTriggers.slice(0, 20).map(presentWatch),
+    ...(needs("chat") ? { watchBoard: buildWatchBoard(scopedDb) } : {}),
     events: db.events,
-    tasks: db.tasks,
+    tasks: scopedDb.tasks,
     // 蒸馏出的 chunk 正文/词频向量（导入 11 本书后达 ~1.4MB）客户端并不渲染，只用到条数；
     // 这里剥掉 chunk 重字段，overview 从 ~1.5MB 降到几十 KB，移动端才不会超时。RAG 检索在服务端做。
-    knowledge: { ...db.knowledge, chunks: (db.knowledge.chunks || []).map((c) => ({ id: c.id, sourceId: c.sourceId })) },
-    skills: db.skills,
+    knowledge: { ...projectKnowledgeRuntimeApproval(scopedKnowledge), chunks: (scopedKnowledge.chunks || []).map((c) => ({ id: c.id, sourceId: c.sourceId })) },
+    skills: scopedSkills,
     tools: liveConnectorToolStatus(db.tools),
-    mcpServers: db.mcpServers,
-    traces: db.traces.slice(0, 10),
-    auditLogs: db.auditLogs.slice(0, 20),
-    analysisBundles: db.analysisBundles,
-    evidenceBundles: (db.evidenceBundles || []).slice(0, 20),
-    reviews: db.reviews
+    mcpServers: configuredOwner ? db.mcpServers : [],
+    traces: scopedDb.traces.slice(0, 10),
+    auditLogs: scopedDb.auditLogs.slice(0, 20),
+    analysisBundles: scopedDb.analysisBundles,
+    evidenceBundles: scopedDb.evidenceBundles.slice(0, 20),
+    reviews: scopedDb.reviews
     ,
-    exchangeAccounts: db.exchangeAccounts,
-    apiKeyMetadata: db.apiKeyMetadata,
-    accountSnapshots: db.accountSnapshots?.slice(0, 10) || [],
-    orders: db.orders,
-    fills: db.fills,
+    exchangeAccounts: scopedDb.exchangeAccounts,
+    apiKeyMetadata: scopedDb.apiKeyMetadata,
+    accountSnapshots: scopedDb.accountSnapshots.slice(0, 10),
+    orders: scopedDb.orders,
+    fills: scopedDb.fills,
     tradeDataStatus: {
       source: "OMS + exchange-confirmed fills + trade review queue",
-      fillTotal: (db.fills || []).length,
-      tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length,
-      tradeReviewPending: (db.reviews || []).filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
-      tradeReviewFailed: (db.reviews || []).filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
+      fillTotal: scopedDb.fills.length,
+      tradeReviewTotal: scopedDb.reviews.filter((review) => review?.type === "trade").length,
+      tradeReviewPending: scopedDb.reviews.filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
+      tradeReviewFailed: scopedDb.reviews.filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,
       generatedAt: new Date().toISOString()
     },
-    riskRules: db.riskRules,
-    riskChecks: db.riskChecks,
-    riskIncidents: db.riskIncidents,
+    riskRules: scopedDb.riskRules,
+    riskChecks: scopedDb.riskChecks,
+    riskIncidents: scopedDb.riskIncidents,
     ...(needs("riskCenter") ? { eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }) } : {}),
     currentRiskSnapshot: overviewRiskSnapshot,
-    realtimeConnections: db.realtimeConnections,
+    realtimeConnections: scopedDb.realtimeConnections,
     marketRegime: db.marketRegime || null,
     ...(needs("cockpit") ? {
-      mediumTermAnalytics: buildMediumTermAnalytics(db),
+      mediumTermAnalytics: buildMediumTermAnalytics(scopedDb),
       marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null
     } : {}),
-    positionEscort: db.positionEscort || null,
-    realtimeStarted: realtimeStatus(db).started,
+    positionEscort: configuredOwner ? db.positionEscort || null : null,
+    realtimeStarted: realtimeStatus(scopedDb).started,
     marketStream: marketStreamStatus(),
     opportunityEngine: opportunityEngineStatus(db),
     abnormalVolatility: abnormalVolatilityBoard(db).slice(0, 20),
-    opportunityCandidates: (db.opportunityCandidates || []).slice(0, 30),
-    armedSetups: overviewActivePlusRecent(db.armedSetups, new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]), 30),
-    pendingActions: (db.pendingActions || []).filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
-    reconciliationReports: db.reconciliationReports?.slice(0, 10) || [],
-    jobRuns: db.jobRuns.slice(0, 20),
+    opportunityCandidates: scopedDb.opportunityCandidates.slice(0, 30),
+    armedSetups: overviewActivePlusRecent(scopedDb.armedSetups, new Set(["armed", "triggered", "fast_validating", "executing", "recovery_pending_reconciliation"]), 30),
+    pendingActions: scopedDb.pendingActions.filter((item) => item.status === "awaiting_confirmation").slice(0, 10),
+    reconciliationReports: scopedDb.reconciliationReports.slice(0, 10),
+    jobRuns: scopedDb.jobRuns.slice(0, 20),
     notifications: overviewNotifications,
-    missedOpportunities: (db.missedOpportunities || []).slice(0, 20),
-    alerts: db.alerts?.slice(0, 20) || [],
-    drillRuns: db.drillRuns?.slice(0, 10) || [],
-    grayReleasePolicies: db.grayReleasePolicies || [],
-    notionalLimits: effectiveOpeningNotionalLimits(db),
+    missedOpportunities: scopedDb.missedOpportunities.slice(0, 20),
+    alerts: scopedDb.alerts.slice(0, 20),
+    drillRuns: scopedDb.drillRuns.slice(0, 10),
+    grayReleasePolicies: scopedDb.grayReleasePolicies,
+    notionalLimits: effectiveOpeningNotionalLimits(scopedDb),
     ...(needs("riskCenter") ? { tradingCapacity: (() => {
-      const mandate = activeMandate(db);
+      const mandate = activeMandate(scopedDb);
       const bySymbol = Object.values(mandate?.maxLeverageBySymbol || {}).map(Number).filter(Number.isFinite);
       const leverage = Number(mandate?.maxLeverage ?? mandate?.max_leverage ?? (bySymbol.length ? Math.max(...bySymbol) : 1));
-      const capacity = accountMarginCapacity(db, { mandate, leverage, live: false });
+      const capacity = accountMarginCapacity(scopedDb, { mandate, leverage, live: false });
       return { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) };
     })() } : {}),
-    llmRuns: db.llmRuns?.slice(0, 10) || [],
-    tradeIntents: db.tradeIntents?.slice(0, 20) || [],
-    executionOrders: overviewActivePlusRecent(db.executionOrders, OPEN_EXECUTION_STATES, 50),
+    llmRuns: scopedDb.llmRuns.slice(0, 10),
+    tradeIntents: scopedDb.tradeIntents.slice(0, 20),
+    executionOrders: overviewActivePlusRecent(scopedDb.executionOrders, OPEN_EXECUTION_STATES, 50),
     executionOrderStatus: (() => {
-      const rows = db.executionOrders || [];
+      const rows = scopedDb.executionOrders;
       const last = rows.map((row) => row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt).filter(Boolean)
         .sort((a, b) => new Date(b) - new Date(a))[0] || null;
       return { source: "OMS + OKX reconciliation", total: rows.length, lastChangedAt: last };
     })(),
-    exchangeOrders: db.exchangeOrders?.slice(0, 20) || [],
-    reviewReports: db.reviewReports?.slice(0, 20) || [],
-    toolExecutions: db.toolExecutions?.slice(0, 20) || [],
+    exchangeOrders: scopedDb.exchangeOrders.slice(0, 20),
+    reviewReports: scopedDb.reviewReports.slice(0, 20),
+    toolExecutions: scopedDb.toolExecutions.slice(0, 20),
     eventSources: db.eventSources || [],
     marketCalendarEvents: (db.marketCalendarEvents || []).slice(0, 100),
     dailyMarketBrief: (db.dailyBriefs || [])[0] || null,
@@ -1438,33 +1454,33 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     ...(needs("operationsCenter") ? { marketIntelligenceSourceHealth: sourceHealthSummary(db) } : {}),
     newsFeed: (db.marketIntelligenceFacts || []).filter((fact) => fact.category === "flash_news")
       .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)).slice(0, 80),
-    skillRuns: db.skillRuns?.slice(0, 10) || [],
-    agentStateFiles: db.agentStateFiles,
-    memoryItems: db.memoryItems,
-    agentRuns: db.agentRuns,
-    performance: performanceReport(db),
-    backtests: db.backtests?.slice(0, 10) || [],
+    skillRuns: scopedDb.skillRuns.slice(0, 10),
+    agentStateFiles: scopedDb.agentStateFiles,
+    memoryItems: scopedDb.memoryItems,
+    agentRuns: scopedDb.agentRuns,
+    performance: performanceReport(scopedDb),
+    backtests: scopedDb.backtests.slice(0, 10),
     ...(needs("researchCenter") ? {
-      backtestResearch: buildBacktestResearch(db),
-      strategyProfiles: db.strategyProfiles || [],
-      embeddingStatus: embeddingStatus(db),
-      reviewAnalytics: buildReviewAnalytics(db),
-      reviewLearningAnalytics: buildReviewLearningAnalytics(db),
-      decisionCalibration: buildDecisionCalibrationReport(db)
+      backtestResearch: buildBacktestResearch(scopedDb),
+      strategyProfiles: scopedDb.strategyProfiles,
+      embeddingStatus: embeddingStatus(scopedDb, { chunks: scopedKnowledge.chunks }),
+      reviewAnalytics: buildReviewAnalytics(db, { principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+      reviewLearningAnalytics: buildReviewLearningAnalytics(db, { principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true } }),
+      decisionCalibration: buildDecisionCalibrationReport(scopedDb)
     } : {}),
     ...(needs("cockpit") ? {
-      paperReport: buildPaperReport(db),
-      professional: buildProfessionalSnapshot(db)
+      paperReport: buildPaperReport(scopedDb),
+      professional: buildProfessionalSnapshot(scopedDb)
     } : {}),
-    ...(needs("cockpit", "riskCenter") ? { portfolioRisk: buildPortfolioRisk(db, activeMandate(db)) } : {}),
+    ...(needs("cockpit", "riskCenter") ? { portfolioRisk: buildPortfolioRisk(scopedDb, activeMandate(scopedDb)) } : {}),
     ...(needs("systemSettings") ? {
       larkConfigured: larkStatus().configured,
       telegramConfigured: telegramStatus().configured,
-      mcpStatus: mcpStatus(db)
+      mcpStatus: configuredOwner ? mcpStatus(db) : { configured: false, servers: [] }
     } : {}),
-    runtimeConfig: db.runtimeConfig || {},
+    runtimeConfig: configuredOwner ? db.runtimeConfig || {} : {},
     config: getConfigStatus(db),
-    ...(needs("systemSettings", "operationsCenter") ? { readiness: buildReadinessReport(db) } : {}),
+    ...(needs("systemSettings", "operationsCenter") ? { readiness: buildReadinessReport(scopedDb) } : {}),
     // 分析透明度:如实汇总"当前真正在决策里起作用"的引擎配置(权重/阈值/兜底默认/LLM/工具目录)。
     // 动态信号(regime/聪明钱/异动/技能)前端直接用上面已有字段,这里只补静态但真实的引擎常量。
     ...(needs("researchCenter") ? { analysisEngine: {
@@ -1475,14 +1491,14 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
       // 内置工具附真实调用量(来自 toolCallStats 计数中枢),前端「调用量」列直接读。
       tools: listAgentTools().map((t) => ({
         ...t,
-        runs: db.toolCallStats?.[t.name]?.calls ?? 0,
-        lastRunAt: db.toolCallStats?.[t.name]?.lastAt ?? null,
-        usage: toolUsageView(db.toolCallStats?.[t.name])
+        runs: configuredOwner ? db.toolCallStats?.[t.name]?.calls ?? 0 : 0,
+        lastRunAt: configuredOwner ? db.toolCallStats?.[t.name]?.lastAt ?? null : null,
+        usage: configuredOwner ? toolUsageView(db.toolCallStats?.[t.name]) : null
       })),
       toolUsageStatsSince: db.meta?.toolUsageStatsSince || null,
       toolUsageBackfilledAt: db.meta?.toolUsageBackfilledAt || null
     } } : {}),
-    toolCallStats: db.toolCallStats || {}
+    toolCallStats: configuredOwner ? db.toolCallStats || {} : {}
   };
   if (requestedSection) {
     const projected = { ...projectOverviewSection(overview, requestedSection), revision: currentUiRevision() };
@@ -1792,13 +1808,13 @@ registerAllRoutes(app, {
   rankEvents, scheduleTask, unscheduleTask, validateTaskDefinition, runTask,
   larkStatus, telegramStatus, notifyLark, sendTelegramPositionPoster,
   telegramWatchStatus, telegramWatchDeliveryHealth, queueWatchTelegramEvent, dispatchTelegramWatchOutbox,
-  buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, syncKnowledgeSkillLifecycle,
+  buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, startOwnerCandidatePaperSession, syncKnowledgeSkillLifecycle,
   storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl,
   listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager, validateOkxCredentialCandidate, invalidateOkxCredentialCaches,
   getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain,
   addMonthsIso, verifyTrc20Payments, activateSubscriptionFromPayment,
   activeStrategyProfiles, runStrategyResearch, buildStrategyBoard, buildStrategyCatalog, STRATEGIES,
-  buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle,
+  buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle, validateStrategyImprovementCycle,
   hashPassword, verifyPassword, sanitizeUserRecord, invalidateSessions, invalidateUserSessions,
   syncPublicKlines, syncMicrostructure, reconcileAccount, syncPrivateReadOnly, syncPublicMarket, guardedPrivateExchangeAction,
   evaluateTradePlan, userHasPermission, closeExecution, notifyLark, validateConditionSpec, validateDynamicRiskAction,

@@ -3,6 +3,7 @@
 // 只基于真实上下文回答、不编造数字、缺数据写「未同步」。依赖经 ctx 注入。
 import { latestSuccessfulAccountSnapshot } from "../store.mjs";
 import { buildSupportDiagnostics, searchSupportArticles, supportCatalogSummary } from "../supportKnowledge.mjs";
+import { normalizeKnowledgePrincipal, projectKnowledgeForPrincipal } from "../knowledgeScope.mjs";
 
 function operatingModeStatus(db) {
   const sys = db.system || {};
@@ -122,10 +123,16 @@ export function registerAssistantRoutes(app, ctx) {
       let knowledge = "";
       let citations = [];
       try {
-        const bundle = await ragQuery(db, question, { topK: 4 });
+        const knowledgePrincipal = normalizeKnowledgePrincipal({
+          tenantId: req.tenantId || req.user?.tenantId,
+          userId: req.user?.id,
+          isOwner: req.user?.isOwner === true
+        });
+        const scopedKnowledge = projectKnowledgeForPrincipal(db, knowledgePrincipal);
+        const bundle = await ragQuery(db, question, { topK: 4, principal: knowledgePrincipal, chunks: scopedKnowledge.chunks });
         const refs = bundle.retrievedRefs || [];
         citations = refs.map((r) => r.citationLocator).filter(Boolean);
-        const chunkById = new Map((db.knowledge?.chunks || []).map((c) => [c.id, c]));
+        const chunkById = new Map((scopedKnowledge.chunks || []).map((c) => [c.id, c]));
         const snippets = refs.map((r) => { const c = chunkById.get(r.chunkId); return c ? `【${r.citationLocator}】${String(c.text || c.content || "").slice(0, 400)}` : null; }).filter(Boolean);
         if (snippets.length) knowledge = snippets.join("\n");
       } catch { /* 知识召回失败不阻断问答 */ }

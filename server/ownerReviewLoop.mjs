@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { appendAudit, id, nowIso } from "./store.mjs";
 import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { validatePublishedStrategyCandidate } from "./strategyStudio.mjs";
 
 const FACT_SCHEMA_VERSION = 1;
 const ASSESSMENT_SCHEMA_VERSION = 1;
@@ -316,19 +317,30 @@ function matrixLabel(process, outcome) {
   return table[`${process}_${outcome}`] || "证据不足，暂不下结论";
 }
 
+function isHighImpactRecord(record = {}) {
+  const values = record.values || {};
+  const materiality = String(record.materiality || values.materiality || record.importance || values.importance || "").toLowerCase();
+  const impact = Number(record.impact ?? values.impact);
+  return materiality === "high" || materiality === "高" || (Number.isFinite(impact) && impact >= 80);
+}
+
+function isShortImpactHorizon(record = {}) {
+  const values = record.values || {};
+  const horizon = String(record.impactHorizon || values.impactHorizon || record.intel?.impactHorizon || "").toLowerCase();
+  return ["immediate", "hours", "即时", "数小时"].includes(horizon);
+}
+
 function eventShockForTrade(db, fill = {}, options = {}) {
   const base = String(fill.symbol || "").split(/[/-]/)[0].toUpperCase();
   const closeAt = new Date(fill.createdAt || 0).getTime();
   const context = options.newsContext;
   if (context?.source === "stored_market_intelligence"
-    && context.verified === true
-    && context.highImpact === true
     && Array.isArray(context.factIds)
     && context.factIds.length > 0
     && Number.isFinite(closeAt)) {
     const stored = new Map((db.marketIntelligenceFacts || []).map((fact) => [String(fact.id || fact.factId || ""), fact]));
-    const valid = context.factIds.every((factId) => {
-      const fact = stored.get(String(factId));
+    const authoritativeFacts = context.factIds.map((factId) => stored.get(String(factId)));
+    const valid = authoritativeFacts.every((fact) => {
       if (!fact) return false;
       const values = fact.values || {};
       const at = new Date(fact.publishedAt || fact.observedAt || fact.createdAt || 0).getTime();
@@ -341,7 +353,7 @@ function eventShockForTrade(db, fill = {}, options = {}) {
         && (fact.fakeRisk || values.fakeRisk) !== "high"
         && affected.some((symbol) => String(symbol || "").toUpperCase().replace(/-SWAP$/, "").split(/[\/_-]/)[0] === base);
     });
-    if (valid) return true;
+    if (valid && authoritativeFacts.some((fact) => isHighImpactRecord(fact) && isShortImpactHorizon(fact))) return true;
   }
   return (db.events || []).some((event) => {
     const at = new Date(event.timeline?.[0]?.at || event.due || event.publishedAt || event.createdAt || 0).getTime();
@@ -349,6 +361,7 @@ function eventShockForTrade(db, fill = {}, options = {}) {
     const intel = event.intel || {};
     if (intel.verifiedOrigin !== true || event.provenance?.verifiedOrigin === false) return false;
     if (intel.fakeRisk === "high" || Number(intel.credibility || 0) < 0.7) return false;
+    if (!isHighImpactRecord({ ...event, ...intel }) || !isShortImpactHorizon({ ...event, ...intel, intel })) return false;
     return (intel.affectedSymbols || event.affectedSymbols || []).some((symbol) => String(symbol || "").toUpperCase().replace(/-SWAP$/, "").split(/[\/_-]/)[0] === base);
   });
 }
@@ -368,7 +381,12 @@ export function buildStructuredTradeAssessment(db, lifecycle, options = {}) {
   const hasStop = finite(decision.stopLoss ?? plan.stopLoss ?? plan.stop_loss);
   const riskCheckId = fill.riskCheckId || plan.riskCheckId || plan.lastRiskCheck?.id || snapshot?.risk?.riskCheck?.id || null;
   const storedRiskCheck = riskCheckId ? (db.riskChecks || []).find((row) => row.id === riskCheckId) : null;
-  const riskOwnershipMatches = Boolean(storedRiskCheck) && isOwnerReviewRow(db, storedRiskCheck)
+  const subjectTenantId = plan.tenantId || fill.tenantId || null;
+  const subjectUserId = plan.ownerUserId || fill.ownerUserId || fill.userId || null;
+  const riskOwnershipMatches = Boolean(storedRiskCheck)
+    && Boolean(subjectTenantId && subjectUserId)
+    && storedRiskCheck.tenantId === subjectTenantId
+    && storedRiskCheck.ownerUserId === subjectUserId
     && String(storedRiskCheck.tradePlanId || storedRiskCheck.planId || "") === String(plan.id || "");
   const riskObserved = Boolean(storedRiskCheck);
   const riskPassed = riskOwnershipMatches && storedRiskCheck.passed === true;
@@ -737,7 +755,7 @@ export function refreshOwnerImprovementRegistry(db) {
   return { created, updated, total: db.ownerImprovementItems.filter((row) => isOwnerReviewRow(db, row)).length };
 }
 
-export function transitionOwnerImprovement(db, improvementId, action, actor = "Owner", options = {}) {
+export function transitionOwnerImprovement(db, improvementId, action, actor = "Owner", options = {}, runtime = {}) {
   migrateLegacyOwnerReviewProvenance(db);
   const item = (db.ownerImprovementItems || []).find((row) => row.id === improvementId && isOwnerReviewRow(db, row));
   if (!item) return { ok: false, status: 404, error: "owner_improvement_not_found" };
@@ -760,6 +778,13 @@ export function transitionOwnerImprovement(db, improvementId, action, actor = "O
     item.requiredEvidenceCount = Math.max(Number(item.requiredEvidenceCount || 0), Number(item.evidenceCount || 0) + additional);
   }
   if (action === "retry_validation") {
+    const previousExperiment = (db.strategyExperiments || []).find((row) => row.id === item.experimentId);
+    if (previousExperiment && !["failed", "ineffective", "superseded"].includes(String(previousExperiment.status || "").toLowerCase())) {
+      previousExperiment.status = "superseded";
+      previousExperiment.supersededAt = nowIso();
+      previousExperiment.completedAt ||= previousExperiment.supersededAt;
+      previousExperiment.updatedAt = previousExperiment.supersededAt;
+    }
     item.previousExperimentIds ||= [];
     if (item.experimentId && !item.previousExperimentIds.includes(item.experimentId)) item.previousExperimentIds.push(item.experimentId);
     item.experimentId = null;
@@ -792,8 +817,24 @@ export function transitionOwnerImprovement(db, improvementId, action, actor = "O
     experiment.startedAt ||= item.ownerDecision.at;
     experiment.updatedAt = item.ownerDecision.at;
   }
+  if (action === "verify" && item.destination === "strategy") {
+    const experiment = (db.strategyExperiments || []).find((row) => row.id === item.experimentId);
+    experiment.status = "verified";
+    experiment.verifiedAt = item.ownerDecision.at;
+    experiment.completedAt ||= item.ownerDecision.at;
+    experiment.updatedAt = item.ownerDecision.at;
+  }
+  if (action === "ineffective" && item.destination === "strategy") {
+    const experiment = (db.strategyExperiments || []).find((row) => row.id === item.experimentId);
+    if (experiment) {
+      experiment.status = "ineffective";
+      experiment.ineffectiveAt = item.ownerDecision.at;
+      experiment.completedAt ||= item.ownerDecision.at;
+      experiment.updatedAt = item.ownerDecision.at;
+    }
+  }
   item.updatedAt = item.ownerDecision.at;
-  appendAudit(db, `Owner ${action} 优化项「${item.title}」`, item.id, actor, item.severity === "critical" ? "critical" : "info");
+  if (runtime.suppressAudit !== true) appendAudit(db, `Owner ${action} 优化项「${item.title}」`, item.id, actor, item.severity === "critical" ? "critical" : "info");
   return { ok: true, item };
 }
 
@@ -807,7 +848,9 @@ function strategyCandidate(db, experiment, input = {}) {
   const version = (db.strategyBlueprintVersions || []).find((row) => row.id === versionId);
   if (!version) return validationError("candidate_strategy_version_not_found", 404);
   if (!isOwnerReviewRow(db, version)) return validationError("candidate_strategy_version_not_owned", 403);
-  const productId = version.definition?.baseProductId || version.productId || null;
+  const eligibility = validatePublishedStrategyCandidate(db, version);
+  if (!eligibility.ok) return validationError(eligibility.error, eligibility.status || 409);
+  const productId = eligibility.productId;
   if (!productId || productId !== experiment.strategyRef?.productId) {
     return validationError("candidate_strategy_product_mismatch", 409, { expectedProductId: experiment.strategyRef?.productId || null });
   }
@@ -883,7 +926,10 @@ function authoritativeStageEvidence(db, experiment, stageName, input = {}) {
     const record = (db.paperSessions || []).find((row) => row.id === evidenceId);
     if (!record || record.status !== "passed" || record.seeded !== false) return validationError("authoritative_paper_evidence_missing", 409);
     if (!isOwnerReviewRow(db, record)) return validationError("authoritative_paper_evidence_not_owned", 403);
-    if (record.strategyVersionId !== candidate.version.id) return validationError("authoritative_paper_candidate_mismatch", 409);
+    if (record.strategyVersionId !== candidate.version.id
+      || record.strategyDefinitionHash !== candidate.version.contentHash
+      || record.strategyProductId !== candidate.ref.productId
+      || record.strategyExperimentId !== experiment.id) return validationError("authoritative_paper_candidate_mismatch", 409);
     const metrics = {
       trades: numericMetric(record.metrics?.trades),
       profitFactor: numericMetric(record.metrics?.profitFactor),
@@ -1010,9 +1056,10 @@ export function buildOwnerReviewLoopSnapshot(db) {
   const improvements = (db.ownerImprovementItems || []).filter((item) => isOwnerReviewRow(db, item)).map((item) => {
     const experiment = item.experimentId ? (db.strategyExperiments || []).find((row) => row.id === item.experimentId) : null;
     const candidateVersions = experiment ? (db.strategyBlueprintVersions || []).filter((version) => {
+      const eligibility = validatePublishedStrategyCandidate(db, version);
       const productId = version.definition?.baseProductId || version.productId || null;
       const enabled = (db.strategyAssignments || []).some((assignment) => assignment.enabled === true && assignment.strategyVersionId === version.id);
-      return isOwnerReviewRow(db, version) && productId === experiment.strategyRef?.productId
+      return eligibility.ok && isOwnerReviewRow(db, version) && productId === experiment.strategyRef?.productId
         && version.id !== experiment.strategyRef?.versionId
         && version.contentHash !== experiment.strategyRef?.definitionHash
         && !enabled;
@@ -1021,14 +1068,20 @@ export function buildOwnerReviewLoopSnapshot(db) {
       definitionHash: version.contentHash,
       productId: version.definition?.baseProductId || version.productId || null,
       backtestId: version.validation?.backtestId || null,
+      symbols: clone(version.definition?.symbols || []),
+      timeframe: version.definition?.timeframe || null,
       label: compact(version.definition?.name || version.id, 120)
     })) : [];
     const selectedCandidateId = experiment?.candidateStrategyRef?.versionId || null;
     const selectedCandidateHash = experiment?.candidateStrategyRef?.definitionHash || null;
     const selectedCandidateProduct = experiment?.candidateStrategyRef?.productId || null;
     const paperSessions = selectedCandidateId ? (db.paperSessions || []).filter((session) => isOwnerReviewRow(db, session)
-      && session.strategyVersionId === selectedCandidateId && session.seeded === false && session.status === "passed")
-      .map((session) => ({ id: session.id, label: compact(session.title || session.id, 120), metrics: clone(session.metrics || null) })) : [];
+      && session.strategyVersionId === selectedCandidateId
+      && session.strategyDefinitionHash === selectedCandidateHash
+      && session.strategyProductId === selectedCandidateProduct
+      && session.strategyExperimentId === experiment.id
+      && session.seeded === false && ["running", "passed", "failed"].includes(session.status))
+      .map((session) => ({ id: session.id, label: compact(session.title || session.id, 120), status: session.status, symbol: session.symbol, metrics: clone(session.metrics || null) })) : [];
     const liveReviews = selectedCandidateId ? (db.reviews || []).filter((review) => isOwnerReviewRow(db, review)
       && review.type === "trade" && review.status === "completed"
       && review.strategyBlueprintAttribution?.verified === true

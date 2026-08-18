@@ -1,6 +1,11 @@
 const INJECTION_PATTERNS = [
   /ignore (all|previous) instructions/i,
+  /ignore\s+(all|previous)\s+(rules|guardrails|system)/i,
+  /system[\s\u200b_-]*override/i,
   /忽略(以上|之前|所有).{0,8}(指令|规则)/,
+  /(最高优先级|系统级).{0,12}(指令|规则|命令)/,
+  /(立即|现在).{0,12}(调用|执行|invoke|call).{0,24}(工具|tool|propose_trade_plan)/i,
+  /<\/?\s*(system|assistant|tool)(?:\s|>)/i,
   /reveal.{0,12}(secret|api key|system prompt)/i,
   /(泄露|输出|显示).{0,10}(密钥|系统提示词|API Key)/i,
   /disable.{0,10}(risk|guard|kill switch)/i,

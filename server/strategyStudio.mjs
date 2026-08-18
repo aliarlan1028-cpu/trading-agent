@@ -45,6 +45,22 @@ function ensureCollections(db) {
   db.strategyAssignments ||= [];
 }
 
+function strategyPrincipal(value = {}) {
+  const principal = value.principal || value;
+  const tenantId = principal.tenantId || null;
+  const userId = principal.userId || principal.id || null;
+  if (!tenantId || !userId) throw Object.assign(new Error("strategy_explicit_principal_required"), { status: 403, code: "strategy_explicit_principal_required" });
+  return { tenantId, userId, isOwner: principal.isOwner === true };
+}
+
+function assertStrategyOwner(row, principalInput) {
+  const principal = strategyPrincipal(principalInput);
+  if (!row || row.tenantId !== principal.tenantId || row.ownerUserId !== principal.userId) {
+    throw Object.assign(new Error("strategy_resource_access_denied"), { status: 403, code: "strategy_resource_access_denied" });
+  }
+  return principal;
+}
+
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (!value || typeof value !== "object") return value;
@@ -53,6 +69,43 @@ function stable(value) {
 
 function hash(value) {
   return crypto.createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+}
+
+export function strategyDefinitionHash(value) {
+  return hash(value);
+}
+
+// One authoritative eligibility contract is shared by Owner review, paper
+// startup and snapshot projection. A stored contentHash is never trusted
+// without recomputing the immutable definition and rejoining its published OOS
+// evidence to the same tenant/user.
+export function validatePublishedStrategyCandidate(db, version) {
+  if (!version) return { ok: false, error: "candidate_strategy_version_not_found", status: 404 };
+  if (version.immutable !== true) return { ok: false, error: "candidate_strategy_version_not_immutable", status: 409 };
+  if (!version.contentHash || strategyDefinitionHash(version.definition) !== version.contentHash) {
+    return { ok: false, error: "candidate_strategy_definition_drift", status: 409 };
+  }
+  const listing = (db.strategyMarketplaceListings || []).find((row) => row.strategyVersionId === version.id && row.status === "published");
+  if (!listing) return { ok: false, error: "candidate_strategy_not_published", status: 409 };
+  const backtest = (db.strategyStudioBacktests || []).find((row) => row.id === version.validation?.backtestId);
+  const draft = (db.strategyStudioDrafts || []).find((row) => row.id === backtest?.draftId);
+  const sameOwner = (row) => row?.tenantId === version.tenantId && row?.ownerUserId === version.ownerUserId;
+  if (!backtest || backtest.passed !== true || !sameOwner(backtest)
+    || !draft || !sameOwner(draft)
+    || backtest.draftHash !== draft.contentHash
+    || version.definition?.sourceDraftId !== draft.id
+    || Number(backtest.oos?.trades || 0) <= 0
+    || !(Number(backtest.oos?.expectancyR) > 0)) {
+    return { ok: false, error: "candidate_strategy_oos_publication_not_verified", status: 409 };
+  }
+  return {
+    ok: true,
+    version,
+    listing,
+    backtest,
+    draft,
+    productId: version.definition?.baseProductId || version.productId || null
+  };
 }
 
 function cleanText(value, max = 2000) {
@@ -233,16 +286,17 @@ export async function createStrategyDraft(db, prompt, options = {}, actor = "Str
   return persistStrategyDraft(db, compiled, {
     compiler,
     actor,
-    authoring: { channel: "strategy_studio", toolName: null }
+    authoring: { channel: "strategy_studio", toolName: null },
+    principal: strategyPrincipal(options)
   });
 }
 
-function persistStrategyDraft(db, compiled, { compiler, actor, authoring } = {}) {
+function persistStrategyDraft(db, compiled, { compiler, actor, authoring, principal } = {}) {
   ensureCollections(db);
   const draft = {
     id: id("strategy_draft"),
-    tenantId: db.user?.tenantId || "tenant_owner",
-    ownerUserId: db.user?.id || null,
+    tenantId: principal.tenantId,
+    ownerUserId: principal.userId,
     status: "compiled",
     revision: 1,
     compiler: compiler || "deterministic_fallback",
@@ -282,7 +336,7 @@ function strategyIdeaPrompt(idea = {}) {
 // 对话里的 create_skill_from_idea 保留为兼容工具名，但不再创建第二套知识技能。
 // DeepSeek 已经把自然语言整理成结构化参数，这里直接进入与策略工作室相同的
 // 蓝图、自动测试、样本外回测和版本发布链路。
-export function createStrategyDraftFromIdea(db, idea = {}, actor = "AgentChat") {
+export function createStrategyDraftFromIdea(db, idea = {}, actor = "AgentChat", options = {}) {
   const prompt = strategyIdeaPrompt(idea);
   if (!String(idea.name || "").trim()) throw new Error("策略需要一个名字");
   if (!String(idea.entry || "").trim()) throw new Error("策略必须说明入场条件");
@@ -302,6 +356,7 @@ export function createStrategyDraftFromIdea(db, idea = {}, actor = "AgentChat") 
   return persistStrategyDraft(db, compiled, {
     compiler: "agent_structured_tool",
     actor,
+    principal: strategyPrincipal(options),
     authoring: {
       channel: "agent_chat",
       toolName: "create_skill_from_idea",
@@ -375,10 +430,11 @@ export function generateStrategyTests(blueprint) {
   return { status: tests.every((test) => test.passed) ? "passed" : "failed", passed: tests.filter((test) => test.passed).length, total: tests.length, tests, generatedAt: nowIso() };
 }
 
-export function runDraftGeneratedTests(db, draftId, actor = "StrategyOwner") {
+export function runDraftGeneratedTests(db, draftId, actor = "StrategyOwner", runtime = {}) {
   ensureCollections(db);
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
+  assertStrategyOwner(draft, runtime);
   const suite = generateStrategyTests(draft.blueprint);
   draft.generatedTests = suite;
   draft.status = suite.status === "passed" ? "tests_passed" : "tests_failed";
@@ -402,6 +458,7 @@ export async function backtestStrategyDraft(db, draftId, options = {}, actor = "
   ensureCollections(db);
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
+  assertStrategyOwner(draft, options);
   if (draft.generatedTests?.status !== "passed") throw new Error("必须先通过自动生成的结构与执行测试");
   const symbol = String(options.symbol || draft.blueprint.symbols[0]).toUpperCase();
   if (!draft.blueprint.symbols.includes(symbol)) throw new Error("回测交易对不在策略声明范围内");
@@ -414,6 +471,7 @@ export function backtestStrategyDraftWithCandles(db, draftId, candles, options =
   ensureCollections(db);
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
+  assertStrategyOwner(draft, options);
   if (draft.generatedTests?.status !== "passed") throw new Error("必须先通过自动生成的结构与执行测试");
   const symbol = String(options.symbol || draft.blueprint.symbols[0]).toUpperCase();
   if (!draft.blueprint.symbols.includes(symbol)) throw new Error("回测交易对不在策略声明范围内");
@@ -443,6 +501,8 @@ export function backtestStrategyDraftWithCandles(db, draftId, candles, options =
     && Number(oos.maxDrawdownPct ?? 100) <= criteria.maxOosDrawdownPct;
   const result = {
     id: id("strategy_bt"),
+    tenantId: draft.tenantId || db.user?.tenantId || "tenant_owner",
+    ownerUserId: draft.ownerUserId || db.user?.id || null,
     kind: "strategy_blueprint",
     status: "ok",
     passed,
@@ -485,6 +545,8 @@ export function publishStrategyDraft(db, draftId, options = {}, actor = "Strateg
   ensureCollections(db);
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
+  const principal = assertStrategyOwner(draft, options);
+  if (!principal.isOwner) throw Object.assign(new Error("owner_only_strategy_publication"), { status: 403, code: "owner_only_strategy_publication" });
   const backtest = db.strategyStudioBacktests.find((row) => row.id === draft.latestBacktestId);
   if (draft.generatedTests?.status !== "passed" || !backtest?.passed) throw new Error("发布前必须通过自动测试和样本外回测门槛");
   if (draft.publishVersionId) {
@@ -529,9 +591,11 @@ export function publishStrategyDraft(db, draftId, options = {}, actor = "Strateg
   return { version, listing };
 }
 
-export function setStrategyAssignment(db, strategyVersionId, enabled, actor = "StrategyOwner") {
+export function setStrategyAssignment(db, strategyVersionId, enabled, actor = "StrategyOwner", runtime = {}) {
   ensureCollections(db);
   const version = db.strategyBlueprintVersions.find((row) => row.id === strategyVersionId);
+  const principal = assertStrategyOwner(version, runtime);
+  if (!principal.isOwner) throw Object.assign(new Error("owner_only_strategy_activation"), { status: 403, code: "owner_only_strategy_activation" });
   const listing = db.strategyMarketplaceListings.find((row) => row.strategyVersionId === strategyVersionId && row.status === "published");
   if (!version || !listing) throw Object.assign(new Error("市场策略版本不存在或未发布"), { status: 404 });
   if (listing.evidenceLevel !== "oos_passed") throw new Error("策略尚未通过样本外证据门槛，不能启用");
@@ -576,11 +640,17 @@ export function evaluateBlueprintRuntime(db, version, maxSignalAgeBars = 3, symb
   };
 }
 
-export function enabledStrategyBlueprints(db) {
+export function enabledStrategyBlueprints(db, options = {}) {
   ensureCollections(db);
-  const enabled = new Set(db.strategyAssignments.filter((row) => row.enabled).map((row) => row.strategyVersionId));
-  return db.strategyBlueprintVersions.filter((row) => enabled.has(row.id)).map((row) => ({
+  const principal = options.principal || null;
+  const belongs = (row) => !principal || (row?.platformScope === "platform"
+    || (row?.tenantId === principal.tenantId && row?.ownerUserId === principal.userId));
+  const enabled = new Set(db.strategyAssignments.filter((row) => row.enabled && belongs(row)).map((row) => row.strategyVersionId));
+  return db.strategyBlueprintVersions.filter((row) => enabled.has(row.id) && belongs(row)).map((row) => ({
     id: row.id,
+    tenantId: row.tenantId || null,
+    ownerUserId: row.ownerUserId || null,
+    platformScope: row.platformScope || null,
     contentHash: row.contentHash,
     name: row.definition.name,
     templateId: row.definition.templateId,
@@ -695,8 +765,12 @@ export function buildStrategyMarketplace(db) {
 
 export function strategyStudioSnapshot(db, options = {}) {
   ensureCollections(db);
+  const principal = strategyPrincipal(options);
+  const owned = (row) => row?.tenantId === principal.tenantId && row?.ownerUserId === principal.userId;
   const compact = options.compact === true;
-  const backtests = db.strategyStudioBacktests.slice(0, compact ? 20 : 50).map((row) => compact ? {
+  const ownedVersions = db.strategyBlueprintVersions.filter(owned);
+  const ownedVersionIds = new Set(ownedVersions.map((row) => row.id));
+  const backtests = db.strategyStudioBacktests.filter(owned).slice(0, compact ? 20 : 50).map((row) => compact ? {
     ...row,
     train: row.train ? { ...row.train, equityCurve: undefined } : null,
     folds: (row.folds || []).map((fold) => ({ ...fold, equityCurve: undefined })),
@@ -704,17 +778,24 @@ export function strategyStudioSnapshot(db, options = {}) {
   } : row);
   return {
     templates: supportedStudioTemplates(),
-    drafts: db.strategyStudioDrafts.slice(0, 50),
-    versions: db.strategyBlueprintVersions.slice(0, 50),
+    drafts: db.strategyStudioDrafts.filter(owned).slice(0, 50),
+    versions: ownedVersions.slice(0, 50),
     backtests,
-    assignments: db.strategyAssignments.slice(0, 100),
-    marketplace: buildStrategyMarketplace(db)
+    assignments: db.strategyAssignments.filter((row) => ownedVersionIds.has(row.strategyVersionId)).slice(0, 100),
+    marketplace: (() => {
+      const market = buildStrategyMarketplace(db);
+      const listings = market.listings.filter((row) => row.source === "official" || ownedVersionIds.has(row.strategyVersionId));
+      return { ...market, listings, summary: { ...market.summary, total: listings.length, studio: listings.filter((row) => row.source !== "official").length, enabled: listings.filter((row) => row.enabled).length, oosPassed: listings.filter((row) => row.source !== "official" && row.evidenceLevel === "oos_passed").length } };
+    })()
   };
 }
 
-export function strategyDraftsReferencedByChat(db) {
+export function strategyDraftsReferencedByChat(db, options = {}) {
   ensureCollections(db);
+  const principal = strategyPrincipal(options);
   const referenced = new Set((db.chatMessages || []).map((message) => message?.strategyDraftId).filter(Boolean));
   if (!referenced.size) return [];
-  return db.strategyStudioDrafts.filter((draft) => referenced.has(draft?.id));
+  return db.strategyStudioDrafts.filter((draft) => referenced.has(draft?.id)
+    && draft.tenantId === principal.tenantId
+    && draft.ownerUserId === principal.userId);
 }

@@ -11,6 +11,7 @@ import {
   transitionReviewLesson,
   verifyDecisionFactSnapshot
 } from "../server/ownerReviewLoop.mjs";
+import { strategyDefinitionHash } from "../server/strategyStudio.mjs";
 import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 import { createStrategyImprovementCycle, storedTradeWindowNews } from "../server/reviewEngine.mjs";
 
@@ -28,9 +29,13 @@ function baseDb() {
   };
 }
 
+const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
+
 function plan(overrides = {}) {
   return {
     id: "plan-1",
+    tenantId: "tenant_owner",
+    ownerUserId: "owner-1",
     mandateId: "mandate-1",
     symbol: "BTC/USDT",
     direction: "long",
@@ -151,6 +156,8 @@ test("only a verified event that existed before the close can be attributed as a
   assert.equal(buildStructuredTradeAssessment(db, lifecycle(), options).rootCauses[0].code, "random_variance");
 
   event.intel.verifiedOrigin = true;
+  event.intel.materiality = "high";
+  event.intel.impactHorizon = "hours";
   event.due = "2026-08-18T02:30:00.000Z";
   assert.equal(buildStructuredTradeAssessment(db, lifecycle(), options).rootCauses[0].code, "random_variance", "an event published after the close cannot explain the trade");
 
@@ -229,15 +236,15 @@ test("candidate lessons are excluded until Owner approval and retired lessons st
   };
   db.memoryItems.push(memory);
   db.reviews.push({ id: "review-1", memoryItemId: memory.id, netRealizedPnl: -2 });
-  assert.equal(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"] }).length, 0);
+  assert.equal(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }).length, 0);
 
   const approved = transitionReviewLesson(db, memory.id, "approve", "Owner");
   assert.equal(approved.ok, true);
-  assert.equal(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"] })[0].id, memory.id);
+  assert.equal(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] })[0].id, memory.id);
 
   const retired = transitionReviewLesson(db, memory.id, "retire", "Owner");
   assert.equal(retired.ok, true);
-  assert.equal(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"] }).length, 0);
+  assert.equal(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }).length, 0);
   const invalid = transitionReviewLesson(db, memory.id, "reject", "Owner");
   assert.deepEqual({ ok: invalid.ok, error: invalid.error, current: invalid.current }, { ok: false, error: "invalid_lesson_transition", current: "retired" });
 });
@@ -298,9 +305,9 @@ test("continue observing keeps a lesson out of Agent decisions until explicit ap
   const observed = transitionReviewLesson(db, memory.id, "observe", "Owner");
   assert.equal(observed.ok, true);
   assert.equal(observed.memory.learningStatus, "observing");
-  assert.deepEqual(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }), []);
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }), []);
   assert.equal(transitionReviewLesson(db, memory.id, "approve", "Owner").ok, true);
-  assert.equal(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }).length, 1);
+  assert.equal(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"], timeframe: "15m", direction: "long" }).length, 1);
 });
 
 function completedReview(idValue, rootCode = "entry_timing", outcome = "loss") {
@@ -333,9 +340,10 @@ function seedStrategyCandidateEvidence(db, versionId = "trend-pullback-candidate
     draftHash: draft.contentHash, passed: true,
     oos: { trades: 30, profitFactor: 1.5, maxDrawdownPct: 2, expectancyR: 0.25 }
   };
+  const definition = { baseProductId: "trend-pullback", sourceDraftId: draft.id };
   const version = {
-    id: versionId, tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: draft.contentHash,
-    definition: { baseProductId: "trend-pullback", sourceDraftId: draft.id },
+    id: versionId, tenantId: "tenant_owner", ownerUserId: "owner-1", immutable: true,
+    contentHash: strategyDefinitionHash(definition), definition,
     validation: { backtestId: backtest.id }
   };
   const paper = {
@@ -354,6 +362,8 @@ function seedStrategyCandidateEvidence(db, versionId = "trend-pullback-candidate
   db.strategyStudioDrafts.push(draft);
   db.strategyStudioBacktests.push(backtest);
   db.strategyBlueprintVersions.push(version);
+  db.strategyMarketplaceListings ||= [];
+  db.strategyMarketplaceListings.push({ id: `listing-${versionId}`, strategyVersionId: versionId, status: "published" });
   db.paperSessions.push(paper);
   db.reviews.push(...liveReviews);
   return { draft, backtest, version, paper, liveReviews };
@@ -542,6 +552,9 @@ test("strategy validation is sequential, evidence-bound, and cannot pass without
   const cycle = createStrategyImprovementCycle(db, { sourceImprovementId: item.id, sourceReviewIds: item.evidenceReviewIds, hypothesis: item.proposal });
   const evidence = seedStrategyCandidateEvidence(db);
   item.experimentId = cycle.experiment.id;
+  evidence.paper.strategyExperimentId = cycle.experiment.id;
+  evidence.paper.strategyDefinitionHash = evidence.version.contentHash;
+  evidence.paper.strategyProductId = "trend-pullback";
   assert.equal(transitionOwnerImprovement(db, item.id, "start_validation", "Owner").ok, true);
 
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "paper", outcome: "passed", evidence: "20 笔" }, "Owner").error, "strategy_validation_stage_out_of_order");

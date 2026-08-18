@@ -1,26 +1,32 @@
 import { retrieveChunks } from "./knowledgePipeline.mjs";
 import { selectActiveKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { id, nowIso } from "./store.mjs";
+import { canUseKnowledgeRow, normalizeKnowledgePrincipal } from "./knowledgeScope.mjs";
 
 // 真实证据包：从主人导入的知识库检索相关片段，结合已批准规则与事件，
 // 生成有引用、可追溯的分析包（不再返回写死的模板结论）。
 export function runExpertAnalysis(db, payload = {}) {
+  const principal = normalizeKnowledgePrincipal(payload.principal || {});
+  if (!principal.tenantId || !principal.userId) throw new Error("knowledge_analysis_explicit_principal_required");
+  const usableKnowledge = (row) => canUseKnowledgeRow(row, principal);
   const symbol = payload.market_context?.symbol || payload.symbol || db.markets?.find((market) => market.price)?.symbol || "";
   const subject = symbol || "未指定交易对";
   const question = payload.question || `${subject} 当前是否允许自主交易？`;
   const highImpactEvents = (db.events || []).filter((event) => symbol && event.relatedSymbols?.includes(symbol) && event.impact >= 80);
-  const rules = (db.knowledge?.ruleProposals || []).filter((rule) => rule.status === "已批准");
+  const rules = (db.knowledge?.ruleProposals || []).filter((rule) => usableKnowledge(rule) && rule.status === "已批准");
   const eligibleSkills = selectActiveKnowledgeSkills(db, {
     symbol,
     direction: payload.direction,
     timeframe: payload.timeframe,
     regime: payload.market_context?.regime || db.marketRegime?.regime || ""
-  });
+  }, { principal });
 
   // 用问题 + 交易对做知识检索，作为决策依据。
   // 异步语义检索的调用方可通过 payload.retrieved 预先传入；否则同步词频检索。
-  const retrieved = Array.isArray(payload.retrieved) ? payload.retrieved : retrieveChunks(db, `${question} ${symbol}`, 5);
-  const knowledgeAvailable = (db.knowledge?.chunks || []).length > 0;
+  const retrieved = Array.isArray(payload.retrieved)
+    ? payload.retrieved.filter(usableKnowledge)
+    : retrieveChunks(db, `${question} ${symbol}`, 5, { chunks: (db.knowledge?.chunks || []).filter(usableKnowledge) });
+  const knowledgeAvailable = (db.knowledge?.chunks || []).some(usableKnowledge);
 
   const knowledgeView = retrieved.length
     ? { domain: "知识库", view: `召回 ${retrieved.length} 段专业知识：${retrieved.map((chunk) => chunk.citationLocator).join("；")}。`, confidence: Number(Math.min(0.95, 0.5 + retrieved[0].score / 2).toFixed(2)) }
@@ -32,6 +38,8 @@ export function runExpertAnalysis(db, payload = {}) {
 
   const bundle = {
     id: id("ab"),
+    tenantId: principal.tenantId,
+    ownerUserId: principal.userId,
     triggerType: payload.trigger_type || "user_question",
     question,
     summary: !symbol
@@ -63,4 +71,3 @@ export function runExpertAnalysis(db, payload = {}) {
   db.analysisBundles.unshift(bundle);
   return bundle;
 }
-

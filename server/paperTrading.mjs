@@ -4,6 +4,7 @@ import { notifyLarkThrottled } from "./larkNotifier.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints } from "./compiledSignals.mjs";
 import { BAR_MINUTES } from "./backtestEngine.mjs";
+import { validatePublishedStrategyCandidate } from "./strategyStudio.mjs";
 
 // ---------------------------------------------------------------------------
 // 模拟盘前向验证（三段验证的中段：回测 → 模拟盘 → 小额实盘）。
@@ -128,14 +129,15 @@ export function advanceSession(session, candles) {
   return processed;
 }
 
-export async function createPaperSession(db, opts = {}) {
+export async function createPaperSession(db, opts = {}, runtime = {}) {
   const symbol = String(opts.symbol || "BTC/USDT").toUpperCase();
   const timeframe = opts.timeframe || "4h";
   const strategy = getStrategy(opts.strategyId || "trend");
   const params = { ...strategy.defaultParams, ...(opts.params || {}) };
   let candles;
   try {
-    candles = await getHistoricalKlines(symbol, timeframe, 300);
+    const loadCandles = runtime.loadCandles || getHistoricalKlines;
+    candles = await loadCandles(symbol, timeframe, 300);
   } catch (error) {
     return { status: "data_fetch_failed", error: error.message };
   }
@@ -157,6 +159,13 @@ export async function createPaperSession(db, opts = {}) {
     status: "running",
     seeded: lookback > 0,
     source: opts.source || "manual",
+    tenantId: opts.tenantId || null,
+    ownerUserId: opts.ownerUserId || null,
+    ownerImprovementId: opts.ownerImprovementId || null,
+    strategyExperimentId: opts.strategyExperimentId || null,
+    strategyVersionId: opts.strategyVersionId || null,
+    strategyDefinitionHash: opts.strategyDefinitionHash || null,
+    strategyProductId: opts.strategyProductId || null,
     knowledgeSkillId: opts.knowledgeSkillId || null,
     knowledgeSkillVersion: opts.knowledgeSkillVersion || null,
     startedAt: nowIso(),
@@ -186,13 +195,86 @@ export async function createPaperSession(db, opts = {}) {
   return { status: "ok", session };
 }
 
+function paperError(code, status = 409) {
+  return { status: "rejected", error: code, statusCode: status };
+}
+
+function ownedBy(actor, row) {
+  return Boolean(actor?.id && actor?.tenantId
+    && row?.tenantId === actor.tenantId
+    && row?.ownerUserId === actor.id);
+}
+
+// Authoritative Owner entry point for a candidate strategy's pure forward-paper
+// stage. Every identity and immutable version field is derived server-side; the
+// client can select a symbol but cannot self-assert ownership or a version hash.
+export async function startOwnerCandidatePaperSession(db, opts = {}, runtime = {}) {
+  const actor = runtime.actor || db.user;
+  if (actor?.isOwner !== true) return paperError("owner_only_review_loop", 403);
+  const improvement = (db.ownerImprovementItems || []).find((row) => row.id === opts.improvementId && ownedBy(actor, row));
+  if (!improvement) return paperError("owner_improvement_not_found", 404);
+  if (improvement.destination !== "strategy" || improvement.state !== "validating") return paperError("strategy_improvement_not_validating");
+  const experiment = (db.strategyExperiments || []).find((row) => row.id === improvement.experimentId && ownedBy(actor, row));
+  if (!experiment) return paperError("strategy_validation_experiment_missing");
+  const backtestStage = (experiment.stages || []).find((stage) => stage.name === "backtest");
+  const paperStage = (experiment.stages || []).find((stage) => stage.name === "paper");
+  if (backtestStage?.status !== "passed" || paperStage?.status !== "pending") return paperError("strategy_paper_stage_not_ready");
+
+  const candidateRef = experiment.candidateStrategyRef;
+  const version = (db.strategyBlueprintVersions || []).find((row) => row.id === candidateRef?.versionId);
+  if (!version || !ownedBy(actor, version)) return paperError("candidate_strategy_version_not_owned", 403);
+  const eligibility = validatePublishedStrategyCandidate(db, version);
+  const productId = eligibility.productId;
+  if (!eligibility.ok) return paperError(eligibility.error, eligibility.status || 409);
+  if (!candidateRef?.definitionHash || candidateRef.definitionHash !== version.contentHash
+    || candidateRef.productId !== productId || productId !== experiment.strategyRef?.productId) {
+    return paperError("candidate_strategy_immutable_identity_mismatch");
+  }
+
+  const allowedSymbols = (version.definition?.symbols || []).map((value) => String(value).toUpperCase());
+  const symbol = String(opts.symbol || allowedSymbols[0] || "").toUpperCase();
+  if (!symbol || !allowedSymbols.includes(symbol)) return paperError("candidate_strategy_symbol_not_allowed", 400);
+  const existing = (db.paperSessions || []).find((session) => ownedBy(actor, session)
+    && session.ownerImprovementId === improvement.id
+    && session.strategyExperimentId === experiment.id
+    && session.strategyVersionId === version.id
+    && session.strategyDefinitionHash === version.contentHash
+    && session.strategyProductId === productId
+    && session.symbol === symbol
+    && session.seeded === false
+    && ["running", "passed"].includes(session.status));
+  if (existing) return { status: "ok", session: existing, reused: true };
+
+  const definition = version.definition || {};
+  return createPaperSession(db, {
+    symbol,
+    timeframe: definition.timeframe,
+    strategyId: definition.templateId,
+    direction: definition.direction,
+    params: { ...(definition.params || {}), ...(definition.exitPolicy || {}) },
+    lookbackBars: 0,
+    source: "owner_candidate_strategy",
+    tenantId: actor.tenantId,
+    ownerUserId: actor.id,
+    ownerImprovementId: improvement.id,
+    strategyExperimentId: experiment.id,
+    strategyVersionId: version.id,
+    strategyDefinitionHash: version.contentHash,
+    strategyProductId: productId
+  }, runtime);
+}
+
 // 从已验证策略画像自动开模拟盘（研究闭环 → 前向验证）。
 export async function ensurePaperSessionsFromProfiles(db, opts = {}) {
   const profiles = (db.strategyProfiles || []).filter((p) => p.strategyId && p.confidence === "validated");
   db.paperSessions ||= [];
   const created = [];
   for (const profile of profiles) {
-    const exists = db.paperSessions.some((s) => s.symbol === profile.symbol && s.strategyId === profile.strategyId && s.status === "running");
+    const exists = db.paperSessions.some((s) => s.symbol === profile.symbol
+      && s.strategyId === profile.strategyId
+      && s.tenantId === profile.tenantId
+      && s.ownerUserId === profile.ownerUserId
+      && s.status === "running");
     if (exists) continue;
     const result = await createPaperSession(db, {
       symbol: profile.symbol,
@@ -200,7 +282,9 @@ export async function ensurePaperSessionsFromProfiles(db, opts = {}) {
       strategyId: profile.strategyId,
       params: profile.params,
       lookbackBars: Number(opts.lookbackBars || 0),
-      source: "auto"
+      source: "auto",
+      tenantId: profile.tenantId || null,
+      ownerUserId: profile.ownerUserId || null
     });
     if (result.status === "ok") created.push(result.session);
   }
@@ -208,12 +292,13 @@ export async function ensurePaperSessionsFromProfiles(db, opts = {}) {
 }
 
 // 定时前向推进：拉最新 K 线，把新 bar 喂给每个运行中会话。
-export async function runPaperForward(db) {
+export async function runPaperForward(db, runtime = {}) {
   const running = (db.paperSessions || []).filter((s) => s.status === "running");
   const results = [];
   for (const session of running) {
     try {
-      const candles = await getHistoricalKlines(session.symbol, session.timeframe, 300);
+      const loadCandles = runtime.loadCandles || getHistoricalKlines;
+      const candles = await loadCandles(session.symbol, session.timeframe, 300);
       if (!Array.isArray(candles) || candles.length < 2) { results.push({ id: session.id, status: "no_data" }); continue; }
       const processed = advanceSession(session, candles.slice(0, -1));
       session.metrics = summarizePaper(session.trades);
@@ -243,6 +328,8 @@ export function hasPassedPaper(db, criteria) {
   const request = typeof criteria === "string" ? { symbol: criteria } : (criteria || {});
   if (!request.symbol) return false;
   const symbol = String(request.symbol).toUpperCase();
+  const principal = request.principal || null;
+  if (principal && (!principal.tenantId || !principal.userId)) return false;
   return (db.paperSessions || []).some((session) => {
     if (session.status !== "passed" || session.seeded !== false || session.symbol !== symbol) return false;
     if (request.timeframe && session.timeframe !== request.timeframe) return false;
@@ -250,12 +337,15 @@ export function hasPassedPaper(db, criteria) {
     if (request.knowledgeSkillId && session.knowledgeSkillId !== request.knowledgeSkillId) return false;
     if (request.knowledgeSkillVersion && Number(session.knowledgeSkillVersion) !== Number(request.knowledgeSkillVersion)) return false;
     if (request.skillFingerprint && session.params?.compiledSkillFingerprint !== request.skillFingerprint) return false;
+    if (principal && (session.tenantId !== principal.tenantId || session.ownerUserId !== principal.userId)) return false;
     return true;
   });
 }
 
-export function paperValidationSummary(db) {
-  const sessions = db.paperSessions || [];
+export function paperValidationSummary(db, options = {}) {
+  const principal = options.principal || null;
+  const sessions = (db.paperSessions || []).filter((session) => !principal
+    || (session.tenantId === principal.tenantId && session.ownerUserId === principal.userId));
   if (!sessions.length) return "";
   const bySymbol = {};
   for (const s of sessions) {

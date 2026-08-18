@@ -119,6 +119,36 @@ export function buildEventRows(data = {}, translate = (zh) => zh) {
   )) === index);
 }
 
+const KNOWLEDGE_STRATEGY_LIVE_STATES = new Set(["live_probation", "active"]);
+const KNOWLEDGE_STRATEGY_ARCHIVE_STATES = new Set(["degraded", "retired", "superseded"]);
+const PUBLISHED_SKILL_STATES = new Set(["active", "trusted", "enabled", "installed", "published", "已启用", "已安装", "已信任"]);
+
+// Knowledge-derived strategy versions remain in the knowledge incubator until
+// historical OOS, pure-forward validation and Owner approval have all passed.
+// A formerly published version stays visible in the Strategy archive after it
+// degrades or is retired; its production history must not disappear.
+export function isPublishedKnowledgeStrategy(item = {}) {
+  const status = String(item.status || "").toLowerCase();
+  if (KNOWLEDGE_STRATEGY_LIVE_STATES.has(status)) return true;
+  if (!KNOWLEDGE_STRATEGY_ARCHIVE_STATES.has(status)) return false;
+  return item.approval?.approved === true
+    || Boolean(item.approval?.fingerprint)
+    || Boolean(item.probationStartedAt)
+    || Boolean(item.liveMetrics);
+}
+
+export function isPublishedImportedSkill(item = {}) {
+  if (item.native === true) return true;
+  const status = String(item.status || "").toLowerCase();
+  if (PUBLISHED_SKILL_STATES.has(status)) return true;
+  const wasPublished = Boolean(item.installedAt || item.trustedAt || item.approvedBy || item.trusted === true);
+  return wasPublished && /disabled|retired|rollback|已停用|已禁用|已回滚/i.test(String(item.status || ""));
+}
+
+export function isApprovedKnowledgeWorkflow(item = {}) {
+  return item.runtimeApproved === true && item.publishedEligible === true;
+}
+
 export function buildStrategyCatalogRows(data = {}, translate = (zh) => zh) {
   const paperSessions = list(data.paperReport?.sessions);
   const products = list(data.strategyCatalog?.products).map((item) => ({
@@ -170,7 +200,10 @@ export function buildStrategyCatalogRows(data = {}, translate = (zh) => zh) {
     liveTrades: item.lifecycle?.live?.trades,
     dataRequirements: list(item.contract?.dataRequirements).map((row) => `${row.source}:${row.dataset}`).join("、")
   }));
-  const external = [...list(data.knowledge?.tradingSkills), ...list(data.skills).filter((skill) => skill.kind === "strategy")];
+  const external = [
+    ...list(data.knowledge?.tradingSkills).filter(isPublishedKnowledgeStrategy),
+    ...list(data.skills).filter((skill) => skill.kind === "strategy" && isPublishedImportedSkill(skill))
+  ];
   const rows = [...products, ...research, ...external].map((strategy, index) => {
     const paperSession = strategy.paperSession || paperSessions.find((session) => session.id === strategy.paperSessionId || session.knowledgeSkillId === strategy.id) || null;
     const sourceText = [strategy.createdBy, strategy.source, strategy.sourceTitle, strategy.curated && "curated"].filter(Boolean).join(" ");
@@ -192,8 +225,19 @@ export function buildStrategyCatalogRows(data = {}, translate = (zh) => zh) {
 const CAPABILITY_ENABLED_STATES = new Set(["active", "trusted", "enabled", "ready", "connected", "configured", "available_without_key", "已启用", "已配置", "已连接", "免密钥可用"]);
 
 export function buildCapabilityCatalogRows(data = {}, translate = (zh) => zh) {
+  const approvedKnowledgeWorkflows = list(data.knowledge?.workflows)
+    .filter(isApprovedKnowledgeWorkflow)
+    .map((item) => ({
+      ...item,
+      kind: "workflow",
+      status: "active",
+      enabled: true,
+      source: item.sourceTitle || translate("知识库", "Knowledge"),
+      knowledgeWorkflow: true
+    }));
   const rawItems = [
-    ...list(data.skills).filter((item) => item.kind !== "strategy"),
+    ...list(data.skills).filter((item) => item.kind !== "strategy" && isPublishedImportedSkill(item)),
+    ...approvedKnowledgeWorkflows,
     ...list(data.analysisEngine?.tools),
     ...list(data.tools),
     ...list(data.mcpServers)

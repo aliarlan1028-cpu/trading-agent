@@ -14,6 +14,15 @@ import {
 import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 import { ensureTradeReviewQueued } from "../server/tradeReviewQueue.mjs";
 import { createStrategyImprovementCycle, runTradeReflection, storedTradeWindowNews } from "../server/reviewEngine.mjs";
+import {
+  backtestStrategyDraftWithCandles,
+  createStrategyDraft,
+  publishStrategyDraft,
+  runDraftGeneratedTests,
+  strategyDefinitionHash
+} from "../server/strategyStudio.mjs";
+import { runPaperForward, startOwnerCandidatePaperSession } from "../server/paperTrading.mjs";
+import { registerReviewRoutes } from "../server/routes/review.mjs";
 
 function dbFixture() {
   return {
@@ -28,9 +37,47 @@ function dbFixture() {
   };
 }
 
+const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
+
+function profitableBreakoutCandles(count = 1200) {
+  const rows = [];
+  let base = 100;
+  let time = 0;
+  let cycle = 0;
+  while (rows.length < count) {
+    for (let index = 0; index < 20 && rows.length < count; index += 1) {
+      const close = base + (index % 2) * 0.01;
+      rows.push({ time, ts: time, open: close, high: close + 0.05, low: close - 0.05, close, volume: 1000 });
+      time += 3_600_000;
+    }
+    if (rows.length >= count) break;
+    const entry = base + 1;
+    rows.push({ time, ts: time, open: base, high: entry + 0.04, low: base - 0.02, close: entry, volume: 1800 });
+    time += 3_600_000;
+    if (rows.length >= count) break;
+    const loses = cycle % 9 === 4;
+    const stop = entry * 0.99;
+    const takeProfit = entry * 1.005;
+    rows.push({
+      time,
+      ts: time,
+      open: entry,
+      high: loses ? entry + 0.02 : takeProfit + 0.03,
+      low: loses ? stop - 0.03 : entry - 0.02,
+      close: entry,
+      volume: 1400
+    });
+    time += 3_600_000;
+    base = entry + 0.2;
+    cycle += 1;
+  }
+  return rows.slice(0, count);
+}
+
 function plan(overrides = {}) {
   return {
     id: "plan-1", mandateId: "mandate-1", symbol: "BTC/USDT", direction: "long",
+    tenantId: "tenant_owner", ownerUserId: "owner-1",
     timeframe: "1h", entry: 100, stopLoss: 95, takeProfit: [110], leverage: 2,
     rationale: "1H 趋势保持，15m 回踩确认后重新站上结构位，止损和盈亏比符合授权。",
     strategyProductId: "trend", strategyVersion: "1.0.0",
@@ -113,6 +160,7 @@ test("explicit strategy scenario fields reject symbol-only but contradictory les
   });
   db.reviews.push({ id: "review-1", memoryItemId: "wrong-scenario", type: "trade", status: "completed", netRealizedPnl: -1 });
   const rows = retrieveRelevantReviewMemories(db, {
+    principal: ownerPrincipal,
     symbols: ["BTC/USDT"], timeframe: "5m", setupType: "mean_reversion",
     strategyProductId: "mean_reversion", direction: "short"
   });
@@ -179,7 +227,7 @@ test("legacy auto-reflection memories are quarantined until Owner review", () =>
   db.memoryItems.push(memory);
   db.reviews.push({ id: "legacy-review", type: "trade", status: "completed", netRealizedPnl: -1 });
   assert.equal(lessonStatus(memory), "candidate_legacy");
-  assert.deepEqual(retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT"], timeframe: "1h", direction: "long" }), []);
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"], timeframe: "1h", direction: "long" }), []);
 });
 
 test("legacy provenance migration runs once and never adopts later untagged producer rows", () => {
@@ -211,10 +259,13 @@ test("fake, live, other-strategy, and free-text-only strategy candidates fail cl
   }).error, "candidate_strategy_version_not_found");
 
   const addCandidate = (id, baseProductId) => {
-    const draft = { id: `draft-${id}`, tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: `hash-${id}` };
+    const draft = { id: `draft-${id}`, tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: `draft-hash-${id}` };
     const backtest = { id: `bt-${id}`, tenantId: "tenant_owner", ownerUserId: "owner-1", draftId: draft.id, draftHash: draft.contentHash, passed: true, oos: { trades: 30, profitFactor: 1.5, maxDrawdownPct: 2, expectancyR: 0.2 } };
-    const version = { id, tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: draft.contentHash, definition: { baseProductId, sourceDraftId: draft.id }, validation: { backtestId: backtest.id } };
+    const definition = { baseProductId, sourceDraftId: draft.id };
+    const version = { id, tenantId: "tenant_owner", ownerUserId: "owner-1", immutable: true, contentHash: strategyDefinitionHash(definition), definition, validation: { backtestId: backtest.id } };
     db.strategyStudioDrafts.push(draft); db.strategyStudioBacktests.push(backtest); db.strategyBlueprintVersions.push(version);
+    db.strategyMarketplaceListings ||= [];
+    db.strategyMarketplaceListings.push({ id: `listing-${id}`, strategyVersionId: id, status: "published" });
     return { version, backtest };
   };
   const other = addCandidate("other@1", "mean-reversion");
@@ -256,22 +307,93 @@ test("strategy baseline resolution uses an explicit current deployment and rejec
   assert.equal(cycle.experiment.strategyRef.definitionHash, "baseline-v2");
 });
 
+test("real compile, OOS publication, route start, and forward bars produce authoritative paper evidence", async () => {
+  const db = dbFixture();
+  db.strategyVersions = [{ id: "breakout-retest@baseline", productId: "breakout_retest", version: "1.0.0", contentHash: "baseline-breakout-hash" }];
+  db.strategyMarketplaceListings = [];
+  db.strategyAssignments = [];
+  db.backtests = [];
+  const item = {
+    id: "real-paper-item", tenantId: "tenant_owner", ownerUserId: "owner-1",
+    destination: "strategy", state: "accepted", title: "验证突破策略候选",
+    proposal: "用不可变候选完成回测与纯前向模拟",
+    scope: { strategyProductId: "breakout_retest" }, evidenceReviewIds: []
+  };
+  db.ownerImprovementItems.push(item);
+  const cycle = createStrategyImprovementCycle(db, {
+    sourceImprovementId: item.id,
+    successCriteria: { minTrades: 20, minSmallLiveTrades: 3, minProfitFactor: 1.2, maxDrawdownPct: 3, requireManualApproval: true }
+  });
+  item.experimentId = cycle.experiment.id;
+  assert.equal(transitionOwnerImprovement(db, item.id, "start_validation", "Owner").ok, true);
+
+  const draft = await createStrategyDraft(db, "BTC/USDT 1h 唐奇安过去20根突破做多，止损1%，止盈0.5R", { principal: ownerPrincipal }, "Owner");
+  assert.equal(runDraftGeneratedTests(db, draft.id, "Owner", { principal: ownerPrincipal }).suite.status, "passed");
+  const history = profitableBreakoutCandles();
+  const tested = backtestStrategyDraftWithCandles(db, draft.id, history, { symbol: "BTC/USDT", principal: ownerPrincipal }, "Owner");
+  assert.equal(tested.backtest.passed, true, "the production OOS evaluator must pass without mutating its result");
+  assert.ok(tested.backtest.oos.trades >= 20);
+  assert.ok(tested.backtest.oos.profitFactor >= 1.2);
+  const published = publishStrategyDraft(db, draft.id, { slug: "owner_breakout_candidate", principal: ownerPrincipal }, "Owner");
+  assert.equal(published.version.immutable, true);
+  assert.equal(recordStrategyValidationStage(db, item.id, {
+    stageName: "backtest", outcome: "passed", candidateVersionId: published.version.id,
+    candidateDefinitionHash: published.version.contentHash, evidenceId: tested.backtest.id
+  }, "Owner").ok, true);
+
+  const routes = new Map();
+  const app = {};
+  for (const method of ["get", "post", "patch", "delete"]) app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers);
+  const initialHistory = history.slice(0, 300);
+  registerReviewRoutes(app, {
+    db,
+    requirePermission: () => (_req, _res, next) => next(),
+    persist: (res, payload) => res.json(payload),
+    id: (prefix) => `${prefix}-test`, nowIso: () => new Date().toISOString(),
+    appendAudit: () => {}, appendTrace: () => {}, buildReviewAnalytics: () => ({}), backfillReviewFields: () => ({}),
+    createStrategyImprovementCycle, validateStrategyImprovementCycle: () => ({}),
+    startOwnerCandidatePaperSession: (database, options, runtime) => startOwnerCandidatePaperSession(database, options, {
+      ...runtime, loadCandles: async () => initialHistory
+    })
+  });
+  const handlers = routes.get("POST /api/review/improvements/:id/paper/start");
+  const req = { params: { id: item.id }, body: { symbol: "BTC/USDT" }, user: db.user };
+  const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  await new Promise((resolve, reject) => handlers[0](req, response, () => Promise.resolve(handlers[1](req, response)).then(resolve, reject)));
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.status, "ok");
+  assert.equal(response.body.session.status, "running");
+  assert.equal(response.body.session.seeded, false);
+  assert.equal(response.body.session.strategyVersionId, published.version.id);
+  assert.equal(response.body.session.strategyDefinitionHash, published.version.contentHash);
+  assert.equal(response.body.session.strategyExperimentId, cycle.experiment.id);
+
+  const forward = await runPaperForward(db, { loadCandles: async () => history });
+  assert.equal(forward.results[0].status, "passed");
+  assert.ok(response.body.session.metrics.trades >= 20);
+  assert.ok(response.body.session.metrics.profitFactor >= 1.2);
+  const recorded = recordStrategyValidationStage(db, item.id, { stageName: "paper", outcome: "passed", evidenceId: response.body.session.id }, "Owner");
+  assert.equal(recorded.ok, true, JSON.stringify(recorded));
+});
+
 test("real reflection output preserves immutable candidate refs and powers small-live validation", async () => {
   const db = dbFixture();
   db.system.ownerReviewProvenanceMigrationVersion = 1;
-  const draft = { id: "candidate-draft", tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: "candidate-hash" };
+  const draft = { id: "candidate-draft", tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: "candidate-draft-hash" };
   const backtest = {
     id: "candidate-backtest", tenantId: "tenant_owner", ownerUserId: "owner-1",
     draftId: draft.id, draftHash: draft.contentHash, passed: true,
     oos: { trades: 30, profitFactor: 1.5, maxDrawdownPct: 2, expectancyR: 0.2 }
   };
+  const definition = { baseProductId: "trend", sourceDraftId: draft.id };
   const candidate = {
-    id: "candidate-v2", tenantId: "tenant_owner", ownerUserId: "owner-1", contentHash: draft.contentHash,
-    definition: { baseProductId: "trend", sourceDraftId: draft.id }, validation: { backtestId: backtest.id }
+    id: "candidate-v2", tenantId: "tenant_owner", ownerUserId: "owner-1", immutable: true,
+    contentHash: strategyDefinitionHash(definition), definition, validation: { backtestId: backtest.id }
   };
   db.strategyStudioDrafts.push(draft);
   db.strategyStudioBacktests.push(backtest);
   db.strategyBlueprintVersions.push(candidate);
+  db.strategyMarketplaceListings = [{ id: "listing-candidate-v2", strategyVersionId: candidate.id, status: "published" }];
   db.paperSessions.push({
     id: "candidate-paper", tenantId: "tenant_owner", ownerUserId: "owner-1", seeded: false,
     status: "passed", strategyVersionId: candidate.id,
@@ -313,6 +435,11 @@ test("real reflection output preserves immutable candidate refs and powers small
   db.ownerImprovementItems.push(item);
   const cycle = createStrategyImprovementCycle(db, { sourceImprovementId: item.id });
   item.experimentId = cycle.experiment.id;
+  const paper = db.paperSessions.find((row) => row.id === "candidate-paper");
+  paper.ownerImprovementId = item.id;
+  paper.strategyExperimentId = cycle.experiment.id;
+  paper.strategyDefinitionHash = candidate.contentHash;
+  paper.strategyProductId = "trend";
   transitionOwnerImprovement(db, item.id, "start_validation", "Owner");
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "backtest", outcome: "passed", candidateVersionId: candidate.id, candidateDefinitionHash: candidate.contentHash, evidenceId: backtest.id }).ok, true);
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "paper", outcome: "passed", evidenceId: "candidate-paper" }).ok, true);

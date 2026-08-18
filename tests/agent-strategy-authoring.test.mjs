@@ -15,6 +15,9 @@ test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技�
     id: "run-authoring",
     sessionId: "chat-authoring",
     role: "AI 交易员",
+    tenantId: db.user.tenantId,
+    requestedByUserId: db.user.id,
+    principal: { tenantId: db.user.tenantId, userId: db.user.id, isOwner: true },
     steps: [],
     invocation: agentInvocationPolicy(userAgentInvocation({ permissions: ["write:review"] }))
   };
@@ -38,11 +41,14 @@ test("Agent 兼容工具创建策略工作室草稿而不是第二套知识技�
 
 test("Chat section only receives strategy drafts referenced by chat messages", () => {
   const db = seedDatabase();
-  db.strategyStudioDrafts = [{ id: "draft-visible" }, { id: "draft-private" }];
+  db.strategyStudioDrafts = [
+    { id: "draft-visible", tenantId: db.user.tenantId, ownerUserId: db.user.id },
+    { id: "draft-private", tenantId: "tenant-b", ownerUserId: "user-b" }
+  ];
   db.chatMessages = [
     { id: "msg-1", strategyDraftId: "draft-visible" },
     { id: "msg-2", strategyDraftId: "draft-missing" },
     { id: "msg-3", strategyDraftId: "draft-visible" }
   ];
-  assert.deepEqual(strategyDraftsReferencedByChat(db).map((draft) => draft.id), ["draft-visible"]);
+  assert.deepEqual(strategyDraftsReferencedByChat(db, { principal: { tenantId: db.user.tenantId, userId: db.user.id, isOwner: true } }).map((draft) => draft.id), ["draft-visible"]);
 });

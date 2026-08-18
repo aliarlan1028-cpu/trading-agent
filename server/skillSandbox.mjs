@@ -42,6 +42,8 @@ export async function fetchSkillPackage(db, payload = {}) {
   const manifest = await readSkillManifest(target);
   const skill = {
     id: skillId,
+    tenantId: payload.tenantId || null,
+    ownerUserId: payload.ownerUserId || null,
     name: payload.name || manifest.name || path.basename(payload.sourceUrl || skillId),
     // kind:决定落到策略库还是能力库——用户显式选择 payload.kind 最高优先,否则 manifest 判定,默认工具。
     kind: payload.kind === "strategy" ? "strategy"
@@ -63,11 +65,16 @@ export async function fetchSkillPackage(db, payload = {}) {
   return skill;
 }
 
-export async function runSkillSandbox(db, skillId, args = {}) {
+export async function runSkillSandbox(db, skillId, args = {}, runtime = {}) {
   const skill = db.skills.find((item) => item.id === skillId);
   if (!skill) return { status: "missing_skill" };
+  const principal = runtime.principal || {};
+  const identity = {
+    tenantId: principal.tenantId || null,
+    ownerUserId: principal.userId || principal.id || null
+  };
   if (!skill.localPath) {
-    const run = { id: id("skillrun"), skillId, status: "missing_local_package", output: "Skill has no fetched localPath. Fetch or upload the package before sandbox execution.", createdAt: nowIso() };
+    const run = { id: id("skillrun"), skillId, ...identity, status: "missing_local_package", output: "Skill has no fetched localPath. Fetch or upload the package before sandbox execution.", createdAt: nowIso() };
     db.skillRuns.unshift(run);
     appendAudit(db, "沙箱运行 Skill 缺少本地包", run.id, "SkillSandbox", "warning");
     return run;
@@ -79,7 +86,7 @@ export async function runSkillSandbox(db, skillId, args = {}) {
     : result.timedOut ? "timeout"
     : result.outputLimited ? "output_limit"
     : result.code === 0 ? "ok" : "failed";
-  const run = { id: id("skillrun"), skillId, status: runStatus, output: result.output.slice(0, 4000), createdAt: nowIso() };
+  const run = { id: id("skillrun"), skillId, ...identity, status: runStatus, output: result.output.slice(0, 4000), createdAt: nowIso() };
   db.skillRuns.unshift(run);
   appendAudit(db, "沙箱运行 Skill", run.id, "SkillSandbox", run.status === "ok" ? "info" : "warning");
   appendTrace(db, "skill_sandbox", skill.name, run.status);

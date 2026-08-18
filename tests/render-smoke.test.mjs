@@ -725,23 +725,26 @@ test("concept graph dedupes duplicate names and renders", () => {
 
 test("desktop knowledge page exposes the full concept graph workspace and source filters", () => {
   const html = render(React.createElement(C.KnowledgeConcept, { data, action, ui }));
-  assert.match(html, /知识库下一步/);
-  assert.match(html, /资料已导入/);
+  assert.match(html, /知识孵化中心/);
+  assert.match(html, /AI 参考知识/);
+  assert.match(html, /交易纪律/);
+  assert.match(html, /交易方法实验室/);
+  assert.match(html, /工具与工作流实验室/);
+  assert.match(html, /知识毕业漏斗/);
+  assert.match(html, /导入并可检索/);
+  assert.match(html, /毕业发布/);
   assert.match(html, /可检索/);
-  assert.match(html, /已形成知识网络/);
   assert.match(html, /概念与知识网络/);
   assert.match(html, /知识网络概览/);
-  assert.match(html, /按知识来源筛选概念/);
+  assert.match(html, /全部知识源/);
   assert.match(html, /海龟交易法则/);
   assert.match(html, /以交易为生/);
   assert.match(html, /生效中的条令/);
-  assert.match(html, /知识库只负责让内容可检索、可引用、可关联/);
-  assert.match(html, /管理来源/);
-  assert.match(html, /扩展候选（可选）/);
-  assert.match(html, /规则库与实际作用/);
-  assert.match(html, /每份知识现在能做什么/);
-  assert.match(html, /策略库承接/);
-  assert.match(html, /能力库承接/);
+  assert.match(html, /AI 就已经能参考书里的知识/);
+  assert.match(html, /管理规则/);
+  assert.match(html, /生成扩展候选（可选）/);
+  assert.match(html, /每份知识当前能做什么/);
+  assert.doesNotMatch(html, /策略库承接|能力库承接/);
   assert.doesNotMatch(html, /打开技能流水线|查看技能流水线|阶段 8\/8/);
   assert.match(html, /趋势/);
   assert.match(html, /止损/);
@@ -754,7 +757,8 @@ test("knowledge source cards treat empty imports as incomplete rather than parse
     ui
   }));
   assert.match(html, /空白书籍/);
-  assert.match(html, /导入未完成/);
+  assert.match(html, /需处理/);
+  assert.match(html, /来源需要重新解析/);
   assert.match(html, /当前不会影响分析或交易/);
 });
 

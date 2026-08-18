@@ -1,13 +1,28 @@
 // 知识技能流水线 路由组（列表/编译/历史验证/模拟盘/批量验证/同步/批准/退役/清理归档/假设回测）——
 // 从 index.mjs 按 registrar 范式迁出（与逻辑模块 server/knowledgeSkills.mjs 不冲突,本文件在 routes/ 下）。
 // GET 只返回快照；生命周期同步由显式写路由或后台任务执行。
+import { canReadKnowledgeRow, canWriteKnowledgeRow, ensureKnowledgeOwnership, normalizeKnowledgePrincipal } from "../knowledgeScope.mjs";
 export function registerKnowledgeSkillRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, nowIso, appendAudit, knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, syncKnowledgeSkillLifecycle, approveKnowledgeSkill, retireKnowledgeSkill, runBacktest } = ctx;
+  const principal = (req) => normalizeKnowledgePrincipal({ tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true });
+  const readable = (req, row) => row && canReadKnowledgeRow(row, principal(req));
+  const writable = (req, row) => row && canWriteKnowledgeRow(row, principal(req));
+  const ownedSkill = (req, id) => {
+    ensureKnowledgeOwnership(db);
+    const skill = (db.knowledge?.tradingSkills || []).find((row) => row.id === id);
+    return writable(req, skill) ? skill : null;
+  };
 
-  app.get("/api/knowledge/skills", requirePermission("knowledge.read"), (_req, res) => res.json(knowledgeSkillSummary(db, { sync: false })));
+  app.get("/api/knowledge/skills", requirePermission("knowledge.read"), (req, res) => {
+    ensureKnowledgeOwnership(db);
+    res.json(knowledgeSkillSummary(db, { sync: false, predicate: (row) => readable(req, row) }));
+  });
 
   app.post("/api/knowledge/methods/:id/compile", requirePermission("write:knowledge"), (req, res) => {
     try {
+      ensureKnowledgeOwnership(db);
+      const method = (db.knowledge?.tradingMethods || []).find((row) => row.id === req.params.id);
+      if (!writable(req, method)) return res.status(404).json({ error: "交易方法不存在" });
       const skill = compileTradingMethod(db, req.params.id, req.body || {}, req.user?.name || db.user.name);
       persist(res, { skill });
     } catch (error) {
@@ -17,6 +32,7 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
 
   app.post("/api/knowledge/skills/:id/validate", requirePermission("write:review"), async (req, res) => {
     try {
+      if (!ownedSkill(req, req.params.id)) return res.status(404).json({ error: "知识技能不存在" });
       persist(res, await validateKnowledgeSkill(db, req.params.id, req.body || {}, req.user?.name || db.user.name));
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -25,6 +41,7 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
 
   app.post("/api/knowledge/skills/:id/paper", requirePermission("write:review"), async (req, res) => {
     try {
+      if (!ownedSkill(req, req.params.id)) return res.status(404).json({ error: "知识技能不存在" });
       persist(res, await startKnowledgeSkillPaper(db, req.params.id, req.body || {}, req.user?.name || db.user.name));
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -32,7 +49,8 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
   });
 
   app.post("/api/knowledge/skills/validate-all", requirePermission("write:review"), (req, res) => {
-    const result = validateAllCompiledSkills(db, saveDb, req.user?.name || db.user.name);
+    ensureKnowledgeOwnership(db);
+    const result = validateAllCompiledSkills(db, saveDb, req.user?.name || db.user.name, { predicate: (row) => writable(req, row) });
     const message = result.started
       ? `已开始批量历史验证 ${result.total} 个技能(后台执行,数分钟内按门槛自动流转,完成后审计日志有汇总)`
       : result.reason === "already_running" ? "批量验证已在进行中" : "没有待历史验证的技能";
@@ -40,11 +58,13 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
   });
 
   app.post("/api/knowledge/skills/sync", requirePermission("write:review"), (req, res) => {
-    persist(res, syncKnowledgeSkillLifecycle(db, req.user?.name || db.user.name));
+    ensureKnowledgeOwnership(db);
+    persist(res, syncKnowledgeSkillLifecycle(db, req.user?.name || db.user.name, { predicate: (row) => writable(req, row) }));
   });
 
   app.post("/api/knowledge/skills/:id/approve", requirePermission("approve:knowledge_skill"), (req, res) => {
     try {
+      if (!ownedSkill(req, req.params.id)) return res.status(404).json({ error: "知识技能不存在" });
       const skill = approveKnowledgeSkill(db, req.params.id, req.user?.name || db.user.name, req.body.note);
       persist(res, { skill });
     } catch (error) {
@@ -54,6 +74,7 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
 
   app.post("/api/knowledge/skills/:id/retire", requirePermission("approve:knowledge_skill"), (req, res) => {
     try {
+      if (!ownedSkill(req, req.params.id)) return res.status(404).json({ error: "知识技能不存在" });
       const skill = retireKnowledgeSkill(db, req.params.id, req.user?.name || db.user.name, req.body.reason);
       persist(res, { skill });
     } catch (error) {
@@ -66,9 +87,10 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
   app.post("/api/knowledge/skills/purge-archived", requirePermission("approve:knowledge_skill"), (req, res) => {
     const includeRetired = req.body?.includeRetired === true;
     const junk = new Set(includeRetired ? ["compile_failed", "superseded", "retired"] : ["compile_failed", "superseded"]);
-    const before = (db.knowledge?.tradingSkills || []).length;
-    db.knowledge.tradingSkills = (db.knowledge.tradingSkills || []).filter((s) => !junk.has(s.status));
-    const removed = before - db.knowledge.tradingSkills.length;
+    ensureKnowledgeOwnership(db);
+    const removable = new Set((db.knowledge?.tradingSkills || []).filter((skill) => writable(req, skill) && junk.has(skill.status)).map((skill) => skill.id));
+    db.knowledge.tradingSkills = (db.knowledge.tradingSkills || []).filter((skill) => !removable.has(skill.id));
+    const removed = removable.size;
     appendAudit(db, `清理归档技能 ${removed} 个（${[...junk].join("/")}）`, "skills_purge", req.user?.name || db.user.name, "warning");
     persist(res, { ok: true, removed, message: `已清理 ${removed} 个归档技能` });
   });
@@ -77,7 +99,8 @@ export function registerKnowledgeSkillRoutes(app, ctx) {
   // 硬闸：只有回测通过（正期望 + 足够样本 + 盈亏比>1）才把 executable 置 true。
   app.post("/api/knowledge/hypotheses/:id/backtest", requirePermission("write:knowledge"), async (req, res) => {
     const hypo = (db.knowledge?.strategyHypotheses || []).find((item) => item.id === req.params.id);
-    if (!hypo) return res.status(404).json({ error: "策略假设不存在" });
+    ensureKnowledgeOwnership(db);
+    if (!writable(req, hypo)) return res.status(404).json({ error: "策略假设不存在" });
     const kindMap = { price_action: "trend", trend: "trend", breakout: "breakout", mean_reversion: "meanrev", intraday_setup: "trend", momentum: "macd", other: "trend" };
     let strat = kindMap[hypo.kind] || "trend";
     if (hypo.direction === "short" && strat === "trend") strat = "death_cross";

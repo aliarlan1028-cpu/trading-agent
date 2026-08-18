@@ -36,13 +36,14 @@ export function registerTradePlanRoutes(app, ctx) {
     const bundle = runExpertAnalysis(db, {
       trigger_type: "autonomous_trade_precheck",
       question: `${plan.symbol} ${plan.direction} 计划前置审查`,
-      symbol: plan.symbol
+      symbol: plan.symbol,
+      principal: { tenantId: plan.tenantId, userId: plan.ownerUserId, isOwner: req.user?.isOwner === true }
     });
     plan.analysisBundleId = bundle.id;
     bindKnowledgeSkillsToPlan(db, plan, {
       timeframe: req.body.timeframe || "1h",
       regime: db.marketRegime?.regime || db.marketRegime?.label || ""
-    }, db.user.name);
+    }, req.user?.name || "Trader");
     // 手工/API 创建仍允许研究性自定义计划，但只对能确定匹配的五类策略写入版本归因；
     // 未归类计划会明确标成 legacy_unclassified，不会混入任何策略产品的成绩。
     bindPlanToStrategyProduct(db, plan, { source: "trade_plan_api" });

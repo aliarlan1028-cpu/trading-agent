@@ -13,6 +13,7 @@ import {
 } from "./tradeReviewQueue.mjs";
 import { stampReviewMemoryContext } from "./reviewLearning.mjs";
 import { buildStructuredTradeAssessment, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { belongsToPrincipal } from "./principalScope.mjs";
 
 export function storedTradeWindowNews(db, symbol, openAt, closeAt) {
   const base = String(symbol || "").split(/[/-]/)[0].toUpperCase();
@@ -226,9 +227,12 @@ function buildLossClusters(closes) {
 }
 
 export function buildReviewAnalytics(db, options = {}) {
-  if (options.ownerOnly) migrateLegacyOwnerReviewProvenance(db);
+  if (Object.hasOwn(options, "ownerOnly")) throw new Error("review_analytics_explicit_principal_required");
+  const principal = options.principal || null;
+  if (!principal?.tenantId || !(principal.userId || principal.id)) throw new Error("review_analytics_explicit_principal_required");
+  const belongs = (row) => belongsToPrincipal(row, principal);
   // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
-  const scopedFills = options.ownerOnly ? (db.fills || []).filter((row) => isOwnerReviewRow(db, row)) : (db.fills || []);
+  const scopedFills = (db.fills || []).filter(belongs);
   const allLifecycles = groupClosedTradeLifecycles(scopedFills);
   const pendingFinancialReconciliation = allLifecycles.filter((row) => !isFinanciallyReconciledLifecycle(row)).length;
   const closes = allLifecycles.filter(isFinanciallyReconciledLifecycle)
@@ -288,30 +292,35 @@ export function buildReviewAnalytics(db, options = {}) {
   }));
   const lossClusters = buildLossClusters(enriched);
   const ruleContribution = (db.riskRules || []).map((rule) => {
-    const checks = (db.riskChecks || []).filter((check) => JSON.stringify(check).includes(rule.id) || JSON.stringify(check).includes(rule.name));
+    const checks = (db.riskChecks || []).filter(belongs).filter((check) => JSON.stringify(check).includes(rule.id) || JSON.stringify(check).includes(rule.name));
     const blocked = checks.filter((check) => /block|reject|阻断|拒绝/i.test(String(check.decision || check.result || check.status))).length;
     return { id: rule.id, name: rule.name, checks: checks.length, blocked, contribution: blocked ? "减少坏交易暴露" : "待积累样本" };
   });
-  const extensionSkillContribution = (db.skills || []).map((skill) => {
-    const runs = (db.skillRuns || []).filter((run) => run.skillId === skill.id);
+  const extensionSkillContribution = (db.skills || []).filter((skill) => skill.native === true || belongs(skill)).map((skill) => {
+    const runs = (db.skillRuns || []).filter(belongs).filter((run) => run.skillId === skill.id);
     const ok = runs.filter((run) => ["ok", "completed"].includes(String(run.status).toLowerCase())).length;
     return { id: skill.id, name: skill.name, runs: runs.length, successRatePct: runs.length ? Number(((ok / runs.length) * 100).toFixed(1)) : null, contribution: runs.length ? "有运行样本" : "未验证" };
   });
-  const knowledgeSkillContribution = (db.knowledge?.tradingSkills || []).map((skill) => {
-    const metrics = skill.liveMetrics || {};
+  const knowledgeSkillContribution = (db.knowledge?.tradingSkills || []).filter(belongs).map((skill) => {
+    const rows = (db.knowledge?.skillAttributions || []).filter(belongs)
+      .filter((row) => row.skillId === skill.id && row.skillVersion === skill.version && Number.isFinite(Number(row.weightedPnl)));
+    const wins = rows.filter((row) => Number(row.netRealizedPnl) > 0);
+    const grossWin = rows.filter((row) => Number(row.netRealizedPnl) > 0).reduce((sum, row) => sum + Number(row.weightedPnl), 0);
+    const grossLoss = Math.abs(rows.filter((row) => Number(row.netRealizedPnl) < 0).reduce((sum, row) => sum + Number(row.weightedPnl), 0));
+    const weightedPnl = rows.reduce((sum, row) => sum + Number(row.weightedPnl), 0);
     return {
       id: skill.id,
       name: `${skill.name} v${skill.version}`,
-      runs: Number(metrics.trades || 0),
-      successRatePct: metrics.winRatePct ?? null,
-      contribution: metrics.trades
-        ? `加权盈亏 ${metrics.weightedPnl ?? 0} · PF ${metrics.profitFactor ?? "-"} · ${skill.status}`
+      runs: rows.length,
+      successRatePct: rows.length ? Number(((wins.length / rows.length) * 100).toFixed(1)) : null,
+      contribution: rows.length
+        ? `加权盈亏 ${Number(weightedPnl.toFixed(8))} · PF ${grossLoss > 0 ? Number((grossWin / grossLoss).toFixed(2)) : "-"} · ${skill.status}`
         : `尚无已平仓归因样本 · ${skill.status}`
     };
   });
   const skillContribution = [...knowledgeSkillContribution, ...extensionSkillContribution];
-  const validation = db.strategyExperiments || [];
-  const confidence = (db.agentRuns || []).slice(0, 20).map((run) => ({
+  const validation = (db.strategyExperiments || []).filter(belongs);
+  const confidence = (db.agentRuns || []).filter(belongs).slice(0, 20).map((run) => ({
     id: run.id,
     goal: run.goal,
     before: number(run.confidenceBefore),
@@ -340,10 +349,12 @@ export function buildReviewAnalytics(db, options = {}) {
   };
 }
 
-export function backfillReviewFields(db) {
+export function backfillReviewFields(db, options = {}) {
+  const principal = options.principal || null;
+  const belongs = (row) => belongsToPrincipal(row, principal);
   let updated = 0;
   const plans = db.tradePlans || [];
-  for (const executionOrder of db.executionOrders || []) {
+  for (const executionOrder of (db.executionOrders || []).filter(belongs)) {
     const plan = plans.find((item) => item.id === executionOrder.planId) || {};
     if (!executionOrder.strategy) {
       executionOrder.strategy = plan.strategy || plan.strategy_type || "manual_review";
@@ -365,7 +376,7 @@ export function backfillReviewFields(db) {
       updated += 1;
     }
   }
-  for (const fill of db.fills || []) {
+  for (const fill of (db.fills || []).filter(belongs)) {
     let { executionOrder, plan } = resolveTradeContext(db, fill);
     // 没有 executionOrderId 的旧 fill 才允许按明确的计划 ID 找执行单。
     const fillPlanId = fill.tradePlanId || fill.planId || null;
@@ -444,7 +455,11 @@ export function backfillReviewFields(db) {
       }
     }
   }
-  return { updated, fills: (db.fills || []).length, executionOrders: (db.executionOrders || []).length };
+  return {
+    updated,
+    fills: (db.fills || []).filter(belongs).length,
+    executionOrders: (db.executionOrders || []).filter(belongs).length
+  };
 }
 
 function parseFeeUsdt(fill = {}) {
@@ -453,9 +468,7 @@ function parseFeeUsdt(fill = {}) {
   return match ? Math.abs(Number(match[1])) : null;
 }
 
-export function createStrategyImprovementCycle(db, payload = {}) {
-  db.strategyExperiments ||= [];
-  migrateLegacyOwnerReviewProvenance(db);
+function resolveStrategyImprovementCycle(db, payload = {}, options = {}) {
   const sourceImprovement = payload.sourceImprovementId
     ? (db.ownerImprovementItems || []).find((item) => item.id === payload.sourceImprovementId && isOwnerReviewRow(db, item))
     : null;
@@ -466,13 +479,10 @@ export function createStrategyImprovementCycle(db, payload = {}) {
     throw Object.assign(new Error("strategy_improvement_required"), { status: 409, code: "strategy_improvement_required" });
   }
   const attempts = payload.sourceImprovementId
-    ? db.strategyExperiments.filter((item) => item.sourceImprovementId === payload.sourceImprovementId && isOwnerReviewRow(db, item))
+    ? (db.strategyExperiments || []).filter((item) => item.sourceImprovementId === payload.sourceImprovementId && isOwnerReviewRow(db, item))
     : [];
   const existing = attempts.find((item) => !["failed", "ineffective", "superseded"].includes(String(item.status || "").toLowerCase()));
-  if (existing) {
-    const review = (db.reviews || []).find((item) => item.experimentId === existing.id) || null;
-    return { message: "该 Owner 优化项已有进行中的验证实验", review, experiment: existing, analytics: buildReviewAnalytics(db, { ownerOnly: true }), reused: true };
-  }
+  if (existing && options.ignoreExisting !== true) return { sourceImprovement, attempts, existing };
   const requestedRef = payload.strategyRef || null;
   const productId = requestedRef?.productId || sourceImprovement?.scope?.strategyProductId || null;
   const scopedBaselineId = sourceImprovement?.scope?.strategyProductVersionId || sourceImprovement?.scope?.nativeStrategyVersionId || sourceImprovement?.scope?.strategyVersionId || null;
@@ -504,7 +514,26 @@ export function createStrategyImprovementCycle(db, payload = {}) {
   if (requestedRef?.definitionHash && requestedRef.definitionHash !== baseline.contentHash) {
     throw Object.assign(new Error("strategy_baseline_hash_mismatch"), { status: 409, code: "strategy_baseline_hash_mismatch" });
   }
-  const analytics = buildReviewAnalytics(db, { ownerOnly: true });
+  return { sourceImprovement, attempts, existing: null, baseline };
+}
+
+// Pure preflight for routes that need to guarantee that a rejected Owner action
+// has no state, audit or trace side effects. It deliberately does not run legacy
+// migrations or create records.
+export function validateStrategyImprovementCycle(db, payload = {}) {
+  return resolveStrategyImprovementCycle(db, payload, { ignoreExisting: true });
+}
+
+export function createStrategyImprovementCycle(db, payload = {}, options = {}) {
+  db.strategyExperiments ||= [];
+  migrateLegacyOwnerReviewProvenance(db);
+  const resolved = resolveStrategyImprovementCycle(db, payload);
+  if (resolved.existing) {
+    const review = (db.reviews || []).find((item) => item.experimentId === resolved.existing.id) || null;
+    return { message: "该 Owner 优化项已有进行中的验证实验", review, experiment: resolved.existing, analytics: buildReviewAnalytics(db, { principal: { tenantId: db.user?.tenantId, userId: db.user?.id, isOwner: true } }), reused: true };
+  }
+  const { sourceImprovement, attempts, baseline } = resolved;
+  const analytics = buildReviewAnalytics(db, { principal: { tenantId: db.user?.tenantId, userId: db.user?.id, isOwner: true } });
   const weakest = analytics.lossClusters[0] || analytics.breakdowns.strategy.slice().sort((a, b) => a.pnl - b.pnl)[0];
   const hypothesis = payload.hypothesis || (weakest
     ? `针对「${weakest.key}」降低亏损暴露，并验证胜率/盈亏比是否改善。`
@@ -516,7 +545,11 @@ export function createStrategyImprovementCycle(db, payload = {}) {
     sourceReviewId: payload.reviewId || null,
     sourceReviewIds: [...new Set([...(payload.sourceReviewIds || []), payload.reviewId].filter(Boolean))],
     sourceImprovementId: payload.sourceImprovementId || null,
-    attemptNumber: attempts.length + 1,
+    attemptNumber: Math.max(0, ...attempts.map((item) => Number(item.attemptNumber || 0))) + 1,
+    previousExperimentIds: [...new Set([
+      ...(sourceImprovement?.previousExperimentIds || []),
+      ...attempts.map((item) => item.id)
+    ].filter(Boolean))],
     tenantId: db.user?.tenantId || "tenant_owner",
     ownerUserId: db.user?.id || null,
     strategyRef: {
@@ -559,8 +592,10 @@ export function createStrategyImprovementCycle(db, payload = {}) {
   };
   db.reviews ||= [];
   db.reviews.unshift(review);
-  appendAudit(db, "创建策略改进闭环", experiment.id, "ReviewEngine", "info");
-  appendTrace(db, "review", "策略改进闭环", "ok");
+  if (options.suppressAudit !== true) {
+    appendAudit(db, "创建策略改进闭环", experiment.id, "ReviewEngine", "info");
+    appendTrace(db, "review", "策略改进闭环", "ok");
+  }
   return { message: "已创建策略改进闭环", review, experiment, analytics };
 }
 
@@ -594,10 +629,9 @@ async function llmDeepReflection(fill, ctx) {
 export async function runTradeReflection(db) {
   migrateLegacyOwnerReviewProvenance(db);
   // 先把所有真实平仓补入页面可见队列；部分平仓按执行单/计划聚合为一个交易生命周期。
-  syncTradeReviewQueue(db, { fillFilter: (fill) => isOwnerReviewRow(db, fill) });
-  const ownerFills = (db.fills || []).filter((fill) => isOwnerReviewRow(db, fill));
-  const pendingLifecycles = groupClosedTradeLifecycles(ownerFills, { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
-  const allByKey = new Map(groupClosedTradeLifecycles(ownerFills).map((item) => [item.key, item]));
+  syncTradeReviewQueue(db);
+  const pendingLifecycles = groupClosedTradeLifecycles(db.fills || [], { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
+  const allByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((item) => [item.key, item]));
   const lifecycles = pendingLifecycles.map((item) => allByKey.get(item.key) || item);
   if (!lifecycles.length) return { reflected: 0, memorized: 0, lessons: [] };
   db.memoryItems ||= [];
@@ -619,6 +653,7 @@ export async function runTradeReflection(db) {
     const win = outcome === "win";
     const loss = outcome === "loss";
     const outcomeLabel = win ? "盈利" : loss ? "亏损" : "持平";
+    const ownerEligible = isOwnerReviewRow(db, fill);
     const dir = fill.direction === "short" || fill.direction === "空" ? "做空" : "做多";
     const slip = Number(fill.slippageBps);
     const facts = [`${fill.symbol} ${dir}（${fill.strategy || "手动"}）${outcomeLabel} ${pnl.toFixed(2)} USDT`];
@@ -649,7 +684,7 @@ export async function runTradeReflection(db) {
     const primaryRoot = structuredAssessment.rootCauses?.[0] || null;
     const attribution = primaryRoot?.label || null;
     const matrixLabel = structuredAssessment.matrix?.label || "证据不足，暂不下结论";
-    const createsCandidateLesson = loss || (win && Math.abs(pnl) >= minMemo);
+    const createsCandidateLesson = ownerEligible && (loss || (win && Math.abs(pnl) >= minMemo));
     const lesson = win
       ? `盈利复盘：${facts.join("；")}。过程判断为「${matrixLabel}」；入场依据「${rationale}」。${createsCandidateLesson ? "该结论先作为候选教训" : "该结论仅作为观察记录"}，不能仅凭盈利自动证明方法有效。`
       : loss ? `亏损复盘：${facts.join("；")}。过程判断为「${matrixLabel}」${attribution ? `，主要待查原因是「${attribution}」` : ""}；入场依据「${rationale}」。单笔亏损不会自动触发策略、仓位或风控修改。`
@@ -683,8 +718,8 @@ export async function runTradeReflection(db) {
         tags: ["auto_reflection", fill.strategy || "manual", win ? "win" : "loss", ...(deep ? ["llm_deep"] : [])],
         source: "auto_reflection",
         fillId: fill.id,
-        tenantId: fill.tenantId || db.user?.tenantId || "tenant_owner",
-        ownerUserId: fill.ownerUserId || fill.createdByUserId || fill.userId || db.user?.id || null,
+        tenantId: fill.tenantId || null,
+        ownerUserId: fill.ownerUserId || fill.createdByUserId || fill.userId || null,
         learningStatus: "candidate",
         createdAt: nowIso()
       };

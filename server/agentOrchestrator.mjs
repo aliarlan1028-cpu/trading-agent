@@ -138,7 +138,10 @@ export function parseMandateCommand(db, text = DEFAULT_COMMAND) {
 export function runAgentCommand(db, payload = {}) {
   const command = payload.command || payload.goal || DEFAULT_COMMAND;
   const mandateDraft = parseMandateCommand(db, command);
-  const run = createAgentRun(db, command, mandateDraft);
+  const run = createAgentRun(db, command, mandateDraft, {
+    tenantId: payload.tenantId, userId: payload.userId,
+    userName: payload.userName, isOwner: payload.isOwner === true
+  });
   if (!mandateDraft.allowedSymbols.length) {
     run.status = "setup_required";
     run.steps.push(step("setup_required", "等待交易目标", "请在目标里写明至少一个交易对，例如 BTC、ETH 或 SOL；系统不会在缺少目标时生成交易计划。", run));
@@ -160,7 +163,8 @@ export function runAgentCommand(db, payload = {}) {
     trigger_type: "agent_orchestrator",
     question: command,
     symbol: mandateDraft.allowedSymbols[0],
-    market_context: db.markets?.find((item) => item.symbol === mandateDraft.allowedSymbols[0])
+    market_context: db.markets?.find((item) => item.symbol === mandateDraft.allowedSymbols[0]),
+    principal: run.principal
   });
   bundle.agentRunId = run.id;
   bundle.hypothesis ||= `${mandateDraft.allowedSymbols[0]} 需要结合真实行情、账户状态与授权边界评估。`;
@@ -171,8 +175,8 @@ export function runAgentCommand(db, payload = {}) {
 
   const intent = createTradeIntent(db, run, mandateDraft, bundle);
   const plan = createTradePlanFromIntent(db, intent, mandateDraft, bundle);
-  plan.tenantId = run.tenantId || db.user?.tenantId || "tenant_owner";
-  plan.ownerUserId = run.ownerUserId || db.user?.id || null;
+  plan.tenantId = run.tenantId || null;
+  plan.ownerUserId = run.requestedByUserId || null;
   bindKnowledgeSkillsToPlan(db, plan, {
     // 不按周期过滤(审计 #15):time_horizon 恒 intraday 使 4h/1d 技能永远选不到;
     // 技能信号本就按各自 spec.timeframe 在 candlesByTf 上评估,跨周期绑定是安全的。
@@ -233,7 +237,7 @@ export function changeAgentRunStatus(db, runId, status) {
   return run;
 }
 
-function createAgentRun(db, command, mandateDraft) {
+function createAgentRun(db, command, mandateDraft, principal = {}) {
   const run = {
     id: id("agent_run"),
     agentRunId: null,
@@ -241,6 +245,10 @@ function createAgentRun(db, command, mandateDraft) {
     goal: command,
     status: "created",
     mandateDraftId: mandateDraft.id,
+    tenantId: principal.tenantId || null,
+    requestedByUserId: principal.userId || null,
+    requestedBy: principal.userName || "Agent",
+    principal: { tenantId: principal.tenantId || null, userId: principal.userId || null, isOwner: principal.isOwner === true },
     steps: [],
     createdAt: nowIso()
   };
@@ -257,6 +265,8 @@ function createTradeIntent(db, run, mandateDraft, bundle) {
     agentRunId: run.id,
     agent_run_id: run.id,
     analysisBundleId: bundle.id,
+    tenantId: run.tenantId || null,
+    ownerUserId: run.requestedByUserId || null,
     symbol: mandateDraft.allowedSymbols[0],
     market_type: "perpetual",
     direction: /空|short/i.test(run.goal) ? "short" : /多|long|买/i.test(run.goal) ? "long" : "observe",
@@ -275,7 +285,10 @@ function createTradeIntent(db, run, mandateDraft, bundle) {
   intent.knowledgeSkillIds = [];
   if (intent.direction === "long" || intent.direction === "short") {
     try {
-      const candidates = selectActiveKnowledgeSkills(db, { symbol: intent.symbol, direction: intent.direction }, { limit: 3 });
+      const candidates = selectActiveKnowledgeSkills(db, { symbol: intent.symbol, direction: intent.direction }, {
+        limit: 3,
+        principal: run.principal
+      });
       intent.knowledgeSkillIds = candidates
         .filter((skill) => evaluateKnowledgeSkillSignal(db, skill, intent.symbol)?.triggered)
         .map((skill) => skill.id);
@@ -310,6 +323,8 @@ function createTradePlanFromIntent(db, intent, mandateDraft, bundle) {
     mandateVersion: Number((findActiveMandate(db) || mandateDraft)?.version || 1),
     analysisBundleId: bundle.id,
     analysis_bundle_id: bundle.id,
+    tenantId: intent.tenantId || null,
+    ownerUserId: intent.ownerUserId || null,
     exchange: mandateDraft.exchanges[0],
     marketType: "perpetual_usdt",
     market_type: "perpetual",

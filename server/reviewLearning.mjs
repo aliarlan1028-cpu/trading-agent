@@ -1,5 +1,6 @@
 import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
-import { isActiveReviewLesson, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
+import { isActiveReviewLesson, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
+import { belongsToPrincipal, normalizePrincipal } from "./principalScope.mjs";
 
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 6;
@@ -172,6 +173,10 @@ function memoryScore(metadata, query, createdAt) {
 }
 
 export function retrieveRelevantReviewMemories(db, options = {}) {
+  const principal = normalizePrincipal(options.principal);
+  // Owner review lessons are private by design. A missing principal and every
+  // non-Owner principal fail closed instead of falling back to global db.user.
+  if (!principal.isOwner || !principal.tenantId || !principal.userId) return [];
   migrateLegacyOwnerReviewProvenance(db);
   const symbols = [...new Set([
     ...(options.symbols || []).map(normalizeSymbol),
@@ -192,7 +197,7 @@ export function retrieveRelevantReviewMemories(db, options = {}) {
   for (const memory of db.memoryItems || []) {
     // 新复盘先进入候选区，只有 Owner 批准的 active 教训才允许进入下一轮交易决策。
     // 升级前没有 learningStatus 的历史记忆明确隔离为 legacy_unreviewed，不能兼容性放行。
-    if (!isActiveReviewLesson(memory) || !isOwnerReviewRow(db, memory)) continue;
+    if (!isActiveReviewLesson(memory) || !belongsToPrincipal(memory, principal)) continue;
     const metadata = reviewMemoryMetadata(db, memory);
     // 失去底层生命周期和复盘的历史内容保留给人工审计，但不得作为结果型证据注入新决策。
     if (metadata.financialBasis === "unreconciled") continue;
@@ -307,8 +312,12 @@ function comparableKey(row) {
   return [row.symbol, row.strategyProductId || row.setupType || row.strategy || "", row.timeframe || ""].join("|");
 }
 
-export function buildReviewLearningAnalytics(db) {
-  const rows = groupClosedTradeLifecycles(db.fills || []).filter((lifecycle) => finite(lifecycle.netRealizedPnl)).map((lifecycle) => {
+export function buildReviewLearningAnalytics(db, options = {}) {
+  const principal = normalizePrincipal(options.principal);
+  const scopedFills = principal.tenantId && principal.userId
+    ? (db.fills || []).filter((fill) => belongsToPrincipal(fill, principal))
+    : [];
+  const rows = groupClosedTradeLifecycles(scopedFills).filter((lifecycle) => finite(lifecycle.netRealizedPnl)).map((lifecycle) => {
     const fill = lifecycle.representative;
     const plan = resolveTradeContext(db, lifecycle).plan || {};
     const applied = plan.reviewLearning?.applied || plan.appliedReviewLessons || [];
@@ -332,7 +341,7 @@ export function buildReviewLearningAnalytics(db) {
   const baseline = cohortMetrics(comparableUnused);
   const comparable = overallUsed.trades >= MIN_COMPARABLE_SAMPLE && baseline.trades >= MIN_COMPARABLE_SAMPLE;
   const byMemory = [];
-  for (const memory of (db.memoryItems || []).filter((item) => isActiveReviewLesson(item) && isOwnerReviewRow(db, item))) {
+  for (const memory of (db.memoryItems || []).filter((item) => principal.isOwner && isActiveReviewLesson(item) && belongsToPrincipal(item, principal))) {
     const outcomes = rows.filter((row) => row.applied.some((item) => item.memoryId === memory.id));
     if (!outcomes.length) continue;
     const meta = reviewMemoryMetadata(db, memory);

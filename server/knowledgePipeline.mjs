@@ -84,6 +84,7 @@ export async function importKnowledge(db, payload = {}) {
     bookFocus: payload.bookFocus || undefined,
     synthetic: payload.type === "book_title",
     tenantId: payload.tenantId || "tenant_owner",
+    ownerUserId: payload.ownerUserId || null,
     crawlDepth: payload.crawlDepth != null ? clampInt(payload.crawlDepth, 0, 3, 1) : undefined,
     crawlMaxPages: payload.crawlMaxPages != null ? clampInt(payload.crawlMaxPages, 1, 40, 12) : undefined,
     importedAt: nowIso()
@@ -374,11 +375,11 @@ export async function consolidateRuleProposals(db) {
 }
 
 // 词频检索（同步，回退用）：无 embedding 服务或片段未向量化时使用。
-export function retrieveChunks(db, query, topK = 5) {
+export function retrieveChunks(db, query, topK = 5, options = {}) {
   const text = String(query || "").trim();
   if (!text) return [];
   const queryEmbedding = embedText(text);
-  return (db.knowledge?.chunks || [])
+  return (options.chunks || db.knowledge?.chunks || [])
     .map((chunk) => ({ ...chunk, score: cosine(queryEmbedding, chunk.lexical || embedText(chunk.text || "")), retrieval: "lexical" }))
     .filter((chunk) => chunk.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -386,20 +387,20 @@ export function retrieveChunks(db, query, topK = 5) {
 }
 
 // 语义检索（异步，首选）：用稠密向量做余弦相似度；无 provider 或片段未向量化时自动回退词频。
-export async function retrieveChunksSemantic(db, query, topK = 5) {
+export async function retrieveChunksSemantic(db, query, topK = 5, options = {}) {
   const text = String(query || "").trim();
   if (!text) return [];
   const provider = embeddingProvider();
-  if (!provider) return retrieveChunks(db, text, topK);
-  const embeddedChunks = (db.knowledge?.chunks || []).filter((chunk) => Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model);
-  if (!embeddedChunks.length) return retrieveChunks(db, text, topK);
+  if (!provider) return retrieveChunks(db, text, topK, options);
+  const embeddedChunks = (options.chunks || db.knowledge?.chunks || []).filter((chunk) => Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model);
+  if (!embeddedChunks.length) return retrieveChunks(db, text, topK, options);
   let queryVector;
   try {
     queryVector = await embedOne(text);
   } catch {
-    return retrieveChunks(db, text, topK);
+    return retrieveChunks(db, text, topK, options);
   }
-  if (!queryVector) return retrieveChunks(db, text, topK);
+  if (!queryVector) return retrieveChunks(db, text, topK, options);
   return embeddedChunks
     .map((chunk) => ({ ...chunk, score: denseCosine(queryVector, chunk.embedding), retrieval: "semantic" }))
     .filter((chunk) => chunk.score > 0)
@@ -408,10 +409,10 @@ export async function retrieveChunksSemantic(db, query, topK = 5) {
 }
 
 // 回填/重建全部片段的语义向量（配置 embedding 服务后调用一次）。
-export async function reembedAllChunks(db) {
+export async function reembedAllChunks(db, options = {}) {
   const provider = embeddingProvider();
   if (!provider) return { status: "no_provider", message: "未配置 OpenAI/Gemini embedding，无法语义向量化。" };
-  const chunks = db.knowledge?.chunks || [];
+  const chunks = options.chunks || db.knowledge?.chunks || [];
   const pending = chunks.filter((chunk) => !(Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model));
   if (!pending.length) return { status: "ok", model: provider.model, embedded: 0, total: chunks.length, message: "全部片段已是最新向量。" };
   let embedded = 0;
@@ -431,9 +432,9 @@ export async function reembedAllChunks(db) {
   return { status: "ok", model: provider.model, embedded, total: chunks.length, message: `已向量化 ${embedded} 个片段` };
 }
 
-export function embeddingStatus(db) {
+export function embeddingStatus(db, options = {}) {
   const provider = embeddingProvider();
-  const chunks = db.knowledge?.chunks || [];
+  const chunks = options.chunks || db.knowledge?.chunks || [];
   const embedded = provider ? chunks.filter((chunk) => Array.isArray(chunk.embedding) && chunk.embeddingModel === provider.model).length : 0;
   return {
     provider: provider?.name || null,
@@ -446,13 +447,19 @@ export function embeddingStatus(db) {
 }
 
 export async function ragQuery(db, query, options = {}) {
-  const chunks = await retrieveChunksSemantic(db, query, Number(options.topK || 5));
+  const principal = options.principal || {};
+  const tenantId = principal.tenantId || null;
+  const ownerUserId = principal.userId || principal.id || null;
+  if (!tenantId || !ownerUserId) throw new Error("knowledge_rag_explicit_principal_required");
+  const chunks = await retrieveChunksSemantic(db, query, Number(options.topK || 5), { chunks: options.chunks });
   const mode = chunks[0]?.retrieval || (embeddingProvider() ? "semantic" : "lexical");
   const answer = chunks.length
     ? `${mode === "semantic" ? "语义" : "词频"}召回 ${chunks.length} 个知识片段：${chunks.map((chunk) => chunk.citationLocator).join("、")}`
     : "未召回相关知识片段。";
   const bundle = {
     id: id("ab"),
+    tenantId,
+    ownerUserId,
     triggerType: "rag_query",
     question: query,
     summary: answer,
@@ -509,7 +516,7 @@ export async function importGithubKnowledge(db, repoUrl, subPath = "", options =
       used += 1;
       totalChars += block.length;
     }
-    const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill", tenantId: options.tenantId });
+    const source = await importKnowledge(db, { title: repoUrl, type: "github", url: repoUrl, permission: "用户授权仓库", domain: "代码/Skill", tenantId: options.tenantId, ownerUserId: options.ownerUserId });
     const syntheticPath = path.join(importsDir, `${source.id}.md`);
     await fs.writeFile(syntheticPath, combined.join("\n"), { encoding: "utf8", mode: 0o600 });
     source.filePath = syntheticPath;

@@ -2,15 +2,23 @@
 // pause/resume/stop、触发一次巡检）—— 从 index.mjs 按 registrar 范式迁出。依赖经 ctx 注入。
 import { resolvePermissions } from "../auth.mjs";
 import { userAgentInvocation } from "../agentInvocation.mjs";
+import { belongsToPrincipal, principalKey } from "../principalScope.mjs";
 
 export function registerAgentRunRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, nowIso, appendAudit, updateStateFile, approveStateFile, getAgentStatus, addMemoryItem, changeAgentRunStatus, runAgentCycle } = ctx;
+  const principal = (req) => ({ tenantId: req.tenantId || req.user?.tenantId || "", userId: req.user?.id || "", isOwner: req.user?.isOwner === true });
+  const stateFiles = (req) => {
+    const subject = principal(req);
+    if (db.user?.tenantId === subject.tenantId && db.user?.id === subject.userId) return db.agentStateFiles || {};
+    return db.agentStateFilesByPrincipal?.[principalKey(subject)] || {};
+  };
+  const visibleRuns = (req) => (db.agentRuns || []).filter((row) => belongsToPrincipal(row, principal(req)));
   const runNotFound = (res) => res.status(404).json({ error: "AgentRun not found" });
 
-  app.get("/api/agent/state-files", requirePermission("knowledge.read"), (_req, res) => res.json(db.agentStateFiles));
+  app.get("/api/agent/state-files", requirePermission("knowledge.read"), (req, res) => res.json(stateFiles(req)));
   app.patch("/api/agent/state-files/:name", requirePermission("admin:system"), (req, res) => {
     try {
-      persist(res, updateStateFile(db, req.params.name, req.body.content || "", { actor: req.user?.name || "Admin", userId: req.user?.id || null }));
+      persist(res, updateStateFile(db, req.params.name, req.body.content || "", { actor: req.user?.name || "Admin", tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id || null }));
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
@@ -18,7 +26,7 @@ export function registerAgentRunRoutes(app, ctx) {
 
   app.post("/api/agent/state-files/:name/approve", requirePermission("approve:knowledge_skill"), (req, res) => {
     try {
-      persist(res, approveStateFile(db, req.params.name, { actor: req.user?.name || "KnowledgeApprover", userId: req.user?.id || null }));
+      persist(res, approveStateFile(db, req.params.name, { actor: req.user?.name || "KnowledgeApprover", tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id || null }));
     } catch (error) {
       res.status(409).json({ error: error.message });
     }
@@ -42,15 +50,15 @@ export function registerAgentRunRoutes(app, ctx) {
     persist(res, profile);
   });
 
-  app.get("/api/agent/memory", requirePermission("knowledge.read"), (_req, res) => res.json(db.memoryItems));
+  app.get("/api/agent/memory", requirePermission("knowledge.read"), (req, res) => res.json((db.memoryItems || []).filter((row) => belongsToPrincipal(row, principal(req)))));
   app.post("/api/agent/memory", requirePermission("write:knowledge"), (req, res) => {
-    persist(res, addMemoryItem(db, req.body));
+    persist(res, addMemoryItem(db, { ...req.body, tenantId: req.tenantId || req.user?.tenantId, createdByUserId: req.user?.id }));
   });
 
-  app.get("/api/agent-runs", requirePermission("account.read"), (_req, res) => res.json(db.agentRuns));
-  app.get("/api/agent/runs", requirePermission("account.read"), (_req, res) => res.json(db.agentRuns));
+  app.get("/api/agent-runs", requirePermission("account.read"), (req, res) => res.json(visibleRuns(req)));
+  app.get("/api/agent/runs", requirePermission("account.read"), (req, res) => res.json(visibleRuns(req)));
   app.get("/api/agent/runs/:id", requirePermission("account.read"), (req, res) => {
-    const run = db.agentRuns.find((item) => item.id === req.params.id);
+    const run = visibleRuns(req).find((item) => item.id === req.params.id);
     if (!run) return runNotFound(res);
     res.json(run);
   });

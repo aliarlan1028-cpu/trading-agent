@@ -17,12 +17,16 @@ import { syncNativeStrategyProducts } from "../server/strategyProducts.mjs";
 
 function state() {
   return {
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
+    tenants: [{ id: "tenant_owner", ownerUserId: "owner-1" }],
     auditLogs: [], traces: [], backtests: [], tradePlans: [], fills: [], executionOrders: [], orders: [],
     strategyVersions: [], strategyDeployments: [], strategyVersionEvents: [],
     strategyStudioDrafts: [], strategyBlueprintVersions: [], strategyStudioBacktests: [],
     strategyMarketplaceListings: [], strategyAssignments: []
   };
 }
+
+const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
 
 function candles(count = 900) {
   let close = 100;
@@ -82,7 +86,7 @@ test("聊天创建策略复用策略工作室草稿与同一自动测试链", ()
     stop: "入场价下方 2%",
     takeProfit: "2.5R",
     templateId: "meanrev"
-  }, "用户(经 AI)");
+  }, "用户(经 AI)", { principal: ownerPrincipal });
   assert.equal(db.strategyStudioDrafts.length, 1);
   assert.equal(draft.authoring.channel, "agent_chat");
   assert.equal(draft.authoring.toolName, "create_skill_from_idea");
@@ -90,32 +94,32 @@ test("聊天创建策略复用策略工作室草稿与同一自动测试链", ()
   assert.deepEqual(draft.blueprint.symbols, ["ADA/USDT"]);
   assert.equal(draft.blueprint.exitPolicy.stopLossPct, 2);
   assert.equal(draft.blueprint.exitPolicy.takeProfitR, 2.5);
-  assert.equal(runDraftGeneratedTests(db, draft.id).suite.status, "passed");
+  assert.equal(runDraftGeneratedTests(db, draft.id, "Owner", { principal: ownerPrincipal }).suite.status, "passed");
   assert.equal(db.knowledge?.tradingSkills?.length || 0, 0, "不得再生成第二套知识技能对象");
 });
 
 test("studio lifecycle requires tests and OOS evidence before internal publication and AI use", async () => {
   const db = state();
   syncNativeStrategyProducts(db);
-  const draft = await createStrategyDraft(db, "BTC/USDT 1h 10和30均线金叉做多，止损2%，止盈2R", {}, "Owner");
+  const draft = await createStrategyDraft(db, "BTC/USDT 1h 10和30均线金叉做多，止损2%，止盈2R", { principal: ownerPrincipal }, "Owner");
   assert.equal(draft.status, "compiled");
-  const generated = runDraftGeneratedTests(db, draft.id, "Owner");
+  const generated = runDraftGeneratedTests(db, draft.id, "Owner", { principal: ownerPrincipal });
   assert.equal(generated.suite.status, "passed");
 
-  const result = backtestStrategyDraftWithCandles(db, draft.id, candles(), { symbol: "BTC/USDT" }, "Owner");
+  const result = backtestStrategyDraftWithCandles(db, draft.id, candles(), { symbol: "BTC/USDT", principal: ownerPrincipal }, "Owner");
   assert.equal(result.backtest.methodology, "anchored 40% training + 3 purged out-of-sample folds");
   assert.equal(result.backtest.folds.length, 3);
   assert.equal(result.backtest.costs.feePct, 0.05);
   result.backtest.passed = false;
-  assert.throws(() => publishStrategyDraft(db, draft.id, { slug: "btc_ma_cross" }, "Owner"), /样本外回测门槛/);
+  assert.throws(() => publishStrategyDraft(db, draft.id, { slug: "btc_ma_cross", principal: ownerPrincipal }, "Owner"), /样本外回测门槛/);
 
   result.backtest.passed = true;
-  const published = publishStrategyDraft(db, draft.id, { slug: "btc_ma_cross" }, "Owner");
+  const published = publishStrategyDraft(db, draft.id, { slug: "btc_ma_cross", principal: ownerPrincipal }, "Owner");
   assert.equal(published.version.id, "btc_ma_cross@1");
   assert.equal(published.version.immutable, true);
   assert.equal(published.listing.visibility, "internal");
 
-  const enabled = setStrategyAssignment(db, published.version.id, true, "Owner");
+  const enabled = setStrategyAssignment(db, published.version.id, true, "Owner", { principal: ownerPrincipal });
   assert.equal(enabled.assignment.mode, "owner_live_observation");
   db.markets = [{
     symbol: "BTC/USDT",
@@ -126,7 +130,7 @@ test("studio lifecycle requires tests and OOS evidence before internal publicati
   assert.equal(plan.strategyBlueprintRef.signalEvidence.ready, true);
   assert.equal(validatePlanBlueprintGate(db, plan).allowed, true);
 
-  setStrategyAssignment(db, published.version.id, false, "Owner");
+  setStrategyAssignment(db, published.version.id, false, "Owner", { principal: ownerPrincipal });
   assert.equal(validatePlanBlueprintGate(db, plan).reason, "strategy_blueprint_disabled");
   assert.equal(buildStrategyMarketplace(db).summary.total, 6);
 });

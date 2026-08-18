@@ -43,6 +43,9 @@ export async function generateCandidates(db, sourceId, { max = 6 } = {}) {
     if (!c || !["strategy", "lens", "workflow"].includes(c.type) || !c.name) continue;
     const cand = {
       id: id("cand"),
+      tenantId: source.tenantId || null,
+      ownerUserId: source.ownerUserId || null,
+      platformScope: source.platformScope || null,
       type: c.type,
       name: String(c.name).slice(0, 80),
       summary: String(c.summary || "").slice(0, 240),
@@ -76,6 +79,10 @@ export function adoptCandidate(db, candidateId, actor = "用户") {
     if (!res.ok) return { ok: false, error: res.error };
     // 采纳只进入标准策略生命周期；知识来源不能绕过编译、模拟前向和小额试用直接实盘激活。
     res.skill.provenance = "knowledge_adopted";
+    res.skill.tenantId = cand.tenantId || null;
+    res.skill.ownerUserId = cand.ownerUserId || null;
+    res.skill.platformScope = cand.platformScope || null;
+    res.skill.sourceId = cand.sourceId || res.skill.sourceId || null;
     res.skill.validated = false;
     res.skill.adoptedAt = nowIso();
     res.skill.sourceTitle = cand.sourceTitle;
@@ -83,13 +90,13 @@ export function adoptCandidate(db, candidateId, actor = "用户") {
     cand.adoptedKind = "skill";
   } else if (cand.type === "lens") {
     db.knowledge.lenses ||= [];
-    const lens = markPromptArtifactDraft("lens", { id: id("lens"), name: cand.name, summary: cand.summary, promptText: cand.payload?.promptText || cand.summary, trigger: cand.payload?.trigger || "", structuredPolicy: normalizePromptPolicy("lens", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
+    const lens = markPromptArtifactDraft("lens", { id: id("lens"), tenantId: cand.tenantId || null, ownerUserId: cand.ownerUserId || null, platformScope: cand.platformScope || null, sourceId: cand.sourceId || null, name: cand.name, summary: cand.summary, promptText: cand.payload?.promptText || cand.summary, trigger: cand.payload?.trigger || "", structuredPolicy: normalizePromptPolicy("lens", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
     db.knowledge.lenses.unshift(lens);
     cand.adoptedArtifactId = lens.id;
     cand.adoptedKind = "lens";
   } else if (cand.type === "workflow") {
     db.knowledge.workflows ||= [];
-    const wf = markPromptArtifactDraft("workflow", { id: id("wf"), name: cand.name, summary: cand.summary, steps: cand.payload?.steps || [], structuredPolicy: normalizePromptPolicy("workflow", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
+    const wf = markPromptArtifactDraft("workflow", { id: id("wf"), tenantId: cand.tenantId || null, ownerUserId: cand.ownerUserId || null, platformScope: cand.platformScope || null, sourceId: cand.sourceId || null, name: cand.name, summary: cand.summary, steps: cand.payload?.steps || [], structuredPolicy: normalizePromptPolicy("workflow", cand.payload), sourceTitle: cand.sourceTitle, sourceRef: cand.sourceRef, provenance: "knowledge_adopted", createdAt: nowIso() });
     db.knowledge.workflows.unshift(wf);
     cand.adoptedArtifactId = wf.id;
     cand.adoptedKind = "workflow";

@@ -21,7 +21,7 @@ const {
 } = await import("../server/knowledgeSkills.mjs");
 
 function dbFixture(direction = "long") {
-  const source = { id: "source-1", title: "用户上传的趋势交易书", type: "pdf" };
+  const source = { id: "source-1", title: "用户上传的趋势交易书", type: "pdf", tenantId: "tenant_owner", ownerUserId: "owner-1" };
   const method = {
     id: "method-1",
     name: "唐奇安突破",
@@ -35,6 +35,8 @@ function dbFixture(direction = "long") {
     takeProfit: "2R",
     invalidation: "重大事件前不做",
     source: { id: source.id, title: source.title }
+    ,tenantId: "tenant_owner"
+    ,ownerUserId: "owner-1"
   };
   const candles = Array.from({ length: 51 }, (_, index) => ({
     time: index * 3_600_000,
@@ -45,6 +47,7 @@ function dbFixture(direction = "long") {
     volume: index === 49 ? 200 : 100
   }));
   return {
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
     meta: {},
     auditLogs: [],
     traces: [],
@@ -54,7 +57,7 @@ function dbFixture(direction = "long") {
     markets: [{ symbol: "BTC/USDT", candles, candlesTimeframe: "1h" }],
     knowledge: {
       sources: [source],
-      chunks: [{ id: "chunk-1", sourceId: source.id, citationLocator: `${source.title} #1` }],
+      chunks: [{ id: "chunk-1", sourceId: source.id, tenantId: "tenant_owner", ownerUserId: "owner-1", citationLocator: `${source.title} #1` }],
       tradingMethods: [method],
       tradingSkills: [],
       skillInvocations: [],
@@ -109,6 +112,8 @@ test("compiled knowledge skills require paper validation and human approval befo
     knowledgeSkillVersion: skill.version,
     timeframe: skill.spec.timeframe,
     params: { compiledSkillFingerprint: skill.fingerprint }
+    ,tenantId: skill.tenantId
+    ,ownerUserId: skill.ownerUserId
   });
   syncKnowledgeSkillLifecycle(db);
   assert.equal(skill.status, "paper_validated");
@@ -124,6 +129,8 @@ test("compiled knowledge skills require paper validation and human approval befo
     entry_range: [100, 100],
     stop_loss: 98,
     take_profit: [104]
+    ,tenantId: "tenant_owner"
+    ,ownerUserId: "owner-1"
   };
   const bindings = bindKnowledgeSkillsToPlan(db, plan, { timeframe: "1h", regime: "上行趋势" });
   assert.equal(bindings.length, 1);

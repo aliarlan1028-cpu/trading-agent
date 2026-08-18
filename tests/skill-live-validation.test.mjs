@@ -17,16 +17,17 @@ const {
 } = await import("../server/knowledgeSkills.mjs");
 
 function dbFixture() {
-  const source = { id: "src-1", title: "趋势书", type: "pdf" };
+  const source = { id: "src-1", title: "趋势书", type: "pdf", tenantId: "tenant_owner", ownerUserId: "owner-1" };
   const method = {
     id: "method-1", name: "唐奇安突破", direction: "long", timeframe: "1h", symbolScope: "BTC",
     entry: "收盘突破20根最高", confirmation: "成交量放大", stop: "入场下方2%", takeProfit: "2R",
-    source: { id: source.id, title: source.title }
+    source: { id: source.id, title: source.title }, tenantId: "tenant_owner", ownerUserId: "owner-1"
   };
   const candles = Array.from({ length: 51 }, (_, i) => ({
     time: i * 3_600_000, open: i === 49 ? 110 : 100, high: i === 49 ? 111 : 101, low: 99, close: i === 49 ? 110 : 100, volume: i === 49 ? 200 : 100
   }));
   return {
+    user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
     meta: {}, auditLogs: [], traces: [], fills: [], tradePlans: [], paperSessions: [],
     markets: [{ symbol: "BTC/USDT", candles, candlesTimeframe: "1h" }],
     knowledge: { sources: [source], chunks: [], tradingMethods: [method], tradingSkills: [], skillInvocations: [], skillAttributions: [] }
@@ -156,7 +157,7 @@ test("绑定到计划:试用技能信号触发即可绑定(用于真实成绩归
   skill.status = "live_probation";
   skill.executable = true;
   skill.approval = { approved: true, fingerprint: skill.fingerprint };
-  const plan = { id: "plan-x", symbol: "BTC/USDT", direction: "long", agentRunId: "run-1", entry_range: [100, 100], stop_loss: 98, take_profit: [104] };
+  const plan = { id: "plan-x", symbol: "BTC/USDT", direction: "long", agentRunId: "run-1", entry_range: [100, 100], stop_loss: 98, take_profit: [104], tenantId: skill.tenantId, ownerUserId: skill.ownerUserId };
   const bindings = bindKnowledgeSkillsToPlan(db, plan, { timeframe: "1h", regime: "上行趋势" });
   assert.equal(bindings.length, 1);
   assert.equal(plan.knowledgeSkills[0].skillId, skill.id);

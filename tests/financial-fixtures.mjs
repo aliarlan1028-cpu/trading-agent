@@ -46,6 +46,9 @@ export function financiallyReconciledFills(fills = []) {
       positionId: close.positionId,
       symbol: close.symbol,
       direction: close.direction,
+      tenantId: close.tenantId,
+      ownerUserId: close.ownerUserId,
+      userId: close.userId,
       createdAt: Number.isFinite(closeAt) ? new Date(closeAt - 1).toISOString() : "2000-01-01T00:00:00.000Z"
     }));
     entryKeys.add(key);

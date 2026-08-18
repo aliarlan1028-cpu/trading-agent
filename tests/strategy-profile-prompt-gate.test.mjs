@@ -9,6 +9,7 @@ const profile = (overrides = {}) => ({
   tenantId: "tenant_owner", ownerUserId: "owner-1", ownerApproval: { status: "approved" },
   oos: { trades: 20, expectancyR: 0.2 }, ...overrides
 });
+const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
 
 test("only optimizer-validated profiles with rolling and real paper pass enter the verified prompt block", () => {
   const db = {
@@ -19,10 +20,10 @@ test("only optimizer-validated profiles with rolling and real paper pass enter t
       profile({ id: "rolling-failed", symbol: "SUI/USDT", rollingValidation: { passed: false } })
     ],
     paperSessions: [
-      { id: "paper", symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: false }
+      { id: "paper", symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: false, tenantId: "tenant_owner", ownerUserId: "owner-1" }
     ]
   };
-  assert.deepEqual(validatedStrategyProfilesForPrompt(db).map((row) => row.id), ["profile-1"]);
+  assert.deepEqual(validatedStrategyProfilesForPrompt(db, ownerPrincipal).map((row) => row.id), ["profile-1"]);
 });
 
 test("a seeded or missing paper pass is not enough for verified prompt authority", () => {
@@ -31,16 +32,25 @@ test("a seeded or missing paper pass is not enough for verified prompt authority
     strategyProfiles: [profile()],
     paperSessions: [{ symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: true }]
   };
-  assert.equal(validatedStrategyProfilesForPrompt(db).length, 0);
+  assert.equal(validatedStrategyProfilesForPrompt(db, ownerPrincipal).length, 0);
 });
 
 test("an optimizer-valid profile stays out of the Agent prompt until Owner approval", () => {
   const db = {
     user: { id: "owner-1", tenantId: "tenant_owner" },
     strategyProfiles: [profile({ ownerApproval: { status: "pending" } })],
-    paperSessions: [{ id: "paper", symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: false }]
+    paperSessions: [{ id: "paper", symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: false, tenantId: "tenant_owner", ownerUserId: "owner-1" }]
   };
-  assert.equal(validatedStrategyProfilesForPrompt(db).length, 0);
+  assert.equal(validatedStrategyProfilesForPrompt(db, ownerPrincipal).length, 0);
+});
+
+test("a foreign tenant paper session cannot validate the current principal profile", () => {
+  const db = {
+    user: { id: "owner-1", tenantId: "tenant_owner" },
+    strategyProfiles: [profile()],
+    paperSessions: [{ id: "foreign-paper", symbol: "BTC/USDT", timeframe: "1h", strategyId: "trend", status: "passed", seeded: false, tenantId: "tenant-b", ownerUserId: "owner-b" }]
+  };
+  assert.equal(validatedStrategyProfilesForPrompt(db, ownerPrincipal).length, 0);
 });
 
 test("research view does not count oos_ok as passed", () => {

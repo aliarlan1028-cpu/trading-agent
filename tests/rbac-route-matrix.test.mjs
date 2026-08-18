@@ -62,6 +62,7 @@ test("sensitive trading, configuration and paid-model routes declare explicit RB
     ["GET /api/review/owner-loop", "admin:system"],
     ["POST /api/review/lessons/:id/action", "admin:system"],
     ["POST /api/review/improvements/:id/action", "admin:system"],
+    ["POST /api/review/improvements/:id/paper/start", "admin:system"],
     ["POST /api/review/strategy-improvement", "admin:system"],
     ["GET /api/paper/sessions", "account.read"], ["GET /api/posters/trades/:id", "account.read"],
     ["POST /api/posters/translate", "assistant.use"], ["GET /api/strategy/profiles", "knowledge.read"],
@@ -168,6 +169,7 @@ test("Owner strategy accept rolls back atomically when a versioned validation cy
     db, requirePermission,
     persist() {}, id: () => "id", nowIso: () => new Date().toISOString(), appendAudit() {},
     buildReviewAnalytics: () => ({}), backfillReviewFields: () => ({}),
+    validateStrategyImprovementCycle: () => { throw Object.assign(new Error("strategy_baseline_version_not_found"), { status: 409, code: "strategy_baseline_version_not_found" }); },
     createStrategyImprovementCycle: () => { throw Object.assign(new Error("strategy_baseline_version_not_found"), { status: 409, code: "strategy_baseline_version_not_found" }); }
   });
   const handlers = routes.get("POST /api/review/improvements/:id/action");
@@ -178,4 +180,5 @@ test("Owner strategy accept rolls back atomically when a versioned validation cy
   assert.equal(response.body.error, "strategy_baseline_version_not_found");
   assert.equal(item.state, "pending_owner");
   assert.deepEqual(db.strategyExperiments, []);
+  assert.deepEqual(db.auditLogs, []);
 });

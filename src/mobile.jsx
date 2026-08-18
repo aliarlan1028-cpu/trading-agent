@@ -48,7 +48,10 @@ import {
   buildPositionView,
   buildStrategyCatalogRows,
   hasFiniteNumber,
+  isApprovedKnowledgeWorkflow,
   isCompletedTradeReview,
+  isPublishedImportedSkill,
+  isPublishedKnowledgeStrategy,
   netReviewResult
 } from "./viewData.js";
 
@@ -608,43 +611,10 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
   );
 }
 
-const KNOW_SEGMENTS = ["上手", "方法", "技能", "规则", "图谱"];
-
-function knowledgeSourceProgress(source, methods, skills) {
-  const sourceMethods = methods.filter((method) => (method.source?.id || method.sourceId) === source.id);
-  const methodIds = new Set(sourceMethods.map((method) => method.id));
-  const sourceSkills = skills.filter((skill) => skill.sourceId === source.id || methodIds.has(skill.sourceMethodId));
-  const failedSource = /fail|error|reject|失败|错误|无可用|empty|unsupported/i.test(String(source.status || ""));
-  const has = (statuses) => sourceSkills.some((skill) => statuses.includes(skill.status));
-  const active = has(["active"]);
-  const probation = has(["live_probation"]);
-  const paperPassed = has(["paper_validated"]);
-  const forward = has(["historical_validated", "paper_validating", "paper_rejected", "paper_validated"]);
-  const compiled = has(["compiled", "historical_rejected", "degraded", "historical_validated", "paper_validating", "paper_rejected", "paper_validated"]);
-  const failedSkill = has(["compile_failed", "historical_rejected", "paper_rejected"]);
-  const processing = String(source.status || "").toLowerCase() === "processing";
-  let row = {
-    stage: processing ? 1 : 2,
-    tone: processing ? "neutral" : "info",
-    current: processing ? t("正在读取并建立索引", "Reading and indexing") : t("已可搜索和引用", "Searchable and citable"),
-    effect: processing ? t("解析完成前不会影响分析或交易。", "It cannot affect analysis or trading until parsing finishes.") : t("Gemini 可以检索本书回答问题，但它仍只是研究资料，不会直接下单。", "Gemini can retrieve this source to answer questions, but it remains research material and cannot place orders."),
-    next: processing ? t("等待解析完成", "Wait for parsing") : t("提取可测试的方法", "Extract testable methods"),
-    action: processing ? null : "reparse"
-  };
-  if (failedSource) row = { stage: 0, tone: "danger", current: t("导入未完成", "Import incomplete"), effect: t("内容暂时不可检索，也不会参与分析或交易。", "The content is not searchable and cannot participate in analysis or trading."), next: t("重新解析", "Parse again"), action: "reparse" };
-  else if (active) row = { stage: 8, tone: "ok", current: t("已转正", "Active"), effect: t("真实成绩已达标；只有行情、方向、周期和硬风控全部匹配时才会被采用。", "Live results passed. It is used only when market, direction, timeframe, and hard-risk checks all match."), next: t("查看采用与真实成绩", "Review usage and live results"), action: "capabilities" };
-  else if (probation) row = { stage: 7, tone: "info", current: t("小额实盘试用", "Limited live probation"), effect: t("正在受限额度内积累真实结果，达标转正，不达标会降级。", "It is collecting live evidence under limited size and will graduate or degrade based on results."), next: t("查看试用成绩", "Review probation results"), action: "capabilities" };
-  else if (paperPassed) row = { stage: 6, tone: "warning", current: t("前向模拟已通过", "Forward validation passed"), effect: t("未来行情模拟已达标，但仍需 Owner 批准后才能小额试用。", "Forward simulation passed, but Owner approval is still required before limited live use."), next: t("审核并批准试用", "Review and approve probation"), action: "capabilities" };
-  else if (forward) row = { stage: 5, tone: failedSkill ? "danger" : "warning", current: failedSkill ? t("前向模拟未通过", "Forward validation needs attention") : t("前向模拟中", "Forward validation running"), effect: t("历史样本外证据已完成；通过未来行情逐笔验证前不会进入真实交易。", "Historical out-of-sample evidence is complete. It cannot enter live trading before forward validation finishes."), next: t("查看前向验证", "Review forward validation"), action: "capabilities" };
-  else if (compiled) row = { stage: 4, tone: failedSkill ? "danger" : "warning", current: failedSkill ? t("历史验证未通过", "Historical validation needs attention") : t("已变成可测试规则", "Machine-testable rules"), effect: t("入场、退出和风险规则已经结构化，但还没有足够证据参与真实交易。", "Entry, exit, and risk rules are structured, but there is not enough evidence for live trading."), next: t("运行历史验证", "Run historical validation"), action: "capabilities" };
-  else if (sourceMethods.length) row = { stage: 3, tone: "warning", current: t("已提取交易方法", "Trading methods extracted"), effect: t("Gemini 可以用这些方法解释行情；它们尚未变成可执行技能。", "Gemini can use these methods to explain markets, but they are not executable skills yet."), next: t("转成可验证规则", "Convert to testable rules"), action: "methods" };
-  return { ...row, source, methodCount: sourceMethods.length, skillCount: sourceSkills.length };
-}
-
 function MobileKnowledge({ data, action, ui, view = "all" }) {
-  // 与桌面对齐:知识库(view=knowledge)只留 上手/方法/规则/图谱;能力与工具(view=capabilities)只留 技能。
-  const segs = view === "capabilities" ? ["技能"] : view === "knowledge" ? ["上手", "方法", "规则", "图谱"] : KNOW_SEGMENTS;
-  const [segState, setSeg] = useState(view === "capabilities" ? "技能" : "上手");
+  // App 与桌面使用同一发布口径：知识库只展示孵化中的四类产物，正式目录只消费服务端发布资格。
+  const segs = view === "capabilities" ? ["工具工作流"] : ["参考知识", "交易纪律", "交易方法", "工具工作流"];
+  const [segState, setSeg] = useState(view === "capabilities" ? "工具工作流" : "参考知识");
   const seg = segs.includes(segState) ? segState : segs[0];
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState(null);
@@ -656,17 +626,33 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
   const methods = knowledge.tradingMethods || [];
   const skills = knowledge.tradingSkills || [];
   const rules = knowledge.ruleProposals || [];
+  const candidates = knowledge.candidates || [];
+  const workflows = knowledge.workflows || [];
+  const pendingTools = (data.skills || []).filter((item) => item.kind !== "strategy" && !isPublishedImportedSkill(item));
   const compiledIds = new Set(skills.filter((s) => !["retired", "superseded"].includes(s.status)).map((s) => s.sourceMethodId));
-  const active = skills.filter((s) => s.status === "active").length;
-  const sourceProgress = sources.filter((source) => !["doctrine", "manual_curated"].includes(source.type)).map((source) => knowledgeSourceProgress(source, methods, skills));
+  const active = skills.filter(isPublishedKnowledgeStrategy).length;
+  const sourceProgress = sources.filter((source) => !["doctrine", "manual_curated"].includes(source.type)).map((source) => {
+    const sourceMethods = methods.filter((method) => (method.source?.id || method.sourceId) === source.id);
+    const failed = /fail|error|失败|错误|empty|unsupported/i.test(String(source.status || ""));
+    const processing = String(source.status || "").toLowerCase() === "processing";
+    const structured = sourceMethods.length > 0 || rules.some((rule) => (rule.sourceId || rule.source?.id) === source.id);
+    return {
+      source,
+      stage: failed ? 0 : processing ? 1 : structured ? 3 : 2,
+      tone: failed ? "danger" : processing ? "neutral" : structured ? "ok" : "info",
+      current: failed ? t("导入未完成", "Import incomplete") : processing ? t("正在读取并建立索引", "Reading and indexing") : structured ? t("可检索且已结构化", "Searchable and structured") : t("已可搜索和引用", "Searchable and citable"),
+      effect: failed ? t("内容不可检索，也不会参与 AI 分析。", "The content cannot be retrieved or used in AI analysis.") : processing ? t("解析完成前不会进入 AI 证据包。", "It cannot enter an AI evidence bundle before parsing completes.") : t("AI 可在受控检索中引用；它不会直接下单。", "AI may cite it through controlled retrieval; it cannot place orders."),
+      next: failed ? t("重新解析", "Parse again") : t("查看分流结果", "Review outputs"),
+      action: failed ? "reparse" : null
+    };
+  });
   const earliestStage = sourceProgress.length ? Math.min(...sourceProgress.map((row) => row.stage)) : 0;
   // 四个小白能理解的里程碑概括八个真实阶段；每本书的卡片仍显示精确 1–8 阶段。
-  const step = !sourceProgress.length || earliestStage <= 1 ? 1 : earliestStage <= 3 ? 2 : earliestStage <= 5 ? 3 : 4;
+  const step = !sourceProgress.length || earliestStage <= 1 ? 1 : earliestStage < 3 ? 2 : 3;
   const guide = [
     { n: 1, Icon: BookOpen, title: t("导入并变成可检索资料", "Import and make it searchable"), desc: t("系统读取书籍、建立索引。完成后 Gemini 才能搜索、引用和回答书中内容。", "The system reads and indexes the source. Gemini can search, cite, and answer from it after parsing."), cta: t("导入知识源", "Import source"), on: () => ui.openPanel("knowledgeImport") },
-    { n: 2, Icon: Rocket, title: t("提取方法并转成明确规则", "Extract methods and explicit rules"), desc: t("先提炼入场、退出和止损方法，再转成机器可以测试的规则；这时仍不会真实下单。", "Entry, exit, and stop methods are extracted and converted into machine-testable rules. They still cannot place live orders."), cta: t("查看提取的方法", "Review extracted methods"), on: () => setSeg("方法") },
-    { n: 3, Icon: Gauge, title: t("用历史和未来行情验证", "Validate on historical and future data"), desc: t("先跑样本外历史验证，再用之后真实发生的行情做纯前向模拟，避免只会解释过去。", "Run out-of-sample history first, then pure-forward simulation on future market data to avoid overfitting the past."), cta: t("查看验证流水线", "Open validation pipeline"), on: () => ui.setActive("capabilityLib") },
-    { n: 4, Icon: ShieldCheck, title: t("批准小额试用并用真实成绩转正", "Approve probation and graduate on live results"), desc: t("只有 Owner 批准后才可受限试用；真实成绩达标才转正，不达标会自动降级。", "Only Owner approval permits limited probation. The skill graduates on qualifying live results and degrades when results miss the standard."), cta: t("查看能力与成绩", "Review capabilities and results"), on: () => ui.setActive("capabilityLib") }
+    { n: 2, Icon: Search, title: t("成为 AI 可引用的参考知识", "Become AI-citable reference knowledge"), desc: t("检索命中后以证据形式交给 Gemini；这一步已经有用，不要求继续生成候选。", "Retrieved passages are supplied to Gemini as evidence. This is already useful and does not require generating candidates."), cta: t("管理知识源", "Manage sources"), on: () => ui.openPanel("knowledgeList") },
+    { n: 3, Icon: Rocket, title: t("按用途进入三个孵化区", "Route into three incubation areas"), desc: t("纪律去审批，方法去验证，工具或工作流先校验；只有毕业产物才进入正式目录。", "Approve discipline, validate methods, and verify tools or workflows. Only graduates enter official catalogs."), cta: t("查看交易方法", "Review methods"), on: () => setSeg("交易方法") }
   ];
 
   async function search() {
@@ -680,10 +666,10 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
   return (
     <div className="mSubPage">
       <div className="mChips">
-        {segs.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "方法" && methods.length ? ` ${methods.length}` : ""}{name === "技能" && skills.length ? ` ${skills.filter((k) => !["compile_failed", "superseded", "retired"].includes(k.status)).length}` : ""}{name === "规则" && rules.length ? ` ${rules.length}` : ""}{name === "图谱" && knowledge.conceptCards?.length ? ` ${knowledge.conceptCards.length}` : ""}</button>)}
+        {segs.map((name) => <button key={name} className={seg === name ? "active" : ""} onClick={() => setSeg(name)}>{name}{name === "交易方法" && methods.length ? ` ${methods.length}` : ""}{name === "交易纪律" && rules.length ? ` ${rules.length}` : ""}{name === "工具工作流" && candidates.length + pendingTools.length ? ` ${candidates.length + pendingTools.length}` : ""}</button>)}
       </div>
 
-      {seg === "上手" && (
+      {seg === "参考知识" && (
         <>
           <div className="mKGuide">
             <div className="mKGuideTitle"><Sparkles size={14} /> {t("知识不会导入后立刻交易：它要逐级毕业", "Imported knowledge does not trade immediately; it graduates in stages")}</div>
@@ -726,16 +712,16 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
             {!sources.length && <p className="mInboxEmpty">{t("还没有导入知识。点下方「导入知识」开始。", "No knowledge imported yet. Tap \"Import knowledge\" below to start.")}</p>}
             {sourceProgress.slice(0, 8).map((row) => <article className={`mKSourceProgress ${row.tone}`} key={row.source.id || row.source.title}>
               <header><b>{row.source.title || row.source.name || t("未命名", "Untitled")}</b><StatusBadge tone={row.tone}>{row.stage === 0 ? t("需处理", "Needs attention") : t(`阶段 ${row.stage}/8`, `Stage ${row.stage}/8`)}</StatusBadge></header>
-              <div className="mKStageTrack" aria-label={t(`当前第 ${row.stage} 阶段`, `Current stage ${row.stage}`)}>{[1,2,3,4,5,6,7,8].map((stageNo) => <i className={stageNo <= row.stage ? "done" : ""} key={stageNo}/>)}</div>
+              <div className="mKStageTrack" aria-label={t(`当前知识阶段 ${row.stage}/3`, `Knowledge stage ${row.stage}/3`)}>{[1,2,3].map((stageNo) => <i className={stageNo <= row.stage ? "done" : ""} key={stageNo}/>)}</div>
               <p><small>{t("现在", "NOW")}</small><b>{row.current}</b><span>{row.effect}</span></p>
-              <footer><span>{t("下一步：", "Next: ")}<b>{row.next}</b></span>{row.action && <button onClick={() => row.action === "reparse" ? action(`/api/knowledge/sources/${row.source.id}/parse-real`, {}) : row.action === "methods" ? setSeg("方法") : ui.setActive("capabilityLib")}>{row.next} <ChevronRight size={12}/></button>}</footer>
+              <footer><span>{t("下一步：", "Next: ")}<b>{row.next}</b></span>{row.action && <button onClick={() => action(`/api/knowledge/sources/${row.source.id}/parse-real`, {})}>{row.next} <ChevronRight size={12}/></button>}</footer>
             </article>)}
           </div>
           <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> {t("导入知识", "Import knowledge")}</button>
         </>
       )}
 
-      {seg === "方法" && (
+      {seg === "交易方法" && (
         <div className="mSectionCard">
           <header><span>{t("交易方法草案（", "Method drafts (")}{methods.length}{t("）", ")")}</span><small>{t("需走验证才上岗", "Must pass validation to go live")}</small></header>
           {!methods.length && <p className="mInboxEmpty">{t("导入书籍后自动蒸馏交易方法草案。", "Method drafts are distilled automatically after importing books.")}</p>}
@@ -764,7 +750,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
         </div>
       )}
 
-      {seg === "技能" && (
+      {seg === "交易方法" && (
         <div className="mSectionCard">
           <header><span>{t("技能流水线（", "Skill pipeline (")}{skills.length}{t("）", ")")}</span><span style={{ display: "flex", gap: 8 }}>{(() => { const n = skills.filter((skill) => ["compiled", "historical_rejected"].includes(skill.status)).length; return n > 0 && <button className="textButton" onClick={async () => { if (await uiConfirm(`${t("批量历史验证", "Batch historical validation for")} ${n} ${t("个技能?", "skills?")}`)) action("/api/knowledge/skills/validate-all", {}); }}>{t("一键验证", "Validate all")}({n})</button>; })()}<button className="textButton" onClick={() => action("/api/knowledge/skills/sync", {})}>{t("同步", "Sync")}</button></span></header>
           <div className="mKLegend">
@@ -823,7 +809,21 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
         </div>
       )}
 
-      {seg === "规则" && (
+      {seg === "工具工作流" && (
+        <div className="mSectionCard">
+          <header><span>{t("工具与工作流孵化（", "Tool & workflow incubation (")}{candidates.length + pendingTools.length}{t("）", ")")}</span><small>{t("毕业前不会进入能力库", "Hidden from Capabilities until graduation")}</small></header>
+          {!candidates.length && !pendingTools.length && <p className="mInboxEmpty">{t("没有待孵化的工具或工作流候选。生成扩展候选不是知识检索的必经步骤。", "No tool or workflow candidates. Generating extensions is optional for knowledge retrieval.")}</p>}
+          {candidates.filter((item) => ["workflow", "lens"].includes(item.type) && !["ignored", "rejected"].includes(item.status)).slice(0, 20).map((item) => {
+            const artifact = item.type === "workflow" ? workflows.find((row) => row.id === item.adoptedArtifactId) : null;
+            const published = item.type === "workflow" && isApprovedKnowledgeWorkflow(artifact);
+            return <div className="mRowItem" key={item.id}><span><b>{item.name || item.title}</b><small>{humanize(item.type)}</small></span>{published ? <StatusBadge tone="ok">{t("已发布", "Published")}</StatusBadge> : item.status === "candidate" ? <button className="textButton" onClick={() => action(`/api/knowledge/candidates/${item.id}/adopt`, {})}>{t("采纳草稿", "Adopt draft")}</button> : <button className="textButton" onClick={() => action(`/api/knowledge/candidates/${item.id}/approve-prompt`, {})}>{t("审批当前版本", "Approve version")}</button>}</div>;
+          })}
+          {pendingTools.slice(0, 10).map((item) => <div className="mRowItem" key={item.id}><span><b>{item.name || item.title}</b><small>{humanize(item.kind || item.type)}</small></span><StatusBadge tone="warning">{t("待扫描与发布验证", "Awaiting scan & publication")}</StatusBadge></div>)}
+          <div className="mKGuideTitle"><ShieldCheck size={14}/>{t(`能力库只显示 ${workflows.filter(isApprovedKnowledgeWorkflow).length} 个运行时已批准工作流；导入 Skill 也必须通过扫描和发布资格。`,`Capabilities shows only ${workflows.filter(isApprovedKnowledgeWorkflow).length} runtime-approved workflows; imported Skills also require scanning and publication eligibility.`)}</div>
+        </div>
+      )}
+
+      {seg === "交易纪律" && (
         <div className="mSectionCard">
           <header><span>{t("风控纪律（", "Risk discipline (")}{rules.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("ruleLibrary")}>{t("管理/去重", "Manage/dedupe")} <ChevronRight size={12} /></button></header>
           {!rules.length && <p className="mInboxEmpty">{t("导入资料后自动抽取风控纪律。", "Risk discipline is extracted automatically after importing material.")}</p>}
@@ -837,7 +837,7 @@ function MobileKnowledge({ data, action, ui, view = "all" }) {
         </div>
       )}
 
-      {seg === "图谱" && (
+      {seg === "参考知识" && (
         <div className="mSectionCard">
           <header><span>{t("概念图谱（", "Concept graph (")}{knowledge.conceptCards?.length || 0}{t("）", ")")}</span><small>{t("相关概念自动聚簇", "Related concepts cluster automatically")}</small></header>
           <ConceptGraph concepts={knowledge.conceptCards || []} />

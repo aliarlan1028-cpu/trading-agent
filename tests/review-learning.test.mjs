@@ -12,6 +12,8 @@ import {
 } from "../server/reviewLearning.mjs";
 import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
+const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
+
 function dbFixture() {
   const db = {
     system: { ownerReviewProvenanceMigrationVersion: 1 },
@@ -51,6 +53,7 @@ function dbFixture() {
 test("复盘检索按交易对隔离，并结合策略、周期和 regime 排序", () => {
   const db = dbFixture();
   const rows = retrieveRelevantReviewMemories(db, {
+    principal: ownerPrincipal,
     text: "分析 BTC/USDT 1h",
     setupType: "trend_pullback",
     regime: "上行趋势"
@@ -68,20 +71,20 @@ test("多币巡检为每个交易对保留相关复盘配额", () => {
     { id: "mem-btc-2", source: "auto_reflection", reviewContext: { schemaVersion: 1, symbol: "BTC/USDT", setupType: "trend_pullback", timeframe: "1h" }, title: "BTC 复盘 2", content: "等待确认", createdAt: "2026-08-02T02:00:00Z" },
     { id: "mem-btc-3", source: "auto_reflection", reviewContext: { schemaVersion: 1, symbol: "BTC/USDT", setupType: "trend_pullback", timeframe: "1h" }, title: "BTC 复盘 3", content: "控制追高", createdAt: "2026-08-02T03:00:00Z" }
   );
-  const rows = retrieveRelevantReviewMemories(db, { symbols: ["BTC/USDT", "ADA/USDT"], limit: 2 });
+  const rows = retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT", "ADA/USDT"], limit: 2 });
   assert.deepEqual(new Set(rows.map((row) => row.symbol)), new Set(["BTC/USDT", "ADA/USDT"]));
 });
 
 test("普通问答没有明确交易对象时不注入任意交易复盘", () => {
   const db = dbFixture();
-  const context = buildReviewLearningContext(db, { text: "怎么修改登录密码？" });
+  const context = buildReviewLearningContext(db, { principal: ownerPrincipal, text: "怎么修改登录密码？" });
   assert.equal(context.retrieved.length, 0);
   assert.equal(reviewLearningPrompt(context), "");
 });
 
 test("计划只能引用本轮检索到且带完整影响说明的复盘", () => {
   const db = dbFixture();
-  const context = buildReviewLearningContext(db, { text: "BTC/USDT 1h 怎么做" });
+  const context = buildReviewLearningContext(db, { principal: ownerPrincipal, text: "BTC/USDT 1h 怎么做" });
   const checked = validateAppliedReviewLessons(context, [
     { memoryId: "mem-btc", influence: "avoided", note: "等待回踩确认后再入场" },
     { memoryId: "mem-ada", influence: "changed", note: "不相关币种" },
@@ -145,16 +148,16 @@ test("schema v2 迁移保留孤儿历史记忆的结构标签，但不会把旧�
 test("学习效果按平仓生命周期统计，样本不足时不宣称已经改善", () => {
   const db = dbFixture();
   db.tradePlans.push(
-    { id: "used", symbol: "BTC/USDT", timeframe: "1h", scenarioType: "trend_pullback", strategyProductId: "trend", reviewLearning: { applied: [{ memoryId: "mem-btc", influence: "avoided", note: "等待确认" }] } },
-    { id: "control", symbol: "BTC/USDT", timeframe: "1h", scenarioType: "trend_pullback", strategyProductId: "trend", reviewLearning: { applied: [] } }
+    { id: "used", symbol: "BTC/USDT", timeframe: "1h", scenarioType: "trend_pullback", strategyProductId: "trend", reviewLearning: { applied: [{ memoryId: "mem-btc", influence: "avoided", note: "等待确认" }] }, tenantId: "tenant_owner", ownerUserId: "owner-1" },
+    { id: "control", symbol: "BTC/USDT", timeframe: "1h", scenarioType: "trend_pullback", strategyProductId: "trend", reviewLearning: { applied: [] }, tenantId: "tenant_owner", ownerUserId: "owner-1" }
   );
   db.fills.unshift(
-    { id: "used-part", kind: "close", partial: true, executionOrderId: "exec-used", tradePlanId: "used", symbol: "BTC/USDT", realizedPnl: 1, createdAt: "2026-08-02T01:00:00Z" },
-    { id: "used-final", kind: "close", executionOrderId: "exec-used", tradePlanId: "used", symbol: "BTC/USDT", realizedPnl: 2, createdAt: "2026-08-02T02:00:00Z" },
-    { id: "control-final", kind: "close", executionOrderId: "exec-control", tradePlanId: "control", symbol: "BTC/USDT", realizedPnl: -1, createdAt: "2026-08-02T03:00:00Z" }
+    { id: "used-part", kind: "close", partial: true, executionOrderId: "exec-used", tradePlanId: "used", symbol: "BTC/USDT", realizedPnl: 1, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-02T01:00:00Z" },
+    { id: "used-final", kind: "close", executionOrderId: "exec-used", tradePlanId: "used", symbol: "BTC/USDT", realizedPnl: 2, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-02T02:00:00Z" },
+    { id: "control-final", kind: "close", executionOrderId: "exec-control", tradePlanId: "control", symbol: "BTC/USDT", realizedPnl: -1, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-02T03:00:00Z" }
   );
   db.fills = financiallyReconciledFills(db.fills);
-  const report = buildReviewLearningAnalytics(db);
+  const report = buildReviewLearningAnalytics(db, { principal: ownerPrincipal });
   assert.equal(report.used.trades, 1, "部分平仓必须聚合为一个交易生命周期");
   assert.equal(report.used.pnlUsdt, 3);
   assert.equal(report.comparableBaseline.trades, 2, "同交易对、同策略、同周期的历史未采用交易应进入对照组");

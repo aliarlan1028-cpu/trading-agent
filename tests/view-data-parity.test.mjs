@@ -12,7 +12,7 @@ import {
 
 const t = (zh) => zh;
 
-test("shared strategy catalog includes products, research models, distilled and imported strategies", () => {
+test("shared strategy catalog only publishes validated knowledge strategies", () => {
   const data = {
     strategyCatalog: {
       products: [{ id: "p", versionId: "v1", version: 1, definition: { name: "产品策略", direction: "long", timeframes: ["1h"] }, deployment: { state: "owner_live_observation" }, metrics: { closedTrades: 3 } }],
@@ -22,8 +22,8 @@ test("shared strategy catalog includes products, research models, distilled and 
     skills: [{ id: "imported", name: "导入策略", kind: "strategy", source: "github", status: "active" }]
   };
   const catalog = buildStrategyCatalogRows(data, t);
-  assert.deepEqual(catalog.rows.map((row) => row.id), ["product_v1", "native_rsi", "distilled", "imported"]);
-  assert.deepEqual(catalog.rows.map((row) => row.origin), ["策略产品", "指标研究模型", "蒸馏", "导入"]);
+  assert.deepEqual(catalog.rows.map((row) => row.id), ["product_v1", "native_rsi", "imported"]);
+  assert.deepEqual(catalog.rows.map((row) => row.origin), ["策略产品", "指标研究模型", "导入"]);
   assert.equal(catalog.products.length, 1);
   assert.equal(catalog.research.length, 1);
 });

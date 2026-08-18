@@ -72,6 +72,20 @@ export function approvedPromptArtifact(kind, item = {}) {
     && item.contentFingerprint === current;
 }
 
+export function projectKnowledgeRuntimeApproval(knowledge = {}) {
+  return {
+    ...knowledge,
+    workflows: (knowledge.workflows || []).map((item) => {
+      const runtimeApproved = approvedPromptArtifact("workflow", item);
+      return { ...item, runtimeApproved, publishedEligible: runtimeApproved };
+    }),
+    lenses: (knowledge.lenses || []).map((item) => ({
+      ...item,
+      runtimeApproved: approvedPromptArtifact("lens", item)
+    }))
+  };
+}
+
 function stateFilePromptFingerprint(name, item = {}) {
   return sha({
     kind: "agent_state_file",

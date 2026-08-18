@@ -9,13 +9,22 @@ import {
 } from "../ownerReviewLoop.mjs";
 
 export function registerReviewRoutes(app, ctx) {
-  const { db, persist, requirePermission, id, nowIso, appendAudit, buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle } = ctx;
+  const {
+    db, persist, requirePermission, id, nowIso, appendAudit, appendTrace,
+    buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle,
+    validateStrategyImprovementCycle, startOwnerCandidatePaperSession
+  } = ctx;
   const requireOwner = (req, res) => {
     const actor = req.user || db.user;
     if (actor?.isOwner === true) return true;
     res.status(403).json({ error: "owner_only_review_loop" });
     return false;
   };
+  const requestPrincipal = (req) => ({
+    tenantId: req.tenantId || req.user?.tenantId || "",
+    userId: req.user?.id || "",
+    isOwner: req.user?.isOwner === true
+  });
 
   app.get("/api/reviews", requirePermission("account.read"), (req, res) => {
     migrateLegacyOwnerReviewProvenance(db);
@@ -42,7 +51,7 @@ export function registerReviewRoutes(app, ctx) {
     persist(res, review);
   });
 
-  app.get("/api/review/analytics", requirePermission("account.read"), (_req, res) => res.json(buildReviewAnalytics(db)));
+  app.get("/api/review/analytics", requirePermission("account.read"), (req, res) => res.json(buildReviewAnalytics(db, { principal: requestPrincipal(req) })));
 
   app.get("/api/review/owner-loop", requirePermission("admin:system"), (req, res) => {
     if (!requireOwner(req, res)) return;
@@ -78,38 +87,61 @@ export function registerReviewRoutes(app, ctx) {
       });
     }
     const currentItem = (db.ownerImprovementItems || []).find((row) => row.id === req.params.id);
+    const createsStrategyCycle = ["accept", "retry_validation"].includes(action) && currentItem?.destination === "strategy";
+    const cyclePayload = createsStrategyCycle ? {
+      sourceImprovementId: currentItem.id,
+      sourceReviewIds: currentItem.evidenceReviewIds,
+      hypothesis: currentItem.proposal,
+      successCriteria: {
+        minTrades: 20,
+        minSmallLiveTrades: 3,
+        minProfitFactor: 1.2,
+        maxDrawdownPct: 3,
+        requireManualApproval: true
+      }
+    } : null;
+    // All fallible baseline/ownership/ambiguity checks happen before the Owner
+    // state machine or append-only audit chain is touched.
+    if (cyclePayload) {
+      try {
+        validateStrategyImprovementCycle(db, cyclePayload);
+      } catch (error) {
+        return res.status(error.status || 409).json({ ok: false, error: error.code || error.message || "strategy_validation_cycle_failed" });
+      }
+    }
     const itemBefore = currentItem ? structuredClone(currentItem) : null;
-    const experimentIdsBefore = new Set((db.strategyExperiments || []).map((row) => row.id));
-    const reviewIdsBefore = new Set((db.reviews || []).map((row) => row.id));
-    const result = transitionOwnerImprovement(db, req.params.id, action, actor, req.body || {});
+    const experimentsBefore = structuredClone(db.strategyExperiments || []);
+    const reviewsBefore = structuredClone(db.reviews || []);
+    const auditsBefore = structuredClone(db.auditLogs || []);
+    const tracesBefore = structuredClone(db.traces || []);
+    const metaBefore = structuredClone(db.meta || {});
+    const restore = () => {
+      if (itemBefore && currentItem) {
+        for (const key of Object.keys(currentItem)) delete currentItem[key];
+        Object.assign(currentItem, itemBefore);
+      }
+      db.strategyExperiments = experimentsBefore;
+      db.reviews = reviewsBefore;
+      db.auditLogs = auditsBefore;
+      db.traces = tracesBefore;
+      db.meta = metaBefore;
+    };
+    const result = transitionOwnerImprovement(db, req.params.id, action, actor, req.body || {}, { suppressAudit: createsStrategyCycle });
     if (!result.ok) return res.status(result.status || 409).json(result);
     let experiment = null;
     // 策略类优化在 Owner 接受或重试后创建新一代版本化验证。整个动作按
     // 一个事务处理；若无法绑定真实基线版本，恢复原状态，不留下 accepted 空壳。
-    if (["accept", "retry_validation"].includes(action) && result.item.destination === "strategy") {
+    if (createsStrategyCycle) {
       try {
-        const cycle = createStrategyImprovementCycle(db, {
-          sourceImprovementId: result.item.id,
-          sourceReviewIds: result.item.evidenceReviewIds,
-          hypothesis: result.item.proposal,
-          successCriteria: {
-            minTrades: 20,
-            minSmallLiveTrades: 3,
-            minProfitFactor: 1.2,
-            maxDrawdownPct: 3,
-            requireManualApproval: true
-          }
-        });
+        const cycle = createStrategyImprovementCycle(db, cyclePayload, { suppressAudit: true });
         experiment = cycle.experiment;
         result.item.experimentId = experiment.id;
         result.item.updatedAt = nowIso();
+        appendAudit(db, `Owner ${action} 优化项「${result.item.title}」`, result.item.id, actor, result.item.severity === "critical" ? "critical" : "info");
+        appendAudit(db, "创建策略改进闭环", experiment.id, "ReviewEngine", "info");
+        appendTrace?.(db, "review", "策略改进闭环", "ok");
       } catch (error) {
-        if (itemBefore) {
-          for (const key of Object.keys(result.item)) delete result.item[key];
-          Object.assign(result.item, itemBefore);
-        }
-        db.strategyExperiments = (db.strategyExperiments || []).filter((row) => experimentIdsBefore.has(row.id));
-        db.reviews = (db.reviews || []).filter((row) => reviewIdsBefore.has(row.id));
+        restore();
         return res.status(error.status || 409).json({ ok: false, error: error.code || error.message || "strategy_validation_cycle_failed" });
       }
     }
@@ -122,10 +154,30 @@ export function registerReviewRoutes(app, ctx) {
     });
   });
 
-  app.post("/api/review/backfill-fields", requirePermission("write:review"), (_req, res) => {
-    const result = backfillReviewFields(db);
-    appendAudit(db, "补全复盘字段", "review_backfill", "ReviewEngine");
-    persist(res, { message: `已补全复盘字段：${result.updated} 处`, ...result, analytics: buildReviewAnalytics(db) });
+  app.post("/api/review/improvements/:id/paper/start", requirePermission("admin:system"), async (req, res) => {
+    if (!requireOwner(req, res)) return;
+    const actorRecord = req.user || db.user;
+    try {
+      const result = await startOwnerCandidatePaperSession(db, {
+        improvementId: req.params.id,
+        symbol: req.body?.symbol
+      }, { actor: actorRecord });
+      if (result.status !== "ok") return res.status(result.statusCode || 409).json(result);
+      persist(res, {
+        ...result,
+        ownerReviewLoop: buildOwnerReviewLoopSnapshot(db),
+        message: result.reused ? "该候选版本已有进行中的纯前向模拟会话" : "已按候选版本不可变指纹启动纯前向模拟盘"
+      });
+    } catch (error) {
+      res.status(error.status || 500).json({ error: error.code || error.message || "owner_candidate_paper_start_failed" });
+    }
+  });
+
+  app.post("/api/review/backfill-fields", requirePermission("write:review"), (req, res) => {
+    const principal = requestPrincipal(req);
+    const result = backfillReviewFields(db, { principal });
+    appendAudit(db, "补全当前用户复盘字段", "review_backfill", req.user?.name || "ReviewEngine");
+    persist(res, { message: `已补全复盘字段：${result.updated} 处`, ...result, analytics: buildReviewAnalytics(db, { principal }) });
   });
 
   app.post("/api/review/strategy-improvement", requirePermission("admin:system"), (req, res) => {

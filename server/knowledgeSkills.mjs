@@ -7,6 +7,8 @@ import { detectRegime, getStrategy, STRATEGIES } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints, runtimeInvalidationTriggered } from "./compiledSignals.mjs";
 import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { principalUserId } from "./principalScope.mjs";
+import { canUseKnowledgeRow, normalizeKnowledgePrincipal } from "./knowledgeScope.mjs";
 
 const TIMEFRAMES = new Set(["5m", "15m", "1h", "4h", "1d"]);
 // active=已用真实成绩转正;live_probation=小额实盘试用中(可影响真实下单,但对 LLM 如实标"未验证")。
@@ -234,6 +236,8 @@ export function compileTradingMethod(db, methodId, overrides = {}, actor = "Know
   }
   const skill = {
     id: id("kskill"),
+    tenantId: method.tenantId || source.tenantId || db.user?.tenantId || null,
+    ownerUserId: method.ownerUserId || source.ownerUserId || db.user?.id || null,
     lineageKey,
     name: method.name,
     version: Number(previous?.version || 0) + 1,
@@ -361,10 +365,10 @@ export async function validateKnowledgeSkill(db, skillId, options = {}, actor = 
 // 后台执行(51 个技能×K线拉取需数分钟,HTTP 即时返回);单飞标志防重复触发;
 // 每个技能间 400ms 缓冲避免打爆 OKX 公共接口;完成后审计汇总。
 let batchValidationRunning = false;
-export function validateAllCompiledSkills(db, saveDb, actor = "BatchValidator") {
+export function validateAllCompiledSkills(db, saveDb, actor = "BatchValidator", options = {}) {
   if (batchValidationRunning) return { started: false, reason: "already_running" };
   const targets = (db.knowledge?.tradingSkills || [])
-    .filter((s) => ["compiled", "historical_rejected"].includes(s.status))
+    .filter((s) => (!options.predicate || options.predicate(s)) && ["compiled", "historical_rejected"].includes(s.status))
     .map((s) => s.id);
   if (!targets.length) return { started: false, reason: "no_targets", total: 0 };
   batchValidationRunning = true;
@@ -405,6 +409,8 @@ export async function startKnowledgeSkillPaper(db, skillId, options = {}, actor 
     knowledgeSkillVersion: skill.version,
     lookbackBars: 0,
     source: "knowledge_skill"
+    ,tenantId: skill.tenantId || null
+    ,ownerUserId: skill.ownerUserId || null
   });
   if (result.status !== "ok") return result;
   skill.paperSessionId = result.session.id;
@@ -456,16 +462,19 @@ export function resetProbationSkillsToPaperLane(db, actor = "PaperForwardMigrati
   return { reset };
 }
 
-export function syncKnowledgeSkillLifecycle(db, actor = "KnowledgeLifecycle") {
+export function syncKnowledgeSkillLifecycle(db, actor = "KnowledgeLifecycle", options = {}) {
   ensureCollections(db);
   const changes = [];
   for (const skill of db.knowledge.tradingSkills) {
+    if (options.predicate && !options.predicate(skill)) continue;
     if (skill.status !== "paper_validating" || !skill.paperSessionId) continue;
     const session = db.paperSessions.find((item) => item.id === skill.paperSessionId);
     if (!session || !["passed", "failed"].includes(session.status)) continue;
     const sessionMatches = session.seeded === false
       && session.knowledgeSkillId === skill.id
       && Number(session.knowledgeSkillVersion) === Number(skill.version)
+      && session.tenantId === skill.tenantId
+      && session.ownerUserId === skill.ownerUserId
       && session.params?.compiledSkillFingerprint === skill.fingerprint
       && session.symbol === skill.validation?.symbol
       && session.timeframe === (skill.validation?.timeframe || skill.spec.timeframe);
@@ -477,7 +486,7 @@ export function syncKnowledgeSkillLifecycle(db, actor = "KnowledgeLifecycle") {
     transition(skill, session.status === "passed" ? "paper_validated" : "paper_rejected", `paper_${session.status}`, actor);
     changes.push({ skillId: skill.id, status: skill.status });
   }
-  const attribution = refreshKnowledgeSkillAttribution(db, actor);
+  const attribution = refreshKnowledgeSkillAttribution(db, actor, options);
   return { changes, attribution };
 }
 
@@ -534,13 +543,17 @@ function regimeMatches(allowed = [], regime = "") {
 
 export function selectActiveKnowledgeSkills(db, context = {}, options = {}) {
   ensureCollections(db);
-  syncKnowledgeSkillLifecycle(db);
+  const principal = normalizeKnowledgePrincipal(options.principal || {});
+  if (!principal.tenantId || !principal.userId) return [];
+  const mayUse = (skill) => canUseKnowledgeRow(skill, principal);
+  syncKnowledgeSkillLifecycle(db, "KnowledgeLifecycle", { predicate: mayUse });
   const limit = Math.max(1, Math.min(5, Number(options.limit || 3)));
   const symbol = String(context.symbol || "").toUpperCase();
   const direction = String(context.direction || "");
   const timeframe = normalizeTimeframe(context.timeframe) || null;
   const regime = String(context.regime || "");
   return db.knowledge.tradingSkills
+    .filter(mayUse)
     // active 与 live_probation 都必须具备匹配当前版本的人工批准指纹。
     .filter((skill) => EXECUTABLE_STATES.has(skill.status) && skill.approval?.fingerprint === skill.fingerprint)
     .filter((skill) => scopeMatches(skill.spec.symbolScope, symbol))
@@ -606,12 +619,17 @@ export function evaluateKnowledgeSkillSignal(db, skill, symbol) {
 }
 
 export function bindKnowledgeSkillsToPlan(db, plan, context = {}, actor = "Agent") {
+  const principal = {
+    tenantId: plan.tenantId || plan.ownerTenantId || "",
+    userId: plan.ownerUserId || plan.createdByUserId || plan.userId || "",
+    isOwner: context.principal?.isOwner === true
+  };
   const eligible = selectActiveKnowledgeSkills(db, {
     symbol: plan.symbol,
     direction: plan.direction,
     timeframe: context.timeframe,
     regime: context.regime
-  });
+  }, { principal });
   const evaluated = eligible.map((skill) => ({ skill, signal: evaluateKnowledgeSkillSignal(db, skill, plan.symbol) }));
   const explicitlySelected = new Set((context.selectedSkillIds || []).map(String));
   const selected = evaluated.filter((item) =>
@@ -651,6 +669,8 @@ export function bindKnowledgeSkillsToPlan(db, plan, context = {}, actor = "Agent
       symbol: plan.symbol,
       direction: plan.direction,
       regime: context.regime || null,
+      tenantId: principal.tenantId,
+      ownerUserId: principal.userId,
       status: "triggered_and_selected",
       signalBarTime: item.signal.signalBarTime,
       actor,
@@ -664,11 +684,16 @@ export function bindKnowledgeSkillsToPlan(db, plan, context = {}, actor = "Agent
 
 export function validatePlanKnowledgeSkills(db, plan) {
   ensureCollections(db);
+  const principal = {
+    tenantId: plan.tenantId || plan.ownerTenantId || "",
+    userId: plan.ownerUserId || plan.createdByUserId || plan.userId || ""
+  };
   const references = plan.knowledgeSkills || [];
   const violations = [];
   for (const ref of references) {
     const skill = db.knowledge.tradingSkills.find((item) => item.id === ref.skillId);
     if (!skill) violations.push(`知识技能 ${ref.skillId} 不存在`);
+    else if (!canUseKnowledgeRow(skill, principal)) violations.push(`知识技能「${skill.name}」不属于当前交易主体`);
     else if (!EXECUTABLE_STATES.has(skill.status)) violations.push(`知识技能「${skill.name}」当前状态为 ${skill.status}`);
     else if (skill.approval?.fingerprint !== skill.fingerprint) violations.push(`知识技能「${skill.name}」缺少当前版本人工批准`);
     else if (skill.version !== ref.version || skill.fingerprint !== ref.fingerprint) violations.push(`知识技能「${skill.name}」版本或指纹已变化`);
@@ -704,7 +729,7 @@ export function validatePlanKnowledgeSkills(db, plan) {
   return { valid: violations.length === 0, violations };
 }
 
-export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttribution") {
+export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttribution", options = {}) {
   ensureCollections(db);
   let added = 0;
   let migrated = 0;
@@ -723,9 +748,13 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
     if (!plan?.knowledgeSkills?.length) continue;
     const weight = 1 / plan.knowledgeSkills.length;
     for (const ref of plan.knowledgeSkills) {
+      const attributedSkill = db.knowledge.tradingSkills.find((skill) => skill.id === ref.skillId && Number(skill.version) === Number(ref.version));
+      if (options.predicate && (!attributedSkill || !options.predicate(attributedSkill))) continue;
       const attributionKey = `${lifecycle.key}|${ref.skillId}|${ref.version}`;
       authoritativeKeys.add(attributionKey);
       const payload = {
+        tenantId: plan.tenantId || fill.tenantId || null,
+        ownerUserId: principalUserId(plan) || principalUserId(fill),
         fillKey: lifecycle.key,
         fillId: lifecycle.fills.length === 1 ? lifecycle.fills[0].id : null,
         fillIds: lifecycle.fills.map((row) => row.id).filter(Boolean),
@@ -764,6 +793,8 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
   // 即使它曾经迁到 v2，也可能在底层数据清理后变成“幽灵证据”；保留毛值供审计，净值诚实置空。
   for (const row of db.knowledge.skillAttributions) {
     if (row.mode === "paper") continue;
+    const attributedSkill = db.knowledge.tradingSkills.find((skill) => skill.id === row.skillId && Number(skill.version) === Number(row.skillVersion));
+    if (options.predicate && (!attributedSkill || !options.predicate(attributedSkill))) continue;
     const attributionKey = `${row.fillKey}|${row.skillId}|${row.skillVersion}`;
     if (authoritativeKeys.has(attributionKey)) continue;
     const before = JSON.stringify(row);
@@ -783,6 +814,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
   const degraded = [];
   const graduated = [];
   for (const skill of db.knowledge.tradingSkills) {
+    if (options.predicate && !options.predicate(skill)) continue;
     const allLiveRows = db.knowledge.skillAttributions.filter((row) => row.mode !== "paper"
       && row.skillId === skill.id && row.skillVersion === skill.version);
     const rows = db.knowledge.skillAttributions.filter((row) => row.skillId === skill.id
@@ -875,7 +907,8 @@ export function knowledgeSkillSummary(db, options = {}) {
     syncKnowledgeSkillLifecycle(db);
   }
   const knowledge = db.knowledge || {};
-  const skills = knowledge.tradingSkills || [];
+  const skills = (knowledge.tradingSkills || []).filter((skill) => !options.predicate || options.predicate(skill));
+  const skillIds = new Set(skills.map((skill) => skill.id));
   const counts = {};
   for (const skill of skills) counts[skill.status] = (counts[skill.status] || 0) + 1;
   return {
@@ -883,8 +916,8 @@ export function knowledgeSkillSummary(db, options = {}) {
     active: counts.active || 0,
     total: skills.length,
     skills,
-    recentInvocations: (knowledge.skillInvocations || []).slice(0, 50),
-    recentAttributions: (knowledge.skillAttributions || []).slice(0, 100)
+    recentInvocations: (knowledge.skillInvocations || []).filter((row) => skillIds.has(row.skillId)).slice(0, 50),
+    recentAttributions: (knowledge.skillAttributions || []).filter((row) => skillIds.has(row.skillId)).slice(0, 100)
   };
 }
 

@@ -150,7 +150,10 @@ export function registerKnowledgeRuleRoutes(app, ctx) {
   });
 
   app.post("/api/knowledge/runtime-query", requirePermission("write:knowledge"), (req, res) => {
-    const bundle = runExpertAnalysis(db, req.body);
+    const bundle = runExpertAnalysis(db, {
+      ...req.body,
+      principal: { tenantId: req.tenantId || req.user?.tenantId, userId: req.user?.id, isOwner: req.user?.isOwner === true }
+    });
     appendAudit(db, "生成运行时专家分析", bundle.id, "专家知识库");
     appendTrace(db, "analysis_bundle", `知识召回：${bundle.question}`);
     persist(res, bundle);

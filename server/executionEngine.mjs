@@ -2163,7 +2163,7 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
     for (const review of db.reviews || []) {
       if (review.status === "pending_financial_reconciliation") review.status = "pending";
     }
-    syncTradeReviewQueue(db, { fillFilter: (fill) => isOwnerReviewRow(db, fill) });
+    syncTradeReviewQueue(db);
   }
   return { checked: results.length, reconciled, results };
 }
