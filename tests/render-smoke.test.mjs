@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, MarketConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -392,6 +392,40 @@ test("desktop pages render with realistic data (all statuses)", () => {
     const html = render(React.createElement(Comp, { data, action, ui }));
     assert.ok(html.length > 100, `${name} 渲染输出过短`);
   }
+});
+
+test("non-AI workspaces share the grouped operating-system shell while AI Trader keeps its established shell", () => {
+  const trade = render(React.createElement(C.TradingCenter, { data, action, ui }));
+  assert.match(trade, /class="uxCenter productWorkspace"/);
+  assert.match(trade, /data-workspace="trade"/);
+  assert.match(trade, /TRADING COCKPIT/);
+  assert.match(trade, /观察/);
+  assert.match(trade, /执行/);
+  assert.match(trade, /改进/);
+  assert.match(trade, /CURRENT WORKSPACE/);
+
+  const research = render(React.createElement(C.ResearchCenter, { data, action, ui }));
+  assert.match(research, /data-workspace="research"/);
+  assert.match(research, /孵化/);
+  assert.match(research, /发布/);
+
+  const risk = render(React.createElement(C.RiskCenter, { data, action, ui }));
+  assert.match(risk, /data-workspace="risk"/);
+  assert.match(risk, /监控/);
+  assert.match(risk, /配置/);
+
+  const operations = render(React.createElement(C.OperationsCenter, { data, action, ui }));
+  assert.match(operations, /data-workspace="operations"/);
+  assert.match(operations, /运行/);
+  assert.match(operations, /事实/);
+
+  const settings = render(React.createElement(C.SettingsConcept, { data, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  assert.match(settings, /class="cp2Settings productSettings"/);
+  assert.match(settings, /SYSTEM SETTINGS/);
+
+  const ai = render(React.createElement(C.AiTraderCenter, { data, action, ui }));
+  assert.doesNotMatch(ai, /productWorkspace|data-workspace=/);
+  assert.doesNotMatch(ai, /CURRENT WORKSPACE/);
 });
 
 test("trading cockpit exposes dedicated review pages and keeps Owner review private", () => {
@@ -1128,4 +1162,33 @@ test("desktop goal guardrails use lifecycle net PnL and allocation uses shared n
 
   const positions = render(React.createElement(C.PositionsConcept, { data: { positions: [{ symbol: "ADA/USDT", quantity: 100, markPrice: 1.25, notionalUsdt: 125 }], portfolio: { totalEquityUsdt: 1000 }, accountSnapshots: [] } }));
   assert.match(positions, /125\.00 U/);
+});
+
+test("non-AI desktop interiors render registry, truth, evidence, risk, and run-trace workbenches", () => {
+  const market = render(React.createElement(C.MarketConcept, {
+    data: { watchlist: ["BTC/USDT"], markets: [{ symbol: "BTC/USDT", price: 65000, changePct: 1.2 }], mediumTermAnalytics: {} }, action
+  }));
+  assert.match(market, /marketIntelligenceWorkbench/);
+  assert.match(market, /marketResearchDeck/);
+  assert.match(market, /把二级指标收进一个研究台/);
+
+  const positions = render(React.createElement(C.PositionsConcept, {
+    data: { positions: [{ id: "p1", symbol: "BTC\/USDT", direction: "long", quantity: 0.1, markPrice: 65000, entryPrice: 64000, notionalUsdt: 6500, unrealizedPnl: 100, source: "execution_engine" }], portfolio: { totalEquityUsdt: 10000, availableMarginUsdt: 8000 }, accountSnapshots: [] }
+  }));
+  assert.match(positions, /positionWorkbench/);
+  assert.match(positions, /持仓登记簿/);
+  assert.match(positions, /AI 托管仓位/);
+
+  const risk = render(React.createElement(C.RiskPostureConcept, {
+    data: { portfolio: {}, portfolioRisk: {}, system: {}, mandates: [], riskRules: [], riskIncidents: [], eventRiskWindows: [] }, ui
+  }));
+  assert.match(risk, /riskOperatingBoard/);
+  assert.match(risk, /当前风险姿态/);
+
+  const operations = render(React.createElement(C.OperationsOverviewConcept, {
+    data: { system: {}, tasks: [], jobRuns: [{ id: "r1", taskName: "行情刷新", status: "ok", createdAt: "2026-08-19T00:00:00Z" }], events: [], auditLogs: [], riskIncidents: [], markets: [], readiness: { checks: [] } }, action, ui
+  }));
+  assert.match(operations, /SYSTEM HEALTH MATRIX/);
+  assert.match(operations, /RECENT RUN TRACE/);
+  assert.match(operations, /行情刷新/);
 });

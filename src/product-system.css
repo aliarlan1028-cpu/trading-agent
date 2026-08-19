@@ -1,0 +1,1297 @@
+/*
+ * KORDYN desktop operating-system layer
+ *
+ * This file deliberately scopes the editorial redesign to non-AI workspaces.
+ * The AI Trader keeps its established interaction model; the surrounding
+ * Cockpit / Research / Risk / Operations / Settings pages share this system.
+ */
+
+.productWorkspace,
+.productSettings {
+  --product-ink: #111311;
+  --product-ink-2: #1a1d19;
+  --product-paper: #f4f1e9;
+  --product-paper-2: #faf8f2;
+  --product-mint: #7fc9a4;
+  --product-lime: #d3ff57;
+  --product-line: #d3cfc5;
+  --product-line-strong: #aaa69d;
+  --product-copy: #111311;
+  --product-muted: #74736d;
+  --product-warn: #b58b45;
+  --product-danger: #b94f42;
+  background: var(--product-paper);
+}
+
+/* Workspace identity: every area announces its role and the current route. */
+.uxProductHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
+  min-width: 0;
+  margin: 0 0 14px;
+  border-top: 1px solid var(--product-ink);
+  border-bottom: 1px solid var(--product-line-strong);
+  background: var(--product-paper);
+}
+
+.uxProductIdentity {
+  min-width: 0;
+  padding: 18px 22px 19px 0;
+}
+
+.uxProductIdentity > small,
+.uxProductCurrent > small,
+.uxProductNavGroup > small,
+.productSettings .cp2SettingsPageHead small {
+  display: block;
+  color: #5eae87;
+  font: 750 9px/1.2 var(--font-mono);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.uxProductIdentity h1 {
+  margin: 9px 0 6px;
+  color: var(--product-copy);
+  font-size: clamp(27px, 2.25vw, 38px);
+  font-family: Manrope, var(--font-ui);
+  font-weight: 520;
+  line-height: .98;
+  letter-spacing: -.058em;
+}
+
+.uxProductIdentity p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--product-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.uxProductCurrent {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 16px 18px 16px 22px;
+  border-left: 1px solid var(--product-line-strong);
+  background: rgba(255,255,255,.36);
+}
+
+.uxProductCurrent b {
+  margin-top: 7px;
+  color: var(--product-ink);
+  font-family: Manrope, var(--font-ui);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.uxProductCurrent span {
+  margin-top: 5px;
+  color: var(--product-muted);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+/* Local navigation expresses mental-model groups without adding another step. */
+.uxProductNav {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  margin: 0 0 16px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--product-line-strong);
+  background: var(--product-paper-2);
+  scrollbar-width: thin;
+}
+
+.uxProductNavGroup {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: center;
+  flex: none;
+  gap: 0;
+  min-height: 52px;
+  padding: 0 18px;
+  border-left: 1px solid var(--product-line);
+}
+
+.uxProductNavGroup:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.uxProductNavGroup > small {
+  display: none;
+}
+
+.uxProductNavGroup > div {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+}
+
+.uxProductNavGroup button {
+  position: relative;
+  min-width: max-content;
+  border: 0;
+  background: transparent;
+  color: #68645a;
+  padding: 0 11px;
+  font: 680 10.5px var(--font-ui);
+  letter-spacing: .015em;
+  cursor: pointer;
+}
+
+.uxProductNavGroup button::after {
+  content: "";
+  position: absolute;
+  right: 11px;
+  bottom: -1px;
+  left: 11px;
+  height: 2px;
+  background: transparent;
+}
+
+.uxProductNavGroup button:hover {
+  color: var(--product-ink);
+}
+
+.uxProductNavGroup button.active {
+  color: var(--product-ink);
+  font-weight: 750;
+}
+
+.uxProductNavGroup button:focus {
+  outline: 0;
+}
+
+.uxProductNavGroup button:focus-visible {
+  outline: 2px solid var(--product-lime);
+  outline-offset: -3px;
+}
+
+.uxProductNavGroup button.active::after {
+  background: var(--product-ink);
+}
+
+/* Shared content language: registries and evidence, not floating card walls. */
+.productWorkspace .uxCenterBody,
+.productSettings {
+  color: var(--product-copy);
+}
+
+.productWorkspace .cp2Stack,
+.productWorkspace .cp2Grid,
+.productSettings .cp2Stack,
+.productSettings .cp2Grid {
+  gap: 10px;
+}
+
+.productWorkspace .cp2Card,
+.productSettings .cp2Card,
+.productSettings .cp2OverviewCard,
+.productSettings .cp2SettingsPanel {
+  border-color: var(--product-line);
+  border-radius: 0;
+  background: rgba(250,248,242,.84);
+  box-shadow: none;
+}
+
+.productWorkspace .cp2Card {
+  padding: 14px;
+}
+
+.productWorkspace .cp2CardHead,
+.productSettings .cp2CardHead {
+  min-height: 28px;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-color: var(--product-line);
+}
+
+.productWorkspace .cp2CardHead b,
+.productSettings .cp2CardHead b {
+  color: var(--product-copy);
+  font-family: Manrope, var(--font-ui);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.productWorkspace .cp2CardHead span,
+.productSettings .cp2CardHead span {
+  color: #8e897d;
+  font-size: 10px;
+}
+
+.productWorkspace .cp2Pill,
+.productSettings .cp2Pill {
+  border-radius: 0;
+  padding: 3px 7px;
+  font: 700 9px var(--font-mono);
+  letter-spacing: .02em;
+}
+
+.productWorkspace .cp2Primary,
+.productWorkspace .cp2Secondary,
+.productWorkspace .cp2Danger,
+.productSettings .cp2Primary,
+.productSettings .cp2Secondary,
+.productSettings .cp2Danger {
+  min-height: 31px;
+  border-radius: 0;
+}
+
+.productWorkspace .cp2Primary,
+.productSettings .cp2Primary {
+  border-color: var(--product-ink);
+  background: var(--product-ink);
+}
+
+.productWorkspace .cp2Secondary:hover,
+.productSettings .cp2Secondary:hover {
+  border-color: var(--product-ink);
+  color: var(--product-ink);
+  background: var(--product-lime);
+}
+
+/* The first metric row in a route is its operating summary, rendered as one band. */
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-ink);
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric {
+  min-height: 96px;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.16);
+  border-radius: 0;
+  background: transparent;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric:last-child,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric:last-child {
+  border-right: 0;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric small,
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric em,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric small,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric em {
+  color: rgba(255,255,255,.58);
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric b,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric b {
+  color: #fff;
+  overflow: visible;
+  font-size: clamp(17px, 1.55vw, 24px);
+  line-height: 1.05;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric.good b,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric.good b {
+  color: var(--product-lime) !important;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric.bad b,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric.bad b {
+  color: #ff9d87 !important;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric.warn b,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric.warn b {
+  color: #ffd27c !important;
+}
+
+.productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2MetricIcon,
+.productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2MetricIcon {
+  background: rgba(255,255,255,.11);
+  color: var(--product-mint);
+}
+
+/* Registry tables use a stable data-dense hierarchy. */
+.productWorkspace .cp2TableWrap,
+.productSettings .cp2TableWrap {
+  border-top: 1px solid var(--product-line);
+}
+
+.productWorkspace .cp2Table th,
+.productSettings .cp2Table th {
+  padding: 9px 10px;
+  color: #898478;
+  background: #f3f0e8;
+  border-color: var(--product-line);
+  font: 700 8px var(--font-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.productWorkspace .cp2Table td,
+.productSettings .cp2Table td {
+  padding: 10px;
+  border-color: #e5e0d6;
+  color: #57544c;
+}
+
+.productWorkspace .cp2Table tbody tr:hover td,
+.productSettings .cp2Table tbody tr:hover td {
+  background: #f5faf7;
+}
+
+.productWorkspace .cp2Table.rowClickable tbody tr.rowOn td,
+.productSettings .cp2Table.rowClickable tbody tr.rowOn td {
+  background: #edf7f2;
+}
+
+.productWorkspace .cp2Table.rowClickable tbody tr.rowOn td:first-child,
+.productSettings .cp2Table.rowClickable tbody tr.rowOn td:first-child {
+  box-shadow: inset 3px 0 0 var(--product-ink);
+}
+
+.productWorkspace .cp2SideFilter,
+.productSettings .cp2SideFilter {
+  border-color: var(--product-line);
+  border-radius: 0;
+  background: #ece9e1;
+}
+
+.productWorkspace .cp2SideFilter > button,
+.productSettings .cp2SideFilter > button {
+  border-radius: 0;
+}
+
+.productWorkspace .cp2SideFilter > button.active,
+.productSettings .cp2SideFilter > button.active {
+  border-color: #9bcdb6;
+  background: #e5f2eb;
+  color: var(--product-ink);
+}
+
+.productWorkspace .cp2Empty,
+.productSettings .cp2Empty {
+  background: repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(25,52,45,.018) 10px, rgba(25,52,45,.018) 11px);
+}
+
+/* Workspace-specific density: preserve each content type instead of one template everywhere. */
+.productWorkspace[data-workspace="trade"] .cp2TradingHero,
+.productWorkspace[data-workspace="trade"] .cp2MarketLayout,
+.productWorkspace[data-workspace="trade"] .erExecutionMaster,
+.productWorkspace[data-workspace="trade"] .erReviewWorkbench,
+.productWorkspace[data-workspace="trade"] .erLessonWorkbench {
+  gap: 10px;
+}
+
+.productWorkspace[data-workspace="research"] .kbFunnel,
+.productWorkspace[data-workspace="research"] .kbPipeline {
+  border-radius: 2px;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeLayout,
+.productWorkspace[data-workspace="research"] .cp2StrategyLayout,
+.productWorkspace[data-workspace="research"] .cp2CapabilityLayout {
+  gap: 10px;
+}
+
+.productWorkspace[data-workspace="risk"] .cp2RiskBanner,
+.productWorkspace[data-workspace="operations"] .cp2RiskBanner {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.productWorkspace[data-workspace="operations"] .cp2HealthGrid > div,
+.productWorkspace[data-workspace="operations"] .cp2ChannelGrid > div {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.productWorkspace[data-workspace="operations"] .cp2Dependency article {
+  border-radius: 2px;
+}
+
+/* Settings is a configuration workspace: overview, form, and impact stay distinct. */
+.productSettings > .uxProductHeader {
+  margin-bottom: 0;
+}
+
+.productSettings .cp2SettingsTabs {
+  margin: 0 0 16px;
+  border-color: var(--product-line-strong);
+  background: var(--product-paper-2);
+}
+
+.productSettings .cp2SettingsTabs button {
+  color: var(--product-muted);
+}
+
+.productSettings .cp2SettingsTabs button.active {
+  border-color: var(--product-ink);
+  color: var(--product-ink);
+}
+
+.productSettings .cp2OverviewGrid {
+  gap: 10px;
+}
+
+.productSettings .cp2OverviewCard {
+  padding: 14px;
+}
+
+.productSettings .cp2OverviewCard > header {
+  border-bottom: 1px solid var(--product-line);
+}
+
+.productSettings .cp2OverviewOpen {
+  color: var(--product-ink);
+}
+
+.productSettings .cp2SettingsPageHead {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+@media (max-width: 1180px) {
+  .uxProductHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, .42fr);
+  }
+
+  .uxProductNavGroup {
+    padding: 0 12px;
+  }
+
+  .uxProductNavGroup button {
+    padding: 0 8px;
+  }
+}
+
+/* 901px is the narrowest desktop shell; below it the app intentionally uses MobileApp. */
+@media (max-width: 980px) and (min-width: 901px) {
+  .uxProductHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .uxProductCurrent {
+    border-top: 1px solid var(--product-line);
+    border-left: 0;
+    padding-left: 0;
+    background: transparent;
+  }
+
+  .uxProductNavGroup {
+    padding: 0 9px;
+  }
+
+  .uxProductNavGroup button {
+    padding: 0 6px;
+    font-size: 10.5px;
+  }
+
+  .productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child,
+  .productWorkspace .uxCenterBody > .cp2Metrics:first-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .productWorkspace .uxCenterBody > .cp2Stack > .cp2Metrics:first-child .cp2Metric,
+  .productWorkspace .uxCenterBody > .cp2Metrics:first-child .cp2Metric {
+    border-bottom: 1px solid rgba(255,255,255,.16);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Page interiors: the redesign is structural, not a theme swap.
+ * Registry -> working truth -> evidence/health is the shared operating model.
+ * ----------------------------------------------------------------------- */
+
+/* Trading overview: one command surface, with the market as the primary fact. */
+.productWorkspace .tradingPrimaryDeck {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(270px, .7fr);
+  grid-template-areas:
+    "chart account"
+    "chart guardrails";
+  gap: 10px;
+  align-items: stretch;
+}
+
+.productWorkspace .tradingPrimaryDeck > .cp2Card {
+  grid-area: guardrails;
+}
+
+.productWorkspace .tradingPrimaryDeck > .cp2TradingHero {
+  display: contents;
+}
+
+.productWorkspace .tradingPrimaryDeck > .cp2TradingHero > .cp2ChartCard {
+  grid-area: chart;
+}
+
+.productWorkspace .tradingPrimaryDeck > .cp2TradingHero > .cp2Card:not(.cp2ChartCard) {
+  grid-area: account;
+}
+
+.productWorkspace .tradingCommandPage .cp2TradingHero {
+  align-items: stretch;
+}
+
+.productWorkspace .tradingCommandPage .cp2ChartCard {
+  min-height: 430px;
+  border-top: 3px solid var(--product-ink);
+}
+
+.productWorkspace .tradingCommandPage .bcGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.productWorkspace .tradingCommandPage .bcGoal {
+  padding: 2px 0 6px;
+}
+
+.productWorkspace .tradingCommandPage .cp2Grid.two.wideLeft {
+  grid-template-columns: minmax(0, 1.6fr) minmax(270px, .65fr);
+}
+
+/* Market intelligence: watchlist, chart and evidence each own one column. */
+.productWorkspace .marketIntelligenceWorkbench {
+  display: grid !important;
+  grid-template-columns: minmax(215px, .58fr) minmax(460px, 1.65fr) minmax(245px, .72fr);
+  grid-template-areas:
+    "registry chart snapshot"
+    "research research research";
+  align-items: stretch;
+  gap: 10px;
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MainChart {
+  grid-area: chart;
+  min-width: 0;
+  border-top: 3px solid var(--product-ink);
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail {
+  display: contents;
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:first-child {
+  grid-area: registry;
+  min-width: 0;
+  background: #f2efe7;
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:nth-child(2) {
+  grid-area: snapshot;
+  min-width: 0;
+  background: var(--product-ink);
+  color: #f6f3e9;
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:nth-child(2) .cp2CardHead b,
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:nth-child(2) .cp2Kv b {
+  color: #fffdf5;
+}
+
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:nth-child(2) .cp2CardHead span,
+.productWorkspace .marketIntelligenceWorkbench > .cp2MarketRail > .cp2Card:nth-child(2) .cp2Kv span {
+  color: #aac7bc;
+  border-color: rgba(255,255,255,.13);
+}
+
+.productWorkspace .marketResearchDeck {
+  grid-area: research;
+  overflow: hidden;
+  border: 1px solid var(--product-line);
+  background: rgba(255,255,255,.58);
+}
+
+.productWorkspace .marketResearchDeck > header {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: end;
+  gap: 20px;
+  padding: 14px 16px 0;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.productWorkspace .marketResearchDeck > header > div {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 13px;
+}
+
+.productWorkspace .marketResearchDeck > header small,
+.productWorkspace .opsControlBoard header small,
+.productWorkspace .riskRuntimeLead small {
+  color: #43806e;
+  font: 750 8px var(--font-mono);
+  letter-spacing: .14em;
+}
+
+.productWorkspace .marketResearchDeck > header b,
+.productWorkspace .opsControlBoard header b {
+  color: var(--product-copy);
+  font-size: 14px;
+}
+
+.productWorkspace .marketResearchDeck > header span,
+.productWorkspace .opsControlBoard header span {
+  color: var(--product-muted);
+  font-size: 10px;
+}
+
+.productWorkspace .marketResearchDeck nav {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.productWorkspace .marketResearchDeck nav button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 0 13px;
+  color: var(--product-muted);
+  font: 650 10px var(--font-ui);
+  cursor: pointer;
+}
+
+.productWorkspace .marketResearchDeck nav button::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  background: transparent;
+}
+
+.productWorkspace .marketResearchDeck nav button.active {
+  color: var(--product-ink);
+}
+
+.productWorkspace .marketResearchDeck nav button.active::after {
+  background: var(--product-ink);
+}
+
+.productWorkspace .marketResearchDeck .cp2MarketBottom {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.productWorkspace .marketResearchDeck .cp2MarketBottom.flow,
+.productWorkspace .marketResearchDeck .cp2MarketBottom.btc,
+.productWorkspace .marketResearchDeck .cp2MarketBottom.events {
+  grid-template-columns: 1fr;
+}
+
+.productWorkspace .marketResearchDeck .cp2Card {
+  min-height: 180px;
+  border: 0;
+  border-right: 1px solid var(--product-line);
+  background: transparent;
+}
+
+.productWorkspace .marketResearchDeck .cp2Card:last-child {
+  border-right: 0;
+}
+
+/* Positions: a master/detail registry replaces the allocation-card wall. */
+.productWorkspace .positionWorkbench {
+  display: grid;
+  grid-template-columns: minmax(230px, .62fr) minmax(430px, 1.35fr) minmax(250px, .68fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.productWorkspace .positionRegistry,
+.productWorkspace .positionTruth {
+  min-height: 510px;
+}
+
+.productWorkspace .positionRegistry {
+  background: #f2efe7;
+}
+
+.productWorkspace .positionRegistryList {
+  display: grid;
+  gap: 0;
+  margin: 0 -14px -14px;
+}
+
+.productWorkspace .positionRegistryList > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--product-line);
+  background: transparent;
+  padding: 13px 14px;
+  color: var(--product-copy);
+  text-align: left;
+  cursor: pointer;
+}
+
+.productWorkspace .positionRegistryList > button.active {
+  box-shadow: inset 3px 0 0 var(--product-ink);
+  background: #e8f3ee;
+}
+
+.productWorkspace .positionRegistryList button span,
+.productWorkspace .positionRegistryList button span small {
+  display: grid;
+  gap: 3px;
+}
+
+.productWorkspace .positionRegistryList button span small,
+.productWorkspace .positionRegistryList button i {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.productWorkspace .positionRegistryList button em {
+  font: 750 10px var(--font-mono);
+  font-style: normal;
+}
+
+.productWorkspace .positionRegistryList button i {
+  grid-column: 1 / -1;
+}
+
+.productWorkspace .positionTruth {
+  border-top: 3px solid var(--product-ink);
+}
+
+.productWorkspace .positionTruthHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0 22px;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.productWorkspace .positionTruthHead > div {
+  display: grid;
+  gap: 5px;
+}
+
+.productWorkspace .positionTruthHead > div:last-child {
+  text-align: right;
+}
+
+.productWorkspace .positionTruthHead b,
+.productWorkspace .positionTruthHead strong {
+  font: 750 25px var(--font-mono);
+}
+
+.productWorkspace .positionTruthHead small,
+.productWorkspace .positionFactGrid small,
+.productWorkspace .positionPriceRail small {
+  color: var(--product-muted);
+  font-size: 9px;
+}
+
+.productWorkspace .positionPriceRail {
+  display: grid;
+  grid-template-columns: auto minmax(20px, 1fr) auto minmax(20px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 25px 0;
+}
+
+.productWorkspace .positionPriceRail span {
+  display: grid;
+  gap: 5px;
+}
+
+.productWorkspace .positionPriceRail i {
+  height: 1px;
+  background: var(--product-line-strong);
+}
+
+.productWorkspace .positionFactGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--product-line);
+}
+
+.productWorkspace .positionFactGrid span {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border-right: 1px solid var(--product-line);
+}
+
+.productWorkspace .positionFactGrid span:last-child {
+  border-right: 0;
+}
+
+.productWorkspace .positionOwnership {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px;
+  background: #eef6f2;
+  color: var(--product-ink);
+}
+
+.productWorkspace .positionOwnership span {
+  display: grid;
+  gap: 3px;
+}
+
+.productWorkspace .positionOwnership small {
+  color: var(--product-muted);
+  font-size: 9.5px;
+}
+
+.productWorkspace .positionPortfolioRail {
+  display: grid;
+  gap: 10px;
+}
+
+.productWorkspace .positionEquityTrail {
+  min-height: 170px;
+}
+
+/* Risk center: status is a decision surface, rules and evidence follow it. */
+.productWorkspace .riskOperatingBoard {
+  display: grid;
+  grid-template-columns: minmax(250px, .58fr) minmax(0, 1.42fr);
+  gap: 10px;
+}
+
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-content: start;
+  gap: 13px 10px;
+  min-width: 0;
+  padding: 18px;
+  color: #f9f6ed;
+  background: var(--product-ink);
+}
+
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner > span,
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner > button {
+  grid-column: 1 / -1;
+}
+
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255,255,255,.13);
+  color: #aac7bc;
+  font-size: 10px;
+}
+
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner strong {
+  color: #fffdf7;
+}
+
+.productWorkspace .riskOperatingBoard > .cp2RiskBanner > button {
+  min-height: 34px;
+  border: 1px solid rgba(255,255,255,.28);
+  background: transparent;
+  color: #fff;
+}
+
+.productWorkspace .riskRuntimeLead {
+  display: grid;
+  gap: 5px;
+}
+
+.productWorkspace .riskRuntimeLead small {
+  color: #9ed4c1;
+}
+
+.productWorkspace .riskRuntimeLead b {
+  color: #fff;
+  font-size: 22px;
+}
+
+.productWorkspace .riskRuntimeLead em {
+  color: #b9cdc5;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.productWorkspace .riskOperatingBoard > .riskCards {
+  grid-template-columns: minmax(0, 1.05fr) minmax(260px, .75fr);
+}
+
+.productWorkspace .riskExposureHero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 12px;
+}
+
+.productWorkspace .riskExposureHero > div:last-child {
+  display: grid;
+  gap: 5px;
+}
+
+.productWorkspace .riskExposureHero > div:last-child b {
+  font: 750 22px var(--font-mono);
+}
+
+.productWorkspace .riskExposureHero small,
+.productWorkspace .riskExposureHero span {
+  color: var(--product-muted);
+  font-size: 9px;
+}
+
+/* Operations: a health matrix and a causal run trace replace status tiles. */
+.productWorkspace .opsControlBoard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+  gap: 10px;
+}
+
+.productWorkspace .opsHealthMatrix,
+.productWorkspace .opsRunTrace {
+  border: 1px solid var(--product-line);
+  background: rgba(255,255,255,.67);
+}
+
+.productWorkspace .opsHealthMatrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.productWorkspace .opsHealthMatrix > header,
+.productWorkspace .opsRunTrace > header {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.productWorkspace .opsHealthMatrix > header {
+  grid-column: 1 / -1;
+}
+
+.productWorkspace .opsHealthMatrix > article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  min-height: 74px;
+  border-right: 1px solid var(--product-line);
+  border-bottom: 1px solid var(--product-line);
+}
+
+.productWorkspace .opsHealthMatrix > article:nth-of-type(even) {
+  border-right: 0;
+}
+
+.productWorkspace .opsHealthMatrix > article:last-child {
+  grid-column: 1 / -1;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.productWorkspace .opsHealthMatrix > article > svg {
+  width: 16px;
+  color: #4c7d6e;
+}
+
+.productWorkspace .opsHealthMatrix article span {
+  display: grid;
+  gap: 3px;
+}
+
+.productWorkspace .opsHealthMatrix article small {
+  color: var(--product-muted);
+  font-size: 8px;
+}
+
+.productWorkspace .opsHealthMatrix article em {
+  min-width: 70px;
+  padding: 5px 7px;
+  border: 1px solid var(--product-line);
+  color: var(--product-ink);
+  font: 750 9px var(--font-mono);
+  font-style: normal;
+  text-align: center;
+}
+
+/* E2P-inspired research language: lime selection, mint evidence, squared stages. */
+.productWorkspace[data-workspace="research"] .cp2KnowledgeHeader {
+  border-color: var(--product-line);
+  border-radius: 0;
+  background: var(--product-paper-2);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeHeader small,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeSourceStages > header small,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNextBody > small {
+  color: #5eae87;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeHeader h2 {
+  font-family: Manrope, var(--font-ui);
+  font-weight: 520;
+  letter-spacing: -.035em;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTabs {
+  gap: 0;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTabs button {
+  border-right: 0;
+  border-radius: 0;
+  background: var(--product-paper-2);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTabs button:last-child {
+  border-right: 1px solid var(--product-line);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTabs button.active {
+  border-color: var(--product-ink);
+  background: var(--product-lime);
+  box-shadow: none;
+  color: var(--product-ink);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTabs button.active > svg {
+  color: var(--product-ink);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeFunnel {
+  gap: 0;
+  border: 1px solid var(--product-line);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeFunnel > span {
+  border: 0;
+  border-right: 1px solid var(--product-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeFunnel > span.graduate {
+  border-right: 0;
+  background: var(--product-lime);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeFunnel > svg {
+  align-self: stretch;
+  width: 26px;
+  padding: 0 7px;
+  border-right: 1px solid var(--product-line);
+  background: #ebe8df;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNext,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTruth,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeSourceStages article,
+.productWorkspace[data-workspace="research"] .cp2ArtifactList > article,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeCatalogLink,
+.productWorkspace[data-workspace="research"] .cp2NetworkStats > span,
+.productWorkspace[data-workspace="research"] .cp2NetworkCategories button {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNext {
+  border-left-color: var(--product-ink);
+  background: var(--product-paper-2);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNext.good {
+  border-left-color: var(--product-mint);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNextStage b {
+  color: var(--product-ink);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeNext > button {
+  border-color: var(--product-ink);
+  border-radius: 0;
+  background: var(--product-ink);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTruth {
+  border-color: var(--product-line);
+  border-left-color: var(--product-mint);
+  background: #eef6f1;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeTruth > svg {
+  color: #4f9e78;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeSourceStages article.good {
+  border-top-color: var(--product-mint);
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeStageTrack i.done,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeSourceStages article.good .cp2KnowledgeStageTrack i.done {
+  background: var(--product-lime);
+  border: 1px solid #a3bd4b;
+}
+
+.productWorkspace[data-workspace="research"] .cp2KnowledgeCatalogLink {
+  border-color: var(--product-ink);
+  background: var(--product-lime);
+  color: var(--product-ink);
+}
+
+.productWorkspace[data-workspace="research"] .cp2NetworkCategories button.active {
+  border-color: var(--product-ink);
+  background: var(--product-lime);
+  color: var(--product-ink);
+}
+
+.productWorkspace .opsRunTrace > div > article {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+}
+
+.productWorkspace .opsRunTrace > div > article:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 37px;
+  bottom: -9px;
+  left: 26px;
+  width: 1px;
+  background: var(--product-line-strong);
+}
+
+.productWorkspace .opsRunTrace article > i {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--product-ink);
+  border-radius: 50%;
+  color: var(--product-ink);
+  font: 750 8px var(--font-mono);
+  font-style: normal;
+  background: var(--product-paper-2);
+  z-index: 1;
+}
+
+.productWorkspace .opsRunTrace article > span {
+  display: grid;
+  gap: 4px;
+}
+
+.productWorkspace .opsRunTrace article > span small {
+  color: var(--product-muted);
+  font-size: 8.5px;
+}
+
+/* Research registries stay dense: source/list/detail rather than card galleries. */
+.productWorkspace[data-workspace="research"] .cp2CapabilitiesLayout,
+.productWorkspace[data-workspace="research"] .cp2KnowledgeLayout {
+  align-items: start;
+}
+
+.productWorkspace[data-workspace="research"] .cp2CapabilityTable,
+.productWorkspace[data-workspace="research"] .cp2CapabilityDetail {
+  min-height: 600px;
+}
+
+/* Settings overview behaves as an estate map, not seven equal cards. */
+.productSettings .cp2OverviewGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.productSettings .cp2OverviewGrid > .cp2OverviewCard {
+  grid-column: span 4;
+}
+
+.productSettings .cp2OverviewGrid > .cp2OverviewCard:nth-child(1),
+.productSettings .cp2OverviewGrid > .cp2OverviewCard:nth-child(2) {
+  grid-column: span 6;
+}
+
+.productSettings .cp2OverviewGrid > .cp2OverviewCard:nth-child(3) {
+  border-top: 3px solid var(--product-ink);
+}
+
+@media (max-width: 1240px) {
+  .productWorkspace .marketIntelligenceWorkbench {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, .52fr);
+    grid-template-areas:
+      "chart snapshot"
+      "registry registry"
+      "research research";
+  }
+
+  .productWorkspace .positionWorkbench {
+    grid-template-columns: minmax(220px, .55fr) minmax(0, 1.2fr);
+  }
+
+  .productWorkspace .positionPortfolioRail {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1050px) and (min-width: 901px) {
+  .productWorkspace .tradingPrimaryDeck {
+    grid-template-columns: 1fr;
+    grid-template-areas: "chart" "account" "guardrails";
+  }
+
+  .productWorkspace .marketIntelligenceWorkbench,
+  .productWorkspace .positionWorkbench,
+  .productWorkspace .riskOperatingBoard,
+  .productWorkspace .opsControlBoard {
+    grid-template-columns: 1fr;
+  }
+
+  .productWorkspace .marketIntelligenceWorkbench {
+    grid-template-areas: "chart" "registry" "snapshot" "research";
+  }
+
+  .productWorkspace .positionPortfolioRail {
+    grid-column: auto;
+  }
+
+  .productWorkspace .marketResearchDeck > header {
+    grid-template-columns: 1fr;
+  }
+
+  .productWorkspace .marketResearchDeck nav {
+    min-height: 42px;
+    overflow-x: auto;
+  }
+
+  .productWorkspace .marketResearchDeck .cp2MarketBottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .productSettings .cp2OverviewGrid > .cp2OverviewCard,
+  .productSettings .cp2OverviewGrid > .cp2OverviewCard:nth-child(1),
+  .productSettings .cp2OverviewGrid > .cp2OverviewCard:nth-child(2) {
+    grid-column: span 6;
+  }
+}
