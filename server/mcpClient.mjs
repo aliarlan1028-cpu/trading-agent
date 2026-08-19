@@ -219,30 +219,3 @@ export function mcpStatus(db) {
     tools: servers.reduce((sum, s) => sum + (s.toolCount || 0), 0)
   };
 }
-
-// 开机种子:接入 CoinGecko 官方免费 MCP(行业领先、免 key、10k 调用/月、只读行情/OHLCV/链上)。
-// 幂等:已存在则不重复注册;返回是否需要连接。
-export function ensureCoingeckoMcp(db) {
-  db.mcpServers ||= [];
-  const existing = db.mcpServers.find((s) => s.id === "mcp_coingecko");
-  if (existing) return existing;
-  const server = {
-    id: "mcp_coingecko",
-    name: "CoinGecko 行情",
-    url: "https://mcp.api.coingecko.com/mcp",
-    transport: "streamable_http",
-    source: "official",
-    builtInRegistryKey: "coingecko_market_data",
-    status: "registered",
-    enabled: true,
-    autoAllowAll: false,
-    permissions: [],
-    allowedTools: [],
-    tools: [],
-    toolCount: 0,
-    createdAt: nowIso()
-  };
-  db.mcpServers.unshift(server);
-  appendAudit(db, "接入 CoinGecko 官方 MCP(免费只读行情)", server.id, "McpSeed");
-  return server;
-}

@@ -18,7 +18,3 @@ export function isTerminalExchangeOrder(rowOrStatus) {
     : rowOrStatus;
   return TERMINAL_EXCHANGE_ORDER_STATES.has(String(status || "").toLowerCase());
 }
-
-export function isNonTerminalExchangeOrder(rowOrStatus) {
-  return !isTerminalExchangeOrder(rowOrStatus);
-}

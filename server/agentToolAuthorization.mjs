@@ -112,5 +112,3 @@ export function authorizeAgentTool(db, invocation, name, args = {}, options = {}
 export function filterAgentToolsForInvocation(db, invocation, tools = []) {
   return tools.filter((tool) => authorizeAgentTool(db, invocation, tool.name, {}, { exposure: true }).allowed);
 }
-
-export const AGENT_TOOL_PERMISSION_MAP = BUILTIN_TOOL_PERMISSIONS;

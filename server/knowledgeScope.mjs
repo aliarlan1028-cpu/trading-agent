@@ -92,7 +92,3 @@ export function projectKnowledgeForPrincipal(db, principalInput) {
   }
   return projected;
 }
-
-export function knowledgeCollectionNames() {
-  return [...KNOWLEDGE_COLLECTIONS];
-}

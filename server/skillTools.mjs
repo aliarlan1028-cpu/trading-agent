@@ -305,11 +305,6 @@ export function seedSkillTools(db) {
   }
 }
 
-// 受信任导入 skill 的工具名(稳定、合法标识符)
-export function importedToolName(skill) {
-  return `imported_${String(skill.id).replace(/[^a-zA-Z0-9]/g, "").slice(-20)}`;
-}
-
 export function isSkillTool(name) {
   return SKILL_TOOLS.some((t) => t.toolName === name);
 }

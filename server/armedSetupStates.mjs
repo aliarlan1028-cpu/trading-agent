@@ -7,7 +7,3 @@ export function isTerminalArmedSetup(rowOrStatus) {
   const status = typeof rowOrStatus === "object" ? rowOrStatus?.status : rowOrStatus;
   return TERMINAL_ARMED_SETUP_STATES.has(String(status || "").toLowerCase());
 }
-
-export function isNonTerminalArmedSetup(rowOrStatus) {
-  return !isTerminalArmedSetup(rowOrStatus);
-}

@@ -43,9 +43,6 @@ export function TurnstileWidget({ siteKey, onToken }) {
   return <div className="turnstileHost" ref={hostRef} />;
 }
 
-export function formatMoney(value, digits = 2) {
-  return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
 // 价格按量级自适应精度：BTC 用 2 位、SUI(0.7x) 用 4 位、meme 币(0.00001x) 用更多位。
 function priceDigits(value) {
   const a = Math.abs(Number(value) || 0);
@@ -84,11 +81,6 @@ export function asArray(value) {
   return String(value).split(/[,，\n/]/).map((item) => item.trim()).filter(Boolean);
 }
 
-export function safeList(value, fallback = "-") {
-  const items = asArray(value);
-  return items.length ? items.join(t("、", ", ")) : fallback;
-}
-
 export function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -125,13 +117,6 @@ export function formatTime(value, fallback = "-") {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleTimeString(getLang() === "en" ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Shanghai" });
-}
-
-export function formatDuration(value, fallback = t("未记录", "Not recorded")) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  if (number < 1000) return `${Math.round(number)}ms`;
-  return `${(number / 1000).toFixed(1)}s`;
 }
 
 export function humanize(value, fallback = "-") {
@@ -394,32 +379,6 @@ export function localizeText(value, fallback = "-") {
   return humanize(raw, raw);
 }
 
-export function humanizeList(value, fallback = "-") {
-  const items = asArray(value).map((item) => humanize(item));
-  return items.length ? items.join(t("、", ", ")) : fallback;
-}
-
-export function humanizePhase(value, fallback = "-") {
-  const normalized = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
-  if (!normalized) return fallback;
-  if (normalized.includes("mandate") && normalized.includes("check")) return t("交易权限检查", "Trading permission check");
-  if (normalized.includes("risk") && normalized.includes("check")) return t("风控检查", "Risk check");
-  if (normalized.includes("observ")) return t("观察市场", "Monitoring market");
-  if (normalized.includes("analy")) return t("生成分析", "Analyzing");
-  if (normalized.includes("plan")) return t("生成计划", "Building trade plan");
-  if (normalized.includes("execut")) return t("执行交易", "Executing trade");
-  if (normalized.includes("reconcil")) return t("账户对账", "Reconciling account");
-  if (normalized.includes("review")) return t("复盘审查", "Reviewing");
-  return humanize(value, fallback);
-}
-
-export function shortId(value, fallback = t("未生成", "Not generated")) {
-  const text = String(value || "");
-  if (!text) return fallback;
-  if (text.length <= 18) return text;
-  return `${text.slice(0, 8)}...${text.slice(-6)}`;
-}
-
 export function statusTone(status) {
   const value = String(status || "").toLowerCase();
   const raw = String(status || "");
@@ -434,18 +393,6 @@ export function statusTone(status) {
   // 未识别状态默认中性，不再一律绿色 ok（"未*/未知"态曾被误染成绿色"正常"）。
   if (/^未|未知|unknown/.test(raw)) return "neutral";
   return "ok";
-}
-
-export function systemStatus(data) {
-  if (data?.system?.killSwitch) return { label: t("紧急停止中", "Emergency stop active"), tone: "danger" };
-  if ((data?.exchangeAccounts || []).length && (data?.exchangeAccounts || []).every((account) => !account.readEnabled)) return { label: t("待配置", "Setup required"), tone: "warning" };
-  if (!data?.system?.autonomyEnabled) return { label: t("运行已暂停", "Runtime paused"), tone: "warning" };
-  if (data?.agentStatus?.state === "risk_paused") return { label: t("风控暂停", "Paused by risk controls"), tone: "warning" };
-  // tone 跟随文案：非"正常/运行"类状态（如种子值"等待配置"、"风控暂停"）不能带绿色 ok 渲染。
-  const raw = data?.system?.riskStatus || "正常";
-  const label = humanize(raw, raw === "正常" ? t("正常", "Healthy") : raw);
-  const tone = /正常|运行|healthy|running/i.test(raw) ? "ok" : /熔断|高|halt|critical/i.test(raw) ? "danger" : "warning";
-  return { label, tone };
 }
 
 // 交易运行状态的唯一展示模型。automationState 是后端按真实执行闸顺序派生的
@@ -1393,49 +1340,9 @@ export function useApi() {
   return { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy: busyCount > 0, isNativeApp: isNativeApp(), publicInfo };
 }
 
-export function Card({ className = "", children, ...props }) {
-  return <section className={`dashCard ${className}`} {...props}>{children}</section>;
-}
-
-export function SectionTitle({ icon: Icon, title, action }) {
-  return (
-    <div className="sectionTitle">
-      <div>{Icon && <span className="sectionIcon"><Icon size={18} /></span>}<h2>{title}</h2></div>
-      {action}
-    </div>
-  );
-}
-
 // 提示解读卡已按需求全站移除；保留空组件以兼容现有调用点。
 export function InsightNote() {
   return null;
-}
-
-export function MetricCard({ icon: Icon, label, value, sub, tone = "", candles }) {
-  return (
-    <Card className={`metricCard ${Icon ? "" : "noIcon"}`}>
-      {Icon && <div className={`metricIcon ${tone}`}><Icon size={22} /></div>}
-      <div>
-        <span>{label}</span>
-        <strong className={tone}>{value}</strong>
-        {sub && <small>{sub}</small>}
-      </div>
-      {candles && candles.length > 1 && <div className={`metricSpark ${tone}`}><MiniSparkline candles={candles} /></div>}
-    </Card>
-  );
-}
-
-export function MiniSparkline({ candles = [] }) {
-  if (!candles.length) return null;
-  const points = candles.slice(-24);
-  const min = Math.min(...points.map((item) => Number(item.close || 0)));
-  const max = Math.max(...points.map((item) => Number(item.close || 0)));
-  const path = points.map((item, index) => {
-    const x = (index / Math.max(1, points.length - 1)) * 100;
-    const y = 36 - ((Number(item.close || 0) - min) / Math.max(1, max - min)) * 28;
-    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-  return <svg className="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none"><path d={path} /></svg>;
 }
 
 const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
@@ -1606,34 +1513,6 @@ export function StatusBadge({ children, tone = "ok" }) {
   return <span className={`statusBadge ${tone}`}>{children}</span>;
 }
 
-export function ProgressBar({ value = 50, tone = "green" }) {
-  return <div className={`progressBar ${tone}`}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
-}
-
-export function DataTable({ columns, rows, emptyText = "暂无真实记录" }) {
-  const gridTemplateColumns = columns.map((col) => col.width || "1fr").join(" ");
-  return (
-    <div className="dataTable">
-      <div className="dataHead" style={{ gridTemplateColumns }}>
-        {columns.map((col) => <span key={col.key}>{col.label}</span>)}
-      </div>
-      {!rows.length && <div className="emptyTable">{emptyText}</div>}
-      {rows.map((row, index) => (
-        <div className="dataRow" key={row.id || index} style={{ gridTemplateColumns }}>
-          {columns.map((col) => <span key={col.key} data-label={col.label}>{col.render ? col.render(row) : (row[col.key] ?? "-")}</span>)}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// 异常/高风险标记：给标题加虚线下划标记（不直接把原因铺成文案），鼠标悬停/聚焦显示具体问题。
-export function FlagTip({ reason, tone = "warn", children }) {
-  if (!reason) return <>{children}</>;
-  return <span className={`flagTip ${tone}`} data-tip={String(reason)} tabIndex={0} role="note" aria-label={String(reason)}>{children}</span>;
-}
-
-// 交易对/币种白名单：渲染成可换行、可滚动的胶囊标签，币多也不难看。
 export function SymbolChips({ symbols, empty = "未授权" }) {
   const list = (Array.isArray(symbols) ? symbols : []).filter(Boolean);
   if (!list.length) return <span className="symChipsEmpty">{empty}</span>;
@@ -1645,18 +1524,7 @@ export function RiskLine({ label, value, progress }) {
     <div className="riskLine">
       <span>{label}</span>
       <b>{value}</b>
-      {progress !== undefined && <ProgressBar value={progress} />}
-    </div>
-  );
-}
-
-export function MiniChart({ title, value, sub }) {
-  // 只展示真实指标（标题/值/说明），不画任何装饰性/占位图形，避免出现与数据无关的假图。
-  return (
-    <div className="miniChart">
-      <h3>{title}</h3>
-      <strong>{value}</strong>
-      <small>{sub}</small>
+      {progress !== undefined && <div className="progressBar green"><span style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} /></div>}
     </div>
   );
 }

@@ -13,9 +13,6 @@ export function isTerminalTradePlan(rowOrStatus) {
   return TERMINAL_PLAN_STATUSES.has(String(status || "").toLowerCase());
 }
 
-export function isNonTerminalTradePlan(rowOrStatus) {
-  return !isTerminalTradePlan(rowOrStatus);
-}
 
 const RESERVED_CREATE_FIELDS = new Set([
   "id", "status", "exchange", "marketType", "createdAt", "updatedAt", "mandateVersion",
