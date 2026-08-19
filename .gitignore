@@ -10,6 +10,7 @@ backups/
 data/
 assets/
 .claude/
+.worktrees/
 
 # 统一 LLM key（含密钥，勿提交）
 deploy/vendor.env
