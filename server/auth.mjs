@@ -273,7 +273,7 @@ export function installAuth(app, db) {
 
 function completePasswordLogin(req, res, db, user, clientKey) {
   if (user.mfaEnabled) {
-    let secret = null;
+    let secret;
     try { secret = user.mfaSecretName ? readSecret(db, user.mfaSecretName) : null; } catch { secret = null; }
     const mfa = evaluateMfaLogin(secret, req.body?.totp);
     if (mfa.state === "unavailable") {

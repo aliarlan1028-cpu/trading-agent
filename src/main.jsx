@@ -17,10 +17,9 @@ import {
   ShieldCheck,
   Zap
 } from "lucide-react";
-import { automationPresentation, exchangeState, localizeText, useApi } from "./lib.jsx";
+import { automationPresentation, exchangeState, isNativeApp, localizeText, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
-import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { SafeArea } from "@capacitor-community/safe-area";

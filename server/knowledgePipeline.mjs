@@ -119,7 +119,7 @@ export async function parseKnowledgeSource(db, sourceId) {
 async function parseKnowledgeSourceWithPermit(db, sourceId) {
   const source = db.knowledge.sources.find((item) => item.id === sourceId);
   if (!source) return { status: "missing_source" };
-  let text = "";
+  let text;
   if (source.type === "book_title") text = await generateBookSynthesis(source);
   else if (source.url) text = await extractFromUrl(source.url, { maxDepth: source.crawlDepth, maxPages: source.crawlMaxPages });
   else if (source.filePath) text = await extractFromFile(source.filePath);
@@ -583,7 +583,7 @@ async function extractFromUrl(url, options = {}) {
   let totalChars = 0;
   while (queue.length && pages.length < maxPages && totalChars < CRAWL_TOTAL_CHARS) {
     const { url: current, depth } = queue.shift();
-    let html, finalUrl, ok = false, ctype = "";
+    let html, finalUrl, ok, ctype;
     try {
       const r = await fetchExternalText(current, { maxBytes: 8 * 1024 * 1024, timeoutMs: 15_000 });
       ok = r.response.ok;

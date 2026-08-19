@@ -151,7 +151,7 @@ export async function runBacktest(db, params = {}) {
   if (params.fast) stratParams.fast = Number(params.fast);
   if (params.slow) stratParams.slow = Number(params.slow);
 
-  let candles = [];
+  let candles;
   try {
     candles = await getHistoricalKlines(symbol, timeframe, limit);
   } catch (error) {

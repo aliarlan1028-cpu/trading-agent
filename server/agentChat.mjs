@@ -1966,7 +1966,7 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "refresh_events") {
     const result = await refreshEventSources(db);
-    let marketIntelligence = null;
+    let marketIntelligence;
     try {
       const { refreshMarketIntelligence } = await import("./marketIntelligence.mjs");
       marketIntelligence = await refreshMarketIntelligence(db);
@@ -2804,8 +2804,8 @@ export async function runAgentChat(db, payload = {}, saveDb) {
   run.toolSchemaHash = promptFingerprint(JSON.stringify(TOOL_DEFS));
   run.modelCalls = [];
   const toolTrace = [];
-  let finalText = "";
-  let errorText = "";
+  let finalText;
+  let errorText;
   let evidenceBundle = null;
 
   try {
@@ -3192,7 +3192,7 @@ async function geminiLoop(db, run, userText, toolTrace, systemPrompt, tools, ses
     }
     messages.push(message);
     const parsedCalls = message.tool_calls.map((toolCall) => {
-      let args = {};
+      let args;
       try { args = JSON.parse(toolCall.function.arguments || "{}"); } catch { args = {}; }
       return { name: toolCall.function.name, args };
     });

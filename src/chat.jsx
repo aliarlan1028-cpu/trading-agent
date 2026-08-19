@@ -1386,7 +1386,6 @@ function PosterModal({ content, meta, onClose }) {
 }
 
 export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
-  const system = data.system || {};
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);

@@ -11,7 +11,7 @@ export function scanSkill(db, skillId) {
   const permissions = skill.permissions || [];
   const highRisk = permissions.filter((permission) => HIGH_RISK_PERMISSIONS.has(permission));
   let scanError = null;
-  let content = null;
+  let content;
   try {
     content = skill.native ? {
         checksum: crypto.createHash("sha256").update(`builtin:${skill.id}:${skill.version}:${skill.toolName || ""}`).digest("hex"),

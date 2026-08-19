@@ -393,7 +393,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     const oldest = raw[raw.length - 1]?.[0]; // data 为最新在前，末位最旧
     if (!oldest) break;
     const pageTimer = timeoutSignal(8000);
-    let batch = [];
+    let batch;
     try {
       const response = await fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal });
       if (!response.ok) break;

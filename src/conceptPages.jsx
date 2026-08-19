@@ -3,9 +3,9 @@ import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
   Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Database, Eye, Globe2,
-  FileText, Gauge, GitBranch, Info, KeyRound,
+  FileText, GitBranch, Info, KeyRound,
   Play, Plus, RefreshCw, Rocket, Search, Server, ShieldCheck,
-  SlidersHorizontal, Sparkles, Target, TrendingUp, Users, WalletCards,
+  Sparkles, Target, TrendingUp, Users, WalletCards,
   Wrench, XCircle
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
@@ -920,7 +920,7 @@ function ActiveDoctrineCard({ data, compact = false }){
 }
 
 export function KnowledgeConcept({ data, action, ui }) {
-  const k=data.knowledge||{}; const sources=arr(k.sources); const methods=arr(k.tradingMethods); const knowledgeCandidates=arr(k.candidates); const candidates=knowledgeCandidates.filter(item=>item.status==="candidate"); const knowledgeSkills=arr(k.tradingSkills); const rules=arr(k.ruleProposals); const chunks=arr(k.chunks);
+  const k=data.knowledge||{}; const sources=arr(k.sources); const methods=arr(k.tradingMethods); const knowledgeCandidates=arr(k.candidates); const knowledgeSkills=arr(k.tradingSkills); const rules=arr(k.ruleProposals); const chunks=arr(k.chunks);
   const pendingRules=rules.filter(rule=>!rule.status||rule.status==="待审批"||rule.status==="candidate");
   const approvedRules=rules.filter(rule=>rule.status==="已批准"||rule.status==="approved");
   const hardRules=approvedRules.filter(rule=>rule.enforcementStatus==="entry_enforced");
@@ -994,7 +994,7 @@ export function KnowledgeConcept({ data, action, ui }) {
     if(candidate.status==="adopted"&&["lens","workflow"].includes(candidate.type))return <button className="cp2Link" onClick={()=>action(`/api/knowledge/candidates/${candidate.id}/approve-prompt`,{})}>{t("审批当前版本","Approve version")}</button>;
     return <Pill tone="neutral">{humanize(candidate.status)}</Pill>;
   };
-  const processingCount=sourceStages.filter(row=>row.stage===1).length; const failedSourceCount=sourceStages.filter(row=>row.stage===0).length; const structuredSourceCount=sourceStages.filter(row=>row.stage===3).length;
+  const processingCount=sourceStages.filter(row=>row.stage===1).length; const failedSourceCount=sourceStages.filter(row=>row.stage===0).length;
   const knowledgeNext=!importedSources.length?{tone:"neutral",title:t("导入第一份知识","Import your first source"),detail:t("导入书籍、PDF、DOCX、网页或 GitHub 后，系统会解析正文、建立检索索引，再形成概念关系和待审批规则。","After importing a book, PDF, DOCX, webpage, or GitHub source, the system parses the text, builds a search index, then forms concept links and pending rules."),action:t("导入知识","Import knowledge"),run:()=>ui.openPanel("knowledgeImport")}:failedSourceCount?{tone:"warn",title:t(`${failedSourceCount} 个来源需要重新解析`,`${failedSourceCount} sources need parsing again`),detail:t("失败来源不会进入检索或 Agent 证据包。请在下方来源卡直接重试。","Failed sources cannot enter retrieval or agent evidence bundles. Retry them directly from the source cards below."),action:t("管理来源","Manage sources"),run:()=>ui.openPanel("knowledgeList")}:processingCount?{tone:"neutral",title:t(`${processingCount} 个来源正在建立索引`,`${processingCount} sources are being indexed`),detail:t("解析完成后会自动变成可检索，不需要手动开启第二条流水线。","They become searchable automatically after parsing; there is no second pipeline to start manually."),action:t("查看来源","View sources"),run:()=>ui.openPanel("knowledgeList")}:pendingRules.length?{tone:"warn",title:t(`知识已可用，下一步审批 ${pendingRules.length} 条候选规则`,`Knowledge is ready; review ${pendingRules.length} candidate rules next`),detail:t("规则必须去重并由 Owner 批准后才会生效；未批准内容仍可用于检索，但不会成为硬风控。","Rules take effect only after deduplication and Owner approval. Unapproved content remains searchable but never becomes a hard control."),action:t("管理规则","Manage rules"),run:()=>ui.openPanel("ruleLibrary")}:{tone:"good",title:t("知识基础已完成","Knowledge foundation is ready"),detail:t("现在可以检索、引用和查看知识图谱。交易方法继续在本页实验室完成历史与纯前向验证；工具或工作流也先在本页审核。只有毕业版本才进入策略库或能力库。","You can now search, cite, and explore the graph. Methods continue through historical and forward validation in this lab; tools and workflows are reviewed here too. Only graduated versions enter Strategy or Capability catalogs."),action:t("孵化交易方法","Incubate methods"),run:()=>setSection("methods")};
   const sectionTabs=[
     ["reference",t("AI 参考知识","AI Reference"),BookOpen,sourceStages.filter(row=>row.stage>=2).length],

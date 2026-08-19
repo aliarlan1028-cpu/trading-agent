@@ -60,7 +60,7 @@ export function registerAssistantRoutes(app, ctx) {
       `风险：未处理告警 ${digest.risk.openIncidents} 条${digest.risk.topIncident ? `（最新：${digest.risk.topIncident}）` : ""}`
     ].join("\n");
     const system = "你是用户的交易系统助手。用中文把下面的系统状态总结成 3-5 条简洁要点（账户、自主状态、今日活动、待办、风险），并在最后给一句最该关注的行动建议。只基于给定事实，不要编造任何数字，不确定的写『未同步』。" + (db.system?.uiLang === "en" ? " IMPORTANT: the user's language is English — respond entirely in English." : "");
-    let summary = null;
+    let summary;
     try { summary = await llmComplete(facts, system); } catch { summary = null; }
     res.json({ summary: summary || facts, digest, llm: Boolean(summary) });
   });

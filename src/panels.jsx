@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
-  XCircle,
   BrainCircuit,
   ChevronDown,
   Globe2,
@@ -16,8 +15,7 @@ import {
   RefreshCw,
   Search,
   Settings,
-  WalletCards,
-  Zap
+  WalletCards
 } from "lucide-react";
 import { buildProviderModelOptions } from "./modelOptions.js";
 import { apiUrl, asArray, readFileAsDataUrl, formatDateTime, humanize, localizeText, statusTone, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
@@ -126,17 +124,13 @@ export function SystemConfigPanel({ data, action, section }) {
       const value = (data.exchangeAccounts || []).find((item) => item.exchange === "OKX")?.ipWhitelist || "";
       return value === "建议开启" ? "" : value;
     })(),
-    OKX_MARGIN_MODE: data.runtimeConfig?.OKX_MARGIN_MODE || "cross",
-    OKX_POSITION_MODE: data.runtimeConfig?.OKX_POSITION_MODE || "net"
+    OKX_MARGIN_MODE: data.runtimeConfig?.OKX_MARGIN_MODE || "cross"
   });
   const [integrationForm, setIntegrationForm] = useState({
     LANGSMITH_API_KEY: "",
     LANGSMITH_ENDPOINT: integrations.langsmith?.endpoint || "https://api.smith.langchain.com",
     LANGSMITH_PROJECT: integrations.langsmith?.project || "trading-agent",
     ETHERSCAN_API_KEY: "",
-    BRAVE_SEARCH_API_KEY: "",
-    TAVILY_API_KEY: "",
-    SERPAPI_API_KEY: "",
     ALERT_WEBHOOK_URL: "",
     LARK_WEBHOOK_URL: "",
     LARK_WEBHOOK_SECRET: "",

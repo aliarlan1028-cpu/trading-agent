@@ -21,7 +21,7 @@ import { currentRiskThresholds } from "./riskThresholds.mjs";
 import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
-import { ensureDecisionFactSnapshot, isOwnerReviewRow, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
