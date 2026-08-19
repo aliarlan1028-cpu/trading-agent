@@ -9909,8 +9909,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .agPosterBtn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-3); font-size: 11.5px; cursor: pointer; }
 .agPosterBtn:hover { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-weak); }
 
-/* ── AI 交易行为画像 ── */
-
 /* ── ③ 仪表盘行为约束层 ── */
 .bcGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .bcGoal .bcTop{display:flex;justify-content:space-between;font-size:13px;color:var(--text-2);margin-bottom:6px;}
