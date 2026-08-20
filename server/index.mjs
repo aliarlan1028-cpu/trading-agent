@@ -104,7 +104,7 @@ import { installSkill, scanSkill, verifySkillPackageIntegrity } from "./skillMan
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
-import { activeMandate, appendAudit, appendTrace, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, setSaveDbObserver, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, auditChainStatus, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, setSaveDbObserver, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, effectiveOpeningNotionalLimits } from "./tradeActions.mjs";
 import { accountMarginCapacity } from "./tradingCapacity.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
@@ -1811,7 +1811,7 @@ registerAllRoutes(app, {
   buildPaperReport, createPaperSession, ensurePaperSessionsFromProfiles, runPaperForward, startOwnerCandidatePaperSession, syncKnowledgeSkillLifecycle,
   storeSecret, connectMcpServer, refreshEventSources, refreshOnchainSignals, testEventSource, assertSafeExternalUrl,
   listVaultItems, clearSecret, refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager, validateOkxCredentialCandidate, invalidateOkxCredentialCaches,
-  getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain,
+  getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain, auditChainStatus,
   addMonthsIso, verifyTrc20Payments, activateSubscriptionFromPayment,
   activeStrategyProfiles, runStrategyResearch, buildStrategyBoard, buildStrategyCatalog, STRATEGIES,
   buildReviewAnalytics, backfillReviewFields, createStrategyImprovementCycle, validateStrategyImprovementCycle,

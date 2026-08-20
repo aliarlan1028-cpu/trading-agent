@@ -1,4 +1,4 @@
-import { activeMandate, appendAudit, appendTrace, id, latestSuccessfulAccountSnapshot, nowIso, reserveOmsOrder, transitionOmsOrder, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, effectiveAuditOperationalStatus, id, latestSuccessfulAccountSnapshot, nowIso, reserveOmsOrder, transitionOmsOrder } from "./store.mjs";
 import { currentOkxCredentialFingerprint, enabledOkxAccounts, okxContractSpec, okxPositionMode, okxSignedRequest, toOkxSymbol, validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { validateExchangeOrderContract } from "./exchangeContract.mjs";
 import { assessOperationalDegradation, fullAutoSafetyEnforced } from "./professionalRiskGate.mjs";
@@ -228,7 +228,7 @@ export async function executeTradeAction(db, action, payload = {}) {
   return { status: result.status || "submitted", actionId: record.id, omsOrderId: reservation.order?.id || null, ...result };
 }
 
-export function validateWriteGuard(db, action, payload) {
+export function validateWriteGuard(db, action, payload, options = {}) {
   if (!WRITE_ACTIONS.has(action)) return { allowed: false, reason: "unknown_action" };
   const shape = validatePayloadShape(action, payload);
   if (!shape.allowed) return shape;
@@ -257,8 +257,15 @@ export function validateWriteGuard(db, action, payload) {
     if (!apiKeySafety.allowed) return apiKeySafety;
   }
   if (!riskReducing && process.env.REQUIRE_AUDIT_CHAIN_OK !== "false") {
-    const auditChain = verifyAuditChain(db);
-    if (!auditChain.ok) return { allowed: false, reason: "audit_chain_invalid", breaks: auditChain.breaks.length };
+    const auditChain = effectiveAuditOperationalStatus(db, options.auditStatus);
+    if (!auditChain.operationalReady) {
+      return {
+        allowed: false,
+        reason: "audit_chain_invalid",
+        breaks: auditChain.legacyStoredLinkBreaks ?? auditChain.raw?.breaks?.length ?? null,
+        failures: auditChain.failures || [],
+      };
+    }
   }
   // 紧急撤单/平仓使用独立 EmergencyAction 来源链，不依赖普通开仓计划五元组。
   // 只对真正降风险的 cancel/close 开放，reduceOnly place_order 等仍必须带完整交易来源。

@@ -2245,6 +2245,22 @@ export function verifyAuditOperationalContinuityReadOnly() {
   return verifyApprovedAuditContinuityAtPath({ sqlitePath: sqliteDbPath });
 }
 
+export function effectiveAuditOperationalStatus(db, suppliedStatus = null) {
+  if (suppliedStatus) return suppliedStatus;
+  if (db?.__sqliteBacked === true) return verifyAuditOperationalContinuity(db);
+  const historicalBroken = db?.meta?.auditChainBroken === true;
+  const locallyAdjudicated = historicalBroken && db?.meta?.auditContinuityReady === true;
+  return {
+    operationalReady: !historicalBroken || locallyAdjudicated,
+    mode: locallyAdjudicated ? "incident_adjudicated_local_continuity" : historicalBroken ? "invalid" : "full_chain",
+    confidence: locallyAdjudicated ? "local_integrity_only" : historicalBroken ? "none" : "full_chain_local",
+    legacyChainOk: !historicalBroken,
+    legacyClassification: historicalBroken ? "legacy_forensic_integrity_limited" : null,
+    externalAttestation: "deferred",
+    failures: historicalBroken && !locallyAdjudicated ? [{ code: "audit_chain_invalid" }] : [],
+  };
+}
+
 export function auditChainStatus(db) {
   const raw = verifyAuditChain(db);
   const operational = verifyAuditOperationalContinuity(db);

@@ -1,5 +1,5 @@
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
-import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, effectiveAuditOperationalStatus, id, nowIso } from "./store.mjs";
 import { estimateExecutionCost, maxNotionalForImpact } from "./executionCostModel.mjs";
 import { analyzeMarketRegime } from "./marketRegimeAnalysis.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
@@ -26,7 +26,7 @@ export function fullAutoSafetyEnforced(db) {
 
 // SLO 默认放宽到与本系统真实数据管道匹配(行情按需/巡检同步、对账定时):15s/5min 会被 97s 微同步、
 // 8 分钟对账秒杀→常态降级。默认 180s/30min;要更严自行调 env,或开 professionalRiskMode 后按需收紧。
-export function assessOperationalDegradation(db) {
+export function assessOperationalDegradation(db, options = {}) {
   const reasons = [];
   const live = db.system?.liveTradingEnabled === true;
   const gray = (db.grayReleasePolicies || []).find((item) => item.enabled);
@@ -46,7 +46,8 @@ export function assessOperationalDegradation(db) {
   const reconcile = db.reconciliationReports?.[0];
   const reconcileMaxAge = Number(process.env.SLO_RECONCILIATION_FRESHNESS_MS || 1800000);
   if (live && hasPrivateAccount && (!reconcile || reconcile.status !== "ok" || ageMs(reconcile.createdAt) > reconcileMaxAge)) reasons.push("reconciliation_unhealthy");
-  if (db.meta?.auditChainBroken === true) reasons.push("audit_chain_invalid");
+  const auditStatus = effectiveAuditOperationalStatus(db, options.auditStatus);
+  if (!auditStatus.operationalReady) reasons.push("audit_chain_invalid");
   // 全自主运行不能只在“切换模式那一刻”检查外部控制面；每次开仓前都要确认
   // WORM 审计与告警仍存活。失联即暂停新开仓，恢复后由同一闸自动解锁。
   if (fullAutoActive) {

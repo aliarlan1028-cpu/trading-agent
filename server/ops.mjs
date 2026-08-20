@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   activeMandate,
   appendAudit,
+  effectiveAuditOperationalStatus,
   getStorageRuntimeStatus,
   latestSuccessfulAccountSnapshot,
   listOmsOrdersByState,
@@ -499,6 +500,7 @@ function buildDependencyReadiness(db, options = {}) {
 
 export function buildReadinessReport(db, options = {}) {
   const dependencyReadiness = buildDependencyReadiness(db, options);
+  const auditStatus = effectiveAuditOperationalStatus(db, options.auditStatus);
   const backupStatus = readJsonStatus(path.join(backupDir, "backup-status.json"));
   const restoreStatus = readJsonStatus(path.join(backupDir, "restore-drill-status.json"));
   const recentBackup = backupStatus?.status === "ok" && ageOf(backupStatus.completedAt) <= 36 * 60 * 60_000;
@@ -525,7 +527,9 @@ export function buildReadinessReport(db, options = {}) {
     check("etherscan", "链上 API", true, Boolean(process.env.ETHERSCAN_API_KEY), "配置后获取真实链上 Gas/异常信号。"),
     check("skill_sandbox", "Skill 沙箱", true, true, "GitHub/上传拉取、依赖扫描入口、Docker 无网络沙箱已实现。"),
     check("docker", "Docker 沙箱环境", true, Boolean(process.env.SKILL_SANDBOX_IMAGE), "可使用默认 node:20-alpine；本机需安装 Docker。"),
-    check("audit_chain", "本地审计哈希链", true, verifyAuditChain(db).ok, "本地链支持校验，但不等于外部不可篡改存储。"),
+    check("audit_chain", "本地审计连续性", true, auditStatus.operationalReady, auditStatus.mode === "incident_adjudicated_local_continuity"
+      ? "legacy_forensic_integrity_limited；local_integrity_only；external attestation deferred。"
+      : "本地链支持校验，但不等于外部不可篡改存储。"),
     check("audit_worm", "外部 WORM 审计", true, Boolean(process.env.WORM_AUDIT_ENDPOINT), "配置独立管理的 WORM endpoint 后按持久游标外送。"),
     check("withdraw_permission_detection", "提现权限确认", true, apiPermissionsVerified(db), "需在 OKX API 管理页确认无提现权限并记录核验，才允许实盘写入。"),
     check("alerts", "外部告警通道", true, externalAlertConfigured(), "支持 Lark 或通用告警 Webhook；应定期验证真实送达。"),

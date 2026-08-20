@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { activeMandate, verifyAuditChain } from "./store.mjs";
+import { activeMandate, effectiveAuditOperationalStatus } from "./store.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
 import { externalAlertConfigured, recentExternalAlertSucceeded } from "./alertHealth.mjs";
 import { criticModelRoute, normalizeGeminiModel, openRouterProviderPolicy } from "./llmGateway.mjs";
@@ -71,7 +71,8 @@ export function autonomousProductionBlockers(db, options = {}) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
   if (account && (!reconciliation || reconciliation.status !== "ok")) blockers.push("OKX 账户对账未通过");
   if ((db.executionOrders || []).some((item) => String(item.status).toUpperCase() === "UNKNOWN")) blockers.push("存在 UNKNOWN 订单");
-  if (!verifyAuditChain(db).ok) blockers.push("本地审计链校验失败");
+  const auditStatus = effectiveAuditOperationalStatus(db, options.auditStatus);
+  if (!auditStatus.operationalReady) blockers.push("本地审计链校验失败");
   return blockers;
 }
 

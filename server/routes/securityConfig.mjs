@@ -9,7 +9,7 @@ export function registerSecurityConfigRoutes(app, ctx) {
     db, persist, saveDb, requirePermission,
     listVaultItems, storeSecret, clearSecret, nowIso, appendAudit, appendTrace,
     refreshApiKeyMetadata, syncPrivateReadOnly, startRealtimeManager, validateOkxCredentialCandidate, invalidateOkxCredentialCaches,
-    getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, verifyAuditChain
+    getConfigStatus, validateRuntimeConfig, setConfig, sendAlert, runSafetyDrill, auditChainStatus
   } = ctx;
 
   app.get("/api/security/vault", requirePermission("admin:security"), (_req, res) => res.json(listVaultItems(db)));
@@ -190,7 +190,7 @@ export function registerSecurityConfigRoutes(app, ctx) {
     persist(res, runSafetyDrill(db, req.params.type));
   });
 
-  app.get("/api/security/audit-chain", requirePermission("admin:system"), (_req, res) => res.json(verifyAuditChain(db)));
+  app.get("/api/security/audit-chain", requirePermission("admin:system"), (_req, res) => res.json(auditChainStatus(db)));
 }
 
 export { partitionAutonomousBlockers } from "../liveModeService.mjs";

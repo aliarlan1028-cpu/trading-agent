@@ -1,4 +1,4 @@
-import { activeMandate, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
+import { activeMandate, effectiveAuditOperationalStatus, latestSuccessfulAccountSnapshot, nowIso } from "./store.mjs";
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 import { buildSlippageCalibration } from "./executionCostModel.mjs";
@@ -41,13 +41,17 @@ export function buildSloReport(db) {
   return { generatedAt: nowIso(), objectives, metrics, checks, status: checks.some((c) => c.status === "breached") ? "breached" : checks.some((c) => c.status === "unknown") ? "unknown" : "met" };
 }
 
-export function buildTradingPermissionEvidence(db) {
+export function buildTradingPermissionEvidence(db, options = {}) {
   const mandate = activeMandate(db);
   const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
   const latestMarket = (db.markets || []).filter((m) => m.price).sort((a, b) => new Date(b.updatedAt || b.syncedAt || 0) - new Date(a.updatedAt || a.syncedAt || 0))[0];
   const latestReconcile = db.reconciliationReports?.[0];
-  const auditHealthy = db.meta?.auditChainBroken !== true;
-  const degradation = assessOperationalDegradation(db);
+  const auditStatus = effectiveAuditOperationalStatus(db, options.auditStatus);
+  const auditHealthy = auditStatus.operationalReady === true;
+  const degradation = assessOperationalDegradation(db, { auditStatus });
+  const auditEvidence = auditStatus.mode === "incident_adjudicated_local_continuity"
+    ? "连续性可用（仅本地完整性；历史为 legacy_forensic_integrity_limited）"
+    : auditHealthy ? "本地链完整" : "审计连续性异常";
   const checks = [
     ["kill_switch", "一键熔断未开启", !db.system?.killSwitch, db.system?.killSwitch ? "系统处于熔断" : "未熔断"],
     ["autonomy", "自主推进已开启", db.system?.autonomyEnabled === true, db.system?.autonomyEnabled ? "已开启" : "人工暂停"],
@@ -56,7 +60,7 @@ export function buildTradingPermissionEvidence(db) {
     ["account", "账户风险基准新鲜", Boolean(snapshot) && ageMs(snapshot.createdAt) <= 300000, snapshot ? `${Math.round(ageMs(snapshot.createdAt) / 1000)}秒前` : "无账户快照"],
     ["reconcile", "最近对账正常", latestReconcile?.status === "ok" && ageMs(latestReconcile.createdAt) <= 300000, latestReconcile ? `${latestReconcile.status} · ${Math.round(ageMs(latestReconcile.createdAt) / 1000)}秒前` : "未对账"],
     ["loss_budget", "日亏损预算未耗尽", db.system?.remainingDailyLossUsdt == null || Number(db.system.remainingDailyLossUsdt) > 0, db.system?.remainingDailyLossUsdt == null ? "未配置/未知" : `${db.system.remainingDailyLossUsdt} USDT`],
-    ["audit", "审计链正常", auditHealthy, auditHealthy ? "正常" : "异常"]
+    ["audit", auditStatus.mode === "incident_adjudicated_local_continuity" ? "审计连续性可用" : "审计链正常", auditHealthy, auditEvidence]
     ,["operational", "交易运行链路正常", !degradation.degraded && !db.system?.reduceOnlyMode, degradation.degraded ? degradation.reasons.join("、") : db.system?.reduceOnlyMode ? "当前暂停新开仓" : "正常"]
   ].map(([key, label, passed, evidence]) => ({ key, label, passed, evidence }));
   const blocking = checks.filter((c) => !c.passed);
