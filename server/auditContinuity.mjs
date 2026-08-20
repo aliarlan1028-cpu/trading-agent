@@ -449,7 +449,12 @@ export function verifyApprovedAuditContinuityAtPath({
   } catch (error) {
     return failureStatus(null, "sqlite_read_failed", error.message);
   }
-  const raw = verifyAuditEntries(rows.map(parsedEntry));
+  let raw;
+  try {
+    raw = verifyAuditEntries(rows.map(parsedEntry));
+  } catch (error) {
+    return failureStatus(null, "audit_rows_invalid", error.message);
+  }
   if (raw.ok) return verifyAuditContinuityRows({ rows, baseline: null, approvedIncident: APPROVED_W0_INCIDENT, securityProfile });
   if (!String(baselinePath || "").trim()) return failureStatus(raw, "baseline_missing", "No local audit continuity baseline is configured");
   let baseline;

@@ -4,10 +4,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
+import Database from "better-sqlite3";
 
 import {
   legacyAuditTableDigest,
   readAuditContinuityBaseline,
+  verifyApprovedAuditContinuityAtPath,
   verifyAuditContinuityRows,
   verifyAuditEntries,
 } from "../server/auditContinuity.mjs";
@@ -271,4 +273,27 @@ test("strict baseline reader rejects duplicate, missing, unexpected, and malform
 
   const unsupported = await writeBaseline("unsupported.json", JSON.stringify({ ...valid, schemaVersion: 2 }));
   assert.throws(() => readAuditContinuityBaseline(unsupported), (error) => error.code === "baseline_schema_invalid");
+});
+
+test("the production path verifier fails closed on a malformed audit document", () => {
+  const sqlitePath = path.join(tempRoot, "malformed-audit.sqlite");
+  const sqlite = new Database(sqlitePath);
+  try {
+    sqlite.exec(`
+      create table audit_log_entries (
+        id text, actor text, action text, target text, severity text,
+        created_at text, doc text
+      )
+    `);
+    sqlite.prepare(`
+      insert into audit_log_entries (id, actor, action, target, severity, created_at, doc)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run("audit_bad", "Test", "bad", "fixture", "info", "2026-08-21T00:00:00.000Z", "{not-json");
+  } finally {
+    sqlite.close();
+  }
+
+  const status = verifyApprovedAuditContinuityAtPath({ sqlitePath, securityProfile: "bitlaunch_single_server" });
+  assert.equal(status.operationalReady, false);
+  assert.ok(status.failures.some((failure) => failure.code === "audit_rows_invalid"));
 });
