@@ -35,7 +35,7 @@ import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventV
 import { refreshMarketSignalSymbol } from "./marketSignalRefresh.mjs";
 import { escortPositions, refreshMarketMovers } from "./marketScan.mjs";
 import { fetchTokenProfile } from "./tokenProfile.mjs";
-import { startMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
+import { startMarketStream, stopMarketStream, addStreamListener, removeStreamListener, marketStreamStatus, setMarketTickHook, broadcastRaw } from "./marketStream.mjs";
 import { runBacktest } from "./backtestEngine.mjs";
 import { strategyDraftsReferencedByChat, strategyStudioSnapshot } from "./strategyStudio.mjs";
 import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer.mjs";
@@ -823,7 +823,7 @@ startScheduler(db, saveDb);
 // 行情分析与交易执行统一使用 OKX；不再自动接入 CoinGecko 行情 MCP，避免跨交易所口径污染。
 db.mcpServers = (db.mcpServers || []).filter((server) => server.id !== "mcp_coingecko");
 startRealtimeManager(db, saveDb);
-startMarketStream(db); // 实时行情流（OKX 公有 WS）→ 内存更新 + SSE 推前端
+startMarketStream(db, saveDb); // 实时行情流（OKX 公有 WS）→ 内存更新 + SSE 推前端
 refreshAccounting(db);
 
 // 崩溃恢复：已触发但尚未形成执行单的条件计划必须重新走新鲜事实+硬风控；
@@ -1823,7 +1823,7 @@ registerAllRoutes(app, {
   fetchSkillPackage, scanSkill, installSkill, verifySkillPackageIntegrity, readSkillInstructions, runSkillSandbox,
   fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog, getHistoricalKlines, fetchTokenProfile,
   listStrategies, buildPortfolioRisk, runBacktest, performanceReport, refreshAccounting,
-  realtimeStatus, stopRealtimeManager, pollExecutionOrders, activeMandate,
+  realtimeStatus, startMarketStream, stopMarketStream, stopRealtimeManager, pollExecutionOrders, activeMandate,
   handleKnowledgeImport, importGithubKnowledge, parseKnowledgeRealSource, retireSkillsForSource, ragQuery, embeddingStatus, reembedAllChunks, removeManagedKnowledgeFile,
   knowledgeSkillSummary, compileTradingMethod, validateKnowledgeSkill, startKnowledgeSkillPaper, validateAllCompiledSkills, approveKnowledgeSkill, retireKnowledgeSkill,
   compileNaturalRiskCondition, validateDynamicRiskAction, consolidateRuleProposals, broadcastRaw,

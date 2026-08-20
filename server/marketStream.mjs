@@ -8,7 +8,7 @@
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
-import { activeMandate } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { markOkxLiquidationStreamConnected, recordOkxLiquidationMessage } from "./okxLiquidationStream.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyScalarMarketObservation, applyTickerObservation } from "./marketObservation.mjs";
@@ -31,8 +31,13 @@ let pingTimer = null;
 let reconnectTimer = null;
 let resubTimer = null;
 let dbRef = null;
+let saveDbRef = null;
+let connectionRef = null;
 let currentSymbols = [];
 let connected = false;
+let running = false;
+let generation = 0;
+let lastMsgSaveAt = 0;
 
 function instToSymbol(instId) {
   return String(instId).replace("-SWAP", "").replace("-", "/");
@@ -54,40 +59,110 @@ function ensureMarket(db, symbol) {
   return market;
 }
 
-export function startMarketStream(db) {
-  dbRef = db;
-  connect();
-  // 定时检查授权交易对是否变化，变了就重订阅。
-  if (!resubTimer) resubTimer = setInterval(() => resubscribe(), 120000);
+function ensurePublicConnection(db) {
+  db.realtimeConnections ||= [];
+  db.realtimeConnections = db.realtimeConnections.filter((item) => !(item.exchange === "BINANCE" && item.streamType === "public_market"));
+  let connection = db.realtimeConnections.find((item) => item.exchange === "OKX" && item.streamType === "public_market");
+  if (!connection) {
+    connection = {
+      id: id("rt"),
+      exchange: "OKX",
+      streamType: "public_market",
+      status: "stopped",
+      symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      lastMessageAt: null,
+      reconnects: 0
+    };
+    db.realtimeConnections.unshift(connection);
+  }
+  return connection;
 }
 
-function connect() {
+function saveConnection(options) {
+  if (saveDbRef) saveDbRef(dbRef, options);
+}
+
+export function startMarketStream(db, saveDb) {
+  dbRef = db;
+  if (saveDb) saveDbRef = saveDb;
+  connectionRef = ensurePublicConnection(db);
+  if (running) return marketStreamStatus();
+  running = true;
+  generation += 1;
+  connect(generation);
+  // 定时检查授权交易对是否变化，变了就重订阅。
+  if (!resubTimer) resubTimer = setInterval(() => { if (running) resubscribe(); }, 120000);
+  return marketStreamStatus();
+}
+
+function connect(expectedGeneration = generation) {
+  if (!running || expectedGeneration !== generation || ws) return;
+  connectionRef ||= ensurePublicConnection(dbRef);
+  connectionRef.status = "connecting";
+  connectionRef.url = okxEnvironmentConfig().publicWs;
+  connectionRef.environment = okxEnvironmentConfig().name;
+  let socket;
   try {
-    ws = new WebSocket(okxEnvironmentConfig().publicWs, wsOptions());
-  } catch {
-    scheduleReconnect();
+    socket = new WebSocket(connectionRef.url, wsOptions());
+    ws = socket;
+  } catch (error) {
+    ws = null;
+    connectionRef.status = "error";
+    connectionRef.error = error.message;
+    saveConnection();
+    scheduleReconnect(expectedGeneration);
     return;
   }
-  ws.on("open", () => {
+  socket.on("open", () => {
+    if (!running || expectedGeneration !== generation || ws !== socket) return;
     connected = true;
+    connectionRef.status = "connected";
+    connectionRef.connectedAt = nowIso();
+    connectionRef.error = null;
+    appendAudit(dbRef, "实时 WebSocket 已连接", connectionRef.id, "RealtimeManager");
+    appendTrace(dbRef, "realtime_ws", "OKX public_market connected");
     subscribe();
     startPing();
+    saveConnection();
   });
-  ws.on("message", (raw) => handleMessage(raw));
-  ws.on("close", () => {
+  socket.on("message", (raw) => {
+    if (!running || expectedGeneration !== generation || ws !== socket) return;
+    handleMessage(raw);
+    connectionRef.lastMessageAt = nowIso();
+    connectionRef.status = "connected";
+    const now = Date.now();
+    if (saveDbRef && now - lastMsgSaveAt > 8000) {
+      lastMsgSaveAt = now;
+      saveConnection({ lightweight: true });
+    }
+  });
+  socket.on("close", () => {
+    if (expectedGeneration !== generation || ws !== socket) return;
+    ws = null;
     connected = false;
     markOkxLiquidationStreamConnected(false);
     stopPing();
-    scheduleReconnect();
+    if (!running) return;
+    connectionRef.status = "reconnecting";
+    connectionRef.reconnects = Number(connectionRef.reconnects || 0) + 1;
+    scheduleReconnect(expectedGeneration);
+    saveConnection();
   });
-  ws.on("error", () => {
-    try { ws.close(); } catch { /* noop */ }
+  socket.on("error", (error) => {
+    if (!running || expectedGeneration !== generation || ws !== socket) return;
+    connectionRef.status = "error";
+    connectionRef.error = error.message;
+    appendAudit(dbRef, "实时 WebSocket 错误", connectionRef.id, "RealtimeManager", "warning");
+    appendTrace(dbRef, "realtime_ws", "OKX public_market error", "error");
+    saveConnection();
+    try { socket.close(4001, "socket_error"); } catch { /* noop */ }
   });
 }
 
 function subscribe() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   currentSymbols = trackedSymbols(dbRef);
+  if (connectionRef) connectionRef.symbols = currentSymbols.slice();
   sendSubscription("subscribe", currentSymbols);
   try {
     ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: "liquidation-orders", instType: "SWAP" }] }));
@@ -114,6 +189,7 @@ function resubscribe() {
   sendSubscription("unsubscribe", currentSymbols.filter((symbol) => !wanted.has(symbol)));
   sendSubscription("subscribe", next.filter((symbol) => !previous.has(symbol)));
   currentSymbols = next;
+  if (connectionRef) connectionRef.symbols = currentSymbols.slice();
 }
 
 function startPing() {
@@ -126,9 +202,36 @@ function stopPing() {
   if (pingTimer) clearInterval(pingTimer);
   pingTimer = null;
 }
-function scheduleReconnect() {
+function scheduleReconnect(expectedGeneration = generation) {
   if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 3000);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (!running || expectedGeneration !== generation) return;
+    connect(expectedGeneration);
+  }, 3000);
+}
+
+export function stopMarketStream(db = dbRef, reason = "manual_stop") {
+  running = false;
+  generation += 1;
+  if (pingTimer) clearInterval(pingTimer);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (resubTimer) clearInterval(resubTimer);
+  pingTimer = null;
+  reconnectTimer = null;
+  resubTimer = null;
+  connected = false;
+  markOkxLiquidationStreamConnected(false);
+  const socket = ws;
+  ws = null;
+  try { socket?.close(1000, reason); } catch { /* noop */ }
+  const connection = db?.realtimeConnections?.find((item) => item.exchange === "OKX" && item.streamType === "public_market");
+  if (connection) connection.status = reason;
+  return marketStreamStatus();
+}
+
+export function publicMarketSocketCount() {
+  return ws ? 1 : 0;
 }
 
 export function handleMarketStreamMessage(raw, options = {}) {

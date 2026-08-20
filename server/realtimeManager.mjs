@@ -6,6 +6,7 @@ import { canonicalPositionDirection } from "./positionIdentity.mjs";
 import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyTickerObservation } from "./marketObservation.mjs";
+import { publicMarketSocketCount } from "./marketStream.mjs";
 import { reconcileAmendOmsOrder } from "./omsRecovery.mjs";
 
 const financialNumber = (value) => finiteFinancialNumber(value) ? Number(value) : null;
@@ -16,7 +17,6 @@ function wsOptions() {
   return proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : undefined;
 }
 
-const BINANCE_PUBLIC_BASE = "wss://stream.binance.com:9443/stream";
 const BINANCE_USER_BASE = "wss://stream.binance.com:9443/ws";
 const BINANCE_REST_BASE = "https://api.binance.com";
 const runtime = {
@@ -89,9 +89,6 @@ export function startRealtimeManager(db, saveDb, options = {}) {
   else if (!runtime.started) runtime.generation += 1;
   runtime.started = true;
   const okxKeys = process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE;
-  // 自主交易统一使用 OKX。移除 Binance 连接，避免共享 symbol 行情被另一交易所覆盖。
-  connectPublicMarket(db, saveDb, "OKX");
-  removeConnection(db, "BINANCE", "public_market");
   const binding = okxPrivateStreamBinding(db);
   if (okxKeys && binding.ok) connectPrivateUser(db, saveDb, "OKX");
   else {
@@ -147,6 +144,7 @@ function resetRealtimeGeneration(db, reason) {
     try { socket.close(1000, reason); } catch { /* noop */ }
   }
   for (const connection of db.realtimeConnections || []) {
+    if (connection.streamType !== "private_user") continue;
     connection.status = "restarting";
     connection.generation = runtime.generation;
     delete connection.authenticatedCredentialFingerprint;
@@ -167,25 +165,16 @@ export function stopRealtimeManager(db, reason = "manual_stop") {
   runtime.sockets.clear();
   runtime.started = false;
   runtime.generation += 1;
-  markAllStopped(db, reason);
+  markPrivateStopped(db, reason);
   return realtimeStatus(db);
 }
 
 export function realtimeStatus(db) {
   return {
     started: runtime.started,
-    socketCount: runtime.sockets.size,
+    socketCount: runtime.sockets.size + publicMarketSocketCount(),
     connections: db.realtimeConnections || []
   };
-}
-
-function connectPublicMarket(db, saveDb, exchange = "BINANCE") {
-  const normalized = String(exchange).toUpperCase();
-  const connection = ensureConnection(db, normalized, "public_market");
-  if (runtime.sockets.has(connection.id)) return connection;
-
-  if (normalized === "OKX") return connectOkxPublic(db, saveDb, connection);
-  return connectBinancePublic(db, saveDb, connection);
 }
 
 async function connectPrivateUser(db, saveDb, exchange = "BINANCE") {
@@ -303,60 +292,6 @@ function connectOkxPrivate(db, saveDb, connection) {
   return connection;
 }
 
-function connectBinancePublic(db, saveDb, connection) {
-  const streams = (connection.symbols || ["BTC/USDT"]).map((symbol) => `${toBinanceSymbol(symbol).toLowerCase()}@ticker`).join("/");
-  const url = `${BINANCE_PUBLIC_BASE}?streams=${streams}`;
-  connection.status = "connecting";
-  connection.url = redactUrl(url);
-  const socket = new WebSocket(url, wsOptions());
-  runtime.sockets.set(connection.id, socket);
-  wireSocket(db, saveDb, connection, socket, (message) => {
-    const payload = JSON.parse(message.toString());
-    const ticker = payload.data || payload;
-    if (!ticker.s) return;
-    updateMarketFromTicker(db, ticker.s, {
-      price: Number(ticker.c),
-      high24h: Number(ticker.h),
-      low24h: Number(ticker.l),
-      changePct: Number(ticker.P),
-      volume24h: ticker.q,
-      source: "BINANCE_WS",
-      sourceAt: ticker.E || ticker.C
-    });
-  });
-  return connection;
-}
-
-function connectOkxPublic(db, saveDb, connection) {
-  const environment = okxEnvironmentConfig();
-  connection.status = "connecting";
-  connection.url = environment.publicWs;
-  connection.environment = environment.name;
-  const socket = new WebSocket(environment.publicWs, wsOptions());
-  runtime.sockets.set(connection.id, socket);
-  socket.on("open", () => {
-    socket.send(JSON.stringify({
-      op: "subscribe",
-      args: (connection.symbols || ["BTC/USDT"]).map((symbol) => ({ channel: "tickers", instId: toOkxSymbol(symbol) }))
-    }));
-  });
-  wireSocket(db, saveDb, connection, socket, (message) => {
-    const payload = JSON.parse(message.toString());
-    const ticker = payload.data?.[0];
-    if (!ticker?.instId) return;
-    updateMarketFromTicker(db, ticker.instId, {
-      price: Number(ticker.last),
-      high24h: Number(ticker.high24h),
-      low24h: Number(ticker.low24h),
-      // OKX volCcy24h 是币本位流式值，不能覆盖 REST 的 USDT quoteVolume 口径。
-      streamVolume24h: Number(ticker.volCcy24h),
-      source: "OKX_WS",
-      sourceAt: ticker.ts
-    });
-  });
-  return connection;
-}
-
 function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
   const generation = options.generation ?? runtime.generation;
   socket.on("open", () => {
@@ -404,9 +339,7 @@ function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
     connection.reconnects = Number(connection.reconnects || 0) + 1;
     const delayMs = Math.min(30_000, 2_000 * connection.reconnects);
     const timer = setTimeout(() => {
-      if (connection.streamType === "private_user") connectPrivateUser(db, saveDb, connection.exchange);
-      else if (connection.exchange === "OKX") connectOkxPublic(db, saveDb, connection);
-      else connectBinancePublic(db, saveDb, connection);
+      connectPrivateUser(db, saveDb, connection.exchange);
     }, delayMs);
     runtime.reconnectTimers.set(connection.id, timer);
     if (saveDb) saveDb(db);
@@ -434,19 +367,11 @@ export function updateMarketFromTicker(db, rawSymbol, ticker, options = {}) {
   });
 }
 
-function markAllStopped(db, status) {
+function markPrivateStopped(db, status) {
   for (const connection of db.realtimeConnections || []) {
+    if (connection.streamType !== "private_user") continue;
     connection.status = status;
   }
-}
-
-function toBinanceSymbol(symbol) {
-  return String(symbol || "BTC/USDT").replace("/", "").replace("-", "").toUpperCase();
-}
-
-function toOkxSymbol(symbol) {
-  const instId = String(symbol || "BTC/USDT").replace("/", "-").toUpperCase();
-  return instId.endsWith("-SWAP") ? instId : `${instId}-SWAP`;
 }
 
 function normalizeDisplaySymbol(rawSymbol) {
@@ -461,10 +386,6 @@ function compactNumber(value) {
   if (numeric >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(2)}B`;
   if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(2)}M`;
   return numeric.toFixed(2);
-}
-
-function redactUrl(url) {
-  return url.replace(/listenKey=[^&]+/i, "listenKey=***");
 }
 
 function upsertBinanceExecution(db, payload) {
