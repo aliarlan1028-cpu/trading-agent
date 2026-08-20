@@ -4,7 +4,8 @@ import { normalizeAndValidateMandate } from "../server/mandatePolicy.mjs";
 import { applyStoredConfigToEnv } from "../server/runtimeConfig.mjs";
 import { productionSecurityProfile, requiresExternalSecurityInfrastructure } from "../server/securityProfile.mjs";
 import { externalAlertConfigured } from "../server/alertHealth.mjs";
-import { loadDbReadOnlySnapshot, verifyAuditChainReadOnly } from "../server/store.mjs";
+import { auditPreflightDecision } from "../server/auditContinuity.mjs";
+import { loadDbReadOnlySnapshot, verifyAuditOperationalContinuityReadOnly } from "../server/store.mjs";
 import { currentRegistrationMode } from "../server/publicRegistration.mjs";
 import { evaluateAutonomousProfilePreflight } from "../server/productionPreflightPolicy.mjs";
 
@@ -66,7 +67,10 @@ if (backupOffsiteDir) {
   warnings.push("BitLaunch single-server profile: encrypted offsite backup is not configured; local verified backups remain available");
 }
 if (!process.env.APP_RELEASE || process.env.APP_RELEASE === "dev") warnings.push("APP_RELEASE is not immutable; release/rollback audit will be less precise");
-requireTrue(verifyAuditChainReadOnly().ok, "Local audit chain verification failed");
+const audit = verifyAuditOperationalContinuityReadOnly();
+const auditDecision = auditPreflightDecision(audit, productionSecurityProfile());
+requireTrue(auditDecision.allowed, "Local audit continuity verification failed");
+if (auditDecision.warning) warnings.push(auditDecision.warning);
 const enabledGray = (db.grayReleasePolicies || []).find((item) => item.enabled);
 requireTrue(Boolean(enabledGray), "An enabled bounded-notional policy is required");
 requireTrue(Number.isFinite(Number(enabledGray?.maxNotionalUsdt)) && Number(enabledGray?.maxNotionalUsdt) > 0, "Enabled live policy must have a finite positive notional cap");
@@ -96,6 +100,6 @@ if (liveTradingRequested) {
   requireTrue(process.env.I_UNDERSTAND_REAL_TRADING === "true" && process.env.REAL_ORDER_WRITE_ENABLED === "true", "Live-trading switches are inconsistent");
 }
 
-const report = { ok: failures.length === 0, securityProfile: productionSecurityProfile(), failures, warnings, checkedAt: new Date().toISOString() };
+const report = { ok: failures.length === 0, securityProfile: productionSecurityProfile(), audit, failures, warnings, checkedAt: new Date().toISOString() };
 console.log(JSON.stringify(report, null, 2));
 if (!report.ok) process.exit(1);

@@ -460,3 +460,22 @@ export function verifyApprovedAuditContinuityAtPath({
   }
   return verifyAuditContinuityRows({ rows, baseline, approvedIncident: APPROVED_W0_INCIDENT, securityProfile });
 }
+
+export function auditPreflightDecision(status, securityProfile = productionSecurityProfile()) {
+  const normalizedProfile = productionSecurityProfile({ PRODUCTION_SECURITY_PROFILE: securityProfile });
+  if (!status?.operationalReady) return { allowed: false, warning: null, status };
+  if (status.mode !== "incident_adjudicated_local_continuity") {
+    return { allowed: status.mode === "full_chain" && status.legacyChainOk === true, warning: null, status };
+  }
+  const approvedLocalAssurance = normalizedProfile === SECURITY_PROFILES.bitlaunchSingleServer
+    && status.confidence === "local_integrity_only"
+    && status.legacyChainOk === false
+    && status.externalAttestation === "deferred";
+  return {
+    allowed: approvedLocalAssurance,
+    warning: approvedLocalAssurance
+      ? "Audit history is incident-adjudicated with local_integrity_only confidence; external attestation and WORM are not configured"
+      : null,
+    status,
+  };
+}
