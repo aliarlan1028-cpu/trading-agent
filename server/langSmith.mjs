@@ -1,7 +1,8 @@
 import { appendTrace, id, nowIso } from "./store.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
+import { fetchWithDeadline } from "./outboundHttp.mjs";
 
-export async function recordLangSmithRun(db, run) {
+export async function recordLangSmithRun(db, run, options = {}) {
   const trace = appendTrace(db, "langsmith", run.name || "Agent Run", "local_recorded");
   const payload = {
     id: id("ls"),
@@ -17,13 +18,16 @@ export async function recordLangSmithRun(db, run) {
   if (!process.env.LANGSMITH_API_KEY) return { status: "local_only", payload };
   try {
     const endpoint = process.env.LANGSMITH_ENDPOINT || "https://api.smith.langchain.com";
-    const response = await fetch(`${endpoint}/runs`, {
+    const response = await fetchWithDeadline(`${endpoint}/runs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.LANGSMITH_API_KEY
       },
       body: JSON.stringify(payload)
+    }, {
+      timeoutMs: Number(options.timeoutMs || 3_000),
+      operation: "langsmith_run"
     });
     return { status: response.ok ? "sent" : "send_failed", httpStatus: response.status, payload };
   } catch (error) {

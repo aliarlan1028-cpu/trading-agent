@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 
 import { containsLikelySecret } from "./secretRedaction.mjs";
+import { fetchWithDeadline } from "./outboundHttp.mjs";
 // 语义向量 embedding：把知识片段与查询映射到稠密向量空间，
 // 让"意思相近但用词不同"也能被检索到（远强于词频匹配）。
 // 自动探测可用的 embedding 服务；都没有时返回 null，由调用方回退到词频检索。
@@ -21,31 +22,47 @@ export function embeddingProvider() {
   return null;
 }
 
-async function openaiEmbed(model, inputs) {
-  const response = await fetch(OPENAI_EMBED_URL, {
+async function consumeEmbeddingResponse(response, signal, provider) {
+  try {
+    if (!response.ok) throw new Error(`${provider} embeddings ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    return await response.json();
+  } catch (error) {
+    if (signal.aborted) throw signal.reason ?? error;
+    throw error;
+  }
+}
+
+async function openaiEmbed(model, inputs, options = {}) {
+  const json = await fetchWithDeadline(OPENAI_EMBED_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    body: JSON.stringify({ model, input: inputs, encoding_format: "float" })
+    body: JSON.stringify({ model, input: inputs, encoding_format: "float" }),
+    signal: options.signal
+  }, {
+    timeoutMs: Number(options.timeoutMs || 30_000),
+    operation: "openai_embeddings",
+    consume: (response, signal) => consumeEmbeddingResponse(response, signal, "OpenAI")
   });
-  if (!response.ok) throw new Error(`OpenAI embeddings ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  const json = await response.json();
   return (json.data || []).sort((a, b) => a.index - b.index).map((item) => item.embedding);
 }
 
-async function geminiEmbed(model, inputs) {
+async function geminiEmbed(model, inputs, options = {}) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:batchEmbedContents?key=${process.env.GEMINI_API_KEY}`;
-  const response = await fetch(url, {
+  const json = await fetchWithDeadline(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ requests: inputs.map((text) => ({ model: `models/${model}`, content: { parts: [{ text }] } })) })
+    body: JSON.stringify({ requests: inputs.map((text) => ({ model: `models/${model}`, content: { parts: [{ text }] } })) }),
+    signal: options.signal
+  }, {
+    timeoutMs: Number(options.timeoutMs || 30_000),
+    operation: "gemini_embeddings",
+    consume: (response, signal) => consumeEmbeddingResponse(response, signal, "Gemini")
   });
-  if (!response.ok) throw new Error(`Gemini embeddings ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  const json = await response.json();
   return (json.embeddings || []).map((item) => item.values);
 }
 
 // 批量嵌入；无 provider 返回 null。文本超长做截断，避免超 token。
-export async function embedBatch(texts) {
+export async function embedBatch(texts, options = {}) {
   const provider = embeddingProvider();
   if (!provider) return null;
   if ((texts || []).some((text) => containsLikelySecret(text))) {
@@ -59,15 +76,15 @@ export async function embedBatch(texts) {
   for (let i = 0; i < cleaned.length; i += batchSize) {
     const slice = cleaned.slice(i, i + batchSize);
     const vectors = provider.name === "openai"
-      ? await openaiEmbed(provider.model, slice)
-      : await geminiEmbed(provider.model, slice);
+      ? await openaiEmbed(provider.model, slice, options)
+      : await geminiEmbed(provider.model, slice, options);
     out.push(...vectors);
   }
   return out;
 }
 
-export async function embedOne(text) {
-  const vectors = await embedBatch([text]);
+export async function embedOne(text, options = {}) {
+  const vectors = await embedBatch([text], options);
   return vectors?.[0] || null;
 }
 

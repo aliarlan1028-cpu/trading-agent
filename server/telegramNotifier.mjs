@@ -4,6 +4,7 @@ import { createNotification } from "./notificationStore.mjs";
 import { closedTradePosterPayload, deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster, resolveClosedTradePosterBasis } from "./positionPoster.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 import { canonicalPositionKey } from "./positionIdentity.mjs";
+import { fetchWithDeadline } from "./outboundHttp.mjs";
 
 function number(value, fallback = 0) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -14,6 +15,15 @@ function number(value, fallback = 0) {
 function bool(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   return String(value).toLowerCase() === "true";
+}
+
+async function consumeTelegramJson(response, signal) {
+  try {
+    return { response, json: await response.json() };
+  } catch (error) {
+    if (signal.aborted) throw signal.reason ?? error;
+    return { response, json: {} };
+  }
 }
 
 export function telegramStatus() {
@@ -44,12 +54,16 @@ export async function sendTelegramText(text, options = {}) {
     disable_web_page_preview: true
   };
   if (options.parseMode) payload.parse_mode = options.parseMode;
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const { response, json } = await fetchWithDeadline(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: options.signal
+  }, {
+    timeoutMs: Number(options.timeoutMs || 8_000),
+    operation: "telegram_send_message",
+    consume: consumeTelegramJson
   });
-  const json = await response.json().catch(() => ({}));
   if (!response.ok || json.ok === false) throw new Error(json.description || `Telegram sendMessage HTTP ${response.status}`);
   return json.result;
 }
@@ -64,7 +78,7 @@ function addNotification(db, payload = {}) {
   });
 }
 
-async function sendTelegramMultipart(method, fields, fileField, file) {
+async function sendTelegramMultipart(method, fields, fileField, file, options = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is missing");
   const form = new FormData();
@@ -72,11 +86,15 @@ async function sendTelegramMultipart(method, fields, fileField, file) {
     if (value !== undefined && value !== null) form.set(key, String(value));
   }
   form.set(fileField, new Blob([file.buffer], { type: file.contentType }), file.filename);
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+  const { response, json } = await fetchWithDeadline(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
-    body: form
+    body: form,
+    signal: options.signal
+  }, {
+    timeoutMs: Number(options.timeoutMs || 8_000),
+    operation: "telegram_multipart",
+    consume: consumeTelegramJson
   });
-  const json = await response.json().catch(() => ({}));
   if (!response.ok || json.ok === false) {
     throw new Error(json.description || `Telegram ${method} HTTP ${response.status}`);
   }
@@ -115,8 +133,8 @@ export async function sendTelegramPositionPoster(db, position, options = {}) {
     const caption = options.caption || (`OPEN PROFIT · ${share.symbol} ${share.side} · PnL ${share.pnl?.toFixed?.(2) ?? "-"} USDT` + positionAnalysisNarrative(db, position));
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
     const result = poster.type === "photo"
-      ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster)
-      : await sendTelegramMultipart("sendDocument", payload, "document", poster);
+      ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster, options)
+      : await sendTelegramMultipart("sendDocument", payload, "document", poster, options);
     notification.deliveryStatus = "sent";
     notification.telegramMessageId = result.result?.message_id;
     notification.posterType = poster.type;
@@ -141,7 +159,7 @@ export async function sendTelegramClosedTradePoster(db, trade, options = {}) {
     const poster = await renderClosedTradePoster(trade);
     const caption = options.caption || `NET REALIZED PROFIT · ${share.symbol} ${share.side} · Gross ${share.grossPnl?.toFixed?.(2)} · Costs ${share.feeUsdt?.toFixed?.(2)} · Net ${share.netPnl?.toFixed?.(2)} USDT`;
     const payload = { chat_id: process.env.TELEGRAM_CHAT_ID, caption };
-    const result = poster.type === "photo" ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster) : await sendTelegramMultipart("sendDocument", payload, "document", poster);
+    const result = poster.type === "photo" ? await sendTelegramMultipart("sendPhoto", payload, "photo", poster, options) : await sendTelegramMultipart("sendDocument", payload, "document", poster, options);
     notification.deliveryStatus = "sent"; notification.telegramMessageId = result.result?.message_id;
     appendAudit(db, `Telegram 已平仓盈利海报已推送：${share.symbol}`, notification.id, "TelegramNotifier", "info");
     return { status: "sent", notification, trade: share, telegram: result.result };
