@@ -13,6 +13,84 @@ import { scrubSecrets } from "./secretRedaction.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
+const runtimeDataDir = path.resolve(rootDir, "data");
+
+function canonicalPath(candidate) {
+  const missing = [];
+  let current = path.resolve(candidate);
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+  const resolved = fs.existsSync(current) ? fs.realpathSync.native(current) : current;
+  return path.join(resolved, ...missing);
+}
+
+function isWithin(parent, candidate) {
+  const relative = path.relative(canonicalPath(parent), canonicalPath(candidate));
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+}
+
+function isNodeTestProcess() {
+  return Boolean(process.env.NODE_TEST_CONTEXT || process.env.TEST_DATA_ROOT) || process.env.NODE_ENV === "test";
+}
+
+function trustedTestTempBase() {
+  if (!new Set(["darwin", "linux"]).has(process.platform)) {
+    throw new Error("unsupported_test_storage_platform");
+  }
+  const temporaryRoot = fs.realpathSync.native("/tmp");
+  const identity = fs.lstatSync(temporaryRoot);
+  if (!identity.isDirectory() || identity.isSymbolicLink()) {
+    throw new Error("trusted_test_temp_base_invalid");
+  }
+  fs.accessSync(temporaryRoot, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);
+  return temporaryRoot;
+}
+
+function approvedTestStorage() {
+  const temporaryRoot = trustedTestTempBase();
+  const configuredRoot = String(process.env.TEST_DATA_ROOT || "").trim();
+  const testRoot = configuredRoot ? path.resolve(configuredRoot) : temporaryRoot;
+  if (!isWithin(temporaryRoot, testRoot)) {
+    throw new Error("test_data_root_outside_system_temp");
+  }
+  return { testRoot, hasExplicitRoot: Boolean(configuredRoot) };
+}
+
+function resolveDataDir() {
+  const configured = String(process.env.DATA_DIR || "").trim();
+  if (!isNodeTestProcess()) return path.resolve(rootDir, configured || "data");
+
+  const { testRoot, hasExplicitRoot } = approvedTestStorage();
+  if (configured) {
+    if (!hasExplicitRoot) throw new Error("test_data_dir_requires_test_data_root");
+    const explicit = path.resolve(rootDir, configured);
+    if (isWithin(runtimeDataDir, explicit) || !isWithin(testRoot, explicit)) {
+      throw new Error("test_data_dir_outside_approved_root");
+    }
+    return explicit;
+  }
+
+  if (hasExplicitRoot && isWithin(runtimeDataDir, testRoot)) {
+    throw new Error("test_data_root_must_not_use_runtime_storage");
+  }
+  fs.mkdirSync(testRoot, { recursive: true });
+  const owned = fs.mkdtempSync(path.join(testRoot, `trading-agent-worker-${process.pid}-`));
+  const ownerIdentity = fs.lstatSync(owned);
+  process.once("exit", () => {
+    if (!fs.existsSync(owned) || !isWithin(testRoot, owned) || !path.basename(owned).startsWith(`trading-agent-worker-${process.pid}-`)) return;
+    try {
+      const currentIdentity = fs.lstatSync(owned);
+      if (!currentIdentity.isDirectory() || currentIdentity.isSymbolicLink()
+        || currentIdentity.dev !== ownerIdentity.dev || currentIdentity.ino !== ownerIdentity.ino) return;
+      fs.rmSync(owned, { recursive: true, force: true });
+    } catch { /* suite-level cleanup handles crashed workers */ }
+  });
+  return owned;
+}
 
 // 全部权限清单（种子）。
 export const ALL_PERMISSIONS = [
@@ -32,7 +110,7 @@ export const TRADER_PERMISSIONS = [
   "write:mandate", "write:trade_plan", "write:risk_thresholds", "write:knowledge",
   "write:event", "write:review", "write:task"
 ];
-const dataDir = path.resolve(rootDir, process.env.DATA_DIR || "data");
+const dataDir = resolveDataDir();
 const jsonDbPath = path.join(dataDir, "db.json");
 const sqliteDbPath = path.join(dataDir, "trading-agent.sqlite");
 const defaultOwnerEmail = process.env.OWNER_EMAIL || "aliarlan1028@gmail.com";
@@ -659,6 +737,7 @@ export function loadDb() {
     ? normalizeDatabase(sqliteState)
     : normalizeDatabase(fs.existsSync(jsonDbPath) ? JSON.parse(fs.readFileSync(jsonDbPath, "utf8")) : seedDatabase());
   Object.defineProperty(normalized, "__sqliteBacked", { value: true, enumerable: false, configurable: false });
+  Object.defineProperty(normalized, "__sqlitePath", { value: sqliteDbPath, enumerable: false, configurable: false });
   // 必须先只读校验审计链，再做任何常规保存。发现断裂只标记故障并进入只减仓，
   // 绝不通过重算历史 hash 让异常“看起来恢复正常”。
   inspectAuditChainIntegrity(normalized);
@@ -884,6 +963,7 @@ export function saveDb(db, options = {}) {
 export function resetOperationalData(db, options = {}) {
   const seed = seedDatabase();
   const keepAudit = options.keepAudit !== false;
+  const sqliteBound = db?.__sqliteBacked === true && db?.__sqlitePath === sqliteDbPath;
   Object.assign(db.portfolio, seed.portfolio);
   db.system.autonomyEnabled = true;
   db.system.requestedOperatingMode = "observe";
@@ -905,7 +985,9 @@ export function resetOperationalData(db, options = {}) {
   db.missedOpportunities = [];
   db.marketFeatureState = {};
   db.mediumTermSamples = [];
-  try { ensureSqlite().prepare("delete from medium_term_samples").run(); } catch { /* 清理表失败交给上层持久化错误处理 */ }
+  if (sqliteBound) {
+    try { ensureSqlite().prepare("delete from medium_term_samples").run(); } catch { /* 清理表失败交给上层持久化错误处理 */ }
+  }
   db.eventVolatilityObservations = [];
   db.marketNarratives = {};
   db.structureAnalysisCache = {};
@@ -967,8 +1049,28 @@ export function resetOperationalData(db, options = {}) {
     db.auditLogs = [];
     db.traces = [];
   }
-  appendAudit(db, "清空工作数据，保留配置/密钥/用户/风控规则", "system.reset", options.actor || "Admin", "warning");
+  if (sqliteBound) appendAudit(db, "清空工作数据，保留配置/密钥/用户/风控规则", "system.reset", options.actor || "Admin", "warning");
+  else appendAuditInMemory(db, "清空工作数据，保留配置/密钥/用户/风控规则", "system.reset", options.actor || "Admin", "warning");
   return db;
+}
+
+function auditEntry(action, target, actor, severity, prevHash, request = currentRequestContext()) {
+  const entry = {
+    id: id("audit"), actor: scrubSecrets(actor), action: scrubSecrets(action), target: scrubSecrets(target), severity, prevHash, createdAt: nowIso(),
+    ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
+  };
+  entry.hash = auditHash(entry);
+  return entry;
+}
+
+function appendAuditInMemory(db, action, target, actor, severity) {
+  db.meta ||= {};
+  db.auditLogs ||= [];
+  const prevHash = db.auditLogs[0]?.hash || db.meta.auditChainTip || null;
+  const entry = auditEntry(action, target, actor, severity, prevHash);
+  db.auditLogs.unshift(entry);
+  db.meta.auditChainTip = entry.hash;
+  return entry;
 }
 
 export function appendAudit(db, action, target, actor = "System", severity = "info") {
@@ -981,11 +1083,7 @@ export function appendAudit(db, action, target, actor = "System", severity = "in
   const append = sqlite.transaction(() => {
     const latest = sqlite.prepare("select doc from audit_log_entries order by rowid desc limit 1").get();
     const prevHash = latest ? JSON.parse(latest.doc).hash || null : null;
-    const entry = {
-      id: id("audit"), actor: scrubSecrets(actor), action: scrubSecrets(action), target: scrubSecrets(target), severity, prevHash, createdAt: nowIso(),
-      ...(request?.actor ? { requestedBy: request.actor, requestedByUserId: request.userId, tenantId: request.tenantId } : {})
-    };
-    entry.hash = auditHash(entry);
+    const entry = auditEntry(action, target, actor, severity, prevHash, request);
     writeAuditEntry(entry);
     return entry;
   });
