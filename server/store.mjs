@@ -1056,6 +1056,35 @@ export function getStorageInfo() {
   };
 }
 
+export function getStorageRuntimeStatus() {
+  try {
+    const database = ensureSqlite();
+    const accessible = database.prepare("select 1 as ok").get()?.ok === 1;
+    const integrity = database.pragma("quick_check", { simple: true });
+    let writable = false;
+    try {
+      fs.accessSync(sqliteDbPath, fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(dataDir, fs.constants.W_OK);
+      if (database.readonly === true) throw new Error("sqlite_readonly");
+      database.exec("BEGIN IMMEDIATE");
+      database.exec("ROLLBACK");
+      writable = true;
+    } catch {
+      if (database.inTransaction) {
+        try { database.exec("ROLLBACK"); } catch { /* status remains not writable */ }
+      }
+    }
+    return {
+      ready: accessible && writable && integrity === "ok",
+      accessible,
+      writable,
+      integrity
+    };
+  } catch {
+    return { ready: false, accessible: false, writable: false, integrity: "unavailable", reason: "sqlite_unavailable" };
+  }
+}
+
 // SQLite 在线备份 API 会在 WAL 活跃时获取一致快照；禁止直接 tar/cp 正在写入的 data 目录。
 export async function backupSqlite(destination) {
   ensureSqlite();

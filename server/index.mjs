@@ -80,7 +80,7 @@ import {
   validateKnowledgeSkill
 } from "./knowledgeSkills.mjs";
 import { installProxyFromEnv } from "./netProxy.mjs";
-import { buildReadinessReport, createSystemBackup, deriveAutomationState } from "./ops.mjs";
+import { buildLivenessReport, buildReadinessReport, createSystemBackup, deriveAutomationState } from "./ops.mjs";
 import { visibleNotificationsForUser } from "./notificationStore.mjs";
 import { buildStrategyBoard, refreshTrustedSkillMetrics } from "./strategyBoard.mjs";
 import { runReconciler } from "./reconciler.mjs";
@@ -1008,7 +1008,7 @@ async function handleKnowledgeImport(req, res) {
 
 app.get("/api/health", (_req, res) => {
   // 公共探针只暴露进程存活，不泄露实盘开关、存储路径或内部更新时间。
-  res.json({ ok: true, release: process.env.APP_RELEASE || "dev" });
+  res.json(buildLivenessReport());
 });
 
 app.get("/api/public/bootstrap", (_req, res) => {

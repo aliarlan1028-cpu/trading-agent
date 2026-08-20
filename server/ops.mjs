@@ -1,12 +1,25 @@
 import fsSync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeMandate, appendAudit, latestSuccessfulAccountSnapshot, nowIso, verifyAuditChain } from "./store.mjs";
+import {
+  activeMandate,
+  appendAudit,
+  getStorageRuntimeStatus,
+  latestSuccessfulAccountSnapshot,
+  listOmsOrdersByState,
+  nowIso,
+  verifyAuditChain
+} from "./store.mjs";
 import { createVerifiedBackup } from "./backupService.mjs";
 import { keyProviderStatus } from "./keyProvider.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 import { requiresExternalSecurityInfrastructure } from "./securityProfile.mjs";
 import { externalAlertConfigured, recentExternalAlertSucceeded } from "./alertHealth.mjs";
+import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
+import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
+import { accountMarginCapacity, accountSnapshotFreshness } from "./tradingCapacity.mjs";
+import { timestampEvidence } from "./marketObservation.mjs";
+import { finiteFinancialNumber } from "./financialValues.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -282,7 +295,210 @@ export function deriveAutomationState(db, options = {}) {
   return result({ mode: "full_auto_small", label: "自动交易", detail: `通过 Gemini 决策、DeepSeek 审查和硬风控后自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] });
 }
 
-export function buildReadinessReport(db) {
+export function buildLivenessReport(release = process.env.APP_RELEASE || "dev") {
+  return { ok: true, release };
+}
+
+function readinessDependency(ready, status, reason, details = {}) {
+  return { ready: Boolean(ready), status, reason, ...details };
+}
+
+function latestByCreatedAt(items = []) {
+  return [...items].sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime())[0] || null;
+}
+
+function readinessFiniteNumber(value) {
+  return (typeof value !== "string" || value.trim() !== "") && finiteFinancialNumber(value);
+}
+
+function buildDependencyReadiness(db, options = {}) {
+  const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const marketMaxAgeMs = Number(process.env.SLO_MARKET_FRESHNESS_MS || 180_000);
+  const reconciliationMaxAgeMs = Number(process.env.SLO_RECONCILIATION_FRESHNESS_MS || 1_800_000);
+  const futureSkewMs = Number(process.env.MAX_MARKET_FUTURE_SKEW_MS || 30_000);
+
+  const publicConnection = (db.realtimeConnections || []).find((item) => item.exchange === "OKX" && item.streamType === "public_market");
+  const publicMessage = timestampEvidence(publicConnection?.lastMessageAt, { now, maxAgeMs: marketMaxAgeMs, maxFutureSkewMs: futureSkewMs });
+  let publicMarket;
+  if (!publicConnection) {
+    publicMarket = readinessDependency(false, "missing", "OKX public market WebSocket connection is missing");
+  } else if (publicConnection.status !== "connected") {
+    publicMarket = readinessDependency(false, String(publicConnection.status || "disconnected"), "OKX public market WebSocket is not connected", {
+      lastMessageAt: publicConnection.lastMessageAt || null,
+      messageAgeMs: publicMessage.ageMs,
+      maxAgeMs: marketMaxAgeMs
+    });
+  } else if (!publicMessage.ok) {
+    publicMarket = readinessDependency(false, publicMessage.reason === "stale" ? "stale" : "invalid", "OKX public market messages are not fresh", {
+      lastMessageAt: publicConnection.lastMessageAt || null,
+      messageAgeMs: publicMessage.ageMs,
+      maxAgeMs: marketMaxAgeMs
+    });
+  } else {
+    publicMarket = readinessDependency(true, "ready", null, {
+      lastMessageAt: publicConnection.lastMessageAt,
+      messageAgeMs: publicMessage.ageMs,
+      maxAgeMs: marketMaxAgeMs
+    });
+  }
+
+  const privateConnection = (db.realtimeConnections || []).find((item) => item.exchange === "OKX" && item.streamType === "private_user");
+  let privateUser;
+  if (!privateConnection) {
+    privateUser = readinessDependency(false, "missing", "OKX private user WebSocket connection is missing");
+  } else if (privateConnection.status !== "connected") {
+    privateUser = readinessDependency(false, String(privateConnection.status || "disconnected"), "OKX private user WebSocket is not connected");
+  } else if (!privateConnection.authenticatedAt || !privateConnection.subscribedAt) {
+    privateUser = readinessDependency(false, "unauthenticated", "OKX private user WebSocket has not completed authentication and subscription");
+  } else {
+    const binding = validateOkxCredentialBinding(db, {
+      requiredCapability: "read",
+      accountId: privateConnection.accountId
+    });
+    const expectedEnvironment = okxEnvironmentConfig().name;
+    const fingerprintMatches = binding.ok
+      && privateConnection.authenticatedCredentialFingerprint === binding.currentFingerprint;
+    const environmentMatches = privateConnection.environment === expectedEnvironment;
+    privateUser = fingerprintMatches && environmentMatches
+      ? readinessDependency(true, "ready", null, { authenticatedAt: privateConnection.authenticatedAt, subscribedAt: privateConnection.subscribedAt })
+      : readinessDependency(false, "binding_mismatch", binding.reason || (!fingerprintMatches
+        ? "OKX private user WebSocket credential binding is not current"
+        : "OKX private user WebSocket environment binding is not current"));
+  }
+
+  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
+  const snapshotFreshness = accountSnapshotFreshness(snapshot, { now });
+  const snapshotBinding = snapshot ? validateOkxCredentialBinding(db, {
+    requiredCapability: "read",
+    accountId: snapshot.accountId,
+    snapshot
+  }) : { ok: false, reason: "account_snapshot_missing" };
+  const snapshotEnvironmentMatches = snapshot?.environment === okxEnvironmentConfig().name;
+  const snapshotOrdersComplete = snapshot?.openOrdersComplete === true && snapshot?.algoOrdersComplete === true;
+  const snapshotPositionsComplete = (snapshot?.positions || []).every((item) => {
+    const quantityValue = item.pos ?? item.contractSize ?? item.size;
+    if (!readinessFiniteNumber(quantityValue)) return false;
+    const quantity = Number(quantityValue);
+    return quantity === 0 || (item.positionQuantityComplete === true && readinessFiniteNumber(item.coinSize));
+  });
+  const snapshotCapacity = snapshot ? accountMarginCapacity(db, { live: true, accountId: snapshot.accountId, now }) : { ok: false, error: "account_snapshot_required" };
+  let accountSnapshot;
+  if (!snapshot) {
+    accountSnapshot = readinessDependency(false, "missing", "A successful OKX account snapshot is required");
+  } else if (!snapshotBinding.ok || !snapshotEnvironmentMatches) {
+    accountSnapshot = readinessDependency(false, "binding_mismatch", snapshotBinding.reason || "OKX account snapshot environment binding is not current", { snapshotAt: snapshot.createdAt || null });
+  } else if (!snapshotFreshness.ok) {
+    accountSnapshot = readinessDependency(false, snapshotFreshness.error === "account_snapshot_stale" ? "stale" : "invalid", snapshotFreshness.error, {
+      snapshotAt: snapshot.createdAt || null,
+      ageMs: snapshotFreshness.ageMs,
+      maxAgeMs: snapshotFreshness.maxAgeMs
+    });
+  } else if (!snapshotOrdersComplete || !snapshotPositionsComplete || !snapshotCapacity.ok) {
+    accountSnapshot = readinessDependency(false, "incomplete", snapshotCapacity.error || "OKX account snapshot is incomplete", {
+      snapshotAt: snapshot.createdAt || null,
+      openOrdersComplete: snapshot?.openOrdersComplete === true,
+      algoOrdersComplete: snapshot?.algoOrdersComplete === true,
+      positionQuantitiesComplete: snapshotPositionsComplete
+    });
+  } else {
+    accountSnapshot = readinessDependency(true, "ready", null, {
+      snapshotAt: snapshot.createdAt,
+      ageMs: snapshotFreshness.ageMs,
+      maxAgeMs: snapshotFreshness.maxAgeMs
+    });
+  }
+
+  const latestOkxAttempt = latestByCreatedAt((db.accountSnapshots || []).filter((item) => !item.exchange || item.exchange === "OKX"));
+  const privateRestFreshness = accountSnapshotFreshness(latestOkxAttempt, { now });
+  const privateRestBinding = latestOkxAttempt ? validateOkxCredentialBinding(db, {
+    requiredCapability: "read",
+    accountId: latestOkxAttempt.accountId,
+    snapshot: latestOkxAttempt
+  }) : { ok: false, reason: "account_snapshot_missing" };
+  const privateRestCredentialsComplete = ["OKX_API_KEY", "OKX_API_SECRET", "OKX_API_PASSPHRASE"]
+    .every((key) => String(process.env[key] || "").trim().length > 0);
+  const privateRestEnvironmentMatches = latestOkxAttempt?.environment === okxEnvironmentConfig().name;
+  const marketRestTask = (db.tasks || []).find((item) => item.id === "task_sys_market_signal");
+  const marketRestEvidence = timestampEvidence(marketRestTask?.lastRunAt, { now, maxAgeMs: marketMaxAgeMs, maxFutureSkewMs: futureSkewMs });
+  let okxRest;
+  if (!latestOkxAttempt || !marketRestTask) {
+    okxRest = readinessDependency(false, "missing", "Current OKX private and public REST evidence is required");
+  } else if (!privateRestCredentialsComplete) {
+    okxRest = readinessDependency(false, "credentials_missing", "OKX private REST credentials are incomplete");
+  } else if (!privateRestBinding.ok || !privateRestEnvironmentMatches) {
+    okxRest = readinessDependency(false, "binding_mismatch", privateRestBinding.reason || "OKX private REST environment binding is not current");
+  } else if (latestOkxAttempt.status !== "ok") {
+    okxRest = readinessDependency(false, "failed", `OKX private REST latest sync failed: ${latestOkxAttempt.status || "unknown"}`, { lastAttemptAt: latestOkxAttempt.createdAt || null });
+  } else if (!privateRestFreshness.ok) {
+    okxRest = readinessDependency(false, "stale", "OKX private REST success evidence is stale", { lastSuccessAt: latestOkxAttempt.createdAt || null, maxAgeMs: privateRestFreshness.maxAgeMs });
+  } else if (!new Set(["完成", "已完成"]).has(marketRestTask.status)) {
+    okxRest = readinessDependency(false, "failed", `OKX public market REST refresh is not healthy: ${marketRestTask.status || "unknown"}`, { lastAttemptAt: marketRestTask.lastRunAt || null });
+  } else if (!marketRestEvidence.ok) {
+    okxRest = readinessDependency(false, "stale", "OKX public market REST success evidence is stale", { lastSuccessAt: marketRestTask.lastRunAt || null, maxAgeMs: marketMaxAgeMs });
+  } else {
+    okxRest = readinessDependency(true, "ready", null, { privateLastSuccessAt: latestOkxAttempt.createdAt, publicLastSuccessAt: marketRestTask.lastRunAt });
+  }
+
+  const reconciliationReport = latestByCreatedAt(db.reconciliationReports || []);
+  const reconciliationEvidence = timestampEvidence(reconciliationReport?.createdAt, {
+    now,
+    maxAgeMs: reconciliationMaxAgeMs,
+    maxFutureSkewMs: futureSkewMs
+  });
+  let reconciliation;
+  if (!reconciliationReport) {
+    reconciliation = readinessDependency(false, "missing", "A recent reconciliation report is required");
+  } else if (reconciliationReport.status !== "ok") {
+    reconciliation = readinessDependency(false, "failed", `Latest reconciliation status is ${reconciliationReport.status || "unknown"}`, { lastReportAt: reconciliationReport.createdAt || null });
+  } else if (!reconciliationEvidence.ok) {
+    reconciliation = readinessDependency(false, reconciliationEvidence.reason === "stale" ? "stale" : "invalid", "Latest successful reconciliation is not fresh", {
+      lastReportAt: reconciliationReport.createdAt || null,
+      ageMs: reconciliationEvidence.ageMs,
+      maxAgeMs: reconciliationMaxAgeMs
+    });
+  } else {
+    reconciliation = readinessDependency(true, "ready", null, { lastReportAt: reconciliationReport.createdAt, ageMs: reconciliationEvidence.ageMs, maxAgeMs: reconciliationMaxAgeMs });
+  }
+
+  let omsRows = options.omsOrders;
+  let omsReadFailed = false;
+  if (!Array.isArray(omsRows)) {
+    try { omsRows = listOmsOrdersByState(["UNKNOWN"], 500); } catch { omsRows = []; omsReadFailed = true; }
+  }
+  const omsRecoveryAgeMs = 30_000;
+  const overdueUnknown = omsRows.filter((item) => {
+    const updatedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    return !Number.isFinite(updatedAt) || now - updatedAt >= omsRecoveryAgeMs;
+  });
+  const oms = omsReadFailed
+    ? readinessDependency(false, "unavailable", "OMS UNKNOWN order state could not be read")
+    : overdueUnknown.length
+      ? readinessDependency(false, "blocked", "OMS contains UNKNOWN orders older than the recovery threshold", { count: overdueUnknown.length, recoveryAgeMs: omsRecoveryAgeMs })
+      : readinessDependency(true, "ready", null, { recoveryAgeMs: omsRecoveryAgeMs });
+
+  const storageStatus = options.storageStatus || getStorageRuntimeStatus();
+  const sqlite = storageStatus.ready
+    ? readinessDependency(true, "ready", null, { accessible: storageStatus.accessible, writable: storageStatus.writable, integrity: storageStatus.integrity })
+    : readinessDependency(false, "failed", storageStatus.reason || "SQLite is not accessible, writable, and integral", {
+      accessible: storageStatus.accessible === true,
+      writable: storageStatus.writable === true,
+      integrity: storageStatus.integrity || "unavailable"
+    });
+
+  const dependencies = {
+    public_market: publicMarket,
+    private_user: privateUser,
+    account_snapshot: accountSnapshot,
+    okx_rest: okxRest,
+    reconciliation,
+    oms,
+    sqlite
+  };
+  return { ready: Object.values(dependencies).every((item) => item.ready), dependencies };
+}
+
+export function buildReadinessReport(db, options = {}) {
+  const dependencyReadiness = buildDependencyReadiness(db, options);
   const backupStatus = readJsonStatus(path.join(backupDir, "backup-status.json"));
   const restoreStatus = readJsonStatus(path.join(backupDir, "restore-drill-status.json"));
   const recentBackup = backupStatus?.status === "ok" && ageOf(backupStatus.completedAt) <= 36 * 60 * 60_000;
@@ -293,15 +509,15 @@ export function buildReadinessReport(db) {
     check("auth_lock", "鉴权默认锁定", true, Boolean(process.env.ADMIN_PASSWORD) || process.env.AUTH_REQUIRED === "false", "生产环境必须设置 ADMIN_PASSWORD；只有显式 AUTH_REQUIRED=false 才允许本地免登录。"),
     check("owner_mfa", "Owner 双因素认证", true, (db.users || []).some((user) => user.isOwner && user.mfaEnabled === true), "Owner 应在账户设置中启用 TOTP；登录密码泄露后仍有第二道保护。"),
     check("secret_master_key", "密钥主密钥", true, keyProviderStatus().configured, "生产环境应由 KMS/Vault sidecar 挂载 SECRETS_MASTER_KEY_FILE。"),
-    check("sqlite_persistence", "SQLite 持久化", true, true, "核心集合、审计、Trace 已落库；OMS 使用独立关系表。"),
+    check("sqlite_persistence", "SQLite 持久化", true, dependencyReadiness.dependencies.sqlite.ready, "核心集合、审计、Trace 已落库；OMS 使用独立关系表。"),
     check("oms_outbox", "持久化 OMS 与 Outbox", true, true, "订单幂等预留、状态事件、乐观版本和 Outbox 已使用 SQLite 事务。"),
     check("tenant_isolation", "客户物理隔离", true, process.env.TENANT_ISOLATION_V2 !== "true", "公开入口只收集开通申请；客户交易工作区必须继续使用一客户一实例。"),
     check("trade_write_gateway", "真实交易写网关", true, true, "支持下单、撤单、改单、平仓、移动止损、分批止盈。"),
     check("fresh_risk_recheck", "执行前风控复查", true, true, "批准和执行前都会重新运行硬风控。"),
     check("trade_write_config", "真实交易配置", true, envTrue("LIVE_TRADING_ENABLED") && envTrue("I_UNDERSTAND_REAL_TRADING") && envTrue("REAL_ORDER_WRITE_ENABLED"), "最终由你确认开启。"),
     check("okx_keys", "OKX API", true, Boolean(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE), "需要你配置 Key/Secret/Passphrase 并实盘小额验证。"),
-    check("private_rest_positions", "私有 REST 持仓同步", true, accountSnapshot.fresh, `执行前账户快照必须在 ${Math.round(accountSnapshot.maxAgeMs / 60_000)} 分钟内；系统会同步净值、挂单和真实持仓。`),
-    check("private_ws", "OKX 私有 WebSocket", true, true, "OKX login/subscription 已实现，凭证配置后可连接。"),
+    check("private_rest_positions", "私有 REST 持仓同步", true, dependencyReadiness.dependencies.account_snapshot.ready, `执行前账户快照必须在 ${Math.round(accountSnapshot.maxAgeMs / 60_000)} 分钟内；系统会同步净值、挂单和真实持仓。`),
+    check("private_ws", "OKX 私有 WebSocket", true, dependencyReadiness.dependencies.private_user.ready, "OKX login/subscription 已实现，凭证配置后可连接。"),
     check("llm_agent", "Gemini 主模型 + DeepSeek 独立审查", true, Boolean(process.env.OPENROUTER_API_KEY && process.env.DEEPSEEK_API_KEY), "实盘提案要求 OpenRouter Gemini 与 DeepSeek 官网 API 同时可用。"),
     check("langsmith", "LangSmith Trace", true, Boolean(process.env.LANGSMITH_API_KEY), "配置后记录外部可观测链路。"),
     check("knowledge_pipeline", "真实知识库解析", true, true, "PDF/DOCX/网页/GitHub 导入、切片、RAG、图谱已实现。"),
@@ -322,6 +538,8 @@ export function buildReadinessReport(db) {
   const configured = checks.filter((item) => item.configured).length;
   return {
     generatedAt: nowIso(),
+    ready: dependencyReadiness.ready,
+    dependencies: dependencyReadiness.dependencies,
     // implementationCompletionPct 已移除：它的 implemented 全是硬编码 true，恒等于 100%，是假指标。
     // 就绪度只看 configurationCompletionPct（由 env/密钥/开关的真实状态派生）。
     configurationCompletionPct: Math.round((configured / checks.length) * 100),
