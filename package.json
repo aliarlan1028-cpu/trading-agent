@@ -21,7 +21,6 @@
     "healthcheck": "node scripts/healthcheck.mjs",
     "backup": "node scripts/backup.mjs",
     "restore-drill": "node scripts/restore-drill.mjs",
-    "repair:audit-chain": "node scripts/repair-audit-chain.mjs",
     "docx": "python3 scripts/build-unified-docx.py",
     "lint": "eslint src server scripts tests"
   },

@@ -887,45 +887,6 @@ function latestAuditHash() {
   }
 }
 
-// 危险运维操作：仅供显式修复命令使用。调用者必须先备份原始 SQLite 并传入确认语句。
-function resealAuditChainForExplicitRepair(db) {
-  ensureSqlite();
-  const rows = sqlite.prepare("select rowid as rid, doc from audit_log_entries order by rowid asc").all();
-  const update = sqlite.prepare("update audit_log_entries set doc = @doc, severity = @severity where rowid = @rid");
-  let previous = null;
-  const tx = sqlite.transaction(() => {
-    for (const row of rows) {
-      const entry = JSON.parse(row.doc);
-      entry.prevHash = previous;
-      entry.hash = auditHash(entry);
-      update.run({ rid: row.rid, doc: JSON.stringify(entry), severity: entry.severity || "info" });
-      previous = entry.hash;
-    }
-  });
-  tx();
-  db.meta ||= {};
-  db.meta.auditChainTip = previous;
-  db.meta.auditChainLastExplicitRepairAt = nowIso();
-  db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
-  return { resealed: rows.length, tip: previous };
-}
-
-export async function repairAuditChainExplicit(db, { acknowledgement, backupPath, actor = "SecurityAdmin" } = {}) {
-  if (acknowledgement !== "I_HAVE_PRESERVED_THE_ORIGINAL_AUDIT_DATABASE") {
-    throw new Error("缺少显式修复确认；不会重写任何审计哈希");
-  }
-  const destination = String(backupPath || "").trim();
-  if (!destination) throw new Error("显式修复前必须提供原始 SQLite 备份路径");
-  await backupSqlite(destination);
-  const before = verifyAuditChain(db);
-  const repaired = resealAuditChainForExplicitRepair(db);
-  db.meta.auditChainBroken = false;
-  delete db.meta.auditChainBreaks;
-  appendAudit(db, `管理员显式重建审计链：修复前 ${before.breaks.length} 处断裂；原库备份 ${destination}`, "audit_chain", actor, "critical");
-  saveDb(db);
-  return { before, repaired, backupPath: destination, after: verifyAuditChain(db) };
-}
-
 // 日志型集合上限：防止长期累积把 saveDb 的全库序列化拖垮（曾累积到 accountSnapshots 22K / jobRuns 95K
 // / jobLocks 90K，导致每次 saveDb 序列化上百 MB → 100% CPU + OOM）。超限时按时间戳保留最近 N 条。
 const LOG_CAPS = {
