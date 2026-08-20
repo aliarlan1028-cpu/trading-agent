@@ -836,14 +836,14 @@ export function applyAuditIntegrityState(db, { raw, continuity, tip = null, chec
       db.system.latestAction = "历史审计事件已裁定，本地连续性校验通过，恢复新开仓评估";
     }
     clearReduceOnlyReason(db, "audit_chain_integrity", {
-      resolvedBy: "SecurityOwnerLocalContinuity",
+      resolvedBy: "AuditContinuityVerifier",
       resolution: "incident_adjudicated_local_continuity",
     });
     for (const incident of db.riskIncidents) {
       if (incident.status !== "open" || incident.source !== "audit_chain_integrity") continue;
       incident.status = "resolved";
       incident.resolvedAt = checkedAt;
-      incident.resolvedBy = "SecurityOwnerLocalContinuity";
+      incident.resolvedBy = "AuditContinuityVerifier";
       incident.resolution = "incident_adjudicated_local_continuity";
       incident.legacyClassification = "legacy_forensic_integrity_limited";
       incident.auditConfidence = "local_integrity_only";

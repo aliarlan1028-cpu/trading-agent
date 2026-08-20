@@ -76,6 +76,7 @@ test("approved local continuity resolves only the runtime block while legacy his
   assert.deepEqual(db.auditLogs.map((entry) => entry.hash), beforeHashes);
   const incident = db.riskIncidents.find((item) => item.source === "audit_chain_integrity");
   assert.equal(incident.status, "resolved");
+  assert.equal(incident.resolvedBy, "AuditContinuityVerifier");
   assert.equal(incident.resolution, "incident_adjudicated_local_continuity");
   assert.equal(verifyAuditChain(db).ok, false);
   assert.equal(verifyAuditChainReadOnly().ok, false);
