@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import "dotenv/config";
+import { auditHash, verifyApprovedAuditContinuityAtPath, verifyAuditEntries } from "./auditContinuity.mjs";
 import { currentRequestContext } from "./requestContext.mjs";
 import { backfillToolUsage, migrateToolUsageStats } from "./toolUsage.mjs";
 import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
@@ -789,18 +790,24 @@ export function loadDbReadOnlySnapshot() {
   }
 }
 
-// 启动时只读校验。断链属于安全事件：保留原始证据、标记降级、阻断新的自动开仓。
-// 历史链修复只能走 repairAuditChainExplicit，并且必须先产出原库备份。
-function inspectAuditChainIntegrity(db) {
+export function applyAuditIntegrityState(db, { raw, continuity, tip = null, checkedAt = nowIso() } = {}) {
   db.meta ||= {};
-  const result = verifyAuditChain(db);
-  const tip = latestAuditHash();
+  db.system ||= {};
+  db.riskIncidents ||= [];
+  const result = raw || { ok: false, checked: 0, breaks: [{ error: "audit_verification_missing" }] };
+  const effective = continuity || { operationalReady: false, mode: "invalid", confidence: "none", failures: [{ code: "audit_continuity_missing" }] };
+  db.meta.auditChainCheckedAt = checkedAt;
+  db.meta.auditChainCheckedEntries = result.checked;
+  db.meta.auditContinuityReady = effective.operationalReady === true;
+  db.meta.auditContinuityMode = effective.mode || "invalid";
+  db.meta.auditContinuityConfidence = effective.confidence || "none";
+  db.meta.auditContinuityFailures = (effective.failures || []).slice(0, 20);
+  if (tip) db.meta.auditChainTip = tip;
+
   if (result.ok) {
     db.meta.auditChainBroken = false;
-    db.meta.auditChainCheckedAt = nowIso();
-    db.meta.auditChainCheckedEntries = result.checked;
     delete db.meta.auditChainBreaks;
-    if (tip) db.meta.auditChainTip = tip;
+    delete db.meta.auditContinuityFailures;
     if (db.system?.reduceOnlyBy === "audit_chain_integrity") {
       db.system.reduceOnlyMode = false;
       db.system.reduceOnlyBy = null;
@@ -817,13 +824,33 @@ function inspectAuditChainIntegrity(db) {
     clearReduceOnlyReason(db, "audit_chain_integrity", { resolvedBy: "AuditIntegrityCheck", resolution: "audit_chain_verified" });
     return result;
   }
+
   db.meta.auditChainBroken = true;
-  db.meta.auditChainDetectedAt ||= nowIso();
-  db.meta.auditChainCheckedAt = nowIso();
-  db.meta.auditChainCheckedEntries = result.checked;
+  db.meta.auditChainDetectedAt ||= checkedAt;
   db.meta.auditChainBreaks = result.breaks.slice(0, 20);
-  if (tip) db.meta.auditChainTip = tip; // 只移动后续追加锚点，不改写任何历史记录。
-  db.system ||= {};
+  if (effective.operationalReady === true) {
+    if (db.system.reduceOnlyBy === "audit_chain_integrity") {
+      db.system.reduceOnlyMode = false;
+      db.system.reduceOnlyBy = null;
+      db.system.riskStatus = "正常";
+      db.system.latestAction = "历史审计事件已裁定，本地连续性校验通过，恢复新开仓评估";
+    }
+    clearReduceOnlyReason(db, "audit_chain_integrity", {
+      resolvedBy: "SecurityOwnerLocalContinuity",
+      resolution: "incident_adjudicated_local_continuity",
+    });
+    for (const incident of db.riskIncidents) {
+      if (incident.status !== "open" || incident.source !== "audit_chain_integrity") continue;
+      incident.status = "resolved";
+      incident.resolvedAt = checkedAt;
+      incident.resolvedBy = "SecurityOwnerLocalContinuity";
+      incident.resolution = "incident_adjudicated_local_continuity";
+      incident.legacyClassification = "legacy_forensic_integrity_limited";
+      incident.auditConfidence = "local_integrity_only";
+    }
+    return result;
+  }
+
   db.system.reduceOnlyMode = true;
   db.system.reduceOnlyBy = "audit_chain_integrity";
   setReduceOnlyReason(db, "audit_chain_integrity", { sticky: true, sourceId: "AuditIntegrityCheck" });
@@ -834,11 +861,20 @@ function inspectAuditChainIntegrity(db) {
     db.riskIncidents.unshift({
       id: id("incident"), severity: "critical", status: "open", title: "审计哈希链完整性校验失败",
       source: "audit_chain_integrity", breakCount: result.breaks.length,
-      detail: "系统未修改历史哈希；请先保存原库证据，再由管理员执行显式修复或恢复可信备份。",
-      createdAt: nowIso()
+      detail: "系统未修改历史哈希；请保留原库证据，并通过可信恢复或经批准的新审计连续性基线处理。",
+      createdAt: checkedAt
     });
   }
   return result;
+}
+
+// 启动时先保留原始链结论，再独立判断当前部署是否满足经批准的本地连续性。
+// 两种结果绝不合并成一个伪造的历史链成功状态。
+function inspectAuditChainIntegrity(db) {
+  const raw = verifyAuditChain(db);
+  const tip = latestAuditHash();
+  const continuity = verifyAuditOperationalContinuity(db);
+  return applyAuditIntegrityState(db, { raw, continuity, tip, checkedAt: nowIso() });
 }
 
 function latestAuditHash() {
@@ -2201,20 +2237,36 @@ export function verifyAuditChainReadOnly() {
   }
 }
 
-function verifyAuditEntries(logs) {
-  let previous = null;
-  const breaks = [];
-  for (const entry of logs) {
-    if (entry.prevHash !== previous) {
-      breaks.push({ id: entry.id, expectedPrevHash: previous, actualPrevHash: entry.prevHash });
-    }
-    if (entry.hash) {
-      const expectedHash = auditHash(entry);
-      if (entry.hash !== expectedHash) breaks.push({ id: entry.id, expectedHash, actualHash: entry.hash });
-    }
-    previous = entry.hash || auditHash(entry);
-  }
-  return { ok: breaks.length === 0, checked: logs.length, breaks };
+export function verifyAuditOperationalContinuity(db) {
+  return verifyApprovedAuditContinuityAtPath({ sqlitePath: db?.__sqlitePath || sqliteDbPath });
+}
+
+export function verifyAuditOperationalContinuityReadOnly() {
+  return verifyApprovedAuditContinuityAtPath({ sqlitePath: sqliteDbPath });
+}
+
+export function auditChainStatus(db) {
+  const raw = verifyAuditChain(db);
+  const operational = verifyAuditOperationalContinuity(db);
+  return {
+    ...raw,
+    operationalReady: operational.operationalReady,
+    mode: operational.mode,
+    confidence: operational.confidence,
+    externalAttestation: operational.externalAttestation,
+    legacy: {
+      classification: operational.legacyClassification,
+      storedLinkBreaks: operational.legacyStoredLinkBreaks,
+      breakIslands: operational.legacyBreakIslands,
+      prefixDigest: operational.legacyPrefixDigest,
+    },
+    tail: {
+      fromRowidExclusive: operational.cutoffRowid,
+      valid: operational.operationalReady === true,
+      rowsChecked: operational.tailRowsChecked,
+    },
+    failures: operational.failures,
+  };
 }
 
 function auditLogsForVerification(db) {
@@ -2226,23 +2278,4 @@ function auditLogsForVerification(db) {
     // Fall through to the in-memory window when SQLite is unavailable.
   }
   return [...(db.auditLogs || [])].reverse();
-}
-
-function auditHash(entry) {
-  const payload = {
-    id: entry.id,
-    actor: entry.actor,
-    action: entry.action,
-    target: entry.target,
-    severity: entry.severity,
-    prevHash: entry.prevHash || null,
-    createdAt: entry.createdAt
-  };
-  if (entry.requestedBy) {
-    payload.requestedBy = entry.requestedBy;
-    payload.requestedByUserId = entry.requestedByUserId || null;
-    payload.tenantId = entry.tenantId || null;
-  }
-  const canonical = JSON.stringify(payload);
-  return crypto.createHash("sha256").update(canonical).digest("hex");
 }
