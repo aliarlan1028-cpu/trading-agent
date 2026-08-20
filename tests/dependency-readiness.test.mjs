@@ -26,6 +26,14 @@ after(() => {
 });
 
 const fingerprint = crypto.createHash("sha256").update("readiness-test-key").digest("hex").slice(0, 16);
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
 
 function readyDb(nowMs = Date.now()) {
   const now = new Date(nowMs).toISOString();
@@ -589,7 +597,7 @@ test("readiness-only public disconnect diagnostics do not change reconciliation 
 
   const readiness = report(db, nowMs);
   db.reconciliationReports = [];
-  const reconciliation = runReconciler(db, { mode: "readiness_test" });
+  const reconciliation = runReconciler(db, { mode: "readiness_test", auditStatus: verifiedAuditStatus });
 
   assert.equal(readiness.ready, false);
   assert.equal(readiness.dependencies.public_market.ready, false);
@@ -607,7 +615,7 @@ test("readiness-only public staleness does not change reconciliation trading hea
 
   const readiness = report(db, nowMs);
   db.reconciliationReports = [];
-  const reconciliation = runReconciler(db, { mode: "readiness_test" });
+  const reconciliation = runReconciler(db, { mode: "readiness_test", auditStatus: verifiedAuditStatus });
 
   assert.equal(readiness.ready, false);
   assert.equal(readiness.dependencies.public_market.status, "stale");
@@ -626,7 +634,7 @@ test("the pre-existing never-connected realtime reconciliation gate remains unch
   db.system = { liveTradingEnabled: true, professionalRiskMode: true, reduceOnlyMode: false };
   db.reconciliationReports = [];
 
-  const reconciliation = runReconciler(db, { mode: "readiness_test" });
+  const reconciliation = runReconciler(db, { mode: "readiness_test", auditStatus: verifiedAuditStatus });
 
   assert.equal(reconciliation.status, "degraded");
   assert.equal(reconciliation.differences.some((item) => item.type === "realtime_not_connected"), true);

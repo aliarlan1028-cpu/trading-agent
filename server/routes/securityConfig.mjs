@@ -130,7 +130,8 @@ export function registerSecurityConfigRoutes(app, ctx) {
       actor: req.user?.name || db.user.name,
       setConfig,
       appendAudit,
-      nowIso
+      nowIso,
+      auditStatus: ctx.auditStatus
     });
     if (!result.ok) return res.status(result.status || 422).json(result);
     saveDb(db);
@@ -157,7 +158,8 @@ export function registerSecurityConfigRoutes(app, ctx) {
       actor: req.user?.name || db.user.name,
       setConfig,
       appendAudit,
-      nowIso
+      nowIso,
+      auditStatus: ctx.auditStatus
     });
     if (!result.ok) return res.status(result.status || 422).json(result);
     if (!db.system.reduceOnlyMode) db.system.riskStatus = "正常";

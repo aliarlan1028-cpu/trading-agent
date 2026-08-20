@@ -66,8 +66,8 @@ export function assessOperationalDegradation(db, options = {}) {
 
 // 只在 professionalRiskMode 开启时才真正暂停新开仓；条件消失自动解除，不再永久缴械。
 // 绝不再自动关 autonomy（开仓闸已拦截，还要保留观察与持仓管理）。默认仅记录，不改状态。
-export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate") {
-  const assessment = assessOperationalDegradation(db);
+export function applyOperationalDegradation(db, actor = "ProfessionalRiskGate", options = {}) {
+  const assessment = assessOperationalDegradation(db, { auditStatus: options.auditStatus });
   db.system ||= {};
   db.system.operationalDegradation = assessment;
   const enforce = fullAutoSafetyEnforced(db);

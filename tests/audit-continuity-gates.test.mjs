@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
 
+import { buildCurrentRiskSnapshot } from "../server/currentRiskSnapshot.mjs";
 import { autonomousProductionBlockers } from "../server/liveModeService.mjs";
-import { buildReadinessReport } from "../server/ops.mjs";
-import { buildTradingPermissionEvidence } from "../server/professionalAnalytics.mjs";
+import { buildReadinessReport, deriveAutomationState } from "../server/ops.mjs";
+import { buildOverviewPrincipalScope } from "../server/overviewPrincipalScope.mjs";
+import { buildProfessionalSnapshot, buildTradingPermissionEvidence } from "../server/professionalAnalytics.mjs";
 import { assessOperationalDegradation } from "../server/professionalRiskGate.mjs";
 import { registerSecurityConfigRoutes } from "../server/routes/securityConfig.mjs";
+import { effectiveAuditOperationalStatus } from "../server/store.mjs";
 import { validateWriteGuard } from "../server/tradeActions.mjs";
 
 const validAudit = Object.freeze({
@@ -131,6 +134,48 @@ test("SQLite-backed production state never trusts a cached auditContinuityReady 
   Object.defineProperty(db, "__sqlitePath", { value: "/private/tmp/does-not-exist-audit-continuity.sqlite", enumerable: false });
   const blockers = autonomousProductionBlockers(db, { allowModeToEnableSafety: true });
   assert.equal(blockers.includes("本地审计链校验失败"), true);
+});
+
+test("a scoped non-backed production view cannot self-authorize from cached audit metadata", () => {
+  const db = operatingFixture();
+  Object.defineProperty(db, "__sqliteBacked", { value: true, enumerable: false });
+  Object.defineProperty(db, "__sqlitePath", { value: "/private/tmp/does-not-exist-audit-continuity.sqlite", enumerable: false });
+  const { scoped } = buildOverviewPrincipalScope(db, {
+    tenantId: "tenant_owner",
+    userId: "owner",
+    isOwner: true,
+  });
+
+  assert.equal(scoped.__sqliteBacked, undefined);
+  const status = effectiveAuditOperationalStatus(scoped);
+  assert.equal(status.operationalReady, false);
+  assert.ok(status.failures.some((failure) => failure.code === "audit_status_unverified"));
+});
+
+test("scoped risk, professional, and automation builders use an explicitly verified current audit status", () => {
+  const scoped = operatingFixture();
+  const now = Date.now();
+  const invalidRisk = buildCurrentRiskSnapshot(scoped, now, { auditStatus: invalidAudit });
+  const validRisk = buildCurrentRiskSnapshot(scoped, now, { auditStatus: validAudit });
+  assert.equal(invalidRisk.operationalDegradation.reasons.includes("audit_chain_invalid"), true);
+  assert.equal(validRisk.operationalDegradation.reasons.includes("audit_chain_invalid"), false);
+
+  const invalidProfessional = buildProfessionalSnapshot(scoped, { auditStatus: invalidAudit });
+  const validProfessional = buildProfessionalSnapshot(scoped, { auditStatus: validAudit });
+  assert.equal(invalidProfessional.permissionEvidence.checks.find((item) => item.key === "audit").passed, false);
+  assert.equal(validProfessional.permissionEvidence.checks.find((item) => item.key === "audit").passed, true);
+
+  scoped.system.liveTradingEnabled = true;
+  scoped.system.realTradingAck = true;
+  scoped.system.orderWriteEnabled = true;
+  scoped.system.requestedOperatingMode = "full_auto";
+  scoped.system.remainingDailyLossUsdt = 100;
+  scoped.apiKeyMetadata = [{ exchange: "OKX", hasApiKey: true, hasSecret: true, withdrawPermission: false, permissionVerifiedAt: new Date(now).toISOString() }];
+  scoped.grayReleasePolicies[0].requiresManualApproval = false;
+  const invalidAutomation = deriveAutomationState(scoped, { hasProvider: true, auditStatus: invalidAudit });
+  const validAutomation = deriveAutomationState(scoped, { hasProvider: true, auditStatus: validAudit });
+  assert.equal(invalidAutomation.blockers.includes("运行降级:audit_chain_invalid"), true);
+  assert.equal(validAutomation.blockers.includes("运行降级:audit_chain_invalid"), false);
 });
 
 test("trading permission evidence describes local continuity without calling legacy history normal", () => {

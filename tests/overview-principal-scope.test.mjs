@@ -5,6 +5,15 @@ import { buildCurrentRiskSnapshot } from "../server/currentRiskSnapshot.mjs";
 import { buildOverviewPrincipalScope, deriveOverviewApiHealth } from "../server/overviewPrincipalScope.mjs";
 import { reconcileRiskIncidentLifecycle } from "../server/riskIncidentLifecycle.mjs";
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+
 function fixture() {
   const owner = { tenantId: "tenant-owner", ownerUserId: "owner-1" };
   const sameTenantOther = { tenantId: "tenant-owner", ownerUserId: "trader-2" };
@@ -115,7 +124,7 @@ test("reading a foreign risk overview exposes no Owner balance or pause reason a
     configuredOwner: foreign.configuredOwner,
     hasStoredOkxCredentials: true
   });
-  const snapshot = buildCurrentRiskSnapshot(foreign.scoped, Date.parse("2026-08-18T12:00:00.000Z"));
+  const snapshot = buildCurrentRiskSnapshot(foreign.scoped, Date.parse("2026-08-18T12:00:00.000Z"), { auditStatus: verifiedAuditStatus });
   assert.equal(snapshot.rollingSevenDay.startEquityUsdt, null);
   assert.equal(snapshot.rollingSevenDay.pnlUsdt, null);
   assert.equal(snapshot.controls.reduceOnly, false);

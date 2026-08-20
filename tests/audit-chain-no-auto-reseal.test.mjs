@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test, { after } from "node:test";
 import Database from "better-sqlite3";
+import { setReduceOnlyReason } from "../server/reduceOnlyState.mjs";
 
 const testRoot = await fs.mkdtemp(path.join("/private/tmp", "audit-chain-no-reseal-"));
 const dataDir = path.join(testRoot, "db");
@@ -80,6 +81,35 @@ test("approved local continuity resolves only the runtime block while legacy his
   assert.equal(incident.resolution, "incident_adjudicated_local_continuity");
   assert.equal(verifyAuditChain(db).ok, false);
   assert.equal(verifyAuditChainReadOnly().ok, false);
+});
+
+test("audit adjudication preserves an unrelated emergency reduce-only reason", () => {
+  const db = {
+    meta: {},
+    system: { reduceOnlyMode: true, reduceOnlyBy: "audit_chain_integrity" },
+    riskIncidents: [],
+    executionOrders: [],
+    armedSetups: [],
+    orders: [],
+    portfolio: {},
+  };
+  setReduceOnlyReason(db, "audit_chain_integrity", { sticky: true, sourceId: "AuditIntegrityCheck" });
+  setReduceOnlyReason(db, "emergency_flatten", { sticky: true, sourceId: "emergency_1" });
+
+  applyAuditIntegrityState(db, {
+    raw: { ok: false, checked: 1, breaks: [{ id: "legacy_break" }] },
+    continuity: {
+      operationalReady: true,
+      mode: "incident_adjudicated_local_continuity",
+      confidence: "local_integrity_only",
+      failures: [],
+    },
+    checkedAt: "2026-08-21T00:00:00.000Z",
+  });
+
+  assert.equal(db.system.reduceOnlyMode, true);
+  assert.equal(db.system.reduceOnlyBy, "emergency_flatten");
+  assert.deepEqual(db.system.reduceOnlyReasons, ["emergency_flatten"]);
 });
 
 test("a later continuity failure restores the existing audit block without sticky green", () => {

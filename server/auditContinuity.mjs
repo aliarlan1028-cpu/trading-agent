@@ -35,6 +35,15 @@ const APPROVAL_FIELDS = Object.freeze(["approvalId", "approvedBy", "approvedAt"]
 const INCIDENT_FIELDS = Object.freeze(Object.keys(APPROVED_W0_INCIDENT));
 const BASELINE_FIELDS = Object.freeze([...Object.keys(POLICY_FIELDS), ...INCIDENT_FIELDS, ...APPROVAL_FIELDS]);
 const HEX_256 = /^[0-9a-f]{64}$/;
+const AUDIT_TEXT_FIELDS = Object.freeze(["id", "actor", "action", "target", "severity", "createdAt"]);
+const AUDIT_STORED_FIELDS = Object.freeze([
+  ["id", "id"],
+  ["actor", "actor"],
+  ["action", "action"],
+  ["target", "target"],
+  ["severity", "severity"],
+  ["created_at", "createdAt"],
+]);
 
 function codedError(code, message) {
   const error = new Error(message);
@@ -60,18 +69,37 @@ export function auditHash(entry) {
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+function assertAuditEntrySchema(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw codedError("audit_rows_invalid", "Audit row document must be an object");
+  }
+  for (const field of AUDIT_TEXT_FIELDS) {
+    if (typeof entry[field] !== "string") throw codedError("audit_rows_invalid", `Audit row field must be a string: ${field}`);
+  }
+  if (entry.prevHash !== null && !HEX_256.test(entry.prevHash)) {
+    throw codedError("audit_rows_invalid", "Audit row prevHash must be null or canonical SHA-256");
+  }
+  if (!HEX_256.test(entry.hash)) throw codedError("audit_rows_invalid", "Audit row hash must be canonical SHA-256");
+  return entry;
+}
+
 export function verifyAuditEntries(entries) {
   let previous = null;
   const breaks = [];
   for (const entry of entries) {
+    try {
+      assertAuditEntrySchema(entry);
+    } catch (error) {
+      breaks.push({ id: entry?.id || null, error: "audit_entry_invalid", detail: error.message });
+      previous = HEX_256.test(entry?.hash) ? entry.hash : null;
+      continue;
+    }
     if (entry.prevHash !== previous) {
       breaks.push({ id: entry.id, expectedPrevHash: previous, actualPrevHash: entry.prevHash });
     }
-    if (entry.hash) {
-      const expectedHash = auditHash(entry);
-      if (entry.hash !== expectedHash) breaks.push({ id: entry.id, expectedHash, actualHash: entry.hash });
-    }
-    previous = entry.hash || auditHash(entry);
+    const expectedHash = auditHash(entry);
+    if (entry.hash !== expectedHash) breaks.push({ id: entry.id, expectedHash, actualHash: entry.hash });
+    previous = entry.hash;
   }
   return { ok: breaks.length === 0, checked: entries.length, breaks };
 }
@@ -241,8 +269,16 @@ export function readAuditContinuityBaseline(filePath) {
 function parsedEntry(row) {
   const text = Buffer.isBuffer(row.doc) ? row.doc.toString("utf8") : String(row.doc || "");
   const entry = JSON.parse(text);
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw codedError("audit_rows_invalid", "Audit row document must be an object");
-  return entry;
+  return assertAuditEntrySchema(entry);
+}
+
+function assertStoredColumnsMatch(row, entry) {
+  for (const [storedField, documentField] of AUDIT_STORED_FIELDS) {
+    const stored = row[storedField];
+    if (!Buffer.isBuffer(stored) || !stored.equals(Buffer.from(entry[documentField], "utf8"))) {
+      throw codedError("audit_columns_mismatch", `Audit stored column differs from document: ${storedField}`);
+    }
+  }
 }
 
 function failureStatus(raw, code, detail, extra = {}) {
@@ -300,6 +336,11 @@ export function verifyAuditContinuityRows({ rows = [], baseline = null, approved
     return failureStatus(null, "audit_rows_invalid", error.message);
   }
   if (raw.ok) {
+    try {
+      rows.forEach((row, index) => assertStoredColumnsMatch(row, entries[index]));
+    } catch (error) {
+      return failureStatus(raw, "audit_rows_invalid", error.message);
+    }
     return {
       operationalReady: true,
       mode: "full_chain",
@@ -379,8 +420,13 @@ export function verifyAuditContinuityRows({ rows = [], baseline = null, approved
     let current;
     try {
       current = parsedEntry(row);
+      assertStoredColumnsMatch(row, current);
     } catch (error) {
-      return failureStatus(raw, "tail_invalid", error.message, { ...facts, legacyPrefixDigest: prefixDigest, cutoffRowid: approvedIncident.legacyCutoffRowid });
+      return failureStatus(raw, error.code === "audit_columns_mismatch" ? "tail_invalid" : "audit_rows_invalid", error.message, {
+        ...facts,
+        legacyPrefixDigest: prefixDigest,
+        cutoffRowid: approvedIncident.legacyCutoffRowid,
+      });
     }
     if (row.rowid !== previousRowid + 1 || current.prevHash !== previousHash || !current.hash || current.hash !== auditHash(current)) {
       return failureStatus(raw, "tail_invalid", `Audit continuity tail failed at rowid ${row.rowid}`, {

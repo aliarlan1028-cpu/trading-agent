@@ -4,6 +4,15 @@ import { buildCurrentRiskSnapshot, enforceCurrentRiskFacts } from "../server/cur
 import { reconcileRiskIncidentLifecycle } from "../server/riskIncidentLifecycle.mjs";
 import { sanitizeHistoricalAccountClaims } from "../server/agentChat.mjs";
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+
 function fixture() {
   return {
     system: { killSwitch: false, reduceOnlyMode: false, remainingDailyLossUsdt: 10, tradeProtections: { cooldown: { active: false, streak: 0 }, drawdown: { active: false } } },
@@ -14,7 +23,7 @@ function fixture() {
 }
 
 test("当前风险快照使用严格滚动168小时与最新授权阈值", () => {
-  const now = Date.parse("2026-08-12T12:00:00.000Z"), snapshot = buildCurrentRiskSnapshot(fixture(), now);
+  const now = Date.parse("2026-08-12T12:00:00.000Z"), snapshot = buildCurrentRiskSnapshot(fixture(), now, { auditStatus: verifiedAuditStatus });
   assert.equal(snapshot.rollingSevenDay.semantics, "rolling_168_hours");
   assert.equal(snapshot.rollingSevenDay.windowStartAt, "2026-08-05T12:00:00.000Z");
   assert.equal(snapshot.rollingSevenDay.limitPct, 20);
@@ -45,7 +54,7 @@ test("恢复条件会自动关闭旧风险事件而不依赖 LLM 判断", () => 
     { id: "i3", status: "open", source: "pos_old", title: "仓位止损缺失" },
     { id: "i4", status: "open", source: "manual", title: "人工安全复核" }
   ];
-  const snapshot = buildCurrentRiskSnapshot(db);
+  const snapshot = buildCurrentRiskSnapshot(db, Date.now(), { auditStatus: verifiedAuditStatus });
   reconcileRiskIncidentLifecycle(db, { degradation: snapshot.operationalDegradation, snapshot });
   assert.equal(db.riskIncidents.find((row) => row.id === "i1").status, "resolved");
   assert.equal(db.riskIncidents.find((row) => row.id === "i2").status, "resolved");

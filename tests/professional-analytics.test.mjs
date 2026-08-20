@@ -4,6 +4,15 @@ import { buildProfessionalSnapshot, buildStrategyDrift, buildTradingPermissionEv
 import { SKILL_TOOLS } from "../server/skillTools.mjs";
 import { financiallyReconciledFills } from "./financial-fixtures.mjs";
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+
 function fixture() {
   const now = new Date().toISOString();
   return { meta:{}, system:{autonomyEnabled:true,killSwitch:false,remainingDailyLossUsdt:10}, markets:[{symbol:"BTC/USDT",price:100,updatedAt:now,candles:[]}], positions:[], mandates:[{id:"m1",status:"active",allowedSymbols:["BTC/USDT"]}], accountSnapshots:[{status:"ok",createdAt:now}], reconciliationReports:[{status:"ok",createdAt:now}], executionOrders:[], fills:[], agentRuns:[], tradePlans:[], riskChecks:[], portfolio:{totalEquityUsdt:1000} };
@@ -11,14 +20,14 @@ function fixture() {
 
 test("统一交易许可证据逐项给出可审计结论", () => {
   const db = fixture();
-  const evidence = buildTradingPermissionEvidence(db);
+  const evidence = buildTradingPermissionEvidence(db, { auditStatus: verifiedAuditStatus });
   assert.equal(evidence.decision, "allowed");
   db.system.killSwitch = true;
-  assert.equal(buildTradingPermissionEvidence(db).decision, "blocked");
+  assert.equal(buildTradingPermissionEvidence(db, { auditStatus: verifiedAuditStatus }).decision, "blocked");
 });
 
 test("专业快照包含 SLO、组合、执行质量和回放", () => {
-  const snapshot = buildProfessionalSnapshot(fixture());
+  const snapshot = buildProfessionalSnapshot(fixture(), { auditStatus: verifiedAuditStatus });
   assert.ok(snapshot.slo.checks.length >= 4);
   assert.ok(snapshot.portfolioRisk);
   assert.ok(snapshot.executionQuality);

@@ -104,7 +104,7 @@ import { installSkill, scanSkill, verifySkillPackageIntegrity } from "./skillMan
 import { seedSkillTools } from "./skillTools.mjs";
 import { connectMcpServer, mcpStatus } from "./mcpClient.mjs";
 import { fetchSkillPackage, readSkillInstructions, runSkillSandbox } from "./skillSandbox.mjs";
-import { activeMandate, appendAudit, appendTrace, auditChainStatus, claimPaymentTransaction, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, setSaveDbObserver, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
+import { activeMandate, appendAudit, appendTrace, auditChainStatus, claimPaymentTransaction, effectiveAuditOperationalStatus, getStorageInfo, id, loadDb, nowIso, resetOperationalData, saveDb, setSaveDbObserver, TRADER_PERMISSIONS, verifyAuditChain } from "./store.mjs";
 import { describeGuardReason, effectiveOpeningNotionalLimits } from "./tradeActions.mjs";
 import { accountMarginCapacity } from "./tradingCapacity.mjs";
 import { isPublicMarketStreamUpdate } from "./streamPolicy.mjs";
@@ -1031,6 +1031,7 @@ function sendMeasuredJson(res, payload, metricName) {
 
 app.get("/api/bootstrap/core", requirePermission("account.read"), (req, res) => {
   const { scoped: scopedDb } = overviewPrincipalScope(req);
+  const auditStatus = effectiveAuditOperationalStatus(db);
   const notifications = visibleNotificationsForUser(db, {
     tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
     userId: req.user?.id || null
@@ -1039,7 +1040,7 @@ app.get("/api/bootstrap/core", requirePermission("account.read"), (req, res) => 
     revision: currentUiRevision(),
     user: sanitizeUserRecord(req.user || db.user),
     systemRelease: process.env.APP_RELEASE || "dev",
-    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()), auditStatus }),
     config: getConfigStatus(db),
     notifications
   });
@@ -1103,7 +1104,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     user: sanitizeUserRecord(req.user || db.user),
     system: profitGoalSnapshot(scopedDb.system),
     systemRelease: process.env.APP_RELEASE || "dev",
-    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()), auditStatus: options.auditStatus }),
     agentStatus: getAgentStatus(scopedDb),
     portfolio: scopedDb.portfolio,
     performance,
@@ -1176,7 +1177,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     marketMovers: db.marketMovers ? { movers: (db.marketMovers.movers || []).slice(0, 12), scannedAt: db.marketMovers.scannedAt || db.marketMovers.updatedAt || null } : null,
     abnormalVolatility: abnormalVolatilityBoard(db),
     portfolioRisk: buildPortfolioRisk(scopedDb, activeMandate(scopedDb)),
-    professional: buildProfessionalSnapshot(scopedDb),
+    professional: buildProfessionalSnapshot(scopedDb, { auditStatus: options.auditStatus }),
     paperReport: buildPaperReport(scopedDb)
   };
 
@@ -1228,14 +1229,14 @@ function buildOverviewSectionSource(section, req, options = {}) {
       riskChecks: scopedDb.riskChecks,
       riskIncidents: scopedDb.riskIncidents,
       eventRiskWindows: deriveEventRiskWindows(db.events, { blackoutMinutes: currentRiskThresholds().eventBlackoutMinutes }),
-      currentRiskSnapshot: options.riskSnapshot || buildCurrentRiskSnapshot(scopedDb),
+      currentRiskSnapshot: options.riskSnapshot || buildCurrentRiskSnapshot(scopedDb, Date.now(), { auditStatus: options.auditStatus }),
       grayReleasePolicies: scopedDb.grayReleasePolicies,
       notionalLimits: effectiveOpeningNotionalLimits(scopedDb),
       tradingCapacity: { ...capacity, freshForExecution: capacity.ok && Number(capacity.ageMs) <= Number(capacity.maxAgeMs) },
       portfolioRisk: buildPortfolioRisk(scopedDb, mandate),
       apiKeyMetadata: scopedDb.apiKeyMetadata,
       accountSnapshots: scopedDb.accountSnapshots,
-      readiness: buildReadinessReport(scopedDb)
+      readiness: buildReadinessReport(scopedDb, { auditStatus: options.auditStatus })
     };
   }
 
@@ -1260,7 +1261,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     accountSnapshots: scopedDb.accountSnapshots,
     marketStream: marketStreamStatus(),
     opportunityEngine: opportunityEngineStatus(db),
-    readiness: buildReadinessReport(scopedDb)
+    readiness: buildReadinessReport(scopedDb, { auditStatus: options.auditStatus })
   };
 
   return {
@@ -1283,7 +1284,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     larkConfigured: larkStatus().configured,
     telegramConfigured: telegramStatus().configured,
     mcpStatus: mcpStatus(db),
-    readiness: buildReadinessReport(scopedDb)
+    readiness: buildReadinessReport(scopedDb, { auditStatus: options.auditStatus })
   };
 }
 
@@ -1310,15 +1311,16 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
   if (requestedSection && !allowedSections.has(requestedSection)) return res.status(400).json({ error: "unknown_overview_section" });
   const sectionBuilderV2 = process.env.OVERVIEW_SECTION_BUILDER_V2 !== "false";
   const needs = (...sections) => !requestedSection || !sectionBuilderV2 || sections.includes(requestedSection);
+  const overviewAuditStatus = effectiveAuditOperationalStatus(db);
   // 陈旧计划自动作废:隔夜/超期未成交的计划置为 expired,让"当前计划卡"与"暂无待处理计划"口径一致。
   const expiredPlans = expireStalePlans(scopedDb);
   const overviewRiskSnapshot = (!requestedSection || !sectionBuilderV2 || requestedSection === "riskCenter")
-    ? buildCurrentRiskSnapshot(scopedDb) : null;
+    ? buildCurrentRiskSnapshot(scopedDb, Date.now(), { auditStatus: overviewAuditStatus }) : null;
   const resolvedIncidents = overviewRiskSnapshot
     ? reconcileRiskIncidentLifecycle(scopedDb, { degradation: overviewRiskSnapshot.operationalDegradation, snapshot: overviewRiskSnapshot }) : [];
   if (expiredPlans.length || resolvedIncidents.length) saveDb(db);
   if (requestedSection && sectionBuilderV2) {
-    const source = buildOverviewSectionSource(requestedSection, req, { riskSnapshot: overviewRiskSnapshot, system: scopedDb.system });
+    const source = buildOverviewSectionSource(requestedSection, req, { auditStatus: overviewAuditStatus, riskSnapshot: overviewRiskSnapshot, system: scopedDb.system });
     const projected = { ...projectOverviewSection(source, requestedSection), revision: currentUiRevision() };
     res.set("X-Kordyn-Overview-Builder", "section_v2");
     if (process.env.OVERVIEW_SHADOW_COMPARE === "true" && requestedSection === "cockpit") {
@@ -1351,7 +1353,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     registrationCapacity: publicRegistrationInfo(db).capacity,
     registrationApplications: configuredOwner ? (db.registrationApplications || []).map(sanitizeRegistrationApplication) : [],
     riskThresholds: currentRiskThresholds(),
-    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()) }),
+    automationState: deriveAutomationState(scopedDb, { hasProvider: Boolean(activeProvider()), auditStatus: overviewAuditStatus }),
     ...(needs("researchCenter") ? {
       strategyBoard: buildStrategyBoard(scopedDb),
       strategyCatalog: buildStrategyCatalog(scopedDb, Object.values(STRATEGIES)),
@@ -1470,7 +1472,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     } : {}),
     ...(needs("cockpit") ? {
       paperReport: buildPaperReport(scopedDb),
-      professional: buildProfessionalSnapshot(scopedDb)
+      professional: buildProfessionalSnapshot(scopedDb, { auditStatus: overviewAuditStatus })
     } : {}),
     ...(needs("cockpit", "riskCenter") ? { portfolioRisk: buildPortfolioRisk(scopedDb, activeMandate(scopedDb)) } : {}),
     ...(needs("systemSettings") ? {
@@ -1480,7 +1482,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     } : {}),
     runtimeConfig: configuredOwner ? db.runtimeConfig || {} : {},
     config: getConfigStatus(db),
-    ...(needs("systemSettings", "operationsCenter") ? { readiness: buildReadinessReport(scopedDb) } : {}),
+    ...(needs("systemSettings", "operationsCenter") ? { readiness: buildReadinessReport(scopedDb, { auditStatus: overviewAuditStatus }) } : {}),
     // 分析透明度:如实汇总"当前真正在决策里起作用"的引擎配置(权重/阈值/兜底默认/LLM/工具目录)。
     // 动态信号(regime/聪明钱/异动/技能)前端直接用上面已有字段,这里只补静态但真实的引擎常量。
     ...(needs("researchCenter") ? { analysisEngine: {

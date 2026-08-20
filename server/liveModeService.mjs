@@ -176,7 +176,10 @@ export function applyLiveTradingConfiguration(db, requested = {}, context = {}) 
   const resultingAuto = nextGrayEnabled && nextGrayRequiresApproval === false;
   let pendingBlockers = [];
   if (resultingAuto && (nextLive || nextOrderWrite)) {
-    const blockers = autonomousProductionBlockers(db, { allowModeToEnableSafety: requestedMode === "full_auto" });
+    const blockers = autonomousProductionBlockers(db, {
+      allowModeToEnableSafety: requestedMode === "full_auto",
+      auditStatus: context.auditStatus,
+    });
     const { hard, transient } = partitionAutonomousBlockers(blockers);
     if (hard.length) return serviceError(412, "autonomous_production_blocked", { blockers: hard });
     pendingBlockers = transient;

@@ -16,6 +16,15 @@ const { normalizeDatabase } = await import("../server/store.mjs");
 const { partitionAutonomousBlockers } = await import("../server/routes/securityConfig.mjs");
 const { ensureCuratedSkills } = await import("../server/knowledgeSkills.mjs");
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+
 function dbFixture() {
   return {
     system: { autonomyEnabled: true, killSwitch: false, liveTradingEnabled: false, remainingDailyLossUsdt: 100, professionalRiskMode: true, wormAuditLastSuccessAt: new Date().toISOString() },
@@ -87,11 +96,11 @@ test("实盘链:Key 未核验/灰度未启用逐项点名,全通且免批则为�
   // 补齐核验与灰度(保留人工确认) → 半自动
   db.apiKeyMetadata[0].permissionVerifiedAt = "2026-07-27T00:00:00.000Z";
   db.grayReleasePolicies.push({ id: "g1", enabled: true, requiresManualApproval: true, maxNotionalUsdt: 200 });
-  st = deriveAutomationState(db, { hasProvider: true });
+  st = deriveAutomationState(db, { hasProvider: true, auditStatus: verifiedAuditStatus });
   assert.equal(st.mode, "semi_auto");
   // 关闭人工确认 → 全自动·小额
   db.grayReleasePolicies[0].requiresManualApproval = false;
-  st = deriveAutomationState(db, { hasProvider: true });
+  st = deriveAutomationState(db, { hasProvider: true, auditStatus: verifiedAuditStatus });
   assert.equal(st.mode, "full_auto_small");
   assert.match(st.detail, /200 USDT/);
   // 日亏预算耗尽回落为被拦
@@ -193,7 +202,7 @@ test("BitLaunch 单服务器模式不伪造 WORM，但不把缺少外部 WORM �
     db.system.orderWriteEnabled = true;
     db.apiKeyMetadata[0].permissionVerifiedAt = new Date().toISOString();
     db.grayReleasePolicies = [{ id: "g1", enabled: true, requiresManualApproval: false, maxNotionalUsdt: 200 }];
-    assert.equal(deriveAutomationState(db, { hasProvider: true }).mode, "full_auto_small");
+    assert.equal(deriveAutomationState(db, { hasProvider: true, auditStatus: verifiedAuditStatus }).mode, "full_auto_small");
   } finally {
     if (previousProfile === undefined) delete process.env.PRODUCTION_SECURITY_PROFILE;
     else process.env.PRODUCTION_SECURITY_PROFILE = previousProfile;

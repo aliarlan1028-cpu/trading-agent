@@ -290,7 +290,7 @@ export function deriveAutomationState(db, options = {}) {
     else if (!recentExternalAlertSucceeded(db)) blockers.push("外部告警通道未在 24 小时内验证");
   }
   if ((db.executionOrders || []).some((item) => String(item.status).toUpperCase() === "UNKNOWN")) blockers.push("存在 UNKNOWN 订单");
-  const degradation = assessOperationalDegradation(db);
+  const degradation = assessOperationalDegradation(db, { auditStatus: options.auditStatus });
   if (degradation.degraded) blockers.push(...degradation.reasons.map((reason) => `运行降级:${reason}`));
   if (blockers.length) return result({ mode: "live_blocked", label: "暂停新开仓", detail: `${blockers.join("、")}；条件恢复后自动继续「${requestedLabel}」`, tone: "warning", blockers });
   return result({ mode: "full_auto_small", label: "自动交易", detail: `通过 Gemini 决策、DeepSeek 审查和硬风控后自动下单 · 单笔名义 ≤${gray.maxNotionalUsdt} USDT`, tone: "ok", blockers: [] });

@@ -12,6 +12,15 @@ delete process.env.REQUIRE_MFA_FOR_LIVE;
 
 const { registerSecurityConfigRoutes } = await import("../server/routes/securityConfig.mjs");
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+
 function fixture() {
   return {
     user: { name: "Owner" },
@@ -46,7 +55,8 @@ function liveHandler(db) {
     },
     nowIso: () => new Date().toISOString(),
     appendAudit() {}, appendTrace() {}, saveDb() {},
-    getConfigStatus: () => ({ liveTrading: {} })
+    getConfigStatus: () => ({ liveTrading: {} }),
+    auditStatus: verifiedAuditStatus
   });
   return routes.get("/api/config/live-trading");
 }

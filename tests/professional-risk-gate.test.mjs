@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyOperationalDegradation, assessOperationalDegradation, evaluateProfessionalPlanRisks, professionalNotionalCap } from "../server/professionalRiskGate.mjs";
 
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
+const assess = (db) => assessOperationalDegradation(db, { auditStatus: verifiedAuditStatus });
+const apply = (db) => applyOperationalDegradation(db, "ProfessionalRiskGate", { auditStatus: verifiedAuditStatus });
+
 const now = () => new Date().toISOString();
 function dbFixture({ live = true } = {}) {
   const observedAt=now();
@@ -28,7 +39,7 @@ const plan = { mandateId:"m1", symbol:"BTC/USDT", direction:"long", entry_range:
 
 test("正常链路通过专业运行与流动性硬闸", () => {
   const db=dbFixture();
-  assert.equal(assessOperationalDegradation(db).degraded,false);
+  assert.equal(assess(db).degraded,false);
   const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
   assert.equal(risk.checks.find(c=>c.name==="流动性与冲击成本").passed,true);
 });
@@ -42,28 +53,28 @@ test("风险闸使用 OKX 实时消息时间与实际私有连接状态，不依
   db.realtimeConnections=[{exchange:"OKX",streamType:"private_user",status:"connected",authenticatedCredentialFingerprint:null}];
   db.reconciliationReports=[{status:"ok",createdAt:now()}];
   assert.equal(db.realtimeStarted,undefined);
-  assert.equal(assessOperationalDegradation(db).degraded,false);
+  assert.equal(assess(db).degraded,false);
 });
 
 test("陈旧行情自动切只减仓并只创建一次风险事件", () => {
   const db=dbFixture(); staleMarket(db.markets[0]);
-  const first=applyOperationalDegradation(db);
+  const first=apply(db);
   assert.equal(first.degraded,true); assert.equal(db.system.reduceOnlyMode,true); assert.equal(db.system.autonomyEnabled,true); assert.equal(db.riskIncidents.length,1);
-  applyOperationalDegradation(db); assert.equal(db.riskIncidents.length,1);
+  apply(db); assert.equal(db.riskIncidents.length,1);
 });
 
 test("订单 UNKNOWN 与对账异常触发运行降级", () => {
   const db=dbFixture(); db.executionOrders=[{status:"UNKNOWN"}];
-  assert.ok(assessOperationalDegradation(db).reasons.includes("unknown_order_state"));
+  assert.ok(assess(db).reasons.includes("unknown_order_state"));
   db.executionOrders=[]; db.exchangeAccounts=[{exchange:"OKX",readEnabled:true}];
-  assert.ok(assessOperationalDegradation(db).reasons.includes("reconciliation_unhealthy"));
+  assert.ok(assess(db).reasons.includes("reconciliation_unhealthy"));
 });
 
 test("全自动运行中 WORM 或外部告警失联会在每次开仓前降级", () => {
   const db=dbFixture();
   db.system.orderWriteEnabled=true;
   db.grayReleasePolicies[0].requiresManualApproval=false;
-  const assessment=assessOperationalDegradation(db);
+  const assessment=assess(db);
   assert.ok(assessment.reasons.includes("worm_audit_unhealthy"));
   assert.ok(assessment.reasons.includes("external_alert_unhealthy"));
   assert.equal(assessment.enforced,true);
@@ -80,7 +91,7 @@ test("BitLaunch 单服务器模式把 Lark/WORM 作为可观测增强，不耦�
     const db=dbFixture();
     db.system.orderWriteEnabled=true;
     db.grayReleasePolicies[0].requiresManualApproval=false;
-    const assessment=assessOperationalDegradation(db);
+    const assessment=assess(db);
     assert.equal(assessment.reasons.includes("worm_audit_unhealthy"),false);
     assert.equal(assessment.reasons.includes("external_alert_unhealthy"),false);
   } finally {
@@ -99,7 +110,7 @@ test("盘口容量限制名义金额，极端组合利用率继续压仓", () =>
 test("默认关(professionalRiskMode 关):降级只记录不只减仓、检查降级为 warn 不 block", () => {
   const db=dbFixture(); db.system.professionalRiskMode=false;
   staleMarket(db.markets[0]);
-  applyOperationalDegradation(db);
+  apply(db);
   assert.equal(db.system.reduceOnlyMode,false); // 未被自动置只减仓
   assert.equal(db.system.autonomyEnabled,true);
   const risk=evaluateProfessionalPlanRisks(db,plan,db.mandates[0]);
@@ -109,9 +120,9 @@ test("默认关(professionalRiskMode 关):降级只记录不只减仓、检查�
 test("自愈:降级消失且只减仓是本闸设的 → 自动解除", () => {
   const db=dbFixture();
   staleMarket(db.markets[0]);
-  applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,true);
+  apply(db); assert.equal(db.system.reduceOnlyMode,true);
   refreshMarket(db.markets[0]);
-  applyOperationalDegradation(db); assert.equal(db.system.reduceOnlyMode,false); // 条件恢复自动解除
+  apply(db); assert.equal(db.system.reduceOnlyMode,false); // 条件恢复自动解除
   assert.equal(db.system.riskStatus,"正常");
 });
 
@@ -120,7 +131,7 @@ test("旧版本只残留只减仓展示文案时自动归一为正常", () => {
   db.system.reduceOnlyMode=false;
   db.system.reduceOnlyBy=null;
   db.system.riskStatus="只减仓";
-  applyOperationalDegradation(db);
+  apply(db);
   assert.equal(db.system.reduceOnlyMode,false);
   assert.equal(db.system.riskStatus,"正常");
 });

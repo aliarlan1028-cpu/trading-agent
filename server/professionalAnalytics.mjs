@@ -133,6 +133,6 @@ export function buildReplayBundles(db, limit = 20) {
   });
 }
 
-export function buildProfessionalSnapshot(db) {
-  return { permissionEvidence: buildTradingPermissionEvidence(db), slo: buildSloReport(db), executionQuality: buildExecutionQuality(db), portfolioRisk: buildPortfolioRisk(db, activeMandate(db)), replayBundles: buildReplayBundles(db) };
+export function buildProfessionalSnapshot(db, options = {}) {
+  return { permissionEvidence: buildTradingPermissionEvidence(db, { auditStatus: options.auditStatus }), slo: buildSloReport(db), executionQuality: buildExecutionQuality(db), portfolioRisk: buildPortfolioRisk(db, activeMandate(db)), replayBundles: buildReplayBundles(db) };
 }

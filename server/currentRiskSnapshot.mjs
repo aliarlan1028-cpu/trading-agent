@@ -5,7 +5,7 @@ import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 
 const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 
-export function buildCurrentRiskSnapshot(db, now = Date.now()) {
+export function buildCurrentRiskSnapshot(db, now = Date.now(), options = {}) {
   const mandate = activeMandate(db) || {};
   const thresholds = currentRiskThresholds();
   const protections = evaluateProtections(db);
@@ -20,7 +20,7 @@ export function buildCurrentRiskSnapshot(db, now = Date.now()) {
   const maxWeeklyLossPct = finite(mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct)
     ? Number(mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct)
     : null;
-  const degradation = assessOperationalDegradation(db);
+  const degradation = assessOperationalDegradation(db, { auditStatus: options.auditStatus });
   return {
     schema: "trading.current-risk-snapshot", schemaVersion: 1, asOf: new Date(now).toISOString(),
     accountingAsOf: db.portfolio?.accountingUpdatedAt || null,

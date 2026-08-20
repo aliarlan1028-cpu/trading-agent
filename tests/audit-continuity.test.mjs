@@ -297,3 +297,41 @@ test("the production path verifier fails closed on a malformed audit document", 
   assert.equal(status.operationalReady, false);
   assert.ok(status.failures.some((failure) => failure.code === "audit_rows_invalid"));
 });
+
+test("hashless audit entries never form a healthy chain", () => {
+  const hashless = { ...first };
+  delete hashless.hash;
+  const raw = verifyAuditEntries([hashless]);
+  assert.equal(raw.ok, false);
+  assert.ok(raw.breaks.some((failure) => failure.error === "audit_entry_invalid"));
+});
+
+test("structurally incomplete tail entries fail closed", () => {
+  const changed = cloneRows(allRows);
+  const incompleteTail = JSON.parse(changed[3].doc.toString("utf8"));
+  delete incompleteTail.actor;
+  incompleteTail.hash = referenceAuditHash(incompleteTail);
+  changed[3].doc = Buffer.from(JSON.stringify(incompleteTail));
+  const status = verify(changed);
+  assert.equal(status.operationalReady, false);
+  assert.ok(status.failures.some((failure) => failure.code === "audit_rows_invalid"));
+});
+
+test("wrongly typed audit fields fail closed", () => {
+  const wrongType = cloneRows(allRows);
+  const wrongTypeTail = JSON.parse(wrongType[3].doc.toString("utf8"));
+  wrongTypeTail.severity = 1;
+  wrongTypeTail.hash = referenceAuditHash(wrongTypeTail);
+  wrongType[3].doc = Buffer.from(JSON.stringify(wrongTypeTail));
+  const wrongTypeStatus = verify(wrongType);
+  assert.equal(wrongTypeStatus.operationalReady, false);
+  assert.ok(wrongTypeStatus.failures.some((failure) => failure.code === "audit_rows_invalid"));
+});
+
+test("tail column-document mismatches fail closed", () => {
+  const denormalized = cloneRows(allRows);
+  denormalized[3].actor = Buffer.from("DifferentActor");
+  const denormalizedStatus = verify(denormalized);
+  assert.equal(denormalizedStatus.operationalReady, false);
+  assert.ok(denormalizedStatus.failures.some((failure) => failure.code === "tail_invalid"));
+});

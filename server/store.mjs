@@ -9,7 +9,7 @@ import { currentRequestContext } from "./requestContext.mjs";
 import { backfillToolUsage, migrateToolUsageStats } from "./toolUsage.mjs";
 import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
 import { applyDerivedProfitGoals } from "./profitGoals.mjs";
-import { clearReduceOnlyReason, setReduceOnlyReason } from "./reduceOnlyState.mjs";
+import { clearReduceOnlyReason, setReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -829,16 +829,16 @@ export function applyAuditIntegrityState(db, { raw, continuity, tip = null, chec
   db.meta.auditChainDetectedAt ||= checkedAt;
   db.meta.auditChainBreaks = result.breaks.slice(0, 20);
   if (effective.operationalReady === true) {
-    if (db.system.reduceOnlyBy === "audit_chain_integrity") {
-      db.system.reduceOnlyMode = false;
-      db.system.reduceOnlyBy = null;
-      db.system.riskStatus = "正常";
-      db.system.latestAction = "历史审计事件已裁定，本地连续性校验通过，恢复新开仓评估";
-    }
+    syncReduceOnlyState(db);
     clearReduceOnlyReason(db, "audit_chain_integrity", {
       resolvedBy: "AuditContinuityVerifier",
       resolution: "incident_adjudicated_local_continuity",
     });
+    const reduceOnlyState = syncReduceOnlyState(db);
+    if (!reduceOnlyState.reduceOnlyMode) {
+      db.system.riskStatus = "正常";
+      db.system.latestAction = "历史审计事件已裁定，本地连续性校验通过，恢复新开仓评估";
+    }
     for (const incident of db.riskIncidents) {
       if (incident.status !== "open" || incident.source !== "audit_chain_integrity") continue;
       incident.status = "resolved";
@@ -2209,16 +2209,14 @@ export function verifyAuditOperationalContinuityReadOnly() {
 export function effectiveAuditOperationalStatus(db, suppliedStatus = null) {
   if (suppliedStatus) return suppliedStatus;
   if (db?.__sqliteBacked === true) return verifyAuditOperationalContinuity(db);
-  const historicalBroken = db?.meta?.auditChainBroken === true;
-  const locallyAdjudicated = historicalBroken && db?.meta?.auditContinuityReady === true;
   return {
-    operationalReady: !historicalBroken || locallyAdjudicated,
-    mode: locallyAdjudicated ? "incident_adjudicated_local_continuity" : historicalBroken ? "invalid" : "full_chain",
-    confidence: locallyAdjudicated ? "local_integrity_only" : historicalBroken ? "none" : "full_chain_local",
-    legacyChainOk: !historicalBroken,
-    legacyClassification: historicalBroken ? "legacy_forensic_integrity_limited" : null,
+    operationalReady: false,
+    mode: "invalid",
+    confidence: "none",
+    legacyChainOk: false,
+    legacyClassification: db?.meta?.auditChainBroken === true ? "legacy_forensic_integrity_limited" : null,
     externalAttestation: "deferred",
-    failures: historicalBroken && !locallyAdjudicated ? [{ code: "audit_chain_invalid" }] : [],
+    failures: [{ code: "audit_status_unverified" }],
   };
 }
 

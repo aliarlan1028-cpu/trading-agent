@@ -109,7 +109,7 @@ export function runReconciler(db, options = {}) {
   }
   // 对账报告本身是运行降级闸的关键输入。每次生成新报告后立刻复评，
   // 让连接/对账恢复可自动解除本闸设置的只减仓，避免等待下一次 AI 巡检。
-  applyOperationalDegradation(db, "Reconciler");
+  applyOperationalDegradation(db, "Reconciler", { auditStatus: options.auditStatus });
   syncReduceOnlyState(db);
   return report;
 }

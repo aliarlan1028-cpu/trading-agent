@@ -5,6 +5,14 @@ import { checkStopLossCoverage, runReconciler } from "../server/reconciler.mjs";
 
 process.env.OKX_API_KEY = "reconciler-stop-test-key";
 const apiKeyFingerprint = crypto.createHash("sha256").update(process.env.OKX_API_KEY).digest("hex").slice(0, 16);
+const verifiedAuditStatus = Object.freeze({
+  operationalReady: true,
+  mode: "full_chain",
+  confidence: "full_chain_local",
+  legacyChainOk: true,
+  externalAttestation: "deferred",
+  failures: []
+});
 
 function fixture(algoOrders) {
   const db = {
@@ -108,7 +116,7 @@ test("成功对账会立即复评并解除专业风险闸留下的陈旧只减�
     reconciliationReports: [], riskIncidents: [], auditLogs: [], traces: []
   };
   try {
-    const report = runReconciler(db);
+    const report = runReconciler(db, { auditStatus: verifiedAuditStatus });
     assert.equal(report.status, "ok");
     assert.equal(db.system.operationalDegradation.degraded, false);
     assert.equal(db.system.reduceOnlyMode, false);
