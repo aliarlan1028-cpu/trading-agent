@@ -15,6 +15,7 @@ import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { clearReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
+import { currentEquityUsdt } from "./financialFacts.mjs";
 import { currentEvidenceReadiness, marketFactFreshness } from "./marketFreshness.mjs";
 import { assertActiveLease, isLeaseLostError } from "./leaseSafety.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
@@ -22,6 +23,8 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+
+export { currentEquityUsdt } from "./financialFacts.mjs";
 
 // ---------------------------------------------------------------------------
 // ExecutionEngine：把"已批准的交易计划"翻译成真实订单并全程跟踪。
@@ -165,18 +168,6 @@ function slippageBps(actual, expected, direction = "long") {
 // 把有完整结构分析的单子误判成"无纪律追单"。reasoningSummary 必须在候选里。
 export function entryRationale(plan = {}) {
   return plan.rationale || plan.reasoningSummary || plan.analysis || plan.reason || plan.summary || plan.entry?.rationale || "未记录入场理由";
-}
-
-export function currentEquityUsdt(db) {
-  const snapshot = latestSuccessfulAccountSnapshot(db, { exchange: "OKX" });
-  if (snapshot) {
-    if (snapshot.exchange === "OKX") {
-      const total = Number(snapshot.balances?.[0]?.totalEq);
-      if (Number.isFinite(total) && total > 0) return total;
-    }
-  }
-  const fromPortfolio = Number(db.portfolio?.totalEquityUsdt);
-  return Number.isFinite(fromPortfolio) && fromPortfolio > 0 ? fromPortfolio : null;
 }
 
 export function computePositionSize(db, plan) {

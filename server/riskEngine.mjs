@@ -1,4 +1,4 @@
-import { dedupePositions } from "./accounting.mjs";
+import { dedupePositions } from "./positionView.mjs";
 import { validatePlanKnowledgeSkills } from "./knowledgeSkills.mjs";
 import { evaluateDynamicRiskRules } from "./dynamicRiskRules.mjs";
 import { deriveEventRiskWindows } from "./eventRisk.mjs";

@@ -51,6 +51,18 @@ export function groupPositionMirrors(positions = []) {
   return groups;
 }
 
+// 同一真实仓位可能有多条本地/交易所记录。财务与风险计算优先使用最新交易所事实，
+// 没有交易所记录时才使用同一身份组内的最新记录。
+export function dedupePositions(positions = []) {
+  const selected = [];
+  for (const rows of groupPositionMirrors(positions).values()) {
+    const exchangeRows = rows.filter((row) => ["exchange_rest", "exchange_ws"].includes(row.source));
+    const candidates = exchangeRows.length ? exchangeRows : rows;
+    selected.push(candidates.slice().sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0]);
+  }
+  return selected;
+}
+
 export function newestAuthoritativePosition(rows = [], options = {}) {
   const now = Number(options.now ?? Date.now());
   const maxAgeMs = Number(options.maxAgeMs ?? process.env.MAX_POSITION_FACT_AGE_MS ?? 120_000);

@@ -1,16 +1,18 @@
-import { currentEquityUsdt } from "./executionEngine.mjs";
+import { currentEquityUsdt } from "./financialFacts.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from "./businessTime.mjs";
 import { recordedFeeCost } from "./financialValues.mjs";
-import { groupPositionMirrors, newestAuthoritativePosition, positionFactObservedMs, positionMirrorKey } from "./positionView.mjs";
+import { dedupePositions, groupPositionMirrors, newestAuthoritativePosition, positionFactObservedMs, positionMirrorKey } from "./positionView.mjs";
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { validateOkxCredentialBinding } from "./exchangeConnector.mjs";
 import { ACCOUNTING_BOUNDARY_BUCKET_MS, backfillOkxRollingAccountingBaseline, rollingAccountingBoundary } from "./accountingHistory.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+
+export { dedupePositions } from "./positionView.mjs";
 
 // ---------------------------------------------------------------------------
 // 真实盈亏核算：从成交记录和持仓计算当日盈亏，动态维护日亏损预算。
@@ -51,18 +53,6 @@ export function realizedPnlSince(db, sinceMs, untilMs = Date.now()) {
     }
   }
   return { value: knownTotal, knownTotal, reconciled: knownFacts, pending, total };
-}
-
-// 同一真实仓位可能有两条记录(execution_engine + exchange_rest 快照)。
-// 核算按 symbol+direction 去重,优先交易所快照(权威 upl/张数)。
-export function dedupePositions(positions = []) {
-  const selected = [];
-  for (const rows of groupPositionMirrors(positions).values()) {
-    const exchangeRows = rows.filter((row) => ["exchange_rest", "exchange_ws"].includes(row.source));
-    const candidates = exchangeRows.length ? exchangeRows : rows;
-    selected.push(candidates.slice().sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0]);
-  }
-  return selected;
 }
 
 export function unrealizedPnl(db, options = {}) {

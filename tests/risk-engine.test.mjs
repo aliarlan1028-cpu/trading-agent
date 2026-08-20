@@ -115,6 +115,21 @@ test("complete account risk basis permits an otherwise valid live plan", () => {
   assert.equal(result.passed, true);
 });
 
+test("risk concentration counts one REST/WS/engine mirror set as one position", () => {
+  const db = fixture({ live: false });
+  db.mandates[0].maxCorrelatedPositions = 2;
+  const observedAt = new Date().toISOString();
+  db.positions = [
+    { id: "engine", source: "execution_engine", exchange: "OKX", accountId: "account-a", symbol: "ETH/USDT", direction: "long", updatedAt: observedAt },
+    { id: "rest", source: "exchange_rest", exchange: "OKX", accountId: "account-a", symbol: "ETH/USDT", direction: "long", rawSyncedAt: observedAt },
+    { id: "ws", source: "exchange_ws", exchange: "OKX", accountId: "account-a", symbol: "ETH/USDT", direction: "long", exchangeObservedAt: observedAt }
+  ];
+  const result = evaluateTradePlan(db, plan);
+  const concentration = result.checks.find((item) => item.name === "组合相关性");
+  assert.equal(concentration?.passed, true);
+  assert.match(concentration?.detail || "", /2\/2/);
+});
+
 test("授权杠杆区间的下限与上限都是执行硬边界", () => {
   const db = fixture({ live: false });
   db.mandates[0].minLeverage = 2;
