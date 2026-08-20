@@ -9,7 +9,7 @@ import * as cheerio from "cheerio";
 import mammoth from "mammoth";
 import { assertSafeExternalUrl, assertSafeGitHubRepositoryUrl, fetchExternalText, resolveContainedPath } from "./externalInputSafety.mjs";
 import { denseCosine, embedBatch, embeddingProvider, embedOne } from "./embeddings.mjs";
-import { activeProvider, llmComplete } from "./agentChat.mjs";
+import { activeProvider, llmComplete } from "./llmTextService.mjs";
 import { compileTradingMethod, retireSkillsForSource } from "./knowledgeSkills.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 

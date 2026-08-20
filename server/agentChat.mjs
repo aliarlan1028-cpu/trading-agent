@@ -55,12 +55,15 @@ import { agentInvocationPolicy } from "./agentInvocation.mjs";
 import { authorizeAgentTool, filterAgentToolsForInvocation } from "./agentToolAuthorization.mjs";
 import { liveConfigurationFingerprint } from "./liveModeService.mjs";
 import { taskHandlerPolicy, userHasCapabilities } from "./capabilityPolicy.mjs";
-import { completePrimaryChat, criticModelRoute, openRouterProviderPolicy, primaryModelRoute, reviewTradeProposal } from "./llmGateway.mjs";
+import { completePrimaryChat, criticModelRoute, openRouterProviderPolicy, reviewTradeProposal } from "./llmGateway.mjs";
+import { activeProvider, assertExternalModelInputSafe, llmComplete, sanitizeLlmMessageContent, sanitizeOpenAiMessages } from "./llmTextService.mjs";
 import { ensureDecisionFactSnapshot } from "./ownerReviewLoop.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
 import { marketContextForPrompt, marketResearchAuditEvidence } from "./marketContextResearch.mjs";
 import { canUseKnowledgeRow, ensureKnowledgeOwnership } from "./knowledgeScope.mjs";
 import { belongsToPrincipal, canAccessSkill, canUsePrincipalRow, normalizePrincipal, principalKey } from "./principalScope.mjs";
+
+export { activeProvider, llmComplete, sanitizeLlmMessageContent } from "./llmTextService.mjs";
 
 // 自主巡检要在一轮里判大盘 + 逐一分析 3 个授权币(sync/微结构)+ 提计划前调 analyze_market_structure,
 // 8 步经常在数据采集阶段就耗尽、来不及 propose(实测多轮 8 步全花在 sync_market 上未提计划)。给到 12 步留足余量。
@@ -2528,70 +2531,6 @@ export async function executeTool(db, run, name, args = {}) {
   }
 
   return { error: `未知工具：${name}` };
-}
-
-// ---------------------------------------------------------------------------
-// LLM Provider 适配
-// ---------------------------------------------------------------------------
-export function activeProvider() {
-  return primaryModelRoute();
-}
-
-// LLM 网关边界净化：数据库中的导入知识、Skill 说明或历史消息可能包含代码示例里的
-// `\x` / `\u`、孤立 UTF-16 代理项或不可见控制字符。JSON.stringify 对标准服务是安全的，
-// 但部分 OpenAI-compatible 网关会对 messages[].content 再做一次转义解析，进而把普通
-// 文本中的反斜杠误当成十六进制转义并返回 unexpected end of hex escape。
-// 这里只改变发给模型的副本，不修改知识库/记忆原文；全角反斜杠保留可读语义。
-export function sanitizeLlmMessageContent(value = "") {
-  const raw = String(value);
-  const wellFormed = typeof raw.toWellFormed === "function"
-    ? raw.toWellFormed()
-    : raw.replace(/[\uD800-\uDFFF]/g, "�");
-  return wellFormed
-    .replace(/\\/g, "＼")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
-}
-
-function assertExternalModelInputSafe(value, context = "model") {
-  if (containsLikelySecret(value)) {
-    const error = new Error(`检测到疑似安全凭证，已阻止发送到外部 ${context}`);
-    error.code = "external_model_secret_blocked";
-    throw error;
-  }
-}
-
-function sanitizeOpenAiMessages(messages = []) {
-  return messages.map((message) => {
-    if (typeof message?.content === "string") return { ...message, content: sanitizeLlmMessageContent(message.content) };
-    if (Array.isArray(message?.content)) {
-      return {
-        ...message,
-        content: message.content.map((part) => part?.type === "text" && typeof part.text === "string"
-          ? { ...part, text: sanitizeLlmMessageContent(part.text) }
-          : part)
-      };
-    }
-    return message;
-  });
-}
-
-// 简单文本补全（无工具），供知识蒸馏等复用。无 LLM key 时返回 null。
-export async function llmComplete(userText, systemPrompt = "") {
-  const provider = activeProvider();
-  if (!provider) return null;
-  assertExternalModelInputSafe({ userText, systemPrompt }, "LLM");
-  try {
-    const res = await completePrimaryChat({
-      messages: sanitizeOpenAiMessages([
-        { role: "system", content: systemPrompt || "你是专业的金融知识蒸馏助手。" },
-        { role: "user", content: String(userText).slice(0, 24000) }
-      ]),
-      temperature: 0.2
-    });
-    return res.message?.content || null;
-  } catch {
-    return null;
-  }
 }
 
 async function geminiTurn(messages, systemPrompt, tools) {
