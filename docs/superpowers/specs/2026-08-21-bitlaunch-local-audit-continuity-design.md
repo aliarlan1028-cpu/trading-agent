@@ -63,11 +63,12 @@ The approved baseline refers to the already sealed W0 capture. The implementatio
 | Legacy cutoff/head timestamp | `2026-08-20T17:34:11.024Z` |
 | Legacy cutoff/head hash | `3415f657226bd46be4ae38f4b9a1ff49cb67c0f9953800c5e57429937350b3b0` |
 | Legacy cutoff/head `prevHash` | `201e80c9cc09bf323a7470ec919a3d27445a6ec28f9930a19c5d348a7f545d93` |
+| Legacy prefix digest (`ta-legacy-audit-table-v1-lp1-sha256`) | `d596ecebe7400d5b221ce959a5b7cf173fd093c53ca88fe0fe736798c9640672` |
 | Break report SHA-256 | `c9184b6aa4255ce8edf08698653a3c8552ec3fb81fbc665a868f6c89fc053de6` |
 | Break CSV SHA-256 | `d4c45a38e1f6263106cd7799a92b894a483922f2c171ee3a5ed53873784c56fa` |
 | Capture metadata SHA-256 | `699ae8bb41cce383a75ab3a6b97bf5b390daf3f48e5c942d87400b7827378f3c` |
 
-The legacy prefix digest is deliberately not hard-coded here. It must be calculated once from the sealed W0 forensic copy using the frozen digest contract in section 6, independently verified, and inserted into the approval artifact during the manual cutover process.
+The legacy prefix digest was calculated independently with Node.js/better-sqlite3 against a temporary copy and Python/sqlite3 with `mode=ro&immutable=1` against the sealed W0 forensic copy. Both implementations read 70,548 rows and produced the same digest shown above. The implementation must freeze this value as approved evidence rather than treating a value supplied only by the approval JSON as self-authorizing.
 
 ## 4. Architecture
 
