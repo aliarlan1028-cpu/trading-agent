@@ -366,6 +366,101 @@ test("a manual residual closes after a verified system partial close and settles
   assert.notEqual(systemPartial.exitReason, "manual_exit");
 });
 
+test("the real OKX writer recognizes a persisted close client ID before inserting an external fill", () => {
+  const { db, execution } = managedDb();
+  execution.closeClientOrderId = "managed-close-client";
+
+  upsertOkxOrder(db, closePayload({
+    ordId: "not-yet-bound-close-order",
+    clOrdId: execution.closeClientOrderId,
+    tradeId: "managed-close-client-trade"
+  }), context());
+
+  assert.equal(db.fills.some((fill) => fill.exchangeTradeId === "managed-close-client-trade"), false);
+  const order = db.orders.find((row) => row.exchangeOrderId === "not-yet-bound-close-order");
+  assert.equal(order.clientOrderId, "managed-close-client");
+  assert.equal(order.executionOrderId, execution.id);
+});
+
+test("the real OKX writer recognizes persisted protection client and algo IDs", async (t) => {
+  for (const [name, executionField, payloadField, value] of [
+    ["algo client", "stopClientOrderId", "algoClOrdId", "managed-stop-client"],
+    ["algo ID", "stopAlgoId", "algoId", "managed-stop-algo"]
+  ]) await t.test(name, () => {
+    const { db, execution } = managedDb();
+    execution[executionField] = value;
+    const tradeId = `managed-${name.replace(" ", "-")}-trade`;
+
+    upsertOkxOrder(db, closePayload({
+      ordId: `unbound-${name.replace(" ", "-")}-order`,
+      clOrdId: "",
+      tradeId,
+      [payloadField]: value
+    }), context());
+
+    assert.equal(db.fills.some((fill) => fill.exchangeTradeId === tradeId), false);
+    assert.equal(db.orders[0].executionOrderId, execution.id);
+  });
+});
+
+test("a recognized system WS close is reconciled into exactly one financial fact", () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeExchangeOrderId = "managed-system-close-order";
+  const payload = closePayload({
+    ordId: execution.closeExchangeOrderId,
+    clOrdId: "managed-system-close-client",
+    tradeId: "managed-system-close-trade"
+  });
+
+  upsertOkxOrder(db, payload, context());
+  const result = reconcilePendingClose(db, execution, {
+    snapshot: {
+      id: "snapshot-after-system-close",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [],
+      createdAt: "2026-08-15T02:00:00.000Z"
+    },
+    closure: {
+      complete: true,
+      quantity: 0.01,
+      weightedPrice: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT,
+      exchangeOrderIds: [execution.closeExchangeOrderId],
+      tradeIds: [payload.tradeId],
+      breakdown: [{
+        exchangeOrderId: execution.closeExchangeOrderId,
+        tradeId: payload.tradeId,
+        quantity: 0.01,
+        price: 60_000,
+        realizedPnl: 10,
+        feeUsdt: 0.01,
+        closedAt: CLOSE_AT
+      }],
+      evidencePath: "okx_raw_fill_history"
+    }
+  });
+
+  assert.equal(result.status, "closed");
+  const closes = db.fills.filter((fill) => fill.kind === "close");
+  assert.equal(closes.length, 1);
+  assert.equal(closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0), 10);
+  assert.equal(closes.reduce((sum, fill) => sum + Number(fill.feeUsdt), 0), 0.01);
+  assert.equal(closes.filter((fill) => fill.exchangeTradeId === payload.tradeId
+    || fill.exchangeTradeIds?.includes(payload.tradeId)
+    || fill.exitBreakdown?.some((row) => row.tradeId === payload.tradeId)).length, 1);
+  const lifecycles = projection.groupSystemClosedTradeLifecycles(db);
+  assert.equal(lifecycles.length, 1);
+  const lifecycle = lifecycles[0];
+  assert.equal(lifecycle.quantity, 0.01);
+  assert.equal(lifecycle.realizedPnl, 10);
+});
+
 test("system entry identities on a close fail closed before manual-exit matching", async (t) => {
   for (const [name, fillField, value] of [
     ["entry order", "exchangeOrderId", "entry-order-1"],

@@ -119,6 +119,32 @@ test("external OKX fills retain authoritative order identity and account binding
   }, { scope: "manual", origin: "external_exchange", executionOrderId: null });
 });
 
+test("external OKX fills retain the exact WS client and algo identities", () => {
+  const db = externalFillDb();
+  upsertOkxOrder(db, externalFillPayload({
+    ordId: "external-algo-child-order",
+    clOrdId: "external-client-order",
+    algoClOrdId: "external-algo-client",
+    algoId: "external-algo-id",
+    tradeId: "external-algo-trade"
+  }), {
+    accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production"
+  });
+
+  assert.equal(db.fills.length, 1);
+  assert.deepEqual({
+    exchangeOrderId: db.fills[0].exchangeOrderId,
+    clientOrderId: db.fills[0].clientOrderId,
+    algoClientOrderId: db.fills[0].algoClientOrderId,
+    algoId: db.fills[0].algoId
+  }, {
+    exchangeOrderId: "external-algo-child-order",
+    clientOrderId: "external-client-order",
+    algoClientOrderId: "external-algo-client",
+    algoId: "external-algo-id"
+  });
+});
+
 test("an order update without an authoritative tradeId cannot create duplicate financial fills", () => {
   const db = externalFillDb();
   const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };

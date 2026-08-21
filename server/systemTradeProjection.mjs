@@ -102,7 +102,8 @@ function fillOrderIdentitySets(fill = {}, evidence = {}) {
   return {
     exchange: values(fill.exchangeOrderId, fill.exchangeOrderIds, evidence.exchangeOrderId, evidence.exchangeOrderIds,
       closeAliasValues(fill, "ExchangeOrderId"), closeAliasValues(evidence, "ExchangeOrderId")),
-    client: values(fill.clientOrderId, fill.clientOrderIds, evidence.clientOrderId, evidence.clientOrderIds,
+    client: values(fill.clientOrderId, fill.clientOrderIds, fill.algoClientOrderId, fill.algoClientOrderIds,
+      evidence.clientOrderId, evidence.clientOrderIds, evidence.algoClientOrderId, evidence.algoClientOrderIds,
       closeAliasValues(fill, "ClientOrderId"), closeAliasValues(evidence, "ClientOrderId")),
     local: values(fill.orderId, fill.orderIds, evidence.orderId, evidence.orderIds,
       closeAliasValues(fill, "OmsOrderId"), closeAliasValues(evidence, "OmsOrderId")),

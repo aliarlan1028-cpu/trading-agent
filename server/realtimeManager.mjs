@@ -9,7 +9,7 @@ import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyTickerObservation } from "./marketObservation.mjs";
 import { publicMarketSocketCount } from "./marketStream.mjs";
 import { reconcileAmendOmsOrder } from "./omsRecovery.mjs";
-import { buildExternalFillAttribution } from "./systemTradeProjection.mjs";
+import { buildExternalFillAttribution, classifyTradeFill } from "./systemTradeProjection.mjs";
 
 const financialNumber = (value) => finiteFinancialNumber(value) ? Number(value) : null;
 
@@ -427,11 +427,45 @@ function cachedOkxCtVal(db, instId, executionOrder = null) {
   return evidence ? Number(evidence.contractSpec.data.ctVal) : null;
 }
 
+function identityValues(...items) {
+  return [...new Set(items.flat(Infinity).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function okxOrderFillKind(order, payload = {}, executionOrder = null) {
+  const closeByShape = trueLike(payload.reduceOnly ?? order.reduceOnly)
+    || (String(payload.posSide ?? order.posSide).toLowerCase() === "long" && String(payload.side ?? order.side).toLowerCase() === "sell")
+    || (String(payload.posSide ?? order.posSide).toLowerCase() === "short" && String(payload.side ?? order.side).toLowerCase() === "buy");
+  return payload.kindHint || (closeByShape || executionOrder?.status === "protecting" ? "close" : "entry");
+}
+
+function okxExecutionOwnership(db, order, payload = {}) {
+  if (order.exchange !== "OKX") return null;
+  const attribution = classifyTradeFill(db, {
+    kind: okxOrderFillKind(order, payload),
+    exchange: "OKX",
+    exchangeOrderId: order.exchangeOrderId,
+    exchangeOrderIds: order.exchangeOrderIds,
+    clientOrderId: order.clientOrderId,
+    clientOrderIds: order.clientOrderIds,
+    algoClientOrderId: order.algoClientOrderId,
+    algoClientOrderIds: order.algoClientOrderIds,
+    algoId: order.algoId,
+    algoIds: order.algoIds,
+    accountId: order.accountId,
+    environment: order.environment,
+    symbol: order.symbol,
+    side: payload.side ?? order.side
+  });
+  if (attribution.scope !== "system" || attribution.exitMode === "manual_exit") return null;
+  return (db.executionOrders || []).find((row) => row.id === attribution.executionOrderId) || null;
+}
+
 export function upsertOkxOrder(db, payload, context = {}) {
   const exchangeOrderId = String(payload.ordId || "").trim();
   const clientOrderId = String(payload.clOrdId || "").trim();
-  const existing = db.orders.find((order) => (exchangeOrderId && String(order.exchangeOrderId || "") === exchangeOrderId)
-    || (clientOrderId && String(order.clientOrderId || "") === clientOrderId));
+  const existing = db.orders.find((order) => (exchangeOrderId && (String(order.exchangeOrderId || "") === exchangeOrderId
+    || order.exchangeOrderIds?.includes(exchangeOrderId)))
+    || (clientOrderId && (String(order.clientOrderId || "") === clientOrderId || order.clientOrderIds?.includes(clientOrderId))));
   const order = existing || {
     id: id("ord"),
     exchange: "OKX",
@@ -439,6 +473,27 @@ export function upsertOkxOrder(db, payload, context = {}) {
     clientOrderId: clientOrderId || null,
     createdAt: nowIso()
   };
+  if (exchangeOrderId) {
+    order.exchangeOrderId ||= exchangeOrderId;
+    order.exchangeOrderIds = identityValues(order.exchangeOrderIds, order.exchangeOrderId, exchangeOrderId);
+  }
+  if (clientOrderId) {
+    order.clientOrderId ||= clientOrderId;
+    order.clientOrderIds = identityValues(order.clientOrderIds, order.clientOrderId, clientOrderId);
+  }
+  const attachedAlgoOrders = Array.isArray(payload.attachAlgoOrds) ? payload.attachAlgoOrds : [];
+  const algoClientOrderIds = identityValues(payload.algoClOrdId, payload.attachAlgoClOrdId,
+    attachedAlgoOrders.map((row) => row?.algoClOrdId || row?.attachAlgoClOrdId));
+  const algoIds = identityValues(payload.algoId, payload.attachAlgoId,
+    attachedAlgoOrders.map((row) => row?.algoId || row?.attachAlgoId));
+  if (algoClientOrderIds.length) {
+    order.algoClientOrderId ||= algoClientOrderIds[0];
+    order.algoClientOrderIds = identityValues(order.algoClientOrderIds, order.algoClientOrderId, algoClientOrderIds);
+  }
+  if (algoIds.length) {
+    order.algoId ||= algoIds[0];
+    order.algoIds = identityValues(order.algoIds, order.algoId, algoIds);
+  }
   // 与 REST/执行引擎同口径(去 -SWAP),否则 WS 订单/成交显示 "BTC/USDT-SWAP"、引擎显示 "BTC/USDT",
   // 同一永续被当成两个符号,用户误以为多了个"现货 BTC/USDT"(实锤截图)。
   if (payload.instId) order.symbol = okxDisplaySymbol(payload.instId);
@@ -471,8 +526,11 @@ export function upsertOkxOrder(db, payload, context = {}) {
   // 成交去重(单一权威源):本引擎下的单都带 clOrdId,其入场/平仓成交由执行引擎轮询权威落账
   // (真实币量 + 已实现盈亏 + planId 归因)。WS 只为"无 clOrdId 的外部/手动单"补记,
   // 否则同一笔被 WS 与引擎各记一次(实锤:1 入 1 平的真实成交被记成 4 行,污染笔数/胜率/盈亏)。
-  const executionOrder = (db.executionOrders || []).find((item) => item.exchangeOrderId === payload.ordId
-    || (payload.clOrdId && item.clientOrderId === payload.clOrdId));
+  const executionOrder = okxExecutionOwnership(db, order, payload);
+  if (executionOrder) {
+    order.executionOrderId ||= executionOrder.id;
+    order.planId ||= executionOrder.planId;
+  }
   const fillContracts = financialNumber(payload.fillSz);
   const tradeId = normalizeOkxTradeId(payload.tradeId);
   const hadUnidentifiedFill = order.financialReconciliationStatus === "authoritative_trade_identity_missing";
@@ -676,11 +734,10 @@ export function classifyOkxNetFill({ side, quantity, realizedPnl, positionDirect
 }
 
 function enrichRealtimeFill(db, order, payload = {}) {
-  const executionOrder = (db.executionOrders || []).find((item) =>
-    item.exchangeOrderId === order.exchangeOrderId ||
-    item.clientOrderId === order.clientOrderId ||
-    item.planId === order.planId
-  );
+  const executionOrder = (db.executionOrders || []).find((item) => item.id === order.executionOrderId)
+    || okxExecutionOwnership(db, order, payload)
+    || (db.executionOrders || []).find((item) => item.exchangeOrderId === order.exchangeOrderId
+      || item.clientOrderId === order.clientOrderId || item.planId === order.planId);
   const plan = (db.tradePlans || []).find((item) => item.id === executionOrder?.planId || item.id === order.planId) || {};
   const price = financialNumber(payload.price);
   const quantity = financialNumber(payload.quantity);
@@ -688,9 +745,7 @@ function enrichRealtimeFill(db, order, payload = {}) {
   const expectedPrice = executionOrder?.entryPrice || order.price;
   const slippageBps = expectedPrice ? Number((((price - Number(expectedPrice)) / Number(expectedPrice)) * 10000).toFixed(2)) : null;
   const feeCostUsdt = financialNumber(payload.feeCostUsdt ?? payload.feeUsdt);
-  const closeByShape = trueLike(payload.reduceOnly) || (String(payload.posSide).toLowerCase() === "long" && String(payload.side).toLowerCase() === "sell")
-    || (String(payload.posSide).toLowerCase() === "short" && String(payload.side).toLowerCase() === "buy");
-  const kind = payload.kindHint || (closeByShape || executionOrder?.status === "protecting" ? "close" : "entry");
+  const kind = okxOrderFillKind(order, payload, executionOrder);
   const exchangeFilledAt = payload.exchangeFilledAt || null;
   return {
     id: id("fill"),
@@ -706,6 +761,13 @@ function enrichRealtimeFill(db, order, payload = {}) {
     symbol: order.symbol,
     exchange: payload.exchange || order.exchange,
     exchangeOrderId: order.exchangeOrderId || null,
+    exchangeOrderIds: order.exchangeOrderIds,
+    clientOrderId: order.clientOrderId || null,
+    clientOrderIds: order.clientOrderIds,
+    algoClientOrderId: order.algoClientOrderId || null,
+    algoClientOrderIds: order.algoClientOrderIds,
+    algoId: order.algoId || null,
+    algoIds: order.algoIds,
     exchangeTradeId: payload.exchangeTradeId || null,
     accountId: order.accountId || null,
     apiKeyFingerprint: order.apiKeyFingerprint || null,
