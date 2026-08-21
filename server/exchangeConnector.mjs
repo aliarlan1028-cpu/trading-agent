@@ -706,21 +706,28 @@ function updateApiPermissionMetadata(db, snapshot) {
   }
 }
 
-function upsertExchangePosition(db, key, fields) {
-  const existing = db.positions.find((item) => item.exchangePositionKey === key);
+function upsertExchangePosition(db, key, fields, options = {}) {
+  const existing = db.positions.find((item) => item.exchangePositionKey === key)
+    || (options.legacyKey
+      ? db.positions.find((item) => !item.accountId && item.exchangePositionKey === options.legacyKey)
+      : null);
   const position = existing || { id: id("pos"), exchangePositionKey: key, source: "exchange_rest", createdAt: nowIso() };
-  Object.assign(position, fields, { updatedAt: nowIso() });
+  Object.assign(position, fields, { exchangePositionKey: key, updatedAt: nowIso() });
   if (!existing) db.positions.unshift(position);
   return position;
 }
 
-function pruneExchangePositions(db, exchange, seenKeys) {
+function pruneExchangePositions(db, exchange, seenKeys, options = {}) {
   // 权威 REST 快照应用后:剪掉该交易所里"快照没有"的非引擎持仓——不止 exchange_rest,
   // 也含 WS 补记的 exchange_ws 外部/手动仓(否则漏收平仓回执的 WS 仓会成幽灵仓,size≠0 逃过空槽清扫)。
   // 引擎托管仓(execution_engine)不在此剪,由 reconcileAccount 逐仓比对告警。
   db.positions = (db.positions || []).filter((position) => {
     if (position.exchange !== exchange) return true;
     if (position.source !== "exchange_rest" && position.source !== "exchange_ws") return true;
+    if (Object.hasOwn(options, "accountId") && (position.accountId || null) !== (options.accountId || null)) {
+      if (options.pruneLegacyUnboundRest && !position.accountId && position.source === "exchange_rest") return false;
+      return true;
+    }
     return seenKeys.has(position.exchangePositionKey);
   });
 }
@@ -872,7 +879,8 @@ export async function applyOkxSnapshot(db, snapshot) {
     const rawPosSide = String(payload.posSide || "").toLowerCase();
     const direction = canonicalPositionDirection({ posSide: rawPosSide, pos: size });
     if (!direction) continue;
-    const key = `OKX:${symbol}:${direction}`;
+    const legacyKey = `OKX:${symbol}:${direction}`;
+    const key = snapshot.accountId ? `OKX:${snapshot.accountId}:${symbol}:${direction}` : legacyKey;
     seen.add(key);
     const payloadCtVal = payload.ctVal ?? payload.contractMultiplier;
     const ctVal = payloadCtVal !== null && payloadCtVal !== undefined && payloadCtVal !== ""
@@ -881,6 +889,9 @@ export async function applyOkxSnapshot(db, snapshot) {
       : await okxContractValue(payload.instId);
     upsertExchangePosition(db, key, {
       exchange: "OKX",
+      accountId: snapshot.accountId || null,
+      apiKeyFingerprint: snapshot.apiKeyFingerprint || null,
+      environment: snapshot.environment || null,
       symbol,
       posSide: direction,
       direction,
@@ -897,9 +908,12 @@ export async function applyOkxSnapshot(db, snapshot) {
       leverage: payload.lever !== null && payload.lever !== undefined && payload.lever !== "" && Number.isFinite(Number(payload.lever)) ? Number(payload.lever) : null,
       marginMode: payload.mgnMode,
       rawSyncedAt: snapshot.createdAt
-    });
+    }, { legacyKey: snapshot.accountId ? legacyKey : null });
   }
-  pruneExchangePositions(db, "OKX", seen);
+  pruneExchangePositions(db, "OKX", seen, {
+    accountId: snapshot.accountId || null,
+    pruneLegacyUnboundRest: Boolean(snapshot.accountId)
+  });
   upsertOpenOrders(db, "OKX", snapshot.openOrders, { complete: snapshot.openOrdersComplete === true });
   const account = snapshot.balances?.[0] || {};
   const totalEq = Number(account.totalEq);
