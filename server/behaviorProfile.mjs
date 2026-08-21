@@ -4,7 +4,8 @@
 // LLM 叙述层单独在别处用主模型(deepseek)基于本结果 + 入场理由/复盘生成"性格+致命习惯+纪律"。
 import { id, nowIso, appendAudit } from "./store.mjs";
 import { resolveClosedTradePosterBasis } from "./positionPoster.mjs";
-import { findTradeEntryFill, groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { findTradeEntryFill, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
@@ -17,9 +18,9 @@ export const fmtMin = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)}m` :
 
 // 抽出"每笔已平仓交易":join 入场fill(取持仓时长)、plan(取杠杆)、算 ROI。
 export function buildClosedTrades(db) {
-  const fills = db.fills || [];
+  const fills = systemTradeFills(db);
   // 一次仓位生命周期可能有多次减仓；画像必须按完整交易聚合，否则胜率、杠杆习惯和样本量都会被部分平仓扭曲。
-  const closes = groupClosedTradeLifecycles(fills);
+  const closes = groupSystemClosedTradeLifecycles(db, { fills });
   return closes.map((lifecycle) => {
     const c = lifecycle.representative;
     const { plan = {}, executionOrder = {} } = resolveTradeContext(db, lifecycle);
@@ -115,7 +116,7 @@ export function computeBehaviorProfile(db) {
 export async function generateBehaviorNarrative(db, profile) {
   if (!profile || !profile.trades) return null;
   const { llmComplete } = await import("./agentChat.mjs");
-  const recent = groupClosedTradeLifecycles(db.fills || [])
+  const recent = groupSystemClosedTradeLifecycles(db)
     .slice(0, 12)
     .map((item) => {
       const f = item.representative;

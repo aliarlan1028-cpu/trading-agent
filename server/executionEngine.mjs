@@ -2165,6 +2165,8 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
   const fetchBills = options.fetchFundingBills || fetchOkxFundingBills;
   const fetchLifecycleClosure = options.fetchLifecycleClosure || fetchOkxProtectionClosure;
   const retryMs = Number(options.feeEvidenceRetryMs ?? process.env.FEE_EVIDENCE_RETRY_MS ?? 15 * 60_000);
+  // Intentional raw-evidence path: funding reconciliation must examine every exchange fill,
+  // then requires persisted execution-order evidence before it can influence a system lifecycle.
   const lifecycles = groupClosedTradeLifecycles(db.fills || []);
   const results = [];
   let reconciled = 0;

@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { performanceReport } from "../server/accounting.mjs";
-import { computeBehaviorProfile } from "../server/behaviorProfile.mjs";
+import { buildClosedTrades, computeBehaviorProfile } from "../server/behaviorProfile.mjs";
+import { buildDecisionCalibrationReport } from "../server/decisionCalibration.mjs";
 import { backfillStructuredTradeReviews } from "../server/ownerReviewLoop.mjs";
+import { buildExecutionQuality } from "../server/professionalAnalytics.mjs";
 import { runTradeReflection } from "../server/reviewEngine.mjs";
+import { strategyProductMetrics } from "../server/strategyProducts.mjs";
 import { groupSystemClosedTradeLifecycles } from "../server/systemTradeProjection.mjs";
 import { consecutiveLossCooldown, drawdownLockout } from "../server/tradeProtections.mjs";
 import { syncTradeReviewQueue } from "../server/tradeReviewQueue.mjs";
@@ -131,4 +134,53 @@ test("reflection persists derived fields only on the raw system manual-exit clos
   const second = await runTradeReflection(db);
   assert.equal(second.reflected, 0);
   assert.equal(db.memoryItems.length, 1);
+});
+
+test("learning and strategy metrics admit only the evidenced system manual-exit lifecycle", () => {
+  const execution = {
+    id: "learning-system-exec", planId: "learning-system-plan", exchange: "OKX", accountId: "account-a",
+    environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed", strategyVersionId: "trend@1"
+  };
+  const decisionContext = {
+    setupType: "trend_pullback",
+    supportingFactors: ["support"],
+    conflictingFactors: [],
+    deterministicSetupSnapshot: { marketRegime: { label: "uptrend" } }
+  };
+  const systemAttribution = (fill, exitMode = null) => ({
+    schemaVersion: 1, scope: "system", origin: exitMode ? "external_exchange" : "execution_engine", exitMode,
+    executionOrderId: execution.id, planId: execution.planId, method: exitMode ? "deterministic_manual_exit" : "execution_writer", reason: null,
+    evidence: { accountId: execution.accountId, environment: execution.environment, exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 },
+    attributedAt: fill.createdAt
+  });
+  const db = {
+    executionOrders: [execution, { id: "learning-pending-exec", planId: "learning-pending-plan", symbol: "BTC/USDT", direction: "long", status: "closed" }],
+    tradePlans: [
+      { id: execution.planId, exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", strategyVersionId: "trend@1", decisionContext },
+      { id: "learning-manual-plan", symbol: "BTC/USDT", direction: "long", strategyVersionId: "trend@1", decisionContext },
+      { id: "learning-pending-plan", symbol: "BTC/USDT", direction: "long", strategyVersionId: "trend@1", decisionContext }
+    ],
+    fills: []
+  };
+  const fill = (row) => reconciledLeg(row);
+  db.fills.push(
+    fill({ id: "learning-system-entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 2, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: systemAttribution({ createdAt: "2026-08-01T00:00:00Z" }) }),
+    fill({ id: "learning-system-manual-exit", kind: "close", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 2, realizedPnl: -3, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: systemAttribution({ createdAt: "2026-08-01T01:00:00Z" }, "manual_exit") }),
+    fill({ id: "learning-manual-entry", kind: "entry", positionId: "manual-like", tradePlanId: "learning-manual-plan", strategyVersionId: "trend@1", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 100, createdAt: "2026-08-01T02:00:00Z" }),
+    fill({ id: "learning-manual-close", kind: "close", positionId: "manual-like", tradePlanId: "learning-manual-plan", strategyVersionId: "trend@1", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 100, realizedPnl: 100, createdAt: "2026-08-01T03:00:00Z" }),
+    fill({ id: "learning-pending-entry", kind: "entry", executionOrderId: "learning-pending-exec", tradePlanId: "learning-pending-plan", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 200, createdAt: "2026-08-01T04:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } }),
+    fill({ id: "learning-pending-close", kind: "close", executionOrderId: "learning-pending-exec", tradePlanId: "learning-pending-plan", symbol: "BTC/USDT", direction: "long", quantity: 1, slippageBps: 200, realizedPnl: 50, createdAt: "2026-08-01T05:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } })
+  );
+
+  const lifecycles = groupSystemClosedTradeLifecycles(db);
+  assert.deepEqual(lifecycles.map((lifecycle) => lifecycle.key), [execution.id]);
+  assert.equal(lifecycles[0].representative.tradeAttribution.exitMode, "manual_exit");
+  assert.equal(buildClosedTrades(db).length, 1);
+  assert.equal(computeBehaviorProfile(db).trades, 1);
+  assert.equal(buildDecisionCalibrationReport(db, { minTrades: 1 }).tradesWithDecisionContext, 1);
+  assert.equal(strategyProductMetrics(db, "trend@1").closedTrades, 1);
+  assert.deepEqual(buildExecutionQuality(db), {
+    fills: 2, avgSlippageBps: 2, p95SlippageBps: 2, partialFillRatePct: 0,
+    calibrationBySymbol: [{ symbol: "BTC/USDT", samples: 1, ready: false, p50Bps: 2, p75Bps: 2, p95Bps: 2, minSamples: 5 }]
+  });
 });

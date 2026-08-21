@@ -6,7 +6,7 @@ import test from "node:test";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "strategy-board-"));
 const { buildStrategyBoard, healthVerdict, refreshTrustedSkillMetrics } = await import("../server/strategyBoard.mjs");
-const { financiallyReconciledFills } = await import("./financial-fixtures.mjs");
+const { financiallyReconciledFills, installSystemTradeProvenance } = await import("./financial-fixtures.mjs");
 
 test("健康裁定:样本不足不误判,阈值=自动下线口径", () => {
   assert.equal(healthVerdict({ trades: 4, profitFactor: 0.1 }).key, "insufficient", "4笔样本不足,即便PF差也不判下线");
@@ -35,6 +35,7 @@ test("受信任 skill 实盘不达标自动撤信任+通知", () => {
     fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `p${i}`, executionOrderId: `pe${i}`, realizedPnl: -2 }))),
     auditLogs: [], notifications: []
   };
+  installSystemTradeProvenance(db);
   const r = refreshTrustedSkillMetrics(db);
   assert.ok(r.untrusted.includes("sk_bad"));
   assert.equal(db.skills[0].trusted, false);
@@ -48,6 +49,7 @@ test("受信任 skill 实盘达标自动转正(与流水线同生命周期)", ()
     fills: financiallyReconciledFills(Array.from({ length: 10 }, (_, i) => ({ kind: "close", tradePlanId: `g${i}`, executionOrderId: `ge${i}`, realizedPnl: 3 }))),
     auditLogs: [], notifications: []
   };
+  installSystemTradeProvenance(db);
   const r = refreshTrustedSkillMetrics(db);
   assert.ok(r.graduated.includes("sk_good"));
   assert.equal(db.skills[0].trustStatus, "active");
@@ -64,6 +66,7 @@ test("受信任 skill 的毛盈利被开平仓成本翻为净亏损时不得转�
     ]).flat()),
     executionOrders: [], auditLogs: [], notifications: []
   };
+  installSystemTradeProvenance(db);
   const result = refreshTrustedSkillMetrics(db);
   assert.equal(result.graduated.length, 0);
   assert.ok(result.untrusted.includes("sk_fee_flip"));

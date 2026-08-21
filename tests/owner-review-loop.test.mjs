@@ -11,6 +11,7 @@ import {
   transitionReviewLesson,
   verifyDecisionFactSnapshot
 } from "../server/ownerReviewLoop.mjs";
+import { installSystemTradeProvenance } from "./financial-fixtures.mjs";
 import { strategyDefinitionHash } from "../server/strategyStudio.mjs";
 import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 import { createStrategyImprovementCycle, storedTradeWindowNews } from "../server/reviewEngine.mjs";
@@ -207,6 +208,7 @@ test("historical completed reviews backfill only from financially complete lifec
     { id: "review-h", type: "trade", status: "completed", tradeLifecycleKey: "exec-h" },
     { id: "review-u", type: "trade", status: "completed", tradeLifecycleKey: "exec-u" }
   );
+  installSystemTradeProvenance(db);
   const result = backfillStructuredTradeReviews(db);
   assert.equal(result.updated, 1);
   assert.ok(db.reviews[0].structuredAssessment);

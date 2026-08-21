@@ -6,7 +6,8 @@ import { createPaperSession } from "./paperTrading.mjs";
 import { detectRegime, getStrategy, STRATEGIES } from "./strategies.mjs";
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { applyCompiledSignalConstraints, runtimeInvalidationTriggered } from "./compiledSignals.mjs";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { principalUserId } from "./principalScope.mjs";
 import { canUseKnowledgeRow, normalizeKnowledgePrincipal } from "./knowledgeScope.mjs";
 
@@ -739,7 +740,7 @@ export function refreshKnowledgeSkillAttribution(db, actor = "KnowledgeAttributi
     `${row.fillKey}|${row.skillId}|${row.skillVersion}`,
     row
   ]));
-  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+  for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
     if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     const fill = lifecycle.representative;
     const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);

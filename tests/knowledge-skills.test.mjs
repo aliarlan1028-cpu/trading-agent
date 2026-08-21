@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "knowledge-skills-test-"));
 process.env.DATA_DIR = dataDir;
@@ -201,6 +201,7 @@ test("closed-trade attribution degrades an active skill after persistent poor li
     });
   }
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const result = refreshKnowledgeSkillAttribution(db);
   assert.equal(result.added, 10);
   assert.deepEqual(result.degraded, [skill.id]);

@@ -1,4 +1,5 @@
-import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 
 function finite(value) {
   return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
@@ -28,7 +29,7 @@ function stats(rows) {
 export function buildDecisionCalibrationReport(db, options = {}) {
   const minTrades = Math.max(10, Number(options.minTrades || process.env.DECISION_CALIBRATION_MIN_TRADES || 20));
   const rows = [];
-  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+  for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
     if (!finite(lifecycle.netRealizedPnl)) continue;
     const fill = lifecycle.representative;
     const { plan } = resolveTradeContext(db, lifecycle);

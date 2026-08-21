@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 
 // AI 交易策略产品与指标回测模型是两种不同对象：
 // - 策略产品规定「何时交易、允许 AI 在哪些参数边界内实例化、如何失效和退出」；
@@ -414,7 +415,7 @@ export function strategyProductMetrics(db, versionKey) {
   const plans = (db.tradePlans || []).filter((row) => (row.strategyRef?.versionId || row.strategyVersionId) === versionKey);
   const orders = (db.executionOrders || []).filter((row) => (row.strategyRef?.versionId || row.strategyVersionId) === versionKey);
   const trades = [];
-  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+  for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
     if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     const fill = lifecycle.representative;
     const { plan, versionId: attributed } = attributedTradeContext(db, fill);

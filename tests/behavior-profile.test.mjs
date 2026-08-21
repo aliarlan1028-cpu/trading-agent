@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { computeBehaviorProfile, buildClosedTrades } from "../server/behaviorProfile.mjs";
-import { financiallyReconciledFills, reconciledFill } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance, reconciledFill } from "./financial-fixtures.mjs";
 
 // 合成:盈利单=低杠杆短持仓,亏损单=高杠杆长持仓 → 应触发"越亏越加杠杆"+"拿不住盈利单"。
 const T = (id, dir, pnl, lev, entryIso, closeIso, lossAttr) => ({
-  entry: reconciledFill({ kind: "entry", planId: id, executionOrderId: id, notionalUsdt: 100, createdAt: entryIso }),
+  entry: reconciledFill({ kind: "entry", planId: id, executionOrderId: id, symbol: "BTC/USDT", direction: dir, notionalUsdt: 100, createdAt: entryIso }),
   close: reconciledFill({ kind: "close", planId: id, executionOrderId: id, symbol: "BTC/USDT", direction: dir, realizedPnl: pnl, notionalUsdt: 100, regime: dir === "long" ? "趋势" : "震荡", lossAttribution: lossAttr || null, createdAt: closeIso }),
-  plan: { id, leverage: lev }
+  plan: { id, symbol: "BTC/USDT", direction: dir, leverage: lev }
 });
 const rows = [
   T("t1", "long", 10, 5, "2026-08-01T10:00:00Z", "2026-08-01T10:30:00Z"),
@@ -16,6 +16,7 @@ const rows = [
   T("t4", "short", -12, 15, "2026-08-01T13:00:00Z", "2026-08-01T16:20:00Z", "市场异常")
 ];
 const db = { fills: rows.flatMap((r) => [r.entry, r.close]), tradePlans: rows.map((r) => r.plan) };
+installSystemTradeProvenance(db);
 
 test("抽取每笔平仓交易:join plan 取杠杆、时间差算持仓时长、算 ROI", () => {
   const trades = buildClosedTrades(db);
@@ -69,6 +70,7 @@ test("部分平仓按一个交易生命周期进入行为画像", () => {
       { id: "f", kind: "close", executionOrderId: "e1", tradePlanId: "p1", symbol: "BTC/USDT", direction: "long", realizedPnl: -1, notionalUsdt: 60, createdAt: "2026-08-01T02:00:00Z" }
     ])
   };
+  installSystemTradeProvenance(partialDb);
   const trades = buildClosedTrades(partialDb);
   assert.equal(trades.length, 1);
   assert.equal(trades[0].pnl, 2);
@@ -83,6 +85,7 @@ test("行为画像使用成本后净值，毛盈利被费用翻转时归为亏�
       { id: "fee-close", kind: "close", executionOrderId: "fee-exec", tradePlanId: "fee-plan", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.4, notionalUsdt: 100, createdAt: "2026-08-01T01:00:00Z" }
     ])
   };
+  installSystemTradeProvenance(feeFlip);
   const [trade] = buildClosedTrades(feeFlip);
   assert.equal(trade.grossPnl, 1);
   assert.ok(Math.abs(trade.pnl + 0.2) < 1e-9);

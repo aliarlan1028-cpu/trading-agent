@@ -2,7 +2,7 @@ import { activeMandate, effectiveAuditOperationalStatus, latestSuccessfulAccount
 import { buildPortfolioRisk } from "./portfolioRisk.mjs";
 import { assessOperationalDegradation } from "./professionalRiskGate.mjs";
 import { buildSlippageCalibration } from "./executionCostModel.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 
 const ageMs = (value) => value ? Math.max(0, Date.now() - new Date(value).getTime()) : null;
 const pct = (n, d = 2) => Number.isFinite(Number(n)) ? Number(Number(n).toFixed(d)) : null;
@@ -68,17 +68,18 @@ export function buildTradingPermissionEvidence(db, options = {}) {
 }
 
 export function buildExecutionQuality(db) {
-  const fills = (db.fills || []).filter((f) => Number.isFinite(Number(f.slippageBps)));
+  const fills = systemTradeFills(db).filter((f) => Number.isFinite(Number(f.slippageBps)));
+  const systemFillScope = { ...db, fills: systemTradeFills(db) };
   const slips = fills.map((f) => Number(f.slippageBps));
   const orders = db.executionOrders || [];
   const partial = orders.filter((o) => /partial/.test(String(o.status)) || Number(o.filledQuantity || 0) > 0 && Number(o.filledQuantity) < Number(o.quantity)).length;
   const symbols = [...new Set(fills.map((fill) => String(fill.symbol || "").toUpperCase()).filter(Boolean))];
-  const calibrationBySymbol = symbols.map((symbol) => buildSlippageCalibration(db, symbol));
+  const calibrationBySymbol = symbols.map((symbol) => buildSlippageCalibration(systemFillScope, symbol));
   return { fills: fills.length, avgSlippageBps: slips.length ? pct(slips.reduce((a, b) => a + b, 0) / slips.length) : null, p95SlippageBps: quantile(slips, .95), partialFillRatePct: orders.length ? pct(partial / orders.length * 100) : null, calibrationBySymbol };
 }
 
 export function buildStrategyDrift(db, { strategy } = {}) {
-  let lifecycles = groupClosedTradeLifecycles(db.fills || []).filter((row) => row.netRealizedPnl !== null && row.netRealizedPnl !== undefined && row.netRealizedPnl !== "" && Number.isFinite(Number(row.netRealizedPnl)));
+  let lifecycles = groupSystemClosedTradeLifecycles(db).filter((row) => row.netRealizedPnl !== null && row.netRealizedPnl !== undefined && row.netRealizedPnl !== "" && Number.isFinite(Number(row.netRealizedPnl)));
   if (strategy) lifecycles = lifecycles.filter((lifecycle) => {
     const fill = lifecycle.representative;
     const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);
@@ -123,7 +124,7 @@ export function buildReplayBundles(db, limit = 20) {
     const plan = (db.tradePlans || []).find((p) => p.id === run.tradePlanId);
     const risk = (db.riskChecks || []).find((r) => r.id === run.riskCheckId || r.tradePlanId === plan?.id);
     const executions = (db.executionOrders || []).filter((o) => o.agentRunId === run.id || o.planId === plan?.id);
-    const fills = (db.fills || []).filter((f) => f.agentRunId === run.id || f.tradePlanId === plan?.id);
+    const fills = systemTradeFills(db, { fills: (db.fills || []).filter((f) => f.agentRunId === run.id || f.tradePlanId === plan?.id) });
     return {
       traceId: run.traceId || run.id, agentRunId: run.id, tradePlanId: plan?.id || null, riskCheckId: risk?.id || null,
       executionOrderIds: executions.map((o) => o.id), fillIds: fills.map((f) => f.id), positionIds: (db.positions || []).filter((p) => executions.some((o) => o.id === p.executionOrderId)).map((p) => p.id),

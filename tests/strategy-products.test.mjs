@@ -15,7 +15,7 @@ import {
   validateStrategyProduct
 } from "../server/strategyProducts.mjs";
 import { resetOperationalData, seedDatabase } from "../server/store.mjs";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 function db() {
   return {
@@ -187,6 +187,7 @@ test("已验证策略真实表现恶化后自动降级，不把验证当永久�
     state.fills.push({ id: `f${index}`, kind: "close", executionOrderId: `e${index}`, tradePlanId: plan.id, strategyVersionId: plan.strategyVersionId, realizedPnl: -1, initialRiskUsdt: 2, partial: false, createdAt: `2026-08-10T${String(index).padStart(2,"0")}:00:00Z` });
   }
   state.fills = financiallyReconciledFills(state.fills);
+  installSystemTradeProvenance(state);
   const result = reconcileStrategyProductHealth(state, "Test");
   assert.equal(result.degraded.length, 1);
   assert.equal(deployment.state, "degraded");

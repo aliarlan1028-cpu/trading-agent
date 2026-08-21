@@ -1,4 +1,5 @@
-import { groupClosedTradeLifecycles, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { isActiveReviewLesson, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
 import { belongsToPrincipal, normalizePrincipal } from "./principalScope.mjs";
 
@@ -75,7 +76,7 @@ function lifecycleForMemory(db, memory = {}, fill = {}, review = {}) {
     fill.positionId
   ].filter(Boolean).map(String));
   const fillIds = new Set([memory.fillId, ...(memory.fillIds || []), ...(review.fillIds || [])].filter(Boolean));
-  return groupClosedTradeLifecycles(db.fills || []).find((lifecycle) => (
+  return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
     keys.has(String(lifecycle.key))
     || lifecycle.fills.some((row) => fillIds.has(row.id))
   )) || null;
@@ -317,7 +318,7 @@ export function buildReviewLearningAnalytics(db, options = {}) {
   const scopedFills = principal.tenantId && principal.userId
     ? (db.fills || []).filter((fill) => belongsToPrincipal(fill, principal))
     : [];
-  const rows = groupClosedTradeLifecycles(scopedFills).filter((lifecycle) => finite(lifecycle.netRealizedPnl)).map((lifecycle) => {
+  const rows = groupSystemClosedTradeLifecycles(db, { fills: scopedFills }).filter((lifecycle) => finite(lifecycle.netRealizedPnl)).map((lifecycle) => {
     const fill = lifecycle.representative;
     const plan = resolveTradeContext(db, lifecycle).plan || {};
     const applied = plan.reviewLearning?.applied || plan.appliedReviewLessons || [];

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDecisionCalibrationReport } from "../server/decisionCalibration.mjs";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 function fixture(count) {
   const fills = [];
@@ -31,7 +31,9 @@ function fixture(count) {
       createdAt: new Date(Date.UTC(2026, 7, 1, 0, index)).toISOString()
     });
   }
-  return { fills: financiallyReconciledFills(fills), tradePlans };
+  const db = { fills: financiallyReconciledFills(fills), tradePlans };
+  installSystemTradeProvenance(db);
+  return db;
 }
 
 test("决策校准按品种×周期×regime×setup归因，但只生成影子乘数", () => {

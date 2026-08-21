@@ -1,5 +1,6 @@
 import { buildStrategyProductCatalog } from "./strategyProducts.mjs";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 
 const CONTRACT_VERSION = "1.0.0";
 const VALID_DIRECTIONS = new Set(["long", "short", "both"]);
@@ -95,7 +96,7 @@ function latest(items = []) {
 
 function liveMetrics(db, strategyId) {
   const rows = [];
-  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+  for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
     if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     const fill = lifecycle.representative;
     const executionOrder = (db.executionOrders || []).find((item) => item.id === fill.executionOrderId);

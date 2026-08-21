@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { appendAudit, id, nowIso } from "./store.mjs";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle, resolveTradeContext } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { validatePublishedStrategyCandidate } from "./strategyStudio.mjs";
 
 const FACT_SCHEMA_VERSION = 1;
@@ -467,7 +468,7 @@ export function buildStructuredTradeAssessment(db, lifecycle, options = {}) {
 
 export function backfillStructuredTradeReviews(db) {
   migrateLegacyOwnerReviewProvenance(db);
-  const lifecycles = new Map(groupClosedTradeLifecycles((db.fills || []).filter((row) => isOwnerReviewRow(db, row))).map((row) => [String(row.key), row]));
+  const lifecycles = new Map(groupSystemClosedTradeLifecycles(db, { fills: (db.fills || []).filter((row) => isOwnerReviewRow(db, row)) }).map((row) => [String(row.key), row]));
   let updated = 0;
   for (const review of db.reviews || []) {
     if (!isOwnerReviewRow(db, review)) continue;

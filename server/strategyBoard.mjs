@@ -5,7 +5,8 @@
 // 每行给身份/生命周期/实盘战绩/回测参考/派生健康裁定。实盘与回测严格分层,展示口径=自动下线口径。
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 
 const MIN_JUDGE_TRADES = Math.max(5, Number(process.env.KNOWLEDGE_SKILL_MIN_LIVE_TRADES || 10));
 const POOR_PF = 0.8;
@@ -108,7 +109,7 @@ function trustedRows(db) {
 export function refreshTrustedSkillMetrics(db, actor = "TrustedSkillGuard") {
   const trusted = (db.skills || []).filter((s) => !s.native && s.trusted);
   if (!trusted.length) return { untrusted: [], graduated: [] };
-  const lifecycles = groupClosedTradeLifecycles(db.fills || []).filter(isFinanciallyReconciledLifecycle)
+  const lifecycles = groupSystemClosedTradeLifecycles(db).filter(isFinanciallyReconciledLifecycle)
     .slice()
     .sort((a, b) => new Date(a.lastClosedAt || 0) - new Date(b.lastClosedAt || 0));
   const untrusted = [];

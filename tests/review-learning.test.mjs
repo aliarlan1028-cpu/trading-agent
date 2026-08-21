@@ -10,7 +10,7 @@ import {
   stampReviewMemoryContext,
   validateAppliedReviewLessons
 } from "../server/reviewLearning.mjs";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 const ownerPrincipal = { tenantId: "tenant_owner", userId: "owner-1", isOwner: true };
 
@@ -41,6 +41,7 @@ function dbFixture() {
     ]
   };
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   for (const collection of ["tradePlans", "fills", "reviews", "memoryItems"]) {
     for (const row of db[collection]) {
       row.tenantId = "tenant_owner";
@@ -157,6 +158,7 @@ test("学习效果按平仓生命周期统计，样本不足时不宣称已经�
     { id: "control-final", kind: "close", executionOrderId: "exec-control", tradePlanId: "control", symbol: "BTC/USDT", realizedPnl: -1, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-02T03:00:00Z" }
   );
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const report = buildReviewLearningAnalytics(db, { principal: ownerPrincipal });
   assert.equal(report.used.trades, 1, "部分平仓必须聚合为一个交易生命周期");
   assert.equal(report.used.pnlUsdt, 3);

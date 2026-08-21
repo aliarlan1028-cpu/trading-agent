@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "skill-live-val-"));
 process.env.SKILL_PROBATION_GRADUATE_TRADES = "6";
@@ -59,6 +59,7 @@ test("真实成绩驱动:达标自动转正、不达标自动退役", () => {
     db.fills.push({ id: `fill-w-${i}`, kind: "close", executionOrderId: `exec-w-${i}`, tradePlanId: plan.id, realizedPnl: 5, createdAt: new Date(Date.now() + i * 1000).toISOString() });
   }
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const r1 = refreshKnowledgeSkillAttribution(db);
   assert.ok(r1.graduated.includes(skill.id), "6 笔盈利应转正");
   assert.equal(skill.status, "active");
@@ -81,6 +82,7 @@ test("知识技能按完整生命周期净值晋退，费用翻转毛盈利时�
   };
   for (let index = 0; index < 6; index += 1) addFeeFlip(index);
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const first = refreshKnowledgeSkillAttribution(db);
   assert.equal(first.graduated.length, 0);
   assert.equal(skill.status, "live_probation");
@@ -93,6 +95,7 @@ test("知识技能按完整生命周期净值晋退，费用翻转毛盈利时�
 
   for (let index = 6; index < 10; index += 1) addFeeFlip(index);
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const second = refreshKnowledgeSkillAttribution(db);
   assert.equal(second.graduated.length, 0);
   assert.ok(second.degraded.includes(skill.id));
@@ -114,6 +117,7 @@ test("试用技能真实亏损达阈值自动退役(降级)", () => {
     db.fills.push({ id: `fill-l-${i}`, kind: "close", executionOrderId: `exec-l-${i}`, tradePlanId: plan.id, realizedPnl: -3, createdAt: new Date(Date.now() + i * 1000).toISOString() });
   }
   db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
   const r = refreshKnowledgeSkillAttribution(db);
   assert.ok(r.degraded.includes(skill.id));
   assert.equal(skill.status, "degraded");
