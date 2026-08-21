@@ -460,6 +460,27 @@ function okxExecutionOwnership(db, order, payload = {}) {
   return (db.executionOrders || []).find((row) => row.id === attribution.executionOrderId) || null;
 }
 
+function duplicateOkxFillConflicts(existingFill, payload = {}) {
+  const numericPairs = [
+    [existingFill.price, financialNumber(payload.fillPx)],
+    [existingFill.rawContracts, financialNumber(payload.fillSz)],
+    [existingFill.realizedPnl, financialNumber(payload.fillPnl)],
+    [existingFill.rawFee, financialNumber(payload.fee)]
+  ];
+  if (numericPairs.some(([existing, incoming]) => existing !== null && existing !== undefined
+    && incoming !== null && incoming !== undefined && Number(existing) !== Number(incoming))) return true;
+  const identityPairs = [
+    [existingFill.exchangeOrderId, payload.ordId],
+    [existingFill.clientOrderId, payload.clOrdId],
+    [existingFill.algoClientOrderId, payload.algoClOrdId || payload.attachAlgoClOrdId],
+    [existingFill.algoId, payload.algoId || payload.attachAlgoId],
+    [existingFill.feeCurrency, payload.feeCcy],
+    [existingFill.exchangeFilledAt, validExchangeTime(payload.fillTime || payload.uTime)]
+  ];
+  return identityPairs.some(([existing, incoming]) => String(existing || "").trim()
+    && String(incoming || "").trim() && String(existing).trim() !== String(incoming).trim());
+}
+
 export function upsertOkxOrder(db, payload, context = {}) {
   const exchangeOrderId = String(payload.ordId || "").trim();
   const clientOrderId = String(payload.clOrdId || "").trim();
@@ -523,9 +544,8 @@ export function upsertOkxOrder(db, payload, context = {}) {
       updatedAt: order.updatedAt
     });
   }
-  // 成交去重(单一权威源):本引擎下的单都带 clOrdId,其入场/平仓成交由执行引擎轮询权威落账
-  // (真实币量 + 已实现盈亏 + planId 归因)。WS 只为"无 clOrdId 的外部/手动单"补记,
-  // 否则同一笔被 WS 与引擎各记一次(实锤:1 入 1 平的真实成交被记成 4 行,污染笔数/胜率/盈亏)。
+  // 成交去重以交易所 tradeId 为权威。系统入场仍由执行引擎轮询落账；系统平仓的 WS
+  // 回报本身可能是唯一一份逐笔 PnL/费用证据，必须先原样持久化，后续对账复用该事实。
   const executionOrder = okxExecutionOwnership(db, order, payload);
   if (executionOrder) {
     order.executionOrderId ||= executionOrder.id;
@@ -533,11 +553,17 @@ export function upsertOkxOrder(db, payload, context = {}) {
   }
   const fillContracts = financialNumber(payload.fillSz);
   const tradeId = normalizeOkxTradeId(payload.tradeId);
+  const systemCloseFill = Boolean(executionOrder && okxOrderFillKind(order, payload) === "close");
   const hadUnidentifiedFill = order.financialReconciliationStatus === "authoritative_trade_identity_missing";
-  const duplicate = tradeId && (db.fills || []).some((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
+  const duplicateFill = tradeId && (db.fills || []).find((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
     && fill.symbol === order.symbol
     && String(fill.accountId || "") === String(order.accountId || "")
     && String(fill.environment || "").toLowerCase() === String(order.environment || "").toLowerCase());
+  const duplicate = Boolean(duplicateFill);
+  if (duplicateFill && duplicateOkxFillConflicts(duplicateFill, payload)) {
+    duplicateFill.financialEvidenceConflict = true;
+    duplicateFill.financialEvidenceConflictReason = "authoritative_trade_identity_payload_conflict";
+  }
   if (fillContracts > 0 && !executionOrder && !tradeId) {
     // OKX orders channel 是状态更新流；fillSz/accFillSz 可能在重复推送中再次出现。
     // 没有交易所 tradeId 时不能把快照当成新的财务事实，否则一次成交会被重复计入。
@@ -548,8 +574,8 @@ export function upsertOkxOrder(db, payload, context = {}) {
     delete order.financialReconciliationStatus;
     delete order.financialReconciliationObservedAt;
   }
-  // clOrdId 非空不代表本系统订单；只有真正匹配 executionOrder 才由引擎权威落账。
-  if (fillContracts > 0 && tradeId && !executionOrder && !duplicate) {
+  // clOrdId 非空不代表本系统订单；只有真正匹配 executionOrder 的平仓才在此保存为 system_exit。
+  if (fillContracts > 0 && tradeId && (!executionOrder || systemCloseFill) && !duplicate) {
     const ctVal = String(payload.instType || "SWAP").toUpperCase() === "SPOT" ? 1 : cachedOkxCtVal(db, payload.instId, executionOrder);
     const coinQuantity = finiteFinancialNumber(ctVal) > 0 ? Number(fillContracts) * Number(ctVal) : null;
     const fee = parseOkxFee(payload.fee, payload.feeCcy);
@@ -567,7 +593,8 @@ export function upsertOkxOrder(db, payload, context = {}) {
       reduceOnly: payload.reduceOnly,
       realizedPnl: financialNumber(payload.fillPnl),
       exchangeTradeId: tradeId || null,
-      exchangeFilledAt: validExchangeTime(payload.fillTime || payload.uTime)
+      exchangeFilledAt: validExchangeTime(payload.fillTime || payload.uTime),
+      partial: systemCloseFill ? true : undefined
     };
     if (String(payload.posSide || "").toLowerCase() === "net") {
       const before = authoritativeNetPositionBeforeFill(db, order, context, ctVal);
@@ -806,6 +833,7 @@ function enrichRealtimeFill(db, order, payload = {}) {
     fundingReconciled: kind === "close" ? false : undefined,
     financialBasisComplete: false,
     financialBasis: kind === "unknown" ? "net_lifecycle_reconciliation_pending" : "ws_signal_pending_rest_reconciliation",
+    partial: payload.partial,
     // 同 executionEngine.entryRationale:plan 的推理在 reasoningSummary。executionOrder 已存的占位符
     // "未记录入场理由"不算真值,别让它短路掉 plan 的真实理由。
     entryRationale: (executionOrder?.entryRationale && executionOrder.entryRationale !== "未记录入场理由")

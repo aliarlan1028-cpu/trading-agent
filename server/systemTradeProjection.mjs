@@ -448,7 +448,8 @@ export function buildExternalFillAttribution(db = {}, fill = {}) {
   if (classified.scope !== "manual") {
     return {
       ...classified,
-      origin: "external_exchange"
+      origin: "external_exchange",
+      partial: classified.partial ?? fill.partial ?? null
     };
   }
   if (fill.kind === "close" && !fill.executionOrderId && !fill.tradeAttribution?.executionOrderId) {
@@ -525,22 +526,53 @@ export function groupSystemClosedTradeLifecycles(db, options = {}) {
   return groupClosedTradeLifecycles(systemTradeFills(db, { fills }), lifecycleOptions);
 }
 
-export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
-  const expectedQuantity = executionManagedQuantity(db, executionOrder);
-  if (!(expectedQuantity > 0)) {
-    return { complete: false, reason: "manual_exit_managed_quantity_unavailable", fills: [], quantity: 0, tradeIds: [] };
-  }
+function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitMode) {
+  const reasonPrefix = requiredExitMode === "manual_exit" ? "manual_exit" : "system_exit";
   const systemCloses = (db.fills || []).map((raw) => ({ raw, projected: projectSystemTradeFill(db, raw) }))
     .filter(({ raw, projected }) => raw?.kind === "close" && projected
       && stringValue(projected.executionOrderId) === stringValue(executionOrder.id));
-  const manualCloses = systemCloses.filter(({ projected }) => projected.tradeAttribution?.exitMode === "manual_exit");
-  if (!manualCloses.length) {
-    return { complete: false, reason: "manual_exit_fills_missing", fills: [], quantity: 0, tradeIds: [] };
+  const requiredCloses = systemCloses.filter(({ projected }) => projected.tradeAttribution?.exitMode === requiredExitMode);
+  if (!requiredCloses.length) {
+    return { complete: false, reason: `${reasonPrefix}_fills_missing`, fills: [], quantity: 0, tradeIds: [] };
   }
   const matched = systemCloses;
+  const fills = matched.map(({ raw }) => raw);
+  const quantity = matched.reduce((sum, { raw }) => sum + (positiveNumber(raw.quantity ?? raw.size) || 0), 0);
+  const authoritativeTimes = matched.map(({ raw }) => authoritativeFillTime(raw));
+  const latestCloseAt = authoritativeTimes.every((value) => value !== null)
+    ? new Date(Math.max(...authoritativeTimes)).toISOString()
+    : null;
+  const expectedQuantity = executionManagedQuantity(db, executionOrder);
+  if (!(expectedQuantity > 0)) {
+    return {
+      complete: false,
+      reason: `${reasonPrefix}_managed_quantity_unavailable`,
+      fills,
+      quantity,
+      tradeIds: [],
+      closedAt: latestCloseAt
+    };
+  }
   const tradeIds = matched.map(({ raw }) => stringValue(raw.exchangeTradeId ?? raw.tradeId));
+  if (matched.some(({ raw }) => raw.financialEvidenceConflict === true)) {
+    return {
+      complete: false,
+      reason: `${reasonPrefix}_financial_evidence_conflict`,
+      fills,
+      quantity,
+      tradeIds: tradeIds.filter(Boolean),
+      closedAt: latestCloseAt
+    };
+  }
   if (tradeIds.some((tradeId) => !tradeId) || new Set(tradeIds).size !== tradeIds.length) {
-    return { complete: false, reason: "manual_exit_trade_identity_incomplete", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds: tradeIds.filter(Boolean) };
+    return {
+      complete: false,
+      reason: `${reasonPrefix}_trade_identity_incomplete`,
+      fills,
+      quantity,
+      tradeIds: tradeIds.filter(Boolean),
+      closedAt: latestCloseAt
+    };
   }
   for (const { raw } of matched) {
     const quantity = positiveNumber(raw.quantity ?? raw.size);
@@ -550,33 +582,34 @@ export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
       || raw.estimatedFee === true || authoritativeFillTime(raw) === null) {
       return {
         complete: false,
-        reason: "manual_exit_financial_evidence_incomplete",
-        fills: matched.map(({ raw: row }) => row),
-        quantity: matched.reduce((sum, row) => sum + (positiveNumber(row.raw.quantity ?? row.raw.size) || 0), 0),
-        tradeIds
+        reason: `${reasonPrefix}_financial_evidence_incomplete`,
+        fills,
+        quantity,
+        tradeIds,
+        closedAt: latestCloseAt
       };
     }
   }
-  const closeAt = Math.max(...matched.map(({ raw }) => authoritativeFillTime(raw)));
   const entryFills = executionEntryFills(db, executionOrder);
   const entryAt = executionEntryTime(executionOrder, entryFills);
-  if (manualCloses.some(({ raw }) => hasMixedExternalEntry(db, executionOrder, raw, entryAt, authoritativeFillTime(raw)))) {
-    return { complete: false, reason: "mixed_position_attribution", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds };
+  if (requiredExitMode === "manual_exit"
+    && requiredCloses.some(({ raw }) => hasMixedExternalEntry(db, executionOrder, raw, entryAt, authoritativeFillTime(raw)))) {
+    return { complete: false, reason: "mixed_position_attribution", fills, quantity, tradeIds, closedAt: latestCloseAt };
   }
-  const quantity = matched.reduce((sum, { raw }) => sum + Number(raw.quantity ?? raw.size), 0);
   const tolerance = quantityTolerance(executionOrder, expectedQuantity);
-  if (Math.abs(quantity - expectedQuantity) > tolerance || matched.every(({ projected }) => projected.partial === true)) {
+  if (Math.abs(quantity - expectedQuantity) > tolerance
+    || (requiredExitMode === "manual_exit" && matched.every(({ projected }) => projected.partial === true))) {
     return {
       complete: false,
-      reason: "manual_exit_quantity_incomplete",
-      fills: matched.map(({ raw }) => raw),
+      reason: `${reasonPrefix}_quantity_incomplete`,
+      fills,
       quantity,
       expectedQuantity,
-      tradeIds
+      tradeIds,
+      closedAt: latestCloseAt
     };
   }
   const notional = matched.reduce((sum, { raw }) => sum + Number(raw.price) * Number(raw.quantity ?? raw.size), 0);
-  const fills = matched.map(({ raw }) => raw);
   return {
     complete: true,
     reason: null,
@@ -586,7 +619,7 @@ export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
     weightedPrice: notional / quantity,
     realizedPnl: matched.reduce((sum, { raw }) => sum + Number(raw.realizedPnl), 0),
     feeUsdt: matched.reduce((sum, { raw }) => sum + Number(raw.feeCostUsdt ?? raw.feeUsdt), 0),
-    closedAt: new Date(closeAt).toISOString(),
+    closedAt: latestCloseAt,
     tradeIds,
     exchangeOrderIds: unique(matched.map(({ raw }) => raw.exchangeOrderId)),
     breakdown: matched.map(({ raw }) => ({
@@ -597,8 +630,20 @@ export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
       price: Number(raw.price),
       realizedPnl: Number(raw.realizedPnl),
       feeUsdt: Number(raw.feeCostUsdt ?? raw.feeUsdt),
+      rawFee: finiteNumber(raw.rawFee) ? Number(raw.rawFee) : null,
+      feeCurrency: raw.feeCurrency || raw.rawFeeCcy || null,
       closedAt: raw.exchangeFilledAt
     })),
-    evidencePath: "attributed_external_exchange_fills"
+    evidencePath: requiredExitMode === "manual_exit"
+      ? "attributed_external_exchange_fills"
+      : "attributed_system_exchange_fills"
   };
+}
+
+export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
+  return buildAttributedCloseClosure(db, executionOrder, "manual_exit");
+}
+
+export function buildAttributedSystemExitClosure(db = {}, executionOrder = {}) {
+  return buildAttributedCloseClosure(db, executionOrder, "system_exit");
 }

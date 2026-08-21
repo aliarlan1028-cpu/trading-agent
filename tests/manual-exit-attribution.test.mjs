@@ -376,7 +376,10 @@ test("the real OKX writer recognizes a persisted close client ID before insertin
     tradeId: "managed-close-client-trade"
   }), context());
 
-  assert.equal(db.fills.some((fill) => fill.exchangeTradeId === "managed-close-client-trade"), false);
+  const raw = db.fills.find((fill) => fill.exchangeTradeId === "managed-close-client-trade");
+  assert.ok(raw, "the authoritative system close must be persisted before reconciliation");
+  assert.equal(raw.tradeAttribution.scope, "system");
+  assert.equal(raw.tradeAttribution.exitMode, "system_exit");
   const order = db.orders.find((row) => row.exchangeOrderId === "not-yet-bound-close-order");
   assert.equal(order.clientOrderId, "managed-close-client");
   assert.equal(order.executionOrderId, execution.id);
@@ -398,9 +401,181 @@ test("the real OKX writer recognizes persisted protection client and algo IDs", 
       [payloadField]: value
     }), context());
 
-    assert.equal(db.fills.some((fill) => fill.exchangeTradeId === tradeId), false);
+    const raw = db.fills.find((fill) => fill.exchangeTradeId === tradeId);
+    assert.ok(raw, "the authoritative protection close must be persisted before reconciliation");
+    assert.equal(raw.tradeAttribution.scope, "system");
+    assert.equal(raw.tradeAttribution.exitMode, "system_exit");
     assert.equal(db.orders[0].executionOrderId, execution.id);
   });
+});
+
+test("a system WS close remains a lossless raw fact when reconciliation fetch fails and duplicate echoes arrive", async () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeClientOrderId = "lossless-close-client";
+  execution.stopClientOrderId = "lossless-close-algo-client";
+  execution.stopAlgoId = "lossless-close-algo";
+  const payload = closePayload({
+    ordId: "lossless-close-order",
+    clOrdId: execution.closeClientOrderId,
+    algoClOrdId: "lossless-close-algo-client",
+    algoId: "lossless-close-algo",
+    tradeId: "lossless-close-trade"
+  });
+
+  upsertOkxOrder(db, payload, context());
+  upsertOkxOrder(db, payload, context());
+  let outboundActions = 0;
+  const result = await pollExecutionOrders(db, {
+    snapshot: {
+      id: "snapshot-before-lossless-close",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [{ instId: "BTC-USDT-SWAP", posSide: "long", pos: "1" }],
+      createdAt: "2026-08-15T00:45:00.000Z"
+    },
+    nowMs: Date.parse("2026-08-15T02:00:00.000Z"),
+    closeProgressSlaMs: 0,
+    maxCloseRetries: 1,
+    executeTradeAction: async () => { outboundActions += 1; throw new Error("system fill must suppress outbound retry"); },
+    fetchManualClosure: async () => { throw new Error("fills history unavailable"); }
+  });
+
+  const raw = db.fills.filter((fill) => fill.exchangeTradeId === payload.tradeId);
+  assert.equal(raw.length, 1, "duplicate WS echoes must retain one raw trade fact");
+  assert.deepEqual({
+    price: raw[0].price,
+    quantity: raw[0].quantity,
+    rawContracts: raw[0].rawContracts,
+    realizedPnl: raw[0].realizedPnl,
+    feeUsdt: raw[0].feeUsdt,
+    rawFee: raw[0].rawFee,
+    feeCurrency: raw[0].feeCurrency,
+    exchangeOrderId: raw[0].exchangeOrderId,
+    clientOrderId: raw[0].clientOrderId,
+    algoClientOrderId: raw[0].algoClientOrderId,
+    algoId: raw[0].algoId,
+    exchangeTradeId: raw[0].exchangeTradeId,
+    exchangeFilledAt: raw[0].exchangeFilledAt
+  }, {
+    price: 60_000,
+    quantity: 0.01,
+    rawContracts: 1,
+    realizedPnl: 10,
+    feeUsdt: 0.01,
+    rawFee: -0.01,
+    feeCurrency: "USDT",
+    exchangeOrderId: "lossless-close-order",
+    clientOrderId: "lossless-close-client",
+    algoClientOrderId: "lossless-close-algo-client",
+    algoId: "lossless-close-algo",
+    exchangeTradeId: "lossless-close-trade",
+    exchangeFilledAt: CLOSE_AT
+  });
+  assert.equal(raw[0].tradeAttribution.scope, "system");
+  assert.equal(raw[0].tradeAttribution.exitMode, "system_exit");
+  assert.equal(outboundActions, 0);
+  assert.equal(result.results[0].status, "poll_error");
+});
+
+test("a repeated system entry echo is not persisted as a close after the execution starts protecting", () => {
+  const { db, execution } = managedDb({ status: "protecting" });
+  upsertOkxOrder(db, closePayload({
+    ordId: execution.exchangeOrderId,
+    clOrdId: execution.clientOrderId,
+    side: "buy",
+    posSide: "long",
+    reduceOnly: "false",
+    fillPnl: "0",
+    tradeId: "repeated-system-entry-trade"
+  }), context());
+
+  assert.equal(db.fills.some((fill) => fill.exchangeTradeId === "repeated-system-entry-trade"), false);
+});
+
+test("a conflicting duplicate system echo preserves the first raw fact and blocks settlement", () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeExchangeOrderId = "duplicate-conflict-order";
+  const payload = closePayload({ ordId: execution.closeExchangeOrderId, tradeId: "duplicate-conflict-trade" });
+  upsertOkxOrder(db, payload, context());
+  upsertOkxOrder(db, { ...payload, fillPx: "60001" }, context());
+
+  const result = reconcilePendingClose(db, execution, {
+    snapshot: {
+      id: "snapshot-after-duplicate-conflict",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [],
+      createdAt: "2026-08-15T02:00:00.000Z"
+    }
+  });
+
+  const raw = db.fills.filter((fill) => fill.exchangeTradeId === payload.tradeId);
+  assert.equal(raw.length, 1);
+  assert.equal(raw[0].price, 60_000);
+  assert.equal(result.status, "close_reconciliation_pending");
+  assert.equal(result.settlement, "fill_evidence_incomplete");
+});
+
+test("a filled system echo suppresses close retries until a post-fill authoritative absence settles it", async () => {
+  const { db, execution } = managedDb({ status: "close_pending" });
+  execution.closeAttemptedAt = execution.closeSubmittedAt;
+  execution.closeExchangeOrderId = "snapshot-gated-close-order";
+  const payload = closePayload({ ordId: execution.closeExchangeOrderId, tradeId: "snapshot-gated-close-trade" });
+  upsertOkxOrder(db, payload, context());
+  assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 0,
+    "the raw WS fact remains lifecycle-partial until authoritative position absence");
+  let outboundActions = 0;
+  let evidenceFetches = 0;
+  const poll = (snapshot) => pollExecutionOrders(db, {
+    snapshot,
+    nowMs: Date.parse("2026-08-15T02:00:00.000Z"),
+    closeProgressSlaMs: 0,
+    maxCloseRetries: 2,
+    executeTradeAction: async () => { outboundActions += 1; return { status: "submitted" }; },
+    fetchManualClosure: async () => { evidenceFetches += 1; return { complete: false }; }
+  });
+  const boundSnapshot = (overrides) => ({
+    exchange: "OKX",
+    accountId: "account-a",
+    environment: "production",
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    status: "ok",
+    ...overrides
+  });
+
+  const beforeFill = await poll(boundSnapshot({
+    id: "snapshot-before-system-fill",
+    positions: [{ instId: "BTC-USDT-SWAP", posSide: "long", pos: "1" }],
+    createdAt: "2026-08-15T00:45:00.000Z"
+  }));
+  assert.equal(beforeFill.results[0].settlement, "authoritative_snapshot_pending");
+  assert.equal(execution.status, "close_pending");
+
+  const afterFillOpen = await poll(boundSnapshot({
+    id: "snapshot-after-system-fill-open",
+    positions: [{ instId: "BTC-USDT-SWAP", posSide: "long", pos: "1" }],
+    createdAt: "2026-08-15T01:30:00.000Z"
+  }));
+  assert.equal(afterFillOpen.results[0].settlement, "position_still_open");
+  assert.equal(execution.status, "close_pending");
+
+  const afterFillAbsent = await poll(boundSnapshot({
+    id: "snapshot-after-system-fill-absent",
+    positions: [],
+    createdAt: "2026-08-15T02:00:00.000Z"
+  }));
+  assert.equal(afterFillAbsent.results[0].status, "closed");
+  assert.equal(execution.status, "closed");
+  assert.equal(outboundActions, 0, "a persisted filled close must never be submitted again");
+  assert.equal(evidenceFetches, 3, "read-only evidence lookup remains allowed");
+  assert.equal(db.fills.filter((fill) => fill.exchangeTradeId === payload.tradeId).length, 1);
+  assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 1);
 });
 
 test("a recognized system WS close is reconciled into exactly one financial fact", () => {
@@ -413,6 +588,21 @@ test("a recognized system WS close is reconciled into exactly one financial fact
   });
 
   upsertOkxOrder(db, payload, context());
+  const rawBefore = db.fills.find((fill) => fill.exchangeTradeId === payload.tradeId);
+  assert.ok(rawBefore, "reconciliation must begin with the persisted WS fact");
+  const authoritativeBefore = structuredClone({
+    price: rawBefore.price,
+    quantity: rawBefore.quantity,
+    realizedPnl: rawBefore.realizedPnl,
+    feeUsdt: rawBefore.feeUsdt,
+    rawFee: rawBefore.rawFee,
+    feeCurrency: rawBefore.feeCurrency,
+    exchangeOrderId: rawBefore.exchangeOrderId,
+    clientOrderId: rawBefore.clientOrderId,
+    exchangeTradeId: rawBefore.exchangeTradeId,
+    exchangeFilledAt: rawBefore.exchangeFilledAt,
+    createdAt: rawBefore.createdAt
+  });
   const result = reconcilePendingClose(db, execution, {
     snapshot: {
       id: "snapshot-after-system-close",
@@ -459,6 +649,157 @@ test("a recognized system WS close is reconciled into exactly one financial fact
   const lifecycle = lifecycles[0];
   assert.equal(lifecycle.quantity, 0.01);
   assert.equal(lifecycle.realizedPnl, 10);
+  assert.deepEqual({
+    price: closes[0].price,
+    quantity: closes[0].quantity,
+    realizedPnl: closes[0].realizedPnl,
+    feeUsdt: closes[0].feeUsdt,
+    rawFee: closes[0].rawFee,
+    feeCurrency: closes[0].feeCurrency,
+    exchangeOrderId: closes[0].exchangeOrderId,
+    clientOrderId: closes[0].clientOrderId,
+    exchangeTradeId: closes[0].exchangeTradeId,
+    exchangeFilledAt: closes[0].exchangeFilledAt,
+    createdAt: closes[0].createdAt
+  }, authoritativeBefore);
+});
+
+test("a protecting execution reuses its persisted WS protection fill during polling", async () => {
+  const { db, execution } = managedDb({ status: "protecting" });
+  execution.stopAlgoId = "poll-protection-algo";
+  execution.okxCtVal = 0.01;
+  const payload = closePayload({
+    ordId: "poll-protection-child-order",
+    clOrdId: "",
+    algoId: execution.stopAlgoId,
+    tradeId: "poll-protection-trade"
+  });
+  upsertOkxOrder(db, payload, context());
+  db.accountSnapshots = [{
+    id: "fresh-protection-absence",
+    exchange: "OKX",
+    accountId: "account-a",
+    environment: "production",
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    status: "ok",
+    positions: [],
+    createdAt: new Date().toISOString()
+  }];
+  const remoteClosure = {
+    complete: true,
+    quantity: 0.01,
+    weightedPrice: 60_000,
+    realizedPnl: 10,
+    feeUsdt: 0.01,
+    closedAt: CLOSE_AT,
+    exchangeOrderIds: [payload.ordId],
+    tradeIds: [payload.tradeId],
+    breakdown: [{
+      exchangeOrderId: payload.ordId,
+      tradeId: payload.tradeId,
+      quantity: 0.01,
+      price: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT
+    }],
+    evidencePath: "orders-algo-history->ordId->fills-history:tradeId"
+  };
+
+  const result = await pollExecutionOrders(db, {
+    fetchOrderState: async () => ({ state: "filled", avgPrice: 59_000, filledContracts: 1 }),
+    fetchProtectionClosure: async () => remoteClosure
+  });
+
+  assert.equal(result.results[0].status, "closed");
+  assert.equal(execution.status, "closed");
+  assert.equal(execution.exitReason, "exchange_protection_filled");
+  const closes = db.fills.filter((fill) => fill.kind === "close");
+  assert.equal(closes.length, 1);
+  assert.equal(closes[0].exchangeTradeId, payload.tradeId);
+  assert.equal(closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0), 10);
+  assert.equal(closes.reduce((sum, fill) => sum + Number(fill.feeUsdt), 0), 0.01);
+});
+
+test("conflicting remote evidence for a persisted system trade ID fails closed", () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeExchangeOrderId = "conflict-close-order";
+  const payload = closePayload({ ordId: execution.closeExchangeOrderId, tradeId: "conflict-close-trade" });
+  upsertOkxOrder(db, payload, context());
+
+  const result = reconcilePendingClose(db, execution, {
+    snapshot: {
+      id: "snapshot-after-conflicting-close",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [],
+      createdAt: "2026-08-15T02:00:00.000Z"
+    },
+    closure: {
+      complete: true,
+      quantity: 0.01,
+      weightedPrice: 60_001,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT,
+      exchangeOrderIds: [execution.closeExchangeOrderId],
+      tradeIds: [payload.tradeId],
+      evidencePath: "okx_raw_fill_history"
+    }
+  });
+
+  assert.equal(result.status, "close_reconciliation_pending");
+  assert.equal(result.settlement, "fill_evidence_conflict");
+  assert.equal(execution.status, "close_reconciliation_pending");
+  assert.equal(db.fills.filter((fill) => fill.exchangeTradeId === payload.tradeId).length, 1);
+  assert.equal(db.fills.find((fill) => fill.exchangeTradeId === payload.tradeId).price, 60_000);
+});
+
+test("same-trade remote system evidence with a conflicting execution binding fails closed", async (t) => {
+  for (const [name, override] of [
+    ["account", { accountId: "account-b" }],
+    ["environment", { environment: "demo" }],
+    ["symbol", { symbol: "ETH/USDT" }]
+  ]) await t.test(name, () => {
+    const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+    execution.closeExchangeOrderId = `binding-close-order-${name}`;
+    const payload = closePayload({ ordId: execution.closeExchangeOrderId, tradeId: `binding-close-trade-${name}` });
+    upsertOkxOrder(db, payload, context());
+    const result = reconcilePendingClose(db, execution, {
+      snapshot: {
+        id: `snapshot-after-binding-conflict-${name}`,
+        exchange: "OKX",
+        accountId: "account-a",
+        environment: "production",
+        apiKeyFingerprint: API_KEY_FINGERPRINT,
+        status: "ok",
+        positions: [],
+        createdAt: "2026-08-15T02:00:00.000Z"
+      },
+      closure: {
+        complete: true,
+        accountId: "account-a",
+        environment: "production",
+        symbol: "BTC/USDT",
+        quantity: 0.01,
+        weightedPrice: 60_000,
+        realizedPnl: 10,
+        feeUsdt: 0.01,
+        closedAt: CLOSE_AT,
+        exchangeOrderIds: [execution.closeExchangeOrderId],
+        tradeIds: [payload.tradeId],
+        evidencePath: "okx_raw_fill_history",
+        ...override
+      }
+    });
+
+    assert.equal(result.status, "close_reconciliation_pending");
+    assert.equal(result.settlement, "fill_evidence_conflict");
+    assert.equal(db.fills.filter((fill) => fill.exchangeTradeId === payload.tradeId).length, 1);
+  });
 });
 
 test("system entry identities on a close fail closed before manual-exit matching", async (t) => {

@@ -23,7 +23,7 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
-import { buildAttributedManualExitClosure, buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
+import { buildAttributedManualExitClosure, buildAttributedSystemExitClosure, buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
 
 export { currentEquityUsdt } from "./financialFacts.mjs";
 
@@ -1182,7 +1182,9 @@ async function pollOne(db, executionOrder, options = {}) {
       ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId })
       : null);
     const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
-    if (!attributedManualClosure.complete && snapshotPositionOpen(snapshot, executionOrder)) {
+    const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
+    if (!attributedManualClosure.complete && !attributedSystemClosure.fills.length
+      && snapshotPositionOpen(snapshot, executionOrder)) {
       await handleClosePendingWatchdog(db, executionOrder, options);
     }
     const closureResolver = executionOrder.closeReconciliationSource === "protection_orders"
@@ -1328,7 +1330,17 @@ async function pollOne(db, executionOrder, options = {}) {
       if (attributedManualClosure.complete) {
         return reconcilePendingClose(db, executionOrder, { snapshot: latestSnap, closure: attributedManualClosure });
       }
-      const protection = await fetchOkxProtectionClosure(executionOrder);
+      const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
+      const protection = await (options.fetchProtectionClosure || fetchOkxProtectionClosure)(executionOrder);
+      if (attributedSystemClosure.fills.length) {
+        executionOrder.closeReconciliationSource = "protection_orders";
+        const reconciled = reconcilePendingClose(db, executionOrder, { snapshot: latestSnap, closure: protection });
+        return {
+          ...reconciled,
+          exchangeState: orderState.state,
+          protectionSettlement: reconciled.status === "closed" ? "confirmed" : reconciled.settlement
+        };
+      }
       if (protection?.complete) {
         if (Number.isFinite(protection.entryFeeUsdt)) {
           const entryFills = (db.fills || []).filter((fill) => fill.executionOrderId === executionOrder.id && fill.kind === "entry");
@@ -2177,8 +2189,79 @@ function snapshotPositionOpen(snapshot, executionOrder) {
     && Math.abs(Number(row.pos ?? row.positionAmt ?? row.size ?? 0)) > 0);
 }
 
+function closureIdentityValues(closure = {}, field, breakdownField) {
+  return [...new Set([
+    ...(Array.isArray(closure[field]) ? closure[field] : []),
+    ...(Array.isArray(closure.breakdown) ? closure.breakdown.map((row) => row?.[breakdownField]) : [])
+  ].map((value) => String(value || "").trim()).filter(Boolean))].sort();
+}
+
+function sameClosureNumber(left, right) {
+  if (!finiteFinancialValue(left) || !finiteFinancialValue(right)) return false;
+  const a = Number(left);
+  const b = Number(right);
+  return Math.abs(a - b) <= Math.max(1, Math.abs(a), Math.abs(b)) * 1e-10;
+}
+
+function sameClosureTime(left, right) {
+  const a = new Date(left || 0).getTime();
+  const b = new Date(right || 0).getTime();
+  return Number.isFinite(a) && Number.isFinite(b) && a === b;
+}
+
+function closureBindingMatches(closure, executionOrder) {
+  const checks = [
+    ["accountId", executionOrder.accountId, (value) => String(value)],
+    ["environment", executionOrder.environment, (value) => String(value).toLowerCase()],
+    ["exchange", executionOrder.exchange || "OKX", (value) => String(value).toUpperCase()],
+    ["symbol", executionOrder.symbol, canonicalSymbol]
+  ];
+  for (const [field, expected, normalize] of checks) {
+    const observed = [closure?.[field], ...(closure?.breakdown || []).map((row) => row?.[field])]
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== "");
+    if (observed.some((value) => normalize(value) !== normalize(expected))) return false;
+  }
+  return true;
+}
+
+function closureEvidenceMatches(local, remote, executionOrder) {
+  if (!local?.complete || !remote?.complete) return false;
+  if (!closureBindingMatches(remote, executionOrder)) return false;
+  const localTradeIds = closureIdentityValues(local, "tradeIds", "tradeId");
+  const remoteTradeIds = closureIdentityValues(remote, "tradeIds", "tradeId");
+  if (!localTradeIds.length || localTradeIds.length !== remoteTradeIds.length
+    || localTradeIds.some((value, index) => value !== remoteTradeIds[index])) return false;
+  const localOrderIds = closureIdentityValues(local, "exchangeOrderIds", "exchangeOrderId");
+  const remoteOrderIds = closureIdentityValues(remote, "exchangeOrderIds", "exchangeOrderId");
+  if (localOrderIds.length && remoteOrderIds.length && (localOrderIds.length !== remoteOrderIds.length
+    || localOrderIds.some((value, index) => value !== remoteOrderIds[index]))) return false;
+  if (!["quantity", "weightedPrice", "realizedPnl", "feeUsdt"].every((field) => sameClosureNumber(local[field], remote[field]))) {
+    return false;
+  }
+  if (!sameClosureTime(local.closedAt, remote.closedAt)) return false;
+
+  const localByTradeId = new Map((local.breakdown || []).map((row) => [String(row.tradeId || ""), row]).filter(([tradeId]) => tradeId));
+  for (const remoteRow of remote.breakdown || []) {
+    const localRow = localByTradeId.get(String(remoteRow.tradeId || ""));
+    if (!localRow) return false;
+    if (!["quantity", "price", "realizedPnl", "feeUsdt"].every((field) => sameClosureNumber(localRow[field], remoteRow[field]))) {
+      return false;
+    }
+    if (finiteFinancialValue(localRow.rawFee) && finiteFinancialValue(remoteRow.rawFee)
+      && !sameClosureNumber(localRow.rawFee, remoteRow.rawFee)) return false;
+    const localFeeCurrency = String(localRow.feeCurrency || localRow.rawFeeCcy || "").toUpperCase();
+    const remoteFeeCurrency = String(remoteRow.feeCurrency || remoteRow.rawFeeCcy || "").toUpperCase();
+    if (localFeeCurrency && remoteFeeCurrency && localFeeCurrency !== remoteFeeCurrency) return false;
+    if (!sameClosureTime(localRow.closedAt, remoteRow.closedAt)) return false;
+    if (localRow.exchangeOrderId && remoteRow.exchangeOrderId
+      && String(localRow.exchangeOrderId) !== String(remoteRow.exchangeOrderId)) return false;
+  }
+  return true;
+}
+
 export function reconcilePendingClose(db, executionOrder, { snapshot = null, closure = null } = {}) {
   const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+  const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
   const useAttributedManualExit = attributedManualClosure.complete === true;
   const credentialBinding = validateOkxCredentialBinding(db, {
     accountId: executionOrder.accountId,
@@ -2198,9 +2281,12 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   const submittedAt = new Date(executionOrder.closeSubmittedAt || 0).getTime();
   const snapshotAt = new Date(snapshot?.createdAt || 0).getTime();
   const manualClosedAt = useAttributedManualExit ? new Date(attributedManualClosure.closedAt || 0).getTime() : 0;
+  const systemClosedAt = attributedSystemClosure.fills.length
+    ? new Date(attributedSystemClosure.closedAt || 0).getTime() : 0;
   const authoritativeAfter = Math.max(
     Number.isFinite(submittedAt) ? submittedAt : 0,
-    Number.isFinite(manualClosedAt) ? manualClosedAt : 0
+    Number.isFinite(manualClosedAt) ? manualClosedAt : 0,
+    Number.isFinite(systemClosedAt) ? systemClosedAt : 0
   );
   if (!snapshot || snapshot.status !== "ok" || !Number.isFinite(snapshotAt) || snapshotAt < authoritativeAfter) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "authoritative_snapshot_pending" };
@@ -2208,7 +2294,16 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   if (snapshotPositionOpen(snapshot, executionOrder)) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "position_still_open" };
   }
-  const settledClosure = useAttributedManualExit ? attributedManualClosure : closure;
+  const useAttributedSystemExit = !useAttributedManualExit && attributedSystemClosure.complete === true;
+  if (!useAttributedManualExit && attributedSystemClosure.fills.length && closure?.complete
+    && (!useAttributedSystemExit || !closureEvidenceMatches(attributedSystemClosure, closure, executionOrder))) {
+    executionOrder.status = "close_reconciliation_pending";
+    executionOrder.closeReconciliationReason = "fill_evidence_conflict";
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_conflict" };
+  }
+  const settledClosure = useAttributedManualExit
+    ? attributedManualClosure
+    : (useAttributedSystemExit ? attributedSystemClosure : closure);
   if (!settledClosure?.complete) {
     executionOrder.status = "close_reconciliation_pending";
     executionOrder.closeReconciliationReason = "position_absent_fill_evidence_incomplete";
@@ -2228,8 +2323,13 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
     }
     executionOrder.entryFeeUsdt = Number(settledClosure.entryFeeUsdt);
   }
-  const exitReason = useAttributedManualExit ? "manual_exit" : (executionOrder.closeReason || "manual_close");
-  const existingCloseFills = useAttributedManualExit ? attributedManualClosure.fills : [];
+  const exitReason = useAttributedManualExit
+    ? "manual_exit"
+    : (executionOrder.closeReason || (executionOrder.closeReconciliationSource === "protection_orders"
+      ? "exchange_protection_filled" : "manual_close"));
+  const existingCloseFills = useAttributedManualExit
+    ? attributedManualClosure.fills
+    : (useAttributedSystemExit ? attributedSystemClosure.fills : []);
   return finalizeReconciledExecutionClose(db, executionOrder, {
     exitReason,
     closure: settledClosure,
@@ -2243,6 +2343,8 @@ function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, clos
   const holdingMinutes = Number.isFinite(openedAt) && Number.isFinite(closedAt)
     ? Math.max(0, Math.round((closedAt - openedAt) / 60000)) : null;
   if (existingCloseFills.length) {
+    const finalExistingFill = existingCloseFills.slice().sort((a, b) => new Date(b.exchangeFilledAt || b.createdAt || 0)
+      - new Date(a.exchangeFilledAt || a.createdAt || 0))[0];
     for (const fill of existingCloseFills) {
       const existingExitMode = fill.tradeAttribution?.exitMode;
       fill.executionOrderId ||= executionOrder.id;
@@ -2256,6 +2358,10 @@ function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, clos
       fill.financialBasis = "exchange_fills_confirmed_funding_unreconciled";
       fill.financialBasisComplete = false;
       fill.fundingReconciled ??= false;
+      if (fill === finalExistingFill) {
+        fill.partial = false;
+        if (fill.tradeAttribution) fill.tradeAttribution.partial = false;
+      }
       if (existingExitMode === "manual_exit") {
         fill.exitReason ||= exitReason;
         fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, {
