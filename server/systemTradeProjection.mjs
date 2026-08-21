@@ -70,13 +70,22 @@ function orderRole(fill = {}) {
   return null;
 }
 
+const CLOSE_IDENTITY_PREFIXES = ["close", "protection", "stop", "tp"];
+
+function closeAliasValues(row = {}, suffix) {
+  return values(...CLOSE_IDENTITY_PREFIXES.flatMap((prefix) => [
+    row[`${prefix}${suffix}`],
+    row[`${prefix}${suffix}s`]
+  ]));
+}
+
 function orderIdentitySets(row = {}, role) {
   if (role === "close") {
     return {
-      exchange: values(row.closeExchangeOrderId, row.closeExchangeOrderIds, row.protectionExchangeOrderId, row.protectionExchangeOrderIds),
-      client: values(row.closeClientOrderId, row.closeClientOrderIds, row.stopClientOrderId, row.tpClientOrderIds, row.protectionClientOrderIds),
-      local: values(row.closeOmsOrderId, row.closeOmsOrderIds),
-      algo: values(row.closeAlgoId, row.closeAlgoIds, row.stopAlgoId, row.tpAlgoIds)
+      exchange: closeAliasValues(row, "ExchangeOrderId"),
+      client: closeAliasValues(row, "ClientOrderId"),
+      local: closeAliasValues(row, "OmsOrderId"),
+      algo: closeAliasValues(row, "AlgoId")
     };
   }
   return {
@@ -89,10 +98,14 @@ function orderIdentitySets(row = {}, role) {
 
 function fillOrderIdentitySets(fill = {}, evidence = {}) {
   return {
-    exchange: values(fill.exchangeOrderId, fill.exchangeOrderIds, evidence.exchangeOrderId, evidence.exchangeOrderIds),
-    client: values(fill.clientOrderId, fill.clientOrderIds, evidence.clientOrderId, evidence.clientOrderIds),
-    local: values(fill.orderId, fill.orderIds, evidence.orderId, evidence.orderIds),
-    algo: values(fill.algoId, fill.algoIds, fill.exchangeAlgoId, fill.exchangeAlgoIds, evidence.algoId, evidence.algoIds, evidence.exchangeAlgoId, evidence.exchangeAlgoIds)
+    exchange: values(fill.exchangeOrderId, fill.exchangeOrderIds, evidence.exchangeOrderId, evidence.exchangeOrderIds,
+      closeAliasValues(fill, "ExchangeOrderId"), closeAliasValues(evidence, "ExchangeOrderId")),
+    client: values(fill.clientOrderId, fill.clientOrderIds, evidence.clientOrderId, evidence.clientOrderIds,
+      closeAliasValues(fill, "ClientOrderId"), closeAliasValues(evidence, "ClientOrderId")),
+    local: values(fill.orderId, fill.orderIds, evidence.orderId, evidence.orderIds,
+      closeAliasValues(fill, "OmsOrderId"), closeAliasValues(evidence, "OmsOrderId")),
+    algo: values(fill.algoId, fill.algoIds, fill.exchangeAlgoId, fill.exchangeAlgoIds, evidence.algoId, evidence.algoIds, evidence.exchangeAlgoId, evidence.exchangeAlgoIds,
+      closeAliasValues(fill, "AlgoId"), closeAliasValues(evidence, "AlgoId"))
   };
 }
 

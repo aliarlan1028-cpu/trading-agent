@@ -163,6 +163,42 @@ test("a close fill cannot use the persisted entry order identity", () => {
   assert.equal(classifyTradeFill(db, close).reason, "trade_exchange_order_binding_conflict");
 });
 
+const CLOSE_IDENTITY_ALIASES = ["close", "protection", "stop", "tp"].flatMap((prefix) => [
+  ["exchange", `${prefix}ExchangeOrderId`],
+  ["exchange", `${prefix}ExchangeOrderIds`],
+  ["client", `${prefix}ClientOrderId`],
+  ["client", `${prefix}ClientOrderIds`],
+  ["local", `${prefix}OmsOrderId`],
+  ["local", `${prefix}OmsOrderIds`],
+  ["algo", `${prefix}AlgoId`],
+  ["algo", `${prefix}AlgoIds`]
+]);
+
+const COUNTERPART_FIELD = {
+  exchange: "exchangeOrderId",
+  client: "clientOrderId",
+  local: "orderId",
+  algo: "algoId"
+};
+
+for (const [identityType, persistedField] of CLOSE_IDENTITY_ALIASES) {
+  for (const source of ["fill", "evidence"]) {
+    test(`persisted ${persistedField} rejects a conflicting ${source} ${identityType} identity`, () => {
+      const db = systemDb();
+      const execution = db.executionOrders[0];
+      const close = db.fills.find((fill) => fill.kind === "close");
+      const counterpartField = COUNTERPART_FIELD[identityType];
+      execution.closeExchangeOrderId = null;
+      execution[persistedField] = [`${persistedField}-expected`];
+      if (source === "fill") close[counterpartField] = `${persistedField}-conflict`;
+      else close.tradeAttribution = { evidence: { [counterpartField]: `${persistedField}-conflict` } };
+
+      assert.equal(classifyTradeFill(db, close).scope, "attribution_pending");
+      assert.equal(classifyTradeFill(db, close).reason, "trade_exchange_order_binding_conflict");
+    });
+  }
+}
+
 test("unmodified legacy positive-provenance row is projected without rewriting the raw fill", () => {
   const db = systemDb();
   const fill = db.fills[0];
