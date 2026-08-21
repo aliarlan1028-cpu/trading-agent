@@ -64,6 +64,7 @@ function systemDb(options = {}) {
     planId: options.planId || "plan-1",
     exchange: "OKX",
     exchangeOrderId: options.exchangeOrderId || "order-1",
+    closeExchangeOrderId: options.closeExchangeOrderId || "order-close-1",
     accountId: options.accountId || "account-a",
     environment: options.environment || "production",
     symbol: options.symbol || "BTC/USDT",
@@ -73,6 +74,7 @@ function systemDb(options = {}) {
   db.executionOrders.push(execution);
   db.tradePlans.push({ id: execution.planId, symbol: execution.symbol, direction: execution.direction });
   db.fills = financiallyCompletePair(options);
+  db.fills.find((fill) => fill.kind === "close").exchangeOrderId = execution.closeExchangeOrderId;
   return db;
 }
 
@@ -128,6 +130,38 @@ for (const [name, mutate, reason] of [
     assert.equal(classifyTradeFill(db, db.fills[0]).reason, reason);
   });
 }
+
+for (const [name, mutate, reason] of [
+  ["plan account", (db) => { db.tradePlans[0].accountId = "account-b"; }, "trade_account_binding_conflict"],
+  ["plan environment", (db) => { db.tradePlans[0].environment = "sandbox"; }, "trade_environment_binding_conflict"],
+  ["plan exchange", (db) => { db.tradePlans[0].exchange = "BINANCE"; }, "trade_exchange_binding_conflict"],
+  ["client order identity", (db) => {
+    db.executionOrders[0].clientOrderId = "entry-client-1";
+    db.fills[0].clientOrderId = "entry-client-2";
+  }, "trade_exchange_order_binding_conflict"],
+  ["local order identity", (db) => {
+    db.executionOrders[0].omsOrderId = "entry-oms-1";
+    db.fills[0].orderId = "entry-oms-2";
+  }, "trade_exchange_order_binding_conflict"],
+  ["plural exchange order identities", (db) => { db.fills[0].exchangeOrderIds = ["order-1", "order-2"]; }, "trade_exchange_order_binding_conflict"]
+]) {
+  test(`${name} binding conflicts fail closed`, () => {
+    const db = systemDb();
+    mutate(db);
+
+    assert.equal(classifyTradeFill(db, db.fills[0]).scope, "attribution_pending");
+    assert.equal(classifyTradeFill(db, db.fills[0]).reason, reason);
+  });
+}
+
+test("a close fill cannot use the persisted entry order identity", () => {
+  const db = systemDb();
+  const close = db.fills.find((fill) => fill.kind === "close");
+  close.exchangeOrderId = db.executionOrders[0].exchangeOrderId;
+
+  assert.equal(classifyTradeFill(db, close).scope, "attribution_pending");
+  assert.equal(classifyTradeFill(db, close).reason, "trade_exchange_order_binding_conflict");
+});
 
 test("unmodified legacy positive-provenance row is projected without rewriting the raw fill", () => {
   const db = systemDb();

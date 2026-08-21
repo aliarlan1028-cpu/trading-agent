@@ -60,20 +60,64 @@ function result({ scope, origin, exitMode = null, executionOrderId = null, planI
   };
 }
 
-function executionOrderIds(executionOrder = {}) {
-  return unique([
-    executionOrder.exchangeOrderId,
-    executionOrder.closeExchangeOrderId,
-    executionOrder.clientOrderId,
-    executionOrder.closeClientOrderId,
-    executionOrder.omsOrderId
-  ]);
+function values(...items) {
+  return unique(items.flatMap((item) => Array.isArray(item) ? item : [item]));
+}
+
+function orderRole(fill = {}) {
+  if (fill.kind === "entry") return "entry";
+  if (fill.kind === "close" || fill.kind === "exit") return "close";
+  return null;
+}
+
+function orderIdentitySets(row = {}, role) {
+  if (role === "close") {
+    return {
+      exchange: values(row.closeExchangeOrderId, row.closeExchangeOrderIds, row.protectionExchangeOrderId, row.protectionExchangeOrderIds),
+      client: values(row.closeClientOrderId, row.closeClientOrderIds, row.stopClientOrderId, row.tpClientOrderIds, row.protectionClientOrderIds),
+      local: values(row.closeOmsOrderId, row.closeOmsOrderIds),
+      algo: values(row.closeAlgoId, row.closeAlgoIds, row.stopAlgoId, row.tpAlgoIds)
+    };
+  }
+  return {
+    exchange: values(row.exchangeOrderId, row.entryExchangeOrderId, row.entryExchangeOrderIds),
+    client: values(row.clientOrderId, row.entryClientOrderId, row.entryClientOrderIds),
+    local: values(row.omsOrderId, row.entryOmsOrderId, row.entryOmsOrderIds),
+    algo: values(row.entryAlgoId, row.entryAlgoIds)
+  };
+}
+
+function fillOrderIdentitySets(fill = {}, evidence = {}) {
+  return {
+    exchange: values(fill.exchangeOrderId, fill.exchangeOrderIds, evidence.exchangeOrderId, evidence.exchangeOrderIds),
+    client: values(fill.clientOrderId, fill.clientOrderIds, evidence.clientOrderId, evidence.clientOrderIds),
+    local: values(fill.orderId, fill.orderIds, evidence.orderId, evidence.orderIds),
+    algo: values(fill.algoId, fill.algoIds, fill.exchangeAlgoId, fill.exchangeAlgoIds, evidence.algoId, evidence.algoIds, evidence.exchangeAlgoId, evidence.exchangeAlgoIds)
+  };
+}
+
+function identitiesMatchRole(inputs, expected, opposite) {
+  let matched = false;
+  for (const type of Object.keys(inputs)) {
+    if (inputs[type].some((id) => opposite[type].includes(id))) return false;
+    if (inputs[type].length && expected[type].length) {
+      if (inputs[type].some((id) => !expected[type].includes(id))) return false;
+      matched = true;
+    }
+  }
+  return matched;
 }
 
 function findExecutionByExchangeIdentity(db = {}, fill = {}) {
-  const ids = unique([fill.exchangeOrderId, fill.clientOrderId, fill.orderId]);
-  if (!ids.length) return [];
-  return (db.executionOrders || []).filter((executionOrder) => executionOrderIds(executionOrder).some((id) => ids.includes(id)));
+  const role = orderRole(fill);
+  const ids = fillOrderIdentitySets(fill);
+  if (!role || !Object.values(ids).some((values) => values.length)) return [];
+  const oppositeRole = role === "entry" ? "close" : "entry";
+  return (db.executionOrders || []).filter((executionOrder) => identitiesMatchRole(
+    ids,
+    orderIdentitySets(executionOrder, role),
+    orderIdentitySets(executionOrder, oppositeRole)
+  ));
 }
 
 function pending(fill, reason, executionOrder = null, planId = null) {
@@ -112,17 +156,23 @@ function bindingConflict(fill, executionOrder, plan) {
   }
   if (plan && stringValue(plan.id) !== stringValue(executionOrder.planId)) return "trade_plan_binding_conflict";
 
-  if (conflict([fill.accountId, evidence.accountId, executionOrder.accountId])) return "trade_account_binding_conflict";
-  if (conflict([fill.environment, evidence.environment, executionOrder.environment], normalizedEnvironment)) return "trade_environment_binding_conflict";
-  if (conflict([fill.exchange, executionOrder.exchange], normalizedExchange)) return "trade_exchange_binding_conflict";
+  if (conflict([fill.accountId, evidence.accountId, executionOrder.accountId, plan?.accountId])) return "trade_account_binding_conflict";
+  if (conflict([fill.environment, evidence.environment, executionOrder.environment, plan?.environment], normalizedEnvironment)) return "trade_environment_binding_conflict";
+  if (conflict([fill.exchange, executionOrder.exchange, plan?.exchange], normalizedExchange)) return "trade_exchange_binding_conflict";
   if (conflict([fill.symbol, executionOrder.symbol, plan?.symbol], canonicalSymbol)) return "trade_symbol_binding_conflict";
   if (conflict([fill.direction, executionOrder.direction, plan?.direction], canonicalPositionDirection)) return "trade_direction_binding_conflict";
 
-  const fillExchangeOrderIds = unique([fill.exchangeOrderId, evidence.exchangeOrderId]);
-  const knownExecutionOrderIds = executionOrderIds(executionOrder);
-  if (fillExchangeOrderIds.length > 1 || (fillExchangeOrderIds.length && knownExecutionOrderIds.length
-    && !fillExchangeOrderIds.every((id) => knownExecutionOrderIds.includes(id)))) {
-    return "trade_exchange_order_binding_conflict";
+  const role = orderRole(fill);
+  if (role) {
+    const identities = fillOrderIdentitySets(fill, evidence);
+    const expected = orderIdentitySets(executionOrder, role);
+    const opposite = orderIdentitySets(executionOrder, role === "entry" ? "close" : "entry");
+    for (const type of Object.keys(identities)) {
+      if (identities[type].some((id) => opposite[type].includes(id))) return "trade_exchange_order_binding_conflict";
+      if (identities[type].length && expected[type].length && identities[type].some((id) => !expected[type].includes(id))) {
+        return "trade_exchange_order_binding_conflict";
+      }
+    }
   }
   return null;
 }
