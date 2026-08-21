@@ -509,7 +509,8 @@ export function projectSystemTradeFill(db, fill) {
   const executionOrder = (db.executionOrders || []).find((row) => stringValue(row?.id) === stringValue(attribution.executionOrderId));
   const financialEvidencePending = fill?.kind === "close"
     && executionOrder?.status === "close_reconciliation_pending"
-    && executionOrder?.closeReconciliationReason === "fill_evidence_conflict";
+    && ["fill_evidence_conflict", "authoritative_close_evidence_incomplete"]
+      .includes(executionOrder?.closeReconciliationReason);
   const projectedAttribution = structuredClone(attribution);
   if (financialEvidencePending) projectedAttribution.partial = true;
   return {

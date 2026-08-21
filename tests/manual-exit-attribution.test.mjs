@@ -1183,6 +1183,78 @@ test("financial backfill rejects conflicts in populated fields of an incomplete 
   assert.equal(fundingQueries, 0);
 });
 
+test("an authoritative system close with a missing normalized fee reopens financial reconciliation without mutating raw", async () => {
+  const { db, execution } = managedDb({ status: "closed" });
+  const plan = db.tradePlans.find((row) => row.id === execution.planId);
+  plan.status = "completed";
+  const close = addSystemClose(db, execution, {
+    partial: false,
+    exchangeOrderId: "missing-normalized-fee-order",
+    exchangeTradeId: "missing-normalized-fee-trade",
+    quantity: 0.01,
+    price: 60_000,
+    realizedPnl: 10,
+    feeUsdt: 0.01,
+    exchangeFilledAt: CLOSE_AT
+  });
+  close.feeUsdt = null;
+  close.feeCostUsdt = null;
+  close.fundingReconciled = false;
+  close.fundingFeeUsdt = null;
+  db.accountSnapshots = [{
+    exchange: "OKX", accountId: "account-a", environment: "production", apiKeyFingerprint: API_KEY_FINGERPRINT,
+    status: "ok", positions: [], createdAt: "2026-08-15T02:00:00.000Z"
+  }];
+  const rawBefore = structuredClone(close);
+  assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 1);
+  let fundingQueries = 0;
+  let outboundActions = 0;
+
+  const result = await pollExecutionOrders(db, {
+    nowMs: Date.parse("2026-08-15T03:00:00.000Z"),
+    fundingReconciliationGraceMs: 0,
+    executeTradeAction: async () => { outboundActions += 1; return { status: "submitted" }; },
+    fetchLifecycleClosure: async () => ({
+      complete: true,
+      accountId: "account-a",
+      environment: "production",
+      exchange: "OKX",
+      symbol: "BTC/USDT",
+      entryFeeUsdt: 0.01,
+      quantity: 0.01,
+      weightedPrice: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT,
+      exchangeOrderIds: [close.exchangeOrderId],
+      tradeIds: [close.exchangeTradeId],
+      breakdown: [{
+        exchangeOrderId: close.exchangeOrderId,
+        tradeId: close.exchangeTradeId,
+        quantity: 0.01,
+        price: 60_000,
+        realizedPnl: 10,
+        feeUsdt: 0.01,
+        closedAt: CLOSE_AT
+      }]
+    }),
+    fetchFundingBills: async () => {
+      fundingQueries += 1;
+      return { complete: true, fundingFeeUsdt: 0, billIds: [] };
+    }
+  });
+
+  assert.equal(result.financialReconciliation.results[0].status, "authoritative_close_evidence_incomplete");
+  assert.deepEqual(close, rawBefore);
+  assert.equal(execution.status, "close_reconciliation_pending");
+  assert.equal(execution.closeReconciliationReason, "authoritative_close_evidence_incomplete");
+  assert.equal(plan.status, "executing");
+  assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 0);
+  assert.equal(db.fills.filter((fill) => fill.kind === "close").length, 1);
+  assert.equal(fundingQueries, 0);
+  assert.equal(outboundActions, 0);
+});
+
 test("financial backfill cannot replace an authoritative non-estimated entry fee", () => {
   const { db, execution } = managedDb({ status: "closed" });
   const entry = db.fills.find((fill) => fill.kind === "entry");

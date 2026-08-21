@@ -2212,7 +2212,9 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
       }
       const applied = applyOkxLifecycleFinancialEvidence(db, executionOrder, closure);
       if (!applied.applied) {
-        if (applied.reason === "fill_evidence_conflict") markExecutionFinancialEvidencePending(db, executionOrder);
+        if (["fill_evidence_conflict", "authoritative_close_evidence_incomplete"].includes(applied.reason)) {
+          markExecutionFinancialEvidencePending(db, executionOrder, applied.reason);
+        }
         results.push({ key: lifecycle.key, status: applied.reason });
         continue;
       }
