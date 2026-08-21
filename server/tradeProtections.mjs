@@ -2,7 +2,7 @@
 // 都从完整平仓生命周期的净结果（开/平仓费 + 资金费）【无状态】计算,自动到期解除——
 // 不引入需持久化的锁状态,避免运行时抢写/漂移。只拦"新开仓",不影响平仓/减仓。
 import { appendAudit, appendTrace, id, nowIso } from "./store.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { reconcileRiskIncidentLifecycle } from "./riskIncidentLifecycle.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 
@@ -12,13 +12,7 @@ const envNum = (key, def) => { const n = Number(process.env[key]); return Number
 // 已平仓成交按时间正序 → { pnl, at }
 function closedTrades(db) {
   // 部分平仓属于同一交易生命周期，必须合并后再计算连亏和回撤，避免一次分批退出被算成多笔亏损。
-  // 极旧数据可能没有任何订单/计划/fill id；给它仅在本次计算内使用的稳定索引，不能静默漏算。
-  const normalized = (db.fills || []).map((fill, index) => (
-    fill?.executionOrderId || fill?.tradePlanId || fill?.planId || fill?.positionId || fill?.id
-      ? fill
-      : { ...fill, id: `legacy_unkeyed_close_${index}` }
-  ));
-  return groupClosedTradeLifecycles(normalized)
+  return groupSystemClosedTradeLifecycles(db)
     .filter((lifecycle) => lifecycle.netRealizedPnl !== null && lifecycle.netRealizedPnl !== undefined && lifecycle.netRealizedPnl !== "" && Number.isFinite(Number(lifecycle.netRealizedPnl)))
     .map((lifecycle) => ({ pnl: Number(lifecycle.netRealizedPnl), at: new Date(lifecycle.lastClosedAt || 0).getTime() }))
     .filter((t) => Number.isFinite(t.at) && t.at > 0)

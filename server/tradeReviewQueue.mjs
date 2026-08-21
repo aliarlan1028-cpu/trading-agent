@@ -7,6 +7,7 @@ import {
   sameTradeLifecycle,
   tradeLifecycleKey
 } from "./tradeLifecycle.mjs";
+import { groupSystemClosedTradeLifecycles, projectSystemTradeFill, systemTradeFills } from "./systemTradeProjection.mjs";
 
 export {
   findTradeEntryFill,
@@ -96,6 +97,7 @@ function stampTradeReviewStrategyRef(db, review, source) {
 }
 
 export function ensureTradeReviewQueued(db, fill) {
+  fill = projectSystemTradeFill(db, fill);
   if (fill?.kind !== "close" || !finite(fill.realizedPnl)) return null;
   db.reviews ||= [];
   const key = tradeLifecycleKey(fill);
@@ -142,7 +144,7 @@ export function ensureTradeReviewQueued(db, fill) {
 export function syncTradeReviewQueue(db, options = {}) {
   let queued = 0;
   const fillFilter = typeof options.fillFilter === "function" ? options.fillFilter : () => true;
-  const closes = (db.fills || []).filter((fill) => fill?.kind === "close" && finite(fill.realizedPnl) && fillFilter(fill));
+  const closes = systemTradeFills(db).filter((fill) => fill?.kind === "close" && finite(fill.realizedPnl) && fillFilter(fill));
   // 先用最终平仓创建生命周期，再把更早的部分平仓 fillId 补进同一条复盘，避免依赖数组顺序。
   const ordered = [...closes.filter((fill) => fill.partial !== true), ...closes.filter((fill) => fill.partial === true)];
   for (const fill of ordered) {
@@ -152,7 +154,7 @@ export function syncTradeReviewQueue(db, options = {}) {
   }
   const reconciled = reconcileReflectedTradeReviews(db);
   let financialsBackfilled = 0;
-  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const lifecycles = groupSystemClosedTradeLifecycles(db);
   for (const lifecycle of lifecycles) {
     const review = (db.reviews || []).find((item) => item.type === "trade" && item.tradeLifecycleKey === lifecycle.key);
     if (review) stampTradeReviewStrategyRef(db, review, lifecycle);
@@ -179,7 +181,7 @@ function reflectionMemoryForLifecycle(db, review, lifecycle) {
 // 新队列回填后不能再次调用 LLM，也不能永久停在 pending；以真实成交和既有记忆做幂等对账。
 export function reconcileReflectedTradeReviews(db) {
   let reconciled = 0;
-  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const lifecycles = groupSystemClosedTradeLifecycles(db);
   for (const lifecycle of lifecycles) {
     if (!isFinanciallyReconciledLifecycle(lifecycle)) continue;
     if (!lifecycle.fills.length || !lifecycle.fills.every((fill) => Boolean(fill.reflectedAt))) continue;

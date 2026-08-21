@@ -3,13 +3,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyProtections, consecutiveLossCooldown, drawdownLockout, evaluateProtections } from "../server/tradeProtections.mjs";
-import { financiallyReconciledFills, reconciledFill } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance, reconciledFill } from "./financial-fixtures.mjs";
 
 const HOUR = 3600000;
 // 造已平仓成交:pnl + 距今小时数
 const fill = (pnl, hoursAgo) => reconciledFill({ kind: "close", executionOrderId: `fixture-${pnl}-${hoursAgo}`, realizedPnl: pnl, createdAt: new Date(Date.now() - hoursAgo * HOUR).toISOString() });
 
-const completeDb = (fills, extra = {}) => ({ ...extra, fills: financiallyReconciledFills(fills) });
+const completeDb = (fills, extra = {}) => {
+  const db = { ...extra, fills: financiallyReconciledFills(fills) };
+  return installSystemTradeProvenance(db);
+};
 
 test("连亏冷却:尾部连续3笔亏损且在冷却窗内 → 触发", () => {
   const db = completeDb([fill(50, 10), fill(-20, 3), fill(-15, 2), fill(-25, 1)]);

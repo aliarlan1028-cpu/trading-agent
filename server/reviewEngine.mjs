@@ -4,13 +4,13 @@ import { getHistoricalKlines } from "./exchangeConnector.mjs";
 import {
   completeTradeReview,
   findTradeEntryFill,
-  groupClosedTradeLifecycles,
   isFinanciallyReconciledLifecycle,
   markTradeReviewProcessing,
   resolveAuthoritativeTradeStrategyRef,
   resolveTradeContext,
   syncTradeReviewQueue
 } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { stampReviewMemoryContext } from "./reviewLearning.mjs";
 import { buildStructuredTradeAssessment, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 import { belongsToPrincipal } from "./principalScope.mjs";
@@ -233,7 +233,7 @@ export function buildReviewAnalytics(db, options = {}) {
   const belongs = (row) => belongsToPrincipal(row, principal);
   // ④ AI 绩效只统计可归因到 AI 计划/执行单的成交;手动/外部单(无归因)不计入 AI 战绩
   const scopedFills = (db.fills || []).filter(belongs);
-  const allLifecycles = groupClosedTradeLifecycles(scopedFills);
+  const allLifecycles = groupSystemClosedTradeLifecycles(db, { fills: scopedFills });
   const pendingFinancialReconciliation = allLifecycles.filter((row) => !isFinanciallyReconciledLifecycle(row)).length;
   const closes = allLifecycles.filter(isFinanciallyReconciledLifecycle)
     .map((lifecycle) => {
@@ -630,8 +630,8 @@ export async function runTradeReflection(db) {
   migrateLegacyOwnerReviewProvenance(db);
   // 先把所有真实平仓补入页面可见队列；部分平仓按执行单/计划聚合为一个交易生命周期。
   syncTradeReviewQueue(db);
-  const pendingLifecycles = groupClosedTradeLifecycles(db.fills || [], { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
-  const allByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((item) => [item.key, item]));
+  const pendingLifecycles = groupSystemClosedTradeLifecycles(db, { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
+  const allByKey = new Map(groupSystemClosedTradeLifecycles(db).map((item) => [item.key, item]));
   const lifecycles = pendingLifecycles.map((item) => allByKey.get(item.key) || item);
   if (!lifecycles.length) return { reflected: 0, memorized: 0, lessons: [] };
   db.memoryItems ||= [];
@@ -772,7 +772,10 @@ export async function runTradeReflection(db) {
     };
     // 完整落库后才标记已处理。若中途抛出异常，下轮仍能重试，不会出现“成交已 reflected、复盘却永久 processing”。
     const reflectedAt = nowIso();
-    for (const closeFill of lifecycle.fills) closeFill.reflectedAt = reflectedAt;
+    for (const closeFill of lifecycle.fills) {
+      const rawFill = (db.fills || []).find((item) => item?.id && item.id === closeFill.id);
+      if (rawFill) rawFill.reflectedAt = reflectedAt;
+    }
   }
   if (db.memoryItems.length > 200) db.memoryItems = db.memoryItems.slice(0, 200);
   const improvementRegistry = refreshOwnerImprovementRegistry(db);

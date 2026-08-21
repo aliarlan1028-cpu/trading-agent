@@ -210,6 +210,8 @@ test("post-close news and symbol substrings cannot enter causal trade evidence",
 
 test("queued trade reviews inherit tenant and user provenance from the fill", () => {
   const db = dbFixture();
+  db.executionOrders.push({ id: "exec-other", planId: "plan-other", exchange: "OKX", symbol: "ETH/USDT", direction: "long", status: "closed" });
+  db.tradePlans.push({ id: "plan-other", symbol: "ETH/USDT", direction: "long" });
   const review = ensureTradeReviewQueued(db, {
     id: "close-other", kind: "close", executionOrderId: "exec-other", symbol: "ETH/USDT",
     realizedPnl: -1, tenantId: "tenant_other", userId: "other-user"

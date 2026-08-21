@@ -1,6 +1,6 @@
 import { currentEquityUsdt } from "./financialFacts.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from "./businessTime.mjs";
@@ -544,7 +544,7 @@ export async function refreshAccountingAuthoritatively(db, options = {}) {
 // ---------------------------------------------------------------------------
 export function performanceReport(db) {
   // 部分平仓属于同一个仓位生命周期，绩效笔数/胜率/回撤必须先聚合，不能把三次减仓算成三笔交易。
-  const lifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const lifecycles = groupSystemClosedTradeLifecycles(db);
   const reconciled = lifecycles.filter((item) => item.netRealizedPnl !== null && item.netRealizedPnl !== undefined && item.netRealizedPnl !== "" && Number.isFinite(Number(item.netRealizedPnl)));
   const closes = reconciled.map((item) => ({ ...item.representative, realizedPnl: item.netRealizedPnl, grossRealizedPnl: item.realizedPnl }));
   const wins = closes.filter((fill) => Number(fill.realizedPnl) > 0);

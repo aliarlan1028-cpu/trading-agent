@@ -55,3 +55,47 @@ export function financiallyReconciledFills(fills = []) {
   }
   return [...syntheticEntries, ...rows];
 }
+
+// Performance/review/protection scenarios opt into system ownership separately
+// from financial completeness. This supplies persisted execution and plan facts;
+// it deliberately does not write tradeAttribution onto arbitrary fixture fills.
+export function installSystemTradeProvenance(db, fills = db.fills || []) {
+  db.executionOrders ||= [];
+  db.tradePlans ||= [];
+  const executions = new Map(db.executionOrders.map((row) => [String(row.id || ""), row]));
+  const plans = new Map(db.tradePlans.map((row) => [String(row.id || ""), row]));
+  for (const fill of fills) {
+    const executionOrderId = fill?.executionOrderId;
+    if (executionOrderId === null || executionOrderId === undefined || executionOrderId === "") continue;
+    const id = String(executionOrderId);
+    const planId = String(fill.tradePlanId || fill.planId || `fixture-plan-${id}`);
+    let execution = executions.get(id);
+    if (!execution) {
+      execution = {
+        id,
+        planId,
+        exchange: fill.exchange || "OKX",
+        accountId: fill.accountId || "fixture-account",
+        environment: fill.environment || "production",
+        symbol: fill.symbol || "BTC/USDT",
+        direction: fill.direction || "long",
+        status: "closed"
+      };
+      db.executionOrders.push(execution);
+      executions.set(id, execution);
+    }
+    if (!plans.has(planId)) {
+      const plan = {
+        id: planId,
+        exchange: execution.exchange,
+        accountId: execution.accountId,
+        environment: execution.environment,
+        symbol: execution.symbol,
+        direction: execution.direction
+      };
+      db.tradePlans.push(plan);
+      plans.set(planId, plan);
+    }
+  }
+  return db;
+}

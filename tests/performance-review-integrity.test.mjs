@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { financiallyReconciledFills } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "performance-review-test-"));
 
@@ -36,6 +36,7 @@ test("实盘绩效按交易生命周期聚合部分平仓并计算真实 USDT �
     { id: "loss-a", kind: "close", executionOrderId: "e2", symbol: "ADA/USDT", realizedPnl: -6, partial: true, createdAt: "2026-08-01T02:00:00Z" },
     { id: "win", kind: "close", executionOrderId: "e1", symbol: "BTC/USDT", realizedPnl: 10, createdAt: "2026-08-01T01:00:00Z" }
   ]);
+  installSystemTradeProvenance(db);
   const report = performanceReport(db);
   assert.equal(report.trades, 2, "两次部分平仓必须聚合为一个交易生命周期");
   assert.equal(report.partialCloseFills, 1);
@@ -54,6 +55,7 @@ test("实盘胜负与总盈亏按记录费用后的净结果计算", () => {
     { id: "clean-entry", kind: "entry", executionOrderId: "clean", symbol: "BTC/USDT", feeUsdt: 0.05, createdAt: "2026-08-01T01:59:00Z" },
     { id: "clean-win", kind: "close", executionOrderId: "clean", symbol: "BTC/USDT", realizedPnl: 1, feeUsdt: 0.1, createdAt: "2026-08-01T02:00:00Z" }
   ]);
+  installSystemTradeProvenance(db);
   const report = performanceReport(db);
   assert.equal(report.wins, 1);
   assert.equal(report.losses, 1);
@@ -65,6 +67,8 @@ test("平仓确认立即进入幂等复盘队列，部分平仓合并到同一�
   const db = baseDb();
   const a = { id: "fa", kind: "close", executionOrderId: "exec-1", symbol: "SUI/USDT", direction: "short", realizedPnl: 0.2, createdAt: "2026-08-01T01:00:00Z" };
   const b = { id: "fb", kind: "close", executionOrderId: "exec-1", symbol: "SUI/USDT", direction: "short", realizedPnl: 0.3, createdAt: "2026-08-01T01:05:00Z" };
+  db.fills = [a, b];
+  installSystemTradeProvenance(db);
   ensureTradeReviewQueued(db, a);
   ensureTradeReviewQueued(db, b);
   assert.equal(db.reviews.length, 1);
@@ -80,6 +84,7 @@ test("自动复盘完成后更新页面队列而不是只写隐藏记忆", async
     entryRationale: "结构回踩确认", createdAt: "2026-08-01T01:30:00Z"
   }]);
   db.tradePlans = [{ id: "plan-small", rationale: "结构回踩确认" }];
+  installSystemTradeProvenance(db);
   const result = await runTradeReflection(db);
   assert.equal(result.reflected, 1);
   assert.equal(db.reviews.length, 1);
@@ -96,6 +101,7 @@ test("净盈亏为零的交易明确归类 flat，绝不写成亏损候选教训
     entryRationale: "结构确认后入场", createdAt: "2026-08-01T01:30:00Z"
   }]);
   db.tradePlans = [{ id: "plan-flat", rationale: "结构确认后入场" }];
+  installSystemTradeProvenance(db);
   const result = await runTradeReflection(db);
   assert.equal(result.lessons[0].outcome, "flat");
   assert.equal(result.lessons[0].win, null);
@@ -117,6 +123,7 @@ test("旧版本已反思成交会幂等恢复为已完成而不会永远 pending
     id: "legacy-memory", source: "auto_reflection", fillId: "legacy-close",
     content: "旧版本真实复盘结论", createdAt: "2026-08-02T02:00:00Z"
   }];
+  installSystemTradeProvenance(db);
 
   const first = syncTradeReviewQueue(db);
   assert.deepEqual(first, { queued: 1, reconciled: 1, financialsBackfilled: 0 });
@@ -139,6 +146,7 @@ test("已完成复盘会回填完整生命周期净值与开仓费", () => {
     { id: "final", kind: "close", executionOrderId: "legacy-net", realizedPnl: 8, feeUsdt: .3, fundingFeeUsdt: -.5, createdAt: "2026-08-02T02:00:00Z" }
   ]);
   db.reviews = [{ id: "old-review", type: "trade", tradeLifecycleKey: "legacy-net", status: "completed", realizedPnl: 8, feeUsdt: .3 }];
+  installSystemTradeProvenance(db);
   const result = syncTradeReviewQueue(db);
   assert.equal(result.financialsBackfilled, 1);
   assert.deepEqual({ gross: db.reviews[0].realizedPnl, closeFee: db.reviews[0].feeUsdt, entryFee: db.reviews[0].entryFeeUsdt, funding: db.reviews[0].fundingFeeUsdt, net: db.reviews[0].netRealizedPnl }, { gross: 10, closeFee: .5, entryFee: 1, funding: -.5, net: 8 });
@@ -159,6 +167,7 @@ test("费用把毛盈利翻为净亏损后，分析、记忆、学习效果与�
     { id: `entry-${index}`, kind: "entry", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", feeUsdt: 0.8, tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: `2026-08-01T${String(index).padStart(2, "0")}:00:00Z` },
     { id: `close-${index}`, kind: "close", executionOrderId: `life-${index}`, tradePlanId: plan.id, symbol: "ADA/USDT", strategy: "fee_flip", realizedPnl: 1, feeUsdt: 0.4, entryRationale: "突破确认", exitReason: "计划退出", tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: `2026-08-02T${String(index).padStart(2, "0")}:00:00Z` }
   ]));
+  installSystemTradeProvenance(db);
   db.reviews = [{
     id: "review-fee", type: "trade", status: "completed", tradeLifecycleKey: "life-0", tradePlanId: "plan-0",
     memoryItemId: "mem-fee", fillIds: ["close-0"], symbol: "ADA/USDT", realizedPnl: 1,
