@@ -11,7 +11,7 @@ import {
   transitionReviewLesson,
   verifyDecisionFactSnapshot
 } from "../server/ownerReviewLoop.mjs";
-import { installSystemTradeProvenance } from "./financial-fixtures.mjs";
+import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 import { strategyDefinitionHash } from "../server/strategyStudio.mjs";
 import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 import { createStrategyImprovementCycle, storedTradeWindowNews } from "../server/reviewEngine.mjs";
@@ -84,6 +84,32 @@ function lifecycle(fillOverrides = {}, lifecycleOverrides = {}) {
     netRealizedPnl: -2,
     ...lifecycleOverrides
   };
+}
+
+// Review metadata is never authorization by itself. Tests that intend to model
+// a system-origin review must persist the execution, plan, and fill evidence
+// that can be projected into a closed system lifecycle.
+function installReviewLifecycleEvidence(db, reviews = db.reviews || []) {
+  const seen = new Set();
+  for (const review of reviews) {
+    if (!review?.id) continue;
+    const executionOrderId = review.executionOrderId || review.tradeLifecycleKey || `review-exec-${review.id}`;
+    if (seen.has(executionOrderId)) continue;
+    seen.add(executionOrderId);
+    const tradePlanId = review.tradePlanId || `review-plan-${review.id}`;
+    const fillIds = [`review-entry-${review.id}`, `review-close-${review.id}`];
+    Object.assign(review, { executionOrderId, tradeLifecycleKey: executionOrderId, tradePlanId, fillIds: review.fillIds || [fillIds[1]] });
+    db.tradePlans.push({
+      id: tradePlanId, tenantId: review.tenantId, ownerUserId: review.ownerUserId,
+      symbol: "BTC/USDT", direction: "long", exchange: "OKX", accountId: "fixture-account", environment: "production"
+    });
+    db.fills.push(
+      { id: fillIds[0], kind: "entry", executionOrderId, tradePlanId, symbol: "BTC/USDT", direction: "long", quantity: 1, price: 100, tenantId: review.tenantId, ownerUserId: review.ownerUserId, createdAt: "2026-08-18T00:00:00.000Z" },
+      { id: fillIds[1], kind: "close", executionOrderId, tradePlanId, symbol: "BTC/USDT", direction: "long", quantity: 1, price: 101, realizedPnl: review.netRealizedPnl ?? 1, tenantId: review.tenantId, ownerUserId: review.ownerUserId, createdAt: "2026-08-18T01:00:00.000Z" }
+    );
+  }
+  db.fills = financiallyReconciledFills(db.fills);
+  installSystemTradeProvenance(db);
 }
 
 test("decision fact snapshots are immutable, hash-verifiable, and fail closed after mutation", () => {
@@ -238,6 +264,7 @@ test("candidate lessons are excluded until Owner approval and retired lessons st
   };
   db.memoryItems.push(memory);
   db.reviews.push({ id: "review-1", memoryItemId: memory.id, netRealizedPnl: -2 });
+  installReviewLifecycleEvidence(db);
   assert.equal(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }).length, 0);
 
   const approved = transitionReviewLesson(db, memory.id, "approve", "Owner");
@@ -304,6 +331,7 @@ test("continue observing keeps a lesson out of Agent decisions until explicit ap
   };
   db.memoryItems.push(memory);
   db.reviews.push({ id: "observe-review", type: "trade", status: "completed", tenantId: "tenant_owner", ownerUserId: "owner-1", memoryItemId: memory.id, netRealizedPnl: -1 });
+  installReviewLifecycleEvidence(db);
   const observed = transitionReviewLesson(db, memory.id, "observe", "Owner");
   assert.equal(observed.ok, true);
   assert.equal(observed.memory.learningStatus, "observing");
@@ -323,6 +351,10 @@ function completedReview(idValue, rootCode = "entry_timing", outcome = "loss") {
     status: "completed",
     tenantId: "tenant_owner",
     ownerUserId: "owner-1",
+    executionOrderId: `review-exec-${idValue}`,
+    tradeLifecycleKey: `review-exec-${idValue}`,
+    tradePlanId: `review-plan-${idValue}`,
+    fillIds: [`review-close-${idValue}`],
     improvementScope: { strategyProductId: "trend-pullback", timeframe: "1h", regime: "uptrend" },
     structuredAssessment: {
       outcome,
@@ -368,18 +400,21 @@ function seedStrategyCandidateEvidence(db, versionId = "trend-pullback-candidate
   db.strategyMarketplaceListings.push({ id: `listing-${versionId}`, strategyVersionId: versionId, status: "published" });
   db.paperSessions.push(paper);
   db.reviews.push(...liveReviews);
+  installReviewLifecycleEvidence(db, liveReviews);
   return { draft, backtest, version, paper, liveReviews };
 }
 
 test("repeated issues aggregate idempotently and only cross the Owner threshold once", () => {
   const db = baseDb();
   db.reviews.push(completedReview("r1"), completedReview("r2"));
+  installReviewLifecycleEvidence(db);
   refreshOwnerImprovementRegistry(db);
   assert.equal(db.ownerImprovementItems.length, 1);
   assert.equal(db.ownerImprovementItems[0].state, "evidence_accumulating");
   assert.equal(db.ownerImprovementItems[0].evidenceCount, 2);
 
   db.reviews.push(completedReview("r3"));
+  installReviewLifecycleEvidence(db, db.reviews.slice(-1));
   refreshOwnerImprovementRegistry(db);
   refreshOwnerImprovementRegistry(db);
   assert.equal(db.ownerImprovementItems.length, 1, "refresh is idempotent");
@@ -401,6 +436,7 @@ test("repeated issues aggregate idempotently and only cross the Owner threshold 
 test("safety-relevant data failures surface immediately with an engineering brief", () => {
   const db = baseDb();
   db.reviews.push(completedReview("r-data", "data_quality"));
+  installReviewLifecycleEvidence(db);
   refreshOwnerImprovementRegistry(db);
   const snapshot = buildOwnerReviewLoopSnapshot(db);
   assert.equal(snapshot.scope, "owner_instance_only");
@@ -448,6 +484,7 @@ test("Owner registry and lesson snapshot never aggregate another user's tagged r
     { ...completedReview("other-review"), tenantId: "tenant_other", ownerUserId: "other-user" },
     { ...completedReview("other-review-same-tenant"), tenantId: "tenant_owner", ownerUserId: "other-user" }
   ];
+  installReviewLifecycleEvidence(db);
   db.memoryItems = [
     { id: "owner-memory", source: "auto_reflection", learningStatus: "candidate", title: "Owner", tenantId: "tenant_owner", userId: "owner-1" },
     { id: "other-memory", source: "auto_reflection", learningStatus: "candidate", title: "Other", tenantId: "tenant_other", userId: "other-user" }
@@ -497,7 +534,8 @@ test("duplicate evidence references and alternate incident fields cannot inflate
   const db = baseDb();
   const duplicate = completedReview("same-review");
   db.reviews = [duplicate, duplicate, completedReview("second-review")];
-  db.executionOrders = [{ id: "reconcile-1", symbol: "BTC/USDT", status: "closed", reconciliationStatus: "reconciliation_failed" }];
+  installReviewLifecycleEvidence(db);
+  db.executionOrders.push({ id: "reconcile-1", symbol: "BTC/USDT", status: "closed", reconciliationStatus: "reconciliation_failed" });
   refreshOwnerImprovementRegistry(db);
   const strategy = db.ownerImprovementItems.find((row) => row.rootCauseCode === "entry_timing");
   const incident = db.ownerImprovementItems.find((row) => row.rootCauseCode === "system_control_failure");
@@ -537,6 +575,7 @@ test("one Owner strategy improvement creates exactly one linked versioned experi
 test("a strategy proposal cannot enter validation without its linked versioned experiment", () => {
   const db = baseDb();
   db.reviews = [completedReview("r1"), completedReview("r2"), completedReview("r3")];
+  installReviewLifecycleEvidence(db);
   refreshOwnerImprovementRegistry(db);
   const item = db.ownerImprovementItems[0];
   assert.equal(transitionOwnerImprovement(db, item.id, "accept", "Owner").ok, true);
@@ -548,6 +587,7 @@ test("a strategy proposal cannot enter validation without its linked versioned e
 test("strategy validation is sequential, evidence-bound, and cannot pass without a candidate version", () => {
   const db = baseDb();
   db.reviews = [completedReview("r1"), completedReview("r2"), completedReview("r3")];
+  installReviewLifecycleEvidence(db);
   refreshOwnerImprovementRegistry(db);
   const item = db.ownerImprovementItems[0];
   transitionOwnerImprovement(db, item.id, "accept", "Owner");
@@ -572,6 +612,7 @@ test("strategy validation is sequential, evidence-bound, and cannot pass without
 test("a failed strategy stage ends that candidate without advancing later stages", () => {
   const db = baseDb();
   db.reviews = [completedReview("r1"), completedReview("r2"), completedReview("r3")];
+  installReviewLifecycleEvidence(db);
   refreshOwnerImprovementRegistry(db);
   const item = db.ownerImprovementItems[0];
   transitionOwnerImprovement(db, item.id, "accept", "Owner");

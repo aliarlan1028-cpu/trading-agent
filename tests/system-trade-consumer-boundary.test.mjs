@@ -4,13 +4,14 @@ import test from "node:test";
 import { performanceReport } from "../server/accounting.mjs";
 import { buildClosedTrades, computeBehaviorProfile } from "../server/behaviorProfile.mjs";
 import { buildDecisionCalibrationReport } from "../server/decisionCalibration.mjs";
-import { backfillStructuredTradeReviews } from "../server/ownerReviewLoop.mjs";
+import { backfillStructuredTradeReviews, refreshOwnerImprovementRegistry, transitionReviewLesson } from "../server/ownerReviewLoop.mjs";
 import { buildExecutionQuality } from "../server/professionalAnalytics.mjs";
 import { runTradeReflection } from "../server/reviewEngine.mjs";
 import { strategyProductMetrics } from "../server/strategyProducts.mjs";
 import { groupSystemClosedTradeLifecycles } from "../server/systemTradeProjection.mjs";
 import { consecutiveLossCooldown, drawdownLockout } from "../server/tradeProtections.mjs";
 import { syncTradeReviewQueue } from "../server/tradeReviewQueue.mjs";
+import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 
 function reconciledLeg(fill) {
   return {
@@ -183,4 +184,39 @@ test("learning and strategy metrics admit only the evidenced system manual-exit 
     fills: 2, avgSlippageBps: 2, p95SlippageBps: 2, partialFillRatePct: 0,
     calibrationBySymbol: [{ symbol: "BTC/USDT", samples: 1, ready: false, p50Bps: 2, p75Bps: 2, p95Bps: 2, minSamples: 5 }]
   });
+});
+
+test("legacy manual and pending review artifacts stay auditable but cannot activate or drive owner improvements", () => {
+  const execution = { id: "review-system-exec", planId: "review-system-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed" };
+  const systemAttribution = (fill) => ({
+    schemaVersion: 1, scope: "system", origin: "execution_engine", exitMode: fill.kind === "close" ? "system_exit" : null,
+    executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", reason: null,
+    evidence: { accountId: "account-a", environment: "production", exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }, attributedAt: fill.createdAt
+  });
+  const review = (id, key, memoryItemId) => ({
+    id, type: "trade", status: "completed", tradeLifecycleKey: key, memoryItemId, tenantId: "tenant-owner", ownerUserId: "owner-1",
+    improvementScope: { strategyProductId: "trend", timeframe: "1h", regime: "uptrend" },
+    structuredAssessment: { outcome: "loss", matrix: { key: "mixed_loss" }, financial: { complete: true, netRealizedPnl: -1 }, rootCauses: [{ code: "entry_timing", label: "entry", destination: "strategy", severity: "medium" }] }
+  });
+  const db = {
+    user: { id: "owner-1", tenantId: "tenant-owner", isOwner: true }, system: { ownerReviewProvenanceMigrationVersion: 1 }, ownerImprovementItems: [], auditLogs: [],
+    executionOrders: [execution], tradePlans: [{ id: execution.planId, exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }],
+    fills: [
+      reconciledLeg({ id: "review-system-entry", kind: "entry", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: systemAttribution({ kind: "entry", createdAt: "2026-08-01T00:00:00Z" }) }),
+      reconciledLeg({ id: "review-system-close", kind: "close", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: systemAttribution({ kind: "close", createdAt: "2026-08-01T01:00:00Z" }) }),
+      reconciledLeg({ id: "review-manual-close", kind: "close", positionId: "manual", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T02:00:00Z" }),
+      reconciledLeg({ id: "review-pending-close", kind: "close", executionOrderId: "pending-exec", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T03:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } })
+    ],
+    reviews: [review("review-system", execution.id, "memory-system"), review("review-manual", "manual", "memory-manual"), review("review-pending", "pending-exec", "memory-pending")],
+    memoryItems: [
+      { id: "memory-system", source: "auto_reflection", learningStatus: "active", fillId: "review-system-close", reviewId: "review-system", title: "system", content: "system", tenantId: "tenant-owner", ownerUserId: "owner-1" },
+      { id: "memory-manual", source: "auto_reflection", learningStatus: "candidate", fillId: "review-manual-close", reviewId: "review-manual", title: "manual", content: "manual", tenantId: "tenant-owner", ownerUserId: "owner-1" },
+      { id: "memory-pending", source: "auto_reflection", learningStatus: "active", fillId: "review-pending-close", reviewId: "review-pending", title: "pending", content: "pending", tenantId: "tenant-owner", ownerUserId: "owner-1" }
+    ]
+  };
+  assert.equal(transitionReviewLesson(db, "memory-manual", "approve", "Owner").ok, false);
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: { tenantId: "tenant-owner", userId: "owner-1", isOwner: true }, symbols: ["BTC/USDT"] }).map((row) => row.id), ["memory-system"]);
+  refreshOwnerImprovementRegistry(db);
+  assert.equal(db.ownerImprovementItems[0].evidenceCount, 1);
+  assert.equal(db.reviews.length, 3, "raw legacy artifacts remain auditable");
 });

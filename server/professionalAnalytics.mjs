@@ -124,7 +124,7 @@ export function buildReplayBundles(db, limit = 20) {
     const plan = (db.tradePlans || []).find((p) => p.id === run.tradePlanId);
     const risk = (db.riskChecks || []).find((r) => r.id === run.riskCheckId || r.tradePlanId === plan?.id);
     const executions = (db.executionOrders || []).filter((o) => o.agentRunId === run.id || o.planId === plan?.id);
-    const fills = systemTradeFills(db, { fills: (db.fills || []).filter((f) => f.agentRunId === run.id || f.tradePlanId === plan?.id) });
+    const fills = systemTradeFills(db).filter((fill) => fill.agentRunId === run.id || fill.tradePlanId === plan?.id);
     return {
       traceId: run.traceId || run.id, agentRunId: run.id, tradePlanId: plan?.id || null, riskCheckId: risk?.id || null,
       executionOrderIds: executions.map((o) => o.id), fillIds: fills.map((f) => f.id), positionIds: (db.positions || []).filter((p) => executions.some((o) => o.id === p.executionOrderId)).map((p) => p.id),

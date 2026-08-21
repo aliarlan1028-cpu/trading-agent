@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildProfessionalSnapshot, buildStrategyDrift, buildTradingPermissionEvidence } from "../server/professionalAnalytics.mjs";
+import { buildProfessionalSnapshot, buildReplayBundles, buildStrategyDrift, buildTradingPermissionEvidence } from "../server/professionalAnalytics.mjs";
 import { SKILL_TOOLS } from "../server/skillTools.mjs";
 import { financiallyReconciledFills, installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
@@ -59,4 +59,24 @@ test("策略漂移按完整生命周期净值计数，部分平仓不重复且�
   const report = buildStrategyDrift(db, { strategy: "trend" });
   assert.equal(report.diagnosis.trades, 1);
   assert.ok(Math.abs(report.diagnosis.recentExpectancy + 0.4) < 1e-9);
+});
+
+test("replay includes a projected external manual exit when only attribution carries the run binding", () => {
+  const db = fixture();
+  const execution = {
+    id: "replay-exec", planId: "replay-plan", agentRunId: "replay-run", exchange: "OKX", accountId: "account-a",
+    environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed"
+  };
+  db.agentRuns = [{ id: "replay-run", tradePlanId: "replay-plan", status: "completed" }];
+  db.executionOrders = [execution];
+  db.tradePlans = [{ id: execution.planId, agentRunId: "replay-run", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }];
+  db.fills = [{
+    id: "external-manual-exit", kind: "close", symbol: "BTC/USDT", direction: "long", realizedPnl: 2,
+    tradeAttribution: {
+      schemaVersion: 1, scope: "system", origin: "external_exchange", exitMode: "manual_exit",
+      executionOrderId: execution.id, planId: execution.planId, method: "deterministic_manual_exit", reason: null,
+      evidence: { accountId: "account-a", environment: "production", exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }
+    }
+  }];
+  assert.deepEqual(buildReplayBundles(db)[0].fillIds, ["external-manual-exit"]);
 });

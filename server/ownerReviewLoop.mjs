@@ -501,6 +501,27 @@ export function isActiveReviewLesson(memory = {}) {
   return memory.source === "auto_reflection" && lessonStatus(memory) === "active";
 }
 
+export function findSystemReviewLifecycle(db, review = {}, memory = {}) {
+  const lifecycleKeys = new Set([
+    review.tradeLifecycleKey,
+    review.executionOrderId,
+    memory.tradeLifecycleKey,
+    memory.executionOrderId,
+    memory.reviewContext?.tradeLifecycleKey,
+    memory.reviewContext?.executionOrderId
+  ].filter(Boolean).map(String));
+  const fillIds = new Set([
+    review.fillId,
+    ...(review.fillIds || []),
+    memory.fillId,
+    ...(memory.fillIds || [])
+  ].filter(Boolean).map(String));
+  return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
+    lifecycleKeys.has(String(lifecycle.key))
+    || lifecycle.fills.some((fill) => fillIds.has(String(fill.id)))
+  )) || null;
+}
+
 export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
   migrateLegacyOwnerReviewProvenance(db);
   const memory = (db.memoryItems || []).find((row) => row.id === memoryId && row.source === "auto_reflection" && isOwnerReviewRow(db, row));
@@ -515,6 +536,10 @@ export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
   };
   const transition = transitions[action];
   if (!transition || !transition.from.includes(current)) return { ok: false, status: 409, error: "invalid_lesson_transition", current, action };
+  if (transition.to === "active") {
+    const review = (db.reviews || []).find((row) => row.id === memory.reviewId || row.memoryItemId === memory.id) || {};
+    if (!findSystemReviewLifecycle(db, review, memory)) return { ok: false, status: 409, error: "system_trade_evidence_missing" };
+  }
   memory.learningStatus = transition.to;
   memory.learningDecision = { action, actor, at: nowIso() };
   memory.updatedAt = memory.learningDecision.at;
@@ -655,6 +680,7 @@ export function refreshOwnerImprovementRegistry(db) {
     if (!isOwnerReviewRow(db, review)) continue;
     const assessment = review.structuredAssessment;
     if (review.type !== "trade" || review.status !== "completed" || !assessment) continue;
+    if (!findSystemReviewLifecycle(db, review)) continue;
     for (const root of assessment.rootCauses || []) {
       if (!ACTIONABLE_ROOTS.has(root.code)) continue;
       const key = improvementKey(review, root);
@@ -949,6 +975,7 @@ function authoritativeStageEvidence(db, experiment, stageName, input = {}) {
     const records = ids.map((idValue) => (db.reviews || []).find((row) => row.id === idValue)).filter(Boolean);
     const eligible = records.filter((review) => isOwnerReviewRow(db, review)
       && review.type === "trade" && review.status === "completed"
+      && findSystemReviewLifecycle(db, review)
       && review.structuredAssessment?.financial?.complete === true
       && review.strategyBlueprintAttribution?.verified === true
       && review.strategyBlueprintRef?.versionId === candidate.version.id
@@ -1085,6 +1112,7 @@ export function buildOwnerReviewLoopSnapshot(db) {
       .map((session) => ({ id: session.id, label: compact(session.title || session.id, 120), status: session.status, symbol: session.symbol, metrics: clone(session.metrics || null) })) : [];
     const liveReviews = selectedCandidateId ? (db.reviews || []).filter((review) => isOwnerReviewRow(db, review)
       && review.type === "trade" && review.status === "completed"
+      && findSystemReviewLifecycle(db, review)
       && review.strategyBlueprintAttribution?.verified === true
       && review.strategyBlueprintRef?.versionId === selectedCandidateId
       && review.strategyBlueprintRef?.contentHash === selectedCandidateHash

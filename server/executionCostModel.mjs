@@ -1,6 +1,7 @@
 // Shared execution-cost model. The deterministic order-book estimate remains the
 // base; sufficiently large real fill samples can only raise (never lower) that
 // estimate. This prevents optimistic self-calibration from weakening safeguards.
+import { systemTradeFills } from "./systemTradeProjection.mjs";
 
 const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 
@@ -17,7 +18,7 @@ function quantile(values, q) {
 export function buildSlippageCalibration(db, symbol, options = {}) {
   const normalized = String(symbol || "").toUpperCase();
   const limit = Math.max(5, Number(options.limit || 100));
-  const samples = (db?.fills || [])
+  const samples = systemTradeFills(db)
     .filter((fill) => String(fill.symbol || "").toUpperCase() === normalized)
     .filter((fill) => fill.kind === "entry" && finite(fill.slippageBps))
     .slice(0, limit)

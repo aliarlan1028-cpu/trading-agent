@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { computeBehaviorProfile, buildClosedTrades } from "../server/behaviorProfile.mjs";
 import { financiallyReconciledFills, installSystemTradeProvenance, reconciledFill } from "./financial-fixtures.mjs";
+import { addSystemExecution, stampFixtureSystemAttribution } from "./helpers/system-trade-fixtures.mjs";
 
 // 合成:盈利单=低杠杆短持仓,亏损单=高杠杆长持仓 → 应触发"越亏越加杠杆"+"拿不住盈利单"。
 const T = (id, dir, pnl, lev, entryIso, closeIso, lossAttr) => ({
@@ -92,4 +93,17 @@ test("行为画像使用成本后净值，毛盈利被费用翻转时归为亏�
   assert.equal(trade.win, false);
   assert.ok(trade.roiPct < 0);
   assert.equal(computeBehaviorProfile(feeFlip).overall.winRatePct, 0);
+});
+
+test("pending raw entry cannot change a system trade's behavior ROI basis", () => {
+  const db = { fills: [] };
+  const execution = addSystemExecution(db, { executionOrderId: "roi-exec", planId: "roi-plan", quantity: 1 });
+  execution.leverage = 2;
+  db.fills = [
+    reconciledFill(stampFixtureSystemAttribution({ id: "roi-entry", kind: "entry", symbol: "BTC/USDT", direction: "long", quantity: 1, price: 100, notionalUsdt: 100, createdAt: "2026-08-01T00:00:00Z" }, execution)),
+    reconciledFill(stampFixtureSystemAttribution({ id: "roi-close", kind: "close", symbol: "BTC/USDT", direction: "long", quantity: 1, price: 110, realizedPnl: 10, createdAt: "2026-08-01T01:00:00Z" }, execution)),
+    reconciledFill({ id: "roi-pending-entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId, symbol: "BTC/USDT", direction: "long", quantity: 1, price: 100, notionalUsdt: 10000, createdAt: "2026-08-01T00:30:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } })
+  ];
+  const [trade] = buildClosedTrades(db);
+  assert.equal(trade.roiPct, 20);
 });

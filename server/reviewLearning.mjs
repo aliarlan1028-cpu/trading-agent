@@ -1,6 +1,6 @@
 import { resolveTradeContext } from "./tradeReviewQueue.mjs";
 import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
-import { isActiveReviewLesson, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
+import { findSystemReviewLifecycle, isActiveReviewLesson, migrateLegacyOwnerReviewProvenance } from "./ownerReviewLoop.mjs";
 import { belongsToPrincipal, normalizePrincipal } from "./principalScope.mjs";
 
 const DAY_MS = 86_400_000;
@@ -68,18 +68,11 @@ function reviewForMemory(db, memory = {}) {
 }
 
 function lifecycleForMemory(db, memory = {}, fill = {}, review = {}) {
-  const keys = new Set([
-    review.tradeLifecycleKey,
-    fill.executionOrderId,
-    fill.tradePlanId,
-    fill.planId,
-    fill.positionId
-  ].filter(Boolean).map(String));
-  const fillIds = new Set([memory.fillId, ...(memory.fillIds || []), ...(review.fillIds || [])].filter(Boolean));
-  return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
-    keys.has(String(lifecycle.key))
-    || lifecycle.fills.some((row) => fillIds.has(row.id))
-  )) || null;
+  return findSystemReviewLifecycle(db, {
+    ...review,
+    executionOrderId: review.executionOrderId || fill.executionOrderId,
+    tradeLifecycleKey: review.tradeLifecycleKey || fill.executionOrderId
+  }, memory);
 }
 
 export function reviewMemoryMetadata(db, memory = {}) {
@@ -95,9 +88,8 @@ export function reviewMemoryMetadata(db, memory = {}) {
   const regime = compact(explicit.regime || memory.regime || fill.regime || plan.regime, 80);
   const direction = normalizeDirection(explicit.direction || memory.direction || fill.direction || plan.direction || review.direction);
   const lifecycleHasNet = finite(lifecycle?.netRealizedPnl);
-  const reviewHasNet = finite(review?.netRealizedPnl);
   // 净值只能来自仍可核验的生命周期或复盘记录；不能由 memory/context 自我循环恢复旧结果。
-  const netCandidate = lifecycleHasNet ? lifecycle.netRealizedPnl : reviewHasNet ? review.netRealizedPnl : null;
+  const netCandidate = lifecycleHasNet ? lifecycle.netRealizedPnl : null;
   const grossCandidate = lifecycle?.realizedPnl ?? explicit.grossRealizedPnl
     ?? (explicit.schemaVersion === 1 ? explicit.realizedPnl : null)
     ?? review.realizedPnl ?? memory.grossRealizedPnl ?? fill.realizedPnl;
@@ -116,7 +108,7 @@ export function reviewMemoryMetadata(db, memory = {}) {
     outcome: netRealizedPnl == null ? null : netRealizedPnl > 0 ? "win" : netRealizedPnl < 0 ? "loss" : "flat",
     financialBasis: lifecycleHasNet
       ? "completed_trade_lifecycle/net_after_recorded_costs"
-      : reviewHasNet ? "completed_trade_review/net_after_recorded_costs" : "unreconciled",
+      : "unreconciled",
     reviewId: explicit.reviewId || memory.reviewId || review.id || null,
     tradePlanId: explicit.tradePlanId || memory.tradePlanId || plan.id || null
   };

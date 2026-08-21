@@ -19,13 +19,14 @@ export const fmtMin = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)}m` :
 // 抽出"每笔已平仓交易":join 入场fill(取持仓时长)、plan(取杠杆)、算 ROI。
 export function buildClosedTrades(db) {
   const fills = systemTradeFills(db);
+  const systemFillView = { ...db, fills };
   // 一次仓位生命周期可能有多次减仓；画像必须按完整交易聚合，否则胜率、杠杆习惯和样本量都会被部分平仓扭曲。
   const closes = groupSystemClosedTradeLifecycles(db, { fills });
   return closes.map((lifecycle) => {
     const c = lifecycle.representative;
     const { plan = {}, executionOrder = {} } = resolveTradeContext(db, lifecycle);
     const entry = findTradeEntryFill(fills, c);
-    const costBasis = resolveClosedTradePosterBasis(db, lifecycle);
+    const costBasis = resolveClosedTradePosterBasis(systemFillView, lifecycle);
     const leverage = num(executionOrder?.leverage) ?? num(plan?.leverage) ?? num(c.leverage);
     const grossPnl = num(lifecycle.realizedPnl);
     const pnl = num(lifecycle.netRealizedPnl);
