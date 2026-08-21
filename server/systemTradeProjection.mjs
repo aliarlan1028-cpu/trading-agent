@@ -506,13 +506,19 @@ export function buildExternalFillAttribution(db = {}, fill = {}) {
 export function projectSystemTradeFill(db, fill) {
   const attribution = classifyTradeFill(db, fill);
   if (attribution.scope !== "system") return null;
+  const executionOrder = (db.executionOrders || []).find((row) => stringValue(row?.id) === stringValue(attribution.executionOrderId));
+  const financialEvidencePending = fill?.kind === "close"
+    && executionOrder?.status === "close_reconciliation_pending"
+    && executionOrder?.closeReconciliationReason === "fill_evidence_conflict";
+  const projectedAttribution = structuredClone(attribution);
+  if (financialEvidencePending) projectedAttribution.partial = true;
   return {
     ...fill,
     executionOrderId: attribution.executionOrderId,
     planId: attribution.planId,
     tradePlanId: attribution.planId,
-    partial: attribution.partial ?? fill.partial,
-    tradeAttribution: structuredClone(attribution)
+    partial: financialEvidencePending ? true : (attribution.partial ?? fill.partial),
+    tradeAttribution: projectedAttribution
   };
 }
 
@@ -526,7 +532,7 @@ export function groupSystemClosedTradeLifecycles(db, options = {}) {
   return groupClosedTradeLifecycles(systemTradeFills(db, { fills }), lifecycleOptions);
 }
 
-function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitMode) {
+function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitMode, options = {}) {
   const reasonPrefix = requiredExitMode === "manual_exit" ? "manual_exit" : "system_exit";
   const systemCloses = (db.fills || []).map((raw) => ({ raw, projected: projectSystemTradeFill(db, raw) }))
     .filter(({ raw, projected }) => raw?.kind === "close" && projected
@@ -554,7 +560,8 @@ function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitM
     };
   }
   const tradeIds = matched.map(({ raw }) => stringValue(raw.exchangeTradeId ?? raw.tradeId));
-  if (matched.some(({ raw }) => raw.financialEvidenceConflict === true)) {
+  const financialEvidenceConflict = matched.some(({ raw }) => raw.financialEvidenceConflict === true);
+  if (financialEvidenceConflict && options.includeConflictedEvidence !== true) {
     return {
       complete: false,
       reason: `${reasonPrefix}_financial_evidence_conflict`,
@@ -598,7 +605,8 @@ function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitM
   }
   const tolerance = quantityTolerance(executionOrder, expectedQuantity);
   if (Math.abs(quantity - expectedQuantity) > tolerance
-    || (requiredExitMode === "manual_exit" && matched.every(({ projected }) => projected.partial === true))) {
+    || (requiredExitMode === "manual_exit" && options.includeConflictedEvidence !== true
+      && matched.every(({ projected }) => projected.partial === true))) {
     return {
       complete: false,
       reason: `${reasonPrefix}_quantity_incomplete`,
@@ -634,16 +642,17 @@ function buildAttributedCloseClosure(db = {}, executionOrder = {}, requiredExitM
       feeCurrency: raw.feeCurrency || raw.rawFeeCcy || null,
       closedAt: raw.exchangeFilledAt
     })),
+    financialEvidenceConflict,
     evidencePath: requiredExitMode === "manual_exit"
       ? "attributed_external_exchange_fills"
       : "attributed_system_exchange_fills"
   };
 }
 
-export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
-  return buildAttributedCloseClosure(db, executionOrder, "manual_exit");
+export function buildAttributedManualExitClosure(db = {}, executionOrder = {}, options = {}) {
+  return buildAttributedCloseClosure(db, executionOrder, "manual_exit", options);
 }
 
-export function buildAttributedSystemExitClosure(db = {}, executionOrder = {}) {
-  return buildAttributedCloseClosure(db, executionOrder, "system_exit");
+export function buildAttributedSystemExitClosure(db = {}, executionOrder = {}, options = {}) {
+  return buildAttributedCloseClosure(db, executionOrder, "system_exit", options);
 }

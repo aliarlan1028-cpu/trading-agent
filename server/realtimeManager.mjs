@@ -481,6 +481,20 @@ function duplicateOkxFillConflicts(existingFill, payload = {}) {
     && String(incoming || "").trim() && String(existing).trim() !== String(incoming).trim());
 }
 
+function reopenConflictedSystemLifecycle(db, fill) {
+  if (fill?.kind !== "close") return;
+  const attribution = classifyTradeFill(db, fill);
+  if (attribution.scope !== "system") return;
+  const executionOrder = (db.executionOrders || []).find((row) => String(row?.id || "") === String(attribution.executionOrderId || ""));
+  if (!executionOrder) return;
+  executionOrder.status = "close_reconciliation_pending";
+  executionOrder.closeReconciliationReason = "fill_evidence_conflict";
+  executionOrder.financialEvidenceConflict = true;
+  executionOrder.financialEvidenceConflictAt = nowIso();
+  const plan = (db.tradePlans || []).find((row) => row.id === executionOrder.planId);
+  if (plan?.status === "completed") plan.status = "executing";
+}
+
 export function upsertOkxOrder(db, payload, context = {}) {
   const exchangeOrderId = String(payload.ordId || "").trim();
   const clientOrderId = String(payload.clOrdId || "").trim();
@@ -563,6 +577,7 @@ export function upsertOkxOrder(db, payload, context = {}) {
   if (duplicateFill && duplicateOkxFillConflicts(duplicateFill, payload)) {
     duplicateFill.financialEvidenceConflict = true;
     duplicateFill.financialEvidenceConflictReason = "authoritative_trade_identity_payload_conflict";
+    reopenConflictedSystemLifecycle(db, duplicateFill);
   }
   if (fillContracts > 0 && !executionOrder && !tradeId) {
     // OKX orders channel 是状态更新流；fillSz/accFillSz 可能在重复推送中再次出现。

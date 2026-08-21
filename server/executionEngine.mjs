@@ -23,7 +23,7 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
-import { buildAttributedManualExitClosure, buildAttributedSystemExitClosure, buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
+import { buildAttributedManualExitClosure, buildAttributedSystemExitClosure, buildExecutionFillAttribution, classifyTradeFill } from "./systemTradeProjection.mjs";
 
 export { currentEquityUsdt } from "./financialFacts.mjs";
 
@@ -1183,7 +1183,7 @@ async function pollOne(db, executionOrder, options = {}) {
       : null);
     const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
     const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
-    if (!attributedManualClosure.complete && !attributedSystemClosure.fills.length
+    if (!attributedManualClosure.fills.length && !attributedSystemClosure.fills.length
       && snapshotPositionOpen(snapshot, executionOrder)) {
       await handleClosePendingWatchdog(db, executionOrder, options);
     }
@@ -1942,6 +1942,63 @@ export function summarizeOkxFundingBills(executionOrder, rows = [], window = {})
   };
 }
 
+function incompleteLocalClosureMatchesRemote(local, remote, executionOrder) {
+  if (!local?.fills?.length || !remote?.complete || !closureBindingMatches(remote, executionOrder)) return false;
+  const localTradeIds = [...new Set(local.fills.map((fill) => String(fill.exchangeTradeId || fill.tradeId || "").trim()).filter(Boolean))].sort();
+  const remoteTradeIds = closureIdentityValues(remote, "tradeIds", "tradeId");
+  if (!localTradeIds.length || localTradeIds.length !== local.fills.length
+    || localTradeIds.length !== remoteTradeIds.length
+    || localTradeIds.some((value, index) => value !== remoteTradeIds[index])) return false;
+  const localOrderIds = [...new Set(local.fills.map((fill) => String(fill.exchangeOrderId || "").trim()).filter(Boolean))].sort();
+  const remoteOrderIds = closureIdentityValues(remote, "exchangeOrderIds", "exchangeOrderId");
+  if (localOrderIds.length && (localOrderIds.length !== remoteOrderIds.length
+    || localOrderIds.some((value, index) => value !== remoteOrderIds[index]))) return false;
+
+  const remoteByTradeId = new Map((remote.breakdown || [])
+    .map((row) => [String(row?.tradeId || "").trim(), row]).filter(([tradeId]) => tradeId));
+  for (const fill of local.fills) {
+    const remoteRow = remoteByTradeId.get(String(fill.exchangeTradeId || fill.tradeId || "").trim());
+    if (!remoteRow) return false;
+    for (const [localField, remoteField] of [
+      [fill.quantity ?? fill.size, remoteRow.quantity],
+      [fill.price, remoteRow.price],
+      [fill.realizedPnl, remoteRow.realizedPnl],
+      [fill.feeCostUsdt ?? fill.feeUsdt, remoteRow.feeUsdt]
+    ]) {
+      if (finiteFinancialValue(localField) && !sameClosureNumber(localField, remoteField)) return false;
+    }
+    if (finiteFinancialValue(fill.rawFee) && finiteFinancialValue(remoteRow.rawFee)
+      && !sameClosureNumber(fill.rawFee, remoteRow.rawFee)) return false;
+    const localFeeCurrency = String(fill.feeCurrency || fill.rawFeeCcy || "").toUpperCase();
+    const remoteFeeCurrency = String(remoteRow.feeCurrency || remoteRow.rawFeeCcy || "").toUpperCase();
+    if (localFeeCurrency && remoteFeeCurrency && localFeeCurrency !== remoteFeeCurrency) return false;
+    if (fill.exchangeOrderId && remoteRow.exchangeOrderId
+      && String(fill.exchangeOrderId) !== String(remoteRow.exchangeOrderId)) return false;
+    const localClosedAt = fill.exchangeFilledAt || fill.createdAt;
+    if (localClosedAt && !sameClosureTime(localClosedAt, remoteRow.closedAt)) return false;
+  }
+  return true;
+}
+
+function isAuthoritativeRawFinancialFill(fill) {
+  return fill?.estimatedFee !== true && fill?.estimated !== true && fill?.inferred !== true;
+}
+
+function prepareEntryFeeBackfill(entryFills, totalFee) {
+  if (!finiteFinancialValue(totalFee)) return { ok: true, available: false };
+  const authoritativeFills = entryFills.filter((fill) => finiteFinancialValue(fill.feeCostUsdt ?? fill.feeUsdt)
+    && isAuthoritativeRawFinancialFill(fill));
+  const mutableFills = entryFills.filter((fill) => !authoritativeFills.includes(fill));
+  const authoritativeFee = authoritativeFills
+    .reduce((sum, fill) => sum + Number(fill.feeCostUsdt ?? fill.feeUsdt), 0);
+  const mutableFee = Number(totalFee) - authoritativeFee;
+  const tolerance = Math.max(1, Math.abs(Number(totalFee)), Math.abs(authoritativeFee)) * 1e-10;
+  if (mutableFee < -tolerance || (!mutableFills.length && Math.abs(mutableFee) > tolerance)) {
+    return { ok: false, available: true, authoritativeFills, mutableFills, authoritativeFee, mutableFee };
+  }
+  return { ok: true, available: true, authoritativeFills, mutableFills, authoritativeFee, mutableFee };
+}
+
 async function fetchOkxFundingBills(executionOrder, window = {}) {
   if (String(executionOrder.exchange || "OKX").toUpperCase() !== "OKX" || !process.env.OKX_API_KEY) {
     return { complete: false, reason: "okx_read_credentials_unavailable" };
@@ -1981,6 +2038,31 @@ export function applyOkxLifecycleFinancialEvidence(db, executionOrder, closure =
   const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
   const closeFills = (db.fills || []).filter((fill) => fill.kind === "close" && fill.executionOrderId === executionOrder.id);
   if (!entryFills.length || !closeFills.length) return { applied: false, reason: "lifecycle_fill_rows_missing" };
+  if (!closureBindingMatches(closure, executionOrder)) return { applied: false, reason: "fill_evidence_conflict" };
+  for (const fill of closeFills.filter(isAuthoritativeRawFinancialFill)) {
+    const attribution = classifyTradeFill(db, fill);
+    if (attribution.scope !== "system" || String(attribution.executionOrderId || "") !== String(executionOrder.id || "")) {
+      return { applied: false, reason: "fill_evidence_conflict" };
+    }
+  }
+  const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+  const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
+  const attributedClosures = [attributedManualClosure, attributedSystemClosure];
+  const authoritativeLocalClosure = attributedClosures.find((candidate) => candidate.complete
+    && candidate.fills?.length && candidate.fills.every(isAuthoritativeRawFinancialFill)) || null;
+  const attributedLocalClosure = attributedClosures
+    .map((candidate) => ({
+      ...candidate,
+      fills: (candidate.fills || []).filter(isAuthoritativeRawFinancialFill)
+    }))
+    .find((candidate) => candidate.fills.length) || null;
+  if (authoritativeLocalClosure && !closureEvidenceMatches(authoritativeLocalClosure, closure, executionOrder)) {
+    return { applied: false, reason: "fill_evidence_conflict" };
+  }
+  if (attributedLocalClosure && !authoritativeLocalClosure
+    && !incompleteLocalClosureMatchesRemote(attributedLocalClosure, closure, executionOrder)) {
+    return { applied: false, reason: "fill_evidence_conflict" };
+  }
   const recordedExpectedQuantity = Number(executionOrder.filledQuantity || executionOrder.quantity || 0);
   const expectedQuantity = Number(closure.entryQuantity || closure.expectedQuantity || recordedExpectedQuantity);
   const authorityQuantity = Number(closure.quantity || 0);
@@ -1988,15 +2070,28 @@ export function applyOkxLifecycleFinancialEvidence(db, executionOrder, closure =
   if (!(expectedQuantity > 0) || Math.abs(authorityQuantity - expectedQuantity) > tolerance) {
     return { applied: false, reason: "authoritative_close_quantity_mismatch", expectedQuantity, authorityQuantity, recordedExpectedQuantity };
   }
+  const entryFeeBackfill = prepareEntryFeeBackfill(entryFills, closure.entryFeeUsdt);
+  if (!entryFeeBackfill.ok) return { applied: false, reason: "fill_evidence_conflict" };
+  if (attributedLocalClosure && !authoritativeLocalClosure) {
+    return { applied: false, reason: "authoritative_close_evidence_incomplete" };
+  }
 
   const entryNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
   const entryQuantityBefore = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.quantity || 0)), 0);
+  const mutableEntryFills = entryFeeBackfill.mutableFills;
+  const mutableEntryNotional = mutableEntryFills
+    .reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
+  const mutableEntryFee = entryFeeBackfill.mutableFee;
   for (const fill of entryFills) {
     const notional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
     const weight = entryNotional > 0 ? notional / entryNotional : 1 / entryFills.length;
-    fill.quantity = expectedQuantity * weight;
-    fill.notionalUsdt = Math.abs(Number(fill.price || 0) * fill.quantity);
-    fill.feeUsdt = Number(closure.entryFeeUsdt) * weight;
+    if (!mutableEntryFills.includes(fill)) continue;
+    if (!authoritativeLocalClosure) {
+      fill.quantity = expectedQuantity * weight;
+      fill.notionalUsdt = Math.abs(Number(fill.price || 0) * fill.quantity);
+    }
+    const feeWeight = mutableEntryNotional > 0 ? notional / mutableEntryNotional : 1 / mutableEntryFills.length;
+    fill.feeUsdt = mutableEntryFee * feeWeight;
     fill.feeCostUsdt = fill.feeUsdt;
     fill.feeSchemaVersion = 2;
     fill.feeSource = "okx_raw_fill_history_backfill";
@@ -2007,6 +2102,7 @@ export function applyOkxLifecycleFinancialEvidence(db, executionOrder, closure =
   const closeQuantity = closeFills.reduce((sum, fill) => sum + Math.abs(Number(fill.quantity || 0)), 0);
   const finalFill = closeFills.find((fill) => fill.partial !== true) || closeFills.at(-1);
   for (const fill of closeFills) {
+    if (authoritativeLocalClosure?.fills.includes(fill)) continue;
     const weight = closeQuantity > 0 ? Math.abs(Number(fill.quantity || 0)) / closeQuantity : 1 / closeFills.length;
     fill.quantity = authorityQuantity * weight;
     fill.notionalUsdt = Math.abs(Number(fill.price || 0) * fill.quantity);
@@ -2050,6 +2146,15 @@ export function applyOkxLifecycleFinancialEvidence(db, executionOrder, closure =
     recordedExpectedQuantity,
     authoritativeQuantity: expectedQuantity
   };
+}
+
+function markExecutionFinancialEvidencePending(db, executionOrder, reason = "fill_evidence_conflict") {
+  executionOrder.status = "close_reconciliation_pending";
+  executionOrder.closeReconciliationReason = reason;
+  executionOrder.financialEvidenceConflict = true;
+  executionOrder.financialEvidenceConflictAt = nowIso();
+  const plan = (db.tradePlans || []).find((row) => row.id === executionOrder.planId);
+  if (plan?.status === "completed") plan.status = "executing";
 }
 
 // 平仓成交确认与资金费到账是两个独立事实。这里持续收敛后者；只有费用字段齐全、
@@ -2107,6 +2212,7 @@ export async function reconcilePendingTradeFinancials(db, options = {}) {
       }
       const applied = applyOkxLifecycleFinancialEvidence(db, executionOrder, closure);
       if (!applied.applied) {
+        if (applied.reason === "fill_evidence_conflict") markExecutionFinancialEvidencePending(db, executionOrder);
         results.push({ key: lifecycle.key, status: applied.reason });
         continue;
       }
@@ -2260,9 +2366,9 @@ function closureEvidenceMatches(local, remote, executionOrder) {
 }
 
 export function reconcilePendingClose(db, executionOrder, { snapshot = null, closure = null } = {}) {
-  const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
-  const attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
-  const useAttributedManualExit = attributedManualClosure.complete === true;
+  let attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+  let attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
+  let useAttributedManualExit = attributedManualClosure.complete === true;
   const credentialBinding = validateOkxCredentialBinding(db, {
     accountId: executionOrder.accountId,
     snapshot,
@@ -2294,7 +2400,39 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   if (snapshotPositionOpen(snapshot, executionOrder)) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "position_still_open" };
   }
+  const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
+  const remoteEntryFeeBackfill = prepareEntryFeeBackfill(entryFills, closure?.entryFeeUsdt);
+  if (!remoteEntryFeeBackfill.ok) {
+    markExecutionFinancialEvidencePending(db, executionOrder);
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_conflict" };
+  }
+  if (!useAttributedManualExit && closure?.complete) {
+    for (const candidate of [
+      [attributedManualClosure, buildAttributedManualExitClosure],
+      [attributedSystemClosure, buildAttributedSystemExitClosure]
+    ]) {
+      const [attributedClosure, buildClosure] = candidate;
+      if (!String(attributedClosure.reason || "").endsWith("_financial_evidence_conflict")) continue;
+      const conflictedLocalClosure = buildClosure(db, executionOrder, { includeConflictedEvidence: true });
+      if (!closureEvidenceMatches(conflictedLocalClosure, closure, executionOrder)) continue;
+      for (const fill of conflictedLocalClosure.fills || []) {
+        delete fill.financialEvidenceConflict;
+        delete fill.financialEvidenceConflictReason;
+      }
+      delete executionOrder.financialEvidenceConflict;
+      delete executionOrder.financialEvidenceConflictAt;
+      if (buildClosure === buildAttributedManualExitClosure) attributedManualClosure = conflictedLocalClosure;
+      else attributedSystemClosure = conflictedLocalClosure;
+      useAttributedManualExit = attributedManualClosure.complete === true;
+      break;
+    }
+  }
   const useAttributedSystemExit = !useAttributedManualExit && attributedSystemClosure.complete === true;
+  if (!useAttributedManualExit && attributedManualClosure.reason === "manual_exit_financial_evidence_conflict" && closure?.complete) {
+    executionOrder.status = "close_reconciliation_pending";
+    executionOrder.closeReconciliationReason = "fill_evidence_conflict";
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_conflict" };
+  }
   if (!useAttributedManualExit && attributedSystemClosure.fills.length && closure?.complete
     && (!useAttributedSystemExit || !closureEvidenceMatches(attributedSystemClosure, closure, executionOrder))) {
     executionOrder.status = "close_reconciliation_pending";
@@ -2310,11 +2448,18 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
     return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_incomplete" };
   }
   if (finiteFinancialValue(settledClosure.entryFeeUsdt)) {
-    const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
-    const totalNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
-    for (const fill of entryFills) {
+    const entryFeeBackfill = prepareEntryFeeBackfill(entryFills, settledClosure.entryFeeUsdt);
+    if (!entryFeeBackfill.ok) {
+      markExecutionFinancialEvidencePending(db, executionOrder);
+      return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_conflict" };
+    }
+    const mutableNotional = entryFeeBackfill.mutableFills
+      .reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
+    for (const fill of entryFeeBackfill.mutableFills) {
       const notional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
-      fill.feeUsdt = totalNotional > 0 ? Number(settledClosure.entryFeeUsdt) * notional / totalNotional : Number(settledClosure.entryFeeUsdt) / Math.max(1, entryFills.length);
+      fill.feeUsdt = mutableNotional > 0
+        ? entryFeeBackfill.mutableFee * notional / mutableNotional
+        : entryFeeBackfill.mutableFee / Math.max(1, entryFeeBackfill.mutableFills.length);
       fill.feeCostUsdt = fill.feeUsdt;
       fill.feeSchemaVersion = 2;
       fill.feeSource = "okx_raw_fill_history";
