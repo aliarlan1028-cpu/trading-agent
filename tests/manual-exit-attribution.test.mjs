@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
 
-import { reconcilePendingClose } from "../server/executionEngine.mjs";
+import { pollExecutionOrders, reconcilePendingClose } from "../server/executionEngine.mjs";
 import { upsertOkxOrder } from "../server/realtimeManager.mjs";
 import * as projection from "../server/systemTradeProjection.mjs";
 
@@ -171,6 +171,96 @@ function insertClose(db, payload = closePayload(), binding = context()) {
   return db.fills.find((fill) => fill.exchangeTradeId === payload.tradeId && fill.kind === "close");
 }
 
+function addSystemClose(db, execution, options = {}) {
+  const fill = {
+    id: options.id || "system-close-fill",
+    executionOrderId: execution.id,
+    planId: execution.planId,
+    tradePlanId: execution.planId,
+    exchange: "OKX",
+    exchangeOrderId: options.exchangeOrderId || "system-tp-order",
+    exchangeTradeId: options.exchangeTradeId || "system-tp-trade",
+    accountId: execution.accountId,
+    environment: execution.environment,
+    symbol: execution.symbol,
+    direction: execution.direction,
+    side: execution.direction === "short" ? "buy" : "sell",
+    kind: "close",
+    partial: options.partial ?? true,
+    price: options.price ?? 61_000,
+    quantity: options.quantity ?? 0.01,
+    realizedPnl: options.realizedPnl ?? 4,
+    feeUsdt: options.feeUsdt ?? 0.02,
+    feeCostUsdt: options.feeUsdt ?? 0.02,
+    feeSchemaVersion: 2,
+    feeSource: "okx_raw_fill_history",
+    estimatedFee: false,
+    exchangeFilledAt: options.exchangeFilledAt || "2026-08-15T00:30:00.000Z",
+    createdAt: options.exchangeFilledAt || "2026-08-15T00:30:00.000Z"
+  };
+  fill.tradeAttribution = {
+    schemaVersion: 1,
+    scope: "system",
+    origin: "execution_engine",
+    exitMode: "system_exit",
+    executionOrderId: execution.id,
+    planId: execution.planId,
+    method: "execution_writer",
+    reason: null,
+    partial: fill.partial,
+    evidence: {
+      accountId: execution.accountId,
+      environment: execution.environment,
+      exchangeOrderId: fill.exchangeOrderId,
+      exchangeTradeId: fill.exchangeTradeId,
+      matchedEntryFillIds: ["entry-fill-1"],
+      attributedQuantity: fill.quantity
+    },
+    attributedAt: fill.exchangeFilledAt
+  };
+  db.fills.unshift(fill);
+  return fill;
+}
+
+test("known system close identities win before deterministic manual-exit matching", async (t) => {
+  const cases = [
+    ["close order", "closeExchangeOrderId", "exchangeOrderId"],
+    ["protection order", "protectionExchangeOrderId", "exchangeOrderId"],
+    ["stop order", "stopExchangeOrderId", "exchangeOrderId"],
+    ["take-profit order", "tpExchangeOrderId", "exchangeOrderId"],
+    ["close client", "closeClientOrderId", "clientOrderId"],
+    ["protection client", "protectionClientOrderId", "clientOrderId"],
+    ["stop client", "stopClientOrderId", "clientOrderId"],
+    ["take-profit client", "tpClientOrderId", "clientOrderId"]
+  ];
+  for (const [name, executionField, fillField] of cases) await t.test(name, () => {
+    const { db, execution } = managedDb();
+    execution[executionField] = `managed-${executionField}`;
+    const fill = {
+      kind: "close",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      symbol: "BTC/USDT",
+      side: "sell",
+      quantity: 0.01,
+      price: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      exchangeTradeId: `trade-${executionField}`,
+      exchangeFilledAt: CLOSE_AT,
+      [fillField]: execution[executionField]
+    };
+
+    const attribution = projection.buildExternalFillAttribution(db, fill);
+
+    assert.equal(attribution.scope, "system");
+    assert.equal(attribution.executionOrderId, execution.id);
+    assert.equal(attribution.exitMode, "system_exit");
+    assert.notEqual(attribution.method, "deterministic_manual_exit");
+  });
+});
+
 test("an exact external close is projected as the managed execution's manual exit", () => {
   const { db } = managedDb();
 
@@ -214,6 +304,94 @@ test("partial external closes stay incomplete until the final close and aggregat
   ]);
   assert.equal(lifecycle.quantity, 0.02);
   assert.equal(lifecycle.realizedPnl, 10);
+});
+
+test("a manual residual closes after a verified system partial close and settles aggregate economics", () => {
+  const { db, execution } = managedDb({ quantity: 0.02, status: "close_reconciliation_pending" });
+  const systemPartial = addSystemClose(db, execution);
+  const systemBefore = structuredClone(systemPartial);
+
+  const manualResidual = insertClose(db, closePayload({ fillPnl: "6" }));
+
+  assert.equal(manualResidual.tradeAttribution.scope, "system");
+  assert.equal(manualResidual.tradeAttribution.exitMode, "manual_exit");
+  assert.equal(projection.projectSystemTradeFill(db, manualResidual).partial, false);
+  const closure = projection.buildAttributedManualExitClosure(db, execution);
+  assert.equal(closure.complete, true);
+  assert.equal(closure.quantity, 0.02);
+  assert.equal(closure.weightedPrice, 60_500);
+  assert.equal(closure.realizedPnl, 10);
+  assert.equal(closure.feeUsdt, 0.03);
+
+  const manualBefore = structuredClone(manualResidual);
+  const result = reconcilePendingClose(db, execution, {
+    snapshot: {
+      id: "snapshot-after-residual",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [],
+      createdAt: "2026-08-15T02:00:00.000Z"
+    }
+  });
+
+  assert.equal(result.status, "closed");
+  assert.equal(execution.realizedPnl, 10);
+  assert.equal(execution.closeFeeUsdt, 0.03);
+  assert.equal(db.fills.filter((fill) => fill.kind === "close").length, 2);
+  for (const [actual, before] of [[systemPartial, systemBefore], [manualResidual, manualBefore]]) {
+    assert.deepEqual({
+      price: actual.price,
+      quantity: actual.quantity,
+      realizedPnl: actual.realizedPnl,
+      feeUsdt: actual.feeUsdt,
+      exchangeOrderId: actual.exchangeOrderId,
+      exchangeTradeId: actual.exchangeTradeId,
+      exchangeFilledAt: actual.exchangeFilledAt,
+      createdAt: actual.createdAt
+    }, {
+      price: before.price,
+      quantity: before.quantity,
+      realizedPnl: before.realizedPnl,
+      feeUsdt: before.feeUsdt,
+      exchangeOrderId: before.exchangeOrderId,
+      exchangeTradeId: before.exchangeTradeId,
+      exchangeFilledAt: before.exchangeFilledAt,
+      createdAt: before.createdAt
+    });
+  }
+  assert.equal(systemPartial.tradeAttribution.exitMode, "system_exit");
+  assert.notEqual(systemPartial.exitReason, "manual_exit");
+});
+
+test("system entry identities on a close fail closed before manual-exit matching", async (t) => {
+  for (const [name, fillField, value] of [
+    ["entry order", "exchangeOrderId", "entry-order-1"],
+    ["entry client", "clientOrderId", "entry-client-1"]
+  ]) await t.test(name, () => {
+    const { db } = managedDb();
+    const attribution = projection.buildExternalFillAttribution(db, {
+      kind: "close",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      symbol: "BTC/USDT",
+      side: "sell",
+      quantity: 0.01,
+      price: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      exchangeTradeId: `trade-${name.replace(" ", "-")}`,
+      exchangeFilledAt: CLOSE_AT,
+      [fillField]: value
+    });
+
+    assert.equal(attribution.scope, "attribution_pending");
+    assert.equal(attribution.reason, "trade_exchange_order_binding_conflict");
+    assert.notEqual(attribution.exitMode, "manual_exit");
+  });
 });
 
 test("a net reversal attributes only its close component to the managed execution", () => {
@@ -324,6 +502,33 @@ test("an unmatched external entry mixed into the managed slot blocks close attri
   assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 0);
 });
 
+test("a different external entry at the close timestamp blocks attribution", () => {
+  const { db } = managedDb();
+  upsertOkxOrder(db, closePayload({
+    ordId: "same-time-manual-entry",
+    side: "buy",
+    posSide: "long",
+    reduceOnly: "false",
+    fillPnl: "0",
+    tradeId: "same-time-manual-entry-trade"
+  }), context());
+
+  const close = insertClose(db);
+
+  assert.equal(close.tradeAttribution.scope, "attribution_pending");
+  assert.equal(close.tradeAttribution.reason, "mixed_position_attribution");
+});
+
+test("a close at the exact entry timestamp remains attribution-pending", () => {
+  const { db } = managedDb();
+
+  const close = insertClose(db, closePayload({ fillTime: String(Date.parse(ENTRY_AT)) }));
+
+  assert.equal(close.tradeAttribution.scope, "attribution_pending");
+  assert.equal(close.tradeAttribution.reason, "manual_exit_time_mismatch");
+  assert.equal(projection.projectSystemTradeFill(db, close), null);
+});
+
 test("missing authoritative trade identity or exchange time cannot resolve a manual exit", async (t) => {
   assert.equal(typeof projection.resolveManualExitAttribution, "function");
   for (const [name, mutate, reason] of [
@@ -409,6 +614,69 @@ test("partial attributed evidence cannot settle an execution", () => {
   assert.equal(closure.complete, false);
   assert.equal(closure.reason, "manual_exit_quantity_incomplete");
   assert.equal(execution.status, "protecting");
+});
+
+test("manual-exit settlement requires an account, environment, credential, and exchange-bound snapshot", async (t) => {
+  const cases = [
+    ["account", { accountId: "account-b" }],
+    ["environment", { environment: "demo" }],
+    ["credential", { apiKeyFingerprint: "wrong-fingerprint" }],
+    ["exchange", { exchange: "BINANCE" }]
+  ];
+  for (const [name, override] of cases) await t.test(name, () => {
+    const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+    insertClose(db);
+    const result = reconcilePendingClose(db, execution, {
+      snapshot: {
+        id: `snapshot-${name}-mismatch`,
+        exchange: "OKX",
+        accountId: "account-a",
+        environment: "production",
+        apiKeyFingerprint: API_KEY_FINGERPRINT,
+        status: "ok",
+        positions: [],
+        createdAt: "2026-08-15T02:00:00.000Z",
+        ...override
+      }
+    });
+
+    assert.equal(result.status, "close_reconciliation_pending");
+    assert.equal(execution.status, "close_reconciliation_pending");
+    assert.equal(db.positions.some((position) => position.executionOrderId === execution.id), true);
+    assert.equal(db.tradePlans.find((plan) => plan.id === execution.planId).status, "executing");
+  });
+});
+
+test("a complete manual closure waits for a post-fill snapshot without retrying an outbound close", async () => {
+  const { db, execution } = managedDb({ status: "close_pending" });
+  execution.closeAttemptedAt = execution.closeSubmittedAt;
+  insertClose(db);
+  let outboundActions = 0;
+  let remoteClosures = 0;
+  const result = await pollExecutionOrders(db, {
+    snapshot: {
+      id: "snapshot-before-manual-fill",
+      exchange: "OKX",
+      accountId: "account-a",
+      environment: "production",
+      apiKeyFingerprint: API_KEY_FINGERPRINT,
+      status: "ok",
+      positions: [{ instId: "BTC-USDT-SWAP", posSide: "long", pos: "1" }],
+      createdAt: "2026-08-15T00:45:00.000Z"
+    },
+    nowMs: Date.parse("2026-08-15T02:00:00.000Z"),
+    closeProgressSlaMs: 0,
+    maxCloseRetries: 1,
+    executeTradeAction: async () => { outboundActions += 1; return { status: "submitted" }; },
+    fetchManualClosure: async () => { remoteClosures += 1; return { complete: false }; }
+  });
+
+  assert.equal(outboundActions, 0);
+  assert.equal(result.results[0].settlement, "authoritative_snapshot_pending");
+  assert.equal(execution.status, "close_pending");
+  assert.equal(remoteClosures, 0);
+  assert.equal(db.fills.filter((fill) => fill.kind === "close").length, 1);
+  assert.equal(db.positions.some((position) => position.executionOrderId === execution.id), true);
 });
 
 test("authoritative position absence settles from the existing manual-exit fill without an outbound action", () => {

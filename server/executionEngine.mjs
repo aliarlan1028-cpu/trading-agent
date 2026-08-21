@@ -1181,8 +1181,10 @@ async function pollOne(db, executionOrder, options = {}) {
     const snapshot = options.snapshot || (executionOrder.accountId
       ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId })
       : null);
-    if (snapshotPositionOpen(snapshot, executionOrder)) await handleClosePendingWatchdog(db, executionOrder, options);
     const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+    if (!attributedManualClosure.complete && snapshotPositionOpen(snapshot, executionOrder)) {
+      await handleClosePendingWatchdog(db, executionOrder, options);
+    }
     const closureResolver = executionOrder.closeReconciliationSource === "protection_orders"
       ? (options.fetchProtectionClosure || fetchOkxProtectionClosure)
       : (options.fetchManualClosure || fetchOkxManualClosure);
@@ -2176,6 +2178,8 @@ function snapshotPositionOpen(snapshot, executionOrder) {
 }
 
 export function reconcilePendingClose(db, executionOrder, { snapshot = null, closure = null } = {}) {
+  const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+  const useAttributedManualExit = attributedManualClosure.complete === true;
   const credentialBinding = validateOkxCredentialBinding(db, {
     accountId: executionOrder.accountId,
     snapshot,
@@ -2185,16 +2189,25 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   if (!executionOrder.accountId || snapshot?.accountId !== executionOrder.accountId) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "bound_account_snapshot_pending" };
   }
+  if (!snapshot?.environment || String(snapshot.environment).toLowerCase() !== String(executionOrder.environment || "").toLowerCase()) {
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "bound_environment_snapshot_pending" };
+  }
+  if (!snapshot?.exchange || String(snapshot.exchange).toUpperCase() !== String(executionOrder.exchange || "OKX").toUpperCase()) {
+    return { id: executionOrder.id, status: executionOrder.status, settlement: "bound_exchange_snapshot_pending" };
+  }
   const submittedAt = new Date(executionOrder.closeSubmittedAt || 0).getTime();
   const snapshotAt = new Date(snapshot?.createdAt || 0).getTime();
-  if (!snapshot || snapshot.status !== "ok" || !Number.isFinite(snapshotAt) || snapshotAt < submittedAt) {
+  const manualClosedAt = useAttributedManualExit ? new Date(attributedManualClosure.closedAt || 0).getTime() : 0;
+  const authoritativeAfter = Math.max(
+    Number.isFinite(submittedAt) ? submittedAt : 0,
+    Number.isFinite(manualClosedAt) ? manualClosedAt : 0
+  );
+  if (!snapshot || snapshot.status !== "ok" || !Number.isFinite(snapshotAt) || snapshotAt < authoritativeAfter) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "authoritative_snapshot_pending" };
   }
   if (snapshotPositionOpen(snapshot, executionOrder)) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "position_still_open" };
   }
-  const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
-  const useAttributedManualExit = attributedManualClosure.complete === true;
   const settledClosure = useAttributedManualExit ? attributedManualClosure : closure;
   if (!settledClosure?.complete) {
     executionOrder.status = "close_reconciliation_pending";
@@ -2231,11 +2244,11 @@ function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, clos
     ? Math.max(0, Math.round((closedAt - openedAt) / 60000)) : null;
   if (existingCloseFills.length) {
     for (const fill of existingCloseFills) {
+      const existingExitMode = fill.tradeAttribution?.exitMode;
       fill.executionOrderId ||= executionOrder.id;
       fill.planId ||= executionOrder.planId;
       fill.tradePlanId ||= executionOrder.planId;
       fill.direction ||= executionOrder.direction;
-      fill.exitReason ||= exitReason;
       fill.holdingMinutes ??= holdingMinutes;
       fill.maeUsdt ??= executionOrder.maeUsdt ?? null;
       fill.mfeUsdt ??= executionOrder.mfeUsdt ?? null;
@@ -2243,18 +2256,21 @@ function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, clos
       fill.financialBasis = "exchange_fills_confirmed_funding_unreconciled";
       fill.financialBasisComplete = false;
       fill.fundingReconciled ??= false;
-      fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, {
-        ...fill,
-        tradeAttribution: {
-          ...fill.tradeAttribution,
-          origin: "external_exchange",
-          exitMode: "manual_exit",
-          method: "deterministic_manual_exit"
-        }
-      });
-      fill.tradeAttribution.origin = "external_exchange";
-      fill.tradeAttribution.exitMode = "manual_exit";
-      fill.tradeAttribution.method = "deterministic_manual_exit";
+      if (existingExitMode === "manual_exit") {
+        fill.exitReason ||= exitReason;
+        fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, {
+          ...fill,
+          tradeAttribution: {
+            ...fill.tradeAttribution,
+            origin: "external_exchange",
+            exitMode: "manual_exit",
+            method: "deterministic_manual_exit"
+          }
+        });
+        fill.tradeAttribution.origin = "external_exchange";
+        fill.tradeAttribution.exitMode = "manual_exit";
+        fill.tradeAttribution.method = "deterministic_manual_exit";
+      }
     }
   } else {
     recordFill(db, executionOrder, "close", closure.weightedPrice, closure.quantity, closure.realizedPnl, {

@@ -111,28 +111,15 @@ function fillOrderIdentitySets(fill = {}, evidence = {}) {
   };
 }
 
-function identitiesMatchRole(inputs, expected, opposite) {
-  let matched = false;
-  for (const type of Object.keys(inputs)) {
-    if (inputs[type].some((id) => opposite[type].includes(id))) return false;
-    if (inputs[type].length && expected[type].length) {
-      if (inputs[type].some((id) => !expected[type].includes(id))) return false;
-      matched = true;
-    }
-  }
-  return matched;
-}
-
 function findExecutionByExchangeIdentity(db = {}, fill = {}) {
   const role = orderRole(fill);
   const ids = fillOrderIdentitySets(fill);
   if (!role || !Object.values(ids).some((values) => values.length)) return [];
-  const oppositeRole = role === "entry" ? "close" : "entry";
-  return (db.executionOrders || []).filter((executionOrder) => identitiesMatchRole(
-    ids,
-    orderIdentitySets(executionOrder, role),
-    orderIdentitySets(executionOrder, oppositeRole)
-  ));
+  return (db.executionOrders || []).filter((executionOrder) => {
+    const entry = orderIdentitySets(executionOrder, "entry");
+    const close = orderIdentitySets(executionOrder, "close");
+    return Object.keys(ids).some((type) => ids[type].some((id) => entry[type].includes(id) || close[type].includes(id)));
+  });
 }
 
 function pending(fill, reason, executionOrder = null, planId = null) {
@@ -287,11 +274,11 @@ function executionEntryFills(db, executionOrder) {
   });
 }
 
-function attributedCloseFills(db, executionOrder) {
+function systemCloseFills(db, executionOrder) {
   return (db.fills || []).filter((fill) => {
     if (fill?.kind !== "close") return false;
     const attribution = classifyTradeFill(db, fill);
-    return attribution.scope === "system" && attribution.exitMode === "manual_exit"
+    return attribution.scope === "system"
       && attribution.executionOrderId === stringValue(executionOrder.id);
   });
 }
@@ -328,14 +315,14 @@ function hasMixedExternalEntry(db, executionOrder, closeFill, entryAt, closeAt) 
     const tradeId = stringValue(fill.exchangeTradeId ?? fill.tradeId);
     if (closeTradeId && tradeId === closeTradeId) return false;
     const at = authoritativeFillTime(fill);
-    return at === null || (at >= entryAt && at < closeAt);
+    return at === null || (at >= entryAt && at <= closeAt);
   });
 }
 
 function manualExitCandidate(db, executionOrder, fill) {
   const entryFills = executionEntryFills(db, executionOrder);
   const managedQuantity = executionManagedQuantity(db, executionOrder, entryFills);
-  const priorCloseQuantity = attributedCloseFills(db, executionOrder)
+  const priorCloseQuantity = systemCloseFills(db, executionOrder)
     .reduce((sum, row) => sum + (positiveNumber(row.quantity ?? row.size) || 0), 0);
   const remainingQuantity = managedQuantity === null ? null : Math.max(0, managedQuantity - priorCloseQuantity);
   const fillQuantity = positiveNumber(fill.quantity ?? fill.size);
@@ -350,7 +337,7 @@ function manualExitCandidate(db, executionOrder, fill) {
     symbol: populated(fill.symbol) && populated(executionOrder.symbol)
       && canonicalSymbol(fill.symbol) === canonicalSymbol(executionOrder.symbol),
     direction: closeDirection(fill) !== null && closeDirection(fill) === canonicalPositionDirection(executionOrder),
-    time: fillAt !== null && entryAt !== null && fillAt >= entryAt,
+    time: fillAt !== null && entryAt !== null && fillAt > entryAt,
     quantity: fillQuantity !== null && remainingQuantity !== null && remainingQuantity > tolerance
       && fillQuantity <= remainingQuantity + tolerance
   };
@@ -456,6 +443,13 @@ export function buildExecutionFillAttribution(db = {}, executionOrder = {}, fill
 }
 
 export function buildExternalFillAttribution(db = {}, fill = {}) {
+  const classified = classifyTradeFill(db, fill);
+  if (classified.scope !== "manual") {
+    return {
+      ...classified,
+      origin: "external_exchange"
+    };
+  }
   if (fill.kind === "close" && !fill.executionOrderId && !fill.tradeAttribution?.executionOrderId) {
     const resolution = resolveManualExitAttribution(db, fill);
     if (resolution.status === "matched") {
@@ -500,11 +494,10 @@ export function buildExternalFillAttribution(db = {}, fill = {}) {
       });
     }
   }
-  const attribution = classifyTradeFill(db, fill);
   return {
-    ...attribution,
+    ...classified,
     origin: "external_exchange",
-    method: attribution.scope === "manual" ? "external_unmanaged" : attribution.method
+    method: "external_unmanaged"
   };
 }
 
@@ -536,13 +529,14 @@ export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
   if (!(expectedQuantity > 0)) {
     return { complete: false, reason: "manual_exit_managed_quantity_unavailable", fills: [], quantity: 0, tradeIds: [] };
   }
-  const matched = (db.fills || []).map((raw) => ({ raw, projected: projectSystemTradeFill(db, raw) }))
+  const systemCloses = (db.fills || []).map((raw) => ({ raw, projected: projectSystemTradeFill(db, raw) }))
     .filter(({ raw, projected }) => raw?.kind === "close" && projected
-      && projected.tradeAttribution?.exitMode === "manual_exit"
       && stringValue(projected.executionOrderId) === stringValue(executionOrder.id));
-  if (!matched.length) {
+  const manualCloses = systemCloses.filter(({ projected }) => projected.tradeAttribution?.exitMode === "manual_exit");
+  if (!manualCloses.length) {
     return { complete: false, reason: "manual_exit_fills_missing", fills: [], quantity: 0, tradeIds: [] };
   }
+  const matched = systemCloses;
   const tradeIds = matched.map(({ raw }) => stringValue(raw.exchangeTradeId ?? raw.tradeId));
   if (tradeIds.some((tradeId) => !tradeId) || new Set(tradeIds).size !== tradeIds.length) {
     return { complete: false, reason: "manual_exit_trade_identity_incomplete", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds: tradeIds.filter(Boolean) };
@@ -565,7 +559,7 @@ export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
   const closeAt = Math.max(...matched.map(({ raw }) => authoritativeFillTime(raw)));
   const entryFills = executionEntryFills(db, executionOrder);
   const entryAt = executionEntryTime(executionOrder, entryFills);
-  if (matched.some(({ raw }) => hasMixedExternalEntry(db, executionOrder, raw, entryAt, authoritativeFillTime(raw)))) {
+  if (manualCloses.some(({ raw }) => hasMixedExternalEntry(db, executionOrder, raw, entryAt, authoritativeFillTime(raw)))) {
     return { complete: false, reason: "mixed_position_attribution", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds };
   }
   const quantity = matched.reduce((sum, { raw }) => sum + Number(raw.quantity ?? raw.size), 0);
