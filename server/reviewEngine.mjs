@@ -772,6 +772,10 @@ export async function runTradeReflection(db) {
     };
     // 完整落库后才标记已处理。若中途抛出异常，下轮仍能重试，不会出现“成交已 reflected、复盘却永久 processing”。
     const reflectedAt = nowIso();
+    const rawRepresentative = (db.fills || []).find((item) => item?.id && item.id === fill.id);
+    for (const field of ["newsContext", "trajectory", "deepReflection", "lossAttribution"]) {
+      if (rawRepresentative && fill[field] !== undefined) rawRepresentative[field] = structuredClone(fill[field]);
+    }
     for (const closeFill of lifecycle.fills) {
       const rawFill = (db.fills || []).find((item) => item?.id && item.id === closeFill.id);
       if (rawFill) rawFill.reflectedAt = reflectedAt;
