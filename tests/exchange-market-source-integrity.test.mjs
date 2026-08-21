@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { syncPublicKlines, syncPublicMarket } from "../server/exchangeConnector.mjs";
+import { getHistoricalKlines, syncPublicKlines, syncPublicMarket } from "../server/exchangeConnector.mjs";
 
 test("a slower closed-candle sync cannot overwrite the newer OKX ticker price", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -31,4 +31,80 @@ test("a slower closed-candle sync cannot overwrite the newer OKX ticker price", 
   assert.equal(market.changePct, 1);
   assert.ok(market.tickerSyncedAt);
   assert.ok(market.candlesByTf["1h"].syncedAt);
+});
+
+test("historical kline pagination settles on caller abort even when fetch never settles", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  reason.code = "scheduler_task_timeout";
+  const pending = getHistoricalKlines("BTC/USDT", "15m", 700, "OKX", { signal: controller.signal });
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then(
+      (value) => ({ type: "resolved", value }),
+      (error) => ({ type: "rejected", error })
+    ),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+});
+
+test("historical kline pagination settles on caller abort while reading a stalled body", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let markBodyStarted;
+  const bodyStarted = new Promise((resolve) => { markBodyStarted = resolve; });
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: () => {
+      markBodyStarted();
+      return new Promise(() => {});
+    }
+  });
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  reason.code = "scheduler_task_timeout";
+  const pending = getHistoricalKlines("BTC/USDT", "15m", 700, "OKX", { signal: controller.signal });
+  await bodyStarted;
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then(
+      (value) => ({ type: "resolved", value }),
+      (error) => ({ type: "rejected", error })
+    ),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+});
+
+test("an already-aborted historical read never starts another fetch", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("fetch_must_not_start");
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  reason.code = "scheduler_task_timeout";
+  controller.abort(reason);
+
+  await assert.rejects(
+    getHistoricalKlines("BTC/USDT", "15m", 700, "OKX", { signal: controller.signal }),
+    (error) => error === reason
+  );
+  assert.equal(fetchCalls, 0);
 });

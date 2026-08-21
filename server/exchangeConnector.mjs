@@ -74,6 +74,28 @@ function throwIfAborted(signal) {
   throw new Error(String(signal.reason || "outbound_aborted"));
 }
 
+async function awaitAbortable(operation, signal) {
+  throwIfAborted(signal);
+  if (!signal) return operation();
+  let rejectOnAbort;
+  const aborted = new Promise((_resolve, reject) => {
+    rejectOnAbort = () => reject(signal.reason instanceof Error
+      ? signal.reason
+      : new Error(String(signal.reason || "outbound_aborted")));
+    signal.addEventListener("abort", rejectOnAbort, { once: true });
+    if (signal.aborted) rejectOnAbort();
+  });
+  const pending = Promise.resolve().then(() => {
+    throwIfAborted(signal);
+    return operation();
+  });
+  try {
+    return await Promise.race([pending, aborted]);
+  } finally {
+    signal.removeEventListener("abort", rejectOnAbort);
+  }
+}
+
 function timeoutSignal(ms = 6000, parentSignal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -250,9 +272,9 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
   const timer = timeoutSignal(8000, options.signal);
   try {
     const url = okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`);
-    const response = await fetch(url, { signal: timer.signal });
+    const response = await awaitAbortable(() => fetch(url, { signal: timer.signal }), timer.signal);
     if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
-    const payload = await response.json();
+    const payload = await awaitAbortable(() => response.json(), timer.signal);
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX klines API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     const rows = (payload.data || []).map((row) => ({
       time: Number(row[0]),
@@ -394,9 +416,9 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target, options = {}) {
   const raw = [];
   const recentTimer = timeoutSignal(8000, options.signal);
   try {
-    const response = await fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal });
+    const response = await awaitAbortable(() => fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal }), recentTimer.signal);
     if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
-    const payload = await response.json();
+    const payload = await awaitAbortable(() => response.json(), recentTimer.signal);
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX candles API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     raw.push(...(payload.data || []));
   } finally {
@@ -410,9 +432,9 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target, options = {}) {
     const pageTimer = timeoutSignal(8000, options.signal);
     let batch;
     try {
-      const response = await fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal });
+      const response = await awaitAbortable(() => fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal }), pageTimer.signal);
       if (!response.ok) break;
-      const payload = await response.json();
+      const payload = await awaitAbortable(() => response.json(), pageTimer.signal);
       if (String(payload?.code ?? "0") !== "0") break;
       batch = payload.data || [];
     } catch {
