@@ -19,14 +19,14 @@ if [ -n "$(git -C "$LOCAL_DIR" status --porcelain 2>/dev/null)" ]; then
 fi
 RELEASE_ID="${GIT_REV}-$(date -u +%Y%m%dT%H%M%SZ)"
 
-EXCLUDES=(--exclude node_modules --exclude .git --exclude data --exclude backups --exclude offsite-backups --exclude secrets
+EXCLUDES=(--exclude node_modules --exclude .git --exclude .worktrees --exclude data --exclude backups --exclude offsite-backups --exclude secrets
           --exclude ios --exclude dist --exclude .env --exclude '*.log'
           --exclude tmp --exclude public/kordyn-concept-faithful.html --exclude public/kordyn-marketing-v4.html
           --exclude public/landing-concept-v3.html --exclude public/landing-prototype.html
           --exclude deploy/vendor.env --exclude deploy/monitor.env)  # 服务器专有密钥文件(gitignore,本地无)——曾被 --delete 误删导致新租户静默无 LLM key
 
 if [ "${1:-}" = "--dry" ]; then
-  rsync -azn --delete -v "${EXCLUDES[@]}" "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/" | head -50
+  rsync -azn --delete -v "${EXCLUDES[@]}" "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/" | sed -n '1,50p'
   exit 0
 fi
 
