@@ -4,6 +4,7 @@ import { appendTrace, id, nowIso } from "./store.mjs";
 import { containsLikelySecret, scrubSecrets } from "./secretRedaction.mjs";
 import { completeGeminiWebSearch } from "./llmGateway.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { awaitAbortableOperation } from "./abortableOperation.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const ATTRIBUTION_CATEGORIES = new Map([
@@ -270,7 +271,12 @@ async function scanMarketMovers(options = {}) {
   if (options.signal?.aborted) relayAbort();
   else options.signal?.addEventListener("abort", relayAbort, { once: true });
   try {
-    const raw = await fetch(`${OKX_BASE}/api/v5/market/tickers?instType=SWAP`, { signal: controller.signal }).then((r) => r.json());
+    const response = await awaitAbortableOperation(
+      () => fetch(`${OKX_BASE}/api/v5/market/tickers?instType=SWAP`, { signal: controller.signal }),
+      controller.signal,
+      "market_scan_aborted"
+    );
+    const raw = await awaitAbortableOperation(() => response.json(), controller.signal, "market_scan_aborted");
     if (raw.code !== "0" || !Array.isArray(raw.data)) return { movers: [], scannedAt: nowIso(), error: raw.msg || "tickers 拉取失败" };
     const movers = raw.data
       .filter((t) => String(t.instId).endsWith("-USDT-SWAP"))

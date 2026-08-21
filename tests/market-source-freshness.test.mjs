@@ -4,7 +4,7 @@ import { marketFactFreshness, currentEvidenceReadiness } from "../server/marketF
 import { applyTickerObservation } from "../server/marketObservation.mjs";
 import { updateMarketFromTicker } from "../server/realtimeManager.mjs";
 import { handleMarketStreamMessage } from "../server/marketStream.mjs";
-import { syncPublicMarketQuiet } from "../server/exchangeConnector.mjs";
+import { syncMicrostructure, syncPublicMarketQuiet } from "../server/exchangeConnector.mjs";
 
 const ISO = (ms) => new Date(ms).toISOString();
 
@@ -143,4 +143,44 @@ test("the market task caller can abort an in-flight REST ticker before it mutate
   await assert.rejects(pending, (error) => error === reason);
   assert.equal(db.markets[0].price, 61_000);
   assert.equal(db.markets[0].tickerReceivedAt, undefined);
+});
+
+test("REST ticker settles on caller abort even when fetch ignores the signal", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  const db = { markets: [{ symbol: "BTC/USDT", price: 61_000 }] };
+  const pending = syncPublicMarketQuiet(db, "BTC/USDT", { signal: controller.signal });
+
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then((value) => ({ type: "resolved", value }), (error) => ({ type: "rejected", error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+  assert.equal(db.markets[0].tickerReceivedAt, undefined);
+});
+
+test("microstructure settles on caller abort even when its fetches ignore the signal", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  const db = { markets: [{ symbol: "BTC/USDT", price: 61_000 }], traces: [] };
+  const pending = syncMicrostructure(db, "OKX", "BTC/USDT", { quiet: true, signal: controller.signal });
+
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then((value) => ({ type: "resolved", value }), (error) => ({ type: "rejected", error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+  assert.equal(db.markets[0].microSyncedAt, undefined);
 });

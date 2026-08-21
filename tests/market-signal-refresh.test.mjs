@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { refreshMarketSignalSymbol } from "../server/marketSignalRefresh.mjs";
+import { refreshMarketMovers } from "../server/marketScan.mjs";
+import { fetchSmartMoney } from "../server/marketSignals.mjs";
 
 test("ticker failure never starves the independent microstructure refresh", async () => {
   let microCalls = 0;
@@ -65,4 +67,42 @@ test("caller cancellation stops the current source and prevents later market mut
   await assert.rejects(pending, (error) => error === reason);
   assert.equal(microCalls, 0);
   assert.equal(smartMoneyCalls, 0);
+});
+
+test("smart-money fetches settle on caller abort even when fetch ignores the signal", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  const pending = fetchSmartMoney("BTC/USDT", { signal: controller.signal });
+
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then((value) => ({ type: "resolved", value }), (error) => ({ type: "rejected", error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+});
+
+test("market-mover scan settles on caller abort even when fetch ignores the signal", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  const db = { traces: [] };
+  const pending = refreshMarketMovers(db, { attributeTop: 0, signal: controller.signal });
+
+  controller.abort(reason);
+
+  const outcome = await Promise.race([
+    pending.then((value) => ({ type: "resolved", value }), (error) => ({ type: "rejected", error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: "still_pending" }), 50))
+  ]);
+  assert.equal(outcome.type, "rejected");
+  assert.equal(outcome.error, reason);
+  assert.equal(db.marketMovers, undefined);
 });

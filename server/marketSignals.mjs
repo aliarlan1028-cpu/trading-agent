@@ -9,6 +9,7 @@
 import { nowIso } from "./store.mjs";
 import { toOkxSymbol } from "./exchangeConnector.mjs";
 import { getOkxLiquidationSummary } from "./okxLiquidationStream.mjs";
+import { awaitAbortableOperation } from "./abortableOperation.mjs";
 
 const OKX_BASE = process.env.OKX_BASE_URL || "https://www.okx.com";
 const RUBIK = `${OKX_BASE}/api/v5/rubik/stat/contracts`;
@@ -38,9 +39,13 @@ function timer(ms = 8000, parentSignal) {
 }
 
 async function getJson(url, signal) {
-  const response = await fetch(url, { signal, headers: { accept: "application/json" } });
+  const response = await awaitAbortableOperation(
+    () => fetch(url, { signal, headers: { accept: "application/json" } }),
+    signal,
+    "market_signal_aborted"
+  );
   if (!response.ok) throw new Error(`${url} ${response.status}`);
-  const payload = await response.json();
+  const payload = await awaitAbortableOperation(() => response.json(), signal, "market_signal_aborted");
   if (String(payload?.code ?? "0") !== "0") throw new Error(`${url} API ${payload?.code}: ${payload?.msg || "unknown error"}`);
   return payload;
 }
@@ -142,6 +147,7 @@ export async function fetchSmartMoney(symbol = "BTC/USDT", options = {}) {
       // 混在一起，不能用于 BTC-USDT-SWAP 这类具体永续合约的 CVD。
       getJson(`${OKX_BASE}/api/v5/rubik/stat/taker-volume-contract?instId=${instId}&period=5m`, okx.signal)
     ]);
+    throwIfAborted(options.signal);
     out.topTraderLongShortRatio = firstRatio(topPos);   // 大户持仓多空比（真·聪明钱）
     out.topTraderAccountRatio = firstRatio(topAcct);    // 大户账户多空比
     out.retailLongShortRatio = firstRatio(crowd);       // 全体持仓人数多空比（散户为主）

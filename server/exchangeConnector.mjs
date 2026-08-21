@@ -6,6 +6,7 @@ import { okxEnvironmentConfig, okxRestUrl } from "./okxEnvironment.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
 import { applyTickerObservation, timestampEvidence } from "./marketObservation.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { awaitAbortableOperation } from "./abortableOperation.mjs";
 
 const BINANCE_SPOT_BASE = process.env.BINANCE_SPOT_BASE_URL
   || (process.env.BINANCE_TESTNET === "true" ? "https://testnet.binance.vision" : "https://api.binance.com");
@@ -72,28 +73,6 @@ function throwIfAborted(signal) {
   if (!signal?.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
   throw new Error(String(signal.reason || "outbound_aborted"));
-}
-
-async function awaitAbortable(operation, signal) {
-  throwIfAborted(signal);
-  if (!signal) return operation();
-  let rejectOnAbort;
-  const aborted = new Promise((_resolve, reject) => {
-    rejectOnAbort = () => reject(signal.reason instanceof Error
-      ? signal.reason
-      : new Error(String(signal.reason || "outbound_aborted")));
-    signal.addEventListener("abort", rejectOnAbort, { once: true });
-    if (signal.aborted) rejectOnAbort();
-  });
-  const pending = Promise.resolve().then(() => {
-    throwIfAborted(signal);
-    return operation();
-  });
-  try {
-    return await Promise.race([pending, aborted]);
-  } finally {
-    signal.removeEventListener("abort", rejectOnAbort);
-  }
 }
 
 function timeoutSignal(ms = 6000, parentSignal) {
@@ -173,9 +152,12 @@ async function fetchPublicTicker(symbol, signal) {
   const timer = timeoutSignal(6000, signal);
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
-    const response = await fetch(`${okxTickerUrl()}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
+    const response = await awaitAbortableOperation(
+      () => fetch(`${okxTickerUrl()}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal }),
+      timer.signal
+    );
     if (!response.ok) throw new Error(`OKX ticker HTTP ${response.status}`);
-    const payload = await response.json();
+    const payload = await awaitAbortableOperation(() => response.json(), timer.signal);
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX ticker API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     const ticker = payload.data?.[0];
     if (!ticker) throw new Error("OKX ticker missing data");
@@ -272,9 +254,9 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
   const timer = timeoutSignal(8000, options.signal);
   try {
     const url = okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`);
-    const response = await awaitAbortable(() => fetch(url, { signal: timer.signal }), timer.signal);
+    const response = await awaitAbortableOperation(() => fetch(url, { signal: timer.signal }), timer.signal);
     if (!response.ok) throw new Error(`OKX klines HTTP ${response.status}`);
-    const payload = await awaitAbortable(() => response.json(), timer.signal);
+    const payload = await awaitAbortableOperation(() => response.json(), timer.signal);
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX klines API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     const rows = (payload.data || []).map((row) => ({
       time: Number(row[0]),
@@ -300,9 +282,9 @@ async function fetchMicrostructureRaw(exchange, symbol, options = {}) {
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
     const getOkx = async (url, label) => {
-      const response = await fetch(url, { signal: timer.signal });
+      const response = await awaitAbortableOperation(() => fetch(url, { signal: timer.signal }), timer.signal);
       if (!response.ok) throw new Error(`OKX ${label} HTTP ${response.status}`);
-      const payload = await response.json();
+      const payload = await awaitAbortableOperation(() => response.json(), timer.signal);
       if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX ${label} API ${payload?.code}: ${payload?.msg || "unknown error"}`);
       if (!Array.isArray(payload?.data) || !payload.data.length) throw new Error(`OKX ${label} missing data`);
       return payload;
@@ -416,9 +398,9 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target, options = {}) {
   const raw = [];
   const recentTimer = timeoutSignal(8000, options.signal);
   try {
-    const response = await awaitAbortable(() => fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal }), recentTimer.signal);
+    const response = await awaitAbortableOperation(() => fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal }), recentTimer.signal);
     if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
-    const payload = await awaitAbortable(() => response.json(), recentTimer.signal);
+    const payload = await awaitAbortableOperation(() => response.json(), recentTimer.signal);
     if (String(payload?.code ?? "0") !== "0") throw new Error(`OKX candles API ${payload?.code}: ${payload?.msg || "unknown error"}`);
     raw.push(...(payload.data || []));
   } finally {
@@ -432,9 +414,9 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target, options = {}) {
     const pageTimer = timeoutSignal(8000, options.signal);
     let batch;
     try {
-      const response = await awaitAbortable(() => fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal }), pageTimer.signal);
+      const response = await awaitAbortableOperation(() => fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal }), pageTimer.signal);
       if (!response.ok) break;
-      const payload = await awaitAbortable(() => response.json(), pageTimer.signal);
+      const payload = await awaitAbortableOperation(() => response.json(), pageTimer.signal);
       if (String(payload?.code ?? "0") !== "0") break;
       batch = payload.data || [];
     } catch {
