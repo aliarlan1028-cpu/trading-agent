@@ -136,18 +136,25 @@ function writeTypedBlob(digest, value) {
   digest.update(value);
 }
 
-export function legacyAuditTableDigest(rows) {
+function createLegacyAuditTableDigest(rowCount) {
   const digest = crypto.createHash("sha256");
   digest.update(Buffer.from("TRADING_AGENT_LEGACY_AUDIT_TABLE\0", "utf8"));
   digest.update(u16be(1));
-  digest.update(u64be(rows.length));
-  for (const row of rows) {
-    digest.update(Buffer.from("ROW\0", "utf8"));
-    writeTypedU64(digest, row.rowid);
-    for (const field of ["id", "actor", "action", "target", "severity", "created_at", "doc"]) {
-      writeTypedBlob(digest, row[field]);
-    }
+  digest.update(u64be(rowCount));
+  return digest;
+}
+
+function updateLegacyAuditTableDigest(digest, row) {
+  digest.update(Buffer.from("ROW\0", "utf8"));
+  writeTypedU64(digest, row.rowid);
+  for (const field of ["id", "actor", "action", "target", "severity", "created_at", "doc"]) {
+    writeTypedBlob(digest, row[field]);
   }
+}
+
+export function legacyAuditTableDigest(rows) {
+  const digest = createLegacyAuditTableDigest(rows.length);
+  for (const row of rows) updateLegacyAuditTableDigest(digest, row);
   return digest.digest("hex");
 }
 
@@ -461,10 +468,10 @@ export function verifyAuditContinuityRows({ rows = [], baseline = null, approved
   };
 }
 
-function readAuditRows(sqlitePath) {
+function scanAuditRows(sqlitePath, approvedIncident) {
   const reader = new Database(sqlitePath, { readonly: true, fileMustExist: true });
   try {
-    return reader.prepare(`
+    const iterator = reader.prepare(`
       select rowid,
         cast(id as blob) as id,
         cast(actor as blob) as actor,
@@ -475,7 +482,90 @@ function readAuditRows(sqlitePath) {
         cast(doc as blob) as doc
       from audit_log_entries
       order by rowid asc
-    `).all();
+    `).iterate();
+    const rawBreaks = [];
+    let rawPreviousHash = null;
+    let checked = 0;
+    let lastHash = null;
+    let storedColumnError = null;
+    const prefixDigest = createLegacyAuditTableDigest(approvedIncident.legacyAuditRowCount);
+    let prefixCount = 0;
+    let prefixPreviousHash = null;
+    let previousBreakRowid = null;
+    let storedLinkBreaks = 0;
+    let breakIslands = 0;
+    let cutoffEntry = null;
+    let tailRowsChecked = 0;
+    let tailPreviousHash = approvedIncident.legacyCutoffHeadHash;
+    let tailPreviousRowid = approvedIncident.legacyCutoffRowid;
+    let tailFailure = null;
+
+    for (const row of iterator) {
+      let entry;
+      try {
+        entry = parsedEntry(row);
+      } catch (error) {
+        return { rowError: error };
+      }
+      checked += 1;
+      const expectedHash = auditHash(entry);
+      if (entry.prevHash !== rawPreviousHash) {
+        rawBreaks.push({ id: entry.id, expectedPrevHash: rawPreviousHash, actualPrevHash: entry.prevHash });
+      }
+      if (entry.hash !== expectedHash) rawBreaks.push({ id: entry.id, expectedHash, actualHash: entry.hash });
+      rawPreviousHash = entry.hash;
+      lastHash = entry.hash;
+
+      let currentStoredColumnError = null;
+      try {
+        assertStoredColumnsMatch(row, entry);
+      } catch (error) {
+        currentStoredColumnError = error;
+        storedColumnError ||= error;
+      }
+
+      if (row.rowid <= approvedIncident.legacyCutoffRowid) {
+        prefixCount += 1;
+        updateLegacyAuditTableDigest(prefixDigest, row);
+        if (entry.prevHash !== prefixPreviousHash) {
+          storedLinkBreaks += 1;
+          if (previousBreakRowid === null || row.rowid !== previousBreakRowid + 1) breakIslands += 1;
+          previousBreakRowid = row.rowid;
+        }
+        prefixPreviousHash = entry.hash;
+        if (row.rowid === approvedIncident.legacyCutoffRowid) cutoffEntry = entry;
+        continue;
+      }
+
+      if (!tailFailure) {
+        if (currentStoredColumnError) {
+          tailFailure = { code: "tail_invalid", detail: currentStoredColumnError.message, storedColumnMismatch: true, tailRowsChecked: 0 };
+        } else if (row.rowid !== tailPreviousRowid + 1 || entry.prevHash !== tailPreviousHash || entry.hash !== expectedHash) {
+          tailFailure = {
+            code: "tail_invalid",
+            detail: `Audit continuity tail failed at rowid ${row.rowid}`,
+            tailRowsChecked: Math.max(0, row.rowid - approvedIncident.legacyCutoffRowid - 1),
+          };
+        } else {
+          tailPreviousRowid = row.rowid;
+          tailPreviousHash = entry.hash;
+          tailRowsChecked += 1;
+        }
+      }
+    }
+
+    return {
+      raw: { ok: rawBreaks.length === 0, checked, breaks: rawBreaks },
+      lastHash,
+      storedColumnError,
+      prefixCount,
+      prefixDigest: prefixDigest.digest("hex"),
+      cutoffEntry,
+      storedLinkBreaks,
+      breakIslands,
+      tailRowsChecked,
+      tailFailure,
+    };
   } finally {
     reader.close();
   }
@@ -486,22 +576,37 @@ export function verifyApprovedAuditContinuityAtPath({
   baselinePath = process.env.AUDIT_CONTINUITY_BASELINE_FILE,
   securityProfile = productionSecurityProfile(),
 } = {}) {
-  let rows;
+  let scan;
   try {
     if (!sqlitePath || !path.isAbsolute(sqlitePath) || !fs.existsSync(sqlitePath)) {
       return failureStatus(null, "sqlite_missing", "Audit SQLite path is missing");
     }
-    rows = readAuditRows(sqlitePath);
+    scan = scanAuditRows(sqlitePath, APPROVED_W0_INCIDENT);
   } catch (error) {
     return failureStatus(null, "sqlite_read_failed", error.message);
   }
-  let raw;
-  try {
-    raw = verifyAuditEntries(rows.map(parsedEntry));
-  } catch (error) {
-    return failureStatus(null, "audit_rows_invalid", error.message);
+  if (scan.rowError) return failureStatus(null, "audit_rows_invalid", scan.rowError.message);
+  const raw = scan.raw;
+  if (raw.ok) {
+    if (scan.storedColumnError) return failureStatus(raw, "audit_rows_invalid", scan.storedColumnError.message);
+    return {
+      operationalReady: true,
+      mode: "full_chain",
+      confidence: "full_chain_local",
+      deploymentMode: productionSecurityProfile({ PRODUCTION_SECURITY_PROFILE: securityProfile }),
+      legacyChainOk: true,
+      legacyClassification: null,
+      legacyStoredLinkBreaks: 0,
+      legacyBreakIslands: 0,
+      legacyPrefixDigest: null,
+      cutoffRowid: null,
+      cutoffHeadHash: scan.lastHash,
+      tailRowsChecked: raw.checked,
+      externalAttestation: "deferred",
+      raw,
+      failures: [],
+    };
   }
-  if (raw.ok) return verifyAuditContinuityRows({ rows, baseline: null, approvedIncident: APPROVED_W0_INCIDENT, securityProfile });
   if (!String(baselinePath || "").trim()) return failureStatus(raw, "baseline_missing", "No local audit continuity baseline is configured");
   let baseline;
   try {
@@ -509,7 +614,69 @@ export function verifyApprovedAuditContinuityAtPath({
   } catch (error) {
     return failureStatus(raw, error.code || "baseline_unsafe", error.message);
   }
-  return verifyAuditContinuityRows({ rows, baseline, approvedIncident: APPROVED_W0_INCIDENT, securityProfile });
+  const normalizedProfile = productionSecurityProfile({ PRODUCTION_SECURITY_PROFILE: securityProfile });
+  if (normalizedProfile !== SECURITY_PROFILES.bitlaunchSingleServer) {
+    return failureStatus(raw, "profile_not_allowed", "Local continuity is allowed only for bitlaunch_single_server");
+  }
+  const evidenceMismatch = compareApprovedEvidence(baseline, APPROVED_W0_INCIDENT);
+  if (evidenceMismatch) return failureStatus(raw, "approved_evidence_mismatch", `Baseline does not match approved incident field: ${evidenceMismatch}`);
+  if (scan.prefixCount !== APPROVED_W0_INCIDENT.legacyAuditRowCount || !scan.cutoffEntry) {
+    return failureStatus(raw, "cutoff_mismatch", "Approved cutoff row or legacy row count is missing", { cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid });
+  }
+  if (scan.cutoffEntry.hash !== APPROVED_W0_INCIDENT.legacyCutoffHeadHash
+    || scan.cutoffEntry.prevHash !== APPROVED_W0_INCIDENT.legacyCutoffPrevHash
+    || scan.cutoffEntry.createdAt !== APPROVED_W0_INCIDENT.legacyCutoffCreatedAt) {
+    return failureStatus(raw, "cutoff_mismatch", "Approved cutoff evidence changed", { cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid });
+  }
+  if (scan.prefixDigest !== APPROVED_W0_INCIDENT.legacyPrefixDigest) {
+    return failureStatus(raw, "legacy_prefix_mismatch", "Legacy prefix digest changed", {
+      legacyPrefixDigest: scan.prefixDigest,
+      cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid,
+    });
+  }
+  if (scan.storedLinkBreaks !== APPROVED_W0_INCIDENT.legacyStoredLinkBreaks || scan.breakIslands !== APPROVED_W0_INCIDENT.legacyBreakIslands) {
+    return failureStatus(raw, "legacy_break_facts_mismatch", "Observed legacy break facts differ from the approved incident", {
+      legacyStoredLinkBreaks: scan.storedLinkBreaks,
+      legacyBreakIslands: scan.breakIslands,
+      legacyPrefixDigest: scan.prefixDigest,
+      cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid,
+    });
+  }
+  if (scan.tailFailure) {
+    const tailEvidence = scan.tailFailure.storedColumnMismatch
+      ? {
+          legacyPrefixDigest: scan.prefixDigest,
+          cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid,
+        }
+      : {
+          legacyStoredLinkBreaks: scan.storedLinkBreaks,
+          legacyBreakIslands: scan.breakIslands,
+          legacyPrefixDigest: scan.prefixDigest,
+          cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid,
+          cutoffHeadHash: APPROVED_W0_INCIDENT.legacyCutoffHeadHash,
+          tailRowsChecked: scan.tailFailure.tailRowsChecked,
+        };
+    return failureStatus(raw, scan.tailFailure.code, scan.tailFailure.detail, {
+      ...tailEvidence,
+    });
+  }
+  return {
+    operationalReady: true,
+    mode: POLICY_FIELDS.mode,
+    confidence: POLICY_FIELDS.confidence,
+    deploymentMode: POLICY_FIELDS.deploymentMode,
+    legacyChainOk: false,
+    legacyClassification: POLICY_FIELDS.legacyClassification,
+    legacyStoredLinkBreaks: scan.storedLinkBreaks,
+    legacyBreakIslands: scan.breakIslands,
+    legacyPrefixDigest: scan.prefixDigest,
+    cutoffRowid: APPROVED_W0_INCIDENT.legacyCutoffRowid,
+    cutoffHeadHash: APPROVED_W0_INCIDENT.legacyCutoffHeadHash,
+    tailRowsChecked: scan.tailRowsChecked,
+    externalAttestation: POLICY_FIELDS.externalAttestation,
+    raw,
+    failures: [],
+  };
 }
 
 export function auditPreflightDecision(status, securityProfile = productionSecurityProfile()) {
