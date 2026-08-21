@@ -9,6 +9,7 @@ import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyTickerObservation } from "./marketObservation.mjs";
 import { publicMarketSocketCount } from "./marketStream.mjs";
 import { reconcileAmendOmsOrder } from "./omsRecovery.mjs";
+import { buildExternalFillAttribution } from "./systemTradeProjection.mjs";
 
 const financialNumber = (value) => finiteFinancialNumber(value) ? Number(value) : null;
 
@@ -519,7 +520,7 @@ export function upsertOkxOrder(db, payload, context = {}) {
       });
       for (const component of components.reverse()) {
         const ratio = coinQuantity > 0 ? component.quantity / coinQuantity : 1;
-        db.fills.unshift(enrichRealtimeFill(db, order, {
+        insertExternalFill(db, enrichRealtimeFill(db, order, {
           ...fillPayload,
           kindHint: component.kind,
           quantity: component.quantity,
@@ -532,9 +533,15 @@ export function upsertOkxOrder(db, payload, context = {}) {
         }));
       }
     } else {
-      db.fills.unshift(enrichRealtimeFill(db, order, fillPayload));
+      insertExternalFill(db, enrichRealtimeFill(db, order, fillPayload));
     }
   }
+}
+
+function insertExternalFill(db, fill) {
+  fill.tradeAttribution = buildExternalFillAttribution(db, fill);
+  db.fills.unshift(fill);
+  return fill;
 }
 
 export async function reconcilePendingOkxFillIdentities(db, options = {}) {

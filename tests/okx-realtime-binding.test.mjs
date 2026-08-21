@@ -112,6 +112,11 @@ test("external OKX fills retain authoritative order identity and account binding
     apiKeyFingerprint: "fingerprint-a",
     environment: "production"
   });
+  assert.deepEqual({
+    scope: db.fills[0].tradeAttribution.scope,
+    origin: db.fills[0].tradeAttribution.origin,
+    executionOrderId: db.fills[0].tradeAttribution.executionOrderId
+  }, { scope: "manual", origin: "external_exchange", executionOrderId: null });
 });
 
 test("an order update without an authoritative tradeId cannot create duplicate financial fills", () => {

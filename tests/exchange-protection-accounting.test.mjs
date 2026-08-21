@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import crypto from "node:crypto";
 
-const { applyOkxLifecycleFinancialEvidence, extractOkxAlgoChildOrderIds, fetchOkxProtectionClosure, reconcilePendingTradeFinancials, summarizeOkxManualClosure, summarizeOkxProtectionClosure, summarizeOkxProtectionClosureFromAlgoFills } = await import("../server/executionEngine.mjs");
+const { applyCumulativeEntryOrderState, applyOkxLifecycleFinancialEvidence, extractOkxAlgoChildOrderIds, fetchOkxProtectionClosure, reconcilePendingTradeFinancials, summarizeOkxManualClosure, summarizeOkxProtectionClosure, summarizeOkxProtectionClosureFromAlgoFills } = await import("../server/executionEngine.mjs");
 
 function legacyFinancialFixture(apiKey) {
   const fingerprint = crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
@@ -339,4 +339,25 @@ test("权威入场 fill 可以原子纠正旧生命周期的合约舍入数量",
   assert.equal(db.executionOrders[0].filledQuantity, 0.01);
   assert.equal(db.fills[0].quantity, 0.01);
   assert.equal(db.fills[1].quantity, 0.01);
+});
+
+test("执行引擎入场成交在 recordFill 写入时带有已验证的系统归因", () => {
+  const execution = {
+    id: "exec-writer", planId: "plan-writer", exchange: "OKX", symbol: "BTC/USDT", direction: "long",
+    clientOrderId: "entry-writer", entryPrice: 100, quantity: 0.01, events: []
+  };
+  const db = {
+    user: { id: "owner", tenantId: "tenant-owner" }, fills: [], executionOrders: [execution],
+    tradePlans: [{ id: execution.planId, exchange: "OKX", symbol: "BTC/USDT", direction: "long" }], positions: []
+  };
+
+  applyCumulativeEntryOrderState(db, execution, { filledQuantity: 0.01, avgPrice: 100 }, { final: true });
+
+  const fill = db.fills[0];
+  assert.deepEqual({
+    scope: fill.tradeAttribution.scope,
+    origin: fill.tradeAttribution.origin,
+    executionOrderId: fill.tradeAttribution.executionOrderId,
+    planId: fill.tradeAttribution.planId
+  }, { scope: "system", origin: "execution_engine", executionOrderId: execution.id, planId: execution.planId });
 });

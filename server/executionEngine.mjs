@@ -23,6 +23,7 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
 
 export { currentEquityUsdt } from "./financialFacts.mjs";
 
@@ -2444,6 +2445,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     accountEquityAtEntryUsdt: executionOrder.accountEquityAtEntryUsdt || plan.accountEquityAtEntryUsdt || null,
     createdAt: extra.createdAt || nowIso()
   };
+  fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, fill);
   db.fills.unshift(fill);
   if (kind === "close") reconcileStrategyProductHealth(db);
   // 平仓确认即进入真实复盘队列；30 分钟复盘任务只负责深度处理与失败重试。
