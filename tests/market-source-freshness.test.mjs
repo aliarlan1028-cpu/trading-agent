@@ -126,3 +126,21 @@ test("an older REST ticker is a harmless no-op when a newer WS ticker is already
   assert.equal(result.rawTime, ISO(now - 1_000));
   assert.equal(db.markets[0].price, 61_000);
 });
+
+test("the market task caller can abort an in-flight REST ticker before it mutates state", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  globalThis.fetch = (_url, options = {}) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+  });
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const db = { markets: [{ symbol: "BTC/USDT", price: 61_000 }] };
+  const pending = syncPublicMarketQuiet(db, "BTC/USDT", { signal: controller.signal });
+
+  controller.abort(reason);
+
+  await assert.rejects(pending, (error) => error === reason);
+  assert.equal(db.markets[0].price, 61_000);
+  assert.equal(db.markets[0].tickerReceivedAt, undefined);
+});

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 
 import { okxEnvironmentConfig } from "../server/okxEnvironment.mjs";
-import { okxPrivateStreamBinding, upsertOkxOrder } from "../server/realtimeManager.mjs";
+import { okxPrivateStreamBinding, reconcilePendingOkxFillIdentities, upsertOkxOrder } from "../server/realtimeManager.mjs";
 import { registerExchangeRoutes } from "../server/routes/exchange.mjs";
 
 const ORIGINAL_KEY = process.env.OKX_API_KEY;
@@ -61,6 +61,201 @@ test("private order facts retain account, credential and environment binding", (
     { accountId: db.orders[0].accountId, apiKeyFingerprint: db.orders[0].apiKeyFingerprint, environment: db.orders[0].environment },
     { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "demo" }
   );
+});
+
+function externalFillDb() {
+  return {
+    user: { id: "owner", tenantId: "tenant_owner" },
+    orders: [], fills: [], executionOrders: [], tradePlans: [], positions: [],
+    evidenceBundles: [{ symbols: [{ symbol: "BTC/USDT", contractSpec: { data: { ctVal: 0.01 } } }] }]
+  };
+}
+
+function externalFillPayload(overrides = {}) {
+  return {
+    ordId: "external-order",
+    clOrdId: "",
+    instId: "BTC-USDT-SWAP",
+    instType: "SWAP",
+    side: "sell",
+    posSide: "long",
+    reduceOnly: "true",
+    state: "filled",
+    fillSz: "1",
+    accFillSz: "1",
+    fillPx: "60000",
+    fillPnl: "10",
+    fee: "-0.01",
+    feeCcy: "USDT",
+    fillTime: "1786752000000",
+    ...overrides
+  };
+}
+
+test("external OKX fills retain authoritative order identity and account binding", () => {
+  const db = externalFillDb();
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "trade-1" }), {
+    accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production"
+  });
+
+  assert.equal(db.fills.length, 1);
+  assert.deepEqual({
+    exchangeTradeId: db.fills[0].exchangeTradeId,
+    exchangeOrderId: db.fills[0].exchangeOrderId,
+    accountId: db.fills[0].accountId,
+    apiKeyFingerprint: db.fills[0].apiKeyFingerprint,
+    environment: db.fills[0].environment
+  }, {
+    exchangeTradeId: "trade-1",
+    exchangeOrderId: "external-order",
+    accountId: "account-a",
+    apiKeyFingerprint: "fingerprint-a",
+    environment: "production"
+  });
+});
+
+test("an order update without an authoritative tradeId cannot create duplicate financial fills", () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+  const payload = externalFillPayload({ tradeId: "" });
+
+  upsertOkxOrder(db, payload, context);
+  upsertOkxOrder(db, payload, context);
+
+  assert.equal(db.fills.length, 0);
+  assert.equal(db.orders[0].financialReconciliationStatus, "authoritative_trade_identity_missing");
+});
+
+test("OKX tradeId zero is an order-status sentinel, not an authoritative fill identity", () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "0" }), context);
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "0" }), context);
+
+  assert.equal(db.fills.length, 0);
+  assert.equal(db.orders[0].financialReconciliationStatus, "authoritative_trade_identity_missing");
+});
+
+test("tradeId remains the strict dedupe key while distinct authoritative fills are retained", () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "trade-1" }), context);
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "trade-1" }), context);
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "trade-2", accFillSz: "2", fillTime: "1786752000001" }), context);
+
+  assert.deepEqual(db.fills.map((fill) => fill.exchangeTradeId).sort(), ["trade-1", "trade-2"]);
+});
+
+test("different external orders with blank clOrdId never share one local order identity", () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+
+  upsertOkxOrder(db, externalFillPayload({ ordId: "external-order-1", clOrdId: "", tradeId: "trade-1" }), context);
+  upsertOkxOrder(db, externalFillPayload({ ordId: "external-order-2", clOrdId: "", tradeId: "trade-2" }), context);
+
+  assert.equal(db.orders.length, 2);
+  assert.deepEqual(db.orders.map((order) => order.exchangeOrderId).sort(), ["external-order-1", "external-order-2"]);
+  assert.deepEqual(db.fills.map((fill) => fill.exchangeOrderId).sort(), ["external-order-1", "external-order-2"]);
+});
+
+test("a pending WS observation is recovered from authoritative fills-history without duplicates", async () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "" }), context);
+  const paths = [];
+  const options = {
+    resolveBinding: () => ({ ok: true, account: { id: "account-a" }, fingerprint: "fingerprint-a", environment: "production" }),
+    request: async (path) => {
+      paths.push(path);
+      return {
+        code: "0",
+        data: [{
+          ordId: "external-order", tradeId: "trade-rest-1", instId: "BTC-USDT-SWAP", instType: "SWAP",
+          side: "sell", posSide: "long", fillSz: "1", fillPx: "60000", fillPnl: "10",
+          fee: "-0.01", feeCcy: "USDT", fillTime: "1786752000000"
+        }]
+      };
+    }
+  };
+
+  const first = await reconcilePendingOkxFillIdentities(db, options);
+  const second = await reconcilePendingOkxFillIdentities(db, options);
+
+  assert.equal(first.reconciled, 1);
+  assert.equal(second.checked, 0);
+  assert.match(paths[0], /\/api\/v5\/trade\/fills-history\?/);
+  assert.match(paths[0], /ordId=external-order/);
+  assert.equal(db.fills.length, 1);
+  assert.equal(db.fills[0].exchangeTradeId, "trade-rest-1");
+  assert.equal(db.fills[0].exchangeOrderId, "external-order");
+  assert.equal(db.orders[0].financialReconciliationStatus, undefined);
+});
+
+test("a later identified partial fill cannot hide an earlier unidentified fill on the same order", async () => {
+  const db = externalFillDb();
+  const context = { accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production" };
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "", accFillSz: "1" }), context);
+  upsertOkxOrder(db, externalFillPayload({
+    tradeId: "trade-2", accFillSz: "2", fillTime: "1786752000001"
+  }), context);
+
+  assert.equal(db.fills.length, 1);
+  assert.equal(db.orders[0].financialReconciliationStatus, "authoritative_trade_identity_missing");
+
+  const result = await reconcilePendingOkxFillIdentities(db, {
+    resolveBinding: () => ({ ok: true, account: { id: "account-a" }, fingerprint: "fingerprint-a", environment: "production" }),
+    request: async () => ({
+      code: "0",
+      data: [
+        { ...externalFillPayload({ tradeId: "trade-2", accFillSz: "2", fillTime: "1786752000001" }) },
+        { ...externalFillPayload({ tradeId: "trade-1", accFillSz: "1" }) }
+      ]
+    })
+  });
+
+  assert.equal(result.reconciled, 1);
+  assert.deepEqual(db.fills.map((fill) => fill.exchangeTradeId).sort(), ["trade-1", "trade-2"]);
+  assert.equal(db.orders[0].financialReconciliationStatus, undefined);
+});
+
+test("incomplete authoritative fill evidence stays fail-closed", async () => {
+  const db = externalFillDb();
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "" }), {
+    accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production"
+  });
+
+  const result = await reconcilePendingOkxFillIdentities(db, {
+    resolveBinding: () => ({ ok: true, account: { id: "account-a" }, fingerprint: "fingerprint-a", environment: "production" }),
+    request: async () => ({ code: "0", data: [{ ordId: "external-order", tradeId: "", fillSz: "1" }] })
+  });
+
+  assert.equal(result.reconciled, 0);
+  assert.equal(db.fills.length, 0);
+  assert.equal(db.orders[0].financialReconciliationStatus, "authoritative_trade_identity_missing");
+});
+
+test("a tradeId without complete size, price, and exchange time cannot clear the pending observation", async () => {
+  const db = externalFillDb();
+  upsertOkxOrder(db, externalFillPayload({ tradeId: "" }), {
+    accountId: "account-a", apiKeyFingerprint: "fingerprint-a", environment: "production"
+  });
+
+  const result = await reconcilePendingOkxFillIdentities(db, {
+    resolveBinding: () => ({ ok: true, account: { id: "account-a" }, fingerprint: "fingerprint-a", environment: "production" }),
+    request: async () => ({
+      code: "0",
+      data: [{
+        ordId: "external-order", tradeId: "trade-rest-incomplete", instId: "BTC-USDT-SWAP",
+        fillSz: "1", fillPx: "", fillTime: "1786752000000"
+      }]
+    })
+  });
+
+  assert.equal(result.reconciled, 0);
+  assert.equal(db.fills.length, 0);
+  assert.equal(db.orders[0].financialReconciliationStatus, "authoritative_trade_identity_missing");
 });
 
 test("disabling account authorization forces the realtime generation to restart", () => {

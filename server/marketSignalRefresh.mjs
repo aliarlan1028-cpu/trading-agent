@@ -4,12 +4,19 @@ import { recordMediumTermSample } from "./mediumTermAnalytics.mjs";
 
 const errorText = (error) => String(error?.message || error).slice(0, 160);
 
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error(String(signal.reason || "market_signal_refresh_aborted"));
+}
+
 // 单币种行情刷新必须保持失败域隔离：ticker、微观结构和 Rubik 资金流来自
 // 不同接口，其中任一失败都不能阻止另外两个刷新。尤其 REST ticker 被更新的
 // WS tick 正常拒绝时，订单簿仍必须继续刷新，否则专业风险闸会被数据管道自锁。
 export async function refreshMarketSignalSymbol(db, symbol, dependencies = {}) {
+  const signal = dependencies.signal;
   const syncTicker = dependencies.syncTicker || syncPublicMarketQuiet;
-  const syncMicro = dependencies.syncMicro || ((database, target) => syncMicrostructure(database, "OKX", target, { quiet: true }));
+  const syncMicro = dependencies.syncMicro || ((database, target, options) => syncMicrostructure(database, "OKX", target, { quiet: true, signal: options?.signal }));
   const syncSmartMoney = dependencies.syncSmartMoney || fetchSmartMoney;
   const recordSample = dependencies.recordSample || recordMediumTermSample;
   const errors = [];
@@ -19,18 +26,24 @@ export async function refreshMarketSignalSymbol(db, symbol, dependencies = {}) {
   let smart = {};
 
   try {
-    ticker = await syncTicker(db, symbol);
+    throwIfAborted(signal);
+    ticker = await syncTicker(db, symbol, { signal });
   } catch (error) {
+    throwIfAborted(signal);
     errors.push({ source: "ticker", error: errorText(error) });
   }
   try {
-    micro = await syncMicro(db, symbol);
+    throwIfAborted(signal);
+    micro = await syncMicro(db, symbol, { signal });
   } catch (error) {
+    throwIfAborted(signal);
     errors.push({ source: "microstructure", error: errorText(error) });
   }
   try {
-    smart = await syncSmartMoney(symbol);
+    throwIfAborted(signal);
+    smart = await syncSmartMoney(symbol, { signal });
   } catch (error) {
+    throwIfAborted(signal);
     warnings.push({ source: "smart_money", error: errorText(error) });
   }
 

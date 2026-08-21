@@ -16,10 +16,25 @@ const RUBIK = `${OKX_BASE}/api/v5/rubik/stat/contracts`;
 // 永续合约清单缓存（1 小时）——合约上下架不频繁，避免每次打开面板都拉。
 let instrumentsCache = { at: 0, list: [] };
 
-function timer(ms = 8000) {
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error(String(signal.reason || "market_signal_aborted"));
+}
+
+function timer(ms = 8000, parentSignal) {
   const controller = new AbortController();
   const handle = setTimeout(() => controller.abort(), ms);
-  return { signal: controller.signal, cancel: () => clearTimeout(handle) };
+  const relayAbort = () => controller.abort(parentSignal.reason);
+  if (parentSignal?.aborted) relayAbort();
+  else parentSignal?.addEventListener("abort", relayAbort, { once: true });
+  return {
+    signal: controller.signal,
+    cancel: () => {
+      clearTimeout(handle);
+      parentSignal?.removeEventListener("abort", relayAbort);
+    }
+  };
 }
 
 async function getJson(url, signal) {
@@ -43,8 +58,8 @@ export function parseContractTakerVolumeRow(row) {
 // ---------------------------------------------------------------------------
 // 全局大盘
 // ---------------------------------------------------------------------------
-export async function fetchGlobalMarket() {
-  const clock = timer(9000);
+export async function fetchGlobalMarket(options = {}) {
+  const clock = timer(9000, options.signal);
   try {
     const payload = await getJson(`${OKX_BASE}/api/v5/market/tickers?instType=SWAP`, clock.signal);
     const out = { ...summarizeOkxSwapBreadth(payload?.data || []), fetchedAt: nowIso(), source: "OKX" };
@@ -103,7 +118,7 @@ function interpretGlobal(g) {
 // ---------------------------------------------------------------------------
 // 聪明钱：大户/散户多空持仓比、主动买卖比
 // ---------------------------------------------------------------------------
-export async function fetchSmartMoney(symbol = "BTC/USDT") {
+export async function fetchSmartMoney(symbol = "BTC/USDT", options = {}) {
   const out = { symbol, fetchedAt: nowIso() };
   const instId = toOkxSymbol(symbol, "perpetual"); // 如 BTC-USDT-SWAP
   const firstRatio = (settled) => {
@@ -117,7 +132,7 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
   //  - 全体持仓人数多空比 = 散户/大众定位
   //  - 主动买卖量 = 成交侵略性
   //  - 强平事件 = 只有连续覆盖满 30 分钟才参与，断线或预热不足均视为不可用
-  const okx = timer(9000);
+  const okx = timer(9000, options.signal);
   try {
     const [topPos, topAcct, crowd, taker] = await Promise.allSettled([
       getJson(`${RUBIK}/long-short-position-ratio-contract-top-trader?instId=${instId}&period=5m`, okx.signal),
@@ -146,6 +161,7 @@ export async function fetchSmartMoney(symbol = "BTC/USDT") {
     const liquidations = getOkxLiquidationSummary(symbol);
     if (liquidations?.completeWindow) out.liquidations = liquidations;
   } catch {
+    throwIfAborted(options.signal);
     /* OKX 不可用则跳过 */
   } finally {
     okx.cancel();
@@ -292,10 +308,10 @@ export function evaluateSmartMoneyAlignment(smartMoney, direction) {
 }
 
 // 组合快照：供巡检/UI 一次取全（大盘 + 指定交易对聪明钱）。
-export async function fetchMarketRegime(symbol = "BTC/USDT") {
+export async function fetchMarketRegime(symbol = "BTC/USDT", options = {}) {
   const [global, smart] = await Promise.all([
-    fetchGlobalMarket().catch(() => null),
-    fetchSmartMoney(symbol).catch(() => null)
+    fetchGlobalMarket(options).catch(() => { throwIfAborted(options.signal); return null; }),
+    fetchSmartMoney(symbol, options).catch(() => { throwIfAborted(options.signal); return null; })
   ]);
   return { global, smartMoney: smart, symbol, fetchedAt: nowIso() };
 }

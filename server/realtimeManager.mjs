@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { appendAudit, appendTrace, findPendingOmsAmend, id, nowIso } from "./store.mjs";
+import { okxSignedRequest, toOkxSymbol } from "./exchangeConnector.mjs";
 import { canonicalPositionDirection } from "./positionIdentity.mjs";
 import { finiteFinancialNumber, okxFeeCost } from "./financialValues.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
@@ -426,8 +427,17 @@ function cachedOkxCtVal(db, instId, executionOrder = null) {
 }
 
 export function upsertOkxOrder(db, payload, context = {}) {
-  const existing = db.orders.find((order) => order.exchangeOrderId === payload.ordId || order.clientOrderId === payload.clOrdId);
-  const order = existing || { id: id("ord"), exchange: "OKX", exchangeOrderId: payload.ordId, clientOrderId: payload.clOrdId, createdAt: nowIso() };
+  const exchangeOrderId = String(payload.ordId || "").trim();
+  const clientOrderId = String(payload.clOrdId || "").trim();
+  const existing = db.orders.find((order) => (exchangeOrderId && String(order.exchangeOrderId || "") === exchangeOrderId)
+    || (clientOrderId && String(order.clientOrderId || "") === clientOrderId));
+  const order = existing || {
+    id: id("ord"),
+    exchange: "OKX",
+    exchangeOrderId: exchangeOrderId || null,
+    clientOrderId: clientOrderId || null,
+    createdAt: nowIso()
+  };
   // 与 REST/执行引擎同口径(去 -SWAP),否则 WS 订单/成交显示 "BTC/USDT-SWAP"、引擎显示 "BTC/USDT",
   // 同一永续被当成两个符号,用户误以为多了个"现货 BTC/USDT"(实锤截图)。
   if (payload.instId) order.symbol = okxDisplaySymbol(payload.instId);
@@ -438,7 +448,7 @@ export function upsertOkxOrder(db, payload, context = {}) {
   order.status = payload.state;
   order.price = financialNumber(payload.px);
   order.quantity = payload.sz;
-  order.tradeId = payload.tradeId || null;
+  order.tradeId = normalizeOkxTradeId(payload.tradeId) || null;
   order.fillPnl = financialNumber(payload.fillPnl);
   order.fillTime = payload.fillTime || null;
   order.accountId = context.accountId || order.accountId || null;
@@ -463,11 +473,22 @@ export function upsertOkxOrder(db, payload, context = {}) {
   const executionOrder = (db.executionOrders || []).find((item) => item.exchangeOrderId === payload.ordId
     || (payload.clOrdId && item.clientOrderId === payload.clOrdId));
   const fillContracts = financialNumber(payload.fillSz);
-  const tradeId = String(payload.tradeId || "");
+  const tradeId = normalizeOkxTradeId(payload.tradeId);
+  const hadUnidentifiedFill = order.financialReconciliationStatus === "authoritative_trade_identity_missing";
   const duplicate = tradeId && (db.fills || []).some((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
     && fill.symbol === order.symbol);
+  if (fillContracts > 0 && !executionOrder && !tradeId) {
+    // OKX orders channel 是状态更新流；fillSz/accFillSz 可能在重复推送中再次出现。
+    // 没有交易所 tradeId 时不能把快照当成新的财务事实，否则一次成交会被重复计入。
+    // 保留订单及待回补状态，等待 fills-history 的权威成交身份，不发明组合 tradeId。
+    order.financialReconciliationStatus = "authoritative_trade_identity_missing";
+    order.financialReconciliationObservedAt = validExchangeTime(payload.fillTime || payload.uTime) || nowIso();
+  } else if (tradeId && !hadUnidentifiedFill) {
+    delete order.financialReconciliationStatus;
+    delete order.financialReconciliationObservedAt;
+  }
   // clOrdId 非空不代表本系统订单；只有真正匹配 executionOrder 才由引擎权威落账。
-  if (fillContracts > 0 && !executionOrder && !duplicate) {
+  if (fillContracts > 0 && tradeId && !executionOrder && !duplicate) {
     const ctVal = String(payload.instType || "SWAP").toUpperCase() === "SPOT" ? 1 : cachedOkxCtVal(db, payload.instId, executionOrder);
     const coinQuantity = finiteFinancialNumber(ctVal) > 0 ? Number(fillContracts) * Number(ctVal) : null;
     const fee = parseOkxFee(payload.fee, payload.feeCcy);
@@ -514,6 +535,97 @@ export function upsertOkxOrder(db, payload, context = {}) {
       db.fills.unshift(enrichRealtimeFill(db, order, fillPayload));
     }
   }
+}
+
+export async function reconcilePendingOkxFillIdentities(db, options = {}) {
+  const request = options.request || okxSignedRequest;
+  const resolveBinding = options.resolveBinding || okxPrivateStreamBinding;
+  const limit = Math.max(1, Math.min(100, Number(options.limit || 100)));
+  const maxPages = Math.max(1, Math.min(20, Number(options.maxPages || 20)));
+  const candidates = (db.orders || []).filter((order) => order.exchange === "OKX"
+    && order.exchangeOrderId
+    && order.financialReconciliationStatus === "authoritative_trade_identity_missing");
+  const results = [];
+  let reconciled = 0;
+  for (const order of candidates) {
+    options.assertLease?.();
+    if (options.signal?.aborted) throw options.signal.reason;
+    const binding = resolveBinding(db, {
+      accountId: order.accountId,
+      fingerprint: order.apiKeyFingerprint,
+      environment: order.environment
+    });
+    if (!binding?.ok) {
+      results.push({ orderId: order.id, status: binding?.reason || "credential_binding_invalid" });
+      continue;
+    }
+    const rows = [];
+    let after = null;
+    let complete = false;
+    let failure = null;
+    try {
+      for (let page = 0; page < maxPages; page += 1) {
+        options.assertLease?.();
+        if (options.signal?.aborted) throw options.signal.reason;
+        const query = new URLSearchParams({
+          instType: "SWAP",
+          instId: toOkxSymbol(order.symbol, "perpetual"),
+          ordId: String(order.exchangeOrderId),
+          limit: String(limit)
+        });
+        if (after) query.set("after", after);
+        const raw = await request(`/api/v5/trade/fills-history?${query.toString()}`, "GET", "", { signal: options.signal });
+        if (String(raw?.code ?? "") !== "0" || !Array.isArray(raw?.data)) {
+          failure = "authoritative_fill_query_rejected";
+          break;
+        }
+        rows.push(...raw.data);
+        if (raw.data.length < limit) {
+          complete = true;
+          break;
+        }
+        const next = String(raw.data.at(-1)?.tradeId || "");
+        if (!next || next === after) {
+          failure = "authoritative_fill_pagination_unstable";
+          break;
+        }
+        after = next;
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason;
+      failure = String(error?.message || error).slice(0, 160) || "authoritative_fill_query_failed";
+    }
+    const authoritativeRows = rows.filter((row) => String(row?.ordId || "") === String(order.exchangeOrderId));
+    if (!complete || !authoritativeRows.length || authoritativeRows.some((row) => !completeAuthoritativeOkxFill(row))) {
+      results.push({ orderId: order.id, status: failure || "authoritative_trade_identity_pending" });
+      continue;
+    }
+    const context = {
+      accountId: binding.account?.id || order.accountId,
+      apiKeyFingerprint: binding.fingerprint || order.apiKeyFingerprint,
+      environment: binding.environment || order.environment
+    };
+    for (const row of authoritativeRows) {
+      upsertOkxOrder(db, {
+        ...row,
+        ordId: order.exchangeOrderId,
+        instId: row.instId || toOkxSymbol(order.symbol, "perpetual"),
+        instType: row.instType || "SWAP",
+        side: row.side || order.side,
+        posSide: row.posSide || order.posSide,
+        reduceOnly: row.reduceOnly ?? order.reduceOnly,
+        ordType: row.ordType || order.type,
+        state: row.state || order.status,
+        px: row.px ?? order.price,
+        sz: row.sz ?? order.quantity
+      }, context);
+    }
+    delete order.financialReconciliationStatus;
+    delete order.financialReconciliationObservedAt;
+    reconciled += 1;
+    results.push({ orderId: order.id, status: "reconciled", fills: authoritativeRows.length });
+  }
+  return { checked: candidates.length, reconciled, results };
 }
 
 function authoritativeNetPositionBeforeFill(db, order, context = {}, ctVal = null) {
@@ -584,7 +696,11 @@ function enrichRealtimeFill(db, order, payload = {}) {
     mandateId: executionOrder?.mandateId,
     symbol: order.symbol,
     exchange: payload.exchange || order.exchange,
+    exchangeOrderId: order.exchangeOrderId || null,
     exchangeTradeId: payload.exchangeTradeId || null,
+    accountId: order.accountId || null,
+    apiKeyFingerprint: order.apiKeyFingerprint || null,
+    environment: order.environment || null,
     side: payload.side,
     direction: executionOrder?.direction,
     strategy: executionOrder?.strategy || plan.strategy || plan.strategy_type || "manual_review",
@@ -633,6 +749,18 @@ function parseOkxFee(value, currency) {
   const raw = financialNumber(value);
   if (raw === null || !currency || String(currency).toUpperCase() !== "USDT") return { raw, cost: null };
   return { raw, cost: okxFeeCost(raw) };
+}
+
+function normalizeOkxTradeId(value) {
+  const tradeId = String(value || "").trim();
+  return tradeId && tradeId !== "0" ? tradeId : "";
+}
+
+function completeAuthoritativeOkxFill(row = {}) {
+  return Boolean(normalizeOkxTradeId(row.tradeId)
+    && financialNumber(row.fillSz) > 0
+    && financialNumber(row.fillPx) > 0
+    && validExchangeTime(row.fillTime || row.ts));
 }
 
 function trueLike(value) {

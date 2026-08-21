@@ -68,10 +68,25 @@ export function toOkxSymbol(symbol, marketType = "") {
   return instId;
 }
 
-function timeoutSignal(ms = 6000) {
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error(String(signal.reason || "outbound_aborted"));
+}
+
+function timeoutSignal(ms = 6000, parentSignal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
-  return { signal: controller.signal, cancel: () => clearTimeout(timer) };
+  const relayAbort = () => controller.abort(parentSignal.reason);
+  if (parentSignal?.aborted) relayAbort();
+  else parentSignal?.addEventListener("abort", relayAbort, { once: true });
+  return {
+    signal: controller.signal,
+    cancel: () => {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", relayAbort);
+    }
+  };
 }
 
 export function refreshApiKeyMetadata(db) {
@@ -132,8 +147,8 @@ export function refreshApiKeyMetadata(db) {
   return db.apiKeyMetadata;
 }
 
-async function fetchPublicTicker(symbol) {
-  const timer = timeoutSignal();
+async function fetchPublicTicker(symbol, signal) {
+  const timer = timeoutSignal(6000, signal);
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
     const response = await fetch(`${okxTickerUrl()}?instId=${encodeURIComponent(instId)}`, { signal: timer.signal });
@@ -163,13 +178,13 @@ async function fetchPublicTicker(symbol) {
 }
 
 // 高频只读场景（观察哨每分钟核对）用：拉一次 ticker，不写审计/trace，不动 db。
-export async function fetchTickerQuiet(symbol, exchange = "OKX") {
-  return fetchPublicTicker(symbol);
+export async function fetchTickerQuiet(symbol, exchange = "OKX", options = {}) {
+  return fetchPublicTicker(symbol, options.signal);
 }
 
 // 中频采样专用：复用公开 ticker 但不写审计/trace，避免每2分钟每币制造运维噪声。
-export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT") {
-  const ticker = await fetchPublicTicker(symbol);
+export async function syncPublicMarketQuiet(db, symbol = "BTC/USDT", options = {}) {
+  const ticker = await fetchPublicTicker(symbol, options.signal);
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
   let market = db.markets.find((item) => item.symbol === displaySymbol);
@@ -230,9 +245,9 @@ export async function syncPublicMarket(db, exchange = "OKX", symbol = "BTC/USDT"
 
 const OKX_BARS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
 
-async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200) {
+async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200, options = {}) {
   const tf = OKX_BARS[timeframe] ? timeframe : "1h";
-  const timer = timeoutSignal(8000);
+  const timer = timeoutSignal(8000, options.signal);
   try {
     const url = okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(toOkxSymbol(symbol, "perpetual"))}&bar=${OKX_BARS[tf]}&limit=${Math.min(limit, 300)}`);
     const response = await fetch(url, { signal: timer.signal });
@@ -258,8 +273,8 @@ async function fetchPublicKlines(exchange, symbol, timeframe = "1h", limit = 200
 // 市场微观结构：资金费率 / 未平仓量(OI) / 订单簿深度不平衡。
 // 给 Agent 提供合约交易真正需要的"眼睛"。行情、盘口和实际执行必须来自同一 OKX 市场。
 // ---------------------------------------------------------------------------
-async function fetchMicrostructureRaw(exchange, symbol) {
-  const timer = timeoutSignal(8000);
+async function fetchMicrostructureRaw(exchange, symbol, options = {}) {
+  const timer = timeoutSignal(8000, options.signal);
   try {
     const instId = toOkxSymbol(symbol, "perpetual");
     const getOkx = async (url, label) => {
@@ -321,7 +336,7 @@ function bookImbalance(bids = [], asks = []) {
 
 // 同步微观结构并缓存到 market 对象，返回带解读的摘要。
 export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USDT", options = {}) {
-  const result = await fetchMicrostructureRaw("OKX", symbol);
+  const result = await fetchMicrostructureRaw("OKX", symbol, options);
   const usedExchange = "OKX";
   const displaySymbol = symbol.includes("/") ? symbol : symbol.replace("USDT", "/USDT");
   db.markets ||= [];
@@ -372,12 +387,12 @@ export async function syncMicrostructure(db, exchange = "OKX", symbol = "BTC/USD
 }
 
 // OKX 分页取数：先取最近 300，再用 history-candles 用 after 往回翻，直到 target 根。
-async function fetchOkxKlinesPaged(symbol, timeframe, target) {
+async function fetchOkxKlinesPaged(symbol, timeframe, target, options = {}) {
   const tf = OKX_BARS[timeframe] ? timeframe : "1h";
   const bar = OKX_BARS[tf];
   const inst = toOkxSymbol(symbol, "perpetual");
   const raw = [];
-  const recentTimer = timeoutSignal(8000);
+  const recentTimer = timeoutSignal(8000, options.signal);
   try {
     const response = await fetch(okxRestUrl(`/api/v5/market/candles?instId=${encodeURIComponent(inst)}&bar=${bar}&limit=300`), { signal: recentTimer.signal });
     if (!response.ok) throw new Error(`OKX candles HTTP ${response.status}`);
@@ -392,7 +407,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
     guard += 1;
     const oldest = raw[raw.length - 1]?.[0]; // data 为最新在前，末位最旧
     if (!oldest) break;
-    const pageTimer = timeoutSignal(8000);
+    const pageTimer = timeoutSignal(8000, options.signal);
     let batch;
     try {
       const response = await fetch(okxRestUrl(`/api/v5/market/history-candles?instId=${encodeURIComponent(inst)}&bar=${bar}&after=${oldest}&limit=100`), { signal: pageTimer.signal });
@@ -401,6 +416,7 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
       if (String(payload?.code ?? "0") !== "0") break;
       batch = payload.data || [];
     } catch {
+      throwIfAborted(options.signal);
       break;
     } finally {
       pageTimer.cancel();
@@ -423,16 +439,17 @@ async function fetchOkxKlinesPaged(symbol, timeframe, target) {
 
 // 回测用：只拉 OKX 历史 K 线，不允许用另一交易所数据替代执行市场。
 // limit>300 时对 OKX 走分页，凑足样本（专业回测需要足够 bar）。
-export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX") {
+export async function getHistoricalKlines(symbol, timeframe = "1h", limit = 300, exchange = "OKX", options = {}) {
   if (limit > 300) {
     try {
-      const paged = await fetchOkxKlinesPaged(symbol, timeframe, limit);
+      const paged = await fetchOkxKlinesPaged(symbol, timeframe, limit, options);
       if (paged.length >= 300) return paged;
     } catch {
+      throwIfAborted(options.signal);
       /* 分页失败则回退单页 */
     }
   }
-  return fetchPublicKlines("OKX", symbol, timeframe, limit);
+  return fetchPublicKlines("OKX", symbol, timeframe, limit, options);
 }
 
 export async function syncPublicKlines(db, exchange = "OKX", symbol = "BTC/USDT", timeframe = "1h", options = {}) {
@@ -445,7 +462,7 @@ export async function syncPublicKlines(db, exchange = "OKX", symbol = "BTC/USDT"
   }
   let candles;
   try {
-    candles = await fetchPublicKlines("OKX", symbol, timeframe);
+    candles = await fetchPublicKlines("OKX", symbol, timeframe, 200, options);
   } catch (error) {
     market.candleQuality = error?.report || { status: "failed", timeframe, issues: [{ type: error?.code || "fetch_failed" }], checkedAt: nowIso() };
     market.candleQualityByTf ||= {};

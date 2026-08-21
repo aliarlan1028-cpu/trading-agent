@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerTaskHandler, runTask } from "../server/scheduler.mjs";
+import { ensureSystemTask, registerTaskHandler, runTask } from "../server/scheduler.mjs";
 
 function deferred() {
   let resolve;
@@ -84,4 +84,63 @@ test("lease loss inside a handler fences every later side effect", async () => {
   assert.deepEqual(effects, ["first"]);
   assert.equal(result.run.status, "lease_lost");
   assert.equal(task.lastError, "scheduler_lease_lost");
+});
+
+test("a bounded task aborts cooperatively, releases its lock, and can run again", async () => {
+  let calls = 0;
+  registerTaskHandler("lease_bounded_runtime", async (_db, _task, context) => {
+    calls += 1;
+    if (calls > 1) return { status: "ok" };
+    return new Promise((resolve, reject) => {
+      const fallback = setTimeout(() => resolve({ status: "ok" }), 150);
+      context.signal.addEventListener("abort", () => {
+        clearTimeout(fallback);
+        reject(context.signal.reason);
+      }, { once: true });
+    });
+  });
+  const task = {
+    id: "task_bounded",
+    name: "bounded",
+    enabled: true,
+    handler: "lease_bounded_runtime",
+    concurrencyKey: "bounded",
+    maxRunMs: 20,
+    retryPolicy: { maxRetries: 0 },
+    type: "Every",
+    schedule: "2m"
+  };
+  const db = dbWith(task);
+  const leases = leaseApi();
+
+  const first = await runTask(db, task.id, null, "manual", { leaseApi: leases });
+  assert.equal(first.run.status, "failed");
+  assert.equal(first.run.output, "scheduler_task_timeout");
+  assert.equal(task.lastError, "scheduler_task_timeout");
+  assert.equal(leases.active.size, 0);
+
+  const second = await runTask(db, task.id, null, "manual", { leaseApi: leases });
+  assert.equal(second.run.status, "ok");
+  assert.equal(calls, 2);
+});
+
+test("system task upgrades persist the approved runtime bound", () => {
+  const db = dbWith({
+    id: "task_market",
+    name: "old market",
+    enabled: true,
+    handler: "market_signal_refresh",
+    type: "Every",
+    schedule: "2m"
+  });
+
+  ensureSystemTask(db, {
+    id: "task_market",
+    name: "market",
+    handler: "market_signal_refresh",
+    schedule: "Every 2m",
+    maxRunMs: 90_000
+  });
+
+  assert.equal(db.tasks[0].maxRunMs, 90_000);
 });

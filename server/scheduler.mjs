@@ -63,7 +63,7 @@ export function ensureSystemTask(db, task, saveDb) {
   const existing = (db.tasks || []).find((item) => item.id === task.id);
   if (existing) {
     // 系统任务升级时同步调度定义，但保留用户显式启停状态与运行历史。
-    for (const key of ["name", "handler", "schedule", "type", "role", "concurrencyKey", "startupCatchup", "startupDelayMs", "timezone"]) {
+    for (const key of ["name", "handler", "schedule", "type", "role", "concurrencyKey", "startupCatchup", "startupDelayMs", "timezone", "maxRunMs"]) {
       if (task[key] !== undefined) existing[key] = task[key];
     }
     existing.systemManaged = true;
@@ -281,12 +281,25 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
   const lease = leaseApi.acquire(leaseResource, ownerId, leaseTtlMs);
   if (!lease?.acquired) return recordRun(db, task, "skipped_locked", "任务共享租约由另一运行实例持有", trigger, saveDb);
   const abortController = new AbortController();
+  const maxRunMs = Number(task.maxRunMs);
+  const deadline = Number.isFinite(maxRunMs) && maxRunMs > 0
+    ? setTimeout(() => {
+      const error = new Error("scheduler_task_timeout");
+      error.code = "scheduler_task_timeout";
+      abortController.abort(error);
+    }, maxRunMs)
+    : null;
+  deadline?.unref?.();
   const executionContext = {
     signal: abortController.signal,
     ownerId,
     fencingToken: lease.fencingToken,
     assertLease() {
-      if (abortController.signal.aborted) throw new LeaseLostError();
+      if (abortController.signal.aborted) {
+        const reason = abortController.signal.reason;
+        if (reason instanceof Error) throw reason;
+        throw new Error(String(reason || "scheduler_task_aborted"));
+      }
       const renewed = leaseApi.renew(leaseResource, ownerId, lease.fencingToken, leaseTtlMs);
       if (!renewed?.renewed) {
         abortController.abort(new LeaseLostError());
@@ -353,6 +366,7 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
     scheduleRetryIfNeeded(db, task, saveDb, run.run);
     return run;
   } finally {
+    if (deadline) clearTimeout(deadline);
     clearInterval(heartbeat);
     runtime.activeRuns.delete(concurrencyKey);
     leaseApi.release(leaseResource, ownerId, lease.fencingToken);

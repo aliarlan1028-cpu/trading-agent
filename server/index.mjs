@@ -87,7 +87,7 @@ import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection, validateStrategyImprovementCycle } from "./reviewEngine.mjs";
 import { syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
 import { reviewMissedOpportunities } from "./missedOpportunity.mjs";
-import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
+import { reconcilePendingOkxFillIdentities, realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
@@ -702,7 +702,19 @@ registerTaskHandler("okx_readonly_sync", async (database, _task, lease) => {
     try { lease.assertLease(); await syncPrivateReadOnly(database, account.id); lease.assertLease(); synced += 1; }
     catch (error) { errors.push({ accountId: account.id, error: String(error?.message || error).slice(0, 160) }); }
   }
-  return { status: synced === 0 ? "failed" : synced < accounts.length ? "partial" : "ok", attempted: accounts.length, synced, errors };
+  lease.assertLease();
+  const externalFillReconciliation = await reconcilePendingOkxFillIdentities(database, {
+    signal: lease.signal,
+    assertLease: lease.assertLease
+  });
+  lease.assertLease();
+  return {
+    status: synced === 0 ? "failed" : synced < accounts.length ? "partial" : "ok",
+    attempted: accounts.length,
+    synced,
+    errors,
+    externalFillReconciliation
+  };
 });
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
@@ -725,10 +737,11 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
     if ((state.status === "ok" && historyFresh) || Date.now() - lastAttempt < 60 * 60_000) continue;
     state.attemptedAt = nowIso();
     try {
-      const candles = await getHistoricalKlines(symbol, "15m", 700);
+      const candles = await getHistoricalKlines(symbol, "15m", 700, "OKX", { signal: lease.signal });
       const result = backfillMediumTermPriceHistory(database, symbol, candles, { intervalMs: 15 * 60_000 });
       Object.assign(state, { status: mediumTermPriceHistoryReady(database.mediumTermSamples || [], symbol) ? "ok" : "partial", timeframe: "15m", rows: candles.length, added: result.added, completedAt: nowIso() });
     } catch (error) {
+      if (lease.signal.aborted) throw lease.signal.reason;
       Object.assign(state, { status: "failed", error: String(error?.message || error).slice(0, 160) });
     }
     database.meta.mediumTermPriceBackfill[symbol] = state;
@@ -736,13 +749,13 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
   let synced = 0; const syncErrors = [];
   for (const symbol of symbols) {
     lease.assertLease();
-    const result = await refreshMarketSignalSymbol(database, symbol);
+    const result = await refreshMarketSignalSymbol(database, symbol, { signal: lease.signal });
     lease.assertLease();
     if (result.complete) synced += 1;
     syncErrors.push(...result.errors.map((item) => ({ symbol, source: item.source, error: item.error })));
   }
   try {
-    const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
+    const regime = await fetchMarketRegime(symbols[0] || "BTC/USDT", { signal: lease.signal });
     const prev = database.marketRegime || {};
     // 免费额度偶发 429 会返回 null；此时保留上一次的好值，避免主导率/聪明钱闪成"未取"。
     database.marketRegime = {
@@ -751,9 +764,9 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
       smartMoney: regime.smartMoney || prev.smartMoney || null,
       updatedAt: nowIso()
     };
-  } catch { /* 大盘拉取失败不阻断 */ }
+  } catch { if (lease.signal.aborted) throw lease.signal.reason; /* 大盘拉取失败不阻断 */ }
   // 全市场异动扫描 + 重大异动消息面归因（环境感知，注入决策上下文）。
-  try { await refreshMarketMovers(database, { attributeTop: 0 }); } catch { /* 异动扫描失败不阻断 */ }
+  try { await refreshMarketMovers(database, { attributeTop: 0, signal: lease.signal }); } catch { if (lease.signal.aborted) throw lease.signal.reason; /* 异动扫描失败不阻断 */ }
   // T+4h 数据完整后固化事件观察；即使 events 后续按保留策略清理，统计样本仍可长期积累。
   captureEventVolatilityObservations(database);
   // 知识技能声明的非默认周期（4h/1d 等）也要有 K 线，否则技能信号永远无法评估。
@@ -764,10 +777,10 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
       .filter((tf) => tf && tf !== "1h"))].slice(0, 3);
     for (const tf of skillTfs) {
       for (const symbol of symbols.slice(0, 2)) {
-        try { await syncPublicKlines(database, "OKX", symbol, tf, { sharedSlot: false }); } catch { /* 单周期失败不阻断 */ } // 只写 candlesByTf,不翻转共享 1h 槽
+        try { await syncPublicKlines(database, "OKX", symbol, tf, { sharedSlot: false, signal: lease.signal }); } catch { if (lease.signal.aborted) throw lease.signal.reason; /* 单周期失败不阻断 */ } // 只写 candlesByTf,不翻转共享 1h 槽
       }
     }
-  } catch { /* 技能周期补拉失败不阻断 */ }
+  } catch { if (lease.signal.aborted) throw lease.signal.reason; /* 技能周期补拉失败不阻断 */ }
   // 行情恢复后立即重算并解除由本闸设置的暂停，不必再等待下一轮 10 分钟对账
   // 或 15 分钟 Agent 周期；若所有关键行情源仍失败，则保持 fail-closed。
   applyOperationalDegradation(database, "MarketSignalRefresh");
@@ -789,7 +802,7 @@ registerTaskHandler("market_context_research", async (database, _task, lease) =>
   return result;
 });
 ensureSystemTask(db, { id: "task_sys_okx_sync", name: "交易所余额同步", handler: "okx_readonly_sync", schedule: "Every 1m" }, saveDb);
-ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m" }, saveDb);
+ensureSystemTask(db, { id: "task_sys_market_signal", name: "行情信号刷新", handler: "market_signal_refresh", schedule: "Every 2m", maxRunMs: 90_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_market_context_research", name: "Gemini 市场背景批量研究", handler: "market_context_research", schedule: "Every 1h", startupCatchup: true, startupDelayMs: 60_000 }, saveDb);
 ensureSystemTask(db, { id: "task_sys_news_flash", name: "ME News 重要快讯快车道", handler: "news_flash_refresh", schedule: "Every 30s" }, saveDb);
 ensureSystemTask(db, { id: "task_sys_event_source_refresh", name: "RSS 新闻源刷新", handler: "event_source_refresh", schedule: "Every 5m", startupCatchup: true, startupDelayMs: 10_000 }, saveDb);

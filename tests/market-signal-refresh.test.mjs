@@ -44,3 +44,25 @@ test("smart-money failure remains optional when ticker and microstructure are he
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.warnings, [{ source: "smart_money", error: "Rubik rate limited" }]);
 });
+
+test("caller cancellation stops the current source and prevents later market mutations", async () => {
+  const controller = new AbortController();
+  const reason = new Error("scheduler_task_timeout");
+  let microCalls = 0;
+  let smartMoneyCalls = 0;
+  const pending = refreshMarketSignalSymbol({}, "BTC/USDT", {
+    signal: controller.signal,
+    syncTicker: async (_db, _symbol, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+    }),
+    syncMicro: async () => { microCalls += 1; return {}; },
+    syncSmartMoney: async () => { smartMoneyCalls += 1; return {}; },
+    recordSample: () => {}
+  });
+
+  controller.abort(reason);
+
+  await assert.rejects(pending, (error) => error === reason);
+  assert.equal(microCalls, 0);
+  assert.equal(smartMoneyCalls, 0);
+});

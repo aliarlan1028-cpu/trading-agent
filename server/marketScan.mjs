@@ -266,6 +266,9 @@ async function scanMarketMovers(options = {}) {
   const limit = Math.max(1, Math.min(20, Number(options.limit ?? 8)));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
+  const relayAbort = () => controller.abort(options.signal.reason);
+  if (options.signal?.aborted) relayAbort();
+  else options.signal?.addEventListener("abort", relayAbort, { once: true });
   try {
     const raw = await fetch(`${OKX_BASE}/api/v5/market/tickers?instType=SWAP`, { signal: controller.signal }).then((r) => r.json());
     if (raw.code !== "0" || !Array.isArray(raw.data)) return { movers: [], scannedAt: nowIso(), error: raw.msg || "tickers 拉取失败" };
@@ -281,9 +284,14 @@ async function scanMarketMovers(options = {}) {
       .slice(0, limit);
     return { movers, scannedAt: nowIso() };
   } catch (error) {
+    if (options.signal?.aborted) {
+      if (options.signal.reason instanceof Error) throw options.signal.reason;
+      throw new Error(String(options.signal.reason || "market_scan_aborted"));
+    }
     return { movers: [], scannedAt: nowIso(), error: error.message };
   } finally {
     clearTimeout(timer);
+    options.signal?.removeEventListener("abort", relayAbort);
   }
 }
 
