@@ -477,7 +477,9 @@ export function upsertOkxOrder(db, payload, context = {}) {
   const tradeId = normalizeOkxTradeId(payload.tradeId);
   const hadUnidentifiedFill = order.financialReconciliationStatus === "authoritative_trade_identity_missing";
   const duplicate = tradeId && (db.fills || []).some((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
-    && fill.symbol === order.symbol);
+    && fill.symbol === order.symbol
+    && String(fill.accountId || "") === String(order.accountId || "")
+    && String(fill.environment || "").toLowerCase() === String(order.environment || "").toLowerCase());
   if (fillContracts > 0 && !executionOrder && !tradeId) {
     // OKX orders channel 是状态更新流；fillSz/accFillSz 可能在重复推送中再次出现。
     // 没有交易所 tradeId 时不能把快照当成新的财务事实，否则一次成交会被重复计入。

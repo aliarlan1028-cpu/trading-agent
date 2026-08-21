@@ -23,7 +23,7 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
-import { buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
+import { buildAttributedManualExitClosure, buildExecutionFillAttribution } from "./systemTradeProjection.mjs";
 
 export { currentEquityUsdt } from "./financialFacts.mjs";
 
@@ -1182,12 +1182,15 @@ async function pollOne(db, executionOrder, options = {}) {
       ? latestSuccessfulAccountSnapshot(db, { exchange: "OKX", accountId: executionOrder.accountId })
       : null);
     if (snapshotPositionOpen(snapshot, executionOrder)) await handleClosePendingWatchdog(db, executionOrder, options);
+    const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
     const closureResolver = executionOrder.closeReconciliationSource === "protection_orders"
       ? (options.fetchProtectionClosure || fetchOkxProtectionClosure)
       : (options.fetchManualClosure || fetchOkxManualClosure);
     return reconcilePendingClose(db, executionOrder, {
       snapshot,
-      closure: options.closure === undefined ? await closureResolver(executionOrder) : options.closure
+      closure: options.closure === undefined
+        ? (attributedManualClosure.complete ? attributedManualClosure : await closureResolver(executionOrder))
+        : options.closure
     });
   }
   const orderBinding = validateOkxCredentialBinding(db, {
@@ -1319,6 +1322,10 @@ async function pollOne(db, executionOrder, options = {}) {
     const snapFresh = latestSnap && (Date.now() - new Date(latestSnap.createdAt).getTime()) < Number(process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS || 600000);
     const stillOnExchange = latestSnap ? snapshotPositionOpen(latestSnap, executionOrder) : null;
     if (snapFresh && !stillOnExchange && Number(executionOrder.filledQuantity || 0) > 0) {
+      const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+      if (attributedManualClosure.complete) {
+        return reconcilePendingClose(db, executionOrder, { snapshot: latestSnap, closure: attributedManualClosure });
+      }
       const protection = await fetchOkxProtectionClosure(executionOrder);
       if (protection?.complete) {
         if (Number.isFinite(protection.entryFeeUsdt)) {
@@ -2186,47 +2193,92 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   if (snapshotPositionOpen(snapshot, executionOrder)) {
     return { id: executionOrder.id, status: executionOrder.status, settlement: "position_still_open" };
   }
-  if (!closure?.complete) {
+  const attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
+  const useAttributedManualExit = attributedManualClosure.complete === true;
+  const settledClosure = useAttributedManualExit ? attributedManualClosure : closure;
+  if (!settledClosure?.complete) {
     executionOrder.status = "close_reconciliation_pending";
     executionOrder.closeReconciliationReason = "position_absent_fill_evidence_incomplete";
     return { id: executionOrder.id, status: executionOrder.status, settlement: "fill_evidence_incomplete" };
   }
-  if (finiteFinancialValue(closure.entryFeeUsdt)) {
+  if (finiteFinancialValue(settledClosure.entryFeeUsdt)) {
     const entryFills = (db.fills || []).filter((fill) => fill.kind === "entry" && fill.executionOrderId === executionOrder.id);
     const totalNotional = entryFills.reduce((sum, fill) => sum + Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0)), 0);
     for (const fill of entryFills) {
       const notional = Math.abs(Number(fill.notionalUsdt || Number(fill.price) * Number(fill.quantity) || 0));
-      fill.feeUsdt = totalNotional > 0 ? Number(closure.entryFeeUsdt) * notional / totalNotional : Number(closure.entryFeeUsdt) / Math.max(1, entryFills.length);
+      fill.feeUsdt = totalNotional > 0 ? Number(settledClosure.entryFeeUsdt) * notional / totalNotional : Number(settledClosure.entryFeeUsdt) / Math.max(1, entryFills.length);
       fill.feeCostUsdt = fill.feeUsdt;
       fill.feeSchemaVersion = 2;
       fill.feeSource = "okx_raw_fill_history";
       fill.estimatedFee = false;
       fill.feeBasis = "okx_entry_fills";
     }
-    executionOrder.entryFeeUsdt = Number(closure.entryFeeUsdt);
+    executionOrder.entryFeeUsdt = Number(settledClosure.entryFeeUsdt);
   }
-  recordFill(db, executionOrder, "close", closure.weightedPrice, closure.quantity, closure.realizedPnl, {
-    feeUsdt: closure.feeUsdt,
-    feeCostUsdt: closure.feeUsdt,
-    feeSchemaVersion: 2,
-    feeSource: "okx_raw_fill_history",
-    holdingMinutes: Number.isFinite(new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime())
-      ? Math.max(0, Math.round((new Date(closure.closedAt).getTime() - new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime()) / 60000)) : null,
-    maeUsdt: executionOrder.maeUsdt ?? null,
-    mfeUsdt: executionOrder.mfeUsdt ?? null,
-    exitReason: executionOrder.closeReason || "manual_close",
-    createdAt: closure.closedAt,
-    exchangeOrderIds: closure.exchangeOrderIds,
-    exchangeTradeIds: closure.tradeIds || [],
-    exchangeAlgoIds: closure.algoIds || [],
-    closureEvidencePath: closure.evidencePath || "fills-history",
-    exitBreakdown: closure.breakdown,
-    inferred: false,
-    estimated: false,
-    fundingFeeUsdt: null,
-    fundingReconciled: false,
-    financialBasis: "exchange_fills_confirmed_funding_unreconciled"
+  const exitReason = useAttributedManualExit ? "manual_exit" : (executionOrder.closeReason || "manual_close");
+  const existingCloseFills = useAttributedManualExit ? attributedManualClosure.fills : [];
+  return finalizeReconciledExecutionClose(db, executionOrder, {
+    exitReason,
+    closure: settledClosure,
+    existingCloseFills
   });
+}
+
+function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, closure, existingCloseFills = [] }) {
+  const openedAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime();
+  const closedAt = new Date(closure.closedAt).getTime();
+  const holdingMinutes = Number.isFinite(openedAt) && Number.isFinite(closedAt)
+    ? Math.max(0, Math.round((closedAt - openedAt) / 60000)) : null;
+  if (existingCloseFills.length) {
+    for (const fill of existingCloseFills) {
+      fill.executionOrderId ||= executionOrder.id;
+      fill.planId ||= executionOrder.planId;
+      fill.tradePlanId ||= executionOrder.planId;
+      fill.direction ||= executionOrder.direction;
+      fill.exitReason ||= exitReason;
+      fill.holdingMinutes ??= holdingMinutes;
+      fill.maeUsdt ??= executionOrder.maeUsdt ?? null;
+      fill.mfeUsdt ??= executionOrder.mfeUsdt ?? null;
+      fill.closureEvidencePath ||= closure.evidencePath || "attributed_external_exchange_fills";
+      fill.financialBasis = "exchange_fills_confirmed_funding_unreconciled";
+      fill.financialBasisComplete = false;
+      fill.fundingReconciled ??= false;
+      fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, {
+        ...fill,
+        tradeAttribution: {
+          ...fill.tradeAttribution,
+          origin: "external_exchange",
+          exitMode: "manual_exit",
+          method: "deterministic_manual_exit"
+        }
+      });
+      fill.tradeAttribution.origin = "external_exchange";
+      fill.tradeAttribution.exitMode = "manual_exit";
+      fill.tradeAttribution.method = "deterministic_manual_exit";
+    }
+  } else {
+    recordFill(db, executionOrder, "close", closure.weightedPrice, closure.quantity, closure.realizedPnl, {
+      feeUsdt: closure.feeUsdt,
+      feeCostUsdt: closure.feeUsdt,
+      feeSchemaVersion: 2,
+      feeSource: "okx_raw_fill_history",
+      holdingMinutes,
+      maeUsdt: executionOrder.maeUsdt ?? null,
+      mfeUsdt: executionOrder.mfeUsdt ?? null,
+      exitReason,
+      createdAt: closure.closedAt,
+      exchangeOrderIds: closure.exchangeOrderIds,
+      exchangeTradeIds: closure.tradeIds || [],
+      exchangeAlgoIds: closure.algoIds || [],
+      closureEvidencePath: closure.evidencePath || "fills-history",
+      exitBreakdown: closure.breakdown,
+      inferred: false,
+      estimated: false,
+      fundingFeeUsdt: null,
+      fundingReconciled: false,
+      financialBasis: "exchange_fills_confirmed_funding_unreconciled"
+    });
+  }
   executionOrder.status = "closed";
   executionOrder.closedAt = closure.closedAt;
   executionOrder.updatedAt = closure.closedAt;
@@ -2235,13 +2287,13 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   executionOrder.closeEvidencePath = closure.evidencePath || "fills-history";
   executionOrder.closeTradeIds = closure.tradeIds || [];
   executionOrder.closeAlgoIds = closure.algoIds || [];
-  executionOrder.exitReason = executionOrder.closeReason || "manual_close";
+  executionOrder.exitReason = exitReason;
   executionOrder.events ||= [];
   executionOrder.events.push({ at: nowIso(), event: "close_reconciled", detail: `交易所真实成交 ${closure.quantity} @ ${closure.weightedPrice}` });
   db.positions = (db.positions || []).filter((row) => !(row.source === "execution_engine" && row.executionOrderId === executionOrder.id));
   const plan = (db.tradePlans || []).find((row) => row.id === executionOrder.planId);
   if (plan) plan.status = "completed";
-  if (executionOrder.affectedExecutionOrderIds?.length) {
+  if (exitReason !== "manual_exit" && executionOrder.affectedExecutionOrderIds?.length) {
     const affected = new Set(executionOrder.affectedExecutionOrderIds);
     for (const row of db.executionOrders || []) {
       if (!affected.has(row.id)) continue;

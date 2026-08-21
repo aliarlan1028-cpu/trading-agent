@@ -1,5 +1,6 @@
 import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";
 import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 
 export const TRADE_ATTRIBUTION_SCHEMA_VERSION = 1;
 
@@ -45,7 +46,7 @@ function baseEvidence(fill = {}, executionOrder = null, previous = {}) {
   };
 }
 
-function result({ scope, origin, exitMode = null, executionOrderId = null, planId = null, method, reason = null, fill = {}, executionOrder = null, evidence = null }) {
+function result({ scope, origin, exitMode = null, executionOrderId = null, planId = null, method, reason = null, partial = null, fill = {}, executionOrder = null, evidence = null }) {
   return {
     schemaVersion: TRADE_ATTRIBUTION_SCHEMA_VERSION,
     scope,
@@ -55,6 +56,7 @@ function result({ scope, origin, exitMode = null, executionOrderId = null, planI
     planId: stringValue(planId),
     method,
     reason,
+    partial,
     evidence: evidence || baseEvidence(fill, executionOrder, attributionEvidence(fill)),
     attributedAt: fill.tradeAttribution?.attributedAt || fill.createdAt || null
   };
@@ -178,7 +180,10 @@ function bindingConflict(fill, executionOrder, plan) {
   const role = orderRole(fill);
   if (role) {
     const identities = fillOrderIdentitySets(fill, evidence);
-    const expected = orderIdentitySets(executionOrder, role);
+    const externalManualExit = role === "close" && attribution.exitMode === "manual_exit";
+    const expected = externalManualExit
+      ? { exchange: [], client: [], local: [], algo: [] }
+      : orderIdentitySets(executionOrder, role);
     const opposite = orderIdentitySets(executionOrder, role === "entry" ? "close" : "entry");
     for (const type of Object.keys(identities)) {
       if (identities[type].some((id) => opposite[type].includes(id))) return "trade_exchange_order_binding_conflict";
@@ -192,6 +197,19 @@ function bindingConflict(fill, executionOrder, plan) {
 
 export function classifyTradeFill(db = {}, fill = {}) {
   const attribution = fill.tradeAttribution || {};
+  if (attribution.schemaVersion === TRADE_ATTRIBUTION_SCHEMA_VERSION && attribution.scope === "attribution_pending") {
+    return result({
+      scope: "attribution_pending",
+      origin: attribution.origin === "execution_engine" ? "execution_engine" : "external_exchange",
+      executionOrderId: attribution.executionOrderId,
+      planId: attribution.planId,
+      method: "unresolved",
+      reason: attribution.reason || "trade_attribution_unresolved",
+      partial: attribution.partial,
+      fill,
+      evidence: attribution.evidence
+    });
+  }
   const directExecutionIds = unique([fill.executionOrderId, attribution.executionOrderId]);
   if (directExecutionIds.length > 1) return pending(fill, "trade_execution_order_binding_conflict");
 
@@ -224,9 +242,192 @@ export function classifyTradeFill(db = {}, fill = {}) {
     executionOrderId: executionOrder.id,
     planId,
     method: legacy ? "legacy_positive_provenance" : (attribution.method || "execution_writer"),
+    partial: attribution.partial,
     fill,
     executionOrder
   });
+}
+
+function positiveNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function finiteNumber(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+}
+
+function authoritativeFillTime(fill = {}) {
+  if (!populated(fill.exchangeFilledAt)) return null;
+  const at = new Date(fill.exchangeFilledAt).getTime();
+  return Number.isFinite(at) ? at : null;
+}
+
+function closeDirection(fill = {}) {
+  const side = String(fill.side || "").trim().toLowerCase();
+  if (side === "sell") return "long";
+  if (side === "buy") return "short";
+  return null;
+}
+
+function entryDirection(fill = {}) {
+  const explicit = canonicalPositionDirection(fill.direction);
+  if (explicit) return explicit;
+  const side = String(fill.side || "").trim().toLowerCase();
+  if (side === "buy") return "long";
+  if (side === "sell") return "short";
+  return null;
+}
+
+function executionEntryFills(db, executionOrder) {
+  return (db.fills || []).filter((fill) => {
+    if (fill?.kind !== "entry") return false;
+    const attribution = classifyTradeFill(db, fill);
+    return attribution.scope === "system" && attribution.executionOrderId === stringValue(executionOrder.id);
+  });
+}
+
+function attributedCloseFills(db, executionOrder) {
+  return (db.fills || []).filter((fill) => {
+    if (fill?.kind !== "close") return false;
+    const attribution = classifyTradeFill(db, fill);
+    return attribution.scope === "system" && attribution.exitMode === "manual_exit"
+      && attribution.executionOrderId === stringValue(executionOrder.id);
+  });
+}
+
+function executionManagedQuantity(db, executionOrder, entryFills = executionEntryFills(db, executionOrder)) {
+  const entryQuantity = entryFills.reduce((sum, fill) => sum + (positiveNumber(fill.quantity ?? fill.size) || 0), 0);
+  return entryQuantity > 0 ? entryQuantity : null;
+}
+
+function quantityTolerance(executionOrder, expectedQuantity) {
+  return Math.max(1e-10, Number(expectedQuantity || 0) * 0.005, Number(executionOrder.okxCtVal || 0) * 0.0001);
+}
+
+function executionEntryTime(executionOrder, entryFills) {
+  const times = [executionOrder.entryFilledAt, ...entryFills.map((fill) => fill.exchangeFilledAt || fill.createdAt)]
+    .map((value) => new Date(value || 0).getTime())
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return times.length ? Math.min(...times) : null;
+}
+
+function sameBoundSlot(fill, executionOrder) {
+  return stringValue(fill.accountId) === stringValue(executionOrder.accountId)
+    && normalizedEnvironment(fill.environment) === normalizedEnvironment(executionOrder.environment)
+    && canonicalSymbol(fill.symbol) === canonicalSymbol(executionOrder.symbol);
+}
+
+function hasMixedExternalEntry(db, executionOrder, closeFill, entryAt, closeAt) {
+  const closeTradeId = stringValue(closeFill.exchangeTradeId ?? closeFill.tradeId);
+  return (db.fills || []).some((fill) => {
+    if (fill?.kind !== "entry" || !sameBoundSlot(fill, executionOrder)) return false;
+    const attribution = classifyTradeFill(db, fill);
+    if (attribution.scope === "system") return false;
+    if (entryDirection(fill) !== canonicalPositionDirection(executionOrder)) return false;
+    const tradeId = stringValue(fill.exchangeTradeId ?? fill.tradeId);
+    if (closeTradeId && tradeId === closeTradeId) return false;
+    const at = authoritativeFillTime(fill);
+    return at === null || (at >= entryAt && at < closeAt);
+  });
+}
+
+function manualExitCandidate(db, executionOrder, fill) {
+  const entryFills = executionEntryFills(db, executionOrder);
+  const managedQuantity = executionManagedQuantity(db, executionOrder, entryFills);
+  const priorCloseQuantity = attributedCloseFills(db, executionOrder)
+    .reduce((sum, row) => sum + (positiveNumber(row.quantity ?? row.size) || 0), 0);
+  const remainingQuantity = managedQuantity === null ? null : Math.max(0, managedQuantity - priorCloseQuantity);
+  const fillQuantity = positiveNumber(fill.quantity ?? fill.size);
+  const fillAt = authoritativeFillTime(fill);
+  const entryAt = executionEntryTime(executionOrder, entryFills);
+  const tolerance = quantityTolerance(executionOrder, managedQuantity);
+  const checks = {
+    account: populated(fill.accountId) && populated(executionOrder.accountId)
+      && stringValue(fill.accountId) === stringValue(executionOrder.accountId),
+    environment: populated(fill.environment) && populated(executionOrder.environment)
+      && normalizedEnvironment(fill.environment) === normalizedEnvironment(executionOrder.environment),
+    symbol: populated(fill.symbol) && populated(executionOrder.symbol)
+      && canonicalSymbol(fill.symbol) === canonicalSymbol(executionOrder.symbol),
+    direction: closeDirection(fill) !== null && closeDirection(fill) === canonicalPositionDirection(executionOrder),
+    time: fillAt !== null && entryAt !== null && fillAt >= entryAt,
+    quantity: fillQuantity !== null && remainingQuantity !== null && remainingQuantity > tolerance
+      && fillQuantity <= remainingQuantity + tolerance
+  };
+  return {
+    executionOrder,
+    entryFills,
+    managedQuantity,
+    remainingQuantity,
+    fillQuantity,
+    fillAt,
+    entryAt,
+    tolerance,
+    checks,
+    exact: Object.values(checks).every(Boolean),
+    matchCount: Object.values(checks).filter(Boolean).length
+  };
+}
+
+export function resolveManualExitAttribution(db = {}, fill = {}) {
+  const empty = {
+    executionOrderId: null,
+    planId: null,
+    matchedEntryFillIds: [],
+    remainingQuantity: null,
+    partial: false
+  };
+  if (fill?.kind !== "close") return { status: "manual", reason: "not_external_close", ...empty };
+  if (!stringValue(fill.exchangeTradeId ?? fill.tradeId)) {
+    return { status: "pending", reason: "manual_exit_trade_id_missing", ...empty };
+  }
+  if (authoritativeFillTime(fill) === null) {
+    return { status: "pending", reason: "manual_exit_exchange_time_missing", ...empty };
+  }
+  const openExecutions = (db.executionOrders || []).filter((executionOrder) => OPEN_EXECUTION_STATES.has(String(executionOrder.status || "")));
+  if (!openExecutions.length) return { status: "manual", reason: "no_managed_manual_exit_candidate", ...empty };
+  const candidates = openExecutions.map((executionOrder) => manualExitCandidate(db, executionOrder, fill));
+  const exact = candidates.filter((candidate) => candidate.exact);
+  if (exact.length > 1) {
+    return { status: "pending", reason: "manual_exit_candidate_ambiguous", ...empty };
+  }
+  if (exact.length === 1) {
+    const candidate = exact[0];
+    if (hasMixedExternalEntry(db, candidate.executionOrder, fill, candidate.entryAt, candidate.fillAt)) {
+      return {
+        status: "pending",
+        reason: "mixed_position_attribution",
+        executionOrderId: candidate.executionOrder.id,
+        planId: candidate.executionOrder.planId || null,
+        matchedEntryFillIds: candidate.entryFills.map((entry) => entry.id).filter(Boolean),
+        remainingQuantity: candidate.remainingQuantity,
+        partial: true
+      };
+    }
+    return {
+      status: "matched",
+      reason: "deterministic_manual_exit_match",
+      executionOrderId: candidate.executionOrder.id,
+      planId: candidate.executionOrder.planId || null,
+      matchedEntryFillIds: candidate.entryFills.map((entry) => entry.id).filter(Boolean),
+      remainingQuantity: candidate.remainingQuantity,
+      partial: candidate.fillQuantity + candidate.tolerance < candidate.remainingQuantity
+    };
+  }
+  const conflict = candidates.filter((candidate) => candidate.matchCount >= 5);
+  if (conflict.length) {
+    const failedChecks = Object.entries(conflict[0].checks).filter(([, matched]) => !matched).map(([name]) => name);
+    return {
+      status: "pending",
+      reason: failedChecks.length === 1 ? `manual_exit_${failedChecks[0]}_mismatch` : "manual_exit_candidate_conflict",
+      executionOrderId: conflict.length === 1 ? conflict[0].executionOrder.id : null,
+      planId: conflict.length === 1 ? conflict[0].executionOrder.planId || null : null,
+      matchedEntryFillIds: conflict.length === 1 ? conflict[0].entryFills.map((entry) => entry.id).filter(Boolean) : [],
+      remainingQuantity: conflict.length === 1 ? conflict[0].remainingQuantity : null,
+      partial: false
+    };
+  }
+  return { status: "manual", reason: "no_managed_manual_exit_candidate", ...empty };
 }
 
 export function buildExecutionFillAttribution(db = {}, executionOrder = {}, fill = {}) {
@@ -255,6 +456,50 @@ export function buildExecutionFillAttribution(db = {}, executionOrder = {}, fill
 }
 
 export function buildExternalFillAttribution(db = {}, fill = {}) {
+  if (fill.kind === "close" && !fill.executionOrderId && !fill.tradeAttribution?.executionOrderId) {
+    const resolution = resolveManualExitAttribution(db, fill);
+    if (resolution.status === "matched") {
+      const executionOrder = (db.executionOrders || []).find((row) => stringValue(row.id) === stringValue(resolution.executionOrderId));
+      return result({
+        scope: "system",
+        origin: "external_exchange",
+        exitMode: "manual_exit",
+        executionOrderId: resolution.executionOrderId,
+        planId: resolution.planId,
+        method: "deterministic_manual_exit",
+        reason: null,
+        partial: resolution.partial,
+        fill,
+        executionOrder,
+        evidence: {
+          ...baseEvidence(fill, executionOrder, attributionEvidence(fill)),
+          matchedEntryFillIds: [...resolution.matchedEntryFillIds],
+          attributedQuantity: Number(fill.quantity ?? fill.size),
+          remainingQuantity: resolution.remainingQuantity
+        }
+      });
+    }
+    if (resolution.status === "pending") {
+      const executionOrder = (db.executionOrders || []).find((row) => stringValue(row.id) === stringValue(resolution.executionOrderId));
+      return result({
+        scope: "attribution_pending",
+        origin: "external_exchange",
+        executionOrderId: resolution.executionOrderId,
+        planId: resolution.planId,
+        method: "unresolved",
+        reason: resolution.reason,
+        partial: resolution.partial,
+        fill,
+        executionOrder,
+        evidence: {
+          ...baseEvidence(fill, executionOrder, attributionEvidence(fill)),
+          matchedEntryFillIds: [...resolution.matchedEntryFillIds],
+          attributedQuantity: Number(fill.quantity ?? fill.size),
+          remainingQuantity: resolution.remainingQuantity
+        }
+      });
+    }
+  }
   const attribution = classifyTradeFill(db, fill);
   return {
     ...attribution,
@@ -271,6 +516,7 @@ export function projectSystemTradeFill(db, fill) {
     executionOrderId: attribution.executionOrderId,
     planId: attribution.planId,
     tradePlanId: attribution.planId,
+    partial: attribution.partial ?? fill.partial,
     tradeAttribution: structuredClone(attribution)
   };
 }
@@ -283,4 +529,81 @@ export function systemTradeFills(db, options = {}) {
 export function groupSystemClosedTradeLifecycles(db, options = {}) {
   const { fills = db.fills || [], ...lifecycleOptions } = options;
   return groupClosedTradeLifecycles(systemTradeFills(db, { fills }), lifecycleOptions);
+}
+
+export function buildAttributedManualExitClosure(db = {}, executionOrder = {}) {
+  const expectedQuantity = executionManagedQuantity(db, executionOrder);
+  if (!(expectedQuantity > 0)) {
+    return { complete: false, reason: "manual_exit_managed_quantity_unavailable", fills: [], quantity: 0, tradeIds: [] };
+  }
+  const matched = (db.fills || []).map((raw) => ({ raw, projected: projectSystemTradeFill(db, raw) }))
+    .filter(({ raw, projected }) => raw?.kind === "close" && projected
+      && projected.tradeAttribution?.exitMode === "manual_exit"
+      && stringValue(projected.executionOrderId) === stringValue(executionOrder.id));
+  if (!matched.length) {
+    return { complete: false, reason: "manual_exit_fills_missing", fills: [], quantity: 0, tradeIds: [] };
+  }
+  const tradeIds = matched.map(({ raw }) => stringValue(raw.exchangeTradeId ?? raw.tradeId));
+  if (tradeIds.some((tradeId) => !tradeId) || new Set(tradeIds).size !== tradeIds.length) {
+    return { complete: false, reason: "manual_exit_trade_identity_incomplete", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds: tradeIds.filter(Boolean) };
+  }
+  for (const { raw } of matched) {
+    const quantity = positiveNumber(raw.quantity ?? raw.size);
+    const price = positiveNumber(raw.price);
+    const fee = raw.feeCostUsdt ?? raw.feeUsdt;
+    if (quantity === null || price === null || !finiteNumber(raw.realizedPnl) || !finiteNumber(fee)
+      || raw.estimatedFee === true || authoritativeFillTime(raw) === null) {
+      return {
+        complete: false,
+        reason: "manual_exit_financial_evidence_incomplete",
+        fills: matched.map(({ raw: row }) => row),
+        quantity: matched.reduce((sum, row) => sum + (positiveNumber(row.raw.quantity ?? row.raw.size) || 0), 0),
+        tradeIds
+      };
+    }
+  }
+  const closeAt = Math.max(...matched.map(({ raw }) => authoritativeFillTime(raw)));
+  const entryFills = executionEntryFills(db, executionOrder);
+  const entryAt = executionEntryTime(executionOrder, entryFills);
+  if (matched.some(({ raw }) => hasMixedExternalEntry(db, executionOrder, raw, entryAt, authoritativeFillTime(raw)))) {
+    return { complete: false, reason: "mixed_position_attribution", fills: matched.map(({ raw }) => raw), quantity: 0, tradeIds };
+  }
+  const quantity = matched.reduce((sum, { raw }) => sum + Number(raw.quantity ?? raw.size), 0);
+  const tolerance = quantityTolerance(executionOrder, expectedQuantity);
+  if (Math.abs(quantity - expectedQuantity) > tolerance || matched.every(({ projected }) => projected.partial === true)) {
+    return {
+      complete: false,
+      reason: "manual_exit_quantity_incomplete",
+      fills: matched.map(({ raw }) => raw),
+      quantity,
+      expectedQuantity,
+      tradeIds
+    };
+  }
+  const notional = matched.reduce((sum, { raw }) => sum + Number(raw.price) * Number(raw.quantity ?? raw.size), 0);
+  const fills = matched.map(({ raw }) => raw);
+  return {
+    complete: true,
+    reason: null,
+    fills,
+    quantity,
+    expectedQuantity,
+    weightedPrice: notional / quantity,
+    realizedPnl: matched.reduce((sum, { raw }) => sum + Number(raw.realizedPnl), 0),
+    feeUsdt: matched.reduce((sum, { raw }) => sum + Number(raw.feeCostUsdt ?? raw.feeUsdt), 0),
+    closedAt: new Date(closeAt).toISOString(),
+    tradeIds,
+    exchangeOrderIds: unique(matched.map(({ raw }) => raw.exchangeOrderId)),
+    breakdown: matched.map(({ raw }) => ({
+      fillId: raw.id || null,
+      exchangeOrderId: raw.exchangeOrderId || null,
+      tradeId: stringValue(raw.exchangeTradeId ?? raw.tradeId),
+      quantity: Number(raw.quantity ?? raw.size),
+      price: Number(raw.price),
+      realizedPnl: Number(raw.realizedPnl),
+      feeUsdt: Number(raw.feeCostUsdt ?? raw.feeUsdt),
+      closedAt: raw.exchangeFilledAt
+    })),
+    evidencePath: "attributed_external_exchange_fills"
+  };
 }
