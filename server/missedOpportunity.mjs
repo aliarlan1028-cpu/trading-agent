@@ -4,8 +4,42 @@
 // 错过了什么信号、下次怎么抓",沉淀进长期记忆让 agent 学会别老错过。纯真实数据,不编造行情。
 import { activeMandate, appendAudit, appendTrace, nowIso } from "./store.mjs";
 import { refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
+import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.mjs";
+import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+import { systemTradeFills } from "./systemTradeProjection.mjs";
 
 const fillTime = (f) => new Date(f.at || f.closedAt || f.filledAt || f.openedAt || f.createdAt || 0).getTime();
+
+function populated(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function sameOptionalBinding(left, right, normalize = (value) => String(value)) {
+  return !populated(left) || !populated(right) || normalize(left) === normalize(right);
+}
+
+function managedOpenPositionSymbols(db, projectedFills) {
+  const systemEntryExecutions = new Set(projectedFills
+    .filter((fill) => fill.kind === "entry" && fill.executionOrderId)
+    .map((fill) => String(fill.executionOrderId)));
+  const executions = new Map((db.executionOrders || []).map((row) => [String(row?.id || ""), row]));
+  const symbols = new Set();
+  for (const position of db.positions || []) {
+    const size = Number(position.size ?? position.pos ?? position.quantity ?? position.coinSize ?? 0);
+    const executionOrderId = String(position.executionOrderId || "");
+    const execution = executions.get(executionOrderId);
+    if (!Number.isFinite(size) || size === 0 || position.source !== "execution_engine" || !execution
+      || !OPEN_EXECUTION_STATES.has(String(execution.status || ""))
+      || !systemEntryExecutions.has(executionOrderId)) continue;
+    if (canonicalSymbol(position.symbol) !== canonicalSymbol(execution.symbol)
+      || !sameOptionalBinding(position.accountId, execution.accountId)
+      || !sameOptionalBinding(position.environment, execution.environment, (value) => String(value).toLowerCase())
+      || !sameOptionalBinding(position.exchange, execution.exchange, (value) => String(value).toUpperCase())
+      || !sameOptionalBinding(position.direction, execution.direction, canonicalPositionDirection)) continue;
+    symbols.add(canonicalSymbol(execution.symbol));
+  }
+  return symbols;
+}
 
 function qualifyMissedOpportunity(mover = {}, { inWhitelist, analyzed, scannedAt } = {}) {
   const evidence = mover.counterfactualEvidence || null;
@@ -65,10 +99,12 @@ export async function reviewMissedOpportunities(db) {
   const mandate = activeMandate(db);
   const whitelist = new Set((mandate?.allowedSymbols || []).map((s) => String(s).toUpperCase()));
 
-  // 近窗口内"交易过"的品种(有成交或持仓)——做了就不算错过。
+  // 近窗口内系统交易过的品种，或仍由系统执行绑定管理的开放仓位——做了就不算错过。
+  // 账户里的手工/待归因成交与手工仓位仍保留给风险层，但不能污染学习样本。
+  const projectedFills = systemTradeFills(db);
   const traded = new Set();
-  for (const f of db.fills || []) { if (now - fillTime(f) < windowMs) traded.add(String(f.symbol).toUpperCase()); }
-  for (const p of db.positions || []) { if (Number(p.size ?? p.pos ?? 0) !== 0) traded.add(String(p.symbol).toUpperCase()); }
+  for (const f of projectedFills) { if (now - fillTime(f) < windowMs) traded.add(canonicalSymbol(f.symbol)); }
+  for (const symbol of managedOpenPositionSymbols(db, projectedFills)) traded.add(symbol);
 
   db.missedOpportunities ||= [];
   const seen = new Set(db.missedOpportunities.map((m) => m.key));
@@ -78,7 +114,7 @@ export async function reviewMissedOpportunities(db) {
   const items = [];
   for (const m of movers) {
     if (Math.abs(Number(m.changePct)) < minMove) continue;
-    const sym = String(m.symbol).toUpperCase();
+    const sym = canonicalSymbol(m.symbol);
     if (traded.has(sym)) continue;
     const key = `${sym}|${today}`; // 同一品种同一天只复盘一次
     if (seen.has(key)) continue;

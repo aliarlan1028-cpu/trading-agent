@@ -101,7 +101,9 @@ function orderIdentitySets(row = {}, role) {
 function fillOrderIdentitySets(fill = {}, evidence = {}) {
   return {
     exchange: values(fill.exchangeOrderId, fill.exchangeOrderIds, evidence.exchangeOrderId, evidence.exchangeOrderIds,
-      closeAliasValues(fill, "ExchangeOrderId"), closeAliasValues(evidence, "ExchangeOrderId")),
+      closeAliasValues(fill, "ExchangeOrderId"), closeAliasValues(evidence, "ExchangeOrderId"),
+      (fill.exitBreakdown || []).map((row) => row?.exchangeOrderId ?? row?.orderId),
+      (evidence.exitBreakdown || []).map((row) => row?.exchangeOrderId ?? row?.orderId)),
     client: values(fill.clientOrderId, fill.clientOrderIds, fill.algoClientOrderId, fill.algoClientOrderIds,
       evidence.clientOrderId, evidence.clientOrderIds, evidence.algoClientOrderId, evidence.algoClientOrderIds,
       closeAliasValues(fill, "ClientOrderId"), closeAliasValues(evidence, "ClientOrderId")),
@@ -110,6 +112,61 @@ function fillOrderIdentitySets(fill = {}, evidence = {}) {
     algo: values(fill.algoId, fill.algoIds, fill.exchangeAlgoId, fill.exchangeAlgoIds, evidence.algoId, evidence.algoIds, evidence.exchangeAlgoId, evidence.exchangeAlgoIds,
       closeAliasValues(fill, "AlgoId"), closeAliasValues(evidence, "AlgoId"))
   };
+}
+
+function fillTradeIdentityValues(fill = {}, evidence = {}) {
+  return values(
+    fill.exchangeTradeId,
+    fill.tradeId,
+    fill.exchangeTradeIds,
+    evidence.exchangeTradeId,
+    evidence.exchangeTradeIds,
+    (fill.exitBreakdown || []).map((row) => row?.exchangeTradeId ?? row?.tradeId),
+    (evidence.exitBreakdown || []).map((row) => row?.exchangeTradeId ?? row?.tradeId)
+  );
+}
+
+function resolvedBindingValue(valuesToResolve, normalize = stringValue) {
+  const resolved = unique(valuesToResolve, normalize);
+  return resolved.length === 1 ? resolved[0] : null;
+}
+
+export function authoritativeFillIdentity(db = {}, fill = {}) {
+  const attribution = classifyTradeFill(db, fill);
+  const evidence = attribution.evidence || attributionEvidence(fill);
+  const executionOrder = attribution.executionOrderId
+    ? (db.executionOrders || []).find((row) => stringValue(row?.id) === stringValue(attribution.executionOrderId)) || null
+    : null;
+  const planId = attribution.planId ?? executionOrder?.planId;
+  const plan = planId
+    ? (db.tradePlans || []).find((row) => stringValue(row?.id) === stringValue(planId)) || null
+    : null;
+  const validated = attribution.scope === "system";
+  const rawOrValidated = (raw, derived, normalize = stringValue) => {
+    if (populated(raw)) return normalize(raw);
+    return validated ? resolvedBindingValue(derived, normalize) : null;
+  };
+  return {
+    exchange: rawOrValidated(fill.exchange, [executionOrder?.exchange, plan?.exchange], normalizedExchange),
+    accountId: rawOrValidated(fill.accountId, [evidence.accountId, executionOrder?.accountId, plan?.accountId]),
+    environment: rawOrValidated(fill.environment, [evidence.environment, executionOrder?.environment, plan?.environment], normalizedEnvironment),
+    symbol: rawOrValidated(fill.symbol, [executionOrder?.symbol, plan?.symbol], canonicalSymbol),
+    tradeIds: fillTradeIdentityValues(fill, evidence),
+    orderIds: fillOrderIdentitySets(fill, evidence).exchange
+  };
+}
+
+export function findAuthoritativeFillIdentityMatch(db = {}, candidate = {}) {
+  const incoming = authoritativeFillIdentity(db, candidate);
+  if (!incoming.tradeIds.length || !incoming.exchange || !incoming.accountId || !incoming.environment || !incoming.symbol) return null;
+  return (db.fills || []).find((fill) => {
+    const existing = authoritativeFillIdentity(db, fill);
+    return existing.tradeIds.some((tradeId) => incoming.tradeIds.includes(tradeId))
+      && existing.exchange === incoming.exchange
+      && existing.accountId === incoming.accountId
+      && existing.environment === incoming.environment
+      && existing.symbol === incoming.symbol;
+  }) || null;
 }
 
 function findExecutionByExchangeIdentity(db = {}, fill = {}) {
@@ -501,6 +558,68 @@ export function buildExternalFillAttribution(db = {}, fill = {}) {
     origin: "external_exchange",
     method: "external_unmanaged"
   };
+}
+
+function reconciledManualExitAttribution(db, fill, resolution) {
+  const executionOrder = (db.executionOrders || []).find((row) => stringValue(row.id) === stringValue(resolution.executionOrderId));
+  return result({
+    scope: "system",
+    origin: "external_exchange",
+    exitMode: "manual_exit",
+    executionOrderId: resolution.executionOrderId,
+    planId: resolution.planId,
+    method: "deterministic_manual_exit_reconciliation",
+    reason: null,
+    partial: resolution.partial,
+    fill,
+    executionOrder,
+    evidence: {
+      ...baseEvidence(fill, executionOrder, attributionEvidence(fill)),
+      matchedEntryFillIds: [...resolution.matchedEntryFillIds],
+      attributedQuantity: Number(fill.quantity ?? fill.size),
+      remainingQuantity: resolution.remainingQuantity
+    }
+  });
+}
+
+// Persisted schema-v1 pending rows are intentionally sticky for readers. Only
+// server-owned writers/reconcilers call this function after new durable evidence
+// arrives; classifyTradeFill itself never upgrades consumer-supplied metadata.
+export function reconcilePendingTradeAttributions(db = {}) {
+  const pendingFills = (db.fills || []).filter((fill) => fill?.tradeAttribution?.schemaVersion === TRADE_ATTRIBUTION_SCHEMA_VERSION
+    && fill.tradeAttribution.scope === "attribution_pending");
+  let resolved = 0;
+  for (const fill of pendingFills) {
+    const previous = fill.tradeAttribution;
+    let replacement = null;
+    const manualExitPending = fill.kind === "close"
+      && previous.origin === "external_exchange"
+      && (String(previous.reason || "").startsWith("manual_exit_") || previous.reason === "mixed_position_attribution");
+    if (manualExitPending) {
+      const resolution = resolveManualExitAttribution(db, fill);
+      if (resolution.status === "matched") replacement = reconciledManualExitAttribution(db, fill, resolution);
+    } else {
+      const classified = classifyTradeFill(db, {
+        ...fill,
+        tradeAttribution: {
+          ...previous,
+          schemaVersion: 0,
+          scope: previous.origin === "execution_engine" ? "system" : previous.scope
+        }
+      });
+      if (classified.scope === "system") {
+        replacement = {
+          ...classified,
+          origin: previous.origin === "external_exchange" ? "external_exchange" : "execution_engine",
+          method: "server_attribution_reconciliation"
+        };
+      }
+    }
+    if (!replacement) continue;
+    fill.tradeAttribution = replacement;
+    resolved += 1;
+  }
+  return { checked: pendingFills.length, resolved, pending: pendingFills.length - resolved };
 }
 
 export function projectSystemTradeFill(db, fill) {

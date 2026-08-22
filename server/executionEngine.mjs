@@ -23,7 +23,7 @@ import { isAllowedGeminiProvider } from "./llmGateway.mjs";
 import { liveConfirmationStatus } from "./liveModeService.mjs";
 import { normalizedPlanForDecisionAudit, verifyDecisionAuditExecutionAttribution, verifyDecisionAuditRecord } from "./decisionAudit.mjs";
 import { ensureDecisionFactSnapshot, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
-import { buildAttributedManualExitClosure, buildAttributedSystemExitClosure, buildExecutionFillAttribution, classifyTradeFill } from "./systemTradeProjection.mjs";
+import { buildAttributedManualExitClosure, buildAttributedSystemExitClosure, buildExecutionFillAttribution, classifyTradeFill, reconcilePendingTradeAttributions } from "./systemTradeProjection.mjs";
 
 export { currentEquityUsdt } from "./financialFacts.mjs";
 
@@ -2712,6 +2712,9 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     riskCheckId: executionOrder.riskCheckId,
     mandateId: executionOrder.mandateId,
     symbol: executionOrder.symbol,
+    exchange: executionOrder.exchange || plan.exchange || null,
+    accountId: executionOrder.accountId || plan.accountId || null,
+    environment: executionOrder.environment || plan.environment || null,
     direction: executionOrder.direction,
     // 成交买卖方向:开仓=持仓方向对应的买卖(多→买/空→卖),平仓=反向(平空=买/平多=卖)。
     side: (() => {
@@ -2761,6 +2764,10 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
     exchangeOrderIds: extra.exchangeOrderIds,
     exchangeTradeIds: extra.exchangeTradeIds,
     exchangeAlgoIds: extra.exchangeAlgoIds,
+    exchangeOrderId: Array.isArray(extra.exchangeOrderIds) && extra.exchangeOrderIds.length === 1 ? extra.exchangeOrderIds[0] : undefined,
+    exchangeTradeId: Array.isArray(extra.exchangeTradeIds) && extra.exchangeTradeIds.length === 1 ? extra.exchangeTradeIds[0] : undefined,
+    exchangeAlgoId: Array.isArray(extra.exchangeAlgoIds) && extra.exchangeAlgoIds.length === 1 ? extra.exchangeAlgoIds[0] : undefined,
+    exchangeFilledAt: extra.exchangeFilledAt || (kind === "close" ? extra.createdAt : undefined),
     closureEvidencePath: extra.closureEvidencePath,
     exitBreakdown: extra.exitBreakdown,
     realizedPnl,
@@ -2770,6 +2777,7 @@ function recordFill(db, executionOrder, kind, price, quantity, realizedPnl = nul
   };
   fill.tradeAttribution = buildExecutionFillAttribution(db, executionOrder, fill);
   db.fills.unshift(fill);
+  reconcilePendingTradeAttributions(db);
   if (kind === "close") reconcileStrategyProductHealth(db);
   // 平仓确认即进入真实复盘队列；30 分钟复盘任务只负责深度处理与失败重试。
   ensureTradeReviewQueued(db, fill);

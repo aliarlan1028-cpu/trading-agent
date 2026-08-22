@@ -1,6 +1,7 @@
 import { isTerminalExecution } from "../executionStates.mjs";
 import { isTerminalTradePlan } from "../tradePlanLifecycle.mjs";
 import { paginateTerminalHistory } from "../cursorPagination.mjs";
+import { systemTradeFills } from "../systemTradeProjection.mjs";
 
 const TERMINAL_TASK_STATES = new Set(["completed", "failed", "cancelled", "canceled", "expired", "skipped"]);
 const TERMINAL_REVIEW_STATES = new Set(["completed", "reflected", "closed", "done"]);
@@ -9,9 +10,10 @@ function statusIn(states) {
   return (row) => states.has(String(row?.status || "").toLowerCase());
 }
 
-function historyHandler(db, resource, isTerminal, mapItem = (row) => row) {
+function historyHandler(db, resource, isTerminal, mapItem = (row) => row, selectRows = null) {
   return (req, res) => {
-    const page = paginateTerminalHistory(db[resource] || [], { limit: req.query.limit, cursor: req.query.cursor, isTerminal });
+    const rows = selectRows ? selectRows(db) : (db[resource] || []);
+    const page = paginateTerminalHistory(rows, { limit: req.query.limit, cursor: req.query.cursor, isTerminal });
     res.set("Cache-Control", "no-store");
     res.json({ ...page, items: page.items.map(mapItem) });
   };
@@ -19,7 +21,7 @@ function historyHandler(db, resource, isTerminal, mapItem = (row) => row) {
 
 export function registerHistoryRoutes(app, ctx) {
   const { db, requirePermission } = ctx;
-  app.get("/api/history/fills", requirePermission("account.read"), historyHandler(db, "fills", () => true));
+  app.get("/api/history/fills", requirePermission("account.read"), historyHandler(db, "fills", () => true, (row) => row, systemTradeFills));
   app.get("/api/history/executions", requirePermission("account.read"), historyHandler(db, "executionOrders", isTerminalExecution));
   app.get("/api/history/plans", requirePermission("account.read"), historyHandler(db, "tradePlans", isTerminalTradePlan));
   app.get("/api/history/reviews", requirePermission("account.read"), historyHandler(db, "reviews", statusIn(TERMINAL_REVIEW_STATES), ({ analyticsSnapshot: _analyticsSnapshot, ...row }) => row));

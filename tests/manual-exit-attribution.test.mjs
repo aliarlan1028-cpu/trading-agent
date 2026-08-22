@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 
 import { applyOkxLifecycleFinancialEvidence, pollExecutionOrders, reconcilePendingClose } from "../server/executionEngine.mjs";
-import { upsertOkxOrder } from "../server/realtimeManager.mjs";
+import { reconcilePendingOkxFillIdentities, upsertOkxOrder } from "../server/realtimeManager.mjs";
 import * as projection from "../server/systemTradeProjection.mjs";
 
 const ORIGINAL_OKX_API_KEY = process.env.OKX_API_KEY;
@@ -1435,6 +1435,154 @@ test("a recognized system WS close is reconciled into exactly one financial fact
   }, authoritativeBefore);
 });
 
+test("a REST-settled system close absorbs the same late WS trade without changing lifecycle totals", () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeExchangeOrderId = "rest-first-close-order";
+  const payload = closePayload({
+    ordId: execution.closeExchangeOrderId,
+    tradeId: "rest-first-close-trade"
+  });
+  const closure = {
+    complete: true,
+    accountId: execution.accountId,
+    environment: execution.environment,
+    exchange: execution.exchange,
+    symbol: execution.symbol,
+    quantity: 0.01,
+    weightedPrice: 60_000,
+    realizedPnl: 10,
+    feeUsdt: 0.01,
+    closedAt: CLOSE_AT,
+    exchangeOrderIds: [execution.closeExchangeOrderId],
+    tradeIds: [payload.tradeId],
+    breakdown: [{
+      exchangeOrderId: execution.closeExchangeOrderId,
+      tradeId: payload.tradeId,
+      quantity: 0.01,
+      price: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT
+    }],
+    evidencePath: "okx_raw_fill_history"
+  };
+  const snapshot = {
+    id: "snapshot-after-rest-first-close",
+    exchange: "OKX",
+    accountId: execution.accountId,
+    environment: execution.environment,
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    status: "ok",
+    positions: [],
+    createdAt: "2026-08-15T02:00:00.000Z"
+  };
+
+  assert.equal(reconcilePendingClose(db, execution, { snapshot, closure }).status, "closed");
+  const authoritative = db.fills.find((fill) => fill.kind === "close");
+  assert.deepEqual({
+    exchange: authoritative.exchange,
+    accountId: authoritative.accountId,
+    environment: authoritative.environment,
+    exchangeOrderId: authoritative.exchangeOrderId,
+    exchangeTradeId: authoritative.exchangeTradeId
+  }, {
+    exchange: "OKX",
+    accountId: "account-a",
+    environment: "production",
+    exchangeOrderId: execution.closeExchangeOrderId,
+    exchangeTradeId: payload.tradeId
+  });
+  const rawBefore = structuredClone(authoritative);
+  const lifecycleBefore = structuredClone(projection.groupSystemClosedTradeLifecycles(db)[0]);
+
+  upsertOkxOrder(db, payload, context());
+
+  const closes = db.fills.filter((fill) => fill.kind === "close");
+  const lifecycleAfter = projection.groupSystemClosedTradeLifecycles(db)[0];
+  assert.equal(closes.length, 1);
+  assert.deepEqual(closes[0], rawBefore);
+  assert.deepEqual({
+    quantity: lifecycleAfter.quantity,
+    realizedPnl: lifecycleAfter.realizedPnl,
+    feeUsdt: lifecycleAfter.feeUsdt
+  }, {
+    quantity: lifecycleBefore.quantity,
+    realizedPnl: lifecycleBefore.realizedPnl,
+    feeUsdt: lifecycleBefore.feeUsdt
+  });
+});
+
+test("a conflicting late WS payload for a REST-settled trade preserves raw evidence and reopens settlement", () => {
+  const { db, execution } = managedDb({ status: "close_reconciliation_pending" });
+  execution.closeExchangeOrderId = "rest-conflict-close-order";
+  const tradeId = "rest-conflict-close-trade";
+  const snapshot = {
+    id: "snapshot-after-rest-conflict-close",
+    exchange: "OKX",
+    accountId: execution.accountId,
+    environment: execution.environment,
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    status: "ok",
+    positions: [],
+    createdAt: "2026-08-15T02:00:00.000Z"
+  };
+  const closure = {
+    complete: true,
+    accountId: execution.accountId,
+    environment: execution.environment,
+    exchange: execution.exchange,
+    symbol: execution.symbol,
+    quantity: 0.01,
+    weightedPrice: 60_000,
+    realizedPnl: 10,
+    feeUsdt: 0.01,
+    closedAt: CLOSE_AT,
+    exchangeOrderIds: [execution.closeExchangeOrderId],
+    tradeIds: [tradeId],
+    breakdown: [{
+      exchangeOrderId: execution.closeExchangeOrderId,
+      tradeId,
+      quantity: 0.01,
+      price: 60_000,
+      realizedPnl: 10,
+      feeUsdt: 0.01,
+      closedAt: CLOSE_AT
+    }],
+    evidencePath: "okx_raw_fill_history"
+  };
+  assert.equal(reconcilePendingClose(db, execution, { snapshot, closure }).status, "closed");
+  const authoritative = db.fills.find((fill) => fill.kind === "close");
+  const financialBefore = structuredClone({
+    price: authoritative.price,
+    quantity: authoritative.quantity,
+    realizedPnl: authoritative.realizedPnl,
+    feeUsdt: authoritative.feeUsdt,
+    exchangeOrderIds: authoritative.exchangeOrderIds,
+    exchangeTradeIds: authoritative.exchangeTradeIds,
+    exitBreakdown: authoritative.exitBreakdown
+  });
+
+  upsertOkxOrder(db, closePayload({
+    ordId: execution.closeExchangeOrderId,
+    tradeId,
+    fillPnl: "99"
+  }), context());
+
+  assert.equal(db.fills.filter((fill) => fill.kind === "close").length, 1);
+  assert.equal(authoritative.financialEvidenceConflict, true);
+  assert.equal(execution.status, "close_reconciliation_pending");
+  assert.deepEqual({
+    price: authoritative.price,
+    quantity: authoritative.quantity,
+    realizedPnl: authoritative.realizedPnl,
+    feeUsdt: authoritative.feeUsdt,
+    exchangeOrderIds: authoritative.exchangeOrderIds,
+    exchangeTradeIds: authoritative.exchangeTradeIds,
+    exitBreakdown: authoritative.exitBreakdown
+  }, financialBefore);
+  assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 0);
+});
+
 test("a protecting execution reuses its persisted WS protection fill during polling", async () => {
   const { db, execution } = managedDb({ status: "protecting" });
   execution.stopAlgoId = "poll-protection-algo";
@@ -1685,6 +1833,87 @@ test("two exact open executions in one slot leave the close attribution-pending"
   assert.equal(close.tradeAttribution.scope, "attribution_pending");
   assert.equal(close.tradeAttribution.reason, "manual_exit_candidate_ambiguous");
   assert.equal(projection.groupSystemClosedTradeLifecycles(db).length, 0);
+});
+
+test("explicit server reconciliation promotes an out-of-order pending close only after unique entry evidence arrives", () => {
+  const { db } = managedDb();
+  const entry = db.fills.find((fill) => fill.kind === "entry");
+  db.fills = db.fills.filter((fill) => fill !== entry);
+  const close = insertClose(db);
+  assert.equal(close.tradeAttribution.scope, "attribution_pending");
+
+  db.fills.push(entry);
+  assert.equal(projection.classifyTradeFill(db, close).scope, "attribution_pending",
+    "ordinary consumers must never promote persisted pending metadata");
+  const financialBefore = structuredClone({
+    price: close.price,
+    quantity: close.quantity,
+    realizedPnl: close.realizedPnl,
+    feeUsdt: close.feeUsdt,
+    rawFee: close.rawFee,
+    exchangeTradeId: close.exchangeTradeId,
+    exchangeOrderId: close.exchangeOrderId,
+    exchangeFilledAt: close.exchangeFilledAt
+  });
+
+  const result = projection.reconcilePendingTradeAttributions(db);
+
+  assert.deepEqual(result, { checked: 1, resolved: 1, pending: 0 });
+  assert.equal(close.tradeAttribution.scope, "system");
+  assert.equal(close.tradeAttribution.exitMode, "manual_exit");
+  assert.equal(close.tradeAttribution.method, "deterministic_manual_exit_reconciliation");
+  assert.equal(close.tradeAttribution.executionOrderId, "exec-1");
+  assert.deepEqual({
+    price: close.price,
+    quantity: close.quantity,
+    realizedPnl: close.realizedPnl,
+    feeUsdt: close.feeUsdt,
+    rawFee: close.rawFee,
+    exchangeTradeId: close.exchangeTradeId,
+    exchangeOrderId: close.exchangeOrderId,
+    exchangeFilledAt: close.exchangeFilledAt
+  }, financialBefore);
+});
+
+test("explicit server reconciliation leaves ambiguous and conflicting pending fills fail-closed", () => {
+  const { db } = managedDb();
+  addManagedExecution(db, { suffix: "2" });
+  const close = insertClose(db);
+  const before = structuredClone(close);
+  assert.equal(close.tradeAttribution.reason, "manual_exit_candidate_ambiguous");
+
+  const result = projection.reconcilePendingTradeAttributions(db);
+
+  assert.deepEqual(result, { checked: 1, resolved: 0, pending: 1 });
+  assert.deepEqual(close, before);
+  assert.equal(projection.projectSystemTradeFill(db, close), null);
+
+  const { db: conflictDb } = managedDb();
+  const conflict = insertClose(conflictDb, closePayload(), context({ accountId: "account-b" }));
+  const conflictBefore = structuredClone(conflict);
+  assert.equal(conflict.tradeAttribution.reason, "manual_exit_account_mismatch");
+  assert.deepEqual(projection.reconcilePendingTradeAttributions(conflictDb), { checked: 1, resolved: 0, pending: 1 });
+  assert.deepEqual(conflict, conflictBefore);
+});
+
+test("restart reconciliation re-evaluates pending attribution after out-of-order evidence", async () => {
+  const { db } = managedDb();
+  const entry = db.fills.find((fill) => fill.kind === "entry");
+  db.fills = db.fills.filter((fill) => fill !== entry);
+  const close = insertClose(db);
+  assert.equal(close.tradeAttribution.scope, "attribution_pending");
+  db.fills.push(entry);
+  const restartedDb = structuredClone(db);
+
+  const result = await reconcilePendingOkxFillIdentities(restartedDb, {
+    request: async () => { throw new Error("no fills-history request expected"); }
+  });
+  const restartedClose = restartedDb.fills.find((fill) => fill.id === close.id);
+
+  assert.equal(result.checked, 0);
+  assert.equal(result.attributions.resolved, 1);
+  assert.equal(restartedClose.tradeAttribution.scope, "system");
+  assert.equal(restartedClose.tradeAttribution.exitMode, "manual_exit");
 });
 
 test("an unmatched external entry mixed into the managed slot blocks close attribution", () => {

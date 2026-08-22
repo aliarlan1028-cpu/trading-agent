@@ -8,6 +8,8 @@ function baseDb(movers) {
     marketMovers: { movers },
     fills: [],
     positions: [],
+    executionOrders: [],
+    tradePlans: [],
     agentRuns: [],
     memoryItems: [],
     missedOpportunities: [],
@@ -17,6 +19,30 @@ function baseDb(movers) {
     // 白名单只含 BTC；用不在白名单、未分析的大波动避免触发 LLM/通知的动态依赖。
     mandates: [{ id: "m1", status: "active", allowedSymbols: ["BTC/USDT"] }]
   };
+}
+
+function addSystemFill(db, { symbol, kind = "close", createdAt = new Date().toISOString(), status = "closed" } = {}) {
+  const execution = {
+    id: `exec-${symbol}`, planId: `plan-${symbol}`, exchange: "OKX", accountId: "account-a",
+    environment: "production", symbol, direction: "long", status
+  };
+  db.executionOrders.push(execution);
+  db.tradePlans.push({
+    id: execution.planId, exchange: execution.exchange, accountId: execution.accountId,
+    environment: execution.environment, symbol: execution.symbol, direction: execution.direction
+  });
+  const fill = {
+    id: `fill-${symbol}`, kind, executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId,
+    exchange: execution.exchange, accountId: execution.accountId, environment: execution.environment,
+    symbol, direction: execution.direction, quantity: 1, price: 100, createdAt,
+    tradeAttribution: {
+      schemaVersion: 1, scope: "system", origin: "execution_engine", exitMode: kind === "close" ? "system_exit" : null,
+      executionOrderId: execution.id, planId: execution.planId, method: "execution_writer",
+      evidence: { accountId: execution.accountId, environment: execution.environment }
+    }
+  };
+  db.fills.push(fill);
+  return { execution, fill };
 }
 
 test("大波动且未交易 → 记为错过机会（白名单外，无 LLM 依赖路径）", async () => {
@@ -38,9 +64,47 @@ test("小于阈值的波动不算错过", async () => {
 
 test("近窗口内交易过的品种不算错过", async () => {
   const db = baseDb([{ symbol: "SOL/USDT", changePct: 20, quoteVolUsdt: 90_000_000 }]);
-  db.fills = [{ symbol: "SOL/USDT", kind: "close", realizedPnl: 5, createdAt: new Date().toISOString() }];
+  addSystemFill(db, { symbol: "SOL/USDT" });
   const r = await reviewMissedOpportunities(db);
   assert.equal(r.missed, 0, "做过 SOL 就不算错过它");
+});
+
+test("manual and pending fills cannot suppress a missed-opportunity sample", async (t) => {
+  for (const [name, tradeAttribution] of [
+    ["manual", { schemaVersion: 1, scope: "manual", origin: "external_exchange", method: "external_unmanaged" }],
+    ["pending", { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", method: "unresolved", reason: "mixed_position_attribution" }]
+  ]) await t.test(name, async () => {
+    const db = baseDb([{ symbol: "SOL/USDT", changePct: 20, quoteVolUsdt: 90_000_000 }]);
+    db.fills.push({
+      id: `${name}-fill`, symbol: "SOL/USDT", kind: "close", realizedPnl: 5,
+      createdAt: new Date().toISOString(), tradeAttribution
+    });
+
+    const result = await reviewMissedOpportunities(db);
+
+    assert.equal(result.missed, 1);
+  });
+});
+
+test("only a validated managed open position can mark a symbol as system-traded", async () => {
+  const mover = { symbol: "SOL/USDT", changePct: 20, quoteVolUsdt: 90_000_000 };
+  const manualDb = baseDb([mover]);
+  manualDb.positions.push({
+    id: "manual-open", source: "exchange_rest", exchange: "OKX", accountId: "account-a",
+    environment: "production", symbol: "SOL/USDT", direction: "long", size: 1
+  });
+  assert.equal((await reviewMissedOpportunities(manualDb)).missed, 1);
+
+  const managedDb = baseDb([mover]);
+  const oldEntryAt = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  const { execution } = addSystemFill(managedDb, { symbol: "SOL/USDT", kind: "entry", createdAt: oldEntryAt, status: "protecting" });
+  managedDb.positions.push({
+    id: "managed-open", source: "execution_engine", executionOrderId: execution.id, planId: execution.planId,
+    exchange: execution.exchange, accountId: execution.accountId, environment: execution.environment,
+    symbol: execution.symbol, direction: execution.direction, size: 1
+  });
+
+  assert.equal((await reviewMissedOpportunities(managedDb)).missed, 0);
 });
 
 test("同一品种同一天只复盘一次（幂等）", async () => {

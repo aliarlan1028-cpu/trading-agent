@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { readFileSync } from "node:fs";
 import { nowIso } from "./store.mjs";
 import { resolveTradeContext, tradeLifecycleKey } from "./tradeReviewQueue.mjs";
+import { systemTradeFills } from "./systemTradeProjection.mjs";
 
 const WIDTH = 1080;
 const HEIGHT = 1440;
@@ -112,7 +113,7 @@ export function resolveClosedTradePosterBasis(db = {}, lifecycle = {}, execution
   const lifecycleKey = String(lifecycle.key || "");
   const execution = executionOverride || resolveTradeContext(db, lifecycle).executionOrder
     || (lifecycleKey ? (db.executionOrders || []).find((row) => row.id === lifecycleKey) : null) || null;
-  const entryFills = (db.fills || []).filter((fill) => (
+  const entryFills = systemTradeFills(db).filter((fill) => (
     fill?.kind === "entry" && lifecycleKey && tradeLifecycleKey(fill) === lifecycleKey
   ));
   const weightedEntries = entryFills.map((fill) => ({

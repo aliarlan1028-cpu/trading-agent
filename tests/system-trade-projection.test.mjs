@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   buildExecutionFillAttribution,
   buildExternalFillAttribution,
+  authoritativeFillIdentity,
   classifyTradeFill,
   groupSystemClosedTradeLifecycles,
   projectSystemTradeFill,
+  reconcilePendingTradeAttributions,
   systemTradeFills
 } from "../server/systemTradeProjection.mjs";
 
@@ -105,6 +107,41 @@ test("forged system metadata without matching persisted execution fails closed",
 
   assert.equal(systemTradeFills(db).length, 0);
   assert.equal(classifyTradeFill(db, db.fills[0]).scope, "attribution_pending");
+});
+
+test("authoritative identity includes singular, plural, and exit-breakdown trade and order IDs", () => {
+  const identity = authoritativeFillIdentity(baseDb(), {
+    exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC-USDT-SWAP",
+    exchangeTradeId: "trade-single", exchangeTradeIds: ["trade-plural"],
+    exchangeOrderId: "order-single", exchangeOrderIds: ["order-plural"],
+    exitBreakdown: [{ tradeId: "trade-breakdown", exchangeOrderId: "order-breakdown" }]
+  });
+
+  assert.deepEqual(identity.tradeIds.sort(), ["trade-breakdown", "trade-plural", "trade-single"]);
+  assert.deepEqual(identity.orderIds.sort(), ["order-breakdown", "order-plural", "order-single"]);
+  assert.deepEqual({ exchange: identity.exchange, accountId: identity.accountId, environment: identity.environment, symbol: identity.symbol }, {
+    exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT"
+  });
+});
+
+test("explicit reconciliation promotes a pending execution-writer fill after its plan arrives", () => {
+  const db = systemDb();
+  const fill = db.fills.find((row) => row.kind === "entry");
+  const execution = db.executionOrders[0];
+  const plan = db.tradePlans[0];
+  db.tradePlans = [];
+  fill.tradeAttribution = buildExecutionFillAttribution(db, execution, fill);
+  db.fills = [fill];
+  assert.equal(fill.tradeAttribution.scope, "attribution_pending");
+  const rawBefore = structuredClone({ price: fill.price, quantity: fill.quantity, feeUsdt: fill.feeUsdt, exchangeOrderId: fill.exchangeOrderId });
+
+  db.tradePlans.push(plan);
+  assert.equal(classifyTradeFill(db, fill).scope, "attribution_pending");
+  assert.deepEqual(reconcilePendingTradeAttributions(db), { checked: 1, resolved: 1, pending: 0 });
+
+  assert.equal(fill.tradeAttribution.scope, "system");
+  assert.equal(fill.tradeAttribution.method, "server_attribution_reconciliation");
+  assert.deepEqual({ price: fill.price, quantity: fill.quantity, feeUsdt: fill.feeUsdt, exchangeOrderId: fill.exchangeOrderId }, rawBefore);
 });
 
 test("binding conflict excludes a superficially linked fill", () => {

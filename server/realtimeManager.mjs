@@ -9,7 +9,7 @@ import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
 import { applyTickerObservation } from "./marketObservation.mjs";
 import { publicMarketSocketCount } from "./marketStream.mjs";
 import { reconcileAmendOmsOrder } from "./omsRecovery.mjs";
-import { buildExternalFillAttribution, classifyTradeFill } from "./systemTradeProjection.mjs";
+import { buildExternalFillAttribution, classifyTradeFill, findAuthoritativeFillIdentityMatch, reconcilePendingTradeAttributions } from "./systemTradeProjection.mjs";
 
 const financialNumber = (value) => finiteFinancialNumber(value) ? Number(value) : null;
 
@@ -460,22 +460,25 @@ function okxExecutionOwnership(db, order, payload = {}) {
   return (db.executionOrders || []).find((row) => row.id === attribution.executionOrderId) || null;
 }
 
-function duplicateOkxFillConflicts(existingFill, payload = {}) {
+function duplicateOkxFillConflicts(existingFill, payload = {}, normalized = {}) {
+  const tradeId = normalizeOkxTradeId(payload.tradeId);
+  const evidence = (existingFill.exitBreakdown || []).find((row) => String(row?.exchangeTradeId ?? row?.tradeId ?? "") === tradeId)
+    || existingFill;
   const numericPairs = [
-    [existingFill.price, financialNumber(payload.fillPx)],
-    [existingFill.rawContracts, financialNumber(payload.fillSz)],
-    [existingFill.realizedPnl, financialNumber(payload.fillPnl)],
-    [existingFill.rawFee, financialNumber(payload.fee)]
+    [evidence.price, financialNumber(payload.fillPx)],
+    [evidence.quantity, normalized.coinQuantity],
+    [evidence.realizedPnl, financialNumber(payload.fillPnl)],
+    [evidence.feeUsdt ?? existingFill.feeCostUsdt, normalized.feeCostUsdt]
   ];
   if (numericPairs.some(([existing, incoming]) => existing !== null && existing !== undefined
     && incoming !== null && incoming !== undefined && Number(existing) !== Number(incoming))) return true;
   const identityPairs = [
-    [existingFill.exchangeOrderId, payload.ordId],
+    [evidence.exchangeOrderId ?? existingFill.exchangeOrderId, payload.ordId],
     [existingFill.clientOrderId, payload.clOrdId],
     [existingFill.algoClientOrderId, payload.algoClOrdId || payload.attachAlgoClOrdId],
     [existingFill.algoId, payload.algoId || payload.attachAlgoId],
     [existingFill.feeCurrency, payload.feeCcy],
-    [existingFill.exchangeFilledAt, validExchangeTime(payload.fillTime || payload.uTime)]
+    [evidence.closedAt ?? existingFill.exchangeFilledAt, validExchangeTime(payload.fillTime || payload.uTime)]
   ];
   return identityPairs.some(([existing, incoming]) => String(existing || "").trim()
     && String(incoming || "").trim() && String(existing).trim() !== String(incoming).trim());
@@ -569,12 +572,22 @@ export function upsertOkxOrder(db, payload, context = {}) {
   const tradeId = normalizeOkxTradeId(payload.tradeId);
   const systemCloseFill = Boolean(executionOrder && okxOrderFillKind(order, payload) === "close");
   const hadUnidentifiedFill = order.financialReconciliationStatus === "authoritative_trade_identity_missing";
-  const duplicateFill = tradeId && (db.fills || []).find((fill) => fill.exchange === "OKX" && String(fill.exchangeTradeId || fill.tradeId || "") === tradeId
-    && fill.symbol === order.symbol
-    && String(fill.accountId || "") === String(order.accountId || "")
-    && String(fill.environment || "").toLowerCase() === String(order.environment || "").toLowerCase());
+  const ctVal = String(payload.instType || "SWAP").toUpperCase() === "SPOT" ? 1 : cachedOkxCtVal(db, payload.instId, executionOrder);
+  const coinQuantity = finiteFinancialNumber(ctVal) > 0 ? Number(fillContracts) * Number(ctVal) : null;
+  const fee = parseOkxFee(payload.fee, payload.feeCcy);
+  const duplicateFill = tradeId && findAuthoritativeFillIdentityMatch(db, {
+    kind: okxOrderFillKind(order, payload),
+    exchange: "OKX",
+    exchangeTradeId: tradeId,
+    exchangeOrderId: order.exchangeOrderId,
+    accountId: order.accountId,
+    environment: order.environment,
+    symbol: order.symbol,
+    executionOrderId: executionOrder?.id,
+    planId: executionOrder?.planId
+  });
   const duplicate = Boolean(duplicateFill);
-  if (duplicateFill && duplicateOkxFillConflicts(duplicateFill, payload)) {
+  if (duplicateFill && duplicateOkxFillConflicts(duplicateFill, payload, { coinQuantity, feeCostUsdt: fee.cost })) {
     duplicateFill.financialEvidenceConflict = true;
     duplicateFill.financialEvidenceConflictReason = "authoritative_trade_identity_payload_conflict";
     reopenConflictedSystemLifecycle(db, duplicateFill);
@@ -591,9 +604,6 @@ export function upsertOkxOrder(db, payload, context = {}) {
   }
   // clOrdId 非空不代表本系统订单；只有真正匹配 executionOrder 的平仓才在此保存为 system_exit。
   if (fillContracts > 0 && tradeId && (!executionOrder || systemCloseFill) && !duplicate) {
-    const ctVal = String(payload.instType || "SWAP").toUpperCase() === "SPOT" ? 1 : cachedOkxCtVal(db, payload.instId, executionOrder);
-    const coinQuantity = finiteFinancialNumber(ctVal) > 0 ? Number(fillContracts) * Number(ctVal) : null;
-    const fee = parseOkxFee(payload.fee, payload.feeCcy);
     const fillPayload = {
       exchange: "OKX",
       price: financialNumber(payload.fillPx),
@@ -638,6 +648,7 @@ export function upsertOkxOrder(db, payload, context = {}) {
       insertExternalFill(db, enrichRealtimeFill(db, order, fillPayload));
     }
   }
+  reconcilePendingTradeAttributions(db);
 }
 
 function insertExternalFill(db, fill) {
@@ -734,7 +745,8 @@ export async function reconcilePendingOkxFillIdentities(db, options = {}) {
     reconciled += 1;
     results.push({ orderId: order.id, status: "reconciled", fills: authoritativeRows.length });
   }
-  return { checked: candidates.length, reconciled, results };
+  const attributions = reconcilePendingTradeAttributions(db);
+  return { checked: candidates.length, reconciled, results, attributions };
 }
 
 function authoritativeNetPositionBeforeFill(db, order, context = {}, ctVal = null) {

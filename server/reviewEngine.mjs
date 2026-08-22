@@ -10,7 +10,7 @@ import {
   resolveTradeContext,
   syncTradeReviewQueue
 } from "./tradeReviewQueue.mjs";
-import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
+import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 import { stampReviewMemoryContext } from "./reviewLearning.mjs";
 import { buildStructuredTradeAssessment, isOwnerReviewRow, migrateLegacyOwnerReviewProvenance, refreshOwnerImprovementRegistry } from "./ownerReviewLoop.mjs";
 import { belongsToPrincipal } from "./principalScope.mjs";
@@ -76,9 +76,9 @@ function reviewNewsFactDescriptor(fact = {}) {
 // #4 开仓后轨迹重建:平仓后按开仓→平仓时间窗回补 K 线,还原"价格怎么走的"——
 // 先顺行还是先逆行、最高逼近止盈多少、何时见顶、之后反转几次、最深不利多少。
 // 只用真实 K 线(交易所历史),LLM 复盘据此判断"离场太早/太晚、止盈太贪、方向读反"。取数失败返回 null,不阻断复盘。
-async function computeTradeTrajectory(db, fill, plan) {
+async function computeTradeTrajectory(db, fill, plan, projectedFills = systemTradeFills(db)) {
   try {
-    const entryFill = findTradeEntryFill(db.fills || [], fill);
+    const entryFill = findTradeEntryFill(projectedFills, fill);
     const eo = resolveTradeContext(db, fill).executionOrder || {};
     const entry = number(entryFill?.price ?? plan.entry ?? eo.entry);
     const exit = number(fill.price ?? eo.lastMark);
@@ -632,6 +632,7 @@ export async function runTradeReflection(db) {
   syncTradeReviewQueue(db);
   const pendingLifecycles = groupSystemClosedTradeLifecycles(db, { onlyUnreflected: true }).filter(isFinanciallyReconciledLifecycle);
   const allByKey = new Map(groupSystemClosedTradeLifecycles(db).map((item) => [item.key, item]));
+  const projectedFills = systemTradeFills(db);
   const lifecycles = pendingLifecycles.map((item) => allByKey.get(item.key) || item);
   if (!lifecycles.length) return { reflected: 0, memorized: 0, lessons: [] };
   db.memoryItems ||= [];
@@ -668,14 +669,14 @@ export async function runTradeReflection(db) {
     let trajectory = null;
     let structuredAssessment = null;
     if (loss || (win && Math.abs(pnl) >= minMemo)) {
-      const entryFill = findTradeEntryFill(db.fills || [], fill);
+      const entryFill = findTradeEntryFill(projectedFills, fill);
       const openTime = entryFill?.createdAt || plan.createdAt || fill.openedAt;
       newsContext = storedTradeWindowNews(db, fill.symbol, openTime, fill.createdAt);
       if (newsContext) fill.newsContext = newsContext;
       // 价格轨迹是确定性复盘事实，不依赖 LLM 配额；即使关闭深度文案也必须尽量回补。
       if (trajBudget > 0) {
         trajBudget -= 1;
-        trajectory = await computeTradeTrajectory(db, fill, plan);
+        trajectory = await computeTradeTrajectory(db, fill, plan, projectedFills);
         if (trajectory) fill.trajectory = trajectory;
       }
       structuredAssessment = buildStructuredTradeAssessment(db, lifecycle, { plan, trajectory, newsContext });
@@ -699,7 +700,7 @@ export async function runTradeReflection(db) {
         // 默认复用系统已经通过 API/事件源采集的事实，不为每笔复盘重复联网。
         // 只有显式开启缺口回补且本地没有任何相关事实时，才允许一次针对性搜索。
         if (!newsContext && newsBudget > 0 && process.env.REFLECTION_ALLOW_WEB_GAP_FILL === "true") {
-          const entryFill = findTradeEntryFill(db.fills || [], fill);
+          const entryFill = findTradeEntryFill(projectedFills, fill);
           const openTime = entryFill?.createdAt || plan.createdAt || fill.openedAt;
           newsBudget -= 1;
           try { newsContext = await fetchTradeWindowNews(fill.symbol, openTime, fill.createdAt); } catch { newsContext = null; }

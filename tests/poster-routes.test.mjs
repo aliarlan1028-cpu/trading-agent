@@ -66,6 +66,45 @@ test("手动下载海报按完整部分平仓生命周期聚合，并按入场�
   assert.equal(res.contentType, "image/png");
 });
 
+test("已平仓海报的入场价格与名义额忽略同 lifecycle 的 pending companion fill", async () => {
+  let renderedTrade = null;
+  const pendingAttribution = {
+    schemaVersion: 1,
+    scope: "attribution_pending",
+    origin: "external_exchange",
+    executionOrderId: "exec-clean-entry",
+    planId: "plan-clean-entry",
+    method: "unresolved",
+    reason: "mixed_position_attribution"
+  };
+  const db = {
+    executionOrders: [{
+      id: "exec-clean-entry", planId: "plan-clean-entry", status: "closed", exchange: "OKX",
+      accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long",
+      filledPrice: 100, notionalUsdt: 300, leverage: 3
+    }],
+    tradePlans: [{
+      id: "plan-clean-entry", exchange: "OKX", accountId: "account-a", environment: "production",
+      symbol: "BTC/USDT", direction: "long"
+    }],
+    fills: financiallyReconciledFills([
+      { id: "pending-companion", kind: "entry", executionOrderId: "exec-clean-entry", planId: "plan-clean-entry", price: 1_000, quantity: 9, notionalUsdt: 9_000, createdAt: "2026-07-31T23:00:00Z", tradeAttribution: pendingAttribution },
+      { id: "system-entry", kind: "entry", executionOrderId: "exec-clean-entry", planId: "plan-clean-entry", price: 100, quantity: 3, notionalUsdt: 300, createdAt: "2026-08-01T00:00:00Z" },
+      { id: "system-close", kind: "close", executionOrderId: "exec-clean-entry", planId: "plan-clean-entry", price: 110, quantity: 3, realizedPnl: 30, createdAt: "2026-08-01T01:00:00Z" }
+    ])
+  };
+  const route = posterRoute(db, async (trade) => {
+    renderedTrade = trade;
+    return { buffer: Buffer.from("poster"), filename: "trade.png", contentType: "image/png" };
+  });
+
+  await route({ params: { id: "exec-clean-entry" } }, response());
+
+  assert.equal(renderedTrade.entryPrice, 100);
+  assert.equal(renderedTrade.entryNotionalUsdt, 300);
+  assert.equal(renderedTrade.notionalBasis, "entry_fills");
+});
+
 test("只有未完成部分平仓时明确拒绝生成海报，不调用渲染器", async () => {
   let rendered = false;
   const db = {

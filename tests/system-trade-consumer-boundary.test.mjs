@@ -25,7 +25,7 @@ import { addSystemExecution, stampFixtureSystemAttribution } from "./helpers/sys
 
 const SYSTEM_CONSUMERS = [
   "accounting.mjs", "behaviorProfile.mjs", "coreOverview.mjs", "decisionCalibration.mjs",
-  "knowledgeSkills.mjs", "ownerReviewLoop.mjs", "professionalAnalytics.mjs", "reviewEngine.mjs",
+  "knowledgeSkills.mjs", "missedOpportunity.mjs", "ownerReviewLoop.mjs", "professionalAnalytics.mjs", "reviewEngine.mjs",
   "reviewLearning.mjs", "strategyBoard.mjs", "strategyContracts.mjs", "strategyProducts.mjs",
   "telegramNotifier.mjs", "tradeProtections.mjs", "tradeReviewQueue.mjs"
 ];

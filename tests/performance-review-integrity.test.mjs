@@ -93,6 +93,70 @@ test("自动复盘完成后更新页面队列而不是只写隐藏记忆", async
   assert.ok(db.fills.find((fill) => fill.id === "close-small").reflectedAt);
 });
 
+test("复盘的开仓时间忽略同 execution 的 pending companion fill", async () => {
+  const original = {
+    llm: process.env.REFLECTION_LLM_MAX_PER_RUN,
+    trajectory: process.env.REFLECTION_TRAJ_MAX_PER_RUN,
+    web: process.env.REFLECTION_ALLOW_WEB_GAP_FILL
+  };
+  process.env.REFLECTION_LLM_MAX_PER_RUN = "0";
+  process.env.REFLECTION_TRAJ_MAX_PER_RUN = "0";
+  process.env.REFLECTION_ALLOW_WEB_GAP_FILL = "false";
+  try {
+    const db = baseDb();
+    const execution = {
+      id: "review-clean-entry", planId: "review-clean-plan", exchange: "OKX", accountId: "account-a",
+      environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed"
+    };
+    db.executionOrders = [execution];
+    db.tradePlans = [{
+      id: execution.planId, exchange: execution.exchange, accountId: execution.accountId,
+      environment: execution.environment, symbol: execution.symbol, direction: execution.direction
+    }];
+    db.marketIntelligenceFacts = [{
+      id: "before-system-entry", type: "news", category: "news", affectedSymbols: ["BTC/USDT"],
+      publishedAt: "2026-08-01T01:00:00.000Z", verifiedOrigin: true, trustTier: "verified_official",
+      fakeRisk: "low", values: { impact: 95 }, impactHorizon: "immediate"
+    }];
+    const systemAttribution = (exitMode = null) => ({
+      schemaVersion: 1, scope: "system", origin: exitMode ? "external_exchange" : "execution_engine", exitMode,
+      executionOrderId: execution.id, planId: execution.planId,
+      method: exitMode ? "deterministic_manual_exit" : "execution_writer",
+      evidence: { accountId: execution.accountId, environment: execution.environment }
+    });
+    db.fills = financiallyReconciledFills([
+      {
+        id: "pending-earlier-entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId,
+        symbol: execution.symbol, direction: execution.direction, price: 1_000, quantity: 1,
+        createdAt: "2026-07-31T23:00:00.000Z",
+        tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", executionOrderId: execution.id, planId: execution.planId, method: "unresolved", reason: "mixed_position_attribution" }
+      },
+      {
+        id: "review-system-entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId,
+        symbol: execution.symbol, direction: execution.direction, price: 100, quantity: 1,
+        createdAt: "2026-08-01T03:00:00.000Z", tradeAttribution: systemAttribution()
+      },
+      {
+        id: "review-system-close", kind: "close", executionOrderId: execution.id, planId: execution.planId,
+        symbol: execution.symbol, direction: execution.direction, price: 90, quantity: 1, realizedPnl: -10,
+        tenantId: "tenant_owner", ownerUserId: "owner-1", createdAt: "2026-08-01T04:00:00.000Z",
+        tradeAttribution: systemAttribution("manual_exit")
+      }
+    ]);
+
+    const result = await runTradeReflection(db);
+    const close = db.fills.find((fill) => fill.id === "review-system-close");
+
+    assert.equal(result.reflected, 1);
+    assert.equal(close.newsContext, undefined);
+    assert.equal(db.reviews[0].structuredAssessment.rootCauses.some((root) => root.code === "market_shock"), false);
+  } finally {
+    if (original.llm === undefined) delete process.env.REFLECTION_LLM_MAX_PER_RUN; else process.env.REFLECTION_LLM_MAX_PER_RUN = original.llm;
+    if (original.trajectory === undefined) delete process.env.REFLECTION_TRAJ_MAX_PER_RUN; else process.env.REFLECTION_TRAJ_MAX_PER_RUN = original.trajectory;
+    if (original.web === undefined) delete process.env.REFLECTION_ALLOW_WEB_GAP_FILL; else process.env.REFLECTION_ALLOW_WEB_GAP_FILL = original.web;
+  }
+});
+
 test("净盈亏为零的交易明确归类 flat，绝不写成亏损候选教训", async () => {
   const db = baseDb();
   db.fills = financiallyReconciledFills([{
