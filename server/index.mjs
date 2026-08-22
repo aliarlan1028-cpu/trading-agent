@@ -30,6 +30,7 @@ import { systemAgentInvocation } from "./agentInvocation.mjs";
 import { exportAuditLogs, exportTraces } from "./auditExport.mjs";
 import { executeTradePlan } from "./executor.mjs";
 import { getHistoricalKlines, guardedPrivateExchangeAction, invalidateOkxCredentialCaches, reconcileAccount, refreshApiKeyMetadata, syncMicrostructure, syncPrivateReadOnly, syncPublicKlines, syncPublicMarket, validateOkxCredentialCandidate } from "./exchangeConnector.mjs";
+import { runOkxReadOnlySyncTask } from "./okxReadOnlySyncTask.mjs";
 import { fetchMarketRegime, fetchPerpetualInstruments, fetchPerpetualInstrumentCatalog } from "./marketSignals.mjs";
 import { backfillMediumTermPriceHistory, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection } from "./mediumTermAnalytics.mjs";
 import { refreshMarketSignalSymbol } from "./marketSignalRefresh.mjs";
@@ -88,7 +89,7 @@ import { runReconciler } from "./reconciler.mjs";
 import { backfillReviewFields, buildReviewAnalytics, createStrategyImprovementCycle, runTradeReflection, validateStrategyImprovementCycle } from "./reviewEngine.mjs";
 import { syncTradeReviewQueue } from "./tradeReviewQueue.mjs";
 import { reviewMissedOpportunities } from "./missedOpportunity.mjs";
-import { reconcilePendingOkxFillIdentities, realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
+import { realtimeStatus, startRealtimeManager, stopRealtimeManager } from "./realtimeManager.mjs";
 import { evaluateTradePlan } from "./riskEngine.mjs";
 import { applyProtections } from "./tradeProtections.mjs";
 import { currentRiskThresholds } from "./riskThresholds.mjs";
@@ -696,26 +697,7 @@ registerTaskHandler("oms_recovery", async (database, _task, lease) => {
   return { ...r, skipPersist: !r.checked };
 });
 registerTaskHandler("okx_readonly_sync", async (database, _task, lease) => {
-  const accounts = (database.exchangeAccounts || []).filter((item) => item.readEnabled);
-  if (!accounts.length) return { status: "skipped", reason: "no_read_account", skipPersist: true };
-  let synced = 0; const errors = [];
-  for (const account of accounts) {
-    try { lease.assertLease(); await syncPrivateReadOnly(database, account.id); lease.assertLease(); synced += 1; }
-    catch (error) { errors.push({ accountId: account.id, error: String(error?.message || error).slice(0, 160) }); }
-  }
-  lease.assertLease();
-  const externalFillReconciliation = await reconcilePendingOkxFillIdentities(database, {
-    signal: lease.signal,
-    assertLease: lease.assertLease
-  });
-  lease.assertLease();
-  return {
-    status: synced === 0 ? "failed" : synced < accounts.length ? "partial" : "ok",
-    attempted: accounts.length,
-    synced,
-    errors,
-    externalFillReconciliation
-  };
+  return runOkxReadOnlySyncTask(database, lease);
 });
 // 定时刷新合约微观结构 + 大盘/聪明钱，让这些卡片近实时（配合前端 15s 轮询）。
 registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
