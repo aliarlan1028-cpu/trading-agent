@@ -355,7 +355,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     armedSetups,
     orders: nonTerminalPlusRecent(overview.orders, isTerminalExchangeOrder, 100),
     fills: (overview.fills || []).slice(0, 150),
-    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 100),
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 100).map(compactPrecomputedClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
     reviews: compactNativeReviews(overview.reviews),
     reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
@@ -480,6 +480,10 @@ function compactClosedTradeLifecycle(lifecycle = {}) {
   };
 }
 
+function compactPrecomputedClosedTradeLifecycle(lifecycle = {}) {
+  return lifecycle.tradeLifecycleKey ? lifecycle : compactClosedTradeLifecycle(lifecycle);
+}
+
 function startupOverview(overview) {
   const relevantSymbols = new Set([
     "BTC/USDT",
@@ -547,7 +551,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     fills: (overview.fills || []).slice(0, 50),
     // Lifecycle accounting is precomputed by coreOverview from the complete system
     // ledger before this view receives its bounded fills.
-    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 50),
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 50).map(compactPrecomputedClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
     riskIncidents: recentWithNonTerminal(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),

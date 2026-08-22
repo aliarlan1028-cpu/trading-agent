@@ -42,6 +42,7 @@ import { activeStrategyProfiles, runStrategyResearch } from "./strategyOptimizer
 import { buildBacktestResearch } from "./strategyResearchView.mjs";
 import { compactOverviewForNative, projectOverviewSection } from "./overviewView.mjs";
 import { buildCoreOverview } from "./coreOverview.mjs";
+import { projectSystemOverviewTradeHistory } from "./overviewTradeHistory.mjs";
 import { httpPerformanceSnapshot, recordHttpPerformance, recordStartupPhase, recordStartupReady } from "./performanceMetrics.mjs";
 import { currentUiRevision, uiSyncEvent } from "./uiSync.mjs";
 import { listStrategies, STRATEGIES } from "./strategies.mjs";
@@ -1108,6 +1109,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
   const scopedKnowledge = projectKnowledgeForPrincipal(db, requestPrincipal);
   const scopedSkills = projectSkillsForPrincipal(db.skills, requestPrincipal);
   const scopedDb = { ...privateDb, system: options.system || privateDb.system, knowledge: scopedKnowledge, skills: scopedSkills };
+  const systemTradeHistory = projectSystemOverviewTradeHistory(scopedDb);
   const performance = performanceReport(scopedDb);
   const overviewNotifications = visibleNotificationsForUser(db, {
     tenantId: req.tenantId || req.user?.tenantId || "tenant_owner",
@@ -1140,7 +1142,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     tradePlans: scopedDb.tradePlans,
     executionOrders: scopedDb.executionOrders,
     armedSetups: scopedDb.armedSetups,
-    fills: scopedDb.fills,
+    fills: systemTradeHistory.fills,
     pendingActions: scopedDb.pendingActions.filter((item) => item.status === "awaiting_confirmation"),
     watchTriggers: scopedDb.watchTriggers,
     watchBoard: buildWatchBoard(scopedDb),
@@ -1160,7 +1162,8 @@ function buildOverviewSectionSource(section, req, options = {}) {
     executionOrders: scopedDb.executionOrders,
     armedSetups: scopedDb.armedSetups,
     orders: scopedDb.orders,
-    fills: scopedDb.fills,
+    fills: systemTradeHistory.fills,
+    closedTradeLifecycles: systemTradeHistory.closedTradeLifecycles,
     riskChecks: scopedDb.riskChecks,
     reviews: scopedDb.reviews,
     reconciliationReports: scopedDb.reconciliationReports,
@@ -1171,8 +1174,8 @@ function buildOverviewSectionSource(section, req, options = {}) {
     ...(configuredOwner ? { ownerReviewLoop: buildOwnerReviewLoopSnapshot(db) } : {}),
     tradeDataStatus: {
       source: "server_complete_lifecycle_aggregation",
-      fillTotal: scopedDb.fills.length,
-      closedLifecycleTotal: performance.grossClosedTradeLifecycles,
+      fillTotal: systemTradeHistory.fills.length,
+      closedLifecycleTotal: systemTradeHistory.closedTradeLifecycles.length,
       financiallyReconciledTrades: performance.financiallyReconciledTrades,
       pendingFinancialReconciliation: performance.pendingFinancialReconciliation,
       tradeReviewTotal: scopedDb.reviews.filter((review) => review?.type === "trade").length,
@@ -1315,6 +1318,7 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
   const scopedKnowledge = projectKnowledgeForPrincipal(db, requestPrincipal);
   const scopedSkills = projectSkillsForPrincipal(db.skills, requestPrincipal);
   const scopedDb = { ...privateDb, knowledge: scopedKnowledge, skills: scopedSkills };
+  const systemTradeHistory = projectSystemOverviewTradeHistory(scopedDb);
   const configStatus = configuredOwner ? getConfigStatus(db) : null;
   scopedDb.system.apiHealth = deriveOverviewApiHealth(scopedDb, {
     configuredOwner,
@@ -1406,10 +1410,12 @@ app.get("/api/overview", requirePermission("account.read"), (req, res) => {
     apiKeyMetadata: scopedDb.apiKeyMetadata,
     accountSnapshots: scopedDb.accountSnapshots.slice(0, 10),
     orders: scopedDb.orders,
-    fills: scopedDb.fills,
+    fills: systemTradeHistory.fills,
+    closedTradeLifecycles: systemTradeHistory.closedTradeLifecycles,
     tradeDataStatus: {
       source: "OMS + exchange-confirmed fills + trade review queue",
-      fillTotal: scopedDb.fills.length,
+      fillTotal: systemTradeHistory.fills.length,
+      closedLifecycleTotal: systemTradeHistory.closedTradeLifecycles.length,
       tradeReviewTotal: scopedDb.reviews.filter((review) => review?.type === "trade").length,
       tradeReviewPending: scopedDb.reviews.filter((review) => review?.type === "trade" && ["pending", "processing", "retry", "awaiting_approval"].includes(String(review.status || "").toLowerCase())).length,
       tradeReviewFailed: scopedDb.reviews.filter((review) => review?.type === "trade" && ["failed", "error"].includes(String(review.status || "").toLowerCase())).length,

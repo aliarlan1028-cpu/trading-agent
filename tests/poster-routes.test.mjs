@@ -94,3 +94,25 @@ test("缺少可验证系统归属的平仓生命周期不能生成海报", async
   assert.match(res.payload.error, /完整平仓生命周期/);
   assert.equal(rendered, false);
 });
+
+test("手工退出的系统生命周期仍可下载海报，纯手工 lifecycle key 被拒绝", async () => {
+  let rendered = false;
+  const db = {
+    executionOrders: [{ id: "manual-exit-exec", planId: "manual-exit-plan", status: "closed", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }],
+    tradePlans: [{ id: "manual-exit-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }],
+    fills: financiallyReconciledFills([
+      { id: "manual-exit-entry", kind: "entry", executionOrderId: "manual-exit-exec", planId: "manual-exit-plan", tradePlanId: "manual-exit-plan", accountId: "account-a", environment: "production", exchange: "OKX", symbol: "BTC/USDT", direction: "long", quantity: 1, price: 100, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "system", origin: "execution_engine", executionOrderId: "manual-exit-exec", planId: "manual-exit-plan", method: "execution_writer", evidence: { accountId: "account-a", environment: "production" } } },
+      { id: "manual-exit-close", kind: "close", executionOrderId: "manual-exit-exec", planId: "manual-exit-plan", tradePlanId: "manual-exit-plan", accountId: "account-a", environment: "production", exchange: "OKX", symbol: "BTC/USDT", direction: "long", quantity: 1, price: 110, realizedPnl: 10, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "system", origin: "external_exchange", exitMode: "manual_exit", executionOrderId: "manual-exit-exec", planId: "manual-exit-plan", method: "deterministic_manual_exit", evidence: { accountId: "account-a", environment: "production" } } },
+      { id: "manual-only-close", kind: "close", positionId: "manual-only", symbol: "SOL/USDT", quantity: 1, realizedPnl: 20, createdAt: "2026-08-01T02:00:00Z" }
+    ])
+  };
+  const route = posterRoute(db, async () => { rendered = true; return { buffer: Buffer.from("poster"), filename: "trade.png", contentType: "image/png" }; });
+  const manualExit = response();
+  await route({ params: { id: "manual-exit-exec" } }, manualExit);
+  assert.equal(manualExit.statusCode, 200);
+  assert.equal(rendered, true);
+
+  const manual = response();
+  await route({ params: { id: "manual-only" } }, manual);
+  assert.equal(manual.statusCode, 404);
+});

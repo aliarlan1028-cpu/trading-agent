@@ -8,6 +8,20 @@ process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT = "0";
 
 const { dispatchClosedTradePosterOutbox, queueClosedTradeProfitPosters } = await import("../server/telegramNotifier.mjs");
 
+function systemFill(id, kind, executionOrderId, planId, realizedPnl, exitMode = null) {
+  return {
+    id, kind, executionOrderId, planId, tradePlanId: planId, accountId: "account-a", environment: "production", exchange: "OKX", symbol: "BTC/USDT", direction: "long",
+    quantity: 1, price: 100, realizedPnl, feeUsdt: 0, feeSchemaVersion: 2, feeSource: "fixture_exchange_fill", estimatedFee: false,
+    ...(kind === "close" ? { fundingFeeUsdt: 0, fundingReconciled: true } : {}),
+    createdAt: "2026-08-12T01:00:00Z",
+    tradeAttribution: {
+      schemaVersion: 1, scope: "system", origin: exitMode ? "external_exchange" : "execution_engine", exitMode,
+      executionOrderId, planId, method: exitMode ? "deterministic_manual_exit" : "execution_writer",
+      evidence: { accountId: "account-a", environment: "production", exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }
+    }
+  };
+}
+
 test("平仓盈利海报按交易生命周期永久幂等，部分平仓聚合后只入队一次", () => {
   const db = { meta: { telegramClosedTradePosterStartedAt: "2026-08-12T00:00:00Z" }, telegramPosterOutbox: [], executionOrders: [
     { id: "exec-1", filledPrice: 100, notionalUsdt: 30, leverage: 2 }
@@ -87,4 +101,37 @@ test("底层权威生命周期已缺失的旧 pending 海报直接取消", async
   assert.equal(item.lastError, "authoritative_lifecycle_missing");
   assert.equal(result.sent, 0);
   assert.equal(result.skipPersist, false);
+});
+
+test("dispatch only sends the normal and manual-exit system lifecycles once", async () => {
+  const db = {
+    meta: { telegramClosedTradePosterStartedAt: "2026-08-12T00:00:00Z" }, telegramPosterOutbox: [], auditLogs: [],
+    executionOrders: [
+      { id: "normal", planId: "normal-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed" },
+      { id: "manual-exit", planId: "manual-exit-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed" }
+    ],
+    tradePlans: [
+      { id: "normal-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" },
+      { id: "manual-exit-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }
+    ],
+    fills: [
+      systemFill("normal-entry", "entry", "normal", "normal-plan"), systemFill("normal-close", "close", "normal", "normal-plan", 3),
+      systemFill("manual-exit-entry", "entry", "manual-exit", "manual-exit-plan"), systemFill("manual-exit-close", "close", "manual-exit", "manual-exit-plan", 4, "manual_exit"),
+      { id: "manual-close", kind: "close", positionId: "manual", symbol: "SOL/USDT", quantity: 1, realizedPnl: 50, createdAt: "2026-08-12T01:00:00Z" },
+      { id: "pending-close", kind: "close", symbol: "ADA/USDT", quantity: 1, realizedPnl: 75, createdAt: "2026-08-12T01:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } }
+    ]
+  };
+  assert.equal(queueClosedTradeProfitPosters(db).queued, 2);
+  const originalFetch = global.fetch;
+  let sent = 0;
+  global.fetch = async () => ({ ok: true, json: async () => ({ ok: true, result: { message_id: ++sent } }) });
+  try {
+    assert.equal((await dispatchClosedTradePosterOutbox(db)).sent, 2);
+    assert.equal(sent, 2);
+    assert.deepEqual(db.telegramPosterOutbox.map((item) => item.tradeLifecycleKey).sort(), ["manual-exit", "normal"]);
+    assert.equal((await dispatchClosedTradePosterOutbox(db)).checked, 0);
+    assert.equal(sent, 2);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
