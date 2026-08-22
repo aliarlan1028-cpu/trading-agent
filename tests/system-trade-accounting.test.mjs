@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 
 import { refreshAccounting } from "../server/accounting.mjs";
@@ -394,6 +395,55 @@ test("mixed quantity at a boundary cannot create a system-only baseline", () => 
   assert.equal(result.todayPnl, null);
   assert.equal(db.portfolio.dailyBaselineStatus, "managed_position_quantity_mismatch");
   assert.equal(db.portfolio.systemAccountingBaselines.daily, undefined);
+});
+
+test("first system-only anchor migration stays bounded at retained production history size", () => {
+  const db = baseDb();
+  db.portfolio.systemAccountingAnchors = [];
+  db.accountSnapshots = Array.from({ length: 500 }, (_, index) => ({
+    ...structuredClone(db.accountSnapshots[0]),
+    id: `snapshot-${index}`,
+    createdAt: iso(now - (500 - index) * 5 * 60_000)
+  }));
+  const manualTemplate = manualFill({
+    id: "manual-history-template",
+    kind: "entry",
+    at: dayStart - 24 * 60 * 60_000,
+    feeUsdt: 0,
+    estimatedFee: false
+  });
+  while (db.fills.length < 204) {
+    const index = db.fills.length;
+    db.fills.push({
+      ...structuredClone(manualTemplate),
+      id: `manual-history-${index}`,
+      exchangeTradeId: `manual-history-trade-${index}`,
+      createdAt: iso(dayStart - index * 1_000),
+      exchangeFilledAt: iso(dayStart - index * 1_000)
+    });
+  }
+  const retainedFills = db.fills;
+  let fillCollectionReads = 0;
+  Object.defineProperty(db, "fills", {
+    configurable: true,
+    get() {
+      fillCollectionReads += 1;
+      return retainedFills;
+    },
+    set(value) {
+      throw new Error(`unexpected fills replacement with ${value?.length ?? "unknown"} rows`);
+    }
+  });
+
+  const startedAt = performance.now();
+  refreshAccounting(db, { nowMs: now });
+  const elapsedMs = performance.now() - startedAt;
+
+  assert.ok(elapsedMs < 5_000, `system accounting refresh took ${Math.round(elapsedMs)}ms`);
+  assert.ok(fillCollectionReads < 100,
+    `refresh rescanned the complete fill collection ${fillCollectionReads} times`);
+  assert.equal(db.accountSnapshots.length, 500);
+  assert.equal(db.fills.length, 204);
 });
 
 test.after(() => {

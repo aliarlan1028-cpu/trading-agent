@@ -37,18 +37,37 @@ function sameBinding(row = {}, binding = {}) {
     && normalizedExchange(row.exchange) === normalizedExchange(binding.exchange || "OKX");
 }
 
-function executionForFill(db, fill) {
+function executionForFill(db, fill, projection = null) {
+  if (projection?.executionsById) {
+    return projection.executionsById.get(String(fill?.executionOrderId || "")) || null;
+  }
   return (db.executionOrders || []).find((row) => String(row?.id || "") === String(fill?.executionOrderId || "")) || null;
 }
 
-function fillMatchesBinding(db, fill, binding) {
+function fillMatchesBinding(db, fill, binding, projection = null) {
   if (!binding) return true;
-  const execution = executionForFill(db, fill);
+  const execution = executionForFill(db, fill, projection);
   return sameBinding({
     accountId: fill.accountId ?? execution?.accountId,
     environment: fill.environment ?? execution?.environment,
     exchange: fill.exchange ?? execution?.exchange
   }, binding);
+}
+
+export function createSystemTradeAccountingProjection(db) {
+  const fills = systemTradeFills(db);
+  const identities = new Map();
+  for (const fill of fills) identities.set(fill, authoritativeFillIdentity(db, fill));
+  return {
+    sourceDb: db,
+    fills,
+    identities,
+    executionsById: new Map((db.executionOrders || []).map((row) => [String(row?.id || ""), row]))
+  };
+}
+
+function resolveSystemTradeAccountingProjection(db, projection) {
+  return projection?.sourceDb === db ? projection : createSystemTradeAccountingProjection(db);
 }
 
 export function realizedPnlForFills(fills = [], sinceMs, untilMs = Date.now()) {
@@ -121,11 +140,12 @@ function unresolvedFinancialFacts(fill = {}) {
 }
 
 function dedupeSystemAccountingFills(db, options = {}) {
+  const accountingProjection = resolveSystemTradeAccountingProjection(db, options.projection);
   const groups = [];
-  for (const fill of systemTradeFills(db)) {
+  for (const fill of accountingProjection.fills) {
     const at = fillTime(fill);
     if (Number.isFinite(options.untilMs) && at !== null && at > options.untilMs) continue;
-    const identity = authoritativeFillIdentity(db, fill);
+    const identity = accountingProjection.identities.get(fill) || authoritativeFillIdentity(db, fill);
     const tradeIds = new Set(identity.tradeIds);
     const fallbackId = tradeIds.size ? null : String(fill.id || "");
     const compatible = (group) => group.kind === fill.kind
@@ -162,7 +182,7 @@ function dedupeSystemAccountingFills(db, options = {}) {
   for (const group of groups) {
     const fingerprints = new Set(group.fills.map(financialFingerprint));
     const explicitConflict = group.fills.some((fill) => {
-      const execution = executionForFill(db, fill);
+      const execution = executionForFill(db, fill, accountingProjection);
       return fill.financialEvidenceConflict === true
         || (execution?.status === "close_reconciliation_pending"
           && ["fill_evidence_conflict", "authoritative_close_evidence_incomplete"].includes(execution.closeReconciliationReason));
@@ -182,12 +202,12 @@ function dedupeSystemAccountingFills(db, options = {}) {
     }
     fills.push(group.fills[0]);
   }
-  return { fills, conflicts };
+  return { fills, conflicts, accountingProjection };
 }
 
 export function systemRealizedPnlSince(db, sinceMs, untilMs = Date.now(), options = {}) {
-  const projected = dedupeSystemAccountingFills(db, { untilMs });
-  const fills = projected.fills.filter((fill) => fillMatchesBinding(db, fill, options.binding));
+  const projected = dedupeSystemAccountingFills(db, { untilMs, projection: options.projection });
+  const fills = projected.fills.filter((fill) => fillMatchesBinding(db, fill, options.binding, projected.accountingProjection));
   const state = realizedPnlForFills(fills, sinceMs, untilMs);
   const pendingFacts = fills.filter((fill) => {
     const at = fillTime(fill);
@@ -242,8 +262,8 @@ function resolvedExecutionFacts(execution, rows) {
   return { ok: Boolean(slotIdentity(row)), reason: "managed_position_binding_incomplete", row };
 }
 
-function managedSlotsAt(db, atMs, binding) {
-  const projected = dedupeSystemAccountingFills(db, { untilMs: atMs });
+function managedSlotsAt(db, atMs, binding, projection = null) {
+  const projected = dedupeSystemAccountingFills(db, { untilMs: atMs, projection });
   const fills = projected.fills.filter((fill) => {
     const at = fillTime(fill);
     return at !== null && at <= atMs;
@@ -353,7 +373,7 @@ function evidenceHash(value) {
 export function systemUnrealizedPnl(db, options = {}) {
   const atMs = Number(options.atMs ?? options.now ?? Date.now());
   const binding = options.binding || null;
-  const managed = managedSlotsAt(db, atMs, binding);
+  const managed = managedSlotsAt(db, atMs, binding, options.projection);
   const candidates = options.snapshot
     ? snapshotRows(options.snapshot)
     : currentAuthoritativeRows(options.positions || db.positions || [], { now: atMs, maxAgeMs: options.maxAgeMs });

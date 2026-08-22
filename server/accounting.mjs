@@ -1,7 +1,7 @@
 import { currentEquityUsdt } from "./financialFacts.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
-import { realizedPnlForFills, systemRealizedPnlSince, systemUnrealizedPnl } from "./systemTradeAccounting.mjs";
+import { createSystemTradeAccountingProjection, realizedPnlForFills, systemRealizedPnlSince, systemUnrealizedPnl } from "./systemTradeAccounting.mjs";
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from "./businessTime.mjs";
@@ -140,7 +140,7 @@ const SYSTEM_PNL_SCOPE = "system_trades_only";
 const SYSTEM_PNL_PROVENANCE_VERSION = 1;
 const SYSTEM_PNL_METHOD = "system_fills_plus_system_upl_change";
 
-function systemAccountingEvidenceFromSnapshot(db, snapshot) {
+function systemAccountingEvidenceFromSnapshot(db, snapshot, projection = null) {
   const equity = snapshotEquity(snapshot);
   const observedMs = new Date(snapshot?.createdAt || 0).getTime();
   if (snapshot?.status !== "ok" || !(equity > 0) || !Number.isFinite(observedMs)) {
@@ -155,7 +155,7 @@ function systemAccountingEvidenceFromSnapshot(db, snapshot) {
   if (!binding.accountId || !binding.apiKeyFingerprint || !binding.environment) {
     return { ok: false, reason: "system_anchor_binding_incomplete" };
   }
-  const projected = systemUnrealizedPnl(db, { atMs: observedMs, binding, snapshot });
+  const projected = systemUnrealizedPnl(db, { atMs: observedMs, binding, snapshot, projection });
   if (!projected.complete) {
     return { ok: false, reason: projected.pendingPositions[0]?.reason || "system_anchor_attribution_incomplete", projected };
   }
@@ -175,8 +175,8 @@ function systemAccountingAnchorId(snapshot) {
   return `system_accounting_anchor_${snapshot.accountId}_${snapshot.apiKeyFingerprint}_${snapshot.environment}_${Math.floor(observedMs / ACCOUNTING_ANCHOR_BUCKET_MS)}`;
 }
 
-function systemAccountingAnchorFromSnapshot(db, snapshot, existingEvidence = null) {
-  const evidence = existingEvidence || systemAccountingEvidenceFromSnapshot(db, snapshot);
+function systemAccountingAnchorFromSnapshot(db, snapshot, existingEvidence = null, projection = null) {
+  const evidence = existingEvidence || systemAccountingEvidenceFromSnapshot(db, snapshot, projection);
   if (!evidence.ok) return null;
   const { observedMs, binding } = evidence;
   return {
@@ -197,7 +197,7 @@ function systemAccountingAnchorFromSnapshot(db, snapshot, existingEvidence = nul
   };
 }
 
-export function retainSystemAccountingAnchors(db) {
+export function retainSystemAccountingAnchors(db, options = {}) {
   db.portfolio ||= {};
   db.portfolio.systemAccountingAnchors ||= [];
   const existing = new Set(db.portfolio.systemAccountingAnchors.map((anchor) => anchor.id));
@@ -205,7 +205,7 @@ export function retainSystemAccountingAnchors(db) {
   for (const snapshot of snapshots) {
     const anchorId = systemAccountingAnchorId(snapshot);
     if (!anchorId || existing.has(anchorId)) continue;
-    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot);
+    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot, options.systemAccountingProjection);
     if (!evidence.ok) continue;
     const anchor = systemAccountingAnchorFromSnapshot(db, snapshot, evidence);
     db.portfolio.systemAccountingAnchors.push(anchor);
@@ -296,12 +296,12 @@ function systemBaselineEvidence(db, boundaryMs, binding, options = {}) {
   }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   let reason = "system_period_start_anchor_missing";
   for (const snapshot of snapshots) {
-    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot);
+    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot, options.systemAccountingProjection);
     if (!evidence.ok) {
       reason = evidence.reason || reason;
       continue;
     }
-    return { ok: true, source: systemAccountingAnchorFromSnapshot(db, snapshot) };
+    return { ok: true, source: systemAccountingAnchorFromSnapshot(db, snapshot, null, options.systemAccountingProjection) };
   }
   return { ok: false, reason };
 }
@@ -357,20 +357,22 @@ function resolveSystemAccountingBaseline(db, kind, boundaryMs, options = {}) {
 
 export function refreshAccounting(db, options = {}) {
   const nowMs = Number(options.nowMs ?? Date.now());
+  const systemAccountingProjection = createSystemTradeAccountingProjection(db);
+  const accountingOptions = { ...options, systemAccountingProjection };
   retainAccountingAnchors(db);
-  retainSystemAccountingAnchors(db);
+  retainSystemAccountingAnchors(db, accountingOptions);
   const timeZone = db.system?.businessTimeZone || DEFAULT_BUSINESS_TIME_ZONE;
   const equity = currentEquityUsdt(db);
   const currentBinding = resolveCurrentAccountingBinding(db);
   const systemBinding = currentBinding.ok ? { ...currentBinding.binding, exchange: "OKX" } : null;
   const dayStartMs = todayStart(nowMs, timeZone);
-  const realizedTodayState = systemRealizedPnlSince(db, dayStartMs, nowMs, { binding: systemBinding });
+  const realizedTodayState = systemRealizedPnlSince(db, dayStartMs, nowMs, { binding: systemBinding, projection: systemAccountingProjection });
   const realizedToday = realizedTodayState.value;
   const accountUnrealizedState = unrealizedPnl(db, { now: nowMs });
   const accountUnrealized = accountUnrealizedState.knownTotal;
-  const systemUnrealizedState = systemUnrealizedPnl(db, { now: nowMs, binding: systemBinding });
+  const systemUnrealizedState = systemUnrealizedPnl(db, { now: nowMs, binding: systemBinding, projection: systemAccountingProjection });
   const systemUnrealized = systemUnrealizedState.knownTotal;
-  const dailyBaseline = resolveSystemAccountingBaseline(db, "daily", dayStartMs, options);
+  const dailyBaseline = resolveSystemAccountingBaseline(db, "daily", dayStartMs, accountingOptions);
   const todayPnl = realizedTodayState.pending || !systemUnrealizedState.complete || !dailyBaseline.ok
     ? null
     : realizedToday + systemUnrealized - Number(dailyBaseline.baseline.systemUnrealizedPnlUsdt);
@@ -398,11 +400,11 @@ export function refreshAccounting(db, options = {}) {
   // 风险窗口起点按五分钟桶对齐，与不可变会计锚点的采样粒度一致。
   // 这样基线不会每毫秒失效，同时窗口只会比 168h 多 0~5 分钟，偏保守而不会漏算亏损。
   const weekStartMs = rollingAccountingBoundary(weekEndMs);
-  const weeklyBaseline = resolveSystemAccountingBaseline(db, "rolling_168h", weekStartMs, options);
+  const weeklyBaseline = resolveSystemAccountingBaseline(db, "rolling_168h", weekStartMs, accountingOptions);
   const effectiveWeekStartMs = weeklyBaseline.ok
     ? Number(weeklyBaseline.effectiveBoundaryMs ?? new Date(weeklyBaseline.baseline.boundaryAt).getTime())
     : weekStartMs;
-  const realizedWeekState = systemRealizedPnlSince(db, effectiveWeekStartMs, weekEndMs, { binding: systemBinding });
+  const realizedWeekState = systemRealizedPnlSince(db, effectiveWeekStartMs, weekEndMs, { binding: systemBinding, projection: systemAccountingProjection });
   const realizedWeek = realizedWeekState.value;
   const weekPnl = realizedWeekState.pending || !systemUnrealizedState.complete || !weeklyBaseline.ok
     ? null
