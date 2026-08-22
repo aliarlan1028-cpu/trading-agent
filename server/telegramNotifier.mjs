@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { closedTradePosterPayload, deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster, resolveClosedTradePosterBasis } from "./positionPoster.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
 import { canonicalPositionKey } from "./positionIdentity.mjs";
 import { fetchWithDeadline } from "./outboundHttp.mjs";
 
@@ -197,7 +197,7 @@ export function queueClosedTradeProfitPosters(db) {
   }
   const startedAt = new Date(db.meta.telegramClosedTradePosterStartedAt).getTime();
   let queued = 0;
-  for (const lifecycle of groupClosedTradeLifecycles(db.fills || [])) {
+  for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
     if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) continue;
     if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) continue;
     const key = closedTradePosterKey(lifecycle);
@@ -228,7 +228,7 @@ export async function dispatchClosedTradePosterOutbox(db, options = {}) {
   const pending = (db.telegramPosterOutbox || []).filter((item) =>
     ["pending", "retry"].includes(item.status) && new Date(item.nextAttemptAt || 0).getTime() <= now
   ).slice(0, Math.max(1, Number(options.limit || 5)));
-  const lifecycleByKey = new Map(groupClosedTradeLifecycles(db.fills || []).map((lifecycle) => [lifecycle.key, lifecycle]));
+  const lifecycleByKey = new Map(groupSystemClosedTradeLifecycles(db).map((lifecycle) => [lifecycle.key, lifecycle]));
   let sent = 0;
   for (const item of pending) {
     const lifecycle = lifecycleByKey.get(item.tradeLifecycleKey);

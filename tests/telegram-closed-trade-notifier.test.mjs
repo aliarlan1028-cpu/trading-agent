@@ -60,7 +60,9 @@ test("旧 pending 盈利海报发送前按权威净值重核并取消，不触�
     fillIds: ["close-old"], trade: { realizedPnl: 1 }, status: "pending", attempts: 0,
     nextAttemptAt: "2026-08-12T00:00:00Z", createdAt: "2026-08-12T00:00:00Z", updatedAt: "2026-08-12T00:00:00Z"
   };
-  const db = { telegramPosterOutbox: [item], fills: [
+  const db = { telegramPosterOutbox: [item], executionOrders: [{
+    id: "exec-old", planId: "plan-old", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed"
+  }], tradePlans: [{ id: "plan-old", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }], fills: [
     { id: "entry-old", kind: "entry", executionOrderId: "exec-old", feeUsdt: 0.8, createdAt: "2026-08-12T00:30:00Z" },
     { id: "close-old", kind: "close", executionOrderId: "exec-old", realizedPnl: 1, feeUsdt: 0.4, createdAt: "2026-08-12T01:00:00Z" }
   ] };

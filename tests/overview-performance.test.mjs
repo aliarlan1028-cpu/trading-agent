@@ -4,6 +4,7 @@ import { buildCoreOverview } from "../server/coreOverview.mjs";
 import { projectOverviewSection } from "../server/overviewView.mjs";
 import { currentUiRevision, uiSyncEvent } from "../server/uiSync.mjs";
 import { seedDatabase } from "../server/store.mjs";
+import { installSystemTradeProvenance } from "./financial-fixtures.mjs";
 
 function history(prefix, count, status) {
   return Array.from({ length: count }, (_, index) => ({
@@ -89,8 +90,10 @@ test("core publishes authoritative lifecycle finance from the complete fill ledg
     { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, estimatedFee: false, createdAt: "2026-01-01T00:00:00Z" },
     { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, estimatedFee: false, fundingFeeUsdt: 0, fundingReconciled: true, createdAt: "2026-01-01T01:00:00Z" }
   ];
+  installSystemTradeProvenance(db);
   const core = buildCoreOverview(db, { revision: 12 });
-  assert.equal(core.fills.some((fill) => fill.id === "entry"), false, "bounded ledger fixture must omit the old entry");
+  assert.equal(core.fills.some((fill) => fill.id === "entry"), true, "system-only history no longer spends its bound on unrelated raw exchange rows");
+  assert.equal(core.fills.length, 3);
   const lifecycle = core.closedTradeLifecycles.find((row) => row.tradeLifecycleKey === "life");
   assert.equal(lifecycle.netRealizedPnl, 8);
   assert.equal(lifecycle.financialBasisComplete, true);

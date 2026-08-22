@@ -7,7 +7,7 @@ import { profitGoalSnapshot } from "./profitGoals.mjs";
 import { realtimeStatus } from "./realtimeManager.mjs";
 import { activeMandate } from "./store.mjs";
 import { isTerminalTradePlan } from "./tradePlanLifecycle.mjs";
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 
 function timestamp(row = {}) {
   return new Date(row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt || 0).getTime() || 0;
@@ -171,7 +171,8 @@ export function buildCoreOverview(db, options = {}) {
   ].filter(Boolean));
   const markets = (db.markets || []).filter((row) => relevantSymbols.has(row.symbol)).slice(0, 12).map(compactMarket);
   const executionTimes = (db.executionOrders || []).map(timestamp).filter(Boolean).sort((a, b) => b - a);
-  const allClosedTradeLifecycles = groupClosedTradeLifecycles(db.fills || []);
+  const systemFills = systemTradeFills(db);
+  const allClosedTradeLifecycles = groupSystemClosedTradeLifecycles(db, { fills: systemFills });
   const closedTradeLifecycles = allClosedTradeLifecycles.slice(0, 20).map(compactClosedTradeLifecycle);
   return {
     overviewMode: "core_v1",
@@ -195,13 +196,13 @@ export function buildCoreOverview(db, options = {}) {
     executionOrders: executions,
     executionOrderStatus: { total: (db.executionOrders || []).length, lastChangedAt: executionTimes[0] ? new Date(executionTimes[0]).toISOString() : null },
     armedSetups: setups,
-    fills: (db.fills || []).slice(0, 20),
+    fills: systemFills.slice(0, 20),
     // Always server-aggregated from the complete ledger. The UI must never infer a
     // lifecycle result from the bounded fills above.
     closedTradeLifecycles,
     tradeDataStatus: {
       source: "server_complete_lifecycle_aggregation",
-      fillTotal: (db.fills || []).length,
+      fillTotal: systemFills.length,
       closedLifecycleTotal: allClosedTradeLifecycles.length,
       tradeReviewTotal: (db.reviews || []).filter((review) => review?.type === "trade").length
     },

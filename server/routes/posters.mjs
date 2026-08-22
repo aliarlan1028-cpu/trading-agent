@@ -1,7 +1,7 @@
 // 海报路由组:把 AI 交易员的巡检分析翻译成英文,供前端渲染中/英双语海报(社交分享获客)。
 // 只做文本翻译,不生成图片——图片在前端把设计好的海报模板导成 PNG。依赖经 ctx 注入。
 import { closedTradePosterPayload, renderClosedTradePoster as defaultRenderClosedTradePoster, resolveClosedTradePosterBasis } from "../positionPoster.mjs";
-import { groupClosedTradeLifecycles } from "../tradeReviewQueue.mjs";
+import { groupSystemClosedTradeLifecycles } from "../systemTradeProjection.mjs";
 
 export function registerPosterRoutes(app, ctx) {
   const { llmComplete, appendTrace, db, requirePermission } = ctx;
@@ -10,7 +10,7 @@ export function registerPosterRoutes(app, ctx) {
   app.get("/api/posters/trades/:id", requirePermission("account.read"), async (req, res) => {
     const execution = (db.executionOrders || []).find((row) => row.id === req.params.id);
     if (!execution || execution.status !== "closed") return res.status(404).json({ error: "未找到已平仓交易" });
-    const lifecycle = groupClosedTradeLifecycles(db.fills || []).find((row) => row.key === execution.id
+    const lifecycle = groupSystemClosedTradeLifecycles(db).find((row) => row.key === execution.id
       || row.representative?.executionOrderId === execution.id);
     if (!lifecycle) return res.status(409).json({ error: "完整平仓生命周期尚未对账，不能生成收益海报" });
     const trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle, execution));

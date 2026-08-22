@@ -3,15 +3,21 @@ import test from "node:test";
 
 import { performanceReport } from "../server/accounting.mjs";
 import { buildClosedTrades, computeBehaviorProfile } from "../server/behaviorProfile.mjs";
+import { buildChatPresentation } from "../server/chatPresentation.mjs";
+import { buildCoreOverview } from "../server/coreOverview.mjs";
 import { buildDecisionCalibrationReport } from "../server/decisionCalibration.mjs";
 import { backfillStructuredTradeReviews, refreshOwnerImprovementRegistry, transitionReviewLesson } from "../server/ownerReviewLoop.mjs";
 import { buildExecutionQuality } from "../server/professionalAnalytics.mjs";
 import { runTradeReflection } from "../server/reviewEngine.mjs";
 import { strategyProductMetrics } from "../server/strategyProducts.mjs";
 import { groupSystemClosedTradeLifecycles } from "../server/systemTradeProjection.mjs";
+import { queueClosedTradeProfitPosters } from "../server/telegramNotifier.mjs";
 import { consecutiveLossCooldown, drawdownLockout } from "../server/tradeProtections.mjs";
 import { syncTradeReviewQueue } from "../server/tradeReviewQueue.mjs";
 import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
+import { projectOverviewSection } from "../server/overviewView.mjs";
+import { seedDatabase } from "../server/store.mjs";
+import { addSystemExecution, stampFixtureSystemAttribution } from "./helpers/system-trade-fixtures.mjs";
 
 function reconciledLeg(fill) {
   return {
@@ -30,6 +36,76 @@ function manualLifecycle(id, closedAt) {
     reconciledLeg({ id: `${id}-close`, kind: "close", positionId: id, symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -10, createdAt: new Date(closedAt).toISOString() })
   ];
 }
+
+test("system history, chat, and Telegram posters exclude manual closed fills while retaining manual account positions", () => {
+  const originalTelegram = {
+    token: process.env.TELEGRAM_BOT_TOKEN,
+    chat: process.env.TELEGRAM_CHAT_ID,
+    enabled: process.env.TELEGRAM_PROFIT_POSTER_ENABLED,
+    minimum: process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT
+  };
+  process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  process.env.TELEGRAM_CHAT_ID = "test-chat";
+  process.env.TELEGRAM_PROFIT_POSTER_ENABLED = "true";
+  process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT = "0";
+  try {
+    const now = Date.now();
+    const db = seedDatabase();
+    Object.assign(db, {
+      portfolio: { totalEquityUsdt: 100 },
+      executionOrders: [], tradePlans: [], fills: [], positions: [{
+        id: "manual-open", source: "exchange_rest", exchange: "OKX", accountId: "manual-account",
+        symbol: "ETH/USDT", direction: "long", quantity: 0.5, markPrice: 3000, marginUsdt: 100
+      }],
+      meta: { telegramClosedTradePosterStartedAt: new Date(now - 60_000).toISOString() },
+      telegramPosterOutbox: []
+    });
+    const normal = addSystemExecution(db, { executionOrderId: "system-normal", planId: "plan-normal", quantity: 1 });
+    const manualExit = addSystemExecution(db, { executionOrderId: "system-manual-exit", planId: "plan-manual-exit", quantity: 1 });
+    const systemLeg = (id, kind, execution, realizedPnl, createdAt) => stampFixtureSystemAttribution(reconciledLeg({
+      id, kind, accountId: "account-a", environment: "production", exchange: "OKX", symbol: "BTC/USDT", direction: "long",
+      quantity: 1, price: 100, realizedPnl, exchangeFilledAt: createdAt, createdAt
+    }), execution);
+    const manualExitClose = systemLeg("manual-exit-close", "close", manualExit, 4, new Date(now - 2_000).toISOString());
+    manualExitClose.tradeAttribution = {
+      ...manualExitClose.tradeAttribution,
+      origin: "external_exchange", exitMode: "manual_exit", method: "deterministic_manual_exit",
+      evidence: { ...manualExitClose.tradeAttribution.evidence, exchangeTradeId: "manual-exit-trade" }
+    };
+    db.fills.push(
+      systemLeg("normal-entry", "entry", normal, undefined, new Date(now - 9_000).toISOString()),
+      systemLeg("normal-close", "close", normal, 3, new Date(now - 8_000).toISOString()),
+      systemLeg("manual-exit-entry", "entry", manualExit, undefined, new Date(now - 3_000).toISOString()),
+      manualExitClose,
+      ...manualLifecycle("manual-closed", now - 1_000).map((fill) => ({ ...fill, realizedPnl: fill.kind === "close" ? 50 : undefined, tradePlanId: normal.planId })),
+      ...manualLifecycle("pending-closed", now - 500).map((fill) => ({
+        ...fill,
+        realizedPnl: fill.kind === "close" ? 75 : undefined,
+        tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" }
+      }))
+    );
+
+    const core = buildCoreOverview(db);
+    assert.deepEqual(core.fills.map((fill) => fill.id).sort(), ["manual-exit-close", "manual-exit-entry", "normal-close", "normal-entry"]);
+    assert.deepEqual(core.closedTradeLifecycles.map((row) => row.tradeLifecycleKey).sort(), ["system-manual-exit", "system-normal"]);
+    assert.equal(core.tradeDataStatus.closedLifecycleTotal, 2);
+    assert.equal(core.positions.some((row) => row.id === "manual-open"), true);
+    assert.deepEqual(projectOverviewSection(core, "cockpit").closedTradeLifecycles.map((row) => row.tradeLifecycleKey).sort(), ["system-manual-exit", "system-normal"]);
+
+    const chat = buildChatPresentation({ db, run: { tradePlanId: normal.planId }, content: "交易已平仓。" });
+    assert.equal(chat.execution.grossRealizedPnl, 3);
+    assert.equal(chat.execution.netRealizedPnl, 3);
+
+    assert.equal(queueClosedTradeProfitPosters(db).queued, 2);
+    assert.deepEqual(db.telegramPosterOutbox.map((item) => item.tradeLifecycleKey).sort(), ["system-manual-exit", "system-normal"]);
+  } finally {
+    for (const [key, value] of Object.entries(originalTelegram)) {
+      const envKey = key === "token" ? "TELEGRAM_BOT_TOKEN" : key === "chat" ? "TELEGRAM_CHAT_ID" : key === "enabled" ? "TELEGRAM_PROFIT_POSTER_ENABLED" : "TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT";
+      if (value === undefined) delete process.env[envKey];
+      else process.env[envKey] = value;
+    }
+  }
+});
 
 test("performance, review, and protections exclude manual losses while retaining one attributed manual exit", () => {
   const now = Date.now();

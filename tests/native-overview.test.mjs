@@ -98,7 +98,14 @@ test("native overview aggregates a complete lifecycle before truncating the fill
     { id: "entry", executionOrderId: "life", kind: "entry", feeUsdt: 1, estimatedFee: false, createdAt: "2026-08-14T20:00:00Z" },
     { id: "partial", executionOrderId: "life", kind: "close", partial: true, realizedPnl: 2, feeUsdt: .2, fundingFeeUsdt: 0, fundingReconciled: true, estimatedFee: false, createdAt: "2026-08-14T22:00:00Z" }
   ];
-  const compact = compactOverviewForNative({ fills }, true);
+  const compact = compactOverviewForNative({
+    fills,
+    closedTradeLifecycles: [{
+      id: "closed:life", tradeLifecycleKey: "life", fillIds: ["final", "partial"], closeCount: 2,
+      quantity: 0, notionalUsdt: 0, realizedPnl: 10, feeUsdt: .5, entryFeeUsdt: 1,
+      fundingFeeUsdt: -.5, netRealizedPnl: 8, financialBasis: "recorded_costs", createdAt: "2026-08-14T23:00:00Z"
+    }]
+  }, true);
   assert.equal(compact.fills.length, 50);
   assert.equal(compact.fills.some((fill) => fill.id === "entry"), false, "fixture must cut the lifecycle across the ledger boundary");
   const lifecycle = compact.closedTradeLifecycles.find((row) => row.tradeLifecycleKey === "life");

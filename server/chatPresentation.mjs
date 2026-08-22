@@ -1,5 +1,6 @@
 import { normalizePositionsForUi } from "./positionView.mjs";
-import { groupClosedTradeLifecycles, isFinanciallyReconciledLifecycle } from "./tradeReviewQueue.mjs";
+import { isFinanciallyReconciledLifecycle } from "./tradeLifecycle.mjs";
+import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 
 const PRESENTATION_SCHEMA_VERSION = 1;
 const DISPLAY_TIMEFRAMES = ["15m", "1h", "4h"];
@@ -193,12 +194,12 @@ export function buildChatPresentation({ db = {}, run = {}, content = "", evidenc
   const watch = primaryWatchFor(db, run, preliminarySymbol);
   const symbol = preliminarySymbol || watch?.symbol || null;
   const order = plan ? (db.executionOrders || []).find((row) => row.planId === plan.id) || null : null;
-  const orderFills = order ? (db.fills || []).filter((row) => row.executionOrderId === order.id || (!row.executionOrderId && row.tradePlanId === plan?.id)) : [];
+  const orderFills = order ? systemTradeFills(db).filter((row) => row.executionOrderId === order.id || (!row.executionOrderId && row.tradePlanId === plan?.id)) : [];
   const entryFills = orderFills.filter((row) => row.kind === "entry");
   const entryQuantity = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0);
   const entryNotional = entryFills.reduce((sum, row) => sum + Math.abs(Number(row.price || 0) * Number(row.quantity || 0)), 0);
   const actualEntryPrice = entryQuantity > 0 ? entryNotional / entryQuantity : numberOrNull(order?.filledPrice);
-  const closedLifecycles = groupClosedTradeLifecycles(orderFills);
+  const closedLifecycles = groupSystemClosedTradeLifecycles(db, { fills: orderFills });
   const grossRealizedPnl = closedLifecycles.length
     ? closedLifecycles.reduce((sum, lifecycle) => sum + Number(lifecycle.realizedPnl), 0)
     : null;

@@ -35,6 +35,7 @@ test("手动下载海报按完整部分平仓生命周期聚合，并按入场�
   let renderedTrade = null;
   const db = {
     executionOrders: [{ id: "exec-1", planId: "plan-1", status: "closed", symbol: "BTC/USDT", filledPrice: 100, notionalUsdt: 300, leverage: 2 }],
+    tradePlans: [{ id: "plan-1", symbol: "BTC/USDT", direction: "long" }],
     fills: financiallyReconciledFills([
       { id: "entry", kind: "entry", executionOrderId: "exec-1", tradePlanId: "plan-1", price: 100, quantity: 3, notionalUsdt: 300, feeUsdt: 1, createdAt: "2026-08-01T00:00:00Z" },
       { id: "partial", kind: "close", partial: true, executionOrderId: "exec-1", tradePlanId: "plan-1", price: 200, quantity: 1, notionalUsdt: 200, realizedPnl: 100, feeUsdt: 1, fundingFeeUsdt: -1, createdAt: "2026-08-01T01:00:00Z" },
@@ -73,6 +74,22 @@ test("只有未完成部分平仓时明确拒绝生成海报，不调用渲染�
   };
   const res = response();
   await posterRoute(db, async () => { rendered = true; })({ params: { id: "exec-partial" } }, res);
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.error, /完整平仓生命周期/);
+  assert.equal(rendered, false);
+});
+
+test("缺少可验证系统归属的平仓生命周期不能生成海报", async () => {
+  let rendered = false;
+  const db = {
+    executionOrders: [{ id: "pending-exec", planId: "missing-plan", status: "closed" }],
+    fills: financiallyReconciledFills([
+      { id: "pending-entry", kind: "entry", executionOrderId: "pending-exec", quantity: 1, price: 100, createdAt: "2026-08-01T00:00:00Z" },
+      { id: "pending-close", kind: "close", executionOrderId: "pending-exec", quantity: 1, price: 110, realizedPnl: 10, createdAt: "2026-08-01T01:00:00Z" }
+    ])
+  };
+  const res = response();
+  await posterRoute(db, async () => { rendered = true; })({ params: { id: "pending-exec" } }, res);
   assert.equal(res.statusCode, 409);
   assert.match(res.payload.error, /完整平仓生命周期/);
   assert.equal(rendered, false);

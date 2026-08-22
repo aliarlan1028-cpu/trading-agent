@@ -1,4 +1,3 @@
-import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";
 import { isTerminalExecution } from "./executionStates.mjs";
 import { isTerminalExchangeOrder } from "./orderStates.mjs";
 import { isTerminalArmedSetup } from "./armedSetupStates.mjs";
@@ -356,7 +355,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     armedSetups,
     orders: nonTerminalPlusRecent(overview.orders, isTerminalExchangeOrder, 100),
     fills: (overview.fills || []).slice(0, 150),
-    closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 100).map(compactClosedTradeLifecycle),
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 100),
     riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
     reviews: compactNativeReviews(overview.reviews),
     reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
@@ -546,9 +545,9 @@ export function compactOverviewForNative(overview = {}, native = false) {
     armedSetups: recentWithNonTerminal(overview.armedSetups, isTerminalArmedSetup, 20).map(compactArmedSetup),
     orders: recentWithNonTerminal(overview.orders, isTerminalExchangeOrder, 40),
     fills: (overview.fills || []).slice(0, 50),
-    // The ledger may be bounded, but lifecycle accounting may never be. Aggregate
-    // from the complete server-side fill set before slicing the recent lifecycle rows.
-    closedTradeLifecycles: groupClosedTradeLifecycles(overview.fills || []).slice(0, 50).map(compactClosedTradeLifecycle),
+    // Lifecycle accounting is precomputed by coreOverview from the complete system
+    // ledger before this view receives its bounded fills.
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 50),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
     riskIncidents: recentWithNonTerminal(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),
