@@ -99,6 +99,27 @@ function financialFingerprint(fill = {}) {
   });
 }
 
+function unresolvedFinancialFacts(fill = {}) {
+  const base = {
+    fillId: fill.id || null,
+    executionOrderId: fill.executionOrderId || null,
+    symbol: canonicalSymbol(fill.symbol || fill.instId) || null,
+    kind: fill.kind || null
+  };
+  const facts = [];
+  const fee = recordedFeeCost(fill);
+  if (fee === null || fill.estimatedFee === true) {
+    facts.push({ ...base, reason: fill.kind === "entry" ? "entry_fee_unresolved" : "close_fee_unresolved" });
+  }
+  if (fill.kind === "close") {
+    if (finite(fill.realizedPnl) === null) facts.push({ ...base, reason: "close_realized_pnl_unresolved" });
+    if (fill.fundingReconciled !== true || finite(fill.fundingFeeUsdt) === null) {
+      facts.push({ ...base, reason: "close_funding_unresolved" });
+    }
+  }
+  return facts;
+}
+
 function dedupeSystemAccountingFills(db, options = {}) {
   const groups = [];
   for (const fill of systemTradeFills(db)) {
@@ -168,11 +189,20 @@ export function systemRealizedPnlSince(db, sinceMs, untilMs = Date.now(), option
   const projected = dedupeSystemAccountingFills(db, { untilMs });
   const fills = projected.fills.filter((fill) => fillMatchesBinding(db, fill, options.binding));
   const state = realizedPnlForFills(fills, sinceMs, untilMs);
+  const pendingFacts = fills.filter((fill) => {
+    const at = fillTime(fill);
+    return at !== null && at >= sinceMs && at <= untilMs;
+  }).flatMap(unresolvedFinancialFacts);
   const conflicts = projected.conflicts.filter((conflict) => (
     (!options.binding || sameBinding(conflict, options.binding))
     && conflict.fillTimes.some((at) => at >= sinceMs && at <= untilMs)
   ));
-  return { ...state, pending: state.pending + conflicts.length, conflicts };
+  return {
+    ...state,
+    pending: state.pending + conflicts.length,
+    pendingFacts: [...pendingFacts, ...conflicts],
+    conflicts
+  };
 }
 
 function slotIdentity(row = {}) {

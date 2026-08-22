@@ -152,7 +152,7 @@ test("暂停新开仓状态公开每个持久安全原因", () => {
   assert.ok(state.blockers.includes("平仓结果未知"));
 });
 
-test("只有滚动窗口基线缺失时不再误报为成交费用未对账", () => {
+test("system-only 周期锚点缺失时不再声称账户历史回补能够授权恢复", () => {
   const db = dbFixture();
   db.system.requestedOperatingMode = "full_auto";
   db.system.reduceOnlyMode = true;
@@ -163,10 +163,10 @@ test("只有滚动窗口基线缺失时不再误报为成交费用未对账", ()
     pendingTradeFinancialFactsToday: 0,
     pendingTradeFinancialFactsWeek: 0,
     dailyBaselineStatus: "reconciled",
-    weekBaselineStatus: "period_start_snapshot_missing",
+    weekBaselineStatus: "system_period_start_anchor_missing",
     accountingHistoryBackfill: {
-      status: "failed",
-      reason: "local_exchange_realized_pnl_mismatch",
+      status: "reconciled_account_evidence_only",
+      reason: "account_history_not_authorized_for_system_pnl",
       progressPct: 28.5,
       naturalReadyAt: "2026-08-22T13:15:00.000Z"
     }
@@ -174,9 +174,66 @@ test("只有滚动窗口基线缺失时不再误报为成交费用未对账", ()
   const state = deriveAutomationState(db, { hasProvider: true });
   assert.equal(state.blockerDetails[0].label, "近 7 日风险窗口尚未建立");
   assert.match(state.blockerDetails[0].detail, /成交费用：已完成/);
-  assert.match(state.blockerDetails[0].detail, /本地成交与 OKX 账单不一致/);
+  assert.match(state.blockerDetails[0].detail, /账户级历史.*不能替代系统交易锚点/);
+  assert.doesNotMatch(state.blockerDetails[0].recovery, /OKX 权威账单.*自动重建/);
   assert.match(state.blockerDetails[0].recovery, /预计最晚 8(?:月|\/)22(?:日)? 21:15 自动成熟/);
-  assert.equal(state.blockerDetails[0].accounting.historyBackfillReason, "local_exchange_realized_pnl_mismatch");
+  assert.equal(state.blockerDetails[0].accounting.historyBackfillReason, "account_history_not_authorized_for_system_pnl");
+});
+
+test("暂停新开仓会公开 mixed position 的精确核算原因", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "full_auto";
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyReasons = ["financial_reconciliation_pending"];
+  db.portfolio = {
+    pendingFinancialReconciliationToday: 1,
+    pendingFinancialReconciliationWeek: 1,
+    pendingTradeFinancialFactsToday: 1,
+    pendingTradeFinancialFactsWeek: 1,
+    dailyBaselineStatus: "reconciled",
+    weekBaselineStatus: "reconciled",
+    pendingSystemUnrealizedPositions: [{
+      reason: "managed_position_quantity_mismatch",
+      identity: "account-a|production|OKX|SUI/USDT|long",
+      managedQuantity: 10,
+      authoritativeQuantity: 15
+    }]
+  };
+
+  const detail = deriveAutomationState(db, { hasProvider: true }).blockerDetails[0];
+  assert.equal(detail.label, "系统与手动仓位混合，无法精确核算");
+  assert.match(detail.recovery, /不会按比例估算/);
+  assert.equal(detail.accounting.blockingFacts[0].reason, "managed_position_quantity_mismatch");
+  assert.equal(detail.accounting.blockingFacts[0].managedQuantity, 10);
+  assert.equal(detail.accounting.blockingFacts[0].authoritativeQuantity, 15);
+});
+
+test("暂停新开仓会区分成交冲突与缺失财务字段", () => {
+  const db = dbFixture();
+  db.system.requestedOperatingMode = "full_auto";
+  db.system.reduceOnlyMode = true;
+  db.system.reduceOnlyReasons = ["financial_reconciliation_pending"];
+  db.portfolio = {
+    pendingFinancialReconciliationToday: 2,
+    pendingFinancialReconciliationWeek: 2,
+    pendingTradeFinancialFactsToday: 2,
+    pendingTradeFinancialFactsWeek: 2,
+    dailyBaselineStatus: "reconciled",
+    weekBaselineStatus: "reconciled",
+    pendingSystemRealizedFactsToday: [
+      { reason: "system_fill_financial_evidence_conflict", fillIds: ["close-a", "close-b"], tradeIds: ["trade-1"] },
+      { reason: "close_funding_unresolved", fillId: "close-c", executionOrderId: "execution-c" }
+    ]
+  };
+
+  const detail = deriveAutomationState(db, { hasProvider: true }).blockerDetails[0];
+  assert.equal(detail.label, "系统交易归因存在冲突或财务字段缺失");
+  assert.match(detail.detail, /成交证据冲突/);
+  assert.match(detail.detail, /资金费未完成/);
+  assert.deepEqual(detail.accounting.blockingFacts.map((row) => row.reason), [
+    "system_fill_financial_evidence_conflict",
+    "close_funding_unresolved"
+  ]);
 });
 
 test("自动交易保存只拒绝结构性缺项，临时运行故障保留为等待恢复", () => {

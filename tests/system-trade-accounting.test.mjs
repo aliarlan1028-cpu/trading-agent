@@ -177,6 +177,7 @@ test("system realized accounting counts fees, funding, and an attributed manual 
     reconciled: 5,
     pending: 0,
     total: 3,
+    pendingFacts: [],
     conflicts: []
   });
 
@@ -232,6 +233,8 @@ test("system financial evidence remains fail-closed", () => {
   const result = refreshAccounting(db, { nowMs: now });
   assert.equal(result.todayPnl, null);
   assert.ok(db.portfolio.pendingTradeFinancialFactsToday > 0);
+  assert.deepEqual(db.portfolio.pendingSystemRealizedFactsToday.map((row) => row.reason), ["close_funding_unresolved"]);
+  assert.equal(db.portfolio.pendingSystemRealizedFactsToday[0].fillId, "system-close");
   assert.equal(db.system.reduceOnlyMode, true);
 });
 

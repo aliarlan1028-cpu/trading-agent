@@ -112,6 +112,40 @@ function accountingBackfillReason(reason = "") {
   return ACCOUNTING_BACKFILL_REASON_LABELS[reason] || (reason ? `历史回补待核验：${reason}` : "等待历史回补");
 }
 
+const SYSTEM_ACCOUNTING_REASON_LABELS = {
+  managed_position_quantity_mismatch: "系统与账户净仓数量不一致（可能混入手动仓位）",
+  managed_position_ambiguous: "同一系统仓位存在多个权威候选",
+  managed_position_unavailable: "系统仓位缺少权威账户快照",
+  managed_position_stale: "系统仓位快照已过期",
+  managed_position_quantity_unavailable: "系统仓位数量不完整",
+  managed_position_pnl_unavailable: "系统仓位浮动盈亏不完整",
+  managed_position_binding_conflict: "系统仓位账户、环境或方向绑定冲突",
+  managed_position_binding_incomplete: "系统仓位绑定信息不完整",
+  managed_entry_provenance_incomplete: "系统入场归因不完整",
+  managed_close_quantity_conflict: "系统平仓数量证据冲突",
+  system_fill_financial_evidence_conflict: "系统成交证据冲突",
+  entry_fee_unresolved: "系统入场手续费未完成",
+  close_fee_unresolved: "系统平仓手续费未完成",
+  close_realized_pnl_unresolved: "系统平仓已实现盈亏未完成",
+  close_funding_unresolved: "系统平仓资金费未完成"
+};
+
+function systemAccountingBlockingFacts(portfolio = {}) {
+  const rows = [
+    ...(portfolio.pendingSystemUnrealizedPositions || []),
+    ...(portfolio.pendingSystemRealizedFactsToday || []),
+    ...(portfolio.pendingSystemRealizedFactsWeek || [])
+  ];
+  const seen = new Set();
+  return rows.filter((row) => {
+    if (!row?.reason) return false;
+    const key = JSON.stringify(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function formatShanghaiTime(value) {
   const at = value ? new Date(value) : null;
   if (!at || !Number.isFinite(at.getTime())) return null;
@@ -147,25 +181,45 @@ function reduceOnlyBlockers(db = {}) {
       const tradeFactsWeek = Number(portfolio.pendingTradeFinancialFactsWeek ?? week);
       const dailyStatus = portfolio.dailyBaselineStatus || "unknown";
       const weekStatus = portfolio.weekBaselineStatus || "unknown";
+      const blockingFacts = systemAccountingBlockingFacts(portfolio);
+      const blockingReasons = new Set(blockingFacts.map((row) => row.reason));
+      const hasMixedPosition = blockingReasons.has("managed_position_quantity_mismatch");
+      const hasFinancialConflict = [...blockingReasons].some((reason) => reason.includes("conflict"));
+      const hasUnresolvedFinancialFact = [...blockingReasons].some((reason) => /_(?:fee|funding|pnl)_unresolved$/.test(reason));
       const pending = [today > 0 ? `今日 ${today} 项` : null, week > 0 ? `近 7 日 ${week} 项` : null].filter(Boolean).join("、") || "状态待重新核验";
       const backfill = portfolio.accountingHistoryBackfill || {};
       const baselineOnly = tradeFactsToday === 0 && tradeFactsWeek === 0
-        && dailyStatus === "reconciled" && weekStatus === "period_start_snapshot_missing";
+        && dailyStatus === "reconciled"
+        && ["period_start_snapshot_missing", "system_period_start_anchor_missing"].includes(weekStatus);
       const progress = Number.isFinite(Number(backfill.progressPct)) ? `${Number(backfill.progressPct).toFixed(1)}%` : null;
       const readyAt = formatShanghaiTime(backfill.naturalReadyAt);
-      const backfillState = backfill.status === "reconciled" ? "OKX 历史证据已回补"
+      const backfillState = backfill.status === "reconciled_account_evidence_only" ? "账户级历史已核验，但不能替代系统交易锚点"
+        : backfill.status === "reconciled" ? "OKX 历史证据已回补"
         : backfill.status === "running" ? "正在读取并核验 OKX 历史"
           : backfill.status === "failed" || backfill.status === "blocked" ? accountingBackfillReason(backfill.reason)
             : backfill.status === "waiting" ? accountingBackfillReason(backfill.reason) : "等待 OKX 历史回补";
+      const factLabels = [...new Set(blockingFacts.map((row) => SYSTEM_ACCOUNTING_REASON_LABELS[row.reason] || row.reason))];
+      const label = hasMixedPosition && !hasFinancialConflict && !hasUnresolvedFinancialFact
+        ? "系统与手动仓位混合，无法精确核算"
+        : hasFinancialConflict || hasUnresolvedFinancialFact
+          ? "系统交易归因存在冲突或财务字段缺失"
+          : baselineOnly ? "近 7 日风险窗口尚未建立" : base.label;
+      const recovery = hasMixedPosition
+        ? "将同一币种同方向的账户净仓恢复为可精确归因的系统数量后自动重算；系统不会按比例估算手动与系统盈亏。"
+        : hasFinancialConflict
+          ? "需要用 OKX 权威成交证据裁决冲突；原始成交不会被覆写，证据一致后自动恢复。"
+          : hasUnresolvedFinancialFact
+            ? "系统会继续同步成交、手续费和资金费；权威财务字段完整后自动恢复。"
+            : baselineOnly
+              ? `系统会继续积累可精确归因的 system-only 快照${readyAt ? `，预计最晚 ${readyAt} 自动成熟` : ""}；账户级历史证据不会被冒充为系统交易基线。`
+              : "系统会持续同步系统成交、手续费、资金费和账户快照；所有事实完整后自动恢复原先选择的运行模式。";
       return {
         ...base,
-        label: baselineOnly ? "近 7 日风险窗口尚未建立" : base.label,
+        label,
         detail: baselineOnly
           ? `成交费用：已完成；今日基线：已完成；近 7 日窗口：${backfillState}${progress ? `（自然快照进度 ${progress}）` : ""}。`
-          : `待完成：${pending}。成交事实缺口：今日 ${tradeFactsToday} 项、近 7 日 ${tradeFactsWeek} 项；今日基线：${dailyStatus}；近 7 日基线：${weekStatus}。`,
-        recovery: baselineOnly
-          ? `系统会优先用 OKX 权威账单、仓位历史和窗口起点标记价格自动重建；若交易所证据仍不完整，将继续积累不可变快照${readyAt ? `，预计最晚 ${readyAt} 自动成熟` : ""}。`
-          : "系统会持续回补成交、手续费、资金费和账户快照；所有事实完整后自动恢复原先选择的运行模式。",
+          : `待完成：${pending}。${factLabels.length ? `具体原因：${factLabels.join("、")}。` : ""}成交事实缺口：今日 ${tradeFactsToday} 项、近 7 日 ${tradeFactsWeek} 项；今日基线：${dailyStatus}；近 7 日基线：${weekStatus}。`,
+        recovery,
         accounting: {
           tradeFactsPendingToday: tradeFactsToday,
           tradeFactsPendingWeek: tradeFactsWeek,
@@ -174,7 +228,8 @@ function reduceOnlyBlockers(db = {}) {
           historyBackfillStatus: backfill.status || "not_started",
           historyBackfillReason: backfill.reason || null,
           progressPct: backfill.progressPct ?? null,
-          naturalReadyAt: backfill.naturalReadyAt || null
+          naturalReadyAt: backfill.naturalReadyAt || null,
+          blockingFacts
         }
       };
     }
