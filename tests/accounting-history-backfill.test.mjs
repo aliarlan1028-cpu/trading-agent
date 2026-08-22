@@ -248,8 +248,20 @@ test("task cancellation aborts pagination instead of persisting a partial histor
 function integrationDb(nowMs) {
   const boundaryMs = rollingAccountingBoundary(nowMs);
   const dayStart = businessDayStartMs(nowMs, "Asia/Shanghai");
+  const execution = {
+    id: "execution", planId: "plan", status: "closed", exchange: "OKX", accountId: "okx-main",
+    environment: "production", symbol: "ADA/USDT", direction: "long", filledQuantity: 1,
+    entryFilledAt: new Date(boundaryMs - 1000).toISOString()
+  };
+  const attributed = (kind) => ({
+    schemaVersion: 1, scope: "system", origin: "execution_engine", exitMode: kind === "close" ? "system_exit" : null,
+    executionOrderId: execution.id, planId: execution.planId, method: "execution_writer",
+    evidence: { accountId: execution.accountId, environment: execution.environment }
+  });
   return {
-    meta: {}, auditLogs: [], traces: [], riskIncidents: [], accountingAnchors: [], reviews: [], executionOrders: [],
+    meta: {}, auditLogs: [], traces: [], riskIncidents: [], accountingAnchors: [], reviews: [],
+    executionOrders: [execution],
+    tradePlans: [{ id: execution.planId, exchange: execution.exchange, accountId: execution.accountId, environment: execution.environment, symbol: execution.symbol, direction: execution.direction }],
     system: { businessTimeZone: "Asia/Shanghai", autonomyEnabled: true, requestedOperatingMode: "full_auto" },
     portfolio: { totalEquityUsdt: 100 },
     mandates: [{ id: "mandate", status: "active", validUntil: "2099-01-01T00:00:00.000Z", maxDailyLossPct: 5 }],
@@ -260,13 +272,13 @@ function integrationDb(nowMs) {
       { id: "day", status: "ok", exchange: "OKX", accountId: "okx-main", apiKeyFingerprint: fingerprint, environment: "production", createdAt: new Date(dayStart).toISOString(), totalEquityUsdt: 100, positions: [] }
     ],
     fills: [
-      { id: "entry", kind: "entry", executionOrderId: "execution", exchangeFilledAt: new Date(boundaryMs - 1000).toISOString(), feeUsdt: 1, estimatedFee: false },
-      { id: "close", kind: "close", executionOrderId: "execution", exchangeFilledAt: new Date(boundaryMs + 2000).toISOString(), createdAt: new Date(boundaryMs + 2000).toISOString(), realizedPnl: -20, feeUsdt: 1, estimatedFee: false, fundingFeeUsdt: -1, fundingReconciled: true }
+      { id: "entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId, exchange: "OKX", accountId: execution.accountId, environment: execution.environment, symbol: execution.symbol, direction: execution.direction, quantity: 1, exchangeFilledAt: new Date(boundaryMs - 1000).toISOString(), feeUsdt: 1, estimatedFee: false, tradeAttribution: attributed("entry") },
+      { id: "close", kind: "close", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId, exchange: "OKX", accountId: execution.accountId, environment: execution.environment, symbol: execution.symbol, direction: execution.direction, quantity: 1, exchangeFilledAt: new Date(boundaryMs + 2000).toISOString(), createdAt: new Date(boundaryMs + 2000).toISOString(), realizedPnl: -20, feeUsdt: 1, estimatedFee: false, fundingFeeUsdt: -1, fundingReconciled: true, tradeAttribution: attributed("close") }
     ]
   };
 }
 
-test("authoritative accounting task writes the audited baseline and automatically clears the opening pause", async () => {
+test("account-wide historical backfill is retained as evidence but cannot authorize system PnL", async () => {
   const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
   const boundaryMs = rollingAccountingBoundary(nowMs);
   const db = integrationDb(nowMs);
@@ -284,17 +296,20 @@ test("authoritative accounting task writes the audited baseline and automaticall
     fetchBoundaryMarkPrice: async () => ({ complete: true, price: 95, observedAt: new Date(boundaryMs).toISOString() }),
     fetchContractSpec: async () => ({ ctVal: 1, ctType: "linear", settleCcy: "USDT" })
   });
-  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
-  assert.equal(db.portfolio.weekPnl, -12);
-  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
-  assert.equal(db.portfolio.accountingHistoryBackfill.status, "reconciled");
-  assert.equal(db.system.reduceOnlyMode, false);
-  assert.deepEqual(db.system.reduceOnlyReasons, []);
-  assert.equal(result.historyBackfill.status, "reconciled");
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
+  assert.equal(db.portfolio.weekPnl, null);
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
+  assert.equal(db.portfolio.accountingHistoryBackfill.status, "reconciled_account_evidence_only");
+  assert.equal(db.portfolio.accountingHistoryBackfill.reason, "account_history_not_authorized_for_system_pnl");
+  assert.equal(db.portfolio.accountingBaselines.rolling_168h.pnlMethod, "okx_bills_plus_boundary_mark_to_market");
+  assert.equal(db.portfolio.systemAccountingBaselines.rolling_168h, undefined);
+  assert.equal(db.system.reduceOnlyMode, true);
+  assert.ok(db.system.reduceOnlyReasons.includes("financial_reconciliation_pending"));
+  assert.equal(result.historyBackfill.status, "reconciled_account_evidence_only");
   assert.equal(db.auditLogs.filter((row) => row.target === "rolling_168h_accounting_baseline").length, 1);
 });
 
-test("rolling boundary rollover keeps the previous verified bucket without omitting interval fills", async () => {
+test("legacy account evidence is never used as rolling system-baseline grace", async () => {
   const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
   const boundaryMs = rollingAccountingBoundary(nowMs);
   const db = integrationDb(nowMs);
@@ -316,17 +331,17 @@ test("rolling boundary rollover keeps the previous verified bucket without omitt
   const rolloverMs = nowMs + ACCOUNTING_BOUNDARY_BUCKET_MS;
   refreshAccounting(db, { nowMs: rolloverMs });
 
-  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
-  assert.equal(db.portfolio.weekBaselineNeedsRefresh, true);
-  assert.equal(db.portfolio.weekBaselineLagMs, ACCOUNTING_BOUNDARY_BUCKET_MS);
-  assert.equal(db.portfolio.weekWindowStartAt, oldBoundaryAt);
-  assert.equal(db.portfolio.knownReconciledRealizedPnlWeek, -22, "the close inside the rollover interval must remain counted");
-  assert.equal(db.portfolio.weekPnl, -12);
-  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
-  assert.equal(db.system.reduceOnlyMode, false);
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
+  assert.equal(db.portfolio.weekBaselineNeedsRefresh, false);
+  assert.equal(db.portfolio.weekBaselineLagMs, 0);
+  assert.notEqual(db.portfolio.weekWindowStartAt, oldBoundaryAt);
+  assert.equal(db.portfolio.knownReconciledRealizedPnlWeek, 0, "without a system baseline grace, the requested boundary remains exact");
+  assert.equal(db.portfolio.weekPnl, null);
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
+  assert.equal(db.system.reduceOnlyMode, true);
 });
 
-test("authoritative rollover replaces the grace baseline with the exact new boundary", async () => {
+test("authoritative rollover may refresh account evidence without creating a system baseline", async () => {
   const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
   const boundaryMs = rollingAccountingBoundary(nowMs);
   const db = integrationDb(nowMs);
@@ -357,12 +372,13 @@ test("authoritative rollover replaces the grace baseline with the exact new boun
   assert.equal(db.portfolio.weekWindowStartAt, new Date(nextBoundaryMs).toISOString());
   assert.equal(db.portfolio.weekBaselineNeedsRefresh, false);
   assert.equal(db.portfolio.weekBaselineLagMs, 0);
-  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
-  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
-  assert.equal(db.system.reduceOnlyMode, false);
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
+  assert.equal(db.portfolio.systemAccountingBaselines.rolling_168h, undefined);
+  assert.equal(db.system.reduceOnlyMode, true);
 });
 
-test("a failed rollover refresh stays conservative only for one bucket, then fails closed", async () => {
+test("a failed account-evidence rollover never weakens the missing system baseline", async () => {
   const nowMs = Date.UTC(2026, 7, 15, 1, 3, 0);
   const boundaryMs = rollingAccountingBoundary(nowMs);
   const db = integrationDb(nowMs);
@@ -388,12 +404,12 @@ test("a failed rollover refresh stays conservative only for one bucket, then fai
     request: async () => ({ code: "51000", data: [] })
   });
   assert.equal(db.portfolio.accountingHistoryBackfill.status, "failed");
-  assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
-  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 0);
-  assert.equal(db.system.reduceOnlyMode, false);
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
+  assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
+  assert.equal(db.system.reduceOnlyMode, true);
 
   refreshAccounting(db, { nowMs: nowMs + 2 * ACCOUNTING_BOUNDARY_BUCKET_MS });
-  assert.equal(db.portfolio.weekBaselineStatus, "period_start_snapshot_missing");
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
   assert.equal(db.portfolio.weekPnl, null);
   assert.equal(db.portfolio.pendingFinancialReconciliationWeek, 1);
   assert.equal(db.system.reduceOnlyMode, true);
@@ -410,7 +426,7 @@ test("failed historical verification leaves both weekPnl and the opening pause f
       : { code: "51000", data: [] }
   });
   assert.equal(db.portfolio.weekPnl, null);
-  assert.equal(db.portfolio.weekBaselineStatus, "period_start_snapshot_missing");
+  assert.equal(db.portfolio.weekBaselineStatus, "system_period_start_anchor_missing");
   assert.equal(db.portfolio.accountingHistoryBackfill.status, "failed");
   assert.equal(db.system.reduceOnlyMode, true);
   assert.ok(db.system.reduceOnlyReasons.includes("financial_reconciliation_pending"));

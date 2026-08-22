@@ -1,10 +1,10 @@
 import { currentEquityUsdt } from "./financialFacts.mjs";
 import { activeMandate, appendAudit, appendTrace, id, nowIso } from "./store.mjs";
 import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
+import { realizedPnlForFills, systemRealizedPnlSince, systemUnrealizedPnl } from "./systemTradeAccounting.mjs";
 import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
 import { syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { businessDateKey, businessDayStartMs, DEFAULT_BUSINESS_TIME_ZONE } from "./businessTime.mjs";
-import { recordedFeeCost } from "./financialValues.mjs";
 import { dedupePositions, groupPositionMirrors, newestAuthoritativePosition, positionFactObservedMs, positionMirrorKey } from "./positionView.mjs";
 import { marketFactFreshness } from "./marketFreshness.mjs";
 import { okxEnvironmentConfig } from "./okxEnvironment.mjs";
@@ -24,35 +24,7 @@ export function todayStart(at = Date.now(), timeZone = DEFAULT_BUSINESS_TIME_ZON
 }
 
 export function realizedPnlSince(db, sinceMs, untilMs = Date.now()) {
-  let knownTotal = 0;
-  let knownFacts = 0;
-  let pending = 0;
-  let total = 0;
-  for (const fill of db.fills || []) {
-    if (!['entry', 'close'].includes(fill?.kind)) continue;
-    const at = new Date(fill.exchangeFilledAt || fill.createdAt || fill.closedAt || 0).getTime();
-    if (!Number.isFinite(at) || at < sinceMs || at > untilMs) continue;
-    total += 1;
-    const fee = recordedFeeCost(fill);
-    const feeKnown = fee !== null && fill.estimatedFee !== true;
-    if (fill.kind === 'entry') {
-      if (feeKnown) { knownTotal -= fee; knownFacts += 1; }
-      else pending += 1;
-      continue;
-    }
-    const grossKnown = fill.realizedPnl !== null && fill.realizedPnl !== undefined && fill.realizedPnl !== '' && Number.isFinite(Number(fill.realizedPnl));
-    if (grossKnown) { knownTotal += Number(fill.realizedPnl); knownFacts += 1; }
-    else pending += 1;
-    if (feeKnown) { knownTotal -= fee; knownFacts += 1; }
-    else pending += 1;
-    if (fill.fundingReconciled === true && fill.fundingFeeUsdt !== null && fill.fundingFeeUsdt !== undefined && fill.fundingFeeUsdt !== '' && Number.isFinite(Number(fill.fundingFeeUsdt))) {
-      knownTotal += Number(fill.fundingFeeUsdt);
-      knownFacts += 1;
-    } else {
-      pending += 1;
-    }
-  }
-  return { value: knownTotal, knownTotal, reconciled: knownFacts, pending, total };
+  return realizedPnlForFills(db.fills || [], sinceMs, untilMs);
 }
 
 export function unrealizedPnl(db, options = {}) {
@@ -164,6 +136,87 @@ export function retainAccountingAnchors(db) {
   return db.accountingAnchors;
 }
 
+const SYSTEM_PNL_SCOPE = "system_trades_only";
+const SYSTEM_PNL_PROVENANCE_VERSION = 1;
+const SYSTEM_PNL_METHOD = "system_fills_plus_system_upl_change";
+
+function systemAccountingEvidenceFromSnapshot(db, snapshot) {
+  const equity = snapshotEquity(snapshot);
+  const observedMs = new Date(snapshot?.createdAt || 0).getTime();
+  if (snapshot?.status !== "ok" || !(equity > 0) || !Number.isFinite(observedMs)) {
+    return { ok: false, reason: "system_anchor_snapshot_invalid" };
+  }
+  const binding = {
+    accountId: snapshot.accountId || null,
+    apiKeyFingerprint: snapshot.apiKeyFingerprint || null,
+    environment: snapshot.environment || null,
+    exchange: snapshot.exchange || "OKX"
+  };
+  if (!binding.accountId || !binding.apiKeyFingerprint || !binding.environment) {
+    return { ok: false, reason: "system_anchor_binding_incomplete" };
+  }
+  const projected = systemUnrealizedPnl(db, { atMs: observedMs, binding, snapshot });
+  if (!projected.complete) {
+    return { ok: false, reason: projected.pendingPositions[0]?.reason || "system_anchor_attribution_incomplete", projected };
+  }
+  return {
+    ok: true,
+    observedMs,
+    binding,
+    equity,
+    systemUnrealizedPnlUsdt: projected.knownTotal,
+    attributionEvidenceHash: projected.attributionEvidenceHash
+  };
+}
+
+function systemAccountingAnchorId(snapshot) {
+  const observedMs = new Date(snapshot?.createdAt || 0).getTime();
+  if (!Number.isFinite(observedMs) || !snapshot?.accountId || !snapshot?.apiKeyFingerprint || !snapshot?.environment) return null;
+  return `system_accounting_anchor_${snapshot.accountId}_${snapshot.apiKeyFingerprint}_${snapshot.environment}_${Math.floor(observedMs / ACCOUNTING_ANCHOR_BUCKET_MS)}`;
+}
+
+function systemAccountingAnchorFromSnapshot(db, snapshot, existingEvidence = null) {
+  const evidence = existingEvidence || systemAccountingEvidenceFromSnapshot(db, snapshot);
+  if (!evidence.ok) return null;
+  const { observedMs, binding } = evidence;
+  return {
+    id: systemAccountingAnchorId(snapshot),
+    status: "ok",
+    exchange: binding.exchange,
+    accountId: binding.accountId,
+    apiKeyFingerprint: binding.apiKeyFingerprint,
+    environment: binding.environment,
+    sourceSnapshotId: snapshot.id || null,
+    createdAt: new Date(observedMs).toISOString(),
+    equityUsdt: evidence.equity,
+    pnlScope: SYSTEM_PNL_SCOPE,
+    provenanceSchemaVersion: SYSTEM_PNL_PROVENANCE_VERSION,
+    systemUnrealizedPnlUsdt: evidence.systemUnrealizedPnlUsdt,
+    pnlMethod: SYSTEM_PNL_METHOD,
+    attributionEvidenceHash: evidence.attributionEvidenceHash
+  };
+}
+
+export function retainSystemAccountingAnchors(db) {
+  db.portfolio ||= {};
+  db.portfolio.systemAccountingAnchors ||= [];
+  const existing = new Set(db.portfolio.systemAccountingAnchors.map((anchor) => anchor.id));
+  const snapshots = (db.accountSnapshots || []).slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  for (const snapshot of snapshots) {
+    const anchorId = systemAccountingAnchorId(snapshot);
+    if (!anchorId || existing.has(anchorId)) continue;
+    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot);
+    if (!evidence.ok) continue;
+    const anchor = systemAccountingAnchorFromSnapshot(db, snapshot, evidence);
+    db.portfolio.systemAccountingAnchors.push(anchor);
+    existing.add(anchor.id);
+  }
+  db.portfolio.systemAccountingAnchors = db.portfolio.systemAccountingAnchors
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, ACCOUNTING_ANCHOR_MAX);
+  return db.portfolio.systemAccountingAnchors;
+}
+
 function sameAccountingBinding(row, binding) {
   return Boolean(row && binding
     && row.accountId === binding.accountId
@@ -200,9 +253,9 @@ function resolveCurrentAccountingBinding(db) {
   return { ok: true, binding, currentSnapshot };
 }
 
-function accountingEvidenceProgress(db, binding, nowMs = Date.now()) {
-  const matching = [...(db.accountSnapshots || []), ...(db.accountingAnchors || [])].filter((row) => (
-    row?.status === "ok" && sameAccountingBinding(row, binding)
+function systemAccountingEvidenceProgress(db, binding, nowMs = Date.now()) {
+  const matching = (db.portfolio?.systemAccountingAnchors || []).filter((row) => (
+    validSystemAccountingBaseline(row, binding)
     && Number.isFinite(new Date(row.createdAt || 0).getTime())
   )).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   const oldestAt = matching[0]?.createdAt || null;
@@ -217,38 +270,55 @@ function accountingEvidenceProgress(db, binding, nowMs = Date.now()) {
   };
 }
 
-function baselineSnapshot(db, boundaryMs, binding, options = {}) {
-  const maxGapMs = Number(options.maxGapMs ?? process.env.MAX_ACCOUNTING_BASELINE_GAP_MS ?? 15 * 60_000);
-  return [...(db.accountSnapshots || []), ...(db.accountingAnchors || [])].filter((snapshot) => {
-    if (snapshot?.status !== "ok") return false;
-    if (snapshot.exchange && snapshot.exchange !== "OKX") return false;
-    if (!sameAccountingBinding(snapshot, binding)) return false;
-    const at = new Date(snapshot.createdAt || 0).getTime();
-    return Number.isFinite(at) && at <= boundaryMs && boundaryMs - at <= maxGapMs;
-  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+function validSystemAccountingBaseline(row, binding) {
+  return sameAccountingBinding(row, binding)
+    && row?.pnlScope === SYSTEM_PNL_SCOPE
+    && Number(row?.provenanceSchemaVersion) === SYSTEM_PNL_PROVENANCE_VERSION
+    && strictNumber(row?.equityUsdt) > 0
+    && strictNumber(row?.systemUnrealizedPnlUsdt) !== null
+    && row?.pnlMethod === SYSTEM_PNL_METHOD
+    && /^[a-f0-9]{64}$/i.test(String(row?.attributionEvidenceHash || ""));
 }
 
-function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
+function systemBaselineEvidence(db, boundaryMs, binding, options = {}) {
+  const maxGapMs = Number(options.maxGapMs ?? process.env.MAX_ACCOUNTING_BASELINE_GAP_MS ?? 15 * 60_000);
+  const anchors = (db.portfolio?.systemAccountingAnchors || []).filter((anchor) => {
+    if (!validSystemAccountingBaseline(anchor, binding)) return false;
+    const at = new Date(anchor.createdAt || 0).getTime();
+    return Number.isFinite(at) && at <= boundaryMs && boundaryMs - at <= maxGapMs;
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  if (anchors[0]) return { ok: true, source: anchors[0] };
+
+  const snapshots = (db.accountSnapshots || []).filter((snapshot) => {
+    if (snapshot?.status !== "ok" || !sameAccountingBinding(snapshot, binding)) return false;
+    const at = new Date(snapshot.createdAt || 0).getTime();
+    return Number.isFinite(at) && at <= boundaryMs && boundaryMs - at <= maxGapMs;
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  let reason = "system_period_start_anchor_missing";
+  for (const snapshot of snapshots) {
+    const evidence = systemAccountingEvidenceFromSnapshot(db, snapshot);
+    if (!evidence.ok) {
+      reason = evidence.reason || reason;
+      continue;
+    }
+    return { ok: true, source: systemAccountingAnchorFromSnapshot(db, snapshot) };
+  }
+  return { ok: false, reason };
+}
+
+function resolveSystemAccountingBaseline(db, kind, boundaryMs, options = {}) {
   db.portfolio ||= {};
-  db.portfolio.accountingBaselines ||= {};
+  db.portfolio.systemAccountingBaselines ||= {};
   const current = resolveCurrentAccountingBinding(db);
   if (!current.ok) return current;
   const binding = current.binding;
   const boundaryAt = new Date(boundaryMs).toISOString();
-  const existing = db.portfolio.accountingBaselines[kind];
+  const existing = db.portfolio.systemAccountingBaselines[kind];
   const existingBoundaryMs = new Date(existing?.boundaryAt || 0).getTime();
-  const existingValid = sameAccountingBinding(existing, binding)
-    && strictNumber(existing?.equityUsdt) > 0
-    && strictNumber(existing?.unrealizedPnlUsdt) !== null;
+  const existingValid = validSystemAccountingBaseline(existing, binding);
   if (existingValid && existing?.boundaryAt === boundaryAt) {
     return { ok: true, baseline: existing, effectiveBoundaryMs: boundaryMs, needsRefresh: false };
   }
-  // The rolling boundary advances every five minutes, while the authoritative
-  // OKX backfill task can run a few seconds/minutes after that boundary. Keep
-  // the immediately preceding verified baseline for at most one bucket. Its
-  // PnL window starts at the older boundary below, so this is conservative
-  // (slightly longer than 168h) and never omits the rollover interval. The
-  // authoritative entry point sees needsRefresh and replaces it in background.
   const rolloverGraceMs = Number(options.accountingBaselineRolloverGraceMs ?? ACCOUNTING_BOUNDARY_BUCKET_MS);
   if (kind === "rolling_168h" && existingValid
     && Number.isFinite(existingBoundaryMs)
@@ -262,44 +332,48 @@ function resolveAccountingBaseline(db, kind, boundaryMs, options = {}) {
     };
   }
 
-  const snapshot = baselineSnapshot(db, boundaryMs, binding, options);
-  const equity = snapshotEquity(snapshot);
-  const upl = snapshotUnrealized(snapshot);
-  if (!snapshot || !(equity > 0) || !upl.complete) {
-    return { ok: false, reason: !snapshot ? "period_start_snapshot_missing" : !(equity > 0) ? "period_start_equity_missing" : upl.reason };
-  }
+  const evidence = systemBaselineEvidence(db, boundaryMs, binding, options);
+  if (!evidence.ok) return evidence;
+  const source = evidence.source;
   const baseline = {
     kind,
     boundaryAt,
-    snapshotId: snapshot.id || null,
-    observedAt: snapshot.createdAt,
-    accountId: snapshot.accountId || null,
-    apiKeyFingerprint: snapshot.apiKeyFingerprint || null,
-    environment: snapshot.environment || null,
-    equityUsdt: equity,
-    unrealizedPnlUsdt: upl.value,
-    netExternalCashFlowUsdt: 0,
-    pnlMethod: "reconciled_fills_plus_upl_change",
+    snapshotId: source.sourceSnapshotId || null,
+    observedAt: source.createdAt,
+    accountId: source.accountId,
+    apiKeyFingerprint: source.apiKeyFingerprint,
+    environment: source.environment,
+    equityUsdt: Number(source.equityUsdt),
+    pnlScope: SYSTEM_PNL_SCOPE,
+    provenanceSchemaVersion: SYSTEM_PNL_PROVENANCE_VERSION,
+    systemUnrealizedPnlUsdt: Number(source.systemUnrealizedPnlUsdt),
+    pnlMethod: SYSTEM_PNL_METHOD,
+    attributionEvidenceHash: source.attributionEvidenceHash,
     createdAt: nowIso()
   };
-  db.portfolio.accountingBaselines[kind] = baseline;
+  db.portfolio.systemAccountingBaselines[kind] = baseline;
   return { ok: true, baseline, effectiveBoundaryMs: boundaryMs, needsRefresh: false };
 }
 
 export function refreshAccounting(db, options = {}) {
   const nowMs = Number(options.nowMs ?? Date.now());
   retainAccountingAnchors(db);
+  retainSystemAccountingAnchors(db);
   const timeZone = db.system?.businessTimeZone || DEFAULT_BUSINESS_TIME_ZONE;
   const equity = currentEquityUsdt(db);
+  const currentBinding = resolveCurrentAccountingBinding(db);
+  const systemBinding = currentBinding.ok ? { ...currentBinding.binding, exchange: "OKX" } : null;
   const dayStartMs = todayStart(nowMs, timeZone);
-  const realizedTodayState = realizedPnlSince(db, dayStartMs, nowMs);
+  const realizedTodayState = systemRealizedPnlSince(db, dayStartMs, nowMs, { binding: systemBinding });
   const realizedToday = realizedTodayState.value;
-  const unrealizedState = unrealizedPnl(db, { now: nowMs });
-  const unrealized = unrealizedState.knownTotal;
-  const dailyBaseline = resolveAccountingBaseline(db, "daily", dayStartMs, options);
-  const todayPnl = realizedTodayState.pending || !unrealizedState.complete || !dailyBaseline.ok
+  const accountUnrealizedState = unrealizedPnl(db, { now: nowMs });
+  const accountUnrealized = accountUnrealizedState.knownTotal;
+  const systemUnrealizedState = systemUnrealizedPnl(db, { now: nowMs, binding: systemBinding });
+  const systemUnrealized = systemUnrealizedState.knownTotal;
+  const dailyBaseline = resolveSystemAccountingBaseline(db, "daily", dayStartMs, options);
+  const todayPnl = realizedTodayState.pending || !systemUnrealizedState.complete || !dailyBaseline.ok
     ? null
-    : realizedToday + unrealized - Number(dailyBaseline.baseline.unrealizedPnlUsdt);
+    : realizedToday + systemUnrealized - Number(dailyBaseline.baseline.systemUnrealizedPnlUsdt);
 
   db.portfolio ||= {};
   if (equity) db.portfolio.totalEquityUsdt = equity;
@@ -307,31 +381,38 @@ export function refreshAccounting(db, options = {}) {
   db.portfolio.todayPnlPct = equity && todayPnl !== null ? Number(((todayPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.realizedPnlToday = realizedTodayState.pending ? null : Number(realizedToday.toFixed(2));
   db.portfolio.knownReconciledRealizedPnlToday = Number(realizedToday.toFixed(2));
-  db.portfolio.pendingFinancialReconciliationToday = realizedTodayState.pending + unrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1);
-  db.portfolio.unrealizedPnl = unrealizedState.complete ? Number(unrealized.toFixed(2)) : null;
-  db.portfolio.knownUnrealizedPnl = Number(unrealized.toFixed(2));
-  db.portfolio.pendingUnrealizedPositions = unrealizedState.pendingPositions;
+  db.portfolio.pendingFinancialReconciliationToday = realizedTodayState.pending + systemUnrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1);
+  db.portfolio.unrealizedPnl = accountUnrealizedState.complete ? Number(accountUnrealized.toFixed(2)) : null;
+  db.portfolio.knownUnrealizedPnl = Number(accountUnrealized.toFixed(2));
+  db.portfolio.pendingUnrealizedPositions = accountUnrealizedState.pendingPositions;
+  db.portfolio.systemUnrealizedPnl = systemUnrealizedState.complete ? Number(systemUnrealized.toFixed(2)) : null;
+  db.portfolio.knownSystemUnrealizedPnl = Number(systemUnrealized.toFixed(2));
+  db.portfolio.pendingSystemUnrealizedPositions = systemUnrealizedState.pendingPositions;
+  db.portfolio.systemUnrealizedAttributionEvidenceHash = systemUnrealizedState.attributionEvidenceHash;
+  db.portfolio.pnlScope = SYSTEM_PNL_SCOPE;
+  db.portfolio.pnlProvenanceSchemaVersion = SYSTEM_PNL_PROVENANCE_VERSION;
+  db.portfolio.pnlMethod = SYSTEM_PNL_METHOD;
   // 近 7 日盈亏（真实计算）：此前 weekPnl 是从不写入的死字段，导致 riskEngine 的"周亏损熔断"
   // 永远拿到 null → 实盘下每一笔计划都被这条死风控挡死。这里用 fills 真实计算补上。
   const weekEndMs = nowMs;
   // 风险窗口起点按五分钟桶对齐，与不可变会计锚点的采样粒度一致。
   // 这样基线不会每毫秒失效，同时窗口只会比 168h 多 0~5 分钟，偏保守而不会漏算亏损。
   const weekStartMs = rollingAccountingBoundary(weekEndMs);
-  const weeklyBaseline = resolveAccountingBaseline(db, "rolling_168h", weekStartMs, options);
+  const weeklyBaseline = resolveSystemAccountingBaseline(db, "rolling_168h", weekStartMs, options);
   const effectiveWeekStartMs = weeklyBaseline.ok
     ? Number(weeklyBaseline.effectiveBoundaryMs ?? new Date(weeklyBaseline.baseline.boundaryAt).getTime())
     : weekStartMs;
-  const realizedWeekState = realizedPnlSince(db, effectiveWeekStartMs, weekEndMs);
+  const realizedWeekState = systemRealizedPnlSince(db, effectiveWeekStartMs, weekEndMs, { binding: systemBinding });
   const realizedWeek = realizedWeekState.value;
-  const weekPnl = realizedWeekState.pending || !unrealizedState.complete || !weeklyBaseline.ok
+  const weekPnl = realizedWeekState.pending || !systemUnrealizedState.complete || !weeklyBaseline.ok
     ? null
-    : realizedWeek + unrealized - Number(weeklyBaseline.baseline.unrealizedPnlUsdt);
+    : realizedWeek + systemUnrealized - Number(weeklyBaseline.baseline.systemUnrealizedPnlUsdt);
   db.portfolio.weekPnl = weekPnl === null ? null : Number(weekPnl.toFixed(2));
   db.portfolio.weekPnlPct = equity && weekPnl !== null ? Number(((weekPnl / equity) * 100).toFixed(2)) : null;
   db.portfolio.knownReconciledRealizedPnlWeek = Number(realizedWeek.toFixed(2));
-  db.portfolio.pendingFinancialReconciliationWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length + (weeklyBaseline.ok ? 0 : 1);
-  db.portfolio.pendingTradeFinancialFactsToday = realizedTodayState.pending + unrealizedState.pendingPositions.length;
-  db.portfolio.pendingTradeFinancialFactsWeek = realizedWeekState.pending + unrealizedState.pendingPositions.length;
+  db.portfolio.pendingFinancialReconciliationWeek = realizedWeekState.pending + systemUnrealizedState.pendingPositions.length + (weeklyBaseline.ok ? 0 : 1);
+  db.portfolio.pendingTradeFinancialFactsToday = realizedTodayState.pending + systemUnrealizedState.pendingPositions.length;
+  db.portfolio.pendingTradeFinancialFactsWeek = realizedWeekState.pending + systemUnrealizedState.pendingPositions.length;
   db.portfolio.pendingDailyBaseline = dailyBaseline.ok ? 0 : 1;
   db.portfolio.pendingWeekBaseline = weeklyBaseline.ok ? 0 : 1;
   db.portfolio.weekWindowStartAt = new Date(effectiveWeekStartMs).toISOString();
@@ -343,7 +424,8 @@ export function refreshAccounting(db, options = {}) {
   db.portfolio.dailyWindowStartAt = new Date(dayStartMs).toISOString();
   db.portfolio.dailyWindowTimeZone = timeZone;
   db.portfolio.dailyStartEquityUsdt = dailyBaseline.ok ? Number(dailyBaseline.baseline.equityUsdt) : null;
-  db.portfolio.dailyStartUnrealizedPnlUsdt = dailyBaseline.ok ? Number(dailyBaseline.baseline.unrealizedPnlUsdt) : null;
+  db.portfolio.dailyStartUnrealizedPnlUsdt = dailyBaseline.ok ? Number(dailyBaseline.baseline.systemUnrealizedPnlUsdt) : null;
+  db.portfolio.dailyStartSystemUnrealizedPnlUsdt = db.portfolio.dailyStartUnrealizedPnlUsdt;
   db.portfolio.dailyBaselineStatus = dailyBaseline.ok ? "reconciled" : dailyBaseline.reason;
   db.portfolio.weekBaselineStatus = weeklyBaseline.ok ? "reconciled" : weeklyBaseline.reason;
   db.portfolio.accountingUpdatedAt = nowIso();
@@ -365,9 +447,9 @@ export function refreshAccounting(db, options = {}) {
         realizedToday: null,
         unrealized: db.portfolio.unrealizedPnl,
         remainingDailyLossUsdt: null,
-        pendingFinancialReconciliation: realizedTodayState.pending + unrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1),
+        pendingFinancialReconciliation: realizedTodayState.pending + systemUnrealizedState.pendingPositions.length + (dailyBaseline.ok ? 0 : 1),
         knownRealizedToday: Number(realizedToday.toFixed(2)),
-        pendingUnrealizedPositions: unrealizedState.pendingPositions.length
+        pendingUnrealizedPositions: systemUnrealizedState.pendingPositions.length
       };
     }
     const budgetWasExhausted = db.system.dailyLossBudgetStatus === "exhausted";
@@ -416,16 +498,15 @@ export function refreshAccounting(db, options = {}) {
   };
 }
 
-// 核算任务的权威入口：先按本地不可变快照计算；仅当唯一缺口是滚动 168h
-// 起点快照时，才尝试用当前 Key 读取的 OKX 账单、仓位历史与边界标记价格重建。
-// 缺少可验证基线时回补失败继续 fail-closed；边界刚切换时可保守沿用上一桶
-// （完整纳入较长窗口的成交）最多五分钟，后台回补失败也不会制造周期性瞬时暂停。
+// 核算任务的权威入口：system-only 锚点负责交易预算；历史 OKX 账单回补仅保留为
+// account-wide 运维证据，不能授权或替代缺失的 system-only rolling baseline。
+// 缺少可验证的系统锚点时继续 fail-closed，由后续精确快照自然积累恢复。
 export async function refreshAccountingAuthoritatively(db, options = {}) {
   options.assertLease?.();
   const nowMs = Number(options.nowMs ?? Date.now());
   let result = refreshAccounting(db, { ...options, nowMs });
   const boundaryMs = rollingAccountingBoundary(nowMs);
-  const weekBaselineMissing = db.portfolio?.weekBaselineStatus === "period_start_snapshot_missing";
+  const weekBaselineMissing = db.portfolio?.weekBaselineStatus === "system_period_start_anchor_missing";
   const weekBaselineNeedsRefresh = db.portfolio?.weekBaselineNeedsRefresh === true;
   if (!weekBaselineMissing && !weekBaselineNeedsRefresh) {
     if (db.portfolio?.accountingHistoryBackfill?.status === "reconciled") {
@@ -462,7 +543,7 @@ export async function refreshAccountingAuthoritatively(db, options = {}) {
     };
     return result;
   }
-  const progress = accountingEvidenceProgress(db, current.binding, nowMs);
+  const progress = systemAccountingEvidenceProgress(db, current.binding, nowMs);
   const snapshotAtMs = new Date(current.currentSnapshot?.createdAt || 0).getTime();
   const snapshotMaxAgeMs = Number(options.snapshotMaxAgeMs ?? process.env.MAX_ACCOUNT_SNAPSHOT_AGE_MS ?? 10 * 60_000);
   if (!Number.isFinite(snapshotAtMs) || snapshotAtMs < boundaryMs || nowMs - snapshotAtMs > snapshotMaxAgeMs || snapshotAtMs > nowMs + 30_000) {
@@ -477,6 +558,10 @@ export async function refreshAccountingAuthoritatively(db, options = {}) {
   }
 
   const previous = db.portfolio.accountingHistoryBackfill || {};
+  if (previous.status === "reconciled_account_evidence_only"
+    && previous.boundaryAt === new Date(boundaryMs).toISOString()) {
+    return { ...result, historyBackfill: previous };
+  }
   const retryMs = Number(options.historyBackfillRetryMs ?? process.env.ACCOUNTING_HISTORY_BACKFILL_RETRY_MS ?? 5 * 60_000);
   const previousAttemptMs = new Date(previous.attemptedAt || 0).getTime();
   if (options.forceHistoryBackfill !== true && previous.status === "failed"
@@ -519,8 +604,8 @@ export async function refreshAccountingAuthoritatively(db, options = {}) {
   db.portfolio.accountingBaselines.rolling_168h = backfill.baseline;
   const firstRecovery = !previous.lastSuccessfulAt;
   db.portfolio.accountingHistoryBackfill = {
-    status: "reconciled",
-    reason: null,
+    status: "reconciled_account_evidence_only",
+    reason: "account_history_not_authorized_for_system_pnl",
     boundaryAt: backfill.baseline.boundaryAt,
     verifiedThroughAt: backfill.baseline.verifiedThroughAt,
     attemptedAt: nowIso(),
@@ -532,9 +617,9 @@ export async function refreshAccountingAuthoritatively(db, options = {}) {
     ...progress
   };
   if (firstRecovery) {
-    appendAudit(db, `用 OKX 权威历史重建近 7 日核算基线：账单 ${backfill.summary.billCount} 条，跨期仓位 ${backfill.summary.spanningPositionCount} 个`, "rolling_168h_accounting_baseline", "Accounting", "info");
+    appendAudit(db, `用 OKX 权威历史重建账户级近 7 日核算证据（不授权系统交易 PnL）：账单 ${backfill.summary.billCount} 条，跨期仓位 ${backfill.summary.spanningPositionCount} 个`, "rolling_168h_accounting_baseline", "Accounting", "info");
   }
-  appendTrace(db, "accounting_backfill", "近 7 日核算历史回补完成", "ok");
+  appendTrace(db, "accounting_backfill", "账户级近 7 日核算历史回补完成；等待 system-only 锚点", "guarded");
   result = refreshAccounting(db, { ...options, nowMs });
   return { ...result, historyBackfill: db.portfolio.accountingHistoryBackfill };
 }

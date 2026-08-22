@@ -14,15 +14,31 @@ function dbFixture(now) {
   const dayStart = businessDayStartMs(now, "Asia/Shanghai");
   const weekStart = now - 7 * 24 * 60 * 60_000;
   const binding = { accountId: "account-a", apiKeyFingerprint: positionFactFingerprint, environment: "production" };
+  const execution = {
+    id: "execution", planId: "plan", status: "protecting", exchange: "OKX", accountId: binding.accountId,
+    environment: binding.environment, symbol: "BTC/USDT", direction: "long", filledQuantity: 0.01,
+    entryFilledAt: at(weekStart - 1_000)
+  };
+  const boundaryPosition = [{ instId: "BTC-USDT-SWAP", posSide: "long", pos: "1", coinSize: 0.01, upl: "0" }];
   return {
-    meta: {}, auditLogs: [], traces: [], riskIncidents: [], fills: [], executionOrders: [], exchangeAccounts: [{ id: binding.accountId, exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint: binding.apiKeyFingerprint }], reconciliationReports: [], realtimeConnections: [],
+    meta: {}, auditLogs: [], traces: [], riskIncidents: [],
+    fills: [{
+      id: "entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId,
+      exchange: "OKX", accountId: binding.accountId, environment: binding.environment, symbol: execution.symbol,
+      direction: execution.direction, quantity: 0.01, feeUsdt: 0, estimatedFee: false,
+      exchangeFilledAt: execution.entryFilledAt, createdAt: execution.entryFilledAt,
+      tradeAttribution: { schemaVersion: 1, scope: "system", origin: "execution_engine", executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", evidence: { accountId: binding.accountId, environment: binding.environment } }
+    }],
+    executionOrders: [execution],
+    tradePlans: [{ id: execution.planId, exchange: "OKX", accountId: binding.accountId, environment: binding.environment, symbol: execution.symbol, direction: execution.direction }],
+    exchangeAccounts: [{ id: binding.accountId, exchange: "OKX", readEnabled: true, tradeEnabled: true, apiKeyFingerprint: binding.apiKeyFingerprint }], reconciliationReports: [], realtimeConnections: [],
     system: { liveTradingEnabled: true, autonomyEnabled: true, killSwitch: false, professionalRiskMode: true, businessTimeZone: "Asia/Shanghai" },
     portfolio: { totalEquityUsdt: 1_000 },
     positions: [],
     accountSnapshots: [
       { id: "current", status: "ok", exchange: "OKX", ...binding, createdAt: observedAt, totalEquityUsdt: 1_000, positions: [] },
-      { id: "day-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(dayStart), totalEquityUsdt: 1_000, positions: [] },
-      { id: "week-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(weekStart), totalEquityUsdt: 1_000, positions: [] }
+      { id: "day-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(dayStart), totalEquityUsdt: 1_000, positions: boundaryPosition },
+      { id: "week-base", status: "ok", exchange: "OKX", ...binding, createdAt: at(weekStart), totalEquityUsdt: 1_000, positions: boundaryPosition }
     ],
     markets: [{
       symbol: "BTC/USDT", price: 59_000, spreadBps: 2, depthUsdt: 100_000,
@@ -39,7 +55,7 @@ function dbFixture(now) {
 
 function mirror(source, pnl, observedAt, extra = {}) {
   return {
-    id: `${source}-${pnl}`, source, exchange: "OKX", accountId: "account-a", instId: "BTC-USDT-SWAP", symbol: "BTC/USDT",
+    id: `${source}-${pnl}`, source, exchange: "OKX", accountId: "account-a", environment: "production", instId: "BTC-USDT-SWAP", symbol: "BTC/USDT",
     direction: "long", coinSize: 0.01, size: 1, entry: 60_000, mark: 59_000, pnl,
     ...(source === "exchange_ws" ? { exchangeObservedAt: observedAt } : { rawSyncedAt: observedAt }),
     ...extra

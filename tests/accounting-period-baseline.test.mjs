@@ -16,15 +16,28 @@ function fixture(now, { baselineUpl = 0, currentUpl = 0, baselineEquity = 1_000,
   const apiKeyFingerprint = fingerprintFor(process.env.OKX_API_KEY);
   const environment = "production";
   const basePosition = baselineUpl === 0 ? [] : [{ instId: "BTC-USDT-SWAP", pos: "1", coinSize: 0.01, upl: String(baselineUpl) }];
+  const entryAt = baselineUpl === 0 ? dayStart + 1_000 : weekStart - 1_000;
+  const execution = {
+    id: "execution", planId: "plan", status: "protecting", exchange: "OKX", accountId, environment,
+    symbol: "BTC/USDT", direction: "long", filledQuantity: 0.01, entryFilledAt: iso(entryAt)
+  };
   return {
-    meta: {}, auditLogs: [], traces: [], riskIncidents: [], fills: [], executionOrders: [],
+    meta: {}, auditLogs: [], traces: [], riskIncidents: [],
+    fills: [{
+      id: "entry", kind: "entry", executionOrderId: execution.id, planId: execution.planId, tradePlanId: execution.planId,
+      exchange: "OKX", accountId, environment, symbol: execution.symbol, direction: execution.direction,
+      quantity: 0.01, feeUsdt: 0, estimatedFee: false, exchangeFilledAt: iso(entryAt), createdAt: iso(entryAt),
+      tradeAttribution: { schemaVersion: 1, scope: "system", origin: "execution_engine", executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", evidence: { accountId, environment } }
+    }],
+    executionOrders: [execution],
+    tradePlans: [{ id: execution.planId, exchange: "OKX", accountId, environment, symbol: execution.symbol, direction: execution.direction }],
     system: { businessTimeZone: "Asia/Shanghai", autonomyEnabled: true },
     portfolio: { totalEquityUsdt: currentEquity },
     mandates: [{ id: "m1", status: "active", validUntil: "2099-01-01T00:00:00.000Z", maxDailyLossPct: 5 }],
     exchangeAccounts: [{ id: accountId, exchange: "OKX", readEnabled: true, tradeEnabled: false, apiKeyFingerprint }],
     positions: currentUpl === null ? [] : [{
       id: "position", source: "exchange_rest", exchange: "OKX", accountId, symbol: "BTC/USDT", instId: "BTC-USDT-SWAP",
-      direction: "long", coinSize: 0.01, entry: 60_000, mark: 59_000, pnl: currentUpl, rawSyncedAt: iso(now - 1_000)
+      direction: "long", environment, coinSize: 0.01, entry: 60_000, mark: 59_000, pnl: currentUpl, rawSyncedAt: iso(now - 1_000)
     }],
     markets: [],
     accountSnapshots: [
@@ -79,7 +92,7 @@ test("missing period-start evidence fails closed instead of charging full curren
   const result = refreshAccounting(db, { nowMs: now });
   assert.equal(result.todayPnl, null);
   assert.equal(result.remainingDailyLossUsdt, null);
-  assert.equal(db.portfolio.dailyBaselineStatus, "period_start_snapshot_missing");
+  assert.equal(db.portfolio.dailyBaselineStatus, "system_period_start_anchor_missing");
   assert.equal(db.system.reduceOnlyMode, true);
 });
 
@@ -114,7 +127,7 @@ test("accounting baseline is invalidated after API key rotation until a newly bo
   });
   const recovered = refreshAccounting(db, { nowMs: now + 3_000 });
   assert.equal(recovered.todayPnl, null, "old period baseline must not be reused for the rotated key");
-  assert.equal(db.portfolio.dailyBaselineStatus, "period_start_snapshot_missing");
+  assert.equal(db.portfolio.dailyBaselineStatus, "system_period_start_anchor_missing");
   process.env.OKX_API_KEY = "accounting-period-key-a";
 });
 
@@ -167,7 +180,7 @@ test("compact accounting anchors keep a moving rolling-168h boundary reachable a
   refreshAccounting(db, { nowMs: now + 60_000 });
   assert.equal(db.portfolio.weekBaselineStatus, "reconciled");
   assert.equal(db.portfolio.weekPnl, 0);
-  assert.equal(db.portfolio.accountingBaselines.rolling_168h.observedAt, iso(now - 7 * 24 * 60 * 60_000));
+  assert.equal(db.portfolio.systemAccountingBaselines.rolling_168h.observedAt, iso(now - 7 * 24 * 60 * 60_000));
 });
 
 test.after(() => {
