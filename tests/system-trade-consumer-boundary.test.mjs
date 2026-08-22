@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { posix as pathPosix } from "node:path";
 import test from "node:test";
+import { Linter } from "eslint";
 
 import { performanceReport } from "../server/accounting.mjs";
 import { buildClosedTrades, computeBehaviorProfile } from "../server/behaviorProfile.mjs";
@@ -31,24 +33,71 @@ function serverSource(fileName) {
   return readFileSync(new URL(`../server/${fileName}`, import.meta.url), "utf8");
 }
 
-function namedImports(source) {
-  return [...source.matchAll(/\bimport\s*\{([\s\S]*?)\}\s*from\s*["']([^"']+)["']/g)]
-    .flatMap((match) => match[1].split(",").map((binding) => ({
-      imported: binding.trim().split(/\s+as\s+/i)[0],
-      source: match[2]
-    })).filter((binding) => binding.imported));
+function importDeclarations(source, fileName = "fixture.mjs") {
+  const declarations = [];
+  const linter = new Linter();
+  const messages = linter.verify(source, [{
+    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+    plugins: {
+      boundary: {
+        rules: {
+          collectImports: {
+            create() {
+              return {
+                ImportDeclaration(node) {
+                  declarations.push({
+                    source: String(node.source.value),
+                    specifiers: node.specifiers.map((specifier) => ({
+                      type: specifier.type,
+                      imported: specifier.type === "ImportSpecifier"
+                        ? String(specifier.imported.name ?? specifier.imported.value)
+                        : specifier.type === "ImportNamespaceSpecifier" ? "*" : "default",
+                      local: specifier.local.name
+                    }))
+                  });
+                }
+              };
+            }
+          }
+        }
+      }
+    },
+    rules: { "boundary/collectImports": "error" }
+  }], { filename: fileName });
+  const fatalMessages = messages.filter((message) => message.fatal);
+  if (fatalMessages.length) {
+    throw new Error(`Unable to parse ${fileName}: ${fatalMessages.map((message) => message.message).join("; ")}`);
+  }
+  return declarations;
 }
 
-function moduleImports(source) {
-  return [...source.matchAll(/\bimport(?:\s+[\s\S]*?\s+from\s+|\s*)["']([^"']+)["']/g)]
-    .map((match) => match[1]);
+function canonicalServerTarget(dependency, fileName = "fixture.mjs") {
+  if (!dependency.startsWith(".")) return dependency;
+  const importer = fileName.startsWith("server/") ? fileName : `server/${fileName}`;
+  return pathPosix.normalize(pathPosix.join(pathPosix.dirname(importer), dependency));
 }
 
-function rawLifecycleImports(source) {
-  return namedImports(source).filter(({ imported, source: dependency }) => (
-    imported === "groupClosedTradeLifecycles"
-      && ["./tradeLifecycle.mjs", "./tradeReviewQueue.mjs"].includes(dependency)
-  ));
+const RAW_LIFECYCLE_TARGETS = new Set(["server/tradeLifecycle.mjs", "server/tradeReviewQueue.mjs"]);
+
+function rawLifecycleImports(source, fileName = "fixture.mjs") {
+  return importDeclarations(source, fileName).flatMap((declaration) => {
+    if (!RAW_LIFECYCLE_TARGETS.has(canonicalServerTarget(declaration.source, fileName))) return [];
+    return declaration.specifiers
+      .filter((specifier) => specifier.imported === "groupClosedTradeLifecycles" || specifier.type === "ImportNamespaceSpecifier")
+      .map((specifier) => ({ imported: specifier.imported, source: declaration.source }));
+  });
+}
+
+const PROJECTION_LEAF_IMPORT_TARGETS = new Set([
+  "server/tradeLifecycle.mjs",
+  "server/positionIdentity.mjs",
+  "server/executionStates.mjs"
+]);
+
+function projectionLeafImportViolations(source, fileName = "systemTradeProjection.mjs") {
+  return importDeclarations(source, fileName)
+    .filter((declaration) => !PROJECTION_LEAF_IMPORT_TARGETS.has(canonicalServerTarget(declaration.source, fileName)))
+    .map((declaration) => declaration.source);
 }
 
 test("static raw-lifecycle guard detects direct and aliased consumer imports", () => {
@@ -58,6 +107,16 @@ test("static raw-lifecycle guard detects direct and aliased consumer imports", (
   assert.deepEqual(rawLifecycleImports('import { groupClosedTradeLifecycles as groupRaw } from "./tradeReviewQueue.mjs";'), [
     { imported: "groupClosedTradeLifecycles", source: "./tradeReviewQueue.mjs" }
   ]);
+});
+
+test("static raw-lifecycle guard catches namespace and normalized-path mutations without matching inert text", () => {
+  assert.equal(rawLifecycleImports('import * as lifecycle from "./tradeLifecycle.mjs";').length, 1);
+  assert.equal(rawLifecycleImports('import { groupClosedTradeLifecycles as groupRaw } from "./x/../tradeReviewQueue.mjs";').length, 1);
+  assert.deepEqual(rawLifecycleImports(`
+    // import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";
+    const example = \`import { groupClosedTradeLifecycles } from "./tradeReviewQueue.mjs";\`;
+    export { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";
+  `), []);
 });
 
 test("system consumers cannot import raw lifecycle grouping", () => {
@@ -74,12 +133,31 @@ test("execution reconciliation remains the explicit raw lifecycle exception", ()
 });
 
 test("system trade projection remains a leaf above lifecycle primitives", () => {
-  const dependencies = moduleImports(serverSource("systemTradeProjection.mjs"));
-  const forbidden = dependencies.filter((dependency) => (
-    /(?:^|\/)[^/]*(?:accounting|review|route)[^/]*\.mjs$/i.test(dependency)
-      || dependency === "./systemTradeProjection.mjs"
-  ));
-  assert.deepEqual(forbidden, []);
+  assert.deepEqual(projectionLeafImportViolations(serverSource("systemTradeProjection.mjs")), []);
+});
+
+test("projection leaf guard permits only its exact lower-level imports", () => {
+  assert.deepEqual(projectionLeafImportViolations(`
+    import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";
+    import { canonicalSymbol } from "./positionIdentity.mjs";
+    import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+  `), []);
+
+  for (const dependency of [
+    "./professionalAnalytics.mjs",
+    "./telegramNotifier.mjs",
+    "./coreOverview.mjs",
+    "./reviewEngine.mjs",
+    "./routes/posters.mjs",
+    "./x/../systemTradeProjection.mjs"
+  ]) {
+    assert.equal(projectionLeafImportViolations(`import * as upstream from "${dependency}";`).length, 1, dependency);
+  }
+
+  assert.deepEqual(projectionLeafImportViolations(`
+    // import "./professionalAnalytics.mjs";
+    const example = \`import "./telegramNotifier.mjs";\`;
+  `), []);
 });
 
 function reconciledLeg(fill) {

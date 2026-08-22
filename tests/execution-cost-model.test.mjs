@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildSlippageCalibration, estimateExecutionCost, maxNotionalForImpact } from "../server/executionCostModel.mjs";
+import { systemTradeFills } from "../server/systemTradeProjection.mjs";
 import { addSystemExecution, stampFixtureSystemAttribution } from "./helpers/system-trade-fixtures.mjs";
 
 function systemDb(values) {
@@ -37,6 +38,25 @@ test("calibrated slippage above the mandate impact cap yields zero capacity", ()
   assert.equal(maxNotionalForImpact(db, { symbol: "BTC/USDT", spreadBps: 2, depthUsdt: 100000, maxImpactBps: 15 }), 0);
 });
 
+test("full-account manual real fills keep the conservative execution-cost floor active", () => {
+  const db = {
+    fills: [20, 21, 22, 23, 24].map((slippageBps, index) => ({
+      id: `manual-cost-fill-${index}`,
+      symbol: "BTC/USDT",
+      direction: "long",
+      kind: "entry",
+      quantity: 1,
+      slippageBps
+    }))
+  };
+
+  const calibration = buildSlippageCalibration(db, "BTC/USDT");
+  assert.equal(calibration.samples, 5);
+  assert.equal(calibration.ready, true);
+  assert.equal(calibration.p75Bps, 23);
+  assert.equal(maxNotionalForImpact(db, { symbol: "BTC/USDT", spreadBps: 2, depthUsdt: 100000, maxImpactBps: 15 }), 0);
+});
+
 test("missing order-book fields are not coerced into zero-cost liquidity", () => {
   const db = { fills: [] };
   const estimate = estimateExecutionCost(db, { symbol: "BTC/USDT", spreadBps: null, depthUsdt: 100000, notionalUsdt: 100 });
@@ -45,17 +65,21 @@ test("missing order-book fields are not coerced into zero-cost liquidity", () =>
   assert.equal(maxNotionalForImpact(db, { symbol: "BTC/USDT", spreadBps: null, depthUsdt: 100000, maxImpactBps: 15 }), null);
 });
 
-test("manual and pending entries cannot change system calibration, reward-risk, or capacity", () => {
-  const baseline = systemDb([20, 21, 22, 23, 24]);
-  const db = structuredClone(baseline);
-  db.fills.push(
-    { id: "manual-entry", kind: "entry", symbol: "BTC/USDT", direction: "long", slippageBps: 200 },
+test("analytics can explicitly project system fills without weakening the full-account safety view", () => {
+  const baseline = systemDb([1, 2, 3, 4, 5]);
+  const fullAccountDb = structuredClone(baseline);
+  fullAccountDb.fills.push(
+    ...[20, 21, 22, 23, 24].map((slippageBps, index) => ({
+      id: `manual-entry-${index}`, kind: "entry", symbol: "BTC/USDT", direction: "long", slippageBps
+    })),
     { id: "pending-entry", kind: "entry", executionOrderId: "cost-exec", symbol: "BTC/USDT", direction: "long", slippageBps: 300,
       tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } }
   );
-  const input = { symbol: "BTC/USDT", spreadBps: 2, depthUsdt: 100000, notionalUsdt: 100 };
+  const systemOnlyDb = { ...fullAccountDb, fills: systemTradeFills(fullAccountDb) };
   const capInput = { symbol: "BTC/USDT", spreadBps: 2, depthUsdt: 100000, maxImpactBps: 15 };
-  assert.deepEqual(buildSlippageCalibration(db, "BTC/USDT"), buildSlippageCalibration(baseline, "BTC/USDT"));
-  assert.deepEqual(estimateExecutionCost(db, input), estimateExecutionCost(baseline, input));
-  assert.equal(maxNotionalForImpact(db, capInput), maxNotionalForImpact(baseline, capInput));
+
+  assert.deepEqual(buildSlippageCalibration(systemOnlyDb, "BTC/USDT"), buildSlippageCalibration(baseline, "BTC/USDT"));
+  assert.ok(buildSlippageCalibration(fullAccountDb, "BTC/USDT").p75Bps > buildSlippageCalibration(systemOnlyDb, "BTC/USDT").p75Bps);
+  assert.equal(maxNotionalForImpact(fullAccountDb, capInput), 0);
+  assert.ok(maxNotionalForImpact(systemOnlyDb, capInput) > 0);
 });
