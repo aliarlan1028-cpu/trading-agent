@@ -32,6 +32,11 @@ export const USER_TASK_HANDLERS = Object.freeze([
 const USER_TASK_HANDLER_SET = new Set(USER_TASK_HANDLERS);
 const MAX_TIMEOUT_MS = 2_147_000_000;
 
+function sqliteContentionCode(error) {
+  const code = String(error?.code || "");
+  return /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(code) ? code : null;
+}
+
 function localLeaseApi(db) {
   return {
     acquire(resource, ownerId, ttlMs) {
@@ -278,7 +283,19 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
   const leaseTtlMs = Math.max(5_000, Number(options.leaseTtlMs || 60_000));
   const leaseResource = `scheduler:${concurrencyKey}`;
   const ownerId = `${runtime.ownerId}:${id("jobowner")}`;
-  const lease = leaseApi.acquire(leaseResource, ownerId, leaseTtlMs);
+  let lease;
+  try {
+    lease = leaseApi.acquire(leaseResource, ownerId, leaseTtlMs);
+  } catch (error) {
+    // A second maintenance/read-only process can briefly hold SQLite past its
+    // busy timeout. Missing one scheduler tick is safer than letting an
+    // unhandled lease-acquisition rejection terminate the server process.
+    const code = sqliteContentionCode(error);
+    if (!code) throw error;
+    task.lastError = `scheduler_lease_acquire_failed:${code}`;
+    appendTrace(db, "scheduled_task", `${task.name || task.id} 暂未取得调度租约：${code}`, "warning");
+    return { status: "lease_unavailable", taskId: task.id, error: code };
+  }
   if (!lease?.acquired) return recordRun(db, task, "skipped_locked", "任务共享租约由另一运行实例持有", trigger, saveDb);
   const abortController = new AbortController();
   const maxRunMs = Number(task.maxRunMs);
@@ -300,7 +317,15 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
         if (reason instanceof Error) throw reason;
         throw new Error(String(reason || "scheduler_task_aborted"));
       }
-      const renewed = leaseApi.renew(leaseResource, ownerId, lease.fencingToken, leaseTtlMs);
+      let renewed;
+      try {
+        renewed = leaseApi.renew(leaseResource, ownerId, lease.fencingToken, leaseTtlMs);
+      } catch (error) {
+        if (!sqliteContentionCode(error)) throw error;
+        const leaseError = new LeaseLostError("scheduler_lease_renewal_failed");
+        abortController.abort(leaseError);
+        throw leaseError;
+      }
       if (!renewed?.renewed) {
         abortController.abort(new LeaseLostError());
         throw new LeaseLostError();
@@ -369,7 +394,16 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
     if (deadline) clearTimeout(deadline);
     clearInterval(heartbeat);
     runtime.activeRuns.delete(concurrencyKey);
-    leaseApi.release(leaseResource, ownerId, lease.fencingToken);
+    try {
+      leaseApi.release(leaseResource, ownerId, lease.fencingToken);
+    } catch (error) {
+      const code = sqliteContentionCode(error);
+      if (!code) throw error;
+      // The fenced lease expires naturally. A transient release failure must
+      // not overturn a handler result or crash a detached scheduler callback.
+      lockEntry.releaseError = code;
+      appendTrace(db, "scheduled_task", `${task.name || task.id} 调度租约等待自动过期：${lockEntry.releaseError}`, "warning");
+    }
     lockEntry.locked = false;
     lockEntry.releasedAt = nowIso();
     // 落盘统一由 recordRun 负责(skipPersist 语义才能生效);此前 finally 无条件再全量

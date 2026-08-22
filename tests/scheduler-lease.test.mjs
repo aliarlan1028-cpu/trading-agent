@@ -64,6 +64,77 @@ test("fencing owner mismatch cannot renew or release another scheduler run", () 
   assert.equal(leases.active.has("scheduler:key"), true);
 });
 
+test("a transient SQLite lease acquisition failure does not reject or run the task", async () => {
+  let calls = 0;
+  registerTaskHandler("lease_busy_acquire", async () => {
+    calls += 1;
+    return { status: "ok" };
+  });
+  const busy = Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+  const api = {
+    acquire() { throw busy; },
+    renew() { throw new Error("renew must not run"); },
+    release() { throw new Error("release must not run"); }
+  };
+  const task = { id: "task_busy", name: "busy", enabled: true, handler: "lease_busy_acquire", type: "Every", schedule: "1m" };
+  const db = dbWith(task);
+
+  const result = await runTask(db, task.id, null, "scheduler", { leaseApi: api });
+
+  assert.equal(result.status, "lease_unavailable");
+  assert.equal(result.error, "SQLITE_BUSY");
+  assert.equal(calls, 0);
+  assert.equal(db.jobRuns.length, 0);
+});
+
+test("a non-SQLite lease acquisition defect is not hidden as transient contention", async () => {
+  const defect = new Error("lease adapter defect");
+  const api = {
+    acquire() { throw defect; },
+    renew() { throw new Error("renew must not run"); },
+    release() { throw new Error("release must not run"); }
+  };
+  const task = { id: "task_defect", name: "defect", enabled: true, handler: "lease_busy_acquire", type: "Every", schedule: "1m" };
+
+  await assert.rejects(
+    runTask(dbWith(task), task.id, null, "scheduler", { leaseApi: api }),
+    (error) => error === defect
+  );
+});
+
+test("a transient lease renewal exception is handled as lease loss", async () => {
+  registerTaskHandler("lease_busy_renew", async (_db, _task, context) => {
+    context.assertLease();
+    return { status: "ok" };
+  });
+  const api = {
+    acquire: (_resource, ownerId) => ({ acquired: true, ownerId, fencingToken: 4, expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+    renew() { throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }); },
+    release: () => true
+  };
+  const task = { id: "task_busy_renew", name: "busy renew", enabled: true, handler: "lease_busy_renew", type: "Every", schedule: "1m" };
+
+  const result = await runTask(dbWith(task), task.id, null, "scheduler", { leaseApi: api });
+
+  assert.equal(result.run.status, "lease_lost");
+  assert.equal(task.lastError, "scheduler_lease_lost");
+});
+
+test("a transient lease release exception cannot overturn a completed task", async () => {
+  registerTaskHandler("lease_busy_release", async () => ({ status: "ok" }));
+  const api = {
+    acquire: (_resource, ownerId) => ({ acquired: true, ownerId, fencingToken: 5, expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+    renew: () => ({ renewed: true, expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+    release() { throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }); }
+  };
+  const task = { id: "task_busy_release", name: "busy release", enabled: true, handler: "lease_busy_release", type: "Every", schedule: "1m" };
+
+  const result = await runTask(dbWith(task), task.id, null, "scheduler", { leaseApi: api });
+
+  assert.equal(result.run.status, "ok");
+  assert.equal(task.lastError, null);
+});
+
 test("lease loss inside a handler fences every later side effect", async () => {
   const effects = [];
   registerTaskHandler("lease_fenced_effects", async (_db, _task, context) => {
