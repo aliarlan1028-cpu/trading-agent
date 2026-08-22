@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { posix as pathPosix } from "node:path";
+import { normalize as normalizePath } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { Linter } from "eslint";
 
 import { performanceReport } from "../server/accounting.mjs";
@@ -71,17 +72,37 @@ function importDeclarations(source, fileName = "fixture.mjs") {
   return declarations;
 }
 
-function canonicalServerTarget(dependency, fileName = "fixture.mjs") {
-  if (!dependency.startsWith(".")) return dependency;
-  const importer = fileName.startsWith("server/") ? fileName : `server/${fileName}`;
-  return pathPosix.normalize(pathPosix.join(pathPosix.dirname(importer), dependency));
+const SERVER_DIRECTORY_URL = new URL("../server/", import.meta.url);
+const MALFORMED_MODULE_TARGET = Symbol("malformed_module_target");
+
+function serverFileUrl(fileName) {
+  const relativeName = fileName.startsWith("server/") ? fileName.slice("server/".length) : fileName;
+  return new URL(relativeName, SERVER_DIRECTORY_URL);
 }
 
-const RAW_LIFECYCLE_TARGETS = new Set(["server/tradeLifecycle.mjs", "server/tradeReviewQueue.mjs"]);
+function canonicalServerTarget(dependency, fileName = "fixture.mjs") {
+  if (!dependency.startsWith(".")) return dependency;
+  try {
+    const resolved = new URL(dependency, serverFileUrl(fileName));
+    resolved.search = "";
+    resolved.hash = "";
+    if (resolved.protocol !== "file:") return resolved.href;
+    return normalizePath(fileURLToPath(resolved));
+  } catch {
+    return MALFORMED_MODULE_TARGET;
+  }
+}
+
+const RAW_LIFECYCLE_TARGETS = new Set([
+  fileURLToPath(new URL("tradeLifecycle.mjs", SERVER_DIRECTORY_URL)),
+  fileURLToPath(new URL("tradeReviewQueue.mjs", SERVER_DIRECTORY_URL))
+]);
 
 function rawLifecycleImports(source, fileName = "fixture.mjs") {
   return importDeclarations(source, fileName).flatMap((declaration) => {
-    if (!RAW_LIFECYCLE_TARGETS.has(canonicalServerTarget(declaration.source, fileName))) return [];
+    const target = canonicalServerTarget(declaration.source, fileName);
+    if (target === MALFORMED_MODULE_TARGET) return [{ imported: "*", source: declaration.source }];
+    if (!RAW_LIFECYCLE_TARGETS.has(target)) return [];
     return declaration.specifiers
       .filter((specifier) => specifier.imported === "groupClosedTradeLifecycles" || specifier.type === "ImportNamespaceSpecifier")
       .map((specifier) => ({ imported: specifier.imported, source: declaration.source }));
@@ -89,9 +110,9 @@ function rawLifecycleImports(source, fileName = "fixture.mjs") {
 }
 
 const PROJECTION_LEAF_IMPORT_TARGETS = new Set([
-  "server/tradeLifecycle.mjs",
-  "server/positionIdentity.mjs",
-  "server/executionStates.mjs"
+  fileURLToPath(new URL("tradeLifecycle.mjs", SERVER_DIRECTORY_URL)),
+  fileURLToPath(new URL("positionIdentity.mjs", SERVER_DIRECTORY_URL)),
+  fileURLToPath(new URL("executionStates.mjs", SERVER_DIRECTORY_URL))
 ]);
 
 function projectionLeafImportViolations(source, fileName = "systemTradeProjection.mjs") {
@@ -119,6 +140,17 @@ test("static raw-lifecycle guard catches namespace and normalized-path mutations
   `), []);
 });
 
+test("raw-lifecycle guard follows Node ESM URL identity and fails closed on malformed encoding", () => {
+  for (const source of [
+    'import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs?raw";',
+    'import * as lifecycle from "./tradeReviewQueue.mjs#compat";',
+    'import { groupClosedTradeLifecycles as groupRaw } from "./%74radeLifecycle.mjs";',
+    'import * as undecodable from "./%E0%A4%A.mjs";'
+  ]) {
+    assert.equal(rawLifecycleImports(source).length, 1, source);
+  }
+});
+
 test("system consumers cannot import raw lifecycle grouping", () => {
   const violations = SYSTEM_CONSUMERS.flatMap((fileName) => (
     rawLifecycleImports(serverSource(fileName)).map((dependency) => ({ fileName, dependency }))
@@ -141,15 +173,20 @@ test("projection leaf guard permits only its exact lower-level imports", () => {
     import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";
     import { canonicalSymbol } from "./positionIdentity.mjs";
     import { OPEN_EXECUTION_STATES } from "./executionStates.mjs";
+    import * as lifecycle from "./tradeLifecycle.mjs?raw";
+    import * as identity from "./positionIdentity.mjs#compat";
+    import * as states from "./%65xecutionStates.mjs";
   `), []);
 
   for (const dependency of [
     "./professionalAnalytics.mjs",
-    "./telegramNotifier.mjs",
-    "./coreOverview.mjs",
-    "./reviewEngine.mjs",
-    "./routes/posters.mjs",
-    "./x/../systemTradeProjection.mjs"
+    "./telegramNotifier.mjs?raw",
+    "./%63oreOverview.mjs",
+    "./reviewEngine.mjs#compat",
+    "./routes/../routes/posters.mjs?raw",
+    "./x/../systemTradeProjection.mjs",
+    "./%73ystemTradeProjection.mjs#self",
+    "./%E0%A4%A.mjs"
   ]) {
     assert.equal(projectionLeafImportViolations(`import * as upstream from "${dependency}";`).length, 1, dependency);
   }
