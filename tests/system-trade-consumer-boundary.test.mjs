@@ -252,3 +252,36 @@ test("copied foreign lifecycle metadata cannot activate, retrieve, or improve a 
   assert.equal(db.ownerImprovementItems.length, 0);
   assert.equal(db.reviews.length, 1, "the raw manual review stays available for audit");
 });
+
+test("a copied memory cannot borrow another review's close evidence or hide a context conflict", () => {
+  const execution = { id: "bound-exec", planId: "bound-plan", exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed" };
+  const attribution = (kind) => ({
+    schemaVersion: 1, scope: "system", origin: "execution_engine", exitMode: kind === "close" ? "system_exit" : null,
+    executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", reason: null,
+    evidence: { accountId: execution.accountId, environment: execution.environment, exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }
+  });
+  const review = {
+    id: "bound-review", type: "trade", status: "completed", memoryItemId: "bound-memory-a", tenantId: "tenant-owner", ownerUserId: "owner-1",
+    tradeLifecycleKey: execution.id, executionOrderId: execution.id, tradePlanId: execution.planId, fillIds: ["bound-close"], symbol: "BTC/USDT"
+  };
+  const db = {
+    user: { id: "owner-1", tenantId: "tenant-owner", isOwner: true }, system: { ownerReviewProvenanceMigrationVersion: 1 }, auditLogs: [],
+    executionOrders: [execution], tradePlans: [{ id: execution.planId, exchange: "OKX", accountId: execution.accountId, environment: "production", symbol: "BTC/USDT", direction: "long", tenantId: "tenant-owner", ownerUserId: "owner-1" }],
+    fills: [
+      reconciledLeg({ id: "bound-entry", kind: "entry", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: execution.accountId, environment: "production", tenantId: "tenant-owner", ownerUserId: "owner-1", symbol: "BTC/USDT", direction: "long", quantity: 1, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: attribution("entry") }),
+      reconciledLeg({ id: "bound-close", kind: "close", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: execution.accountId, environment: "production", tenantId: "tenant-owner", ownerUserId: "owner-1", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: attribution("close") })
+    ],
+    reviews: [review],
+    memoryItems: [
+      { id: "bound-memory-a", source: "auto_reflection", learningStatus: "candidate", fillId: "bound-close", tradePlanId: execution.planId, tenantId: "tenant-owner", ownerUserId: "owner-1", title: "bound", content: "bound" },
+      { id: "bound-memory-b", source: "auto_reflection", learningStatus: "candidate", fillId: "bound-close", reviewId: review.id, tradePlanId: execution.planId, tenantId: "tenant-owner", ownerUserId: "owner-1", title: "copied", content: "copied" }
+    ]
+  };
+  const principal = { tenantId: "tenant-owner", userId: "owner-1", isOwner: true };
+  assert.equal(transitionReviewLesson(db, "bound-memory-a", "approve", "Owner").ok, true, "the established one-sided legacy link remains valid");
+  assert.equal(transitionReviewLesson(db, "bound-memory-b", "approve", "Owner").ok, false);
+  db.memoryItems[1].learningStatus = "active";
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal, symbols: ["BTC/USDT"] }).map((row) => row.id), ["bound-memory-a"]);
+  db.memoryItems[0].reviewContext = { reviewId: review.id, tradePlanId: "forged-plan" };
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal, symbols: ["BTC/USDT"] }), [], "top-level and reviewContext claims must agree");
+});

@@ -508,6 +508,13 @@ function referenceValues(row = {}, fields = []) {
   }).filter((value) => value !== null && value !== undefined && String(value).trim() !== "").map((value) => String(value)))];
 }
 
+function claimValues(row = {}, fields = []) {
+  return [...new Set([
+    ...referenceValues(row, fields),
+    ...referenceValues(row.reviewContext, fields)
+  ])];
+}
+
 function scopeValue(row = {}, fields = []) {
   const values = referenceValues(row, fields);
   return values.length === 1 ? values[0] : null;
@@ -538,34 +545,30 @@ function fillBindingMatches(row = {}, lifecycle = {}) {
   const planIds = [...new Set(fills.map((fill) => String(fill?.tradePlanId || fill?.planId || "")).filter(Boolean))];
   const symbols = [...new Set(fills.map((fill) => String(fill?.symbol || "").toUpperCase()).filter(Boolean))];
   const directions = [...new Set(fills.map((fill) => String(fill?.direction || "").toLowerCase()).filter(Boolean))];
-  return matchesOneLifecycleValue(referenceValues(row, ["tradeLifecycleKey"]), [String(lifecycle.key || "")].filter(Boolean))
-    && matchesOneLifecycleValue(referenceValues(row, ["executionOrderId"]), executionIds)
-    && matchesOneLifecycleValue(referenceValues(row, ["tradePlanId", "planId"]), planIds)
-    && matchesOneLifecycleValue(referenceValues(row, ["symbol"]).map((value) => value.toUpperCase()), symbols)
-    && matchesOneLifecycleValue(referenceValues(row, ["direction"]).map((value) => value.toLowerCase()), directions)
+  return matchesOneLifecycleValue(claimValues(row, ["tradeLifecycleKey"]), [String(lifecycle.key || "")].filter(Boolean))
+    && matchesOneLifecycleValue(claimValues(row, ["executionOrderId"]), executionIds)
+    && matchesOneLifecycleValue(claimValues(row, ["tradePlanId", "planId"]), planIds)
+    && matchesOneLifecycleValue(claimValues(row, ["symbol"]).map((value) => value.toUpperCase()), symbols)
+    && matchesOneLifecycleValue(claimValues(row, ["direction"]).map((value) => value.toLowerCase()), directions)
     && fillScopeMatches(row, fills);
 }
 
 function reviewMemoryReferencesMatch(review = {}, memory = {}) {
   if (!memory?.id) return true;
-  const reviewIds = referenceValues(memory, ["reviewId"]);
-  const contextReviewIds = referenceValues(memory.reviewContext, ["reviewId"]);
-  const allReviewIds = [...new Set([...reviewIds, ...contextReviewIds])];
-  const linkedByReview = String(review.memoryItemId || "") === String(memory.id);
-  const linkedByMemory = allReviewIds.length === 1 && allReviewIds[0] === String(review.id || "");
-  return Boolean(review.id) && (linkedByReview || linkedByMemory)
-    && (allReviewIds.length === 0 || linkedByMemory);
+  const memoryIds = referenceValues(review, ["memoryItemId"]);
+  const reviewIds = claimValues(memory, ["reviewId"]);
+  const linkedByReview = memoryIds.length === 1 && memoryIds[0] === String(memory.id);
+  const linkedByMemory = reviewIds.length === 1 && reviewIds[0] === String(review.id || "");
+  return Boolean(review.id)
+    && memoryIds.length <= 1 && reviewIds.length <= 1
+    && (memoryIds.length === 0 || linkedByReview)
+    && (reviewIds.length === 0 || linkedByMemory)
+    && (linkedByReview || linkedByMemory);
 }
 
 export function findSystemReviewLifecycle(db, review = {}, memory = {}) {
   if (!review?.id || !reviewMemoryReferencesMatch(review, memory)) return null;
-  const memoryBinding = memory?.id ? {
-    ...memory,
-    tradeLifecycleKey: memory.tradeLifecycleKey || memory.reviewContext?.tradeLifecycleKey,
-    executionOrderId: memory.executionOrderId || memory.reviewContext?.executionOrderId,
-    tradePlanId: memory.tradePlanId || memory.reviewContext?.tradePlanId
-  } : null;
-  const rows = memoryBinding ? [review, memoryBinding] : [review];
+  const rows = memory?.id ? [review, memory] : [review];
   return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
     isFinanciallyReconciledLifecycle(lifecycle)
     && rows.every((row) => fillBindingMatches(row, lifecycle))

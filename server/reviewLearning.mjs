@@ -68,12 +68,8 @@ function reviewForMemory(db, memory = {}) {
   return (db.reviews || []).find((row) => row.memoryItemId === memory.id || reviewIds.has(String(row.id))) || {};
 }
 
-function lifecycleForMemory(db, memory = {}, fill = {}, review = {}) {
-  return findSystemReviewLifecycle(db, {
-    ...review,
-    executionOrderId: review.executionOrderId || fill.executionOrderId,
-    tradeLifecycleKey: review.tradeLifecycleKey || fill.executionOrderId
-  }, memory);
+function lifecycleForMemory(db, memory = {}, review = {}) {
+  return findSystemReviewLifecycle(db, review, memory);
 }
 
 export function reviewMemoryMetadata(db, memory = {}) {
@@ -81,7 +77,7 @@ export function reviewMemoryMetadata(db, memory = {}) {
   const fill = fillForMemory(db, memory);
   const plan = planForMemory(db, memory);
   const review = reviewForMemory(db, memory);
-  const lifecycle = lifecycleForMemory(db, memory, fill, review);
+  const lifecycle = lifecycleForMemory(db, memory, review);
   const symbol = normalizeSymbol(explicit.symbol || memory.symbol || fill.symbol || plan.symbol || review.symbol);
   const setupType = normalizeSetup(explicit.setupType || memory.setupType || plan.scenarioType || plan.decisionContext?.setupType || plan.strategyRef?.scenarioType);
   const strategyProductId = explicit.strategyProductId || memory.strategyProductId || fill.strategyProductId || plan.strategyProductId || plan.strategyRef?.productId || null;
@@ -388,7 +384,7 @@ export function backfillReviewMemoryContexts(db) {
     const fill = fillForMemory(db, memory);
     const plan = planForMemory(db, memory);
     const review = reviewForMemory(db, memory);
-    const lifecycle = lifecycleForMemory(db, memory, fill, review);
+    const lifecycle = lifecycleForMemory(db, memory, review);
     const before = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
     stampReviewMemoryContext(memory, { fill, plan, review, lifecycle });
     const after = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
