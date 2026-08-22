@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Production-safe disk maintenance: prune only old, unused Docker build cache.
-# Never prunes images, containers, volumes, application data, or backups.
+# Production-safe disk maintenance: prune old build cache and untagged images.
+# Never prunes tagged images, containers, volumes, application data, or backups.
 set -euo pipefail
 
 threshold_pct="${DISK_CLEANUP_THRESHOLD_PCT:-70}"
@@ -19,5 +19,6 @@ if (( disk_pct < threshold_pct )); then
 fi
 
 /usr/bin/docker builder prune --all --force --filter "until=${cache_age}"
+/usr/bin/docker image prune --force
 disk_after="$(df -P / | awk 'NR == 2 { print $5 }')"
 echo "disk_after=${disk_after}"

@@ -11,6 +11,7 @@ import { syncNativeStrategyProducts } from "./strategyProducts.mjs";
 import { applyDerivedProfitGoals } from "./profitGoals.mjs";
 import { clearReduceOnlyReason, setReduceOnlyReason, syncReduceOnlyState } from "./reduceOnlyState.mjs";
 import { scrubSecrets } from "./secretRedaction.mjs";
+import { applySqliteRuntimePolicy } from "./sqliteRuntimePolicy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -1190,9 +1191,7 @@ export async function backupSqlite(destination) {
 function ensureSqlite() {
   if (sqlite) return sqlite;
   sqlite = new Database(sqliteDbPath, { timeout: 5000 });
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("busy_timeout = 5000");
-  sqlite.pragma("foreign_keys = ON");
+  applySqliteRuntimePolicy(sqlite);
   sqlite.exec(`
     create table if not exists migrations (
       id text primary key,
