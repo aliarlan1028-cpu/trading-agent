@@ -64,7 +64,8 @@ function fillForMemory(db, memory = {}) {
 }
 
 function reviewForMemory(db, memory = {}) {
-  return (db.reviews || []).find((row) => row.memoryItemId === memory.id || row.id === memory.reviewId) || {};
+  const reviewIds = new Set([memory.reviewId, memory.reviewContext?.reviewId].filter(Boolean).map(String));
+  return (db.reviews || []).find((row) => row.memoryItemId === memory.id || reviewIds.has(String(row.id))) || {};
 }
 
 function lifecycleForMemory(db, memory = {}, fill = {}, review = {}) {

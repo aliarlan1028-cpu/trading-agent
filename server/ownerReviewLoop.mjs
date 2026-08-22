@@ -501,24 +501,74 @@ export function isActiveReviewLesson(memory = {}) {
   return memory.source === "auto_reflection" && lessonStatus(memory) === "active";
 }
 
+function referenceValues(row = {}, fields = []) {
+  return [...new Set(fields.flatMap((field) => {
+    const value = row?.[field];
+    return Array.isArray(value) ? value : [value];
+  }).filter((value) => value !== null && value !== undefined && String(value).trim() !== "").map((value) => String(value)))];
+}
+
+function scopeValue(row = {}, fields = []) {
+  const values = referenceValues(row, fields);
+  return values.length === 1 ? values[0] : null;
+}
+
+function matchesOneLifecycleValue(claimed, actual) {
+  if (claimed.length > 1 || actual.length > 1) return false;
+  return !claimed.length || (actual.length === 1 && claimed[0] === actual[0]);
+}
+
+function fillScopeMatches(row = {}, fills = []) {
+  const tenants = [...new Set(fills.map((fill) => scopeValue(fill, ["tenantId", "ownerTenantId"])).filter(Boolean))];
+  const owners = [...new Set(fills.map((fill) => scopeValue(fill, ["ownerUserId", "createdByUserId", "userId"])).filter(Boolean))];
+  const rowTenants = referenceValues(row, ["tenantId", "ownerTenantId"]);
+  const rowOwners = referenceValues(row, ["ownerUserId", "createdByUserId", "userId"]);
+  return rowTenants.length === 1 && rowOwners.length === 1
+    && matchesOneLifecycleValue(rowTenants, tenants)
+    && matchesOneLifecycleValue(rowOwners, owners)
+    && tenants.length === 1 && owners.length === 1;
+}
+
+function fillBindingMatches(row = {}, lifecycle = {}) {
+  const fills = lifecycle.fills || [];
+  const closeIds = new Set(fills.map((fill) => String(fill?.id || "")).filter(Boolean));
+  const fillIds = referenceValues(row, ["fillId", "fillIds"]);
+  if (!fillIds.length || !fillIds.every((fillId) => closeIds.has(fillId))) return false;
+  const executionIds = [...new Set(fills.map((fill) => String(fill?.executionOrderId || "")).filter(Boolean))];
+  const planIds = [...new Set(fills.map((fill) => String(fill?.tradePlanId || fill?.planId || "")).filter(Boolean))];
+  const symbols = [...new Set(fills.map((fill) => String(fill?.symbol || "").toUpperCase()).filter(Boolean))];
+  const directions = [...new Set(fills.map((fill) => String(fill?.direction || "").toLowerCase()).filter(Boolean))];
+  return matchesOneLifecycleValue(referenceValues(row, ["tradeLifecycleKey"]), [String(lifecycle.key || "")].filter(Boolean))
+    && matchesOneLifecycleValue(referenceValues(row, ["executionOrderId"]), executionIds)
+    && matchesOneLifecycleValue(referenceValues(row, ["tradePlanId", "planId"]), planIds)
+    && matchesOneLifecycleValue(referenceValues(row, ["symbol"]).map((value) => value.toUpperCase()), symbols)
+    && matchesOneLifecycleValue(referenceValues(row, ["direction"]).map((value) => value.toLowerCase()), directions)
+    && fillScopeMatches(row, fills);
+}
+
+function reviewMemoryReferencesMatch(review = {}, memory = {}) {
+  if (!memory?.id) return true;
+  const reviewIds = referenceValues(memory, ["reviewId"]);
+  const contextReviewIds = referenceValues(memory.reviewContext, ["reviewId"]);
+  const allReviewIds = [...new Set([...reviewIds, ...contextReviewIds])];
+  const linkedByReview = String(review.memoryItemId || "") === String(memory.id);
+  const linkedByMemory = allReviewIds.length === 1 && allReviewIds[0] === String(review.id || "");
+  return Boolean(review.id) && (linkedByReview || linkedByMemory)
+    && (allReviewIds.length === 0 || linkedByMemory);
+}
+
 export function findSystemReviewLifecycle(db, review = {}, memory = {}) {
-  const lifecycleKeys = new Set([
-    review.tradeLifecycleKey,
-    review.executionOrderId,
-    memory.tradeLifecycleKey,
-    memory.executionOrderId,
-    memory.reviewContext?.tradeLifecycleKey,
-    memory.reviewContext?.executionOrderId
-  ].filter(Boolean).map(String));
-  const fillIds = new Set([
-    review.fillId,
-    ...(review.fillIds || []),
-    memory.fillId,
-    ...(memory.fillIds || [])
-  ].filter(Boolean).map(String));
+  if (!review?.id || !reviewMemoryReferencesMatch(review, memory)) return null;
+  const memoryBinding = memory?.id ? {
+    ...memory,
+    tradeLifecycleKey: memory.tradeLifecycleKey || memory.reviewContext?.tradeLifecycleKey,
+    executionOrderId: memory.executionOrderId || memory.reviewContext?.executionOrderId,
+    tradePlanId: memory.tradePlanId || memory.reviewContext?.tradePlanId
+  } : null;
+  const rows = memoryBinding ? [review, memoryBinding] : [review];
   return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
-    lifecycleKeys.has(String(lifecycle.key))
-    || lifecycle.fills.some((fill) => fillIds.has(String(fill.id)))
+    isFinanciallyReconciledLifecycle(lifecycle)
+    && rows.every((row) => fillBindingMatches(row, lifecycle))
   )) || null;
 }
 
@@ -537,7 +587,8 @@ export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
   const transition = transitions[action];
   if (!transition || !transition.from.includes(current)) return { ok: false, status: 409, error: "invalid_lesson_transition", current, action };
   if (transition.to === "active") {
-    const review = (db.reviews || []).find((row) => row.id === memory.reviewId || row.memoryItemId === memory.id) || {};
+    const reviewIds = new Set([memory.reviewId, memory.reviewContext?.reviewId].filter(Boolean).map(String));
+    const review = (db.reviews || []).find((row) => reviewIds.has(String(row.id)) || row.memoryItemId === memory.id) || {};
     if (!findSystemReviewLifecycle(db, review, memory)) return { ok: false, status: 409, error: "system_trade_evidence_missing" };
   }
   memory.learningStatus = transition.to;

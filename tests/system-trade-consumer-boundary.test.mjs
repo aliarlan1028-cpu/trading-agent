@@ -193,8 +193,9 @@ test("legacy manual and pending review artifacts stay auditable but cannot activ
     executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", reason: null,
     evidence: { accountId: "account-a", environment: "production", exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }, attributedAt: fill.createdAt
   });
-  const review = (id, key, memoryItemId) => ({
+  const review = (id, key, memoryItemId, fillIds = []) => ({
     id, type: "trade", status: "completed", tradeLifecycleKey: key, memoryItemId, tenantId: "tenant-owner", ownerUserId: "owner-1",
+    fillIds,
     improvementScope: { strategyProductId: "trend", timeframe: "1h", regime: "uptrend" },
     structuredAssessment: { outcome: "loss", matrix: { key: "mixed_loss" }, financial: { complete: true, netRealizedPnl: -1 }, rootCauses: [{ code: "entry_timing", label: "entry", destination: "strategy", severity: "medium" }] }
   });
@@ -202,12 +203,12 @@ test("legacy manual and pending review artifacts stay auditable but cannot activ
     user: { id: "owner-1", tenantId: "tenant-owner", isOwner: true }, system: { ownerReviewProvenanceMigrationVersion: 1 }, ownerImprovementItems: [], auditLogs: [],
     executionOrders: [execution], tradePlans: [{ id: execution.planId, exchange: "OKX", accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long" }],
     fills: [
-      reconciledLeg({ id: "review-system-entry", kind: "entry", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: systemAttribution({ kind: "entry", createdAt: "2026-08-01T00:00:00Z" }) }),
-      reconciledLeg({ id: "review-system-close", kind: "close", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: systemAttribution({ kind: "close", createdAt: "2026-08-01T01:00:00Z" }) }),
+      reconciledLeg({ id: "review-system-entry", kind: "entry", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, tenantId: "tenant-owner", ownerUserId: "owner-1", createdAt: "2026-08-01T00:00:00Z", tradeAttribution: systemAttribution({ kind: "entry", createdAt: "2026-08-01T00:00:00Z" }) }),
+      reconciledLeg({ id: "review-system-close", kind: "close", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, tenantId: "tenant-owner", ownerUserId: "owner-1", createdAt: "2026-08-01T01:00:00Z", tradeAttribution: systemAttribution({ kind: "close", createdAt: "2026-08-01T01:00:00Z" }) }),
       reconciledLeg({ id: "review-manual-close", kind: "close", positionId: "manual", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T02:00:00Z" }),
       reconciledLeg({ id: "review-pending-close", kind: "close", executionOrderId: "pending-exec", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T03:00:00Z", tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" } })
     ],
-    reviews: [review("review-system", execution.id, "memory-system"), review("review-manual", "manual", "memory-manual"), review("review-pending", "pending-exec", "memory-pending")],
+    reviews: [review("review-system", execution.id, "memory-system", ["review-system-close"]), review("review-manual", "manual", "memory-manual", ["review-manual-close"]), review("review-pending", "pending-exec", "memory-pending", ["review-pending-close"])],
     memoryItems: [
       { id: "memory-system", source: "auto_reflection", learningStatus: "active", fillId: "review-system-close", reviewId: "review-system", title: "system", content: "system", tenantId: "tenant-owner", ownerUserId: "owner-1" },
       { id: "memory-manual", source: "auto_reflection", learningStatus: "candidate", fillId: "review-manual-close", reviewId: "review-manual", title: "manual", content: "manual", tenantId: "tenant-owner", ownerUserId: "owner-1" },
@@ -219,4 +220,35 @@ test("legacy manual and pending review artifacts stay auditable but cannot activ
   refreshOwnerImprovementRegistry(db);
   assert.equal(db.ownerImprovementItems[0].evidenceCount, 1);
   assert.equal(db.reviews.length, 3, "raw legacy artifacts remain auditable");
+});
+
+test("copied foreign lifecycle metadata cannot activate, retrieve, or improve a manual review", () => {
+  const execution = { id: "foreign-exec", planId: "foreign-plan", exchange: "OKX", accountId: "account-other", environment: "production", symbol: "BTC/USDT", direction: "long", status: "closed", tenantId: "tenant-other", ownerUserId: "owner-other" };
+  const attribution = (kind) => ({
+    schemaVersion: 1, scope: "system", origin: "execution_engine", exitMode: kind === "close" ? "system_exit" : null,
+    executionOrderId: execution.id, planId: execution.planId, method: "execution_writer", reason: null,
+    evidence: { accountId: execution.accountId, environment: execution.environment, exchangeOrderId: null, exchangeTradeId: null, matchedEntryFillIds: [], attributedQuantity: 1 }
+  });
+  const manualReview = {
+    id: "copied-review", type: "trade", status: "completed", memoryItemId: "copied-memory", tenantId: "tenant-owner", ownerUserId: "owner-1",
+    symbol: "ETH/USDT", tradeLifecycleKey: execution.id, executionOrderId: execution.id, tradePlanId: execution.planId, fillIds: ["foreign-close"],
+    improvementScope: { strategyProductId: "trend", timeframe: "1h", regime: "uptrend" },
+    structuredAssessment: { outcome: "loss", matrix: { key: "mixed_loss" }, financial: { complete: true, netRealizedPnl: -1 }, rootCauses: [{ code: "entry_timing", label: "entry", destination: "strategy", severity: "medium" }] }
+  };
+  const db = {
+    user: { id: "owner-1", tenantId: "tenant-owner", isOwner: true }, system: { ownerReviewProvenanceMigrationVersion: 1 }, ownerImprovementItems: [], auditLogs: [],
+    executionOrders: [execution], tradePlans: [{ id: execution.planId, tenantId: "tenant-other", ownerUserId: "owner-other", exchange: "OKX", accountId: execution.accountId, environment: "production", symbol: "BTC/USDT", direction: "long" }],
+    fills: [
+      reconciledLeg({ id: "foreign-entry", kind: "entry", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, tenantId: "tenant-other", ownerUserId: "owner-other", accountId: execution.accountId, environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, createdAt: "2026-08-01T00:00:00Z", tradeAttribution: attribution("entry") }),
+      reconciledLeg({ id: "foreign-close", kind: "close", executionOrderId: execution.id, tradePlanId: execution.planId, planId: execution.planId, tenantId: "tenant-other", ownerUserId: "owner-other", accountId: execution.accountId, environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 1, realizedPnl: -1, createdAt: "2026-08-01T01:00:00Z", tradeAttribution: attribution("close") })
+    ],
+    reviews: [manualReview],
+    memoryItems: [{ id: "copied-memory", source: "auto_reflection", learningStatus: "candidate", reviewId: manualReview.id, fillId: "foreign-close", tenantId: "tenant-owner", ownerUserId: "owner-1", symbol: "ETH/USDT", title: "copied", content: "copied" }]
+  };
+  assert.equal(transitionReviewLesson(db, "copied-memory", "approve", "Owner").ok, false);
+  db.memoryItems[0].learningStatus = "active";
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: { tenantId: "tenant-owner", userId: "owner-1", isOwner: true }, symbols: ["ETH/USDT"] }), []);
+  refreshOwnerImprovementRegistry(db);
+  assert.equal(db.ownerImprovementItems.length, 0);
+  assert.equal(db.reviews.length, 1, "the raw manual review stays available for audit");
 });

@@ -31,8 +31,8 @@ function dbFixture() {
       { id: "close-ada", kind: "close", executionOrderId: "exec-ada", tradePlanId: "old-ada", symbol: "ADA/USDT", direction: "short", regime: "震荡低波动", realizedPnl: 3, createdAt: "2026-08-01T02:00:00Z" }
     ],
     reviews: [
-      { id: "review-btc", type: "trade", tradeLifecycleKey: "exec-btc", tradePlanId: "old-btc", memoryItemId: "mem-btc", symbol: "BTC/USDT", realizedPnl: -2 },
-      { id: "review-ada", type: "trade", tradeLifecycleKey: "exec-ada", tradePlanId: "old-ada", memoryItemId: "mem-ada", symbol: "ADA/USDT", realizedPnl: 3 }
+      { id: "review-btc", type: "trade", tradeLifecycleKey: "exec-btc", tradePlanId: "old-btc", memoryItemId: "mem-btc", fillIds: ["close-btc"], symbol: "BTC/USDT", realizedPnl: -2 },
+      { id: "review-ada", type: "trade", tradeLifecycleKey: "exec-ada", tradePlanId: "old-ada", memoryItemId: "mem-ada", fillIds: ["close-ada"], symbol: "ADA/USDT", realizedPnl: 3 }
     ],
     memoryItems: [
       { id: "mem-ada", source: "auto_reflection", learningStatus: "active", fillId: "close-ada", title: "复盘 ADA", content: "跌破后等待反抽确认，避免在区间下沿追空。", createdAt: "2026-08-01T03:00:00Z" },

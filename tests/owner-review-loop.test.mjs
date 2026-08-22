@@ -107,6 +107,12 @@ function installReviewLifecycleEvidence(db, reviews = db.reviews || []) {
       { id: fillIds[0], kind: "entry", executionOrderId, tradePlanId, symbol: "BTC/USDT", direction: "long", quantity: 1, price: 100, tenantId: review.tenantId, ownerUserId: review.ownerUserId, createdAt: "2026-08-18T00:00:00.000Z" },
       { id: fillIds[1], kind: "close", executionOrderId, tradePlanId, symbol: "BTC/USDT", direction: "long", quantity: 1, price: 101, realizedPnl: review.netRealizedPnl ?? 1, tenantId: review.tenantId, ownerUserId: review.ownerUserId, createdAt: "2026-08-18T01:00:00.000Z" }
     );
+    const memory = (db.memoryItems || []).find((row) => row.id === review.memoryItemId || row.reviewId === review.id);
+    if (memory) Object.assign(memory, {
+      reviewId: review.id, fillId: fillIds[1], fillIds: [fillIds[1]],
+      tenantId: memory.tenantId || review.tenantId, ownerUserId: memory.ownerUserId || review.ownerUserId
+    });
+    if (memory?.reviewContext) memory.reviewContext.tradePlanId = tradePlanId;
   }
   db.fills = financiallyReconciledFills(db.fills);
   installSystemTradeProvenance(db);
@@ -603,6 +609,14 @@ test("strategy validation is sequential, evidence-bound, and cannot pass without
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "backtest", outcome: "passed", evidence: "OOS 结果" }, "Owner").error, "candidate_strategy_version_required");
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "backtest", outcome: "passed", candidateVersionId: evidence.version.id, candidateDefinitionHash: evidence.version.contentHash, evidenceId: evidence.backtest.id }, "Owner").ok, true);
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "paper", outcome: "passed", evidenceId: evidence.paper.id }, "Owner").ok, true);
+  const copiedLiveReview = {
+    ...evidence.liveReviews[0], id: "copied-live-review", symbol: "ETH/USDT",
+    fillIds: ["raw-manual-close"], fillId: "raw-manual-close"
+  };
+  db.fills.push({ id: "raw-manual-close", kind: "close", positionId: "manual", symbol: "ETH/USDT", direction: "long", quantity: 1, realizedPnl: 10 });
+  db.reviews.push(copiedLiveReview);
+  assert.equal(buildOwnerReviewLoopSnapshot(db).improvements[0].validation.availableEvidence.liveReviews.some((row) => row.id === copiedLiveReview.id), false);
+  assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "small_live", outcome: "passed", evidenceReviewIds: [...evidence.liveReviews.slice(0, 2).map((row) => row.id), copiedLiveReview.id] }, "Owner").error, "authoritative_small_live_evidence_incomplete");
   assert.equal(recordStrategyValidationStage(db, item.id, { stageName: "small_live", outcome: "passed", evidenceReviewIds: evidence.liveReviews.map((row) => row.id) }, "Owner").ok, true);
   assert.equal(cycle.experiment.status, "ready_for_owner_verification");
   assert.equal(transitionOwnerImprovement(db, item.id, "verify", "Owner", { ownerAttested: true }).ok, true);
