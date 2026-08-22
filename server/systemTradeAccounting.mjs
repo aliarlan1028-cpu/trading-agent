@@ -240,9 +240,9 @@ function quantityTolerance(value) {
 }
 
 function executionEntryExpectedAt(execution = {}, atMs) {
-  const quantity = positive(execution.filledQuantity ?? execution.quantity);
+  const quantity = positive(execution.filledQuantity);
   const entryAt = new Date(execution.entryFilledAt || 0).getTime();
-  return quantity !== null && Number.isFinite(entryAt) && entryAt <= atMs;
+  return quantity !== null && Number.isFinite(entryAt) && entryAt > 0 && entryAt <= atMs;
 }
 
 function uniqueFacts(values, normalize = (value) => String(value || "").trim()) {

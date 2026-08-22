@@ -295,6 +295,56 @@ test("fill binding can complete a legacy execution binding without admitting ano
   assert.equal(projected.knownTotal, 5);
 });
 
+test("an unfilled terminal execution is not treated as a missing managed entry", () => {
+  const db = baseDb();
+  db.executionOrders.push({
+    id: "exec-blocked-unfilled",
+    planId: "plan-blocked-unfilled",
+    status: "blocked",
+    exchange: "OKX",
+    symbol: "BTC/USDT",
+    direction: "long",
+    quantity: 2,
+    filledQuantity: null,
+    entryFilledAt: null
+  });
+
+  const projected = systemUnrealizedPnl(db, {
+    now,
+    binding: { accountId: "account-a", environment: "production", exchange: "OKX" }
+  });
+
+  assert.equal(projected.complete, true);
+  assert.equal(projected.knownTotal, 5);
+  assert.ok(!projected.pendingPositions.some((row) => row.executionOrderId === "exec-blocked-unfilled"));
+});
+
+test("an execution claiming an actual fill still fails closed without entry evidence", () => {
+  const db = baseDb();
+  db.executionOrders.push({
+    id: "exec-filled-without-evidence",
+    planId: "plan-filled-without-evidence",
+    status: "closed",
+    exchange: "OKX",
+    symbol: "BTC/USDT",
+    direction: "long",
+    quantity: 2,
+    filledQuantity: 2,
+    entryFilledAt: iso(now - 60_000)
+  });
+
+  const projected = systemUnrealizedPnl(db, {
+    now,
+    binding: { accountId: "account-a", environment: "production", exchange: "OKX" }
+  });
+
+  assert.equal(projected.complete, false);
+  assert.ok(projected.pendingPositions.some((row) => (
+    row.executionOrderId === "exec-filled-without-evidence"
+      && row.reason === "managed_position_binding_incomplete"
+  )));
+});
+
 test("legacy account-wide anchors cannot authorize a system-only baseline", () => {
   const db = baseDb();
   db.portfolio.systemAccountingBaselines = {};
