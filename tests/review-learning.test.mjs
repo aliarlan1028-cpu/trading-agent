@@ -123,7 +123,7 @@ test("新复盘记忆写入可检索的结构化上下文", () => {
   });
 });
 
-test("schema v2 迁移保留孤儿历史记忆的结构标签，但不会把旧毛值冒充净值", () => {
+test("schema v2 迁移保留无法验证的孤儿历史记忆原样供审计", () => {
   const db = {
     fills: [], reviews: [], tradePlans: [],
     memoryItems: [{
@@ -135,15 +135,60 @@ test("schema v2 迁移保留孤儿历史记忆的结构标签，但不会把旧�
       }
     }]
   };
+  const before = structuredClone(db.memoryItems[0]);
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0);
+  assert.deepEqual(db.memoryItems[0], before);
+});
+
+test("backfill does not erase conflicting plan claims and reauthorize a review memory", () => {
+  const db = dbFixture();
+  const memory = db.memoryItems.find((row) => row.id === "mem-btc");
+  db.memoryItems = [memory];
+  memory.tradePlanId = "old-btc";
+  memory.reviewContext = {
+    schemaVersion: 2,
+    symbol: "BTC/USDT",
+    direction: "long",
+    reviewId: "review-btc",
+    tradePlanId: "forged-plan"
+  };
+  const before = structuredClone(memory);
+
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }), []);
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0, "a rejected binding is not an authorized migration update");
+  assert.deepEqual(memory, before, "conflicting raw claims must remain intact for audit");
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }), []);
+});
+
+test("backfill does not repair an inconsistent review-memory association", () => {
+  const db = dbFixture();
+  const memory = db.memoryItems.find((row) => row.id === "mem-btc");
+  db.memoryItems = [memory];
+  memory.reviewId = "forged-review";
+  const before = structuredClone(memory);
+
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }), []);
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0);
+  assert.deepEqual(memory, before, "migration must not rewrite the forged review reference");
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }), []);
+});
+
+test("backfill still stamps a verified system review memory whose context is missing", () => {
+  const db = dbFixture();
+  const memory = db.memoryItems.find((row) => row.id === "mem-btc");
+  db.memoryItems = [memory];
+
+  assert.equal(memory.reviewContext, undefined);
   assert.equal(backfillReviewMemoryContexts(db).updated, 1);
   assert.deepEqual(db.memoryItems[0].reviewContext, {
     schemaVersion: 2, symbol: "BTC/USDT", direction: "long", setupType: "trend_pullback",
-    strategyProductId: "trend", timeframe: "1h", traderRole: "day_trader", regime: "uptrend",
-    grossRealizedPnl: 1, netRealizedPnl: null, outcome: null,
-    financialBasis: "unreconciled",
-    reviewId: "missing-review", tradePlanId: "missing-plan"
+    strategyProductId: "trend", timeframe: "1h", traderRole: "day_trader", regime: "上行趋势",
+    grossRealizedPnl: -2, netRealizedPnl: -2, outcome: "loss",
+    financialBasis: "completed_trade_lifecycle/net_after_recorded_costs",
+    reviewId: "review-btc", tradePlanId: "old-btc"
   });
-  assert.equal(backfillReviewMemoryContexts(db).updated, 0, "orphan migration must be idempotent");
+  assert.deepEqual(retrieveRelevantReviewMemories(db, { principal: ownerPrincipal, symbols: ["BTC/USDT"] }).map((row) => row.id), ["mem-btc"]);
+  assert.equal(backfillReviewMemoryContexts(db).updated, 0, "verified migration must be idempotent");
 });
 
 test("学习效果按平仓生命周期统计，样本不足时不宣称已经改善", () => {

@@ -385,6 +385,10 @@ export function backfillReviewMemoryContexts(db) {
     const plan = planForMemory(db, memory);
     const review = reviewForMemory(db, memory);
     const lifecycle = lifecycleForMemory(db, memory, review);
+    // Backfill may enrich only a review-memory pair that already resolves to
+    // authoritative system-trade evidence. Rejected/raw claims stay untouched
+    // for audit; rewriting them here could erase the conflict that rejected them.
+    if (!lifecycle) continue;
     const before = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
     stampReviewMemoryContext(memory, { fill, plan, review, lifecycle });
     const after = JSON.stringify({ reviewContext: memory.reviewContext, grossRealizedPnl: memory.grossRealizedPnl, netRealizedPnl: memory.netRealizedPnl, financialBasis: memory.financialBasis });
