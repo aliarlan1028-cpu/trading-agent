@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { performanceReport } from "../server/accounting.mjs";
@@ -18,6 +19,68 @@ import { retrieveRelevantReviewMemories } from "../server/reviewLearning.mjs";
 import { projectOverviewSection } from "../server/overviewView.mjs";
 import { seedDatabase } from "../server/store.mjs";
 import { addSystemExecution, stampFixtureSystemAttribution } from "./helpers/system-trade-fixtures.mjs";
+
+const SYSTEM_CONSUMERS = [
+  "accounting.mjs", "behaviorProfile.mjs", "coreOverview.mjs", "decisionCalibration.mjs",
+  "knowledgeSkills.mjs", "ownerReviewLoop.mjs", "professionalAnalytics.mjs", "reviewEngine.mjs",
+  "reviewLearning.mjs", "strategyBoard.mjs", "strategyContracts.mjs", "strategyProducts.mjs",
+  "telegramNotifier.mjs", "tradeProtections.mjs", "tradeReviewQueue.mjs"
+];
+
+function serverSource(fileName) {
+  return readFileSync(new URL(`../server/${fileName}`, import.meta.url), "utf8");
+}
+
+function namedImports(source) {
+  return [...source.matchAll(/\bimport\s*\{([\s\S]*?)\}\s*from\s*["']([^"']+)["']/g)]
+    .flatMap((match) => match[1].split(",").map((binding) => ({
+      imported: binding.trim().split(/\s+as\s+/i)[0],
+      source: match[2]
+    })).filter((binding) => binding.imported));
+}
+
+function moduleImports(source) {
+  return [...source.matchAll(/\bimport(?:\s+[\s\S]*?\s+from\s+|\s*)["']([^"']+)["']/g)]
+    .map((match) => match[1]);
+}
+
+function rawLifecycleImports(source) {
+  return namedImports(source).filter(({ imported, source: dependency }) => (
+    imported === "groupClosedTradeLifecycles"
+      && ["./tradeLifecycle.mjs", "./tradeReviewQueue.mjs"].includes(dependency)
+  ));
+}
+
+test("static raw-lifecycle guard detects direct and aliased consumer imports", () => {
+  assert.deepEqual(rawLifecycleImports('import { groupClosedTradeLifecycles } from "./tradeLifecycle.mjs";'), [
+    { imported: "groupClosedTradeLifecycles", source: "./tradeLifecycle.mjs" }
+  ]);
+  assert.deepEqual(rawLifecycleImports('import { groupClosedTradeLifecycles as groupRaw } from "./tradeReviewQueue.mjs";'), [
+    { imported: "groupClosedTradeLifecycles", source: "./tradeReviewQueue.mjs" }
+  ]);
+});
+
+test("system consumers cannot import raw lifecycle grouping", () => {
+  const violations = SYSTEM_CONSUMERS.flatMap((fileName) => (
+    rawLifecycleImports(serverSource(fileName)).map((dependency) => ({ fileName, dependency }))
+  ));
+  assert.deepEqual(violations, []);
+});
+
+test("execution reconciliation remains the explicit raw lifecycle exception", () => {
+  assert.deepEqual(rawLifecycleImports(serverSource("executionEngine.mjs")), [
+    { imported: "groupClosedTradeLifecycles", source: "./tradeReviewQueue.mjs" }
+  ]);
+});
+
+test("system trade projection remains a leaf above lifecycle primitives", () => {
+  const dependencies = moduleImports(serverSource("systemTradeProjection.mjs"));
+  const forbidden = dependencies.filter((dependency) => (
+    /(?:^|\/)[^/]*(?:accounting|review|route)[^/]*\.mjs$/i.test(dependency)
+      || dependency === "./systemTradeProjection.mjs"
+  ));
+  assert.deepEqual(forbidden, []);
+});
 
 function reconciledLeg(fill) {
   return {

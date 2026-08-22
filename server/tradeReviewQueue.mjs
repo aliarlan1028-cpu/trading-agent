@@ -1,7 +1,6 @@
 import { id, nowIso } from "./store.mjs";
 import {
   findTradeEntryFill,
-  groupClosedTradeLifecycles,
   isFinanciallyReconciledLifecycle,
   resolveTradeContext,
   sameTradeLifecycle,
