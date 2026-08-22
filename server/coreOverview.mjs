@@ -8,6 +8,7 @@ import { realtimeStatus } from "./realtimeManager.mjs";
 import { activeMandate } from "./store.mjs";
 import { isTerminalTradePlan } from "./tradePlanLifecycle.mjs";
 import { groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
+import { compactClosedTradeLifecycle } from "./overviewTradeHistory.mjs";
 
 function timestamp(row = {}) {
   return new Date(row.updatedAt || row.lastPolledAt || row.closedAt || row.createdAt || 0).getTime() || 0;
@@ -100,27 +101,6 @@ function compactExecution(row) {
     updatedAt: row.updatedAt,
     completedAt: row.completedAt,
     closedAt: row.closedAt
-  };
-}
-
-function compactClosedTradeLifecycle(lifecycle = {}) {
-  const row = lifecycle.representative || {};
-  return {
-    ...row,
-    id: `closed:${lifecycle.key}`,
-    tradeLifecycleKey: lifecycle.key,
-    fillIds: (lifecycle.fills || []).map((fill) => fill.id).filter(Boolean),
-    closeCount: (lifecycle.fills || []).length,
-    quantity: Number(lifecycle.quantity || row.quantity || 0),
-    notionalUsdt: Number(lifecycle.notionalUsdt || row.notionalUsdt || 0),
-    realizedPnl: Number(lifecycle.realizedPnl || 0),
-    feeUsdt: Number(lifecycle.feeUsdt || 0),
-    entryFeeUsdt: Number(lifecycle.entryFeeUsdt || 0),
-    fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt || 0),
-    netRealizedPnl: lifecycle.netRealizedPnl == null ? null : Number(lifecycle.netRealizedPnl),
-    financialBasisComplete: lifecycle.financialBasisComplete === true,
-    financialBasis: lifecycle.financialBasis || null,
-    createdAt: lifecycle.lastClosedAt || row.createdAt
   };
 }
 

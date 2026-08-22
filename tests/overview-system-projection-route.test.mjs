@@ -55,19 +55,38 @@ function assertOverviewHistory(payload) {
   assert.equal(payload.reconciliationReports.some((report) => report.id === "reconcile-account"), true);
 }
 
-test("authenticated scoped overview sources carry system history through section, native, and legacy projections", () => {
+function scopedOverviewSource() {
   const db = overviewFixture();
   const { scoped } = buildOverviewPrincipalScope(db, { tenantId: "tenant_owner", userId: "user_local_admin", isOwner: true });
   const history = projectSystemOverviewTradeHistory(scoped);
-  const source = {
+  return {
     fills: history.fills,
     closedTradeLifecycles: history.closedTradeLifecycles,
     tradeDataStatus: { fillTotal: history.fills.length, closedLifecycleTotal: history.closedTradeLifecycles.length },
     positions: normalizePositionsForUi(scoped.positions), portfolio: scoped.portfolio,
-    accountSnapshots: scoped.accountSnapshots, reconciliationReports: scoped.reconciliationReports
+    accountSnapshots: scoped.accountSnapshots, reconciliationReports: scoped.reconciliationReports,
+    reviews: [{ id: "review-manual-exit", type: "trade", tradeLifecycleKey: "system-manual-exit", fillIds: ["manual-exit-close"] }]
   };
+}
+
+test("authenticated scoped overview sources carry system history through section, native, and legacy projections", () => {
+  const source = scopedOverviewSource();
 
   assertOverviewHistory(projectOverviewSection(source, "cockpit"));
   assertOverviewHistory(compactOverviewForNative(source, true));
   assertOverviewHistory(projectOverviewSection({ ...source }, "cockpit"));
+});
+
+test("legacy desktop false branch preserves compact system lifecycle response rows for review matching", () => {
+  const desktop = compactOverviewForNative(scopedOverviewSource(), false);
+  const lifecycles = desktop.closedTradeLifecycles;
+  assert.deepEqual(lifecycles.map((row) => row.tradeLifecycleKey).sort(), ["system-manual-exit", "system-normal"]);
+  for (const lifecycle of lifecycles) {
+    assert.equal(lifecycle.id, `closed:${lifecycle.tradeLifecycleKey}`);
+    assert.equal(Array.isArray(lifecycle.fillIds), true);
+    assert.equal(typeof lifecycle.symbol, "string");
+    assert.equal(typeof lifecycle.createdAt, "string");
+  }
+  const review = desktop.reviews.find((row) => row.id === "review-manual-exit");
+  assert.equal(lifecycles.some((row) => row.tradeLifecycleKey === review.tradeLifecycleKey && row.fillIds.includes("manual-exit-close")), true);
 });

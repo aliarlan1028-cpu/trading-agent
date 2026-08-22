@@ -2,6 +2,7 @@ import { isTerminalExecution } from "./executionStates.mjs";
 import { isTerminalExchangeOrder } from "./orderStates.mjs";
 import { isTerminalArmedSetup } from "./armedSetupStates.mjs";
 import { isTerminalTradePlan } from "./tradePlanLifecycle.mjs";
+import { compactClosedTradeLifecycle } from "./overviewTradeHistory.mjs";
 
 const REVIEW_ATTENTION_STATES = new Set(["pending", "processing", "failed", "error", "retry", "awaiting_approval"]);
 const NATIVE_ATTENTION_REVIEW_LIMIT = 60;
@@ -355,7 +356,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     armedSetups,
     orders: nonTerminalPlusRecent(overview.orders, isTerminalExchangeOrder, 100),
     fills: (overview.fills || []).slice(0, 150),
-    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 100).map(compactPrecomputedClosedTradeLifecycle),
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 100).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 60).map(compactRiskCheck),
     reviews: compactNativeReviews(overview.reviews),
     reconciliationReports: (overview.reconciliationReports || []).slice(0, 30),
@@ -460,30 +461,6 @@ export function projectOverviewSection(overview = {}, section = "chat") {
   };
 }
 
-function compactClosedTradeLifecycle(lifecycle = {}) {
-  const row = lifecycle.representative || {};
-  return {
-    ...row,
-    id: `closed:${lifecycle.key}`,
-    tradeLifecycleKey: lifecycle.key,
-    fillIds: (lifecycle.fills || []).map((fill) => fill.id).filter(Boolean),
-    closeCount: (lifecycle.fills || []).length,
-    quantity: Number(lifecycle.quantity || row.quantity || 0),
-    notionalUsdt: Number(lifecycle.notionalUsdt || row.notionalUsdt || 0),
-    realizedPnl: Number(lifecycle.realizedPnl || 0),
-    feeUsdt: Number(lifecycle.feeUsdt || 0),
-    entryFeeUsdt: Number(lifecycle.entryFeeUsdt || 0),
-    fundingFeeUsdt: Number(lifecycle.fundingFeeUsdt || 0),
-    netRealizedPnl: lifecycle.netRealizedPnl === null || lifecycle.netRealizedPnl === undefined || lifecycle.netRealizedPnl === "" ? null : Number(lifecycle.netRealizedPnl),
-    financialBasis: lifecycle.financialBasis || null,
-    createdAt: lifecycle.lastClosedAt || row.createdAt
-  };
-}
-
-function compactPrecomputedClosedTradeLifecycle(lifecycle = {}) {
-  return lifecycle.tradeLifecycleKey ? lifecycle : compactClosedTradeLifecycle(lifecycle);
-}
-
 function startupOverview(overview) {
   const relevantSymbols = new Set([
     "BTC/USDT",
@@ -551,7 +528,7 @@ export function compactOverviewForNative(overview = {}, native = false) {
     fills: (overview.fills || []).slice(0, 50),
     // Lifecycle accounting is precomputed by coreOverview from the complete system
     // ledger before this view receives its bounded fills.
-    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 50).map(compactPrecomputedClosedTradeLifecycle),
+    closedTradeLifecycles: (overview.closedTradeLifecycles || []).slice(0, 50).map(compactClosedTradeLifecycle),
     riskChecks: (overview.riskChecks || []).slice(0, 40).map(compactRiskCheck),
     riskIncidents: recentWithNonTerminal(overview.riskIncidents, (row) => String(row?.status || "").toLowerCase() !== "open", 30),
     events: (overview.events || []).slice(0, 30).map(compactEvent),
