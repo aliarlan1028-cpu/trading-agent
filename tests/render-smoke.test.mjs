@@ -1130,6 +1130,24 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(mobileSystemCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
   assert.doesNotMatch(mobileSystemCapability, /扫描状态|scan state/i);
 
+  const knowledgeWorkflowCapability = render(React.createElement(C.MobileCapabilities, { data: lifecycleData, action, ui, initialCapabilityId: "knowledge-workflow" }));
+  assert.match(knowledgeWorkflowCapability, /data-provenance="knowledge-derived"/);
+  assert.match(knowledgeWorkflowCapability, /运行时批准与发布资格已核对/);
+  assert.match(knowledgeWorkflowCapability, /0 次记录调用 · 未有运行证据/);
+  assert.match(knowledgeWorkflowCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+
+  const importedCapability = render(React.createElement(C.MobileCapabilities, { data: lifecycleData, action, ui, initialCapabilityId: "imported-tool" }));
+  assert.match(importedCapability, /data-provenance="imported"/);
+  assert.match(importedCapability, /没有记录能力验证证据/);
+  assert.match(importedCapability, /0 次记录调用 · 未有运行证据/);
+  assert.match(importedCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+
+  const mcpCapability = render(React.createElement(C.MobileCapabilities, { data: lifecycleData, action, ui, initialCapabilityId: "cap-3" }));
+  assert.match(mcpCapability, /data-provenance="mcp-registered"/);
+  assert.match(mcpCapability, /连接状态：已连接/);
+  assert.match(mcpCapability, /0 次记录调用 · 未有运行证据/);
+  assert.match(mcpCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+
   const mobileNativeStrategy = render(React.createElement(C.MobileStrategy, { data: lifecycleData, action, initialTab: "catalog", initialCatalogId: "product_core:v2" }));
   assert.match(mobileNativeStrategy, /role="dialog"/);
   assert.match(mobileNativeStrategy, /aria-modal="true"/);
@@ -1137,6 +1155,27 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(mobileNativeStrategy, /1\/1 项版本门槛通过/);
   assert.match(mobileNativeStrategy, /24 笔版本归因实盘样本/);
   assert.match(mobileNativeStrategy, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+
+  for (const [status, mobileExpected, desktopExpected] of [["live_probation", "小额试用", "小额试用中"], ["retired", "已退役", "已退役"], ["superseded", "已被替代", "已被替代"]]) {
+    const releasedStrategy = {
+      id: `released-${status}`,
+      name: `Released ${status}`,
+      methodId: `method-${status}`,
+      status,
+      version: 8,
+      approval: { approved: true },
+      spec: { direction: "long", timeframe: "1h" }
+    };
+    const releasedData = { knowledge: { tradingSkills: [releasedStrategy] } };
+    const mobileHtml = render(React.createElement(C.MobileStrategy, { data: releasedData, action, initialTab: "catalog", initialCatalogId: releasedStrategy.id }));
+    assert.match(mobileHtml, /data-provenance="knowledge-derived"/);
+    assert.match(mobileHtml, new RegExp(`data-lifecycle-stage="owner-release" data-lifecycle-applicable="true"[\\s\\S]{0,220}v8 · ${mobileExpected}`));
+    assert.doesNotMatch(mobileHtml, /不适用 · 此资产没有 Owner 发布流程/);
+    const desktopHtml = render(React.createElement(C.StrategyLibraryConcept, { data: releasedData, action, ui, initialTab: "catalog" }));
+    assert.match(desktopHtml, /data-provenance="knowledge-derived"/);
+    assert.match(desktopHtml, new RegExp(`data-lifecycle-stage="owner-release" data-lifecycle-applicable="true"[\\s\\S]{0,220}v8 · ${desktopExpected}`));
+    assert.doesNotMatch(desktopHtml, /不适用 · 此资产没有 Owner 发布流程/);
+  }
 
   const desktopOwner = render(React.createElement(C.OwnerReviewWorkspaceConcept, { data: lifecycleData, action, ui, initialOwnerPane: "improvements" }));
   assert.match(desktopOwner, /erOwnerReleaseBar kActionBar/);
@@ -1172,6 +1211,9 @@ test("Lab convergence styles retain the mobile lifecycle rail and list-detail ev
   assert.match(migratedSelectors, /\.mCapabilityUsage\s*\{[^}]*gap:\s*0/);
   assert.match(migratedSelectors, /\.mResearchSheetMetrics\s*\{[^}]*gap:\s*0[^}]*border-radius:\s*0/);
   assert.match(migratedSelectors, /\.mResearchSheet > section,\.mResearchParams\s*\{[^}]*border-radius:\s*0/);
+  const definedKordynProperties = new Set([...foundation.matchAll(/(--kordyn-[a-z0-9-]+)\s*:/g)].map((match) => match[1]));
+  const referencedKordynProperties = new Set([...migratedSelectors.matchAll(/var\((--kordyn-[a-z0-9-]+)/g)].map((match) => match[1]));
+  assert.deepEqual([...referencedKordynProperties].filter((name) => !definedKordynProperties.has(name)).sort(), [], "migrated Lab blocks may reference only defined --kordyn-* custom properties");
   const convergenceBlock = (css) => css.slice(css.lastIndexOf("/* Lab deep-page convergence */"));
   assert.doesNotMatch([foundation, system, styles].map(convergenceBlock).join("\n"), /linear-gradient|backdrop-filter|box-shadow/);
 });

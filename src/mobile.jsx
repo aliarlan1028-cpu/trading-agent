@@ -1546,8 +1546,14 @@ const mobileOwnerReleaseEvidence = (item, assetType, provenance) => {
   const knowledgeRelease = assetType === "strategy"
     && provenance === "knowledge-derived"
     && item.version != null
-    && /^(active|probation|degraded)$/.test(String(item.status || ""));
-  const releaseLabel = { active: t("已发布", "Published"), probation: t("小额试用", "Live probation"), degraded: t("已降级", "Degraded") }[item.status];
+    && isPublishedKnowledgeStrategy(item);
+  const releaseLabel = {
+    live_probation: t("小额试用", "Live probation"),
+    active: t("已发布", "Published"),
+    degraded: t("已降级", "Degraded"),
+    retired: t("已退役", "Retired"),
+    superseded: t("已被替代", "Superseded")
+  }[item.status];
   if (knowledgeRelease) return { applicable: true, value: `v${item.version} · ${releaseLabel}` };
   return { applicable: false, value: t("不适用 · 此资产没有 Owner 发布流程", "Not applicable · This asset has no Owner release workflow") };
 };

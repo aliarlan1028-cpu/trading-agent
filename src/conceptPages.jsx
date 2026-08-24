@@ -104,7 +104,7 @@ const ownerReleaseEvidence = (item, assetType, provenance) => {
   const knowledgeRelease = assetType === "strategy"
     && provenance === "knowledge-derived"
     && item.version != null
-    && /^(active|probation|degraded)$/.test(String(item.status || ""));
+    && isPublishedKnowledgeStrategy(item);
   if (knowledgeRelease) return { applicable: true, value: `v${item.version} · ${skillStatusLabel(item.status)}` };
   return { applicable: false, value: t("不适用 · 此资产没有 Owner 发布流程", "Not applicable · This asset has no Owner release workflow") };
 };
