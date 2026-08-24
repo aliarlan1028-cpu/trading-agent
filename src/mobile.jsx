@@ -164,7 +164,7 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
     {primaryBlocker && <div className="mSafetyReason"><b>{localizeText(primaryBlocker.label || primaryBlocker)}</b>{primaryBlocker.detail && <p>{localizeText(primaryBlocker.detail)}</p>}{primaryBlocker.recovery && <small><RefreshCw/>{localizeText(primaryBlocker.recovery)}</small>}</div>}
     <div className="mSafetyActions">
       <button className="danger" onClick={flattenAll}><Target/><span><b>{t("全部平仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button>
-      <button className={`danger ${stopped?"active":""}`} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>
+      <button className={stopped ? "ordinary active" : "danger"} onClick={()=>{onClose();onKill();}}><Zap/><span><b>{stopped?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{stopped?t("经后端重新核验后恢复", "Resume only after backend revalidation"):t("立即阻止所有新交易", "Immediately block all new trades")}</small></span></button>
     </div>
     <button className="mSafetyClose" onClick={onClose}>{t("关闭", "Close")}</button>
   </section></div>;
@@ -1916,7 +1916,7 @@ function MobileTabbar({ route, activeWorkspace: activeWorkspaceProp, onNavigate,
     {mobilePrimaryNav.map((item, index) => {
       const Icon = item.icon;
       const active = item.id === "more" ? ["operations", "configuration"].includes(activeWorkspace) : activeWorkspace === item.workspace;
-      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><small>{item.id === "more" ? "··" : String(index + 1).padStart(2, "0")}</small><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
+      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><small>{String(index + 1).padStart(2, "0")}</small><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
     })}
   </nav>;
 }
@@ -1938,7 +1938,7 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
 export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject = null, onNavigate = () => {} }) {
   const [sheet, setSheet] = useState("");
   const context = buildShellContext({ data, workspaceId, selectedObject });
-  const trace = buildShellTrace(data, workspaceId);
+  const trace = buildShellTrace(data, workspaceId, selectedObject);
   return <>
     <nav className="mShellTools" data-shell-role="mobile-context-trace" aria-label={t("全局上下文与追踪", "Global context and trace")}>
       <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>Context</b><span>{context.status}</span></button>

@@ -10506,6 +10506,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .appShell.kordynSystem :is(p, b, span, small, em, code, dd) { min-width: 0; overflow-wrap: anywhere; }
 
 .appShell.kordynSystem > .appTopbar {
+  --command-rail-wide-budget: 1440px;
   grid-area: command;
   position: relative;
   top: auto;
@@ -10523,8 +10524,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
 .commandRail {
   display: flex;
-  flex: 1 1 480px;
-  min-width: 360px;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 100%;
   border-right: 1px solid var(--kordyn-ink);
   background: var(--kordyn-paper);
@@ -10534,7 +10535,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__brand span { display: grid; gap: 1px; }
 .commandRail__brand b { font: 780 14px/1 var(--kordyn-display); letter-spacing: -.02em; }
 .commandRail__brand small { color: var(--kordyn-muted); font: 700 8px/1.2 var(--kordyn-mono); text-transform: uppercase; }
-.commandRail__search { position: relative; display: flex; flex: 1 1 280px; align-items: center; min-width: 180px; border-right: 1px solid var(--kordyn-line); color: var(--kordyn-muted); }
+.commandRail__search { position: relative; display: flex; flex: 1 1 auto; align-items: center; min-width: 220px; border-right: 1px solid var(--kordyn-line); color: var(--kordyn-muted); }
 .commandRail__search > svg { flex: none; width: 15px; margin-left: 13px; }
 .commandRail__search > input { width: 100%; height: 100%; min-width: 0; padding: 0 38px 0 9px; border: 0; outline: 0; background: transparent; color: var(--kordyn-ink); font: 650 11px var(--kordyn-sans); }
 .commandRail__search > input::placeholder { color: var(--kordyn-muted); opacity: 1; }
@@ -10552,7 +10553,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__results b { font-size: 11px; }
 .commandRail__results span { text-align: right; text-transform: uppercase; }
 .commandRail__results > p { min-height: 56px; padding: 18px; color: var(--kordyn-muted); font-size: 11px; }
-.commandRail__facts { display: grid; grid-template-columns: repeat(4, minmax(58px, 1fr)); flex: 0 1 264px; min-width: 0; }
+.commandRail__facts { display: grid; grid-template-columns: repeat(5, minmax(50px, 1fr)); flex: 0 0 286px; min-width: 0; }
 .commandRail__facts > span { display: grid; align-content: center; gap: 2px; min-width: 0; padding: 0 8px; border-right: 1px solid var(--kordyn-line); }
 .commandRail__facts > span:last-child { border-right: 0; }
 .commandRail__facts small { color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); letter-spacing: .08em; }
@@ -10561,9 +10562,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .appShell.kordynSystem > .appTopbar .topbarStatusGroup,
 .appShell.kordynSystem > .appTopbar .topEmergencyActions,
 .appShell.kordynSystem > .appTopbar .topbarActions { align-self: stretch; min-height: 0; margin: 0; border-left: 1px solid var(--kordyn-ink); }
+.appShell.kordynSystem > .appTopbar .topbarStatusGroup { flex: 0 0 264px; flex-wrap: nowrap; gap: 0; }
+.appShell.kordynSystem > .appTopbar .topbarActions { flex: 0 0 138px; gap: 0; }
 .appShell.kordynSystem > .appTopbar :is(.exchangePill, .runtimeStatePill, .topEmergencyActions > button, .bellButton, .topLangBtn, .topAvatar) { height: 100%; min-height: 0; border: 0; border-right: 1px solid var(--kordyn-line); border-radius: 0; box-shadow: none; background: transparent; }
-.appShell.kordynSystem > .appTopbar .topEmergencyActions { display: grid; grid-template-columns: repeat(2,minmax(64px,1fr)); }
-.appShell.kordynSystem > .appTopbar .topEmergencyActions > button { color: var(--kordyn-danger); }
+.appShell.kordynSystem > .appTopbar .topEmergencyActions { display: grid; grid-template-columns: repeat(2,minmax(64px,1fr)); flex: 0 0 144px; min-width: 0; padding: 0; gap: 0; border: 0; border-radius: 0; }
+.appShell.kordynSystem > .appTopbar .topEmergencyActions > button { height: 100% !important; min-height: 0 !important; padding: 0 6px !important; border-radius: 0 !important; color: var(--kordyn-danger); }
 .appShell.kordynSystem > .appTopbar .topEmergencyActions > button:hover,
 .appShell.kordynSystem > .appTopbar .topEmergencyActions > button.active { background: var(--kordyn-danger); color: var(--kordyn-paper); }
 .appShell.kordynSystem > .appTopbar .topAvatar { width: 48px; color: var(--kordyn-ink); }
@@ -10620,6 +10623,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .contextDock dl { margin: 0; }
 .contextDock dl > div { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 10px; min-height: 52px; padding: 12px; border-bottom: 1px solid var(--kordyn-line); }
 .contextDock dd { margin: 0; font: 680 10px/1.45 var(--kordyn-mono); }
+.contextDock__gate { display: grid; gap: 4px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-ink); background: color-mix(in srgb,var(--kordyn-amber) 18%,var(--kordyn-paper)); }
+.contextDock__gate b { font: 760 10px var(--kordyn-sans); }
+.contextDock__gate p { color: var(--kordyn-muted); font-size: 9px; line-height: 1.45; }
+.contextDock__gate small { color: var(--kordyn-muted); font: 720 7px var(--kordyn-mono); text-transform: uppercase; }
+.contextDock__gate.state-error,
+.contextDock__gate.state-forbidden { background: color-mix(in srgb,var(--kordyn-danger) 15%,var(--kordyn-paper)); }
 .contextDock footer { padding: 12px; }
 .contextDock footer button { width: 100%; min-height: 44px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-acid); color: var(--kordyn-ink); font: 760 10px var(--kordyn-sans); }
 .contextDock footer button:disabled { background: var(--kordyn-paper); color: var(--kordyn-muted); }
@@ -10673,8 +10682,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .confirmDialog.danger { border: 1px solid var(--kordyn-ink); border-radius: 0; box-shadow: 10px 10px 0 var(--kordyn-danger); }
 .kordynSystem .modalCard { box-shadow: 10px 10px 0 var(--kordyn-acid); }
 
-.mShell2.kordynSystem { display: grid; grid-template-rows: 56px minmax(0,1fr) 44px 66px; width: 100%; height: 100dvh; min-width: 0; overflow: hidden; background: var(--kordyn-paper); }
-.mShell2.kordynSystem > .mHeader2 { position: relative; top: auto; z-index: 40; display: grid; grid-template-columns: 56px minmax(0,1fr) auto; height: 56px; min-height: 56px; padding: 0; border: 0; border-bottom: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); box-shadow: none; }
+.mShell2.kordynSystem { display: grid; grid-template-rows: calc(56px + var(--safe-area-inset-top,env(safe-area-inset-top,0px))) minmax(0,1fr) 44px calc(66px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); width: 100%; height: 100dvh; min-width: 0; overflow: hidden; background: var(--kordyn-paper); }
+.mShell2.kordynSystem > .mHeader2 { position: relative; top: auto; z-index: 40; display: grid; grid-template-columns: 56px minmax(0,1fr) auto; height: 100%; min-height: calc(56px + var(--safe-area-inset-top,env(safe-area-inset-top,0px))); padding: 0; padding-top: var(--safe-area-inset-top,env(safe-area-inset-top,0px)); border: 0; border-bottom: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); box-shadow: none; }
 .mShell2.kordynSystem > .mHeader2 :is(.mMenuBtn,.mBack,.mRuntimeButton) { min-width: 44px; min-height: 44px; height: 100%; border: 0; border-right: 1px solid var(--kordyn-ink); border-radius: 0; background: transparent; box-shadow: none; }
 .mShell2.kordynSystem > .mHeader2 .mHeaderMid { padding: 0 12px; }
 .mShell2.kordynSystem > .mMain2 { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-bottom: 0; }
@@ -10685,7 +10694,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mShellToolButton span { color: var(--kordyn-muted); font: 720 7px var(--kordyn-mono); text-transform: uppercase; }
 .mShellToolButton b { font: 740 10px var(--kordyn-sans); }
 .mShellToolButton span { text-align: right; }
-.mShell2.kordynSystem > .mNativeTabbar { position: relative; inset: auto; z-index: 50; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); height: 66px; padding: 0; border: 0; border-top: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-dark); box-shadow: none; backdrop-filter: none; }
+.mShell2.kordynSystem > .mNativeTabbar { position: relative; inset: auto; z-index: 50; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); height: 100%; min-height: calc(66px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); padding: 0; padding-bottom: var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)); border: 0; border-top: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-dark); box-shadow: none; backdrop-filter: none; }
 .mShell2.kordynSystem > .mNativeTabbar > button { position: relative; display: grid; grid-template-columns: auto 16px; place-content: center; gap: 2px 5px; min-width: 0; min-height: 44px; padding: 6px 3px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper) 18%,transparent); border-radius: 0; background: transparent; color: var(--kordyn-paper); }
 .mShell2.kordynSystem > .mNativeTabbar > button:last-child { border-right: 0; }
 .mShell2.kordynSystem > .mNativeTabbar > button small { align-self: center; color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); }
@@ -10704,11 +10713,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mShellSheet .traceRail > nav { min-width: 700px; overflow-x: auto; }
 .mShellSheet .traceRail__detail { position: static; width: 100%; border: 0; border-bottom: 1px solid var(--kordyn-ink); box-shadow: none; }
 
-@media (max-width: 1480px) {
-  .commandRail__facts { display: none; }
-  .appShell.kordynSystem > .appTopbar .exchangePill small,
-  .appShell.kordynSystem > .appTopbar .topEmergencyActions span { display: none; }
-}
+.mShell2.kordynSystem .mSafetyOverlay { background: rgba(17,21,17,.78); backdrop-filter: none; }
+.mShell2.kordynSystem .mSafetySheet { padding-bottom: calc(18px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); border: 1px solid var(--kordyn-ink); border-bottom: 0; border-radius: 0 !important; background: var(--kordyn-paper); box-shadow: 0 -10px 0 var(--kordyn-acid); }
+.mShell2.kordynSystem .mSafetyHandle { border-radius: 0; background: var(--kordyn-ink); }
+.mShell2.kordynSystem .mSafetyActions button { border: 1px solid var(--kordyn-ink) !important; border-radius: 0 !important; background: var(--kordyn-paper) !important; color: var(--kordyn-ink) !important; box-shadow: 5px 5px 0 var(--kordyn-danger); }
+.mShell2.kordynSystem .mSafetyActions button.ordinary { box-shadow: 5px 5px 0 var(--kordyn-acid); }
+.mShell2.kordynSystem .mSafetyActions button.danger { background: var(--kordyn-danger) !important; color: var(--kordyn-paper) !important; }
+.mShell2.kordynSystem .mSafetyActions button.danger > svg { color: var(--kordyn-paper); }
+.mShell2.kordynSystem .mSafetyClose { min-height: 44px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-acid); color: var(--kordyn-ink); }
+
+.cfmInput,
+.cfmBtn { border-radius: 0; }
 
 @media (max-width: 1280px) and (min-width: 721px) {
   .appShell.kordynSystem { grid-template-columns: var(--kordyn-workspace-rail) minmax(0,1fr) 0; }
@@ -10720,7 +10735,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 
 @media (max-width: 720px) {
-  .mShell2.kordynSystem { grid-template-rows: 56px minmax(0,1fr) 44px 66px; }
+  .mShell2.kordynSystem { grid-template-rows: calc(56px + var(--safe-area-inset-top,env(safe-area-inset-top,0px))) minmax(0,1fr) 44px calc(66px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); }
   .mShell2.kordynSystem :is(.mCard,.mNativeSection,.mSectionCard) { max-width: 100%; }
   .mShellSheet .contextDock dl > div { grid-template-columns: 96px minmax(0,1fr); }
 }

@@ -10,18 +10,38 @@ const firstValue = (...values) => values.find((value) => value != null && value 
 const asList = (value) => Array.isArray(value) ? value : [];
 
 const searchCollections = Object.freeze([
-  { key: "markets", type: "Market", route: "market", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
-  { key: "positions", type: "Position", route: "positions", id: (row) => row.id || row.symbol, title: (row) => row.symbol || row.name },
-  { key: "tradePlans", type: "Trade plan", route: "signalHub", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
-  { key: "tasks", type: "Task", route: "operationsCenter:tasks", id: (row) => row.id, title: (row) => row.title || row.name || row.type },
-  { key: "mandates", type: "Mandate", route: "riskMandate", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
-  { key: "riskIncidents", type: "Risk incident", route: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
-  { key: "executionOrders", type: "Execution", route: "executionReview", id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
-  { key: "reviews", type: "Review", route: "labReviews", id: (row) => row.id, title: (row) => row.title || row.symbol || row.id },
-  { key: "skills", type: "Capability", route: "capabilityLib", id: (row) => row.id || row.name, title: (row) => row.name || row.title || row.id }
+  { key: "markets", type: "Market", route: "market", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
+  { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.symbol, title: (row) => row.symbol || row.name },
+  { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
+  { key: "tasks", type: "Task", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.name || row.type },
+  { key: "mandates", type: "Mandate", route: "riskMandate", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
+  { key: "riskIncidents", type: "Risk incident", route: "riskCenter", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
+  { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
+  { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "researchCenter", id: (row) => row.id, title: (row) => row.title || row.symbol || row.id },
+  { key: "skills", type: "Capability", route: "capabilityLib", workspaceId: "lab", sourceSection: "researchCenter", id: (row) => row.id || row.name, title: (row) => row.name || row.title || row.id }
 ]);
 
-function searchRow(type, route, id, title, source) {
+function sourceMetadata(data, source, workspaceId, sourceSection) {
+  const raw = source?.raw || source || {};
+  const sourceState = String(firstValue(
+    data.resourceState?.[sourceSection],
+    source?.sourceState,
+    raw.sourceState,
+    raw.resourceState,
+    unavailable
+  ));
+  const sourceForbidden = firstValue(source?.sourceForbidden, raw.forbidden, raw.permissionDenied);
+  return {
+    workspaceId,
+    sourceSection,
+    sourceState,
+    sourceStale: sourceState.toLowerCase() === "stale" || source?.sourceStale === true || raw.stale === true || raw.isStale === true,
+    sourceDegraded: sourceState.toLowerCase() === "degraded" || source?.sourceDegraded === true || raw.degraded === true,
+    sourceForbidden: sourceForbidden === true ? "forbidden" : (sourceForbidden || false)
+  };
+}
+
+function searchRow(data, type, route, id, title, source, workspaceId, sourceSection) {
   if (id == null || id === "" || title == null || title === "") return null;
   return {
     type,
@@ -35,6 +55,7 @@ function searchRow(type, route, id, title, source) {
     risk: firstValue(source?.risk, source?.riskLevel, source?.severity, unavailable),
     evidence: firstValue(source?.evidenceId, source?.updatedAt, source?.createdAt, unavailable),
     nextAction: firstValue(source?.nextAction, source?.allowedAction, `Open ${route}`),
+    ...sourceMetadata(data, source, workspaceId, sourceSection),
     raw: source
   };
 }
@@ -43,19 +64,20 @@ export function buildShellSearchIndex(data = {}) {
   const rows = [];
   for (const collection of searchCollections) {
     for (const item of asList(data[collection.key])) {
-      const row = searchRow(collection.type, collection.route, collection.id(item), collection.title(item), item);
+      const row = searchRow(data, collection.type, collection.route, collection.id(item), collection.title(item), item, collection.workspaceId, collection.sourceSection);
       if (row) rows.push(row);
     }
   }
   for (const item of asList(data.knowledge?.sources)) {
-    const row = searchRow("Knowledge", "knowledgeBase", item.id || item.url || item.title, item.title || item.name || item.url, item);
+    const row = searchRow(data, "Knowledge", "knowledgeBase", item.id || item.url || item.title, item.title || item.name || item.url, item, "lab", "researchCenter");
     if (row) rows.push(row);
   }
   for (const definition of ROUTE_DEFINITIONS) {
     const alias = definition.aliases.find((item) => !item.includes("*")) || definition.aliases[0];
-    rows.push(searchRow("Feature", alias, alias, `${WORKSPACES[definition.workspace]?.labelEn || CONFIGURATION_WORKSPACE.labelEn} / ${definition.view}`, {
+    const workspace = WORKSPACES[definition.workspace] || CONFIGURATION_WORKSPACE;
+    rows.push(searchRow(data, "Feature", alias, alias, `${workspace.labelEn} / ${definition.view}`, {
       status: "available", source: "Product route registry", permission: unavailable, nextAction: `Open ${alias}`
-    }));
+    }, workspace.id, definition.desktop.section));
   }
   const seen = new Set();
   return rows.filter((row) => row && !seen.has(`${row.type}:${row.id}`) && seen.add(`${row.type}:${row.id}`));
@@ -76,12 +98,54 @@ export function nextShellSearchInteraction({ key, activeIndex = 0, count = 0 }) 
   return { activeIndex, close: false, selectIndex: -1 };
 }
 
+export function runShellSearchShortcut(event, { open = () => {}, focus = () => {} } = {}) {
+  if (!(event?.metaKey || event?.ctrlKey) || String(event?.key).toLowerCase() !== "k") return false;
+  event.preventDefault?.();
+  open();
+  focus();
+  return true;
+}
+
+export function runShellSearchInteraction({ key, activeIndex = 0, results = [], onSelect = () => {}, onNavigate = () => {}, onClose = () => {} } = {}) {
+  const next = nextShellSearchInteraction({ key, activeIndex, count: results.length });
+  if (next.selectIndex >= 0) {
+    const row = results[next.selectIndex];
+    if (row) {
+      onSelect(row);
+      onNavigate(row.route, row);
+    }
+  }
+  if (next.close) onClose();
+  return next;
+}
+
+export function selectionForNavigation(selectedObject, workspaceId) {
+  if (!selectedObject || selectedObject.workspaceId !== workspaceId || selectedObject.sourceForbidden) return null;
+  return selectedObject;
+}
+
 export function buildShellContext({ data = {}, workspaceId = "ai", selectedObject = null } = {}) {
   const workspace = WORKSPACES[workspaceId] || (workspaceId === "configuration" ? CONFIGURATION_WORKSPACE : null);
   const mandate = asList(data.mandates).find((item) => ["active", "enabled", "effective"].includes(String(item.status || item.state).toLowerCase())) || asList(data.mandates)[0];
   const raw = selectedObject?.raw || selectedObject || {};
+  const source = sourceMetadata(data, selectedObject || raw, workspaceId, selectedObject?.sourceSection || workspace?.resourceSection);
+  const objectStatus = String(firstValue(selectedObject?.status, raw.status, raw.state, unavailable));
+  const sourceState = source.sourceState;
+  const normalizedSourceState = sourceState.toLowerCase();
+  const workspaceTrace = scopedTraceRows(data.traces, workspaceId, selectedObject)[0];
+  const gate = source.sourceForbidden
+    ? { kind: "forbidden", label: t("权限不足", "Permission denied"), detail: t("当前身份无权使用这个对象。", "The current identity cannot use this object.") }
+    : ["error", "failed"].includes(normalizedSourceState)
+      ? { kind: "error", label: t("数据加载失败", "Data failed to load"), detail: t("动作保持关闭，直到来源恢复。", "Actions remain closed until the source recovers.") }
+      : ["loading", "not_loaded"].includes(normalizedSourceState)
+        ? { kind: "loading", label: t("数据尚未就绪", "Data is not ready"), detail: t("等待权威来源完成加载。", "Waiting for the authoritative source to load.") }
+        : source.sourceStale
+          ? { kind: "stale", label: t("数据已陈旧", "Data is stale"), detail: t("动作保持关闭，直到来源刷新。", "Actions remain closed until the source refreshes.") }
+          : source.sourceDegraded
+            ? { kind: "degraded", label: t("来源已降级", "Source is degraded"), detail: t("受影响的动作保持关闭。", "Affected actions remain closed.") }
+            : null;
   const workspaceEvidence = {
-    ai: firstValue(asList(data.traces)[0]?.evidenceId, asList(data.traces)[0]?.id, asList(data.events)[0]?.id),
+    ai: firstValue(workspaceTrace?.evidenceId, workspaceTrace?.id, asList(data.events)[0]?.id),
     live: firstValue(asList(data.markets)[0]?.updatedAt, asList(data.positions)[0]?.id, asList(data.executionOrders)[0]?.id),
     lab: firstValue(asList(data.reviews)[0]?.id, asList(data.knowledge?.sources)[0]?.id, asList(data.skills)[0]?.id),
     control: firstValue(asList(data.riskChecks)[0]?.id, asList(data.mandates)[0]?.id, asList(data.riskIncidents)[0]?.id),
@@ -97,7 +161,14 @@ export function buildShellContext({ data = {}, workspaceId = "ai", selectedObjec
     permissions: String(firstValue(selectedObject?.permission, raw.permission, raw.permissions, raw.requiredPermission, mandate?.permission, unavailable)),
     nextAction: String(firstValue(selectedObject?.nextAction, raw.nextAction, raw.allowedAction, selectedObject?.route ? `Open ${selectedObject.route}` : null, workspace?.rootRoute ? `Open ${workspace.rootRoute}` : null, unavailable)),
     title: String(firstValue(selectedObject?.title, raw.title, raw.name, raw.symbol, workspace?.labelEn, unavailable)),
-    status: String(firstValue(selectedObject?.status, raw.status, workspace ? data.resourceState?.[workspace.resourceSection] : null, unavailable)),
+    status: objectStatus,
+    objectStatus,
+    sourceState,
+    sourceStale: source.sourceStale,
+    sourceDegraded: source.sourceDegraded,
+    sourceForbidden: source.sourceForbidden,
+    gate,
+    actionsDisabled: Boolean(gate),
     route: selectedObject?.route || workspace?.rootRoute || ""
   };
 }
@@ -110,22 +181,44 @@ const knownTraceStatus = (value) => {
   if (["waiting", "pending", "queued", "running", "active"].includes(status)) return "waiting";
   return "unavailable";
 };
-const collectionTrace = (value, completeDetail, waitingDetail) => !Array.isArray(value)
+const collectionTrace = (value, detail) => !Array.isArray(value)
   ? { status: "unavailable", detail: unavailable }
-  : value.length
-    ? { status: "complete", detail: completeDetail(value) }
-    : { status: "waiting", detail: waitingDetail };
+  : { status: "waiting", detail: value.length ? `${value.length} fact${value.length === 1 ? "" : "s"} available; no scoped stage result` : detail };
 
-export function buildShellTrace(data = {}, workspaceId = "ai") {
-  const explicit = new Map(asList(data.traces).map((row) => [String(row.stage || row.name || "").toLowerCase(), row]));
+function traceIdentityValues(value) {
+  const raw = value?.raw || {};
+  const keys = [
+    "id", "objectId", "runId", "agentRunId", "agent_run_id", "sourceRunId",
+    "planId", "tradePlanId", "orderId", "executionOrderId", "positionId",
+    "taskId", "reviewId", "mandateId", "riskCheckId", "analysisBundleId", "subjectId"
+  ];
+  return new Set(keys.flatMap((key) => [value?.[key], raw?.[key]]).filter((item) => item != null && item !== "").map(String));
+}
+
+function scopedTraceRows(rows, workspaceId, selectedObject) {
+  const selectedIds = traceIdentityValues(selectedObject);
+  return asList(rows).filter((row) => {
+    const rowWorkspace = firstValue(row.workspaceId, row.workspace, row.productWorkspace);
+    if (String(rowWorkspace || "") !== String(workspaceId)) return false;
+    const rowIds = traceIdentityValues({ ...row, id: null });
+    if (selectedObject) return rowIds.size > 0 && [...rowIds].some((id) => selectedIds.has(id));
+    return rowIds.size === 0;
+  });
+}
+
+export function buildShellTrace(data = {}, workspaceId = "ai", selectedObject = null) {
+  const explicit = new Map(scopedTraceRows(data.traces, workspaceId, selectedObject).map((row) => [String(row.stage || row.name || "").toLowerCase(), row]));
+  const workspace = WORKSPACES[workspaceId] || (workspaceId === "configuration" ? CONFIGURATION_WORKSPACE : null);
+  const resourceState = String(data.resourceState?.[workspace?.resourceSection] || "").toLowerCase();
+  const blocked = ["error", "failed", "forbidden"].includes(resourceState);
   const inferred = {
-    sense: collectionTrace(data.markets, (rows) => `${rows.length} market fact${rows.length === 1 ? "" : "s"} loaded`, "Waiting for market facts"),
-    recall: collectionTrace(data.knowledge?.sources, (rows) => `${rows.length} knowledge source${rows.length === 1 ? "" : "s"} available`, "No recalled source in the current scope"),
-    plan: collectionTrace(data.tradePlans, (rows) => `${rows.length} plan${rows.length === 1 ? "" : "s"} registered`, "No current plan"),
-    guard: collectionTrace(data.riskChecks || data.mandates, (rows) => `${rows.length} guard fact${rows.length === 1 ? "" : "s"} loaded`, "Waiting for a guard decision"),
-    execute: collectionTrace(data.executionOrders || data.orders || data.fills, (rows) => `${rows.length} execution fact${rows.length === 1 ? "" : "s"} loaded`, "No execution has started"),
-    monitor: collectionTrace(data.watchTriggers || data.positions, (rows) => `${rows.length} monitor fact${rows.length === 1 ? "" : "s"} loaded`, "No active monitor fact"),
-    review: collectionTrace(data.reviews || data.auditLogs, (rows) => `${rows.length} review fact${rows.length === 1 ? "" : "s"} loaded`, "No review is due")
+    sense: collectionTrace(data.markets, "Waiting for market facts"),
+    recall: collectionTrace(data.knowledge?.sources, "No recalled source in the current scope"),
+    plan: collectionTrace(data.tradePlans, "No current plan"),
+    guard: collectionTrace(Array.isArray(data.riskChecks) ? data.riskChecks : data.mandates, "Waiting for a guard decision"),
+    execute: collectionTrace(Array.isArray(data.executionOrders) ? data.executionOrders : Array.isArray(data.orders) ? data.orders : data.fills, "No execution has started"),
+    monitor: collectionTrace(Array.isArray(data.watchTriggers) ? data.watchTriggers : data.positions, "No active monitor fact"),
+    review: collectionTrace(Array.isArray(data.reviews) ? data.reviews : data.auditLogs, "No review is due")
   };
   return TRACE_STAGE_NAMES.map((label) => {
     const key = label.toLowerCase();
@@ -133,12 +226,31 @@ export function buildShellTrace(data = {}, workspaceId = "ai") {
     return {
       id: key,
       label,
-      status: row ? knownTraceStatus(row.status || row.state) : inferred[key].status,
-      detail: String(firstValue(row?.detail, row?.summary, row?.evidenceId, inferred[key].detail, unavailable)),
+      status: row ? knownTraceStatus(row.status || row.state) : blocked ? "blocked" : inferred[key].status,
+      detail: String(firstValue(row?.detail, row?.summary, row?.evidenceId, blocked ? `Workspace source is ${resourceState}` : null, inferred[key].detail, unavailable)),
       evidence: String(firstValue(row?.evidenceId, row?.id, row?.createdAt, unavailable)),
       workspaceId
     };
   });
+}
+
+export function buildCommandFacts(data = {}) {
+  const freshnessMs = firstValue(data.system?.dataFreshnessMs, data.marketStatus?.dataFreshnessMs);
+  const explicitFreshnessState = firstValue(data.system?.dataFreshnessState, data.marketStatus?.dataFreshnessState, data.system?.dataStale === true ? "stale" : data.system?.dataStale === false ? "fresh" : null);
+  const freshnessState = String(explicitFreshnessState || (freshnessMs == null ? "unavailable" : "available"));
+  const latencyMs = firstValue(data.system?.latencyMs, data.marketStatus?.latencyMs);
+  return {
+    freshness: {
+      label: "FRESHNESS",
+      value: freshnessMs == null ? unavailable : explicitFreshnessState ? `${freshnessState} · ${freshnessMs} ms` : `${freshnessMs} ms`,
+      state: freshnessMs == null ? "unavailable" : freshnessState.toLowerCase()
+    },
+    latency: {
+      label: "LATENCY",
+      value: latencyMs == null ? unavailable : `${latencyMs} ms`,
+      state: latencyMs == null ? "unavailable" : "available"
+    }
+  };
 }
 
 export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () => {} }) {
@@ -152,12 +264,10 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   const unread = asList(data.notifications).filter((row) => !row.read).length;
   const pendingReviews = asList(data.reviews).filter((row) => ["pending", "waiting", "required"].includes(String(row.status).toLowerCase())).length;
   const watchCount = asList(data.watchTriggers).length || asList(data.watches).length;
-  const latency = firstValue(data.system?.dataFreshnessMs, data.system?.latencyMs, data.marketStatus?.latencyMs);
+  const commandFacts = buildCommandFacts(data);
   useEffect(() => {
     const onPointer = (event) => { if (!rootRef.current?.contains(event.target)) setOpen(false); };
-    const onKey = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setOpen(true); inputRef.current?.focus(); }
-    };
+    const onKey = (event) => runShellSearchShortcut(event, { open: () => setOpen(true), focus: () => inputRef.current?.focus() });
     document.addEventListener("pointerdown", onPointer);
     window.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onPointer); window.removeEventListener("keydown", onKey); };
@@ -165,17 +275,22 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   const select = (row) => {
     if (!row) return;
     onSelect(row);
-    onNavigate(row.route);
+    onNavigate(row.route, row);
     setQuery("");
     setOpen(false);
   };
   const onKeyDown = (event) => {
     if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
     event.preventDefault();
-    const next = nextShellSearchInteraction({ key: event.key, activeIndex, count: results.length });
+    const next = runShellSearchInteraction({
+      key: event.key,
+      activeIndex,
+      results,
+      onSelect,
+      onNavigate,
+      onClose: () => { setQuery(""); setOpen(false); }
+    });
     setActiveIndex(next.activeIndex);
-    if (next.selectIndex >= 0) select(results[next.selectIndex]);
-    else if (next.close) setOpen(false);
   };
   return <section className="commandRail" data-shell-role="command-rail" aria-label={t("全局命令栏", "Global command rail")}>
     <div className="commandRail__brand"><img src="/kordyn-logo.svg" alt=""/><span><b>KORDYN</b><small>{text(data.user?.tenantName || data.user?.organization, unavailable)}</small></span></div>
@@ -187,7 +302,8 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
       </div>}
     </div>
     <div className="commandRail__facts" aria-label={t("全局运行事实", "Global runtime facts")}>
-      <span><small>LATENCY</small><b>{latency == null ? unavailable : `${latency} ms`}</b></span>
+      <span data-state={commandFacts.freshness.state}><small>{commandFacts.freshness.label}</small><b>{commandFacts.freshness.value}</b></span>
+      <span data-state={commandFacts.latency.state}><small>{commandFacts.latency.label}</small><b>{commandFacts.latency.value}</b></span>
       <span><small>WATCH</small><b>{data.watchTriggers || data.watches ? watchCount : unavailable}</b></span>
       <span><small>REVIEW</small><b>{data.reviews ? pendingReviews : unavailable}</b></span>
       <span><small>NOTICE</small><b>{data.notifications ? unread : unavailable}</b></span>
@@ -216,8 +332,8 @@ const CONTEXT_FIELDS = Object.freeze([
 export function ContextDock({ context = buildShellContext(), onNavigate = () => {}, collapsible = true, initiallyCollapsed = false }) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
   return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" aria-label={t("上下文", "Context")}>
-    <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
-    {!collapsed && <><dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={!context.route} onClick={() => context.route && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
+    <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.objectStatus || context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
+    {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
   </aside>;
 }
 

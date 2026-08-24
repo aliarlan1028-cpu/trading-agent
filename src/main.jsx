@@ -16,7 +16,7 @@ import { LandingPage } from "./landing.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "./productArchitecture.js";
-import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "./productShell.jsx";
+import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, selectionForNavigation } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
@@ -294,8 +294,9 @@ function App() {
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
-  function navigate(next) {
+  function navigate(next, selectedObject = null) {
     const resolved = resolveDesktopRoute(next);
+    setSelectedShellObject(selectionForNavigation(selectedObject, resolved.workspace));
     setActiveProductWorkspace(resolved.workspace);
     setActive(resolved.section);
     if (resolved.tab) setActiveWorkspaceTab(resolved.tab);
@@ -321,7 +322,7 @@ function App() {
     return <AiTraderCenter data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
   const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
-  const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace), [data, activeProductWorkspace]);
+  const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
   if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
@@ -335,7 +336,7 @@ function App() {
   return (
     <div className="appShell kordynSystem" key={lang}>
       <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
-      <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={(route) => { setSelectedShellObject(null); navigate(route); }} />
+      <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={navigate} />
       <main className="mainArea">
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
         <div className={active === "chat" ? "content contentChat" : "content"}>
