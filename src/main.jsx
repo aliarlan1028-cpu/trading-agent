@@ -294,9 +294,12 @@ function App() {
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
+  useEffect(() => {
+    setSelectedShellObject((current) => selectionForNavigation(current, activeProductWorkspace, data || {}));
+  }, [data, activeProductWorkspace]);
   function navigate(next, selectedObject = null) {
     const resolved = resolveDesktopRoute(next);
-    setSelectedShellObject(selectionForNavigation(selectedObject, resolved.workspace));
+    setSelectedShellObject(selectionForNavigation(selectedObject, resolved.workspace, data || {}));
     setActiveProductWorkspace(resolved.workspace);
     setActive(resolved.section);
     if (resolved.tab) setActiveWorkspaceTab(resolved.tab);

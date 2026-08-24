@@ -10506,7 +10506,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .appShell.kordynSystem :is(p, b, span, small, em, code, dd) { min-width: 0; overflow-wrap: anywhere; }
 
 .appShell.kordynSystem > .appTopbar {
-  --command-rail-wide-budget: 1440px;
   grid-area: command;
   position: relative;
   top: auto;

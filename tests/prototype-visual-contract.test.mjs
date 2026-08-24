@@ -48,7 +48,7 @@ const fixture = {
   tasks: [{ id: "task-9", title: "Reconcile fills", status: "waiting", type: "reconciliation" }],
   mandates: [{ id: "mandate-main", name: "Owner mandate", status: "active", version: 3 }],
   knowledge: { sources: [{ id: "kb-2", title: "Breakout playbook", status: "published", version: 2 }] },
-  traces: [{ id: "trace-8", workspaceId: "live", objectId: "plan-17", stage: "guard", status: "blocked", detail: "Permission confirmation is required", createdAt: "2026-08-24T08:01:00Z" }],
+  traces: [{ evidenceId: "trace-8", workspaceId: "live", objectId: "plan-17", stage: "guard", status: "blocked", detail: "Permission confirmation is required", createdAt: "2026-08-24T08:01:00Z" }],
   notifications: [{ id: "notice-1", read: false }]
 };
 
@@ -155,10 +155,10 @@ test("trace completion requires explicit evidence scoped to workspace and select
     tradePlans: [{ id: "plan-live" }],
     reviews: [{ id: "review-lab" }],
     traces: [
-      { id: "ai-sense", workspaceId: "ai", objectId: "ai-run", stage: "sense", status: "complete" },
-      { id: "live-plan", workspaceId: "live", objectId: "plan-live", stage: "plan", status: "complete" },
-      { id: "live-execute", workspaceId: "live", agentRunId: "run-live", stage: "execute", status: "complete" },
-      { id: "lab-guard", workspaceId: "lab", objectId: "review-lab", stage: "guard", status: "blocked" }
+      { evidenceId: "ai-sense", workspaceId: "ai", objectId: "ai-run", stage: "sense", status: "complete" },
+      { evidenceId: "live-plan", workspaceId: "live", objectId: "plan-live", stage: "plan", status: "complete" },
+      { evidenceId: "live-execute", workspaceId: "live", agentRunId: "run-live", stage: "execute", status: "complete" },
+      { evidenceId: "lab-guard", workspaceId: "lab", objectId: "review-lab", stage: "guard", status: "blocked" }
     ]
   };
   const liveWrongObject = Shell.buildShellTrace(scopedData, "live", { id: "other-plan", workspaceId: "live" });
@@ -176,6 +176,39 @@ test("trace completion requires explicit evidence scoped to workspace and select
   assert.ok(missing.some((stage) => stage.status === "unavailable"));
   const aiContext = Shell.buildShellContext({ data: { resourceState: { chat: "loaded" }, traces: [{ id: "live-only", workspaceId: "live", objectId: "plan-live" }] }, workspaceId: "ai" });
   assert.equal(aiContext.evidence, "Unavailable", "Context must not borrow evidence from another workspace");
+});
+
+test("trace identity matching rejects related-ID collisions and cross-typed runs", () => {
+  const selected = {
+    id: "plan-a",
+    workspaceId: "live",
+    raw: {
+      mandateId: "mandate-shared",
+      strategyId: "strategy-shared",
+      runId: "run-a",
+      agentRunId: "agent-run-a"
+    }
+  };
+  const data = {
+    resourceState: { cockpit: "loaded" },
+    tradePlans: [{ id: "plan-a" }],
+    traces: [
+      { id: "plan-b", workspaceId: "live", mandateId: "mandate-shared", stage: "plan", status: "complete" },
+      { objectId: "plan-b", workspaceId: "live", strategyId: "strategy-shared", stage: "guard", status: "blocked" },
+      { objectId: "plan-a", evidenceId: "object-evidence", workspaceId: "live", stage: "sense", status: "complete" },
+      { runId: "run-a", evidenceId: "run-evidence", workspaceId: "live", stage: "execute", status: "complete" },
+      { agentRunId: "agent-run-a", evidenceId: "agent-run-evidence", workspaceId: "live", stage: "monitor", status: "complete" },
+      { agentRunId: "run-a", evidenceId: "cross-typed-run", workspaceId: "live", stage: "review", status: "complete" }
+    ]
+  };
+
+  const trace = Shell.buildShellTrace(data, "live", selected);
+  assert.equal(trace.find((stage) => stage.id === "plan").status, "waiting", "a shared mandate cannot override a conflicting primary id");
+  assert.notEqual(trace.find((stage) => stage.id === "guard").status, "blocked", "a shared strategy cannot override a conflicting objectId");
+  assert.equal(trace.find((stage) => stage.id === "sense").evidence, "object-evidence", "the same primary object type matches");
+  assert.equal(trace.find((stage) => stage.id === "execute").evidence, "run-evidence", "the same runId type matches");
+  assert.equal(trace.find((stage) => stage.id === "monitor").evidence, "agent-run-evidence", "the same agentRunId type matches");
+  assert.notEqual(trace.find((stage) => stage.id === "review").status, "complete", "runId cannot match agentRunId by value alone");
 });
 
 test("search and context keep object status separate from source state and gate unsafe actions", () => {
@@ -197,13 +230,51 @@ test("search and context keep object status separate from source state and gate 
   assert.equal(context.gate.kind, "stale");
   assert.equal(context.actionsDisabled, true);
   assert.equal(Shell.selectionForNavigation(position, "lab"), null, "central navigation clears a selection from another workspace");
-  assert.equal(Shell.selectionForNavigation(position, "live"), position, "same-workspace selection remains valid");
+  assert.equal(Shell.selectionForNavigation(position, "live"), null, "a stale same-workspace selection fails closed");
   const forbidden = index.find((row) => row.id === "review-1");
   assert.equal(forbidden.sourceForbidden, "owner");
   assert.equal(Shell.selectionForNavigation(forbidden, "lab"), null, "forbidden selections fail closed");
 
   const html = renderToString(React.createElement(Shell.ContextDock, { context }));
   assert.match(html, /Data is stale|数据已陈旧/);
+  assert.match(html, /disabled=""/);
+});
+
+test("selection revalidation uses the current production index and forbidden resource truth", () => {
+  const initialData = {
+    resourceState: { cockpit: "loaded" },
+    positions: [{ id: "position-current", symbol: "ETH/USDT", status: "open", permission: "trade:read" }]
+  };
+  const selected = Shell.buildShellSearchIndex(initialData).find((row) => row.id === "position-current");
+  const refreshedData = {
+    resourceState: { cockpit: "loaded" },
+    positions: [{ id: "position-current", symbol: "ETH/USDT", status: "closed", permission: "trade:read" }]
+  };
+  const refreshed = Shell.selectionForNavigation(selected, "live", refreshedData);
+  assert.equal(refreshed.status, "closed", "revalidation returns the current indexed object, not the stale snapshot");
+
+  assert.equal(Shell.selectionForNavigation(selected, "live", { resourceState: { cockpit: "loaded" }, positions: [] }), null, "a disappearing same-workspace object is cleared");
+  assert.equal(Shell.selectionForNavigation(selected, "live", {
+    resourceState: { cockpit: "loaded" },
+    tradePlans: [{ id: "position-current", title: "Wrong object type" }]
+  }), null, "an id collision from a different production source cannot validate the selection");
+  assert.equal(Shell.selectionForNavigation(selected, "live", {
+    resourceState: { cockpit: "loaded" },
+    positions: [{ id: "position-current", symbol: "ETH/USDT", permissionDenied: true }]
+  }), null, "a current permission denial clears the selection");
+
+  const forbiddenData = {
+    resourceState: { cockpit: "forbidden" },
+    positions: [{ id: "position-current", symbol: "ETH/USDT", status: "open", permission: "trade:read" }]
+  };
+  const forbidden = Shell.buildShellSearchIndex(forbiddenData).find((row) => row.id === "position-current");
+  const context = Shell.buildShellContext({ data: forbiddenData, workspaceId: "live", selectedObject: forbidden });
+  assert.equal(forbidden.sourceForbidden, "forbidden");
+  assert.equal(context.gate.kind, "forbidden");
+  assert.equal(context.actionsDisabled, true);
+  assert.equal(Shell.selectionForNavigation(selected, "live", forbiddenData), null, "forbidden resourceState fails closed during revalidation");
+  const html = renderToString(React.createElement(Shell.ContextDock, { context }));
+  assert.match(html, /Permission denied|权限不足/);
   assert.match(html, /disabled=""/);
 });
 
@@ -261,9 +332,26 @@ test("1440 command rail keeps every required fact and danger label visible with 
   assert.equal(emergency["border-radius"], "0 !important");
   const status = declarations(".appShell.kordynSystem > .appTopbar .topbarStatusGroup");
   assert.equal(status["flex-wrap"], "nowrap");
-  const budget = declarations(".appShell.kordynSystem > .appTopbar");
-  assert.match(budget["--command-rail-wide-budget"] || "", /^\d+px$/);
-  assert.ok(Number.parseInt(budget["--command-rail-wide-budget"], 10) <= 1440);
+  const command = declarations(".commandRail");
+  const brand = declarations(".commandRail__brand");
+  const search = declarations(".commandRail__search");
+  const facts = declarations(".commandRail__facts");
+  const actions = declarations(".appShell.kordynSystem > .appTopbar .topbarActions");
+  const emergencyGroup = declarations(".appShell.kordynSystem > .appTopbar .topEmergencyActions");
+  assert.equal(command.flex, "1 1 auto");
+  assert.equal(command["min-width"], "0");
+  assert.equal(brand.flex, "0 0 var(--kordyn-workspace-rail)");
+  assert.equal(search.flex, "1 1 auto");
+  assert.equal(search["min-width"], "220px");
+  assert.equal(facts["grid-template-columns"], "repeat(5, minmax(50px, 1fr))");
+  assert.equal(facts.flex, "0 0 286px");
+  assert.equal(status.flex, "0 0 264px");
+  assert.equal(actions.flex, "0 0 138px");
+  assert.equal(emergencyGroup.flex, "0 0 144px");
+  assert.equal(emergencyGroup["min-width"], "0");
+  const minimumRequiredWidth = 188 + 220 + 286 + 264 + 138 + 144;
+  assert.equal(minimumRequiredWidth, 1240);
+  assert.ok(minimumRequiredWidth <= 1440, "effective flex bases and minimums fit the exact 1440 command rail");
 });
 
 test("mobile Safety and shared ConfirmHost controls win the late hard-edge cascade", () => {

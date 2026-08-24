@@ -30,13 +30,19 @@ function sourceMetadata(data, source, workspaceId, sourceSection) {
     raw.resourceState,
     unavailable
   ));
-  const sourceForbidden = firstValue(source?.sourceForbidden, raw.forbidden, raw.permissionDenied);
+  const normalizedSourceState = sourceState.toLowerCase();
+  const permission = firstValue(source?.permission, raw.permission, raw.permissions, raw.requiredPermission);
+  const permissionState = String(permission || "").toLowerCase();
+  const explicitForbidden = firstValue(source?.sourceForbidden, raw.forbidden, raw.permissionDenied);
+  const sourceForbidden = normalizedSourceState === "forbidden" || ["denied", "forbidden", "revoked", "unauthorized"].includes(permissionState)
+    ? "forbidden"
+    : explicitForbidden;
   return {
     workspaceId,
     sourceSection,
     sourceState,
-    sourceStale: sourceState.toLowerCase() === "stale" || source?.sourceStale === true || raw.stale === true || raw.isStale === true,
-    sourceDegraded: sourceState.toLowerCase() === "degraded" || source?.sourceDegraded === true || raw.degraded === true,
+    sourceStale: normalizedSourceState === "stale" || source?.sourceStale === true || raw.stale === true || raw.isStale === true,
+    sourceDegraded: normalizedSourceState === "degraded" || source?.sourceDegraded === true || raw.degraded === true,
     sourceForbidden: sourceForbidden === true ? "forbidden" : (sourceForbidden || false)
   };
 }
@@ -119,9 +125,26 @@ export function runShellSearchInteraction({ key, activeIndex = 0, results = [], 
   return next;
 }
 
-export function selectionForNavigation(selectedObject, workspaceId) {
-  if (!selectedObject || selectedObject.workspaceId !== workspaceId || selectedObject.sourceForbidden) return null;
-  return selectedObject;
+function selectionFailsClosed(selectedObject) {
+  const sourceState = String(selectedObject?.sourceState || "").toLowerCase();
+  return Boolean(
+    selectedObject?.sourceForbidden
+    || selectedObject?.sourceStale
+    || selectedObject?.sourceDegraded
+    || ["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"].includes(sourceState)
+  );
+}
+
+export function selectionForNavigation(selectedObject, workspaceId, data) {
+  if (!selectedObject || selectedObject.workspaceId !== workspaceId || selectionFailsClosed(selectedObject)) return null;
+  if (data === undefined) return selectedObject;
+  const current = buildShellSearchIndex(data).find((row) => (
+    row.id === selectedObject.id
+    && row.type === selectedObject.type
+    && row.workspaceId === workspaceId
+    && row.sourceSection === selectedObject.sourceSection
+  ));
+  return current && !selectionFailsClosed(current) ? current : null;
 }
 
 export function buildShellContext({ data = {}, workspaceId = "ai", selectedObject = null } = {}) {
@@ -185,24 +208,62 @@ const collectionTrace = (value, detail) => !Array.isArray(value)
   ? { status: "unavailable", detail: unavailable }
   : { status: "waiting", detail: value.length ? `${value.length} fact${value.length === 1 ? "" : "s"} available; no scoped stage result` : detail };
 
-function traceIdentityValues(value) {
-  const raw = value?.raw || {};
-  const keys = [
-    "id", "objectId", "runId", "agentRunId", "agent_run_id", "sourceRunId",
-    "planId", "tradePlanId", "orderId", "executionOrderId", "positionId",
-    "taskId", "reviewId", "mandateId", "riskCheckId", "analysisBundleId", "subjectId"
-  ];
-  return new Set(keys.flatMap((key) => [value?.[key], raw?.[key]]).filter((item) => item != null && item !== "").map(String));
+const TRACE_PRIMARY_FIELDS = Object.freeze(["objectId", "entityId", "id"]);
+const TRACE_RUN_FIELDS = Object.freeze(["runId", "agentRunId", "agent_run_id", "sourceRunId"]);
+const TRACE_RELATED_FIELDS = Object.freeze([
+  "planId", "tradePlanId", "orderId", "executionOrderId", "positionId", "taskId",
+  "reviewId", "mandateId", "strategyId", "riskCheckId", "analysisBundleId", "subjectId"
+]);
+
+function typedIdentityValue(value, field) {
+  return firstValue(value?.[field], value?.raw?.[field]);
+}
+
+function declaredTypedIdentities(value, fields) {
+  return fields.flatMap((field) => {
+    const identity = typedIdentityValue(value, field);
+    return identity == null || identity === "" ? [] : [{ field, value: String(identity) }];
+  });
+}
+
+function traceIdentityMatches(row, selectedObject) {
+  const selectedPrimary = firstValue(
+    selectedObject?.objectId,
+    selectedObject?.entityId,
+    selectedObject?.id,
+    selectedObject?.raw?.objectId,
+    selectedObject?.raw?.entityId,
+    selectedObject?.raw?.id
+  );
+  const primary = declaredTypedIdentities(row, TRACE_PRIMARY_FIELDS);
+  const runs = declaredTypedIdentities(row, TRACE_RUN_FIELDS);
+  const related = declaredTypedIdentities(row, TRACE_RELATED_FIELDS);
+  let matched = false;
+
+  if (primary.length) {
+    if (selectedPrimary == null || primary.some((identity) => identity.value !== String(selectedPrimary))) return false;
+    matched = true;
+  }
+  for (const identity of runs) {
+    const selectedRun = typedIdentityValue(selectedObject, identity.field);
+    if (selectedRun == null || identity.value !== String(selectedRun)) return false;
+    matched = true;
+  }
+  for (const identity of related) {
+    const selectedRelated = typedIdentityValue(selectedObject, identity.field);
+    if (selectedRelated == null) continue;
+    if (identity.value !== String(selectedRelated)) return false;
+    matched = true;
+  }
+  return matched;
 }
 
 function scopedTraceRows(rows, workspaceId, selectedObject) {
-  const selectedIds = traceIdentityValues(selectedObject);
   return asList(rows).filter((row) => {
     const rowWorkspace = firstValue(row.workspaceId, row.workspace, row.productWorkspace);
     if (String(rowWorkspace || "") !== String(workspaceId)) return false;
-    const rowIds = traceIdentityValues({ ...row, id: null });
-    if (selectedObject) return rowIds.size > 0 && [...rowIds].some((id) => selectedIds.has(id));
-    return rowIds.size === 0;
+    if (selectedObject) return traceIdentityMatches(row, selectedObject);
+    return declaredTypedIdentities(row, [...TRACE_PRIMARY_FIELDS, ...TRACE_RUN_FIELDS, ...TRACE_RELATED_FIELDS]).length === 0;
   });
 }
 
