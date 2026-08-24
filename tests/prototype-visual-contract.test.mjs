@@ -484,6 +484,27 @@ test("desktop AI keeps all five real KPI facts simultaneously visible at 1440", 
   assert.equal(bar["grid-template-columns"], "repeat(5, minmax(0, 1fr))");
 });
 
+test("medium Context-open layout contains every AI KPI before the fixed dock", () => {
+  const selector = ".appShell.kordynSystem:has(> .contextDock:not(.collapsed)) .uxCenterHead";
+  const head = finalDeclarations(selector, { media: /max-width:\s*1280px.*min-width:\s*721px/ });
+  assert.equal(head.width, "calc(100% - var(--kordyn-context-dock))");
+  assert.equal(head["flex-wrap"], "wrap");
+
+  const extra = finalDeclarations(`${selector} .uxHeadExtra`, { media: /max-width:\s*1280px.*min-width:\s*721px/ });
+  assert.equal(extra.flex, "0 0 100%");
+  assert.equal(extra["max-width"], "100%");
+
+  const viewportWidth = 1180;
+  const workspaceRailWidth = 188;
+  const contentInlinePadding = 16 * 2;
+  const contextDockWidth = 304;
+  const headWidth = viewportWidth - workspaceRailWidth - contentInlinePadding - contextDockWidth;
+  const headRight = workspaceRailWidth + 16 + headWidth;
+  const contextLeft = viewportWidth - contextDockWidth;
+  assert.ok(headRight < contextLeft, `header right ${headRight} must stay before Context left ${contextLeft}`);
+  assert.ok(headWidth / 5 >= 120, "five KPI columns retain a legible medium-width budget on their own row");
+});
+
 test("audited mobile Live Intelligence and Event Calendar operation chrome is hard edged", () => {
   const selectors = [
     ".mShell2.kordynSystem .mSymPills",

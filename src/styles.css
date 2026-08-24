@@ -11021,6 +11021,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .appShell.kordynSystem > .contextDock.collapsed { width: 58px; overflow: hidden; }
   .appShell.kordynSystem > .contextDock.collapsed > header { width: 58px; padding: 8px; }
   .appShell.kordynSystem > .contextDock.collapsed > header span { display: none; }
+  .appShell.kordynSystem:has(> .contextDock:not(.collapsed)) .uxCenterHead { width: calc(100% - var(--kordyn-context-dock)); flex-wrap: wrap; align-items: flex-start; }
+  .appShell.kordynSystem:has(> .contextDock:not(.collapsed)) .uxCenterHead .uxHeadLeft,
+  .appShell.kordynSystem:has(> .contextDock:not(.collapsed)) .uxCenterHead .uxHeadExtra { flex: 0 0 100%; max-width: 100%; }
   .commandRail__brand { flex-basis: var(--kordyn-workspace-rail); }
   .commandRail__search { min-width: 156px; }
 }
