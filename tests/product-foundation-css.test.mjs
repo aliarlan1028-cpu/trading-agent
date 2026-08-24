@@ -5,12 +5,17 @@ import { fileURLToPath } from "node:url";
 
 const cssPath = fileURLToPath(new URL("../src/product-foundation.css", import.meta.url));
 
-test("Kordyn product tokens match the approved editorial operating system", () => {
+test("Kordyn product tokens match the immutable interactive prototype", () => {
   const css = fs.readFileSync(cssPath, "utf8");
   for (const [name, value] of Object.entries({
-    paper: "#F3F0E7", "paper-white": "#FFFDF7", ink: "#151915", acid: "#CCFF3D",
-    orange: "#FF6B35", blue: "#91ACFF", violet: "#C5A2FF", line: "#B8BBB2"
+    paper: "#F4F1E9", "paper-2": "#EBE7DC", "paper-white": "#FFFDF7",
+    ink: "#111311", "ink-2": "#2B302C", muted: "#77796F",
+    dark: "#111511", "dark-2": "#1A1F1A", acid: "#CCFF3D",
+    mint: "#4FB78B", danger: "#E25645", amber: "#EFB44B", blue: "#5D8EE8"
   })) assert.match(css, new RegExp(`--kordyn-${name}:\\s*${value}`, "i"));
+  assert.match(css, /--kordyn-line:\s*rgba\(17,\s*19,\s*17,\s*\.22\)/i);
+  assert.match(css, /--kordyn-orange:\s*var\(--kordyn-danger\)/i);
+  assert.match(css, /--kordyn-violet:\s*var\(--kordyn-blue\)/i);
   assert.doesNotMatch(css, /linear-gradient|radial-gradient/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /safe-area-inset-bottom/);
