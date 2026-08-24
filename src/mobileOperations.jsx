@@ -40,7 +40,7 @@ function TaskCreate({ action, onDone }) {
   const chooseType=(type)=>{const localAt=()=>{const date=new Date(Date.now()+3600000-new Date().getTimezoneOffset()*60000);return date.toISOString().slice(0,16);};setForm((current)=>({...current,type,schedule:type==="Cron"?"*/5 * * * *":type==="At"?localAt():"Every 5m"}));};
   const isMission=form.kind==="mission";
   const submit=async(event)=>{event.preventDefault();const payload=buildMobileTaskPayload(form);if(!payload)return;const result=await action("/api/tasks",payload);if(result?.id||result?.ok!==false)onDone();};
-  return <div className="mOpsTaskCreate"><Back title={t("新建用户任务","New user task")} onBack={onDone}/><form onSubmit={submit}>
+  return <div className="mOpsTaskCreate kFormSurface"><Back title={t("新建用户任务","New user task")} onBack={onDone}/><form onSubmit={submit}>
     <div className="mOpsTaskKind" role="tablist"><button type="button" role="tab" aria-selected={!isMission} className={!isMission?"active":""} onClick={()=>update("kind","standard")}>{t("常规任务","Standard task")}</button><button type="button" role="tab" aria-selected={isMission} className={isMission?"active":""} onClick={()=>update("kind","mission")}>{t("情报·自由任务","Intelligence mission")}</button></div>
     <label><span>{t("任务名称","Task name")}</span><input value={form.name} onChange={(event)=>update("name",event.target.value)} placeholder={isMission?t("例如：跟踪 ETH ETF 审批","Example: track ETH ETF approval"):t("例如：每日账户对账","Example: daily account reconciliation")}/></label>
     {isMission&&<label><span>{t("追踪目标（自然语言）","Objective (plain language)")}</span><textarea rows="3" value={form.mission} onChange={(event)=>update("mission",event.target.value)} placeholder={t("按计划追踪事件进展、市场影响与新证据","Track event progress, market impact, and new evidence on schedule")}/></label>}
@@ -74,17 +74,17 @@ export function MobileOperations({ data, action, ui, initialView="overview" }) {
   const ops=buildOperationsView(data);
   const reconcile=async()=>{if(await uiConfirm(t("立即执行账户、订单、保护与账本对账？结果会写入审计。","Run account, order, protection, and ledger reconciliation now? The result is written to audit.")))action("/api/reconciler/run",{mode:"manual_mobile"});};
   const recover=async()=>{if(await uiConfirm(t("重新启动任务调度器？现有任务定义不会被修改。","Restart the task scheduler? Existing task definitions will not be changed.")))action("/api/scheduler/recover",{});};
-  if(createTask)return <div className="mOperationsNative"><TaskCreate action={action} onDone={()=>setCreateTask(false)}/></div>;
-  if(taskDetail)return <div className="mOperationsNative"><TaskDetail task={taskDetail} ops={ops} action={action} onBack={()=>setTaskDetail(null)}/></div>;
-  if(auditDetail)return <div className="mOperationsNative"><AuditDetail record={ops.audit.records.find((item)=>item.id===auditDetail.id)||auditDetail} onBack={()=>setAuditDetail(null)}/></div>;
-  if(noticeDetail)return <div className="mOperationsNative"><NoticeDetail record={ops.notifications.items.find((item)=>item.id===noticeDetail.id)||noticeDetail} action={action} onBack={()=>setNoticeDetail(null)}/></div>;
+  if(createTask)return <div className="mOperationsNative kFormSurface"><TaskCreate action={action} onDone={()=>setCreateTask(false)}/></div>;
+  if(taskDetail)return <div className="mOperationsNative kInspector"><TaskDetail task={taskDetail} ops={ops} action={action} onBack={()=>setTaskDetail(null)}/></div>;
+  if(auditDetail)return <div className="mOperationsNative kInspector"><AuditDetail record={ops.audit.records.find((item)=>item.id===auditDetail.id)||auditDetail} onBack={()=>setAuditDetail(null)}/></div>;
+  if(noticeDetail)return <div className="mOperationsNative kInspector"><NoticeDetail record={ops.notifications.items.find((item)=>item.id===noticeDetail.id)||noticeDetail} action={action} onBack={()=>setNoticeDetail(null)}/></div>;
   const auditRows=ops.audit.records.filter((row)=>!query||[row.action,row.actor,row.resource,row.target,row.id].some((value)=>String(value||"").toLowerCase().includes(query.toLowerCase())));
-  return <div className="mOperationsNative"><div className="mOpsRail" role="tablist">{[["overview",t("值班台","Command")],["tasks",t("任务","Tasks")],["recovery",t("恢复","Recovery")],["audit",t("审计","Audit")],["notifications",t("通知","Inbox")]].map(([id,label])=><button type="button" role="tab" aria-selected={view===id} className={view===id?"active":""} key={id} onClick={()=>setView(id)}>{label}{id==="notifications"&&ops.notifications.unread?<i>{ops.notifications.unread}</i>:null}</button>)}</div>
-    {view==="overview"&&<Overview ops={ops} ui={ui}/>} 
-    {view==="tasks"&&<Tasks ops={ops} onCreate={()=>setCreateTask(true)} onSelect={setTaskDetail}/>} 
-    {view==="recovery"&&<Recovery ops={ops} action={action} ui={ui} reconcile={reconcile} recover={recover}/>} 
-    {view==="audit"&&<Audit ops={ops} rows={auditRows} query={query} setQuery={setQuery} ui={ui} onSelect={setAuditDetail}/>} 
-    {view==="notifications"&&<Inbox ops={ops} action={action} ui={ui} onSelect={setNoticeDetail}/>} 
+  return <div className="mOperationsNative"><div className="mOpsRail kFilterRail" role="tablist">{[["overview",t("值班台","Command")],["tasks",t("任务","Tasks")],["recovery",t("恢复","Recovery")],["audit",t("审计","Audit")],["notifications",t("通知","Inbox")]].map(([id,label])=><button type="button" role="tab" aria-selected={view===id} className={view===id?"active":""} key={id} onClick={()=>setView(id)}>{label}{id==="notifications"&&ops.notifications.unread?<i>{ops.notifications.unread}</i>:null}</button>)}</div>
+    {view==="overview"&&<div className="mOperationsCommand kWorkbench"><Overview ops={ops} ui={ui}/></div>}
+    {view==="tasks"&&<div className="mOperationsTasks kRegistry"><Tasks ops={ops} onCreate={()=>setCreateTask(true)} onSelect={setTaskDetail}/></div>}
+    {view==="recovery"&&<div className="mOperationsRecovery kWorkbench"><Recovery ops={ops} action={action} ui={ui} reconcile={reconcile} recover={recover}/></div>}
+    {view==="audit"&&<div className="mOperationsAudit kEvidenceLedger"><Audit ops={ops} rows={auditRows} query={query} setQuery={setQuery} ui={ui} onSelect={setAuditDetail}/></div>}
+    {view==="notifications"&&<div className="mOperationsInbox kRegistry"><Inbox ops={ops} action={action} ui={ui} onSelect={setNoticeDetail}/></div>}
   </div>;
 }
 

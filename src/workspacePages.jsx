@@ -184,7 +184,7 @@ export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
     mandate: <OperatingBoundaryConcept data={data} ui={ui}/>,
     rules: <RulesConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell workspace="risk" title="Control" subtitle={t("实际状态 · 生效边界 · 规则命中","Effective state · Boundaries · Rule hits")} tabs={TABS.risk} active={tab} onChange={setTab}>{pages[tab] || pages.posture}</CenterShell>;
+  return <CenterShell workspace="risk" title="Control" subtitle={t("实际状态 · 生效边界 · 规则命中","Effective state · Boundaries · Rule hits")} tabs={TABS.risk} active={tab} onChange={setTab}><div className="controlRuntimeWorkspace" data-ownership="runtime-readonly">{pages[tab] || pages.posture}</div></CenterShell>;
 }
 
 export function OperationsCenter({ data, action, ui, initialTab = "overview" }) {
@@ -197,7 +197,7 @@ export function OperationsCenter({ data, action, ui, initialTab = "overview" }) 
     notifications: <OperationsInboxConcept data={data} action={action} ui={ui}/>
   };
   const safeTab=TABS.ops.some(([id])=>id===tab)?tab:"overview";
-  return <CenterShell workspace="operations" title={t("系统运营","Operations")} subtitle={t("运行事实 · 任务 · 恢复 · 审计","Runtime truth · Tasks · Recovery · Audit")} tabs={TABS.ops} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.overview}</CenterShell>;
+  return <CenterShell workspace="operations" title={t("系统运营","Operations")} subtitle={t("运行事实 · 任务 · 恢复 · 审计","Runtime truth · Tasks · Recovery · Audit")} tabs={TABS.ops} active={safeTab} onChange={setTab}><div className="operationsRuntimeWorkspace" data-truth-source="operations-view">{pages[safeTab] || pages.overview}</div></CenterShell>;
 }
 
 export { SettingsConcept };

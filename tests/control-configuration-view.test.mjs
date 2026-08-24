@@ -44,3 +44,20 @@ test("configuration destinations keep durable editors out of Control", () => {
   assert.equal(CONFIGURATION_DESTINATIONS.trading, "systemSettings:trading");
   assert.equal(CONFIGURATION_DESTINATIONS.risk, "systemSettings:risk");
 });
+
+test("control presentation model exposes runtime evidence without durable editor state", () => {
+  const view = buildControlConfigurationView({
+    automationState: { mode: "observe", requestedMode: "observe" },
+    riskRules: [{ id: "rule_1", enabled: true }],
+    riskChecks: [{ id: "check_1", decision: "blocked" }],
+    eventRiskWindows: [{ id: "event_1", blocking: true }]
+  });
+
+  assert.equal(view.runtime.targetIsEffective, true);
+  assert.equal(view.rules.enabled, 1);
+  assert.equal(view.rules.recentHits.length, 1);
+  assert.equal(view.events.blocking, 1);
+  assert.equal("form" in view, false);
+  assert.equal("editableRiskForm" in view, false);
+  assert.ok(Object.values(view.destinations).every((route) => !route.startsWith("riskCenter:") || route === "riskCenter"));
+});

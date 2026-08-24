@@ -12,15 +12,20 @@
   --product-ink-2: #1a1d19;
   --product-paper: #f4f1e9;
   --product-paper-2: #faf8f2;
-  --product-mint: #7fc9a4;
-  --product-lime: #d3ff57;
+  --product-mint: #4fb78b;
+  --product-lime: #ccff3d;
   --product-line: #d3cfc5;
   --product-line-strong: #aaa69d;
   --product-copy: #111311;
   --product-muted: #74736d;
   --product-warn: #b58b45;
-  --product-danger: #b94f42;
+  --product-danger: #e25645;
   background: var(--product-paper);
+}
+
+.controlRuntimeWorkspace,
+.operationsRuntimeWorkspace {
+  display: contents;
 }
 
 /* Shared deep-surface roles keep the established product type stack.
@@ -1456,6 +1461,69 @@
 .productSettings .configurationSources .panelForm.compact { margin:18px;padding:16px;border:1px solid var(--product-line);border-radius:0;background:var(--product-paper-2);box-shadow:none }
 .productSettings .configurationSources .panelForm.compact h3 { margin:0 0 4px;font-family:Manrope,var(--font-ui);font-size:16px }
 .productSettings .configurationSources .panelForm.compact>.primaryButton { width:max-content;min-width:132px;border-radius:0;background:var(--product-ink);color:var(--product-paper-2);box-shadow:none }
+
+/* Configuration follows the prototype's scope-first Administration grammar:
+   current truth, continuous registry, selected inspector, then audit proof. */
+.productSettings .configurationOverview { display:grid;gap:0;border:1px solid var(--kordyn-ink);background:var(--kordyn-paper-white) }
+.productSettings .configurationTruth { display:grid;grid-template-columns:minmax(0,1.35fr) minmax(350px,.65fr);min-height:176px;border:0;border-bottom:1px solid var(--kordyn-ink);background:var(--kordyn-ink);color:var(--kordyn-paper-white) }
+.productSettings .configurationTruth>div:first-child { display:grid;align-content:center;padding:24px }
+.productSettings .configurationTruth h2 { max-width:720px;margin:9px 0 8px;color:var(--kordyn-paper-white);font:650 clamp(30px,3.2vw,48px)/.95 Manrope,var(--font-ui);letter-spacing:-.055em }
+.productSettings .configurationTruth p { max-width:70ch;margin:0;color:color-mix(in srgb,var(--kordyn-paper-white) 68%,var(--kordyn-ink));font-size:11px;line-height:1.6 }
+.productSettings .configurationTruth .cp2OverviewHealth { display:grid;grid-template-columns:8px minmax(0,1fr);align-content:center;gap:13px;padding:20px;border-left:1px solid color-mix(in srgb,var(--kordyn-paper-white) 18%,transparent);background:color-mix(in srgb,var(--kordyn-paper-white) 3%,var(--kordyn-ink));color:var(--kordyn-paper-white) }
+.productSettings .configurationTruth .cp2OverviewHealth>i { width:8px;height:8px;background:var(--kordyn-acid) }
+.productSettings .configurationTruth .cp2OverviewHealth.bad>i { background:#E25645 }
+.productSettings .configurationTruth .cp2OverviewHealth.warn>i { background:var(--kordyn-orange) }
+.productSettings .configurationTruth .cp2OverviewHealth>span { display:grid;gap:4px }
+.productSettings .configurationTruth .cp2OverviewHealth>span+span { grid-column:2;margin-top:12px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--kordyn-paper-white) 15%,transparent) }
+.productSettings .configurationTruth .cp2OverviewHealth small { color:color-mix(in srgb,var(--kordyn-paper-white) 58%,var(--kordyn-ink));font:720 8px var(--font-mono);letter-spacing:.08em;text-transform:uppercase }
+.productSettings .configurationTruth .cp2OverviewHealth b { color:var(--kordyn-paper-white);font:650 16px Manrope,var(--font-ui) }
+.productSettings .configurationTruth .cp2OverviewHealth em { color:color-mix(in srgb,var(--kordyn-paper-white) 64%,var(--kordyn-ink));font-size:9px;font-style:normal }
+.productSettings .configurationScopes { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:0;border-bottom:1px solid var(--kordyn-ink);background:var(--kordyn-paper) }
+.productSettings .configurationScopes>span { min-width:0;min-height:78px;display:grid;align-content:center;gap:7px;padding:13px 15px;border-right:1px solid var(--kordyn-ink) }
+.productSettings .configurationScopes>span:last-child { border-right:0 }
+.productSettings .configurationScopes b { font:750 9px var(--font-mono);letter-spacing:.06em }
+.productSettings .configurationScopes small { color:color-mix(in srgb,var(--kordyn-ink) 60%,var(--kordyn-paper));font-size:9px;line-height:1.4 }
+.productSettings .configurationWorkbench { display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.6fr);border:0;border-bottom:1px solid var(--kordyn-ink) }
+.productSettings .configurationRegistry { min-width:0;border:0;background:var(--kordyn-paper-white) }
+.productSettings .configurationRegistry>header,.productSettings .configurationLedger>header { display:flex;align-items:center;justify-content:space-between;min-height:62px;padding:13px 16px;border-bottom:1px solid var(--kordyn-ink) }
+.productSettings .configurationRegistry>header small,.productSettings .configurationLedger>header small,.productSettings .configurationInspector>header>small { color:color-mix(in srgb,var(--kordyn-ink) 58%,var(--kordyn-paper));font:720 8px var(--font-mono);letter-spacing:.09em }
+.productSettings .configurationRegistry>header h3,.productSettings .configurationLedger>header h3 { margin:5px 0 0;font:650 17px/1.1 Manrope,var(--font-ui);letter-spacing:-.025em }
+.productSettings .configurationRegistry>header>b,.productSettings .configurationLedger>header>span { font:650 28px Manrope,var(--font-ui) }
+.productSettings .configurationRegistry>button { display:grid;grid-template-columns:34px minmax(0,1fr) minmax(230px,.72fr) 15px;align-items:center;gap:11px;width:100%;min-height:76px;padding:10px 14px;border:0;border-bottom:1px solid var(--kordyn-line);border-radius:0;background:transparent;color:var(--kordyn-ink);text-align:left }
+.productSettings .configurationRegistry>button:hover { background:color-mix(in srgb,var(--kordyn-acid) 22%,var(--kordyn-paper-white)) }
+.productSettings .configurationRegistry>button.active { background:var(--kordyn-acid);box-shadow:inset 3px 0 0 var(--kordyn-ink) }
+.productSettings .configurationRegistry__index { display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--kordyn-ink);font:720 9px var(--font-mono);font-style:normal }
+.productSettings .configurationRegistry>button>span:nth-child(2) { display:grid;gap:3px;min-width:0 }
+.productSettings .configurationRegistry>button>span:nth-child(2)>small { color:color-mix(in srgb,var(--kordyn-ink) 56%,var(--kordyn-paper));font:700 7px var(--font-mono);letter-spacing:.08em }
+.productSettings .configurationRegistry>button>span:nth-child(2)>b { font:650 12px Manrope,var(--font-ui) }
+.productSettings .configurationRegistry>button>span:nth-child(2)>em { overflow:hidden;color:color-mix(in srgb,var(--kordyn-ink) 64%,var(--kordyn-paper));font-size:9px;font-style:normal;text-overflow:ellipsis;white-space:nowrap }
+.productSettings .configurationRegistry__summary { display:grid;justify-items:end;gap:6px;min-width:0 }
+.productSettings .configurationRegistry__summary>small { max-width:100%;overflow:hidden;color:color-mix(in srgb,var(--kordyn-ink) 58%,var(--kordyn-paper));font:620 8px var(--font-mono);text-overflow:ellipsis;white-space:nowrap }
+.productSettings .configurationInspector { display:flex;flex-direction:column;min-width:0;border:0;border-left:1px solid var(--kordyn-ink);background:var(--kordyn-paper) }
+.productSettings .configurationInspector>header { display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:17px;border-bottom:1px solid var(--kordyn-ink);background:var(--kordyn-ink);color:var(--kordyn-paper-white) }
+.productSettings .configurationInspector>header>small { grid-column:1/-1;color:var(--kordyn-acid) }
+.productSettings .configurationInspector>header h3 { margin:0;font:650 17px/1.15 Manrope,var(--font-ui) }
+.productSettings .configurationInspector>p { margin:0;padding:15px 17px;border-bottom:1px solid var(--kordyn-line);color:color-mix(in srgb,var(--kordyn-ink) 64%,var(--kordyn-paper));font-size:10px;line-height:1.55 }
+.productSettings .configurationInspector__facts,.productSettings .configurationInspector__ownership { display:grid }
+.productSettings .configurationInspector__facts>span,.productSettings .configurationInspector__ownership>span { display:grid;grid-template-columns:minmax(90px,.45fr) minmax(0,1fr);gap:12px;padding:11px 17px;border-bottom:1px solid var(--kordyn-line) }
+.productSettings .configurationInspector__facts small,.productSettings .configurationInspector__ownership small { color:color-mix(in srgb,var(--kordyn-ink) 58%,var(--kordyn-paper));font-size:8.5px }
+.productSettings .configurationInspector__facts b,.productSettings .configurationInspector__ownership b { overflow-wrap:anywhere;font:650 9px var(--font-mono);text-align:right }
+.productSettings .configurationInspector__open { display:flex;align-items:center;justify-content:space-between;min-height:44px;margin:auto 17px 17px;padding:0 12px;border:1px solid var(--kordyn-ink);border-radius:0;background:var(--kordyn-acid);color:var(--kordyn-ink);font-size:9.5px;font-weight:760 }
+.productSettings .configurationInspector__open:disabled { background:var(--kordyn-paper);color:color-mix(in srgb,var(--kordyn-ink) 48%,var(--kordyn-paper)) }
+.productSettings .configurationLedger { border:0;background:var(--kordyn-paper-white) }
+.productSettings .configurationLedger>article { display:grid;grid-template-columns:145px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:54px;padding:8px 15px;border-bottom:1px solid var(--kordyn-line) }
+.productSettings .configurationLedger time { color:color-mix(in srgb,var(--kordyn-ink) 58%,var(--kordyn-paper));font:620 8px var(--font-mono) }
+.productSettings .configurationLedger article>span { display:grid;gap:3px }
+.productSettings .configurationLedger article b { font-size:10px }
+.productSettings .configurationLedger article small { color:color-mix(in srgb,var(--kordyn-ink) 58%,var(--kordyn-paper));font-size:8.5px }
+.productSettings .configurationLedger__empty { display:flex;align-items:center;gap:11px;min-height:70px;padding:12px 16px;color:color-mix(in srgb,var(--kordyn-ink) 64%,var(--kordyn-paper)) }
+.productSettings .configurationLedger__empty svg { width:18px }
+.productSettings .configurationLedger__empty span { display:grid;gap:4px }
+.productSettings .configurationLedger__empty b { color:var(--kordyn-ink);font-size:10px }
+.productSettings .configurationLedger__empty small { font-size:8.5px }
+.productSettings .configurationDomain.kFormSurface,.productSettings .cp2SettingsBasePage.kFormSurface,.productSettings .cp2SettingsForm.kFormSurface,.productSettings>.kFormSurface { padding:0;border:1px solid var(--kordyn-ink);background:var(--kordyn-paper-white) }
+.productSettings .kFormSurface :is(input,textarea,select,button),.productSettings .kFormSurface .cp2Card,.productSettings .kFormSurface .cp2SettingsPanel { border-radius:0;box-shadow:none }
+@media(max-width:1050px){.productSettings .configurationTruth,.productSettings .configurationWorkbench{grid-template-columns:1fr}.productSettings .configurationTruth .cp2OverviewHealth,.productSettings .configurationInspector{border-top:1px solid var(--kordyn-ink);border-left:0}.productSettings .configurationScopes{grid-template-columns:repeat(2,minmax(0,1fr))}.productSettings .configurationScopes>span:nth-child(2n){border-right:0}.productSettings .configurationScopes>span:nth-child(-n+2){border-bottom:1px solid var(--kordyn-ink)}}
 @media(max-width:1180px){.productWorkspace .controlTruth{grid-template-columns:1fr}.productWorkspace .controlTruth__recovery{grid-column:1;grid-row:auto;border-top:1px solid rgba(255,255,255,.18);border-left:0}.productWorkspace .controlExposure{grid-template-columns:minmax(240px,.75fr) minmax(0,1.25fr)}.productWorkspace .controlExposure__route{grid-column:1/-1;min-height:58px}.productWorkspace .controlExposure__ledger span:nth-child(4){border-right:0}.productWorkspace .controlProtectionLedger>div{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.productWorkspace .controlTruth__facts{grid-template-columns:repeat(2,minmax(0,1fr))}.productWorkspace .controlTruth__facts>span:nth-child(2n){border-right:0}.productWorkspace .controlTruth__facts>span:nth-child(-n+2){border-bottom:1px solid rgba(255,255,255,.13)}.productWorkspace .controlExposure,.productWorkspace .controlPolicy,.productWorkspace .controlBoundaryGrid{grid-template-columns:1fr}.productWorkspace .controlExposure__primary,.productWorkspace .controlPolicy__runtime{border-right:0;border-bottom:1px solid var(--product-line)}.productWorkspace .controlBoundaryFacts{grid-template-columns:repeat(2,minmax(0,1fr))}.productWorkspace .controlBoundaryFacts>span:nth-child(2n){border-right:0}.productWorkspace .controlBoundaryFacts>span:nth-last-child(-n+4){border-bottom:1px solid var(--product-line)}.productWorkspace .controlBoundaryFacts>span:nth-last-child(-n+2){border-bottom:0}.productSettings .configurationDomain .tcLayout{grid-template-columns:1fr}}
 

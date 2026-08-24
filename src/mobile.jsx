@@ -71,19 +71,23 @@ import {
 
 export function KillConfirmDialog({ enable, action, onClose }) {
   const [reason, setReason] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const expectedConfirmation = enable ? "KILL" : "RESUME";
   async function confirm() {
+    if (confirmation !== expectedConfirmation) return;
     await action("/api/risk/kill-switch", { enabled: enable, reason });
     onClose();
   }
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="confirmDialog" onClick={(event) => event.stopPropagation()}>
-        <strong>{enable ? t("确认紧急停止新交易？", "Activate the emergency stop?") : t("确认恢复新交易？", "Resume new trading?")}</strong>
-        <p>{enable ? t("将立即阻断所有新交易，并请求撤销全部在途委托。", "This immediately blocks all new trades and requests cancellation of all open orders.") : t("解除后系统恢复正常风控运行，重新允许新交易。", "Once released, the system resumes normal risk control and allows new trades again.")}</p>
-        {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("停止原因（可选，会写入审计记录）", "Reason (optional, written to the audit trail)")} autoFocus />}
+      <div className={`confirmDialog ${enable ? "danger" : ""}`} role="dialog" aria-modal="true" aria-labelledby="kill-confirm-title" onClick={(event) => event.stopPropagation()}>
+        <header className="confirmDialogHead"><small>{enable ? "SAFETY CONFIRMATION / KILL" : "SAFETY CONFIRMATION / RESET"}</small><strong id="kill-confirm-title">{enable ? t("确认紧急停止新交易？", "Activate the emergency stop?") : t("确认恢复新交易？", "Resume new trading?")}</strong></header>
+        <p className="confirmEffect"><b>{t("生效结果", "Effect")}</b><span>{enable ? t("立即阻断所有新交易，并请求撤销全部在途委托。", "Immediately blocks all new trades and requests cancellation of all open orders.") : t("恢复正常风控运行，并在后端重新核验后允许新交易。", "Resumes normal risk control and permits new trades only after backend revalidation.")}</span></p>
+        {enable && <label className="confirmField"><span>{t("停止原因（可选，会写入审计记录）", "Reason (optional, written to the audit trail)")}</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} rows="2" /></label>}
+        <label className="confirmField"><span>{t(`输入 ${expectedConfirmation} 以确认`, `Type ${expectedConfirmation} to confirm`)}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value.toUpperCase())} placeholder={expectedConfirmation} autoComplete="off" autoFocus /></label>
         <div className="confirmActions">
           <button type="button" className="ghostButton" onClick={onClose}>{t("取消", "Cancel")}</button>
-          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} onClick={confirm}>{enable ? t("确认紧急停止", "Confirm emergency stop") : t("确认恢复", "Confirm resume")}</button>
+          <button type="button" className={enable ? "confirmDanger" : "primaryButton"} disabled={confirmation !== expectedConfirmation} onClick={confirm}>{enable ? t("确认紧急停止", "Confirm emergency stop") : t("确认恢复", "Confirm resume")}</button>
         </div>
       </div>
     </div>
@@ -318,13 +322,14 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
 }
 
 // 屏 S5 — 系统设置：账户卡 + 交易所列表 + 系统配置分区 + 订阅卡。
-function MobileSettingsIndex({ data, onOpen }) {
+export function MobileSettingsIndex({ data, onOpen }) {
   const config = data.config || {};
   const exchange = config.exchange || {};
   const integrations = config.integrations || {};
   const runtime = config.runtime || {};
   const user = data.user || {};
   const control = buildControlConfigurationView(data);
+  const effective = automationPresentation(data);
   const sub = (data.subscriptions || [])[0] || {};
   const subExpiresAt = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).getTime() : null;
   const subExpired = Number.isFinite(subExpiresAt) && subExpiresAt < Date.now();
@@ -340,50 +345,19 @@ function MobileSettingsIndex({ data, onOpen }) {
     data_backup: t("在线一致性快照", "Online consistent snapshot"),
     security: runtime.authRequired === false ? t("免登录", "No login") : t("鉴权开启", "Auth enabled")
   };
-  const exchanges = [
-    { id: "okx", name: "OKX", letter: "O", cls: "okx", connected: exchange.okx?.hasKey }
-  ];
+  const scopeOf = (id) => /trading|risk/.test(id) ? "TRADING" : /llm|exchange|integrations|event_sources/.test(id) ? "CONNECTIONS" : "SYSTEM";
   return (
-    <div className="mScreen">
-      <div className="mCard mAcctCard">
-        <span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(localizeText(user.name || user.email || "U")).charAt(0).toUpperCase()}</span>
-        <div className="mAcctInfo"><b>{localizeText(user.name || t("量化交易员", "Quant Trader"))}</b><small>{user.email || "—"}</small></div>
-        <span className="mAcctPlan">{user.isOwner ? "OWNER" : sub.status ? "PRO" : "—"}</span>
-      </div>
+    <div className="mScreen mConfigurationIndex">
+      <section className="mConfigurationTruth kTruthBand">
+        <header><span className="mAcctAvatar">{user.avatar ? <img src={user.avatar} alt="" /> : String(localizeText(user.name || user.email || "U")).charAt(0).toUpperCase()}</span><div><small>{t("安全配置会话", "SECURE CONFIGURATION SESSION")}</small><h2>{localizeText(user.name || t("量化交易员", "Quant Trader"))}</h2><p>{user.email || "—"} · {user.isOwner ? "OWNER" : sub.status ? "PRO" : t("标准权限", "STANDARD")}</p></div><StatusBadge tone={effective.tone==="ok"?"ok":effective.tone==="danger"?"danger":effective.tone==="warning"?"warning":"neutral"}>{effective.label}</StatusBadge></header>
+        <div><span><small>{t("当前实际状态", "Effective now")}</small><b>{effective.label}</b></span><span><small>{t("保存目标", "Saved target")}</small><b>{effective.targetLabel}</b></span></div>
+      </section>
 
-      <div className="mCard">
-        <div className="mCardHead"><b>{t("交易所与 API 密钥", "Exchanges & API keys")}</b><small>{exchanges.filter((e) => e.connected).length} {t("已连接", "connected")}</small></div>
-        {exchanges.map((e) => (
-          <button className="mExRow" key={e.id} onClick={() => onOpen("settings:exchange")}>
-            <span className={`mExLogo ${e.cls}`}>{e.letter}</span>
-            <div className="mExInfo"><b>{e.name}</b><small>{e.connected ? t("已配置密钥", "Key configured") : t("未配置", "Not configured")}</small></div>
-            <StatusBadge tone={e.connected ? "ok" : "neutral"}>{e.connected ? t("已连接", "Connected") : t("未连接", "Not connected")}</StatusBadge>
-            <ChevronRight size={15} />
-          </button>
-        ))}
-        <div className="mSecNote"><Shield size={13} /> {t("密钥加密存储；只勾读写交易，绝不勾选提币权限", "Keys are encrypted at rest; grant read/trade only, never withdrawal permission")}</div>
-      </div>
+      <section className="mConfigurationRegistry kRegistry"><header><div><small>ADMINISTRATION / SCOPE FIRST</small><b>{t("配置登记", "Configuration registry")}</b><p>{t("所有持久修改的唯一入口", "Single home for durable changes")}</p></div><strong>{settingsSections.length}</strong></header>{settingsSections.map((item, index) => (
+        <button type="button" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}><i>{String(index + 1).padStart(2, "0")}</i><span><small>{scopeOf(item.id)}</small><b>{item.label}</b></span><em className="mono">{subs[item.id]}</em><ChevronRight size={15}/></button>
+      ))}</section>
 
-      <div className="mCard">
-        <div className="mCardHead"><b>{t("配置登记", "Configuration registry")}</b><small>{t("所有持久修改的唯一入口", "Single home for durable changes")}</small></div>
-        {settingsSections.map((item) => (
-          <button className="mCfgRow" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}>
-            <span>{item.label}</span>
-            <small className="mono">{subs[item.id]}</small>
-            <ChevronRight size={15} />
-          </button>
-        ))}
-      </div>
-
-      {sub.status && (
-        <div className="mCard mPlanCard">
-          <div className="mPlanTop">
-            <div><b>{sub.planName || t("专业版", "Pro")}</b><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small></div>
-            <span className={`mPlanBadge ${subExpired ? "expired" : ""}`}>{subExpired ? t("已过期", "Expired") : t("生效中", "Active")}</span>
-          </div>
-          <div className="mPlanFoot mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</div>
-        </div>
-      )}
+      <section className="mConfigurationLedger kEvidenceLedger"><header><div><small>{t("安全与归属", "SECURITY & OWNERSHIP")}</small><b>{t("凭证和订阅边界", "Credential and subscription boundary")}</b></div></header><button type="button" onClick={() => onOpen("settings:exchange")}><Shield size={15}/><span><b>{t("OKX 凭证", "OKX credentials")}</b><small>{exchange.okx?.hasKey?t("已配置密钥；只允许读取与交易，不允许提现", "Key configured; read/trade only, never withdrawals"):t("尚未配置；凭证值始终保持遮罩", "Not configured; credential values remain masked")}</small></span><StatusBadge tone={exchange.okx?.hasKey?"ok":"neutral"}>{exchange.okx?.hasKey?t("已连接", "Connected"):t("未连接", "Not connected")}</StatusBadge><ChevronRight size={14}/></button>{sub.status&&<div className="mConfigurationSubscription"><span><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small><b>{sub.planName || t("专业版", "Pro")}</b></span><StatusBadge tone={subExpired?"danger":"ok"}>{subExpired?t("已过期", "Expired"):t("生效中", "Active")}</StatusBadge><time className="mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</time></div>}</section>
     </div>
   );
 }
@@ -528,7 +502,7 @@ export function MobileRiskPermissionEditor({ data, action, ui, onDone }) {
       onDone();
     } finally { setSaving(false); }
   }
-  return <div className="mScreen mRiskDetail">
+  return <div className="mScreen mRiskDetail mConfigurationEditor kFormSurface">
     <section className="mNativeSection"><header><div><b>{t("允许交易的范围", "Allowed scope")}</b><small>{t("从 OKX 当前可交易的 USDT 永续合约中选择；每个币种独立保留授权上限", "Choose tradable OKX USDT perpetuals; each pair keeps its own authorized cap")}</small></div></header><div className="mRiskFieldStack"><MobilePairMultiPicker value={form.symbols} onChange={updateSymbols} instruments={instrumentState.instruments} instrumentsLoading={instrumentState.loading} instrumentsError={instrumentState.error} instrumentsStale={instrumentState.stale} instrumentsAsOf={instrumentState.asOf} onRetry={instrumentState.retry} fallbackHint={t("至少选择一个交易币种", "Select at least one pair")} /><div className="mRiskFieldGrid"><MobileRiskField label={t("最低杠杆", "Min leverage")} suffix="x"><input type="number" min="1" inputMode="decimal" value={form.minLeverage} onChange={(event) => update("minLeverage", event.target.value)} /></MobileRiskField><MobileRiskField label={t("新增币种默认上限", "Default cap for new pairs")} hint={t("默认等于最低杠杆；只用于之后新加入的币种", "Defaults to the minimum; applies only to pairs added later")} suffix="x"><input type="number" min="1" max="20" inputMode="decimal" value={form.newSymbolMaxLeverage} onChange={(event) => update("newSymbolMaxLeverage", event.target.value)} /></MobileRiskField></div><div className="mRiskLeverageList">{(form.symbols || []).map((symbol) => <MobileRiskField key={symbol} label={symbol} hint={t("该币种独立授权上限", "Independent authorized cap for this pair")} suffix="x"><input type="number" min="1" max="20" inputMode="decimal" value={form.maxLeverageBySymbol?.[symbol] ?? 1} onChange={(event) => setForm((current) => ({ ...current, maxLeverageBySymbol: { ...(current.maxLeverageBySymbol || {}), [symbol]: event.target.value } }))} /></MobileRiskField>)}</div></div></section>
     <section className="mNativeSection"><header><div><b>{t("止损预算", "Loss budget")}</b><small>{t("触达任一上限即阻止新开仓", "Any breached limit blocks new entries")}</small></div></header><div className="mRiskFieldStack"><div className="mRiskFieldGrid"><MobileRiskField label={t("单笔最多亏损", "Per trade")} suffix="%"><input type="number" min="0" step="0.1" inputMode="decimal" value={form.singleRisk} onChange={(event) => update("singleRisk", event.target.value)} /></MobileRiskField><MobileRiskField label={t("单日最多亏损", "Daily")} suffix="%"><input type="number" min="0" step="0.1" inputMode="decimal" value={form.dailyLoss} onChange={(event) => update("dailyLoss", event.target.value)} /></MobileRiskField><MobileRiskField label={t("近 7 日最多亏损", "Rolling 7d")} suffix="%"><input type="number" min="0.1" max="20" step="0.1" inputMode="decimal" value={form.weeklyLoss} onChange={(event) => update("weeklyLoss", event.target.value)} /></MobileRiskField><MobileRiskField label={t("每单保证金占比", "Margin / order")} suffix="%"><input type="number" min="1" max="100" inputMode="decimal" value={form.positionPct} onChange={(event) => update("positionPct", event.target.value)} /></MobileRiskField></div></div></section>
     <section className="mNativeSection"><header><div><b>{t("敞口上限", "Exposure limits")}</b><small>{t("每次下单前按真实账户重新计算", "Recalculated from the live account before every order")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("单笔名义金额", "Per order")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxOrderNotional} onChange={(event) => update("maxOrderNotional", event.target.value)} /></MobileRiskField><MobileRiskField label={t("单币名义金额", "Per pair")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxSymbolNotional} onChange={(event) => update("maxSymbolNotional", event.target.value)} /></MobileRiskField><MobileRiskField label={t("组合名义金额", "Portfolio")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxPortfolioNotional} onChange={(event) => update("maxPortfolioNotional", event.target.value)} /></MobileRiskField><div className="mRiskFieldGrid"><MobileRiskField label={t("同时持仓", "Open positions")}><input type="number" min="1" max="20" inputMode="numeric" value={form.maxConcurrentPositions} onChange={(event) => update("maxConcurrentPositions", event.target.value)} /></MobileRiskField><MobileRiskField label={t("保证金使用率", "Margin use")} suffix="%"><input type="number" min="1" max="100" inputMode="decimal" value={form.maxMarginUtilizationPct} onChange={(event) => update("maxMarginUtilizationPct", event.target.value)} /></MobileRiskField></div></div></section>
@@ -561,7 +535,7 @@ function MobileRiskLiveEditor({ data, action, ui, onDone }) {
       if (ok) onDone();
     } finally { setSaving(false); }
   }
-  return <div className="mScreen mRiskDetail">
+  return <div className="mScreen mRiskDetail mConfigurationEditor kFormSurface">
     <section className="mNativeSection"><header><div><b>{t("运行模式", "Operating mode")}</b><small>{t("系统异常只会临时暂停新开仓，不会改变你的选择", "Runtime issues only pause new entries temporarily and never change your choice")}</small></div></header><div className="mModePicker">{[["observe", t("只分析", "Analyze only"), t("持续分析，不向 OKX 发单", "Keep analyzing; never submit to OKX")], ["semi_auto", t("逐笔确认", "Approve each trade"), t("每笔真实交易都由你确认", "You approve every live trade")], ["full_auto", t("自动交易", "Automatic trading"), t("通过审查和硬风控后自动执行", "Auto-execute after review and hard-risk checks")]].map(([id, title, desc]) => <button type="button" className={form.mode === id ? `active ${id}` : id} key={id} onClick={() => setForm((current) => ({ ...current, mode: id }))}><span><b>{title}</b><small>{desc}</small></span><i /></button>)}</div></section>
     {form.mode!=="observe"&&<section className="mNativeSection"><header><div><b>{t("真实订单边界", "Live-order boundary")}</b><small>{t("交易币种沿用交易权限中的清单", "Pairs follow the trading-permission list")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("真实订单单笔上限", "Maximum per live order")} suffix="USDT"><input type="number" min="1" inputMode="decimal" value={form.maxNotionalUsdt} onChange={(event) => setForm((current) => ({ ...current, maxNotionalUsdt: event.target.value }))} /></MobileRiskField><label className="mNativeToggle mRiskAck"><span><b>{t("我已了解真实资金交易风险", "I understand the risks of live trading")}</b><small>{t("首次进入真实交易模式时确认", "Confirm before entering a live-trading mode")}</small></span><input type="checkbox" checked={form.acknowledged} onChange={(event) => setForm((current) => ({ ...current, acknowledged: event.target.checked }))} /></label></div></section>}
     {form.mode!=="observe"&&<section className="mNativeSection"><header><div><b>{t("实盘准备", "Live readiness")}</b><small>{gates.filter(([, ok]) => ok).length}/{gates.length} {t("项通过", "passed")}</small></div></header><div className="mGateList">{gates.map(([label, ok]) => <div key={label}><span className={ok ? "ok" : "bad"}>{ok ? "✓" : "!"}</span><b>{label}</b><small>{ok ? t("已通过", "Ready") : t("待完成", "Needs attention")}</small></div>)}</div></section>}
@@ -606,7 +580,7 @@ function MobileProtectionEditor({ data, action, ui, onDone }) {
   return <div className="mScreen mRiskDetail"><section className="mNativeSection"><header><div><b>{t("自动保护阈值","Automatic protection thresholds")}</b><small>{t("触发后暂停新增仓位或撤销陈旧委托","Pause new entries or cancel stale orders when triggered")}</small></div></header><div className="mRiskFieldStack">{MOBILE_PROTECTION_FIELDS.map(([key,label,labelEn,unit,min,max,step])=><MobileRiskField key={key} label={t(label,labelEn)} suffix={t(unit,unit==="笔"?"losses":unit==="小时"?"hours":unit==="分钟"?"min":unit)}><input type="number" min={min} max={max} step={step} inputMode="decimal" value={form[key]??""} onChange={(event)=>setForm(current=>({...current,[key]:event.target.value}))}/></MobileRiskField>)}</div></section><div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving?t("保存中…","Saving…"):t("保存自动保护","Save protections")}</button></div></div>;
 }
 
-function MobileTradingConfiguration({ data, action, ui }) {
+export function MobileTradingConfiguration({ data, action, ui }) {
   const [detail,setDetail]=useState(""); const control=buildControlConfigurationView(data); const runtime=automationPresentation(data);
   const done=()=>setDetail("");
   if(detail){const titles={permissions:t("交易权限","Trading permissions"),live:t("运行模式","Operating mode"),protections:t("自动保护","Automatic protections"),goal:t("盈利目标保护","Profit goal protection")};return <div className="mRiskDetailPage"><div className="mRiskDetailNav"><button type="button" onClick={done}><ChevronLeft size={18}/>{t("交易与运行","Trading & runtime")}</button><b>{titles[detail]}</b><span/></div>{detail==="permissions"?<MobileRiskPermissionEditor data={data} action={action} ui={ui} onDone={done}/>:detail==="live"?<MobileRiskLiveEditor data={data} action={action} ui={ui} onDone={done}/>:detail==="protections"?<MobileProtectionEditor data={data} action={action} ui={ui} onDone={done}/>:<MobileRiskGoalEditor data={data} action={action} ui={ui} onDone={done}/>}</div>;}
@@ -616,21 +590,25 @@ function MobileTradingConfiguration({ data, action, ui }) {
     ["protections",Gauge,t("自动保护","Automatic protections"),t("回撤、连亏、事件与委托时效","Drawdown, losses, events, and order lifetime"),`${MOBILE_PROTECTION_FIELDS.filter(([key])=>data.riskThresholds?.[key]!=null).length}/${MOBILE_PROTECTION_FIELDS.length}`],
     ["goal",Target,t("盈利目标保护","Profit goal protection"),data.system?.dailyGoalUsdt?`${data.system.dailyGoalUsdt} USDT / ${t("日","day")}`:t("未设置每日目标","No daily goal"),data.system?.dailyGoalBreakevenEnabled?t("已开启","On"):t("未开启","Off")]
   ];
-  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("交易、运行与保护","Trading, runtime & protection")}</h2><p>{t("这是运行目标、Mandate 与自动保护的唯一移动端编辑入口。Control 只呈现当前实际状态。","This is the only mobile editor for operating targets, Mandate, and automatic protections. Control only presents effective state.")}</p><div><span><small>{t("当前实际","Effective now")}</small><b>{runtime.label}</b></span><span><small>{t("保存目标","Saved target")}</small><b>{runtime.targetLabel}</b></span></div></section><section className="mNativeSection mRiskSettingsList">{rows.map(([id,Icon,title,note,state])=><button type="button" className="mRiskSettingRow" key={id} onClick={()=>setDetail(id)}><span className={`mRiskSettingIcon ${id}`}><Icon size={18}/></span><span><b>{title}</b><small>{note}</small></span><StatusBadge tone="neutral">{state}</StatusBadge><ChevronRight size={15}/></button>)}</section></div>;
+  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero kTruthBand"><h2>{t("交易、运行与保护","Trading, runtime & protection")}</h2><p>{t("这是运行目标、Mandate 与自动保护的唯一移动端编辑入口。Control 只呈现当前实际状态。","This is the only mobile editor for operating targets, Mandate, and automatic protections. Control only presents effective state.")}</p><div><span><small>{t("当前实际","Effective now")}</small><b>{runtime.label}</b></span><span><small>{t("保存目标","Saved target")}</small><b>{runtime.targetLabel}</b></span></div></section><section className="mNativeSection mRiskSettingsList mConfigurationDomainIndex kRegistry"><header><div><small>TRADING GOVERNANCE</small><b>{t("编辑域", "Editor domains")}</b></div><span>{rows.length}</span></header>{rows.map(([id,Icon,title,note,state],index)=><button type="button" className="mRiskSettingRow" key={id} onClick={()=>setDetail(id)}><i>{String(index+1).padStart(2,"0")}</i><span className={`mRiskSettingIcon ${id}`}><Icon size={18}/></span><span><b>{title}</b><small>{note}</small></span><StatusBadge tone="neutral">{state}</StatusBadge><ChevronRight size={15}/></button>)}</section></div>;
 }
 
-function MobileRiskRulesConfiguration({ data, action, ui }) {
+export function MobileRiskRulesConfiguration({ data, action, ui }) {
   const rules=data.riskRules||[]; const [creating,setCreating]=useState(false); const [form,setForm]=useState({name:"",description:"",level:"L3",action:"reject_entry",conditionField:"plan.leverage",conditionOperator:"gt",conditionValue:"3"});
   const create=async(event)=>{event.preventDefault();if(!form.name.trim())return ui.notify?.(t("填写规则名称","Enter a rule name"));const {conditionField,conditionOperator,conditionValue,...rule}=form;await action("/api/risk/rules",{...rule,scope:"trade",conditionSpec:{field:conditionField,operator:conditionOperator,value:Number(conditionValue)}});setCreating(false);setForm(current=>({...current,name:"",description:""}));};
   const editableAction=(value)=>["notify","reject_entry","pause_opening"].includes(value)?value:["block","restrict","kill_switch"].includes(value)?"reject_entry":"notify";
   return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("确定性风险规则","Deterministic risk rules")}</h2><p>{t("规则新建、启停与动作修改只在这里完成；Control 保持只读。","Create, enable, disable, and change rules only here; Control remains read-only.")}</p><div><span><small>{t("规则总数","Total")}</small><b>{rules.length}</b></span><span><small>{t("当前生效","Active")}</small><b>{rules.filter(item=>item.enabled!==false).length}</b></span></div></section><section className="mNativeSection"><header><div><b>{t("规则登记","Rule registry")}</b><small>{t("系统内置规则不可停用或改写","System-managed rules cannot be disabled or rewritten")}</small></div><button type="button" onClick={()=>setCreating(value=>!value)}>{creating?t("取消","Cancel"):t("新建","New")}</button></header>{creating&&<form className="mNativeConfigForm" onSubmit={create}><label><span>{t("规则名称","Rule name")}</span><input value={form.name} onChange={(event)=>setForm(current=>({...current,name:event.target.value}))}/></label><label><span>{t("说明","Description")}</span><textarea value={form.description} onChange={(event)=>setForm(current=>({...current,description:event.target.value}))}/></label><div><label><span>{t("指标","Metric")}</span><select value={form.conditionField} onChange={(event)=>setForm(current=>({...current,conditionField:event.target.value}))}><option value="plan.leverage">{t("计划杠杆","Planned leverage")}</option><option value="plan.riskPercent">{t("单笔风险","Risk per trade")}</option><option value="market.fundingRate">{t("资金费率","Funding rate")}</option><option value="event.maxImpact">{t("事件影响","Event impact")}</option></select></label><label><span>{t("阈值","Threshold")}</span><input type="number" step="any" value={form.conditionValue} onChange={(event)=>setForm(current=>({...current,conditionValue:event.target.value}))}/></label></div><label><span>{t("触发动作","Action")}</span><select value={form.action} onChange={(event)=>setForm(current=>({...current,action:event.target.value}))}><option value="notify">{t("通知（不阻断）","Notify (non-blocking)")}</option><option value="reject_entry">{t("拒绝当前入场","Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓","Pause this plan's entry")}</option></select></label><button type="submit">{t("创建规则","Create rule")}</button></form>}<div className="mConfigRuleList">{rules.map(rule=><article key={rule.id}><span><b>{localizeText(rule.name)}</b><small>{humanize(rule.scope)} · {rule.level||"—"}</small><select aria-label={`${localizeText(rule.name)} ${t("触发动作","action")}`} disabled={rule.systemManaged} value={editableAction(rule.action)} onChange={(event)=>action(`/api/risk/rules/${rule.id}`,{action:event.target.value},"PATCH")}><option value="notify">{t("通知","Notify")}</option><option value="reject_entry">{t("拒绝入场","Reject entry")}</option><option value="pause_opening">{t("暂停计划开仓","Pause plan entry")}</option></select></span><button type="button" disabled={rule.systemManaged} className={rule.enabled===false?"":"on"} onClick={()=>action(`/api/risk/rules/${rule.id}`,{enabled:rule.enabled===false},"PATCH")}><i/>{rule.systemManaged?t("内置","Built-in"):rule.enabled===false?t("停用","Off"):t("生效","Active")}</button></article>)}</div></section></div>;
 }
 
-function MobileEventSourcesConfiguration({ data, action, ui }) {
+export function MobileEventSourcesConfiguration({ data, action, ui }) {
   const sources=data.eventSources||[]; const [form,setForm]=useState({name:"",type:"rss",url:"",trustScore:80});
   const submit=async(event)=>{event.preventDefault();if(!form.name.trim()||!form.url.trim())return ui.notify?.(t("填写事件源名称和 URL","Enter a source name and URL"));await action("/api/event-sources",{...form,trustScore:Number(form.trustScore||80)});setForm(current=>({...current,name:"",url:""}));};
   const remove=async(source)=>{if(await uiConfirm(t(`删除事件源「${source.name}」？之后不再抓取，已形成的历史事件仍会保留。`,`Delete event source “${source.name}”? Future fetching stops; existing historical events remain.`)))await action(`/api/event-sources/${source.id}`,{},"DELETE");};
-  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("事件输入源","Event input sources")}</h2><p>{t("管理宏观日历、公告和 RSS 抓取；事件日历只查看形成后的事实。","Manage macro calendars, announcements, and RSS fetching; the calendar only presents formed facts.")}</p><button type="button" onClick={()=>action("/api/event-sources/refresh",{})}><RefreshCw size={15}/>{t("刷新全部来源","Refresh all sources")}</button></section><section className="mNativeSection"><header><div><b>{t("已配置来源","Configured sources")}</b><small>{sources.length}</small></div></header><div className="mEventSourceNative">{sources.map(source=><article key={source.id}><span><b>{localizeText(source.name)}</b><small>{humanize(source.type||"rss")} · {t("可信度","Trust")} {source.trustScore??"—"} · {humanize(source.lastStatus,t("未抓取","Not fetched"))}</small></span><div><button onClick={()=>action(`/api/event-sources/${source.id}/test`,{})}>{t("测试","Test")}</button><button onClick={()=>action(`/api/event-sources/${source.id}`,{enabled:source.enabled===false},"PATCH")}>{source.enabled===false?t("启用","Enable"):t("停用","Disable")}</button><button className="danger" aria-label={t(`删除 ${source.name}`,`Delete ${source.name}`)} onClick={()=>remove(source)}><Trash2 size={14}/></button></div></article>)}</div></section><section className="mNativeSection"><header><div><b>{t("新增事件源","New event source")}</b><small>RSS / HTML</small></div></header><form className="mNativeConfigForm" onSubmit={submit}><label><span>{t("名称","Name")}</span><input value={form.name} onChange={(event)=>setForm(current=>({...current,name:event.target.value}))}/></label><label><span>URL</span><input inputMode="url" value={form.url} onChange={(event)=>setForm(current=>({...current,url:event.target.value}))}/></label><div><label><span>{t("类型","Type")}</span><select value={form.type} onChange={(event)=>setForm(current=>({...current,type:event.target.value}))}><option value="rss">RSS</option><option value="html">HTML</option></select></label><label><span>{t("可信度","Trust")}</span><input type="number" min="1" max="100" value={form.trustScore} onChange={(event)=>setForm(current=>({...current,trustScore:event.target.value}))}/></label></div><button type="submit">{t("保存事件源","Save source")}</button></form></section></div>;
+  return <div className="mScreen mConfigDomain mConfigurationEditor kFormSurface">
+    <section className="mConfigDomainHero kTruthBand"><h2>{t("事件输入源","Event input sources")}</h2><p>{t("管理宏观日历、公告和 RSS 抓取；事件日历只查看形成后的事实。","Manage macro calendars, announcements, and RSS fetching; the calendar only presents formed facts.")}</p><button type="button" onClick={()=>action("/api/event-sources/refresh",{})}><RefreshCw size={15}/>{t("刷新全部来源","Refresh all sources")}</button></section>
+    <section className="mNativeSection mEventSourceRegistry kRegistry"><header><div><b>{t("已配置来源","Configured sources")}</b><small>{t("来源、健康、可信度与下一步", "Source, health, trust, and next step")}</small></div><span>{sources.length}</span></header><div className="mEventSourceNative">{sources.map(source=><article key={source.id}><span><b>{localizeText(source.name)}</b><small>{humanize(source.type||"rss")} · {t("可信度","Trust")} {source.trustScore??"—"} · {humanize(source.lastStatus,t("未抓取","Not fetched"))}</small></span><div><button onClick={()=>action(`/api/event-sources/${source.id}/test`,{})}>{t("测试","Test")}</button><button onClick={()=>action(`/api/event-sources/${source.id}`,{enabled:source.enabled===false},"PATCH")}>{source.enabled===false?t("启用","Enable"):t("停用","Disable")}</button><button className="danger" aria-label={t(`删除 ${source.name}`,`Delete ${source.name}`)} onClick={()=>remove(source)}><Trash2 size={14}/></button></div></article>)}</div></section>
+    <section className="mNativeSection mConfigurationFormBoundary"><header><div><b>{t("新增事件源","New event source")}</b><small>RSS / HTML</small></div></header><form className="mNativeConfigForm" onSubmit={submit}><label><span>{t("名称","Name")}</span><input value={form.name} onChange={(event)=>setForm(current=>({...current,name:event.target.value}))}/></label><label><span>URL</span><input inputMode="url" value={form.url} onChange={(event)=>setForm(current=>({...current,url:event.target.value}))}/></label><div><label><span>{t("类型","Type")}</span><select value={form.type} onChange={(event)=>setForm(current=>({...current,type:event.target.value}))}><option value="rss">RSS</option><option value="html">HTML</option></select></label><label><span>{t("可信度","Trust")}</span><input type="number" min="1" max="100" value={form.trustScore} onChange={(event)=>setForm(current=>({...current,trustScore:event.target.value}))}/></label></div><button type="submit">{t("保存事件源","Save source")}</button></form></section>
+  </div>;
 }
 
 function MobileRisk({ data, action, ui, view = "overview" }) {
@@ -2000,7 +1978,7 @@ export function MobileApp({ api, lang, switchLang }) {
     content = settingsSection === "trading" ? <MobileTradingConfiguration data={data} action={action} ui={ui}/>
       : settingsSection === "risk" ? <MobileRiskRulesConfiguration data={data} action={action} ui={ui}/>
         : settingsSection === "event_sources" ? <MobileEventSourcesConfiguration data={data} action={action} ui={ui}/>
-          : settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} section={settingsSection} /></div></div>
+          : settingsSection ? <div className="content mSubContent mConfigurationDetail"><div className="settingsPage mConfigurationEditor kFormSurface"><SystemConfigPanel data={data} action={action} section={settingsSection} /></div></div>
             : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
     content = <MobileMarket data={data} action={action} ui={ui} />;

@@ -2610,6 +2610,94 @@ h3 {
   background: #b23b23;
 }
 
+/* Runtime-risk confirmations use the prototype's explicit, hard-edged grammar. */
+.kordynSystem .modalOverlay,
+.kordynSystem .cfmOverlay {
+  background: rgba(17, 19, 17, .72);
+  backdrop-filter: none;
+}
+
+.kordynSystem .confirmDialog,
+.kordynSystem .cfmCard {
+  border: 1px solid #111311;
+  border-radius: 0;
+  background: #fffdf7;
+  box-shadow: 8px 8px 0 #ccff3d;
+}
+
+.kordynSystem .confirmDialog.danger {
+  box-shadow: 8px 8px 0 #e25645;
+}
+
+.kordynSystem .confirmDialogHead {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #111311;
+}
+
+.kordynSystem .confirmDialogHead small,
+.kordynSystem .confirmField > span {
+  color: #5d665c;
+  font: 750 8px var(--font-mono);
+  letter-spacing: .1em;
+}
+
+.kordynSystem .confirmEffect {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 12px;
+  border-left: 3px solid #e25645;
+  background: #f4f1e9;
+}
+
+.kordynSystem .confirmField {
+  display: grid;
+  gap: 6px;
+}
+
+.kordynSystem .confirmField textarea {
+  min-height: 54px;
+  resize: vertical;
+}
+
+.kordynSystem .confirmDialog input,
+.kordynSystem .confirmDialog textarea,
+.kordynSystem .cfmInput,
+.kordynSystem .confirmActions button,
+.kordynSystem .cfmBtn {
+  border-radius: 0;
+}
+
+.kordynSystem .confirmDialog :is(input, textarea) {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #111311;
+  background: #fffdf7;
+  padding: 10px 11px;
+  color: #111311;
+  font: 650 11px var(--font-mono);
+}
+
+.kordynSystem .confirmActions button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.kordynSystem .confirmDanger,
+.kordynSystem .cfmDanger {
+  border-color: #e25645;
+  background: #e25645;
+  color: #111311;
+}
+
+.kordynSystem .configPanel {
+  border-left-color: #111311;
+  background: #f4f1e9;
+  box-shadow: -8px 0 0 rgba(17, 19, 17, .18);
+}
+
 .panelOverlay {
   position: fixed;
   inset: 0;
@@ -10123,6 +10211,27 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mRiskSettingIcon.permissions{background:#e9f0fb;color:#2e69b9}.mRiskSettingIcon.protections{background:#edf4e8;color:#547e3b}.mNativeConfigForm{display:grid;gap:9px;padding:11px;border-top:1px solid #ede7db;border-bottom:1px solid #ede7db;background:#faf8f4}.mNativeConfigForm>label,.mNativeConfigForm>div>label{display:grid;gap:5px;min-width:0}.mNativeConfigForm>label>span,.mNativeConfigForm>div>label>span{color:#71685c;font-size:8.5px;font-weight:700}.mNativeConfigForm input,.mNativeConfigForm textarea,.mNativeConfigForm select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#2d2822;padding:9px;font-size:11px}.mNativeConfigForm textarea{min-height:64px;resize:vertical}.mNativeConfigForm>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mNativeConfigForm>button{height:37px;border:0;border-radius:9px;background:#292b27;color:#fff;font-size:10px;font-weight:700}
 .mConfigRuleList article{min-height:58px;display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid #ede7db}.mConfigRuleList article:last-child{border-bottom:0}.mConfigRuleList article>span{flex:1;min-width:0;display:grid;gap:3px}.mConfigRuleList article b{font-size:10px}.mConfigRuleList article small{color:#8a8172;font-size:8px}.mConfigRuleList article select{width:100%;max-width:142px;height:28px;border:1px solid #ddd4c7;border-radius:7px;background:#fff;color:#554d43;padding:0 7px;font-size:8px}.mConfigRuleList article>button{min-width:61px;height:29px;display:flex;align-items:center;gap:5px;justify-content:center;border:1px solid #ddd4c7;border-radius:15px;background:#f2eee7;color:#766d60;font-size:8px;font-weight:700}.mConfigRuleList article>button i{width:7px;height:7px;border-radius:50%;background:#a49a8b}.mConfigRuleList article>button.on{border-color:#bdd8c7;background:#edf6f0;color:#28714c}.mConfigRuleList article>button.on i{background:#3d9065}.mConfigRuleList article>button:disabled,.mConfigRuleList article select:disabled{opacity:.7}
 .mEventSourceNative article{display:grid;gap:7px;padding:10px 11px;border-bottom:1px solid #ede7db}.mEventSourceNative article:last-child{border-bottom:0}.mEventSourceNative article>span{min-width:0;display:grid;gap:3px}.mEventSourceNative b{font-size:10px}.mEventSourceNative small{color:#8a8172;font-size:8px;line-height:1.4}.mEventSourceNative article>div{display:flex;gap:6px}.mEventSourceNative article button{height:28px;padding:0 10px;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#554d43;font-size:8.5px;font-weight:700}.mEventSourceNative article button.danger{width:28px;padding:0;display:grid;place-items:center;margin-left:auto;border-color:#ecd2cc;color:#a94738;background:#fff8f6}
+
+/* Mobile Administration is the same operating system reflowed for touch:
+   truth first, scope-first registry, bounded editors, and explicit proof. */
+.mConfigurationIndex,.mConfigurationDetail,.mConfigurationEditor{--mCfgPaper:#F4F1E9;--mCfgPaper2:#FFFDF7;--mCfgInk:#111311;--mCfgLine:#B8BBB2;--mCfgAcid:#CCFF3D;--mCfgDanger:#E25645;min-width:0}
+.mConfigurationIndex{display:grid;gap:10px;padding:0 11px 22px;background:var(--mCfgPaper)}
+.mConfigurationTruth{overflow:hidden;border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgInk);color:var(--mCfgPaper2)}
+.mConfigurationTruth>header{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:10px;padding:15px 13px;border-bottom:1px solid rgba(255,255,255,.18)}
+.mConfigurationTruth .mAcctAvatar{display:grid;place-items:center;width:36px;height:36px;border:1px solid rgba(255,255,255,.32);border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk);font:750 12px var(--font-mono)}
+.mConfigurationTruth .mAcctAvatar img{width:100%;height:100%;object-fit:cover}
+.mConfigurationTruth header>div{display:grid;gap:3px;min-width:0}.mConfigurationTruth header small{color:#8F978D;font:720 7.5px var(--font-mono);letter-spacing:.08em}.mConfigurationTruth h2{margin:0;color:var(--mCfgPaper2);font-size:17px;letter-spacing:-.035em}.mConfigurationTruth p{margin:0;overflow:hidden;color:#AEB5AA;font:600 8px var(--font-mono);text-overflow:ellipsis;white-space:nowrap}
+.mConfigurationTruth>div{display:grid;grid-template-columns:1fr 1fr}.mConfigurationTruth>div>span{display:grid;gap:4px;padding:11px 13px;border-right:1px solid rgba(255,255,255,.16)}.mConfigurationTruth>div>span:last-child{border-right:0}.mConfigurationTruth>div small{color:#899086;font-size:8px}.mConfigurationTruth>div b{overflow:hidden;color:var(--mCfgPaper2);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.mConfigurationRegistry{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2)}.mConfigurationRegistry>header{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:58px;padding:11px 12px;border-bottom:1px solid var(--mCfgInk)}.mConfigurationRegistry>header>div{display:grid;gap:3px}.mConfigurationRegistry>header small{color:#6F756B;font:700 7px var(--font-mono);letter-spacing:.08em}.mConfigurationRegistry>header b{font-size:12px}.mConfigurationRegistry>header p{margin:0;color:#77796F;font-size:8px}.mConfigurationRegistry>header strong{font:650 23px Manrope,var(--font-ui)}
+.mConfigurationRegistry>button{display:grid!important;grid-template-columns:27px minmax(0,1fr) minmax(86px,.7fr) 13px!important;align-items:center;gap:9px;width:100%;min-height:61px!important;padding:8px 10px!important;border:0;border-bottom:1px solid var(--mCfgLine);border-radius:0;background:transparent;color:var(--mCfgInk);text-align:left}.mConfigurationRegistry>button:last-child{border-bottom:0}.mConfigurationRegistry>button:active{background:var(--mCfgAcid)}.mConfigurationRegistry>button>i{display:grid;place-items:center;width:25px;height:25px;border:1px solid var(--mCfgInk);font:720 8px var(--font-mono);font-style:normal}.mConfigurationRegistry>button>span{display:grid;gap:3px;min-width:0}.mConfigurationRegistry>button>span small{color:#77796F;font:700 7px var(--font-mono);letter-spacing:.07em}.mConfigurationRegistry>button>span b{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.mConfigurationRegistry>button>em{overflow:hidden;color:#6F756B;font-size:7.5px;font-style:normal;text-align:right;text-overflow:ellipsis;white-space:nowrap}.mConfigurationRegistry>button>svg{color:#77796F}
+.mConfigurationLedger{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2)}.mConfigurationLedger>header{min-height:52px;padding:10px 12px;border-bottom:1px solid var(--mCfgInk)}.mConfigurationLedger>header>div{display:grid;gap:3px}.mConfigurationLedger>header small{color:#6F756B;font:700 7px var(--font-mono);letter-spacing:.08em}.mConfigurationLedger>header b{font-size:11px}.mConfigurationLedger>button{display:grid;grid-template-columns:20px minmax(0,1fr) auto 13px;align-items:center;gap:9px;width:100%;min-height:63px;padding:9px 11px;border:0;border-bottom:1px solid var(--mCfgLine);background:transparent;color:var(--mCfgInk);text-align:left}.mConfigurationLedger>button>span{display:grid;gap:3px}.mConfigurationLedger>button b{font-size:9.5px}.mConfigurationLedger>button small{color:#77796F;font-size:8px;line-height:1.35}.mConfigurationSubscription{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:11px}.mConfigurationSubscription>span{display:grid;gap:3px}.mConfigurationSubscription small{color:#77796F;font-size:8px}.mConfigurationSubscription b{font-size:10px}.mConfigurationSubscription time{grid-column:1/-1;color:#77796F;font-size:8px}
+.mConfigDomainHero.kTruthBand{border-color:var(--mCfgInk);border-radius:0;background:var(--mCfgInk);color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand h2{color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand p{color:#AEB5AA}.mConfigDomainHero.kTruthBand>div{border-color:rgba(255,255,255,.17)}.mConfigDomainHero.kTruthBand>div span+span{border-color:rgba(255,255,255,.17)}.mConfigDomainHero.kTruthBand small{color:#899086}.mConfigDomainHero.kTruthBand b{color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand>button{border:1px solid rgba(255,255,255,.3);border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk)}
+.mConfigurationDomainIndex,.mConfigurationEditor .mNativeSection,.mConfigurationEditor .settingsPage{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2);box-shadow:none}.mConfigurationDomainIndex>header{border-bottom:1px solid var(--mCfgInk)}.mConfigurationDomainIndex>button{grid-template-columns:25px 30px minmax(0,1fr) auto 13px!important;min-height:64px;border-bottom:1px solid var(--mCfgLine);border-radius:0}.mConfigurationDomainIndex>button>i{display:grid;place-items:center;width:23px;height:23px;border:1px solid var(--mCfgInk);font:700 8px var(--font-mono);font-style:normal}.mConfigurationDomainIndex .mRiskSettingIcon{border-radius:0}.mConfigurationEditor{display:grid;gap:10px}.mConfigurationEditor .mNativeSection{margin:0}.mConfigurationEditor :is(input,textarea,select,button),.mConfigurationEditor .mNativeConfigForm{border-radius:0;box-shadow:none}.mConfigurationEditor :is(input,textarea,select){min-height:44px}.mConfigurationEditor .mNativeConfigForm{gap:0;padding:0;border-color:var(--mCfgInk);background:var(--mCfgPaper2)}.mConfigurationEditor .mNativeConfigForm>label,.mConfigurationEditor .mNativeConfigForm>div{padding:10px 11px;border-bottom:1px solid var(--mCfgLine)}.mConfigurationEditor .mNativeConfigForm>button{min-height:44px;margin:11px;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar button{min-height:44px;border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mEventSourceNative article button{min-height:40px;border-radius:0}.mConfigurationEditor .mEventSourceNative article button.danger{color:var(--mCfgDanger)}
+
+/* Control and Operations retain the same hard runtime grammar after touch reflow. */
+.mControlTruth,.mControlBoundaryHero,.mOpsStatus,.mOpsRecoveryTruth{border:1px solid #111311;border-radius:0;background:#111511;color:#fffdf7;box-shadow:none}
+.mControlTruth>header>svg,.mControlBoundaryHero>button{color:#ccff3d}.mControlBoundaryHero>button{border-radius:0}.mControlSymbols span,.mControlChecks>button>span,.mControlRecovery>button>i{border-radius:0}
+.mOperationsNative :is(.mNativeSection,.mOpsTaskHero,.mOpsAuditDetail,.mOpsNoticeDetail,.mOpsConfigLink){border-radius:0;box-shadow:none}.mOperationsNative .mOpsRail{background:#f4f1e9}.mOperationsNative .mOpsRail>button.active{background:#ccff3d;color:#111311}.mOperationsNative .mOpsRecoveryActions>button{border-radius:0}.mOperationsNative .mOpsRecoveryActions>button:disabled{opacity:.42}
 
 /* Shared deep-surface primitives: mobile preserves list/detail reading order and reachability. */
 @media (max-width: 900px) {

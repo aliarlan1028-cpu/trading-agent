@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       export { buildStrategyCatalogRows, isPublishedKnowledgeStrategy } from "./src/viewData.js";
       export { CapabilitiesConcept, ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
@@ -564,6 +564,9 @@ test("risk overview renders authoritative event windows instead of generic risk 
 });
 
 test("Control is read-only while Configuration owns durable trading and rule editors", () => {
+  const posture = render(React.createElement(C.RiskPostureConcept, { data, action, ui }));
+  assert.doesNotMatch(posture, /editableRiskForm/);
+
   const boundary = render(React.createElement(C.OperatingBoundaryConcept, { data, ui }));
   assert.match(boundary, /生效中的交易范围/);
   assert.match(boundary, /在配置中心编辑 Mandate/);
@@ -581,6 +584,45 @@ test("Control is read-only while Configuration owns durable trading and rule edi
   assert.match(risk, /自动保护与确定性风险规则/);
   assert.match(risk, /新建规则/);
   assert.match(risk, /切换规则状态/);
+});
+
+test("Control, Operations, and Configuration use the prototype Registry Inspector Ledger grammar", () => {
+  const settings = render(React.createElement(C.SettingsConcept, { data, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  assert.match(settings, /configurationRegistry kRegistry/);
+  assert.match(settings, /configurationInspector kInspector/);
+  assert.match(settings, /configurationLedger kEvidenceLedger/);
+  assert.match(settings, /kFormSurface/);
+
+  const recovery = render(React.createElement(C.OperationsRecoveryConcept, { data, action, ui }));
+  assert.match(recovery, /opxRecoveryActions kActionBar|kActionBar opxRecoveryActions/);
+});
+
+test("mobile Configuration renders a registry index and bounded deep editor surfaces", () => {
+  const index = render(React.createElement(C.MobileSettingsIndex, { data, onOpen: () => {} }));
+  assert.match(index, /mConfigurationIndex/);
+  assert.match(index, /mConfigurationRegistry kRegistry|kRegistry mConfigurationRegistry/);
+  assert.doesNotMatch(index, /mCard mAcctCard/);
+
+  const trading = render(React.createElement(C.MobileTradingConfiguration, { data, action, ui }));
+  assert.match(trading, /mConfigurationDomainIndex kRegistry|kRegistry mConfigurationDomainIndex/);
+
+  const permissions = render(React.createElement(C.MobileRiskPermissionEditor, { data, action, ui, onDone: () => {} }));
+  assert.match(permissions, /mConfigurationEditor kFormSurface|kFormSurface mConfigurationEditor/);
+
+  const sources = render(React.createElement(C.MobileEventSourcesConfiguration, { data, action, ui }));
+  assert.match(sources, /mConfigurationEditor kFormSurface|kFormSurface mConfigurationEditor/);
+});
+
+test("emergency stop uses an explicit typed dangerous-state confirmation", () => {
+  const html = renderToString(React.createElement(C.KillConfirmDialog, {
+    enable: true,
+    action: async () => ({}),
+    onClose: () => {}
+  }));
+  assert.match(html, /SAFETY CONFIRMATION/);
+  assert.match(html, /输入 KILL|Type KILL/);
+  assert.match(html, /placeholder="KILL"/);
+  assert.match(html, /confirmDanger[^>]*disabled|disabled=""[^>]*confirmDanger/);
 });
 
 test("unified automation presentation separates the saved target from the effective safety state", () => {

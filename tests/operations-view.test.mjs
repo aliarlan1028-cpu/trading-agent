@@ -68,3 +68,18 @@ test("healthy operational evidence does not fabricate an attention queue", () =>
   assert.equal(view.recovery.healthy, true);
   assert.equal(operationsTone("retry_scheduled"), "warning");
 });
+
+test("operations projections preserve real run, recovery, audit, and notification evidence", () => {
+  const view = buildOperationsView({
+    jobRuns: [{ id: "run_1", taskName: "Agent patrol", status: "ok", finishedAt: "2026-08-24T07:55:00.000Z" }],
+    reconciliationReports: [{ id: "recon_1", status: "ok", differences: [], createdAt: "2026-08-24T07:56:00.000Z" }],
+    auditLogs: [{ id: "audit_1", action: "scheduler.recover", actor: "owner", createdAt: "2026-08-24T07:57:00.000Z" }],
+    notifications: [{ id: "notice_1", title: "Recovery completed", read: false, createdAt: "2026-08-24T07:58:00.000Z" }]
+  }, { now: NOW });
+
+  assert.deepEqual(view.activity.map((row) => row.type), ["notification", "audit", "reconcile", "run"]);
+  assert.equal(view.recovery.latestReconciliation.id, "recon_1");
+  assert.equal(view.audit.records[0].id, "audit_1");
+  assert.equal(view.notifications.items[0].id, "notice_1");
+  assert.equal(view.notifications.unread, 1);
+});
