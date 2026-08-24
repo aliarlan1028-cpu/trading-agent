@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, MarketConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, MarketConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -916,10 +916,17 @@ test("mobile strategy studio identifies AI-chat drafts as the same authoring pip
           id: "studio-agent-draft",
           status: "tests_passed",
           authoring: { channel: "agent_chat", toolName: "create_skill_from_idea" },
-          blueprint: { name: "BTC 回踩策略", symbols: ["BTC/USDT"], timeframe: "1h", direction: "long", exitPolicy: { stopLossPct: 2, takeProfitR: 2.5 }, params: {} },
+          contentHash: "draft-hash",
+          compiler: "agent_structured_tool",
+          compilationReport: { status: "compiled", compiler: "agent_structured_tool", mappedFields: ["symbol", "timeframe", "entry", "stopLoss"], defaultedFields: [], warnings: [] },
+          backtestIdsBySymbol: { "BTC/USDT": "bt-btc", "ETH/USDT": "bt-eth" },
+          blueprint: { name: "BTC 回踩策略", symbols: ["BTC/USDT", "ETH/USDT"], timeframe: "1h", direction: "long", exitPolicy: { stopLossPct: 2, takeProfitR: 2.5 }, params: {}, costAssumption: { contentHash: "cost-hash" } },
           generatedTests: { status: "passed", passed: 1, total: 1, tests: [] }
         }],
-        backtests: [],
+        backtests: [
+          { id: "bt-btc", draftId: "studio-agent-draft", draftHash: "draft-hash", symbol: "BTC/USDT", passed: true, oos: { trades: 12, expectancyR: 0.2 }, positiveFolds: 2, activeFolds: 3 },
+          { id: "bt-eth", draftId: "studio-agent-draft", draftHash: "draft-hash", symbol: "ETH/USDT", passed: false, oos: { trades: 10, expectancyR: -0.1 }, positiveFolds: 1, activeFolds: 3 }
+        ],
         marketplace: { listings: [], summary: {} }
       },
       strategyCatalog: { products: [] },
@@ -932,6 +939,35 @@ test("mobile strategy studio identifies AI-chat drafts as the same authoring pip
   assert.match(html, /自然语言创建策略/);
   assert.match(html, /AI 对话创建/);
   assert.match(html, /草稿不会下单/);
+  assert.match(html, /编译来源/);
+  assert.match(html, /成本证据/);
+  assert.match(html, /BTC\/USDT/);
+  assert.match(html, /ETH\/USDT/);
+  assert.match(html, /逐交易对运行回测/);
+});
+
+test("desktop strategy studio exposes compilation provenance and per-symbol OOS coverage", () => {
+  const draft = {
+    id: "studio-desktop-draft",
+    contentHash: "draft-hash",
+    status: "tests_passed",
+    compiler: "deterministic_fallback",
+    compilationReport: { status: "compiled_with_fallback", compiler: "deterministic_fallback", mappedFields: ["symbol", "timeframe", "direction", "entry", "stopLoss"], defaultedFields: ["takeProfit"], warnings: ["llm_no_structured_output"] },
+    blueprint: { name: "双币均线", templateName: "均线趋势", symbols: ["BTC/USDT", "ETH/USDT"], timeframe: "1h", direction: "long", params: { fast: 10, slow: 30 }, exitPolicy: { stopLossPct: 2, takeProfitR: 2 }, costs: { feePct: .05, slippagePct: .03, fundingPct8h: .01 }, costAssumption: { source: "strategy_studio_conservative_defaults", contentHash: "cost-hash" } },
+    generatedTests: { status: "passed", passed: 6, total: 6, tests: [] },
+    backtestIdsBySymbol: { "BTC/USDT": "bt-btc" }
+  };
+  const html = render(React.createElement(C.StrategyLibraryConcept, {
+    data: { strategyStudio: { drafts: [draft], backtests: [{ id: "bt-btc", draftId: draft.id, draftHash: draft.contentHash, symbol: "BTC/USDT", passed: true, oos: { trades: 9, expectancyR: .1 }, positiveFolds: 2, activeFolds: 3 }], marketplace: { listings: [], summary: {} } }, strategyCatalog: { products: [] }, knowledge: { tradingSkills: [] }, skills: [] },
+    action,
+    ui: { setActive: () => {} },
+    initialTab: "studio"
+  }));
+  assert.match(html, /编译来源/);
+  assert.match(html, /证据未完整/);
+  assert.match(html, /BTC\/USDT/);
+  assert.match(html, /ETH\/USDT/);
+  assert.match(html, /逐交易对运行样本外回测/);
 });
 
 test("mobile strategy catalog and execution ledger use the same factual rows as desktop", () => {

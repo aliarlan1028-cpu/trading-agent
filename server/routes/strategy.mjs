@@ -45,12 +45,12 @@ export function registerStrategyRoutes(app, ctx) {
         : `策略草稿「${draft.blueprint.name}」已生成，自动测试 ${suite.passed}/${suite.total} 通过`;
       persist(res, { draft, suite, message, messageZh: `策略草稿「${draft.blueprint.name}」已生成，自动测试 ${suite.passed}/${suite.total} 通过`, messageEn: `Strategy draft “${draft.blueprint.name}” created; ${suite.passed}/${suite.total} generated tests passed` });
     } catch (error) {
-      res.status(error.status || 400).json({ error: error.message });
+      res.status(error.status || 400).json({ error: error.message, code: error.code || null, details: error.details || null });
     }
   });
   app.post("/api/strategy/studio/drafts/:id/tests", requirePermission("write:review"), (req, res) => {
     try { persist(res, runDraftGeneratedTests(db, req.params.id, req.user?.name || db.user?.name || "Owner", { principal: principal(req) })); }
-    catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+    catch (error) { res.status(error.status || 400).json({ error: error.message, code: error.code || null, details: error.details || null }); }
   });
   app.post("/api/strategy/studio/drafts/:id/backtest", requirePermission("write:review"), async (req, res) => {
     const startedAt = new Date().toISOString();
@@ -61,13 +61,13 @@ export function registerStrategyRoutes(app, ctx) {
     }
     catch (error) {
       recordToolExecution(db, { name: "run_backtest", args: { strategyDraftId: req.params.id }, result: { error: error.message }, summary: `失败：${error.message}`, startedAt, source: "direct_api" });
-      res.status(error.status || 400).json({ error: error.message });
+      res.status(error.status || 400).json({ error: error.message, code: error.code || null, details: error.details || null });
     }
   });
   app.post("/api/strategy/studio/drafts/:id/publish", requirePermission("admin:system"), (req, res) => {
     if (!requireOwner(req, res)) return;
     try { persist(res, { ...publishStrategyDraft(db, req.params.id, { ...(req.body || {}), principal: principal(req) }, req.user?.name || db.user?.name || "Owner"), message: db.system?.uiLang === "en" ? "Published to the internal strategy market" : "已发布到内部策略市场", messageZh: "已发布到内部策略市场", messageEn: "Published to the internal strategy market" }); }
-    catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+    catch (error) { res.status(error.status || 400).json({ error: error.message, code: error.code || null, details: error.details || null }); }
   });
   app.post("/api/strategy/market/:versionId/enable", requirePermission("admin:system"), (req, res) => {
     if (!requireOwner(req, res)) return;

@@ -7,10 +7,27 @@ import {
   buildMarketRows,
   buildPositionView,
   buildStrategyCatalogRows,
+  strategyBacktestCoverage,
   positionNotionalUsdt
 } from "../src/viewData.js";
 
 const t = (zh) => zh;
+
+test("strategy backtest coverage is explicit per declared symbol and fails closed on stale or missing evidence", () => {
+  const draft = {
+    id: "draft-multi",
+    contentHash: "draft-hash",
+    blueprint: { symbols: ["BTC/USDT", "ETH/USDT"] },
+    backtestIdsBySymbol: { "BTC/USDT": "bt-btc", "ETH/USDT": "bt-eth-old" }
+  };
+  const coverage = strategyBacktestCoverage(draft, [
+    { id: "bt-btc", draftId: draft.id, draftHash: draft.contentHash, symbol: "BTC/USDT", passed: true },
+    { id: "bt-eth-old", draftId: draft.id, draftHash: "old-hash", symbol: "ETH/USDT", passed: true }
+  ]);
+  assert.equal(coverage.complete, false);
+  assert.deepEqual(coverage.rows.map((row) => [row.symbol, row.status]), [["BTC/USDT", "passed"], ["ETH/USDT", "stale"]]);
+  assert.deepEqual(coverage.pendingSymbols, ["ETH/USDT"]);
+});
 
 test("shared strategy catalog only publishes validated knowledge strategies", () => {
   const data = {

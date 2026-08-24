@@ -927,6 +927,7 @@ function StrategyDraftCard({ draft, ui, mobile = false }) {
   return <div className="chatStrategyDraftCard">
     <header><Rocket size={15}/><span><b>{t("策略工作室草稿", "Strategy Studio draft")}</b><small>{t("与策略库使用同一版本链", "Uses the same version pipeline as the Strategy Library")}</small></span><StatusBadge tone={tests.status === "passed" ? "ok" : "warning"}>{statusLabel}</StatusBadge></header>
     <div className="chatStrategyDraftFacts"><span><small>{t("策略", "Strategy")}</small><b>{localizeText(blueprint.name) || "—"}</b></span><span><small>{t("交易对 · 周期", "Symbol · timeframe")}</small><b>{(blueprint.symbols || []).join("、") || "—"} · {blueprint.timeframe || "—"}</b></span><span><small>{t("止损 · 止盈", "Stop · target")}</small><b>{blueprint.exitPolicy?.stopLossPct ?? "—"}% · {blueprint.exitPolicy?.takeProfitR ?? "—"}R</b></span><span><small>{t("自动测试", "Generated tests")}</small><b>{tests.passed ?? 0}/{tests.total ?? 0}</b></span></div>
+    <small>{t("编译来源", "Compiler provenance")}：{humanize(draft.compilationReport?.compiler || draft.compiler, "—")}{draft.compilationReport?.warnings?.length ? ` · ${draft.compilationReport.warnings.map((value) => humanize(value)).join(" · ")}` : ""}</small>
     <footer><button type="button" onClick={() => ui.setActive(mobile ? "strategyLib:studio" : "strategyStudio")}>{t("打开策略工作室", "Open Strategy Studio")}<ChevronRight size={14}/></button><small>{t("草稿不会下单；回测通过后仍需人工发布。", "Drafts never place orders; publication remains manual after OOS validation.")}</small></footer>
   </div>;
 }

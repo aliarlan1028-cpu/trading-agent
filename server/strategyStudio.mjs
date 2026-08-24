@@ -37,6 +37,17 @@ const PARAM_BOUNDS = Object.freeze({
   k: [0.5, 5], mult: [0.5, 8], volMult: [0.5, 8], squeeze: [0.005, 0.3]
 });
 
+const UNSUPPORTED_EXECUTABLE_SEMANTICS = Object.freeze([
+  { code: "vwap", pattern: /\bVWAP\b|成交量加权平均价/i },
+  { code: "order_book", pattern: /订单簿|盘口|买盘强度|卖盘强度|order\s*book|book\s*imbalance/i },
+  { code: "ichimoku", pattern: /一目均衡|云层突破|ichimoku/i },
+  { code: "onchain_flow", pattern: /链上|资金净流入|on-?chain|wallet\s*flow/i },
+  { code: "external_catalyst", pattern: /新闻|政策|监管|宏观|ETF|美联储|news|policy|regulat|macro|federal reserve/i },
+  { code: "derivatives_context", pattern: /资金费率|未平仓|持仓量|强平|funding\s*rate|open\s*interest|liquidation/i },
+  { code: "market_regime_filter", pattern: /适用市场|市场状态|market\s*regime/i },
+  { code: "separate_confirmation", pattern: /(?:^|[；;。])\s*(?:确认|confirmation)(?=\s|[:：])/i }
+]);
+
 function ensureCollections(db) {
   db.strategyStudioDrafts ||= [];
   db.strategyBlueprintVersions ||= [];
@@ -71,6 +82,41 @@ function hash(value) {
   return crypto.createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
 }
 
+function assertDraftDefinitionIntegrity(draft) {
+  if (!draft?.contentHash || hash(draft.blueprint) !== draft.contentHash) {
+    throw Object.assign(new Error("strategy_draft_definition_drift"), {
+      code: "strategy_draft_definition_drift",
+      status: 409
+    });
+  }
+}
+
+function buildCostAssumption(values = COST_DEFAULTS) {
+  const contract = {
+    schemaVersion: 1,
+    source: "strategy_studio_conservative_defaults",
+    values: {
+      feePct: Number(values.feePct),
+      slippagePct: Number(values.slippagePct),
+      fundingPct8h: Number(values.fundingPct8h)
+    }
+  };
+  return { ...contract, contentHash: hash(contract) };
+}
+
+function costAssumptionMatches(backtest, definition) {
+  if (Number(definition?.compilerRevision || 1) < 2) return true;
+  const assumption = backtest?.costAssumption;
+  if (!assumption || assumption.contentHash !== hash({
+    schemaVersion: assumption.schemaVersion,
+    source: assumption.source,
+    values: assumption.values
+  })) return false;
+  return hash(assumption.values) === hash(backtest.costs)
+    && assumption.contentHash === definition?.costAssumption?.contentHash
+    && hash(assumption.values) === hash(definition?.costs);
+}
+
 export function strategyDefinitionHash(value) {
   return hash(value);
 }
@@ -87,15 +133,43 @@ export function validatePublishedStrategyCandidate(db, version) {
   }
   const listing = (db.strategyMarketplaceListings || []).find((row) => row.strategyVersionId === version.id && row.status === "published");
   if (!listing) return { ok: false, error: "candidate_strategy_not_published", status: 409 };
-  const backtest = (db.strategyStudioBacktests || []).find((row) => row.id === version.validation?.backtestId);
-  const draft = (db.strategyStudioDrafts || []).find((row) => row.id === backtest?.draftId);
   const sameOwner = (row) => row?.tenantId === version.tenantId && row?.ownerUserId === version.ownerUserId;
-  if (!backtest || backtest.passed !== true || !sameOwner(backtest)
+  const usesV2Evidence = Number(version.definition?.compilerRevision || 1) >= 2 || Boolean(version.validation?.backtestIdsBySymbol);
+  if (!usesV2Evidence) {
+    const backtest = (db.strategyStudioBacktests || []).find((row) => row.id === version.validation?.backtestId);
+    const draft = (db.strategyStudioDrafts || []).find((row) => row.id === backtest?.draftId);
+    if (!backtest || backtest.passed !== true || !sameOwner(backtest)
+      || !draft || !sameOwner(draft)
+      || backtest.draftHash !== draft.contentHash
+      || version.definition?.sourceDraftId !== draft.id
+      || Number(backtest.oos?.trades || 0) <= 0
+      || !(Number(backtest.oos?.expectancyR) > 0)) {
+      return { ok: false, error: "candidate_strategy_oos_publication_not_verified", status: 409 };
+    }
+    return { ok: true, version, listing, backtest, backtests: [backtest], draft, productId: version.definition?.baseProductId || version.productId || null };
+  }
+  const symbols = version.definition?.symbols || [];
+  const backtestIdsBySymbol = version.validation?.backtestIdsBySymbol
+    || (symbols.length === 1 && version.validation?.backtestId ? { [symbols[0]]: version.validation.backtestId } : {});
+  const backtests = symbols.map((symbol) => (db.strategyStudioBacktests || [])
+    .find((row) => row.id === backtestIdsBySymbol[symbol] && row.symbol === symbol));
+  const backtest = backtests[0] || null;
+  const draft = (db.strategyStudioDrafts || []).find((row) => row.id === backtest?.draftId);
+  if (draft && hash(draft.blueprint) !== draft.contentHash) return { ok: false, error: "candidate_strategy_draft_definition_drift", status: 409 };
+  const everySymbolVerified = symbols.length > 0 && backtests.length === symbols.length && backtests.every((row) => row
+    && row.passed === true
+    && sameOwner(row)
+    && row.draftId === draft?.id
+    && row.draftHash === draft?.contentHash
+    && Number(row.oos?.trades || 0) > 0
+    && Number(row.oos?.expectancyR) > 0);
+  if (everySymbolVerified && backtests.some((row) => !costAssumptionMatches(row, version.definition))) {
+    return { ok: false, error: "candidate_strategy_cost_assumption_drift", status: 409 };
+  }
+  if (!everySymbolVerified
     || !draft || !sameOwner(draft)
-    || backtest.draftHash !== draft.contentHash
     || version.definition?.sourceDraftId !== draft.id
-    || Number(backtest.oos?.trades || 0) <= 0
-    || !(Number(backtest.oos?.expectancyR) > 0)) {
+    || symbols.some((symbol) => !backtestIdsBySymbol[symbol])) {
     return { ok: false, error: "candidate_strategy_oos_publication_not_verified", status: 409 };
   }
   return {
@@ -103,6 +177,7 @@ export function validatePublishedStrategyCandidate(db, version) {
     version,
     listing,
     backtest,
+    backtests,
     draft,
     productId: version.definition?.baseProductId || version.productId || null
   };
@@ -114,22 +189,19 @@ function cleanText(value, max = 2000) {
 
 function isEnglishText(value) { return !/[\u3400-\u9fff]/.test(String(value || "")); }
 
-function explicitTimeframe(text = "") {
+function explicitTimeframes(text = "") {
   const source = String(text);
-  if (/4\s*(?:小时|h\b)/i.test(source)) return "4h";
-  if (/(?:日线|1\s*d\b|daily)/i.test(source)) return "1d";
-  if (/15\s*(?:分钟|分|m\b)/i.test(source)) return "15m";
-  if (/5\s*(?:分钟|分|m\b)/i.test(source)) return "5m";
-  if (/(?:1\s*小时|1\s*h\b|hourly)/i.test(source)) return "1h";
-  return null;
+  return [
+    ["4h", /(?:^|[^\d])4\s*(?:小时|h\b)/i],
+    ["1d", /(?:日线|(?:^|[^\d])1\s*d\b|daily)/i],
+    ["15m", /(?:^|[^\d])15\s*(?:分钟|分|m\b)/i],
+    ["5m", /(?:^|[^\d])5\s*(?:分钟|分|m\b)/i],
+    ["1h", /(?:(?:^|[^\d])1\s*小时|(?:^|[^\d])1\s*h\b|hourly)/i]
+  ].filter(([, pattern]) => pattern.test(source)).map(([timeframe]) => timeframe);
 }
 
-function normalizeTimeframe(value, text = "") {
-  const fromText = explicitTimeframe(text);
-  if (fromText) return fromText;
-  const raw = String(value || "").trim().toLowerCase();
-  if (TIMEFRAMES.has(raw)) return raw;
-  return "1h";
+function explicitTimeframe(text = "") {
+  return explicitTimeframes(text)[0] || null;
 }
 
 function symbolsFromText(text = "") {
@@ -143,25 +215,47 @@ function symbolsFromText(text = "") {
   return [...new Set(symbols)].slice(0, 12);
 }
 
-function normalizeSymbols(value, text = "") {
-  const fromText = symbolsFromText(text);
-  if (fromText.length) return fromText;
-  const fromCandidate = symbolsFromText(value);
-  return fromCandidate.length ? fromCandidate : ["BTC/USDT"];
+function explicitDirection(text = "") {
+  if (/做空|空头|卖空|\bshort\b/i.test(text)) return "short";
+  if (/做多|多头|买入|\blong\b/i.test(text)) return "long";
+  return null;
 }
 
-function inferDirection(text, candidate) {
-  if (/做空|空头|卖空|short/i.test(text)) return "short";
-  if (/做多|多头|买入|long/i.test(text)) return "long";
-  const raw = String(candidate || "").toLowerCase();
-  if (["long", "short"].includes(raw)) return raw;
-  return "long";
+function explicitDirections(text = "") {
+  const source = String(text);
+  return [
+    /做多|多头|买入|\blong\b/i.test(source) ? "long" : null,
+    /做空|空头|卖空|\bshort\b/i.test(source) ? "short" : null
+  ].filter(Boolean);
+}
+
+function executableEntryFamilies(text = "") {
+  const source = String(text);
+  const divergence = /底背离|顶背离|bull(?:ish)? divergence|bear(?:ish)? divergence/i.test(source);
+  const squeeze = /挤压|squeeze/i.test(source);
+  const macd = /\bMACD\b/i.test(source);
+  const supertrend = /\bsupertrend\b/i.test(source);
+  return [...new Set([
+    divergence ? "divergence" : null,
+    !divergence && /\bRSI\b|超卖|超买|均值回归|oversold|overbought|mean.?reversion/i.test(source) ? "rsi" : null,
+    squeeze ? "squeeze" : null,
+    !squeeze && /布林|bollinger/i.test(source) ? "bollinger" : null,
+    macd ? "macd" : null,
+    supertrend ? "supertrend" : null,
+    !macd && !supertrend && /均线|金叉|死叉|moving average|\b(?:EMA|SMA|MA)\b/i.test(source) ? "moving_average" : null,
+    !squeeze && /突破|跌破|下破|breakout|breakdown|donchian|唐奇安/i.test(source) ? "breakout" : null
+  ].filter(Boolean))];
 }
 
 function pickTemplate(text, direction, candidate) {
-  if (candidate && TEMPLATE_META[candidate] && TEMPLATE_META[candidate].direction === direction) return candidate;
-  const match = Object.entries(TEMPLATE_META).find(([, meta]) => meta.direction === direction && meta.keywords.test(text));
-  return match?.[0] || (direction === "short" ? "death_cross" : "trend");
+  if (candidate && TEMPLATE_META[candidate]
+    && TEMPLATE_META[candidate].direction === direction
+    && TEMPLATE_META[candidate].keywords.test(text)) return candidate;
+  if (direction === "long" && /(?:放量|成交量|volume).{0,20}(?:突破|breakout)|(?:突破|breakout).{0,20}(?:放量|成交量|volume)/i.test(text)) return "vol_breakout";
+  const priority = ["rsi_bull_div", "rsi_bear_div", "squeeze", "supertrend", "macd", "bollinger", "vol_breakout", "breakdown", "breakout", "rsi_short", "meanrev", "death_cross", "trend"];
+  const match = priority.map((idValue) => [idValue, TEMPLATE_META[idValue]])
+    .find(([, meta]) => meta.direction === direction && meta.keywords.test(text));
+  return match?.[0] || null;
 }
 
 function extractNumber(text, patterns) {
@@ -172,10 +266,22 @@ function extractNumber(text, patterns) {
   return null;
 }
 
-function inferParams(text, templateId, candidate = {}) {
+function explicitTakeProfit(text = "") {
+  const source = String(text);
+  const ratio = source.match(/(?:盈亏比|RR|reward.?risk)\D{0,12}(\d+(?:\.\d+)?)\s*R?/i);
+  if (ratio) return { mentioned: true, value: Number(ratio[1]), unit: "R" };
+  const target = source.match(/(?:止盈|目标|target|take.?profit)\D{0,12}(\d+(?:\.\d+)?)\s*(R|%)/i);
+  if (target) return { mentioned: true, value: Number(target[1]), unit: target[2].toUpperCase() };
+  return {
+    mentioned: /止盈|目标|盈亏比|RR|reward.?risk|target|take.?profit/i.test(source),
+    value: null,
+    unit: null
+  };
+}
+
+function inferParams(text, templateId) {
   const defaults = STRATEGIES[templateId]?.defaultParams || {};
   const params = { ...defaults };
-  for (const [key, value] of Object.entries(candidate || {})) if (PARAM_BOUNDS[key] && Number.isFinite(Number(value))) params[key] = Number(value);
   if (["trend", "death_cross", "macd"].includes(templateId)) {
     const pairs = [...String(text).matchAll(/(?:MA|EMA|SMA|均线)\s*\(?\s*(\d+)/gi)].map((m) => Number(m[1]));
     if (pairs.length >= 2) [params.fast, params.slow] = pairs.slice(0, 2).sort((a, b) => a - b);
@@ -193,20 +299,85 @@ function inferParams(text, templateId, candidate = {}) {
   return params;
 }
 
-function inferExitPolicy(text, candidate = {}) {
+function explicitAtrStop(text = "") {
+  const source = String(text);
+  const mentioned = /(?:止损|stop(?:\s*loss)?)\D{0,30}ATR|ATR\D{0,30}(?:止损|stop(?:\s*loss)?)|\d+(?:\.\d+)?\s*(?:倍|x|×|\*)\s*ATR/i.test(source);
+  if (!mentioned) return { mentioned: false, mult: null, period: null };
+  const multiplier = extractNumber(source, [
+    /(\d+(?:\.\d+)?)\s*(?:倍|x|×|\*)\s*ATR/i,
+    /ATR(?:\s*[（(]\s*\d+\s*[）)])?\s*(?:x|×|\*)\s*(\d+(?:\.\d+)?)/i,
+    /ATR\s*(\d+(?:\.\d+)?)\s*倍/i
+  ]);
+  const period = extractNumber(source, [/ATR\s*[（(]\s*(\d+)\s*[）)]/i, /ATR\s*(?:周期|period)\s*(\d+)/i]);
+  return { mentioned: true, mult: multiplier ?? 2, period: period ?? 14 };
+}
+
+function inferExitPolicy(text) {
   const stopFromText = extractNumber(text, [/(?:止损|stop(?: loss)?)\D{0,12}(\d+(?:\.\d+)?)\s*%/i]);
-  const rewardFromText = extractNumber(text, [/(?:止盈|目标|盈亏比|RR|reward.?risk|target|take.?profit)\D{0,12}(\d+(?:\.\d+)?)\s*R?/i]);
-  const stopRaw = stopFromText ?? candidate.stopLossPct;
-  const rewardRaw = rewardFromText ?? candidate.takeProfitR;
-  const stop = stopRaw == null ? NaN : Number(stopRaw);
-  const reward = rewardRaw == null ? NaN : Number(rewardRaw);
+  const atrStop = explicitAtrStop(text);
+  const takeProfit = explicitTakeProfit(text);
+  const rewardFromText = takeProfit.unit === "%" && stopFromText != null
+    ? takeProfit.value / stopFromText
+    : takeProfit.unit === "R" ? takeProfit.value : null;
+  const stop = stopFromText == null ? NaN : Number(stopFromText);
+  const reward = rewardFromText == null ? NaN : Number(rewardFromText);
   return {
     stopLossPct: Number.isFinite(stop) ? Math.max(0.1, Math.min(stop, 10)) : 2,
     takeProfitR: Number.isFinite(reward) ? Math.max(0.5, Math.min(reward, 8)) : 2,
-    atrStop: candidate.atrStop === true || /ATR\s*止损|ATR.?based stop/i.test(text),
-    atrMult: Number.isFinite(Number(candidate.atrMult)) ? Number(candidate.atrMult) : 2,
-    atrPeriod: Number.isFinite(Number(candidate.atrPeriod)) ? Number(candidate.atrPeriod) : 14
+    atrStop: atrStop.mentioned,
+    atrMult: atrStop.mult ?? 2,
+    atrPeriod: atrStop.period ?? 14
   };
+}
+
+function strategyContractEvidence(text = "") {
+  const symbols = symbolsFromText(text);
+  const timeframe = explicitTimeframe(text);
+  const direction = explicitDirection(text);
+  const directions = explicitDirections(text);
+  const timeframes = explicitTimeframes(text);
+  const entryFamilies = executableEntryFamilies(text);
+  const stopLoss = extractNumber(text, [/(?:止损|stop(?: loss)?)\D{0,12}(\d+(?:\.\d+)?)\s*%/i]);
+  const atrStop = explicitAtrStop(text);
+  const takeProfit = explicitTakeProfit(text);
+  const takeProfitR = takeProfit.unit === "R"
+    ? takeProfit.value
+    : takeProfit.unit === "%" && stopLoss != null ? takeProfit.value / stopLoss : null;
+  const outOfRange = [];
+  if (stopLoss != null && (stopLoss < 0.1 || stopLoss > 10)) outOfRange.push("stopLoss");
+  if (takeProfitR != null && (takeProfitR < 0.5 || takeProfitR > 8)) outOfRange.push("takeProfit");
+  if (atrStop.mentioned && (atrStop.mult < 0.5 || atrStop.mult > 8)) outOfRange.push("atrMult");
+  if (atrStop.mentioned && (atrStop.period < 2 || atrStop.period > 100)) outOfRange.push("atrPeriod");
+  const unsupported = UNSUPPORTED_EXECUTABLE_SEMANTICS
+    .filter((item) => item.pattern.test(text))
+    .map((item) => item.code);
+  if (takeProfit.mentioned && !takeProfit.unit) unsupported.push("take_profit_unit");
+  if (takeProfit.unit === "%" && stopLoss == null) unsupported.push("take_profit_percent_without_fixed_stop");
+  if (directions.length > 1) unsupported.push("multiple_directions");
+  if (timeframes.length > 1) unsupported.push("multiple_timeframes");
+  if (entryFamilies.length > 1) unsupported.push("multiple_entry_templates");
+  const templateId = direction ? pickTemplate(text, direction, null) : null;
+  const missing = [];
+  if (!symbols.length) missing.push("symbol");
+  if (!timeframe) missing.push("timeframe");
+  if (!direction) missing.push("direction");
+  if (!templateId) missing.push("entry");
+  if (stopLoss == null && !atrStop.mentioned) missing.push("stopLoss");
+  return {
+    symbols,
+    timeframe,
+    direction,
+    templateId,
+    stopLossExplicit: stopLoss != null || atrStop.mentioned,
+    takeProfitExplicit: takeProfit.unit != null,
+    missing,
+    outOfRange,
+    unsupported: [...new Set(unsupported)]
+  };
+}
+
+function strategyCompileError(code, message, details) {
+  return Object.assign(new Error(message), { code, status: 422, details });
 }
 
 function extractJson(raw) {
@@ -232,15 +403,37 @@ export function supportedStudioTemplates() {
 export function compileStrategyPrompt(prompt, candidate = {}) {
   const text = cleanText(prompt, 6000);
   if (text.length < 12) throw new Error("请至少说明方向、入场逻辑、周期和止损/止盈意图");
-  const direction = inferDirection(text, candidate.direction);
-  const templateId = pickTemplate(text, direction, candidate.templateId);
+  const contract = strategyContractEvidence(text);
+  if (contract.unsupported.length) {
+    throw strategyCompileError(
+      "strategy_unsupported_semantics",
+      `策略包含当前白名单无法执行的条件：${contract.unsupported.join("、")}`,
+      { unsupported: contract.unsupported, missing: contract.missing }
+    );
+  }
+  if (contract.missing.length) {
+    throw strategyCompileError(
+      "strategy_needs_clarification",
+      `策略信息不完整，需要补充：${contract.missing.join("、")}`,
+      { missing: contract.missing, unsupported: [] }
+    );
+  }
+  if (contract.outOfRange.length) {
+    throw strategyCompileError(
+      "strategy_parameter_out_of_range",
+      `策略参数超出当前可执行范围：${contract.outOfRange.join("、")}`,
+      { fields: contract.outOfRange }
+    );
+  }
+  const direction = contract.direction;
+  const templateId = contract.templateId;
   const strategy = STRATEGIES[templateId];
   const meta = TEMPLATE_META[templateId];
-  const name = cleanText(candidate.name, 80) || `${normalizeSymbols(candidate.symbols, text)[0]} ${isEnglishText(text) ? TEMPLATE_LABEL_EN[templateId] : strategy.label}`;
+  const name = cleanText(candidate.name, 80) || `${contract.symbols[0]} ${isEnglishText(text) ? TEMPLATE_LABEL_EN[templateId] : strategy.label}`;
   const blueprint = {
     schema: "trading.strategy.blueprint",
     schemaVersion: 1,
-    compilerRevision: 1,
+    compilerRevision: 2,
     name,
     description: cleanText(candidate.description, 500) || text.slice(0, 500),
     templateId,
@@ -249,11 +442,12 @@ export function compileStrategyPrompt(prompt, candidate = {}) {
     baseProductId: meta.productId,
     scenarioType: meta.scenarioType,
     direction,
-    timeframe: normalizeTimeframe(candidate.timeframe, text),
-    symbols: normalizeSymbols(candidate.symbols, text),
-    params: inferParams(text, templateId, candidate.params),
-    exitPolicy: inferExitPolicy(text, candidate.exitPolicy),
+    timeframe: contract.timeframe,
+    symbols: contract.symbols,
+    params: inferParams(text, templateId),
+    exitPolicy: inferExitPolicy(text),
     costs: { ...COST_DEFAULTS },
+    costAssumption: buildCostAssumption(),
     executionPolicy: {
       exchange: "OKX",
       requiresHardRiskGate: true,
@@ -263,35 +457,73 @@ export function compileStrategyPrompt(prompt, candidate = {}) {
     },
     sourcePrompt: text
   };
-  return { blueprint, contentHash: hash(blueprint) };
+  const mappedFields = ["symbol", "timeframe", "direction", "entry", "stopLoss"];
+  const defaultedFields = [];
+  const warnings = [];
+  if (contract.takeProfitExplicit) mappedFields.push("takeProfit");
+  else {
+    defaultedFields.push("takeProfit");
+    warnings.push("take_profit_defaulted_to_2R");
+  }
+  return {
+    blueprint,
+    contentHash: hash(blueprint),
+    compilationReport: {
+      schemaVersion: 1,
+      status: "compiled",
+      mappedFields,
+      defaultedFields,
+      unsupported: [],
+      warnings
+    }
+  };
 }
 
 const COMPILER_SYSTEM = `你是交易策略编译器。只把自然语言映射到给定白名单，不生成代码，不承诺收益。
-只输出一个 JSON 对象，可用字段：name,description,templateId,direction,timeframe,symbols,params,exitPolicy。
-templateId 只能是 trend,meanrev,breakout,macd,bollinger,death_cross,rsi_short,breakdown,supertrend,vol_breakout,squeeze,rsi_bull_div,rsi_bear_div。
-direction 只能 long/short；timeframe 只能 5m/15m/1h/4h/1d。未明确的字段不要猜，省略即可。`;
+只输出一个 JSON 对象，可用字段只有 name 和 description。所有可执行字段都由确定性编译器直接从用户原文提取；不要输出或猜测模板、方向、周期、交易对、参数或退出规则。`;
 
 export async function createStrategyDraft(db, prompt, options = {}, actor = "StrategyOwner") {
   ensureCollections(db);
   let candidate = {};
   let compiler = "deterministic_fallback";
+  const compilerWarnings = [];
   if (typeof options.complete === "function") {
     try {
       const raw = await options.complete(`${cleanText(prompt, 6000)}\n\n白名单说明：${JSON.stringify(supportedStudioTemplates())}`, COMPILER_SYSTEM);
-      candidate = extractJson(raw) || {};
-      compiler = Object.keys(candidate).length ? "llm_to_closed_schema" : compiler;
-    } catch { /* 确定性编译器仍可继续，不把模型故障变成工作室不可用 */ }
+      const parsed = extractJson(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        if (Object.keys(parsed).some((field) => !["name", "description"].includes(field))) compilerWarnings.push("llm_executable_fields_ignored");
+        candidate = {
+          ...(typeof parsed.name === "string" ? { name: parsed.name } : {}),
+          ...(typeof parsed.description === "string" ? { description: parsed.description } : {})
+        };
+        compiler = Object.keys(candidate).length ? "llm_metadata_only" : compiler;
+      }
+      if (!parsed) compilerWarnings.push("llm_no_structured_output");
+    } catch (error) {
+      if (error?.code === "external_model_secret_blocked") throw error;
+      compilerWarnings.push("llm_compile_failed");
+    }
   }
   const compiled = compileStrategyPrompt(prompt, candidate);
+  const compilationReport = {
+    ...compiled.compilationReport,
+    status: compiler === "llm_metadata_only"
+      ? (compilerWarnings.length ? "compiled_with_constraints" : "compiled")
+      : compilerWarnings.length ? "compiled_with_fallback" : "compiled_deterministically",
+    compiler,
+    warnings: [...new Set([...(compiled.compilationReport?.warnings || []), ...compilerWarnings])]
+  };
   return persistStrategyDraft(db, compiled, {
     compiler,
+    compilationReport,
     actor,
     authoring: { channel: "strategy_studio", toolName: null },
     principal: strategyPrincipal(options)
   });
 }
 
-function persistStrategyDraft(db, compiled, { compiler, actor, authoring, principal } = {}) {
+function persistStrategyDraft(db, compiled, { compiler, compilationReport, actor, authoring, principal } = {}) {
   ensureCollections(db);
   const draft = {
     id: id("strategy_draft"),
@@ -300,6 +532,7 @@ function persistStrategyDraft(db, compiled, { compiler, actor, authoring, princi
     status: "compiled",
     revision: 1,
     compiler: compiler || "deterministic_fallback",
+    compilationReport: compilationReport || { ...compiled.compilationReport, compiler: compiler || "deterministic_fallback" },
     authoring: authoring || { channel: "strategy_studio", toolName: null },
     blueprint: compiled.blueprint,
     contentHash: compiled.contentHash,
@@ -355,6 +588,7 @@ export function createStrategyDraftFromIdea(db, idea = {}, actor = "AgentChat", 
   const compiled = compileStrategyPrompt(prompt, candidate);
   return persistStrategyDraft(db, compiled, {
     compiler: "agent_structured_tool",
+    compilationReport: { ...compiled.compilationReport, compiler: "agent_structured_tool" },
     actor,
     principal: strategyPrincipal(options),
     authoring: {
@@ -423,7 +657,14 @@ export function generateStrategyTests(blueprint) {
       const changedSignals = strategy.signals(changed, blueprint.params || {});
       add("no_lookahead", "未来数据隔离", "Look-ahead isolation", JSON.stringify(first.slice(0, split)) === JSON.stringify(changedSignals.slice(0, split)), "修改未来 K 线不得改变此前信号", "Changing future candles must not alter earlier signals");
       const metrics = simulate(candles, first, { ...blueprint.exitPolicy, ...blueprint.costs, direction: blueprint.direction, barMinutes: BAR_MINUTES[blueprint.timeframe] || 60 });
-      add("cost_model", "成本模型生效", "Cost model included", blueprint.costs?.feePct >= 0 && blueprint.costs?.slippagePct >= 0 && blueprint.costs?.fundingPct8h >= 0 && Number.isFinite(metrics.netReturnPct), "手续费、滑点与资金费率均纳入", "Fees, slippage, and funding are included");
+      const costAssumptionValid = Number(blueprint.compilerRevision || 1) < 2 || (blueprint.costAssumption?.contentHash === hash({
+        schemaVersion: blueprint.costAssumption?.schemaVersion,
+        source: blueprint.costAssumption?.source,
+        values: blueprint.costAssumption?.values
+      }) && hash(blueprint.costAssumption?.values) === hash(blueprint.costs));
+      add("cost_model", "成本模型生效", "Cost model included", blueprint.costs?.feePct >= 0 && blueprint.costs?.slippagePct >= 0 && blueprint.costs?.fundingPct8h >= 0
+        && costAssumptionValid
+        && Number.isFinite(metrics.netReturnPct), "手续费、滑点与资金费率均纳入并绑定不可变假设", "Fees, slippage, and funding are included under a hashed immutable assumption");
     }
   }
   add("risk_contract", "执行风控不可绕过", "Risk controls cannot be bypassed", blueprint?.executionPolicy?.requiresHardRiskGate === true && blueprint?.executionPolicy?.requiresFreshEvidence === true && blueprint?.executionPolicy?.llmMayBypass === false, "必须通过账户、证据和硬风控复核", "Account facts, evidence, and hard-risk checks remain mandatory");
@@ -472,6 +713,7 @@ export function backtestStrategyDraftWithCandles(db, draftId, candles, options =
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
   assertStrategyOwner(draft, options);
+  assertDraftDefinitionIntegrity(draft);
   if (draft.generatedTests?.status !== "passed") throw new Error("必须先通过自动生成的结构与执行测试");
   const symbol = String(options.symbol || draft.blueprint.symbols[0]).toUpperCase();
   if (!draft.blueprint.symbols.includes(symbol)) throw new Error("回测交易对不在策略声明范围内");
@@ -515,7 +757,8 @@ export function backtestStrategyDraftWithCandles(db, draftId, candles, options =
     strategyId: draft.blueprint.templateId,
     direction: draft.blueprint.direction,
     params: { ...draft.blueprint.params, ...draft.blueprint.exitPolicy },
-    costs: draft.blueprint.costs,
+    costs: structuredClone(draft.blueprint.costs),
+    costAssumption: structuredClone(draft.blueprint.costAssumption),
     methodology: "anchored 40% training + 3 purged out-of-sample folds",
     purgeBars: windows.purgeBars,
     embargoBars: windows.embargoBars,
@@ -534,6 +777,8 @@ export function backtestStrategyDraftWithCandles(db, draftId, candles, options =
   db.backtests.unshift({ ...result, trades: oos.trades, winRatePct: oos.winRatePct, profitFactor: oos.profitFactor, maxDrawdownPct: oos.maxDrawdownPct, expectancyR: oos.expectancyR, netReturnPct: oos.netReturnPct, equityCurve: oos.equityCurve });
   db.backtests = db.backtests.slice(0, 50);
   draft.latestBacktestId = result.id;
+  draft.backtestIdsBySymbol ||= {};
+  draft.backtestIdsBySymbol[symbol] = result.id;
   draft.status = passed ? "backtest_passed" : "backtest_failed";
   draft.updatedAt = nowIso();
   appendAudit(db, `策略样本外回测：${draft.blueprint.name} ${passed ? "通过" : "未通过"}（${oos.trades} 笔，${oos.expectancyR ?? "-"}R）`, result.id, actor, passed ? "info" : "warning");
@@ -546,16 +791,47 @@ export function publishStrategyDraft(db, draftId, options = {}, actor = "Strateg
   const draft = db.strategyStudioDrafts.find((row) => row.id === draftId);
   if (!draft) throw Object.assign(new Error("策略草稿不存在"), { status: 404 });
   const principal = assertStrategyOwner(draft, options);
+  assertDraftDefinitionIntegrity(draft);
   if (!principal.isOwner) throw Object.assign(new Error("owner_only_strategy_publication"), { status: 403, code: "owner_only_strategy_publication" });
-  const backtest = db.strategyStudioBacktests.find((row) => row.id === draft.latestBacktestId);
-  if (draft.generatedTests?.status !== "passed" || !backtest?.passed) throw new Error("发布前必须通过自动测试和样本外回测门槛");
+  const draftSymbols = draft.blueprint.symbols || [];
+  const backtestIdsBySymbol = Object.fromEntries(draftSymbols.map((symbol) => [
+    symbol,
+    draft.backtestIdsBySymbol?.[symbol] || (draftSymbols.length === 1 ? draft.latestBacktestId : null)
+  ]));
+  const backtestsBySymbol = Object.fromEntries((draft.blueprint.symbols || []).map((symbol) => [
+    symbol,
+    db.strategyStudioBacktests.find((row) => row.id === backtestIdsBySymbol[symbol]
+      && row.symbol === symbol
+      && row.draftId === draft.id
+      && row.draftHash === draft.contentHash
+      && row.tenantId === draft.tenantId
+      && row.ownerUserId === draft.ownerUserId)
+  ]));
+  const missingSymbols = (draft.blueprint.symbols || []).filter((symbol) => backtestsBySymbol[symbol]?.passed !== true);
+  if (draft.generatedTests?.status !== "passed") throw new Error("发布前必须通过自动测试和样本外回测门槛");
+  if (missingSymbols.length) {
+    throw Object.assign(new Error(`发布前必须满足每个交易对的样本外回测门槛：${missingSymbols.join("、")}`), {
+      code: "strategy_oos_symbol_coverage_incomplete",
+      status: 409,
+      details: { missingSymbols }
+    });
+  }
+  const costDriftSymbols = draftSymbols.filter((symbol) => !costAssumptionMatches(backtestsBySymbol[symbol], draft.blueprint));
+  if (costDriftSymbols.length) {
+    throw Object.assign(new Error("candidate_strategy_cost_assumption_drift"), {
+      code: "candidate_strategy_cost_assumption_drift",
+      status: 409,
+      details: { symbols: costDriftSymbols }
+    });
+  }
+  const backtest = backtestsBySymbol[draft.blueprint.symbols[0]];
   if (draft.publishVersionId) {
     const existing = db.strategyBlueprintVersions.find((row) => row.id === draft.publishVersionId);
     return { version: existing, listing: db.strategyMarketplaceListings.find((row) => row.strategyVersionId === existing?.id), duplicate: true };
   }
   const productKey = cleanText(options.slug, 60).toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || `studio_${draft.id.slice(-10)}`;
   const versionNumber = 1 + Math.max(0, ...db.strategyBlueprintVersions.filter((row) => row.productKey === productKey).map((row) => Number(row.version || 0)));
-  const definition = { ...draft.blueprint, sourceDraftId: draft.id, publishedBy: actor };
+  const definition = { ...structuredClone(draft.blueprint), sourceDraftId: draft.id, publishedBy: actor };
   const version = {
     id: `${productKey}@${versionNumber}`,
     tenantId: draft.tenantId || db.user?.tenantId || "tenant_owner",
@@ -565,7 +841,16 @@ export function publishStrategyDraft(db, draftId, options = {}, actor = "Strateg
     contentHash: hash(definition),
     definition,
     immutable: true,
-    validation: { generatedTests: draft.generatedTests, backtestId: backtest.id, oos: backtest.oos, folds: backtest.folds, criteria: backtest.criteria },
+    validation: {
+      generatedTests: structuredClone(draft.generatedTests),
+      backtestId: backtest.id,
+      backtestIdsBySymbol,
+      costAssumptionHashesBySymbol: Object.fromEntries(Object.entries(backtestsBySymbol).map(([symbol, row]) => [symbol, row.costAssumption?.contentHash || null])),
+      oos: structuredClone(backtest.oos),
+      oosBySymbol: Object.fromEntries(Object.entries(backtestsBySymbol).map(([symbol, row]) => [symbol, structuredClone(row.oos)])),
+      folds: structuredClone(backtest.folds),
+      criteria: structuredClone(backtest.criteria)
+    },
     createdAt: nowIso()
   };
   const listing = {
@@ -599,9 +884,23 @@ export function setStrategyAssignment(db, strategyVersionId, enabled, actor = "S
   const listing = db.strategyMarketplaceListings.find((row) => row.strategyVersionId === strategyVersionId && row.status === "published");
   if (!version || !listing) throw Object.assign(new Error("市场策略版本不存在或未发布"), { status: 404 });
   if (listing.evidenceLevel !== "oos_passed") throw new Error("策略尚未通过样本外证据门槛，不能启用");
+  if (enabled) {
+    const eligibility = validatePublishedStrategyCandidate(db, version);
+    if (!eligibility.ok) throw Object.assign(new Error(eligibility.error), {
+      code: eligibility.error,
+      status: eligibility.status,
+      details: eligibility.details
+    });
+  }
   let assignment = db.strategyAssignments.find((row) => row.strategyVersionId === strategyVersionId);
   if (!assignment) {
-    assignment = { id: id("strategy_assignment"), strategyVersionId, createdAt: nowIso() };
+    assignment = {
+      id: id("strategy_assignment"),
+      tenantId: version.tenantId,
+      ownerUserId: version.ownerUserId,
+      strategyVersionId,
+      createdAt: nowIso()
+    };
     db.strategyAssignments.unshift(assignment);
   }
   assignment.enabled = Boolean(enabled);
@@ -646,7 +945,9 @@ export function enabledStrategyBlueprints(db, options = {}) {
   const belongs = (row) => !principal || (row?.platformScope === "platform"
     || (row?.tenantId === principal.tenantId && row?.ownerUserId === principal.userId));
   const enabled = new Set(db.strategyAssignments.filter((row) => row.enabled && belongs(row)).map((row) => row.strategyVersionId));
-  return db.strategyBlueprintVersions.filter((row) => enabled.has(row.id) && belongs(row)).map((row) => ({
+  return db.strategyBlueprintVersions
+    .filter((row) => enabled.has(row.id) && belongs(row) && validatePublishedStrategyCandidate(db, row).ok)
+    .map((row) => ({
     id: row.id,
     tenantId: row.tenantId || null,
     ownerUserId: row.ownerUserId || null,
@@ -675,6 +976,8 @@ export function bindPlanToEnabledBlueprint(db, plan, strategyVersionId) {
   const assignment = db.strategyAssignments.find((row) => row.strategyVersionId === String(strategyVersionId) && row.enabled === true);
   if (!version) return { ok: false, error: "strategy_blueprint_version_missing" };
   if (!assignment) return { ok: false, error: "strategy_blueprint_not_enabled" };
+  const eligibility = validatePublishedStrategyCandidate(db, version);
+  if (!eligibility.ok) return { ok: false, error: eligibility.error, status: eligibility.status };
   const definition = version.definition || {};
   if (definition.baseProductId !== plan.strategyRef?.productId) return { ok: false, error: "strategy_blueprint_product_mismatch" };
   if (definition.direction !== plan.direction) return { ok: false, error: "strategy_blueprint_direction_mismatch" };
@@ -708,6 +1011,8 @@ export function validatePlanBlueprintGate(db, plan) {
   const assignment = db.strategyAssignments.find((row) => row.strategyVersionId === ref.versionId && row.enabled === true);
   if (!version || version.contentHash !== ref.contentHash) return { allowed: false, reason: "strategy_blueprint_version_drift" };
   if (!assignment) return { allowed: false, reason: "strategy_blueprint_disabled" };
+  const eligibility = validatePublishedStrategyCandidate(db, version);
+  if (!eligibility.ok) return { allowed: false, reason: eligibility.error, status: eligibility.status };
   const definition = version.definition || {};
   if (definition.baseProductId !== plan.strategyRef?.productId || definition.direction !== plan.direction || definition.timeframe !== plan.timeframe || !definition.symbols?.includes(plan.symbol)) {
     return { allowed: false, reason: "strategy_blueprint_plan_mismatch" };

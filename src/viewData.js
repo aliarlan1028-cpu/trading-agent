@@ -15,6 +15,22 @@ export function sortRecent(rows = []) {
   return list(rows).slice().sort((a, b) => recentTime(b) - recentTime(a));
 }
 
+export function strategyBacktestCoverage(draft = {}, backtests = []) {
+  const symbols = list(draft?.blueprint?.symbols);
+  const rows = symbols.map((symbol) => {
+    const expectedId = draft?.backtestIdsBySymbol?.[symbol] || (symbols.length === 1 ? draft?.latestBacktestId : null);
+    const backtest = list(backtests).find((row) => row?.id === expectedId && row?.symbol === symbol) || null;
+    const current = backtest?.draftId === draft?.id && backtest?.draftHash === draft?.contentHash;
+    const status = !backtest ? "missing" : !current ? "stale" : backtest.passed === true ? "passed" : "failed";
+    return { symbol, status, passed: status === "passed", backtest };
+  });
+  return {
+    rows,
+    pendingSymbols: rows.filter((row) => !row.passed).map((row) => row.symbol),
+    complete: rows.length > 0 && rows.every((row) => row.passed)
+  };
+}
+
 export function isCompletedTradeReview(review = {}) {
   return /completed|reflected|closed|done/i.test(String(review.status || ""));
 }

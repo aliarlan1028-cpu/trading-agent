@@ -558,14 +558,14 @@ const TOOL_DEFS = [
         direction: { type: "string", enum: ["long", "short"], description: "做多或做空(单一方向)" },
         timeframe: { type: "string", enum: ["5m", "15m", "1h", "4h", "1d"], description: "分析周期" },
         entry: { type: "string", description: "入场条件的自然语言描述,如‘收盘突破过去20根K线最高价’‘RSI 跌破30后回升’" },
-        confirmation: { type: "string", description: "可选:入场确认条件,如‘成交量高于20周期均量’" },
+        confirmation: { type: "string", description: "可选:主人明确要求的额外确认条件。当前白名单不能执行独立 confirmation 时，必须原样传入让服务端 fail closed，绝不能省略后假装已实现" },
         stop: { type: "string", description: "止损描述,如‘入场价下方2%’或‘2倍ATR自适应’——必填" },
         takeProfit: { type: "string", description: "止盈描述,如‘2R’‘3%’,缺省按2R" },
-        symbol: { type: "string", description: "可选:限定交易对(如 BTC/USDT);不填则通用" },
-        marketRegime: { type: "string", description: "可选:适用的市场状态,如‘上行趋势’‘震荡’" },
-        templateId: { type: "string", enum: ["trend", "meanrev", "breakout", "macd", "bollinger", "death_cross", "rsi_short", "breakdown", "supertrend", "vol_breakout", "squeeze", "rsi_bull_div", "rsi_bear_div"], description: "可选:若你能明确判断该想法对应哪个模板就直接指定,能提高编译成功率;不确定则留空由系统从描述推断" }
+        symbol: { type: "string", description: "必填:限定一个 OKX USDT 交易对(如 BTC/USDT)" },
+        marketRegime: { type: "string", description: "可选:主人明确要求的市场状态过滤。当前蓝图不能执行该过滤时，必须原样传入让服务端要求澄清，绝不能静默丢弃" },
+        templateId: { type: "string", enum: ["trend", "meanrev", "breakout", "macd", "bollinger", "death_cross", "rsi_short", "breakdown", "supertrend", "vol_breakout", "squeeze", "rsi_bull_div", "rsi_bear_div"], description: "可选的模型侧建议；服务端仍只按用户原始入场描述确定可执行模板，不会用此字段覆盖或补全策略语义" }
       },
-      required: ["name", "direction", "timeframe", "entry", "stop"]
+      required: ["name", "symbol", "direction", "timeframe", "entry", "stop"]
     }
   },
   {
@@ -1563,10 +1563,7 @@ export async function executeTool(db, run, name, args = {}) {
 
   if (name === "create_skill_from_idea") {
     const actor = run?.role === "AI 交易员" ? "用户(经 AI)" : "用户";
-    const draft = createStrategyDraftFromIdea(db, {
-      ...args,
-      symbols: args.symbol ? [args.symbol] : (activeMandate(db)?.allowedSymbols || []).slice(0, 8)
-    }, actor, { principal: run?.principal });
+    const draft = createStrategyDraftFromIdea(db, args, actor, { principal: run?.principal });
     const { suite } = runDraftGeneratedTests(db, draft.id, actor, { principal: run?.principal });
     run.strategyDraftId = draft.id;
     return {
@@ -1577,9 +1574,12 @@ export async function executeTool(db, run, name, args = {}) {
       direction: draft.blueprint.direction,
       timeframe: draft.blueprint.timeframe,
       symbols: draft.blueprint.symbols,
-      stop: `${draft.blueprint.exitPolicy.stopLossPct}%`,
+      stop: draft.blueprint.exitPolicy.atrStop
+        ? `${draft.blueprint.exitPolicy.atrMult}x ATR(${draft.blueprint.exitPolicy.atrPeriod})`
+        : `${draft.blueprint.exitPolicy.stopLossPct}%`,
       takeProfit: `${draft.blueprint.exitPolicy.takeProfitR}R`,
       generatedTests: { passed: suite.passed, total: suite.total, status: suite.status },
+      compilationReport: draft.compilationReport,
       note: `已创建同一策略工作室草稿并完成自动测试 ${suite.passed}/${suite.total}；草稿不会下单，可在策略工作室继续回测和发布。`
     };
   }
