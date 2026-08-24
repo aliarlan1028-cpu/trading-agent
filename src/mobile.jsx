@@ -42,6 +42,12 @@ import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import { resolveMobileRoute } from "./productArchitecture.js";
+import {
+  MOBILE_MORE_UTILITIES,
+  MOBILE_NAV_PRESENTATION,
+  MOBILE_PRIMARY_NAV,
+  MOBILE_WORKSPACE_NAV
+} from "./mobileNavigation.js";
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
@@ -1687,42 +1693,36 @@ export function MobileStrategy({ data, action, initialTab = "catalog" }) {
   );
 }
 
+const mobileIconComponents = {
+  activity: Activity,
+  bot: Bot,
+  bookOpen: BookOpen,
+  calendarClock: CalendarClock,
+  clipboardList: ClipboardList,
+  gauge: Gauge,
+  gitBranch: GitBranch,
+  globe: Globe2,
+  moreHorizontal: MoreHorizontal,
+  pieChart: PieChart,
+  receiptText: ReceiptText,
+  rocket: Rocket,
+  settings: Settings,
+  shield: Shield,
+  shieldCheck: ShieldCheck,
+  wrench: Wrench
+};
+const mobileNavItem = (item) => ({ ...item, ...MOBILE_NAV_PRESENTATION[item.id], icon: mobileIconComponents[MOBILE_NAV_PRESENTATION[item.id]?.iconId] });
 const mobileNav = [
-  { id: "chat", label: ["AI 交易员", "AI Trader"], code: "01 · AGENT WORKSITE", icon: Bot },
-  { id: "watch", label: ["实时盯盘", "Live Watch"], code: "WATCH · LIVE", icon: Gauge },
-  { id: "cockpit", label: ["Live Desk", "Live Desk"], code: "02 · LIVE EXECUTION", icon: PieChart },
-  { id: "executionReview", label: ["执行与复盘", "Execution & Review"], code: "EXECUTION · REVIEW", icon: ClipboardList },
-  { id: "tradeLedger", label: ["委托与成交", "Orders & Fills"], code: "ORDERS · FILLS", icon: ReceiptText },
-  { id: "riskHub", label: ["Control", "Control"], code: "04 · RISK GOVERNANCE", icon: ShieldCheck },
-  { id: "labMap", label: ["Lab", "Lab"], code: "03 · RESEARCH & RELEASE", icon: GitBranch },
-  { id: "knowledgeBase", label: ["知识孵化", "Knowledge Incubation"], code: "LAB · INCUBATION", icon: BookOpen },
-  { id: "capabilityLib", label: ["能力库", "Capabilities"], code: "CAPABILITY · LIB", icon: Wrench },
-  { id: "strategyLib", label: ["策略库", "Strategy"], code: "STRATEGY · LIB", icon: Rocket },
-  { id: "intelligence", label: ["情报中心", "Intelligence"], code: "INTEL · BRIEF", icon: Globe2 },
-  { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], code: "EVENTS · TASKS", icon: CalendarClock },
-  { id: "auditSystem", label: ["Operations", "Operations"], code: "05 · SYSTEM OPERATIONS", icon: Activity },
-  { id: "systemSettings", label: ["配置中心", "Configuration"], code: "CFG · CONFIGURATION REGISTRY", icon: Settings }
-];
-const mobilePrimaryNav = [
-  { id: "chat", workspace: "ai", label: ["AI", "AI"], icon: Bot },
-  { id: "cockpit", workspace: "live", label: ["Live", "Live"], icon: PieChart },
-  { id: "labMap", workspace: "lab", label: ["Lab", "Lab"], icon: GitBranch },
-  { id: "riskHub", workspace: "control", label: ["Control", "Control"], icon: ShieldCheck },
-  { id: "more", label: ["更多", "More"], icon: MoreHorizontal }
-];
-const mobileSecondaryNav = [
-  { id: "watch", group: "AI", label: ["实时盯盘", "Live Watch"], icon: Gauge, hint: ["判断、条件与失效", "Theses, conditions, and invalidation"] },
-  { id: "intelligence", group: "AI", label: ["情报中心", "Intelligence"], icon: Globe2, hint: ["今日摘要、快讯与来源", "Brief, flashes, and sources"] },
-  { id: "eventsTasks", group: "AI", label: ["事件日历", "Events"], icon: CalendarClock, hint: ["事件、影响与风险窗口", "Events, impact, and risk windows"] },
-  { id: "executionReview", group: "LIVE DETAIL", label: ["执行与复盘状态", "Execution & review status"], icon: ClipboardList, hint: ["执行、成交与复盘入口", "Execution, fills, and review entry"] },
-  { id: "tradeLedger", group: "LIVE DETAIL", label: ["委托与成交", "Orders & Fills"], icon: ReceiptText, hint: ["真实生命周期流水", "Authoritative lifecycle ledger"] },
-  { id: "labMap", group: "LAB", label: ["研究地图", "Research Map"], icon: GitBranch, hint: ["双来源、正式资产与学习闭环", "Dual origins, formal assets, and learning loop"] },
-  { id: "knowledgeBase", group: "LAB", label: ["知识孵化", "Knowledge Incubator"], icon: BookOpen, hint: ["来源、证据与候选", "Sources, evidence, and candidates"] },
-  { id: "capabilityLib", group: "LAB", label: ["能力库", "Capabilities"], icon: Wrench, hint: ["工具、工作流与 MCP", "Tools, workflows, and MCP"] },
-  { id: "strategyLib", group: "LAB", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
-  { id: "labReviews", group: "LAB", label: ["交易复盘", "Trade Reviews"], icon: BookOpen, hint: ["真实结果、归因与改进候选", "Outcomes, attribution, and improvement candidates"] },
-  { id: "operationsCenter", group: "OPERATIONS", label: ["运行与恢复", "Operations & Recovery"], icon: Activity, hint: ["系统健康、任务、恢复、通知与审计", "Health, tasks, recovery, notices, and audit"] }
-];
+  ...MOBILE_PRIMARY_NAV,
+  ...Object.values(MOBILE_WORKSPACE_NAV).flat(),
+  ...MOBILE_MORE_UTILITIES
+].map(mobileNavItem).concat([{ ...mobileNavItem({ id: "operationsCenter" }), id: "auditSystem" }]);
+const mobilePrimaryNav = MOBILE_PRIMARY_NAV.map((item) => {
+  const presentation = MOBILE_NAV_PRESENTATION[item.id];
+  const tabLabel = { chat: ["AI", "AI"], cockpit: ["Live", "Live"] }[item.id] || presentation.label;
+  return { ...mobileNavItem(item), label: tabLabel, workspace: item.workspace === "trade" ? "live" : item.workspace };
+});
+const mobileMoreUtilities = MOBILE_MORE_UTILITIES.map(mobileNavItem);
 const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
 
 export function MobileLabRail({ route, onNavigate }) {
@@ -1777,16 +1777,19 @@ export function NavDrawer({ open, route, activeWorkspace, onNavigate, onClose, l
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
         <div className="mDrawerTitle"><b>{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
         <div className="mDrawerNav">
-          {mobileSecondaryNav.map((n, index) => {
+          {mobileMoreUtilities.filter((item) => item.id !== "systemSettings").map((n, index) => {
             const Icon = n.icon;
-            const previousGroup = mobileSecondaryNav[index - 1]?.group;
+            const previousGroup = mobileMoreUtilities.filter((item) => item.id !== "systemSettings")[index - 1]?.group;
             const target = resolveMobileRoute(n.id);
             const selected = route === target.route && drawerWorkspace === target.workspace;
             return <div className="mDrawerNavEntry" key={n.id}>{previousGroup !== n.group && <small className="mDrawerGroupLabel">{n.group}</small>}<button className={`mDrawerItem ${selected ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span><b>{mobileNavLabel(n)}</b><small>{t(n.hint[0], n.hint[1])}</small></span><ChevronRight size={15}/></button></div>;
           })}
         </div>
         <div className="mDrawerFoot">
-          <button className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate("systemSettings")}><Settings size={19}/><span><b>{t("配置中心", "Configuration")}</b><small>{t("交易边界、规则、连接与治理", "Trading boundaries, rules, connections, and governance")}</small></span><ChevronRight size={15}/></button>
+          {mobileMoreUtilities.filter((item) => item.id === "systemSettings").map((item) => {
+            const Icon = item.icon;
+            return <button key={item.id} className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate(item.id)}><Icon size={19}/><span><b>{mobileNavLabel(item)}</b><small>{t(item.hint[0], item.hint[1])}</small></span><ChevronRight size={15}/></button>;
+          })}
         </div>
       </aside>
     </div>

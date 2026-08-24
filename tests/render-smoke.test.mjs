@@ -963,7 +963,7 @@ test("public product preview teaches the same three modes as the real cockpit", 
   assert.doesNotMatch(preview, /只减仓|暂停自主/);
 });
 
-test("mobile drawer keeps settings visible without duplicate status and close footer", () => {
+test("mobile drawer keeps only global utilities without duplicate status and close footer", () => {
   const html = render(React.createElement(C.NavDrawer, {
     open: true,
     route: "knowledgeBase",
@@ -976,14 +976,13 @@ test("mobile drawer keeps settings visible without duplicate status and close fo
   assert.doesNotMatch(html, /关闭菜单/);
   assert.doesNotMatch(html, /只减仓/);
   assert.match(html, /mDrawerSettings/);
-  assert.match(html, /实时盯盘/);
-  assert.match(html, /委托与成交/);
-  assert.match(html, /知识孵化/);
-  assert.match(html, /能力库/);
-  assert.match(html, /策略库/);
   assert.match(html, /运行与恢复/);
-  assert.match(html, /LIVE DETAIL/);
-  assert.match(html, /LAB/);
+  assert.doesNotMatch(html, /实时盯盘/);
+  assert.doesNotMatch(html, /委托与成交/);
+  assert.doesNotMatch(html, /研究地图/);
+  assert.doesNotMatch(html, /知识孵化/);
+  assert.doesNotMatch(html, /能力库/);
+  assert.doesNotMatch(html, /策略库/);
   assert.match(html, /OPERATIONS/);
 });
 
