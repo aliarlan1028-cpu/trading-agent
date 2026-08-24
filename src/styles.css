@@ -9419,8 +9419,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mCapabilityRowText small { overflow: hidden; color: #918777; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .mCapabilityRow > .statusBadge { flex: none; }
 .mCapabilityRow > svg { flex: none; color: #B2A895; }
-.mCapabilitySheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); backdrop-filter: blur(3px); }
-.mCapabilitySheet { width: 100%; max-height: 84dvh; overflow-y: auto; padding: 0 14px calc(22px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: #FAF8F4; box-shadow: 0 -12px 42px rgba(35,27,18,.2); animation: mSheetUp .2s ease-out; }
+.mCapabilitySheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); }
+.mCapabilitySheet { width: 100%; max-height: 84dvh; overflow-y: auto; padding: 0 14px calc(22px + env(safe-area-inset-bottom)); border-top: 1px solid var(--kordyn-ink); border-radius: 0; background: #FAF8F4; animation: mSheetUp .2s ease-out; }
 .mCapabilitySheet > header { display: flex; align-items: center; gap: 10px; padding: 2px 1px 13px; }
 .mCapabilitySheet > header > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .mCapabilitySheet > header small { color: #958B7C; font-size: 9px; }
@@ -9475,8 +9475,8 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mForwardRow progress { width: 100%; height: 5px; accent-color: #2F8056; }
 .mForwardRow .statusBadge { justify-self: end; }
 .mResearchEmptyLine { padding: 14px 4px 9px; color: #918777; font-size: 10px; line-height: 1.5; text-align: center; }
-.mResearchSheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); backdrop-filter: blur(3px); }
-.mResearchSheet { width: 100%; max-height: 88dvh; overflow-y: auto; padding: 0 14px calc(24px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: #FAF8F4; box-shadow: 0 -12px 42px rgba(35,27,18,.2); animation: mSheetUp .2s ease-out; }
+.mResearchSheetOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; background: rgba(28,24,19,.42); }
+.mResearchSheet { width: 100%; max-height: 88dvh; overflow-y: auto; padding: 0 14px calc(24px + env(safe-area-inset-bottom)); border-top: 1px solid var(--kordyn-ink); border-radius: 0; background: #FAF8F4; animation: mSheetUp .2s ease-out; }
 .mResearchSheet > header { display: flex; align-items: flex-start; gap: 10px; padding: 2px 1px 13px; }
 .mResearchSheet > header > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .mResearchSheet > header small { color: #A76537; font-size: 8.5px; font-weight: 650; }
@@ -10298,4 +10298,34 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .kordynSystem .wmHero.kTruthBand { grid-template-columns: minmax(0,1fr); }
   .kordynSystem .wmHero.kTruthBand > div:last-child { min-width: 0; border-top: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 16%,transparent); border-left: 0; text-align: left; }
   .kordynSystem .patrolReceiptSummary.kActionBar { grid-template-columns: minmax(0,1fr); }
+}
+
+/* Lab deep-page convergence */
+.kordynSystem .mLabWorkspaceLifecycle { position: sticky; z-index: 24; top: 0; }
+.kordynSystem .mLabRegistry.kRegistry { overflow: hidden; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper-white); }
+.kordynSystem .mLabRegistry.kRegistry > .mCapabilityRow,
+.kordynSystem .mLabRegistry.kRegistry > .mLabRegistryRow { display: flex; grid-template-columns: none; min-height: 68px; padding: 10px 12px; border-radius: 0; }
+.kordynSystem .mLabRegistryRow { width: 100%; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid var(--kordyn-line-soft); background: transparent; color: inherit; text-align: left; }
+.kordynSystem .mLabRegistryRow:last-child { border-bottom: 0; }
+.kordynSystem .mLabRegistryRow > .mIncL { flex: 1; min-width: 0; }
+.kordynSystem .mLabRegistryRow > svg { flex: none; }
+.kordynSystem .mLabRegistrySheetOverlay { position: fixed; z-index: 430; inset: 0; display: flex; align-items: flex-end; background: color-mix(in srgb,var(--kordyn-ink) 62%,transparent); }
+.kordynSystem .mLabRegistrySheet.kInspector { width: 100%; max-height: 91dvh; overflow-y: auto; border: 0; border-top: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); }
+.kordynSystem .mLabRegistrySheet.kInspector > .mSheetGrip { position: sticky; z-index: 2; top: 0; display: grid; place-items: center; width: 100%; height: 28px; border: 0; border-radius: 0; background: var(--kordyn-ink); }
+.kordynSystem .mLabRegistrySheet.kInspector > .mSheetGrip i { width: 42px; height: 3px; background: var(--kordyn-paper-white); }
+.kordynSystem .mLabRegistrySheet.kInspector > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 15px 14px; }
+.kordynSystem .mLabRegistrySheet.kInspector > header > div { min-width: 0; display: grid; gap: 4px; }
+.kordynSystem .mLabRegistrySheet.kInspector > header span { color: color-mix(in srgb,var(--kordyn-paper-white) 64%,var(--kordyn-ink)); }
+.kordynSystem .mLabRegistrySheet > .mLabProvenance { margin: 12px 14px 0; }
+.kordynSystem .mLabLifecycleDetails.kEvidenceLedger { margin-top: 12px; border-top-color: var(--kordyn-ink); }
+.kordynSystem .mLabLifecycleDetails.kEvidenceLedger li { grid-template-columns: 8px minmax(0,1fr); }
+.kordynSystem .mLabInspectorFacts { padding: 6px 14px max(18px,env(safe-area-inset-bottom)); }
+.kordynSystem .mCapabilityManageBar.kActionBar,
+.kordynSystem .mOwnerActions.kActionBar { z-index: 3; }
+.kordynSystem .mCapabilityManageBar.kActionBar { margin-top: 12px; }
+.kordynSystem .mCapabilityManageBar .mCapabilityManage { margin-top: 0; }
+.kordynSystem .labKnowledgeLifecycle { border-radius: 0; }
+
+@media(min-width:901px){
+  .kordynSystem .mLabWorkspaceLifecycle { position: static; }
 }

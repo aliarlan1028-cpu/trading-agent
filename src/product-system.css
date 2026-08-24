@@ -1556,3 +1556,31 @@
   .productWorkspace .erPageHeader.kTruthBand { align-items: flex-start; flex-direction: column; }
   .productWorkspace .erPriorityGrid.kWorkbench > .cp2Card + .cp2Card { border-top: 1px solid var(--product-ink); border-left: 0; }
 }
+
+/* Lab deep-page convergence */
+.productWorkspace .labRegistryWorkbench.kWorkbench { grid-template-columns: 156px minmax(0,1fr) minmax(300px,.78fr); gap: 0; align-items: stretch; border-color: var(--product-ink); }
+.productWorkspace .labRegistryWorkbench.kWorkbench > .cp2SideFilter { border: 0; border-right: 1px solid var(--product-ink); border-radius: 0; background: var(--product-paper); }
+.productWorkspace .labRegistry.kRegistry { border: 0; border-radius: 0; background: var(--product-paper-2); }
+.productWorkspace .labRegistry.kRegistry > .cp2CardHead { border-bottom-color: var(--product-ink); }
+.productWorkspace .labRegistry .cp2Table th:first-child,
+.productWorkspace .labRegistry .cp2Table td:first-child { width: 126px; }
+.productWorkspace .labInspector.kInspector { border: 0; border-left: 1px solid var(--product-ink); border-radius: 0; background: var(--product-paper); }
+.productWorkspace .labInspector.kInspector > .cp2CardHead { min-height: 50px; border-bottom: 1px solid var(--product-ink); background: var(--product-ink); color: var(--product-paper-2); }
+.productWorkspace .labInspector > .labProvenance { margin: 12px 14px 0; }
+.productWorkspace .labInspector .labLifecycleRail { margin-top: 12px; border-right: 0; border-left: 0; }
+.productWorkspace .labInspector .labLifecycleRail > header { min-height: 46px; }
+.productWorkspace .labInspector .labLifecycleRail li { grid-template-columns: 8px minmax(0,1fr); }
+.productWorkspace .labInspectorActions.kActionBar,
+.productWorkspace .erOwnerReleaseBar.kActionBar { position: static; margin-top: 12px; border-radius: 0; }
+.productWorkspace .erOwnerReleaseBar.kActionBar { margin-top: 0; }
+.productWorkspace .reviewLiveEvidence.kEvidenceLedger { border-top-color: var(--product-ink); }
+.productWorkspace .cp2KnowledgeHeader.kTruthBand { grid-template-columns: minmax(0,1fr) auto; padding: 0; border-radius: 0; }
+.productWorkspace .cp2KnowledgeHeader.kTruthBand > div { padding: 18px 20px; }
+.productWorkspace .cp2KnowledgeHeader.kTruthBand > button { align-self: center; margin-right: 18px; }
+.productWorkspace .cp2KnowledgeTabs.kFilterRail { gap: 0; padding: 0; border: 1px solid var(--product-ink); border-top: 0; border-radius: 0; }
+.productWorkspace .labKnowledgeLifecycle [data-lifecycle-stage] { border-radius: 0; }
+
+@media(max-width:1100px){
+  .productWorkspace .labRegistryWorkbench.kWorkbench { grid-template-columns: 138px minmax(0,1fr); }
+  .productWorkspace .labInspector.kInspector { grid-column: 1/-1; border-top: 1px solid var(--product-ink); border-left: 0; }
+}

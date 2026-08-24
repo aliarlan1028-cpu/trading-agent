@@ -37,8 +37,11 @@ test("research map joins native and knowledge-derived assets without treating th
   assert.deepEqual(map.sources, { total: 3, searchable: 1, processing: 1, failed: 1, chunks: 1 });
   assert.equal(map.strategies.total, 3);
   assert.deepEqual(map.strategies.origins, { system: 2, knowledge: 1, imported: 0 });
+  assert.equal(map.strategies.active, 2, "validated system products and published knowledge versions share the registry without sharing an origin");
+  assert.equal(map.strategies.validating, 1, "the system-native research model retains its own lifecycle state");
   assert.equal(map.capabilities.total, 4);
   assert.deepEqual(map.capabilities.origins, { system: 1, knowledge: 1, imported: 1, mcp: 1, registered: 0 });
+  assert.equal(map.capabilities.enabled, 3);
   assert.equal(map.incubation.incubatingStrategies, 1);
   assert.equal(map.learning.completedReviews, 1);
   assert.equal(map.learning.pendingOwner, 1);

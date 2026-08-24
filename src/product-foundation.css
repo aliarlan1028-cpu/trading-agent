@@ -766,3 +766,22 @@
 .kordynSystem .kStateRow--warning { background: color-mix(in srgb, var(--kordyn-acid) 22%, var(--kordyn-paper-white)); color: var(--kordyn-ink); }
 .kordynSystem .kStateRow--success > i { background: var(--kordyn-acid); }
 .kordynSystem .kStateRow--loading > i { background: var(--kordyn-violet); }
+
+/* Lab deep-page convergence */
+.kordynSystem .labProvenance,
+.kordynSystem .mLabProvenance { display: inline-flex; align-items: center; gap: 6px; width: max-content; max-width: 100%; color: color-mix(in srgb,var(--kordyn-ink) 68%,var(--kordyn-paper)); font: 740 8px/1.25 var(--font-mono,ui-monospace,monospace); letter-spacing: .04em; text-transform: uppercase; }
+.kordynSystem .labProvenance > i,
+.kordynSystem .mLabProvenance > i { flex: none; width: 8px; height: 8px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-blue); }
+.kordynSystem [data-provenance="knowledge-derived"] > i { background: var(--kordyn-violet); }
+.kordynSystem [data-provenance="imported"] > i,
+.kordynSystem [data-provenance="mcp-registered"] > i { background: var(--kordyn-orange); }
+.kordynSystem .labLifecycleRail { border: 1px solid var(--kordyn-ink); }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage],
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage],
+.kordynSystem .labKnowledgeLifecycle [data-lifecycle-stage] { min-width: 0; }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage="validation"] > i,
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="validation"] > i { background: var(--kordyn-violet); }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage="live-evidence"] > i,
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="live-evidence"] > i { background: var(--kordyn-blue); }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage="owner-release"] > i,
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"] > i { background: var(--kordyn-acid); }
