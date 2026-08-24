@@ -1157,14 +1157,14 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(mobileNativeStrategy, /24 笔版本归因实盘样本/);
   assert.match(mobileNativeStrategy, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
 
-  for (const [status, mobileExpected, desktopExpected] of [["live_probation", "小额试用", "小额试用中"], ["degraded", "已降级", "已降级"], ["retired", "已退役", "已退役"], ["superseded", "已被替代", "已被替代"]]) {
+  for (const [status, mobileExpected, desktopExpected, publicationEvidence] of [["live_probation", "小额试用", "小额试用中", null], ["degraded", "已降级", "已降级", { approval: { approved: true } }], ["retired", "已退役", "已退役", { approval: { approved: true } }], ["superseded", "已被替代", "已被替代", { approval: { approved: true } }]]) {
     const releasedStrategy = {
       id: `released-${status}`,
       name: `Released ${status}`,
       methodId: `method-${status}`,
       status,
       version: 8,
-      approval: { approved: true },
+      ...publicationEvidence,
       spec: { direction: "long", timeframe: "1h" }
     };
     const releasedData = { knowledge: { tradingSkills: [releasedStrategy] } };
@@ -1178,7 +1178,7 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
     assert.doesNotMatch(desktopHtml, /不适用 · 此资产没有 Owner 发布流程/);
   }
 
-  for (const status of ["retired", "superseded"]) {
+  for (const status of ["degraded", "retired", "superseded"]) {
     const unpublishedArchive = {
       id: `unpublished-${status}`,
       name: `Unpublished ${status}`,
