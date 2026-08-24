@@ -10116,3 +10116,36 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mRiskSettingIcon.permissions{background:#e9f0fb;color:#2e69b9}.mRiskSettingIcon.protections{background:#edf4e8;color:#547e3b}.mNativeConfigForm{display:grid;gap:9px;padding:11px;border-top:1px solid #ede7db;border-bottom:1px solid #ede7db;background:#faf8f4}.mNativeConfigForm>label,.mNativeConfigForm>div>label{display:grid;gap:5px;min-width:0}.mNativeConfigForm>label>span,.mNativeConfigForm>div>label>span{color:#71685c;font-size:8.5px;font-weight:700}.mNativeConfigForm input,.mNativeConfigForm textarea,.mNativeConfigForm select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#2d2822;padding:9px;font-size:11px}.mNativeConfigForm textarea{min-height:64px;resize:vertical}.mNativeConfigForm>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mNativeConfigForm>button{height:37px;border:0;border-radius:9px;background:#292b27;color:#fff;font-size:10px;font-weight:700}
 .mConfigRuleList article{min-height:58px;display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid #ede7db}.mConfigRuleList article:last-child{border-bottom:0}.mConfigRuleList article>span{flex:1;min-width:0;display:grid;gap:3px}.mConfigRuleList article b{font-size:10px}.mConfigRuleList article small{color:#8a8172;font-size:8px}.mConfigRuleList article select{width:100%;max-width:142px;height:28px;border:1px solid #ddd4c7;border-radius:7px;background:#fff;color:#554d43;padding:0 7px;font-size:8px}.mConfigRuleList article>button{min-width:61px;height:29px;display:flex;align-items:center;gap:5px;justify-content:center;border:1px solid #ddd4c7;border-radius:15px;background:#f2eee7;color:#766d60;font-size:8px;font-weight:700}.mConfigRuleList article>button i{width:7px;height:7px;border-radius:50%;background:#a49a8b}.mConfigRuleList article>button.on{border-color:#bdd8c7;background:#edf6f0;color:#28714c}.mConfigRuleList article>button.on i{background:#3d9065}.mConfigRuleList article>button:disabled,.mConfigRuleList article select:disabled{opacity:.7}
 .mEventSourceNative article{display:grid;gap:7px;padding:10px 11px;border-bottom:1px solid #ede7db}.mEventSourceNative article:last-child{border-bottom:0}.mEventSourceNative article>span{min-width:0;display:grid;gap:3px}.mEventSourceNative b{font-size:10px}.mEventSourceNative small{color:#8a8172;font-size:8px;line-height:1.4}.mEventSourceNative article>div{display:flex;gap:6px}.mEventSourceNative article button{height:28px;padding:0 10px;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#554d43;font-size:8.5px;font-weight:700}.mEventSourceNative article button.danger{width:28px;padding:0;display:grid;place-items:center;margin-left:auto;border-color:#ecd2cc;color:#a94738;background:#fff8f6}
+
+/* Shared deep-surface primitives: mobile preserves list/detail reading order and reachability. */
+@media (max-width: 900px) {
+  .kordynSystem .kWorkbench,
+  .kordynSystem .kWorkbench--equal { grid-template-columns: minmax(0, 1fr); max-width: 100%; }
+  .kordynSystem .kRegistry,
+  .kordynSystem .kInspector,
+  .kordynSystem .kEvidenceLedger,
+  .kordynSystem .kFormSurface,
+  .kordynSystem .kStateRow { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .kordynSystem .kInspector { border-top: 1px solid var(--kordyn-ink); border-left: 0; }
+  .kordynSystem .kTruthBand { grid-template-columns: minmax(0, 1fr); }
+  .kordynSystem .kTruthBand > div + div { min-width: 0; border-top: 1px solid var(--kordyn-line); border-left: 0; }
+  .kordynSystem .kRegistry > button,
+  .kordynSystem .kRegistry > a,
+  .kordynSystem .kRegistry > [role="button"] { grid-template-columns: 8px minmax(0, 1fr); min-height: 64px; }
+  .kordynSystem .kRegistry > button > :last-child:not(:only-child),
+  .kordynSystem .kRegistry > a > :last-child:not(:only-child),
+  .kordynSystem .kRegistry > [role="button"] > :last-child:not(:only-child) { grid-column: 2; }
+  .kordynSystem .kInspector > dl > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .kordynSystem .kEvidenceLedger li { grid-template-columns: 8px minmax(0, 1fr); }
+  .kordynSystem .kEvidenceLedger li > small { grid-column: 2; }
+  .kordynSystem .kActionBar { position: sticky; z-index: 8; bottom: 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .kordynSystem .kActionBar > button,
+  .kordynSystem .kActionBar > a { flex: 1 1 140px; min-height: 44px; }
+  .kordynSystem .kFormSurface input,
+  .kordynSystem .kFormSurface textarea,
+  .kordynSystem .kFormSurface select { min-height: 44px; }
+  .kordynSystem .kFilterRail > button,
+  .kordynSystem .kFilterRail > a { min-height: 44px; }
+  .kordynSystem .kStateRow { grid-template-columns: 8px minmax(0, 1fr); min-height: 56px; }
+  .kordynSystem .kStateRow > :last-child:not(:only-child) { grid-column: 2; }
+}

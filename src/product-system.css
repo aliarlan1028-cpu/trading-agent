@@ -23,6 +23,20 @@
   background: var(--product-paper);
 }
 
+/* Shared deep-surface roles keep the established product type stack.
+   Their material values live in product-foundation.css and resolve from kordynSystem. */
+.productWorkspace .kTruthBand,
+.productWorkspace .kWorkbench,
+.productWorkspace .kRegistry,
+.productWorkspace .kInspector,
+.productWorkspace .kEvidenceLedger,
+.productWorkspace .kActionBar,
+.productWorkspace .kFilterRail,
+.productWorkspace .kFormSurface,
+.productWorkspace .kEmptyState,
+.productWorkspace .kStateRow,
+.productSettings .kFormSurface { font-family: var(--font-ui, ui-sans-serif, sans-serif); }
+
 /* Workspace identity: every area announces its role and the current route. */
 .uxProductHeader {
   display: grid;

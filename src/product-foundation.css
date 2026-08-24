@@ -633,3 +633,134 @@
 @media (prefers-reduced-motion: reduce) {
   .kordynSystem *, .kordynSystem *::before, .kordynSystem *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Shared deep-surface primitives */
+.kordynSystem .kTruthBand,
+.kordynSystem .kWorkbench,
+.kordynSystem .kRegistry,
+.kordynSystem .kInspector,
+.kordynSystem .kEvidenceLedger,
+.kordynSystem .kActionBar,
+.kordynSystem .kFilterRail,
+.kordynSystem .kFormSurface,
+.kordynSystem .kEmptyState,
+.kordynSystem .kStateRow { min-width: 0; color: var(--kordyn-ink); }
+
+.kordynSystem .kTruthBand { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; border: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }
+.kordynSystem .kTruthBand > div { display: grid; align-content: center; gap: 5px; min-height: 68px; padding: 13px 16px; }
+.kordynSystem .kTruthBand > div + div { min-width: min(32vw, 260px); border-left: 1px solid var(--kordyn-line); }
+.kordynSystem .kTruthBand small,
+.kordynSystem .kRegistry > header small,
+.kordynSystem .kInspector > header small,
+.kordynSystem .kEvidenceLedger > header small,
+.kordynSystem .kFormSurface label > span,
+.kordynSystem .kEmptyState small,
+.kordynSystem .kStateRow small { color: color-mix(in srgb, currentColor 60%, var(--kordyn-paper)); font: 740 9px/1.2 var(--font-mono, ui-monospace, monospace); letter-spacing: .1em; text-transform: uppercase; }
+.kordynSystem .kTruthBand small { color: var(--kordyn-acid); }
+.kordynSystem .kTruthBand b { overflow-wrap: anywhere; font-size: 16px; line-height: 1.25; }
+.kordynSystem .kTruthBand span { color: color-mix(in srgb, var(--kordyn-paper-white) 72%, var(--kordyn-ink)); font-size: 11px; line-height: 1.45; }
+
+.kordynSystem .kWorkbench { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr); align-items: start; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
+.kordynSystem .kWorkbench--equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kordynSystem .kWorkbench--single { grid-template-columns: minmax(0, 1fr); }
+.kordynSystem .kRegistry { background: var(--kordyn-paper-white); }
+.kordynSystem .kRegistry > header,
+.kordynSystem .kEvidenceLedger > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 50px; padding: 0 14px; border-bottom: 1px solid var(--kordyn-ink); }
+.kordynSystem .kRegistry > header > div,
+.kordynSystem .kEvidenceLedger > header > div { min-width: 0; display: grid; gap: 3px; }
+.kordynSystem .kRegistry > header b,
+.kordynSystem .kEvidenceLedger > header b { font-size: 12px; }
+.kordynSystem .kRegistry > button,
+.kordynSystem .kRegistry > a,
+.kordynSystem .kRegistry > [role="button"] { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 11px; width: 100%; min-height: 58px; padding: 9px 14px; border: 0; border-bottom: 1px solid var(--kordyn-line-soft); border-radius: 0; background: transparent; color: inherit; text-align: left; text-decoration: none; }
+.kordynSystem .kRegistry > button:last-child,
+.kordynSystem .kRegistry > a:last-child,
+.kordynSystem .kRegistry > [role="button"]:last-child { border-bottom: 0; }
+.kordynSystem .kRegistry > button:hover,
+.kordynSystem .kRegistry > a:hover,
+.kordynSystem .kRegistry > [role="button"]:hover,
+.kordynSystem .kRegistry > button[aria-current="true"],
+.kordynSystem .kRegistry > [role="button"][aria-current="true"] { background: color-mix(in srgb, var(--kordyn-acid) 28%, var(--kordyn-paper-white)); }
+.kordynSystem .kRegistry > button > i,
+.kordynSystem .kRegistry > a > i,
+.kordynSystem .kRegistry > [role="button"] > i { width: 8px; height: 8px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-blue); }
+.kordynSystem .kRegistry > button > span,
+.kordynSystem .kRegistry > a > span,
+.kordynSystem .kRegistry > [role="button"] > span { min-width: 0; display: grid; gap: 3px; }
+.kordynSystem .kRegistry > button b,
+.kordynSystem .kRegistry > a b,
+.kordynSystem .kRegistry > [role="button"] b { overflow-wrap: anywhere; font-size: 11px; line-height: 1.35; }
+.kordynSystem .kRegistry > button small,
+.kordynSystem .kRegistry > a small,
+.kordynSystem .kRegistry > [role="button"] small { overflow-wrap: anywhere; color: color-mix(in srgb, var(--kordyn-ink) 58%, var(--kordyn-paper)); font-size: 9px; line-height: 1.35; }
+
+.kordynSystem .kInspector { border-left: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); }
+.kordynSystem .kInspector > header { display: grid; gap: 6px; padding: 16px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }
+.kordynSystem .kInspector > header small { color: var(--kordyn-acid); }
+.kordynSystem .kInspector > header h2,
+.kordynSystem .kInspector > header h3 { margin: 0; overflow-wrap: anywhere; font-size: 18px; line-height: 1.15; }
+.kordynSystem .kInspector > header p { margin: 0; color: color-mix(in srgb, var(--kordyn-paper-white) 72%, var(--kordyn-ink)); font-size: 11px; line-height: 1.5; }
+.kordynSystem .kInspector > dl { margin: 0; }
+.kordynSystem .kInspector > dl > div { display: grid; grid-template-columns: minmax(84px, .6fr) minmax(0, 1fr); gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--kordyn-line-soft); }
+.kordynSystem .kInspector dt { color: color-mix(in srgb, var(--kordyn-ink) 54%, var(--kordyn-paper)); font: 720 9px/1.35 var(--font-mono, ui-monospace, monospace); text-transform: uppercase; }
+.kordynSystem .kInspector dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 10px; line-height: 1.45; }
+
+.kordynSystem .kEvidenceLedger { border-top: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
+.kordynSystem .kEvidenceLedger > header { background: color-mix(in srgb, var(--kordyn-violet) 18%, var(--kordyn-paper-white)); }
+.kordynSystem .kEvidenceLedger > ol,
+.kordynSystem .kEvidenceLedger > ul { margin: 0; padding: 0; list-style: none; }
+.kordynSystem .kEvidenceLedger li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--kordyn-line-soft); }
+.kordynSystem .kEvidenceLedger li > i { width: 8px; height: 8px; margin-top: 3px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-acid); }
+.kordynSystem .kEvidenceLedger li > div { min-width: 0; display: grid; gap: 3px; }
+.kordynSystem .kEvidenceLedger li b,
+.kordynSystem .kEvidenceLedger li span { overflow-wrap: anywhere; font-size: 10px; line-height: 1.4; }
+.kordynSystem .kEvidenceLedger li small { color: color-mix(in srgb, var(--kordyn-ink) 56%, var(--kordyn-paper)); font-family: var(--font-mono, ui-monospace, monospace); }
+
+.kordynSystem .kFilterRail { display: flex; align-items: stretch; overflow-x: auto; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); scrollbar-width: thin; }
+.kordynSystem .kFilterRail > button,
+.kordynSystem .kFilterRail > a { flex: none; min-height: 44px; padding: 0 13px; border: 0; border-right: 1px solid var(--kordyn-line); border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: color-mix(in srgb, var(--kordyn-ink) 66%, var(--kordyn-paper)); font-size: 10px; font-weight: 720; text-decoration: none; white-space: nowrap; }
+.kordynSystem .kFilterRail > button:hover,
+.kordynSystem .kFilterRail > a:hover { background: color-mix(in srgb, var(--kordyn-acid) 22%, var(--kordyn-paper-white)); color: var(--kordyn-ink); }
+.kordynSystem .kFilterRail > button.active,
+.kordynSystem .kFilterRail > button[aria-pressed="true"],
+.kordynSystem .kFilterRail > a[aria-current="page"] { border-bottom-color: var(--kordyn-ink); background: var(--kordyn-acid); color: var(--kordyn-ink); }
+
+.kordynSystem .kFormSurface { display: grid; gap: 0; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
+.kordynSystem .kFormSurface > header { display: grid; gap: 4px; padding: 14px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); }
+.kordynSystem .kFormSurface > header b { font-size: 13px; }
+.kordynSystem .kFormSurface > header p { margin: 0; color: color-mix(in srgb, var(--kordyn-ink) 64%, var(--kordyn-paper)); font-size: 10px; line-height: 1.45; }
+.kordynSystem .kFormSurface label { display: grid; gap: 7px; min-width: 0; padding: 12px 14px; border-bottom: 1px solid var(--kordyn-line-soft); font-size: 10px; font-weight: 720; }
+.kordynSystem .kFormSurface input,
+.kordynSystem .kFormSurface textarea,
+.kordynSystem .kFormSurface select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 42px; padding: 9px 10px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper-white); color: var(--kordyn-ink); font: inherit; font-size: max(16px, 1em); }
+.kordynSystem .kFormSurface textarea { min-height: 92px; resize: vertical; }
+.kordynSystem .kFormSurface input:disabled,
+.kordynSystem .kFormSurface textarea:disabled,
+.kordynSystem .kFormSurface select:disabled { background: var(--kordyn-paper); color: color-mix(in srgb, var(--kordyn-ink) 46%, var(--kordyn-paper)); }
+
+.kordynSystem .kActionBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); }
+.kordynSystem .kActionBar > button,
+.kordynSystem .kActionBar > a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 14px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper-white); color: var(--kordyn-ink); font-size: 10px; font-weight: 760; text-decoration: none; }
+.kordynSystem .kActionBar > button:hover:not(:disabled),
+.kordynSystem .kActionBar > a:hover { background: color-mix(in srgb, var(--kordyn-acid) 35%, var(--kordyn-paper-white)); }
+.kordynSystem .kActionBar > .primary,
+.kordynSystem .kActionBar > button.primary { background: var(--kordyn-acid); }
+.kordynSystem .kActionBar > .danger,
+.kordynSystem .kActionBar > button.danger { background: var(--kordyn-orange); }
+.kordynSystem .kActionBar > button:disabled { border-color: var(--kordyn-line); background: var(--kordyn-paper); color: color-mix(in srgb, var(--kordyn-ink) 42%, var(--kordyn-paper)); }
+
+.kordynSystem .kEmptyState { display: grid; place-items: center; gap: 7px; min-height: 160px; padding: 24px; border: 1px solid var(--kordyn-line); background: var(--kordyn-paper); text-align: center; }
+.kordynSystem .kEmptyState > svg,
+.kordynSystem .kEmptyState > i { width: 24px; height: 24px; color: var(--kordyn-blue); }
+.kordynSystem .kEmptyState b { font-size: 12px; }
+.kordynSystem .kEmptyState p { max-width: 54ch; margin: 0; color: color-mix(in srgb, var(--kordyn-ink) 62%, var(--kordyn-paper)); font-size: 10px; line-height: 1.5; }
+.kordynSystem .kStateRow { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
+.kordynSystem .kStateRow > i { width: 8px; height: 8px; border: 1px solid currentColor; background: var(--kordyn-blue); }
+.kordynSystem .kStateRow > div { min-width: 0; display: grid; gap: 3px; }
+.kordynSystem .kStateRow b,
+.kordynSystem .kStateRow span { overflow-wrap: anywhere; font-size: 10px; line-height: 1.4; }
+.kordynSystem .kStateRow--error { background: #FFF1ED; color: #8A2B22; }
+.kordynSystem .kStateRow--error > i { background: var(--kordyn-orange); }
+.kordynSystem .kStateRow--warning { background: #FFF7D8; color: #654507; }
+.kordynSystem .kStateRow--success > i { background: #2F8A5A; }
+.kordynSystem .kStateRow--loading > i { background: var(--kordyn-violet); }

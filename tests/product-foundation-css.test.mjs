@@ -17,3 +17,14 @@ test("Kordyn product tokens match the approved editorial operating system", () =
   assert.match(css, /min-height:\s*48px/);
   assert.match(css, /font-size:\s*max\(16px, 1em\)/);
 });
+
+test("shared deep-surface primitives stay inside the approved operating-system material grammar", () => {
+  const css = fs.readFileSync(cssPath, "utf8");
+  for (const token of ["--kordyn-paper", "--kordyn-ink", "--kordyn-acid", "--kordyn-line"]) assert.match(css, new RegExp(token));
+  for (const role of ["kTruthBand", "kWorkbench", "kRegistry", "kInspector", "kEvidenceLedger", "kActionBar", "kFilterRail", "kFormSurface", "kEmptyState", "kStateRow"]) assert.match(css, new RegExp(`\\.${role}\\b`));
+
+  const primitiveStart = css.indexOf("/* Shared deep-surface primitives */");
+  assert.notEqual(primitiveStart, -1, "shared primitives need an explicit, auditable boundary");
+  const primitives = css.slice(primitiveStart);
+  assert.doesNotMatch(primitives, /linear-gradient|backdrop-filter|box-shadow\s*:/);
+});

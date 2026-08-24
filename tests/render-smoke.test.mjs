@@ -1079,6 +1079,16 @@ test("shared workspace frame renders the approved product identity and local nav
   assert.match(html, /real workbench/);
 });
 
+test("shared product styles provide mobile list-detail and sticky-action adaptations", () => {
+  const foundation = fs.readFileSync(path.join(rootDir, "src", "product-foundation.css"), "utf8");
+  const styles = fs.readFileSync(path.join(rootDir, "src", "styles.css"), "utf8");
+  assert.match(foundation, /\.kWorkbench[\s\S]*grid-template-columns/);
+  assert.match(foundation, /\.kInspector[\s\S]*border-left/);
+  assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.kWorkbench[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(styles, /\.kActionBar[\s\S]*position:\s*sticky/);
+  assert.match(styles, /\.kFormSurface[\s\S]*(min-height:\s*44px|height:\s*44px)/);
+});
+
 test("Object Inspector remains read-only and State Boundary distinguishes resource states", () => {
   const object = {
     id: "STRAT-014", type: "Strategy", title: "Breakout Retest", status: "Published",
