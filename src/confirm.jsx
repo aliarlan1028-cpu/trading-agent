@@ -34,7 +34,7 @@ export function ConfirmHost() {
   const done = (result) => { const it = item; setItem(null); it.resolve(result); };
   return (
     <div className="cfmOverlay" onMouseDown={() => done(item.input ? null : false)}>
-      <div className="cfmCard" onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`cfmCard ${item.danger ? "cfmCard--danger" : "cfmCard--ordinary"}`} role="dialog" aria-modal="true" aria-label={item.title || (item.input ? "请输入" : "确认操作")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="cfmHead">{item.title || (item.input ? "请输入" : "确认操作")}</div>
         <p className="cfmMsg">{item.message}</p>
         {item.input && (

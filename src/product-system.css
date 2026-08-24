@@ -9,16 +9,16 @@
 .productWorkspace,
 .productSettings {
   --product-ink: #111311;
-  --product-ink-2: #1a1d19;
+  --product-ink-2: #2B302C;
   --product-paper: #f4f1e9;
-  --product-paper-2: #faf8f2;
+  --product-paper-2: #EBE7DC;
   --product-mint: #4fb78b;
   --product-lime: #ccff3d;
-  --product-line: #d3cfc5;
+  --product-line: rgba(17,19,17,.22);
   --product-line-strong: #aaa69d;
   --product-copy: #111311;
-  --product-muted: #74736d;
-  --product-warn: #b58b45;
+  --product-muted: #77796F;
+  --product-warn: #EFB44B;
   --product-danger: #e25645;
   background: var(--product-paper);
 }

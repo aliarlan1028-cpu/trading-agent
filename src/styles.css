@@ -1,4 +1,8 @@
 :root {
+  --global-kordyn-paper: #F4F1E9;
+  --global-kordyn-ink: #111311;
+  --global-kordyn-acid: #CCFF3D;
+  --global-kordyn-danger: #E25645;
   /* ==========================================================
      Design tokens — "Terminal"（专业交易终端）
      暖橙浅色底 + 等宽数字 + 高密度栅格 + 发丝分隔线。
@@ -10444,7 +10448,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .kordynSystem .patrolReceiptSummary.kActionBar { grid-template-columns: minmax(0,1fr); }
 }
 
-/* Lab deep-page convergence */
+/* Lab deep-page convergence: mobile registry and lifecycle */
 .kordynSystem .mLabWorkspaceLifecycle { position: sticky; z-index: 24; top: 0; }
 .kordynSystem .mLabRegistry.kRegistry { overflow: hidden; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper-white); }
 .kordynSystem .mLabRegistry.kRegistry > .mCapabilityRow,
@@ -10480,3 +10484,246 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 @media(min-width:901px){
   .kordynSystem .mLabWorkspaceLifecycle { position: static; }
 }
+
+/* Prototype-authoritative authenticated shell: four fixed rails, continuous
+   hard boundaries, and shared real-object context/trace surfaces. */
+.appShell.kordynSystem {
+  display: grid;
+  grid-template-columns: var(--kordyn-workspace-rail) minmax(0, 1fr) var(--kordyn-context-dock);
+  grid-template-rows: var(--kordyn-command-rail) minmax(0, 1fr) var(--kordyn-trace-rail);
+  grid-template-areas: "command command command" "workspace main context" "trace trace trace";
+  width: 100vw;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--kordyn-paper);
+  color: var(--kordyn-ink);
+  font-family: var(--kordyn-sans);
+}
+
+.appShell.kordynSystem :is(button, input, textarea, select) { border-radius: 0; }
+.appShell.kordynSystem :is(code, .mono, .num) { font-family: var(--kordyn-mono); font-variant-numeric: tabular-nums; }
+.appShell.kordynSystem :is(p, b, span, small, em, code, dd) { min-width: 0; overflow-wrap: anywhere; }
+
+.appShell.kordynSystem > .appTopbar {
+  grid-area: command;
+  position: relative;
+  top: auto;
+  z-index: 70;
+  display: flex;
+  height: var(--kordyn-command-rail);
+  min-width: 0;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-bottom: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper);
+  backdrop-filter: none;
+}
+
+.commandRail {
+  display: flex;
+  flex: 1 1 480px;
+  min-width: 360px;
+  height: 100%;
+  border-right: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper);
+}
+.commandRail__brand { display: flex; flex: 0 0 var(--kordyn-workspace-rail); align-items: center; gap: 9px; min-width: 0; padding: 0 12px; border-right: 1px solid var(--kordyn-ink); }
+.commandRail__brand img { width: 29px; height: 29px; object-fit: contain; }
+.commandRail__brand span { display: grid; gap: 1px; }
+.commandRail__brand b { font: 780 14px/1 var(--kordyn-display); letter-spacing: -.02em; }
+.commandRail__brand small { color: var(--kordyn-muted); font: 700 8px/1.2 var(--kordyn-mono); text-transform: uppercase; }
+.commandRail__search { position: relative; display: flex; flex: 1 1 280px; align-items: center; min-width: 180px; border-right: 1px solid var(--kordyn-line); color: var(--kordyn-muted); }
+.commandRail__search > svg { flex: none; width: 15px; margin-left: 13px; }
+.commandRail__search > input { width: 100%; height: 100%; min-width: 0; padding: 0 38px 0 9px; border: 0; outline: 0; background: transparent; color: var(--kordyn-ink); font: 650 11px var(--kordyn-sans); }
+.commandRail__search > input::placeholder { color: var(--kordyn-muted); opacity: 1; }
+.commandRail__search > button { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--kordyn-ink); }
+.commandRail__search > button svg { width: 14px; }
+.commandRail__results { position: absolute; z-index: 120; top: calc(100% + 1px); left: -1px; width: min(600px, calc(100vw - 24px)); max-height: min(64dvh, 520px); overflow: auto; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); box-shadow: 10px 10px 0 var(--kordyn-acid); }
+.commandRail__results > button { display: grid; grid-template-columns: 82px minmax(120px, 1fr) minmax(100px, .75fr) 80px; align-items: center; width: 100%; min-height: 48px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); background: transparent; color: var(--kordyn-ink); text-align: left; }
+.commandRail__results > button:last-child { border-bottom: 0; }
+.commandRail__results > button.active,
+.commandRail__results > button:hover { background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.commandRail__results small,
+.commandRail__results code,
+.commandRail__results span { font: 700 9px/1.25 var(--kordyn-mono); }
+.commandRail__results small { color: var(--kordyn-mint); text-transform: uppercase; }
+.commandRail__results b { font-size: 11px; }
+.commandRail__results span { text-align: right; text-transform: uppercase; }
+.commandRail__results > p { min-height: 56px; padding: 18px; color: var(--kordyn-muted); font-size: 11px; }
+.commandRail__facts { display: grid; grid-template-columns: repeat(4, minmax(58px, 1fr)); flex: 0 1 264px; min-width: 0; }
+.commandRail__facts > span { display: grid; align-content: center; gap: 2px; min-width: 0; padding: 0 8px; border-right: 1px solid var(--kordyn-line); }
+.commandRail__facts > span:last-child { border-right: 0; }
+.commandRail__facts small { color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); letter-spacing: .08em; }
+.commandRail__facts b { font: 760 9px var(--kordyn-mono); }
+
+.appShell.kordynSystem > .appTopbar .topbarStatusGroup,
+.appShell.kordynSystem > .appTopbar .topEmergencyActions,
+.appShell.kordynSystem > .appTopbar .topbarActions { align-self: stretch; min-height: 0; margin: 0; border-left: 1px solid var(--kordyn-ink); }
+.appShell.kordynSystem > .appTopbar :is(.exchangePill, .runtimeStatePill, .topEmergencyActions > button, .bellButton, .topLangBtn, .topAvatar) { height: 100%; min-height: 0; border: 0; border-right: 1px solid var(--kordyn-line); border-radius: 0; box-shadow: none; background: transparent; }
+.appShell.kordynSystem > .appTopbar .topEmergencyActions { display: grid; grid-template-columns: repeat(2,minmax(64px,1fr)); }
+.appShell.kordynSystem > .appTopbar .topEmergencyActions > button { color: var(--kordyn-danger); }
+.appShell.kordynSystem > .appTopbar .topEmergencyActions > button:hover,
+.appShell.kordynSystem > .appTopbar .topEmergencyActions > button.active { background: var(--kordyn-danger); color: var(--kordyn-paper); }
+.appShell.kordynSystem > .appTopbar .topAvatar { width: 48px; color: var(--kordyn-ink); }
+.appShell.kordynSystem > .appTopbar .runtimeStatePill { border-left: 1px solid var(--kordyn-line); }
+.appShell.kordynSystem > .appTopbar .runtimeStatusPopover,
+.appShell.kordynSystem > .appTopbar .topLangMenu { border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); box-shadow: 10px 10px 0 var(--kordyn-acid); }
+
+.workspaceRail {
+  grid-area: workspace;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper-2);
+}
+.workspaceRail nav { display: grid; }
+.workspaceRail button { position: relative; display: grid; grid-template-columns: 24px 18px minmax(0,1fr); align-items: start; gap: 8px; width: 100%; min-height: 76px; padding: 13px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); background: transparent; color: var(--kordyn-ink); text-align: left; }
+.workspaceRail button > small { font: 760 8px var(--kordyn-mono); }
+.workspaceRail button > svg { width: 16px; height: 16px; }
+.workspaceRail button > span { display: grid; gap: 4px; }
+.workspaceRail button b { font: 730 11px/1.1 var(--kordyn-sans); }
+.workspaceRail button em { display: -webkit-box; overflow: hidden; color: var(--kordyn-muted); font: normal 8px/1.35 var(--kordyn-sans); -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.workspaceRail button:hover { background: color-mix(in srgb, var(--kordyn-acid) 20%, var(--kordyn-paper-2)); }
+.workspaceRail button.active { background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.workspaceRail button.active::after { position: absolute; inset: 0 0 0 auto; width: 5px; content: ""; background: var(--kordyn-acid); }
+.workspaceRail button.active em { color: color-mix(in srgb, var(--kordyn-paper) 66%, var(--kordyn-ink)); }
+.workspaceRail__utility { margin-top: auto; border-top: 1px solid var(--kordyn-ink) !important; border-bottom: 0 !important; }
+
+.appShell.kordynSystem > .mainArea { grid-area: main; display: block; width: auto; height: auto; min-width: 0; min-height: 0; overflow: hidden; }
+.appShell.kordynSystem > .mainArea > .content { width: 100%; max-width: none; height: 100%; min-width: 0; min-height: 0; overflow: auto; padding: 16px; background: var(--kordyn-paper); }
+
+.contextDock {
+  grid-area: context;
+  z-index: 40;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper-2);
+  color: var(--kordyn-ink);
+}
+.contextDock > header { position: sticky; z-index: 2; top: 0; display: flex; justify-content: space-between; gap: 10px; min-height: 66px; padding: 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.contextDock > header > span { display: grid; gap: 3px; }
+.contextDock > header small,
+.contextDock dt { color: var(--kordyn-mint); font: 760 8px var(--kordyn-mono); letter-spacing: .1em; text-transform: uppercase; }
+.contextDock > header b { font: 730 13px/1.2 var(--kordyn-display); }
+.contextDock > header em { color: color-mix(in srgb,var(--kordyn-paper) 64%,var(--kordyn-ink)); font: normal 8px var(--kordyn-mono); text-transform: uppercase; }
+.contextDock > header button,
+.mShellSheet > header button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin: -2px; padding: 0; border: 1px solid color-mix(in srgb,var(--kordyn-paper) 34%,transparent); background: transparent; color: var(--kordyn-paper); }
+.contextDock > header button svg,
+.mShellSheet > header button svg { width: 16px; }
+.contextDock dl { margin: 0; }
+.contextDock dl > div { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 10px; min-height: 52px; padding: 12px; border-bottom: 1px solid var(--kordyn-line); }
+.contextDock dd { margin: 0; font: 680 10px/1.45 var(--kordyn-mono); }
+.contextDock footer { padding: 12px; }
+.contextDock footer button { width: 100%; min-height: 44px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-acid); color: var(--kordyn-ink); font: 760 10px var(--kordyn-sans); }
+.contextDock footer button:disabled { background: var(--kordyn-paper); color: var(--kordyn-muted); }
+.contextDock.collapsed > :not(header) { display: none; }
+
+.traceRail {
+  grid-area: trace;
+  position: relative;
+  z-index: 60;
+  min-width: 0;
+  border-top: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-dark);
+  color: var(--kordyn-paper);
+}
+.traceRail > nav { display: grid; grid-template-columns: repeat(6,minmax(78px,1fr) 18px) minmax(78px,1fr); height: 100%; min-width: 0; }
+.traceRail > nav > i { display: grid; place-items: center; color: var(--kordyn-muted); font: normal 11px var(--kordyn-mono); }
+.traceRail__stage { display: grid; grid-template-columns: auto 1fr; align-content: center; gap: 2px 8px; min-width: 0; padding: 8px 10px; border: 0; background: transparent; color: var(--kordyn-paper); text-align: left; }
+.traceRail__stage:hover,
+.traceRail__stage[aria-expanded="true"] { background: var(--kordyn-dark-2); }
+.traceRail__stage small { grid-row: 1 / span 2; align-self: center; color: var(--kordyn-muted); font: 700 8px var(--kordyn-mono); }
+.traceRail__stage b { font: 730 10px var(--kordyn-sans); }
+.traceRail__stage span { color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); text-transform: uppercase; }
+.traceRail__stage.status-complete span { color: var(--kordyn-mint); }
+.traceRail__stage.status-waiting span { color: var(--kordyn-amber); }
+.traceRail__stage.status-blocked span { color: var(--kordyn-danger); }
+.traceRail__detail { position: absolute; right: 0; bottom: 100%; width: min(520px,100vw); border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); color: var(--kordyn-ink); box-shadow: 10px -10px 0 var(--kordyn-acid); }
+.traceRail__detail > header { display: flex; justify-content: space-between; gap: 12px; min-height: 54px; padding: 9px 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.traceRail__detail > header span { display: grid; gap: 3px; }
+.traceRail__detail > header small,
+.traceRail__detail dt { color: var(--kordyn-mint); font: 750 8px var(--kordyn-mono); }
+.traceRail__detail > header button { display: grid; place-items: center; width: 44px; height: 44px; margin: -5px; border: 0; background: transparent; color: var(--kordyn-paper); }
+.traceRail__detail > header svg { width: 16px; }
+.traceRail__detail dl { margin: 0; }
+.traceRail__detail dl > div { display: grid; grid-template-columns: 86px minmax(0,1fr); gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-line); }
+.traceRail__detail dl > div:last-child { border-bottom: 0; }
+.traceRail__detail dd { margin: 0; font: 650 10px/1.45 var(--kordyn-mono); overflow-wrap: anywhere; }
+
+/* Modal grammar also targets ConfirmHost, which is mounted beside rather than
+   inside the authenticated shell root. */
+.cfmOverlay,
+.kordynSystem .cfmOverlay,
+.kordynSystem .modalOverlay { background: rgba(17, 21, 17, .78); backdrop-filter: none; }
+.cfmOverlay { --kordyn-paper: var(--global-kordyn-paper); --kordyn-ink: var(--global-kordyn-ink); --kordyn-acid: var(--global-kordyn-acid); --kordyn-danger: var(--global-kordyn-danger); }
+.cfmCard,
+.kordynSystem .modalCard,
+.kordynSystem .confirmDialog { border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); box-shadow: 10px 10px 0 var(--kordyn-acid); }
+.cfmCard--ordinary,
+.kordynSystem .cfmCard--ordinary { border: 1px solid var(--kordyn-ink); border-radius: 0; box-shadow: 10px 10px 0 var(--kordyn-acid); }
+.cfmCard--danger,
+.kordynSystem .cfmCard--danger { border: 1px solid var(--kordyn-ink); border-radius: 0; box-shadow: 10px 10px 0 var(--kordyn-danger); }
+.kordynSystem .confirmDialog.danger { border: 1px solid var(--kordyn-ink); border-radius: 0; box-shadow: 10px 10px 0 var(--kordyn-danger); }
+.kordynSystem .modalCard { box-shadow: 10px 10px 0 var(--kordyn-acid); }
+
+.mShell2.kordynSystem { display: grid; grid-template-rows: 56px minmax(0,1fr) 44px 66px; width: 100%; height: 100dvh; min-width: 0; overflow: hidden; background: var(--kordyn-paper); }
+.mShell2.kordynSystem > .mHeader2 { position: relative; top: auto; z-index: 40; display: grid; grid-template-columns: 56px minmax(0,1fr) auto; height: 56px; min-height: 56px; padding: 0; border: 0; border-bottom: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); box-shadow: none; }
+.mShell2.kordynSystem > .mHeader2 :is(.mMenuBtn,.mBack,.mRuntimeButton) { min-width: 44px; min-height: 44px; height: 100%; border: 0; border-right: 1px solid var(--kordyn-ink); border-radius: 0; background: transparent; box-shadow: none; }
+.mShell2.kordynSystem > .mHeader2 .mHeaderMid { padding: 0 12px; }
+.mShell2.kordynSystem > .mMain2 { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-bottom: 0; }
+.mShellTools { z-index: 50; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); height: 44px; min-width: 0; border-top: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-2); }
+.mShellToolButton { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: center; gap: 8px; min-height: 44px; padding: 0 11px; border: 0; border-right: 1px solid var(--kordyn-ink); border-radius: 0; background: transparent; color: var(--kordyn-ink); text-align: left; }
+.mShellToolButton:last-child { border-right: 0; }
+.mShellToolButton small,
+.mShellToolButton span { color: var(--kordyn-muted); font: 720 7px var(--kordyn-mono); text-transform: uppercase; }
+.mShellToolButton b { font: 740 10px var(--kordyn-sans); }
+.mShellToolButton span { text-align: right; }
+.mShell2.kordynSystem > .mNativeTabbar { position: relative; inset: auto; z-index: 50; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); height: 66px; padding: 0; border: 0; border-top: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-dark); box-shadow: none; backdrop-filter: none; }
+.mShell2.kordynSystem > .mNativeTabbar > button { position: relative; display: grid; grid-template-columns: auto 16px; place-content: center; gap: 2px 5px; min-width: 0; min-height: 44px; padding: 6px 3px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper) 18%,transparent); border-radius: 0; background: transparent; color: var(--kordyn-paper); }
+.mShell2.kordynSystem > .mNativeTabbar > button:last-child { border-right: 0; }
+.mShell2.kordynSystem > .mNativeTabbar > button small { align-self: center; color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); }
+.mShell2.kordynSystem > .mNativeTabbar > button svg { width: 15px; height: 15px; }
+.mShell2.kordynSystem > .mNativeTabbar > button span { grid-column: 1/-1; font: 680 8px var(--kordyn-sans); }
+.mShell2.kordynSystem > .mNativeTabbar > button.active { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.mShell2.kordynSystem > .mNativeTabbar > button.active small { color: var(--kordyn-ink-2); }
+.mShellSheetOverlay { position: fixed; z-index: 500; inset: 0; display: flex; align-items: flex-end; background: rgba(17, 21, 17, .78); }
+.mShellSheet { width: 100%; max-height: calc(100dvh - 56px); overflow: hidden; border: 1px solid var(--kordyn-ink); border-bottom: 0; border-radius: 0; background: var(--kordyn-paper); box-shadow: 0 -10px 0 var(--kordyn-acid); }
+.mShellSheet > header { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 6px 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.mShellSheet > header span { display: grid; gap: 3px; }
+.mShellSheet > header small { color: var(--kordyn-mint); font: 740 8px var(--kordyn-mono); }
+.mShellSheet__body { max-height: calc(100dvh - 112px); overflow: auto; }
+.mShellSheet .contextDock { position: static; width: 100%; border: 0; }
+.mShellSheet .traceRail { position: static; min-height: 66px; border-top: 0; }
+.mShellSheet .traceRail > nav { min-width: 700px; overflow-x: auto; }
+.mShellSheet .traceRail__detail { position: static; width: 100%; border: 0; border-bottom: 1px solid var(--kordyn-ink); box-shadow: none; }
+
+@media (max-width: 1480px) {
+  .commandRail__facts { display: none; }
+  .appShell.kordynSystem > .appTopbar .exchangePill small,
+  .appShell.kordynSystem > .appTopbar .topEmergencyActions span { display: none; }
+}
+
+@media (max-width: 1280px) and (min-width: 721px) {
+  .appShell.kordynSystem { grid-template-columns: var(--kordyn-workspace-rail) minmax(0,1fr) 0; }
+  .appShell.kordynSystem > .contextDock { position: fixed; z-index: 90; top: var(--kordyn-command-rail); right: 0; bottom: var(--kordyn-trace-rail); width: var(--kordyn-context-dock); border: 1px solid var(--kordyn-ink); border-top: 0; border-bottom: 0; box-shadow: -10px 0 0 color-mix(in srgb,var(--kordyn-ink) 18%,transparent); }
+  .appShell.kordynSystem > .contextDock.collapsed { width: 58px; overflow: hidden; }
+  .appShell.kordynSystem > .contextDock.collapsed > header { width: 58px; padding: 8px; }
+  .appShell.kordynSystem > .contextDock.collapsed > header span { display: none; }
+  .commandRail__brand { flex-basis: var(--kordyn-workspace-rail); }
+}
+
+@media (max-width: 720px) {
+  .mShell2.kordynSystem { grid-template-rows: 56px minmax(0,1fr) 44px 66px; }
+  .mShell2.kordynSystem :is(.mCard,.mNativeSection,.mSectionCard) { max-width: 100%; }
+  .mShellSheet .contextDock dl > div { grid-template-columns: 96px minmax(0,1fr); }
+}
+
+/* Lab deep-page convergence */
+.kordynSystem .mLabWorkspaceLifecycle { border-radius: 0; }

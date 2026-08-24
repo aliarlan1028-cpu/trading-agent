@@ -47,9 +47,10 @@ The interface must not claim arbitrary executable code generation, dynamic unkno
 
 ## Visual Direction
 
-The approved direction is an editorial trading operating system inspired by the compositional qualities of E2P DAO Club's illustrative product and research/operations sections, without copying its brand assets.
+The authenticated product shell is governed by the immutable interactive prototype at commit `1056233`, `prototypes/kordyn-operating-system.html`, blob `43267ccfca051351823c668932c857350fb592b9`, together with its same-commit design specification. Login and marketing remain outside that shell contract and unchanged.
 
 - Paper-like warm surfaces, near-black command and truth regions, hard 1px boundaries, continuous grids, numbered operational structure, and dense but legible registry rows.
+- The semantic shell palette is exact: Paper/Paper-2, Ink/Ink-2, Muted, Dark/Dark-2, Acid, Mint, Danger, Amber, Blue, and the prototype line semantics.
 - Acid green is reserved for current selection, authorization, or explicit action-needed state.
 - Orange is used for risk, event impact, and Owner attention; blue for runtime health and observability; violet for imported and methodological relationships.
 - No generic SaaS card wall, decorative gradient or glow, glassmorphism, broad soft shadows, or oversized rounded containers.
@@ -57,6 +58,16 @@ The approved direction is an editorial trading operating system inspired by the 
 - IDs, versions, timestamps, prices, quantities, and measurements use tabular/monospace treatment; prose does not use monospace as decoration.
 
 AI Trader retains its deployed conversation workflow and gains the Command visual grammar through an Agent Status Band and contextual Command Rail. Live Desk retains the approved trading-desk interaction model. Other workspaces are reorganized around authoritative objects, context, governance, and health/proof.
+
+## Authenticated Global Shell
+
+Desktop uses four persistent operating rails: a 64px Command Rail, a 188px numbered Workspace Rail, a 304px Context Dock, and a 66px Trace Rail. The Command Rail keeps the existing OKX, runtime, notification, Flatten, Kill, language, and account actions and adds a keyboard-operable object/function switcher built only from the canonical route registry and currently loaded production objects. Search results expose type, title, ID, status, and their existing authoritative route; empty and unavailable results are explicit.
+
+The Context Dock projects Evidence, Risk, Mandate, Object, Version, Permissions, and the safe route-level next action from the selected object or current workspace facts. Missing fields remain `Unavailable`. The Trace Rail projects `Sense → Recall → Plan → Guard → Execute → Monitor → Review` from loaded market, knowledge, plan, risk, execution, monitoring, review, and trace facts, using only `complete`, `waiting`, `blocked`, or `unavailable`. A stage opens its real detail/evidence surface; no missing fact becomes zero or success. At medium desktop widths the Context Dock is a collapsible hard-edged overlay.
+
+Post-login mobile uses the same Paper/near-black/Acid grammar as a touch composition: a 56px masthead and safety entry, a persistent 44px Context/Trace affordance rail, and a 66px numbered `AI | Live | Lab | Control | More` rail. Context and Trace open as bounded full-width sheets with the same fields and states. More still contains only Operations and Configuration. Native authentication is unchanged.
+
+Shared ordinary confirmations are rectangular with a 1px Ink edge and 10px Acid offset; destructive confirmations use a 10px Danger offset. Flatten and Kill remain distinct deployed actions. Kill retains typed confirmation, server-authoritative failure/success handling, and audit evidence; neither action claims optimistic success.
 
 ## Desktop and Mobile
 

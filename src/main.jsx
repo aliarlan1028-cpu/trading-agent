@@ -4,16 +4,10 @@ import { getLang, setLang, t } from "./i18n.js";
 import {
   Activity,
   Bell,
-  BookOpen,
-  Bot,
   ChevronRight,
-  PieChart,
   RefreshCw,
-  Search,
-  Settings,
   Target,
   Globe,
-  ShieldCheck,
   Zap
 } from "lucide-react";
 import { automationPresentation, exchangeState, isNativeApp, localizeText, useApi } from "./lib.jsx";
@@ -21,8 +15,8 @@ import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
-import { PRIMARY_WORKSPACE_IDS, WORKSPACES, productWorkspaceForRuntimeSection, resolveDesktopRoute } from "./productArchitecture.js";
-import { WorkspaceStateBoundary } from "./productShell.jsx";
+import { resolveDesktopRoute } from "./productArchitecture.js";
+import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
@@ -47,50 +41,9 @@ if (isNativeApp()) {
   );
 }
 
-// 按心智模型把 9 页归并成 3 组(交易/研究/风控),降低"一堵墙 9 个平铺项"的认知负荷。
-// 页面本身不动(不合并组件,零回归风险),只在侧栏加分组小标题。
-// IA 重构 W1:导航按"交易 / 能力(知识→能力→使用) / 风控与运维"重排。
-// 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
-// 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
-const WORKSPACE_ICONS = { ai: Bot, live: PieChart, lab: BookOpen, control: ShieldCheck, operations: Activity };
-const navItems = PRIMARY_WORKSPACE_IDS.map((id) => ({ ...WORKSPACES[id], icon: WORKSPACE_ICONS[id] }));
-
 function BrandLogo({ size = 34, variant = "black" }) {
   const src = variant === "white" ? "/kordyn-logo-white.svg" : "/kordyn-logo.svg";
   return <img className="brandLogo" src={src} alt="KORDYN" width={size} height={size} />;
-}
-
-function Sidebar({ active, activeWorkspace, setActive }) {
-  return (
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="brandMark"><BrandLogo size={32} /></div>
-        <div className="brandText">
-          <strong>KORDYN</strong>
-          <span className="brandSub">AI · DIGITAL ASSET</span>
-        </div>
-      </div>
-      <nav className="nav">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const on = activeWorkspace ? activeWorkspace === item.id : productWorkspaceForRuntimeSection(active) === item.id;
-          const label = t(item.label, item.labelEn);
-          return (
-              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.rootRoute)}>
-                <Icon size={16} />
-                <span className="navLabelFull">{label}</span>
-                <span className="navLabelShort">{label}</span>
-              </button>
-          );
-        })}
-      </nav>
-      <div className="sidebarFoot">
-        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("配置中心 / 密钥 / 用户管理", "Configuration / Keys / Users")} onClick={() => setActive("systemSettings")}>
-          <Settings size={15} /> {t("配置中心", "Configuration")}
-        </button>
-      </div>
-    </aside>
-  );
 }
 
 function useIsMobileViewport() {
@@ -114,7 +67,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
+function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -126,16 +79,13 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
   const stopped = data.system?.killSwitch === true;
   const displayUserName = localizeText(data.user?.name || t("账户", "Account"));
   const flattenAll = async () => {
-    if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries will pause until OKX reconciliation confirms completion."))) {
+    if (await uiConfirm(t("确认按市价平掉全部持仓？提交后系统会暂停新开仓，直到 OKX 对账确认全部处置完成。", "Close every position at market? New entries will pause until OKX reconciliation confirms completion."), { danger: true, title: t("全部平仓", "Flatten all positions") })) {
       action("/api/risk/emergency-flatten", {});
     }
   };
   return (
-    <header className="appTopbar">
-      <div className="topSearch">
-        <Search size={15} />
-        <input placeholder={t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")} aria-label={t("搜索", "Search")} />
-      </div>
+    <header className="appTopbar" data-shell-role="desktop-command">
+      <CommandRail data={data} onNavigate={setActive} onSelect={onObjectSelect} />
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
         <button type="button" className={`runtimeStatePill ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
@@ -265,7 +215,7 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
 
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+      <div className="modalCard" role="dialog" aria-modal="true" aria-label={t("账户设置", "Account Settings")} onClick={(event) => event.stopPropagation()}>
         <h3>{t("账户设置", "Account Settings")}</h3>
         <div className="acctAvatarRow">
           <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt={t("头像", "Avatar")} /> : (name || "A").slice(0, 1).toUpperCase()}</div>
@@ -338,6 +288,7 @@ function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
   const [activeSettingsSection, setActiveSettingsSection] = useState("environment");
   const [panel, setPanel] = useState("");
+  const [selectedShellObject, setSelectedShellObject] = useState(null);
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   useEffect(() => {
@@ -369,6 +320,8 @@ function App() {
     if (active === "systemSettings") return <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
   }, [active, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
+  const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
+  const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace), [data, activeProductWorkspace]);
 
   if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
@@ -381,14 +334,16 @@ function App() {
 
   return (
     <div className="appShell kordynSystem" key={lang}>
-      <Sidebar active={active} activeWorkspace={activeProductWorkspace} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
+      <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
+      <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={(route) => { setSelectedShellObject(null); navigate(route); }} />
       <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} notify={notify} action={action} lang={lang} switchLang={switchLang} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
         <div className={active === "chat" ? "content contentChat" : "content"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
         </div>
       </main>
+      <ContextDock context={shellContext} onNavigate={navigate} />
+      <TraceRail stages={shellTrace} />
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
       <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />

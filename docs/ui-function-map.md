@@ -4,7 +4,7 @@
 - Baseline commit: `f56bc622ec7a00fe947d2e859883a27d7d7e976c`
 - Baseline branch: `codex/fix-profit-poster-and-learning-lifecycle`
 - Scope: authenticated desktop and post-login mobile UI; mobile authentication is unchanged
-- Verification baseline: Vite production build, ESLint, and 81 focused render/parity/mobile tests pass
+- Verification baseline: Task 7 focused prototype/mobile/render gate passes 98/98; final build, lint, full route screenshots, and detector are owned by later gates
 
 ## 1. Current Architecture Audit
 
@@ -25,9 +25,11 @@ Non-AI workspaces use the grouped editorial product shell. AI Trader intentional
 
 ### Mobile
 
-`MobileApp` remains a separate touch-first implementation, but navigation now resolves through the shared compatibility registry. It uses:
+`MobileApp` remains a separate touch-first implementation, but navigation now resolves through the shared compatibility registry. Its authenticated shell uses:
 
-- Bottom navigation: AI, Live, Lab, Control, More.
+- A 56px hard-edged masthead with the existing effective runtime/safety entry.
+- A persistent 44px Context/Trace rail whose bounded sheets use the same factual projection as desktop.
+- A 66px numbered bottom navigation: AI, Live, Lab, Control, More.
 - Drawer: workspace-local destinations plus Operations and Configuration.
 - Mobile-specific market, position, execution, risk, knowledge, capability, strategy, intelligence, calendar, and full Operations views.
 - Native Operations flows for health triage, task/run inspection, permitted user-task creation and lifecycle controls, reconciliation, scheduler recovery, incidents, audit detail/export, and explicit notification acknowledgement.
@@ -71,7 +73,7 @@ The following should be shared as presentation-neutral contracts, not as forced 
 | P1 | Mobile route state is local and non-restorable | Back navigation and deep links lose workspace, subview, object, or filter context | Canonical location plus mobile navigation stack and persisted last location |
 | P2 | Large configuration and editor panels are reused on mobile | Desktop form density, scroll nesting, and top-heavy actions remain | Convert to dedicated screens with grouped fields, sticky action areas, keyboard-safe layout, and explicit outcomes |
 | P2 | Existing CSS carries multiple generations of mobile styles | Maintenance depends on late overrides in a very large global stylesheet | Introduce scoped product tokens and workspace primitives; migrate page styles incrementally and delete only proven orphans |
-| P2 | Global search is presentational on desktop | Search input does not yet provide the confirmed object/feature result model | Build permission-filtered grouped search after route/object registry exists |
+| Done | Global object/function switcher | The former desktop input did not provide an object/feature result model | `productShell.jsx` now indexes the canonical route registry and loaded production objects, supports keyboard/outside-close/empty states, and navigates only to existing routes |
 
 ## 3. Confirmed Product Ownership
 
@@ -91,8 +93,8 @@ The following should be shared as presentation-neutral contracts, not as forced 
 
 | Product surface | Desktop representation | Mobile user goal and hierarchy | Mobile interaction model |
 | --- | --- | --- | --- |
-| Global shell | Command/status rail, five-workspace rail, global actions | Know runtime/risk quickly; reach primary workspaces with one thumb | Bottom nav `AI / Live / Lab / Control / More`; compact status button opens Safety sheet; notifications/profile/config in More |
-| Global search | Grouped object/feature overlay | Find a market, plan, review, strategy, task, audit item, or setting | Search screen with recent queries, grouped results, role filtering, and direct object detail |
+| Global shell | Fixed 64px Command, 188px Workspace, 304px Context, and 66px Trace rails; existing global actions | Know runtime/risk quickly; reach primary workspaces, Context, Trace, and safety with one thumb | 56px masthead; persistent 44px Context/Trace tools; numbered 66px `AI / Live / Lab / Control / More`; compact runtime button opens the existing Safety sheet |
+| Global search | `CommandRail` object/feature overlay built from `ROUTE_DEFINITIONS` and loaded markets, positions, plans, tasks, mandates, incidents, executions, reviews, skills, and knowledge | Find the same objects through task-led workspace navigation without duplicating More destinations | Desktop supports ⌘/Ctrl-K, arrows, Enter, Escape, outside close, type/title/ID/status rows, empty results, and authoritative route navigation; no separate mobile search surface was introduced |
 | AI Dialog | Conversation plus history and fixed Command Rail | See current conclusion, send a task, inspect evidence only when needed | Conversation root; status band collapses to a tappable summary; plan/evidence/trace open full-screen detail or sheets; composer remains keyboard-safe |
 | Autonomous patrol | Message plus status/coverage/run context | Understand what was checked, what changed, whether action occurred, and what wakes next | Patrol message summary → detail screen with Changes, Decisions, Watches, Actions, Next Wake, Run Trace; poster action stays on message/detail |
 | AI Intelligence | Dense evidence and source workbench | Read brief first, then facts and source health | Segmented Brief / Feed / Sources; event links open AI Events; source configuration and health deep-link to their authoritative homes |
@@ -133,8 +135,9 @@ The following should be shared as presentation-neutral contracts, not as forced 
 
 ### Global Mobile Shell
 
-- Safe-area-aware top app bar and bottom navigation.
+- Safe-area-aware hard-edged top app bar and 66px numbered bottom navigation.
 - Compact runtime control opens a Safety sheet with effective state, saved target, blockers, Flatten, and Kill.
+- Persistent 44px Context and Trace controls open full-width bounded sheets; unknown fields remain `Unavailable` and trace stages remain `complete`, `waiting`, `blocked`, or `unavailable`.
 - First-class offline/reconnecting banner preserves last valid content.
 - No core action relies on hover, tooltip, tiny icon-only hit areas, or right click.
 - Primary actions are placed in the thumb zone when repeated or task-critical; destructive and authority-changing actions remain separated and confirmed.
@@ -155,6 +158,7 @@ The following should be shared as presentation-neutral contracts, not as forced 
 - API hooks, snapshot store, permissions, route semantics, view models, action contracts, formatters, confirmation semantics, i18n, and safety state.
 - Small semantic primitives: status text, resource-state boundary, evidence/provenance rows, money/price cells, object links, and action outcomes.
 - Feature logic with presentation adapters: event model, execution lifecycle model, research asset model, configuration catalog, search index.
+- Shell projections in `productShell.jsx`: loaded-object search index, Context view model, and current-workspace Trace stages. Desktop consumes them as fixed rails; mobile consumes them as bounded sheets.
 
 ### Do Not Force-Share
 

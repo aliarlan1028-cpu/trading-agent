@@ -41,7 +41,7 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { ConceptGraph } from "./src/conceptGraph.jsx";
-      export { ProductWorkspaceFrame, ObjectInspector, WorkspaceStateBoundary } from "./src/productShell.jsx";
+      export { ProductWorkspaceFrame, ObjectInspector, WorkspaceStateBoundary, CommandRail, WorkspaceRail, ContextDock, TraceRail, buildShellContext, buildShellTrace, buildShellSearchIndex } from "./src/productShell.jsx";
       export { AiTraderCenter, TradingCenter, ResearchCenter, RiskCenter, OperationsCenter } from "./src/workspacePages.jsx";
       export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
@@ -49,7 +49,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileShellTools, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       import * as MobileModule from "./src/mobile.jsx";
       import * as MobileOperationsModule from "./src/mobileOperations.jsx";
@@ -1246,6 +1246,8 @@ test("mobile app and assistant render", () => {
   const mobile = render(React.createElement(C.MobileApp, { api }));
   assert.ok(mobile.length > 100, "MobileApp 渲染输出过短");
   for (const label of ["AI", "Live", "Lab", "Control", "更多"]) assert.match(mobile, new RegExp(`>${label}<`));
+  assert.match(mobile, /data-shell-role="mobile-command"/, "authenticated APP uses the prototype masthead role");
+  assert.match(mobile, /data-shell-role="mobile-context-trace"/, "Context and Trace stay persistently reachable");
   assert.doesNotMatch(mobile, />交易员<|>盯盘<|>市场<|>风控</);
   const asst = render(React.createElement(C.AssistantWidget, { data }));
   assert.ok(asst.length > 20, "AssistantWidget 渲染输出过短");

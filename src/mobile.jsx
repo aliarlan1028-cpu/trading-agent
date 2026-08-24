@@ -33,7 +33,8 @@ import {
   CheckCircle2,
   Rocket,
   Sparkles,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
 import { apiUrl, authHeaders, automationPresentation, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
@@ -52,7 +53,7 @@ import {
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
-import { WorkspaceStateBoundary } from "./productShell.jsx";
+import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "./productShell.jsx";
 import { AgentSettingsConcept, UsersSettingsConcept, configurationSupplementState, retryConfigurationSupplement } from "./conceptPages.jsx";
 import {
   buildCapabilityCatalogRows,
@@ -151,7 +152,7 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
   const primaryBlocker = runtime.blockerDetails[0] || null;
   const stopped = data.system?.killSwitch === true;
   const flattenAll = async () => {
-    if (await uiConfirm(t("确认按市价平掉全部持仓？系统会暂停新开仓，直到 OKX 对账完成。", "Close every position at market? New entries will pause until OKX reconciliation completes."))) {
+    if (await uiConfirm(t("确认按市价平掉全部持仓？系统会暂停新开仓，直到 OKX 对账完成。", "Close every position at market? New entries will pause until OKX reconciliation completes."), { danger: true, title: t("全部平仓", "Flatten all positions") })) {
       await action("/api/risk/emergency-flatten", {}); onClose();
     }
   };
@@ -1912,10 +1913,10 @@ export function MobileLabRail({ route, subPage, onNavigate }) {
 function MobileTabbar({ route, activeWorkspace: activeWorkspaceProp, onNavigate, onMore }) {
   const activeWorkspace = activeWorkspaceProp || resolveMobileRoute(route).workspace;
   return <nav className="mNativeTabbar" aria-label={t("主导航", "Primary navigation")}>
-    {mobilePrimaryNav.map((item) => {
+    {mobilePrimaryNav.map((item, index) => {
       const Icon = item.icon;
       const active = item.id === "more" ? ["operations", "configuration"].includes(activeWorkspace) : activeWorkspace === item.workspace;
-      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
+      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><small>{item.id === "more" ? "··" : String(index + 1).padStart(2, "0")}</small><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
     })}
   </nav>;
 }
@@ -1923,7 +1924,7 @@ function MobileTabbar({ route, activeWorkspace: activeWorkspaceProp, onNavigate,
 function MobileHeader({ route, onMenu, right, reconnecting }) {
   const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
   return (
-    <header className="mHeader2">
+    <header className="mHeader2" data-shell-role="mobile-command">
       <button className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20} /></button>
       <div className="mHeaderMid"><strong>{mobileNavLabel(item)}</strong><small className="mono">{item.code}</small></div>
       <div className="mHeaderRight">
@@ -1932,6 +1933,24 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
       </div>
     </header>
   );
+}
+
+export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject = null, onNavigate = () => {} }) {
+  const [sheet, setSheet] = useState("");
+  const context = buildShellContext({ data, workspaceId, selectedObject });
+  const trace = buildShellTrace(data, workspaceId);
+  return <>
+    <nav className="mShellTools" data-shell-role="mobile-context-trace" aria-label={t("全局上下文与追踪", "Global context and trace")}>
+      <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>Context</b><span>{context.status}</span></button>
+      <button type="button" className="mShellToolButton" onClick={() => setSheet("trace")}><small>TRC</small><b>Trace</b><span>{trace.find((stage) => stage.status === "blocked")?.status || trace.find((stage) => stage.status === "waiting")?.status || "unavailable"}</span></button>
+    </nav>
+    {sheet && <div className="mShellSheetOverlay" role="presentation" onClick={() => setSheet("")}>
+      <section className="mShellSheet" role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : "Trace"} onClick={(event) => event.stopPropagation()}>
+        <header><span><small>GLOBAL SHELL</small><b>{sheet === "context" ? "Context" : "Trace"}</b></span><button type="button" aria-label={t("关闭", "Close")} onClick={() => setSheet("")}><X/></button></header>
+        <div className="mShellSheet__body">{sheet === "context" ? <ContextDock context={context} onNavigate={(route) => { onNavigate(route); setSheet(""); }} collapsible={false}/> : <TraceRail stages={trace}/>}</div>
+      </section>
+    </div>}
+  </>;
 }
 
 export function NavDrawer({ open, route, activeWorkspace, onNavigate, onClose, lang, switchLang }) {
@@ -2094,6 +2113,7 @@ export function MobileApp({ api, lang, switchLang }) {
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
+      <MobileShellTools data={data} workspaceId={activeProductWorkspace} onNavigate={navigate}/>
       <MobileTabbar route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onMore={() => setDrawer(true)} />
       <NavDrawer open={drawer} route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
       {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
