@@ -119,7 +119,7 @@ The full named screenshot index, exact viewport, state, commit and matrix linkag
 
 - Final isolated overview: markets 3, news feed 80, events 35, tasks 27, notifications 11, tools 3, skills 12, agent runs 50, risk rules 2, event sources 7 and audit logs 20. The pre-edit snapshot above records the earlier live counts; no rows were added for visual parity.
 - Real empty: positions and trade plans; watch triggers/conditions are empty while the real watchlist contains BTC/ETH/SOL. Empty views were not populated with prototype/demo objects.
-- Real stale/degraded: `.impeccable/review/desktop-real-stale-source.png` records the live source-health response recaptured on final production HEAD. At capture time Farside, OKX public liquidation, Binance announcements and CoinDesk were stale; U.S. BLS was degraded; the remaining listed sources reported healthy.
+- Real stale/degraded: `.impeccable/review/desktop-real-stale-source.png` records the live source-health table on AI Trader → Events, recaptured on final production HEAD. At capture time Farside, OKX public liquidation, Binance announcements and CoinDesk were stale; U.S. BLS was degraded; the remaining listed sources reported healthy.
 - Loading/failed: `.impeccable/review/desktop-real-loading.png` and `desktop-real-failed.png` were recaptured on final production HEAD by pausing and aborting the existing `overview?view=section&section=operationsCenter` request. No response or success payload was injected.
 - Forbidden: a fresh isolated auth-required copy used the real store, real `hashPassword`, same tenant, an active subscription, active `交易用户`, `mustChangePassword:false` and non-Owner permissions. Login succeeded through `/api/auth/login`; the same authenticated session received HTTP **403** with `Missing permission: admin:system` from `/api/admin/users`. `.impeccable/review/mobile-390-real-forbidden.png` visibly shows the production Owner-required gate on final production HEAD. The desktop non-Owner capture does not visibly show that gate and is therefore not cited as forbidden visual evidence. Temporary credentials are absent from screenshots, evidence and this report.
 - Disabled: the real empty AI input leaves Send disabled; the Kill final action remains disabled until typed confirmation. Dangerous submission was intentionally not performed.
@@ -198,3 +198,11 @@ The contact sheet was regenerated at 1800×1252 and labels final production `E3F
 - Real Chrome KPI containment → **3 passed / 0 failed / 3 viewport-state checks**.
 - `git diff --check` → clean.
 - Matrix remains **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED** with no unresolved acceptance blocker.
+
+## Fix Round 3 — evidence and test honesty (2026-08-25)
+
+Fresh review verified that `desktop-real-stale-source.png` is AI Trader → Events, not Operations. The matrix now links that image to W01/G18 and its valid source-health/containment rows; the report and contact-sheet alternative text use the same route. Loading and failed remain the Operations request-boundary captures.
+
+The medium static contract no longer divides the 656px header budget by five or claims that each KPI owns 120px. That was inconsistent with the final Chrome measurement because the five-column KPI grid shares its row with the real action group and each KPI measures 88.6px. The contract now asserts the actual 656px contained header, 16px pre-Context gutter, `minmax(0,1fr) auto` KPI/actions split and five equal KPI columns. The real Chrome containment evidence from Fix Round 2 remains the authority for rendered widths; no production UI or screenshot pixels changed in this round.
+
+Verification: selected medium contract **1 passed / 0 failed / 1 total**; authorized Task 8 focused set **118 passed / 0 failed / 118 total**; `git diff --check` clean. Matrix totals remain **31 PASS / 0 GAP / 0 BLOCKED**.

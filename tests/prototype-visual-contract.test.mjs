@@ -484,7 +484,7 @@ test("desktop AI keeps all five real KPI facts simultaneously visible at 1440", 
   assert.equal(bar["grid-template-columns"], "repeat(5, minmax(0, 1fr))");
 });
 
-test("medium Context-open layout contains every AI KPI before the fixed dock", () => {
+test("medium Context-open layout reserves a contained row for AI KPIs and actions", () => {
   const selector = ".appShell.kordynSystem:has(> .contextDock:not(.collapsed)) .uxCenterHead";
   const head = finalDeclarations(selector, { media: /max-width:\s*1280px.*min-width:\s*721px/ });
   assert.equal(head.width, "calc(100% - var(--kordyn-context-dock))");
@@ -501,8 +501,14 @@ test("medium Context-open layout contains every AI KPI before the fixed dock", (
   const headWidth = viewportWidth - workspaceRailWidth - contentInlinePadding - contextDockWidth;
   const headRight = workspaceRailWidth + 16 + headWidth;
   const contextLeft = viewportWidth - contextDockWidth;
+  assert.equal(headWidth, 656, "the medium header receives the real center width minus the open Context dock");
   assert.ok(headRight < contextLeft, `header right ${headRight} must stay before Context left ${contextLeft}`);
-  assert.ok(headWidth / 5 >= 120, "five KPI columns retain a legible medium-width budget on their own row");
+  assert.equal(contextLeft - headRight, 16, "the contained row keeps the content gutter before Context");
+
+  const cluster = finalDeclarations(".appShell.kordynSystem .aiTopCluster", { media: /max-width:\s*1600px.*min-width:\s*721px/ });
+  assert.equal(cluster["grid-template-columns"], "minmax(0,1fr) auto", "KPI facts share the row with the real action group");
+  const bar = finalDeclarations(".appShell.kordynSystem .chatKpiBar", { media: /max-width:\s*1600px.*min-width:\s*721px/ });
+  assert.equal(bar["grid-template-columns"], "repeat(5, minmax(0, 1fr))", "the KPI share retains all five equal factual columns");
 });
 
 test("audited mobile Live Intelligence and Event Calendar operation chrome is hard edged", () => {
