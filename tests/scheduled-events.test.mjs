@@ -36,6 +36,23 @@ test("不再生成近似非农；官方 minute 精度宏观事件才进入高影
   assert.ok(exp && exp.category === "衍生品");
 });
 
+test("仅日期的政策日程只进入分析上下文，不被升级为交易风险门禁", () => {
+  const db = minimalDb();
+  db.marketCalendarEvents = [{
+    id: "cftc_policy_date_only",
+    sourceId: "official_cftc_policy_calendar",
+    title: "Digital Asset Policy Meeting",
+    due: new Date(Date.now() + 86_400_000).toISOString(),
+    timePrecision: "date",
+    importance: "high",
+    analysisOnly: true,
+    mayTriggerTradeDirectly: false
+  }];
+
+  ensureScheduledEvents(db);
+  assert.equal(db.events.some((event) => event.scheduledKey === "official_cftc_policy_date_only"), false);
+});
+
 test("季度交割只在季末月(3/6/9/12)", () => {
   const db = minimalDb();
   ensureScheduledEvents(db);

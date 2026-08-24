@@ -455,13 +455,20 @@ export function getFlowSnapshotForAgent(db) {
 }
 
 export function officialCalendarEventForAgent(event = {}) {
+  const rawImportance = event.importance ?? event.impact;
+  const importance = Number.isFinite(Number(rawImportance)) ? Number(rawImportance) : safeFactScalar(rawImportance);
+  const announcementLeadHours = Number(event.announcementLeadHours);
   return {
     eventId: safeFactId(event.id || event.eventId),
     category: safeFactScalar(event.category) || "unknown",
     due: safeIsoTimestamp(event.due || event.startAt),
     timePrecision: ["minute", "date"].includes(event.timePrecision) ? event.timePrecision : "unknown",
-    importance: Number.isFinite(Number(event.importance ?? event.impact)) ? Number(event.importance ?? event.impact) : null,
+    importance: importance ?? null,
     verifiedOrigin: event.verifiedOrigin === true,
+    analysisOnly: event.analysisOnly === true,
+    publishedAt: safeIsoTimestamp(event.publishedAt),
+    firstObservedAt: safeIsoTimestamp(event.firstObservedAt),
+    announcementLeadHours: Number.isFinite(announcementLeadHours) ? announcementLeadHours : null,
     mayTriggerTradeDirectly: false
   };
 }
