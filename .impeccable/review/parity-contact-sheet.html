@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>KORDYN Task 8 parity contact sheet</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #111311; color: #f4f1e9; font-family: Arial, sans-serif; }
+    body { width: 1800px; min-height: 1240px; padding: 24px; }
+    header { display: flex; align-items: end; justify-content: space-between; height: 58px; border-bottom: 1px solid #4fb78b; }
+    h1 { margin: 0 0 12px; font-size: 22px; letter-spacing: .03em; }
+    header p { margin: 0 0 12px; color: #4fb78b; font: 12px ui-monospace, monospace; }
+    main { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 520px 590px; gap: 18px; padding-top: 18px; }
+    figure { position: relative; display: grid; grid-template-rows: 42px minmax(0, 1fr); min-width: 0; margin: 0; border: 1px solid #4b524b; background: #242824; }
+    figcaption { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #4b524b; font-size: 13px; font-weight: 700; }
+    figcaption span { color: #ccff3d; font: 11px ui-monospace, monospace; }
+    figure > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; object-position: center; background: #171a17; }
+    .phone-row { display: flex; align-items: center; justify-content: center; gap: 18px; min-height: 0; overflow: hidden; background: #171a17; }
+    .phone-row img { width: auto; max-width: 47%; height: calc(100% - 22px); object-fit: contain; border: 1px solid #4b524b; }
+    .states { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 7px; min-height: 0; background: #171a17; }
+    .states div { position: relative; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #4b524b; }
+    .states img { width: 100%; height: 100%; object-fit: contain; background: #f4f1e9; }
+    .states b { position: absolute; top: 5px; left: 5px; padding: 4px 6px; background: #111311; color: #ccff3d; font: 9px ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>KORDYN · REAL VIEWPORT PROTOTYPE PARITY</h1>
+    <p>IMMUTABLE 1056233 · FINAL TASK 8 PRODUCTION HEAD · 2026-08-25</p>
+  </header>
+  <main>
+    <figure>
+      <figcaption>EXACT PROTOTYPE <span>1440 × 900 · COMMAND</span></figcaption>
+      <img src="prototype-1440x900.png" alt="Exact prototype at 1440 by 900">
+    </figure>
+    <figure>
+      <figcaption>PRODUCTION DESKTOP <span>1440 × 900 · AI TRADER</span></figcaption>
+      <img src="desktop-1440x900.png" alt="Production desktop at 1440 by 900">
+    </figure>
+    <figure>
+      <figcaption>MEDIUM DESKTOP <span>1180 × 820 · CONTEXT OVERLAY</span></figcaption>
+      <img src="desktop-medium.png" alt="Production medium desktop at 1180 by 820">
+    </figure>
+    <figure>
+      <figcaption>PRODUCTION APP <span>390 × 844 · 430 × 932</span></figcaption>
+      <div class="phone-row">
+        <img src="mobile-390x844.png" alt="Production app at 390 by 844">
+        <img src="mobile-430x932.png" alt="Production app at 430 by 932">
+      </div>
+    </figure>
+    <figure>
+      <figcaption>OBJECT / EVIDENCE DENSITY <span>1440 × 900 · REAL LONG CONTENT</span></figcaption>
+      <img src="desktop-ai-intelligence.png" alt="Real intelligence registry with long content">
+    </figure>
+    <figure>
+      <figcaption>TRUTHFUL BOUNDARIES <span>LOADING · FAILED · STALE · 403</span></figcaption>
+      <div class="states">
+        <div><img src="desktop-real-loading.png" alt="Real loading boundary"><b>LOADING</b></div>
+        <div><img src="desktop-real-failed.png" alt="Real failed boundary"><b>FAILED</b></div>
+        <div><img src="desktop-real-stale-source.png" alt="Real stale source"><b>STALE</b></div>
+        <div><img src="mobile-390-real-forbidden.png" alt="Real forbidden boundary"><b>403 FORBIDDEN</b></div>
+      </div>
+    </figure>
+  </main>
+</body>
+</html>

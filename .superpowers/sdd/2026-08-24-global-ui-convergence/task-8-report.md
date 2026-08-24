@@ -1,0 +1,144 @@
+# Task 8 — Real Cross-Viewport Visual Parity Report
+
+## Pre-edit visual audit (2026-08-25)
+
+Production source was still byte-identical to task base `943b832a267e908682bcacfc729d9c88129842f2` when this audit was recorded. The browser surface was real Google Chrome driven through the task-provided standalone Playwright runtime; no DOM injection or mock success data was used. The in-app Browser extension was unavailable (`Browser is not available: chrome`), so the accepted standalone Chrome path was used.
+
+### Immutable prototype, exact `1056233`, 1440x900
+
+Captured and visually inspected under `/private/tmp/task8-prototype-initial/`:
+
+- `prototype-command.png`
+- `prototype-live.png`
+- `prototype-lab.png`
+- `prototype-control.png`
+- `prototype-run.png`
+- `prototype-admin.png`
+- `prototype-object-switcher.png`
+- `prototype-trace-expanded.png`
+- `prototype-ordinary-modal.png`
+- `prototype-danger-confirmation.png`
+- `report.json`
+
+Computed rail geometry matched the prototype contract: Command `1440x64`, Workspace `188x770`, Stage `948x770`, Context `304x770`, and Trace `1440x66`. The prototype uses continuous, square registries and near-black truth/decision/execution zones. Its object switcher is `620x520` at `(188,64)` with an 8px hard black offset; expanded Trace occupies `(0,64)` through the bottom; ordinary and danger confirmations are hard-edged `560px` overlays with acid and danger offsets respectively.
+
+### Production desktop, exact 1440x900 and 1180x820
+
+Captured and visually inspected under `/private/tmp/task8-initial/`:
+
+- `desktop-ai.png`, `desktop-live.png`, `desktop-lab.png`, `desktop-control.png`
+- `desktop-operations.png`, `desktop-configuration.png`
+- `desktop-object-switcher.png`, `desktop-trace-expanded.png`
+- `desktop-ordinary-modal.png`, `desktop-danger-confirmation.png`
+- `medium-context.png`, `medium-context-collapsed.png`
+- `report.json`
+
+Concrete pre-edit differences:
+
+1. The desktop shell rails already have the binding `64 / 188 / 304 / 66` proportions and hard boundaries. At 1440, however, `.topbarStatusGroup` had `clientWidth=263` and `scrollWidth=307`, visibly colliding the exchange/runtime facts. At 1180, `.commandRail` had `clientWidth=633` and `scrollWidth=694`, visibly colliding status and command controls.
+2. At 1180x820 Context correctly becomes a bounded 304px overlay at `x=876` and remains reachable in its 58px collapsed state at `x=1122`; no page-level horizontal overflow was observed.
+3. Live Desk, Lab, Control, Operations, and Configuration substantially use the prototype grammar, but still contain isolated legacy rounded inner panels. Lab is lighter than the prototype's large dark research map. Configuration retains one rounded black status island inside an otherwise correct scope-first Registry/Inspector layout.
+4. AI Trader is the largest visual difference: the real empty dialog is rendered as a sparse rounded chat island with legacy warm/orange furniture, while the prototype Command workspace is a dense Situation/Intelligence/Watch/Decision operations surface. The deployed task strip, patrol/poster/intelligence/watch/event/chat capabilities remain present and must not be replaced with demonstration data.
+5. The production object switcher and Trace detail preserve deployed data/handlers and already use hard-edge overlays with acid offsets. The object switcher is narrower than the prototype and currently has one real result (`BTC` market).
+6. The account modal is hard-edged with an acid offset, but its internal account form retains legacy orange-card styling. The destructive confirmation is already hard-edged with a danger offset, typed `KILL`, explicit effect/non-effect/result text, and a disabled final action until confirmation. No destructive action was submitted.
+
+### Production APP, exact 390x844 and 430x932
+
+Captured and visually inspected under `/private/tmp/task8-initial/`:
+
+- `mobile-390-ai.png`, `mobile-390-live.png`, `mobile-390-lab.png`, `mobile-390-control.png`
+- `mobile-390-more.png`, `mobile-390-context.png`, `mobile-390-trace.png`
+- `mobile-390-drawer.png`, `mobile-390-safety-sheet.png`, `mobile-390-danger-confirmation.png`
+- corresponding `mobile-430-*.png` captures for all listed states
+- `report-mobile-390.json`, `report-mobile-430.json`
+
+The fixed `56px` masthead, `44px` local rail, and `66px` navigation remain reachable at both viewports, More contains only Operations/Configuration/global destinations, and audited sheets/confirmations are square and scrollable. The deterministic defect is horizontal loss inside AI Trader: at 390, `.mChatContent` measured `390/412` client/scroll width and `.mChatStatus` `368/401`; at 430 they measured `430/455` and `408/444`. The body itself remained viewport-width only because the excess was clipped. Rounded suggestion/card remnants were also visible on AI Trader.
+
+### Real state provenance and pending audit items
+
+- Real isolated SQLite: `/private/tmp/kordyn-ui-preview.1sMgKn/trading-agent-worker-24310-6WLYtR/trading-agent.sqlite`.
+- Real overview counts: markets 3, news 80, events 27, notifications 10, tools 3, skills 12, agent runs 34, risk rules 2, event sources 7, audit logs 20.
+- Empty: positions, plans, and watch triggers/conditions are genuinely empty in the isolated backend; the market watchlist itself contains the real BTC/ETH/SOL rows.
+- Disabled: AI send and the typed destructive final action were observed in their real disabled states.
+- Loading/failed will be exercised by pausing/failing the existing real overview request in the browser harness, without substituting a payload.
+- Stale and long-content evidence will be selected from real freshness/URL/ID fields.
+- At this pre-edit checkpoint, forbidden was not yet verified. Final acceptance below closes it with a genuine non-Owner session and actual backend 403 boundary; no DOM/user injection was used.
+
+### Focused pre-edit baseline
+
+`node --test tests/prototype-visual-contract.test.mjs tests/mobile-navigation.test.mjs tests/render-smoke.test.mjs` passed `107/107`. These passing tests did not detect the measured internal Command Rail and mobile AI overflow, so focused browser-backed CSS regressions will be added RED-first.
+
+## Final correction and acceptance (2026-08-25)
+
+### Consolidated production correction
+
+Production commit `45a4987d97032bb26296a18db2d598a70019eb26` contains the complete correction batch:
+
+- `src/styles.css` gives the Command Rail measured containment at both desktop widths, keeps exchange/runtime/freshness/action labels legible, and keeps the notification badge inside the rail. At 1180×820 the Context Dock remains a bounded 304px overlay at `x=876`; its collapsed 58px handle remains reachable at `x=1122`.
+- Desktop AI dialog, Intelligence, Watch, Events and shared task input now use a continuous hard-edge operations grid. Long Intelligence rows grow to their real content height and no longer overlap subsequent evidence rows.
+- Mobile AI containment is corrected at both required widths. The AI task strip, prompts, Intelligence truth band, constraints, source feed and ledger use the same square continuous grammar without clipping the page.
+- Visible legacy container radii were removed from the audited desktop and APP deep surfaces. Computed-style review found no rounded surface in AI, Lab, Operations, Configuration, sheets or modals; the only circles retained are semantic Live/Control donut data visualizations.
+- `src/mobile.jsx` renders the real Intelligence KPI summary through the shared `kTruthBand` structure. No data, handler, permission, action, error boundary, route, capability or backend contract was replaced.
+- `tests/prototype-visual-contract.test.mjs` now locks the actual Command Rail dimensions, mobile AI containment, continuous AI/intelligence ledger structure, mobile truth band, and absence of residual container radius. The existing base-rule helper was corrected to exclude media-query declarations when asserting base CSS.
+
+No backend, authentication, login/marketing, package, capability registry or `app-interactive-preview.html` file was changed. No dangerous action or configuration mutation was submitted.
+
+### RED / GREEN record
+
+All regressions asserted production selectors/components rather than marker text:
+
+1. Initial focused baseline before the new contracts: **107/107 passed**.
+2. First deterministic RED: **17 passed / 3 failed / 20 total** — Command internal containment, mobile AI containment, and continuous AI/long-row grammar failed.
+3. First correction exposed a test-helper scope defect at **19/20**; systematic inspection showed the helper was incorrectly treating media-query overrides as base declarations. After fixing the helper, the focused visual contract was **20/20**.
+4. Browser refinement RED: **18/20**, covering the exchange status stack and still-visible important legacy radii; correction returned **20/20**.
+5. Mobile real Intelligence deep-page RED: **20/21** for the truth band/continuous ledger; correction returned **21/21**.
+6. Residual rounded-surface audit RED: **21/22**; correction returned the final visual contract to **22/22**.
+7. Final authorized verification on the production commit: `node --test tests/prototype-visual-contract.test.mjs tests/mobile-navigation.test.mjs tests/render-smoke.test.mjs` → **112 passed / 0 failed / 112 total**. `git diff --check` was clean.
+
+### Final real-browser interaction walk
+
+The entire acceptance walk was repeated from production commit `45a4987d97032bb26296a18db2d598a70019eb26` in real Google Chrome:
+
+- Desktop 1440×900: AI dialog → Intelligence → Watch → Events; Live Desk; Lab; Control; Operations; Configuration; ⌘/Ctrl-K Object Switcher with real BTC result; keyboard/open/close path; expanded Trace; account ordinary modal; safety flow to typed Kill confirmation, stopping before final submit.
+- Medium desktop 1180×820: Command containment; Context open and collapsed; no document/body overflow or lost action.
+- APP 390×844 and 430×932: AI, Live, Lab, Control, More; Context and Trace local rails; drawer; safety sheet; destructive confirmation; close and scroll reachability. Primary/local/sheet controls retain at least 44px targets.
+- Long content: real Intelligence headlines/URLs/IDs and real source-feed rows at both APP widths. `documentElement` and `body` widths exactly matched 390/430; desktop widths exactly matched 1180/1440. Trace and narrow tables may use their own bounded local horizontal scroller, but the page does not overflow.
+
+The minimum required images are exact-size files:
+
+- `.impeccable/review/prototype-1440x900.png` — 1440×900, immutable `1056233`.
+- `.impeccable/review/desktop-1440x900.png` — 1440×900.
+- `.impeccable/review/desktop-medium.png` — 1180×820.
+- `.impeccable/review/mobile-390x844.png` — 390×844.
+- `.impeccable/review/mobile-430x932.png` — 430×932.
+- `.impeccable/review/parity-contact-sheet.png` — 1800×1252, rendered from committed `.impeccable/review/parity-contact-sheet.html` through Playwright/Chrome.
+
+The full named screenshot index, exact viewport, state, commit and matrix linkage is recorded in `docs/ui-prototype-parity-matrix.md`. Additional evidence includes every prototype/workspace state; desktop AI deep modes, all workspaces, object switcher, Trace and modals; both APP widths across workspaces/sheets/danger; and the long/state images listed below.
+
+### Truthful state provenance
+
+- Real isolated overview: markets 3, news 80, events 27, notifications 10, tools 3, skills 12, agent runs 34, risk rules 2, event sources 7 and audit logs 20.
+- Real empty: positions and trade plans; watch triggers/conditions are empty while the real watchlist contains BTC/ETH/SOL. Empty views were not populated with prototype/demo objects.
+- Real stale/degraded: `.impeccable/review/desktop-real-stale-source.png` records the live source-health response. At capture time Farside, OKX public liquidation, Binance announcements and CoinDesk were stale; U.S. BLS was degraded; the remaining listed sources reported healthy.
+- Loading/failed: `.impeccable/review/desktop-real-loading.png` and `desktop-real-failed.png` were produced by pausing and aborting the existing `overview?view=section&section=operationsCenter` request. No response or success payload was injected.
+- Forbidden: an isolated auth-required copy used the real store, real `hashPassword`, same tenant, active `交易用户`, `mustChangePassword:false` and non-Owner permissions. Login succeeded through `/api/auth/login`; the same authenticated session received HTTP **403** with `Missing permission: admin:system` from `/api/admin/users`. `.impeccable/review/mobile-390-real-forbidden.png` and `desktop-real-trader-configuration.png` show the production Owner-required gate. Temporary credentials are absent from screenshots, evidence and this report.
+- Disabled: the real empty AI input leaves Send disabled; the Kill final action remains disabled until typed confirmation. Dangerous submission was intentionally not performed.
+
+### Matrix conclusion, changed files, and concerns
+
+Final matrix totals are **26 PASS / 0 GAP / 0 BLOCKED** for binding G/W rows and **5 PASS / 0 GAP / 0 BLOCKED** for evidence R rows: **31 PASS / 0 GAP / 0 BLOCKED overall**.
+
+Production/test files changed:
+
+- `src/mobile.jsx`
+- `src/styles.css`
+- `tests/prototype-visual-contract.test.mjs`
+
+Evidence/report files changed or added:
+
+- `docs/ui-prototype-parity-matrix.md`
+- `.superpowers/sdd/2026-08-24-global-ui-convergence/task-8-report.md`
+- `.impeccable/review/parity-contact-sheet.html`
+- the Task 8-named PNG evidence enumerated by the matrix (excluding the unrelated pre-existing `desktop.png` and `mobile.png`)
+
+There are no unresolved acceptance blockers. Remaining non-load-bearing responsive differences are explicit in the matrix: APP uses touch sheets/local navigation instead of duplicating the desktop switcher/docks; Trace and narrow tables may scroll inside bounded local containers; semantic donut graphics remain circular; and real backend emptiness/content replaces prototype demo data. Evidence is frozen on 2026-08-25 and later live source/data counts may change. Per the brief, the Impeccable detector, full `npm test`, lint and build were not run; Task 9 owns those gates.
