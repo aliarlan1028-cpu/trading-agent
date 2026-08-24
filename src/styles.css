@@ -10125,6 +10125,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .kordynSystem .kInspector,
   .kordynSystem .kEvidenceLedger,
   .kordynSystem .kFormSurface,
+  .kordynSystem .kEmptyState,
   .kordynSystem .kStateRow { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .kordynSystem .kInspector { border-top: 1px solid var(--kordyn-ink); border-left: 0; }
   .kordynSystem .kTruthBand { grid-template-columns: minmax(0, 1fr); }

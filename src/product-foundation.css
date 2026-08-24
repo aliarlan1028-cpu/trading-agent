@@ -752,6 +752,8 @@
 .kordynSystem .kEmptyState { display: grid; place-items: center; gap: 7px; min-height: 160px; padding: 24px; border: 1px solid var(--kordyn-line); background: var(--kordyn-paper); text-align: center; }
 .kordynSystem .kEmptyState > svg,
 .kordynSystem .kEmptyState > i { width: 24px; height: 24px; color: var(--kordyn-blue); }
+.kordynSystem .kEmptyState b,
+.kordynSystem .kEmptyState p { min-width: 0; overflow-wrap: anywhere; }
 .kordynSystem .kEmptyState b { font-size: 12px; }
 .kordynSystem .kEmptyState p { max-width: 54ch; margin: 0; color: color-mix(in srgb, var(--kordyn-ink) 62%, var(--kordyn-paper)); font-size: 10px; line-height: 1.5; }
 .kordynSystem .kStateRow { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
@@ -759,8 +761,8 @@
 .kordynSystem .kStateRow > div { min-width: 0; display: grid; gap: 3px; }
 .kordynSystem .kStateRow b,
 .kordynSystem .kStateRow span { overflow-wrap: anywhere; font-size: 10px; line-height: 1.4; }
-.kordynSystem .kStateRow--error { background: #FFF1ED; color: #8A2B22; }
+.kordynSystem .kStateRow--error { background: color-mix(in srgb, var(--kordyn-orange) 16%, var(--kordyn-paper-white)); color: var(--kordyn-ink); }
 .kordynSystem .kStateRow--error > i { background: var(--kordyn-orange); }
-.kordynSystem .kStateRow--warning { background: #FFF7D8; color: #654507; }
-.kordynSystem .kStateRow--success > i { background: #2F8A5A; }
+.kordynSystem .kStateRow--warning { background: color-mix(in srgb, var(--kordyn-acid) 22%, var(--kordyn-paper-white)); color: var(--kordyn-ink); }
+.kordynSystem .kStateRow--success > i { background: var(--kordyn-acid); }
 .kordynSystem .kStateRow--loading > i { background: var(--kordyn-violet); }

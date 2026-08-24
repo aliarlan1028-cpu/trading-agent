@@ -1087,6 +1087,7 @@ test("shared product styles provide mobile list-detail and sticky-action adaptat
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.kWorkbench[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(styles, /\.kActionBar[\s\S]*position:\s*sticky/);
   assert.match(styles, /\.kFormSurface[\s\S]*(min-height:\s*44px|height:\s*44px)/);
+  assert.match(styles, /\.kordynSystem \.kEmptyState,\n  \.kordynSystem \.kStateRow \{ min-width: 0; max-width: 100%; overflow-wrap: anywhere;/);
 });
 
 test("Object Inspector remains read-only and State Boundary distinguishes resource states", () => {

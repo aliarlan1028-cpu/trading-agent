@@ -27,4 +27,6 @@ test("shared deep-surface primitives stay inside the approved operating-system m
   assert.notEqual(primitiveStart, -1, "shared primitives need an explicit, auditable boundary");
   const primitives = css.slice(primitiveStart);
   assert.doesNotMatch(primitives, /linear-gradient|backdrop-filter|box-shadow\s*:/);
+  assert.doesNotMatch(primitives, /#[0-9a-f]{3,8}\b/i, "shared primitives must compose state surfaces from Kordyn tokens instead of raw color literals");
+  assert.match(primitives, /\.kEmptyState b,\n\.kordynSystem \.kEmptyState p \{ min-width: 0; overflow-wrap: anywhere;/);
 });
