@@ -9,11 +9,19 @@ const unavailable = "Unavailable";
 const firstValue = (...values) => values.find((value) => value != null && value !== "");
 const asList = (value) => Array.isArray(value) ? value : [];
 
+export const canonicalPositionIdentity = (row = {}) => firstValue(row.id, row.positionId, row.instId, row.symbol);
+
 const searchCollections = Object.freeze([
   { key: "markets", type: "Market", route: "market", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
-  { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.symbol, title: (row) => row.symbol || row.name },
+  { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: canonicalPositionIdentity, title: (row) => row.symbol || row.instId || row.name },
   { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
+  { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
+  { key: "fills", type: "Fill", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.tradeId, title: (row) => row.title || row.symbol || row.id },
+  { key: "events", type: "Event", route: "eventsTasks:events", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.factId, title: (row) => row.title || row.shortTitle || row.message || row.id },
+  { key: "watchTriggers", type: "Watch", route: "watch", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id, title: (row) => row.title || row.analysisTitle || row.displayThesis || row.thesis || row.symbol },
   { key: "tasks", type: "Task", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.name || row.type },
+  { key: "agentRuns", type: "Agent run", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "chat", id: (row) => row.id || row.runId, title: (row) => row.title || row.name || row.agentName || row.id },
+  { key: "auditLogs", type: "Audit log", route: "auditSystem", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.action || row.resource || row.id },
   { key: "mandates", type: "Mandate", route: "riskMandate", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
   { key: "riskIncidents", type: "Risk incident", route: "riskCenter", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
   { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
@@ -74,6 +82,22 @@ export function buildShellSearchIndex(data = {}) {
       if (row) rows.push(row);
     }
   }
+  const nestedCollections = [
+    { items: data.strategyCatalog?.products, type: "Strategy product", route: "strategyLib", id: (row) => row.versionId || row.id, title: (row) => row.definition?.name || row.name || row.id },
+    { items: data.strategyCatalog?.strategies, type: "Strategy", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
+    { items: data.backtestResearch?.historical, type: "Validation run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
+    { items: data.backtestResearch?.forward, type: "Paper run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
+    { items: data.backtests, type: "Validation run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.strategy || row.id },
+    { items: data.paperReport?.sessions, type: "Paper run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
+    { items: data.knowledge?.tradingSkills, type: "Strategy", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
+    { items: asList(data.skills).filter((row) => String(row.kind || "").toLowerCase() === "strategy"), type: "Strategy", route: "strategyLib", id: (row) => row.id || row.name, title: (row) => row.name || row.title || row.id }
+  ];
+  for (const collection of nestedCollections) {
+    for (const item of asList(collection.items)) {
+      const row = searchRow(data, collection.type, collection.route, collection.id(item), collection.title(item), item, "lab", "researchCenter");
+      if (row) rows.push(row);
+    }
+  }
   for (const item of asList(data.knowledge?.sources)) {
     const row = searchRow(data, "Knowledge", "knowledgeBase", item.id || item.url || item.title, item.title || item.name || item.url, item, "lab", "researchCenter");
     if (row) rows.push(row);
@@ -112,13 +136,15 @@ export function runShellSearchShortcut(event, { open = () => {}, focus = () => {
   return true;
 }
 
-export function runShellSearchInteraction({ key, activeIndex = 0, results = [], onSelect = () => {}, onNavigate = () => {}, onClose = () => {} } = {}) {
+export function runShellSearchInteraction({ key, activeIndex = 0, results = [], data, onSelect = () => {}, onNavigate = () => {}, onClose = () => {} } = {}) {
   const next = nextShellSearchInteraction({ key, activeIndex, count: results.length });
   if (next.selectIndex >= 0) {
     const row = results[next.selectIndex];
     if (row) {
-      onSelect(row);
-      onNavigate(row.route, row);
+      if (data === undefined) {
+        onSelect(row);
+        onNavigate(row.route, row);
+      } else runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
     }
   }
   if (next.close) onClose();
@@ -135,16 +161,55 @@ function selectionFailsClosed(selectedObject) {
   );
 }
 
+function workspaceSelectionFailsClosed(data, workspaceId) {
+  const workspace = WORKSPACES[workspaceId] || (workspaceId === "configuration" ? CONFIGURATION_WORKSPACE : null);
+  const state = String(data?.resourceState?.[workspace?.resourceSection] || "").toLowerCase();
+  return ["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"].includes(state);
+}
+
+export function resolveShellObjectSelection(data = {}, candidate = null, workspaceId = candidate?.workspaceId) {
+  if (!candidate?.id) return null;
+  const matches = buildShellSearchIndex(data).filter((row) => (
+    row.id === String(candidate.id)
+    && (!candidate.type || row.type === candidate.type)
+    && (!workspaceId || row.workspaceId === workspaceId)
+    && (!candidate.workspaceId || row.workspaceId === candidate.workspaceId)
+    && (!candidate.sourceSection || row.sourceSection === candidate.sourceSection)
+  ));
+  if (matches.length !== 1 || selectionFailsClosed(matches[0]) || workspaceSelectionFailsClosed(data, matches[0].workspaceId)) return null;
+  return matches[0];
+}
+
+export function runShellObjectSelection({ data = {}, candidate = null, workspaceId = candidate?.workspaceId, onSelect = () => {}, onNavigate = () => {}, navigate = true } = {}) {
+  const selected = resolveShellObjectSelection(data, candidate, workspaceId);
+  onSelect(selected);
+  if (selected && navigate) onNavigate(selected.route, selected);
+  return selected;
+}
+
+// Registry/Inspector surfaces keep their page-local inspector state, while this
+// single bridge also asks the authenticated shell to resolve the same identity
+// against its current, permission-scoped index. The shell callback owns the
+// fail-closed decision; page components never retain a second global truth.
+export function runShellRegistrySelection({ candidate = null, onLocalSelect = () => {}, onSelectObject = () => {} } = {}) {
+  if (!candidate?.id || !candidate?.type) return null;
+  onLocalSelect(candidate);
+  return onSelectObject(candidate);
+}
+
+export function CanonicalRegistryButton({ candidate, onLocalSelect = () => {}, onSelectObject = () => {}, onClick, children, type = "button", ...props }) {
+  const select = (event) => {
+    onClick?.(event);
+    if (event?.defaultPrevented) return null;
+    return runShellRegistrySelection({ candidate, onLocalSelect, onSelectObject });
+  };
+  return <button {...props} type={type} data-shell-object-id={candidate?.id} data-shell-object-type={candidate?.type} onClick={select}>{children}</button>;
+}
+
 export function selectionForNavigation(selectedObject, workspaceId, data) {
   if (!selectedObject || selectedObject.workspaceId !== workspaceId || selectionFailsClosed(selectedObject)) return null;
   if (data === undefined) return selectedObject;
-  const current = buildShellSearchIndex(data).find((row) => (
-    row.id === selectedObject.id
-    && row.type === selectedObject.type
-    && row.workspaceId === workspaceId
-    && row.sourceSection === selectedObject.sourceSection
-  ));
-  return current && !selectionFailsClosed(current) ? current : null;
+  return resolveShellObjectSelection(data, selectedObject, workspaceId);
 }
 
 export function buildShellContext({ data = {}, workspaceId = "ai", selectedObject = null } = {}) {
@@ -180,6 +245,7 @@ export function buildShellContext({ data = {}, workspaceId = "ai", selectedObjec
     risk: String(firstValue(selectedObject?.risk, raw.risk, raw.riskLevel, raw.severity, data.portfolioRisk?.status, unavailable)),
     mandate: String(firstValue(raw.mandateId, mandate?.name, mandate?.title, mandate?.id, unavailable)),
     object: String(firstValue(selectedObject?.id, raw.id, raw.symbol, workspace?.id, unavailable)),
+    objectType: String(firstValue(selectedObject?.type, raw.objectType, raw.entityType, workspace ? "Workspace" : null, unavailable)),
     version: String(firstValue(selectedObject?.version, raw.version, raw.revision, unavailable)),
     permissions: String(firstValue(selectedObject?.permission, raw.permission, raw.permissions, raw.requiredPermission, mandate?.permission, unavailable)),
     nextAction: String(firstValue(selectedObject?.nextAction, raw.nextAction, raw.allowedAction, selectedObject?.route ? `Open ${selectedObject.route}` : null, workspace?.rootRoute ? `Open ${workspace.rootRoute}` : null, unavailable)),
@@ -227,6 +293,8 @@ function declaredTypedIdentities(value, fields) {
 }
 
 function traceIdentityMatches(row, selectedObject) {
+  const declaredType = firstValue(row?.objectType, row?.entityType, row?.raw?.objectType, row?.raw?.entityType);
+  if (declaredType != null && String(declaredType) !== String(selectedObject?.type || "")) return false;
   const selectedPrimary = firstValue(
     selectedObject?.objectId,
     selectedObject?.entityId,
@@ -290,7 +358,9 @@ export function buildShellTrace(data = {}, workspaceId = "ai", selectedObject = 
       status: row ? knownTraceStatus(row.status || row.state) : blocked ? "blocked" : inferred[key].status,
       detail: String(firstValue(row?.detail, row?.summary, row?.evidenceId, blocked ? `Workspace source is ${resourceState}` : null, inferred[key].detail, unavailable)),
       evidence: String(firstValue(row?.evidenceId, row?.id, row?.createdAt, unavailable)),
-      workspaceId
+      workspaceId,
+      objectType: selectedObject?.type || null,
+      objectId: selectedObject?.id || null
     };
   });
 }
@@ -335,8 +405,7 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   }, []);
   const select = (row) => {
     if (!row) return;
-    onSelect(row);
-    onNavigate(row.route, row);
+    runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
     setQuery("");
     setOpen(false);
   };
@@ -347,6 +416,7 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
       key: event.key,
       activeIndex,
       results,
+      data,
       onSelect,
       onNavigate,
       onClose: () => { setQuery(""); setOpen(false); }
@@ -394,7 +464,7 @@ export function ContextDock({ context = buildShellContext(), onNavigate = () => 
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
   return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" aria-label={t("上下文", "Context")}>
     <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.objectStatus || context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
-    {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
+    {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{key === "object" && context.objectType ? `${context.objectType} / ${text(context.object, unavailable)}` : text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
   </aside>;
 }
 
@@ -404,6 +474,7 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
   const closeRef = useRef(null);
   const triggerRef = useRef(null);
   const summary = selected || stages.find((stage) => stage.status === "blocked") || stages.find((stage) => stage.status === "waiting") || stages[0];
+  const selectedIdentity = stages.find((stage) => stage.objectId);
 
   const close = () => {
     setExpanded("");
@@ -423,9 +494,9 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
   }, [selected?.id]);
 
   return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" aria-label={t("当前工作区追踪", "Current workspace trace")}>
-    <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
+    <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{selectedIdentity ? `${selectedIdentity.objectType} / ${selectedIdentity.objectId}` : t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
     <nav>{stages.map((stage, index) => <button type="button" key={stage.id} className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={(event) => { triggerRef.current = event.currentTarget; setExpanded(expanded === stage.id ? "" : stage.id); }}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span><em>{stage.detail}</em><code>{stage.evidence}</code></button>)}</nav>
-    <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl><div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>
+    <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl>{selectedIdentity && <div><dt>OBJECT</dt><dd>{selectedIdentity.objectType} / {selectedIdentity.objectId}</dd></div>}<div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>
   </section>;
 }
 

@@ -10540,11 +10540,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__search > input::placeholder { color: var(--kordyn-muted); opacity: 1; }
 .commandRail__search > button { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--kordyn-ink); }
 .commandRail__search > button svg { width: 14px; }
-.commandRail__results { position: absolute; z-index: 120; top: calc(100% + 1px); left: -1px; width: min(600px, calc(100vw - 24px)); max-height: min(64dvh, 520px); overflow: auto; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); box-shadow: 10px 10px 0 var(--kordyn-acid); }
+.commandRail__results { position: fixed; z-index: 120; top: var(--kordyn-command-rail); left: var(--kordyn-workspace-rail); width: min(620px, calc(100vw - var(--kordyn-workspace-rail) - 24px)); max-height: 520px; overflow: auto; border: 1px solid var(--kordyn-ink); border-top: 0; background: var(--kordyn-paper); box-shadow: 8px 8px 0 var(--kordyn-ink); }
 .commandRail__results > button { display: grid; grid-template-columns: 82px minmax(120px, 1fr) minmax(100px, .75fr) 80px; align-items: center; width: 100%; min-height: 48px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); background: transparent; color: var(--kordyn-ink); text-align: left; }
 .commandRail__results > button:last-child { border-bottom: 0; }
 .commandRail__results > button.active,
-.commandRail__results > button:hover { background: var(--kordyn-ink); color: var(--kordyn-paper); }
+.commandRail__results > button:hover,
+.commandRail__results > button:focus-visible { background: var(--kordyn-acid); color: var(--kordyn-ink); }
 .commandRail__results small,
 .commandRail__results code,
 .commandRail__results span { font: 700 9px/1.25 var(--kordyn-mono); }
@@ -10742,6 +10743,25 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mShellSheet > header span { display: grid; gap: 3px; }
 .mShellSheet > header small { color: var(--kordyn-mint); font: 740 8px var(--kordyn-mono); }
 .mShellSheet__body { max-height: calc(100dvh - 112px); overflow: auto; }
+.mObjectSwitcher { display: grid; grid-template-rows: 56px minmax(0,1fr); min-height: min(68dvh, 520px); background: var(--kordyn-paper); }
+.mObjectSwitcher__search { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--kordyn-ink); }
+.mObjectSwitcher__search svg { flex: none; width: 16px; }
+.mObjectSwitcher__search input { width: 100%; min-width: 0; min-height: 44px; padding: 0 8px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper-2); color: var(--kordyn-ink); }
+.mObjectSwitcher__search button { display: grid; flex: none; place-items: center; width: 44px; min-height: 44px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); color: var(--kordyn-ink); }
+.mObjectSwitcher__results { overflow: auto; }
+.mObjectSwitcher__result { display: grid; grid-template-columns: 76px minmax(0,1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); border-radius: 0; background: transparent; color: var(--kordyn-ink); text-align: left; }
+.mObjectSwitcher__result:is(:hover,:focus-visible),
+.mObjectSwitcher__result[aria-current="true"] { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.mObjectSwitcher__result > small,
+.mObjectSwitcher__result code,
+.mObjectSwitcher__result em { font: 700 8px/1.25 var(--kordyn-mono); font-style: normal; }
+.mObjectSwitcher__result > span { display: grid; gap: 2px; min-width: 0; }
+.mObjectSwitcher__result > span :is(b,code) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mObjectSwitcher__results > p { padding: 18px 12px; color: var(--kordyn-muted); }
+.controlScope__selection { padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; }
+.controlScope__selection:focus-visible { outline: 2px solid var(--kordyn-acid); outline-offset: 2px; }
+.agPlanObject { padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; }
+.agPlanObject:focus-visible { outline: 2px solid var(--kordyn-acid); outline-offset: 2px; }
 .mShellSheet .contextDock { position: static; width: 100%; border: 0; }
 .mShellSheet .traceRail,
 .mShellSheet .traceRail.expanded { position: static; inset: auto; display: flex; flex-direction: column; width: 100%; height: auto; min-height: 66px; border-top: 0; }

@@ -16,7 +16,7 @@ import { LandingPage } from "./landing.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "./productArchitecture.js";
-import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, selectionForNavigation } from "./productShell.jsx";
+import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
@@ -297,9 +297,9 @@ function App() {
   useEffect(() => {
     setSelectedShellObject((current) => selectionForNavigation(current, activeProductWorkspace, data || {}));
   }, [data, activeProductWorkspace]);
-  function navigate(next, selectedObject = null) {
+  function navigate(next, selectedObject) {
     const resolved = resolveDesktopRoute(next);
-    setSelectedShellObject(selectionForNavigation(selectedObject, resolved.workspace, data || {}));
+    setSelectedShellObject((current) => selectionForNavigation(selectedObject ?? current, resolved.workspace, data || {}));
     setActiveProductWorkspace(resolved.workspace);
     setActive(resolved.section);
     if (resolved.tab) setActiveWorkspaceTab(resolved.tab);
@@ -311,7 +311,12 @@ function App() {
     if (resolved.settingsSection) setActiveSettingsSection(resolved.settingsSection);
     if (!resolved.recognized) notify(t("未找到该入口，已返回 AI 交易员。", "That destination was not found. Returned to AI Trader."));
   }
-  const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
+  function selectObject(candidate) {
+    const selected = resolveShellObjectSelection(data || {}, candidate, activeProductWorkspace);
+    setSelectedShellObject(selected);
+    return selected;
+  }
+  const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
     const resourceState = data.resourceState?.[active] || "not_loaded";

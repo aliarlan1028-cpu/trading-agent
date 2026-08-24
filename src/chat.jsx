@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { uiConfirm } from "./confirm.jsx";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
+import { CanonicalRegistryButton } from "./productShell.jsx";
 import {
   AlertTriangle,
   Activity,
@@ -1167,7 +1168,7 @@ function AgentRail({ data, action, ui }) {
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
-            <b className="mono">{plan?.symbol || t("暂无交易计划", "No trade plan")}</b>
+            {plan ? <CanonicalRegistryButton className="agPlanObject" candidate={{id:plan.id,type:"Trade plan"}} onSelectObject={(candidate)=>ui.setActive("signalHub",candidate)}><b className="mono">{plan.symbol}</b></CanonicalRegistryButton> : <b className="mono">{t("暂无交易计划", "No trade plan")}</b>}
             {plans.length > 1 && (
               <span className="agPlanSwitch">
                 <button type="button" onClick={() => setPlanIdx((i) => (i - 1 + plans.length) % plans.length)} title={t("上一个持仓/计划", "Previous position/plan")}>‹</button>

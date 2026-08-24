@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { uiConfirm } from "./confirm.jsx";
 import {
   Activity,
@@ -53,7 +53,7 @@ import {
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
-import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "./productShell.jsx";
+import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellSearchIndex, buildShellTrace, filterShellSearchResults, resolveShellObjectSelection, runShellObjectSelection, runShellRegistrySelection, selectionForNavigation } from "./productShell.jsx";
 import { AgentSettingsConcept, UsersSettingsConcept, configurationSupplementState, retryConfigurationSupplement } from "./conceptPages.jsx";
 import {
   buildCapabilityCatalogRows,
@@ -337,7 +337,7 @@ function MobileReviewSheet({ review, trade, onClose }) {
   </div>;
 }
 
-export function MobileExecution({ data, action, initialTab = "overview" }) {
+export function MobileExecution({ data, action, ui, initialTab = "overview" }) {
   const [tab, setTab] = useState(initialTab);
   const [reviewFilter, setReviewFilter] = useState("all");
   const [selectedReview, setSelectedReview] = useState(null);
@@ -370,7 +370,7 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
       <div className="mReviewFilters">{[["all", t("全部", "All")], ["loss", t("只看亏损", "Losses")], ["pending", t("待处理", "Pending")]].map(([id, label]) => <button type="button" className={reviewFilter === id ? "active" : ""} key={id} onClick={() => setReviewFilter(id)}>{label}</button>)}</div>
-      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
+      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} data-shell-object-id={row.id} data-shell-object-type="Review" onClick={() => runShellRegistrySelection({candidate:{id:row.id,type:"Review"},onLocalSelect:()=>setSelectedReview({ review: row, trade }),onSelectObject:(candidate)=>ui?.selectObject?.(candidate)})}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
     </>}
     {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => setSelectedReview(null)} />}
   </div>;
@@ -1091,7 +1091,7 @@ export function refreshMobileIntelligence(action) {
   return action("/api/market-intelligence/refresh", {});
 }
 
-export function MobileTasks({ data, action }) {
+export function MobileTasks({ data, action, ui }) {
   const [segment, setSegment] = useState("重要事件");
   const now = new Date();
   const [monthAnchor, setMonthAnchor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -1154,7 +1154,7 @@ export function MobileTasks({ data, action }) {
             </article>)}
             {!selectedEvents.length && <div className="mNativeEmpty compact"><CalendarClock size={20}/><b>{t("可以安心查看其他日期", "Choose another date")}</b><span>{t("没有精确事件就保持空白，不推测发生时间。", "The calendar stays empty when no exact event is verified.")}</span></div>}
           </section>
-          {upcoming.length > 0 && <section className="mSectionCard mUpcomingEvents"><header><span>{t("接下来", "Up next")}</span></header>{upcoming.map((event) => <button type="button" className="mRowItem" key={`up-${event.id || event.title}`} onClick={() => { const key = mobileEventDateKey(event); const [eventYear, eventMonth] = key.split("-").map(Number); setSelectedDate(key); setMonthAnchor(new Date(eventYear, eventMonth - 1, 1)); }}><span>{event.timePrecision === "date" ? t("日期待定时", "Date only") : formatDate(event.due || event.startAt)}</span><b>{localizeText(event.shortTitle || event.title)}</b><ChevronRight size={14}/></button>)}</section>}
+          {upcoming.length > 0 && <section className="mSectionCard mUpcomingEvents"><header><span>{t("接下来", "Up next")}</span></header>{upcoming.map((event) => <button type="button" className="mRowItem" key={`up-${event.id || event.title}`} data-shell-object-id={event.id} data-shell-object-type="Event" onClick={() => runShellRegistrySelection({candidate:{id:event.id,type:"Event"},onLocalSelect:()=>{ const key = mobileEventDateKey(event); const [eventYear, eventMonth] = key.split("-").map(Number); setSelectedDate(key); setMonthAnchor(new Date(eventYear, eventMonth - 1, 1)); },onSelectObject:(candidate)=>ui?.selectObject?.(candidate)})}><span>{event.timePrecision === "date" ? t("日期待定时", "Date only") : formatDate(event.due || event.startAt)}</span><b>{localizeText(event.shortTitle || event.title)}</b><ChevronRight size={14}/></button>)}</section>}
         </>
       )}
 
@@ -1935,19 +1935,31 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
   );
 }
 
-export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject = null, onNavigate = () => {} }) {
-  const [sheet, setSheet] = useState("");
+export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject = null, onSelect = () => {}, onNavigate = () => {}, initiallyOpen = "" }) {
+  const [sheet, setSheet] = useState(initiallyOpen);
+  const [query, setQuery] = useState("");
   const context = buildShellContext({ data, workspaceId, selectedObject });
   const trace = buildShellTrace(data, workspaceId, selectedObject);
+  const objectIndex = useMemo(() => buildShellSearchIndex(data), [data]);
+  const objectResults = useMemo(() => (query.trim() ? filterShellSearchResults(objectIndex, query) : objectIndex.slice(0, 30)), [objectIndex, query]);
+  const close = () => { setSheet(""); setQuery(""); };
+  const selectObject = (candidate) => {
+    const selected = runShellObjectSelection({ data, candidate, workspaceId: candidate.workspaceId, onSelect, onNavigate });
+    if (selected) close();
+  };
   return <>
     <nav className="mShellTools" data-shell-role="mobile-context-trace" aria-label={t("全局上下文与追踪", "Global context and trace")}>
+      <button type="button" className="mShellToolButton" onClick={() => setSheet("objects")}><small>OBJ</small><b>Objects</b><span>{selectedObject?.id || t("切换", "Switch")}</span></button>
       <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>Context</b><span>{context.status}</span></button>
       <button type="button" className="mShellToolButton" onClick={() => setSheet("trace")}><small>TRC</small><b>Trace</b><span>{trace.find((stage) => stage.status === "blocked")?.status || trace.find((stage) => stage.status === "waiting")?.status || "unavailable"}</span></button>
     </nav>
-    {sheet && <div className="mShellSheetOverlay" role="presentation" onClick={() => setSheet("")}>
-      <section className="mShellSheet" role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : "Trace"} onClick={(event) => event.stopPropagation()}>
-        <header><span><small>GLOBAL SHELL</small><b>{sheet === "context" ? "Context" : "Trace"}</b></span><button type="button" aria-label={t("关闭", "Close")} onClick={() => setSheet("")}><X/></button></header>
-        <div className="mShellSheet__body">{sheet === "context" ? <ContextDock context={context} onNavigate={(route) => { onNavigate(route); setSheet(""); }} collapsible={false}/> : <TraceRail stages={trace}/>}</div>
+    {sheet && <div className="mShellSheetOverlay" role="presentation" onClick={close}>
+      <section className={`mShellSheet ${sheet === "objects" ? "mObjectSwitcher" : ""}`} data-shell-role={sheet === "objects" ? "mobile-object-switcher" : undefined} role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"} onClick={(event) => event.stopPropagation()}>
+        <header><span><small>GLOBAL SHELL</small><b>{sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"}</b></span><button type="button" aria-label={t("关闭", "Close")} onClick={close}><X/></button></header>
+        <div className="mShellSheet__body">{sheet === "objects" ? <div className="mObjectSwitcher__body">
+          <label className="mObjectSwitcher__search"><Search/><input role="searchbox" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜索市场、事件、策略或运行", "Search markets, events, strategies, or runs")}/>{query && <button type="button" onClick={() => setQuery("")} aria-label={t("清空", "Clear")}><X/></button>}</label>
+          <div className="mObjectSwitcher__results" role="listbox">{objectResults.length ? objectResults.map((row) => <button type="button" role="option" aria-current={selectedObject?.type === row.type && selectedObject?.id === row.id ? "true" : undefined} aria-selected={selectedObject?.type === row.type && selectedObject?.id === row.id} className="mObjectSwitcher__result" key={`${row.type}:${row.id}`} data-shell-object-id={row.id} data-shell-object-type={row.type} onClick={() => selectObject(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象。", "No loaded object matches.")}</p>}</div>
+        </div> : sheet === "context" ? <ContextDock context={context} onNavigate={(route) => { onNavigate(route); close(); }} collapsible={false}/> : <TraceRail stages={trace}/>}</div>
       </section>
     </div>}
   </>;
@@ -2026,12 +2038,17 @@ export function MobileApp({ api, lang, switchLang }) {
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
+  const [selectedShellObject, setSelectedShellObject] = useState(null);
   const activeSection = resolveMobileRoute(route).section;
   useEffect(() => { ensureSection?.(activeSection); }, [route]);
+  useEffect(() => {
+    setSelectedShellObject((current) => selectionForNavigation(current, activeProductWorkspace, data || {}));
+  }, [data, activeProductWorkspace]);
 
-  function navigate(next) {
+  function navigate(next, selectedObject) {
     haptic("light");
     const resolved = resolveMobileRoute(next);
+    setSelectedShellObject((current) => selectionForNavigation(selectedObject ?? current, resolved.workspace, data || {}));
     setActiveProductWorkspace(resolved.workspace);
     setRoute(resolved.route);
     setSubPage(resolved.subPage || "");
@@ -2039,7 +2056,12 @@ export function MobileApp({ api, lang, switchLang }) {
     if (!resolved.recognized) notify?.(t("未找到该入口，已返回 AI。", "That destination was not found. Returned to AI."));
   }
 
-  const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
+  function selectObject(candidate) {
+    const selected = resolveShellObjectSelection(data || {}, candidate, activeProductWorkspace);
+    setSelectedShellObject(selected);
+    return selected;
+  }
+  const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const runtime = automationPresentation(data);
   const settingsSection = subPage.startsWith("settings:") ? subPage.slice(9) : "";
   useEffect(() => {
@@ -2062,9 +2084,9 @@ export function MobileApp({ api, lang, switchLang }) {
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
-    content = subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} /> : <MobileExecution data={data} action={action} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
+    content = subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} /> : <MobileExecution data={data} action={action} ui={ui} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
   } else if (route === "tradeLedger") {
-    content = <MobileExecution data={data} action={action} initialTab="orders" />;
+    content = <MobileExecution data={data} action={action} ui={ui} initialTab="orders" />;
   } else if (route === "riskHub") {
     content = <MobileRiskHub data={data} action={action} ui={ui} initialView={subPage} />;
   } else if (route === "intelligence") {
@@ -2108,12 +2130,12 @@ export function MobileApp({ api, lang, switchLang }) {
     : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
 
   return (
-    <div className="mShell2 kordynSystem">
+    <div className="mShell2 kordynSystem" data-shell-selected-object={selectedShellObject ? `${selectedShellObject.type}:${selectedShellObject.id}` : "none"}>
       <MobileHeader route={activeProductWorkspace === "lab" && route === "executionReview" ? "labMap" : route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-      <MobileShellTools data={data} workspaceId={activeProductWorkspace} onNavigate={navigate}/>
+      <MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>
       <MobileTabbar route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onMore={() => setDrawer(true)} />
       <NavDrawer open={drawer} route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
       {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
