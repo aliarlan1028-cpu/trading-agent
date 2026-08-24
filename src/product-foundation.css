@@ -20,9 +20,12 @@
   --kordyn-workspace-rail: 188px;
   --kordyn-context-dock: 304px;
   --kordyn-trace-rail: 66px;
-  --kordyn-display: "Space Grotesk", "Noto Sans SC", sans-serif;
-  --kordyn-sans: "Public Sans", "Noto Sans SC", sans-serif;
-  --kordyn-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --kordyn-display: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --kordyn-sans: Inter, "Helvetica Neue", Arial, sans-serif;
+  --kordyn-mono: "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace;
+  --font-ui: var(--kordyn-sans);
+  --font-mono: var(--kordyn-mono);
+  --font-body: var(--kordyn-sans);
   --kordyn-space-1: 4px;
   --kordyn-space-2: 8px;
   --kordyn-space-3: 12px;
@@ -32,6 +35,7 @@
   background: var(--kordyn-paper);
   color: var(--kordyn-ink);
   accent-color: var(--kordyn-acid);
+  font-family: var(--kordyn-sans);
 }
 
 .kordynSystem ::selection { background: var(--kordyn-acid); color: var(--kordyn-ink); }

@@ -1451,7 +1451,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       holder.current.innerHTML = "";
       chart = lc.createChart(holder.current, {
         autoSize: true,
-        layout: { background: { color: "#FBF9F5" }, textColor: "#8a8172", fontFamily: "IBM Plex Mono, monospace" },
+        layout: { background: { color: "#FBF9F5" }, textColor: "#8a8172", fontFamily: "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace" },
         grid: { vertLines: { color: "#EDE7DB" }, horzLines: { color: "#EDE7DB" } },
         rightPriceScale: { borderColor: "#E3DCCE" },
         timeScale: { borderColor: "#E3DCCE", timeVisible: true },

@@ -111,6 +111,23 @@ test("desktop workspace current-state marker keeps the prototype four-pixel auth
   assert.equal(marker.background, "var(--kordyn-acid)");
 });
 
+test("authenticated type stacks match the immutable prototype and override legacy app aliases", () => {
+  assert.match(foundation, /--kordyn-display:\s*"Avenir Next",\s*"Helvetica Neue",\s*Arial,\s*sans-serif\s*;/);
+  assert.match(foundation, /--kordyn-sans:\s*Inter,\s*"Helvetica Neue",\s*Arial,\s*sans-serif\s*;/);
+  assert.match(foundation, /--kordyn-mono:\s*"SFMono-Regular",\s*"Roboto Mono",\s*"Space Mono",\s*ui-monospace,\s*monospace\s*;/);
+  assert.match(foundation, /--font-ui:\s*var\(--kordyn-sans\)\s*;/);
+  assert.match(foundation, /--font-mono:\s*var\(--kordyn-mono\)\s*;/);
+  assert.match(foundation, /font-family:\s*var\(--kordyn-sans\)\s*;/);
+
+  const authenticatedLegacy = styles
+    .replace(/:root\s*\{[^}]*\}/, "")
+    .replace(/\.lpModal\{[^}]*\}/, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(authenticatedLegacy, /\bManrope\b|"Space Grotesk"|"Public Sans"|"IBM Plex Mono"/);
+  assert.doesNotMatch(fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8"), /\bManrope\b|"Space Grotesk"|"Public Sans"|"IBM Plex Mono"/);
+  assert.doesNotMatch(fs.readFileSync(path.join(rootDir, "src/lib.jsx"), "utf8"), /IBM Plex Mono/);
+});
+
 test("desktop shell exports and renders command, workspace, context and trace roles", () => {
   for (const name of ["CommandRail", "WorkspaceRail", "ContextDock", "TraceRail"]) assert.equal(typeof Shell[name], "function", `${name} must be shared and exported`);
   const html = [
