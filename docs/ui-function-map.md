@@ -1,10 +1,10 @@
 # KORDYN Desktop → Mobile UX Mapping and Audit
 
-- Audit date: 2026-08-24
-- Baseline commit: `f56bc622ec7a00fe947d2e859883a27d7d7e976c`
+- Audit date: 2026-08-25
+- Implementation baseline: `0fd7ea6` (approved Operations UI and deployed product foundation)
 - Baseline branch: `codex/fix-profit-poster-and-learning-lifecycle`
 - Scope: authenticated desktop and post-login mobile UI; mobile authentication is unchanged
-- Verification baseline: Task 7 Fix Round 1 focused prototype/mobile/render gate passes 105/105; final build, lint, full route screenshots, and detector are owned by later gates
+- Verification baseline: Task 8 closed at 118/118 focused checks with a 31-row prototype-parity matrix and real 1440×900, 1180×820, 390×844, and 430×932 evidence; final full test/lint/build gates remain Task 9 scope
 
 ## 1. Current Architecture Audit
 
@@ -30,13 +30,13 @@ Non-AI workspaces use the grouped editorial product shell. AI Trader intentional
 - A safe-area-aware 56px hard-edged masthead with the existing effective runtime/safety entry.
 - A persistent 44px Context/Trace rail whose bounded sheets use the same factual projection as desktop.
 - A safe-area-aware 66px bottom navigation numbered 01–05: AI, Live, Lab, Control, More.
-- Drawer: workspace-local destinations plus Operations and Configuration.
+- Drawer: Operations, Configuration, account/profile, language, notifications, and support-level global utilities only; workspace-local destinations stay inside their owning workspace rail.
 - Mobile-specific market, position, execution, risk, knowledge, capability, strategy, intelligence, calendar, and full Operations views.
 - Native Operations flows for health triage, task/run inspection, permitted user-task creation and lifecycle controls, reconciliation, scheduler recovery, incidents, audit detail/export, and explicit notification acknowledgement.
-- Native mobile configuration flows for Trading & Runtime, Mandate, automatic protections, Risk Rules, and Event Sources; lower-frequency infrastructure panels remain staged for the mobile-native page pass.
+- A scope-first Configuration Registry reaches Trading & Runtime, Mandate, automatic protections, Risk Rules, Event Sources, infrastructure, connections, models, Agents, users, and subscriptions through bounded editor/detail surfaces with the deployed handlers and permission gates.
 - Canonical route resolution preserves workspace and subview intent while the mobile stack retains its own presentation state.
 
-The mobile implementation is not desktop CSS scaled down. Product ownership now matches desktop; the remaining work is converting lower-frequency infrastructure/admin configuration and remaining object-detail panels to native mobile task flows without changing their service contracts.
+The mobile implementation is not desktop CSS scaled down. Product ownership matches desktop, while touch presentation uses workspace rails, bounded sheets, list/detail disclosure, and dedicated task flows without changing service contracts.
 
 ### Shared Product Logic Already Available
 
@@ -65,13 +65,13 @@ The following should be shared as presentation-neutral contracts, not as forced 
 | Done | Workspace-level mobile navigation | Watch and Market previously consumed primary slots while Lab was buried | Bottom navigation is `AI | Live | Lab | Control | More`; features live inside their owning workspace |
 | Done | Contractual feature coverage | New desktop actions could previously land without a mobile decision | `productCoverage.js` records ownership, desktop/mobile representation, permission, and migration state |
 | Done | Single durable configuration home | Contextual state and authoritative editors were previously mixed | Control is read-only; durable mode, mandate, protection, rule, source, connection, and governance edits live in Configuration |
-| P1 | AI Trader lacks the confirmed Command context model | Patrol, evidence, watch, risk, run, and next action compete inside message content or separate tabs | Preserve conversation; add Agent Status Band and contextual Command Rail; add Events as a local view |
+| Done | AI Trader Command context model | Patrol, evidence, watch, risk, run, and next action previously competed inside message content or separate tabs | The deployed conversation is preserved inside the Command grammar with status, factual context, local Dialog/Intelligence/Watch/Events views, patrol disclosure, and the fixed poster workflow |
 | Done | Lab lifecycle and dual-origin assets | Knowledge-generated artifacts and built-in assets previously looked unrelated | Research Map separates incubation from native assets and reunifies validated outputs in source-aware registries |
 | Done | Review and Owner ownership | Live execution facts and governed learning were mixed | Live shows review state; Lab owns full Review and native mobile Owner workflows |
 | Done | Operations triage and recovery | Health, tasks, events, notifications, audit, and reconciliation were separate summaries with no shared priority model | Shared runtime facts now drive desktop and native mobile Command, Tasks & Runs, Recovery, Audit, and Inbox flows |
-| P1 | Lower-frequency mobile Configuration remains mixed | Trading, risk, and event-source flows are native, while some infrastructure/admin panels still reuse desktop composition | Continue native screens by risk and usage priority; keep endpoints and permissions unchanged |
+| Done | Mobile Configuration ownership and reachability | Durable editors previously appeared as disconnected settings stacks and some governance routes rendered blank | One scope-first registry reaches every deployed configuration domain; bounded editor/detail shells retain existing endpoints, loading/error/forbidden states, and Owner gates |
 | P1 | Mobile route state is local and non-restorable | Back navigation and deep links lose workspace, subview, object, or filter context | Canonical location plus mobile navigation stack and persisted last location |
-| P2 | Large configuration and editor panels are reused on mobile | Desktop form density, scroll nesting, and top-heavy actions remain | Convert to dedicated screens with grouped fields, sticky action areas, keyboard-safe layout, and explicit outcomes |
+| Done | Mobile configuration/editor composition | Desktop grids previously produced narrow columns and nested overflow at phone widths | Final-cascade one-column workbenches, grouped bounded forms, 44px controls, local scrolling, and explicit outcomes are verified at 390×844 and 430×932 |
 | P2 | Existing CSS carries multiple generations of mobile styles | Maintenance depends on late overrides in a very large global stylesheet | Introduce scoped product tokens and workspace primitives; migrate page styles incrementally and delete only proven orphans |
 | Done | Global object/function switcher | The former desktop input did not provide an object/feature result model | `productShell.jsx` indexes the canonical route registry and obtained production objects; its component-used controller opens/focuses on ⌘/Ctrl-K and selects/routes/closes on Enter. Rows carry workspace/source health, and central navigation revalidates selection against the rebuilt current production index by type, ID, workspace, and source; disappearance, stale/failed source, or denied permission fails closed |
 | Done | Shared shell truth boundary | Collection presence previously looked like completed Trace evidence, and freshness age was labelled latency | Trace completion requires explicit workspace plus typed selected identity: primary object fields must match the selected primary, run fields match only the same named run field, and related IDs cannot override a primary conflict. Missing/unscoped collections remain waiting/unavailable/blocked. Command models freshness age and request latency independently; Context separates object status from source health, treats normalized forbidden state as forbidden, and gates unsafe shared actions |
@@ -94,7 +94,7 @@ The following should be shared as presentation-neutral contracts, not as forced 
 
 | Product surface | Desktop representation | Mobile user goal and hierarchy | Mobile interaction model |
 | --- | --- | --- | --- |
-| Global shell | Fixed 64px Command, 188px Workspace, 304px Context, and 66px Trace rails; existing global actions; effective production flex bases/minimums sum to 1240px and structurally retain five facts and both danger labels at 1440 | Know runtime/risk quickly; reach primary workspaces, Context, Trace, and safety with one thumb | Safe-area-aware 56px masthead; persistent 44px Context/Trace tools; safe-area-aware numbered 66px `01 AI / 02 Live / 03 Lab / 04 Control / 05 More`; compact runtime button opens the hard-edge Safety sheet. Visual fit still requires Task 8 screenshots |
+| Global shell | Fixed 64px Command, 188px Workspace, 304px Context, and 66px Trace rails; existing global actions; five facts and both danger labels remain visible at 1440, while the 1180 Context overlay reserves a measured non-overlapping header budget | Know runtime/risk quickly; reach primary workspaces, Context, Trace, and safety with one thumb | Safe-area-aware 56px masthead; persistent 44px Context/Trace tools; safe-area-aware numbered 66px `01 AI / 02 Live / 03 Lab / 04 Control / 05 More`; compact runtime button opens the hard-edge Safety sheet; exact phone viewports have no document-level overflow |
 | Global search | `CommandRail` object/feature overlay built from `ROUTE_DEFINITIONS` and obtained markets, positions, plans, tasks, mandates, incidents, executions, reviews, skills, and knowledge; object status is independent from source state | Find the same objects through task-led workspace navigation without duplicating More destinations | Desktop component uses shared controllers for ⌘/Ctrl-K focus/open, arrows, Enter select+route+close, Escape, outside close, empty results, and authoritative route navigation; route receives the selected row, then central navigation resolves the current indexed object and clears absent, stale, degraded, failed, forbidden, permission-denied, wrong-workspace, or wrong-source selection. No separate mobile search surface was introduced |
 | AI Dialog | Conversation plus history and fixed Command Rail | See current conclusion, send a task, inspect evidence only when needed | Conversation root; status band collapses to a tappable summary; plan/evidence/trace open full-screen detail or sheets; composer remains keyboard-safe |
 | Autonomous patrol | Message plus status/coverage/run context | Understand what was checked, what changed, whether action occurred, and what wakes next | Patrol message summary → detail screen with Changes, Decisions, Watches, Actions, Next Wake, Run Trace; poster action stays on message/detail |
@@ -172,7 +172,7 @@ The following should be shared as presentation-neutral contracts, not as forced 
 
 ## 7. Phased Implementation
 
-Implementation status (2026-08-24): phases 1–6 are implemented. The shared route registry and coverage contract drive the five-workspace desktop/mobile shells; AI Trader retains the deployed conversation while gaining status, patrol, evidence, and fixed poster presentation; Lab has a dual-origin Research Map, source-aware formal registries, Trade Review, and native mobile Owner validation. Control now presents effective runtime truth, blockers, exposure, event gates, mandate boundaries, readiness, and rule hits without durable editors. Configuration Registry is the single editing home for operating target, Mandate, automatic protections, deterministic rules, event sources, infrastructure, connections, models, Agents, users, and subscriptions. Operations now uses one shared fact model for service health, tasks/runs, event-input health, notification triage, audit proof, reconciliation, and recovery on desktop and mobile. Lower-frequency infrastructure/admin conversion continues in phase 8. Existing endpoints, permissions, evidence gates, safety semantics, and authentication remain unchanged.
+Implementation status (2026-08-25): phases 1–8 are implemented and visually verified against the immutable `1056233` prototype. The shared route/coverage contracts drive the five-workspace desktop/mobile shells; AI Trader preserves its deployed conversation within the Command grammar; Live, Lab, Control, Operations, and Configuration use factual Registry/Inspector/Ledger or touch equivalents. Lab unifies knowledge-derived and system-native assets without merging provenance. Control is read-only, Configuration is the single durable editor, and Operations owns runtime proof and recovery. The 31-row parity matrix has no open gap; Task 9 owns only final full-suite/lint/build/diff and delivery gates. Existing endpoints, permissions, evidence gates, safety semantics, and authentication remain unchanged.
 
 1. Foundation & coverage: product/route registry, feature manifest, truth boundaries, compatible deep links, shared resource states, scoped tokens.
 2. Shell alignment: desktop five-workspace rail plus Configuration; mobile `AI / Live / Lab / Control / More`; preserve every legacy entry.

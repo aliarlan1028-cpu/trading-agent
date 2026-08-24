@@ -65,7 +65,7 @@ Desktop uses four persistent operating rails: a 64px Command Rail, a 188px numbe
 
 The Context Dock projects Evidence, Risk, Mandate, Object, Version, Permissions, and the safe route-level next action from the selected object or current workspace facts. Missing fields remain `Unavailable`. The Trace Rail projects `Sense → Recall → Plan → Guard → Execute → Monitor → Review` from loaded market, knowledge, plan, risk, execution, monitoring, review, and trace facts, using only `complete`, `waiting`, `blocked`, or `unavailable`. A stage opens its real detail/evidence surface; no missing fact becomes zero or success. At medium desktop widths the Context Dock is a collapsible hard-edged overlay.
 
-Post-login mobile uses the same Paper/near-black/Acid grammar as a touch composition: a 56px masthead and safety entry, a persistent 44px Context/Trace affordance rail, and a 66px numbered `AI | Live | Lab | Control | More` rail. Context and Trace open as bounded full-width sheets with the same fields and states. More still contains only Operations and Configuration. Native authentication is unchanged.
+Post-login mobile uses the same Paper/near-black/Acid grammar as a touch composition: a 56px masthead and safety entry, a persistent 44px Context/Trace affordance rail, and a 66px numbered `AI | Live | Lab | Control | More` rail. Context and Trace open as bounded full-width sheets with the same fields and states. More contains only the Operations and Configuration product destinations plus true global utilities; workspace-local destinations are not duplicated there. Native authentication is unchanged.
 
 Shared ordinary confirmations are rectangular with a 1px Ink edge and 10px Acid offset; destructive confirmations use a 10px Danger offset. Flatten and Kill remain distinct deployed actions. Kill retains typed confirmation, server-authoritative failure/success handling, and audit evidence; neither action claims optimistic success.
 
@@ -78,6 +78,12 @@ Desktop and mobile share product capability, route meaning, view models, permiss
 - Desktop multi-panel workbenches become task-led list/detail, drill-down screens, bottom sheets, or full-screen flows on mobile.
 - Mobile preserves every field and action through progressive disclosure rather than shrinking desktop tables or stacking every panel.
 - The existing native/mobile sign-in and registration experience is out of scope and remains unchanged.
+
+## Verification Evidence
+
+`docs/ui-prototype-parity-matrix.md` is the binding Prototype → Desktop → APP audit. It records the immutable prototype element, desktop and APP implementation locations, interaction/state coverage, visual difference, conclusion, and exact evidence file for every row. The required prototype/production comparison and final viewport walk live under `.impeccable/review/`, including 1440×900 desktop, 1180×820 medium desktop, 390×844 and 430×932 APP, Context/Trace, drawers, ordinary and destructive confirmations, long content, and loading/empty/stale/failed/forbidden/disabled states.
+
+Evidence is observational only: production screens continue to use deployed data loaders, actions, permissions, error boundaries, and server-authoritative outcomes. No screenshot fixture, DOM patch, or synthetic success path is a product capability.
 
 ## Truth and Safety Boundaries
 

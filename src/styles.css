@@ -10592,7 +10592,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .workspaceRail button em { display: -webkit-box; overflow: hidden; color: var(--kordyn-muted); font: normal 8px/1.35 var(--kordyn-sans); -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
 .workspaceRail button:hover { background: color-mix(in srgb, var(--kordyn-acid) 20%, var(--kordyn-paper-2)); }
 .workspaceRail button.active { background: var(--kordyn-ink); color: var(--kordyn-paper); }
-.workspaceRail button.active::after { position: absolute; inset: 0 0 0 auto; width: 5px; content: ""; background: var(--kordyn-acid); }
+.workspaceRail button.active::after { position: absolute; inset: 0 0 0 auto; width: 4px; content: ""; background: var(--kordyn-acid); }
 .workspaceRail button.active em { color: color-mix(in srgb, var(--kordyn-paper) 66%, var(--kordyn-ink)); }
 .workspaceRail__utility { margin-top: auto; border-top: 1px solid var(--kordyn-ink) !important; border-bottom: 0 !important; }
 

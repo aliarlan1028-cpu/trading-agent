@@ -84,6 +84,12 @@ test("prototype semantic tokens and fixed shell dimensions are exact", () => {
   assert.match(styles, /@media\s*\(max-width:\s*720px\)/);
 });
 
+test("desktop workspace current-state marker keeps the prototype four-pixel authority stripe", () => {
+  const marker = finalDeclarations(".workspaceRail button.active::after");
+  assert.equal(marker.width, "4px");
+  assert.equal(marker.background, "var(--kordyn-acid)");
+});
+
 test("desktop shell exports and renders command, workspace, context and trace roles", () => {
   for (const name of ["CommandRail", "WorkspaceRail", "ContextDock", "TraceRail"]) assert.equal(typeof Shell[name], "function", `${name} must be shared and exported`);
   const html = [
