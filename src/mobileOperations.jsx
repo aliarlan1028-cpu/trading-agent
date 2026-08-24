@@ -34,7 +34,7 @@ export function buildMobileTaskPayload(form = {}) {
   return payload;
 }
 
-function TaskCreate({ action, onDone }) {
+export function TaskCreate({ action, onDone }) {
   const [form,setForm]=useState({name:"",kind:"standard",mission:"",type:"Every",schedule:"Every 5m",handler:"reminder",role:t("提醒","Reminder")});
   const update=(key,value)=>setForm((current)=>({...current,[key]:value}));
   const chooseType=(type)=>{const localAt=()=>{const date=new Date(Date.now()+3600000-new Date().getTimezoneOffset()*60000);return date.toISOString().slice(0,16);};setForm((current)=>({...current,type,schedule:type==="Cron"?"*/5 * * * *":type==="At"?localAt():"Every 5m"}));};

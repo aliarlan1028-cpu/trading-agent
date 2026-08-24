@@ -2613,32 +2613,32 @@ h3 {
 /* Runtime-risk confirmations use the prototype's explicit, hard-edged grammar. */
 .kordynSystem .modalOverlay,
 .kordynSystem .cfmOverlay {
-  background: rgba(17, 19, 17, .72);
+  background: color-mix(in srgb, var(--kordyn-ink) 72%, transparent);
   backdrop-filter: none;
 }
 
 .kordynSystem .confirmDialog,
 .kordynSystem .cfmCard {
-  border: 1px solid #111311;
+  border: 1px solid var(--kordyn-ink);
   border-radius: 0;
-  background: #fffdf7;
-  box-shadow: 8px 8px 0 #ccff3d;
+  background: var(--kordyn-paper-white);
+  box-shadow: 8px 8px 0 var(--kordyn-acid);
 }
 
 .kordynSystem .confirmDialog.danger {
-  box-shadow: 8px 8px 0 #e25645;
+  box-shadow: 8px 8px 0 var(--kordyn-orange);
 }
 
 .kordynSystem .confirmDialogHead {
   display: grid;
   gap: 8px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #111311;
+  border-bottom: 1px solid var(--kordyn-ink);
 }
 
 .kordynSystem .confirmDialogHead small,
 .kordynSystem .confirmField > span {
-  color: #5d665c;
+  color: color-mix(in srgb, var(--kordyn-ink) 64%, var(--kordyn-paper));
   font: 750 8px var(--font-mono);
   letter-spacing: .1em;
 }
@@ -2648,9 +2648,23 @@ h3 {
   gap: 5px;
   margin: 0;
   padding: 12px;
-  border-left: 3px solid #e25645;
-  background: #f4f1e9;
+  border-left: 3px solid var(--kordyn-orange);
+  background: var(--kordyn-paper);
 }
+
+.kordynSystem .confirmPermitted {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--kordyn-line);
+  background: var(--kordyn-paper-white);
+}
+
+.kordynSystem .confirmPermitted b,
+.kordynSystem .confirmOutcome b { font: 760 9px var(--font-mono); text-transform: uppercase; }
+.kordynSystem .confirmPermitted span,
+.kordynSystem .confirmOutcome span { font-size: 10px; line-height: 1.5; }
 
 .kordynSystem .confirmField {
   display: grid;
@@ -2673,10 +2687,10 @@ h3 {
 .kordynSystem .confirmDialog :is(input, textarea) {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #111311;
-  background: #fffdf7;
+  border: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper-white);
   padding: 10px 11px;
-  color: #111311;
+  color: var(--kordyn-ink);
   font: 650 11px var(--font-mono);
 }
 
@@ -2685,17 +2699,27 @@ h3 {
   cursor: not-allowed;
 }
 
+.kordynSystem .confirmOutcome {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--kordyn-ink);
+  background: color-mix(in srgb, var(--kordyn-orange) 16%, var(--kordyn-paper-white));
+}
+.kordynSystem .confirmOutcome.success { background: color-mix(in srgb, var(--kordyn-acid) 20%, var(--kordyn-paper-white)); }
+.kordynSystem .confirmOutcome code { overflow-wrap: anywhere; color: color-mix(in srgb, var(--kordyn-ink) 64%, var(--kordyn-paper)); font: 700 8px/1.5 var(--font-mono); }
+
 .kordynSystem .confirmDanger,
 .kordynSystem .cfmDanger {
-  border-color: #e25645;
-  background: #e25645;
-  color: #111311;
+  border-color: var(--kordyn-orange);
+  background: var(--kordyn-orange);
+  color: var(--kordyn-ink);
 }
 
 .kordynSystem .configPanel {
-  border-left-color: #111311;
-  background: #f4f1e9;
-  box-shadow: -8px 0 0 rgba(17, 19, 17, .18);
+  border-left-color: var(--kordyn-ink);
+  background: var(--kordyn-paper);
+  box-shadow: -8px 0 0 color-mix(in srgb, var(--kordyn-ink) 18%, transparent);
 }
 
 .panelOverlay {
@@ -9124,7 +9148,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mOpsListHead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;min-height:89px;margin:0 -1px;padding:14px;background:var(--mOpsInk);color:#f7f4eb}.mOpsListHead h2{margin:0;font-size:18px;line-height:1.05;letter-spacing:-.035em}.mOpsListHead p{margin:6px 0 0;color:#abada5;font-size:9px;line-height:1.4}.mOpsListHead>button{display:flex;align-items:center;gap:5px;min-height:36px;padding:0 11px;border:0;background:var(--mOpsLime);color:var(--mOpsInk);font-size:9px;font-weight:750}.mOpsListHead>button:disabled{opacity:.4}.mOpsListHead svg{width:13px}
 .mOpsTaskStats{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsTaskStats>span{display:grid;gap:4px;padding:11px;border-right:1px solid var(--mOpsLine)}.mOpsTaskStats>span:last-child{border-right:0}.mOpsTaskStats small{color:var(--mOpsMuted);font-size:8px;font-weight:700}.mOpsTaskStats b{font:650 17px Manrope,var(--font-ui)}.mOpsTaskList>button{grid-template-columns:7px minmax(0,1fr) auto 13px;gap:9px}.mOpsTaskList>button>div em{color:#8b857c;font:600 7.5px var(--font-mono);font-style:normal}.mOpsRunList>div{display:grid;grid-template-columns:45px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:47px;padding:7px 11px;border-bottom:1px solid var(--mOpsLine)}.mOpsRunList>div:last-child{border-bottom:0}.mOpsRunList time{font:600 8px var(--font-mono);color:var(--mOpsMuted)}.mOpsRunList>div>span{display:grid;gap:2px;min-width:0}.mOpsRunList b{overflow:hidden;font-size:9.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsRunList small{color:var(--mOpsMuted);font:600 7.5px var(--font-mono)}
 .mOpsDetailNav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:48px;margin:0 -11px;border-bottom:1px solid #bbb7ae;background:#faf8f2}.mOpsDetailNav>button{display:flex;align-items:center;gap:4px;height:100%;padding:0 12px;border:0;background:transparent;color:#33332e;font-size:9px;text-align:left}.mOpsDetailNav>b{font-size:10.5px}.mOpsTaskHero{display:grid;grid-template-columns:1fr auto;gap:8px;padding:18px 14px;background:var(--mOpsInk);color:#f6f2e8}.mOpsTaskHero>small{grid-column:1/-1;color:#69b28d;font:700 8px var(--font-mono)}.mOpsTaskHero h2{margin:0;font-size:21px;letter-spacing:-.035em}.mOpsFacts{display:grid!important;grid-template-columns:1fr 1fr}.mOpsFacts>div{display:grid;gap:5px;min-width:0;padding:11px;border-right:1px solid var(--mOpsLine);border-bottom:1px solid var(--mOpsLine)}.mOpsFacts>div:nth-child(2n){border-right:0}.mOpsFacts small{color:var(--mOpsMuted);font-size:8px}.mOpsFacts b{overflow-wrap:anywhere;font-size:9px}.mOpsStickyActions{position:sticky;bottom:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:4px;padding:1px;background:#a9a59c}.mOpsStickyActions>button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:44px;border:0;background:var(--mOpsInk);color:#fff;font-size:9px;font-weight:700}.mOpsStickyActions>button:first-child{grid-column:1/-1;background:var(--mOpsLime);color:var(--mOpsInk)}.mOpsStickyActions>button.danger{background:#853e36}.mOpsStickyActions>button:disabled{opacity:.42}.mOpsStickyActions svg{width:13px}
-.mOpsTaskCreate form{display:grid;gap:11px;padding:14px 12px;border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsTaskKind{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bdb8ae}.mOpsTaskKind button{min-height:38px;border:0;border-right:1px solid #bdb8ae;background:#ede9df;color:#6d675d;font-size:8.5px;font-weight:750}.mOpsTaskKind button:last-child{border-right:0}.mOpsTaskKind button.active{background:var(--mOpsInk);color:var(--mOpsLime)}.mOpsTaskCreate label{display:grid;gap:6px}.mOpsTaskCreate label>span{color:var(--mOpsMuted);font-size:8.5px;font-weight:700}.mOpsTaskCreate input,.mOpsTaskCreate select,.mOpsTaskCreate textarea{width:100%;min-height:42px;box-sizing:border-box;border:1px solid #cfc8bc;border-radius:0;background:#fff;color:#292a25;padding:0 10px;font:10px var(--font-ui)}.mOpsTaskCreate textarea{min-height:82px;padding:10px;resize:vertical;line-height:1.5}.mOpsTaskCreate form>button{min-height:44px;border:0;background:var(--mOpsInk);color:#fff;font-size:10px;font-weight:750}.mOpsFormNote{display:flex;align-items:flex-start;gap:8px;padding:10px;background:#ece9df;color:#625d54;font-size:8.5px;line-height:1.45}.mOpsFormNote svg{flex:0 0 14px;color:#5c9878}
+.mOpsTaskCreate form{display:grid;gap:11px;padding:14px 12px;border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsTaskKind{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bdb8ae}.mOpsTaskKind button{min-height:44px;border:0;border-right:1px solid #bdb8ae;border-radius:0;background:#ede9df;color:#6d675d;font-size:8.5px;font-weight:750}.mOpsTaskKind button:last-child{border-right:0}.mOpsTaskKind button.active{background:var(--mOpsInk);color:var(--mOpsLime)}.mOpsTaskCreate label{display:grid;gap:6px}.mOpsTaskCreate label>span{color:var(--mOpsMuted);font-size:8.5px;font-weight:700}.mOpsTaskCreate input,.mOpsTaskCreate select,.mOpsTaskCreate textarea{width:100%;min-height:42px;box-sizing:border-box;border:1px solid #cfc8bc;border-radius:0;background:#fff;color:#292a25;padding:0 10px;font:10px var(--font-ui)}.mOpsTaskCreate textarea{min-height:82px;padding:10px;resize:vertical;line-height:1.5}.mOpsTaskCreate form>button{min-height:44px;border:0;background:var(--mOpsInk);color:#fff;font-size:10px;font-weight:750}.mOpsFormNote{display:flex;align-items:flex-start;gap:8px;padding:10px;background:#ece9df;color:#625d54;font-size:8.5px;line-height:1.45}.mOpsFormNote svg{flex:0 0 14px;color:#5c9878}
 .mOpsRecoveryTruth{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;background:var(--mOpsInk);color:#f7f4eb}.mOpsRecoveryTruth>div{display:flex;align-items:center;gap:10px}.mOpsRecoveryTruth>div>svg{width:20px;color:#e7b25f}.mOpsRecoveryTruth.healthy>div>svg{color:var(--mOpsLime)}.mOpsRecoveryTruth span{display:grid;gap:3px}.mOpsRecoveryTruth small{color:#9a9d95;font-size:8px}.mOpsRecoveryTruth h2{margin:0;font-size:18px;letter-spacing:-.035em}.mOpsRecoveryTruth p{margin:0;color:#b9bbb4;font:600 8px var(--font-mono)}.mOpsRecoveryTruth>button{min-height:36px;padding:0 10px;border:0;background:var(--mOpsLime);color:var(--mOpsInk);font-size:8.5px;font-weight:750}.mOpsDifferences>div,.mOpsIncidents>div{display:grid;grid-template-columns:7px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:51px;padding:8px 11px;border-bottom:1px solid var(--mOpsLine)}.mOpsDifferences>div>span:first-child,.mOpsIncidents>div>span:first-child{width:7px;height:7px;background:#c9863f}.mOpsDifferences>div>span.danger,.mOpsIncidents>div>span.danger{background:#bd5548}.mOpsDifferences>div>div,.mOpsIncidents>div>div{display:grid;gap:3px}.mOpsDifferences b,.mOpsIncidents b{font-size:9.5px}.mOpsDifferences small,.mOpsIncidents small{color:var(--mOpsMuted);font-size:8.5px}.mOpsRecoveryActions>button{display:grid;grid-template-columns:22px minmax(0,1fr) 13px;align-items:center;gap:9px;width:100%;min-height:58px;padding:8px 11px;border:0;border-bottom:1px solid var(--mOpsLine);background:transparent;color:inherit;text-align:left}.mOpsRecoveryActions>button:disabled{opacity:.42}.mOpsRecoveryActions>button>svg{width:16px}.mOpsRecoveryActions>button>span{display:grid;gap:3px}.mOpsRecoveryActions b{font-size:9.5px}.mOpsRecoveryActions small{color:var(--mOpsMuted);font-size:8.5px}.mOpsIncidents>div>button{border:0;background:transparent;color:#8d4037;font-size:8.5px;font-weight:750}
 .mOpsAuditProof{display:grid;grid-template-columns:1fr 1fr;background:var(--mOpsInk);color:#f6f2e8}.mOpsAuditProof>div{display:flex;align-items:center;gap:9px;min-height:77px;padding:12px;border-right:1px solid #464943}.mOpsAuditProof>div:last-child{border-right:0}.mOpsAuditProof svg{width:18px;color:var(--mOpsLime)}.mOpsAuditProof .broken svg,.mOpsAuditProof .missing svg{color:#df7959}.mOpsAuditProof span{display:grid;gap:4px}.mOpsAuditProof small{color:#969991;font:700 8px var(--font-mono)}.mOpsAuditProof b{font-size:11px}.mOpsAuditTools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.mOpsAuditTools label{display:flex;align-items:center;gap:7px;min-height:39px;padding:0 10px;border:1px solid var(--mOpsLine);background:#fff}.mOpsAuditTools svg{width:13px;color:#817b71}.mOpsAuditTools input{width:100%;border:0;outline:0;background:transparent;font-size:9px}.mOpsAuditTools>button{padding:0 12px;border:0;background:var(--mOpsInk);color:#fff;font-size:8.5px;font-weight:700}.mOpsAuditList>button{grid-template-columns:76px minmax(0,1fr) auto 13px;gap:8px}.mOpsAuditList time{font:600 7.5px var(--font-mono);color:var(--mOpsMuted)}.mOpsAuditList>button>div{display:grid;gap:3px;min-width:0}.mOpsAuditList b{overflow:hidden;font-size:9.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsAuditList small{overflow:hidden;color:var(--mOpsMuted);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.mOpsAuditDetail,.mOpsNoticeDetail{display:grid;gap:12px;padding:15px 13px;border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsAuditDetail h2,.mOpsNoticeDetail h2{margin:0;font-size:20px;line-height:1.15;letter-spacing:-.035em}.mOpsAuditDetail>div,.mOpsNoticeDetail>div{display:grid}.mOpsAuditDetail>div>span,.mOpsNoticeDetail>div>span{display:grid;grid-template-columns:70px minmax(0,1fr);gap:9px;padding:9px 0;border-bottom:1px solid var(--mOpsLine)}.mOpsAuditDetail small,.mOpsNoticeDetail small{color:var(--mOpsMuted);font-size:8px}.mOpsAuditDetail b,.mOpsNoticeDetail b{overflow-wrap:anywhere;font-size:9px;text-align:right}.mOpsAuditDetail h3{margin:4px 0 0;font-size:10px}.mOpsAuditDetail pre{max-height:260px;margin:0;padding:11px;overflow:auto;background:var(--mOpsInk);color:#d7dbd3;font:500 8px/1.55 var(--font-mono);white-space:pre-wrap}.mOpsNoticeDetail>p{margin:0;color:#635e56;font-size:10px;line-height:1.6}.mOpsNoticeDetail>button{min-height:43px;border:0;background:var(--mOpsInk);color:#fff;font-size:9.5px;font-weight:750}.mOpsNoticeDetail>button:disabled{opacity:.45}
 .mOpsNoticeList>button{grid-template-columns:7px minmax(0,1fr) auto 13px;gap:9px;align-items:start}.mOpsNoticeList>button.read{opacity:.64}.mOpsNoticeList p{display:-webkit-box;margin:1px 0;overflow:hidden;color:#655f56;font-size:9px;line-height:1.4;-webkit-line-clamp:2;-webkit-box-orient:vertical}.mOpsConfigLink{display:grid;grid-template-columns:20px minmax(0,1fr) 13px;align-items:center;gap:9px;min-height:57px;padding:8px 11px;border:1px solid var(--mOpsLine);background:#ece9df;color:inherit;text-align:left}.mOpsConfigLink>svg{width:16px}.mOpsConfigLink>span{display:grid;gap:3px}.mOpsConfigLink b{font-size:9.5px}.mOpsConfigLink small{color:var(--mOpsMuted);font-size:8.5px}
@@ -10226,7 +10250,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mConfigurationRegistry>button{display:grid!important;grid-template-columns:27px minmax(0,1fr) minmax(86px,.7fr) 13px!important;align-items:center;gap:9px;width:100%;min-height:61px!important;padding:8px 10px!important;border:0;border-bottom:1px solid var(--mCfgLine);border-radius:0;background:transparent;color:var(--mCfgInk);text-align:left}.mConfigurationRegistry>button:last-child{border-bottom:0}.mConfigurationRegistry>button:active{background:var(--mCfgAcid)}.mConfigurationRegistry>button>i{display:grid;place-items:center;width:25px;height:25px;border:1px solid var(--mCfgInk);font:720 8px var(--font-mono);font-style:normal}.mConfigurationRegistry>button>span{display:grid;gap:3px;min-width:0}.mConfigurationRegistry>button>span small{color:#77796F;font:700 7px var(--font-mono);letter-spacing:.07em}.mConfigurationRegistry>button>span b{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.mConfigurationRegistry>button>em{overflow:hidden;color:#6F756B;font-size:7.5px;font-style:normal;text-align:right;text-overflow:ellipsis;white-space:nowrap}.mConfigurationRegistry>button>svg{color:#77796F}
 .mConfigurationLedger{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2)}.mConfigurationLedger>header{min-height:52px;padding:10px 12px;border-bottom:1px solid var(--mCfgInk)}.mConfigurationLedger>header>div{display:grid;gap:3px}.mConfigurationLedger>header small{color:#6F756B;font:700 7px var(--font-mono);letter-spacing:.08em}.mConfigurationLedger>header b{font-size:11px}.mConfigurationLedger>button{display:grid;grid-template-columns:20px minmax(0,1fr) auto 13px;align-items:center;gap:9px;width:100%;min-height:63px;padding:9px 11px;border:0;border-bottom:1px solid var(--mCfgLine);background:transparent;color:var(--mCfgInk);text-align:left}.mConfigurationLedger>button>span{display:grid;gap:3px}.mConfigurationLedger>button b{font-size:9.5px}.mConfigurationLedger>button small{color:#77796F;font-size:8px;line-height:1.35}.mConfigurationSubscription{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:11px}.mConfigurationSubscription>span{display:grid;gap:3px}.mConfigurationSubscription small{color:#77796F;font-size:8px}.mConfigurationSubscription b{font-size:10px}.mConfigurationSubscription time{grid-column:1/-1;color:#77796F;font-size:8px}
 .mConfigDomainHero.kTruthBand{border-color:var(--mCfgInk);border-radius:0;background:var(--mCfgInk);color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand h2{color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand p{color:#AEB5AA}.mConfigDomainHero.kTruthBand>div{border-color:rgba(255,255,255,.17)}.mConfigDomainHero.kTruthBand>div span+span{border-color:rgba(255,255,255,.17)}.mConfigDomainHero.kTruthBand small{color:#899086}.mConfigDomainHero.kTruthBand b{color:var(--mCfgPaper2)}.mConfigDomainHero.kTruthBand>button{border:1px solid rgba(255,255,255,.3);border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk)}
-.mConfigurationDomainIndex,.mConfigurationEditor .mNativeSection,.mConfigurationEditor .settingsPage{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2);box-shadow:none}.mConfigurationDomainIndex>header{border-bottom:1px solid var(--mCfgInk)}.mConfigurationDomainIndex>button{grid-template-columns:25px 30px minmax(0,1fr) auto 13px!important;min-height:64px;border-bottom:1px solid var(--mCfgLine);border-radius:0}.mConfigurationDomainIndex>button>i{display:grid;place-items:center;width:23px;height:23px;border:1px solid var(--mCfgInk);font:700 8px var(--font-mono);font-style:normal}.mConfigurationDomainIndex .mRiskSettingIcon{border-radius:0}.mConfigurationEditor{display:grid;gap:10px}.mConfigurationEditor .mNativeSection{margin:0}.mConfigurationEditor :is(input,textarea,select,button),.mConfigurationEditor .mNativeConfigForm{border-radius:0;box-shadow:none}.mConfigurationEditor :is(input,textarea,select){min-height:44px}.mConfigurationEditor .mNativeConfigForm{gap:0;padding:0;border-color:var(--mCfgInk);background:var(--mCfgPaper2)}.mConfigurationEditor .mNativeConfigForm>label,.mConfigurationEditor .mNativeConfigForm>div{padding:10px 11px;border-bottom:1px solid var(--mCfgLine)}.mConfigurationEditor .mNativeConfigForm>button{min-height:44px;margin:11px;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar button{min-height:44px;border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mEventSourceNative article button{min-height:40px;border-radius:0}.mConfigurationEditor .mEventSourceNative article button.danger{color:var(--mCfgDanger)}
+.mConfigurationDomainIndex,.mConfigurationEditor .mNativeSection,.mConfigurationEditor .settingsPage{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgPaper2);box-shadow:none}.mConfigurationDomainIndex>header{border-bottom:1px solid var(--mCfgInk)}.mConfigurationDomainIndex>button{grid-template-columns:25px 30px minmax(0,1fr) auto 13px!important;min-height:64px;border-bottom:1px solid var(--mCfgLine);border-radius:0}.mConfigurationDomainIndex>button>i{display:grid;place-items:center;width:23px;height:23px;border:1px solid var(--mCfgInk);font:700 8px var(--font-mono);font-style:normal}.mConfigurationDomainIndex .mRiskSettingIcon{border-radius:0}.mConfigurationEditor{display:grid;gap:10px}.mConfigurationEditor .mNativeSection{margin:0}.mConfigurationEditor :is(input,textarea,select,button),.mConfigurationEditor .mNativeConfigForm{border-radius:0;box-shadow:none}.mConfigurationEditor :is(input,textarea,select){min-height:44px}.mConfigurationEditor button{min-height:44px}.mConfigurationEditor .mNativeConfigForm{gap:0;padding:0;border-color:var(--mCfgInk);background:var(--mCfgPaper2)}.mConfigurationEditor .mNativeConfigForm>label,.mConfigurationEditor .mNativeConfigForm>div{padding:10px 11px;border-bottom:1px solid var(--mCfgLine)}.mConfigurationEditor .mNativeConfigForm>button{min-height:44px;margin:11px;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar{border:1px solid var(--mCfgInk);border-radius:0;background:var(--mCfgInk)}.mConfigurationEditor .mRiskSaveBar button{min-height:44px;border-radius:0;background:var(--mCfgAcid);color:var(--mCfgInk)}.mConfigurationEditor .mEventSourceNative article button{min-height:44px;border-radius:0}.mConfigurationEditor .mEventSourceNative article button.danger{width:44px;color:var(--mCfgDanger)}
+.mConfigurationAuditState{display:grid;grid-template-columns:20px minmax(0,1fr);gap:9px;align-items:start;padding:11px;border-top:1px solid var(--mCfgLine);background:var(--mCfgPaper2)}.mConfigurationAuditState>span{display:grid;gap:4px}.mConfigurationAuditState b{font-size:9.5px}.mConfigurationAuditState small{color:color-mix(in srgb,var(--mCfgInk) 58%,var(--mCfgPaper2));font-size:8px;line-height:1.45}.mConfigurationAuditState.loading svg{color:var(--kordyn-violet)}.mConfigurationGovernance{overflow:hidden;border-radius:0}.mConfigurationGovernance>header{border-bottom:1px solid var(--mCfgInk)}.mConfigurationForbidden{margin:11px;border-radius:0}
+.mConfigurationEditor .mRiskField>div{height:44px;border-radius:0}.mConfigurationEditor .mRiskNote,.mConfigurationEditor .mConfigRuleList article>button,.mConfigurationEditor .mConfigRuleList article select{border-radius:0}
 
 /* Control and Operations retain the same hard runtime grammar after touch reflow. */
 .mControlTruth,.mControlBoundaryHero,.mOpsStatus,.mOpsRecoveryTruth{border:1px solid #111311;border-radius:0;background:#111511;color:#fffdf7;box-shadow:none}
@@ -10252,6 +10278,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .kordynSystem .kRegistry > button > :last-child:not(:only-child),
   .kordynSystem .kRegistry > a > :last-child:not(:only-child),
   .kordynSystem .kRegistry > [role="button"] > :last-child:not(:only-child) { grid-column: 2; }
+  .kordynSystem .mConfigurationRegistry > button > :last-child:not(:only-child) { grid-column: auto; }
+  .kordynSystem .mConfigurationDomainIndex > button > :last-child:not(:only-child) { grid-column: auto; }
   .kordynSystem .kInspector > dl > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .kordynSystem .kEvidenceLedger li { grid-template-columns: 8px minmax(0, 1fr); }
   .kordynSystem .kEvidenceLedger li > small { grid-column: 2; }

@@ -26,6 +26,7 @@ globalThis.window = {
 
 const React = require("react");
 const { renderToString } = require("react-dom/server");
+const postcss = require("postcss");
 
 // 打字机等基于 setInterval 的 hook 在 SSR 下不运行，无需 stub timer 细节。
 
@@ -50,6 +51,10 @@ esbuild.buildSync({
       export { NativeAuthPage } from "./src/landing.jsx";
       export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
+      import * as MobileModule from "./src/mobile.jsx";
+      import * as MobileOperationsModule from "./src/mobileOperations.jsx";
+      import * as ConceptPagesModule from "./src/conceptPages.jsx";
+      export { MobileModule, MobileOperationsModule, ConceptPagesModule };
       export { buildStrategyCatalogRows, isPublishedKnowledgeStrategy } from "./src/viewData.js";
       export { CapabilitiesConcept, ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
@@ -65,6 +70,25 @@ esbuild.buildSync({
   logLevel: "silent"
 });
 const C = require(outFile);
+
+const styleText = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+const productStyleText = fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8");
+const foundationStyleText = fs.readFileSync(path.join(rootDir, "src/product-foundation.css"), "utf8");
+function declarationsFor(cssText, selector) {
+  const matches = [];
+  postcss.parse(cssText).walkRules((rule) => {
+    if (rule.selectors?.includes(selector)) matches.push(Object.fromEntries(rule.nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value])));
+  });
+  return Object.assign({}, ...matches);
+}
+function declarationValuesFor(cssText, selector, property) {
+  const values = [];
+  postcss.parse(cssText).walkRules((rule) => {
+    if (!rule.selectors?.includes(selector)) return;
+    rule.walkDecls(property, (decl) => values.push(decl.value));
+  });
+  return values;
+}
 
 test("网页版 API 始终同源，不受浏览器残留后端地址影响", () => {
   assert.equal(C.resolveApiBase({ native: false, stored: "http://127.0.0.1:8787", configured: "" }), "");
@@ -594,11 +618,29 @@ test("Control, Operations, and Configuration use the prototype Registry Inspecto
   assert.match(settings, /kFormSurface/);
 
   const recovery = render(React.createElement(C.OperationsRecoveryConcept, { data, action, ui }));
-  assert.match(recovery, /opxRecoveryActions kActionBar|kActionBar opxRecoveryActions/);
+  assert.match(recovery, /opxRecoveryActionList kActionBar|kActionBar opxRecoveryActionList/);
+});
+
+test("Task 6 shared roles stop at semantic boundaries without overriding product grids", () => {
+  const posture = render(React.createElement(C.RiskPostureConcept, { data, action, ui }));
+  assert.match(posture, /class="controlTruth [^"]*(good|warn|bad|neutral)/);
+  assert.doesNotMatch(posture, /class="controlTruth[^"]*kTruthBand/);
+  assert.ok(declarationValuesFor(productStyleText, ".productWorkspace .controlTruth__facts", "grid-template-columns").includes("repeat(4,minmax(0,1fr))"));
+
+  const recovery = render(React.createElement(C.OperationsRecoveryConcept, { data, action, ui }));
+  assert.match(recovery, /class="opxRecoveryActions"/);
+  assert.match(recovery, /class="opxRecoveryActionList kActionBar"/);
+  assert.equal(declarationsFor(productStyleText, ".kordynSystem .opxRecoveryActionList.kActionBar").display, "block");
+  assert.equal(declarationsFor(productStyleText, ".kordynSystem .opxRecoveryActionList.kActionBar>button").display, "grid");
+
+  const registryRows = declarationsFor(styleText, ".kordynSystem .mConfigurationRegistry > button > :last-child:not(:only-child)");
+  const domainRows = declarationsFor(styleText, ".kordynSystem .mConfigurationDomainIndex > button > :last-child:not(:only-child)");
+  assert.equal(registryRows["grid-column"], "auto");
+  assert.equal(domainRows["grid-column"], "auto");
 });
 
 test("mobile Configuration renders a registry index and bounded deep editor surfaces", () => {
-  const index = render(React.createElement(C.MobileSettingsIndex, { data, onOpen: () => {} }));
+  const index = render(React.createElement(C.MobileSettingsIndex, { data, ui, onOpen: () => {} }));
   assert.match(index, /mConfigurationIndex/);
   assert.match(index, /mConfigurationRegistry kRegistry|kRegistry mConfigurationRegistry/);
   assert.doesNotMatch(index, /mCard mAcctCard/);
@@ -613,6 +655,53 @@ test("mobile Configuration renders a registry index and bounded deep editor surf
   assert.match(sources, /mConfigurationEditor kFormSurface|kFormSurface mConfigurationEditor/);
 });
 
+test("direct Configuration entry distinguishes supplementary loading from authoritative empty", () => {
+  const direct = { ...data, loadedSections: ["systemSettings"], riskRules: [], auditLogs: [], eventSources: [] };
+  const desktopPending = render(React.createElement(C.SettingsConcept, { data: direct, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  const mobilePending = render(React.createElement(C.MobileSettingsIndex, { data: direct, ui, onOpen: () => {} }));
+  assert.match(desktopPending, /尚未加载|Not loaded/);
+  assert.match(mobilePending, /尚未加载|Not loaded/);
+  assert.doesNotMatch(desktopPending, /暂无配置审计记录|No configuration audit records/);
+
+  const loadedEmpty = { ...direct, loadedSections: ["systemSettings", "riskCenter", "operationsCenter"] };
+  const desktopEmpty = render(React.createElement(C.SettingsConcept, { data: loadedEmpty, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  const mobileEmpty = render(React.createElement(C.MobileSettingsIndex, { data: loadedEmpty, ui, onOpen: () => {} }));
+  assert.doesNotMatch(desktopEmpty, /尚未加载|Not loaded/);
+  assert.doesNotMatch(mobileEmpty, /尚未加载|Not loaded/);
+  assert.match(desktopEmpty, /暂无配置审计记录|No configuration audit records/);
+});
+
+test("APP Configuration registry reaches real deployed governance surfaces", () => {
+  const index = render(React.createElement(C.MobileSettingsIndex, { data, ui, onOpen: () => {} }));
+  assert.match(index, /Agent 配置|Agent Configuration/);
+  assert.match(index, /用户与订阅|Users &amp; Subscriptions/);
+  assert.equal(typeof C.MobileModule.MobileGovernanceConfiguration, "function");
+  const agents = render(React.createElement(C.MobileModule.MobileGovernanceConfiguration, { kind: "agents", data, action, ui }));
+  assert.match(agents, /agentSettings|Agent 配置|Agent Configuration/);
+  const users = render(React.createElement(C.MobileModule.MobileGovernanceConfiguration, { kind: "users", data: { ...data, user: { ...data.user, isOwner: true } }, action, ui }));
+  assert.match(users, /用户与订阅|Users &amp; Subscriptions|userSettings/);
+  const forbidden = render(React.createElement(C.MobileModule.MobileGovernanceConfiguration, { kind: "users", data: { ...data, user: { ...data.user, isOwner: false } }, action, ui }));
+  assert.match(forbidden, /Owner 权限必需|Owner authority required/);
+  assert.doesNotMatch(forbidden, /settingsPage[^>]*><\/div>/);
+});
+
+test("migrated mobile editors use bounded square 44px interaction grammar", () => {
+  for (const Editor of [C.MobileRiskRulesConfiguration, C.MobileModule.MobileRiskGoalEditor, C.MobileModule.MobileProtectionEditor]) {
+    assert.equal(typeof Editor, "function");
+    const html = render(React.createElement(Editor, { data, action, ui, onDone: () => {} }));
+    assert.match(html, /mConfigurationEditor kFormSurface|kFormSurface mConfigurationEditor/);
+  }
+  assert.equal(typeof C.MobileOperationsModule.TaskCreate, "function");
+  const task = render(React.createElement(C.MobileOperationsModule.TaskCreate, { action, onDone: () => {} }));
+  assert.match(task, /mOpsTaskKind/);
+  assert.equal(declarationsFor(styleText, ".mConfigurationEditor :is(input,textarea,select,button)")["border-radius"], "0");
+  assert.equal(declarationsFor(styleText, ".mConfigurationEditor button")["min-height"], "44px");
+  assert.equal(declarationsFor(styleText, ".mConfigurationEditor .mEventSourceNative article button")["min-height"], "44px");
+  assert.equal(declarationsFor(styleText, ".mConfigurationEditor .mRiskField>div").height, "44px");
+  assert.equal(declarationsFor(styleText, ".mConfigurationEditor .mRiskField>div")["border-radius"], "0");
+  assert.equal(declarationsFor(styleText, ".mOpsTaskKind button")["min-height"], "44px");
+});
+
 test("emergency stop uses an explicit typed dangerous-state confirmation", () => {
   const html = renderToString(React.createElement(C.KillConfirmDialog, {
     enable: true,
@@ -623,6 +712,56 @@ test("emergency stop uses an explicit typed dangerous-state confirmation", () =>
   assert.match(html, /输入 KILL|Type KILL/);
   assert.match(html, /placeholder="KILL"/);
   assert.match(html, /confirmDanger[^>]*disabled|disabled=""[^>]*confirmDanger/);
+  assert.match(html, /平仓|close positions/i);
+  assert.match(html, /撤单|cancel orders/i);
+  assert.match(html, /保护|protection/i);
+  assert.match(html, /对账|reconciliation/i);
+  assert.match(html, /恢复|recovery/i);
+});
+
+test("dangerous confirmation fails closed and returns audit evidence only after authoritative success", async () => {
+  assert.equal(typeof C.MobileModule.submitKillSwitchChange, "function");
+  const calls = [];
+  const failed = await C.MobileModule.submitKillSwitchChange({
+    enable: true, reason: "operator test", confirmation: "KILL",
+    action: async (...args) => { calls.push(args); return { ok: false, error: "reconciliation pending", auditId: "audit_fail_1" }; }
+  });
+  assert.deepEqual(calls, [["/api/risk/kill-switch", { enabled: true, reason: "operator test" }]]);
+  assert.equal(failed.ok, false);
+  assert.match(failed.message, /reconciliation pending/);
+  assert.match(failed.evidence, /audit_fail_1/);
+
+  let confirmed = 0;
+  const succeeded = await C.MobileModule.submitKillSwitchChange({
+    enable: false, reason: "", confirmation: "RESUME",
+    action: async () => ({ ok: true, audit: { id: "audit_ok_1" }, killSwitch: false }),
+    onConfirmed: () => { confirmed += 1; }
+  });
+  assert.equal(succeeded.ok, true);
+  assert.equal(confirmed, 1);
+  assert.match(succeeded.evidence, /audit_ok_1/);
+
+  const disabled = await C.MobileModule.submitKillSwitchChange({ enable: true, confirmation: "", action: async () => ({ ok: true }) });
+  assert.equal(disabled.ok, false);
+  assert.equal(disabled.blocked, true);
+  const evidence = render(React.createElement(C.MobileModule.KillSwitchOutcome, { outcome: failed }));
+  assert.match(evidence, /reconciliation pending/);
+  assert.match(evidence, /audit_fail_1/);
+});
+
+test("danger confirmation block uses defined semantic custom properties only", () => {
+  const start = styleText.indexOf("/* Runtime-risk confirmations");
+  const end = styleText.indexOf(".panelOverlay", start);
+  const block = styleText.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(block, /#[0-9a-f]{3,8}\b|rgba?\(/i);
+  const definitions = new Set();
+  postcss.parse(`${foundationStyleText}\n${productStyleText}\n${styleText}`).walkDecls((decl) => {
+    if (decl.prop.startsWith("--")) definitions.add(decl.prop);
+  });
+  const references = [...block.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]);
+  assert.ok(references.length > 0);
+  assert.deepEqual(references.filter((reference) => !definitions.has(reference)), []);
 });
 
 test("unified automation presentation separates the saved target from the effective safety state", () => {
