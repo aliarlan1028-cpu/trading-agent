@@ -50,6 +50,7 @@ esbuild.buildSync({
       export { NativeAuthPage } from "./src/landing.jsx";
       export { MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
+      export { buildStrategyCatalogRows, isPublishedKnowledgeStrategy } from "./src/viewData.js";
       export { CapabilitiesConcept, ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
@@ -1156,7 +1157,7 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(mobileNativeStrategy, /24 笔版本归因实盘样本/);
   assert.match(mobileNativeStrategy, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
 
-  for (const [status, mobileExpected, desktopExpected] of [["live_probation", "小额试用", "小额试用中"], ["retired", "已退役", "已退役"], ["superseded", "已被替代", "已被替代"]]) {
+  for (const [status, mobileExpected, desktopExpected] of [["live_probation", "小额试用", "小额试用中"], ["degraded", "已降级", "已降级"], ["retired", "已退役", "已退役"], ["superseded", "已被替代", "已被替代"]]) {
     const releasedStrategy = {
       id: `released-${status}`,
       name: `Released ${status}`,
@@ -1175,6 +1176,19 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
     assert.match(desktopHtml, /data-provenance="knowledge-derived"/);
     assert.match(desktopHtml, new RegExp(`data-lifecycle-stage="owner-release" data-lifecycle-applicable="true"[\\s\\S]{0,220}v8 · ${desktopExpected}`));
     assert.doesNotMatch(desktopHtml, /不适用 · 此资产没有 Owner 发布流程/);
+  }
+
+  for (const status of ["retired", "superseded"]) {
+    const unpublishedArchive = {
+      id: `unpublished-${status}`,
+      name: `Unpublished ${status}`,
+      methodId: `method-unpublished-${status}`,
+      status,
+      version: 9,
+      spec: { direction: "long", timeframe: "1h" }
+    };
+    assert.equal(C.isPublishedKnowledgeStrategy(unpublishedArchive), false, `${status} without publication evidence must not enter the released registry`);
+    assert.deepEqual(C.buildStrategyCatalogRows({ knowledge: { tradingSkills: [unpublishedArchive] } }).rows, [], `${status} without publication evidence is non-applicable to Owner release`);
   }
 
   const desktopOwner = render(React.createElement(C.OwnerReviewWorkspaceConcept, { data: lifecycleData, action, ui, initialOwnerPane: "improvements" }));
@@ -1211,9 +1225,11 @@ test("Lab convergence styles retain the mobile lifecycle rail and list-detail ev
   assert.match(migratedSelectors, /\.mCapabilityUsage\s*\{[^}]*gap:\s*0/);
   assert.match(migratedSelectors, /\.mResearchSheetMetrics\s*\{[^}]*gap:\s*0[^}]*border-radius:\s*0/);
   assert.match(migratedSelectors, /\.mResearchSheet > section,\.mResearchParams\s*\{[^}]*border-radius:\s*0/);
-  const definedKordynProperties = new Set([...foundation.matchAll(/(--kordyn-[a-z0-9-]+)\s*:/g)].map((match) => match[1]));
-  const referencedKordynProperties = new Set([...migratedSelectors.matchAll(/var\((--kordyn-[a-z0-9-]+)/g)].map((match) => match[1]));
-  assert.deepEqual([...referencedKordynProperties].filter((name) => !definedKordynProperties.has(name)).sort(), [], "migrated Lab blocks may reference only defined --kordyn-* custom properties");
+  const loadedProductCss = [foundation, system, styles].join("\n");
+  const definedCustomProperties = new Set([...loadedProductCss.matchAll(/(--[a-z0-9_-]+)\s*:/gi)].map((match) => match[1]));
+  const referencedCustomProperties = new Set([...migratedSelectors.matchAll(/var\((--[a-z0-9_-]+)/gi)].map((match) => match[1]));
+  assert.ok(referencedCustomProperties.has("--pos") && referencedCustomProperties.has("--neg"), "migrated Lab evidence keeps the shared positive and negative semantic roles");
+  assert.deepEqual([...referencedCustomProperties].filter((name) => !definedCustomProperties.has(name)).sort(), [], "every custom property referenced by the migrated Lab blocks must be declared in the loaded product CSS");
   const convergenceBlock = (css) => css.slice(css.lastIndexOf("/* Lab deep-page convergence */"));
   assert.doesNotMatch([foundation, system, styles].map(convergenceBlock).join("\n"), /linear-gradient|backdrop-filter|box-shadow/);
 });
