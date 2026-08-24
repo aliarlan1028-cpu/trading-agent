@@ -94,7 +94,7 @@ export function registerReviewRoutes(app, ctx) {
       hypothesis: currentItem.proposal,
       successCriteria: {
         minTrades: 20,
-        minSmallLiveTrades: 3,
+        minSmallLiveTrades: 10,
         minProfitFactor: 1.2,
         maxDrawdownPct: 3,
         requireManualApproval: true

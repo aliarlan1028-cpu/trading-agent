@@ -468,9 +468,33 @@ export function syncKnowledgeSkillLifecycle(db, actor = "KnowledgeLifecycle", op
   const changes = [];
   for (const skill of db.knowledge.tradingSkills) {
     if (options.predicate && !options.predicate(skill)) continue;
-    if (skill.status !== "paper_validating" || !skill.paperSessionId) continue;
+    if (skill.status !== "paper_validating") continue;
     const session = db.paperSessions.find((item) => item.id === skill.paperSessionId);
-    if (!session || !["passed", "failed"].includes(session.status)) continue;
+    if (!session) {
+      // A paper-validating label without its immutable session cannot prove any
+      // forward result. Preserve a still-bound historical validation, clear the
+      // dangling pointer, and requeue a brand-new paper run. Never promote from
+      // this recovery path and never manufacture a replacement result.
+      const validationAt = new Date(skill.validation?.validatedAt || 0).getTime();
+      const validationSymbol = String(skill.validation?.symbol || "").toUpperCase();
+      const validationTimeframe = normalizeTimeframe(skill.validation?.timeframe);
+      const reusableHistoricalEvidence = skill.validation?.status === "passed"
+        && Number.isFinite(validationAt) && validationAt > 0
+        && Boolean(validationSymbol)
+        && Boolean(skill.validation?.timeframe)
+        && validationTimeframe === skill.spec?.timeframe
+        && (skill.validation?.validatedSymbols || []).map((symbol) => String(symbol).toUpperCase()).includes(validationSymbol);
+      skill.paperSessionId = null;
+      const next = reusableHistoricalEvidence ? "historical_validated" : "compiled";
+      const reason = reusableHistoricalEvidence
+        ? "paper_session_missing_requeued"
+        : "paper_session_missing_historical_revalidation_required";
+      transition(skill, next, reason, actor);
+      appendAudit(db, `知识技能模拟盘会话缺失，已${reusableHistoricalEvidence ? "回到历史验证通过队列" : "要求重新历史验证"}「${skill.name}」`, skill.id, actor, "warning");
+      changes.push({ skillId: skill.id, status: skill.status, reason });
+      continue;
+    }
+    if (!["passed", "failed"].includes(session.status)) continue;
     const sessionMatches = session.seeded === false
       && session.knowledgeSkillId === skill.id
       && Number(session.knowledgeSkillVersion) === Number(skill.version)

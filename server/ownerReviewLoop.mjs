@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
 import { appendAudit, id, nowIso } from "./store.mjs";
-import { isFinanciallyReconciledLifecycle, resolveTradeContext } from "./tradeReviewQueue.mjs";
-import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
+import { isFinanciallyReconciledLifecycle, resolveTradeContext, sameTradeLifecycle } from "./tradeReviewQueue.mjs";
+import { classifyTradeFill, groupSystemClosedTradeLifecycles, systemTradeFills } from "./systemTradeProjection.mjs";
 import { validatePublishedStrategyCandidate } from "./strategyStudio.mjs";
 
 const FACT_SCHEMA_VERSION = 1;
 const ASSESSMENT_SCHEMA_VERSION = 1;
+const LEARNING_SAMPLE_THRESHOLDS = Object.freeze({ probation: 10, preliminary: 30, meaningful: 50, mature: 100 });
 const ACTIONABLE_ROOTS = new Set([
   "data_quality", "model_reasoning", "strategy_regime", "entry_timing",
   "risk_sizing", "execution_quality", "exit_discipline", "opportunity_detection", "plan_policy_mismatch", "system_control_failure"
@@ -566,13 +567,224 @@ function reviewMemoryReferencesMatch(review = {}, memory = {}) {
     && (linkedByReview || linkedByMemory);
 }
 
+function reviewRowsMatchLifecycle(lifecycle, rows = []) {
+  return isFinanciallyReconciledLifecycle(lifecycle)
+    && rows.every((row) => fillBindingMatches(row, lifecycle));
+}
+
 export function findSystemReviewLifecycle(db, review = {}, memory = {}) {
   if (!review?.id || !reviewMemoryReferencesMatch(review, memory)) return null;
   const rows = memory?.id ? [review, memory] : [review];
-  return groupSystemClosedTradeLifecycles(db).find((lifecycle) => (
-    isFinanciallyReconciledLifecycle(lifecycle)
-    && rows.every((row) => fillBindingMatches(row, lifecycle))
-  )) || null;
+  return groupSystemClosedTradeLifecycles(db).find((lifecycle) => reviewRowsMatchLifecycle(lifecycle, rows)) || null;
+}
+
+function populated(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function normalized(value, transform = (item) => item) {
+  return populated(value) ? transform(String(value).trim()) : null;
+}
+
+function fillIdentityValues(fill = {}, singular, plural) {
+  const breakdownField = singular === "exchangeTradeId" ? "tradeId" : "orderId";
+  return [...new Set([
+    fill[singular],
+    ...(Array.isArray(fill[plural]) ? fill[plural] : []),
+    ...(fill.exitBreakdown || []).map((row) => row?.[singular] || row?.[breakdownField])
+  ].map((value) => normalized(value)).filter(Boolean))];
+}
+
+function strategyVersionEvidence(db, lifecycle, executionOrder, plan) {
+  const refs = [plan?.strategyRef, executionOrder?.strategyRef, ...(lifecycle.fills || []).map((fill) => fill.strategyRef)].filter(Boolean);
+  const primary = plan?.strategyRef;
+  if (primary?.classification !== "strategy_product" || !primary.versionId || !primary.contentHash || !primary.productId) {
+    return { ok: false, reason: "strategy_version_unpinned" };
+  }
+  if (refs.some((ref) => ref.classification !== "strategy_product"
+    || ref.versionId !== primary.versionId || ref.contentHash !== primary.contentHash || ref.productId !== primary.productId)) {
+    return { ok: false, reason: "strategy_version_conflict" };
+  }
+  const stored = (db.strategyVersions || []).find((row) => row.id === primary.versionId);
+  if (!stored || stored.immutable !== true || stored.contentHash !== primary.contentHash || stored.productId !== primary.productId) {
+    return { ok: false, reason: "strategy_version_unverified" };
+  }
+  return { ok: true, ref: { productId: primary.productId, versionId: primary.versionId, contentHash: primary.contentHash } };
+}
+
+function decisionFactEvidence(db, plan) {
+  const snapshots = (db.decisionFactSnapshots || []).filter((row) => row.planId === plan?.id);
+  if (snapshots.length !== 1) return { ok: false, reason: snapshots.length ? "decision_fact_snapshot_ambiguous" : "decision_fact_snapshot_missing" };
+  const snapshot = snapshots[0];
+  const verified = verifyDecisionFactSnapshot(snapshot);
+  if (!verified.ok) return verified;
+  const reference = plan.decisionFactSnapshotRef;
+  if (!reference || reference.id !== snapshot.id || reference.hash !== snapshot.payloadHash
+    || Number(reference.schemaVersion) !== Number(snapshot.schemaVersion)) {
+    return { ok: false, reason: "decision_fact_snapshot_reference_mismatch" };
+  }
+  const binding = verifySnapshotMatchesPlan(db, snapshot, plan);
+  if (!binding.ok) return binding;
+  if (snapshot.capturedBeforeExecution !== true || snapshot.captureMode === "execution_preflight_legacy") {
+    return { ok: false, reason: "pretrade_decision_facts_unverified" };
+  }
+  return { ok: true, snapshot };
+}
+
+function settlementEvidence(lifecycle, executionOrder) {
+  const evidence = executionOrder?.closeSettlementEvidence;
+  if (!evidence?.snapshotId) return { ok: false, reason: "post_close_snapshot_missing" };
+  if (![evidence.exchange, evidence.accountId, evidence.environment, evidence.apiKeyFingerprint,
+    executionOrder.exchange, executionOrder.accountId, executionOrder.environment, executionOrder.apiKeyFingerprint].every(populated)) {
+    return { ok: false, reason: "post_close_snapshot_binding_incomplete" };
+  }
+  const observedAt = new Date(evidence.observedAt || 0).getTime();
+  const closedAt = new Date(lifecycle.lastClosedAt || lifecycle.representative?.createdAt || 0).getTime();
+  if (Number(evidence.schemaVersion) !== 1 || evidence.positionConfirmedAbsent !== true
+    || !Number.isFinite(observedAt) || !Number.isFinite(closedAt) || observedAt < closedAt) {
+    return { ok: false, reason: "post_close_snapshot_invalid" };
+  }
+  const exact = normalized(evidence.exchange, (value) => value.toUpperCase()) === normalized(executionOrder.exchange || "OKX", (value) => value.toUpperCase())
+    && normalized(evidence.accountId) === normalized(executionOrder.accountId)
+    && normalized(evidence.environment, (value) => value.toLowerCase()) === normalized(executionOrder.environment, (value) => value.toLowerCase())
+    && normalized(evidence.apiKeyFingerprint) === normalized(executionOrder.apiKeyFingerprint);
+  return exact ? { ok: true, evidence } : { ok: false, reason: "post_close_snapshot_binding_mismatch" };
+}
+
+function exchangeFillEvidence(db, lifecycle, projected = null) {
+  projected ||= systemTradeFills(db);
+  const entries = projected.filter((fill) => fill.kind === "entry" && sameTradeLifecycle(fill, lifecycle.representative));
+  const closes = lifecycle.fills || [];
+  if (!entries.length) return { ok: false, reason: "entry_fill_missing" };
+  const hasTradeIds = (rows) => rows.every((fill) => fillIdentityValues(fill, "exchangeTradeId", "exchangeTradeIds").length > 0);
+  const hasOrderIds = (rows) => rows.every((fill) => fillIdentityValues(fill, "exchangeOrderId", "exchangeOrderIds").length > 0);
+  if (!hasTradeIds(entries) || !hasTradeIds(closes)) return { ok: false, reason: "exchange_trade_identity_missing" };
+  if (!hasOrderIds(entries) || !hasOrderIds(closes)) return { ok: false, reason: "exchange_order_identity_missing" };
+  return { ok: true, entries, closes };
+}
+
+function learningCohort(plan, lifecycle, strategy, snapshot) {
+  const fill = lifecycle.representative || {};
+  const context = snapshot?.evidence?.decisionContext || plan?.decisionContext || {};
+  const symbol = normalized(fill.symbol || plan?.symbol, (value) => value.toUpperCase().replace(/-SWAP$/, "").replace("-USDT", "/USDT"));
+  const timeframe = normalized(plan?.timeframe || plan?.strategyInstance?.timeframe, (value) => value.toLowerCase());
+  const regime = normalized(context.deterministicSetupSnapshot?.marketRegime?.label || fill.regime || plan?.regime, (value) => value.toLowerCase());
+  const setupType = normalized(context.setupType || plan?.scenarioType || plan?.strategyRef?.scenarioType, (value) => value.toLowerCase());
+  const direction = normalized(fill.direction || plan?.direction, (value) => /short|sell|空/.test(value.toLowerCase()) ? "short" : /long|buy|多/.test(value.toLowerCase()) ? "long" : value.toLowerCase());
+  const fields = [strategy?.versionId, symbol, timeframe, regime, setupType, direction];
+  if (fields.some((value) => !value)) return { ok: false, reason: "learning_cohort_incomplete" };
+  return {
+    ok: true,
+    cohort: {
+      key: fields.join("|"),
+      productId: strategy.productId,
+      versionId: strategy.versionId,
+      symbol,
+      timeframe,
+      regime,
+      setupType,
+      direction
+    }
+  };
+}
+
+export function evaluateSystemLearningSample(db, lifecycle, review = null, options = {}) {
+  const reasons = [];
+  if (!isFinanciallyReconciledLifecycle(lifecycle)) reasons.push("financial_evidence_incomplete");
+  const { executionOrder, plan } = resolveTradeContext(db, lifecycle);
+  if (!executionOrder) reasons.push("execution_order_missing");
+  if (!plan) reasons.push("trade_plan_missing");
+  const strategy = plan && executionOrder ? strategyVersionEvidence(db, lifecycle, executionOrder, plan) : { ok: false };
+  if (strategy.reason) reasons.push(strategy.reason);
+  const decision = plan ? decisionFactEvidence(db, plan) : { ok: false };
+  if (decision.reason) reasons.push(decision.reason);
+  const settlement = executionOrder ? settlementEvidence(lifecycle, executionOrder) : { ok: false };
+  if (settlement.reason) reasons.push(settlement.reason);
+  const exchange = exchangeFillEvidence(db, lifecycle, options.projectedFills);
+  if (exchange.reason) reasons.push(exchange.reason);
+  if (!review || review.type !== "trade" || review.status !== "completed"
+    || review.structuredAssessment?.financial?.complete !== true
+    || !reviewRowsMatchLifecycle(lifecycle, [review])) {
+    reasons.push("completed_review_missing");
+  }
+  const cohort = strategy.ok && decision.ok ? learningCohort(plan, lifecycle, strategy.ref, decision.snapshot) : { ok: false };
+  if (cohort.reason) reasons.push(cohort.reason);
+  return {
+    eligible: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    lifecycleKey: lifecycle.key,
+    exitMode: (lifecycle.fills || []).some((fill) => fill.tradeAttribution?.exitMode === "manual_exit") ? "manual_exit" : "system_exit",
+    cohort: cohort.ok ? cohort.cohort : null
+  };
+}
+
+function sampleMaturity(count) {
+  if (count >= LEARNING_SAMPLE_THRESHOLDS.mature) return "mature";
+  if (count >= LEARNING_SAMPLE_THRESHOLDS.meaningful) return "meaningful";
+  if (count >= LEARNING_SAMPLE_THRESHOLDS.preliminary) return "preliminary";
+  if (count >= LEARNING_SAMPLE_THRESHOLDS.probation) return "probationary";
+  return "collecting";
+}
+
+export function buildSystemLearningSampleReadiness(db) {
+  const rawCloses = (db.fills || []).filter((fill) => fill.kind === "close" && isOwnerReviewRow(db, fill));
+  const classified = rawCloses.map((fill) => classifyTradeFill(db, fill));
+  const projectedFills = systemTradeFills(db).filter((fill) => isOwnerReviewRow(db, fill));
+  const lifecycles = groupSystemClosedTradeLifecycles(db, { fills: projectedFills })
+    .filter((lifecycle) => (lifecycle.fills || []).length > 0 && lifecycle.fills.every((fill) => isOwnerReviewRow(db, fill)));
+  const evaluations = lifecycles.map((lifecycle) => {
+    const review = (db.reviews || []).find((row) => row?.id
+      && isOwnerReviewRow(db, row)
+      && row.type === "trade" && row.status === "completed"
+      && row.structuredAssessment?.financial?.complete === true
+      && reviewRowsMatchLifecycle(lifecycle, [row])) || null;
+    return evaluateSystemLearningSample(db, lifecycle, review, { projectedFills });
+  });
+  const reasonCounts = {};
+  for (const evaluation of evaluations) for (const reason of evaluation.reasons) {
+    reasonCounts[reason] = Number(reasonCounts[reason] || 0) + 1;
+  }
+  const eligible = evaluations.filter((row) => row.eligible);
+  const cohorts = new Map();
+  for (const sample of eligible) {
+    const current = cohorts.get(sample.cohort.key) || { ...sample.cohort, samples: 0, manualExitSamples: 0 };
+    current.samples += 1;
+    if (sample.exitMode === "manual_exit") current.manualExitSamples += 1;
+    cohorts.set(current.key, current);
+  }
+  return {
+    schemaVersion: 1,
+    generatedAt: nowIso(),
+    policy: {
+      scope: "system_trades_only",
+      manualTradesExcluded: true,
+      systemTradesManuallyClosedIncluded: true,
+      crossUserAggregation: false,
+      automaticStrategyMutation: false,
+      automaticLivePromotion: false,
+      ownerApprovalRequired: true
+    },
+    thresholds: { ...LEARNING_SAMPLE_THRESHOLDS },
+    funnel: {
+      rawCloseFills: rawCloses.length,
+      manualCloseFills: classified.filter((row) => row.scope === "manual").length,
+      attributionPendingCloseFills: classified.filter((row) => row.scope === "attribution_pending").length,
+      systemClosedLifecycles: lifecycles.length,
+      financiallyReconciledLifecycles: lifecycles.filter(isFinanciallyReconciledLifecycle).length,
+      eligibleLearningSamples: eligible.length,
+      manualExitSystemSamples: eligible.filter((row) => row.exitMode === "manual_exit").length
+    },
+    exclusionReasons: reasonCounts,
+    cohorts: [...cohorts.values()].map((cohort) => ({
+      ...cohort,
+      maturity: sampleMaturity(cohort.samples),
+      nextThreshold: cohort.samples < LEARNING_SAMPLE_THRESHOLDS.probation ? LEARNING_SAMPLE_THRESHOLDS.probation
+        : cohort.samples < LEARNING_SAMPLE_THRESHOLDS.preliminary ? LEARNING_SAMPLE_THRESHOLDS.preliminary
+          : cohort.samples < LEARNING_SAMPLE_THRESHOLDS.meaningful ? LEARNING_SAMPLE_THRESHOLDS.meaningful
+            : cohort.samples < LEARNING_SAMPLE_THRESHOLDS.mature ? LEARNING_SAMPLE_THRESHOLDS.mature : null,
+      eligibleForAutomaticPromotion: false
+    })).sort((left, right) => right.samples - left.samples || left.key.localeCompare(right.key))
+  };
 }
 
 export function transitionReviewLesson(db, memoryId, action, actor = "Owner") {
@@ -1027,19 +1239,22 @@ function authoritativeStageEvidence(db, experiment, stageName, input = {}) {
   if (stageName === "small_live") {
     const ids = [...new Set((input.evidenceReviewIds || []).map(String).filter(Boolean))];
     const records = ids.map((idValue) => (db.reviews || []).find((row) => row.id === idValue)).filter(Boolean);
-    const eligible = records.filter((review) => isOwnerReviewRow(db, review)
-      && review.type === "trade" && review.status === "completed"
-      && findSystemReviewLifecycle(db, review)
-      && review.structuredAssessment?.financial?.complete === true
-      && review.strategyBlueprintAttribution?.verified === true
-      && review.strategyBlueprintRef?.versionId === candidate.version.id
-      && review.strategyBlueprintRef?.contentHash === candidate.version.contentHash
-      && review.strategyBlueprintRef?.productId === candidate.ref.productId
-      && review.strategyVersionId === candidate.version.id
-      && review.improvementScope?.strategyVersionId === candidate.version.id
-      && review.improvementScope?.strategyDefinitionHash === candidate.version.contentHash
-      && review.improvementScope?.strategyProductId === candidate.ref.productId);
-    const minTrades = Number(criteria.minSmallLiveTrades || 3);
+    const eligible = records.filter((review) => {
+      const lifecycle = findSystemReviewLifecycle(db, review);
+      return isOwnerReviewRow(db, review)
+        && review.type === "trade" && review.status === "completed"
+        && lifecycle && evaluateSystemLearningSample(db, lifecycle, review).eligible
+        && review.structuredAssessment?.financial?.complete === true
+        && review.strategyBlueprintAttribution?.verified === true
+        && review.strategyBlueprintRef?.versionId === candidate.version.id
+        && review.strategyBlueprintRef?.contentHash === candidate.version.contentHash
+        && review.strategyBlueprintRef?.productId === candidate.ref.productId
+        && review.strategyVersionId === candidate.version.id
+        && review.improvementScope?.strategyVersionId === candidate.version.id
+        && review.improvementScope?.strategyDefinitionHash === candidate.version.contentHash
+        && review.improvementScope?.strategyProductId === candidate.ref.productId;
+    });
+    const minTrades = Math.max(10, Number(criteria.minSmallLiveTrades || 10));
     if (eligible.length !== ids.length || eligible.length < minTrades) return validationError("authoritative_small_live_evidence_incomplete", 409, { eligible: eligible.length, required: minTrades });
     const pnl = eligible.reduce((sum, row) => sum + Number(row.netRealizedPnl ?? row.structuredAssessment?.financial?.netRealizedPnl ?? 0), 0);
     const metrics = { trades: eligible.length, netRealizedPnl: Number(pnl.toFixed(4)), profitFactor: cohortProfitFactor(eligible), reconciledTrades: eligible.length };
@@ -1228,6 +1443,7 @@ export function buildOwnerReviewLoopSnapshot(db) {
       validating: improvements.filter((row) => row.state === "validating").length
     },
     lessons: lessons.slice(0, 30),
-    improvements: improvements.slice(0, 30)
+    improvements: improvements.slice(0, 30),
+    sampleReadiness: buildSystemLearningSampleReadiness(db)
   };
 }

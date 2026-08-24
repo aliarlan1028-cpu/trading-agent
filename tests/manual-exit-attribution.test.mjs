@@ -1638,6 +1638,16 @@ test("a protecting execution reuses its persisted WS protection fill during poll
   assert.equal(closes[0].exchangeTradeId, payload.tradeId);
   assert.equal(closes.reduce((sum, fill) => sum + Number(fill.realizedPnl), 0), 10);
   assert.equal(closes.reduce((sum, fill) => sum + Number(fill.feeUsdt), 0), 0.01);
+  assert.deepEqual(execution.closeSettlementEvidence, {
+    schemaVersion: 1,
+    snapshotId: "fresh-protection-absence",
+    observedAt: db.accountSnapshots[0].createdAt,
+    exchange: "OKX",
+    accountId: "account-a",
+    environment: "production",
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    positionConfirmedAbsent: true
+  });
 });
 
 test("conflicting remote evidence for a persisted system trade ID fails closed", () => {
@@ -2154,6 +2164,16 @@ test("authoritative position absence settles from the existing manual-exit fill 
   assert.equal(result.status, "closed");
   assert.equal(execution.status, "closed");
   assert.equal(execution.exitReason, "manual_exit");
+  assert.deepEqual(execution.closeSettlementEvidence, {
+    schemaVersion: 1,
+    snapshotId: "snapshot-after-close",
+    observedAt: "2026-08-15T02:00:00.000Z",
+    exchange: "OKX",
+    accountId: "account-a",
+    environment: "production",
+    apiKeyFingerprint: API_KEY_FINGERPRINT,
+    positionConfirmedAbsent: true
+  });
   assert.equal(db.fills.filter((fill) => fill.kind === "close").length, 1);
   assert.equal(db.fills.find((fill) => fill.kind === "close").exchangeTradeId, "manual-close-trade-1");
   assert.deepEqual({

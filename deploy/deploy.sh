@@ -79,7 +79,14 @@ fi
 restore_stable_latest() {
   docker image inspect "$IMAGE:rollback" >/dev/null 2>&1 && docker tag "$IMAGE:rollback" "$IMAGE:latest" || true
 }
-trap restore_stable_latest ERR
+clear_deploy_silence() {
+  rm -f "$REMOTE_DIR/data/.monitor/.deploying"
+}
+deployment_failed() {
+  restore_stable_latest
+  clear_deploy_silence
+}
+trap deployment_failed ERR
 docker compose build </dev/null 2>&1 | tail -2
 # 用候选镜像对刚创建的快照做只读恢复演练；兼容当前运行镜像尚无 restore-drill 命令的首次升级。
 if find backups -maxdepth 1 \( -name 'trading-agent-*.sqlite' -o -name 'trading-agent-*.sqlite.enc' \) -type f | grep -q .; then
@@ -87,6 +94,10 @@ if find backups -maxdepth 1 \( -name 'trading-agent-*.sqlite' -o -name 'trading-
 fi
 # 使用新镜像 + 生产 .env + 生产数据卷运行上线前检查；失败时旧容器保持运行。
 docker compose run --rm --no-deps "$SERVICE" npm run preflight:production </dev/null
+# 从容器切换开始到完整上线验证结束，外部 monitor 必须把短暂不可用视为计划维护。
+# 失败路径由 ERR trap 清理；SSH 中断时 monitor 自身的 8 分钟 TTL 会 fail-open 恢复巡检。
+mkdir -p "$REMOTE_DIR/data/.monitor"
+touch "$REMOTE_DIR/data/.monitor/.deploying"
 # up -d 必须断开 stdin/stdout/stderr：否则容器继承 ssh 的 stdout fd，ssh 等不到 EOF 会永久挂死（曾致部署"卡住"37 分钟）
 docker compose up -d </dev/null >/dev/null 2>&1 && echo "  up -d ok"
 trap - ERR
@@ -127,6 +138,12 @@ systemctl enable --now trading-agent-restore-drill.timer >/dev/null
 systemctl enable --now trading-agent-cache-prune.timer >/dev/null
 systemctl enable --now trading-agent-monitor.timer >/dev/null
 /usr/local/sbin/trading-agent-safe-cleanup
+# 只有完整验证成功后才把 monitor 状态归一为 up，再撤销计划维护静默。
+# 这样下一轮巡检不会把本次部署误报成一次真实的“实例恢复”。
+printf 'up\n' > "$REMOTE_DIR/data/.monitor/main.state"
+printf '0\n' > "$REMOTE_DIR/data/.monitor/main.dfails"
+printf '0\n' > "$REMOTE_DIR/data/.monitor/main.fails"
+rm -f "$REMOTE_DIR/data/.monitor/.deploying"
 exit 0
 REMOTE
 then
@@ -136,12 +153,18 @@ else
   ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$HOST" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
+trap 'rm -f "$REMOTE_DIR/data/.monitor/.deploying"' EXIT
 docker image inspect "$IMAGE:rollback" >/dev/null 2>&1 || { echo "无回滚镜像，需人工介入"; exit 1; }
 docker tag "$IMAGE:rollback" "$IMAGE:latest"
 docker compose up -d --force-recreate </dev/null >/dev/null 2>&1 && echo "  回滚 up -d ok"
 sleep 8
 code=\$(curl -s -o /dev/null -m 5 -w "%{http_code}" "$HEALTH_URL" 2>/dev/null) || code=000
 echo "回滚后 health: HTTP \$code"
+if [ "\$code" = "200" ]; then
+  printf 'up\n' > "$REMOTE_DIR/data/.monitor/main.state"
+  printf '0\n' > "$REMOTE_DIR/data/.monitor/main.dfails"
+  printf '0\n' > "$REMOTE_DIR/data/.monitor/main.fails"
+fi
 REMOTE
   echo "已回滚到上一版本，请排查本次改动后再部署。"
   exit 1

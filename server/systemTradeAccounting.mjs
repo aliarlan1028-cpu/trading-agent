@@ -428,6 +428,11 @@ export function systemUnrealizedPnl(db, options = {}) {
     knownTotal,
     pendingPositions,
     complete,
+    // Internal consumers such as the Telegram poster need the exact authoritative
+    // position facts that passed the same system-only quantity/binding checks.
+    // Returning these references does not change accounting semantics or persist
+    // another financial projection.
+    verifiedPositions: evidence,
     attributionEvidenceHash: complete ? evidenceHash({
       at: new Date(atMs).toISOString(),
       binding: binding ? {

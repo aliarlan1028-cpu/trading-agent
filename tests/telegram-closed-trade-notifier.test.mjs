@@ -59,6 +59,38 @@ test("首次启用建立水位，不补发历史盈利交易", () => {
   assert.equal(db.telegramPosterOutbox.length, 0);
 });
 
+test("平仓海报队列报告手动、待归因和阈值排除原因", () => {
+  const db = {
+    system: {},
+    meta: { telegramClosedTradePosterStartedAt: "2026-08-12T00:00:00Z" },
+    telegramPosterOutbox: [],
+    executionOrders: [{
+      id: "system-loss", planId: "system-loss-plan", status: "closed", exchange: "OKX",
+      accountId: "account-a", environment: "production", symbol: "BTC/USDT", direction: "long"
+    }],
+    tradePlans: [{
+      id: "system-loss-plan", exchange: "OKX", accountId: "account-a",
+      environment: "production", symbol: "BTC/USDT", direction: "long"
+    }],
+    fills: [
+      systemFill("loss-entry", "entry", "system-loss", "system-loss-plan"),
+      systemFill("loss-close", "close", "system-loss", "system-loss-plan", -1),
+      { id: "manual-close", kind: "close", symbol: "ETH/USDT", quantity: 1, realizedPnl: 5, createdAt: "2026-08-12T01:00:00Z" },
+      {
+        id: "pending-close", kind: "close", symbol: "ADA/USDT", quantity: 1, realizedPnl: 6,
+        createdAt: "2026-08-12T01:00:00Z",
+        tradeAttribution: { schemaVersion: 1, scope: "attribution_pending", origin: "external_exchange", reason: "mixed_position_attribution" }
+      }
+    ]
+  };
+
+  const result = queueClosedTradeProfitPosters(db);
+  assert.equal(result.queued, 0);
+  assert.equal(result.reasonCounts.manual_trade_excluded, 1);
+  assert.equal(result.reasonCounts.attribution_pending, 1);
+  assert.equal(result.reasonCounts.net_pnl_below_threshold, 1);
+});
+
 test("毛盈利但成本后净亏损的完整交易不得进入盈利海报队列", () => {
   const db = { meta: { telegramClosedTradePosterStartedAt: "2026-08-12T00:00:00Z" }, telegramPosterOutbox: [], fills: [
     { id: "entry-fee", kind: "entry", executionOrderId: "exec-fee", symbol: "ADA/USDT", feeUsdt: 0.8, createdAt: "2026-08-12T00:30:00Z" },

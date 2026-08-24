@@ -30,7 +30,7 @@ function dbFixture() {
     user: { id: "owner-1", tenantId: "tenant_owner", isOwner: true },
     mandates: [{ id: "mandate-1", allowedSymbols: ["BTC/USDT"] }],
     tradePlans: [], decisionFactSnapshots: [], reviews: [], memoryItems: [],
-    ownerImprovementItems: [], strategyExperiments: [], strategyVersions: [{ id: "trend@1.0.0", productId: "trend", version: "1.0.0", contentHash: "baseline-hash" }],
+    ownerImprovementItems: [], strategyExperiments: [], strategyVersions: [{ id: "trend@1.0.0", productId: "trend", version: "1.0.0", contentHash: "baseline-hash", immutable: true }],
     strategyBlueprintVersions: [], strategyStudioDrafts: [], strategyStudioBacktests: [],
     paperSessions: [], fills: [], executionOrders: [], riskChecks: [{ id: "risk-1", tradePlanId: "plan-1", passed: true }], riskIncidents: [],
     markets: [], events: [], auditLogs: [], traces: []
@@ -401,29 +401,54 @@ test("real reflection output preserves immutable candidate refs and powers small
     status: "passed", strategyVersionId: candidate.id,
     metrics: { trades: 30, profitFactor: 1.4, maxDrawdownPct: 2, averageSlippageBps: 3 }
   });
-  for (let index = 1; index <= 3; index += 1) {
+  const nativeStrategyRef = {
+    classification: "strategy_product", productId: "trend", version: "1.0.0",
+    versionId: "trend@1.0.0", contentHash: "baseline-hash", scenarioType: "trend_pullback",
+    instanceHash: "candidate-native-instance"
+  };
+  for (let index = 1; index <= 10; index += 1) {
     const planId = `candidate-plan-${index}`;
     const executionOrderId = `candidate-exec-${index}`;
+    const entryAt = new Date(Date.UTC(2026, 7, 18, index, 0, 0)).toISOString();
+    const closeAt = new Date(Date.UTC(2026, 7, 18, index, 30, 0)).toISOString();
     const strategyBlueprintRef = {
       versionId: candidate.id,
       contentHash: candidate.contentHash,
       baseProductId: "trend"
     };
-    db.tradePlans.push({
+    const candidatePlan = {
       ...plan({ id: planId, riskCheckId: `risk-candidate-${index}`, lastRiskCheck: { id: `risk-candidate-${index}`, passed: true } }),
-      tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef
+      tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef,
+      strategyRef: structuredClone(nativeStrategyRef), strategyVersionId: nativeStrategyRef.versionId,
+      decisionContext: { setupType: "trend_pullback", deterministicSetupSnapshot: { marketRegime: { label: "uptrend" } } }
+    };
+    db.tradePlans.push(candidatePlan);
+    ensureDecisionFactSnapshot(db, candidatePlan, {
+      capturedAt: new Date(new Date(entryAt).getTime() - 1000).toISOString(),
+      capturedBeforeExecution: true,
+      captureMode: "agent_decision_pre_approval"
     });
     db.riskChecks.push({ id: `risk-candidate-${index}`, tradePlanId: planId, passed: true });
-    db.executionOrders.push({ id: executionOrderId, planId, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef });
+    db.executionOrders.push({
+      id: executionOrderId, planId, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef,
+      strategyRef: structuredClone(nativeStrategyRef), exchange: "OKX", accountId: "fixture-account",
+      environment: "production", apiKeyFingerprint: "fixture-fingerprint", symbol: "BTC/USDT", direction: "long",
+      closeSettlementEvidence: {
+        schemaVersion: 1, snapshotId: `snapshot-${index}`,
+        observedAt: new Date(new Date(closeAt).getTime() + 1000).toISOString(), exchange: "OKX",
+        accountId: "fixture-account", environment: "production", apiKeyFingerprint: "fixture-fingerprint",
+        positionConfirmedAbsent: true
+      }
+    });
     db.fills.push(
-      { id: `candidate-entry-${index}`, kind: "entry", executionOrderId, tradePlanId: planId, symbol: "BTC/USDT", feeUsdt: 0, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef, createdAt: `2026-08-18T0${index}:00:00.000Z` },
-      { id: `candidate-close-${index}`, kind: "close", executionOrderId, tradePlanId: planId, symbol: "BTC/USDT", direction: "long", realizedPnl: 0.5, feeUsdt: 0, fundingFeeUsdt: 0, fundingReconciled: true, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef, createdAt: `2026-08-18T0${index}:30:00.000Z` }
+      { id: `candidate-entry-${index}`, kind: "entry", executionOrderId, tradePlanId: planId, exchange: "OKX", accountId: "fixture-account", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 0.01, exchangeOrderId: `entry-order-${index}`, exchangeTradeId: `entry-trade-${index}`, feeUsdt: 0, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef, strategyRef: structuredClone(nativeStrategyRef), createdAt: entryAt },
+      { id: `candidate-close-${index}`, kind: "close", executionOrderId, tradePlanId: planId, exchange: "OKX", accountId: "fixture-account", environment: "production", symbol: "BTC/USDT", direction: "long", quantity: 0.01, exchangeOrderId: `close-order-${index}`, exchangeTradeId: `close-trade-${index}`, realizedPnl: 0.5, feeUsdt: 0, fundingFeeUsdt: 0, fundingReconciled: true, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyBlueprintRef, strategyRef: structuredClone(nativeStrategyRef), createdAt: closeAt }
     );
   }
   const reflection = await runTradeReflection(db);
-  assert.equal(reflection.reflected, 3);
+  assert.equal(reflection.reflected, 10);
   const reviewIds = db.reviews.filter((row) => row.type === "trade" && row.status === "completed").map((row) => row.id);
-  assert.equal(reviewIds.length, 3);
+  assert.equal(reviewIds.length, 10);
   for (const review of db.reviews.filter((row) => reviewIds.includes(row.id))) {
     assert.deepEqual(review.strategyBlueprintRef, {
       schema: "trading.strategy.blueprint.review-ref", schemaVersion: 1,

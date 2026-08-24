@@ -1382,6 +1382,7 @@ async function pollOne(db, executionOrder, options = {}) {
         executionOrder.realizedPnl = protection.realizedPnl;
         executionOrder.closeFeeUsdt = protection.feeUsdt;
         executionOrder.exitReason = "exchange_protection_filled";
+        executionOrder.closeSettlementEvidence ||= closeSettlementEvidence(executionOrder, latestSnap, protection.closedAt);
         executionOrder.events.push({ at: nowIso(), event: "exchange_protection_filled", detail: `OKX 真实保护成交 ${protection.breakdown.length} 笔，已实现 ${protection.realizedPnl.toFixed(4)} USDT，手续费 ${protection.feeUsdt.toFixed(4)} USDT` });
         db.positions = (db.positions || []).filter((p) => !(p.source === "execution_engine" && p.symbol === executionOrder.symbol));
         const plan = db.tradePlans.find((item) => item.id === executionOrder.planId);
@@ -2369,6 +2370,29 @@ function closureEvidenceMatches(local, remote, executionOrder) {
   return true;
 }
 
+function closeSettlementEvidence(executionOrder, snapshot, closedAt) {
+  const observedAtMs = new Date(snapshot?.createdAt || 0).getTime();
+  const closedAtMs = new Date(closedAt || 0).getTime();
+  if (snapshot?.status !== "ok" || snapshotPositionOpen(snapshot, executionOrder)
+    || !snapshot?.id || !snapshot?.accountId || !snapshot?.environment || !snapshot?.exchange || !snapshot?.apiKeyFingerprint
+    || !executionOrder?.accountId || !executionOrder?.environment || !executionOrder?.apiKeyFingerprint
+    || String(snapshot.accountId) !== String(executionOrder.accountId)
+    || String(snapshot.environment).toLowerCase() !== String(executionOrder.environment).toLowerCase()
+    || String(snapshot.exchange).toUpperCase() !== String(executionOrder.exchange || "OKX").toUpperCase()
+    || String(snapshot.apiKeyFingerprint) !== String(executionOrder.apiKeyFingerprint)
+    || !Number.isFinite(observedAtMs) || !Number.isFinite(closedAtMs) || observedAtMs < closedAtMs) return null;
+  return {
+    schemaVersion: 1,
+    snapshotId: snapshot.id,
+    observedAt: snapshot.createdAt,
+    exchange: snapshot.exchange,
+    accountId: snapshot.accountId,
+    environment: snapshot.environment,
+    apiKeyFingerprint: snapshot.apiKeyFingerprint,
+    positionConfirmedAbsent: true
+  };
+}
+
 export function reconcilePendingClose(db, executionOrder, { snapshot = null, closure = null } = {}) {
   let attributedManualClosure = buildAttributedManualExitClosure(db, executionOrder);
   let attributedSystemClosure = buildAttributedSystemExitClosure(db, executionOrder);
@@ -2482,11 +2506,12 @@ export function reconcilePendingClose(db, executionOrder, { snapshot = null, clo
   return finalizeReconciledExecutionClose(db, executionOrder, {
     exitReason,
     closure: settledClosure,
-    existingCloseFills
+    existingCloseFills,
+    settlementSnapshot: snapshot
   });
 }
 
-function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, closure, existingCloseFills = [] }) {
+function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, closure, existingCloseFills = [], settlementSnapshot = null }) {
   const openedAt = new Date(executionOrder.entryFilledAt || executionOrder.createdAt).getTime();
   const closedAt = new Date(closure.closedAt).getTime();
   const holdingMinutes = Number.isFinite(openedAt) && Number.isFinite(closedAt)
@@ -2559,6 +2584,7 @@ function finalizeReconciledExecutionClose(db, executionOrder, { exitReason, clos
   executionOrder.closeTradeIds = closure.tradeIds || [];
   executionOrder.closeAlgoIds = closure.algoIds || [];
   executionOrder.exitReason = exitReason;
+  executionOrder.closeSettlementEvidence ||= closeSettlementEvidence(executionOrder, settlementSnapshot, closure.closedAt);
   executionOrder.events ||= [];
   executionOrder.events.push({ at: nowIso(), event: "close_reconciled", detail: `交易所真实成交 ${closure.quantity} @ ${closure.weightedPrice}` });
   db.positions = (db.positions || []).filter((row) => !(row.source === "execution_engine" && row.executionOrderId === executionOrder.id));

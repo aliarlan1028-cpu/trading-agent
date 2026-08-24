@@ -150,6 +150,80 @@ test("compiled knowledge skills require paper validation and human approval befo
   assert.match(afterRetirement.violations.join(" "), /retired/);
 });
 
+test("paper-validating skills with missing sessions are safely requeued without becoming executable", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  Object.assign(skill, {
+    status: "paper_validating",
+    executable: false,
+    paperSessionId: "missing-paper-session",
+    validation: {
+      status: "passed",
+      symbol: "BTC/USDT",
+      timeframe: skill.spec.timeframe,
+      validatedSymbols: ["BTC/USDT"],
+      validatedAt: "2026-08-20T00:00:00.000Z"
+    }
+  });
+
+  const result = syncKnowledgeSkillLifecycle(db, "KnowledgeLifecycleTest");
+
+  assert.equal(skill.status, "historical_validated");
+  assert.equal(skill.paperSessionId, null);
+  assert.equal(skill.executable, false);
+  assert.ok(skill.lifecycle.some((row) => row.reason === "paper_session_missing_requeued"));
+  assert.deepEqual(result.changes, [{
+    skillId: skill.id,
+    status: "historical_validated",
+    reason: "paper_session_missing_requeued"
+  }]);
+  assert.ok(db.auditLogs.some((row) => row.target === skill.id && /模拟盘会话缺失/.test(row.action)));
+});
+
+for (const [label, status] of [["missing status", undefined], ["failed status", "failed"]]) {
+  test(`a missing paper session cannot reuse historical validation with ${label}`, () => {
+    const db = dbFixture();
+    const skill = compileTradingMethod(db, "method-1");
+    Object.assign(skill, {
+      status: "paper_validating",
+      executable: false,
+      paperSessionId: "missing-paper-session",
+      validation: {
+        ...(status ? { status } : {}),
+        symbol: "BTC/USDT",
+        timeframe: skill.spec.timeframe,
+        validatedSymbols: ["BTC/USDT"],
+        validatedAt: "2026-08-20T00:00:00.000Z"
+      }
+    });
+
+    const result = syncKnowledgeSkillLifecycle(db, "KnowledgeLifecycleTest");
+
+    assert.equal(skill.status, "compiled", `validation status ${status || "missing"} must fail closed`);
+    assert.equal(skill.paperSessionId, null);
+    assert.equal(skill.executable, false);
+    assert.equal(result.changes[0].reason, "paper_session_missing_historical_revalidation_required");
+  });
+}
+
+test("missing paper and historical evidence requires full historical revalidation", () => {
+  const db = dbFixture();
+  const skill = compileTradingMethod(db, "method-1");
+  Object.assign(skill, {
+    status: "paper_validating",
+    executable: false,
+    paperSessionId: "missing-paper-session",
+    validation: null
+  });
+
+  const result = syncKnowledgeSkillLifecycle(db, "KnowledgeLifecycleTest");
+
+  assert.equal(skill.status, "compiled");
+  assert.equal(skill.paperSessionId, null);
+  assert.equal(skill.executable, false);
+  assert.equal(result.changes[0].reason, "paper_session_missing_historical_revalidation_required");
+});
+
 test("historical validation uses chronological train, validation, and test windows", () => {
   const db = dbFixture();
   const skill = compileTradingMethod(db, "method-1", {

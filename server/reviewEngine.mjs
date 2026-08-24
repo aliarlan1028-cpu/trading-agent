@@ -538,6 +538,7 @@ export function createStrategyImprovementCycle(db, payload = {}, options = {}) {
   const hypothesis = payload.hypothesis || (weakest
     ? `针对「${weakest.key}」降低亏损暴露，并验证胜率/盈亏比是否改善。`
     : "建立第一轮策略验证样本，确认策略是否具备正期望。");
+  const requestedCriteria = payload.successCriteria || {};
   const experiment = {
     id: id("experiment"),
     status: "draft",
@@ -566,11 +567,12 @@ export function createStrategyImprovementCycle(db, payload = {}, options = {}) {
       { name: "paper", label: "模拟盘", status: "pending", metrics: ["slippageBps", "ruleBlocked", "agentConfidenceDelta"] },
       { name: "small_live", label: "小额实盘", status: "pending", metrics: ["realizedPnl", "feeUsdt", "reconcileOk"] }
     ],
-    successCriteria: payload.successCriteria || {
-      minTrades: 20,
-      minSmallLiveTrades: 3,
-      minProfitFactor: 1.2,
-      maxDrawdownPct: 3,
+    successCriteria: {
+      ...requestedCriteria,
+      minTrades: Math.max(20, Number(requestedCriteria.minTrades || 20)),
+      minSmallLiveTrades: Math.max(10, Number(requestedCriteria.minSmallLiveTrades || 10)),
+      minProfitFactor: Number(requestedCriteria.minProfitFactor || 1.2),
+      maxDrawdownPct: Number(requestedCriteria.maxDrawdownPct || 3),
       requireManualApproval: true
     },
     createdAt: nowIso(),

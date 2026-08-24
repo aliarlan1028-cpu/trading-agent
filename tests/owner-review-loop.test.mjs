@@ -24,7 +24,7 @@ function baseDb() {
     tradePlans: [], decisionFactSnapshots: [], ownerImprovementItems: [], reviews: [], memoryItems: [],
     fills: [], executionOrders: [], markets: [], events: [], riskRules: [], riskChecks: [{ id: "risk-1", tradePlanId: "plan-1", tenantId: "tenant_owner", ownerUserId: "owner-1", passed: true }], skills: [], skillRuns: [],
     strategyExperiments: [],
-    strategyVersions: [{ id: "trend-pullback@1.2.0", productId: "trend-pullback", version: "1.2.0", contentHash: "baseline-hash" }],
+    strategyVersions: [{ id: "trend-pullback@1.2.0", productId: "trend-pullback", version: "1.2.0", contentHash: "baseline-hash", immutable: true }],
     strategyBlueprintVersions: [], strategyStudioDrafts: [], strategyStudioBacktests: [], paperSessions: [],
     auditLogs: [], traces: [], knowledge: { tradingSkills: [] }
   };
@@ -137,6 +137,30 @@ test("decision fact snapshots are immutable, hash-verifiable, and fail closed af
   assert.equal(verifyDecisionFactSnapshot(captured.snapshot).ok, false);
   assert.equal(verifyDecisionFactSnapshot(captured.snapshot).reason, "decision_fact_snapshot_hash_mismatch");
   assert.equal(ensureDecisionFactSnapshot(db, sourcePlan).ok, false, "a corrupt existing snapshot is never silently healed");
+});
+
+test("new strategy improvement cycles require ten reconciled small-live trades by default", () => {
+  const db = baseDb();
+  const cycle = createStrategyImprovementCycle(db, {
+    strategyRef: { productId: "trend-pullback", versionId: "trend-pullback@1.2.0", definitionHash: "baseline-hash" }
+  });
+  assert.equal(cycle.experiment.successCriteria.minSmallLiveTrades, 10);
+  assert.equal(cycle.experiment.successCriteria.requireManualApproval, true);
+});
+
+test("strategy improvement callers cannot lower live evidence or manual approval gates", () => {
+  const db = baseDb();
+  const cycle = createStrategyImprovementCycle(db, {
+    strategyRef: { productId: "trend-pullback", versionId: "trend-pullback@1.2.0", definitionHash: "baseline-hash" },
+    successCriteria: {
+      minSmallLiveTrades: 1,
+      requireManualApproval: false,
+      operatorNote: "preserved compatibility field"
+    }
+  });
+  assert.equal(cycle.experiment.successCriteria.minSmallLiveTrades, 10);
+  assert.equal(cycle.experiment.successCriteria.requireManualApproval, true);
+  assert.equal(cycle.experiment.successCriteria.operatorNote, "preserved compatibility field");
 });
 
 test("missing, duplicated, or mismatched referenced decision facts can never be recreated or silently rebound", () => {
@@ -390,14 +414,14 @@ function seedStrategyCandidateEvidence(db, versionId = "trend-pullback-candidate
     id: `paper-${versionId}`, tenantId: "tenant_owner", ownerUserId: "owner-1", strategyVersionId: version.id,
     status: "passed", seeded: false, metrics: { trades: 25, profitFactor: 1.4, maxDrawdownPct: 2, averageSlippageBps: 4 }
   };
-  const liveReviews = [1, 2, 3].map((index) => ({
+  const liveReviews = Array.from({ length: 10 }, (_, offset) => offset + 1).map((index) => ({
     id: `live-${versionId}-${index}`, type: "trade", status: "completed",
     tenantId: "tenant_owner", ownerUserId: "owner-1", strategyVersionId: version.id,
     strategyBlueprintAttribution: { verified: true },
     strategyBlueprintRef: { versionId: version.id, contentHash: version.contentHash, productId: "trend-pullback" },
     improvementScope: { strategyVersionId: version.id, strategyDefinitionHash: version.contentHash, strategyProductId: "trend-pullback" },
-    netRealizedPnl: index < 3 ? 2 : -1,
-    structuredAssessment: { financial: { complete: true, netRealizedPnl: index < 3 ? 2 : -1 }, rootCauses: [] }
+    netRealizedPnl: index <= 8 ? 2 : -1,
+    structuredAssessment: { financial: { complete: true, netRealizedPnl: index <= 8 ? 2 : -1 }, rootCauses: [] }
   }));
   db.strategyStudioDrafts.push(draft);
   db.strategyStudioBacktests.push(backtest);
@@ -407,6 +431,37 @@ function seedStrategyCandidateEvidence(db, versionId = "trend-pullback-candidate
   db.paperSessions.push(paper);
   db.reviews.push(...liveReviews);
   installReviewLifecycleEvidence(db, liveReviews);
+  const nativeStrategyRef = {
+    classification: "strategy_product", productId: "trend-pullback", version: "1.2.0",
+    versionId: "trend-pullback@1.2.0", contentHash: "baseline-hash", scenarioType: "trend_pullback",
+    instanceHash: "fixture-instance-hash"
+  };
+  for (const review of liveReviews) {
+    const execution = db.executionOrders.find((row) => row.id === review.executionOrderId);
+    const planRow = db.tradePlans.find((row) => row.id === review.tradePlanId);
+    const lifecycleFills = db.fills.filter((row) => row.executionOrderId === review.executionOrderId);
+    Object.assign(planRow, {
+      timeframe: "1h", strategyProductId: "trend-pullback", strategyVersionId: nativeStrategyRef.versionId,
+      strategyRef: structuredClone(nativeStrategyRef),
+      decisionContext: { setupType: "trend_pullback", deterministicSetupSnapshot: { marketRegime: { label: "uptrend" } } },
+      rationale: "趋势回踩已经完成确认，风险收益和执行条件满足本次验证要求。"
+    });
+    ensureDecisionFactSnapshot(db, planRow, { captureMode: "agent_decision_pre_approval", capturedBeforeExecution: true });
+    Object.assign(execution, {
+      strategyRef: structuredClone(nativeStrategyRef), apiKeyFingerprint: "fixture-fingerprint",
+      closeSettlementEvidence: {
+        schemaVersion: 1, snapshotId: `snapshot-${execution.id}`,
+        observedAt: new Date(new Date(lifecycleFills.find((row) => row.kind === "close").createdAt).getTime() + 1000).toISOString(),
+        exchange: execution.exchange, accountId: execution.accountId, environment: execution.environment,
+        apiKeyFingerprint: "fixture-fingerprint", positionConfirmedAbsent: true
+      }
+    });
+    for (const fill of lifecycleFills) Object.assign(fill, {
+      exchangeOrderId: `${fill.kind}-order-${fill.id}`,
+      exchangeTradeId: `${fill.kind}-trade-${fill.id}`,
+      strategyRef: structuredClone(nativeStrategyRef)
+    });
+  }
   return { draft, backtest, version, paper, liveReviews };
 }
 

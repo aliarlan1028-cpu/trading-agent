@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { appendAudit, nowIso } from "./store.mjs";
 import { createNotification } from "./notificationStore.mjs";
 import { closedTradePosterPayload, deriveClosedTradeShare, derivePositionShare, renderClosedTradePoster, renderPositionPoster, resolveClosedTradePosterBasis } from "./positionPoster.mjs";
-import { groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
+import { classifyTradeFill, groupSystemClosedTradeLifecycles } from "./systemTradeProjection.mjs";
+import { systemUnrealizedPnl } from "./systemTradeAccounting.mjs";
 import { canonicalPositionKey } from "./positionIdentity.mjs";
 import { fetchWithDeadline } from "./outboundHttp.mjs";
 
@@ -173,6 +174,22 @@ function closedTradePosterKey(lifecycle) {
   return `closed_trade:${lifecycle.key}`;
 }
 
+function incrementReason(counts, reason, amount = 1) {
+  const key = String(reason || "unknown");
+  counts[key] = Number(counts[key] || 0) + amount;
+}
+
+function updatePosterDiagnostic(db, channel, snapshot) {
+  db.system ||= {};
+  db.system.telegramProfitPosterStatus ||= {};
+  const previous = db.system.telegramProfitPosterStatus[channel] || null;
+  const comparable = previous ? { ...previous } : null;
+  if (comparable) delete comparable.updatedAt;
+  if (JSON.stringify(comparable) === JSON.stringify(snapshot)) return false;
+  db.system.telegramProfitPosterStatus[channel] = { ...snapshot, updatedAt: nowIso() };
+  return true;
+}
+
 export function closedTradePosterEligibility(trade, status = telegramStatus()) {
   const share = deriveClosedTradeShare(trade || {});
   if (!status.profitPosterEnabled || !status.configured) return { ok: false, reason: "disabled_or_unconfigured", share };
@@ -188,22 +205,46 @@ export function closedTradePosterEligibility(trade, status = telegramStatus()) {
 
 export function queueClosedTradeProfitPosters(db) {
   const status = telegramStatus();
-  if (!status.profitPosterEnabled || !status.configured) return { status: "disabled_or_unconfigured", queued: 0 };
+  const reasonCounts = {};
+  if (!status.profitPosterEnabled || !status.configured) {
+    incrementReason(reasonCounts, "disabled_or_unconfigured");
+    return { status: "disabled_or_unconfigured", queued: 0, reasonCounts };
+  }
   db.telegramPosterOutbox ||= [];
   db.meta ||= {};
   if (!db.meta.telegramClosedTradePosterStartedAt) {
     db.meta.telegramClosedTradePosterStartedAt = nowIso();
-    return { status: "initialized", queued: 0 };
+    incrementReason(reasonCounts, "watermark_initialized");
+    return { status: "initialized", queued: 0, reasonCounts };
   }
   const startedAt = new Date(db.meta.telegramClosedTradePosterStartedAt).getTime();
+  for (const fill of db.fills || []) {
+    if (fill?.kind !== "close" || new Date(fill.exchangeFilledAt || fill.createdAt || 0).getTime() < startedAt) continue;
+    const attribution = classifyTradeFill(db, fill);
+    if (attribution.scope === "manual") incrementReason(reasonCounts, "manual_trade_excluded");
+    else if (attribution.scope === "attribution_pending") incrementReason(reasonCounts, "attribution_pending");
+  }
   let queued = 0;
   for (const lifecycle of groupSystemClosedTradeLifecycles(db)) {
-    if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) continue;
-    if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) continue;
+    if (new Date(lifecycle.lastClosedAt || 0).getTime() < startedAt) {
+      incrementReason(reasonCounts, "before_watermark");
+      continue;
+    }
+    if (lifecycle.fills.some((fill) => fill.telegramClosedTradePoster?.status === "sent")) {
+      incrementReason(reasonCounts, "already_sent");
+      continue;
+    }
     const key = closedTradePosterKey(lifecycle);
-    if (db.telegramPosterOutbox.some((item) => item.idempotencyKey === key)) continue;
+    if (db.telegramPosterOutbox.some((item) => item.idempotencyKey === key)) {
+      incrementReason(reasonCounts, "already_queued");
+      continue;
+    }
     const trade = closedTradePosterPayload(lifecycle, resolveClosedTradePosterBasis(db, lifecycle));
-    if (!closedTradePosterEligibility(trade, status).ok) continue;
+    const decision = closedTradePosterEligibility(trade, status);
+    if (!decision.ok) {
+      incrementReason(reasonCounts, decision.reason);
+      continue;
+    }
     db.telegramPosterOutbox.unshift({
       id: `tgposter_${crypto.createHash("sha256").update(key).digest("hex").slice(0, 20)}`,
       idempotencyKey: key,
@@ -218,7 +259,8 @@ export function queueClosedTradeProfitPosters(db) {
     });
     queued += 1;
   }
-  return { status: "ok", queued };
+  if (queued) incrementReason(reasonCounts, "queued", queued);
+  return { status: "ok", queued, reasonCounts };
 }
 
 export async function dispatchClosedTradePosterOutbox(db, options = {}) {
@@ -276,7 +318,15 @@ export async function dispatchClosedTradePosterOutbox(db, options = {}) {
 export async function processClosedTradeProfitPosters(db, options = {}) {
   const queued = queueClosedTradeProfitPosters(db);
   const dispatched = await dispatchClosedTradePosterOutbox(db, options);
-  return { queued, dispatched, skipPersist: queued.queued === 0 && dispatched.skipPersist === true };
+  const outboxStatusCounts = {};
+  for (const item of db.telegramPosterOutbox || []) incrementReason(outboxStatusCounts, item.status || "unknown");
+  const diagnosticChanged = updatePosterDiagnostic(db, "closed", {
+    queueStatus: queued.status,
+    queued: queued.queued,
+    reasonCounts: queued.reasonCounts || {},
+    outboxStatusCounts
+  });
+  return { queued, dispatched, skipPersist: queued.queued === 0 && dispatched.skipPersist === true && !diagnosticChanged };
 }
 
 function positionKey(position, share) {
@@ -299,23 +349,50 @@ function shouldPublish(position, share, status, now) {
 export async function publishProfitablePositionPosters(db) {
   const status = telegramStatus();
   const actions = [];
+  const reasonCounts = {};
+  const skipped = [];
   const now = Date.now();
+  if (!status.profitPosterEnabled || !status.configured) {
+    incrementReason(reasonCounts, "disabled_or_unconfigured");
+    updatePosterDiagnostic(db, "open", { checked: 0, verifiedSystemPositions: 0, reasonCounts });
+    return { checked: 0, actions, skipped, reasonCounts };
+  }
+  const systemPositions = systemUnrealizedPnl(db, { now, positions: db.positions || [] });
+  const verifiedPositionIds = new Set((systemPositions.verifiedPositions || []).map((row) => row.positionId).filter(Boolean));
+  const pendingByPositionId = new Map((systemPositions.pendingPositions || [])
+    .filter((row) => row.positionId)
+    .map((row) => [row.positionId, row.reason]));
   const grouped = new Map();
   for (const row of db.positions || []) {
     const key = canonicalPositionKey(row);
     if (!key) continue;
-    const group = grouped.get(key) || {};
+    const group = grouped.get(key) || { exchanges: [] };
     if (row.source === "execution_engine") group.engine = row;
-    else if (["exchange_rest", "exchange_ws"].includes(row.source)) {
-      if (!group.exchange || row.source === "exchange_rest") group.exchange = row;
-    }
+    else if (["exchange_rest", "exchange_ws"].includes(row.source)) group.exchanges.push(row);
     grouped.set(key, group);
   }
   for (const [key, group] of grouped) {
-    const position = { ...(group.engine || {}), ...(group.exchange || {}), id: key, telegramShare: group.exchange?.telegramShare || group.engine?.telegramShare };
+    const verifiedExchanges = group.exchanges.filter((row) => verifiedPositionIds.has(row.id));
+    const pendingExchange = group.exchanges.find((row) => pendingByPositionId.has(row.id));
+    const fallbackExchange = group.exchanges.find((row) => row.source === "exchange_rest") || group.exchanges[0] || null;
+    const authoritativeExchange = verifiedExchanges.length === 1 ? verifiedExchanges[0] : pendingExchange || fallbackExchange;
+    const position = { ...(group.engine || {}), ...(authoritativeExchange || {}), id: key, telegramShare: authoritativeExchange?.telegramShare || group.engine?.telegramShare };
+    const authoritativePositionId = authoritativeExchange?.id || null;
+    if (!authoritativePositionId || !verifiedPositionIds.has(authoritativePositionId)) {
+      const reason = verifiedExchanges.length > 1
+        ? "managed_position_ambiguous"
+        : pendingByPositionId.get(authoritativePositionId) || "manual_position_excluded";
+      incrementReason(reasonCounts, reason);
+      skipped.push({ key, symbol: position.symbol || position.instId || null, reason });
+      continue;
+    }
     const share = derivePositionShare(position);
     const decision = shouldPublish(position, share, status, now);
-    if (!decision.ok) continue;
+    if (!decision.ok) {
+      incrementReason(reasonCounts, decision.reason);
+      skipped.push({ key, symbol: share.symbol, reason: decision.reason });
+      continue;
+    }
     const result = await sendTelegramPositionPoster(db, position);
     position.telegramShare = {
       key: positionKey(position, share),
@@ -325,8 +402,14 @@ export async function publishProfitablePositionPosters(db) {
       lastRoiPct: share.roiPct,
       notificationId: result.notification?.id
     };
-    for (const row of [group.engine, group.exchange].filter(Boolean)) row.telegramShare = position.telegramShare;
+    for (const row of [group.engine, authoritativeExchange].filter(Boolean)) row.telegramShare = position.telegramShare;
     actions.push({ symbol: share.symbol, action: "telegram_profit_poster", status: result.status, pnl: share.pnl, roiPct: share.roiPct });
+    incrementReason(reasonCounts, result.status);
   }
-  return { checked: grouped.size, actions };
+  updatePosterDiagnostic(db, "open", {
+    checked: grouped.size,
+    verifiedSystemPositions: verifiedPositionIds.size,
+    reasonCounts
+  });
+  return { checked: grouped.size, actions, skipped, reasonCounts };
 }

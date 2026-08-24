@@ -276,7 +276,8 @@ export function getConfigStatus(db) {
         watchLanguage: process.env.TELEGRAM_WATCH_LANGUAGE === "zh" ? "zh" : "en",
         minPnlUsdt: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_PNL_USDT || 0),
         minRoiPct: Number(process.env.TELEGRAM_PROFIT_POSTER_MIN_ROI_PCT || 0),
-        cooldownMinutes: Number(process.env.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240)
+        cooldownMinutes: Number(process.env.TELEGRAM_PROFIT_POSTER_COOLDOWN_MINUTES || 240),
+        profitPosterStatus: db.system?.telegramProfitPosterStatus || null
       }
     },
     runtime: {
