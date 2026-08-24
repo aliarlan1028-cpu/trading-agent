@@ -72,9 +72,9 @@ The fixed `56px` masthead, `44px` local rail, and `66px` navigation remain reach
 
 ### Consolidated production correction
 
-Initial production commit `45a4987d97032bb26296a18db2d598a70019eb26` contained the first correction batch. Reviewer-driven Fix Round 1 is closed by final production commit `3ed188b503866cacacc0c7fa92986ee2a7d46456` and the appended verification below.
+Initial production commit `45a4987d97032bb26296a18db2d598a70019eb26` contained the first correction batch. Reviewer-driven Fix Round 1 was closed by `3ed188b503866cacacc0c7fa92986ee2a7d46456`; Fix Round 2 closes the final medium-Context defect at production commit `e3f6cc8c37d2c7091d12131fe653e5462e2d3344` and is recorded below.
 
-- `src/styles.css` gives the Command Rail measured containment at both desktop widths, keeps exchange/runtime/freshness/action labels legible, and keeps the notification badge inside the rail. At 1180×820 the Context Dock remains a bounded 304px overlay at `x=876`; its collapsed 58px handle remains reachable at `x=1122`.
+- `src/styles.css` gives the Command Rail measured containment at both desktop widths, keeps exchange/runtime/freshness/action labels legible, and keeps the notification badge inside the rail. At 1180×820 the Context Dock remains a bounded 304px overlay at `x=876`; its collapsed 58px handle remains reachable at `x=1122`. When Context is open, the AI heading and five-fact KPI band reflow wholly before the overlay instead of continuing underneath it.
 - Desktop AI dialog, Intelligence, Watch, Events and shared task input now use a continuous hard-edge operations grid. Long Intelligence rows grow to their real content height and no longer overlap subsequent evidence rows.
 - Mobile AI containment is corrected at both required widths. The AI task strip, prompts, Intelligence truth band, constraints, source feed and ledger use the same square continuous grammar without clipping the page.
 - The initial correction removed the broad legacy radius system. Fix Round 1 then closed the remaining named islands on mobile Live selectors, Intelligence refresh/status, and Event Calendar/nav/day/agenda. The retained circles are semantic Live/Control donuts and event/status data marks rather than container or operation chrome.
@@ -97,10 +97,10 @@ All regressions asserted production selectors/components rather than marker text
 
 ### Final real-browser interaction walk
 
-The entire acceptance walk was repeated from final production commit `3ed188b503866cacacc0c7fa92986ee2a7d46456` in real Google Chrome:
+The entire acceptance walk was repeated from final production commit `e3f6cc8c37d2c7091d12131fe653e5462e2d3344` in real Google Chrome:
 
 - Desktop 1440×900: AI dialog → Intelligence → Watch → Events; Live Desk; Lab; Control; Operations; Configuration; ⌘/Ctrl-K Object Switcher with real BTC result; keyboard/open/close path; expanded Trace; account ordinary modal; safety flow to typed Kill confirmation, stopping before final submit.
-- Medium desktop 1180×820: Command containment; Context open and collapsed; no document/body overflow or lost action.
+- Medium desktop 1180×820: Command containment; Context open and collapsed; all five KPI facts simultaneously visible before the open Dock; no document/body overflow or lost action.
 - APP 390×844 and 430×932: AI, Live, Lab, Control, More; Context and Trace local rails; drawer; safety sheet; destructive confirmation; close and scroll reachability. Primary/local/sheet controls retain at least 44px targets.
 - Long content: real Intelligence headlines/URLs/IDs and real source-feed rows at both APP widths. `documentElement` and `body` widths exactly matched 390/430; desktop widths exactly matched 1180/1440. Trace and narrow tables may use their own bounded local horizontal scroller, but the page does not overflow.
 
@@ -117,11 +117,11 @@ The full named screenshot index, exact viewport, state, commit and matrix linkag
 
 ### Truthful state provenance
 
-- Real isolated overview: markets 3, news 80, events 27, notifications 10, tools 3, skills 12, agent runs 34, risk rules 2, event sources 7 and audit logs 20.
+- Final isolated overview: markets 3, news feed 80, events 35, tasks 27, notifications 11, tools 3, skills 12, agent runs 50, risk rules 2, event sources 7 and audit logs 20. The pre-edit snapshot above records the earlier live counts; no rows were added for visual parity.
 - Real empty: positions and trade plans; watch triggers/conditions are empty while the real watchlist contains BTC/ETH/SOL. Empty views were not populated with prototype/demo objects.
-- Real stale/degraded: `.impeccable/review/desktop-real-stale-source.png` records the live source-health response. At capture time Farside, OKX public liquidation, Binance announcements and CoinDesk were stale; U.S. BLS was degraded; the remaining listed sources reported healthy.
-- Loading/failed: `.impeccable/review/desktop-real-loading.png` and `desktop-real-failed.png` were produced by pausing and aborting the existing `overview?view=section&section=operationsCenter` request. No response or success payload was injected.
-- Forbidden: an isolated auth-required copy used the real store, real `hashPassword`, same tenant, active `交易用户`, `mustChangePassword:false` and non-Owner permissions. Login succeeded through `/api/auth/login`; the same authenticated session received HTTP **403** with `Missing permission: admin:system` from `/api/admin/users`. `.impeccable/review/mobile-390-real-forbidden.png` visibly shows the production Owner-required gate. The desktop non-Owner capture does not visibly show that gate and is therefore not cited as forbidden visual evidence. Temporary credentials are absent from screenshots, evidence and this report.
+- Real stale/degraded: `.impeccable/review/desktop-real-stale-source.png` records the live source-health response recaptured on final production HEAD. At capture time Farside, OKX public liquidation, Binance announcements and CoinDesk were stale; U.S. BLS was degraded; the remaining listed sources reported healthy.
+- Loading/failed: `.impeccable/review/desktop-real-loading.png` and `desktop-real-failed.png` were recaptured on final production HEAD by pausing and aborting the existing `overview?view=section&section=operationsCenter` request. No response or success payload was injected.
+- Forbidden: a fresh isolated auth-required copy used the real store, real `hashPassword`, same tenant, an active subscription, active `交易用户`, `mustChangePassword:false` and non-Owner permissions. Login succeeded through `/api/auth/login`; the same authenticated session received HTTP **403** with `Missing permission: admin:system` from `/api/admin/users`. `.impeccable/review/mobile-390-real-forbidden.png` visibly shows the production Owner-required gate on final production HEAD. The desktop non-Owner capture does not visibly show that gate and is therefore not cited as forbidden visual evidence. Temporary credentials are absent from screenshots, evidence and this report.
 - Disabled: the real empty AI input leaves Send disabled; the Kill final action remains disabled until typed confirmation. Dangerous submission was intentionally not performed.
 
 ### Matrix conclusion, changed files, and concerns
@@ -179,3 +179,22 @@ Final authorized verification:
 - `node --test tests/prototype-visual-contract.test.mjs tests/mobile-navigation.test.mjs tests/render-smoke.test.mjs` → **117 passed / 0 failed / 117 total**.
 - `git diff --check` → clean.
 - Matrix remains **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED**.
+
+## Fix Round 2 — final-HEAD evidence closure (2026-08-25)
+
+### Medium Context RED and deterministic correction
+
+The fresh review found that the 1180×820 Context overlay still covered the fifth AI KPI even though all five nodes were technically rendered. Real Chrome measured BTC/USDT at `x=870.55→953.05` while the fixed 304px Context Dock began at `x=876`. The browser containment assertion failed, and the focused production-selector contract was **0 passed / 1 failed / 1 total** because the medium open-Context header owned no width response.
+
+Production commit `e3f6cc8c37d2c7091d12131fe653e5462e2d3344` adds a Context-open medium layout response scoped to the real shell structure. The Page Head uses the visible center width and gives its KPI/actions cluster a dedicated row; Context-collapsed and 1440 layouts remain unchanged. GREEN evidence is geometric: at 1180 open, all five real facts are visible at 11px, each measures `88.6px`, and the bar ends at `x=649.05`, before Context `x=876`. At 1180 collapsed, the fifth fact ends at `x=953.05` before the collapsed Dock `x=1122`; at 1440 open, it ends at `x=909.05` before Context `x=1136`. All three viewport/state checks have page width equal to viewport width.
+
+### Final-HEAD state and viewport evidence
+
+Every production screenshot in the matrix was walked and recaptured from `e3f6cc8c37d2c7091d12131fe653e5462e2d3344`; byte-identical unaffected images remain valid files from that final walk. Loading and failed were recreated by pausing/aborting the existing real Operations overview request; stale is the current real source-health response; forbidden was recreated through a fresh isolated auth-required store and real active same-tenant non-Owner session. The login returned 200 and the same browser session returned the actual `/api/admin/users` 403 while the 390×844 Configuration surface visibly displayed the Owner-required gate. No response body, success payload, application data, DOM state or user record was injected into the browser.
+
+The contact sheet was regenerated at 1800×1252 and labels final production `E3F6CC8`. Final authorized verification is:
+
+- `node --test tests/prototype-visual-contract.test.mjs tests/mobile-navigation.test.mjs tests/render-smoke.test.mjs` → **118 passed / 0 failed / 118 total**.
+- Real Chrome KPI containment → **3 passed / 0 failed / 3 viewport-state checks**.
+- `git diff --check` → clean.
+- Matrix remains **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED** with no unresolved acceptance blocker.
