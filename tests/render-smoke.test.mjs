@@ -49,14 +49,14 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileShellTools, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileShellTools, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRisk, MobileRiskHub, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       import * as MobileModule from "./src/mobile.jsx";
       import * as MobileOperationsModule from "./src/mobileOperations.jsx";
       import * as ConceptPagesModule from "./src/conceptPages.jsx";
       export { MobileModule, MobileOperationsModule, ConceptPagesModule };
       export { buildStrategyCatalogRows, isPublishedKnowledgeStrategy } from "./src/viewData.js";
-      export { CapabilitiesConcept, ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { CapabilitiesConcept, EventRiskConcept, ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -585,6 +585,70 @@ test("risk overview renders authoritative event windows instead of generic risk 
   assert.doesNotMatch(html, /应急操作/);
   assert.doesNotMatch(html, /密钥安全/);
   assert.doesNotMatch(html, /账户安全|打开 OKX 配置/);
+});
+
+test("desktop Event Risk is an independent read-only registry and inspector", () => {
+  const eventData = {
+    ...data,
+    eventRiskWindows: [
+      { id: "cpi", title: "CPI 公布", sourceId: "official_bls", sourceName: "U.S. BLS", dueAt: "2026-08-16T12:30:00Z", deltaMs: 600000, windowStartAt: "2026-08-16T12:00:00Z", windowEndAt: "2026-08-16T18:30:00Z", phase: "pre_release_blackout", blocking: true, impact: 100, marketWide: true, verified: true },
+      { id: "fed", title: "联储讲话", sourceId: "official_fed", sourceName: "Federal Reserve", dueAt: "2026-08-17T12:30:00Z", deltaMs: 86400000, phase: "monitoring", blocking: false, impact: 95, relatedSymbols: ["BTC/USDT"], verified: true },
+      { eventId: "gdp", title: "GDP 初值", sourceId: "official_bea", sourceName: "U.S. BEA", dueAt: "2026-08-18T00:00:00Z", deltaMs: 172800000, phase: "time_unconfirmed", blocking: false, impact: 90, timePrecision: "date", marketWide: true, verified: true }
+    ]
+  };
+  const html = render(React.createElement(C.EventRiskConcept, { data: eventData, ui }));
+  assert.match(html, /eventRiskWorkbench/);
+  assert.match(html, /EVENT RISK TRUTH/);
+  assert.match(html, /eventRiskRegistry kRegistry|kRegistry eventRiskRegistry/);
+  assert.match(html, /eventRiskInspector kInspector|kInspector eventRiskInspector/);
+  assert.match(html, /eventRiskLedger kEvidenceLedger|kEvidenceLedger eventRiskLedger/);
+  assert.match(html, /CPI 公布/);
+  assert.match(html, /U\.S\. BLS/);
+  assert.match(html, /公布前静默/);
+  assert.match(html, /阻断新风险/);
+  assert.match(html, /时间待确认/);
+  assert.match(html, /data-shell-object-id="cpi"/);
+  assert.match(html, /data-shell-object-id="gdp"/);
+  assert.match(html, /data-shell-object-type="Event"/);
+  assert.match(html, /打开事件日历/);
+  assert.match(html, /管理事件源/);
+  assert.match(html, /配置风险规则/);
+  assert.doesNotMatch(html, /剩余亏损预算|组合实时敞口|处理告警/);
+
+  const center = render(React.createElement(C.RiskCenter, { data: eventData, action, ui, initialTab: "events" }));
+  assert.match(center, />事件风险<\/button>|>Event Risk<\/button>/);
+  assert.match(center, /eventRiskWorkbench/);
+  assert.doesNotMatch(center, /controlTruth__effective/);
+
+  const empty = render(React.createElement(C.EventRiskConcept, { data: { ...eventData, eventRiskWindows: [] }, ui }));
+  assert.match(empty, /当前没有处于有效期内的已验证高影响事件/);
+  assert.doesNotMatch(empty, /CPI 公布/);
+});
+
+test("APP Event Risk is independently reachable and preserves truth, registry, and inspector", () => {
+  const eventData = {
+    ...data,
+    eventRiskWindows: [
+      { id: "cpi", title: "CPI 公布", sourceId: "official_bls", sourceName: "U.S. BLS", dueAt: "2026-08-16T12:30:00Z", deltaMs: 600000, windowStartAt: "2026-08-16T12:00:00Z", windowEndAt: "2026-08-16T18:30:00Z", phase: "pre_release_blackout", blocking: true, impact: 100, marketWide: true, verified: true },
+      { eventId: "gdp", title: "GDP 初值", sourceId: "official_bea", sourceName: "U.S. BEA", dueAt: "2026-08-18T00:00:00Z", deltaMs: 172800000, phase: "time_unconfirmed", blocking: false, impact: 90, timePrecision: "date", marketWide: true, verified: true }
+    ]
+  };
+  const html = render(React.createElement(C.MobileRiskHub, { data: eventData, action, ui, initialView: "events" }));
+  assert.match(html, /mEventRiskScreen/);
+  assert.match(html, /EVENT RISK TRUTH/);
+  assert.match(html, /mEventRiskRegistry kRegistry|kRegistry mEventRiskRegistry/);
+  assert.match(html, /mEventRiskInspector kInspector|kInspector mEventRiskInspector/);
+  assert.match(html, /CPI 公布/);
+  assert.match(html, /U\.S\. BLS/);
+  assert.match(html, /阻断新风险/);
+  assert.match(html, /时间待确认/);
+  assert.match(html, /data-shell-object-id="cpi"/);
+  assert.match(html, /data-shell-object-id="gdp"/);
+  assert.match(html, /data-shell-object-type="Event"/);
+  assert.doesNotMatch(html, /剩余亏损预算|风险事件/);
+
+  const empty = render(React.createElement(C.MobileRiskHub, { data: { ...eventData, eventRiskWindows: [] }, action, ui, initialView: "events" }));
+  assert.match(empty, /当前没有处于有效期内的已验证高影响事件/);
 });
 
 test("Control is read-only while Configuration owns durable trading and rule editors", () => {
@@ -1555,6 +1619,8 @@ test("Object Inspector remains read-only and State Boundary distinguishes resour
     ["not_loaded", false, /尚未加载|Not loaded/],
     ["loading", false, /正在加载|Loading/],
     ["error", false, /加载失败|failed to load/],
+    ["failed", false, /加载失败|failed to load/],
+    ["forbidden", false, /需要权限|Permission required/],
     ["loaded", true, /暂无数据|No data/]
   ];
   for (const [resourceState, empty, expected] of cases) {

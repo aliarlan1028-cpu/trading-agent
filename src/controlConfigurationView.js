@@ -1,3 +1,5 @@
+import { summarizeEventRiskWindows } from "./eventRiskView.js";
+
 const asArray = (value) => Array.isArray(value) ? value : [];
 
 const finitePositive = (value) => {
@@ -124,7 +126,7 @@ export function buildControlConfigurationView(data = {}) {
     }
   ];
 
-  const eventWindows = asArray(data.eventRiskWindows);
+  const eventSummary = summarizeEventRiskWindows(data.eventRiskWindows);
   const riskRules = asArray(data.riskRules);
   const incidents = asArray(data.riskIncidents);
   const openIncidents = incidents.filter((item) => item.status === "open");
@@ -162,11 +164,7 @@ export function buildControlConfigurationView(data = {}) {
       disabled: riskRules.length - enabledRules.length,
       recentHits: asArray(data.riskChecks).slice(0, 8)
     },
-    events: {
-      total: eventWindows.length,
-      blocking: eventWindows.filter((item) => item.blocking).length,
-      windows: eventWindows
-    },
+    events: eventSummary,
     incidents: {
       total: incidents.length,
       open: openIncidents.length,

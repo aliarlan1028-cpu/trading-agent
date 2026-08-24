@@ -1659,3 +1659,67 @@
   .productWorkspace .labRegistryWorkbench.kWorkbench { grid-template-columns: 138px minmax(0,1fr); }
   .productWorkspace .labInspector.kInspector { grid-column: 1/-1; border-top: 1px solid var(--product-ink); border-left: 0; }
 }
+
+/* Control / Event Risk: the server-projected windows are a dedicated
+   read-only operating surface, not a second copy of Risk Posture. */
+.productWorkspace .eventRiskWorkbench { display:grid;min-width:0;border:1px solid var(--product-ink);background:var(--product-paper-2) }
+.productWorkspace .eventRiskTruth.kTruthBand { display:grid;grid-template-columns:minmax(0,1.25fr) minmax(420px,.75fr);padding:0;border:0;border-bottom:1px solid var(--product-ink);border-radius:0;background:var(--product-ink);color:var(--product-paper-2) }
+.productWorkspace .eventRiskTruth__statement { display:grid;grid-template-columns:34px minmax(0,1fr);gap:14px;align-items:start;padding:20px 22px;border-right:1px solid rgba(255,255,255,.18) }
+.productWorkspace .eventRiskTruth__statement>svg { width:28px;height:28px;color:var(--product-lime) }
+.productWorkspace .eventRiskTruth__statement>span { min-width:0 }
+.productWorkspace .eventRiskTruth__statement small,.productWorkspace .eventRiskRegistry>header small,.productWorkspace .eventRiskInspector>header small,.productWorkspace .eventRiskLedger>header small { color:var(--product-muted);font:720 8px/1.2 var(--font-mono);letter-spacing:.12em }
+.productWorkspace .eventRiskTruth__statement h2 { max-width:24ch;margin:5px 0 7px;color:var(--product-paper-2);font:650 24px/1.05 var(--kordyn-display);letter-spacing:-.035em }
+.productWorkspace .eventRiskTruth__statement p { max-width:70ch;margin:0;color:color-mix(in srgb,var(--product-paper-2) 68%,var(--product-ink));font-size:10px;line-height:1.55 }
+.productWorkspace .eventRiskTruth__counts { display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) }
+.productWorkspace .eventRiskTruth__counts>span { display:grid;align-content:center;gap:4px;min-width:0;padding:13px 15px;border-right:1px solid rgba(255,255,255,.15);border-bottom:1px solid rgba(255,255,255,.15) }
+.productWorkspace .eventRiskTruth__counts>span:nth-child(2n) { border-right:0 }
+.productWorkspace .eventRiskTruth__counts>span:nth-last-child(-n+2) { border-bottom:0 }
+.productWorkspace .eventRiskTruth__counts small { color:color-mix(in srgb,var(--product-paper-2) 56%,var(--product-ink));font:700 7.5px var(--font-mono);letter-spacing:.08em }
+.productWorkspace .eventRiskTruth__counts b { color:var(--product-paper-2);font:650 24px/1 var(--font-mono) }
+.productWorkspace .eventRiskTruth.blocking .eventRiskTruth__counts>span:first-child b { color:color-mix(in srgb,var(--product-danger) 72%,var(--product-paper-2)) }
+.productWorkspace .eventRiskTruth.uncertain .eventRiskTruth__counts>span:nth-child(3) b { color:var(--product-warn) }
+.productWorkspace .eventRiskTruth__counts em { overflow-wrap:anywhere;color:color-mix(in srgb,var(--product-paper-2) 66%,var(--product-ink));font-size:8px;font-style:normal }
+.productWorkspace .eventRiskMain { display:grid;grid-template-columns:minmax(0,1.42fr) minmax(275px,.58fr);min-width:0;border-bottom:1px solid var(--product-ink) }
+.productWorkspace .eventRiskRegistry.kRegistry { min-width:0;border:0;border-radius:0;background:var(--product-paper-2) }
+.productWorkspace .eventRiskRegistry>header { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-height:70px;padding:15px 17px;border-bottom:1px solid var(--product-ink);background:var(--product-paper) }
+.productWorkspace .eventRiskRegistry>header h3,.productWorkspace .eventRiskLedger>header h3 { margin:5px 0 0;font:650 17px/1.15 var(--kordyn-display);letter-spacing:-.025em }
+.productWorkspace .eventRiskRegistry>header p { margin:4px 0 0;color:var(--product-muted);font-size:9px }
+.productWorkspace .eventRiskRegistry>header>span { font:650 26px var(--font-mono) }
+.productWorkspace .eventRiskRegistry__rows>button { display:grid;grid-template-columns:8px minmax(0,1fr) minmax(150px,.48fr);align-items:center;gap:12px;width:100%;min-height:70px;padding:11px 15px;border:0;border-bottom:1px solid var(--product-line);border-radius:0;background:var(--product-paper-2);color:var(--product-ink);text-align:left }
+.productWorkspace .eventRiskRegistry__rows>button:last-child { border-bottom:0 }
+.productWorkspace .eventRiskRegistry__rows>button:hover,.productWorkspace .eventRiskRegistry__rows>button:focus-visible { background:color-mix(in srgb,var(--product-lime) 24%,var(--product-paper-2)) }
+.productWorkspace .eventRiskRegistry__rows>button.active { padding-left:11px;border-left:4px solid var(--product-ink);background:var(--product-lime) }
+.productWorkspace .eventRiskRegistry__rows>button>i { width:7px;height:7px;background:var(--product-warn);font-style:normal }
+.productWorkspace .eventRiskRegistry__rows>button>i[data-phase="blocking"] { background:var(--product-danger) }
+.productWorkspace .eventRiskRegistry__rows>button>i[data-phase="time_unconfirmed"] { background:var(--product-muted) }
+.productWorkspace .eventRiskRegistry__rows>button>span { display:grid;gap:4px;min-width:0 }
+.productWorkspace .eventRiskRegistry__rows>button>span:nth-child(2)>b { overflow-wrap:anywhere;font:650 12px/1.25 var(--kordyn-display) }
+.productWorkspace .eventRiskRegistry__rows>button>span:nth-child(2)>small { color:var(--product-muted);font:620 8px/1.35 var(--font-mono) }
+.productWorkspace .eventRiskRegistry__rows>button>span:last-child { justify-items:end }
+.productWorkspace .eventRiskRegistry__rows>button>span:last-child em { color:var(--product-muted);font-size:8px;font-style:normal;text-align:right }
+.productWorkspace .eventRiskInspector.kInspector { min-width:0;border:0;border-left:1px solid var(--product-ink);border-radius:0;background:var(--product-paper) }
+.productWorkspace .eventRiskInspector>header { display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px;padding:11px 14px;border-bottom:1px solid var(--product-ink);background:var(--product-ink);color:var(--product-paper-2) }
+.productWorkspace .eventRiskInspector>header small { color:var(--product-lime) }
+.productWorkspace .eventRiskInspector__title { display:grid;gap:7px;padding:17px;border-bottom:1px solid var(--product-line) }
+.productWorkspace .eventRiskInspector__title h3 { overflow-wrap:anywhere;margin:0;font:650 20px/1.12 var(--kordyn-display);letter-spacing:-.03em }
+.productWorkspace .eventRiskInspector code,.productWorkspace .eventRiskInspector dd,.productWorkspace .eventRiskLedger b { font-family:var(--font-mono);font-variant-numeric:tabular-nums }
+.productWorkspace .eventRiskInspector code { color:var(--product-muted);font-size:8px }
+.productWorkspace .eventRiskInspector dl { margin:0 }
+.productWorkspace .eventRiskInspector dl>div { display:grid;grid-template-columns:minmax(92px,.42fr) minmax(0,1fr);gap:12px;padding:10px 15px;border-bottom:1px solid var(--product-line) }
+.productWorkspace .eventRiskInspector dt { color:var(--product-muted);font-size:8.5px }
+.productWorkspace .eventRiskInspector dd { min-width:0;margin:0;overflow-wrap:anywhere;font-size:8.5px;text-align:right }
+.productWorkspace .eventRiskInspector>section { display:grid;gap:5px;padding:14px 15px }
+.productWorkspace .eventRiskInspector>section small { color:var(--product-muted);font-size:8px }
+.productWorkspace .eventRiskInspector>section b { overflow-wrap:anywhere;font-size:10px }
+.productWorkspace .eventRiskLedger.kEvidenceLedger { border:0;border-bottom:1px solid var(--product-ink);border-radius:0;background:var(--product-paper) }
+.productWorkspace .eventRiskLedger>header { display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:12px 16px;border-bottom:1px solid var(--product-ink) }
+.productWorkspace .eventRiskLedger>div { display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) }
+.productWorkspace .eventRiskLedger>div>span { display:grid;gap:5px;min-width:0;padding:12px 15px;border-right:1px solid var(--product-line) }
+.productWorkspace .eventRiskLedger>div>span:last-child { border-right:0 }
+.productWorkspace .eventRiskLedger small { color:var(--product-muted);font-size:8px }
+.productWorkspace .eventRiskLedger b { overflow-wrap:anywhere;font-size:8.5px }
+.productWorkspace .eventRiskActions.kActionBar { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:0;border:0;background:var(--product-paper) }
+.productWorkspace .eventRiskActions.kActionBar>button { min-height:48px;border:0;border-right:1px solid var(--product-ink);background:transparent }
+.productWorkspace .eventRiskActions.kActionBar>button:last-child { border-right:0 }
+.productWorkspace .eventRiskActions.kActionBar>button:hover,.productWorkspace .eventRiskActions.kActionBar>button:focus-visible { background:var(--product-lime) }
+@media(max-width:1280px){.productWorkspace .eventRiskTruth.kTruthBand,.productWorkspace .eventRiskMain{grid-template-columns:1fr}.productWorkspace .eventRiskTruth__statement{border-right:0;border-bottom:1px solid rgba(255,255,255,.18)}.productWorkspace .eventRiskInspector.kInspector{border-top:1px solid var(--product-ink);border-left:0}.productWorkspace .eventRiskLedger>div{grid-template-columns:repeat(2,minmax(0,1fr))}.productWorkspace .eventRiskLedger>div>span:nth-child(2n){border-right:0}.productWorkspace .eventRiskLedger>div>span:nth-child(-n+2){border-bottom:1px solid var(--product-line)}}

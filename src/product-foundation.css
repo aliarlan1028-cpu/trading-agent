@@ -819,7 +819,18 @@
     grid-template-columns: minmax(0, 1fr);
     max-width: 100%;
   }
+  .mShell2.kordynSystem .mEventRiskTruth.kTruthBand {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+  }
   .mShell2.kordynSystem .mOperationsCommand.kWorkbench > *,
   .mShell2.kordynSystem .mOperationsRecovery.kWorkbench > *,
-  .mShell2.kordynSystem .mConfigurationTruth.kTruthBand > * { min-width: 0; }
+  .mShell2.kordynSystem .mConfigurationTruth.kTruthBand > *,
+  .mShell2.kordynSystem .mEventRiskTruth.kTruthBand > * { min-width: 0; }
+  .mShell2.kordynSystem .mEventRiskTruth.kTruthBand > div {
+    align-content: stretch;
+    gap: 0;
+    min-height: 0;
+    padding: 0;
+  }
 }

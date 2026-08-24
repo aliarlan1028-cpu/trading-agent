@@ -38,6 +38,7 @@ const desktopCases = [
   ["strategyStudio", "lab", "strategy-registry", "researchCenter", "strategy"],
   ["researchCenter:capabilities", "lab", "capability-registry", "researchCenter", "capabilities"],
   ["riskCenter", "control", "risk-overview", "riskCenter", "posture"],
+  ["eventRisk", "control", "event-risk", "riskCenter", "events"],
   ["riskMandate", "control", "effective-boundaries", "riskCenter", "mandate"],
   ["riskSettings", "control", "rule-monitor", "riskCenter", "rules"],
   ["operationsCenter", "operations", "runtime-overview", "operationsCenter", "overview"],
@@ -93,7 +94,8 @@ test("mobile roots follow product workspaces rather than individual features", (
   assert.equal(resolveMobileRoute("riskMandate").subPage, "boundaries");
   assert.equal(resolveMobileRoute("eventRisk").workspace, "control");
   assert.equal(resolveMobileRoute("eventRisk").route, "riskHub");
-  assert.equal(resolveMobileRoute("eventRisk").subPage, "overview");
+  assert.equal(resolveMobileRoute("eventRisk").view, "event-risk");
+  assert.equal(resolveMobileRoute("eventRisk").subPage, "events");
 });
 
 test("runtime sections map back to their default visible workspace", () => {

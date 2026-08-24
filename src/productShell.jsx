@@ -19,6 +19,7 @@ const searchCollections = Object.freeze([
   { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
   { key: "fills", type: "Fill", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.tradeId, title: (row) => row.title || row.symbol || row.id },
   { key: "events", type: "Event", route: "eventsTasks:events", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.factId, title: (row) => row.title || row.shortTitle || row.message || row.id },
+  { key: "eventRiskWindows", type: "Event", route: "eventRisk", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id || row.eventId, title: (row) => row.title || row.shortTitle || row.id },
   { key: "watchTriggers", type: "Watch", route: "watch", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id, title: (row) => row.title || row.analysisTitle || row.displayThesis || row.thesis || row.symbol },
   { key: "tasks", type: "Task", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.name || row.type },
   { key: "agentRuns", type: "Agent run", route: "chat", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.runId, title: (row) => row.title || row.name || row.agentName || row.id },
@@ -122,7 +123,18 @@ export function buildShellSearchIndex(data = {}) {
     }, workspace.id, definition.desktop.section));
   }
   const seen = new Set();
-  return rows.filter((row) => row && !seen.has(`${row.type}:${row.id}`) && seen.add(`${row.type}:${row.id}`));
+  return rows.filter((row) => row && !seen.has(shellSearchResultKey(row)) && seen.add(shellSearchResultKey(row)));
+}
+
+export function shellSearchResultKey(row = {}) {
+  return [row.type, row.id, row.workspaceId, row.sourceSection, row.route].map((value) => text(value, "none")).join(":");
+}
+
+export function shellSearchResultDomId(row = {}, prefix = "shell-result") {
+  const scope = [row.type, row.id, row.workspaceId, row.sourceSection, row.route]
+    .map((value) => encodeURIComponent(text(value, "none")).replaceAll("%", "_"))
+    .join("--");
+  return `${prefix}-${scope}`;
 }
 
 export function filterShellSearchResults(index = [], query = "") {
@@ -460,10 +472,10 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   return <section className="commandRail" data-shell-role="command-rail" aria-label={t("全局命令栏", "Global command rail")}>
     <div className="commandRail__brand"><img src="/kordyn-logo.svg" alt=""/><span><b>KORDYN</b><small>{text(data.user?.tenantName || data.user?.organization, unavailable)}</small></span></div>
     <div className="commandRail__search" ref={rootRef}>
-      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? `shell-result-${activeIndex}` : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={onKeyDown}/>
+      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? shellSearchResultDomId(results[activeIndex]) : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={onKeyDown}/>
       {query && <button type="button" aria-label={t("清空搜索", "Clear search")} onClick={() => { setQuery(""); inputRef.current?.focus(); }}><X/></button>}
       {open && query && <div className="commandRail__results" id="shell-search-results" role="listbox">
-        {results.length ? results.map((row, indexValue) => <button id={`shell-result-${indexValue}`} type="button" role="option" aria-selected={activeIndex === indexValue} className={activeIndex === indexValue ? "active" : ""} key={`${row.type}:${row.id}`} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
+        {results.length ? results.map((row, indexValue) => <button id={shellSearchResultDomId(row)} type="button" role="option" aria-selected={activeIndex === indexValue} className={activeIndex === indexValue ? "active" : ""} key={shellSearchResultKey(row)} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
       </div>}
     </div>
     <div className="commandRail__facts" aria-label={t("全局运行事实", "Global runtime facts")}>
@@ -609,10 +621,10 @@ function StatePanel({ kind, title, detail, onRetry }) {
 }
 
 export function WorkspaceStateBoundary({ resourceState = "loaded", empty = false, stale = false, degraded = false, forbidden = "", actionOutcome = null, onRetry, children }) {
-  if (forbidden) return <StatePanel kind="forbidden" title={t("需要权限", "Permission required")} detail={t(`当前操作需要 ${forbidden} 权限。`, `This surface requires ${forbidden} permission.`)} />;
+  if (forbidden || resourceState === "forbidden") return <StatePanel kind="forbidden" title={t("需要权限", "Permission required")} detail={forbidden ? t(`当前操作需要 ${forbidden} 权限。`, `This surface requires ${forbidden} permission.`) : t("当前身份无权查看这组工作区事实。", "The current identity cannot view these workspace facts.")} />;
   if (resourceState === "not_loaded") return <StatePanel kind="loading" title={t("尚未加载", "Not loaded")} detail={t("进入工作区后再请求真实数据。", "Real data loads when the workspace opens.")} />;
   if (resourceState === "loading") return <StatePanel kind="loading" title={t("正在加载", "Loading")} detail={t("正在读取当前工作区事实。", "Loading current workspace facts.")} />;
-  if (resourceState === "error") return <StatePanel kind="error" title={t("加载失败", "Workspace failed to load")} detail={t("空白不代表数据为零，请重新加载。", "Blank values do not mean zero. Retry the workspace request.")} onRetry={onRetry} />;
+  if (["error", "failed"].includes(resourceState)) return <StatePanel kind="error" title={t("加载失败", "Workspace failed to load")} detail={t("空白不代表数据为零，请重新加载。", "Blank values do not mean zero. Retry the workspace request.")} onRetry={onRetry} />;
   if (empty) return <StatePanel kind="empty" title={t("暂无数据", "No data")} detail={t("当前筛选或权限范围内没有记录。", "No records exist in the current filter or permission scope.")} />;
   return <div className="workspaceStateBoundary">
     {stale && <StatePanel kind="warning" title={t("数据已陈旧", "Data is stale")} detail={t("保留最后有效事实；执行前需要刷新。", "The last valid facts remain visible; refresh before execution.")} onRetry={onRetry} />}

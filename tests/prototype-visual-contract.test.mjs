@@ -64,6 +64,7 @@ const fixture = {
   tradePlans: [{ id: "plan-17", symbol: "ETH/USDT", status: "armed", version: 4, source: "agent", permission: "confirm_each" }],
   watchTriggers: [{ id: "watch-3", symbol: "SOL/USDT", status: "active", thesis: "Wait for the reclaim" }],
   events: [{ id: "event-5", title: "US CPI", status: "scheduled", due: "2026-08-25T12:30:00Z" }],
+  eventRiskWindows: [{ id: "event-5", eventId: "event-5", title: "US CPI", sourceName: "U.S. BLS", dueAt: "2026-08-25T12:30:00Z", phase: "pre_release_blackout", blocking: true, impact: 100 }],
   orders: [{ id: "order-4", symbol: "BTC/USDT", status: "live", side: "buy" }],
   executionOrders: [{ id: "execution-16", symbol: "ETH/USDT", status: "executing", planId: "plan-17" }],
   fills: [{ id: "fill-7", symbol: "BTC/USDT", status: "confirmed", price: 64110 }],
@@ -152,7 +153,7 @@ test("authenticated desktop composes every shared rail around the existing works
 });
 
 test("object switcher indexes loaded production objects and has deterministic keyboard navigation", () => {
-  for (const name of ["buildShellSearchIndex", "filterShellSearchResults", "nextShellSearchInteraction"]) assert.equal(typeof Shell[name], "function", `${name} is required`);
+  for (const name of ["buildShellSearchIndex", "filterShellSearchResults", "nextShellSearchInteraction", "shellSearchResultDomId", "shellSearchResultKey"]) assert.equal(typeof Shell[name], "function", `${name} is required`);
   const index = Shell.buildShellSearchIndex(fixture);
   assert.ok(index.some((row) => row.id === "BTC/USDT" && row.type === "Market"));
   assert.ok(index.some((row) => row.id === "plan-17" && row.route));
@@ -163,6 +164,7 @@ test("object switcher indexes loaded production objects and has deterministic ke
     ["position-2", "Position", "positions", "live", "cockpit"],
     ["plan-17", "Trade plan", "signalHub", "live", "cockpit"],
     ["event-5", "Event", "eventsTasks:events", "ai", "chat"],
+    ["event-5", "Event", "eventRisk", "control", "riskCenter"],
     ["watch-3", "Watch", "watch", "ai", "chat"],
     ["order-4", "Order", "tradeLedger", "live", "cockpit"],
     ["fill-7", "Fill", "tradeLedger", "live", "cockpit"],
@@ -203,6 +205,11 @@ test("object switcher indexes loaded production objects and has deterministic ke
   assert.deepEqual(Shell.nextShellSearchInteraction({ key: "ArrowUp", activeIndex: 0, count: 3 }), { activeIndex: 2, close: false, selectIndex: -1 });
   assert.deepEqual(Shell.nextShellSearchInteraction({ key: "Enter", activeIndex: 1, count: 3 }), { activeIndex: 1, close: true, selectIndex: 1 });
   assert.deepEqual(Shell.nextShellSearchInteraction({ key: "Escape", activeIndex: 1, count: 3 }), { activeIndex: 1, close: true, selectIndex: -1 });
+
+  const collidingEvents = index.filter((row) => row.id === "event-5" && row.type === "Event");
+  assert.equal(collidingEvents.length, 2, "raw calendar fact and Control risk projection remain separate canonical objects");
+  assert.equal(new Set(collidingEvents.map(Shell.shellSearchResultKey)).size, 2, "React keys include workspace and source scope");
+  assert.equal(new Set(collidingEvents.map((row) => Shell.shellSearchResultDomId(row, "shell-result"))).size, 2, "ARIA option ids include workspace and source scope");
 });
 
 test("canonical selection resolves current indexed truth, routes once, and fails closed", () => {
@@ -225,6 +232,10 @@ test("canonical selection resolves current indexed truth, routes once, and fails
   };
   assert.equal(Shell.resolveShellObjectSelection(ambiguous, { id: "shared" }, "live"), null, "an untyped ID collision fails closed");
   assert.equal(Shell.resolveShellObjectSelection(ambiguous, { id: "shared", type: "Position" }, "live")?.type, "Position");
+  assert.equal(Shell.resolveShellObjectSelection(fixture, { id: "event-5", type: "Event" }), null, "an unscoped raw/projection event identity collision fails closed");
+  const riskEvent = Shell.resolveShellObjectSelection(fixture, { id: "event-5", type: "Event", workspaceId: "control", sourceSection: "riskCenter" });
+  assert.equal(riskEvent?.route, "eventRisk");
+  assert.equal(riskEvent?.raw, fixture.eventRiskWindows[0]);
   assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, operationsCenter: "failed" } }, { id: "task-9", type: "Task" }, "operations"), null);
   assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, chat: "loaded", operationsCenter: "failed" } }, { id: "agent-run-12", type: "Agent run" }, "ai")?.route, "chat", "an agent run resolves to the AI surface that actually consumes agentRuns");
   assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, cockpit: "failed", researchCenter: "loaded" } }, { id: "review-15", type: "Review" }, "lab"), null, "a review cannot bypass its failed cockpit source just because Lab is loaded");
@@ -671,10 +682,10 @@ test("touch shell exposes persistent Context and Trace bounded sheets", () => {
   assert.match(switcher, /data-shell-role="mobile-object-switcher"/);
   assert.match(switcher, /role="combobox"/);
   assert.match(switcher, /aria-controls="mobile-shell-object-results"/);
-  assert.match(switcher, /aria-activedescendant="mobile-shell-object-result-0"/);
+  assert.match(switcher, /aria-activedescendant="mobile-shell-object-result-Market--BTC_2FUSDT--live--cockpit--market"/);
   assert.match(switcher, /data-shell-object-id="task-9"/);
   assert.match(switcher, /aria-current="true"/);
-  assert.match(switcher, /id="mobile-shell-object-result-0"/);
+  assert.match(switcher, /id="mobile-shell-object-result-Market--BTC_2FUSDT--live--cockpit--market"/);
   assert.match(styles, /\.mShellToolButton[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.mShellSheet[^}]*width:\s*100%[^}]*border-radius:\s*0/s);
   const objectResult = finalDeclarations(".mObjectSwitcher__result");
@@ -962,7 +973,7 @@ test("desktop expanded Trace is a full stage surface with real stage detail", ()
   assert.match(detailRows["border-bottom"] || "", /^1px\s+solid\s+color-mix\(/);
 });
 
-test("final imported mobile cascade keeps Operations and Configuration in one readable column", () => {
+test("final imported mobile cascade keeps Operations, Configuration, and Event Risk in one readable column", () => {
   const operationsHtml = renderToString(React.createElement(MobileOperations.MobileOperations, {
     data: fixture,
     action: () => {},
@@ -988,6 +999,10 @@ test("final imported mobile cascade keeps Operations and Configuration in one re
   };
   assert.equal(mobileDeclarations(".mShell2.kordynSystem .mOperationsCommand.kWorkbench")["grid-template-columns"], "minmax(0, 1fr)");
   assert.equal(mobileDeclarations(".mShell2.kordynSystem .mConfigurationTruth.kTruthBand")["grid-template-columns"], "minmax(0, 1fr)");
+  assert.equal(mobileDeclarations(".mShell2.kordynSystem .mEventRiskTruth.kTruthBand")["grid-template-columns"], "minmax(0, 1fr)");
+  const eventRiskFacts = mobileDeclarations(".mShell2.kordynSystem .mEventRiskTruth.kTruthBand > div");
+  assert.equal(eventRiskFacts.padding, "0");
+  assert.equal(eventRiskFacts["min-height"], "0");
 });
 
 test("desktop Events safely reduces source HTML to readable text without rendering markup", () => {

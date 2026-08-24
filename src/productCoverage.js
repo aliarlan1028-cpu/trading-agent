@@ -47,7 +47,7 @@ export const DEPLOYED_FEATURES = Object.freeze([
   feature("control.operating-mode", "control", "OperatingBoundaryConcept / MobileRiskHub", "Control / Effective mode context", "Control / Boundaries", "new-composition"),
   feature("control.mandate-context", "control", "OperatingBoundaryConcept / MobileRiskHub", "Control / Effective boundaries", "Control / Boundaries", "new-composition"),
   feature("control.rule-monitor", "control", "RulesConcept:monitor / MobileRiskHub", "Control / Rule Monitor", "Control / Rules", "new-composition"),
-  feature("control.event-risk", "control", "RiskPostureConcept / EventsConcept", "Control / Event Risk Monitor", "Control / Event risk detail"),
+  feature("control.event-risk", "control", "EventRiskConcept / MobileRisk:events", "Control / Event Risk", "Control / Event Risk", "new-composition"),
   feature("control.permission-boundaries", "control", "OperatingBoundaryConcept / MobileRiskHub", "Control / Readiness Chain", "Control / Readiness Chain", "new-composition"),
 
   feature("operations.runtime-health", "operations", "OperationsCommandConcept / MobileOperations", "Operations / Command", "More / Operations / Command", "new-composition"),

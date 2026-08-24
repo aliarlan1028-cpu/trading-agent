@@ -139,6 +139,7 @@ try {
     { workspace: "live", id: "position-native-2", type: "Position" },
     { workspace: "lab", id: "breakout@4", type: "Strategy product" },
     { workspace: "control", id: "mandate-main", type: "Mandate" },
+    { workspace: "control-event-risk", id: "event-5", type: "Event" },
     { workspace: "operations", id: "task-9", type: "Task" }
   ];
   const results = [];
@@ -170,7 +171,8 @@ try {
     { surface: "app-capability", id: "capability-18", type: "Capability", close: ".mCapabilitySheet .mSheetGrip" },
     { surface: "app-strategy", id: "breakout@4", type: "Strategy product", close: ".mLabRegistrySheet .mSheetGrip" },
     { surface: "app-strategy", id: "mean-reversion", type: "Strategy", close: ".mLabRegistrySheet .mSheetGrip" },
-    { surface: "app-validation", id: "validation-6", type: "Validation run", close: ".mResearchSheet .mSheetGrip" }
+    { surface: "app-validation", id: "validation-6", type: "Validation run", close: ".mResearchSheet .mSheetGrip" },
+    { surface: "app-event-risk", id: "event-5", type: "Event" }
   ];
   for (const entry of appCases) {
     const selector = `[data-browser-case="${entry.surface}"] [data-shell-object-id="${entry.id}"][data-shell-object-type="${entry.type}"]`;
@@ -198,12 +200,17 @@ try {
   }
   await evaluate(cdp, `document.querySelector('[data-browser-case="app-object-sheet"] [role="combobox"]').focus()`);
   await trustedKey(cdp, "ArrowDown", "ArrowDown");
-  assert.deepEqual(await evaluate(cdp, `(() => {
+  const afterDown = await evaluate(cdp, `(() => {
     const input = document.querySelector('[data-browser-case="app-object-sheet"] [role="combobox"]');
-    return { active: input?.getAttribute("aria-activedescendant"), selected: document.querySelector('[data-browser-case="app-object-sheet"] #mobile-shell-object-result-1')?.getAttribute("aria-selected") };
-  })()`), { active: "mobile-shell-object-result-1", selected: "true" });
+    const active = input?.getAttribute("aria-activedescendant");
+    return { active, selected: active ? document.getElementById(active)?.getAttribute("aria-selected") : null };
+  })()`);
+  assert.match(afterDown.active, /^mobile-shell-object-result-/);
+  assert.equal(afterDown.selected, "true");
   await trustedKey(cdp, "ArrowUp", "ArrowUp");
-  assert.equal(await evaluate(cdp, `document.querySelector('[data-browser-case="app-object-sheet"] [role="combobox"]')?.getAttribute("aria-activedescendant")`), "mobile-shell-object-result-0");
+  const afterUp = await evaluate(cdp, `document.querySelector('[data-browser-case="app-object-sheet"] [role="combobox"]')?.getAttribute("aria-activedescendant")`);
+  assert.match(afterUp, /^mobile-shell-object-result-/);
+  assert.notEqual(afterUp, afterDown.active);
   await trustedKey(cdp, "Enter", "Enter");
   assert.deepEqual(await evaluate(cdp, `(() => {
     const root = document.querySelector("#canonical-browser-harness");

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  AiDialogConcept, CapabilitiesConcept, EventsConcept,
+  AiDialogConcept, CapabilitiesConcept, EventRiskConcept, EventsConcept,
   ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept,
   MarketConcept, OperatingBoundaryConcept, WatchMonitorConcept,
   OwnerReviewWorkspaceConcept, TradeReviewWorkbenchConcept,
@@ -20,7 +20,7 @@ const TABS = {
   ai: [["dialog", "对话", "Dialog"], ["intel", "情报", "Intel"], ["watch", "盯盘", "Watch"], ["events", "事件", "Events"]],
   trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"], ["ledger", "委托与成交", "Orders & Fills"]],
   research: [["map", "研究地图", "Research Map"], ["knowledge", "知识孵化", "Incubation"], ["strategy", "策略资产", "Strategies"], ["capabilities", "能力资产", "Capabilities"], ["reviews", "交易复盘", "Trade Reviews"], ["owner", "Owner 优化", "Owner Review"]],
-  risk: [["posture", "风险态势", "Risk Posture"], ["mandate", "生效边界", "Effective Boundaries"], ["rules", "规则监控", "Rule Monitor"]],
+  risk: [["posture", "风险态势", "Risk Posture"], ["events", "事件风险", "Event Risk"], ["mandate", "生效边界", "Effective Boundaries"], ["rules", "规则监控", "Rule Monitor"]],
   ops: [["overview", "运行值班台", "Command"], ["tasks", "任务与运行", "Tasks & Runs"], ["recovery", "对账与恢复", "Recovery"], ["audit", "审计证据", "Audit"], ["notifications", "通知收件箱", "Inbox"]]
 };
 
@@ -181,10 +181,12 @@ export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
   const [tab, setTab] = useState(initialTab);
   const pages = {
     posture: <RiskPostureConcept data={data} ui={ui}/>,
+    events: <EventRiskConcept data={data} ui={ui}/>,
     mandate: <OperatingBoundaryConcept data={data} ui={ui}/>,
     rules: <RulesConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell workspace="risk" title="Control" subtitle={t("实际状态 · 生效边界 · 规则命中","Effective state · Boundaries · Rule hits")} tabs={TABS.risk} active={tab} onChange={setTab}><div className="controlRuntimeWorkspace" data-ownership="runtime-readonly">{pages[tab] || pages.posture}</div></CenterShell>;
+  const safeTab = TABS.risk.some(([id]) => id === tab) ? tab : "posture";
+  return <CenterShell workspace="risk" title="Control" subtitle={t("实际状态 · 事件风险 · 生效边界 · 规则命中","Effective state · Event risk · Boundaries · Rule hits")} tabs={TABS.risk} active={safeTab} onChange={setTab}><div className="controlRuntimeWorkspace" data-ownership="runtime-readonly">{pages[safeTab] || pages.posture}</div></CenterShell>;
 }
 
 export function OperationsCenter({ data, action, ui, initialTab = "overview" }) {
