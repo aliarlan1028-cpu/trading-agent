@@ -1498,3 +1498,52 @@ test("AI Trader and Live Desk deep pages expose shared truth, registry, evidence
   assert.match(mobileExecution, /kTruthBand/, "mobile execution must expose current execution truth");
   assert.match(mobileExecution, /mEvidenceLedger|kEvidenceLedger/, "mobile execution must preserve the execution evidence ledger");
 });
+
+test("Task 4 action bars preserve primary confirmation and dangerous exit hierarchy", () => {
+  const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+  const product = fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8");
+  const aiBlock = styles.split("/* AI Trader and native Live Desk now consume")[1] || "";
+  const liveBlock = product.split("/* AI / Live deep-page convergence")[1] || "";
+  assert.match(aiBlock, /\.paActions\.kActionBar\s*>\s*\.primaryButton\s*\{[^}]*background:\s*var\(--kordyn-acid\)/, "AI confirmation must remain the primary action");
+  assert.match(aiBlock, /\.paActions\.kActionBar\s*>\s*\.dangerButton\s*\{[^}]*background:\s*var\(--kordyn-orange\)/, "dangerous AI confirmation must remain destructive");
+  assert.match(liveBlock, /\.erDetailActions\.kActionBar\s*>\s*\.cp2Danger\s*\{[^}]*background:\s*var\(--product-danger\)/, "live execution exits must remain destructive");
+});
+
+test("mobile execution truth distinguishes unavailable lifecycle performance from populated results", () => {
+  const unavailable = render(React.createElement(C.MobileExecution, {
+    data: { executionOrders: [], fills: [], reviews: [], performance: {} }, action, initialTab: "overview"
+  }));
+  assert.match(unavailable, /净交易结果[\s\S]*?>—<\/b>[\s\S]*?尚未加载/, "missing lifecycle facts must render an explicit not-loaded truth");
+  assert.doesNotMatch(unavailable, /\+0\.00/, "missing lifecycle facts must never become synthetic zero profit");
+
+  const populated = render(React.createElement(C.MobileExecution, {
+    data: { executionOrders: [], fills: [], reviews: [], closedTradeLifecycles: [{ id: "closed", netRealizedPnl: -3.25 }] }, action, initialTab: "overview"
+  }));
+  assert.match(populated, /class="mono neg">-3\.25<\/b>/, "loaded lifecycle truth must retain the authoritative signed result");
+  assert.doesNotMatch(populated, /尚未加载/);
+});
+
+test("Task 4 adaptation blocks use approved tokens instead of raw palette literals", () => {
+  const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+  const product = fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8");
+  const aiBlock = styles.split("/* AI Trader and native Live Desk now consume")[1] || "";
+  const liveBlock = product.split("/* AI / Live deep-page convergence")[1] || "";
+  assert.ok(aiBlock && liveBlock, "Task 4 adaptation blocks must remain identifiable");
+  assert.doesNotMatch(aiBlock, /#[0-9a-f]{3,8}\b/i, "AI/mobile adaptations must compose Kordyn tokens");
+  assert.doesNotMatch(liveBlock, /#[0-9a-f]{3,8}\b/i, "Live desktop adaptations must compose product tokens");
+});
+
+test("Task 4 truth bands retain positive and negative trading sign cues", () => {
+  const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+  const product = fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8");
+  const aiBlock = styles.split("/* AI Trader and native Live Desk now consume")[1] || "";
+  const liveBlock = product.split("/* AI / Live deep-page convergence")[1] || "";
+  assert.match(aiBlock, /\.mPageStats\.kTruthBand strong\.positive[\s\S]{0,240}var\(--pos\)/, "mobile position profit needs a readable positive cue");
+  assert.match(aiBlock, /\.mPageStats\.kTruthBand strong\.negative[\s\S]{0,240}var\(--neg\)/, "mobile position loss needs a readable negative cue");
+  assert.match(aiBlock, /\.mMetric2x2\.kTruthBand b\.pos[\s\S]{0,240}var\(--pos\)/, "mobile positive results need a readable positive cue");
+  assert.match(aiBlock, /\.mMetric2x2\.kTruthBand b\.neg[\s\S]{0,240}var\(--neg\)/, "mobile negative results need a readable negative cue");
+  assert.match(aiBlock, /\.mChatStatus\.kTruthBand b\.pos[\s\S]{0,240}var\(--pos\)/, "mobile chat profit needs a readable positive cue");
+  assert.match(aiBlock, /\.mChatStatus\.kTruthBand b\.neg[\s\S]{0,240}var\(--neg\)/, "mobile chat loss needs a readable negative cue");
+  assert.match(liveBlock, /\.positionTruthBand[^{]*\.cp2Metric\.good b[\s\S]{0,180}var\(--product-lime\)/, "desktop positive position values need a positive cue");
+  assert.match(liveBlock, /\.positionTruthBand[^{]*\.cp2Metric\.bad b[\s\S]{0,240}var\(--product-danger\)/, "desktop negative position values need a negative cue");
+});

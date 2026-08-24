@@ -283,9 +283,10 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
   const [reviewFilter, setReviewFilter] = useState("all");
   const [selectedReview, setSelectedReview] = useState(null);
   const execution = buildExecutionView(data);
-  const { orders, fills, closedTrades: closes, reviews, performance, totals } = execution;
+  const { orders, fills, closedTrades: closes, reviews, performance, lifecycleState, totals } = execution;
   const inFlight = countOpenExecutions(orders);
-  const realized = Number(performance.totalPnlUsdt || 0);
+  const performanceAvailable = lifecycleState === "loaded" || hasFiniteNumber(data.performance?.totalPnlUsdt);
+  const realized = performanceAvailable ? Number(performance.totalPnlUsdt) : null;
   const pendingReviews = reviews.filter((row) => !isCompletedTradeReview(row)).length;
   const completedReviews = reviews.length - pendingReviews;
   const tradeForReview = (review) => closes.find((trade) => trade.tradeLifecycleKey === review.tradeLifecycleKey || trade.executionOrderId === review.executionOrderId || (review.fillIds || []).some((id) => trade.fillIds?.includes(id)));
@@ -298,7 +299,7 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
   return <div className="mScreen mExecutionScreen">
     <div className="mSegmentNav kFilterRail">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
     {tab === "overview" && <>
-      <div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
+      <div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized == null ? "" : realized >= 0 ? "pos" : "neg"}`}>{realized == null ? "—" : `${realized >= 0 ? "+" : ""}${displayMoney(realized, 2)}`}</b>{realized == null && <small>{t("尚未加载", "Not loaded")}</small>}</div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
       <section className="mNativeSection kRegistry"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
         <button className="mActionRow" onClick={() => setTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
         <button className="mActionRow" onClick={() => setTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>

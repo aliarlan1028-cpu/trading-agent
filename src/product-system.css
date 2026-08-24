@@ -1472,10 +1472,13 @@
   border-radius: 0;
 }
 .productWorkspace .marketTruthBand.kTruthBand > b { color: var(--product-paper-2); font: 680 28px/1 var(--font-mono); }
-.productWorkspace .marketTruthBand.kTruthBand > .cp2Pill { border-color: rgba(255,255,255,.22); background: transparent; color: var(--product-lime); }
+.productWorkspace .marketTruthBand.kTruthBand > .cp2Pill { border-color: color-mix(in srgb,var(--product-paper-2) 22%,transparent); background: transparent; color: var(--product-paper-2); }
+.productWorkspace .marketTruthBand.kTruthBand > .cp2Pill.good { color: var(--product-lime); }
+.productWorkspace .marketTruthBand.kTruthBand > .cp2Pill.bad { color: color-mix(in srgb,var(--product-danger) 55%,var(--product-paper-2)); }
 .productWorkspace .cp2FormActions.kActionBar,
 .productWorkspace .erDetailActions.kActionBar { display: flex; margin: 0; padding: 0; border: 0; background: transparent; }
 .productWorkspace .cp2FormActions.kActionBar > button { min-height: 32px; }
+.productWorkspace .erDetailActions.kActionBar > .cp2Danger { border-color: var(--product-danger); background: var(--product-danger); color: var(--product-paper-2); }
 .productWorkspace .marketRegistry.kRegistry,
 .productWorkspace .marketResearchDeck.kEvidenceLedger,
 .productWorkspace .erOrdersCard.kRegistry,
@@ -1488,15 +1491,17 @@
   min-height: 74px;
   padding: 13px 15px;
   border: 0;
-  border-right: 1px solid rgba(255,255,255,.16);
+  border-right: 1px solid color-mix(in srgb,var(--product-paper-2) 16%,transparent);
   border-radius: 0;
   background: transparent;
   color: var(--product-paper-2);
 }
 .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:last-child { border-right: 0; }
 .productWorkspace .positionTruthBand .cp2Metric small,
-.productWorkspace .positionTruthBand .cp2Metric em { color: #a6aaa0; }
-.productWorkspace .positionTruthBand .cp2Metric b { color: #fff; }
+.productWorkspace .positionTruthBand .cp2Metric em { color: color-mix(in srgb,var(--product-paper-2) 62%,var(--product-ink)); }
+.productWorkspace .positionTruthBand .cp2Metric b { color: var(--product-paper-2); }
+.productWorkspace .positionTruthBand .cp2Metric.good b { color: var(--product-lime); }
+.productWorkspace .positionTruthBand .cp2Metric.bad b { color: color-mix(in srgb,var(--product-danger) 55%,var(--product-paper-2)); }
 .productWorkspace .positionRegistryList.kRegistry > button {
   grid-template-columns: minmax(0,1fr) auto auto;
   min-height: 60px;
@@ -1531,7 +1536,7 @@
   box-shadow: none;
 }
 .productWorkspace .erPageHeader.kTruthBand > div { min-height: 0; padding: 0; }
-.productWorkspace .erPageHeader.kTruthBand > div + div { min-width: 0; border: 1px solid rgba(255,255,255,.16); }
+.productWorkspace .erPageHeader.kTruthBand > div + div { min-width: 0; border: 1px solid color-mix(in srgb,var(--product-paper-2) 16%,transparent); }
 .productWorkspace .erPriorityGrid.kWorkbench { gap: 0; border-radius: 0; }
 .productWorkspace .erPriorityGrid.kWorkbench > .cp2Card { border: 0; border-radius: 0; box-shadow: none; }
 .productWorkspace .erPriorityGrid.kWorkbench > .cp2Card + .cp2Card { border-left: 1px solid var(--product-ink); }
@@ -1545,7 +1550,7 @@
 @media(max-width:900px){
   .productWorkspace .positionTruthBand.kTruthBand { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:nth-child(2n) { border-right: 0; }
-  .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.16); }
+  .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:nth-child(-n+2) { border-bottom: 1px solid color-mix(in srgb,var(--product-paper-2) 16%,transparent); }
   .productWorkspace .erPageHeader.kTruthBand { align-items: flex-start; flex-direction: column; }
   .productWorkspace .erPriorityGrid.kWorkbench > .cp2Card + .cp2Card { border-top: 1px solid var(--product-ink); border-left: 0; }
 }

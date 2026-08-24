@@ -10163,7 +10163,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .cp2IntelLayout .intelTruthBand.kTruthBand > .cp2CardHead {
   min-height: 48px;
   padding: 0 14px;
-  border-bottom: 1px solid rgba(255,255,255,.16);
+  border-bottom: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 16%,transparent);
   color: var(--kordyn-paper-white);
 }
 .kordynSystem .cp2IntelLayout .intelTruthBand.kTruthBand > .cp2Metrics {
@@ -10175,14 +10175,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   min-height: 72px;
   padding: 12px 14px;
   border: 0;
-  border-right: 1px solid rgba(255,255,255,.14);
+  border-right: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 14%,transparent);
   border-radius: 0;
   background: transparent;
   color: var(--kordyn-paper-white);
 }
 .kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric:last-child { border-right: 0; }
 .kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric small,
-.kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric em { color: #a9ada3; }
+.kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric em { color: color-mix(in srgb,var(--kordyn-paper-white) 62%,var(--kordyn-ink)); }
 .kordynSystem .cp2IntelList.kRegistry > button {
   grid-template-columns: auto minmax(0,1fr) auto;
   min-height: 64px;
@@ -10204,7 +10204,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   background: var(--kordyn-ink);
 }
 .kordynSystem .wmHero.kTruthBand > div { min-height: 76px; padding: 14px 16px; }
-.kordynSystem .wmHero.kTruthBand > div:last-child { min-width: 180px; border-left: 1px solid rgba(255,255,255,.16); }
+.kordynSystem .wmHero.kTruthBand > div:last-child { min-width: 180px; border-left: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 16%,transparent); }
 .kordynSystem .wmHero.kTruthBand strong { color: var(--kordyn-acid); }
 .kordynSystem .wmWatchList.kRegistry { gap: 0; border: 1px solid var(--kordyn-ink); }
 .kordynSystem .wmWatchList.kRegistry > article { border: 0; border-bottom: 1px solid var(--kordyn-line); border-radius: 0; }
@@ -10219,8 +10219,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .agentRiskInspector.kInspector { border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
 .kordynSystem .agWallBtns.kActionBar { position: static; padding: 9px 0 0; background: transparent; }
 .kordynSystem .patrolMetricStrip.kTruthBand { grid-template-columns: repeat(4,minmax(0,1fr)); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }
-.kordynSystem .patrolMetricStrip.kTruthBand > span { border-right-color: rgba(255,255,255,.15); }
-.kordynSystem .patrolMetricStrip.kTruthBand small { color: #a7aba1; }
+.kordynSystem .patrolMetricStrip.kTruthBand > span { border-right-color: color-mix(in srgb,var(--kordyn-paper-white) 15%,transparent); }
+.kordynSystem .patrolMetricStrip.kTruthBand small { color: color-mix(in srgb,var(--kordyn-paper-white) 60%,var(--kordyn-ink)); }
 .kordynSystem .patrolMetricStrip.kTruthBand b { color: var(--kordyn-acid); }
 .kordynSystem .patrolReceiptSummary.kActionBar { position: static; display: grid; grid-template-columns: minmax(0,1fr) auto; padding: 11px 12px; border-top: 0; background: var(--kordyn-paper-white); }
 .kordynSystem .patrolDetail.kEvidenceLedger { border-top-color: var(--kordyn-ink); }
@@ -10228,20 +10228,26 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .posterPatrolFacts.kTruthBand { grid-template-columns: repeat(4,minmax(0,1fr)); }
 .kordynSystem .posterBody.kEvidenceLedger { border-top-color: var(--kordyn-ink); }
 .kordynSystem .paActions.kActionBar { position: static; padding: 0; border: 0; background: transparent; }
+.kordynSystem .paActions.kActionBar > .primaryButton { border-color: var(--kordyn-acid); background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.kordynSystem .paActions.kActionBar > .dangerButton { border-color: var(--kordyn-orange); background: var(--kordyn-orange); color: var(--kordyn-ink); }
 
 /* Native role adaptations keep task-led mobile composition instead of
    inheriting desktop list/detail geometry. */
 .kordynSystem .mPageStats.kTruthBand { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; overflow: hidden; border-radius: 0; }
-.kordynSystem .mPageStats.kTruthBand > div { min-height: 64px; padding: 10px 12px; border: 0; border-right: 1px solid rgba(255,255,255,.15); border-radius: 0; background: transparent; }
+.kordynSystem .mPageStats.kTruthBand > div { min-height: 64px; padding: 10px 12px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 15%,transparent); border-radius: 0; background: transparent; }
 .kordynSystem .mPageStats.kTruthBand > div:last-child { border-right: 0; }
-.kordynSystem .mPageStats.kTruthBand span { color: #a8aca2; }
+.kordynSystem .mPageStats.kTruthBand span { color: color-mix(in srgb,var(--kordyn-paper-white) 60%,var(--kordyn-ink)); }
 .kordynSystem .mPageStats.kTruthBand strong { color: var(--kordyn-paper-white); }
+.kordynSystem .mPageStats.kTruthBand strong.positive { color: color-mix(in srgb,var(--pos) 58%,var(--kordyn-paper-white)); }
+.kordynSystem .mPageStats.kTruthBand strong.negative { color: color-mix(in srgb,var(--neg) 58%,var(--kordyn-paper-white)); }
 .kordynSystem .mMetric2x2.kTruthBand { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; overflow: hidden; border-radius: 0; }
-.kordynSystem .mMetric2x2.kTruthBand > div { min-height: 66px; padding: 11px 12px; border: 0; border-right: 1px solid rgba(255,255,255,.14); border-bottom: 1px solid rgba(255,255,255,.14); border-radius: 0; background: transparent; }
+.kordynSystem .mMetric2x2.kTruthBand > div { min-height: 66px; padding: 11px 12px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 14%,transparent); border-bottom: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 14%,transparent); border-radius: 0; background: transparent; }
 .kordynSystem .mMetric2x2.kTruthBand > div:nth-child(2n) { border-right: 0; }
 .kordynSystem .mMetric2x2.kTruthBand > div:nth-last-child(-n+2) { border-bottom: 0; }
-.kordynSystem .mMetric2x2.kTruthBand span { color: #a8aca2; }
+.kordynSystem .mMetric2x2.kTruthBand span { color: color-mix(in srgb,var(--kordyn-paper-white) 60%,var(--kordyn-ink)); }
 .kordynSystem .mMetric2x2.kTruthBand b { color: var(--kordyn-paper-white); }
+.kordynSystem .mMetric2x2.kTruthBand b.pos { color: color-mix(in srgb,var(--pos) 58%,var(--kordyn-paper-white)); }
+.kordynSystem .mMetric2x2.kTruthBand b.neg { color: color-mix(in srgb,var(--neg) 58%,var(--kordyn-paper-white)); }
 .kordynSystem .mIntelHero.kTruthBand { display: flex; min-height: 98px; padding: 15px; border-radius: 0; background: var(--kordyn-ink); box-shadow: none; }
 .kordynSystem .mIntelHero.kTruthBand > div { min-height: 0; padding: 0; }
 .kordynSystem .mIntelHero.kTruthBand > button { margin-left: auto; }
@@ -10268,22 +10274,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .marketPositionRegistry.kRegistry { border-color: var(--kordyn-ink); border-radius: 0; box-shadow: none; }
 .kordynSystem .mMarginCard.kStateRow { display: flex; grid-template-columns: none; min-height: 72px; border-radius: 0; }
 .kordynSystem .mWatchSummary.kTruthBand { grid-template-columns: 1fr 1fr; gap: 0; padding: 0; border-radius: 0; }
-.kordynSystem .mWatchSummary.kTruthBand > div { min-height: 68px; padding: 12px; border: 0; border-right: 1px solid rgba(255,255,255,.14); border-radius: 0; background: transparent; }
+.kordynSystem .mWatchSummary.kTruthBand > div { min-height: 68px; padding: 12px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 14%,transparent); border-radius: 0; background: transparent; }
 .kordynSystem .mWatchSummary.kTruthBand > div:nth-child(2) { border-right: 0; }
 .kordynSystem .mWatchSummary.kTruthBand b { color: var(--kordyn-acid); }
-.kordynSystem .mWatchSummary.kTruthBand span { color: #a8aca2; }
+.kordynSystem .mWatchSummary.kTruthBand span { color: color-mix(in srgb,var(--kordyn-paper-white) 60%,var(--kordyn-ink)); }
 .kordynSystem .mWatchSummary.kTruthBand p { grid-column: 1/-1; margin: 0; border-radius: 0; background: var(--kordyn-paper); color: var(--kordyn-ink); }
 .kordynSystem .mChatStatus.kTruthBand { grid-template-columns: repeat(4,minmax(0,1fr)); background: var(--kordyn-ink); }
-.kordynSystem .mChatStatus.kTruthBand > div { min-height: 52px; padding: 9px 8px; border: 0; border-right: 1px solid rgba(255,255,255,.13); }
+.kordynSystem .mChatStatus.kTruthBand > div { min-height: 52px; padding: 9px 8px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 13%,transparent); }
 .kordynSystem .mChatStatus.kTruthBand > div:last-child { border-right: 0; }
-.kordynSystem .mChatStatus.kTruthBand span { color: #9fa399; }
+.kordynSystem .mChatStatus.kTruthBand span { color: color-mix(in srgb,var(--kordyn-paper-white) 56%,var(--kordyn-ink)); }
 .kordynSystem .mChatStatus.kTruthBand b { color: var(--kordyn-paper-white); }
+.kordynSystem .mChatStatus.kTruthBand b.pos { color: color-mix(in srgb,var(--pos) 58%,var(--kordyn-paper-white)); }
+.kordynSystem .mChatStatus.kTruthBand b.neg { color: color-mix(in srgb,var(--neg) 58%,var(--kordyn-paper-white)); }
 
 @media(max-width:720px){
   .kordynSystem .cp2IntelLayout .intelTruthBand.kTruthBand > .cp2Metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric:nth-child(2n) { border-right: 0; }
-  .kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.14); }
+  .kordynSystem .cp2IntelLayout .intelTruthBand .cp2Metric:nth-child(-n+2) { border-bottom: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 14%,transparent); }
   .kordynSystem .wmHero.kTruthBand { grid-template-columns: minmax(0,1fr); }
-  .kordynSystem .wmHero.kTruthBand > div:last-child { min-width: 0; border-top: 1px solid rgba(255,255,255,.16); border-left: 0; text-align: left; }
+  .kordynSystem .wmHero.kTruthBand > div:last-child { min-width: 0; border-top: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 16%,transparent); border-left: 0; text-align: left; }
   .kordynSystem .patrolReceiptSummary.kActionBar { grid-template-columns: minmax(0,1fr); }
 }
