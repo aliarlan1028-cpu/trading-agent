@@ -1177,7 +1177,7 @@ export function RuleLibraryPanel({ data, action, ui }) {
             <div className="ruleItemBtns">
               {!approved && <button className="primaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: true })}>{t("批准", "Approve")}</button>}
               {!approved && rule.status !== "已拒绝" && <button className="secondaryButton sm" onClick={() => action(`/api/knowledge/rules/${rule.id}/approve`, { approved: false })}>{t("拒绝", "Reject")}</button>}
-              {approved && <button className="secondaryButton sm" onClick={() => ui.openPanel("riskRules")}>{t("查看风险规则", "View risk rules")}</button>}
+              {approved && <button className="secondaryButton sm" onClick={() => ui.setActive("systemSettings:risk")}>{t("在配置中心查看", "View in Configuration")}</button>}
               <button className="dangerTextButton sm" title={approved?t("退役后停止其风控与提示作用并保留审计记录", "Retire to stop enforcement and guidance while preserving audit history"):t("删除该规则草案", "Delete this rule draft")} onClick={async () => { if (await uiConfirm(approved?t(`退役已批准规则「${rule.name}」？它将停止生效，但保留审计记录。`,`Retire approved rule “${rule.name}”? It will stop applying while its audit history remains.`):t(`删除规则草案「${rule.name}」？`, `Delete rule draft “${rule.name}”?`))) action(`/api/knowledge/rules/${rule.id}`, {}, "DELETE"); }}><Trash2 size={14} /> {approved?t("退役", "Retire"):t("删除", "Delete")}</button>
             </div>
           </div>

@@ -13,7 +13,6 @@ import {
   Settings,
   Target,
   Globe,
-  Info,
   ShieldCheck,
   Zap
 } from "lucide-react";
@@ -22,8 +21,11 @@ import { AssistantWidget } from "./assistant.jsx";
 import { LandingPage } from "./landing.jsx";
 import { ConfirmHost, uiConfirm } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
+import { PRIMARY_WORKSPACE_IDS, WORKSPACES, productWorkspaceForRuntimeSection, resolveDesktopRoute } from "./productArchitecture.js";
+import { WorkspaceStateBoundary } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
+import "./product-foundation.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
@@ -50,20 +52,15 @@ if (isNativeApp()) {
 // IA 重构 W1:导航按"交易 / 能力(知识→能力→使用) / 风控与运维"重排。
 // 新增 信号中心(计划看板)、交易日志;合并 策略研究+分析作战室→策略与分析、实盘运营→审计。
 // 风控与授权、知识与技能后续波次再拆(总览/设置、知识库/能力与工具)。
-const navItems = [
-  { id: "chat", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
-  { id: "cockpit", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
-  { id: "researchCenter", label: "研究中心", labelEn: "Research", icon: BookOpen },
-  { id: "riskCenter", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
-  { id: "operationsCenter", label: "系统运营", labelEn: "Operations", icon: Activity }
-];
+const WORKSPACE_ICONS = { ai: Bot, live: PieChart, lab: BookOpen, control: ShieldCheck, operations: Activity };
+const navItems = PRIMARY_WORKSPACE_IDS.map((id) => ({ ...WORKSPACES[id], icon: WORKSPACE_ICONS[id] }));
 
 function BrandLogo({ size = 34, variant = "black" }) {
   const src = variant === "white" ? "/kordyn-logo-white.svg" : "/kordyn-logo.svg";
   return <img className="brandLogo" src={src} alt="KORDYN" width={size} height={size} />;
 }
 
-function Sidebar({ active, setActive }) {
+function Sidebar({ active, activeWorkspace, setActive }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -76,10 +73,10 @@ function Sidebar({ active, setActive }) {
       <nav className="nav">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const on = active === item.id;
+          const on = activeWorkspace ? activeWorkspace === item.id : productWorkspaceForRuntimeSection(active) === item.id;
           const label = t(item.label, item.labelEn);
           return (
-              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.id)}>
+              <button key={item.id} className={`navItem ${on ? "active" : ""}`} title={label} onClick={() => setActive(item.rootRoute)}>
                 <Icon size={16} />
                 <span className="navLabelFull">{label}</span>
                 <span className="navLabelShort">{label}</span>
@@ -88,8 +85,8 @@ function Sidebar({ active, setActive }) {
         })}
       </nav>
       <div className="sidebarFoot">
-        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
-          <Settings size={15} /> {t("系统设置", "Settings")}
+        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} title={t("配置中心 / 密钥 / 用户管理", "Configuration / Keys / Users")} onClick={() => setActive("systemSettings")}>
+          <Settings size={15} /> {t("配置中心", "Configuration")}
         </button>
       </div>
     </aside>
@@ -170,7 +167,7 @@ function AppTopbar({ data, setActive, notify, action, lang, switchLang }) {
         <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>
       <div className="topbarActions">
-        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
+        <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("operationsCenter:notifications"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
         </button>
@@ -334,10 +331,12 @@ function App() {
   const [lang, setLangState] = useState(getLang());
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
+  const [activeProductWorkspace, setActiveProductWorkspace] = useState("ai");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeReviewId, setActiveReviewId] = useState("");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
+  const [activeSettingsSection, setActiveSettingsSection] = useState("environment");
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
@@ -345,48 +344,31 @@ function App() {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
   function navigate(next) {
-    // 旧入口重定向到合并后的驾驶舱（保留内部链接不失效）。
-    if (next === "chat") { setActiveWorkspaceTab("dialog"); setActive("chat"); return; }
-    if (next === "cockpit") { setActiveWorkspaceTab("overview"); setActive("cockpit"); return; }
-    if (next === "researchCenter") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
-    if (next === "riskCenter") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
-    if (next === "riskMandate") { setActiveWorkspaceTab("mandate"); setActive("riskCenter"); return; }
-    if (next === "operationsCenter") { setActiveWorkspaceTab("overview"); setActive("operationsCenter"); return; }
-    if (next === "marketAccount" || next === "market") { setActiveWorkspaceTab("market"); setActive("cockpit"); return; }
-    if (next === "signalHub") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
-    if (next === "tradeJournal") { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
-    if (String(next).startsWith("tradeReviewDetail")) { setActiveReviewId(String(next).split(":").slice(1).join(":")); setActiveWorkspaceTab("reviews"); setActive("cockpit"); return; }
-    if (next === "ownerReviewWorkspace") { setActiveWorkspaceTab("owner"); setActive("cockpit"); return; }
-    if (next === "tradeLedger") { setActiveWorkspaceTab("ledger"); setActive("cockpit"); return; }
-    if (next === "knowledgeBase" || next === "researchCenter:knowledge") { setActiveWorkspaceTab("knowledge"); setActive("researchCenter"); return; }
-    if (next === "capabilities" || next === "researchCenter:capabilities") { setActiveWorkspaceTab("capabilities"); setActive("researchCenter"); return; }
-    if (next === "researchCenter:strategy") { setActiveStrategyTab("catalog"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
-    if (["strategyAnalysis", "analysisRoom", "strategyWorkbench"].includes(next)) { setActiveStrategyTab("catalog"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
-    if (next === "strategyStudio") { setActiveStrategyTab("studio"); setActiveWorkspaceTab("strategy"); setActive("researchCenter"); return; }
-    if (next === "riskOverview") { setActiveWorkspaceTab("posture"); setActive("riskCenter"); return; }
-    if (next === "riskSettings") { setActiveWorkspaceTab("rules"); setActive("riskCenter"); return; }
-    if (next === "eventsTasks" || next === "eventsTasks:events") { setActiveWorkspaceTab("events"); setActive("operationsCenter"); return; }
-    if (next === "eventsTasks:tasks") { setActiveWorkspaceTab("tasks"); setActive("operationsCenter"); return; }
-    if (next === "auditSystem") { setActiveWorkspaceTab("audit"); setActive("operationsCenter"); return; }
-    // Admin 并入系统设置的"用户管理"tab（仅 Owner 可见）。
-    if (next === "admin") { setActiveSettingsTab("users"); setActive("systemSettings"); return; }
-    if (next === "systemSettings:exchange") { setActiveSettingsTab("exchange"); setActive("systemSettings"); return; }
-    if (next === "systemSettings") setActiveSettingsTab("overview");
-    setActive(next);
+    const resolved = resolveDesktopRoute(next);
+    setActiveProductWorkspace(resolved.workspace);
+    setActive(resolved.section);
+    if (resolved.tab) setActiveWorkspaceTab(resolved.tab);
+    if (resolved.strategyTab) setActiveStrategyTab(resolved.strategyTab);
+    if (resolved.objectId) setActiveReviewId(resolved.objectId);
+    else if (resolved.tab !== "reviews") setActiveReviewId("");
+    if (resolved.settingsTab) setActiveSettingsTab(resolved.settingsTab);
+    else if (resolved.section === "systemSettings" && resolved.view === "overview") setActiveSettingsTab("overview");
+    if (resolved.settingsSection) setActiveSettingsSection(resolved.settingsSection);
+    if (!resolved.recognized) notify(t("未找到该入口，已返回 AI 交易员。", "That destination was not found. Returned to AI Trader."));
   }
   const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
     const resourceState = data.resourceState?.[active] || "not_loaded";
-    if (resourceState !== "loaded") return <WorkspaceLoadState state={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
+    if (resourceState !== "loaded") return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} reviewInitialId={activeReviewId} />;
-    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
+    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} reviewInitialId={activeReviewId} />;
     if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
+    if (active === "systemSettings") return <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
+  }, [active, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
 
   if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
   if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
@@ -398,8 +380,8 @@ function App() {
   }
 
   return (
-    <div className="appShell" key={lang}>
-      <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
+    <div className="appShell kordynSystem" key={lang}>
+      <Sidebar active={active} activeWorkspace={activeProductWorkspace} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
       <main className="mainArea">
         <AppTopbar data={data} setActive={navigate} notify={notify} action={action} lang={lang} switchLang={switchLang} />
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
@@ -451,18 +433,6 @@ function PageSkeleton() {
       <div className="skGrid">{Array.from({ length: 4 }).map((_, i) => <div className="skCard" key={i} />)}</div>
       <div className="skRow skWide" />
       <div className="skRow skWide" />
-    </div>
-  );
-}
-
-function WorkspaceLoadState({ state, onRetry }) {
-  if (state !== "error") return <PageSkeleton />;
-  return (
-    <div className="pageSkeleton workspaceLoadError" role="alert">
-      <Info size={22} />
-      <strong>{t("该页面数据加载失败", "This workspace could not be loaded")}</strong>
-      <span>{t("当前空白不代表数据为零，请重试同步。", "Blank values are not authoritative. Retry the sync.")}</span>
-      <button className="secondary" type="button" onClick={onRetry}>{t("重新加载", "Retry")}</button>
     </div>
   );
 }

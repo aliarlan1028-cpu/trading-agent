@@ -115,25 +115,34 @@ export function acceptSectionSnapshot(store, section, snapshot, minimumRevision 
   return true;
 }
 
-export function projectSnapshotStore(store, section = "chat") {
+export function projectSnapshotStore(store, section = "chat", supplementalSections = []) {
   if (!store.core) return null;
   const detail = store.sections.get(section) || null;
-  const projected = detail ? { ...store.core, ...detail } : { ...store.core };
-  if (detail) {
+  const supplements = supplementalSections
+    .filter((item) => item && item !== section)
+    .map((item) => store.sections.get(item))
+    .filter(Boolean);
+  const contextDetail = Object.assign({}, ...supplements, ...(detail ? [detail] : []));
+  const projected = { ...store.core, ...contextDetail };
+  if (detail || supplements.length) {
     for (const field of CORE_OWNED_FIELDS) {
       if (Object.hasOwn(store.core, field)) projected[field] = store.core[field];
     }
     for (const field of LIVE_ROW_FIELDS) {
-      if (Object.hasOwn(detail, field) || Object.hasOwn(store.core, field)) {
-        projected[field] = mergeRows(store.core[field], detail[field]);
+      if (Object.hasOwn(contextDetail, field) || Object.hasOwn(store.core, field)) {
+        projected[field] = mergeRows(store.core[field], contextDetail[field]);
       }
     }
-    if (Object.hasOwn(detail, "markets") || Object.hasOwn(store.core, "markets")) {
-      projected.markets = mergeRows(store.core.markets, detail.markets, (row) => row?.symbol || null);
+    if (Object.hasOwn(contextDetail, "markets") || Object.hasOwn(store.core, "markets")) {
+      projected.markets = mergeRows(store.core.markets, contextDetail.markets, (row) => row?.symbol || null);
     }
   }
   projected.loadedSections = [...store.sections.keys()];
   projected.resourceState = { ...(store.core.resourceState || {}), ...store.resourceState };
-  projected.revision = Math.max(store.coreRevision, Number(store.sectionRevisions.get(section) || 0));
+  projected.revision = Math.max(
+    store.coreRevision,
+    Number(store.sectionRevisions.get(section) || 0),
+    ...supplementalSections.map((item) => Number(store.sectionRevisions.get(item) || 0))
+  );
   return projected;
 }

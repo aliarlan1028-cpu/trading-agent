@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ClipboardList,
   Gauge,
+  GitBranch,
   Globe2,
   Eye,
   Info,
@@ -40,6 +41,11 @@ import { ConceptGraph } from "./conceptGraph.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
+import { resolveMobileRoute } from "./productArchitecture.js";
+import { buildResearchMap } from "./researchMap.js";
+import { buildControlConfigurationView } from "./controlConfigurationView.js";
+import { MobileOperations } from "./mobileOperations.jsx";
+import { WorkspaceStateBoundary } from "./productShell.jsx";
 import {
   buildCapabilityCatalogRows,
   buildEventRows,
@@ -101,10 +107,16 @@ function MobileSafetySheet({ data, action, onClose, onKill }) {
 }
 
 const settingsSections = [
+  { id: "trading", label: t("交易与运行", "Trading & runtime") },
+  { id: "risk", label: t("风险规则", "Risk rules") },
   { id: "llm", label: t("模型", "Model") },
   { id: "exchange", label: t("交易所", "Exchange") },
   { id: "integrations", label: t("外部服务", "Integrations") },
-  { id: "runtime", label: t("运行参数", "Runtime") }
+  { id: "event_sources", label: t("事件源", "Event sources") },
+  { id: "environment", label: t("环境与服务", "Environment & services") },
+  { id: "network", label: t("网络代理", "Network proxy") },
+  { id: "data_backup", label: t("数据与备份", "Data & backup") },
+  { id: "security", label: t("登录与凭证安全", "Sign-in & credential security") }
 ];
 
 const positionSegments = ["持仓", "在途委托", "执行单"];
@@ -304,14 +316,21 @@ function MobileSettingsIndex({ data, onOpen }) {
   const integrations = config.integrations || {};
   const runtime = config.runtime || {};
   const user = data.user || {};
+  const control = buildControlConfigurationView(data);
   const sub = (data.subscriptions || [])[0] || {};
   const subExpiresAt = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).getTime() : null;
   const subExpired = Number.isFinite(subExpiresAt) && subExpiresAt < Date.now();
   const subs = {
+    trading: control.mandate.id ? `v${control.mandate.version} · ${control.mandate.allowedSymbols.length} ${t("个市场", "markets")}` : t("未授权", "Not authorized"),
+    risk: `${control.rules.enabled}/${control.rules.total} ${t("条生效", "active")}`,
     llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : t("未配置", "Not configured"),
     exchange: exchange.okx?.hasKey ? "OKX" : t("未配置", "Not configured"),
     integrations: integrations.telegram?.configured ? t("TG 已接入", "Telegram connected") : integrations.lark?.hasWebhook ? t("飞书已接入", "Lark connected") : t("未配置", "Not configured"),
-    runtime: runtime.authRequired === false ? t("免登录", "No login") : t("鉴权开启", "Auth enabled")
+    event_sources: `${(data.eventSources || []).filter((item) => item.enabled !== false).length}/${(data.eventSources || []).length} ${t("个启用", "enabled")}`,
+    environment: `${runtime.okxMarketType || "perpetual_swap"} · :${runtime.port || "8787"}`,
+    network: runtime.httpProxySet || runtime.httpsProxySet ? t("代理已配置", "Proxy configured") : t("当前直连", "Direct connection"),
+    data_backup: t("在线一致性快照", "Online consistent snapshot"),
+    security: runtime.authRequired === false ? t("免登录", "No login") : t("鉴权开启", "Auth enabled")
   };
   const exchanges = [
     { id: "okx", name: "OKX", letter: "O", cls: "okx", connected: exchange.okx?.hasKey }
@@ -338,7 +357,7 @@ function MobileSettingsIndex({ data, onOpen }) {
       </div>
 
       <div className="mCard">
-        <div className="mCardHead"><b>{t("系统配置", "System configuration")}</b></div>
+        <div className="mCardHead"><b>{t("配置登记", "Configuration registry")}</b><small>{t("所有持久修改的唯一入口", "Single home for durable changes")}</small></div>
         {settingsSections.map((item) => (
           <button className="mCfgRow" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}>
             <span>{item.label}</span>
@@ -559,57 +578,174 @@ function MobileRiskGoalEditor({ data, action, ui, onDone }) {
   return <div className="mScreen mRiskDetail"><section className="mNativeSection"><header><div><b>{t("盈利目标", "Profit goal")}</b><small>{t("目标不会参与开仓决策", "The goal never influences entry decisions")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("每日盈利目标", "Daily profit goal")} hint={t(`月度目标按当月 ${sys.monthlyGoalDays || 30} 天自动派生`, `Monthly goal is derived using ${sys.monthlyGoalDays || 30} days`)} suffix="USDT"><input type="number" min="0.01" step="0.01" inputMode="decimal" value={dailyGoal} onChange={(event) => setDailyGoal(event.target.value)} /></MobileRiskField></div><label className="mNativeToggle mGoalNative"><span><b>{t("达到目标后保护到开仓价", "Protect at entry after reaching the goal")}</b><small>{t("只收紧 AI 仓位的止损；不会放宽止损，也不改变止盈", "Only tightens stops on AI positions; never loosens stops or changes take-profit")}</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /></label></section><div className="mRiskNote"><ShieldCheck size={17}/><p>{t("这是持仓后的降风险动作，不会为了完成目标而追单。", "This is a post-entry risk reduction; the AI will never chase trades to hit the goal.")}</p></div><div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存盈利保护", "Save profit protection")}</button></div></div>;
 }
 
-function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
-  const showOverview = view === "all" || view === "overview";
-  const showSettings = view === "all" || view === "settings";
-  const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
-  const sys = data.system || {};
-  const rules = data.riskRules || [];
-  const maxLeverage = mandate.max_leverage || (mandate.maxLeverageBySymbol ? Math.max(1, ...Object.values(mandate.maxLeverageBySymbol)) : null);
-  const budgetRemain = sys.remainingDailyLossUsdt;
-  const budgetCap = sys.dailyLossCapUsdt;
-  const budgetPct = budgetCap ? Math.max(0, Math.min(100, (Number(budgetRemain) / Number(budgetCap)) * 100)) : null;
-  const active = ["running", "active"].includes(mandate.status);
-  const runtime = automationPresentation(data);
-  const wall = { label: runtime.label, tone: runtime.tone === "danger" ? "critical" : runtime.tone === "ok" ? "ok" : "warning" };
-  const groups = [["账户", "#2A6FDB", "#EAF0FB"], ["交易", "#1F7A50", "#E6F1EA"], ["事件", "#D06A22", "#FBEDDF"], ["系统", "#7A4FD0", "#F0EAFB"]];
-  // scope 真实取值是英文(trade/account/event/knowledge),此前中文 includes 恒 0 → 永远"无规则"(审计 M3)
-  const scopeOf = (r) => { const t = String(r.scope || r.category || r.name || "").toLowerCase(); if (/account|portfolio|loss|margin|equity|账户/.test(t)) return "账户"; if (/event|事件/.test(t)) return "事件"; if (/system|knowledge|kill|api|系统/.test(t)) return "系统"; return "交易"; };
-  const scopeCount = (name) => rules.filter((r) => scopeOf(r) === name).length;
-  return (
-    <div className="mScreen">
-      {showOverview && <div className={`mRiskWall ${wall.tone}`}>
-        <ShieldCheck size={22} />
-        <div><b>{wall.label}</b><small>{runtime.entryPolicy} · {runtime.targetLabel}</small></div>
-      </div>}
-      {showOverview && <div className="mCard mBudgetCard">
-        <div className="mBudgetTop"><span>{t("剩余亏损预算", "Remaining loss budget")}</span><b className="mono">{budgetRemain != null ? `${displayMoney(budgetRemain, 2)} USDT` : t("未授权", "Not authorized")}</b></div>
-        <div className="mBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
-      </div>}
-      {showOverview && (() => {
-        // 风险事件处理:按标题折叠去重、显条数,逐组/一键标记已处理(接 close / close-all)。移动版此前完全没有。
-        const openInc = (data.riskIncidents || []).filter((i) => i.status === "open");
-        const incGroups = [];
-        for (const inc of openInc) { const k = inc.title || inc.source || "风险事件"; const g = incGroups.find((x) => x.key === k); if (g) { g.count += 1; g.items.push(inc); } else incGroups.push({ key: k, count: 1, items: [inc] }); }
-        return <div className="mCard">
-          <div className="mCardHead"><b>{t("风险事件", "Risk incidents")}</b><span className={openInc.length ? "mIncCount on" : "mIncCount"}>{openInc.length ? `${openInc.length} ${t("项未处理", "unresolved")}` : t("全部已处理", "All resolved")}</span></div>
-          {!openInc.length && <div className="mEmpty">{t("当前没有未处理的风险事件。", "No unresolved risk incidents.")}</div>}
-          {incGroups.map((g) => (
-            <div className="mIncRow" key={g.key}>
-              <div className="mIncL"><b>{g.key}</b>{g.count > 1 && <span className="mIncX">×{g.count}</span>}</div>
-              <button className="mIncBtn" onClick={async () => { for (const inc of g.items) await action(`/api/risk/incidents/${inc.id}/close`, {}); ui.notify?.(t("已处理", "Resolved")); }}>{g.count > 1 ? `${t("处理", "Resolve")} ${g.count}${t(" 项", "")}` : t("标记已处理", "Mark resolved")}</button>
-            </div>
-          ))}
-          {openInc.length > 1 && <button className="mLink2" onClick={() => action("/api/risk/incidents/close-all", {})}>{t("全部标记已处理", "Mark all resolved")} ›</button>}
-        </div>;
-      })()}
-      {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("这里只保存运行模式、交易范围和风险限制；系统异常会自动暂停新开仓并说明恢复方式。", "This area stores the operating mode, trading scope, and risk limits. Runtime issues pause new entries automatically and explain recovery.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("运行模式", "Operating mode")}</b><small>{runtime.targetLabel} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={runtime.targetMode==="observe" ? "neutral" : "danger"}>{runtime.targetMode==="observe" ? t("只分析", "Analyze") : t("真实交易", "Live")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
-      {showOverview && <div className="mCard">
-        <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
-        <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); const label = { "账户": t("账户", "Account"), "交易": t("交易", "Trading"), "事件": t("事件", "Events"), "系统": t("系统", "System") }[name] || name; return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{label}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
-      </div>}
-    </div>
-  );
+const MOBILE_PROTECTION_FIELDS = [
+  ["minRewardRisk", "最低盈亏比", "Minimum reward-to-risk", "R", 1, 5, .1],
+  ["protectMaxConsecLosses", "连续亏损达到", "Pause after consecutive losses", "笔", 1, 100, 1],
+  ["protectCooldownHours", "连续亏损后暂停", "Loss-streak pause", "小时", .5, 48, .5],
+  ["protectMaxDrawdownPct", "近期回撤达到", "Pause at recent drawdown", "%", 3, 50, .5],
+  ["protectDrawdownLockHours", "回撤后暂停", "Drawdown pause", "小时", 1, 72, 1],
+  ["eventBlackoutMinutes", "重大事件前暂停", "Pre-event blackout", "分钟", 0, 240, 5],
+  ["entryOrderTtlMinutes", "未成交委托有效期", "Unfilled-order lifetime", "分钟", 5, 1440, 5],
+  ["entryStaleDeviationPct", "未成交最大偏离", "Maximum unfilled deviation", "%", 1, 30, .5],
+  ["trailActivatePct", "盈利达到后开始跟踪止损", "Start trailing stop at profit", "%", .3, 10, .1],
+  ["trailDistancePct", "跟踪止损距离", "Trailing distance", "%", .3, 5, .1]
+];
+
+function MobileProtectionEditor({ data, action, ui, onDone }) {
+  const [form,setForm]=useState(()=>({...data.riskThresholds})); const [saving,setSaving]=useState(false);
+  useEffect(()=>setForm({...data.riskThresholds}),[JSON.stringify(data.riskThresholds||{})]);
+  const save=async()=>{const body={};for(const [key,label,labelEn,,min,max] of MOBILE_PROTECTION_FIELDS){const value=Number(form[key]);if(!Number.isFinite(value)||value<min||value>max)return ui.notify?.(t(`${label} 必须在 ${min}–${max} 之间`,`${labelEn} must be between ${min} and ${max}`));body[key]=value;}setSaving(true);try{if(await submitMobileRiskChange(action,"/api/risk/thresholds",body))onDone();}finally{setSaving(false);}};
+  return <div className="mScreen mRiskDetail"><section className="mNativeSection"><header><div><b>{t("自动保护阈值","Automatic protection thresholds")}</b><small>{t("触发后暂停新增仓位或撤销陈旧委托","Pause new entries or cancel stale orders when triggered")}</small></div></header><div className="mRiskFieldStack">{MOBILE_PROTECTION_FIELDS.map(([key,label,labelEn,unit,min,max,step])=><MobileRiskField key={key} label={t(label,labelEn)} suffix={t(unit,unit==="笔"?"losses":unit==="小时"?"hours":unit==="分钟"?"min":unit)}><input type="number" min={min} max={max} step={step} inputMode="decimal" value={form[key]??""} onChange={(event)=>setForm(current=>({...current,[key]:event.target.value}))}/></MobileRiskField>)}</div></section><div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving?t("保存中…","Saving…"):t("保存自动保护","Save protections")}</button></div></div>;
+}
+
+function MobileTradingConfiguration({ data, action, ui }) {
+  const [detail,setDetail]=useState(""); const control=buildControlConfigurationView(data); const runtime=automationPresentation(data);
+  const done=()=>setDetail("");
+  if(detail){const titles={permissions:t("交易权限","Trading permissions"),live:t("运行模式","Operating mode"),protections:t("自动保护","Automatic protections"),goal:t("盈利目标保护","Profit goal protection")};return <div className="mRiskDetailPage"><div className="mRiskDetailNav"><button type="button" onClick={done}><ChevronLeft size={18}/>{t("交易与运行","Trading & runtime")}</button><b>{titles[detail]}</b><span/></div>{detail==="permissions"?<MobileRiskPermissionEditor data={data} action={action} ui={ui} onDone={done}/>:detail==="live"?<MobileRiskLiveEditor data={data} action={action} ui={ui} onDone={done}/>:detail==="protections"?<MobileProtectionEditor data={data} action={action} ui={ui} onDone={done}/>:<MobileRiskGoalEditor data={data} action={action} ui={ui} onDone={done}/>}</div>;}
+  const rows=[
+    ["live",Zap,t("运行模式","Operating mode"),`${runtime.targetLabel} · ${data.config?.liveTrading?.maxNotionalUsdt||50} USDT`,runtime.targetMode==="observe"?t("只分析","Analyze"):t("实盘","Live")],
+    ["permissions",Shield,t("交易权限","Trading permissions"),control.mandate.allowedSymbols.join(" · ")||t("尚未授权市场","No markets authorized"),control.mandate.id?`v${control.mandate.version}`:t("未配置","Off")],
+    ["protections",Gauge,t("自动保护","Automatic protections"),t("回撤、连亏、事件与委托时效","Drawdown, losses, events, and order lifetime"),`${MOBILE_PROTECTION_FIELDS.filter(([key])=>data.riskThresholds?.[key]!=null).length}/${MOBILE_PROTECTION_FIELDS.length}`],
+    ["goal",Target,t("盈利目标保护","Profit goal protection"),data.system?.dailyGoalUsdt?`${data.system.dailyGoalUsdt} USDT / ${t("日","day")}`:t("未设置每日目标","No daily goal"),data.system?.dailyGoalBreakevenEnabled?t("已开启","On"):t("未开启","Off")]
+  ];
+  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("交易、运行与保护","Trading, runtime & protection")}</h2><p>{t("这是运行目标、Mandate 与自动保护的唯一移动端编辑入口。Control 只呈现当前实际状态。","This is the only mobile editor for operating targets, Mandate, and automatic protections. Control only presents effective state.")}</p><div><span><small>{t("当前实际","Effective now")}</small><b>{runtime.label}</b></span><span><small>{t("保存目标","Saved target")}</small><b>{runtime.targetLabel}</b></span></div></section><section className="mNativeSection mRiskSettingsList">{rows.map(([id,Icon,title,note,state])=><button type="button" className="mRiskSettingRow" key={id} onClick={()=>setDetail(id)}><span className={`mRiskSettingIcon ${id}`}><Icon size={18}/></span><span><b>{title}</b><small>{note}</small></span><StatusBadge tone="neutral">{state}</StatusBadge><ChevronRight size={15}/></button>)}</section></div>;
+}
+
+function MobileRiskRulesConfiguration({ data, action, ui }) {
+  const rules=data.riskRules||[]; const [creating,setCreating]=useState(false); const [form,setForm]=useState({name:"",description:"",level:"L3",action:"reject_entry",conditionField:"plan.leverage",conditionOperator:"gt",conditionValue:"3"});
+  const create=async(event)=>{event.preventDefault();if(!form.name.trim())return ui.notify?.(t("填写规则名称","Enter a rule name"));const {conditionField,conditionOperator,conditionValue,...rule}=form;await action("/api/risk/rules",{...rule,scope:"trade",conditionSpec:{field:conditionField,operator:conditionOperator,value:Number(conditionValue)}});setCreating(false);setForm(current=>({...current,name:"",description:""}));};
+  const editableAction=(value)=>["notify","reject_entry","pause_opening"].includes(value)?value:["block","restrict","kill_switch"].includes(value)?"reject_entry":"notify";
+  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("确定性风险规则","Deterministic risk rules")}</h2><p>{t("规则新建、启停与动作修改只在这里完成；Control 保持只读。","Create, enable, disable, and change rules only here; Control remains read-only.")}</p><div><span><small>{t("规则总数","Total")}</small><b>{rules.length}</b></span><span><small>{t("当前生效","Active")}</small><b>{rules.filter(item=>item.enabled!==false).length}</b></span></div></section><section className="mNativeSection"><header><div><b>{t("规则登记","Rule registry")}</b><small>{t("系统内置规则不可停用或改写","System-managed rules cannot be disabled or rewritten")}</small></div><button type="button" onClick={()=>setCreating(value=>!value)}>{creating?t("取消","Cancel"):t("新建","New")}</button></header>{creating&&<form className="mNativeConfigForm" onSubmit={create}><label><span>{t("规则名称","Rule name")}</span><input value={form.name} onChange={(event)=>setForm(current=>({...current,name:event.target.value}))}/></label><label><span>{t("说明","Description")}</span><textarea value={form.description} onChange={(event)=>setForm(current=>({...current,description:event.target.value}))}/></label><div><label><span>{t("指标","Metric")}</span><select value={form.conditionField} onChange={(event)=>setForm(current=>({...current,conditionField:event.target.value}))}><option value="plan.leverage">{t("计划杠杆","Planned leverage")}</option><option value="plan.riskPercent">{t("单笔风险","Risk per trade")}</option><option value="market.fundingRate">{t("资金费率","Funding rate")}</option><option value="event.maxImpact">{t("事件影响","Event impact")}</option></select></label><label><span>{t("阈值","Threshold")}</span><input type="number" step="any" value={form.conditionValue} onChange={(event)=>setForm(current=>({...current,conditionValue:event.target.value}))}/></label></div><label><span>{t("触发动作","Action")}</span><select value={form.action} onChange={(event)=>setForm(current=>({...current,action:event.target.value}))}><option value="notify">{t("通知（不阻断）","Notify (non-blocking)")}</option><option value="reject_entry">{t("拒绝当前入场","Reject this entry")}</option><option value="pause_opening">{t("暂停当前计划开仓","Pause this plan's entry")}</option></select></label><button type="submit">{t("创建规则","Create rule")}</button></form>}<div className="mConfigRuleList">{rules.map(rule=><article key={rule.id}><span><b>{localizeText(rule.name)}</b><small>{humanize(rule.scope)} · {rule.level||"—"}</small><select aria-label={`${localizeText(rule.name)} ${t("触发动作","action")}`} disabled={rule.systemManaged} value={editableAction(rule.action)} onChange={(event)=>action(`/api/risk/rules/${rule.id}`,{action:event.target.value},"PATCH")}><option value="notify">{t("通知","Notify")}</option><option value="reject_entry">{t("拒绝入场","Reject entry")}</option><option value="pause_opening">{t("暂停计划开仓","Pause plan entry")}</option></select></span><button type="button" disabled={rule.systemManaged} className={rule.enabled===false?"":"on"} onClick={()=>action(`/api/risk/rules/${rule.id}`,{enabled:rule.enabled===false},"PATCH")}><i/>{rule.systemManaged?t("内置","Built-in"):rule.enabled===false?t("停用","Off"):t("生效","Active")}</button></article>)}</div></section></div>;
+}
+
+function MobileEventSourcesConfiguration({ data, action, ui }) {
+  const sources=data.eventSources||[]; const [form,setForm]=useState({name:"",type:"rss",url:"",trustScore:80});
+  const submit=async(event)=>{event.preventDefault();if(!form.name.trim()||!form.url.trim())return ui.notify?.(t("填写事件源名称和 URL","Enter a source name and URL"));await action("/api/event-sources",{...form,trustScore:Number(form.trustScore||80)});setForm(current=>({...current,name:"",url:""}));};
+  const remove=async(source)=>{if(await uiConfirm(t(`删除事件源「${source.name}」？之后不再抓取，已形成的历史事件仍会保留。`,`Delete event source “${source.name}”? Future fetching stops; existing historical events remain.`)))await action(`/api/event-sources/${source.id}`,{},"DELETE");};
+  return <div className="mScreen mConfigDomain"><section className="mConfigDomainHero"><h2>{t("事件输入源","Event input sources")}</h2><p>{t("管理宏观日历、公告和 RSS 抓取；事件日历只查看形成后的事实。","Manage macro calendars, announcements, and RSS fetching; the calendar only presents formed facts.")}</p><button type="button" onClick={()=>action("/api/event-sources/refresh",{})}><RefreshCw size={15}/>{t("刷新全部来源","Refresh all sources")}</button></section><section className="mNativeSection"><header><div><b>{t("已配置来源","Configured sources")}</b><small>{sources.length}</small></div></header><div className="mEventSourceNative">{sources.map(source=><article key={source.id}><span><b>{localizeText(source.name)}</b><small>{humanize(source.type||"rss")} · {t("可信度","Trust")} {source.trustScore??"—"} · {humanize(source.lastStatus,t("未抓取","Not fetched"))}</small></span><div><button onClick={()=>action(`/api/event-sources/${source.id}/test`,{})}>{t("测试","Test")}</button><button onClick={()=>action(`/api/event-sources/${source.id}`,{enabled:source.enabled===false},"PATCH")}>{source.enabled===false?t("启用","Enable"):t("停用","Disable")}</button><button className="danger" aria-label={t(`删除 ${source.name}`,`Delete ${source.name}`)} onClick={()=>remove(source)}><Trash2 size={14}/></button></div></article>)}</div></section><section className="mNativeSection"><header><div><b>{t("新增事件源","New event source")}</b><small>RSS / HTML</small></div></header><form className="mNativeConfigForm" onSubmit={submit}><label><span>{t("名称","Name")}</span><input value={form.name} onChange={(event)=>setForm(current=>({...current,name:event.target.value}))}/></label><label><span>URL</span><input inputMode="url" value={form.url} onChange={(event)=>setForm(current=>({...current,url:event.target.value}))}/></label><div><label><span>{t("类型","Type")}</span><select value={form.type} onChange={(event)=>setForm(current=>({...current,type:event.target.value}))}><option value="rss">RSS</option><option value="html">HTML</option></select></label><label><span>{t("可信度","Trust")}</span><input type="number" min="1" max="100" value={form.trustScore} onChange={(event)=>setForm(current=>({...current,trustScore:event.target.value}))}/></label></div><button type="submit">{t("保存事件源","Save source")}</button></form></section></div>;
+}
+
+function MobileRisk({ data, action, ui, view = "overview" }) {
+  const control=buildControlConfigurationView(data); const runtime=automationPresentation(data); const sys=data.system||{}; const rules=data.riskRules||[];
+  const budgetRemain=sys.remainingDailyLossUsdt; const budgetCap=sys.dailyLossCapUsdt; const budgetPct=budgetCap?Math.max(0,Math.min(100,(Number(budgetRemain)/Number(budgetCap))*100)):null;
+  const showOverview=view==="overview"; const showBoundaries=view==="boundaries"; const showRules=view==="rules";
+  return <div className="mScreen mControlScreen">
+    {showOverview&&<><section className={`mControlTruth ${runtime.tone}`}><header><ShieldCheck size={21}/><div><small>{t("当前实际状态","Effective now")}</small><b>{runtime.label}</b></div><StatusBadge tone={runtime.tone==="ok"?"ok":runtime.tone==="danger"?"danger":runtime.tone==="warning"?"warning":"neutral"}>{runtime.entryPolicy}</StatusBadge></header><p>{runtime.detail}</p><div><span><small>{t("保存目标","Saved target")}</small><b>{runtime.targetLabel}</b></span><span><small>{t("恢复方式","Recovery")}</small><b>{runtime.recoveryLabel}</b></span></div></section><div className="mCard mBudgetCard"><div className="mBudgetTop"><span>{t("剩余亏损预算","Remaining loss budget")}</span><b className="mono">{budgetRemain!=null?`${displayMoney(budgetRemain,2)} USDT`:t("未授权","Not authorized")}</b></div><div className="mBudgetBar"><i style={{width:`${budgetPct??0}%`}}/></div></div>{control.runtime.blockers.length>0&&<section className="mNativeSection mControlRecovery"><header><div><b>{t("恢复路径","Recovery path")}</b><small>{t("按后端给出的真实阻断顺序","Authoritative blocker order")}</small></div><span>{control.runtime.blockers.length}</span></header>{control.runtime.blockers.map((item,index)=><button type="button" key={item.id} onClick={()=>ui.setActive(item.route)}><i>{index+1}</i><span><b>{localizeText(item.label)}</b><small>{localizeText(item.recovery||item.detail)||t("打开对应上下文","Open relevant context")}</small></span><ChevronRight size={15}/></button>)}</section>}<section className="mNativeSection"><header><div><b>{t("事件风险窗口","Event risk windows")}</b><small>{control.events.blocking} {t("个正在阻断","blocking")}</small></div><button type="button" onClick={()=>ui.setActive("eventsTasks:events")}>{t("日历","Calendar")}</button></header><div className="mControlEvents">{control.events.windows.slice(0,4).map(item=><div key={item.id}><span className={item.blocking?"bad":"warn"}/><span><b>{localizeText(item.title)}</b><small>{formatDateTime(item.dueAt)} · {item.marketWide?t("全市场","Market-wide"):(item.relatedSymbols||[]).join(" · ")}</small></span><StatusBadge tone={item.blocking?"danger":"warning"}>{item.blocking?t("阻断","Blocking"):t("监控","Monitor")}</StatusBadge></div>)}{!control.events.windows.length&&<div className="mEmpty">{t("当前没有生效中的高影响事件窗口。","No active high-impact event windows.")}</div>}</div></section><section className="mNativeSection"><header><div><b>{t("风险事件","Risk incidents")}</b><small>{control.incidents.open} {t("项未处理","unresolved")}</small></div></header>{control.incidents.items.slice(0,5).map(item=><div className="mIncRow" key={item.id}><div className="mIncL"><b>{localizeText(item.title||item.source)}</b></div><button className="mIncBtn" onClick={()=>action(`/api/risk/incidents/${item.id}/close`,{})}>{t("标记已处理","Resolve")}</button></div>)}{!control.incidents.open&&<div className="mEmpty">{t("当前没有未处理的风险事件。","No unresolved risk incidents.")}</div>}</section></>}
+    {showBoundaries&&<><section className="mControlBoundaryHero"><div><small>{t("保存目标","Saved target")}</small><h2>{runtime.targetLabel}</h2><p>{runtime.targetIsEffective?t("当前正在按该目标运行。","The target is effective now."):runtime.recoveryLabel}</p></div><button type="button" onClick={()=>ui.setActive("systemSettings:trading")}>{t("修改配置","Edit configuration")}<ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("生效交易范围","Effective trading scope")}</b><small>{control.mandate.id?`v${control.mandate.version}`:t("未授权","Not authorized")}</small></div></header><div className="mControlSymbols">{control.mandate.allowedSymbols.map(symbol=><span key={symbol}>{symbol}</span>)}{!control.mandate.allowedSymbols.length&&<em>{t("尚未授权市场","No markets authorized")}</em>}</div><div className="mRiskBoundaryGrid"><span><small>{t("有效单笔上限","Effective order max")}</small><b className="mono">{control.mandate.effectiveOrderLimitUsdt??"—"} U</b></span><span><small>{t("最高杠杆","Max leverage")}</small><b className="mono">{control.mandate.maxLeverage??"—"}x</b></span><span><small>{t("单笔风险","Per-trade risk")}</small><b className="mono">{control.mandate.perTradeRiskPct??"—"}%</b></span><span><small>{t("日亏损","Daily loss")}</small><b className="mono neg">{control.mandate.dailyLossPct??"—"}%</b></span></div></section><section className="mNativeSection mControlChecks"><header><div><b>{t("实盘就绪链","Live readiness chain")}</b><small>{control.checksPassed}/{control.checks.length} {t("项通过","passed")}</small></div></header>{control.checks.map(item=><button type="button" key={item.id} onClick={()=>ui.setActive(item.route)}><span className={item.ok?"ok":"bad"}>{item.ok?"✓":"!"}</span><b>{t(item.label,item.labelEn)}</b><small>{item.ok?t("已核验","Verified"):t("待处理","Pending")}</small><ChevronRight size={14}/></button>)}</section></>}
+    {showRules&&<><section className="mControlBoundaryHero"><div><small>{t("当前规则","Effective rules")}</small><h2>{control.rules.enabled}/{control.rules.total}</h2><p>{t("Control 只呈现生效状态与命中事实；规则修改统一进入配置中心。","Control presents enablement and hit facts; rule changes belong in Configuration.")}</p></div><button type="button" onClick={()=>ui.setActive("systemSettings:risk")}>{t("配置规则","Configure rules")}<ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("规则监控","Rule monitor")}</b><small>{rules.length}</small></div></header><div className="mControlRuleList">{rules.map(rule=><article key={rule.id}><span><b>{localizeText(rule.name)}</b><small>{humanize(rule.scope)} · {rule.level||"—"} · {humanize(rule.action)}</small></span><StatusBadge tone={rule.enabled===false?"neutral":"ok"}>{rule.enabled===false?t("停用","Off"):t("生效","Active")}</StatusBadge></article>)}</div></section><section className="mNativeSection"><header><div><b>{t("最近命中","Recent hits")}</b><small>{control.rules.recentHits.length}</small></div></header>{control.rules.recentHits.map((hit,index)=><div className="mNativeRow" key={hit.id||index}><span className={`mStateDot ${statusTone(hit.decision)}`}/><span><b>{hit.symbol||t("账户级规则","Account-level rule")}</b><small>{humanize(hit.decision)} · {formatDateTime(hit.createdAt)}</small></span></div>)}{!control.rules.recentHits.length&&<div className="mEmpty">{t("暂无命中记录。","No hit records.")}</div>}</section></>}
+  </div>;
+}
+
+export function MobileResearchMap({ data, ui }) {
+  const map = buildResearchMap(data);
+  const ownerVisible = data.user?.isOwner === true;
+  const capOther = map.capabilities.origins.imported + map.capabilities.origins.mcp + map.capabilities.origins.registered;
+  return <div className="mScreen mResearchMap">
+    <section className="mResearchMapHero"><small>LAB / RESEARCH OPERATING MAP</small><h2>{t("不是三个平行库，而是一套资产闭环", "Not three parallel libraries, but one asset loop")}</h2><p>{t("原生资产与知识蒸馏从不同入口汇入同一正式注册表；真实交易结果再回到复盘与 Owner 版本决策。", "Native assets and knowledge distillation enter the same formal registries through different paths; live results return to review and Owner version decisions.")}</p><div><span><small>{t("可检索", "Searchable")}</small><b>{map.sources.searchable}/{map.sources.total}</b></span><span><small>{t("策略", "Strategies")}</small><b>{map.strategies.total}</b></span><span><small>{t("能力", "Capabilities")}</small><b>{map.capabilities.total}</b></span></div></section>
+
+    <section className="mResearchMapSection"><header><span>01</span><div><small>DUAL ORIGINS</small><b>{t("两种来源", "Two origins")}</b></div></header><div className="mResearchOriginList">
+      <button type="button" className="native" onClick={() => ui.setActive("strategyLib")}><i/><span><small>{t("系统原生 / 已注册", "SYSTEM-NATIVE / REGISTERED")}</small><b>{t("已有策略与能力", "Existing strategies & capabilities")}</b><p>{t("直接进入正式注册表，保留版本、证据与运行状态。", "Enter formal registries directly with version, evidence, and runtime state.")}</p></span><strong>{map.strategies.origins.system + map.capabilities.origins.system}</strong><ChevronRight/></button>
+      <button type="button" className="knowledge" onClick={() => ui.setActive("knowledgeBase")}><i/><span><small>{t("知识导入与蒸馏", "KNOWLEDGE IMPORT & DISTILLATION")}</small><b>{t("来源、证据与待验证候选", "Sources, evidence & candidates")}</b><p>{t("先检索、审批和验证，毕业版本再汇入同一注册表。", "Retrieve, approve, and validate first; graduates then enter the same registries.")}</p></span><strong>{map.incubation.strategyCandidates + map.incubation.incubatingStrategies + map.incubation.capabilityCandidates}</strong><ChevronRight/></button>
+    </div></section>
+
+    <section className="mResearchMapSection"><header><span>02</span><div><small>FORMAL ASSET REGISTRIES</small><b>{t("正式资产", "Formal assets")}</b></div></header><div className="mResearchRegistryList">
+      <button type="button" onClick={() => ui.setActive("strategyLib")}><span className="icon"><Rocket/></span><div><small>S / STRATEGY</small><b>{t("策略注册表", "Strategy Registry")}</b><p>{map.strategies.origins.system} {t("原生", "system")} · {map.strategies.origins.knowledge} {t("知识蒸馏", "knowledge")} · {map.strategies.origins.imported} {t("导入", "imported")}</p></div><strong>{map.strategies.total}</strong><ChevronRight/></button>
+      <button type="button" onClick={() => ui.setActive("capabilityLib")}><span className="icon"><Wrench/></span><div><small>C / CAPABILITY</small><b>{t("能力注册表", "Capability Registry")}</b><p>{map.capabilities.origins.system} {t("原生", "system")} · {map.capabilities.origins.knowledge} {t("知识工作流", "knowledge")} · {capOther} {t("导入/MCP", "imported/MCP")}</p></div><strong>{map.capabilities.total}</strong><ChevronRight/></button>
+    </div></section>
+
+    <section className="mResearchMapSection"><header><span>03</span><div><small>LIVE LEARNING LOOP</small><b>{t("真实结果回流", "Live evidence returns")}</b></div></header><div className="mResearchLearningTrack">
+      <button type="button" onClick={() => ui.setActive("labReviews")}><small>01</small><b>{t("交易复盘", "Trade review")}</b><span>{map.learning.completedReviews}</span></button><i/><button type="button" onClick={() => ui.setActive(ownerVisible ? "ownerReviewWorkspace" : "labReviews")}><small>02</small><b>{t("候选改进", "Candidate changes")}</b><span>{map.learning.candidateLessons}</span></button><i/><button type="button" disabled={!ownerVisible} onClick={() => ownerVisible && ui.setActive("ownerReviewWorkspace")}><small>03</small><b>{t("Owner 发布", "Owner release")}</b><span>{ownerVisible ? map.learning.pendingOwner + map.learning.validating : "—"}</span></button>
+    </div><p className="mResearchVersionNote"><GitBranch/>{t("发布创建新版本，不会静默覆盖正式资产。", "Release creates a new version; it never silently overwrites formal assets.")}</p></section>
+
+    <section className="mResearchMapQueue"><header><div><small>NEXT DECISIONS</small><b>{t("当前需要推进", "Needs attention")}</b></div><span>{map.actionQueue.length}</span></header>{map.actionQueue.length ? map.actionQueue.slice(0, 6).map((item) => <button type="button" key={item.id} className={item.tone} onClick={() => ui.setActive(item.destination)}><i/><span><b>{t(item.label, item.labelEn)}</b><small>{t(item.detail, item.detailEn)}</small></span><strong>{item.count}</strong><ChevronRight/></button>) : <div className="mResearchMapClear"><CheckCircle2/><span><b>{t("当前没有待处理决策", "No decisions are waiting")}</b><small>{t("正式资产仍持续接收运行证据。", "Formal assets continue receiving runtime evidence.")}</small></span></div>}</section>
+  </div>;
+}
+
+export function MobileOwnerReview({ data, action, ui }) {
+  const asList = (value) => Array.isArray(value) ? value : [];
+  const loop = data.ownerReviewLoop || {};
+  const summary = loop.summary || {};
+  const improvements = asList(loop.improvements);
+  const lessons = asList(loop.lessons).filter((item) => ["candidate", "candidate_legacy", "observing"].includes(item.status));
+  const [tab, setTab] = useState(improvements.length ? "improvements" : "lessons");
+  const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [forms, setForms] = useState({});
+  const form = (item) => forms[item.id] || {};
+  const updateForm = (item, patch) => setForms((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), ...patch } }));
+  const stateLabel = (value) => ({ evidence_accumulating:t("积累证据","Collecting evidence"),pending_owner:t("等待 Owner","Awaiting Owner"),accepted:t("已接受","Accepted"),rejected:t("已拒绝","Rejected"),validating:t("验证中","Validating"),verified:t("验证有效","Verified"),ineffective:t("验证无效","Ineffective"),candidate:t("候选教训","Candidate lesson"),candidate_legacy:t("旧版待审核","Legacy unreviewed"),observing:t("继续观察","Observing") }[value] || humanize(value, "—"));
+  const stateTone = (value) => /verified|active/.test(String(value)) ? "ok" : /rejected|ineffective/.test(String(value)) ? "danger" : /pending|validating|candidate|observing/.test(String(value)) ? "warning" : "neutral";
+  const destinationLabel = (value) => ({ strategy:t("策略资产","Strategy asset"),agent:t("AI 交易员","AI Trader"),risk:t("风控配置","Risk configuration"),system:t("系统 / 代码","System / code"),observation:t("仅观察","Observation") }[value] || humanize(value, "—"));
+  const runAction = async (kind, item, command, extra = {}) => {
+    if (["reject", "verify", "ineffective", "approve"].includes(command) && !await uiConfirm(t(`确认执行“${command === "approve" ? "用于相似行情" : command === "verify" ? "确认有效" : command === "ineffective" ? "确认无效" : "拒绝"}”？`, `Confirm “${command}”?`))) return;
+    const payload = { action: command, ...extra };
+    if (command === "verify") {
+      payload.ownerAttested = true;
+      if (item.destination !== "strategy") {
+        const note = String(form(item).verificationNote || "").trim();
+        if (!note) { ui.notify?.(t("请先填写可核验的测试、版本或观察证据", "Add verifiable test, release, or observation evidence first")); return; }
+        payload.validationEvidence = [{ type: "owner_note", value: note }];
+      }
+    }
+    const key = `${kind}:${item.id}:${command}`;
+    setBusy(key);
+    try {
+      await action(kind === "lesson" ? `/api/review/lessons/${item.id}/action` : `/api/review/improvements/${item.id}/action`, payload);
+      if (["reject", "verify", "ineffective", "approve"].includes(command)) setSelected(null);
+    } finally { setBusy(""); }
+  };
+  const startPaper = async (item) => {
+    const candidateId = item.validation?.candidateStrategyRef?.versionId;
+    const candidate = asList(item.validation?.availableEvidence?.candidateVersions).find((row) => row.id === candidateId);
+    const symbols = asList(candidate?.symbols);
+    const symbol = String(form(item).paperSymbol || symbols[0] || "").trim();
+    if (!symbol) { ui.notify?.(t("候选版本没有允许的交易对", "The candidate has no allowed symbol")); return; }
+    setBusy(`paper:${item.id}`);
+    try {
+      const result = await action(`/api/review/improvements/${item.id}/paper/start`, { symbol });
+      if (result?.session?.id) updateForm(item, { paperSessionId: result.session.status === "passed" ? result.session.id : form(item).paperSessionId || "" });
+    } finally { setBusy(""); }
+  };
+  const recordStage = async (item, stage, outcome) => {
+    const values = form(item);
+    const payload = { stageName: stage.name, outcome, note: String(values.failureNote || "").trim() };
+    if (outcome === "failed" && !payload.note) { ui.notify?.(t("请先填写未通过原因", "Enter the failure reason first")); return; }
+    const available = item.validation?.availableEvidence || {};
+    if (outcome === "passed" && stage.name === "backtest") {
+      const candidate = asList(available.candidateVersions).find((row) => row.id === values.candidateVersionId);
+      if (!candidate) { ui.notify?.(t("请选择系统列出的候选版本", "Select an authoritative candidate version")); return; }
+      Object.assign(payload, { candidateVersionId: candidate.id, candidateDefinitionHash: candidate.definitionHash, evidenceId: candidate.backtestId });
+    }
+    if (outcome === "passed" && stage.name === "paper") {
+      if (!values.paperSessionId) { ui.notify?.(t("请选择已通过的真实模拟盘会话", "Select a passed authoritative paper session")); return; }
+      payload.evidenceId = values.paperSessionId;
+    }
+    if (outcome === "passed" && stage.name === "small_live") {
+      payload.evidenceReviewIds = asList(values.liveReviewIds);
+      if (!payload.evidenceReviewIds.length) { ui.notify?.(t("请选择已完整费用对账的小额实盘复盘", "Select reconciled small-live reviews")); return; }
+    }
+    await runAction("improvement", item, "record_stage", payload);
+  };
+  if (data.user?.isOwner !== true) return <div className="mScreen"><div className="mNativeEmpty"><ShieldCheck/><b>{t("仅 Owner 可以访问", "Owner access required")}</b><span>{t("该页面包含策略与教训审批动作。", "This page contains strategy and lesson approval actions.")}</span></div></div>;
+  const selectedImprovement = selected?.kind === "improvement" ? improvements.find((item) => item.id === selected.id) || selected.item : null;
+  const selectedLesson = selected?.kind === "lesson" ? lessons.find((item) => item.id === selected.id) || selected.item : null;
+  const nextStage = selectedImprovement?.validation?.stages?.find((stage) => !/passed|completed|verified/i.test(String(stage.status)));
+  const available = selectedImprovement?.validation?.availableEvidence || {};
+  const candidateId = selectedImprovement?.validation?.candidateStrategyRef?.versionId;
+  const candidate = asList(available.candidateVersions).find((row) => row.id === candidateId);
+  const paperSymbols = asList(candidate?.symbols);
+  const passedPaper = asList(available.paperSessions).filter((row) => row.status === "passed");
+  return <div className="mScreen mOwnerReview">
+    <section className="mOwnerHero"><small>OWNER / GOVERNED LEARNING</small><h2>{t("优化建议不会自行生效", "Improvements never activate themselves")}</h2><p>{t("复盘只生成候选。Owner 必须查看权威证据、分阶段验证，并明确发布新版本或拒绝。", "Reviews create candidates only. The Owner must inspect authoritative evidence, validate in stages, and explicitly release a new version or reject it.")}</p><div><span><small>{t("结构化复盘", "Reviews")}</small><b>{summary.structuredReviews || 0}</b></span><span><small>{t("候选教训", "Lessons")}</small><b>{summary.candidateLessons || lessons.length}</b></span><span><small>{t("待决策", "Pending")}</small><b>{summary.pendingOwner || 0}</b></span><span><small>{t("验证中", "Validating")}</small><b>{summary.validating || 0}</b></span></div></section>
+    <nav className="mOwnerTabs" role="tablist"><button type="button" role="tab" aria-selected={tab === "improvements"} className={tab === "improvements" ? "active" : ""} onClick={() => setTab("improvements")}><Target/><span><b>{t("优化项", "Improvements")}</b><small>{improvements.length}</small></span></button><button type="button" role="tab" aria-selected={tab === "lessons"} className={tab === "lessons" ? "active" : ""} onClick={() => setTab("lessons")}><Sparkles/><span><b>{t("候选教训", "Candidate lessons")}</b><small>{lessons.length}</small></span></button></nav>
+    {tab === "improvements" ? <section className="mOwnerList">{improvements.map((item) => <button type="button" key={item.id} onClick={() => setSelected({ kind: "improvement", id: item.id, item })}><header><StatusBadge tone={stateTone(item.state)}>{stateLabel(item.state)}</StatusBadge><small>{destinationLabel(item.destination)} · {item.evidenceCount || 0} {t("份证据", "evidence")}</small></header><b>{item.title || t("未命名优化项", "Untitled improvement")}</b><p>{item.problem || item.proposal}</p><div>{asList(item.validation?.stages).map((stage) => <i key={stage.name} className={/passed|completed|verified/i.test(String(stage.status)) ? "done" : ""}/>)}</div><ChevronRight/></button>)}{!improvements.length && <div className="mNativeEmpty"><CheckCircle2/><b>{t("暂无需要处理的优化项", "No improvement proposals need attention")}</b><span>{t("系统会先积累可核验复盘证据。", "The system first accumulates verifiable review evidence.")}</span></div>}</section> : <section className="mOwnerList">{lessons.map((item) => <button type="button" key={item.id} onClick={() => setSelected({ kind: "lesson", id: item.id, item })}><header><StatusBadge tone={stateTone(item.status)}>{stateLabel(item.status)}</StatusBadge><small>{item.origin === "llm_deep_review" ? t("LLM 深度复盘", "LLM deep review") : t("结构化复盘", "Structured review")}</small></header><b>{item.title || t("未命名复盘教训", "Untitled review lesson")}</b><p>{item.llmAdvice || item.systemSuggestion || item.lessonText || item.content}</p><ChevronRight/></button>)}{!lessons.length && <div className="mNativeEmpty"><BookOpen/><b>{t("暂无候选教训", "No candidate lessons")}</b><span>{t("新复盘会先进入这里，不会直接影响下一笔交易。", "New reviews arrive here first and never affect the next trade directly.")}</span></div>}</section>}
+    {(selectedImprovement || selectedLesson) && <div className="mOwnerSheetOverlay" onClick={() => setSelected(null)}><aside className="mOwnerSheet" onClick={(event) => event.stopPropagation()}><button type="button" className="mSheetGrip" onClick={() => setSelected(null)} aria-label={t("关闭", "Close")}><i/></button>{selectedImprovement ? <>
+      <header><div><small>{destinationLabel(selectedImprovement.destination)}</small><b>{selectedImprovement.title}</b></div><StatusBadge tone={stateTone(selectedImprovement.state)}>{stateLabel(selectedImprovement.state)}</StatusBadge></header><section><small>{t("问题", "PROBLEM")}</small><p>{selectedImprovement.problem}</p></section><section><small>{t("建议", "PROPOSAL")}</small><p>{selectedImprovement.proposal}</p></section>{asList(selectedImprovement.successCriteria).length > 0 && <section><small>{t("成功标准", "SUCCESS CRITERIA")}</small><ul>{asList(selectedImprovement.successCriteria).map((item, index) => <li key={index}>{item}</li>)}</ul></section>}{selectedImprovement.validation && <section><small>{t("验证阶段", "VALIDATION STAGES")}</small><div className="mOwnerStages">{asList(selectedImprovement.validation.stages).map((stage) => <span key={stage.name}><i className={/passed|completed|verified/i.test(String(stage.status)) ? "done" : ""}/><b>{stage.label || humanize(stage.name)}</b><small>{humanize(stage.status)}</small></span>)}</div></section>}
+      {selectedImprovement.state === "validating" && selectedImprovement.destination !== "strategy" && <label className="mOwnerField">{t("可核验证据", "Verifiable evidence")}<textarea value={form(selectedImprovement).verificationNote || ""} onChange={(event) => updateForm(selectedImprovement, { verificationNote: event.target.value })} placeholder={t("测试名称、版本号、结果与可复核位置", "Test, release, result, and where it can be verified")}/></label>}
+      {selectedImprovement.state === "validating" && selectedImprovement.destination === "strategy" && nextStage && <section className="mOwnerEvidence"><small>{t(`下一阶段：${nextStage.label || nextStage.name}`, `NEXT: ${nextStage.label || nextStage.name}`)}</small>{nextStage.name === "backtest" && <label className="mOwnerField">{t("候选策略版本", "Candidate strategy version")}<select value={form(selectedImprovement).candidateVersionId || ""} onChange={(event) => updateForm(selectedImprovement, { candidateVersionId: event.target.value })}><option value="">{t("选择权威版本", "Select authoritative version")}</option>{asList(available.candidateVersions).map((row) => <option key={row.id} value={row.id}>{row.label} · {row.id}</option>)}</select></label>}{nextStage.name === "paper" && <><label className="mOwnerField">{t("允许交易对", "Allowed symbol")}<select value={form(selectedImprovement).paperSymbol || paperSymbols[0] || ""} onChange={(event) => updateForm(selectedImprovement, { paperSymbol: event.target.value })}>{paperSymbols.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}</select></label><button type="button" className="mOwnerEvidenceAction" disabled={!paperSymbols.length || Boolean(busy)} onClick={() => startPaper(selectedImprovement)}><Play/>{t("启动绑定候选版本的纯前向模拟", "Start candidate-bound pure-forward session")}</button><label className="mOwnerField">{t("已通过会话", "Passed session")}<select value={form(selectedImprovement).paperSessionId || ""} onChange={(event) => updateForm(selectedImprovement, { paperSessionId: event.target.value })}><option value="">{passedPaper.length ? t("请选择", "Select") : t("尚无已通过会话", "No passed session")}</option>{passedPaper.map((row) => <option key={row.id} value={row.id}>{row.label} · {row.symbol}</option>)}</select></label></>}{nextStage.name === "small_live" && <div className="mOwnerChecks">{asList(available.liveReviews).map((row) => { const checked = asList(form(selectedImprovement).liveReviewIds).includes(row.id); return <label key={row.id}><input type="checkbox" checked={checked} onChange={() => updateForm(selectedImprovement, { liveReviewIds: checked ? asList(form(selectedImprovement).liveReviewIds).filter((id) => id !== row.id) : [...asList(form(selectedImprovement).liveReviewIds), row.id] })}/><span><b>{row.symbol || "—"}</b><small>{row.netRealizedPnl == null ? "—" : `${row.netRealizedPnl} U`} · {formatDateTime(row.completedAt)}</small></span></label>; })}</div>}<label className="mOwnerField">{t("未通过原因", "Failure reason")}<textarea value={form(selectedImprovement).failureNote || ""} onChange={(event) => updateForm(selectedImprovement, { failureNote: event.target.value })}/></label><div className="mOwnerEvidenceButtons"><button type="button" disabled={Boolean(busy)} onClick={() => recordStage(selectedImprovement, nextStage, "passed")}>{t("核验并记录通过", "Verify & pass")}</button><button type="button" disabled={Boolean(busy)} onClick={() => recordStage(selectedImprovement, nextStage, "failed")}>{t("记录未通过", "Record failure")}</button></div></section>}
+      <footer className="mOwnerActions">{selectedImprovement.state === "pending_owner" && <><button type="button" className="primary" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "accept")}>{t("接受并创建验证草案", "Accept & create validation draft")}</button><button type="button" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "more_evidence")}>{t("继续积累证据", "Collect more evidence")}</button><button type="button" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "reject")}>{t("拒绝", "Reject")}</button></>}{selectedImprovement.state === "accepted" && <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "start_validation")}>{t("开始分阶段验证", "Start staged validation")}</button>}{selectedImprovement.state === "validating" && <><button type="button" className="primary" disabled={Boolean(busy) || (selectedImprovement.destination === "strategy" && !selectedImprovement.validation?.readyForOwnerVerification)} onClick={() => runAction("improvement", selectedImprovement, "verify")}>{t("确认有效并发布新版本", "Mark effective & release new version")}</button><button type="button" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "ineffective")}>{t("确认无效", "Mark ineffective")}</button></>}{selectedImprovement.state === "ineffective" && selectedImprovement.destination === "strategy" && <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => runAction("improvement", selectedImprovement, "retry_validation")}>{t("创建下一代候选", "Create next candidate")}</button>}</footer>
+    </> : <><header><div><small>{selectedLesson.origin === "llm_deep_review" ? t("LLM 深度复盘", "LLM DEEP REVIEW") : t("候选教训", "CANDIDATE LESSON")}</small><b>{selectedLesson.title}</b></div><StatusBadge tone={stateTone(selectedLesson.status)}>{stateLabel(selectedLesson.status)}</StatusBadge></header><section><small>{t("发生了什么", "WHAT HAPPENED")}</small><p>{selectedLesson.factSummary || selectedLesson.lessonText || selectedLesson.content}</p></section><section><small>{t("复盘建议", "REVIEW ADVICE")}</small><p>{selectedLesson.llmAdvice || selectedLesson.systemSuggestion || t("暂无独立建议", "No independent advice")}</p></section><section><small>{t("仅适用于", "APPLICABILITY")}</small><p>{[selectedLesson.applicability?.symbol, selectedLesson.applicability?.direction, selectedLesson.applicability?.timeframe, selectedLesson.applicability?.setupType, selectedLesson.applicability?.strategyProductId, selectedLesson.applicability?.regime].filter(Boolean).join(" · ") || t("适用范围不完整", "Applicability is incomplete")}</p></section><footer className="mOwnerActions"><button type="button" className="primary" disabled={Boolean(busy)} onClick={() => runAction("lesson", selectedLesson, "approve")}>{t("仅用于相似行情", "Allow only in matching contexts")}</button>{selectedLesson.status !== "observing" && <button type="button" disabled={Boolean(busy)} onClick={() => runAction("lesson", selectedLesson, "observe")}>{t("继续观察", "Keep observing")}</button>}<button type="button" disabled={Boolean(busy)} onClick={() => runAction("lesson", selectedLesson, "reject")}>{t("拒绝", "Reject")}</button></footer></>}</aside></div>}
+  </div>;
 }
 
 function MobileKnowledge({ data, action, ui, view = "all" }) {
@@ -1327,21 +1463,17 @@ function MobileWatch({ data, action }) {
 // 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
 // W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
 // 风控中心(移动版):把风控总览 + 风控设置合并到一个导航项,顶部 Tab 切换。
-function MobileRiskHub({ data, action, ui }) {
-  const [tab, setTab] = useState("overview");
-  const [detail, setDetail] = useState("");
-  if (detail) {
-    const titles = { permissions: t("交易权限", "Trading permissions"), live: t("执行方式", "Execution mode"), goal: t("盈利目标保护", "Profit goal protection") };
-    const done = () => setDetail("");
-    return <div className="mRiskDetailPage"><div className="mRiskDetailNav"><button type="button" onClick={done}><ChevronLeft size={18}/>{t("风控设置", "Risk settings")}</button><b>{titles[detail]}</b><span /></div>{detail === "permissions" ? <MobileRiskPermissionEditor data={data} action={action} ui={ui} onDone={done} /> : detail === "live" ? <MobileRiskLiveEditor data={data} action={action} ui={ui} onDone={done} /> : <MobileRiskGoalEditor data={data} action={action} ui={ui} onDone={done} />}</div>;
-  }
+function MobileRiskHub({ data, action, ui, initialView = "overview" }) {
+  const [tab, setTab] = useState(["overview","boundaries","rules"].includes(initialView)?initialView:"overview");
+  useEffect(()=>{if(["overview","boundaries","rules"].includes(initialView))setTab(initialView);},[initialView]);
   return (
     <div className="mHub">
       <div className="mHubTabs">
-        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("风控总览", "Risk overview")}</button>
-        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>{t("风控设置", "Risk settings")}</button>
+        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("态势", "Posture")}</button>
+        <button type="button" className={tab === "boundaries" ? "active" : ""} onClick={() => setTab("boundaries")}>{t("边界", "Boundaries")}</button>
+        <button type="button" className={tab === "rules" ? "active" : ""} onClick={() => setTab("rules")}>{t("规则", "Rules")}</button>
       </div>
-      <MobileRisk data={data} action={action} ui={ui} view={tab} onOpen={setDetail} />
+      <MobileRisk data={data} action={action} ui={ui} view={tab}/>
     </div>
   );
 }
@@ -1556,43 +1688,66 @@ export function MobileStrategy({ data, action, initialTab = "catalog" }) {
 }
 
 const mobileNav = [
-  { id: "chat", label: ["AI 交易员", "AI Trader"], code: "ALPHA-01", icon: Bot },
+  { id: "chat", label: ["AI 交易员", "AI Trader"], code: "01 · AGENT WORKSITE", icon: Bot },
   { id: "watch", label: ["实时盯盘", "Live Watch"], code: "WATCH · LIVE", icon: Gauge },
-  { id: "cockpit", label: ["市场与账户", "Market & Account"], code: "MARKET · ACCOUNT", icon: PieChart },
+  { id: "cockpit", label: ["Live Desk", "Live Desk"], code: "02 · LIVE EXECUTION", icon: PieChart },
   { id: "executionReview", label: ["执行与复盘", "Execution & Review"], code: "EXECUTION · REVIEW", icon: ClipboardList },
   { id: "tradeLedger", label: ["委托与成交", "Orders & Fills"], code: "ORDERS · FILLS", icon: ReceiptText },
-  { id: "riskHub", label: ["风控中心", "Risk Control"], code: "RISK · CONTROL", icon: ShieldCheck },
-  { id: "knowledgeBase", label: ["知识库", "Knowledge"], code: "KNOWLEDGE", icon: BookOpen },
+  { id: "riskHub", label: ["Control", "Control"], code: "04 · RISK GOVERNANCE", icon: ShieldCheck },
+  { id: "labMap", label: ["Lab", "Lab"], code: "03 · RESEARCH & RELEASE", icon: GitBranch },
+  { id: "knowledgeBase", label: ["知识孵化", "Knowledge Incubation"], code: "LAB · INCUBATION", icon: BookOpen },
   { id: "capabilityLib", label: ["能力库", "Capabilities"], code: "CAPABILITY · LIB", icon: Wrench },
   { id: "strategyLib", label: ["策略库", "Strategy"], code: "STRATEGY · LIB", icon: Rocket },
   { id: "intelligence", label: ["情报中心", "Intelligence"], code: "INTEL · BRIEF", icon: Globe2 },
   { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], code: "EVENTS · TASKS", icon: CalendarClock },
-  { id: "auditSystem", label: ["审计", "Audit"], code: "AUDIT · SYSTEM", icon: Activity },
-  { id: "systemSettings", label: ["系统设置", "Settings"], code: "SETTINGS · CONFIG", icon: Settings }
+  { id: "auditSystem", label: ["Operations", "Operations"], code: "05 · SYSTEM OPERATIONS", icon: Activity },
+  { id: "systemSettings", label: ["配置中心", "Configuration"], code: "CFG · CONFIGURATION REGISTRY", icon: Settings }
 ];
 const mobilePrimaryNav = [
-  { id: "chat", label: ["交易员", "Trader"], icon: Bot },
-  { id: "watch", label: ["盯盘", "Watch"], icon: Gauge },
-  { id: "cockpit", label: ["市场", "Market"], icon: PieChart },
-  { id: "riskHub", label: ["风控", "Risk"], icon: ShieldCheck },
+  { id: "chat", workspace: "ai", label: ["AI", "AI"], icon: Bot },
+  { id: "cockpit", workspace: "live", label: ["Live", "Live"], icon: PieChart },
+  { id: "labMap", workspace: "lab", label: ["Lab", "Lab"], icon: GitBranch },
+  { id: "riskHub", workspace: "control", label: ["Control", "Control"], icon: ShieldCheck },
   { id: "more", label: ["更多", "More"], icon: MoreHorizontal }
 ];
 const mobileSecondaryNav = [
-  { id: "executionReview", label: ["交易记录", "Trading activity"], icon: ClipboardList, hint: ["委托、成交与复盘", "Orders, fills, and reviews"] },
-  { id: "knowledgeBase", label: ["知识库", "Knowledge"], icon: BookOpen, hint: ["方法、规则与图谱", "Methods, rules, and graph"] },
-  { id: "capabilityLib", label: ["能力库", "Capabilities"], icon: Wrench, hint: ["工具、工作流与 MCP", "Tools, workflows, and MCP"] },
-  { id: "strategyLib", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
-  { id: "intelligence", label: ["情报中心", "Intelligence"], icon: Globe2, hint: ["今日摘要、快讯与来源", "Brief, flashes, and sources"] },
-  { id: "eventsTasks", label: ["事件与任务", "Events & Tasks"], icon: CalendarClock, hint: ["重要事件与自动任务", "Events and automation"] },
-  { id: "auditSystem", label: ["运行记录", "Activity"], icon: Activity, hint: ["系统状态与审计", "System state and audit"] }
+  { id: "watch", group: "AI", label: ["实时盯盘", "Live Watch"], icon: Gauge, hint: ["判断、条件与失效", "Theses, conditions, and invalidation"] },
+  { id: "intelligence", group: "AI", label: ["情报中心", "Intelligence"], icon: Globe2, hint: ["今日摘要、快讯与来源", "Brief, flashes, and sources"] },
+  { id: "eventsTasks", group: "AI", label: ["事件日历", "Events"], icon: CalendarClock, hint: ["事件、影响与风险窗口", "Events, impact, and risk windows"] },
+  { id: "executionReview", group: "LIVE DETAIL", label: ["执行与复盘状态", "Execution & review status"], icon: ClipboardList, hint: ["执行、成交与复盘入口", "Execution, fills, and review entry"] },
+  { id: "tradeLedger", group: "LIVE DETAIL", label: ["委托与成交", "Orders & Fills"], icon: ReceiptText, hint: ["真实生命周期流水", "Authoritative lifecycle ledger"] },
+  { id: "labMap", group: "LAB", label: ["研究地图", "Research Map"], icon: GitBranch, hint: ["双来源、正式资产与学习闭环", "Dual origins, formal assets, and learning loop"] },
+  { id: "knowledgeBase", group: "LAB", label: ["知识孵化", "Knowledge Incubator"], icon: BookOpen, hint: ["来源、证据与候选", "Sources, evidence, and candidates"] },
+  { id: "capabilityLib", group: "LAB", label: ["能力库", "Capabilities"], icon: Wrench, hint: ["工具、工作流与 MCP", "Tools, workflows, and MCP"] },
+  { id: "strategyLib", group: "LAB", label: ["策略库", "Strategies"], icon: Rocket, hint: ["策略目录与验证", "Catalog and validation"] },
+  { id: "labReviews", group: "LAB", label: ["交易复盘", "Trade Reviews"], icon: BookOpen, hint: ["真实结果、归因与改进候选", "Outcomes, attribution, and improvement candidates"] },
+  { id: "operationsCenter", group: "OPERATIONS", label: ["运行与恢复", "Operations & Recovery"], icon: Activity, hint: ["系统健康、任务、恢复、通知与审计", "Health, tasks, recovery, notices, and audit"] }
 ];
 const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
 
-function MobileTabbar({ route, onNavigate, onMore }) {
+export function MobileLabRail({ route, onNavigate }) {
+  const items = [
+    { id: "labMap", label: ["地图", "Map"] },
+    { id: "knowledgeBase", label: ["孵化", "Incubate"] },
+    { id: "strategyLib", label: ["策略", "Strategies"] },
+    { id: "capabilityLib", label: ["能力", "Capabilities"] },
+    { id: "labReviews", route: "executionReview", label: ["复盘", "Reviews"] }
+  ];
+  return <section className="mWorkspaceRail" aria-label={t("Lab 研究生命周期", "Lab research lifecycle")}>
+    <header><small>03 / RESEARCH MAP</small><span>{t("双来源 → 正式资产 → 实盘证据 → Owner 版本", "Dual origins → formal assets → live evidence → Owner version")}</span></header>
+    <nav>{items.map((item) => {
+      const active = route === (item.route || item.id);
+      return <button type="button" className={active ? "active" : ""} aria-current={active ? "page" : undefined} key={item.id} onClick={() => onNavigate(item.id)}>{t(item.label[0], item.label[1])}</button>;
+    })}</nav>
+  </section>;
+}
+
+function MobileTabbar({ route, activeWorkspace: activeWorkspaceProp, onNavigate, onMore }) {
+  const activeWorkspace = activeWorkspaceProp || resolveMobileRoute(route).workspace;
   return <nav className="mNativeTabbar" aria-label={t("主导航", "Primary navigation")}>
     {mobilePrimaryNav.map((item) => {
       const Icon = item.icon;
-      const active = item.id === "more" ? !["chat", "watch", "cockpit", "riskHub"].includes(route) : route === item.id;
+      const active = item.id === "more" ? ["operations", "configuration"].includes(activeWorkspace) : activeWorkspace === item.workspace;
       return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
     })}
   </nav>;
@@ -1612,8 +1767,9 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
   );
 }
 
-export function NavDrawer({ open, route, onNavigate, onClose, lang, switchLang }) {
+export function NavDrawer({ open, route, activeWorkspace, onNavigate, onClose, lang, switchLang }) {
   if (!open) return null;
+  const drawerWorkspace = activeWorkspace || resolveMobileRoute(route).workspace;
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
       <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
@@ -1621,13 +1777,16 @@ export function NavDrawer({ open, route, onNavigate, onClose, lang, switchLang }
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
         <div className="mDrawerTitle"><b>{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
         <div className="mDrawerNav">
-          {mobileSecondaryNav.map((n) => {
+          {mobileSecondaryNav.map((n, index) => {
             const Icon = n.icon;
-            return <button key={n.id} className={`mDrawerItem ${route === n.id ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span><b>{mobileNavLabel(n)}</b><small>{t(n.hint[0], n.hint[1])}</small></span><ChevronRight size={15}/></button>;
+            const previousGroup = mobileSecondaryNav[index - 1]?.group;
+            const target = resolveMobileRoute(n.id);
+            const selected = route === target.route && drawerWorkspace === target.workspace;
+            return <div className="mDrawerNavEntry" key={n.id}>{previousGroup !== n.group && <small className="mDrawerGroupLabel">{n.group}</small>}<button className={`mDrawerItem ${selected ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span><b>{mobileNavLabel(n)}</b><small>{t(n.hint[0], n.hint[1])}</small></span><ChevronRight size={15}/></button></div>;
           })}
         </div>
         <div className="mDrawerFoot">
-          <button className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate("systemSettings")}><Settings size={19}/><span><b>{t("设置", "Settings")}</b><small>{t("账户、交易所与模型", "Account, exchange, and model")}</small></span><ChevronRight size={15}/></button>
+          <button className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate("systemSettings")}><Settings size={19}/><span><b>{t("配置中心", "Configuration")}</b><small>{t("交易边界、规则、连接与治理", "Trading boundaries, rules, connections, and governance")}</small></span><ChevronRight size={15}/></button>
         </div>
       </aside>
     </div>
@@ -1672,37 +1831,33 @@ function PullToRefresh({ onRefresh, className, children }) {
 export function MobileApp({ api, lang, switchLang }) {
   const { data, action, toast, busy, notify, download, refresh, ensureSection, connectionError } = api;
   const [route, setRoute] = useState("chat");
+  const [activeProductWorkspace, setActiveProductWorkspace] = useState("ai");
   const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
-  // 打开审计/动态即把未读通知标为已读
-  useEffect(() => {
-    if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
-  }, [route]);
-  const activeSection = route === "chat" || route === "watch" ? "chat"
-    : ["cockpit", "executionReview", "tradeLedger"].includes(route) ? "cockpit"
-      : ["knowledgeBase", "capabilityLib", "strategyLib"].includes(route) ? "researchCenter"
-        : route === "riskHub" ? "riskCenter"
-          : ["intelligence", "eventsTasks", "auditSystem"].includes(route) ? "operationsCenter"
-            : route === "systemSettings" ? "systemSettings" : "cockpit";
+  const activeSection = resolveMobileRoute(route).section;
   useEffect(() => { ensureSection?.(activeSection); }, [route]);
 
   function navigate(next) {
     haptic("light");
-    if (next === "tradeJournal") { setRoute("executionReview"); setSubPage(""); setDrawer(false); return; }
-    if (next === "strategyLib:studio") { setRoute("strategyLib"); setSubPage("studio"); setDrawer(false); return; }
-    if (mobileNav.some((n) => n.id === next)) { setRoute(next); setSubPage(""); setDrawer(false); return; }
-    if (next === "positions" || next === "marketAccount") { setRoute("cockpit"); setSubPage(next); setDrawer(false); return; }
-    if (next === "systemSettings") { setRoute("systemSettings"); setSubPage(""); setDrawer(false); return; }
-    if (String(next).startsWith("settings:")) { setRoute("systemSettings"); setSubPage(next); setDrawer(false); return; }
-    setRoute("cockpit"); setSubPage(""); setDrawer(false);
+    const resolved = resolveMobileRoute(next);
+    setActiveProductWorkspace(resolved.workspace);
+    setRoute(resolved.route);
+    setSubPage(resolved.subPage || "");
+    setDrawer(false);
+    if (!resolved.recognized) notify?.(t("未找到该入口，已返回 AI。", "That destination was not found. Returned to AI."));
   }
 
   const ui = { setActive: navigate, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const runtime = automationPresentation(data);
   const settingsSection = subPage.startsWith("settings:") ? subPage.slice(9) : "";
+  useEffect(() => {
+    if (route !== "systemSettings") return;
+    if (settingsSection === "event_sources") ensureSection?.("operationsCenter", { background: true });
+    if (["trading", "risk"].includes(settingsSection)) ensureSection?.("riskCenter", { background: true });
+  }, [route, settingsSection]);
 
   let content = null;
   if (route === "chat") {
@@ -1714,15 +1869,17 @@ export function MobileApp({ api, lang, switchLang }) {
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
-    content = <MobileExecution data={data} action={action} initialTab="overview" />;
+    content = subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} /> : <MobileExecution data={data} action={action} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
   } else if (route === "tradeLedger") {
     content = <MobileExecution data={data} action={action} initialTab="orders" />;
   } else if (route === "riskHub") {
-    content = <MobileRiskHub data={data} action={action} ui={ui} />;
+    content = <MobileRiskHub data={data} action={action} ui={ui} initialView={subPage} />;
   } else if (route === "intelligence") {
     content = <MobileIntelligence data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
     content = <MobileTasks data={data} action={action} ui={ui} />;
+  } else if (route === "labMap") {
+    content = <MobileResearchMap data={data} ui={ui} />;
   } else if (route === "knowledgeBase") {
     content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
   } else if (route === "capabilityLib") {
@@ -1730,33 +1887,37 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "strategyLib") {
     content = <div className="content mSubContent"><MobileStrategy data={data} action={action} initialTab={subPage === "studio" ? "studio" : "catalog"} /></div>;
   } else if (route === "auditSystem") {
-    content = <MobileAudit data={data} ui={ui} />;
+    content = <MobileOperations data={data} action={action} ui={ui} initialView={subPage||"overview"}/>;
   } else if (route === "systemSettings") {
-    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} section={settingsSection} /></div></div>
-        : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
+    content = settingsSection === "trading" ? <MobileTradingConfiguration data={data} action={action} ui={ui}/>
+      : settingsSection === "risk" ? <MobileRiskRulesConfiguration data={data} action={action} ui={ui}/>
+        : settingsSection === "event_sources" ? <MobileEventSourcesConfiguration data={data} action={action} ui={ui}/>
+          : settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} section={settingsSection} /></div></div>
+            : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
   } else {
     content = <MobileMarket data={data} action={action} ui={ui} />;
   }
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
+  if (resourceState === "loaded" && activeProductWorkspace === "lab") {
+    content = <><MobileLabRail route={route} onNavigate={navigate}/>{content}</>;
+  }
   if (resourceState !== "loaded") {
-    content = resourceState === "error"
-      ? <div className="mEmptyState" role="alert"><Info size={22}/><b>{t("页面数据加载失败", "Workspace failed to load")}</b><small>{t("空白不代表数据为零。", "Blank values do not mean zero.")}</small><button type="button" onClick={() => ensureSection?.(activeSection, { force: true })}>{t("重新加载", "Retry")}</button></div>
-      : <div className="pageSkeleton" aria-busy="true"><div className="skRow skHead"/><div className="skGrid"><div className="skCard"/><div className="skCard"/></div><div className="skRow skWide"/></div>;
+    content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })} />;
   }
 
   const headerRight = subPage
-    ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
+    ? <button className="mBack" onClick={() => activeProductWorkspace === "lab" && route === "executionReview" ? navigate("labMap") : setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
     : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
 
   return (
-    <div className="mShell2">
-      <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
+    <div className="mShell2 kordynSystem">
+      <MobileHeader route={activeProductWorkspace === "lab" && route === "executionReview" ? "labMap" : route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-      <MobileTabbar route={route} onNavigate={navigate} onMore={() => setDrawer(true)} />
-      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
+      <MobileTabbar route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onMore={() => setDrawer(true)} />
+      <NavDrawer open={drawer} route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
       {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
       {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}

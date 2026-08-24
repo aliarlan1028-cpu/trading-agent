@@ -40,6 +40,22 @@ test("workspace snapshots remain partitioned and core owns shared live facts", (
   assert.equal(cockpit.resourceState.cockpit, "loaded");
 });
 
+test("a product workspace can project explicitly loaded cross-section context without changing its primary snapshot", () => {
+  const store = createSnapshotStore();
+  acceptCoreSnapshot(store, { revision: 10, config: { runtime: { authRequired: true } } });
+  acceptSectionSnapshot(store, "systemSettings", { revision: 10, users: [{ id: "owner" }] });
+  acceptSectionSnapshot(store, "riskCenter", { revision: 11, riskRules: [{ id: "rule-1" }], riskThresholds: { minRewardRisk: 2 } });
+  acceptSectionSnapshot(store, "operationsCenter", { revision: 12, eventSources: [{ id: "source-1" }] });
+
+  const settings = projectSnapshotStore(store, "systemSettings", ["riskCenter", "operationsCenter"]);
+  assert.equal(settings.users[0].id, "owner");
+  assert.equal(settings.riskRules[0].id, "rule-1");
+  assert.equal(settings.eventSources[0].id, "source-1");
+  assert.equal(settings.config.runtime.authRequired, true, "core-owned configuration remains authoritative");
+  assert.equal(settings.revision, 12);
+  assert.equal(projectSnapshotStore(store, "systemSettings").riskRules, undefined, "supplemental context is opt-in");
+});
+
 test("stale core and section revisions cannot overwrite newer snapshots", () => {
   const store = createSnapshotStore();
   assert.equal(acceptCoreSnapshot(store, { revision: 20, portfolio: { totalEquityUsdt: 20 } }), true);

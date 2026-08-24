@@ -787,8 +787,13 @@ export function useApi() {
   const tokenRef = useRef(token);
   const apiBaseRef = useRef(apiBase);
 
+  const supplementalSectionsFor = (section) => ({
+    chat: ["operationsCenter"],
+    systemSettings: ["riskCenter", "operationsCenter"]
+  }[section] || []);
+
   function publishSnapshot(section = activeSectionRef.current) {
-    setData(projectSnapshotStore(snapshotStoreRef.current, section));
+    setData(projectSnapshotStore(snapshotStoreRef.current, section, supplementalSectionsFor(section)));
   }
 
   function resetSnapshotIdentity({ clearData = true } = {}) {
@@ -905,15 +910,19 @@ export function useApi() {
 
   async function ensureSection(section = "chat", options = {}) {
     const selected = String(section || "chat");
-    activeSectionRef.current = selected;
-    publishSnapshot(selected);
-    if (!options.force && loadedSectionsRef.current.has(selected)) return snapshotStoreRef.current.sections.get(selected) || null;
+    const background = options.background === true;
+    if (!background) activeSectionRef.current = selected;
+    publishSnapshot(activeSectionRef.current);
+    if (!options.force && loadedSectionsRef.current.has(selected)) {
+      if (background) publishSnapshot(activeSectionRef.current);
+      return snapshotStoreRef.current.sections.get(selected) || null;
+    }
     if (sectionInFlightRef.current.has(selected)) return sectionInFlightRef.current.get(selected);
     const context = requestContext();
     const request = (async () => {
       if (!snapshotStoreRef.current.sections.has(selected)) {
         markSnapshotResource(snapshotStoreRef.current, selected, "loading");
-        publishSnapshot(selected);
+        publishSnapshot(activeSectionRef.current);
       }
       try {
         const response = await fetchWithTimeout(apiUrl(`/api/overview?view=section&section=${encodeURIComponent(selected)}`, context.apiBase), {
@@ -941,13 +950,13 @@ export function useApi() {
         }
         lastSectionSyncRef.current = Date.now();
         loadedSectionsRef.current.add(selected);
-        if (activeSectionRef.current === selected) publishSnapshot(selected);
+        if (background || activeSectionRef.current === selected) publishSnapshot(activeSectionRef.current);
         setConnectionError("");
         return json;
       } catch (error) {
         if (!isCurrentRequest(context) || error?.name === "AbortError") return null;
         if (!snapshotStoreRef.current.sections.has(selected)) markSnapshotResource(snapshotStoreRef.current, selected, "error");
-        if (activeSectionRef.current === selected) publishSnapshot(selected);
+        if (background || activeSectionRef.current === selected) publishSnapshot(activeSectionRef.current);
         reportConnectionFailure(connectionErrorMessage(error));
         return null;
       } finally {

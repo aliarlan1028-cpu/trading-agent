@@ -40,6 +40,7 @@ import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatT
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 import { hasFiniteNumber } from "./viewData.js";
+import { buildPatrolView } from "./patrolView.js";
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -968,6 +969,111 @@ export function ToolTrace({ trace = [], coverage = null, callSummary = null }) {
   );
 }
 
+function patrolActionLabel(action = {}) {
+  const labels = {
+    propose_trade_plan: t("交易计划", "Trade plan"),
+    register_watch: t("新增观察哨", "Watch registered"),
+    cancel_watch: t("撤销观察哨", "Watch cancelled"),
+    record_watch_review: t("观察哨复核", "Watch review")
+  };
+  return labels[action.name] || humanize(action.name, action.name || "—");
+}
+
+function patrolNextActionLabel(nextAction = {}) {
+  const labels = {
+    review_error: t("检查本轮错误", "Inspect this run's error"),
+    rebuild_plan: t("按风控反馈重建计划", "Rebuild the plan from risk feedback"),
+    approve_or_reject: t("等待人工批准或拒绝", "Await human approval or rejection"),
+    wait_for_trigger: t("等待条件触发", "Wait for the setup trigger"),
+    wait_for_fill: t("等待订单成交", "Wait for the order to fill"),
+    monitor_position: t("继续监控持仓与保护单", "Keep monitoring the position and protection"),
+    review_closed_trade: t("进入实盘复盘", "Move to live-trade review"),
+    inspect_execution_block: t("检查执行阻断", "Inspect the execution block"),
+    watch_primary_condition: t("继续盯住主观察条件", "Keep watching the primary condition"),
+    analysis_only: t("等待下一轮巡检", "Wait for the next patrol")
+  };
+  const label = labels[nextAction.code] || (nextAction.code ? humanize(nextAction.code) : t("等待下一轮巡检", "Wait for the next patrol"));
+  return nextAction.detail ? `${label} · ${nextAction.detail}` : label;
+}
+
+function PatrolDetail({ view }) {
+  const symbols = [...view.scope.whitelist.symbols, ...view.scope.watches.symbols];
+  const linked = Object.entries(view.linked || {});
+  return (
+    <div className="patrolDetail">
+      <section className="patrolDetailSection">
+        <header><span>01</span><b>{t("检查范围", "Inspection scope")}</b></header>
+        <dl className="patrolScopeList">
+          <div><dt>{t("证据能力", "Evidence")}</dt><dd>{view.scope.evidence.value}/{view.scope.evidence.total}{view.scope.evidence.missing.length ? ` · ${t("缺失", "Missing")} ${view.scope.evidence.missing.map((item) => item.symbol ? `${item.name}(${item.symbol})` : item.name).join("、")}` : ""}</dd></div>
+          <div><dt>{t("白名单", "Whitelist")}</dt><dd>{view.scope.whitelist.value}/{view.scope.whitelist.total}{view.scope.whitelist.symbols.length ? ` · ${view.scope.whitelist.symbols.join(" · ")}` : ""}</dd></div>
+          <div><dt>{t("观察哨", "Watches")}</dt><dd>{view.scope.watches.value}/{view.scope.watches.total}{view.scope.watches.symbols.length ? ` · ${view.scope.watches.symbols.join(" · ")}` : ""}</dd></div>
+          <div><dt>{t("全市场", "Market")}</dt><dd>{view.scope.market.completed ? `${view.scope.market.universe} ${t("个合约", "instruments")} · Top ${view.scope.market.candidates}` : `${t("未完成", "Incomplete")}${view.scope.market.error ? ` · ${view.scope.market.error}` : ""}`}</dd></div>
+          {view.scope.externalCandidates.length > 0 && <div><dt>{t("视野外候选", "External candidates")}</dt><dd>{view.scope.externalCandidates.map((item) => `${item.symbol || "—"}${item.side ? ` ${humanize(item.side)}` : ""}${item.analyzed ? ` · ${t("已复核", "reviewed")}` : ` · ${t("未复核", "not reviewed")}`}`).join("；")}</dd></div>}
+        </dl>
+        {symbols.length === 0 && <small className="patrolEmptyNote">{t("本轮没有记录具体币种范围。", "No symbol scope was recorded for this run.")}</small>}
+      </section>
+
+      <section className="patrolDetailSection">
+        <header><span>02</span><b>{t("决策与动作", "Decision and actions")}</b></header>
+        <div className="patrolOutcome">
+          <small>{t("本轮结论", "Outcome")}</small>
+          <b>{view.headline || t("本轮未记录结构化结论", "No structured outcome was recorded")}</b>
+          <span>{patrolNextActionLabel(view.nextAction)}</span>
+        </div>
+        <div className="patrolOperationList">
+          {view.operations.map((operation, index) => <div className={operation.succeeded ? "ok" : "attention"} key={`${operation.name}-${index}`}><i /> <span><b>{patrolActionLabel(operation)}</b><small>{operation.summary || t("已调用，但未记录摘要", "Called without a recorded summary")}</small></span></div>)}
+          {!view.operations.length && <div className="neutral"><i /><span><b>{t("未产生交易或观察哨变更", "No trade or watch mutation")}</b><small>{t("本轮只有分析与证据检查，没有可执行动作落库。", "This run recorded analysis and evidence checks only; no executable mutation was persisted.")}</small></span></div>}
+        </div>
+        {linked.length > 0 && <div className="patrolLinked"><small>{t("关联记录", "Linked records")}</small>{linked.map(([key, value]) => <span key={key}><b>{humanize(key)}</b>{value}</span>)}</div>}
+      </section>
+
+      <section className="patrolDetailSection patrolDetailSection--trace">
+        <header><span>03</span><b>{t("运行回执", "Run receipts")}</b><small>{view.calls.total} {t("次调用", "calls")} · {t("预检", "preflight")} {view.calls.preflight} · {t("模型", "model")} {view.calls.model}</small></header>
+        <div className="patrolTraceList">
+          {view.traces.map((trace, index) => <div key={`${trace.name}-${index}`}><i className={trace.succeeded ? "ok" : "attention"} /><b>{trace.name}</b><span>{trace.summary || t("无摘要", "No summary")}</span><small>{trace.origin === "system_preflight" ? t("系统预检", "preflight") : trace.origin === "local_fallback" ? t("本地回退", "fallback") : t("模型调用", "model")}{trace.latencyMs !== null ? ` · ${trace.latencyMs}ms` : ""}</small></div>)}
+          {!view.traces.length && <p>{t("本轮没有工具调用回执。", "No tool receipts were recorded for this run.")}</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function PatrolReceipt({ message = {}, mobile = false, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const view = buildPatrolView(message);
+  if (!view) return null;
+  const statusLabel = view.status === "complete" ? t("巡检完成", "Patrol complete") : t("需要关注", "Needs attention");
+  return (
+    <section className={`patrolReceipt ${view.status}`} aria-label={t("自主巡检回执", "Autonomous patrol receipt")}>
+      <header className="patrolReceiptHead">
+        <span className="patrolRunMark"><Radar size={14} /> AUTONOMOUS / PATROL</span>
+        <b className="patrolRunStatus"><i />{statusLabel}</b>
+        <time>{formatDateTime(view.checkedAt, "—")}</time>
+      </header>
+      <div className="patrolMetricStrip">
+        <span><small>{t("证据", "Evidence")}</small><b>{view.scope.evidence.value}/{view.scope.evidence.total}</b></span>
+        <span><small>{t("白名单", "Whitelist")}</small><b>{view.scope.whitelist.value}/{view.scope.whitelist.total}</b></span>
+        <span><small>{t("观察哨", "Watches")}</small><b>{view.scope.watches.value}/{view.scope.watches.total}</b></span>
+        <span><small>{t("全市场", "Market")}</small><b>{view.scope.market.completed ? view.scope.market.universe : "—"}</b></span>
+      </div>
+      <div className="patrolReceiptSummary">
+        <span><small>{t("下一步", "Next")}</small><b>{patrolNextActionLabel(view.nextAction)}</b></span>
+        <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+          {mobile ? t("查看巡检详情", "View patrol details") : open ? t("收起运行回执", "Hide run receipts") : t("展开运行回执", "Open run receipts")}
+          <ChevronRight size={14} />
+        </button>
+      </div>
+      {!mobile && open && <PatrolDetail view={view} />}
+      {mobile && open && <div className="patrolSheetOverlay" onClick={() => setOpen(false)}>
+        <section className="patrolSheet" role="dialog" aria-modal="true" aria-label={t("自主巡检详情", "Autonomous patrol details")} onClick={(event) => event.stopPropagation()}>
+          <header><span><small>AUTONOMOUS / PATROL</small><b>{t("自主巡检详情", "Patrol details")}</b></span><button type="button" onClick={() => setOpen(false)} aria-label={t("关闭", "Close")}><X size={18} /></button></header>
+          <div className="patrolSheetScroll"><PatrolDetail view={view} /></div>
+        </section>
+      </div>}
+    </section>
+  );
+}
+
 function AgentRail({ data, action, ui }) {
   const system = data.system || {};
   const agentStatus = data.agentStatus || {};
@@ -1283,7 +1389,7 @@ function SetupChecklist({ onExample }) {
 
 // 把一条 AI 交易员分析渲染成精美海报,支持中/英切换与导出 PNG(社交分享获客)。
 // 内容只用消息原文(中文)+ 后端 LLM 翻译(英文),不编造。图片在前端由 html-to-image 从模板导出。
-function PosterModal({ content, meta, onClose }) {
+export function PosterModal({ content, meta, onClose }) {
   const [lang, setLang] = useState("zh");
   const [enText, setEnText] = useState("");
   const [translating, setTranslating] = useState(false);
@@ -1336,22 +1442,33 @@ function PosterModal({ content, meta, onClose }) {
   const enReady = lang === "zh" || Boolean(enText);
   const body = lang === "en" ? enText : publishableContent;
   const dateStr = meta?.createdAt ? formatDateTime(meta.createdAt) : "";
+  const patrol = buildPatrolView(meta);
+  const posterTitle = patrol
+    ? (lang === "en" ? "AUTONOMOUS PATROL" : "自主巡检记录")
+    : (lang === "en" ? "MARKET FIELD NOTE" : "市场分析手记");
+  const posterKind = patrol ? "PATROL / VERIFIED RECEIPTS" : "ANALYSIS / AI TRADER";
 
   return (
-    <div className="posterOverlay" onClick={onClose}>
+    <div className="posterOverlay" role="presentation" onClick={onClose}>
       <div className="posterModal" onClick={(e) => e.stopPropagation()}>
         <div className="posterToolbar">
-          <div className="posterLangTabs">
-            <button type="button" className={lang === "zh" ? "active" : ""} onClick={() => setLang("zh")}>中文</button>
-            <button type="button" className={lang === "en" ? "active" : ""} onClick={toEnglish} disabled={translating}>
-              {translating ? t("翻译中…", "Translating…") : "English"}
-            </button>
+          <div className="posterToolbarContext">
+            <small>{t("当前海报风格", "Current poster style")}</small>
+            <b>EDITORIAL / FIELD NOTE</b>
           </div>
-          <div className="posterActions">
-            <button type="button" className="primaryButton" disabled={downloading || !enReady} onClick={download}>
-              <Download size={14} /> {downloading ? t("生成中…", "Generating…") : t("下载 PNG", "Download PNG")}
-            </button>
-            <button type="button" className="posterClose" onClick={onClose} title={t("关闭", "Close")}><X size={16} /></button>
+          <div className="posterToolbarControls">
+            <div className="posterLangTabs" aria-label={t("海报语言", "Poster language")}>
+              <button type="button" className={lang === "zh" ? "active" : ""} onClick={() => setLang("zh")}>中文</button>
+              <button type="button" className={lang === "en" ? "active" : ""} onClick={toEnglish} disabled={translating}>
+                {translating ? t("翻译中…", "Translating…") : "English"}
+              </button>
+            </div>
+            <div className="posterActions">
+              <button type="button" className="primaryButton" disabled={downloading || !enReady} onClick={download}>
+                <Download size={14} /> {downloading ? t("生成中…", "Generating…") : t("下载 PNG", "Download PNG")}
+              </button>
+              <button type="button" className="posterClose" onClick={onClose} title={t("关闭", "Close")}><X size={16} /></button>
+            </div>
           </div>
         </div>
         {transError && <div className="posterError">{transError}</div>}
@@ -1361,12 +1478,23 @@ function PosterModal({ content, meta, onClose }) {
               <div className="posterBrand">
                 <span className="posterLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span>
                 <div className="posterBrandText">
-                  <b>KORDYN · {lang === "en" ? "AI Trader" : "AI 交易员"}</b>
-                  <small>{lang === "en" ? "Autonomous market analysis" : "自主行情分析"}</small>
+                  <b>KORDYN</b>
+                  <small>AI TRADING OPERATING SYSTEM</small>
                 </div>
               </div>
-              {dateStr && <span className="posterDate">{dateStr}</span>}
+              <span className="posterEdition">FIELD NOTE / {String(meta?.id || "LIVE").slice(-4).toUpperCase()}</span>
             </div>
+            <div className="posterTitleBlock">
+              <small>{posterKind}</small>
+              <h1>{posterTitle}</h1>
+              <div><span>{lang === "en" ? "GENERATED" : "生成时间"}</span><b>{dateStr || "—"}</b></div>
+            </div>
+            {patrol && <div className="posterPatrolFacts">
+              <span><small>{lang === "en" ? "EVIDENCE" : "证据检查"}</small><b>{patrol.scope.evidence.value}/{patrol.scope.evidence.total}</b></span>
+              <span><small>{lang === "en" ? "WATCHES" : "观察哨"}</small><b>{patrol.scope.watches.value}/{patrol.scope.watches.total}</b></span>
+              <span><small>{lang === "en" ? "UNIVERSE" : "全市场"}</small><b>{patrol.scope.market.completed ? patrol.scope.market.universe : "—"}</b></span>
+              <span><small>{lang === "en" ? "RECEIPTS" : "工具回执"}</small><b>{patrol.calls.total}</b></span>
+            </div>}
             <div className="posterBody">
               {lang === "en" && !enText
                 ? <div className="posterTranslating">{translating ? "Translating…" : t("点击 English 生成英文版", "Click English to generate the English version")}</div>
@@ -1374,8 +1502,8 @@ function PosterModal({ content, meta, onClose }) {
             </div>
             <div className="posterFooter">
               <div className="posterFootLeft">
-                <span className="posterTag">{lang === "en" ? "AI-generated · Not financial advice" : "AI 自动生成 · 仅供参考，不构成投资建议"}</span>
-                <span className="posterSite">{lang === "en" ? "Try autonomous AI trading" : "扫码体验 AI 自主交易"} · <b>{SITE_URL}</b></span>
+                <span className="posterTag">{lang === "en" ? "SYSTEM-GENERATED / NOT FINANCIAL ADVICE" : "系统生成 / 仅供参考 / 不构成投资建议"}</span>
+                <span className="posterSite">{lang === "en" ? "Audit the reasoning. Keep control." : "看见推理，保留控制。"} <b>{SITE_URL}</b></span>
               </div>
               <img className="posterQr" src={SITE_QR} alt={SITE_URL} width="72" height="72" />
             </div>
@@ -1630,7 +1758,9 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
               {message.planId && (
                 <PlanCard plan={findPlan(message.planId)} executionOrder={(data.executionOrders || []).find((item) => item.planId === message.planId)} action={action} ui={ui} markets={data.markets} data={data} />
               )}
-              <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} callSummary={message.toolCallSummary} />
+              {message.sessionId === "chat_autocycle" && message.capabilityCoverage
+                ? <PatrolReceipt message={message} mobile={mobile} />
+                : <ToolTrace trace={message.toolTrace || []} coverage={message.capabilityCoverage} callSummary={message.toolCallSummary} />}
               <div className="agMsgFootRow">
                 <small className="agMsgMeta">{formatTime(message.createdAt)}{message.model ? ` · ${message.model}` : ""}</small>
                 {String(message.content || "").length > 80 && (

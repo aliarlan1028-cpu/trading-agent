@@ -40,15 +40,17 @@ esbuild.buildSync({
   stdin: {
     contents: `
       export { ConceptGraph } from "./src/conceptGraph.jsx";
+      export { ProductWorkspaceFrame, ObjectInspector, WorkspaceStateBoundary } from "./src/productShell.jsx";
       export { AiTraderCenter, TradingCenter, ResearchCenter, RiskCenter, OperationsCenter } from "./src/workspacePages.jsx";
       export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
-      export { ChatPage, DecisionBrief, PlanCard, ToolTrace, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
+      export { ChatPage, DecisionBrief, PlanCard, ToolTrace, PatrolReceipt, PosterModal, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, NavDrawer, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
-      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, LiveConcept, MandateConcept, MarketConcept, OperationsOverviewConcept, RiskPostureConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
+      export { MobileApp, NavDrawer, MobileLabRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
+      export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -174,6 +176,62 @@ test("自主巡检能力覆盖以一行紧凑摘要展示，原始工具详情�
   assert.match(html, /全市场 431/);
   assert.match(html, /视野外复核 2\/2/);
   assert.doesNotMatch(html, /全市场扫 431 个/, "详情默认应折叠，不能重新堆满首屏");
+});
+
+test("自主巡检回执在桌面与手机上都展示真实覆盖，手机详情使用原生 sheet", () => {
+  const message = {
+    id: "msg_patrol_024",
+    sessionId: "chat_autocycle",
+    createdAt: "2026-08-24T08:00:00.000Z",
+    capabilityCoverage: {
+      ok: true, covered: 6, required: 6, missing: [], checkedAt: "2026-08-24T08:01:00.000Z",
+      whitelist: { analyzed: 2, expected: 2, symbols: ["BTC/USDT", "ETH/USDT"] },
+      watches: { analyzed: 1, expected: 1, symbols: ["BTC/USDT"] },
+      marketScan: { completed: true, universe: 431, candidates: 8, error: null },
+      externalCandidates: [{ symbol: "SOL/USDT", side: "long", analyzed: true }]
+    },
+    toolCallSummary: { totalCalls: 3, modelCalls: 1, preflightCalls: 2 },
+    toolTrace: [
+      { name: "scan_market_opportunities", summary: "扫描 431 个合约", latencyMs: 31, origin: "system_preflight" },
+      { name: "register_watch", args: { symbol: "BTC/USDT" }, summary: "已挂观察哨 watch_1", latencyMs: 12, origin: "model" }
+    ],
+    presentation: { headline: "等待 BTC 突破后回踩确认", nextAction: { code: "watch_primary_condition" }, linked: { watchId: "watch_1" } }
+  };
+  const desktop = renderToString(React.createElement(C.PatrolReceipt, { message, defaultOpen: true }));
+  assert.match(desktop, /AUTONOMOUS \/ PATROL/);
+  assert.match(desktop, /巡检完成/);
+  assert.match(desktop, /431/);
+  assert.match(desktop, /新增观察哨/);
+  assert.match(desktop, /已挂观察哨 watch_1/);
+
+  const mobile = renderToString(React.createElement(C.PatrolReceipt, { message, mobile: true, defaultOpen: true }));
+  assert.match(mobile, /patrolSheetOverlay/);
+  assert.match(mobile, /role="dialog"/);
+  assert.match(mobile, /自主巡检详情/);
+});
+
+test("海报使用固定 editorial field-note 模板并从巡检事实生成抬头数据", () => {
+  const html = renderToString(React.createElement(C.PosterModal, {
+    content: "### 结论\n等待 BTC 突破后回踩确认，不追价。",
+    meta: {
+      id: "msg_patrol_024", sessionId: "chat_autocycle", createdAt: "2026-08-24T08:00:00.000Z",
+      capabilityCoverage: {
+        ok: true, covered: 6, required: 6, missing: [],
+        whitelist: { analyzed: 2, expected: 2, symbols: ["BTC/USDT", "ETH/USDT"] },
+        watches: { analyzed: 1, expected: 1, symbols: ["BTC/USDT"] },
+        marketScan: { completed: true, universe: 431, candidates: 8 }
+      },
+      toolCallSummary: { totalCalls: 3, modelCalls: 1, preflightCalls: 2 }, toolTrace: [], presentation: { linked: {} }
+    },
+    onClose: () => {}
+  }));
+  assert.match(html, /EDITORIAL \/ FIELD NOTE/);
+  assert.match(html, /自主巡检记录/);
+  assert.match(html, /证据检查/);
+  assert.match(html, /6(?:<!-- -->)?\/(?:<!-- -->)?6/);
+  assert.match(html, /431/);
+  assert.match(html, /看见推理，保留控制。/);
+  assert.doesNotMatch(html, /海报模板|选择风格/);
 });
 
 test("结构化决策简报以克制叙事展示，不重复堆叠指标卡和引用装饰", () => {
@@ -394,20 +452,53 @@ test("desktop pages render with realistic data (all statuses)", () => {
   }
 });
 
+test("Operations command, recovery, audit, inbox, and native mobile flows render from shared facts", () => {
+  const desktopViews = [
+    C.OperationsCommandConcept,
+    C.OperationsTasksConcept,
+    C.OperationsRecoveryConcept,
+    C.OperationsAuditConcept,
+    C.OperationsInboxConcept
+  ];
+  for (const View of desktopViews) {
+    const html = render(React.createElement(View, { data, action, ui }));
+    assert.ok(html.length > 100, `${View.name} render output is too short`);
+  }
+  const mobile = render(React.createElement(C.MobileOperations, { data, action, ui, initialView: "overview" }));
+  assert.match(mobile, /mOperationsNative/);
+  assert.match(mobile, /当前运行状态/);
+  const recovery = render(React.createElement(C.MobileOperations, { data, action, ui, initialView: "recovery" }));
+  assert.match(recovery, /差异清单/);
+  assert.match(recovery, /安全恢复动作/);
+  const inbox = render(React.createElement(C.MobileOperations, { data, action, ui, initialView: "notifications" }));
+  assert.match(inbox, /通知/);
+});
+
+test("mobile task creation preserves standard handlers and the deployed intelligence mission handler", () => {
+  assert.deepEqual(C.buildMobileTaskPayload({ name: "账户对账", kind: "standard", type: "Every", schedule: "Every 5m", role: "ops", handler: "reconcile" }), {
+    name: "账户对账", type: "Every", schedule: "Every 5m", enabled: true, role: "ops", handler: "reconcile"
+  });
+  assert.deepEqual(C.buildMobileTaskPayload({ name: "", kind: "mission", mission: "跟踪 ETH ETF 审批", type: "Cron", schedule: "0 8 * * *" }), {
+    name: "跟踪 ETH ETF 审批", type: "Cron", schedule: "0 8 * * *", enabled: true, role: "intelligence", handler: "agent_mission", mission: "跟踪 ETH ETF 审批"
+  });
+  assert.equal(C.buildMobileTaskPayload({ kind: "mission", type: "Every", schedule: "Every 1h" }), null);
+});
+
 test("non-AI workspaces share the grouped operating-system shell while AI Trader keeps its established shell", () => {
   const trade = render(React.createElement(C.TradingCenter, { data, action, ui }));
   assert.match(trade, /class="uxCenter productWorkspace"/);
   assert.match(trade, /data-workspace="trade"/);
-  assert.match(trade, /TRADING COCKPIT/);
+  assert.match(trade, /LIVE EXECUTION/);
+  assert.match(trade, /Live Desk/);
   assert.match(trade, /观察/);
   assert.match(trade, /执行/);
-  assert.match(trade, /改进/);
   assert.match(trade, /CURRENT WORKSPACE/);
 
   const research = render(React.createElement(C.ResearchCenter, { data, action, ui }));
   assert.match(research, /data-workspace="research"/);
   assert.match(research, /孵化/);
   assert.match(research, /发布/);
+  assert.match(research, /学习/);
 
   const risk = render(React.createElement(C.RiskCenter, { data, action, ui }));
   assert.match(risk, /data-workspace="risk"/);
@@ -417,26 +508,27 @@ test("non-AI workspaces share the grouped operating-system shell while AI Trader
   const operations = render(React.createElement(C.OperationsCenter, { data, action, ui }));
   assert.match(operations, /data-workspace="operations"/);
   assert.match(operations, /运行/);
-  assert.match(operations, /事实/);
+  assert.match(operations, /证据/);
 
   const settings = render(React.createElement(C.SettingsConcept, { data, action, ui, activeTab: "overview", onTabChange: () => {} }));
   assert.match(settings, /class="cp2Settings productSettings"/);
-  assert.match(settings, /SYSTEM SETTINGS/);
+  assert.match(settings, /CONFIGURATION REGISTRY/);
+  assert.match(settings, /data-product-workspace="configuration"/);
 
   const ai = render(React.createElement(C.AiTraderCenter, { data, action, ui }));
   assert.doesNotMatch(ai, /productWorkspace|data-workspace=/);
   assert.doesNotMatch(ai, /CURRENT WORKSPACE/);
 });
 
-test("trading cockpit exposes dedicated review pages and keeps Owner review private", () => {
-  const reviewHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "reviews", reviewInitialId: "rv1" }));
+test("Lab owns dedicated review pages and keeps Owner review private", () => {
+  const reviewHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "reviews", reviewInitialId: "rv1" }));
   assert.match(reviewHtml, /交易复盘详情/);
   assert.match(reviewHtml, /BTC 平仓复盘/);
-  const ownerHtml = render(React.createElement(C.TradingCenter, { data, action, ui, initialTab: "owner" }));
+  const ownerHtml = render(React.createElement(C.ResearchCenter, { data, action, ui, initialTab: "owner" }));
   assert.match(ownerHtml, /Owner 优化工作台/);
-  const regularHtml = render(React.createElement(C.TradingCenter, { data: { ...data, user: { ...data.user, isOwner: false } }, action, ui, initialTab: "owner" }));
-  assert.doesNotMatch(regularHtml, /Owner 优化/);
-  assert.match(regularHtml, /交易驾驶舱/);
+  const regularHtml = render(React.createElement(C.ResearchCenter, { data: { ...data, user: { ...data.user, isOwner: false } }, action, ui, initialTab: "owner" }));
+  assert.doesNotMatch(regularHtml, />Owner 优化<\/button>/);
+  assert.match(regularHtml, /Lab/);
 });
 
 test("new capital flow, split review workspaces, ledger, and watch page render with realistic data", () => {
@@ -468,6 +560,26 @@ test("risk overview renders authoritative event windows instead of generic risk 
   assert.doesNotMatch(html, /应急操作/);
   assert.doesNotMatch(html, /密钥安全/);
   assert.doesNotMatch(html, /账户安全|打开 OKX 配置/);
+});
+
+test("Control is read-only while Configuration owns durable trading and rule editors", () => {
+  const boundary = render(React.createElement(C.OperatingBoundaryConcept, { data, ui }));
+  assert.match(boundary, /生效中的交易范围/);
+  assert.match(boundary, /在配置中心编辑 Mandate/);
+  assert.doesNotMatch(boundary, /保存全部设置|type="number"/);
+
+  const monitor = render(React.createElement(C.RulesConcept, { data, action, ui }));
+  assert.match(monitor, /规则监控/);
+  assert.match(monitor, /前往规则配置/);
+  assert.doesNotMatch(monitor, /新建规则|aria-label="切换规则状态"/);
+
+  const trading = render(React.createElement(C.SettingsConcept, { data, action, ui, activeTab: "trading", onTabChange: () => {} }));
+  assert.match(trading, /交易、运行与自动保护/);
+  assert.match(trading, /保存全部设置/);
+  const risk = render(React.createElement(C.SettingsConcept, { data, action, ui, activeTab: "risk", onTabChange: () => {} }));
+  assert.match(risk, /自动保护与确定性风险规则/);
+  assert.match(risk, /新建规则/);
+  assert.match(risk, /切换规则状态/);
 });
 
 test("unified automation presentation separates the saved target from the effective safety state", () => {
@@ -864,6 +976,15 @@ test("mobile drawer keeps settings visible without duplicate status and close fo
   assert.doesNotMatch(html, /关闭菜单/);
   assert.doesNotMatch(html, /只减仓/);
   assert.match(html, /mDrawerSettings/);
+  assert.match(html, /实时盯盘/);
+  assert.match(html, /委托与成交/);
+  assert.match(html, /知识孵化/);
+  assert.match(html, /能力库/);
+  assert.match(html, /策略库/);
+  assert.match(html, /运行与恢复/);
+  assert.match(html, /LIVE DETAIL/);
+  assert.match(html, /LAB/);
+  assert.match(html, /OPERATIONS/);
 });
 
 test("config panels render for every live key", () => {
@@ -878,8 +999,104 @@ test("mobile app and assistant render", () => {
   const api = { data, action, toast: "", busy: false, notify: () => {}, download: () => {}, refresh: () => {} };
   const mobile = render(React.createElement(C.MobileApp, { api }));
   assert.ok(mobile.length > 100, "MobileApp 渲染输出过短");
+  for (const label of ["AI", "Live", "Lab", "Control", "更多"]) assert.match(mobile, new RegExp(`>${label}<`));
+  assert.doesNotMatch(mobile, />交易员<|>盯盘<|>市场<|>风控</);
   const asst = render(React.createElement(C.AssistantWidget, { data }));
   assert.ok(asst.length > 20, "AssistantWidget 渲染输出过短");
+});
+
+test("settings deep links preserve the requested base section", () => {
+  const html = render(React.createElement(C.SettingsConcept, {
+    data, action, ui, activeTab: "base", initialBaseSection: "data_backup", onTabChange: () => {}
+  }));
+  assert.match(html, /data-settings-section="data_backup"/);
+  assert.match(html, /aria-current="location"/);
+});
+
+test("mobile Lab presents one lifecycle rail instead of unrelated library destinations", () => {
+  const html = render(React.createElement(C.MobileLabRail, { route: "strategyLib", onNavigate: () => {} }));
+  assert.match(html, /03 \/ RESEARCH MAP/);
+  assert.match(html, /双来源 → 正式资产 → 实盘证据 → Owner 版本/);
+  for (const label of ["地图", "孵化", "策略", "能力", "复盘"]) assert.match(html, new RegExp(`>${label}<`));
+  assert.match(html, /aria-current="page"[^>]*>策略/);
+});
+
+test("desktop and mobile Lab maps expose dual origins, shared registries, and the live learning loop", () => {
+  const desktop = render(React.createElement(C.ResearchMapConcept, { data, ui }));
+  assert.match(desktop, /两条来源，一套正式资产，一条学习闭环/);
+  assert.match(desktop, /系统已有策略与能力/);
+  assert.match(desktop, /知识、证据与候选/);
+  assert.match(desktop, /策略资产/);
+  assert.match(desktop, /能力资产/);
+  assert.match(desktop, /发布的是新版本，不会静默覆盖/);
+  const mobile = render(React.createElement(C.MobileResearchMap, { data, ui }));
+  assert.match(mobile, /不是三个平行库，而是一套资产闭环/);
+  assert.match(mobile, /策略注册表/);
+  assert.match(mobile, /能力注册表/);
+  assert.match(mobile, /Owner 发布/);
+});
+
+test("mobile Owner route has a native governed queue instead of falling back to execution overview", () => {
+  const html = render(React.createElement(C.MobileOwnerReview, {
+    data: {
+      ...data,
+      ownerReviewLoop: {
+        summary: { structuredReviews: 4, candidateLessons: 1, pendingOwner: 1, validating: 0 },
+        lessons: [{ id: "lesson-mobile", status: "candidate", title: "等待回踩", llmAdvice: "只在相似趋势回踩中参考", origin: "llm_deep_review", applicability: { symbol: "BTC/USDT", direction: "long", timeframe: "15m" } }],
+        improvements: [{ id: "improvement-mobile", state: "pending_owner", destination: "strategy", title: "入场确认候选", problem: "重复出现确认不足", proposal: "创建版本化对照实验", evidenceCount: 3 }]
+      }
+    }, action, ui
+  }));
+  assert.match(html, /优化建议不会自行生效/);
+  assert.match(html, /优化项/);
+  assert.match(html, /候选教训/);
+  assert.match(html, /入场确认候选/);
+  assert.doesNotMatch(html, /执行与复盘/);
+});
+
+test("shared workspace frame renders the approved product identity and local navigation", () => {
+  const html = render(React.createElement(C.ProductWorkspaceFrame, {
+    workspaceId: "lab", activeView: "knowledge", onViewChange: () => {},
+    views: [
+      { id: "knowledge", label: "知识孵化", labelEn: "Knowledge Incubator", group: "研究", groupEn: "RESEARCH", description: "来源、证据与候选", descriptionEn: "Sources, evidence, and candidates" },
+      { id: "strategy", label: "策略库", labelEn: "Strategy Registry", group: "发布", groupEn: "RELEASE", description: "正式策略资产", descriptionEn: "Formal strategy assets" }
+    ]
+  }, React.createElement("div", null, "real workbench")));
+  assert.match(html, /data-product-workspace="lab"/);
+  assert.match(html, /03(?:<!-- -->)? \/ (?:<!-- -->)?RESEARCH &amp; RELEASE/);
+  assert.match(html, /aria-current="page"/);
+  assert.match(html, /productWorkspaceFrame__body/);
+  assert.match(html, /real workbench/);
+});
+
+test("Object Inspector remains read-only and State Boundary distinguishes resource states", () => {
+  const object = {
+    id: "STRAT-014", type: "Strategy", title: "Breakout Retest", status: "Published",
+    source: "Strategy Studio", version: "v3", permission: "Owner approval",
+    risk: "Mandate + deterministic preflight", consumers: ["AI Trader", "Live Desk"],
+    nextAction: "Enable for AI eligible set", primaryRoute: "researchCenter:strategy"
+  };
+  const inspector = render(React.createElement(C.ObjectInspector, { object, onOpenPrimary: () => {} }));
+  for (const label of ["SOURCE", "VERSION", "PERMISSION", "RISK", "CONSUMERS", "NEXT ACTION", "PRIMARY WORKBENCH"]) assert.match(inspector, new RegExp(label));
+  assert.match(inspector, /data-primary-route="researchCenter:strategy"/);
+  assert.equal((inspector.match(/<button/g) || []).length, 1);
+
+  const cases = [
+    ["not_loaded", false, /尚未加载|Not loaded/],
+    ["loading", false, /正在加载|Loading/],
+    ["error", false, /加载失败|failed to load/],
+    ["loaded", true, /暂无数据|No data/]
+  ];
+  for (const [resourceState, empty, expected] of cases) {
+    const html = render(React.createElement(C.WorkspaceStateBoundary, { resourceState, empty, onRetry: () => {} }, React.createElement("button", null, "child action")));
+    assert.match(html, expected);
+  }
+  const stale = render(React.createElement(C.WorkspaceStateBoundary, { resourceState: "loaded", stale: true }, React.createElement("div", null, "last valid truth")));
+  assert.match(stale, /数据已陈旧|Data is stale/);
+  assert.match(stale, /last valid truth/);
+  const forbidden = render(React.createElement(C.WorkspaceStateBoundary, { resourceState: "loaded", forbidden: "owner" }, React.createElement("button", null, "mutate")));
+  assert.match(forbidden, /需要权限|Permission required/);
+  assert.doesNotMatch(forbidden, /mutate/);
 });
 
 test("mobile capability library and backtest research render as native lists", () => {
@@ -1218,8 +1435,8 @@ test("non-AI desktop interiors render registry, truth, evidence, risk, and run-t
   const risk = render(React.createElement(C.RiskPostureConcept, {
     data: { portfolio: {}, portfolioRisk: {}, system: {}, mandates: [], riskRules: [], riskIncidents: [], eventRiskWindows: [] }, ui
   }));
-  assert.match(risk, /riskOperatingBoard/);
-  assert.match(risk, /当前风险姿态/);
+  assert.match(risk, /controlTruth/);
+  assert.match(risk, /当前实际状态/);
 
   const operations = render(React.createElement(C.OperationsOverviewConcept, {
     data: { system: {}, tasks: [], jobRuns: [{ id: "r1", taskName: "行情刷新", status: "ok", createdAt: "2026-08-19T00:00:00Z" }], events: [], auditLogs: [], riskIncidents: [], markets: [], readiness: { checks: [] } }, action, ui

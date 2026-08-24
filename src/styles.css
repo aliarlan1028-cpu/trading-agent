@@ -2997,7 +2997,7 @@ h3 {
 .agentManifesto blockquote {
   margin: 0 0 16px;
   padding: 18px 20px;
-  border-left: 4px solid #e07a3f;
+  border-left: 1px solid #e07a3f;
   border-radius: 8px;
   color: #2f2d29;
   background: #fff8ef;
@@ -4052,7 +4052,7 @@ button.danger:disabled,
   gap: 8px;
   align-items: start;
   padding: 9px 11px;
-  border-left: 3px solid #c17a2e;
+  border-left: 1px solid #c17a2e;
   border-radius: 0 8px 8px 0;
   color: #72502d;
   background: #fff8ed;
@@ -4071,7 +4071,7 @@ button.danger:disabled,
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 8px;
   align-items: start;
-  border-left: 3px solid #2e8560;
+  border-left: 1px solid #2e8560;
   border-radius: 0 8px 8px 0;
   color: #374f42;
   background: #f2f8f4;
@@ -4306,7 +4306,7 @@ button.danger:disabled,
 /* 计划卡 */
 .chatPlanCard {
   border: 1px solid #e4dccc;
-  border-left: 3px solid #e07a3f;
+  border-left: 1px solid #e07a3f;
   border-radius: 12px;
   background: #fffefb;
   padding: 12px 14px;
@@ -4475,7 +4475,7 @@ button.danger:disabled,
 /* 授权卡 */
 .chatMandateCard {
   border: 1px solid #e4dccc;
-  border-left: 3px solid #3f8f5b;
+  border-left: 1px solid #3f8f5b;
   border-radius: 12px;
   background: #fffefb;
   padding: 12px 14px;
@@ -4522,7 +4522,7 @@ button.danger:disabled,
 
 .chatStrategyDraftCard {
   border: 1px solid #ead7bd;
-  border-left: 3px solid #c96824;
+  border-left: 1px solid #c96824;
   border-radius: 12px;
   background: #fffaf3;
   padding: 12px 14px;
@@ -7040,7 +7040,7 @@ button.danger:disabled,
 .intelList { display: grid; gap: var(--sp-2); }
 .intelCard {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
   border-radius: var(--r-md);
   background: var(--surface);
   padding: var(--sp-3) var(--sp-4);
@@ -8027,7 +8027,7 @@ button.danger:disabled,
 .ruleGuideSteps > div.done { opacity: .7; }
 .ruleGuideSteps b { font-size: 12px; color: #1E1B16; }
 .ruleGuideSteps span { font-size: 10.5px; color: #8a8172; }
-.ruleGuideWarn { border-left: 3px solid var(--warn); padding-left: 9px; color: #7a5c1a !important; }
+.ruleGuideWarn { border-left: 1px solid var(--warn); padding-left: 9px; color: #7a5c1a !important; }
 .ruleDupWrap { border: 1px solid #E3DCCE; border-radius: 9px; background: #fff; padding: 11px 13px; margin-bottom: 12px; display: grid; gap: 9px; }
 .ruleDupHead { display: flex; align-items: center; gap: 6px; font: 600 12px "Space Grotesk"; color: #1E1B16; }
 .ruleDupHead b { color: var(--accent); }
@@ -8211,7 +8211,7 @@ button.danger:disabled,
 .mandRow b.neg { color: #C43F28; } .mandRow b.pos { color: #1F7A50; }
 
 /* 真相盘：系统到底赚不赚钱 */
-.truthPanel { border: 1px solid var(--border); border-left: 4px solid var(--text-3); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
+.truthPanel { border: 1px solid var(--border); border-left-color: var(--text-3); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
 .truthPanel.unverified { border-left-color: #C9A227; background: #FDF9EC; }
 .truthPanel.pos { border-left-color: var(--pos); }
 .truthPanel.neg { border-left-color: var(--neg); }
@@ -8246,10 +8246,10 @@ button.danger:disabled,
 
 /* 下一步引导 */
 .nextStepCard { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 10px 14px; margin-bottom: 10px; }
-.nextStepCard.warn { border-left: 4px solid #C9A227; }
-.nextStepCard.danger { border-left: 4px solid var(--neg); }
-.nextStepCard.neutral { border-left: 4px solid var(--text-3); }
-.nextStepCard.ok { border-left: 4px solid var(--pos); }
+.nextStepCard.warn { border-left-color: #C9A227; }
+.nextStepCard.danger { border-left-color: var(--neg); }
+.nextStepCard.neutral { border-left-color: var(--text-3); }
+.nextStepCard.ok { border-left-color: var(--pos); }
 .nsIcon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; flex: none; }
 .nsBody { flex: 1; min-width: 0; }
 .nsBody b { font-size: 12px; color: var(--text-3); display: block; }
@@ -8890,7 +8890,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .asstCode { font: 600 11.5px var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
 .asstList { margin: 4px 0 4px 2px; padding-left: 16px; display: grid; gap: 3px; }
 .asstList li { font-size: 12.5px; line-height: 1.55; }
-.asstQuote { border-left: 3px solid var(--hairline); padding: 2px 0 2px 9px; margin: 4px 0; color: var(--text-3); font-size: 11.5px; }
+.asstQuote { border-left: 1px solid var(--hairline); padding: 2px 0 2px 9px; margin: 4px 0; color: var(--text-3); font-size: 11.5px; }
 .asstHr { border: 0; border-top: 1px solid var(--hairline); margin: 6px 0; }
 .asstTyping { display: inline-flex; gap: 4px; align-items: center; }
 .asstTyping i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: .5; animation: asstBlink 1.1s infinite; }
@@ -9022,6 +9022,24 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
   .cfgTestActions .secondaryButton { width: 100%; }
   .runtimePanel-security > .formGrid { grid-template-columns: 1fr; }
 }
+
+/* Native post-login Operations. The mobile sign-in surface is intentionally untouched. */
+.mOperationsNative{--mOpsInk:#171a17;--mOpsPaper:#f4f1e9;--mOpsPaper2:#faf8f2;--mOpsLine:#d8d2c7;--mOpsMuted:#777168;--mOpsLime:#d3ff57;display:grid;gap:10px;padding:0 11px 22px;color:#282923;background:var(--mOpsPaper)}
+.mOperationsNative button,.mOperationsNative input,.mOperationsNative select{font-family:var(--font-ui)}
+.mOpsRail{display:flex;min-width:0;margin:0 -11px;overflow-x:auto;border-top:1px solid #bdb8ae;border-bottom:1px solid #bdb8ae;background:#faf8f2;scrollbar-width:none}.mOpsRail::-webkit-scrollbar{display:none}.mOpsRail>button{position:relative;flex:1 0 auto;min-width:70px;min-height:45px;padding:0 10px;border:0;border-bottom:2px solid transparent;background:transparent;color:#777168;font-size:9px;font-weight:700}.mOpsRail>button.active{border-bottom-color:var(--mOpsInk);color:var(--mOpsInk)}.mOpsRail>button i{display:grid;place-items:center;position:absolute;top:5px;right:5px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#bd5548;color:#fff;font:700 7px var(--font-mono);font-style:normal}
+.mOpsStatus{margin:0 -1px;background:var(--mOpsInk);color:#f8f5ed}.mOpsStatus>div{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:10px;padding:17px 14px 12px}.mOpsStatus>div>span:first-child{display:grid;place-items:center;width:40px;height:40px;background:var(--mOpsLime);color:var(--mOpsInk)}.mOpsStatus.critical>div>span:first-child{background:#df7959}.mOpsStatus.warning>div>span:first-child{background:#e7b25f}.mOpsStatus h2{margin:3px 0 0;font-size:21px;font-weight:620;letter-spacing:-.035em}.mOpsStatus small{color:#999c94;font-size:8px;font-weight:700}.mOpsStatus>p{margin:0;padding:0 14px 14px;color:#b7b9b2;font-size:10px;line-height:1.5}.mOpsStatus>footer{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #454842}.mOpsStatus>footer>span{display:grid;gap:4px;padding:11px 13px;border-right:1px solid #454842}.mOpsStatus>footer>span:last-child{border-right:0}.mOpsStatus>footer b{font:650 17px Manrope,var(--font-ui);font-variant-numeric:tabular-nums}
+.mOperationsNative .mNativeSection{margin:0;border:1px solid var(--mOpsLine);border-radius:0;background:var(--mOpsPaper2);box-shadow:none}.mOperationsNative .mNativeSection>header{min-height:51px;padding:10px 12px;border-bottom:1px solid var(--mOpsLine)}.mOperationsNative .mNativeSection>header b{font-size:11px}.mOperationsNative .mNativeSection>header small{font-size:8px}.mOperationsNative .mNativeSection>header>span{font:700 9px var(--font-mono)}
+.mOpsServices>button,.mOpsAttention>button,.mOpsTaskList>button,.mOpsAuditList>button,.mOpsNoticeList>button{display:grid;align-items:center;width:100%;min-height:58px;padding:9px 11px;border:0;border-bottom:1px solid var(--mOpsLine);background:transparent;color:inherit;text-align:left}.mOpsServices>button:last-child,.mOpsAttention>button:last-child,.mOpsTaskList>button:last-child,.mOpsAuditList>button:last-child,.mOpsNoticeList>button:last-child{border-bottom:0}.mOpsServices>button{grid-template-columns:7px minmax(0,1fr) auto 13px;gap:9px}.mOpsServices>button>span:first-child,.mOpsInputs>div>span:first-child,.mOpsTaskList>button>span:first-child,.mOpsNoticeList>button>span:first-child{width:7px;height:7px;background:#97978f}.mOpsServices .healthy,.mOpsInputs .healthy,.mOpsTaskList .healthy,.mOpsNoticeList .healthy{background:#579775}.mOpsServices .warning,.mOpsInputs .warning,.mOpsTaskList .warning,.mOpsNoticeList .warning{background:#c9863f}.mOpsServices .critical,.mOpsInputs .critical,.mOpsTaskList .critical,.mOpsNoticeList .critical{background:#bd5548}.mOpsServices>button>div,.mOpsTaskList>button>div,.mOpsNoticeList>button>div{display:grid;gap:3px;min-width:0}.mOpsServices>button>div b,.mOpsTaskList>button>div b,.mOpsNoticeList>button>div b{overflow:hidden;font-size:10.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsServices>button>div small,.mOpsTaskList>button>div small,.mOpsNoticeList>button>div small{overflow:hidden;color:var(--mOpsMuted);font-size:8.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsServices>button>svg,.mOpsAttention>button>svg,.mOpsTaskList>button>svg,.mOpsAuditList>button>svg,.mOpsNoticeList>button>svg{width:13px;color:#99958c}
+.mOpsServices .statusBadge.warning,.mOpsInputs .statusBadge.warning,.mOpsTaskList .statusBadge.warning,.mOpsNoticeList .statusBadge.warning{background:#fff7e8}
+.mOpsAttention>button{grid-template-columns:25px minmax(0,1fr) 13px;gap:10px}.mOpsAttention>button>i{display:grid;place-items:center;width:24px;height:24px;background:#ddd9cf;font:700 9px var(--font-mono);font-style:normal}.mOpsAttention>button>i.warning{background:#e7b25f}.mOpsAttention>button>i.critical{background:#bd5548;color:#fff}.mOpsAttention>button>div{display:grid;gap:3px;min-width:0}.mOpsAttention>button b{font-size:10px}.mOpsAttention>button small{overflow:hidden;color:var(--mOpsMuted);font-size:8.5px;text-overflow:ellipsis;white-space:nowrap}
+.mOpsInputs>div{display:grid;grid-template-columns:7px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:48px;padding:8px 11px;border-bottom:1px solid var(--mOpsLine)}.mOpsInputs>div:last-child{border-bottom:0}.mOpsInputs>div>div{display:grid;gap:3px;min-width:0}.mOpsInputs>div b{font-size:10px}.mOpsInputs>div small{overflow:hidden;color:var(--mOpsMuted);font-size:8.5px;text-overflow:ellipsis;white-space:nowrap}
+.mOpsListHead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;min-height:89px;margin:0 -1px;padding:14px;background:var(--mOpsInk);color:#f7f4eb}.mOpsListHead h2{margin:0;font-size:18px;line-height:1.05;letter-spacing:-.035em}.mOpsListHead p{margin:6px 0 0;color:#abada5;font-size:9px;line-height:1.4}.mOpsListHead>button{display:flex;align-items:center;gap:5px;min-height:36px;padding:0 11px;border:0;background:var(--mOpsLime);color:var(--mOpsInk);font-size:9px;font-weight:750}.mOpsListHead>button:disabled{opacity:.4}.mOpsListHead svg{width:13px}
+.mOpsTaskStats{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsTaskStats>span{display:grid;gap:4px;padding:11px;border-right:1px solid var(--mOpsLine)}.mOpsTaskStats>span:last-child{border-right:0}.mOpsTaskStats small{color:var(--mOpsMuted);font-size:8px;font-weight:700}.mOpsTaskStats b{font:650 17px Manrope,var(--font-ui)}.mOpsTaskList>button{grid-template-columns:7px minmax(0,1fr) auto 13px;gap:9px}.mOpsTaskList>button>div em{color:#8b857c;font:600 7.5px var(--font-mono);font-style:normal}.mOpsRunList>div{display:grid;grid-template-columns:45px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:47px;padding:7px 11px;border-bottom:1px solid var(--mOpsLine)}.mOpsRunList>div:last-child{border-bottom:0}.mOpsRunList time{font:600 8px var(--font-mono);color:var(--mOpsMuted)}.mOpsRunList>div>span{display:grid;gap:2px;min-width:0}.mOpsRunList b{overflow:hidden;font-size:9.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsRunList small{color:var(--mOpsMuted);font:600 7.5px var(--font-mono)}
+.mOpsDetailNav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:48px;margin:0 -11px;border-bottom:1px solid #bbb7ae;background:#faf8f2}.mOpsDetailNav>button{display:flex;align-items:center;gap:4px;height:100%;padding:0 12px;border:0;background:transparent;color:#33332e;font-size:9px;text-align:left}.mOpsDetailNav>b{font-size:10.5px}.mOpsTaskHero{display:grid;grid-template-columns:1fr auto;gap:8px;padding:18px 14px;background:var(--mOpsInk);color:#f6f2e8}.mOpsTaskHero>small{grid-column:1/-1;color:#69b28d;font:700 8px var(--font-mono)}.mOpsTaskHero h2{margin:0;font-size:21px;letter-spacing:-.035em}.mOpsFacts{display:grid!important;grid-template-columns:1fr 1fr}.mOpsFacts>div{display:grid;gap:5px;min-width:0;padding:11px;border-right:1px solid var(--mOpsLine);border-bottom:1px solid var(--mOpsLine)}.mOpsFacts>div:nth-child(2n){border-right:0}.mOpsFacts small{color:var(--mOpsMuted);font-size:8px}.mOpsFacts b{overflow-wrap:anywhere;font-size:9px}.mOpsStickyActions{position:sticky;bottom:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:4px;padding:1px;background:#a9a59c}.mOpsStickyActions>button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:44px;border:0;background:var(--mOpsInk);color:#fff;font-size:9px;font-weight:700}.mOpsStickyActions>button:first-child{grid-column:1/-1;background:var(--mOpsLime);color:var(--mOpsInk)}.mOpsStickyActions>button.danger{background:#853e36}.mOpsStickyActions>button:disabled{opacity:.42}.mOpsStickyActions svg{width:13px}
+.mOpsTaskCreate form{display:grid;gap:11px;padding:14px 12px;border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsTaskKind{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bdb8ae}.mOpsTaskKind button{min-height:38px;border:0;border-right:1px solid #bdb8ae;background:#ede9df;color:#6d675d;font-size:8.5px;font-weight:750}.mOpsTaskKind button:last-child{border-right:0}.mOpsTaskKind button.active{background:var(--mOpsInk);color:var(--mOpsLime)}.mOpsTaskCreate label{display:grid;gap:6px}.mOpsTaskCreate label>span{color:var(--mOpsMuted);font-size:8.5px;font-weight:700}.mOpsTaskCreate input,.mOpsTaskCreate select,.mOpsTaskCreate textarea{width:100%;min-height:42px;box-sizing:border-box;border:1px solid #cfc8bc;border-radius:0;background:#fff;color:#292a25;padding:0 10px;font:10px var(--font-ui)}.mOpsTaskCreate textarea{min-height:82px;padding:10px;resize:vertical;line-height:1.5}.mOpsTaskCreate form>button{min-height:44px;border:0;background:var(--mOpsInk);color:#fff;font-size:10px;font-weight:750}.mOpsFormNote{display:flex;align-items:flex-start;gap:8px;padding:10px;background:#ece9df;color:#625d54;font-size:8.5px;line-height:1.45}.mOpsFormNote svg{flex:0 0 14px;color:#5c9878}
+.mOpsRecoveryTruth{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;background:var(--mOpsInk);color:#f7f4eb}.mOpsRecoveryTruth>div{display:flex;align-items:center;gap:10px}.mOpsRecoveryTruth>div>svg{width:20px;color:#e7b25f}.mOpsRecoveryTruth.healthy>div>svg{color:var(--mOpsLime)}.mOpsRecoveryTruth span{display:grid;gap:3px}.mOpsRecoveryTruth small{color:#9a9d95;font-size:8px}.mOpsRecoveryTruth h2{margin:0;font-size:18px;letter-spacing:-.035em}.mOpsRecoveryTruth p{margin:0;color:#b9bbb4;font:600 8px var(--font-mono)}.mOpsRecoveryTruth>button{min-height:36px;padding:0 10px;border:0;background:var(--mOpsLime);color:var(--mOpsInk);font-size:8.5px;font-weight:750}.mOpsDifferences>div,.mOpsIncidents>div{display:grid;grid-template-columns:7px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:51px;padding:8px 11px;border-bottom:1px solid var(--mOpsLine)}.mOpsDifferences>div>span:first-child,.mOpsIncidents>div>span:first-child{width:7px;height:7px;background:#c9863f}.mOpsDifferences>div>span.danger,.mOpsIncidents>div>span.danger{background:#bd5548}.mOpsDifferences>div>div,.mOpsIncidents>div>div{display:grid;gap:3px}.mOpsDifferences b,.mOpsIncidents b{font-size:9.5px}.mOpsDifferences small,.mOpsIncidents small{color:var(--mOpsMuted);font-size:8.5px}.mOpsRecoveryActions>button{display:grid;grid-template-columns:22px minmax(0,1fr) 13px;align-items:center;gap:9px;width:100%;min-height:58px;padding:8px 11px;border:0;border-bottom:1px solid var(--mOpsLine);background:transparent;color:inherit;text-align:left}.mOpsRecoveryActions>button:disabled{opacity:.42}.mOpsRecoveryActions>button>svg{width:16px}.mOpsRecoveryActions>button>span{display:grid;gap:3px}.mOpsRecoveryActions b{font-size:9.5px}.mOpsRecoveryActions small{color:var(--mOpsMuted);font-size:8.5px}.mOpsIncidents>div>button{border:0;background:transparent;color:#8d4037;font-size:8.5px;font-weight:750}
+.mOpsAuditProof{display:grid;grid-template-columns:1fr 1fr;background:var(--mOpsInk);color:#f6f2e8}.mOpsAuditProof>div{display:flex;align-items:center;gap:9px;min-height:77px;padding:12px;border-right:1px solid #464943}.mOpsAuditProof>div:last-child{border-right:0}.mOpsAuditProof svg{width:18px;color:var(--mOpsLime)}.mOpsAuditProof .broken svg,.mOpsAuditProof .missing svg{color:#df7959}.mOpsAuditProof span{display:grid;gap:4px}.mOpsAuditProof small{color:#969991;font:700 8px var(--font-mono)}.mOpsAuditProof b{font-size:11px}.mOpsAuditTools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.mOpsAuditTools label{display:flex;align-items:center;gap:7px;min-height:39px;padding:0 10px;border:1px solid var(--mOpsLine);background:#fff}.mOpsAuditTools svg{width:13px;color:#817b71}.mOpsAuditTools input{width:100%;border:0;outline:0;background:transparent;font-size:9px}.mOpsAuditTools>button{padding:0 12px;border:0;background:var(--mOpsInk);color:#fff;font-size:8.5px;font-weight:700}.mOpsAuditList>button{grid-template-columns:76px minmax(0,1fr) auto 13px;gap:8px}.mOpsAuditList time{font:600 7.5px var(--font-mono);color:var(--mOpsMuted)}.mOpsAuditList>button>div{display:grid;gap:3px;min-width:0}.mOpsAuditList b{overflow:hidden;font-size:9.5px;text-overflow:ellipsis;white-space:nowrap}.mOpsAuditList small{overflow:hidden;color:var(--mOpsMuted);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.mOpsAuditDetail,.mOpsNoticeDetail{display:grid;gap:12px;padding:15px 13px;border:1px solid var(--mOpsLine);background:var(--mOpsPaper2)}.mOpsAuditDetail h2,.mOpsNoticeDetail h2{margin:0;font-size:20px;line-height:1.15;letter-spacing:-.035em}.mOpsAuditDetail>div,.mOpsNoticeDetail>div{display:grid}.mOpsAuditDetail>div>span,.mOpsNoticeDetail>div>span{display:grid;grid-template-columns:70px minmax(0,1fr);gap:9px;padding:9px 0;border-bottom:1px solid var(--mOpsLine)}.mOpsAuditDetail small,.mOpsNoticeDetail small{color:var(--mOpsMuted);font-size:8px}.mOpsAuditDetail b,.mOpsNoticeDetail b{overflow-wrap:anywhere;font-size:9px;text-align:right}.mOpsAuditDetail h3{margin:4px 0 0;font-size:10px}.mOpsAuditDetail pre{max-height:260px;margin:0;padding:11px;overflow:auto;background:var(--mOpsInk);color:#d7dbd3;font:500 8px/1.55 var(--font-mono);white-space:pre-wrap}.mOpsNoticeDetail>p{margin:0;color:#635e56;font-size:10px;line-height:1.6}.mOpsNoticeDetail>button{min-height:43px;border:0;background:var(--mOpsInk);color:#fff;font-size:9.5px;font-weight:750}.mOpsNoticeDetail>button:disabled{opacity:.45}
+.mOpsNoticeList>button{grid-template-columns:7px minmax(0,1fr) auto 13px;gap:9px;align-items:start}.mOpsNoticeList>button.read{opacity:.64}.mOpsNoticeList p{display:-webkit-box;margin:1px 0;overflow:hidden;color:#655f56;font-size:9px;line-height:1.4;-webkit-line-clamp:2;-webkit-box-orient:vertical}.mOpsConfigLink{display:grid;grid-template-columns:20px minmax(0,1fr) 13px;align-items:center;gap:9px;min-height:57px;padding:8px 11px;border:1px solid var(--mOpsLine);background:#ece9df;color:inherit;text-align:left}.mOpsConfigLink>svg{width:16px}.mOpsConfigLink>span{display:grid;gap:3px}.mOpsConfigLink b{font-size:9.5px}.mOpsConfigLink small{color:var(--mOpsMuted);font-size:8.5px}
 
 /* ===== 移动端 Terminal 重设计：外壳 + 汉堡抽屉（design_handoff_ios_app）===== */
 .mShell2 { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #F4F1EB; overflow: hidden; overscroll-behavior: none; }
@@ -9766,11 +9784,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .posterSection--action,
 .posterSection--opportunity {
   padding-left: 16px;
-  border-left: 3px solid #e7d6c2;
+  border-left: 1px solid #e7d6c2;
 }
 .posterSection--action { border-left-color: #d39a65; }
 .posterSection--opportunity { border-left-color: #78aa87; }
-.posterSection--risk { border-left: 3px solid #d66b55; }
+.posterSection--risk { border-left-color: #d66b55; }
 .posterSectionContent { display: grid; gap: 11px; min-width: 0; }
 .posterBody .posterSection .richHeading {
   display: grid;
@@ -9826,12 +9844,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .posterBody .posterSection p strong { color: #27231e; font-weight: 780; }
 .posterEmphasisLine {
   padding-left: 11px;
-  border-left: 3px solid #e9bb91;
+  border-left: 1px solid #e9bb91;
 }
 .posterQuote {
   margin: 0;
   padding: 11px 14px;
-  border-left: 3px solid #df8a4d;
+  border-left: 1px solid #df8a4d;
   border-radius: 0 9px 9px 0;
   background: #faf6f0;
   color: #5a5045;
@@ -9914,7 +9932,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .bcGoal .bcTop{display:flex;justify-content:space-between;font-size:13px;color:var(--text-2);margin-bottom:6px;}
 .bcGoal .bcTop .good{color:var(--good,#2e9e6b);} .bcGoal .bcTop .bad{color:var(--bad,#c8492f);}
 .bcBar{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden;}
-.bcBar i{display:block;height:100%;border-radius:6px;transition:width .3s ease;}
+.bcBar i{display:block;height:100%;border-radius:6px;}
 .bcAlert{margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;line-height:1.5;}
 .bcAlert.good{background:#e8f5ee;color:#227a4f;border:1px solid #c4e6d3;}
 .bcAlert.bad{background:#fbeae5;color:#b3341c;border:1px solid #f0ccc2;}
@@ -10086,3 +10104,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .lpConsent input{width:15px;height:15px;margin-top:2px;accent-color:#ff7a2f;flex:0 0 auto}
 .lpConsent a{color:#ff9a5f;text-decoration:underline;text-underline-offset:2px}
 .turnstileHost{min-height:65px;margin:10px 0;overflow:hidden}
+
+/* Mobile Control + Configuration: current truth stays separate from durable editors. */
+.mControlScreen,.mConfigDomain{min-width:0}.mControlTruth{overflow:hidden;border:1px solid #2b2d29;border-radius:13px;background:#1e211d;color:#fff}.mControlTruth>header{display:flex;align-items:center;gap:9px;padding:14px 14px 10px}.mControlTruth>header>svg{flex:none;color:#d3ff57}.mControlTruth>header>div{flex:1;min-width:0;display:grid;gap:2px}.mControlTruth>header small{color:#9ba096;font-size:8px;text-transform:uppercase;letter-spacing:.06em}.mControlTruth>header b{font-size:15px}.mControlTruth>p{margin:0;padding:0 14px 12px;color:#b9bdb4;font-size:9.5px;line-height:1.55}.mControlTruth>div{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid rgba(255,255,255,.13)}.mControlTruth>div span{min-width:0;padding:11px 13px;display:grid;gap:4px}.mControlTruth>div span+span{border-left:1px solid rgba(255,255,255,.13)}.mControlTruth>div small{color:#8e9389;font-size:8px}.mControlTruth>div b{overflow:hidden;color:#fff;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.mControlRecovery>button{width:100%;min-height:57px;display:grid;grid-template-columns:23px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 11px;border:0;border-bottom:1px solid #ede7db;background:transparent;color:#29251f;text-align:left}.mControlRecovery>button:last-child{border-bottom:0}.mControlRecovery>button>i{width:21px;height:21px;display:grid;place-items:center;border-radius:50%;background:#fff0e4;color:#ba5c1f;font:700 8.5px var(--font-mono);font-style:normal}.mControlRecovery>button>span{min-width:0;display:grid;gap:3px}.mControlRecovery>button b{font-size:10px}.mControlRecovery>button small{color:#8a8172;font-size:8.5px;line-height:1.35}.mControlRecovery>button>svg{color:#aaa08f}
+.mControlEvents>div{min-height:54px;display:flex;align-items:center;gap:9px;padding:8px 11px;border-bottom:1px solid #ede7db}.mControlEvents>div:last-child{border-bottom:0}.mControlEvents>div>span:first-child{width:7px;height:7px;flex:none;border-radius:50%;background:#d49343}.mControlEvents>div>span:first-child.bad{background:#bc4e3d}.mControlEvents>div>span:nth-child(2){flex:1;min-width:0;display:grid;gap:3px}.mControlEvents b{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.mControlEvents small{color:#8a8172;font-size:8px}
+.mControlBoundaryHero{display:flex;align-items:center;gap:12px;padding:15px;border:1px solid #292b27;border-radius:13px;background:#1e211d;color:#fff}.mControlBoundaryHero>div{flex:1;min-width:0}.mControlBoundaryHero small{color:#979c92;font-size:8px;text-transform:uppercase}.mControlBoundaryHero h2{margin:5px 0 3px;color:#fff;font-size:21px;letter-spacing:-.03em}.mControlBoundaryHero p{margin:0;color:#aeb2a9;font-size:8.5px;line-height:1.4}.mControlBoundaryHero>button{min-height:34px;display:inline-flex;align-items:center;gap:3px;padding:0 9px;border:1px solid rgba(255,255,255,.28);border-radius:8px;background:transparent;color:#d3ff57;font-size:8.5px;font-weight:700}
+.mControlSymbols{display:flex;flex-wrap:wrap;gap:5px;padding:11px 12px;border-bottom:1px solid #ede7db}.mControlSymbols span{padding:5px 7px;border-radius:6px;background:#292b27;color:#fff;font:650 8.5px var(--font-mono)}.mControlSymbols em{color:#8a8172;font-size:9px;font-style:normal}.mControlChecks>button{width:100%;min-height:46px;display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;align-items:center;gap:7px;padding:7px 11px;border:0;border-bottom:1px solid #ede7db;background:transparent;color:#302b24;text-align:left}.mControlChecks>button:last-child{border-bottom:0}.mControlChecks>button>span{width:20px;height:20px;display:grid;place-items:center;border-radius:6px;background:#fae9e5;color:#b54838;font:700 9px var(--font-mono)}.mControlChecks>button>span.ok{background:#e7f2ea;color:#24754e}.mControlChecks>button b{font-size:9.5px}.mControlChecks>button small{color:#8a8172;font-size:8px}.mControlChecks>button svg{color:#aaa08f}
+.mControlRuleList article{min-height:55px;display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid #ede7db}.mControlRuleList article:last-child{border-bottom:0}.mControlRuleList article>span{flex:1;min-width:0;display:grid;gap:3px}.mControlRuleList b{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.mControlRuleList small{color:#8a8172;font-size:8px}
+.mConfigDomainHero{overflow:hidden;border:1px solid #d8d0c4;border-radius:13px;background:#fffefb}.mConfigDomainHero>h2,.mConfigDomainHero>p{margin-right:14px;margin-left:14px}.mConfigDomainHero>h2{margin-top:14px;margin-bottom:5px;color:#28231d;font-size:18px;letter-spacing:-.025em}.mConfigDomainHero>p{margin-top:0;margin-bottom:13px;color:#807668;font-size:9.5px;line-height:1.5}.mConfigDomainHero>div{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #e7dfd4}.mConfigDomainHero>div span{min-width:0;padding:10px 13px;display:grid;gap:3px}.mConfigDomainHero>div span+span{border-left:1px solid #e7dfd4}.mConfigDomainHero small{color:#948a7b;font-size:8px}.mConfigDomainHero b{overflow:hidden;font-size:10.5px;text-overflow:ellipsis;white-space:nowrap}.mConfigDomainHero>button{width:calc(100% - 28px);height:36px;display:flex;align-items:center;justify-content:center;gap:6px;margin:0 14px 14px;border:0;border-radius:9px;background:#292b27;color:#fff;font-size:10px;font-weight:700}
+.mRiskSettingIcon.permissions{background:#e9f0fb;color:#2e69b9}.mRiskSettingIcon.protections{background:#edf4e8;color:#547e3b}.mNativeConfigForm{display:grid;gap:9px;padding:11px;border-top:1px solid #ede7db;border-bottom:1px solid #ede7db;background:#faf8f4}.mNativeConfigForm>label,.mNativeConfigForm>div>label{display:grid;gap:5px;min-width:0}.mNativeConfigForm>label>span,.mNativeConfigForm>div>label>span{color:#71685c;font-size:8.5px;font-weight:700}.mNativeConfigForm input,.mNativeConfigForm textarea,.mNativeConfigForm select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#2d2822;padding:9px;font-size:11px}.mNativeConfigForm textarea{min-height:64px;resize:vertical}.mNativeConfigForm>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mNativeConfigForm>button{height:37px;border:0;border-radius:9px;background:#292b27;color:#fff;font-size:10px;font-weight:700}
+.mConfigRuleList article{min-height:58px;display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid #ede7db}.mConfigRuleList article:last-child{border-bottom:0}.mConfigRuleList article>span{flex:1;min-width:0;display:grid;gap:3px}.mConfigRuleList article b{font-size:10px}.mConfigRuleList article small{color:#8a8172;font-size:8px}.mConfigRuleList article select{width:100%;max-width:142px;height:28px;border:1px solid #ddd4c7;border-radius:7px;background:#fff;color:#554d43;padding:0 7px;font-size:8px}.mConfigRuleList article>button{min-width:61px;height:29px;display:flex;align-items:center;gap:5px;justify-content:center;border:1px solid #ddd4c7;border-radius:15px;background:#f2eee7;color:#766d60;font-size:8px;font-weight:700}.mConfigRuleList article>button i{width:7px;height:7px;border-radius:50%;background:#a49a8b}.mConfigRuleList article>button.on{border-color:#bdd8c7;background:#edf6f0;color:#28714c}.mConfigRuleList article>button.on i{background:#3d9065}.mConfigRuleList article>button:disabled,.mConfigRuleList article select:disabled{opacity:.7}
+.mEventSourceNative article{display:grid;gap:7px;padding:10px 11px;border-bottom:1px solid #ede7db}.mEventSourceNative article:last-child{border-bottom:0}.mEventSourceNative article>span{min-width:0;display:grid;gap:3px}.mEventSourceNative b{font-size:10px}.mEventSourceNative small{color:#8a8172;font-size:8px;line-height:1.4}.mEventSourceNative article>div{display:flex;gap:6px}.mEventSourceNative article button{height:28px;padding:0 10px;border:1px solid #ddd4c7;border-radius:8px;background:#fff;color:#554d43;font-size:8.5px;font-weight:700}.mEventSourceNative article button.danger{width:28px;padding:0;display:grid;place-items:center;margin-left:auto;border-color:#ecd2cc;color:#a94738;background:#fff8f6}
