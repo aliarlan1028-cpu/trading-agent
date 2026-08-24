@@ -9103,7 +9103,7 @@ b.sg.pos { color: #1F7A50; } b.sg.neg { color: #C43F28; }
 .mSymPills button, .mSheetRow, .mIncBtn, .mSymMore { transition: transform .1s ease, background .12s ease; }
 .mSymPills button:active, .mSheetRow:active, .mIncBtn:active, .mSymMore:active, .mCard.mTap:active { transform: scale(.96); }
 .mMain2.mMainChat { padding-bottom: 0; overflow: hidden; display: flex; flex-direction: column; touch-action: pan-y; }
-.mMain2.mMainChat > .mChatContent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mMain2.mMainChat .mChatContent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mChatContent > .mChatStatus { flex: none; }
 .mShell2 .chatShell { flex: 1; min-height: 0; display: block; height: auto; margin: 0; width: 100%; }
 .mShell2 .chatShell > .chatPage { height: 100%; min-height: 0; }

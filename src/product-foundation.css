@@ -266,14 +266,17 @@
 .kordynSystem select { font-size: max(16px, 1em); scroll-margin-bottom: max(120px, 28vh); }
 .kordynSystem .workspaceState { margin: 14px; }
 
-.kordynSystem .mWorkspaceRail { margin: 14px 14px 0; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
-.kordynSystem .mWorkspaceRail > header { display: grid; gap: 4px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }
-.kordynSystem .mWorkspaceRail > header small { color: var(--kordyn-acid); font: 750 9px/1 var(--font-mono, ui-monospace, monospace); letter-spacing: .12em; }
-.kordynSystem .mWorkspaceRail > header span { font-size: 10.5px; line-height: 1.4; }
-.kordynSystem .mWorkspaceRail nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.kordynSystem .mWorkspaceRail button { min-width: 0; min-height: 44px; padding: 0 4px; border: 0; border-right: 1px solid var(--kordyn-line); border-radius: 0; background: transparent; font-size: 11px; font-weight: 720; }
+.kordynSystem .mWorkspaceRail { display: flex; margin: 14px 14px 0; overflow-x: auto; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); scrollbar-width: none; }
+.kordynSystem .mWorkspaceRail::-webkit-scrollbar { display: none; }
+.kordynSystem .mWorkspaceRail button { flex: 1 0 max-content; min-width: 72px; min-height: 44px; padding: 0 12px; border: 0; border-right: 1px solid var(--kordyn-line); border-radius: 0; background: transparent; font-size: 11px; font-weight: 720; white-space: nowrap; }
 .kordynSystem .mWorkspaceRail button:last-child { border-right: 0; }
 .kordynSystem .mWorkspaceRail button.active { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.kordynSystem .mWorkspaceRail button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--kordyn-acid); outline-offset: -3px; }
+.kordynSystem .mLabWorkspaceLifecycle { margin: 14px 14px 0; border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper-white); }
+.kordynSystem .mLabWorkspaceLifecycle > header { display: grid; gap: 4px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }
+.kordynSystem .mLabWorkspaceLifecycle > header small { color: var(--kordyn-acid); font: 750 9px/1 var(--font-mono, ui-monospace, monospace); letter-spacing: .12em; }
+.kordynSystem .mLabWorkspaceLifecycle > header span { font-size: 10.5px; line-height: 1.4; }
+.kordynSystem .mLabWorkspaceLifecycle .mWorkspaceRail { margin: 0; border: 0; }
 
 .kordynSystem .mResearchMap { gap: 12px; padding-top: 12px; }
 .kordynSystem .mResearchMapHero { border: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper-white); }

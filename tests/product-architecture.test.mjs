@@ -91,6 +91,9 @@ test("mobile roots follow product workspaces rather than individual features", (
   assert.equal(resolveMobileRoute("systemSettings").workspace, "configuration");
   assert.equal(resolveMobileRoute("systemSettings:trading").subPage, "settings:trading");
   assert.equal(resolveMobileRoute("riskMandate").subPage, "boundaries");
+  assert.equal(resolveMobileRoute("eventRisk").workspace, "control");
+  assert.equal(resolveMobileRoute("eventRisk").route, "riskHub");
+  assert.equal(resolveMobileRoute("eventRisk").subPage, "overview");
 });
 
 test("runtime sections map back to their default visible workspace", () => {

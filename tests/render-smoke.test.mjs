@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, NavDrawer, MobileLabRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
@@ -1012,7 +1012,18 @@ test("settings deep links preserve the requested base section", () => {
   assert.match(html, /aria-current="location"/);
 });
 
-test("mobile Lab presents one lifecycle rail instead of unrelated library destinations", () => {
+test("mobile workspace rails expose every workspace-owned destination", () => {
+  const ai = render(React.createElement(C.MobileWorkspaceRail, { workspace: "ai", route: "chat", subPage: "", onNavigate: () => {} }));
+  for (const label of ["对话", "情报", "盯盘", "事件"]) assert.match(ai, new RegExp(`>${label}<`));
+
+  const live = render(React.createElement(C.MobileWorkspaceRail, { workspace: "trade", route: "cockpit", subPage: "", onNavigate: () => {} }));
+  for (const label of ["概览", "持仓", "执行", "流水"]) assert.match(live, new RegExp(`>${label}<`));
+
+  const control = render(React.createElement(C.MobileWorkspaceRail, { workspace: "control", route: "riskHub", subPage: "", onNavigate: () => {} }));
+  for (const label of ["态势", "规则", "事件"]) assert.match(control, new RegExp(`>${label}<`));
+});
+
+test("mobile Lab keeps its lifecycle copy around the shared rail", () => {
   const html = render(React.createElement(C.MobileLabRail, { route: "strategyLib", onNavigate: () => {} }));
   assert.match(html, /03 \/ RESEARCH MAP/);
   assert.match(html, /双来源 → 正式资产 → 实盘证据 → Owner 版本/);

@@ -46,7 +46,8 @@ import {
   MOBILE_MORE_UTILITIES,
   MOBILE_NAV_PRESENTATION,
   MOBILE_PRIMARY_NAV,
-  MOBILE_WORKSPACE_NAV
+  MOBILE_WORKSPACE_NAV,
+  mobileWorkspaceDestinations
 } from "./mobileNavigation.js";
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
@@ -1725,20 +1726,42 @@ const mobilePrimaryNav = MOBILE_PRIMARY_NAV.map((item) => {
 const mobileMoreUtilities = MOBILE_MORE_UTILITIES.map(mobileNavItem);
 const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
 
-export function MobileLabRail({ route, onNavigate }) {
-  const items = [
-    { id: "labMap", label: ["地图", "Map"] },
-    { id: "knowledgeBase", label: ["孵化", "Incubate"] },
-    { id: "strategyLib", label: ["策略", "Strategies"] },
-    { id: "capabilityLib", label: ["能力", "Capabilities"] },
-    { id: "labReviews", route: "executionReview", label: ["复盘", "Reviews"] }
-  ];
-  return <section className="mWorkspaceRail" aria-label={t("Lab 研究生命周期", "Lab research lifecycle")}>
+const mobileWorkspaceRailLabels = {
+  chat: ["对话", "Chat"], watch: ["盯盘", "Watch"], intelligence: ["情报", "Intelligence"], eventsTasks: ["事件", "Events"],
+  cockpit: ["概览", "Overview"], positions: ["持仓", "Positions"], executionReview: ["执行", "Execution"], tradeLedger: ["流水", "Ledger"],
+  labMap: ["地图", "Map"], knowledgeBase: ["孵化", "Incubate"], strategyLib: ["策略", "Strategies"], capabilityLib: ["能力", "Capabilities"], labReviews: ["复盘", "Reviews"],
+  riskHub: ["态势", "Posture"], riskSettings: ["规则", "Rules"], eventRisk: ["事件", "Events"]
+};
+
+const mobileWorkspaceLabel = (workspace) => t(
+  ({ ai: "AI 工作区", trade: "Live 工作区", lab: "Lab 研究生命周期", control: "Control 工作区" })[workspace] || "工作区",
+  ({ ai: "AI workspace", trade: "Live workspace", lab: "Lab research lifecycle", control: "Control workspace" })[workspace] || "Workspace"
+);
+
+const mobileWorkspaceRailLabel = (item) => {
+  const label = mobileWorkspaceRailLabels[item.id] || MOBILE_NAV_PRESENTATION[item.id]?.label || [item.id, item.id];
+  return t(label[0], label[1] || label[0]);
+};
+
+const isMobileDestinationActive = (item, route, subPage) => {
+  const target = resolveMobileRoute(item.id);
+  return target.route === route && (target.subPage || "") === (subPage || "");
+};
+
+export function MobileWorkspaceRail({ workspace, route, subPage, onNavigate }) {
+  const items = mobileWorkspaceDestinations(workspace);
+  return <nav className={`mWorkspaceRail mWorkspaceRail--${workspace}`} aria-label={mobileWorkspaceLabel(workspace)}>
+    {items.map((item) => {
+      const active = isMobileDestinationActive(item, route, subPage);
+      return <button type="button" key={item.id} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={() => onNavigate(item.id)}>{mobileWorkspaceRailLabel(item)}</button>;
+    })}
+  </nav>;
+}
+
+export function MobileLabRail({ route, subPage, onNavigate }) {
+  return <section className="mLabWorkspaceLifecycle">
     <header><small>03 / RESEARCH MAP</small><span>{t("双来源 → 正式资产 → 实盘证据 → Owner 版本", "Dual origins → formal assets → live evidence → Owner version")}</span></header>
-    <nav>{items.map((item) => {
-      const active = route === (item.route || item.id);
-      return <button type="button" className={active ? "active" : ""} aria-current={active ? "page" : undefined} key={item.id} onClick={() => onNavigate(item.id)}>{t(item.label[0], item.label[1])}</button>;
-    })}</nav>
+    <MobileWorkspaceRail workspace="lab" route={route} subPage={subPage} onNavigate={onNavigate}/>
   </section>;
 }
 
@@ -1902,8 +1925,11 @@ export function MobileApp({ api, lang, switchLang }) {
   }
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
-  if (resourceState === "loaded" && activeProductWorkspace === "lab") {
-    content = <><MobileLabRail route={route} onNavigate={navigate}/>{content}</>;
+  if (resourceState === "loaded" && ["ai", "live", "lab", "control"].includes(activeProductWorkspace)) {
+    const workspace = activeProductWorkspace === "live" ? "trade" : activeProductWorkspace;
+    content = <>{workspace === "lab"
+      ? <MobileLabRail route={route} subPage={subPage} onNavigate={navigate}/>
+      : <MobileWorkspaceRail workspace={workspace} route={route} subPage={subPage} onNavigate={navigate}/>} {content}</>;
   }
   if (resourceState !== "loaded") {
     content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })} />;
