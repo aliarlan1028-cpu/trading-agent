@@ -1225,7 +1225,7 @@ export function MobileIntelligence({ data, action, ui }) {
   ];
   return <div className="mSubPage mIntelPage">
     <section className="mIntelHero kTruthBand"><div><span><Sparkles size={13}/>{t("只作为分析背景", "Analysis context only")}</span><b>{t("先看结论，再按需展开证据", "Read the brief, then expand evidence")}</b><small>{updatedAt ? `${t("更新于", "Updated")} ${formatDateTime(updatedAt)}` : t("等待首次情报刷新", "Waiting for the first intelligence refresh")}</small></div><button type="button" onClick={() => refreshMobileIntelligence(action)} aria-label={t("刷新情报", "Refresh intelligence")}><RefreshCw size={16}/></button></section>
-    <div className="mPageStats"><div><span>{t("重要快讯", "Important")}</span><strong>{important.length}</strong></div><div><span>{t("来源正常", "Healthy sources")}</span><strong>{healthy}/{sources.length}</strong></div><div><span>{t("近期事件", "Upcoming")}</span><strong>{next24h.length + dateOnlySoon.length}</strong></div></div>
+    <div className="mPageStats kTruthBand"><div><span>{t("重要快讯", "Important")}</span><strong>{important.length}</strong></div><div><span>{t("来源正常", "Healthy sources")}</span><strong>{healthy}/{sources.length}</strong></div><div><span>{t("近期事件", "Upcoming")}</span><strong>{next24h.length + dateOnlySoon.length}</strong></div></div>
     <div className="mChips kFilterRail">{segments.map(([id, label]) => <button type="button" key={id} className={segment === id ? "active" : ""} onClick={() => setSegment(id)}>{label}</button>)}</div>
 
     {segment === "brief" && <div className="mIntelStack">

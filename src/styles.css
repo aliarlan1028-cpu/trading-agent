@@ -10724,6 +10724,179 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .cfmInput,
 .cfmBtn { border-radius: 0; }
 
+/* Final measured convergence: the production labels, long evidence, and AI
+   workbench must remain inside the same hard-edged rail grammar as the exact
+   prototype at the acceptance viewports. */
+.appShell.kordynSystem > .appTopbar .topbarStatusGroup {
+  display: grid;
+  grid-template-columns: minmax(0, 92px) minmax(0, 172px);
+  overflow: hidden;
+}
+.appShell.kordynSystem > .appTopbar .exchangePill,
+.appShell.kordynSystem > .appTopbar .runtimeStatePill {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.appShell.kordynSystem > .appTopbar .exchangePill {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 5px;
+  row-gap: 0;
+  padding-inline: 6px;
+}
+.appShell.kordynSystem > .appTopbar .exchangePill > i { grid-row: 1 / span 2; }
+.appShell.kordynSystem > .appTopbar .exchangePill > b { grid-column: 2; grid-row: 1; }
+.appShell.kordynSystem > .appTopbar .exchangePill > small { grid-column: 2; grid-row: 2; }
+.appShell.kordynSystem > .appTopbar .exchangePill :is(b, small),
+.appShell.kordynSystem > .appTopbar .runtimeStatePill :is(b, small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.appShell.kordynSystem > .appTopbar .runtimeStatePill {
+  grid-template-columns: auto minmax(0, .7fr) 1px minmax(0, 1fr);
+  column-gap: 4px;
+  padding-inline: 7px;
+}
+.appShell.kordynSystem > .appTopbar .bellButton b {
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+}
+
+.appShell.kordynSystem .chatShell {
+  gap: 0;
+  border: 1px solid var(--kordyn-ink);
+  overflow: hidden;
+  background: var(--kordyn-paper-white);
+}
+.appShell.kordynSystem .chatShell .agChat {
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--kordyn-paper-white);
+  box-shadow: none;
+}
+.appShell.kordynSystem .agRail {
+  position: static;
+  gap: 0;
+  padding: 0;
+  border-left: 1px solid var(--kordyn-ink);
+  border-radius: 0 !important;
+  background: var(--kordyn-paper-2);
+}
+.appShell.kordynSystem .agRail > .agCard {
+  border: 0;
+  border-bottom: 1px solid var(--kordyn-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.appShell.kordynSystem .agRail > .agCard:last-child { border-bottom: 0; }
+.appShell.kordynSystem .agPlan,
+.appShell.kordynSystem .agInputBar {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.kordynSystem .cp2IntelList.kRegistry > button {
+  flex: 0 0 auto;
+  height: auto;
+  overflow: hidden;
+}
+.kordynSystem .cp2IntelList.kRegistry > button > div {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.kordynSystem .cp2IntelList.kRegistry > button > div :is(b, small, p) {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.appShell.kordynSystem .uxCenter :is(.cp2Card, .cp2SideFilter, .cp2Calendar, .cp2Relation) {
+  border-radius: 0;
+  box-shadow: none;
+}
+.appShell.kordynSystem .uxCenter .cp2IntelLayout {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--kordyn-ink);
+  background: var(--kordyn-paper-white);
+}
+.appShell.kordynSystem .uxCenter .cp2IntelLayout > .cp2SideFilter {
+  border: 0;
+  border-right: 1px solid var(--kordyn-ink);
+}
+.appShell.kordynSystem .uxCenter .cp2IntelFeed { gap: 0; }
+.appShell.kordynSystem .uxCenter .cp2IntelFeed > .cp2Card {
+  border: 0;
+  border-bottom: 1px solid var(--kordyn-ink);
+}
+.appShell.kordynSystem .uxCenter .cp2IntelFeed > .cp2Card:last-child { border-bottom: 0; }
+.appShell.kordynSystem .uxCenter .cp2IntelDetail.kEvidenceLedger {
+  border: 0;
+  border-left: 1px solid var(--kordyn-ink);
+}
+
+.mShell2.kordynSystem .mChatContent {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+.mShell2.kordynSystem .mChatStatus.kTruthBand {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.mShell2.kordynSystem .mChatStatCell { min-width: 0; }
+.mShell2.kordynSystem .mChatStatCell b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: clamp(9px, 3vw, 13px);
+  line-height: 1.2;
+}
+.mShell2.kordynSystem .examplePrompts button { border-radius: 0; }
+.mShell2.kordynSystem .mIntelConstraint,
+.mShell2.kordynSystem .mIntelEventLink { border-radius: 0; }
+.mShell2.kordynSystem .mIntelFeed.mEvidenceLedger {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.mShell2.kordynSystem .mIntelFeed.mEvidenceLedger > article {
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--kordyn-line);
+  border-radius: 0;
+  background: var(--kordyn-paper-white);
+}
+.mShell2.kordynSystem .mIntelFeed.mEvidenceLedger > article:last-child { border-bottom: 0; }
+
+.appShell.kordynSystem .chatKpi,
+.appShell.kordynSystem .cp2CandleBox,
+.appShell.kordynSystem .chartEmpty.tvOverlay,
+.appShell.kordynSystem .productSettings .configurationTruth .cp2OverviewHealth,
+.mShell2.kordynSystem .mKline.tv,
+.mShell2.kordynSystem .chartEmpty.tvOverlay,
+.mShell2.kordynSystem .mLangSeg,
+.mShell2.kordynSystem .mLangSeg button,
+.mShell2.kordynSystem .mSafetyTarget,
+.mShell2.kordynSystem .mSafetyReason { border-radius: 0; }
+
+@media (max-width: 1600px) and (min-width: 721px) {
+  .appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(4),
+  .appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(5) { display: none; }
+  .appShell.kordynSystem .chatKpiBar { gap: 14px; }
+}
+
 @media (max-width: 1280px) and (min-width: 721px) {
   .appShell.kordynSystem { grid-template-columns: var(--kordyn-workspace-rail) minmax(0,1fr) 0; }
   .appShell.kordynSystem > .contextDock { position: fixed; z-index: 90; top: var(--kordyn-command-rail); right: 0; bottom: var(--kordyn-trace-rail); width: var(--kordyn-context-dock); border: 1px solid var(--kordyn-ink); border-top: 0; border-bottom: 0; box-shadow: -10px 0 0 color-mix(in srgb,var(--kordyn-ink) 18%,transparent); }
@@ -10731,6 +10904,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .appShell.kordynSystem > .contextDock.collapsed > header { width: 58px; padding: 8px; }
   .appShell.kordynSystem > .contextDock.collapsed > header span { display: none; }
   .commandRail__brand { flex-basis: var(--kordyn-workspace-rail); }
+  .commandRail__search { min-width: 156px; }
 }
 
 @media (max-width: 720px) {

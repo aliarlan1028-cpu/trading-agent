@@ -39,6 +39,19 @@ esbuild.buildSync({
 const { ProductShell: Shell, Mobile } = require(outFile);
 const foundation = fs.readFileSync(path.join(rootDir, "src/product-foundation.css"), "utf8");
 const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+const stylesAst = postcss.parse(styles);
+
+function finalDeclarations(selector, { media = null } = {}) {
+  const values = {};
+  stylesAst.walkRules((rule) => {
+    if (!rule.selectors.includes(selector)) return;
+    const mediaParent = rule.parent?.type === "atrule" && rule.parent.name === "media" ? rule.parent.params : null;
+    if (media !== null && !media.test(mediaParent || "")) return;
+    if (media === null && mediaParent !== null) return;
+    rule.walkDecls((decl) => { values[decl.prop] = `${decl.value}${decl.important ? " !important" : ""}`; });
+  });
+  return values;
+}
 
 const fixture = {
   resourceState: { chat: "loaded", cockpit: "loaded", researchCenter: "loaded", riskCenter: "loaded", operationsCenter: "loaded" },
@@ -323,7 +336,10 @@ test("1440 command rail keeps every required fact and danger label visible with 
   const shell = postcss.parse(styles);
   const declarations = (selector) => {
     const values = {};
-    shell.walkRules((rule) => { if (rule.selectors.includes(selector)) rule.walkDecls((decl) => { values[decl.prop] = `${decl.value}${decl.important ? " !important" : ""}`; }); });
+    shell.walkRules((rule) => {
+      const insideMedia = rule.parent?.type === "atrule" && rule.parent.name === "media";
+      if (!insideMedia && rule.selectors.includes(selector)) rule.walkDecls((decl) => { values[decl.prop] = `${decl.value}${decl.important ? " !important" : ""}`; });
+    });
     return values;
   };
   const emergency = declarations(".appShell.kordynSystem > .appTopbar .topEmergencyActions > button");
@@ -352,6 +368,104 @@ test("1440 command rail keeps every required fact and danger label visible with 
   const minimumRequiredWidth = 188 + 220 + 286 + 264 + 138 + 144;
   assert.equal(minimumRequiredWidth, 1240);
   assert.ok(minimumRequiredWidth <= 1440, "effective flex bases and minimums fit the exact 1440 command rail");
+});
+
+test("measured Command Rail internals contain their real labels at 1440 and 1180", () => {
+  const status = finalDeclarations(".appShell.kordynSystem > .appTopbar .topbarStatusGroup");
+  assert.equal(status.display, "grid");
+  assert.equal(status["grid-template-columns"], "minmax(0, 92px) minmax(0, 172px)");
+  assert.equal(status.overflow, "hidden");
+  for (const selector of [
+    ".appShell.kordynSystem > .appTopbar .exchangePill",
+    ".appShell.kordynSystem > .appTopbar .runtimeStatePill"
+  ]) {
+    const declarations = finalDeclarations(selector);
+    assert.equal(declarations["min-width"], "0", `${selector} must be shrinkable inside the measured 264px status group`);
+    assert.equal(declarations.overflow, "hidden", `${selector} must contain its production label`);
+  }
+  const exchange = finalDeclarations(".appShell.kordynSystem > .appTopbar .exchangePill");
+  assert.equal(exchange.display, "grid");
+  assert.equal(exchange["grid-template-columns"], "8px minmax(0, 1fr)");
+  const exchangeDot = finalDeclarations(".appShell.kordynSystem > .appTopbar .exchangePill > i");
+  assert.equal(exchangeDot["grid-row"], "1 / span 2", "the real exchange and connection labels stack without clipping");
+  const notificationCount = finalDeclarations(".appShell.kordynSystem > .appTopbar .bellButton b");
+  assert.equal(notificationCount.top, "4px");
+  assert.equal(notificationCount.right, "4px", "the real unread count stays inside the 64px Command Rail");
+  const mediumSearch = finalDeclarations(".commandRail__search", { media: /max-width:\s*1280px.*min-width:\s*721px/ });
+  assert.equal(mediumSearch["min-width"], "156px", "188 + 156 + 286 fits the measured 633px medium Command Rail");
+});
+
+test("mobile AI truth cells and task suggestions cannot exceed the exact touch viewport", () => {
+  const content = finalDeclarations(".mShell2.kordynSystem .mChatContent");
+  assert.equal(content["min-width"], "0");
+  assert.equal(content.width, "100%");
+  const status = finalDeclarations(".mShell2.kordynSystem .mChatStatus.kTruthBand");
+  assert.equal(status["min-width"], "0");
+  assert.equal(status.overflow, "hidden");
+  const cell = finalDeclarations(".mShell2.kordynSystem .mChatStatCell");
+  assert.equal(cell["min-width"], "0");
+  const value = finalDeclarations(".mShell2.kordynSystem .mChatStatCell b");
+  assert.equal(value["overflow-wrap"], "anywhere");
+  assert.equal(value["white-space"], "normal");
+  const suggestion = finalDeclarations(".mShell2.kordynSystem .examplePrompts button");
+  assert.equal(suggestion["border-radius"], "0");
+});
+
+test("mobile intelligence presents real long and stale evidence as a truth band plus continuous ledger", () => {
+  const html = renderToString(React.createElement(Mobile.MobileIntelligence, {
+    data: fixture,
+    action: async () => ({ ok: true }),
+    ui: { setActive: () => {} }
+  }));
+  assert.match(html, /class="mPageStats kTruthBand"/, "the production intelligence KPIs are authoritative facts, not floating cards");
+  const constraint = finalDeclarations(".mShell2.kordynSystem .mIntelConstraint");
+  assert.equal(constraint["border-radius"], "0");
+  const feed = finalDeclarations(".mShell2.kordynSystem .mIntelFeed.mEvidenceLedger");
+  assert.equal(feed.gap, "0");
+  assert.equal(feed.padding, "0");
+  const row = finalDeclarations(".mShell2.kordynSystem .mIntelFeed.mEvidenceLedger > article");
+  assert.equal(row["border-radius"], "0");
+  assert.equal(row.border, "0");
+  assert.equal(row["border-bottom"], "1px solid var(--kordyn-line)");
+});
+
+test("audited non-semantic desktop and APP surfaces do not retain legacy rounding", () => {
+  for (const selector of [
+    ".appShell.kordynSystem .chatKpi",
+    ".appShell.kordynSystem .cp2CandleBox",
+    ".appShell.kordynSystem .chartEmpty.tvOverlay",
+    ".appShell.kordynSystem .productSettings .configurationTruth .cp2OverviewHealth",
+    ".mShell2.kordynSystem .mKline.tv",
+    ".mShell2.kordynSystem .chartEmpty.tvOverlay",
+    ".mShell2.kordynSystem .mLangSeg",
+    ".mShell2.kordynSystem .mLangSeg button",
+    ".mShell2.kordynSystem .mSafetyTarget",
+    ".mShell2.kordynSystem .mSafetyReason"
+  ]) assert.equal(finalDeclarations(selector)["border-radius"], "0", `${selector} is a bounded product surface, not a semantic circle`);
+});
+
+test("AI workbenches use continuous hard edges and long real intel rows own their height", () => {
+  const shell = finalDeclarations(".appShell.kordynSystem .chatShell");
+  assert.equal(shell.gap, "0");
+  assert.equal(shell.border, "1px solid var(--kordyn-ink)");
+  assert.equal(shell.overflow, "hidden");
+  for (const selector of [
+    ".appShell.kordynSystem .agRail > .agCard",
+    ".appShell.kordynSystem .agPlan",
+    ".appShell.kordynSystem .agInputBar"
+  ]) assert.equal(finalDeclarations(selector)["border-radius"], "0", `${selector} must not retain legacy card rounding`);
+  for (const selector of [
+    ".appShell.kordynSystem .chatShell .agChat",
+    ".appShell.kordynSystem .agRail"
+  ]) assert.equal(finalDeclarations(selector)["border-radius"], "0 !important", `${selector} must override the legacy concept workbench !important radius`);
+  const intelRow = finalDeclarations(".kordynSystem .cp2IntelList.kRegistry > button");
+  assert.equal(intelRow.flex, "0 0 auto", "a real multi-line item cannot shrink to the 64px minimum");
+  assert.equal(intelRow.height, "auto");
+  assert.equal(intelRow.overflow, "hidden");
+  const intelText = finalDeclarations(".kordynSystem .cp2IntelList.kRegistry > button > div");
+  assert.equal(intelText["min-width"], "0");
+  assert.equal(intelText.overflow, "hidden");
+  assert.equal(intelText["overflow-wrap"], "anywhere");
 });
 
 test("mobile Safety and shared ConfirmHost controls win the late hard-edge cascade", () => {
