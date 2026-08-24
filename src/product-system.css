@@ -1479,6 +1479,8 @@
 .productWorkspace .erDetailActions.kActionBar { display: flex; margin: 0; padding: 0; border: 0; background: transparent; }
 .productWorkspace .cp2FormActions.kActionBar > button { min-height: 32px; }
 .productWorkspace .erDetailActions.kActionBar > .cp2Danger { border-color: var(--product-danger); background: var(--product-danger); color: var(--product-paper-2); }
+.productWorkspace .erDetailActions.kActionBar > button.cp2Danger:hover:not(:disabled),
+.productWorkspace .erDetailActions.kActionBar > button.cp2Danger:focus-visible { border-color: var(--product-danger); background: color-mix(in srgb,var(--product-danger) 78%,var(--product-paper-2)); color: var(--product-ink); }
 .productWorkspace .marketRegistry.kRegistry,
 .productWorkspace .marketResearchDeck.kEvidenceLedger,
 .productWorkspace .erOrdersCard.kRegistry,

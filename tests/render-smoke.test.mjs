@@ -1502,11 +1502,45 @@ test("AI Trader and Live Desk deep pages expose shared truth, registry, evidence
 test("Task 4 action bars preserve primary confirmation and dangerous exit hierarchy", () => {
   const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
   const product = fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8");
+  const foundation = fs.readFileSync(path.join(rootDir, "src/product-foundation.css"), "utf8");
   const aiBlock = styles.split("/* AI Trader and native Live Desk now consume")[1] || "";
   const liveBlock = product.split("/* AI / Live deep-page convergence")[1] || "";
   assert.match(aiBlock, /\.paActions\.kActionBar\s*>\s*\.primaryButton\s*\{[^}]*background:\s*var\(--kordyn-acid\)/, "AI confirmation must remain the primary action");
   assert.match(aiBlock, /\.paActions\.kActionBar\s*>\s*\.dangerButton\s*\{[^}]*background:\s*var\(--kordyn-orange\)/, "dangerous AI confirmation must remain destructive");
   assert.match(liveBlock, /\.erDetailActions\.kActionBar\s*>\s*\.cp2Danger\s*\{[^}]*background:\s*var\(--product-danger\)/, "live execution exits must remain destructive");
+
+  const rules = (css) => [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .flatMap((match) => match[1].split(",").map((selector) => ({ selector: selector.trim(), body: match[2] })));
+  const findRule = (css, selector) => rules(css).find((rule) => rule.selector === selector);
+  const specificity = (selector) => {
+    const normalized = selector.replace(/:not\(([^)]*)\)/g, "$1");
+    const ids = (normalized.match(/#[\w-]+/g) || []).length;
+    const classes = (normalized.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) || []).length;
+    const elements = (normalized.replace(/#[\w-]+|\.[\w-]+|\[[^\]]+\]|::?[\w-]+/g, " ").match(/\b[a-z][\w-]*\b/gi) || []).length;
+    return [ids, classes, elements];
+  };
+  const outranks = (left, right) => specificity(left).some((value, index, all) => value !== specificity(right)[index] && all.slice(0, index).every((prior, priorIndex) => prior === specificity(right)[priorIndex]) && value > specificity(right)[index]);
+  const background = (rule) => rule?.body.match(/background:\s*([^;]+)/)?.[1]?.trim() || "";
+  const genericHoverSelector = ".kordynSystem .kActionBar > button:hover:not(:disabled)";
+  assert.ok(findRule(foundation, genericHoverSelector), "shared action hover rule must remain part of the cascade contract");
+
+  const interactions = [
+    [aiBlock, ".kordynSystem .paActions.kActionBar > button.primaryButton:hover:not(:disabled)", "--kordyn-acid"],
+    [aiBlock, ".kordynSystem .paActions.kActionBar > button.primaryButton:focus-visible", "--kordyn-acid"],
+    [aiBlock, ".kordynSystem .paActions.kActionBar > button.dangerButton:hover:not(:disabled)", "--kordyn-orange"],
+    [aiBlock, ".kordynSystem .paActions.kActionBar > button.dangerButton:focus-visible", "--kordyn-orange"],
+    [liveBlock, ".productWorkspace .erDetailActions.kActionBar > button.cp2Danger:hover:not(:disabled)", "--product-danger"],
+    [liveBlock, ".productWorkspace .erDetailActions.kActionBar > button.cp2Danger:focus-visible", "--product-danger"]
+  ];
+  for (const [css, selector, token] of interactions) {
+    const rule = findRule(css, selector);
+    assert.ok(rule, `${selector} interaction rule is required`);
+    assert.ok(outranks(selector, genericHoverSelector), `${selector} must outrank the later shared hover rule`);
+    assert.match(background(rule), new RegExp(token), `${selector} must retain its semantic color`);
+  }
+  const primaryHover = background(findRule(aiBlock, interactions[0][1]));
+  const dangerHover = background(findRule(aiBlock, interactions[2][1]));
+  assert.notEqual(primaryHover, dangerHover, "primary and destructive hover treatments must not collapse to one color");
 });
 
 test("mobile execution truth distinguishes unavailable lifecycle performance from populated results", () => {

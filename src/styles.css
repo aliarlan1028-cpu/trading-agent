@@ -10230,6 +10230,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .kordynSystem .paActions.kActionBar { position: static; padding: 0; border: 0; background: transparent; }
 .kordynSystem .paActions.kActionBar > .primaryButton { border-color: var(--kordyn-acid); background: var(--kordyn-acid); color: var(--kordyn-ink); }
 .kordynSystem .paActions.kActionBar > .dangerButton { border-color: var(--kordyn-orange); background: var(--kordyn-orange); color: var(--kordyn-ink); }
+.kordynSystem .paActions.kActionBar > button.primaryButton:hover:not(:disabled),
+.kordynSystem .paActions.kActionBar > button.primaryButton:focus-visible { border-color: var(--kordyn-acid); background: color-mix(in srgb,var(--kordyn-acid) 78%,var(--kordyn-paper-white)); color: var(--kordyn-ink); }
+.kordynSystem .paActions.kActionBar > button.dangerButton:hover:not(:disabled),
+.kordynSystem .paActions.kActionBar > button.dangerButton:focus-visible { border-color: var(--kordyn-orange); background: color-mix(in srgb,var(--kordyn-orange) 78%,var(--kordyn-paper-white)); color: var(--kordyn-ink); }
 
 /* Native role adaptations keep task-led mobile composition instead of
    inheriting desktop list/detail geometry. */
