@@ -22,7 +22,10 @@ esbuild.buildSync({
     contents: `
       import * as ProductShell from "./src/productShell.jsx";
       import * as Mobile from "./src/mobile.jsx";
-      export { ProductShell, Mobile };
+      import * as Chat from "./src/chat.jsx";
+      import * as MobileOperations from "./src/mobileOperations.jsx";
+      import * as Concepts from "./src/conceptPages.jsx";
+      export { ProductShell, Mobile, Chat, MobileOperations, Concepts };
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -36,7 +39,7 @@ esbuild.buildSync({
   logLevel: "silent"
 });
 
-const { ProductShell: Shell, Mobile } = require(outFile);
+const { ProductShell: Shell, Mobile, Chat, MobileOperations, Concepts } = require(outFile);
 const foundation = fs.readFileSync(path.join(rootDir, "src/product-foundation.css"), "utf8");
 const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
 const stylesAst = postcss.parse(styles);
@@ -466,6 +469,106 @@ test("AI workbenches use continuous hard edges and long real intel rows own thei
   assert.equal(intelText["min-width"], "0");
   assert.equal(intelText.overflow, "hidden");
   assert.equal(intelText["overflow-wrap"], "anywhere");
+});
+
+test("desktop AI keeps all five real KPI facts simultaneously visible at 1440", () => {
+  const html = renderToString(React.createElement(Chat.ChatKpiStrip, { data: fixture, bar: true }));
+  assert.equal((html.match(/class="chatKpi"/g) || []).length, 5, "the real KPI component owns five facts");
+  for (const label of ["总资产", "持仓风险", "今日盈亏", "累计盈亏", "BTC/USDT"]) assert.match(html, new RegExp(label));
+  for (const index of [4, 5]) {
+    const declarations = finalDeclarations(`.appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(${index})`, { media: /max-width:\s*1600px.*min-width:\s*721px/ });
+    assert.notEqual(declarations.display, "none", `KPI ${index} cannot be removed at the exact 1440 viewport`);
+  }
+  const bar = finalDeclarations(".appShell.kordynSystem .chatKpiBar", { media: /max-width:\s*1600px.*min-width:\s*721px/ });
+  assert.equal(bar.display, "grid");
+  assert.equal(bar["grid-template-columns"], "repeat(5, minmax(0, 1fr))");
+});
+
+test("audited mobile Live Intelligence and Event Calendar operation chrome is hard edged", () => {
+  const selectors = [
+    ".mShell2.kordynSystem .mSymPills",
+    ".mShell2.kordynSystem .mTfPills",
+    ".mShell2.kordynSystem .mSymPills button",
+    ".mShell2.kordynSystem .mTfPills button",
+    ".mShell2.kordynSystem .mIntelHero.kTruthBand > button",
+    ".mShell2.kordynSystem .mIntelPage .statusBadge",
+    ".mShell2.kordynSystem .mEventCalendar",
+    ".mShell2.kordynSystem .mEventCalendar > header > button",
+    ".mShell2.kordynSystem .mEventDays button",
+    ".mShell2.kordynSystem .mEventAgenda"
+  ];
+  for (const selector of selectors) {
+    assert.equal(finalDeclarations(selector)["border-radius"], "0", `${selector} is operation chrome, not a semantic circle`);
+  }
+  for (const selector of [
+    ".mShell2.kordynSystem .mSymPills",
+    ".mShell2.kordynSystem .mTfPills",
+    ".mShell2.kordynSystem .mEventCalendar",
+    ".mShell2.kordynSystem .mEventCalendar > header > button",
+    ".mShell2.kordynSystem .mEventDays button"
+  ]) assert.match(finalDeclarations(selector).border || "", /^1px\s+solid\s+/, `${selector} needs the prototype 1px boundary`);
+});
+
+test("desktop expanded Trace is a full stage surface with real stage detail", () => {
+  const stages = Shell.buildShellTrace(fixture, "live", { id: "plan-17", workspaceId: "live" });
+  const html = renderToString(React.createElement(Shell.TraceRail, { stages, initiallyExpanded: "sense" }));
+  assert.match(html, /class="traceRail expanded"/);
+  assert.match(html, /class="traceRail__title"/);
+  assert.match(html, /class="traceRail__object(?:\s[^" ]+)*"/);
+  assert.match(html, /TRACE DETAIL[\s\S]*STATUS[\s\S]*EVIDENCE[\s\S]*DETAIL/);
+  for (const stage of stages) assert.match(html, new RegExp(stage.detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const expanded = finalDeclarations(".traceRail.expanded");
+  assert.equal(expanded.position, "fixed");
+  assert.equal(expanded.inset, "var(--kordyn-command-rail) 0 0");
+  assert.equal(expanded["grid-template-columns"], "var(--kordyn-workspace-rail) minmax(0, 1fr) var(--kordyn-context-dock)");
+  const expandedStages = finalDeclarations(".traceRail.expanded > nav");
+  assert.equal(expandedStages["grid-template-columns"], "repeat(7, minmax(0, 1fr))");
+  const detail = finalDeclarations(".traceRail.expanded .traceRail__detail");
+  assert.equal(detail.background, "var(--kordyn-dark)");
+  assert.equal(detail.color, "var(--kordyn-paper)");
+  const detailRows = finalDeclarations(".traceRail.expanded .traceRail__detail dl > div");
+  assert.match(detailRows["border-bottom"] || "", /^1px\s+solid\s+color-mix\(/);
+});
+
+test("final imported mobile cascade keeps Operations and Configuration in one readable column", () => {
+  const operationsHtml = renderToString(React.createElement(MobileOperations.MobileOperations, {
+    data: fixture,
+    action: () => {},
+    ui: { setActive: () => {}, download: () => {} }
+  }));
+  assert.match(operationsHtml, /class="mOperationsCommand kWorkbench"/);
+  const configurationHtml = renderToString(React.createElement(Mobile.MobileSettingsIndex, {
+    data: fixture,
+    ui: { ensureSection: () => {} },
+    onOpen: () => {}
+  }));
+  assert.match(configurationHtml, /class="mConfigurationTruth kTruthBand"/);
+  const foundationAst = postcss.parse(foundation);
+  const mobileDeclarations = (selector) => {
+    const values = {};
+    foundationAst.walkRules((rule) => {
+      if (!rule.selectors.includes(selector)) return;
+      const media = rule.parent?.type === "atrule" && rule.parent.name === "media" ? rule.parent.params : "";
+      if (!/max-width:\s*900px/.test(media)) return;
+      rule.walkDecls((decl) => { values[decl.prop] = `${decl.value}${decl.important ? " !important" : ""}`; });
+    });
+    return values;
+  };
+  assert.equal(mobileDeclarations(".mShell2.kordynSystem .mOperationsCommand.kWorkbench")["grid-template-columns"], "minmax(0, 1fr)");
+  assert.equal(mobileDeclarations(".mShell2.kordynSystem .mConfigurationTruth.kTruthBand")["grid-template-columns"], "minmax(0, 1fr)");
+});
+
+test("desktop Events safely reduces source HTML to readable text without rendering markup", () => {
+  assert.equal(typeof Concepts.normalizeSourceDisplayText, "function");
+  const raw = '<a target="_blank" href="https://example.test/story">Verified headline</a>&nbsp; with &ldquo;quoted&rdquo; detail &middot; source';
+  assert.equal(Concepts.normalizeSourceDisplayText(raw), 'Verified headline with “quoted” detail · source');
+  const html = renderToString(React.createElement(Concepts.EventsConcept, {
+    data: { ...fixture, dailyMarketBrief: { version: 1, topNews: [{ factId: "fact-1", title: "Headline", summary: raw }] } },
+    action: () => {},
+    ui: { setActive: () => {}, notify: () => {} }
+  }));
+  assert.doesNotMatch(html, /&lt;a target=/);
+  assert.match(html, /Verified headline with “quoted” detail · source/);
 });
 
 test("mobile Safety and shared ConfirmHost controls win the late hard-edge cascade", () => {

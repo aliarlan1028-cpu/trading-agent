@@ -802,3 +802,20 @@
 .kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="true"] > i { background: var(--kordyn-acid); }
 .kordynSystem .labLifecycleRail [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="false"] > i,
 .kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="false"] > i { background: var(--kordyn-paper); }
+
+/* This file is imported after styles.css. Keep the final APP reflow here so
+   the shared desktop primitive cannot reopen a two-column mobile workbench. */
+@media (max-width: 900px) {
+  .mShell2.kordynSystem .mOperationsCommand.kWorkbench,
+  .mShell2.kordynSystem .mOperationsRecovery.kWorkbench {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+  }
+  .mShell2.kordynSystem .mConfigurationTruth.kTruthBand {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+  }
+  .mShell2.kordynSystem .mOperationsCommand.kWorkbench > *,
+  .mShell2.kordynSystem .mOperationsRecovery.kWorkbench > *,
+  .mShell2.kordynSystem .mConfigurationTruth.kTruthBand > * { min-width: 0; }
+}

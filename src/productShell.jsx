@@ -401,9 +401,31 @@ export function ContextDock({ context = buildShellContext(), onNavigate = () => 
 export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const selected = stages.find((stage) => stage.id === expanded);
+  const closeRef = useRef(null);
+  const triggerRef = useRef(null);
+  const summary = selected || stages.find((stage) => stage.status === "blocked") || stages.find((stage) => stage.status === "waiting") || stages[0];
+
+  const close = () => {
+    setExpanded("");
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (!selected) return undefined;
+    closeRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selected?.id]);
+
   return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" aria-label={t("当前工作区追踪", "Current workspace trace")}>
-    {selected && <article className="traceRail__detail"><header><span><small>TRACE DETAIL</small><b>{selected.label}</b></span><button type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={() => setExpanded("")}><X/></button></header><dl><div><dt>STATUS</dt><dd>{selected.status}</dd></div><div><dt>EVIDENCE</dt><dd>{selected.evidence}</dd></div><div><dt>DETAIL</dt><dd>{selected.detail}</dd></div></dl></article>}
-    <nav>{stages.map((stage, index) => <React.Fragment key={stage.id}><button type="button" className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={() => setExpanded(expanded === stage.id ? "" : stage.id)}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span></button>{index < stages.length - 1 && <i aria-hidden="true">→</i>}</React.Fragment>)}</nav>
+    <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
+    <nav>{stages.map((stage, index) => <button type="button" key={stage.id} className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={(event) => { triggerRef.current = event.currentTarget; setExpanded(expanded === stage.id ? "" : stage.id); }}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span><em>{stage.detail}</em><code>{stage.evidence}</code></button>)}</nav>
+    <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl><div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>
   </section>;
 }
 

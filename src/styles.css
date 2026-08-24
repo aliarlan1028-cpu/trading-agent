@@ -10637,33 +10637,68 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   grid-area: trace;
   position: relative;
   z-index: 60;
+  display: grid;
+  grid-template-columns: var(--kordyn-workspace-rail) minmax(0, 1fr) var(--kordyn-context-dock);
   min-width: 0;
   border-top: 1px solid var(--kordyn-ink);
   background: var(--kordyn-dark);
   color: var(--kordyn-paper);
 }
-.traceRail > nav { display: grid; grid-template-columns: repeat(6,minmax(78px,1fr) 18px) minmax(78px,1fr); height: 100%; min-width: 0; }
-.traceRail > nav > i { display: grid; place-items: center; color: var(--kordyn-muted); font: normal 11px var(--kordyn-mono); }
-.traceRail__stage { display: grid; grid-template-columns: auto 1fr; align-content: center; gap: 2px 8px; min-width: 0; padding: 8px 10px; border: 0; background: transparent; color: var(--kordyn-paper); text-align: left; }
+.traceRail__title { display: grid; align-content: center; gap: 4px; min-width: 0; padding: 0 14px; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper) 22%,transparent); }
+.traceRail__title strong { color: var(--kordyn-acid); font: 750 10px var(--kordyn-mono); }
+.traceRail__title span,
+.traceRail__title small { overflow-wrap: anywhere; color: var(--kordyn-muted); font: 650 7px/1.35 var(--kordyn-mono); }
+.traceRail > nav { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); height: 100%; min-width: 0; }
+.traceRail__stage { display: grid; grid-template-columns: auto minmax(0,1fr); align-content: center; gap: 2px 8px; min-width: 0; padding: 8px 10px; border: 0; border-right: 1px solid color-mix(in srgb,var(--kordyn-paper) 16%,transparent); background: transparent; color: var(--kordyn-paper); text-align: left; }
+.traceRail__stage:last-child { border-right: 0; }
 .traceRail__stage:hover,
 .traceRail__stage[aria-expanded="true"] { background: var(--kordyn-dark-2); }
 .traceRail__stage small { grid-row: 1 / span 2; align-self: center; color: var(--kordyn-muted); font: 700 8px var(--kordyn-mono); }
 .traceRail__stage b { font: 730 10px var(--kordyn-sans); }
 .traceRail__stage span { color: var(--kordyn-muted); font: 700 7px var(--kordyn-mono); text-transform: uppercase; }
+.traceRail__stage em,
+.traceRail__stage code { display: none; }
 .traceRail__stage.status-complete span { color: var(--kordyn-mint); }
 .traceRail__stage.status-waiting span { color: var(--kordyn-amber); }
 .traceRail__stage.status-blocked span { color: var(--kordyn-danger); }
-.traceRail__detail { position: absolute; right: 0; bottom: 100%; width: min(520px,100vw); border: 1px solid var(--kordyn-ink); background: var(--kordyn-paper); color: var(--kordyn-ink); box-shadow: 10px -10px 0 var(--kordyn-acid); }
+.traceRail__detail { min-width: 0; overflow: hidden; border-left: 1px solid color-mix(in srgb,var(--kordyn-paper) 22%,transparent); background: var(--kordyn-dark); color: var(--kordyn-paper); }
 .traceRail__detail > header { display: flex; justify-content: space-between; gap: 12px; min-height: 54px; padding: 9px 12px; border-bottom: 1px solid var(--kordyn-ink); background: var(--kordyn-ink); color: var(--kordyn-paper); }
 .traceRail__detail > header span { display: grid; gap: 3px; }
 .traceRail__detail > header small,
 .traceRail__detail dt { color: var(--kordyn-mint); font: 750 8px var(--kordyn-mono); }
 .traceRail__detail > header button { display: grid; place-items: center; width: 44px; height: 44px; margin: -5px; border: 0; background: transparent; color: var(--kordyn-paper); }
 .traceRail__detail > header svg { width: 16px; }
-.traceRail__detail dl { margin: 0; }
-.traceRail__detail dl > div { display: grid; grid-template-columns: 86px minmax(0,1fr); gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-line); }
+.traceRail__detail dl { display: none; margin: 0; }
+.traceRail__detail dl > div { display: grid; grid-template-columns: 76px minmax(0,1fr); gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--kordyn-line); }
 .traceRail__detail dl > div:last-child { border-bottom: 0; }
 .traceRail__detail dd { margin: 0; font: 650 10px/1.45 var(--kordyn-mono); overflow-wrap: anywhere; }
+.traceRail.expanded {
+  position: fixed;
+  z-index: 115;
+  inset: var(--kordyn-command-rail) 0 0;
+  grid-template-columns: var(--kordyn-workspace-rail) minmax(0, 1fr) var(--kordyn-context-dock);
+  height: auto;
+  border-top: 0;
+}
+.traceRail.expanded > nav { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.traceRail.expanded .traceRail__title { align-content: center; padding: 22px 16px; }
+.traceRail.expanded .traceRail__title strong { font-size: 13px; }
+.traceRail.expanded .traceRail__title span,
+.traceRail.expanded .traceRail__title small { font-size: 9px; }
+.traceRail.expanded .traceRail__stage { grid-template-columns: minmax(0,1fr); place-content: center stretch; gap: 10px; padding: 22px 14px; }
+.traceRail.expanded .traceRail__stage small { grid-row: auto; font-size: 10px; }
+.traceRail.expanded .traceRail__stage b { font-size: 13px; }
+.traceRail.expanded .traceRail__stage span { font-size: 8px; }
+.traceRail.expanded .traceRail__stage em,
+.traceRail.expanded .traceRail__stage code { display: block; min-width: 0; overflow-wrap: anywhere; font: normal 8px/1.5 var(--kordyn-mono); }
+.traceRail.expanded .traceRail__stage em { color: color-mix(in srgb,var(--kordyn-paper) 62%,var(--kordyn-dark)); font-style: normal; }
+.traceRail.expanded .traceRail__stage code { color: var(--kordyn-mint); }
+.traceRail.expanded .traceRail__stage[aria-expanded="true"] { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.traceRail.expanded .traceRail__stage[aria-expanded="true"] :is(small,span,em,code) { color: var(--kordyn-ink); }
+.traceRail.expanded .traceRail__detail { overflow: auto; background: var(--kordyn-dark); color: var(--kordyn-paper); }
+.traceRail.expanded .traceRail__detail > header { position: sticky; top: 0; border-bottom: 1px solid color-mix(in srgb,var(--kordyn-paper) 20%,transparent); background: var(--kordyn-dark-2); }
+.traceRail.expanded .traceRail__detail dl { display: block; }
+.traceRail.expanded .traceRail__detail dl > div { border-bottom: 1px solid color-mix(in srgb,var(--kordyn-paper) 16%,transparent); }
 
 /* Modal grammar also targets ConfirmHost, which is mounted beside rather than
    inside the authenticated shell root. */
@@ -10708,9 +10743,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mShellSheet > header small { color: var(--kordyn-mint); font: 740 8px var(--kordyn-mono); }
 .mShellSheet__body { max-height: calc(100dvh - 112px); overflow: auto; }
 .mShellSheet .contextDock { position: static; width: 100%; border: 0; }
-.mShellSheet .traceRail { position: static; min-height: 66px; border-top: 0; }
+.mShellSheet .traceRail,
+.mShellSheet .traceRail.expanded { position: static; inset: auto; display: flex; flex-direction: column; width: 100%; height: auto; min-height: 66px; border-top: 0; }
+.mShellSheet .traceRail__title { display: none; }
 .mShellSheet .traceRail > nav { min-width: 700px; overflow-x: auto; }
-.mShellSheet .traceRail__detail { position: static; width: 100%; border: 0; border-bottom: 1px solid var(--kordyn-ink); box-shadow: none; }
+.mShellSheet .traceRail .traceRail__stage { grid-template-columns: auto minmax(0,1fr); padding: 8px 10px; }
+.mShellSheet .traceRail .traceRail__stage :is(em,code) { display: none; }
+.mShellSheet .traceRail__detail { position: static; order: -1; width: 100%; min-height: 54px; border: 0; border-bottom: 1px solid var(--kordyn-ink); box-shadow: none; }
+.mShellSheet .traceRail:not(.expanded) .traceRail__detail { display: none; }
+.mShellSheet .traceRail.expanded .traceRail__detail dl { display: block; }
 
 .mShell2.kordynSystem .mSafetyOverlay { background: rgba(17,21,17,.78); backdrop-filter: none; }
 .mShell2.kordynSystem .mSafetySheet { padding-bottom: calc(18px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))); border: 1px solid var(--kordyn-ink); border-bottom: 0; border-radius: 0 !important; background: var(--kordyn-paper); box-shadow: 0 -10px 0 var(--kordyn-acid); }
@@ -10880,6 +10921,73 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 .mShell2.kordynSystem .mIntelFeed.mEvidenceLedger > article:last-child { border-bottom: 0; }
 
+/* Audited APP operation chrome follows the prototype's hard 1px grammar.
+   Circular event markers remain semantic data marks and are intentionally
+   excluded from these control selectors. */
+.mShell2.kordynSystem .mSymPills,
+.mShell2.kordynSystem .mTfPills {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper-white);
+}
+.mShell2.kordynSystem .mSymPills button,
+.mShell2.kordynSystem .mTfPills button {
+  min-height: 44px;
+  margin: -1px 0 -1px -1px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: transparent;
+}
+.mShell2.kordynSystem .mSymPills button:first-child,
+.mShell2.kordynSystem .mTfPills button:first-child { margin-left: -1px; }
+.mShell2.kordynSystem .mSymPills button.active,
+.mShell2.kordynSystem .mTfPills button.active { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.mShell2.kordynSystem .mIntelHero.kTruthBand > button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb,var(--kordyn-paper-white) 38%,transparent);
+  border-radius: 0;
+}
+.mShell2.kordynSystem .mIntelPage .statusBadge {
+  border: 1px solid currentColor;
+  border-radius: 0;
+}
+.mShell2.kordynSystem .mEventCalendar {
+  overflow: hidden;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper-white);
+}
+.mShell2.kordynSystem .mEventCalendar > header {
+  grid-template-columns: 44px minmax(0,1fr) 44px auto;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--kordyn-ink);
+}
+.mShell2.kordynSystem .mEventCalendar > header > button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper);
+}
+.mShell2.kordynSystem .mEventCalendar > header > button.today { width: auto; min-width: 54px; }
+.mShell2.kordynSystem .mEventWeek { border-bottom-color: var(--kordyn-ink); }
+.mShell2.kordynSystem .mEventDays { gap: 0; padding: 0; }
+.mShell2.kordynSystem .mEventDays button {
+  height: 44px;
+  border: 1px solid var(--kordyn-line);
+  border-radius: 0;
+}
+.mShell2.kordynSystem .mEventDays button.selected { border-color: var(--kordyn-ink); background: var(--kordyn-ink); }
+.mShell2.kordynSystem .mEventAgenda {
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+}
+.mShell2.kordynSystem .mEventCalendar > footer.kActionBar > button { min-height: 44px; border-radius: 0; }
+
 .appShell.kordynSystem .chatKpi,
 .appShell.kordynSystem .cp2CandleBox,
 .appShell.kordynSystem .chartEmpty.tvOverlay,
@@ -10893,8 +11001,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
 @media (max-width: 1600px) and (min-width: 721px) {
   .appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(4),
-  .appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(5) { display: none; }
-  .appShell.kordynSystem .chatKpiBar { gap: 14px; }
+  .appShell.kordynSystem .chatKpiBar .chatKpi:nth-child(5) { display: flex; }
+  .appShell.kordynSystem .uxHeadLeft { flex: 0 1 auto; }
+  .appShell.kordynSystem .uxHeadExtra { flex: 1 1 560px; max-width: 65%; }
+  .appShell.kordynSystem .aiTopCluster { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; width: 100%; }
+  .appShell.kordynSystem .chatKpiBar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; width: 100%; overflow: visible; }
+  .appShell.kordynSystem .chatKpiBar .chatKpi { padding: 0 7px; border-left: 1px solid var(--kordyn-line); }
+  .appShell.kordynSystem .chatKpiBar .chatKpi:first-child { padding-left: 0; border-left: 0; }
+  .appShell.kordynSystem .chatKpiBar .chatKpiLine { display: grid; align-items: start; gap: 1px; }
+  .appShell.kordynSystem .chatKpiBar :is(.chatKpiK,.chatKpiV,.chatKpiD) { min-width: 0; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
+  .appShell.kordynSystem .chatKpiBar .chatKpiK { font-size: 8px; }
+  .appShell.kordynSystem .chatKpiBar .chatKpiV { font-size: 11px; line-height: 1.15; }
+  .appShell.kordynSystem .chatKpiBar .chatKpiD { font-size: 7px; line-height: 1.2; }
 }
 
 @media (max-width: 1280px) and (min-width: 721px) {
