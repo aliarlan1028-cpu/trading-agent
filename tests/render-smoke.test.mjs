@@ -1063,8 +1063,9 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
       tradingSkills: [{ id: "knowledge-strategy", name: "Book Breakout", methodId: "method-book", status: "active", version: 3, fingerprint: "book-v3", spec: { direction: "long", timeframe: "1h", templateLabel: "Breakout" }, validation: { methodology: "chronological OOS", test: { trades: 18 } }, liveMetrics: { trades: 7, winRatePct: 57, profitFactor: 1.31 } }],
       workflows: [{ id: "knowledge-workflow", title: "Knowledge Lens", sourceTitle: "Trading source", runtimeApproved: true, publishedEligible: true }]
     },
-    analysisEngine: { tools: [{ id: "system-tool", name: "System Scanner", status: "enabled", version: "2.1" }] },
+    analysisEngine: { tools: [{ name: "System Scanner", status: "enabled", version: "2.1" }] },
     skills: [{ id: "imported-tool", name: "Imported Review Tool", kind: "tool", status: "active", version: "1.0" }],
+    mcpServers: [{ serverName: "audit-mcp", name: "Audit MCP", status: "connected", version: "3.0", tools: [] }],
     toolCallStats: { "System Scanner": { calls: 5, success: 5, blocked: 0, error: 0, sourceCalls: { model: 3, preflight: 2 } } },
     ownerReviewLoop: {
       summary: { structuredReviews: 2, candidateLessons: 0, pendingOwner: 0, validating: 1 },
@@ -1086,8 +1087,10 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(desktopCapabilities, /labRegistryWorkbench kWorkbench/);
   assert.match(desktopCapabilities, /labRegistry kRegistry/);
   assert.match(desktopCapabilities, /labInspector kInspector/);
-  assert.match(desktopCapabilities, /data-provenance="system-native"/);
-  assert.match(desktopCapabilities, /data-provenance="knowledge-derived"/);
+  assert.match(desktopCapabilities, /data-provenance="system-native"[^>]*>[\s\S]{0,420}System Scanner/);
+  assert.match(desktopCapabilities, /data-provenance="knowledge-derived"[^>]*>[\s\S]{0,420}Knowledge Lens/);
+  assert.match(desktopCapabilities, /data-provenance="imported"[^>]*>[\s\S]{0,420}Imported Review Tool/);
+  assert.match(desktopCapabilities, /data-provenance="mcp-registered"[^>]*>[\s\S]{0,420}Audit MCP/);
   assert.match(desktopCapabilities, /运行证据/);
 
   const mobileStrategy = render(React.createElement(C.MobileStrategy, { data: lifecycleData, action, initialTab: "catalog", initialCatalogId: "knowledge-strategy" }));
@@ -1095,13 +1098,45 @@ test("Lab registries converge provenance, validation, live evidence, and Owner r
   assert.match(mobileStrategy, /mLabRegistrySheet kInspector/);
   assert.match(mobileStrategy, /data-provenance="system-native"/);
   assert.match(mobileStrategy, /data-provenance="knowledge-derived"/);
+  assert.match(mobileStrategy, /chronological OOS/);
+  assert.match(mobileStrategy, /7 笔版本归因实盘样本/);
+  assert.match(mobileStrategy, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="true"[\s\S]{0,220}v3 · 已发布/);
   for (const label of ["来源身份", "验证证据", "实盘证据", "Owner 发布状态"]) assert.match(mobileStrategy, new RegExp(label));
 
-  const mobileCapabilities = render(React.createElement(C.MobileCapabilities, { data: lifecycleData, action, ui, initialCapabilityId: "system-tool" }));
+  const mobileCapabilities = render(React.createElement(C.MobileCapabilities, { data: lifecycleData, action, ui }));
   assert.match(mobileCapabilities, /mLabRegistry kRegistry/);
-  assert.match(mobileCapabilities, /mLabRegistrySheet kInspector/);
-  assert.match(mobileCapabilities, /data-provenance="system-native"/);
-  assert.match(mobileCapabilities, /运行证据/);
+  assert.match(mobileCapabilities, /data-provenance="system-native"[^>]*>[\s\S]{0,420}System Scanner/);
+  assert.match(mobileCapabilities, /data-provenance="knowledge-derived"[^>]*>[\s\S]{0,420}Knowledge Lens/);
+  assert.match(mobileCapabilities, /data-provenance="imported"[^>]*>[\s\S]{0,420}Imported Review Tool/);
+  assert.match(mobileCapabilities, /data-provenance="mcp-registered"[^>]*>[\s\S]{0,420}Audit MCP/);
+
+  const systemCapabilityData = {
+    analysisEngine: { tools: [{ name: "System Scanner", status: "enabled", version: "2.1" }] },
+    toolCallStats: { "System Scanner": { calls: 5, success: 5, blocked: 0, error: 0, sourceCalls: { model: 3, preflight: 2 } } }
+  };
+  const desktopSystemCapability = render(React.createElement(C.CapabilitiesConcept, { data: systemCapabilityData, action, ui }));
+  assert.match(desktopSystemCapability, /data-provenance="system-native"/);
+  assert.match(desktopSystemCapability, /系统目录来源；没有单独的能力验证记录/);
+  assert.match(desktopSystemCapability, /5 次记录调用 · 运行正常/);
+  assert.match(desktopSystemCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+  assert.doesNotMatch(desktopSystemCapability, /扫描状态|scan state/i);
+
+  const mobileSystemCapability = render(React.createElement(C.MobileCapabilities, { data: systemCapabilityData, action, ui, initialCapabilityId: "cap-0" }));
+  assert.match(mobileSystemCapability, /role="dialog"/);
+  assert.match(mobileSystemCapability, /aria-modal="true"/);
+  assert.match(mobileSystemCapability, /aria-labelledby="capability-sheet-title"/);
+  assert.match(mobileSystemCapability, /系统目录来源；没有单独的能力验证记录/);
+  assert.match(mobileSystemCapability, /5 次记录调用 · 运行正常/);
+  assert.match(mobileSystemCapability, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
+  assert.doesNotMatch(mobileSystemCapability, /扫描状态|scan state/i);
+
+  const mobileNativeStrategy = render(React.createElement(C.MobileStrategy, { data: lifecycleData, action, initialTab: "catalog", initialCatalogId: "product_core:v2" }));
+  assert.match(mobileNativeStrategy, /role="dialog"/);
+  assert.match(mobileNativeStrategy, /aria-modal="true"/);
+  assert.match(mobileNativeStrategy, /aria-labelledby="strategy-sheet-title"/);
+  assert.match(mobileNativeStrategy, /1\/1 项版本门槛通过/);
+  assert.match(mobileNativeStrategy, /24 笔版本归因实盘样本/);
+  assert.match(mobileNativeStrategy, /data-lifecycle-stage="owner-release" data-lifecycle-applicable="false"[\s\S]{0,220}不适用 · 此资产没有 Owner 发布流程/);
 
   const desktopOwner = render(React.createElement(C.OwnerReviewWorkspaceConcept, { data: lifecycleData, action, ui, initialOwnerPane: "improvements" }));
   assert.match(desktopOwner, /erOwnerReleaseBar kActionBar/);
@@ -1120,8 +1155,38 @@ test("Lab convergence styles retain the mobile lifecycle rail and list-detail ev
   assert.match(system, /\.labRegistryWorkbench\.kWorkbench[\s\S]*\.labInspector\.kInspector/);
   assert.match(styles, /\.mLabWorkspaceLifecycle[\s\S]*position:\s*sticky/);
   assert.match(styles, /\.mLabRegistrySheet\.kInspector[\s\S]*overflow-y:\s*auto/);
+  assert.match(styles, /\.mLabRegistrySheet\.kInspector > \.mSheetGrip[^}]*\{[^}]*min-height:\s*44px/);
+  assert.match(styles, /\.mLabResearchSheet\.kInspector > \.mSheetGrip[^}]*\{[^}]*min-height:\s*44px/);
+  assert.match(foundation, /data-lifecycle-stage="owner-release"\]\[data-lifecycle-applicable="true"\]/);
+  assert.doesNotMatch(foundation, /data-lifecycle-stage="owner-release"\]\s*>\s*i\s*\{[^}]*var\(--kordyn-acid\)/);
+
+  const capabilityStart = styles.indexOf("/* 能力库：App 原生的汇总、筛选列表与底部详情，不复用 Web 三栏表格。 */");
+  const researchStart = styles.indexOf("/* 策略库 · 回测研究：摘要、纵向证据卡和可下钻底部详情。 */");
+  const researchEnd = styles.indexOf("/* 实盘写入与灰度", researchStart);
+  assert.ok(capabilityStart >= 0 && researchStart > capabilityStart && researchEnd > researchStart);
+  const migratedSelectors = styles.slice(capabilityStart, researchEnd);
+  assert.doesNotMatch(migratedSelectors, /#[0-9a-f]{3,8}\b/i, "migrated Lab sheets must use the prototype token palette");
+  assert.doesNotMatch(migratedSelectors, /border-radius:\s*(?:[1-9]|999)/, "migrated Lab sheets must not retain rounded mini-card walls");
+  assert.doesNotMatch(migratedSelectors, /box-shadow|backdrop-filter|linear-gradient/);
+  assert.match(migratedSelectors, /\.mCapabilityFacts\s*\{[^}]*gap:\s*0[^}]*border-radius:\s*0/);
+  assert.match(migratedSelectors, /\.mCapabilityUsage\s*\{[^}]*gap:\s*0/);
+  assert.match(migratedSelectors, /\.mResearchSheetMetrics\s*\{[^}]*gap:\s*0[^}]*border-radius:\s*0/);
+  assert.match(migratedSelectors, /\.mResearchSheet > section,\.mResearchParams\s*\{[^}]*border-radius:\s*0/);
   const convergenceBlock = (css) => css.slice(css.lastIndexOf("/* Lab deep-page convergence */"));
   assert.doesNotMatch([foundation, system, styles].map(convergenceBlock).join("\n"), /linear-gradient|backdrop-filter|box-shadow/);
+});
+
+test("mobile research inspector is a labelled modal sheet with a 44px close target contract", () => {
+  const html = render(React.createElement(C.MobileBacktestResearch, {
+    data: { backtestResearch: { historical: [{ id: "research-1", name: "OOS Evidence", status: "completed", evidenceType: "optimizer_oos", trades: 12, equityCurve: [1, 2] }] } },
+    action,
+    initialDetailId: "research-1"
+  }));
+  assert.match(html, /mResearchSheet mLabResearchSheet kInspector/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /aria-modal="true"/);
+  assert.match(html, /aria-labelledby="research-sheet-title"/);
+  assert.match(html, /id="research-sheet-title"[^>]*>OOS Evidence/);
 });
 
 test("mobile Owner route has a native governed queue instead of falling back to execution overview", () => {

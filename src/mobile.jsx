@@ -1507,11 +1507,13 @@ function capabilityHealthTone(value) {
 const mobileStrategyProvenance = (item = {}) => item.recordType === "product" || item.recordType === "research"
   ? "system-native"
   : item.methodId || item.sourceMethodId ? "knowledge-derived" : "imported";
-const mobileCapabilityIdentity = (item = {}) => item.serverName || item.id || item.toolName || item.name || item.title;
-const mobileCapabilityProvenance = (item = {}, systemIds = new Set()) => item.knowledgeWorkflow
+const mobileCapabilityAliases = (item = {}) => [item.serverName, item.id, item.toolName, item.name, item.title]
+  .filter(Boolean)
+  .map((value) => String(value).trim().toLowerCase());
+const mobileCapabilityProvenance = (item = {}, systemAliases = new Set()) => item.knowledgeWorkflow
   ? "knowledge-derived"
   : item.category === "mcp" || item.kind === "MCP" ? "mcp-registered"
-    : item.native === true || item.connector || systemIds.has(mobileCapabilityIdentity(item)) ? "system-native" : "imported";
+    : item.native === true || item.connector || mobileCapabilityAliases(item).some((alias) => systemAliases.has(alias)) ? "system-native" : "imported";
 const mobileProvenanceLabel = (kind) => ({
   "system-native": t("系统原生", "System-native"),
   "knowledge-derived": t("知识派生", "Knowledge-derived"),
@@ -1523,6 +1525,33 @@ function MobileProvenance({ kind }) {
   return <span className={`mLabProvenance mLabProvenance--${kind}`} data-provenance={kind}><i/>{mobileProvenanceLabel(kind)}</span>;
 }
 
+const mobileCapabilityValidationEvidence = (item, provenance) => {
+  if (item.knowledgeWorkflow) return t("运行时批准与发布资格已核对", "Runtime approval and publication eligibility verified");
+  if (provenance === "system-native") return item.connector
+    ? t(`配置状态：${humanize(item.status, "—")}`, `Configuration state: ${humanize(item.status, "—")}`)
+    : t("系统目录来源；没有单独的能力验证记录", "System registry origin; no separate capability validation record");
+  if (provenance === "mcp-registered") return t(`连接状态：${humanize(item.status, "—")}`, `Connection state: ${humanize(item.status, "—")}`);
+  const recordedValidation = item.scanStatus || item.securityReview?.status || item.validation?.status;
+  return recordedValidation
+    ? t(`已记录安全验证：${humanize(recordedValidation)}`, `Recorded security validation: ${humanize(recordedValidation)}`)
+    : t("没有记录能力验证证据", "No capability validation evidence recorded");
+};
+
+const mobileOwnerReleaseEvidence = (item, assetType, provenance) => {
+  const explicit = item.ownerRelease || item.release?.ownerRelease;
+  if (explicit) {
+    const value = typeof explicit === "string" ? humanize(explicit) : [explicit.versionId || explicit.version, humanize(explicit.status)].filter(Boolean).join(" · ");
+    if (value) return { applicable: true, value };
+  }
+  const knowledgeRelease = assetType === "strategy"
+    && provenance === "knowledge-derived"
+    && item.version != null
+    && /^(active|probation|degraded)$/.test(String(item.status || ""));
+  const releaseLabel = { active: t("已发布", "Published"), probation: t("小额试用", "Live probation"), degraded: t("已降级", "Degraded") }[item.status];
+  if (knowledgeRelease) return { applicable: true, value: `v${item.version} · ${releaseLabel}` };
+  return { applicable: false, value: t("不适用 · 此资产没有 Owner 发布流程", "Not applicable · This asset has no Owner release workflow") };
+};
+
 function MobileLabLifecycle({ item = {}, assetType, provenanceKind }) {
   const provenance = provenanceKind || (assetType === "strategy" ? mobileStrategyProvenance(item) : mobileCapabilityProvenance(item));
   const checks = Array.isArray(item.evidence?.checks) ? item.evidence.checks : [];
@@ -1531,24 +1560,23 @@ function MobileLabLifecycle({ item = {}, assetType, provenanceKind }) {
     ? checks.length ? t(`${passed}/${checks.length} 项版本门槛通过`, `${passed}/${checks.length} version gates passed`)
       : item.validation ? localizeText(item.validation.methodology) || t("已保留历史 / 样本外验证记录", "Historical / OOS validation recorded")
         : item.backtest ? t("已保留样本外研究证据", "OOS research evidence recorded") : t("尚无正式验证证据", "No formal validation evidence")
-    : item.knowledgeWorkflow ? t("运行时批准与发布资格已核对", "Runtime approval and publication eligibility verified")
-      : provenance === "system-native" ? t("系统注册准入，不来自知识导入", "System admission; not knowledge-derived") : t("按当前安装与扫描状态准入", "Admitted by current install and scan state");
+    : mobileCapabilityValidationEvidence(item, provenance);
   const liveCount = assetType === "strategy" ? item.liveTrades ?? item.metrics?.closedTrades ?? item.liveMetrics?.trades : item.calls ?? item.runs;
   const live = assetType === "strategy"
     ? liveCount == null ? t("尚无版本归因实盘样本", "No version-attributed live samples") : t(`${liveCount} 笔版本归因实盘样本`, `${liveCount} version-attributed live samples`)
     : item.connector ? t("配置型连接不按工具调用计数", "Configuration connector; calls not counted") : t(`${liveCount || 0} 次记录调用 · ${capabilityHealthLabel(item.health)}`, `${liveCount || 0} recorded calls · ${capabilityHealthLabel(item.health)}`);
-  const release = [item.versionId || (item.version != null ? `v${item.version}` : null), humanize(item.status, t("状态未声明", "Status unavailable"))].filter(Boolean).join(" · ") || t("尚未发布", "Not released");
+  const release = mobileOwnerReleaseEvidence(item, assetType, provenance);
   return <section className="mLabLifecycleDetails kEvidenceLedger" aria-label={t("资产生命周期证据", "Asset lifecycle evidence")}><header><div><small>ASSET LIFECYCLE</small><b>{t("来源、验证、实盘与发布", "Provenance, validation, live evidence, and release")}</b></div></header><ol>
     <li data-lifecycle-stage="provenance"><i/><div><small>{t("来源身份", "PROVENANCE")}</small><b>{mobileProvenanceLabel(provenance)}</b></div></li>
     <li data-lifecycle-stage="validation"><i/><div><small>{t("验证证据", "VALIDATION EVIDENCE")}</small><b>{validation}</b></div></li>
     <li data-lifecycle-stage="live-evidence"><i/><div><small>{assetType === "strategy" ? t("实盘证据", "LIVE EVIDENCE") : t("运行证据", "RUNTIME EVIDENCE")}</small><b>{live}</b></div></li>
-    <li data-lifecycle-stage="owner-release"><i/><div><small>{t("Owner 发布状态", "OWNER RELEASE STATE")}</small><b>{release}</b></div></li>
+    <li data-lifecycle-stage="owner-release" data-lifecycle-applicable={release.applicable ? "true" : "false"}><i/><div><small>{t("Owner 发布状态", "OWNER RELEASE STATE")}</small><b>{release.value}</b></div></li>
   </ol></section>;
 }
 
 export function MobileCapabilities({ data, action, ui, initialCapabilityId = "" }) {
   const items = buildCapabilityCatalogRows(data, t);
-  const systemCapabilityIds = new Set([...(data.analysisEngine?.tools || []), ...(data.tools || [])].map(mobileCapabilityIdentity).filter(Boolean));
+  const systemCapabilityAliases = new Set([...(data.analysisEngine?.tools || []), ...(data.tools || [])].flatMap(mobileCapabilityAliases));
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState(initialCapabilityId);
@@ -1599,18 +1627,18 @@ export function MobileCapabilities({ data, action, ui, initialCapabilityId = "" 
     <section className="mCapabilityList mLabRegistry kRegistry">
       {shown.map((item) => <button className="mCapabilityRow" key={item.id} onClick={() => setOpenId(item.id)}>
         <span className={`mCapabilityIcon ${item.category}`}><Wrench size={17}/></span>
-        <span className="mCapabilityRowText"><MobileProvenance kind={mobileCapabilityProvenance(item,systemCapabilityIds)}/><b>{localizeText(item.name)}</b><small>{typeLabel(item)} · {item.connector ? t("配置型连接", "Configuration connector") : `${t("记录调用", "Recorded")} ${item.calls ?? "—"}`}</small></span>
+        <span className="mCapabilityRowText"><MobileProvenance kind={mobileCapabilityProvenance(item,systemCapabilityAliases)}/><b>{localizeText(item.name)}</b><small>{typeLabel(item)} · {item.connector ? t("配置型连接", "Configuration connector") : `${t("记录调用", "Recorded")} ${item.calls ?? "—"}`}</small></span>
         <StatusBadge tone={capabilityHealthTone(item.health)}>{capabilityHealthLabel(item.health)}</StatusBadge><ChevronRight size={15}/>
       </button>)}
       {!shown.length && <div className="mNativeEmpty"><Wrench size={22}/><b>{query ? t("没有匹配的能力", "No matching capabilities") : t("暂无能力", "No capabilities yet")}</b><span>{t("可以从 Skill 导入入口添加工具类能力。", "Add tool capabilities from the Skill import flow.")}</span></div>}
     </section>
     {selected && <div className="mCapabilitySheetOverlay" onClick={() => setOpenId("")}>
-      <aside className="mCapabilitySheet mLabRegistrySheet kInspector" onClick={(event) => event.stopPropagation()}>
+      <aside className="mCapabilitySheet mLabRegistrySheet kInspector" role="dialog" aria-modal="true" aria-labelledby="capability-sheet-title" onClick={(event) => event.stopPropagation()}>
         <button type="button" className="mSheetGrip" onClick={() => setOpenId("")} aria-label={t("关闭", "Close")}><i/></button>
-        <header><span className={`mCapabilityIcon ${selected.category}`}><Wrench size={18}/></span><div><small>{typeLabel(selected)} · {capabilityStatusLabel(selected)}</small><b>{localizeText(selected.name)}</b></div><StatusBadge tone={capabilityHealthTone(selected.health)}>{capabilityHealthLabel(selected.health)}</StatusBadge></header>
-        <MobileProvenance kind={mobileCapabilityProvenance(selected,systemCapabilityIds)}/>
+        <header><span className={`mCapabilityIcon ${selected.category}`}><Wrench size={18}/></span><div><small>{typeLabel(selected)} · {capabilityStatusLabel(selected)}</small><b id="capability-sheet-title">{localizeText(selected.name)}</b></div><StatusBadge tone={capabilityHealthTone(selected.health)}>{capabilityHealthLabel(selected.health)}</StatusBadge></header>
+        <MobileProvenance kind={mobileCapabilityProvenance(selected,systemCapabilityAliases)}/>
         <p>{localizeText(selected.description || selected.summary) || t("该能力由 AI 在受控工作流中按权限调用。", "The AI calls this capability inside permission-controlled workflows.")}</p>
-        <MobileLabLifecycle item={selected} assetType="capability" provenanceKind={mobileCapabilityProvenance(selected,systemCapabilityIds)}/>
+        <MobileLabLifecycle item={selected} assetType="capability" provenanceKind={mobileCapabilityProvenance(selected,systemCapabilityAliases)}/>
         <div className="mCapabilityFacts"><span>{t("来源", "Source")}<b>{selected.source || selected.packageName || t("内置", "Built-in")}</b></span><span>{t("启用状态", "Enablement")}<b>{capabilityStatusLabel(selected)}</b></span><span>{t("记录调用", "Recorded calls")}<b className="mono">{selected.connector ? "—" : selected.calls ?? 0}</b></span><span>{t("最近运行", "Last run")}<b>{selected.lastRunAt ? formatDateTime(selected.lastRunAt) : t("尚未运行", "Not observed")}</b></span></div>
         {!selected.connector && <div className="mCapabilitySources"><span><small>{t("模型主动","Model")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.model||0}</b></span><span><small>{t("系统预检","Preflight")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.preflight||0}</b></span><span><small>{t("系统直接","System")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.system||0}</b></span><span><small>{t("健康评测","Evaluation")}</small><b>{selected.usage?.sourceCalls?.evaluation||selected.evalMetrics?.calls||0}</b></span></div>}
         {selected.usage?.legacyUnsplit && <p className="mCapabilityMetricNote">{t(`升级前的 ${selected.usage.legacyUnsplitCalls||selected.calls||0} 次记录无法可靠拆分来源；后续调用会按模型、预检和系统分别记录。`,`The ${selected.usage.legacyUnsplitCalls||selected.calls||0} legacy records cannot be reliably split. New calls are source-attributed.`)}</p>}
@@ -1667,9 +1695,9 @@ function MobileResearchDetailSheet({ record, onClose }) {
   const folds = record.folds || [];
   const params = Object.entries(record.parameters || {}).slice(0, 10);
   return <div className="mResearchSheetOverlay" onClick={onClose}>
-    <aside className="mResearchSheet" onClick={(event) => event.stopPropagation()}>
+    <aside className="mResearchSheet mLabResearchSheet kInspector" role="dialog" aria-modal="true" aria-labelledby="research-sheet-title" onClick={(event) => event.stopPropagation()}>
       <button type="button" className="mSheetGrip" onClick={onClose} aria-label={t("关闭", "Close")}><i/></button>
-      <header><div><small>{mobileResearchEvidenceLabel(record.evidenceType)}</small><b>{localizeText(record.name)}</b><span>{record.symbol || "—"} · {record.timeframe || "—"} · {record.createdAt ? formatDate(record.createdAt) : t("时间未记录", "Time unavailable")}</span></div><StatusBadge tone={mobileResearchStatusTone(record)}>{mobileResearchStatusLabel(record.status)}</StatusBadge></header>
+      <header><div><small>{mobileResearchEvidenceLabel(record.evidenceType)}</small><b id="research-sheet-title">{localizeText(record.name)}</b><span>{record.symbol || "—"} · {record.timeframe || "—"} · {record.createdAt ? formatDate(record.createdAt) : t("时间未记录", "Time unavailable")}</span></div><StatusBadge tone={mobileResearchStatusTone(record)}>{mobileResearchStatusLabel(record.status)}</StatusBadge></header>
       <div className="mResearchSheetMetrics"><span><small>{t("累计收益", "Total return")}</small><b className={Number(record.totalReturnPct || 0) >= 0 ? "pos" : "neg"}>{record.totalReturnPct == null ? "—" : displayPct(record.totalReturnPct)}</b></span><span><small>{t("R 期望", "R expectancy")}</small><b>{record.expectancyR == null ? "—" : `${record.expectancyR}R`}</b></span><span><small>{t("盈亏因子", "Profit factor")}</small><b>{record.profitFactor ?? "—"}</b></span><span><small>{t("最大回撤", "Max drawdown")}</small><b className="neg">{record.maxDrawdownPct == null ? "—" : `${record.maxDrawdownPct}%`}</b></span></div>
       <section><div className="mResearchSectionHead"><b>{t("收益曲线", "Equity curve")}</b><span>{record.trades ?? "—"} {t("笔交易", "trades")}</span></div><MobileSparkline values={record.equityCurve || []}/></section>
       <section className="mResearchDetailRows"><span>{t("胜率", "Win rate")}<b>{record.winRatePct == null ? "—" : `${record.winRatePct}%`}</b></span><span>{t("90% 置信下界", "90% lower bound")}<b>{record.expectancyLower90R == null ? "—" : `${record.expectancyLower90R}R`}</b></span><span>{t("正向样本外分段", "Positive OOS folds")}<b>{record.positiveFolds == null ? "—" : `${record.positiveFolds}/${record.activeFolds ?? "—"}`}</b></span><span>{t("研究方法", "Methodology")}<b>{localizeText(record.methodology) || t("统一成本模型下的历史验证", "Historical validation with the unified cost model")}</b></span></section>
@@ -1679,7 +1707,7 @@ function MobileResearchDetailSheet({ record, onClose }) {
   </div>;
 }
 
-export function MobileBacktestResearch({ data, action }) {
+export function MobileBacktestResearch({ data, action, initialDetailId = "" }) {
   const research = data.backtestResearch || {};
   const historical = (research.historical || []).length ? research.historical : (data.backtests || []).map((row, index) => ({
     ...row,
@@ -1690,17 +1718,17 @@ export function MobileBacktestResearch({ data, action }) {
   }));
   const forward = research.forward || [];
   const summary = research.summary || {};
-  const [detailId, setDetailId] = useState("");
+  const [detailId, setDetailId] = useState(initialDetailId);
   const detail = historical.find((row) => row.id === detailId) || null;
   return <div className="mStrategyStack mResearchMobile">
     <div className="mResearchSummary"><span><small>{t("历史证据", "Historical evidence")}</small><b>{summary.totalHistoricalEvidence ?? historical.length}</b></span><span><small>{t("自动样本外", "Automated OOS")}</small><b>{summary.optimizerOos ?? historical.filter((row) => row.evidenceType === "optimizer_oos").length}</b></span><span><small>{t("工作室样本外", "Studio OOS")}</small><b>{summary.studioOos ?? historical.filter((row) => row.evidenceType === "studio_oos").length}</b></span></div>
     <div className="mResearchRunCard"><span><b>{t("用真实收盘 K 线做样本外验证", "Run OOS validation on real closed candles")}</b><small>{t("历史证据与纯前向模拟分开记录，不用模拟结果冒充回测。", "Historical evidence and forward simulation remain separate.")}</small></span><button onClick={() => action("/api/strategy/research", {}, "POST")}><Play size={14}/>{t("运行研究", "Run research")}</button></div>
-    <section className="mCard mResearchListCard"><div className="mCardHead"><b>{t("研究记录", "Research records")}</b><small>{historical.length}</small></div>
+    <section className="mCard mResearchListCard mLabResearchRegistry kRegistry"><div className="mCardHead"><b>{t("研究记录", "Research records")}</b><small>{historical.length}</small></div>
       <div className="mResearchList">{historical.map((row) => <button key={row.id} onClick={() => setDetailId(row.id)}><div className="mResearchRecordHead"><span><small>{mobileResearchEvidenceLabel(row.evidenceType)}</small><b>{localizeText(row.name)}</b></span><StatusBadge tone={mobileResearchStatusTone(row)}>{mobileResearchStatusLabel(row.status)}</StatusBadge></div><p>{row.symbol || "—"} · {row.timeframe || "—"} · {row.direction ? (row.direction === "short" ? t("做空", "Short") : t("做多", "Long")) : t("方向不限", "Any side")}</p><div><span>{t("交易", "Trades")}<b>{row.trades ?? "—"}</b></span><span>{t("期望", "Expectancy")}<b>{row.expectancyR == null ? "—" : `${row.expectancyR}R`}</b></span><span>PF<b>{row.profitFactor ?? "—"}</b></span><span>{t("回撤", "Drawdown")}<b>{row.maxDrawdownPct == null ? "—" : `${row.maxDrawdownPct}%`}</b></span></div><ChevronRight size={16}/></button>)}
         {!historical.length && <div className="mNativeEmpty"><BarChart3 size={24}/><b>{t("尚无历史研究证据", "No historical research evidence yet")}</b><span>{t("运行研究后，真实 OKX 收盘 K 线的样本外结果会显示在这里。", "Run research to populate OOS results from real OKX closed candles.")}</span></div>}
       </div>
     </section>
-    <section className="mCard mForwardCard"><div className="mCardHead"><b>{t("纯前向模拟", "Pure forward simulation")}</b><small>{t("独立证据", "Separate evidence")}</small></div>{forward.map((row) => <div className="mForwardRow" key={row.id}><div><b>{localizeText(row.name)}</b><small>{row.timeframe || "—"}{row.openPosition ? ` · ${t("持仓进行中", "position open")}` : ""}</small></div><span>{row.completedTrades}/{row.minimumTrades}</span><progress max="100" value={row.progressPct || 0}/><StatusBadge tone={row.status === "passed" ? "ok" : row.status === "failed" ? "danger" : "warning"}>{mobileResearchStatusLabel(row.status)}</StatusBadge></div>)}{!forward.length && <p className="mResearchEmptyLine">{t("暂无纯前向会话；自动研究选出合格策略后会在这里推进。", "No forward sessions yet. Qualifying research will create them here.")}</p>}</section>
+    <section className="mCard mForwardCard mLabResearchForward kEvidenceLedger"><div className="mCardHead"><b>{t("纯前向模拟", "Pure forward simulation")}</b><small>{t("独立证据", "Separate evidence")}</small></div>{forward.map((row) => <div className="mForwardRow" key={row.id}><div><b>{localizeText(row.name)}</b><small>{row.timeframe || "—"}{row.openPosition ? ` · ${t("持仓进行中", "position open")}` : ""}</small></div><span>{row.completedTrades}/{row.minimumTrades}</span><progress max="100" value={row.progressPct || 0}/><StatusBadge tone={row.status === "passed" ? "ok" : row.status === "failed" ? "danger" : "warning"}>{mobileResearchStatusLabel(row.status)}</StatusBadge></div>)}{!forward.length && <p className="mResearchEmptyLine">{t("暂无纯前向会话；自动研究选出合格策略后会在这里推进。", "No forward sessions yet. Qualifying research will create them here.")}</p>}</section>
     <MobileResearchDetailSheet record={detail} onClose={() => setDetailId("")}/>
   </div>;
 }
@@ -1731,7 +1759,7 @@ export function MobileStrategy({ data, action, initialTab = "catalog", initialCa
   return (
     <div className="mScreen">
       <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => setTab("studio")}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>{t("市场", "Market")}</button><button className={tab === "research" ? "active" : ""} onClick={() => setTab("research")}>{t("回测研究", "Backtest")}</button></div>
-      {tab === "catalog" && <><div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><section className="mCard mLabRegistry kRegistry">{strategies.length ? strategies.map((s) => <button type="button" className="mIncRow mLabRegistryRow" key={s.id} onClick={() => setCatalogId(s.id)}><div className="mIncL"><MobileProvenance kind={mobileStrategyProvenance(s)}/><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge><ChevronRight size={15}/></button>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</section>{selectedCatalog&&<div className="mLabRegistrySheetOverlay" onClick={() => setCatalogId("")}><aside className="mLabRegistrySheet kInspector" onClick={(event) => event.stopPropagation()}><button type="button" className="mSheetGrip" onClick={() => setCatalogId("")} aria-label={t("关闭", "Close")}><i/></button><header><div><small>{t("策略对象", "STRATEGY OBJECT")}</small><b>{localizeText(selectedCatalog.name)}</b><span>{[selectedCatalog.version&&`v${selectedCatalog.version}`,selectedCatalog.direction,selectedCatalog.timeframe].filter(Boolean).join(" · ")||"—"}</span></div><StatusBadge tone={statusTone(selectedCatalog.status)}>{statusLabel(selectedCatalog.status)}</StatusBadge></header><MobileProvenance kind={mobileStrategyProvenance(selectedCatalog)}/><MobileLabLifecycle item={selectedCatalog} assetType="strategy"/><div className="mStrategyFacts mLabInspectorFacts"><span>{t("类型", "Type")}<b>{originLabel(selectedCatalog.origin)}</b></span><span>{t("模型家族", "Model family")}<b>{humanize(selectedCatalog.template,"—")}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(selectedCatalog.direction,"—")} · {selectedCatalog.timeframe||"—"}</b></span><span>{t("盈亏因子", "Profit factor")}<b>{selectedCatalog.profitFactor??selectedCatalog.backtest?.profitFactor??"—"}</b></span><span>{t("版本指纹", "Version fingerprint")}<b className="mono">{selectedCatalog.contentHash?.slice(0,16)||selectedCatalog.fingerprint?.slice(0,16)||"—"}</b></span></div></aside></div>}</>}
+      {tab === "catalog" && <><div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><section className="mCard mLabRegistry kRegistry">{strategies.length ? strategies.map((s) => <button type="button" className="mIncRow mLabRegistryRow" key={s.id} onClick={() => setCatalogId(s.id)}><div className="mIncL"><MobileProvenance kind={mobileStrategyProvenance(s)}/><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge><ChevronRight size={15}/></button>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</section>{selectedCatalog&&<div className="mLabRegistrySheetOverlay" onClick={() => setCatalogId("")}><aside className="mLabRegistrySheet kInspector" role="dialog" aria-modal="true" aria-labelledby="strategy-sheet-title" onClick={(event) => event.stopPropagation()}><button type="button" className="mSheetGrip" onClick={() => setCatalogId("")} aria-label={t("关闭", "Close")}><i/></button><header><div><small>{t("策略对象", "STRATEGY OBJECT")}</small><b id="strategy-sheet-title">{localizeText(selectedCatalog.name)}</b><span>{[selectedCatalog.version&&`v${selectedCatalog.version}`,selectedCatalog.direction,selectedCatalog.timeframe].filter(Boolean).join(" · ")||"—"}</span></div><StatusBadge tone={statusTone(selectedCatalog.status)}>{statusLabel(selectedCatalog.status)}</StatusBadge></header><MobileProvenance kind={mobileStrategyProvenance(selectedCatalog)}/><MobileLabLifecycle item={selectedCatalog} assetType="strategy"/><div className="mStrategyFacts mLabInspectorFacts"><span>{t("类型", "Type")}<b>{originLabel(selectedCatalog.origin)}</b></span><span>{t("模型家族", "Model family")}<b>{humanize(selectedCatalog.template,"—")}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(selectedCatalog.direction,"—")} · {selectedCatalog.timeframe||"—"}</b></span><span>{t("盈亏因子", "Profit factor")}<b>{selectedCatalog.profitFactor??selectedCatalog.backtest?.profitFactor??"—"}</b></span><span>{t("版本指纹", "Version fingerprint")}<b className="mono">{selectedCatalog.contentHash?.slice(0,16)||selectedCatalog.fingerprint?.slice(0,16)||"—"}</b></span></div></aside></div>}</>}
         {tab === "studio" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("自然语言创建策略", "Create from natural language")}</b><p className="mStrategyHelp">{t("只编译到确定性白名单规则；创建草稿不会下单。", "Compiles only to deterministic allowlisted rules. Drafts never place orders.")}</p><textarea className="mStrategyPrompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("例：ADA/USDT 1小时，RSI 14 从30下方站回时做多，止损2%，止盈2.5R", "Example: Long ADA/USDT on 1h when RSI(14) crosses back above 30; 2% stop, 2.5R target")}/><button className="mStrategyPrimary" disabled={prompt.trim().length < 12} onClick={createDraft}><Sparkles size={14}/>{t("生成、测试并自动回测", "Generate, test, and backtest")}</button></div>
         {drafts.length ? <div className="mCard"><b className="mSectionTitle">{t("策略草稿", "Strategy drafts")}</b><div className="mStrategyDrafts">{drafts.slice(0,20).map((row) => <button key={row.id} className={row.id === selected.id ? "active" : ""} onClick={() => setSelectedId(row.id)}><span><b>{localizeText(row.blueprint?.name)}</b><small>{row.authoring?.channel === "agent_chat" ? t("AI 对话创建", "Created in AI chat") : t("工作室创建", "Created in Studio")} · {row.blueprint?.symbols?.join("/")} · {row.blueprint?.timeframe} · {humanize(row.blueprint?.direction)}</small></span><StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge></button>)}</div></div> : null}
         {selected.id && <><div className="mCard"><b className="mSectionTitle">{t("系统理解的规则", "Compiled rules")}</b><div className="mStrategyFacts"><span>{t("信号", "Signal")}<b>{t(selected.blueprint?.templateName || "—", selected.blueprint?.templateNameEn || selected.blueprint?.templateName || "—")}</b></span><span>{t("止损 / 止盈", "Stop / target")}<b>{selected.blueprint?.exitPolicy?.stopLossPct}% · {selected.blueprint?.exitPolicy?.takeProfitR}R</b></span><span>{t("参数", "Parameters")}<b className="mono">{JSON.stringify(selected.blueprint?.params || {})}</b></span><span>{t("编译来源", "Compiler provenance")}<b>{humanize(selected.compilationReport?.compiler || selected.compiler, "—")} · {humanize(selected.compilationReport?.status, "—")}</b></span><span>{t("成本证据", "Cost evidence")}<b className="mono">{selected.blueprint?.costAssumption?.contentHash?.slice(0,12) || "—"}</b></span></div>{(selected.compilationReport?.warnings || []).length ? <p className="mStrategyHelp">{t("编译提示", "Compiler warnings")}：{selected.compilationReport.warnings.map((value) => humanize(value)).join(" · ")}</p> : null}</div><div className="mCard"><b className="mSectionTitle">{t("自动测试", "Generated tests")} · {selected.generatedTests?.passed || 0}/{selected.generatedTests?.total || 0}</b>{(selected.generatedTests?.tests || []).map((test) => <div className="mStrategyTest" key={test.id}>{test.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{t(test.name, test.nameEn || test.name)}</b><small>{t(test.detail, test.detailEn || test.detail)}</small></span></div>)}</div><div className="mCard"><b className="mSectionTitle">{t("样本外证据", "Out-of-sample evidence")}</b>{coverage.rows.map((row) => <div className="mStrategyTest" key={row.symbol}>{row.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{row.symbol}</b><small>{humanize(row.status)}</small></span></div>)}{latestBt ? <div className="mStrategyFacts"><span>{t("交易 / 期望", "Trades / expectancy")}<b>{latestBt.oos?.trades || 0} · {latestBt.oos?.expectancyR ?? "—"}R</b></span><span>PF / {t("回撤", "drawdown")}<b>{latestBt.oos?.profitFactor ?? "—"} · {latestBt.oos?.maxDrawdownPct ?? "—"}%</b></span><span>{t("正向分段", "Positive folds")}<b>{latestBt.positiveFolds}/{latestBt.activeFolds}</b></span></div> : <p className="mStrategyHelp">{t("尚未运行 OKX 历史样本外回测。", "OKX historical OOS backtest has not run.")}</p>}<div className="mStrategyActions"><button disabled={selected.generatedTests?.status !== "passed"} onClick={async () => { for (const symbol of selected.blueprint?.symbols || []) await action(`/api/strategy/studio/drafts/${selected.id}/backtest`, { symbol }, "POST"); }}>{t("逐交易对运行回测", "Run every symbol")}</button><button disabled={!coverage.complete || Boolean(selected.publishVersionId)} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/publish`, {}, "POST")}>{selected.publishVersionId ? t("已发布", "Published") : t("发布到市场", "Publish")}</button></div></div></>}

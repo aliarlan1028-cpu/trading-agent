@@ -783,5 +783,7 @@
 .kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="validation"] > i { background: var(--kordyn-violet); }
 .kordynSystem .labLifecycleRail [data-lifecycle-stage="live-evidence"] > i,
 .kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="live-evidence"] > i { background: var(--kordyn-blue); }
-.kordynSystem .labLifecycleRail [data-lifecycle-stage="owner-release"] > i,
-.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"] > i { background: var(--kordyn-acid); }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="true"] > i,
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="true"] > i { background: var(--kordyn-acid); }
+.kordynSystem .labLifecycleRail [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="false"] > i,
+.kordynSystem .mLabLifecycleDetails [data-lifecycle-stage="owner-release"][data-lifecycle-applicable="false"] > i { background: var(--kordyn-paper); }

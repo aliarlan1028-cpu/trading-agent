@@ -58,11 +58,13 @@ const LAB_PROVENANCE = {
 const strategyProvenance = (item = {}) => item.recordType === "product" || item.recordType === "research"
   ? "system-native"
   : item.methodId || item.sourceMethodId ? "knowledge-derived" : "imported";
-const capabilityIdentity = (item = {}) => item.serverName || item.id || item.toolName || item.name || item.title;
-const capabilityProvenance = (item = {}, systemIds = new Set()) => item.knowledgeWorkflow
+const capabilityAliases = (item = {}) => [item.serverName, item.id, item.toolName, item.name, item.title]
+  .filter(Boolean)
+  .map((value) => String(value).trim().toLowerCase());
+const capabilityProvenance = (item = {}, systemAliases = new Set()) => item.knowledgeWorkflow
   ? "knowledge-derived"
   : item.category === "mcp" || item.kind === "MCP" ? "mcp-registered"
-    : item.native === true || item.connector || systemIds.has(capabilityIdentity(item)) ? "system-native"
+    : item.native === true || item.connector || capabilityAliases(item).some((alias) => systemAliases.has(alias)) ? "system-native"
       : item.packageName || item.kind ? "imported" : "registered";
 const provenanceText = (kind) => {
   const pair = LAB_PROVENANCE[kind] || LAB_PROVENANCE.registered;
@@ -73,6 +75,40 @@ function LabProvenanceBadge({ kind }) {
   return <span className={`labProvenance labProvenance--${kind}`} data-provenance={kind}><i/>{provenanceText(kind)}</span>;
 }
 
+const capabilityValidationEvidence = (item, provenance) => {
+  if (item.knowledgeWorkflow) return t("运行时批准与发布资格已核对", "Runtime approval and publication eligibility verified");
+  if (provenance === "system-native") return item.connector
+    ? t(`配置状态：${humanize(item.status, "—")}`, `Configuration state: ${humanize(item.status, "—")}`)
+    : t("系统目录来源；没有单独的能力验证记录", "System registry origin; no separate capability validation record");
+  if (provenance === "mcp-registered") return t(`连接状态：${humanize(item.status, "—")}`, `Connection state: ${humanize(item.status, "—")}`);
+  const recordedValidation = item.scanStatus || item.securityReview?.status || item.validation?.status;
+  return recordedValidation
+    ? t(`已记录安全验证：${humanize(recordedValidation)}`, `Recorded security validation: ${humanize(recordedValidation)}`)
+    : t("没有记录能力验证证据", "No capability validation evidence recorded");
+};
+
+const lifecycleCapabilityHealthLabel = (value) => ({
+  healthy: t("运行正常", "Healthy"),
+  degraded: t("需要检查", "Degraded"),
+  blocked: t("最近阻断", "Last blocked"),
+  untested: t("未有运行证据", "Untested"),
+  not_applicable: t("配置项", "Configuration")
+}[value] || humanize(value, t("未有运行证据", "Untested")));
+
+const ownerReleaseEvidence = (item, assetType, provenance) => {
+  const explicit = item.ownerRelease || item.release?.ownerRelease;
+  if (explicit) {
+    const value = typeof explicit === "string" ? humanize(explicit) : [explicit.versionId || explicit.version, humanize(explicit.status)].filter(Boolean).join(" · ");
+    if (value) return { applicable: true, value };
+  }
+  const knowledgeRelease = assetType === "strategy"
+    && provenance === "knowledge-derived"
+    && item.version != null
+    && /^(active|probation|degraded)$/.test(String(item.status || ""));
+  if (knowledgeRelease) return { applicable: true, value: `v${item.version} · ${skillStatusLabel(item.status)}` };
+  return { applicable: false, value: t("不适用 · 此资产没有 Owner 发布流程", "Not applicable · This asset has no Owner release workflow") };
+};
+
 function LabLifecycleEvidence({ item = {}, assetType, provenanceKind }) {
   const provenance = provenanceKind || (assetType === "strategy" ? strategyProvenance(item) : capabilityProvenance(item));
   const validationChecks = arr(item.evidence?.checks);
@@ -82,26 +118,22 @@ function LabLifecycleEvidence({ item = {}, assetType, provenanceKind }) {
       : item.validation ? localizeText(item.validation.methodology) || t("已保留历史 / 样本外验证记录", "Historical / OOS validation is recorded")
         : item.backtest ? t("已保留样本外研究证据", "OOS research evidence is recorded")
           : t("尚无正式验证证据", "No formal validation evidence yet")
-    : item.knowledgeWorkflow ? t("服务端已核对运行时批准与发布资格", "Runtime approval and publication eligibility are server-verified")
-      : provenance === "system-native" ? t("系统注册资产；准入不来自知识导入", "System-registered asset; admission does not come from knowledge import")
-        : t("按当前安装与扫描状态准入", "Admission follows current install and scan state");
+    : capabilityValidationEvidence(item, provenance);
   const liveCount = assetType === "strategy"
     ? item.liveTrades ?? item.metrics?.closedTrades ?? item.liveMetrics?.trades
     : item.callMetric === "not_applicable" ? null : item.calls ?? item.runs;
   const live = assetType === "strategy"
     ? liveCount == null ? t("尚无版本归因的实盘样本", "No version-attributed live samples") : t(`${liveCount} 笔版本归因实盘样本`, `${liveCount} version-attributed live samples`)
     : item.callMetric === "not_applicable" ? t("配置型连接不按工具调用计数", "Configuration connectors are not counted as tool calls")
-      : t(`${liveCount || 0} 次记录调用 · ${humanize(item.health, t("未有运行证据", "Untested"))}`, `${liveCount || 0} recorded calls · ${humanize(item.health, "Untested")}`);
-  const release = assetType === "strategy"
-    ? [item.versionId || (item.version != null ? `v${item.version}` : null), item.status ? (item.recordType === "product" ? productStateLabel(item.status) : skillStatusLabel(item.status)) : null].filter(Boolean).join(" · ") || t("尚未发布", "Not released")
-    : [item.version, humanize(item.status, t("状态未声明", "Status unavailable"))].filter(Boolean).join(" · ");
+      : t(`${liveCount || 0} 次记录调用 · ${lifecycleCapabilityHealthLabel(item.health)}`, `${liveCount || 0} recorded calls · ${lifecycleCapabilityHealthLabel(item.health)}`);
+  const release = ownerReleaseEvidence(item, assetType, provenance);
   return <section className="labLifecycleRail kEvidenceLedger" aria-label={t("资产生命周期证据", "Asset lifecycle evidence")}>
     <header><div><small>ASSET LIFECYCLE</small><b>{t("来源、验证、实盘与发布保持分离", "Provenance, validation, live evidence, and release stay distinct")}</b></div></header>
     <ol>
       <li data-lifecycle-stage="provenance"><i/><div><small>{t("来源身份", "PROVENANCE")}</small><b>{provenanceText(provenance)}</b></div></li>
       <li data-lifecycle-stage="validation"><i/><div><small>{t("验证证据", "VALIDATION EVIDENCE")}</small><b>{validation}</b></div></li>
       <li data-lifecycle-stage="live-evidence"><i/><div><small>{assetType === "strategy" ? t("实盘证据", "LIVE EVIDENCE") : t("运行证据", "RUNTIME EVIDENCE")}</small><b>{live}</b></div></li>
-      <li data-lifecycle-stage="owner-release"><i/><div><small>{t("Owner 发布状态", "OWNER RELEASE STATE")}</small><b>{release || t("尚未发布", "Not released")}</b></div></li>
+      <li data-lifecycle-stage="owner-release" data-lifecycle-applicable={release.applicable ? "true" : "false"}><i/><div><small>{t("Owner 发布状态", "OWNER RELEASE STATE")}</small><b>{release.value}</b></div></li>
     </ol>
   </section>;
 }
@@ -1046,7 +1078,7 @@ function InstallCapabilityDialog({ onClose, notify }) {
 export function CapabilitiesConcept({ data, action, ui }) {
   // Web 与 App 共用同一目录、去重键、调用统计和健康分类。
   const items = buildCapabilityCatalogRows(data, t);
-  const systemCapabilityIds = new Set([...arr(data.analysisEngine?.tools), ...arr(data.tools)].map(capabilityIdentity).filter(Boolean));
+  const systemCapabilityAliases = new Set([...arr(data.analysisEngine?.tools), ...arr(data.tools)].flatMap(capabilityAliases));
   const healthLabel=value=>({healthy:t("运行正常","Healthy"),degraded:t("需要检查","Degraded"),blocked:t("最近阻断","Last blocked"),untested:t("未有运行证据","Untested"),not_applicable:t("配置项","Configuration")}[value]||humanize(value));
   const healthTone=value=>value==="healthy"?"good":value==="degraded"?"bad":value==="blocked"?"warn":"neutral";
   // 状态词汇跨中英混用(技能=已启用/已拉取、连接器=configured/missing_credentials、MCP=connected/registered),
@@ -1070,11 +1102,11 @@ export function CapabilitiesConcept({ data, action, ui }) {
       </aside>
       <ConceptCard title={t("工具列表", "Tool List")} meta={`${shown.length}/${items.length} ${t("项", "")} · ${data.analysisEngine?.toolUsageStatsSince?`${t("统计自","since")} ${formatDateTime(data.analysisEngine.toolUsageStatsSince)}`:t("尚未标记统计起点","stats start unknown")}`} className="cp2CapabilityTable labRegistry kRegistry" action={<button className="cp2Link" onClick={()=>setInstalling(true)}><Plus size={12}/> {t("安装工具", "Install tool")}</button>}>
         <div className="cp2Search"><Search size={13}/><input className="cp2SearchInput" value={q} onChange={e=>setQ(e.target.value)} placeholder={t("搜索工具名称", "Search tool name")}/></div>
-        <div className="cp2ScrollList tall"><ConceptTable onRowClick={r=>setSelectedId(r.id)} activeId={selected.id} columns={[{key:"provenance",label:t("来源", "Provenance"),render:r=><LabProvenanceBadge kind={capabilityProvenance(r,systemCapabilityIds)}/>},{key:"name",label:t("工具名称", "Tool"),render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{localizeText(r.name)}</button>},{key:"kind",label:t("类型", "Type"),render:r=>humanize(r.kind)},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?t("已停用", "Disabled"):t("可用", "Available"))}</Pill>},{key:"health",label:t("运行健康", "Runtime health"),render:r=><Pill tone={healthTone(r.health)}>{healthLabel(r.health)}</Pill>},{key:"runs",label:t("记录调用", "Recorded calls"),render:r=>r.callMetric==="not_applicable"?"—":r.runs??r.runCount??0}]} rows={shown} empty={t("无匹配工具", "No matching tools")}/></div>
+        <div className="cp2ScrollList tall"><ConceptTable onRowClick={r=>setSelectedId(r.id)} activeId={selected.id} columns={[{key:"provenance",label:t("来源", "Provenance"),render:r=><LabProvenanceBadge kind={capabilityProvenance(r,systemCapabilityAliases)}/>},{key:"name",label:t("工具名称", "Tool"),render:r=><button className={`cp2Link ${r.id===selected.id?"on":""}`} onClick={()=>setSelectedId(r.id)}>{localizeText(r.name)}</button>},{key:"kind",label:t("类型", "Type"),render:r=>humanize(r.kind)},{key:"status",label:t("状态", "Status"),render:r=><Pill tone={toneOf(r.status)}>{humanize(r.status,r.enabled===false?t("已停用", "Disabled"):t("可用", "Available"))}</Pill>},{key:"health",label:t("运行健康", "Runtime health"),render:r=><Pill tone={healthTone(r.health)}>{healthLabel(r.health)}</Pill>},{key:"runs",label:t("记录调用", "Recorded calls"),render:r=>r.callMetric==="not_applicable"?"—":r.runs??r.runCount??0}]} rows={shown} empty={t("无匹配工具", "No matching tools")}/></div>
       </ConceptCard>
       <ConceptCard title={t("工具详情", "Tool Detail")} className="cp2CapabilityDetail labInspector kInspector">
         <div className="cp2CapabilityTitle"><span><Wrench size={18}/></span><div><b>{selected.name?localizeText(selected.name):t("选择工具", "Select a tool")}</b><small>{humanize(selected.kind)}</small></div><Pill tone={toneOf(selected.status)}>{humanize(selected.status,t("可用", "Available"))}</Pill></div>
-        {selected.id&&<><LabProvenanceBadge kind={capabilityProvenance(selected,systemCapabilityIds)}/><LabLifecycleEvidence item={selected} assetType="capability" provenanceKind={capabilityProvenance(selected,systemCapabilityIds)}/></>}
+        {selected.id&&<><LabProvenanceBadge kind={capabilityProvenance(selected,systemCapabilityAliases)}/><LabLifecycleEvidence item={selected} assetType="capability" provenanceKind={capabilityProvenance(selected,systemCapabilityAliases)}/></>}
         <div className={`cp2CapabilityGuidance ${["degraded","blocked"].includes(selected.health)||selected.disabled?"warn":""}`}><Info/><span><b>{["degraded","blocked"].includes(selected.health)||selected.disabled?t("当前处理建议","What to do"):t("当前说明","Current status")}</b><small>{selectedGuidance}</small></span></div>
         <div className="cp2DetailTabs">{["概览","输入输出","调用日志"].map(tab=><button key={tab} className={detailTab===tab?"active":""} onClick={()=>setDetailTab(tab)}>{t(tab, {"概览":"Overview","输入输出":"I/O","调用日志":"Call log"}[tab]||tab)}</button>)}</div>
         {detailTab==="概览"&&<><p>{selected.description||selected.summary?localizeText(selected.description||selected.summary):t("系统工具会在 Agent 工作流中按权限调用。", "System tools are called with permissions inside the agent workflow.")}</p><div className="cp2Kv column"><span>{t("版本", "Version")}<b>{selected.version||"—"}</b></span><span>{t("来源", "Source")}<b>{selected.source||selected.packageName||t("内置", "Built-in")}</b></span><span>{t("权限级别", "Permission")}<b>{humanize(selected.permission||selected.riskLevel,t("受控", "Controlled"))}</b></span><span>{t("最近运行", "Last run")}<b>{formatDateTime(selected.lastRunAt)}</b></span></div></>}
