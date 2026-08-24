@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { uiConfirm } from "./confirm.jsx";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
-import { CanonicalRegistryButton } from "./productShell.jsx";
+import { runShellRegistrySelection } from "./productShell.jsx";
 import {
   AlertTriangle,
   Activity,
@@ -37,11 +37,25 @@ import {
   Image as ImageIcon,
   X
 } from "lucide-react";
+
 import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 import { hasFiniteNumber } from "./viewData.js";
 import { buildPatrolView } from "./patrolView.js";
+
+export function selectAgentTradePlan({ plan, ui } = {}) {
+  if (!plan?.id) return null;
+  return runShellRegistrySelection({
+    candidate: { id: plan.id, type: "Trade plan" },
+    onSelectObject: (candidate) => ui?.selectObject?.(candidate),
+    onNavigate: (route, selected) => ui?.setActive?.(route, selected)
+  });
+}
+
+export function AgentTradePlanButton({ plan, ui, children }) {
+  return <button type="button" className="agPlanObject" data-shell-object-id={plan?.id} data-shell-object-type="Trade plan" onClick={() => selectAgentTradePlan({ plan, ui })}>{children}</button>;
+}
 
 // 模型按知识库提示会输出 [[n]] 引用编号(用于内部接地),对终端用户是噪音、且渲染成裸标记像 bug。
 // 统一剥掉编号并清理残留的多余空格与中文标点前空格,让"超出了 [[2]] 建议的 3x"读成"超出了建议的 3x"。
@@ -1168,7 +1182,7 @@ function AgentRail({ data, action, ui }) {
         <div className="agPlan">
           <div className="agPlanHead">
             <span className="agPlanBtc">₿</span>
-            {plan ? <CanonicalRegistryButton className="agPlanObject" candidate={{id:plan.id,type:"Trade plan"}} onSelectObject={(candidate)=>ui.setActive("signalHub",candidate)}><b className="mono">{plan.symbol}</b></CanonicalRegistryButton> : <b className="mono">{t("暂无交易计划", "No trade plan")}</b>}
+            {plan ? <AgentTradePlanButton plan={plan} ui={ui}><b className="mono">{plan.symbol}</b></AgentTradePlanButton> : <b className="mono">{t("暂无交易计划", "No trade plan")}</b>}
             {plans.length > 1 && (
               <span className="agPlanSwitch">
                 <button type="button" onClick={() => setPlanIdx((i) => (i - 1 + plans.length) % plans.length)} title={t("上一个持仓/计划", "Previous position/plan")}>‹</button>

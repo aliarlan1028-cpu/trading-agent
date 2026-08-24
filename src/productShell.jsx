@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, BookOpen, Bot, ChevronDown, ChevronUp, PieChart, Search, Settings, ShieldCheck, X } from "lucide-react";
 import { CONFIGURATION_WORKSPACE, ROUTE_DEFINITIONS, WORKSPACES } from "./productArchitecture.js";
 import { t } from "./i18n.js";
+import { buildCapabilityCatalogRows, buildStrategyCatalogRows } from "./viewData.js";
 
 const text = (value, fallback = "—") => value == null || value === "" ? fallback : String(value);
 
@@ -20,14 +21,19 @@ const searchCollections = Object.freeze([
   { key: "events", type: "Event", route: "eventsTasks:events", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.factId, title: (row) => row.title || row.shortTitle || row.message || row.id },
   { key: "watchTriggers", type: "Watch", route: "watch", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id, title: (row) => row.title || row.analysisTitle || row.displayThesis || row.thesis || row.symbol },
   { key: "tasks", type: "Task", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.name || row.type },
-  { key: "agentRuns", type: "Agent run", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "chat", id: (row) => row.id || row.runId, title: (row) => row.title || row.name || row.agentName || row.id },
+  { key: "agentRuns", type: "Agent run", route: "chat", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.runId, title: (row) => row.title || row.name || row.agentName || row.id },
   { key: "auditLogs", type: "Audit log", route: "auditSystem", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.action || row.resource || row.id },
   { key: "mandates", type: "Mandate", route: "riskMandate", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
   { key: "riskIncidents", type: "Risk incident", route: "riskCenter", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
   { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
-  { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "researchCenter", id: (row) => row.id, title: (row) => row.title || row.symbol || row.id },
-  { key: "skills", type: "Capability", route: "capabilityLib", workspaceId: "lab", sourceSection: "researchCenter", id: (row) => row.id || row.name, title: (row) => row.name || row.title || row.id }
+  { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.id }
 ]);
+
+export function shellStrategyCandidate(row = {}) {
+  if (row.recordType === "product") return { id: row.versionId, type: "Strategy product" };
+  if (row.recordType === "research") return { id: String(row.id || "").replace(/^native_/, ""), type: "Strategy" };
+  return { id: row.id, type: "Strategy" };
+}
 
 function sourceMetadata(data, source, workspaceId, sourceSection) {
   const raw = source?.raw || source || {};
@@ -82,15 +88,21 @@ export function buildShellSearchIndex(data = {}) {
       if (row) rows.push(row);
     }
   }
+  const strategyRows = buildStrategyCatalogRows(data, (_zh, en) => en || _zh).rows;
+  for (const item of strategyRows) {
+    const candidate = shellStrategyCandidate(item);
+    const row = searchRow(data, candidate.type, "strategyLib", candidate.id, item.name || item.title || candidate.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
+  for (const item of buildCapabilityCatalogRows(data, (_zh, en) => en || _zh)) {
+    const row = searchRow(data, "Capability", "capabilityLib", item.id || item.name, item.name || item.title || item.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
   const nestedCollections = [
-    { items: data.strategyCatalog?.products, type: "Strategy product", route: "strategyLib", id: (row) => row.versionId || row.id, title: (row) => row.definition?.name || row.name || row.id },
-    { items: data.strategyCatalog?.strategies, type: "Strategy", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
     { items: data.backtestResearch?.historical, type: "Validation run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
     { items: data.backtestResearch?.forward, type: "Paper run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
     { items: data.backtests, type: "Validation run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.strategy || row.id },
-    { items: data.paperReport?.sessions, type: "Paper run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id },
-    { items: data.knowledge?.tradingSkills, type: "Strategy", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
-    { items: asList(data.skills).filter((row) => String(row.kind || "").toLowerCase() === "strategy"), type: "Strategy", route: "strategyLib", id: (row) => row.id || row.name, title: (row) => row.name || row.title || row.id }
+    { items: data.paperReport?.sessions, type: "Paper run", route: "strategyLib", id: (row) => row.id, title: (row) => row.name || row.title || row.strategyName || row.id }
   ];
   for (const collection of nestedCollections) {
     for (const item of asList(collection.items)) {
@@ -168,7 +180,7 @@ function workspaceSelectionFailsClosed(data, workspaceId) {
 }
 
 export function resolveShellObjectSelection(data = {}, candidate = null, workspaceId = candidate?.workspaceId) {
-  if (!candidate?.id) return null;
+  if (!candidate?.id || candidate.type === "Feature") return null;
   const matches = buildShellSearchIndex(data).filter((row) => (
     row.id === String(candidate.id)
     && (!candidate.type || row.type === candidate.type)
@@ -180,10 +192,29 @@ export function resolveShellObjectSelection(data = {}, candidate = null, workspa
   return matches[0];
 }
 
+export function resolveShellFeatureNavigation(data = {}, candidate = null) {
+  if (!candidate?.id || candidate.type !== "Feature") return null;
+  const matches = buildShellSearchIndex(data).filter((row) => (
+    row.type === "Feature"
+    && row.id === String(candidate.id)
+    && (!candidate.route || row.route === candidate.route)
+    && (!candidate.workspaceId || row.workspaceId === candidate.workspaceId)
+    && (!candidate.sourceSection || row.sourceSection === candidate.sourceSection)
+  ));
+  return matches.length === 1 ? { ...matches[0], navigationOnly: true } : null;
+}
+
 export function runShellObjectSelection({ data = {}, candidate = null, workspaceId = candidate?.workspaceId, onSelect = () => {}, onNavigate = () => {}, navigate = true } = {}) {
+  if (candidate?.type === "Feature") {
+    const feature = resolveShellFeatureNavigation(data, candidate);
+    if (!feature) return null;
+    if (navigate) onNavigate(feature.route);
+    return feature;
+  }
   const selected = resolveShellObjectSelection(data, candidate, workspaceId);
+  if (!selected) return null;
   onSelect(selected);
-  if (selected && navigate) onNavigate(selected.route, selected);
+  if (navigate) onNavigate(selected.route, selected);
   return selected;
 }
 
@@ -191,17 +222,20 @@ export function runShellObjectSelection({ data = {}, candidate = null, workspace
 // single bridge also asks the authenticated shell to resolve the same identity
 // against its current, permission-scoped index. The shell callback owns the
 // fail-closed decision; page components never retain a second global truth.
-export function runShellRegistrySelection({ candidate = null, onLocalSelect = () => {}, onSelectObject = () => {} } = {}) {
+export function runShellRegistrySelection({ candidate = null, onLocalSelect = () => {}, onSelectObject = () => {}, onNavigate = null } = {}) {
   if (!candidate?.id || !candidate?.type) return null;
-  onLocalSelect(candidate);
-  return onSelectObject(candidate);
+  const selected = onSelectObject(candidate);
+  if (!selected || selected.id !== String(candidate.id) || selected.type !== candidate.type) return null;
+  onLocalSelect(selected);
+  if (onNavigate && selected.route) onNavigate(selected.route, selected);
+  return selected;
 }
 
-export function CanonicalRegistryButton({ candidate, onLocalSelect = () => {}, onSelectObject = () => {}, onClick, children, type = "button", ...props }) {
+export function CanonicalRegistryButton({ candidate, onLocalSelect = () => {}, onSelectObject = () => {}, onNavigate = null, onClick, children, type = "button", ...props }) {
   const select = (event) => {
     onClick?.(event);
     if (event?.defaultPrevented) return null;
-    return runShellRegistrySelection({ candidate, onLocalSelect, onSelectObject });
+    return runShellRegistrySelection({ candidate, onLocalSelect, onSelectObject, onNavigate });
   };
   return <button {...props} type={type} data-shell-object-id={candidate?.id} data-shell-object-type={candidate?.type} onClick={select}>{children}</button>;
 }
@@ -429,7 +463,7 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
       <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? `shell-result-${activeIndex}` : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={onKeyDown}/>
       {query && <button type="button" aria-label={t("清空搜索", "Clear search")} onClick={() => { setQuery(""); inputRef.current?.focus(); }}><X/></button>}
       {open && query && <div className="commandRail__results" id="shell-search-results" role="listbox">
-        {results.length ? results.map((row, indexValue) => <button id={`shell-result-${indexValue}`} type="button" role="option" aria-selected={activeIndex === indexValue} className={activeIndex === indexValue ? "active" : ""} key={`${row.type}:${row.id}`} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><b>{row.title}</b><code>{row.id}</code><span>{row.status}</span></button>) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
+        {results.length ? results.map((row, indexValue) => <button id={`shell-result-${indexValue}`} type="button" role="option" aria-selected={activeIndex === indexValue} className={activeIndex === indexValue ? "active" : ""} key={`${row.type}:${row.id}`} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
       </div>}
     </div>
     <div className="commandRail__facts" aria-label={t("全局运行事实", "Global runtime facts")}>
@@ -462,7 +496,8 @@ const CONTEXT_FIELDS = Object.freeze([
 
 export function ContextDock({ context = buildShellContext(), onNavigate = () => {}, collapsible = true, initiallyCollapsed = false }) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
-  return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" aria-label={t("上下文", "Context")}>
+  const objectIdentity = context.objectType && context.object && context.object !== unavailable ? `${context.objectType}:${context.object}` : "none";
+  return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" data-shell-context-object={objectIdentity} aria-label={t("上下文", "Context")}>
     <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.objectStatus || context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
     {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{key === "object" && context.objectType ? `${context.objectType} / ${text(context.object, unavailable)}` : text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
   </aside>;
@@ -493,7 +528,8 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selected?.id]);
 
-  return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" aria-label={t("当前工作区追踪", "Current workspace trace")}>
+  const objectIdentity = selectedIdentity?.objectType && selectedIdentity?.objectId ? `${selectedIdentity.objectType}:${selectedIdentity.objectId}` : "none";
+  return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" data-shell-trace-object={objectIdentity} aria-label={t("当前工作区追踪", "Current workspace trace")}>
     <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{selectedIdentity ? `${selectedIdentity.objectType} / ${selectedIdentity.objectId}` : t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
     <nav>{stages.map((stage, index) => <button type="button" key={stage.id} className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={(event) => { triggerRef.current = event.currentTarget; setExpanded(expanded === stage.id ? "" : stage.id); }}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span><em>{stage.detail}</em><code>{stage.evidence}</code></button>)}</nav>
     <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl>{selectedIdentity && <div><dt>OBJECT</dt><dd>{selectedIdentity.objectType} / {selectedIdentity.objectId}</dd></div>}<div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>

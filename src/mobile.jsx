@@ -53,7 +53,7 @@ import {
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
-import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellSearchIndex, buildShellTrace, filterShellSearchResults, resolveShellObjectSelection, runShellObjectSelection, runShellRegistrySelection, selectionForNavigation } from "./productShell.jsx";
+import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellSearchIndex, buildShellTrace, filterShellSearchResults, nextShellSearchInteraction, resolveShellObjectSelection, runShellObjectSelection, runShellRegistrySelection, selectionForNavigation, shellStrategyCandidate } from "./productShell.jsx";
 import { AgentSettingsConcept, UsersSettingsConcept, configurationSupplementState, retryConfigurationSupplement } from "./conceptPages.jsx";
 import {
   buildCapabilityCatalogRows,
@@ -70,6 +70,14 @@ import {
   netReviewResult,
   strategyBacktestCoverage
 } from "./viewData.js";
+
+export function selectMobileRegistryObject({ candidate, onLocalSelect = () => {}, ui } = {}) {
+  return runShellRegistrySelection({
+    candidate,
+    onLocalSelect,
+    onSelectObject: (value) => ui?.selectObject?.(value)
+  });
+}
 
 function killSwitchEvidence(result = {}) {
   const evidence = [];
@@ -370,7 +378,7 @@ export function MobileExecution({ data, action, ui, initialTab = "overview" }) {
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
       <div className="mReviewFilters">{[["all", t("全部", "All")], ["loss", t("只看亏损", "Losses")], ["pending", t("待处理", "Pending")]].map(([id, label]) => <button type="button" className={reviewFilter === id ? "active" : ""} key={id} onClick={() => setReviewFilter(id)}>{label}</button>)}</div>
-      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} data-shell-object-id={row.id} data-shell-object-type="Review" onClick={() => runShellRegistrySelection({candidate:{id:row.id,type:"Review"},onLocalSelect:()=>setSelectedReview({ review: row, trade }),onSelectObject:(candidate)=>ui?.selectObject?.(candidate)})}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
+      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} data-shell-object-id={row.id} data-shell-object-type="Review" onClick={() => selectMobileRegistryObject({candidate:{id:row.id,type:"Review"},onLocalSelect:()=>setSelectedReview({ review: row, trade }),ui})}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
     </>}
     {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => setSelectedReview(null)} />}
   </div>;
@@ -1154,7 +1162,7 @@ export function MobileTasks({ data, action, ui }) {
             </article>)}
             {!selectedEvents.length && <div className="mNativeEmpty compact"><CalendarClock size={20}/><b>{t("可以安心查看其他日期", "Choose another date")}</b><span>{t("没有精确事件就保持空白，不推测发生时间。", "The calendar stays empty when no exact event is verified.")}</span></div>}
           </section>
-          {upcoming.length > 0 && <section className="mSectionCard mUpcomingEvents"><header><span>{t("接下来", "Up next")}</span></header>{upcoming.map((event) => <button type="button" className="mRowItem" key={`up-${event.id || event.title}`} data-shell-object-id={event.id} data-shell-object-type="Event" onClick={() => runShellRegistrySelection({candidate:{id:event.id,type:"Event"},onLocalSelect:()=>{ const key = mobileEventDateKey(event); const [eventYear, eventMonth] = key.split("-").map(Number); setSelectedDate(key); setMonthAnchor(new Date(eventYear, eventMonth - 1, 1)); },onSelectObject:(candidate)=>ui?.selectObject?.(candidate)})}><span>{event.timePrecision === "date" ? t("日期待定时", "Date only") : formatDate(event.due || event.startAt)}</span><b>{localizeText(event.shortTitle || event.title)}</b><ChevronRight size={14}/></button>)}</section>}
+          {upcoming.length > 0 && <section className="mSectionCard mUpcomingEvents"><header><span>{t("接下来", "Up next")}</span></header>{upcoming.map((event) => <button type="button" className="mRowItem" key={`up-${event.id || event.title}`} data-shell-object-id={event.id} data-shell-object-type="Event" onClick={() => selectMobileRegistryObject({candidate:{id:event.id,type:"Event"},onLocalSelect:()=>{ const key = mobileEventDateKey(event); const [eventYear, eventMonth] = key.split("-").map(Number); setSelectedDate(key); setMonthAnchor(new Date(eventYear, eventMonth - 1, 1)); },ui})}><span>{event.timePrecision === "date" ? t("日期待定时", "Date only") : formatDate(event.due || event.startAt)}</span><b>{localizeText(event.shortTitle || event.title)}</b><ChevronRight size={14}/></button>)}</section>}
         </>
       )}
 
@@ -1375,6 +1383,8 @@ export function MobileMarket({ data, action, ui }) {
   const tvInterval = { "15m": "15", "1H": "60", "4H": "240", "1D": "D" }[tf] || "60";
   const circ = 2 * Math.PI * 24;
   const dash = `${((marginRate ?? 0) / 100) * circ} ${circ}`;
+  const chooseLoadedMarket = (symbol) => selectMobileRegistryObject({ candidate: { id: symbol, type: "Market" }, onLocalSelect: () => setSym(symbol), ui });
+  const chooseInstrument = (symbol) => markets.some((item) => item.symbol === symbol) ? chooseLoadedMarket(symbol) : setSym(symbol);
   return (
     <div className="mScreen">
       <div className="mMetric2x2 kTruthBand">
@@ -1399,7 +1409,7 @@ export function MobileMarket({ data, action, ui }) {
           <span>{t("资金费率", "Funding")}<b className="mono">{market.fundingRate == null ? "—" : `${Number(market.fundingRate) >= 0 ? "+" : ""}${Number(market.fundingRate).toFixed(4)}%`}</b></span>
         </div>
         <div className="mSymPills">
-          {markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}
+          {markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} data-shell-object-id={m.symbol} data-shell-object-type="Market" onClick={() => chooseLoadedMarket(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}
           <button className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> {t("全部币对", "All pairs")}</button>
         </div>
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
@@ -1433,7 +1443,7 @@ export function MobileMarket({ data, action, ui }) {
         </svg>
         <div className="mMarginInfo"><b>{t("保证金率", "Margin ratio")}</b><small>{marginRate != null ? `${t("已用保证金", "Used margin")} ${marginRate.toFixed(1)}%` : t("连接账户后显示", "Shown after connecting an account")}</small></div>
       </div>
-      {sheet && <MobilePairSheet instruments={instrumentState.instruments} loading={instrumentState.loading} error={instrumentState.error} stale={instrumentState.stale} asOf={instrumentState.asOf} onRetry={instrumentState.retry} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
+      {sheet && <MobilePairSheet instruments={instrumentState.instruments} loading={instrumentState.loading} error={instrumentState.error} stale={instrumentState.stale} asOf={instrumentState.asOf} onRetry={instrumentState.retry} current={market.symbol} onPick={chooseInstrument} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
     </div>
   );
 }
@@ -1658,6 +1668,7 @@ export function MobileCapabilities({ data, action, ui, initialCapabilityId = "" 
   const filterFn = filters.find(([id]) => id === filter)?.[2] || filters[0][2];
   const shown = items.filter((item) => filterFn(item) && (!query.trim() || String(localizeText(item.name)).toLowerCase().includes(query.trim().toLowerCase())));
   const selected = items.find((item) => item.id === openId) || null;
+  const chooseCapability = (item) => selectMobileRegistryObject({ candidate: { id: item.id, type: "Capability" }, onLocalSelect: () => setOpenId(item.id), ui });
   const typeLabel = (item) => item.category === "mcp" ? "MCP" : item.category === "workflow" ? t("工作流", "Workflow") : t("分析工具", "Analysis tool");
   const manageSelected = async () => {
     if (!selected) return;
@@ -1694,7 +1705,7 @@ export function MobileCapabilities({ data, action, ui, initialCapabilityId = "" 
     <div className="mCapabilitySearch"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜索能力", "Search capabilities")}/>{query && <button onClick={() => setQuery("")} aria-label={t("清空", "Clear")}>×</button>}</div>
     <div className="mCapabilityFilters">{filters.map(([id, label, fn]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id)}>{label}<b>{items.filter(fn).length}</b></button>)}</div>
     <section className="mCapabilityList mLabRegistry kRegistry">
-      {shown.map((item) => <button className="mCapabilityRow" key={item.id} onClick={() => setOpenId(item.id)}>
+      {shown.map((item) => <button className="mCapabilityRow" key={item.id} data-shell-object-id={item.id} data-shell-object-type="Capability" onClick={() => chooseCapability(item)}>
         <span className={`mCapabilityIcon ${item.category}`}><Wrench size={17}/></span>
         <span className="mCapabilityRowText"><MobileProvenance kind={mobileCapabilityProvenance(item,systemCapabilityAliases)}/><b>{localizeText(item.name)}</b><small>{typeLabel(item)} · {item.connector ? t("配置型连接", "Configuration connector") : `${t("记录调用", "Recorded")} ${item.calls ?? "—"}`}</small></span>
         <StatusBadge tone={capabilityHealthTone(item.health)}>{capabilityHealthLabel(item.health)}</StatusBadge><ChevronRight size={15}/>
@@ -1776,7 +1787,7 @@ function MobileResearchDetailSheet({ record, onClose }) {
   </div>;
 }
 
-export function MobileBacktestResearch({ data, action, initialDetailId = "" }) {
+export function MobileBacktestResearch({ data, action, ui, initialDetailId = "" }) {
   const research = data.backtestResearch || {};
   const historical = (research.historical || []).length ? research.historical : (data.backtests || []).map((row, index) => ({
     ...row,
@@ -1789,11 +1800,12 @@ export function MobileBacktestResearch({ data, action, initialDetailId = "" }) {
   const summary = research.summary || {};
   const [detailId, setDetailId] = useState(initialDetailId);
   const detail = historical.find((row) => row.id === detailId) || null;
+  const chooseValidation = (row) => selectMobileRegistryObject({ candidate: { id: row.id, type: "Validation run" }, onLocalSelect: () => setDetailId(row.id), ui });
   return <div className="mStrategyStack mResearchMobile">
     <div className="mResearchSummary"><span><small>{t("历史证据", "Historical evidence")}</small><b>{summary.totalHistoricalEvidence ?? historical.length}</b></span><span><small>{t("自动样本外", "Automated OOS")}</small><b>{summary.optimizerOos ?? historical.filter((row) => row.evidenceType === "optimizer_oos").length}</b></span><span><small>{t("工作室样本外", "Studio OOS")}</small><b>{summary.studioOos ?? historical.filter((row) => row.evidenceType === "studio_oos").length}</b></span></div>
     <div className="mResearchRunCard"><span><b>{t("用真实收盘 K 线做样本外验证", "Run OOS validation on real closed candles")}</b><small>{t("历史证据与纯前向模拟分开记录，不用模拟结果冒充回测。", "Historical evidence and forward simulation remain separate.")}</small></span><button onClick={() => action("/api/strategy/research", {}, "POST")}><Play size={14}/>{t("运行研究", "Run research")}</button></div>
     <section className="mCard mResearchListCard mLabResearchRegistry kRegistry"><div className="mCardHead"><b>{t("研究记录", "Research records")}</b><small>{historical.length}</small></div>
-      <div className="mResearchList">{historical.map((row) => <button key={row.id} onClick={() => setDetailId(row.id)}><div className="mResearchRecordHead"><span><small>{mobileResearchEvidenceLabel(row.evidenceType)}</small><b>{localizeText(row.name)}</b></span><StatusBadge tone={mobileResearchStatusTone(row)}>{mobileResearchStatusLabel(row.status)}</StatusBadge></div><p>{row.symbol || "—"} · {row.timeframe || "—"} · {row.direction ? (row.direction === "short" ? t("做空", "Short") : t("做多", "Long")) : t("方向不限", "Any side")}</p><div><span>{t("交易", "Trades")}<b>{row.trades ?? "—"}</b></span><span>{t("期望", "Expectancy")}<b>{row.expectancyR == null ? "—" : `${row.expectancyR}R`}</b></span><span>PF<b>{row.profitFactor ?? "—"}</b></span><span>{t("回撤", "Drawdown")}<b>{row.maxDrawdownPct == null ? "—" : `${row.maxDrawdownPct}%`}</b></span></div><ChevronRight size={16}/></button>)}
+      <div className="mResearchList">{historical.map((row) => <button key={row.id} data-shell-object-id={row.id} data-shell-object-type="Validation run" onClick={() => chooseValidation(row)}><div className="mResearchRecordHead"><span><small>{mobileResearchEvidenceLabel(row.evidenceType)}</small><b>{localizeText(row.name)}</b></span><StatusBadge tone={mobileResearchStatusTone(row)}>{mobileResearchStatusLabel(row.status)}</StatusBadge></div><p>{row.symbol || "—"} · {row.timeframe || "—"} · {row.direction ? (row.direction === "short" ? t("做空", "Short") : t("做多", "Long")) : t("方向不限", "Any side")}</p><div><span>{t("交易", "Trades")}<b>{row.trades ?? "—"}</b></span><span>{t("期望", "Expectancy")}<b>{row.expectancyR == null ? "—" : `${row.expectancyR}R`}</b></span><span>PF<b>{row.profitFactor ?? "—"}</b></span><span>{t("回撤", "Drawdown")}<b>{row.maxDrawdownPct == null ? "—" : `${row.maxDrawdownPct}%`}</b></span></div><ChevronRight size={16}/></button>)}
         {!historical.length && <div className="mNativeEmpty"><BarChart3 size={24}/><b>{t("尚无历史研究证据", "No historical research evidence yet")}</b><span>{t("运行研究后，真实 OKX 收盘 K 线的样本外结果会显示在这里。", "Run research to populate OOS results from real OKX closed candles.")}</span></div>}
       </div>
     </section>
@@ -1803,7 +1815,7 @@ export function MobileBacktestResearch({ data, action, initialDetailId = "" }) {
 }
 
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
-export function MobileStrategy({ data, action, initialTab = "catalog", initialCatalogId = "" }) {
+export function MobileStrategy({ data, action, ui, initialTab = "catalog", initialCatalogId = "" }) {
   const studio = data.strategyStudio || {};
   const strategyCatalog = buildStrategyCatalogRows(data, t);
   const { products } = strategyCatalog;
@@ -1811,6 +1823,10 @@ export function MobileStrategy({ data, action, initialTab = "catalog", initialCa
   const [tab, setTab] = useState(initialTab);
   const [catalogId, setCatalogId] = useState(initialCatalogId);
   const selectedCatalog = strategies.find((row) => row.id === catalogId) || null;
+  const chooseCatalogStrategy = (row) => {
+    const candidate = shellStrategyCandidate(row);
+    return selectMobileRegistryObject({ candidate, onLocalSelect: () => setCatalogId(row.id), ui });
+  };
   const [prompt, setPrompt] = useState("");
   const drafts = studio.drafts || [];
   const [selectedId, setSelectedId] = useState(drafts[0]?.id || "");
@@ -1828,13 +1844,13 @@ export function MobileStrategy({ data, action, initialTab = "catalog", initialCa
   return (
     <div className="mScreen">
       <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => setTab("studio")}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>{t("市场", "Market")}</button><button className={tab === "research" ? "active" : ""} onClick={() => setTab("research")}>{t("回测研究", "Backtest")}</button></div>
-      {tab === "catalog" && <><div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><section className="mCard mLabRegistry kRegistry">{strategies.length ? strategies.map((s) => <button type="button" className="mIncRow mLabRegistryRow" key={s.id} onClick={() => setCatalogId(s.id)}><div className="mIncL"><MobileProvenance kind={mobileStrategyProvenance(s)}/><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge><ChevronRight size={15}/></button>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</section>{selectedCatalog&&<div className="mLabRegistrySheetOverlay" onClick={() => setCatalogId("")}><aside className="mLabRegistrySheet kInspector" role="dialog" aria-modal="true" aria-labelledby="strategy-sheet-title" onClick={(event) => event.stopPropagation()}><button type="button" className="mSheetGrip" onClick={() => setCatalogId("")} aria-label={t("关闭", "Close")}><i/></button><header><div><small>{t("策略对象", "STRATEGY OBJECT")}</small><b id="strategy-sheet-title">{localizeText(selectedCatalog.name)}</b><span>{[selectedCatalog.version&&`v${selectedCatalog.version}`,selectedCatalog.direction,selectedCatalog.timeframe].filter(Boolean).join(" · ")||"—"}</span></div><StatusBadge tone={statusTone(selectedCatalog.status)}>{statusLabel(selectedCatalog.status)}</StatusBadge></header><MobileProvenance kind={mobileStrategyProvenance(selectedCatalog)}/><MobileLabLifecycle item={selectedCatalog} assetType="strategy"/><div className="mStrategyFacts mLabInspectorFacts"><span>{t("类型", "Type")}<b>{originLabel(selectedCatalog.origin)}</b></span><span>{t("模型家族", "Model family")}<b>{humanize(selectedCatalog.template,"—")}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(selectedCatalog.direction,"—")} · {selectedCatalog.timeframe||"—"}</b></span><span>{t("盈亏因子", "Profit factor")}<b>{selectedCatalog.profitFactor??selectedCatalog.backtest?.profitFactor??"—"}</b></span><span>{t("版本指纹", "Version fingerprint")}<b className="mono">{selectedCatalog.contentHash?.slice(0,16)||selectedCatalog.fingerprint?.slice(0,16)||"—"}</b></span></div></aside></div>}</>}
+      {tab === "catalog" && <><div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><section className="mCard mLabRegistry kRegistry">{strategies.length ? strategies.map((s) => { const candidate = shellStrategyCandidate(s); return <button type="button" className="mIncRow mLabRegistryRow" key={s.id} data-shell-object-id={candidate.id} data-shell-object-type={candidate.type} onClick={() => chooseCatalogStrategy(s)}><div className="mIncL"><MobileProvenance kind={mobileStrategyProvenance(s)}/><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge><ChevronRight size={15}/></button>; }) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</section>{selectedCatalog&&<div className="mLabRegistrySheetOverlay" onClick={() => setCatalogId("")}><aside className="mLabRegistrySheet kInspector" role="dialog" aria-modal="true" aria-labelledby="strategy-sheet-title" onClick={(event) => event.stopPropagation()}><button type="button" className="mSheetGrip" onClick={() => setCatalogId("")} aria-label={t("关闭", "Close")}><i/></button><header><div><small>{t("策略对象", "STRATEGY OBJECT")}</small><b id="strategy-sheet-title">{localizeText(selectedCatalog.name)}</b><span>{[selectedCatalog.version&&`v${selectedCatalog.version}`,selectedCatalog.direction,selectedCatalog.timeframe].filter(Boolean).join(" · ")||"—"}</span></div><StatusBadge tone={statusTone(selectedCatalog.status)}>{statusLabel(selectedCatalog.status)}</StatusBadge></header><MobileProvenance kind={mobileStrategyProvenance(selectedCatalog)}/><MobileLabLifecycle item={selectedCatalog} assetType="strategy"/><div className="mStrategyFacts mLabInspectorFacts"><span>{t("类型", "Type")}<b>{originLabel(selectedCatalog.origin)}</b></span><span>{t("模型家族", "Model family")}<b>{humanize(selectedCatalog.template,"—")}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(selectedCatalog.direction,"—")} · {selectedCatalog.timeframe||"—"}</b></span><span>{t("盈亏因子", "Profit factor")}<b>{selectedCatalog.profitFactor??selectedCatalog.backtest?.profitFactor??"—"}</b></span><span>{t("版本指纹", "Version fingerprint")}<b className="mono">{selectedCatalog.contentHash?.slice(0,16)||selectedCatalog.fingerprint?.slice(0,16)||"—"}</b></span></div></aside></div>}</>}
         {tab === "studio" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("自然语言创建策略", "Create from natural language")}</b><p className="mStrategyHelp">{t("只编译到确定性白名单规则；创建草稿不会下单。", "Compiles only to deterministic allowlisted rules. Drafts never place orders.")}</p><textarea className="mStrategyPrompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("例：ADA/USDT 1小时，RSI 14 从30下方站回时做多，止损2%，止盈2.5R", "Example: Long ADA/USDT on 1h when RSI(14) crosses back above 30; 2% stop, 2.5R target")}/><button className="mStrategyPrimary" disabled={prompt.trim().length < 12} onClick={createDraft}><Sparkles size={14}/>{t("生成、测试并自动回测", "Generate, test, and backtest")}</button></div>
         {drafts.length ? <div className="mCard"><b className="mSectionTitle">{t("策略草稿", "Strategy drafts")}</b><div className="mStrategyDrafts">{drafts.slice(0,20).map((row) => <button key={row.id} className={row.id === selected.id ? "active" : ""} onClick={() => setSelectedId(row.id)}><span><b>{localizeText(row.blueprint?.name)}</b><small>{row.authoring?.channel === "agent_chat" ? t("AI 对话创建", "Created in AI chat") : t("工作室创建", "Created in Studio")} · {row.blueprint?.symbols?.join("/")} · {row.blueprint?.timeframe} · {humanize(row.blueprint?.direction)}</small></span><StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge></button>)}</div></div> : null}
         {selected.id && <><div className="mCard"><b className="mSectionTitle">{t("系统理解的规则", "Compiled rules")}</b><div className="mStrategyFacts"><span>{t("信号", "Signal")}<b>{t(selected.blueprint?.templateName || "—", selected.blueprint?.templateNameEn || selected.blueprint?.templateName || "—")}</b></span><span>{t("止损 / 止盈", "Stop / target")}<b>{selected.blueprint?.exitPolicy?.stopLossPct}% · {selected.blueprint?.exitPolicy?.takeProfitR}R</b></span><span>{t("参数", "Parameters")}<b className="mono">{JSON.stringify(selected.blueprint?.params || {})}</b></span><span>{t("编译来源", "Compiler provenance")}<b>{humanize(selected.compilationReport?.compiler || selected.compiler, "—")} · {humanize(selected.compilationReport?.status, "—")}</b></span><span>{t("成本证据", "Cost evidence")}<b className="mono">{selected.blueprint?.costAssumption?.contentHash?.slice(0,12) || "—"}</b></span></div>{(selected.compilationReport?.warnings || []).length ? <p className="mStrategyHelp">{t("编译提示", "Compiler warnings")}：{selected.compilationReport.warnings.map((value) => humanize(value)).join(" · ")}</p> : null}</div><div className="mCard"><b className="mSectionTitle">{t("自动测试", "Generated tests")} · {selected.generatedTests?.passed || 0}/{selected.generatedTests?.total || 0}</b>{(selected.generatedTests?.tests || []).map((test) => <div className="mStrategyTest" key={test.id}>{test.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{t(test.name, test.nameEn || test.name)}</b><small>{t(test.detail, test.detailEn || test.detail)}</small></span></div>)}</div><div className="mCard"><b className="mSectionTitle">{t("样本外证据", "Out-of-sample evidence")}</b>{coverage.rows.map((row) => <div className="mStrategyTest" key={row.symbol}>{row.passed ? <CheckCircle2 size={14}/> : <Info size={14}/>}<span><b>{row.symbol}</b><small>{humanize(row.status)}</small></span></div>)}{latestBt ? <div className="mStrategyFacts"><span>{t("交易 / 期望", "Trades / expectancy")}<b>{latestBt.oos?.trades || 0} · {latestBt.oos?.expectancyR ?? "—"}R</b></span><span>PF / {t("回撤", "drawdown")}<b>{latestBt.oos?.profitFactor ?? "—"} · {latestBt.oos?.maxDrawdownPct ?? "—"}%</b></span><span>{t("正向分段", "Positive folds")}<b>{latestBt.positiveFolds}/{latestBt.activeFolds}</b></span></div> : <p className="mStrategyHelp">{t("尚未运行 OKX 历史样本外回测。", "OKX historical OOS backtest has not run.")}</p>}<div className="mStrategyActions"><button disabled={selected.generatedTests?.status !== "passed"} onClick={async () => { for (const symbol of selected.blueprint?.symbols || []) await action(`/api/strategy/studio/drafts/${selected.id}/backtest`, { symbol }, "POST"); }}>{t("逐交易对运行回测", "Run every symbol")}</button><button disabled={!coverage.complete || Boolean(selected.publishVersionId)} onClick={() => action(`/api/strategy/studio/drafts/${selected.id}/publish`, {}, "POST")}>{selected.publishVersionId ? t("已发布", "Published") : t("发布到市场", "Publish")}</button></div></div></>}
       </div>}
       {tab === "market" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("内部策略市场", "Internal strategy market")}</b><p className="mStrategyHelp">{t("不依赖对外 MCP。启用只会加入 AI 可选集，仍须通过全部实时风控。", "Independent of external MCP. Enabling only adds a strategy to the AI eligible set; all live risk checks remain mandatory.")}</p></div>{listings.map((row) => { const def = row.definition || {}; const oos = row.validation?.oos; return <div className="mCard" key={row.id}><div className="mStrategyMarketHead"><b>{t(row.title || def.name, row.titleEn || row.title || def.name)}</b><StatusBadge tone={row.evidenceLevel === "live_validated" ? "ok" : "warning"}>{row.evidenceLevel === "oos_passed" ? t("样本外通过", "OOS passed") : row.evidenceLevel === "live_validated" ? t("实盘证据达标", "Live-validated") : t("实盘观察", "Live observation")}</StatusBadge></div><p className="mStrategyHelp">{t(row.summary || def.description, row.summaryEn || row.summary || def.description)}</p><div className="mStrategyFacts"><span>{t("版本", "Version")}<b className="mono">{row.strategyVersionId}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(def.direction)} · {(def.timeframes || []).join("/") || def.timeframe || "—"}</b></span><span>{t("证据", "Evidence")}<b>{row.source === "official" ? `${row.metrics?.closedTrades || 0} ${t("笔实盘", "live closes")}` : `${oos?.trades || 0} ${t("笔样本外", "OOS trades")} · ${oos?.expectancyR ?? "—"}R`}</b></span></div>{row.source === "official" ? <button className="mStrategyDisabled" disabled>{row.enabled ? t("系统当前可用", "Available") : t("已暂停", "Paused")}</button> : <button className="mStrategyPrimary" onClick={() => action(`/api/strategy/market/${encodeURIComponent(row.strategyVersionId)}/${row.enabled ? "disable" : "enable"}`, {}, "POST")}>{row.enabled ? t("从 AI 可选集移除", "Remove from AI set") : t("加入 AI 可选集", "Add to AI set")}</button>}</div>; })}</div>}
-      {tab === "research" && <MobileBacktestResearch data={data} action={action}/>}
+      {tab === "research" && <MobileBacktestResearch data={data} action={action} ui={ui}/>}
     </div>
   );
 }
@@ -1938,6 +1954,8 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
 export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject = null, onSelect = () => {}, onNavigate = () => {}, initiallyOpen = "" }) {
   const [sheet, setSheet] = useState(initiallyOpen);
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const objectInputRef = useRef(null);
   const context = buildShellContext({ data, workspaceId, selectedObject });
   const trace = buildShellTrace(data, workspaceId, selectedObject);
   const objectIndex = useMemo(() => buildShellSearchIndex(data), [data]);
@@ -1946,10 +1964,24 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
   const selectObject = (candidate) => {
     const selected = runShellObjectSelection({ data, candidate, workspaceId: candidate.workspaceId, onSelect, onNavigate });
     if (selected) close();
+    return selected;
+  };
+  const openObjects = () => {
+    const currentIndex = objectResults.findIndex((row) => row.type === selectedObject?.type && row.id === selectedObject?.id);
+    setActiveIndex(currentIndex >= 0 ? currentIndex : 0);
+    setSheet("objects");
+  };
+  const onObjectKeyDown = (event) => {
+    if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
+    event.preventDefault();
+    const next = nextShellSearchInteraction({ key: event.key, activeIndex, count: objectResults.length });
+    setActiveIndex(next.activeIndex);
+    if (event.key === "Escape") return close();
+    if (next.selectIndex >= 0) selectObject(objectResults[next.selectIndex]);
   };
   return <>
     <nav className="mShellTools" data-shell-role="mobile-context-trace" aria-label={t("全局上下文与追踪", "Global context and trace")}>
-      <button type="button" className="mShellToolButton" onClick={() => setSheet("objects")}><small>OBJ</small><b>Objects</b><span>{selectedObject?.id || t("切换", "Switch")}</span></button>
+      <button type="button" className="mShellToolButton" onClick={openObjects}><small>OBJ</small><b>Objects</b><span>{selectedObject?.id || t("切换", "Switch")}</span></button>
       <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>Context</b><span>{context.status}</span></button>
       <button type="button" className="mShellToolButton" onClick={() => setSheet("trace")}><small>TRC</small><b>Trace</b><span>{trace.find((stage) => stage.status === "blocked")?.status || trace.find((stage) => stage.status === "waiting")?.status || "unavailable"}</span></button>
     </nav>
@@ -1957,8 +1989,8 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
       <section className={`mShellSheet ${sheet === "objects" ? "mObjectSwitcher" : ""}`} data-shell-role={sheet === "objects" ? "mobile-object-switcher" : undefined} role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"} onClick={(event) => event.stopPropagation()}>
         <header><span><small>GLOBAL SHELL</small><b>{sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"}</b></span><button type="button" aria-label={t("关闭", "Close")} onClick={close}><X/></button></header>
         <div className="mShellSheet__body">{sheet === "objects" ? <div className="mObjectSwitcher__body">
-          <label className="mObjectSwitcher__search"><Search/><input role="searchbox" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜索市场、事件、策略或运行", "Search markets, events, strategies, or runs")}/>{query && <button type="button" onClick={() => setQuery("")} aria-label={t("清空", "Clear")}><X/></button>}</label>
-          <div className="mObjectSwitcher__results" role="listbox">{objectResults.length ? objectResults.map((row) => <button type="button" role="option" aria-current={selectedObject?.type === row.type && selectedObject?.id === row.id ? "true" : undefined} aria-selected={selectedObject?.type === row.type && selectedObject?.id === row.id} className="mObjectSwitcher__result" key={`${row.type}:${row.id}`} data-shell-object-id={row.id} data-shell-object-type={row.type} onClick={() => selectObject(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象。", "No loaded object matches.")}</p>}</div>
+          <label className="mObjectSwitcher__search"><Search/><input ref={objectInputRef} role="combobox" aria-expanded="true" aria-controls="mobile-shell-object-results" aria-activedescendant={objectResults[activeIndex] ? `mobile-shell-object-result-${activeIndex}` : undefined} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={onObjectKeyDown} placeholder={t("搜索市场、事件、策略或运行", "Search markets, events, strategies, or runs")}/>{query && <button type="button" onClick={() => { setQuery(""); setActiveIndex(0); objectInputRef.current?.focus(); }} aria-label={t("清空", "Clear")}><X/></button>}</label>
+          <div className="mObjectSwitcher__results" id="mobile-shell-object-results" role="listbox">{objectResults.length ? objectResults.map((row, index) => <button id={`mobile-shell-object-result-${index}`} type="button" role="option" aria-current={selectedObject?.type === row.type && selectedObject?.id === row.id ? "true" : undefined} aria-selected={activeIndex === index} className={`mObjectSwitcher__result ${activeIndex === index ? "active" : ""}`} key={`${row.type}:${row.id}`} data-shell-object-id={row.type === "Feature" ? undefined : row.id} data-shell-object-type={row.type === "Feature" ? undefined : row.type} data-shell-navigation-route={row.type === "Feature" ? row.route : undefined} onPointerEnter={() => setActiveIndex(index)} onClick={() => selectObject(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象。", "No loaded object matches.")}</p>}</div>
         </div> : sheet === "context" ? <ContextDock context={context} onNavigate={(route) => { onNavigate(route); close(); }} collapsible={false}/> : <TraceRail stages={trace}/>}</div>
       </section>
     </div>}
@@ -2057,8 +2089,8 @@ export function MobileApp({ api, lang, switchLang }) {
   }
 
   function selectObject(candidate) {
-    const selected = resolveShellObjectSelection(data || {}, candidate, activeProductWorkspace);
-    setSelectedShellObject(selected);
+    const selected = resolveShellObjectSelection(data || {}, candidate);
+    if (selected) setSelectedShellObject(selected);
     return selected;
   }
   const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
@@ -2100,7 +2132,7 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "capabilityLib") {
     content = <MobileCapabilities data={data} action={action} ui={ui} />;
   } else if (route === "strategyLib") {
-    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} initialTab={subPage === "studio" ? "studio" : "catalog"} /></div>;
+    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} ui={ui} initialTab={subPage === "studio" ? "studio" : "catalog"} /></div>;
   } else if (route === "auditSystem") {
     content = <MobileOperations data={data} action={action} ui={ui} initialView={subPage||"overview"}/>;
   } else if (route === "systemSettings") {
@@ -2130,7 +2162,7 @@ export function MobileApp({ api, lang, switchLang }) {
     : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
 
   return (
-    <div className="mShell2 kordynSystem" data-shell-selected-object={selectedShellObject ? `${selectedShellObject.type}:${selectedShellObject.id}` : "none"}>
+    <div className="mShell2 kordynSystem" data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
       <MobileHeader route={activeProductWorkspace === "lab" && route === "executionReview" ? "labMap" : route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>

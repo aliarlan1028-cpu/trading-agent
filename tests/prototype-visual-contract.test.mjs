@@ -173,9 +173,9 @@ test("object switcher indexes loaded production objects and has deterministic ke
     ["paper-8", "Paper run", "strategyLib", "lab", "researchCenter"],
     ["backtest-10", "Validation run", "strategyLib", "lab", "researchCenter"],
     ["paper-11", "Paper run", "strategyLib", "lab", "researchCenter"],
-    ["agent-run-12", "Agent run", "operationsCenter:tasks", "operations", "chat"],
+    ["agent-run-12", "Agent run", "chat", "ai", "chat"],
     ["audit-13", "Audit log", "auditSystem", "operations", "operationsCenter"],
-    ["review-15", "Review", "labReviews", "lab", "researchCenter"],
+    ["review-15", "Review", "labReviews", "lab", "cockpit"],
     ["mandate-main", "Mandate", "riskMandate", "control", "riskCenter"],
     ["incident-14", "Risk incident", "riskCenter", "control", "riskCenter"],
     ["task-9", "Task", "operationsCenter:tasks", "operations", "operationsCenter"],
@@ -226,13 +226,95 @@ test("canonical selection resolves current indexed truth, routes once, and fails
   assert.equal(Shell.resolveShellObjectSelection(ambiguous, { id: "shared" }, "live"), null, "an untyped ID collision fails closed");
   assert.equal(Shell.resolveShellObjectSelection(ambiguous, { id: "shared", type: "Position" }, "live")?.type, "Position");
   assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, operationsCenter: "failed" } }, { id: "task-9", type: "Task" }, "operations"), null);
-  assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, chat: "loaded", operationsCenter: "failed" } }, { id: "agent-run-12", type: "Agent run" }, "operations"), null, "a healthy object source cannot bypass a failed destination workspace");
+  assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, chat: "loaded", operationsCenter: "failed" } }, { id: "agent-run-12", type: "Agent run" }, "ai")?.route, "chat", "an agent run resolves to the AI surface that actually consumes agentRuns");
+  assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, cockpit: "failed", researchCenter: "loaded" } }, { id: "review-15", type: "Review" }, "lab"), null, "a review cannot bypass its failed cockpit source just because Lab is loaded");
+  assert.equal(Shell.resolveShellObjectSelection({ ...fixture, resourceState: { ...fixture.resourceState, cockpit: "loaded", researchCenter: "failed" } }, { id: "review-15", type: "Review" }, "lab"), null, "a review cannot enter a failed Lab destination just because its cockpit source is loaded");
   assert.equal(Shell.resolveShellObjectSelection({ ...fixture, tasks: [] }, selected, "operations"), null, "a removed object cannot survive a data refresh");
 });
 
-test("page Registry interaction uses one canonical controller and projects typed identity into Context and Trace", () => {
+test("Registry bridge commits local and global state only after canonical resolution succeeds", () => {
+  const current = Shell.resolveShellObjectSelection(fixture, { id: "task-9", type: "Task" }, "operations");
+  let local = current;
+  let global = current;
+  const staleData = { ...fixture, resourceState: { ...fixture.resourceState, operationsCenter: "stale" } };
+  const rejected = Shell.runShellRegistrySelection({
+    candidate: { id: "task-9", type: "Task" },
+    onLocalSelect: (row) => { local = row; },
+    onSelectObject: (candidate) => {
+      const selected = Shell.resolveShellObjectSelection(staleData, candidate, "operations");
+      if (selected) global = selected;
+      return selected;
+    }
+  });
+  assert.equal(rejected, null);
+  assert.equal(local, current, "the local Inspector must not move to stale truth");
+  assert.equal(global, current, "the shared Context/Trace identity must remain unchanged");
+
+  for (const [label, candidate, rejectedData] of [
+    ["failed", { id: "task-9", type: "Task" }, { ...fixture, resourceState: { ...fixture.resourceState, operationsCenter: "failed" } }],
+    ["forbidden", { id: "task-9", type: "Task" }, { ...fixture, tasks: [{ ...fixture.tasks[0], permission: "forbidden" }] }],
+    ["type mismatch", { id: "task-9", type: "Audit log" }, fixture],
+    ["removed", { id: "task-9", type: "Task" }, { ...fixture, tasks: [] }]
+  ]) {
+    const result = Shell.runShellRegistrySelection({
+      candidate,
+      onLocalSelect: (row) => { local = row; },
+      onSelectObject: (value) => {
+        const resolved = Shell.resolveShellObjectSelection(rejectedData, value, "operations");
+        if (resolved) global = resolved;
+        return resolved;
+      }
+    });
+    assert.equal(result, null, `${label} selection fails closed`);
+    assert.equal(local, current, `${label} truth leaves the local Inspector unchanged`);
+    assert.equal(global, current, `${label} truth leaves Context/Trace unchanged`);
+  }
+
+  const accepted = Shell.runShellRegistrySelection({
+    candidate: { id: "audit-13", type: "Audit log" },
+    onLocalSelect: (row) => { local = row; },
+    onSelectObject: (candidate) => {
+      const selected = Shell.resolveShellObjectSelection(fixture, candidate, "operations");
+      if (selected) global = selected;
+      return selected;
+    }
+  });
+  assert.equal(accepted?.id, "audit-13");
+  assert.equal(local?.id, "audit-13");
+  assert.equal(global?.id, "audit-13");
+});
+
+test("Feature results are validated route navigation even while their destination is not loaded", () => {
+  const data = { ...fixture, resourceState: { ...fixture.resourceState, researchCenter: "not_loaded" } };
+  const feature = Shell.buildShellSearchIndex(data).find((row) => row.type === "Feature" && row.id === "knowledgeBase");
+  assert.ok(feature);
+  let selected = "unchanged";
+  let navigated = "";
+  const result = Shell.runShellObjectSelection({
+    data,
+    candidate: feature,
+    onSelect: () => { selected = "changed"; },
+    onNavigate: (route) => { navigated = route; }
+  });
+  assert.equal(result?.navigationOnly, true);
+  assert.equal(navigated, "knowledgeBase");
+  assert.equal(selected, "unchanged", "a route result must not masquerade as a selected production object");
+
+  navigated = "";
+  const forged = Shell.runShellObjectSelection({
+    data,
+    candidate: { id: "systemSettings:security", route: "systemSettings:security", type: "Feature", workspaceId: "lab" },
+    onNavigate: (route) => { navigated = route; }
+  });
+  assert.equal(forged, null, "an unindexed or workspace-mismatched Feature route fails closed");
+  assert.equal(navigated, "");
+});
+
+test("real workspace click entries update local Inspector plus shared Context and Trace identity", () => {
   assert.equal(typeof Shell.runShellRegistrySelection, "function");
   assert.equal(typeof Shell.CanonicalRegistryButton, "function");
+  assert.equal(typeof Concepts.selectConceptRegistryObject, "function");
+  assert.equal(typeof Mobile.selectMobileRegistryObject, "function");
   const representatives = [
     ["ai", { id: "event-5", type: "Event" }],
     ["live", { id: "position-2", type: "Position" }],
@@ -247,14 +329,21 @@ test("page Registry interaction uses one canonical controller and projects typed
     };
     let local = null;
     let selected = null;
-    const registryButton = Shell.CanonicalRegistryButton({
+    const ui = {
+      selectObject: (row) => {
+        const resolved = Shell.resolveShellObjectSelection(scoped, row, workspaceId);
+        if (resolved) selected = resolved;
+        return resolved;
+      }
+    };
+    const registryEntry = Shell.CanonicalRegistryButton({
       candidate,
       onLocalSelect: (row) => { local = row; },
-      onSelectObject: (row) => Shell.runShellObjectSelection({ data: scoped, candidate: row, workspaceId, navigate: false, onSelect: (value) => { selected = value; } }),
+      onSelectObject: (row) => ui.selectObject(row),
       children: candidate.id
     });
-    registryButton.props.onClick({ defaultPrevented: false });
-    assert.equal(local, candidate, `${workspaceId} local inspector selection is preserved`);
+    registryEntry.props.onClick({ defaultPrevented: false });
+    assert.equal(local?.id, candidate.id, `${workspaceId} real component entry updates its local inspector`);
     assert.equal(selected?.id, candidate.id, `${workspaceId} selection resolves against current indexed truth`);
     const context = Shell.buildShellContext({ data: scoped, workspaceId, selectedObject: selected });
     assert.equal(context.object, candidate.id);
@@ -276,6 +365,48 @@ test("page Registry interaction uses one canonical controller and projects typed
   for (const [id, type] of [["event-5", "Event"], ["position-2", "Position"], ["breakout@4", "Strategy product"], ["mandate-main", "Mandate"], ["task-9", "Task"]]) {
     assert.match(componentMarkup, new RegExp(`data-shell-object-id="${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*data-shell-object-type="${type}"`), `${type} must expose the canonical click target in its real workspace component`);
   }
+});
+
+test("AI AgentRail trade-plan click resolves Live identity before cross-workspace navigation", () => {
+  assert.equal(typeof Chat.selectAgentTradePlan, "function");
+  assert.equal(typeof Chat.AgentTradePlanButton, "function");
+  const scoped = {
+    ...fixture,
+    traces: [{ workspaceId: "live", objectId: "plan-17", objectType: "Trade plan", stage: "plan", status: "completed", evidenceId: "trace-plan-click" }]
+  };
+  let selected = null;
+  let route = "";
+  const ui = {
+    selectObject: (candidate) => {
+      const resolved = Shell.resolveShellObjectSelection(scoped, candidate);
+      if (resolved) selected = resolved;
+      return resolved;
+    },
+    setActive: (next, canonical) => { route = next; selected = canonical; }
+  };
+  const entry = Chat.AgentTradePlanButton({ plan: scoped.tradePlans[0], ui, children: "ETH/USDT" });
+  const result = entry.props.onClick();
+  assert.equal(result?.id, "plan-17");
+  assert.equal(route, "signalHub");
+  assert.equal(selected?.workspaceId, "live");
+  assert.equal(Shell.buildShellContext({ data: scoped, workspaceId: "live", selectedObject: selected }).object, "plan-17");
+  assert.equal(Shell.buildShellTrace(scoped, "live", selected).find((stage) => stage.id === "plan")?.evidence, "trace-plan-click");
+});
+
+test("shell roots, Context Dock and Trace Rail expose the same read-only canonical identity", () => {
+  const selected = Shell.resolveShellObjectSelection(fixture, { id: "task-9", type: "Task" }, "operations");
+  const context = Shell.buildShellContext({ data: fixture, workspaceId: "operations", selectedObject: selected });
+  const stages = Shell.buildShellTrace(fixture, "operations", selected);
+  const contextMarkup = renderToString(React.createElement(Shell.ContextDock, { context }));
+  const traceMarkup = renderToString(React.createElement(Shell.TraceRail, { stages }));
+  assert.match(contextMarkup, /data-shell-context-object="Task:task-9"/);
+  assert.match(traceMarkup, /data-shell-trace-object="Task:task-9"/);
+  const mainSource = fs.readFileSync(path.join(rootDir, "src/main.jsx"), "utf8");
+  const mobileSource = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
+  assert.match(mainSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
+  assert.match(mainSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
 });
 
 test("Position Registry and shell resolver share canonical identity when backend rows omit id", () => {
@@ -343,6 +474,10 @@ test("desktop Object Switcher overlay matches the immutable prototype geometry a
   assert.equal(overlay["max-height"], "520px");
   assert.equal(overlay["border-top"], "0");
   assert.equal(overlay["box-shadow"], "8px 8px 0 var(--kordyn-ink)");
+  const resultRow = finalDeclarations(".commandRail__results > button");
+  assert.equal(resultRow["grid-template-columns"], "92px minmax(0, 1fr) auto");
+  assert.equal(resultRow.gap, "12px");
+  assert.equal(resultRow.padding, "12px 14px");
   for (const selector of [
     ".commandRail__results > button.active",
     ".commandRail__results > button:hover",
@@ -534,18 +669,61 @@ test("touch shell exposes persistent Context and Trace bounded sheets", () => {
     initiallyOpen: "objects"
   }));
   assert.match(switcher, /data-shell-role="mobile-object-switcher"/);
-  assert.match(switcher, /role="searchbox"/);
+  assert.match(switcher, /role="combobox"/);
+  assert.match(switcher, /aria-controls="mobile-shell-object-results"/);
+  assert.match(switcher, /aria-activedescendant="mobile-shell-object-result-0"/);
   assert.match(switcher, /data-shell-object-id="task-9"/);
   assert.match(switcher, /aria-current="true"/);
+  assert.match(switcher, /id="mobile-shell-object-result-0"/);
   assert.match(styles, /\.mShellToolButton[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.mShellSheet[^}]*width:\s*100%[^}]*border-radius:\s*0/s);
   const objectResult = finalDeclarations(".mObjectSwitcher__result");
   assert.equal(objectResult["min-height"], "44px");
   assert.equal(objectResult["border-radius"], "0");
   assert.equal(objectResult["border-bottom"], "1px solid var(--kordyn-line)");
+  const mobileActive = finalDeclarations(".mObjectSwitcher__result.active");
+  assert.equal(mobileActive.background, "var(--kordyn-acid)");
+  assert.equal(mobileActive.color, "var(--kordyn-ink)");
   const mobile = renderToString(React.createElement(Mobile.MobileApp, { api: { data: fixture, action: () => {}, notify: () => {}, refresh: () => {}, ensureSection: () => {} } }));
   assert.match(mobile, /data-shell-selected-object="none"/);
   assert.match(mobile, />05<[^]*?>更多<|>05<[^]*?>More</);
+});
+
+test("APP Inspector click entries resolve Market, Capability, Strategy and Validation through shared shell truth", () => {
+  const cases = [
+    [{ id: "BTC/USDT", type: "Market" }, "live"],
+    [{ id: "capability-18", type: "Capability" }, "lab"],
+    [{ id: "breakout@4", type: "Strategy product" }, "lab"],
+    [{ id: "mean-reversion", type: "Strategy" }, "lab"],
+    [{ id: "validation-6", type: "Validation run" }, "lab"]
+  ];
+  for (const [candidate, workspaceId] of cases) {
+    let local = null;
+    let selected = null;
+    const ui = {
+      selectObject: (value) => {
+        const resolved = Shell.resolveShellObjectSelection(fixture, value, workspaceId);
+        if (resolved) selected = resolved;
+        return resolved;
+      }
+    };
+    Mobile.selectMobileRegistryObject({ candidate, onLocalSelect: (row) => { local = row; }, ui });
+    assert.equal(local?.id, candidate.id);
+    assert.equal(selected?.id, candidate.id);
+    assert.equal(Shell.buildShellContext({ data: fixture, workspaceId, selectedObject: selected }).object, candidate.id);
+    assert.ok(Shell.buildShellTrace(fixture, workspaceId, selected).every((stage) => stage.objectId === candidate.id));
+  }
+
+  const ui = { selectObject: () => null, setActive: () => {}, openPanel: () => {}, notify: () => {} };
+  const html = [
+    React.createElement(Mobile.MobileMarket, { data: fixture, action: () => {}, ui }),
+    React.createElement(Mobile.MobileCapabilities, { data: fixture, action: () => {}, ui }),
+    React.createElement(Mobile.MobileStrategy, { data: fixture, action: () => {}, ui, initialTab: "catalog" }),
+    React.createElement(Mobile.MobileBacktestResearch, { data: fixture, action: () => {}, ui })
+  ].map(renderToString).join("\n");
+  for (const [candidate] of cases) {
+    assert.match(html, new RegExp(`data-shell-object-id="${candidate.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*data-shell-object-type="${candidate.type}"`));
+  }
 });
 
 test("mobile fixed rows preserve safe areas and every shell target remains at least 44px", () => {

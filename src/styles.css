@@ -10541,17 +10541,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__search > button { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--kordyn-ink); }
 .commandRail__search > button svg { width: 14px; }
 .commandRail__results { position: fixed; z-index: 120; top: var(--kordyn-command-rail); left: var(--kordyn-workspace-rail); width: min(620px, calc(100vw - var(--kordyn-workspace-rail) - 24px)); max-height: 520px; overflow: auto; border: 1px solid var(--kordyn-ink); border-top: 0; background: var(--kordyn-paper); box-shadow: 8px 8px 0 var(--kordyn-ink); }
-.commandRail__results > button { display: grid; grid-template-columns: 82px minmax(120px, 1fr) minmax(100px, .75fr) 80px; align-items: center; width: 100%; min-height: 48px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); background: transparent; color: var(--kordyn-ink); text-align: left; }
+.commandRail__results > button { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--kordyn-line); background: transparent; color: var(--kordyn-ink); text-align: left; }
 .commandRail__results > button:last-child { border-bottom: 0; }
 .commandRail__results > button.active,
 .commandRail__results > button:hover,
 .commandRail__results > button:focus-visible { background: var(--kordyn-acid); color: var(--kordyn-ink); }
 .commandRail__results small,
 .commandRail__results code,
-.commandRail__results span { font: 700 9px/1.25 var(--kordyn-mono); }
+.commandRail__results em { font: 700 9px/1.25 var(--kordyn-mono); font-style: normal; }
 .commandRail__results small { color: var(--kordyn-mint); text-transform: uppercase; }
-.commandRail__results b { font-size: 11px; }
-.commandRail__results span { text-align: right; text-transform: uppercase; }
+.commandRail__results > button > span { display: grid; gap: 2px; min-width: 0; }
+.commandRail__results b { display: block; overflow: hidden; font: 700 12px var(--kordyn-display); text-overflow: ellipsis; white-space: nowrap; }
+.commandRail__results code { overflow: hidden; color: var(--kordyn-muted); text-overflow: ellipsis; white-space: nowrap; }
+.commandRail__results em { text-align: right; text-transform: uppercase; }
 .commandRail__results > p { min-height: 56px; padding: 18px; color: var(--kordyn-muted); font-size: 11px; }
 .commandRail__facts { display: grid; grid-template-columns: repeat(5, minmax(50px, 1fr)); flex: 0 0 286px; min-width: 0; }
 .commandRail__facts > span { display: grid; align-content: center; gap: 2px; min-width: 0; padding: 0 8px; border-right: 1px solid var(--kordyn-line); }
@@ -10750,6 +10752,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mObjectSwitcher__search button { display: grid; flex: none; place-items: center; width: 44px; min-height: 44px; border: 1px solid var(--kordyn-ink); border-radius: 0; background: var(--kordyn-paper); color: var(--kordyn-ink); }
 .mObjectSwitcher__results { overflow: auto; }
 .mObjectSwitcher__result { display: grid; grid-template-columns: 76px minmax(0,1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--kordyn-line); border-radius: 0; background: transparent; color: var(--kordyn-ink); text-align: left; }
+.mObjectSwitcher__result.active,
 .mObjectSwitcher__result:is(:hover,:focus-visible),
 .mObjectSwitcher__result[aria-current="true"] { background: var(--kordyn-acid); color: var(--kordyn-ink); }
 .mObjectSwitcher__result > small,

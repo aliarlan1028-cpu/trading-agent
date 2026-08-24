@@ -18,7 +18,7 @@ import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { buildOperationsView } from "./operationsView.js";
 import { buildCapabilityCatalogRows, buildEventRows, buildExecutionView, buildMarketRows, buildPositionView, buildStrategyCatalogRows, isApprovedKnowledgeWorkflow, isCompletedTradeReview, isPublishedImportedSkill, isPublishedKnowledgeStrategy, netReviewResult, positionNotionalUsdt, strategyBacktestCoverage } from "./viewData.js";
-import { CanonicalRegistryButton, ProductWorkspaceFrame, canonicalPositionIdentity, runShellRegistrySelection } from "./productShell.jsx";
+import { CanonicalRegistryButton, ProductWorkspaceFrame, canonicalPositionIdentity, runShellRegistrySelection, shellStrategyCandidate } from "./productShell.jsx";
 
 // 技能/策略生命周期状态 → 中文短标签 + Pill 颜色(cp2Pill 用 good/warn/bad/neutral)。
 // 修:此前策略详情用 humanize 直接吐英文原值(historical_rejected → "historical rejected")又长又跨行,
@@ -44,6 +44,15 @@ import "./conceptSettings.css";
 const arr = (value) => Array.isArray(value) ? value : [];
 const num = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const money = (value, fallback = "—") => value == null ? fallback : displayMoney(value, 2, fallback);
+
+export function selectConceptRegistryObject({ candidate, onLocalSelect = () => {}, ui, onNavigate = null } = {}) {
+  return runShellRegistrySelection({
+    candidate,
+    onLocalSelect,
+    onSelectObject: (value) => ui?.selectObject?.(value),
+    onNavigate
+  });
+}
 const toneOf = (value = "") => /失败|异常|熔断|拒绝|critical|error|block/i.test(String(value))
   ? "bad"
   : /等待|警告|待|warning|pause|pending/i.test(String(value)) ? "warn" : "good";
@@ -354,7 +363,7 @@ export function IntelligenceConcept({ data, action, ui }) {
   const activeSymbols = arr(active.intel?.affectedSymbols).length ? arr(active.intel.affectedSymbols) : arr(active.relatedSymbols).length ? arr(active.relatedSymbols) : (active.symbol ? [active.symbol] : []);
   const relatedPlans = arr(data.tradePlans).filter((p) => activeSymbols.some((s) => String(p.symbol || "").toUpperCase().includes(String(s).replace(/[/-].*/, "").toUpperCase())));
   const chooseIntelligence=(item,index)=>item.shellObject
-    ? runShellRegistrySelection({candidate:item.shellObject,onLocalSelect:()=>setSelected(index),onSelectObject:(candidate)=>ui.selectObject?.(candidate)})
+    ? selectConceptRegistryObject({candidate:item.shellObject,onLocalSelect:()=>setSelected(index),ui})
     : setSelected(index);
   return <div className="cp2IntelLayout">
     <aside className="cp2SideFilter">
@@ -549,7 +558,7 @@ export function MarketConcept({ data, action, ui }) {
   const wlSymbols = watchlist.length ? watchlist : markets.map((m) => m.symbol);
   const wlRows = wlSymbols.map((sym) => { const m = markets.find((x) => x.symbol === sym) || allMarkets.find((x) => x.symbol === sym) || {}; return { id: sym, symbol: sym, price: m.price ?? m.last, change: m.changePct ?? m.change24hPct }; });
   const addWatch = (sym) => { if (sym) action("/api/watchlist", { symbol: sym }); };
-  const chooseMarket = (nextSymbol) => runShellRegistrySelection({ candidate:{id:nextSymbol,type:"Market"}, onLocalSelect:()=>setSymbol(nextSymbol), onSelectObject:(candidate)=>ui?.selectObject?.(candidate) });
+  const chooseMarket = (nextSymbol) => selectConceptRegistryObject({ candidate:{id:nextSymbol,type:"Market"}, onLocalSelect:()=>setSymbol(nextSymbol), ui });
   return <div className="cp2MarketLayout marketIntelligenceWorkbench">
     <ConceptCard className="cp2MainChart" title={selected.symbol || symbol} meta={`${tf} · ${t("公开行情", "Public data")}`} action={<div className="cp2FormActions kActionBar"><button className="cp2Secondary" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}>{t("手动对账", "Reconcile")}</button><button className="cp2IconButton" onClick={() => action("/api/market/regime", {}, "GET")}><RefreshCw size={13}/></button></div>}>
       <div className="cp2ChartToolbar"><PairPicker instruments={instruments} value={symbol} onPick={chooseMarket}/>{["1m","5m","15m","1h","4h","1D"].map((name) => <button className={name === tf ? "active" : ""} onClick={() => setTf(name)} key={name}>{name}</button>)}</div>
@@ -731,7 +740,7 @@ export function ExecutionLedgerConcept({ data, action, ui }) {
   const historySymbols=[...new Set([...orders,...fills].map(item=>item.symbol).filter(Boolean))].sort();
   const inFlight=countOpenExecutions(orders);
   const totalFees=fills.reduce((sum,row)=>sum+num(row.feeUsdt??row.fee),0);
-  const chooseExecution=(row)=>runShellRegistrySelection({candidate:{id:row.id,type:"Execution"},onLocalSelect:()=>setSelectedId(row.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const chooseExecution=(row)=>selectConceptRegistryObject({candidate:{id:row.id,type:"Execution"},onLocalSelect:()=>setSelectedId(row.id),ui});
   const feeOf=(row)=>row.feeUsdt??row.fee;
   const dirPill=(dir)=>{const short=/short|空|卖|sell/i.test(String(dir));return <Pill tone={short?"bad":"good"}>{short?t("空","Short"):t("多","Long")}</Pill>;};
   const ORDER_STATUS={closed:[t("已平仓","Closed"),"good"],filled:[t("已成交","Filled"),"good"],protecting:[t("持仓中","Active"),"good"],entry_filled:[t("已入场","Entered"),"good"],cancelled:[t("已取消","Cancelled"),"neutral"],canceled:[t("已取消","Cancelled"),"neutral"],blocked:[t("风控拦截","Blocked"),"bad"],risk_rejected:[t("风控拒绝","Rejected"),"bad"],failed:[t("执行失败","Failed"),"bad"],slippage_rejected:[t("滑点拒绝","Slippage"),"warn"],pending:[t("待执行","Pending"),"warn"],awaiting_approval:[t("待批准","Awaiting"),"warn"],executing:[t("执行中","Executing"),"warn"]};
@@ -1120,7 +1129,7 @@ export function CapabilitiesConcept({ data, action, ui }) {
   const typeFn=(TYPES.find(t=>t[0]===typeF)||TYPES[0])[1]; const statusFn=(STATUSES.find(s=>s[0]===statusF)||STATUSES[0])[1];
   const shown=items.filter(i=>typeFn(i)&&statusFn(i)&&(!q||String(i.name).toLowerCase().includes(q.toLowerCase())));
   const [selectedId,setSelectedId]=useState(items[0]?.id||""); const selected=shown.find(i=>i.id===selectedId)||items.find(i=>i.id===selectedId)||shown[0]||items[0]||{};
-  const chooseCapability=(row)=>runShellRegistrySelection({candidate:{id:row.id,type:"Capability"},onLocalSelect:()=>setSelectedId(row.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const chooseCapability=(row)=>selectConceptRegistryObject({candidate:{id:row.id,type:"Capability"},onLocalSelect:()=>setSelectedId(row.id),ui});
   const selectedGuidance=selected.kind==="MCP"?t("连接与凭证统一在“系统设置”处理；能力库只展示它能否被 Agent 调用。","Manage connection and credentials in System Settings; Capabilities shows whether the agent can call it."):/^tool_/.test(String(selected.id||""))?t("这是交易所/数据连接器；去“系统设置 · OKX 配置”修复连接或凭证。","This is an exchange/data connector. Repair connection or credentials under Settings · OKX."):selected.disabled?t("当前已停用；确认权限和用途后，可在详情底部重新启用。","It is disabled. Review its permissions and purpose, then re-enable it below."):["degraded","blocked"].includes(selected.health)?t("先在“调用日志”查看最近失败或阻断，再按详情底部入口处理；系统不会只给出“待修复”而没有去向。","Open Call log for the last error or block, then use the action below. The page never leaves “needs repair” without a destination."):t("当前没有需要处理的能力故障；调用量与运行健康分别统计。","No capability fault needs attention. Call volume and runtime health are tracked separately.");
   return <div className="cp2Stack">
     <div className="cp2Metrics four"><ConceptMetric label={t("全部工具", "All tools")} value={String(items.length)}/><ConceptMetric label={t("已启用", "Enabled")} value={String(items.filter(isEnabled).length)} tone="good"/><ConceptMetric label={t("候选中", "Candidate")} value={String(items.filter(isCandidate).length)} tone="warn"/><ConceptMetric label={t("已停用", "Disabled")} value={String(items.filter(isDisabled).length)} tone="bad"/></div>
@@ -1175,10 +1184,8 @@ function StrategyCatalogConcept({ data, action, ui }) {
   const sFn=(STATUSES.find(x=>x[0]===statusF)||STATUSES[0])[1]; const oFn=(ORIGINS.find(x=>x[0]===originF)||ORIGINS[0])[1];
   const shown=strategies.filter(s=>sFn(s)&&oFn(s)&&(!q||String(s.name).toLowerCase().includes(q.toLowerCase())));
   const [selId,setSelId]=useState(strategies[0]?.id||""); const sel=shown.find(s=>s.id===selId)||strategies.find(s=>s.id===selId)||shown[0]||strategies[0]||{};
-  const strategyCandidate=(row)=>row.recordType==="product"
-    ? {id:row.versionId,type:"Strategy product"}
-    : {id:row.recordType==="research"?String(row.id).replace(/^native_/,""):row.id,type:"Strategy"};
-  const chooseStrategy=(row)=>runShellRegistrySelection({candidate:strategyCandidate(row),onLocalSelect:()=>setSelId(row.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const strategyCandidate=shellStrategyCandidate;
+  const chooseStrategy=(row)=>selectConceptRegistryObject({candidate:strategyCandidate(row),onLocalSelect:()=>setSelId(row.id),ui});
   const runSelected=()=>{
     if(sel.recordType==="research") return action("/api/strategy/research",{},"POST");
     if(sel.status==="paper_validating") return action("/api/paper/run",{},"POST");
@@ -1313,7 +1320,7 @@ export function StrategyConcept({ data, action, ui }) {
   const drawdown=arr(active?.drawdownCurve).map(item=>typeof item==="object"?(item.value??item.drawdown):item);
   const folds=arr(active?.folds).map((fold,index)=>({id:`fold-${index}`,name:`${t("分段","Fold")} ${index+1}`,trades:fold.trades,expectancyR:fold.expectancyR,profitFactor:fold.profitFactor,maxDrawdownPct:fold.maxDrawdownPct}));
   const statusTone=active?.passed===false||/failed|no_qualified/.test(String(active?.status))?"bad":/running|ok/.test(String(active?.status))?"warn":"good";
-  const chooseValidation=(id)=>{const row=historical.find(item=>item.id===id);if(!row)return;runShellRegistrySelection({candidate:{id:row.id,type:"Validation run"},onLocalSelect:()=>setSelectedId(row.id),onSelectObject:(candidate)=>ui?.selectObject?.(candidate)});};
+  const chooseValidation=(id)=>{const row=historical.find(item=>item.id===id);if(!row)return;selectConceptRegistryObject({candidate:{id:row.id,type:"Validation run"},onLocalSelect:()=>setSelectedId(row.id),ui});};
   return <div className="cp2Stack">
     <div className="cp2ResearchSummary">
       <div><small>{t("历史证据","Historical evidence")}</small><b>{summary.totalHistoricalEvidence??historical.length}</b></div>
@@ -1580,7 +1587,7 @@ export function EventsConcept({ data, action, ui }) {
   const [schedOpen,setSchedOpen]=useState(false);
   const events=buildEventRows(data,t);
   const brief=data.dailyMarketBrief||null; const [selectedId,setSelectedId]=useState(events[0]?.id||""); const selected=events.find(e=>e.id===selectedId)||events[0]||{};
-  const chooseEvent=(event)=>runShellRegistrySelection({candidate:{id:event.id,type:"Event"},onLocalSelect:()=>setSelectedId(event.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const chooseEvent=(event)=>selectConceptRegistryObject({candidate:{id:event.id,type:"Event"},onLocalSelect:()=>setSelectedId(event.id),ui});
   // 真实月视图:按事件真实日期落格,支持上/下月切换(monthOffset:0=本月,-1上月,+1下月)
   const [monthOffset,setMonthOffset]=useState(0); const [calView,setCalView]=useState("month");
   const _now=new Date(); const _anchor=new Date(_now.getFullYear(),_now.getMonth()+monthOffset,1);
@@ -1688,7 +1695,7 @@ export function OperationsTasksConcept({ data, action, ui }) {
   const selected=ops.tasks.items.find((item)=>item.id===selectedId)||shown[0]||ops.tasks.items[0]||{};
   const chainOrder=["market_signal_refresh","okx_readonly_sync","agent_cycle","execution_poll","position_monitor","accounting_refresh","reconcile","trade_reflection"];
   const chain=ops.tasks.items.filter((item)=>chainOrder.includes(item.handler||item.type)).sort((a,b)=>chainOrder.indexOf(a.handler||a.type)-chainOrder.indexOf(b.handler||b.type));
-  const chooseTask=(task)=>runShellRegistrySelection({candidate:{id:task.id,type:"Task"},onLocalSelect:()=>setSelectedId(task.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const chooseTask=(task)=>selectConceptRegistryObject({candidate:{id:task.id,type:"Task"},onLocalSelect:()=>setSelectedId(task.id),ui});
   const toggle=async(task)=>{const resume=task.enabled===false;const ok=await uiConfirm(resume?t(`恢复任务“${localizeText(task.name)}”？`,`Resume “${localizeText(task.name)}”?`):t(`暂停任务“${localizeText(task.name)}”？暂停原因会写入审计。`,`Pause “${localizeText(task.name)}”? The reason is written to audit.`));if(ok)action(`/api/tasks/${task.id}/${resume?"resume":"pause"}`,resume?{}:{reason:"manual_ui"});};
   return <div className="opxPage opxTasks">
     <section className="opxTaskSummary"><div><h2>{ops.tasks.failedRuns?t("调度需要处理","Scheduler needs attention"):t("调度运行正常","Scheduler is healthy")}</h2><p>{t("系统托管表示定义受版本保护；最近一次真实运行结果单独显示。", "System-managed means the definition is version-protected; the latest actual run is shown separately.")}</p></div><div><span><small>{t("成功率","Success")}</small><b>{ops.tasks.successPct==null?"—":`${ops.tasks.successPct.toFixed(1)}%`}</b></span><span><small>{t("失败","Failed")}</small><b>{ops.tasks.failedRuns}</b></span><span><small>{t("重试","Retrying")}</small><b>{ops.tasks.retryingRuns}</b></span><button type="button" onClick={()=>ui.openPanel("taskManager")}><Plus/>{t("新建用户任务","New user task")}</button></div></section>
@@ -1714,7 +1721,7 @@ export function OperationsRecoveryConcept({ data, action, ui }) {
 export function OperationsAuditConcept({ data, ui }) {
   const ops=buildOperationsView(data); const [q,setQ]=useState(""); const records=ops.audit.records.filter((row)=>!q||[row.id,row.actor,row.userName,row.role,row.action,row.resource,row.target].some((value)=>String(value||"").toLowerCase().includes(q.toLowerCase()))); const [selectedId,setSelectedId]=useState(records[0]?.id||""); const selected=records.find((row)=>row.id===selectedId)||records[0]||{};
   const related=ops.audit.records.filter((row)=>row.id!==selected.id&&(row.resource||row.target)&&(row.resource||row.target)===(selected.resource||selected.target)).slice(0,5);
-  const chooseRecord=(row)=>runShellRegistrySelection({candidate:{id:row.id,type:"Audit log"},onLocalSelect:()=>setSelectedId(row.id),onSelectObject:(candidate)=>ui.selectObject?.(candidate)});
+  const chooseRecord=(row)=>selectConceptRegistryObject({candidate:{id:row.id,type:"Audit log"},onLocalSelect:()=>setSelectedId(row.id),ui});
   return <div className="opxPage opxAudit"><section className="opxAuditProof"><div className={ops.audit.chain}><ShieldCheck/><span><small>{t("审计链","Audit chain")}</small><b>{opsStatusLabel(ops.audit.chain)}</b><em>{ops.audit.chain==="verified"?t("本地哈希链校验通过","Local hash-chain verification passed"):t("保留原始数据库证据并停止依赖未校验记录","Preserve original database evidence and do not rely on unverified records")}</em></span></div><div className={ops.audit.worm}><Database/><span><small>WORM</small><b>{opsStatusLabel(ops.audit.worm)}</b><em>{ops.audit.worm==="configured"?t("外部不可变存储已配置","External immutable storage configured"):t("本地哈希校验不等于不可变存储","Local hash verification is not immutable storage")}</em></span></div><div className="opxAuditExport"><button type="button" onClick={()=>ui.download?.("/api/audit-logs/export?format=json","kordyn-audit.json")}>{t("导出 JSON","Export JSON")}</button><button type="button" onClick={()=>ui.download?.("/api/audit-logs/export?format=csv","kordyn-audit.csv")}>{t("导出 CSV","Export CSV")}</button></div></section>
     <section className="opxAuditWorkbench"><div className="opxAuditRegistry"><header><div className="cp2Search"><Search/><input value={q} onChange={(event)=>setQ(event.target.value)} placeholder={t("搜索操作者、动作、资源或记录 ID","Search actor, action, resource, or record ID")}/></div><span>{records.length}/{ops.audit.records.length}</span></header>{records.map((row)=><button type="button" className={row.id===selected.id?"active":""} key={row.id} data-shell-object-id={row.id} data-shell-object-type="Audit log" onClick={()=>chooseRecord(row)}><time>{formatDateTime(row.createdAt)}</time><span><b>{localizeText(row.action)}</b><small>{localizeText(row.actor||row.userName||row.role||t("系统","System"))} · {row.resource||row.target||"—"}</small></span><Pill tone={toneOf(row.status||row.severity)}>{humanize(row.status||row.severity,t("已记录","Recorded"))}</Pill></button>)}{!records.length&&<div className="cp2Empty"><Search/><b>{t("没有匹配记录","No matching records")}</b></div>}</div><aside className="opxAuditInspector"><header><small>{t("事件详情","Event detail")}</small><h3>{localizeText(selected.action)||t("选择一条审计记录","Select an audit record")}</h3><Pill tone={toneOf(selected.status||selected.severity)}>{humanize(selected.status||selected.severity,t("已记录","Recorded"))}</Pill></header><div className="opxFactRows"><span><small>ID</small><b>{selected.id||"—"}</b></span><span><small>{t("时间","Time")}</small><b>{formatDateTime(selected.createdAt)}</b></span><span><small>{t("操作者","Actor")}</small><b>{localizeText(selected.actor||selected.userName||selected.role||t("系统","System"))}</b></span><span><small>{t("资源","Resource")}</small><b>{selected.resource||selected.target||"—"}</b></span><span><small>{t("哈希","Hash")}</small><b>{selected.hash||"—"}</b></span></div><div className="opxRawContext"><b>{t("请求上下文","Request context")}</b><pre>{JSON.stringify(selected.context||selected.payload||{},null,2)}</pre></div><div className="opxRelated"><b>{t("同一资源的相关事件","Related events for this resource")}</b>{related.map((row)=><button type="button" key={row.id} data-shell-object-id={row.id} data-shell-object-type="Audit log" onClick={()=>chooseRecord(row)}><time>{formatTime(row.createdAt)}</time><span>{localizeText(row.action)}</span><ChevronRight/></button>)}{!related.length&&<span>{t("没有可关联的记录。","No related records.")}</span>}</div></aside></section></div>;
 }

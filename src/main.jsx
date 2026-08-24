@@ -312,8 +312,8 @@ function App() {
     if (!resolved.recognized) notify(t("未找到该入口，已返回 AI 交易员。", "That destination was not found. Returned to AI Trader."));
   }
   function selectObject(candidate) {
-    const selected = resolveShellObjectSelection(data || {}, candidate, activeProductWorkspace);
-    setSelectedShellObject(selected);
+    const selected = resolveShellObjectSelection(data || {}, candidate);
+    if (selected) setSelectedShellObject(selected);
     return selected;
   }
   const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
@@ -342,7 +342,7 @@ function App() {
   }
 
   return (
-    <div className="appShell kordynSystem" key={lang}>
+    <div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
       <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
       <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={navigate} />
       <main className="mainArea">
