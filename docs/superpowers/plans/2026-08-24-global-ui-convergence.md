@@ -12,6 +12,10 @@
 
 ## Global Constraints
 
+- The sole visual/interaction authority is `1056233:prototypes/kordyn-operating-system.html` (blob `43267ccfca051351823c668932c857350fb592b9`) and its design spec at the same commit; it is not merely inspiration.
+- Maintain `docs/ui-prototype-parity-matrix.md` as the auditable Prototype → Desktop → APP contract.
+- Completion requires real browser evidence at 1440×900, an intermediate desktop width, 390×844, and 430×932, including critical workspaces, drawers/sheets, modals, dangerous confirmation, long content, and loading/empty/stale/failed/forbidden/disabled states.
+
 - Preserve accepted overview sections: `chat`, `cockpit`, `researchCenter`, `riskCenter`, `operationsCenter`, and `systemSettings`.
 - Preserve existing API actions, permission checks, safety semantics, compatibility routes, and mobile authentication.
 - Preserve every currently displayed field and permitted action through local navigation or progressive disclosure.
@@ -364,7 +368,72 @@ git commit -m "style: converge control operations and configuration"
 
 ---
 
-### Task 7: Cross-Viewport Polish and Final Verification
+### Task 7: Prototype Parity Contract and Matrix Closure
+
+**Files:**
+- Modify: `docs/ui-prototype-parity-matrix.md`
+- Modify: `PRODUCT.md`
+- Modify: `docs/ui-function-map.md`
+- Create: `tests/prototype-visual-contract.test.mjs`
+- Modify: `tests/render-smoke.test.mjs`
+
+**Interfaces:**
+- Consumes the immutable prototype at commit `1056233` and all production workspace implementations.
+- Produces an executable contract and row-by-row matrix for global shell, workspace roles, interactions, states, and viewport evidence.
+
+- [ ] **Step 1: Write failing prototype-contract tests**
+
+Assert the production token values and semantic roles match the prototype, that desktop exports Command Rail / Workspace Rail / Context Dock / Trace Rail roles, and that mobile exports touch equivalents without changing the login surface.
+
+- [ ] **Step 2: Audit every matrix row**
+
+For each prototype element, record the exact Desktop and APP implementation paths, interaction/state coverage, visual difference, and current conclusion. No row may use a generic “same language” conclusion.
+
+- [ ] **Step 3: Close structural contract gaps**
+
+Implement only the global-shell or shared-role gaps required by the matrix. Preserve real product behavior and the five deployed workspaces plus Configuration utility.
+
+- [ ] **Step 4: Verify and commit**
+
+Run the focused prototype-contract, route, and render-smoke tests and commit the matrix/contract batch.
+
+---
+
+### Task 8: Real Cross-Viewport Visual Parity and Fix Batch
+
+**Files:**
+- Modify: authenticated product source/style files identified by the matrix.
+- Update: `docs/ui-prototype-parity-matrix.md`
+- Create/Update: `.impeccable/review/prototype-1440x900.png`
+- Create/Update: `.impeccable/review/desktop-1440x900.png`
+- Create/Update: `.impeccable/review/desktop-medium.png`
+- Create/Update: `.impeccable/review/mobile-390x844.png`
+- Create/Update: `.impeccable/review/mobile-430x932.png`
+- Create/Update: `.impeccable/review/parity-contact-sheet.png`
+
+**Interfaces:**
+- Consumes the prototype contract/matrix and real production data fixtures/backend.
+- Produces browser-verifiable parity evidence and a single consolidated UI correction batch.
+
+- [ ] **Step 1: Capture the prototype baseline at 1440×900**
+
+Open the exact `1056233` artifact in an isolated temporary directory and capture the shell plus representative workspace, drawer/overlay, modal, and destructive-confirmation states.
+
+- [ ] **Step 2: Inspect production at all required viewports**
+
+Use a browser/Playwright path that sets exact viewports: 1440×900, an intermediate desktop width, 390×844, and 430×932. Walk AI, Live, Lab, Control, Operations, and Configuration plus drawers/sheets, modals, dangerous confirmations, long content, and loading/empty/stale/failed/forbidden/disabled states.
+
+- [ ] **Step 3: Record all differences before editing, then fix the full batch**
+
+Update the matrix with concrete discrepancies, apply one consolidated correction batch, and repeat visual inspection until every load-bearing row passes. Do not substitute structural smoke tests for screenshots.
+
+- [ ] **Step 4: Save final side-by-side evidence and commit**
+
+Produce the required screenshots/contact sheet, update every matrix conclusion, and commit the visual parity batch.
+
+---
+
+### Task 9: Final Quality Gates and Delivery
 
 **Files:**
 - Modify: `src/product-foundation.css`
@@ -383,17 +452,17 @@ git commit -m "style: converge control operations and configuration"
 - Consumes all completed workspace batches.
 - Produces final desktop/mobile visual evidence under `.impeccable/review/`.
 
-- [ ] **Step 1: Run one bounded browser inspection round**
+- [ ] **Step 1: Reconcile final documentation and evidence**
 
-Inspect desktop at 1280px and an intermediate width, plus mobile at 390–462px. Walk AI, Live, Lab, Control, Operations, and Configuration representative deep routes. Record all functional, overflow, hierarchy, contrast, focus, and legacy-style findings before editing.
+Confirm the matrix contains no unadjudicated load-bearing gap and every screenshot is from the final production HEAD or the immutable prototype baseline.
 
-- [ ] **Step 2: Fix the entire inspection batch**
+- [ ] **Step 2: Fix any final quality-gate findings**
 
-Apply one consolidated patch. Preserve page topology unless the design spec explicitly requires a local-navigation or hierarchy change. Remove stale duplicated styles and temporary preview artifacts.
+Apply one final consolidated patch only for findings from the formal review/quality gates. Remove stale duplicated styles and temporary preview artifacts.
 
-- [ ] **Step 3: Run the single permitted detector pass**
+- [ ] **Step 3: Run the final full-target detector pass**
 
-Run exactly once:
+Run after the final UI edit batch:
 
 ```bash
 node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/mobile.jsx src/mobileOperations.jsx src/conceptPages.jsx src/workspacePages.jsx src/product-foundation.css src/product-system.css src/styles.css
@@ -412,9 +481,9 @@ git diff --check
 
 Expected: all tests pass, ESLint exits 0, Vite production build succeeds, and diff check prints nothing.
 
-- [ ] **Step 5: Update product documentation**
+- [ ] **Step 5: Finalize product documentation**
 
-Document workspace-owned mobile navigation, More utilities, the shared deep-surface grammar, and completion status. Do not advertise unsupported features.
+Document the prototype authority, workspace-owned mobile navigation, More utilities, the shared interaction grammar, evidence paths, and completion status. Do not advertise unsupported features.
 
 - [ ] **Step 6: Capture final evidence and commit**
 

@@ -1,5 +1,21 @@
 # KORDYN Global UI/UX Convergence Design
 
+## Superseding Visual Authority — 2026-08-24
+
+The unique visual and interaction authority for this convergence is the completed interactive prototype, not a generalized interpretation of its color theme:
+
+- Branch: `codex/kordyn-interactive-prototype`
+- Commit: `1056233`
+- Artifact: `prototypes/kordyn-operating-system.html`
+- Blob: `43267ccfca051351823c668932c857350fb592b9`
+- Prototype specification: `docs/superpowers/specs/2026-08-21-kordyn-interactive-operating-system-prototype-design.md` at commit `1056233`
+
+Production desktop and post-login APP must reproduce the prototype's visual DNA and interaction grammar: exact semantic palette, typography hierarchy, density, continuous grids, one-pixel hard boundaries, Command Rail, Workspace Rail, Context Dock, Trace Rail, near-black truth/decision regions, acid-green current/authorized/action-needed states, Registry/Inspector/Ledger structures, global search, drawers/sheets, modals, destructive confirmations, and state expression. APP may rearrange these roles for touch, but it must not become a separate generic mobile-admin design. The login surface remains unchanged.
+
+The prototype supplies presentation and interaction authority only. Production continues to use real data, permissions, actions, confirmations, errors, loading/empty/stale/failed/forbidden/disabled states, and backend semantics; prototype demo data or simulated success must never replace deployed behavior.
+
+Completion requires the maintained `docs/ui-prototype-parity-matrix.md` plus real browser evidence at 1440×900, an intermediate desktop width, 390×844, and 430×932. Automated JSX/CSS tests cannot replace this visual gate.
+
 ## Purpose
 
 Bring every authenticated desktop and mobile surface into the approved KORDYN operating-system visual language without removing deployed functionality, changing backend contracts, or weakening trading safety semantics.
