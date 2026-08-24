@@ -1000,7 +1000,7 @@ function PatrolDetail({ view }) {
   const symbols = [...view.scope.whitelist.symbols, ...view.scope.watches.symbols];
   const linked = Object.entries(view.linked || {});
   return (
-    <div className="patrolDetail">
+    <div className="patrolDetail kEvidenceLedger">
       <section className="patrolDetailSection">
         <header><span>01</span><b>{t("检查范围", "Inspection scope")}</b></header>
         <dl className="patrolScopeList">
@@ -1050,13 +1050,13 @@ export function PatrolReceipt({ message = {}, mobile = false, defaultOpen = fals
         <b className="patrolRunStatus"><i />{statusLabel}</b>
         <time>{formatDateTime(view.checkedAt, "—")}</time>
       </header>
-      <div className="patrolMetricStrip">
+      <div className="patrolMetricStrip kTruthBand">
         <span><small>{t("证据", "Evidence")}</small><b>{view.scope.evidence.value}/{view.scope.evidence.total}</b></span>
         <span><small>{t("白名单", "Whitelist")}</small><b>{view.scope.whitelist.value}/{view.scope.whitelist.total}</b></span>
         <span><small>{t("观察哨", "Watches")}</small><b>{view.scope.watches.value}/{view.scope.watches.total}</b></span>
         <span><small>{t("全市场", "Market")}</small><b>{view.scope.market.completed ? view.scope.market.universe : "—"}</b></span>
       </div>
-      <div className="patrolReceiptSummary">
+      <div className="patrolReceiptSummary kActionBar">
         <span><small>{t("下一步", "Next")}</small><b>{patrolNextActionLabel(view.nextAction)}</b></span>
         <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
           {mobile ? t("查看巡检详情", "View patrol details") : open ? t("收起运行回执", "Hide run receipts") : t("展开运行回执", "Open run receipts")}
@@ -1232,7 +1232,7 @@ function AgentRail({ data, action, ui }) {
         </div>
       </div>
 
-      {showDecisionChain && <div className="agCard agDecisionChain">
+      {showDecisionChain && <div className="agCard agDecisionChain kEvidenceLedger">
         <div className="agHeadIcon"><Sparkles size={13}/> {t("一次决策是怎样形成的", "How a decision is formed")}</div>
         <small className="agDecisionIntro">{t("Gemini 负责收集与综合，DeepSeek 独立找漏洞；两者都不能绕过最后的确定性硬风控。", "Gemini gathers and synthesizes evidence, DeepSeek independently challenges it, and neither can bypass deterministic hard-risk controls.")}</small>
         <div className="agDecisionSteps">
@@ -1253,7 +1253,7 @@ function AgentRail({ data, action, ui }) {
       </div>}
 
       {/* 盯盘是持续服务；观察哨是其中一条结构化条件，命中才唤起新巡检。 */}
-      <div className="agCard">
+      <div className="agCard agentWatchRegistry kRegistry">
         <div className="agHeadIcon"><Eye size={13} /> {t("实时盯盘 · 观察条件", "Live watch · conditions")}</div>
         <small className="agWatchExplainer">{t("盯盘持续读取行情；观察哨只定义需要重新决策的关键价位。Telegram 仅推主条件命中与关键失效。", "Live watch continuously reads the market; each watch defines a decision-changing level. Telegram sends only primary triggers and critical invalidations.")}</small>
         {(() => {
@@ -1315,7 +1315,7 @@ function AgentRail({ data, action, ui }) {
       </div>
 
       {/* 授权与风控墙 */}
-      <div className="agCard">
+      <div className="agCard agentRiskInspector kInspector">
         <div className="agHeadIcon"><ShieldCheck size={13} /> {t("交易权限与硬风控", "Trading permissions & hard risk controls")}</div>
         <div className="agWallGrid">
           {mandateRows.map((r) => <div className="agWallRow" key={r.k}><span>{r.k}</span><b className="mono">{r.v}</b></div>)}
@@ -1324,13 +1324,13 @@ function AgentRail({ data, action, ui }) {
           <div className="agBudgetTop"><span>{t("今日亏损预算", "Today's loss budget")}</span><span>{remaining != null ? `${displayMoney(remaining, 2)} ${t("剩余", "left")}${budgetPct != null ? ` · ${budgetPct.toFixed(0)}%` : ""}` : t("未授权", "Not authorized")}</span></div>
           <div className="agBudgetBar"><i style={{ width: `${budgetPct ?? 0}%` }} /></div>
         </div>
-        <div className="agWallBtns">
+        <div className="agWallBtns kActionBar">
           <button className="agBtnGhost" onClick={()=>ui.setActive("riskMandate")}>{t("查看资金与交易边界", "View capital and trading boundaries")}</button>
         </div>
       </div>
 
       {/* Agent 运行轨迹 */}
-      <div className="agCard">
+      <div className="agCard agentRunEvidence kEvidenceLedger">
         <div className="agTrajHead"><span className="agSecLabel"><i />{t("Agent 运行轨迹 · 最新循环", "Run trace · latest loop")}</span><button className="agLink" onClick={() => ui.setActive("auditSystem")}>{t("完整 ›", "Full ›")}</button></div>
         <div className="agTrajGrid">
           {!trajSteps.length && <div className="emptyPanel" style={{ gridColumn: "1 / -1" }}>{t("暂无运行记录；自动分析开始后会显示真实步骤轨迹", "No run records yet; the real step trace appears after automatic analysis starts")}</div>}
@@ -1451,7 +1451,7 @@ export function PosterModal({ content, meta, onClose }) {
   return (
     <div className="posterOverlay" role="presentation" onClick={onClose}>
       <div className="posterModal" onClick={(e) => e.stopPropagation()}>
-        <div className="posterToolbar">
+        <div className="posterToolbar kActionBar">
           <div className="posterToolbarContext">
             <small>{t("当前海报风格", "Current poster style")}</small>
             <b>EDITORIAL / FIELD NOTE</b>
@@ -1489,13 +1489,13 @@ export function PosterModal({ content, meta, onClose }) {
               <h1>{posterTitle}</h1>
               <div><span>{lang === "en" ? "GENERATED" : "生成时间"}</span><b>{dateStr || "—"}</b></div>
             </div>
-            {patrol && <div className="posterPatrolFacts">
+            {patrol && <div className="posterPatrolFacts kTruthBand">
               <span><small>{lang === "en" ? "EVIDENCE" : "证据检查"}</small><b>{patrol.scope.evidence.value}/{patrol.scope.evidence.total}</b></span>
               <span><small>{lang === "en" ? "WATCHES" : "观察哨"}</small><b>{patrol.scope.watches.value}/{patrol.scope.watches.total}</b></span>
               <span><small>{lang === "en" ? "UNIVERSE" : "全市场"}</small><b>{patrol.scope.market.completed ? patrol.scope.market.universe : "—"}</b></span>
               <span><small>{lang === "en" ? "RECEIPTS" : "工具回执"}</small><b>{patrol.calls.total}</b></span>
             </div>}
-            <div className="posterBody">
+            <div className="posterBody kEvidenceLedger">
               {lang === "en" && !enText
                 ? <div className="posterTranslating">{translating ? "Translating…" : t("点击 English 生成英文版", "Click English to generate the English version")}</div>
                 : <RichMessage text={body} poster />}
@@ -1785,7 +1785,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
           {(data.pendingActions || []).map((pa) => (
             <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
               <div className="paInfo"><span className="paBadge">{t("待确认操作", "Pending action")}</span><b>{pa.title}</b><small>{pa.detail}</small></div>
-              <div className="paActions">
+              <div className="paActions kActionBar">
                 <button className="secondaryButton" onClick={() => action(`/api/agent/actions/${pa.id}/cancel`, {})}>{t("取消", "Cancel")}</button>
                 <button className={pa.danger ? "dangerButton" : "primaryButton"} onClick={() => action(`/api/agent/actions/${pa.id}/confirm`, {})}>{t("确认执行", "Confirm")}</button>
               </div>

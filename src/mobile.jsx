@@ -157,8 +157,8 @@ export function MobilePositions({ data, action, ui }) {
   const availableMargin = portfolio.availableMarginUsdt ?? portfolio.availableMargin ?? null;
   const marginRate = configured ? marginUsage(portfolio).marginRatePct : null;
   return (
-    <div className="mPositions">
-      <div className="mPageStats">
+    <div className="mPositions kRegistry">
+      <div className="mPageStats kTruthBand">
         <div><span>{t("总敞口", "Total exposure")}</span><strong>{configured ? displayMoney(exposure, 0) : t("未同步", "Not synced")}</strong></div>
         <div><span>{t("未实现盈亏", "Unrealized PnL")}</span><strong className={totalPnl >= 0 ? "positive" : "negative"}>{configured ? `${totalPnl >= 0 ? "+" : ""}${displayMoney(totalPnl)}` : t("未同步", "Not synced")}</strong></div>
         <div><span>{t("保证金率", "Margin ratio")}</span><strong>{marginRate === null ? t("未同步", "Not synced") : `${marginRate.toFixed(1)}%`}</strong></div>
@@ -169,7 +169,7 @@ export function MobilePositions({ data, action, ui }) {
         <div><span>{t("活跃执行", "Active executions")}</span><strong>{activeExecutions}</strong></div>
         <div><span>{t("可用保证金", "Available margin")}</span><strong>{configured ? displayMoney(availableMargin, 0) : t("未同步", "Not synced")}</strong></div>
       </div>
-      <div className="mChips">
+      <div className="mChips kFilterRail">
         {positionSegments.map((name) => (
           <button key={name} className={segment === name ? "active" : ""} onClick={() => setSegment(name)}>{name}</button>
         ))}
@@ -242,7 +242,7 @@ export function MobilePositions({ data, action, ui }) {
         </>
       )}
 
-      <div className="mList">
+      <div className="mList kActionBar">
         <button onClick={() => ui.setActive("marketAccount")}>
           <Activity size={17} />
           <span>{t("账户健康与对账", "Account health & reconciliation")}</span>
@@ -296,21 +296,21 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
   const direction = (row) => /short|sell|空/i.test(String(row.direction || row.side || "")) ? t("做空", "Short") : t("做多", "Long");
   const fillKind = (row) => row.kind === "entry" ? t("开仓", "Entry") : row.kind === "close" ? (row.partial === true ? t("减仓", "Reduction") : t("平仓", "Close")) : humanize(row.kind || row.side || t("成交", "Fill"));
   return <div className="mScreen mExecutionScreen">
-    <div className="mSegmentNav">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
+    <div className="mSegmentNav kFilterRail">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
     {tab === "overview" && <>
-      <div className="mMetric2x2"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
-      <section className="mNativeSection"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
+      <div className="mMetric2x2 kTruthBand"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
+      <section className="mNativeSection kRegistry"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
         <button className="mActionRow" onClick={() => setTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
         <button className="mActionRow" onClick={() => setTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>
       </section>
-      <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
+      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
     </>}
-    {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => { const exit = executionExitAction(row); return <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.filledQuantity ?? row.quantity ?? row.size ?? "—"}</b></span></div>{exit && <button onClick={() => requestExecutionExit(action, row, "manual_mobile")}>{exit.label}</button>}</article>; })}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
-    {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length === totals.fills ? `${totals.fills} ${t("笔成交", "fills")}` : `${t("最近", "Latest")} ${fills.length} / ${totals.fills}`}</small></div><span>{t("开仓 / 减仓 / 平仓", "Entries / reductions / closes")}</span></header>{fills.map((row, index) => { const isClose = row.kind === "close" && hasFiniteNumber(row.realizedPnl); const pnl = Number(row.realizedPnl || 0); return <div className="mTradeRow" key={row.id || index}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {fillKind(row)} · {row.quantity ?? row.size ?? "—"} @ {displayPrice(row.price)}</small></div><div><b className={`mono ${isClose ? (pnl >= 0 ? "pos" : "neg") : ""}`}>{isClose ? `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}` : displayPrice(row.price)}</b><small>{isClose ? `${t("价格毛盈亏", "Gross price PnL")} · ` : ""}{formatDateTime(row.createdAt)}{hasFiniteNumber(row.feeUsdt ?? row.fee) ? ` · ${t("费", "fee")} ${displayMoney(row.feeUsdt ?? row.fee, 2)}` : ""}</small></div></div>; })}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b><span>{t("交易所确认的开仓、减仓和平仓成交都会显示在这里。", "Exchange-confirmed entries, reductions, and closes appear here.")}</span></div>}</section>}
+    {tab === "orders" && <section className="mNativeSection kRegistry"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => { const exit = executionExitAction(row); return <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.filledQuantity ?? row.quantity ?? row.size ?? "—"}</b></span></div>{exit && <button onClick={() => requestExecutionExit(action, row, "manual_mobile")}>{exit.label}</button>}</article>; })}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
+    {tab === "fills" && <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length === totals.fills ? `${totals.fills} ${t("笔成交", "fills")}` : `${t("最近", "Latest")} ${fills.length} / ${totals.fills}`}</small></div><span>{t("开仓 / 减仓 / 平仓", "Entries / reductions / closes")}</span></header>{fills.map((row, index) => { const isClose = row.kind === "close" && hasFiniteNumber(row.realizedPnl); const pnl = Number(row.realizedPnl || 0); return <div className="mTradeRow" key={row.id || index}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {fillKind(row)} · {row.quantity ?? row.size ?? "—"} @ {displayPrice(row.price)}</small></div><div><b className={`mono ${isClose ? (pnl >= 0 ? "pos" : "neg") : ""}`}>{isClose ? `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}` : displayPrice(row.price)}</b><small>{isClose ? `${t("价格毛盈亏", "Gross price PnL")} · ` : ""}{formatDateTime(row.createdAt)}{hasFiniteNumber(row.feeUsdt ?? row.fee) ? ` · ${t("费", "fee")} ${displayMoney(row.feeUsdt ?? row.fee, 2)}` : ""}</small></div></div>; })}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b><span>{t("交易所确认的开仓、减仓和平仓成交都会显示在这里。", "Exchange-confirmed entries, reductions, and closes appear here.")}</span></div>}</section>}
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
       <div className="mReviewFilters">{[["all", t("全部", "All")], ["loss", t("只看亏损", "Losses")], ["pending", t("待处理", "Pending")]].map(([id, label]) => <button type="button" className={reviewFilter === id ? "active" : ""} key={id} onClick={() => setReviewFilter(id)}>{label}</button>)}</div>
-      <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
+      <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
     </>}
     {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => setSelectedReview(null)} />}
   </div>;
@@ -1063,13 +1063,13 @@ export function MobileTasks({ data, action }) {
   const backToday = () => { const current = new Date(); setMonthAnchor(new Date(current.getFullYear(), current.getMonth(), 1)); setSelectedDate(mobileDateKey(current)); };
   return (
     <div className="mSubPage">
-      <div className="mPageStats">
+      <div className="mPageStats kTruthBand">
         <div><span>{t("今日事件", "Today's events")}</span><strong>{todayEvents.length}</strong></div>
         <div><span>{t("活跃任务", "Active tasks")}</span><strong>{activeTasks.length}</strong></div>
         <div><span>{t("事件规则", "Event rules")}</span><strong>{(data.riskRules || []).filter((rule) => rule.scope === "event").length}</strong></div>
       </div>
 
-      <div className="mChips">
+      <div className="mChips kFilterRail">
         {taskSegments.map((name) => (
           <button key={name} className={segment === name ? "active" : ""} onClick={() => setSegment(name)}>{t(name, { "重要事件": "Calendar", "定时任务": "Tasks", "创建任务": "Create" }[name])}</button>
         ))}
@@ -1081,9 +1081,9 @@ export function MobileTasks({ data, action }) {
             <header><button type="button" onClick={() => moveMonth(-1)} aria-label={t("上个月", "Previous month")}><ChevronLeft size={17}/></button><b>{monthLabel}</b><button type="button" onClick={() => moveMonth(1)} aria-label={t("下个月", "Next month")}><ChevronRight size={17}/></button><button type="button" className="today" onClick={backToday}>{t("今天", "Today")}</button></header>
             <div className="mEventWeek">{[t("日", "S"), t("一", "M"), t("二", "T"), t("三", "W"), t("四", "T"), t("五", "F"), t("六", "S")].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
             <div className="mEventDays">{calendarDays.map((day) => <button type="button" key={day.key} disabled={!day.inMonth} className={`${day.inMonth ? "" : "out"} ${day.key === selectedDate ? "selected" : ""} ${day.key === mobileDateKey(now) ? "today" : ""}`} onClick={() => setSelectedDate(day.key)}><b>{day.day}</b><span>{day.events.slice(0, 3).map((event, index) => <i key={`${event.id || event.title}-${index}`} className={Number(event.impact) >= 80 ? "high" : Number(event.impact) >= 50 ? "medium" : "low"}/>)}</span></button>)}</div>
-            <footer><span>{t("圆点表示当天有事件，颜色表示影响等级", "Dots mark events; color shows impact")}</span><button className="textButton" onClick={() => refreshMobileEventCalendar(action)}><RefreshCw size={12}/> {t("刷新事件", "Refresh")}</button></footer>
+            <footer className="kActionBar"><span>{t("圆点表示当天有事件，颜色表示影响等级", "Dots mark events; color shows impact")}</span><button className="textButton" onClick={() => refreshMobileEventCalendar(action)}><RefreshCw size={12}/> {t("刷新事件", "Refresh")}</button></footer>
           </section>
-          <section className="mEventAgenda">
+          <section className="mEventAgenda mEvidenceLedger kEvidenceLedger">
             <header><div><b>{selectedDate === mobileDateKey(now) ? t("今天的议程", "Today's agenda") : formatDate(selectedDate)}</b><small>{selectedEvents.length ? t(`${selectedEvents.length} 个已确认事件`, `${selectedEvents.length} confirmed events`) : t("当天没有已确认事件", "No confirmed events that day")}</small></div></header>
             {selectedEvents.map((event) => <article key={event.id || `${event.title}-${event.due || event.startAt}`}>
               <time>{mobileEventTimeLabel(event)}</time><span className={Number(event.impact) >= 80 ? "high" : Number(event.impact) >= 50 ? "medium" : "low"}/><div><b>{localizeText(event.shortTitle || event.title)}</b><small>{localizeText(event.source || event.category || t("事件日历", "Event calendar"))} · {event.impactLabel || t("影响待评估", "Impact pending")}</small>{(event.description || event.summary) && <p>{localizeText(event.description || event.summary)}</p>}</div>
@@ -1095,7 +1095,7 @@ export function MobileTasks({ data, action }) {
       )}
 
       {segment === "定时任务" && (
-        <div className="mSectionCard">
+        <div className="mSectionCard kRegistry">
           <header><span>{t("定时任务（", "Scheduled tasks (")}{tasks.length}{t("）", ")")}</span></header>
           {!tasks.length && <p className="mInboxEmpty">{t("暂无定时任务。", "No scheduled tasks.")}</p>}
           {tasks.map((task) => (
@@ -1160,21 +1160,21 @@ export function MobileIntelligence({ data, action, ui }) {
     ["sources", t("来源状态", "Sources")]
   ];
   return <div className="mSubPage mIntelPage">
-    <section className="mIntelHero"><div><span><Sparkles size={13}/>{t("只作为分析背景", "Analysis context only")}</span><b>{t("先看结论，再按需展开证据", "Read the brief, then expand evidence")}</b><small>{updatedAt ? `${t("更新于", "Updated")} ${formatDateTime(updatedAt)}` : t("等待首次情报刷新", "Waiting for the first intelligence refresh")}</small></div><button type="button" onClick={() => refreshMobileIntelligence(action)} aria-label={t("刷新情报", "Refresh intelligence")}><RefreshCw size={16}/></button></section>
+    <section className="mIntelHero kTruthBand"><div><span><Sparkles size={13}/>{t("只作为分析背景", "Analysis context only")}</span><b>{t("先看结论，再按需展开证据", "Read the brief, then expand evidence")}</b><small>{updatedAt ? `${t("更新于", "Updated")} ${formatDateTime(updatedAt)}` : t("等待首次情报刷新", "Waiting for the first intelligence refresh")}</small></div><button type="button" onClick={() => refreshMobileIntelligence(action)} aria-label={t("刷新情报", "Refresh intelligence")}><RefreshCw size={16}/></button></section>
     <div className="mPageStats"><div><span>{t("重要快讯", "Important")}</span><strong>{important.length}</strong></div><div><span>{t("来源正常", "Healthy sources")}</span><strong>{healthy}/{sources.length}</strong></div><div><span>{t("近期事件", "Upcoming")}</span><strong>{next24h.length + dateOnlySoon.length}</strong></div></div>
-    <div className="mChips">{segments.map(([id, label]) => <button type="button" key={id} className={segment === id ? "active" : ""} onClick={() => setSegment(id)}>{label}</button>)}</div>
+    <div className="mChips kFilterRail">{segments.map(([id, label]) => <button type="button" key={id} className={segment === id ? "active" : ""} onClick={() => setSegment(id)}>{label}</button>)}</div>
 
     {segment === "brief" && <div className="mIntelStack">
-      <section className="mSectionCard mIntelBrief"><header><span>{t("Daily 市场摘要", "Daily market brief")}</span>{brief && <StatusBadge tone="neutral">v{brief.version || 1}</StatusBadge>}</header>
+      <section className="mSectionCard mIntelBrief mEvidenceLedger kEvidenceLedger"><header><span>{t("Daily 市场摘要", "Daily market brief")}</span>{brief && <StatusBadge tone="neutral">v{brief.version || 1}</StatusBadge>}</header>
         {brief ? <><div className="mIntelBriefRows"><span><small>{t("加密风险偏好", "Crypto risk appetite")}</small><b>{localizeText(brief.macroContext?.cryptoRiskAppetite) || t("未知", "Unknown")}</b></span><span><small>{t("宏观周期", "Macro cycle")}</small><b>{mobileMacroLabel(brief.macroContext?.economicCyclePhase)}</b></span><span><small>{t("证据事实", "Evidence facts")}</small><b>{(brief.evidenceFactIds || []).length}</b></span></div>{staleSources.length > 0 && <div className="mIntelConstraint high"><Globe2 size={14}/><p>{t(`${staleSources.length} 个情报来源已陈旧，不会作为当前催化剂`, `${staleSources.length} intelligence sources are stale and excluded as current catalysts`)}</p></div>}{(brief.constraints || []).slice(0, 4).map((constraint, index) => <div className={`mIntelConstraint ${constraint.severity || "medium"}`} key={`${constraint.type || "constraint"}-${index}`}><Shield size={14}/><p>{localizeText(constraint.reason)}</p></div>)}</> : <div className="mNativeEmpty compact"><Sparkles size={21}/><b>{t("日报尚未生成", "Brief not generated")}</b><span>{t("情报刷新任务完成后会自动生成；不会用旧数据补写。", "It is generated after a refresh; stale data is never used to fill gaps.")}</span></div>}
       </section>
-      <section className="mSectionCard mIntelTop"><header><span>{t("需要先知道的事", "What matters now")}</span><button className="textButton" type="button" onClick={() => setSegment("feed")}>{t("全部快讯", "All flashes")}<ChevronRight size={13}/></button></header>{(brief?.topNews || news).slice(0, 4).map((item, index) => <article key={item.factId || item.id || index}><span className={Number(item.values?.impact || item.impact || 0) >= 80 ? "high" : "normal"}/><div><b>{localizeText(item.title)}</b><small>{item.summary ? localizeText(item.summary) : `${item.sourceName || item.source || t("情报源", "Intel source")} · ${formatDateTime(item.publishedAt)}`}</small></div></article>)}{!(brief?.topNews || news).length && <p className="mInboxEmpty">{t("暂无已验证快讯。", "No verified flashes yet.")}</p>}</section>
+      <section className="mSectionCard mIntelTop kRegistry"><header><span>{t("需要先知道的事", "What matters now")}</span><button className="textButton" type="button" onClick={() => setSegment("feed")}>{t("全部快讯", "All flashes")}<ChevronRight size={13}/></button></header>{(brief?.topNews || news).slice(0, 4).map((item, index) => <article key={item.factId || item.id || index}><span className={Number(item.values?.impact || item.impact || 0) >= 80 ? "high" : "normal"}/><div><b>{localizeText(item.title)}</b><small>{item.summary ? localizeText(item.summary) : `${item.sourceName || item.source || t("情报源", "Intel source")} · ${formatDateTime(item.publishedAt)}`}</small></div></article>)}{!(brief?.topNews || news).length && <p className="mInboxEmpty">{t("暂无已验证快讯。", "No verified flashes yet.")}</p>}</section>
       {(next24h.length > 0 || dateOnlySoon.length > 0) && <button type="button" className="mIntelEventLink" onClick={() => ui?.setActive("eventsTasks")}><CalendarClock size={18}/><span><b>{next24h.length ? t(`未来 24 小时有 ${next24h.length} 个精确时间事件`, `${next24h.length} precisely timed events within 24h`) : t("近期有日期级事件提醒", "Upcoming date-only event reminders")}</b><small>{[...next24h.slice(0, 2).map((event) => `${mobileEventTimeLabel(event)} ${localizeText(event.shortTitle || event.title)}`), ...dateOnlySoon.slice(0, 2).map((event) => `${t("全天/时间待定", "All day/time TBD")} ${localizeText(event.shortTitle || event.title)}`)].join(" · ")}</small></span><ChevronRight size={16}/></button>}
     </div>}
 
-    {segment === "feed" && <section className="mIntelFeed">{news.map((item, index) => { const impact = Number(item.values?.impact || item.impact || 0); return <article key={item.id || index}><header><span className={impact >= 80 ? "important" : "flash"}>{impact >= 80 || item.values?.important ? t("重要", "Important") : t("快讯", "Flash")}</span><time>{formatDateTime(item.publishedAt || item.observedAt)}</time></header><b>{localizeText(item.title)}</b>{(item.summary || item.content) && <p>{localizeText(item.summary || item.content)}</p>}<footer><span>{item.sourceName || item.source || "ME News"}</span><span>{(item.symbols || []).join(" · ") || t("全市场", "Market-wide")}</span></footer></article>; })}{!news.length && <div className="mNativeEmpty"><Bell size={22}/><b>{t("暂无实时快讯", "No live flashes")}</b><span>{t("刷新后只展示带真实来源与时间的内容。", "Only timestamped, sourced items appear after refresh.")}</span></div>}</section>}
+    {segment === "feed" && <section className="mIntelFeed mEvidenceLedger kEvidenceLedger">{news.map((item, index) => { const impact = Number(item.values?.impact || item.impact || 0); return <article key={item.id || index}><header><span className={impact >= 80 ? "important" : "flash"}>{impact >= 80 || item.values?.important ? t("重要", "Important") : t("快讯", "Flash")}</span><time>{formatDateTime(item.publishedAt || item.observedAt)}</time></header><b>{localizeText(item.title)}</b>{(item.summary || item.content) && <p>{localizeText(item.summary || item.content)}</p>}<footer><span>{item.sourceName || item.source || "ME News"}</span><span>{(item.symbols || []).join(" · ") || t("全市场", "Market-wide")}</span></footer></article>; })}{!news.length && <div className="mNativeEmpty"><Bell size={22}/><b>{t("暂无实时快讯", "No live flashes")}</b><span>{t("刷新后只展示带真实来源与时间的内容。", "Only timestamped, sourced items appear after refresh.")}</span></div>}</section>}
 
-    {segment === "sources" && <section className="mSectionCard mIntelSources"><header><span>{t("情报来源", "Intelligence sources")}</span><small>{healthy}/{sources.length} {t("正常", "healthy")}</small></header>{sources.map((source) => { const state = mobileIntelHealth(source); return <article key={source.sourceId || source.id || source.name}><span className={`mIntelSourceIcon ${state.tone}`}><Globe2 size={15}/></span><div><b>{localizeText(source.name || source.sourceId)}</b><small>{humanize(source.category, t("补充来源", "Supplemental"))} · {source.lastSuccessAt ? `${t("最近成功", "Last success")} ${formatDateTime(source.lastSuccessAt)}` : t("尚无成功记录", "No successful run yet")}</small>{source.lastError && <p>{localizeText(source.lastError)}</p>}</div><StatusBadge tone={state.tone}>{state.label}</StatusBadge></article>; })}{!sources.length && <div className="mNativeEmpty compact"><Globe2 size={20}/><b>{t("暂无来源状态", "No source status")}</b><span>{t("情报任务运行后会记录真实健康状态。", "Real health status appears after intelligence jobs run.")}</span></div>}</section>}
+    {segment === "sources" && <section className="mSectionCard mIntelSources mEvidenceLedger kEvidenceLedger"><header><span>{t("情报来源", "Intelligence sources")}</span><small>{healthy}/{sources.length} {t("正常", "healthy")}</small></header>{sources.map((source) => { const state = mobileIntelHealth(source); return <article key={source.sourceId || source.id || source.name}><span className={`mIntelSourceIcon ${state.tone}`}><Globe2 size={15}/></span><div><b>{localizeText(source.name || source.sourceId)}</b><small>{humanize(source.category, t("补充来源", "Supplemental"))} · {source.lastSuccessAt ? `${t("最近成功", "Last success")} ${formatDateTime(source.lastSuccessAt)}` : t("尚无成功记录", "No successful run yet")}</small>{source.lastError && <p>{localizeText(source.lastError)}</p>}</div><StatusBadge tone={state.tone}>{state.label}</StatusBadge></article>; })}{!sources.length && <div className="mNativeEmpty compact"><Globe2 size={20}/><b>{t("暂无来源状态", "No source status")}</b><span>{t("情报任务运行后会记录真实健康状态。", "Real health status appears after intelligence jobs run.")}</span></div>}</section>}
   </div>;
 }
 
@@ -1196,13 +1196,13 @@ function MobileAccountHealth({ data, action }) {
   ];
   return (
     <div className="mSubPage">
-      <div className="mPageStats">
+      <div className="mPageStats kTruthBand">
         <div><span>{t("账户", "Accounts")}</span><strong>{configuredAccounts}/{totalAccounts}</strong></div>
         <div><span>{t("快照", "Snapshot")}</span><strong>{latestSnapshot ? formatTime(latestSnapshot.createdAt) : t("未同步", "Not synced")}</strong></div>
         <div><span>{t("对账", "Reconcile")}</span><strong>{configuredAccounts ? humanize(latestReconcile?.status, t("未对账", "Not reconciled")) : t("待配置", "Not configured")}</strong></div>
       </div>
 
-      <div className="mSectionCard">
+      <div className="mSectionCard mEvidenceLedger kEvidenceLedger">
         <header><span>{t("健康检查", "Health check")}</span></header>
         {rows.map(([label, value, tone]) => (
           <div className="mRowItem" key={label}>
@@ -1313,10 +1313,10 @@ export function MobileMarket({ data, action, ui }) {
   const dash = `${((marginRate ?? 0) / 100) * circ} ${circ}`;
   return (
     <div className="mScreen">
-      <div className="mMetric2x2">
+      <div className="mMetric2x2 kTruthBand">
         {metrics.map(([k, v, pn]) => <div className="mMetricCell" key={k}><span>{k}</span><b className={`mono ${pn != null ? (Number(pn) >= 0 ? "pos" : "neg") : ""}`}>{v}</b></div>)}
       </div>
-      <div className="mCard">
+      <div className="mCard marketQuoteEvidence kEvidenceLedger">
         <LivePrice symbol={market.symbol} fallbackPrice={market.price} fallbackChange={market.changePct}>
           {(price, change) => (
             <>
@@ -1341,14 +1341,14 @@ export function MobileMarket({ data, action, ui }) {
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
       </div>
-      <div className="mCard">
+      <div className="mCard marketEvidenceDeck kEvidenceLedger">
         <div className="mCardHead"><b>{t("中频合约状态", "Medium-term contract state")}</b><small>{t("5分钟事实", "5m facts")}</small></div>
         {["15m","1h","4h"].map((window) => { const row=mediumSymbol?.windows?.[window]; return <div className="mPosRow" key={window}><div className="mPosL"><b className="mono">{window}</b><small>{row?.status==="ok"?leverageLabel(row.leverageState):t("样本积累中","Building samples")}</small></div><div className="mPosR"><b className="mono">{row?.status==="ok"?`P ${row.priceChangePct}% · OI ${row.oiChangePct}%`:`${row?.samples??0}/${row?.expected??"—"}`}</b><small className="mono">{row?.status==="ok"?`F ${row.fundingEndPct??"—"}% · CVD ${row.cvdImbalancePct==null?"—":`${row.cvdImbalancePct}%`}`:t("不足时不输出结论","No conclusion until sufficient")}</small></div></div>; })}
         {market.symbol!=="BTC/USDT"&&<div className="mPosRow"><div className="mPosL"><b>BTC Beta</b><small>24h / 3d / 7d</small></div><div className="mPosR"><b className="mono">{["24h","3d","7d"].map((window)=>{const row=mediumSymbol?.btcRisk?.[window];return row?.status==="ok"?`${window} β${row.beta}`:`${window} —`;}).join(" · ")}</b><small>{t("15分钟收益率，严格覆盖", "15m returns with strict coverage")}</small></div></div>}
         {mediumTerm.portfolioBtcRisk?.status&&!['no_positions','insufficient'].includes(mediumTerm.portfolioBtcRisk.status)&&<div className="mPosRow"><div className="mPosL"><b>{t("组合 BTC 风险","Portfolio BTC risk")}</b><small>{mediumTerm.portfolioBtcRisk.status}</small></div><div className="mPosR"><b className="mono">{mediumTerm.portfolioBtcRisk.netBtcEquivalentUsdt} U</b><small>{t("净 / 毛等效","Net / gross equiv.")} {mediumTerm.portfolioBtcRisk.grossBtcBetaExposureUsdt} U</small></div></div>}
         {Object.entries(mediumTerm.eventVolatility?.byType||{}).slice(0,3).map(([type,row])=><div className="mPosRow" key={type}><div className="mPosL"><b>{type}</b><small>{t("BTC 事件波动","BTC event volatility")}</small></div><div className="mPosR"><b className="mono">{row.status==="usable"?`n=${row.samples} · RV ${row.medianPost1hRealizedVolPct}%`:`${row.samples}/${row.minimumSamples}`}</b><small>{row.status==="usable"?`p90 ${row.p90Post1hRealizedVolPct}% · ×${row.medianPost1hVolExpansionRatio}`:t("样本积累中","Building samples")}</small></div></div>)}
       </div>
-      <div className="mCard">
+      <div className="mCard marketPositionRegistry kRegistry">
         <div className="mCardHead"><b>{t("持仓", "Positions")}</b><button className="mLink" onClick={() => ui.setActive("positions")}>{t("全部", "All")} ›</button></div>
         {positions.length ? positions.slice(0, 3).map((p, i) => {
           const short = mobileDirectionKind(p.direction ?? p.side ?? p.posSide) === "short";
@@ -1361,7 +1361,7 @@ export function MobileMarket({ data, action, ui }) {
           );
         }) : <div className="mEmpty">{t("连接交易所后显示真实持仓", "Live positions appear after connecting an exchange")}</div>}
       </div>
-      <div className="mCard mMarginCard">
+      <div className="mCard mMarginCard kStateRow">
         <svg className="mDonut" viewBox="0 0 56 56">
           <circle cx="28" cy="28" r="24" fill="none" stroke="#EDE7DB" strokeWidth="6" />
           <circle cx="28" cy="28" r="24" fill="none" stroke="#D06A22" strokeWidth="6" strokeDasharray={dash} strokeLinecap="round" transform="rotate(-90 28 28)" />
@@ -1432,7 +1432,7 @@ function MobileChatStatus({ data }) {
     [t("今日", "Today"), pf.todayPnlPct != null ? displayPct(pf.todayPnlPct) : "—", Number(pf.todayPnlPct || 0) >= 0 ? "pos" : "neg"],
     [t("目标", "Target"), mandate?.maxDailyLossPct ? `${t("亏≤", "Loss ≤")}${mandate.maxDailyLossPct}${t("%/日", "%/day")}` : "—" /* targetMonthlyPct 是后端从未写入的死字段(审计 L1) */, ""]
   ];
-  return <div className="mChatStatus">
+  return <div className="mChatStatus kTruthBand">
     {cells.map(([k, v, tone]) => <div className="mChatStatCell" key={k}><span>{k}</span><b className={`mono ${tone}`}>{v}</b></div>)}
   </div>;
 }
@@ -1454,8 +1454,8 @@ function MobileWatch({ data, action }) {
   const thesis = (item) => localizeText(item?.displayThesis || item?.thesis || item?.analysisTitle, item?.displayThesisEn || item?.thesis || item?.analysisTitle) || t("等待关键条件提供新的方向依据。", "Waiting for a key condition to provide new directional evidence.");
   const meaning = (item) => localizeText(item?.displayTriggerMeaning || item?.triggerMeaning || item?.note, item?.displayTriggerMeaningEn || item?.triggerMeaning || item?.note) || t("命中后重新检查结构、量能与盈亏比，不直接下单。", "Re-check structure, flow and risk/reward after the trigger; do not enter automatically.");
   return <div className="mScreen mWatchScreen">
-    <div className="mWatchSummary"><div><b className="mono">{groups.length}</b><span>{t("盯盘币种", "Symbols watched")}</span></div><div><b className="mono">{active.length}</b><span>{t("有效条件", "Active conditions")}</span></div><p>{t("命中只会唤起重新分析，不代表已经做多、做空或下单。", "A trigger starts a fresh review; it is not a long, short, or order by itself.")}</p></div>
-    <section className="mNativeSection"><header><div><b>{t("正在盯盘", "Watching now")}</b><small>{t("先看原判断，再看命中意味着什么", "Read the thesis first, then what a trigger means")}</small></div><span>{active.length}</span></header>
+    <div className="mWatchSummary kTruthBand"><div><b className="mono">{groups.length}</b><span>{t("盯盘币种", "Symbols watched")}</span></div><div><b className="mono">{active.length}</b><span>{t("有效条件", "Active conditions")}</span></div><p>{t("命中只会唤起重新分析，不代表已经做多、做空或下单。", "A trigger starts a fresh review; it is not a long, short, or order by itself.")}</p></div>
+    <section className="mNativeSection kRegistry"><header><div><b>{t("正在盯盘", "Watching now")}</b><small>{t("先看原判断，再看命中意味着什么", "Read the thesis first, then what a trigger means")}</small></div><span>{active.length}</span></header>
       <div className="mWatchList">{groups.map((group) => { const item = group.primary; if (!item) return null; const tone = item.direction === "long" ? "long" : item.direction === "short" ? "short" : "neutral"; return <article className={`mWatchCard ${tone}`} key={group.symbol}>
         <div className="mWatchCardHead"><div><b className="mono">{item.symbol}</b><span>{direction(item)}</span></div><button onClick={async () => { if (await uiConfirm(`${t("确认撤销", "Cancel")} ${item.symbol}？`)) action(`/api/watch-triggers/${item.id}/cancel`, {}); }}><Trash2 size={15}/></button></div>
         <div className="mWatchThesis"><span>{t("原判断", "Original thesis")}</span><p>{thesis(item)}</p></div>
@@ -1463,7 +1463,7 @@ function MobileWatch({ data, action }) {
         {(group.secondary || []).length > 0 && <details><summary>{t("辅助条件", "Supporting conditions")} · {group.secondary.length}</summary>{group.secondary.map((row) => <div className="mWatchSecondary" key={row.id}><span><b>{condition(row)}</b><small>{meaning(row)}</small></span><button onClick={() => action(`/api/watch-triggers/${row.id}/cancel`, {})}>×</button></div>)}</details>}
       </article>; })}{!groups.length && <div className="mNativeEmpty"><Eye size={22}/><b>{t("暂无有效观察哨", "No active watches")}</b><span>{t("AI 登记具体价位条件后会显示在这里。", "Concrete price conditions registered by the AI appear here.")}</span></div>}</div>
     </section>
-    {history.length > 0 && <section className="mNativeSection"><header><div><b>{t("最近记录", "Recent history")}</b><small>{t("触发、失效与被替代", "Triggered, invalidated, and superseded")}</small></div></header>{history.map((item) => <div className="mNativeRow" key={item.id}><span className={`mStateDot ${item.status}`}/><span><b>{item.symbol} · {direction(item)}</b><small>{condition(item)} · {humanize(item.status)}</small></span><time>{formatTime(item.triggeredAt || item.updatedAt || item.createdAt)}</time></div>)}</section>}
+    {history.length > 0 && <section className="mNativeSection mEvidenceLedger kEvidenceLedger"><header><div><b>{t("最近记录", "Recent history")}</b><small>{t("触发、失效与被替代", "Triggered, invalidated, and superseded")}</small></div></header>{history.map((item) => <div className="mNativeRow" key={item.id}><span className={`mStateDot ${item.status}`}/><span><b>{item.symbol} · {direction(item)}</b><small>{condition(item)} · {humanize(item.status)}</small></span><time>{formatTime(item.triggeredAt || item.updatedAt || item.createdAt)}</time></div>)}</section>}
   </div>;
 }
 

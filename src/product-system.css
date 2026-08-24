@@ -1458,3 +1458,94 @@
 .productSettings .configurationSources .panelForm.compact>.primaryButton { width:max-content;min-width:132px;border-radius:0;background:var(--product-ink);color:var(--product-paper-2);box-shadow:none }
 @media(max-width:1180px){.productWorkspace .controlTruth{grid-template-columns:1fr}.productWorkspace .controlTruth__recovery{grid-column:1;grid-row:auto;border-top:1px solid rgba(255,255,255,.18);border-left:0}.productWorkspace .controlExposure{grid-template-columns:minmax(240px,.75fr) minmax(0,1.25fr)}.productWorkspace .controlExposure__route{grid-column:1/-1;min-height:58px}.productWorkspace .controlExposure__ledger span:nth-child(4){border-right:0}.productWorkspace .controlProtectionLedger>div{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.productWorkspace .controlTruth__facts{grid-template-columns:repeat(2,minmax(0,1fr))}.productWorkspace .controlTruth__facts>span:nth-child(2n){border-right:0}.productWorkspace .controlTruth__facts>span:nth-child(-n+2){border-bottom:1px solid rgba(255,255,255,.13)}.productWorkspace .controlExposure,.productWorkspace .controlPolicy,.productWorkspace .controlBoundaryGrid{grid-template-columns:1fr}.productWorkspace .controlExposure__primary,.productWorkspace .controlPolicy__runtime{border-right:0;border-bottom:1px solid var(--product-line)}.productWorkspace .controlBoundaryFacts{grid-template-columns:repeat(2,minmax(0,1fr))}.productWorkspace .controlBoundaryFacts>span:nth-child(2n){border-right:0}.productWorkspace .controlBoundaryFacts>span:nth-last-child(-n+4){border-bottom:1px solid var(--product-line)}.productWorkspace .controlBoundaryFacts>span:nth-last-child(-n+2){border-bottom:0}.productSettings .configurationDomain .tcLayout{grid-template-columns:1fr}}
+
+/* AI / Live deep-page convergence. Shared roles own hierarchy; existing
+   components keep their data, handlers, and workspace-specific topology. */
+.productWorkspace .marketTruthBand.kTruthBand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  margin: 0 -14px 10px;
+  padding: 0 14px;
+  border-width: 1px 0;
+  border-radius: 0;
+}
+.productWorkspace .marketTruthBand.kTruthBand > b { color: var(--product-paper-2); font: 680 28px/1 var(--font-mono); }
+.productWorkspace .marketTruthBand.kTruthBand > .cp2Pill { border-color: rgba(255,255,255,.22); background: transparent; color: var(--product-lime); }
+.productWorkspace .cp2FormActions.kActionBar,
+.productWorkspace .erDetailActions.kActionBar { display: flex; margin: 0; padding: 0; border: 0; background: transparent; }
+.productWorkspace .cp2FormActions.kActionBar > button { min-height: 32px; }
+.productWorkspace .marketRegistry.kRegistry,
+.productWorkspace .marketResearchDeck.kEvidenceLedger,
+.productWorkspace .erOrdersCard.kRegistry,
+.productWorkspace .erPathCard.kEvidenceLedger,
+.productWorkspace .erFillLedger.kEvidenceLedger { border-color: var(--product-ink); border-radius: 0; box-shadow: none; }
+.productWorkspace .marketResearchDeck.kEvidenceLedger { border-top: 1px solid var(--product-ink); }
+
+.productWorkspace .positionTruthBand.kTruthBand { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.productWorkspace .positionTruthBand.kTruthBand > .cp2Metric {
+  min-height: 74px;
+  padding: 13px 15px;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.16);
+  border-radius: 0;
+  background: transparent;
+  color: var(--product-paper-2);
+}
+.productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:last-child { border-right: 0; }
+.productWorkspace .positionTruthBand .cp2Metric small,
+.productWorkspace .positionTruthBand .cp2Metric em { color: #a6aaa0; }
+.productWorkspace .positionTruthBand .cp2Metric b { color: #fff; }
+.productWorkspace .positionRegistryList.kRegistry > button {
+  grid-template-columns: minmax(0,1fr) auto auto;
+  min-height: 60px;
+  padding: 10px 13px;
+}
+.productWorkspace .positionRegistryList.kRegistry > button > i {
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+  color: var(--product-muted);
+  font: 650 9px var(--font-mono);
+  font-style: normal;
+}
+.productWorkspace .positionRegistryList.kRegistry > button.active { box-shadow: inset 3px 0 0 var(--product-ink); }
+.productWorkspace .positionTruth.kEvidenceLedger { border-top: 1px solid var(--product-ink); }
+.productWorkspace .positionOwnership.kEvidenceLedger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--product-ink);
+  background: color-mix(in srgb,var(--product-mint) 14%,var(--product-paper-2));
+}
+
+.productWorkspace .erPageHeader.kTruthBand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-radius: 0;
+  background: var(--product-ink);
+  box-shadow: none;
+}
+.productWorkspace .erPageHeader.kTruthBand > div { min-height: 0; padding: 0; }
+.productWorkspace .erPageHeader.kTruthBand > div + div { min-width: 0; border: 1px solid rgba(255,255,255,.16); }
+.productWorkspace .erPriorityGrid.kWorkbench { gap: 0; border-radius: 0; }
+.productWorkspace .erPriorityGrid.kWorkbench > .cp2Card { border: 0; border-radius: 0; box-shadow: none; }
+.productWorkspace .erPriorityGrid.kWorkbench > .cp2Card + .cp2Card { border-left: 1px solid var(--product-ink); }
+.productWorkspace .erAttentionList.kEvidenceLedger { border-top: 0; }
+.productWorkspace .erFinancialCoverage.kStateRow { grid-template-columns: auto minmax(0,1fr); border-radius: 0; }
+.productWorkspace .erFinancialCoverage.kStateRow > span { min-width: 0; }
+.productWorkspace .erReviewQueue.kRegistry { background: transparent; }
+.productWorkspace .erReviewQueue.kRegistry > article { border-bottom: 1px solid var(--product-line); }
+.productWorkspace .erReviewQueue.kRegistry > article:last-child { border-bottom: 0; }
+
+@media(max-width:900px){
+  .productWorkspace .positionTruthBand.kTruthBand { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:nth-child(2n) { border-right: 0; }
+  .productWorkspace .positionTruthBand.kTruthBand > .cp2Metric:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.16); }
+  .productWorkspace .erPageHeader.kTruthBand { align-items: flex-start; flex-direction: column; }
+  .productWorkspace .erPriorityGrid.kWorkbench > .cp2Card + .cp2Card { border-top: 1px solid var(--product-ink); border-left: 0; }
+}

@@ -48,7 +48,7 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRiskPermissionEditor, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       export { ExecutionLedgerConcept, ExecutionReviewConcept, TradeReviewWorkbenchConcept, OwnerReviewWorkspaceConcept, IntelligenceConcept, KnowledgeConcept, ResearchMapConcept, LiveConcept, MandateConcept, MarketConcept, OperatingBoundaryConcept, OperationsOverviewConcept, OperationsCommandConcept, OperationsTasksConcept, OperationsRecoveryConcept, OperationsAuditConcept, OperationsInboxConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept, WatchMonitorConcept, TradingOverviewConcept, PositionsConcept } from "./src/conceptPages.jsx";
     `,
@@ -1465,4 +1465,36 @@ test("non-AI desktop interiors render registry, truth, evidence, risk, and run-t
   assert.match(operations, /SYSTEM HEALTH MATRIX/);
   assert.match(operations, /RECENT RUN TRACE/);
   assert.match(operations, /行情刷新/);
+});
+
+test("AI Trader and Live Desk deep pages expose shared truth, registry, evidence, and action roles", () => {
+  const intelligence = render(React.createElement(C.IntelligenceConcept, { data, action, ui }));
+  assert.match(intelligence, /kTruthBand/, "desktop intelligence summary must be an authoritative truth band");
+  assert.match(intelligence, /kRegistry/, "desktop intelligence feed must use the shared registry role");
+  assert.match(intelligence, /kEvidenceLedger/, "desktop intelligence grounding must use the shared evidence role");
+
+  const watch = render(React.createElement(C.WatchMonitorConcept, { data, action, ui }));
+  assert.match(watch, /kTruthBand/, "desktop watch status must expose current truth");
+  assert.match(watch, /kRegistry/, "desktop watch conditions must remain distinct registry objects");
+
+  const positions = render(React.createElement(C.PositionsConcept, { data, action, ui }));
+  assert.match(positions, /kTruthBand/, "desktop position totals must expose account truth");
+  assert.match(positions, /kRegistry/, "desktop positions must remain a position registry");
+  assert.match(positions, /kEvidenceLedger/, "desktop protection and account evidence must remain disclosed");
+
+  const execution = render(React.createElement(C.ExecutionReviewConcept, { data, action, ui }));
+  assert.match(execution, /kTruthBand/, "desktop execution must expose reconciliation truth");
+  assert.match(execution, /kEvidenceLedger/, "desktop execution must preserve its review and reconciliation evidence");
+  assert.match(execution, /kActionBar/, "desktop execution links must remain explicit actions");
+
+  const mobileIntelligence = render(React.createElement(C.MobileIntelligence, { data, action, ui }));
+  assert.match(mobileIntelligence, /kTruthBand/, "mobile intelligence must lead with current truth");
+  assert.match(mobileIntelligence, /mEvidenceLedger|kEvidenceLedger/, "mobile intelligence must preserve evidence disclosure");
+
+  const mobilePositions = render(React.createElement(C.MobilePositions, { data, action, ui }));
+  assert.match(mobilePositions, /kRegistry/, "mobile positions must keep authoritative objects distinct");
+
+  const mobileExecution = render(React.createElement(C.MobileExecution, { data, action, initialTab: "overview" }));
+  assert.match(mobileExecution, /kTruthBand/, "mobile execution must expose current execution truth");
+  assert.match(mobileExecution, /mEvidenceLedger|kEvidenceLedger/, "mobile execution must preserve the execution evidence ledger");
 });
