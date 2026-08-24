@@ -1523,6 +1523,11 @@
 .productSettings .configurationLedger__empty span { display:grid;gap:4px }
 .productSettings .configurationLedger__empty b { color:var(--kordyn-ink);font-size:10px }
 .productSettings .configurationLedger__empty small { font-size:8.5px }
+.productSettings .configurationSupplementFailures { border:1px solid var(--kordyn-ink);border-top:0 }
+.productSettings .configurationSupplementFailures .kStateRow { border:0;border-bottom:1px solid var(--kordyn-line) }
+.productSettings .configurationSupplementFailures .kStateRow:last-child { border-bottom:0 }
+.productSettings .configurationSupplementFailures button,.productSettings .configurationLedger__empty button { min-height:44px;padding:0 13px;border:1px solid var(--kordyn-ink);border-radius:0;background:var(--kordyn-orange);color:var(--kordyn-ink);font-size:9px;font-weight:760 }
+.productSettings .configurationLedger__empty button { margin-left:auto }
 .productSettings .configurationDomain.kFormSurface,.productSettings .cp2SettingsBasePage.kFormSurface,.productSettings .cp2SettingsForm.kFormSurface,.productSettings>.kFormSurface { padding:0;border:1px solid var(--kordyn-ink);background:var(--kordyn-paper-white) }
 .productSettings .kFormSurface :is(input,textarea,select,button),.productSettings .kFormSurface .cp2Card,.productSettings .kFormSurface .cp2SettingsPanel { border-radius:0;box-shadow:none }
 @media(max-width:1050px){.productSettings .configurationTruth,.productSettings .configurationWorkbench{grid-template-columns:1fr}.productSettings .configurationTruth .cp2OverviewHealth,.productSettings .configurationInspector{border-top:1px solid var(--kordyn-ink);border-left:0}.productSettings .configurationScopes{grid-template-columns:repeat(2,minmax(0,1fr))}.productSettings .configurationScopes>span:nth-child(2n){border-right:0}.productSettings .configurationScopes>span:nth-child(-n+2){border-bottom:1px solid var(--kordyn-ink)}}

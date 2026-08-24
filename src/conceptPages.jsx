@@ -1838,6 +1838,19 @@ export function UsersSettingsConcept({ data, action, ui }) {
   </div>;
 }
 
+export function configurationSupplementState(data = {}, section) {
+  const resourceState = data.resourceState?.[section];
+  if (["error", "loading", "loaded", "not_loaded"].includes(resourceState)) return resourceState;
+  if (Array.isArray(data.loadedSections)) return data.loadedSections.includes(section) ? "loaded" : "not_loaded";
+  return "loaded";
+}
+
+export function retryConfigurationSupplement(ui, section) {
+  if (typeof ui?.ensureSection === "function") return ui.ensureSection(section, { force: true });
+  if (typeof ui?.loadSection === "function") return ui.loadSection(section, { force: true });
+  return ui?.refresh?.(true);
+}
+
 export function SettingsConcept({ data, action, ui, activeTab, initialBaseSection = "environment", onTabChange }) {
   const isOwner = data.user?.isOwner === true;
   const [baseSection, setBaseSection] = useState(initialBaseSection);
@@ -1851,10 +1864,14 @@ export function SettingsConcept({ data, action, ui, activeTab, initialBaseSectio
   const snapshots = arr(data.accountSnapshots);
   const control = buildControlConfigurationView(data);
   const eventSources = arr(data.eventSources);
-  const tracksSupplementalLoading = Array.isArray(data.loadedSections);
-  const riskSupplementLoaded = !tracksSupplementalLoading || data.loadedSections.includes("riskCenter");
-  const operationsSupplementLoaded = !tracksSupplementalLoading || data.loadedSections.includes("operationsCenter");
+  const riskSupplementState = configurationSupplementState(data, "riskCenter");
+  const operationsSupplementState = configurationSupplementState(data, "operationsCenter");
+  const riskSupplementLoaded = riskSupplementState === "loaded";
+  const operationsSupplementLoaded = operationsSupplementState === "loaded";
   const notLoadedLabel = t("尚未加载", "Not loaded");
+  const loadingLabel = t("加载中", "Loading");
+  const failedLabel = t("加载失败", "Load failed");
+  const supplementLabel = (state) => state === "error" ? failedLabel : state === "loading" ? loadingLabel : notLoadedLabel;
   const integrations = config.integrations || {};
   const providerCount = Object.values(config.llm?.providers || {}).filter((provider) => provider.hasKey).length;
   const connectedExchange = exchanges.some((exchange) => exchange.exchange === "OKX" && exchange.readEnabled);
@@ -1950,7 +1967,7 @@ export function SettingsConcept({ data, action, ui, activeTab, initialBaseSectio
     },
     {
       id: "risk", icon: ShieldCheck, title: t("自动保护与风险规则", "Protections & Risk Rules"),
-      description: t("阈值、确定性规则及启停状态", "Thresholds, deterministic rules, and enablement"), status: riskSupplementLoaded ? (control.rules.enabled ? t(`${control.rules.enabled} 条生效`, `${control.rules.enabled} active`) : t("待配置", "Needs setup")) : notLoadedLabel, tone: riskSupplementLoaded ? (control.rules.enabled ? "good" : "warn") : "neutral",
+      description: t("阈值、确定性规则及启停状态", "Thresholds, deterministic rules, and enablement"), status: riskSupplementLoaded ? (control.rules.enabled ? t(`${control.rules.enabled} 条生效`, `${control.rules.enabled} active`) : t("待配置", "Needs setup")) : supplementLabel(riskSupplementState), tone: riskSupplementLoaded ? (control.rules.enabled ? "good" : "warn") : riskSupplementState === "error" ? "bad" : "neutral",
       metrics: [[t("规则总数", "Total rules"), riskSupplementLoaded ? String(control.rules.total) : "—"], [t("当前生效", "Active"), riskSupplementLoaded ? String(control.rules.enabled) : "—"], [t("最近命中", "Recent hits"), riskSupplementLoaded ? String(control.rules.recentHits.length) : "—"]],
       onOpen: () => onTabChange("risk"), actionLabel: t("管理风险规则", "Manage risk rules")
     },
@@ -1980,7 +1997,7 @@ export function SettingsConcept({ data, action, ui, activeTab, initialBaseSectio
     },
     {
       id: "event_sources", icon: CalendarClock, title: t("事件源", "Event Sources"),
-      description: t("宏观日历、公告与 RSS 输入", "Macro calendars, announcements, and RSS inputs"), status: operationsSupplementLoaded ? (eventSources.length ? t("已接入", "Connected") : t("待配置", "Needs setup")) : notLoadedLabel, tone: operationsSupplementLoaded ? (eventSources.length ? "good" : "warn") : "neutral",
+      description: t("宏观日历、公告与 RSS 输入", "Macro calendars, announcements, and RSS inputs"), status: operationsSupplementLoaded ? (eventSources.length ? t("已接入", "Connected") : t("待配置", "Needs setup")) : supplementLabel(operationsSupplementState), tone: operationsSupplementLoaded ? (eventSources.length ? "good" : "warn") : operationsSupplementState === "error" ? "bad" : "neutral",
       metrics: [[t("来源总数", "Total sources"), operationsSupplementLoaded ? String(eventSources.length) : "—"], [t("已启用", "Enabled"), operationsSupplementLoaded ? String(eventSources.filter((item)=>item.enabled!==false).length) : "—"], [t("最近失败", "Recent failures"), operationsSupplementLoaded ? String(eventSources.filter((item)=>item.lastStatus==="failed").length) : "—"]],
       onOpen: () => onTabChange("event_sources"), actionLabel: t("管理事件源", "Manage event sources")
     },
@@ -2039,11 +2056,15 @@ export function SettingsConcept({ data, action, ui, activeTab, initialBaseSectio
         <div className={`cp2OverviewHealth ${runtimeTone}`}><i/><span><small>{t("当前实际状态", "Effective now")}</small><b>{runtime.label}</b><em>{runtime.targetIsEffective?t("保存目标当前生效", "Saved target is effective"):runtime.recoveryLabel}</em></span><span><small>{t("保存目标", "Saved target")}</small><b>{runtime.targetLabel}</b></span></div>
       </header>
       <div className="configurationScopes kFilterRail" aria-label={t("配置范围", "Configuration scopes")}><span><b>01 / SYSTEM</b><small>{t("环境 · 网络 · 备份 · 安全", "Environment · network · backup · security")}</small></span><span><b>02 / TRADING</b><small>{t("运行目标 · 权限 · 风险", "Operating target · mandate · risk")}</small></span><span><b>03 / CONNECTIONS</b><small>{t("OKX · 模型 · 通知 · 事件", "OKX · models · notifications · events")}</small></span><span><b>04 / GOVERNANCE</b><small>{t("Agent · 用户 · 订阅", "Agents · users · subscriptions")}</small></span></div>
+      {(riskSupplementState === "error" || operationsSupplementState === "error") && <section className="configurationSupplementFailures kEvidenceLedger" aria-label={t("补充配置数据错误", "Supplementary configuration data errors")}>
+        {riskSupplementState === "error" && <div className="kStateRow kStateRow--error" data-state="error"><i/><div><b>{t("风险数据加载失败", "Risk data failed to load")}</b><span>{t("风险规则与命中证据不可用；当前不显示零值。", "Risk rules and hit evidence are unavailable; zero values are not shown.")}</span></div><button type="button" onClick={()=>retryConfigurationSupplement(ui, "riskCenter")}>{t("重试风险数据", "Retry risk data")}</button></div>}
+        {operationsSupplementState === "error" && <div className="kStateRow kStateRow--error" data-state="error"><i/><div><b>{t("运行与审计数据加载失败", "Operations and audit data failed to load")}</b><span>{t("事件源与配置审计不可用；当前不显示空记录。", "Event sources and configuration audit are unavailable; empty records are not shown.")}</span></div><button type="button" onClick={()=>retryConfigurationSupplement(ui, "operationsCenter")}>{t("重试运行与审计数据", "Retry operations and audit data")}</button></div>}
+      </section>}
       <div className="configurationWorkbench kWorkbench">
         <div className="configurationRegistry kRegistry"><header><div><small>{t("配置架构", "CONFIGURATION ARCHITECTURE")}</small><h3>{t("每项配置都有范围与所有者", "Every setting has a scope and owner")}</h3></div><b>{overviewCards.length}</b></header>{overviewCards.map(({ id, icon: Icon, title, description, status, tone, metrics }) => <button type="button" className={selectedConfiguration.id===id?"active":""} aria-current={selectedConfiguration.id===id?"true":undefined} key={id} onClick={()=>setSelectedConfigurationId(id)}><i className={`configurationRegistry__index ${tone}`}>{String(overviewCards.findIndex((item)=>item.id===id)+1).padStart(2,"0")}</i><span><small>{settingsViewMeta[id]?.group[1]||"SYSTEM"}</small><b>{title}</b><em>{description}</em></span><span className="configurationRegistry__summary"><Pill tone={tone}>{status}</Pill><small>{metrics.map(([label,value])=>`${label}: ${value}`).join(" · ")}</small></span><ChevronRight/></button>)}</div>
         <aside className="configurationInspector kInspector"><header><small>{t("所选配置域", "SELECTED CONFIGURATION DOMAIN")}</small><span className={`cp2OverviewIcon ${selectedConfiguration.tone}`}><SelectedConfigurationIcon size={18}/></span><h3>{selectedConfiguration.title}</h3><Pill tone={selectedConfiguration.tone}>{selectedConfiguration.status}</Pill></header><p>{selectedConfiguration.description}</p><div className="configurationInspector__facts">{selectedConfiguration.metrics.map(([label,value])=><span key={label}><small>{label}</small><b>{value}</b></span>)}</div><div className="configurationInspector__ownership"><span><small>{t("修改归属", "Edit ownership")}</small><b>{selectedConfiguration.id==="users"?"OWNER":t("配置中心", "Configuration")}</b></span><span><small>{t("运行事实", "Runtime truth")}</small><b>{t("Control / Operations 只读", "Control / Operations read-only")}</b></span></div>{selectedConfiguration.onOpen?<button type="button" className="configurationInspector__open" onClick={selectedConfiguration.onOpen}>{selectedConfiguration.actionLabel}<ChevronRight/></button>:<button type="button" className="configurationInspector__open" disabled>{t("Owner 权限必需", "Owner authority required")}</button>}</aside>
       </div>
-      <section className="configurationLedger kEvidenceLedger"><header><div><small>{t("最近配置审计", "RECENT CONFIGURATION AUDIT")}</small><h3>{t("变更与决策", "Changes & decisions")}</h3></div><span>{operationsSupplementLoaded ? configurationAudit.length : "—"}</span></header>{operationsSupplementLoaded&&configurationAudit.map((item)=><article key={item.id}><time>{formatDateTime(item.createdAt)}</time><span><b>{localizeText(item.action)}</b><small>{localizeText(item.actor||item.userName||item.role||t("系统", "System"))} · {item.resource||item.target||"—"}</small></span><Pill tone={toneOf(item.status||item.severity)}>{humanize(item.status||item.severity,t("已记录", "Recorded"))}</Pill></article>)}{!operationsSupplementLoaded?<div className="configurationLedger__empty loading" data-state="not-loaded"><Clock3/><span><b>{notLoadedLabel}</b><small>{t("正在加载权威配置审计，暂不把缺失数据解释为没有变更。", "Loading authoritative configuration audit; absent data is not treated as no changes.")}</small></span></div>:!configurationAudit.length&&<div className="configurationLedger__empty"><Clock3/><span><b>{t("暂无配置审计记录", "No configuration audit records")}</b><small>{t("保存后端配置后，真实审计记录会显示在这里。", "Authoritative audit records appear here after a backend configuration save.")}</small></span></div>}</section>
+      <section className="configurationLedger kEvidenceLedger"><header><div><small>{t("最近配置审计", "RECENT CONFIGURATION AUDIT")}</small><h3>{t("变更与决策", "Changes & decisions")}</h3></div><span>{operationsSupplementLoaded ? configurationAudit.length : "—"}</span></header>{operationsSupplementLoaded&&configurationAudit.map((item)=><article key={item.id}><time>{formatDateTime(item.createdAt)}</time><span><b>{localizeText(item.action)}</b><small>{localizeText(item.actor||item.userName||item.role||t("系统", "System"))} · {item.resource||item.target||"—"}</small></span><Pill tone={toneOf(item.status||item.severity)}>{humanize(item.status||item.severity,t("已记录", "Recorded"))}</Pill></article>)}{operationsSupplementState==="error"?<div className="configurationLedger__empty error" data-state="error"><Clock3/><span><b>{t("运行与审计数据加载失败", "Operations and audit data failed to load")}</b><small>{t("重试后再判断是否存在配置审计记录。", "Retry before determining whether configuration audit records exist.")}</small></span><button type="button" onClick={()=>retryConfigurationSupplement(ui,"operationsCenter")}>{t("重试运行与审计数据", "Retry operations and audit data")}</button></div>:!operationsSupplementLoaded?<div className="configurationLedger__empty loading" data-state={operationsSupplementState}><Clock3/><span><b>{supplementLabel(operationsSupplementState)}</b><small>{operationsSupplementState==="loading"?t("正在加载权威配置审计。", "Loading authoritative configuration audit."):t("权威配置审计尚未加载；缺失数据不代表没有变更。", "Authoritative configuration audit is not loaded; absent data does not mean no changes.")}</small></span></div>:!configurationAudit.length&&<div className="configurationLedger__empty"><Clock3/><span><b>{t("暂无配置审计记录", "No configuration audit records")}</b><small>{t("保存后端配置后，真实审计记录会显示在这里。", "Authoritative audit records appear here after a backend configuration save.")}</small></span></div>}</section>
     </section>}
 
     {tab === "trading" && <section className="configurationDomain configurationTrading kFormSurface"><header><div><h2>{t("交易、运行与自动保护", "Trading, runtime & protections")}</h2><p>{t("这里保存长期运行目标和所有交易边界；实际是否允许开仓仍由 Control 中的实时事实与硬闸决定。", "This page saves the long-term operating target and every trading boundary. Real-time facts and hard gates in Control still decide whether a new entry is allowed.")}</p></div><button type="button" onClick={()=>ui.setActive("riskMandate")}>{t("查看当前生效状态", "Inspect effective state")}<ChevronRight/></button></header><MandateConcept data={data} action={action} ui={ui}/></section>}

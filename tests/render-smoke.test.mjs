@@ -655,7 +655,7 @@ test("mobile Configuration renders a registry index and bounded deep editor surf
   assert.match(sources, /mConfigurationEditor kFormSurface|kFormSurface mConfigurationEditor/);
 });
 
-test("direct Configuration entry distinguishes supplementary loading from authoritative empty", () => {
+test("direct Configuration entry distinguishes pending and loading supplements from authoritative empty", () => {
   const direct = { ...data, loadedSections: ["systemSettings"], riskRules: [], auditLogs: [], eventSources: [] };
   const desktopPending = render(React.createElement(C.SettingsConcept, { data: direct, action, ui, activeTab: "overview", onTabChange: () => {} }));
   const mobilePending = render(React.createElement(C.MobileSettingsIndex, { data: direct, ui, onOpen: () => {} }));
@@ -663,12 +663,57 @@ test("direct Configuration entry distinguishes supplementary loading from author
   assert.match(mobilePending, /尚未加载|Not loaded/);
   assert.doesNotMatch(desktopPending, /暂无配置审计记录|No configuration audit records/);
 
+  const loading = { ...direct, resourceState: { riskCenter: "loading", operationsCenter: "loading" } };
+  const desktopLoading = render(React.createElement(C.SettingsConcept, { data: loading, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  const mobileLoading = render(React.createElement(C.MobileSettingsIndex, { data: loading, ui, onOpen: () => {} }));
+  assert.match(desktopLoading, /加载中|Loading/);
+  assert.match(mobileLoading, /加载中|Loading/);
+  assert.doesNotMatch(desktopLoading, /加载失败|Load failed/);
+  assert.doesNotMatch(mobileLoading, /加载失败|Load failed/);
+
   const loadedEmpty = { ...direct, loadedSections: ["systemSettings", "riskCenter", "operationsCenter"] };
   const desktopEmpty = render(React.createElement(C.SettingsConcept, { data: loadedEmpty, action, ui, activeTab: "overview", onTabChange: () => {} }));
   const mobileEmpty = render(React.createElement(C.MobileSettingsIndex, { data: loadedEmpty, ui, onOpen: () => {} }));
   assert.doesNotMatch(desktopEmpty, /尚未加载|Not loaded/);
   assert.doesNotMatch(mobileEmpty, /尚未加载|Not loaded/);
   assert.match(desktopEmpty, /暂无配置审计记录|No configuration audit records/);
+});
+
+test("Configuration renders failed risk and operations supplements with truthful retry actions", () => {
+  const base = { ...data, loadedSections: ["systemSettings", "riskCenter", "operationsCenter"], riskRules: [], auditLogs: [], eventSources: [] };
+  const riskError = { ...base, resourceState: { riskCenter: "error", operationsCenter: "loaded" } };
+  const desktopRiskError = render(React.createElement(C.SettingsConcept, { data: riskError, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  const mobileRiskError = render(React.createElement(C.MobileSettingsIndex, { data: riskError, ui, onOpen: () => {} }));
+  for (const html of [desktopRiskError, mobileRiskError]) {
+    assert.match(html, /data-state="error"/);
+    assert.match(html, /风险数据加载失败|Risk data failed to load/);
+    assert.match(html, /重试风险数据|Retry risk data/);
+    assert.doesNotMatch(html, /尚未加载|Not loaded/);
+  }
+
+  const operationsError = { ...base, resourceState: { riskCenter: "loaded", operationsCenter: "error" } };
+  const desktopOperationsError = render(React.createElement(C.SettingsConcept, { data: operationsError, action, ui, activeTab: "overview", onTabChange: () => {} }));
+  const mobileOperationsError = render(React.createElement(C.MobileSettingsIndex, { data: operationsError, ui, onOpen: () => {} }));
+  for (const html of [desktopOperationsError, mobileOperationsError]) {
+    assert.match(html, /data-state="error"/);
+    assert.match(html, /运行与审计数据加载失败|Operations and audit data failed to load/);
+    assert.match(html, /重试运行与审计数据|Retry operations and audit data/);
+    assert.doesNotMatch(html, /暂无配置审计记录|No configuration audit records/);
+    assert.doesNotMatch(html, /正在加载权威.*审计|Loading authoritative.*audit/);
+  }
+});
+
+test("Configuration supplementary retry uses the deployed section loader and safe fallbacks", async () => {
+  assert.equal(typeof C.ConceptPagesModule.retryConfigurationSupplement, "function");
+  const calls = [];
+  await C.ConceptPagesModule.retryConfigurationSupplement({ ensureSection: async (...args) => calls.push(["ensure", ...args]) }, "riskCenter");
+  await C.ConceptPagesModule.retryConfigurationSupplement({ loadSection: async (...args) => calls.push(["load", ...args]) }, "operationsCenter");
+  await C.ConceptPagesModule.retryConfigurationSupplement({ refresh: async (...args) => calls.push(["refresh", ...args]) }, "riskCenter");
+  assert.deepEqual(calls, [
+    ["ensure", "riskCenter", { force: true }],
+    ["load", "operationsCenter", { force: true }],
+    ["refresh", true]
+  ]);
 });
 
 test("APP Configuration registry reaches real deployed governance surfaces", () => {
@@ -740,6 +785,26 @@ test("dangerous confirmation fails closed and returns audit evidence only after 
   assert.equal(succeeded.ok, true);
   assert.equal(confirmed, 1);
   assert.match(succeeded.evidence, /audit_ok_1/);
+
+  let legacyConfirmed = 0;
+  const deployedSuccess = await C.MobileModule.submitKillSwitchChange({
+    enable: true, reason: "deployed response", confirmation: "KILL",
+    action: async () => ({ killSwitch: true, reduceOnlyMode: true }),
+    onConfirmed: () => { legacyConfirmed += 1; }
+  });
+  assert.equal(deployedSuccess.ok, true);
+  assert.equal(legacyConfirmed, 1, "matching deployed state closes only after confirmation");
+  assert.match(deployedSuccess.evidence, /killSwitch=true/);
+
+  let falseMatchingConfirmed = 0;
+  const explicitFailureDominates = await C.MobileModule.submitKillSwitchChange({
+    enable: false, reason: "must remain open", confirmation: "RESUME",
+    action: async () => ({ ok: false, killSwitch: false, error: "audit persistence failed" }),
+    onConfirmed: () => { falseMatchingConfirmed += 1; }
+  });
+  assert.equal(explicitFailureDominates.ok, false);
+  assert.equal(falseMatchingConfirmed, 0, "explicit failure keeps the dialog open even when state matches");
+  assert.match(explicitFailureDominates.message, /audit persistence failed/);
 
   const disabled = await C.MobileModule.submitKillSwitchChange({ enable: true, confirmation: "", action: async () => ({ ok: true }) });
   assert.equal(disabled.ok, false);

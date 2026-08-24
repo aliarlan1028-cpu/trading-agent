@@ -53,7 +53,7 @@ import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
 import { WorkspaceStateBoundary } from "./productShell.jsx";
-import { AgentSettingsConcept, UsersSettingsConcept } from "./conceptPages.jsx";
+import { AgentSettingsConcept, UsersSettingsConcept, configurationSupplementState, retryConfigurationSupplement } from "./conceptPages.jsx";
 import {
   buildCapabilityCatalogRows,
   buildEventRows,
@@ -384,10 +384,14 @@ export function MobileSettingsIndex({ data, ui, onOpen }) {
   const user = data.user || {};
   const control = buildControlConfigurationView(data);
   const effective = automationPresentation(data);
-  const tracksSupplementalLoading = Array.isArray(data.loadedSections);
-  const riskSupplementLoaded = !tracksSupplementalLoading || data.loadedSections.includes("riskCenter");
-  const operationsSupplementLoaded = !tracksSupplementalLoading || data.loadedSections.includes("operationsCenter");
+  const riskSupplementState = configurationSupplementState(data, "riskCenter");
+  const operationsSupplementState = configurationSupplementState(data, "operationsCenter");
+  const riskSupplementLoaded = riskSupplementState === "loaded";
+  const operationsSupplementLoaded = operationsSupplementState === "loaded";
   const notLoadedLabel = t("尚未加载", "Not loaded");
+  const loadingLabel = t("加载中", "Loading");
+  const failedLabel = t("加载失败", "Load failed");
+  const supplementLabel = (state) => state === "error" ? failedLabel : state === "loading" ? loadingLabel : notLoadedLabel;
   const configurationAudit = (data.auditLogs || []).filter((item) => /config|setting|mandate|risk|credential|notification|environment|配置|设置|权限|凭证/i.test(`${item.action || ""} ${item.resource || ""} ${item.target || ""}`)).slice(0, 3);
   useEffect(() => {
     ui?.ensureSection?.("riskCenter", { background: true });
@@ -398,11 +402,11 @@ export function MobileSettingsIndex({ data, ui, onOpen }) {
   const subExpired = Number.isFinite(subExpiresAt) && subExpiresAt < Date.now();
   const subs = {
     trading: control.mandate.id ? `v${control.mandate.version} · ${control.mandate.allowedSymbols.length} ${t("个市场", "markets")}` : t("未授权", "Not authorized"),
-    risk: riskSupplementLoaded ? `${control.rules.enabled}/${control.rules.total} ${t("条生效", "active")}` : notLoadedLabel,
+    risk: riskSupplementLoaded ? `${control.rules.enabled}/${control.rules.total} ${t("条生效", "active")}` : supplementLabel(riskSupplementState),
     llm: config.llm?.activeProvider ? humanize(config.llm.activeProvider, config.llm.activeProvider) : t("未配置", "Not configured"),
     exchange: exchange.okx?.hasKey ? "OKX" : t("未配置", "Not configured"),
     integrations: integrations.telegram?.configured ? t("TG 已接入", "Telegram connected") : integrations.lark?.hasWebhook ? t("飞书已接入", "Lark connected") : t("未配置", "Not configured"),
-    event_sources: operationsSupplementLoaded ? `${(data.eventSources || []).filter((item) => item.enabled !== false).length}/${(data.eventSources || []).length} ${t("个启用", "enabled")}` : notLoadedLabel,
+    event_sources: operationsSupplementLoaded ? `${(data.eventSources || []).filter((item) => item.enabled !== false).length}/${(data.eventSources || []).length} ${t("个启用", "enabled")}` : supplementLabel(operationsSupplementState),
     agents: `${(data.agentProfiles || []).filter((item) => item.enabled !== false).length}/${(data.agentProfiles || []).length} ${t("个启用", "enabled")}`,
     users: data.user?.isOwner ? `${(data.users || []).length || 1} ${t("个用户", "users")}` : t("Owner 权限", "Owner authority"),
     environment: `${runtime.okxMarketType || "perpetual_swap"} · :${runtime.port || "8787"}`,
@@ -418,11 +422,16 @@ export function MobileSettingsIndex({ data, ui, onOpen }) {
         <div><span><small>{t("当前实际状态", "Effective now")}</small><b>{effective.label}</b></span><span><small>{t("保存目标", "Saved target")}</small><b>{effective.targetLabel}</b></span></div>
       </section>
 
+      {(riskSupplementState === "error" || operationsSupplementState === "error") && <section className="mConfigurationSupplementFailures kEvidenceLedger">
+        {riskSupplementState === "error" && <div className="kStateRow kStateRow--error" data-state="error"><i/><div><b>{t("风险数据加载失败", "Risk data failed to load")}</b><span>{t("风险规则与命中证据不可用；当前不显示零值。", "Risk rules and hit evidence are unavailable; zero values are not shown.")}</span></div><button type="button" onClick={()=>retryConfigurationSupplement(ui,"riskCenter")}>{t("重试风险数据", "Retry risk data")}</button></div>}
+        {operationsSupplementState === "error" && <div className="kStateRow kStateRow--error" data-state="error"><i/><div><b>{t("运行与审计数据加载失败", "Operations and audit data failed to load")}</b><span>{t("事件源与配置审计不可用；当前不显示空记录。", "Event sources and configuration audit are unavailable; empty records are not shown.")}</span></div><button type="button" onClick={()=>retryConfigurationSupplement(ui,"operationsCenter")}>{t("重试运行与审计数据", "Retry operations and audit data")}</button></div>}
+      </section>}
+
       <section className="mConfigurationRegistry kRegistry"><header><div><small>ADMINISTRATION / SCOPE FIRST</small><b>{t("配置登记", "Configuration registry")}</b><p>{t("所有持久修改的唯一入口", "Single home for durable changes")}</p></div><strong>{settingsSections.length}</strong></header>{settingsSections.map((item, index) => (
         <button type="button" key={item.id} onClick={() => onOpen(`settings:${item.id}`)}><i>{String(index + 1).padStart(2, "0")}</i><span><small>{scopeOf(item.id)}</small><b>{item.label}</b></span><em className="mono">{subs[item.id]}</em><ChevronRight size={15}/></button>
       ))}</section>
 
-      <section className="mConfigurationLedger kEvidenceLedger"><header><div><small>{t("安全与归属", "SECURITY & OWNERSHIP")}</small><b>{t("凭证、订阅与审计边界", "Credential, subscription, and audit boundary")}</b></div></header><button type="button" onClick={() => onOpen("settings:exchange")}><Shield size={15}/><span><b>{t("OKX 凭证", "OKX credentials")}</b><small>{exchange.okx?.hasKey?t("已配置密钥；只允许读取与交易，不允许提现", "Key configured; read/trade only, never withdrawals"):t("尚未配置；凭证值始终保持遮罩", "Not configured; credential values remain masked")}</small></span><StatusBadge tone={exchange.okx?.hasKey?"ok":"neutral"}>{exchange.okx?.hasKey?t("已连接", "Connected"):t("未连接", "Not connected")}</StatusBadge><ChevronRight size={14}/></button>{sub.status&&<div className="mConfigurationSubscription"><span><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small><b>{sub.planName || t("专业版", "Pro")}</b></span><StatusBadge tone={subExpired?"danger":"ok"}>{subExpired?t("已过期", "Expired"):t("生效中", "Active")}</StatusBadge><time className="mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</time></div>}<div className={`mConfigurationAuditState ${operationsSupplementLoaded ? "loaded" : "loading"}`} data-state={operationsSupplementLoaded ? "loaded" : "not-loaded"}><ReceiptText size={15}/><span><b>{operationsSupplementLoaded ? (configurationAudit.length ? t(`${configurationAudit.length} 条最近配置审计`, `${configurationAudit.length} recent configuration audit records`) : t("暂无配置审计记录", "No configuration audit records")) : notLoadedLabel}</b><small>{operationsSupplementLoaded ? (configurationAudit[0] ? `${localizeText(configurationAudit[0].action)} · ${formatDateTime(configurationAudit[0].createdAt)}` : t("保存配置后的权威审计会显示在这里。", "Authoritative audit appears here after configuration saves.")) : t("正在加载权威审计；缺失数据不代表没有变更。", "Loading authoritative audit; absent data does not mean no changes.")}</small></span></div></section>
+      <section className="mConfigurationLedger kEvidenceLedger"><header><div><small>{t("安全与归属", "SECURITY & OWNERSHIP")}</small><b>{t("凭证、订阅与审计边界", "Credential, subscription, and audit boundary")}</b></div></header><button type="button" onClick={() => onOpen("settings:exchange")}><Shield size={15}/><span><b>{t("OKX 凭证", "OKX credentials")}</b><small>{exchange.okx?.hasKey?t("已配置密钥；只允许读取与交易，不允许提现", "Key configured; read/trade only, never withdrawals"):t("尚未配置；凭证值始终保持遮罩", "Not configured; credential values remain masked")}</small></span><StatusBadge tone={exchange.okx?.hasKey?"ok":"neutral"}>{exchange.okx?.hasKey?t("已连接", "Connected"):t("未连接", "Not connected")}</StatusBadge><ChevronRight size={14}/></button>{sub.status&&<div className="mConfigurationSubscription"><span><small>{sub.source === "owner_grant" ? t("Owner 免费授权", "Owner free grant") : humanize(sub.status)}</small><b>{sub.planName || t("专业版", "Pro")}</b></span><StatusBadge tone={subExpired?"danger":"ok"}>{subExpired?t("已过期", "Expired"):t("生效中", "Active")}</StatusBadge><time className="mono">{t("到期", "Expires")} {sub.currentPeriodEnd ? formatDate(sub.currentPeriodEnd) : t("长期有效", "No expiry")}</time></div>}<div className={`mConfigurationAuditState ${operationsSupplementState}`} data-state={operationsSupplementState}><ReceiptText size={15}/><span><b>{operationsSupplementLoaded ? (configurationAudit.length ? t(`${configurationAudit.length} 条最近配置审计`, `${configurationAudit.length} recent configuration audit records`) : t("暂无配置审计记录", "No configuration audit records")) : operationsSupplementState === "error" ? t("运行与审计数据加载失败", "Operations and audit data failed to load") : supplementLabel(operationsSupplementState)}</b><small>{operationsSupplementLoaded ? (configurationAudit[0] ? `${localizeText(configurationAudit[0].action)} · ${formatDateTime(configurationAudit[0].createdAt)}` : t("保存配置后的权威审计会显示在这里。", "Authoritative audit appears here after configuration saves.")) : operationsSupplementState === "error" ? t("重试后再判断是否存在配置审计记录。", "Retry before determining whether configuration audit records exist.") : operationsSupplementState === "loading" ? t("正在加载权威审计。", "Loading authoritative audit.") : t("权威审计尚未加载；缺失数据不代表没有变更。", "Authoritative audit is not loaded; absent data does not mean no changes.")}</small></span>{operationsSupplementState === "error" && <button type="button" onClick={()=>retryConfigurationSupplement(ui,"operationsCenter")}>{t("重试运行与审计数据", "Retry operations and audit data")}</button>}</div></section>
     </div>
   );
 }
