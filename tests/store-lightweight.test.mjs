@@ -9,7 +9,7 @@ import test from "node:test";
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "store-light-test-"));
 process.env.DATA_DIR = dataDir;
 
-const { loadDb, loadDbReadOnlySnapshot, saveDb } = await import("../server/store.mjs");
+const { appendAudit, appendTrace, loadDb, loadDbReadOnlySnapshot, saveDb } = await import("../server/store.mjs");
 const Database = (await import("better-sqlite3")).default;
 
 function readCollection(name) {
@@ -180,4 +180,39 @@ test("appending one account snapshot preserves unchanged entity rows and removes
   saveDb(db, { collections: ["accountSnapshots"] });
   assert.equal(readEntityRow("accountSnapshots", first.id), undefined, "the retention-evicted snapshot must be deleted");
   assert.equal(readEntityRow("accountSnapshots", second.id).rowid, secondAfterAppend.rowid, "the retained snapshot must stay untouched");
+});
+
+test("saving scheduler state does not replay audit and trace rows that were already appended", () => {
+  const db = loadDb();
+  appendAudit(db, "增量日志回归审计", "store-test", "Test");
+  appendTrace(db, "store_test", "增量日志回归链路");
+
+  const sqlite = new Database(path.join(dataDir, "trading-agent.sqlite"));
+  sqlite.exec(`
+    DROP TABLE IF EXISTS persistence_attempts;
+    CREATE TABLE persistence_attempts(kind TEXT NOT NULL);
+    DROP TRIGGER IF EXISTS count_audit_replay;
+    DROP TRIGGER IF EXISTS count_trace_replay;
+    CREATE TRIGGER count_audit_replay BEFORE INSERT ON audit_log_entries
+      BEGIN INSERT INTO persistence_attempts(kind) VALUES ('audit'); END;
+    CREATE TRIGGER count_trace_replay BEFORE INSERT ON trace_entries
+      BEGIN INSERT INTO persistence_attempts(kind) VALUES ('trace'); END;
+  `);
+  sqlite.close();
+
+  db.tasks.push({
+    id: "task_log_replay_guard",
+    name: "日志重放回归",
+    handler: "reminder",
+    type: "Every",
+    schedule: "Every 1h",
+    enabled: false,
+    createdAt: "2026-08-25T00:00:00.000Z"
+  });
+  saveDb(db, { collections: ["tasks"] });
+
+  const reader = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const attempts = reader.prepare("SELECT kind, count(*) AS count FROM persistence_attempts GROUP BY kind").all();
+  reader.close();
+  assert.deepEqual(attempts, [], "already durable append-only logs must not be reinserted during collection saves");
 });

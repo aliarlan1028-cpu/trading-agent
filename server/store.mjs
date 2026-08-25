@@ -233,6 +233,8 @@ let sqlite;
 let persistedCollectionValues = new Map();
 let persistedEntityValues = new Map();
 let persistedEntityDocumentValues = new Map();
+let persistedAuditIds = new Set();
+let persistedTraceIds = new Set();
 
 function entityDocumentKey(tenantId, resourceType, resourceId) {
   return `${tenantId}\u001f${resourceType}\u001f${resourceId}`;
@@ -1727,6 +1729,8 @@ function loadFromSqlite() {
   persistedCollectionValues = new Map(rows.map((row) => [row.name, row.value]));
   persistedEntityValues = new Map();
   persistedEntityDocumentValues = new Map();
+  persistedAuditIds = new Set();
+  persistedTraceIds = new Set();
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
   // 高频中频事实使用独立行存储，避免每2分钟重写一个数十MB的JSON collection。
@@ -1747,8 +1751,12 @@ function loadFromSqlite() {
       persistedEntityValues.set(resourceType, JSON.stringify(items));
     }
   }
-  db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
-  db.traces = sqlite.prepare("select doc from trace_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
+  const auditRows = sqlite.prepare("select id, doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all();
+  const traceRows = sqlite.prepare("select id, doc from trace_entries order by created_at desc, rowid desc limit 1000").all();
+  db.auditLogs = auditRows.map((row) => JSON.parse(row.doc));
+  db.traces = traceRows.map((row) => JSON.parse(row.doc));
+  persistedAuditIds = new Set(auditRows.map((row) => row.id));
+  persistedTraceIds = new Set(traceRows.map((row) => row.id));
   return db;
 }
 
@@ -1797,6 +1805,8 @@ function saveToSqlite(db, options = {}) {
     }
   }
   let entityDocumentChanges = null;
+  const newAuditEntries = (db.auditLogs || []).filter((entry) => entry?.id && !persistedAuditIds.has(entry.id));
+  const newTraceEntries = (db.traces || []).filter((entry) => entry?.id && !persistedTraceIds.has(entry.id));
   const write = sqlite.transaction(() => {
     for (const [name, value] of changedCollections) {
       upsert.run({ name, value, updated_at: updatedAt });
@@ -1814,8 +1824,8 @@ function saveToSqlite(db, options = {}) {
       }
       sqlite.prepare("delete from medium_term_samples where bucket_at < ?").run(Date.now() - 30 * 86_400_000);
     }
-    for (const entry of db.auditLogs || []) writeAuditEntry(entry);
-    for (const entry of db.traces || []) writeTraceEntry(entry);
+    for (const entry of newAuditEntries) writeAuditEntry(entry, { track: false });
+    for (const entry of newTraceEntries) writeTraceEntry(entry, { track: false });
     entityDocumentChanges = persistTradingEntities(db, updatedAt, changedEntityTypes);
   });
   write();
@@ -1823,6 +1833,8 @@ function saveToSqlite(db, options = {}) {
   for (const [resourceType, value] of changedEntityValues) persistedEntityValues.set(resourceType, value);
   for (const key of entityDocumentChanges?.deleted || []) persistedEntityDocumentValues.delete(key);
   for (const [key, value] of entityDocumentChanges?.upserted || []) persistedEntityDocumentValues.set(key, value);
+  for (const entry of newAuditEntries) persistedAuditIds.add(entry.id);
+  for (const entry of newTraceEntries) persistedTraceIds.add(entry.id);
   // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
   if (!scopedCollections || scopedCollections.has("mediumTermSamples")) {
     for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
@@ -1891,7 +1903,7 @@ function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionN
   return { upserted, deleted };
 }
 
-function writeAuditEntry(entry) {
+function writeAuditEntry(entry, options = {}) {
   if (!sqlite) return;
   sqlite.prepare(`
     insert or ignore into audit_log_entries (id, actor, action, target, severity, created_at, doc)
@@ -1905,9 +1917,10 @@ function writeAuditEntry(entry) {
     created_at: entry.createdAt || nowIso(),
     doc: JSON.stringify(entry)
   });
+  if (options.track !== false) persistedAuditIds.add(entry.id);
 }
 
-function writeTraceEntry(entry) {
+function writeTraceEntry(entry, options = {}) {
   if (!sqlite) return;
   sqlite.prepare(`
     insert or ignore into trace_entries (id, type, title, status, latency_ms, created_at, doc)
@@ -1921,6 +1934,7 @@ function writeTraceEntry(entry) {
     created_at: entry.createdAt || nowIso(),
     doc: JSON.stringify(entry)
   });
+  if (options.track !== false) persistedTraceIds.add(entry.id);
   // 运行期兜底:每 2000 条 trace 裁一次,保证重启之间也不会重新膨胀(纯 DELETE,索引支撑,开销小)。
   if ((++traceInsertsSincePrune % 2000) === 0) {
     try { pruneTraceRows(); } catch { /* 裁剪失败忽略,下次再试 */ }
