@@ -57,6 +57,12 @@ test("all successful snapshots preserve the existing successful task result", as
   assert.equal(result.synced, 2);
   assert.deepEqual(result.errors, []);
   assert.equal(result.externalFillReconciliation.reconciled, 1);
+  assert.deepEqual(result.persistCollections, [
+    "accountSnapshots", "exchangeAccounts", "apiKeyMetadata", "positions", "portfolio",
+    "orders", "fills", "executionOrders", "exchangeOrders", "tradePlans", "system",
+    "riskIncidents", "notifications", "ownerImprovementItems", "reviews"
+  ]);
+  assert.equal(result.persistCollections.includes("knowledge"), false);
 });
 
 test("a thrown account error remains isolated and still runs external fill reconciliation", async () => {

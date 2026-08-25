@@ -2,6 +2,12 @@ import { syncPrivateReadOnly } from "./exchangeConnector.mjs";
 import { isLeaseLostError } from "./leaseSafety.mjs";
 import { reconcilePendingOkxFillIdentities } from "./realtimeManager.mjs";
 
+const OKX_READ_ONLY_PERSIST_COLLECTIONS = Object.freeze([
+  "accountSnapshots", "exchangeAccounts", "apiKeyMetadata", "positions", "portfolio",
+  "orders", "fills", "executionOrders", "exchangeOrders", "tradePlans", "system",
+  "riskIncidents", "notifications", "ownerImprovementItems", "reviews"
+]);
+
 function errorText(error) {
   return String(error?.message || error || "unknown_error").slice(0, 160);
 }
@@ -48,6 +54,10 @@ export async function runOkxReadOnlySyncTask(database, lease, dependencies = {})
     attempted: accounts.length,
     synced,
     errors,
-    externalFillReconciliation
+    externalFillReconciliation,
+    // This task cannot mutate knowledge/research/chat state. Giving the
+    // scheduler an exact boundary prevents a one-minute account snapshot from
+    // serializing every large product collection on the Node event loop.
+    persistCollections: [...OKX_READ_ONLY_PERSIST_COLLECTIONS]
   };
 }
