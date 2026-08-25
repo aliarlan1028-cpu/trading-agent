@@ -146,9 +146,13 @@ export function settleAgentDecisionBatch(db, batch = {}, run = {}) {
   return { acknowledged: true, fastMoves, watches, news };
 }
 
-export async function runAgentCycle(db, payload = {}, saveDb) {
+export async function runAgentCycle(db, payload = {}, saveDb, dependencies = {}) {
+  const cycleSaveDb = payload.deferPersistence === true ? null : saveDb;
+  const resolveProvider = dependencies.activeProvider || activeProvider;
+  const syncMarket = dependencies.syncPublicMarket || syncPublicMarket;
+  const loadMarketRegime = dependencies.fetchMarketRegime || fetchMarketRegime;
   const mandate = activeMandate(db);
-  const provider = activeProvider();
+  const provider = resolveProvider();
   // 巡检开始先作废陈旧计划,避免后台把隔夜旧计划当成"待执行"误下单。
   expireStalePlans(db);
   const awaitingPlan = (db.tradePlans || []).find((plan) => plan.status === "awaiting_approval");
@@ -172,7 +176,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   const syncErrors = []; // 失败原因必须留痕:空 catch 会让"没有机会"和"系统看不到数据"混为一谈(外审 P1)
   await Promise.all(symbols.map(async (symbol) => {
     try {
-      await syncPublicMarket(db, "OKX", symbol);
+      await syncMarket(db, "OKX", symbol);
       syncedSymbols.push(symbol);
     } catch (error) {
       syncErrors.push(`${symbol}: ${String(error.message || error).slice(0, 80)}`);
@@ -187,7 +191,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
   // 先判大盘：全局大盘 + 首个交易对聪明钱（免费公开数据，容错，不阻断）
   let regime = null;
   try {
-    regime = await fetchMarketRegime(symbols[0] || "BTC/USDT");
+    regime = await loadMarketRegime(symbols[0] || "BTC/USDT");
     db.marketRegime = {
     ...regime,
     global: regime.global || db.marketRegime?.global || null,       // 免费源 429 时保留上次好值
@@ -281,7 +285,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
     run.traceId = run.id;
     db.agentRuns.unshift(run);
     appendTrace(db, "agent_cycle", `巡检（${skipReasons[0]}）`, "ok");
-    if (saveDb) saveDb(db);
+    if (cycleSaveDb) cycleSaveDb(db);
     return run;
   }
 
@@ -384,7 +388,7 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
     triggeredWatches: triggeredWatches.map(compactTriggeredWatch),
     supplementalContextEvidence: newsSignals.length ? { news: newsDecisionAnalysisEvidence(newsSignals) } : null,
     invocationContext: payload.invocationContext || systemAgentInvocation("agent_cycle_internal")
-  }, saveDb);
+  }, cycleSaveDb);
   result.run.source = "agent_cycle";
   if (agentDecisionRunSucceeded(result.run)) {
     recordAgentDecisionWake(db, wakeEvaluation, result.run);
@@ -402,8 +406,9 @@ export async function runAgentCycle(db, payload = {}, saveDb) {
       }
     }
   }
-  // runAgentChat 在返回前保存的是模型结果；队列确认/恢复与 wake 指纹发生在其后，必须再落盘一次。
-  if (saveDb) saveDb(db);
+  // 手动/API 调用中 runAgentChat 会先保存模型结果；队列确认/恢复与 wake 指纹发生在其后，
+  // 因此仍需再落盘。后台调度通过 deferPersistence 把两次保存统一交给 recordRun 一次完成。
+  if (cycleSaveDb) cycleSaveDb(db);
   appendAudit(db, "定时自主巡检完成", result.run.id, "AgentCycle");
   return result.run;
 }

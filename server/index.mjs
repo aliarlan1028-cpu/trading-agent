@@ -584,13 +584,31 @@ registerTaskHandler("reminder", (database, task, lease) => {
 });
 registerTaskHandler("agent_cycle", async (database, _task, lease) => {
   lease.assertLease();
-  const run = await runAgentCycle(database, { invocationContext: systemAgentInvocation("scheduler:agent_cycle"), signal: lease.signal, schedulerLease: lease }, saveDb);
+  const run = await runAgentCycle(database, {
+    invocationContext: systemAgentInvocation("scheduler:agent_cycle"),
+    signal: lease.signal,
+    schedulerLease: lease,
+    // Background runs are persisted exactly once by scheduler.recordRun. Manual
+    // /api/agent-runs calls keep runAgentCycle's immediate durability contract.
+    deferPersistence: true
+  }, saveDb);
   lease.assertLease();
   recheckActivePlanRisk(database);
   // runAgentChat 会把模型/API 错误转成可见的 failed AgentRun，避免进程崩溃；但调度器
   // 仍必须收到失败信号，否则任务面板会谎报“完成”且不会执行既有重试策略。
   if (run?.status === "failed") throw new Error(run.error || "Agent decision cycle failed");
-  return run;
+  if (run?.status !== "patrol_only") return run;
+  // A patrol-only pass touches deterministic market/accounting/risk state and
+  // the run ledger, but not chat/tool/knowledge history. Avoid serializing the
+  // large unrelated collections on the common one-minute no-decision path.
+  return {
+    ...run,
+    persistCollections: [
+      "markets", "marketRegime", "portfolio", "positions", "accountingAnchors",
+      "system", "tradePlans", "agentRuns", "riskIncidents", "notifications",
+      "ownerImprovementItems", "reviews"
+    ]
+  };
 });
 registerTaskHandler("reconcile", (database, _task, lease) => { lease.assertLease(); return runReconciler(database, { mode: "scheduled", assertLease: lease.assertLease }); });
 // 观察哨哨兵:每分钟机械核对已登记的价格条件,命中即通过 agent_cycle 任务(同锁同风控)触发完整巡检。

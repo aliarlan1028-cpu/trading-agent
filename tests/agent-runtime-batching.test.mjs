@@ -1,7 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentDecisionRunSucceeded, newsSignalDescriptor, newsSignalSymbols, selectAgentDecisionBatch, settleAgentDecisionBatch } from "../server/agentRuntime.mjs";
+import { agentDecisionRunSucceeded, newsSignalDescriptor, newsSignalSymbols, runAgentCycle, selectAgentDecisionBatch, settleAgentDecisionBatch } from "../server/agentRuntime.mjs";
+import { seedDatabase } from "../server/store.mjs";
+
+test("scheduler-owned agent cycles defer every internal database save", async () => {
+  const db = seedDatabase();
+  let saveCalls = 0;
+  const run = await runAgentCycle(db, { deferPersistence: true }, () => { saveCalls += 1; }, {
+    activeProvider: () => null,
+    syncPublicMarket: async () => ({ price: 100 }),
+    fetchMarketRegime: async () => ({ global: null, smartMoney: null })
+  });
+
+  assert.equal(run.status, "patrol_only");
+  assert.equal(saveCalls, 0, "the scheduler must be the only persistence owner");
+});
+
+test("manually invoked agent cycles still persist before returning", async () => {
+  const db = seedDatabase();
+  let saveCalls = 0;
+  const run = await runAgentCycle(db, {}, () => { saveCalls += 1; }, {
+    activeProvider: () => null,
+    syncPublicMarket: async () => ({ price: 100 }),
+    fetchMarketRegime: async () => ({ global: null, smartMoney: null })
+  });
+
+  assert.equal(run.status, "patrol_only");
+  assert.equal(saveCalls, 1, "manual/API cycles retain immediate durability");
+});
 
 test("fast-move batching acknowledges only the four events actually leased for deep analysis", () => {
   const moves = Array.from({ length: 6 }, (_, index) => ({
