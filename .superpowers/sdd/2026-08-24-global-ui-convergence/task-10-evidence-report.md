@@ -5,69 +5,89 @@ Date: 2026-08-25
 ## Frozen source chain
 
 - Immutable prototype authority: `10562336e1315733438f563f4ca1a8679f7e2c9c` (`prototypes/kordyn-operating-system.html`, blob `43267ccfca051351823c668932c857350fb592b9`).
-- Production source: `db5286a1f76d7f331c23de49b314179c77cde557`.
-- Capture / test HEAD: `5e017f05b7da02befb08e818856e2fd9c3ed1f44`; the only later commit is a selection-gate test change and has no Vite production pixels.
-- Evidence asset commit: `878109af7ffda5aef189e4bc2698b7cc1edf0dd3`.
+- Desktop full-shell last-valid geometry contract: `9d93b0180b5a7262372064f9ddddbfc96fbf4f38`.
+- Final production HEAD: `5448040c42ef678f71e6367d9c8280b1258ce857`.
+- Base production/capture batch: production `db5286a1f76d7f331c23de49b314179c77cde557`, capture/test `5e017f05b7da02befb08e818856e2fd9c3ed1f44`.
+- Boundary recapture batch: Desktop last-valid stale/degraded only, captured after the `5448040` fix.
+- Final mixed-batch evidence state: `ffaebb9`.
+- `0cd9933` is the pre-amend intermediate hash and must not be used as final evidence.
+- `878109a` (earlier evidence batch) and `8493bcd` (earlier evidence index) are historical, superseded states. Neither is the final evidence source.
 
 ## Real Chrome capture manifest
 
-Standalone Google Chrome was launched through `playwright-core` with device scale factor 1. The required representative images are:
+The contact sheet was rendered with the approved local Google Chrome path at device scale factor 1. Its referenced screenshots retain their actual capture provenance; visual validity on the final branch is not treated as proof of recapture. Required representative artifacts are:
 
-| Artifact | Exact size | Production state |
-| --- | ---: | --- |
-| `.impeccable/review/desktop.png` | 1440×900 | Desktop AI Trader |
-| `.impeccable/review/desktop-medium.png` | 1180×820 | Medium desktop with Context open |
-| `.impeccable/review/mobile.png` | 390×844 | MobileApp AI Trader |
-| `.impeccable/review/mobile-430x932.png` | 430×932 | Wide MobileApp AI Trader |
-| `.impeccable/review/parity-contact-sheet.png` | 1800×6086 | 60-image final overview |
+| Artifact | Exact size | Capture provenance | Production state |
+| --- | ---: | --- | --- |
+| `.impeccable/review/desktop.png` | 1440×900 | `db5286a + 5e017f0` base batch | Desktop AI Trader |
+| `.impeccable/review/desktop-medium.png` | 1180×820 | `db5286a + 5e017f0` base batch | Medium desktop with Context open |
+| `.impeccable/review/desktop-last-valid-stale.png` | 1440×900 | `5448040` boundary recapture | Full production-component shell, stale last-valid state |
+| `.impeccable/review/desktop-last-valid-degraded.png` | 1180×820 | `5448040` boundary recapture | Full production-component shell, degraded last-valid state |
+| `.impeccable/review/mobile.png` | 390×844 | `db5286a + 5e017f0` base batch | MobileApp AI Trader |
+| `.impeccable/review/mobile-430x932.png` | 430×932 | `db5286a + 5e017f0` base batch | Wide MobileApp AI Trader |
+| `.impeccable/review/parity-contact-sheet.png` | 1800×6458 | evidence `ffaebb9`, mixed sources above | 62-image final overview |
 
-The full walk regenerated 96 production-side screenshot outputs. Fifty-four PNGs had binary changes at the final source and were stored with the updated contact-sheet HTML in the 55-file evidence commit; byte-identical outputs were still opened and recaptured by the same final-source runners. Coverage includes all six desktop destinations, APP primary/More destinations, AI chat/watch/intelligence/events, Live, Lab, Control Posture/Event Risk/Boundaries/Rules, Operations, Configuration, Object Switcher default/hover/focus/unavailable, selected-object Context/Trace, medium Context open/collapsed, drawers/sheets, ordinary/danger confirmations, long content and independent state boundaries.
+The base `db5286a + 5e017f0` batch covers all desktop destinations, APP primary/More destinations, AI chat/watch/intelligence/events, Live, Lab, Control Posture/Event Risk/Boundaries/Rules, Operations, Configuration, Object Switcher default/hover/focus/unavailable, selected-object Context/Trace, medium Context open/collapsed, drawers/sheets, authenticated overlays, ordinary/danger confirmations, long content and the original state set. `5448040` adds only the two Desktop last-valid boundary recaptures. Evidence commit `ffaebb9` assembles both batches.
+
+## Desktop last-valid closure
+
+The prior fragment-only Desktop harness was rejected because it could produce a nearly blank image while DOM-only assertions still passed. `9d93b01` replaced it with a full production-component shell composed from the real Command Rail, Workspace Rail, main workspace, Context Dock, Trace Rail, `WorkspaceStateBoundary` and `AiTraderCenter`. The browser contract now requires visible shell, banner, retry and last-valid content rectangles, inert/pointer-disabled stale facts, forced retry and no page overflow.
+
+The first full-shell 1180 capture exposed a real Context overlap. `5448040` constrains only stale/degraded boundaries at 721–1280px, reserving 304px for open Context and 58px for collapsed Context. It does not alter loaded workspaces, APP layout or the default Context state.
+
+Fresh final geometry:
+
+- 1440 stale, open Context: Context left `1136`; banner/retry/truth right edges `1106 / 1089 / 1120`.
+- 1180 degraded, collapsed Context: Context left `1122`; banner/retry/truth right edges `1092 / 1075 / 1106`.
+- 1180 degraded, open Context: Context left `876`; banner/retry/truth right edges `846 / 829 / 860`.
+
+Every constrained surface ends before the Context Dock. Both final Desktop screenshots visibly retain the full warning, reachable Retry action, last-valid workspace and the production shell rails.
 
 ## Authenticated production-shell provenance
 
-The authenticated evidence does not use `tests/authenticated-overlay-browser.html` or an isolated component fixture:
+- These authenticated screenshots belong to the `db5286a + 5e017f0` base capture batch.
+- Startup loading pauses the actual `/api/bootstrap/core` request in the authenticated `AppFrame`.
+- Connection failed aborts that same request.
+- Desktop and 390 ordinary `ConfirmHost` are opened by trusted clicks through actual Operations → Recovery → reconciliation actions.
+- Focus is verified as Cancel → Tab to Confirm → Shift+Tab to Cancel; Escape closes and returns focus to the trigger.
+- Desktop and 390 Release Notice evidence comes from actual `VITE_APP_RELEASE` / `APP_RELEASE` mismatch processes.
+- A fresh same-tenant non-Owner login returned HTTP 200, the same session received HTTP 403 from `/api/admin/users`, and MobileApp displayed the Owner-required gate.
 
-- startup loading pauses the actual `/api/bootstrap/core` request in the real authenticated `AppFrame`;
-- connection failed aborts that same request;
-- desktop and 390 ordinary `ConfirmHost` are opened by trusted clicks through actual Operations → Recovery → reconciliation actions;
-- focus was measured as Cancel → Tab to Confirm → Shift+Tab to Cancel, and Escape closes with trigger focus return;
-- desktop and 390 Release Notice are produced by actual production Vite and backend processes with different `VITE_APP_RELEASE` and `APP_RELEASE` values;
-- the captured desktop and APP Release/Confirm surfaces retain their real application background.
-
-The forbidden state was recreated with a fresh isolated auth-required store. A real active same-tenant non-Owner `交易用户` logged in with HTTP 200; the same browser session received HTTP 403 (`Missing permission: admin:system`) from `/api/admin/users`, and the 390×844 Configuration route visibly showed the Owner-required gate. Credentials are absent from screenshots and reports. The temporary RBAC data was moved to Trash after capture and remains recoverable.
+Credentials are not stored in screenshots or reports.
 
 ## State-evidence honesty
 
-- Operations loading and failed capture only a paused or aborted existing request; no response body is replaced.
-- AI Trader → Events stale source evidence is the current real source-health response.
-- Desktop and APP last-valid stale/degraded screenshots come from the production state browser harness and prove warning + readable last-valid content + inert subtree + retry. They are not described as naturally occurring backend state.
-- Empty and disabled evidence uses actual empty positions/plans/watch data and real disabled send/Kill controls.
-- No DOM mutation, mock application payload, fake success result or demo row was used.
+- Operations loading and failed and AI Trader → Events source-health images belong to the `db5286a + 5e017f0` base batch; loading/failed pause or abort an existing request and do not replace its response body.
+- APP last-valid stale/degraded screenshots also belong to the base batch.
+- Desktop last-valid stale/degraded screenshots alone are the `5448040` boundary recapture batch. All last-valid images use production component state harnesses and prove warning + readable last-valid content + inert subtree + retry, but are not described as naturally occurring backend states.
+- Empty and disabled evidence uses actual application states.
+- No DOM mutation, mock application payload, fake success result or demo result row is used.
 
-## Reproducible commands
+## Reproducible contact-sheet gate
 
-The capture used these focused commands; `/private/tmp` runner files were created only for evidence orchestration and were not committed:
+The evidence commit adds `scripts/render-parity-contact-sheet.mjs`. It starts a dedicated headless Chrome process on a random loopback debugging port, uses a unique temporary profile, waits for the document and every image, validates the evidence contract, captures the full page, then closes Chrome and removes the temporary profile in `finally`.
 
 ```text
-PORT=5178 VITE_API_PROXY_TARGET=http://127.0.0.1:8794 npm run client
-node /private/tmp/kordyn-playwright.6DyHri/task8-audit.mjs .impeccable/review all
-node /private/tmp/kordyn-playwright.6DyHri/task8-fix1-audit.mjs .impeccable/review
-node /private/tmp/kordyn-playwright.6DyHri/task8-mobile-long-audit.mjs
-node /private/tmp/kordyn-playwright.6DyHri/task9-f855-evidence.mjs .impeccable/review
-node /private/tmp/kordyn-playwright.6DyHri/task10-auth-real.mjs .impeccable/review
-node /private/tmp/kordyn-playwright.6DyHri/task8-state-audit.mjs .impeccable/review loading
-node /private/tmp/kordyn-playwright.6DyHri/task8-state-audit.mjs .impeccable/review failed
-node /private/tmp/kordyn-playwright.6DyHri/task8-stale-audit.mjs .impeccable/review/desktop-real-stale-source.png
-TASK8_TRADER_PASSWORD=<redacted> node /private/tmp/kordyn-playwright.6DyHri/task8-state-audit.mjs .impeccable/review forbidden
-node /private/tmp/kordyn-playwright.6DyHri/task8-contact-sheet.mjs
+EXPECTED_IMAGE_COUNT=62 node scripts/render-parity-contact-sheet.mjs
 ```
 
-The forbidden command additionally requires a fresh seeded auth-required backend and Vite proxy; the secret values are intentionally not recorded here.
+Approved-Chrome result:
 
-## Final gates
+```text
+imageCount: 62
+broken: []
+width: 1800
+height: 6458
+pendingText: false
+exit: 0
+```
+
+The resulting PNG was opened after render. Desktop stale and degraded appear as explicit independent cells in Truthful operational boundaries; both are readable and show no Context overlap. APP stale/degraded remain present as separate cells. The visible header states: immutable `1056233`; final production `5448040`; base capture/test `5e017f0`; boundary recapture `5448040`.
+
+## Final evidence gates
 
 - Exact document/body containment passed at 1440×900, 1180×820, 390×844 and 430×932.
-- Object Switcher measured 620px wide, max-height 520px, paper background, 8px Ink offset and three columns. The live query returned five real rows and content-fit to about 275px; production did not pad with demo data.
-- Contact-sheet render gate: `60` images, `0` broken; every image was complete with positive `naturalWidth` and `naturalHeight`.
-- The 1800×6086 PNG was opened after the final render. Its visible header contains only immutable `1056233`, production source `db5286a`, capture/test HEAD `5e017f0` and the date. No alt text, broken thumbnail or fixture-only overlay remains.
-- No new visual defect was found. No production source, test, PRODUCT or function-map file was changed by this evidence task.
+- Object Switcher remains 620px wide, max-height 520px, paper background, 8px Ink offset and three columns; the live query uses five real rows and content-fit height.
+- Contact-sheet render gate is `62/62`, `0` broken, with positive natural dimensions for every referenced image.
+- Final sheet is 1800×6458 and contains no pending evidence text. It is explicitly documented as a mixed-batch sheet, not a uniform `5448040` recapture.
+- `node --check scripts/render-parity-contact-sheet.mjs`, script ESLint, direct `ws` dependency resolution and `git diff --check` passed before the evidence commit.

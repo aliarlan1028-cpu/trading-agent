@@ -207,9 +207,11 @@ The medium static contract no longer divides the 656px header budget by five or 
 
 Verification: selected medium contract **1 passed / 0 failed / 1 total**; authorized Task 8 focused set **118 passed / 0 failed / 118 total**; `git diff --check` clean. Matrix totals remain **31 PASS / 0 GAP / 0 BLOCKED**.
 
-## Task 9 / authenticated-shell final evidence closure (2026-08-25)
+## Historical Task 9 / authenticated-shell evidence closure — superseded (2026-08-25)
 
-The final evidence chain is explicit and non-self-referential:
+Historical record only. The hashes and 60-image contact sheet in this section were valid for that checkpoint but are not the final branch evidence.
+
+At that historical checkpoint, the evidence chain was explicit and non-self-referential:
 
 - immutable prototype: `10562336e1315733438f563f4ca1a8679f7e2c9c` / blob `43267ccfca051351823c668932c857350fb592b9`;
 - production implementation source: `3bd2ce86fb6b1efa93922d522ac52cd1893ee432`;
@@ -225,18 +227,36 @@ New integration evidence proves more than static attributes:
 - APP Control has one four-entry rail. At both phone sizes trusted clicks select Posture, Events, Boundaries and Rules; each produces one active item, the correct route/subPage and real content, with no inner `.mHubTabs`.
 - Stale/degraded boundaries preserve last-valid content but mark the subtree inert and retry with `force=true`. Images record APP 390 stale and APP 430 degraded; desktop behavior is covered by the production browser contract. Loading and failed pause/abort only the existing Operations request. Forbidden is a fresh real non-Owner login followed by an actual same-session `/api/admin/users` 403 and a visible APP Owner gate. No successful payload, DOM product state or mock production data was injected.
 
-The contact sheet was rebuilt as a readable 1800×6086 seven-section overview instead of retaining the obsolete six-tile B007 montage. Its visible header states `Immutable 1056233 · Capture HEAD F855781 · Production source 3BD2CE8`. The Chrome render hard gate audited all 60 embedded images and returned `imageCount:60, brokenImageCount:0`; every image was complete with positive natural dimensions. The resulting PNG was opened after render and inspected end-to-end: the prior missing desktop last-valid references were removed, no alt text or broken-image gap remains, and Object Switcher, desktop/medium, both APP widths, Event Risk, Objects/Context/Trace, authenticated overlays, loading/failed/stale/degraded/403/disabled and long-content evidence are visible.
+That checkpoint contact sheet was rebuilt as a readable 1800×6086 seven-section overview instead of retaining the obsolete six-tile B007 montage. Its visible header states `Immutable 1056233 · Capture HEAD F855781 · Production source 3BD2CE8`. The Chrome render hard gate audited all 60 embedded images and returned `imageCount:60, brokenImageCount:0`; every image was complete with positive natural dimensions. The resulting PNG was opened after render and inspected end-to-end: the prior missing desktop last-valid references were removed, no alt text or broken-image gap remains, and Object Switcher, desktop/medium, both APP widths, Event Risk, Objects/Context/Trace, authenticated overlays, loading/failed/stale/degraded/403/disabled and long-content evidence are visible.
 
 Matrix totals remain **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED**. Final branch-level tests, lint and production build are controller-owned gates after this evidence/docs commit; the Impeccable detector is not rerun because Task 9 already completed that one permitted detector pass.
 
-## Task 10 / `db5286a` final-source evidence closure (2026-08-25)
+## Historical Task 10 / `db5286a` evidence closure — superseded (2026-08-25)
 
-This section supersedes older evidence-source labels without rewriting their historical implementation notes. The immutable prototype remains `10562336e1315733438f563f4ca1a8679f7e2c9c`; final production pixels come from `db5286a1f76d7f331c23de49b314179c77cde557`; capture / test HEAD is `5e017f05b7da02befb08e818856e2fd9c3ed1f44`, whose only later change is a test-only selection gate. Final evidence assets are committed at `878109af7ffda5aef189e4bc2698b7cc1edf0dd3`.
+Historical record only. `878109a` and the associated `8493bcd` index were replaced after independent review found that the Desktop last-valid screenshots did not visibly contain a full production shell.
 
-Standalone real Google Chrome recaptured the complete 1440×900, 1180×820, 390×844 and 430×932 production walk. The batch includes all workspaces and deep AI/Live/Lab/Control/Operations/Configuration routes, Desktop and APP Event Risk, Objects/Context/Trace, drawers/sheets, ordinary/danger confirmation, long content and loading/empty/stale/degraded/failed/forbidden/disabled states. `desktop.png` is 1440×900 and `mobile.png` is 390×844; both are in the evidence commit. The final Object Switcher uses its real five-result dataset and content-fit height rather than mock padding.
+At that historical checkpoint, the immutable prototype was `10562336e1315733438f563f4ca1a8679f7e2c9c`; production pixels came from `db5286a1f76d7f331c23de49b314179c77cde557`; capture / test HEAD was `5e017f05b7da02befb08e818856e2fd9c3ed1f44`, whose only later change was a test-only selection gate. Checkpoint evidence assets were committed at `878109af7ffda5aef189e4bc2698b7cc1edf0dd3`.
+
+Standalone real Google Chrome recaptured the complete 1440×900, 1180×820, 390×844 and 430×932 production walk. The batch includes all workspaces and deep AI/Live/Lab/Control/Operations/Configuration routes, Desktop and APP Event Risk, Objects/Context/Trace, drawers/sheets, ordinary/danger confirmation, long content and loading/empty/stale/degraded/failed/forbidden/disabled states. `desktop.png` is 1440×900 and `mobile.png` is 390×844; both are in the evidence commit. The checkpoint Object Switcher uses its real five-result dataset and content-fit height rather than mock padding.
 
 Authenticated evidence is now actual production App/MobileApp throughout. Startup pauses the real core request; connection failed aborts it. Desktop and 390 ordinary `ConfirmHost` are opened through Operations → Recovery reconciliation, with measured focus sequence Cancel → Confirm → Cancel and Escape focus return. Release Notice is produced by actual `VITE_APP_RELEASE` / `APP_RELEASE` mismatch processes. No isolated overlay fixture or blank fixture background is used. A fresh auth-required non-Owner login again returned 200, then actual same-session `/api/admin/users` returned 403 while MobileApp displayed the Owner-required gate.
 
 State provenance is deliberately narrower than earlier wording: Operations loading/failed are live request boundaries; AI Events stale is current real source freshness; stale/degraded last-valid screenshots exercise the production component state harness and prove warning + inert subtree + retry, but are not claimed as a naturally occurring backend response. Empty and disabled are real application states. No DOM injection, mock product payload, demo result row or fake success was used.
 
-The final contact sheet is 1800×6086. Its visible header contains only immutable `1056233`, production source `db5286a`, capture/test HEAD `5e017f0` and the date. Chrome audited all 60 embedded images as complete with positive natural dimensions (`60/60`, `0` broken); the rendered PNG was opened and visually inspected with no alt text, missing thumbnail or invalid authenticated fixture. The Impeccable detector, full suite, lint and build were not run, as required. Detailed commands and per-state provenance are recorded in `task-10-evidence-report.md`.
+That checkpoint contact sheet is 1800×6086. Its visible header contains immutable `1056233`, production source `db5286a`, capture/test HEAD `5e017f0` and the date. Chrome audited all 60 embedded images as complete with positive natural dimensions (`60/60`, `0` broken); the rendered PNG was opened and visually inspected with no alt text, missing thumbnail or invalid authenticated fixture.
+
+## Final Task 10 / `5448040` geometry and evidence closure (2026-08-25)
+
+The immutable authority remains `10562336e1315733438f563f4ca1a8679f7e2c9c` / blob `43267ccfca051351823c668932c857350fb592b9`. The final production HEAD is `5448040c42ef678f71e6367d9c8280b1258ce857`, but the 62-image sheet intentionally has two capture batches: the workspace/Object/Control/APP/authenticated base came from production `db5286a1f76d7f331c23de49b314179c77cde557` with capture/test `5e017f05b7da02befb08e818856e2fd9c3ed1f44`; only the Desktop last-valid stale/degraded cells were recaptured at `5448040` after the full-shell geometry contract `9d93b0180b5a7262372064f9ddddbfc96fbf4f38`. The final mixed-batch evidence state is `ffaebb9`; `0cd9933` is the pre-amend intermediate hash and is not final. Earlier evidence `878109a` and index `8493bcd` are historical only.
+
+Independent review rejected the earlier Desktop stale/degraded images because a fragment harness could satisfy DOM checks while rendering almost blank. The replacement harness mounts the real Command Rail, Workspace Rail, main AI workspace, Context Dock, Trace Rail and `WorkspaceStateBoundary`. Its Chrome contract requires non-zero visible rectangles for the shell, banner, retry and last-valid workspace, plus inert/pointer-disabled truth, forced retry and no document overflow.
+
+That full-shell capture exposed a second real defect at 1180px: collapsed Context covered the warning, Retry action and last-valid inspector. `5448040` now reserves the exact Context budget only for stale/degraded boundaries. Final Chrome geometry has no overlap:
+
+- 1440 stale/open: Context left `1136`; banner/retry/truth end at `1106 / 1089 / 1120`.
+- 1180 degraded/collapsed: Context left `1122`; banner/retry/truth end at `1092 / 1075 / 1106`.
+- 1180 degraded/open: Context left `876`; banner/retry/truth end at `846 / 829 / 860`.
+
+`desktop-last-valid-stale.png` and `desktop-last-valid-degraded.png` are now explicit independent cells in Truthful operational boundaries, alongside the retained APP stale/degraded cells. The committed renderer `scripts/render-parity-contact-sheet.mjs` used approved local Chrome and returned `imageCount:62`, `broken:[]`, `width:1800`, `height:6458`, `pendingText:false`, exit `0`. The resulting 1800×6458 PNG was opened and inspected; both Desktop cells are readable and show complete warnings, Retry actions, last-valid workspaces and unobscured Context boundaries. The visible header distinguishes final production `5448040`, base capture/test `5e017f0` and boundary recapture `5448040`; it does not claim a single capture HEAD.
+
+The final matrix remains **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED**. Detailed final provenance and the reproducible renderer command are in `task-10-evidence-report.md`.
