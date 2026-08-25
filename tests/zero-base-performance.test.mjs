@@ -4,6 +4,7 @@ import test from "node:test";
 
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const productionMobileHarness = readFileSync(new URL("./production-mobile-app-browser.jsx", import.meta.url), "utf8");
+const performanceRunner = readFileSync(new URL("./run-zero-base-performance-build.mjs", import.meta.url), "utf8");
 
 test("public and auth entry no longer statically download the authenticated product stylesheet", () => {
   assert.match(main, /import "\.\/entry\.css"/);
@@ -39,4 +40,13 @@ test("authenticated product-style loading can reach ready and retry without canc
   assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt\]/);
   assert.doesNotMatch(main, /\[authRequired,\s*loading,\s*productStylesState\]/);
   assert.match(main, /setProductStylesAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
+});
+
+test("performance gate builds the current source into an isolated temporary output", () => {
+  assert.match(performanceRunner, /import\s*\{\s*build\s*\}\s*from\s*["']vite["']/);
+  assert.match(performanceRunner, /mkdtemp/);
+  assert.doesNotMatch(performanceRunner, /path\.join\(root,\s*["']dist["']\)/);
+  assert.match(performanceRunner, /outDir:\s*dist/);
+  assert.match(performanceRunner, /emptyOutDir:\s*true/);
+  assert.match(performanceRunner, /finally\s*\{[\s\S]*rm\(buildRoot/);
 });
