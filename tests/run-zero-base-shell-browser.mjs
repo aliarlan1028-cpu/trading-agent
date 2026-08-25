@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -90,6 +90,14 @@ async function setViewport(cdp, url, width, height) {
   await waitForExpression(cdp, "window.__zeroBaseShellBrowserReady && document.querySelector('[data-zero-base-shell=desktop]')", `${width}px zero-base shell`);
 }
 
+async function capture(cdp, name) {
+  const outputDir = process.env.KORDYN_ZERO_BASE_SCREENSHOT_DIR;
+  if (!outputDir) return;
+  await mkdir(outputDir, { recursive: true });
+  const result = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
+  await writeFile(path.join(outputDir, `${name}.png`), Buffer.from(result.data, "base64"));
+}
+
 async function readGeometry(cdp) {
   return await evaluate(cdp, `(() => {
     const root = document.querySelector('[data-zero-base-shell="desktop"]');
@@ -141,13 +149,54 @@ try {
     assert.equal(geometry.family, "today");
     assert.equal(geometry.today, true, `${width}: AI, account, and intelligent asset zones`);
     assert.ok(geometry.main.scrollWidth <= geometry.main.clientWidth + 1, `${width}: page content contained`);
+    await capture(cdp, `desktop-${width}-today`);
     responsive.push({ width, family: geometry.family, mainWidth: geometry.main.width });
   }
 
   await click(cdp, '[data-zero-base-family="ai"]');
-  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily === 'ai' && document.querySelector('[data-browser-workbench=ai]')", "AI family navigation");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily === 'ai' && document.querySelector('.conceptChatShell')", "AI production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="intelligence"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=ai]').dataset.zeroBaseWorkbenchView === 'intelligence' && document.querySelector('.cp2IntelLayout')", "AI intelligence subpage synchronization");
+  await capture(cdp, "desktop-1180-ai-intelligence");
+
+  await click(cdp, '[data-zero-base-family="portfolio"]');
+  await click(cdp, '.zbSubnav [data-zero-base-view="positions"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=portfolio]').dataset.zeroBaseWorkbenchView === 'positions' && document.querySelector('.positionCommandPage')", "Portfolio positions subpage synchronization");
+  await capture(cdp, "desktop-1180-portfolio-positions");
+
   await click(cdp, '[data-zero-base-family="strategy"]');
-  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily === 'strategy' && document.querySelector('[data-browser-workbench=strategy]')", "Strategy family navigation");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily === 'strategy' && document.querySelector('.cp2StrategyTabs button.active') && document.querySelector('.cp2CapabilitiesLayout')", "Strategy production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="historical"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=strategy]').dataset.zeroBaseWorkbenchView === 'historical' && document.querySelector('.cp2StrategyTabs button.active')?.textContent.includes('回测研究') && document.querySelector('.cp2ResearchLayout')", "Strategy historical validation synchronization");
+  await capture(cdp, "desktop-1180-strategy");
+
+  await click(cdp, '[data-zero-base-family="knowledge"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]') && document.querySelector('.cp2KnowledgeIncubator')", "Knowledge production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="workflows"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]').dataset.zeroBaseWorkbenchView === 'workflows' && document.querySelector('.cp2KnowledgeTabs button.active')?.textContent.includes('工具与工作流实验室')", "Knowledge workflow candidate synchronization");
+  await capture(cdp, "desktop-1180-knowledge");
+  await click(cdp, '[data-zero-base-family="capability"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=capability]') && document.querySelector('.cp2CapabilitiesLayout')", "Capability production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="mcp"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=capability]').dataset.zeroBaseWorkbenchView === 'mcp' && document.querySelector('.cp2SideFilter button.active')?.textContent.includes('MCP')", "Capability MCP synchronization");
+  await capture(cdp, "desktop-1180-capability");
+  await click(cdp, '[data-zero-base-family="reviews"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=reviews]') && document.querySelector('.erReviewWorkbench')", "Reviews production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="lessons"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=reviews]').dataset.zeroBaseWorkbenchView === 'lessons' && document.querySelector('.erLessonWorkbench')", "Candidate lessons synchronization");
+  await capture(cdp, "desktop-1180-reviews");
+  await click(cdp, '[data-zero-base-family="guard"]');
+  await click(cdp, '.zbSubnav [data-zero-base-view="events"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=guard]').dataset.zeroBaseWorkbenchView === 'events' && document.querySelector('.eventRiskWorkbench')", "Guard Event Risk subpage synchronization");
+  await capture(cdp, "desktop-1180-guard-events");
+  await click(cdp, '[data-zero-base-family="operations"]');
+  await click(cdp, '.zbSubnav [data-zero-base-view="tasks"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=operations]').dataset.zeroBaseWorkbenchView === 'tasks' && document.querySelector('.opxTasks')", "Operations tasks subpage synchronization");
+  await capture(cdp, "desktop-1180-operations-tasks");
+  await click(cdp, '[data-zero-base-family="configuration"]');
+  await click(cdp, '.zbSubnav [data-zero-base-view="security"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=configuration]').dataset.zeroBaseWorkbenchView === 'security' && document.querySelector('.cp2BaseDirectory button[aria-current=location]')?.textContent.includes('登录与凭证安全') && document.querySelector('[data-settings-section=security]').getBoundingClientRect().top < 130", "Configuration security subpage synchronization");
+  await capture(cdp, "desktop-1180-configuration-security");
 
   await click(cdp, '[data-zero-base-tool="context"]');
   await waitForExpression(cdp, "document.querySelector('.zbShellContext:not([hidden])')", "Context drawer");
@@ -196,7 +245,7 @@ try {
     else assert.equal(states[state].lastValid, false);
   }
 
-  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today", "ai", "strategy"], drawers: ["context", "trace"], selection: "Event:event-5", states }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today", "ai/intelligence", "portfolio/positions", "strategy/historical", "knowledge/workflows", "capability/mcp", "reviews/lessons", "guard/events", "operations/tasks", "configuration/security"], drawers: ["context", "trace"], selection: "Event:event-5", states }, null, 2));
 } finally {
   cdp?.close();
   await stopProcess(chrome);

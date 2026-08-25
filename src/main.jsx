@@ -24,6 +24,7 @@ import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
 import "./zero-base-system.css";
+import "./zero-base-workbenches.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
@@ -337,10 +338,15 @@ function App() {
     if (activeZeroBaseFamily === "today") return <ZeroBaseToday data={data} onNavigate={navigate} viewId={activeZeroBaseView} />;
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
+    const strategySurface = ({ studio: "studio", historical: "research", forward: "research" })[activeZeroBaseView] || activeStrategyTab;
+    const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[activeZeroBaseView] || "reference";
+    const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[activeZeroBaseView] || "全部工具";
+    const researchTab = activeZeroBaseFamily === "reviews" && ["owner", "lessons"].includes(activeZeroBaseView) ? "owner" : activeWorkspaceTab;
+    const ownerPane = activeZeroBaseView === "lessons" ? "lessons" : activeZeroBaseView === "owner" ? "improvements" : "";
     let workspaceContent;
     if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     else if (active === "cockpit") workspaceContent = <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} reviewInitialId={activeReviewId} />;
+    else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${researchTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={researchTab} strategyInitialTab={strategySurface} knowledgeInitialSection={knowledgeSection} capabilityInitialType={capabilityType} reviewInitialId={activeReviewId} ownerInitialPane={ownerPane} />;
     else if (active === "riskCenter") workspaceContent = <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     else if (active === "operationsCenter") workspaceContent = <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     else if (active === "systemSettings") workspaceContent = <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;

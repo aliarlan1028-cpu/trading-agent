@@ -1,0 +1,466 @@
+/* Zero-base production workbench convergence.
+ * This layer deliberately overrides the historical page-by-page visual systems
+ * while preserving every production component, callback and data boundary. */
+
+.zeroBaseProduct {
+  --surface: var(--zb-paper);
+  --surface-white: #FBFAF5;
+  --surface-soft: var(--zb-paper-soft);
+  --text: var(--zb-ink);
+  --text-2: #303630;
+  --text-3: #515A51;
+  --text-4: var(--zb-muted);
+  --border: var(--zb-line);
+  --border-strong: var(--zb-line-strong);
+  --hairline: rgba(17, 19, 17, .1);
+  --accent: var(--zb-green);
+  --accent-ink: #286849;
+  --accent-weak: var(--zb-green-soft);
+  --pos: #32835E;
+  --neg: var(--zb-danger);
+  --warn: #A9771F;
+  --warn-weak: var(--zb-amber-soft);
+}
+
+.zbWorkbench {
+  min-width: 0;
+  isolation: isolate;
+}
+
+.zeroBaseProduct .zbWorkbench > .uxCenter,
+.zeroBaseProduct .zbWorkbench > .cp2Settings,
+.zeroBaseProduct .zbWorkbench .productWorkspaceFrame,
+.zeroBaseProduct .zbWorkbench .productWorkspaceFrame__body,
+.zeroBaseProduct .zbWorkbench .uxCenterBody {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.zeroBaseProduct .zbWorkbench .uxCenter:not(.productWorkspace) > .uxCenterHead,
+.zeroBaseProduct .zbWorkbench .uxCenter:not(.productWorkspace) > .uxTabs {
+  display: none;
+}
+
+/* One shared surface grammar: warm Web3 paper, dark truth, green registry state. */
+.zeroBaseProduct .zbWorkbench .cp2Card,
+.zeroBaseProduct .zbWorkbench .uxCard,
+.zeroBaseProduct .zbWorkbench .cp2Metric,
+.zeroBaseProduct .zbWorkbench .uxMetric,
+.zeroBaseProduct .zbWorkbench .cp2SideFilter,
+.zeroBaseProduct .zbWorkbench .cp2SettingsPanel,
+.zeroBaseProduct .zbWorkbench .agChat,
+.zeroBaseProduct .zbWorkbench .agRail,
+.zeroBaseProduct .zbWorkbench .conceptSessions {
+  border: 1px solid var(--zb-line);
+  border-radius: 18px;
+  color: var(--zb-ink);
+  background: #FBFAF5;
+  box-shadow: 0 12px 34px rgba(17, 19, 17, .065);
+}
+
+.zeroBaseProduct .zbWorkbench .cp2CardHead,
+.zeroBaseProduct .zbWorkbench .uxCardHead {
+  min-height: 38px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-color: var(--zb-line);
+}
+
+.zeroBaseProduct .zbWorkbench .cp2CardHead b,
+.zeroBaseProduct .zbWorkbench .uxCardHead b {
+  color: var(--zb-ink);
+  font: 740 13px/1.25 var(--zb-font-display);
+  letter-spacing: -.015em;
+}
+
+.zeroBaseProduct .zbWorkbench .cp2CardHead span,
+.zeroBaseProduct .zbWorkbench .uxCardHead span,
+.zeroBaseProduct .zbWorkbench .muted { color: var(--zb-muted); }
+
+.zeroBaseProduct .zbWorkbench .cp2Pill {
+  min-height: 23px;
+  padding: 0 8px;
+  border: 1px solid var(--zb-line);
+  border-radius: 999px;
+  color: var(--zb-muted);
+  background: var(--zb-paper-soft);
+  font: 700 8px/1 var(--zb-font-mono);
+  letter-spacing: .03em;
+}
+.zeroBaseProduct .zbWorkbench .cp2Pill.good { border-color: #A9D8C1; color: #286849; background: var(--zb-green-soft); }
+.zeroBaseProduct .zbWorkbench .cp2Pill.warn { border-color: #E1C986; color: #7D5B19; background: var(--zb-amber-soft); }
+.zeroBaseProduct .zbWorkbench .cp2Pill.bad { border-color: #E5B0A5; color: #8D3429; background: var(--zb-danger-soft); }
+
+/* Metric card walls become one continuous truth strip. */
+.zeroBaseProduct .zbWorkbench .cp2Metrics,
+.zeroBaseProduct .zbWorkbench .uxMetrics,
+.zeroBaseProduct .zbWorkbench .uxSummaryStrip {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--zb-line);
+  border-radius: 18px;
+  background: #FBFAF5;
+  box-shadow: 0 12px 34px rgba(17, 19, 17, .05);
+}
+.zeroBaseProduct .zbWorkbench .cp2Metrics .cp2Metric,
+.zeroBaseProduct .zbWorkbench .uxMetrics .uxMetric,
+.zeroBaseProduct .zbWorkbench .uxSummaryStrip .uxMetric {
+  min-height: 92px;
+  border: 0;
+  border-right: 1px solid var(--zb-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.zeroBaseProduct .zbWorkbench .cp2Metrics .cp2Metric:last-child,
+.zeroBaseProduct .zbWorkbench .uxMetrics .uxMetric:last-child,
+.zeroBaseProduct .zbWorkbench .uxSummaryStrip .uxMetric:last-child { border-right: 0; }
+.zeroBaseProduct .zbWorkbench .cp2Metric b,
+.zeroBaseProduct .zbWorkbench .uxMetric > b {
+  color: var(--zb-ink);
+  font-family: var(--zb-font-display);
+  letter-spacing: -.04em;
+}
+.zeroBaseProduct .zbWorkbench .cp2MetricIcon {
+  color: #286849;
+  background: var(--zb-green-soft);
+}
+
+/* Shared factual layouts. */
+.zeroBaseProduct .zbWorkbench .kTruthBand,
+.zeroBaseProduct .zbWorkbench .opxStatusLead,
+.zeroBaseProduct .zbWorkbench .opxRecoveryTruth,
+.zeroBaseProduct .zbWorkbench .opxInboxSummary,
+.zeroBaseProduct .zbWorkbench .eventRiskTruth,
+.zeroBaseProduct .zbWorkbench .configurationTruth {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #303630;
+  border-radius: 22px;
+  color: #F2F4EE;
+  background-color: var(--zb-ink);
+  background-image:
+    radial-gradient(circle at 92% 8%, rgba(204, 255, 61, .14), transparent 28%),
+    linear-gradient(rgba(204, 255, 61, .04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(204, 255, 61, .04) 1px, transparent 1px);
+  background-size: auto, 30px 30px, 30px 30px;
+  box-shadow: 0 16px 40px rgba(17, 19, 17, .16);
+}
+.zeroBaseProduct .zbWorkbench .kTruthBand::after,
+.zeroBaseProduct .zbWorkbench .opxStatusLead::after,
+.zeroBaseProduct .zbWorkbench .eventRiskTruth::after,
+.zeroBaseProduct .zbWorkbench .configurationTruth::after {
+  content: "LIVE / VERIFIED BOUNDARY";
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  color: rgba(204, 255, 61, .52);
+  font: 650 7px/1 var(--zb-font-mono);
+  letter-spacing: .13em;
+  pointer-events: none;
+}
+.zeroBaseProduct .zbWorkbench .kTruthBand h2,
+.zeroBaseProduct .zbWorkbench .kTruthBand h3,
+.zeroBaseProduct .zbWorkbench .kTruthBand b,
+.zeroBaseProduct .zbWorkbench .opxStatusLead h2,
+.zeroBaseProduct .zbWorkbench .eventRiskTruth h2,
+.zeroBaseProduct .zbWorkbench .configurationTruth h2 { color: white; }
+.zeroBaseProduct .zbWorkbench .kTruthBand small,
+.zeroBaseProduct .zbWorkbench .kTruthBand p,
+.zeroBaseProduct .zbWorkbench .opxStatusLead p,
+.zeroBaseProduct .zbWorkbench .eventRiskTruth p,
+.zeroBaseProduct .zbWorkbench .configurationTruth p { color: #9EA79E; }
+.zeroBaseProduct .zbWorkbench .intelTruthBand .cp2Metrics {
+  border-color: #343A34;
+  background: rgba(255, 255, 255, .035);
+  box-shadow: none;
+}
+.zeroBaseProduct .zbWorkbench .intelTruthBand .cp2Metric { border-color: #343A34; }
+.zeroBaseProduct .zbWorkbench .intelTruthBand .cp2Metric b { color: white; }
+.zeroBaseProduct .zbWorkbench .intelTruthBand .cp2Metric small,
+.zeroBaseProduct .zbWorkbench .intelTruthBand .cp2Metric em { color: #8D968D; }
+
+.zeroBaseProduct .zbWorkbench .kRegistry,
+.zeroBaseProduct .zbWorkbench .kInspector,
+.zeroBaseProduct .zbWorkbench .kEvidenceLedger,
+.zeroBaseProduct .zbWorkbench .kFormSurface {
+  min-width: 0;
+  border-color: var(--zb-line);
+}
+.zeroBaseProduct .zbWorkbench .kRegistry,
+.zeroBaseProduct .zbWorkbench .kInspector,
+.zeroBaseProduct .zbWorkbench .kEvidenceLedger {
+  overflow: hidden;
+  border: 1px solid var(--zb-line);
+  border-radius: 18px;
+  background: #FBFAF5;
+  box-shadow: 0 12px 34px rgba(17, 19, 17, .055);
+}
+.zeroBaseProduct .zbWorkbench .kInspector {
+  background: var(--zb-green-soft);
+  box-shadow: none;
+}
+.zeroBaseProduct .zbWorkbench .kEvidenceLedger { background: var(--zb-paper-soft); }
+.zeroBaseProduct .zbWorkbench .kFormSurface {
+  border-radius: 20px;
+  background: transparent;
+}
+
+/* Registries and tables are continuous, not collections of floating cards. */
+.zeroBaseProduct .zbWorkbench .cp2TableWrap {
+  border: 1px solid var(--zb-line);
+  border-radius: 14px;
+  background: #FBFAF5;
+}
+.zeroBaseProduct .zbWorkbench .cp2Table th,
+.zeroBaseProduct .zbWorkbench .uxTable th {
+  padding: 10px 12px;
+  color: var(--zb-muted);
+  background: var(--zb-paper-soft);
+  border-color: var(--zb-line);
+  font: 650 8px/1.2 var(--zb-font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.zeroBaseProduct .zbWorkbench .cp2Table td,
+.zeroBaseProduct .zbWorkbench .uxTable td {
+  padding: 12px;
+  color: #303630;
+  border-color: var(--zb-line);
+}
+.zeroBaseProduct .zbWorkbench .cp2Table tbody tr:hover td,
+.zeroBaseProduct .zbWorkbench .uxTable tbody tr:hover td { background: #EEF5DD; }
+.zeroBaseProduct .zbWorkbench .cp2Table.rowClickable tbody tr.rowOn td {
+  color: var(--zb-ink);
+  background: var(--zb-green-soft);
+}
+.zeroBaseProduct .zbWorkbench .cp2Table.rowClickable tbody tr.rowOn td:first-child { box-shadow: inset 4px 0 var(--zb-green); }
+
+/* Actions retain semantic color and gain consistent touch/focus geometry. */
+.zeroBaseProduct .zbWorkbench .cp2Primary,
+.zeroBaseProduct .zbWorkbench .uxPrimary,
+.zeroBaseProduct .zbWorkbench .cp2Secondary,
+.zeroBaseProduct .zbWorkbench .uxSecondary,
+.zeroBaseProduct .zbWorkbench .cp2Danger,
+.zeroBaseProduct .zbWorkbench .cp2Link,
+.zeroBaseProduct .zbWorkbench .kActionBar button {
+  min-height: 40px;
+  border-radius: 11px;
+  font-weight: 740;
+}
+.zeroBaseProduct .zbWorkbench .cp2Primary,
+.zeroBaseProduct .zbWorkbench .uxPrimary {
+  border-color: var(--zb-ink);
+  color: var(--zb-ink);
+  background: var(--zb-acid);
+}
+.zeroBaseProduct .zbWorkbench .cp2Secondary,
+.zeroBaseProduct .zbWorkbench .uxSecondary {
+  border-color: var(--zb-line-strong);
+  color: var(--zb-ink);
+  background: #FBFAF5;
+}
+.zeroBaseProduct .zbWorkbench .cp2Danger { border-color: var(--zb-danger); color: var(--zb-danger); background: var(--zb-danger-soft); }
+.zeroBaseProduct .zbWorkbench button:disabled { cursor: not-allowed; filter: grayscale(.3); opacity: .52; }
+
+.zeroBaseProduct .zbWorkbench input,
+.zeroBaseProduct .zbWorkbench select,
+.zeroBaseProduct .zbWorkbench textarea,
+.zeroBaseProduct .zbWorkbench .cp2Search,
+.zeroBaseProduct .zbWorkbench .cp2FilterBar > span {
+  min-height: 40px;
+  border: 1px solid var(--zb-line);
+  border-radius: 11px;
+  color: var(--zb-ink);
+  background: #FBFAF5;
+}
+
+/* AI Trader: conversation remains the primary worksite, with its factual rail attached. */
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .conceptChatShell {
+  min-height: calc(100vh - 252px) !important;
+  grid-template-columns: minmax(0, 1fr) 288px !important;
+  gap: 14px !important;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .agChat {
+  overflow: hidden;
+  border-color: #303630;
+  color: white;
+  background: var(--zb-ink);
+  box-shadow: 0 18px 46px rgba(17, 19, 17, .18);
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .agChat::before {
+  content: "AI PRIMARY WORKSITE";
+  display: block;
+  padding: 10px 16px;
+  border-bottom: 1px solid #303630;
+  color: var(--zb-acid);
+  font: 700 8px/1 var(--zb-font-mono);
+  letter-spacing: .14em;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .agRail,
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .conceptSessions { background: var(--zb-green-soft); box-shadow: none; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .cp2IntelLayout,
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .cp2EventsLayout { gap: 14px; }
+
+/* Portfolio surfaces keep price/account truth wide and execution facts dense. */
+.zeroBaseProduct .zbWorkbench .tradingCommandPage,
+.zeroBaseProduct .zbWorkbench .positionCommandPage { gap: 14px; }
+.zeroBaseProduct .zbWorkbench .cp2TradingHero { grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 14px; }
+.zeroBaseProduct .zbWorkbench .cp2MarketLayout { grid-template-columns: minmax(0, 1fr) 290px; gap: 14px; }
+.zeroBaseProduct .zbWorkbench .cp2CandleBox {
+  overflow: hidden;
+  border-color: var(--zb-line);
+  border-radius: 14px;
+  background: var(--zb-ink);
+}
+.zeroBaseProduct .zbWorkbench .erKpi {
+  border-color: var(--zb-line);
+  border-radius: 18px;
+  background: #FBFAF5;
+  box-shadow: 0 12px 34px rgba(17, 19, 17, .055);
+}
+
+/* Strategy, Knowledge and Capability are separate registries connected by provenance. */
+.zeroBaseProduct .zbWorkbench .cp2StrategyLayout,
+.zeroBaseProduct .zbWorkbench .cp2KnowledgeWorkbench,
+.zeroBaseProduct .zbWorkbench .cp2CapabilitiesLayout,
+.zeroBaseProduct .zbWorkbench .erReviewWorkbench,
+.zeroBaseProduct .zbWorkbench .eventRiskWorkbench,
+.zeroBaseProduct .zbWorkbench .configurationWorkbench,
+.zeroBaseProduct .zbWorkbench .opxWorkbench,
+.zeroBaseProduct .zbWorkbench .opxTaskWorkbench,
+.zeroBaseProduct .zbWorkbench .opxAuditWorkbench,
+.zeroBaseProduct .zbWorkbench .opxInboxWorkbench { gap: 14px; }
+.zeroBaseProduct .zbWorkbench .cp2StrategyTabs,
+.zeroBaseProduct .zbWorkbench .cp2KnowledgeTabs,
+.zeroBaseProduct .zbWorkbench .configurationScopes,
+.zeroBaseProduct .zbWorkbench .opxFilters {
+  border: 1px solid var(--zb-line);
+  border-radius: 16px;
+  background: var(--zb-paper-soft);
+}
+.zeroBaseProduct .zbWorkbench .cp2StrategyTabs button.active,
+.zeroBaseProduct .zbWorkbench .cp2KnowledgeTabs button.active,
+.zeroBaseProduct .zbWorkbench .cp2SideFilter > button.active {
+  border-color: var(--zb-ink);
+  color: white;
+  background: var(--zb-ink);
+}
+.zeroBaseProduct .zbWorkbench .labLifecycleRail,
+.zeroBaseProduct .zbWorkbench .reviewLiveEvidence {
+  border-radius: 16px;
+  background: var(--zb-paper-soft);
+}
+.zeroBaseProduct .zbWorkbench .labProvenance--knowledge-derived { color: #286849; background: var(--zb-green-soft); }
+.zeroBaseProduct .zbWorkbench .labProvenance--system-native { color: var(--zb-ink); background: var(--zb-acid); }
+.zeroBaseProduct .zbWorkbench .productWorkspace .labRegistryWorkbench.kWorkbench {
+  gap: 14px;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.zeroBaseProduct .zbWorkbench .productWorkspace .labRegistryWorkbench.kWorkbench > .cp2SideFilter,
+.zeroBaseProduct .zbWorkbench .productWorkspace .labRegistry.kRegistry,
+.zeroBaseProduct .zbWorkbench .productWorkspace .labInspector.kInspector {
+  overflow: hidden;
+  border: 1px solid var(--zb-line);
+  border-radius: 18px;
+}
+.zeroBaseProduct .zbWorkbench .productWorkspace .labRegistryWorkbench.kWorkbench > .cp2SideFilter { background: #FBFAF5; }
+.zeroBaseProduct .zbWorkbench .productWorkspace .labRegistry.kRegistry { background: #FBFAF5; }
+.zeroBaseProduct .zbWorkbench .productWorkspace .labInspector.kInspector { background: var(--zb-green-soft); }
+.zeroBaseProduct .zbWorkbench .productWorkspace .labInspector.kInspector > .cp2CardHead {
+  min-height: 48px;
+  border-bottom: 1px solid #303630;
+  color: white;
+  background: var(--zb-ink);
+}
+
+/* Guard and Operations make effective truth dark, evidence lighter, actions explicit. */
+.zeroBaseProduct .zbWorkbench .controlRuntimeWorkspace,
+.zeroBaseProduct .zbWorkbench .opxPage { display: grid; gap: 14px; }
+.zeroBaseProduct .zbWorkbench .eventRiskMain,
+.zeroBaseProduct .zbWorkbench .opxRecoveryGrid { gap: 14px; }
+.zeroBaseProduct .zbWorkbench .eventRiskActions,
+.zeroBaseProduct .zbWorkbench .opxRecoveryActionList {
+  border: 1px solid var(--zb-line);
+  border-radius: 16px;
+  background: var(--zb-paper-soft);
+}
+.zeroBaseProduct .zbWorkbench .opxAuditProof,
+.zeroBaseProduct .zbWorkbench .opxEvidenceBand {
+  border-color: var(--zb-line);
+  border-radius: 18px;
+  background: var(--zb-green-soft);
+}
+
+/* Configuration is the only durable editor and visually reads as a form system. */
+.zeroBaseProduct .zbWorkbench .productSettings .configurationRegistry > button,
+.zeroBaseProduct .zbWorkbench .productSettings .cp2SideFilter > button {
+  border-radius: 0;
+}
+.zeroBaseProduct .zbWorkbench .productSettings .configurationRegistry > button.active {
+  color: var(--zb-ink);
+  background: var(--zb-green-soft);
+  box-shadow: inset 4px 0 var(--zb-green);
+}
+.zeroBaseProduct .zbWorkbench .configurationInspector__open {
+  border-color: var(--zb-ink);
+  border-radius: 11px;
+  color: var(--zb-ink);
+  background: var(--zb-acid);
+}
+.zeroBaseProduct .zbWorkbench .configurationDomain > header,
+.zeroBaseProduct .zbWorkbench .cp2SettingsPageHead {
+  border: 1px solid var(--zb-line);
+  border-radius: 18px;
+  background: #FBFAF5;
+}
+.zeroBaseProduct .zbWorkbench .configurationTruth { border-color: #303630; background-color: var(--zb-ink); }
+.zeroBaseProduct .zbWorkbench .cp2BaseSections { padding-bottom: max(48px, calc(100vh - 360px)); }
+.zeroBaseProduct .zbWorkbench .cp2BaseSection { scroll-margin-top: 14px; }
+
+/* Truthful loading and failure states stay visibly different from empty data. */
+.zeroBaseProduct .zbWorkbench [data-state="stale"],
+.zeroBaseProduct .zbWorkbench [data-state="degraded"] { border-color: var(--zb-amber); }
+.zeroBaseProduct .zbWorkbench [data-state="error"],
+.zeroBaseProduct .zbWorkbench [data-state="failed"],
+.zeroBaseProduct .zbWorkbench [data-state="forbidden"] { border-color: var(--zb-danger); }
+.zeroBaseProduct .zbWorkbench .cp2Empty {
+  min-height: 120px;
+  border: 1px dashed var(--zb-line-strong);
+  border-radius: 14px;
+  color: var(--zb-muted);
+  background: rgba(255, 255, 255, .38);
+}
+
+@media (max-width: 1260px) {
+  .zeroBaseProduct .zbWorkbench .cp2Metrics.five,
+  .zeroBaseProduct .zbWorkbench .cp2Metrics.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .zeroBaseProduct .zbWorkbench .cp2Metrics .cp2Metric:nth-child(3n) { border-right: 0; }
+  .zeroBaseProduct .zbWorkbench .cp2Metrics .cp2Metric:nth-child(n+4) { border-top: 1px solid var(--zb-line); }
+  .zeroBaseProduct .zbWorkbench .cp2IntelLayout { grid-template-columns: 150px minmax(0, 1fr); }
+  .zeroBaseProduct .zbWorkbench .cp2IntelLayout > aside:last-child { grid-column: 1 / -1; }
+  .zeroBaseProduct .zbWorkbench .cp2MarketLayout { grid-template-columns: minmax(0, 1fr) 250px; }
+  .zeroBaseProduct .zbWorkbench .productWorkspace .labRegistryWorkbench.kWorkbench { grid-template-columns: 140px minmax(0, 1fr); }
+  .zeroBaseProduct .zbWorkbench .productWorkspace .labInspector.kInspector {
+    grid-column: 1 / -1;
+    border: 1px solid var(--zb-line);
+  }
+}
+
+@media (max-width: 1100px) {
+  .zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .conceptChatShell { grid-template-columns: minmax(0, 1fr) 240px !important; }
+  .zeroBaseProduct .zbWorkbench .cp2TradingHero,
+  .zeroBaseProduct .zbWorkbench .cp2MarketLayout,
+  .zeroBaseProduct .zbWorkbench .cp2KnowledgeWorkbench,
+  .zeroBaseProduct .zbWorkbench .eventRiskWorkbench,
+  .zeroBaseProduct .zbWorkbench .configurationWorkbench { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zeroBaseProduct .zbWorkbench *,
+  .zeroBaseProduct .zbWorkbench *::before,
+  .zeroBaseProduct .zbWorkbench *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}

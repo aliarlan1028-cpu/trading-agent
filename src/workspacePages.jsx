@@ -139,6 +139,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
 
 export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   useEffect(() => { if (tab === "events") ui.ensureSection?.("operationsCenter", { background: true }); }, [tab]);
   const activeWatches = (data.watchTriggers || []).filter((item) => item.status === "active").length;
   const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
@@ -149,6 +150,7 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
 
 export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const tabs = TABS.trade;
   const pages = {
     overview: <TradingOverviewConcept data={data} action={action} ui={ui}/>,
@@ -161,17 +163,18 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
   return <CenterShell workspace="trade" title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.overview}</CenterShell>;
 }
 
-export function ResearchCenter({ data, action, ui, initialTab = "map", strategyInitialTab = "catalog", reviewInitialId = "" }) {
+export function ResearchCenter({ data, action, ui, initialTab = "map", strategyInitialTab = "catalog", knowledgeInitialSection = "reference", capabilityInitialType = "全部工具", reviewInitialId = "", ownerInitialPane = "" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   useEffect(() => { if (tab === "reviews" || tab === "owner") ui.ensureSection?.("cockpit"); }, [tab]);
   const tabs = data.user?.isOwner === true ? TABS.research : TABS.research.filter(([id]) => id !== "owner");
   const pages = {
     map: <ResearchMapConcept data={data} ui={ui}/>,
-    knowledge: <KnowledgeConcept data={data} action={action} ui={ui}/>,
+    knowledge: <KnowledgeConcept data={data} action={action} ui={ui} initialSection={knowledgeInitialSection}/>,
     strategy: <StrategyLibraryConcept data={data} action={action} ui={ui} initialTab={strategyInitialTab}/>,
-    capabilities: <CapabilitiesConcept data={data} action={action} ui={ui}/>,
+    capabilities: <CapabilitiesConcept data={data} action={action} ui={ui} initialType={capabilityInitialType}/>,
     reviews: <TradeReviewWorkbenchConcept data={data} action={action} ui={ui} initialReviewId={reviewInitialId}/>,
-    owner: data.user?.isOwner === true ? <OwnerReviewWorkspaceConcept data={data} action={action} ui={ui}/> : null
+    owner: data.user?.isOwner === true ? <OwnerReviewWorkspaceConcept data={data} action={action} ui={ui} initialOwnerPane={ownerInitialPane}/> : null
   };
   const safeTab = tabs.some(([id]) => id === tab) ? tab : "map";
   return <CenterShell workspace="research" title={t("研究中心","Research")} subtitle={t("研究地图 · 孵化 · 正式资产 · 学习闭环","Research map · Incubation · Formal assets · Learning loop")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.map}</CenterShell>;
@@ -179,6 +182,7 @@ export function ResearchCenter({ data, action, ui, initialTab = "map", strategyI
 
 export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const pages = {
     posture: <RiskPostureConcept data={data} ui={ui}/>,
     events: <EventRiskConcept data={data} ui={ui}/>,
@@ -191,6 +195,7 @@ export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
 
 export function OperationsCenter({ data, action, ui, initialTab = "overview" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const pages = {
     overview: <OperationsCommandConcept data={data} action={action} ui={ui}/>,
     tasks: <OperationsTasksConcept data={data} action={action} ui={ui}/>,

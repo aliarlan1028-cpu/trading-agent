@@ -799,6 +799,7 @@ export function ExecutionReviewConcept({ data, action, ui, view = "overview", in
   const [ownerBusy,setOwnerBusy]=useState("");
   const [ownerEvidenceForms,setOwnerEvidenceForms]=useState({});
   const [ownerPane,setOwnerPane]=useState(initialOwnerPane||((ownerSummary.pendingOwner||ownerImprovements.length)?"improvements":"lessons"));
+  useEffect(() => { if (initialOwnerPane) setOwnerPane(initialOwnerPane); }, [initialOwnerPane]);
   const [selectedOwnerLessonId,setSelectedOwnerLessonId]=useState(candidateOwnerLessons[0]?.id||"");
   useEffect(()=>{if(!candidateOwnerLessons.some(item=>item.id===selectedOwnerLessonId))setSelectedOwnerLessonId(candidateOwnerLessons[0]?.id||"");},[selectedOwnerLessonId,candidateOwnerLessons]);
   const selectedMemoryLearning=arr(reviewLearning.byMemory).find(item=>item.memoryId===selectedReview.memoryItemId);
@@ -984,7 +985,7 @@ function ActiveDoctrineCard({ data, compact = false }){
   </ConceptCard>;
 }
 
-export function KnowledgeConcept({ data, action, ui }) {
+export function KnowledgeConcept({ data, action, ui, initialSection = "reference" }) {
   const k=data.knowledge||{}; const sources=arr(k.sources); const methods=arr(k.tradingMethods); const knowledgeCandidates=arr(k.candidates); const knowledgeSkills=arr(k.tradingSkills); const rules=arr(k.ruleProposals); const chunks=arr(k.chunks);
   const pendingRules=rules.filter(rule=>!rule.status||rule.status==="待审批"||rule.status==="candidate");
   const approvedRules=rules.filter(rule=>rule.status==="已批准"||rule.status==="approved");
@@ -997,7 +998,8 @@ export function KnowledgeConcept({ data, action, ui }) {
   const strategyCandidates=knowledgeCandidates.filter(item=>item.type==="strategy"&&!['ignored','rejected'].includes(item.status));
   const lenses=arr(k.lenses); const workflows=arr(k.workflows);
   const pendingImportedTools=arr(data.skills).filter(item=>item.kind!=="strategy"&&!isPublishedImportedSkill(item));
-  const [section,setSection]=useState("reference");
+  const [section,setSection]=useState(initialSection);
+  useEffect(() => setSection(initialSection), [initialSection]);
   const concepts=arr(k.conceptCards);
   const [conceptSource,setConceptSource]=useState("all");
   const [conceptCategory,setConceptCategory]=useState("all");
@@ -1113,7 +1115,7 @@ function InstallCapabilityDialog({ onClose, notify }) {
   </div></div>;
 }
 
-export function CapabilitiesConcept({ data, action, ui }) {
+export function CapabilitiesConcept({ data, action, ui, initialType = "全部工具" }) {
   // Web 与 App 共用同一目录、去重键、调用统计和健康分类。
   const items = buildCapabilityCatalogRows(data, t);
   const systemCapabilityAliases = new Set([...arr(data.analysisEngine?.tools), ...arr(data.tools)].flatMap(capabilityAliases));
@@ -1124,9 +1126,18 @@ export function CapabilitiesConcept({ data, action, ui }) {
   const isEnabled=i=>i.enabled;
   const isDisabled=i=>i.disabled;
   const isCandidate=i=>i.candidate;
-  const TYPES=[["全部工具",()=>true],["分析工具",i=>/分析|analy|工具|tool/i.test(String(i.kind))&&!/MCP/i.test(String(i.kind))],["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],["工具 (MCP)",i=>/MCP/i.test(String(i.kind))]];
+  const TYPES=[
+    ["全部工具",()=>true],
+    ["原生工具",i=>capabilityProvenance(i,systemCapabilityAliases)==="system-native"&&!i.connector&&!/^tool_/.test(String(i.id||""))],
+    ["分析工具",i=>/分析|analy|工具|tool/i.test(String(i.kind))&&!/MCP/i.test(String(i.kind))],
+    ["工作流",i=>/工作流|workflow|flow/i.test(String(i.kind))],
+    ["工具 (MCP)",i=>/MCP/i.test(String(i.kind))],
+    ["连接器",i=>Boolean(i.connector)||/^tool_/.test(String(i.id||""))],
+    ["导入技能",i=>capabilityProvenance(i,systemCapabilityAliases)==="imported"]
+  ];
   const STATUSES=[["全部状态",()=>true],["已启用",isEnabled],["候选中",isCandidate],["已停用",isDisabled]];
-  const [typeF,setTypeF]=useState("全部工具"); const [statusF,setStatusF]=useState("全部状态"); const [detailTab,setDetailTab]=useState("概览"); const [installing,setInstalling]=useState(false); const [q,setQ]=useState("");
+  const [typeF,setTypeF]=useState(initialType); const [statusF,setStatusF]=useState("全部状态"); const [detailTab,setDetailTab]=useState("概览"); const [installing,setInstalling]=useState(false); const [q,setQ]=useState("");
+  useEffect(() => setTypeF(initialType), [initialType]);
   const typeFn=(TYPES.find(t=>t[0]===typeF)||TYPES[0])[1]; const statusFn=(STATUSES.find(s=>s[0]===statusF)||STATUSES[0])[1];
   const shown=items.filter(i=>typeFn(i)&&statusFn(i)&&(!q||String(i.name).toLowerCase().includes(q.toLowerCase())));
   const [selectedId,setSelectedId]=useState(items[0]?.id||""); const selected=shown.find(i=>i.id===selectedId)||items.find(i=>i.id===selectedId)||shown[0]||items[0]||{};
@@ -1136,7 +1147,7 @@ export function CapabilitiesConcept({ data, action, ui }) {
     <div className="cp2Metrics four"><ConceptMetric label={t("全部工具", "All tools")} value={String(items.length)}/><ConceptMetric label={t("已启用", "Enabled")} value={String(items.filter(isEnabled).length)} tone="good"/><ConceptMetric label={t("候选中", "Candidate")} value={String(items.filter(isCandidate).length)} tone="warn"/><ConceptMetric label={t("已停用", "Disabled")} value={String(items.filter(isDisabled).length)} tone="bad"/></div>
     <div className="cp2CapabilitiesLayout labRegistryWorkbench kWorkbench">
       <aside className="cp2SideFilter">
-        <b>{t("类型", "Type")}</b>{TYPES.map(([name,fn])=><button key={name} className={typeF===name?"active":""} onClick={()=>setTypeF(name)}>{t(name, {"全部工具":"All tools","分析工具":"Analysis","工作流":"Workflow","工具 (MCP)":"MCP"}[name]||name)}<span>{items.filter(fn).length}</span></button>)}
+        <b>{t("类型", "Type")}</b>{TYPES.map(([name,fn])=><button key={name} className={typeF===name?"active":""} onClick={()=>setTypeF(name)}>{t(name, {"全部工具":"All tools","原生工具":"Native tools","分析工具":"Analysis","工作流":"Workflow","工具 (MCP)":"MCP","连接器":"Connectors","导入技能":"Imported skills"}[name]||name)}<span>{items.filter(fn).length}</span></button>)}
         <b>{t("状态", "Status")}</b>{STATUSES.map(([name,fn])=><button key={name} className={statusF===name?"active":""} onClick={()=>setStatusF(name)}>{t(name, {"全部状态":"All","已启用":"Enabled","候选中":"Candidate","已停用":"Disabled"}[name]||name)}<span>{items.filter(fn).length}</span></button>)}
       </aside>
       <ConceptCard title={t("工具列表", "Tool List")} meta={`${shown.length}/${items.length} ${t("项", "")} · ${data.analysisEngine?.toolUsageStatsSince?`${t("统计自","since")} ${formatDateTime(data.analysisEngine.toolUsageStatsSince)}`:t("尚未标记统计起点","stats start unknown")}`} className="cp2CapabilityTable labRegistry kRegistry" action={<button className="cp2Link" onClick={()=>setInstalling(true)}><Plus size={12}/> {t("安装工具", "Install tool")}</button>}>
@@ -1301,6 +1312,7 @@ function StrategyMarketplaceConcept({ data, action }) {
 
 export function StrategyLibraryConcept({ data, action, ui, initialTab = "catalog" }) {
   const [tab,setTab]=useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const tabs=[["catalog",t("策略目录","Catalog")],["studio",t("策略工作室","Strategy Studio")],["market",t("内部策略市场","Internal Market")],["research",t("回测研究","Backtest Research")]];
   return <div className="cp2Stack"><div className="cp2StrategyTabs">{tabs.map(([key,label])=><button key={key} className={tab===key?"active":""} onClick={()=>setTab(key)}>{label}</button>)}</div>{tab==="catalog"?<StrategyCatalogConcept data={data} action={action} ui={ui}/>:tab==="studio"?<StrategyStudioConcept data={data} action={action}/>:tab==="market"?<StrategyMarketplaceConcept data={data} action={action}/>:<StrategyConcept data={data} action={action} ui={ui}/>}</div>;
 }
@@ -1983,6 +1995,11 @@ export function SettingsConcept({ data, action, ui, activeTab, initialBaseSectio
     ...(isOwner ? [["users", "用户与订阅", "Users & Subscriptions"]] : [])
   ];
   const tab = tabs.some(([id]) => id === activeTab) ? activeTab : "overview";
+
+  useEffect(() => {
+    setBaseSection(initialBaseSection);
+    if (tab === "base") setPendingBaseSection(initialBaseSection);
+  }, [initialBaseSection, tab]);
 
   useEffect(() => {
     if (tab === "overview") {

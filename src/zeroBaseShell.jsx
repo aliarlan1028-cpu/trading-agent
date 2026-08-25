@@ -81,9 +81,11 @@ export function ZeroBaseDesktopShell({
       <div className="content zbPage">
         <header className="zbPage__header">
           <div><span className="zbPage__eyebrow">{activeFamily.code} / {activeFamily.group}</span><h1>{t(activeFamily.label, activeFamily.labelEn)}</h1><p>{t(description[0], description[1])}</p></div>
-          {views.length > 0 && <nav className="zbSubnav" aria-label={`${t(activeFamily.label, activeFamily.labelEn)} ${t("子页面", "views")}`}>{views.map((view) => <button type="button" key={view.id} aria-current={currentView?.id === view.id ? "page" : undefined} onClick={() => onFamilyNavigate(activeFamily.id, view.id)}>{t(view.label, view.labelEn)}</button>)}</nav>}
+          {views.length > 0 && <nav className="zbSubnav" aria-label={`${t(activeFamily.label, activeFamily.labelEn)} ${t("子页面", "views")}`}>{views.map((view) => <button type="button" key={view.id} data-zero-base-view={view.id} aria-current={currentView?.id === view.id ? "page" : undefined} onClick={() => onFamilyNavigate(activeFamily.id, view.id)}>{t(view.label, view.labelEn)}</button>)}</nav>}
         </header>
-        {children}
+        <div className="zbWorkbench" data-zero-base-workbench={activeFamily.id} data-zero-base-workbench-view={currentView?.id || activeFamily.defaultView}>
+          {children}
+        </div>
       </div>
     </main>
 

@@ -5,10 +5,12 @@ import { zeroBaseLocationForRoute } from "../src/zeroBaseArchitecture.js";
 import { ZeroBaseDesktopShell } from "../src/zeroBaseShell.jsx";
 import { ZeroBaseToday } from "../src/zeroBaseToday.jsx";
 import { CommandRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "../src/productShell.jsx";
+import { AiTraderCenter, OperationsCenter, ResearchCenter, RiskCenter, SettingsConcept, TradingCenter } from "../src/workspacePages.jsx";
 import { productionShellBrowserFixture } from "./production-shell-browser-fixture.js";
 import "../src/styles.css";
 import "../src/product-foundation.css";
 import "../src/zero-base-system.css";
+import "../src/zero-base-workbenches.css";
 
 const state = new URLSearchParams(window.location.search).get("state") || "loaded";
 const fixture = {
@@ -43,9 +45,34 @@ function BrowserShell() {
     window.__zeroBaseNavigation.push({ ...location, directRoute });
   };
   const select = (row) => { setSelectedObject(row); return row; };
+  const action = async () => ({ ok: true });
+  const ui = {
+    setActive: (route) => navigate(null, null, route),
+    selectObject: select,
+    ensureSection: async () => ({ ok: true }),
+    notify: () => {},
+    download: () => {}
+  };
+  const aiTab = ({ intelligence: "intel", watch: "watch", events: "events" })[viewId] || "dialog";
+  const portfolioTab = ({ market: "market", account: "market", positions: "positions", execution: "execution", ledger: "ledger" })[viewId] || "overview";
+  const riskTab = ({ events: "events", boundaries: "mandate", rules: "rules" })[viewId] || "posture";
+  const operationsTab = ({ tasks: "tasks", recovery: "recovery", notifications: "notifications", audit: "audit" })[viewId] || "overview";
+  const settingsTab = ({ environment: "base", network: "base", backup: "base", security: "base", "event-sources": "event_sources" })[viewId] || viewId;
+  const settingsSection = ({ environment: "environment", network: "network", backup: "data_backup", security: "security" })[viewId] || "environment";
+  const strategySurface = ({ studio: "studio", historical: "research", forward: "research" })[viewId] || "catalog";
+  const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[viewId] || "reference";
+  const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[viewId] || "全部工具";
   const workbench = familyId === "today"
     ? <ZeroBaseToday data={fixture} onNavigate={(route) => navigate(null, null, route)} viewId={viewId} />
-    : <section className="zbPanel" data-browser-workbench={familyId}><header><h2>{familyId}</h2><small>{viewId}</small></header><p>Authoritative production workbench slot</p></section>;
+    : familyId === "ai" ? <AiTraderCenter data={fixture} action={action} ui={ui} initialTab={aiTab} />
+      : familyId === "portfolio" ? <TradingCenter data={fixture} action={action} ui={ui} initialTab={portfolioTab} />
+        : familyId === "strategy" ? <ResearchCenter data={fixture} action={action} ui={ui} initialTab="strategy" strategyInitialTab={strategySurface} />
+          : familyId === "knowledge" ? <ResearchCenter data={fixture} action={action} ui={ui} initialTab="knowledge" knowledgeInitialSection={knowledgeSection} />
+            : familyId === "capability" ? <ResearchCenter data={fixture} action={action} ui={ui} initialTab="capabilities" capabilityInitialType={capabilityType} />
+              : familyId === "reviews" ? <ResearchCenter data={fixture} action={action} ui={ui} initialTab={["owner", "lessons"].includes(viewId) ? "owner" : "reviews"} ownerInitialPane={viewId === "lessons" ? "lessons" : "improvements"} />
+                : familyId === "guard" ? <RiskCenter data={fixture} action={action} ui={ui} initialTab={riskTab} />
+                  : familyId === "operations" ? <OperationsCenter data={fixture} action={action} ui={ui} initialTab={operationsTab} />
+                    : <SettingsConcept data={fixture} action={action} ui={ui} activeTab={settingsTab} initialBaseSection={settingsSection} onTabChange={(next) => setViewId(next)} />;
 
   return <AppFrame authenticated><ZeroBaseDesktopShell
     data={fixture}
