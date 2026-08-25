@@ -230,14 +230,18 @@ const entityCollectionNames = [
 ];
 
 let sqlite;
-let persistedCollectionValues = new Map();
-let persistedEntityValues = new Map();
-let persistedEntityDocumentValues = new Map();
+let persistedCollectionFingerprints = new Map();
+let persistedEntityFingerprints = new Map();
+let persistedEntityDocumentFingerprints = new Map();
 let persistedAuditIds = new Set();
 let persistedTraceIds = new Set();
 
 function entityDocumentKey(tenantId, resourceType, resourceId) {
   return `${tenantId}\u001f${resourceType}\u001f${resourceId}`;
+}
+
+export function persistenceDocumentFingerprint(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
 }
 
 export function nowIso() {
@@ -1726,9 +1730,9 @@ function sanitizeStoredPayload(payload = {}) {
 function loadFromSqlite() {
   const rows = sqlite.prepare("select name, value from collections").all();
   if (!rows.length) return null;
-  persistedCollectionValues = new Map(rows.map((row) => [row.name, row.value]));
-  persistedEntityValues = new Map();
-  persistedEntityDocumentValues = new Map();
+  persistedCollectionFingerprints = new Map(rows.map((row) => [row.name, persistenceDocumentFingerprint(row.value)]));
+  persistedEntityFingerprints = new Map();
+  persistedEntityDocumentFingerprints = new Map();
   persistedAuditIds = new Set();
   persistedTraceIds = new Set();
   const db = {};
@@ -1744,11 +1748,14 @@ function loadFromSqlite() {
     for (const row of entityRows) {
       if (!grouped.has(row.resource_type)) grouped.set(row.resource_type, []);
       grouped.get(row.resource_type).push(JSON.parse(row.doc));
-      persistedEntityDocumentValues.set(entityDocumentKey(row.tenant_id, row.resource_type, row.resource_id), row.doc);
+      persistedEntityDocumentFingerprints.set(
+        entityDocumentKey(row.tenant_id, row.resource_type, row.resource_id),
+        persistenceDocumentFingerprint(row.doc)
+      );
     }
     for (const [resourceType, items] of grouped) {
       db[resourceType] = items;
-      persistedEntityValues.set(resourceType, JSON.stringify(items));
+      persistedEntityFingerprints.set(resourceType, persistenceDocumentFingerprint(JSON.stringify(items)));
     }
   }
   const auditRows = sqlite.prepare("select id, doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all();
@@ -1786,7 +1793,7 @@ function saveToSqlite(db, options = {}) {
     if (scopedCollections && !scopedCollections.has(name)) continue;
     if (lightweight && (name === "knowledge" || name === "markets")) continue;
     const value = JSON.stringify(db[name]);
-    if (persistedCollectionValues.get(name) !== value) changedCollections.set(name, value);
+    if (persistedCollectionFingerprints.get(name) !== persistenceDocumentFingerprint(value)) changedCollections.set(name, value);
   }
   const changedEntityTypes = new Set();
   const changedEntityValues = new Map();
@@ -1794,14 +1801,15 @@ function saveToSqlite(db, options = {}) {
     if (scopedCollections && !scopedCollections.has(resourceType)) continue;
     if (changedCollections.has(resourceType)) {
       changedEntityTypes.add(resourceType);
-      changedEntityValues.set(resourceType, JSON.stringify(db[resourceType] || []));
+      changedEntityValues.set(resourceType, persistenceDocumentFingerprint(changedCollections.get(resourceType)));
       continue;
     }
     if (collectionNames.includes(resourceType)) continue;
     const value = JSON.stringify(db[resourceType] || []);
-    if (persistedEntityValues.get(resourceType) !== value) {
+    const fingerprint = persistenceDocumentFingerprint(value);
+    if (persistedEntityFingerprints.get(resourceType) !== fingerprint) {
       changedEntityTypes.add(resourceType);
-      changedEntityValues.set(resourceType, value);
+      changedEntityValues.set(resourceType, fingerprint);
     }
   }
   let entityDocumentChanges = null;
@@ -1829,10 +1837,16 @@ function saveToSqlite(db, options = {}) {
     entityDocumentChanges = persistTradingEntities(db, updatedAt, changedEntityTypes);
   });
   write();
-  for (const [name, value] of changedCollections) persistedCollectionValues.set(name, value);
-  for (const [resourceType, value] of changedEntityValues) persistedEntityValues.set(resourceType, value);
-  for (const key of entityDocumentChanges?.deleted || []) persistedEntityDocumentValues.delete(key);
-  for (const [key, value] of entityDocumentChanges?.upserted || []) persistedEntityDocumentValues.set(key, value);
+  for (const [name, value] of changedCollections) {
+    persistedCollectionFingerprints.set(name, persistenceDocumentFingerprint(value));
+  }
+  for (const [resourceType, fingerprint] of changedEntityValues) {
+    persistedEntityFingerprints.set(resourceType, fingerprint);
+  }
+  for (const key of entityDocumentChanges?.deleted || []) persistedEntityDocumentFingerprints.delete(key);
+  for (const [key, fingerprint] of entityDocumentChanges?.upserted || []) {
+    persistedEntityDocumentFingerprints.set(key, fingerprint);
+  }
   for (const entry of newAuditEntries) persistedAuditIds.add(entry.id);
   for (const entry of newTraceEntries) persistedTraceIds.add(entry.id);
   // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
@@ -1868,7 +1882,7 @@ function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionN
     for (const [tenantId, tenantRows] of byTenant) {
       const prefix = `${tenantId}\u001f${resourceType}\u001f`;
       const currentKeys = new Set(tenantRows.map((item) => entityDocumentKey(tenantId, resourceType, item.id)));
-      for (const key of persistedEntityDocumentValues.keys()) {
+      for (const key of persistedEntityDocumentFingerprints.keys()) {
         if (!key.startsWith(prefix) || currentKeys.has(key)) continue;
         const resourceId = key.slice(prefix.length);
         removeEntity.run(resourceType, tenantId, resourceId);
@@ -1884,8 +1898,9 @@ function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionN
           ? createdAt
           : item.updatedAt || updatedAt;
         const doc = JSON.stringify({ ...item, tenantId });
+        const fingerprint = persistenceDocumentFingerprint(doc);
         const key = entityDocumentKey(tenantId, resourceType, item.id);
-        if (persistedEntityDocumentValues.get(key) === doc) continue;
+        if (persistedEntityDocumentFingerprints.get(key) === fingerprint) continue;
         upsert.run({
           tenant_id: tenantId,
           resource_type: resourceType,
@@ -1896,7 +1911,7 @@ function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionN
           updated_at: entityUpdatedAt,
           doc
         });
-        upserted.set(key, doc);
+        upserted.set(key, fingerprint);
       }
     }
   }

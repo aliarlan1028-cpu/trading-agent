@@ -9,7 +9,7 @@ import test from "node:test";
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "store-light-test-"));
 process.env.DATA_DIR = dataDir;
 
-const { appendAudit, appendTrace, loadDb, loadDbReadOnlySnapshot, saveDb } = await import("../server/store.mjs");
+const { appendAudit, appendTrace, loadDb, loadDbReadOnlySnapshot, persistenceDocumentFingerprint, saveDb } = await import("../server/store.mjs");
 const Database = (await import("better-sqlite3")).default;
 
 function readCollection(name) {
@@ -39,6 +39,15 @@ function readEntityRow(resourceType, resourceId) {
   sqlite.close();
   return row;
 }
+
+test("persistence caches fixed-length fingerprints instead of retaining raw JSON payloads", () => {
+  const payload = JSON.stringify({ rows: ["sensitive-payload".repeat(10_000)] });
+  const fingerprint = persistenceDocumentFingerprint(payload);
+  assert.match(fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(fingerprint.includes("sensitive-payload"), false);
+  assert.equal(persistenceDocumentFingerprint(payload), fingerprint);
+  assert.notEqual(persistenceDocumentFingerprint(`${payload}changed`), fingerprint);
+});
 
 test("lightweight save skips knowledge and strips candles; full save persists both", () => {
   const db = loadDb();
