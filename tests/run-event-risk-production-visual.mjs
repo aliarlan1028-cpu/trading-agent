@@ -128,22 +128,24 @@ async function capture(cdp, name) {
 }
 
 async function openDesktopEventRisk(cdp) {
-  await trustedClick(cdp, '.workspaceRail nav > button', "Control");
+  await trustedClick(cdp, '[data-zero-base-family="guard"]');
   await waitForSelector(cdp, '[data-product-workspace="control"]');
-  await trustedClick(cdp, ".productWorkspaceFrame__nav button", "事件风险");
+  await trustedClick(cdp, '.zbSubnav [data-zero-base-view="events"]');
   await waitForSelector(cdp, '.productWorkspace [data-surface-role="event-risk"]');
 }
 
 async function openMobileEventRisk(cdp) {
-  await trustedClick(cdp, ".mNativeTabbar > button", "Control");
-  await waitForSelector(cdp, ".mWorkspaceRail--control");
-  await trustedClick(cdp, ".mWorkspaceRail--control > button", "事件");
+  await trustedClick(cdp, '[data-zero-base-mobile-root-target="more"]');
+  await waitForSelector(cdp, '[data-zero-base-mobile-surface="more-hub"]');
+  await trustedClick(cdp, '[data-zero-base-mobile-family-target="guard"]');
+  await waitForSelector(cdp, '[data-zero-base-mobile-local-nav="guard"]');
+  await trustedClick(cdp, '[data-zero-base-mobile-view-target="events"]');
   await waitForSelector(cdp, '.mEventRiskScreen[data-surface-role="event-risk"]');
 }
 
 function geometryExpression(kind) {
-  const tabs = kind === "mobile" ? ".mWorkspaceRail--control" : ".productWorkspaceFrame__nav";
-  const tabButtons = kind === "mobile" ? ":scope > button" : "button";
+  const tabs = kind === "mobile" ? '[data-zero-base-mobile-local-nav="guard"] nav' : ".zbSubnav";
+  const tabButtons = kind === "mobile" ? ":scope > button" : "button[data-zero-base-view]";
   const actions = kind === "mobile" ? ".mEventRiskActions" : ".eventRiskActions";
   const surface = kind === "mobile" ? ".mEventRiskScreen" : ".eventRiskWorkbench";
   return `(() => {
@@ -172,7 +174,7 @@ function geometryExpression(kind) {
       }),
       mobileContract: ${kind === "mobile" ? `(() => {
         const shell = document.querySelector(".mShell2.kordynSystem");
-        const active = [...document.querySelectorAll(".mWorkspaceRail--control > button.active")];
+        const active = [...document.querySelectorAll('[data-zero-base-mobile-local-nav="guard"] [data-zero-base-mobile-view-target][aria-current="page"]')];
         return {
           route: shell?.dataset.shellRoute,
           subPage: shell?.dataset.shellSubpage,
@@ -180,7 +182,7 @@ function geometryExpression(kind) {
           activeText: active[0]?.textContent.trim(),
           activeCurrent: active[0]?.getAttribute("aria-current"),
           innerHubTabs: document.querySelectorAll(".mHub .mHubTabs").length,
-          eventRiskContent: Boolean(document.querySelector('.mHub .mEventRiskScreen[data-surface-role="event-risk"] .mEventRiskRegistry') && document.querySelector('.mHub .mEventRiskActions'))
+          eventRiskContent: Boolean(document.querySelector('.mEventRiskScreen[data-surface-role="event-risk"] .mEventRiskRegistry') && document.querySelector('.mEventRiskScreen .mEventRiskActions'))
         };
       })()` : "null"}
     };

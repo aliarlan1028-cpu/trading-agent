@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const productionMobileHarness = readFileSync(new URL("./production-mobile-app-browser.jsx", import.meta.url), "utf8");
 
 test("public and auth entry no longer statically download the authenticated product stylesheet", () => {
   assert.match(main, /import "\.\/entry\.css"/);
@@ -21,6 +22,8 @@ test("authenticated product styles remain one explicit lazy boundary", () => {
     const moduleSource = readFileSync(new URL(`../src/${moduleName}`, import.meta.url), "utf8");
     assert.doesNotMatch(moduleSource, /import\s+["'][^"']+\.css["']/, `${moduleName} must not inject route-order CSS after zero-base overrides`);
   }
+  assert.match(productionMobileHarness, /import "\.\.\/src\/productStyles\.js"/);
+  assert.doesNotMatch(productionMobileHarness, /import "\.\.\/src\/(?:styles|product-foundation)\.css"/);
 });
 
 test("entry CSS owns only boot, public frame, and zero-base authentication", () => {
@@ -29,4 +32,11 @@ test("entry CSS owns only boot, public frame, and zero-base authentication", () 
   assert.match(entry, /\.authenticatedEntryLoading/);
   assert.match(entry, /\.lpRoot/);
   assert.doesNotMatch(entry, /\.zbShell|\.strategyWorkbench|\.mEventRiskRegistry/);
+});
+
+test("authenticated product-style loading can reach ready and retry without cancelling itself", () => {
+  assert.match(main, /productStylesAttempt/);
+  assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt\]/);
+  assert.doesNotMatch(main, /\[authRequired,\s*loading,\s*productStylesState\]/);
+  assert.match(main, /setProductStylesAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
 });

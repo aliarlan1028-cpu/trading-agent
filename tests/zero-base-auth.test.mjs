@@ -4,6 +4,8 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../src/landing.jsx", import.meta.url), "utf8");
 const css = readFileSync(new URL("../src/zero-base-auth.css", import.meta.url), "utf8");
+const entryCss = readFileSync(new URL("../src/entry.css", import.meta.url), "utf8");
+const lifecycleRunner = readFileSync(new URL("./run-authenticated-shell-browser.mjs", import.meta.url), "utf8");
 
 test("APP auth is a new Web3 access portal, not the former floating market-card scene", () => {
   for (const contract of ["nativeAuthPortal", "nativeAuthStory", "nativeAuthNetwork", "nativeAuthCard"]) assert.match(source, new RegExp(contract));
@@ -29,4 +31,22 @@ test("web marketing auth modal changes visual grammar without changing landing c
   assert.match(css, /\.lpModal\s*\{[^}]*#F4F1E9/i);
   assert.match(css, /\.lpBtn\s*\{[^}]*#CCFF3D/i);
   assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
+});
+
+test("authenticated startup and connection gates use their zero-base loading boundaries", () => {
+  assert.match(lifecycleRunner, /Public Sans, Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif/);
+  assert.match(lifecycleRunner, /zero-base authenticated connection failure product font stack/);
+  assert.doesNotMatch(lifecycleRunner, /startup loading prototype stack|connection failure prototype stack/);
+  assert.match(lifecycleRunner, /failCoreRequests/);
+  assert.match(lifecycleRunner, /data-zero-base-family=operations/);
+  assert.doesNotMatch(lifecycleRunner, /workspace-rail.*nth-child\(5\)/);
+  assert.match(lifecycleRunner, /data-zero-base-mobile-root-target=more/);
+  assert.doesNotMatch(lifecycleRunner, /production MobileApp More drawer/);
+  assert.match(lifecycleRunner, /collectZeroBaseBootSurfaceViolations/);
+});
+
+test("public release notice is styled by the zero-base entry instead of authenticated product CSS", () => {
+  assert.match(entryCss, /\.publicAppFrame \.releaseUpdateNotice\s*\{[^}]*#F4F1E9/i);
+  assert.match(entryCss, /\.publicAppFrame \.releaseUpdateNotice button\s*\{[^}]*#CCFF3D/i);
+  assert.doesNotMatch(entryCss, /\.publicAppFrame \.releaseUpdateNotice\s*\{[^}]*backdrop-filter/i);
 });

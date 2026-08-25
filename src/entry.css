@@ -17,6 +17,19 @@ h1,h2,h3,p { margin:0; }
 .authenticatedAppFrame,.publicAppFrame { display:contents; }
 .lpRoot { position:fixed;inset:0;z-index:1;background:#111311; }
 .lpFrame { position:fixed;inset:0;width:100%;height:100%;border:0; }
+.publicAppFrame .releaseUpdateNotice {
+  position:fixed;z-index:220;top:18px;left:50%;width:min(620px,calc(100vw - 32px));
+  display:flex;align-items:center;justify-content:space-between;gap:18px;translate:-50% 0;
+  padding:14px 16px;border:1px solid #111311;border-radius:16px;color:#111311;background:#F4F1E9;
+  box-shadow:7px 7px 0 #4FB78B;
+}
+.publicAppFrame .releaseUpdateNotice>div { display:grid;gap:3px; }
+.publicAppFrame .releaseUpdateNotice strong { font-size:14px; }
+.publicAppFrame .releaseUpdateNotice span { color:#697169;font-size:12px;line-height:1.45; }
+.publicAppFrame .releaseUpdateNotice button {
+  min-height:44px;flex:0 0 auto;padding:0 15px;border:1px solid #111311;border-radius:11px;
+  color:#111311;background:#CCFF3D;font-weight:800;box-shadow:3px 3px 0 #111311;
+}
 .authenticatedEntryLoading,.authenticatedStateScreen {
   min-height:100dvh;display:grid;place-items:center;padding:24px;
   color:#F4F1E9;background:#111311;
@@ -32,5 +45,9 @@ h1,h2,h3,p { margin:0; }
 .loginPanel button { min-height:48px;border:1px solid #111311;border-radius:12px;padding:0 16px; }
 .loginPanel .primaryButton { color:#111311;background:#CCFF3D;box-shadow:4px 4px 0 #111311; }
 .brandLogo { display:block;object-fit:contain; }
+
+@media(max-width:560px){
+  .publicAppFrame .releaseUpdateNotice { align-items:flex-start;gap:10px; }
+}
 
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

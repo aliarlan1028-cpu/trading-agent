@@ -3,8 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AppFrame } from "../src/appFrame.jsx";
 import { MobileApp } from "../src/mobile.jsx";
 import { loadedResourceState, productionShellBrowserFixture as fixture } from "./production-shell-browser-fixture.js";
-import "../src/styles.css";
-import "../src/product-foundation.css";
+import "../src/productStyles.js";
 
 const noop = () => {};
 

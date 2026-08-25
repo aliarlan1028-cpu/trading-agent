@@ -283,6 +283,7 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 function App() {
   const [lang, setLangState] = useState(getLang());
   const [productStylesState, setProductStylesState] = useState("idle");
+  const [productStylesAttempt, setProductStylesAttempt] = useState(0);
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeZeroBaseFamily, setActiveZeroBaseFamily] = useState("today");
@@ -298,14 +299,14 @@ function App() {
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   useEffect(() => {
-    if (authRequired || loading || productStylesState !== "idle") return undefined;
+    if (authRequired || loading || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
     import("./productStyles.js")
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };
-  }, [authRequired, loading, productStylesState]);
+  }, [authRequired, loading, productStylesAttempt]);
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
@@ -366,7 +367,7 @@ function App() {
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
-  if (!loading && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesState("idle")}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
+  if (!loading && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
   if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
 

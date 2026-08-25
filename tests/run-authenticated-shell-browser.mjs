@@ -210,7 +210,7 @@ async function trustedClickText(cdp, selector, label) {
   await clickPoint(cdp, point);
 }
 
-function assertPrototypeStack(value, expected, label) {
+function assertFontStack(value, expected, label) {
   const normalized = String(value).replaceAll('"', "").replace(/\s+/g, " ").trim();
   assert.equal(normalized, expected, label);
 }
@@ -265,6 +265,18 @@ function collectAuthenticatedSurfaceViolations(violations, label, surface, { sha
   expect(Number.parseFloat(surface.action.minHeight) >= 44, `44px touch target expected, got ${surface.action.minHeight}`);
 }
 
+function collectZeroBaseBootSurfaceViolations(violations, label, surface) {
+  const expect = (condition, detail) => { if (!condition) violations.push(`${label}: ${detail}`); };
+  expect(Boolean(surface), "surface missing");
+  if (!surface) return;
+  expect(surface.backgroundColor === "rgb(23, 26, 23)", `Ink boot background expected, got ${surface.backgroundColor}`);
+  expect(surface.color === "rgb(244, 241, 233)", `Paper boot foreground expected, got ${surface.color}`);
+  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid" && surface.borderTopColor === "rgb(75, 85, 75)", `1px bounded boot border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle} ${surface.borderTopColor}`);
+  expect(surface.borderRadius === "18px", `18px zero-base boot radius expected, got ${surface.borderRadius}`);
+  expect(surface.backdropFilter === "none", `no boot blur expected, got ${surface.backdropFilter}`);
+  expect(surface.boxShadow === "none", `no boot soft shadow expected, got ${surface.boxShadow}`);
+}
+
 if (!appUrl) appUrl = await startIsolatedProductionShell();
 await verifyProductionShellPreconditions(appUrl);
 process.env.KORDYN_APP_URL = appUrl.href;
@@ -296,26 +308,33 @@ try {
   for (const [width, height] of [[1440, 900], [1180, 820], [390, 844], [430, 932]]) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width <= 900 });
     let resolveCoreRequest;
+    let failCoreRequests = false;
+    const pausedCoreRequests = new Set();
     const coreRequestPaused = new Promise((resolve) => { resolveCoreRequest = resolve; });
     const stopListeningForCore = cdp.on("Fetch.requestPaused", (params) => {
-      if (params.request?.url.includes("/api/bootstrap/core")) resolveCoreRequest(params.requestId);
+      if (params.request?.url.includes("/api/bootstrap/core")) {
+        pausedCoreRequests.add(params.requestId);
+        resolveCoreRequest(params.requestId);
+        if (failCoreRequests) cdp.send("Fetch.failRequest", { requestId: params.requestId, errorReason: "Failed" }).catch(() => {});
+      }
       else cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
     });
     await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/bootstrap/core*", requestStage: "Request" }] });
     const startupProbeUrl = new URL(appUrl);
     startupProbeUrl.searchParams.set("authenticated_state_probe", `${width}-${height}-${Date.now()}`);
     await cdp.send("Page.navigate", { url: startupProbeUrl.href });
-    const coreRequestId = await coreRequestPaused;
+    await coreRequestPaused;
     const startupSelector = ".authenticatedAppFrame.kordynSystem [data-authenticated-state='startup'] .authenticatedStatePanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(startupSelector)})`, `${width}x${height} authenticated startup loading state`);
     const startupFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(startupSelector)})).fontFamily`);
-    assertPrototypeStack(startupFont, "Inter, Helvetica Neue, Arial, sans-serif", `${width}x${height} authenticated startup loading prototype stack`);
-    collectAuthenticatedSurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector), { requireAction: false });
-    await cdp.send("Fetch.failRequest", { requestId: coreRequestId, errorReason: "Failed" });
+    assertFontStack(startupFont, "Public Sans, Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif", `${width}x${height} zero-base authenticated startup font stack`);
+    collectZeroBaseBootSurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector));
+    failCoreRequests = true;
+    await Promise.all([...pausedCoreRequests].map((requestId) => cdp.send("Fetch.failRequest", { requestId, errorReason: "Failed" }).catch(() => {})));
     const connectionSelector = ".authenticatedAppFrame.kordynSystem .mobileConnectPanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(connectionSelector)})`, `${width}x${height} authenticated connection failure state`);
     const connectionFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(connectionSelector)})).fontFamily`);
-    assertPrototypeStack(connectionFont, "Inter, Helvetica Neue, Arial, sans-serif", `${width}x${height} authenticated connection failure prototype stack`);
+    assertFontStack(connectionFont, "Inter, Helvetica Neue, Arial, sans-serif", `${width}x${height} zero-base authenticated connection failure product font stack`);
     collectAuthenticatedSurfaceViolations(visualViolations, `${width}x${height} authenticated connection failure`, await readSurfaceContract(cdp, connectionSelector, `${connectionSelector} .primaryButton`));
     stopListeningForCore();
     await cdp.send("Fetch.disable");
@@ -325,9 +344,9 @@ try {
   await setViewport(cdp, 1440, 900);
   process.stdout.write("authenticated shell browser: desktop mounted\n");
   assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.authenticatedAppFrame.kordynSystem > .appShell.kordynSystem'))"), true, "desktop product shell and its sibling overlays must share an authenticated Kordyn inheritance frame");
-  await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button:nth-child(5)");
-  await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"operations\"] .opxServiceLedger header button')", "Operations production overview");
-  await trustedClick(cdp, "[data-product-workspace='operations'] .opxServiceLedger header button");
+  await trustedClick(cdp, "[data-zero-base-family=operations]");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily==='operations' && document.querySelector('[data-product-workspace=operations]')", "zero-base Operations production overview");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=recovery]");
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"operations\"] .opxRecoveryTruth > button')", "Operations production recovery action");
   await trustedClick(cdp, "[data-product-workspace='operations'] .opxRecoveryTruth > button");
   await waitForExpression(cdp, "document.querySelector('.cfmHead')", "authenticated ConfirmHost");
@@ -343,10 +362,10 @@ try {
       mono: inherited.getPropertyValue('--kordyn-mono').trim()
     };
   })()`);
-  assertPrototypeStack(overlayFonts.confirm, "Inter, Helvetica Neue, Arial, sans-serif", "ConfirmHost must inherit the immutable prototype sans stack");
-  assertPrototypeStack(overlayFonts.sans, "Inter, Helvetica Neue, Arial, sans-serif", "authenticated sans token");
-  assertPrototypeStack(overlayFonts.display, "Avenir Next, Helvetica Neue, Arial, sans-serif", "authenticated display token");
-  assertPrototypeStack(overlayFonts.mono, "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace", "authenticated mono token");
+  assertFontStack(overlayFonts.confirm, "Inter, Helvetica Neue, Arial, sans-serif", "ConfirmHost zero-base product sans stack");
+  assertFontStack(overlayFonts.sans, "Inter, Helvetica Neue, Arial, sans-serif", "authenticated product sans token");
+  assertFontStack(overlayFonts.display, "Avenir Next, Helvetica Neue, Arial, sans-serif", "authenticated product display token");
+  assertFontStack(overlayFonts.mono, "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace", "authenticated product mono token");
   collectAuthenticatedSurfaceViolations(visualViolations, "authenticated ordinary ConfirmHost", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .cfmCard--ordinary", ".authenticatedAppFrame.kordynSystem .cfmOk"));
   assert.equal(await evaluate(cdp, "document.activeElement?.classList.contains('cfmCancel')"), true, "ordinary ConfirmHost initially focuses the safe cancel action");
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
@@ -369,7 +388,7 @@ try {
   await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "production release mismatch notice");
   const releaseFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')).fontFamily");
-  assertPrototypeStack(releaseFont, "Inter, Helvetica Neue, Arial, sans-serif", "ReleaseUpdateNotice must inherit the immutable prototype sans stack");
+  assertFontStack(releaseFont, "Inter, Helvetica Neue, Arial, sans-serif", "ReleaseUpdateNotice zero-base product sans stack");
   collectAuthenticatedSurfaceViolations(visualViolations, "authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
 
   const viewportProof = ["1440x900:desktop"];
@@ -420,24 +439,27 @@ try {
       await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
       await new Promise((resolve) => setTimeout(resolve, 250));
       assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.releaseUpdateNotice'))"), false, "release refresh converges the production client/server version before work resumes");
-      await trustedClick(cdp, ".mNativeTabbar > button:nth-child(5)");
-      await waitForExpression(cdp, "document.querySelector('.mDrawer')", "production MobileApp More drawer");
-      await trustedClickText(cdp, ".mDrawerItem", "运行与恢复");
-      await waitForExpression(cdp, "document.querySelector('.mOperationsNative .mOpsRail')", "production MobileApp Operations");
+      await trustedClick(cdp, "[data-zero-base-mobile-root-target=more]");
+      await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-surface=more-hub]')", "zero-base MobileApp More hub");
+      await trustedClick(cdp, "[data-zero-base-mobile-family-target=operations]");
+      await waitForExpression(cdp, "document.querySelector('.mOperationsNative') && document.querySelector('[data-zero-base-mobile-local-nav=operations]')", "zero-base MobileApp Operations");
+      await trustedClick(cdp, "[data-zero-base-mobile-view-target=recovery]");
+      await waitForExpression(cdp, "document.querySelector('.mOperationsNative .mOpsRail')", "zero-base MobileApp Operations recovery");
       const recoveryInteraction = await evaluate(cdp, `(() => {
-        const target = [...document.querySelectorAll('.mOpsRail > button')].find((node) => node.textContent.includes('恢复'));
+        const target = document.querySelector('[data-zero-base-mobile-view-target=recovery]');
         target?.scrollIntoView({ block: 'center', inline: 'center' });
         const rect = target?.getBoundingClientRect();
         const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
-        const rail = document.querySelector('.mOpsRail');
+        const rail = document.querySelector('[data-zero-base-mobile-local-nav=operations] nav');
+        const railRect = rail?.getBoundingClientRect();
         const notice = document.querySelector('.releaseUpdateNotice')?.getBoundingClientRect();
         const overlaps = rect && notice ? !(notice.right <= rect.left || notice.left >= rect.right || notice.bottom <= rect.top || notice.top >= rect.bottom) : false;
-        return { hitTarget: hit === target || target?.contains(hit), overlaps, rail: rail && { scrollWidth: rail.scrollWidth, clientWidth: rail.clientWidth } };
+        return { hitTarget: hit === target || target?.contains(hit), overlaps, rail: rail && { left:railRect.left, right:railRect.right, scrollWidth:rail.scrollWidth, clientWidth:rail.clientWidth }, documentWidth:document.documentElement.scrollWidth };
       })()`);
       assert.equal(recoveryInteraction.overlaps, false, "release refresh restores unobstructed MobileApp Operations controls");
       assert.equal(recoveryInteraction.hitTarget, true, "MobileApp Recovery remains a trusted touch target after release refresh");
-      assert.equal(recoveryInteraction.rail.scrollWidth, recoveryInteraction.rail.clientWidth, "MobileApp Operations rail remains contained at 390px");
-      await trustedClickText(cdp, ".mOpsRail > button", "恢复");
+      assert.ok(recoveryInteraction.rail.left >= 0 && recoveryInteraction.rail.right <= 390, "MobileApp Operations family rail remains bounded at 390px");
+      assert.equal(recoveryInteraction.documentWidth, 390, "MobileApp Operations local scrolling never creates document overflow");
       await waitForExpression(cdp, "document.querySelector('.mOpsRecoveryTruth > button')", "production MobileApp reconciliation action");
       await trustedClick(cdp, ".mOpsRecoveryTruth > button");
       await waitForExpression(cdp, "document.querySelector('.cfmCard--ordinary')", "production MobileApp ordinary ConfirmHost");
@@ -490,11 +512,11 @@ try {
   await cdp.send("Fetch.fulfillRequest", { requestId: publicReleaseRequestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from('{"release":"authenticated-browser-server"}').toString("base64") });
   await waitForExpression(cdp, "document.querySelector('.publicAppFrame .releaseUpdateNotice')", "public production release mismatch notice");
   assert.equal(await evaluate(cdp, "document.querySelector('.publicAppFrame').classList.contains('kordynSystem')"), false, "login and marketing inheritance must not be opted into the authenticated Kordyn scope");
-  assert.match(await evaluate(cdp, "getComputedStyle(document.querySelector('.publicAppFrame .releaseUpdateNotice')).fontFamily"), /Space Grotesk|Public Sans/, "public overlay keeps the existing public font inheritance");
+  assert.match(await evaluate(cdp, "getComputedStyle(document.querySelector('.publicAppFrame .releaseUpdateNotice')).fontFamily"), /Public Sans/, "public overlay uses the zero-base public font inheritance");
   assert.deepEqual(await readSurfaceContract(cdp, ".publicAppFrame .releaseUpdateNotice", ".publicAppFrame .releaseUpdateNotice button"), {
-    backgroundColor: "rgba(255, 252, 246, 0.97)", color: "rgb(38, 33, 26)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgba(180, 122, 39, 0.28)", borderRadius: "14px", boxShadow: "rgba(44, 31, 15, 0.18) 0px 12px 36px 0px", backdropFilter: "blur(12px)", minHeight: "0px",
-    action: { backgroundColor: "rgb(216, 90, 29)", color: "rgb(255, 255, 255)", borderTopWidth: "0px", borderTopStyle: "none", borderTopColor: "rgb(255, 255, 255)", borderRadius: "10px", minHeight: "36px" }
-  }, "public login and marketing release notice must retain its pre-existing visual contract");
+    backgroundColor: "rgb(244, 241, 233)", color: "rgb(17, 19, 17)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgb(17, 19, 17)", borderRadius: "16px", boxShadow: "rgb(79, 183, 139) 7px 7px 0px 0px", backdropFilter: "none", minHeight: "0px",
+    action: { backgroundColor: "rgb(204, 255, 61)", color: "rgb(17, 19, 17)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgb(17, 19, 17)", borderRadius: "11px", minHeight: "44px" }
+  }, "public login and marketing release notice must use the zero-base public visual contract");
   stopListeningForPublicCore();
   await cdp.send("Fetch.disable");
 
@@ -502,7 +524,7 @@ try {
     process.stderr.write(`authenticated shell visual contract RED ${visualViolations.length} violation(s)\n${visualViolations.map((item) => `- ${item}`).join("\n")}\n`);
   }
   assert.equal(visualViolations.length, 0, `authenticated shell visual contract has ${visualViolations.length} violation(s)`);
-  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] release=production-mismatch confirm=desktop+MobileApp public=unchanged\n`);
+  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] release=production-mismatch confirm=desktop+MobileApp public=zero-base\n`);
 } finally {
   cdp?.close();
   await stopProcess(chrome);

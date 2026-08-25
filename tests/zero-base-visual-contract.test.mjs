@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const cssUrl = new URL("../src/zero-base-system.css", import.meta.url);
+const mobileCss = readFileSync(new URL("../src/zero-base-mobile.css", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const productStyles = readFileSync(new URL("../src/productStyles.js", import.meta.url), "utf8");
 
@@ -35,6 +36,8 @@ test("motion and touch behavior are bounded", () => {
   assert.match(css, /min-height:\s*44px/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /safe-area-inset-bottom/);
+  assert.match(mobileCss, /\.zbMobileFamilyRail nav button\s*\{[^}]*min-height:44px/);
+  assert.match(mobileCss, /\.zeroBaseMobile :is\(\.mChips,[^}]*> button\s*\{[^}]*min-height:44px!important/);
 });
 
 test("zero-base CSS loads after the legacy foundation", () => {

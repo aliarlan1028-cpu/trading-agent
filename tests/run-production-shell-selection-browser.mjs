@@ -259,9 +259,9 @@ try {
   const desktopProof = [];
   await setViewportAndNavigate(cdp, appUrl.href, 1440, 900);
   await waitForExpression(cdp, "document.querySelector('.appShell.kordynSystem')", "real local desktop App");
-  await waitForExpression(cdp, "document.querySelectorAll('.uxTabsInline button').length >= 4", "AI workspace lazy loader");
-
-  await trustedClick(cdp, ".uxTabsInline button", { index: 3 });
+  await trustedClick(cdp, "[data-zero-base-family=ai]");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=ai]')", "zero-base AI workspace lazy loader");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=events]");
   await waitForExpression(cdp, "document.querySelector('.appShell .cp2EventsLayout [data-shell-object-type=\"Event\"]') || document.querySelector('.appShell .cp2EventsLayout .cp2Empty')", "AI Event registry result or authoritative empty state");
   const realAiEvent = await evaluate(cdp, "document.querySelector('.appShell .cp2EventsLayout [data-shell-object-type=\"Event\"]')?.dataset.shellObjectId || null");
   let id = null;
@@ -271,38 +271,38 @@ try {
   }
   desktopProof.push(realAiEvent ? `AI:Event:${id}` : "AI:Event:authoritative-empty");
 
-  await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button", { index: 1 });
+  await trustedClick(cdp, "[data-zero-base-family=portfolio]");
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"live\"]')", "Live workspace loader");
-  await trustedClickText(cdp, "[data-product-workspace='live'] .productWorkspaceFrame__nav button", "行情");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=market]");
   await waitForObject(cdp, ".appShell", "Market");
   id = await clickObject(cdp, ".appShell", "Market");
   await assertDesktopIdentity(cdp, id, "Market");
   desktopProof.push(`Live:Market:${id}`);
 
-  await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button", { index: 2 });
+  await trustedClick(cdp, "[data-zero-base-family=strategy]");
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"lab\"]')", "Lab workspace loader");
-  await trustedClickText(cdp, "[data-product-workspace='lab'] .productWorkspaceFrame__nav button", "策略资产");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=catalog]");
   await waitForObject(cdp, ".appShell", "Strategy product");
   id = await clickObject(cdp, ".appShell", "Strategy product");
   await assertDesktopIdentity(cdp, id, "Strategy product");
   desktopProof.push(`Lab:Strategy product:${id}`);
 
-  await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button", { index: 3 });
+  await trustedClick(cdp, "[data-zero-base-family=guard]");
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"control\"]')", "Control workspace loader");
-  await trustedClickText(cdp, "[data-product-workspace='control'] .productWorkspaceFrame__nav button", "事件风险");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=events]");
   await waitForExpression(cdp, "document.querySelector('.eventRiskEmpty,.cp2Empty') || document.querySelector('[data-product-workspace=\"control\"] [data-shell-object-type=\"Event\"]')", "real Control Event Risk result or authoritative empty state");
   const realControlEvent = await evaluate(cdp, "document.querySelector('[data-product-workspace=\"control\"] [data-shell-object-type=\"Event\"]')?.dataset.shellObjectId || null");
   desktopProof.push(realControlEvent ? `Control:Event:${realControlEvent}` : "Control:Event Risk:authoritative-empty");
 
-  await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button", { index: 4 });
+  await trustedClick(cdp, "[data-zero-base-family=operations]");
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"operations\"]')", "Operations workspace loader");
-  await trustedClickText(cdp, "[data-product-workspace='operations'] .productWorkspaceFrame__nav button", "任务与运行");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=tasks]");
   await waitForObject(cdp, ".appShell", "Task");
   id = await clickObject(cdp, ".appShell", "Task");
   await assertDesktopIdentity(cdp, id, "Task");
   desktopProof.push(`Operations:Task:${id}`);
 
-  await trustedClickText(cdp, "[data-product-workspace='operations'] .productWorkspaceFrame__nav button", "审计证据");
+  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=audit]");
   await waitForObject(cdp, ".appShell", "Audit log");
   id = await clickObject(cdp, ".appShell", "Audit log");
   await assertDesktopIdentity(cdp, id, "Audit log");
@@ -358,7 +358,7 @@ try {
     const stateUrl = new URL(mobileFixtureUrl);
     stateUrl.searchParams.set("state", state);
     await setViewportAndNavigate(cdp, stateUrl.href, width, height);
-    await waitForExpression(cdp, `window.__productionMobileAppBrowserReady && document.querySelector('[data-resource-state="${state}"] .mChatContent')`, `${state} MobileApp last-valid workspace`);
+    await waitForExpression(cdp, `window.__productionMobileAppBrowserReady && document.querySelector('[data-resource-state="${state}"] .zbMobileToday')`, `${state} MobileApp last-valid workspace`);
     const stateBoundary = await evaluate(cdp, `(() => {
       const boundary = document.querySelector('[data-resource-state="${state}"]');
       const content = boundary?.querySelector('.workspaceStateBoundary__lastValid');
@@ -373,31 +373,34 @@ try {
   await setViewportAndNavigate(cdp, mobileFixtureUrl.href, 390, 844);
   await waitForExpression(cdp, "window.__productionMobileAppBrowserReady && document.querySelector('.mShell2.kordynSystem')", "production MobileApp fixture");
   await waitForExpression(cdp, "document.querySelector('.workspaceState--loading')", "production loader boundary");
-  await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--ai')", "loaded MobileApp AI workspace");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-local-nav=today]')", "loaded zero-base MobileApp Today workspace");
 
   const mobileProof = ["Boundary:forbidden", ...mobileStateProof, "Loader:loading→loaded"];
-  await trustedClick(cdp, ".mWorkspaceRail--ai > button", { index: 3 });
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=ai]");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=events]");
   await waitForObject(cdp, ".mShell2", "Event", "event-5");
   await clickObject(cdp, ".mShell2", "Event", "event-5");
   await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventDays button.selected", scope: { workspaceId: "ai", sourceSection: "chat", route: "eventsTasks:events", objectEvidence: "evidence-ai-event", traceEvidence: "trace-event" } });
   mobileProof.push("AI:Event:event-5");
 
-  await trustedClick(cdp, ".mNativeTabbar > button", { index: 1 });
-  await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--trade')", "MobileApp Live navigation");
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=assets]");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=market]");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-local-nav=portfolio]')", "MobileApp portfolio navigation");
   await waitForObject(cdp, ".mShell2", "Market", "BTC/USDT");
   await clickObject(cdp, ".mShell2", "Market", "BTC/USDT");
   await assertMobileIdentity(cdp, "BTC/USDT", "Market", { inspector: '.mSymPills [data-shell-object-id="BTC/USDT"].active' });
   mobileProof.push("Live:Market:BTC/USDT");
 
-  await trustedClick(cdp, ".mNativeTabbar > button", { index: 2 });
-  await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--lab')", "MobileApp Lab navigation");
-  await trustedClick(cdp, ".mWorkspaceRail--lab > button", { index: 3 });
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=intelligent]");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-surface=intelligent-hub]')", "MobileApp intelligent hub");
+  await trustedClick(cdp, "[data-zero-base-mobile-family-target=capability]");
   await waitForObject(cdp, ".mShell2", "Capability", "capability-18");
   await clickObject(cdp, ".mShell2", "Capability", "capability-18");
   await assertMobileIdentity(cdp, "capability-18", "Capability", { inspector: ".mCapabilitySheet", closeInspector: ".mCapabilitySheet .mSheetGrip" });
   mobileProof.push("Lab:Capability:capability-18");
 
-  await trustedClick(cdp, ".mWorkspaceRail--lab > button", { index: 2 });
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=intelligent]");
+  await trustedClick(cdp, "[data-zero-base-mobile-family-target=strategy]");
   await waitForObject(cdp, ".mShell2", "Strategy product", "breakout@4");
   await clickObject(cdp, ".mShell2", "Strategy product", "breakout@4");
   await assertMobileIdentity(cdp, "breakout@4", "Strategy product", { inspector: ".mLabRegistrySheet", closeInspector: ".mLabRegistrySheet .mSheetGrip" });
@@ -407,36 +410,38 @@ try {
   await assertMobileIdentity(cdp, "mean-reversion", "Strategy", { inspector: ".mLabRegistrySheet", closeInspector: ".mLabRegistrySheet .mSheetGrip" });
   mobileProof.push("Lab:Strategy:mean-reversion");
 
-  await trustedClickText(cdp, ".mStrategyTabs > button", "回测研究");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=historical]");
   await waitForObject(cdp, ".mShell2", "Validation run", "validation-6");
   await clickObject(cdp, ".mShell2", "Validation run", "validation-6");
   await assertMobileIdentity(cdp, "validation-6", "Validation run", { inspector: ".mResearchSheet", closeInspector: ".mResearchSheet .mSheetGrip" });
   mobileProof.push("Lab:Validation run:validation-6");
 
-  await trustedClick(cdp, ".mWorkspaceRail--lab > button", { index: 4 });
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=intelligent]");
+  await trustedClick(cdp, "[data-zero-base-mobile-family-target=reviews]");
   await waitForObject(cdp, ".mShell2", "Review", "review-15");
   await clickObject(cdp, ".mShell2", "Review", "review-15");
   await assertMobileIdentity(cdp, "review-15", "Review", { inspector: ".mReviewSheet", closeInspector: ".mReviewSheet .mSheetGrip" });
   mobileProof.push("Lab:Review:review-15");
 
-  await trustedClick(cdp, ".mNativeTabbar > button", { index: 3 });
-  await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--control')", "MobileApp Control navigation");
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=more]");
+  await trustedClick(cdp, "[data-zero-base-mobile-family-target=guard]");
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-local-nav=guard]')", "MobileApp Guard navigation");
   const assertControlRail = async (width, height) => {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
     const controlRail = await evaluate(cdp, `(() => {
-      const rail = document.querySelector('.mWorkspaceRail--control');
+      const rail = document.querySelector('[data-zero-base-mobile-local-nav=guard] nav');
       const buttons = [...(rail?.querySelectorAll(':scope > button') || [])];
       const viewport = document.documentElement.clientWidth;
       return {
-        labels: buttons.map((button) => button.textContent.trim()),
-        activeCount: buttons.filter((button) => button.classList.contains('active')).length,
-        activeLabel: buttons.find((button) => button.classList.contains('active'))?.textContent.trim(),
+        views: buttons.map((button) => button.dataset.zeroBaseMobileViewTarget),
+        activeCount: buttons.filter((button) => button.getAttribute('aria-current') === 'page').length,
+        activeView: buttons.find((button) => button.getAttribute('aria-current') === 'page')?.dataset.zeroBaseMobileViewTarget,
         hasNestedTabs: Boolean(document.querySelector('.mHub > .mHubTabs')),
         overflow: Math.max(0, ...buttons.map((button) => button.getBoundingClientRect().right - viewport)),
         minHeight: Math.min(...buttons.map((button) => button.getBoundingClientRect().height))
       };
     })()`);
-    assert.deepEqual(controlRail.labels, ["态势", "事件", "边界", "规则"]);
+    assert.deepEqual(controlRail.views, ["posture", "events", "boundaries", "rules"]);
     assert.equal(controlRail.activeCount, 1);
     assert.equal(controlRail.hasNestedTabs, false);
     assert.equal(controlRail.overflow, 0);
@@ -444,48 +449,47 @@ try {
     return controlRail;
   };
   const controlDestinations = [
-    { label: "态势", selector: ".mControlTruth", subPage: "none" },
-    { label: "事件", selector: ".mEventRiskScreen", subPage: "events" },
-    { label: "边界", selector: ".mControlSymbols", subPage: "boundaries" },
-    { label: "规则", selector: ".mControlRuleList", subPage: "rules" }
+    { view: "posture", selector: ".mControlTruth", subPage: "none" },
+    { view: "events", selector: ".mEventRiskScreen", subPage: "events" },
+    { view: "boundaries", selector: ".mControlSymbols", subPage: "boundaries" },
+    { view: "rules", selector: ".mControlRuleList", subPage: "rules" }
   ];
   for (const [width, height] of [[390, 844], [430, 932]]) {
     for (const destination of controlDestinations) {
-      await trustedClickText(cdp, ".mWorkspaceRail--control > button", destination.label);
+      await trustedClick(cdp, `[data-zero-base-mobile-view-target=${destination.view}]`);
       await waitForExpression(cdp, `(() => {
         const root = document.querySelector('.mShell2.kordynSystem');
-        const buttons = [...document.querySelectorAll('.mWorkspaceRail--control > button')];
-        const active = buttons.filter((button) => button.classList.contains('active'));
+        const buttons = [...document.querySelectorAll('[data-zero-base-mobile-local-nav=guard] [data-zero-base-mobile-view-target]')];
+        const active = buttons.filter((button) => button.getAttribute('aria-current') === 'page');
         return root?.dataset.shellRoute === 'riskHub'
           && root?.dataset.shellSubpage === ${JSON.stringify(destination.subPage)}
           && Boolean(document.querySelector(${JSON.stringify(destination.selector)}))
           && active.length === 1
-          && active[0].textContent.trim() === ${JSON.stringify(destination.label)}
+          && active[0].dataset.zeroBaseMobileViewTarget === ${JSON.stringify(destination.view)}
           && !document.querySelector('.mHub > .mHubTabs');
-      })()`, `${width}x${height} Control ${destination.label} route, active state and production view`);
+      })()`, `${width}x${height} Guard ${destination.view} route, active state and production view`);
       const controlRail = await assertControlRail(width, height);
-      assert.equal(controlRail.activeLabel, destination.label);
+      assert.equal(controlRail.activeView, destination.view);
     }
   }
-  await trustedClickText(cdp, ".mWorkspaceRail--control > button", "事件");
-  await waitForExpression(cdp, "document.querySelector('.mEventRiskScreen') && [...document.querySelectorAll('.mWorkspaceRail--control > button')].find((button) => button.textContent.trim() === '事件')?.classList.contains('active')", "MobileApp Event Risk authoritative rail destination");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=events]");
+  await waitForExpression(cdp, "document.querySelector('.mEventRiskScreen') && document.querySelector('[data-zero-base-mobile-view-target=events]')?.getAttribute('aria-current') === 'page'", "MobileApp Event Risk authoritative rail destination");
   await waitForObject(cdp, ".mShell2", "Event", "event-5");
   await clickObject(cdp, ".mShell2", "Event", "event-5");
   await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventRiskInspector", scope: { workspaceId: "control", sourceSection: "riskCenter", route: "eventRisk", objectEvidence: "evidence-control-event", traceEvidence: "trace-risk-event" } });
   mobileProof.push("Control:trusted-single-rail:390+430:Posture→Events→Boundaries→Rules", "Control:Event:event-5");
 
-  await trustedClick(cdp, ".mNativeTabbar > button", { index: 4 });
-  await waitForExpression(cdp, "document.querySelector('.mDrawer')", "MobileApp More drawer");
-  await trustedClickText(cdp, ".mDrawerItem", "运行与恢复");
+  await trustedClick(cdp, "[data-zero-base-mobile-root-target=more]");
+  await trustedClick(cdp, "[data-zero-base-mobile-family-target=operations]");
   await waitForExpression(cdp, "document.querySelector('.mOperationsNative')", "MobileApp Operations navigation");
-  await trustedClickText(cdp, ".mOpsRail > button", "任务");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=tasks]");
   await waitForObject(cdp, ".mShell2", "Task", "task-9");
   await clickObject(cdp, ".mShell2", "Task", "task-9");
   await assertMobileIdentity(cdp, "task-9", "Task", { inspector: ".mOpsTaskHero" });
   mobileProof.push("Operations:Task:task-9");
   await trustedClick(cdp, ".mOpsDetailNav > button");
 
-  await trustedClickText(cdp, ".mOpsRail > button", "审计");
+  await trustedClick(cdp, "[data-zero-base-mobile-view-target=audit]");
   await waitForObject(cdp, ".mShell2", "Audit log", "audit-13");
   await clickObject(cdp, ".mShell2", "Audit log", "audit-13");
   await assertMobileIdentity(cdp, "audit-13", "Audit log", { inspector: ".mOpsAuditDetail" });
