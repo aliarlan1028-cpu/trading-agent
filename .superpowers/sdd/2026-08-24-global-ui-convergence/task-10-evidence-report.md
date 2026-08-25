@@ -8,8 +8,11 @@ Date: 2026-08-25
 - Desktop full-shell last-valid geometry contract: `9d93b0180b5a7262372064f9ddddbfc96fbf4f38`.
 - Final production HEAD: `5448040c42ef678f71e6367d9c8280b1258ce857`.
 - Base production/capture batch: production `db5286a1f76d7f331c23de49b314179c77cde557`, capture/test `5e017f05b7da02befb08e818856e2fd9c3ed1f44`.
+- Inherited APP detail batch: `.impeccable/review/mobile-390-operations.png` and `.impeccable/review/mobile-430-configuration.png` only, retained from evidence-only commit `1f379b430ba61d005a73936cc05c3788d950b5dd` (production `3bd2ce86fb6b1efa93922d522ac52cd1893ee432`, capture runner `f855781a8b9b8f83421b334b49d72796056dd9f3`).
 - Boundary recapture batch: Desktop last-valid stale/degraded only, captured after the `5448040` fix.
-- Final mixed-batch evidence state: `ffaebb9`.
+- Main evidence assets, renderer and Desktop boundary aggregation: `ffaebb9966f218cc4530fb972b0488b4b03f80da`.
+- Inherited APP provenance disclosure correction and current final contact-sheet HTML/PNG state: `e904335977b35eb3ab738d552f66900911dd4ae2`.
+- Pre-correction documentation index: `594f62f24ac728d4e3fb0dc54521f6bb7bb6d3a7`; this is historical and does not contain the inherited APP provenance correction.
 - `0cd9933` is the pre-amend intermediate hash and must not be used as final evidence.
 - `878109a` (earlier evidence batch) and `8493bcd` (earlier evidence index) are historical, superseded states. Neither is the final evidence source.
 
@@ -25,9 +28,11 @@ The contact sheet was rendered with the approved local Google Chrome path at dev
 | `.impeccable/review/desktop-last-valid-degraded.png` | 1180×820 | `5448040` boundary recapture | Full production-component shell, degraded last-valid state |
 | `.impeccable/review/mobile.png` | 390×844 | `db5286a + 5e017f0` base batch | MobileApp AI Trader |
 | `.impeccable/review/mobile-430x932.png` | 430×932 | `db5286a + 5e017f0` base batch | Wide MobileApp AI Trader |
-| `.impeccable/review/parity-contact-sheet.png` | 1800×6458 | evidence `ffaebb9`, mixed sources above | 62-image final overview |
+| `.impeccable/review/mobile-390-operations.png` | 390×844 | inherited evidence `1f379b4` (`3bd2ce8 + f855781`) | MobileApp Operations detail |
+| `.impeccable/review/mobile-430-configuration.png` | 430×932 | inherited evidence `1f379b4` (`3bd2ce8 + f855781`) | MobileApp Configuration detail |
+| `.impeccable/review/parity-contact-sheet.png` | 1800×6458 | current contact state `e904335`; main assets/renderer `ffaebb9` | 62-image final overview with inherited APP disclosure |
 
-The base `db5286a + 5e017f0` batch covers all desktop destinations, APP primary/More destinations, AI chat/watch/intelligence/events, Live, Lab, Control Posture/Event Risk/Boundaries/Rules, Operations, Configuration, Object Switcher default/hover/focus/unavailable, selected-object Context/Trace, medium Context open/collapsed, drawers/sheets, authenticated overlays, ordinary/danger confirmations, long content and the original state set. `5448040` adds only the two Desktop last-valid boundary recaptures. Evidence commit `ffaebb9` assembles both batches.
+The base `db5286a + 5e017f0` batch covers all desktop destinations and the APP primary/More, AI chat/watch/intelligence/events, Live, Lab, Control Posture/Event Risk/Boundaries/Rules, Object Switcher default/hover/focus/unavailable, selected-object Context/Trace, medium Context open/collapsed, drawers/sheets, authenticated overlays, ordinary/danger confirmations, long content and original state evidence listed below, except for exactly two inherited APP detail cells: Operations at 390 and Configuration at 430. Those two files remain byte-identical evidence from `1f379b4`; their continued visual validity is not described as a `db5286a + 5e017f0` recapture. `5448040` adds only the two Desktop last-valid boundary recaptures. `ffaebb9` assembles the main evidence assets, renderer and Desktop boundary cells across these provenance layers; `e904335` subsequently changes only the contact-sheet HTML/PNG disclosure and is the current final contact-sheet state.
 
 ## Desktop last-valid closure
 
@@ -82,7 +87,7 @@ pendingText: false
 exit: 0
 ```
 
-The resulting PNG was opened after render. Desktop stale and degraded appear as explicit independent cells in Truthful operational boundaries; both are readable and show no Context overlap. APP stale/degraded remain present as separate cells. The visible header states: immutable `1056233`; final production `5448040`; base capture/test `5e017f0`; boundary recapture `5448040`.
+The resulting PNG was opened after render. Desktop stale and degraded appear as explicit independent cells in Truthful operational boundaries; both are readable and show no Context overlap. APP stale/degraded remain present as separate cells. The visible header states: immutable `1056233`; final production `5448040`; base capture/test `5e017f0`; inherited APP details `1f379b4`; boundary recapture `5448040`.
 
 ## Final evidence gates
 
