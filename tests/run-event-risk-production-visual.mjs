@@ -136,13 +136,13 @@ async function openDesktopEventRisk(cdp) {
 
 async function openMobileEventRisk(cdp) {
   await trustedClick(cdp, ".mNativeTabbar > button", "Control");
-  await waitForSelector(cdp, ".mHubTabs");
-  await trustedClick(cdp, ".mHubTabs > button", "事件");
+  await waitForSelector(cdp, ".mWorkspaceRail--control");
+  await trustedClick(cdp, ".mWorkspaceRail--control > button", "事件");
   await waitForSelector(cdp, '.mEventRiskScreen[data-surface-role="event-risk"]');
 }
 
 function geometryExpression(kind) {
-  const tabs = kind === "mobile" ? ".mHubTabs" : ".productWorkspaceFrame__nav";
+  const tabs = kind === "mobile" ? ".mWorkspaceRail--control" : ".productWorkspaceFrame__nav";
   const tabButtons = kind === "mobile" ? ":scope > button" : "button";
   const actions = kind === "mobile" ? ".mEventRiskActions" : ".eventRiskActions";
   const surface = kind === "mobile" ? ".mEventRiskScreen" : ".eventRiskWorkbench";
@@ -169,7 +169,20 @@ function geometryExpression(kind) {
       actionButtons: [...(actions?.querySelectorAll(":scope > button") || [])].map((node) => {
         const rect = node.getBoundingClientRect();
         return { clientWidth: node.clientWidth, scrollWidth: node.scrollWidth, left: Math.round(rect.left), right: Math.round(rect.right), contained: !actionBox || (rect.left >= actionBox.left - .5 && rect.right <= actionBox.right + .5) };
-      })
+      }),
+      mobileContract: ${kind === "mobile" ? `(() => {
+        const shell = document.querySelector(".mShell2.kordynSystem");
+        const active = [...document.querySelectorAll(".mWorkspaceRail--control > button.active")];
+        return {
+          route: shell?.dataset.shellRoute,
+          subPage: shell?.dataset.shellSubpage,
+          activeCount: active.length,
+          activeText: active[0]?.textContent.trim(),
+          activeCurrent: active[0]?.getAttribute("aria-current"),
+          innerHubTabs: document.querySelectorAll(".mHub .mHubTabs").length,
+          eventRiskContent: Boolean(document.querySelector('.mHub .mEventRiskScreen[data-surface-role="event-risk"] .mEventRiskRegistry') && document.querySelector('.mHub .mEventRiskActions'))
+        };
+      })()` : "null"}
     };
   })()`;
 }
@@ -185,6 +198,16 @@ function assertNoOverflow(geometry, label, expectedTabCount) {
     assert.ok(row.contained, `${label}: action ${index + 1} escapes its rail`);
     assert.ok(row.scrollWidth <= row.clientWidth + 1, `${label}: action ${index + 1} content overflows`);
   }
+}
+
+function assertMobileEventRiskContract(geometry, label) {
+  assert.equal(geometry.mobileContract.route, "riskHub", `${label}: canonical Control route`);
+  assert.equal(geometry.mobileContract.subPage, "events", `${label}: canonical Event Risk subpage`);
+  assert.equal(geometry.mobileContract.activeCount, 1, `${label}: one active Control destination`);
+  assert.match(geometry.mobileContract.activeText, /事件|Events/, `${label}: Event Risk destination is active`);
+  assert.equal(geometry.mobileContract.activeCurrent, "page", `${label}: active destination exposes aria-current`);
+  assert.equal(geometry.mobileContract.innerHubTabs, 0, `${label}: no duplicate inner Hub tabs`);
+  assert.equal(geometry.mobileContract.eventRiskContent, true, `${label}: Event Risk registry and actions are rendered`);
 }
 
 await rm(outputDir, { recursive: true, force: true });
@@ -224,6 +247,7 @@ try {
     await openMobileEventRisk(cdp);
     const geometry = await evaluate(cdp, geometryExpression("mobile"));
     assertNoOverflow(geometry, `app-${width}`, 4);
+    assertMobileEventRiskContract(geometry, `app-${width}`);
     evidence.push({ label: `app-${width}`, screenshot: await capture(cdp, `app-event-risk-${width}x${height}.png`), geometry });
   }
   process.stdout.write(`event risk production visual PASS\n${JSON.stringify(evidence, null, 2)}\n`);
