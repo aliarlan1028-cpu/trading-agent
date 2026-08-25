@@ -48,9 +48,30 @@ export function ConfirmHost() {
     it.resolve(result);
     window.requestAnimationFrame(() => returnFocusRef.current?.focus());
   };
+  const onDialogKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      done(item.input ? null : false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...event.currentTarget.querySelectorAll("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+      .filter((node) => node.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || !event.currentTarget.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !event.currentTarget.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
   return (
     <div className="cfmOverlay" onMouseDown={() => done(item.input ? null : false)}>
-      <div className={`cfmCard ${item.danger ? "cfmCard--danger" : "cfmCard--ordinary"}`} role="dialog" aria-modal="true" aria-label={item.title || (item.input ? "请输入" : "确认操作")} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); done(item.input ? null : false); } }}>
+      <div className={`cfmCard ${item.danger ? "cfmCard--danger" : "cfmCard--ordinary"}`} role="dialog" aria-modal="true" aria-label={item.title || (item.input ? "请输入" : "确认操作")} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onDialogKeyDown}>
         <div className="cfmHead">{item.title || (item.input ? "请输入" : "确认操作")}</div>
         <p className="cfmMsg">{item.message}</p>
         {item.input && (
