@@ -2,65 +2,137 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>KORDYN Task 8 parity contact sheet</title>
+  <title>KORDYN final prototype parity evidence</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; background: #111311; color: #f4f1e9; font-family: Arial, sans-serif; }
-    body { width: 1800px; min-height: 1240px; padding: 24px; }
-    header { display: flex; align-items: end; justify-content: space-between; height: 58px; border-bottom: 1px solid #4fb78b; }
-    h1 { margin: 0 0 12px; font-size: 22px; letter-spacing: .03em; }
-    header p { margin: 0 0 12px; color: #4fb78b; font: 12px ui-monospace, monospace; }
-    main { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 520px 590px; gap: 18px; padding-top: 18px; }
-    figure { position: relative; display: grid; grid-template-rows: 42px minmax(0, 1fr); min-width: 0; margin: 0; border: 1px solid #4b524b; background: #242824; }
-    figcaption { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #4b524b; font-size: 13px; font-weight: 700; }
-    figcaption span { color: #ccff3d; font: 11px ui-monospace, monospace; }
-    figure > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; object-position: center; background: #171a17; }
-    .phone-row { display: flex; align-items: center; justify-content: center; gap: 18px; min-height: 0; overflow: hidden; background: #171a17; }
-    .phone-row img { width: auto; max-width: 47%; height: calc(100% - 22px); object-fit: contain; border: 1px solid #4b524b; }
-    .states { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 7px; min-height: 0; background: #171a17; }
-    .states div { position: relative; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #4b524b; }
-    .states img { width: 100%; height: 100%; object-fit: contain; background: #f4f1e9; }
-    .states b { position: absolute; top: 5px; left: 5px; padding: 4px 6px; background: #111311; color: #ccff3d; font: 9px ui-monospace, monospace; }
+    html, body { margin: 0; background: #111311; color: #f4f1e9; font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+    body { width: 1800px; padding: 24px; }
+    header { display: grid; grid-template-columns: 1fr auto; align-items: end; min-height: 74px; border-bottom: 1px solid #4fb78b; }
+    h1 { margin: 0 0 14px; font: 700 24px/1.1 "Avenir Next", "Helvetica Neue", Arial, sans-serif; letter-spacing: .02em; }
+    header p { margin: 0 0 14px; color: #ccff3d; font: 700 12px/1.2 "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace; text-transform: uppercase; }
+    section { margin-top: 24px; }
+    h2 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid #4b524b; font: 700 16px/1.2 "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+    h2 span { color: #4fb78b; font: 600 10px/1.2 "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace; text-transform: uppercase; }
+    .grid { display: grid; gap: 12px; }
+    .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid--5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    figure { position: relative; display: grid; grid-template-rows: 38px minmax(0, 1fr); min-width: 0; margin: 0; border: 1px solid #4b524b; background: #171a17; overflow: hidden; }
+    figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border-bottom: 1px solid #4b524b; background: #242824; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    figcaption span { flex: none; color: #ccff3d; font: 600 9px/1.2 "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace; }
+    figure > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; object-position: center; background: #111311; }
+    .h360 { height: 360px; }
+    .h420 { height: 420px; }
+    .h460 { height: 460px; }
+    .phone-pair { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 0; padding: 10px; }
+    .phone-pair img { width: auto; max-width: 48%; height: 100%; min-height: 0; object-fit: contain; border: 1px solid #4b524b; }
+    .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; padding: 6px; }
+    .mini-grid div { position: relative; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #4b524b; }
+    .mini-grid img { width: 100%; height: 100%; object-fit: contain; background: #f4f1e9; }
+    .mini-grid b { position: absolute; top: 4px; left: 4px; padding: 4px 6px; background: #111311; color: #ccff3d; font: 700 8px/1 "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace; text-transform: uppercase; }
+    footer { display: flex; justify-content: space-between; margin-top: 24px; padding: 14px 0 4px; border-top: 1px solid #4fb78b; color: #aeb8ae; font: 600 10px/1.4 "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace; }
+    footer strong { color: #ccff3d; }
   </style>
 </head>
 <body>
   <header>
-    <h1>KORDYN · REAL VIEWPORT PROTOTYPE PARITY</h1>
-    <p>IMMUTABLE 1056233 · PRODUCTION E3F6CC8 · 2026-08-25</p>
+    <h1>KORDYN · FINAL REAL-VIEWPORT PROTOTYPE PARITY</h1>
+    <p>Immutable 1056233 · Capture HEAD F855781 · Production source 3BD2CE8 · 2026-08-25</p>
   </header>
-  <main>
-    <figure>
-      <figcaption>EXACT PROTOTYPE <span>1440 × 900 · COMMAND</span></figcaption>
-      <img src="prototype-1440x900.png" alt="Exact prototype at 1440 by 900">
-    </figure>
-    <figure>
-      <figcaption>PRODUCTION DESKTOP <span>1440 × 900 · AI TRADER</span></figcaption>
-      <img src="desktop-1440x900.png" alt="Production desktop at 1440 by 900">
-    </figure>
-    <figure>
-      <figcaption>MEDIUM DESKTOP <span>1180 × 820 · CONTEXT OVERLAY</span></figcaption>
-      <img src="desktop-medium.png" alt="Production medium desktop at 1180 by 820">
-    </figure>
-    <figure>
-      <figcaption>PRODUCTION APP <span>390 × 844 · 430 × 932</span></figcaption>
-      <div class="phone-row">
-        <img src="mobile-390x844.png" alt="Production app at 390 by 844">
-        <img src="mobile-430x932.png" alt="Production app at 430 by 932">
-      </div>
-    </figure>
-    <figure>
-      <figcaption>OBJECT / EVIDENCE DENSITY <span>1440 × 900 · REAL LONG CONTENT</span></figcaption>
-      <img src="desktop-ai-intelligence.png" alt="Real intelligence registry with long content">
-    </figure>
-    <figure>
-      <figcaption>TRUTHFUL BOUNDARIES <span>LOADING · FAILED · STALE · 403</span></figcaption>
-      <div class="states">
-        <div><img src="desktop-real-loading.png" alt="Real loading boundary"><b>LOADING</b></div>
-        <div><img src="desktop-real-failed.png" alt="Real failed boundary"><b>FAILED</b></div>
-        <div><img src="desktop-real-stale-source.png" alt="AI Events real stale source-health table"><b>STALE</b></div>
-        <div><img src="mobile-390-real-forbidden.png" alt="Real forbidden boundary"><b>403 FORBIDDEN</b></div>
-      </div>
-    </figure>
-  </main>
+
+  <section>
+    <h2>Authority and required viewports <span>exact prototype + production shells</span></h2>
+    <div class="grid grid--3">
+      <figure class="h420"><figcaption>Immutable prototype <span>1440 × 900</span></figcaption><img src="prototype-1440x900.png" alt="Immutable 1056233 prototype Command workspace at 1440 by 900"></figure>
+      <figure class="h420"><figcaption>Production desktop <span>1440 × 900</span></figcaption><img src="desktop.png" alt="Production AI Trader desktop at 1440 by 900 on capture HEAD f855781"></figure>
+      <figure class="h420"><figcaption>Medium desktop <span>1180 × 820</span></figcaption><img src="desktop-medium.png" alt="Production medium desktop with bounded Context dock at 1180 by 820"></figure>
+      <figure class="h460"><figcaption>Production APP <span>390 × 844 · 430 × 932</span></figcaption><div class="phone-pair"><img src="mobile.png" alt="Production APP at 390 by 844"><img src="mobile-430x932.png" alt="Production APP at 430 by 932"></div></figure>
+      <figure class="h460"><figcaption>Desktop selected object <span>typed Context + Trace</span></figcaption><div class="mini-grid"><div><img src="desktop-selected-event-context.png" alt="Desktop typed Event Context"><b>Context</b></div><div><img src="desktop-selected-event-trace-expanded.png" alt="Desktop typed Event expanded Trace"><b>Trace</b></div></div></figure>
+      <figure class="h460"><figcaption>APP selected object <span>Objects + Context + Trace</span></figcaption><div class="mini-grid"><div><img src="mobile-390-objects.png" alt="APP Objects sheet"><b>Objects</b></div><div><img src="mobile-390-selected-event-context.png" alt="APP typed Event Context"><b>Context</b></div><div><img src="mobile-390-selected-event-trace.png" alt="APP typed Event Trace"><b>Trace</b></div><div><img src="mobile-430-objects.png" alt="APP Objects sheet at 430 by 932"><b>430</b></div></div></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Desktop operating workspaces <span>real data · real routes · continuous hard-edge grid</span></h2>
+    <div class="grid grid--3">
+      <figure class="h360"><figcaption>AI Trader <span>Command</span></figcaption><img src="desktop-ai.png" alt="Desktop AI Trader workspace"></figure>
+      <figure class="h360"><figcaption>Live Desk <span>Market + execution</span></figcaption><img src="desktop-live.png" alt="Desktop Live Desk workspace"></figure>
+      <figure class="h360"><figcaption>Lab <span>Lifecycle + provenance</span></figcaption><img src="desktop-lab.png" alt="Desktop Lab workspace"></figure>
+      <figure class="h360"><figcaption>Control <span>Posture</span></figcaption><img src="desktop-control-posture-1440x900.png" alt="Desktop Control posture"></figure>
+      <figure class="h360"><figcaption>Operations <span>Run control</span></figcaption><img src="desktop-operations.png" alt="Desktop Operations workspace"></figure>
+      <figure class="h360"><figcaption>Configuration <span>Registry + inspector</span></figcaption><img src="desktop-configuration.png" alt="Desktop Configuration workspace"></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Object Switcher interaction grammar <span>620px · max 520px · 8px black offset · keyboard state</span></h2>
+    <div class="grid grid--4">
+      <figure class="h360"><figcaption>Default result <span>paper</span></figcaption><img src="desktop-object-switcher.png" alt="Production Object Switcher default state"></figure>
+      <figure class="h360"><figcaption>Hover <span>acid action</span></figcaption><img src="desktop-object-switcher-hover.png" alt="Production Object Switcher hover state"></figure>
+      <figure class="h360"><figcaption>Focus-visible <span>keyboard</span></figcaption><img src="desktop-object-switcher-focus.png" alt="Production Object Switcher focus-visible state"></figure>
+      <figure class="h360"><figcaption>Unavailable <span>fail closed</span></figcaption><img src="desktop-object-switcher-unavailable.png" alt="Production Object Switcher unavailable result and visible feedback"></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Control and independent Event Risk <span>single rail · Posture → Events → Boundaries → Rules</span></h2>
+    <div class="grid grid--4">
+      <figure class="h360"><figcaption>Posture <span>1440</span></figcaption><img src="desktop-control-posture-1440x900.png" alt="Desktop Control posture view"></figure>
+      <figure class="h360"><figcaption>Event Risk <span>1440</span></figcaption><img src="desktop-control-event-risk-1440x900.png" alt="Desktop independent Event Risk view"></figure>
+      <figure class="h360"><figcaption>Boundaries <span>1440</span></figcaption><img src="desktop-control-boundaries-1440x900.png" alt="Desktop Control boundaries view"></figure>
+      <figure class="h360"><figcaption>Rules <span>1440</span></figcaption><img src="desktop-control-rules-1440x900.png" alt="Desktop Control rules view"></figure>
+      <figure class="h420"><figcaption>390 single rail <span>four trusted routes</span></figcaption><div class="mini-grid"><div><img src="mobile-390-control-posture.png" alt="APP 390 Control posture"><b>Posture</b></div><div><img src="mobile-390-control-event-risk.png" alt="APP 390 Event Risk"><b>Events</b></div><div><img src="mobile-390-control-boundaries.png" alt="APP 390 boundaries"><b>Boundaries</b></div><div><img src="mobile-390-control-rules.png" alt="APP 390 rules"><b>Rules</b></div></div></figure>
+      <figure class="h420"><figcaption>430 single rail <span>four trusted routes</span></figcaption><div class="mini-grid"><div><img src="mobile-430-control-posture.png" alt="APP 430 Control posture"><b>Posture</b></div><div><img src="mobile-430-control-event-risk.png" alt="APP 430 Event Risk"><b>Events</b></div><div><img src="mobile-430-control-boundaries.png" alt="APP 430 boundaries"><b>Boundaries</b></div><div><img src="mobile-430-control-rules.png" alt="APP 430 rules"><b>Rules</b></div></div></figure>
+      <figure class="h420"><figcaption>Medium Event Risk <span>1180 × 820</span></figcaption><img src="desktop-control-event-risk-1180x820.png" alt="Medium desktop Event Risk view"></figure>
+      <figure class="h420"><figcaption>APP unavailable objects <span>390 · 430</span></figcaption><div class="phone-pair"><img src="mobile-390-objects-unavailable.png" alt="APP 390 unavailable Objects feedback"><img src="mobile-430-objects-unavailable.png" alt="APP 430 unavailable Objects feedback"></div></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Authenticated shell overlays and lifecycle <span>public login unchanged · authenticated type scope</span></h2>
+    <div class="grid grid--3">
+      <figure class="h360"><figcaption>Startup loading <span>authenticated</span></figcaption><img src="desktop-authenticated-startup-loading.png" alt="Authenticated startup loading boundary"></figure>
+      <figure class="h360"><figcaption>Connection failed <span>authenticated</span></figcaption><img src="desktop-authenticated-connection-failed.png" alt="Authenticated connection failed boundary"></figure>
+      <figure class="h360"><figcaption>Confirm Host <span>desktop</span></figcaption><img src="desktop-authenticated-confirm-host.png" alt="Authenticated desktop confirmation overlay"></figure>
+      <figure class="h360"><figcaption>Release notice <span>desktop</span></figcaption><img src="desktop-authenticated-release-notice.png" alt="Authenticated desktop release notice"></figure>
+      <figure class="h460"><figcaption>Confirm Host <span>APP 390</span></figcaption><img src="mobile-390-authenticated-confirm-host.png" alt="Authenticated APP confirmation overlay"></figure>
+      <figure class="h460"><figcaption>Release notice <span>APP 390</span></figcaption><img src="mobile-390-authenticated-release-notice.png" alt="Authenticated APP release notice"></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Truthful operational boundaries <span>loading · failed · stale · degraded · 403 · disabled</span></h2>
+    <div class="grid grid--5">
+      <figure class="h360"><figcaption>Loading <span>real request paused</span></figcaption><img src="desktop-real-loading.png" alt="Real loading boundary from paused Operations request"></figure>
+      <figure class="h360"><figcaption>Failed <span>real request aborted</span></figcaption><img src="desktop-real-failed.png" alt="Real failed boundary from aborted Operations request"></figure>
+      <figure class="h360"><figcaption>Stale source <span>real freshness</span></figcaption><img src="desktop-real-stale-source.png" alt="Real AI Events stale source health"></figure>
+      <figure class="h360"><figcaption>403 forbidden <span>real non-Owner</span></figcaption><img src="mobile-390-real-forbidden.png" alt="Real APP Owner-required forbidden gate"></figure>
+      <figure class="h460"><figcaption>Last-valid stale <span>APP 390</span></figcaption><img src="mobile-390-last-valid-stale.png" alt="APP 390 stale boundary preserving last-valid truth"></figure>
+      <figure class="h460"><figcaption>Last-valid degraded <span>APP 430</span></figcaption><img src="mobile-430-last-valid-degraded.png" alt="APP 430 degraded boundary preserving last-valid truth"></figure>
+      <figure class="h360"><figcaption>Ordinary modal <span>hard edge</span></figcaption><img src="desktop-ordinary-modal.png" alt="Production ordinary modal"></figure>
+      <figure class="h360"><figcaption>Danger confirm <span>desktop disabled</span></figcaption><img src="desktop-danger-confirmation.png" alt="Desktop typed danger confirmation before authorization"></figure>
+      <figure class="h460"><figcaption>Danger confirm <span>APP 390</span></figcaption><img src="mobile-390-danger-confirmation.png" alt="APP 390 typed danger confirmation"></figure>
+      <figure class="h460"><figcaption>Safety sheet <span>APP 430</span></figcaption><img src="mobile-430-safety-sheet.png" alt="APP 430 safety sheet"></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Deep and long-content resilience <span>real registries · bounded local scroll · no page overflow</span></h2>
+    <div class="grid grid--4">
+      <figure class="h360"><figcaption>Desktop intelligence <span>long rows</span></figcaption><img src="desktop-ai-intelligence.png" alt="Desktop real long intelligence registry"></figure>
+      <figure class="h360"><figcaption>Desktop events <span>safe source text</span></figcaption><img src="desktop-ai-events.png" alt="Desktop Events safe long source text"></figure>
+      <figure class="h460"><figcaption>APP intelligence <span>390 × 844</span></figcaption><img src="mobile-390x844-real-long-intelligence.png" alt="APP 390 real long intelligence"></figure>
+      <figure class="h460"><figcaption>APP intelligence <span>430 × 932</span></figcaption><img src="mobile-430x932-real-long-intelligence.png" alt="APP 430 real long intelligence"></figure>
+      <figure class="h460"><figcaption>APP feed <span>390 × 844</span></figcaption><img src="mobile-390x844-real-long-feed.png" alt="APP 390 real long feed"></figure>
+      <figure class="h460"><figcaption>APP feed <span>430 × 932</span></figcaption><img src="mobile-430x932-real-long-feed.png" alt="APP 430 real long feed"></figure>
+      <figure class="h460"><figcaption>Operations <span>390 × 844</span></figcaption><img src="mobile-390-operations.png" alt="APP 390 Operations single-column workbench"></figure>
+      <figure class="h460"><figcaption>Configuration <span>430 × 932</span></figcaption><img src="mobile-430-configuration.png" alt="APP 430 Configuration single-column registry"></figure>
+    </div>
+  </section>
+
+  <footer>
+    <span><strong>Evidence scope:</strong> exact 1440×900, 1180×820, 390×844, 430×932 · real permissions and request boundaries · no mock success payloads</span>
+    <span>Prototype 1056233 · Production 3bd2ce8 · Capture f855781</span>
+  </footer>
 </body>
 </html>
