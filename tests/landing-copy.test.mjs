@@ -97,12 +97,12 @@ test("每个 HTML i18n key 都有中英文文案", () => {
   }
 });
 
-test("关键页面层级和品牌色存在，且不是旧营销稿的内联样式堆叠", () => {
+test("关键页面层级和新品牌色存在，且不是旧营销稿的内联样式堆叠", () => {
   assert.match(html, /<h1 class="taHeroProduct">TO THE/);
   assert.match(html, /<h2 class="taHeroStatement"/);
   assert.match(html, /KORDYN · AI AUTONOMOUS TRADING/);
-  assert.match(styles, /--violet:\s*#a78bfa/);
-  assert.match(styles, /--orange:\s*#ff7a32/);
+  assert.match(styles, /--green:\s*#4FB78B/i);
+  assert.match(styles, /--acid:\s*#CCFF3D/i);
   assert.match(styles, /\.taHeroProduct\s*\{[^}]*clamp\(/s);
   assert.doesNotMatch(html, /style="/);
 });
