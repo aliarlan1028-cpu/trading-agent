@@ -230,6 +230,8 @@ const entityCollectionNames = [
 ];
 
 let sqlite;
+let persistedCollectionValues = new Map();
+let persistedEntityValues = new Map();
 
 export function nowIso() {
   return new Date().toISOString();
@@ -1717,6 +1719,8 @@ function sanitizeStoredPayload(payload = {}) {
 function loadFromSqlite() {
   const rows = sqlite.prepare("select name, value from collections").all();
   if (!rows.length) return null;
+  persistedCollectionValues = new Map(rows.map((row) => [row.name, row.value]));
+  persistedEntityValues = new Map();
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
   // 高频中频事实使用独立行存储，避免每2分钟重写一个数十MB的JSON collection。
@@ -1731,7 +1735,10 @@ function loadFromSqlite() {
       if (!grouped.has(row.resource_type)) grouped.set(row.resource_type, []);
       grouped.get(row.resource_type).push(JSON.parse(row.doc));
     }
-    for (const [resourceType, items] of grouped) db[resourceType] = items;
+    for (const [resourceType, items] of grouped) {
+      db[resourceType] = items;
+      persistedEntityValues.set(resourceType, JSON.stringify(items));
+    }
   }
   db.auditLogs = sqlite.prepare("select doc from audit_log_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
   db.traces = sqlite.prepare("select doc from trace_entries order by created_at desc, rowid desc limit 1000").all().map((row) => JSON.parse(row.doc));
@@ -1755,14 +1762,31 @@ function saveToSqlite(db, options = {}) {
   // - markets 剥离 K 线数组(candles/candlesByTf 每次全量重写是 CPU 大头;K 线由巡检任务全量落盘)
   // 任何业务路由的 persist() 仍是全量落盘,知识/K 线变更不会丢。
   const lightweight = options.lightweight === true;
+  const changedCollections = new Map();
+  for (const name of collectionNames) {
+    if (db[name] === undefined) continue;
+    if (lightweight && (name === "knowledge" || name === "markets")) continue;
+    const value = JSON.stringify(db[name]);
+    if (persistedCollectionValues.get(name) !== value) changedCollections.set(name, value);
+  }
+  const changedEntityTypes = new Set();
+  const changedEntityValues = new Map();
+  for (const resourceType of entityCollectionNames) {
+    if (changedCollections.has(resourceType)) {
+      changedEntityTypes.add(resourceType);
+      changedEntityValues.set(resourceType, JSON.stringify(db[resourceType] || []));
+      continue;
+    }
+    if (collectionNames.includes(resourceType)) continue;
+    const value = JSON.stringify(db[resourceType] || []);
+    if (persistedEntityValues.get(resourceType) !== value) {
+      changedEntityTypes.add(resourceType);
+      changedEntityValues.set(resourceType, value);
+    }
+  }
   const write = sqlite.transaction(() => {
-    for (const name of collectionNames) {
-      if (db[name] === undefined) continue;
-      // lightweight:knowledge/markets 都整体跳过(沿用上次全量值)。
-      // 教训:曾写入剥离 K 线的 slim markets,高频覆盖使磁盘上几乎永远是无 K 线版本,
-      // 重启后 1h K 线无人补 → 技能信号/风控复查/相关性静默失效。
-      if (lightweight && (name === "knowledge" || name === "markets")) continue;
-      upsert.run({ name, value: JSON.stringify(db[name]), updated_at: updatedAt });
+    for (const [name, value] of changedCollections) {
+      upsert.run({ name, value, updated_at: updatedAt });
     }
     // 只写最近可能新增/被 Rubik 最终值修订的桶；历史桶是不可变事实，避免每2分钟全量JSON重写。
     const recentCutoff = Date.now() - 20 * 60_000;
@@ -1776,14 +1800,16 @@ function saveToSqlite(db, options = {}) {
     sqlite.prepare("delete from medium_term_samples where bucket_at < ?").run(Date.now() - 30 * 86_400_000);
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);
-    persistTradingEntities(db, updatedAt);
+    persistTradingEntities(db, updatedAt, changedEntityTypes);
   });
   write();
+  for (const [name, value] of changedCollections) persistedCollectionValues.set(name, value);
+  for (const [resourceType, value] of changedEntityValues) persistedEntityValues.set(resourceType, value);
   // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
   for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
 }
 
-function persistTradingEntities(db, updatedAt) {
+function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionNames) {
   const upsert = sqlite.prepare(`
     insert into trading_entities
       (tenant_id, resource_type, resource_id, version, status, symbol, created_at, updated_at, doc)
@@ -1798,7 +1824,7 @@ function persistTradingEntities(db, updatedAt) {
   // 删除必须按 (resource_type, tenant_id) 限定：内存 db 只装载当前租户（单实例即 tenant_owner），
   // 无条件按类型全删会把其他租户的行一并清掉（跨租户数据丢失）。
   const removeTypeForTenant = sqlite.prepare("delete from trading_entities where resource_type = ? and tenant_id = ?");
-  for (const resourceType of entityCollectionNames) {
+  for (const resourceType of resourceTypes) {
     const rows = (db[resourceType] || []).filter((item) => item?.id);
     const tenants = [...new Set(rows.map((item) => item.tenantId || "tenant_owner"))];
     for (const tenant of tenants.length ? tenants : ["tenant_owner"]) removeTypeForTenant.run(resourceType, tenant);

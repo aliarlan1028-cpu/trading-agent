@@ -19,6 +19,17 @@ function readCollection(name) {
   return row ? JSON.parse(row.value) : undefined;
 }
 
+function readPersistenceMarker(collectionName, resourceType, resourceId) {
+  const sqlite = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const collection = sqlite.prepare("SELECT updated_at FROM collections WHERE name = ?").get(collectionName);
+  const entity = sqlite.prepare(`
+    SELECT version FROM trading_entities
+    WHERE resource_type = ? AND resource_id = ?
+  `).get(resourceType, resourceId);
+  sqlite.close();
+  return { collectionUpdatedAt: collection?.updated_at, entityVersion: entity?.version };
+}
+
 test("lightweight save skips knowledge and strips candles; full save persists both", () => {
   const db = loadDb();
   db.knowledge.sources.push({ id: "s_full", title: "全量落盘的来源" });
@@ -73,4 +84,35 @@ test("read-only reload keeps the newest reconciliation report first", () => {
   const snapshot = loadDbReadOnlySnapshot();
   assert.equal(snapshot.reconciliationReports[0].id, "zzz-new-report");
   assert.equal(snapshot.reconciliationReports[0].status, "ok");
+});
+
+test("saving one changed collection does not rewrite unchanged collections or entity rows", async () => {
+  const db = loadDb();
+  const snapshotId = "snapshot_delta_persistence_guard";
+  db.accountSnapshots = [{
+    id: snapshotId,
+    status: "ok",
+    createdAt: "2026-08-25T00:00:00.000Z",
+    updatedAt: "2026-08-25T00:00:00.000Z",
+    equity: 100
+  }];
+  saveDb(db);
+  const before = readPersistenceMarker("knowledge", "accountSnapshots", snapshotId);
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  db.tasks.push({
+    id: "task_delta_persistence_guard",
+    name: "增量持久化回归",
+    handler: "reminder",
+    type: "Every",
+    schedule: "Every 1h",
+    enabled: false,
+    createdAt: "2026-08-25T00:00:00.000Z"
+  });
+  saveDb(db);
+
+  const after = readPersistenceMarker("knowledge", "accountSnapshots", snapshotId);
+  assert.equal(after.collectionUpdatedAt, before.collectionUpdatedAt, "未改变的 knowledge 不应重写");
+  assert.equal(after.entityVersion, before.entityVersion, "未改变的实体不应删除重插并增加版本");
+  assert.ok(readCollection("tasks").some((task) => task.id === "task_delta_persistence_guard"), "改变的 tasks 必须落盘");
 });
