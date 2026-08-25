@@ -240,6 +240,19 @@ try {
   await pressKey(cdp, "Escape");
   await waitForExpression(cdp, "document.querySelector('.zbShellTrace[hidden]') && document.activeElement===document.querySelector('[data-zero-base-tool=trace]')", "Trace Escape close and focus return");
 
+  await evaluate(cdp, `(() => {
+    const trigger = document.querySelector('[data-zero-base-tool=trace]');
+    trigger.focus();
+    window.__openZeroBaseConfirm();
+    return true;
+  })()`);
+  await waitForExpression(cdp, "document.querySelector('.cfmCard--ordinary')?.getAttribute('role')==='dialog' && document.querySelector('.cfmCard--ordinary').contains(document.activeElement)", "production-shell ordinary ConfirmHost");
+  await capture(cdp, "desktop-1180-confirm");
+  await pressKey(cdp, "Tab");
+  assert.equal(await evaluate(cdp, "document.querySelector('.cfmCard--ordinary').contains(document.activeElement)"), true, "ordinary ConfirmHost traps Tab");
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "!document.querySelector('.cfmCard') && document.activeElement===document.querySelector('[data-zero-base-tool=trace]')", "ordinary ConfirmHost Escape close and focus return");
+
   await click(cdp, ".commandRail__search input");
   await evaluate(cdp, `(() => {
     const input = document.querySelector('.commandRail__search input');
@@ -280,7 +293,7 @@ try {
     await capture(cdp, `desktop-1180-state-${state}`);
   }
 
-  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today/actions", "ai/patrol", "ai/poster", "ai/intelligence", "portfolio/account", "portfolio/protection", "portfolio/positions", "strategy/historical", "knowledge/import", "knowledge/graph", "knowledge/workflows", "capability/mcp", "reviews/lessons", "guard/events", "operations/tasks", "configuration/security"], chatContracts:["sessionId=chat_autocycle","scope=all"], drawers: ["context-keyboard", "trace-keyboard"], selection: "Event:event-5", states }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today/actions", "ai/patrol", "ai/poster", "ai/intelligence", "portfolio/account", "portfolio/protection", "portfolio/positions", "strategy/historical", "knowledge/import", "knowledge/graph", "knowledge/workflows", "capability/mcp", "reviews/lessons", "guard/events", "operations/tasks", "configuration/security"], chatContracts:["sessionId=chat_autocycle","scope=all"], dialogs: ["context-keyboard", "trace-keyboard", "ordinary-confirm-keyboard"], selection: "Event:event-5", states }, null, 2));
 } finally {
   cdp?.close();
   await stopProcess(chrome);

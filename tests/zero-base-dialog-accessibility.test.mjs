@@ -6,6 +6,8 @@ const hook = readFileSync(new URL("../src/useDialogFocus.js", import.meta.url), 
 const landing = readFileSync(new URL("../src/landing.jsx", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../src/zeroBaseShell.jsx", import.meta.url), "utf8");
 const productShell = readFileSync(new URL("../src/productShell.jsx", import.meta.url), "utf8");
+const browserHarness = readFileSync(new URL("./zero-base-shell-browser.jsx", import.meta.url), "utf8");
+const browserRunner = readFileSync(new URL("./run-zero-base-shell-browser.mjs", import.meta.url), "utf8");
 
 test("shared authenticated dialog contract traps focus, closes on Escape, and restores the trigger", () => {
   assert.match(hook, /event\.key === "Escape"/);
@@ -31,4 +33,13 @@ test("desktop Context and Trace drawers are closable labelled dialogs with trigg
   assert.match(productShell, /role="dialog"/);
   assert.match(productShell, /aria-modal="true"/);
   assert.match(productShell, /rootRef/);
+});
+
+test("desktop production-shell evidence mounts and exercises the real ordinary ConfirmHost", () => {
+  assert.match(browserHarness, /<AppFrame authenticated>/);
+  assert.match(browserHarness, /uiConfirm/);
+  assert.match(browserHarness, /__openZeroBaseConfirm/);
+  assert.match(browserRunner, /desktop-1180-confirm/);
+  assert.match(browserRunner, /\.cfmCard--ordinary/);
+  assert.match(browserRunner, /ordinary ConfirmHost Escape close and focus return/);
 });

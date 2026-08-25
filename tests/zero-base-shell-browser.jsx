@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AppFrame } from "../src/appFrame.jsx";
+import { uiConfirm } from "../src/confirm.jsx";
 import { zeroBaseLocationForRoute } from "../src/zeroBaseArchitecture.js";
 import { ZeroBaseDesktopShell } from "../src/zeroBaseShell.jsx";
 import { ZeroBaseToday } from "../src/zeroBaseToday.jsx";
@@ -46,6 +47,14 @@ function BrowserShell() {
   const [viewId, setViewId] = useState("owner");
   const [selectedObject, setSelectedObject] = useState(null);
   const workspaceId = workspaceByFamily[familyId] || "ai";
+  useEffect(() => {
+    window.__openZeroBaseConfirm = () => uiConfirm("确认继续执行当前操作？", {
+      title: "确认操作",
+      confirmLabel: "继续",
+      cancelLabel: "取消"
+    });
+    return () => { delete window.__openZeroBaseConfirm; };
+  }, []);
   const context = useMemo(() => buildShellContext({ data: fixture, workspaceId, selectedObject }), [workspaceId, selectedObject]);
   const trace = useMemo(() => buildShellTrace(fixture, workspaceId, selectedObject), [workspaceId, selectedObject]);
   const navigate = (nextFamily, nextView, directRoute = "") => {
