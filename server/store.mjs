@@ -228,6 +228,11 @@ const entityCollectionNames = [
   "strategyStudioDrafts", "strategyBlueprintVersions", "strategyStudioBacktests",
   "strategyMarketplaceListings", "strategyAssignments"
 ];
+// Account snapshots are both the largest frequently changing entity collection
+// and already have a durable row-per-snapshot representation. Keep the legacy
+// aggregate for migration compatibility, but never rewrite it on the one-minute
+// sync path; loadFromSqlite overlays the authoritative entity rows on startup.
+const rowPrimaryEntityCollectionNames = new Set(["accountSnapshots"]);
 
 let sqlite;
 let persistedCollectionFingerprints = new Map();
@@ -1792,6 +1797,7 @@ function saveToSqlite(db, options = {}) {
     if (db[name] === undefined) continue;
     if (scopedCollections && !scopedCollections.has(name)) continue;
     if (lightweight && (name === "knowledge" || name === "markets")) continue;
+    if (rowPrimaryEntityCollectionNames.has(name)) continue;
     const value = JSON.stringify(db[name]);
     if (persistedCollectionFingerprints.get(name) !== persistenceDocumentFingerprint(value)) changedCollections.set(name, value);
   }
@@ -1804,7 +1810,7 @@ function saveToSqlite(db, options = {}) {
       changedEntityValues.set(resourceType, persistenceDocumentFingerprint(changedCollections.get(resourceType)));
       continue;
     }
-    if (collectionNames.includes(resourceType)) continue;
+    if (collectionNames.includes(resourceType) && !rowPrimaryEntityCollectionNames.has(resourceType)) continue;
     const value = JSON.stringify(db[resourceType] || []);
     const fingerprint = persistenceDocumentFingerprint(value);
     if (persistedEntityFingerprints.get(resourceType) !== fingerprint) {

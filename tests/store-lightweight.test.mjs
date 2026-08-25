@@ -191,6 +191,31 @@ test("appending one account snapshot preserves unchanged entity rows and removes
   assert.equal(readEntityRow("accountSnapshots", second.id).rowid, secondAfterAppend.rowid, "the retained snapshot must stay untouched");
 });
 
+test("account snapshots use entity rows as the hot write path and still reload after restart", () => {
+  const db = loadDb();
+  const readerBefore = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const legacyBefore = readerBefore.prepare("SELECT value, updated_at FROM collections WHERE name = 'accountSnapshots'").get();
+  readerBefore.close();
+  const snapshot = {
+    id: "snapshot_row_primary",
+    status: "ok",
+    createdAt: "2026-08-25T00:02:00.000Z",
+    balances: Array.from({ length: 2_000 }, (_, index) => ({ asset: `ASSET_${index}`, totalEq: String(index) }))
+  };
+
+  db.accountSnapshots = [snapshot];
+  saveDb(db, { collections: ["accountSnapshots"] });
+
+  const readerAfter = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const legacyAfter = readerAfter.prepare("SELECT value, updated_at FROM collections WHERE name = 'accountSnapshots'").get();
+  readerAfter.close();
+  assert.deepEqual(legacyAfter, legacyBefore, "the legacy aggregate must not be rewritten on every snapshot");
+  assert.ok(readEntityRow("accountSnapshots", snapshot.id));
+  const reloaded = loadDbReadOnlySnapshot();
+  assert.equal(reloaded.accountSnapshots[0].id, snapshot.id);
+  assert.equal(reloaded.accountSnapshots[0].balances.length, 2_000);
+});
+
 test("saving scheduler state does not replay audit and trace rows that were already appended", () => {
   const db = loadDb();
   appendAudit(db, "增量日志回归审计", "store-test", "Test");

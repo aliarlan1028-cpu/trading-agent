@@ -565,7 +565,13 @@ registerTaskHandler("accounting_refresh", async (database, _task, lease) => {
   lease.assertLease();
   const result = await refreshAccountingAuthoritatively(database, { assertLease: lease.assertLease, signal: lease.signal });
   lease.assertLease();
-  return result;
+  return {
+    ...result,
+    persistCollections: [
+      "portfolio", "accountingAnchors", "riskIncidents", "notifications",
+      "ownerImprovementItems", "system"
+    ]
+  };
 });
 registerTaskHandler("reminder", (database, task, lease) => {
   lease.assertLease();
@@ -610,7 +616,18 @@ registerTaskHandler("agent_cycle", async (database, _task, lease) => {
     ]
   };
 });
-registerTaskHandler("reconcile", (database, _task, lease) => { lease.assertLease(); return runReconciler(database, { mode: "scheduled", assertLease: lease.assertLease }); });
+registerTaskHandler("reconcile", (database, _task, lease) => {
+  lease.assertLease();
+  const result = runReconciler(database, { mode: "scheduled", assertLease: lease.assertLease });
+  return {
+    ...result,
+    persistCollections: [
+      "reconciliationReports", "riskIncidents", "executionOrders", "armedSetups",
+      "tradePlans", "opportunityCandidates", "positions", "portfolio",
+      "ownerImprovementItems", "notifications", "system"
+    ]
+  };
+});
 // 观察哨哨兵:每分钟机械核对已登记的价格条件,命中即通过 agent_cycle 任务(同锁同风控)触发完整巡检。
 registerTaskHandler("watch_sentinel", (database, _task, lease) => { lease.assertLease(); return runWatchSentinel(database, saveDb); });
 registerTaskHandler("opportunity_scan", async (database, _task, lease) => {
@@ -647,7 +664,18 @@ registerTaskHandler("paper_forward", async (database, _task, lease) => {
   return { ...paper, knowledgeSkills: skills, trustedSkills: trusted };
 });
 // ② 平仓自动复盘：逐笔沉淀教训入记忆（含 LLM 深度复盘）。
-registerTaskHandler("trade_reflection", (database, _task, lease) => { lease.assertLease(); return runTradeReflection(database, { signal: lease.signal, schedulerLease: lease }); });
+registerTaskHandler("trade_reflection", async (database, _task, lease) => {
+  lease.assertLease();
+  const result = await runTradeReflection(database, { signal: lease.signal, schedulerLease: lease });
+  lease.assertLease();
+  return {
+    ...result,
+    persistCollections: [
+      "fills", "executionOrders", "tradePlans", "reviews", "memoryItems",
+      "ownerImprovementItems", "marketIntelligenceSourceHealth", "system"
+    ]
+  };
+});
 // ②b 错过机会复盘：大波动却没交易的复盘沉淀（#5）。
 registerTaskHandler("missed_opportunity_review", (database, _task, lease) => { lease.assertLease(); return reviewMissedOpportunities(database, { signal: lease.signal }); });
 // Owner 复盘闭环：后台只聚合重复问题并形成候选优化项；不再自动创建策略实验。
@@ -668,7 +696,13 @@ registerTaskHandler("event_source_refresh", async (database, _task, lease) => {
   const r = await refreshEventSources(database);
   lease.assertLease();
   try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(database); } catch { /* 日程生成失败不阻断新闻刷新 */ }
-  return r;
+  return {
+    ...r,
+    persistCollections: [
+      "eventSources", "events", "marketIntelligenceSourceHealth",
+      "marketIntelligenceFacts", "notifications", "system"
+    ]
+  };
 });
 registerTaskHandler("event_refresh", async (database, _task, lease) => {
   lease.assertLease();
@@ -677,7 +711,14 @@ registerTaskHandler("event_refresh", async (database, _task, lease) => {
   catch (error) { intelligence = { status: "failed", error: String(error.message || error).slice(0, 180) }; }
   lease.assertLease();
   try { const { ensureScheduledEvents } = await import("./scheduledEvents.mjs"); ensureScheduledEvents(database); } catch { /* 官方日历落风险事件失败不阻断 */ }
-  return { status: intelligence.status, intelligence };
+  return {
+    status: intelligence.status,
+    intelligence,
+    persistCollections: [
+      "events", "marketIntelligenceFacts", "marketCalendarEvents",
+      "marketIntelligenceSourceHealth", "dailyBriefs", "notifications", "system"
+    ]
+  };
 });
 registerTaskHandler("news_flash_refresh", async (database, _task, lease) => {
   lease.assertLease();
@@ -689,7 +730,15 @@ registerTaskHandler("news_flash_refresh", async (database, _task, lease) => {
         .catch((error) => appendTrace(database, "agent_cycle", `重要快讯唤起失败：${String(error.message || error).slice(0, 120)}`, "error"));
     }, 0);
   }
-  return { ...result, urgent: result.urgent?.length || 0, skipPersist: result.status === "ok" && result.added === 0 };
+  return {
+    ...result,
+    urgent: result.urgent?.length || 0,
+    skipPersist: result.status === "ok" && result.added === 0,
+    persistCollections: [
+      "events", "marketIntelligenceFacts", "marketIntelligenceSourceHealth",
+      "notifications", "system"
+    ]
+  };
 });
 registerTaskHandler("event_preparation", async (database, _task, lease) => {
   lease.assertLease();
