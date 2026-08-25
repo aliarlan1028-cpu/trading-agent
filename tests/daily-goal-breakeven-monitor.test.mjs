@@ -72,3 +72,16 @@ test("OKX 未确认时保留原止损并记录可重试失败", async () => {
   await monitorPositions(db, { executeTradeAction: async () => { attempts += 1; return { status: "exchange_rejected" }; } });
   assert.equal(attempts, 1, "一分钟重试冷却内不能持续轰炸交易所改单接口");
 });
+
+test("scheduler-owned position monitoring can defer its internal duplicate save", async () => {
+  const db = fixture();
+  let saves = 0;
+
+  await monitorPositions(db, {
+    deferPersistence: true,
+    saveDb() { saves += 1; },
+    executeTradeAction: async (_database, _action, payload) => ({ status: "ok", stopPrice: payload.stopPrice })
+  });
+
+  assert.equal(saves, 0, "外层 scheduler 会在风控保护评估完成后统一持久化，内部不得提前重复全库保存");
+});

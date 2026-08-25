@@ -116,3 +116,26 @@ test("saving one changed collection does not rewrite unchanged collections or en
   assert.equal(after.entityVersion, before.entityVersion, "未改变的实体不应删除重插并增加版本");
   assert.ok(readCollection("tasks").some((task) => task.id === "task_delta_persistence_guard"), "改变的 tasks 必须落盘");
 });
+
+test("collection-scoped save does not serialize unrelated state", () => {
+  const db = loadDb();
+  const originalKnowledge = db.knowledge;
+  db.knowledge = {
+    ...originalKnowledge,
+    toJSON() {
+      throw new Error("unrelated_knowledge_was_serialized");
+    }
+  };
+  db.tasks.push({
+    id: "task_scoped_persistence_guard",
+    name: "范围持久化回归",
+    handler: "reminder",
+    type: "Every",
+    schedule: "Every 1h",
+    enabled: false,
+    createdAt: "2026-08-25T00:00:00.000Z"
+  });
+
+  assert.doesNotThrow(() => saveDb(db, { collections: ["tasks"] }));
+  assert.ok(readCollection("tasks").some((task) => task.id === "task_scoped_persistence_guard"));
+});

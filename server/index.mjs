@@ -526,11 +526,21 @@ registerTaskHandler("execution_poll", async (database, _task, lease) => {
   const result = await pollExecutionOrders(database, { assertLease: lease.assertLease, signal: lease.signal });
   lease.assertLease();
   result.armedSetupsReconciled = reconcileArmedSetupExecutions(database).length;
-  return result;
+  return {
+    ...result,
+    persistCollections: [
+      "executionOrders", "exchangeOrders", "orders", "fills", "armedSetups", "tradePlans",
+      "positions", "portfolio", "riskChecks", "riskIncidents", "notifications", "system"
+    ]
+  };
 });
 registerTaskHandler("position_monitor", async (database, _task, lease) => {
   lease.assertLease();
-  const r = await monitorPositions(database, { assertLease: lease.assertLease, signal: lease.signal });
+  const r = await monitorPositions(database, {
+    assertLease: lease.assertLease,
+    signal: lease.signal,
+    deferPersistence: true
+  });
   // 带消息面的持仓护航（有持仓才跑，节省 LLM 额度）：只产建议/告警，不自动下单。
   try {
     const due = Date.now() - new Date(database.meta?.lastPositionEscortAt || 0).getTime() >= 2 * 60_000;
@@ -543,7 +553,13 @@ registerTaskHandler("position_monitor", async (database, _task, lease) => {
   } catch (error) { if (isLeaseLostError(error)) throw error; /* 护航失败不阻断监控 */ }
   // freqtrade 式交易保护:每轮刷新连亏冷却/回撤锁仓状态,新触发时抬风险事件(到期自动解除)。
   try { applyProtections(database); } catch { /* 保护评估失败不阻断监控 */ }
-  return r;
+  return {
+    ...r,
+    persistCollections: [
+      "positions", "portfolio", "executionOrders", "orders", "fills", "armedSetups", "tradePlans",
+      "riskChecks", "riskIncidents", "notifications", "ownerImprovementItems", "pendingActions", "system"
+    ]
+  };
 });
 registerTaskHandler("accounting_refresh", async (database, _task, lease) => {
   lease.assertLease();
@@ -590,7 +606,10 @@ registerTaskHandler("opportunity_scan", async (database, _task, lease) => {
         .catch((error) => appendTrace(database, "agent_cycle", `全市场机会唤起失败：${String(error.message || error).slice(0, 120)}`, "error"));
     }, 0);
   }
-  return result;
+  return {
+    ...result,
+    persistCollections: ["opportunityCandidates", "opportunityEvents", "system"]
+  };
 });
 registerTaskHandler("strategy_research", (database, _task, lease) => { lease.assertLease(); return runStrategyResearch(database, { signal: lease.signal, schedulerLease: lease }); });
 registerTaskHandler("paper_forward", async (database, _task, lease) => {
@@ -685,7 +704,11 @@ registerTaskHandler("payment_verify", async (database, _task, lease) => {
   const r = await verifyTrc20Payments(database, { signal: lease.signal, assertLease: lease.assertLease });
   return { ...r, skipPersist: r.status === "skipped" || (r.status === "ok" && !r.checked) };
 });
-registerTaskHandler("outbox_dispatch", (database, _task, lease) => dispatchOutbox(database, { signal: lease.signal, assertLease: lease.assertLease }));
+registerTaskHandler("outbox_dispatch", async (database, _task, lease) => ({
+  ...await dispatchOutbox(database, { signal: lease.signal, assertLease: lease.assertLease }),
+  // outbox_events 自身由 store 的事务表原子更新；这里只需 scheduler 账本与 trace。
+  persistCollections: []
+}));
 registerTaskHandler("audit_worm_ship", async (database, _task, lease) => {
   lease.assertLease();
   const r = await shipAuditToWorm(database);
@@ -771,7 +794,17 @@ registerTaskHandler("market_signal_refresh", async (database, _task, lease) => {
   const reason = status === "failed"
     ? syncErrors.slice(0, 4).map((item) => `${item.symbol}/${item.source}: ${item.error}`).join("；") || "关键行情源未完成刷新"
     : null;
-  return { status, reason, attempted: symbols.length, synced, errors: syncErrors };
+  return {
+    status,
+    reason,
+    attempted: symbols.length,
+    synced,
+    errors: syncErrors,
+    persistCollections: [
+      "markets", "mediumTermSamples", "eventVolatilityObservations", "events",
+      "marketIntelligenceFacts", "marketCalendarEvents", "riskIncidents", "notifications", "system"
+    ]
+  };
 });
 registerTaskHandler("market_context_research", async (database, _task, lease) => {
   lease.assertLease();

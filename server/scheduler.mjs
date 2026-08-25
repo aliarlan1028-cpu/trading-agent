@@ -374,10 +374,13 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
       }
       output = typeof result === "string" ? result : summarizeHandlerResult(task.handler, result);
       const skipPersist = result && typeof result === "object" && result.skipPersist === true && trigger !== "manual";
+      const persistCollections = result && typeof result === "object" && Array.isArray(result.persistCollections)
+        ? result.persistCollections
+        : null;
       task.failureCount = 0;
       task.lastError = null;
       const completionStatus = resultStatus === "partial" ? "partial" : resultStatus === "skipped" ? "skipped" : "ok";
-      const run = recordRun(db, task, completionStatus, output, trigger, saveDb, { skipPersist });
+      const run = recordRun(db, task, completionStatus, output, trigger, saveDb, { skipPersist, persistCollections });
       return run;
     }
   } catch (error) {
@@ -444,7 +447,12 @@ function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
   db.jobRuns.unshift(run);
   appendAudit(db, trigger === "manual" ? "立即运行任务" : "后台运行任务", task.id, "调度员", status === "ok" ? "info" : "warning");
   appendTrace(db, "scheduled_task", `${task.name} 运行`, status);
-  if (saveDb) saveDb(db);
+  if (saveDb) {
+    const collections = Array.isArray(opts.persistCollections)
+      ? [...new Set(["meta", "tasks", "jobRuns", "jobLocks", ...opts.persistCollections])]
+      : null;
+    saveDb(db, collections ? { collections } : undefined);
+  }
   return { task, run };
 }
 

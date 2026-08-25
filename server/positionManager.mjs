@@ -130,7 +130,10 @@ export async function monitorPositions(db, options = {}) {
   } finally {
     clearInterval(heartbeat);
     // 只有仍持有 fencing token 的 owner 才可把本轮内存状态落盘。
-    try { assertMonitorLease(); (options.saveDb || saveDb)(db); } catch { /* 失租时禁止旧 owner 落盘 */ }
+    try {
+      assertMonitorLease();
+      if (options.deferPersistence !== true) (options.saveDb || saveDb)(db);
+    } catch { /* 失租时禁止旧 owner 落盘 */ }
     try { releaseExecutionLease("position-monitor", ownerId, lease.fencingToken); } catch { /* TTL 兜底 */ }
   }
 }

@@ -1762,9 +1762,13 @@ function saveToSqlite(db, options = {}) {
   // - markets 剥离 K 线数组(candles/candlesByTf 每次全量重写是 CPU 大头;K 线由巡检任务全量落盘)
   // 任何业务路由的 persist() 仍是全量落盘,知识/K 线变更不会丢。
   const lightweight = options.lightweight === true;
+  const scopedCollections = Array.isArray(options.collections)
+    ? new Set(["meta", ...options.collections])
+    : null;
   const changedCollections = new Map();
   for (const name of collectionNames) {
     if (db[name] === undefined) continue;
+    if (scopedCollections && !scopedCollections.has(name)) continue;
     if (lightweight && (name === "knowledge" || name === "markets")) continue;
     const value = JSON.stringify(db[name]);
     if (persistedCollectionValues.get(name) !== value) changedCollections.set(name, value);
@@ -1772,6 +1776,7 @@ function saveToSqlite(db, options = {}) {
   const changedEntityTypes = new Set();
   const changedEntityValues = new Map();
   for (const resourceType of entityCollectionNames) {
+    if (scopedCollections && !scopedCollections.has(resourceType)) continue;
     if (changedCollections.has(resourceType)) {
       changedEntityTypes.add(resourceType);
       changedEntityValues.set(resourceType, JSON.stringify(db[resourceType] || []));
@@ -1789,15 +1794,18 @@ function saveToSqlite(db, options = {}) {
       upsert.run({ name, value, updated_at: updatedAt });
     }
     // 只写最近可能新增/被 Rubik 最终值修订的桶；历史桶是不可变事实，避免每2分钟全量JSON重写。
-    const recentCutoff = Date.now() - 20 * 60_000;
-    for (const row of db.mediumTermSamples || []) {
-      if (!row?.symbol || !Number.isFinite(Number(row.bucketAt))) continue;
-      if (Number(row.bucketAt) < recentCutoff && row.persistPending !== true) continue;
-      // persistPending 只是内存中的“首次回填待落盘”标记，不属于市场事实本身。
-      const stored = row.persistPending === true ? { ...row, persistPending: undefined } : row;
-      upsertMediumTerm.run({ symbol: row.symbol, bucket_at: Number(row.bucketAt), observed_at: row.observedAt || row.updatedAt || updatedAt, doc: JSON.stringify(stored) });
+    const persistMediumTerm = !scopedCollections || scopedCollections.has("mediumTermSamples");
+    if (persistMediumTerm) {
+      const recentCutoff = Date.now() - 20 * 60_000;
+      for (const row of db.mediumTermSamples || []) {
+        if (!row?.symbol || !Number.isFinite(Number(row.bucketAt))) continue;
+        if (Number(row.bucketAt) < recentCutoff && row.persistPending !== true) continue;
+        // persistPending 只是内存中的“首次回填待落盘”标记，不属于市场事实本身。
+        const stored = row.persistPending === true ? { ...row, persistPending: undefined } : row;
+        upsertMediumTerm.run({ symbol: row.symbol, bucket_at: Number(row.bucketAt), observed_at: row.observedAt || row.updatedAt || updatedAt, doc: JSON.stringify(stored) });
+      }
+      sqlite.prepare("delete from medium_term_samples where bucket_at < ?").run(Date.now() - 30 * 86_400_000);
     }
-    sqlite.prepare("delete from medium_term_samples where bucket_at < ?").run(Date.now() - 30 * 86_400_000);
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);
     persistTradingEntities(db, updatedAt, changedEntityTypes);
@@ -1806,7 +1814,9 @@ function saveToSqlite(db, options = {}) {
   for (const [name, value] of changedCollections) persistedCollectionValues.set(name, value);
   for (const [resourceType, value] of changedEntityValues) persistedEntityValues.set(resourceType, value);
   // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
-  for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
+  if (!scopedCollections || scopedCollections.has("mediumTermSamples")) {
+    for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
+  }
 }
 
 function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionNames) {

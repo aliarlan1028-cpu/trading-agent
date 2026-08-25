@@ -215,3 +215,27 @@ test("system task upgrades persist the approved runtime bound", () => {
 
   assert.equal(db.tasks[0].maxRunMs, 90_000);
 });
+
+test("a scoped handler persists its business collections plus scheduler bookkeeping", async () => {
+  registerTaskHandler("scoped_scheduler_persistence", async () => ({
+    status: "ok",
+    persistCollections: ["opportunityCandidates", "system"]
+  }));
+  const task = {
+    id: "task_scoped_scheduler_persistence",
+    name: "scoped scheduler persistence",
+    enabled: true,
+    handler: "scoped_scheduler_persistence",
+    type: "Every",
+    schedule: "1m"
+  };
+  const db = dbWith(task);
+  const saves = [];
+
+  await runTask(db, task.id, (_database, options) => saves.push(options), "scheduler", { leaseApi: leaseApi() });
+
+  assert.equal(saves.length, 1);
+  assert.deepEqual(saves[0].collections.slice().sort(), [
+    "jobLocks", "jobRuns", "meta", "opportunityCandidates", "system", "tasks"
+  ]);
+});
