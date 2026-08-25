@@ -162,6 +162,33 @@ async function clickObject(cdp, rootSelector, type, id = null) {
   return point.id;
 }
 
+async function readDesktopStateGeometry(cdp, state) {
+  return await evaluate(cdp, `(() => {
+    const shell = document.querySelector('.appShell.kordynSystem');
+    const command = shell?.querySelector(':scope > .appTopbar');
+    const workspace = shell?.querySelector(':scope > [data-shell-role="workspace-rail"]');
+    const main = shell?.querySelector(':scope > .mainArea');
+    const context = shell?.querySelector(':scope > [data-shell-role="context-dock"]');
+    const trace = shell?.querySelector(':scope > [data-shell-role="trace-rail"]');
+    const boundary = shell?.querySelector('[data-resource-state="${state}"]');
+    const banner = boundary?.querySelector('.workspaceState');
+    const retry = banner?.querySelector('button');
+    const truth = boundary?.querySelector('.workspaceStateBoundary__lastValid .uxCenter');
+    const rect = (node) => { if (!node) return null; const value = node.getBoundingClientRect(); return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height }; };
+    return {
+      shell: rect(shell), command: rect(command), workspace: rect(workspace), main: rect(main), context: rect(context), trace: rect(trace), banner: rect(banner), retry: rect(retry), truth: rect(truth),
+      documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth || document.documentElement.scrollHeight > document.documentElement.clientHeight
+    };
+  })()`);
+}
+
+function assertStateSurfacesClearContext(state, geometry, mode) {
+  const contextOverlaps = [["banner", geometry.banner], ["retry", geometry.retry], ["truth", geometry.truth]]
+    .filter(([, rect]) => rect?.right > geometry.context?.left + 1)
+    .map(([surface, rect]) => ({ surface, right: rect.right, contextLeft: geometry.context.left }));
+  assert.deepEqual(contextOverlaps, [], `${state} constrained surfaces do not render beneath the ${mode} Context dock`);
+}
+
 async function assertDesktopIdentity(cdp, id, type) {
   const identity = `${type}:${id}`;
   await waitForExpression(cdp, `document.querySelector('.appShell.kordynSystem')?.dataset.shellSelectedObject === ${JSON.stringify(id)} && document.querySelector('.appShell.kordynSystem')?.dataset.shellSelectedType === ${JSON.stringify(type)}`, `${identity} desktop shell selection`);
@@ -286,23 +313,7 @@ try {
     stateUrl.searchParams.set("state", state);
     await setViewportAndNavigate(cdp, stateUrl.href, width, height);
     await waitForExpression(cdp, `window.__productionDesktopStateReady && document.querySelector('[data-resource-state="${state}"] .uxCenter')`, `${state} desktop last-valid workspace`);
-    const shellGeometry = await evaluate(cdp, `(() => {
-      const shell = document.querySelector('.appShell.kordynSystem');
-      const command = shell?.querySelector(':scope > .appTopbar');
-      const workspace = shell?.querySelector(':scope > [data-shell-role="workspace-rail"]');
-      const main = shell?.querySelector(':scope > .mainArea');
-      const context = shell?.querySelector(':scope > [data-shell-role="context-dock"]');
-      const trace = shell?.querySelector(':scope > [data-shell-role="trace-rail"]');
-      const boundary = shell?.querySelector('[data-resource-state="${state}"]');
-      const banner = boundary?.querySelector('.workspaceState');
-      const retry = banner?.querySelector('button');
-      const truth = boundary?.querySelector('.workspaceStateBoundary__lastValid .uxCenter');
-      const rect = (node) => { if (!node) return null; const value = node.getBoundingClientRect(); return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height }; };
-      return {
-        shell: rect(shell), command: rect(command), workspace: rect(workspace), main: rect(main), context: rect(context), trace: rect(trace), banner: rect(banner), retry: rect(retry), truth: rect(truth),
-        documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth || document.documentElement.scrollHeight > document.documentElement.clientHeight
-      };
-    })()`);
+    const shellGeometry = await readDesktopStateGeometry(cdp, state);
     assert.ok(shellGeometry.shell?.width >= width - 1 && shellGeometry.shell?.height >= height - 1, `${state} uses a viewport-sized production desktop shell`);
     assert.ok(shellGeometry.command?.width >= width - 1 && shellGeometry.command?.height >= 56, `${state} keeps the real Command rail visible`);
     assert.ok(shellGeometry.workspace?.width >= 150 && shellGeometry.workspace?.height >= 400, `${state} keeps the real Workspace rail visible`);
@@ -312,6 +323,7 @@ try {
     assert.ok(shellGeometry.banner?.width >= 480 && shellGeometry.banner?.height >= 56, `${state} warning banner is visibly actionable`);
     assert.ok(shellGeometry.retry?.width >= 36 && shellGeometry.retry?.height >= 36, `${state} retry target is visibly reachable`);
     assert.ok(shellGeometry.truth?.width >= 480 && shellGeometry.truth?.height >= 240, `${state} last-valid production workspace remains visibly inspectable`);
+    assertStateSurfacesClearContext(state, shellGeometry, width <= 1280 ? "collapsed" : "open");
     assert.equal(shellGeometry.documentOverflow, false, `${state} production desktop shell does not overflow the page`);
     const stateBoundary = await evaluate(cdp, `(() => {
       const boundary = document.querySelector('[data-resource-state="${state}"]');
@@ -321,7 +333,17 @@ try {
     assert.deepEqual(stateBoundary, { warning: true, inert: true, interaction: "disabled", pointerEvents: "none" });
     await trustedClick(cdp, `[data-resource-state="${state}"] .workspaceState > button`);
     assert.equal(await evaluate(cdp, "window.__productionDesktopRetry?.at(-1)?.force"), true);
-    desktopProof.push(`State:${state}:last-valid+retry`);
+    desktopProof.push(`State:${state}:last-valid+retry:context=${shellGeometry.context.left}:banner=${shellGeometry.banner.right}:retry=${shellGeometry.retry.right}:truth=${shellGeometry.truth.right}`);
+    if (width <= 1280) {
+      assert.equal(Math.round(shellGeometry.context.width), 58, `${state} medium fixture starts with the production collapsed Context width`);
+      await trustedClick(cdp, ".appShell.kordynSystem > [data-shell-role='context-dock'] > header > button");
+      await waitForExpression(cdp, "document.querySelector('.appShell.kordynSystem > [data-shell-role=\"context-dock\"]:not(.collapsed)')", `${state} medium Context expansion`);
+      const openGeometry = await readDesktopStateGeometry(cdp, state);
+      assert.equal(Math.round(openGeometry.context.width), 304, `${state} medium fixture expands to the production Context width`);
+      assertStateSurfacesClearContext(state, openGeometry, "open");
+      assert.equal(openGeometry.documentOverflow, false, `${state} open medium Context does not overflow the page`);
+      desktopProof.push(`State:${state}:open-context=${openGeometry.context.left}:banner=${openGeometry.banner.right}:retry=${openGeometry.retry.right}:truth=${openGeometry.truth.right}`);
+    }
   }
 
   const forbiddenUrl = new URL(mobileFixtureUrl);
