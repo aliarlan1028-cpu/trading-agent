@@ -20,6 +20,7 @@ import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBound
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
+import "./zero-base-system.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
