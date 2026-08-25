@@ -286,6 +286,33 @@ try {
     stateUrl.searchParams.set("state", state);
     await setViewportAndNavigate(cdp, stateUrl.href, width, height);
     await waitForExpression(cdp, `window.__productionDesktopStateReady && document.querySelector('[data-resource-state="${state}"] .uxCenter')`, `${state} desktop last-valid workspace`);
+    const shellGeometry = await evaluate(cdp, `(() => {
+      const shell = document.querySelector('.appShell.kordynSystem');
+      const command = shell?.querySelector(':scope > .appTopbar');
+      const workspace = shell?.querySelector(':scope > [data-shell-role="workspace-rail"]');
+      const main = shell?.querySelector(':scope > .mainArea');
+      const context = shell?.querySelector(':scope > [data-shell-role="context-dock"]');
+      const trace = shell?.querySelector(':scope > [data-shell-role="trace-rail"]');
+      const boundary = shell?.querySelector('[data-resource-state="${state}"]');
+      const banner = boundary?.querySelector('.workspaceState');
+      const retry = banner?.querySelector('button');
+      const truth = boundary?.querySelector('.workspaceStateBoundary__lastValid .uxCenter');
+      const rect = (node) => { if (!node) return null; const value = node.getBoundingClientRect(); return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height }; };
+      return {
+        shell: rect(shell), command: rect(command), workspace: rect(workspace), main: rect(main), context: rect(context), trace: rect(trace), banner: rect(banner), retry: rect(retry), truth: rect(truth),
+        documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth || document.documentElement.scrollHeight > document.documentElement.clientHeight
+      };
+    })()`);
+    assert.ok(shellGeometry.shell?.width >= width - 1 && shellGeometry.shell?.height >= height - 1, `${state} uses a viewport-sized production desktop shell`);
+    assert.ok(shellGeometry.command?.width >= width - 1 && shellGeometry.command?.height >= 56, `${state} keeps the real Command rail visible`);
+    assert.ok(shellGeometry.workspace?.width >= 150 && shellGeometry.workspace?.height >= 400, `${state} keeps the real Workspace rail visible`);
+    assert.ok(shellGeometry.main?.width >= 500 && shellGeometry.main?.height >= 500, `${state} keeps a usable main workspace`);
+    assert.ok(shellGeometry.context?.width >= 58 && shellGeometry.context?.height >= 400, `${state} keeps the real Context dock visible`);
+    assert.ok(shellGeometry.trace?.width >= width - 1 && shellGeometry.trace?.height >= 56, `${state} keeps the real Trace rail visible`);
+    assert.ok(shellGeometry.banner?.width >= 480 && shellGeometry.banner?.height >= 56, `${state} warning banner is visibly actionable`);
+    assert.ok(shellGeometry.retry?.width >= 36 && shellGeometry.retry?.height >= 36, `${state} retry target is visibly reachable`);
+    assert.ok(shellGeometry.truth?.width >= 480 && shellGeometry.truth?.height >= 240, `${state} last-valid production workspace remains visibly inspectable`);
+    assert.equal(shellGeometry.documentOverflow, false, `${state} production desktop shell does not overflow the page`);
     const stateBoundary = await evaluate(cdp, `(() => {
       const boundary = document.querySelector('[data-resource-state="${state}"]');
       const content = boundary?.querySelector('.workspaceStateBoundary__lastValid');

@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { AppFrame } from "../src/appFrame.jsx";
-import { WorkspaceStateBoundary } from "../src/productShell.jsx";
+import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "../src/productShell.jsx";
 import { AiTraderCenter } from "../src/workspacePages.jsx";
 import { productionShellBrowserFixture } from "./production-shell-browser-fixture.js";
 import "../src/styles.css";
@@ -15,16 +15,22 @@ const data = {
 const noop = () => {};
 const ui = { setActive: noop, selectObject: noop, notify: noop, download: noop, refresh: noop, ensureSection: noop, openPanel: noop, closePanel: noop };
 const retry = () => { (window.__productionDesktopRetry ||= []).push({ section: "chat", force: true }); };
+const context = buildShellContext({ data, workspaceId: "ai" });
+const trace = buildShellTrace(data, "ai");
 
 createRoot(document.getElementById("root")).render(
   <AppFrame authenticated>
-    <main className="desktopStateBrowser appShell kordynSystem">
-      <section className="content">
+    <div className="desktopStateBrowser appShell kordynSystem" data-shell-selected-object="none" data-shell-selected-type="none" data-shell-selected-workspace="none" data-shell-selected-source="none" data-shell-selected-route="none" data-shell-selected-evidence="Unavailable">
+      <header className="appTopbar" data-shell-role="desktop-command"><CommandRail data={data} onNavigate={noop} onSelect={noop}/></header>
+      <WorkspaceRail activeWorkspace="ai" onNavigate={noop}/>
+      <main className="mainArea"><div className="content">
         <WorkspaceStateBoundary resourceState={state} onRetry={retry}>
           <AiTraderCenter data={data} action={noop} ui={ui} initialTab="events" />
         </WorkspaceStateBoundary>
-      </section>
-    </main>
+      </div></main>
+      <ContextDock context={context} onNavigate={noop} initiallyCollapsed={window.innerWidth <= 1320}/>
+      <TraceRail stages={trace}/>
+    </div>
   </AppFrame>
 );
 window.__productionDesktopStateReady = true;
