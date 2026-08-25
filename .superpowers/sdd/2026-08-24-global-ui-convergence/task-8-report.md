@@ -206,3 +206,25 @@ Fresh review verified that `desktop-real-stale-source.png` is AI Trader → Even
 The medium static contract no longer divides the 656px header budget by five or claims that each KPI owns 120px. That was inconsistent with the final Chrome measurement because the five-column KPI grid shares its row with the real action group and each KPI measures 88.6px. The contract now asserts the actual 656px contained header, 16px pre-Context gutter, `minmax(0,1fr) auto` KPI/actions split and five equal KPI columns. The real Chrome containment evidence from Fix Round 2 remains the authority for rendered widths; no production UI or screenshot pixels changed in this round.
 
 Verification: selected medium contract **1 passed / 0 failed / 1 total**; authorized Task 8 focused set **118 passed / 0 failed / 118 total**; `git diff --check` clean. Matrix totals remain **31 PASS / 0 GAP / 0 BLOCKED**.
+
+## Task 9 / authenticated-shell final evidence closure (2026-08-25)
+
+The final evidence chain is explicit and non-self-referential:
+
+- immutable prototype: `10562336e1315733438f563f4ca1a8679f7e2c9c` / blob `43267ccfca051351823c668932c857350fb592b9`;
+- production implementation source: `3bd2ce86fb6b1efa93922d522ac52cd1893ee432`;
+- capture runner HEAD: `f855781a8b9b8f83421b334b49d72796056dd9f3` (the only later change is the Event Risk visual runner update);
+- evidence-only assets commit: `1f379b430ba61d005a73936cc05c3788d950b5dd`.
+
+Standalone real Google Chrome recaptured the full desktop and APP walk at 1440×900, 1180×820, 390×844 and 430×932. The required entry images are `.impeccable/review/desktop.png` (1440×900) and `.impeccable/review/mobile.png` (390×844). The batch includes every primary workspace, deep AI modes, desktop and APP Objects/Context/Trace, ordinary and destructive confirmations, More/drawer/safety, real long content, Control Posture/Events/Boundaries/Rules, independent Event Risk, and authenticated startup/connection/ConfirmHost/Release Notice surfaces.
+
+New integration evidence proves more than static attributes:
+
+- Desktop Object Switcher uses the immutable 620px paper surface, max 520px height and 8px Ink offset shadow. Separate images record default, hover, focus-visible and unavailable/fail-closed feedback.
+- Trusted browser clicks through real production Registry components cover AI Event, Live Position/Market, Lab Strategy product/Capability/Validation/Review, Control Event Risk, Operations Task and Audit. Shell root, Context and Trace expose the same typed id/type/workspace/source/route/evidence identity. Same-ID AI/Control `Event:event-5` remain correctly separated by scope.
+- APP Control has one four-entry rail. At both phone sizes trusted clicks select Posture, Events, Boundaries and Rules; each produces one active item, the correct route/subPage and real content, with no inner `.mHubTabs`.
+- Stale/degraded boundaries preserve last-valid content but mark the subtree inert and retry with `force=true`. Images record APP 390 stale and APP 430 degraded; desktop behavior is covered by the production browser contract. Loading and failed pause/abort only the existing Operations request. Forbidden is a fresh real non-Owner login followed by an actual same-session `/api/admin/users` 403 and a visible APP Owner gate. No successful payload, DOM product state or mock production data was injected.
+
+The contact sheet was rebuilt as a readable 1800×6086 seven-section overview instead of retaining the obsolete six-tile B007 montage. Its visible header states `Immutable 1056233 · Capture HEAD F855781 · Production source 3BD2CE8`. The Chrome render hard gate audited all 60 embedded images and returned `imageCount:60, brokenImageCount:0`; every image was complete with positive natural dimensions. The resulting PNG was opened after render and inspected end-to-end: the prior missing desktop last-valid references were removed, no alt text or broken-image gap remains, and Object Switcher, desktop/medium, both APP widths, Event Risk, Objects/Context/Trace, authenticated overlays, loading/failed/stale/degraded/403/disabled and long-content evidence are visible.
+
+Matrix totals remain **26 binding PASS + 5 evidence PASS = 31 PASS / 0 GAP / 0 BLOCKED**. Final branch-level tests, lint and production build are controller-owned gates after this evidence/docs commit; the Impeccable detector is not rerun because Task 9 already completed that one permitted detector pass.
