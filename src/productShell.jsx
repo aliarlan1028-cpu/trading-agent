@@ -165,10 +165,7 @@ export function runShellSearchInteraction({ key, activeIndex = 0, results = [], 
   if (next.selectIndex >= 0) {
     const row = results[next.selectIndex];
     if (row) {
-      if (data === undefined) {
-        onSelect(row);
-        onNavigate(row.route, row);
-      } else runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
+      runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
     }
   }
   if (next.close) onClose();

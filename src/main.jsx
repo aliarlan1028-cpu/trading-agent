@@ -12,9 +12,9 @@ import {
 } from "lucide-react";
 import { automationPresentation, exchangeState, isNativeApp, localizeText, useApi } from "./lib.jsx";
 import { AssistantWidget } from "./assistant.jsx";
+import { AppFrame } from "./appFrame.jsx";
 import { LandingPage } from "./landing.jsx";
-import { ConfirmHost, uiConfirm } from "./confirm.jsx";
-import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
+import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
 import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
@@ -332,17 +332,17 @@ function App() {
   const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
-  if (authRequired) return <LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} />;
-  if (!loading && !data) return <ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} />;
-  if (loading || !data) return <div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div>;
+  if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
+  if (!loading && !data) return <AppFrame><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
+  if (loading || !data) return <AppFrame><div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div></AppFrame>;
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
-    return <MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} />;
+    return <AppFrame authenticated><MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} /></AppFrame>;
   }
 
   return (
-    <div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
+    <AppFrame authenticated><div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
       <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
       <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={navigate} />
       <main className="mainArea">
@@ -357,7 +357,7 @@ function App() {
       {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
       <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />
       {toast && <div className="toast">{toast}</div>}
-    </div>
+    </div></AppFrame>
   );
 }
 
@@ -401,54 +401,9 @@ function PageSkeleton() {
   );
 }
 
-const CLIENT_RELEASE = normalizeRelease(import.meta.env?.VITE_APP_RELEASE);
-
-function ReleaseUpdateNotice() {
-  const [serverRelease, setServerRelease] = useState(null);
-  useEffect(() => {
-    if (isNativeApp() || !CLIENT_RELEASE) return undefined;
-    let disposed = false;
-    const check = async () => {
-      try {
-        const response = await fetch(`/api/health?release_check=${Date.now()}`, {
-          cache: "no-store",
-          credentials: "same-origin"
-        });
-        if (!response.ok) return;
-        const health = await response.json();
-        if (!disposed && hasNewWebRelease(CLIENT_RELEASE, health.release)) setServerRelease(health.release);
-      } catch { /* 弱网或服务暂不可达时不打扰用户，正常重连逻辑会继续处理。 */ }
-    };
-    const onVisible = () => { if (document.visibilityState === "visible") check(); };
-    const interval = window.setInterval(check, 60_000);
-    const initial = window.setTimeout(check, 15_000);
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", check);
-    return () => {
-      disposed = true;
-      window.clearInterval(interval);
-      window.clearTimeout(initial);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", check);
-    };
-  }, []);
-  if (!serverRelease) return null;
-  return (
-    <aside className="releaseUpdateNotice" role="status" aria-live="polite">
-      <div>
-        <strong>{t("发现新版本", "Update available")}</strong>
-        <span>{t("刷新后使用最新功能，不会退出登录。", "Refresh to use the latest version. You will stay signed in.")}</span>
-      </div>
-      <button type="button" onClick={() => window.location.reload()}>{t("立即刷新", "Refresh")}</button>
-    </aside>
-  );
-}
-
 const root = (window.__traderAgentRoot ||= createRoot(document.getElementById("root")));
 root.render(
   <Suspense fallback={<div className="loading"><Activity size={28} /> {t("正在加载交易模块...", "Loading trading modules...")}</div>}>
     <App />
-    <ReleaseUpdateNotice />
-    <ConfirmHost />
   </Suspense>
 );

@@ -476,6 +476,21 @@ test("combobox shortcut, keyboard selection and routing execute the real shared 
   assert.deepEqual(routed, [["select", "plan-17"], ["navigate", "signalHub", "plan-17"], ["close"]]);
 });
 
+test("combobox keyboard selection fails closed when the production resolver data is absent", () => {
+  const results = Shell.filterShellSearchResults(Shell.buildShellSearchIndex(fixture), "plan-17");
+  const effects = [];
+  const outcome = Shell.runShellSearchInteraction({
+    key: "Enter",
+    activeIndex: 0,
+    results,
+    onSelect: (row) => effects.push(["select", row.id]),
+    onNavigate: (route, row) => effects.push(["navigate", route, row.id]),
+    onClose: () => effects.push(["close"])
+  });
+  assert.equal(outcome.selectIndex, 0);
+  assert.deepEqual(effects, [["close"]], "missing resolver data must never select or navigate an unverified row");
+});
+
 test("desktop Object Switcher overlay matches the immutable prototype geometry and interaction state", () => {
   const overlay = finalDeclarations(".commandRail__results");
   assert.equal(overlay.position, "fixed");
@@ -686,7 +701,12 @@ test("touch shell exposes persistent Context and Trace bounded sheets", () => {
   assert.match(switcher, /data-shell-object-id="task-9"/);
   assert.match(switcher, /aria-current="true"/);
   assert.match(switcher, /id="mobile-shell-object-result-Market--BTC_2FUSDT--live--cockpit--market"/);
-  assert.match(styles, /\.mShellToolButton[^}]*min-height:\s*44px/s);
+  const toolRow = finalDeclarations(".mShellTools");
+  assert.equal(toolRow["grid-template-columns"], "repeat(3,minmax(0,1fr))");
+  assert.equal(toolRow.height, "44px");
+  assert.equal(toolRow["border-top"], "0");
+  assert.equal(toolRow["box-shadow"], "inset 0 1px 0 var(--kordyn-ink)");
+  assert.match(styles, /\.mShellToolButton[^}]*min-width:\s*0[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.mShellSheet[^}]*width:\s*100%[^}]*border-radius:\s*0/s);
   const objectResult = finalDeclarations(".mObjectSwitcher__result");
   assert.equal(objectResult["min-height"], "44px");
