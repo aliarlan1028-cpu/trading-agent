@@ -338,7 +338,7 @@ function App() {
     if (activeZeroBaseFamily === "today") return <ZeroBaseToday data={data} onNavigate={navigate} viewId={activeZeroBaseView} />;
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
-    const strategySurface = ({ studio: "studio", historical: "research", forward: "research" })[activeZeroBaseView] || activeStrategyTab;
+    const strategySurface = ({ studio: "studio", market: "market", historical: "research", forward: "research" })[activeZeroBaseView] || activeStrategyTab;
     const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[activeZeroBaseView] || "reference";
     const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[activeZeroBaseView] || "全部工具";
     const researchTab = activeZeroBaseFamily === "reviews" && ["owner", "lessons"].includes(activeZeroBaseView) ? "owner" : activeWorkspaceTab;

@@ -49,7 +49,8 @@ esbuild.buildSync({
       export { ConfigPanel } from "./src/panels.jsx";
       export { AssistantWidget } from "./src/assistant.jsx";
       export { NativeAuthPage } from "./src/landing.jsx";
-      export { KillConfirmDialog, MobileApp, NavDrawer, MobileLabRail, MobileWorkspaceRail, MobileShellTools, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRisk, MobileRiskHub, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { KillConfirmDialog, MobileApp, MobileShellTools, MobileResearchMap, MobileOwnerReview, MobileCapabilities, MobileBacktestResearch, MobileExecution, MobileMarket, MobilePositions, MobileStrategy, MobileTasks, MobileIntelligence, MobilePairSheet, MobileRisk, MobileRiskHub, MobileRiskPermissionEditor, MobileSettingsIndex, MobileTradingConfiguration, MobileRiskRulesConfiguration, MobileEventSourcesConfiguration, buildMobileRiskPermissionPayload, submitMobileRiskChange, loadMobileInstrumentList, refreshMobileEventCalendar, refreshMobileIntelligence, shiftMobileCalendarSelection } from "./src/mobile.jsx";
+      export { ZeroBaseMobileFamilyRail, ZeroBaseMobileHub, ZeroBaseMobileShell, ZeroBaseMobileToday } from "./src/zeroBaseMobile.jsx";
       export { MobileOperations, buildMobileTaskPayload } from "./src/mobileOperations.jsx";
       import * as MobileModule from "./src/mobile.jsx";
       import * as MobileOperationsModule from "./src/mobileOperations.jsx";
@@ -1274,27 +1275,17 @@ test("public product preview teaches the same three modes as the real cockpit", 
   assert.doesNotMatch(preview, /只减仓|暂停自主/);
 });
 
-test("mobile drawer keeps only global utilities without duplicate status and close footer", () => {
-  const html = render(React.createElement(C.NavDrawer, {
-    open: true,
-    route: "knowledgeBase",
-    onNavigate: () => {},
-    onClose: () => {},
+test("mobile More is a governance hub without duplicated primary roots", () => {
+  const html = render(React.createElement(C.ZeroBaseMobileHub, {
+    rootId: "more",
+    data,
+    onFamilyNavigate: () => {},
     lang: "zh",
     switchLang: () => {}
   }));
-  assert.match(html, /设置/);
-  assert.doesNotMatch(html, /关闭菜单/);
-  assert.doesNotMatch(html, /只减仓/);
-  assert.match(html, /mDrawerSettings/);
-  assert.match(html, /运行与恢复/);
-  assert.doesNotMatch(html, /实时盯盘/);
-  assert.doesNotMatch(html, /委托与成交/);
-  assert.doesNotMatch(html, /研究地图/);
-  assert.doesNotMatch(html, /知识孵化/);
-  assert.doesNotMatch(html, /能力库/);
-  assert.doesNotMatch(html, /策略库/);
-  assert.match(html, /OPERATIONS/);
+  for (const label of ["风险与边界", "系统运维", "配置"]) assert.match(html, new RegExp(`>${label}<`));
+  for (const family of ["guard", "operations", "configuration"]) assert.match(html, new RegExp(`data-zero-base-mobile-family-target="${family}"`));
+  assert.doesNotMatch(html, /mDrawer|data-zero-base-mobile-family-target="(?:ai|portfolio|strategy)"/);
 });
 
 test("config panels render for every live key", () => {
@@ -1309,12 +1300,25 @@ test("mobile app and assistant render", () => {
   const api = { data, action, toast: "", busy: false, notify: () => {}, download: () => {}, refresh: () => {} };
   const mobile = render(React.createElement(C.MobileApp, { api }));
   assert.ok(mobile.length > 100, "MobileApp 渲染输出过短");
-  for (const label of ["AI", "Live", "Lab", "Control", "更多"]) assert.match(mobile, new RegExp(`>${label}<`));
+  for (const label of ["今日", "AI", "资产", "智能", "更多"]) assert.match(mobile, new RegExp(`>${label}<`));
+  assert.match(mobile, /data-zero-base-shell="mobile"/);
   assert.match(mobile, /data-shell-role="mobile-command"/, "authenticated APP uses the prototype masthead role");
   assert.match(mobile, /data-shell-role="mobile-context-trace"/, "Context and Trace stay persistently reachable");
-  assert.doesNotMatch(mobile, />交易员<|>盯盘<|>市场<|>风控</);
+  assert.equal((mobile.match(/data-zero-base-mobile-root-target=/g) || []).length, 5);
   const asst = render(React.createElement(C.AssistantWidget, { data }));
   assert.ok(asst.length > 20, "AssistantWidget 渲染输出过短");
+});
+
+test("AI patrol and poster are direct mobile workspaces instead of chat aliases", () => {
+  const patrol = render(React.createElement(C.ChatPage, { data, action, ui, mobile: true, surface: "patrol" }));
+  assert.match(patrol, /data-ai-surface="patrol"/);
+  assert.match(patrol, /自主巡检记录/);
+  assert.doesNotMatch(patrol, /输入指令，与 AI 交易员对话/);
+
+  const poster = render(React.createElement(C.ChatPage, { data, action, ui, mobile: true, surface: "poster" }));
+  assert.match(poster, /data-ai-surface="poster"/);
+  assert.match(poster, /分析海报/);
+  assert.doesNotMatch(poster, /输入指令，与 AI 交易员对话/);
 });
 
 test("settings deep links preserve the requested base section", () => {
@@ -1325,15 +1329,15 @@ test("settings deep links preserve the requested base section", () => {
   assert.match(html, /aria-current="location"/);
 });
 
-test("mobile workspace rails expose every workspace-owned destination", () => {
-  const ai = render(React.createElement(C.MobileWorkspaceRail, { workspace: "ai", route: "chat", subPage: "", onNavigate: () => {} }));
-  for (const label of ["对话", "情报", "盯盘", "事件"]) assert.match(ai, new RegExp(`>${label}<`));
+test("mobile family rails expose every family-owned destination", () => {
+  const ai = render(React.createElement(C.ZeroBaseMobileFamilyRail, { familyId: "ai", viewId: "dialog", onNavigate: () => {} }));
+  for (const label of ["对话", "自主巡检", "情报", "盯盘", "事件日历", "分析海报"]) assert.match(ai, new RegExp(`>${label}<`));
 
-  const live = render(React.createElement(C.MobileWorkspaceRail, { workspace: "trade", route: "cockpit", subPage: "", onNavigate: () => {} }));
-  for (const label of ["概览", "持仓", "执行", "流水"]) assert.match(live, new RegExp(`>${label}<`));
+  const portfolio = render(React.createElement(C.ZeroBaseMobileFamilyRail, { familyId: "portfolio", viewId: "overview", onNavigate: () => {} }));
+  for (const label of ["总览", "市场", "账户", "持仓", "计划与执行", "订单与成交", "保护与对账"]) assert.match(portfolio, new RegExp(`>${label}<`));
 
-  const control = render(React.createElement(C.MobileWorkspaceRail, { workspace: "control", route: "riskHub", subPage: "events", onNavigate: () => {} }));
-  for (const label of ["态势", "事件", "边界", "规则"]) assert.match(control, new RegExp(`>${label}<`));
+  const control = render(React.createElement(C.ZeroBaseMobileFamilyRail, { familyId: "guard", viewId: "events", onNavigate: () => {} }));
+  for (const label of ["风险姿态", "事件风险", "权限边界", "规则监控"]) assert.match(control, new RegExp(`>${label}<`));
   assert.equal((control.match(/<button/g) || []).length, 4);
   assert.equal((control.match(/aria-current="page"/g) || []).length, 1);
   const eventHub = render(React.createElement(C.MobileRiskHub, { data, action, ui, initialView: "events" }));
@@ -1341,12 +1345,11 @@ test("mobile workspace rails expose every workspace-owned destination", () => {
   assert.match(eventHub, /data-surface-role="event-risk"/);
 });
 
-test("mobile Lab keeps its lifecycle copy around the shared rail", () => {
-  const html = render(React.createElement(C.MobileLabRail, { route: "strategyLib", onNavigate: () => {} }));
-  assert.match(html, /03 \/ RESEARCH MAP/);
-  assert.match(html, /双来源 → 正式资产 → 实盘证据 → Owner 版本/);
-  for (const label of ["地图", "孵化", "策略", "能力", "复盘"]) assert.match(html, new RegExp(`>${label}<`));
-  assert.match(html, /aria-current="page"[^>]*>策略/);
+test("mobile Intelligent hub explains the shared asset network", () => {
+  const html = render(React.createElement(C.ZeroBaseMobileHub, { rootId: "intelligent", data, onFamilyNavigate: () => {} }));
+  assert.match(html, /智能资产网络/);
+  assert.match(html, /共同成为 AI 判断与执行的上下文/);
+  for (const family of ["strategy", "knowledge", "capability", "reviews"]) assert.match(html, new RegExp(`data-zero-base-mobile-family-target="${family}"`));
 });
 
 test("desktop and mobile Lab maps expose dual origins, shared registries, and the live learning loop", () => {

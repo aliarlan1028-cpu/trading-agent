@@ -59,7 +59,7 @@ function BrowserShell() {
   const operationsTab = ({ tasks: "tasks", recovery: "recovery", notifications: "notifications", audit: "audit" })[viewId] || "overview";
   const settingsTab = ({ environment: "base", network: "base", backup: "base", security: "base", "event-sources": "event_sources" })[viewId] || viewId;
   const settingsSection = ({ environment: "environment", network: "network", backup: "data_backup", security: "security" })[viewId] || "environment";
-  const strategySurface = ({ studio: "studio", historical: "research", forward: "research" })[viewId] || "catalog";
+  const strategySurface = ({ studio: "studio", market: "market", historical: "research", forward: "research" })[viewId] || "catalog";
   const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[viewId] || "reference";
   const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[viewId] || "全部工具";
   const workbench = familyId === "today"

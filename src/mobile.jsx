@@ -5,7 +5,6 @@ import {
   BarChart3,
   Bell,
   Bot,
-  Menu,
   PieChart,
   ShieldCheck,
   BookOpen,
@@ -19,7 +18,6 @@ import {
   Globe2,
   Eye,
   Info,
-  MoreHorizontal,
   Plus,
   Play,
   RefreshCw,
@@ -43,13 +41,9 @@ import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import { resolveMobileRoute } from "./productArchitecture.js";
-import {
-  MOBILE_MORE_UTILITIES,
-  MOBILE_NAV_PRESENTATION,
-  MOBILE_PRIMARY_NAV,
-  MOBILE_WORKSPACE_NAV,
-  mobileWorkspaceDestinations
-} from "./mobileNavigation.js";
+import { resolveZeroBaseDestination, zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
+import { mobileRootForFamily } from "./mobileNavigation.js";
+import { ZeroBaseMobileFamilyRail, ZeroBaseMobileHub, ZeroBaseMobileShell, ZeroBaseMobileToday } from "./zeroBaseMobile.jsx";
 import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { eventRiskGateLabel, eventRiskIdentity, eventRiskPhase, eventRiskPhaseLabel, eventRiskScopeLabel, eventRiskTimingLabel } from "./eventRiskView.js";
@@ -348,6 +342,7 @@ function MobileReviewSheet({ review, trade, onClose }) {
 
 export function MobileExecution({ data, action, ui, initialTab = "overview" }) {
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const [reviewFilter, setReviewFilter] = useState("all");
   const [selectedReview, setSelectedReview] = useState(null);
   const execution = buildExecutionView(data);
@@ -767,13 +762,14 @@ export function MobileResearchMap({ data, ui }) {
   </div>;
 }
 
-export function MobileOwnerReview({ data, action, ui, initialSelection = null }) {
+export function MobileOwnerReview({ data, action, ui, initialSelection = null, initialTab = "" }) {
   const asList = (value) => Array.isArray(value) ? value : [];
   const loop = data.ownerReviewLoop || {};
   const summary = loop.summary || {};
   const improvements = asList(loop.improvements);
   const lessons = asList(loop.lessons).filter((item) => ["candidate", "candidate_legacy", "observing"].includes(item.status));
-  const [tab, setTab] = useState(improvements.length ? "improvements" : "lessons");
+  const [tab, setTab] = useState(initialTab || (improvements.length ? "improvements" : "lessons"));
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [selected, setSelected] = useState(initialSelection);
   const [busy, setBusy] = useState("");
   const [forms, setForms] = useState({});
@@ -854,10 +850,11 @@ export function MobileOwnerReview({ data, action, ui, initialSelection = null })
   </div>;
 }
 
-function MobileKnowledge({ data, action, ui, view = "all" }) {
+function MobileKnowledge({ data, action, ui, view = "all", initialSegment = "" }) {
   // App 与桌面使用同一发布口径：知识库只展示孵化中的四类产物，正式目录只消费服务端发布资格。
   const segs = view === "capabilities" ? ["工具工作流"] : ["参考知识", "交易纪律", "交易方法", "工具工作流"];
-  const [segState, setSeg] = useState(view === "capabilities" ? "工具工作流" : "参考知识");
+  const [segState, setSeg] = useState(initialSegment || (view === "capabilities" ? "工具工作流" : "参考知识"));
+  useEffect(() => { if (initialSegment) setSeg(initialSegment); }, [initialSegment]);
   const seg = segs.includes(segState) ? segState : segs[0];
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState(null);
@@ -1671,14 +1668,20 @@ function MobileLabLifecycle({ item = {}, assetType, provenanceKind }) {
   </ol></section>;
 }
 
-export function MobileCapabilities({ data, action, ui, initialCapabilityId = "" }) {
+export function MobileCapabilities({ data, action, ui, initialCapabilityId = "", initialFilter = "all" }) {
   const items = buildCapabilityCatalogRows(data, t);
   const systemCapabilityAliases = new Set([...(data.analysisEngine?.tools || []), ...(data.tools || [])].flatMap(mobileCapabilityAliases));
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(initialFilter);
+  useEffect(() => setFilter(initialFilter), [initialFilter]);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState(initialCapabilityId);
   const filters = [
     ["all", t("全部", "All"), () => true],
+    ["native", t("原生", "Native"), (item) => item.native === true && !item.connector],
+    ["workflow", t("工作流", "Workflow"), (item) => item.category === "workflow" || /workflow|工作流/i.test(String(item.kind || ""))],
+    ["mcp", "MCP", (item) => item.category === "mcp" || /mcp/i.test(String(item.kind || ""))],
+    ["connectors", t("连接器", "Connectors"), (item) => Boolean(item.connector)],
+    ["skills", t("导入技能", "Imported"), (item) => !item.native && !item.connector && !["workflow", "mcp"].includes(item.category)],
     ["enabled", t("已启用", "Enabled"), (item) => item.enabled],
     ["pending", t("待处理", "Needs attention"), (item) => !item.enabled && !item.disabled],
     ["disabled", t("已停用", "Disabled"), (item) => item.disabled]
@@ -1839,6 +1842,7 @@ export function MobileStrategy({ data, action, ui, initialTab = "catalog", initi
   const { products } = strategyCatalog;
   const strategies = strategyCatalog.rows;
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const [catalogId, setCatalogId] = useState(initialCatalogId);
   const selectedCatalog = strategies.find((row) => row.id === catalogId) || null;
   const chooseCatalogStrategy = (row) => {
@@ -1870,102 +1874,6 @@ export function MobileStrategy({ data, action, ui, initialTab = "catalog", initi
       {tab === "market" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("内部策略市场", "Internal strategy market")}</b><p className="mStrategyHelp">{t("不依赖对外 MCP。启用只会加入 AI 可选集，仍须通过全部实时风控。", "Independent of external MCP. Enabling only adds a strategy to the AI eligible set; all live risk checks remain mandatory.")}</p></div>{listings.map((row) => { const def = row.definition || {}; const oos = row.validation?.oos; return <div className="mCard" key={row.id}><div className="mStrategyMarketHead"><b>{t(row.title || def.name, row.titleEn || row.title || def.name)}</b><StatusBadge tone={row.evidenceLevel === "live_validated" ? "ok" : "warning"}>{row.evidenceLevel === "oos_passed" ? t("样本外通过", "OOS passed") : row.evidenceLevel === "live_validated" ? t("实盘证据达标", "Live-validated") : t("实盘观察", "Live observation")}</StatusBadge></div><p className="mStrategyHelp">{t(row.summary || def.description, row.summaryEn || row.summary || def.description)}</p><div className="mStrategyFacts"><span>{t("版本", "Version")}<b className="mono">{row.strategyVersionId}</b></span><span>{t("方向 / 周期", "Side / timeframe")}<b>{humanize(def.direction)} · {(def.timeframes || []).join("/") || def.timeframe || "—"}</b></span><span>{t("证据", "Evidence")}<b>{row.source === "official" ? `${row.metrics?.closedTrades || 0} ${t("笔实盘", "live closes")}` : `${oos?.trades || 0} ${t("笔样本外", "OOS trades")} · ${oos?.expectancyR ?? "—"}R`}</b></span></div>{row.source === "official" ? <button className="mStrategyDisabled" disabled>{row.enabled ? t("系统当前可用", "Available") : t("已暂停", "Paused")}</button> : <button className="mStrategyPrimary" onClick={() => action(`/api/strategy/market/${encodeURIComponent(row.strategyVersionId)}/${row.enabled ? "disable" : "enable"}`, {}, "POST")}>{row.enabled ? t("从 AI 可选集移除", "Remove from AI set") : t("加入 AI 可选集", "Add to AI set")}</button>}</div>; })}</div>}
       {tab === "research" && <MobileBacktestResearch data={data} action={action} ui={ui}/>}
     </div>
-  );
-}
-
-const mobileIconComponents = {
-  activity: Activity,
-  bot: Bot,
-  bookOpen: BookOpen,
-  calendarClock: CalendarClock,
-  clipboardList: ClipboardList,
-  gauge: Gauge,
-  gitBranch: GitBranch,
-  globe: Globe2,
-  moreHorizontal: MoreHorizontal,
-  pieChart: PieChart,
-  receiptText: ReceiptText,
-  rocket: Rocket,
-  settings: Settings,
-  shield: Shield,
-  shieldCheck: ShieldCheck,
-  wrench: Wrench
-};
-const mobileNavItem = (item) => ({ ...item, ...MOBILE_NAV_PRESENTATION[item.id], icon: mobileIconComponents[MOBILE_NAV_PRESENTATION[item.id]?.iconId] });
-const mobileNav = [
-  ...MOBILE_PRIMARY_NAV,
-  ...Object.values(MOBILE_WORKSPACE_NAV).flat(),
-  ...MOBILE_MORE_UTILITIES
-].map(mobileNavItem).concat([{ ...mobileNavItem({ id: "operationsCenter" }), id: "auditSystem" }]);
-const mobilePrimaryNav = MOBILE_PRIMARY_NAV.map((item) => {
-  const presentation = MOBILE_NAV_PRESENTATION[item.id];
-  const tabLabel = { chat: ["AI", "AI"], cockpit: ["Live", "Live"] }[item.id] || presentation.label;
-  return { ...mobileNavItem(item), label: tabLabel, workspace: item.workspace === "trade" ? "live" : item.workspace };
-});
-const mobileMoreUtilities = MOBILE_MORE_UTILITIES.map(mobileNavItem);
-const mobileNavLabel = (item) => t(item?.label?.[0] || "", item?.label?.[1] || item?.label?.[0] || "");
-
-const mobileWorkspaceRailLabels = {
-  chat: ["对话", "Chat"], watch: ["盯盘", "Watch"], intelligence: ["情报", "Intelligence"], eventsTasks: ["事件", "Events"],
-  cockpit: ["概览", "Overview"], positions: ["持仓", "Positions"], executionReview: ["执行", "Execution"], tradeLedger: ["流水", "Ledger"],
-  labMap: ["地图", "Map"], knowledgeBase: ["孵化", "Incubate"], strategyLib: ["策略", "Strategies"], capabilityLib: ["能力", "Capabilities"], labReviews: ["复盘", "Reviews"],
-  riskHub: ["态势", "Posture"], eventRisk: ["事件", "Events"], riskMandate: ["边界", "Boundaries"], riskSettings: ["规则", "Rules"]
-};
-
-const mobileWorkspaceLabel = (workspace) => t(
-  ({ ai: "AI 工作区", trade: "Live 工作区", lab: "Lab 研究生命周期", control: "Control 工作区" })[workspace] || "工作区",
-  ({ ai: "AI workspace", trade: "Live workspace", lab: "Lab research lifecycle", control: "Control workspace" })[workspace] || "Workspace"
-);
-
-const mobileWorkspaceRailLabel = (item) => {
-  const label = mobileWorkspaceRailLabels[item.id] || MOBILE_NAV_PRESENTATION[item.id]?.label || [item.id, item.id];
-  return t(label[0], label[1] || label[0]);
-};
-
-const isMobileDestinationActive = (item, route, subPage) => {
-  const target = resolveMobileRoute(item.id);
-  return target.route === route && (target.subPage || "") === (subPage || "");
-};
-
-export function MobileWorkspaceRail({ workspace, route, subPage, onNavigate }) {
-  const items = mobileWorkspaceDestinations(workspace);
-  return <nav className={`mWorkspaceRail mWorkspaceRail--${workspace}`} aria-label={mobileWorkspaceLabel(workspace)}>
-    {items.map((item) => {
-      const active = isMobileDestinationActive(item, route, subPage);
-      return <button type="button" key={item.id} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={() => onNavigate(item.id)}>{mobileWorkspaceRailLabel(item)}</button>;
-    })}
-  </nav>;
-}
-
-export function MobileLabRail({ route, subPage, onNavigate }) {
-  return <section className="mLabWorkspaceLifecycle">
-    <header><small>03 / RESEARCH MAP</small><span>{t("双来源 → 正式资产 → 实盘证据 → Owner 版本", "Dual origins → formal assets → live evidence → Owner version")}</span></header>
-    <MobileWorkspaceRail workspace="lab" route={route} subPage={subPage} onNavigate={onNavigate}/>
-  </section>;
-}
-
-function MobileTabbar({ route, activeWorkspace: activeWorkspaceProp, onNavigate, onMore }) {
-  const activeWorkspace = activeWorkspaceProp || resolveMobileRoute(route).workspace;
-  return <nav className="mNativeTabbar" aria-label={t("主导航", "Primary navigation")}>
-    {mobilePrimaryNav.map((item, index) => {
-      const Icon = item.icon;
-      const active = item.id === "more" ? ["operations", "configuration"].includes(activeWorkspace) : activeWorkspace === item.workspace;
-      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><small>{String(index + 1).padStart(2, "0")}</small><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
-    })}
-  </nav>;
-}
-
-function MobileHeader({ route, onMenu, right, reconnecting }) {
-  const item = mobileNav.find((n) => n.id === route) || mobileNav[0];
-  return (
-    <header className="mHeader2" data-shell-role="mobile-command">
-      <button className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20} /></button>
-      <div className="mHeaderMid"><strong>{mobileNavLabel(item)}</strong><small className="mono">{item.code}</small></div>
-      <div className="mHeaderRight">
-        {reconnecting && <span className="mReconnect"><span className="pulseDot" />{t("重连中", "Reconnecting")}</span>}
-        {right}
-      </div>
-    </header>
   );
 }
 
@@ -2002,9 +1910,9 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
   };
   return <>
     <nav className="mShellTools" data-shell-role="mobile-context-trace" aria-label={t("全局上下文与追踪", "Global context and trace")}>
-      <button type="button" className="mShellToolButton" onClick={openObjects}><small>OBJ</small><b>Objects</b><span>{selectedObject?.id || t("切换", "Switch")}</span></button>
-      <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>Context</b><span>{context.status}</span></button>
-      <button type="button" className="mShellToolButton" onClick={() => setSheet("trace")}><small>TRC</small><b>Trace</b><span>{trace.find((stage) => stage.status === "blocked")?.status || trace.find((stage) => stage.status === "waiting")?.status || "unavailable"}</span></button>
+      <button type="button" className="mShellToolButton" onClick={openObjects}><small>OBJ</small><b>{t("对象", "Objects")}</b><span>{selectedObject?.id || t("切换", "Switch")}</span></button>
+      <button type="button" className="mShellToolButton" onClick={() => setSheet("context")}><small>CTX</small><b>{t("上下文", "Context")}</b><span>{humanize(context.status, t("不可用", "Unavailable"))}</span></button>
+      <button type="button" className="mShellToolButton" onClick={() => setSheet("trace")}><small>TRC</small><b>{t("追踪", "Trace")}</b><span>{humanize(trace.find((stage) => stage.status === "blocked")?.status || trace.find((stage) => stage.status === "waiting")?.status, t("不可用", "Unavailable"))}</span></button>
     </nav>
     {sheet && <div className="mShellSheetOverlay" role="presentation" onClick={close}>
       <section className={`mShellSheet ${sheet === "objects" ? "mObjectSwitcher" : ""}`} data-shell-role={sheet === "objects" ? "mobile-object-switcher" : undefined} role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"} onClick={(event) => event.stopPropagation()}>
@@ -2016,35 +1924,6 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
       </section>
     </div>}
   </>;
-}
-
-export function NavDrawer({ open, route, activeWorkspace, onNavigate, onClose, lang, switchLang }) {
-  if (!open) return null;
-  const drawerWorkspace = activeWorkspace || resolveMobileRoute(route).workspace;
-  return (
-    <div className="mDrawerOverlay" onClick={onClose}>
-      <aside className="mDrawer" onClick={(event) => event.stopPropagation()}>
-        <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
-        {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
-        <div className="mDrawerTitle"><b>{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
-        <div className="mDrawerNav">
-          {mobileMoreUtilities.filter((item) => item.id !== "systemSettings").map((n, index) => {
-            const Icon = n.icon;
-            const previousGroup = mobileMoreUtilities.filter((item) => item.id !== "systemSettings")[index - 1]?.group;
-            const target = resolveMobileRoute(n.id);
-            const selected = route === target.route && drawerWorkspace === target.workspace;
-            return <div className="mDrawerNavEntry" key={n.id}>{previousGroup !== n.group && <small className="mDrawerGroupLabel">{n.group}</small>}<button className={`mDrawerItem ${selected ? "active" : ""}`} onClick={() => onNavigate(n.id)}><Icon size={19} /><span><b>{mobileNavLabel(n)}</b><small>{t(n.hint[0], n.hint[1])}</small></span><ChevronRight size={15}/></button></div>;
-          })}
-        </div>
-        <div className="mDrawerFoot">
-          {mobileMoreUtilities.filter((item) => item.id === "systemSettings").map((item) => {
-            const Icon = item.icon;
-            return <button key={item.id} className={`mDrawerSettings ${route === "systemSettings" ? "active" : ""}`} onClick={() => onNavigate(item.id)}><Icon size={19}/><span><b>{mobileNavLabel(item)}</b><small>{t(item.hint[0], item.hint[1])}</small></span><ChevronRight size={15}/></button>;
-          })}
-        </div>
-      </aside>
-    </div>
-  );
 }
 
 // 下拉刷新:滚到顶再下拉超过阈值 → 触发 refresh + 轻触觉。原生 App 的核心手感。
@@ -2084,28 +1963,62 @@ function PullToRefresh({ onRefresh, className, children }) {
 
 export function MobileApp({ api, lang, switchLang }) {
   const { data, action, toast, busy, notify, download, refresh, ensureSection, connectionError } = api;
+  const [mobileRoot, setMobileRoot] = useState("today");
+  const [activeFamilyId, setActiveFamilyId] = useState("today");
+  const [activeFamilyView, setActiveFamilyView] = useState("owner");
   const [route, setRoute] = useState("chat");
-  const [activeProductWorkspace, setActiveProductWorkspace] = useState("ai");
-  const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [selectedShellObject, setSelectedShellObject] = useState(null);
-  const activeSection = resolveMobileRoute(route).section;
-  useEffect(() => { ensureSection?.(activeSection); }, [route]);
+  const activeProductWorkspace = activeFamilyId
+    ? ({ today: "ai", ai: "ai", portfolio: "live", strategy: "lab", knowledge: "lab", capability: "lab", reviews: "lab", guard: "control", operations: "operations", configuration: "configuration" })[activeFamilyId] || "ai"
+    : mobileRoot === "intelligent" ? "lab" : mobileRoot === "more" ? "operations" : "ai";
+  const activeSection = activeFamilyId ? resolveMobileRoute(route).section : mobileRoot === "intelligent" ? "researchCenter" : mobileRoot === "more" ? "operationsCenter" : "chat";
+  useEffect(() => { ensureSection?.(activeSection); }, [activeSection]);
+  useEffect(() => {
+    if (mobileRoot === "today") ["cockpit", "researchCenter", "riskCenter", "operationsCenter"].forEach((section) => ensureSection?.(section, { background: true }));
+    if (mobileRoot === "more") ["riskCenter", "systemSettings"].forEach((section) => ensureSection?.(section, { background: true }));
+  }, [mobileRoot]);
   useEffect(() => {
     setSelectedShellObject((current) => selectionForNavigation(current, activeProductWorkspace, data || {}));
   }, [data, activeProductWorkspace]);
 
+  function openFamily(familyId, viewId) {
+    const destination = resolveZeroBaseDestination(familyId, viewId, "mobile");
+    haptic("light");
+    setMobileRoot(mobileRootForFamily(destination.familyId));
+    setActiveFamilyId(destination.familyId);
+    setActiveFamilyView(destination.viewId);
+    setRoute(destination.runtime.route);
+    setSubPage(destination.runtime.subPage || "");
+    setSelectedShellObject((current) => selectionForNavigation(current, destination.runtime.workspace, data || {}));
+  }
+
+  function openRoot(rootId) {
+    haptic("light");
+    setMobileRoot(rootId);
+    if (rootId === "today") return openFamily("today", data.user?.isOwner === true ? "owner" : "trader");
+    if (rootId === "ai") return openFamily("ai", "dialog");
+    if (rootId === "assets") return openFamily("portfolio", "overview");
+    setActiveFamilyId("");
+    setActiveFamilyView("");
+    setRoute(rootId === "intelligent" ? "labMap" : "auditSystem");
+    setSubPage("");
+  }
+
   function navigate(next, selectedObject) {
+    if (["today", "ai", "assets", "intelligent", "more"].includes(next)) return openRoot(next);
     haptic("light");
     const resolved = resolveMobileRoute(next);
+    const location = zeroBaseLocationForRoute(next);
     setSelectedShellObject((current) => selectionForNavigation(selectedObject ?? current, resolved.workspace, data || {}));
-    setActiveProductWorkspace(resolved.workspace);
+    setMobileRoot(mobileRootForFamily(location.familyId));
+    setActiveFamilyId(location.familyId);
+    setActiveFamilyView(location.viewId);
     setRoute(resolved.route);
     setSubPage(resolved.subPage || "");
-    setDrawer(false);
     if (!resolved.recognized) notify?.(t("未找到该入口，已返回 AI。", "That destination was not found. Returned to AI."));
   }
 
@@ -2128,8 +2041,12 @@ export function MobileApp({ api, lang, switchLang }) {
   }, [route, settingsSection]);
 
   let content = null;
-  if (route === "chat") {
-    content = <div className="mChatContent"><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} mobile /></div>;
+  if (mobileRoot === "today") {
+    content = <ZeroBaseMobileToday data={data} onNavigate={openFamily}/>;
+  } else if ((mobileRoot === "intelligent" || mobileRoot === "more") && !activeFamilyId) {
+    content = <ZeroBaseMobileHub rootId={mobileRoot} data={data} onFamilyNavigate={openFamily} lang={lang} switchLang={switchLang}/>;
+  } else if (route === "chat") {
+    content = <div className="mChatContent" data-zero-base-ai-surface={activeFamilyView}><MobileChatStatus data={data} /><ChatPage data={data} action={action} ui={ui} mobile surface={activeFamilyView} /></div>;
   } else if (route === "watch") {
     content = <MobileWatch data={data} action={action} />;
   } else if (route === "cockpit") {
@@ -2137,7 +2054,7 @@ export function MobileApp({ api, lang, switchLang }) {
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
-    content = subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} /> : <MobileExecution data={data} action={action} ui={ui} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
+    content = ["owner", "lessons"].includes(activeFamilyView) || subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} initialTab={activeFamilyView === "lessons" ? "lessons" : "improvements"}/> : <MobileExecution data={data} action={action} ui={ui} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
   } else if (route === "tradeLedger") {
     content = <MobileExecution data={data} action={action} ui={ui} initialTab="orders" />;
   } else if (route === "riskHub") {
@@ -2149,11 +2066,11 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "labMap") {
     content = <MobileResearchMap data={data} ui={ui} />;
   } else if (route === "knowledgeBase") {
-    content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" />;
+    content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" initialSegment={({ evidence: "交易纪律", artifacts: "交易方法", workflows: "工具工作流" })[activeFamilyView] || "参考知识"}/>;
   } else if (route === "capabilityLib") {
-    content = <MobileCapabilities data={data} action={action} ui={ui} />;
+    content = <MobileCapabilities data={data} action={action} ui={ui} initialFilter={({ native: "native", workflow: "workflow", mcp: "mcp", connectors: "connectors", skills: "skills" })[activeFamilyView] || "all"}/>;
   } else if (route === "strategyLib") {
-    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} ui={ui} initialTab={subPage === "studio" ? "studio" : "catalog"} /></div>;
+    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} ui={ui} initialTab={activeFamilyView === "studio" || subPage === "studio" ? "studio" : activeFamilyView === "market" || subPage === "market" ? "market" : ["historical", "forward"].includes(activeFamilyView) ? "research" : "catalog"} /></div>;
   } else if (route === "auditSystem") {
     content = <MobileOperations data={data} action={action} ui={ui} initialView={subPage||"overview"}/>;
   } else if (route === "systemSettings") {
@@ -2169,11 +2086,8 @@ export function MobileApp({ api, lang, switchLang }) {
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
   const retainsLastValid = workspaceResourceRetainsLastValid(resourceState);
-  if ((resourceState === "loaded" || retainsLastValid) && ["ai", "live", "lab", "control"].includes(activeProductWorkspace)) {
-    const workspace = activeProductWorkspace === "live" ? "trade" : activeProductWorkspace;
-    content = <>{workspace === "lab"
-      ? <MobileLabRail route={route} subPage={subPage} onNavigate={navigate}/>
-      : <MobileWorkspaceRail workspace={workspace} route={route} subPage={subPage} onNavigate={navigate}/>} {content}</>;
+  if ((resourceState === "loaded" || retainsLastValid) && activeFamilyId && activeFamilyId !== "today") {
+    content = <><ZeroBaseMobileFamilyRail familyId={activeFamilyId} viewId={activeFamilyView} onNavigate={openFamily}/>{content}</>;
   }
   if (retainsLastValid) {
     content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })}>{content}</WorkspaceStateBoundary>;
@@ -2181,24 +2095,25 @@ export function MobileApp({ api, lang, switchLang }) {
     content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })} />;
   }
 
-  const headerRight = subPage
-    ? <button className="mBack" onClick={() => activeProductWorkspace === "lab" && route === "executionReview" ? navigate("labMap") : setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
-    : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
-
-  return (
-    <div className="mShell2 kordynSystem" data-shell-route={route} data-shell-subpage={subPage || "none"} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"} data-shell-selected-workspace={selectedShellObject?.workspaceId || "none"} data-shell-selected-source={selectedShellObject?.sourceSection || "none"} data-shell-selected-route={selectedShellObject?.route || "none"} data-shell-selected-evidence={selectedShellObject?.evidence || "Unavailable"}>
-      <MobileHeader route={activeProductWorkspace === "lab" && route === "executionReview" ? "labMap" : route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
-      {route === "chat" && !subPage
-        ? <main className="mMain2 mMainChat">{content}</main>
-        : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-      <MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>
-      <MobileTabbar route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onMore={() => setDrawer(true)} />
-      <NavDrawer open={drawer} route={route} activeWorkspace={activeProductWorkspace} onNavigate={navigate} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} />
-      {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
-      {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={(outcome) => { if (outcome?.evidence) notify?.(outcome.evidence); setKillConfirm(false); }} />} {/* 已熔断时应走解除流程(审计 L5) */}
-      {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
-      {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
-      {toast && <div className="toast">{toast}</div>}
-    </div>
-  );
+  const chatSurface = route === "chat" && mobileRoot === "ai" && activeFamilyView === "dialog";
+  const overlays = <>
+    {safetyOpen && <MobileSafetySheet data={data} action={action} onClose={() => setSafetyOpen(false)} onKill={() => setKillConfirm(true)}/>}
+    {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={(outcome) => { if (outcome?.evidence) notify?.(outcome.evidence); setKillConfirm(false); }} />}
+    {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
+    {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
+    {toast && <div className="toast">{toast}</div>}
+  </>;
+  return <ZeroBaseMobileShell
+    rootId={mobileRoot}
+    familyId={activeFamilyId}
+    viewId={activeFamilyView}
+    runtime={runtime}
+    reconnecting={Boolean(connectionError)}
+    onRootNavigate={openRoot}
+    onOpenSafety={() => setSafetyOpen(true)}
+    selection={{ route, subPage, object: selectedShellObject }}
+    shellTools={<MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>}
+    overlays={overlays}>
+    {chatSurface ? <main className="mMain2 mMainChat">{content}</main> : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
+  </ZeroBaseMobileShell>;
 }

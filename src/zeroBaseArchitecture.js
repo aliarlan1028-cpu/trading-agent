@@ -44,6 +44,7 @@ export const ZERO_BASE_FAMILIES = Object.freeze([
       view("catalog", "策略库", "Strategy registry", "strategyLib"),
       view("detail", "策略详情", "Strategy detail", "strategyLib"),
       view("studio", "策略工作室", "Strategy studio", "strategyStudio"),
+      view("market", "内部策略市场", "Internal strategy market", "strategyMarket"),
       view("historical", "历史验证", "Historical validation", "strategyLib"),
       view("forward", "纯前向验证", "Pure-forward validation", "strategyLib")
     ]

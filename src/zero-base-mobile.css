@@ -1,0 +1,230 @@
+.zeroBaseMobile {
+  --kordyn-paper: var(--zb-paper);
+  --kordyn-paper-2: #FBFAF5;
+  --kordyn-dark: var(--zb-ink);
+  --kordyn-ink: var(--zb-ink);
+  --kordyn-ink-2: var(--zb-ink-soft);
+  --kordyn-acid: var(--zb-acid);
+  --kordyn-green: var(--zb-green);
+  --kordyn-danger: var(--zb-danger);
+  --kordyn-warn: var(--zb-amber);
+  --kordyn-muted: var(--zb-muted);
+  font-family: var(--zb-font-body);
+  background-color: var(--zb-paper);
+  background-image: linear-gradient(rgba(17,19,17,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(17,19,17,.025) 1px,transparent 1px);
+  background-size: 28px 28px;
+}
+
+.zeroBaseMobile > .zbMobileHeader {
+  grid-template-columns: 56px minmax(0,1fr) minmax(84px,auto) !important;
+  color: var(--zb-ink);
+  background: rgba(244,241,233,.98) !important;
+}
+.zbMobileHeader__brand { display:grid;place-items:center;border:0;border-right:1px solid var(--zb-line)!important;background:transparent; }
+.zbMobileHeader__brand img { width:27px;height:27px; }
+.zbMobileHeader > div { min-width:0;padding:0 10px; }
+.zbMobileHeader > div small { display:block;color:#3D8C6A;font:700 7px/1 var(--zb-font-mono);letter-spacing:.11em;text-transform:uppercase; }
+.zbMobileHeader > div b { display:block;margin-top:5px;overflow:hidden;font:760 13px/1 var(--zb-font-display);text-overflow:ellipsis;white-space:nowrap; }
+.zbMobileHeader__runtime { min-width:0!important;padding:0 8px!important;border:0!important;border-left:1px solid var(--zb-line)!important;color:var(--zb-muted);background:transparent!important;font-size:8px;font-weight:760;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.zbMobileHeader__runtime i { display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--zb-green); }
+.zbMobileHeader__runtime.warning i { background:var(--zb-amber); }
+.zbMobileHeader__runtime.danger i { background:var(--zb-danger); }
+
+.zbMobileFamilyRail { padding:13px 14px 0;background:var(--zb-paper); }
+.zbMobileFamilyRail header { display:flex;align-items:center;gap:8px;margin-bottom:9px; }
+.zbMobileFamilyRail header small { color:#3D8C6A;font:700 7px var(--zb-font-mono);letter-spacing:.12em;text-transform:uppercase; }
+.zbMobileFamilyRail header b { font-size:11px; }
+.zbMobileFamilyRail nav { display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none; }
+.zbMobileFamilyRail nav::-webkit-scrollbar { display:none; }
+.zbMobileFamilyRail nav button { flex:none;min-height:38px;padding:0 12px;border:1px solid var(--zb-line);border-radius:999px;color:var(--zb-muted);background:#FBFAF5;font-size:9px;white-space:nowrap; }
+.zbMobileFamilyRail nav button[aria-current="page"] { border-color:var(--zb-ink);color:white;background:var(--zb-ink);box-shadow:3px 3px 0 var(--zb-acid); }
+
+.zeroBaseMobile > .mMain2 { background:transparent; }
+.zeroBaseMobile > .mMain2:not(.mMainChat) { padding:0 0 26px; }
+.zeroBaseMobile > .mMain2 > :not(.zbMobileFamilyRail) { min-width:0; }
+
+.zbMobileToday,.zbMobileHub { display:grid;gap:12px;padding:14px; }
+.zbMobileToday article,.zbMobileHub__families>button,.zbMobileHub>header,.zbMobileHub>footer { border:1px solid var(--zb-line);border-radius:18px;background:#FBFAF5;box-shadow:0 12px 30px rgba(17,19,17,.07); }
+.zbMobileToday__ai { padding:18px;color:white!important;background:var(--zb-ink)!important;box-shadow:6px 6px 0 var(--zb-acid)!important; }
+.zbMobileToday__ai header { display:flex;align-items:center;justify-content:space-between;gap:10px; }
+.zbMobileToday__ai header small { color:var(--zb-acid);font:700 7px var(--zb-font-mono);letter-spacing:.12em; }
+.zbMobileToday__ai header span { color:#B8C0B8;font-size:8px; }
+.zbMobileToday__ai h1 { margin:28px 0 8px;font:760 24px/1.05 var(--zb-font-display);letter-spacing:-.03em; }
+.zbMobileToday__ai p { min-height:34px;margin:0;color:#B8C0B8;font-size:10px;line-height:1.55; }
+.zbMobileToday__ai dl { display:grid;grid-template-columns:1fr 1.4fr;margin:16px 0 14px;border-top:1px solid #343A34;border-bottom:1px solid #343A34; }
+.zbMobileToday__ai dl div { min-width:0;padding:11px 0; }
+.zbMobileToday__ai dl div+div { padding-left:12px;border-left:1px solid #343A34; }
+.zbMobileToday__ai dt { color:#7F897F;font:650 7px var(--zb-font-mono); }
+.zbMobileToday__ai dd { margin:5px 0 0;overflow-wrap:anywhere;font-size:9px; }
+.zbMobileToday__ai>button { width:100%;display:grid;grid-template-columns:18px 1fr 16px;align-items:center;gap:8px;min-height:46px;padding:0 13px;border:1px solid var(--zb-acid);border-radius:12px;color:var(--zb-ink);background:var(--zb-acid);font-weight:760;text-align:left; }
+
+.zbMobileToday__account,.zbMobileToday__network,.zbMobileToday__attention { padding:15px; }
+.zbMobileToday__account header,.zbMobileToday__network header,.zbMobileToday__attention header { display:flex;align-items:center;gap:8px; }
+.zbMobileToday__account header span { display:flex;align-items:center;gap:7px;margin-right:auto; }
+.zbMobileToday article header small { color:#3D8C6A;font:700 7px var(--zb-font-mono);letter-spacing:.11em; }
+.zbMobileToday__account header button { margin-left:auto;border:0;color:#36785D;background:transparent;font-size:9px; }
+.zbMobileToday__account>strong { display:block;margin-top:18px;font:760 25px var(--zb-font-display); }
+.zbMobileToday__account>small { color:var(--zb-muted);font-size:8px; }
+.zbMobileToday__account dl { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:14px 0 0;border-top:1px solid var(--zb-line); }
+.zbMobileToday__account dl div { min-width:0;padding:10px 6px 0; }
+.zbMobileToday__account dl div+div { border-left:1px solid var(--zb-line); }
+.zbMobileToday__account dt { color:var(--zb-muted);font-size:7px; }
+.zbMobileToday__account dd { margin:5px 0 0;overflow-wrap:anywhere;font-size:9px;font-weight:760; }
+.zbMobileToday__network header { display:grid;gap:5px;margin-bottom:12px; }
+.zbMobileToday__network>div { display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--zb-line);border-radius:13px;overflow:hidden; }
+.zbMobileToday__network>div button { min-width:0;display:flex;align-items:center;gap:8px;padding:11px;border:0;background:white;text-align:left; }
+.zbMobileToday__network>div button:nth-child(even){border-left:1px solid var(--zb-line)}
+.zbMobileToday__network>div button:nth-child(n+3){border-top:1px solid var(--zb-line)}
+.zbMobileToday__network button span { min-width:0;margin-right:auto; }
+.zbMobileToday__network button small { display:block;color:var(--zb-muted);font-size:7px; }
+.zbMobileToday__network button b { display:block;margin-top:4px;font-size:15px; }
+.zbMobileToday__attention header span { margin-left:auto;min-width:24px;padding:5px;border-radius:999px;color:var(--zb-ink);background:var(--zb-acid);font:700 9px var(--zb-font-mono);text-align:center; }
+.zbMobileToday__attention>button { width:100%;display:grid;grid-template-columns:1fr 16px;align-items:center;gap:8px;padding:11px 0;border:0;border-top:1px solid var(--zb-line);background:transparent;text-align:left; }
+.zbMobileToday__attention>button span { min-width:0; }
+.zbMobileToday__attention>button b,.zbMobileToday__attention>button small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.zbMobileToday__attention>button b { font-size:10px; }.zbMobileToday__attention>button small { margin-top:4px;color:var(--zb-muted);font-size:7px; }
+.zbMobileToday__attention>p { margin:14px 0 0;color:var(--zb-muted);font-size:9px; }
+
+.zbMobileHub>header { padding:20px;color:white;background:var(--zb-ink);box-shadow:5px 5px 0 var(--zb-green); }
+.zbMobileHub>header small { color:var(--zb-acid);font:700 7px var(--zb-font-mono);letter-spacing:.12em; }
+.zbMobileHub>header h1 { margin:20px 0 7px;font:760 25px/1.05 var(--zb-font-display);letter-spacing:-.03em; }
+.zbMobileHub>header p { margin:0;color:#B9C1B9;font-size:10px;line-height:1.55; }
+.zbMobileHub__families { display:grid;gap:9px; }
+.zbMobileHub__families>button { min-height:96px;display:grid;grid-template-columns:42px minmax(0,1fr) auto 16px;align-items:center;gap:10px;padding:13px;color:var(--zb-ink);text-align:left; }
+.zbMobileHub__families>button>i { width:42px;height:42px;display:grid;place-items:center;border-radius:13px;color:var(--zb-ink);background:var(--zb-green-soft);font-style:normal; }
+.zbMobileHub__families>button span { min-width:0; }
+.zbMobileHub__families>button small { display:block;color:#3D8C6A;font:700 6.5px var(--zb-font-mono);letter-spacing:.08em;text-transform:uppercase; }
+.zbMobileHub__families>button b { display:block;margin-top:6px;font:760 13px var(--zb-font-display); }
+.zbMobileHub__families>button em { display:block;margin-top:4px;color:var(--zb-muted);font-size:8px;font-style:normal;line-height:1.4; }
+.zbMobileHub__families>button strong { max-width:72px;overflow-wrap:anywhere;color:#347458;font-size:9px;text-align:right; }
+.zbMobileHub>footer { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px; }
+.zbMobileHub>footer span { font-size:9px;font-weight:720; }
+.zbMobileHub>footer div { display:flex;gap:4px; }
+.zbMobileHub>footer button { min-height:36px;padding:0 10px;border:1px solid var(--zb-line);border-radius:10px;background:white;font-size:8px; }
+.zbMobileHub>footer button[aria-pressed="true"] { border-color:var(--zb-ink);background:var(--zb-acid); }
+
+.zeroBaseMobile > .zbMobileTabbar { background:var(--zb-ink)!important; }
+.zeroBaseMobile > .zbMobileTabbar>button { display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:5px!important;color:#8F988F!important; }
+.zeroBaseMobile > .zbMobileTabbar>button svg { width:18px!important;height:18px!important; }
+.zeroBaseMobile > .zbMobileTabbar>button span { grid-column:auto!important;font:700 8px var(--zb-font-body)!important; }
+.zeroBaseMobile > .zbMobileTabbar>button.active { color:var(--zb-ink)!important;background:var(--zb-acid)!important; }
+
+.zeroBaseMobile .mShellTools { background:#FBFAF5; }
+.zeroBaseMobile .mShellToolButton { color:var(--zb-ink); }
+.zeroBaseMobile .mShellSheet { color:var(--zb-ink);background:var(--zb-paper); }
+
+/* The production workbenches keep their data/actions, while this late mobile
+   cascade removes the inherited hard-edge prototype presentation. */
+.zeroBaseMobile :is(.mScreen,.mSubPage,.mOperationsNative,.mConfigurationDetail) { padding:14px; }
+.zeroBaseMobile :is(.mScreen,.mSubPage,.mOperationsNative,.mConfigurationDetail) > :first-child { margin-top:0; }
+.zeroBaseMobile :is(.mCard,.mNativeSection,.mSectionCard,.mResearchRunCard,.mForwardCard,.mControlBoundaryHero,.mOpsListHead,.mOpsTaskStats,.mOpsRecoveryTruth,.mOpsAuditProof,.mCapabilityIntro,.mResearchMapSection,.mResearchMapQueue,.mKGuide,.mReviewHero,.mOwnerList,.mConfigurationEditor) {
+  border:1px solid var(--zb-line)!important;
+  border-radius:16px!important;
+  background:#FBFAF5!important;
+  box-shadow:0 10px 26px rgba(17,19,17,.055)!important;
+  overflow:hidden;
+}
+.zeroBaseMobile :is(.mIntelHero,.mControlTruth,.mResearchMapHero,.mOwnerHero,.mOpsStatus,.mEventRiskHero,.mResearchSummary) {
+  border:1px solid #303630!important;
+  border-radius:18px!important;
+  color:white!important;
+  background:var(--zb-ink)!important;
+  box-shadow:5px 5px 0 var(--zb-acid)!important;
+  overflow:hidden;
+}
+.zeroBaseMobile :is(.mIntelHero,.mControlTruth,.mResearchMapHero,.mOwnerHero,.mOpsStatus,.mEventRiskHero,.mResearchSummary) :is(p,small,span) { color:#AAB3AA; }
+.zeroBaseMobile :is(.mIntelHero,.mControlTruth,.mResearchMapHero,.mOwnerHero,.mOpsStatus,.mEventRiskHero,.mResearchSummary) :is(h1,h2,h3,b,strong) { color:white; }
+.zeroBaseMobile .mResearchSummary > span { border-color:#343A34!important;background:transparent!important; }
+.zeroBaseMobile .mIntelHero > button { border:1px solid #596159!important;border-radius:11px!important;background:#1B201B!important; }
+
+.zeroBaseMobile :is(.mMetric2x2,.mPageStats,.mMiniStats) {
+  border:1px solid var(--zb-line)!important;
+  border-radius:15px!important;
+  background:#FBFAF5;
+  box-shadow:0 8px 20px rgba(17,19,17,.045);
+  overflow:hidden;
+}
+.zeroBaseMobile :is(.mMetric2x2,.mPageStats,.mMiniStats) > * { border-color:var(--zb-line)!important; }
+
+.zeroBaseMobile :is(.mNativeSection,.mSectionCard,.mCard) > header { border-color:var(--zb-line)!important;background:transparent!important; }
+.zeroBaseMobile :is(.mNativeSection,.mSectionCard,.mCard) :is(button,.mNativeRow,.mTradeRow,.mPosRow,.mIncRow) { border-color:var(--zb-line)!important; }
+.zeroBaseMobile :is(.mNativeSection,.mSectionCard,.mCard) > button:active { background:var(--zb-green-soft)!important; }
+.zeroBaseMobile :is(.mEventRiskRegistry,.mCapabilityList,.mOpsTaskList,.mOpsAuditList,.mOwnerList) > :is(div,button,article) { border-color:var(--zb-line)!important; }
+.zeroBaseMobile .mEventRiskRegistry > div > button.active { color:var(--zb-ink)!important;background:var(--zb-acid)!important; }
+.zeroBaseMobile .mEventRiskInspector { color:white;background:var(--zb-ink)!important; }
+.zeroBaseMobile .mEventRiskInspector :is(dt,small) { color:#9DA69D!important; }
+.zeroBaseMobile .mEventRiskInspector :is(dd,b) { color:white!important; }
+.zeroBaseMobile .mEventRiskLedger { background:var(--zb-green-soft)!important; }
+
+.zeroBaseMobile :is(.mChips,.mSegmentNav,.mCapabilityFilters,.mOpsRail,.mStrategyTabs,.mReviewFilters) {
+  gap:6px!important;
+  overflow-x:auto;
+  padding:4px!important;
+  border:1px solid var(--zb-line)!important;
+  border-radius:14px!important;
+  background:var(--zb-paper-soft)!important;
+  scrollbar-width:none;
+}
+.zeroBaseMobile :is(.mChips,.mSegmentNav,.mCapabilityFilters,.mOpsRail,.mStrategyTabs,.mReviewFilters)::-webkit-scrollbar { display:none; }
+.zeroBaseMobile :is(.mChips,.mSegmentNav,.mCapabilityFilters,.mOpsRail,.mStrategyTabs,.mReviewFilters) > button {
+  flex:none;
+  min-height:38px!important;
+  padding:0 12px!important;
+  border:0!important;
+  border-radius:10px!important;
+  color:var(--zb-muted)!important;
+  background:transparent!important;
+  white-space:nowrap;
+}
+.zeroBaseMobile :is(.mChips,.mSegmentNav,.mCapabilityFilters,.mOpsRail,.mStrategyTabs,.mReviewFilters) > button.active {
+  color:white!important;
+  background:var(--zb-ink)!important;
+  box-shadow:3px 3px 0 var(--zb-acid)!important;
+}
+
+/* Outer family navigation owns these modes in the zero-base APP. */
+.zeroBaseMobile[data-zero-base-mobile-family="strategy"] .mStrategyTabs,
+.zeroBaseMobile[data-zero-base-mobile-family="knowledge"] .mSubPage > .mChips,
+.zeroBaseMobile[data-zero-base-mobile-family="reviews"] .mOwnerTabs,
+.zeroBaseMobile[data-zero-base-mobile-family="reviews"] .mExecutionScreen > .mSegmentNav,
+.zeroBaseMobile[data-zero-base-mobile-family="operations"] .mOpsRail { display:none!important; }
+
+.zeroBaseMobile :is(.mStrategyPrimary,.mPrimaryAction,.mMiniPrimary,.mOpsListHead>button,.mResearchRunCard>button,.mCapabilityIntro>button,.mCapabilityManage,.mOwnerEvidenceAction) {
+  border:1px solid var(--zb-ink)!important;
+  border-radius:11px!important;
+  color:var(--zb-ink)!important;
+  background:var(--zb-acid)!important;
+  box-shadow:none!important;
+}
+.zeroBaseMobile :is(input,select,textarea) { border-color:var(--zb-line-strong)!important;border-radius:11px!important;background:#FBFAF5!important; }
+.zeroBaseMobile :is(input,select,textarea):focus { border-color:var(--zb-green)!important;outline:3px solid color-mix(in srgb,var(--zb-green) 25%,transparent)!important; }
+.zeroBaseMobile :is(.statusBadge,.cp2Pill) { border-radius:999px!important; }
+.zeroBaseMobile .mCapabilityFilters { display:flex!important; }
+.zeroBaseMobile .mCapabilityFilters button b { margin-left:5px; }
+.zeroBaseMobile .mConfigurationEditor { padding:14px!important; }
+.zeroBaseMobile .mConfigurationEditor .settingsSection { border-radius:15px!important;box-shadow:none!important; }
+.zeroBaseMobile .mConfigurationEditor :is(.primaryButton,.secondaryButton,button[type="submit"]) { border-radius:10px!important; }
+.zeroBaseMobile .mConfigurationEditor button:disabled { color:var(--zb-muted)!important;background:var(--zb-paper-soft)!important;box-shadow:none!important;opacity:1; }
+
+.zeroBaseMobile .aiArchiveSurface { min-height:calc(100dvh - 224px); }
+.zeroBaseMobile .aiArchiveSurface .agChat { border:1px solid var(--zb-line);border-radius:18px;background:#FBFAF5;box-shadow:0 12px 30px rgba(17,19,17,.06);overflow:hidden; }
+.zeroBaseMobile .aiArchiveSurface .agMsgs { padding:0 12px 18px; }
+.zeroBaseMobile .aiArchiveIntro { display:grid;gap:6px;margin:0 -12px 12px;padding:16px;border-bottom:1px solid var(--zb-line);color:white;background:var(--zb-ink); }
+.zeroBaseMobile .aiArchiveIntro small { color:var(--zb-acid);font:700 10px/1 var(--zb-mono);letter-spacing:.12em; }
+.zeroBaseMobile .aiArchiveIntro b { max-width:34em;font-size:13px;line-height:1.55; }
+.zeroBaseMobile .aiArchiveEmpty { display:grid;gap:8px;padding:22px 18px;border:1px dashed var(--zb-line-strong);border-radius:14px;color:var(--zb-muted);background:var(--zb-paper);text-align:left; }
+.zeroBaseMobile .aiArchiveEmpty b { color:var(--zb-ink);font-size:15px; }
+.zeroBaseMobile .aiArchiveEmpty p { margin:0;font-size:12px;line-height:1.6; }
+.zeroBaseMobile .aiArchiveSurface .agMsgAiRow { margin-top:12px; }
+.zeroBaseMobile .aiArchiveSurface .agBubbleAi { border:1px solid var(--zb-line)!important;border-radius:14px!important;background:white!important; }
+
+@media (max-width: 370px) {
+  .zbMobileHeader__runtime { max-width:88px; }
+  .zbMobileToday,.zbMobileHub { padding:10px; }
+  .zbMobileHub__families>button { grid-template-columns:36px minmax(0,1fr) 16px; }
+  .zbMobileHub__families>button>strong { display:none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zeroBaseMobile * { scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important; }
+}

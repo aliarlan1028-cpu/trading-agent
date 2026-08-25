@@ -995,6 +995,7 @@ function patrolActionLabel(action = {}) {
 }
 
 function patrolNextActionLabel(nextAction = {}) {
+  const action = nextAction || {};
   const labels = {
     review_error: t("检查本轮错误", "Inspect this run's error"),
     rebuild_plan: t("按风控反馈重建计划", "Rebuild the plan from risk feedback"),
@@ -1007,8 +1008,8 @@ function patrolNextActionLabel(nextAction = {}) {
     watch_primary_condition: t("继续盯住主观察条件", "Keep watching the primary condition"),
     analysis_only: t("等待下一轮巡检", "Wait for the next patrol")
   };
-  const label = labels[nextAction.code] || (nextAction.code ? humanize(nextAction.code) : t("等待下一轮巡检", "Wait for the next patrol"));
-  return nextAction.detail ? `${label} · ${nextAction.detail}` : label;
+  const label = labels[action.code] || (action.code ? humanize(action.code) : t("等待下一轮巡检", "Wait for the next patrol"));
+  return action.detail ? `${label} · ${action.detail}` : label;
 }
 
 function PatrolDetail({ view }) {
@@ -1529,7 +1530,7 @@ export function PosterModal({ content, meta, onClose }) {
   );
 }
 
-export function ChatPage({ data, action, ui, concept = false, mobile = false }) {
+export function ChatPage({ data, action, ui, concept = false, mobile = false, surface = "dialog" }) {
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);
@@ -1542,6 +1543,8 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const latestMessageRef = useRef(null);
+  const surfaceMode = ["patrol", "poster"].includes(surface) ? surface : "dialog";
+  const archiveSurface = surfaceMode !== "dialog";
   // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
   useEffect(() => {
     const el = inputRef.current;
@@ -1662,7 +1665,12 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
       leverage: row.leverage ?? null
     };
   }
-  const latestAgentMessageId = [...messages].reverse().find((message) => message.role !== "user")?.id || null;
+  const visibleMessages = surfaceMode === "patrol"
+    ? messages.filter((message) => message.role !== "user" && message.sessionId === "chat_autocycle" && message.capabilityCoverage)
+    : surfaceMode === "poster"
+      ? messages.filter((message) => message.role !== "user" && String(message.content || "").length > 80)
+      : messages;
+  const latestAgentMessageId = [...visibleMessages].reverse().find((message) => message.role !== "user")?.id || null;
   // 新建对话只在本地开启一个"草稿会话"，不立刻建库；发第一条消息时后端才真正创建
   // 并用首句作为标题。这样空对话永远不会留进历史记录。
   function newSession() {
@@ -1705,17 +1713,17 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   }
 
   return (
-    <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""} ${mobile ? "mobileChatShell" : ""}`}>
+    <div className={`chatShell ${view === "intel" ? "intel" : ""} ${concept ? "conceptChatShell" : ""} ${mobile ? "mobileChatShell" : ""} ${archiveSurface ? "aiArchiveSurface" : ""}`} data-ai-surface={surfaceMode}>
     <div className="agChat">
       <div className={mobile ? "agChatMobileBar" : "agChatHead"}>
-        <div className="agChatTitle"><span className="agChatNum">1</span>{view === "chat" ? t("与 AI 交易员对话", "Chat with the AI trader") : t("情报中心", "Intel Center")}</div>
+        <div className="agChatTitle"><span className="agChatNum">1</span>{surfaceMode === "patrol" ? t("自主巡检记录", "Autonomous patrol receipts") : surfaceMode === "poster" ? t("分析海报", "Analysis posters") : view === "chat" ? t("与 AI 交易员对话", "Chat with the AI trader") : t("情报中心", "Intel Center")}</div>
         <div className="agChatHeadR">
-          <div className="agViewToggle">
+          {!archiveSurface && <div className="agViewToggle">
             <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
-          </div>
-          {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
-          {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
+          </div>}
+          {mobile && view === "chat" && !archiveSurface && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
+          {mobile && view === "chat" && !archiveSurface && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>
       </div>
 
@@ -1746,14 +1754,16 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
       </div>}
 
       <div className="agMsgs" ref={scrollRef}>
-        {!messages.length && <SetupChecklist onExample={(example) => send(example)} />}
-        {messages.map((message, messageIndex) => (message.role === "user" ? (
-          <div className="agMsgUserRow" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}>
+        {archiveSurface && <header className="aiArchiveIntro"><small>{surfaceMode === "patrol" ? "AUTONOMOUS PATROL / VERIFIED" : "EDITORIAL / FIELD NOTES"}</small><b>{surfaceMode === "patrol" ? t("每轮巡检的范围、工具调用和证据覆盖都保留在这里。", "Every patrol preserves its scope, tool calls, and evidence coverage here.") : t("从真实 AI 分析生成中英文海报；文案与事实始终来自原始分析。", "Generate bilingual posters from real AI analysis; copy and facts remain tied to the source.")}</b></header>}
+        {!archiveSurface && !messages.length && <SetupChecklist onExample={(example) => send(example)} />}
+        {archiveSurface && !visibleMessages.length && <div className="aiArchiveEmpty"><b>{surfaceMode === "patrol" ? t("还没有可核验的自主巡检记录", "No verified autonomous patrol receipt yet") : t("还没有可转换的分析", "No analysis is ready for poster conversion")}</b><p>{surfaceMode === "patrol" ? t("系统产生新的自主巡检后，会在此显示真实检查范围与工具回执。", "New autonomous patrols will appear here with their real scope and tool receipts.") : t("返回对话完成一次较完整的分析，随后可在这里选择并生成海报。", "Complete a substantial analysis in Conversation, then choose it here to create a poster.")}</p></div>}
+        {visibleMessages.map((message, messageIndex) => (message.role === "user" ? (
+          <div className="agMsgUserRow" key={message.id} ref={messageIndex === visibleMessages.length - 1 ? latestMessageRef : null}>
             <div className="agBubbleUser"><RichMessage text={message.content} compact onSuggest={null} /></div>
             <small className="agMsgMeta userSide">{formatTime(message.createdAt)}</small>
           </div>
         ) : (
-          <div className="agMsgAiRow" key={message.id} ref={messageIndex === messages.length - 1 ? latestMessageRef : null}>
+          <div className="agMsgAiRow" key={message.id} ref={messageIndex === visibleMessages.length - 1 ? latestMessageRef : null}>
             <span className="agAvatar"><Bot size={18} /></span>
             <div className={`agBubbleAi ${message.presentation?.layout === "decision_brief" ? "decisionMessage" : ""}`}>
               <div className="agAiLabel"><span>{t("AI 交易员", "AI Trader")}</span></div>
@@ -1787,7 +1797,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
             </div>
           </div>
         )))}
-        {(pending || awaitingReply) && (
+        {!archiveSurface && (pending || awaitingReply) && (
           <div className="agMsgAiRow">
             <span className="agAvatar"><Bot size={18} /></span>
             <div className="agBubbleAi"><div className="thinkingDots"><span /><span /><span /></div>{awaitingReply && !pending && <small className="agThinkNote">{t("思考中·可切走稍后回来查看", "Thinking · you can switch away and check back later")}</small>}</div>
@@ -1795,7 +1805,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
         )}
       </div>
 
-      {(data.pendingActions || []).length > 0 && (
+      {!archiveSurface && (data.pendingActions || []).length > 0 && (
         <div className="pendingActionsDock">
           {(data.pendingActions || []).map((pa) => (
             <div className={`pendingActionCard ${pa.danger ? "danger" : ""}`} key={pa.id}>
@@ -1811,7 +1821,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
 
       {posterMsg && <PosterModal content={stripCitationMarkers(posterMsg.content)} meta={posterMsg} onClose={() => setPosterMsg(null)} />}
 
-      <div className="agInputBar">
+      {!archiveSurface && <div className="agInputBar">
         <textarea
           ref={inputRef}
           value={input}
@@ -1821,10 +1831,10 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
         />
         <button className="agSend" disabled={pending || !input.trim()} onClick={() => send()} aria-label={t("发送", "Send")}><ArrowUp size={18} /></button>
-      </div>
+      </div>}
       </>)}
     </div>
-    {view === "chat" && <AgentRail data={data} action={action} ui={ui} />}
+    {view === "chat" && !archiveSurface && <AgentRail data={data} action={action} ui={ui} />}
     </div>
   );
 }

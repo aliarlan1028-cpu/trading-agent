@@ -1,32 +1,51 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  MOBILE_MORE_UTILITIES,
-  MOBILE_WORKSPACE_NAV,
-  mobileWorkspaceDestinations
+  MOBILE_FAMILY_NAV,
+  MOBILE_MORE_FAMILIES,
+  MOBILE_PRIMARY_NAV,
+  mobileFamilyDestinations,
+  mobileRootForFamily
 } from "../src/mobileNavigation.js";
-import { resolveMobileRoute } from "../src/productArchitecture.js";
+import { ZERO_BASE_FAMILIES } from "../src/zeroBaseArchitecture.js";
 
-test("More contains only global utilities", () => {
-  assert.deepEqual(MOBILE_MORE_UTILITIES.map((item) => item.id), ["operationsCenter", "systemSettings"]);
+const mobileSource = readFileSync(new URL("../src/mobile.jsx", import.meta.url), "utf8");
+const shellSource = readFileSync(new URL("../src/zeroBaseMobile.jsx", import.meta.url), "utf8");
+
+test("APP exposes exactly the approved five roots", () => {
+  assert.deepEqual(MOBILE_PRIMARY_NAV.map((item) => item.id), ["today", "ai", "assets", "intelligent", "more"]);
+  assert.equal(new Set(MOBILE_PRIMARY_NAV.map((item) => item.id)).size, 5);
 });
 
-test("workspace destinations are unique and never duplicated in More", () => {
-  const owned = Object.values(MOBILE_WORKSPACE_NAV).flat().map((item) => item.id);
-  const utilities = MOBILE_MORE_UTILITIES.map((item) => item.id);
-  assert.equal(new Set(owned).size, owned.length);
-  assert.equal(owned.some((id) => utilities.includes(id)), false);
+test("Intelligent and More own complete, non-duplicated family sets", () => {
+  assert.deepEqual(MOBILE_FAMILY_NAV.intelligent, ["strategy", "knowledge", "capability", "reviews"]);
+  assert.deepEqual(MOBILE_MORE_FAMILIES, ["guard", "operations", "configuration"]);
+  const rootFamilies = Object.values(MOBILE_FAMILY_NAV).flat();
+  assert.equal(new Set(rootFamilies).size, rootFamilies.length);
+  assert.equal([...MOBILE_FAMILY_NAV.intelligent, ...MOBILE_FAMILY_NAV.more].some((family) => MOBILE_PRIMARY_NAV.some((root) => root.id === family)), false);
 });
 
-test("unknown workspace resolves to no destinations", () => {
-  assert.deepEqual(mobileWorkspaceDestinations("unknown"), []);
-});
-
-test("every workspace-local destination resolves to its canonical product workspace", () => {
-  const canonicalWorkspace = { trade: "live" };
-  for (const workspace of ["ai", "trade", "lab", "control"]) {
-    for (const destination of mobileWorkspaceDestinations(workspace)) {
-      assert.equal(resolveMobileRoute(destination.id).workspace, canonicalWorkspace[workspace] || workspace, destination.id);
-    }
+test("every production family view remains reachable from the APP architecture", () => {
+  for (const family of ZERO_BASE_FAMILIES) {
+    const expectedRoot = family.id === "portfolio" ? "assets"
+      : ["strategy", "knowledge", "capability", "reviews"].includes(family.id) ? "intelligent"
+        : ["guard", "operations", "configuration"].includes(family.id) ? "more"
+          : family.id;
+    assert.equal(mobileRootForFamily(family.id), expectedRoot);
+    assert.deepEqual(mobileFamilyDestinations(family.id).map((item) => item.id), family.views.map((item) => item.id));
   }
+});
+
+test("production MobileApp mounts the zero-base touch shell and keeps canonical Context and Trace", () => {
+  assert.match(mobileSource, /ZeroBaseMobileShell/);
+  assert.match(mobileSource, /MobileShellTools/);
+  assert.match(shellSource, /data-zero-base-shell="mobile"/);
+  assert.match(shellSource, /data-zero-base-mobile-root=\{rootId\}/);
+  assert.match(shellSource, /data-zero-base-mobile-family=\{familyId/);
+  assert.match(shellSource, /data-zero-base-mobile-view=\{viewId/);
+});
+
+test("removed products are absent from the new APP navigation", () => {
+  assert.doesNotMatch(JSON.stringify({ MOBILE_PRIMARY_NAV, MOBILE_FAMILY_NAV, MOBILE_MORE_FAMILIES }), /智能表单|DAO\s*治理/);
 });
