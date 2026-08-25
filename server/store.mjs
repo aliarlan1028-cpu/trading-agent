@@ -232,6 +232,11 @@ const entityCollectionNames = [
 let sqlite;
 let persistedCollectionValues = new Map();
 let persistedEntityValues = new Map();
+let persistedEntityDocumentValues = new Map();
+
+function entityDocumentKey(tenantId, resourceType, resourceId) {
+  return `${tenantId}\u001f${resourceType}\u001f${resourceId}`;
+}
 
 export function nowIso() {
   return new Date().toISOString();
@@ -1721,12 +1726,13 @@ function loadFromSqlite() {
   if (!rows.length) return null;
   persistedCollectionValues = new Map(rows.map((row) => [row.name, row.value]));
   persistedEntityValues = new Map();
+  persistedEntityDocumentValues = new Map();
   const db = {};
   for (const row of rows) db[row.name] = JSON.parse(row.value);
   // 高频中频事实使用独立行存储，避免每2分钟重写一个数十MB的JSON collection。
   db.mediumTermSamples = sqlite.prepare("select doc from medium_term_samples where bucket_at >= ? order by bucket_at desc").all(Date.now() - 30 * 86_400_000).map((row) => JSON.parse(row.doc));
   const entityRows = sqlite.prepare(`
-    select resource_type, doc from trading_entities
+    select tenant_id, resource_type, resource_id, doc from trading_entities
     order by resource_type asc, updated_at desc, resource_id asc
   `).all();
   if (entityRows.length) {
@@ -1734,6 +1740,7 @@ function loadFromSqlite() {
     for (const row of entityRows) {
       if (!grouped.has(row.resource_type)) grouped.set(row.resource_type, []);
       grouped.get(row.resource_type).push(JSON.parse(row.doc));
+      persistedEntityDocumentValues.set(entityDocumentKey(row.tenant_id, row.resource_type, row.resource_id), row.doc);
     }
     for (const [resourceType, items] of grouped) {
       db[resourceType] = items;
@@ -1789,6 +1796,7 @@ function saveToSqlite(db, options = {}) {
       changedEntityValues.set(resourceType, value);
     }
   }
+  let entityDocumentChanges = null;
   const write = sqlite.transaction(() => {
     for (const [name, value] of changedCollections) {
       upsert.run({ name, value, updated_at: updatedAt });
@@ -1808,11 +1816,13 @@ function saveToSqlite(db, options = {}) {
     }
     for (const entry of db.auditLogs || []) writeAuditEntry(entry);
     for (const entry of db.traces || []) writeTraceEntry(entry);
-    persistTradingEntities(db, updatedAt, changedEntityTypes);
+    entityDocumentChanges = persistTradingEntities(db, updatedAt, changedEntityTypes);
   });
   write();
   for (const [name, value] of changedCollections) persistedCollectionValues.set(name, value);
   for (const [resourceType, value] of changedEntityValues) persistedEntityValues.set(resourceType, value);
+  for (const key of entityDocumentChanges?.deleted || []) persistedEntityDocumentValues.delete(key);
+  for (const [key, value] of entityDocumentChanges?.upserted || []) persistedEntityDocumentValues.set(key, value);
   // 事务成功后才清标记；失败时保留，下一次 saveDb 可安全重试。
   if (!scopedCollections || scopedCollections.has("mediumTermSamples")) {
     for (const row of db.mediumTermSamples || []) if (row.persistPending === true) delete row.persistPending;
@@ -1831,36 +1841,54 @@ function persistTradingEntities(db, updatedAt, resourceTypes = entityCollectionN
       updated_at = excluded.updated_at,
       doc = excluded.doc
   `);
-  // 删除必须按 (resource_type, tenant_id) 限定：内存 db 只装载当前租户（单实例即 tenant_owner），
-  // 无条件按类型全删会把其他租户的行一并清掉（跨租户数据丢失）。
-  const removeTypeForTenant = sqlite.prepare("delete from trading_entities where resource_type = ? and tenant_id = ?");
+  const removeEntity = sqlite.prepare("delete from trading_entities where resource_type = ? and tenant_id = ? and resource_id = ?");
+  const upserted = new Map();
+  const deleted = new Set();
   for (const resourceType of resourceTypes) {
     const rows = (db[resourceType] || []).filter((item) => item?.id);
-    const tenants = [...new Set(rows.map((item) => item.tenantId || "tenant_owner"))];
-    for (const tenant of tenants.length ? tenants : ["tenant_owner"]) removeTypeForTenant.run(resourceType, tenant);
+    const byTenant = new Map();
     for (const item of rows) {
       const tenantId = item.tenantId || "tenant_owner";
-      const createdAt = item.createdAt || item.startedAt || updatedAt;
-      // Reconciliation reports are immutable chronological facts. Using the
-      // enclosing save timestamp for every row made all 200 rows tie on each
-      // save; a read-only reload then fell back to resource_id order and could
-      // expose a day-old report as the latest one. Preserve their fact time.
-      const entityUpdatedAt = resourceType === "reconciliationReports"
-        ? createdAt
-        : item.updatedAt || updatedAt;
-      const doc = { ...item, tenantId };
-      upsert.run({
-        tenant_id: tenantId,
-        resource_type: resourceType,
-        resource_id: item.id,
-        status: item.status || null,
-        symbol: item.symbol || null,
-        created_at: createdAt,
-        updated_at: entityUpdatedAt,
-        doc: JSON.stringify(doc)
-      });
+      if (!byTenant.has(tenantId)) byTenant.set(tenantId, []);
+      byTenant.get(tenantId).push(item);
+    }
+    if (!byTenant.size) byTenant.set("tenant_owner", []);
+    for (const [tenantId, tenantRows] of byTenant) {
+      const prefix = `${tenantId}\u001f${resourceType}\u001f`;
+      const currentKeys = new Set(tenantRows.map((item) => entityDocumentKey(tenantId, resourceType, item.id)));
+      for (const key of persistedEntityDocumentValues.keys()) {
+        if (!key.startsWith(prefix) || currentKeys.has(key)) continue;
+        const resourceId = key.slice(prefix.length);
+        removeEntity.run(resourceType, tenantId, resourceId);
+        deleted.add(key);
+      }
+      for (const item of tenantRows) {
+        const createdAt = item.createdAt || item.startedAt || updatedAt;
+        // Reconciliation reports are immutable chronological facts. Using the
+        // enclosing save timestamp for every row made all 200 rows tie on each
+        // save; a read-only reload then fell back to resource_id order and could
+        // expose a day-old report as the latest one. Preserve their fact time.
+        const entityUpdatedAt = resourceType === "reconciliationReports"
+          ? createdAt
+          : item.updatedAt || updatedAt;
+        const doc = JSON.stringify({ ...item, tenantId });
+        const key = entityDocumentKey(tenantId, resourceType, item.id);
+        if (persistedEntityDocumentValues.get(key) === doc) continue;
+        upsert.run({
+          tenant_id: tenantId,
+          resource_type: resourceType,
+          resource_id: item.id,
+          status: item.status || null,
+          symbol: item.symbol || null,
+          created_at: createdAt,
+          updated_at: entityUpdatedAt,
+          doc
+        });
+        upserted.set(key, doc);
+      }
     }
   }
+  return { upserted, deleted };
 }
 
 function writeAuditEntry(entry) {

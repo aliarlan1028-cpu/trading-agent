@@ -30,6 +30,16 @@ function readPersistenceMarker(collectionName, resourceType, resourceId) {
   return { collectionUpdatedAt: collection?.updated_at, entityVersion: entity?.version };
 }
 
+function readEntityRow(resourceType, resourceId) {
+  const sqlite = new Database(path.join(dataDir, "trading-agent.sqlite"), { readonly: true });
+  const row = sqlite.prepare(`
+    SELECT rowid, version, doc FROM trading_entities
+    WHERE resource_type = ? AND resource_id = ?
+  `).get(resourceType, resourceId);
+  sqlite.close();
+  return row;
+}
+
 test("lightweight save skips knowledge and strips candles; full save persists both", () => {
   const db = loadDb();
   db.knowledge.sources.push({ id: "s_full", title: "全量落盘的来源" });
@@ -138,4 +148,36 @@ test("collection-scoped save does not serialize unrelated state", () => {
 
   assert.doesNotThrow(() => saveDb(db, { collections: ["tasks"] }));
   assert.ok(readCollection("tasks").some((task) => task.id === "task_scoped_persistence_guard"));
+});
+
+test("appending one account snapshot preserves unchanged entity rows and removes only the retired row", () => {
+  const db = loadDb();
+  const first = {
+    id: "snapshot_incremental_first",
+    status: "ok",
+    createdAt: "2026-08-25T00:00:00.000Z",
+    balances: [{ totalEq: "100" }]
+  };
+  db.accountSnapshots = [first];
+  saveDb(db, { collections: ["accountSnapshots"] });
+  const firstBefore = readEntityRow("accountSnapshots", first.id);
+  assert.ok(firstBefore);
+
+  const second = {
+    id: "snapshot_incremental_second",
+    status: "ok",
+    createdAt: "2026-08-25T00:01:00.000Z",
+    balances: [{ totalEq: "101" }]
+  };
+  db.accountSnapshots.unshift(second);
+  saveDb(db, { collections: ["accountSnapshots"] });
+  const firstAfterAppend = readEntityRow("accountSnapshots", first.id);
+  const secondAfterAppend = readEntityRow("accountSnapshots", second.id);
+  assert.equal(firstAfterAppend.rowid, firstBefore.rowid, "an unchanged snapshot must not be deleted and reinserted");
+  assert.ok(secondAfterAppend);
+
+  db.accountSnapshots = [second];
+  saveDb(db, { collections: ["accountSnapshots"] });
+  assert.equal(readEntityRow("accountSnapshots", first.id), undefined, "the retention-evicted snapshot must be deleted");
+  assert.equal(readEntityRow("accountSnapshots", second.id).rowid, secondAfterAppend.rowid, "the retained snapshot must stay untouched");
 });
