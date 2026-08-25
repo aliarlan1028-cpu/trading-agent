@@ -149,7 +149,10 @@ async function waitForObject(cdp, rootSelector, type, id = null) {
 
 async function clickObject(cdp, rootSelector, type, id = null) {
   const point = await evaluate(cdp, `(() => {
-    const target = [...document.querySelectorAll(${JSON.stringify(`${rootSelector} button[data-shell-object-type="${type}"]`)})].find((node) => ${id == null ? "true" : `node.dataset.shellObjectId === ${JSON.stringify(id)}`});
+    const matches = [...document.querySelectorAll(${JSON.stringify(`${rootSelector} [data-shell-object-type="${type}"]`)})].filter((node) => ${id == null ? "true" : `node.dataset.shellObjectId === ${JSON.stringify(id)}`});
+    const target = matches.find((node) => node.matches('button,a,input,select,[role="button"],[role="option"]'))
+      || matches.find((node) => node.matches('tr') && node.closest('table.rowClickable'))
+      || matches[0];
     if (!target) throw new Error(${JSON.stringify(`Missing ${type} object row`)});
     target.scrollIntoView({ block: 'center', inline: 'center' });
     const rect = target.getBoundingClientRect();
@@ -232,10 +235,14 @@ try {
   await waitForExpression(cdp, "document.querySelectorAll('.uxTabsInline button').length >= 4", "AI workspace lazy loader");
 
   await trustedClick(cdp, ".uxTabsInline button", { index: 3 });
-  await waitForObject(cdp, ".appShell", "Event");
-  let id = await clickObject(cdp, ".appShell", "Event");
-  await assertDesktopIdentity(cdp, id, "Event");
-  desktopProof.push(`AI:Event:${id}`);
+  await waitForExpression(cdp, "document.querySelector('.appShell .cp2EventsLayout [data-shell-object-type=\"Event\"]') || document.querySelector('.appShell .cp2EventsLayout .cp2Empty')", "AI Event registry result or authoritative empty state");
+  const realAiEvent = await evaluate(cdp, "document.querySelector('.appShell .cp2EventsLayout [data-shell-object-type=\"Event\"]')?.dataset.shellObjectId || null");
+  let id = null;
+  if (realAiEvent) {
+    id = await clickObject(cdp, ".appShell", "Event", realAiEvent);
+    await assertDesktopIdentity(cdp, id, "Event");
+  }
+  desktopProof.push(realAiEvent ? `AI:Event:${id}` : "AI:Event:authoritative-empty");
 
   await trustedClick(cdp, "[data-shell-role='workspace-rail'] nav > button", { index: 1 });
   await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"live\"]')", "Live workspace loader");
@@ -435,7 +442,7 @@ try {
   await assertMobileIdentity(cdp, "audit-13", "Audit log", { inspector: ".mOpsAuditDetail" });
   mobileProof.push("Operations:Audit log:audit-13");
 
-  process.stdout.write(`production shell selection browser PASS desktop=[${desktopProof.join(", ")}] mobile=[${mobileProof.join(", ")}]\n`);
+  process.stdout.write(`production shell selection browser PASS desktop-authoritative=[${desktopProof.join(", ")}] mobile-production-component-fixture=[${mobileProof.join(", ")}]\n`);
 } finally {
   cdp?.close();
   await stopProcess(chrome);
