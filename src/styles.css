@@ -10797,6 +10797,90 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .cfmInput,
 .cfmBtn { border-radius: 0; }
 
+/* Authenticated bootstrap and shared overlays use the immutable product-shell
+   material. Public login and marketing keep the legacy declarations above. */
+.authenticatedAppFrame.kordynSystem .authenticatedStateScreen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) 24px max(24px, env(safe-area-inset-bottom, 0px));
+  background: var(--kordyn-paper);
+  color: var(--kordyn-ink);
+}
+.authenticatedAppFrame.kordynSystem .authenticatedStatePanel {
+  width: min(420px, calc(100vw - 48px));
+  min-height: 88px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper);
+  color: var(--kordyn-ink);
+  box-shadow: 10px 10px 0 var(--kordyn-acid);
+  backdrop-filter: none;
+}
+.authenticatedAppFrame.kordynSystem .authenticatedStartupState,
+.authenticatedAppFrame.kordynSystem [data-authenticated-state="startup"] .loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px 24px;
+  font-family: var(--kordyn-sans);
+}
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel {
+  gap: 16px;
+  padding: 28px;
+}
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel :is(h1,p,small) { color: var(--kordyn-ink); }
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel input {
+  min-height: 44px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper-white);
+  color: var(--kordyn-ink);
+}
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel :is(.primaryButton,.secondaryButton) {
+  min-height: 44px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper);
+  color: var(--kordyn-ink);
+  box-shadow: none;
+}
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel .primaryButton { background: var(--kordyn-acid); }
+.authenticatedAppFrame.kordynSystem .releaseUpdateNotice {
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-paper);
+  color: var(--kordyn-ink);
+  box-shadow: 10px 10px 0 var(--kordyn-acid);
+  backdrop-filter: none;
+}
+.authenticatedAppFrame.kordynSystem .releaseUpdateNotice span { color: var(--kordyn-ink-2); }
+.authenticatedAppFrame.kordynSystem .releaseUpdateNotice button,
+.authenticatedAppFrame.kordynSystem .cfmOk {
+  min-height: 44px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+  background: var(--kordyn-acid);
+  color: var(--kordyn-ink);
+  box-shadow: none;
+}
+.authenticatedAppFrame.kordynSystem .cfmCard { background: var(--kordyn-paper); color: var(--kordyn-ink); }
+.authenticatedAppFrame.kordynSystem .cfmBtn {
+  min-height: 44px;
+  border: 1px solid var(--kordyn-ink);
+  border-radius: 0;
+}
+.authenticatedAppFrame.kordynSystem .cfmCancel { background: var(--kordyn-paper); color: var(--kordyn-ink); }
+.authenticatedAppFrame.kordynSystem .cfmDanger { background: var(--kordyn-danger); color: var(--kordyn-paper); }
+
+@media (max-width: 600px) {
+  .authenticatedAppFrame.kordynSystem .authenticatedStateScreen { padding-inline: 18px; }
+  .authenticatedAppFrame.kordynSystem .authenticatedStatePanel { width: calc(100vw - 36px); }
+  .authenticatedAppFrame.kordynSystem .releaseUpdateNotice { width: calc(100vw - 36px); }
+  .authenticatedAppFrame.kordynSystem .releaseUpdateNotice button { min-height: 44px; }
+}
+
 /* Final measured convergence: the production labels, long evidence, and AI
    workbench must remain inside the same hard-edged rail grammar as the exact
    prototype at the acceptance viewports. */

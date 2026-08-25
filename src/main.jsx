@@ -338,7 +338,7 @@ function App() {
 
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
-  if (loading || !data) return <AppFrame authenticated><div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div></AppFrame>;
+  if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
@@ -379,9 +379,9 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
     refresh(true, "");
   }
   return (
-    <div className="loginScreen">
-      <form className="loginPanel mobileConnectPanel" onSubmit={save}>
-        <div className="brandMark"><BrandLogo size={36} variant={isNativeApp ? "black" : "white"} /></div>
+    <div className="loginScreen authenticatedStateScreen" data-authenticated-state="connection-failed">
+      <form className="loginPanel mobileConnectPanel authenticatedStatePanel" onSubmit={save}>
+        <div className="brandMark"><BrandLogo size={36} variant="black" /></div>
         <h1>{t("连接 KORDYN", "Connect to KORDYN")}</h1>
         <p>{isNativeApp ? t("填写后端地址。交易所密钥只保存在服务器，App 仅作为手机控制台。", "Enter your server URL. Exchange keys remain on the server; the app is only a mobile control surface.") : t("当前无法连接服务器，请确认服务已启动。", "The server is unavailable. Confirm that the service is running.")}</p>
         {isNativeApp && <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />}
