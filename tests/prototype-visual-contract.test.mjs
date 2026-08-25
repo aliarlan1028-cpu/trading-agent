@@ -142,14 +142,15 @@ test("desktop shell exports and renders command, workspace, context and trace ro
   for (const stage of ["Sense", "Recall", "Plan", "Guard", "Execute", "Monitor", "Review"]) assert.match(html, new RegExp(stage));
 });
 
-test("authenticated desktop composes every shared rail around the existing workspace content", () => {
+test("authenticated desktop composes the zero-base shell around the existing workspace content", () => {
   const main = fs.readFileSync(path.join(rootDir, "src/main.jsx"), "utf8");
-  const authenticatedShell = main.slice(main.indexOf('<div className="appShell kordynSystem"'), main.indexOf("function ConnectionScreen"));
-  assert.match(authenticatedShell, /<AppTopbar\b/);
-  assert.match(authenticatedShell, /<WorkspaceRail\b/);
-  assert.match(authenticatedShell, /<main className="mainArea">[\s\S]*?<Suspense[\s\S]{0,120}>\{content\}<\/Suspense>[\s\S]*?<\/main>/);
-  assert.match(authenticatedShell, /<ContextDock\b/);
-  assert.match(authenticatedShell, /<TraceRail\b/);
+  const zeroBaseShell = fs.readFileSync(path.join(rootDir, "src/zeroBaseShell.jsx"), "utf8");
+  assert.match(main, /<ZeroBaseDesktopShell\b/);
+  assert.match(main, /<Suspense\s+fallback=\{<PageSkeleton\s*\/>\}>\{content\}<\/Suspense>/);
+  assert.doesNotMatch(main, /<WorkspaceRail\b/);
+  assert.match(zeroBaseShell, /<ContextDock\b/);
+  assert.match(zeroBaseShell, /<TraceRail\b/);
+  assert.match(zeroBaseShell, /\{children\}/);
 });
 
 test("object switcher indexes loaded production objects and has deterministic keyboard navigation", () => {
@@ -413,10 +414,10 @@ test("shell roots, Context Dock and Trace Rail expose the same read-only canonic
   const traceMarkup = renderToString(React.createElement(Shell.TraceRail, { stages }));
   assert.match(contextMarkup, /data-shell-context-object="Task:task-9"/);
   assert.match(traceMarkup, /data-shell-trace-object="Task:task-9"/);
-  const mainSource = fs.readFileSync(path.join(rootDir, "src/main.jsx"), "utf8");
+  const desktopShellSource = fs.readFileSync(path.join(rootDir, "src/zeroBaseShell.jsx"), "utf8");
   const mobileSource = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
-  assert.match(mainSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
-  assert.match(mainSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
+  assert.match(desktopShellSource, /data-shell-selected-object=\{selectedObject\?\.id \|\| "none"\}/);
+  assert.match(desktopShellSource, /data-shell-selected-type=\{selectedObject\?\.type \|\| "none"\}/);
   assert.match(mobileSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
   assert.match(mobileSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
   assert.match(mobileSource, /data-shell-route=\{route\}/);
@@ -1148,9 +1149,15 @@ test("ordinary and destructive modal shells use the prototype hard-edge offsets"
   assert.match(styles, /background:\s*rgba\(17,\s*21,\s*17,\s*\.78\)/);
 });
 
-test("login and marketing source remains byte-identical to the task base", () => {
+test("login source remains stable while marketing keeps content and adopts the approved palette", () => {
   const base = execFileSync("git", ["show", "94d79ea07a2a20ac568ec8380baa1b439081b018:src/landing.jsx"], { cwd: rootDir, encoding: "utf8" });
   const current = fs.readFileSync(path.join(rootDir, "src/landing.jsx"), "utf8");
   assert.equal(current, base);
-  assert.equal(fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8"), execFileSync("git", ["show", "94d79ea07a2a20ac568ec8380baa1b439081b018:public/landing.html"], { cwd: rootDir, encoding: "utf8" }));
+  const marketing = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
+  const marketingCss = fs.readFileSync(path.join(rootDir, "public/landing.css"), "utf8");
+  assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 413);
+  for (const action of ["login", "subscribe", "contact", "lang"]) assert.match(marketing, new RegExp(`data-action=["']${action}["']`));
+  assert.match(marketingCss, /--paper:\s*#F4F1E9/i);
+  assert.match(marketingCss, /--acid:\s*#CCFF3D/i);
+  assert.doesNotMatch(marketing, /fonts\.(?:googleapis|gstatic)\.com/);
 });

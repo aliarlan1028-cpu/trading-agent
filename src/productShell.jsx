@@ -526,16 +526,16 @@ const CONTEXT_FIELDS = Object.freeze([
   ["Version", "version"], ["Permissions", "permissions"], ["Next action", "nextAction"]
 ]);
 
-export function ContextDock({ context = buildShellContext(), onNavigate = () => {}, collapsible = true, initiallyCollapsed = false }) {
+export function ContextDock({ context = buildShellContext(), onNavigate = () => {}, collapsible = true, initiallyCollapsed = false, className = "", ...rootProps }) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
   const objectIdentity = context.objectType && context.object && context.object !== unavailable ? `${context.objectType}:${context.object}` : "none";
-  return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" data-shell-context-object={objectIdentity} data-shell-context-workspace={context.workspaceId || "none"} data-shell-context-source={context.sourceSection || "none"} data-shell-context-route={context.route || "none"} data-shell-context-evidence={context.evidence || unavailable} aria-label={t("上下文", "Context")}>
+  return <aside {...rootProps} className={["contextDock", className, collapsed ? "collapsed" : ""].filter(Boolean).join(" ")} data-shell-role="context-dock" data-shell-context-object={objectIdentity} data-shell-context-workspace={context.workspaceId || "none"} data-shell-context-source={context.sourceSection || "none"} data-shell-context-route={context.route || "none"} data-shell-context-evidence={context.evidence || unavailable} aria-label={t("上下文", "Context")}>
     <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.objectStatus || context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
     {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{key === "object" && context.objectType ? `${context.objectType} / ${text(context.object, unavailable)}` : text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
   </aside>;
 }
 
-export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }) {
+export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "", className = "", ...rootProps }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const selected = stages.find((stage) => stage.id === expanded);
   const closeRef = useRef(null);
@@ -562,7 +562,7 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
   }, [selected?.id]);
 
   const objectIdentity = selectedIdentity?.objectType && selectedIdentity?.objectId ? `${selectedIdentity.objectType}:${selectedIdentity.objectId}` : "none";
-  return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" data-shell-trace-object={objectIdentity} data-shell-trace-workspace={selectedIdentity?.workspaceId || "none"} data-shell-trace-source={selectedIdentity?.sourceSection || "none"} data-shell-trace-route={selectedIdentity?.route || "none"} data-shell-trace-evidence={traceEvidence?.evidence || unavailable} aria-label={t("当前工作区追踪", "Current workspace trace")}>
+  return <section {...rootProps} className={["traceRail", className, selected ? "expanded" : ""].filter(Boolean).join(" ")} data-shell-role="trace-rail" data-shell-trace-object={objectIdentity} data-shell-trace-workspace={selectedIdentity?.workspaceId || "none"} data-shell-trace-source={selectedIdentity?.sourceSection || "none"} data-shell-trace-route={selectedIdentity?.route || "none"} data-shell-trace-evidence={traceEvidence?.evidence || unavailable} aria-label={t("当前工作区追踪", "Current workspace trace")}>
     <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{selectedIdentity ? `${selectedIdentity.objectType} / ${selectedIdentity.objectId}` : t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
     <nav>{stages.map((stage, index) => <button type="button" key={stage.id} className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={(event) => { triggerRef.current = event.currentTarget; setExpanded(expanded === stage.id ? "" : stage.id); }}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span><em>{stage.detail}</em><code>{stage.evidence}</code></button>)}</nav>
     <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl>{selectedIdentity && <div><dt>OBJECT</dt><dd>{selectedIdentity.objectType} / {selectedIdentity.objectId}</dd></div>}<div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>

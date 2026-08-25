@@ -152,6 +152,23 @@ export function familyForFeature(featureId) {
 
 const familyById = new Map(ZERO_BASE_FAMILIES.map((item) => [item.id, item]));
 
+export function zeroBaseLocationForRoute(route = "chat") {
+  const requested = String(route || "chat");
+  for (const candidateFamily of ZERO_BASE_FAMILIES) {
+    const candidateView = candidateFamily.views.find((item) => item.route === requested);
+    if (candidateView) return Object.freeze({ familyId: candidateFamily.id, viewId: candidateView.id, route: candidateView.route });
+  }
+  const resolved = resolveDesktopRoute(requested);
+  for (const candidateFamily of ZERO_BASE_FAMILIES) {
+    const candidateView = candidateFamily.views.find((item) => {
+      const candidate = resolveDesktopRoute(item.route);
+      return candidate.workspace === resolved.workspace && candidate.view === resolved.view;
+    });
+    if (candidateView) return Object.freeze({ familyId: candidateFamily.id, viewId: candidateView.id, route: requested });
+  }
+  return Object.freeze({ familyId: "ai", viewId: "dialog", route: "chat" });
+}
+
 export function resolveZeroBaseDestination(familyId = "ai", viewId, device = "desktop") {
   const requestedFamily = familyById.get(String(familyId || ""));
   const requestedView = requestedFamily?.views.find((item) => item.id === (viewId || requestedFamily.defaultView));

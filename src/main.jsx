@@ -16,7 +16,10 @@ import { AppFrame } from "./appFrame.jsx";
 import { LandingPage } from "./landing.jsx";
 import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
-import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
+import { resolveZeroBaseDestination, zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
+import { ZeroBaseDesktopShell } from "./zeroBaseShell.jsx";
+import { ZeroBaseToday } from "./zeroBaseToday.jsx";
+import { CommandRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
@@ -68,7 +71,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang }) {
+function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang, shellTools = null }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -85,7 +88,7 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
     }
   };
   return (
-    <header className="appTopbar" data-shell-role="desktop-command">
+    <header className="appTopbar zbTopbar" data-shell-role="desktop-command">
       <CommandRail data={data} onNavigate={setActive} onSelect={onObjectSelect} />
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
@@ -117,6 +120,7 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
         <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
         <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>
+      {shellTools}
       <div className="topbarActions">
         <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("operationsCenter:notifications"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
@@ -282,6 +286,8 @@ function App() {
   const [lang, setLangState] = useState(getLang());
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
+  const [activeZeroBaseFamily, setActiveZeroBaseFamily] = useState("today");
+  const [activeZeroBaseView, setActiveZeroBaseView] = useState("owner");
   const [activeProductWorkspace, setActiveProductWorkspace] = useState("ai");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeReviewId, setActiveReviewId] = useState("");
@@ -298,8 +304,11 @@ function App() {
   useEffect(() => {
     setSelectedShellObject((current) => selectionForNavigation(current, activeProductWorkspace, data || {}));
   }, [data, activeProductWorkspace]);
-  function navigate(next, selectedObject) {
+  function navigate(next, selectedObject, locationOverride = null) {
     const resolved = resolveDesktopRoute(next);
+    const location = locationOverride || zeroBaseLocationForRoute(next);
+    setActiveZeroBaseFamily(location.familyId);
+    setActiveZeroBaseView(location.viewId);
     setSelectedShellObject((current) => selectionForNavigation(selectedObject ?? current, resolved.workspace, data || {}));
     setActiveProductWorkspace(resolved.workspace);
     setActive(resolved.section);
@@ -312,6 +321,11 @@ function App() {
     if (resolved.settingsSection) setActiveSettingsSection(resolved.settingsSection);
     if (!resolved.recognized) notify(t("未找到该入口，已返回 AI 交易员。", "That destination was not found. Returned to AI Trader."));
   }
+  function navigateZeroBase(familyId, viewId, directRoute = "") {
+    if (directRoute) return navigate(directRoute);
+    const destination = resolveZeroBaseDestination(familyId, viewId, "desktop");
+    navigate(destination.route, undefined, { familyId: destination.familyId, viewId: destination.viewId });
+  }
   function selectObject(candidate) {
     const selected = resolveShellObjectSelection(data || {}, candidate);
     if (selected) setSelectedShellObject(selected);
@@ -320,6 +334,7 @@ function App() {
   const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
+    if (activeZeroBaseFamily === "today") return <ZeroBaseToday data={data} onNavigate={navigate} viewId={activeZeroBaseView} />;
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     let workspaceContent;
@@ -333,7 +348,7 @@ function App() {
     return workspaceResourceRetainsLastValid(resourceState)
       ? <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })}>{workspaceContent}</WorkspaceStateBoundary>
       : workspaceContent;
-  }, [active, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
+  }, [active, activeZeroBaseFamily, activeZeroBaseView, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
   const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
@@ -347,22 +362,23 @@ function App() {
   }
 
   return (
-    <AppFrame authenticated><div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"} data-shell-selected-workspace={selectedShellObject?.workspaceId || "none"} data-shell-selected-source={selectedShellObject?.sourceSection || "none"} data-shell-selected-route={selectedShellObject?.route || "none"} data-shell-selected-evidence={selectedShellObject?.evidence || "Unavailable"}>
-      <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
-      <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={navigate} />
-      <main className="mainArea">
-        {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
-        <div className={active === "chat" ? "content contentChat" : "content"}>
-          <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
-        </div>
-      </main>
-      <ContextDock context={shellContext} onNavigate={navigate} />
-      <TraceRail stages={shellTrace} />
-      {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
-      {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
-      <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />
-      {toast && <div className="toast">{toast}</div>}
-    </div></AppFrame>
+    <AppFrame authenticated><ZeroBaseDesktopShell key={lang}
+      data={data}
+      activeFamilyId={activeZeroBaseFamily}
+      activeViewId={activeZeroBaseView}
+      onFamilyNavigate={navigateZeroBase}
+      selectedObject={selectedShellObject}
+      context={shellContext}
+      trace={shellTrace}
+      renderTopbar={({ shellTools }) => <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} shellTools={shellTools} />}
+      overlays={<>
+        {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
+        {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
+        <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />
+        {toast && <div className="toast">{toast}</div>}
+      </>}>
+      <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
+    </ZeroBaseDesktopShell></AppFrame>
   );
 }
 
