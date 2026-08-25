@@ -54,7 +54,7 @@ import { buildResearchMap } from "./researchMap.js";
 import { buildControlConfigurationView } from "./controlConfigurationView.js";
 import { eventRiskGateLabel, eventRiskIdentity, eventRiskPhase, eventRiskPhaseLabel, eventRiskScopeLabel, eventRiskTimingLabel } from "./eventRiskView.js";
 import { MobileOperations } from "./mobileOperations.jsx";
-import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellSearchIndex, buildShellTrace, filterShellSearchResults, nextShellSearchInteraction, resolveShellObjectSelection, runShellObjectSelection, runShellRegistrySelection, selectionForNavigation, shellSearchResultDomId, shellSearchResultKey, shellStrategyCandidate } from "./productShell.jsx";
+import { ContextDock, TraceRail, WorkspaceStateBoundary, buildShellContext, buildShellSearchIndex, buildShellTrace, filterShellSearchResults, nextShellSearchInteraction, resolveShellObjectSelection, runShellObjectSelection, runShellRegistrySelection, selectionForNavigation, shellSearchResultDomId, shellSearchResultKey, shellSearchResultUnavailable, shellStrategyCandidate, workspaceResourceRetainsLastValid } from "./productShell.jsx";
 import { AgentSettingsConcept, UsersSettingsConcept, configurationSupplementState, retryConfigurationSupplement } from "./conceptPages.jsx";
 import {
   buildCapabilityCatalogRows,
@@ -1573,19 +1573,8 @@ function MobileWatch({ data, action }) {
 // 风控中心(移动版):把风控总览 + 风控设置合并到一个导航项,顶部 Tab 切换。
 export function MobileRiskHub({ data, action, ui, initialView = "overview" }) {
   const views = ["overview","events","boundaries","rules"];
-  const [tab, setTab] = useState(views.includes(initialView)?initialView:"overview");
-  useEffect(()=>{if(views.includes(initialView))setTab(initialView);},[initialView]);
-  return (
-    <div className="mHub">
-      <div className="mHubTabs">
-        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("态势", "Posture")}</button>
-        <button type="button" className={tab === "events" ? "active" : ""} onClick={() => setTab("events")}>{t("事件", "Events")}</button>
-        <button type="button" className={tab === "boundaries" ? "active" : ""} onClick={() => setTab("boundaries")}>{t("边界", "Boundaries")}</button>
-        <button type="button" className={tab === "rules" ? "active" : ""} onClick={() => setTab("rules")}>{t("规则", "Rules")}</button>
-      </div>
-      <MobileRisk data={data} action={action} ui={ui} view={tab}/>
-    </div>
-  );
+  const view = views.includes(initialView) ? initialView : "overview";
+  return <div className="mHub"><MobileRisk data={data} action={action} ui={ui} view={view}/></div>;
 }
 
 function capabilityStatusLabel(item) {
@@ -1920,7 +1909,7 @@ const mobileWorkspaceRailLabels = {
   chat: ["对话", "Chat"], watch: ["盯盘", "Watch"], intelligence: ["情报", "Intelligence"], eventsTasks: ["事件", "Events"],
   cockpit: ["概览", "Overview"], positions: ["持仓", "Positions"], executionReview: ["执行", "Execution"], tradeLedger: ["流水", "Ledger"],
   labMap: ["地图", "Map"], knowledgeBase: ["孵化", "Incubate"], strategyLib: ["策略", "Strategies"], capabilityLib: ["能力", "Capabilities"], labReviews: ["复盘", "Reviews"],
-  riskHub: ["态势", "Posture"], riskSettings: ["规则", "Rules"], eventRisk: ["事件", "Events"]
+  riskHub: ["态势", "Posture"], eventRisk: ["事件", "Events"], riskMandate: ["边界", "Boundaries"], riskSettings: ["规则", "Rules"]
 };
 
 const mobileWorkspaceLabel = (workspace) => t(
@@ -1984,20 +1973,23 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
   const [sheet, setSheet] = useState(initiallyOpen);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [selectionFeedback, setSelectionFeedback] = useState("");
   const objectInputRef = useRef(null);
   const context = buildShellContext({ data, workspaceId, selectedObject });
   const trace = buildShellTrace(data, workspaceId, selectedObject);
   const objectIndex = useMemo(() => buildShellSearchIndex(data), [data]);
   const objectResults = useMemo(() => (query.trim() ? filterShellSearchResults(objectIndex, query) : objectIndex.slice(0, 30)), [objectIndex, query]);
-  const close = () => { setSheet(""); setQuery(""); };
+  const close = () => { setSheet(""); setQuery(""); setSelectionFeedback(""); };
   const selectObject = (candidate) => {
     const selected = runShellObjectSelection({ data, candidate, workspaceId: candidate.workspaceId, onSelect, onNavigate });
     if (selected) close();
+    else setSelectionFeedback(t("数据不可用。请刷新来源或检查权限。", "Data is unavailable. Refresh the source or check permissions."));
     return selected;
   };
   const openObjects = () => {
     const currentIndex = objectResults.findIndex((row) => row.type === selectedObject?.type && row.id === selectedObject?.id);
     setActiveIndex(currentIndex >= 0 ? currentIndex : 0);
+    setSelectionFeedback("");
     setSheet("objects");
   };
   const onObjectKeyDown = (event) => {
@@ -2018,8 +2010,8 @@ export function MobileShellTools({ data = {}, workspaceId = "ai", selectedObject
       <section className={`mShellSheet ${sheet === "objects" ? "mObjectSwitcher" : ""}`} data-shell-role={sheet === "objects" ? "mobile-object-switcher" : undefined} role="dialog" aria-modal="true" aria-label={sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"} onClick={(event) => event.stopPropagation()}>
         <header><span><small>GLOBAL SHELL</small><b>{sheet === "context" ? "Context" : sheet === "trace" ? "Trace" : "Objects"}</b></span><button type="button" aria-label={t("关闭", "Close")} onClick={close}><X/></button></header>
         <div className="mShellSheet__body">{sheet === "objects" ? <div className="mObjectSwitcher__body">
-          <label className="mObjectSwitcher__search"><Search/><input ref={objectInputRef} role="combobox" aria-expanded="true" aria-controls="mobile-shell-object-results" aria-activedescendant={objectResults[activeIndex] ? shellSearchResultDomId(objectResults[activeIndex], "mobile-shell-object-result") : undefined} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={onObjectKeyDown} placeholder={t("搜索市场、事件、策略或运行", "Search markets, events, strategies, or runs")}/>{query && <button type="button" onClick={() => { setQuery(""); setActiveIndex(0); objectInputRef.current?.focus(); }} aria-label={t("清空", "Clear")}><X/></button>}</label>
-          <div className="mObjectSwitcher__results" id="mobile-shell-object-results" role="listbox">{objectResults.length ? objectResults.map((row, index) => <button id={shellSearchResultDomId(row, "mobile-shell-object-result")} type="button" role="option" aria-current={selectedObject?.type === row.type && selectedObject?.id === row.id && selectedObject?.workspaceId === row.workspaceId && selectedObject?.sourceSection === row.sourceSection ? "true" : undefined} aria-selected={activeIndex === index} className={`mObjectSwitcher__result ${activeIndex === index ? "active" : ""}`} key={shellSearchResultKey(row)} data-shell-object-id={row.type === "Feature" ? undefined : row.id} data-shell-object-type={row.type === "Feature" ? undefined : row.type} data-shell-navigation-route={row.type === "Feature" ? row.route : undefined} onPointerEnter={() => setActiveIndex(index)} onClick={() => selectObject(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象。", "No loaded object matches.")}</p>}</div>
+          <label className="mObjectSwitcher__search"><Search/><input ref={objectInputRef} role="combobox" aria-expanded="true" aria-controls="mobile-shell-object-results" aria-activedescendant={objectResults[activeIndex] ? shellSearchResultDomId(objectResults[activeIndex], "mobile-shell-object-result") : undefined} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setSelectionFeedback(""); }} onKeyDown={onObjectKeyDown} placeholder={t("搜索市场、事件、策略或运行", "Search markets, events, strategies, or runs")}/>{query && <button type="button" onClick={() => { setQuery(""); setActiveIndex(0); setSelectionFeedback(""); objectInputRef.current?.focus(); }} aria-label={t("清空", "Clear")}><X/></button>}</label>
+          <div className="mObjectSwitcher__results" id="mobile-shell-object-results" role="listbox">{objectResults.length ? objectResults.map((row, index) => { const unavailableResult = shellSearchResultUnavailable(row); return <button id={shellSearchResultDomId(row, "mobile-shell-object-result")} type="button" role="option" aria-current={selectedObject?.type === row.type && selectedObject?.id === row.id && selectedObject?.workspaceId === row.workspaceId && selectedObject?.sourceSection === row.sourceSection ? "true" : undefined} aria-selected={activeIndex === index} aria-disabled={unavailableResult || undefined} className={`mObjectSwitcher__result ${activeIndex === index ? "active" : ""} ${unavailableResult ? "unavailable" : ""}`.trim()} key={shellSearchResultKey(row)} data-shell-result-state={unavailableResult ? "unavailable" : "available"} data-shell-object-id={row.type === "Feature" ? undefined : row.id} data-shell-object-type={row.type === "Feature" ? undefined : row.type} data-shell-navigation-route={row.type === "Feature" ? row.route : undefined} onPointerEnter={() => setActiveIndex(index)} onClick={() => selectObject(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{unavailableResult ? t("不可用", "Unavailable") : row.status}</em></button>; }) : <p role="status">{t("没有匹配的已加载对象。", "No loaded object matches.")}</p>}{selectionFeedback && <p className="mObjectSwitcher__feedback" role="status" data-shell-search-feedback>{selectionFeedback}</p>}</div>
         </div> : sheet === "context" ? <ContextDock context={context} onNavigate={(route) => { onNavigate(route); close(); }} collapsible={false}/> : <TraceRail stages={trace}/>}</div>
       </section>
     </div>}
@@ -2176,13 +2168,16 @@ export function MobileApp({ api, lang, switchLang }) {
   }
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
-  if (resourceState === "loaded" && ["ai", "live", "lab", "control"].includes(activeProductWorkspace)) {
+  const retainsLastValid = workspaceResourceRetainsLastValid(resourceState);
+  if ((resourceState === "loaded" || retainsLastValid) && ["ai", "live", "lab", "control"].includes(activeProductWorkspace)) {
     const workspace = activeProductWorkspace === "live" ? "trade" : activeProductWorkspace;
     content = <>{workspace === "lab"
       ? <MobileLabRail route={route} subPage={subPage} onNavigate={navigate}/>
       : <MobileWorkspaceRail workspace={workspace} route={route} subPage={subPage} onNavigate={navigate}/>} {content}</>;
   }
-  if (resourceState !== "loaded") {
+  if (retainsLastValid) {
+    content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })}>{content}</WorkspaceStateBoundary>;
+  } else if (resourceState !== "loaded") {
     content = <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection?.(activeSection, { force: true })} />;
   }
 
@@ -2191,7 +2186,7 @@ export function MobileApp({ api, lang, switchLang }) {
     : <button className={`mRuntimeButton ${runtime.tone}`} onClick={() => setSafetyOpen(true)} title={runtime.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{runtime.label}</b></div><ChevronDown/></button>;
 
   return (
-    <div className="mShell2 kordynSystem" data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
+    <div className="mShell2 kordynSystem" data-shell-route={route} data-shell-subpage={subPage || "none"} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"} data-shell-selected-workspace={selectedShellObject?.workspaceId || "none"} data-shell-selected-source={selectedShellObject?.sourceSection || "none"} data-shell-selected-route={selectedShellObject?.route || "none"} data-shell-selected-evidence={selectedShellObject?.evidence || "Unavailable"}>
       <MobileHeader route={activeProductWorkspace === "lab" && route === "executionReview" ? "labMap" : route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>

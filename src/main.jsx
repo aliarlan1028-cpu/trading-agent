@@ -16,7 +16,7 @@ import { AppFrame } from "./appFrame.jsx";
 import { LandingPage } from "./landing.jsx";
 import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
-import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation } from "./productShell.jsx";
+import { CommandRail, ContextDock, TraceRail, WorkspaceRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./styles.css";
 import "./product-foundation.css";
@@ -320,21 +320,25 @@ function App() {
   const content = useMemo(() => {
     if (!data) return null;
     const resourceState = data.resourceState?.[active] || "not_loaded";
-    if (resourceState !== "loaded") return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
-    if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} reviewInitialId={activeReviewId} />;
-    if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "systemSettings") return <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;
-    return <AiTraderCenter data={data} action={action} ui={ui} />;
+    if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
+    let workspaceContent;
+    if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "cockpit") workspaceContent = <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} reviewInitialId={activeReviewId} />;
+    else if (active === "riskCenter") workspaceContent = <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "operationsCenter") workspaceContent = <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "systemSettings") workspaceContent = <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;
+    else workspaceContent = <AiTraderCenter data={data} action={action} ui={ui} />;
+    return workspaceResourceRetainsLastValid(resourceState)
+      ? <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })}>{workspaceContent}</WorkspaceStateBoundary>
+      : workspaceContent;
   }, [active, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
   const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
-  if (!loading && !data) return <AppFrame><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
-  if (loading || !data) return <AppFrame><div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div></AppFrame>;
+  if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
+  if (loading || !data) return <AppFrame authenticated><div className="loading"><Activity size={28} /> {t("正在启动 Trader Agent...", "Starting Trader Agent...")}</div></AppFrame>;
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
@@ -342,7 +346,7 @@ function App() {
   }
 
   return (
-    <AppFrame authenticated><div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"}>
+    <AppFrame authenticated><div className="appShell kordynSystem" key={lang} data-shell-selected-object={selectedShellObject?.id || "none"} data-shell-selected-type={selectedShellObject?.type || "none"} data-shell-selected-workspace={selectedShellObject?.workspaceId || "none"} data-shell-selected-source={selectedShellObject?.sourceSection || "none"} data-shell-selected-route={selectedShellObject?.route || "none"} data-shell-selected-evidence={selectedShellObject?.evidence || "Unavailable"}>
       <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
       <WorkspaceRail activeWorkspace={activeProductWorkspace} onNavigate={navigate} />
       <main className="mainArea">

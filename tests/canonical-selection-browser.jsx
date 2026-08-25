@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  CommandRail,
   ContextDock,
   TraceRail,
   buildShellContext,
@@ -23,7 +24,11 @@ const fixture = {
   markets: [{ symbol: "BTC/USDT", price: 64250, status: "fresh" }],
   positions: [{ positionId: "position-native-2", symbol: "BTC/USDT", status: "open", side: "long", size: 0.2 }],
   tradePlans: [{ id: "plan-17", symbol: "ETH/USDT", status: "armed" }],
-  events: [{ id: "event-5", title: "US CPI", status: "scheduled", due: "2026-08-25T12:30:00Z" }],
+  events: [
+    { id: "event-5", title: "US CPI", status: "scheduled", due: "2026-08-25T12:30:00Z" },
+    { id: "event-stale", title: "Stale event", status: "scheduled", stale: true },
+    { id: "event-forbidden", title: "Forbidden event", status: "scheduled", permissionDenied: true }
+  ],
   eventRiskWindows: [{ id: "event-5", eventId: "event-5", title: "US CPI", sourceId: "official_bls", sourceName: "U.S. BLS", dueAt: "2026-08-25T12:30:00Z", deltaMs: 600000, phase: "pre_release_blackout", blocking: true, impact: 100, marketWide: true, verified: true }],
   skills: [{ id: "capability-18", name: "Order-book analyzer", kind: "analysis", status: "active" }],
   strategyCatalog: {
@@ -82,6 +87,7 @@ function CanonicalSelectionBrowserHarness() {
   >
     <ContextDock context={context} collapsible={false} />
     <TraceRail stages={trace} />
+    <section data-browser-case="desktop-object-switcher"><CommandRail data={fixture} onSelect={(selected) => { setSelectedObject(selected); setWorkspaceId(selected.workspaceId); }} onNavigate={noop}/></section>
     <section data-browser-case="ai"><EventsConcept data={fixture} action={noop} ui={ui} /></section>
     <section data-browser-case="live"><PositionsConcept data={fixture} ui={ui} /></section>
     <section data-browser-case="lab"><StrategyLibraryConcept data={fixture} action={noop} ui={ui} /></section>

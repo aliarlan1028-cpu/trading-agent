@@ -299,6 +299,7 @@ test("Feature results are validated route navigation even while their destinatio
   const data = { ...fixture, resourceState: { ...fixture.resourceState, researchCenter: "not_loaded" } };
   const feature = Shell.buildShellSearchIndex(data).find((row) => row.type === "Feature" && row.id === "knowledgeBase");
   assert.ok(feature);
+  assert.equal(Shell.shellSearchResultUnavailable(feature), false, "navigation-only Feature results remain available so they can reveal the destination's real loading or permission boundary");
   let selected = "unchanged";
   let navigated = "";
   const result = Shell.runShellObjectSelection({
@@ -418,6 +419,43 @@ test("shell roots, Context Dock and Trace Rail expose the same read-only canonic
   assert.match(mainSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
   assert.match(mobileSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
   assert.match(mobileSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-route=\{route\}/);
+  assert.match(mobileSource, /data-shell-subpage=\{subPage \|\| "none"\}/);
+});
+
+test("same-id Events preserve workspace, source, route and evidence across Context and Trace", () => {
+  const data = {
+    resourceState: { chat: "loaded", riskCenter: "loaded" },
+    events: [{ id: "event-shared", title: "AI event", evidenceId: "event-evidence-ai" }],
+    eventRiskWindows: [{ id: "event-shared", eventId: "event-shared", title: "Control event", evidenceId: "event-evidence-control" }],
+    traces: [
+      { workspaceId: "ai", objectType: "Event", objectId: "event-shared", stage: "sense", status: "complete", evidenceId: "trace-evidence-ai" },
+      { workspaceId: "control", objectType: "Event", objectId: "event-shared", stage: "guard", status: "complete", evidenceId: "trace-evidence-control" }
+    ]
+  };
+  for (const expected of [
+    { workspaceId: "ai", sourceSection: "chat", route: "eventsTasks:events", objectEvidence: "event-evidence-ai", traceEvidence: "trace-evidence-ai" },
+    { workspaceId: "control", sourceSection: "riskCenter", route: "eventRisk", objectEvidence: "event-evidence-control", traceEvidence: "trace-evidence-control" }
+  ]) {
+    const selected = Shell.resolveShellObjectSelection(data, { id: "event-shared", type: "Event", ...expected }, expected.workspaceId);
+    assert.ok(selected);
+    const context = Shell.buildShellContext({ data, workspaceId: expected.workspaceId, selectedObject: selected });
+    const trace = Shell.buildShellTrace(data, expected.workspaceId, selected);
+    assert.equal(context.workspaceId, expected.workspaceId);
+    assert.equal(context.sourceSection, expected.sourceSection);
+    assert.equal(context.route, expected.route);
+    assert.equal(context.evidence, expected.objectEvidence);
+    const contextMarkup = renderToString(React.createElement(Shell.ContextDock, { context }));
+    const traceMarkup = renderToString(React.createElement(Shell.TraceRail, { stages: trace }));
+    assert.match(contextMarkup, new RegExp(`data-shell-context-workspace="${expected.workspaceId}"`));
+    assert.match(contextMarkup, new RegExp(`data-shell-context-source="${expected.sourceSection}"`));
+    assert.match(contextMarkup, new RegExp(`data-shell-context-route="${expected.route.replaceAll(":", "\\:")}"`));
+    assert.match(contextMarkup, new RegExp(`data-shell-context-evidence="${expected.objectEvidence}"`));
+    assert.match(traceMarkup, new RegExp(`data-shell-trace-workspace="${expected.workspaceId}"`));
+    assert.match(traceMarkup, new RegExp(`data-shell-trace-source="${expected.sourceSection}"`));
+    assert.match(traceMarkup, new RegExp(`data-shell-trace-route="${expected.route.replaceAll(":", "\\:")}"`));
+    assert.match(traceMarkup, new RegExp(`data-shell-trace-evidence="${expected.traceEvidence}"`));
+  }
 });
 
 test("Position Registry and shell resolver share canonical identity when backend rows omit id", () => {
@@ -485,10 +523,25 @@ test("combobox keyboard selection fails closed when the production resolver data
     results,
     onSelect: (row) => effects.push(["select", row.id]),
     onNavigate: (route, row) => effects.push(["navigate", route, row.id]),
-    onClose: () => effects.push(["close"])
+    onClose: () => effects.push(["close"]),
+    onReject: (row) => effects.push(["reject", row.id])
   });
   assert.equal(outcome.selectIndex, 0);
-  assert.deepEqual(effects, [["close"]], "missing resolver data must never select or navigate an unverified row");
+  assert.equal(outcome.close, false, "a rejected Enter must keep the Object Switcher open");
+  assert.deepEqual(effects, [["reject", "plan-17"]], "missing resolver data must remain visible without selecting, navigating, or closing");
+});
+
+test("Object Switcher availability marks stale and forbidden truth without hiding the row", () => {
+  const data = {
+    ...fixture,
+    resourceState: { ...fixture.resourceState, chat: "stale", riskCenter: "forbidden" }
+  };
+  const index = Shell.buildShellSearchIndex(data);
+  const aiEvent = index.find((row) => row.type === "Event" && row.workspaceId === "ai");
+  const controlEvent = index.find((row) => row.type === "Event" && row.workspaceId === "control");
+  assert.equal(Shell.shellSearchResultUnavailable(aiEvent), true);
+  assert.equal(Shell.shellSearchResultUnavailable(controlEvent), true);
+  assert.equal(index.includes(aiEvent) && index.includes(controlEvent), true, "unavailable truth stays searchable for diagnosis");
 });
 
 test("desktop Object Switcher overlay matches the immutable prototype geometry and interaction state", () => {
@@ -624,6 +677,36 @@ test("search and context keep object status separate from source state and gate 
   const html = renderToString(React.createElement(Shell.ContextDock, { context }));
   assert.match(html, /Data is stale|数据已陈旧/);
   assert.match(html, /disabled=""/);
+});
+
+test("stale and degraded resource states retain last-valid truth behind an explicit fail-safe boundary", () => {
+  for (const [resourceState, expectedCopy] of [
+    ["stale", /Data is stale|数据已陈旧/],
+    ["degraded", /Service degraded|服务降级/]
+  ]) {
+    const html = renderToString(React.createElement(Shell.WorkspaceStateBoundary, {
+      resourceState,
+      onRetry: () => {}
+    }, React.createElement("button", { type: "button", "data-last-valid-truth": resourceState }, "Authoritative last-valid row")));
+    assert.match(html, expectedCopy);
+    assert.match(html, new RegExp(`data-resource-state="${resourceState}"`));
+    assert.match(html, new RegExp(`data-last-valid-truth="${resourceState}"`), "last-valid workspace truth remains rendered");
+    assert.match(html, /data-last-valid-interaction="disabled"/);
+    assert.match(html, /inert=""/, "partial truth must be non-interactive until refresh succeeds");
+    assert.match(html, />Retry<|>重试</);
+  }
+});
+
+test("MobileApp preserves its real last-valid workspace under stale and degraded resource truth", () => {
+  for (const resourceState of ["stale", "degraded"]) {
+    const data = { ...fixture, resourceState: { ...fixture.resourceState, chat: resourceState } };
+    const html = renderToString(React.createElement(Mobile.MobileApp, {
+      api: { data, action: () => {}, notify: () => {}, refresh: () => {}, ensureSection: () => {} }
+    }));
+    assert.match(html, new RegExp(`data-resource-state="${resourceState}"`));
+    assert.match(html, /class="mChatContent"/, "the actual AI workspace remains rendered as last-valid truth");
+    assert.match(html, /data-last-valid-interaction="disabled"/);
+  }
 });
 
 test("selection revalidation uses the current production index and forbidden resource truth", () => {

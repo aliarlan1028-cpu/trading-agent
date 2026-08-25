@@ -104,6 +104,11 @@ async function trustedKey(cdp, key, code) {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+async function trustedText(cdp, text) {
+  await cdp.send("Input.insertText", { text });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 const vitePort = await freePort();
 const chromePort = await freePort();
 const profileDir = await mkdtemp(path.join(os.tmpdir(), "kordyn-canonical-browser-"));
@@ -198,6 +203,41 @@ try {
     results.push(`${entry.surface}:${identity}`);
     if (entry.close) await trustedClick(cdp, `[data-browser-case="${entry.surface}"] ${entry.close}`);
   }
+  await evaluate(cdp, `document.querySelector('[data-browser-case="desktop-object-switcher"] [role="combobox"]').focus()`);
+  await trustedText(cdp, "event-stale");
+  const desktopUnavailable = await evaluate(cdp, `(() => {
+    const row = document.querySelector('[data-browser-case="desktop-object-switcher"] [role="option"]');
+    return { ariaDisabled: row?.getAttribute("aria-disabled"), state: row?.dataset.shellResultState };
+  })()`);
+  assert.deepEqual(desktopUnavailable, { ariaDisabled: "true", state: "unavailable" });
+  await trustedKey(cdp, "Enter", "Enter");
+  const desktopRejected = await evaluate(cdp, `(() => ({
+    open: Boolean(document.querySelector('[data-browser-case="desktop-object-switcher"] .commandRail__results')),
+    feedback: document.querySelector('[data-browser-case="desktop-object-switcher"] [data-shell-search-feedback]')?.textContent || ""
+  }))()`);
+  assert.equal(desktopRejected.open, true);
+  assert.match(desktopRejected.feedback, /Data is unavailable|数据不可用/);
+  await trustedText(cdp, "x");
+  assert.equal(await evaluate(cdp, `Boolean(document.querySelector('[data-browser-case="desktop-object-switcher"] [data-shell-search-feedback]'))`), false, "editing the desktop query clears stale rejection feedback");
+  results.push("desktop-object-switcher:stale-keyboard-rejected+feedback-reset");
+
+  const mobileSearch = '[data-browser-case="app-object-sheet"] [role="combobox"]';
+  await evaluate(cdp, `document.querySelector(${JSON.stringify(mobileSearch)}).focus()`);
+  await trustedText(cdp, "event-forbidden");
+  assert.deepEqual(await evaluate(cdp, `(() => {
+    const row = document.querySelector('[data-browser-case="app-object-sheet"] [role="option"]');
+    return { ariaDisabled: row?.getAttribute("aria-disabled"), state: row?.dataset.shellResultState };
+  })()`), { ariaDisabled: "true", state: "unavailable" });
+  await trustedClick(cdp, `[data-browser-case="app-object-sheet"] [role="option"]`);
+  const mobileRejected = await evaluate(cdp, `(() => ({
+    open: Boolean(document.querySelector('[data-browser-case="app-object-sheet"] [data-shell-role="mobile-object-switcher"]')),
+    feedback: document.querySelector('[data-browser-case="app-object-sheet"] [data-shell-search-feedback]')?.textContent || ""
+  }))()`);
+  assert.equal(mobileRejected.open, true);
+  assert.match(mobileRejected.feedback, /Data is unavailable|数据不可用/);
+  results.push("app-object-sheet:forbidden-click-rejected+feedback");
+
+  await trustedClick(cdp, `[data-browser-case="app-object-sheet"] .mObjectSwitcher__search > button`);
   await evaluate(cdp, `document.querySelector('[data-browser-case="app-object-sheet"] [role="combobox"]').focus()`);
   await trustedKey(cdp, "ArrowDown", "ArrowDown");
   const afterDown = await evaluate(cdp, `(() => {

@@ -8,6 +8,7 @@ import WebSocket from "ws";
 
 const appUrl = new URL(process.env.KORDYN_APP_URL || "http://127.0.0.1:5178/");
 const mobileFixtureUrl = new URL("/tests/production-mobile-app-browser.html", appUrl);
+const desktopStateFixtureUrl = new URL("/tests/production-desktop-state-browser.html", appUrl);
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 async function freePort() {
@@ -106,6 +107,7 @@ async function trustedClick(cdp, selector, { index = 0 } = {}) {
   await waitForExpression(cdp, `(() => {
     const target = [...document.querySelectorAll(${JSON.stringify(selector)})][${index}];
     if (!target) return false;
+    target.scrollIntoView({ block: 'center', inline: 'center' });
     const rect = target.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     return rect.width > 0 && rect.height > 0 && (hit === target || target.contains(hit));
@@ -125,6 +127,7 @@ async function trustedClickText(cdp, selector, text) {
   await waitForExpression(cdp, `(() => {
     const target = [...document.querySelectorAll(${JSON.stringify(selector)})].find((node) => node.textContent.trim() === ${JSON.stringify(text)} || node.textContent.includes(${JSON.stringify(text)}));
     if (!target) return false;
+    target.scrollIntoView({ block: 'center', inline: 'center' });
     const rect = target.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     return rect.width > 0 && rect.height > 0 && (hit === target || target.contains(hit));
@@ -173,9 +176,16 @@ async function closeMobileSheet(cdp) {
   await waitForExpression(cdp, "!document.querySelector('.mShellSheetOverlay')", "mobile shell sheet close");
 }
 
-async function assertMobileIdentity(cdp, id, type, { inspector = null, closeInspector = null } = {}) {
+async function assertMobileIdentity(cdp, id, type, { inspector = null, closeInspector = null, scope = null } = {}) {
   const identity = `${type}:${id}`;
   await waitForExpression(cdp, `document.querySelector('.mShell2.kordynSystem')?.dataset.shellSelectedObject === ${JSON.stringify(id)} && document.querySelector('.mShell2.kordynSystem')?.dataset.shellSelectedType === ${JSON.stringify(type)}`, `${identity} MobileApp shell selection`);
+  if (scope) {
+    const rootScope = await evaluate(cdp, `(() => {
+      const root = document.querySelector('.mShell2.kordynSystem');
+      return { workspaceId: root?.dataset.shellSelectedWorkspace, sourceSection: root?.dataset.shellSelectedSource, route: root?.dataset.shellSelectedRoute, evidence: root?.dataset.shellSelectedEvidence };
+    })()`);
+    assert.deepEqual(rootScope, { workspaceId: scope.workspaceId, sourceSection: scope.sourceSection, route: scope.route, evidence: scope.objectEvidence });
+  }
   if (inspector) await waitForExpression(cdp, `document.querySelector(${JSON.stringify(inspector)})`, `${type} local Inspector`);
   if (closeInspector) {
     await trustedClick(cdp, closeInspector);
@@ -183,11 +193,21 @@ async function assertMobileIdentity(cdp, id, type, { inspector = null, closeInsp
   }
   await trustedClick(cdp, ".mShellTools > .mShellToolButton", { index: 1 });
   await waitForExpression(cdp, "document.querySelector('.mShellSheet [data-shell-role=\"context-dock\"]')", "MobileApp Context sheet");
-  assert.equal(await evaluate(cdp, "document.querySelector('.mShellSheet [data-shell-role=\"context-dock\"]')?.dataset.shellContextObject"), identity);
+  const contextScope = await evaluate(cdp, `(() => {
+    const context = document.querySelector('.mShellSheet [data-shell-role="context-dock"]');
+    return { object: context?.dataset.shellContextObject, workspaceId: context?.dataset.shellContextWorkspace, sourceSection: context?.dataset.shellContextSource, route: context?.dataset.shellContextRoute, evidence: context?.dataset.shellContextEvidence };
+  })()`);
+  assert.equal(contextScope.object, identity);
+  if (scope) assert.deepEqual(contextScope, { object: identity, workspaceId: scope.workspaceId, sourceSection: scope.sourceSection, route: scope.route, evidence: scope.objectEvidence });
   await closeMobileSheet(cdp);
   await trustedClick(cdp, ".mShellTools > .mShellToolButton", { index: 2 });
   await waitForExpression(cdp, "document.querySelector('.mShellSheet [data-shell-role=\"trace-rail\"]')", "MobileApp Trace sheet");
-  assert.equal(await evaluate(cdp, "document.querySelector('.mShellSheet [data-shell-role=\"trace-rail\"]')?.dataset.shellTraceObject"), identity);
+  const traceScope = await evaluate(cdp, `(() => {
+    const trace = document.querySelector('.mShellSheet [data-shell-role="trace-rail"]');
+    return { object: trace?.dataset.shellTraceObject, workspaceId: trace?.dataset.shellTraceWorkspace, sourceSection: trace?.dataset.shellTraceSource, route: trace?.dataset.shellTraceRoute, evidence: trace?.dataset.shellTraceEvidence };
+  })()`);
+  assert.equal(traceScope.object, identity);
+  if (scope) assert.deepEqual(traceScope, { object: identity, workspaceId: scope.workspaceId, sourceSection: scope.sourceSection, route: scope.route, evidence: scope.traceEvidence });
   await closeMobileSheet(cdp);
 }
 
@@ -254,6 +274,22 @@ try {
   await assertDesktopIdentity(cdp, id, "Audit log");
   desktopProof.push(`Operations:Audit log:${id}`);
 
+  for (const [state, width, height] of [["stale", 1440, 900], ["degraded", 1180, 820]]) {
+    const stateUrl = new URL(desktopStateFixtureUrl);
+    stateUrl.searchParams.set("state", state);
+    await setViewportAndNavigate(cdp, stateUrl.href, width, height);
+    await waitForExpression(cdp, `window.__productionDesktopStateReady && document.querySelector('[data-resource-state="${state}"] .uxCenter')`, `${state} desktop last-valid workspace`);
+    const stateBoundary = await evaluate(cdp, `(() => {
+      const boundary = document.querySelector('[data-resource-state="${state}"]');
+      const content = boundary?.querySelector('.workspaceStateBoundary__lastValid');
+      return { warning: Boolean(boundary?.querySelector('.workspaceState--warning')), inert: content?.hasAttribute('inert'), interaction: content?.dataset.lastValidInteraction, pointerEvents: getComputedStyle(content).pointerEvents };
+    })()`);
+    assert.deepEqual(stateBoundary, { warning: true, inert: true, interaction: "disabled", pointerEvents: "none" });
+    await trustedClick(cdp, `[data-resource-state="${state}"] .workspaceState > button`);
+    assert.equal(await evaluate(cdp, "window.__productionDesktopRetry?.at(-1)?.force"), true);
+    desktopProof.push(`State:${state}:last-valid+retry`);
+  }
+
   const forbiddenUrl = new URL(mobileFixtureUrl);
   forbiddenUrl.searchParams.set("state", "forbidden");
   await setViewportAndNavigate(cdp, forbiddenUrl.href, 390, 844);
@@ -261,16 +297,33 @@ try {
   await waitForExpression(cdp, "document.querySelector('.workspaceState--forbidden')", "production permission boundary");
   assert.equal(await evaluate(cdp, "document.querySelector('.mShell2.kordynSystem')?.dataset.shellSelectedObject"), "none");
 
+  const mobileStateProof = [];
+  for (const [state, width, height] of [["stale", 390, 844], ["degraded", 430, 932]]) {
+    const stateUrl = new URL(mobileFixtureUrl);
+    stateUrl.searchParams.set("state", state);
+    await setViewportAndNavigate(cdp, stateUrl.href, width, height);
+    await waitForExpression(cdp, `window.__productionMobileAppBrowserReady && document.querySelector('[data-resource-state="${state}"] .mChatContent')`, `${state} MobileApp last-valid workspace`);
+    const stateBoundary = await evaluate(cdp, `(() => {
+      const boundary = document.querySelector('[data-resource-state="${state}"]');
+      const content = boundary?.querySelector('.workspaceStateBoundary__lastValid');
+      return { warning: Boolean(boundary?.querySelector('.workspaceState--warning')), inert: content?.hasAttribute('inert'), interaction: content?.dataset.lastValidInteraction, pointerEvents: getComputedStyle(content).pointerEvents };
+    })()`);
+    assert.deepEqual(stateBoundary, { warning: true, inert: true, interaction: "disabled", pointerEvents: "none" });
+    await trustedClick(cdp, `[data-resource-state="${state}"] .workspaceState > button`);
+    assert.equal(await evaluate(cdp, "window.__productionMobileEnsureCalls?.at(-1)?.[1]?.force"), true);
+    mobileStateProof.push(`${width}x${height}:${state}:last-valid+retry`);
+  }
+
   await setViewportAndNavigate(cdp, mobileFixtureUrl.href, 390, 844);
   await waitForExpression(cdp, "window.__productionMobileAppBrowserReady && document.querySelector('.mShell2.kordynSystem')", "production MobileApp fixture");
   await waitForExpression(cdp, "document.querySelector('.workspaceState--loading')", "production loader boundary");
   await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--ai')", "loaded MobileApp AI workspace");
 
-  const mobileProof = ["Boundary:forbidden", "Loader:loading→loaded"];
+  const mobileProof = ["Boundary:forbidden", ...mobileStateProof, "Loader:loading→loaded"];
   await trustedClick(cdp, ".mWorkspaceRail--ai > button", { index: 3 });
   await waitForObject(cdp, ".mShell2", "Event", "event-5");
   await clickObject(cdp, ".mShell2", "Event", "event-5");
-  await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventDays button.selected" });
+  await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventDays button.selected", scope: { workspaceId: "ai", sourceSection: "chat", route: "eventsTasks:events", objectEvidence: "evidence-ai-event", traceEvidence: "trace-event" } });
   mobileProof.push("AI:Event:event-5");
 
   await trustedClick(cdp, ".mNativeTabbar > button", { index: 1 });
@@ -312,11 +365,58 @@ try {
 
   await trustedClick(cdp, ".mNativeTabbar > button", { index: 3 });
   await waitForExpression(cdp, "document.querySelector('.mWorkspaceRail--control')", "MobileApp Control navigation");
-  await trustedClick(cdp, ".mWorkspaceRail--control > button", { index: 2 });
+  const assertControlRail = async (width, height) => {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
+    const controlRail = await evaluate(cdp, `(() => {
+      const rail = document.querySelector('.mWorkspaceRail--control');
+      const buttons = [...(rail?.querySelectorAll(':scope > button') || [])];
+      const viewport = document.documentElement.clientWidth;
+      return {
+        labels: buttons.map((button) => button.textContent.trim()),
+        activeCount: buttons.filter((button) => button.classList.contains('active')).length,
+        activeLabel: buttons.find((button) => button.classList.contains('active'))?.textContent.trim(),
+        hasNestedTabs: Boolean(document.querySelector('.mHub > .mHubTabs')),
+        overflow: Math.max(0, ...buttons.map((button) => button.getBoundingClientRect().right - viewport)),
+        minHeight: Math.min(...buttons.map((button) => button.getBoundingClientRect().height))
+      };
+    })()`);
+    assert.deepEqual(controlRail.labels, ["态势", "事件", "边界", "规则"]);
+    assert.equal(controlRail.activeCount, 1);
+    assert.equal(controlRail.hasNestedTabs, false);
+    assert.equal(controlRail.overflow, 0);
+    assert.ok(controlRail.minHeight >= 44, `${width}x${height} Control rail touch target is below 44px`);
+    return controlRail;
+  };
+  const controlDestinations = [
+    { label: "态势", selector: ".mControlTruth", subPage: "none" },
+    { label: "事件", selector: ".mEventRiskScreen", subPage: "events" },
+    { label: "边界", selector: ".mControlSymbols", subPage: "boundaries" },
+    { label: "规则", selector: ".mControlRuleList", subPage: "rules" }
+  ];
+  for (const [width, height] of [[390, 844], [430, 932]]) {
+    for (const destination of controlDestinations) {
+      await trustedClickText(cdp, ".mWorkspaceRail--control > button", destination.label);
+      await waitForExpression(cdp, `(() => {
+        const root = document.querySelector('.mShell2.kordynSystem');
+        const buttons = [...document.querySelectorAll('.mWorkspaceRail--control > button')];
+        const active = buttons.filter((button) => button.classList.contains('active'));
+        return root?.dataset.shellRoute === 'riskHub'
+          && root?.dataset.shellSubpage === ${JSON.stringify(destination.subPage)}
+          && Boolean(document.querySelector(${JSON.stringify(destination.selector)}))
+          && active.length === 1
+          && active[0].textContent.trim() === ${JSON.stringify(destination.label)}
+          && !document.querySelector('.mHub > .mHubTabs');
+      })()`, `${width}x${height} Control ${destination.label} route, active state and production view`);
+      const controlRail = await assertControlRail(width, height);
+      assert.equal(controlRail.activeLabel, destination.label);
+    }
+  }
+  await trustedClickText(cdp, ".mWorkspaceRail--control > button", "事件");
+  await waitForExpression(cdp, "document.querySelector('.mEventRiskScreen') && [...document.querySelectorAll('.mWorkspaceRail--control > button')].find((button) => button.textContent.trim() === '事件')?.classList.contains('active')", "MobileApp Event Risk authoritative rail destination");
   await waitForObject(cdp, ".mShell2", "Event", "event-5");
   await clickObject(cdp, ".mShell2", "Event", "event-5");
-  await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventRiskInspector" });
-  mobileProof.push("Control:Event:event-5");
+  await assertMobileIdentity(cdp, "event-5", "Event", { inspector: ".mEventRiskInspector", scope: { workspaceId: "control", sourceSection: "riskCenter", route: "eventRisk", objectEvidence: "evidence-control-event", traceEvidence: "trace-risk-event" } });
+  mobileProof.push("Control:trusted-single-rail:390+430:Posture→Events→Boundaries→Rules", "Control:Event:event-5");
 
   await trustedClick(cdp, ".mNativeTabbar > button", { index: 4 });
   await waitForExpression(cdp, "document.querySelector('.mDrawer')", "MobileApp More drawer");

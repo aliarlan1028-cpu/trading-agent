@@ -10549,6 +10549,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__results > button.active,
 .commandRail__results > button:hover,
 .commandRail__results > button:focus-visible { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.commandRail__results > button.unavailable { color: var(--kordyn-muted); }
+.commandRail__results > button.unavailable:is(.active,:hover,:focus-visible) { background: color-mix(in srgb,var(--kordyn-amber) 28%,var(--kordyn-paper)); }
 .commandRail__results small,
 .commandRail__results code,
 .commandRail__results em { font: 700 9px/1.25 var(--kordyn-mono); font-style: normal; }
@@ -10558,6 +10560,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .commandRail__results code { overflow: hidden; color: var(--kordyn-muted); text-overflow: ellipsis; white-space: nowrap; }
 .commandRail__results em { text-align: right; text-transform: uppercase; }
 .commandRail__results > p { min-height: 56px; padding: 18px; color: var(--kordyn-muted); font-size: 11px; }
+.commandRail__results > .commandRail__feedback { min-height: 44px; border-top: 1px solid var(--kordyn-ink); background: color-mix(in srgb,var(--kordyn-amber) 22%,var(--kordyn-paper)); color: var(--kordyn-ink); }
 .commandRail__facts { display: grid; grid-template-columns: repeat(5, minmax(50px, 1fr)); flex: 0 0 286px; min-width: 0; }
 .commandRail__facts > span { display: grid; align-content: center; gap: 2px; min-width: 0; padding: 0 8px; border-right: 1px solid var(--kordyn-line); }
 .commandRail__facts > span:last-child { border-right: 0; }
@@ -10758,12 +10761,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mObjectSwitcher__result.active,
 .mObjectSwitcher__result:is(:hover,:focus-visible),
 .mObjectSwitcher__result[aria-current="true"] { background: var(--kordyn-acid); color: var(--kordyn-ink); }
+.mObjectSwitcher__result.unavailable { color: var(--kordyn-muted); }
+.mObjectSwitcher__result.unavailable:is(.active,:hover,:focus-visible) { background: color-mix(in srgb,var(--kordyn-amber) 28%,var(--kordyn-paper)); }
 .mObjectSwitcher__result > small,
 .mObjectSwitcher__result code,
 .mObjectSwitcher__result em { font: 700 8px/1.25 var(--kordyn-mono); font-style: normal; }
 .mObjectSwitcher__result > span { display: grid; gap: 2px; min-width: 0; }
 .mObjectSwitcher__result > span :is(b,code) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mObjectSwitcher__results > p { padding: 18px 12px; color: var(--kordyn-muted); }
+.mObjectSwitcher__results > .mObjectSwitcher__feedback { min-height: 44px; border-top: 1px solid var(--kordyn-ink); background: color-mix(in srgb,var(--kordyn-amber) 22%,var(--kordyn-paper)); color: var(--kordyn-ink); }
 .controlScope__selection { padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; }
 .controlScope__selection:focus-visible { outline: 2px solid var(--kordyn-acid); outline-offset: 2px; }
 .agPlanObject { padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; }

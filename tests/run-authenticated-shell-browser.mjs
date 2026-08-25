@@ -40,9 +40,14 @@ async function waitFor(url, predicate = () => true) {
 function connectCdp(url) {
   const socket = new WebSocket(url);
   const pending = new Map();
+  const listeners = new Map();
   let requestId = 0;
   socket.on("message", (payload) => {
     const message = JSON.parse(payload.toString());
+    if (!message.id && message.method) {
+      for (const listener of listeners.get(message.method) || []) listener(message.params || {});
+      return;
+    }
     const request = pending.get(message.id);
     if (!request) return;
     pending.delete(message.id);
@@ -61,6 +66,12 @@ function connectCdp(url) {
         pending.set(id, { resolve, reject });
         socket.send(JSON.stringify({ id, method, params }));
       });
+    },
+    on(method, listener) {
+      const handlers = listeners.get(method) || new Set();
+      handlers.add(listener);
+      listeners.set(method, handlers);
+      return () => handlers.delete(listener);
     },
     close() { socket.close(); }
   };
@@ -134,6 +145,27 @@ try {
   const targets = await waitFor(`http://127.0.0.1:${chromePort}/json`, (rows) => rows.some((row) => row.type === "page"));
   cdp = connectCdp(targets.find((row) => row.type === "page").webSocketDebuggerUrl);
   await Promise.all([cdp.send("Runtime.enable"), cdp.send("Page.enable")]);
+
+  let resolveCoreRequest;
+  const coreRequestPaused = new Promise((resolve) => { resolveCoreRequest = resolve; });
+  const stopListeningForCore = cdp.on("Fetch.requestPaused", (params) => {
+    if (params.request?.url.includes("/api/bootstrap/core")) resolveCoreRequest(params.requestId);
+    else cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/bootstrap/core*", requestStage: "Request" }] });
+  const startupProbeUrl = new URL(appUrl);
+  startupProbeUrl.searchParams.set("authenticated_state_probe", String(Date.now()));
+  await cdp.send("Page.navigate", { url: startupProbeUrl.href });
+  const coreRequestId = await coreRequestPaused;
+  await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem > .loading')", "authenticated startup loading state");
+  const startupFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem > .loading')).fontFamily");
+  assertPrototypeStack(startupFont, "Inter, Helvetica Neue, Arial, sans-serif", "authenticated startup loading must use the prototype sans stack");
+  await cdp.send("Fetch.failRequest", { requestId: coreRequestId, errorReason: "Failed" });
+  await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .mobileConnectPanel')", "authenticated connection failure state");
+  const connectionFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem .mobileConnectPanel')).fontFamily");
+  assertPrototypeStack(connectionFont, "Inter, Helvetica Neue, Arial, sans-serif", "authenticated connection failure must use the prototype sans stack");
+  stopListeningForCore();
+  await cdp.send("Fetch.disable");
 
   await setViewport(cdp, 1440, 900);
   process.stdout.write("authenticated shell browser: desktop mounted\n");

@@ -1332,8 +1332,13 @@ test("mobile workspace rails expose every workspace-owned destination", () => {
   const live = render(React.createElement(C.MobileWorkspaceRail, { workspace: "trade", route: "cockpit", subPage: "", onNavigate: () => {} }));
   for (const label of ["概览", "持仓", "执行", "流水"]) assert.match(live, new RegExp(`>${label}<`));
 
-  const control = render(React.createElement(C.MobileWorkspaceRail, { workspace: "control", route: "riskHub", subPage: "", onNavigate: () => {} }));
-  for (const label of ["态势", "规则", "事件"]) assert.match(control, new RegExp(`>${label}<`));
+  const control = render(React.createElement(C.MobileWorkspaceRail, { workspace: "control", route: "riskHub", subPage: "events", onNavigate: () => {} }));
+  for (const label of ["态势", "事件", "边界", "规则"]) assert.match(control, new RegExp(`>${label}<`));
+  assert.equal((control.match(/<button/g) || []).length, 4);
+  assert.equal((control.match(/aria-current="page"/g) || []).length, 1);
+  const eventHub = render(React.createElement(C.MobileRiskHub, { data, action, ui, initialView: "events" }));
+  assert.doesNotMatch(eventHub, /mHubTabs/, "Control must not repeat its outer workspace rail inside the page");
+  assert.match(eventHub, /data-surface-role="event-risk"/);
 });
 
 test("mobile Lab keeps its lifecycle copy around the shared rail", () => {

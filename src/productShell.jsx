@@ -160,26 +160,37 @@ export function runShellSearchShortcut(event, { open = () => {}, focus = () => {
   return true;
 }
 
-export function runShellSearchInteraction({ key, activeIndex = 0, results = [], data, onSelect = () => {}, onNavigate = () => {}, onClose = () => {} } = {}) {
+export function shellSearchResultUnavailable(row) {
+  if (row?.type === "Feature") return false;
+  const sourceState = String(row?.sourceState || "").toLowerCase();
+  return Boolean(
+    row?.sourceForbidden
+    || row?.sourceStale
+    || row?.sourceDegraded
+    || ["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"].includes(sourceState)
+  );
+}
+
+export function runShellSearchInteraction({ key, activeIndex = 0, results = [], data, onSelect = () => {}, onNavigate = () => {}, onClose = () => {}, onReject = () => {} } = {}) {
   const next = nextShellSearchInteraction({ key, activeIndex, count: results.length });
+  let close = next.close;
+  let selected = null;
   if (next.selectIndex >= 0) {
     const row = results[next.selectIndex];
     if (row) {
-      runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
+      selected = runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
+      if (!selected) {
+        close = false;
+        onReject(row);
+      }
     }
   }
-  if (next.close) onClose();
-  return next;
+  if (close) onClose();
+  return { ...next, close, selected };
 }
 
 function selectionFailsClosed(selectedObject) {
-  const sourceState = String(selectedObject?.sourceState || "").toLowerCase();
-  return Boolean(
-    selectedObject?.sourceForbidden
-    || selectedObject?.sourceStale
-    || selectedObject?.sourceDegraded
-    || ["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"].includes(sourceState)
-  );
+  return shellSearchResultUnavailable(selectedObject);
 }
 
 function workspaceSelectionFailsClosed(data, workspaceId) {
@@ -301,7 +312,9 @@ export function buildShellContext({ data = {}, workspaceId = "ai", selectedObjec
     sourceForbidden: source.sourceForbidden,
     gate,
     actionsDisabled: Boolean(gate),
-    route: selectedObject?.route || workspace?.rootRoute || ""
+    route: selectedObject?.route || workspace?.rootRoute || "",
+    workspaceId,
+    sourceSection: selectedObject?.sourceSection || workspace?.resourceSection || ""
   };
 }
 
@@ -402,6 +415,8 @@ export function buildShellTrace(data = {}, workspaceId = "ai", selectedObject = 
       detail: String(firstValue(row?.detail, row?.summary, row?.evidenceId, blocked ? `Workspace source is ${resourceState}` : null, inferred[key].detail, unavailable)),
       evidence: String(firstValue(row?.evidenceId, row?.id, row?.createdAt, unavailable)),
       workspaceId,
+      sourceSection: selectedObject?.sourceSection || workspace?.resourceSection || "",
+      route: selectedObject?.route || workspace?.rootRoute || "",
       objectType: selectedObject?.type || null,
       objectId: selectedObject?.id || null
     };
@@ -431,6 +446,7 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [selectionFeedback, setSelectionFeedback] = useState("");
   const rootRef = useRef(null);
   const inputRef = useRef(null);
   const index = useMemo(() => buildShellSearchIndex(data), [data]);
@@ -448,7 +464,12 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
   }, []);
   const select = (row) => {
     if (!row) return;
-    runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
+    const selected = runShellObjectSelection({ data, candidate: row, workspaceId: row.workspaceId, onSelect, onNavigate });
+    if (!selected) {
+      setSelectionFeedback(t("数据不可用。请刷新来源或检查权限。", "Data is unavailable. Refresh the source or check permissions."));
+      return;
+    }
+    setSelectionFeedback("");
     setQuery("");
     setOpen(false);
   };
@@ -462,17 +483,19 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
       data,
       onSelect,
       onNavigate,
-      onClose: () => { setQuery(""); setOpen(false); }
+      onClose: () => { setQuery(""); setSelectionFeedback(""); setOpen(false); },
+      onReject: () => setSelectionFeedback(t("数据不可用。请刷新来源或检查权限。", "Data is unavailable. Refresh the source or check permissions."))
     });
     setActiveIndex(next.activeIndex);
   };
   return <section className="commandRail" data-shell-role="command-rail" aria-label={t("全局命令栏", "Global command rail")}>
     <div className="commandRail__brand"><img src="/kordyn-logo.svg" alt=""/><span><b>KORDYN</b><small>{text(data.user?.tenantName || data.user?.organization, unavailable)}</small></span></div>
     <div className="commandRail__search" ref={rootRef}>
-      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? shellSearchResultDomId(results[activeIndex]) : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={onKeyDown}/>
-      {query && <button type="button" aria-label={t("清空搜索", "Clear search")} onClick={() => { setQuery(""); inputRef.current?.focus(); }}><X/></button>}
+      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? shellSearchResultDomId(results[activeIndex]) : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setSelectionFeedback(""); setOpen(true); }} onKeyDown={onKeyDown}/>
+      {query && <button type="button" aria-label={t("清空搜索", "Clear search")} onClick={() => { setQuery(""); setSelectionFeedback(""); inputRef.current?.focus(); }}><X/></button>}
       {open && query && <div className="commandRail__results" id="shell-search-results" role="listbox">
-        {results.length ? results.map((row, indexValue) => <button id={shellSearchResultDomId(row)} type="button" role="option" aria-selected={activeIndex === indexValue} className={activeIndex === indexValue ? "active" : ""} key={shellSearchResultKey(row)} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{row.status}</em></button>) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
+        {results.length ? results.map((row, indexValue) => { const unavailableResult = shellSearchResultUnavailable(row); return <button id={shellSearchResultDomId(row)} type="button" role="option" aria-selected={activeIndex === indexValue} aria-disabled={unavailableResult || undefined} data-shell-result-state={unavailableResult ? "unavailable" : "available"} data-shell-object-id={row.type === "Feature" ? undefined : row.id} data-shell-object-type={row.type === "Feature" ? undefined : row.type} className={`${activeIndex === indexValue ? "active " : ""}${unavailableResult ? "unavailable" : ""}`.trim()} key={shellSearchResultKey(row)} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{unavailableResult ? t("不可用", "Unavailable") : row.status}</em></button>; }) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}
+        {selectionFeedback && <p className="commandRail__feedback" role="status" data-shell-search-feedback>{selectionFeedback}</p>}
       </div>}
     </div>
     <div className="commandRail__facts" aria-label={t("全局运行事实", "Global runtime facts")}>
@@ -506,7 +529,7 @@ const CONTEXT_FIELDS = Object.freeze([
 export function ContextDock({ context = buildShellContext(), onNavigate = () => {}, collapsible = true, initiallyCollapsed = false }) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
   const objectIdentity = context.objectType && context.object && context.object !== unavailable ? `${context.objectType}:${context.object}` : "none";
-  return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" data-shell-context-object={objectIdentity} aria-label={t("上下文", "Context")}>
+  return <aside className={`contextDock ${collapsed ? "collapsed" : ""}`} data-shell-role="context-dock" data-shell-context-object={objectIdentity} data-shell-context-workspace={context.workspaceId || "none"} data-shell-context-source={context.sourceSection || "none"} data-shell-context-route={context.route || "none"} data-shell-context-evidence={context.evidence || unavailable} aria-label={t("上下文", "Context")}>
     <header><span><small>CONTEXT</small><b>{context.title}</b><em>{context.objectStatus || context.status}</em></span>{collapsible && <button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={collapsed ? t("展开上下文", "Expand context") : t("收起上下文", "Collapse context")}>{collapsed ? <ChevronDown/> : <ChevronUp/>}</button>}</header>
     {!collapsed && <>{context.gate && <section className={`contextDock__gate state-${context.gate.kind}`} role="status"><b>{context.gate.label}</b><p>{context.gate.detail}</p><small>SOURCE · {context.sourceState}</small></section>}<dl>{CONTEXT_FIELDS.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{key === "object" && context.objectType ? `${context.objectType} / ${text(context.object, unavailable)}` : text(context[key], unavailable)}</dd></div>)}</dl><footer><button type="button" disabled={context.actionsDisabled || !context.route} onClick={() => context.route && !context.actionsDisabled && onNavigate(context.route)}>{context.nextAction}</button></footer></>}
   </aside>;
@@ -519,6 +542,7 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
   const triggerRef = useRef(null);
   const summary = selected || stages.find((stage) => stage.status === "blocked") || stages.find((stage) => stage.status === "waiting") || stages[0];
   const selectedIdentity = stages.find((stage) => stage.objectId);
+  const traceEvidence = stages.find((stage) => stage.objectId && stage.evidence && stage.evidence !== unavailable) || selectedIdentity;
 
   const close = () => {
     setExpanded("");
@@ -538,7 +562,7 @@ export function TraceRail({ stages = buildShellTrace(), initiallyExpanded = "" }
   }, [selected?.id]);
 
   const objectIdentity = selectedIdentity?.objectType && selectedIdentity?.objectId ? `${selectedIdentity.objectType}:${selectedIdentity.objectId}` : "none";
-  return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" data-shell-trace-object={objectIdentity} aria-label={t("当前工作区追踪", "Current workspace trace")}>
+  return <section className={`traceRail ${selected ? "expanded" : ""}`} data-shell-role="trace-rail" data-shell-trace-object={objectIdentity} data-shell-trace-workspace={selectedIdentity?.workspaceId || "none"} data-shell-trace-source={selectedIdentity?.sourceSection || "none"} data-shell-trace-route={selectedIdentity?.route || "none"} data-shell-trace-evidence={traceEvidence?.evidence || unavailable} aria-label={t("当前工作区追踪", "Current workspace trace")}>
     <header className="traceRail__title"><strong>DECISION TRACE</strong><span>{selectedIdentity ? `${selectedIdentity.objectType} / ${selectedIdentity.objectId}` : t("每一步都有真实证据边界", "Every step has a factual evidence boundary")}</span>{selected && <small>{t("选择阶段或关闭详情", "Choose a stage or close detail")}</small>}</header>
     <nav>{stages.map((stage, index) => <button type="button" key={stage.id} className={`traceRail__stage status-${stage.status}`} aria-expanded={expanded === stage.id} onClick={(event) => { triggerRef.current = event.currentTarget; setExpanded(expanded === stage.id ? "" : stage.id); }}><small>{String(index + 1).padStart(2, "0")}</small><b>{stage.label}</b><span>{stage.status}</span><em>{stage.detail}</em><code>{stage.evidence}</code></button>)}</nav>
     <article className="traceRail__object traceRail__detail"><header><span><small>{selected ? "TRACE DETAIL" : "CURRENT TRACE"}</small><b>{summary?.label || unavailable}</b></span>{selected && <button ref={closeRef} type="button" aria-label={t("收起追踪详情", "Collapse trace detail")} onClick={close}><X/></button>}</header><dl>{selectedIdentity && <div><dt>OBJECT</dt><dd>{selectedIdentity.objectType} / {selectedIdentity.objectId}</dd></div>}<div><dt>STATUS</dt><dd>{summary?.status || unavailable}</dd></div><div><dt>EVIDENCE</dt><dd>{summary?.evidence || unavailable}</dd></div><div><dt>DETAIL</dt><dd>{summary?.detail || unavailable}</dd></div></dl></article>
@@ -617,17 +641,27 @@ function StatePanel({ kind, title, detail, onRetry }) {
   </section>;
 }
 
+export function workspaceResourceRetainsLastValid(resourceState) {
+  return ["stale", "degraded"].includes(String(resourceState || "").toLowerCase());
+}
+
 export function WorkspaceStateBoundary({ resourceState = "loaded", empty = false, stale = false, degraded = false, forbidden = "", actionOutcome = null, onRetry, children }) {
-  if (forbidden || resourceState === "forbidden") return <StatePanel kind="forbidden" title={t("需要权限", "Permission required")} detail={forbidden ? t(`当前操作需要 ${forbidden} 权限。`, `This surface requires ${forbidden} permission.`) : t("当前身份无权查看这组工作区事实。", "The current identity cannot view these workspace facts.")} />;
-  if (resourceState === "not_loaded") return <StatePanel kind="loading" title={t("尚未加载", "Not loaded")} detail={t("进入工作区后再请求真实数据。", "Real data loads when the workspace opens.")} />;
-  if (resourceState === "loading") return <StatePanel kind="loading" title={t("正在加载", "Loading")} detail={t("正在读取当前工作区事实。", "Loading current workspace facts.")} />;
-  if (["error", "failed"].includes(resourceState)) return <StatePanel kind="error" title={t("加载失败", "Workspace failed to load")} detail={t("空白不代表数据为零，请重新加载。", "Blank values do not mean zero. Retry the workspace request.")} onRetry={onRetry} />;
+  const normalizedState = String(resourceState || "loaded").toLowerCase();
+  const isStale = stale || normalizedState === "stale";
+  const isDegraded = degraded || normalizedState === "degraded";
+  if (forbidden || normalizedState === "forbidden") return <StatePanel kind="forbidden" title={t("需要权限", "Permission required")} detail={forbidden ? t(`当前操作需要 ${forbidden} 权限。`, `This surface requires ${forbidden} permission.`) : t("当前身份无权查看这组工作区事实。", "The current identity cannot view these workspace facts.")} />;
+  if (normalizedState === "not_loaded") return <StatePanel kind="loading" title={t("尚未加载", "Not loaded")} detail={t("进入工作区后再请求真实数据。", "Real data loads when the workspace opens.")} />;
+  if (normalizedState === "loading") return <StatePanel kind="loading" title={t("正在加载", "Loading")} detail={t("正在读取当前工作区事实。", "Loading current workspace facts.")} />;
+  if (["error", "failed"].includes(normalizedState)) return <StatePanel kind="error" title={t("加载失败", "Workspace failed to load")} detail={t("空白不代表数据为零，请重新加载。", "Blank values do not mean zero. Retry the workspace request.")} onRetry={onRetry} />;
   if (empty) return <StatePanel kind="empty" title={t("暂无数据", "No data")} detail={t("当前筛选或权限范围内没有记录。", "No records exist in the current filter or permission scope.")} />;
-  return <div className="workspaceStateBoundary">
-    {stale && <StatePanel kind="warning" title={t("数据已陈旧", "Data is stale")} detail={t("保留最后有效事实；执行前需要刷新。", "The last valid facts remain visible; refresh before execution.")} onRetry={onRetry} />}
-    {degraded && <StatePanel kind="warning" title={t("服务降级", "Service degraded")} detail={t("部分事实不可用，受影响的动作会保持关闭。", "Some facts are unavailable; affected actions remain closed.")} onRetry={onRetry} />}
+  const constrained = isStale || isDegraded;
+  return <div className={`workspaceStateBoundary ${constrained ? "workspaceStateBoundary--constrained" : ""}`} data-resource-state={normalizedState}>
+    {isStale && <StatePanel kind="warning" title={t("数据已陈旧", "Data is stale")} detail={t("保留最后有效事实；执行前需要刷新。", "The last valid facts remain visible; refresh before execution.")} onRetry={onRetry} />}
+    {isDegraded && <StatePanel kind="warning" title={t("服务降级", "Service degraded")} detail={t("部分事实不可用，受影响的动作会保持关闭。", "Some facts are unavailable; affected actions remain closed.")} onRetry={onRetry} />}
     {actionOutcome?.kind === "error" && <StatePanel kind="error" title={t("操作失败", "Action failed")} detail={text(actionOutcome.message, t("服务端未确认变更。", "The server did not confirm the change."))} />}
     {actionOutcome?.kind === "success" && <StatePanel kind="success" title={t("操作已确认", "Action confirmed")} detail={text(actionOutcome.message)} />}
-    {children}
+    {constrained
+      ? <div className="workspaceStateBoundary__lastValid" data-last-valid-interaction="disabled" aria-disabled="true" inert="">{children}</div>
+      : children}
   </div>;
 }

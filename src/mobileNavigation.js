@@ -10,7 +10,7 @@ export const MOBILE_WORKSPACE_NAV = {
   ai: [{ id: "chat" }, { id: "watch" }, { id: "intelligence" }, { id: "eventsTasks" }],
   trade: [{ id: "cockpit" }, { id: "positions" }, { id: "executionReview" }, { id: "tradeLedger" }],
   lab: [{ id: "labMap" }, { id: "knowledgeBase" }, { id: "strategyLib" }, { id: "capabilityLib" }, { id: "labReviews" }],
-  control: [{ id: "riskHub" }, { id: "riskSettings" }, { id: "eventRisk" }]
+  control: [{ id: "riskHub" }, { id: "eventRisk" }, { id: "riskMandate" }, { id: "riskSettings" }]
 };
 
 export const MOBILE_MORE_UTILITIES = [{ id: "operationsCenter" }, { id: "systemSettings" }];
@@ -27,6 +27,7 @@ export const MOBILE_NAV_PRESENTATION = {
   riskHub: { label: ["Control", "Control"], code: "04 · RISK GOVERNANCE", iconId: "shieldCheck" },
   riskSettings: { label: ["风险规则", "Risk rules"], code: "CONTROL · RULES", iconId: "shield" },
   eventRisk: { label: ["事件风险", "Event risk"], code: "CONTROL · EVENTS", iconId: "calendarClock" },
+  riskMandate: { label: ["有效边界", "Effective boundaries"], code: "CONTROL · BOUNDARIES", iconId: "shield" },
   labMap: { label: ["Lab", "Lab"], code: "03 · RESEARCH & RELEASE", iconId: "gitBranch" },
   knowledgeBase: { label: ["知识孵化", "Knowledge Incubation"], code: "LAB · INCUBATION", iconId: "bookOpen", hint: ["来源、证据与候选", "Sources, evidence, and candidates"] },
   capabilityLib: { label: ["能力库", "Capabilities"], code: "CAPABILITY · LIB", iconId: "wrench", hint: ["工具、工作流与 MCP", "Tools, workflows, and MCP"] },
