@@ -29,6 +29,15 @@ const runtime = {
   socketTimers: new Map()
 };
 let lastMsgSaveAt = 0; // 行情/私有 WS 消息触发的落盘全局节流时间戳（避免每条 tick 全库序列化）
+const PRIVATE_STREAM_PERSIST_COLLECTIONS = Object.freeze([
+  "realtimeConnections", "orders", "fills", "positions", "portfolio",
+  "executionOrders", "exchangeOrders", "tradePlans", "armedSetups", "riskChecks",
+  "riskIncidents", "notifications", "ownerImprovementItems", "reviews", "system"
+]);
+
+function persistPrivateStreamState(saveDb, db) {
+  if (saveDb) saveDb(db, { collections: [...PRIVATE_STREAM_PERSIST_COLLECTIONS] });
+}
 
 function socketTimerState(connectionId) {
   let state = runtime.socketTimers.get(connectionId);
@@ -304,7 +313,7 @@ function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
     appendAudit(db, "实时 WebSocket 已连接", connection.id, "RealtimeManager");
     appendTrace(db, "realtime_ws", `${connection.exchange} ${connection.streamType} connected`);
     startHeartbeat(connection, socket, generation);
-    if (saveDb) saveDb(db);
+    persistPrivateStreamState(saveDb, db);
   });
   socket.on("message", (message) => {
     if (generation !== runtime.generation) return;
@@ -315,10 +324,13 @@ function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
       onMessage(message);
       connection.lastMessageAt = nowIso();
       if (!options.authenticatedRequired || connection.authenticatedCredentialFingerprint) connection.status = "connected";
-      // 关键：公有行情 WS 每秒推 10-40 条，绝不能每条都 saveDb（每次都全库序列化落盘→100% CPU）。
-      // 逐条更新只留在内存（API 从内存读），落盘全局节流到最多每 8s 一次，足够重启后恢复连接状态/私有仓位。
+      // 私有消息只持久化可能被该 WS 改写的交易对象，不能退回全库扫描。
+      // 逐条更新先留在内存，落盘全局节流到最多每 8s 一次。
       const now = Date.now();
-      if (saveDb && now - lastMsgSaveAt > 8000) { lastMsgSaveAt = now; saveDb(db, { lightweight: true }); }
+      if (saveDb && now - lastMsgSaveAt > 8000) {
+        lastMsgSaveAt = now;
+        persistPrivateStreamState(saveDb, db);
+      }
     } catch (error) {
       connection.lastError = error.message;
     }
@@ -329,7 +341,7 @@ function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
     connection.error = error.message;
     appendAudit(db, "实时 WebSocket 错误", connection.id, "RealtimeManager", "warning");
     appendTrace(db, "realtime_ws", `${connection.exchange} ${connection.streamType} error`, "error");
-    if (saveDb) saveDb(db);
+    persistPrivateStreamState(saveDb, db);
     try { socket.close(4001, "socket_error"); } catch { /* noop */ }
   });
   socket.on("close", () => {
@@ -344,7 +356,7 @@ function wireSocket(db, saveDb, connection, socket, onMessage, options = {}) {
       connectPrivateUser(db, saveDb, connection.exchange);
     }, delayMs);
     runtime.reconnectTimers.set(connection.id, timer);
-    if (saveDb) saveDb(db);
+    persistPrivateStreamState(saveDb, db);
   });
 }
 

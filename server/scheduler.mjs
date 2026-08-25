@@ -370,7 +370,9 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
       executionContext.assertLease();
       const resultStatus = result && typeof result === "object" ? String(result.status || "").toLowerCase() : "";
       if (["failed", "error"].includes(resultStatus)) {
-        throw new Error(result.error || result.reason || `${task.handler} 返回失败状态`);
+        const handlerError = new Error(result.error || result.reason || `${task.handler} 返回失败状态`);
+        if (Array.isArray(result.persistCollections)) handlerError.persistCollections = result.persistCollections;
+        throw handlerError;
       }
       output = typeof result === "string" ? result : summarizeHandlerResult(task.handler, result);
       const skipPersist = result && typeof result === "object" && result.skipPersist === true && trigger !== "manual";
@@ -390,7 +392,8 @@ export async function runTask(db, taskId, saveDb, trigger = "manual", options = 
     }
     task.failureCount = Number(task.failureCount || 0) + 1;
     task.lastError = error.message;
-    const run = recordRun(db, task, "failed", error.message, trigger, saveDb);
+    const persistCollections = Array.isArray(error.persistCollections) ? error.persistCollections : undefined;
+    const run = recordRun(db, task, "failed", error.message, trigger, saveDb, { persistCollections });
     scheduleRetryIfNeeded(db, task, saveDb, run.run);
     return run;
   } finally {
@@ -448,9 +451,10 @@ function recordRun(db, task, status, output, trigger, saveDb, opts = {}) {
   appendAudit(db, trigger === "manual" ? "立即运行任务" : "后台运行任务", task.id, "调度员", status === "ok" ? "info" : "warning");
   appendTrace(db, "scheduled_task", `${task.name} 运行`, status);
   if (saveDb) {
+    const schedulerCollections = ["meta", "tasks", "jobRuns", "jobLocks"];
     const collections = Array.isArray(opts.persistCollections)
-      ? [...new Set(["meta", "tasks", "jobRuns", "jobLocks", ...opts.persistCollections])]
-      : null;
+      ? [...new Set([...schedulerCollections, ...opts.persistCollections])]
+      : ["ok", "partial"].includes(status) ? null : schedulerCollections;
     saveDb(db, collections ? { collections } : undefined);
   }
   return { task, run };
@@ -469,7 +473,7 @@ function scheduleRetryIfNeeded(db, task, saveDb, failedRun) {
       task.enabled = false;
       task.nextRunAt = null;
     }
-    if (saveDb) saveDb(db);
+    if (saveDb) saveDb(db, { collections: ["meta", "tasks", "jobRuns", "jobLocks"] });
     return;
   }
   failedRun.status = "retry_scheduled";
@@ -481,11 +485,11 @@ function scheduleRetryIfNeeded(db, task, saveDb, failedRun) {
     const retryResult = await runTask(db, task.id, saveDb, "retry"); // runTask 是 async,此前不 await 导致 retryOf 永远写不上
     if (retryResult?.run) {
       retryResult.run.retryOf = failedRun.id;
-      if (saveDb) saveDb(db);
+      if (saveDb) saveDb(db, { collections: ["meta", "tasks", "jobRuns", "jobLocks"] });
     }
   }, backoffSeconds * 1000);
   runtime.timeoutJobs.set(`${task.id}:retry:${failedRun.id}`, timer);
-  if (saveDb) saveDb(db);
+  if (saveDb) saveDb(db, { collections: ["meta", "tasks", "jobRuns", "jobLocks"] });
 }
 
 function recoverFailedRuns(db, saveDb) {

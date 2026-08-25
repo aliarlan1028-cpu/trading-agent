@@ -56,6 +56,87 @@ test("a still-running handler cannot be stolen after an arbitrary wall-clock age
   assert.equal(calls, 2);
 });
 
+test("a locked scheduler tick persists only scheduler bookkeeping", async () => {
+  const gate = deferred();
+  registerTaskHandler("locked_tick_scoped_persistence", async () => {
+    await gate.promise;
+    return { status: "ok", persistCollections: ["system"] };
+  });
+  const task = {
+    id: "task_locked_tick_scoped_persistence",
+    name: "locked tick persistence",
+    enabled: true,
+    handler: "locked_tick_scoped_persistence",
+    type: "Every",
+    schedule: "1m"
+  };
+  const db = dbWith(task);
+  const leases = leaseApi();
+  const saves = [];
+  const save = (_database, options) => saves.push(options);
+  const first = runTask(db, task.id, save, "scheduler", { leaseApi: leases });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const second = await runTask(db, task.id, save, "scheduler", { leaseApi: leases });
+
+  assert.equal(second.run.status, "skipped_locked");
+  assert.deepEqual(saves, [{ collections: ["meta", "tasks", "jobRuns", "jobLocks"] }]);
+  gate.resolve();
+  await first;
+});
+
+test("a failed scheduler handler persists only scheduler bookkeeping", async () => {
+  registerTaskHandler("failed_tick_scoped_persistence", async () => {
+    throw new Error("upstream unavailable");
+  });
+  const task = {
+    id: "task_failed_tick_scoped_persistence",
+    name: "failed tick persistence",
+    enabled: true,
+    handler: "failed_tick_scoped_persistence",
+    type: "Every",
+    schedule: "30s",
+    retryPolicy: { maxRetries: 0, backoffSeconds: 1 }
+  };
+  const db = dbWith(task);
+  const saves = [];
+
+  const result = await runTask(db, task.id, (_database, options) => saves.push(options), "scheduler", { leaseApi: leaseApi() });
+
+  assert.equal(result.run.status, "failed");
+  assert.equal(saves.length, 2);
+  assert.ok(saves.every((options) => JSON.stringify(options) === JSON.stringify({
+    collections: ["meta", "tasks", "jobRuns", "jobLocks"]
+  })));
+});
+
+test("a structured failed result preserves its declared fail-closed business state", async () => {
+  registerTaskHandler("failed_result_scoped_persistence", async () => ({
+    status: "failed",
+    error: "authoritative sync unavailable",
+    persistCollections: ["riskIncidents", "system"]
+  }));
+  const task = {
+    id: "task_failed_result_scoped_persistence",
+    name: "failed result persistence",
+    enabled: true,
+    handler: "failed_result_scoped_persistence",
+    type: "Every",
+    schedule: "1m",
+    retryPolicy: { maxRetries: 0, backoffSeconds: 1 }
+  };
+  const db = dbWith(task);
+  const saves = [];
+
+  const result = await runTask(db, task.id, (_database, options) => saves.push(options), "scheduler", { leaseApi: leaseApi() });
+
+  assert.equal(result.run.status, "failed");
+  assert.deepEqual(saves[0], {
+    collections: ["meta", "tasks", "jobRuns", "jobLocks", "riskIncidents", "system"]
+  });
+  assert.deepEqual(saves[1], { collections: ["meta", "tasks", "jobRuns", "jobLocks"] });
+});
+
 test("fencing owner mismatch cannot renew or release another scheduler run", () => {
   const leases = leaseApi();
   const first = leases.acquire("scheduler:key", "owner-a");

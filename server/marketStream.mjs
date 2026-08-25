@@ -38,6 +38,9 @@ let connected = false;
 let running = false;
 let generation = 0;
 let lastMsgSaveAt = 0;
+const PUBLIC_STREAM_PERSIST_COLLECTIONS = Object.freeze([
+  "realtimeConnections", "marketFeatureState", "portfolio", "positions"
+]);
 
 function instToSymbol(instId) {
   return String(instId).replace("-SWAP", "").replace("-", "/");
@@ -78,8 +81,8 @@ function ensurePublicConnection(db) {
   return connection;
 }
 
-function saveConnection(options) {
-  if (saveDbRef) saveDbRef(dbRef, options);
+function saveConnection() {
+  if (saveDbRef) saveDbRef(dbRef, { collections: [...PUBLIC_STREAM_PERSIST_COLLECTIONS] });
 }
 
 export function startMarketStream(db, saveDb) {
@@ -133,7 +136,7 @@ function connect(expectedGeneration = generation) {
     const now = Date.now();
     if (saveDbRef && now - lastMsgSaveAt > 8000) {
       lastMsgSaveAt = now;
-      saveConnection({ lightweight: true });
+      saveConnection();
     }
   });
   socket.on("close", () => {

@@ -369,7 +369,11 @@ test("public connection state preserves connecting, connected, error, and reconn
       data: [{ last: "62000", open24h: "60000", high24h: "63000", low24h: "59000", ts: String(Date.now()) }]
     });
     assert.ok(connection.lastMessageAt);
-    assert.ok(saves.some((options) => options?.lightweight === true));
+    assert.ok(saves.length >= 2);
+    assert.ok(saves.every((options) => Array.isArray(options?.collections)));
+    assert.deepEqual(saves.at(-1).collections.slice().sort(), [
+      "marketFeatureState", "portfolio", "positions", "realtimeConnections"
+    ]);
 
     socket.fail("transport_down");
     assert.equal(connection.status, "error");
@@ -394,8 +398,9 @@ test("private start, authentication, subscriptions, and stop keep their protocol
     readEnabled: true,
     apiKeyFingerprint: crypto.createHash("sha256").update("private-key").digest("hex").slice(0, 16)
   }];
+  const saves = [];
   try {
-    realtimeManager.startRealtimeManager(db, () => {});
+    realtimeManager.startRealtimeManager(db, (_database, options) => saves.push(options || null));
     assert.equal(privateSockets().length, 1);
     const socket = privateSockets()[0];
     socket.open();
@@ -406,6 +411,13 @@ test("private start, authentication, subscriptions, and stop keep their protocol
     assert.deepEqual(subscription.args.map((row) => row.channel), ["orders", "positions", "account"]);
     for (const channel of ["orders", "positions", "account"]) socket.receive({ event: "subscribe", arg: { channel } });
     assert.equal(db.realtimeConnections.find((row) => row.streamType === "private_user").status, "connected");
+    assert.ok(saves.length > 0);
+    assert.ok(saves.every((options) => Array.isArray(options?.collections)));
+    assert.deepEqual(saves.at(-1).collections.slice().sort(), [
+      "armedSetups", "exchangeOrders", "executionOrders", "fills", "notifications",
+      "orders", "ownerImprovementItems", "portfolio", "positions", "realtimeConnections",
+      "reviews", "riskChecks", "riskIncidents", "system", "tradePlans"
+    ]);
 
     realtimeManager.stopRealtimeManager(db, "manual_stop");
     assert.equal(socket.closeCalls.length, 1);

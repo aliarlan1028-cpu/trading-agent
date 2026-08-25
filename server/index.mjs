@@ -895,7 +895,11 @@ setMarketTickHook((database, symbol, price) => {
     low24h: market.low24h,
     spreadBps: market.spreadBps
   });
-  if (opportunity.queued) saveDb(database, { lightweight: true });
+  if (opportunity.queued) {
+    saveDb(database, {
+      collections: ["marketFeatureState", "opportunityCandidates", "opportunityEvents", "notifications", "system"]
+    });
+  }
 
   // 普通观察哨也改为实时 tick 穿越检测；它仍只唤起 AI，不具备下单权限。
   const watchSweep = sweepWatches(database, new Map([[symbol, price]]));
@@ -904,7 +908,11 @@ setMarketTickHook((database, symbol, price) => {
     actor: "MarketStream",
     realtime: true
   });
-  if (watchSweep.changed) saveDb(database, { lightweight: true });
+  if (watchSweep.changed) {
+    saveDb(database, {
+      collections: ["watchlist", "watchTriggers", "telegramWatchOutbox", "notifications", "system"]
+    });
+  }
 
   // 发现即唤起，不再等待下一个 1 分钟哨兵周期；任务锁与每小时限频仍由同一入口保证。
   if (opportunity.queued || watchSweep.triggered.length) {
