@@ -37,14 +37,14 @@
 <body>
   <header>
     <h1>KORDYN · FINAL REAL-VIEWPORT PROTOTYPE PARITY</h1>
-    <p>Immutable 1056233 · Capture HEAD F855781 · Production source 3BD2CE8 · 2026-08-25</p>
+    <p>Immutable 1056233 · Production source DB5286A · Capture/test HEAD 5E017F0 · 2026-08-25</p>
   </header>
 
   <section>
     <h2>Authority and required viewports <span>exact prototype + production shells</span></h2>
     <div class="grid grid--3">
       <figure class="h420"><figcaption>Immutable prototype <span>1440 × 900</span></figcaption><img src="prototype-1440x900.png" alt="Immutable 1056233 prototype Command workspace at 1440 by 900"></figure>
-      <figure class="h420"><figcaption>Production desktop <span>1440 × 900</span></figcaption><img src="desktop.png" alt="Production AI Trader desktop at 1440 by 900 on capture HEAD f855781"></figure>
+      <figure class="h420"><figcaption>Production desktop <span>1440 × 900</span></figcaption><img src="desktop.png" alt="Production AI Trader desktop at 1440 by 900 from production source db5286a"></figure>
       <figure class="h420"><figcaption>Medium desktop <span>1180 × 820</span></figcaption><img src="desktop-medium.png" alt="Production medium desktop with bounded Context dock at 1180 by 820"></figure>
       <figure class="h460"><figcaption>Production APP <span>390 × 844 · 430 × 932</span></figcaption><div class="phone-pair"><img src="mobile.png" alt="Production APP at 390 by 844"><img src="mobile-430x932.png" alt="Production APP at 430 by 932"></div></figure>
       <figure class="h460"><figcaption>Desktop selected object <span>typed Context + Trace</span></figcaption><div class="mini-grid"><div><img src="desktop-selected-event-context.png" alt="Desktop typed Event Context"><b>Context</b></div><div><img src="desktop-selected-event-trace-expanded.png" alt="Desktop typed Event expanded Trace"><b>Trace</b></div></div></figure>
@@ -89,14 +89,14 @@
   </section>
 
   <section>
-    <h2>Authenticated shell overlays and lifecycle <span>public login unchanged · authenticated type scope</span></h2>
+    <h2>Authenticated shell overlays and lifecycle <span>actual App/MobileApp · production release mismatch · Operations Recovery</span></h2>
     <div class="grid grid--3">
-      <figure class="h360"><figcaption>Startup loading <span>authenticated</span></figcaption><img src="desktop-authenticated-startup-loading.png" alt="Authenticated startup loading boundary"></figure>
-      <figure class="h360"><figcaption>Connection failed <span>authenticated</span></figcaption><img src="desktop-authenticated-connection-failed.png" alt="Authenticated connection failed boundary"></figure>
-      <figure class="h360"><figcaption>Confirm Host <span>desktop</span></figcaption><img src="desktop-authenticated-confirm-host.png" alt="Authenticated desktop confirmation overlay"></figure>
-      <figure class="h360"><figcaption>Release notice <span>desktop</span></figcaption><img src="desktop-authenticated-release-notice.png" alt="Authenticated desktop release notice"></figure>
-      <figure class="h460"><figcaption>Confirm Host <span>APP 390</span></figcaption><img src="mobile-390-authenticated-confirm-host.png" alt="Authenticated APP confirmation overlay"></figure>
-      <figure class="h460"><figcaption>Release notice <span>APP 390</span></figcaption><img src="mobile-390-authenticated-release-notice.png" alt="Authenticated APP release notice"></figure>
+      <figure class="h360"><figcaption>Startup loading <span>real core request paused</span></figcaption><img src="desktop-authenticated-startup-loading.png" alt="Actual authenticated App startup boundary while the real bootstrap core request is paused"></figure>
+      <figure class="h360"><figcaption>Connection failed <span>same request aborted</span></figcaption><img src="desktop-authenticated-connection-failed.png" alt="Actual authenticated App connection boundary after aborting the same bootstrap core request"></figure>
+      <figure class="h360"><figcaption>Confirm Host <span>desktop recovery action</span></figcaption><img src="desktop-authenticated-confirm-host.png" alt="Actual desktop App ordinary ConfirmHost opened by Operations Recovery reconciliation"></figure>
+      <figure class="h360"><figcaption>Release notice <span>real release mismatch</span></figcaption><img src="desktop-authenticated-release-notice.png" alt="Actual desktop App Release Notice from VITE_APP_RELEASE and APP_RELEASE mismatch"></figure>
+      <figure class="h460"><figcaption>Confirm Host <span>APP recovery action</span></figcaption><img src="mobile-390-authenticated-confirm-host.png" alt="Actual MobileApp ordinary ConfirmHost opened by Operations Recovery reconciliation"></figure>
+      <figure class="h460"><figcaption>Release notice <span>real release mismatch</span></figcaption><img src="mobile-390-authenticated-release-notice.png" alt="Actual MobileApp Release Notice from VITE_APP_RELEASE and APP_RELEASE mismatch"></figure>
     </div>
   </section>
 
@@ -107,8 +107,8 @@
       <figure class="h360"><figcaption>Failed <span>real request aborted</span></figcaption><img src="desktop-real-failed.png" alt="Real failed boundary from aborted Operations request"></figure>
       <figure class="h360"><figcaption>Stale source <span>real freshness</span></figcaption><img src="desktop-real-stale-source.png" alt="Real AI Events stale source health"></figure>
       <figure class="h360"><figcaption>403 forbidden <span>real non-Owner</span></figcaption><img src="mobile-390-real-forbidden.png" alt="Real APP Owner-required forbidden gate"></figure>
-      <figure class="h460"><figcaption>Last-valid stale <span>APP 390</span></figcaption><img src="mobile-390-last-valid-stale.png" alt="APP 390 stale boundary preserving last-valid truth"></figure>
-      <figure class="h460"><figcaption>Last-valid degraded <span>APP 430</span></figcaption><img src="mobile-430-last-valid-degraded.png" alt="APP 430 degraded boundary preserving last-valid truth"></figure>
+      <figure class="h460"><figcaption>Last-valid stale <span>APP 390 state harness</span></figcaption><img src="mobile-390-last-valid-stale.png" alt="Production MobileApp stale component state preserving inert last-valid truth"></figure>
+      <figure class="h460"><figcaption>Last-valid degraded <span>APP 430 state harness</span></figcaption><img src="mobile-430-last-valid-degraded.png" alt="Production MobileApp degraded component state preserving inert last-valid truth"></figure>
       <figure class="h360"><figcaption>Ordinary modal <span>hard edge</span></figcaption><img src="desktop-ordinary-modal.png" alt="Production ordinary modal"></figure>
       <figure class="h360"><figcaption>Danger confirm <span>desktop disabled</span></figcaption><img src="desktop-danger-confirmation.png" alt="Desktop typed danger confirmation before authorization"></figure>
       <figure class="h460"><figcaption>Danger confirm <span>APP 390</span></figcaption><img src="mobile-390-danger-confirmation.png" alt="APP 390 typed danger confirmation"></figure>
@@ -132,7 +132,7 @@
 
   <footer>
     <span><strong>Evidence scope:</strong> exact 1440×900, 1180×820, 390×844, 430×932 · real permissions and request boundaries · no mock success payloads</span>
-    <span>Prototype 1056233 · Production 3bd2ce8 · Capture f855781</span>
+    <span>Prototype 1056233 · Production source db5286a · Capture/test HEAD 5e017f0</span>
   </footer>
 </body>
 </html>
