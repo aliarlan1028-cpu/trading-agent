@@ -240,6 +240,8 @@ let persistedEntityFingerprints = new Map();
 let persistedEntityDocumentFingerprints = new Map();
 let persistedAuditIds = new Set();
 let persistedTraceIds = new Set();
+let auditOperationalVerificationCache = null;
+const auditOperationalVerificationCounters = { fullScans: 0, incrementalRows: 0, cacheHits: 0 };
 
 function entityDocumentKey(tenantId, resourceType, resourceId) {
   return `${tenantId}\u001f${resourceType}\u001f${resourceId}`;
@@ -247,6 +249,10 @@ function entityDocumentKey(tenantId, resourceType, resourceId) {
 
 export function persistenceDocumentFingerprint(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+export function auditOperationalVerificationStats() {
+  return { ...auditOperationalVerificationCounters };
 }
 
 export function nowIso() {
@@ -2296,8 +2302,111 @@ export function verifyAuditChainReadOnly() {
   }
 }
 
+function auditDataVersion() {
+  ensureSqlite();
+  return Number(sqlite.pragma("data_version", { simple: true }));
+}
+
+function auditVerificationConfigurationKey() {
+  return [
+    String(process.env.AUDIT_CONTINUITY_BASELINE_FILE || ""),
+    String(process.env.PRODUCTION_SECURITY_PROFILE || "")
+  ].join("\u001f");
+}
+
+function cacheFullAuditOperationalVerification(status) {
+  auditOperationalVerificationCounters.fullScans += 1;
+  if (status?.operationalReady !== true) {
+    auditOperationalVerificationCache = null;
+    return status;
+  }
+  const tip = sqlite.prepare("select rowid, doc from audit_log_entries order by rowid desc limit 1").get();
+  let entry = null;
+  try { entry = tip ? JSON.parse(tip.doc) : null; } catch { entry = null; }
+  if ((tip && (!entry?.hash || !Number.isInteger(Number(tip.rowid)))) || (!tip && Number(status.raw?.checked || 0) !== 0)) {
+    auditOperationalVerificationCache = null;
+    return status;
+  }
+  auditOperationalVerificationCache = {
+    sqlitePath: sqliteDbPath,
+    configurationKey: auditVerificationConfigurationKey(),
+    dataVersion: auditDataVersion(),
+    lastRowid: Number(tip?.rowid || 0),
+    lastHash: entry?.hash || null,
+    status
+  };
+  return status;
+}
+
+function storedAuditTailRow(row, expectedRowid, expectedPrevHash) {
+  let entry;
+  try { entry = JSON.parse(row.doc); } catch { return null; }
+  if (Number(row.rowid) !== expectedRowid
+    || entry?.id !== row.id
+    || entry?.actor !== row.actor
+    || entry?.action !== row.action
+    || entry?.target !== row.target
+    || entry?.severity !== row.severity
+    || entry?.createdAt !== row.created_at
+    || entry?.prevHash !== expectedPrevHash
+    || !entry?.hash
+    || entry.hash !== auditHash(entry)) return null;
+  return entry;
+}
+
+function extendAuditOperationalVerificationCache() {
+  const cached = auditOperationalVerificationCache;
+  if (!cached
+    || cached.sqlitePath !== sqliteDbPath
+    || cached.configurationKey !== auditVerificationConfigurationKey()
+    || cached.dataVersion !== auditDataVersion()) return null;
+  const rows = sqlite.prepare(`
+    select rowid, id, actor, action, target, severity, created_at, doc
+    from audit_log_entries where rowid > ? order by rowid asc
+  `).all(cached.lastRowid);
+  if (!rows.length) {
+    auditOperationalVerificationCounters.cacheHits += 1;
+    return cached.status;
+  }
+  let previousRowid = cached.lastRowid;
+  let previousHash = cached.lastHash;
+  for (const row of rows) {
+    const entry = storedAuditTailRow(row, previousRowid + 1, previousHash);
+    if (!entry) return null;
+    previousRowid = Number(row.rowid);
+    previousHash = entry.hash;
+  }
+  const previousStatus = cached.status;
+  const nextRaw = previousStatus.raw ? {
+    ...previousStatus.raw,
+    checked: Number(previousStatus.raw.checked || 0) + rows.length
+  } : previousStatus.raw;
+  const nextStatus = {
+    ...previousStatus,
+    ...(previousStatus.mode === "full_chain" ? { cutoffHeadHash: previousHash } : {}),
+    tailRowsChecked: Number(previousStatus.tailRowsChecked || 0) + rows.length,
+    raw: nextRaw
+  };
+  auditOperationalVerificationCounters.incrementalRows += rows.length;
+  auditOperationalVerificationCache = {
+    ...cached,
+    dataVersion: auditDataVersion(),
+    lastRowid: previousRowid,
+    lastHash: previousHash,
+    status: nextStatus
+  };
+  return nextStatus;
+}
+
 export function verifyAuditOperationalContinuity(db) {
-  return verifyApprovedAuditContinuityAtPath({ sqlitePath: db?.__sqlitePath || sqliteDbPath });
+  const requestedPath = db?.__sqlitePath || sqliteDbPath;
+  if (requestedPath === sqliteDbPath) {
+    ensureSqlite();
+    const cached = extendAuditOperationalVerificationCache();
+    if (cached) return cached;
+  }
+  const status = verifyApprovedAuditContinuityAtPath({ sqlitePath: requestedPath });
+  return requestedPath === sqliteDbPath ? cacheFullAuditOperationalVerification(status) : status;
 }
 
 export function verifyAuditOperationalContinuityReadOnly() {
