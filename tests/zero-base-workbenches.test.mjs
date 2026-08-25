@@ -8,6 +8,7 @@ const concepts = readFileSync(new URL("../src/conceptPages.jsx", import.meta.url
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const productStyles = readFileSync(new URL("../src/productStyles.js", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/zero-base-workbenches.css", import.meta.url), "utf8");
+const systemStyles = readFileSync(new URL("../src/zero-base-system.css", import.meta.url), "utf8");
 
 test("every desktop workbench is scoped by the active zero-base family and view", () => {
   assert.match(shell, /className="zbWorkbench"/);
@@ -74,4 +75,10 @@ test("advertised Today, portfolio and knowledge destinations own distinct produc
   assert.match(concepts, /section==="graph"/);
   assert.match(main, /import:\s*"import"/);
   assert.match(main, /graph:\s*"graph"/);
+});
+
+test("desktop Trace dialog overrides the legacy bottom-rail geometry with readable rows", () => {
+  assert.match(systemStyles, /\.zeroBaseProduct\s*>\s*\.zbShellTrace\s*\{[^}]*grid-template-columns:\s*1fr/);
+  assert.match(systemStyles, /\.zeroBaseProduct\s*>\s*\.zbShellTrace\s*>\s*nav\s*\{[^}]*grid-template-columns:\s*1fr/);
+  assert.match(systemStyles, /\.zeroBaseProduct\s*>\s*\.zbShellTrace\s+\.traceRail__stage,[^{]*\{[^}]*grid-template-columns:\s*32px\s+minmax\(0,1fr\)\s+auto/);
 });
