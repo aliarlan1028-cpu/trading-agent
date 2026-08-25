@@ -84,6 +84,14 @@ async function click(cdp, selector, text = "") {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+async function pressKey(cdp, key, { shift = false } = {}) {
+  const code = key === "Escape" ? "Escape" : key === "Tab" ? "Tab" : key;
+  const virtualKey = key === "Escape" ? 27 : key === "Tab" ? 9 : 0;
+  await cdp.send("Input.dispatchKeyEvent", { type:"keyDown", key, code, windowsVirtualKeyCode:virtualKey, modifiers:shift ? 8 : 0 });
+  await cdp.send("Input.dispatchKeyEvent", { type:"keyUp", key, code, windowsVirtualKeyCode:virtualKey, modifiers:shift ? 8 : 0 });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+}
+
 async function setViewport(cdp, url, width, height) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false, screenWidth: width, screenHeight: height });
   await cdp.send("Page.navigate", { url });
@@ -152,14 +160,29 @@ try {
     await capture(cdp, `desktop-${width}-today`);
     responsive.push({ width, family: geometry.family, mainWidth: geometry.main.width });
   }
+  await click(cdp, '.zbSubnav [data-zero-base-view="actions"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=today]').dataset.zeroBaseWorkbenchView === 'actions' && document.querySelector('.zbTodayActions')", "Today all-actions view");
 
   await click(cdp, '[data-zero-base-family="ai"]');
   await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily === 'ai' && document.querySelector('.conceptChatShell')", "AI production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="patrol"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=ai]').dataset.zeroBaseWorkbenchView === 'patrol' && document.querySelector('[data-ai-surface=patrol]') && !document.querySelector('[data-ai-surface=patrol] .agInputBar')", "AI patrol archive synchronization");
+  await waitForExpression(cdp, "window.__zeroBaseChatRequests.some(url=>new URL(url,location.origin).searchParams.get('sessionId')==='chat_autocycle')", "authoritative patrol session request");
+  await capture(cdp, "desktop-1180-ai-patrol");
+  await click(cdp, '.zbSubnav [data-zero-base-view="poster"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=ai]').dataset.zeroBaseWorkbenchView === 'poster' && document.querySelector('[data-ai-surface=poster]') && !document.querySelector('[data-ai-surface=poster] .agInputBar')", "AI poster archive synchronization");
+  await waitForExpression(cdp, "window.__zeroBaseChatRequests.some(url=>new URL(url,location.origin).searchParams.get('scope')==='all')", "all-session poster request");
   await click(cdp, '.zbSubnav [data-zero-base-view="intelligence"]');
   await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=ai]').dataset.zeroBaseWorkbenchView === 'intelligence' && document.querySelector('.cp2IntelLayout')", "AI intelligence subpage synchronization");
   await capture(cdp, "desktop-1180-ai-intelligence");
 
   await click(cdp, '[data-zero-base-family="portfolio"]');
+  await click(cdp, '.zbSubnav [data-zero-base-view="account"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=portfolio]').dataset.zeroBaseWorkbenchView === 'account' && document.querySelector('[data-portfolio-surface=account]')", "Portfolio account subpage synchronization");
+  await capture(cdp, "desktop-1180-portfolio-account");
+  await click(cdp, '.zbSubnav [data-zero-base-view="protection"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=portfolio]').dataset.zeroBaseWorkbenchView === 'protection' && document.querySelector('[data-portfolio-surface=protection]')", "Portfolio protection subpage synchronization");
+  await capture(cdp, "desktop-1180-portfolio-protection");
   await click(cdp, '.zbSubnav [data-zero-base-view="positions"]');
   await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=portfolio]').dataset.zeroBaseWorkbenchView === 'positions' && document.querySelector('.positionCommandPage')", "Portfolio positions subpage synchronization");
   await capture(cdp, "desktop-1180-portfolio-positions");
@@ -172,6 +195,12 @@ try {
 
   await click(cdp, '[data-zero-base-family="knowledge"]');
   await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]') && document.querySelector('.cp2KnowledgeIncubator')", "Knowledge production workbench navigation");
+  await click(cdp, '.zbSubnav [data-zero-base-view="import"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]').dataset.zeroBaseWorkbenchView === 'import' && document.querySelector('[data-knowledge-surface=import]')", "Knowledge import synchronization");
+  await capture(cdp, "desktop-1180-knowledge-import");
+  await click(cdp, '.zbSubnav [data-zero-base-view="graph"]');
+  await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]').dataset.zeroBaseWorkbenchView === 'graph' && document.querySelector('[data-knowledge-surface=graph]')", "Knowledge graph synchronization");
+  await capture(cdp, "desktop-1180-knowledge-graph");
   await click(cdp, '.zbSubnav [data-zero-base-view="workflows"]');
   await waitForExpression(cdp, "document.querySelector('[data-zero-base-workbench=knowledge]').dataset.zeroBaseWorkbenchView === 'workflows' && document.querySelector('.cp2KnowledgeTabs button.active')?.textContent.includes('工具与工作流实验室')", "Knowledge workflow candidate synchronization");
   await capture(cdp, "desktop-1180-knowledge");
@@ -199,12 +228,17 @@ try {
   await capture(cdp, "desktop-1180-configuration-security");
 
   await click(cdp, '[data-zero-base-tool="context"]');
-  await waitForExpression(cdp, "document.querySelector('.zbShellContext:not([hidden])')", "Context drawer");
-  await click(cdp, ".zbShellScrim");
-  await waitForExpression(cdp, "document.querySelector('.zbShellContext[hidden]')", "Context drawer close");
+  await waitForExpression(cdp, "document.querySelector('.zbShellContext:not([hidden])')?.getAttribute('role')==='dialog' && document.querySelector('.zbShellContext').contains(document.activeElement)", "Context dialog focus");
+  await capture(cdp, "desktop-1180-context-dialog");
+  await pressKey(cdp, "Tab");
+  assert.equal(await evaluate(cdp, "document.querySelector('.zbShellContext').contains(document.activeElement)"), true, "Tab remains inside Context");
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "document.querySelector('.zbShellContext[hidden]') && document.activeElement===document.querySelector('[data-zero-base-tool=context]')", "Context Escape close and focus return");
   await click(cdp, '[data-zero-base-tool="trace"]');
-  await waitForExpression(cdp, "document.querySelector('.zbShellTrace:not([hidden])')", "Trace drawer");
-  await click(cdp, ".zbShellScrim");
+  await waitForExpression(cdp, "document.querySelector('.zbShellTrace:not([hidden])')?.getAttribute('role')==='dialog' && document.querySelector('.zbShellTrace').contains(document.activeElement)", "Trace dialog focus");
+  await capture(cdp, "desktop-1180-trace-dialog");
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "document.querySelector('.zbShellTrace[hidden]') && document.activeElement===document.querySelector('[data-zero-base-tool=trace]')", "Trace Escape close and focus return");
 
   await click(cdp, ".commandRail__search input");
   await evaluate(cdp, `(() => {
@@ -243,9 +277,10 @@ try {
     assert.equal(states[state].overflow, false, `${state}: no document overflow`);
     if (["stale", "degraded"].includes(state)) { assert.equal(states[state].lastValid, true); assert.equal(states[state].disabled, "true"); }
     else assert.equal(states[state].lastValid, false);
+    await capture(cdp, `desktop-1180-state-${state}`);
   }
 
-  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today", "ai/intelligence", "portfolio/positions", "strategy/historical", "knowledge/workflows", "capability/mcp", "reviews/lessons", "guard/events", "operations/tasks", "configuration/security"], drawers: ["context", "trace"], selection: "Event:event-5", states }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", responsive, navigation: ["today/actions", "ai/patrol", "ai/poster", "ai/intelligence", "portfolio/account", "portfolio/protection", "portfolio/positions", "strategy/historical", "knowledge/import", "knowledge/graph", "knowledge/workflows", "capability/mcp", "reviews/lessons", "guard/events", "operations/tasks", "configuration/security"], chatContracts:["sessionId=chat_autocycle","scope=all"], drawers: ["context-keyboard", "trace-keyboard"], selection: "Event:event-5", states }, null, 2));
 } finally {
   cdp?.close();
   await stopProcess(chrome);

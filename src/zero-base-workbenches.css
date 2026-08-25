@@ -277,10 +277,57 @@
 }
 
 /* AI Trader: conversation remains the primary worksite, with its factual rail attached. */
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface {
+  min-height: calc(100vh - 252px) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agChat {
+  min-height: inherit;
+  overflow: hidden;
+  border-color: #303630;
+  color: #F4F1E9;
+  background: var(--zb-ink);
+  box-shadow: 0 18px 44px rgba(17, 19, 17, .18);
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agChatHead {
+  border-color: #343A34;
+  color: #F4F1E9;
+  background: transparent;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agChatTitle { color:#F4F1E9; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agChatNum { color:var(--zb-ink);background:var(--zb-acid); }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agMsgs { padding: 0 20px 24px; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveIntro {
+  display:grid;
+  gap:8px;
+  margin:0 -20px 18px;
+  padding:20px;
+  border-bottom:1px solid #343A34;
+  color:#F4F1E9;
+  background:radial-gradient(circle at 92% 20%,rgba(204,255,61,.12),transparent 28%);
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveIntro small { color:var(--zb-acid);font:700 9px/1 var(--zb-font-mono);letter-spacing:.13em; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveIntro b { max-width:720px;font-size:14px;line-height:1.6; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveEmpty {
+  display:grid;
+  gap:8px;
+  max-width:720px;
+  padding:24px;
+  border:1px solid #4B554B;
+  border-radius:16px;
+  color:#9DA69D;
+  background:#171A17;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveEmpty b { color:#F4F1E9;font-size:16px; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveEmpty p { color:#9DA69D;line-height:1.6; }
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .aiArchiveSurface .agBubbleAi { border:1px solid #4B554B;background:#171A17; }
 .zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .conceptChatShell {
   min-height: calc(100vh - 252px) !important;
   grid-template-columns: minmax(0, 1fr) 288px !important;
   gap: 14px !important;
+}
+.zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .conceptChatShell.aiArchiveSurface {
+  grid-template-columns: minmax(0, 1fr) !important;
 }
 .zeroBaseProduct .zbWorkbench[data-zero-base-workbench="ai"] .agChat {
   overflow: hidden;

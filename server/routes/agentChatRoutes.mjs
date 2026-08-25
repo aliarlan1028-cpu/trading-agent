@@ -4,6 +4,31 @@
 import { resolvePermissions } from "../auth.mjs";
 import { userAgentInvocation } from "../agentInvocation.mjs";
 
+export function buildAgentChatPayload({ db, sessions = [], query = {}, provider = null }) {
+  const requestedId = String(query.sessionId || "").trim();
+  const requested = requestedId ? sessions.find((session) => session.id === requestedId) : null;
+  const activeSessionId = requestedId ? requested?.id || null : sessions[0]?.id || null;
+  const accessibleIds = new Set(sessions.map((session) => session.id));
+  const allMessages = Array.isArray(db.chatMessages) ? db.chatMessages : [];
+  const aggregate = query.scope === "all";
+  const messages = aggregate
+    ? allMessages
+      .filter((message) => accessibleIds.has(message.sessionId))
+      .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+      .slice(-100)
+    : activeSessionId
+      ? allMessages.filter((message) => message.sessionId === activeSessionId).slice(-100)
+      : [];
+  return {
+    sessions,
+    activeSessionId,
+    messages,
+    provider,
+    llmConfigured: Boolean(provider),
+    messageScope: aggregate ? "all-accessible-sessions" : activeSessionId ? "single-session" : "empty"
+  };
+}
+
 export function registerAgentChatRoutes(app, ctx) {
   const { db, persist, saveDb, requirePermission, id, nowIso, appendAudit, activeProvider, runAgentChat, runAgentCommand } = ctx;
   const chatSessionsSorted = () => (db.chatSessions || []).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
@@ -15,15 +40,8 @@ export function registerAgentChatRoutes(app, ctx) {
 
   app.get("/api/agent/chat", requirePermission("account.read"), (req, res) => {
     const sessions = accessibleSessions(req);
-    const requested = sessions.find((session) => session.id === req.query.sessionId);
-    const activeSessionId = requested?.id || sessions[0]?.id || null;
-    res.json({
-      sessions,
-      activeSessionId,
-      messages: activeSessionId ? (db.chatMessages || []).filter((message) => message.sessionId === activeSessionId).slice(-100) : [],
-      provider: activeProvider(),
-      llmConfigured: Boolean(activeProvider())
-    });
+    const provider = activeProvider();
+    res.json(buildAgentChatPayload({ db, sessions, query: req.query, provider }));
   });
 
   app.post("/api/agent/chat/sessions", requirePermission("write:mandate"), (req, res) => {

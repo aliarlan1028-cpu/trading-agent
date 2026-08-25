@@ -1321,6 +1321,17 @@ test("AI patrol and poster are direct mobile workspaces instead of chat aliases"
   assert.doesNotMatch(poster, /输入指令，与 AI 交易员对话/);
 });
 
+test("desktop AI patrol and poster resolve to their own real archive surfaces", () => {
+  const patrol = render(React.createElement(C.AiTraderCenter, { data, action, ui, initialTab: "patrol" }));
+  assert.match(patrol, /data-ai-surface="patrol"/);
+  assert.match(patrol, /自主巡检记录/);
+  assert.doesNotMatch(patrol, /cp2EventWorkbench/);
+  const poster = render(React.createElement(C.AiTraderCenter, { data, action, ui, initialTab: "poster" }));
+  assert.match(poster, /data-ai-surface="poster"/);
+  assert.match(poster, /分析海报/);
+  assert.doesNotMatch(poster, /cp2EventWorkbench/);
+});
+
 test("settings deep links preserve the requested base section", () => {
   const html = render(React.createElement(C.SettingsConcept, {
     data, action, ui, activeTab: "base", initialBaseSection: "data_backup", onTabChange: () => {}

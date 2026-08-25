@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, Bot, Eye, EyeOff, Layers3, ShieldCheck, WalletCards, Wrench } from "lucide-react";
 import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { connectionSecurityStatus } from "./connectionSecurity.js";
+import { useDialogFocus } from "./useDialogFocus.js";
 
 function AuthSystemMap() {
   const nodes = [
@@ -122,6 +123,9 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
   const [application, setApplication] = useState(null);
   const [mfaStep, setMfaStep] = useState(false);
+  const authDialogRef = useRef(null);
+  const closeAuth = () => setAuthOpen(false);
+  useDialogFocus({ open: authOpen, containerRef: authDialogRef, onClose: closeAuth });
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
   // 套餐名在 DB 里是中文(月度订阅…),英文站按 interval/months 派生英文名,不改生产配置。
   const planLabel = (p) => {
@@ -150,9 +154,9 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
       <iframe className="lpFrame" src="/landing.html" title="KORDYN" />
       {authOpen && (
         <div className="lpOverlay" onClick={(e) => { if (e.target.classList.contains("lpOverlay")) setAuthOpen(false); }}>
-          <div className="lpModal">
-            <button className="lpX" onClick={() => setAuthOpen(false)} aria-label="close">×</button>
-            <h3>{mode === "login" ? "Start Trading" : "Subscribe"}</h3>
+          <div ref={authDialogRef} className="lpModal" role="dialog" aria-modal="true" aria-labelledby="web-auth-title" tabIndex={-1}>
+            <button className="lpX" onClick={closeAuth} aria-label="Close authentication">×</button>
+            <h3 id="web-auth-title">{mode === "login" ? "Start Trading" : "Subscribe"}</h3>
             <p className="lpMsub">{mode === "login" ? "Sign in to open the cockpit." : "Apply for an isolated KORDYN instance. No account is created inside the owner workspace."}</p>
             <div className="lpTabs">
               <button className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>Log in</button>

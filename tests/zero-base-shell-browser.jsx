@@ -7,10 +7,7 @@ import { ZeroBaseToday } from "../src/zeroBaseToday.jsx";
 import { CommandRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace } from "../src/productShell.jsx";
 import { AiTraderCenter, OperationsCenter, ResearchCenter, RiskCenter, SettingsConcept, TradingCenter } from "../src/workspacePages.jsx";
 import { productionShellBrowserFixture } from "./production-shell-browser-fixture.js";
-import "../src/styles.css";
-import "../src/product-foundation.css";
-import "../src/zero-base-system.css";
-import "../src/zero-base-workbenches.css";
+import "../src/productStyles.js";
 
 const state = new URLSearchParams(window.location.search).get("state") || "loaded";
 const fixture = {
@@ -23,6 +20,20 @@ const fixture = {
   watchTriggers: [{ id: "watch-3", symbol: "SOL/USDT", status: "active" }],
   agentStatus: { state: "watching", nextActions: ["Review plan evidence"] },
   agentRuns: [{ id: "run-1", title: "Market patrol", status: "completed", summary: "No forced action" }]
+};
+const patrolMessage = { id:"msg-patrol-1", role:"agent", sessionId:"chat_autocycle", createdAt:"2026-08-26T01:10:00.000Z", content:"### Patrol conclusion\nEvidence coverage is complete; keep watching.", capabilityCoverage:{ ok:true, covered:2, required:2, missing:[] }, toolTrace:[], presentation:{ linked:{} } };
+const analysisMessage = { id:"msg-analysis-1", role:"agent", sessionId:"chat-manual", createdAt:"2026-08-26T01:20:00.000Z", content:"### Market conclusion\nWait for confirmation before taking risk.", toolTrace:[], presentation:{ linked:{} } };
+const nativeFetch = window.fetch.bind(window);
+window.__zeroBaseChatRequests = [];
+window.fetch = async (input, init) => {
+  const url = String(input);
+  if (url.includes("/api/agent/chat")) {
+    window.__zeroBaseChatRequests.push(url);
+    const query = new URL(url, location.origin).searchParams;
+    const messages = query.get("sessionId") === "chat_autocycle" ? [patrolMessage] : query.get("scope") === "all" ? [patrolMessage, analysisMessage] : [analysisMessage];
+    return new Response(JSON.stringify({ messages, sessions:[], activeSessionId:query.get("sessionId") || "chat-manual" }), { status:200, headers:{ "Content-Type":"application/json" } });
+  }
+  return nativeFetch(input, init);
 };
 
 const workspaceByFamily = {
@@ -53,14 +64,14 @@ function BrowserShell() {
     notify: () => {},
     download: () => {}
   };
-  const aiTab = ({ intelligence: "intel", watch: "watch", events: "events" })[viewId] || "dialog";
-  const portfolioTab = ({ market: "market", account: "market", positions: "positions", execution: "execution", ledger: "ledger" })[viewId] || "overview";
+  const aiTab = ({ patrol:"patrol", intelligence: "intel", watch: "watch", events: "events", poster:"poster" })[viewId] || "dialog";
+  const portfolioTab = ({ market: "market", account: "account", positions: "positions", protection: "protection", execution: "execution", ledger: "ledger" })[viewId] || "overview";
   const riskTab = ({ events: "events", boundaries: "mandate", rules: "rules" })[viewId] || "posture";
   const operationsTab = ({ tasks: "tasks", recovery: "recovery", notifications: "notifications", audit: "audit" })[viewId] || "overview";
   const settingsTab = ({ environment: "base", network: "base", backup: "base", security: "base", "event-sources": "event_sources" })[viewId] || viewId;
   const settingsSection = ({ environment: "environment", network: "network", backup: "data_backup", security: "security" })[viewId] || "environment";
   const strategySurface = ({ studio: "studio", market: "market", historical: "research", forward: "research" })[viewId] || "catalog";
-  const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[viewId] || "reference";
+  const knowledgeSection = ({ import: "import", evidence: "rules", graph: "graph", artifacts: "methods", workflows: "workflows" })[viewId] || "reference";
   const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[viewId] || "全部工具";
   const workbench = familyId === "today"
     ? <ZeroBaseToday data={fixture} onNavigate={(route) => navigate(null, null, route)} viewId={viewId} />

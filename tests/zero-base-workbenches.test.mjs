@@ -6,13 +6,15 @@ const shell = readFileSync(new URL("../src/zeroBaseShell.jsx", import.meta.url),
 const workspaces = readFileSync(new URL("../src/workspacePages.jsx", import.meta.url), "utf8");
 const concepts = readFileSync(new URL("../src/conceptPages.jsx", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const productStyles = readFileSync(new URL("../src/productStyles.js", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/zero-base-workbenches.css", import.meta.url), "utf8");
 
 test("every desktop workbench is scoped by the active zero-base family and view", () => {
   assert.match(shell, /className="zbWorkbench"/);
   assert.match(shell, /data-zero-base-workbench=\{activeFamily\.id\}/);
   assert.match(shell, /data-zero-base-workbench-view=\{currentView\?\.id/);
-  assert.match(main, /import "\.\/zero-base-workbenches\.css"/);
+  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+  assert.match(productStyles, /zero-base-workbenches\.css/);
 });
 
 test("route-driven subpage changes synchronize every stateful production center", () => {
@@ -55,4 +57,21 @@ test("dense product data uses continuous registries, inspectors, ledgers and exp
   assert.match(styles, /data-state="stale"|\[data-state="stale"\]/);
   assert.match(styles, /data-state="error"|\[data-state="error"\]/);
   assert.doesNotMatch(styles, /智能表单|DAO\s*治理/);
+});
+
+test("desktop AI archive surfaces collapse the legacy two-column chat frame", () => {
+  assert.match(styles, /\.aiArchiveSurface\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(styles, /\.aiArchiveIntro/);
+  assert.match(styles, /\.aiArchiveEmpty/);
+});
+
+test("advertised Today, portfolio and knowledge destinations own distinct production surfaces", () => {
+  assert.match(workspaces, /\["account",\s*"账户",\s*"Account"\]/);
+  assert.match(workspaces, /\["protection",\s*"保护与对账",\s*"Protection & Reconciliation"\]/);
+  assert.match(workspaces, /account:\s*<AccountConcept/);
+  assert.match(workspaces, /protection:\s*<ProtectionConcept/);
+  assert.match(concepts, /section==="import"/);
+  assert.match(concepts, /section==="graph"/);
+  assert.match(main, /import:\s*"import"/);
+  assert.match(main, /graph:\s*"graph"/);
 });

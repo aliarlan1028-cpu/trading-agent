@@ -27,6 +27,7 @@ import {
   Shield,
   Target,
   Wrench,
+  WalletCards,
   Zap,
   CheckCircle2,
   Rocket,
@@ -852,7 +853,7 @@ export function MobileOwnerReview({ data, action, ui, initialSelection = null, i
 
 function MobileKnowledge({ data, action, ui, view = "all", initialSegment = "" }) {
   // App 与桌面使用同一发布口径：知识库只展示孵化中的四类产物，正式目录只消费服务端发布资格。
-  const segs = view === "capabilities" ? ["工具工作流"] : ["参考知识", "交易纪律", "交易方法", "工具工作流"];
+  const segs = view === "capabilities" ? ["工具工作流"] : ["参考知识", "导入来源", "关系图谱", "交易纪律", "交易方法", "工具工作流"];
   const [segState, setSeg] = useState(initialSegment || (view === "capabilities" ? "工具工作流" : "参考知识"));
   useEffect(() => { if (initialSegment) setSeg(initialSegment); }, [initialSegment]);
   const seg = segs.includes(segState) ? segState : segs[0];
@@ -947,19 +948,14 @@ function MobileKnowledge({ data, action, ui, view = "all", initialSegment = "" }
             </div>
           )}
 
-          <div className="mSectionCard">
-            <header><span>{t("每本书现在能做什么（", "What each source can do now (")}{sourceProgress.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>{t("管理", "Manage")} <ChevronRight size={12} /></button></header>
-            {!sources.length && <p className="mInboxEmpty">{t("还没有导入知识。点下方「导入知识」开始。", "No knowledge imported yet. Tap \"Import knowledge\" below to start.")}</p>}
-            {sourceProgress.slice(0, 8).map((row) => <article className={`mKSourceProgress ${row.tone}`} key={row.source.id || row.source.title}>
-              <header><b>{row.source.title || row.source.name || t("未命名", "Untitled")}</b><StatusBadge tone={row.tone}>{row.stage === 0 ? t("需处理", "Needs attention") : t(`阶段 ${row.stage}/8`, `Stage ${row.stage}/8`)}</StatusBadge></header>
-              <div className="mKStageTrack" aria-label={t(`当前知识阶段 ${row.stage}/3`, `Knowledge stage ${row.stage}/3`)}>{[1,2,3].map((stageNo) => <i className={stageNo <= row.stage ? "done" : ""} key={stageNo}/>)}</div>
-              <p><small>{t("现在", "NOW")}</small><b>{row.current}</b><span>{row.effect}</span></p>
-              <footer><span>{t("下一步：", "Next: ")}<b>{row.next}</b></span>{row.action && <button onClick={() => action(`/api/knowledge/sources/${row.source.id}/parse-real`, {})}>{row.next} <ChevronRight size={12}/></button>}</footer>
-            </article>)}
-          </div>
-          <button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15} /> {t("导入知识", "Import knowledge")}</button>
         </>
       )}
+
+      {seg === "导入来源" && <><div className="mSectionCard" data-mobile-knowledge-surface="import">
+        <header><span>{t("每个来源当前能做什么（", "What each source can do now (")}{sourceProgress.length}{t("）", ")")}</span><button className="textButton" onClick={() => ui.openPanel("knowledgeList")}>{t("管理", "Manage")} <ChevronRight size={12}/></button></header>
+        {!sources.length && <p className="mInboxEmpty">{t("还没有导入知识。点下方「导入知识」开始。", "No knowledge imported yet. Tap \"Import knowledge\" below to start.")}</p>}
+        {sourceProgress.slice(0, 20).map((row) => <article className={`mKSourceProgress ${row.tone}`} key={row.source.id || row.source.title}><header><b>{row.source.title || row.source.name || t("未命名", "Untitled")}</b><StatusBadge tone={row.tone}>{row.stage === 0 ? t("需处理", "Needs attention") : t(`阶段 ${row.stage}/3`, `Stage ${row.stage}/3`)}</StatusBadge></header><div className="mKStageTrack" aria-label={t(`当前知识阶段 ${row.stage}/3`, `Knowledge stage ${row.stage}/3`)}>{[1,2,3].map((stageNo) => <i className={stageNo <= row.stage ? "done" : ""} key={stageNo}/>)}</div><p><small>{t("现在", "NOW")}</small><b>{row.current}</b><span>{row.effect}</span></p><footer><span>{t("下一步：", "Next: ")}<b>{row.next}</b></span>{row.action && <button onClick={() => action(`/api/knowledge/sources/${row.source.id}/parse-real`, {})}>{row.next} <ChevronRight size={12}/></button>}</footer></article>)}
+      </div><button className="mPrimaryAction" onClick={() => ui.openPanel("knowledgeImport")}><Plus size={15}/>{t("导入知识", "Import knowledge")}</button></>}
 
       {seg === "交易方法" && (
         <div className="mSectionCard">
@@ -1077,8 +1073,8 @@ function MobileKnowledge({ data, action, ui, view = "all", initialSegment = "" }
         </div>
       )}
 
-      {seg === "参考知识" && (
-        <div className="mSectionCard">
+      {seg === "关系图谱" && (
+        <div className="mSectionCard" data-mobile-knowledge-surface="graph">
           <header><span>{t("概念图谱（", "Concept graph (")}{knowledge.conceptCards?.length || 0}{t("）", ")")}</span><small>{t("相关概念自动聚簇", "Related concepts cluster automatically")}</small></header>
           <ConceptGraph concepts={knowledge.conceptCards || []} />
         </div>
@@ -1312,6 +1308,31 @@ function MobileAccountHealth({ data, action }) {
       <button className="mPrimaryAction" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}><RefreshCw size={15} /> {t("手动对账", "Manual reconcile")}</button>
     </div>
   );
+}
+
+function MobilePortfolioOverview({ data, ui }) {
+  const portfolio = data.portfolio || {};
+  const positions = buildPositionView(data).positions;
+  const runtime = automationPresentation(data);
+  const latestReconcile = data.reconciliationReports?.[0] || null;
+  return <div className="mSubPage mPortfolioOverview" data-mobile-portfolio-surface="overview">
+    <div className="mPageStats kTruthBand"><div><span>{t("账户权益", "Equity")}</span><strong>{portfolio.totalEquityUsdt == null ? t("未同步", "Not synced") : displayMoney(portfolio.totalEquityUsdt, 2)}</strong></div><div><span>{t("可用保证金", "Available")}</span><strong>{portfolio.availableMarginUsdt == null ? t("未同步", "Not synced") : displayMoney(portfolio.availableMarginUsdt, 2)}</strong></div><div><span>{t("持仓", "Positions")}</span><strong>{positions.length}</strong></div></div>
+    <div className="mSectionCard kEvidenceLedger"><header><span>{t("账户与运行事实", "Account and runtime truth")}</span><StatusBadge tone={runtime.tone === "ok" ? "ok" : "warning"}>{runtime.label}</StatusBadge></header><div className="mRowItem"><b>{t("当前运行方式", "Operating mode")}</b><em className="mRowValue">{runtime.targetLabel}</em></div><div className="mRowItem"><b>{t("准入策略", "Entry policy")}</b><em className="mRowValue">{runtime.entryPolicy}</em></div><div className="mRowItem"><b>{t("最近对账", "Latest reconcile")}</b><em className="mRowValue">{humanize(latestReconcile?.status, t("未运行", "Not run"))}</em></div></div>
+    <div className="mQuickGrid"><button onClick={() => ui.setActive("market")}><BarChart3/>{t("市场", "Market")}</button><button onClick={() => ui.setActive("marketAccount")}><WalletCards/>{t("账户", "Account")}</button><button onClick={() => ui.setActive("positions")}><PieChart/>{t("持仓", "Positions")}</button><button onClick={() => ui.setActive("portfolioProtection")}><ShieldCheck/>{t("保护", "Protection")}</button></div>
+  </div>;
+}
+
+function MobilePortfolioProtection({ data, action, ui }) {
+  const positions = buildPositionView(data).positions;
+  const latestReconcile = data.reconciliationReports?.[0] || null;
+  const protectedRows = positions.filter((row) => row.stopLoss != null || row.stopLossPrice != null || row.protectionVerified === true || /protected|verified|ok/i.test(String(row.protectionStatus || "")));
+  const incidents = (data.riskIncidents || []).filter((row) => String(row.status || "").toLowerCase() === "open");
+  return <div className="mSubPage mPortfolioProtection" data-mobile-portfolio-surface="protection">
+    <div className="mPageStats kTruthBand"><div><span>{t("保护确认", "Protected")}</span><strong>{protectedRows.length}/{positions.length}</strong></div><div><span>{t("风险事件", "Incidents")}</span><strong>{incidents.length}</strong></div><div><span>{t("对账", "Reconcile")}</span><strong>{humanize(latestReconcile?.status, t("未运行", "Not run"))}</strong></div></div>
+    <div className="mSectionCard kRegistry"><header><span>{t("仓位保护登记簿", "Position protection registry")}</span></header>{positions.map((row) => { const protectedPosition = protectedRows.includes(row); return <div className="mRowItem" key={row.id || row.positionId || row.instId || row.symbol}><span><b>{row.symbol || row.instId || "—"}</b><small>{t("止损", "Stop")} {displayPrice(row.stopLoss ?? row.stopLossPrice)}</small></span><StatusBadge tone={protectedPosition ? "ok" : "danger"}>{protectedPosition ? t("已确认", "Verified") : t("未确认", "Unverified")}</StatusBadge></div>; })}{!positions.length && <p className="mInboxEmpty">{t("当前没有需要保护的持仓。", "There are no positions requiring protection.")}</p>}</div>
+    <div className="mSectionCard kEvidenceLedger"><header><span>{t("最近对账证据", "Latest reconciliation evidence")}</span></header><div className="mRowItem"><b>{t("报告编号", "Report ID")}</b><em className="mRowValue">{latestReconcile?.id || "—"}</em></div><div className="mRowItem"><b>{t("差异", "Discrepancies")}</b><em className="mRowValue">{Array.isArray(latestReconcile?.discrepancies) ? latestReconcile.discrepancies.length : 0}</em></div></div>
+    <button className="mPrimaryAction" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}><RefreshCw size={15}/>{t("重新对账", "Run reconciliation")}</button><button className="mSecondaryAction" onClick={() => ui.setActive("riskCenter")}>{t("打开风险与边界", "Open Risk & Boundaries")}</button>
+  </div>;
 }
 
 // 全部 OKX USDT 永续合约清单(真实拉取),供移动版行情搜索选币用。
@@ -2042,7 +2063,7 @@ export function MobileApp({ api, lang, switchLang }) {
 
   let content = null;
   if (mobileRoot === "today") {
-    content = <ZeroBaseMobileToday data={data} onNavigate={openFamily}/>;
+    content = <ZeroBaseMobileToday data={data} onNavigate={(familyId, viewId, directRoute) => directRoute ? navigate(directRoute) : openFamily(familyId, viewId)} viewId={activeFamilyView}/>;
   } else if ((mobileRoot === "intelligent" || mobileRoot === "more") && !activeFamilyId) {
     content = <ZeroBaseMobileHub rootId={mobileRoot} data={data} onFamilyNavigate={openFamily} lang={lang} switchLang={switchLang}/>;
   } else if (route === "chat") {
@@ -2050,9 +2071,11 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "watch") {
     content = <MobileWatch data={data} action={action} />;
   } else if (route === "cockpit") {
-    content = subPage === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
-      : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
-        : <MobileMarket data={data} action={action} ui={ui} />;
+    content = subPage === "positions" || activeFamilyView === "positions" ? <MobilePositions data={data} action={action} ui={ui} />
+      : subPage === "marketAccount" || activeFamilyView === "account" ? <MobileAccountHealth data={data} action={action} />
+        : subPage === "protection" || activeFamilyView === "protection" ? <MobilePortfolioProtection data={data} action={action} ui={ui}/>
+          : activeFamilyView === "overview" ? <MobilePortfolioOverview data={data} ui={ui}/>
+            : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
     content = ["owner", "lessons"].includes(activeFamilyView) || subPage === "owner" ? <MobileOwnerReview data={data} action={action} ui={ui} initialTab={activeFamilyView === "lessons" ? "lessons" : "improvements"}/> : <MobileExecution data={data} action={action} ui={ui} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
   } else if (route === "tradeLedger") {
@@ -2066,7 +2089,7 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "labMap") {
     content = <MobileResearchMap data={data} ui={ui} />;
   } else if (route === "knowledgeBase") {
-    content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" initialSegment={({ evidence: "交易纪律", artifacts: "交易方法", workflows: "工具工作流" })[activeFamilyView] || "参考知识"}/>;
+    content = <MobileKnowledge data={data} action={action} ui={ui} view="knowledge" initialSegment={({ import: "导入来源", evidence: "交易纪律", graph: "关系图谱", artifacts: "交易方法", workflows: "工具工作流" })[activeFamilyView] || "参考知识"}/>;
   } else if (route === "capabilityLib") {
     content = <MobileCapabilities data={data} action={action} ui={ui} initialFilter={({ native: "native", workflow: "workflow", mcp: "mcp", connectors: "connectors", skills: "skills" })[activeFamilyView] || "all"}/>;
   } else if (route === "strategyLib") {
@@ -2086,7 +2109,7 @@ export function MobileApp({ api, lang, switchLang }) {
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
   const retainsLastValid = workspaceResourceRetainsLastValid(resourceState);
-  if ((resourceState === "loaded" || retainsLastValid) && activeFamilyId && activeFamilyId !== "today") {
+  if ((resourceState === "loaded" || retainsLastValid) && activeFamilyId) {
     content = <><ZeroBaseMobileFamilyRail familyId={activeFamilyId} viewId={activeFamilyView} onNavigate={openFamily}/>{content}</>;
   }
   if (retainsLastValid) {

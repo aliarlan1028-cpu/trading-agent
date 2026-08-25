@@ -567,6 +567,12 @@
 .zeroBaseProduct > .zbShellTrace[hidden] { display: none !important; }
 .zeroBaseProduct > .zbShellContext > header,
 .zeroBaseProduct > .zbShellTrace > header { background: var(--zb-ink); color: white; }
+.zeroBaseProduct .contextDock__close,
+.zeroBaseProduct .traceRail__close { width:44px;height:44px;display:grid;place-items:center;flex:0 0 44px;border:1px solid rgba(255,255,255,.42);border-radius:12px;color:white;background:transparent; }
+.zeroBaseProduct .contextDock__close:hover,
+.zeroBaseProduct .traceRail__close:hover { color:var(--zb-ink);background:var(--zb-acid); }
+.zeroBaseProduct > .zbShellContext:focus-visible,
+.zeroBaseProduct > .zbShellTrace:focus-visible { outline:3px solid var(--zb-acid);outline-offset:2px; }
 
 /* Today: AI is the operation surface; the rest is connected context. */
 .zbToday { display: grid; gap: 14px; }

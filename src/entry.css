@@ -1,0 +1,36 @@
+@import "./zero-base-auth.css";
+
+:root {
+  font-family:"Public Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  color:#111311;
+  background:#F4F1E9;
+  font-synthesis:none;
+  text-rendering:geometricPrecision;
+  -webkit-font-smoothing:antialiased;
+}
+* { box-sizing:border-box; }
+html,body,#root { min-width:320px;min-height:100%; }
+body { margin:0;background:#F4F1E9; }
+button,input,textarea,select { font:inherit; }
+button { cursor:pointer; }
+h1,h2,h3,p { margin:0; }
+.authenticatedAppFrame,.publicAppFrame { display:contents; }
+.lpRoot { position:fixed;inset:0;z-index:1;background:#111311; }
+.lpFrame { position:fixed;inset:0;width:100%;height:100%;border:0; }
+.authenticatedEntryLoading,.authenticatedStateScreen {
+  min-height:100dvh;display:grid;place-items:center;padding:24px;
+  color:#F4F1E9;background:#111311;
+}
+.authenticatedEntryLoading>div,.authenticatedStatePanel {
+  display:flex;align-items:center;gap:12px;min-width:min(360px,100%);padding:20px;
+  border:1px solid #4B554B;border-radius:18px;background:#171A17;
+}
+.authenticatedEntryLoading svg,.authenticatedStatePanel svg { color:#CCFF3D; }
+.authenticatedEntryLoading small { color:#9DA69D; }
+.loginPanel { display:grid;gap:14px;max-width:440px;color:#111311;background:#F4F1E9; }
+.loginPanel input { min-height:48px;border:1px solid #B8C0B8;border-radius:12px;padding:0 14px;background:#fff; }
+.loginPanel button { min-height:48px;border:1px solid #111311;border-radius:12px;padding:0 16px; }
+.loginPanel .primaryButton { color:#111311;background:#CCFF3D;box-shadow:4px 4px 0 #111311; }
+.brandLogo { display:block;object-fit:contain; }
+
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

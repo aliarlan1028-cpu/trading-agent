@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AppFrame } from "../src/appFrame.jsx";
 import { MobileApp } from "../src/mobile.jsx";
 import { productionShellBrowserFixture } from "./production-shell-browser-fixture.js";
-import "../src/styles.css";
-import "../src/product-foundation.css";
-import "../src/zero-base-system.css";
+import "../src/productStyles.js";
 
 const scenario = new URLSearchParams(window.location.search).get("state") || "loaded";
 const fixture = {
@@ -43,9 +41,15 @@ const analysisMessage = {
   toolTrace:[], presentation:{ linked:{} }
 };
 const nativeFetch = window.fetch.bind(window);
+window.__zeroBaseChatRequests = [];
 window.fetch = async (input, init) => {
   const url = String(input);
-  if (url.includes("/api/agent/chat")) return new Response(JSON.stringify({ messages:[patrolMessage, analysisMessage], sessions:[], activeSessionId:"chat-manual", provider:{ name:"Production fixture", model:"real-component-contract" } }), { status:200, headers:{ "Content-Type":"application/json" } });
+  if (url.includes("/api/agent/chat")) {
+    window.__zeroBaseChatRequests.push(url);
+    const query = new URL(url, location.origin).searchParams;
+    const messages = query.get("sessionId") === "chat_autocycle" ? [patrolMessage] : query.get("scope") === "all" ? [patrolMessage, analysisMessage] : [analysisMessage];
+    return new Response(JSON.stringify({ messages, sessions:[], activeSessionId:query.get("sessionId") || "chat-manual", provider:{ name:"Production fixture", model:"real-component-contract" } }), { status:200, headers:{ "Content-Type":"application/json" } });
+  }
   return nativeFetch(input, init);
 };
 const api = {

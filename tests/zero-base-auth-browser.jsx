@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { LandingPage, NativeAuthPage } from "../src/landing.jsx";
-import "../src/styles.css";
+import "../src/entry.css";
 
 const native = new URLSearchParams(location.search).get("surface") !== "web";
 const calls = [];

@@ -35,7 +35,7 @@ export const ZERO_BASE_FAMILIES = Object.freeze([
       view("positions", "持仓", "Positions", "positions"),
       view("execution", "计划与执行", "Plans & execution", "executionReview"),
       view("ledger", "订单与成交", "Orders & fills", "tradeLedger"),
-      view("protection", "保护与对账", "Protection & reconciliation", "cockpit")
+      view("protection", "保护与对账", "Protection & reconciliation", "portfolioProtection")
     ]
   }),
   family({

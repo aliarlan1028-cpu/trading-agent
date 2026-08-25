@@ -110,7 +110,13 @@ function TodayLink({ route, onNavigate, children, className = "" }) {
 
 export function ZeroBaseToday({ data = {}, onNavigate = () => {}, viewId = "" }) {
   const model = buildZeroBaseTodayModel(data);
-  const title = model.role === "owner" ? t("Owner 今日控制面", "Owner control surface") : t("交易今日控制面", "Trader control surface");
+  if (viewId === "actions") return <section className="zbToday zbTodayActions" data-zero-base-today={model.role} data-zero-base-view="actions">
+    <header className="zbTodayWelcome"><div><span>ATTENTION QUEUE / ALL</span><h2>{t("全部待处理事项", "All pending actions")}</h2><p>{t("这里保留完整队列，不用首页摘要截断真实工作量。", "This view keeps the complete queue instead of truncating real workload to a home-page summary.")}</p></div><div className="zbTodayPulse"><i/><span><small>{t("待处理", "PENDING")}</small><b>{model.attention.length}</b></span></div></header>
+    <article className="zbTodayAttention kRegistry"><div>{model.attention.length ? model.attention.map((item) => <button type="button" key={`${item.type}:${item.id}`} data-tone={item.tone} onClick={() => onNavigate(item.route)}><i>{item.type === "risk" ? <AlertTriangle/> : item.type === "review" ? <CheckCircle2/> : <Clock3/>}</i><span><b>{localizeText(item.title)}</b><small>{item.type} · {item.detail}</small></span><ArrowUpRight/></button>) : <p><CheckCircle2/>{t("当前没有待处理事项。", "There are no pending items right now.")}</p>}</div>
+    </article>
+  </section>;
+  const selectedRole = viewId === "owner" ? "owner" : viewId === "trader" ? "trader" : model.role;
+  const title = selectedRole === "owner" ? t("Owner 今日控制面", "Owner control surface") : t("交易今日控制面", "Trader control surface");
   return <section className="zbToday" data-zero-base-today={model.role} data-zero-base-view={viewId || model.role}>
     <header className="zbTodayWelcome">
       <div><span>{t("当前真实状态", "CURRENT REALITY")}</span><h2>{title}</h2><p>{t(`${model.greetingName}，先看 AI 交易员正在做什么，再决定是否介入。`, `${model.greetingName}, see what the AI trader is doing before deciding whether to intervene.`)}</p></div>
@@ -163,7 +169,7 @@ export function ZeroBaseToday({ data = {}, onNavigate = () => {}, viewId = "" })
 
     <div className="zbTodayLower">
       <article className="zbTodayAttention">
-        <header><div><span>ATTENTION QUEUE</span><h3>{model.role === "owner" ? t("需要 Owner 判断的事项", "Items needing Owner judgment") : t("需要你处理的事项", "Items needing your attention")}</h3></div><b>{model.attention.length}</b></header>
+        <header><div><span>ATTENTION QUEUE</span><h3>{selectedRole === "owner" ? t("需要 Owner 判断的事项", "Items needing Owner judgment") : t("需要你处理的事项", "Items needing your attention")}</h3></div><b>{model.attention.length}</b></header>
         <div>{model.attention.length ? model.attention.slice(0, 8).map((item) => <button type="button" key={`${item.type}:${item.id}`} data-tone={item.tone} onClick={() => onNavigate(item.route)}><i>{item.type === "risk" ? <AlertTriangle /> : item.type === "review" ? <CheckCircle2 /> : <Clock3 />}</i><span><b>{localizeText(item.title)}</b><small>{item.type} · {item.detail}</small></span><ArrowUpRight /></button>) : <p><CheckCircle2 />{t("当前没有待处理事项。", "There are no pending items right now.")}</p>}</div>
       </article>
       <aside className="zbTodayLive">

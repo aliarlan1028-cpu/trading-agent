@@ -50,6 +50,15 @@ test("every family view resolves to recognized desktop and APP runtime routes", 
   }
 });
 
+test("semantic portfolio destinations do not alias account or protection to another surface", () => {
+  const accountDesktop = resolveZeroBaseDestination("portfolio", "account", "desktop");
+  const protectionDesktop = resolveZeroBaseDestination("portfolio", "protection", "desktop");
+  const protectionMobile = resolveZeroBaseDestination("portfolio", "protection", "mobile");
+  assert.equal(accountDesktop.runtime.tab, "account");
+  assert.equal(protectionDesktop.runtime.tab, "protection");
+  assert.equal(protectionMobile.runtime.subPage, "protection");
+});
+
 test("unknown family or view fails closed to AI dialog", () => {
   assert.deepEqual(resolveZeroBaseDestination("not-real", "missing", "desktop"), resolveZeroBaseDestination("ai", "dialog", "desktop"));
   assert.deepEqual(resolveZeroBaseDestination("portfolio", "missing", "mobile"), resolveZeroBaseDestination("ai", "dialog", "mobile"));

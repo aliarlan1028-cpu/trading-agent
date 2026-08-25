@@ -15,8 +15,6 @@ import { t } from "./i18n.js";
 import { localizeText } from "./lib.jsx";
 import { buildZeroBaseTodayModel } from "./zeroBaseToday.jsx";
 import { mobileFamily, mobileFamilyDestinations, mobileRootFamilies, MOBILE_PRIMARY_NAV } from "./mobileNavigation.js";
-import "./zero-base-mobile.css";
-
 const rootIcons = { today: Home, ai: Bot, assets: WalletCards, intelligent: Sparkles, more: MoreHorizontal };
 const familyIcons = {
   strategy: Layers3,
@@ -57,7 +55,7 @@ function familyCount(familyId, data = {}) {
 export function ZeroBaseMobileFamilyRail({ familyId, viewId, onNavigate }) {
   const family = mobileFamily(familyId);
   const destinations = mobileFamilyDestinations(familyId);
-  if (!destinations.length || familyId === "today") return null;
+  if (!destinations.length) return null;
   return <section className="zbMobileFamilyRail" data-zero-base-mobile-local-nav={familyId}>
     <header><small>{family.code} / {family.group}</small><b>{t(family.label, family.labelEn)}</b></header>
     <nav aria-label={`${t(family.label, family.labelEn)} ${t("子页面", "views")}`}>
@@ -66,8 +64,12 @@ export function ZeroBaseMobileFamilyRail({ familyId, viewId, onNavigate }) {
   </section>;
 }
 
-export function ZeroBaseMobileToday({ data = {}, onNavigate }) {
+export function ZeroBaseMobileToday({ data = {}, onNavigate, viewId = "" }) {
   const model = buildZeroBaseTodayModel(data);
+  if (viewId === "actions") return <section className="zbMobileToday zbMobileToday--actions" data-zero-base-mobile-surface="today-actions">
+    <header className="zbMobileToday__actionsHead"><small>ATTENTION QUEUE / ALL</small><h1>{t("全部待办", "All actions")}</h1><span>{model.attention.length}</span></header>
+    <article className="zbMobileToday__attention">{model.attention.length ? model.attention.map((item) => <button type="button" key={`${item.type}:${item.id}`} data-tone={item.tone} onClick={() => onNavigate(null, null, item.route)}><span><b>{localizeText(item.title)}</b><small>{item.type} · {item.detail}</small></span><ChevronRight/></button>) : <p>{t("当前没有待处理事项。", "There are no pending items right now.")}</p>}</article>
+  </section>;
   return <section className="zbMobileToday" data-zero-base-mobile-surface="today">
     <article className="zbMobileToday__ai" data-state={model.boundary.state}>
       <header><small>AI TRADER / PRIMARY</small><span>{model.ai.entryPolicy}</span></header>

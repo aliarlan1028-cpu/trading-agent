@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = readFileSync(new URL("../src/landing.jsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const css = readFileSync(new URL("../src/zero-base-auth.css", import.meta.url), "utf8");
 
 test("APP auth is a new Web3 access portal, not the former floating market-card scene", () => {
   for (const contract of ["nativeAuthPortal", "nativeAuthStory", "nativeAuthNetwork", "nativeAuthCard"]) assert.match(source, new RegExp(contract));
@@ -16,17 +16,17 @@ test("auth preserves real login, registration, MFA, consent, captcha, and server
 });
 
 test("desktop and APP auth use the approved paper ink acid Web3 grammar", () => {
-  assert.match(css, /\.nativeAuthScreen\{[^}]*#F4F1E9/i);
-  assert.match(css, /\.nativeAuthPortal\{[^}]*grid-template-columns/i);
-  assert.match(css, /\.nativeAuthStory\{[^}]*#111311/i);
-  assert.match(css, /\.nativeAuthPrimary\{[^}]*#CCFF3D/i);
-  assert.match(css, /@media\(max-width:760px\)[^{]*\{[\s\S]*?\.nativeAuthPortal\{[^}]*grid-template-columns:1fr/i);
+  assert.match(css, /\.nativeAuthScreen\s*\{[^}]*#F4F1E9/i);
+  assert.match(css, /\.nativeAuthPortal\s*\{[^}]*grid-template-columns/i);
+  assert.match(css, /\.nativeAuthStory\s*\{[^}]*#111311/i);
+  assert.match(css, /\.nativeAuthPrimary\s*\{[^}]*#CCFF3D/i);
+  assert.match(css, /@media\s*\(max-width:\s*760px\)[^{]*\{[\s\S]*?\.nativeAuthPortal\s*\{[^}]*grid-template-columns:\s*1fr/i);
   assert.match(css, /\.nativeAuthForm input[^}]*min-height:48px/i);
 });
 
 test("web marketing auth modal changes visual grammar without changing landing content", () => {
-  assert.match(css, /\.lpOverlay\{[^}]*rgba\(17,19,17/i);
-  assert.match(css, /\.lpModal\{[^}]*#F4F1E9/i);
-  assert.match(css, /\.lpBtn\{[^}]*#CCFF3D/i);
+  assert.match(css, /\.lpOverlay\s*\{[^}]*rgba\(17,\s*19,\s*17/i);
+  assert.match(css, /\.lpModal\s*\{[^}]*#F4F1E9/i);
+  assert.match(css, /\.lpBtn\s*\{[^}]*#CCFF3D/i);
   assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
 });

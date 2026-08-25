@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   AiDialogConcept, CapabilitiesConcept, EventRiskConcept, EventsConcept,
   ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KnowledgeConcept,
-  MarketConcept, OperatingBoundaryConcept, WatchMonitorConcept,
+  AccountConcept, MarketConcept, OperatingBoundaryConcept, ProtectionConcept, WatchMonitorConcept,
   OwnerReviewWorkspaceConcept, TradeReviewWorkbenchConcept,
   OperationsAuditConcept, OperationsCommandConcept, OperationsInboxConcept, OperationsRecoveryConcept, OperationsTasksConcept, PositionsConcept,
   ResearchMapConcept, RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
@@ -12,13 +12,9 @@ import { ChatKpiStrip } from "./chat.jsx";
 import { Eye, ShieldCheck } from "lucide-react";
 import { t } from "./i18n.js";
 import { ProductWorkspaceFrame } from "./productShell.jsx";
-import "./workspace.css";
-import "./workspace-additions.css";
-import "./product-system.css";
-
 const TABS = {
-  ai: [["dialog", "对话", "Dialog"], ["intel", "情报", "Intel"], ["watch", "盯盘", "Watch"], ["events", "事件", "Events"]],
-  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"], ["ledger", "委托与成交", "Orders & Fills"]],
+  ai: [["dialog", "对话", "Dialog"], ["patrol", "自主巡检", "Patrol"], ["intel", "情报", "Intel"], ["watch", "盯盘", "Watch"], ["events", "事件", "Events"], ["poster", "分析海报", "Poster"]],
+  trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["account", "账户", "Account"], ["positions", "持仓", "Positions"], ["protection", "保护与对账", "Protection & Reconciliation"], ["execution", "执行与复盘", "Execution & Review"], ["ledger", "委托与成交", "Orders & Fills"]],
   research: [["map", "研究地图", "Research Map"], ["knowledge", "知识孵化", "Incubation"], ["strategy", "策略资产", "Strategies"], ["capabilities", "能力资产", "Capabilities"], ["reviews", "交易复盘", "Trade Reviews"], ["owner", "Owner 优化", "Owner Review"]],
   risk: [["posture", "风险态势", "Risk Posture"], ["events", "事件风险", "Event Risk"], ["mandate", "生效边界", "Effective Boundaries"], ["rules", "规则监控", "Rule Monitor"]],
   ops: [["overview", "运行值班台", "Command"], ["tasks", "任务与运行", "Tasks & Runs"], ["recovery", "对账与恢复", "Recovery"], ["audit", "审计证据", "Audit"], ["notifications", "通知收件箱", "Inbox"]]
@@ -30,14 +26,16 @@ const PRODUCT_WORKSPACES = {
     eyebrow: ["TRADING COCKPIT", "TRADING COCKPIT"],
     purpose: ["观察账户与市场，执行交易，并把每笔结果送回复盘闭环", "Observe account and market truth, execute trades, and return every result to the review loop"],
     groups: [
-      { label: ["观察", "OBSERVE"], ids: ["overview", "market", "positions"] },
+      { label: ["观察", "OBSERVE"], ids: ["overview", "market", "account", "positions", "protection"] },
       { label: ["执行", "EXECUTE"], ids: ["execution", "ledger"] },
       { label: ["改进", "IMPROVE"], ids: ["reviews", "owner"] }
     ],
     routes: {
       overview: ["账户、市场、风险和交易活动的统一入口", "One view of account, market, risk, and trading activity"],
       market: ["围绕同一交易对查看行情结构与公开市场事实", "Inspect market structure and public facts for one selected pair"],
+      account: ["核对交易所连接、资金快照与账户同步事实", "Verify exchange connections, capital snapshots, and account-sync truth"],
       positions: ["从持仓追溯计划、保护、成交与风险占用", "Trace positions back to plans, protection, fills, and risk usage"],
+      protection: ["集中核对仓位保护、风险事件与对账证据", "Review position protection, incidents, and reconciliation evidence in one place"],
       execution: ["核对计划、OMS、OKX、成交、费用和复盘事实链", "Reconcile the plan, OMS, OKX, fills, fees, and review truth chain"],
       reviews: ["解释单笔交易结果并形成待审批教训", "Explain individual outcomes and form lessons awaiting approval"],
       owner: ["聚合重复问题，验证候选改进，并由 Owner 决策", "Aggregate repeated issues, validate candidate improvements, and let the Owner decide"],
@@ -144,7 +142,7 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const activeWatches = (data.watchTriggers || []).filter((item) => item.status === "active").length;
   const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
   const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>setTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
-  const page = tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : tab === "watch" ? <WatchMonitorConcept data={data} action={action} ui={ui}/> : <EventsConcept data={data} action={action} ui={ui}/>;
+  const page = ["dialog", "patrol", "poster"].includes(tab) ? <AiDialogConcept data={data} action={action} ui={ui} surface={tab}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : tab === "watch" ? <WatchMonitorConcept data={data} action={action} ui={ui}/> : <EventsConcept data={data} action={action} ui={ui}/>;
   return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
@@ -155,7 +153,9 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
   const pages = {
     overview: <TradingOverviewConcept data={data} action={action} ui={ui}/>,
     market: <MarketConcept data={data} action={action} ui={ui}/>,
+    account: <AccountConcept data={data} action={action} ui={ui}/>,
     positions: <PositionsConcept data={data} action={action} ui={ui}/>,
+    protection: <ProtectionConcept data={data} action={action} ui={ui}/>,
     execution: <ExecutionReviewConcept data={data} action={action} ui={ui}/>,
     ledger: <ExecutionLedgerConcept data={data} action={action} ui={ui}/>
   };

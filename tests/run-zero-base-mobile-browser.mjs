@@ -162,15 +162,20 @@ try {
     responsive.push({ width, height, root:state.root, mainWidth:state.main.width, tabbarWidth:state.tabbar.width });
     await capture(cdp, `mobile-${width}-today`);
   }
+  await click(cdp, '[data-zero-base-mobile-view-target="actions"]');
+  await assertLocation(cdp, "today", "today", "actions", '[data-zero-base-mobile-surface="today-actions"]');
+  await capture(cdp, "mobile-430-today-actions");
 
   await click(cdp, '[data-zero-base-mobile-root-target="ai"]');
   await assertLocation(cdp, "ai", "ai", "dialog", ".mobileChatShell");
   await click(cdp, '[data-zero-base-mobile-view-target="patrol"]');
   await assertLocation(cdp, "ai", "ai", "patrol", '[data-ai-surface="patrol"] .patrolReceipt');
+  assert.equal(await evaluate(cdp, `window.__zeroBaseChatRequests.some(url=>new URL(url,location.origin).searchParams.get('sessionId')==='chat_autocycle')`), true, "patrol uses the autonomous session contract");
   assert.equal(await evaluate(cdp, `document.querySelector('[data-ai-surface="patrol"] .agInputBar')===null`), true);
   await capture(cdp, "mobile-430-ai-patrol");
   await click(cdp, '[data-zero-base-mobile-view-target="poster"]');
   await assertLocation(cdp, "ai", "ai", "poster", '[data-ai-surface="poster"] .agPosterBtn');
+  assert.equal(await evaluate(cdp, `window.__zeroBaseChatRequests.some(url=>new URL(url,location.origin).searchParams.get('scope')==='all')`), true, "poster uses the all-session archive contract");
   assert.equal(await evaluate(cdp, `document.querySelector('[data-ai-surface="poster"] .agInputBar')===null`), true);
   await click(cdp, '[data-ai-surface="poster"] .agPosterBtn');
   await waitForExpression(cdp, `document.querySelector('.posterModal')`, "real PosterModal");
@@ -181,7 +186,13 @@ try {
   await capture(cdp, "mobile-430-ai-intelligence");
 
   await click(cdp, '[data-zero-base-mobile-root-target="assets"]');
-  await assertLocation(cdp, "assets", "portfolio", "overview", ".marketQuoteEvidence");
+  await assertLocation(cdp, "assets", "portfolio", "overview", '[data-mobile-portfolio-surface="overview"]');
+  await click(cdp, '[data-zero-base-mobile-view-target="account"]');
+  await assertLocation(cdp, "assets", "portfolio", "account", ".mEvidenceLedger");
+  await capture(cdp, "mobile-430-portfolio-account");
+  await click(cdp, '[data-zero-base-mobile-view-target="protection"]');
+  await assertLocation(cdp, "assets", "portfolio", "protection", '[data-mobile-portfolio-surface="protection"]');
+  await capture(cdp, "mobile-430-portfolio-protection");
   await click(cdp, '[data-zero-base-mobile-view-target="positions"]');
   await assertLocation(cdp, "assets", "portfolio", "positions", ".mPositions");
 
@@ -197,6 +208,12 @@ try {
 
   await click(cdp, '[data-zero-base-mobile-root-target="intelligent"]');
   await click(cdp, '[data-zero-base-mobile-family-target="knowledge"]');
+  await click(cdp, '[data-zero-base-mobile-view-target="import"]');
+  await assertLocation(cdp, "intelligent", "knowledge", "import", '[data-mobile-knowledge-surface="import"]');
+  await capture(cdp, "mobile-430-knowledge-import");
+  await click(cdp, '[data-zero-base-mobile-view-target="graph"]');
+  await assertLocation(cdp, "intelligent", "knowledge", "graph", '[data-mobile-knowledge-surface="graph"]');
+  await capture(cdp, "mobile-430-knowledge-graph");
   await click(cdp, '[data-zero-base-mobile-view-target="workflows"]');
   await assertLocation(cdp, "intelligent", "knowledge", "workflows", ".mSubPage");
   assert.equal(await evaluate(cdp, `document.querySelector('.mSubPage .mChips button.active')?.textContent.includes('工具工作流')||document.querySelector('.mSubPage .mChips button.active')?.textContent.includes('Tool')`), true);
@@ -217,9 +234,11 @@ try {
   await waitForExpression(cdp, `document.querySelector('[data-zero-base-shell="mobile"]')?.dataset.shellSelectedObject==='event-5'`, "canonical Event selection");
   await click(cdp, '.mShellTools .mShellToolButton:nth-child(2)');
   await waitForExpression(cdp, `document.querySelector('.mShellSheet [data-shell-role="context-dock"]')?.dataset.shellContextObject==='Event:event-5'`, "Context identity");
+  await capture(cdp, "mobile-430-context-sheet");
   await click(cdp, '.mShellSheet > header > button');
   await click(cdp, '.mShellTools .mShellToolButton:nth-child(3)');
   await waitForExpression(cdp, `document.querySelector('.mShellSheet [data-shell-role="trace-rail"]')?.dataset.shellTraceObject==='Event:event-5'`, "Trace identity");
+  await capture(cdp, "mobile-430-trace-sheet");
   await click(cdp, '.mShellSheet > header > button');
   await capture(cdp, "mobile-430-event-risk");
 
@@ -241,9 +260,10 @@ try {
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(boundarySelector)})`, `${state} boundary`);
     const proof = await shellState(cdp);
     stateProof[state] = { root:proof.root, activeRoots:proof.activeRoots, overflow:proof.document[0] !== proof.document[1] };
+    await capture(cdp, `mobile-390-state-${state}`);
   }
 
-  console.log(JSON.stringify({ result:"PASS", responsive, navigation:["today","ai/dialog","ai/patrol","ai/poster","ai/intelligence","assets/positions","intelligent/strategy/historical","intelligent/knowledge/workflows","intelligent/capability/mcp","more/guard/events","more/operations/tasks","more/configuration/security"], selection:"Event:event-5", sheets:["context","trace"], states:stateProof }, null, 2));
+  console.log(JSON.stringify({ result:"PASS", responsive, navigation:["today/actions","ai/dialog","ai/patrol","ai/poster","ai/intelligence","assets/overview","assets/account","assets/protection","assets/positions","intelligent/strategy/historical","intelligent/knowledge/import","intelligent/knowledge/graph","intelligent/knowledge/workflows","intelligent/capability/mcp","more/guard/events","more/operations/tasks","more/configuration/security"], chatContracts:["sessionId=chat_autocycle","scope=all"], selection:"Event:event-5", sheets:["context","trace"], states:stateProof }, null, 2));
 } finally {
   cdp?.close();
   await Promise.all([stopProcess(chrome), stopProcess(vite)]);

@@ -3,6 +3,7 @@ import { toPng } from "html-to-image";
 import { uiConfirm } from "./confirm.jsx";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import { runShellRegistrySelection } from "./productShell.jsx";
+import { agentChatRequestForSurface } from "./chatArchive.js";
 import {
   AlertTriangle,
   Activity,
@@ -1543,6 +1544,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const latestMessageRef = useRef(null);
+  const messageLoadVersion = useRef(0);
   const surfaceMode = ["patrol", "poster"].includes(surface) ? surface : "dialog";
   const archiveSurface = surfaceMode !== "dialog";
   // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
@@ -1553,12 +1555,14 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
-  async function loadMessages(sessionId = activeSessionId) {
+  async function loadMessages(sessionId = activeSessionId, requestedSurface = surfaceMode) {
+    const requestVersion = ++messageLoadVersion.current;
     try {
-      const path = sessionId ? `/api/agent/chat?sessionId=${encodeURIComponent(sessionId)}` : "/api/agent/chat";
+      const path = agentChatRequestForSurface(requestedSurface, sessionId);
       const response = await fetch(apiUrl(path), { headers: authHeaders() });
       if (!response.ok) return;
       const json = await response.json();
+      if (requestVersion !== messageLoadVersion.current) return;
       setMessages(json.messages || []);
       setSessions(json.sessions || []);
       setActiveSessionId(json.activeSessionId || json.sessions?.[0]?.id || "");
@@ -1566,7 +1570,10 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
     } catch {}
   }
 
-  useEffect(() => { loadMessages(); }, []);
+  useEffect(() => {
+    loadMessages("", surfaceMode);
+    return () => { messageLoadVersion.current += 1; };
+  }, [surfaceMode]);
   useEffect(() => {
     const latest = messages[messages.length - 1];
     // 用户消息和思考态仍贴近输入框；新的 AI 长简报必须定位到卡片顶部，
@@ -1740,7 +1747,7 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
       </div>}
 
       {view === "intel" ? <IntelCenter data={data} /> : (<>
-      {!mobile && <div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
+      {!mobile && !archiveSurface && <div className={`agHistBar ${concept ? "conceptHistBar" : ""}`}>
         <span className="agHistLabel">{t("对话历史", "History")}</span>
         <button className="agSessChip newSess" onClick={() => newSession()}><Plus size={12} /> {t("新建", "New")}</button>
         {sessions.length > 0 && <button className="agSessChip clearAll" onClick={resetHistory} title={t("清空全部对话历史（含早期 AI 助手混入的问答）", "Clear all chat history (including early Q&A mixed in from the assistant)")}><Trash2 size={11} /> {t("清空", "Clear")}</button>}

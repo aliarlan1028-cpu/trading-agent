@@ -70,8 +70,9 @@ export const ROUTE_DEFINITIONS = Object.freeze([
 
   route({ aliases: ["cockpit"], workspace: "live", view: "overview", migration: "rename-shell", desktop: { section: "cockpit", tab: "overview" }, mobile: { route: "cockpit", section: "cockpit" } }),
   route({ aliases: ["market"], workspace: "live", view: "market", desktop: { section: "cockpit", tab: "market" }, mobile: { route: "cockpit", section: "cockpit" } }),
-  route({ aliases: ["marketAccount"], workspace: "live", view: "account", desktop: { section: "cockpit", tab: "market" }, mobile: { route: "cockpit", subPage: "marketAccount", section: "cockpit" } }),
+  route({ aliases: ["marketAccount"], workspace: "live", view: "account", desktop: { section: "cockpit", tab: "account" }, mobile: { route: "cockpit", subPage: "marketAccount", section: "cockpit" } }),
   route({ aliases: ["positions"], workspace: "live", view: "positions", desktop: { section: "cockpit", tab: "positions" }, mobile: { route: "cockpit", subPage: "positions", section: "cockpit" } }),
+  route({ aliases: ["portfolioProtection"], workspace: "live", view: "protection", migration: "new-composition", desktop: { section: "cockpit", tab: "protection" }, mobile: { route: "cockpit", subPage: "protection", section: "cockpit" } }),
   route({ aliases: ["signalHub", "tradeJournal", "executionReview"], workspace: "live", view: "execution", desktop: { section: "cockpit", tab: "execution" }, mobile: { route: "executionReview", section: "cockpit" } }),
   route({ aliases: ["tradeLedger"], workspace: "live", view: "orders-fills", desktop: { section: "cockpit", tab: "ledger" }, mobile: { route: "tradeLedger", section: "cockpit" } }),
 

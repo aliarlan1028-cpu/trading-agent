@@ -21,10 +21,7 @@ import { ZeroBaseDesktopShell } from "./zeroBaseShell.jsx";
 import { ZeroBaseToday } from "./zeroBaseToday.jsx";
 import { CommandRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
-import "./styles.css";
-import "./product-foundation.css";
-import "./zero-base-system.css";
-import "./zero-base-workbenches.css";
+import "./entry.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 const ConfigPanel = lazyNamed(() => import("./panels.jsx"), "ConfigPanel");
@@ -285,6 +282,7 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 
 function App() {
   const [lang, setLangState] = useState(getLang());
+  const [productStylesState, setProductStylesState] = useState("idle");
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeZeroBaseFamily, setActiveZeroBaseFamily] = useState("today");
@@ -299,6 +297,15 @@ function App() {
   const [selectedShellObject, setSelectedShellObject] = useState(null);
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
+  useEffect(() => {
+    if (authRequired || loading || productStylesState !== "idle") return undefined;
+    let current = true;
+    setProductStylesState("loading");
+    import("./productStyles.js")
+      .then(() => { if (current) setProductStylesState("ready"); })
+      .catch(() => { if (current) setProductStylesState("failed"); });
+    return () => { current = false; };
+  }, [authRequired, loading, productStylesState]);
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
@@ -339,12 +346,12 @@ function App() {
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     const strategySurface = ({ studio: "studio", market: "market", historical: "research", forward: "research" })[activeZeroBaseView] || activeStrategyTab;
-    const knowledgeSection = ({ evidence: "rules", artifacts: "methods", workflows: "workflows" })[activeZeroBaseView] || "reference";
+    const knowledgeSection = ({ import: "import", evidence: "rules", graph: "graph", artifacts: "methods", workflows: "workflows" })[activeZeroBaseView] || "reference";
     const capabilityType = ({ native: "原生工具", workflow: "工作流", mcp: "工具 (MCP)", connectors: "连接器", skills: "导入技能" })[activeZeroBaseView] || "全部工具";
     const researchTab = activeZeroBaseFamily === "reviews" && ["owner", "lessons"].includes(activeZeroBaseView) ? "owner" : activeWorkspaceTab;
     const ownerPane = activeZeroBaseView === "lessons" ? "lessons" : activeZeroBaseView === "owner" ? "improvements" : "";
     let workspaceContent;
-    if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}:${activeZeroBaseView}`} data={data} action={action} ui={ui} initialTab={({ patrol:"patrol", poster:"poster" })[activeZeroBaseView] || activeWorkspaceTab} />;
     else if (active === "cockpit") workspaceContent = <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${researchTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={researchTab} strategyInitialTab={strategySurface} knowledgeInitialSection={knowledgeSection} capabilityInitialType={capabilityType} reviewInitialId={activeReviewId} ownerInitialPane={ownerPane} />;
     else if (active === "riskCenter") workspaceContent = <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
@@ -359,6 +366,7 @@ function App() {
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
+  if (!loading && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesState("idle")}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
   if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
 

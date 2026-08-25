@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PanelRight, Route, Search } from "lucide-react";
 import { t } from "./i18n.js";
 import { ZERO_BASE_FAMILIES, ZERO_BASE_GROUPS } from "./zeroBaseArchitecture.js";
 import { ContextDock, TraceRail } from "./productShell.jsx";
+import { useDialogFocus } from "./useDialogFocus.js";
 
 const familyDescriptions = Object.freeze({
   today: ["AI 主导的今日重点、账户真相与待行动事项", "AI-led priorities, account truth, and items requiring action"],
@@ -45,13 +46,21 @@ export function ZeroBaseDesktopShell({
 }) {
   const [contextOpen, setContextOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false);
+  const contextTriggerRef = useRef(null);
+  const traceTriggerRef = useRef(null);
+  const contextDialogRef = useRef(null);
+  const traceDialogRef = useRef(null);
+  const closeContext = () => setContextOpen(false);
+  const closeTrace = () => setTraceOpen(false);
+  useDialogFocus({ open: contextOpen, containerRef: contextDialogRef, onClose: closeContext, triggerRef: contextTriggerRef });
+  useDialogFocus({ open: traceOpen, containerRef: traceDialogRef, onClose: closeTrace, triggerRef: traceTriggerRef });
   const activeFamily = familyById.get(activeFamilyId) || ZERO_BASE_FAMILIES[0];
   const views = useMemo(() => visibleViews(activeFamily, data), [activeFamily, data?.user?.isOwner, data?.user?.role]);
   const currentView = views.find((view) => view.id === activeViewId) || views[0];
   const description = familyDescriptions[activeFamily.id] || ["", ""];
   const shellTools = <div className="zbShellTools" aria-label={t("上下文工具", "Context tools")}>
-    <button type="button" data-zero-base-tool="context" aria-pressed={contextOpen} onClick={() => { setContextOpen((open) => !open); setTraceOpen(false); }}><PanelRight /><span>CONTEXT</span></button>
-    <button type="button" data-zero-base-tool="trace" aria-pressed={traceOpen} onClick={() => { setTraceOpen((open) => !open); setContextOpen(false); }}><Route /><span>TRACE</span></button>
+    <button ref={contextTriggerRef} type="button" data-zero-base-tool="context" aria-expanded={contextOpen} aria-controls="zero-base-context-dialog" onClick={() => { setContextOpen((open) => !open); setTraceOpen(false); }}><PanelRight /><span>CONTEXT</span></button>
+    <button ref={traceTriggerRef} type="button" data-zero-base-tool="trace" aria-expanded={traceOpen} aria-controls="zero-base-trace-dialog" onClick={() => { setTraceOpen((open) => !open); setContextOpen(false); }}><Route /><span>TRACE</span></button>
   </div>;
 
   return <div className="appShell kordynSystem zeroBaseProduct zbShell"
@@ -90,8 +99,8 @@ export function ZeroBaseDesktopShell({
     </main>
 
     {(contextOpen || traceOpen) && <button className="zbShellScrim" type="button" aria-label={t("关闭上下文工具", "Close context tools")} onClick={() => { setContextOpen(false); setTraceOpen(false); }} />}
-    <ContextDock className="zbShellContext" hidden={!contextOpen} context={context} onNavigate={(route) => onFamilyNavigate(null, null, route)} collapsible={false} />
-    <TraceRail className="zbShellTrace" hidden={!traceOpen} stages={trace} />
+    <ContextDock id="zero-base-context-dialog" className="zbShellContext" hidden={!contextOpen} context={context} onNavigate={(route) => onFamilyNavigate(null, null, route)} collapsible={false} rootRef={contextDialogRef} onClose={closeContext} />
+    <TraceRail id="zero-base-trace-dialog" className="zbShellTrace" hidden={!traceOpen} stages={trace} rootRef={traceDialogRef} onClose={closeTrace} />
     {overlays}
   </div>;
 }

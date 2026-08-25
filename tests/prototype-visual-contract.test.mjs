@@ -42,6 +42,7 @@ esbuild.buildSync({
 const { ProductShell: Shell, Mobile, Chat, MobileOperations, Concepts } = require(outFile);
 const foundation = fs.readFileSync(path.join(rootDir, "src/product-foundation.css"), "utf8");
 const styles = fs.readFileSync(path.join(rootDir, "src/styles.css"), "utf8");
+const zeroBaseSystem = fs.readFileSync(path.join(rootDir, "src/zero-base-system.css"), "utf8");
 const stylesAst = postcss.parse(styles);
 
 function finalDeclarations(selector, { media = null } = {}) {
@@ -112,7 +113,7 @@ test("desktop workspace current-state marker keeps the prototype four-pixel auth
   assert.equal(marker.background, "var(--kordyn-acid)");
 });
 
-test("authenticated type stacks match the immutable prototype and override legacy app aliases", () => {
+test("authenticated type stacks are explicitly scoped by the zero-base product foundation", () => {
   assert.match(foundation, /--kordyn-display:\s*"Avenir Next",\s*"Helvetica Neue",\s*Arial,\s*sans-serif\s*;/);
   assert.match(foundation, /--kordyn-sans:\s*Inter,\s*"Helvetica Neue",\s*Arial,\s*sans-serif\s*;/);
   assert.match(foundation, /--kordyn-mono:\s*"SFMono-Regular",\s*"Roboto Mono",\s*"Space Mono",\s*ui-monospace,\s*monospace\s*;/);
@@ -120,11 +121,11 @@ test("authenticated type stacks match the immutable prototype and override legac
   assert.match(foundation, /--font-mono:\s*var\(--kordyn-mono\)\s*;/);
   assert.match(foundation, /font-family:\s*var\(--kordyn-sans\)\s*;/);
 
-  const authenticatedLegacy = styles
-    .replace(/:root\s*\{[^}]*\}/, "")
-    .replace(/\.lpModal\{[^}]*\}/, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.doesNotMatch(authenticatedLegacy, /\bManrope\b|"Space Grotesk"|"Public Sans"|"IBM Plex Mono"/);
+  assert.match(zeroBaseSystem, /--zb-font-display:\s*"Avenir Next"/);
+  assert.match(zeroBaseSystem, /--zb-font-body:\s*Inter/);
+  assert.match(zeroBaseSystem, /--zb-font-mono:\s*"SFMono-Regular"/);
+  assert.match(zeroBaseSystem, /\.zeroBaseProduct[\s\S]*?font-family:\s*var\(--zb-font-body\)/);
+  assert.doesNotMatch(zeroBaseSystem, /\bManrope\b|"Space Grotesk"|"Public Sans"|"IBM Plex Mono"/);
   assert.doesNotMatch(fs.readFileSync(path.join(rootDir, "src/product-system.css"), "utf8"), /\bManrope\b|"Space Grotesk"|"Public Sans"|"IBM Plex Mono"/);
   assert.doesNotMatch(fs.readFileSync(path.join(rootDir, "src/lib.jsx"), "utf8"), /IBM Plex Mono/);
 });
@@ -415,13 +416,13 @@ test("shell roots, Context Dock and Trace Rail expose the same read-only canonic
   assert.match(contextMarkup, /data-shell-context-object="Task:task-9"/);
   assert.match(traceMarkup, /data-shell-trace-object="Task:task-9"/);
   const desktopShellSource = fs.readFileSync(path.join(rootDir, "src/zeroBaseShell.jsx"), "utf8");
-  const mobileSource = fs.readFileSync(path.join(rootDir, "src/mobile.jsx"), "utf8");
+  const mobileSource = fs.readFileSync(path.join(rootDir, "src/zeroBaseMobile.jsx"), "utf8");
   assert.match(desktopShellSource, /data-shell-selected-object=\{selectedObject\?\.id \|\| "none"\}/);
   assert.match(desktopShellSource, /data-shell-selected-type=\{selectedObject\?\.type \|\| "none"\}/);
-  assert.match(mobileSource, /data-shell-selected-object=\{selectedShellObject\?\.id \|\| "none"\}/);
-  assert.match(mobileSource, /data-shell-selected-type=\{selectedShellObject\?\.type \|\| "none"\}/);
-  assert.match(mobileSource, /data-shell-route=\{route\}/);
-  assert.match(mobileSource, /data-shell-subpage=\{subPage \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-selected-object=\{selection\?\.object\?\.id \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-selected-type=\{selection\?\.object\?\.type \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-route=\{selection\?\.route \|\| "none"\}/);
+  assert.match(mobileSource, /data-shell-subpage=\{selection\?\.subPage \|\| "none"\}/);
 });
 
 test("same-id Events preserve workspace, source, route and evidence across Context and Trace", () => {
@@ -698,14 +699,14 @@ test("stale and degraded resource states retain last-valid truth behind an expli
   }
 });
 
-test("MobileApp preserves its real last-valid workspace under stale and degraded resource truth", () => {
+test("MobileApp preserves its real zero-base Today workspace under stale and degraded resource truth", () => {
   for (const resourceState of ["stale", "degraded"]) {
     const data = { ...fixture, resourceState: { ...fixture.resourceState, chat: resourceState } };
     const html = renderToString(React.createElement(Mobile.MobileApp, {
       api: { data, action: () => {}, notify: () => {}, refresh: () => {}, ensureSection: () => {} }
     }));
     assert.match(html, new RegExp(`data-resource-state="${resourceState}"`));
-    assert.match(html, /class="mChatContent"/, "the actual AI workspace remains rendered as last-valid truth");
+    assert.match(html, /data-zero-base-mobile-surface="today"/, "the actual Today workspace remains rendered as last-valid truth");
     assert.match(html, /data-last-valid-interaction="disabled"/);
   }
 });
@@ -767,9 +768,10 @@ test("touch shell exposes persistent Context and Trace bounded sheets", () => {
   assert.equal(typeof Mobile.MobileShellTools, "function");
   const tools = renderToString(React.createElement(Mobile.MobileShellTools, { data: fixture, workspaceId: "live", onNavigate: () => {} }));
   assert.match(tools, /data-shell-role="mobile-context-trace"/);
-  assert.match(tools, />Context</);
-  assert.match(tools, />Trace</);
-  assert.match(tools, />Objects</);
+  assert.match(tools, />CTX</);
+  assert.match(tools, />TRC</);
+  assert.match(tools, />OBJ</);
+  assert.match(tools, /全局上下文与追踪|Global context and trace/);
   const switcher = renderToString(React.createElement(Mobile.MobileShellTools, {
     data: fixture,
     workspaceId: "operations",
@@ -801,7 +803,10 @@ test("touch shell exposes persistent Context and Trace bounded sheets", () => {
   assert.equal(mobileActive.color, "var(--kordyn-ink)");
   const mobile = renderToString(React.createElement(Mobile.MobileApp, { api: { data: fixture, action: () => {}, notify: () => {}, refresh: () => {}, ensureSection: () => {} } }));
   assert.match(mobile, /data-shell-selected-object="none"/);
-  assert.match(mobile, />05<[^]*?>更多<|>05<[^]*?>More</);
+  for (const root of ["today", "ai", "assets", "intelligent", "more"]) {
+    assert.match(mobile, new RegExp(`data-zero-base-mobile-root-target="${root}"`));
+  }
+  assert.match(mobile, />更多<|>More</);
 });
 
 test("APP Inspector click entries resolve Market, Capability, Strategy and Validation through shared shell truth", () => {
@@ -1149,10 +1154,17 @@ test("ordinary and destructive modal shells use the prototype hard-edge offsets"
   assert.match(styles, /background:\s*rgba\(17,\s*21,\s*17,\s*\.78\)/);
 });
 
-test("login source remains stable while marketing keeps content and adopts the approved palette", () => {
+test("authentication is deliberately rebuilt while marketing keeps content and adopts the approved palette", () => {
   const base = execFileSync("git", ["show", "94d79ea07a2a20ac568ec8380baa1b439081b018:src/landing.jsx"], { cwd: rootDir, encoding: "utf8" });
   const current = fs.readFileSync(path.join(rootDir, "src/landing.jsx"), "utf8");
-  assert.equal(current, base);
+  assert.notEqual(current, base);
+  for (const contract of ["AuthSystemMap", "nativeAuthPortal", "nativeAuthStory", "nativeAuthNetwork", "nativeAuthCard"]) {
+    assert.match(current, new RegExp(contract));
+  }
+  for (const preservedCapability of ["submitLogin", "submitRegister", "TurnstileWidget", "showTotp", "nativeServerSettings"]) {
+    assert.match(current, new RegExp(preservedCapability));
+  }
+  assert.doesNotMatch(current, /AuthMarketMotion|nativeAuthMotionTile/);
   const marketing = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
   const marketingCss = fs.readFileSync(path.join(rootDir, "public/landing.css"), "utf8");
   assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 413);

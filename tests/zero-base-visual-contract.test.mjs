@@ -4,6 +4,7 @@ import test from "node:test";
 
 const cssUrl = new URL("../src/zero-base-system.css", import.meta.url);
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const productStyles = readFileSync(new URL("../src/productStyles.js", import.meta.url), "utf8");
 
 test("zero-base surfaces expose the approved palette", () => {
   const css = readFileSync(cssUrl, "utf8");
@@ -37,8 +38,9 @@ test("motion and touch behavior are bounded", () => {
 });
 
 test("zero-base CSS loads after the legacy foundation", () => {
-  const foundation = main.indexOf('import "./product-foundation.css"');
-  const zeroBase = main.indexOf('import "./zero-base-system.css"');
+  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+  const foundation = productStyles.indexOf('import "./product-foundation.css"');
+  const zeroBase = productStyles.indexOf('import "./zero-base-system.css"');
   assert.ok(foundation >= 0);
   assert.ok(zeroBase > foundation);
 });

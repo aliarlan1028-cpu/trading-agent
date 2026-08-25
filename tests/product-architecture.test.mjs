@@ -27,7 +27,9 @@ const desktopCases = [
   ["eventsTasks:events", "ai", "events", "chat", "events"],
   ["cockpit", "live", "overview", "cockpit", "overview"],
   ["market", "live", "market", "cockpit", "market"],
+  ["marketAccount", "live", "account", "cockpit", "account"],
   ["positions", "live", "positions", "cockpit", "positions"],
+  ["portfolioProtection", "live", "protection", "cockpit", "protection"],
   ["tradeJournal", "live", "execution", "cockpit", "execution"],
   ["tradeLedger", "live", "orders-fills", "cockpit", "ledger"],
   ["tradeReviewDetail:REV:389", "lab", "learning-reviews", "researchCenter", "reviews"],
@@ -80,6 +82,8 @@ test("mobile roots follow product workspaces rather than individual features", (
 
   assert.equal(resolveMobileRoute("strategyLib").workspace, "lab");
   assert.equal(resolveMobileRoute("knowledgeBase").view, "knowledge-incubator");
+  assert.equal(resolveMobileRoute("marketAccount").subPage, "marketAccount");
+  assert.equal(resolveMobileRoute("portfolioProtection").subPage, "protection");
   assert.equal(resolveMobileRoute("executionReview").workspace, "live");
   assert.equal(resolveMobileRoute("ownerReviewWorkspace").subPage, "owner");
   assert.equal(resolveMobileRoute("intelligence").workspace, "ai");
