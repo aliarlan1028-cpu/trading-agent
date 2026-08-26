@@ -15,23 +15,28 @@ Permissions remain server-authoritative. Restricted surfaces explain the require
 
 ## Product Architecture
 
-The primary authenticated workspaces are:
+AI Trader is the primary operating surface, while the first authenticated view keeps account truth, risk, active strategies, capabilities, knowledge evidence, and required actions immediately visible. The product is organized into these page families:
 
-1. AI Trader — dialogue, autonomous patrol results, intelligence, watch, event context, plan explanation, tool trace, and current poster export.
-2. Live Desk — market, account, positions, current plans, execution, orders, fills, protection, and OMS ↔ OKX truth.
-3. Lab — research map, knowledge incubation, strategy registry, capability registry, trade review, and Owner optimization.
-4. Control — risk posture, effective runtime state, read-only operating target and mandate context, deterministic-rule monitoring, event risk, and permission boundaries.
-5. Operations — runtime health, tasks and runs, event-input health, notifications, audit, reconciliation, recovery, and operational proof.
+1. Today — role-adaptive operating brief, account/risk summary, current AI focus, and action queue.
+2. AI Trader — conversation, autonomous patrol, intelligence, watch, event calendar, plan explanation, tool trace, and poster export.
+3. Account & Trading — portfolio overview, market, account, positions, plans/execution, orders/fills, protection, and reconciliation.
+4. Strategy — catalog, details, studio, historical validation, and pure-forward validation.
+5. Knowledge — overview, source import, evidence, graph, extracted artifacts, and workflow candidates.
+6. Capability — overview, native tools, workflows, MCP, connectors, and imported skills.
+7. Learning & Review — trade reviews, review details, Owner optimization, and candidate lessons.
+8. Risk & Boundaries — risk posture, event risk, permission boundaries, and deterministic-rule monitoring.
+9. Operations — runtime health, tasks/runs, event-input health, recovery, notifications, audit, and operational proof.
+10. Configuration — the sole editing home for trading/runtime, risk rules, exchange, environment, network, backup, security, notifications, event sources, models/keys, Agents, users, and subscriptions.
 
-Configuration Registry is a global utility rather than a sixth primary workspace. It is the single visible editing home for durable settings such as operating mode, mandate, risk rules, environment, network, backup, security, OKX, event sources, notification channels, models, Agent profiles, users, and subscriptions.
+Desktop groups these families into Core, Intelligent assets, and Governance. Runtime truth remains in its operational page family and links to the authoritative editor in Configuration. Legacy server sections and routes remain compatibility adapters rather than user-facing information architecture.
 
 The main product loop is:
 
-`AI Trader decision → Live Desk execution → Lab learning and release`
+`AI Trader decision → Account & Trading execution → Learning & Review → governed Strategy / Knowledge / Capability release`
 
-Control governs the loop. Operations proves and recovers the loop. Configuration Registry owns durable edits.
+Risk & Boundaries governs the loop. Operations proves and recovers it. Configuration owns durable edits. The business event calendar remains in AI Trader, while Operations observes the health of the inputs that feed it.
 
-Operations is organized as a duty workflow rather than a collection of monitoring pages: Command exposes current health and a priority attention queue; Tasks & Runs separates protected definitions from actual outcomes; Recovery owns reconciliation, scheduler recovery, execution-recovery links, and incident review; Audit and Inbox preserve immutable proof and explicit acknowledgement. The business event calendar stays in AI Trader, while Operations observes the health of the inputs that feed it.
+Smart Forms and DAO Governance are retired and must not appear in navigation, search, More, marketing product demos, desktop, or APP.
 
 ## Research Asset Model
 
@@ -47,41 +52,45 @@ The interface must not claim arbitrary executable code generation, dynamic unkno
 
 ## Visual Direction
 
-The authenticated product shell is governed by the immutable interactive prototype at commit `1056233`, `prototypes/kordyn-operating-system.html`, blob `43267ccfca051351823c668932c857350fb592b9`, together with its same-commit design specification. Login and marketing remain outside that shell contract and unchanged.
+The authenticated product, web authentication, APP authentication, and marketing visual system are governed by the approved zero-base design specification dated 2026-08-25. This system does not inherit visual authority from any earlier prototype or deployed UI version.
 
-- Paper-like warm surfaces, near-black command and truth regions, hard 1px boundaries, continuous grids, numbered operational structure, and dense but legible registry rows.
-- The semantic shell palette is exact: Paper/Paper-2, Ink/Ink-2, Muted, Dark/Dark-2, Acid, Mint, Danger, Amber, Blue, and the prototype line semantics.
-- Acid green is reserved for current selection, authorization, or explicit action-needed state.
-- Orange is used for risk, event impact, and Owner attention; blue for runtime health and observability; violet for imported and methodological relationships.
-- No generic SaaS card wall, decorative gradient or glow, glassmorphism, broad soft shadows, or oversized rounded containers.
+- Paper `#F4F1E9`, Ink `#111311`, Acid `#CCFF3D`, ecosystem Green `#4FB78B`, Danger `#E25645`, Amber `#EFB44B`, muted text `#697169`, and White `#FFFFFF` are the shared semantic palette.
+- Acid means current, explicitly authorized, or ready for action. Green means healthy or verified. Danger and Amber remain reserved for their semantic states.
+- Web3 character comes from asset identity, network topology, evidence relationships, state paths, verifiable provenance, and restrained circular/orbital motifs.
+- The product must not fall back to generic purple gradients, glass-card walls, particle-heavy animation, or decorative effects that obscure task state.
 - Status always includes text or a symbol in addition to color.
 - IDs, versions, timestamps, prices, quantities, and measurements use tabular/monospace treatment; prose does not use monospace as decoration.
 
-AI Trader retains its deployed conversation workflow and gains the Command visual grammar through an Agent Status Band and contextual Command Rail. Live Desk retains the approved trading-desk interaction model. Other workspaces are reorganized around authoritative objects, context, governance, and health/proof.
+AI Trader remains the main operating console, and every page family uses the same identity, evidence, relationship, state, action, and provenance grammar. The marketing page retains its content, section order, bilingual copy, product-demo meaning, legal language, and conversion behavior while adopting the shared palette and visual system.
 
 ## Authenticated Global Shell
 
-Desktop uses four persistent operating rails: a 64px Command Rail, a 188px numbered Workspace Rail, a 304px Context Dock, and a 66px Trace Rail. The Command Rail keeps the existing OKX, runtime, notification, Flatten, Kill, language, and account actions and adds a keyboard-operable object/function switcher built only from the canonical route registry and currently loaded production objects. Search results expose type, title, ID, status, and their existing authoritative route; empty and unavailable results are explicit.
+Desktop uses grouped family navigation, a canonical object/function switcher, role-aware account and safety truth, and bounded Context and Trace dialogs. Search is built only from canonical routes and currently loaded production objects; empty and unavailable results are explicit. Page-local selection must update the same global object identity or fail closed.
 
-The Context Dock projects Evidence, Risk, Mandate, Object, Version, Permissions, and the safe route-level next action from the selected object or current workspace facts. Missing fields remain `Unavailable`. The Trace Rail projects `Sense → Recall → Plan → Guard → Execute → Monitor → Review` from loaded market, knowledge, plan, risk, execution, monitoring, review, and trace facts, using only `complete`, `waiting`, `blocked`, or `unavailable`. A stage opens its real detail/evidence surface; no missing fact becomes zero or success. At medium desktop widths the Context Dock is a collapsible hard-edged overlay.
+Context projects evidence, risk, mandate, object, version, permissions, and a safe route-level next action from the selected object or current page facts. Missing fields remain `Unavailable`. Trace projects `Sense → Recall → Plan → Guard → Execute → Monitor → Review` from loaded facts, using only `complete`, `waiting`, `blocked`, or `unavailable`. A stage opens its real detail or evidence surface; no missing fact becomes zero or success.
 
-Post-login mobile uses the same Paper/near-black/Acid grammar as a touch composition: a 56px masthead and safety entry, a persistent 44px Context/Trace affordance rail, and a 66px numbered `AI | Live | Lab | Control | More` rail. Context and Trace open as bounded full-width sheets with the same fields and states. More contains only the Operations and Configuration product destinations plus true global utilities; workspace-local destinations are not duplicated there. Native authentication is unchanged.
+Post-login APP uses five roots: `Today | AI | Assets | Intelligent | More`. A root destination is never duplicated in More. Local rails and drill-down screens preserve the same object identity, status, permission, and action meanings as desktop. Objects, Context, and Trace open as touch-sized bounded sheets; dense desktop workbenches become task-led list/detail or full-screen flows.
 
-Shared ordinary confirmations are rectangular with a 1px Ink edge and 10px Acid offset; destructive confirmations use a 10px Danger offset. Flatten and Kill remain distinct deployed actions. Kill retains typed confirmation, server-authoritative failure/success handling, and audit evidence; neither action claims optimistic success.
+Web and APP authentication are both redesigned within the shared zero-base system while preserving login, registration, MFA, invitation, consent/privacy, risk acknowledgement, Turnstile, server selection, subscription, transport, and error behavior.
+
+Shared confirmations preserve focus, keyboard, touch, disabled, retry, typed-confirmation, and server-authoritative result behavior. Flatten and Kill remain distinct deployed actions; neither action claims optimistic success.
 
 ## Desktop and Mobile
 
-Desktop and mobile share product capability, route meaning, view models, permissions, API actions, and safety behavior. They do not share one forced layout.
+Desktop and APP share product capability, route meaning, view models, permissions, API actions, object identity, and safety behavior. They do not share one forced layout.
 
-- Desktop uses the five-workspace rail, local workspace navigation, high-density workbenches, registries, and contextual inspectors.
-- Mobile uses `AI | Live | Lab | Control | More`; More contains Operations and Configuration.
-- Desktop multi-panel workbenches become task-led list/detail, drill-down screens, bottom sheets, or full-screen flows on mobile.
-- Mobile preserves every field and action through progressive disclosure rather than shrinking desktop tables or stacking every panel.
-- The existing native/mobile sign-in and registration experience is out of scope and remains unchanged.
+- Desktop uses grouped page-family navigation, high-density workbenches, registries, contextual inspectors, and bounded overlays.
+- APP uses `Today | AI | Assets | Intelligent | More`, with local rails for page-family destinations.
+- Desktop multi-panel workbenches become task-led list/detail, drill-down screens, sheets, or full-screen flows on APP.
+- APP preserves every field and action through progressive disclosure rather than shrinking desktop tables or stacking every panel.
+- Root destinations are not duplicated in More, and persistent configuration editors exist only in Configuration.
 
 ## Verification Evidence
 
-`docs/ui-prototype-parity-matrix.md` is the binding Prototype → Desktop → APP audit. It records the immutable prototype element, desktop and APP implementation locations, interaction/state coverage, visual difference, conclusion, and exact evidence file for every row. The required prototype/production comparison and final viewport walk live under `.impeccable/review/`, including 1440×900 desktop, 1180×820 medium desktop, 390×844 and 430×932 APP, Context/Trace, drawers, ordinary and destructive confirmations, long content, and loading/empty/stale/failed/forbidden/disabled states.
+- `docs/ui-function-map.md` records the zero-base page families, real functionality, and Desktop ↔ APP ownership.
+- `docs/ui-prototype-parity-matrix.md` retains its historical filename for compatibility, but now audits zero-base Desktop ↔ APP consistency and does not grant authority to an older prototype.
+- `docs/zero-base-ui-evidence.md` records the source chain, browser commands, viewports, interaction coverage, performance results, and current evidence inventory.
+- Current visual evidence lives under `.impeccable/zero-base/` and covers Desktop 1440×900 and 1180×800, APP 390×844 and 430×932, authentication, marketing, Context/Trace, confirmations, and loading/failed/forbidden/stale/degraded states.
 
 Evidence is observational only: production screens continue to use deployed data loaders, actions, permissions, error boundaries, and server-authoritative outcomes. No screenshot fixture, DOM patch, or synthetic success path is a product capability.
 
@@ -96,8 +105,8 @@ Evidence is observational only: production screens continue to use deployed data
 
 ## Implementation Constraints
 
-- Preserve the accepted overview resource sections: `chat`, `cockpit`, `researchCenter`, `riskCenter`, `operationsCenter`, and `systemSettings` until backend contracts are deliberately migrated.
-- Preserve all current legacy routes and object IDs through a compatibility route registry.
-- Prefer shared domain/view-model modules over duplicated desktop/mobile business logic.
-- Mobile-specific presentation components are expected where interaction models differ.
-- Page-by-page migration and regression verification are required; no all-at-once shell cutover.
+- Preserve deployed server sections, real routes, object IDs, data loaders, permissions, actions, and safety behavior through compatibility adapters until backend contracts are deliberately migrated.
+- Do not expose legacy server section names as the user-facing information architecture.
+- Prefer shared domain/view-model modules over duplicated Desktop/APP business logic.
+- APP-specific presentation components are expected where interaction models differ.
+- Add no production mock data, arbitrary executable-tool generation, or unsupported runtime capability claims.

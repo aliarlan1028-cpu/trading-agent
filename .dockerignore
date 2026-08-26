@@ -7,7 +7,3 @@ docs/rendered-unified
 .DS_Store
 *.log
 tmp
-public/kordyn-concept-faithful.html
-public/kordyn-marketing-v4.html
-public/landing-concept-v3.html
-public/landing-prototype.html
