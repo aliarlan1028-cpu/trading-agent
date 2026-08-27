@@ -11,7 +11,9 @@ const { outputFiles } = require("esbuild").buildSync({
   stdin: {
     contents: `
       import * as accountTruth from "./src/kordynV2/viewModels/accountTruth.js";
+      import { parseJsonResponseText } from "./src/jsonResponseProvenance.js";
       globalThis.__kordynAccountTruth = accountTruth;
+      globalThis.__kordynParseJsonResponseText = parseJsonResponseText;
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -27,11 +29,11 @@ const { outputFiles } = require("esbuild").buildSync({
 const browserContext = {};
 vm.runInNewContext(outputFiles[0].text, browserContext, { filename: "kordyn-v2-account-truth.browser.js" });
 
-test("browser Account Truth accepts materialized JSON and rejects forged Proxy wrappers without traps", () => {
+test("browser Account Truth accepts parsed loader JSON and rejects forged Proxy wrappers without traps", () => {
   const serialized = vm.runInNewContext(`
     (() => {
       const { buildAccountTruth } = __kordynAccountTruth;
-      const materialize = __kordynAccountTruth.materializeJsonResponse || ((value) => value);
+      const parseLoaderJson = __kordynParseJsonResponseText;
       const makeCounters = () => ({ getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 });
       const wrap = (target, counters, sideEffects, label) => new Proxy(target, {
         getPrototypeOf() {
@@ -59,14 +61,14 @@ test("browser Account Truth accepts materialized JSON and rejects forged Proxy w
         }
       });
 
-      const rowRoot = materialize(JSON.parse('{"positions":[{"notional":600}]}'));
+      const rowRoot = parseLoaderJson('{"positions":[{"notional":600}]}');
       const ordinaryExposure = buildAccountTruth(rowRoot, "full").exposure;
       const rowCounters = makeCounters();
       const rowSideEffects = [];
       rowRoot.positions[0] = wrap(rowRoot.positions[0], rowCounters, rowSideEffects, "row");
       const rowExposure = buildAccountTruth(rowRoot, "full").exposure;
 
-      const rootTarget = materialize(JSON.parse('{"positions":[{"notional":600}]}'));
+      const rootTarget = parseLoaderJson('{"positions":[{"notional":600}]}');
       const rootCounters = makeCounters();
       const rootSideEffects = [];
       const rootExposure = buildAccountTruth(
@@ -80,7 +82,8 @@ test("browser Account Truth accepts materialized JSON and rejects forged Proxy w
       ).exposure;
 
       return JSON.stringify({
-        markerExported: typeof __kordynAccountTruth.materializeJsonResponse === "function",
+        arbitraryMaterializerExported: typeof __kordynAccountTruth.materializeJsonResponse === "function",
+        safeTextParserExported: typeof __kordynParseJsonResponseText === "function",
         ordinaryExposure,
         rowExposure,
         rowCounters,
@@ -114,5 +117,6 @@ test("browser Account Truth accepts materialized JSON and rejects forged Proxy w
     sideEffects: []
   });
   assert.equal(result.unbrandedExposure, "Unavailable");
-  assert.equal(result.markerExported, true);
+  assert.equal(result.arbitraryMaterializerExported, false);
+  assert.equal(result.safeTextParserExported, true);
 });

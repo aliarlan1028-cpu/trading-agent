@@ -15,7 +15,8 @@ process.on("exit", () => { try { fs.rmSync(outFile, { force: true }); } catch { 
 require("esbuild").buildSync({
   stdin: {
     contents: `
-      export { buildAccountTruth, materializeJsonResponse } from "./src/kordynV2/viewModels/accountTruth.js";
+      export { buildAccountTruth } from "./src/kordynV2/viewModels/accountTruth.js";
+      export { createJsonProjectionArray, createJsonProjectionRecord, parseJsonResponseText } from "./src/jsonResponseProvenance.js";
       export { createV2Selection } from "./src/kordynV2/viewModels/selection.js";
       export { normalizeResourceState } from "./src/kordynV2/viewModels/state.js";
     `,
@@ -32,12 +33,39 @@ require("esbuild").buildSync({
 });
 const {
   buildAccountTruth: buildUntrustedAccountTruth,
+  createJsonProjectionArray,
+  createJsonProjectionRecord,
   createV2Selection,
-  materializeJsonResponse,
-  normalizeResourceState
+  normalizeResourceState,
+  parseJsonResponseText
 } = require(outFile);
+
+function controlledJsonFixture(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const array = createJsonProjectionArray();
+    seen.set(value, array);
+    for (const item of value) array.push(controlledJsonFixture(item, seen));
+    return array;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const record = createJsonProjectionRecord(prototype);
+  seen.set(value, record);
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor) continue;
+    if (Object.hasOwn(descriptor, "value")) {
+      descriptor.value = controlledJsonFixture(descriptor.value, seen);
+    }
+    Object.defineProperty(record, key, descriptor);
+  }
+  return record;
+}
+
 const buildAccountTruth = (data = {}, mode = "full") => (
-  buildUntrustedAccountTruth(materializeJsonResponse(data), mode)
+  buildUntrustedAccountTruth(controlledJsonFixture(data), mode)
 );
 
 test("unknown is not converted to zero and stale retains its source", () => {
@@ -235,7 +263,7 @@ test("accessor position rows fail closed without invoking getters", () => {
 test("proxy-backed position rows fail closed before traps can forge descriptors", () => {
   const trapCalls = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
   const sideEffects = [];
-  const data = materializeJsonResponse({ positions: [{}] });
+  const data = parseJsonResponseText('{"positions":[{}]}');
   const row = new Proxy(data.positions[0], {
     getPrototypeOf() {
       trapCalls.getPrototypeOf += 1;

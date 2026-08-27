@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { getLang, t } from "./i18n.js";
-import { materializeJsonResponse } from "./jsonResponseProvenance.js";
+import {
+  createJsonProjectionArray,
+  createJsonProjectionRecord,
+  hasJsonResponseProvenance,
+  jsonResponseArrayValues,
+  parseJsonResponse,
+  parseJsonResponseText,
+  projectJsonResponseRecord
+} from "./jsonResponseProvenance.js";
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
 
@@ -794,7 +802,7 @@ export function useApi() {
   }[section] || []);
 
   function publishSnapshot(section = activeSectionRef.current) {
-    setData(materializeJsonResponse(projectSnapshotStore(snapshotStoreRef.current, section, supplementalSectionsFor(section))));
+    setData(projectSnapshotStore(snapshotStoreRef.current, section, supplementalSectionsFor(section)));
   }
 
   function resetSnapshotIdentity({ clearData = true } = {}) {
@@ -906,7 +914,7 @@ export function useApi() {
       return null;
     }
     if (!response.ok) throw new Error(`API ${response.status}`);
-    return materializeJsonResponse(await response.json());
+    return parseJsonResponse(response);
   }
 
   async function ensureSection(section = "chat", options = {}) {
@@ -937,7 +945,7 @@ export function useApi() {
           return null;
         }
         if (!response.ok) throw new Error(`API ${response.status}`);
-        const json = materializeJsonResponse(await response.json());
+        const json = await parseJsonResponse(response);
         if (!isCurrentRequest(context)) return null;
         if (!acceptSectionSnapshot(snapshotStoreRef.current, selected, json, context.minimumRevision)) {
           markSnapshotResource(snapshotStoreRef.current, selected, "not_loaded");
@@ -1047,7 +1055,7 @@ export function useApi() {
       }
       const text = await response.text();
       if (!isCurrentRequest(context)) return { ok: false, error: "request_identity_changed" };
-      const json = materializeJsonResponse(text ? JSON.parse(text) : {});
+      const json = text ? parseJsonResponseText(text) : createJsonProjectionRecord();
       if (!response.ok) {
         const requestError = new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
         requestError.status = response.status;
@@ -1235,10 +1243,17 @@ export function useApi() {
       openStream(url);
     };
     connect();
+    const responseField = (record, field) => {
+      if (!hasJsonResponseProvenance(record) || Array.isArray(record)) return undefined;
+      const descriptor = Object.getOwnPropertyDescriptor(record, field);
+      return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+    };
     const patch = (market, ups) => {
-      const u = ups[market.symbol];
+      const symbol = responseField(market, "symbol");
+      if (!symbol) return null;
+      const u = ups[symbol];
       if (!u) return market;
-      const next = { ...market };
+      const next = projectJsonResponseRecord(market);
       if (u.price !== undefined) next.price = u.price;
       if (u.changePct !== undefined) next.changePct = u.changePct;
       if (u.fundingRate !== undefined) next.fundingRate = u.fundingRate;
@@ -1258,15 +1273,38 @@ export function useApi() {
       pendingPortfolio = null;
       const core = snapshotStoreRef.current.core;
       if (core) {
-        const markets = (core.markets || []).map((m) => patch(m, ups));
-        const activeMarket = core.activeMarket && ups[core.activeMarket.symbol] ? patch(core.activeMarket, ups) : core.activeMarket;
-        const next = { ...core, markets, activeMarket };
+        const markets = createJsonProjectionArray();
+        for (const market of jsonResponseArrayValues(responseField(core, "markets")) || []) {
+          const nextMarket = patch(market, ups);
+          if (nextMarket) markets.push(nextMarket);
+        }
+        const currentActiveMarket = responseField(core, "activeMarket");
+        const activeMarketSymbol = responseField(currentActiveMarket, "symbol");
+        const activeMarket = activeMarketSymbol && ups[activeMarketSymbol]
+          ? patch(currentActiveMarket, ups)
+          : currentActiveMarket;
+        const next = projectJsonResponseRecord(core);
+        next.markets = markets;
+        next.activeMarket = activeMarket;
         if (pf) {
           // 实时组合浮盈亏 + 逐仓 PnL 合并（不等 15s 轮询）。
-          next.portfolio = { ...core.portfolio, ...pf.portfolio };
-          if (pf.positions?.length && core.positions?.length) {
-            const byId = Object.fromEntries(pf.positions.map((p) => [p.id, p]));
-            next.positions = core.positions.map((p) => (byId[p.id] ? { ...p, ...byId[p.id] } : p));
+          const portfolioPatch = responseField(pf, "portfolio");
+          if (hasJsonResponseProvenance(portfolioPatch)) {
+            next.portfolio = projectJsonResponseRecord(responseField(core, "portfolio"), portfolioPatch);
+          }
+          const positionPatches = jsonResponseArrayValues(responseField(pf, "positions")) || [];
+          const currentPositions = jsonResponseArrayValues(responseField(core, "positions")) || [];
+          if (positionPatches.length && currentPositions.length) {
+            const byId = new Map();
+            for (const position of positionPatches) {
+              const id = responseField(position, "id");
+              if (id != null) byId.set(id, position);
+            }
+            next.positions = createJsonProjectionArray();
+            for (const position of currentPositions) {
+              const update = byId.get(responseField(position, "id"));
+              next.positions.push(update ? projectJsonResponseRecord(position, update) : position);
+            }
           }
         }
         snapshotStoreRef.current.core = next;
@@ -1277,7 +1315,7 @@ export function useApi() {
       if (!source) return;
       source.onmessage = (event) => {
         try {
-          const u = materializeJsonResponse(JSON.parse(event.data));
+          const u = parseJsonResponseText(event.data);
           if (u?.type === "core_invalidated") {
             if (!observeSnapshotInvalidation(snapshotStoreRef.current, u)) return;
             scheduleInvalidationSync(false);
@@ -1292,7 +1330,7 @@ export function useApi() {
           if (!u || !u.symbol) return;
           // 逐 tick 直推图表（不节流），让 K 线跟上 OKX 每秒多次的变化。
           if (u.price !== undefined) emitLivePrice(u.symbol, u.price);
-          pending[u.symbol] = { ...pending[u.symbol], ...u };
+          pending[u.symbol] = projectJsonResponseRecord(pending[u.symbol], u);
           // React 状态（标题/快照）轻度节流到 250ms（约 4 次/秒），避免整页高频重渲染。
           if (!timer) timer = setTimeout(flush, 250);
         } catch { /* 忽略解析失败 */ }
@@ -1323,18 +1361,38 @@ export function useApi() {
         try {
           const res = await fetch(apiUrl("/api/markets", apiBase), { headers: headers() });
           if (res.ok) {
-            const markets = materializeJsonResponse(await res.json());
+            const markets = await parseJsonResponse(res);
             if (Array.isArray(markets)) {
               for (const m of markets) if (m && m.symbol && m.price != null) emitLivePrice(m.symbol, m.price);
               const byId = Object.fromEntries(markets.map((m) => [m.symbol, m]));
               const merge = (mk) => {
-                const u = byId[mk.symbol];
+                if (!hasJsonResponseProvenance(mk) || Array.isArray(mk)) return null;
+                const symbolDescriptor = Object.getOwnPropertyDescriptor(mk, "symbol");
+                const symbol = symbolDescriptor && Object.hasOwn(symbolDescriptor, "value") ? symbolDescriptor.value : null;
+                const u = symbol ? byId[symbol] : null;
                 if (!u) return mk;
-                return { ...mk, price: u.price, changePct: u.changePct, high24h: u.high24h, low24h: u.low24h, fundingRate: u.fundingRate ?? mk.fundingRate, openInterest: u.openInterest ?? mk.openInterest, volume24h: u.volume24h ?? mk.volume24h, lastRealtimeAt: new Date().toISOString() };
+                const merged = projectJsonResponseRecord(mk);
+                merged.price = u.price;
+                merged.changePct = u.changePct;
+                merged.high24h = u.high24h;
+                merged.low24h = u.low24h;
+                merged.fundingRate = u.fundingRate ?? merged.fundingRate;
+                merged.openInterest = u.openInterest ?? merged.openInterest;
+                merged.volume24h = u.volume24h ?? merged.volume24h;
+                merged.lastRealtimeAt = new Date().toISOString();
+                return merged;
               };
               const core = snapshotStoreRef.current.core;
               if (core) {
-                snapshotStoreRef.current.core = { ...core, markets: (core.markets || []).map(merge), activeMarket: core.activeMarket ? merge(core.activeMarket) : core.activeMarket };
+                const next = projectJsonResponseRecord(core);
+                const currentMarkets = jsonResponseArrayValues(core.markets) || [];
+                next.markets = createJsonProjectionArray();
+                for (const market of currentMarkets) {
+                  const merged = merge(market);
+                  if (merged) next.markets.push(merged);
+                }
+                next.activeMarket = core.activeMarket ? merge(core.activeMarket) : core.activeMarket;
+                snapshotStoreRef.current.core = next;
                 publishSnapshot();
               }
             }

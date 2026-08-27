@@ -65,7 +65,7 @@ function createUseApiHarness() {
   };
 }
 
-test("useApi materializes authoritative core, section, and action reload JSON for Account Truth", async () => {
+test("useApi preserves loader provenance without re-traversing a later-mutated published snapshot", async () => {
   const saved = {
     fetch: globalThis.fetch,
     localStorage: globalThis.localStorage,
@@ -87,7 +87,7 @@ test("useApi materializes authoritative core, section, and action reload JSON fo
     addEventListener: () => {},
     removeEventListener: () => {}
   };
-  const accountData = () => ({
+  const accountJsonText = JSON.stringify({
     portfolio: {
       totalEquityUsdt: 10240.5,
       availableMarginUsdt: 7130,
@@ -95,6 +95,7 @@ test("useApi materializes authoritative core, section, and action reload JSON fo
     },
     positions: [{ positionId: "p-1", symbol: "BTC/USDT", quantity: 0.01, mark: 60000 }]
   });
+  const accountData = () => JSON.parse(accountJsonText);
   globalThis.fetch = async (url) => {
     const target = String(url);
     if (target.endsWith("/api/bootstrap/core")) {
@@ -138,6 +139,53 @@ test("useApi materializes authoritative core, section, and action reload JSON fo
     api = harness.render();
     assert.equal(hasJsonResponseProvenance(api.data), true, "action-reloaded projection root");
     assert.equal(buildAccountTruth(api.data, "full").exposure, 600);
+
+    const trapCalls = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
+    const sideEffects = [];
+    const parsedRow = api.data.positions[0];
+    const wrapper = new Proxy(parsedRow, {
+      getPrototypeOf() {
+        trapCalls.getPrototypeOf += 1;
+        sideEffects.push("wrapper:getPrototypeOf");
+        return Object.prototype;
+      },
+      getOwnPropertyDescriptor(target, field) {
+        trapCalls.getOwnPropertyDescriptor += 1;
+        sideEffects.push(`wrapper:descriptor:${String(field)}`);
+        if (field === "notional") {
+          return { configurable: true, enumerable: true, writable: true, value: 600 };
+        }
+        return Reflect.getOwnPropertyDescriptor(target, field);
+      },
+      ownKeys(target) {
+        trapCalls.ownKeys += 1;
+        sideEffects.push("wrapper:ownKeys");
+        return Reflect.ownKeys(target);
+      },
+      get(target, field, receiver) {
+        trapCalls.get += 1;
+        sideEffects.push(`wrapper:get:${String(field)}`);
+        return Reflect.get(target, field, receiver);
+      }
+    });
+    let accessorCalls = 0;
+    const accessorRow = {};
+    Object.defineProperty(accessorRow, "notional", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return 600;
+      }
+    });
+    api.data.positions.splice(0, 1, wrapper, accessorRow);
+
+    await api.ensureSection("chat");
+    api = harness.render();
+    assert.equal(buildAccountTruth(api.data, "full").exposure, "Unavailable");
+    assert.deepEqual(trapCalls, { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 });
+    assert.deepEqual(sideEffects, []);
+    assert.equal(accessorCalls, 0);
   } finally {
     globalThis.fetch = saved.fetch;
     globalThis.localStorage = saved.localStorage;

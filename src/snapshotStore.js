@@ -1,3 +1,11 @@
+import {
+  createJsonProjectionArray,
+  createJsonProjectionRecord,
+  hasJsonResponseProvenance,
+  jsonResponseArrayValues,
+  projectJsonResponseRecord
+} from "./jsonResponseProvenance.js";
+
 const CORE_OWNED_FIELDS = Object.freeze([
   "user", "system", "systemRelease", "automationState", "agentStatus", "portfolio",
   "performance", "positions", "markets", "activeMarket", "marketRegime", "watchlist",
@@ -9,16 +17,30 @@ const LIVE_ROW_FIELDS = Object.freeze([
   "tradePlans", "executionOrders", "armedSetups", "fills", "watchTriggers", "riskIncidents", "notifications"
 ]);
 
+function responseRecord(value) {
+  return hasJsonResponseProvenance(value) && !Array.isArray(value);
+}
+
+function ownDataValue(record, key) {
+  if (!responseRecord(record)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+}
+
+function responseRows(value) {
+  return (jsonResponseArrayValues(value) || []).filter(responseRecord);
+}
+
 function rowKey(row) {
-  return row?.id || row?.clientOrderId || row?.tradeId || null;
+  return ownDataValue(row, "id") || ownDataValue(row, "clientOrderId") || ownDataValue(row, "tradeId") || null;
 }
 
 function mergeRows(fresh = [], detailed = [], keyOf = rowKey) {
-  const result = [];
+  const result = createJsonProjectionArray();
   const seen = new Set();
-  const detailRows = Array.isArray(detailed) ? detailed : [];
+  const detailRows = responseRows(detailed);
   const detailByKey = new Map(detailRows.map((row) => [keyOf(row), row]).filter(([key]) => key != null));
-  for (const row of Array.isArray(fresh) ? fresh : []) {
+  for (const row of responseRows(fresh)) {
     const key = keyOf(row);
     if (key == null) {
       result.push(row);
@@ -27,7 +49,7 @@ function mergeRows(fresh = [], detailed = [], keyOf = rowKey) {
     if (seen.has(key)) continue;
     seen.add(key);
     const detail = detailByKey.get(key);
-    result.push(detail ? { ...detail, ...row } : row);
+    result.push(detail ? projectJsonResponseRecord(detail, row) : row);
   }
   for (const row of detailRows) {
     const key = keyOf(row);
@@ -46,7 +68,7 @@ export function createSnapshotStore() {
     sectionInvalidationRevisions: new Map(),
     sections: new Map(),
     sectionRevisions: new Map(),
-    resourceState: {}
+    resourceState: createJsonProjectionRecord()
   };
 }
 
@@ -57,12 +79,14 @@ export function clearSnapshotStore(store) {
   store.sectionInvalidationRevisions.clear();
   store.sections.clear();
   store.sectionRevisions.clear();
-  store.resourceState = {};
+  store.resourceState = createJsonProjectionRecord();
   return store;
 }
 
 export function markSnapshotResource(store, section, state) {
-  store.resourceState = { ...store.resourceState, [section]: state };
+  const resourceState = projectJsonResponseRecord(store.resourceState);
+  resourceState[section] = state;
+  store.resourceState = resourceState;
 }
 
 export function observeSnapshotInvalidation(store, event = {}) {
@@ -94,7 +118,7 @@ export function acceptCoreSnapshot(store, snapshot, minimumRevision = 0) {
   if (revision < requiredRevision) return false;
   store.core = snapshot;
   store.coreRevision = revision;
-  store.resourceState = { ...(snapshot?.resourceState || {}), ...store.resourceState };
+  store.resourceState = projectJsonResponseRecord(ownDataValue(snapshot, "resourceState"), store.resourceState);
   return true;
 }
 
@@ -111,7 +135,8 @@ export function acceptSectionSnapshot(store, section, snapshot, minimumRevision 
   if (revision < requiredRevision) return false;
   store.sections.set(section, snapshot);
   store.sectionRevisions.set(section, revision);
-  store.resourceState = { ...store.resourceState, ...(snapshot?.resourceState || {}), [section]: "loaded" };
+  store.resourceState = projectJsonResponseRecord(store.resourceState, ownDataValue(snapshot, "resourceState"));
+  store.resourceState[section] = "loaded";
   return true;
 }
 
@@ -122,11 +147,12 @@ export function projectSnapshotStore(store, section = "chat", supplementalSectio
     .filter((item) => item && item !== section)
     .map((item) => store.sections.get(item))
     .filter(Boolean);
-  const contextDetail = Object.assign({}, ...supplements, ...(detail ? [detail] : []));
-  const projected = { ...store.core, ...contextDetail };
+  const contextDetail = projectJsonResponseRecord(...supplements, ...(detail ? [detail] : []));
+  const projected = projectJsonResponseRecord(store.core, contextDetail);
   if (detail || supplements.length) {
     for (const field of CORE_OWNED_FIELDS) {
-      if (Object.hasOwn(store.core, field)) projected[field] = store.core[field];
+      const descriptor = Object.getOwnPropertyDescriptor(store.core, field);
+      if (descriptor && Object.hasOwn(descriptor, "value")) projected[field] = descriptor.value;
     }
     for (const field of LIVE_ROW_FIELDS) {
       if (Object.hasOwn(contextDetail, field) || Object.hasOwn(store.core, field)) {
@@ -134,11 +160,12 @@ export function projectSnapshotStore(store, section = "chat", supplementalSectio
       }
     }
     if (Object.hasOwn(contextDetail, "markets") || Object.hasOwn(store.core, "markets")) {
-      projected.markets = mergeRows(store.core.markets, contextDetail.markets, (row) => row?.symbol || null);
+      projected.markets = mergeRows(store.core.markets, contextDetail.markets, (row) => ownDataValue(row, "symbol") || null);
     }
   }
-  projected.loadedSections = [...store.sections.keys()];
-  projected.resourceState = { ...(store.core.resourceState || {}), ...store.resourceState };
+  projected.loadedSections = createJsonProjectionArray();
+  projected.loadedSections.push(...store.sections.keys());
+  projected.resourceState = projectJsonResponseRecord(ownDataValue(store.core, "resourceState"), store.resourceState);
   projected.revision = Math.max(
     store.coreRevision,
     Number(store.sectionRevisions.get(section) || 0),

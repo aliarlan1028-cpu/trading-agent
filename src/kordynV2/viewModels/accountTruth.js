@@ -1,8 +1,10 @@
 import { automationPresentation } from "../../lib.jsx";
-import { hasJsonResponseProvenance } from "../../jsonResponseProvenance.js";
+import {
+  hasJsonResponseProvenance,
+  jsonResponseArrayValues,
+  projectJsonResponseRecord
+} from "../../jsonResponseProvenance.js";
 import { buildPositionView, sortRecent } from "../../viewData.js";
-
-export { materializeJsonResponse } from "../../jsonResponseProvenance.js";
 
 const unavailable = "Unavailable";
 const firstKnown = (...values) => values.find((value) => value !== undefined && value !== null && value !== "");
@@ -17,7 +19,12 @@ const DIRECT_POSITION_FIELDS = ["notional", "notionalUsdt", "marketValue"];
 const QUANTITY_POSITION_FIELDS = ["quantity", "size", "pos", "qty"];
 const MARK_POSITION_FIELDS = ["markPrice", "mark", "price", "entryPrice", "entry"];
 const responseRecord = (value) => hasJsonResponseProvenance(value) && !Array.isArray(value);
-const responseArray = (value) => hasJsonResponseProvenance(value) && Array.isArray(value);
+
+function responseValue(record, field) {
+  if (!responseRecord(record)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(record, field);
+  return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+}
 
 function unavailableAccountTruth(mode) {
   return Object.freeze({
@@ -64,8 +71,8 @@ function normalizedExposurePosition(position) {
 }
 
 function exposureFact(data) {
-  const sourcePositions = data.positions;
-  if (!responseArray(sourcePositions)) return unavailable;
+  const sourcePositions = jsonResponseArrayValues(responseValue(data, "positions"));
+  if (!sourcePositions) return unavailable;
   const positions = sourcePositions.map(normalizedExposurePosition);
   if (positions.some((position) => position === null)) return unavailable;
   const positionView = buildPositionView({ positions });
@@ -73,13 +80,15 @@ function exposureFact(data) {
 }
 
 function freshnessFact(data, portfolio) {
-  const sourceSnapshots = data.accountSnapshots;
+  const sourceSnapshots = jsonResponseArrayValues(responseValue(data, "accountSnapshots"));
   const latestSuccessful = sortRecent(
-    responseArray(sourceSnapshots)
-      ? sourceSnapshots.filter((snapshot) => responseRecord(snapshot) && snapshot.status === "ok")
+    sourceSnapshots
+      ? sourceSnapshots
+        .filter((snapshot) => responseRecord(snapshot) && responseValue(snapshot, "status") === "ok")
+        .map((snapshot) => projectJsonResponseRecord(snapshot))
       : []
   )[0];
-  return fact(portfolio?.marginSyncedAt, latestSuccessful?.createdAt);
+  return fact(responseValue(portfolio, "marginSyncedAt"), responseValue(latestSuccessful, "createdAt"));
 }
 
 function runtimeFact(automation, system) {
@@ -101,8 +110,8 @@ function runtimeFact(automation, system) {
 }
 
 function riskFact(system, currentRiskSnapshot, portfolioRisk) {
-  const candidateControls = currentRiskSnapshot?.controls;
-  const controls = responseRecord(candidateControls) ? candidateControls : null;
+  const candidateControls = responseValue(currentRiskSnapshot, "controls");
+  const controls = responseRecord(candidateControls) ? projectJsonResponseRecord(candidateControls) : null;
   if (controls?.killSwitch === true || system?.killSwitch === true) {
     return fact(controls?.riskStatus, system?.riskStatus, "kill_switch");
   }
@@ -114,15 +123,20 @@ function riskFact(system, currentRiskSnapshot, portfolioRisk) {
 
 export function buildAccountTruth(data = {}, mode = "full") {
   if (!hasJsonResponseProvenance(data)) return unavailableAccountTruth(mode);
-  const portfolio = responseRecord(data.portfolio) ? data.portfolio : null;
-  const risk = responseRecord(data.portfolioRisk) ? data.portfolioRisk : null;
-  const automation = responseRecord(data.automationState) ? data.automationState : null;
-  const system = responseRecord(data.system) ? data.system : null;
-  const currentRiskSnapshot = responseRecord(data.currentRiskSnapshot) ? data.currentRiskSnapshot : null;
+  const portfolioSource = responseValue(data, "portfolio");
+  const riskSource = responseValue(data, "portfolioRisk");
+  const automationSource = responseValue(data, "automationState");
+  const systemSource = responseValue(data, "system");
+  const currentRiskSnapshotSource = responseValue(data, "currentRiskSnapshot");
+  const portfolio = responseRecord(portfolioSource) ? projectJsonResponseRecord(portfolioSource) : null;
+  const risk = responseRecord(riskSource) ? projectJsonResponseRecord(riskSource) : null;
+  const automation = responseRecord(automationSource) ? projectJsonResponseRecord(automationSource) : null;
+  const system = responseRecord(systemSource) ? projectJsonResponseRecord(systemSource) : null;
+  const currentRiskSnapshot = responseRecord(currentRiskSnapshotSource) ? projectJsonResponseRecord(currentRiskSnapshotSource) : null;
   return Object.freeze({
     mode,
-    equity: financialFact(portfolio?.totalEquityUsdt),
-    available: financialFact(portfolio?.availableMarginUsdt),
+    equity: financialFact(responseValue(portfolio, "totalEquityUsdt")),
+    available: financialFact(responseValue(portfolio, "availableMarginUsdt")),
     exposure: exposureFact(data),
     freshness: freshnessFact(data, portfolio),
     runtime: runtimeFact(automation, system),

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseJsonResponseText } from "../src/jsonResponseProvenance.js";
 import {
-  acceptCoreSnapshot,
-  acceptSectionSnapshot,
+  acceptCoreSnapshot as acceptParsedCoreSnapshot,
+  acceptSectionSnapshot as acceptParsedSectionSnapshot,
   clearSnapshotStore,
   createSnapshotStore,
   markSnapshotResource,
@@ -10,6 +11,14 @@ import {
   projectSnapshotStore,
   shouldRetryStaleSnapshot
 } from "../src/snapshotStore.js";
+
+const loaderJson = (value) => parseJsonResponseText(JSON.stringify(value));
+const acceptCoreSnapshot = (store, snapshot, ...rest) => (
+  acceptParsedCoreSnapshot(store, loaderJson(snapshot), ...rest)
+);
+const acceptSectionSnapshot = (store, section, snapshot, ...rest) => (
+  acceptParsedSectionSnapshot(store, section, loaderJson(snapshot), ...rest)
+);
 
 test("workspace snapshots remain partitioned and core owns shared live facts", () => {
   const store = createSnapshotStore();
