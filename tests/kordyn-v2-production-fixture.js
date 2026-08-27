@@ -109,6 +109,22 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
   ]
 });
 
+const longContentFixture = JSON.parse(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
+const longContentSource = "Read-only exchange projection · regional failover checkpoint · portfolio and runtime authority from current visible sources";
+export const KORDYN_V2_LONG_CONTENT_FIXTURE_JSON = JSON.stringify({
+  ...longContentFixture,
+  revision: 66,
+  source: longContentSource,
+  resourceState: {
+    ...longContentFixture.resourceState,
+    chat: "long-content"
+  },
+  portfolio: {
+    ...longContentFixture.portfolio,
+    source: longContentSource
+  }
+});
+
 export const KORDYN_V2_UNKNOWN_FACTS_FIXTURE_JSON = JSON.stringify({
   revision: 42,
   source: "Read-only mission projection",

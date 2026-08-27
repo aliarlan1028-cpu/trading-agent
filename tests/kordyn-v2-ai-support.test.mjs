@@ -287,6 +287,41 @@ test("AI support navigation resolves registered V2 destinations and rejects gues
   ]);
 });
 
+test("AI support gives every supported state a deterministic product explanation", () => {
+  const expectedExplanations = new Map([
+    ["ready", "当前页面的权威事实已经加载"],
+    ["not_loaded", "权威事实尚未加载"],
+    ["loading", "权威事实仍在加载"],
+    ["empty", "当前范围没有可解释的权威事实"],
+    ["processing", "系统正在处理当前请求"],
+    ["stale", "保留的是最后有效事实"],
+    ["degraded", "部分权威来源正在降级"],
+    ["failed", "当前权威来源加载失败"],
+    ["forbidden", "当前身份无权读取这个范围"],
+    ["disabled", "当前状态禁用了页面能力"],
+    ["approval", "当前事项需要授权确认"],
+    ["partial", "当前请求只返回了部分权威结果"],
+    ["no-result", "当前请求尚无可验证结果"],
+    ["long-content", "完整权威内容已经加载"],
+    ["large-list", "完整权威列表已经加载"]
+  ]);
+
+  for (const [kind, expected] of expectedExplanations) {
+    const state = stateFor(kind === "ready" ? "loaded" : kind);
+    const context = buildAiSupportContext({ data: trustedData(), location, selection, state });
+    const html = renderToStaticMarkup(React.createElement(AiSupport, {
+      context,
+      onNavigate: () => {},
+      presentation: "content"
+    }));
+    assert.match(html, new RegExp(expected), `${kind}: renders its product explanation`);
+    assert.doesNotMatch(html, /当前状态没有可验证的解释/, `${kind}: never falls through the unknown-state fallback`);
+    if (["long-content", "large-list"].includes(kind)) {
+      assert.match(html, /Read-only exchange projection/, `${kind}: keeps authorized visible facts`);
+    }
+  }
+});
+
 test("AI support visibly identifies its read-only boundary and only renders registered navigation", () => {
   const context = buildAiSupportContext({ data: trustedData(), location, selection, state: readyState });
   const html = renderToStaticMarkup(React.createElement(AiSupport, {

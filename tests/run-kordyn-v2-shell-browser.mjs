@@ -1072,6 +1072,24 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
     roots: 4,
     actions: 0
   }, `${width}: APP support exposes governed current context without becoming a fifth root`);
+  const supportReadability = await evaluate(cdp, `(() => {
+    const sheet = document.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
+    const values = [...sheet.querySelectorAll('.kordynV2AiSupportFacts dd')];
+    const navigationMeta = [...sheet.querySelectorAll('.kordynV2AiSupportSuggestions small')];
+    const triggerMeta = document.querySelector('[data-kordyn-v2-ai-support-trigger] small');
+    const fontSize = (node) => node ? Number.parseFloat(getComputedStyle(node).fontSize) : 0;
+    const wrappingNodes = [...values, ...navigationMeta];
+    return {
+      factsMin:Math.min(...values.map(fontSize)),
+      navigationMin:Math.min(...navigationMeta.map(fontSize)),
+      triggerMeta:fontSize(triggerMeta),
+      horizontalTextOverflows:wrappingNodes.filter((node) => node.scrollWidth > node.clientWidth + 1).length
+    };
+  })()`);
+  assert.ok(supportReadability.factsMin >= 11, `${width}: APP support fact values are readable at 11px or larger`);
+  assert.ok(supportReadability.navigationMin >= 11, `${width}: APP support navigation explanation is readable at 11px or larger`);
+  assert.ok(supportReadability.triggerMeta >= 10, `${width}: APP floating support metadata is readable at 10px or larger`);
+  assert.equal(supportReadability.horizontalTextOverflows, 0, `${width}: support fact and navigation text wraps without horizontal overflow`);
   assert.ok(support.sheetScroll.scrollHeight > support.sheetScroll.clientHeight, `${width}: APP support long content scrolls inside the governed sheet`);
   if (width === 430) {
     const supportCaptureScrollTop = await evaluate(cdp, `(() => {
@@ -1177,6 +1195,74 @@ async function verifyMobileStates(cdp, pageUrl) {
   }
 }
 
+async function verifyDesktopLongContentSupport(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=support-long-content`, 1440, 900, "desktop");
+  await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')", "desktop long-content support opens");
+  const result = await evaluate(cdp, `(() => {
+    const panel = document.querySelector('[data-kordyn-v2-ai-support-panel]');
+    const state = panel?.querySelector('[data-kordyn-v2-ai-support-state]');
+    const scroll = panel?.querySelector('[data-kordyn-v2-ai-support-scroll]');
+    return {
+      kind:state?.getAttribute('data-kordyn-v2-ai-support-state') || null,
+      explanation:state?.textContent?.includes('完整权威内容已经加载') || false,
+      facts:panel?.textContent?.includes('regional failover checkpoint') || false,
+      scroll:scroll ? [scroll.clientHeight,scroll.scrollHeight] : [0,0],
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  assert.equal(result.kind, "long-content", "desktop long-content support keeps production state identity");
+  assert.equal(result.explanation, true, "desktop long-content support uses its accurate product explanation");
+  assert.equal(result.facts, true, "desktop long-content support keeps authorized visible facts");
+  assert.ok(result.scroll[1] > result.scroll[0], "desktop long-content support scrolls inside its bounded panel");
+  assert.equal(result.actions, 0, "desktop long-content support remains zero-write");
+  await pressKey(cdp, "Escape");
+  return result;
+}
+
+async function verifyMobileLongContentSupport(cdp, pageUrl, width, height) {
+  await setViewport(cdp, `${pageUrl}?scenario=support-long-content`, width, height, "mobile");
+  await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
+  const sheetContract = await assertMobileSheet(cdp, width, height - 74, "support");
+  const result = await evaluate(cdp, `(() => {
+    const root = document.querySelector('[data-kordyn-v2-shell=mobile]');
+    const sheet = document.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
+    const state = sheet?.querySelector('[data-kordyn-v2-ai-support-state]');
+    const scroll = sheet?.querySelector('.kordynV2MobileSheetScroll');
+    const values = [...sheet.querySelectorAll('.kordynV2AiSupportFacts dd')];
+    const navigationMeta = [...sheet.querySelectorAll('.kordynV2AiSupportSuggestions small')];
+    const fontSize = (node) => node ? Number.parseFloat(getComputedStyle(node).fontSize) : 0;
+    return {
+      kind:state?.getAttribute('data-kordyn-v2-ai-support-state') || null,
+      explanation:state?.textContent?.includes('完整权威内容已经加载') || false,
+      facts:sheet?.textContent?.includes('regional failover checkpoint') || false,
+      factsMin:Math.min(...values.map(fontSize)),
+      navigationMin:Math.min(...navigationMeta.map(fontSize)),
+      textOverflows:[...values,...navigationMeta].filter((node) => node.scrollWidth > node.clientWidth + 1).length,
+      scroll:scroll ? [scroll.clientHeight,scroll.scrollHeight] : [0,0],
+      document:[document.documentElement.clientWidth,document.documentElement.scrollWidth],
+      roots:root?.querySelectorAll('[data-kordyn-v2-mobile-navigation] [data-kordyn-v2-domain-target]').length || 0,
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  assert.equal(result.kind, "long-content", `${width}: APP long-content support keeps production state identity`);
+  assert.equal(result.explanation, true, `${width}: APP long-content support uses its accurate product explanation`);
+  assert.equal(result.facts, true, `${width}: APP long-content support keeps authorized visible facts`);
+  assert.ok(result.factsMin >= 11 && result.navigationMin >= 11, `${width}: APP long-content facts and navigation remain readable`);
+  assert.equal(result.textOverflows, 0, `${width}: APP long source and navigation values wrap without horizontal overflow`);
+  assert.ok(result.scroll[1] > result.scroll[0] && sheetContract.sheetScroll.scrollHeight > sheetContract.sheetScroll.clientHeight, `${width}: APP long-content support scrolls inside the governed sheet`);
+  assert.deepEqual(result.document, [width, width], `${width}: APP long-content has no document overflow`);
+  assert.equal(result.roots, 4, `${width}: APP long-content retains four roots`);
+  assert.equal(result.actions, 0, `${width}: APP long-content support remains zero-write`);
+  await evaluate(cdp, `(() => {
+    const content = document.querySelector('[data-kordyn-v2-mobile-sheet="support"] .kordynV2MobileSheetScroll');
+    if (content) content.scrollTop = 0;
+  })()`);
+  const screenshot = await captureMobile(cdp, width, height, `mobile-${width}x${height}-ai-support-long-content.png`);
+  await pressKey(cdp, "Escape");
+  return { ...result, screenshot };
+}
+
 async function stopProcess(child) {
   if (!child || child.exitCode !== null || child.signalCode) return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
@@ -1224,12 +1310,16 @@ try {
       mobileResults.push(await verifyMobileViewport(cdp, pageUrl, width, height));
     }
     await verifyMobileStates(cdp, pageUrl);
+    const longContentResults = [];
+    for (const [width, height] of mobileViewports) {
+      longContentResults.push(await verifyMobileLongContentSupport(cdp, pageUrl, width, height));
+    }
     assert.equal(
       contractFailures.length,
       0,
       `KORDYN V2 Task5 mobile semantic contract failures:\n- ${contractFailures.join("\n- ")}`
     );
-    process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,targets=44`).join(" ")} states=5 screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length + mobileResults.filter((row) => row.supportScreenshot?.outputPath).length}\n`);
+    process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,targets=44`).join(" ")} states=5 long-content=${longContentResults.length} screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length + mobileResults.filter((row) => row.supportScreenshot?.outputPath).length + longContentResults.filter((row) => row.screenshot?.outputPath).length}\n`);
     process.stdout.write(`KORDYN V2 mobile geometry ${mobileResults.map((row) => `${row.width}:stateBottom=${Math.round(row.base.state.bottom)},navTop=${Math.round(row.base.nav.top)},reserve=${Math.round(row.base.paddingBottom)},workspaceMin=${row.minimumWorkspaceTarget.toFixed(1)},sheet=${Math.round(row.proof.sheet.top)}-${Math.round(row.proof.sheet.bottom)},proofScroll=${row.proof.sheetScroll.clientHeight}/${row.proof.sheetScroll.scrollHeight}`).join(" | ")} transition=${transition.domain}/${transition.workspace}:${transition.sections.map((item) => item.section).join(",")}\n`);
   } else {
   const results = [];
@@ -1344,6 +1434,7 @@ try {
     connection: "unavailable", runtime: "unavailable", risk: "unavailable", realtime: "unavailable"
   });
   await verifyContradictionHealth(cdp, pageUrl);
+  const longContentSupport = await verifyDesktopLongContentSupport(cdp, pageUrl);
   let independentHero = null;
   if (screenshotDir) {
     await setViewport(cdp, pageUrl, 1440, 900);
@@ -1365,7 +1456,7 @@ try {
     `KORDYN V2 Task4 semantic contract failures:\n- ${contractFailures.join("\n- ")}`
   );
 
-  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,mae=${row.screenshot.metric.toFixed(6)}`).join(" ")} screenshots=${results.filter((row) => row.screenshot.outputPath).length + results.filter((row) => row.supportScreenshot?.outputPath).length + (independentHero?.outputPath ? 1 : 0)}${independentHero ? ` hero-mae=${independentHero.metric.toFixed(6)}` : ""}\n`);
+  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,mae=${row.screenshot.metric.toFixed(6)}`).join(" ")} long-content=${longContentSupport.kind} screenshots=${results.filter((row) => row.screenshot.outputPath).length + results.filter((row) => row.supportScreenshot?.outputPath).length + (independentHero?.outputPath ? 1 : 0)}${independentHero ? ` hero-mae=${independentHero.metric.toFixed(6)}` : ""}\n`);
   process.stdout.write(`KORDYN V2 landmarks ${results.map((row) => {
     const { identity, notification, workbenchFooter, prompt, assistant, runtime, evidenceDock, decisionSummary } = row.geometry.landmarks;
     const box = (value) => [value.left, value.top, value.right, value.bottom].map(Math.round).join(",");

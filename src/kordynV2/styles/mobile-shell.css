@@ -357,7 +357,7 @@
 
   .kordynV2MobileSupportTrigger small {
     color: #bab3ec;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .kordynV2MobileSheetScrim {
@@ -447,6 +447,15 @@
   .kordynV2MobileSheet .kordynV2AiSupportSuggestions button {
     min-width: 44px;
     min-height: 52px;
+  }
+
+  .kordynV2MobileSheet .kordynV2AiSupportFacts dd,
+  .kordynV2MobileSheet .kordynV2AiSupportSuggestions small,
+  .kordynV2MobileSheet .kordynV2AiSupportSuggestions > p {
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .kordynV2MobileSheetIdentity {
